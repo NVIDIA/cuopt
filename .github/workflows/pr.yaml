@@ -15,8 +15,6 @@ concurrency:
 permissions: {}
 
 jobs:
-  build-details:
-    uses: rapidsai/shared-workflows/.github/workflows/compute-build-details.yaml@main
   pr-builder:
     needs:
       - build-details
@@ -43,6 +41,8 @@ jobs:
     if: always()
     with:
       needs: ${{ toJSON(needs) }}
+  build-details:
+    uses: rapidsai/shared-workflows/.github/workflows/compute-build-details.yaml@main
   compute-matrix-filters:
     permissions:
       contents: read
@@ -60,7 +60,6 @@ jobs:
           echo "cuopt_server_filter=map(select(.ARCH == \"amd64\")) | group_by(.CUDA_VER|split(\".\")|map(tonumber)|.[0]) | map(max_by([(.PY_VER|split(\".\")|map(tonumber)), (.CUDA_VER|split(\".\")|map(tonumber))]))" >> $GITHUB_OUTPUT
           echo "cuopt_server_test_filter=map(select(.ARCH == \"amd64\")) | group_by(.CUDA_VER | split(\".\") | map(tonumber) | .[0]) | map(max_by([(.PY_VER | split(\".\") | map(tonumber)), (.CUDA_VER | split(\".\") | map(tonumber))]))" >> $GITHUB_OUTPUT
           echo "cuopt_sh_client_filter=[map(select(.ARCH == \"amd64\")) | min_by((.PY_VER | split(\".\") | map(tonumber)), (.CUDA_VER | split(\".\") | map(-tonumber)))]" >> $GITHUB_OUTPUT
-
   changed-files:
     permissions:
       actions: read
