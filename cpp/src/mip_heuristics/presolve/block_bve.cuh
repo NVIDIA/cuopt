@@ -8,8 +8,6 @@
 #pragma once
 
 #include <cstdint>
-#include <unordered_set>
-#include <utility>
 #include <vector>
 
 #include "probing_cache.cuh"
@@ -30,10 +28,6 @@
 // emitted clauses are checked against the GPU-computed boundary feasibility table.
 
 namespace cuopt::mathematical_optimization::mip {
-
-// ===========================================================================================
-//  1. Clause core: projection -> prime-implicate CNF -> inline sanity check
-// ===========================================================================================
 
 // Caps for a single enumerated block.
 static constexpr int BVE_MAX_BOUNDARY = 8;   // nb  <= 8  => 2^nb <= 256 feasibility patterns
@@ -72,14 +66,6 @@ struct bve_clause_t {
   uint32_t bit_mask;
 };
 
-enum class bve_status_t : int {
-  kReduced    = 0,  // sanity check passed; `clauses` is a sound replacement for the block rows
-  kSkipCaps   = 1,  // block violates a bound cap (defensive; detector should pre-filter)
-  kSkipGrowth = 2,  // |clauses| > |rows| + margin (would grow the row count)
-  kSkipCheckFailed =
-    3  // clauses did not reproduce feas (sanity check failed) => keep block verbatim
-};
-
 // Derive a prime-implicate CNF from the boundary feasibility table; return -1 on cap overflow.
 template <typename i_t, typename f_t>
 i_t bve_prime_implicates(const uint8_t* feas, i_t nb, bve_clause_t* out, i_t cap);
@@ -87,40 +73,6 @@ i_t bve_prime_implicates(const uint8_t* feas, i_t nb, bve_clause_t* out, i_t cap
 // Verify that the emitted clauses reproduce the boundary feasibility table exactly.
 template <typename i_t, typename f_t>
 bool bve_sanity_check(const uint8_t* feas, i_t nb, const bve_clause_t* clauses, i_t n_clauses);
-
-// ===========================================================================================
-//  2. Host detector (working model + plan types)
-// ===========================================================================================
-
-// Committed elimination in commit order. `witness[pattern]` packs interior values for the boundary
-// pattern; reductions are replayed in reverse order during postsolve.
-template <typename i_t>
-struct bve_reduction_t {
-  std::vector<i_t> interior;
-  std::vector<i_t> boundary;
-  std::vector<uint32_t> witness;  // size 2^boundary.size()
-};
-
-// A surviving clause row to append to problem_t (a set-covering no-good over boundary columns).
-template <typename i_t, typename f_t>
-struct bve_added_row_t {
-  std::vector<i_t> vars;
-  std::vector<f_t> coeffs;
-  f_t lower;
-  f_t upper;
-};
-
-template <typename i_t, typename f_t>
-struct bve_plan_t {
-  std::vector<bve_reduction_t<i_t>> reductions;       // commit order
-  std::vector<i_t> removed_rows;                      // original row ids to drop
-  std::vector<bve_added_row_t<i_t, f_t>> added_rows;  // surviving clause rows
-  std::vector<i_t> eliminated_cols;                   // interior columns (become empty)
-  i_t n_blocks    = 0;
-  i_t n_elim_cols = 0;
-  i_t final_cols  = 0;  // columns still appearing in an active row (oracle parity / logging)
-  i_t final_rows  = 0;  // active rows after commit
-};
 
 // Staged candidate. Vector fields use sorted current-problem ids; `blk` uses local ids and the
 // projection backend fills `feas` and `witness`.
@@ -132,56 +84,6 @@ struct bve_candidate_t {
   bve_block_t<f_t> blk;                // gathered block, local ids, for the projection
   uint8_t feas[BVE_MAX_PATTERNS];      // [2^nb]  filled by projection: 1 iff pattern is feasible
   uint32_t witness[BVE_MAX_PATTERNS];  // [2^nb]  filled by projection: smallest feasible interior
-};
-
-// Working model and accumulated reduction plan. Candidates are staged without mutation and
-// committed only after projection and clause validation.
-template <typename i_t, typename f_t>
-struct bve_reducer_t {
-  struct work_row_t {
-    std::vector<std::pair<i_t, f_t>> terms;
-    f_t lo, up;
-    bool active;
-    bool original;
-  };
-
-  i_t n_vars, n_rows_orig;
-  f_t tol;
-  i_t Bcap, enumcap, margin;
-  std::vector<work_row_t> rows;
-  std::vector<std::unordered_set<i_t>> col2rows;
-  std::vector<uint8_t> is_bin, obj_nz, done;
-  bve_plan_t<i_t, f_t> plan;
-
-  bve_reducer_t(i_t n_vars_,
-                i_t n_rows_orig_,
-                const std::vector<i_t>& offsets,
-                const std::vector<i_t>& variables,
-                const std::vector<f_t>& coefficients,
-                const std::vector<f_t>& row_lower,
-                const std::vector<f_t>& row_upper,
-                const std::vector<f_t>& col_lower,
-                const std::vector<f_t>& col_upper,
-                const std::vector<uint8_t>& is_integer,
-                const std::vector<f_t>& obj,
-                f_t tol_,
-                i_t Bcap_,
-                i_t enumcap_,
-                i_t margin_);
-
-  std::unordered_set<i_t> rows_of(const std::vector<i_t>& interior) const;
-  std::vector<i_t> boundary_of(const std::unordered_set<i_t>& G,
-                               const std::unordered_set<i_t>& A) const;
-
-  // Gather and pack a candidate without projecting or mutating the working model.
-  bool stage(const std::vector<i_t>& interior_in,
-             bve_candidate_t<i_t, f_t>& out,
-             int64_t* ops_out = nullptr);
-
-  // Validate and commit an already-projected candidate; return true iff reduced.
-  bool commit_projected(const bve_candidate_t<i_t, f_t>& cand);
-
-  bve_plan_t<i_t, f_t> finalize();
 };
 
 // Project shape-binned candidate batches on the GPU and return a deterministic work estimate.

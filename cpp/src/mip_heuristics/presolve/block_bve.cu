@@ -107,31 +107,6 @@ static double bve_commit_wall_ops(int nb, int clause_budget)
   return double(nb) * three_nb + double(1 << nb) * double(clause_budget + 1);
 }
 
-// Single-pass boundary size + op accounting matching rows_of + boundary_of (term/row visits).
-template <typename i_t, typename f_t>
-static i_t bve_boundary_size_ops(const bve_reducer_t<i_t, f_t>& R,
-                                 const std::vector<i_t>& interior,
-                                 int64_t& ops)
-{
-  std::unordered_set<i_t> A(interior.begin(), interior.end());
-  ops += (int64_t)interior.size();
-  std::unordered_set<i_t> G;
-  for (i_t a : interior) {
-    for (i_t r : R.col2rows[a]) {
-      ++ops;
-      G.insert(r);
-    }
-  }
-  std::unordered_set<i_t> b;
-  for (i_t r : G) {
-    for (const auto& p : R.rows[r].terms) {
-      ++ops;
-      if (!A.count(p.first)) b.insert(p.first);
-    }
-  }
-  return (i_t)b.size();
-}
-
 template <typename i_t, typename f_t>
 i_t bve_prime_implicates(const uint8_t* feas, i_t nb, bve_clause_t* out, i_t cap)
 {
@@ -202,6 +177,89 @@ bool bve_sanity_check(const uint8_t* feas, i_t nb, const bve_clause_t* clauses, 
   return true;
 }
 
+// ---- host detector: working model, staged candidates, accumulated plan (all TU-local) ----
+namespace {
+
+// Committed elimination in commit order. `witness[pattern]` packs interior values for the boundary
+// pattern; reductions are replayed in reverse order during postsolve.
+template <typename i_t>
+struct bve_reduction_t {
+  std::vector<i_t> interior;
+  std::vector<i_t> boundary;
+  std::vector<uint32_t> witness;  // size 2^boundary.size()
+};
+
+// A surviving clause row to append to problem_t (a set-covering no-good over boundary columns).
+template <typename i_t, typename f_t>
+struct bve_added_row_t {
+  std::vector<i_t> vars;
+  std::vector<f_t> coeffs;
+  f_t lower;
+  f_t upper;
+};
+
+template <typename i_t, typename f_t>
+struct bve_plan_t {
+  std::vector<bve_reduction_t<i_t>> reductions;       // commit order
+  std::vector<i_t> removed_rows;                      // original row ids to drop
+  std::vector<bve_added_row_t<i_t, f_t>> added_rows;  // surviving clause rows
+  i_t n_blocks = 0;
+};
+
+// Working model and accumulated reduction plan. Candidates are staged without mutation and
+// committed only after projection and clause validation.
+template <typename i_t, typename f_t>
+struct bve_reducer_t {
+  struct work_row_t {
+    std::vector<std::pair<i_t, f_t>> terms;
+    f_t lo, up;
+    bool active;
+    bool original;
+  };
+
+  i_t n_vars, n_rows_orig;
+  f_t tol;
+  i_t Bcap, enumcap, margin;
+  std::vector<work_row_t> rows;
+  std::vector<std::unordered_set<i_t>> col2rows;
+  std::vector<uint8_t> is_bin, obj_nz, done;
+  bve_plan_t<i_t, f_t> plan;
+
+  bve_reducer_t(i_t n_vars_,
+                i_t n_rows_orig_,
+                const std::vector<i_t>& offsets,
+                const std::vector<i_t>& variables,
+                const std::vector<f_t>& coefficients,
+                const std::vector<f_t>& row_lower,
+                const std::vector<f_t>& row_upper,
+                const std::vector<f_t>& col_lower,
+                const std::vector<f_t>& col_upper,
+                const std::vector<uint8_t>& is_integer,
+                const std::vector<f_t>& obj,
+                f_t tol_,
+                i_t Bcap_,
+                i_t enumcap_,
+                i_t margin_);
+
+  // Rows spanned by `interior` and the boundary columns of those rows, both unsorted, with op
+  // accounting. Single traversal behind both the growth probe (which needs only the boundary size)
+  // and stage(); outputs are overwritten, so a caller in a loop can reuse them.
+  void scope_of(const std::vector<i_t>& interior,
+                std::vector<i_t>& rows_out,
+                std::vector<i_t>& boundary_out,
+                int64_t& ops) const;
+
+  // Gather and pack a candidate without projecting or mutating the working model.
+  bool stage(const std::vector<i_t>& interior_in,
+             bve_candidate_t<i_t, f_t>& out,
+             int64_t* ops_out = nullptr);
+
+  // Validate and commit an already-projected candidate; return true iff reduced.
+  bool commit_projected(const bve_candidate_t<i_t, f_t>& cand);
+
+  bve_plan_t<i_t, f_t> finalize();
+};
+
 template <typename i_t, typename f_t>
 bve_reducer_t<i_t, f_t>::bve_reducer_t(i_t n_vars_,
                                        i_t n_rows_orig_,
@@ -253,24 +311,27 @@ bve_reducer_t<i_t, f_t>::bve_reducer_t(i_t n_vars_,
 }
 
 template <typename i_t, typename f_t>
-std::unordered_set<i_t> bve_reducer_t<i_t, f_t>::rows_of(const std::vector<i_t>& interior) const
+void bve_reducer_t<i_t, f_t>::scope_of(const std::vector<i_t>& interior,
+                                       std::vector<i_t>& rows_out,
+                                       std::vector<i_t>& boundary_out,
+                                       int64_t& ops) const
 {
+  ops += (int64_t)interior.size();
+  std::unordered_set<i_t> A(interior.begin(), interior.end());
   std::unordered_set<i_t> G;
   for (i_t a : interior)
-    for (i_t r : col2rows[a])
+    for (i_t r : col2rows[a]) {
+      ++ops;
       G.insert(r);
-  return G;
-}
-
-template <typename i_t, typename f_t>
-std::vector<i_t> bve_reducer_t<i_t, f_t>::boundary_of(const std::unordered_set<i_t>& G,
-                                                      const std::unordered_set<i_t>& A) const
-{
+    }
   std::unordered_set<i_t> b;
   for (i_t r : G)
-    for (auto& p : rows[r].terms)
+    for (const auto& p : rows[r].terms) {
+      ++ops;
       if (!A.count(p.first)) b.insert(p.first);
-  return std::vector<i_t>(b.begin(), b.end());
+    }
+  rows_out.assign(G.begin(), G.end());
+  boundary_out.assign(b.begin(), b.end());
 }
 
 template <typename i_t, typename f_t>
@@ -278,45 +339,28 @@ bool bve_reducer_t<i_t, f_t>::stage(const std::vector<i_t>& interior_in,
                                     bve_candidate_t<i_t, f_t>& out,
                                     int64_t* ops_out)
 {
-  int64_t ops = 0;
+  int64_t ops    = 0;
+  auto ops_guard = cuopt::scope_guard([&]() {
+    if (ops_out != nullptr) *ops_out += ops;
+  });
+
   std::vector<i_t> interior(interior_in.begin(), interior_in.end());
   std::sort(interior.begin(), interior.end());
-  ops += (int64_t)interior.size();
-  std::unordered_set<i_t> A(interior.begin(), interior.end());
-  std::unordered_set<i_t> Gset = rows_of(interior);
-  for (i_t a : interior)
-    ops += (int64_t)col2rows[a].size();
-  std::vector<i_t> Gl(Gset.begin(), Gset.end());
-  std::sort(Gl.begin(),
-            Gl.end());  // row order is result-invariant; sorting improves GPU shape-binning
+  std::vector<i_t> Gl, bnd;
+  scope_of(interior, Gl, bnd, ops);
+  // row order is result-invariant; sorting improves GPU shape-binning
+  std::sort(Gl.begin(), Gl.end());
   ops += (int64_t)Gl.size();
-  std::vector<i_t> bnd = boundary_of(Gset, A);
-  for (i_t r : Gset)
-    ops += (int64_t)rows[r].terms.size();
   std::sort(bnd.begin(), bnd.end());
   ops += (int64_t)bnd.size();
-  const i_t nb    = bnd.size();
-  const i_t na    = interior.size();
-  auto finish_ops = [&]() {
-    if (ops_out != nullptr) *ops_out += ops;
-  };
-  if (nb == 0 || nb > Bcap || na + nb > enumcap) {
-    finish_ops();
-    return false;
-  }
+
+  const i_t nb = bnd.size();
+  const i_t na = interior.size();
+  if (nb == 0 || nb > Bcap || na + nb > enumcap) return false;
   for (i_t v : bnd)
-    if (!is_bin[v]) {
-      finish_ops();
-      return false;
-    }
-  if (na > BVE_MAX_INTERIOR || nb > BVE_MAX_BOUNDARY || na + nb > BVE_MAX_SCOPE) {
-    finish_ops();
-    return false;
-  }
-  if (Gl.size() > BVE_MAX_ROWS) {
-    finish_ops();
-    return false;
-  }
+    if (!is_bin[v]) return false;
+  if (na > BVE_MAX_INTERIOR || nb > BVE_MAX_BOUNDARY || na + nb > BVE_MAX_SCOPE) return false;
+  if (Gl.size() > BVE_MAX_ROWS) return false;
 
   bve_block_t<f_t>& blk = out.blk;
   blk.na                = na;
@@ -346,10 +390,7 @@ bool bve_reducer_t<i_t, f_t>::stage(const std::vector<i_t>& interior_in,
     blk.row_lo[rr] = rows[r].lo;
     blk.row_up[rr] = rows[r].up;
   }
-  if (row_overflow) {
-    finish_ops();
-    return false;
-  }
+  if (row_overflow) return false;
   blk.row_off[blk.n_rows] = nzc;
 
   // Integerize every row so the GPU projection is exact (tol 0). A row whose coefficients/bounds do
@@ -363,10 +404,7 @@ bool bve_reducer_t<i_t, f_t>::stage(const std::vector<i_t>& interior_in,
     const int re = blk.row_off[rr + 1];
     const double s =
       bve_row_int_scale<f_t>(blk.row_coef + rb, re - rb, blk.row_lo[rr], blk.row_up[rr]);
-    if (s == 0.0) {
-      finish_ops();
-      return false;
-    }
+    if (s == 0.0) return false;
     for (int k = rb; k < re; ++k)
       blk.row_coef[k] = (f_t)std::llround((double)blk.row_coef[k] * s);
     if (bve_bound_finite(blk.row_lo[rr]))
@@ -383,7 +421,6 @@ bool bve_reducer_t<i_t, f_t>::stage(const std::vector<i_t>& interior_in,
     out.witness[m] = 0u;
   }
   ops += (int64_t)(1 << nb);
-  finish_ops();
   return true;
 }
 
@@ -391,7 +428,6 @@ template <typename i_t, typename f_t>
 bool bve_reducer_t<i_t, f_t>::commit_projected(const bve_candidate_t<i_t, f_t>& cand)
 {
   const i_t nb = cand.blk.nb;
-  const i_t na = cand.blk.na;
   bve_clause_t clauses[BVE_MAX_CLAUSES];
   const i_t n_clauses = bve_prime_implicates<i_t, f_t>(cand.feas, nb, clauses, BVE_MAX_CLAUSES);
   if (n_clauses < 0) return false;                         // clause explosion past cap
@@ -435,10 +471,8 @@ bool bve_reducer_t<i_t, f_t>::commit_projected(const bve_candidate_t<i_t, f_t>& 
   for (i_t a : cand.interior) {
     col2rows[a].clear();
     done[a] = 1;
-    plan.eliminated_cols.push_back(a);
   }
   plan.n_blocks += 1;
-  plan.n_elim_cols += na;
   return true;
 }
 
@@ -458,12 +492,10 @@ bve_plan_t<i_t, f_t> bve_reducer_t<i_t, f_t>::finalize()
       ar.upper = rows[r].up;
       plan.added_rows.push_back(std::move(ar));
     }
-  for (i_t c = 0; c < n_vars; ++c)
-    if (!col2rows[c].empty()) plan.final_cols += 1;
-  for (const auto& R : rows)
-    if (R.active) plan.final_rows += 1;
   return plan;
 }
+
+}  // namespace
 
 // ===========================================================================================
 //  GPU enumeration projection kernel
@@ -761,6 +793,7 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
       // Interior A starts as {seed}; greedily absorb neighbors that shrink the boundary.
       std::unordered_set<i_t> A = {seed};
       int64_t ops               = 0;
+      std::vector<i_t> probe_rows, probe_bnd;  // scope_of scratch, reused across probes
       for (;;) {
         // Hub fast-path: raw implication degree upper-bounds |cands_w|. Skip boundary walks
         // and adj materialization when the neighborhood is past the probe cap.
@@ -770,7 +803,8 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
           if (deg > BVE_MAX_GROWTH_NBRS) break;
         }
         std::vector<i_t> Av(A.begin(), A.end());
-        const i_t cur = bve_boundary_size_ops(R, Av, ops);
+        R.scope_of(Av, probe_rows, probe_bnd, ops);
+        const i_t cur = probe_bnd.size();
         // Implication-neighbors of A that are still eligible to enter the interior.
         std::unordered_set<i_t> cands_w;
         bool gated = false;
@@ -795,7 +829,8 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
         for (i_t w : cands_w) {
           Av.push_back(w);  // probe A ∪ {w}; pop restores Av
           const i_t na = Av.size();
-          const i_t nb = bve_boundary_size_ops(R, Av, ops);
+          R.scope_of(Av, probe_rows, probe_bnd, ops);
+          const i_t nb = probe_bnd.size();
           Av.pop_back();
           if (nb < best_nb && na + nb <= R.enumcap && na <= BVE_MAX_INTERIOR) {
             best_nb = nb;
@@ -1068,7 +1103,6 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
 #define INSTANTIATE(F_TYPE)                                                                   \
   template int bve_prime_implicates<int, F_TYPE>(const uint8_t*, int, bve_clause_t*, int);    \
   template bool bve_sanity_check<int, F_TYPE>(const uint8_t*, int, const bve_clause_t*, int); \
-  template struct bve_reducer_t<int, F_TYPE>;                                                 \
   template double bve_project_batch_gpu<int, F_TYPE>(                                         \
     const raft::handle_t&, std::vector<bve_candidate_t<int, F_TYPE>>&, F_TYPE);               \
   template std::vector<std::vector<int>> bve_build_impl_adj<int, F_TYPE>(                     \

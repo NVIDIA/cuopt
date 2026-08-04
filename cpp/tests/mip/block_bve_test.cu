@@ -94,6 +94,14 @@ inline void bve_project(const bve_block_t<f_t>& blk, f_t tol, uint8_t* feas, uin
   }
 }
 
+enum class bve_status_t : int {
+  kReduced    = 0,  // sanity check passed; `clauses` is a sound replacement for the block rows
+  kSkipCaps   = 1,  // block violates a bound cap (defensive; detector should pre-filter)
+  kSkipGrowth = 2,  // |clauses| > |rows| + margin (would grow the row count)
+  kSkipCheckFailed =
+    3  // clauses did not reproduce feas (sanity check failed) => keep block verbatim
+};
+
 // Full per-block core on the host: project -> prime-implicate CNF -> growth gate -> inline sanity
 // check. The production commit_projected does the same, but reads feas/witness from the GPU instead
 // of the host bve_project above.
