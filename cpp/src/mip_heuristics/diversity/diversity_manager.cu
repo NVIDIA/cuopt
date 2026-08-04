@@ -298,18 +298,9 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
     ls.constraint_prop.bounds_update.set_updated_bounds(*problem_ptr);
   }
   const auto& hp              = context.settings.heuristic_params;
-  const bool deterministic    = context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC;
   const auto probing_features = probing_presolve_features(*problem_ptr);
-  auto probing_budget         = evaluate_presolve_budget(hp, probing_features);
+  const auto probing_budget   = evaluate_presolve_budget(hp, probing_features);
   bool run_probing_cache      = !fj_only_run;
-  // Under the legacy policy the probing cache carries no work budget, so in deterministic mode
-  // nothing would bound it: the wall clock is infinite there. Keep it off, which is also what makes
-  // the legacy policy an unchanged baseline.
-  if (deterministic &&
-      probing_budget.probing_work_limit == std::numeric_limits<double>::infinity()) {
-    CUOPT_LOG_INFO("Probing-cache step disabled: deterministic mode with no work budget");
-    run_probing_cache = false;
-  }
   // Allow the user to disable the probing-cache step of cuOpt's internal presolve
   // independently of the higher-level presolver setting.
   if (!context.settings.probing) {
@@ -317,20 +308,13 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
     run_probing_cache = false;
   }
   if (run_probing_cache) {
-    // Run probing cache before trivial presolve to discover variable implications. The work budget
-    // is what bounds this: at probing_work_time_scale it stopped every one of 240 instances before
-    // max_time_on_probing could fire, so the wall is a backstop for a badly mispredicted instance
-    // rather than the working limit it used to be.
-    //
-    // time_limit is the presolve share of the solve (presolve_time_ratio, so a tenth by default)
-    // and has to stay in the minimum: without it probing would be bounded only by its own wall cap,
-    // so a short solve would spend all of itself here -- at --time-limit 10 probing could take the
-    // whole 10s where it should get 1s. remaining_time only stops it reaching past the end of the
-    // solve.
-    probing_budget.probing_wall_limit = diversity_config.max_time_on_probing;
+    // Run probing cache before trivial presolve to discover variable implications. The work ceiling
+    // in presolve_budget_policy.hpp is now the only bound on its cost -- there is no wall cap and
+    // no presolve share -- so a proxy miss shows up as wall time rather than being clipped. Across
+    // 240 instances the ceiling stopped every run at a worst case of 44.7s, which is what makes
+    // that survivable. The timers below only stop probing reaching past the end of the solve.
     log_presolve_budget("PROBING", probing_features, probing_budget);
-    f_t time_for_probing_cache = std::min(
-      {(f_t)probing_budget.probing_wall_limit, time_limit, (f_t)global_timer.remaining_time()});
+    f_t time_for_probing_cache = std::min(time_limit, (f_t)global_timer.remaining_time());
     timer_t probing_timer{time_for_probing_cache};
     const auto probing_t0 = std::chrono::steady_clock::now();
     // this function computes probing cache, finds singletons, substitutions and changes the problem

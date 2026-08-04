@@ -19,10 +19,8 @@ namespace cuopt::mathematical_optimization {
  */
 template <typename i_t, typename f_t>
 struct mip_heuristics_hyper_params_t {
-  i_t population_size     = 32;    // max solutions in pool
-  i_t num_cpufj_threads   = 8;     // parallel CPU FJ climbers
-  f_t presolve_time_ratio = 0.1;   // fraction of total time for presolve
-  f_t presolve_max_time   = 60.0;  // hard cap on presolve seconds
+  i_t population_size   = 32;  // max solutions in pool
+  i_t num_cpufj_threads = 8;   // parallel CPU FJ climbers
 
   // Presolve budgeting. Both are derived from the problem's dimensions and structure by default
   // (see presolve_budget_policy.hpp); a negative value asks for that rule, and any other value

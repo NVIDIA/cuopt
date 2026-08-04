@@ -98,8 +98,6 @@
 
 #define CUOPT_MIP_HYPER_HEURISTIC_POPULATION_SIZE     "mip_hyper_heuristic_population_size"
 #define CUOPT_MIP_HYPER_HEURISTIC_NUM_CPUFJ_THREADS   "mip_hyper_heuristic_num_cpufj_threads"
-#define CUOPT_MIP_HYPER_HEURISTIC_PRESOLVE_TIME_RATIO "mip_hyper_heuristic_presolve_time_ratio"
-#define CUOPT_MIP_HYPER_HEURISTIC_PRESOLVE_MAX_TIME   "mip_hyper_heuristic_presolve_max_time"
 #define CUOPT_MIP_HYPER_HEURISTIC_PRESOLVE_MAX_ROUNDS "mip_hyper_heuristic_presolve_max_rounds"
 #define CUOPT_MIP_HYPER_HEURISTIC_PAPILO_PROBING_MAX_BADGESIZE \
   "mip_hyper_heuristic_papilo_probing_max_badgesize"

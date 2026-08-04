@@ -234,8 +234,6 @@ message MIPSolverSettings {
   optional double semi_continuous_big_m = 34;
   optional int32 population_size = 35;
   optional int32 num_cpufj_threads = 36;
-  optional double presolve_time_ratio = 37;
-  optional double presolve_max_time = 38;
   optional double root_lp_time_ratio = 39;
   optional double root_lp_max_time = 40;
   optional double rins_time_limit = 41;

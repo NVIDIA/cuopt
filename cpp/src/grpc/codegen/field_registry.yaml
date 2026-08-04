@@ -755,12 +755,8 @@ mip_settings:
         field_num: 36
         type: int32
         optional: true
-    - presolve_time_ratio:
-        field_num: 37
-        optional: true
-    - presolve_max_time:
-        field_num: 38
-        optional: true
+    # 37 and 38 held presolve_time_ratio and presolve_max_time, removed when presolve stopped
+    # taking a wall budget. Do not reuse: an older client still sends them on those numbers.
     - root_lp_time_ratio:
         field_num: 39
         optional: true

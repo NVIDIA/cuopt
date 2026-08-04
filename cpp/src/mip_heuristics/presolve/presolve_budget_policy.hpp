@@ -12,20 +12,25 @@
 #include <mip_heuristics/logger.hpp>
 
 #include <algorithm>
+#include <cstdlib>
+#include <exception>
 #include <limits>
+#include <string>
 
 namespace cuopt::mathematical_optimization::mip {
 
 // Work the probing loop charges per unit of effort. These are exact counts rather than timings,
-// which is what makes the budget reproducible, and probing_work_time_scale below is calibrated
-// against them -- changing either invalidates it.
+// which is what makes the budget reproducible, and probing_work_scale below is expressed against
+// them -- changing either invalidates it.
 inline constexpr double probing_probe_work = 0.02;  // per probed variable, host overhead
 inline constexpr double probing_iter_work  = 0.01;  // per multi-probe propagation iteration
 
-// Numerator of the probing work ceiling, divided by the cost proxy. This is the bound on probing,
-// not a backstop: measured over 240 instances it stopped every run before the wall cap could fire,
-// with a worst case of 44.7s, while looser scales of 4e8 and 1e9 needed the wall on 2 and 8
-// instances and spent 2-3x the total probing time to do it.
+// Probing work allowed per unit of the cost proxy below; dividing by that proxy is what turns it
+// into a per-instance work ceiling. It is a work coefficient, and nothing here converts it to
+// seconds. Since the wall cap was removed this is the only bound on probing, which is what the
+// value was picked to survive: over 240 instances it stopped every run before the 120s wall could
+// fire, worst case 44.7s, while looser scales of 4e8 and 1e9 needed that wall on 2 and 8 instances
+// and spent 2-3x the total probing time to do it.
 //
 // Tight enough to bound time is also tight enough to truncate, and that trade is deliberate:
 // probing takes its time from branch and bound, and the truncation measured neutral on solution
@@ -35,7 +40,38 @@ inline constexpr double probing_iter_work  = 0.01;  // per multi-probe propagati
 // ~340x and one instance (nw04) pins the scale under every reshaping tried, including refitting the
 // exponent to the measured nnz^0.65. Beyond that the residual is not explained by any structural
 // feature; it needs throughput measured during probing rather than predicted from the problem.
-inline constexpr double probing_work_time_scale = 1.5e8;
+inline constexpr double probing_work_scale = 1.5e8;
+
+// Benchmark arm selected by CUOPT_CONFIG_ID so one build covers both points of the sweep. Unset or
+// 0 is the shipping ceiling; 1 raises it 25%, which measures what the extra probing buys now that
+// no wall clips the cost of a proxy miss. Read once -- the environment cannot change mid-run.
+inline constexpr int n_presolve_configs        = 2;
+inline constexpr double probing_work_scale_arm = 1.25;
+
+inline double effective_probing_work_scale()
+{
+  static const double selected = []() -> double {
+    const char* raw = std::getenv("CUOPT_CONFIG_ID");
+    if (raw == nullptr) { return probing_work_scale; }
+    int id = -1;
+    try {
+      id = std::stoi(raw);
+    } catch (const std::exception& e) {
+      CUOPT_LOG_WARN("Failed to parse CUOPT_CONFIG_ID: %s", e.what());
+      return probing_work_scale;
+    }
+    if (id < 0 || id >= n_presolve_configs) {
+      CUOPT_LOG_WARN("CUOPT_CONFIG_ID=%d is outside [0, %d); ignoring it for presolve budgets",
+                     id,
+                     n_presolve_configs);
+      return probing_work_scale;
+    }
+    const double scale = id == 1 ? probing_work_scale * probing_work_scale_arm : probing_work_scale;
+    CUOPT_LOG_INFO("Using presolve budget config %d: probing work scale %.4g", id, scale);
+    return scale;
+  }();
+  return selected;
+}
 
 // Probed variables between work-budget checks, i.e. the granularity at which the budget can be
 // enforced. Work is only folded in at the step barrier, so too large a step runs unbudgeted.
@@ -87,9 +123,6 @@ struct presolve_budget_t {
   // estimate.
   double probing_work_limit{std::numeric_limits<double>::infinity()};
   int probing_step_size{probing_budget_step_size};
-  // Dedicated wall cap on probing. The presolve share of the solve and the global timer still apply
-  // on top of this; they are correctness bounds rather than tuning knobs.
-  double probing_wall_limit{std::numeric_limits<double>::infinity()};
 };
 
 // Derives both presolve stages' budgets from the problem's dimensions and structure. Rounds and
@@ -132,7 +165,7 @@ presolve_budget_t evaluate_presolve_budget(const mip_heuristics_hyper_params_t<i
   // it left probing running over a second on 102 instances against 81 before, while runs over ten
   // seconds fell from 34 to 11, since the ceiling truncates by cost rather than uniformly.
   const double probing_cost_proxy = nnz + n_cand * acl;
-  b.probing_work_limit            = probing_work_time_scale / probing_cost_proxy;
+  b.probing_work_limit            = effective_probing_work_scale() / probing_cost_proxy;
   b.probing_step_size             = probing_budget_step_size;
   return b;
 }
@@ -146,7 +179,7 @@ inline void log_presolve_budget(const char* stage,
   CUOPT_LOG_INFO(
     "PRESOLVE_BUDGET stage=%s nvars=%.0f ncons=%.0f nnz=%.0f nint=%.0f "
     "nbin=%.0f arl=%.3f acl=%.3f maxrow=%.0f density=%.3e intfrac=%.3f binfrac=%.3f "
-    "rounds=%d badge=%d work=%.3f step=%d wall=%.1f",
+    "rounds=%d badge=%d work=%.3f step=%d",
     stage,
     f.n_vars,
     f.n_cons,
@@ -162,8 +195,7 @@ inline void log_presolve_budget(const char* stage,
     b.papilo_max_rounds,
     b.papilo_max_badgesize,
     b.probing_work_limit,
-    b.probing_step_size,
-    b.probing_wall_limit);
+    b.probing_step_size);
 }
 
 }  // namespace cuopt::mathematical_optimization::mip
