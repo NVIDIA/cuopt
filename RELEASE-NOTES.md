@@ -5,7 +5,6 @@
 ### New Features (26.08)
 
 - New Multi-GPU PDLP: distribute LP solves across multiple GPUs using METIS partitioning; 2.5x–8.8x speedup on 8 NVLink-connected B200 GPUs
-- Exploit sparsity in Barrier's augmented system on problems with large second order cone constraints
 - New free-format MPS parser with faster parse time on large models
 - New recursive RINS heuristic for MIP
 - New zero-half (odd-cycle) cuts for MIP
@@ -22,7 +21,8 @@
 - Routing `DataModel` now defers GPU device construction to solve time; applications that accessed device-side data between `DataModel` construction and the solve call must be updated
 
 ### Improvements (26.08)
-Include Q matrix in Ruiz scaling to improve convergence
+- Include Q matrix in Ruiz scaling to improve convergence
+- Exploit sparsity in Barrier's augmented system on problems with large second order cone constraints
 - Conflict graph improvements: incorporate non-binary rows and probing implications
 - Reduce latency in LP concurrent mode
 - Reduce memory footprint of PDLP
