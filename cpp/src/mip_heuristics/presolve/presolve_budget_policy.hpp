@@ -12,10 +12,7 @@
 #include <mip_heuristics/logger.hpp>
 
 #include <algorithm>
-#include <cstdlib>
-#include <exception>
 #include <limits>
-#include <string>
 
 namespace cuopt::mathematical_optimization::mip {
 
@@ -36,42 +33,14 @@ inline constexpr double probing_iter_work  = 0.01;  // per multi-probe propagati
 // probing takes its time from branch and bound, and the truncation measured neutral on solution
 // quality (11.78 mean error against 12.01, inside the 0.53 run-to-run noise).
 //
-// A larger scale is not the way to buy coverage back. The proxy predicts throughput only to within
-// ~340x and one instance (nw04) pins the scale under every reshaping tried, including refitting the
-// exponent to the measured nnz^0.65. Beyond that the residual is not explained by any structural
-// feature; it needs throughput measured during probing rather than predicted from the problem.
+// A larger scale is not the way to buy coverage back, and that has now been measured rather than
+// inferred: raising it 25% reached only 67 of 240 instances (the rest cannot resolve the change at
+// step 128 below), spent 23% more probing time on those, and left their median error delta at
+// exactly 0.00. The proxy predicts throughput only to within ~340x and one instance (nw04) pins the
+// scale under every reshaping tried, including refitting the exponent to the measured nnz^0.65.
+// Beyond that the residual is not explained by any structural feature; it needs throughput measured
+// during probing rather than predicted from the problem.
 inline constexpr double probing_work_scale = 1.5e8;
-
-// Benchmark arm selected by CUOPT_CONFIG_ID so one build covers both points of the sweep. Unset or
-// 0 is the shipping ceiling; 1 raises it 25%, which measures what the extra probing buys now that
-// no wall clips the cost of a proxy miss. Read once -- the environment cannot change mid-run.
-inline constexpr int n_presolve_configs        = 2;
-inline constexpr double probing_work_scale_arm = 1.25;
-
-inline double effective_probing_work_scale()
-{
-  static const double selected = []() -> double {
-    const char* raw = std::getenv("CUOPT_CONFIG_ID");
-    if (raw == nullptr) { return probing_work_scale; }
-    int id = -1;
-    try {
-      id = std::stoi(raw);
-    } catch (const std::exception& e) {
-      CUOPT_LOG_WARN("Failed to parse CUOPT_CONFIG_ID: %s", e.what());
-      return probing_work_scale;
-    }
-    if (id < 0 || id >= n_presolve_configs) {
-      CUOPT_LOG_WARN("CUOPT_CONFIG_ID=%d is outside [0, %d); ignoring it for presolve budgets",
-                     id,
-                     n_presolve_configs);
-      return probing_work_scale;
-    }
-    const double scale = id == 1 ? probing_work_scale * probing_work_scale_arm : probing_work_scale;
-    CUOPT_LOG_INFO("Using presolve budget config %d: probing work scale %.4g", id, scale);
-    return scale;
-  }();
-  return selected;
-}
 
 // Probed variables between work-budget checks, i.e. the granularity at which the budget can be
 // enforced. Work is only folded in at the step barrier, so too large a step runs unbudgeted.
@@ -165,7 +134,7 @@ presolve_budget_t evaluate_presolve_budget(const mip_heuristics_hyper_params_t<i
   // it left probing running over a second on 102 instances against 81 before, while runs over ten
   // seconds fell from 34 to 11, since the ceiling truncates by cost rather than uniformly.
   const double probing_cost_proxy = nnz + n_cand * acl;
-  b.probing_work_limit            = effective_probing_work_scale() / probing_cost_proxy;
+  b.probing_work_limit            = probing_work_scale / probing_cost_proxy;
   b.probing_step_size             = probing_budget_step_size;
   return b;
 }
