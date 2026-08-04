@@ -282,6 +282,7 @@ class pdlp_solver_settings_t {
   i_t augmented{-1};
   i_t dualize{-1};
   i_t ordering{-1};
+  i_t initial_perturbation{-1};
   i_t barrier_dual_initial_point{-1};
   bool eliminate_dense_columns{true};
   pdlp_precision_t pdlp_precision{pdlp_precision_t::DefaultPrecision};

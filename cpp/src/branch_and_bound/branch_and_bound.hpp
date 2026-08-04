@@ -173,7 +173,8 @@ class branch_and_bound_t {
     simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
     std::vector<i_t>& basic_list,
     std::vector<i_t>& nonbasic_list,
-    std::vector<f_t>& edge_norms);
+    std::vector<f_t>& edge_norms,
+    f_t& work_estimate);
 
   i_t find_reduced_cost_fixings(f_t upper_bound,
                                 std::vector<f_t>& lower_bounds,
@@ -347,6 +348,7 @@ class branch_and_bound_t {
                                  std::vector<i_t>& zero_reduced_costs_vars,
                                  std::vector<i_t>& zero_reduced_costs_vars_nonbasic_index);
 
+
   void pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
                                    std::vector<i_t>& basic_list,
                                    std::vector<i_t>& nonbasic_list,
@@ -355,6 +357,29 @@ class branch_and_bound_t {
                                    simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
                                    i_t& num_fractional,
                                    std::vector<i_t>& fractional);
+
+  // Try to pivot the nonbasic variable `entering_index` (currently at position
+  // `nonbasic_entering` in `nonbasic_list`) into the basis along the direction
+  // `delta_x`, with `utilde` = U * B^{-1} A(:, entering_index) satisfying
+  // L * utilde = P * A(:, entering_index). Applies the pivot only if it yields a
+  // strict net decrease in the number of fractional integer variables. On success,
+  // mutates basic_list/nonbasic_list/vstatus/solution/basis_update in place and applies
+  // an O(1) fix-up to `nonbasic_index` for the two variables whose (non)basic status
+  // changed. On skip, leaves all outputs untouched.
+  void apply_delta_x_for_integer_pivot(
+    const simplex::lp_problem_t<i_t, f_t>& lp,
+    std::vector<i_t>& basic_list,
+    std::vector<i_t>& nonbasic_list,
+    std::vector<i_t>& nonbasic_index,
+    std::vector<simplex::variable_status_t>& vstatus,
+    i_t entering_index,
+    i_t nonbasic_entering,
+    i_t direction,
+    std::vector<f_t>& delta_x,
+    const sparse_vector_t<i_t, f_t>& utilde_sparse,
+    simplex::lp_solution_t<i_t, f_t>& solution,
+    simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
+    f_t& work_estimate);
 
   void dual_degenerate_feasibility_pump(const simplex::lp_problem_t<i_t, f_t>& lp,
                                         std::vector<i_t>& basic_list,

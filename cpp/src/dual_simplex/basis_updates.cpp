@@ -2009,6 +2009,35 @@ i_t basis_update_mpf_t<i_t, f_t>::u_solve(sparse_vector_t<i_t, f_t>& rhs) const
 
   return 0;
 }
+
+// Compute y = U*x. In the MPF factorization, the rank-1 update factors are absorbed into L, so
+// U == U0 and U*x reduces to a sparse matvec against U0.
+template <typename i_t, typename f_t>
+void basis_update_mpf_t<i_t, f_t>::u_multiply(const std::vector<f_t>& x,
+                                              std::vector<f_t>& y) const
+{
+  const i_t m = L0_.m;
+  y.assign(m, 0.0);
+  matrix_vector_multiply(U0_, f_t(1.0), x, f_t(0.0), y);
+  work_estimate_ += 2 * U0_.col_start[U0_.n];
+}
+
+// Sparse-in/sparse-out overload of u_multiply. Same semantics as the dense version.
+template <typename i_t, typename f_t>
+void basis_update_mpf_t<i_t, f_t>::u_multiply(const sparse_vector_t<i_t, f_t>& x,
+                                              sparse_vector_t<i_t, f_t>& y) const
+{
+  const i_t m = L0_.m;
+  // Scatter x into a dense workspace, compute U0 * x, gather back to sparse.
+  std::vector<f_t> x_dense;
+  x.to_dense(x_dense);
+  std::vector<f_t> y_dense(m, 0.0);
+  matrix_vector_multiply(U0_, f_t(1.0), x_dense, f_t(0.0), y_dense);
+  work_estimate_ += 2 * U0_.col_start[U0_.n];
+  y.from_dense(y_dense);
+  work_estimate_ += m;
+}
+
 // Solve for x such that L*x = y
 template <typename i_t, typename f_t>
 i_t basis_update_mpf_t<i_t, f_t>::l_solve(std::vector<f_t>& rhs) const

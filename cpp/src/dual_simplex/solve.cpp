@@ -157,6 +157,7 @@ lp_status_t solve_linear_program_advanced(const lp_problem_t<i_t, f_t>& original
                                           lp_solution_t<i_t, f_t>& original_solution,
                                           std::vector<variable_status_t>& vstatus,
                                           std::vector<f_t>& edge_norms,
+                                          f_t& work_estimate,
                                           work_limit_context_t* work_unit_context)
 {
   raft::common::nvtx::range scope("DualSimplex::solve_lp");
@@ -175,6 +176,7 @@ lp_status_t solve_linear_program_advanced(const lp_problem_t<i_t, f_t>& original
                                                                 nonbasic_list,
                                                                 vstatus,
                                                                 edge_norms,
+                                                                work_estimate,
                                                                 work_unit_context);
   return result;
 }
@@ -190,6 +192,7 @@ lp_status_t solve_linear_program_with_advanced_basis(
   std::vector<i_t>& nonbasic_list,
   std::vector<variable_status_t>& vstatus,
   std::vector<f_t>& edge_norms,
+  f_t& work_estimate,
   work_limit_context_t* work_unit_context)
 {
   lp_status_t lp_status = lp_status_t::UNSET;
@@ -257,6 +260,7 @@ lp_status_t solve_linear_program_with_advanced_basis(
                                 phase1_vstatus,
                                 phase1_solution,
                                 iter,
+                                work_estimate,
                                 edge_norms,
                                 work_unit_context);
   }
@@ -295,6 +299,7 @@ lp_status_t solve_linear_program_with_advanced_basis(
                                                            nonbasic_list,
                                                            solution,
                                                            iter,
+                                                           work_estimate,
                                                            edge_norms,
                                                            work_unit_context);
     if (status == dual_status_t::NUMERICAL) {
@@ -315,6 +320,7 @@ lp_status_t solve_linear_program_with_advanced_basis(
                                       nonbasic_list,
                                       phase1_solution,
                                       iter,
+                                      work_estimate,
                                       edge_norms,
                                       work_unit_context);
       vstatus = phase1_vstatus;
@@ -331,6 +337,7 @@ lp_status_t solve_linear_program_with_advanced_basis(
                                                nonbasic_list,
                                                solution,
                                                iter,
+                                               work_estimate,
                                                edge_norms,
                                                work_unit_context);
     }
@@ -341,7 +348,7 @@ lp_status_t solve_linear_program_with_advanced_basis(
       // TODO: We need to update ft if the basis changed
     }
     if (settings.inside_mip && settings.concurrent_halt != nullptr) {
-      settings.log.printf("Setting concurrent halt to 1 inside_mip\n");
+      settings.log.debug("Setting concurrent halt to 1 inside_mip\n");
       *settings.concurrent_halt = 1;
     }
     if (status == dual_status_t::OPTIMAL) {
@@ -847,8 +854,9 @@ lp_status_t solve_linear_program(const user_problem_t<i_t, f_t>& user_problem,
   lp_solution_t<i_t, f_t> lp_solution(original_lp.num_rows, original_lp.num_cols);
   std::vector<variable_status_t> vstatus;
   std::vector<f_t> edge_norms;
+  f_t work_estimate  = 0.0;
   lp_status_t status = solve_linear_program_advanced(
-    original_lp, start_time, settings, lp_solution, vstatus, edge_norms);
+    original_lp, start_time, settings, lp_solution, vstatus, edge_norms, work_estimate);
   if (status == lp_status_t::CONCURRENT_LIMIT) {
     solution.iterations = lp_solution.iterations;
     return lp_status_t::CONCURRENT_LIMIT;
@@ -900,8 +908,9 @@ i_t solve(const user_problem_t<i_t, f_t>& problem,
     lp_solution_t<i_t, f_t> solution(original_lp.num_rows, original_lp.num_cols);
     std::vector<variable_status_t> vstatus;
     std::vector<f_t> edge_norms;
+    f_t work_estimate     = 0.0;
     lp_status_t lp_status = solve_linear_program_advanced(
-      original_lp, start_time, settings, solution, vstatus, edge_norms);
+      original_lp, start_time, settings, solution, vstatus, edge_norms, work_estimate);
     primal_solution = solution.x;
     if (lp_status == lp_status_t::OPTIMAL) {
       status = 0;
@@ -955,6 +964,7 @@ template lp_status_t solve_linear_program_advanced(
   lp_solution_t<int, double>& original_solution,
   std::vector<variable_status_t>& vstatus,
   std::vector<double>& edge_norms,
+  double& work_estimate,
   work_limit_context_t* work_unit_context);
 
 template lp_status_t solve_linear_program_with_advanced_basis(
@@ -967,6 +977,7 @@ template lp_status_t solve_linear_program_with_advanced_basis(
   std::vector<int>& nonbasic_list,
   std::vector<variable_status_t>& vstatus,
   std::vector<double>& edge_norms,
+  double& work_estimate,
   work_limit_context_t* work_unit_context);
 
 template lp_status_t solve_linear_program_with_barrier(

@@ -168,9 +168,10 @@ f_t primal_infeasibility(const lp_problem_t<i_t, f_t>& lp,
   f_t primal_inf           = 0;
   constexpr bool verbose   = false;
   constexpr f_t infeas_tol = 1e-3;
+  const f_t primal_tol     = settings.primal_tol;
   for (i_t j = 0; j < n; ++j) {
-    if (x[j] < lp.lower[j]) {
-      // x_j < l_j => -x_j > -l_j => -x_j + l_j > 0
+    if (x[j] < lp.lower[j] - primal_tol) {
+      // x_j < l_j - tol => violation exceeds per-variable threshold
       const f_t infeas = -x[j] + lp.lower[j];
       primal_inf += infeas;
       if (verbose && infeas > infeas_tol) {
@@ -183,8 +184,8 @@ f_t primal_infeasibility(const lp_problem_t<i_t, f_t>& lp,
                            vstatus[j]);
       }
     }
-    if (x[j] > lp.upper[j]) {
-      // x_j > u_j => x_j - u_j > 0
+    if (x[j] > lp.upper[j] + primal_tol) {
+      // x_j > u_j + tol => violation exceeds per-variable threshold
       const f_t infeas = x[j] - lp.upper[j];
       primal_inf += infeas;
       if (verbose && infeas > infeas_tol) {
@@ -1423,8 +1424,11 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
   } else if (dual_feasible && !primal_feasible) {
     i_t dual_iter = 0;
     std::vector<f_t> edge_norms;
+    f_t work_estimate = 0.0;
+    simplex_solver_settings_t<i_t, f_t> dual_settings = settings;
+    dual_settings.iteration_limit = std::numeric_limits<i_t>::max();
     dual_status_t status =
-      dual_phase2(2, 0, start_time, lp, settings, vstatus, solution, dual_iter, edge_norms);
+      dual_phase2(2, 0, start_time, lp, dual_settings, vstatus, solution, dual_iter, work_estimate, edge_norms);
     if (toc(start_time) > settings.time_limit) {
       settings.log.printf("Time limit exceeded\n");
       return crossover_status_t::TIME_LIMIT;
@@ -1443,7 +1447,32 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
     solution.iterations += dual_iter;
     primal_feasible = primal_infeas <= primal_tol && primal_res <= primal_tol;
     dual_feasible   = dual_infeas <= dual_tol && dual_res <= dual_tol;
+  } else if (primal_feasible && !dual_feasible) {
+    i_t primal_iter = 0;
+    simplex_solver_settings_t<i_t, f_t> primal_settings = settings;
+    primal_settings.iteration_limit = std::numeric_limits<i_t>::max();
+    primal_status_t primal_status = primal_phase2(2, start_time, lp, primal_settings, vstatus, solution, primal_iter);
+    if (toc(start_time) > settings.time_limit) {
+      settings.log.printf("Time limit exceeded\n");
+      return crossover_status_t::TIME_LIMIT;
+    }
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+      if (!settings.inside_mip) { settings.log.printf("Concurrent halt\n"); }
+      return crossover_status_t::CONCURRENT_LIMIT;
+    }
+    primal_infeas = primal_infeasibility(lp, settings, vstatus, solution.x);
+    dual_infeas   = dual_infeasibility(lp, settings, vstatus, solution.z);
+    primal_res    = primal_residual(lp, solution);
+    dual_res      = dual_residual(lp, solution);
+    if (primal_status != primal_status_t::OPTIMAL) {
+      print_crossover_info(lp, settings, vstatus, solution, "Primal phase 2 complete");
+    }
+    solution.iterations += primal_iter;
+    primal_feasible = primal_infeas <= primal_tol && primal_res <= primal_tol;
+    dual_feasible   = dual_infeas <= dual_tol && dual_res <= dual_tol;
   } else {
+    simplex_solver_settings_t<i_t, f_t> dual_settings = settings;
+    dual_settings.iteration_limit = std::numeric_limits<i_t>::max();
     lp_problem_t<i_t, f_t> phase1_problem(lp.handle_ptr, 1, 1, 1);
     create_phase1_problem(lp, phase1_problem);
     std::vector<variable_status_t> phase1_vstatus(n);
@@ -1469,8 +1498,17 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
     i_t iter = 0;
     lp_solution_t<i_t, f_t> phase1_solution(phase1_problem.num_rows, phase1_problem.num_cols);
     std::vector<f_t> junk;
-    dual_status_t phase1_status = dual_phase2(
-      1, 1, start_time, phase1_problem, settings, phase1_vstatus, phase1_solution, iter, junk);
+    f_t phase1_work_estimate    = 0.0;
+    dual_status_t phase1_status = dual_phase2(1,
+                                              1,
+                                              start_time,
+                                              phase1_problem,
+                                              dual_settings,
+                                              phase1_vstatus,
+                                              phase1_solution,
+                                              iter,
+                                              phase1_work_estimate,
+                                              junk);
     if (phase1_status == dual_status_t::NUMERICAL ||
         phase1_status == dual_status_t::DUAL_UNBOUNDED) {
       settings.log.printf("Failed in Phase 1\n");
@@ -1585,8 +1623,17 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
       dual_status_t status = dual_status_t::NUMERICAL;
       if (dual_infeas <= settings.dual_tol) {
         std::vector<f_t> edge_norms;
-        status = dual_phase2(
-          2, iter == 0 ? 1 : 0, start_time, lp, settings, vstatus, solution, iter, edge_norms);
+        f_t phase2_work_estimate = 0.0;
+        status                   = dual_phase2(2,
+                             iter == 0 ? 1 : 0,
+                             start_time,
+                             lp,
+                             dual_settings,
+                             vstatus,
+                             solution,
+                             iter,
+                             phase2_work_estimate,
+                             edge_norms);
         if (toc(start_time) > settings.time_limit) {
           settings.log.printf("Time limit exceeded\n");
           return crossover_status_t::TIME_LIMIT;

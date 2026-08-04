@@ -470,7 +470,7 @@ void initial_perturbation(const lp_problem_t<i_t, f_t>& lp,
   f_t sum_perturb = 0.0;
   i_t num_perturb = 0;
 
-  random_t<i_t, f_t> random(settings.seed);
+  random_t<i_t, f_t> random(settings.random_seed);
   for (i_t j = 0; j < n; ++j) {
     f_t obj = objective[j] = lp.objective[j];
 
@@ -2340,6 +2340,7 @@ void prepare_optimality(i_t info,
                         int phase,
                         f_t start_time,
                         f_t max_val,
+                        f_t& work_estimate,
                         i_t& iter,
                         const std::vector<f_t>& x,
                         std::vector<f_t>& y,
@@ -2348,7 +2349,6 @@ void prepare_optimality(i_t info,
 {
   const i_t m       = lp.num_rows;
   const i_t n       = lp.num_cols;
-  f_t work_estimate = 0;  // Work in this function is not captured
 
   sol.objective         = compute_objective(lp, sol.x);
   sol.user_objective    = compute_user_objective(lp, sol.objective);
@@ -2373,6 +2373,9 @@ void prepare_optimality(i_t info,
         settings.log.printf("Unperturbed dual infeasibility: %.2e\n", dual_infeas);
         settings.log.printf("Objective: %+.16e\n", sol.user_objective);
         settings.log.printf("Num updates: %d\n", ft.num_updates());
+        settings.log.printf("Iterations: %d\n", iter);
+
+        i_t dual_iter = iter;
 
         // Primal pivots in place, so keep the perturbed solution to fall back on.
         // The factor is snapshot rather than refactorized on failure: the copy is
@@ -2405,7 +2408,7 @@ void prepare_optimality(i_t info,
                                                                           false);
         if (primal_status == primal_status_t::OPTIMAL) {
           // z now prices the original objective, so no perturbation remains.
-          settings.log.printf("Primal cleanup successful.\n");
+          settings.log.printf("Primal cleanup successful. Iterations %d\n", iter - dual_iter);
           perturbation       = 0.0;
           sol.objective      = compute_objective(lp, sol.x);
           sol.user_objective = compute_user_objective(lp, sol.objective);
@@ -2433,6 +2436,9 @@ void prepare_optimality(i_t info,
     settings.log.printf("Dual phase I complete. Iterations %d. Time %.2f\n", iter, toc(start_time));
   }
   if (phase == 2) {
+    if (settings.inside_mip == 0 || settings.inside_mip == 1) {
+      settings.log.printf("Work estimate: %.2e\n", work_estimate);
+    }
     if (!settings.inside_mip) {
       settings.log.printf("\n");
       settings.log.printf(
@@ -2557,6 +2563,7 @@ dual_status_t dual_phase2(i_t phase,
                           std::vector<variable_status_t>& vstatus,
                           lp_solution_t<i_t, f_t>& sol,
                           i_t& iter,
+                          f_t& work_estimate,
                           std::vector<f_t>& delta_y_steepest_edge,
                           work_limit_context_t* work_unit_context)
 {
@@ -2579,6 +2586,7 @@ dual_status_t dual_phase2(i_t phase,
                                          nonbasic_list,
                                          sol,
                                          iter,
+                                         work_estimate,
                                          delta_y_steepest_edge,
                                          work_unit_context);
 }
@@ -2596,6 +2604,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
                                               std::vector<i_t>& nonbasic_list,
                                               lp_solution_t<i_t, f_t>& sol,
                                               i_t& iter,
+                                              f_t& phase2_work_estimate,
                                               std::vector<f_t>& delta_y_steepest_edge,
                                               work_limit_context_t* work_unit_context)
 {
@@ -2610,7 +2619,6 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
   assert(lp.lower.size() == n);
   assert(lp.upper.size() == n);
   assert(lp.rhs.size() == m);
-  f_t phase2_work_estimate = 0.0;
   ft.clear_work_estimate();
 
   std::vector<f_t>& x = sol.x;
@@ -2661,6 +2669,10 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
     if (refactor_status > 0) { return dual_status_t::NUMERICAL; }
 
     if (toc(start_time) > settings.time_limit) { return dual_status_t::TIME_LIMIT; }
+  }
+
+  if (settings.initial_perturbation == 1 && phase == 2) {
+    phase2::initial_perturbation(lp, settings, vstatus, objective);
   }
 
   // Populate c_basic after basis is initialized
@@ -3035,6 +3047,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
                                  phase,
                                  start_time,
                                  max_val,
+                                 phase2_work_estimate,
                                  iter,
                                  x,
                                  y,
@@ -3255,6 +3268,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
                                          phase,
                                          start_time,
                                          max_val,
+                                         phase2_work_estimate,
                                          iter,
                                          x,
                                          y,
@@ -3311,6 +3325,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
                                          phase,
                                          start_time,
                                          max_val,
+                                         phase2_work_estimate,
                                          iter,
                                          x,
                                          y,
@@ -3806,6 +3821,7 @@ template dual_status_t dual_phase2<int, double>(
   std::vector<variable_status_t>& vstatus,
   lp_solution_t<int, double>& sol,
   int& iter,
+  double& work_estimate,
   std::vector<double>& steepest_edge_norms,
   work_limit_context_t* work_unit_context);
 
@@ -3822,6 +3838,7 @@ template dual_status_t dual_phase2_with_advanced_basis<int, double>(
   std::vector<int>& nonbasic_list,
   lp_solution_t<int, double>& sol,
   int& iter,
+  double& work_estimate,
   std::vector<double>& steepest_edge_norms,
   work_limit_context_t* work_unit_context);
 
