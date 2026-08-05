@@ -21,7 +21,7 @@ Implementation details (IPC layout, C++ source map, chunked transfer internals) 
 | Topic | Detail |
 |-------|--------|
 | Log files | Per-job solver logs under `/tmp/cuopt_logs/job_<job_id>.log` (used by log streaming). |
-| Default caps | Up to **100** queued jobs and **100** stored results (server compile-time limits). |
+| Capacity | Up to **100** in-flight jobs (queued + processing). Completed results stay until `DeleteResult` (no fixed result cap). |
 | Workers | Recommended: **1 worker process per GPU**. Higher values are possible depending on the problems being solved but there is no specific guidance at this time. |
 
 ## Fault tolerance and cancellation

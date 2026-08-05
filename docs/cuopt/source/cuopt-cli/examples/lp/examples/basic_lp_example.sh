@@ -1,11 +1,11 @@
 #!/bin/bash
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Basic LP Example using cuopt_cli
 #
 # This example demonstrates how to solve a simple LP problem using cuopt_cli.
-# cuopt_cli is a standalone command-line tool that solves LP/MILP problems
+# cuopt_cli is a standalone command-line tool that solves LP/MIP problems
 # from MPS files without requiring a server.
 #
 # Requirements:

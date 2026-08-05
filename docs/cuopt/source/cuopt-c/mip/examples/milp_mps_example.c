@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 /*
- * Example program for solving MPS files with cuOpt MILP solver
+ * Example program for solving MPS files with cuOpt MIP solver
  */
 
 #include <cuopt/mathematical_optimization/cuopt_c.h>
