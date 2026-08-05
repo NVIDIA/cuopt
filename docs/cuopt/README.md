@@ -63,8 +63,7 @@ That failure mode is guarded by a self-test:
 ./ci/utils/check_vale_rule.sh
 ```
 
-It asserts the rule still flags the violations in `ci/vale/tests/must-flag.md`
-and still accepts the correct headings in `ci/vale/tests/must-pass.md`. It runs
-as a pre-commit hook whenever `ci/vale/` changes, so weakening the rule fails
-CI instead of passing quietly. Add a case to those fixtures when you add an
-exception.
+It checks the rule against two lists of headings at the top of that script —
+one that must be flagged, one that must pass — so weakening the rule fails
+loudly. It runs as a pre-commit hook whenever `ci/vale/` changes. Add a case to
+those lists when you add an exception.

@@ -145,7 +145,7 @@ repos:
         entry: ci/utils/check_vale_rule.sh
         language: system
         pass_filenames: false
-        files: ^ci/vale/
+        files: ^ci/(vale/|utils/check_vale_rule\.sh)
       - id: validate-skills
         name: Validate agent skills
         entry: ci/utils/validate_skills.sh
