@@ -12,6 +12,7 @@ metadata:
 ---
 
 
+
 # Skill Evolution
 
 Skills improve through a single workflow: solve the user's problem, notice when a generalizable learning surfaced, score it if you can, then propose an update. The presence or absence of ground truth changes the *confidence* attached to a proposal, not the steps you take.
