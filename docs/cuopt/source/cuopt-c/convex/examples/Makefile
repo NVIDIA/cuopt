@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -7,7 +7,7 @@
 #
 # http://www.apache.org/licenses/LICENSE-2.0
 #
-# Makefile for cuOpt C API LP/MILP Examples
+# Makefile for cuOpt C API LP/MIP Examples
 #
 # This Makefile automatically discovers all .c files in the current directory
 # and builds corresponding executables.
@@ -115,7 +115,7 @@ list:
 
 # Show help
 help:
-	@echo "cuOpt C API LP/MILP Examples Makefile"
+	@echo "cuOpt C API LP/MIP Examples Makefile"
 	@echo "======================================"
 	@echo ""
 	@echo "This Makefile automatically discovers all .c files and builds them."

@@ -190,6 +190,18 @@ struct remote_mip_result_t {
 };
 
 /**
+ * @brief Result of get_result(): LP vs MIP is taken from the server response.
+ */
+template <typename i_t, typename f_t>
+struct remote_result_t {
+  bool success = false;
+  std::string error_message;
+  bool is_mip = false;
+  std::unique_ptr<cpu_lp_solution_t<i_t, f_t>> lp_solution;
+  std::unique_ptr<cpu_mip_solution_t<i_t, f_t>> mip_solution;
+};
+
+/**
  * @brief gRPC client for remote cuOpt solving
  *
  * This class provides a high-level interface for submitting optimization problems
@@ -340,6 +352,16 @@ class grpc_client_t {
    */
   template <typename i_t, typename f_t>
   remote_mip_result_t<i_t, f_t> get_mip_result(const std::string& job_id);
+
+  /**
+   * @brief Get result for a completed job; LP vs MIP comes from the server.
+   *
+   * Used by the Python async gRPC client today. Existing internal call sites
+   * still use get_lp_result / get_mip_result; they can migrate to get_result
+   * in a later change.
+   */
+  template <typename i_t, typename f_t>
+  remote_result_t<i_t, f_t> get_result(const std::string& job_id);
 
   /**
    * @brief Cancel a running job

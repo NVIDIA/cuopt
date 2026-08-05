@@ -132,9 +132,10 @@ class grpc_python_client_t {
   bool delete_job(const std::string& job_id, std::string& error_out);
 
   /**
-   * @param is_mip When true, fetch a MIP result; otherwise LP.
+   * Fetch the solution for a completed job. LP vs MIP is determined from the
+   * server response via grpc_client_t::get_result().
    */
-  grpc_result_outcome_t result(const std::string& job_id, bool is_mip);
+  grpc_result_outcome_t result(const std::string& job_id);
 
   /**
    * @brief Block until the job completes, collecting all solver log lines.
