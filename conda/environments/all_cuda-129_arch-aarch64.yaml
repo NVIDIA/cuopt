@@ -22,6 +22,7 @@ dependencies:
 - cupy>=14.0.1,!=14.1.0
 - cxx-compiler
 - cython>=3.0.3
+- docutils>=0.21
 - doxygen=1.9.1
 - fastapi
 - gcc_linux-aarch64=14.*
