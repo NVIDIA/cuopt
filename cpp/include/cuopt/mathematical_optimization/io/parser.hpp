@@ -167,7 +167,7 @@ inline mps_data_model_t<i_t, f_t> read(const std::string& path,
       break;
     }
   }
-  if (lower.ends_with(".mps") || lower.ends_with(".qps")) {
+  if (lower.ends_with(".mps") || lower.ends_with(".qps") || lower.ends_with(".sif")) {
     if (mps_reader == mps_reader_type_t::fast_experimental) {
       if (fixed_mps_format) {
         throw std::logic_error(
@@ -181,7 +181,7 @@ inline mps_data_model_t<i_t, f_t> read(const std::string& path,
   throw std::logic_error(
     "read: unrecognized input file extension. Supported (case-insensitive): "
     ".mps, .mps.gz, .mps.bz2, .mps.lz4, .qps, .qps.gz, .qps.bz2, .qps.lz4, "
-    ".lp, .lp.gz, .lp.bz2, .lp.lz4. "
+    ".lp, .lp.gz, .lp.bz2, .lp.lz4, .sif, .sif.gz, .sif.bz2, .sif.lz4."
     "Given path: " +
     path);
 }

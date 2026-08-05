@@ -31,6 +31,7 @@ ConfigureTest(NUMOPT_INTERNAL_TEST
     ${CUOPT_TEST_DIR}/mip/determinism_test.cu
     # socp
     ${CUOPT_TEST_DIR}/socp/second_order_cone_kernels.cu
+    ${CUOPT_TEST_DIR}/socp/sparse_augmented_kkt_test.cu
     ${CUOPT_TEST_DIR}/socp/solve_barrier_socp.cu
     ${CUOPT_TEST_DIR}/socp/general_quadratic_test.cu
     LABELS numopt
