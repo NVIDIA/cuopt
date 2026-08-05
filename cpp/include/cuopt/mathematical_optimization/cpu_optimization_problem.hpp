@@ -176,10 +176,11 @@ class cpu_optimization_problem_t : public optimization_problem_interface_t<i_t, 
     raft::handle_t const* handle_ptr = nullptr) override;
 
   /**
-   * @brief Write the optimization problem to an MPS file.
-   * @param[in] mps_file_path Path to the output MPS file
+   * @brief Write the optimization problem to a file.
+   * @param[in] file_path Path to the output file
+   * @param[in] format    File format to write (MPS or LP)
    */
-  void write_to_mps(const std::string& mps_file_path) override;
+  void write_to_file(const std::string& file_path, file_format_t format) override;
 
   /**
    * @brief Check if this problem is equivalent to another problem.

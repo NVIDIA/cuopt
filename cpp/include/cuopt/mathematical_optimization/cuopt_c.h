@@ -129,7 +129,8 @@ cuopt_int_t cuOptReadProblem(const char* filename, cuOptOptimizationProblem* pro
  *
  * @param[in] problem - The optimization problem to write.
  * @param[in] filename - The path to the output file.
- * @param[in] format - The file format to use. Currently only CUOPT_FILE_FORMAT_MPS is supported.
+ * @param[in] format - The file format to use. Supported values are
+ *  CUOPT_FILE_FORMAT_MPS and CUOPT_FILE_FORMAT_LP.
  *
  * @return A status code indicating success or failure. Returns CUOPT_INVALID_ARGUMENT
  *         if an unsupported format is specified.

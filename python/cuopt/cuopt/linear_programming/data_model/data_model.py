@@ -3,6 +3,7 @@
 
 import os
 import time
+import warnings
 
 
 from . import data_model_wrapper
@@ -756,5 +757,55 @@ class DataModel(data_model_wrapper.DataModel):
         return super().get_problem_name()
 
     @catch_cuopt_exception
-    def writeMPS(self, user_problem_file):
+    def _write_mps(self, user_problem_file):
         return super().writeMPS(user_problem_file)
+
+    @catch_cuopt_exception
+    def _write_lp(self, user_problem_file):
+        return super()._write_lp(user_problem_file)
+
+    @catch_cuopt_exception
+    def write(self, user_problem_file: str) -> None:
+        """Write the problem to a file, dispatching on extension.
+
+        Dispatches to the MPS/QPS or LP writer based on the filename suffix
+        (case-insensitive), matching :func:`cuopt.linear_programming.io.parser.Read`:
+
+        - ``.mps``, ``.qps`` → MPS writer
+        - ``.lp`` → LP writer
+
+        Compressed output is not supported.
+
+        Parameters
+        ----------
+        user_problem_file : str
+            Path to an uncompressed MPS, QPS, or LP output file.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        RuntimeError
+            If the file extension is not one of the supported suffixes.
+        Exception
+            Propagates validation or I/O failures from the underlying writer.
+        """
+        from cuopt.linear_programming.io.format import file_format_from_path
+
+        fmt = file_format_from_path(user_problem_file)
+        if fmt == "lp":
+            self._write_lp(user_problem_file)
+        else:
+            self._write_mps(user_problem_file)
+
+    @catch_cuopt_exception
+    def writeMPS(self, user_problem_file: str) -> None:
+        warnings.warn(
+            "DataModel.writeMPS is deprecated and will be removed in a future "
+            "release. Use DataModel.write instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self._write_mps(user_problem_file)

@@ -13,9 +13,12 @@
 #include <raft/core/handle.hpp>
 #include <rmm/device_uvector.hpp>
 
+#include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <memory>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -23,6 +26,32 @@ namespace cuopt::mathematical_optimization {
 
 enum class var_t { CONTINUOUS = 0, INTEGER, SEMI_CONTINUOUS };
 enum class problem_category_t : int8_t { LP = 0, MIP = 1, IP = 2 };
+
+/** @brief File format used when serializing an optimization problem. */
+enum class file_format_t { mps = 0, lp = 1 };
+
+/**
+ * @brief Pick the output file format from a path's extension.
+ *
+ * A `.lp` suffix selects LP; `.mps` and `.qps` select MPS/QPS. Compressed
+ * output is not supported, so `.gz` and `.bz2` suffixes are rejected.
+ *
+ * @param[in] path Output file path.
+ * @return The inferred file format.
+ */
+inline file_format_t file_format_from_path(const std::string& path)
+{
+  std::string lower(path);
+  std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+  if (lower.ends_with(".lp")) { return file_format_t::lp; }
+  if (lower.ends_with(".mps") || lower.ends_with(".qps")) { return file_format_t::mps; }
+  throw std::invalid_argument(
+    "write: unrecognized output file extension. Supported (case-insensitive): "
+    ".mps, .qps, .lp. Compressed output is not supported. Given path: " +
+    path);
+}
 
 template <typename i_t, typename f_t>
 class optimization_problem_t;
@@ -380,10 +409,11 @@ class optimization_problem_interface_t {
   // ============================================================================
 
   /**
-   * @brief Write the optimization problem to an MPS file.
-   * @param[in] mps_file_path Path to the output MPS file
+   * @brief Write the optimization problem to a file.
+   * @param[in] file_path Path to the output file
+   * @param[in] format    File format to write (MPS or LP)
    */
-  virtual void write_to_mps(const std::string& mps_file_path) = 0;
+  virtual void write_to_file(const std::string& file_path, file_format_t format) = 0;
 
   // ============================================================================
   // Comparison

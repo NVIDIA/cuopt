@@ -8,6 +8,7 @@
 #include <utilities/common_utils.hpp>
 
 #include <cuopt/mathematical_optimization/io/parser.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 #include <mip_heuristics/problem/problem.cuh>
 #include <pdlp/utilities/problem_checking.cuh>
 #include <utilities/error.hpp>
@@ -23,6 +24,20 @@
 #include <vector>
 
 namespace cuopt::mathematical_optimization {
+
+TEST(file_format_from_path, supports_only_uncompressed_output)
+{
+  EXPECT_EQ(file_format_from_path("problem.lp"), file_format_t::lp);
+  EXPECT_EQ(file_format_from_path("problem.LP"), file_format_t::lp);
+  EXPECT_EQ(file_format_from_path("problem.mps"), file_format_t::mps);
+  EXPECT_EQ(file_format_from_path("problem.qps"), file_format_t::mps);
+
+  EXPECT_THROW(file_format_from_path("problem.lp.gz"), std::invalid_argument);
+  EXPECT_THROW(file_format_from_path("problem.lp.bz2"), std::invalid_argument);
+  EXPECT_THROW(file_format_from_path("problem.mps.gz"), std::invalid_argument);
+  EXPECT_THROW(file_format_from_path("problem.qps.bz2"), std::invalid_argument);
+  EXPECT_THROW(file_format_from_path("problem.unknown"), std::invalid_argument);
+}
 
 cuopt::mathematical_optimization::io::mps_data_model_t<int, double> read_from_mps(
   const std::string& file, bool fixed_mps_format = true)

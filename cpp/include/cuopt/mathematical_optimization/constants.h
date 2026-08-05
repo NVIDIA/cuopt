@@ -208,6 +208,7 @@
 
 /* @brief File format constants for problem I/O */
 #define CUOPT_FILE_FORMAT_MPS 0
+#define CUOPT_FILE_FORMAT_LP  1
 
 /* @brief Status codes constants */
 #define CUOPT_SUCCESS          0

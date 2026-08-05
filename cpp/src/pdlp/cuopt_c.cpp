@@ -311,15 +311,19 @@ cuopt_int_t cuOptWriteProblem(cuOptOptimizationProblem problem,
   if (problem == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   if (filename == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   if (strlen(filename) == 0) { return CUOPT_INVALID_ARGUMENT; }
-  if (format != CUOPT_FILE_FORMAT_MPS) { return CUOPT_INVALID_ARGUMENT; }
+  if (format != CUOPT_FILE_FORMAT_MPS && format != CUOPT_FILE_FORMAT_LP) {
+    return CUOPT_INVALID_ARGUMENT;
+  }
 
   problem_and_stream_view_t* problem_and_stream_view =
     static_cast<problem_and_stream_view_t*>(problem);
   try {
-    // Use the write_to_mps method from the interface (works for both CPU and GPU)
-    problem_and_stream_view->get_problem()->write_to_mps(std::string(filename));
+    const auto file_format = (format == CUOPT_FILE_FORMAT_LP)
+                               ? cuopt::mathematical_optimization::file_format_t::lp
+                               : cuopt::mathematical_optimization::file_format_t::mps;
+    problem_and_stream_view->get_problem()->write_to_file(std::string(filename), file_format);
   } catch (const std::exception& e) {
-    CUOPT_LOG_INFO("Error writing MPS file: %s", e.what());
+    CUOPT_LOG_INFO("Error writing problem file: %s", e.what());
     return CUOPT_MPS_FILE_ERROR;
   }
   return CUOPT_SUCCESS;

@@ -777,6 +777,38 @@ def test_write_files():
     os.remove("afiro.sol")
 
 
+def test_write_files_lp_extension():
+    # A .lp user_problem_file must be written in LP format (extension
+    # respected), and must round-trip back to an equivalent problem.
+    file_path = (
+        RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
+    )
+    data_model_obj = Read(file_path)
+
+    settings = solver_settings.SolverSettings()
+    settings.set_parameter(CUOPT_METHOD, SolverMethod.DualSimplex)
+    settings.set_parameter(CUOPT_USER_PROBLEM_FILE, "afiro_out.lp")
+
+    solver.Solve(data_model_obj, settings)
+
+    assert os.path.isfile("afiro_out.lp")
+
+    # The file must be LP-formatted, not MPS content in a .lp name.
+    with open("afiro_out.lp") as f:
+        content = f.read()
+    assert "Subject To" in content
+    assert "ROWS" not in content and "COLUMNS" not in content
+
+    afiro = Read("afiro_out.lp")
+    os.remove("afiro_out.lp")
+
+    settings.set_parameter(CUOPT_USER_PROBLEM_FILE, "")
+    solution = solver.Solve(afiro, settings)
+
+    assert solution.get_termination_status() == LPTerminationStatus.Optimal
+    assert solution.get_primal_objective() == pytest.approx(-464.7531)
+
+
 def test_unbounded_problem():
     problem = Problem("unbounded")
     x = problem.addVariable(lb=0.0, vtype=CONTINUOUS, name="x")

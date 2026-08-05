@@ -319,7 +319,7 @@ TEST(c_api, test_maximize_problem_dual_variables)
   }
 }
 
-static bool test_mps_roundtrip(const std::string& mps_file_path)
+static bool test_write_roundtrip(const std::string& mps_file_path, cuopt_int_t format)
 {
   using cuopt::mathematical_optimization::problem_and_stream_view_t;
 
@@ -327,23 +327,24 @@ static bool test_mps_roundtrip(const std::string& mps_file_path)
   cuOptOptimizationProblem reread_handle   = nullptr;
   bool result                              = false;
 
-  std::string model_basename = std::filesystem::path(mps_file_path).filename().string();
+  const std::string extension = (format == CUOPT_FILE_FORMAT_LP) ? ".lp" : ".mps";
+  std::string model_basename =
+    std::filesystem::path(mps_file_path).stem().string() + extension;
   std::string temp_file =
     std::filesystem::temp_directory_path().string() + "/roundtrip_temp_" + model_basename;
 
   if (cuOptReadProblem(mps_file_path.c_str(), &original_handle) != CUOPT_SUCCESS) {
-    std::cerr << "Failed to read original MPS file: " << mps_file_path << std::endl;
+    std::cerr << "Failed to read original problem file: " << mps_file_path << std::endl;
     goto cleanup;
   }
 
-  if (cuOptWriteProblem(original_handle, temp_file.c_str(), CUOPT_FILE_FORMAT_MPS) !=
-      CUOPT_SUCCESS) {
-    std::cerr << "Failed to write MPS file: " << temp_file << std::endl;
+  if (cuOptWriteProblem(original_handle, temp_file.c_str(), format) != CUOPT_SUCCESS) {
+    std::cerr << "Failed to write problem file: " << temp_file << std::endl;
     goto cleanup;
   }
 
   if (cuOptReadProblem(temp_file.c_str(), &reread_handle) != CUOPT_SUCCESS) {
-    std::cerr << "Failed to re-read MPS file: " << temp_file << std::endl;
+    std::cerr << "Failed to re-read problem file: " << temp_file << std::endl;
     goto cleanup;
   }
 
@@ -368,7 +369,7 @@ class WriteRoundtripTestFixture : public ::testing::TestWithParam<std::string> {
 TEST_P(WriteRoundtripTestFixture, roundtrip)
 {
   const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
-  EXPECT_TRUE(test_mps_roundtrip(rapidsDatasetRootDir + GetParam()));
+  EXPECT_TRUE(test_write_roundtrip(rapidsDatasetRootDir + GetParam(), CUOPT_FILE_FORMAT_MPS));
 }
 INSTANTIATE_TEST_SUITE_P(c_api,
                          WriteRoundtripTestFixture,
@@ -399,6 +400,20 @@ INSTANTIATE_TEST_SUITE_P(c_api,
                                            "/mip/enlight_hard.mps",
                                            "/mip/enlight11.mps",
                                            "/mip/supportcase22.mps"));
+
+class LPWriteRoundtripTestFixture : public ::testing::TestWithParam<std::string> {};
+TEST_P(LPWriteRoundtripTestFixture, roundtrip)
+{
+  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
+  EXPECT_TRUE(test_write_roundtrip(rapidsDatasetRootDir + GetParam(), CUOPT_FILE_FORMAT_LP));
+}
+INSTANTIATE_TEST_SUITE_P(c_api,
+                         LPWriteRoundtripTestFixture,
+                         ::testing::Values("/linear_programming/afiro_original.mps",
+                                           "/mip/50v-10.mps",
+                                           "/mip/gen-ip054.mps",
+                                           "/mip/neos5.mps",
+                                           "/mip/stein9inf.mps"));
 
 class DeterministicBBTestFixture
   : public ::testing::TestWithParam<std::tuple<std::string, int, double, double>> {};

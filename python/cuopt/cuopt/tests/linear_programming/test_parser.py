@@ -254,3 +254,139 @@ def test_read_unrecognized_extension():
             Read(path)
     finally:
         os.unlink(path)
+
+
+def test_write_lp_exact_output():
+    # Continuous + integer variables; assert the precise LP text written.
+    from cuopt.linear_programming.problem import (
+        INTEGER,
+        MINIMIZE,
+        Problem,
+    )
+
+    problem = Problem("exact_lp")
+    x = problem.addVariable(lb=0.0, ub=8.0, obj=3.0, name="x")
+    y = problem.addVariable(lb=1.0, ub=float("inf"), obj=2.0, name="y")
+    z = problem.addVariable(lb=0.0, ub=10.0, obj=1.0, vtype=INTEGER, name="z")
+    b = problem.addVariable(lb=0.0, ub=1.0, obj=2.0, vtype=INTEGER, name="b")
+    problem.addConstraint(x + y <= 10, name="c1")
+    problem.addConstraint(x + z >= 1, name="c2")
+    problem.addConstraint(2 * x + y == 6, name="c3")
+    problem.setObjective(3 * x + 2 * y + z + 2 * b, sense=MINIMIZE)
+
+    with tempfile.NamedTemporaryFile(suffix=".lp", delete=False) as f:
+        out_path = f.name
+    try:
+        problem.write(out_path)
+        with open(out_path) as f:
+            written = f.read()
+    finally:
+        os.unlink(out_path)
+
+    assert written == (
+        "Minimize\n"
+        " obj: + 3 x + 2 y + 1 z + 2 b\n"
+        "Subject To\n"
+        " c1: + 1 x + 1 y <= 10\n"
+        " c2: + 1 x + 1 z >= 1\n"
+        " c3: + 2 x + 1 y = 6\n"
+        "Bounds\n"
+        " x <= 8\n"
+        " y >= 1\n"
+        " z <= 10\n"
+        "Generals\n"
+        " z\n"
+        "Binaries\n"
+        " b\n"
+        "End\n"
+    )
+
+
+def test_write_read_write():
+    # Build a Problem, write it as LP, read that LP back, write it again, and
+    # assert the two emitted LP files are byte-for-byte identical. A stable
+    # writer must reach a fixed point after the first write/read cycle.
+    from cuopt.linear_programming.problem import (
+        INTEGER,
+        MINIMIZE,
+        Problem,
+    )
+
+    problem = Problem("idempotent_lp")
+    x = problem.addVariable(lb=0.0, ub=8.0, obj=3.0, name="x")
+    y = problem.addVariable(lb=1.0, ub=float("inf"), obj=2.0, name="y")
+    z = problem.addVariable(lb=0.0, ub=1.0, obj=-1.0, vtype=INTEGER, name="z")
+    problem.addConstraint(x + y <= 10, name="c1")
+    problem.addConstraint(x - z >= -4, name="c2")
+    problem.addConstraint(2 * x + y == 6, name="c3")
+    problem.setObjective(3 * x + 2 * y - z, sense=MINIMIZE)
+
+    with tempfile.NamedTemporaryFile(suffix=".lp", delete=False) as f:
+        first_path = f.name
+    with tempfile.NamedTemporaryFile(suffix=".lp", delete=False) as f:
+        second_path = f.name
+    try:
+        # First write straight from the Python model.
+        problem.write(first_path)
+        with open(first_path) as f:
+            first_lp = f.read()
+
+        # Read the emitted LP back and write it out a second time.
+        reparsed = Read(first_path)
+        reparsed.write(second_path)
+        with open(second_path) as f:
+            second_lp = f.read()
+    finally:
+        os.unlink(first_path)
+        os.unlink(second_path)
+
+    assert first_lp == second_lp
+
+
+def test_write_dispatches_on_extension():
+    from cuopt.linear_programming.problem import MINIMIZE, Problem
+
+    problem = Problem()
+    x = problem.addVariable(lb=0.0, ub=10.0, obj=1.0, name="x")
+    problem.addConstraint(x <= 5, name="c1")
+    problem.setObjective(x, sense=MINIMIZE)
+
+    with tempfile.NamedTemporaryFile(suffix=".lp", delete=False) as f:
+        lp_path = f.name
+    with tempfile.NamedTemporaryFile(suffix=".mps", delete=False) as f:
+        mps_path = f.name
+    try:
+        problem.write(lp_path)
+        problem.write(mps_path)
+        with open(lp_path) as f:
+            lp_content = f.read()
+        with open(mps_path) as f:
+            mps_content = f.read()
+    finally:
+        os.unlink(lp_path)
+        os.unlink(mps_path)
+
+    assert "Subject To" in lp_content
+    assert "ENDATA" in mps_content
+
+
+@pytest.mark.parametrize(
+    "suffix",
+    [".xyz", ".lp.gz", ".lp.bz2", ".mps.gz", ".mps.bz2", ".qps.gz", ".qps.bz2"],
+)
+def test_write_unsupported_extension(suffix):
+    from cuopt.linear_programming.problem import MINIMIZE, Problem
+
+    problem = Problem()
+    x = problem.addVariable(lb=0.0, ub=10.0, obj=1.0, name="x")
+    problem.setObjective(x, sense=MINIMIZE)
+
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
+        out_path = f.name
+    try:
+        with pytest.raises(
+            RuntimeError, match="unrecognized output file extension"
+        ):
+            problem.write(out_path)
+    finally:
+        os.unlink(out_path)
