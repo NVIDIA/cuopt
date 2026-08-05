@@ -19,6 +19,7 @@
 ### Breaking Changes (26.08)
 
 - Routing `DataModel` now defers GPU device construction to solve time; applications that accessed device-side data between `DataModel` construction and the solve call must be updated
+- Removed the deprecated `get_solved_by_pdlp()` method from the Python LP solution object; use `get_solved_by()` instead
 
 ### Improvements (26.08)
 - Include Q matrix in Ruiz scaling to improve convergence
