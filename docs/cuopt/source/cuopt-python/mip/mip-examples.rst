@@ -28,7 +28,7 @@ The response is as follows:
     Objective value = 303.0
 
 
-Semi-continuous Variable Example
+Semi-Continuous Variable Example
 --------------------------------
 
 :download:`semi_continuous_example.py <examples/semi_continuous_example.py>`

@@ -2,7 +2,7 @@ MIP C API Examples
 ===================
 
 
-Example With Data
+Example with Data
 -----------------
 
 This example demonstrates how to use the MIP solver in C. More details on the API can be found in :doc:`MIP C API <mip-c-api>`.
@@ -75,7 +75,7 @@ You should see the following output:
    Test completed successfully!
 
 
-Example With MPS File
+Example with MPS File
 ---------------------
 
 This example demonstrates how to use the cuOpt solver in C to solve an MPS file.
