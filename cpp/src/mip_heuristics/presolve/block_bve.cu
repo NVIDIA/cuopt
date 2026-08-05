@@ -25,6 +25,7 @@
 #include <utilities/timer.hpp>
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -34,6 +35,14 @@
 #include <vector>
 
 namespace cuopt::mathematical_optimization::mip {
+
+// Block caps the header does not need to expose (its struct layouts and default arguments pin the
+// rest).
+static constexpr int BVE_MAX_INTERIOR = BVE_MAX_SCOPE - 1;
+// Cap closure probes over high-degree implication neighborhoods.
+static constexpr int BVE_MAX_GROWTH_NBRS = 256;
+// Cap peak device allocation for each projection chunk.
+static constexpr size_t BVE_PROJECT_DEVICE_BUDGET = 64ull << 20;  // 64 MiB
 
 // ===========================================================================================
 //  Clause core (projection re-encoding + sanity check) + host detector (declarations in
@@ -95,9 +104,11 @@ static double bve_row_int_scale(const f_t* coef, int n, f_t lo, f_t up)
   return scale;
 }
 
-// Closed-form work estimate for commit_projected: Quine-style literal dropping in
-// bve_prime_implicates is Θ(nb · 3^nb); sanity check is Θ(2^nb · #clauses) with #clauses bounded
-// by the growth gate (n_rows + margin).
+// Closed-form part of the commit_projected work estimate: prime-cube enumeration in
+// bve_greedy_prime_cover is Θ(nb · 3^nb); sanity check is Θ(2^nb · #clauses) with #clauses bounded
+// by the growth gate (n_rows + margin). The cover build and the greedy selection scale with the
+// prime count, which is only known after enumeration, so they are metered from the inside and
+// reported through the commit_projected ops out-param instead.
 static double bve_commit_wall_ops(int nb, int clause_budget)
 {
   cuopt_assert(nb >= 0 && nb <= BVE_MAX_BOUNDARY, "nb out of BVE range");
@@ -105,55 +116,6 @@ static double bve_commit_wall_ops(int nb, int clause_budget)
   for (int i = 0; i < nb; ++i)
     three_nb *= 3.0;
   return double(nb) * three_nb + double(1 << nb) * double(clause_budget + 1);
-}
-
-template <typename i_t, typename f_t>
-i_t bve_prime_implicates(const uint8_t* feas, i_t nb, bve_clause_t* out, i_t cap)
-{
-  const uint32_t full_mask = (1u << nb) - 1u;
-  i_t n                    = 0;
-  for (uint32_t m = 0; m <= full_mask; ++m) {
-    if (feas[m]) continue;  // feasible pattern: not forbidden
-    uint32_t active = full_mask;
-    bool changed    = true;
-    while (changed) {
-      changed = false;
-      for (i_t j = 0; j < nb; ++j) {
-        if (!(active & (1u << j))) continue;
-        // positions free to vary if we drop j: everything not currently active, plus j
-        const uint32_t dropped = (~active | (1u << j)) & full_mask;
-        // active-minus-j positions held at pattern m's bits
-        const uint32_t fixed_bits = (active & ~(1u << j)) & m;
-        bool all_forbidden        = true;
-        for (uint32_t sub = dropped;; sub = (sub - 1u) & dropped) {
-          const uint32_t full = fixed_bits | sub;
-          if (feas[full]) {
-            all_forbidden = false;
-            break;
-          }
-          if (sub == 0u) break;
-        }
-        if (all_forbidden) {
-          active &= ~(1u << j);
-          changed = true;
-          break;
-        }
-      }
-    }
-    bve_clause_t c;
-    c.lit_mask = active;
-    c.bit_mask = m & active;
-    bool dup   = false;
-    for (i_t i = 0; i < n; ++i)
-      if (out[i].lit_mask == c.lit_mask && out[i].bit_mask == c.bit_mask) {
-        dup = true;
-        break;
-      }
-    if (dup) continue;
-    if (n >= cap) return -1;
-    out[n++] = c;
-  }
-  return n;
 }
 
 template <typename i_t, typename f_t>
@@ -175,6 +137,171 @@ bool bve_sanity_check(const uint8_t* feas, i_t nb, const bve_clause_t* clauses, 
     if (crel != feasible) return false;
   }
   return true;
+}
+
+// ===========================================================================================
+//  Installed CNF: all prime forbidden cubes covered by max-gain greedy
+// ===========================================================================================
+//
+// Generalizing each infeasible minterm independently by dropping literals in a fixed order is
+// cheaper, but it never enumerates every prime cube, so its deduplicated output can be irredundant
+// and still larger than necessary. Enumerating ALL prime cubes and covering the infeasible patterns
+// by max-gain greedy is what commit_projected installs: measured against an exact minimum-cover
+// branch and bound, the greedy was optimal on every block whose proof closed, so no search is run.
+
+static size_t bve_mask_words(int nb) { return size_t(((1u << nb) + 63u) / 64u); }
+
+static int bve_mask_size(const bve_mask_t& m)
+{
+  int n = 0;
+  for (uint64_t w : m)
+    n += std::popcount(w);
+  return n;
+}
+
+static void bve_mask_set(bve_mask_t& m, uint32_t pattern)
+{
+  cuopt_assert(size_t(pattern >> 6) < m.size(), "pattern outside mask width");
+  m[pattern >> 6] |= uint64_t{1} << (pattern & 63);
+}
+
+static void bve_mask_subtract(bve_mask_t& m, const bve_mask_t& other)
+{
+  cuopt_assert(m.size() == other.size(), "mask width mismatch");
+  for (size_t w = 0; w < m.size(); ++w)
+    m[w] &= ~other[w];
+}
+
+static int bve_mask_overlap(const bve_mask_t& a, const bve_mask_t& b)
+{
+  cuopt_assert(a.size() == b.size(), "mask width mismatch");
+  int n = 0;
+  for (size_t w = 0; w < a.size(); ++w)
+    n += std::popcount(a[w] & b[w]);
+  return n;
+}
+
+// valid(lit, bit): every boundary pattern matching cube (lit, bit) is infeasible, so the
+// complementary clause excludes no feasible pattern. Adding a literal SHRINKS the cube, so the
+// table is filled from the minterms (lit == full_mask) downward in literal count:
+//     valid(lit, bit) = valid(lit|j, bit) AND valid(lit|j, bit|j)   for any j not in lit
+// A cube is already the bve_clause_t (lit_mask, bit_mask) encoding, so no separate ternary cube
+// code is needed. The dense table is 4^nb bytes (16 MiB at nb = 12), so `valid` is caller-owned and
+// grown once rather than reallocated per block. It is never re-initialized: only cells with
+// bit subset of lit are ever addressed, the minterm seeding plus the recurrence below write every
+// such cell, and each pass reads only cells an earlier pass already wrote.
+static void bve_enumerate_prime_cubes(const uint8_t* feas,
+                                      int nb,
+                                      std::vector<uint8_t>& valid,
+                                      std::vector<bve_clause_t>& primes)
+{
+  cuopt_assert(nb >= 1 && nb <= BVE_MAX_BOUNDARY, "nb out of BVE range");
+  const uint32_t full_mask = (1u << nb) - 1u;
+  const size_t stride      = size_t(full_mask) + 1;
+  if (valid.size() < stride * stride) valid.resize(stride * stride);
+  const auto at = [&](uint32_t lit, uint32_t bit) -> uint8_t& {
+    cuopt_assert((bit & ~lit) == 0u, "cube bit_mask outside its lit_mask");
+    return valid[size_t(lit) * stride + bit];
+  };
+
+  for (uint32_t m = 0; m <= full_mask; ++m)
+    at(full_mask, m) = feas[m] ? 0 : 1;
+
+  for (int n_lits = nb - 1; n_lits >= 0; --n_lits)
+    for (uint32_t lit = 0; lit <= full_mask; ++lit) {
+      if (std::popcount(lit) != n_lits) continue;
+      const int j          = std::countr_zero(~lit & full_mask);
+      const uint32_t child = lit | (1u << j);
+      for (uint32_t bit = lit;; bit = (bit - 1u) & lit) {
+        at(lit, bit) = at(child, bit) & at(child, bit | (1u << j));
+        if (bit == 0u) break;
+      }
+    }
+
+  primes.clear();
+  for (uint32_t lit = 0; lit <= full_mask; ++lit)
+    for (uint32_t bit = lit;; bit = (bit - 1u) & lit) {
+      if (at(lit, bit)) {
+        bool prime = true;
+        for (int j = 0; j < nb && prime; ++j)
+          if ((lit & (1u << j)) != 0u && at(lit ^ (1u << j), bit & ~(1u << j))) prime = false;
+        if (prime) primes.push_back(bve_clause_t{lit, bit});
+      }
+      if (bit == 0u) break;
+    }
+}
+
+// Boundary patterns matching the cube; every one of them is infeasible when the cube is valid.
+static void bve_cube_cover(
+  uint32_t lit, uint32_t bit, uint32_t full_mask, size_t n_words, bve_mask_t& cover)
+{
+  cover.assign(n_words, 0u);
+  const uint32_t free_positions = full_mask & ~lit;
+  for (uint32_t s = free_positions;; s = (s - 1u) & free_positions) {
+    bve_mask_set(cover, bit | s);
+    if (s == 0u) break;
+  }
+}
+
+// Deterministic: the prime order is fixed by bve_enumerate_prime_cubes and gain ties go to the
+// lowest prime index.
+template <typename i_t>
+i_t bve_greedy_prime_cover(const uint8_t* feas,
+                           i_t nb,
+                           bve_clause_t* out,
+                           i_t cap,
+                           bve_cover_scratch_t& scratch,
+                           int64_t* ops_out)
+{
+  cuopt_assert(nb >= 1 && nb <= BVE_MAX_BOUNDARY, "nb out of BVE range");
+  cuopt_assert(cap >= 1, "clause cap leaves no room for a cover");
+  int64_t ops    = 0;
+  auto ops_guard = cuopt::scope_guard([&]() {
+    if (ops_out != nullptr) *ops_out += ops;
+  });
+
+  const uint32_t full_mask  = (1u << nb) - 1u;
+  const uint32_t n_patterns = 1u << nb;
+  const size_t n_words      = bve_mask_words(nb);
+
+  bve_enumerate_prime_cubes(feas, nb, scratch.valid, scratch.primes);
+  const std::vector<bve_clause_t>& primes = scratch.primes;
+
+  bve_mask_t& uncovered = scratch.uncovered;
+  uncovered.assign(n_words, 0u);
+  for (uint32_t m = 0; m < n_patterns; ++m)
+    if (!feas[m]) bve_mask_set(uncovered, m);
+  if (bve_mask_size(uncovered) == 0) return 0;  // nothing to forbid
+  cuopt_assert(!primes.empty(), "infeasible patterns exist but no prime cube was enumerated");
+
+  scratch.cover.resize(primes.size());
+  for (size_t q = 0; q < primes.size(); ++q) {
+    bve_cube_cover(primes[q].lit_mask, primes[q].bit_mask, full_mask, n_words, scratch.cover[q]);
+    // Zeroing the words, then one set-bit per pattern the cube matches.
+    ops += (int64_t)n_words + (int64_t{1} << (nb - std::popcount(primes[q].lit_mask)));
+  }
+
+  i_t n = 0;
+  while (bve_mask_size(uncovered) > 0) {
+    // Per pick: the size test above, one bve_mask_overlap per prime, then the subtract below.
+    ops += (int64_t)((primes.size() + 2) * n_words);
+    int best_q    = -1;
+    int best_gain = 0;
+    for (size_t q = 0; q < primes.size(); ++q) {
+      const int gain = bve_mask_overlap(uncovered, scratch.cover[q]);
+      if (gain > best_gain) {
+        best_gain = gain;
+        best_q    = (int)q;
+      }
+    }
+    cuopt_assert(best_q >= 0, "prime cubes do not cover the infeasible patterns");
+    if (n >= cap) return -1;
+    out[n++] = primes[best_q];
+    bve_mask_subtract(uncovered, scratch.cover[best_q]);
+  }
+  ops += (int64_t)n_words;  // the size test that ended the loop
+  cuopt_assert(n >= 1, "non-empty infeasible set covered by zero clauses");
+  return n;
 }
 
 // ---- host detector: working model, staged candidates, accumulated plan (all TU-local) ----
@@ -224,6 +351,7 @@ struct bve_reducer_t {
   std::vector<std::unordered_set<i_t>> col2rows;
   std::vector<uint8_t> is_bin, obj_nz, done;
   bve_plan_t<i_t, f_t> plan;
+  bve_cover_scratch_t cover_scratch;
 
   bve_reducer_t(i_t n_vars_,
                 i_t n_rows_orig_,
@@ -254,8 +382,9 @@ struct bve_reducer_t {
              bve_candidate_t<i_t, f_t>& out,
              int64_t* ops_out = nullptr);
 
-  // Validate and commit an already-projected candidate; return true iff reduced.
-  bool commit_projected(const bve_candidate_t<i_t, f_t>& cand);
+  // Validate and commit an already-projected candidate; return true iff reduced. `ops_out` receives
+  // the CNF construction cost that bve_commit_wall_ops cannot predict.
+  bool commit_projected(const bve_candidate_t<i_t, f_t>& cand, int64_t* ops_out = nullptr);
 
   bve_plan_t<i_t, f_t> finalize();
 };
@@ -425,11 +554,13 @@ bool bve_reducer_t<i_t, f_t>::stage(const std::vector<i_t>& interior_in,
 }
 
 template <typename i_t, typename f_t>
-bool bve_reducer_t<i_t, f_t>::commit_projected(const bve_candidate_t<i_t, f_t>& cand)
+bool bve_reducer_t<i_t, f_t>::commit_projected(const bve_candidate_t<i_t, f_t>& cand,
+                                               int64_t* ops_out)
 {
   const i_t nb = cand.blk.nb;
   bve_clause_t clauses[BVE_MAX_CLAUSES];
-  const i_t n_clauses = bve_prime_implicates<i_t, f_t>(cand.feas, nb, clauses, BVE_MAX_CLAUSES);
+  const i_t n_clauses =
+    bve_greedy_prime_cover<i_t>(cand.feas, nb, clauses, BVE_MAX_CLAUSES, cover_scratch, ops_out);
   if (n_clauses < 0) return false;                         // clause explosion past cap
   if (n_clauses > cand.blk.n_rows + margin) return false;  // growth gate
   if (!bve_sanity_check<i_t, f_t>(cand.feas, nb, clauses, n_clauses))
@@ -900,7 +1031,9 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
     for (auto& cand : cands) {
       if (timer.check_time_limit()) break;
       work_units += bve_commit_wall_ops(cand.blk.nb, cand.blk.n_rows + R.margin);
-      if (R.commit_projected(cand)) ++committed;
+      int64_t commit_ops = 0;
+      if (R.commit_projected(cand, &commit_ops)) ++committed;
+      work_units += double(commit_ops);
     }
     if (committed == 0) break;
   }
@@ -1100,8 +1233,11 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
   return true;
 }
 
+// Not f_t-templated: the CNF is derived from the boundary feasibility table alone.
+template int bve_greedy_prime_cover<int>(
+  const uint8_t*, int, bve_clause_t*, int, bve_cover_scratch_t&, int64_t*);
+
 #define INSTANTIATE(F_TYPE)                                                                   \
-  template int bve_prime_implicates<int, F_TYPE>(const uint8_t*, int, bve_clause_t*, int);    \
   template bool bve_sanity_check<int, F_TYPE>(const uint8_t*, int, const bve_clause_t*, int); \
   template double bve_project_batch_gpu<int, F_TYPE>(                                         \
     const raft::handle_t&, std::vector<bve_candidate_t<int, F_TYPE>>&, F_TYPE);               \

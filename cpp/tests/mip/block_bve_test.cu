@@ -120,7 +120,8 @@ inline bve_status_t bve_project_and_check(const bve_block_t<f_t>& blk,
 
   uint8_t feas[BVE_MAX_PATTERNS];
   bve_project(blk, tol, feas, witness);
-  const i_t nc = bve_prime_implicates<i_t, f_t>(feas, blk.nb, clauses, BVE_MAX_CLAUSES);
+  bve_cover_scratch_t scratch;
+  const i_t nc = bve_greedy_prime_cover<i_t>(feas, blk.nb, clauses, BVE_MAX_CLAUSES, scratch);
   if (nc < 0) return bve_status_t::kSkipGrowth;  // clause explosion past cap
   if (nc > blk.n_rows + margin) return bve_status_t::kSkipGrowth;
   if (!bve_sanity_check<i_t, f_t>(feas, blk.nb, clauses, nc)) return bve_status_t::kSkipCheckFailed;
@@ -756,14 +757,14 @@ static void run_presolve_size_check(const char* relative_mps_path,
   settings.block_bve = true;
 
   auto papilo = std::make_unique<mip::third_party_presolve_t<int, double>>();
-  auto result = papilo->apply(op_problem,
-                              problem_category_t::MIP,
-                              settings.presolver,
-                              /*dual_postsolve=*/false,
-                              settings.tolerances.absolute_tolerance,
-                              settings.tolerances.relative_tolerance,
-                              /*time_limit=*/60.0,
-                              /*num_cpu_threads=*/0);
+  auto result = papilo->apply_presolve_from_op_problem(op_problem,
+                                                       problem_category_t::MIP,
+                                                       settings.presolver,
+                                                       /*dual_postsolve=*/false,
+                                                       settings.tolerances.absolute_tolerance,
+                                                       settings.tolerances.relative_tolerance,
+                                                       /*time_limit=*/60.0,
+                                                       /*num_cpu_threads=*/0);
   ASSERT_NE(result.status, mip::third_party_presolve_status_t::INFEASIBLE)
     << relative_mps_path << " infeasible after Papilo";
   ASSERT_NE(result.status, mip::third_party_presolve_status_t::UNBNDORINFEAS)

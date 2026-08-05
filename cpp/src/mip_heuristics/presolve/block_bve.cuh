@@ -30,18 +30,13 @@
 namespace cuopt::mathematical_optimization::mip {
 
 // Caps for a single enumerated block.
-static constexpr int BVE_MAX_BOUNDARY = 8;   // nb  <= 8  => 2^nb <= 256 feasibility patterns
-static constexpr int BVE_MAX_SCOPE    = 16;  // na + nb <= 16
-static constexpr int BVE_MAX_INTERIOR = BVE_MAX_SCOPE - 1;
+static constexpr int BVE_MAX_BOUNDARY = 12;  // nb  <= 12  => 2^nb <= 4096 feasibility patterns
+static constexpr int BVE_MAX_SCOPE    = 16;  // na + nb <=
 static constexpr int BVE_MAX_ROWS     = 64;  // |G| (rows spanned by the block); clauses <= |G|
 static constexpr int BVE_MAX_ROW_LEN  = 24;  // nnz within one block row (interior+boundary entries)
 static constexpr int BVE_MAX_NNZ      = BVE_MAX_ROWS * BVE_MAX_ROW_LEN;
-static constexpr int BVE_MAX_CLAUSES  = 64;                     // <= |rows| for any committed block
-static constexpr int BVE_MAX_PATTERNS = 1 << BVE_MAX_BOUNDARY;  // 256
-// Cap closure probes over high-degree implication neighborhoods.
-static constexpr int BVE_MAX_GROWTH_NBRS = 256;
-// Cap peak device allocation for each projection chunk.
-static constexpr size_t BVE_PROJECT_DEVICE_BUDGET = 64ull << 20;  // 64 MiB
+static constexpr int BVE_MAX_CLAUSES  = 64;  // <= |rows| for any committed block
+static constexpr int BVE_MAX_PATTERNS = 1 << BVE_MAX_BOUNDARY;
 
 // Packed projection block. Local ids [0, na) are interior and [na, na+nb) are boundary; rows use
 // CSR layout and missing bounds are +/- infinity.
@@ -66,9 +61,30 @@ struct bve_clause_t {
   uint32_t bit_mask;
 };
 
-// Derive a prime-implicate CNF from the boundary feasibility table; return -1 on cap overflow.
-template <typename i_t, typename f_t>
-i_t bve_prime_implicates(const uint8_t* feas, i_t nb, bve_clause_t* out, i_t cap);
+// One bit per boundary pattern. The width tracks the block's own 2^nb, not BVE_MAX_PATTERNS, so
+// raising BVE_MAX_BOUNDARY costs nothing on narrower blocks.
+using bve_mask_t = std::vector<uint64_t>;
+
+// Buffers the CNF construction reuses across blocks: `valid` alone is 4^nb bytes, so per-block
+// allocation would dominate at wide boundaries.
+struct bve_cover_scratch_t {
+  std::vector<uint8_t> valid;  // prime-cube validity table, grow-only
+  std::vector<bve_clause_t> primes;
+  std::vector<bve_mask_t> cover;  // patterns matched by each prime
+  bve_mask_t uncovered;
+};
+
+// Derive a prime-implicate CNF from the boundary feasibility table by covering the infeasible
+// patterns with a max-gain greedy over every prime forbidden cube; return -1 on cap overflow.
+// `ops_out` accumulates a deterministic unscaled estimate of the cover build and the greedy scan,
+// both of which scale with a prime count the caller cannot know in advance.
+template <typename i_t>
+i_t bve_greedy_prime_cover(const uint8_t* feas,
+                           i_t nb,
+                           bve_clause_t* out,
+                           i_t cap,
+                           bve_cover_scratch_t& scratch,
+                           int64_t* ops_out = nullptr);
 
 // Verify that the emitted clauses reproduce the boundary feasibility table exactly.
 template <typename i_t, typename f_t>
