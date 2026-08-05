@@ -25,6 +25,7 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/scope_guard.hpp>
 
+#include <algorithm>
 #include <cstdlib>
 #include <chrono>
 #include <cmath>
@@ -344,6 +345,42 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
   }
 }
 
+// Pin variables that a BVE projection table showed to have a single admissible value. Ids arrive in
+// the original frame and may repeat across blocks and rounds. Returns false when two blocks
+// disagree on a variable, which proves infeasibility since each fixing is a consequence of its
+// block alone.
+template <typename i_t, typename f_t>
+static bool apply_bve_fixings(problem_t<i_t, f_t>& problem,
+                              const std::vector<std::pair<i_t, bool>>& fixings,
+                              i_t& n_applied)
+{
+  n_applied = 0;
+  if (fixings.empty()) { return true; }
+  std::vector<std::pair<i_t, bool>> sorted(fixings);
+  std::sort(sorted.begin(), sorted.end());
+
+  const std::vector<i_t>& reverse_original_ids = problem.reverse_original_ids;
+  std::vector<i_t> var_indices;
+  std::vector<f_t> lb_values;
+  std::vector<f_t> ub_values;
+  for (size_t k = 0; k < sorted.size(); ++k) {
+    const auto [original_id, value] = sorted[k];
+    if (k > 0 && original_id == sorted[k - 1].first) {
+      if (value != sorted[k - 1].second) { return false; }
+      continue;
+    }
+    if (original_id < 0 || original_id >= (i_t)reverse_original_ids.size()) { continue; }
+    const i_t column = reverse_original_ids[original_id];
+    if (column < 0 || column >= problem.n_variables) { continue; }  // already eliminated
+    var_indices.push_back(column);
+    lb_values.push_back(value ? f_t(1) : f_t(0));
+    ub_values.push_back(value ? f_t(1) : f_t(0));
+  }
+  n_applied = (i_t)var_indices.size();
+  problem.update_variable_bounds(var_indices, lb_values, ub_values);
+  return true;
+}
+
 template <typename i_t, typename f_t>
 bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_timer)
 {
@@ -391,7 +428,12 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
   // Block-BVE rounds reuse the cache built above: BVE replaces each block by its exact projection,
   // so every cached implication between surviving columns stays valid, and block_bve_presolve
   // refreshes reverse_original_ids as it compacts so the adjacency can be rebuilt per round.
-  const i_t max_bve_rounds = 3;
+  const i_t max_bve_rounds    = 3;
+  const i_t n_vars_before_bve = problem_ptr->n_variables;
+  const i_t n_rows_before_bve = problem_ptr->n_constraints;
+  // Implications read off the projection tables, accumulated across rounds. They feed the next
+  // round's adjacency (pairs the cache never held) and are folded back into the cache afterwards.
+  probe_findings_t<i_t> bve_findings;
   for (i_t bve_round = 0; bve_round < max_bve_rounds; ++bve_round) {
     if (!context.settings.block_bve || problem_ptr->empty || global_timer.check_time_limit() ||
         presolve_timer.check_time_limit()) {
@@ -402,10 +444,12 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
     const i_t n_rows_before = problem_ptr->n_constraints;
     auto impl_adj           = bve_build_impl_adj(ls.constraint_prop.bounds_update.probing_cache,
                                        problem_ptr->reverse_original_ids,
-                                       problem_ptr->n_variables);
+                                       problem_ptr->n_variables,
+                                       &bve_findings);
     double bve_work_units   = 0.0;
     timer_t bve_timer(global_timer.clamp_remaining_time(presolve_timer.remaining_time()));
-    const bool reduced = block_bve_presolve(*problem_ptr, impl_adj, bve_timer, bve_work_units);
+    const bool reduced =
+      block_bve_presolve(*problem_ptr, impl_adj, bve_timer, bve_work_units, &bve_findings);
     CUOPT_LOG_DEBUG("Block-BVE outer round %d/%d: reduced=%d vars %d->%d rows %d->%d",
                     bve_round + 1,
                     max_bve_rounds,
@@ -416,6 +460,38 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
                     problem_ptr->n_constraints);
     if (!reduced) { break; }
     if (problem_ptr->n_variables >= n_vars_before) { break; }
+  }
+
+  // Harvest the projections: tighten the cache in place, pin the variables the blocks left with a
+  // single value, then propagate. Deferred to here so no round runs against a half-updated model.
+  if (ls.constraint_prop.bounds_update.probing_cache.merge_forcings(bve_findings.forcings)) {
+    stats.presolve_time = timer.elapsed_time();
+    return false;
+  }
+  i_t n_bve_fixings = 0;
+  if (!global_timer.check_time_limit()) {
+    if (!apply_bve_fixings(*problem_ptr, bve_findings.fixings, n_bve_fixings)) {
+      stats.presolve_time = timer.elapsed_time();
+      return false;
+    }
+    if (n_bve_fixings > 0) { trivial_presolve(*problem_ptr, remap_cache_ids); }
+  }
+  const bool bve_changed_model = problem_ptr->n_variables != n_vars_before_bve ||
+                                 problem_ptr->n_constraints != n_rows_before_bve ||
+                                 n_bve_fixings > 0;
+  if (bve_changed_model) {
+    CUOPT_LOG_DEBUG("Block-BVE projections fixed %d variables", n_bve_fixings);
+    if (!problem_ptr->empty && !global_timer.check_time_limit()) {
+      ls.constraint_prop.bounds_update.resize(*problem_ptr);
+      auto bve_term_crit = ls.constraint_prop.bounds_update.solve(*problem_ptr);
+      if (ls.constraint_prop.bounds_update.infeas_constraints_count > 0) {
+        stats.presolve_time = timer.elapsed_time();
+        return false;
+      }
+      if (termination_criterion_t::NO_UPDATE != bve_term_crit) {
+        ls.constraint_prop.bounds_update.set_updated_bounds(*problem_ptr);
+      }
+    }
   }
 
   if (const char* export_flag = std::getenv("CUOPT_EXPORT_GPU_PRESOLVED_PROBLEM");

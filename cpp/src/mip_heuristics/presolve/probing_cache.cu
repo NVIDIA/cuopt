@@ -1039,6 +1039,51 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   return problem_is_infeasible.load();
 }
 
+// See probing_cache.cuh. The emptiness guard has to come first: a variable probed only once leaves
+// its second slot default-constructed, so val_interval holds an indeterminate value there and must
+// not be compared against. An empty bound map is also what the rounding readers treat as "nothing
+// cached here", so skipping those slots keeps the merge purely additive to already-live entries.
+//
+// Slots are matched on val_interval.val rather than by index because the writer fills them in probe
+// arrival order, not value order (insert_current_probing_to_cache).
+template <typename i_t, typename f_t>
+bool probing_cache_t<i_t, f_t>::merge_forcings(const std::vector<probe_forcing_t<i_t>>& forcings)
+{
+  i_t n_added     = 0;
+  i_t n_tightened = 0;
+  for (const auto& forcing : forcings) {
+    cuopt_assert(forcing.var != forcing.forced_var, "self-forcing is not a projection finding");
+    auto entry_it = probing_cache.find(forcing.var);
+    if (entry_it == probing_cache.end()) { continue; }
+    const f_t probed_val = forcing.value ? f_t(1) : f_t(0);
+    const f_t forced_val = forcing.forced_value ? f_t(1) : f_t(0);
+    for (cache_entry_t<i_t, f_t>& entry : entry_it->second) {
+      if (entry.var_to_cached_bound_map.empty()) { continue; }
+      if (entry.val_interval.interval_type != interval_type_t::EQUALS) { continue; }
+      if (entry.val_interval.val != probed_val) { continue; }
+      auto [bound_it, inserted] = entry.var_to_cached_bound_map.insert(
+        {forcing.forced_var, cached_bound_t<f_t>{forced_val, forced_val}});
+      if (inserted) {
+        ++n_added;
+        continue;
+      }
+      cached_bound_t<f_t>& bound = bound_it->second;
+      const f_t lb               = std::max(bound.lb, forced_val);
+      const f_t ub               = std::min(bound.ub, forced_val);
+      // Both the cached bound and the projection are valid, so an empty intersection is a proof.
+      if (lb > ub) { return true; }
+      n_tightened += (lb != bound.lb || ub != bound.ub);
+      bound.lb = lb;
+      bound.ub = ub;
+    }
+  }
+  CUOPT_LOG_DEBUG("BVE forcings %zu: added %d and tightened %d probing cache bounds",
+                  forcings.size(),
+                  n_added,
+                  n_tightened);
+  return false;
+}
+
 #define INSTANTIATE(F_TYPE)                                                                        \
   template bool compute_probing_cache<int, F_TYPE>(bound_presolve_t<int, F_TYPE> & bound_presolve, \
                                                    problem_t<int, F_TYPE> & problem,               \

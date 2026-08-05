@@ -108,21 +108,26 @@ double bve_project_batch_gpu(const raft::handle_t& handle,
                              std::vector<bve_candidate_t<i_t, f_t>>& cands,
                              f_t tol);
 
-// Build symmetric current-problem implication adjacency from the original-id keyed probing cache.
+// Build symmetric current-problem implication adjacency from the original-id keyed probing cache,
+// optionally unioned with forcings harvested from earlier block projections (also original-id).
 template <typename i_t, typename f_t>
 std::vector<std::vector<i_t>> bve_build_impl_adj(const probing_cache_t<i_t, f_t>& cache,
                                                  const std::vector<i_t>& reverse_original_ids,
-                                                 i_t n_vars);
+                                                 i_t n_vars,
+                                                 const probe_findings_t<i_t>* extra = nullptr);
 
 // Run block BVE using caller-provided implication adjacency and deadline. Returns true iff at least
 // one validated reduction was installed; `work_units` receives a deterministic unscaled estimate.
+// `out_findings`, when given, is appended with the implications read off every projected block
+// (original-id frame) -- including blocks that were not eliminated.
 template <typename i_t, typename f_t>
 bool block_bve_presolve(problem_t<i_t, f_t>& problem,
                         const std::vector<std::vector<i_t>>& impl_adj,
                         timer_t& timer,
                         double& work_units,
-                        i_t Bcap    = BVE_MAX_BOUNDARY,
-                        i_t enumcap = BVE_MAX_SCOPE,
-                        i_t margin  = 0);
+                        probe_findings_t<i_t>* out_findings = nullptr,
+                        i_t Bcap                            = BVE_MAX_BOUNDARY,
+                        i_t enumcap                         = BVE_MAX_SCOPE,
+                        i_t margin                          = 0);
 
 }  // namespace cuopt::mathematical_optimization::mip
