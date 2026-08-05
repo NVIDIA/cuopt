@@ -140,6 +140,12 @@ repos:
         entry: vale
         language: system
         files: ^docs/cuopt/source/.*\.(rst|md)$
+      - id: vale-selftest
+        name: Vale headings rule self-test
+        entry: ci/utils/check_vale_rule.sh
+        language: system
+        pass_filenames: false
+        files: ^ci/vale/
       - id: validate-skills
         name: Validate agent skills
         entry: ci/utils/validate_skills.sh

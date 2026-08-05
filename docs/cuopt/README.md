@@ -52,7 +52,19 @@ Product names, acronyms, and API identifiers that must keep their own casing
 (`cuOpt`, `gRPC`, `mTLS`, `solver_configs`) are listed under `exceptions` in
 that file.
 
-**Keep that list narrow.** Exceptions match whole words, case-sensitively, and
-a single match makes Vale skip the entire heading — so a broad entry silently
-disables the check for every heading that mentions it. Always re-run `vale`
-after editing the exceptions.
+**Keep that list narrow, and only add a term once a real heading needs it.**
+Exceptions match whole words, and a single match makes Vale skip the *entire*
+heading — so a needless entry silently disables the check for every heading
+that mentions it.
+
+That failure mode is guarded by a self-test:
+
+```bash
+./ci/utils/check_vale_rule.sh
+```
+
+It asserts the rule still flags the violations in `ci/vale/tests/must-flag.md`
+and still accepts the correct headings in `ci/vale/tests/must-pass.md`. It runs
+as a pre-commit hook whenever `ci/vale/` changes, so weakening the rule fails
+CI instead of passing quietly. Add a case to those fixtures when you add an
+exception.
