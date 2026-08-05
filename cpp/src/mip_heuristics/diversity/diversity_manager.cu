@@ -373,28 +373,26 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
   const bool remap_cache_ids           = true;
   problem_ptr->related_vars_time_limit = context.settings.heuristic_params.related_vars_time_limit;
 
-  // run block-BVE presolve rounds
+  if (run_probing_cache && !global_timer.check_time_limit() && !presolve_timer.check_time_limit()) {
+    const f_t max_time_on_probing = diversity_config.max_time_on_probing;
+    f_t time_for_probing_cache =
+      std::min(max_time_on_probing, std::min(time_limit, (f_t)presolve_timer.remaining_time()));
+    timer_t probing_timer{time_for_probing_cache};
+    bool problem_is_infeasible = compute_probing_cache(ls.constraint_prop.bounds_update,
+                                                       *problem_ptr,
+                                                       probing_timer,
+                                                       probing_budget.probing_work_limit,
+                                                       (size_t)probing_budget.probing_step_size);
+    if (problem_is_infeasible) { return false; }
+  }
+
+  if (!global_timer.check_time_limit()) { trivial_presolve(*problem_ptr, remap_cache_ids); }
+
+  // Block-BVE rounds reuse the cache built above: BVE replaces each block by its exact projection,
+  // so every cached implication between surviving columns stays valid, and block_bve_presolve
+  // refreshes reverse_original_ids as it compacts so the adjacency can be rebuilt per round.
   const i_t max_bve_rounds = 3;
-  for (i_t bve_round = 0;; ++bve_round) {
-    if (run_probing_cache) {
-      if (global_timer.check_time_limit() || presolve_timer.check_time_limit()) { break; }
-      if (bve_round > 0) { ls.constraint_prop.bounds_update.resize(*problem_ptr); }
-      const f_t max_time_on_probing = diversity_config.max_time_on_probing;
-      f_t time_for_probing_cache =
-        std::min(max_time_on_probing, std::min(time_limit, (f_t)presolve_timer.remaining_time()));
-      timer_t probing_timer{time_for_probing_cache};
-      bool problem_is_infeasible = compute_probing_cache(ls.constraint_prop.bounds_update,
-                                                         *problem_ptr,
-                                                         probing_timer,
-                                                         probing_budget.probing_work_limit,
-                                                         (size_t)probing_budget.probing_step_size);
-      if (problem_is_infeasible) { return false; }
-    } else if (bve_round > 0) {
-      break;
-    }
-
-    if (!global_timer.check_time_limit()) { trivial_presolve(*problem_ptr, remap_cache_ids); }
-
+  for (i_t bve_round = 0; bve_round < max_bve_rounds; ++bve_round) {
     if (!context.settings.block_bve || problem_ptr->empty || global_timer.check_time_limit() ||
         presolve_timer.check_time_limit()) {
       break;
@@ -416,7 +414,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
                     problem_ptr->n_variables,
                     n_rows_before,
                     problem_ptr->n_constraints);
-    if (!reduced || !run_probing_cache || bve_round + 1 >= max_bve_rounds) { break; }
+    if (!reduced) { break; }
     if (problem_ptr->n_variables >= n_vars_before) { break; }
   }
 
