@@ -13,7 +13,7 @@ For RPC summaries and server behavior, see :doc:`api` and :doc:`grpc-server-arch
 Configuration Parameters
 ========================
 
-``cuopt_grpc_server`` (host or explicit container command)
+``cuopt_grpc_server`` (Host or Explicit Container Command)
 ------------------------------------------------------------
 
 Run ``cuopt_grpc_server --help`` for the full list. Typical flags (also passable inside ``CUOPT_GRPC_ARGS`` when using the container entrypoint):

@@ -81,6 +81,7 @@ dependencies:
 - sysroot_linux-64==2.28
 - tbb-devel
 - uvicorn==0.34.*
+- vale=3.17.0
 - zlib
 - pip:
   - nvidia-sphinx-theme

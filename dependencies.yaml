@@ -787,6 +787,7 @@ dependencies:
           - clang==20.1.8
           - clang-tools=20.1.8
           - &doxygen doxygen=1.9.1 # pre-commit hook needs a specific version.
+          - vale=3.17.0 # docs prose linter, run by the vale pre-commit hook.
   docs:
     common:
       - output_types: [conda]
