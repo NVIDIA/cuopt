@@ -80,7 +80,7 @@ Underlying evaluation signals used in this run: <br>
 | Efficiency | 3 | 48% (+22%) | 89% (+49%) |
 
 ## Skill Version(s): <br>
-26.08.00 (source: frontmatter, pyproject.toml) <br>
+26.10.00 (source: frontmatter, pyproject.toml) <br>
 
 ## Ethical Considerations: <br>
 NVIDIA believes Trustworthy AI is a shared responsibility and we have established policies and practices to enable development for a wide array of AI applications. When downloaded or used in accordance with our terms of service, developers should work with their internal team to ensure this skill meets requirements for the relevant industry and use case and addresses unforeseen product misuse. <br>
