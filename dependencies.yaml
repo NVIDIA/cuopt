@@ -787,6 +787,10 @@ dependencies:
           - clang==20.1.8
           - clang-tools=20.1.8
           - &doxygen doxygen=1.9.1 # pre-commit hook needs a specific version.
+          - vale=3.17.0 # docs prose linter, run by the vale pre-commit hook.
+          # Vale parses .rst by shelling out to docutils' rst2html; without it
+          # the vale hook fails with "rst2html not found".
+          - docutils>=0.21
   docs:
     common:
       - output_types: [conda]
