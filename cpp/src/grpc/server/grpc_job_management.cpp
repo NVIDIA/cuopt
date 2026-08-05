@@ -232,7 +232,7 @@ void delete_log_file(const std::string& job_id)
 
 int cancel_job(const std::string& job_id, JobStatus& job_status_out, std::string& message)
 {
-  std::lock_guard<std::mutex> lock(tracker_mutex);
+  std::unique_lock<std::mutex> lock(tracker_mutex);
   auto it = job_tracker.find(job_id);
 
   if (it == job_tracker.end()) {
@@ -273,18 +273,20 @@ int cancel_job(const std::string& job_id, JobStatus& job_status_out, std::string
       continue;
     }
 
-    pid_t worker_pid = job_queue[i].worker_pid.load(std::memory_order_relaxed);
+    pid_t worker_pid   = job_queue[i].worker_pid.load(std::memory_order_relaxed);
+    const bool running = worker_pid > 0 && job_queue[i].claimed.load(std::memory_order_relaxed);
 
-    if (worker_pid > 0 && job_queue[i].claimed.load(std::memory_order_relaxed)) {
-      if (config.verbose) {
-        SERVER_LOG_DEBUG(
-          "[Server] Cancelling running job %s (killing worker %d)", job_id.c_str(), worker_pid);
+    // Prefer cooperative cancel: set the SHM flag the solver polls. Only kill
+    // the worker if it does not unwind within a grace period.
+    job_queue[i].cancelled.store(true, std::memory_order_release);
+    if (config.verbose) {
+      if (running) {
+        SERVER_LOG_DEBUG("[Server] Cancelling running job %s (cooperative cancel; worker %d)",
+                         job_id.c_str(),
+                         worker_pid);
+      } else {
+        SERVER_LOG_DEBUG("[Server] Cancelling queued job %s", job_id.c_str());
       }
-      job_queue[i].cancelled.store(true, std::memory_order_release);
-      kill(worker_pid, SIGKILL);
-    } else {
-      if (config.verbose) { SERVER_LOG_DEBUG("[Server] Cancelling queued job %s", job_id.c_str()); }
-      job_queue[i].cancelled.store(true, std::memory_order_release);
     }
 
     it->second.status        = JobStatus::CANCELLED;
@@ -308,6 +310,44 @@ int cancel_job(const std::string& job_id, JobStatus& job_status_out, std::string
         waiter->cv.notify_all();
         waiting_threads.erase(wit);
       }
+    }
+
+    if (running) {
+      lock.unlock();
+      // Return to the client immediately after setting the cancel flag.
+      // Grace wait + SIGTERM/SIGKILL run in the background so Cancel/Delete
+      // RPCs are not blocked for up to kGrace (client deadlines are ~60s).
+      std::thread([slot = i, worker_pid, job_id]() {
+        // Fixed cooperative grace. Solvers poll `cancelled` and should unwind
+        // without help; SIGTERM/SIGKILL is only a last resort if the worker is
+        // still claimed after this window.
+        constexpr auto kGrace = std::chrono::seconds(120);
+        const auto deadline   = std::chrono::steady_clock::now() + kGrace;
+
+        while (std::chrono::steady_clock::now() < deadline) {
+          if (!job_queue[slot].ready.load(std::memory_order_acquire) ||
+              !job_queue[slot].claimed.load(std::memory_order_acquire) ||
+              strcmp(job_queue[slot].job_id, job_id.c_str()) != 0) {
+            return;
+          }
+          if (kill(worker_pid, 0) != 0 && errno == ESRCH) { return; }
+          std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+        // Slot may have been recycled during the wait — re-check identity.
+        if (!job_queue[slot].ready.load(std::memory_order_acquire) ||
+            strcmp(job_queue[slot].job_id, job_id.c_str()) != 0) {
+          return;
+        }
+        if (kill(worker_pid, 0) != 0 && errno == ESRCH) { return; }
+        SERVER_LOG_WARN(
+          "[Server] Job %s still running after cooperative cancel grace; "
+          "sending SIGTERM then SIGKILL to worker %d",
+          job_id.c_str(),
+          worker_pid);
+        kill(worker_pid, SIGTERM);
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        if (kill(worker_pid, 0) == 0) { kill(worker_pid, SIGKILL); }
+      }).detach();
     }
 
     return 0;

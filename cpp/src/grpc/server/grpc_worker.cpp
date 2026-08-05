@@ -99,7 +99,8 @@ struct SolveResult {
   cuopt::remote::ChunkedResultHeader header;
   std::map<int32_t, std::vector<uint8_t>> arrays;
   std::string error_message;
-  bool success = false;
+  bool success   = false;
+  bool cancelled = false;
 };
 
 // ---------------------------------------------------------------------------
@@ -365,12 +366,14 @@ static SolveResult run_mip_solve(DeserializedJob& dj,
                                  raft::handle_t& handle,
                                  const std::string& log_file,
                                  const std::string& job_id,
-                                 int worker_id)
+                                 int worker_id,
+                                 std::atomic<bool>* cancel_requested)
 {
   SolveResult sr;
   try {
-    dj.mip_settings.log_file       = log_file;
-    dj.mip_settings.log_to_console = config.log_to_console;
+    dj.mip_settings.log_file         = log_file;
+    dj.mip_settings.log_to_console   = config.log_to_console;
+    dj.mip_settings.cancel_requested = cancel_requested;
 
     // Create a per-solve incumbent callback wired to this worker's
     // incumbent pipe.  Destroyed automatically when sr is returned.
@@ -393,6 +396,13 @@ static SolveResult run_mip_solve(DeserializedJob& dj,
     SERVER_LOG_INFO("[Worker] Calling solve_mip...");
     auto gpu_solution = cuopt::mathematical_optimization::solve_mip(*gpu_problem, dj.mip_settings);
     SERVER_LOG_INFO("[Worker] solve_mip done");
+
+    if (gpu_solution.get_termination_status() ==
+        cuopt::mathematical_optimization::mip_termination_status_t::Cancelled) {
+      sr.error_message = "Job was cancelled";
+      sr.cancelled     = true;
+      return sr;
+    }
 
     // solve_mip_helper catches cuopt::logic_error internally and stashes it
     // in mip_solution_t::error_status_ rather than rethrow (matches the LP
@@ -441,12 +451,14 @@ static SolveResult run_mip_solve(DeserializedJob& dj,
 // Exceptions are caught and returned as error messages.
 static SolveResult run_lp_solve(DeserializedJob& dj,
                                 raft::handle_t& handle,
-                                const std::string& log_file)
+                                const std::string& log_file,
+                                std::atomic<bool>* cancel_requested)
 {
   SolveResult sr;
   try {
-    dj.lp_settings.log_file       = log_file;
-    dj.lp_settings.log_to_console = config.log_to_console;
+    dj.lp_settings.log_file         = log_file;
+    dj.lp_settings.log_to_console   = config.log_to_console;
+    dj.lp_settings.cancel_requested = cancel_requested;
 
     SERVER_LOG_INFO("[Worker] Converting CPU problem to GPU problem...");
     auto gpu_problem = dj.problem.to_optimization_problem(&handle);
@@ -454,6 +466,13 @@ static SolveResult run_lp_solve(DeserializedJob& dj,
     SERVER_LOG_INFO("[Worker] Calling solve_lp...");
     auto gpu_solution = cuopt::mathematical_optimization::solve_lp(*gpu_problem, dj.lp_settings);
     SERVER_LOG_INFO("[Worker] solve_lp done");
+
+    if (gpu_solution.get_termination_status() ==
+        cuopt::mathematical_optimization::pdlp_termination_status_t::Cancelled) {
+      sr.error_message = "Job was cancelled";
+      sr.cancelled     = true;
+      return sr;
+    }
 
     // solve_lp / solve_qcqp catch cuopt::logic_error internally and stash it
     // in optimization_problem_solution_t::error_status_ rather than rethrow
@@ -654,11 +673,16 @@ void worker_process(int worker_id)
     std::string log_file = get_log_file_path(job_id);
     raft::handle_t handle;
 
-    SolveResult result = (problem_category == cuopt::remote::MIP)
-                           ? run_mip_solve(deserialized, handle, log_file, job_id, worker_id)
-                           : run_lp_solve(deserialized, handle, log_file);
+    SolveResult result =
+      (problem_category == cuopt::remote::MIP)
+        ? run_mip_solve(deserialized, handle, log_file, job_id, worker_id, &job.cancelled)
+        : run_lp_solve(deserialized, handle, log_file, &job.cancelled);
 
-    publish_result(result, job_id, worker_id);
+    if (result.cancelled || job.cancelled.load(std::memory_order_acquire)) {
+      store_simple_result(job_id, worker_id, RESULT_CANCELLED, "Job was cancelled");
+    } else {
+      publish_result(result, job_id, worker_id);
+    }
     reset_job_slot(job);
 
     SERVER_LOG_INFO("[Worker %d] Completed job: %s (success: %d)",

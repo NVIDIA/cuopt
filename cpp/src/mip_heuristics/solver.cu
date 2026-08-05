@@ -25,6 +25,7 @@
 
 #include <mip_heuristics/feasibility_jump/early_cpufj.cuh>
 #include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
+#include <utilities/solve_limits.hpp>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/cusparse_macros.hpp>
@@ -252,6 +253,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 
   if (timer_.check_time_limit()) {
     CUOPT_LOG_INFO("Time limit reached after presolve");
+    if (cuopt::cancel_flag_set(context.settings.cancel_requested)) { sol.set_cancelled(); }
     context.stats.total_solve_time = timer_.elapsed_time();
     context.problem_ptr->post_process_solution(sol);
     return sol;
@@ -261,10 +263,11 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   if (run_presolve && context.problem_ptr->n_integer_vars == 0) {
     CUOPT_LOG_INFO("Problem reduced to a LP, running concurrent LP");
     pdlp_solver_settings_t<i_t, f_t> settings{};
-    settings.time_limit = timer_.remaining_time();
-    auto lp_timer       = timer_t(settings.time_limit);
-    settings.method     = method_t::Concurrent;
-    settings.presolver  = presolver_t::None;
+    settings.time_limit       = timer_.remaining_time();
+    settings.cancel_requested = context.settings.cancel_requested;
+    auto lp_timer             = timer_t(settings.time_limit, context.settings.cancel_requested);
+    settings.method           = method_t::Concurrent;
+    settings.presolver        = presolver_t::None;
 
     auto opt_sol = solve_lp_with_method<i_t, f_t>(*context.problem_ptr, settings, lp_timer);
 
@@ -346,6 +349,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 
     // Fill in the settings for branch and bound
     branch_and_bound_settings.time_limit           = timer_.get_time_limit();
+    branch_and_bound_settings.cancel_requested     = context.settings.cancel_requested;
     branch_and_bound_settings.node_limit           = context.settings.node_limit;
     branch_and_bound_settings.num_threads          = std::max(num_threads - 1, 1);
     branch_and_bound_settings.print_presolve_stats = false;
@@ -477,6 +481,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 
     if (timer_.check_time_limit()) {
       CUOPT_LOG_INFO("Time limit reached during B&B setup");
+      if (cuopt::cancel_flag_set(context.settings.cancel_requested)) { sol.set_cancelled(); }
       context.stats.total_solve_time = timer_.elapsed_time();
       context.problem_ptr->post_process_solution(sol);
       return sol;
@@ -497,6 +502,14 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     sol                           = dm.run_solver();
   }  // implicit barrier for all tasks created in B&B and heuristics
 
+  const bool cancel_requested = cuopt::cancel_flag_set(context.settings.cancel_requested) ||
+                                branch_and_bound_status == mip::mip_status_t::CANCELLED;
+  if (cancel_requested) {
+    context.preempt_heuristic_solver_.store(true, std::memory_order_release);
+    dm.population.preempt_heuristic_solver();
+    sol.set_cancelled();
+  }
+
   if (!context.settings.heuristics_only && branch_and_bound->has_solver_space_incumbent()) {
     solution_t<i_t, f_t> branch_and_bound_sol(*context.problem_ptr);
     branch_and_bound_sol.copy_new_assignment(branch_and_bound_solution.x);
@@ -505,6 +518,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     if (branch_and_bound_sol.get_feasible() &&
         (!sol.get_feasible() || branch_and_bound_sol.get_objective() < sol.get_objective())) {
       sol = std::move(branch_and_bound_sol);
+      if (cancel_requested) { sol.set_cancelled(); }
     }
   }
 
@@ -527,6 +541,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   if (!is_feasible.value(sol.handle_ptr->get_stream())) {
     CUOPT_LOG_ERROR(
       "Solution is not feasible due to variable bounds, returning infeasible solution!");
+    if (cancel_requested) { sol.set_cancelled(); }
     context.stats.total_solve_time = timer_.elapsed_time();
     context.problem_ptr->post_process_solution(sol);
     return sol;

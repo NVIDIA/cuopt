@@ -18,3 +18,6 @@ ConfigureTest(DOC_EXAMPLE_TEST
 ConfigureTest(HEURISTICS_HYPER_PARAMS_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/heuristics_hyper_params_test.cu
     LABELS numopt)
+ConfigureTest(COOPERATIVE_CANCEL_TEST
+    ${CMAKE_CURRENT_SOURCE_DIR}/cooperative_cancel_test.cu
+    LABELS numopt)

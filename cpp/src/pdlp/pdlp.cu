@@ -24,6 +24,7 @@
 
 #include <utilities/copy_helpers.hpp>
 #include <utilities/macros.cuh>
+#include <utilities/solve_limits.hpp>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/cusparse_macros.hpp>
@@ -614,12 +615,17 @@ template <typename i_t, typename f_t>
 std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>::check_limits(
   const timer_t& timer)
 {
+  // Cancel exits the same way as the time limit; solve_lp / run_concurrent remap the
+  // final status to Cancelled.
+  const bool cancelled = cuopt::cancel_flag_set(settings_.cancel_requested);
+
   // Check for time limit
-  if (time_limit_reached(timer)) {
+  if (cancelled || time_limit_reached(timer)) {
     if (settings_.save_best_primal_so_far) {
 #ifdef PDLP_VERBOSE_MODE
       RAFT_CUDA_TRY(cudaDeviceSynchronize());
-      std::cout << "Time Limit reached, returning best primal so far" << std::endl;
+      std::cout << (cancelled ? "Cancelled" : "Time Limit reached")
+                << ", returning best primal so far" << std::endl;
 #endif
       return std::move(best_primal_solution_so_far);
     }
@@ -630,7 +636,8 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
 
 #ifdef PDLP_VERBOSE_MODE
     RAFT_CUDA_TRY(cudaDeviceSynchronize());
-    std::cout << "Time Limit reached, returning current solution" << std::endl;
+    std::cout << (cancelled ? "Cancelled" : "Time Limit reached") << ", returning current solution"
+              << std::endl;
 #endif
     return current_termination_strategy_.fill_return_problem_solution(
       internal_solver_iterations_,

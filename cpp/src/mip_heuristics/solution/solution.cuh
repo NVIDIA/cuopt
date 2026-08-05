@@ -69,6 +69,9 @@ class solution_t {
   bool get_problem_fully_reduced();
   // sets the is_problem_fully_reduced flag to 1
   void set_problem_fully_reduced();
+  // Mark that cooperative cancel requested early exit (surfaces as Cancelled).
+  void set_cancelled();
+  bool get_cancelled() const;
   // computes the number of integral variables that have integral value
   i_t compute_number_of_integers();
   // computes the l2 residual value from the excess values
@@ -143,6 +146,7 @@ class solution_t {
   f_t h_infeasibility_cost = 0.;
   bool is_feasible         = false;
   bool is_problem_fully_reduced{false};
+  bool cancelled_{false};
   bool is_scaled_{false};
   bool post_process_completed{false};
   lp_state_t<i_t, f_t> lp_state;

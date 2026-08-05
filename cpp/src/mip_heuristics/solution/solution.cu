@@ -75,6 +75,7 @@ solution_t<i_t, f_t>::solution_t(const solution_t<i_t, f_t>& other)
     h_infeasibility_cost(other.h_infeasibility_cost),
     is_feasible(other.is_feasible),
     is_problem_fully_reduced(other.is_problem_fully_reduced),
+    cancelled_(other.cancelled_),
     is_scaled_(other.is_scaled_),
     post_process_completed(other.post_process_completed),
     lp_state(other.lp_state)
@@ -104,6 +105,7 @@ void solution_t<i_t, f_t>::copy_from(const solution_t<i_t, f_t>& other_sol)
              handle_ptr->get_stream());
   is_feasible              = other_sol.is_feasible;
   is_problem_fully_reduced = other_sol.is_problem_fully_reduced;
+  cancelled_               = other_sol.cancelled_;
   is_scaled_               = other_sol.is_scaled_;
   post_process_completed   = other_sol.post_process_completed;
   expand_device_copy(
@@ -202,6 +204,18 @@ template <typename i_t, typename f_t>
 void solution_t<i_t, f_t>::set_problem_fully_reduced()
 {
   is_problem_fully_reduced = true;
+}
+
+template <typename i_t, typename f_t>
+void solution_t<i_t, f_t>::set_cancelled()
+{
+  cancelled_ = true;
+}
+
+template <typename i_t, typename f_t>
+bool solution_t<i_t, f_t>::get_cancelled() const
+{
+  return cancelled_;
 }
 
 template <typename i_t, typename f_t>
@@ -623,6 +637,7 @@ cuopt::mathematical_optimization::mip_solution_t<i_t, f_t> solution_t<i_t, f_t>:
     auto term_reason =
       not_optimal ? mip_termination_status_t::FeasibleFound : mip_termination_status_t::Optimal;
     if (is_problem_fully_reduced) { term_reason = mip_termination_status_t::Optimal; }
+    if (cancelled_) { term_reason = mip_termination_status_t::Cancelled; }
     auto sol =
       cuopt::mathematical_optimization::mip_solution_t<i_t, f_t>(std::move(assignment),
                                                                  problem_ptr->var_names,
@@ -636,11 +651,14 @@ cuopt::mathematical_optimization::mip_solution_t<i_t, f_t> solution_t<i_t, f_t>:
     if (log_stats) { sol.log_detailed_summary(); }
     return sol;
   } else {
+    mip_termination_status_t term_reason = mip_termination_status_t::TimeLimit;
+    if (is_problem_fully_reduced) {
+      term_reason = mip_termination_status_t::Infeasible;
+    } else if (cancelled_) {
+      term_reason = mip_termination_status_t::Cancelled;
+    }
     return cuopt::mathematical_optimization::mip_solution_t<i_t, f_t>{
-      is_problem_fully_reduced ? mip_termination_status_t::Infeasible
-                               : mip_termination_status_t::TimeLimit,
-      stats,
-      handle_ptr->get_stream()};
+      term_reason, stats, handle_ptr->get_stream()};
   }
 }
 

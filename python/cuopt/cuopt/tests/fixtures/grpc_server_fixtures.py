@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 """
@@ -35,6 +35,7 @@ GRPC_PORT_OFFSET_CLI = 700
 GRPC_PORT_OFFSET_CLIENT = 800
 GRPC_PORT_OFFSET_TLS = 850
 GRPC_PORT_OFFSET_MTLS = 900
+GRPC_PORT_OFFSET_COOP_CANCEL = 950
 
 
 def find_grpc_server():
@@ -265,23 +266,30 @@ def start_tls_grpc_server(port_offset, cert_dir, require_client_cert=False):
     return proc, port
 
 
-def start_grpc_server(port_offset):
-    """Locate the server, start it on BASE + port_offset, return (proc, client_env)."""
+def start_grpc_server(port_offset, server_log_path=None, workers=1):
+    """Locate the server, start it on BASE + port_offset, return (proc, client_env).
+
+    When ``server_log_path`` is set, pass ``--server-log`` so tests can assert
+    on cooperative-cancel / worker-restart lines.
+    """
     server_bin = find_grpc_server()
     if server_bin is None:
         pytest.skip("cuopt_grpc_server not found")
 
     port = int(os.environ.get("CUOPT_TEST_PORT_BASE", "18000")) + port_offset
     client_env = client_remote_env(port)
+    cmd = [
+        server_bin,
+        "--port",
+        str(port),
+        "--workers",
+        str(workers),
+        "--log-to-console",
+    ]
+    if server_log_path is not None:
+        cmd.extend(["--server-log", str(server_log_path)])
     proc = spawn_server(
-        [
-            server_bin,
-            "--port",
-            str(port),
-            "--workers",
-            "1",
-            "--log-to-console",
-        ],
+        cmd,
         env=server_env(),
     )
     time.sleep(0.5)

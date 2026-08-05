@@ -33,7 +33,8 @@ enum class lp_status_t {
   CUTOFF                  = 7,
   CONCURRENT_LIMIT        = 8,
   WORK_LIMIT              = 9,
-  UNSET                   = 10
+  UNSET                   = 10,
+  CANCELLED               = 11
 };
 
 static std::string lp_status_to_string(lp_status_t status)
@@ -50,6 +51,7 @@ static std::string lp_status_to_string(lp_status_t status)
     case lp_status_t::CONCURRENT_LIMIT: return "CONCURRENT_LIMIT";
     case lp_status_t::WORK_LIMIT: return "WORK_LIMIT";
     case lp_status_t::UNSET: return "UNSET";
+    case lp_status_t::CANCELLED: return "CANCELLED";
   }
   return "UNKNOWN";
 }

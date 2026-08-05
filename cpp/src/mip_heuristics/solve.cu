@@ -28,6 +28,7 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/logger.hpp>
 #include <utilities/seed_generator.cuh>
+#include <utilities/solve_limits.hpp>
 #include <utilities/version_info.hpp>
 
 #include <cuopt/mathematical_optimization/backend_selection.hpp>
@@ -63,6 +64,7 @@
 #include <cuda_profiler_api.h>
 #include <omp.h>
 
+#include <atomic>
 #include <cmath>
 #include <sstream>
 
@@ -239,6 +241,7 @@ mip_solution_t<i_t, f_t> run_mip_solver(
       auto stats                 = solver.get_solver_stats();
       stats.total_solve_time     = timer.elapsed_time();
       sol.post_process_completed = true;
+      if (cuopt::cancel_flag_set(settings.cancel_requested)) { sol.set_cancelled(); }
       return sol.get_solution(false, stats, false);
     }
 
@@ -291,8 +294,10 @@ mip_solution_t<i_t, f_t> run_mip_solver(
                                     user_assignment,
                                     no_bound);
         };
-      early_cpufj = std::make_unique<mip::early_cpufj_t<i_t, f_t>>(
-        *problem.original_problem_ptr, settings.get_tolerances(), incumbent_callback);
+      early_cpufj = std::make_unique<mip::early_cpufj_t<i_t, f_t>>(*problem.original_problem_ptr,
+                                                                   settings.get_tolerances(),
+                                                                   incumbent_callback,
+                                                                   settings.cancel_requested);
       // Convert initial_upper_bound from user-space to the CPUFJ's solver-space (papilo-presolved).
       // problem.get_solver_obj_from_user_obj uses the papilo offset/scale (matching the CPUFJ).
       if (std::isfinite(initial_upper_bound)) {
@@ -373,7 +378,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
     if (settings.seed >= 0) { cuopt::seed_generator::set_seed(settings.seed); }
 
     raft::common::nvtx::range fun_scope("Running solver");
-    auto timer = timer_t(time_limit);
+    auto timer = timer_t(time_limit, settings.cancel_requested);
 
     problem_checking_t<i_t, f_t>::check_problem_representation(op_problem);
     problem_checking_t<i_t, f_t>::check_initial_solution_representation(op_problem, settings);
@@ -546,7 +551,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
 
       // Start early CPUFJ on original problem (will restart on presolved problem after Papilo)
       early_cpufj = std::make_unique<mip::early_cpufj_t<i_t, f_t>>(
-        op_problem, settings.get_tolerances(), early_fj_callback);
+        op_problem, settings.get_tolerances(), early_fj_callback, settings.cancel_requested);
       early_cpufj->start();
       CUOPT_LOG_DEBUG("Started early CPUFJ on original problem");
 
@@ -653,6 +658,16 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
       CUOPT_LOG_INFO("Writing presolved problem to file: %s", settings.presolve_file.c_str());
       presolve_result_opt->reduced_problem.write_to_mps(settings.presolve_file);
     }
+
+    if (cuopt::cancel_flag_set(settings.cancel_requested)) {
+      CUOPT_LOG_INFO("Solve cancelled during or after presolve");
+      solver_stats_t<i_t, f_t> stats{};
+      stats.total_solve_time = timer.elapsed_time();
+      stats.presolve_time    = presolve_time;
+      return mip_solution_t<i_t, f_t>(
+        mip_termination_status_t::Cancelled, stats, op_problem.get_handle_ptr()->get_stream());
+    }
+
     // early_best_user_obj is in user-space.
     // run_mip_solver stores it in context.initial_upper_bound and converts to target spaces as
     // needed.
@@ -668,7 +683,8 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
     if (run_presolve) {
       auto status_to_skip = sol.get_termination_status() == mip_termination_status_t::TimeLimit ||
                             sol.get_termination_status() == mip_termination_status_t::WorkLimit ||
-                            sol.get_termination_status() == mip_termination_status_t::Infeasible;
+                            sol.get_termination_status() == mip_termination_status_t::Infeasible ||
+                            sol.get_termination_status() == mip_termination_status_t::Cancelled;
       auto primal_solution =
         cuopt::device_copy(sol.get_solution(), op_problem.get_handle_ptr()->get_stream());
       rmm::device_uvector<f_t> dual_solution(0, op_problem.get_handle_ptr()->get_stream());
@@ -782,6 +798,14 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
     if (settings.sol_file != "") {
       CUOPT_LOG_INFO("Writing solution to file %s", settings.sol_file.c_str());
       sol.write_to_sol_file(settings.sol_file, op_problem.get_handle_ptr()->get_stream());
+    }
+
+    // Cooperative cancel wins over whatever status the solver settled on
+    // (TimeLimit, FeasibleFound, etc.): callers that set cancel_requested expect
+    // Cancelled so they can distinguish cancel from a natural early exit.
+    // Keep the existing solution/stats; only remap the termination status.
+    if (cuopt::cancel_flag_set(settings.cancel_requested)) {
+      sol.set_termination_status(mip_termination_status_t::Cancelled);
     }
 
     return sol;

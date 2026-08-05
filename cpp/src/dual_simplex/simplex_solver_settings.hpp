@@ -11,7 +11,9 @@
 #include <cuopt/mathematical_optimization/mip/submip_hyper_params.hpp>
 
 #include <dual_simplex/logger.hpp>
+#include <math_optimization/tic_toc.hpp>
 #include <math_optimization/types.hpp>
+#include <utilities/solve_limits.hpp>
 
 #include <omp.h>
 #include <algorithm>
@@ -19,6 +21,7 @@
 #include <cmath>
 #include <functional>
 #include <limits>
+#include <optional>
 #include <vector>
 
 namespace cuopt::mathematical_optimization {
@@ -120,6 +123,28 @@ struct simplex_solver_settings_t {
   void enable_log_to_file() { log.enable_log_to_file(); }
   void set_log_filename(const std::string& log_filename) { log.set_log_file(log_filename); }
   void close_log_file() { log.close_log_file(); }
+
+  // Unified time / concurrent / cancel / optional iteration poll (tic/toc style).
+  cuopt::solve_limit_reason_t check_solve_limits(
+    double start_time, std::optional<std::int64_t> iterations = std::nullopt) const
+  {
+    return cuopt::check_solve_limits(
+      cuopt::mathematical_optimization::toc(start_time),
+      time_limit,
+      cancel_requested,
+      concurrent_halt,
+      iterations,
+      iterations.has_value()
+        ? std::optional<std::int64_t>{static_cast<std::int64_t>(iteration_limit)}
+        : std::nullopt);
+  }
+
+  /** True if cooperative cancel or concurrent halt was requested (ignores time). */
+  bool cancel_or_halt_requested() const noexcept
+  {
+    return cuopt::cancel_or_halt_requested(cancel_requested, concurrent_halt);
+  }
+
   i_t iteration_limit;
   i_t node_limit;
   f_t time_limit;
@@ -238,6 +263,8 @@ struct simplex_solver_settings_t {
   mutable logger_t log;
   std::atomic<int>* concurrent_halt;  // if nullptr ignored, if !nullptr, 0 if solver should
                                       // continue, 1 if solver should halt
+  // Optional cooperative cancel (level-triggered). Non-owning.
+  std::atomic<bool>* cancel_requested{nullptr};
   // Optional non-owning pointer to run-level benchmark stats.
   benchmark_info_t* benchmark_info_ptr = nullptr;
 };

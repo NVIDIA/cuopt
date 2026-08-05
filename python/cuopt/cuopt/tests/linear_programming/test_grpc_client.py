@@ -2,7 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import os
+import re
+import tempfile
 import time
+from pathlib import Path
 
 import pytest
 
@@ -18,7 +21,12 @@ from cuopt.linear_programming.internals import GetSolutionCallback
 from cuopt.linear_programming.problem import INTEGER, MAXIMIZE, Problem
 from cuopt.linear_programming.solver.solver_parameters import CUOPT_TIME_LIMIT
 
-from grpc_server_fixtures import GRPC_PORT_OFFSET_CLIENT
+from grpc_server_fixtures import (
+    GRPC_PORT_OFFSET_CLIENT,
+    GRPC_PORT_OFFSET_COOP_CANCEL,
+    start_grpc_server,
+    stop_grpc_server,
+)
 
 RAPIDS_DATASET_ROOT_DIR = os.getenv("RAPIDS_DATASET_ROOT_DIR")
 if RAPIDS_DATASET_ROOT_DIR is None:
@@ -26,9 +34,25 @@ if RAPIDS_DATASET_ROOT_DIR is None:
     RAPIDS_DATASET_ROOT_DIR = os.path.join(RAPIDS_DATASET_ROOT_DIR, "datasets")
 
 _SWATH1_MPS = os.path.join(RAPIDS_DATASET_ROOT_DIR, "mip", "swath1.mps")
+_SEYMOUR1_MPS = os.path.join(RAPIDS_DATASET_ROOT_DIR, "mip", "seymour1.mps")
 
 _DEMO_LP_NAMES = ["x", "y"]
 _MIP_NAMES = ["x", "y"]
+
+_CANCEL_COOP_RE = re.compile(
+    r"Cancelling running job\s+(\S+)\s+\(cooperative cancel; worker\s+(\d+)\)"
+)
+_CANCEL_KILL_RE = re.compile(
+    r"Cancelling running job\s+(\S+)\s+\(killing worker\s+(\d+)\)"
+)
+_CANCEL_FALLBACK_KILL_RE = re.compile(
+    r"Job\s+(\S+)\s+still running after cooperative cancel grace;.*"
+    r"SIGKILL to worker\s+(\d+)",
+    re.DOTALL,
+)
+_RESTARTED_WORKER_RE = re.compile(
+    r"Restarted worker\s+(\d+)\s+with PID\s+(\d+)"
+)
 
 
 def _demo_lp_problem():
@@ -55,6 +79,18 @@ def _poll_until_complete(
     return client.status(job_id)
 
 
+def _wait_until_processing(client, job_id, timeout=30.0):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        status = client.status(job_id)
+        if status == JobStatus.PROCESSING:
+            return status
+        if status not in (JobStatus.QUEUED, JobStatus.PROCESSING):
+            return status
+        time.sleep(0.05)
+    return client.status(job_id)
+
+
 def _infeasible_lp_problem():
     problem = Problem("grpc_infeasible")
     x = problem.addVariable(lb=0.0, name="x")
@@ -73,6 +109,25 @@ def _assert_demo_lp_solution(client):
         assert solution.get_primal_objective() == pytest.approx(0.36, rel=1e-3)
     finally:
         client.delete(job_id)
+
+
+def _read_log(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+def _wait_log_match(path: Path, pattern: re.Pattern, timeout: float = 30.0):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        text = _read_log(path)
+        match = pattern.search(text)
+        if match is not None:
+            return match, text
+        time.sleep(0.1)
+    text = _read_log(path)
+    return pattern.search(text), text
 
 
 class TestTlsConfig:
@@ -224,18 +279,20 @@ class TestGrpcClient:
 
         problem = Read(_SWATH1_MPS)
         settings = SolverSettings()
-        settings.set_parameter(CUOPT_TIME_LIMIT, 10)
+        settings.set_parameter(CUOPT_TIME_LIMIT, 120)
 
         client = Client("localhost", grpc_server)
         job_id = client.submit(problem, settings)
 
-        status = client.status(job_id)
-        if status not in (JobStatus.QUEUED, JobStatus.PROCESSING):
+        status = _wait_until_processing(client, job_id, timeout=30.0)
+        if status != JobStatus.PROCESSING:
             client.delete(job_id)
-            pytest.skip("Job completed before cancellation could be observed")
+            pytest.skip(
+                f"Job never reached PROCESSING before cancel (status={status})"
+            )
 
         client.cancel(job_id)
-        assert client.wait(job_id, timeout=30) == JobStatus.CANCELLED
+        assert client.wait(job_id, timeout=90) == JobStatus.CANCELLED
         with pytest.raises(GrpcError):
             client.result(job_id)
         client.delete(job_id)
@@ -332,3 +389,78 @@ class TestGrpcClientTls:
                 mtls_server_info["port"],
                 tls=TlsConfig(os.path.join(cert_dir, "ca.crt")),
             )
+
+
+@pytest.mark.xdist_group(name="grpc_coop_cancel")
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
+class TestGrpcCooperativeCancel:
+    """Cancel must unwind cooperatively without killing/restarting the worker."""
+
+    def test_cancel_is_cooperative_without_worker_restart(self):
+        mps = _SEYMOUR1_MPS if os.path.isfile(_SEYMOUR1_MPS) else _SWATH1_MPS
+        if not os.path.isfile(mps):
+            pytest.skip(f"dataset not found: {mps}")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            server_log = Path(tmp) / "cuopt_grpc_server.log"
+            server_log.write_text("")
+            proc = None
+            try:
+                proc, client_env = start_grpc_server(
+                    GRPC_PORT_OFFSET_COOP_CANCEL,
+                    server_log_path=server_log,
+                    workers=1,
+                )
+                port = int(client_env["CUOPT_REMOTE_PORT"])
+                client = Client("localhost", port)
+
+                settings = SolverSettings()
+                settings.set_parameter(CUOPT_TIME_LIMIT, 300)
+                job_id = client.submit(Read(mps), settings)
+
+                status = _wait_until_processing(client, job_id, timeout=45.0)
+                if status != JobStatus.PROCESSING:
+                    client.delete(job_id)
+                    pytest.skip(
+                        f"Job never reached PROCESSING (status={status})"
+                    )
+
+                # Snapshot log size before cancel so post-cancel restart lines
+                # are attributable to this trial.
+                pre_cancel_log = _read_log(server_log)
+                client.cancel(job_id)
+                assert client.wait(job_id, timeout=120) == JobStatus.CANCELLED
+                with pytest.raises(GrpcError):
+                    client.result(job_id)
+
+                coop_match, log_text = _wait_log_match(
+                    server_log, _CANCEL_COOP_RE, timeout=15.0
+                )
+                assert coop_match is not None, (
+                    "expected cooperative cancel log line; "
+                    f"log tail:\n{log_text[-2000:]}"
+                )
+                assert coop_match.group(1) == job_id
+
+                post_cancel = log_text[len(pre_cancel_log) :]
+                assert _CANCEL_KILL_RE.search(post_cancel) is None, (
+                    "legacy immediate-kill cancel path used"
+                )
+                assert _CANCEL_FALLBACK_KILL_RE.search(post_cancel) is None, (
+                    "cooperative cancel fell back to SIGKILL"
+                )
+                assert _RESTARTED_WORKER_RE.search(post_cancel) is None, (
+                    "worker restarted after cancel"
+                )
+
+                # Same worker must still accept work without a restart.
+                _assert_demo_lp_solution(client)
+                health_log = _read_log(server_log)[len(pre_cancel_log) :]
+                assert _RESTARTED_WORKER_RE.search(health_log) is None, (
+                    "worker restarted during post-cancel health solve"
+                )
+
+                client.delete(job_id)
+            finally:
+                if proc is not None:
+                    stop_grpc_server(proc)

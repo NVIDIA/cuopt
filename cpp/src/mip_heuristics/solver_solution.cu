@@ -128,6 +128,12 @@ mip_termination_status_t mip_solution_t<i_t, f_t>::get_termination_status() cons
 }
 
 template <typename i_t, typename f_t>
+void mip_solution_t<i_t, f_t>::set_termination_status(mip_termination_status_t termination_status)
+{
+  termination_status_ = termination_status;
+}
+
+template <typename i_t, typename f_t>
 std::string mip_solution_t<i_t, f_t>::get_termination_status_string(
   mip_termination_status_t termination_status)
 {
@@ -139,8 +145,9 @@ std::string mip_solution_t<i_t, f_t>::get_termination_status_string(
     case mip_termination_status_t::TimeLimit: return "TimeLimit";
     case mip_termination_status_t::WorkLimit: return "WorkLimit";
     case mip_termination_status_t::Unbounded: return "Unbounded";
-    case mip_termination_status_t::UnboundedOrInfeasible:
-      return "UnboundedOrInfeasible";
+    case mip_termination_status_t::UnboundedOrInfeasible: return "UnboundedOrInfeasible";
+    case mip_termination_status_t::Cancelled:
+      return "Cancelled";
       // Do not implement default case to trigger compile time error if new enum is added
   }
   return std::string();
@@ -257,6 +264,8 @@ void mip_solution_t<i_t, f_t>::log_detailed_summary() const
     case mip_termination_status_t::TimeLimit:
       CUOPT_LOG_INFO("No feasible solution was found within the time limit.\n");
       break;
+
+    case mip_termination_status_t::Cancelled: CUOPT_LOG_INFO("Solve was cancelled.\n"); break;
 
     case mip_termination_status_t::WorkLimit:
       CUOPT_LOG_INFO("No feasible solution was found within the work limit.\n");

@@ -607,7 +607,10 @@ i_t dual_push(const lp_problem_t<i_t, f_t>& lp,
       settings.log.printf(
         "%d of %d dual pushes in %.2fs\n", num_pushes, total_superbasics, toc(start_time));
     }
-    if (toc(start_time) > settings.time_limit) {
+    if (cuopt::solve_limit_reached(cuopt::mathematical_optimization::toc(start_time),
+                                   settings.time_limit,
+                                   settings.cancel_requested,
+                                   nullptr)) {
       settings.log.printf("Crossover time exceeded\n");
       return TIME_LIMIT_RETURN;
     }
@@ -984,7 +987,10 @@ i_t primal_push(const lp_problem_t<i_t, f_t>& lp,
       last_print_time = tic();
     }
 
-    if (toc(start_time) > settings.time_limit) {
+    if (cuopt::solve_limit_reached(cuopt::mathematical_optimization::toc(start_time),
+                                   settings.time_limit,
+                                   settings.cancel_requested,
+                                   nullptr)) {
       settings.log.printf("Crossover time limit exceeded\n");
       return TIME_LIMIT_RETURN;
     }
@@ -1363,7 +1369,10 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
   }
   reorder_basic_list(q, basic_list);
 
-  if (toc(start_time) > settings.time_limit) {
+  if (cuopt::solve_limit_reached(cuopt::mathematical_optimization::toc(start_time),
+                                 settings.time_limit,
+                                 settings.cancel_requested,
+                                 nullptr)) {
     settings.log.printf("Time limit exceeded\n");
     return crossover_status_t::TIME_LIMIT;
   }
@@ -1425,7 +1434,10 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
     std::vector<f_t> edge_norms;
     dual_status_t status =
       dual_phase2(2, 0, start_time, lp, settings, vstatus, solution, dual_iter, edge_norms);
-    if (toc(start_time) > settings.time_limit) {
+    if (cuopt::solve_limit_reached(cuopt::mathematical_optimization::toc(start_time),
+                                   settings.time_limit,
+                                   settings.cancel_requested,
+                                   nullptr)) {
       settings.log.printf("Time limit exceeded\n");
       return crossover_status_t::TIME_LIMIT;
     }
@@ -1587,7 +1599,10 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
         std::vector<f_t> edge_norms;
         status = dual_phase2(
           2, iter == 0 ? 1 : 0, start_time, lp, settings, vstatus, solution, iter, edge_norms);
-        if (toc(start_time) > settings.time_limit) {
+        if (cuopt::solve_limit_reached(cuopt::mathematical_optimization::toc(start_time),
+                                       settings.time_limit,
+                                       settings.cancel_requested,
+                                       nullptr)) {
           settings.log.printf("Time limit exceeded\n");
           return crossover_status_t::TIME_LIMIT;
         }

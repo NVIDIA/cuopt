@@ -34,6 +34,7 @@ enum class mip_termination_status_t : int8_t {
   TimeLimit             = CUOPT_TERMINATION_STATUS_TIME_LIMIT,
   WorkLimit             = CUOPT_TERMINATION_STATUS_WORK_LIMIT,
   UnboundedOrInfeasible = CUOPT_TERMINATION_STATUS_UNBOUNDED_OR_INFEASIBLE,
+  Cancelled             = CUOPT_TERMINATION_STATUS_CANCELLED,
 };
 
 template <typename i_t, typename f_t>
@@ -65,6 +66,7 @@ class mip_solution_t : public base_solution_t {
   double get_total_solve_time() const;
   double get_presolve_time() const;
   mip_termination_status_t get_termination_status() const;
+  void set_termination_status(mip_termination_status_t termination_status);
   static std::string get_termination_status_string(mip_termination_status_t termination_status);
   std::string get_termination_status_string() const;
   const cuopt::logic_error& get_error_status() const;

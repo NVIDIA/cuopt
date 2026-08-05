@@ -76,6 +76,7 @@ class fp_recombiner_t : public recombiner_t<i_t, f_t> {
       lp_settings.return_first_feasible = true;
       lp_settings.save_state            = true;
       lp_settings.check_infeasibility   = true;
+      lp_settings.cancel_requested      = this->context.settings.cancel_requested;
       // run lp with infeasibility detection on
       auto lp_response =
         get_relaxed_lp_solution(fixed_problem, fixed_assignment, offspring.lp_state, lp_settings);
@@ -96,7 +97,7 @@ class fp_recombiner_t : public recombiner_t<i_t, f_t> {
       offspring.handle_ptr->sync_stream();
       offspring.assignment = std::move(fixed_assignment);
       cuopt_func_call(offspring.test_variable_bounds(false));
-      timer_t timer(fp_recombiner_config_t::fp_time_limit);
+      timer_t timer(fp_recombiner_config_t::fp_time_limit, this->context.settings.cancel_requested);
       fp.timer = timer;
       fp.cycle_queue.reset(offspring);
       fp.reset();

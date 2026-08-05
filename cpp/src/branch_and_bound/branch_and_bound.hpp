@@ -55,7 +55,8 @@ enum class mip_status_t {
   NUMERICAL       = 6,  // The solver encountered a numerical error
   UNSET           = 7,  // The status is not set
   WORK_LIMIT      = 8,  // The solver reached a deterministic work limit
-  SUBMIP_HALT     = 9   // Halt the solver
+  SUBMIP_HALT     = 9,  // Halt the solver
+  CANCELLED       = 10  // Cooperative cancel requested
 };
 
 inline std::string mip_status_to_string(mip_status_t status)
@@ -71,6 +72,7 @@ inline std::string mip_status_to_string(mip_status_t status)
     case mip_status_t::UNSET: return "UNSET";
     case mip_status_t::WORK_LIMIT: return "WORK_LIMIT";
     case mip_status_t::SUBMIP_HALT: return "SUBMIP_HALT";
+    case mip_status_t::CANCELLED: return "CANCELLED";
   }
   return "UNKNOWN";
 }
