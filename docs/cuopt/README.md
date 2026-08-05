@@ -55,15 +55,10 @@ that file.
 **Keep that list narrow, and only add a term once a real heading needs it.**
 Exceptions match whole words, and a single match makes Vale skip the *entire*
 heading — so a needless entry silently disables the check for every heading
-that mentions it.
-
-That failure mode is guarded by a self-test:
+that mentions it, with no visible symptom. After editing the list, confirm the
+rule still catches a violation:
 
 ```bash
-./ci/utils/check_vale_rule.sh
+printf '# T\n\n## Process model\n' > /tmp/vale-check.md
+vale --config=.vale.ini /tmp/vale-check.md   # must report an error
 ```
-
-It checks the rule against two lists of headings at the top of that script —
-one that must be flagged, one that must pass — so weakening the rule fails
-loudly. It runs as a pre-commit hook whenever `ci/vale/` changes. Add a case to
-those lists when you add an exception.
