@@ -392,6 +392,18 @@ class cut_pool_t {
 template <typename i_t, typename f_t>
 class variable_bounds_t;
 
+template <typename i_t, typename f_t>
+bool generate_mod2_zero_half_cuts(cut_pool_t<i_t, f_t>& cut_pool,
+                                  const simplex::lp_problem_t<i_t, f_t>& lp,
+                                  const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+                                  csr_matrix_t<i_t, f_t>& Arow,
+                                  const std::vector<i_t>& new_slacks,
+                                  const std::vector<simplex::variable_type_t>& var_types,
+                                  const std::vector<f_t>& xstar,
+                                  variable_bounds_t<i_t, f_t>& variable_bounds,
+                                  f_t start_time,
+                                  f_t& work_estimate);
+
 template <typename i_t>
 struct flow_cover_row_t {
   i_t row;
