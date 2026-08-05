@@ -49,4 +49,13 @@ for skill_md in "${SKILLS_DIR}"/*/SKILL.md; do
   echo "  updated $skill_md"
 done
 
+# skills/*/skill-card.md: update the version on the line after "## Skill Version(s):"
+for skill_card in "${SKILLS_DIR}"/*/skill-card.md; do
+  [[ -f "$skill_card" ]] || continue
+  # The version line has the form: "26.08.00 (source: ...) <br>"
+  # Replace only the leading version token, preserving the source annotation.
+  sed -i "s|^[0-9][0-9]\.[0-9][0-9]\.[0-9][0-9]\( (source:.*) <br>\)$|${RELEASE_VERSION}\1|" "$skill_card"
+  echo "  updated $skill_card"
+done
+
 echo "Done. Skills version is now ${RELEASE_VERSION}."
