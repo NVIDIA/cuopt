@@ -858,6 +858,75 @@ double bve_project_batch_gpu(const raft::handle_t& handle,
   return work_units;
 }
 
+// ---- harvest unary-conditioned implications from an exactly projected block ----
+//
+// `feas` is the block's exact existential projection onto its nb boundary columns, so for boundary
+// position j and value a the feasible patterns agreeing with (j == a) describe every completion the
+// block admits. Intersecting them (AND) gives the positions forced to 1 and the complement of their
+// union (OR) gives those forced to 0; the same reasoning with no condition gives unconditional
+// fixings. This is complete for the block's rows, where the probing cache only holds what bound
+// propagation could prove, so these forcings can be strictly stronger. It holds whether or not the
+// block is eventually eliminated, hence the call site harvests before the growth gate can reject.
+//
+// Ids are emitted in the current-problem frame; the caller maps them to original ids.
+template <typename i_t, typename f_t>
+static void bve_extract_forcings(const bve_candidate_t<i_t, f_t>& cand, probe_findings_t<i_t>& out)
+{
+  const i_t nb = cand.blk.nb;
+  cuopt_assert(nb > 0 && nb <= BVE_MAX_BOUNDARY, "boundary width out of range");
+  cuopt_assert((i_t)cand.boundary.size() == nb, "boundary id count disagrees with block width");
+  const uint32_t n_patterns = 1u << nb;
+
+  // Accumulators for condition s = 2*j + a; slot 2*nb holds the unconditional case.
+  constexpr i_t n_slots   = 2 * BVE_MAX_BOUNDARY + 1;
+  const i_t unconditional = 2 * nb;
+  const uint32_t all_ones = n_patterns - 1u;
+  uint32_t and_acc[n_slots];
+  uint32_t or_acc[n_slots];
+  std::fill_n(and_acc, unconditional + 1, all_ones);
+  std::fill_n(or_acc, unconditional + 1, 0u);
+
+  uint32_t n_feasible = 0;
+  for (uint32_t m = 0; m < n_patterns; ++m) {
+    if (!cand.feas[m]) continue;
+    ++n_feasible;
+    and_acc[unconditional] &= m;
+    or_acc[unconditional] |= m;
+    for (i_t j = 0; j < nb; ++j) {
+      const i_t s = 2 * j + ((m >> j) & 1u);
+      and_acc[s] &= m;
+      or_acc[s] |= m;
+    }
+  }
+  // Vacuous accumulators would otherwise read as "every position forced to 1".
+  if (n_feasible == 0u) return;  // block alone is infeasible; left to the bound presolve
+
+  // Positions the block fixes outright. Conditioning on anything would re-derive these, so they are
+  // recorded once here and skipped below. A position outside the mask takes both values among the
+  // feasible patterns, so both of its condition slots are non-empty.
+  const uint32_t fixed_mask = and_acc[unconditional] | (~or_acc[unconditional] & all_ones);
+  for (i_t j = 0; j < nb; ++j) {
+    if (!(fixed_mask & (1u << j))) continue;
+    out.fixings.emplace_back(cand.boundary[j], ((and_acc[unconditional] >> j) & 1u) != 0u);
+  }
+
+  for (i_t j = 0; j < nb; ++j) {
+    if (fixed_mask & (1u << j)) continue;  // condition never binds
+    for (i_t a = 0; a < 2; ++a) {
+      const i_t s = 2 * j + a;
+      for (i_t k = 0; k < nb; ++k) {
+        const uint32_t bit = 1u << k;
+        if (k == j || (fixed_mask & bit)) continue;
+        if (and_acc[s] & bit) {
+          out.forcings.push_back({cand.boundary[j], cand.boundary[k], a != 0, true});
+        } else if (!(or_acc[s] & bit)) {
+          out.forcings.push_back({cand.boundary[j], cand.boundary[k], a != 0, false});
+        }
+      }
+    }
+  }
+}
+
 // ---- production detector: round-based, scope-disjoint, one GPU projection launch per round ----
 //
 // Implication-closure block growth over the probing-cache adjacency: each seed absorbs the
@@ -882,7 +951,8 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
   bve_reducer_t<i_t, f_t>& R,
   const std::vector<std::vector<i_t>>& impl_adj,
   timer_t& timer,
-  double& work_units)
+  double& work_units,
+  probe_findings_t<i_t>* findings)
 {
   auto has_adj  = [&](i_t v) { return v >= 0 && v < (i_t)impl_adj.size() && !impl_adj[v].empty(); };
   auto eligible = [&](i_t w) {
@@ -1030,6 +1100,11 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
     i_t committed = 0;
     for (auto& cand : cands) {
       if (timer.check_time_limit()) break;
+      // Valid for the block's rows regardless of the clause gates below, so harvest before them.
+      if (findings != nullptr) {
+        bve_extract_forcings<i_t, f_t>(cand, *findings);
+        work_units += double(uint32_t(1) << cand.blk.nb) * double(cand.blk.nb);
+      }
       work_units += bve_commit_wall_ops(cand.blk.nb, cand.blk.n_rows + R.margin);
       int64_t commit_ops = 0;
       if (R.commit_projected(cand, &commit_ops)) ++committed;
@@ -1044,7 +1119,8 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
 template <typename i_t, typename f_t>
 std::vector<std::vector<i_t>> bve_build_impl_adj(const probing_cache_t<i_t, f_t>& cache,
                                                  const std::vector<i_t>& reverse_original_ids,
-                                                 i_t n_vars)
+                                                 i_t n_vars,
+                                                 const probe_findings_t<i_t>* extra)
 {
   // original-id -> current column index (or -1 if the column no longer exists)
   auto to_current = [&](i_t original_id) -> i_t {
@@ -1052,17 +1128,25 @@ std::vector<std::vector<i_t>> bve_build_impl_adj(const probing_cache_t<i_t, f_t>
     return reverse_original_ids[original_id];
   };
   std::vector<std::unordered_set<i_t>> adj(n_vars);
+  auto add_edge = [&](i_t original_x, i_t original_y) {
+    const i_t x = to_current(original_x);
+    if (x < 0 || x >= n_vars) return;
+    const i_t y = to_current(original_y);
+    if (y < 0 || y >= n_vars || y == x) return;
+    adj[x].insert(y);
+    adj[y].insert(x);
+  };
   for (const auto& kv : cache.probing_cache) {
-    const i_t x = to_current(kv.first);
-    if (x < 0 || x >= n_vars) continue;
     for (int p = 0; p < 2; ++p) {
-      for (const auto& yb : kv.second[p].var_to_cached_bound_map) {
-        const i_t y = to_current(yb.first);
-        if (y < 0 || y >= n_vars || y == x) continue;
-        adj[x].insert(y);
-        adj[y].insert(x);
-      }
+      for (const auto& yb : kv.second[p].var_to_cached_bound_map)
+        add_edge(kv.first, yb.first);
     }
+  }
+  // Forcings mined from earlier projections. Pairs the cache never held become seed/absorb
+  // candidates, so a later round can grow blocks the first round could not see.
+  if (extra != nullptr) {
+    for (const auto& forcing : extra->forcings)
+      add_edge(forcing.var, forcing.forced_var);
   }
   std::vector<std::vector<i_t>> out(n_vars);
   for (i_t v = 0; v < n_vars; ++v)
@@ -1076,6 +1160,7 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
                         const std::vector<std::vector<i_t>>& impl_adj,
                         timer_t& timer,
                         double& work_units,
+                        probe_findings_t<i_t>* out_findings,
                         i_t Bcap,
                         i_t enumcap,
                         i_t margin)
@@ -1158,9 +1243,35 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
                                   enumcap,
                                   margin);
   t_setup = wall.elapsed_time();
+  probe_findings_t<i_t> detection_findings;
   bve_plan_t<i_t, f_t> plan =
-    bve_detect_closure_batched<i_t, f_t>(*handle, reducer, impl_adj, timer, work_units);
+    bve_detect_closure_batched<i_t, f_t>(*handle,
+                                         reducer,
+                                         impl_adj,
+                                         timer,
+                                         work_units,
+                                         out_findings != nullptr ? &detection_findings : nullptr);
   t_detect = wall.elapsed_time() - t_setup;
+
+  // Projection findings hold for the block's rows whether or not the block was eliminated, so they
+  // are exported before the no-reduction exit; the rejected blocks are often the interesting ones.
+  if (out_findings != nullptr) {
+    auto to_original = [&](i_t column) {
+      cuopt_assert(column >= 0 && column < (i_t)h_vmap.size(), "column outside variable_mapping");
+      return (i_t)h_vmap[column];
+    };
+    out_findings->forcings.reserve(out_findings->forcings.size() +
+                                   detection_findings.forcings.size());
+    for (const auto& forcing : detection_findings.forcings) {
+      out_findings->forcings.push_back({to_original(forcing.var),
+                                        to_original(forcing.forced_var),
+                                        forcing.value,
+                                        forcing.forced_value});
+    }
+    for (const auto& [column, value] : detection_findings.fixings)
+      out_findings->fixings.emplace_back(to_original(column), value);
+  }
+
   if (plan.n_blocks == 0) return false;
 
   // ---- 4. build the reduced forward CSR: keep original rows not removed, append clause rows ----
@@ -1242,11 +1353,15 @@ template int bve_greedy_prime_cover<int>(
   template double bve_project_batch_gpu<int, F_TYPE>(                                         \
     const raft::handle_t&, std::vector<bve_candidate_t<int, F_TYPE>>&, F_TYPE);               \
   template std::vector<std::vector<int>> bve_build_impl_adj<int, F_TYPE>(                     \
-    const probing_cache_t<int, F_TYPE>&, const std::vector<int>&, int);                       \
+    const probing_cache_t<int, F_TYPE>&,                                                      \
+    const std::vector<int>&,                                                                  \
+    int,                                                                                      \
+    const probe_findings_t<int>*);                                                            \
   template bool block_bve_presolve<int, F_TYPE>(problem_t<int, F_TYPE>&,                      \
                                                 const std::vector<std::vector<int>>&,         \
                                                 timer_t&,                                     \
                                                 double&,                                      \
+                                                probe_findings_t<int>*,                       \
                                                 int,                                          \
                                                 int,                                          \
                                                 int)

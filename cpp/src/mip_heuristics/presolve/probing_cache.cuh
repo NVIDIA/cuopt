@@ -66,6 +66,23 @@ struct cache_entry_t {
   std::unordered_map<i_t, cached_bound_t<f_t>> var_to_cached_bound_map;
 };
 
+// A forcing read off an exactly projected block: var == value implies forced_var == forced_value.
+// Complete with respect to the block's own rows, where probing only propagates, so it can be
+// tighter than a cached entry for the same pair. Both ids are in the variable_mapping frame.
+template <typename i_t>
+struct probe_forcing_t {
+  i_t var;
+  i_t forced_var;
+  bool value;
+  bool forced_value;
+};
+
+template <typename i_t>
+struct probe_findings_t {
+  std::vector<probe_forcing_t<i_t>> forcings;
+  std::vector<std::pair<i_t, bool>> fixings;  // var forced to value by its block alone
+};
+
 template <typename i_t, typename f_t>
 class probing_cache_t {
  public:
@@ -87,6 +104,8 @@ class probing_cache_t {
                                      f_t first_probe,
                                      f_t second_probe,
                                      f_t integrality_tolerance);
+  // Intersect block-BVE-derived forcings into the entries that already cover the same variable
+  bool merge_forcings(const std::vector<probe_forcing_t<i_t>>& forcings);
   // add the results of probing cache to secondary CG structure if not already in a gub constraint.
   // use the same activity computation that we will use in BP rounding.
   // use GUB constraints to find fixings in bulk rounding
