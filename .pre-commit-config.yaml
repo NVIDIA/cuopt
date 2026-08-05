@@ -135,6 +135,11 @@ repos:
         language: system
         pass_filenames: false
         files: ^(VERSION|\.claude-plugin/marketplace\.json|\.cursor-plugin/plugin\.json|gemini-extension\.json)$
+      - id: vale
+        name: Vale docs prose lint
+        entry: vale
+        language: system
+        files: ^docs/cuopt/source/.*\.(rst|md)$
       - id: validate-skills
         name: Validate agent skills
         entry: ci/utils/validate_skills.sh

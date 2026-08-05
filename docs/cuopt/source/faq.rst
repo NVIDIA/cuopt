@@ -177,7 +177,7 @@ General FAQ
 
         while openssl x509 -noout -text; do :; done < test.pem.txt
 
-gRPC remote execution (``cuopt_grpc_server``)
+gRPC Remote Execution (``cuopt_grpc_server``)
 -----------------------------------------------
 
 .. dropdown:: Where are log files for the gRPC server / StreamLogs?
