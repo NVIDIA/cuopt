@@ -201,8 +201,12 @@ int run_single_file(const std::string& file_path,
       // Call solve_lp/mip_remote directly so libcuopt_grpc.so is a real DT_NEEDED
       // dependency of this binary rather than an implicit runtime lookup.
       auto* cpu_prob =
-        static_cast<cuopt::mathematical_optimization::cpu_optimization_problem_t<int, double>*>(
+        dynamic_cast<cuopt::mathematical_optimization::cpu_optimization_problem_t<int, double>*>(
           problem_interface.get());
+      if (cpu_prob == nullptr) {
+        CUOPT_LOG_ERROR("Remote execution requires the CPU memory backend.");
+        return -1;
+      }
       if (is_mip) {
         auto& mip_settings = settings.get_mip_settings();
         auto solution = cuopt::mathematical_optimization::solve_mip_remote(*cpu_prob, mip_settings);

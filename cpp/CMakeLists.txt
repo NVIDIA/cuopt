@@ -594,7 +594,12 @@ execute_process(
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         OUTPUT_VARIABLE GIT_COMMIT_HASH
         OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE _git_hash_result
+        ERROR_QUIET
 )
+if(NOT _git_hash_result EQUAL 0 OR GIT_COMMIT_HASH STREQUAL "")
+    set(GIT_COMMIT_HASH "unknown")
+endif()
 message("-- Building with GIT_COMMIT_HASH = '${GIT_COMMIT_HASH}'")
 
 configure_file(
@@ -871,7 +876,21 @@ set(_UMBRELLA_SRC [=[
 // each library in DT_NEEDED.
 extern "C" void cuOptDestroyProblem(void*);   // libcuopt_lp.so
 __attribute__((used)) void (* const _cuopt_lp_anchor)(void*)  = &cuOptDestroyProblem;
+
+namespace cuopt { void print_version_info(int); }   // libcuopt_base.so
+__attribute__((used)) void (* const _cuopt_base_anchor)(int) = &cuopt::print_version_info;
 ]=])
+
+if(NOT SKIP_ROUTING_BUILD)
+    string(APPEND _UMBRELLA_SRC [=[
+#include <cuopt/routing/solve.hpp>
+namespace cuopt::routing {
+__attribute__((used)) assignment_t<int> (* const _cuopt_routing_anchor)(
+  data_model_view_t<int, float> const&, solver_settings_t<int, float> const&) =
+  &solve<int, float>;
+}
+]=])
+endif()
 
 if(NOT SKIP_GRPC_BUILD)
     string(APPEND _UMBRELLA_SRC [=[
@@ -960,6 +979,16 @@ endif()
 if(NOT SKIP_GRPC_BUILD)
     list(APPEND CUOPT_COMPONENT_TARGETS cuopt_grpc)
 endif()
+
+# Export as cuopt::base / cuopt::routing / cuopt::lp / cuopt::grpc, matching the
+# build-tree aliases.
+set(CUOPT_COMPONENT_EXPORT_NAMES "")
+foreach(_component ${CUOPT_COMPONENT_TARGETS})
+    string(REPLACE "cuopt_" "" _export_name "${_component}")
+    set_target_properties(${_component} PROPERTIES EXPORT_NAME ${_export_name})
+    list(APPEND CUOPT_COMPONENT_EXPORT_NAMES ${_export_name})
+endforeach()
+
 install(TARGETS ${CUOPT_COMPONENT_TARGETS}
         DESTINATION ${_LIB_DEST}
         COMPONENT runtime
@@ -1003,7 +1032,7 @@ Umbrella target:   cuopt::cuopt (links all component libs — backward-compatibl
 
 rapids_export(INSTALL cuopt
         EXPORT_SET cuopt-exports
-        GLOBAL_TARGETS cuopt ${CUOPT_COMPONENT_TARGETS}
+        GLOBAL_TARGETS cuopt ${CUOPT_COMPONENT_EXPORT_NAMES}
         NAMESPACE cuopt::
         DOCUMENTATION doc_string
 )
@@ -1012,7 +1041,7 @@ rapids_export(INSTALL cuopt
 # - build export -------------------------------------------------------------------------------
 rapids_export(BUILD cuopt
         EXPORT_SET cuopt-exports
-        GLOBAL_TARGETS cuopt ${CUOPT_COMPONENT_TARGETS}
+        GLOBAL_TARGETS cuopt ${CUOPT_COMPONENT_EXPORT_NAMES}
         NAMESPACE cuopt::
         DOCUMENTATION doc_string
 )
