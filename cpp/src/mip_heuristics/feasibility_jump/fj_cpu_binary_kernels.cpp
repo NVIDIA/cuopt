@@ -247,20 +247,16 @@ int32_t Narrow8MaxImpl()
 // and that tile is still cache-hot. The tabu window is uint16 against int32 scores, so the mask
 // crosses a 2:1 width boundary through PromoteMaskTo.
 void ArgmaxImpl(const int32_t* HWY_RESTRICT var_score,
-                const uint16_t* HWY_RESTRICT flip_until,
                 int32_t n,
-                uint16_t iter_biased,
                 int32_t tile,
                 int32_t* best_var,
                 int32_t* best_score)
 {
   const hn::ScalableTag<int32_t> d;
-  const hn::Rebind<uint16_t, decltype(d)> d16;
   using V = hn::Vec<decltype(d)>;
 
   const int32_t step = (int32_t)hn::Lanes(d);
   const V vmin       = hn::Set(d, fj_bin_score_invalid);
-  const auto viter   = hn::Set(d16, iter_biased);
 
   // Whole vectors only; the remainder is scanned scalar below.
   const int32_t nblk = n - (n % step);
@@ -274,19 +270,14 @@ void ArgmaxImpl(const int32_t* HWY_RESTRICT var_score,
 
     V tile_max = vmin;
     for (int32_t v = t0; v < t1; v += step) {
-      const auto tabu =
-        hn::PromoteMaskTo(d, d16, hn::Lt(viter, hn::LoadU(d16, flip_until + v)));
-      tile_max = hn::Max(tile_max, hn::IfThenElse(tabu, vmin, hn::LoadU(d, var_score + v)));
+      tile_max = hn::Max(tile_max, hn::LoadU(d, var_score + v));
     }
 
     const int32_t peak = hn::ReduceMax(d, tile_max);
     if (peak > bs) {
       const V vpeak = hn::Set(d, peak);
       for (int32_t v = t0; v < t1; v += step) {
-        const auto tabu =
-          hn::PromoteMaskTo(d, d16, hn::Lt(viter, hn::LoadU(d16, flip_until + v)));
-        const V s           = hn::IfThenElse(tabu, vmin, hn::LoadU(d, var_score + v));
-        const intptr_t lane = hn::FindFirstTrue(d, hn::Eq(s, vpeak));
+        const intptr_t lane = hn::FindFirstTrue(d, hn::Eq(hn::LoadU(d, var_score + v), vpeak));
         if (lane >= 0) {
           bv = v + (int32_t)lane;
           break;
@@ -297,7 +288,6 @@ void ArgmaxImpl(const int32_t* HWY_RESTRICT var_score,
   }
 
   for (int32_t v = nblk; v < n; ++v) {
-    if (iter_biased < flip_until[v]) continue;
     if (var_score[v] > bs) {
       bs = var_score[v];
       bv = v;
@@ -435,14 +425,12 @@ template void fj_bin_patch_row<int16_t>(fj_bin_patch_width_t,
                                         int32_t);
 
 void fj_bin_argmax(const int32_t* var_score,
-                   const uint16_t* flip_until,
                    int32_t n,
-                   uint16_t iter_biased,
                    int32_t tile,
                    int32_t& best_var,
                    int32_t& best_score)
 {
-  fj_bin_argmax_fn(var_score, flip_until, n, iter_biased, tile, &best_var, &best_score);
+  fj_bin_argmax_fn(var_score, n, tile, &best_var, &best_score);
 }
 
 }  // namespace cuopt::mathematical_optimization::mip

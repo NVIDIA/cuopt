@@ -56,11 +56,25 @@ struct fj_bin_tabu_t {
   std::vector<int32_t> last_flip;
   int32_t base{0};
 
+  // Ring of the last ring_size flips, indexed by iteration rather than by expiry. One variable
+  // flips per iteration, so each slot takes exactly one entry and nothing is ever displaced while
+  // still tabu; indexing by expiry instead would collide whenever two flips share a deadline, which
+  // a simulation over the [3,12] tenure range puts at 35% of insertions.
+  //
+  // This is what lets the global argmax stop reading flip_until. Tenure is bounded by the ring, so
+  // at most ring_size variables are tabu at once out of n: reading two bytes per variable to answer
+  // a question that is almost always no costs a third of that scan's traffic. On crypt16 it is the
+  // difference between a 31 KB working set that overflows a 32 KB L1 and a 21 KB one that does not.
+  static constexpr int32_t ring_size = 16;
+  int32_t ring_var[ring_size];
+  int32_t ring_expiry[ring_size];
+
 
   void resize(int32_t n)
   {
     flip_until.assign(n, 0);
     last_flip.assign(n, 0);
+    clear_ring();
     base = 0;
   }
 
@@ -68,13 +82,67 @@ struct fj_bin_tabu_t {
   {
     std::fill(flip_until.begin(), flip_until.end(), (uint16_t)0);
     std::fill(last_flip.begin(), last_flip.end(), 0);
+    clear_ring();
     base = iter;
+  }
+
+  void clear_ring()
+  {
+    for (int32_t i = 0; i < ring_size; ++i) {
+      ring_var[i]    = -1;
+      ring_expiry[i] = 0;
+    }
   }
 
   void on_flip(int32_t v, int32_t iter, int32_t tenure)
   {
     flip_until[v] = (uint16_t)(iter + tenure - base);
     last_flip[v]  = iter;
+
+    // Drop any earlier entry for v before inserting the new one. flip_until keeps one deadline per
+    // variable and a reflip overwrites it, so without this the ring would hold a superseded, later
+    // deadline and block v past the point the per-variable test would have released it. A variable
+    // can be reflipped while still tabu: the local-minimum path tests the weaker
+    // iter == last_flip + 1. With this the ring holds at most one live entry per variable carrying
+    // its current deadline, which is exactly the invariant flip_until maintains.
+    for (int32_t i = 0; i < ring_size; ++i) {
+      if (ring_var[i] == v) ring_var[i] = -1;
+    }
+
+    const int32_t slot = iter & (ring_size - 1);
+    ring_var[slot]     = v;
+    ring_expiry[slot]  = iter + tenure;
+  }
+
+  // Blocks every currently-tabu variable by writing the invalid sentinel over its score, and reports
+  // how many were touched. Paired with unblock around one argmax and nothing else: the score is
+  // maintained incrementally, so it may only be disturbed across a window in which no patch runs.
+  int32_t block_tabu(int32_t iter,
+                     int32_t* var_score,
+                     int32_t (&saved_var)[ring_size],
+                     int32_t (&saved_score)[ring_size]) const
+  {
+    int32_t k = 0;
+    for (int32_t i = 0; i < ring_size; ++i) {
+      const int32_t v = ring_var[i];
+      if (v >= 0 && ring_expiry[i] > iter) {
+        saved_var[k]   = v;
+        saved_score[k] = var_score[v];
+        var_score[v]   = fj_bin_score_invalid;
+        ++k;
+      }
+    }
+    return k;
+  }
+
+  // Reverse order on purpose: a variable flipped twice inside the ring appears twice, and its second
+  // save holds the sentinel written by the first. Unwinding backwards restores the true score last.
+  static void unblock_tabu(int32_t k,
+                           int32_t* var_score,
+                           const int32_t (&saved_var)[ring_size],
+                           const int32_t (&saved_score)[ring_size])
+  {
+    for (int32_t i = k - 1; i >= 0; --i) var_score[saved_var[i]] = saved_score[i];
   }
 
 
@@ -784,17 +852,18 @@ struct fj_bin_engine_t : fj_binary_state_t<i_t, f_t> {
   // Global argmax over every variable, affordable because var_score is maintained live. While the
   // objective weight is zero the full score is exactly var_score, which is the vectorized sweep's
   // precondition; the objective and local-minimum paths fall to the scalar loop.
-  std::pair<int32_t, int32_t> find_move_global(bool localmin) const
+  std::pair<int32_t, int32_t> find_move_global(bool localmin)
   {
     if (!localmin && objective_weight == 0) {
+      // The sweep reads var_score alone; the handful of tabu variables are held at the invalid
+      // sentinel across it rather than tested per variable.
+      int32_t saved_var[fj_bin_tabu_t::ring_size], saved_score[fj_bin_tabu_t::ring_size];
+      const int32_t blocked = tabu.block_tabu(iters, var_score.data(), saved_var, saved_score);
+
       int32_t v = -1, s = fj_bin_score_invalid;
-      fj_bin_argmax(var_score.data(),
-                    tabu.flip_until.data(),
-                    pb.n_variables,
-                    (uint16_t)(iters - tabu.base),
-                    argmax_tile,
-                    v,
-                    s);
+      fj_bin_argmax(var_score.data(), pb.n_variables, argmax_tile, v, s);
+
+      fj_bin_tabu_t::unblock_tabu(blocked, var_score.data(), saved_var, saved_score);
       return {v, s};
     }
 
@@ -932,6 +1001,14 @@ struct fj_bin_engine_t : fj_binary_state_t<i_t, f_t> {
     mtm_viol_samples    = climber.mtm_viol_samples;
     mtm_sat_samples     = climber.mtm_sat_samples;
     if (tabu_tenure_max <= tabu_tenure_min) tabu_tenure_max = tabu_tenure_min + 1;
+
+    // The tabu ring is indexed by iteration modulo its size, so a slot is reused after ring_size
+    // iterations. A tenure that long would be overwritten while the variable is still tabu, and the
+    // argmax would stop excluding it. Clamped as well as asserted: release builds compile the assert
+    // out, and silently dropping tabu entries is worse than a shorter tenure.
+    cuopt_assert(tabu_tenure_max <= fj_bin_tabu_t::ring_size,
+                 "tabu tenure exceeds the tabu ring, live entries would be evicted");
+    if (tabu_tenure_max > fj_bin_tabu_t::ring_size) tabu_tenure_max = fj_bin_tabu_t::ring_size;
 
     const int32_t n = pb.n_variables, m = pb.n_constraints;
     const auto& h_assign = climber.h_assignment;
