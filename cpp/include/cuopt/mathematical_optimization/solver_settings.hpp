@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/pdlp/pdlp_warm_start_data.hpp>
 
 #include <raft/core/device_span.hpp>
@@ -22,7 +23,8 @@
 #include <optional>
 #include <vector>
 
-namespace cuopt::mathematical_optimization {
+namespace cuopt {
+namespace CUOPT_EXPORT mathematical_optimization {
 
 template <typename i_t, typename f_t>
 class solver_settings_t {
@@ -109,4 +111,5 @@ class solver_settings_t {
   std::vector<parameter_info_t<std::string>> string_parameters;
 };
 
-}  // namespace cuopt::mathematical_optimization
+}  // namespace CUOPT_EXPORT mathematical_optimization
+}  // namespace cuopt

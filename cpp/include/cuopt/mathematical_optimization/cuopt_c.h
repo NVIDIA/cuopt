@@ -9,12 +9,17 @@
 #define CUOPT_C_API_H
 
 #include <cuopt/mathematical_optimization/constants.h>
+#include <cuopt/export.hpp>
 
 #include <stdint.h>
 
 #ifdef __cplusplus
 
 extern "C" {
+#endif
+
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC visibility push(default)
 #endif
 
 /**
@@ -1162,6 +1167,10 @@ cuopt_int_t cuOptGetProblemStringArrayAttribute(cuOptOptimizationProblem problem
                                                 cuopt_int_t attribute,
                                                 const char** strings_out,
                                                 cuopt_int_t count);
+
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC visibility pop
+#endif
 
 #ifdef __cplusplus
 }

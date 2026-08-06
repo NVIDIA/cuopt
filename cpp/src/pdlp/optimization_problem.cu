@@ -5,6 +5,7 @@
  */
 /* clang-format on */
 
+#include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
@@ -1632,14 +1633,14 @@ optimization_problem_t<i_t, other_f_t> optimization_problem_t<i_t, f_t>::convert
 // ==============================================================================
 // Explicit template instantiations matching MIP constants
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
-template class optimization_problem_t<int32_t, float>;
+template class CUOPT_EXPORT optimization_problem_t<int32_t, float>;
 #endif
 #if MIP_INSTANTIATE_DOUBLE
-template class optimization_problem_t<int32_t, double>;
+template class CUOPT_EXPORT optimization_problem_t<int32_t, double>;
 #endif
 
 #if PDLP_INSTANTIATE_FLOAT || MIP_INSTANTIATE_FLOAT
-template optimization_problem_t<int32_t, float>
+template CUOPT_EXPORT optimization_problem_t<int32_t, float>
   optimization_problem_t<int32_t, double>::convert_to_other_prec<float>(
     rmm::cuda_stream_view) const;
 #endif

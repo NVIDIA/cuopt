@@ -5,6 +5,7 @@
  */
 /* clang-format on */
 
+#include <cuopt/export.hpp>
 #include <cuopt/routing/assignment.hpp>
 #include <raft/util/cudart_utils.hpp>
 #include <utilities/copy_helpers.hpp>
@@ -272,8 +273,8 @@ void host_assignment_t<i_t>::print() const noexcept
   }
 }
 
-template class assignment_t<int>;
-template class host_assignment_t<int>;
+template class CUOPT_EXPORT assignment_t<int>;
+template class CUOPT_EXPORT host_assignment_t<int>;
 
 }  // namespace routing
 }  // namespace cuopt
