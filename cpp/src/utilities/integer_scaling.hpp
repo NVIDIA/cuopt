@@ -6,11 +6,13 @@
 /* clang-format on */
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <limits>
 #include <numeric>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -163,6 +165,68 @@ inline double find_objective_scaling_factor(const std::vector<double>& coefficie
   double s = detail::find_scaling_brute_force(coefficients);
   if (!std::isnan(s)) return s;
   return find_scaling_rational(coefficients);
+}
+
+// A row bound is "infinite" for scaling purposes if non-finite or at/above the solver's large-bound
+// sentinel.
+template <typename f_t>
+inline bool scaling_bound_finite(f_t x)
+{
+  return std::isfinite(x) && std::abs(x) < f_t(1e30);
+}
+
+// An exact subset sum of at most max_len integer terms, plus the bound compare, must stay inside
+// the mantissa of the type that holds the sum for it to never round: 2^24 for fp32, 2^53 for fp64.
+// Callers store the scaled row back as f_t and sum it as f_t, so the budget follows f_t rather than
+// the double used internally to search for the multiplier.
+template <typename f_t>
+inline constexpr double exact_subset_sum_budget =
+  (double)(uint64_t{1} << std::numeric_limits<f_t>::digits);
+
+// Scale one row (coefficients + finite bounds) to integers by a single positive rational multiplier
+// so a subset-sum feasibility test over binary variables is EXACT in f_t: enumerated values are
+// binary, so Sigma coeff*value is a subset sum; once every coefficient and finite bound is an
+// exactly representable integer of bounded magnitude, that sum (<= max_len terms) never rounds and
+// feasibility is an exact integer comparison. +/-inf bounds are ignored (they stay infinite).
+// Returns the multiplier, or 0 if the row does not integerize within the caps -- the caller then
+// rejects the row rather than risk a tolerance-sensitive misclassification on large or non-rational
+// coefficients.
+//
+// The rationalization reuses find_scaling_rational above, the same continued-fraction
+// vector->integer scaling used for objective integer-scaling. A strict tolerance is passed so only
+// genuinely small-rational coefficients integerize; anything noisier yields NaN and the row is
+// rejected, never silently rounded into a different model.
+template <typename f_t>
+inline double row_int_scale(const f_t* coef, int n, f_t lo, f_t up, int max_len, int64_t scale_cap)
+{
+  static_assert(std::is_floating_point_v<f_t>, "row scaling is defined for floating point rows");
+  static_assert(std::numeric_limits<f_t>::digits < 64, "mantissa wider than the budget shift");
+  cuopt_assert(n >= 0, "negative row length");
+  cuopt_assert(n <= max_len, "row length exceeds the exactness budget length");
+  cuopt_assert(scale_cap > 0, "non-positive scale cap");
+
+  std::vector<double> vals;
+  vals.reserve(n + 2);
+  for (int k = 0; k < n; ++k)
+    vals.push_back((double)coef[k]);
+  if (scaling_bound_finite(lo)) vals.push_back((double)lo);
+  if (scaling_bound_finite(up)) vals.push_back((double)up);
+
+  const double scale = find_scaling_rational(vals,
+                                             /*maxscale=*/1e12,
+                                             /*maxdnom=*/scale_cap,
+                                             /*maxfinal=*/(double)scale_cap,
+                                             /*intcheck_tol=*/1e-9);
+  if (!std::isfinite(scale) || scale <= 0.0) return 0.0;
+
+  // find_scaling_rational bounds the multiplier, not the resulting magnitude: guard the exactness
+  // budget so the subset sum (<= max_len integer terms) stays within f_t's mantissa (no rounding).
+  double maxabs = 0.0;
+  for (double v : vals)
+    maxabs = std::max(maxabs, std::abs(v * scale));
+  if (maxabs * (double)max_len >= exact_subset_sum_budget<f_t>) return 0.0;
+
+  return scale;
 }
 
 }  // namespace cuopt

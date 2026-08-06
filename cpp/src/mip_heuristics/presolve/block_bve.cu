@@ -20,6 +20,8 @@
 
 #include <cuda/bit>  // cuda::bitfield_extract
 
+#include <thrust/count.h>
+
 #include <utilities/logger.hpp>
 #include <utilities/scope_guard.hpp>
 #include <utilities/timer.hpp>
@@ -53,55 +55,22 @@ static constexpr size_t BVE_PROJECT_DEVICE_BUDGET = 64ull << 20;  // 64 MiB
 template <typename f_t>
 static bool bve_bound_finite(f_t x)
 {
-  return std::isfinite(x) && std::abs(x) < f_t(1e30);
+  return scaling_bound_finite(x);
 }
 
 // Largest per-row rational multiplier / denominator we will apply. A row that would need a larger
 // multiplier to become integer is treated as not exactly representable (passed to
 // find_scaling_rational as its maxdnom/maxfinal caps).
 static constexpr int64_t BVE_INT_SCALE_MAX = 1000000;  // 1e6
-// The exact subset sum (<= BVE_MAX_ROW_LEN integer terms) plus the bound compare must stay below
-// 2^53 so the fp64 projection arithmetic never rounds.
-static constexpr double BVE_EXACT_SUM_BUDGET = 9007199254740992.0;  // 2^53
 
-// Scale one block row (coefficients + finite bounds) to integers by a single positive rational
-// multiplier so the projection's subset-sum feasibility test is EXACT in fp64: enumerated values
-// are binary, so Sigma coeff*value is a subset sum; once every coefficient and finite bound is an
-// exactly representable integer of bounded magnitude, that sum (<= BVE_MAX_ROW_LEN terms) never
-// rounds and feasibility is an exact integer comparison (projection tol 0). +/-inf bounds are
-// ignored (they stay infinite). Returns the multiplier, or 0 if the row does not integerize within
-// the caps -- the caller then rejects the whole block (leaves it un-eliminated) rather than risk a
-// tolerance-sensitive misclassification on large or non-rational coefficients.
-//
-// The rationalization reuses find_scaling_rational (utilities/integer_scaling.hpp), the same
-// continued-fraction vector->integer scaling used for objective integer-scaling. A strict tolerance
-// is passed so only genuinely small-rational coefficients integerize; anything noisier yields NaN
-// and the block is rejected, never silently rounded into a different model.
+// Scale one block row to integers so the projection's subset-sum feasibility test is exact in fp64
+// (projection tol 0). Returns 0 if the row does not integerize within the caps -- the caller then
+// rejects the whole block (leaves it un-eliminated) rather than risk a tolerance-sensitive
+// misclassification. See row_int_scale in utilities/integer_scaling.hpp.
 template <typename f_t>
 static double bve_row_int_scale(const f_t* coef, int n, f_t lo, f_t up)
 {
-  std::vector<double> vals;
-  vals.reserve(n + 2);
-  for (int k = 0; k < n; ++k)
-    vals.push_back((double)coef[k]);
-  if (bve_bound_finite(lo)) vals.push_back((double)lo);
-  if (bve_bound_finite(up)) vals.push_back((double)up);
-
-  const double scale = find_scaling_rational(vals,
-                                             /*maxscale=*/1e12,
-                                             /*maxdnom=*/BVE_INT_SCALE_MAX,
-                                             /*maxfinal=*/(double)BVE_INT_SCALE_MAX,
-                                             /*intcheck_tol=*/1e-9);
-  if (!std::isfinite(scale) || scale <= 0.0) return 0.0;
-
-  // find_scaling_rational bounds the multiplier, not the resulting magnitude: guard the exactness
-  // budget so the subset sum (<= BVE_MAX_ROW_LEN integer terms) stays below 2^53 (no fp rounding).
-  double maxabs = 0.0;
-  for (double v : vals)
-    maxabs = std::max(maxabs, std::abs(v * scale));
-  if (maxabs * (double)BVE_MAX_ROW_LEN >= BVE_EXACT_SUM_BUDGET) return 0.0;
-
-  return scale;
+  return row_int_scale<f_t>(coef, n, lo, up, BVE_MAX_ROW_LEN, BVE_INT_SCALE_MAX);
 }
 
 // Closed-form part of the commit_projected work estimate: prime-cube enumeration in
@@ -1341,6 +1310,15 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
   if (reduced_cols > 0 || reduced_rows > 0) {
     CUOPT_LOG_DEBUG("Block-BVE reduced %d columns, %d rows", reduced_cols, reduced_rows);
   }
+#if (CUOPT_LOG_ACTIVE_LEVEL <= RAPIDS_LOGGER_LOG_LEVEL_DEBUG)
+  // Objective coefficients are held in their own array, so this spans the A matrix alone.
+  const i_t fractional_coefs =
+    thrust::count_if(handle->get_thrust_policy(),
+                     problem.coefficients.begin(),
+                     problem.coefficients.end(),
+                     [] __device__(f_t v) -> bool { return floor(v) != v; });
+  CUOPT_LOG_DEBUG("Block-BVE: %d fractional coefficients in A", fractional_coefs);
+#endif
   return true;
 }
 
