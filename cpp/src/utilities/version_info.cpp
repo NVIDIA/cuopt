@@ -12,6 +12,9 @@
 #include <utilities/build_info.hpp>
 #include <utilities/logger.hpp>
 
+#include <hwy/per_target.h>
+#include <hwy/targets.h>
+
 #include <fstream>
 #include <iomanip>
 #include <set>
@@ -143,6 +146,23 @@ static std::string get_cpu_model()
   return "Unknown";
 }
 
+// The SIMD instruction set the vectorized CPU kernels actually dispatched to, which reflects the
+// compiled target set as well as what this CPU supports. Highway names the AVX-512 family AVX3,
+// with AVX3_DL / AVX3_ZEN4 / AVX3_SPR / AVX10_2 marking successively newer feature sets; those are
+// reported under the name users know them by.
+static const char* get_simd_target()
+{
+  const int64_t target = hwy::DispatchedTarget();
+  switch (target) {
+    case HWY_AVX3:
+    case HWY_AVX3_DL:
+    case HWY_AVX3_ZEN4:
+    case HWY_AVX3_SPR:
+    case HWY_AVX10_2: return "AVX-512";
+    default: return hwy::TargetName(target);
+  }
+}
+
 struct host_memory_info_t {
   double total_gb{};
   double available_gb{};
@@ -201,6 +221,7 @@ void print_version_info(int num_devices)
     std::thread::hardware_concurrency(),
     memory.available_gb,
     memory.total_gb);
+  CUOPT_LOG_INFO("CPU SIMD target: %s", get_simd_target());
 
   for (int device_id = 0; device_id < num_devices; ++device_id) {
     cudaDeviceProp device_prop{};
