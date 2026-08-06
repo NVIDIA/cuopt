@@ -320,7 +320,8 @@ void mod2_add_transformed_zero_half_cut(
   complemented_mir.remove_small_coefficients(lp.lower, lp.upper, transformed_cut);
   complemented_mir.substitute_slacks(lp, Arow, transformed_cut);
   complemented_mir.remove_small_coefficients(lp.lower, lp.upper, transformed_cut);
-  if (complemented_mir.compute_violation(transformed_cut, xstar) > min_violation) {
+  const f_t violation = complemented_mir.compute_violation(transformed_cut, xstar);
+  if (violation > min_violation) {
     cut_pool.add_cut(cut_type_t::ZERO_HALF, transformed_cut);
     ++cuts_added;
   }
