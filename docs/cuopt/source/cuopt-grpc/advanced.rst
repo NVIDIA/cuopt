@@ -13,7 +13,7 @@ For RPC summaries and server behavior, see :doc:`api` and :doc:`grpc-server-arch
 Configuration Parameters
 ========================
 
-``cuopt_grpc_server`` (host or explicit container command)
+``cuopt_grpc_server`` (Host or Explicit Container Command)
 ------------------------------------------------------------
 
 Run ``cuopt_grpc_server --help`` for the full list. Typical flags (also passable inside ``CUOPT_GRPC_ARGS`` when using the container entrypoint):
@@ -66,10 +66,18 @@ These variables apply when the container **entrypoint** builds a ``cuopt_grpc_se
 
 The REST server path in the same image still uses ``CUOPT_SERVER_PORT`` for HTTP in other docs; that is separate from the gRPC defaults above.
 
-Bundled Remote Client (Python, C API, ``cuopt_cli``)
-----------------------------------------------------
+Integrated Remote Client (Python, C API, ``cuopt_cli``)
+-------------------------------------------------------
 
-Remote mode is active when **both** ``CUOPT_REMOTE_HOST`` and ``CUOPT_REMOTE_PORT`` are set. A **custom** gRPC client does not read these automatically; it must configure the channel and protos itself (see :doc:`api`).
+These variables apply to **remote execution**: the client integrated into the
+Python solver APIs, the C API (``cuOptSolve``), and ``cuopt_cli``. Remote mode
+is active when **both** ``CUOPT_REMOTE_HOST`` and ``CUOPT_REMOTE_PORT`` are set.
+
+The :doc:`Python async gRPC client <python-async-client>` does **not** use
+``CUOPT_REMOTE_HOST`` / ``CUOPT_REMOTE_PORT``; you pass host and port to
+``Client(...)``. See *Python async gRPC client* below for variables that apply
+to that client. A **custom** gRPC client must configure the channel itself
+(see :doc:`api`).
 
 .. list-table::
    :header-rows: 1
@@ -82,7 +90,7 @@ Remote mode is active when **both** ``CUOPT_REMOTE_HOST`` and ``CUOPT_REMOTE_POR
    * - ``CUOPT_REMOTE_HOST``
      - For remote
      - —
-     - Server hostname or IP
+     - GPU server hostname or IP
    * - ``CUOPT_REMOTE_PORT``
      - For remote
      - —
@@ -115,6 +123,48 @@ Remote mode is active when **both** ``CUOPT_REMOTE_HOST`` and ``CUOPT_REMOTE_POR
      - No
      - ``0``
      - Non-zero: extra gRPC client logging
+
+Python Async gRPC Client (``cuopt.grpc``)
+-----------------------------------------
+
+``Client(host, port, tls=...)`` takes the server address in code. It does
+**not** read ``CUOPT_REMOTE_HOST`` or ``CUOPT_REMOTE_PORT``.
+
+When ``tls`` is omitted (``None``), the client honors the same ``CUOPT_TLS_*``
+variables as remote execution. Pass ``tls=False`` for plain TCP, or
+``tls=TlsConfig(...)`` for explicit PEM paths (see :doc:`python-async-client`).
+
+.. list-table::
+   :header-rows: 1
+   :widths: 26 14 18 42
+
+   * - Variable
+     - Required
+     - Default
+     - Description
+   * - ``CUOPT_TLS_ENABLED``
+     - No
+     - ``0``
+     - Used when ``tls=None``; non-zero enables TLS
+   * - ``CUOPT_TLS_ROOT_CERT``
+     - If TLS
+     - —
+     - PEM path to verify the **server** certificate
+   * - ``CUOPT_TLS_CLIENT_CERT``
+     - mTLS
+     - —
+     - Client certificate PEM
+   * - ``CUOPT_TLS_CLIENT_KEY``
+     - mTLS
+     - —
+     - Client private key PEM
+   * - ``CUOPT_GRPC_DEBUG``
+     - No
+     - ``0``
+     - Non-zero: extra gRPC client logging
+
+``CUOPT_CHUNK_SIZE`` and ``CUOPT_MAX_MESSAGE_BYTES`` also apply to this client
+when set (same defaults as the integrated remote client).
 
 Usage
 =====
@@ -259,14 +309,14 @@ Bypass the entrypoint:
 Client Environment (Examples)
 ------------------------------
 
-**Required** for remote (see *Bundled remote client* table for all variables):
+**Remote execution** — required host/port (see *Integrated remote client* table):
 
 .. code-block:: bash
 
    export CUOPT_REMOTE_HOST=<server-hostname>
    export CUOPT_REMOTE_PORT=5001
 
-**TLS** (optional):
+**TLS** (optional; also used by the Python async gRPC client when ``tls=None``):
 
 .. code-block:: bash
 
@@ -280,13 +330,44 @@ For mTLS, also:
    export CUOPT_TLS_CLIENT_CERT=client.crt
    export CUOPT_TLS_CLIENT_KEY=client.key
 
+**Python async gRPC client** — pass host and port to ``Client(...)`` (not
+``CUOPT_REMOTE_*``). With ``tls=None`` (default), the same ``CUOPT_TLS_*``
+variables above apply. For explicit PEM paths, use ``TlsConfig``:
+
+.. code-block:: python
+
+   from cuopt.grpc.linear_programming import Client, TlsConfig
+
+   # TLS: verify the server with a CA (or omit root_certs for the system trust store)
+   client = Client(
+       "server.example.com",
+       5001,
+       tls=TlsConfig(root_certs="ca.crt"),
+   )
+
+   # mTLS: also present a client certificate
+   client = Client(
+       "server.example.com",
+       5001,
+       tls=TlsConfig(
+           root_certs="ca.crt",
+           client_cert="client.crt",
+           client_key="client.key",
+       ),
+   )
+
+   # Plain TCP (ignore CUOPT_TLS_* even if set)
+   client = Client("localhost", 5001, tls=False)
+
+See :doc:`python-async-client` for the full job API.
+
 Limitations and Scope
 =====================
 
-* **Problem types** — **LP**, **MILP**, and **QP** are supported on the gRPC remote path. **Routing** (VRP, TSP, PDP) is **not** supported yet; use the :doc:`REST self-hosted server <../cuopt-server/index>` for remote routing until a future release adds routing over ``CuOptRemoteService``.
+* **Problem types** — **LP**, **MIP**, and **QP** are supported on the gRPC remote path. **Routing** (VRP, TSP, PDP) is **not** supported yet; use the :doc:`REST self-hosted server <../cuopt-server/index>` for remote routing until a future release adds routing over ``CuOptRemoteService``.
 * **Message size** — Large problems use chunking; very large models can still hit gRPC max message / timeout limits. Tune ``CUOPT_CHUNK_SIZE``, ``CUOPT_MAX_MESSAGE_BYTES``, server ``--max-message-mb``, and solver ``time_limit`` as needed.
 * **``CUOPT_GRPC_ARGS``** — Parsed on whitespace only; arguments containing spaces are awkward unless you invoke ``cuopt_grpc_server`` directly.
-* **CRL / OCSP** — Not handled by the bundled gRPC TLS stack; use a private CA rotation strategy or a TLS-terminating proxy if you need revocation workflows.
+* **CRL / OCSP** — Not handled by the integrated gRPC TLS stack; use a private CA rotation strategy or a TLS-terminating proxy if you need revocation workflows.
 
 Troubleshooting
 ===============
@@ -310,5 +391,6 @@ Further Reading
 ===============
 
 * :doc:`quick-start` — Plain TCP quick path.
-* :doc:`examples` — Links to Python, C, and CLI example sections (use with ``CUOPT_REMOTE_*`` on the client).
+* :doc:`examples` — Links to Python, C, and CLI example sections (use with ``CUOPT_REMOTE_*`` on the client for remote execution).
+* :doc:`python-async-client` — Explicit Python gRPC client.
 * :doc:`grpc-server-architecture` — Process model and job behavior (operator overview).

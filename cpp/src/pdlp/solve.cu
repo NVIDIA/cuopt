@@ -62,6 +62,7 @@
 #include <algorithm>
 #include <cmath>
 #include <exception>
+#include <optional>
 #include <set>
 #include <tuple>
 
@@ -487,9 +488,10 @@ optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
 
 template <typename i_t, typename f_t>
 std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t> run_barrier(
-  simplex::user_problem_t<i_t, f_t>& user_problem,
+  const simplex::user_problem_t<i_t, f_t>& user_problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
-  const timer_t& timer)
+  const timer_t& timer,
+  const raft::handle_t* handle_ptr)
 {
   f_t norm_user_objective = vector_norm2<i_t, f_t>(user_problem.objective);
   f_t norm_rhs            = vector_norm2<i_t, f_t>(user_problem.rhs);
@@ -524,9 +526,11 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
 
   simplex::lp_solution_t<i_t, f_t> solution(user_problem.num_rows, user_problem.num_cols);
   auto status = simplex::solve_linear_program_with_barrier<i_t, f_t>(
-    user_problem, barrier_settings, timer.get_tic_start(), solution);
+    user_problem, barrier_settings, timer.get_tic_start(), solution, handle_ptr);
 
-  barrier::project_barrier_solution_to_model_variables(user_problem, solution);
+  if (status == simplex::lp_status_t::OPTIMAL) {
+    barrier::project_barrier_solution_to_model_variables(user_problem, solution);
+  }
 
   CUOPT_LOG_CONDITIONAL_INFO(
     !settings.inside_mip, "Barrier finished in %.2f seconds", timer.elapsed_time());
@@ -550,8 +554,8 @@ optimization_problem_solution_t<i_t, f_t> run_barrier(
 {
   // Convert data structures to dual simplex format and back
   simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
-    cuopt_problem_to_user_problem<i_t, f_t>(problem.handle_ptr, problem);
-  auto sol_dual_simplex = run_barrier(dual_simplex_problem, settings, timer);
+    cuopt_problem_to_user_problem<i_t, f_t>(problem.handle_ptr, problem, false);
+  auto sol_dual_simplex = run_barrier(dual_simplex_problem, settings, timer, problem.handle_ptr);
   return convert_dual_simplex_sol(problem,
                                   std::get<0>(sol_dual_simplex),
                                   std::get<1>(sol_dual_simplex),
@@ -563,24 +567,25 @@ optimization_problem_solution_t<i_t, f_t> run_barrier(
 
 template <typename i_t, typename f_t>
 void run_barrier_thread(
-  simplex::user_problem_t<i_t, f_t>& problem,
+  const simplex::user_problem_t<i_t, f_t>& problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   std::unique_ptr<
     std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t>>& sol_ptr,
-  const timer_t& timer)
+  const timer_t& timer,
+  const raft::handle_t* handle_ptr)
 {
   // We will return the solution from the thread as a unique_ptr
   sol_ptr = std::make_unique<
     std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t>>(
-    run_barrier(problem, settings, timer));
+    run_barrier(problem, settings, timer, handle_ptr));
 
   // Wait for barrier thread to finish
-  problem.handle_ptr->sync_stream();
+  handle_ptr->sync_stream();
 }
 
 template <typename i_t, typename f_t>
 std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t> run_dual_simplex(
-  simplex::user_problem_t<i_t, f_t>& user_problem,
+  const simplex::user_problem_t<i_t, f_t>& user_problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   const timer_t& timer)
 {
@@ -622,7 +627,7 @@ optimization_problem_solution_t<i_t, f_t> run_dual_simplex(
 {
   // Convert data structures to dual simplex format and back
   simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
-    cuopt_problem_to_user_problem<i_t, f_t>(problem.handle_ptr, problem);
+    cuopt_problem_to_user_problem<i_t, f_t>(problem.handle_ptr, problem, false);
   auto sol_dual_simplex = run_dual_simplex(dual_simplex_problem, settings, timer);
   return convert_dual_simplex_sol(problem,
                                   std::get<0>(sol_dual_simplex),
@@ -1498,7 +1503,7 @@ optimization_problem_solution_t<i_t, f_t> batch_pdlp_solve(
 
 template <typename i_t, typename f_t>
 void run_dual_simplex_thread(
-  simplex::user_problem_t<i_t, f_t>& problem,
+  const simplex::user_problem_t<i_t, f_t>& problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   std::unique_ptr<
     std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t>>& sol_ptr,
@@ -1552,7 +1557,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   // Otherwise, CUDA API calls to the problem stream may occur in both threads and throw graph
   // capture off
   simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
-    cuopt_problem_to_user_problem<i_t, f_t>(problem.handle_ptr, problem);
+    cuopt_problem_to_user_problem<i_t, f_t>(problem.handle_ptr, problem, false);
   // Dual simplex / barrier results — written by tasks, read after the taskgroup barrier.
   std::unique_ptr<std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t>>
     sol_dual_simplex_ptr;
@@ -1593,10 +1598,12 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
           try {
             auto call_barrier_thread = [&]() {
               rmm::cuda_stream_view barrier_stream = rmm::cuda_stream_per_thread;
-              barrier_handle_ptr         = std::make_unique<raft::handle_t>(barrier_stream);
-              auto barrier_problem       = dual_simplex_problem;
-              barrier_problem.handle_ptr = barrier_handle_ptr.get();
-              run_barrier_thread<i_t, f_t>(barrier_problem, settings_pdlp, sol_barrier_ptr, timer);
+              barrier_handle_ptr = std::make_unique<raft::handle_t>(barrier_stream);
+              run_barrier_thread<i_t, f_t>(dual_simplex_problem,
+                                           settings_pdlp,
+                                           sol_barrier_ptr,
+                                           timer,
+                                           barrier_handle_ptr.get());
             };
             if (settings.num_gpus > 1) {
               problem.handle_ptr->sync_stream();
@@ -1680,38 +1687,32 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   if (dual_simplex_exception) { std::rethrow_exception(dual_simplex_exception); }
   if (barrier_exception) { std::rethrow_exception(barrier_exception); }
 
-  // copy the dual simplex solution to the device
-  auto sol_dual_simplex =
-    !settings.inside_mip
-      ? convert_dual_simplex_sol(problem,
-                                 std::get<0>(*sol_dual_simplex_ptr),
-                                 std::get<1>(*sol_dual_simplex_ptr),
-                                 std::get<2>(*sol_dual_simplex_ptr),
-                                 std::get<3>(*sol_dual_simplex_ptr),
-                                 std::get<4>(*sol_dual_simplex_ptr),
-                                 method_t::DualSimplex)
-      : optimization_problem_solution_t<i_t, f_t>{pdlp_termination_status_t::ConcurrentLimit,
-                                                  problem.handle_ptr->get_stream()};
-
-  // copy the barrier solution to the device (sentinel when the barrier task was skipped).
-  auto sol_barrier = enable_barrier ? convert_dual_simplex_sol(problem,
-                                                               std::get<0>(*sol_barrier_ptr),
-                                                               std::get<1>(*sol_barrier_ptr),
-                                                               std::get<2>(*sol_barrier_ptr),
-                                                               std::get<3>(*sol_barrier_ptr),
-                                                               std::get<4>(*sol_barrier_ptr),
-                                                               method_t::Barrier)
-                                    : optimization_problem_solution_t<i_t, f_t>{
-                                        pdlp_termination_status_t::ConcurrentLimit,
-                                        problem.handle_ptr->get_stream()};
+  // Both CPU solvers have joined, so release their shared host model before converting outputs.
+  dual_simplex_problem = simplex::user_problem_t<i_t, f_t>(problem.handle_ptr);
 
   f_t end_time = timer.elapsed_time();
   CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "Concurrent time: %.3fs", end_time);
-  // Check status to see if we should return the pdlp solution or the dual simplex solution
-  if (!settings.inside_mip &&
-      (sol_dual_simplex.get_termination_status() == pdlp_termination_status_t::Optimal ||
-       sol_dual_simplex.get_termination_status() == pdlp_termination_status_t::PrimalInfeasible ||
-       sol_dual_simplex.get_termination_status() == pdlp_termination_status_t::DualInfeasible)) {
+
+  const auto dual_simplex_status = !settings.inside_mip ? std::get<1>(*sol_dual_simplex_ptr)
+                                                        : simplex::lp_status_t::CONCURRENT_LIMIT;
+  const auto barrier_status =
+    enable_barrier ? std::get<1>(*sol_barrier_ptr) : simplex::lp_status_t::CONCURRENT_LIMIT;
+  const bool dual_simplex_solved = dual_simplex_status == simplex::lp_status_t::OPTIMAL ||
+                                   dual_simplex_status == simplex::lp_status_t::INFEASIBLE ||
+                                   dual_simplex_status == simplex::lp_status_t::UNBOUNDED;
+
+  // Convert only the solution that will be returned. Each conversion copies three potentially
+  // large vectors to the device and duplicates the problem's row and variable names.
+  if (!settings.inside_mip && dual_simplex_solved) {
+    sol_barrier_ptr.reset();
+    auto sol_dual_simplex = convert_dual_simplex_sol(problem,
+                                                     std::get<0>(*sol_dual_simplex_ptr),
+                                                     std::get<1>(*sol_dual_simplex_ptr),
+                                                     std::get<2>(*sol_dual_simplex_ptr),
+                                                     std::get<3>(*sol_dual_simplex_ptr),
+                                                     std::get<4>(*sol_dual_simplex_ptr),
+                                                     method_t::DualSimplex);
+    sol_dual_simplex_ptr.reset();
     CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "Solved with dual simplex");
     sol_pdlp.copy_from(problem.handle_ptr, sol_dual_simplex);
     sol_pdlp.set_solve_time(end_time);
@@ -1733,7 +1734,16 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
       sol_pdlp.get_additional_termination_information().l2_dual_residual,
       sol_pdlp.get_additional_termination_information().l2_relative_dual_residual);
     return sol_pdlp;
-  } else if (sol_barrier.get_termination_status() == pdlp_termination_status_t::Optimal) {
+  } else if (barrier_status == simplex::lp_status_t::OPTIMAL) {
+    sol_dual_simplex_ptr.reset();
+    auto sol_barrier = convert_dual_simplex_sol(problem,
+                                                std::get<0>(*sol_barrier_ptr),
+                                                std::get<1>(*sol_barrier_ptr),
+                                                std::get<2>(*sol_barrier_ptr),
+                                                std::get<3>(*sol_barrier_ptr),
+                                                std::get<4>(*sol_barrier_ptr),
+                                                method_t::Barrier);
+    sol_barrier_ptr.reset();
     CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "Solved with barrier");
     sol_pdlp.copy_from(problem.handle_ptr, sol_barrier);
     sol_pdlp.set_solve_time(end_time);
@@ -1756,13 +1766,27 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
       sol_pdlp.get_additional_termination_information().l2_relative_dual_residual);
     return sol_pdlp;
   } else if (sol_pdlp.get_termination_status() == pdlp_termination_status_t::Optimal) {
+    sol_dual_simplex_ptr.reset();
+    sol_barrier_ptr.reset();
     CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "Solved with PDLP");
     return sol_pdlp;
   } else if (!settings.inside_mip &&
              sol_pdlp.get_termination_status() == pdlp_termination_status_t::ConcurrentLimit) {
+    sol_barrier_ptr.reset();
+    auto& dual_simplex_solution = std::get<0>(*sol_dual_simplex_ptr);
+    auto sol_dual_simplex       = convert_dual_simplex_sol(problem,
+                                                     dual_simplex_solution,
+                                                     std::get<1>(*sol_dual_simplex_ptr),
+                                                     std::get<2>(*sol_dual_simplex_ptr),
+                                                     std::get<3>(*sol_dual_simplex_ptr),
+                                                     std::get<4>(*sol_dual_simplex_ptr),
+                                                     method_t::DualSimplex);
+    sol_dual_simplex_ptr.reset();
     CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "Using dual simplex solve info");
     return sol_dual_simplex;
   } else {
+    sol_dual_simplex_ptr.reset();
+    sol_barrier_ptr.reset();
     CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "Using PDLP solve info");
     return sol_pdlp;
   }
@@ -1842,8 +1866,9 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
     // Convert data structures to dual simplex format and back
     simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
       cuopt_optimization_problem_to_user_problem<i_t, f_t>(op_problem.get_handle_ptr(), op_problem);
-    auto sol_dual_simplex = run_barrier(dual_simplex_problem, settings, qcqp_timer);
-    auto solution         = convert_dual_simplex_sol(op_problem,
+    auto sol_dual_simplex =
+      run_barrier(dual_simplex_problem, settings, qcqp_timer, op_problem.get_handle_ptr());
+    auto solution = convert_dual_simplex_sol(op_problem,
                                              std::get<0>(sol_dual_simplex),
                                              std::get<1>(sol_dual_simplex),
                                              std::get<2>(sol_dual_simplex),
@@ -1997,7 +2022,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     validate_new_bounds(op_problem, settings);
 
     auto lp_timer = cuopt::timer_t(settings.time_limit);
-    mip::problem_t<i_t, f_t> problem(op_problem);
+    std::optional<mip::problem_t<i_t, f_t>> problem;
     // handle default presolve
     if (settings.presolver == presolver_t::Default) {
       constexpr i_t presolve_nnz_threshold = 8000;
@@ -2080,17 +2105,19 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
           op_problem.get_row_names());
       }
 
-      problem       = mip::problem_t<i_t, f_t>(result->reduced_problem);
+      problem.emplace(result->reduced_problem);
       presolve_time = lp_timer.elapsed_time();
       CUOPT_LOG_INFO("%s presolve time: %.2fs",
                      settings.presolver == presolver_t::PSLP ? "PSLP" : "Papilo",
                      presolve_time);
+    } else {
+      problem.emplace(op_problem);
     }
 
     if (!settings_const.inside_mip) {
       CUOPT_LOG_INFO("Objective offset %f scaling_factor %f",
-                     problem.presolve_data.objective_offset,
-                     problem.presolve_data.objective_scaling_factor);
+                     problem->presolve_data.objective_offset,
+                     problem->presolve_data.objective_scaling_factor);
     }
 
     if (settings.user_problem_file != "") {
@@ -2105,7 +2132,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     // Set the hyper-parameters based on the solver_settings
     if (use_pdlp_solver_mode) { set_pdlp_solver_mode(settings); }
 
-    auto solution = solve_lp_with_method(problem, settings, lp_timer, is_batch_mode);
+    auto solution = solve_lp_with_method(*problem, settings, lp_timer, is_batch_mode);
 
     if (run_presolve) {
       auto primal_solution = cuopt::device_copy(solution.get_primal_solution(),
