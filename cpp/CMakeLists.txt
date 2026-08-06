@@ -494,7 +494,7 @@ endif ()
 set(CUOPT_SRC_FILES)
 set(CUOPT_BASE_SRC_FILES)
 set(CUOPT_ROUTING_SRC_FILES)
-set(CUOPT_LP_SRC_FILES)
+set(CUOPT_MATHEMATICAL_OPTIMIZATION_SRC_FILES)
 set(MPS_FAST_SRC_FILES)
 add_subdirectory(src)
 
@@ -506,7 +506,7 @@ set_source_files_properties(
 
 if (HOST_LINEINFO)
     set_source_files_properties(
-            ${CUOPT_BASE_SRC_FILES} ${CUOPT_ROUTING_SRC_FILES} ${CUOPT_LP_SRC_FILES}
+            ${CUOPT_BASE_SRC_FILES} ${CUOPT_ROUTING_SRC_FILES} ${CUOPT_MATHEMATICAL_OPTIMIZATION_SRC_FILES}
             DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTIES COMPILE_OPTIONS "-g1")
 endif ()
 
@@ -524,7 +524,7 @@ endif ()
 # Uses APPEND to preserve any existing per-file options (e.g. -g1 from HOST_LINEINFO).
 if (DEFINE_ASSERT)
     set_property(
-            SOURCE ${CUOPT_BASE_SRC_FILES} ${CUOPT_ROUTING_SRC_FILES} ${CUOPT_LP_SRC_FILES}
+            SOURCE ${CUOPT_BASE_SRC_FILES} ${CUOPT_ROUTING_SRC_FILES} ${CUOPT_MATHEMATICAL_OPTIMIZATION_SRC_FILES}
             DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             APPEND PROPERTY COMPILE_OPTIONS "-UNDEBUG")
 endif ()
@@ -652,10 +652,10 @@ if(NOT SKIP_ROUTING_BUILD)
     add_library(cuopt::routing ALIAS cuopt_routing)
 endif()
 
-# cuopt_lp: LP / MIP / numerical optimization engine
-add_library(cuopt_lp SHARED ${CUOPT_LP_SRC_FILES})
-cuopt_configure_component(cuopt_lp)
-target_include_directories(cuopt_lp PRIVATE
+# cuopt_mathematical_optimization: LP / MIP / numerical optimization engine
+add_library(cuopt_mathematical_optimization SHARED ${CUOPT_MATHEMATICAL_OPTIMIZATION_SRC_FILES})
+cuopt_configure_component(cuopt_mathematical_optimization)
+target_include_directories(cuopt_mathematical_optimization PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/io"
         "${CUDSS_INCLUDE}"
@@ -663,19 +663,19 @@ target_include_directories(cuopt_lp PRIVATE
         $<$<BOOL:${CUOPT_PARSER_WITH_ZLIB}>:${ZLIB_INCLUDE_DIRS}>
 )
 # Adding Papilo as a system include messes up clang's include resolution if papilo is already installed as a conda package
-target_include_directories(cuopt_lp PRIVATE
+target_include_directories(cuopt_mathematical_optimization PRIVATE
         "${papilo_SOURCE_DIR}/src"
         "${papilo_BINARY_DIR}"
 )
-target_include_directories(cuopt_lp SYSTEM PRIVATE
+target_include_directories(cuopt_mathematical_optimization SYSTEM PRIVATE
         "${pslp_SOURCE_DIR}/include"
         "${dejavu_SOURCE_DIR}"
 )
-target_compile_definitions(cuopt_lp
+target_compile_definitions(cuopt_mathematical_optimization
         PUBLIC CUSPARSE_ENABLE_EXPERIMENTAL_API
         PRIVATE CUDSS_MT_LIB_FILE_NAME="${CUDSS_MT_LIB_FILE_NAME}"
 )
-target_link_libraries(cuopt_lp
+target_link_libraries(cuopt_mathematical_optimization
         PUBLIC
         cuopt_base
         ${CUDSS_LIB_FILE}
@@ -686,19 +686,19 @@ target_link_libraries(cuopt_lp
         nccl_external
         ${CMAKE_DL_LIBS}
 )
-target_link_libraries(cuopt_lp PRIVATE $<TARGET_FILE:PSLP>)
-add_dependencies(cuopt_lp PSLP)
-target_include_directories(cuopt_lp SYSTEM PRIVATE
+target_link_libraries(cuopt_mathematical_optimization PRIVATE $<TARGET_FILE:PSLP>)
+add_dependencies(cuopt_mathematical_optimization PSLP)
+target_include_directories(cuopt_mathematical_optimization SYSTEM PRIVATE
         $<TARGET_PROPERTY:KaMinPar::KaMinPar,INTERFACE_INCLUDE_DIRECTORIES>)
-target_compile_definitions(cuopt_lp PRIVATE TBB_PREVIEW_GLOBAL_CONTROL KAMINPAR_64BIT_EDGE_IDS)
-target_link_libraries(cuopt_lp PRIVATE $<TARGET_FILE:KaMinPar::KaMinPar>)
+target_compile_definitions(cuopt_mathematical_optimization PRIVATE TBB_PREVIEW_GLOBAL_CONTROL KAMINPAR_64BIT_EDGE_IDS)
+target_link_libraries(cuopt_mathematical_optimization PRIVATE $<TARGET_FILE:KaMinPar::KaMinPar>)
 if (TARGET KaMinPar)
-    add_dependencies(cuopt_lp KaMinPar)
+    add_dependencies(cuopt_mathematical_optimization KaMinPar)
 endif ()
-add_library(cuopt::lp ALIAS cuopt_lp)
+add_library(cuopt::mathematical_optimization ALIAS cuopt_mathematical_optimization)
 
 # cuopt_grpc: gRPC bridge — proto mappers + Cython client (LP and routing over gRPC)
-# Depends on cuopt_lp and cuopt_routing so it can reference both APIs without forcing
+# Depends on cuopt_mathematical_optimization and cuopt_routing so it can reference both APIs without forcing
 # either component to take a gRPC dependency.
 if(NOT SKIP_GRPC_BUILD)
     add_library(cuopt_grpc SHARED ${GRPC_INFRA_FILES})
@@ -710,9 +710,9 @@ if(NOT SKIP_GRPC_BUILD)
             "${CMAKE_CURRENT_SOURCE_DIR}/src/io"
     )
     if(NOT SKIP_ROUTING_BUILD)
-        target_link_libraries(cuopt_grpc PUBLIC cuopt_lp cuopt_routing PRIVATE protobuf::libprotobuf gRPC::grpc++)
+        target_link_libraries(cuopt_grpc PUBLIC cuopt_mathematical_optimization cuopt_routing PRIVATE protobuf::libprotobuf gRPC::grpc++)
     else()
-        target_link_libraries(cuopt_grpc PUBLIC cuopt_lp PRIVATE protobuf::libprotobuf gRPC::grpc++)
+        target_link_libraries(cuopt_grpc PUBLIC cuopt_mathematical_optimization PRIVATE protobuf::libprotobuf gRPC::grpc++)
     endif()
     add_library(cuopt::grpc ALIAS cuopt_grpc)
 endif()
@@ -865,51 +865,24 @@ endif (BUILD_TESTS)
 
 # ##################################################################################################
 # - cuopt: thin umbrella shared library -----------------------------------------------------------
-# Links publicly against the four component shared libs so that -lcuopt keeps working for
-# all existing consumers.
-
-# Reference one symbol from each component lib so --as-needed keeps them in
-# DT_NEEDED.  The constructor in grpc_registration.cpp fires when
-# libcuopt_grpc.so is loaded and wires up the remote-solve function pointers
-# in libcuopt_lp.so, so that must happen whenever -lcuopt is used.
-set(_UMBRELLA_SRC [=[
-// Thin umbrella: one symbol reference per component so --as-needed keeps
-// each library in DT_NEEDED.
-extern "C" void cuOptDestroyProblem(void*);   // libcuopt_lp.so
-__attribute__((used)) void (* const _cuopt_lp_anchor)(void*)  = &cuOptDestroyProblem;
-
-namespace cuopt { void print_version_info(int); }   // libcuopt_base.so
-__attribute__((used)) void (* const _cuopt_base_anchor)(int) = &cuopt::print_version_info;
-]=])
+# Links publicly against the component shared libs so that -lcuopt keeps working for
+# all existing consumers. Its only translation unit is generated from
+# cmake/umbrella.cpp.in -- see that file for why the anchors are needed.
 
 if(NOT SKIP_ROUTING_BUILD)
-    string(APPEND _UMBRELLA_SRC [=[
-#include <cuopt/routing/solve.hpp>
-namespace cuopt::routing {
-__attribute__((used)) assignment_t<int> (* const _cuopt_routing_anchor)(
-  data_model_view_t<int, float> const&, solver_settings_t<int, float> const&) =
-  &solve<int, float>;
-}
-]=])
+    set(CUOPT_ANCHOR_ROUTING TRUE)
 endif()
-
 if(NOT SKIP_GRPC_BUILD)
-    string(APPEND _UMBRELLA_SRC [=[
-// solve_lp_remote is in libcuopt_grpc.so; pulling it in ensures the
-// grpc_registration constructor runs and registers the remote-solve
-// function pointers in libcuopt_lp.so.
-#include <cuopt/mathematical_optimization/solve_remote.hpp>
-#include <cuopt/mathematical_optimization/remote_solve_registry.hpp>
-namespace cuopt::mathematical_optimization {
-__attribute__((used)) solve_lp_remote_fn_t const _cuopt_grpc_anchor =
-  &solve_lp_remote<int, double>;
-}
-]=])
+    set(CUOPT_ANCHOR_GRPC TRUE)
 endif()
 
-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/cuopt_umbrella.cpp" "${_UMBRELLA_SRC}")
+configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/umbrella.cpp.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/umbrella.cpp"
+        @ONLY
+)
 
-add_library(cuopt SHARED "${CMAKE_CURRENT_BINARY_DIR}/cuopt_umbrella.cpp")
+add_library(cuopt SHARED "${CMAKE_CURRENT_BINARY_DIR}/umbrella.cpp")
 add_library(cuopt::cuopt ALIAS cuopt)
 
 set_target_properties(cuopt PROPERTIES
@@ -932,9 +905,9 @@ target_compile_definitions(cuopt
 )
 
 if(NOT SKIP_ROUTING_BUILD)
-    target_link_libraries(cuopt PUBLIC cuopt_base cuopt_routing cuopt_lp)
+    target_link_libraries(cuopt PUBLIC cuopt_base cuopt_routing cuopt_mathematical_optimization)
 else()
-    target_link_libraries(cuopt PUBLIC cuopt_base cuopt_lp)
+    target_link_libraries(cuopt PUBLIC cuopt_base cuopt_mathematical_optimization)
 endif()
 if(NOT SKIP_GRPC_BUILD)
     target_link_libraries(cuopt PUBLIC cuopt_grpc)
@@ -973,7 +946,7 @@ else ()
     set(_INCLUDE_DEST include/cuopt/)
 endif ()
 
-set(CUOPT_COMPONENT_TARGETS cuopt_base cuopt_lp)
+set(CUOPT_COMPONENT_TARGETS cuopt_base cuopt_mathematical_optimization)
 if(NOT SKIP_ROUTING_BUILD)
     list(APPEND CUOPT_COMPONENT_TARGETS cuopt_routing)
 endif()
@@ -981,7 +954,7 @@ if(NOT SKIP_GRPC_BUILD)
     list(APPEND CUOPT_COMPONENT_TARGETS cuopt_grpc)
 endif()
 
-# Export as cuopt::base / cuopt::routing / cuopt::lp / cuopt::grpc, matching the
+# Export as cuopt::base / cuopt::routing / cuopt::mathematical_optimization / cuopt::grpc, matching the
 # build-tree aliases.
 set(CUOPT_COMPONENT_EXPORT_NAMES "")
 foreach(_component ${CUOPT_COMPONENT_TARGETS})
@@ -996,7 +969,7 @@ install(TARGETS ${CUOPT_COMPONENT_TARGETS}
         EXPORT cuopt-exports
 )
 
-# Install umbrella shared library (the primary runtime artifact)
+# Install the umbrella shared library (the primary runtime artifact)
 install(TARGETS cuopt
         DESTINATION ${_LIB_DEST}
         COMPONENT runtime
@@ -1026,7 +999,7 @@ set(doc_string
 Provide targets for cuOpt.
 
 cuOpt library is a collection of GPU accelerated combinatorial optimization algorithms.
-Component targets: cuopt::base, cuopt::routing, cuopt::lp, cuopt::grpc (when gRPC is built)
+Component targets: cuopt::base, cuopt::routing, cuopt::mathematical_optimization, cuopt::grpc (when gRPC is built)
 Umbrella target:   cuopt::cuopt (links all component libs — backward-compatible with -lcuopt)
 
 ]=])

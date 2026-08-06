@@ -19,10 +19,10 @@ template <typename i_t, typename f_t>
 class cpu_optimization_problem_t;
 
 template <typename i_t, typename f_t>
-struct pdlp_solver_settings_t;
+class pdlp_solver_settings_t;
 
 template <typename i_t, typename f_t>
-struct mip_solver_settings_t;
+class mip_solver_settings_t;
 
 // ============================================================================
 // Remote Execution Functions
