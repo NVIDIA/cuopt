@@ -66,6 +66,7 @@ lp_status_t map_primal_status_to_lp_status(primal_status_t status)
   switch (status) {
     case primal_status_t::OPTIMAL: return lp_status_t::OPTIMAL;
     case primal_status_t::PRIMAL_UNBOUNDED: return lp_status_t::UNBOUNDED;
+    case primal_status_t::PRIMAL_INFEASIBLE: return lp_status_t::INFEASIBLE;
     case primal_status_t::TIME_LIMIT: return lp_status_t::TIME_LIMIT;
     case primal_status_t::ITERATION_LIMIT: return lp_status_t::ITERATION_LIMIT;
     case primal_status_t::CONCURRENT_LIMIT: return lp_status_t::CONCURRENT_LIMIT;

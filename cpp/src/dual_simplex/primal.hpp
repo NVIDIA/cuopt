@@ -19,13 +19,14 @@
 namespace cuopt::mathematical_optimization::simplex {
 
 enum class primal_status_t {
-  OPTIMAL          = 0,
-  PRIMAL_UNBOUNDED = 1,
-  NUMERICAL        = 2,
-  NOT_LOADED       = 3,
-  TIME_LIMIT       = 4,
-  ITERATION_LIMIT  = 5,
-  CONCURRENT_LIMIT = 6
+  OPTIMAL           = 0,
+  PRIMAL_UNBOUNDED  = 1,
+  PRIMAL_INFEASIBLE = 2,
+  NUMERICAL         = 3,
+  TIME_LIMIT        = 5,
+  ITERATION_LIMIT   = 6,
+  CONCURRENT_LIMIT  = 7,
+  NOT_LOADED        = 8
 };
 
 template <typename i_t, typename f_t>

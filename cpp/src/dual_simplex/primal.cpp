@@ -29,7 +29,7 @@ void set_primal_variables_on_bounds(const lp_problem_t<i_t, f_t>& lp,
 {
   const i_t m = lp.num_rows;
   const i_t n = lp.num_cols;
-  
+
   constexpr f_t diff_tol = 1e-6;
   for (i_t j = 0; j < n; ++j) {
     if (vstatus[j] == variable_status_t::BASIC) { continue; }
@@ -221,7 +221,7 @@ f_t primal_infeasibility(const lp_problem_t<i_t, f_t>& lp,
   return primal_infeasibility(lp, settings, vstatus, x, num_infeasible, work_estimate);
 }
 
-// work estimate: n-m + 4 * m 
+// work estimate: n-m + 4 * m
 template <typename i_t, typename f_t>
 void compute_phase1_objective(const lp_problem_t<i_t, f_t>& lp,
                               const simplex_solver_settings_t<i_t, f_t>& settings,
@@ -294,7 +294,7 @@ f_t compute_dual_step_length(f_t entering_reduced_cost, f_t pivot)
 }
 
 template <typename i_t, typename f_t>
-void update_y(f_t dual_step_length, 
+void update_y(f_t dual_step_length,
               const sparse_vector_t<i_t, f_t>& delta_y,
               std::vector<f_t>& y,
               f_t& work_estimate)
@@ -710,8 +710,8 @@ primal_status_t primal_phase2_with_advanced_basis(
   if (primal_residual > settings.primal_tol) {
     settings.log.printf("|| A*x - b || %e\n", primal_residual);
   }
- 
- 
+
+
   std::vector<f_t> objective = lp.objective;
   work_estimate += 2*n;
   const f_t primal_tol       = settings.primal_tol;
@@ -877,7 +877,7 @@ primal_status_t primal_phase2_with_advanced_basis(
           // Incremental duals may be stale relative to the current phase-I
           // objective. Refresh objective and duals, then retry pricing with
           // successively tighter dual tolerances.
-          settings.log.printf("Refreshing phase-I objective and duals. Num updates %d. Iter %d\n", 
+          settings.log.printf("Refreshing phase-I objective and duals. Num updates %d. Iter %d\n",
             basis_update.num_updates(), iter);
           compute_phase1_objective(lp, settings, vstatus, x, objective, work_estimate);
           compute_dual_variables(
@@ -898,11 +898,11 @@ primal_status_t primal_phase2_with_advanced_basis(
           }
           if (entering_index == -1) {
             settings.log.printf(
-              "Numerical issues encountered. No entering variable found with large "
+              "No entering variable found with large "
               "infeasibility %e (%d).\n",
               primal_inf,
               num_primal_inf);
-            return primal_status_t::NUMERICAL;
+            return primal_status_t::PRIMAL_INFEASIBLE;
           }
           pricing_dual_tol = retry_dual_tol;
         } else {
@@ -941,7 +941,7 @@ primal_status_t primal_phase2_with_advanced_basis(
     std::vector<f_t> scaled_delta_xB(m);
     scaled_delta_xB_sparse.to_dense(scaled_delta_xB);
     work_estimate += m + scaled_delta_xB_sparse.i.size();
-    
+
     for (i_t k = 0; k < m; ++k) {
       const i_t j = basic_list[k];
       delta_x[j]  = -direction * scaled_delta_xB[k];
@@ -996,7 +996,7 @@ primal_status_t primal_phase2_with_advanced_basis(
     if (debug_primal_residual > 1e-6) {
       settings.log.printf("|| A * x - b || %e at iteration %d (updates %d)\n", debug_primal_residual, iter, basis_update.num_updates());
     }
-#endif 
+#endif
 
 
     if (basis_updated) {
@@ -1129,9 +1129,11 @@ primal_status_t primal_phase2_with_advanced_basis(
 
     work_estimate += basis_update.work_estimate();
     basis_update.clear_work_estimate();
+
+    if (now > settings.time_limit) { return primal_status_t::TIME_LIMIT; }
   }
 
-  if (iter == iter_limit) { return primal_status_t::ITERATION_LIMIT; }
+  if (iter >= iter_limit) { return primal_status_t::ITERATION_LIMIT; }
 
   return primal_status_t::NUMERICAL;
 }

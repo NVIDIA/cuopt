@@ -3439,6 +3439,7 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(const simple
     const i_t iter_before              = iter;
     simplex_solver_settings_t<i_t, f_t> primal_settings = settings_;
     primal_settings.log.log = false;
+    primal_settings.time_limit = settings_.time_limit - toc(exploration_stats_.start_time);
     simplex::primal_status_t lp_status = simplex::primal_phase2_with_advanced_basis(2,
                                                                 exploration_stats_.start_time,
                                                                 lp_reduced,
@@ -3486,6 +3487,8 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(const simple
         best_num_fractional  = num_fractional_reduced;
         best_reduced_vstatus = reduced_vstatus;
       }
+    } else {
+      break;
     }
   }
 
@@ -3683,6 +3686,7 @@ void branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
   i_t& num_fractional,
   std::vector<i_t>& fractional)
 {
+  if (num_fractional == 0) { return; }
   f_t pivot_out_integer_variables_start_time = tic();
   std::vector<i_t> zero_reduced_costs_vars;
   std::vector<i_t> zero_reduced_costs_vars_nonbasic_index;

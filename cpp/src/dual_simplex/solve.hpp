@@ -105,7 +105,7 @@ lp_status_t solve_linear_program_with_primal(const user_problem_t<i_t, f_t>& use
                                              const simplex_solver_settings_t<i_t, f_t>& settings,
                                              f_t start_time,
                                              lp_solution_t<i_t, f_t>& solution);
-
+template <typename i_t, typename f_t>
 lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& user_problem,
                                               const simplex_solver_settings_t<i_t, f_t>& settings,
                                               f_t start_time,
