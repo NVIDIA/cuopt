@@ -65,15 +65,14 @@ static double bve_commit_wall_ops(int nb, int clause_budget)
   return double(nb) * three_nb + double(1 << nb) * double(clause_budget + 1);
 }
 
-template <typename i_t, typename f_t>
-bool bve_sanity_check(const uint8_t* feas, i_t nb, const bve_clause_t* clauses, i_t n_clauses)
+bool bve_sanity_check(const uint8_t* feas, int nb, const bve_clause_t* clauses, int n_clauses)
 {
   const uint32_t full_mask = (1u << nb) - 1u;
-  for (i_t i = 0; i < n_clauses; ++i)
+  for (int i = 0; i < n_clauses; ++i)
     if (clauses[i].lit_mask & ~full_mask) return false;  // literals must be on the boundary
   for (uint32_t m = 0; m <= full_mask; ++m) {
     bool crel = true;  // CNF value: AND over clauses of (clause satisfied by pattern m)
-    for (i_t i = 0; i < n_clauses && crel; ++i) {
+    for (int i = 0; i < n_clauses && crel; ++i) {
       const uint32_t lit = clauses[i].lit_mask;
       const uint32_t bit = clauses[i].bit_mask;
       // clause satisfied iff some literal position differs from its forbidden bit under m
@@ -198,11 +197,10 @@ static void bve_cube_cover(
   }
 }
 
-template <typename i_t>
-i_t bve_greedy_prime_cover(const uint8_t* feas,
-                           i_t nb,
+int bve_greedy_prime_cover(const uint8_t* feas,
+                           int nb,
                            bve_clause_t* out,
-                           i_t cap,
+                           int cap,
                            bve_cover_scratch_t& scratch,
                            int64_t* ops_out)
 {
@@ -234,7 +232,7 @@ i_t bve_greedy_prime_cover(const uint8_t* feas,
     ops += (int64_t)n_words + (int64_t{1} << (nb - std::popcount(primes[q].lit_mask)));
   }
 
-  i_t n = 0;
+  int n = 0;
   while (bve_mask_size(uncovered) > 0) {
     // Per pick: the size test above, one bve_mask_overlap per prime, then the subtract below.
     ops += (int64_t)((primes.size() + 2) * n_words);
@@ -267,12 +265,11 @@ struct bve_reduction_t {
 };
 
 // A surviving clause row to append to problem_t (a set-covering no-good over boundary columns).
+// No upper bound: every one of these is a >= no-good, so the upper side is always +inf.
 template <typename i_t, typename f_t>
 struct bve_added_row_t {
-  std::vector<i_t> vars;
-  std::vector<f_t> coeffs;
+  std::vector<std::pair<i_t, f_t>> terms;
   f_t lower;
-  f_t upper;
 };
 
 template <typename i_t, typename f_t>
@@ -280,7 +277,6 @@ struct bve_plan_t {
   std::vector<bve_reduction_t<i_t>> reductions;       // commit order
   std::vector<i_t> removed_rows;                      // original row ids to drop
   std::vector<bve_added_row_t<i_t, f_t>> added_rows;  // surviving clause rows
-  i_t n_blocks = 0;
 };
 
 // Working model and accumulated reduction plan. Candidates are staged without mutation and
@@ -291,7 +287,6 @@ struct bve_reducer_t {
     std::vector<std::pair<i_t, f_t>> terms;
     f_t lo, up;
     bool active;
-    bool original;
   };
 
   i_t n_vars, n_rows_orig;
@@ -376,10 +371,9 @@ bve_reducer_t<i_t, f_t>::bve_reducer_t(i_t n_vars_,
   rows.reserve(n_rows_orig * 2);
   for (i_t r = 0; r < n_rows_orig; ++r) {
     work_row_t R;
-    R.active   = true;
-    R.original = true;
-    R.lo       = scaling_bound_finite(row_lower[r]) ? row_lower[r] : -INF;
-    R.up       = scaling_bound_finite(row_upper[r]) ? row_upper[r] : INF;
+    R.active = true;
+    R.lo     = scaling_bound_finite(row_lower[r]) ? row_lower[r] : -INF;
+    R.up     = scaling_bound_finite(row_upper[r]) ? row_upper[r] : INF;
     for (i_t k = offsets[r]; k < offsets[r + 1]; ++k)
       R.terms.emplace_back(variables[k], coefficients[k]);
     i_t id = rows.size();
@@ -516,15 +510,15 @@ template <typename i_t, typename f_t>
 bool bve_reducer_t<i_t, f_t>::commit_projected(const bve_candidate_t<i_t, f_t>& cand,
                                                int64_t* ops_out)
 {
-  const i_t nb            = cand.blk.nb;
+  const int nb            = cand.blk.nb;
   const uint8_t* feasible = cand.projection.feasible.data();
   cuopt_assert(cand.projection.feasible.size() == (size_t(1) << nb), "projection table unsized");
   bve_clause_t clauses[BVE_MAX_CLAUSES];
-  const i_t n_clauses =
-    bve_greedy_prime_cover<i_t>(feasible, nb, clauses, BVE_MAX_CLAUSES, cover_scratch, ops_out);
+  const int n_clauses =
+    bve_greedy_prime_cover(feasible, nb, clauses, BVE_MAX_CLAUSES, cover_scratch, ops_out);
   if (n_clauses < 0) return false;  // clause explosion past cap
   if (n_clauses > cand.blk.n_rows + clause_growth_margin) return false;  // growth gate
-  if (!bve_sanity_check<i_t, f_t>(feasible, nb, clauses, n_clauses))
+  if (!bve_sanity_check(feasible, nb, clauses, n_clauses))
     return false;  // sanity check failed => keep block
 
   bve_reduction_t<i_t> red;
@@ -544,10 +538,9 @@ bool bve_reducer_t<i_t, f_t>::commit_projected(const bve_candidate_t<i_t, f_t>& 
     const uint32_t lit = clauses[ci].lit_mask;
     const uint32_t bit = clauses[ci].bit_mask;
     work_row_t R;
-    R.active   = true;
-    R.original = false;
-    R.up       = INF;
-    i_t n1     = 0;
+    R.active = true;
+    R.up     = INF;
+    i_t n1   = 0;
     for (i_t j = 0; j < nb; ++j)
       if (lit & (1u << j)) {
         const i_t b = (bit >> j) & 1u;
@@ -564,7 +557,6 @@ bool bve_reducer_t<i_t, f_t>::commit_projected(const bve_candidate_t<i_t, f_t>& 
     col2rows[a].clear();
     done[a] = 1;
   }
-  plan.n_blocks += 1;
   return true;
 }
 
@@ -575,13 +567,11 @@ bve_plan_t<i_t, f_t> bve_reducer_t<i_t, f_t>::finalize()
     if (!rows[r].active) plan.removed_rows.push_back(r);
   for (size_t r = n_rows_orig; r < rows.size(); ++r)
     if (rows[r].active) {
+      cuopt_assert(rows[r].up == std::numeric_limits<f_t>::infinity(),
+                   "clause rows carry no upper bound");
       bve_added_row_t<i_t, f_t> ar;
-      for (auto& p : rows[r].terms) {
-        ar.vars.push_back(p.first);
-        ar.coeffs.push_back(p.second);
-      }
+      ar.terms = std::move(rows[r].terms);
       ar.lower = rows[r].lo;
-      ar.upper = rows[r].up;
       plan.added_rows.push_back(std::move(ar));
     }
   return plan;
@@ -1295,7 +1285,7 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
       out_findings->fixings.emplace_back(to_original(column), value);
   }
 
-  if (plan.n_blocks == 0) return false;
+  if (plan.reductions.empty()) return false;
 
   // ---- 4. build the reduced forward CSR: keep original rows not removed, append clause rows ----
   const double t_install_begin = wall.elapsed_time();
@@ -1317,14 +1307,14 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
     new_cub.push_back(row_upper[r]);
   }
   for (const auto& ar : plan.added_rows) {
-    for (size_t t = 0; t < ar.vars.size(); ++t) {
-      new_var.push_back(ar.vars[t]);
-      new_coef.push_back(ar.coeffs[t]);
+    for (const auto& [var, coef] : ar.terms) {
+      new_var.push_back(var);
+      new_coef.push_back(coef);
     }
     new_off.push_back(new_var.size());
     new_clb.push_back(ar.lower);  // eliminated interior cols become empty (only in removed rows)
-    new_cub.push_back(
-      ar.upper);  // clause rows are >= no-goods; upper is +inf (problem_t convention)
+    // clause rows are >= no-goods; upper is +inf (problem_t convention)
+    new_cub.push_back(std::numeric_limits<f_t>::infinity());
   }
   // ---- 5. install the rewritten rows into problem_t (matrix + derived state) ----
   work_units += double(new_var.size()) + double(new_clb.size());
@@ -1356,26 +1346,21 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
   return true;
 }
 
-// Not f_t-templated: the CNF is derived from the boundary feasibility table alone.
-template int bve_greedy_prime_cover<int>(
-  const uint8_t*, int, bve_clause_t*, int, bve_cover_scratch_t&, int64_t*);
-
-#define INSTANTIATE(F_TYPE)                                                                   \
-  template bool bve_sanity_check<int, F_TYPE>(const uint8_t*, int, const bve_clause_t*, int); \
-  template double bve_project_batch_gpu<int, F_TYPE>(                                         \
-    const raft::handle_t&, std::vector<bve_candidate_t<int, F_TYPE>>&, F_TYPE);               \
-  template std::vector<std::vector<int>> bve_build_impl_adj<int, F_TYPE>(                     \
-    const probing_cache_t<int, F_TYPE>&,                                                      \
-    const std::vector<int>&,                                                                  \
-    int,                                                                                      \
-    const probe_findings_t<int>*);                                                            \
-  template bool block_bve_presolve<int, F_TYPE>(problem_t<int, F_TYPE>&,                      \
-                                                const std::vector<std::vector<int>>&,         \
-                                                timer_t&,                                     \
-                                                double&,                                      \
-                                                probe_findings_t<int>*,                       \
-                                                int,                                          \
-                                                int,                                          \
+#define INSTANTIATE(F_TYPE)                                                           \
+  template double bve_project_batch_gpu<int, F_TYPE>(                                 \
+    const raft::handle_t&, std::vector<bve_candidate_t<int, F_TYPE>>&, F_TYPE);       \
+  template std::vector<std::vector<int>> bve_build_impl_adj<int, F_TYPE>(             \
+    const probing_cache_t<int, F_TYPE>&,                                              \
+    const std::vector<int>&,                                                          \
+    int,                                                                              \
+    const probe_findings_t<int>*);                                                    \
+  template bool block_bve_presolve<int, F_TYPE>(problem_t<int, F_TYPE>&,              \
+                                                const std::vector<std::vector<int>>&, \
+                                                timer_t&,                             \
+                                                double&,                              \
+                                                probe_findings_t<int>*,               \
+                                                int,                                  \
+                                                int,                                  \
                                                 int)
 
 INSTANTIATE(double);

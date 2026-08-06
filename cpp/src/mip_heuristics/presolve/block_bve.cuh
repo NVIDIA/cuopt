@@ -83,17 +83,17 @@ struct bve_cover_scratch_t {
 
 // Derive a prime-implicate CNF from the boundary feasibility table by covering the infeasible
 // patterns with a max-gain greedy over every prime forbidden cube; return -1 on cap overflow.
-template <typename i_t>
-i_t bve_greedy_prime_cover(const uint8_t* feas,
-                           i_t nb,
+// Untemplated: the CNF is a Boolean computation over the feasibility table, and every dimension it
+// touches is capped by the BVE_MAX_* constants above.
+int bve_greedy_prime_cover(const uint8_t* feas,
+                           int nb,
                            bve_clause_t* out,
-                           i_t cap,
+                           int cap,
                            bve_cover_scratch_t& scratch,
                            int64_t* ops_out = nullptr);
 
 // Verify that the emitted clauses reproduce the boundary feasibility table exactly.
-template <typename i_t, typename f_t>
-bool bve_sanity_check(const uint8_t* feas, i_t nb, const bve_clause_t* clauses, i_t n_clauses);
+bool bve_sanity_check(const uint8_t* feas, int nb, const bve_clause_t* clauses, int n_clauses);
 
 // Exact existential projection of one block onto its boundary, filled by the projection backend.
 // Both tables are sized to the block's own 2^nb rather than BVE_MAX_PATTERNS, so a narrow block
