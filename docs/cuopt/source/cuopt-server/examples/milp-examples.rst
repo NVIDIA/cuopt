@@ -1,9 +1,9 @@
 ========================================
-MILP Python Examples
+MIP Python Examples
 ========================================
 
 The major difference between this example and the LP example is that some of the variables are integers, so ``variable_types`` need to be shared.
-The OpenAPI specification for the server is available in :doc:`open-api spec <../../open-api>`. The example data is structured as per the OpenAPI specification for the server, please refer :doc:`LPData data under "POST /cuopt/request" <../../open-api>` under schema section. LP and MILP share same spec.
+The OpenAPI specification for the server is available in :doc:`open-api spec <../../open-api>`. The example data is structured as per the OpenAPI specification for the server, please refer :doc:`LPData data under "POST /cuopt/request" <../../open-api>` under schema section. LP and MIP share same spec.
 
 Generic Example
 ---------------
@@ -64,7 +64,7 @@ Incumbent and Logging Callback
 The incumbent solution can be retrieved using a callback function as follows:
 
 .. note::
-    Incumbent solution callback is only applicable to MILP.
+    Incumbent solution callback is only applicable to MIP.
     The callback bound can be ``None`` when the solver has found an incumbent
     but no finite global bound is available yet.
 
@@ -136,7 +136,7 @@ Incumbent callback response:
 
 An example with DataModel is available in the `Examples Notebooks Repository <https://github.com/NVIDIA/cuopt-examples>`_.
 
-The ``data`` argument to ``get_LP_solve`` may be a dictionary of the format shown in :doc:`MILP Open-API spec <../../open-api>`. More details on the response can be found under responses schema in :doc:`"/cuopt/request" and "/cuopt/solution" API spec <../../open-api>`.
+The ``data`` argument to ``get_LP_solve`` may be a dictionary of the format shown in :doc:`MIP Open-API spec <../../open-api>`. More details on the response can be found under responses schema in :doc:`"/cuopt/request" and "/cuopt/solution" API spec <../../open-api>`.
 They can be of different format as well, please check the documentation.
 
 
@@ -152,10 +152,10 @@ Aborting a Running Job in Thin Client
    :linenos:
 
 ========================================
-MILP CLI Examples
+MIP CLI Examples
 ========================================
 
-Generic MILP Example
+Generic MIP Example
 ---------------------
 
 The only difference between this example and the prior LP example would be the variable types provided in data.
@@ -208,7 +208,7 @@ In case the user needs to update solver settings through CLI, the option ``-ss``
    cuopt_sh data.json -t LP -i $ip -p $port -ss '{"time_limit": 5}'
 
 .. note::
-   Batch mode is not supported for MILP.
+   Batch mode is not supported for MIP.
 
 .. _aborting-cli:
 

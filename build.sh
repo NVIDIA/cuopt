@@ -14,7 +14,7 @@ ARGS=$*
 REPODIR=$(cd "$(dirname "$0")"; pwd)
 LIBCUOPT_BUILD_DIR=${LIBCUOPT_BUILD_DIR:=${REPODIR}/cpp/build}
 
-VALIDARGS="clean codegen libcuopt cuopt_grpc_server cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -fsanitize -tsan -msan -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-grpc-build --skip-fatbin-write --host-lineinfo [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --allgpuarch --ci-only-arch --show_depr_warn -h --help"
+VALIDARGS="clean codegen libcuopt cuopt_grpc_server cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -fsanitize -tsan -msan -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-grpc-build --skip-fatbin-write --host-lineinfo [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] --install --allgpuarch --ci-only-arch --show_depr_warn -h --help"
 HELP="$0 [<target> ...] [<flag> ...]
  where <target> is:
    clean            - remove all existing build artifacts and configuration (start over)
@@ -34,7 +34,7 @@ HELP="$0 [<target> ...] [<flag> ...]
    -fsanitize       - Build with AddressSanitizer and UndefinedBehaviorSanitizer
    -tsan            - Build with ThreadSanitizer (cannot be used with -fsanitize or -msan)
    -msan            - Build with MemorySanitizer (cannot be used with -fsanitize or -tsan)
-   -n               - no install step
+   --install        - install built libraries into the active conda environment (default: build only, no install)
    --no-fetch-rapids  - don't fetch rapids dependencies
    -l=              - log level. Options are: TRACE | DEBUG | INFO | WARN | ERROR | CRITICAL | OFF. Default=INFO
    --verbose-pdlp   - verbose mode for pdlp solver
@@ -53,7 +53,7 @@ HELP="$0 [<target> ...] [<flag> ...]
    --show_depr_warn - show cmake deprecation warnings
    -h               - print this text
 
- default action (no args) is to build and install 'libcuopt', 'cuopt', 'cuopt_server', and 'cuopt_sh_client' targets (pass 'docs' explicitly to build documentation)
+ default action (no args) is to build 'libcuopt', 'cuopt', 'cuopt_server', and 'cuopt_sh_client' targets without installing into the conda environment (pass --install to also install libcuopt into the active conda environment; pass 'docs' explicitly to build documentation)
 
  libcuopt build dir is: ${LIBCUOPT_BUILD_DIR}
 
@@ -71,7 +71,7 @@ VERBOSE_FLAG=""
 BUILD_TYPE=Release
 DEFINE_ASSERT=False
 DEFINE_PDLP_VERBOSE_MODE=False
-INSTALL_TARGET=install
+INSTALL_TARGET=""
 BUILD_DISABLE_DEPRECATION_WARNING=ON
 BUILD_ALL_GPU_ARCH=0
 BUILD_CI_ONLY=0
@@ -213,8 +213,8 @@ fi
 if hasArg --verbose-pdlp; then
     DEFINE_PDLP_VERBOSE_MODE=true
 fi
-if hasArg -n; then
-    INSTALL_TARGET=""
+if hasArg --install; then
+    INSTALL_TARGET=install
 fi
 if hasArg --no-fetch-rapids; then
     FETCH_RAPIDS=OFF
@@ -356,6 +356,22 @@ if hasArg codegen; then
 fi
 
 ################################################################################
+# When not installing and rebuilding the C++ library, remove any stale
+# libcuopt.so from the conda prefix. conda's $LDFLAGS injects
+# -rpath,$CONDA_PREFIX/lib into every binary, so a previously installed copy
+# would shadow the freshly compiled build-dir one.
+# Only done when actually building libcuopt (not Python-only builds) to avoid
+# removing a legitimately conda-installed libcuopt that Python packages depend on.
+if [ -z "${INSTALL_TARGET}" ] && [ -n "${INSTALL_PREFIX}" ]; then
+    if buildAll || hasArg libcuopt || hasArg cuopt_grpc_server; then
+        if compgen -G "${INSTALL_PREFIX}/lib/libcuopt*.so*" > /dev/null 2>&1; then
+            echo "Removing stale libcuopt from ${INSTALL_PREFIX}/lib to prevent shadowing the build-dir library..."
+            rm -f "${INSTALL_PREFIX}"/lib/libcuopt*.so*
+        fi
+    fi
+fi
+
+################################################################################
 # Configure and build libcuopt (and optionally just the gRPC server)
 if buildAll || hasArg libcuopt || hasArg cuopt_grpc_server; then
     mkdir -p "${LIBCUOPT_BUILD_DIR}"
@@ -387,12 +403,12 @@ if buildAll || hasArg libcuopt || hasArg cuopt_grpc_server; then
     JFLAG="${PARALLEL_LEVEL:+-j${PARALLEL_LEVEL}}"
     if hasArg cuopt_grpc_server && ! hasArg libcuopt && ! buildAll; then
         # Build only the gRPC server (ninja resolves libcuopt as a dependency)
-        cmake --build "${LIBCUOPT_BUILD_DIR}" --target cuopt_grpc_server ${VERBOSE_FLAG} ${JFLAG}
-    elif hasArg -n; then
-        # Manual make invocation to start its jobserver
-        make ${JFLAG} -C "${REPODIR}/cpp" LIBCUOPT_BUILD_DIR="${LIBCUOPT_BUILD_DIR}" VERBOSE_FLAG="${VERBOSE_FLAG}" PARALLEL_LEVEL="${PARALLEL_LEVEL}" ninja-build
+        cmake --build "${LIBCUOPT_BUILD_DIR}" --target cuopt_grpc_server ${VERBOSE_FLAG} "${JFLAG}"
+    elif hasArg --install; then
+        cmake --build "${LIBCUOPT_BUILD_DIR}" --target "${INSTALL_TARGET}" ${VERBOSE_FLAG} "${JFLAG}"
     else
-        cmake --build "${LIBCUOPT_BUILD_DIR}" --target ${INSTALL_TARGET} ${VERBOSE_FLAG} ${JFLAG}
+        # Manual make invocation to start its jobserver
+        make "${JFLAG}" -C "${REPODIR}/cpp" LIBCUOPT_BUILD_DIR="${LIBCUOPT_BUILD_DIR}" VERBOSE_FLAG="${VERBOSE_FLAG}" PARALLEL_LEVEL="${PARALLEL_LEVEL}" ninja-build
     fi
 fi
 

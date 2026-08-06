@@ -18,10 +18,11 @@ dependencies:
 - cuda-nvtx-dev
 - cuda-sanitizer-api
 - cuda-version=13.3
-- cudf==26.8.*,>=0.0.0a0
+- cudf==26.10.*,>=0.0.0a0
 - cupy>=14.0.1,!=14.1.0
 - cxx-compiler
 - cython>=3.0.3
+- docutils>=0.21
 - doxygen=1.9.1
 - fastapi
 - gcc_linux-aarch64=14.*
@@ -36,8 +37,8 @@ dependencies:
 - libgrpc >=1.78.0,<1.80.0a0
 - libnvjitlink-dev
 - libprotobuf
-- libraft-headers==26.8.*,>=0.0.0a0
-- librmm==26.8.*,>=0.0.0a0
+- libraft-headers==26.10.*,>=0.0.0a0
+- librmm==26.10.*,>=0.0.0a0
 - make
 - msgpack-numpy==0.4.8
 - msgpack-python==1.2.1
@@ -55,7 +56,7 @@ dependencies:
 - pip
 - pre-commit
 - psutil>=6.0.0
-- pylibraft==26.8.*,>=0.0.0a0
+- pylibraft==26.10.*,>=0.0.0a0
 - pyrsistent
 - pytest-cov
 - pytest-rerunfailures
@@ -67,7 +68,7 @@ dependencies:
 - rapids-logger==0.2.*,>=0.0.0a0
 - re2
 - requests
-- rmm==26.8.*,>=0.0.0a0
+- rmm==26.10.*,>=0.0.0a0
 - ruamel.yaml>=0.18
 - scikit-build-core>=0.11.0
 - scipy>=1.14.1
@@ -81,6 +82,7 @@ dependencies:
 - sysroot_linux-aarch64==2.28
 - tbb-devel
 - uvicorn==0.34.*
+- vale=3.17.0
 - zlib
 - pip:
   - nvidia-sphinx-theme

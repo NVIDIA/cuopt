@@ -16,6 +16,8 @@
 #include <math_optimization/tic_toc.hpp>
 
 #include <rmm/device_uvector.hpp>
+
+#include <utility>
 namespace cuopt::mathematical_optimization::barrier {
 
 /** Validates SOC layout on an simplex::lp_problem_t before barrier presolve/solve. */
@@ -89,9 +91,11 @@ class barrier_solver_t {
                                   f_t& dual_residual_norm,
                                   f_t& complementarity_residual_norm);
 
-  f_t compute_nonnegative_step_length(iteration_data_t<i_t, f_t>& data,
-                                      const rmm::device_uvector<f_t>& x,
-                                      const rmm::device_uvector<f_t>& dx);
+  std::pair<f_t, f_t> compute_nonnegative_step_length_pair(iteration_data_t<i_t, f_t>& data,
+                                                           const rmm::device_uvector<f_t>& x1,
+                                                           const rmm::device_uvector<f_t>& dx1,
+                                                           const rmm::device_uvector<f_t>& x2,
+                                                           const rmm::device_uvector<f_t>& dx2);
   i_t gpu_compute_search_direction(iteration_data_t<i_t, f_t>& data,
                                    f_t& dual_perturb,
                                    f_t& primal_perturb,

@@ -71,12 +71,14 @@ struct simplex_solver_settings_t {
       eliminate_dense_columns(true),
       barrier_iterative_refinement(true),
       barrier_step_scale(0.9),
+      barrier_soc_threshold(100),
       num_gpus(1),
       folding(-1),
       augmented(0),
       dualize(-1),
       ordering(-1),
       barrier_dual_initial_point(-1),
+      postsolve_info(-1),
       qcqp_ruiz_equilibration(-1),
       check_Q(false),
       crossover(false),
@@ -163,6 +165,7 @@ struct simplex_solver_settings_t {
   bool eliminate_dense_columns;       // true to eliminate dense columns from A*D*A^T
   bool barrier_iterative_refinement;  // true to use iterative refinement for barrier method
   f_t barrier_step_scale;             // step scale for barrier method
+  i_t barrier_soc_threshold;          // SOC dimension above which rank-2 sparse scaling is used
   int num_gpus;   // Number of GPUs to use (maximum of 2 gpus are supported at the moment)
   i_t folding;    // -1 automatic, 0 don't fold, 1 fold
   i_t augmented;  // -1 automatic, 0 to solve with ADAT, 1 to solve with augmented system
@@ -170,6 +173,7 @@ struct simplex_solver_settings_t {
   i_t ordering;   // -1 automatic, 0 to use nested dissection, 1 to use AMD
   i_t barrier_dual_initial_point;  // -1 automatic, 0 to use Lustig, Marsten, and Shanno initial
                                    // point, 1 to use initial point form dual least squares problem
+  i_t postsolve_info;              // -1 automatic (disabled), 0 disabled, 1 enabled
   i_t qcqp_ruiz_equilibration;     // -1 automatic (imbalance heuristic), 0 disabled, 1 enabled
   bool check_Q;                    // true to check if Q is positive semidefinite
   bool crossover;                  // true to do crossover, false to not

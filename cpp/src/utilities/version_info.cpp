@@ -143,24 +143,37 @@ static std::string get_cpu_model()
   return "Unknown";
 }
 
-static double get_available_memory_gb()
+struct host_memory_info_t {
+  double total_gb{};
+  double available_gb{};
+};
+
+static host_memory_info_t get_host_memory_info()
 {
   std::ifstream meminfo("/proc/meminfo");
-  if (!meminfo.is_open()) return 0.0;
+  if (!meminfo.is_open()) return {};
 
   std::string line;
-  long kb = 0;
+  long total_kb     = 0;
+  long available_kb = 0;
+  long free_kb      = 0;
   while (std::getline(meminfo, line)) {
-    if (line.find("MemAvailable:") == 0 || line.find("MemFree:") == 0) {
-      std::size_t pos = line.find_first_of("0123456789");
-      if (pos != std::string::npos) {
-        kb = std::stol(line.substr(pos));
-        break;
-      }
+    std::istringstream fields(line);
+    std::string key;
+    long value_kb = 0;
+    fields >> key >> value_kb;
+    if (key == "MemTotal:") {
+      total_kb = value_kb;
+    } else if (key == "MemAvailable:") {
+      available_kb = value_kb;
+    } else if (key == "MemFree:") {
+      free_kb = value_kb;
     }
   }
 
-  return kb / (1024.0 * 1024.0);  // Convert KB to GB
+  if (available_kb == 0) { available_kb = free_kb; }
+  constexpr double kb_per_gib = 1024.0 * 1024.0;
+  return {total_kb / kb_per_gib, available_kb / kb_per_gib};
 }
 
 void print_version_info(int num_devices)
@@ -180,11 +193,14 @@ void print_version_info(int num_devices)
                  CUOPT_GIT_COMMIT_HASH,
                  CUOPT_CPU_ARCHITECTURE,
                  CUOPT_CUDA_ARCHITECTURES);
-  CUOPT_LOG_INFO("CPU: %s, threads (physical/logical): %d/%d, RAM: %.2f GiB",
-                 get_cpu_model().c_str(),
-                 get_physical_cores(),
-                 std::thread::hardware_concurrency(),
-                 get_available_memory_gb());
+  const auto memory = get_host_memory_info();
+  CUOPT_LOG_INFO(
+    "CPU: %s, threads (physical/logical): %d/%d, RAM (available/total): %.2f / %.2f GiB",
+    get_cpu_model().c_str(),
+    get_physical_cores(),
+    std::thread::hardware_concurrency(),
+    memory.available_gb,
+    memory.total_gb);
 
   for (int device_id = 0; device_id < num_devices; ++device_id) {
     cudaDeviceProp device_prop{};

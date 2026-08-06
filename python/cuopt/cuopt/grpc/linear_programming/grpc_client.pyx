@@ -33,13 +33,15 @@ from cuopt.linear_programming.solver_settings.solver_settings cimport (
 
 from enum import IntEnum
 import math
+import threading
+import time
+import warnings
+
 from libc.stdint cimport int64_t
 from libc.stddef cimport size_t
 from libcpp.memory cimport unique_ptr
 from libcpp.string cimport string
 from libcpp.utility cimport move
-import threading
-import time
 
 import numpy as np
 
@@ -191,7 +193,6 @@ def _forward_incumbent_to_settings(settings, index, objective, assignment, job_c
 
 cdef class Client:
     cdef unique_ptr[grpc_python_client_t] _client
-    cdef dict _job_is_mip
     cdef dict _log_threads
     cdef dict _log_thread_errors
     cdef dict _log_stream_state
@@ -221,7 +222,6 @@ cdef class Client:
 
         options = _connect_options_from_tls(tls)
         self._client.reset(new grpc_python_client_t(host_cpp, port, options))
-        self._job_is_mip = {}
         self._log_threads = {}
         self._log_thread_errors = {}
         self._log_stream_state = {}
@@ -238,9 +238,16 @@ cdef class Client:
         return Client(self._host, self._port, tls=self._tls)
 
     def submit(self, problem, SolverSettings settings not None):
+        """
+        Submit a problem for solving and return its ``job_id``.
+
+        ``problem`` is a :class:`~cuopt.linear_programming.problem.Problem` or
+        :class:`~cuopt.linear_programming.data_model.DataModel`. The job runs
+        asynchronously; use :meth:`wait` or :meth:`status` to track it and
+        :meth:`result` to fetch the solution. Always :meth:`delete` when done.
+        """
         cdef DataModel data_model
         cdef grpc_submit_result_t submit_result
-        cdef string job_id
         cdef bint mip
 
         data_model = self._as_data_model(problem)
@@ -260,11 +267,12 @@ cdef class Client:
         )
         if not submit_result.success:
             raise GrpcError(submit_result.error_message.decode("utf-8"))
-        job_id = submit_result.job_id
-        self._job_is_mip[job_id.decode("utf-8")] = bool(submit_result.is_mip)
-        return job_id.decode("utf-8")
+        return submit_result.job_id.decode("utf-8")
 
     def status(self, str job_id):
+        """
+        Return the current :class:`JobStatus` for ``job_id`` without blocking.
+        """
         cdef grpc_status_result_t status_result = self._client.get().status(
             job_id.encode("utf-8")
         )
@@ -273,6 +281,16 @@ cdef class Client:
         return JobStatus(<int>status_result.status)
 
     def wait(self, str job_id, timeout=None):
+        """
+        Block until ``job_id`` reaches a terminal state and return its
+        :class:`JobStatus`.
+
+        ``timeout`` is in whole seconds. ``None`` waits indefinitely.
+        Non-``None`` values are converted with ``int(timeout)`` (so ``0.5``
+        becomes ``0`` and waits indefinitely). Positive timeouts poll about
+        once per second and raise :class:`GrpcError` if the deadline expires
+        (they do not return a non-terminal :class:`JobStatus`).
+        """
         cdef int timeout_seconds = 0 if timeout is None else int(timeout)
         cdef grpc_status_result_t wait_result = self._client.get().wait(
             job_id.encode("utf-8"), timeout_seconds
@@ -282,29 +300,40 @@ cdef class Client:
         return JobStatus(<int>wait_result.status)
 
     def cancel(self, str job_id):
+        """
+        Request cancellation of a running job. The job moves to
+        :attr:`JobStatus.CANCELLED`; call :meth:`delete` to release its state.
+        """
         cdef string error_out
         if not self._client.get().cancel(job_id.encode("utf-8"), error_out):
             raise GrpcError(error_out.decode("utf-8"))
 
     def delete(self, str job_id):
+        """
+        Cancel ``job_id`` if it is still running, then delete it on the server
+        and release its state. Joins any client-side incumbent-stream thread
+        for this job first. Call once you no longer need the job's result or
+        logs.
+        """
         if job_id in self._incumbent_threads:
             self.join_incumbent_stream(job_id)
         cdef string error_out
         if not self._client.get().delete_job(job_id.encode("utf-8"), error_out):
             raise GrpcError(error_out.decode("utf-8"))
-        self._job_is_mip.pop(job_id, None)
 
-    def result(self, str job_id, variable_names=None, is_mip=None):
+    def result(self, str job_id, variable_names=None):
+        """
+        Fetch the solution for a completed job, or ``None`` if not ready.
+
+        LP vs MIP is determined from the server response (via
+        ``grpc_client_t::get_result``). Pass ``variable_names`` (column order)
+        to key ``solution.get_vars()`` by name. Raises :class:`GrpcError` if the job
+        failed or was cancelled.
+        """
         cdef grpc_result_outcome_t outcome
-        cdef bint fetch_mip
         cdef unique_ptr[solver_ret_t] sol_ret
 
-        if is_mip is not None:
-            fetch_mip = bool(is_mip)
-        else:
-            fetch_mip = self._job_is_mip.get(job_id, False)
-
-        outcome = self._client.get().result(job_id.encode("utf-8"), fetch_mip)
+        outcome = self._client.get().result(job_id.encode("utf-8"))
         if outcome.not_ready:
             return None
         if not outcome.success:
@@ -378,10 +407,19 @@ cdef class Client:
         return thread
 
     def join_log_stream(self, str job_id, timeout=None):
-        """Wait for a background log stream started by :meth:`start_log_stream`.
+        """Wait for the background log-stream thread started by :meth:`start_log_stream`.
 
-        Returns a dict with stream stats (``live_lines``, ``lines``, ``backfilled``)
-        when a stream was started for ``job_id``, else ``None``.
+        Returns a dict when a thread was started for ``job_id``, else ``None``.
+        Useful keys:
+
+        * ``lines`` — list of log line strings collected so far
+        * ``live_lines`` — count of lines received from the live stream thread
+        * ``backfilled`` — ``True`` if the live stream received no lines and
+          this method then called :meth:`logs` as a client-side fallback to
+          fill ``lines`` (and re-invoke the callback). That fetch is not
+          destructive; the server keeps the log until :meth:`delete`.
+
+        Other keys in the dict are internal; do not rely on them.
         """
         thread = self._log_threads.get(job_id)
         if thread is not None:
@@ -473,8 +511,7 @@ cdef class Client:
     def start_incumbent_stream(
         self,
         str job_id,
-        callback=None,
-        settings=None,
+        settings,
         from_index=0,
         poll_interval_ms=1000,
     ):
@@ -482,31 +519,21 @@ cdef class Client:
         Poll for MIP incumbent solutions on a background thread until the job
         completes.
 
-        ``callback`` is invoked as ``callback(index, objective, assignment,
-        job_complete)``. Return ``False`` to cancel the job. ``assignment`` is
-        a list of variable values.
-
-        Alternatively pass ``settings`` with :meth:`SolverSettings.set_mip_callback`
-        registered :class:`GetSolutionCallback` instances (same as local solve).
+        Pass ``settings`` with ``GetSolutionCallback`` instances registered via
+        :meth:`~cuopt.linear_programming.solver_settings.SolverSettings.set_mip_callback`
+        (same as local solve).
 
         Call :meth:`join_incumbent_stream` before :meth:`delete`.
         """
         if job_id in self._incumbent_threads:
             raise GrpcError(f"incumbent stream already running for job {job_id}")
-        if callback is None and settings is None:
-            raise GrpcError("callback or settings is required")
+        if settings is None:
+            raise GrpcError("settings is required")
 
         def combined(index, objective, assignment, job_complete):
-            if settings is not None:
-                if _forward_incumbent_to_settings(
-                    settings, index, objective, assignment, job_complete
-                ) is False:
-                    return False
-            if callback is not None:
-                return _call_incumbent_callback(
-                    callback, index, objective, assignment, job_complete
-                )
-            return True
+            return _forward_incumbent_to_settings(
+                settings, index, objective, assignment, job_complete
+            )
 
         incumbent_client = self._spawn_client()
         thread = threading.Thread(
@@ -525,10 +552,16 @@ cdef class Client:
         return thread
 
     def join_incumbent_stream(self, str job_id, timeout=None):
-        """Wait for a background incumbent poll started by :meth:`start_incumbent_stream`."""
-        thread = self._incumbent_threads.pop(job_id, None)
+        """Wait for the background incumbent-stream thread started by :meth:`start_incumbent_stream`."""
+        thread = self._incumbent_threads.get(job_id)
         if thread is not None:
             thread.join(timeout)
+            if thread.is_alive():
+                exc = self._incumbent_thread_errors.get(job_id)
+                if exc is not None:
+                    raise exc
+                return
+            self._incumbent_threads.pop(job_id, None)
         exc = self._incumbent_thread_errors.pop(job_id, None)
         if exc is not None:
             raise exc
