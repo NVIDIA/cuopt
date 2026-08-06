@@ -162,15 +162,17 @@ struct fj_bin_tabu_t {
   }
 };
 
-// One row of the narrowed problem. bound/sign encode the single finite bound the split leaves:
-// sign +1 for lhs <= bound, -1 for lhs >= bound. cmax is max|coef| over the row, which bounds how
-// far a single flip can move the slack.
+// What the apply path still needs per row once the row walk is vectorized: everything else it used
+// to read from here now reaches it at unit stride.
+//
+// The mutable state moved out to the engine's row_slack, which holds sign * (bound - lhs) rather
+// than lhs, because that is what turns the walk's update into a subtraction and lets it gather one
+// array instead of four. bound went with it -- only the rebuild paths need it, and they read
+// pb.bound. cmax went to pb.incident_row_cmax, replicated per incidence. sign stays because
+// fj_bin_patch_row still takes it, and weight because it is genuinely mutable.
 template <typename coef_t>
 struct fj_bin_row_t {
-  int32_t lhs;
   int32_t weight;
-  int32_t bound;
-  coef_t cmax;
   int8_t sign;
 };
 
@@ -189,6 +191,12 @@ struct fj_bin_problem_t {
   std::vector<int32_t> reverse_constraints;
   std::vector<coef_t> reverse_coefficients;
   std::vector<int32_t> reverse_to_csr;
+
+  // Per incidence, for the vectorized row walk: sign * coefficient folded once, and the row's cmax
+  // replicated. Both are structural. Indexed like the transpose above, so the walk reads them at
+  // unit stride instead of gathering sign, coefficient and cmax per row.
+  std::vector<coef_t> signed_coefficient;
+  std::vector<coef_t> incident_row_cmax;
 
   std::vector<int32_t> bound;
   std::vector<int8_t> sign;
@@ -432,6 +440,8 @@ static bool fj_bin_narrow(const fj_cpu_climber_t<i_t, f_t>& c,
   pb.reverse_constraints.resize(pb.nnz);
   pb.reverse_coefficients.resize(pb.nnz);
   pb.reverse_to_csr.resize(pb.nnz);
+  pb.signed_coefficient.resize(pb.nnz);
+  pb.incident_row_cmax.resize(pb.nnz);
   {
     std::vector<int32_t> cursor(pb.reverse_offsets.begin(), pb.reverse_offsets.begin() + n);
     for (int32_t r = 0; r < n_split; ++r) {
@@ -440,11 +450,20 @@ static bool fj_bin_narrow(const fj_cpu_climber_t<i_t, f_t>& c,
         pb.reverse_constraints[slot] = r;
         pb.reverse_coefficients[slot] = pb.coefficients[k];
         pb.reverse_to_csr[slot]       = k;
+        // The scan admits int8 only up to |coef| 127 and int16 only up to 32767, so negating a
+        // coefficient cannot overflow its own width.
+        pb.signed_coefficient[slot] = (coef_t)(pb.sign[r] * pb.coefficients[k]);
+        pb.incident_row_cmax[slot]  = pb.cmax[r];
       }
     }
   }
-  // Lookahead room for the row-walk prefetch. Reads land on row 0, which is prefetched harmlessly.
-  pb.reverse_constraints.resize(pb.nnz + fj_bin_pf_dist, 0);
+  // Lookahead room for the row walk: a vector of overhang for the kernel's unit-stride loads, and
+  // the prefetch distance the scalar path uses. Reads land on row 0, harmlessly, and every lane past
+  // a variable's range is masked out of the gather, the scatter and the compress.
+  const int32_t rpad = fj_bin_pf_dist > pad ? fj_bin_pf_dist : pad;
+  pb.reverse_constraints.resize(pb.nnz + rpad, 0);
+  pb.signed_coefficient.resize(pb.nnz + rpad, (coef_t)0);
+  pb.incident_row_cmax.resize(pb.nnz + rpad, (coef_t)1);
 
   pb.objective.resize(n);
   for (int32_t v = 0; v < n; ++v) {
@@ -461,6 +480,10 @@ template <typename i_t, typename f_t, typename coef_t>
 struct fj_bin_engine_t : fj_binary_state_t<i_t, f_t> {
   fj_bin_problem_t<coef_t> pb;
   std::vector<fj_bin_row_t<coef_t>> rows;
+
+  // Per row, sign * (bound - lhs): negative exactly when the row is violated, and moved by a flip
+  // by exactly -signed_coefficient. The only mutable state the vectorized walk gathers.
+  std::vector<int32_t> row_slack;
 
   std::vector<int8_t> assign;
   std::vector<int8_t> best_assign;
@@ -508,6 +531,7 @@ struct fj_bin_engine_t : fj_binary_state_t<i_t, f_t> {
   // Rows at or below these lengths go to the 4- and 8-lane patch kernels; 0 disables that width.
   int32_t narrow4_max{0};
   int32_t narrow8_max{0};
+
 
   // Settings read at solve entry, where the climber carries populated values.
   int32_t seed{0};
@@ -593,9 +617,8 @@ struct fj_bin_engine_t : fj_binary_state_t<i_t, f_t> {
       int32_t agg_base = 0, agg_bonus = 0;
       for (int32_t i = pb.reverse_offsets[v]; i < pb.reverse_offsets[v + 1]; ++i) {
         const fj_bin_row_t<coef_t>& h = rows[pb.reverse_constraints[i]];
-        const int32_t s  = h.sign;
-        const int32_t os = s * (h.bound - h.lhs);
-        const int32_t ns = os - s * ((int32_t)pb.reverse_coefficients[i] * flip);
+        const int32_t os = row_slack[pb.reverse_constraints[i]];
+        const int32_t ns = os - (int32_t)pb.signed_coefficient[i] * flip;
         int32_t base = 0, bonus = 0;
         fj_bin_score_delta_parts(os, ns, h.weight, base, bonus);
         agg_base += base;
@@ -632,25 +655,18 @@ struct fj_bin_engine_t : fj_binary_state_t<i_t, f_t> {
     }
   }
 
-  // Branchless score delta of flipping a variable, as seen by one row. base is the weighted change
-  // in satisfaction; bonus is the weighted change in strict slack. When both states are violated
-  // the improving direction earns half weight, matching excess_improvement_weight of 1/2.
-  int32_t score_delta(const fj_bin_row_t<coef_t>& h, int32_t lhs, int8_t delta, coef_t k) const
-  {
-    const int32_t s  = h.sign;
-    const int32_t os = s * (h.bound - lhs);
-    const int32_t ns = os - s * ((int32_t)k * delta);
-    return fj_bin_packed_score_delta(os, ns, h.weight);
-  }
-
   void rebuild_scores()
   {
     std::fill(var_score.begin(), var_score.end(), 0);
     for (int32_t r = 0; r < pb.n_constraints; ++r) {
-      const fj_bin_row_t<coef_t>& h = rows[r];
+      const int32_t weight = rows[r].weight;
+      const int32_t sign   = rows[r].sign;
+      const int32_t os     = row_slack[r];
       for (int32_t k = pb.offsets[r]; k < pb.offsets[r + 1]; ++k) {
-        const int32_t v = pb.variables[k];
-        const int32_t p = score_delta(h, h.lhs, (int8_t)(1 - 2 * assign[v]), pb.coefficients[k]);
+        const int32_t v    = pb.variables[k];
+        const int32_t flip = 1 - 2 * assign[v];
+        const int32_t ns   = os - sign * ((int32_t)pb.coefficients[k] * flip);
+        const int32_t p    = fj_bin_packed_score_delta(os, ns, weight);
         nnz_score_delta[k] = p;
         var_score[v] += p;
       }
@@ -658,7 +674,7 @@ struct fj_bin_engine_t : fj_binary_state_t<i_t, f_t> {
     nnz_touched += pb.nnz;
   }
 
-  void recompute_lhs()
+  void recompute_slack()
   {
     violated_list.clear();
     std::fill(is_violated.begin(), is_violated.end(), (uint8_t)0);
@@ -666,8 +682,9 @@ struct fj_bin_engine_t : fj_binary_state_t<i_t, f_t> {
       int32_t lhs = 0;
       for (int32_t k = pb.offsets[r]; k < pb.offsets[r + 1]; ++k)
         lhs += (int32_t)pb.coefficients[k] * assign[pb.variables[k]];
-      rows[r].lhs = lhs;
-      if (rows[r].sign * (rows[r].bound - lhs) < 0) set_violated(r);
+      const int32_t slack = pb.sign[r] * (pb.bound[r] - lhs);
+      row_slack[r]        = slack;
+      if (slack < 0) set_violated(r);
     }
     incumbent_objective = 0;
     for (int32_t v = 0; v < pb.n_variables; ++v) incumbent_objective += pb.objective[v] * assign[v];
@@ -706,13 +723,14 @@ struct fj_bin_engine_t : fj_binary_state_t<i_t, f_t> {
     const int32_t prev_violated = (int32_t)violated_list.size();
     int32_t own_score           = 0;
 
-    // The loop writes a row's lhs through fj_bin_row_t* and a score delta through int32_t*, either
-    // of which may alias a vector's internal pointer as far as the compiler can prove. Without
-    // these locals it reloads every base pointer below out of `this` on each row visit, and cannot
-    // turn the index walks into pointer inductions.
+    // The tail writes a score delta through int32_t* and calls out to the patch, either of which may
+    // alias a vector's internal pointer as far as the compiler can prove. Without these locals it
+    // reloads every base pointer below out of `this` on each visit.
     fj_bin_row_t<coef_t>* const rows_p = rows.data();
+    int32_t* const slack_p             = row_slack.data();
     const int32_t* const rcon_p        = pb.reverse_constraints.data();
-    const coef_t* const rcoef_p        = pb.reverse_coefficients.data();
+    const coef_t* const skv_p          = pb.signed_coefficient.data();
+    const coef_t* const rcmax_p        = pb.incident_row_cmax.data();
     const int32_t* const rcsr_p        = pb.reverse_to_csr.data();
     const int32_t* const offsets_p     = pb.offsets.data();
     const int32_t* const vars_p        = pb.variables.data();
@@ -721,60 +739,72 @@ struct fj_bin_engine_t : fj_binary_state_t<i_t, f_t> {
     int32_t* const nnz_delta_p         = nnz_score_delta.data();
     const int32_t* const assign_p      = assign_i32.data();
 
-    for (int32_t ii = ob; ii < oe; ++ii) {
-      // Write hint: the row's lhs is updated at the end of every iteration, so the line is wanted
-      // exclusive. The padding on reverse_constraints makes the lookahead unconditional.
-      __builtin_prefetch(&rows_p[rcon_p[ii + fj_bin_pf_dist]], 1, 3);
-
+    // Everything a visit still needs once its slack has been advanced. Shared by the two arms below
+    // so the walk's shape is the only thing that differs between them.
+    auto finish = [&](int32_t ii) {
       const int32_t r         = rcon_p[ii];
       fj_bin_row_t<coef_t>& h = rows_p[r];
-      const coef_t kv         = rcoef_p[ii];
-      const int32_t old_lhs   = h.lhs;
-      const int32_t new_lhs   = old_lhs + (int32_t)kv * delta;
-      const int32_t s         = h.sign;
-      const int32_t old_slack = s * (h.bound - old_lhs);
-      const int32_t new_slack = s * (h.bound - new_lhs);
+      const int32_t skv       = (int32_t)skv_p[ii];
+      const int32_t new_slack = slack_p[r];
+      const int32_t old_slack = new_slack + skv * delta;
 
+      // A row can only cross its boundary if the flip moves it by at least the distance to it, so
+      // every transition is inside this list and none was lost with the rows the walk absorbed.
       if (new_slack < 0 && old_slack >= 0) {
         set_violated(r);
       } else if (new_slack >= 0 && old_slack < 0) {
         set_satisfied(r);
       }
 
-      // A row that stays clear of its boundary by more than max|coef| on both sides cannot change
-      // any variable's satisfaction flags, so its patch is skipped entirely.
-      const int32_t margin = h.cmax;
-      const bool deep_sat  = old_slack > margin && new_slack > margin;
-      const bool deep_viol = old_slack < -margin && new_slack < -margin;
-      if (!(deep_sat || deep_viol)) {
-        const int32_t kb = offsets_p[r], ke = offsets_p[r + 1];
-        // The offsets are already loaded for the call, so the width choice is a compare rather
-        // than a stored per-row flag.
-        // TODO: check that this may not cause AVX512 powerdown overheads if the AVX2 row/AVX512 row ratio is unbalanced
-        fj_bin_patch_row(fj_bin_patch_width_for(ke - kb, narrow4_max, narrow8_max),
-                         vars_p,
-                         coefs_p,
-                         kb,
-                         ke,
-                         var_score_p,
-                         nnz_delta_p,
-                         assign_p,
-                         s,
-                         h.weight,
-                         new_slack,
-                         var);
+      // The mirror of the walk's deep_sat test. Kept here rather than there because it fires on
+      // 0.02% of visits and guards the widest rows in the matrix: measured, moving it into the
+      // vector loop costs more in the 85% case than it saves in the 0.02% one.
+      const int32_t margin = (int32_t)rcmax_p[ii];
+      if (!(old_slack < -margin && new_slack < -margin)) {
+          const int32_t kb = offsets_p[r], ke = offsets_p[r + 1];
+          // The offsets are already loaded for the call, so the width choice is a compare rather
+          // than a stored per-row flag.
+          // TODO: check that this may not cause AVX512 powerdown overheads if the AVX2 row/AVX512 row ratio is unbalanced
+          fj_bin_patch_row(fj_bin_patch_width_for(ke - kb, narrow4_max, narrow8_max),
+                           vars_p,
+                           coefs_p,
+                           kb,
+                           ke,
+                           var_score_p,
+                           nnz_delta_p,
+                           assign_p,
+                           h.sign,
+                           h.weight,
+                           new_slack,
+                           var);
         nnz_touched += ke - kb;
         nnz_patched += ke - kb;
       }
 
-      // The flipped variable's own score delta is provably zero when the row is deeply satisfied
-      // both ways, and already stored as zero there.
-      if (!deep_sat) {
-        const int32_t pv = score_delta(h, new_lhs, new_flip, kv);
-        own_score += pv;
-        nnz_delta_p[rcsr_p[ii]] = pv;
-      }
-      h.lhs = new_lhs;
+      // The flipped variable's own score delta. Zero on the rows the walk absorbed -- deeply
+      // satisfied both ways -- and already stored as zero there.
+      const int32_t pv = fj_bin_packed_score_delta(new_slack, new_slack - skv * new_flip, h.weight);
+      own_score += pv;
+      nnz_delta_p[rcsr_p[ii]] = pv;
+    };
+
+    // A tile at a time: the kernel advances every slack in the tile and reports back only the visits
+    // that left the row within reach of its boundary, which on supportcase22 is 15.1% of them. The
+    // buffer is a stack array rather than one sized to the widest reverse degree because the tail
+    // runs between tiles, which is also what keeps the patch calls out of the vector loop.
+    //
+    // Unconditional: a scalar arm for short ranges was tried and never won. Sweeping the degree
+    // below which apply_move walked the rows itself, bnatt400 degraded monotonically from 14.43M to
+    // 14.19M iterations/s as the threshold rose from 0 to 64, and crypt16 and supportcase22 were
+    // flat. At a median degree of 13 and 7 respectively, one gather still beats that many dependent
+    // scalar load-modify-stores, because it breaks the dependence chain through row_slack rather
+    // than following it.
+    int32_t tile_incidence[fj_bin_walk_tile];
+    for (int32_t t0 = ob; t0 < oe; t0 += fj_bin_walk_tile) {
+      const int32_t t1 = (t0 + fj_bin_walk_tile < oe) ? t0 + fj_bin_walk_tile : oe;
+      const int32_t n_tail =
+        fj_bin_walk_rows(slack_p, rcon_p, skv_p, rcmax_p, t0, t1, delta, tile_incidence);
+      for (int32_t j = 0; j < n_tail; ++j) finish(tile_incidence[j]);
     }
     nnz_touched += oe - ob;
     rows_walked += oe - ob;
@@ -822,7 +852,7 @@ struct fj_bin_engine_t : fj_binary_state_t<i_t, f_t> {
     if (new_weight == h.weight) return;
     h.weight = new_weight;
     if (new_weight > max_weight) max_weight = new_weight;
-    // lhs is unchanged here, and no variable is excluded, so skip_var matches no index.
+    // The slack is unchanged here, and no variable is excluded, so skip_var matches no index.
     const int32_t kb = pb.offsets[r], ke = pb.offsets[r + 1];
     fj_bin_patch_row(fj_bin_patch_width_for(ke - kb, narrow4_max, narrow8_max),
                      pb.variables.data(),
@@ -834,7 +864,7 @@ struct fj_bin_engine_t : fj_binary_state_t<i_t, f_t> {
                      assign_i32.data(),
                      h.sign,
                      h.weight,
-                     h.sign * (h.bound - h.lhs),
+                     row_slack[r],
                      -1);
     nnz_touched += ke - kb;
     nnz_patched += ke - kb;
@@ -990,7 +1020,7 @@ struct fj_bin_engine_t : fj_binary_state_t<i_t, f_t> {
       assign[v]       = (int8_t)(rng.next_u32() & 1u);
       assign_i32[v]   = assign[v];
     }
-    recompute_lhs();
+    recompute_slack();
   }
 
   // Restart returns the assignment to the seed the climber was constructed with, leaving the
@@ -1003,7 +1033,7 @@ struct fj_bin_engine_t : fj_binary_state_t<i_t, f_t> {
     max_weight       = fj_bin_ddfw_init;
     objective_weight = 0;
     tabu.clear(iters);
-    recompute_lhs();
+    recompute_slack();
     last_restart_iter           = iters;
     last_feasible_entrance_iter = iters;
   }
@@ -1045,7 +1075,8 @@ struct fj_bin_engine_t : fj_binary_state_t<i_t, f_t> {
 
     rows.resize(m);
     for (int32_t r = 0; r < m; ++r)
-      rows[r] = fj_bin_row_t<coef_t>{0, pb.initial_weight[r], pb.bound[r], pb.cmax[r], pb.sign[r]};
+      rows[r] = fj_bin_row_t<coef_t>{pb.initial_weight[r], pb.sign[r]};
+    row_slack.assign(m, 0);
 
     var_score.assign(n, 0);
     nnz_score_delta.assign(pb.nnz + fj_bin_simd_padding(), 0);
@@ -1062,7 +1093,7 @@ struct fj_bin_engine_t : fj_binary_state_t<i_t, f_t> {
     feasible_found      = false;
     iters               = 0;
     last_restart_iter   = 0;
-    recompute_lhs();
+    recompute_slack();
   }
 
   void solve(fj_cpu_climber_t<i_t, f_t>& climber, f_t time_limit, double work_unit_limit) override
