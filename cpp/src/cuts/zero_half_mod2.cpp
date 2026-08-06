@@ -49,6 +49,13 @@ struct mod2_candidate_t : mod2_parity_row_t<i_t> {
   bool reversible{false};
 };
 
+template <typename i_t>
+struct mod2_basis_row_t {
+  std::vector<i_t> parity;
+  std::vector<i_t> combination;
+  bool rhs{false};
+};
+
 template <typename i_t, typename row_t>
 struct mod2_row_order_t {
   const std::vector<row_t>& rows;
@@ -69,13 +76,8 @@ std::vector<std::vector<i_t>> find_mod2_row_combinations(const std::vector<row_t
                                                          f_t* work_estimate,
                                                          f_t max_work_estimate)
 {
-  if (max_combination_size <= 0 || max_combinations <= 0) { return {}; }
-
-  struct basis_row_t {
-    std::vector<i_t> parity;
-    std::vector<i_t> combination;
-    bool rhs{false};
-  };
+  cuopt_assert(max_combination_size > 0, "Maximum GF(2) combination size must be positive");
+  cuopt_assert(max_combinations > 0, "Maximum number of GF(2) combinations must be positive");
 
   i_t max_index       = -1;
   f_t input_scan_work = 0.0;
@@ -96,11 +98,12 @@ std::vector<std::vector<i_t>> find_mod2_row_combinations(const std::vector<row_t
   std::iota(permutation.begin(), permutation.end(), 0);
   const f_t sort_work = (f_t)permutation.size() * std::log2((f_t)permutation.size() + (f_t)1.0);
   if (add_work_estimate(sort_work, work_estimate, max_work_estimate)) { return {}; }
+  // this is to process small/sparse rows first, for faster perf and smaller combinations
   std::stable_sort(permutation.begin(), permutation.end(), mod2_row_order_t<i_t, row_t>{rows});
 
   if (add_work_estimate((f_t)(max_index + 1), work_estimate, max_work_estimate)) { return {}; }
   std::vector<i_t> pivot_to_basis((size_t)(max_index + 1), -1);
-  std::vector<basis_row_t> basis;
+  std::vector<mod2_basis_row_t<i_t>> basis;
   basis.reserve(std::min(rows.size(), (size_t)(max_index + 1)));
   std::vector<std::vector<i_t>> combinations;
   combinations.reserve(std::min((size_t)max_combinations, rows.size()));
@@ -109,7 +112,7 @@ std::vector<std::vector<i_t>> find_mod2_row_combinations(const std::vector<row_t
   std::vector<i_t> combination_tmp;
   for (const i_t candidate : permutation) {
     f_t candidate_work = (f_t)(rows[candidate].parity.size() + 2);
-    basis_row_t current;
+    mod2_basis_row_t<i_t> current;
     current.parity      = rows[candidate].parity;
     current.combination = {candidate};
     current.rhs         = rows[candidate].rhs_parity;
@@ -118,6 +121,7 @@ std::vector<std::vector<i_t>> find_mod2_row_combinations(const std::vector<row_t
     while (!current.parity.empty()) {
       const i_t pivot       = current.parity.front();
       const i_t basis_index = pivot_to_basis[pivot];
+      // pivot has not been seen before
       if (basis_index < 0) { break; }
 
       const auto& pivot_row = basis[basis_index];
@@ -136,6 +140,7 @@ std::vector<std::vector<i_t>> find_mod2_row_combinations(const std::vector<row_t
     if (add_work_estimate(candidate_work, work_estimate, max_work_estimate)) { break; }
     if (abandoned) { continue; }
 
+    // when reduced, add to combinations and continue, don't add to basis
     if (current.parity.empty()) {
       if (current.rhs && !current.combination.empty()) {
         combinations.push_back(std::move(current.combination));
@@ -342,8 +347,9 @@ void mod2_generate_cuts_from_aggregate(
 {
   work_estimate += (f_t)(3 * oriented_aggregate.size() + 1);
   inequality_t<i_t, f_t> mir_cut(lp.num_cols);
-  if (complemented_mir.generate_cut_nonnegative_maintain_indicies(
-        oriented_aggregate, var_types, mir_cut)) {
+  const bool mir_cut_generated = complemented_mir.generate_cut_nonnegative_maintain_indicies(
+    oriented_aggregate, var_types, mir_cut);
+  if (mir_cut_generated) {
     mod2_add_transformed_zero_half_cut(complemented_mir,
                                        cut_pool,
                                        lp,
@@ -362,13 +368,17 @@ void mod2_generate_cuts_from_aggregate(
     return;
   }
   inequality_t<i_t, f_t> lifted_cover_cut(lp.num_cols);
-  if (toc(start_time) < settings.time_limit &&
+  bool lifted_cover_cut_generated = false;
+  if (toc(start_time) < settings.time_limit) {
+    lifted_cover_cut_generated =
       complemented_mir.generate_lifted_mixed_binary_cover(oriented_aggregate,
                                                           var_types,
                                                           transformed_xstar,
                                                           lifted_cover_cut,
                                                           work_estimate,
-                                                          max_work_estimate)) {
+                                                          max_work_estimate);
+  }
+  if (lifted_cover_cut_generated) {
     mod2_add_transformed_zero_half_cut(complemented_mir,
                                        cut_pool,
                                        lp,
@@ -548,6 +558,7 @@ bool generate_mod2_zero_half_cuts(cut_pool_t<i_t, f_t>& cut_pool,
                                       max_work_estimate,
                                       work_limit_reached,
                                       cuts_added);
+    // if the final inequality is reversable, try the reversed version as well
     if (reversible && toc(start_time) < settings.time_limit && !work_limit_reached) {
       aggregate.negate();
       mod2_generate_cuts_from_aggregate(complemented_mir,
