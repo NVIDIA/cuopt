@@ -122,10 +122,10 @@ inline bve_status_t bve_project_and_check(const bve_block_t<f_t>& blk,
   uint8_t feas[BVE_MAX_PATTERNS];
   bve_project(blk, tol, feas, witness);
   bve_cover_scratch_t scratch;
-  const i_t nc = bve_greedy_prime_cover<i_t>(feas, blk.nb, clauses, BVE_MAX_CLAUSES, scratch);
+  const int nc = bve_greedy_prime_cover(feas, blk.nb, clauses, BVE_MAX_CLAUSES, scratch);
   if (nc < 0) return bve_status_t::kSkipGrowth;  // clause explosion past cap
   if (nc > blk.n_rows + margin) return bve_status_t::kSkipGrowth;
-  if (!bve_sanity_check<i_t, f_t>(feas, blk.nb, clauses, nc)) return bve_status_t::kSkipCheckFailed;
+  if (!bve_sanity_check(feas, blk.nb, clauses, nc)) return bve_status_t::kSkipCheckFailed;
   *n_clauses = nc;
   return bve_status_t::kReduced;
 }
@@ -280,13 +280,13 @@ TEST(block_bve_core, sanity_check_rejects_corrupted_clauses)
   // feasible-pattern array for the block above (b=c=1 is the only infeasible pattern)
   const uint8_t feas[4]              = {1, 1, 1, 0};
   const mip::bve_clause_t correct[1] = {{3u, 3u}};  // b + c <= 1
-  EXPECT_TRUE((mip::bve_sanity_check<int, double>(feas, 2, correct, 1)));
+  EXPECT_TRUE(mip::bve_sanity_check(feas, 2, correct, 1));
 
   // dropping the clause entirely: the CNF would accept b=c=1, but feas forbids it -> rejected
-  EXPECT_FALSE((mip::bve_sanity_check<int, double>(feas, 2, correct, 0)));
+  EXPECT_FALSE(mip::bve_sanity_check(feas, 2, correct, 0));
   // a wrong clause (forbid b=1 only) makes a genuinely feasible pattern look infeasible -> rejected
   const mip::bve_clause_t wrong[1] = {{1u, 1u}};
-  EXPECT_FALSE((mip::bve_sanity_check<int, double>(feas, 2, wrong, 1)));
+  EXPECT_FALSE(mip::bve_sanity_check(feas, 2, wrong, 1));
 }
 
 // --- N1 (numerical): the row integerization GATE. block-BVE scales each block row to integers via
