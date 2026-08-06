@@ -36,7 +36,7 @@ This is **not** the HTTP/JSON :doc:`REST self-hosted server <../cuopt-server/ind
 (FastAPI). REST is for arbitrary HTTP clients; gRPC serves remote execution
 (client integrated into the solver APIs) and explicit gRPC clients.
 
-When to choose which path
+When to Choose Which Path
 =========================
 
 * **Remote execution** — drop-in remote solves with no code changes; same

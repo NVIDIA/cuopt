@@ -40,7 +40,7 @@ Exceptions
    :members:
    :show-inheritance:
 
-See also
+See Also
 =========
 
 * :doc:`python-async-client` — overview and when to use this client
