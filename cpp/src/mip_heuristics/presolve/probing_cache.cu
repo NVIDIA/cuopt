@@ -21,8 +21,6 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/timer.hpp>
 
-#include <algorithm>
-#include <iterator>
 #include <unordered_set>
 #include <utilities/omp_helpers.hpp>
 
@@ -878,20 +876,14 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
 {
   raft::common::nvtx::range fun_scope("compute_probing_cache");
 
-  bound_presolve.probing_cache.probing_cache.clear();
-  {
-    auto stream = problem.handle_ptr->get_stream();
-    auto h_vmap = host_copy(problem.presolve_data.variable_mapping, stream);
-    problem.handle_ptr->sync_stream();
-    problem.original_ids.assign(h_vmap.begin(), h_vmap.end());
-    std::fill(problem.reverse_original_ids.begin(), problem.reverse_original_ids.end(), -1);
-    for (size_t i = 0; i < problem.original_ids.size(); ++i) {
-      cuopt_assert(problem.original_ids[i] >= 0 &&
-                     problem.original_ids[i] < (i_t)problem.reverse_original_ids.size(),
-                   "Variable index out of bounds");
-      problem.reverse_original_ids[problem.original_ids[i]] = (i_t)i;
-    }
-  }
+  // Probing runs once per solve, ahead of the block-BVE rounds that consume the cache. A second
+  // call would drop everything those rounds folded back in, so refuse to start on a populated one.
+  cuopt_assert(bound_presolve.probing_cache.probing_cache.empty(),
+               "probing cache is built once per solve");
+  // Entries are keyed by original id, so every caller must have compacted the problem with
+  // remap_cache_ids set.
+  cuopt_assert(problem.original_ids.size() == (size_t)problem.n_variables,
+               "probing cache needs id maps that match the current column set");
   // we dont want to compute the probing cache for all variables for time and computation resources
   auto priority_indices = compute_priority_indices_by_implied_integers(problem);
   CUOPT_LOG_DEBUG("Computing probing cache");
@@ -993,13 +985,7 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   return problem_is_infeasible.load();
 }
 
-// See probing_cache.cuh. The emptiness guard has to come first: a variable probed only once leaves
-// its second slot default-constructed, so val_interval holds an indeterminate value there and must
-// not be compared against. An empty bound map is also what the rounding readers treat as "nothing
-// cached here", so skipping those slots keeps the merge purely additive to already-live entries.
-//
-// Slots are matched on val_interval.val rather than by index because the writer fills them in probe
-// arrival order, not value order (insert_current_probing_to_cache).
+// incorporate implications discovered by block-BVE
 template <typename i_t, typename f_t>
 void probing_cache_t<i_t, f_t>::merge_forcings(const std::vector<probe_forcing_t<i_t>>& forcings,
                                                std::vector<std::pair<i_t, bool>>& fixings)

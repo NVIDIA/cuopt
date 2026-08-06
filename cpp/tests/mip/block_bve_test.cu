@@ -157,7 +157,7 @@ End
 // Same gadget with every row scaled by 1/2, so the block coefficients and bounds are FRACTIONAL.
 // The feasible region (hence the reduction: b + c <= 1, `a` eliminated) is identical — positive
 // row scaling preserves feasibility. This forces block-BVE's per-row integerization
-// (bve_row_int_scale) to recover integer coefficients before the exact tol-0 projection; if that
+// (row_int_scale) to recover integer coefficients before the exact tol-0 projection; if that
 // path were wrong (N1), the reduction or its reconstruction would break.
 static constexpr const char* kFractionalBlockLp = R"LP(
 Minimize
@@ -290,13 +290,13 @@ TEST(block_bve_core, sanity_check_rejects_corrupted_clauses)
 }
 
 // --- N1 (numerical): the row integerization GATE. block-BVE scales each block row to integers via
-// find_scaling_rational (strict caps mirroring bve_row_int_scale) so the projection is exact at
+// find_scaling_rational (strict caps mirroring row_int_scale) so the projection is exact at
 // tolerance 0; a row that will not integerize within the caps must be REJECTED (NaN), never rounded
 // into a different model. This pins the accept/reject decision that keeps large / non-rational
 // coefficients off the exact-projection path. ---
 TEST(block_bve_core, integer_scaling_accepts_rational_rejects_pathological)
 {
-  // Strict caps matching bve_row_int_scale (maxdnom/maxfinal = BVE_INT_SCALE_MAX = 1e6).
+  // Strict caps matching row_int_scale (maxdnom/maxfinal = BVE_INT_SCALE_MAX = 1e6).
   const double kMaxScale  = 1e12;
   const int64_t kMaxDenom = 1000000;
   const double kMaxFinal  = 1e6;
@@ -844,7 +844,7 @@ static void run_presolve_size_check(const char* relative_mps_path,
                                    op_problem.get_n_variables());
   problem.set_implied_integers(result.implied_integer_indices);
   problem.preprocess_problem();
-  mip::trivial_presolve(problem);
+  mip::trivial_presolve(problem, /*remap_cache_ids=*/true);  // mirrors solve.cu's setup
 
   cuopt::timer_t timer(120.0);
   mip::mip_solver_t<int, double> solver(problem, settings, timer);

@@ -13,9 +13,6 @@
 #include <thrust/uninitialized_fill.h>
 #include <rmm/device_uvector.hpp>
 
-#include <cstdint>
-#include <vector>
-
 namespace cuopt {
 namespace mathematical_optimization::mip {
 

@@ -167,8 +167,7 @@ inline double find_objective_scaling_factor(const std::vector<double>& coefficie
   return find_scaling_rational(coefficients);
 }
 
-// A row bound is "infinite" for scaling purposes if non-finite or at/above the solver's large-bound
-// sentinel.
+// A bound counts as "infinite" if non-finite or at/above the solver's large-bound sentinel.
 template <typename f_t>
 inline bool scaling_bound_finite(f_t x)
 {
@@ -183,19 +182,6 @@ template <typename f_t>
 inline constexpr double exact_subset_sum_budget =
   (double)(uint64_t{1} << std::numeric_limits<f_t>::digits);
 
-// Scale one row (coefficients + finite bounds) to integers by a single positive rational multiplier
-// so a subset-sum feasibility test over binary variables is EXACT in f_t: enumerated values are
-// binary, so Sigma coeff*value is a subset sum; once every coefficient and finite bound is an
-// exactly representable integer of bounded magnitude, that sum (<= max_len terms) never rounds and
-// feasibility is an exact integer comparison. +/-inf bounds are ignored (they stay infinite).
-// Returns the multiplier, or 0 if the row does not integerize within the caps -- the caller then
-// rejects the row rather than risk a tolerance-sensitive misclassification on large or non-rational
-// coefficients.
-//
-// The rationalization reuses find_scaling_rational above, the same continued-fraction
-// vector->integer scaling used for objective integer-scaling. A strict tolerance is passed so only
-// genuinely small-rational coefficients integerize; anything noisier yields NaN and the row is
-// rejected, never silently rounded into a different model.
 template <typename f_t>
 inline double row_int_scale(const f_t* coef, int n, f_t lo, f_t up, int max_len, int64_t scale_cap)
 {
@@ -219,8 +205,7 @@ inline double row_int_scale(const f_t* coef, int n, f_t lo, f_t up, int max_len,
                                              /*intcheck_tol=*/1e-9);
   if (!std::isfinite(scale) || scale <= 0.0) return 0.0;
 
-  // find_scaling_rational bounds the multiplier, not the resulting magnitude: guard the exactness
-  // budget so the subset sum (<= max_len integer terms) stays within f_t's mantissa (no rounding).
+  // guard so the subset sum (<= max_len integer terms) stays within f_t's mantissa
   double maxabs = 0.0;
   for (double v : vals)
     maxabs = std::max(maxabs, std::abs(v * scale));

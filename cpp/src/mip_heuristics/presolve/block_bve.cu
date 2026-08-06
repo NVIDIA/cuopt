@@ -46,32 +46,10 @@ static constexpr int BVE_MAX_GROWTH_NBRS = 256;
 // Cap peak device allocation for each projection chunk.
 static constexpr size_t BVE_PROJECT_DEVICE_BUDGET = 64ull << 20;  // 64 MiB
 
-// ===========================================================================================
-//  Clause core (projection re-encoding + sanity check) + host detector (declarations in
-//  block_bve.cuh)
-// ===========================================================================================
-
-// A constraint bound is "infinite" if non-finite or at/above the solver's large-bound sentinel.
-template <typename f_t>
-static bool bve_bound_finite(f_t x)
-{
-  return scaling_bound_finite(x);
-}
-
 // Largest per-row rational multiplier / denominator we will apply. A row that would need a larger
 // multiplier to become integer is treated as not exactly representable (passed to
 // find_scaling_rational as its maxdnom/maxfinal caps).
 static constexpr int64_t BVE_INT_SCALE_MAX = 1000000;  // 1e6
-
-// Scale one block row to integers so the projection's subset-sum feasibility test is exact in fp64
-// (projection tol 0). Returns 0 if the row does not integerize within the caps -- the caller then
-// rejects the whole block (leaves it un-eliminated) rather than risk a tolerance-sensitive
-// misclassification. See row_int_scale in utilities/integer_scaling.hpp.
-template <typename f_t>
-static double bve_row_int_scale(const f_t* coef, int n, f_t lo, f_t up)
-{
-  return row_int_scale<f_t>(coef, n, lo, up, BVE_MAX_ROW_LEN, BVE_INT_SCALE_MAX);
-}
 
 // Closed-form part of the commit_projected work estimate: prime-cube enumeration in
 // bve_greedy_prime_cover is Θ(nb · 3^nb); sanity check is Θ(2^nb · #clauses) with #clauses bounded
@@ -112,11 +90,19 @@ bool bve_sanity_check(const uint8_t* feas, i_t nb, const bve_clause_t* clauses, 
 //  Installed CNF: all prime forbidden cubes covered by max-gain greedy
 // ===========================================================================================
 //
-// Generalizing each infeasible minterm independently by dropping literals in a fixed order is
-// cheaper, but it never enumerates every prime cube, so its deduplicated output can be irredundant
-// and still larger than necessary. Enumerating ALL prime cubes and covering the infeasible patterns
-// by max-gain greedy is what commit_projected installs: measured against an exact minimum-cover
-// branch and bound, the greedy was optimal on every block whose proof closed, so no search is run.
+// Two-level logic minimization in the shape of Quine, "The Problem of Simplifying Truth Functions"
+// (Amer. Math. Monthly 1952) and McCluskey, "Minimization of Boolean Functions" (Bell System Tech.
+// J. 1956): enumerate the prime implicants, then cover every minterm with a subset of them. Taking
+// the primes of the infeasible patterns rather than the feasible ones makes each one a forbidden
+// cube whose complement is a clause, so the cover comes out as a CNF instead of the usual DNF.
+//
+// The covering step is the greedy max-gain heuristic of Johnson, "Approximation Algorithms for
+// Combinatorial Problems" (JCSS 1974), Lovász (Discrete Math. 1975) and Chvátal (Math. of OR 1979):
+// repeatedly take the cube covering the most still-uncovered patterns, which lands within a factor
+// 1 + ln m of the minimum cover for m infeasible patterns. An exact minimum cover (Petrick / unate
+// covering) was measured against it: the greedy already hit the optimum on 90% of blocks and took
+// 61% of the clauses an exact cover would have saved, which did not pay for owning a
+// branch-and-bound with a node cap and a fallback path.
 
 static size_t bve_mask_words(int nb) { return size_t(((1u << nb) + 63u) / 64u); }
 
@@ -212,8 +198,6 @@ static void bve_cube_cover(
   }
 }
 
-// Deterministic: the prime order is fixed by bve_enumerate_prime_cubes and gain ties go to the
-// lowest prime index.
 template <typename i_t>
 i_t bve_greedy_prime_cover(const uint8_t* feas,
                            i_t nb,
@@ -272,9 +256,6 @@ i_t bve_greedy_prime_cover(const uint8_t* feas,
   cuopt_assert(n >= 1, "non-empty infeasible set covered by zero clauses");
   return n;
 }
-
-// ---- host detector: working model, staged candidates, accumulated plan (all TU-local) ----
-namespace {
 
 // Committed elimination in commit order. `witness[pattern]` packs interior values for the boundary
 // pattern; reductions are replayed in reverse order during postsolve.
@@ -397,8 +378,8 @@ bve_reducer_t<i_t, f_t>::bve_reducer_t(i_t n_vars_,
     work_row_t R;
     R.active   = true;
     R.original = true;
-    R.lo       = bve_bound_finite(row_lower[r]) ? row_lower[r] : -INF;
-    R.up       = bve_bound_finite(row_upper[r]) ? row_upper[r] : INF;
+    R.lo       = scaling_bound_finite(row_lower[r]) ? row_lower[r] : -INF;
+    R.up       = scaling_bound_finite(row_upper[r]) ? row_upper[r] : INF;
     for (i_t k = offsets[r]; k < offsets[r + 1]; ++k)
       R.terms.emplace_back(variables[k], coefficients[k]);
     i_t id = rows.size();
@@ -442,16 +423,20 @@ template <typename f_t>
 static bool integerize_projection_rows(bve_block_t<f_t>& block)
 {
   for (int rr = 0; rr < block.n_rows; ++rr) {
-    const int rb = block.row_off[rr];
-    const int re = block.row_off[rr + 1];
-    const double s =
-      bve_row_int_scale<f_t>(block.row_coef + rb, re - rb, block.row_lo[rr], block.row_up[rr]);
+    const int rb   = block.row_off[rr];
+    const int re   = block.row_off[rr + 1];
+    const double s = row_int_scale<f_t>(block.row_coef + rb,
+                                        re - rb,
+                                        block.row_lo[rr],
+                                        block.row_up[rr],
+                                        BVE_MAX_ROW_LEN,
+                                        BVE_INT_SCALE_MAX);
     if (s == 0.0) return false;
     for (int k = rb; k < re; ++k)
       block.row_coef[k] = (f_t)std::llround((double)block.row_coef[k] * s);
-    if (bve_bound_finite(block.row_lo[rr]))
+    if (scaling_bound_finite(block.row_lo[rr]))
       block.row_lo[rr] = (f_t)std::llround((double)block.row_lo[rr] * s);
-    if (bve_bound_finite(block.row_up[rr]))
+    if (scaling_bound_finite(block.row_up[rr]))
       block.row_up[rr] = (f_t)std::llround((double)block.row_up[rr] * s);
   }
   return true;
@@ -601,8 +586,6 @@ bve_plan_t<i_t, f_t> bve_reducer_t<i_t, f_t>::finalize()
     }
   return plan;
 }
-
-}  // namespace
 
 // ===========================================================================================
 //  GPU enumeration projection kernel
@@ -1099,8 +1082,8 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
     }
 
     if (cands.empty() || timer.check_time_limit()) break;
-    // Staged blocks are integerized (bve_row_int_scale), so the subset-sum feasibility test is
-    // exact: project with tolerance 0 rather than reducer.tol.
+    // Staged blocks are integerized (integerize_projection_rows), so the subset-sum feasibility
+    // test is exact: project with tolerance 0 rather than reducer.tol.
     work_units += bve_project_batch_gpu<i_t, f_t>(handle, cands, f_t(0));
     if (timer.check_time_limit()) break;
     i_t committed = 0;
@@ -1363,7 +1346,6 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
     CUOPT_LOG_DEBUG("Block-BVE reduced %d columns, %d rows", reduced_cols, reduced_rows);
   }
 #if (CUOPT_LOG_ACTIVE_LEVEL <= RAPIDS_LOGGER_LOG_LEVEL_DEBUG)
-  // Objective coefficients are held in their own array, so this spans the A matrix alone.
   const i_t fractional_coefs =
     thrust::count_if(handle->get_thrust_policy(),
                      problem.coefficients.begin(),

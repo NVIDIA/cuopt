@@ -25,13 +25,8 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/scope_guard.hpp>
 
-#include <algorithm>
-#include <cstdlib>
 #include <memory>
 #include <numeric>
-#include <span>
-#include <string>
-#include <vector>
 
 constexpr bool fj_only_run = false;
 
@@ -418,15 +413,9 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
 
   if (!global_timer.check_time_limit()) { trivial_presolve(*problem_ptr, remap_cache_ids); }
 
-  // Block-BVE rounds reuse the cache built above: BVE replaces each block by its exact projection,
-  // so every cached implication between surviving columns stays valid, and block_bve_presolve
-  // refreshes reverse_original_ids as it compacts so the adjacency can be rebuilt per round.
   const i_t max_bve_rounds    = 3;
   const i_t n_vars_before_bve = problem_ptr->n_variables;
   const i_t n_rows_before_bve = problem_ptr->n_constraints;
-  if (!context.settings.block_bve) {
-    CUOPT_LOG_INFO("Block-BVE step disabled via %s=false", CUOPT_MIP_HYPER_BLOCK_BVE);
-  }
   // Implications read off the projection tables, accumulated across rounds. They feed the next
   // round's adjacency (pairs the cache never held) and are folded back into the cache afterwards.
   probe_findings_t<i_t> bve_findings;
@@ -459,7 +448,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
   }
 
   // Harvest the projections: tighten the cache in place, pin the variables the blocks left with a
-  // single value, then propagate. Deferred to here so no round runs against a half-updated model.
+  // single value, then propagate.
   ls.constraint_prop.bounds_update.probing_cache.merge_forcings(bve_findings.forcings,
                                                                 bve_findings.fixings);
   i_t n_bve_fixings = 0;
@@ -475,6 +464,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
                                  n_bve_fixings > 0;
   if (bve_changed_model) {
     CUOPT_LOG_DEBUG("Block-BVE projections fixed %d variables", n_bve_fixings);
+    // propagate fixings if any
     if (!problem_ptr->empty && !global_timer.check_time_limit()) {
       ls.constraint_prop.bounds_update.resize(*problem_ptr);
       auto bve_term_crit = ls.constraint_prop.bounds_update.solve(*problem_ptr);

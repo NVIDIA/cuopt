@@ -17,10 +17,19 @@
 #include <raft/core/handle.hpp>
 #include <utilities/timer.hpp>
 
-// Eliminates small blocks of zero-objective binary variables by enumerating their existential
-// projection onto the remaining boundary variables. Infeasible boundary assignments are encoded as
-// prime-implicate no-goods; one feasible interior witness per accepted boundary assignment is
-// stored for postsolve. This preserves feasibility and objective value.
+// Eliminates small blocks of zero-objective binary variables. A block is a set of columns to remove
+// (the interior, na columns) together with every row they appear in; the other columns of those
+// rows are the boundary (nb columns), which stays in the model and must also be binary.
+//
+// For each of the 2^nb boundary assignments the projection decides whether some interior
+// assignment satisfies the block's rows. The ruled-out assignments are everything the block still
+// forces on the rest of the model, so emitting them as prime-implicate no-goods over the boundary
+// carries that force without the interior. Committing therefore deletes the interior columns and
+// every block row, installing the no-goods in their place: interior variables disappear and the row
+// count drops whenever the no-goods are fewer than the rows they replace, which the growth gate
+// below requires. One feasible interior witness per surviving assignment is stored so postsolve
+// can rebuild the deleted columns; since the interior carries no objective coefficients, any
+// witness preserves the objective as well as feasibility.
 //
 // Candidate interiors are grown from the probing implication graph and committed only when the
 // projected CNF satisfies the bounded-elimination growth limit of Eén and Biere, "Effective
@@ -31,8 +40,8 @@ namespace cuopt::mathematical_optimization::mip {
 
 // Caps for a single enumerated block.
 static constexpr int BVE_MAX_BOUNDARY = 12;  // nb  <= 12  => 2^nb <= 4096 feasibility patterns
-static constexpr int BVE_MAX_SCOPE    = 16;  // na + nb <=
-static constexpr int BVE_MAX_ROWS     = 64;  // |G| (rows spanned by the block); clauses <= |G|
+static constexpr int BVE_MAX_SCOPE    = 16;  // na + nb <= 16
+static constexpr int BVE_MAX_ROWS     = 64;  // rows spanned by the block; #clauses <= #rows
 static constexpr int BVE_MAX_ROW_LEN  = 24;  // nnz within one block row (interior+boundary entries)
 static constexpr int BVE_MAX_NNZ      = BVE_MAX_ROWS * BVE_MAX_ROW_LEN;
 static constexpr int BVE_MAX_CLAUSES  = 64;  // <= |rows| for any committed block
@@ -42,11 +51,9 @@ static constexpr int BVE_MAX_PATTERNS = 1 << BVE_MAX_BOUNDARY;
 // CSR layout and missing bounds are +/- infinity.
 template <typename f_t>
 struct bve_block_t {
-  // Plain int (not i_t): this packed layout is not i_t-templated; all fields are bounded by
-  // BVE_MAX_*.
   int na;      // number of interior variables
-  int nb;      // number of boundary variables (all must be binary; caller guarantees)
-  int n_rows;  // |G|
+  int nb;      // number of boundary variables
+  int n_rows;  // rows spanned by the block
   int row_off[BVE_MAX_ROWS + 1];
   int row_var[BVE_MAX_NNZ];  // local var id in [0, na+nb)
   f_t row_coef[BVE_MAX_NNZ];
@@ -76,8 +83,6 @@ struct bve_cover_scratch_t {
 
 // Derive a prime-implicate CNF from the boundary feasibility table by covering the infeasible
 // patterns with a max-gain greedy over every prime forbidden cube; return -1 on cap overflow.
-// `ops_out` accumulates a deterministic unscaled estimate of the cover build and the greedy scan,
-// both of which scale with a prime count the caller cannot know in advance.
 template <typename i_t>
 i_t bve_greedy_prime_cover(const uint8_t* feas,
                            i_t nb,
