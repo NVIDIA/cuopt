@@ -282,7 +282,7 @@ Please refer to the :ref:`aborting-cli` in the MIP examples for more details.
 .. note::
    Please use solver settings while using .mps files.
 
-To enable HTTPS
+To Enable HTTPS
 ----------------
 
 * In the case of the server using public certificates, simply enable https.
