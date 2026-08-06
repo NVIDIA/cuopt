@@ -43,6 +43,108 @@ int32_t PaddingImpl()
   return k_mask_remainder ? (int32_t)hn::Lanes(hn::ScalableTag<int32_t>()) : 0;
 }
 
+// Whether the row walk below is worth vectorizing on this target. It needs a real gather to read the
+// slacks and a real compress to emit the tail list; where either is emulated the emulation costs
+// more than the scalar loop it replaces, since 85% of visits do nothing but subtract and compare.
+// The scalar arm still returns the same list, so the caller needs no second code path -- it pays
+// only one store per reported visit.
+constexpr bool k_vector_walk =
+  (HWY_TARGET <= HWY_AVX3) || HWY_TARGET_IS_SVE || (HWY_TARGET == HWY_RVV);
+
+// One tile of a flipped variable's incidence range, vectorized. The caller tiles the range and runs
+// each tile's tail before asking for the next; see fj_bin_walk_tile.
+//
+// Measured on supportcase22: 84.87% of row visits leave the row deeply satisfied on both sides of
+// the flip, and those visits do nothing but update the slack. The remaining 15.13% need the row's
+// weight, the flipped variable's own score delta, the violated-set transitions and usually a
+// patch -- all indirect, all awkward in a vector. So this kernel does only the uniform part and
+// hands back the indices of the visits that are not deep_sat, in increasing order, for the caller
+// to finish scalar.
+//
+// The layout this assumes is what makes it worth doing. Storing the row's signed slack rather than
+// its lhs collapses the update to
+//
+//   new_slack = old_slack - sign * coef * delta = old_slack - skv[ii] * delta
+//
+// so bound and lhs never appear, and sign and coef fold into one per-incidence constant. skv and
+// cmax are replicated per incidence, which makes them unit-stride loads. What remains irregular is
+// the slack itself: one gather and one scatter per vector, against four gathers and a scatter for a
+// literal SoA split of the row record.
+//
+// Trajectory is preserved exactly. The slack update is per row and order-independent; the caller's
+// tail visits its indices in the same order the scalar loop did; and a deep_sat row is never read by
+// the tail, so updating it early is not observable.
+template <typename coef_t>
+int32_t WalkRowsImpl(int32_t* HWY_RESTRICT row_slack,
+                     const int32_t* HWY_RESTRICT incident_row,
+                     const coef_t* HWY_RESTRICT signed_coefficient,
+                     const coef_t* HWY_RESTRICT incident_row_cmax,
+                     int32_t incidence_begin,
+                     int32_t incidence_end,
+                     int32_t delta,
+                     int32_t* HWY_RESTRICT out_incidence)
+{
+  int32_t n_out = 0;
+  int32_t ii    = incidence_begin;
+
+  if constexpr (k_vector_walk) {
+    const hn::ScalableTag<int32_t> d;
+    const hn::Rebind<coef_t, decltype(d)> dc;  // same lane count, narrower lanes
+    using V        = hn::Vec<decltype(d)>;
+    const size_t N = hn::Lanes(d);
+
+    const V vdelta = hn::Set(d, delta);
+
+    // The unit-stride loads always run whole and read into the per-incidence padding; FirstN keeps
+    // the overhang out of the gather, the scatter and the compress.
+    for (; ii < incidence_end; ii += (int32_t)N) {
+      const auto active = hn::FirstN(d, (size_t)(incidence_end - ii));
+
+      const V rows = hn::LoadU(d, incident_row + ii);
+      const V skv  = hn::PromoteTo(d, hn::LoadU(dc, signed_coefficient + ii));
+      const V cmax = hn::PromoteTo(d, hn::LoadU(dc, incident_row_cmax + ii));
+
+      const V os = hn::MaskedGatherIndex(active, d, row_slack, rows);
+      const V ns = hn::Sub(os, hn::Mul(skv, vdelta));
+
+      // Only the satisfied side. deep_viol is the caller's business: it fires on 0.02% of visits but
+      // guards the widest rows in the matrix, so it belongs where the row length is already known.
+      const auto deep_sat = hn::And(hn::Gt(os, cmax), hn::Gt(ns, cmax));
+      const auto to_tail  = hn::AndNot(deep_sat, active);
+
+#if HWY_TARGET == HWY_AVX3_ZEN4
+      // Same Zen 4 microcode argument as the score scatter in PatchRowBody: VPSCATTERDD is 89 uops
+      // at ~24 CPI, against two vector stores and N scalar stores here. Unlike that one this is a
+      // pure store with no read-modify-write, so it needs its own A/B before the arm is settled.
+      HWY_ALIGN int32_t row_lane[hn::MaxLanes(d)], slack_lane[hn::MaxLanes(d)];
+      hn::Store(rows, d, row_lane);
+      hn::Store(ns, d, slack_lane);
+      const size_t lanes = HWY_MIN(N, (size_t)(incidence_end - ii));
+      for (size_t i = 0; i < lanes; ++i) row_slack[row_lane[i]] = slack_lane[i];
+#else
+      hn::MaskedScatterIndex(ns, active, d, row_slack, rows);
+#endif
+
+      // A variable meets each row at most once, so no two lanes carry the same row and neither the
+      // scatter above nor the store loop needs conflict detection.
+      n_out += (int32_t)hn::CompressStore(hn::Iota(d, ii), to_tail, d, out_incidence + n_out);
+    }
+    return n_out;
+  }
+
+  // Targets without a native gather or compress. Also the remainder is not reached here: the loop
+  // above runs to oe under FirstN, and this arm replaces it wholesale rather than tailing it.
+  for (; ii < incidence_end; ++ii) {
+    const int32_t row  = incident_row[ii];
+    const int32_t os   = row_slack[row];
+    const int32_t ns   = os - (int32_t)signed_coefficient[ii] * delta;
+    row_slack[row]     = ns;
+    const int32_t cmax = (int32_t)incident_row_cmax[ii];
+    if (!(os > cmax && ns > cmax)) out_incidence[n_out++] = ii;
+  }
+  return n_out;
+}
+
 // Row remainder when it is peeled rather than masked, and the whole row on scalar targets.
 template <typename coef_t>
 void PatchRowScalar(const int32_t* HWY_RESTRICT variables,
@@ -312,6 +414,8 @@ namespace cuopt::mathematical_optimization::mip {
 HWY_EXPORT_T(PatchRowNatI8, PatchRowImpl<int8_t>);
 HWY_EXPORT_T(PatchRowN8I8, PatchRowNarrow8Impl<int8_t>);
 HWY_EXPORT_T(PatchRowN4I8, PatchRowNarrow4Impl<int8_t>);
+HWY_EXPORT_T(WalkRowsI8, WalkRowsImpl<int8_t>);
+HWY_EXPORT_T(WalkRowsI16, WalkRowsImpl<int16_t>);
 HWY_EXPORT_T(PatchRowNatI16, PatchRowImpl<int16_t>);
 HWY_EXPORT_T(PatchRowN8I16, PatchRowNarrow8Impl<int16_t>);
 HWY_EXPORT_T(PatchRowN4I16, PatchRowNarrow4Impl<int16_t>);
@@ -368,6 +472,18 @@ static const fj_bin_patch_fn_t<int16_t> fj_bin_patch_i16[3] = {
 static const fj_bin_patch_fn_t<int8_t>* fj_bin_patch_table(int8_t) { return fj_bin_patch_i8; }
 static const fj_bin_patch_fn_t<int16_t>* fj_bin_patch_table(int16_t) { return fj_bin_patch_i16; }
 
+template <typename coef_t>
+using fj_bin_walk_fn_t = int32_t (*)(
+  int32_t*, const int32_t*, const coef_t*, const coef_t*, int32_t, int32_t, int32_t, int32_t*);
+
+static const auto fj_bin_walk_i8 =
+  (fj_bin_choose_target(), (fj_bin_walk_fn_t<int8_t>)HWY_DYNAMIC_POINTER_T(WalkRowsI8));
+static const auto fj_bin_walk_i16 =
+  (fj_bin_choose_target(), (fj_bin_walk_fn_t<int16_t>)HWY_DYNAMIC_POINTER_T(WalkRowsI16));
+
+static fj_bin_walk_fn_t<int8_t> fj_bin_walk_fn(int8_t) { return fj_bin_walk_i8; }
+static fj_bin_walk_fn_t<int16_t> fj_bin_walk_fn(int16_t) { return fj_bin_walk_i16; }
+
 static const auto fj_bin_argmax_fn = (fj_bin_choose_target(), HWY_DYNAMIC_POINTER(ArgmaxImpl));
 static const auto fj_bin_padding_fn = (fj_bin_choose_target(), HWY_DYNAMIC_POINTER(PaddingImpl));
 static const auto fj_bin_narrow4_max_fn =
@@ -376,6 +492,32 @@ static const auto fj_bin_narrow8_max_fn =
   (fj_bin_choose_target(), HWY_DYNAMIC_POINTER(Narrow8MaxImpl));
 
 int32_t fj_bin_simd_padding() { return fj_bin_padding_fn(); }
+
+template <typename coef_t>
+int32_t fj_bin_walk_rows(int32_t* row_slack,
+                         const int32_t* incident_row,
+                         const coef_t* signed_coefficient,
+                         const coef_t* incident_row_cmax,
+                         int32_t incidence_begin,
+                         int32_t incidence_end,
+                         int32_t delta,
+                         int32_t* out_incidence)
+{
+  return fj_bin_walk_fn(coef_t{})(row_slack,
+                                  incident_row,
+                                  signed_coefficient,
+                                  incident_row_cmax,
+                                  incidence_begin,
+                                  incidence_end,
+                                  delta,
+                                  out_incidence);
+}
+
+template int32_t fj_bin_walk_rows<int8_t>(
+  int32_t*, const int32_t*, const int8_t*, const int8_t*, int32_t, int32_t, int32_t, int32_t*);
+template int32_t fj_bin_walk_rows<int16_t>(
+  int32_t*, const int32_t*, const int16_t*, const int16_t*, int32_t, int32_t, int32_t, int32_t*);
+
 int32_t fj_bin_simd_narrow4_max() { return fj_bin_narrow4_max_fn(); }
 int32_t fj_bin_simd_narrow8_max() { return fj_bin_narrow8_max_fn(); }
 

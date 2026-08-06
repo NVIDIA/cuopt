@@ -155,6 +155,58 @@ void fj_bin_patch_row(fj_bin_patch_width_t width,
                       int32_t os_new,
                       int32_t skip_var);
 
+// Incidences handed to fj_bin_walk_rows per call, and so the size of the caller's output buffer.
+// Large enough that the dynamic dispatch and the call's setup amortize away -- a variable of
+// supportcase22 averages 344 incidences, so one or two calls per move -- and small enough that the
+// buffer is a stack array and its touched part stays in L1. A multiple of every supported lane
+// count, so only a variable's last tile has a masked remainder.
+constexpr int32_t fj_bin_walk_tile = 256;
+
+// Advance every row incident to one flipped variable, and report which of those visits the caller
+// must finish by hand.
+//
+// An "incidence" is one (variable, row) pair of the matrix, so the reverse CSR indexed by a
+// variable's [incidence_begin, incidence_end) names the rows that variable appears in. Three arrays
+// are read at that index, all at unit stride:
+//
+//   incident_row[i]       the row this incidence touches
+//   signed_coefficient[i] sign * coefficient, folded once at build time
+//   incident_row_cmax[i]  that row's max|coef|, replicated here so it need not be gathered
+//
+// The last two are structural and fixed for the life of the solve. row_slack[r] is indexed by row,
+// and holds sign * (bound - lhs) -- the signed slack the engine stores in place of lhs, which is
+// what reduces the update to a subtraction. delta is the flip direction, +1 or -1, uniform over the
+// call.
+//
+// For every incidence i in the range this applies
+//   row_slack[incident_row[i]] -= signed_coefficient[i] * delta
+// then writes to out_incidence, in increasing order, the subset of i whose row is not deeply
+// satisfied on both sides of the flip -- 15.1% of visits on supportcase22 -- and returns how many.
+// Everything those visits still need is indirect (the row's weight, the own-score delta, the
+// violated-set transitions, the patch) and stays with the caller.
+//
+// The caller drives this a tile at a time, running each tile's tail before asking for the next, so
+// out_incidence is a fj_bin_walk_tile-sized buffer the caller can keep on its stack rather than one
+// sized to the widest reverse degree in the matrix. Tiling this way rather than interleaving the
+// tail into the vector loop keeps every patch call outside it: the loop over lanes lives here,
+// behind a dynamic dispatch pointer that cannot be inlined, while the tail needs engine-side state
+// this translation unit cannot reach. A tile still runs the vector body many times before yielding,
+// which is what lets consecutive gathers overlap.
+//
+// out_incidence must hold incidence_end - incidence_begin entries. Reads up to
+// fj_bin_simd_padding() elements past incidence_end from the three per-incidence arrays. Interior
+// tiles read into the next tile, which is in bounds; the final one reads past the variable's range,
+// so those arrays carry that padding.
+template <typename coef_t>
+int32_t fj_bin_walk_rows(int32_t* row_slack,
+                         const int32_t* incident_row,
+                         const coef_t* signed_coefficient,
+                         const coef_t* incident_row_cmax,
+                         int32_t incidence_begin,
+                         int32_t incidence_end,
+                         int32_t delta,
+                         int32_t* out_incidence);
+
 // Argmax over var_score, scanning all n variables. Valid while the objective weight is zero, where
 // the full score is exactly var_score. Yields best_var of -1 only if n is 0.
 //
