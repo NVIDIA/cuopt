@@ -77,6 +77,7 @@ struct simplex_solver_settings_t {
       augmented(0),
       dualize(-1),
       ordering(-1),
+      initial_perturbation(-1),
       barrier_dual_initial_point(-1),
       postsolve_info(-1),
       qcqp_ruiz_equilibration(-1),
