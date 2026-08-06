@@ -90,16 +90,22 @@ i_t bve_greedy_prime_cover(const uint8_t* feas,
 template <typename i_t, typename f_t>
 bool bve_sanity_check(const uint8_t* feas, i_t nb, const bve_clause_t* clauses, i_t n_clauses);
 
-// Staged candidate. Vector fields use sorted current-problem ids; `blk` uses local ids and the
-// projection backend fills `feas` and `witness`.
+// Exact existential projection of one block onto its boundary, filled by the projection backend.
+// Both tables are sized to the block's own 2^nb rather than BVE_MAX_PATTERNS, so a narrow block
+// does not carry the cost of raising BVE_MAX_BOUNDARY.
+struct bve_projection_t {
+  std::vector<uint8_t> feasible;  // [2^nb] 1 iff the boundary pattern admits some interior
+  std::vector<uint32_t> witness;  // [2^nb] smallest feasible interior, 0 where infeasible
+};
+
+// Staged candidate. Vector fields use sorted current-problem ids; `blk` uses local ids.
 template <typename i_t, typename f_t>
 struct bve_candidate_t {
-  std::vector<i_t> interior;           // sorted global column ids (to be eliminated)
-  std::vector<i_t> boundary;           // sorted global column ids (kept)
-  std::vector<i_t> rows;               // sorted global row ids spanned by the block (|G|)
-  bve_block_t<f_t> blk;                // gathered block, local ids, for the projection
-  uint8_t feas[BVE_MAX_PATTERNS];      // [2^nb]  filled by projection: 1 iff pattern is feasible
-  uint32_t witness[BVE_MAX_PATTERNS];  // [2^nb]  filled by projection: smallest feasible interior
+  std::vector<i_t> interior;    // sorted global column ids (to be eliminated)
+  std::vector<i_t> boundary;    // sorted global column ids (kept)
+  std::vector<i_t> rows;        // sorted global row ids spanned by the block
+  bve_block_t<f_t> blk;         // gathered block, local ids, for the projection
+  bve_projection_t projection;  // sized and zeroed by stage(), filled by the projection backend
 };
 
 // Project shape-binned candidate batches on the GPU and return a deterministic work estimate.
@@ -111,10 +117,11 @@ double bve_project_batch_gpu(const raft::handle_t& handle,
 // Build symmetric current-problem implication adjacency from the original-id keyed probing cache,
 // optionally unioned with forcings harvested from earlier block projections (also original-id).
 template <typename i_t, typename f_t>
-std::vector<std::vector<i_t>> bve_build_impl_adj(const probing_cache_t<i_t, f_t>& cache,
-                                                 const std::vector<i_t>& reverse_original_ids,
-                                                 i_t n_vars,
-                                                 const probe_findings_t<i_t>* extra = nullptr);
+std::vector<std::vector<i_t>> bve_build_impl_adj(
+  const probing_cache_t<i_t, f_t>& cache,
+  const std::vector<i_t>& reverse_original_ids,
+  i_t n_vars,
+  const probe_findings_t<i_t>* prior_original_id_findings = nullptr);
 
 // Run block BVE using caller-provided implication adjacency and deadline. Returns true iff at least
 // one validated reduction was installed; `work_units` receives a deterministic unscaled estimate.
@@ -126,8 +133,8 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
                         timer_t& timer,
                         double& work_units,
                         probe_findings_t<i_t>* out_findings = nullptr,
-                        i_t Bcap                            = BVE_MAX_BOUNDARY,
-                        i_t enumcap                         = BVE_MAX_SCOPE,
-                        i_t margin                          = 0);
+                        i_t boundary_cap                    = BVE_MAX_BOUNDARY,
+                        i_t scope_cap                       = BVE_MAX_SCOPE,
+                        i_t clause_growth_margin            = 0);
 
 }  // namespace cuopt::mathematical_optimization::mip
