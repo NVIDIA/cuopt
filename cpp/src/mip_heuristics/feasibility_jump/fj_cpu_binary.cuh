@@ -155,13 +155,14 @@ void fj_bin_patch_row(fj_bin_patch_width_t width,
                       int32_t os_new,
                       int32_t skip_var);
 
-// Argmax over var_score with the tabu window folded in, scanning all n variables. Valid while the
-// objective weight is zero, where the full score is exactly var_score. Yields best_var of -1 when
-// every variable is tabu.
+// Argmax over var_score, scanning all n variables. Valid while the objective weight is zero, where
+// the full score is exactly var_score. Yields best_var of -1 only if n is 0.
+//
+// Carries no tabu argument: at most a ring's worth of variables are tabu at once, so the caller
+// holds those few at fj_bin_score_invalid across the call instead of making this read a per-variable
+// tenure array. That keeps the scan to four bytes per variable.
 void fj_bin_argmax(const int32_t* var_score,
-                   const uint16_t* flip_until,
                    int32_t n,
-                   uint16_t iter_biased,
                    int32_t tile,
                    int32_t& best_var,
                    int32_t& best_score);
