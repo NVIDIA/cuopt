@@ -665,7 +665,6 @@ static bve_bf_t brute_force_binary(mip::problem_t<int, double>& problem)
 
   const int nv = problem.n_variables;
   const int nr = problem.n_constraints;
-  EXPECT_LE(nv, 24) << "brute force needs a small reduced model";
   for (int v = 0; v < nv; ++v) {  // corpus is pure 0-1
     EXPECT_NEAR(get_lower(h_vb[v]), 0.0, 1e-9);
     EXPECT_NEAR(get_upper(h_vb[v]), 1.0, 1e-9);
@@ -763,6 +762,7 @@ TEST(block_bve_equivalence, preserves_optimum_and_reconstruction_on_corpus)
         << "gadget fixture expected a reduction via probing and/or block-BVE";
     }
 
+    ASSERT_LE(problem.n_variables, 24) << "brute force enumerates 2^n; keep the corpus small";
     auto bf = brute_force_binary(problem);
     if (!c.feasible) {
       // NOTE: if preprocess detects the infeasibility upstream and collapses the model, this may
@@ -794,9 +794,10 @@ TEST(block_bve_equivalence, preserves_optimum_and_reconstruction_on_corpus)
       EXPECT_GE(s, m_rl[r] - 1e-6);
       EXPECT_LE(s, m_ru[r] + 1e-6);
     }
-    auto m_obj       = model.get_objective_coefficients();
+    auto m_obj = model.get_objective_coefficients();
+    ASSERT_EQ(full.size(), m_obj.size()) << "reconstruction is not in the original column frame";
     double recon_obj = 0.0;
-    for (size_t j = 0; j < m_obj.size() && j < full.size(); ++j)
+    for (size_t j = 0; j < m_obj.size(); ++j)
       recon_obj += m_obj[j] * full[j];
     EXPECT_NEAR(recon_obj, c.optimum, 1e-6);
   }
