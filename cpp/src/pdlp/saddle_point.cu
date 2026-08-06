@@ -37,8 +37,8 @@ saddle_point_state_t<i_t, f_t>::saddle_point_state_t(raft::handle_t const* handl
     current_AtY_{batch_size * primal_size, handle_ptr->get_stream()},
     next_AtY_{batch_size * primal_size, handle_ptr->get_stream()}
 {
-  EXE_CUOPT_EXPECTS(primal_size > 0, "Size of the primal problem must be larger than 0");
-  EXE_CUOPT_EXPECTS(dual_size > 0, "Size of the dual problem must be larger than 0");
+  EXE_CUOPT_EXPECTS(primal_size >= 0, "Size of the primal problem must be non-negative");
+  EXE_CUOPT_EXPECTS(dual_size >= 0, "Size of the dual problem must be non-negative");
 
   // Starting from all 0
   thrust::fill(

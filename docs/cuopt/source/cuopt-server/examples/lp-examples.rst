@@ -10,7 +10,7 @@ The following example showcases how to use the ``CuOptServiceSelfHostClient`` to
    paths still use batch solve today; check response ``warnings`` or logs for the
    deprecation notice.
 
-The OpenAPI specification for the server is available in :doc:`open-api spec <../../open-api>`. The example data is structured as per the OpenAPI specification for the server, please refer :doc:`LPData under "POST /cuopt/request" <../../open-api>` under schema section. LP and MILP share same spec.
+The OpenAPI specification for the server is available in :doc:`open-api spec <../../open-api>`. The example data is structured as per the OpenAPI specification for the server, please refer :doc:`LPData under "POST /cuopt/request" <../../open-api>` under schema section. LP and MIP share same spec.
 
 If you want to run server locally, please run the following command in a terminal or tmux session so you can test examples in another terminal.
 
@@ -151,7 +151,7 @@ Batch mode response:
     }
 
 .. note::
-    Warm start is only applicable to LP and not for MILP.
+    Warm start is only applicable to LP and not for MIP.
 
 .. _warm-start:
 
@@ -208,7 +208,7 @@ The response would be as follows:
     }
 
 
-Using MPS or LP file directly
+Using MPS or LP File Directly
 -----------------------------
 
 The self-hosted client accepts both MPS and LP format files — the client
@@ -276,7 +276,7 @@ the client dispatches on the file extension (``.mps`` / ``.qps`` vs ``.lp``,
 including ``.gz`` / ``.bz2`` compressed variants). For solver settings see
 :doc:`convex optimization parameters <../../convex-settings>` and :doc:`MIP parameters <../../mip-settings>`.
 
-MPS format
+MPS Format
 ~~~~~~~~~~
 
 :download:`mps_datamodel_example.py <lp/examples/mps_datamodel_example.py>`
@@ -285,7 +285,7 @@ MPS format
    :language: python
    :linenos:
 
-LP format
+LP Format
 ~~~~~~~~~
 
 :download:`lp_datamodel_example.py <lp/examples/lp_datamodel_example.py>`
@@ -294,7 +294,7 @@ LP format
    :language: python
    :linenos:
 
-Expected output (either example, same problem instance)
+Expected Output (Either Example, Same Problem Instance)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: text
@@ -319,7 +319,7 @@ The ``data`` argument to ``get_LP_solve`` may be a dictionary of the format show
 Aborting a Running Job in Thin Client
 -------------------------------------
 
-Please refer to the :ref:`aborting-thin-client` in the MILP Example for more details.
+Please refer to the :ref:`aborting-thin-client` in the MIP Example for more details.
 
 
 =================================================
@@ -407,7 +407,7 @@ Warm Start in CLI
 To use a previous solution as the initial/warm start solution for a new request ID, you are required to save the previous solution, which can be accomplished use option ``-k``. Use the previous reqId in the next request as follows:
 
 .. note::
-    Warm start is only applicable to LP and not for MILP.
+    Warm start is only applicable to LP and not for MIP.
 
 .. code-block:: shell
 
@@ -434,7 +434,7 @@ In the case of batch mode, you can send a bunch of ``mps`` files at once, and ac
    :doc:`../../convex-features`.
 
 .. note::
-   Batch mode is not available for MILP problems.
+   Batch mode is not available for MIP problems.
 
 A sample MPS file (:download:`sample.mps <lp/examples/sample.mps>`):
 
@@ -455,7 +455,7 @@ Run the example:
 Aborting a Running Job In CLI
 -----------------------------
 
-Please refer to the :ref:`aborting-cli` in the MILP Example for more details.
+Please refer to the :ref:`aborting-cli` in the MIP Example for more details.
 
 .. note::
    Please use solver settings while using .mps files.

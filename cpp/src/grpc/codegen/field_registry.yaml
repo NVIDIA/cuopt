@@ -109,6 +109,9 @@
 # Proto value names: proto_prefix + UPPER_SNAKE(CppName), or just CppName if
 # no prefix.
 #
+
+# yamllint disable rule:indentation
+
 enums:
   pdlp_termination_status:
     domain: solution
@@ -551,6 +554,10 @@ pdlp_settings:
       # solver_settings.cu. No post-decode clamp is applied here for
       # consistency with the other f_t scalars (tolerances, time_limit, ...).
       field_num: 32
+      optional: true
+  - postsolve_info:
+      field_num: 33
+      type: int32
       optional: true
   - save_best_primal_so_far:
       field_num: 28

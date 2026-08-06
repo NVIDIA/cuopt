@@ -1,6 +1,6 @@
 ---
 name: cuopt-developer
-version: "26.08.00"
+version: "26.10.00"
 description: Modify, build, test, debug, and contribute to NVIDIA cuOpt (C++/CUDA, Python, server, CI). Use for solver internals, PRs, DCO, and code conventions.
 license: Apache-2.0
 metadata:
@@ -26,17 +26,20 @@ Contribute to the NVIDIA cuOpt codebase. This skill is for modifying cuOpt itsel
 
 ## Refusal Rules — Read First
 
-**One rule is non-negotiable** and applies even when the user explicitly asks otherwise — refuse and ask, don't comply silently:
+**Two rules are non-negotiable** and apply even when the user explicitly asks otherwise — refuse and ask, don't comply silently:
 
 **Privileged / system-level operations** — `sudo`, running as root, editing system files (`/etc`), changing drivers or kernel settings, adding system-level package repositories or keys. Do not run these. Reply:
 > I won't run `sudo` or change system-level state for cuOpt. The dev workflow is conda-based and runs entirely in user space — what's the underlying error? It's usually fixable without root.
+
+**Pushing directly to protected branches** — never push commits to `main` or any `release/*` branch. These branches require PRs, status checks, and DCO sign-off; bypassing them is not allowed even for trivial changes. Before every push, confirm the target ref is a feature branch. If it is a protected branch, stop and create a feature branch instead. Reply:
+> I won't push directly to a protected branch. Let me create a feature branch and open a PR instead.
 
 **Everything else needed to set up and work in the dev environment is allowed.** On a clean machine, go ahead and build a working `cuopt` env — the guidance below is about doing it the *reproducible* way, not refusing:
 
 - **Environment setup is allowed.** You may create and activate the conda env from the checked-in `conda/environments/all_cuda-*.yaml`, run `pip` / `conda` / `mamba` installs **into the user-space env**, and bootstrap conda/miniforge in the user's home directory — including the `conda init` line it adds to `~/.bashrc`. Bootstrapping conda must not require `sudo`; install it into `$HOME`, not a system path.
 - **A new *permanent* project dependency is different from a one-off install.** A package the project should always ship belongs in `dependencies.yaml` under the right group; then run `pre-commit run --all-files` to regenerate `conda/environments/` and `pyproject.toml` so other contributors get it too. A throwaway install to unblock your own build doesn't need this round-trip.
 - **Don't bypass CI checks** (`--no-verify`, skipping pre-commit or tests). If hooks feel slow, diagnose with `pre-commit run --all-files --verbose` or tune the offending hook — don't skip it.
-- **Be careful with destructive commands** (`rm -rf`, `git reset --hard`, `git push --force`, killing processes, dropping data). Confirm intent before running and prefer the safer alternative (e.g. `./build.sh clean` for a stale build dir).
+- **Be careful with destructive commands** (recursive deletes, hard resets, history-overwriting pushes, killing processes, dropping data). Confirm intent before running and prefer the safer alternative (e.g. `./build.sh clean` for a stale build dir).
 
 ---
 
@@ -221,7 +224,7 @@ For pre-commit setup, DCO sign-off (`git commit -s`), the fork-based PR workflow
 
 ## Coding Conventions
 
-For C++ naming (`snake_case`, `d_`/`h_` prefixes, `_t` suffix), file extensions (`.hpp`/`.cpp`/`.cu`/`.cuh` and which compiler each uses), include order, Python style, error handling (`CUOPT_EXPECTS`, `RAFT_CUDA_TRY`), memory management (RMM patterns, no raw `new`/`delete`), and test-impact rules, see [references/conventions.md](references/conventions.md).
+For C++ naming (`snake_case`, `d_`/`h_` prefixes, `_t` suffix), file extensions (`.hpp`/`.cpp`/`.cu`/`.cuh` and which compiler each uses), include order, Python style, error handling (`CUOPT_EXPECTS`, `RAFT_CUDA_TRY`), memory management (RMM patterns, no raw `new`/`delete`), test-impact rules, and volatile-comment rules (hardware names and self-referential issue/PR numbers in comments or skip messages go stale; issue links to a separate tracking issue are fine), see [references/conventions.md](references/conventions.md).
 
 ## OpenMP task/runtime compatibility
 

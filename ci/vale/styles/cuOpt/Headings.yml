@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Section headings under docs/cuopt/source use title case (Chicago style, so
+# short prepositions and conjunctions stay lowercase).
+extends: capitalization
+message: "Heading '%s' should use title case."
+level: error
+scope: heading
+match: $title
+style: Chicago
+
+# Terms that keep their own casing.
+#
+# Every entry here is load-bearing: removing any one of them makes a real
+# heading fail. Do not add a term speculatively. Exceptions match whole words
+# and a single match makes Vale skip the ENTIRE heading, so a needless entry
+# silently disables the check for every heading that mentions it.
+#
+# `ci/utils/check_vale_rule.sh` guards against that; run it after editing.
+exceptions:
+  - cuOpt
+  - cuDSS
+  - gRPC
+  - mTLS
+  - (cuopt)
+  - cuopt-server
+  - solver_configs

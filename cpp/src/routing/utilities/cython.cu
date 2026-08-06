@@ -5,6 +5,7 @@
  */
 /* clang-format on */
 
+#include <cuopt/export.hpp>
 #include <cuopt/routing/cython/cython.hpp>
 #include <cuopt/routing/solve.hpp>
 #include <raft/core/handle.hpp>
@@ -187,7 +188,7 @@ std::unique_ptr<dataset_ret_t> call_generate_dataset(
   return std::make_unique<dataset_ret_t>(std::move(gen_ret));
 }
 
-template void populate_dataset_params<int, float>(
+template CUOPT_EXPORT void populate_dataset_params<int, float>(
   routing::generator::dataset_params_t<int, float>& params,
   int n_locations,
   bool asymmetric,

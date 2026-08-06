@@ -13,7 +13,7 @@ cuOpt Examples and Tutorials Videos
 .. dropdown:: Tutorial List
 
     - `Quick Start to GPU-Accelerated Large-Scale Logistics and Supply Chain Optimization with NVIDIA cuOpt <https://www.youtube.com/watch?v=CVtqcUmW9nU>`_
-    - `Accelerated MILP for Supply Chain, Logistics & Planning Optimization — Quick Start with NVIDIA cuOpt <https://www.youtube.com/watch?v=jnDPQeUO0CM>`_
+    - `Accelerated MIP for Supply Chain, Logistics & Planning Optimization — Quick Start with NVIDIA cuOpt <https://www.youtube.com/watch?v=jnDPQeUO0CM>`_
     - `Solving Vehicle Routing Problems — Hands-On with Open Source NVIDIA cuOpt <https://www.youtube.com/watch?v=kSATyJrELUI>`_
 
 
@@ -33,5 +33,5 @@ Please note that you need to choose a `Runtime` as `GPU` in order to run the not
 `Blogs <https://developer.nvidia.com/blog/recent-posts/?products=cuOpt>`_
 ----------------------------------------------------------------------------
 
-Contact us - cuopt@nvidia.com
+Contact Us - cuopt@nvidia.com
 -----------------------------
