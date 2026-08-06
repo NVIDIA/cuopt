@@ -13,6 +13,7 @@
 #include "feasibility_jump.cuh"
 #include "feasibility_jump_impl_common.cuh"
 #include "fj_cpu.cuh"
+#include "fj_cpu_binary.cuh"
 #include "fj_cpu_worker.cuh"
 
 #include <utilities/seed_generator.cuh>
@@ -1416,6 +1417,11 @@ void finalize_fj_cpu_host_initialization(
 
   // Precompute static problem features for regression model
   precompute_problem_features(fj_cpu);
+
+  // Binary fast path. Depends only on the host problem mirrors and the incoming weights, both
+  // populated above; engine state is initialized later, at solve entry. Climbers built from a
+  // host LP reach here too and are declined by the predicate at their first slack column.
+  try_build_binary_fastpath(fj_cpu);
 }
 
 template <typename i_t, typename f_t>
@@ -1608,6 +1614,11 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_t<i_t, f_t>::create_cpu_climber(
 template <typename i_t, typename f_t>
 void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double work_unit_limit)
 {
+  if (fj_cpu->binary_fast) {
+    fj_cpu->binary_fast->solve(*fj_cpu, in_time_limit, work_unit_limit);
+    return;
+  }
+
   i_t local_mins  = 0;
   auto loop_start = std::chrono::high_resolution_clock::now();
   auto time_limit = std::chrono::milliseconds(static_cast<i_t>(std::floor(in_time_limit * 1000.0)));
