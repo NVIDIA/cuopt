@@ -63,9 +63,9 @@ struct bhw_row_rewrite_t {
 
 // Rewrite one one-sided all-binary row with smaller integer coefficients spanning the same 0/1
 // feasible set. direction is +1 for "coefficients . x <= side" and -1 for ">= side"; side is the
-// finite side of the row. Rejects the row (accepted = false) unless it integerizes exactly, admits
-// a strictly smaller equivalent form, and that form does not enlarge the row's LP relaxation. cache
-// may be null to skip memoization.
+// finite side of the row. Rejects the row (accepted = false) unless it integerizes exactly to
+// nonzero coefficients, admits a strictly smaller equivalent form, and that form does not enlarge
+// the row's LP relaxation. cache may be null to skip memoization.
 //
 // The caller checks that every entry is a binary integer variable and that exactly one side of the
 // row is finite. Exposed for testing: BHWCoeffReduce::execute only screens rows and emits the
