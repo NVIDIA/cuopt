@@ -111,8 +111,12 @@ class probing_cache_t {
                                      f_t first_probe,
                                      f_t second_probe,
                                      f_t integrality_tolerance);
-  // Intersect block-BVE-derived forcings into the entries that already cover the same variable
-  bool merge_forcings(const std::vector<probe_forcing_t<i_t>>& forcings);
+  // Intersect block-BVE-derived forcings into the entries that already cover the same variable.
+  // Both sides are conditioned on the same antecedent, so an empty intersection disproves that
+  // antecedent, not the model: the variable is appended to fixings with the opposite value. Global
+  // infeasibility is the case where both polarities get fixed, which apply_bve_fixings detects.
+  void merge_forcings(const std::vector<probe_forcing_t<i_t>>& forcings,
+                      std::vector<std::pair<i_t, bool>>& fixings);
   // add the results of probing cache to secondary CG structure if not already in a gub constraint.
   // use the same activity computation that we will use in BP rounding.
   // use GUB constraints to find fixings in bulk rounding

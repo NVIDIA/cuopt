@@ -32,6 +32,7 @@
 
 #include <omp.h>
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <memory>
@@ -329,6 +330,70 @@ TEST(block_bve_core, integer_scaling_accepts_rational_rejects_pathological)
     std::vector<double> v{1.0 / 11, 1.0 / 13, 1.0 / 17, 1.0 / 19, 1.0 / 23};
     double s = cuopt::find_scaling_rational(v, kMaxScale, kMaxDenom, kMaxFinal, kIntTol);
     EXPECT_TRUE(std::isnan(s)) << "un-integerizable coefficients must be rejected, got " << s;
+  }
+}
+
+// A cached probe and a block projection are both valid, so they can only disagree when the
+// antecedent they share is unsatisfiable. That fixes the variable to the opposite value; the model
+// is infeasible only once both polarities are contradicted, which apply_bve_fixings derives from
+// two fixings that disagree. Regression: the empty intersection used to be reported as global
+// infeasibility outright, turning a feasible model into an INFEASIBLE answer.
+TEST(block_bve_core, cache_contradiction_fixes_the_variable_instead_of_failing)
+{
+  constexpr int var    = 7;
+  constexpr int forced = 9;
+
+  // Probing has x7 = 0 => x9 = 0; the exact projection has x7 = 0 => x9 = 1. Slot 1 is left
+  // unpopulated, which also exercises the empty-bound-map guard.
+  {
+    probing_cache_t<int, double> cache;
+    std::array<cache_entry_t<int, double>, 2> entries;
+    entries[0].val_interval                    = {0.0, interval_type_t::EQUALS};
+    entries[0].var_to_cached_bound_map[forced] = {0.0, 0.0};
+    cache.probing_cache.insert({var, entries});
+
+    std::vector<std::pair<int, bool>> fixings;
+    cache.merge_forcings({{var, forced, false, true}}, fixings);
+
+    ASSERT_EQ(fixings.size(), 1u) << "a contradicted probe yields one fixing, not infeasibility";
+    EXPECT_EQ(fixings[0].first, var);
+    EXPECT_TRUE(fixings[0].second) << "x7 = 0 is disproved, so x7 = 1";
+  }
+
+  // Both polarities contradicted: the two disagreeing fixings are what proves infeasibility.
+  {
+    probing_cache_t<int, double> cache;
+    std::array<cache_entry_t<int, double>, 2> entries;
+    entries[0].val_interval                    = {0.0, interval_type_t::EQUALS};
+    entries[0].var_to_cached_bound_map[forced] = {0.0, 0.0};
+    entries[1].val_interval                    = {1.0, interval_type_t::EQUALS};
+    entries[1].var_to_cached_bound_map[forced] = {0.0, 0.0};
+    cache.probing_cache.insert({var, entries});
+
+    std::vector<std::pair<int, bool>> fixings;
+    cache.merge_forcings({{var, forced, false, true}, {var, forced, true, true}}, fixings);
+
+    ASSERT_EQ(fixings.size(), 2u);
+    std::sort(fixings.begin(), fixings.end());
+    EXPECT_EQ(fixings[0], std::make_pair(var, false));
+    EXPECT_EQ(fixings[1], std::make_pair(var, true));
+  }
+
+  // A forcing consistent with the cached interval tightens it and fixes nothing.
+  {
+    probing_cache_t<int, double> cache;
+    std::array<cache_entry_t<int, double>, 2> entries;
+    entries[0].val_interval                    = {0.0, interval_type_t::EQUALS};
+    entries[0].var_to_cached_bound_map[forced] = {0.0, 1.0};
+    cache.probing_cache.insert({var, entries});
+
+    std::vector<std::pair<int, bool>> fixings;
+    cache.merge_forcings({{var, forced, false, true}}, fixings);
+
+    EXPECT_TRUE(fixings.empty()) << "a consistent forcing must not fix anything";
+    const auto& bound = cache.probing_cache.at(var)[0].var_to_cached_bound_map.at(forced);
+    EXPECT_EQ(bound.lb, 1.0);
+    EXPECT_EQ(bound.ub, 1.0);
   }
 }
 

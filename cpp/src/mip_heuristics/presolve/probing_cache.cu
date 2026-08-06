@@ -1047,10 +1047,12 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
 // Slots are matched on val_interval.val rather than by index because the writer fills them in probe
 // arrival order, not value order (insert_current_probing_to_cache).
 template <typename i_t, typename f_t>
-bool probing_cache_t<i_t, f_t>::merge_forcings(const std::vector<probe_forcing_t<i_t>>& forcings)
+void probing_cache_t<i_t, f_t>::merge_forcings(const std::vector<probe_forcing_t<i_t>>& forcings,
+                                               std::vector<std::pair<i_t, bool>>& fixings)
 {
-  i_t n_added     = 0;
-  i_t n_tightened = 0;
+  i_t n_added        = 0;
+  i_t n_tightened    = 0;
+  i_t n_contradicted = 0;
   for (const auto& forcing : forcings) {
     cuopt_assert(forcing.var != forcing.forced_var, "self-forcing is not a projection finding");
     auto entry_it = probing_cache.find(forcing.var);
@@ -1070,18 +1072,25 @@ bool probing_cache_t<i_t, f_t>::merge_forcings(const std::vector<probe_forcing_t
       cached_bound_t<f_t>& bound = bound_it->second;
       const f_t lb               = std::max(bound.lb, forced_val);
       const f_t ub               = std::min(bound.ub, forced_val);
-      // Both the cached bound and the projection are valid, so an empty intersection is a proof.
-      if (lb > ub) { return true; }
+      // Both the cached bound and the projection are valid and share the antecedent var == probed
+      // value, so an empty intersection proves only that the antecedent cannot hold. The slot is
+      // dead from here on, hence no tightening; the opposite value is the sound conclusion.
+      if (lb > ub) {
+        fixings.emplace_back(forcing.var, !forcing.value);
+        ++n_contradicted;
+        continue;
+      }
       n_tightened += (lb != bound.lb || ub != bound.ub);
       bound.lb = lb;
       bound.ub = ub;
     }
   }
-  CUOPT_LOG_DEBUG("BVE forcings %zu: added %d and tightened %d probing cache bounds",
-                  forcings.size(),
-                  n_added,
-                  n_tightened);
-  return false;
+  CUOPT_LOG_DEBUG(
+    "BVE forcings %zu: added %d and tightened %d probing cache bounds, %d contradicted a probe",
+    forcings.size(),
+    n_added,
+    n_tightened,
+    n_contradicted);
 }
 
 #define INSTANTIATE(F_TYPE)                                                                        \

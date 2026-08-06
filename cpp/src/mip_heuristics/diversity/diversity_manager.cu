@@ -464,10 +464,8 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
 
   // Harvest the projections: tighten the cache in place, pin the variables the blocks left with a
   // single value, then propagate. Deferred to here so no round runs against a half-updated model.
-  if (ls.constraint_prop.bounds_update.probing_cache.merge_forcings(bve_findings.forcings)) {
-    stats.presolve_time = timer.elapsed_time();
-    return false;
-  }
+  ls.constraint_prop.bounds_update.probing_cache.merge_forcings(bve_findings.forcings,
+                                                                bve_findings.fixings);
   i_t n_bve_fixings = 0;
   if (!global_timer.check_time_limit()) {
     if (!apply_bve_fixings(*problem_ptr, bve_findings.fixings, n_bve_fixings)) {
