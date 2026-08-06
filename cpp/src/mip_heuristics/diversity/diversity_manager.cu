@@ -507,6 +507,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
     auto model = problem_to_mps_data_model(*problem_ptr);
     cuopt::mathematical_optimization::io::mps_writer_t<i_t, f_t> writer(model);
     writer.write(mps_path);
+    exit(0);
   }
   if (!problem_ptr->empty && !check_bounds_sanity(*problem_ptr)) { return false; }
   // if (!presolve_timer.check_time_limit() && !context.settings.heuristics_only &&
