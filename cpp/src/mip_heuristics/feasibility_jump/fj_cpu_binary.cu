@@ -475,6 +475,8 @@ struct fj_bin_engine_t : fj_binary_state_t<i_t, f_t> {
   std::vector<uint8_t> is_violated;
   std::vector<int32_t> violated_list;
   std::vector<int32_t> vpos;
+  // Duplicate guard for find_move_in_rows, its only reader. Zero everywhere outside that function,
+  // which clears what it set before returning.
   std::vector<char> var_bitmap;
 
   // One generator advanced across the whole search, rather than one re-seeded per call site per
@@ -704,14 +706,29 @@ struct fj_bin_engine_t : fj_binary_state_t<i_t, f_t> {
     const int32_t prev_violated = (int32_t)violated_list.size();
     int32_t own_score           = 0;
 
+    // The loop writes a row's lhs through fj_bin_row_t* and a score delta through int32_t*, either
+    // of which may alias a vector's internal pointer as far as the compiler can prove. Without
+    // these locals it reloads every base pointer below out of `this` on each row visit, and cannot
+    // turn the index walks into pointer inductions.
+    fj_bin_row_t<coef_t>* const rows_p = rows.data();
+    const int32_t* const rcon_p        = pb.reverse_constraints.data();
+    const coef_t* const rcoef_p        = pb.reverse_coefficients.data();
+    const int32_t* const rcsr_p        = pb.reverse_to_csr.data();
+    const int32_t* const offsets_p     = pb.offsets.data();
+    const int32_t* const vars_p        = pb.variables.data();
+    const coef_t* const coefs_p        = pb.coefficients.data();
+    int32_t* const var_score_p         = var_score.data();
+    int32_t* const nnz_delta_p         = nnz_score_delta.data();
+    const int32_t* const assign_p      = assign_i32.data();
+
     for (int32_t ii = ob; ii < oe; ++ii) {
       // Write hint: the row's lhs is updated at the end of every iteration, so the line is wanted
       // exclusive. The padding on reverse_constraints makes the lookahead unconditional.
-      __builtin_prefetch(&rows[pb.reverse_constraints[ii + fj_bin_pf_dist]], 1, 3);
+      __builtin_prefetch(&rows_p[rcon_p[ii + fj_bin_pf_dist]], 1, 3);
 
-      const int32_t r         = pb.reverse_constraints[ii];
-      fj_bin_row_t<coef_t>& h = rows[r];
-      const coef_t kv         = pb.reverse_coefficients[ii];
+      const int32_t r         = rcon_p[ii];
+      fj_bin_row_t<coef_t>& h = rows_p[r];
+      const coef_t kv         = rcoef_p[ii];
       const int32_t old_lhs   = h.lhs;
       const int32_t new_lhs   = old_lhs + (int32_t)kv * delta;
       const int32_t s         = h.sign;
@@ -730,18 +747,18 @@ struct fj_bin_engine_t : fj_binary_state_t<i_t, f_t> {
       const bool deep_sat  = old_slack > margin && new_slack > margin;
       const bool deep_viol = old_slack < -margin && new_slack < -margin;
       if (!(deep_sat || deep_viol)) {
-        const int32_t kb = pb.offsets[r], ke = pb.offsets[r + 1];
+        const int32_t kb = offsets_p[r], ke = offsets_p[r + 1];
         // The offsets are already loaded for the call, so the width choice is a compare rather
         // than a stored per-row flag.
         // TODO: check that this may not cause AVX512 powerdown overheads if the AVX2 row/AVX512 row ratio is unbalanced
         fj_bin_patch_row(fj_bin_patch_width_for(ke - kb, narrow4_max, narrow8_max),
-                         pb.variables.data(),
-                         pb.coefficients.data(),
+                         vars_p,
+                         coefs_p,
                          kb,
                          ke,
-                         var_score.data(),
-                         nnz_score_delta.data(),
-                         assign_i32.data(),
+                         var_score_p,
+                         nnz_delta_p,
+                         assign_p,
                          s,
                          h.weight,
                          new_slack,
@@ -755,7 +772,7 @@ struct fj_bin_engine_t : fj_binary_state_t<i_t, f_t> {
       if (!deep_sat) {
         const int32_t pv = score_delta(h, new_lhs, new_flip, kv);
         own_score += pv;
-        nnz_score_delta[pb.reverse_to_csr[ii]] = pv;
+        nnz_delta_p[rcsr_p[ii]] = pv;
       }
       h.lhs = new_lhs;
     }
@@ -779,7 +796,6 @@ struct fj_bin_engine_t : fj_binary_state_t<i_t, f_t> {
     const int32_t tenure =
       tabu_tenure_min + (int32_t)(rng.next_u32() % (uint32_t)(tabu_tenure_max - tabu_tenure_min));
     tabu.on_flip(var, iters, tenure);
-    std::fill(var_bitmap.begin(), var_bitmap.end(), (char)0);
   }
 
   // Publish a new best into the climber, which owns the reporting contract.
@@ -895,6 +911,11 @@ struct fj_bin_engine_t : fj_binary_state_t<i_t, f_t> {
           best_v = v;
         }
       }
+    }
+    // Restore the all-zero invariant by revisiting only what was set: the sampled rows hold a few
+    // dozen variables against n in the thousands, so this is far cheaper than clearing the array.
+    for (int32_t r : target_rows) {
+      for (int32_t k = pb.offsets[r]; k < pb.offsets[r + 1]; ++k) var_bitmap[pb.variables[k]] = 0;
     }
     return {best_v, best_s};
   }
