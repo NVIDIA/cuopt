@@ -358,14 +358,6 @@ class branch_and_bound_t {
                                    i_t& num_fractional,
                                    std::vector<i_t>& fractional);
 
-  // Try to pivot the nonbasic variable `entering_index` (currently at position
-  // `nonbasic_entering` in `nonbasic_list`) into the basis along the direction
-  // `delta_x`, with `utilde` = U * B^{-1} A(:, entering_index) satisfying
-  // L * utilde = P * A(:, entering_index). Applies the pivot only if it yields a
-  // strict net decrease in the number of fractional integer variables. On success,
-  // mutates basic_list/nonbasic_list/vstatus/solution/basis_update in place and applies
-  // an O(1) fix-up to `nonbasic_index` for the two variables whose (non)basic status
-  // changed. On skip, leaves all outputs untouched.
   void apply_delta_x_for_integer_pivot(
     const simplex::lp_problem_t<i_t, f_t>& lp,
     std::vector<i_t>& basic_list,
