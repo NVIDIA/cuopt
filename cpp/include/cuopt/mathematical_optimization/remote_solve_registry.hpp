@@ -53,6 +53,13 @@ extern std::atomic<solve_lp_remote_fn_t> g_solve_lp_remote_fn;
 extern std::atomic<solve_mip_remote_fn_t> g_solve_mip_remote_fn;
 
 /**
+ * @brief Readiness flag, published after both callbacks are stored.
+ *
+ * Readers must observe this as true before trusting either slot.
+ */
+extern std::atomic<bool> g_remote_solvers_ready;
+
+/**
  * @brief Wire up the real remote-solve implementations.
  *
  * Called by libcuopt_grpc.so's ELF constructor. Thread-safe.

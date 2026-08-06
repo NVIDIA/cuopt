@@ -97,6 +97,6 @@ message(STATUS "libcuopt: Final RPATH = ${rpaths}")
 
 foreach(_target cuopt cuopt_base cuopt_routing cuopt_lp cuopt_grpc cuopt_cli cuopt_grpc_server)
   if(TARGET ${_target})
-    set_property(TARGET ${_target} PROPERTY INSTALL_RPATH ${rpaths} APPEND)
+    set_property(TARGET ${_target} APPEND PROPERTY INSTALL_RPATH ${rpaths})
   endif()
 endforeach()
