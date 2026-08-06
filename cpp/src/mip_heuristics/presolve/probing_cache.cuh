@@ -74,8 +74,6 @@ struct cache_entry_t {
 };
 
 // A forcing read off an exactly projected block: var == value implies forced_var == forced_value.
-// Complete with respect to the block's own rows, where probing only propagates, so it can be
-// tighter than a cached entry for the same pair. Both ids are in the variable_mapping frame.
 template <typename i_t>
 struct probe_forcing_t {
   i_t var;
