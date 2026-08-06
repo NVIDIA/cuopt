@@ -3276,7 +3276,7 @@ bool branch_and_bound_t<i_t, f_t>::check_for_dual_degeneracy(
   const i_t num_nonbasics = nonbasic_list.size();
   for (i_t k = 0; k < num_nonbasics; k++) {
     const i_t j = nonbasic_list[k];
-    if (std::abs(solution.z[j]) <= 1e-10) {
+    if (std::abs(solution.z[j]) <= settings_.tight_tol) {
       zero_reduced_costs_vars.push_back(j);
       zero_reduced_costs_vars_nonbasic_index.push_back(k);
     }
@@ -3313,7 +3313,7 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(const simple
 
   i_t nnz = 0;
   for (i_t j = 0; j < lp.num_cols; j++) {
-    if (vstatus[j] == variable_status_t::BASIC || std::abs(soln.z[j]) <= 1e-10) {
+    if (vstatus[j] == variable_status_t::BASIC || std::abs(soln.z[j]) <= settings_.tight_tol) {
       nnz += lp.A.col_start[j + 1] - lp.A.col_start[j];
     }
   }
@@ -3323,7 +3323,7 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(const simple
   i_t nz = 0;
   i_t reduced_col = 0;
   for (i_t j = 0; j < lp.num_cols; j++) {
-    if (vstatus[j] == variable_status_t::BASIC || std::abs(soln.z[j]) <= 1e-10) {
+    if (vstatus[j] == variable_status_t::BASIC || std::abs(soln.z[j]) <= settings_.tight_tol) {
       original_col_to_reduced_col[j] = reduced_col;
       A_reduced.col_start[reduced_col] = nz;
       const i_t col_start = lp.A.col_start[j];
@@ -3344,7 +3344,7 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(const simple
 
   std::vector<f_t> b_reduced = lp.rhs;
   for (i_t j = 0; j < lp.num_cols; j++) {
-    if (vstatus[j] == variable_status_t::BASIC || std::abs(soln.z[j]) <= 1e-10) {
+    if (vstatus[j] == variable_status_t::BASIC || std::abs(soln.z[j]) <= settings_.tight_tol) {
       // PASS
     } else {
       const i_t col_start = lp.A.col_start[j];
@@ -3381,7 +3381,7 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(const simple
   simplex::lp_solution_t<i_t, f_t> reduced_solution(m, n);
   reduced_col = 0;
   for (i_t j = 0; j < lp.num_cols; j++) {
-    if (vstatus[j] == variable_status_t::BASIC || std::abs(soln.z[j]) <= 1e-10) {
+    if (vstatus[j] == variable_status_t::BASIC || std::abs(soln.z[j]) <= settings_.tight_tol) {
       reduced_solution.x[reduced_col++] = soln.x[j];
     }
   }
@@ -3389,7 +3389,7 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(const simple
   std::vector<f_t> reduced_edge_norms(n);
   reduced_col = 0;
   for (i_t j = 0; j < lp.num_cols; j++) {
-    if (vstatus[j] == variable_status_t::BASIC || std::abs(soln.z[j]) <= 1e-10) {
+    if (vstatus[j] == variable_status_t::BASIC || std::abs(soln.z[j]) <= settings_.tight_tol) {
       reduced_edge_norms[reduced_col++] = edge_norms_[j];
     }
   }
@@ -3409,7 +3409,7 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(const simple
   for (i_t pump_iter = 0; pump_iter < max_pump_iter; pump_iter++) {
     reduced_col = 0;
     for (i_t j = 0; j < lp.num_cols; j++) {
-      if (vstatus[j] == variable_status_t::BASIC || std::abs(soln.z[j]) <= 1e-10) {
+      if (vstatus[j] == variable_status_t::BASIC || std::abs(soln.z[j]) <= settings_.tight_tol) {
         lp_reduced.objective[reduced_col] = 0;
         if (var_types_[j] == variable_type_t::INTEGER) {
           if (is_fractional(
@@ -3459,7 +3459,7 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(const simple
       std::vector<f_t> adjusted_solution(lp.num_cols, 0.0);
       reduced_col = 0;
       for (i_t j = 0; j < lp.num_cols; j++) {
-        if (vstatus[j] == variable_status_t::BASIC || std::abs(soln.z[j]) <= 1e-10) {
+        if (vstatus[j] == variable_status_t::BASIC || std::abs(soln.z[j]) <= settings_.tight_tol) {
           adjusted_solution[j] = reduced_solution.x[reduced_col++];
         } else {
           adjusted_solution[j] = soln.x[j];
@@ -3497,7 +3497,7 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(const simple
     // Translate the vstatus from the reduced problem to the vstatus for the original problem
     i_t reduced_cols = 0;
     for (i_t j = 0; j < lp.num_cols; j++) {
-      if (vstatus[j] == variable_status_t::BASIC || std::abs(soln.z[j]) <= 1e-10) {
+      if (vstatus[j] == variable_status_t::BASIC || std::abs(soln.z[j]) <= settings_.tight_tol) {
         vstatus[j] = best_reduced_vstatus[reduced_cols++];
       }
     }
