@@ -2347,8 +2347,8 @@ void prepare_optimality(i_t info,
                         std::vector<f_t>& z,
                         lp_solution_t<i_t, f_t>& sol)
 {
-  const i_t m       = lp.num_rows;
-  const i_t n       = lp.num_cols;
+  const i_t m = lp.num_rows;
+  const i_t n = lp.num_cols;
 
   sol.objective         = compute_objective(lp, sol.x);
   sol.user_objective    = compute_user_objective(lp, sol.objective);

@@ -24,9 +24,9 @@
 #include <dual_simplex/crossover.hpp>
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/logger.hpp>
-#include <dual_simplex/primal.hpp>
 #include <dual_simplex/phase2.hpp>
 #include <dual_simplex/presolve.hpp>
+#include <dual_simplex/primal.hpp>
 #include <dual_simplex/random.hpp>
 #include <dual_simplex/user_problem.hpp>
 #include <linear_algebra/vector_math.hpp>
@@ -710,7 +710,7 @@ bool branch_and_bound_t<i_t, f_t>::repair_solution(const std::vector<f_t>& edge_
   std::vector<f_t> leaf_edge_norms = edge_norms;
   f_t repair_work_estimate         = 0.0;
   // should probably set the cut off here lp_settings.cut_off
-  dual_status_t lp_status          = simplex::dual_phase2(2,
+  dual_status_t lp_status = simplex::dual_phase2(2,
                                                  0,
                                                  lp_start_time,
                                                  repair_lp,
@@ -720,7 +720,7 @@ bool branch_and_bound_t<i_t, f_t>::repair_solution(const std::vector<f_t>& edge_
                                                  iter,
                                                  repair_work_estimate,
                                                  leaf_edge_norms);
-  repaired_solution = lp_solution.x;
+  repaired_solution       = lp_solution.x;
 
   if (lp_status == dual_status_t::OPTIMAL) {
     f_t primal_error;
@@ -3179,8 +3179,7 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   root_objective_ = compute_objective(original_lp_, root_relax_soln_.x);
 
   // Refresh fractional info after re-solving with cuts; the pre-cut count is stale.
-  num_fractional =
-    fractional_variables(settings_, root_relax_soln_.x, var_types_, fractional);
+  num_fractional = fractional_variables(settings_, root_relax_soln_.x, var_types_, fractional);
 
   pivot_out_integer_variables(original_lp_,
                               basic_list,
@@ -3265,7 +3264,6 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   return {cut_pass_action_t::CONTINUE, mip_status_t::UNSET};
 }
 
-
 template <typename i_t, typename f_t>
 bool branch_and_bound_t<i_t, f_t>::check_for_dual_degeneracy(
   const simplex::lp_solution_t<i_t, f_t>& solution,
@@ -3285,7 +3283,8 @@ bool branch_and_bound_t<i_t, f_t>::check_for_dual_degeneracy(
 }
 
 template <typename i_t, typename f_t>
-void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(const simplex::lp_problem_t<i_t, f_t>& lp,
+void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(
+  const simplex::lp_problem_t<i_t, f_t>& lp,
   std::vector<i_t>& basic_list,
   std::vector<i_t>& nonbasic_list,
   std::vector<simplex::variable_status_t>& vstatus,
@@ -3297,7 +3296,8 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(const simple
   f_t dual_degenerate_feasibility_pump_start_time = tic();
   std::vector<i_t> zero_reduced_costs_vars;
   std::vector<i_t> zero_reduced_costs_vars_nonbasic_index;
-  bool dual_degenerate = check_for_dual_degeneracy(soln, nonbasic_list, zero_reduced_costs_vars, zero_reduced_costs_vars_nonbasic_index);
+  bool dual_degenerate = check_for_dual_degeneracy(
+    soln, nonbasic_list, zero_reduced_costs_vars, zero_reduced_costs_vars_nonbasic_index);
   if (!dual_degenerate) { return; }
 
   // Construct a new LP problem
@@ -3320,16 +3320,16 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(const simple
   simplex::lp_problem_t<i_t, f_t> lp_reduced(lp.handle_ptr, m, n, nnz);
   csc_matrix_t<i_t, f_t>& A_reduced = lp_reduced.A;
   std::vector<i_t> original_col_to_reduced_col(lp.num_cols, -1);
-  i_t nz = 0;
+  i_t nz          = 0;
   i_t reduced_col = 0;
   for (i_t j = 0; j < lp.num_cols; j++) {
     if (vstatus[j] == variable_status_t::BASIC || std::abs(soln.z[j]) <= settings_.tight_tol) {
-      original_col_to_reduced_col[j] = reduced_col;
+      original_col_to_reduced_col[j]   = reduced_col;
       A_reduced.col_start[reduced_col] = nz;
-      const i_t col_start = lp.A.col_start[j];
-      const i_t col_end = lp.A.col_start[j + 1];
+      const i_t col_start              = lp.A.col_start[j];
+      const i_t col_end                = lp.A.col_start[j + 1];
       for (i_t p = col_start; p < col_end; p++) {
-        const i_t i = lp.A.i[p];
+        const i_t i     = lp.A.i[p];
         const f_t value = lp.A.x[p];
         A_reduced.i[nz] = i;
         A_reduced.x[nz] = value;
@@ -3348,32 +3348,32 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(const simple
       // PASS
     } else {
       const i_t col_start = lp.A.col_start[j];
-      const i_t col_end = lp.A.col_start[j + 1];
+      const i_t col_end   = lp.A.col_start[j + 1];
       for (i_t p = col_start; p < col_end; p++) {
-        const i_t i = lp.A.i[p];
+        const i_t i     = lp.A.i[p];
         const f_t value = lp.A.x[p];
         b_reduced[i] -= value * soln.x[j];
       }
     }
   }
-  lp_reduced.rhs = b_reduced;
+  lp_reduced.rhs       = b_reduced;
   lp_reduced.obj_scale = 1.0;
 
-
-
-  settings_.log.printf("Constructed dual degenerate feasibility pump LP with %d rows and %d columns\n", m, n);
+  settings_.log.printf(
+    "Constructed dual degenerate feasibility pump LP with %d rows and %d columns\n", m, n);
 
   std::vector<i_t> reduced_basic_list(m);
   std::vector<i_t> reduced_nonbasic_list(zero_reduced_costs_vars.size());
   std::vector<variable_status_t> reduced_vstatus(n);
-  i_t num_basic = 0;
+  i_t num_basic    = 0;
   i_t num_nonbasic = 0;
-  reduced_col = 0;
+  reduced_col      = 0;
   for (i_t j = 0; j < lp.num_cols; j++) {
-    if (vstatus[j] == variable_status_t::BASIC){
+    if (vstatus[j] == variable_status_t::BASIC) {
       reduced_vstatus[reduced_col++] = variable_status_t::BASIC;
     } else if (std::abs(soln.z[j]) <= 1e-10) {
-      reduced_nonbasic_list[num_nonbasic++] = reduced_col; // Does ordering of nonbasic variables matter?
+      reduced_nonbasic_list[num_nonbasic++] =
+        reduced_col;  // Does ordering of nonbasic variables matter?
       reduced_vstatus[reduced_col++] = vstatus[j];
     }
   }
@@ -3400,8 +3400,8 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(const simple
   }
 
   f_t primal_work_estimate = 0.0;
-  i_t iter = 0;
-  i_t max_pump_iter = 10;
+  i_t iter                 = 0;
+  i_t max_pump_iter        = 10;
   simplex::random_t<i_t, f_t> rng(settings_.random_seed);
   i_t best_num_fractional = num_fractional;
   std::vector<variable_status_t> best_reduced_vstatus(n);
@@ -3435,22 +3435,23 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(const simple
       }
     }
 
-    bool recompute_basis               = false;
-    const i_t iter_before              = iter;
+    bool recompute_basis                                = false;
+    const i_t iter_before                               = iter;
     simplex_solver_settings_t<i_t, f_t> primal_settings = settings_;
-    primal_settings.log.log = false;
+    primal_settings.log.log                             = false;
     primal_settings.time_limit = settings_.time_limit - toc(exploration_stats_.start_time);
-    simplex::primal_status_t lp_status = simplex::primal_phase2_with_advanced_basis(2,
-                                                                exploration_stats_.start_time,
-                                                                lp_reduced,
-                                                                primal_settings,
-                                                                reduced_vstatus,
-                                                                reduced_basis_update,
-                                                                reduced_basic_list,
-                                                                reduced_nonbasic_list,
-                                                                reduced_solution,
-                                                                iter,
-                                                                primal_work_estimate);
+    simplex::primal_status_t lp_status =
+      simplex::primal_phase2_with_advanced_basis(2,
+                                                 exploration_stats_.start_time,
+                                                 lp_reduced,
+                                                 primal_settings,
+                                                 reduced_vstatus,
+                                                 reduced_basis_update,
+                                                 reduced_basic_list,
+                                                 reduced_nonbasic_list,
+                                                 reduced_solution,
+                                                 iter,
+                                                 primal_work_estimate);
     // Detect a stall: the solve made no pivots, so the incumbent vertex was
     // already optimal for this objective and x did not move. Perturb next pass.
     stalled = (iter == iter_before);
@@ -3479,7 +3480,15 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(const simple
       i_t num_fractional_reduced =
         fractional_variables(settings_, adjusted_solution, var_types_, tmp_fractional);
       settings_.log.printf(
-        "Degenerate feasibility pump (%d/%d): primal work estimate %.2e, iter %d, fractional variables %d/%d. Time %.2f\n", pump_iter, max_pump_iter, primal_work_estimate, iter, num_fractional_reduced, num_fractional, toc(dual_degenerate_feasibility_pump_start_time));
+        "Degenerate feasibility pump (%d/%d): primal work estimate %.2e, iter %d, fractional "
+        "variables %d/%d. Time %.2f\n",
+        pump_iter,
+        max_pump_iter,
+        primal_work_estimate,
+        iter,
+        num_fractional_reduced,
+        num_fractional,
+        toc(dual_degenerate_feasibility_pump_start_time));
       // Also treat a pass that fails to improve the best as a stall, so we perturb
       // the next pass even when the solve pivoted (moved) without reducing the count.
       stalled = stalled || (num_fractional_reduced >= best_num_fractional);
@@ -3492,7 +3501,13 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(const simple
     }
   }
 
-  settings_.log.printf("Degenerate feasibility pump: Simplex iterations %d, Best number of fractional variables %d/%d. Time %.2f\n", iter, best_num_fractional, num_fractional, toc(dual_degenerate_feasibility_pump_start_time));
+  settings_.log.printf(
+    "Degenerate feasibility pump: Simplex iterations %d, Best number of fractional variables "
+    "%d/%d. Time %.2f\n",
+    iter,
+    best_num_fractional,
+    num_fractional,
+    toc(dual_degenerate_feasibility_pump_start_time));
   if (best_num_fractional < num_fractional) {
     // Translate the vstatus from the reduced problem to the vstatus for the original problem
     i_t reduced_cols = 0;
@@ -3520,9 +3535,10 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(const simple
       return;
     }
     if (refactor_status != 0) {
-      settings_.log.printf("Failed to refactor basis after dual degenerate feasibility pump. "
-                           "%d deficient columns.\n",
-                           refactor_status);
+      settings_.log.printf(
+        "Failed to refactor basis after dual degenerate feasibility pump. "
+        "%d deficient columns.\n",
+        refactor_status);
       return;
     }
 
@@ -3530,7 +3546,8 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(const simple
     // First set the nonbasic variables on their bounds
     for (i_t k = 0; k < lp.num_cols - lp.num_rows; k++) {
       const i_t j = nonbasic_list[k];
-      if (vstatus[j] == variable_status_t::NONBASIC_LOWER || vstatus[j] == variable_status_t::NONBASIC_FIXED) {
+      if (vstatus[j] == variable_status_t::NONBASIC_LOWER ||
+          vstatus[j] == variable_status_t::NONBASIC_FIXED) {
         soln.x[j] = lp.lower[j];
       } else if (vstatus[j] == variable_status_t::NONBASIC_UPPER) {
         soln.x[j] = lp.upper[j];
@@ -3543,11 +3560,11 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(const simple
     for (i_t j = 0; j < lp.num_cols; j++) {
       if (vstatus[j] == variable_status_t::BASIC) { continue; }
       const i_t col_start = lp.A.col_start[j];
-      const i_t col_end = lp.A.col_start[j + 1];
+      const i_t col_end   = lp.A.col_start[j + 1];
 
       const f_t x_j = soln.x[j];
       for (i_t p = col_start; p < col_end; p++) {
-        const i_t i = lp.A.i[p];
+        const i_t i   = lp.A.i[p];
         const f_t aij = lp.A.x[p];
         rhs[i] -= aij * x_j;
       }
@@ -3564,10 +3581,8 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(const simple
 
     fractional.clear();
     num_fractional = fractional_variables(settings_, soln.x, var_types_, fractional);
-
   }
 }
-
 
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::apply_delta_x_for_integer_pivot(
@@ -3608,10 +3623,8 @@ void branch_and_bound_t<i_t, f_t>::apply_delta_x_for_integer_pivot(
   for (i_t h = 0; h < lp.num_cols; ++h) {
     test_x[h] += step_length * delta_x[h];
     if (var_types_[h] != variable_type_t::INTEGER) { continue; }
-    const bool was_fractional =
-      is_fractional(solution.x[h], var_types_[h], settings_.integer_tol);
-    const bool now_fractional =
-      is_fractional(test_x[h], var_types_[h], settings_.integer_tol);
+    const bool was_fractional = is_fractional(solution.x[h], var_types_[h], settings_.integer_tol);
+    const bool now_fractional = is_fractional(test_x[h], var_types_[h], settings_.integer_tol);
     if (now_fractional && !was_fractional) {
       integer_destroyed++;
     } else if (!now_fractional && was_fractional) {
@@ -3645,8 +3658,7 @@ void branch_and_bound_t<i_t, f_t>::apply_delta_x_for_integer_pivot(
   sparse_vector_t<i_t, f_t> UTsol_sparse(m, 1);
   sparse_vector_t<i_t, f_t> solution_sparse(m, 1);
   basis_update.b_transpose_solve(es_sparse, solution_sparse, UTsol_sparse);
-  const i_t recommend_refactor =
-    basis_update.update(utilde_sparse, UTsol_sparse, basic_leaving);
+  const i_t recommend_refactor = basis_update.update(utilde_sparse, UTsol_sparse, basic_leaving);
   if (recommend_refactor == 1) {
     csc_matrix_t<i_t, f_t> L(m, m, 1);
     csc_matrix_t<i_t, f_t> U(m, m, 1);
@@ -3657,17 +3669,17 @@ void branch_and_bound_t<i_t, f_t>::apply_delta_x_for_integer_pivot(
     std::vector<i_t> slacks_needed;
     f_t factorize_work_estimate = 0.0;
     const i_t rank              = factorize_basis(lp.A,
-                                    settings_,
-                                    basic_list,
-                                    exploration_stats_.start_time,
-                                    L,
-                                    U,
-                                    p,
-                                    pinv,
-                                    q,
-                                    deficient,
-                                    slacks_needed,
-                                    factorize_work_estimate);
+                                     settings_,
+                                     basic_list,
+                                     exploration_stats_.start_time,
+                                     L,
+                                     U,
+                                     p,
+                                     pinv,
+                                     q,
+                                     deficient,
+                                     slacks_needed,
+                                     factorize_work_estimate);
     if (rank == CONCURRENT_HALT_RETURN || rank == TIME_LIMIT_RETURN) { return; }
     if (rank < 0 || rank != lp.num_rows) { return; }
     simplex::reorder_basic_list(q, basic_list);
@@ -3690,7 +3702,8 @@ void branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
   f_t pivot_out_integer_variables_start_time = tic();
   std::vector<i_t> zero_reduced_costs_vars;
   std::vector<i_t> zero_reduced_costs_vars_nonbasic_index;
-  bool dual_degenerate = check_for_dual_degeneracy(solution, nonbasic_list, zero_reduced_costs_vars, zero_reduced_costs_vars_nonbasic_index);
+  bool dual_degenerate = check_for_dual_degeneracy(
+    solution, nonbasic_list, zero_reduced_costs_vars, zero_reduced_costs_vars_nonbasic_index);
   if (!dual_degenerate) { return; }
 
   lp_solution_t<i_t, f_t> soln_copy                       = solution;
@@ -3706,7 +3719,7 @@ void branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
   std::vector<i_t> row_to_slack(lp.num_rows, -1);
   for (i_t j : new_slacks_) {
     if (lp.lower[j] != 0 || lp.upper[j] != inf) { continue; }
-    const i_t p = lp.A.col_start[j];
+    const i_t p             = lp.A.col_start[j];
     row_to_slack[lp.A.i[p]] = j;
   }
 
@@ -3745,7 +3758,7 @@ void branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
 
   if (fast_candidates.size() > 0) {
     settings_.log.printf("Found %ld fast candidates for pivot out integer variables\n",
-                        fast_candidates.size());
+                         fast_candidates.size());
   }
 
   // Build a reverse index nonbasic_index[v] = position of v in nonbasic_list_copy, or -1 if not
@@ -3780,7 +3793,7 @@ void branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
     if (std::abs(bound) == inf) { continue; }
 
     const f_t delta_xj = bound - soln_copy.x[j];
-    const f_t scale = -delta_xj * a_ij;
+    const f_t scale    = -delta_xj * a_ij;
     if (std::abs(scale) <= 1e-12) { continue; }
 
     // Build delta_x describing "move x[j] to its bound, let the basic slacks compensate to
@@ -3797,8 +3810,8 @@ void branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
     delta_x_sparse.i.push_back(j);
     delta_x_sparse.x.push_back(delta_xj);
     for (i_t p = col_start; p < col_end; p++) {
-      const i_t r            = lp.A.i[p];
-      const f_t a_rj         = lp.A.x[p];
+      const i_t r             = lp.A.i[p];
+      const f_t a_rj          = lp.A.x[p];
       const f_t delta_slack_r = -delta_xj * a_rj;
       delta_x_sparse.i.push_back(row_to_slack[r]);
       delta_x_sparse.x.push_back(delta_slack_r);
@@ -3822,7 +3835,9 @@ void branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
     // Normalize so that delta_x[nonbasic_slack] == 1 (the standard entering-direction
     // convention). Done on the sparse vector, after the feasibility scan above, which reads
     // the unnormalized values.
-    for (f_t& val : delta_x_sparse.x) { val /= scale; }
+    for (f_t& val : delta_x_sparse.x) {
+      val /= scale;
+    }
 
     std::vector<f_t> delta_x(lp.num_cols, 0.0);
     delta_x_sparse.to_dense(delta_x);
@@ -3873,15 +3888,13 @@ void branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
     if (var_types_[j] == variable_type_t::INTEGER) { continue; }
     if (vstatus_copy[j] == variable_status_t::BASIC) { continue; }
 
-    const i_t direction =
-      (vstatus_copy[j] == variable_status_t::NONBASIC_LOWER ||
-       vstatus_copy[j] == variable_status_t::NONBASIC_FIXED)
-        ? 1
-        : -1;
+    const i_t direction         = (vstatus_copy[j] == variable_status_t::NONBASIC_LOWER ||
+                           vstatus_copy[j] == variable_status_t::NONBASIC_FIXED)
+                                    ? 1
+                                    : -1;
     const i_t entering_index    = j;
     const i_t nonbasic_entering = zero_reduced_costs_vars_nonbasic_index[k];
-    if (nonbasic_entering < 0 ||
-        nonbasic_entering >= static_cast<i_t>(nonbasic_list_copy.size()) ||
+    if (nonbasic_entering < 0 || nonbasic_entering >= static_cast<i_t>(nonbasic_list_copy.size()) ||
         nonbasic_list_copy[nonbasic_entering] != j) {
       continue;
     }
@@ -3922,7 +3935,11 @@ void branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
   if (num_new_fractional < start_num_fractional) {
     i_t num_integer_increased = start_num_fractional - num_new_fractional;
     integer_pivots_.fetch_add(num_integer_increased, std::memory_order_release);
-    settings_.log.printf("Pivoted out %d integer variables: %d -> %d in %.2f\n", num_integer_increased, start_num_fractional, num_new_fractional, toc(pivot_out_integer_variables_start_time));
+    settings_.log.printf("Pivoted out %d integer variables: %d -> %d in %.2f\n",
+                         num_integer_increased,
+                         start_num_fractional,
+                         num_new_fractional,
+                         toc(pivot_out_integer_variables_start_time));
     num_fractional = num_new_fractional;
     fractional     = new_fractional;
     basic_list     = basic_list_copy;
@@ -4014,7 +4031,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   lp_status_t root_status  = lp_status_t::UNSET;
   solving_root_relaxation_ = true;
 
-  f_t root_relax_start_time = tic();
+  f_t root_relax_start_time    = tic();
   f_t root_relax_work_estimate = 0.0;
   if (!enable_concurrent_lp_root_solve()) {
     // RINS/SUBMIP path
@@ -4049,8 +4066,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   solving_root_relaxation_               = false;
   f_t root_relax_elapsed_time            = toc(root_relax_start_time);
   exploration_stats_.total_lp_solve_time = root_relax_elapsed_time;
-  i_t root_iterations = exploration_stats_.total_simplex_iters;
-
+  i_t root_iterations                    = exploration_stats_.total_simplex_iters;
 
   if (root_status == lp_status_t::INFEASIBLE) {
     settings_.log.printf("\nThe root LP relaxation is infeasible\n",
@@ -4104,7 +4120,10 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                              root_relax_soln_.iterations,
                              root_relax_elapsed_time,
                              method_to_string(root_relax_solved_by));
-  settings_.log.printf("Dual simplex iteration %d work estimate %.2e work per second %.2e\n", root_iterations, root_relax_work_estimate, root_relax_work_estimate / root_relax_elapsed_time);
+  settings_.log.printf("Dual simplex iteration %d work estimate %.2e work per second %.2e\n",
+                       root_iterations,
+                       root_relax_work_estimate,
+                       root_relax_work_estimate / root_relax_elapsed_time);
   settings_.log.printf("Root relaxation objective %+.8e\n\n", root_relax_soln_.user_objective);
 
   assert(root_vstatus_.size() == original_lp_.num_cols);
@@ -5054,8 +5073,8 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node_deterministic(
   i_t node_iter                    = 0;
   f_t lp_start_time                = tic();
   std::vector<f_t> leaf_edge_norms = edge_norms_;
-  f_t dual_work_estimate = 0.0;
-  dual_status_t lp_status = dual_phase2_with_advanced_basis(2,
+  f_t dual_work_estimate           = 0.0;
+  dual_status_t lp_status          = dual_phase2_with_advanced_basis(2,
                                                             0,
                                                             worker.recompute_bounds_and_basis,
                                                             lp_start_time,

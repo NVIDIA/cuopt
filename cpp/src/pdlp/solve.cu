@@ -594,9 +594,9 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   f_t norm_rhs            = vector_norm2<i_t, f_t>(user_problem.rhs);
 
   simplex::simplex_solver_settings_t<i_t, f_t> dual_simplex_settings;
-  dual_simplex_settings.time_limit      = settings.time_limit;
-  dual_simplex_settings.iteration_limit = settings.iteration_limit;
-  dual_simplex_settings.concurrent_halt = settings.concurrent_halt;
+  dual_simplex_settings.time_limit           = settings.time_limit;
+  dual_simplex_settings.iteration_limit      = settings.iteration_limit;
+  dual_simplex_settings.concurrent_halt      = settings.concurrent_halt;
   dual_simplex_settings.initial_perturbation = settings.initial_perturbation;
   if (dual_simplex_settings.concurrent_halt != nullptr) {
     // Don't show the dual simplex log in concurrent mode. Show the PDLP log instead
@@ -677,9 +677,10 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
 }
 
 template <typename i_t, typename f_t>
-optimization_problem_solution_t<i_t, f_t> run_primal(mip::problem_t<i_t, f_t>& problem,
-                                                     pdlp_solver_settings_t<i_t, f_t> const& settings,
-                                                     const timer_t& timer)
+optimization_problem_solution_t<i_t, f_t> run_primal(
+  mip::problem_t<i_t, f_t>& problem,
+  pdlp_solver_settings_t<i_t, f_t> const& settings,
+  const timer_t& timer)
 {
   simplex::user_problem_t<i_t, f_t> primal_problem =
     cuopt_problem_to_user_problem<i_t, f_t>(problem.handle_ptr, problem);

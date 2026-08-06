@@ -2013,8 +2013,7 @@ i_t basis_update_mpf_t<i_t, f_t>::u_solve(sparse_vector_t<i_t, f_t>& rhs) const
 // Compute y = U*x. In the MPF factorization, the rank-1 update factors are absorbed into L, so
 // U == U0 and U*x reduces to a sparse matvec against U0.
 template <typename i_t, typename f_t>
-void basis_update_mpf_t<i_t, f_t>::u_multiply(const std::vector<f_t>& x,
-                                              std::vector<f_t>& y) const
+void basis_update_mpf_t<i_t, f_t>::u_multiply(const std::vector<f_t>& x, std::vector<f_t>& y) const
 {
   const i_t m = L0_.m;
   y.assign(m, 0.0);

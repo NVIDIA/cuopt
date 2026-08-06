@@ -1424,11 +1424,11 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
   } else if (dual_feasible && !primal_feasible) {
     i_t dual_iter = 0;
     std::vector<f_t> edge_norms;
-    f_t work_estimate = 0.0;
+    f_t work_estimate                                 = 0.0;
     simplex_solver_settings_t<i_t, f_t> dual_settings = settings;
-    dual_settings.iteration_limit = std::numeric_limits<i_t>::max();
-    dual_status_t status =
-      dual_phase2(2, 0, start_time, lp, dual_settings, vstatus, solution, dual_iter, work_estimate, edge_norms);
+    dual_settings.iteration_limit                     = std::numeric_limits<i_t>::max();
+    dual_status_t status                              = dual_phase2(
+      2, 0, start_time, lp, dual_settings, vstatus, solution, dual_iter, work_estimate, edge_norms);
     if (toc(start_time) > settings.time_limit) {
       settings.log.printf("Time limit exceeded\n");
       return crossover_status_t::TIME_LIMIT;
@@ -1448,10 +1448,11 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
     primal_feasible = primal_infeas <= primal_tol && primal_res <= primal_tol;
     dual_feasible   = dual_infeas <= dual_tol && dual_res <= dual_tol;
   } else if (primal_feasible && !dual_feasible) {
-    i_t primal_iter = 0;
+    i_t primal_iter                                     = 0;
     simplex_solver_settings_t<i_t, f_t> primal_settings = settings;
-    primal_settings.iteration_limit = std::numeric_limits<i_t>::max();
-    primal_status_t primal_status = primal_phase2(2, start_time, lp, primal_settings, vstatus, solution, primal_iter);
+    primal_settings.iteration_limit                     = std::numeric_limits<i_t>::max();
+    primal_status_t primal_status =
+      primal_phase2(2, start_time, lp, primal_settings, vstatus, solution, primal_iter);
     if (toc(start_time) > settings.time_limit) {
       settings.log.printf("Time limit exceeded\n");
       return crossover_status_t::TIME_LIMIT;
@@ -1472,7 +1473,7 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
     dual_feasible   = dual_infeas <= dual_tol && dual_res <= dual_tol;
   } else {
     simplex_solver_settings_t<i_t, f_t> dual_settings = settings;
-    dual_settings.iteration_limit = std::numeric_limits<i_t>::max();
+    dual_settings.iteration_limit                     = std::numeric_limits<i_t>::max();
     lp_problem_t<i_t, f_t> phase1_problem(lp.handle_ptr, 1, 1, 1);
     create_phase1_problem(lp, phase1_problem);
     std::vector<variable_status_t> phase1_vstatus(n);

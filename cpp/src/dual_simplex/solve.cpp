@@ -796,7 +796,7 @@ lp_status_t solve_linear_program_with_primal(const user_problem_t<i_t, f_t>& use
   i_t iter = 0;
   const primal_status_t primal_status =
     primal_phase2(2, start_time, lp, settings, vstatus, lp_solution, iter);
-  lp_solution.iterations     = iter;
+  lp_solution.iterations       = iter;
   original_solution.iterations = iter;
 
   if (primal_status == primal_status_t::CONCURRENT_LIMIT) {
@@ -846,12 +846,8 @@ lp_status_t solve_linear_program_with_primal(const user_problem_t<i_t, f_t>& use
   }
 
   uncrush_primal_solution(user_problem, original_lp, original_solution.x, solution.x);
-  uncrush_dual_solution(user_problem,
-                        original_lp,
-                        original_solution.y,
-                        original_solution.z,
-                        solution.y,
-                        solution.z);
+  uncrush_dual_solution(
+    user_problem, original_lp, original_solution.y, original_solution.z, solution.y, solution.z);
   solution.objective          = original_solution.objective;
   solution.user_objective     = original_solution.user_objective;
   solution.iterations         = original_solution.iterations;
@@ -859,7 +855,6 @@ lp_status_t solve_linear_program_with_primal(const user_problem_t<i_t, f_t>& use
   solution.l2_dual_residual   = original_solution.l2_dual_residual;
   return map_primal_status_to_lp_status(primal_status);
 }
-
 
 template <typename i_t, typename f_t>
 lp_status_t solve_linear_program(const user_problem_t<i_t, f_t>& user_problem,

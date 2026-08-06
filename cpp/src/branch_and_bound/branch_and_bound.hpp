@@ -341,13 +341,11 @@ class branch_and_bound_t {
                              i_t leaf_depth,
                              search_strategy_t thread_type);
 
-
   omp_atomic_t<i_t> integer_pivots_{0};
   bool check_for_dual_degeneracy(const simplex::lp_solution_t<i_t, f_t>& solution,
                                  const std::vector<i_t>& nonbasic_list,
                                  std::vector<i_t>& zero_reduced_costs_vars,
                                  std::vector<i_t>& zero_reduced_costs_vars_nonbasic_index);
-
 
   void pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
                                    std::vector<i_t>& basic_list,
@@ -358,20 +356,19 @@ class branch_and_bound_t {
                                    i_t& num_fractional,
                                    std::vector<i_t>& fractional);
 
-  void apply_delta_x_for_integer_pivot(
-    const simplex::lp_problem_t<i_t, f_t>& lp,
-    std::vector<i_t>& basic_list,
-    std::vector<i_t>& nonbasic_list,
-    std::vector<i_t>& nonbasic_index,
-    std::vector<simplex::variable_status_t>& vstatus,
-    i_t entering_index,
-    i_t nonbasic_entering,
-    i_t direction,
-    std::vector<f_t>& delta_x,
-    const sparse_vector_t<i_t, f_t>& utilde_sparse,
-    simplex::lp_solution_t<i_t, f_t>& solution,
-    simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
-    f_t& work_estimate);
+  void apply_delta_x_for_integer_pivot(const simplex::lp_problem_t<i_t, f_t>& lp,
+                                       std::vector<i_t>& basic_list,
+                                       std::vector<i_t>& nonbasic_list,
+                                       std::vector<i_t>& nonbasic_index,
+                                       std::vector<simplex::variable_status_t>& vstatus,
+                                       i_t entering_index,
+                                       i_t nonbasic_entering,
+                                       i_t direction,
+                                       std::vector<f_t>& delta_x,
+                                       const sparse_vector_t<i_t, f_t>& utilde_sparse,
+                                       simplex::lp_solution_t<i_t, f_t>& solution,
+                                       simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
+                                       f_t& work_estimate);
 
   void dual_degenerate_feasibility_pump(const simplex::lp_problem_t<i_t, f_t>& lp,
                                         std::vector<i_t>& basic_list,
