@@ -346,9 +346,9 @@ TEST(block_bve_core, cache_contradiction_fixes_the_variable_instead_of_failing)
   // Probing has x7 = 0 => x9 = 0; the exact projection has x7 = 0 => x9 = 1. Slot 1 is left
   // unpopulated, which also exercises the empty-bound-map guard.
   {
-    probing_cache_t<int, double> cache;
-    std::array<cache_entry_t<int, double>, 2> entries;
-    entries[0].val_interval                    = {0.0, interval_type_t::EQUALS};
+    mip::probing_cache_t<int, double> cache;
+    std::array<mip::cache_entry_t<int, double>, 2> entries{};
+    entries[0].val_interval                    = {0.0, mip::interval_type_t::EQUALS};
     entries[0].var_to_cached_bound_map[forced] = {0.0, 0.0};
     cache.probing_cache.insert({var, entries});
 
@@ -362,11 +362,11 @@ TEST(block_bve_core, cache_contradiction_fixes_the_variable_instead_of_failing)
 
   // Both polarities contradicted: the two disagreeing fixings are what proves infeasibility.
   {
-    probing_cache_t<int, double> cache;
-    std::array<cache_entry_t<int, double>, 2> entries;
-    entries[0].val_interval                    = {0.0, interval_type_t::EQUALS};
+    mip::probing_cache_t<int, double> cache;
+    std::array<mip::cache_entry_t<int, double>, 2> entries{};
+    entries[0].val_interval                    = {0.0, mip::interval_type_t::EQUALS};
     entries[0].var_to_cached_bound_map[forced] = {0.0, 0.0};
-    entries[1].val_interval                    = {1.0, interval_type_t::EQUALS};
+    entries[1].val_interval                    = {1.0, mip::interval_type_t::EQUALS};
     entries[1].var_to_cached_bound_map[forced] = {0.0, 0.0};
     cache.probing_cache.insert({var, entries});
 
@@ -381,9 +381,9 @@ TEST(block_bve_core, cache_contradiction_fixes_the_variable_instead_of_failing)
 
   // A forcing consistent with the cached interval tightens it and fixes nothing.
   {
-    probing_cache_t<int, double> cache;
-    std::array<cache_entry_t<int, double>, 2> entries;
-    entries[0].val_interval                    = {0.0, interval_type_t::EQUALS};
+    mip::probing_cache_t<int, double> cache;
+    std::array<mip::cache_entry_t<int, double>, 2> entries{};
+    entries[0].val_interval                    = {0.0, mip::interval_type_t::EQUALS};
     entries[0].var_to_cached_bound_map[forced] = {0.0, 1.0};
     cache.probing_cache.insert({var, entries});
 
@@ -476,9 +476,9 @@ TEST(block_bve_projection, gpu_batch_matches_host_oracle)
     mip::bve_project(blocks[i], 1e-6, exp_feas, exp_wit);
     const int patterns = 1 << blocks[i].nb;
     for (int m = 0; m < patterns; ++m) {
-      EXPECT_EQ(cands[i].feas[m], exp_feas[m]) << "block " << i << " pattern " << m;
+      EXPECT_EQ(cands[i].projection.feasible[m], exp_feas[m]) << "block " << i << " pattern " << m;
       if (exp_feas[m])  // witness only defined for feasible patterns
-        EXPECT_EQ(cands[i].witness[m], exp_wit[m]) << "block " << i << " pattern " << m;
+        EXPECT_EQ(cands[i].projection.witness[m], exp_wit[m]) << "block " << i << " pattern " << m;
     }
   }
 }
@@ -540,9 +540,9 @@ TEST(block_bve_projection, exact_projection_matches_host_at_tol0)
     mip::bve_project(blocks[i], 0.0, exp_feas, exp_wit);
     const int patterns = 1 << blocks[i].nb;
     for (int m = 0; m < patterns; ++m) {
-      EXPECT_EQ(cands[i].feas[m], exp_feas[m]) << "block " << i << " pattern " << m;
+      EXPECT_EQ(cands[i].projection.feasible[m], exp_feas[m]) << "block " << i << " pattern " << m;
       if (exp_feas[m])
-        EXPECT_EQ(cands[i].witness[m], exp_wit[m]) << "block " << i << " pattern " << m;
+        EXPECT_EQ(cands[i].projection.witness[m], exp_wit[m]) << "block " << i << " pattern " << m;
     }
   }
 }

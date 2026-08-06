@@ -75,9 +75,9 @@ static double bve_row_int_scale(const f_t* coef, int n, f_t lo, f_t up)
 
 // Closed-form part of the commit_projected work estimate: prime-cube enumeration in
 // bve_greedy_prime_cover is Θ(nb · 3^nb); sanity check is Θ(2^nb · #clauses) with #clauses bounded
-// by the growth gate (n_rows + margin). The cover build and the greedy selection scale with the
-// prime count, which is only known after enumeration, so they are metered from the inside and
-// reported through the commit_projected ops out-param instead.
+// by the growth gate (n_rows + clause_growth_margin). The cover build and the greedy selection
+// scale with the prime count, which is only known after enumeration, so they are metered from the
+// inside and reported through the commit_projected ops out-param instead.
 static double bve_commit_wall_ops(int nb, int clause_budget)
 {
   cuopt_assert(nb >= 0 && nb <= BVE_MAX_BOUNDARY, "nb out of BVE range");
@@ -315,7 +315,7 @@ struct bve_reducer_t {
 
   i_t n_vars, n_rows_orig;
   f_t tol;
-  i_t Bcap, enumcap, margin;
+  i_t boundary_cap, scope_cap, clause_growth_margin;
   std::vector<work_row_t> rows;
   std::vector<std::unordered_set<i_t>> col2rows;
   std::vector<uint8_t> is_bin, obj_nz, done;
@@ -334,9 +334,9 @@ struct bve_reducer_t {
                 const std::vector<uint8_t>& is_integer,
                 const std::vector<f_t>& obj,
                 f_t tol_,
-                i_t Bcap_,
-                i_t enumcap_,
-                i_t margin_);
+                i_t boundary_cap_,
+                i_t scope_cap_,
+                i_t clause_growth_margin_);
 
   // Rows spanned by `interior` and the boundary columns of those rows, both unsorted, with op
   // accounting. Single traversal behind both the growth probe (which needs only the boundary size)
@@ -371,15 +371,15 @@ bve_reducer_t<i_t, f_t>::bve_reducer_t(i_t n_vars_,
                                        const std::vector<uint8_t>& is_integer,
                                        const std::vector<f_t>& obj,
                                        f_t tol_,
-                                       i_t Bcap_,
-                                       i_t enumcap_,
-                                       i_t margin_)
+                                       i_t boundary_cap_,
+                                       i_t scope_cap_,
+                                       i_t clause_growth_margin_)
   : n_vars(n_vars_),
     n_rows_orig(n_rows_orig_),
     tol(tol_),
-    Bcap(Bcap_),
-    enumcap(enumcap_),
-    margin(margin_),
+    boundary_cap(boundary_cap_),
+    scope_cap(scope_cap_),
+    clause_growth_margin(clause_growth_margin_),
     col2rows(n_vars_),
     is_bin(n_vars_),
     obj_nz(n_vars_),
@@ -415,21 +415,46 @@ void bve_reducer_t<i_t, f_t>::scope_of(const std::vector<i_t>& interior,
                                        int64_t& ops) const
 {
   ops += (int64_t)interior.size();
-  std::unordered_set<i_t> A(interior.begin(), interior.end());
-  std::unordered_set<i_t> G;
+  std::unordered_set<i_t> interior_set(interior.begin(), interior.end());
+  std::unordered_set<i_t> affected_rows;
   for (i_t a : interior)
     for (i_t r : col2rows[a]) {
       ++ops;
-      G.insert(r);
+      affected_rows.insert(r);
     }
   std::unordered_set<i_t> b;
-  for (i_t r : G)
+  for (i_t r : affected_rows)
     for (const auto& p : rows[r].terms) {
       ++ops;
-      if (!A.count(p.first)) b.insert(p.first);
+      if (!interior_set.count(p.first)) b.insert(p.first);
     }
-  rows_out.assign(G.begin(), G.end());
+  rows_out.assign(affected_rows.begin(), affected_rows.end());
   boundary_out.assign(b.begin(), b.end());
+}
+
+// This is where the block leaves floating point behind: rescale every row to integer coefficients
+// and bounds so the projection can run at tolerance 0. Returns false if any row does not scale to
+// bounded integers, which rejects the whole block rather than risk a tolerance-sensitive
+// feasibility misclassification on large or non-rational coefficients. Only the projection's
+// private copy is scaled -- the block rows are dropped from the model and the appended no-goods are
+// scale-independent +/-1 clauses, so this never perturbs the installed model.
+template <typename f_t>
+static bool integerize_projection_rows(bve_block_t<f_t>& block)
+{
+  for (int rr = 0; rr < block.n_rows; ++rr) {
+    const int rb = block.row_off[rr];
+    const int re = block.row_off[rr + 1];
+    const double s =
+      bve_row_int_scale<f_t>(block.row_coef + rb, re - rb, block.row_lo[rr], block.row_up[rr]);
+    if (s == 0.0) return false;
+    for (int k = rb; k < re; ++k)
+      block.row_coef[k] = (f_t)std::llround((double)block.row_coef[k] * s);
+    if (bve_bound_finite(block.row_lo[rr]))
+      block.row_lo[rr] = (f_t)std::llround((double)block.row_lo[rr] * s);
+    if (bve_bound_finite(block.row_up[rr]))
+      block.row_up[rr] = (f_t)std::llround((double)block.row_up[rr] * s);
+  }
+  return true;
 }
 
 template <typename i_t, typename f_t>
@@ -444,36 +469,36 @@ bool bve_reducer_t<i_t, f_t>::stage(const std::vector<i_t>& interior_in,
 
   std::vector<i_t> interior(interior_in.begin(), interior_in.end());
   std::sort(interior.begin(), interior.end());
-  std::vector<i_t> Gl, bnd;
-  scope_of(interior, Gl, bnd, ops);
+  std::vector<i_t> affected_rows, boundary;
+  scope_of(interior, affected_rows, boundary, ops);
   // row order is result-invariant; sorting improves GPU shape-binning
-  std::sort(Gl.begin(), Gl.end());
-  ops += (int64_t)Gl.size();
-  std::sort(bnd.begin(), bnd.end());
-  ops += (int64_t)bnd.size();
+  std::sort(affected_rows.begin(), affected_rows.end());
+  ops += (int64_t)affected_rows.size();
+  std::sort(boundary.begin(), boundary.end());
+  ops += (int64_t)boundary.size();
 
-  const i_t nb = bnd.size();
+  const i_t nb = boundary.size();
   const i_t na = interior.size();
-  if (nb == 0 || nb > Bcap || na + nb > enumcap) return false;
-  for (i_t v : bnd)
+  if (nb == 0 || nb > boundary_cap || na + nb > scope_cap) return false;
+  for (i_t v : boundary)
     if (!is_bin[v]) return false;
   if (na > BVE_MAX_INTERIOR || nb > BVE_MAX_BOUNDARY || na + nb > BVE_MAX_SCOPE) return false;
-  if (Gl.size() > BVE_MAX_ROWS) return false;
+  if (affected_rows.size() > BVE_MAX_ROWS) return false;
 
   bve_block_t<f_t>& blk = out.blk;
   blk.na                = na;
   blk.nb                = nb;
-  blk.n_rows            = Gl.size();
+  blk.n_rows            = affected_rows.size();
   std::unordered_map<i_t, i_t> local;
   for (i_t j = 0; j < na; ++j)
     local[interior[j]] = j;
   for (i_t j = 0; j < nb; ++j)
-    local[bnd[j]] = na + j;
+    local[boundary[j]] = na + j;
   ops += (int64_t)(na + nb);
   i_t nzc           = 0;
   bool row_overflow = false;
   for (i_t rr = 0; rr < blk.n_rows && !row_overflow; ++rr) {
-    const i_t r     = Gl[rr];
+    const i_t r     = affected_rows[rr];
     blk.row_off[rr] = nzc;
     if (rows[r].terms.size() > BVE_MAX_ROW_LEN || nzc + rows[r].terms.size() > BVE_MAX_NNZ) {
       row_overflow = true;
@@ -491,33 +516,13 @@ bool bve_reducer_t<i_t, f_t>::stage(const std::vector<i_t>& interior_in,
   if (row_overflow) return false;
   blk.row_off[blk.n_rows] = nzc;
 
-  // Integerize every row so the GPU projection is exact (tol 0). A row whose coefficients/bounds do
-  // not scale to bounded integers is not exactly representable: reject the whole block (leave it
-  // un-eliminated) rather than risk a tolerance-sensitive feasibility misclassification on large or
-  // non-rational coefficients. Only the projection's internal copy is scaled -- the block rows are
-  // dropped from the model and the appended no-goods are scale-independent +/-1 clauses, so this
-  // never perturbs the installed model.
-  for (int rr = 0; rr < blk.n_rows; ++rr) {
-    const int rb = blk.row_off[rr];
-    const int re = blk.row_off[rr + 1];
-    const double s =
-      bve_row_int_scale<f_t>(blk.row_coef + rb, re - rb, blk.row_lo[rr], blk.row_up[rr]);
-    if (s == 0.0) return false;
-    for (int k = rb; k < re; ++k)
-      blk.row_coef[k] = (f_t)std::llround((double)blk.row_coef[k] * s);
-    if (bve_bound_finite(blk.row_lo[rr]))
-      blk.row_lo[rr] = (f_t)std::llround((double)blk.row_lo[rr] * s);
-    if (bve_bound_finite(blk.row_up[rr]))
-      blk.row_up[rr] = (f_t)std::llround((double)blk.row_up[rr] * s);
-  }
+  if (!integerize_projection_rows(blk)) return false;
 
   out.interior = std::move(interior);
-  out.boundary = std::move(bnd);
-  out.rows     = std::move(Gl);
-  for (uint32_t m = 0; m < (1u << nb); ++m) {
-    out.feas[m]    = 0;
-    out.witness[m] = 0u;
-  }
+  out.boundary = std::move(boundary);
+  out.rows     = std::move(affected_rows);
+  out.projection.feasible.assign(size_t(1) << nb, 0);
+  out.projection.witness.assign(size_t(1) << nb, 0u);
   ops += (int64_t)(1 << nb);
   return true;
 }
@@ -526,19 +531,21 @@ template <typename i_t, typename f_t>
 bool bve_reducer_t<i_t, f_t>::commit_projected(const bve_candidate_t<i_t, f_t>& cand,
                                                int64_t* ops_out)
 {
-  const i_t nb = cand.blk.nb;
+  const i_t nb            = cand.blk.nb;
+  const uint8_t* feasible = cand.projection.feasible.data();
+  cuopt_assert(cand.projection.feasible.size() == (size_t(1) << nb), "projection table unsized");
   bve_clause_t clauses[BVE_MAX_CLAUSES];
   const i_t n_clauses =
-    bve_greedy_prime_cover<i_t>(cand.feas, nb, clauses, BVE_MAX_CLAUSES, cover_scratch, ops_out);
-  if (n_clauses < 0) return false;                         // clause explosion past cap
-  if (n_clauses > cand.blk.n_rows + margin) return false;  // growth gate
-  if (!bve_sanity_check<i_t, f_t>(cand.feas, nb, clauses, n_clauses))
+    bve_greedy_prime_cover<i_t>(feasible, nb, clauses, BVE_MAX_CLAUSES, cover_scratch, ops_out);
+  if (n_clauses < 0) return false;  // clause explosion past cap
+  if (n_clauses > cand.blk.n_rows + clause_growth_margin) return false;  // growth gate
+  if (!bve_sanity_check<i_t, f_t>(feasible, nb, clauses, n_clauses))
     return false;  // sanity check failed => keep block
 
   bve_reduction_t<i_t> red;
   red.interior = cand.interior;
   red.boundary = cand.boundary;
-  red.witness.assign(cand.witness, cand.witness + (size_t(1) << nb));
+  red.witness  = cand.projection.witness;
   plan.reductions.push_back(std::move(red));
 
   for (i_t r : cand.rows) {
@@ -815,11 +822,14 @@ double bve_project_batch_gpu(const raft::handle_t& handle,
       handle.sync_stream();
       for (size_t g = 0; g < num_sz; ++g) {
         auto& cand = cands[idxs[offset + g]];
+        // No-op for anything stage() produced; sizes a caller that assembled `blk` by hand.
+        cand.projection.feasible.resize(patterns);
+        cand.projection.witness.resize(patterns);
         for (i_t m = 0; m < patterns; ++m) {
-          const uint32_t w    = h_witness[g * patterns + m];
-          const bool feasible = (w != 0xFFFFFFFFu);
-          cand.feas[m]        = feasible ? 1 : 0;
-          cand.witness[m]     = feasible ? w : 0u;
+          const uint32_t w            = h_witness[g * patterns + m];
+          const bool feasible         = (w != 0xFFFFFFFFu);
+          cand.projection.feasible[m] = feasible ? 1 : 0;
+          cand.projection.witness[m]  = feasible ? w : 0u;
         }
       }
     }
@@ -857,7 +867,7 @@ static void bve_extract_forcings(const bve_candidate_t<i_t, f_t>& cand, probe_fi
 
   uint32_t n_feasible = 0;
   for (uint32_t m = 0; m < n_patterns; ++m) {
-    if (!cand.feas[m]) continue;
+    if (!cand.projection.feasible[m]) continue;
     ++n_feasible;
     and_acc[unconditional] &= m;
     or_acc[unconditional] |= m;
@@ -896,6 +906,83 @@ static void bve_extract_forcings(const bve_candidate_t<i_t, f_t>& cand, probe_fi
   }
 }
 
+template <typename i_t>
+struct bve_growth_result_t {
+  std::vector<i_t> interior;  // sorted current-problem column ids, always contains the seed
+  int64_t ops = 0;            // work performed, for the deterministic wall estimate
+};
+
+// Grows one seed into a block interior: starting from {seed}, repeatedly absorb the eligible
+// implication-neighbor that shrinks the boundary the most, stopping when no neighbor strictly
+// improves it or a cap is hit. Read-only on `reducer`, which is what lets the round run this across
+// seeds under OpenMP against a frozen model.
+template <typename i_t, typename f_t>
+static bve_growth_result_t<i_t> grow_seed_interior(
+  i_t seed,
+  const bve_reducer_t<i_t, f_t>& reducer,
+  const std::vector<std::vector<i_t>>& implication_adjacency)
+{
+  auto has_adj = [&](i_t v) {
+    return v >= 0 && v < (i_t)implication_adjacency.size() && !implication_adjacency[v].empty();
+  };
+  auto eligible = [&](i_t w) {
+    return reducer.is_bin[w] && !reducer.obj_nz[w] && !reducer.done[w] &&
+           !reducer.col2rows[w].empty();
+  };
+
+  bve_growth_result_t<i_t> result;
+  std::unordered_set<i_t> interior_set = {seed};
+  std::vector<i_t> probe_rows, probe_bnd;  // scope_of scratch, reused across probes
+  for (;;) {
+    // Hub fast-path: raw implication degree upper-bounds |cands_w|. Skip boundary walks
+    // and adj materialization when the neighborhood is past the probe cap.
+    if (interior_set.size() == 1) {
+      const i_t s   = *interior_set.begin();
+      const i_t deg = has_adj(s) ? (i_t)implication_adjacency[s].size() : 0;
+      if (deg > BVE_MAX_GROWTH_NBRS) break;
+    }
+    std::vector<i_t> candidate_interior(interior_set.begin(), interior_set.end());
+    reducer.scope_of(candidate_interior, probe_rows, probe_bnd, result.ops);
+    const i_t cur = probe_bnd.size();
+    // Implication-neighbors of the interior that are still eligible to enter it.
+    std::unordered_set<i_t> cands_w;
+    bool gated = false;
+    for (i_t a : interior_set) {
+      if (!has_adj(a)) continue;
+      for (i_t w : implication_adjacency[a]) {
+        ++result.ops;
+        if (interior_set.count(w) || !eligible(w)) continue;
+        cands_w.insert(w);
+        if ((i_t)cands_w.size() > BVE_MAX_GROWTH_NBRS) {
+          gated = true;
+          break;
+        }
+      }
+      if (gated) break;
+    }
+    // Hub neighborhoods: full probe is Θ(|cands_w|) boundary walks and rarely absorbs.
+    if (gated) break;
+    // Pick the neighbor with the smallest boundary; stop when none strictly improves.
+    i_t best    = -1;
+    i_t best_nb = cur;
+    for (i_t w : cands_w) {
+      candidate_interior.push_back(w);  // probe interior ∪ {w}; the pop below restores it
+      const i_t na = candidate_interior.size();
+      reducer.scope_of(candidate_interior, probe_rows, probe_bnd, result.ops);
+      const i_t nb = probe_bnd.size();
+      candidate_interior.pop_back();
+      if (nb < best_nb && na + nb <= reducer.scope_cap && na <= BVE_MAX_INTERIOR) {
+        best_nb = nb;
+        best    = w;
+      }
+    }
+    if (best < 0) break;
+    interior_set.insert(best);
+  }
+  result.interior.assign(interior_set.begin(), interior_set.end());
+  return result;
+}
+
 // ---- production detector: round-based, scope-disjoint, one GPU projection launch per round ----
 //
 // Implication-closure block growth over the probing-cache adjacency: each seed absorbs the
@@ -917,40 +1004,39 @@ static void bve_extract_forcings(const bve_candidate_t<i_t, f_t>& cand, probe_fi
 template <typename i_t, typename f_t>
 static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
   const raft::handle_t& handle,
-  bve_reducer_t<i_t, f_t>& R,
+  bve_reducer_t<i_t, f_t>& reducer,
   const std::vector<std::vector<i_t>>& impl_adj,
   timer_t& timer,
   double& work_units,
   probe_findings_t<i_t>* findings)
 {
-  auto has_adj  = [&](i_t v) { return v >= 0 && v < (i_t)impl_adj.size() && !impl_adj[v].empty(); };
-  auto eligible = [&](i_t w) {
-    return R.is_bin[w] && !R.obj_nz[w] && !R.done[w] && !R.col2rows[w].empty();
-  };
+  auto has_adj = [&](i_t v) { return v >= 0 && v < (i_t)impl_adj.size() && !impl_adj[v].empty(); };
   std::vector<i_t> order;
-  for (i_t c = 0; c < R.n_vars; ++c)
-    if (R.is_bin[c] && !R.obj_nz[c] && !R.col2rows[c].empty() && has_adj(c)) order.push_back(c);
+  for (i_t c = 0; c < reducer.n_vars; ++c)
+    if (reducer.is_bin[c] && !reducer.obj_nz[c] && !reducer.col2rows[c].empty() && has_adj(c))
+      order.push_back(c);
   std::sort(order.begin(), order.end(), [&](i_t a, i_t b) {
-    return R.col2rows[a].size() < R.col2rows[b].size();
+    return reducer.col2rows[a].size() < reducer.col2rows[b].size();
   });
 
-  std::vector<char> attempted(R.n_vars, 0);  // a seed is attempted once (whether or not it commits)
+  std::vector<char> attempted(reducer.n_vars,
+                              0);  // a seed is attempted once (whether or not it commits)
   // Grow each seed at most once; overlap-deferred seeds only re-stage from the cached interior.
   // Re-growing hubs every round dominated wall; retiring them on first overlap killed reductions.
-  std::vector<char> growth_done(R.n_vars, 0);
-  std::vector<std::vector<i_t>> growth_interior(R.n_vars);
+  std::vector<char> growth_done(reducer.n_vars, 0);
+  std::vector<std::vector<i_t>> growth_interior(reducer.n_vars);
   for (;;) {
     if (timer.check_time_limit()) break;
 
     // This round's live seeds, in the deterministic growth order.
     std::vector<i_t> round_seeds;
     for (i_t seed : order)
-      if (!attempted[seed] && !R.done[seed] && !R.col2rows[seed].empty())
+      if (!attempted[seed] && !reducer.done[seed] && !reducer.col2rows[seed].empty())
         round_seeds.push_back(seed);
     if (round_seeds.empty()) break;
 
-    // Grow each seed against the frozen model (read-only on R → OMP-safe). Acceptance below is
-    // serial in round_seeds order, so the plan matches a serial frozen-growth run.
+    // Grow each seed against the frozen model (read-only on reducer → OMP-safe). Acceptance below
+    // is serial in round_seeds order, so the plan matches a serial frozen-growth run.
     std::vector<std::vector<i_t>> interiors(round_seeds.size());
     std::vector<int64_t> growth_ops(round_seeds.size(), 0);
 #pragma omp parallel for schedule(dynamic)
@@ -960,60 +1046,11 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
         interiors[k] = growth_interior[seed];
         continue;
       }
-      // Interior A starts as {seed}; greedily absorb neighbors that shrink the boundary.
-      std::unordered_set<i_t> A = {seed};
-      int64_t ops               = 0;
-      std::vector<i_t> probe_rows, probe_bnd;  // scope_of scratch, reused across probes
-      for (;;) {
-        // Hub fast-path: raw implication degree upper-bounds |cands_w|. Skip boundary walks
-        // and adj materialization when the neighborhood is past the probe cap.
-        if (A.size() == 1) {
-          const i_t s   = *A.begin();
-          const i_t deg = has_adj(s) ? (i_t)impl_adj[s].size() : 0;
-          if (deg > BVE_MAX_GROWTH_NBRS) break;
-        }
-        std::vector<i_t> Av(A.begin(), A.end());
-        R.scope_of(Av, probe_rows, probe_bnd, ops);
-        const i_t cur = probe_bnd.size();
-        // Implication-neighbors of A that are still eligible to enter the interior.
-        std::unordered_set<i_t> cands_w;
-        bool gated = false;
-        for (i_t a : A) {
-          if (!has_adj(a)) continue;
-          for (i_t w : impl_adj[a]) {
-            ++ops;
-            if (A.count(w) || !eligible(w)) continue;
-            cands_w.insert(w);
-            if ((i_t)cands_w.size() > BVE_MAX_GROWTH_NBRS) {
-              gated = true;
-              break;
-            }
-          }
-          if (gated) break;
-        }
-        // Hub neighborhoods: full probe is Θ(|cands_w|) boundary walks and rarely absorbs.
-        if (gated) break;
-        // Pick the neighbor with the smallest boundary; stop when none strictly improves.
-        i_t best    = -1;
-        i_t best_nb = cur;
-        for (i_t w : cands_w) {
-          Av.push_back(w);  // probe A ∪ {w}; pop restores Av
-          const i_t na = Av.size();
-          R.scope_of(Av, probe_rows, probe_bnd, ops);
-          const i_t nb = probe_bnd.size();
-          Av.pop_back();
-          if (nb < best_nb && na + nb <= R.enumcap && na <= BVE_MAX_INTERIOR) {
-            best_nb = nb;
-            best    = w;
-          }
-        }
-        if (best < 0) break;
-        A.insert(best);
-      }
-      interiors[k].assign(A.begin(), A.end());
-      growth_ops[k]         = ops;
-      growth_interior[seed] = interiors[k];
-      growth_done[seed]     = 1;
+      bve_growth_result_t<i_t> grown = grow_seed_interior(seed, reducer, impl_adj);
+      growth_ops[k]                  = grown.ops;
+      interiors[k]                   = std::move(grown.interior);
+      growth_interior[seed]          = interiors[k];
+      growth_done[seed]              = 1;
     }
     // OMP growth: wall ≈ critical-path seed (max), not sum across threads.
     int64_t max_growth_ops = 0;
@@ -1032,7 +1069,7 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
       const i_t seed = round_seeds[k];
       bve_candidate_t<i_t, f_t> cand;
       int64_t stage_ops = 0;
-      if (!R.stage(interiors[k], cand, &stage_ops)) {
+      if (!reducer.stage(interiors[k], cand, &stage_ops)) {
         work_units += double(stage_ops);
         attempted[seed] =
           1;  // failed the caps against this model; treat as one touch, like sequential
@@ -1063,7 +1100,7 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
 
     if (cands.empty() || timer.check_time_limit()) break;
     // Staged blocks are integerized (bve_row_int_scale), so the subset-sum feasibility test is
-    // exact: project with tolerance 0 rather than R.tol.
+    // exact: project with tolerance 0 rather than reducer.tol.
     work_units += bve_project_batch_gpu<i_t, f_t>(handle, cands, f_t(0));
     if (timer.check_time_limit()) break;
     i_t committed = 0;
@@ -1074,22 +1111,24 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
         bve_extract_forcings<i_t, f_t>(cand, *findings);
         work_units += double(uint32_t(1) << cand.blk.nb) * double(cand.blk.nb);
       }
-      work_units += bve_commit_wall_ops(cand.blk.nb, cand.blk.n_rows + R.margin);
+      work_units +=
+        bve_commit_wall_ops(cand.blk.nb, cand.blk.n_rows + reducer.clause_growth_margin);
       int64_t commit_ops = 0;
-      if (R.commit_projected(cand, &commit_ops)) ++committed;
+      if (reducer.commit_projected(cand, &commit_ops)) ++committed;
       work_units += double(commit_ops);
     }
     if (committed == 0) break;
   }
-  return R.finalize();
+  return reducer.finalize();
 }
 
 // ---- implication adjacency from the probing cache (original-id -> current column) ----
 template <typename i_t, typename f_t>
-std::vector<std::vector<i_t>> bve_build_impl_adj(const probing_cache_t<i_t, f_t>& cache,
-                                                 const std::vector<i_t>& reverse_original_ids,
-                                                 i_t n_vars,
-                                                 const probe_findings_t<i_t>* extra)
+std::vector<std::vector<i_t>> bve_build_impl_adj(
+  const probing_cache_t<i_t, f_t>& cache,
+  const std::vector<i_t>& reverse_original_ids,
+  i_t n_vars,
+  const probe_findings_t<i_t>* prior_original_id_findings)
 {
   // original-id -> current column index (or -1 if the column no longer exists)
   auto to_current = [&](i_t original_id) -> i_t {
@@ -1113,14 +1152,46 @@ std::vector<std::vector<i_t>> bve_build_impl_adj(const probing_cache_t<i_t, f_t>
   }
   // Forcings mined from earlier projections. Pairs the cache never held become seed/absorb
   // candidates, so a later round can grow blocks the first round could not see.
-  if (extra != nullptr) {
-    for (const auto& forcing : extra->forcings)
+  if (prior_original_id_findings != nullptr) {
+    for (const auto& forcing : prior_original_id_findings->forcings)
       add_edge(forcing.var, forcing.forced_var);
   }
   std::vector<std::vector<i_t>> out(n_vars);
   for (i_t v = 0; v < n_vars; ++v)
     out[v].assign(adj[v].begin(), adj[v].end());
   return out;
+}
+
+// Records every committed block on the unified append-only reconstruction log, translating
+// detection-space column ids into the post-Papilo frame that postsolve replays in reverse. Commit
+// order is preserved, which is what makes the reverse replay well-defined.
+template <typename i_t, typename f_t>
+static void append_bve_reconstructions(const bve_plan_t<i_t, f_t>& plan,
+                                       const std::vector<i_t>& current_to_post_papilo,
+                                       presolve_data_t<i_t, f_t>& presolve_data,
+                                       double& work_units)
+{
+  auto to_post_papilo = [&](i_t column) {
+    cuopt_assert(column >= 0 && column < (i_t)current_to_post_papilo.size(),
+                 "block column out of variable_mapping range");
+    return current_to_post_papilo[column];
+  };
+
+  auto& recs = presolve_data.var_postsolve;
+  recs.reserve(recs.size() + plan.reductions.size());
+  for (const auto& red : plan.reductions) {
+    work_units += double(red.interior.size() + red.boundary.size() + red.witness.size());
+    var_postsolve_t<i_t, f_t> rec;
+    rec.kind = reconstruction_kind_t::BlockBve;
+    rec.bve.interior.reserve(red.interior.size());
+    for (i_t c : red.interior)
+      rec.bve.interior.push_back(to_post_papilo(c));
+    rec.bve.boundary.reserve(red.boundary.size());
+    for (i_t c : red.boundary)
+      rec.bve.boundary.push_back(to_post_papilo(c));
+    rec.bve.witness = red.witness;
+    recs.push_back(std::move(rec));
+  }
 }
 
 // ---- the pass: detect (GPU-projected) -> install reduced model -> record reconstructions ----
@@ -1130,9 +1201,9 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
                         timer_t& timer,
                         double& work_units,
                         probe_findings_t<i_t>* out_findings,
-                        i_t Bcap,
-                        i_t enumcap,
-                        i_t margin)
+                        i_t boundary_cap,
+                        i_t scope_cap,
+                        i_t clause_growth_margin)
 {
   work_units = 0.0;
   // Local wall clock for the DEBUG total; `timer` is the caller's stage deadline.
@@ -1208,18 +1279,18 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
                                   is_integer,
                                   obj,
                                   tol,
-                                  Bcap,
-                                  enumcap,
-                                  margin);
+                                  boundary_cap,
+                                  scope_cap,
+                                  clause_growth_margin);
   t_setup = wall.elapsed_time();
-  probe_findings_t<i_t> detection_findings;
+  probe_findings_t<i_t> current_id_findings;
   bve_plan_t<i_t, f_t> plan =
     bve_detect_closure_batched<i_t, f_t>(*handle,
                                          reducer,
                                          impl_adj,
                                          timer,
                                          work_units,
-                                         out_findings != nullptr ? &detection_findings : nullptr);
+                                         out_findings != nullptr ? &current_id_findings : nullptr);
   t_detect = wall.elapsed_time() - t_setup;
 
   // Projection findings hold for the block's rows whether or not the block was eliminated, so they
@@ -1230,14 +1301,14 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
       return (i_t)h_vmap[column];
     };
     out_findings->forcings.reserve(out_findings->forcings.size() +
-                                   detection_findings.forcings.size());
-    for (const auto& forcing : detection_findings.forcings) {
+                                   current_id_findings.forcings.size());
+    for (const auto& forcing : current_id_findings.forcings) {
       out_findings->forcings.push_back({to_original(forcing.var),
                                         to_original(forcing.forced_var),
                                         forcing.value,
                                         forcing.forced_value});
     }
-    for (const auto& [column, value] : detection_findings.fixings)
+    for (const auto& [column, value] : current_id_findings.fixings)
       out_findings->fixings.emplace_back(to_original(column), value);
   }
 
@@ -1276,27 +1347,8 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
   work_units += double(new_var.size()) + double(new_clb.size());
   problem.set_constraints_from_host_csr(new_off, new_var, new_coef, new_clb, new_cub, {});
 
-  // ---- 6. record reconstructions on the unified append-only log (detection-space ids ->
-  // post-Papilo variable_mapping frame). Commit order preserved; postsolve replays reverse. ----
-  auto& recs = problem.presolve_data.var_postsolve;
-  recs.reserve(recs.size() + plan.reductions.size());
-  for (const auto& red : plan.reductions) {
-    work_units += double(red.interior.size() + red.boundary.size() + red.witness.size());
-    var_postsolve_t<i_t, f_t> rec;
-    rec.kind = reconstruction_kind_t::BlockBve;
-    rec.bve.interior.reserve(red.interior.size());
-    for (i_t c : red.interior) {
-      cuopt_assert(c >= 0 && c < (i_t)h_vmap.size(), "interior col out of variable_mapping range");
-      rec.bve.interior.push_back(h_vmap[c]);
-    }
-    rec.bve.boundary.reserve(red.boundary.size());
-    for (i_t c : red.boundary) {
-      cuopt_assert(c >= 0 && c < (i_t)h_vmap.size(), "boundary col out of variable_mapping range");
-      rec.bve.boundary.push_back(h_vmap[c]);
-    }
-    rec.bve.witness = red.witness;
-    recs.push_back(std::move(rec));
-  }
+  // ---- 6. record reconstructions ----
+  append_bve_reconstructions(plan, h_vmap, problem.presolve_data, work_units);
   t_install = wall.elapsed_time() - t_install_begin;
 
   // ---- 7. compact the now-empty interior columns and update variable_mapping ----
