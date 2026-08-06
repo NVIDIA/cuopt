@@ -161,7 +161,7 @@ void compute_delta_z(const csr_matrix_t<i_t, f_t>& Arow,
     }
   }
   work_estimate += 4 * nz_delta_y;
-  work_estimate += 4 * nnz_processed;
+  work_estimate += 5 * nnz_processed;
   work_estimate += 2 * delta_z_indices.size();
 
   // delta_zB = sigma*ei
@@ -905,7 +905,7 @@ bool update_primal_infeasibilities(const lp_problem_t<i_t, f_t>& lp,
                                        primal_inf);
     if (old_val != 0.0 && squared_infeasibilities[j] == 0.0) { became_feasible = true; }
   }
-  work_estimate += 8 * nz;
+  work_estimate += 9 * nz;
   return became_feasible;
 }
 
@@ -1257,6 +1257,7 @@ i_t flip_bounds(const lp_problem_t<i_t, f_t>& lp,
       num_flipped++;
     }
   }
+  work_estimate += 4 * delta_z_indices.size();
   return num_flipped;
 }
 
@@ -2473,6 +2474,21 @@ void prepare_optimality(i_t info,
 #endif
 }
 
+template <typename f_t>
+struct work_timer_t {
+  work_timer_t(f_t t) : time(t) {}
+  f_t time{0.0};
+  f_t work{0.0};
+};
+
+template <typename f_t>
+work_timer_t<f_t>& operator+=(work_timer_t<f_t>& lhs, const work_timer_t<f_t>& rhs)
+{
+  lhs.time += rhs.time;
+  lhs.work += rhs.work;
+  return lhs;
+}
+
 template <typename i_t, typename f_t>
 class phase2_timers_t {
  public:
@@ -2495,60 +2511,89 @@ class phase2_timers_t {
   {
   }
 
-  void start_timer()
+  void start_timer(f_t work)
   {
     if (!record_time) { return; }
     start_time = tic();
+    start_work = work;
   }
 
-  f_t stop_timer()
+  work_timer_t<f_t> stop_timer(f_t stop_work)
   {
-    if (!record_time) { return 0.0; }
-    return toc(start_time);
+    if (!record_time) { return work_timer_t<f_t>(0.0); }
+    work_timer_t<f_t> result(toc(start_time));
+    result.work = stop_work - start_work;
+    return result;
+  }
+
+  void print_one(const simplex_solver_settings_t<i_t, f_t>& settings,
+                 const char* name,
+                 const work_timer_t<f_t>& t,
+                 f_t total_time,
+                 f_t total_work) const
+  {
+    const f_t work_per_sec = t.time > 0.0 ? t.work / t.time : f_t(0);
+    settings.log.printf("%-15s %.2fs %4.1f%% (%.2e work %4.1f%% %.2e/s)\n",
+                        name,
+                        t.time,
+                        total_time > 0.0 ? 100.0 * t.time / total_time : 0.0,
+                        t.work,
+                        total_work > 0.0 ? 100.0 * t.work / total_work : 0.0,
+                        work_per_sec);
   }
 
   void print_timers(const simplex_solver_settings_t<i_t, f_t>& settings) const
   {
     if (!record_time) { return; }
-    const f_t total_time = bfrt_time + pricing_time + btran_time + ftran_time + flip_time +
-                           delta_z_time + lu_update_time + lu_factorization_time + se_norms_time +
-                           se_entering_time + perturb_time + vector_time + objective_time +
-                           update_infeasibility_time;
+    const f_t total_time = bfrt_time.time + pricing_time.time + btran_time.time + ftran_time.time +
+                           flip_time.time + delta_z_time.time + lu_update_time.time +
+                           lu_factorization_time.time + se_norms_time.time + se_entering_time.time +
+                           perturb_time.time + vector_time.time + objective_time.time +
+                           update_infeasibility_time.time;
+    const f_t total_work = bfrt_time.work + pricing_time.work + btran_time.work + ftran_time.work +
+                           flip_time.work + delta_z_time.work + lu_update_time.work +
+                           lu_factorization_time.work + se_norms_time.work + se_entering_time.work +
+                           perturb_time.work + vector_time.work + objective_time.work +
+                           update_infeasibility_time.work;
     // clang-format off
-    settings.log.printf("BFRT time       %.2fs %4.1f%\n", bfrt_time, 100.0 * bfrt_time / total_time);
-    settings.log.printf("Pricing time    %.2fs %4.1f%\n", pricing_time, 100.0 * pricing_time / total_time);
-    settings.log.printf("BTran time      %.2fs %4.1f%\n", btran_time, 100.0 * btran_time / total_time);
-    settings.log.printf("FTran time      %.2fs %4.1f%\n", ftran_time, 100.0 * ftran_time / total_time);
-    settings.log.printf("Flip time       %.2fs %4.1f%\n", flip_time, 100.0 * flip_time / total_time);
-    settings.log.printf("Delta_z time    %.2fs %4.1f%\n", delta_z_time, 100.0 * delta_z_time / total_time);
-    settings.log.printf("LU update time  %.2fs %4.1f%\n", lu_update_time, 100.0 * lu_update_time / total_time);
-    settings.log.printf("LU factor time  %.2fs %4.1f%\n", lu_factorization_time, 100.0 * lu_factorization_time / total_time);
-    settings.log.printf("SE norms time   %.2fs %4.1f%\n", se_norms_time, 100.0 * se_norms_time / total_time);
-    settings.log.printf("SE enter time   %.2fs %4.1f%\n", se_entering_time, 100.0 * se_entering_time / total_time);
-    settings.log.printf("Perturb time    %.2fs %4.1f%\n", perturb_time, 100.0 * perturb_time / total_time);
-    settings.log.printf("Vector time     %.2fs %4.1f%\n", vector_time, 100.0 * vector_time / total_time);
-    settings.log.printf("Objective time  %.2fs %4.1f%\n", objective_time, 100.0 * objective_time / total_time);
-    settings.log.printf("Inf update time %.2fs %4.1f%\n", update_infeasibility_time, 100.0 * update_infeasibility_time / total_time);
-    settings.log.printf("Sum             %.2fs\n", total_time);
+    print_one(settings, "BFRT time", bfrt_time, total_time, total_work);
+    print_one(settings, "Pricing time", pricing_time, total_time, total_work);
+    print_one(settings, "BTran time", btran_time, total_time, total_work);
+    print_one(settings, "FTran time", ftran_time, total_time, total_work);
+    print_one(settings, "Flip time", flip_time, total_time, total_work);
+    print_one(settings, "Delta_z time", delta_z_time, total_time, total_work);
+    print_one(settings, "LU update time", lu_update_time, total_time, total_work);
+    print_one(settings, "LU factor time", lu_factorization_time, total_time, total_work);
+    print_one(settings, "SE norms time", se_norms_time, total_time, total_work);
+    print_one(settings, "SE enter time", se_entering_time, total_time, total_work);
+    print_one(settings, "Perturb time", perturb_time, total_time, total_work);
+    print_one(settings, "Vector time", vector_time, total_time, total_work);
+    print_one(settings, "Objective time", objective_time, total_time, total_work);
+    print_one(settings, "Inf update time", update_infeasibility_time, total_time, total_work);
+    settings.log.printf("Sum             %.2fs (%.2e work %.2e/s)\n",
+                        total_time,
+                        total_work,
+                        total_time > 0.0 ? total_work / total_time : f_t(0));
     // clang-format on
   }
-  f_t bfrt_time;
-  f_t pricing_time;
-  f_t btran_time;
-  f_t ftran_time;
-  f_t flip_time;
-  f_t delta_z_time;
-  f_t se_norms_time;
-  f_t se_entering_time;
-  f_t lu_update_time;
-  f_t lu_factorization_time;
-  f_t perturb_time;
-  f_t vector_time;
-  f_t objective_time;
-  f_t update_infeasibility_time;
+  work_timer_t<f_t> bfrt_time;
+  work_timer_t<f_t> pricing_time;
+  work_timer_t<f_t> btran_time;
+  work_timer_t<f_t> ftran_time;
+  work_timer_t<f_t> flip_time;
+  work_timer_t<f_t> delta_z_time;
+  work_timer_t<f_t> se_norms_time;
+  work_timer_t<f_t> se_entering_time;
+  work_timer_t<f_t> lu_update_time;
+  work_timer_t<f_t> lu_factorization_time;
+  work_timer_t<f_t> perturb_time;
+  work_timer_t<f_t> vector_time;
+  work_timer_t<f_t> objective_time;
+  work_timer_t<f_t> update_infeasibility_time;
 
  private:
   f_t start_time;
+  f_t start_work;
   bool record_time;
 };
 
@@ -2901,7 +2946,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
     i_t basic_leaving_index = -1;
     i_t leaving_index       = -1;
     f_t max_val;
-    timers.start_timer();
+    timers.start_timer(phase2_work_estimate + ft.work_estimate());
     {
       PHASE2_NVTX_RANGE("DualSimplex::pricing");
       if (settings.use_steepest_edge_pricing) {
@@ -2922,7 +2967,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
           lp, settings, x, basic_list, direction, basic_leaving_index, primal_infeasibility);
       }
     }
-    timers.pricing_time += timers.stop_timer();
+    timers.pricing_time += timers.stop_timer(phase2_work_estimate + ft.work_estimate());
     if (leaving_index == -1) {
 #ifdef CHECK_BASIS_UPDATE
       for (i_t k = 0; k < basic_list.size(); k++) {
@@ -3065,7 +3110,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
 
     // BTran
     // BT*delta_y = -delta_zB = -sigma*ei
-    timers.start_timer();
+    timers.start_timer(phase2_work_estimate + ft.work_estimate());
     delta_y_sparse.clear();
     UTsol_sparse.clear();
     f_t btran_start_work = ft.work_estimate();
@@ -3073,7 +3118,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
       PHASE2_NVTX_RANGE("DualSimplex::btran");
       phase2::compute_delta_y(ft, basic_leaving_index, direction, delta_y_sparse, UTsol_sparse);
     }
-    timers.btran_time += timers.stop_timer();
+    timers.btran_time += timers.stop_timer(phase2_work_estimate + ft.work_estimate());
     solve_work += (ft.work_estimate() - btran_start_work);
 
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
@@ -3097,7 +3142,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
       continue;
     }
 
-    timers.start_timer();
+    timers.start_timer(phase2_work_estimate + ft.work_estimate());
     i_t delta_y_nz0      = 0;
     const i_t nz_delta_y = delta_y_sparse.i.size();
     for (i_t k = 0; k < nz_delta_y; k++) {
@@ -3136,7 +3181,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
                                     phase2_work_estimate);
       }
     }
-    timers.delta_z_time += timers.stop_timer();
+    timers.delta_z_time += timers.stop_timer(phase2_work_estimate + ft.work_estimate());
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       return dual_status_t::CONCURRENT_LIMIT;
     }
@@ -3172,7 +3217,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
                                                      step_length,
                                                      nonbasic_entering_index);
       } else if (bound_flip_ratio) {
-        timers.start_timer();
+        timers.start_timer(phase2_work_estimate + ft.work_estimate());
         f_t slope = direction == 1 ? (lp.lower[leaving_index] - x[leaving_index])
                                    : (x[leaving_index] - lp.upper[leaving_index]);
         bound_flipping_ratio_test_t<i_t, f_t> bfrt(settings,
@@ -3195,7 +3240,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
           settings.log.printf("Numerical issues encountered in ratio test.\n");
           return dual_status_t::NUMERICAL;
         }
-        timers.bfrt_time += timers.stop_timer();
+        timers.bfrt_time += timers.stop_timer(phase2_work_estimate + ft.work_estimate());
       } else {
         entering_index = phase2::phase2_ratio_test(
           lp, settings, vstatus, nonbasic_list, z, delta_z, step_length, nonbasic_entering_index);
@@ -3386,7 +3431,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
       return dual_status_t::DUAL_UNBOUNDED;
     }
 
-    timers.start_timer();
+    timers.start_timer(phase2_work_estimate + ft.work_estimate());
     // Update dual variables
     // y <- y + steplength * delta_y
     // z <- z + steplength * delta_z
@@ -3402,7 +3447,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
       settings.log.printf("Numerical issues encountered in update_dual_variables.\n");
       return dual_status_t::NUMERICAL;
     }
-    timers.vector_time += timers.stop_timer();
+    timers.vector_time += timers.stop_timer(phase2_work_estimate + ft.work_estimate());
 
 #ifdef COMPUTE_DUAL_RESIDUAL
     std::vector<f_t> dual_res1;
@@ -3413,7 +3458,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
     }
 #endif
 
-    timers.start_timer();
+    timers.start_timer(phase2_work_estimate + ft.work_estimate());
     // Update primal variable
     const i_t num_flipped = phase2::flip_bounds(lp,
                                                 settings,
@@ -3430,12 +3475,12 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
                                                 atilde_index,
                                                 phase2_work_estimate);
 
-    timers.flip_time += timers.stop_timer();
+    timers.flip_time += timers.stop_timer(phase2_work_estimate + ft.work_estimate());
     total_bound_flips += num_flipped;
 
     delta_xB_0_sparse.clear();
     if (num_flipped > 0) {
-      timers.start_timer();
+      timers.start_timer(phase2_work_estimate + ft.work_estimate());
       phase2::adjust_for_flips(ft,
                                basic_list,
                                delta_z_indices,
@@ -3447,10 +3492,10 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
                                delta_x_flip,
                                x,
                                phase2_work_estimate);
-      timers.ftran_time += timers.stop_timer();
+      timers.ftran_time += timers.stop_timer(phase2_work_estimate + ft.work_estimate());
     }
 
-    timers.start_timer();
+    timers.start_timer(phase2_work_estimate + ft.work_estimate());
     utilde_sparse.clear();
     scaled_delta_xB_sparse.clear();
     rhs_sparse.from_csc_column(lp.A, entering_index);
@@ -3477,7 +3522,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
       }
     }
     solve_work += (ft.work_estimate() - ftran_start_work);
-    timers.ftran_time += timers.stop_timer();
+    timers.ftran_time += timers.stop_timer(phase2_work_estimate + ft.work_estimate());
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       return dual_status_t::CONCURRENT_LIMIT;
     }
@@ -3489,7 +3534,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
     if (primal_step_err > 1e-4) { settings.log.printf("|| A * dx || %e\n", primal_step_err); }
 #endif
 
-    timers.start_timer();
+    timers.start_timer(phase2_work_estimate + ft.work_estimate());
     f_t se_norms_start_work        = ft.work_estimate();
     const i_t steepest_edge_status = phase2::update_steepest_edge_norms(settings,
                                                                         basic_list,
@@ -3511,18 +3556,18 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
     }
 #endif
     assert(steepest_edge_status == 0);
-    timers.se_norms_time += timers.stop_timer();
+    timers.se_norms_time += timers.stop_timer(phase2_work_estimate + ft.work_estimate());
     solve_work += (ft.work_estimate() - se_norms_start_work);
 
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       return dual_status_t::CONCURRENT_LIMIT;
     }
 
-    timers.start_timer();
+    timers.start_timer(phase2_work_estimate + ft.work_estimate());
     // x <- x + delta_x
     phase2::update_primal_variables(
       scaled_delta_xB_sparse, basic_list, delta_x, entering_index, x, phase2_work_estimate);
-    timers.vector_time += timers.stop_timer();
+    timers.vector_time += timers.stop_timer(phase2_work_estimate + ft.work_estimate());
 
 #ifdef COMPUTE_PRIMAL_RESIDUAL
     residual = lp.rhs;
@@ -3533,7 +3578,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
     }
 #endif
 
-    timers.start_timer();
+    timers.start_timer(phase2_work_estimate + ft.work_estimate());
     // TODO(CMM): Do I also need to update the objective due to the bound flips?
     // TODO(CMM): I'm using the unperturbed objective here, should this be the perturbed objective?
     phase2::update_objective(basic_list,
@@ -3543,9 +3588,9 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
                              entering_index,
                              obj,
                              phase2_work_estimate);
-    timers.objective_time += timers.stop_timer();
+    timers.objective_time += timers.stop_timer(phase2_work_estimate + ft.work_estimate());
 
-    timers.start_timer();
+    timers.start_timer(phase2_work_estimate + ft.work_estimate());
     // Update primal infeasibilities due to changes in basic variables
     // from flipping bounds
 #ifdef CHECK_BASIC_INFEASIBILITIES
@@ -3598,17 +3643,17 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
     phase2::check_primal_infeasibilities(
       lp, settings, basic_list, x, squared_infeasibilities, infeasibility_indices);
 #endif
-    timers.update_infeasibility_time += timers.stop_timer();
+    timers.update_infeasibility_time += timers.stop_timer(phase2_work_estimate + ft.work_estimate());
 
     // Clear delta_x
     phase2::clear_delta_x(
       basic_list, entering_index, scaled_delta_xB_sparse, delta_x, phase2_work_estimate);
 
-    timers.start_timer();
+    timers.start_timer(phase2_work_estimate + ft.work_estimate());
     f_t sum_perturb = 0.0;
     phase2::compute_perturbation(
       lp, settings, delta_z_indices, z, objective, sum_perturb, phase2_work_estimate);
-    timers.perturb_time += timers.stop_timer();
+    timers.perturb_time += timers.stop_timer(phase2_work_estimate + ft.work_estimate());
 
     // Update basis information
     vstatus[entering_index] = variable_status_t::BASIC;
@@ -3631,7 +3676,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
     phase2::check_basic_infeasibilities(basic_list, basic_mark, infeasibility_indices, 5);
 #endif
 
-    timers.start_timer();
+    timers.start_timer(phase2_work_estimate + ft.work_estimate());
     // Refactor or update the basis factorization
     {
       PHASE2_NVTX_RANGE("DualSimplex::basis_update");
@@ -3647,8 +3692,8 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
         phase2::check_update(lp, settings, ft, basic_list, basic_leaving_index);
 #endif
         should_refactor = recommend_refactor == 1;
-        timers.lu_update_time += timers.stop_timer();
-        timers.start_timer();
+        timers.lu_update_time += timers.stop_timer(phase2_work_estimate + ft.work_estimate());
+        timers.start_timer(phase2_work_estimate + ft.work_estimate());
       }
 
 #ifdef CHECK_BASIC_INFEASIBILITIES
@@ -3726,7 +3771,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
       phase2::check_basic_infeasibilities(basic_list, basic_mark, infeasibility_indices, 7);
 #endif
     }
-    timers.lu_factorization_time += timers.stop_timer();
+    timers.lu_factorization_time += timers.stop_timer(phase2_work_estimate + ft.work_estimate());
 
 #ifdef STEEPEST_EDGE_DEBUG
     if (iter < 100 || iter % 100 == 0))

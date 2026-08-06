@@ -229,14 +229,14 @@ void bound_flipping_ratio_test_t<i_t, f_t>::heap_passes(const std::vector<i_t>& 
   };
 
   std::make_heap(bare_idx.begin(), bare_idx.end(), compare);
-  work_estimate_ += 3 * bare_idx.size();
+  work_estimate_ += 10 * bare_idx.size();
 
   while (bare_idx.size() > 0 && slope > 0) {
     // Remove minimum ratio from the heap and rebalance
     i_t heap_index = bare_idx.front();
     std::pop_heap(bare_idx.begin(), bare_idx.end(), compare);
-    work_estimate_ += 2 * std::log2(bare_idx.size());
     bare_idx.pop_back();
+    work_estimate_ += 7 * std::log2(bare_idx.size() + 1);
 
     nonbasic_entering = current_indicies[heap_index];
     const i_t j = entering_index = nonbasic_list_[nonbasic_entering];
@@ -264,6 +264,7 @@ void bound_flipping_ratio_test_t<i_t, f_t>::heap_passes(const std::vector<i_t>& 
       // The variable is not bounded. Stop the search.
       break;
     }
+    work_estimate_ += 10;
 
     if (toc(start_time_) > settings_.time_limit) {
       entering_index = RATIO_TEST_TIME_LIMIT;

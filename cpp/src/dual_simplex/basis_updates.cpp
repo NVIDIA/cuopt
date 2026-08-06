@@ -2230,7 +2230,7 @@ i_t basis_update_mpf_t<i_t, f_t>::update(const sparse_vector_t<i_t, f_t>& utilde
 
   // Ensure the workspace is sorted. Otherwise, the sparse dot will be incorrect.
   std::sort(xi_workspace_.begin() + m, xi_workspace_.begin() + m + nz, std::less<i_t>());
-  work_estimate_ += (m + nz) * std::log2(m + nz);
+  work_estimate_ += nz > 1 ? nz * std::log2(nz) : 0;
 
   // Gather the workspace into a column of S
   i_t S_start;
