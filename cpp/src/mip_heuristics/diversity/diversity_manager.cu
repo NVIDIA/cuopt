@@ -420,9 +420,11 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
 
   if (!global_timer.check_time_limit()) { trivial_presolve(*problem_ptr, remap_cache_ids); }
 
-  const i_t max_bve_rounds    = 3;
+  i_t max_bve_rounds          = 3;
   const i_t n_vars_before_bve = problem_ptr->n_variables;
   const i_t n_rows_before_bve = problem_ptr->n_constraints;
+
+  if (!run_probing_cache) max_bve_rounds = 0;
   // Implications read off the projection tables, accumulated across rounds. They feed the next
   // round's adjacency (pairs the cache never held) and are folded back into the cache afterwards.
   probe_findings_t<i_t> bve_findings;

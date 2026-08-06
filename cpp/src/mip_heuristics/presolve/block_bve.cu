@@ -8,6 +8,7 @@
 #include "block_bve.cuh"
 #include "trivial_presolve.cuh"
 
+#include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/problem/presolve_data.cuh>
 #include <mip_heuristics/utils.cuh>
 
@@ -1012,7 +1013,7 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
     // is serial in round_seeds order, so the plan matches a serial frozen-growth run.
     std::vector<std::vector<i_t>> interiors(round_seeds.size());
     std::vector<int64_t> growth_ops(round_seeds.size(), 0);
-#pragma omp parallel for schedule(dynamic)
+#pragma omp taskloop default(shared) priority(CUOPT_DEFAULT_TASK_PRIORITY)
     for (i_t k = 0; k < (i_t)round_seeds.size(); ++k) {
       const i_t seed = round_seeds[k];
       if (growth_done[seed]) {
