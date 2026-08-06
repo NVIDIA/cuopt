@@ -424,6 +424,9 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
   const i_t max_bve_rounds    = 3;
   const i_t n_vars_before_bve = problem_ptr->n_variables;
   const i_t n_rows_before_bve = problem_ptr->n_constraints;
+  if (!context.settings.block_bve) {
+    CUOPT_LOG_INFO("Block-BVE step disabled via %s=false", CUOPT_MIP_HYPER_BLOCK_BVE);
+  }
   // Implications read off the projection tables, accumulated across rounds. They feed the next
   // round's adjacency (pairs the cache never held) and are folded back into the cache afterwards.
   probe_findings_t<i_t> bve_findings;
