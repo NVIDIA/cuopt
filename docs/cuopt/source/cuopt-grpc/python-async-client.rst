@@ -87,7 +87,7 @@ TLS / mTLS
 See :doc:`advanced` for server-side TLS and which environment variables apply
 to remote execution versus this gRPC client.
 
-Next steps
+Next Steps
 ==========
 
 * :doc:`python-async-client-examples` — log streaming and incumbent streaming
