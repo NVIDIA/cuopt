@@ -3776,23 +3776,24 @@ void branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
         break;
       }
     }
-    if (a_ij == 0.0) { continue; }
-
     f_t bound = a_ij > 0 ? lp.lower[j] : lp.upper[j];
     if (std::abs(bound) == inf) { continue; }
+
+    const f_t delta_xj = bound - soln_copy.x[j];
+    const f_t scale = -delta_xj * a_ij;
+    if (std::abs(scale) <= 1e-12) { continue; }
 
     // Build delta_x describing "move x[j] to its bound, let the basic slacks compensate to
     // keep A*x = b". This is a feasible direction (A*delta_x = 0). The nonzero pattern lives
     // on the entries of column A(:, j) plus j itself. In the nonbasic_slack slot,
     // delta_x[nonbasic_slack] = -delta_xj * a_ij > 0, i.e. the entering slack moves up from
     // its lower bound 0. We build the sparse version to feed the feasibility scan, then
-    // scatter into a dense vector and normalize so that delta_x[nonbasic_slack] == 1 (the
-    // convention primal_ratio_test expects for entering variables).
+    // normalize so that delta_x[nonbasic_slack] == 1 (the convention primal_ratio_test expects
+    // for entering variables) and scatter into a dense vector.
     sparse_vector_t<i_t, f_t> delta_x_sparse;
     delta_x_sparse.n = lp.num_cols;
     delta_x_sparse.i.reserve(col_end - col_start + 1);
     delta_x_sparse.x.reserve(col_end - col_start + 1);
-    const f_t delta_xj = bound - soln_copy.x[j];
     delta_x_sparse.i.push_back(j);
     delta_x_sparse.x.push_back(delta_xj);
     for (i_t p = col_start; p < col_end; p++) {
@@ -3818,14 +3819,13 @@ void branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
     }
     if (!ok) { continue; }
 
+    // Normalize so that delta_x[nonbasic_slack] == 1 (the standard entering-direction
+    // convention). Done on the sparse vector, after the feasibility scan above, which reads
+    // the unnormalized values.
+    for (f_t& val : delta_x_sparse.x) { val /= scale; }
+
     std::vector<f_t> delta_x(lp.num_cols, 0.0);
     delta_x_sparse.to_dense(delta_x);
-
-    // Normalize so that delta_x[nonbasic_slack] == 1 (the standard entering-direction
-    // convention). Also confirms A*delta_x = 0 at debug log time.
-    const f_t scale = delta_x[nonbasic_slack];
-    if (!(std::abs(scale) > 1e-12)) { continue; }
-    for (i_t h = 0; h < lp.num_cols; ++h) { delta_x[h] /= scale; }
 
     // Entering variable is the nonbasic slack, moving up from its lower bound 0.
     const i_t entering_index    = nonbasic_slack;
