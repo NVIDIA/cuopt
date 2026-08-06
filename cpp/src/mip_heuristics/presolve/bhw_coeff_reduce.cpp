@@ -365,7 +365,8 @@ bhw_row_rewrite_t bhw_reduce_row(
   int64_t largest = 0;
   for (int j = 0; j < len; ++j) {
     integral[j] = (int64_t)std::llround((double)coefficients[j] * scale) * direction;
-    largest     = std::max(largest, std::abs(integral[j]));
+    if (integral[j] == 0) return rewrite;
+    largest = std::max(largest, std::abs(integral[j]));
   }
   // A row already at +/-1 has no magnitude to give back. The census puts most of the corpus here,
   // so this test carries the screening cost.
@@ -444,6 +445,8 @@ bhw_row_rewrite_t bhw_reduce_row(
   rewrite.accepted        = true;
   return rewrite;
 }
+static constexpr int BHW_INTERRUPT_CHECK_STRIDE = 256;
+
 template <typename f_t>
 papilo::PresolveStatus BHWCoeffReduce<f_t>::execute(const papilo::Problem<f_t>& problem,
                                                     const papilo::ProblemUpdate<f_t>& problemUpdate,
@@ -460,6 +463,7 @@ papilo::PresolveStatus BHWCoeffReduce<f_t>::execute(const papilo::Problem<f_t>& 
   const auto& col_flags         = domains.flags;
   const auto& lower_bounds      = domains.lower_bounds;
   const auto& upper_bounds      = domains.upper_bounds;
+  const auto& presolve_options  = problemUpdate.getPresolveOptions();
 
   const int num_rows            = constraint_matrix.getNRows();
   papilo::PresolveStatus status = papilo::PresolveStatus::kUnchanged;
@@ -472,6 +476,12 @@ papilo::PresolveStatus BHWCoeffReduce<f_t>::execute(const papilo::Problem<f_t>& 
   // never revisited. Rescreening is cheap because the shape cache absorbs the repetition and the
   // reduction is idempotent.
   for (int row = 0; row < num_rows; ++row) {
+    if (reductions.size() >= presolve_options.max_reduction_seq) break;
+    if (row % BHW_INTERRUPT_CHECK_STRIDE == 0 &&
+        papilo::PresolveMethod<f_t>::is_interrupted(
+          timer, presolve_options.tlim, presolve_options.early_exit_callback))
+      break;
+
     auto row_coefficients = constraint_matrix.getRowCoefficients(row);
     const int len         = row_coefficients.getLength();
     if (len < 2 || len > BHW_MAX_LEN) continue;

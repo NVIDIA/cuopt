@@ -106,6 +106,13 @@ TEST(bhw_coeff_reduce, rejects_rows_with_nothing_to_give_back)
   EXPECT_FALSE(reduce({3, 2, 2}, -1).accepted);
 }
 
+TEST(bhw_coeff_reduce, rejects_rows_with_a_zero_coefficient)
+{
+  EXPECT_FALSE(reduce({65, 64, 41, 22, 13, 12, 8, 2, 0}, 80).accepted);
+  EXPECT_FALSE(reduce({0, 9, 7, 6, 6, 4}, 20).accepted);
+  EXPECT_FALSE(reduce({6, 0}, 5).accepted);
+}
+
 TEST(bhw_coeff_reduce, memoized_result_matches_the_uncached_one)
 {
   bhw_shape_cache_t cache;
