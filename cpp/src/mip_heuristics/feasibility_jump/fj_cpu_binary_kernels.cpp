@@ -326,16 +326,41 @@ void PatchRowNarrow4Impl(const int32_t* HWY_RESTRICT variables,
 // dispatches to a kernel identical to its own. Scalable targets opt out entirely: Highway notes
 // that clamping Lanes() on RVV/SVE can cost more than the capping saves, which is why
 // CappedTagIfFixed leaves them at native width above.
-int32_t Narrow4MaxImpl()
-{
-  if (HWY_HAVE_SCALABLE) return 0;
-  return hn::Lanes(hn::ScalableTag<int32_t>()) > 4 ? 4 : 0;
-}
+//
+// These are per-target constants, so the width choice belongs here rather than at the call seam: a
+// caller outside this file can only reach them through a dispatch pointer, which turns two
+// immediates into two loads of runtime globals and puts an unpredictable branch directly in front
+// of the indirect jump that follows it. Measured on supportcase22, that seam cost 2.4%.
+constexpr size_t k_native_lanes  = HWY_MAX_LANES_D(hn::ScalableTag<int32_t>);
+constexpr int32_t k_narrow4_max  = HWY_HAVE_SCALABLE ? 0 : (k_native_lanes > 4 ? 4 : 0);
+constexpr int32_t k_narrow8_max  = HWY_HAVE_SCALABLE ? 0 : (k_native_lanes > 8 ? 8 : 0);
 
-int32_t Narrow8MaxImpl()
+// Single entry point the seam dispatches to. On a scalable target both bounds are 0, so both
+// compares fold away and the narrow arms are stripped.
+template <typename coef_t>
+void PatchRowDispatchImpl(const int32_t* HWY_RESTRICT variables,
+                          const coef_t* HWY_RESTRICT coefficients,
+                          int32_t kb,
+                          int32_t ke,
+                          int32_t* HWY_RESTRICT var_score,
+                          int32_t* HWY_RESTRICT nnz_score_delta,
+                          const int32_t* HWY_RESTRICT assign_i32,
+                          int32_t sign,
+                          int32_t weight,
+                          int32_t os_new,
+                          int32_t skip_var)
 {
-  if (HWY_HAVE_SCALABLE) return 0;
-  return hn::Lanes(hn::ScalableTag<int32_t>()) > 8 ? 8 : 0;
+  const int32_t row_len = ke - kb;
+  if (row_len <= k_narrow4_max) {
+    PatchRowNarrow4Impl<coef_t>(variables, coefficients, kb, ke, var_score, nnz_score_delta,
+                                assign_i32, sign, weight, os_new, skip_var);
+  } else if (row_len <= k_narrow8_max) {
+    PatchRowNarrow8Impl<coef_t>(variables, coefficients, kb, ke, var_score, nnz_score_delta,
+                                assign_i32, sign, weight, os_new, skip_var);
+  } else {
+    PatchRowImpl<coef_t>(variables, coefficients, kb, ke, var_score, nnz_score_delta, assign_i32,
+                         sign, weight, os_new, skip_var);
+  }
 }
 
 // Tiled sweep carrying a running maximum. The index re-scan fires only on a tile that raises it,
@@ -404,17 +429,11 @@ namespace cuopt::mathematical_optimization::mip {
 // separately from the function, which lets the function be a template-id: only the table name goes
 // through token pasting, so no hand-written non-template wrapper is needed. The template argument
 // must stay comma-free, which is why the three tag-binding wrappers above take only coef_t.
-HWY_EXPORT_T(PatchRowNatI8, PatchRowImpl<int8_t>);
-HWY_EXPORT_T(PatchRowN8I8, PatchRowNarrow8Impl<int8_t>);
-HWY_EXPORT_T(PatchRowN4I8, PatchRowNarrow4Impl<int8_t>);
+HWY_EXPORT_T(PatchRowI8, PatchRowDispatchImpl<int8_t>);
+HWY_EXPORT_T(PatchRowI16, PatchRowDispatchImpl<int16_t>);
 HWY_EXPORT_T(WalkRowsI8, WalkRowsImpl<int8_t>);
 HWY_EXPORT_T(WalkRowsI16, WalkRowsImpl<int16_t>);
-HWY_EXPORT_T(PatchRowNatI16, PatchRowImpl<int16_t>);
-HWY_EXPORT_T(PatchRowN8I16, PatchRowNarrow8Impl<int16_t>);
-HWY_EXPORT_T(PatchRowN4I16, PatchRowNarrow4Impl<int16_t>);
 HWY_EXPORT(ArgmaxImpl);
-HWY_EXPORT(Narrow4MaxImpl);
-HWY_EXPORT(Narrow8MaxImpl);
 
 // HWY_DYNAMIC_DISPATCH resolves the target on every call, and the hwy::GetChosenTarget() call it
 // expands to is a real out-of-line call: it clobbers the argument registers, so the compiler spills
@@ -447,40 +466,16 @@ using fj_bin_patch_fn_t = void (*)(const int32_t*,
                                    int32_t,
                                    int32_t);
 
-// Indexed by width: 0 = 4-lane, 1 = 8-lane, 2 = native.
-static const fj_bin_patch_fn_t<int8_t> fj_bin_patch_i8[3] = {
-  (fj_bin_choose_target(), HWY_DYNAMIC_POINTER_T(PatchRowN4I8)),
-  (fj_bin_choose_target(), HWY_DYNAMIC_POINTER_T(PatchRowN8I8)),
-  (fj_bin_choose_target(), HWY_DYNAMIC_POINTER_T(PatchRowNatI8)),
-};
+// The vector width is chosen inside the target (see PatchRowDispatchImpl), so the seam carries one
+// pointer per coefficient width and nothing else.
+static const auto fj_bin_patch_i8 =
+  (fj_bin_choose_target(), (fj_bin_patch_fn_t<int8_t>)HWY_DYNAMIC_POINTER_T(PatchRowI8));
+static const auto fj_bin_patch_i16 =
+  (fj_bin_choose_target(), (fj_bin_patch_fn_t<int16_t>)HWY_DYNAMIC_POINTER_T(PatchRowI16));
 
-static const fj_bin_patch_fn_t<int16_t> fj_bin_patch_i16[3] = {
-  (fj_bin_choose_target(), HWY_DYNAMIC_POINTER_T(PatchRowN4I16)),
-  (fj_bin_choose_target(), HWY_DYNAMIC_POINTER_T(PatchRowN8I16)),
-  (fj_bin_choose_target(), HWY_DYNAMIC_POINTER_T(PatchRowNatI16)),
-};
-
-// Overloaded rather than specialized so the tables stay plain arrays.
-static const fj_bin_patch_fn_t<int8_t>* fj_bin_patch_table(int8_t) { return fj_bin_patch_i8; }
-static const fj_bin_patch_fn_t<int16_t>* fj_bin_patch_table(int16_t) { return fj_bin_patch_i16; }
-
-static const auto fj_bin_narrow4_max_fn =
-  (fj_bin_choose_target(), HWY_DYNAMIC_POINTER(Narrow4MaxImpl));
-static const auto fj_bin_narrow8_max_fn =
-  (fj_bin_choose_target(), HWY_DYNAMIC_POINTER(Narrow8MaxImpl));
-
-// Resolved once at load: a gather costs the same whether its lanes carry data or are masked off, so
-// a row filling only part of a native vector is cheaper through a narrower one. Scalable targets
-// decline both (see Narrow*MaxImpl).
-static const int32_t fj_bin_n4_max = fj_bin_narrow4_max_fn();
-static const int32_t fj_bin_n8_max = fj_bin_narrow8_max_fn();
-
-static int32_t fj_bin_patch_width_index(int32_t row_len)
-{
-  if (row_len <= fj_bin_n4_max) return 0;
-  if (row_len <= fj_bin_n8_max) return 1;
-  return 2;
-}
+// Overloaded rather than specialized, matching fj_bin_walk_fn below.
+static fj_bin_patch_fn_t<int8_t> fj_bin_patch_fn(int8_t) { return fj_bin_patch_i8; }
+static fj_bin_patch_fn_t<int16_t> fj_bin_patch_fn(int16_t) { return fj_bin_patch_i16; }
 
 template <typename coef_t>
 using fj_bin_walk_fn_t = int32_t (*)(
@@ -534,11 +529,8 @@ void fj_bin_patch_row(const int32_t* variables,
                       int32_t os_new,
                       int32_t skip_var)
 {
-  // The offsets are already in hand, so the width choice is a compare rather than a stored per-row
-  // flag.
-  fj_bin_patch_table(coef_t{})[fj_bin_patch_width_index(ke - kb)](
-    variables, coefficients, kb, ke, var_score, nnz_score_delta, assign_i32, sign, weight, os_new,
-    skip_var);
+  fj_bin_patch_fn(coef_t{})(variables, coefficients, kb, ke, var_score, nnz_score_delta, assign_i32,
+                            sign, weight, os_new, skip_var);
 }
 
 template void fj_bin_patch_row<int8_t>(const int32_t*,
