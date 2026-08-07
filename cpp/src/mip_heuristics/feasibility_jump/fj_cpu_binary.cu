@@ -18,6 +18,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <unistd.h>
 #include <limits>
 #include <vector>
@@ -1157,6 +1158,12 @@ bool try_cpufj_binary_solve(fj_cpu_climber_t<i_t, f_t>& climber,
                             f_t time_limit,
                             double work_unit_limit)
 {
+  // Escape hatch for A/B against the general path on an instance the fast path would take. The two
+  // paths are meant to search identically, so any divergence is a bug in this one; setting this is
+  // how that gets bisected without editing the eligibility scan.
+  static const bool disabled = std::getenv("CUOPT_NO_BINFJ") != nullptr;
+  if (disabled) return false;
+
   const fj_bin_scan_t scan = fj_bin_scan(climber);
   if (scan.reject != fj_binary_reject_t::none) {
     CUOPT_LOG_DEBUG("%sCPUFJ binary fast path declined: %s (row %d, var %d)",
