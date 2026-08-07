@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -53,7 +53,6 @@ INSTANTIATE_TEST_SUITE_P(
   l1_pickup,
   regression_routing_test_pickup_t,
   ::testing::ValuesIn(parse_tests(cuopt::test::read_tests("datasets/ref/l1_pickup.txt"))));
-CUOPT_TEST_PROGRAM_MAIN()
 
 }  // namespace test
 }  // namespace routing
