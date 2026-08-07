@@ -1182,7 +1182,7 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
   work_units = 0.0;
   // Local wall clock for the DEBUG total; `timer` is the caller's stage deadline.
   timer_t wall(std::numeric_limits<double>::infinity());
-  double t_setup = 0.0, t_detect = 0.0, t_install = 0.0, t_compact = 0.0;
+  [[maybe_unused]] double t_setup = 0.0, t_detect = 0.0, t_install = 0.0, t_compact = 0.0;
   auto timer_raii_guard = cuopt::scope_guard([&]() {
     CUOPT_LOG_DEBUG(
       "Block-BVE phases: setup=%.2fs detect=%.2fs install=%.2fs compact=%.2fs total=%.2fs "
