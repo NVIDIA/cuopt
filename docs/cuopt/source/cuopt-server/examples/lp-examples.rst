@@ -208,7 +208,7 @@ The response would be as follows:
     }
 
 
-Using MPS or LP file directly
+Using MPS or LP File Directly
 -----------------------------
 
 The self-hosted client accepts both MPS and LP format files — the client
@@ -276,7 +276,7 @@ the client dispatches on the file extension (``.mps`` / ``.qps`` vs ``.lp``,
 including ``.gz`` / ``.bz2`` compressed variants). For solver settings see
 :doc:`convex optimization parameters <../../convex-settings>` and :doc:`MIP parameters <../../mip-settings>`.
 
-MPS format
+MPS Format
 ~~~~~~~~~~
 
 :download:`mps_datamodel_example.py <lp/examples/mps_datamodel_example.py>`
@@ -285,7 +285,7 @@ MPS format
    :language: python
    :linenos:
 
-LP format
+LP Format
 ~~~~~~~~~
 
 :download:`lp_datamodel_example.py <lp/examples/lp_datamodel_example.py>`
@@ -294,7 +294,7 @@ LP format
    :language: python
    :linenos:
 
-Expected output (either example, same problem instance)
+Expected Output (Either Example, Same Problem Instance)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: text

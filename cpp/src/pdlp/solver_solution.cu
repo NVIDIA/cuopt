@@ -5,6 +5,7 @@
  */
 /* clang-format on */
 
+#include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
 
 #include <math_optimization/solution_writer.hpp>
@@ -453,10 +454,10 @@ void optimization_problem_solution_t<i_t, f_t>::write_to_sol_file(
 }
 
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
-template class optimization_problem_solution_t<int, float>;
+template class CUOPT_EXPORT optimization_problem_solution_t<int, float>;
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
-template class optimization_problem_solution_t<int, double>;
+template class CUOPT_EXPORT optimization_problem_solution_t<int, double>;
 #endif
 }  // namespace cuopt::mathematical_optimization
