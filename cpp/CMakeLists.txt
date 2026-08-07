@@ -307,11 +307,6 @@ set(BUILD_SHARED_LIBS OFF)
 FetchContent_MakeAvailable(pslp)
 set(BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS_SAVED})
 
-
-# Highway - portable SIMD with runtime dispatch, used by the binary CPU FJ fast-path kernels
-# https://github.com/google/highway
-# contrib carries vqsort/image/math, none of which we use, and each would be compiled once per
-# SIMD target.
 FetchContent_Declare(
         highway
         GIT_REPOSITORY "https://github.com/google/highway.git"
@@ -326,7 +321,6 @@ set(HWY_ENABLE_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(HWY_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
 set(HWY_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
 
-# Build Highway as static to embed in cuopt (mirrors PSLP above)
 set(BUILD_SHARED_LIBS_SAVED ${BUILD_SHARED_LIBS})
 set(BUILD_SHARED_LIBS OFF)
 FetchContent_MakeAvailable(highway)
@@ -717,8 +711,6 @@ target_include_directories(cuopt_objs
 target_link_libraries(cuopt_objs PRIVATE $<TARGET_FILE:PSLP>)
 add_dependencies(cuopt_objs PSLP)
 
-# Highway, linked by file for the same reason. Static and fully embedded into libcuopt.so; it is
-# never installed (HWY_ENABLE_INSTALL OFF) and consumers of cuopt::cuopt never reference it.
 target_link_libraries(cuopt_objs PRIVATE $<TARGET_FILE:hwy>)
 add_dependencies(cuopt_objs hwy)
 
@@ -1100,35 +1092,26 @@ if (BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
             "${CMAKE_CURRENT_SOURCE_DIR}/src"
     )
 
-    # CPU FJ portfolio benchmark. A .cu because it drives problem_t/solution_t directly and
-    # clamp_within_var_bounds instantiates a device lambda in this TU.
+    # CPU FJ standalone portfolio benchmark
     add_executable(solve_CPUFJ ../benchmarks/linear_programming/cuopt/run_cpufj.cu)
-
     set_target_properties(solve_CPUFJ PROPERTIES CXX_SCAN_FOR_MODULES OFF)
-
-    # -fopenmp for the CUDA TU as well: the internal headers this pulls in (omp_helpers.hpp,
-    # omp_atomic_t) are OMP-dependent, and OpenMP::OpenMP_CXX only covers CXX.
     target_compile_options(solve_CPUFJ
             PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
             "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
             "$<$<COMPILE_LANGUAGE:CUDA>:-fopenmp>"
     )
-
     target_link_libraries(solve_CPUFJ
             PUBLIC
             cuopt
             OpenMP::OpenMP_CXX
             OpenMP::OpenMP_CUDA
     )
-
     target_include_directories(solve_CPUFJ
             PRIVATE
             "${CMAKE_CURRENT_SOURCE_DIR}/src"
             "${papilo_SOURCE_DIR}/src"
             "${papilo_BINARY_DIR}"
     )
-
-    # Reached transitively: fj_cpu.cuh pulls branch_and_bound/symmetry.hpp, which needs dejavu.
     target_include_directories(solve_CPUFJ SYSTEM PRIVATE
             "${pslp_SOURCE_DIR}/include"
             "${dejavu_SOURCE_DIR}"
