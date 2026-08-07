@@ -39,10 +39,18 @@ bool try_cpufj_binary_solve(fj_cpu_climber_t<i_t, f_t>& climber,
                             f_t time_limit,
                             double work_unit_limit);
 
-// Packed staged score: one int32 holding base * K + bonus
-constexpr int32_t fj_bin_score_shift   = 15;
-constexpr int32_t fj_bin_score_k       = 1 << fj_bin_score_shift;
-constexpr int32_t fj_bin_score_invalid = INT32_MIN;
+// Packed staged score: one int64 holding base * K + bonus, encoding the general path's
+// lexicographic (base, bonus) comparison as a single arithmetic one.
+//
+// The width is what makes the encoding faithful. Both fields aggregate over the rows a variable
+// appears in, so each is bounded by max_var_degree * max_weight -- unbounded above at build time,
+// since DDFW grows the weights. At 15 bits the bonus field overflowed into the base on real
+// instances (chromaticindex1024-7 reaches an aggregate bonus of 122880 against 16384), which
+// silently corrupts the ordering the argmax depends on. 32 bits leaves the base free to use the
+// whole int32 range before the encoding can break.
+constexpr int32_t fj_bin_score_shift   = 32;
+constexpr int64_t fj_bin_score_k       = (int64_t)1 << fj_bin_score_shift;
+constexpr int64_t fj_bin_score_invalid = INT64_MIN;
 
 // Change in one row's weighted score when one variable flips, from the row's signed slack before
 // (os) and after (ns) that flip. base is the weighted change in satisfaction; bonus is the
@@ -59,11 +67,11 @@ static inline void fj_bin_score_delta_parts(
   bonus = weight * (nst - ost);
 }
 
-static inline int32_t fj_bin_packed_score_delta(int32_t os, int32_t ns, int32_t weight)
+static inline int64_t fj_bin_packed_score_delta(int32_t os, int32_t ns, int32_t weight)
 {
   int32_t base = 0, bonus = 0;
   fj_bin_score_delta_parts(os, ns, weight, base, bonus);
-  return base * fj_bin_score_k + bonus;
+  return (int64_t)base * fj_bin_score_k + bonus;
 }
 
 // Padding margin to prevent faults on tail SIMD loads
@@ -77,8 +85,8 @@ void fj_bin_patch_row(const int32_t* variables,
                       const coef_t* coefficients,
                       int32_t kb,
                       int32_t ke,
-                      int32_t* var_score,
-                      int32_t* nnz_score_delta,
+                      int64_t* var_score,
+                      int64_t* nnz_score_delta,
                       const int32_t* assign_i32,
                       int32_t weight,
                       int32_t os_new,
@@ -107,10 +115,10 @@ int32_t fj_bin_walk_rows(int32_t* row_slack,
 // the full score is exactly var_score. Yields best_var of -1 only if n is 0.
 // Tabu is handled by "blocking" the scores corresponding to the tabu vars, and restoring them after the argmax
 // affordable since max_tenure is small
-void fj_bin_argmax(const int32_t* var_score,
+void fj_bin_argmax(const int64_t* var_score,
                    int32_t n,
                    int32_t tile,
                    int32_t& best_var,
-                   int32_t& best_score);
+                   int64_t& best_score);
 
 }  // namespace cuopt::mathematical_optimization::mip
