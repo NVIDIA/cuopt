@@ -57,9 +57,9 @@ constexpr bool k_vector_walk =
 // The layout this assumes is what makes it worth doing. Storing the row's signed slack rather than
 // its lhs collapses the update to
 //
-//   new_slack = old_slack - sign * coef * delta = old_slack - skv[ii] * delta
+//   new_slack = old_slack - coef * delta
 //
-// so bound and lhs never appear, and sign and coef fold into one per-incidence constant. skv and
+// so bound and lhs never appear, and the coefficient is the only per-incidence constant. It and
 // cmax are replicated per incidence, which makes them unit-stride loads. What remains irregular is
 // the slack itself: one gather and one scatter per vector, against four gathers and a scatter for a
 // literal SoA split of the row record.
@@ -70,7 +70,7 @@ constexpr bool k_vector_walk =
 template <typename coef_t>
 int32_t WalkRowsImpl(int32_t* HWY_RESTRICT row_slack,
                      const int32_t* HWY_RESTRICT incident_row,
-                     const coef_t* HWY_RESTRICT signed_coefficient,
+                     const coef_t* HWY_RESTRICT reverse_coefficients,
                      const coef_t* HWY_RESTRICT incident_row_cmax,
                      int32_t incidence_begin,
                      int32_t incidence_end,
@@ -94,7 +94,7 @@ int32_t WalkRowsImpl(int32_t* HWY_RESTRICT row_slack,
       const auto active = hn::FirstN(d, (size_t)(incidence_end - ii));
 
       const V rows = hn::LoadU(d, incident_row + ii);
-      const V skv  = hn::PromoteTo(d, hn::LoadU(dc, signed_coefficient + ii));
+      const V skv  = hn::PromoteTo(d, hn::LoadU(dc, reverse_coefficients + ii));
       const V cmax = hn::PromoteTo(d, hn::LoadU(dc, incident_row_cmax + ii));
 
       const V os = hn::MaskedGatherIndex(active, d, row_slack, rows);
@@ -130,7 +130,7 @@ int32_t WalkRowsImpl(int32_t* HWY_RESTRICT row_slack,
   for (; ii < incidence_end; ++ii) {
     const int32_t row  = incident_row[ii];
     const int32_t os   = row_slack[row];
-    const int32_t ns   = os - (int32_t)signed_coefficient[ii] * delta;
+    const int32_t ns   = os - (int32_t)reverse_coefficients[ii] * delta;
     row_slack[row]     = ns;
     const int32_t cmax = (int32_t)incident_row_cmax[ii];
     if (!(os > cmax && ns > cmax)) out_incidence[n_out++] = ii;
@@ -147,7 +147,6 @@ void PatchRowScalar(const int32_t* HWY_RESTRICT variables,
                     int32_t* HWY_RESTRICT var_score,
                     int32_t* HWY_RESTRICT nnz_score_delta,
                     const int32_t* HWY_RESTRICT assign_i32,
-                    int32_t sign,
                     int32_t weight,
                     int32_t os_new,
                     int32_t skip_var)
@@ -156,7 +155,7 @@ void PatchRowScalar(const int32_t* HWY_RESTRICT variables,
     const int32_t v = variables[k];
     if (v == skip_var) continue;
     const int32_t flip = 1 - 2 * assign_i32[v];
-    const int32_t ns   = os_new - sign * ((int32_t)coefficients[k] * flip);
+    const int32_t ns   = os_new - (int32_t)coefficients[k] * flip;
     const int32_t nc   = fj_bin_packed_score_delta(os_new, ns, weight);
     var_score[v] += nc - nnz_score_delta[k];
     nnz_score_delta[k] = nc;
@@ -175,7 +174,6 @@ static HWY_INLINE void PatchRowBody(D d,
                                     int32_t* HWY_RESTRICT var_score,
                                     int32_t* HWY_RESTRICT nnz_score_delta,
                                     const int32_t* HWY_RESTRICT assign_i32,
-                                    int32_t sign,
                                     int32_t weight,
                                     int32_t os_new,
                                     int32_t skip_var)
@@ -189,13 +187,13 @@ static HWY_INLINE void PatchRowBody(D d,
   if constexpr (!k_mask_remainder) {
     if ((size_t)(ke - kb) < N) {
       PatchRowScalar<coef_t>(variables, coefficients, kb, ke, var_score, nnz_score_delta,
-                             assign_i32, sign, weight, os_new, skip_var);
+                             assign_i32, weight, os_new, skip_var);
       return;
     }
   }
 
   const V vone = hn::Set(d, 1), vzero = hn::Zero(d);
-  const V vsign = hn::Set(d, sign), vskip = hn::Set(d, skip_var);
+  const V vskip = hn::Set(d, skip_var);
   const V vos = hn::Set(d, os_new);
   const V vw = hn::Set(d, weight), vw2 = hn::Set(d, weight / 2);
 
@@ -223,7 +221,7 @@ static HWY_INLINE void PatchRowBody(D d,
     const V flip = vone - hn::ShiftLeft<1>(a01);
     const V coef = hn::PromoteTo(d, hn::LoadU(dc, coefficients + k));
 
-    const V ns = vos - vsign * coef * flip;
+    const V ns = vos - coef * flip;
 
     const V nsat = hn::IfThenElseZero(hn::Ge(ns, vzero), vone);
     const V nst  = hn::IfThenElseZero(hn::Gt(ns, vzero), vone);
@@ -260,7 +258,7 @@ static HWY_INLINE void PatchRowBody(D d,
 
   if constexpr (!k_mask_remainder) {
     PatchRowScalar<coef_t>(variables, coefficients, k, ke, var_score, nnz_score_delta, assign_i32,
-                           sign, weight, os_new, skip_var);
+                           weight, os_new, skip_var);
   }
 }
 
@@ -273,13 +271,12 @@ void PatchRowImpl(const int32_t* HWY_RESTRICT variables,
                   int32_t* HWY_RESTRICT var_score,
                   int32_t* HWY_RESTRICT nnz_score_delta,
                   const int32_t* HWY_RESTRICT assign_i32,
-                  int32_t sign,
                   int32_t weight,
                   int32_t os_new,
                   int32_t skip_var)
 {
   PatchRowBody<coef_t>(hn::ScalableTag<int32_t>(), variables, coefficients, kb, ke, var_score,
-                       nnz_score_delta, assign_i32, sign, weight, os_new, skip_var);
+                       nnz_score_delta, assign_i32, weight, os_new, skip_var);
 }
 
 template <typename coef_t>
@@ -290,13 +287,12 @@ void PatchRowNarrow8Impl(const int32_t* HWY_RESTRICT variables,
                          int32_t* HWY_RESTRICT var_score,
                          int32_t* HWY_RESTRICT nnz_score_delta,
                          const int32_t* HWY_RESTRICT assign_i32,
-                         int32_t sign,
                          int32_t weight,
                          int32_t os_new,
                          int32_t skip_var)
 {
   PatchRowBody<coef_t>(hn::CappedTagIfFixed<int32_t, 8>(), variables, coefficients, kb, ke,
-                       var_score, nnz_score_delta, assign_i32, sign, weight, os_new, skip_var);
+                       var_score, nnz_score_delta, assign_i32, weight, os_new, skip_var);
 }
 
 template <typename coef_t>
@@ -307,13 +303,12 @@ void PatchRowNarrow4Impl(const int32_t* HWY_RESTRICT variables,
                          int32_t* HWY_RESTRICT var_score,
                          int32_t* HWY_RESTRICT nnz_score_delta,
                          const int32_t* HWY_RESTRICT assign_i32,
-                         int32_t sign,
                          int32_t weight,
                          int32_t os_new,
                          int32_t skip_var)
 {
   PatchRowBody<coef_t>(hn::CappedTagIfFixed<int32_t, 4>(), variables, coefficients, kb, ke,
-                       var_score, nnz_score_delta, assign_i32, sign, weight, os_new, skip_var);
+                       var_score, nnz_score_delta, assign_i32, weight, os_new, skip_var);
 }
 
 // Longest row worth sending to each narrower kernel, or 0 where that width is not worth having.
@@ -345,7 +340,6 @@ void PatchRowDispatchImpl(const int32_t* HWY_RESTRICT variables,
                           int32_t* HWY_RESTRICT var_score,
                           int32_t* HWY_RESTRICT nnz_score_delta,
                           const int32_t* HWY_RESTRICT assign_i32,
-                          int32_t sign,
                           int32_t weight,
                           int32_t os_new,
                           int32_t skip_var)
@@ -353,13 +347,13 @@ void PatchRowDispatchImpl(const int32_t* HWY_RESTRICT variables,
   const int32_t row_len = ke - kb;
   if (row_len <= k_narrow4_max) {
     PatchRowNarrow4Impl<coef_t>(variables, coefficients, kb, ke, var_score, nnz_score_delta,
-                                assign_i32, sign, weight, os_new, skip_var);
+                                assign_i32, weight, os_new, skip_var);
   } else if (row_len <= k_narrow8_max) {
     PatchRowNarrow8Impl<coef_t>(variables, coefficients, kb, ke, var_score, nnz_score_delta,
-                                assign_i32, sign, weight, os_new, skip_var);
+                                assign_i32, weight, os_new, skip_var);
   } else {
     PatchRowImpl<coef_t>(variables, coefficients, kb, ke, var_score, nnz_score_delta, assign_i32,
-                         sign, weight, os_new, skip_var);
+                         weight, os_new, skip_var);
   }
 }
 
@@ -463,7 +457,6 @@ using fj_bin_patch_fn_t = void (*)(const int32_t*,
                                    const int32_t*,
                                    int32_t,
                                    int32_t,
-                                   int32_t,
                                    int32_t);
 
 // The vector width is chosen inside the target (see PatchRowDispatchImpl), so the seam carries one
@@ -494,7 +487,7 @@ static const auto fj_bin_argmax_fn = (fj_bin_choose_target(), HWY_DYNAMIC_POINTE
 template <typename coef_t>
 int32_t fj_bin_walk_rows(int32_t* row_slack,
                          const int32_t* incident_row,
-                         const coef_t* signed_coefficient,
+                         const coef_t* reverse_coefficients,
                          const coef_t* incident_row_cmax,
                          int32_t incidence_begin,
                          int32_t incidence_end,
@@ -503,7 +496,7 @@ int32_t fj_bin_walk_rows(int32_t* row_slack,
 {
   return fj_bin_walk_fn(coef_t{})(row_slack,
                                   incident_row,
-                                  signed_coefficient,
+                                  reverse_coefficients,
                                   incident_row_cmax,
                                   incidence_begin,
                                   incidence_end,
@@ -524,13 +517,12 @@ void fj_bin_patch_row(const int32_t* variables,
                       int32_t* var_score,
                       int32_t* nnz_score_delta,
                       const int32_t* assign_i32,
-                      int32_t sign,
                       int32_t weight,
                       int32_t os_new,
                       int32_t skip_var)
 {
   fj_bin_patch_fn(coef_t{})(variables, coefficients, kb, ke, var_score, nnz_score_delta, assign_i32,
-                            sign, weight, os_new, skip_var);
+                            weight, os_new, skip_var);
 }
 
 template void fj_bin_patch_row<int8_t>(const int32_t*,
@@ -542,7 +534,6 @@ template void fj_bin_patch_row<int8_t>(const int32_t*,
                                        const int32_t*,
                                        int32_t,
                                        int32_t,
-                                       int32_t,
                                        int32_t);
 
 template void fj_bin_patch_row<int16_t>(const int32_t*,
@@ -552,7 +543,6 @@ template void fj_bin_patch_row<int16_t>(const int32_t*,
                                         int32_t*,
                                         int32_t*,
                                         const int32_t*,
-                                        int32_t,
                                         int32_t,
                                         int32_t,
                                         int32_t);
