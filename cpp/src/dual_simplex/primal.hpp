@@ -26,7 +26,8 @@ enum class primal_status_t {
   TIME_LIMIT        = 5,
   ITERATION_LIMIT   = 6,
   CONCURRENT_LIMIT  = 7,
-  NOT_LOADED        = 8
+  WORK_LIMIT        = 8,
+  NOT_LOADED        = 9
 };
 
 template <typename i_t, typename f_t>

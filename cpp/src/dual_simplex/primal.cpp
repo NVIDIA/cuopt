@@ -18,6 +18,112 @@
 
 namespace cuopt::mathematical_optimization::simplex {
 
+template <typename f_t>
+struct primal_work_timer_t {
+  primal_work_timer_t(f_t t) : time(t) {}
+  f_t time{0.0};
+  f_t work{0.0};
+};
+
+template <typename f_t>
+primal_work_timer_t<f_t>& operator+=(primal_work_timer_t<f_t>& lhs,
+                                     const primal_work_timer_t<f_t>& rhs)
+{
+  lhs.time += rhs.time;
+  lhs.work += rhs.work;
+  return lhs;
+}
+
+template <typename i_t, typename f_t>
+class primal_timers_t {
+ public:
+  primal_timers_t(bool should_time)
+    : record_time(should_time),
+      pricing_time(0),
+      ftran_time(0),
+      ratio_test_time(0),
+      btran_time(0),
+      delta_z_time(0),
+      update_duals_time(0),
+      lu_update_time(0),
+      lu_factorization_time(0),
+      update_x_time(0)
+  {
+  }
+
+  void start_timer(f_t work)
+  {
+    if (!record_time) { return; }
+    start_time_ = tic();
+    start_work_ = work;
+  }
+
+  primal_work_timer_t<f_t> stop_timer(f_t stop_work)
+  {
+    if (!record_time) { return primal_work_timer_t<f_t>(0.0); }
+    primal_work_timer_t<f_t> result(toc(start_time_));
+    result.work = stop_work - start_work_;
+    return result;
+  }
+
+  void print_one(const simplex_solver_settings_t<i_t, f_t>& settings,
+                 const char* name,
+                 const primal_work_timer_t<f_t>& t,
+                 f_t total_time,
+                 f_t total_work) const
+  {
+    const f_t work_per_sec = t.time > 0.0 ? t.work / t.time : f_t(0);
+    settings.log.printf("%-15s %.2fs %4.1f%% (%.2e work %4.1f%% %.2e/s)\n",
+                        name,
+                        t.time,
+                        total_time > 0.0 ? 100.0 * t.time / total_time : 0.0,
+                        t.work,
+                        total_work > 0.0 ? 100.0 * t.work / total_work : 0.0,
+                        work_per_sec);
+  }
+
+  void print_timers(const simplex_solver_settings_t<i_t, f_t>& settings) const
+  {
+    if (!record_time) { return; }
+    const f_t total_time = pricing_time.time + ftran_time.time + ratio_test_time.time +
+                           btran_time.time + delta_z_time.time + update_duals_time.time +
+                           lu_update_time.time + lu_factorization_time.time + update_x_time.time;
+    const f_t total_work = pricing_time.work + ftran_time.work + ratio_test_time.work +
+                           btran_time.work + delta_z_time.work + update_duals_time.work +
+                           lu_update_time.work + lu_factorization_time.work + update_x_time.work;
+    // clang-format off
+    print_one(settings, "Pricing time", pricing_time, total_time, total_work);
+    print_one(settings, "FTran time", ftran_time, total_time, total_work);
+    print_one(settings, "Ratio test", ratio_test_time, total_time, total_work);
+    print_one(settings, "BTran time", btran_time, total_time, total_work);
+    print_one(settings, "Delta_z time", delta_z_time, total_time, total_work);
+    print_one(settings, "Update duals", update_duals_time, total_time, total_work);
+    print_one(settings, "LU update time", lu_update_time, total_time, total_work);
+    print_one(settings, "LU factor time", lu_factorization_time, total_time, total_work);
+    print_one(settings, "Update x time", update_x_time, total_time, total_work);
+    settings.log.printf("Sum             %.2fs (%.2e work %.2e/s)\n",
+                        total_time,
+                        total_work,
+                        total_time > 0.0 ? total_work / total_time : f_t(0));
+    // clang-format on
+  }
+
+  primal_work_timer_t<f_t> pricing_time;
+  primal_work_timer_t<f_t> ftran_time;
+  primal_work_timer_t<f_t> ratio_test_time;
+  primal_work_timer_t<f_t> btran_time;
+  primal_work_timer_t<f_t> delta_z_time;
+  primal_work_timer_t<f_t> update_duals_time;
+  primal_work_timer_t<f_t> lu_update_time;
+  primal_work_timer_t<f_t> lu_factorization_time;
+  primal_work_timer_t<f_t> update_x_time;
+
+ private:
+  f_t start_time_;
+  f_t start_work_;
+  bool record_time;
+};
+
 namespace {
 
 template <typename i_t, typename f_t>
@@ -156,7 +262,7 @@ i_t phase2_pricing(const lp_problem_t<i_t, f_t>& lp,
       }
     }
   }
-  work_estimate += 4 * (n - m);
+  work_estimate += 5 * (n - m);
   return entering_index;
 }
 
@@ -281,7 +387,7 @@ void compute_delta_z(const csr_matrix_t<i_t, f_t>& Arow,
       const i_t j = Arow.j[p];
       if (vstatus[j] != variable_status_t::BASIC) { delta_z[j] -= Arow.x[p] * delta_y_i; }
     }
-    work_estimate += 4 * (row_end - row_start);
+    work_estimate += 5 * (row_end - row_start);
   }
   work_estimate += 4 * delta_y.i.size();
 }
@@ -422,104 +528,147 @@ i_t primal_ratio_test(const lp_problem_t<i_t, f_t>& lp,
                       f_t& work_estimate)
 {
   const i_t m             = lp.num_rows;
-  const i_t n             = lp.num_cols;
   basic_leaving           = -1;
   i_t leaving_index       = -1;
-  f_t min_val             = inf;
-  f_t current_dx          = 0.0;
   constexpr f_t pivot_tol = 1e-8;
+  constexpr f_t harris_tol = 1e-8;
+
+  // Harris ratio test: two passes.
+  // Pass 1: find the maximum step length alpha_1 such that no variable
+  //         moves more than harris_tol past its bound.
+  // Pass 2: among all candidates with ratio <= alpha_1, pick the one
+  //         with the largest pivot (|delta_x[j]|).
+
+  f_t alpha_1 = inf;
 
   // Entering variable can hit its opposite bound: limit step by that
   if (direction > 0 && lp.upper[entering_index] < inf) {
     const f_t limit = lp.upper[entering_index] - x[entering_index];
-    if (limit >= 0 && limit < min_val) {
-      min_val       = limit;
-      leaving_index = -1;  // no basic leaves; will be handled by caller
+    if (limit >= 0 && limit < alpha_1) { alpha_1 = limit; }
+  } else if (direction < 0 && lp.lower[entering_index] > -inf) {
+    const f_t limit = x[entering_index] - lp.lower[entering_index];
+    if (limit >= 0 && limit < alpha_1) { alpha_1 = limit; }
+  }
+
+  // Pass 1: compute alpha_1 (Harris step)
+  for (i_t k = 0; k < m; ++k) {
+    const i_t j = basic_list[k];
+    if (std::abs(delta_x[j]) <= pivot_tol) { continue; }
+
+    // Already below lower and moving back up: stop exactly at the bound.
+    // No harris tolerance here — these variables are already infeasible
+    // and must not overshoot their bound (needed for Phase I correctness).
+    if (x[j] < lp.lower[j] && delta_x[j] > pivot_tol && lp.lower[j] > -inf) {
+      const f_t ratio = (lp.lower[j] - x[j]) / delta_x[j];
+      if (ratio >= 0 && ratio < alpha_1) { alpha_1 = ratio; }
+    }
+    // Already above upper and moving back down: stop exactly at the bound.
+    if (x[j] > lp.upper[j] && delta_x[j] < -pivot_tol && lp.upper[j] < inf) {
+      const f_t ratio = (lp.upper[j] - x[j]) / delta_x[j];
+      if (ratio >= 0 && ratio < alpha_1) { alpha_1 = ratio; }
+    }
+
+    if (lp.lower[j] > -inf && delta_x[j] < -pivot_tol) {
+      // xj + step * delta_x[j] >= lp.lower[j] - harris_tol
+      f_t neum = lp.lower[j] - x[j] - harris_tol;
+      if (neum > 0 && neum <= settings.primal_tol) { neum = 0.0; }
+      f_t ratio = neum / delta_x[j];
+      if (ratio >= 0 && ratio < alpha_1) { alpha_1 = ratio; }
+    }
+    if (lp.upper[j] < inf && delta_x[j] > pivot_tol) {
+      // xj + step * delta_x[j] <= lp.upper[j] + harris_tol
+      f_t neum = lp.upper[j] - x[j] + harris_tol;
+      if (neum < 0 && -neum <= settings.primal_tol) { neum = 0.0; }
+      f_t ratio = neum / delta_x[j];
+      if (ratio >= 0 && ratio < alpha_1) { alpha_1 = ratio; }
+    }
+  }
+
+  // Pass 2: among candidates with exact ratio <= alpha_1, pick largest pivot
+  f_t best_pivot = 0.0;
+  step_length    = alpha_1;
+
+  // Check entering variable bound (no pivot selection needed — it's fixed at direction)
+  if (direction > 0 && lp.upper[entering_index] < inf) {
+    const f_t limit = lp.upper[entering_index] - x[entering_index];
+    if (limit >= 0 && limit <= alpha_1) {
+      // Entering hits its own bound — this is always pivot = 1.0 effectively
+      step_length   = limit;
+      leaving_index = -1;
       basic_leaving = -1;
+      best_pivot    = inf;  // Always prefer this if it's within alpha_1
     }
   } else if (direction < 0 && lp.lower[entering_index] > -inf) {
     const f_t limit = x[entering_index] - lp.lower[entering_index];
-    if (limit >= 0 && limit < min_val) {
-      min_val       = limit;
+    if (limit >= 0 && limit <= alpha_1) {
+      step_length   = limit;
       leaving_index = -1;
       basic_leaving = -1;
+      best_pivot    = inf;
     }
   }
 
   for (i_t k = 0; k < m; ++k) {
     const i_t j = basic_list[k];
-    if (delta_x[j] == 0.0) { continue; }
+    if (std::abs(delta_x[j]) <= pivot_tol) { continue; }
+
+    const f_t abs_dx = std::abs(delta_x[j]);
 
     // Already below lower and moving back up: stop when we reach the lower bound.
     // Without this, phase I can take an unbounded step (false unbounded) or skip the
     // breakpoint of the piecewise phase-I objective and stall still infeasible.
     if (x[j] < lp.lower[j] && delta_x[j] > pivot_tol && lp.lower[j] > -inf) {
       const f_t ratio = (lp.lower[j] - x[j]) / delta_x[j];
-      if (ratio >= 0 && ratio < min_val) {
-        min_val       = ratio;
+      if (ratio >= 0 && ratio <= alpha_1 && abs_dx > best_pivot) {
+        best_pivot    = abs_dx;
+        step_length   = ratio;
         basic_leaving = k;
         leaving_index = j;
-        current_dx    = delta_x[j];
       }
     }
-    // Already above upper and moving back down: stop when we reach the upper bound.
+    // Already above upper and moving back down
     if (x[j] > lp.upper[j] && delta_x[j] < -pivot_tol && lp.upper[j] < inf) {
       const f_t ratio = (lp.upper[j] - x[j]) / delta_x[j];
-      if (ratio >= 0 && ratio < min_val) {
-        min_val       = ratio;
+      if (ratio >= 0 && ratio <= alpha_1 && abs_dx > best_pivot) {
+        best_pivot    = abs_dx;
+        step_length   = ratio;
         basic_leaving = k;
         leaving_index = j;
-        current_dx    = -delta_x[j];
       }
     }
 
     if (lp.lower[j] > -inf && delta_x[j] < -pivot_tol) {
       // xj + step * delta_x[j] >= lp.lower[j]
-      // step * delta_x[j] >= lp.lower[j] - x[j]
       // step <= (lp.lower[j] - x[j]) / delta_x[j], delta_x[j] < 0
       f_t neum = lp.lower[j] - x[j];
       // A basic sitting below its bound (within the primal tolerance) is on
-      // the bound numerically, but gives a tiny negative ratio. Dropping it lets
-      // the step run straight through the bound, so treat it as a zero-length
-      // block. A genuine violation is left to the branches above, which stop at
-      // the bound when the variable moves back toward it.
+      // the bound numerically. Treat it as a zero-length block.
       if (neum > 0 && neum <= settings.primal_tol) { neum = 0.0; }
       f_t ratio = neum / delta_x[j];
-      if (ratio >= 0 && ratio < min_val) {
-        min_val       = ratio;
+      if (ratio >= 0 && ratio <= alpha_1 && abs_dx > best_pivot) {
+        best_pivot    = abs_dx;
+        step_length   = ratio;
         basic_leaving = k;
         leaving_index = j;
-        current_dx    = -delta_x[j];
-      } else if (ratio >= 0 && ratio < min_val + 1e-9 && -delta_x[j] > current_dx) {
-        min_val       = ratio;
-        basic_leaving = k;
-        leaving_index = j;
-        current_dx    = -delta_x[j];
       }
     }
     if (lp.upper[j] < inf && delta_x[j] > pivot_tol) {
       // xj + step * delta_x[j] <= lp.upper[j]
-      // step * delta_x[j] <= lp.upper[j] - x[j]
       // step <= (lp.upper[j] - x[j]) / delta_x[j], delta_x[j] > 0
       f_t neum = lp.upper[j] - x[j];
-      // Mirror of the lower bound case: slightly above the bound is considered on the bound.
+      // Mirror of the lower bound case: slightly above the bound is on the bound.
       if (neum < 0 && -neum <= settings.primal_tol) { neum = 0.0; }
       f_t ratio = neum / delta_x[j];
-      if (ratio >= 0 && ratio < min_val) {
-        min_val       = ratio;
+      if (ratio >= 0 && ratio <= alpha_1 && abs_dx > best_pivot) {
+        best_pivot    = abs_dx;
+        step_length   = ratio;
         basic_leaving = k;
         leaving_index = j;
-        current_dx    = delta_x[j];
-      } else if (ratio >= 0 && ratio < min_val + 1e-9 && delta_x[j] > current_dx) {
-        min_val       = ratio;
-        basic_leaving = k;
-        leaving_index = j;
-        current_dx    = delta_x[j];
       }
     }
   }
+
   work_estimate += 10 * m;
-  step_length = min_val;
   return leaving_index;
 }
 
@@ -763,7 +912,14 @@ primal_status_t primal_phase2_with_advanced_basis(
   work_estimate += basis_update.work_estimate();
   basis_update.clear_work_estimate();
 
+  if (work_estimate > settings.work_limit) {
+    return primal_status_t::WORK_LIMIT;
+  }
+
+  primal_timers_t<i_t, f_t> timers(false);
+
   while (iter < iter_limit) {
+    timers.start_timer(work_estimate + basis_update.work_estimate());
     i_t nonbasic_entering = -1;
     i_t direction;
     i_t entering_index = phase2_pricing(lp,
@@ -775,6 +931,7 @@ primal_status_t primal_phase2_with_advanced_basis(
                                         nonbasic_entering,
                                         dual_inf,
                                         work_estimate);
+    timers.pricing_time += timers.stop_timer(work_estimate + basis_update.work_estimate());
     if (entering_index == -1) {
       if (phase == 2) {
         // Verify optimality with a consistent basic solution: refactor, put
@@ -883,6 +1040,7 @@ primal_status_t primal_phase2_with_advanced_basis(
           settings.log.printf("Primal residual ||Ax-b||:   %.2e\n",
                               primal_constraint_residual(lp, x));
         }
+        timers.print_timers(settings);
         return primal_status_t::OPTIMAL;
       } else {
         primal_inf = primal_infeasibility(lp, settings, vstatus, x, num_primal_inf, work_estimate);
@@ -968,6 +1126,7 @@ primal_status_t primal_phase2_with_advanced_basis(
     work_estimate += 3 * rhs_sparse.i.size();
     sparse_vector_t<i_t, f_t> scaled_delta_xB_sparse(m, 0);
     sparse_vector_t<i_t, f_t> utilde_sparse(m, 0);
+    timers.start_timer(work_estimate + basis_update.work_estimate());
     basis_update.b_solve(rhs_sparse, scaled_delta_xB_sparse, utilde_sparse);
     std::vector<f_t> scaled_delta_xB(m);
     scaled_delta_xB_sparse.to_dense(scaled_delta_xB);
@@ -984,6 +1143,7 @@ primal_status_t primal_phase2_with_advanced_basis(
     }
     work_estimate += 2 * (n - m);
     delta_x[entering_index] = direction;
+    timers.ftran_time += timers.stop_timer(work_estimate + basis_update.work_estimate());
 
 #ifdef CHECK_NULLSPACE
     std::vector<f_t> residual(m, 0.0);
@@ -997,6 +1157,7 @@ primal_status_t primal_phase2_with_advanced_basis(
     }
 #endif
 
+    timers.start_timer(work_estimate + basis_update.work_estimate());
     i_t basic_leaving;
     f_t step_length;
     i_t leaving_index = primal_ratio_test(lp,
@@ -1010,6 +1171,7 @@ primal_status_t primal_phase2_with_advanced_basis(
                                           entering_index,
                                           direction,
                                           work_estimate);
+    timers.ratio_test_time += timers.stop_timer(work_estimate + basis_update.work_estimate());
     if (leaving_index == -1 && step_length >= inf) {
       settings.log.printf("No leaving variable. Primal unbounded?\n");
       return primal_status_t::PRIMAL_UNBOUNDED;
@@ -1017,10 +1179,12 @@ primal_status_t primal_phase2_with_advanced_basis(
 
     const bool basis_updated = (leaving_index != -1);
     bool recompute_duals     = false;
+    timers.start_timer(work_estimate + basis_update.work_estimate());
     for (i_t j = 0; j < n; ++j) {
       x[j] += step_length * delta_x[j];
     }
     work_estimate += 2 * n;
+    timers.update_x_time += timers.stop_timer(work_estimate + basis_update.work_estimate());
 
 #ifdef COMPUTE_RESIDUAL
     f_t debug_primal_residual = primal_constraint_residual(lp, x);
@@ -1038,7 +1202,9 @@ primal_status_t primal_phase2_with_advanced_basis(
       bool should_refactor = basis_update.num_updates() > settings.refactor_frequency;
       f_t dual_step_length = 0.0;
       if (!should_refactor) {
+        timers.start_timer(work_estimate + basis_update.work_estimate());
         compute_delta_y(basis_update, basic_leaving, delta_y, etilde);
+        timers.btran_time += timers.stop_timer(work_estimate + basis_update.work_estimate());
         const f_t pivot  = scaled_delta_xB[basic_leaving];
         dual_step_length = compute_dual_step_length(z[entering_index], pivot);
       }
@@ -1076,12 +1242,19 @@ primal_status_t primal_phase2_with_advanced_basis(
       x[leaving_index] = leave_bound;
 
       if (!should_refactor) {
+        timers.start_timer(work_estimate + basis_update.work_estimate());
         compute_delta_z(Arow, vstatus, delta_y, delta_z, work_estimate);
+        timers.delta_z_time += timers.stop_timer(work_estimate + basis_update.work_estimate());
+        timers.start_timer(work_estimate + basis_update.work_estimate());
         update_y(dual_step_length, delta_y, y, work_estimate);
         update_z(dual_step_length, nonbasic_list, entering_index, delta_z, z, work_estimate);
+        timers.update_duals_time += timers.stop_timer(work_estimate + basis_update.work_estimate());
+        timers.start_timer(work_estimate + basis_update.work_estimate());
         should_refactor = basis_update.update(utilde_sparse, etilde, basic_leaving) == 1;
+        timers.lu_update_time += timers.stop_timer(work_estimate + basis_update.work_estimate());
       }
       if (should_refactor) {
+        timers.start_timer(work_estimate + basis_update.work_estimate());
         i_t rank = basis_update.refactor_basis(
           lp.A, settings, lp.lower, lp.upper, start_time, basic_list, nonbasic_list, vstatus);
         if (rank == CONCURRENT_HALT_RETURN) { return primal_status_t::CONCURRENT_LIMIT; }
@@ -1097,6 +1270,8 @@ primal_status_t primal_phase2_with_advanced_basis(
         set_primal_variables_on_bounds(lp, settings, vstatus, x, work_estimate);
         compute_basic_primal_variables(
           lp, basis_update, basic_list, nonbasic_list, x, work_estimate);
+        timers.lu_factorization_time +=
+          timers.stop_timer(work_estimate + basis_update.work_estimate());
       } else if (rebuild_x_after_bound_snap) {
         // FT update already matches the new basis; recompute x_B with the leaving variable
         // snapped onto its bound.
@@ -1172,9 +1347,17 @@ primal_status_t primal_phase2_with_advanced_basis(
     work_estimate += basis_update.work_estimate();
     basis_update.clear_work_estimate();
 
-    if (now > settings.time_limit) { return primal_status_t::TIME_LIMIT; }
+    if (now > settings.time_limit) {
+      timers.print_timers(settings);
+      return primal_status_t::TIME_LIMIT;
+    }
+    if (work_estimate > settings.work_limit) {
+      timers.print_timers(settings);
+      return primal_status_t::WORK_LIMIT;
+    }
   }
 
+  timers.print_timers(settings);
   if (iter >= iter_limit) { return primal_status_t::ITERATION_LIMIT; }
 
   return primal_status_t::NUMERICAL;

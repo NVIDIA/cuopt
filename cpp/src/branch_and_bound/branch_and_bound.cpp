@@ -3440,6 +3440,7 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(
     simplex_solver_settings_t<i_t, f_t> primal_settings = settings_;
     primal_settings.log.log                             = false;
     primal_settings.time_limit = settings_.time_limit - toc(exploration_stats_.start_time);
+    primal_settings.work_limit = root_relax_work_estimate_;
     simplex::primal_status_t lp_status =
       simplex::primal_phase2_with_advanced_basis(2,
                                                  exploration_stats_.start_time,
@@ -3503,10 +3504,11 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(
 
   settings_.log.printf(
     "Degenerate feasibility pump: Simplex iterations %d, Best number of fractional variables "
-    "%d/%d. Time %.2f\n",
+    "%d/%d. Work estimate %.2e, Time %.2f\n",
     iter,
     best_num_fractional,
     num_fractional,
+    primal_work_estimate,
     toc(dual_degenerate_feasibility_pump_start_time));
   if (best_num_fractional < num_fractional) {
     // Translate the vstatus from the reduced problem to the vstatus for the original problem
@@ -4032,7 +4034,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   solving_root_relaxation_ = true;
 
   f_t root_relax_start_time    = tic();
-  f_t root_relax_work_estimate = 0.0;
+  root_relax_work_estimate_ = 0.0;
   if (!enable_concurrent_lp_root_solve()) {
     // RINS/SUBMIP path
     settings_.log.printf("\n");
@@ -4046,7 +4048,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                                            nonbasic_list,
                                                            root_vstatus_,
                                                            edge_norms_,
-                                                           root_relax_work_estimate);
+                                                           root_relax_work_estimate_);
     root_relax_solved_by                   = DualSimplex;
     exploration_stats_.total_simplex_iters = root_relax_soln_.iterations;
 
@@ -4060,7 +4062,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                         basic_list,
                                         nonbasic_list,
                                         edge_norms_,
-                                        root_relax_work_estimate);
+                                        root_relax_work_estimate_);
   }
 
   solving_root_relaxation_               = false;
@@ -4122,8 +4124,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                              method_to_string(root_relax_solved_by));
   settings_.log.printf("Dual simplex iteration %d work estimate %.2e work per second %.2e\n",
                        root_iterations,
-                       root_relax_work_estimate,
-                       root_relax_work_estimate / root_relax_elapsed_time);
+                       root_relax_work_estimate_,
+                       root_relax_work_estimate_ / root_relax_elapsed_time);
   settings_.log.printf("Root relaxation objective %+.8e\n\n", root_relax_soln_.user_objective);
 
   assert(root_vstatus_.size() == original_lp_.num_cols);
