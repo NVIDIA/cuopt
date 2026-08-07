@@ -7,13 +7,17 @@
 
 #pragma once
 
+#include <cuopt/export.hpp>
+
 #include <cstdint>
 #include <span>
 #include <string>
 #include <type_traits>
 #include <vector>
 
-namespace cuopt::mathematical_optimization::io {
+namespace cuopt {
+namespace CUOPT_EXPORT mathematical_optimization {
+namespace io {
 
 /**
  * @brief A representation of a linear programming (LP) optimization problem
@@ -401,4 +405,6 @@ template <typename i_t, typename f_t>
 void canonicalize_quadratic_constraints(
   std::vector<typename mps_data_model_t<i_t, f_t>::quadratic_constraint_t>& constraints);
 
-}  // namespace cuopt::mathematical_optimization::io
+}  // namespace io
+}  // namespace CUOPT_EXPORT mathematical_optimization
+}  // namespace cuopt

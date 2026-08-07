@@ -7,9 +7,12 @@
 
 #pragma once
 
+#include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/io/data_model_view.hpp>
 
-namespace cuopt::mathematical_optimization::io {
+namespace cuopt {
+namespace CUOPT_EXPORT mathematical_optimization {
+namespace io {
 
 /**
  * @brief Writes the problem to an MPS formatted file
@@ -23,4 +26,6 @@ namespace cuopt::mathematical_optimization::io {
 template <typename i_t, typename f_t>
 void write_mps(const data_model_view_t<i_t, f_t>& problem, const std::string& mps_file_path);
 
-}  // namespace cuopt::mathematical_optimization::io
+}  // namespace io
+}  // namespace CUOPT_EXPORT mathematical_optimization
+}  // namespace cuopt
