@@ -8,14 +8,9 @@
 #pragma once
 
 #include <cstdint>
-#include <memory>
 
-// Seam between the general CPU FJ path and the binary fast path. Only fj_cpu.cu includes this;
-// fj_cpu.cuh forward-declares fj_binary_state_t so the climber can hold one without the general
-// header depending on the fast path.
-//
 // The fast path applies to instances whose variables are all binary and whose rows carry integer
-// coefficients within int8 or int16 range. On those it runs an integer engine: exact feasibility
+// coefficients within int8 or int16 range. On those it runs a SIMD integer engine: exact feasibility
 // against a single row bound, a live per-variable score patched through stored per-nnz
 // contributions, and a global argmax move selection.
 
@@ -24,7 +19,6 @@ namespace cuopt::mathematical_optimization::mip {
 template <typename i_t, typename f_t>
 struct fj_cpu_climber_t;
 
-// Why an instance was refused, logged at DEBUG by the build entry.
 enum class fj_binary_reject_t : uint8_t {
   none,
   empty_problem,
@@ -36,49 +30,16 @@ enum class fj_binary_reject_t : uint8_t {
   lhs_headroom,
   narrow_check_failed,
 };
-
 const char* fj_binary_reject_name(fj_binary_reject_t reason);
 
-// Built state for one eligible instance. The concrete engine is templated on coefficient width
-// (int8_t or int16_t) and lives in fj_cpu_binary.cu; the width choice is made once at build time,
-// so dispatching through this base costs one virtual call per solve.
+// Returns true if the fast path ran (eligible and narrowed); false if declined, in which case the caller should take the general path.
+// TODO: worth revisiting if the same climber is solved repeatedly to cache the fastpath state
 template <typename i_t, typename f_t>
-struct fj_binary_state_t {
-  virtual ~fj_binary_state_t() = default;
+bool try_cpufj_binary_solve(fj_cpu_climber_t<i_t, f_t>& climber,
+                            f_t time_limit,
+                            double work_unit_limit);
 
-  virtual void solve(fj_cpu_climber_t<i_t, f_t>& climber,
-                     f_t time_limit,
-                     double work_unit_limit) = 0;
-
-  virtual int coefficient_bits() const   = 0;  // 8 or 16
-  virtual int n_split_constraints() const = 0;
-  virtual i_t iterations() const          = 0;
-
-  // Largest per-variable aggregate base and bonus observed at end of solve. The packed score is
-  // order-preserving only while these stay under 2^16 and 2^14 respectively.
-  virtual void saturation(int& max_aggregate_base, int& max_aggregate_bonus) const = 0;
-};
-
-// Runs predicate -> one-sided split -> narrow. A pure function of the climber's host problem
-// mirrors and its incoming constraint weights, so it is well defined wherever those are populated.
-// Populates climber.binary_fast on success; leaves it empty and logs the reason otherwise.
-template <typename i_t, typename f_t>
-void try_build_binary_fastpath(fj_cpu_climber_t<i_t, f_t>& climber);
-
-// ---------------------------------------------------------------------------------------------
-// Hot kernels and the score-delta formula they share with the engine.
-//
-// The kernels live in fj_cpu_binary_kernels.cpp, built with Google Highway, which compiles the
-// bodies once per SIMD target and dispatches at runtime. That file is host-compiled: nvcc's
-// frontend rejects Highway's x86 headers, which reinterpret-cast intrinsic vectors to
-// compiler-specific vector types (GCC vector extensions in the constant-folding path, __m128bh
-// for bfloat16). Every argument below is a plain pointer or scalar, so the seam names no cuOpt or
-// CUDA type.
-// ---------------------------------------------------------------------------------------------
-
-// Packed staged score: one int32 holding base * K + bonus. K exceeds twice the largest |bonus| the
-// engine produces, so integer ordering on the packed word reproduces the lexicographic (base,
-// bonus) ordering the general path gets from fj_staged_score_t.
+// Packed staged score: one int32 holding base * K + bonus
 constexpr int32_t fj_bin_score_shift   = 15;
 constexpr int32_t fj_bin_score_k       = 1 << fj_bin_score_shift;
 constexpr int32_t fj_bin_score_invalid = INT32_MIN;
@@ -87,9 +48,7 @@ constexpr int32_t fj_bin_score_invalid = INT32_MIN;
 // (os) and after (ns) that flip. base is the weighted change in satisfaction; bonus is the
 // weighted change in strict slack. When both states are violated the improving direction earns
 // half weight, matching excess_improvement_weight of 1/2.
-//
-// Single source of the formula: the engine scores moves with it, compute_saturation walks it, and
-// the vector kernels reproduce it lane-wise.
+// purpose: implements the scoring delta logic from feasibility_jump.cuh in a form easier to port to SIMD
 static inline void fj_bin_score_delta_parts(
   int32_t os, int32_t ns, int32_t weight, int32_t& base, int32_t& bonus)
 {
@@ -107,43 +66,14 @@ static inline int32_t fj_bin_packed_score_delta(int32_t os, int32_t ns, int32_t 
   return base * fj_bin_score_k + bonus;
 }
 
-// Elements of padding the per-nnz arrays must carry past nnz, in int32 units. A target that masks
-// its row remainder loads and stores a whole vector at the last row of the matrix, and the padding
-// is what keeps that off memory it does not own. A target that peels the remainder into a scalar
-// tail stops at the row end and asks for nothing, so this returns 0 there.
-int32_t fj_bin_simd_padding();
+// Padding margin to prevent faults on tail SIMD loads
+constexpr int32_t fj_bin_simd_padding = 256;
 
-// Vector width the row patch runs at. A gather costs the same whether its lanes carry data or are
-// masked off, so a row filling only part of a native vector is cheaper through a narrower one; past
-// the crossover the extra vector and its extra full gather cost more than the idle lanes.
-enum class fj_bin_patch_width_t : int32_t { narrow4 = 0, narrow8 = 1, native = 2 };
-
-// Longest row for which each narrower width beats the native one, or 0 where that width is not
-// worth offering on this target: a width is offered only when it is strictly narrower than the
-// native vector, and scalable targets decline both.
-int32_t fj_bin_simd_narrow4_max();
-int32_t fj_bin_simd_narrow8_max();
-
-static inline fj_bin_patch_width_t fj_bin_patch_width_for(int32_t row_len,
-                                                          int32_t narrow4_max,
-                                                          int32_t narrow8_max)
-{
-  if (row_len <= narrow4_max) return fj_bin_patch_width_t::narrow4;
-  if (row_len <= narrow8_max) return fj_bin_patch_width_t::narrow8;
-  return fj_bin_patch_width_t::native;
-}
-
-// Patch every variable of one row against the row's current signed slack, skipping skip_var. The
+// Patch every variable of one row against the row's current signed slack. The
 // move case passes the post-move slack and the flipped variable's index; the reweight case passes
 // the unchanged slack and -1, which matches no variable index.
-//
-// Reads and writes up to fj_bin_simd_padding() elements from kb, so variables, coefficients and
-// nnz_score_delta must carry that padding.
-//
-// Defined in the host-compiled kernels TU and explicitly instantiated there for int8_t and int16_t.
 template <typename coef_t>
-void fj_bin_patch_row(fj_bin_patch_width_t width,
-                      const int32_t* variables,
+void fj_bin_patch_row(const int32_t* variables,
                       const coef_t* coefficients,
                       int32_t kb,
                       int32_t ke,
@@ -155,48 +85,15 @@ void fj_bin_patch_row(fj_bin_patch_width_t width,
                       int32_t os_new,
                       int32_t skip_var);
 
-// Incidences handed to fj_bin_walk_rows per call, and so the size of the caller's output buffer.
-// Large enough that the dynamic dispatch and the call's setup amortize away -- a variable of
-// supportcase22 averages 344 incidences, so one or two calls per move -- and small enough that the
-// buffer is a stack array and its touched part stays in L1. A multiple of every supported lane
-// count, so only a variable's last tile has a masked remainder.
 constexpr int32_t fj_bin_walk_tile = 256;
 
-// Advance every row incident to one flipped variable, and report which of those visits the caller
-// must finish by hand.
-//
-// An "incidence" is one (variable, row) pair of the matrix, so the reverse CSR indexed by a
-// variable's [incidence_begin, incidence_end) names the rows that variable appears in. Three arrays
-// are read at that index, all at unit stride:
-//
-//   incident_row[i]       the row this incidence touches
-//   signed_coefficient[i] sign * coefficient, folded once at build time
-//   incident_row_cmax[i]  that row's max|coef|, replicated here so it need not be gathered
-//
-// The last two are structural and fixed for the life of the solve. row_slack[r] is indexed by row,
-// and holds sign * (bound - lhs) -- the signed slack the engine stores in place of lhs, which is
-// what reduces the update to a subtraction. delta is the flip direction, +1 or -1, uniform over the
-// call.
+// Advance every row incident to one flipped variable within apply_move, and report which of those visits the caller
+// must finish by hand (e.g. if the row needs patching)
 //
 // For every incidence i in the range this applies
 //   row_slack[incident_row[i]] -= signed_coefficient[i] * delta
 // then writes to out_incidence, in increasing order, the subset of i whose row is not deeply
-// satisfied on both sides of the flip -- 15.1% of visits on supportcase22 -- and returns how many.
-// Everything those visits still need is indirect (the row's weight, the own-score delta, the
-// violated-set transitions, the patch) and stays with the caller.
-//
-// The caller drives this a tile at a time, running each tile's tail before asking for the next, so
-// out_incidence is a fj_bin_walk_tile-sized buffer the caller can keep on its stack rather than one
-// sized to the widest reverse degree in the matrix. Tiling this way rather than interleaving the
-// tail into the vector loop keeps every patch call outside it: the loop over lanes lives here,
-// behind a dynamic dispatch pointer that cannot be inlined, while the tail needs engine-side state
-// this translation unit cannot reach. A tile still runs the vector body many times before yielding,
-// which is what lets consecutive gathers overlap.
-//
-// out_incidence must hold incidence_end - incidence_begin entries. Reads up to
-// fj_bin_simd_padding() elements past incidence_end from the three per-incidence arrays. Interior
-// tiles read into the next tile, which is in bounds; the final one reads past the variable's range,
-// so those arrays carry that padding.
+// satisfied on both sides of the flip and returns how many.
 template <typename coef_t>
 int32_t fj_bin_walk_rows(int32_t* row_slack,
                          const int32_t* incident_row,
@@ -209,10 +106,8 @@ int32_t fj_bin_walk_rows(int32_t* row_slack,
 
 // Argmax over var_score, scanning all n variables. Valid while the objective weight is zero, where
 // the full score is exactly var_score. Yields best_var of -1 only if n is 0.
-//
-// Carries no tabu argument: at most a ring's worth of variables are tabu at once, so the caller
-// holds those few at fj_bin_score_invalid across the call instead of making this read a per-variable
-// tenure array. That keeps the scan to four bytes per variable.
+// Tabu is handled by "blocking" the scores corresponding to the tabu vars, and restoring them after the argmax
+// affordable since max_tenure is small
 void fj_bin_argmax(const int32_t* var_score,
                    int32_t n,
                    int32_t tile,
