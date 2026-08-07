@@ -36,13 +36,6 @@ namespace hn = hwy::HWY_NAMESPACE;
 constexpr bool k_mask_remainder =
   (HWY_TARGET <= HWY_AVX3) || HWY_TARGET_IS_SVE || (HWY_TARGET == HWY_RVV);
 
-// Padding the caller must carry past nnz. Only a masking target reads past a row's end; a peeling
-// target stops at ke, so it asks for nothing and its buffers keep their natural size.
-int32_t PaddingImpl()
-{
-  return k_mask_remainder ? (int32_t)hn::Lanes(hn::ScalableTag<int32_t>()) : 0;
-}
-
 // Whether the row walk below is worth vectorizing on this target. It needs a real gather to read the
 // slacks and a real compress to emit the tail list; where either is emulated the emulation costs
 // more than the scalar loop it replaces, since 85% of visits do nothing but subtract and compare.
@@ -420,7 +413,6 @@ HWY_EXPORT_T(PatchRowNatI16, PatchRowImpl<int16_t>);
 HWY_EXPORT_T(PatchRowN8I16, PatchRowNarrow8Impl<int16_t>);
 HWY_EXPORT_T(PatchRowN4I16, PatchRowNarrow4Impl<int16_t>);
 HWY_EXPORT(ArgmaxImpl);
-HWY_EXPORT(PaddingImpl);
 HWY_EXPORT(Narrow4MaxImpl);
 HWY_EXPORT(Narrow8MaxImpl);
 
@@ -455,7 +447,7 @@ using fj_bin_patch_fn_t = void (*)(const int32_t*,
                                    int32_t,
                                    int32_t);
 
-// Indexed by fj_bin_patch_width_t.
+// Indexed by width: 0 = 4-lane, 1 = 8-lane, 2 = native.
 static const fj_bin_patch_fn_t<int8_t> fj_bin_patch_i8[3] = {
   (fj_bin_choose_target(), HWY_DYNAMIC_POINTER_T(PatchRowN4I8)),
   (fj_bin_choose_target(), HWY_DYNAMIC_POINTER_T(PatchRowN8I8)),
@@ -472,6 +464,24 @@ static const fj_bin_patch_fn_t<int16_t> fj_bin_patch_i16[3] = {
 static const fj_bin_patch_fn_t<int8_t>* fj_bin_patch_table(int8_t) { return fj_bin_patch_i8; }
 static const fj_bin_patch_fn_t<int16_t>* fj_bin_patch_table(int16_t) { return fj_bin_patch_i16; }
 
+static const auto fj_bin_narrow4_max_fn =
+  (fj_bin_choose_target(), HWY_DYNAMIC_POINTER(Narrow4MaxImpl));
+static const auto fj_bin_narrow8_max_fn =
+  (fj_bin_choose_target(), HWY_DYNAMIC_POINTER(Narrow8MaxImpl));
+
+// Resolved once at load: a gather costs the same whether its lanes carry data or are masked off, so
+// a row filling only part of a native vector is cheaper through a narrower one. Scalable targets
+// decline both (see Narrow*MaxImpl).
+static const int32_t fj_bin_n4_max = fj_bin_narrow4_max_fn();
+static const int32_t fj_bin_n8_max = fj_bin_narrow8_max_fn();
+
+static int32_t fj_bin_patch_width_index(int32_t row_len)
+{
+  if (row_len <= fj_bin_n4_max) return 0;
+  if (row_len <= fj_bin_n8_max) return 1;
+  return 2;
+}
+
 template <typename coef_t>
 using fj_bin_walk_fn_t = int32_t (*)(
   int32_t*, const int32_t*, const coef_t*, const coef_t*, int32_t, int32_t, int32_t, int32_t*);
@@ -485,13 +495,6 @@ static fj_bin_walk_fn_t<int8_t> fj_bin_walk_fn(int8_t) { return fj_bin_walk_i8; 
 static fj_bin_walk_fn_t<int16_t> fj_bin_walk_fn(int16_t) { return fj_bin_walk_i16; }
 
 static const auto fj_bin_argmax_fn = (fj_bin_choose_target(), HWY_DYNAMIC_POINTER(ArgmaxImpl));
-static const auto fj_bin_padding_fn = (fj_bin_choose_target(), HWY_DYNAMIC_POINTER(PaddingImpl));
-static const auto fj_bin_narrow4_max_fn =
-  (fj_bin_choose_target(), HWY_DYNAMIC_POINTER(Narrow4MaxImpl));
-static const auto fj_bin_narrow8_max_fn =
-  (fj_bin_choose_target(), HWY_DYNAMIC_POINTER(Narrow8MaxImpl));
-
-int32_t fj_bin_simd_padding() { return fj_bin_padding_fn(); }
 
 template <typename coef_t>
 int32_t fj_bin_walk_rows(int32_t* row_slack,
@@ -518,12 +521,8 @@ template int32_t fj_bin_walk_rows<int8_t>(
 template int32_t fj_bin_walk_rows<int16_t>(
   int32_t*, const int32_t*, const int16_t*, const int16_t*, int32_t, int32_t, int32_t, int32_t*);
 
-int32_t fj_bin_simd_narrow4_max() { return fj_bin_narrow4_max_fn(); }
-int32_t fj_bin_simd_narrow8_max() { return fj_bin_narrow8_max_fn(); }
-
 template <typename coef_t>
-void fj_bin_patch_row(fj_bin_patch_width_t width,
-                      const int32_t* variables,
+void fj_bin_patch_row(const int32_t* variables,
                       const coef_t* coefficients,
                       int32_t kb,
                       int32_t ke,
@@ -535,13 +534,14 @@ void fj_bin_patch_row(fj_bin_patch_width_t width,
                       int32_t os_new,
                       int32_t skip_var)
 {
-  fj_bin_patch_table(coef_t{})[(int)width](variables, coefficients, kb, ke, var_score,
-                                           nnz_score_delta, assign_i32, sign, weight, os_new,
-                                           skip_var);
+  // The offsets are already in hand, so the width choice is a compare rather than a stored per-row
+  // flag.
+  fj_bin_patch_table(coef_t{})[fj_bin_patch_width_index(ke - kb)](
+    variables, coefficients, kb, ke, var_score, nnz_score_delta, assign_i32, sign, weight, os_new,
+    skip_var);
 }
 
-template void fj_bin_patch_row<int8_t>(fj_bin_patch_width_t,
-                                       const int32_t*,
+template void fj_bin_patch_row<int8_t>(const int32_t*,
                                        const int8_t*,
                                        int32_t,
                                        int32_t,
@@ -553,8 +553,7 @@ template void fj_bin_patch_row<int8_t>(fj_bin_patch_width_t,
                                        int32_t,
                                        int32_t);
 
-template void fj_bin_patch_row<int16_t>(fj_bin_patch_width_t,
-                                        const int32_t*,
+template void fj_bin_patch_row<int16_t>(const int32_t*,
                                         const int16_t*,
                                         int32_t,
                                         int32_t,

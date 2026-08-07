@@ -22,17 +22,6 @@
 
 namespace cuopt::mathematical_optimization::mip {
 
-// Binary fast-path state. Defined in fj_cpu_binary.cuh, which only fj_cpu.cu includes, so this
-// header stays independent of the fast path. The deleter is defined out of line for the same
-// reason, mirroring fj_cpu_worker_t::fj_cpu_deleter_t.
-template <typename i_t, typename f_t>
-struct fj_binary_state_t;
-
-template <typename i_t, typename f_t>
-struct fj_binary_state_deleter_t {
-  void operator()(fj_binary_state_t<i_t, f_t>* ptr) const;
-};
-
 template <typename i_t, typename f_t>
 class probing_cache_t;
 
@@ -227,11 +216,6 @@ struct fj_cpu_climber_t {
   instrumentation_aggregator_t memory_aggregator;
   // TODO atomic ref? c++20
   std::atomic<bool>& preemption_flag;
-
-  // Populated by try_build_binary_fastpath when the instance is all-binary with integer
-  // coefficients in int8/int16 range. Empty on every other instance, in which case cpufj_solve
-  // runs the general loop below.
-  std::unique_ptr<fj_binary_state_t<i_t, f_t>, fj_binary_state_deleter_t<i_t, f_t>> binary_fast;
 };
 
 template <typename i_t, typename f_t>
