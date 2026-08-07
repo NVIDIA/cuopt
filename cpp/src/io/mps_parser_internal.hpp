@@ -66,8 +66,8 @@ void check_symmetric_offdiagonal_pairs(const std::vector<i_t>& rows,
  */
 template <typename i_t, typename f_t>
 CUOPT_EXPORT void canonicalize_coo_matrix(std::vector<i_t>& rows,
-                             std::vector<i_t>& cols,
-                             std::vector<f_t>& vals);
+                                          std::vector<i_t>& cols,
+                                          std::vector<f_t>& vals);
 
 /**
  * @brief Different possible types of 'ROWS'
