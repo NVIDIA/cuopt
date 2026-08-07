@@ -12,7 +12,8 @@
 #include <atomic>
 #include <memory>
 
-// Forward declarations — full types live in libcuopt_mathematical_optimization / libcuopt_grpc headers.
+// Forward declarations — full types live in libcuopt_mathematical_optimization / libcuopt_grpc
+// headers.
 namespace cuopt::mathematical_optimization {
 
 template <typename i_t, typename f_t>
@@ -43,7 +44,8 @@ using solve_mip_remote_fn_t = std::unique_ptr<mip_solution_interface_t<int, doub
   cpu_optimization_problem_t<int, double> const&, mip_solver_settings_t<int, double> const&);
 
 /**
- * @brief Registry slots defined in libcuopt_mathematical_optimization.so (remote_solve_registry.cpp).
+ * @brief Registry slots defined in libcuopt_mathematical_optimization.so
+ * (remote_solve_registry.cpp).
  *
  * Null until libcuopt_grpc.so is loaded and calls register_remote_solvers(). Atomic
  * because the registering ELF constructor runs on whichever thread triggers the lazy
