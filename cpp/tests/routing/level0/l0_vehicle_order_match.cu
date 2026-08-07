@@ -132,5 +132,3 @@ INSTANTIATE_TEST_SUITE_P(level0_vehicle_order_match,
 }  // namespace test
 }  // namespace routing
 }  // namespace cuopt
-
-CUOPT_TEST_PROGRAM_MAIN()
