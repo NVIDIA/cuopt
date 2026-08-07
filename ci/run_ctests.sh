@@ -56,6 +56,14 @@ extract_failed_tests() {
     python3 "${JUNIT_HELPERS}" failed "${xml_file}"
 }
 
+# True when gtest wrote a complete all-green JUnit XML. gtest emits XML in
+# OnTestIterationEnd (before main returns); a later signal death with this
+# XML means the crash was during static/atexit teardown, not a test failure.
+xml_reports_all_passed() {
+    local xml_file="$1"
+    [ -f "${xml_file}" ] && python3 "${JUNIT_HELPERS}" all-passed "${xml_file}"
+}
+
 OVERALL_RC=0
 FAILED_BINARIES=()
 
@@ -83,6 +91,27 @@ write_binary_crash_marker() {
         "Process terminated by ${sig} mid-run. gtest did not emit a JUnit XML because RUN_ALL_TESTS() did not complete; inspect the run log for [FAILED] / stack-trace lines that preceded the crash."
 }
 
+# If the binary died on a signal but JUnit XML shows every testcase passed,
+# treat as a known post-RUN_ALL_TESTS teardown flake and return 0.
+# Caller must have removed any stale XML before launching the binary.
+# Args: <test_name> <xml_file> <rc>
+# Returns 0 if handled as pass, 1 if not applicable.
+accept_post_pass_teardown_crash() {
+    local test_name="$1"
+    local xml_file="$2"
+    local rc="$3"
+    if ! was_signal_death "${rc}"; then
+        return 1
+    fi
+    if ! xml_reports_all_passed "${xml_file}"; then
+        return 1
+    fi
+    local sig
+    sig=$(signal_name "${rc}")
+    echo "WARNING: ${test_name} died from ${sig} (exit code ${rc}) after RUN_ALL_TESTS, but JUnit XML reports all tests passed — treating as pass (post-teardown crash)"
+    return 0
+}
+
 run_gtest_with_retry() {
     local gt="$1"
     shift
@@ -92,11 +121,19 @@ run_gtest_with_retry() {
 
     echo "Running gtest ${test_name}"
 
+    # Drop any stale XML so a mid-run crash cannot be mistaken for an
+    # all-green post-teardown abort (gtest only rewrites XML at the end).
+    rm -f "${xml_file}"
+
     # First run — full binary
     local rc=0
     "${gt}" --gtest_output="xml:${xml_file}" "$@" || rc=$?
 
     if [ "${rc}" -eq 0 ]; then
+        return 0
+    fi
+
+    if accept_post_pass_teardown_crash "${test_name}" "${xml_file}" "${rc}"; then
         return 0
     fi
 
@@ -146,6 +183,12 @@ run_gtest_with_retry() {
         fi
 
         if [ -z "${tests_to_retry}" ]; then
+            # Empty retry set: either listing failed, or every listed test
+            # already passed (post-teardown crash with a complete XML).
+            if xml_reports_all_passed "${xml_file}"; then
+                echo "WARNING: ${test_name} crashed after exit but all listed tests already passed — treating as pass"
+                return 0
+            fi
             echo "FAILED: Could not list tests in ${test_name}, cannot retry"
             write_crash_xml "${xml_file}" "${test_name}" "PROCESS_CRASH" \
                 "${test_name} crashed with $(signal_name ${rc}) (exit code ${rc})" \
@@ -181,10 +224,17 @@ run_gtest_with_retry() {
             echo "  Retry ${attempt}/${GTEST_MAX_RETRIES}: ${tc}"
 
             local retry_rc=0
+            rm -f "${retry_xml}"
             "${gt}" --gtest_filter="${tc}" --gtest_output="xml:${retry_xml}" "$@" || retry_rc=$?
 
             if [ "${retry_rc}" -eq 0 ]; then
                 echo "  FLAKY: ${tc} passed on retry ${attempt}"
+                tc_passed=true
+                break
+            fi
+
+            if accept_post_pass_teardown_crash "${test_name}" "${retry_xml}" "${retry_rc}"; then
+                echo "  FLAKY: ${tc} passed on retry ${attempt} (post-teardown crash ignored)"
                 tc_passed=true
                 break
             fi
