@@ -864,53 +864,44 @@ if (BUILD_TESTS)
 endif (BUILD_TESTS)
 
 # ##################################################################################################
-# - cuopt: thin umbrella shared library -----------------------------------------------------------
-# Links publicly against the component shared libs so that -lcuopt keeps working for
-# all existing consumers. Its only translation unit is generated from
-# cmake/umbrella.cpp.in -- see that file for why the anchors are needed.
+# - cuopt: linker script + INTERFACE target -------------------------------------------------------
+# libcuopt.so is a GNU ld script naming the component libraries, so -lcuopt keeps resolving
+# for consumers that linked the pre-split library. cuopt::cuopt is the CMake equivalent.
+# See cmake/libcuopt.so.in for why a real ELF cannot serve this purpose.
 
+set(CUOPT_LINKER_SCRIPT_INPUTS "libcuopt_base.so")
 if(NOT SKIP_ROUTING_BUILD)
-    set(CUOPT_ANCHOR_ROUTING TRUE)
+    string(APPEND CUOPT_LINKER_SCRIPT_INPUTS " libcuopt_routing.so")
 endif()
+string(APPEND CUOPT_LINKER_SCRIPT_INPUTS " libcuopt_mathematical_optimization.so")
 if(NOT SKIP_GRPC_BUILD)
-    set(CUOPT_ANCHOR_GRPC TRUE)
+    string(APPEND CUOPT_LINKER_SCRIPT_INPUTS " libcuopt_grpc.so")
 endif()
 
+set(CUOPT_LINKER_SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/libcuopt.so")
 configure_file(
-        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/umbrella.cpp.in"
-        "${CMAKE_CURRENT_BINARY_DIR}/umbrella.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/libcuopt.so.in"
+        "${CUOPT_LINKER_SCRIPT}"
         @ONLY
 )
 
-add_library(cuopt SHARED "${CMAKE_CURRENT_BINARY_DIR}/umbrella.cpp")
+add_library(cuopt INTERFACE)
 add_library(cuopt::cuopt ALIAS cuopt)
 
-set_target_properties(cuopt PROPERTIES
-        BUILD_RPATH_USE_ORIGIN TRUE
-        INSTALL_RPATH "\$ORIGIN"
-        CXX_SCAN_FOR_MODULES OFF
-)
-
 target_include_directories(cuopt
-        PUBLIC
+        INTERFACE
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
-        INTERFACE
         "$<INSTALL_INTERFACE:include>"
-)
-target_compile_definitions(cuopt
-        PUBLIC
-        "CUOPT_LOG_ACTIVE_LEVEL=RAPIDS_LOGGER_LOG_LEVEL_${LIBCUOPT_LOGGING_LEVEL}"
-        CUSPARSE_ENABLE_EXPERIMENTAL_API
 )
 
 if(NOT SKIP_ROUTING_BUILD)
-    target_link_libraries(cuopt PUBLIC cuopt_base cuopt_routing cuopt_mathematical_optimization)
+    target_link_libraries(cuopt INTERFACE cuopt_base cuopt_routing cuopt_mathematical_optimization)
 else()
-    target_link_libraries(cuopt PUBLIC cuopt_base cuopt_mathematical_optimization)
+    target_link_libraries(cuopt INTERFACE cuopt_base cuopt_mathematical_optimization)
 endif()
 if(NOT SKIP_GRPC_BUILD)
-    target_link_libraries(cuopt PUBLIC cuopt_grpc)
+    target_link_libraries(cuopt INTERFACE cuopt_grpc)
 endif()
 
 if (WRITE_FATBIN)
@@ -922,7 +913,15 @@ if (WRITE_FATBIN)
     .nv_fatbin : { *(.nv_fatbin) }
   }
   ]=])
-    target_link_options(cuopt PRIVATE "${CUOPT_BINARY_DIR}/fatbin.ld")
+    # Applies to the components that actually carry CUDA fatbins. Before the split this
+    # was set on libcuopt.so, which held all the device code; it now holds none.
+    set(_CUOPT_FATBIN_TARGETS cuopt_base cuopt_mathematical_optimization)
+    if(NOT SKIP_ROUTING_BUILD)
+        list(APPEND _CUOPT_FATBIN_TARGETS cuopt_routing)
+    endif()
+    foreach(_target ${_CUOPT_FATBIN_TARGETS})
+        target_link_options(${_target} PRIVATE "${CUOPT_BINARY_DIR}/fatbin.ld")
+    endforeach()
 endif ()
 
 # ##################################################################################################
@@ -969,14 +968,15 @@ install(TARGETS ${CUOPT_COMPONENT_TARGETS}
         EXPORT cuopt-exports
 )
 
-# Install the umbrella shared library (the primary runtime artifact)
+# cuopt::cuopt carries no artifact of its own; it is exported so that
+# target_link_libraries(app cuopt::cuopt) keeps pulling in every component.
 install(TARGETS cuopt
-        DESTINATION ${_LIB_DEST}
-        COMPONENT runtime
         EXPORT cuopt-exports
 )
 
-install(TARGETS cuopt
+# libcuopt.so is the ld script that keeps -lcuopt working. It is a link-time artifact,
+# so it belongs to the dev component; nothing loads it at runtime.
+install(FILES "${CUOPT_LINKER_SCRIPT}"
         DESTINATION ${_LIB_DEST}
         COMPONENT dev
 )

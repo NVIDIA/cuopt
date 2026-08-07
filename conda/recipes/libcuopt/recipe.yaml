@@ -113,7 +113,10 @@ outputs:
       prefix_detection:
         ignore:
           # See https://github.com/rapidsai/build-planning/issues/160
-          - lib/libcuopt.so
+          - lib/libcuopt_base.so
+          - lib/libcuopt_routing.so
+          - lib/libcuopt_mathematical_optimization.so
+          - lib/libcuopt_grpc.so
       string: cuda${{ cuda_major }}_${{ date_string }}_${{ head_rev }}
     requirements:
       build:
