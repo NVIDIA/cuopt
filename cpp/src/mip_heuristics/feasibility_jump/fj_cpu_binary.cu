@@ -105,9 +105,9 @@ struct fj_bin_tabu_t {
 
   // replace the scores of tabu'd variable with sentinel values
   int32_t block_tabu(int32_t iter,
-                     int32_t* var_score,
+                     int64_t* var_score,
                      int32_t (&saved_var)[ring_size],
-                     int32_t (&saved_score)[ring_size]) const
+                     int64_t (&saved_score)[ring_size]) const
   {
     int32_t k = 0;
     for (int32_t i = 0; i < ring_size; ++i) {
@@ -124,9 +124,9 @@ struct fj_bin_tabu_t {
 
   // reverse the above operation.
   static void unblock_tabu(int32_t k,
-                           int32_t* var_score,
+                           int64_t* var_score,
                            const int32_t (&saved_var)[ring_size],
-                           const int32_t (&saved_score)[ring_size])
+                           const int64_t (&saved_score)[ring_size])
   {
     for (int32_t i = k - 1; i >= 0; --i) var_score[saved_var[i]] = saved_score[i];
   }
@@ -486,8 +486,8 @@ struct fj_bin_engine_t {
   std::vector<int8_t> seed_assign;   // restart target
   std::vector<int32_t> assign_i32;   // gather mirror for the SIMD patch (Batch B)
 
-  std::vector<int32_t> var_score;    // live feasibility score of flipping each variable
-  std::vector<int32_t> nnz_score_delta;  // per CSR nnz: last score delta of variables[k] in its row
+  std::vector<int64_t> var_score;    // live feasibility score of flipping each variable
+  std::vector<int64_t> nnz_score_delta;  // per CSR nnz: last score delta of variables[k] in its row
 
   fj_bin_tabu_t tabu;
 
@@ -647,7 +647,7 @@ struct fj_bin_engine_t {
         const int32_t v    = pb.variables[k];
         const int32_t flip = 1 - 2 * assign[v];
         const int32_t ns   = os - (int32_t)pb.coefficients[k] * flip;
-        const int32_t p    = fj_bin_packed_score_delta(os, ns, weight);
+        const int64_t p    = fj_bin_packed_score_delta(os, ns, weight);
         nnz_score_delta[k] = p;
         var_score[v] += p;
       }
@@ -673,7 +673,7 @@ struct fj_bin_engine_t {
     rebuild_scores();
   }
 
-  int32_t objective_terms(int32_t v, int8_t delta) const
+  int64_t objective_terms(int32_t v, int8_t delta) const
   {
     const double obj_diff = pb.objective[v] * delta;
     const int32_t base = obj_diff < 0 ? objective_weight : (obj_diff > 0 ? -objective_weight : 0);
@@ -685,10 +685,10 @@ struct fj_bin_engine_t {
     } else if (old_better && !new_better) {
       bonus -= objective_weight;
     }
-    return base * fj_bin_score_k + bonus;
+    return (int64_t)base * fj_bin_score_k + bonus;
   }
 
-  int32_t full_score(int32_t v, int8_t delta) const
+  int64_t full_score(int32_t v, int8_t delta) const
   {
     if (objective_weight == 0) return var_score[v];
     return var_score[v] + objective_terms(v, delta);
@@ -702,7 +702,7 @@ struct fj_bin_engine_t {
     const int8_t new_flip = (int8_t)(1 - 2 * new_val);
     const int32_t ob = pb.reverse_offsets[var], oe = pb.reverse_offsets[var + 1];
     const int32_t prev_violated = (int32_t)violated_list.size();
-    int32_t own_score           = 0;
+    int64_t own_score           = 0;
 
     // The tail writes a score delta through int32_t* and calls out to the patch, either of which may
     // alias a vector's internal pointer as far as the compiler can prove. Without these locals it
@@ -716,8 +716,8 @@ struct fj_bin_engine_t {
     const int32_t* const offsets_p     = pb.offsets.data();
     const int32_t* const vars_p        = pb.variables.data();
     const coef_t* const coefs_p        = pb.coefficients.data();
-    int32_t* const var_score_p         = var_score.data();
-    int32_t* const nnz_delta_p         = nnz_score_delta.data();
+    int64_t* const var_score_p         = var_score.data();
+    int64_t* const nnz_delta_p         = nnz_score_delta.data();
     const int32_t* const assign_p      = assign_i32.data();
 
     // Everything a visit still needs once its slack has been advanced. Shared by the two arms below
@@ -760,7 +760,7 @@ struct fj_bin_engine_t {
 
       // The flipped variable's own score delta. Zero on the rows the walk absorbed -- deeply
       // satisfied both ways -- and already stored as zero there.
-      const int32_t pv = fj_bin_packed_score_delta(new_slack, new_slack - skv * new_flip, weight);
+      const int64_t pv = fj_bin_packed_score_delta(new_slack, new_slack - skv * new_flip, weight);
       own_score += pv;
       nnz_delta_p[rcsr_p[ii]] = pv;
     };
@@ -873,25 +873,28 @@ struct fj_bin_engine_t {
   // Global argmax over every variable, affordable because var_score is maintained live. While the
   // objective weight is zero the full score is exactly var_score, which is the vectorized sweep's
   // precondition; the objective and local-minimum paths fall to the scalar loop.
-  std::pair<int32_t, int32_t> find_move_global(bool localmin)
+  std::pair<int32_t, int64_t> find_move_global(bool localmin)
   {
     if (!localmin && objective_weight == 0) {
       // The sweep reads var_score alone; the handful of tabu variables are held at the invalid
       // sentinel across it rather than tested per variable.
-      int32_t saved_var[fj_bin_tabu_t::ring_size], saved_score[fj_bin_tabu_t::ring_size];
+      int32_t saved_var[fj_bin_tabu_t::ring_size];
+      int64_t saved_score[fj_bin_tabu_t::ring_size];
       const int32_t blocked = tabu.block_tabu(iters, var_score.data(), saved_var, saved_score);
 
-      int32_t v = -1, s = fj_bin_score_invalid;
+      int32_t v = -1;
+      int64_t s = fj_bin_score_invalid;
       fj_bin_argmax(var_score.data(), pb.n_variables, argmax_tile, v, s);
 
       fj_bin_tabu_t::unblock_tabu(blocked, var_score.data(), saved_var, saved_score);
       return {v, s};
     }
 
-    int32_t best_v = -1, best_s = fj_bin_score_invalid;
+    int32_t best_v = -1;
+    int64_t best_s = fj_bin_score_invalid;
     for (int32_t v = 0; v < pb.n_variables; ++v) {
       if (tabu_blocked(v, localmin)) continue;
-      const int32_t s = full_score(v, (int8_t)(1 - 2 * assign[v]));
+      const int64_t s = full_score(v, (int8_t)(1 - 2 * assign[v]));
       if (s > best_s) {
         best_s = s;
         best_v = v;
@@ -900,17 +903,18 @@ struct fj_bin_engine_t {
     return {best_v, best_s};
   }
 
-  std::pair<int32_t, int32_t> find_move_in_rows(const std::vector<int32_t>& target_rows,
+  std::pair<int32_t, int64_t> find_move_in_rows(const std::vector<int32_t>& target_rows,
                                                 bool localmin)
   {
-    int32_t best_v = -1, best_s = fj_bin_score_invalid;
+    int32_t best_v = -1;
+    int64_t best_s = fj_bin_score_invalid;
     for (int32_t r : target_rows) {
       for (int32_t k = pb.offsets[r]; k < pb.offsets[r + 1]; ++k) {
         const int32_t v = pb.variables[k];
         if (var_bitmap[v]) continue;
         var_bitmap[v] = 1;
         if (tabu_blocked(v, localmin)) continue;
-        const int32_t s = full_score(v, (int8_t)(1 - 2 * assign[v]));
+        const int64_t s = full_score(v, (int8_t)(1 - 2 * assign[v]));
         if (s > best_s) {
           best_s = s;
           best_v = v;
@@ -925,7 +929,7 @@ struct fj_bin_engine_t {
     return {best_v, best_s};
   }
 
-  std::pair<int32_t, int32_t> find_move_violated(int32_t sample_size, bool localmin)
+  std::pair<int32_t, int64_t> find_move_violated(int32_t sample_size, bool localmin)
   {
     // Draw the rows directly instead of reservoir-sampling the violated list: `std::sample` is
     // linear in the population, so it walked every violated row to keep a handful. Sampling with
@@ -952,14 +956,14 @@ struct fj_bin_engine_t {
         if (target > 1) target = 1;
         if ((int8_t)target == assign[v]) continue;
         if (tabu_blocked(v, false)) continue;
-        const int32_t s = full_score(v, (int8_t)((int8_t)target - assign[v]));
+        const int64_t s = full_score(v, (int8_t)((int8_t)target - assign[v]));
         if (s > move.second) move = {v, s};
       }
     }
     return move;
   }
 
-  std::pair<int32_t, int32_t> find_move_satisfied(int32_t sample_size)
+  std::pair<int32_t, int64_t> find_move_satisfied(int32_t sample_size)
   {
     sample_buf.clear();
     for (int32_t tries = 0; (int32_t)sample_buf.size() < sample_size && tries < sample_size * 8;
@@ -970,14 +974,15 @@ struct fj_bin_engine_t {
     return find_move_in_rows(sample_buf, false);
   }
 
-  std::pair<int32_t, int32_t> find_lift_move() const
+  std::pair<int32_t, int64_t> find_lift_move() const
   {
-    int32_t best_v = -1, best_s = 0;
+    int32_t best_v = -1;
+    int64_t best_s = 0;
     for (int32_t v : pb.objective_vars) {
       const int8_t delta = (int8_t)(1 - 2 * assign[v]);
       if ((double)delta * pb.objective[v] >= 0) continue;
       if (tabu_blocked(v, false)) continue;
-      const int32_t s = (int32_t)(-std::llround(pb.objective[v] * delta)) * fj_bin_score_k;
+      const int64_t s = (int64_t)(-std::llround(pb.objective[v] * delta)) * fj_bin_score_k;
       if (s > best_s) {
         best_s = s;
         best_v = v;
@@ -1083,7 +1088,8 @@ struct fj_bin_engine_t {
       if (iters - last_restart_iter >= fj_bin_restart_period) do_restart();
       tabu.maybe_rebase(iters);
 
-      int32_t move_var = -1, score = fj_bin_score_invalid;
+      int32_t move_var = -1;
+      int64_t score    = fj_bin_score_invalid;
       if (violated_list.empty()) std::tie(move_var, score) = find_lift_move();
       if (score <= 0) std::tie(move_var, score) = find_move_global(false);
       if (feasible_found && score <= 0) std::tie(move_var, score) = find_move_satisfied(mtm_sat_samples);

@@ -144,8 +144,8 @@ void PatchRowScalar(const int32_t* HWY_RESTRICT variables,
                     const coef_t* HWY_RESTRICT coefficients,
                     int32_t kb,
                     int32_t ke,
-                    int32_t* HWY_RESTRICT var_score,
-                    int32_t* HWY_RESTRICT nnz_score_delta,
+                    int64_t* HWY_RESTRICT var_score,
+                    int64_t* HWY_RESTRICT nnz_score_delta,
                     const int32_t* HWY_RESTRICT assign_i32,
                     int32_t weight,
                     int32_t os_new,
@@ -156,7 +156,7 @@ void PatchRowScalar(const int32_t* HWY_RESTRICT variables,
     if (v == skip_var) continue;
     const int32_t flip = 1 - 2 * assign_i32[v];
     const int32_t ns   = os_new - (int32_t)coefficients[k] * flip;
-    const int32_t nc   = fj_bin_packed_score_delta(os_new, ns, weight);
+    const int64_t nc   = fj_bin_packed_score_delta(os_new, ns, weight);
     var_score[v] += nc - nnz_score_delta[k];
     nnz_score_delta[k] = nc;
   }
@@ -171,16 +171,20 @@ static HWY_INLINE void PatchRowBody(D d,
                                     const coef_t* HWY_RESTRICT coefficients,
                                     int32_t kb,
                                     int32_t ke,
-                                    int32_t* HWY_RESTRICT var_score,
-                                    int32_t* HWY_RESTRICT nnz_score_delta,
+                                    int64_t* HWY_RESTRICT var_score,
+                                    int64_t* HWY_RESTRICT nnz_score_delta,
                                     const int32_t* HWY_RESTRICT assign_i32,
                                     int32_t weight,
                                     int32_t os_new,
                                     int32_t skip_var)
 {
-  const hn::Rebind<coef_t, D> dc;  // same lane count, narrower lanes
-  using V        = hn::Vec<decltype(d)>;
-  const size_t N = hn::Lanes(d);
+  const hn::Rebind<coef_t, D> dc;    // same lane count, narrower lanes
+  const hn::Repartition<int64_t, D> dw;  // half the lanes, twice as wide: the packed score
+  const hn::Half<D> dh;                  // int32 half, the source of each promotion
+  using V         = hn::Vec<decltype(d)>;
+  using VW        = hn::Vec<decltype(dw)>;
+  const size_t N  = hn::Lanes(d);
+  const size_t NW = hn::Lanes(dw);
 
   // When the remainder is peeled, a row below one vector never reaches the body, so it skips the
   // ten broadcasts below as well.
@@ -231,17 +235,45 @@ static HWY_INLINE void PatchRowBody(D d,
     const V both_violated = v_not_osat * (vone - nsat);
     const V base          = vw * (nsat - vosat) + both_violated * improving * vw2;
     const V bonus         = vw * (nst - vost);
-    const V packed_new    = hn::ShiftLeft<fj_bin_score_shift>(base) + bonus;
 
-    const V delta = packed_new - hn::LoadU(d, nnz_score_delta + k);
+    // The score is int64, so packing it costs two vectors where the fields took one. Both fields
+    // are per-row here and fit int32, so they are computed at full lane count above and widened
+    // only for the pack. Everything below stays in the vector: the pack, the old value, the
+    // difference and the store back. What reaches the scalar loop is one add per nonzero, which is
+    // what it was before the score widened -- that loop is 38% of all cycles, so work belongs
+    // anywhere but there.
+    const VW base_lo  = hn::PromoteTo(dw, hn::LowerHalf(dh, base));
+    const VW base_hi  = hn::PromoteTo(dw, hn::UpperHalf(dh, base));
+    const VW bonus_lo = hn::PromoteTo(dw, hn::LowerHalf(dh, bonus));
+    const VW bonus_hi = hn::PromoteTo(dw, hn::UpperHalf(dh, bonus));
+
+    const VW packed_lo = hn::ShiftLeft<fj_bin_score_shift>(base_lo) + bonus_lo;
+    const VW packed_hi = hn::ShiftLeft<fj_bin_score_shift>(base_hi) + bonus_hi;
+
+    const VW delta_lo = packed_lo - hn::LoadU(dw, nnz_score_delta + k);
+    const VW delta_hi = packed_hi - hn::LoadU(dw, nnz_score_delta + k + NW);
+
+    // The store mask is rebuilt at int64 width rather than narrowed from `active`: the same two
+    // conditions, on the promoted indices. FirstN is applied on every target because where the
+    // remainder is peeled the body never runs short, so it is all-true there anyway.
+    const size_t rem  = (size_t)(ke - k);
+    const VW v_lo     = hn::PromoteTo(dw, hn::LowerHalf(dh, v));
+    const VW v_hi     = hn::PromoteTo(dw, hn::UpperHalf(dh, v));
+    const VW vskip_w  = hn::Set(dw, skip_var);
+    const auto act_lo = hn::And(hn::Ne(v_lo, vskip_w), hn::FirstN(dw, rem));
+    const auto act_hi = hn::And(hn::Ne(v_hi, vskip_w), hn::FirstN(dw, rem > NW ? rem - NW : 0));
+    hn::BlendedStore(packed_lo, act_lo, dw, nnz_score_delta + k);
+    hn::BlendedStore(packed_hi, act_hi, dw, nnz_score_delta + k + NW);
 
 #if HWY_TARGET == HWY_AVX3_ZEN4
     // zmm VSIB is microcode on Zen 4: VPGATHERDD ~76-80 uops / ~21 CPI and VPSCATTERDD 89 / 24,
     // against ~5 / ~10 and ~19 / ~11 on SPR-class Intel (Agner Fog, uops.info). So read-modify-write
     // by lane here; measured +5.8% over the arm below on an EPYC 9554 (supportcase22, 16 climbers).
-    HWY_ALIGN int32_t idx[hn::MaxLanes(d)], dl[hn::MaxLanes(d)];
+    HWY_ALIGN int32_t idx[hn::MaxLanes(d)];
+    HWY_ALIGN int64_t dl[hn::MaxLanes(d)];
     hn::Store(v, d, idx);
-    hn::Store(delta, d, dl);
+    hn::Store(delta_lo, dw, dl);
+    hn::Store(delta_hi, dw, dl + NW);
     // Bounded by the row, not the vector: the lanes past it hold padding, whose zero index would
     // otherwise be applied to variable 0.
     const size_t lanes = HWY_MIN(N, (size_t)(ke - k));
@@ -249,11 +281,13 @@ static HWY_INLINE void PatchRowBody(D d,
       if (idx[i] != skip_var) var_score[idx[i]] += dl[i];
     }
 #else
-    const V current = hn::MaskedGatherIndex(active, d, var_score, v);
-    hn::MaskedScatterIndex(current + delta, active, d, var_score, v);
+    // The score is int64, so the gather and scatter run at the promoted width against the promoted
+    // indices, in the two halves the pack already produced.
+    const VW cur_lo = hn::MaskedGatherIndex(act_lo, dw, var_score, v_lo);
+    const VW cur_hi = hn::MaskedGatherIndex(act_hi, dw, var_score, v_hi);
+    hn::MaskedScatterIndex(cur_lo + delta_lo, act_lo, dw, var_score, v_lo);
+    hn::MaskedScatterIndex(cur_hi + delta_hi, act_hi, dw, var_score, v_hi);
 #endif
-
-    hn::BlendedStore(packed_new, active, d, nnz_score_delta + k);
   }
 
   if constexpr (!k_mask_remainder) {
@@ -268,8 +302,8 @@ void PatchRowImpl(const int32_t* HWY_RESTRICT variables,
                   const coef_t* HWY_RESTRICT coefficients,
                   int32_t kb,
                   int32_t ke,
-                  int32_t* HWY_RESTRICT var_score,
-                  int32_t* HWY_RESTRICT nnz_score_delta,
+                  int64_t* HWY_RESTRICT var_score,
+                  int64_t* HWY_RESTRICT nnz_score_delta,
                   const int32_t* HWY_RESTRICT assign_i32,
                   int32_t weight,
                   int32_t os_new,
@@ -284,8 +318,8 @@ void PatchRowNarrow8Impl(const int32_t* HWY_RESTRICT variables,
                          const coef_t* HWY_RESTRICT coefficients,
                          int32_t kb,
                          int32_t ke,
-                         int32_t* HWY_RESTRICT var_score,
-                         int32_t* HWY_RESTRICT nnz_score_delta,
+                         int64_t* HWY_RESTRICT var_score,
+                         int64_t* HWY_RESTRICT nnz_score_delta,
                          const int32_t* HWY_RESTRICT assign_i32,
                          int32_t weight,
                          int32_t os_new,
@@ -300,8 +334,8 @@ void PatchRowNarrow4Impl(const int32_t* HWY_RESTRICT variables,
                          const coef_t* HWY_RESTRICT coefficients,
                          int32_t kb,
                          int32_t ke,
-                         int32_t* HWY_RESTRICT var_score,
-                         int32_t* HWY_RESTRICT nnz_score_delta,
+                         int64_t* HWY_RESTRICT var_score,
+                         int64_t* HWY_RESTRICT nnz_score_delta,
                          const int32_t* HWY_RESTRICT assign_i32,
                          int32_t weight,
                          int32_t os_new,
@@ -337,8 +371,8 @@ void PatchRowDispatchImpl(const int32_t* HWY_RESTRICT variables,
                           const coef_t* HWY_RESTRICT coefficients,
                           int32_t kb,
                           int32_t ke,
-                          int32_t* HWY_RESTRICT var_score,
-                          int32_t* HWY_RESTRICT nnz_score_delta,
+                          int64_t* HWY_RESTRICT var_score,
+                          int64_t* HWY_RESTRICT nnz_score_delta,
                           const int32_t* HWY_RESTRICT assign_i32,
                           int32_t weight,
                           int32_t os_new,
@@ -360,13 +394,13 @@ void PatchRowDispatchImpl(const int32_t* HWY_RESTRICT variables,
 // Tiled sweep carrying a running maximum. The index re-scan fires only on a tile that raises it,
 // and that tile is still cache-hot. The tabu window is uint16 against int32 scores, so the mask
 // crosses a 2:1 width boundary through PromoteMaskTo.
-void ArgmaxImpl(const int32_t* HWY_RESTRICT var_score,
+void ArgmaxImpl(const int64_t* HWY_RESTRICT var_score,
                 int32_t n,
                 int32_t tile,
                 int32_t* best_var,
-                int32_t* best_score)
+                int64_t* best_score)
 {
-  const hn::ScalableTag<int32_t> d;
+  const hn::ScalableTag<int64_t> d;
   using V = hn::Vec<decltype(d)>;
 
   const int32_t step = (int32_t)hn::Lanes(d);
@@ -377,7 +411,8 @@ void ArgmaxImpl(const int32_t* HWY_RESTRICT var_score,
   int32_t tile_step  = tile - (tile % step);
   if (tile_step < step) tile_step = step;
 
-  int32_t bv = -1, bs = fj_bin_score_invalid;
+  int32_t bv = -1;
+  int64_t bs = fj_bin_score_invalid;
 
   for (int32_t t0 = 0; t0 < nblk; t0 += tile_step) {
     const int32_t t1 = (t0 + tile_step < nblk) ? t0 + tile_step : nblk;
@@ -387,7 +422,7 @@ void ArgmaxImpl(const int32_t* HWY_RESTRICT var_score,
       tile_max = hn::Max(tile_max, hn::LoadU(d, var_score + v));
     }
 
-    const int32_t peak = hn::ReduceMax(d, tile_max);
+    const int64_t peak = hn::ReduceMax(d, tile_max);
     if (peak > bs) {
       const V vpeak = hn::Set(d, peak);
       for (int32_t v = t0; v < t1; v += step) {
@@ -452,8 +487,8 @@ using fj_bin_patch_fn_t = void (*)(const int32_t*,
                                    const coef_t*,
                                    int32_t,
                                    int32_t,
-                                   int32_t*,
-                                   int32_t*,
+                                   int64_t*,
+                                   int64_t*,
                                    const int32_t*,
                                    int32_t,
                                    int32_t,
@@ -514,8 +549,8 @@ void fj_bin_patch_row(const int32_t* variables,
                       const coef_t* coefficients,
                       int32_t kb,
                       int32_t ke,
-                      int32_t* var_score,
-                      int32_t* nnz_score_delta,
+                      int64_t* var_score,
+                      int64_t* nnz_score_delta,
                       const int32_t* assign_i32,
                       int32_t weight,
                       int32_t os_new,
@@ -529,8 +564,8 @@ template void fj_bin_patch_row<int8_t>(const int32_t*,
                                        const int8_t*,
                                        int32_t,
                                        int32_t,
-                                       int32_t*,
-                                       int32_t*,
+                                       int64_t*,
+                                       int64_t*,
                                        const int32_t*,
                                        int32_t,
                                        int32_t,
@@ -540,18 +575,18 @@ template void fj_bin_patch_row<int16_t>(const int32_t*,
                                         const int16_t*,
                                         int32_t,
                                         int32_t,
-                                        int32_t*,
-                                        int32_t*,
+                                        int64_t*,
+                                        int64_t*,
                                         const int32_t*,
                                         int32_t,
                                         int32_t,
                                         int32_t);
 
-void fj_bin_argmax(const int32_t* var_score,
+void fj_bin_argmax(const int64_t* var_score,
                    int32_t n,
                    int32_t tile,
                    int32_t& best_var,
-                   int32_t& best_score)
+                   int64_t& best_score)
 {
   fj_bin_argmax_fn(var_score, n, tile, &best_var, &best_score);
 }
