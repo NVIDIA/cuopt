@@ -146,10 +146,6 @@ static std::string get_cpu_model()
   return "Unknown";
 }
 
-// The SIMD instruction set the vectorized CPU kernels actually dispatched to, which reflects the
-// compiled target set as well as what this CPU supports. Highway names the AVX-512 family AVX3,
-// with AVX3_DL / AVX3_ZEN4 / AVX3_SPR / AVX10_2 marking successively newer feature sets; those are
-// reported under the name users know them by.
 static const char* get_simd_target()
 {
   const int64_t target = hwy::DispatchedTarget();

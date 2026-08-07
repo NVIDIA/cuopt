@@ -5,14 +5,6 @@
  */
 /* clang-format on */
 
-// Benchmark-only harness for the CPU feasibility-jump portfolio. Loads an instance, builds one
-// climber per portfolio slot from a zero start clamped to variable bounds, and runs them in
-// parallel on pinned cores for a fixed wall-clock budget. Reports per-climber crossing, objective
-// and throughput.
-//
-// No presolve: pass an already-presolved instance. The climbers are built from problem_t, so the
-// binary fast path is reachable when the instance qualifies.
-
 #include <mip_heuristics/feasibility_jump/fj_cpu.cuh>
 #include <mip_heuristics/problem/problem.cuh>
 #include <mip_heuristics/solution/solution.cuh>
@@ -27,14 +19,11 @@
 #include <pthread.h>
 #include <sched.h>
 
-#include <algorithm>
-#include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <limits>
 #include <string>
-#include <thread>
 #include <vector>
 
 namespace {
