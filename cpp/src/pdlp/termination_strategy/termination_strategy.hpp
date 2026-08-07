@@ -187,6 +187,7 @@ class pdlp_termination_strategy_t {
   i_t get_optimal_solution_id() const;
 
   const convergence_information_t<i_t, f_t>& get_convergence_information() const;
+  convergence_information_t<i_t, f_t>& get_convergence_information();
   const infeasibility_information_t<i_t, f_t>& get_infeasibility_information() const;
 
   // Deep copy is used when save best primal so far is toggled

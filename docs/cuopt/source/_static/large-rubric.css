@@ -1,0 +1,7 @@
+/* Rubric styled closer to an H2/H3 for in-page subheads that must stay out of the TOC. */
+p.rubric.large-rubric {
+  font-size: 1.4em;
+  font-weight: 600;
+  margin-top: 1.75rem;
+  margin-bottom: 0.75rem;
+}

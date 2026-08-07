@@ -1,6 +1,6 @@
 ---
 name: cuopt-user-rules
-version: "26.08.00"
+version: "26.10.00"
 description: Base rules for end users calling NVIDIA cuOpt (routing/LP/MILP/QP/install/server). Not for cuOpt internals — use cuopt-developer for those.
 license: Apache-2.0
 metadata:

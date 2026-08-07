@@ -4,7 +4,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
+#include <pdlp/distributed_pdlp/multi_gpu_engine.hpp>
 #include <pdlp/pdhg.hpp>
+#include <pdlp/pdlp.cuh>
 #include <pdlp/pdlp_climber_strategy.hpp>
 #include <pdlp/pdlp_constants.hpp>
 #include <pdlp/swap_and_resize_helper.cuh>
@@ -506,6 +508,13 @@ void pdhg_solver_t<i_t, f_t>::compute_At_y()
 {
   // A_t @ y
 
+  // Multi-GPU dispatch: when the master pdhg has an engine, drive halo
+  // exchange + per-shard SpMV via the engine.
+  if (is_distributed_master()) {
+    mgpu_engine_->distributed_compute_At_y();
+    return;
+  }
+
   if (!batch_mode_) {
     if constexpr (std::is_same_v<f_t, double>) {
       if (cusparse_view_.mixed_precision_enabled_) {
@@ -555,6 +564,15 @@ template <typename i_t, typename f_t>
 void pdhg_solver_t<i_t, f_t>::compute_A_x()
 {
   // A @ x
+
+  // Multi-GPU dispatch: see compute_At_y. The engine halo-updates the
+  // reflected_primal vector (the buffer this SpMV reads) and then drives
+  // per-shard local cusparse SpMV.
+  if (is_distributed_master()) {
+    mgpu_engine_->distributed_compute_A_x();
+    return;
+  }
+
   if (!batch_mode_) {
     if constexpr (std::is_same_v<f_t, double>) {
       if (cusparse_view_.mixed_precision_enabled_) {
@@ -598,6 +616,43 @@ void pdhg_solver_t<i_t, f_t>::compute_A_x()
       (f_t*)cusparse_view_.buffer_non_transpose_batch_row_row_.data(),
       stream_view_));
   }
+}
+
+// out_desc = A^T @ in_desc, on this shard's local matrix. Both descriptors are
+// caller-owned and can point at arbitrary scratch buffers. Used by
+// multi_gpu_engine_t::distributed_spmv_At.
+template <typename i_t, typename f_t>
+void pdhg_solver_t<i_t, f_t>::spmv_At_into(cusparseDnVecDescr_t in_desc,
+                                           cusparseDnVecDescr_t out_desc)
+{
+  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
+                                                       CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                                       reusable_device_scalar_value_1_.data(),
+                                                       cusparse_view_.A_T,
+                                                       in_desc,
+                                                       reusable_device_scalar_value_0_.data(),
+                                                       out_desc,
+                                                       CUSPARSE_SPMV_CSR_ALG2,
+                                                       (f_t*)cusparse_view_.buffer_transpose.data(),
+                                                       stream_view_));
+}
+
+// out_desc = A @ in_desc, the counterpart of spmv_At_into on this shard's local A.
+template <typename i_t, typename f_t>
+void pdhg_solver_t<i_t, f_t>::spmv_A_into(cusparseDnVecDescr_t in_desc,
+                                          cusparseDnVecDescr_t out_desc)
+{
+  RAFT_CUSPARSE_TRY(
+    raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
+                                       CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                       reusable_device_scalar_value_1_.data(),
+                                       cusparse_view_.A,
+                                       in_desc,
+                                       reusable_device_scalar_value_0_.data(),
+                                       out_desc,
+                                       CUSPARSE_SPMV_CSR_ALG2,
+                                       (f_t*)cusparse_view_.buffer_non_transpose.data(),
+                                       stream_view_));
 }
 
 template <typename i_t, typename f_t>
@@ -694,6 +749,22 @@ struct primal_reflected_major_projection {
   const f_t* scalar_;
 };
 
+template <typename i_t, typename f_t>
+void pdhg_solver_t<i_t, f_t>::primal_reflected_major_projection_transform(
+  rmm::device_uvector<f_t>& primal_step_size)
+{
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(current_saddle_point_state_.get_primal_solution().data(),
+                          problem_ptr->objective_coefficients.data(),
+                          current_saddle_point_state_.get_current_AtY().data(),
+                          problem_ptr->variable_bounds.data()),
+    thrust::make_zip_iterator(
+      potential_next_primal_solution_.data(), dual_slack_.data(), reflected_primal_.data()),
+    primal_size_h_,
+    primal_reflected_major_projection<f_t>(primal_step_size.data()),
+    stream_view_.value());
+}
+
 template <typename f_t>
 struct primal_reflected_major_projection_batch {
   using f_t2 = typename type_2<f_t>::type;
@@ -721,6 +792,21 @@ struct primal_reflected_projection {
   }
   const f_t* scalar_;
 };
+
+template <typename i_t, typename f_t>
+void pdhg_solver_t<i_t, f_t>::primal_reflected_projection_transform(
+  rmm::device_uvector<f_t>& primal_step_size)
+{
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(current_saddle_point_state_.get_primal_solution().data(),
+                          problem_ptr->objective_coefficients.data(),
+                          current_saddle_point_state_.get_current_AtY().data(),
+                          problem_ptr->variable_bounds.data()),
+    reflected_primal_.data(),
+    primal_size_h_,
+    primal_reflected_projection<f_t>(primal_step_size.data()),
+    stream_view_.value());
+}
 
 template <typename f_t>
 struct primal_reflected_projection_batch {
@@ -751,6 +837,21 @@ struct dual_reflected_major_projection {
   const f_t* scalar_;
 };
 
+template <typename i_t, typename f_t>
+void pdhg_solver_t<i_t, f_t>::dual_reflected_major_projection_transform(
+  rmm::device_uvector<f_t>& dual_step_size)
+{
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(current_saddle_point_state_.get_dual_solution().data(),
+                          current_saddle_point_state_.get_dual_gradient().data(),
+                          problem_ptr->constraint_lower_bounds.data(),
+                          problem_ptr->constraint_upper_bounds.data()),
+    thrust::make_zip_iterator(potential_next_dual_solution_.data(), reflected_dual_.data()),
+    dual_size_h_,
+    dual_reflected_major_projection<f_t>(dual_step_size.data()),
+    stream_view_.value());
+}
+
 template <typename f_t>
 struct dual_reflected_major_projection_batch {
   HDI thrust::tuple<f_t, f_t> operator()(
@@ -778,6 +879,21 @@ struct dual_reflected_projection {
 
   const f_t* scalar_;
 };
+
+template <typename i_t, typename f_t>
+void pdhg_solver_t<i_t, f_t>::dual_reflected_projection_transform(
+  rmm::device_uvector<f_t>& dual_step_size)
+{
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(current_saddle_point_state_.get_dual_solution().data(),
+                          current_saddle_point_state_.get_dual_gradient().data(),
+                          problem_ptr->constraint_lower_bounds.data(),
+                          problem_ptr->constraint_upper_bounds.data()),
+    reflected_dual_.data(),
+    dual_size_h_,
+    dual_reflected_projection<f_t>(dual_step_size.data()),
+    stream_view_.value());
+}
 
 template <typename f_t>
 struct dual_reflected_projection_batch {
@@ -1113,22 +1229,25 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
 
   using f_t2 = typename type_2<f_t>::type;
 
+  if (is_distributed_master()) { mgpu_engine_->sync_await_shards(stream_view_); }
+
   // Compute next primal solution reflected.
 
   if (should_major) {
     graph_all.run(should_major, [&]() {
+      // Adds all the shards streams into the graph capture
+      if (is_distributed_master()) { mgpu_engine_->graph_capture_fork_to_shards(stream_view_); }
+
       compute_At_y();
-      if (!batch_mode_) {
-        cub::DeviceTransform::Transform(
-          cuda::std::make_tuple(current_saddle_point_state_.get_primal_solution().data(),
-                                problem_ptr->objective_coefficients.data(),
-                                current_saddle_point_state_.get_current_AtY().data(),
-                                problem_ptr->variable_bounds.data()),
-          thrust::make_zip_iterator(
-            potential_next_primal_solution_.data(), dual_slack_.data(), reflected_primal_.data()),
-          primal_size_h_,
-          primal_reflected_major_projection<f_t>(primal_step_size.data()),
-          stream_view_.value());
+
+      if (is_distributed_master()) {
+        mgpu_engine_->for_each_shard([](auto& shard) {
+          auto& sub_pdlp = *shard.sub_pdlp;
+          sub_pdlp.pdhg_solver_.primal_reflected_major_projection_transform(
+            sub_pdlp.get_primal_step_size());
+        });
+      } else if (!batch_mode_) {
+        primal_reflected_major_projection_transform(primal_step_size);
       } else {
         cub::DeviceFor::Bulk(
           potential_next_primal_solution_.size(),
@@ -1187,16 +1306,14 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
       // Compute next dual
       compute_A_x();
 
-      if (!batch_mode_) {
-        cub::DeviceTransform::Transform(
-          cuda::std::make_tuple(current_saddle_point_state_.get_dual_solution().data(),
-                                current_saddle_point_state_.get_dual_gradient().data(),
-                                problem_ptr->constraint_lower_bounds.data(),
-                                problem_ptr->constraint_upper_bounds.data()),
-          thrust::make_zip_iterator(potential_next_dual_solution_.data(), reflected_dual_.data()),
-          dual_size_h_,
-          dual_reflected_major_projection<f_t>(dual_step_size.data()),
-          stream_view_.value());
+      if (is_distributed_master()) {
+        mgpu_engine_->for_each_shard([](auto& shard) {
+          auto& sub_pdlp = *shard.sub_pdlp;
+          sub_pdlp.pdhg_solver_.dual_reflected_major_projection_transform(
+            sub_pdlp.get_dual_step_size());
+        });
+      } else if (!batch_mode_) {
+        dual_reflected_major_projection_transform(dual_step_size);
       } else {
         cub::DeviceFor::Bulk(
           potential_next_dual_solution_.size(),
@@ -1217,10 +1334,18 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
       print("potential_next_dual_solution_", potential_next_dual_solution_);
       print("reflected_dual_", reflected_dual_);
 #endif
+
+      // Multi-GPU: close the fork by joining every shard stream back into
+      // the master stream so cudaStreamEndCapture sees a single graph
+      // spanning all streams.
+      if (is_distributed_master()) { mgpu_engine_->graph_capture_join_from_shards(stream_view_); }
     });
 
   } else {
     graph_all.run(should_major, [&]() {
+      // Same reason as above, adds all the shards streams into the graph capture
+      if (is_distributed_master()) { mgpu_engine_->graph_capture_fork_to_shards(stream_view_); }
+
       // Compute next primal
       compute_At_y();
 
@@ -1232,16 +1357,14 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
             current_saddle_point_state_.get_current_AtY());
 #endif
 
-      if (!batch_mode_) {
-        cub::DeviceTransform::Transform(
-          cuda::std::make_tuple(current_saddle_point_state_.get_primal_solution().data(),
-                                problem_ptr->objective_coefficients.data(),
-                                current_saddle_point_state_.get_current_AtY().data(),
-                                problem_ptr->variable_bounds.data()),
-          reflected_primal_.data(),
-          primal_size_h_,
-          primal_reflected_projection<f_t>(primal_step_size.data()),
-          stream_view_.value());
+      if (is_distributed_master()) {
+        mgpu_engine_->for_each_shard([](auto& shard) {
+          auto& sub_pdlp = *shard.sub_pdlp;
+          sub_pdlp.pdhg_solver_.primal_reflected_projection_transform(
+            sub_pdlp.get_primal_step_size());
+        });
+      } else if (!batch_mode_) {
+        primal_reflected_projection_transform(primal_step_size);
       } else {
         cub::DeviceFor::Bulk(
           reflected_primal_.size(),
@@ -1301,16 +1424,13 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
       // Compute next dual
       compute_A_x();
 
-      if (!batch_mode_) {
-        cub::DeviceTransform::Transform(
-          cuda::std::make_tuple(current_saddle_point_state_.get_dual_solution().data(),
-                                current_saddle_point_state_.get_dual_gradient().data(),
-                                problem_ptr->constraint_lower_bounds.data(),
-                                problem_ptr->constraint_upper_bounds.data()),
-          reflected_dual_.data(),
-          dual_size_h_,
-          dual_reflected_projection<f_t>(dual_step_size.data()),
-          stream_view_.value());
+      if (is_distributed_master()) {
+        mgpu_engine_->for_each_shard([](auto& shard) {
+          auto& sub_pdlp = *shard.sub_pdlp;
+          sub_pdlp.pdhg_solver_.dual_reflected_projection_transform(sub_pdlp.get_dual_step_size());
+        });
+      } else if (!batch_mode_) {
+        dual_reflected_projection_transform(dual_step_size);
       } else {
         cub::DeviceFor::Bulk(
           reflected_dual_.size(),
@@ -1328,8 +1448,13 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
 #ifdef CUPDLP_DEBUG_MODE
       print("reflected_dual_", reflected_dual_);
 #endif
+
+      if (is_distributed_master()) { mgpu_engine_->graph_capture_join_from_shards(stream_view_); }
     });
   }
+
+  // sync to master stream after the graph is captured
+  if (is_distributed_master()) { mgpu_engine_->sync_await_master(stream_view_); }
 }
 
 template <typename i_t, typename f_t>

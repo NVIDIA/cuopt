@@ -1,17 +1,18 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 
 #pragma once
 
+#include <cuopt/export.hpp>
 #include <cuopt/routing/assignment.hpp>
 #include <cuopt/routing/data_model_view.hpp>
 #include <cuopt/routing/solver_settings.hpp>
 namespace cuopt {
-namespace routing {
+namespace CUOPT_EXPORT routing {
 
 /**
  * @brief Routing solve function
@@ -26,5 +27,5 @@ template <typename i_t, typename f_t>
 assignment_t<i_t> solve(
   data_model_view_t<i_t, f_t> const& data_model,
   solver_settings_t<i_t, f_t> const& settings = solver_settings_t<i_t, f_t>{});
-}  // namespace routing
+}  // namespace CUOPT_EXPORT routing
 }  // namespace cuopt

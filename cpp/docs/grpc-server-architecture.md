@@ -291,11 +291,23 @@ If a worker process crashes:
 
 ### Graceful Shutdown
 
-On SIGINT/SIGTERM:
-1. Set `shm_ctrl->shutdown_requested = true`
-2. Workers finish current job and exit
-3. Main process waits for workers
-4. Cleanup shared memory segments
+On SIGINT/SIGTERM (delivered to a dedicated `sigwait` thread — async `signal()`
+handlers are unreliable once gRPC/CUDA threads mask signals):
+1. Set `keep_running = false` and `shm_ctrl->shutdown_requested = true`
+2. Mark all queued/running jobs `CANCELLED` and wake any `WaitForCompletion` waiters
+3. `SIGKILL` all worker processes (mid-solve workers do not poll the shutdown flag)
+4. Shut down the gRPC server with a short deadline so lingering RPCs cannot block exit
+5. Join background threads (pipe I/O is interruptible via `shutdown_requested` +
+   `O_NONBLOCK`/`poll`; do **not** close pipe FDs while writers may still be in
+   `write()` — closing from another thread does not unblock an in-flight write)
+6. Close server-side worker pipes, wait briefly for workers (`waitpid` with a grace
+   period), and clean up shared memory
+7. A cancelable ~10s watchdog calls `_exit(1)` if the clean path wedges (e.g. GPU
+   driver D-state). The margin is above the bounded clean-path work (gRPC
+   Shutdown deadline + worker wait grace + thread joins). On a healthy
+   shutdown the watchdog is disarmed before process exit.
+
+Workers ignore SIGINT/SIGTERM so only the parent process owns shutdown; the parent always force-kills workers rather than waiting for the current solve to finish. Mid-CUDA workers can sit in uninterruptible D-state after `SIGKILL`, so `waitpid` is bounded — stragglers are abandoned for init/the test harness to reap.
 
 ### Job Cancellation
 

@@ -11,7 +11,7 @@ This page describes the parameter settings available for cuOpt's MIP solver. The
 Common Parameters
 -----------------
 
-We begin by describing parameters common to both the MILP and LP solvers.
+We begin by describing parameters common to both the MIP and LP solvers.
 
 
 Time Limit
@@ -75,7 +75,7 @@ Dual Postsolve
 ``CUOPT_DUAL_POSTSOLVE`` controls whether dual postsolve is enabled when using Papilo presolver for LP problems. Disabling dual postsolve can improve solve time at the expense of not having
 access to the dual solution. Enabled by default for LP when Papilo presolve is selected. This is not relevant for MIP problems.
 
-Mixed Integer Linear Programming
+Mixed Integer Programming
 ---------------------------------
 
 The cuOpt MIP solver is in **beta** and under active development. The solver
@@ -83,7 +83,7 @@ currently excels at finding high-quality feasible solutions quickly with
 GPU-accelerated primal heuristics. Proving feasible solutions optimal remains
 under active development.
 
-We now describe parameter settings for the MILP solver.
+We now describe parameter settings for the MIP solver.
 
 
 Heuristics Only
@@ -158,7 +158,7 @@ gap is infinity.
 Node Limit
 ^^^^^^^^^^
 
-``CUOPT_NODE_LIMIT`` controls the maximum number of branch-and-bound nodes the MILP solver will explore before stopping and returning the current best feasible solution (if any). If set along with the time limit, cuOpt stops at whichever limit is hit first.
+``CUOPT_NODE_LIMIT`` controls the maximum number of branch-and-bound nodes the MIP solver will explore before stopping and returning the current best feasible solution (if any). If set along with the time limit, cuOpt stops at whichever limit is hit first.
 
 .. note:: By default there is no node limit.
 

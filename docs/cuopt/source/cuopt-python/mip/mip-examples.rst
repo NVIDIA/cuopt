@@ -6,10 +6,10 @@ This section contains examples of how to use the cuOpt MIP Python API.
 
 .. note::
 
-    The examples in this section are not exhaustive. They are provided to help you get started with the cuOpt mixed integer linear programming Python API. For more examples, please refer to the `cuopt-examples GitHub repository <https://github.com/NVIDIA/cuopt-examples>`_.
+    The examples in this section are not exhaustive. They are provided to help you get started with the cuOpt mixed integer programming Python API. For more examples, please refer to the `cuopt-examples GitHub repository <https://github.com/NVIDIA/cuopt-examples>`_.
 
 
-Mixed Integer Linear Programming Example
+Mixed Integer Programming Example
 ----------------------------------------
 
 :download:`simple_milp_example.py <examples/simple_milp_example.py>`
@@ -28,7 +28,7 @@ The response is as follows:
     Objective value = 303.0
 
 
-Semi-continuous Variable Example
+Semi-Continuous Variable Example
 --------------------------------
 
 :download:`semi_continuous_example.py <examples/semi_continuous_example.py>`

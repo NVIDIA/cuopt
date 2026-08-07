@@ -31,7 +31,7 @@
 
 namespace cuopt::mathematical_optimization::test {
 
-void init_handler(const raft::handle_t* handle_ptr)
+static void init_handler(const raft::handle_t* handle_ptr)
 {
   // Init cuBlas / cuSparse context here to avoid having it during solving time
   RAFT_CUBLAS_TRY(raft::linalg::detail::cublassetpointermode(

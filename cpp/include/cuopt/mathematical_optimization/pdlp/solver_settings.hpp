@@ -8,6 +8,7 @@
 #pragma once
 
 #include <cuopt/mathematical_optimization/constants.h>
+#include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/cpu_pdlp_warm_start_data.hpp>
 #include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 #include <cuopt/mathematical_optimization/pdlp/pdlp_warm_start_data.hpp>
@@ -21,7 +22,8 @@
 
 #include <cuda/std/span>
 
-namespace cuopt::mathematical_optimization {
+namespace cuopt {
+namespace CUOPT_EXPORT mathematical_optimization {
 
 // Forward declare solver_settings_t for friend class
 template <typename i_t, typename f_t>
@@ -94,6 +96,19 @@ enum pdlp_precision_t : int {
   SinglePrecision  = CUOPT_PDLP_SINGLE_PRECISION,
   DoublePrecision  = CUOPT_PDLP_DOUBLE_PRECISION,
   MixedPrecision   = CUOPT_PDLP_MIXED_PRECISION
+};
+
+/**
+ * @brief Which graph partitioner distributed PDLP uses.
+ *
+ * Auto: pick automatically (RoundRobin on 1 GPU, KaMinPar otherwise).
+ * KaMinPar: multi-threaded KaMinPar graph partitioner.
+ * RoundRobin: round-robin assignment, no graph.
+ */
+enum distributed_pdlp_partitioner_t : int {
+  Auto       = CUOPT_DISTRIBUTED_PDLP_PARTITIONER_AUTO,
+  KaMinPar   = CUOPT_DISTRIBUTED_PDLP_PARTITIONER_KAMINPAR,
+  RoundRobin = CUOPT_DISTRIBUTED_PDLP_PARTITIONER_ROUND_ROBIN,
 };
 
 template <typename i_t, typename f_t>
@@ -280,6 +295,7 @@ class pdlp_solver_settings_t {
   i_t dualize{-1};
   i_t ordering{-1};
   i_t barrier_dual_initial_point{-1};
+  i_t postsolve_info{-1};
   // Ruiz equilibration for QCQP (barrier) scaling: -1 automatic (row/column
   // imbalance heuristic), 0 disabled, 1 enabled. Distinct from PDLP's own Ruiz
   // scaling in pdlp_hyper_params_t.
@@ -287,6 +303,7 @@ class pdlp_solver_settings_t {
   bool eliminate_dense_columns{true};
   pdlp_precision_t pdlp_precision{pdlp_precision_t::DefaultPrecision};
   bool barrier_iterative_refinement{true};
+  i_t barrier_soc_threshold{100};
   f_t barrier_step_scale{0.9};
   bool save_best_primal_so_far{false};
   /**
@@ -310,7 +327,15 @@ class pdlp_solver_settings_t {
   bool all_primal_feasible{false};
   presolver_t presolver{presolver_t::Default};
   bool dual_postsolve{true};
+  // Concurrent LP/MIP: 1–2 GPUs. Distributed PDLP (method=PDLP): up to the visible device
+  // count; -1 selects all visible GPUs. See use_distributed_pdlp.
   int num_gpus{1};
+  // Dispatch the LP to the multi-GPU distributed PDLP engine (typically set when
+  // method=PDLP and num_gpus>1, or num_gpus=-1).
+  bool use_distributed_pdlp{false};
+  // Which graph partitioner distributed PDLP uses. See
+  // distributed_pdlp_partitioner_t for the meaning of each value.
+  distributed_pdlp_partitioner_t distributed_pdlp_partitioner{distributed_pdlp_partitioner_t::Auto};
   method_t method{method_t::Concurrent};
   bool inside_mip{false};
   // For concurrent termination
@@ -355,4 +380,5 @@ class pdlp_solver_settings_t {
   friend class solver_settings_t<i_t, f_t>;
 };
 
-}  // namespace cuopt::mathematical_optimization
+}  // namespace CUOPT_EXPORT mathematical_optimization
+}  // namespace cuopt

@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cuopt/export.hpp>
 #include <cuopt/routing/routing_structures.hpp>
 
 #include <raft/core/device_span.hpp>
@@ -14,7 +15,7 @@
 
 #include <unordered_set>
 namespace cuopt {
-namespace routing {
+namespace CUOPT_EXPORT routing {
 
 /**
  * @brief A container of vehicle routing solver input
@@ -663,5 +664,5 @@ class data_model_view_t {
   raft::device_span<i_t const> initial_sol_offsets_{};
   std::map<i_t, std::vector<detail::vehicle_break_t<i_t>>> vehicle_breaks_{};
 };
-}  // namespace routing
+}  // namespace CUOPT_EXPORT routing
 }  // namespace cuopt

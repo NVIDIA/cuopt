@@ -35,6 +35,7 @@
   pb_settings->set_eliminate_dense_columns(settings.eliminate_dense_columns);
   pb_settings->set_barrier_iterative_refinement(settings.barrier_iterative_refinement);
   pb_settings->set_barrier_step_scale(settings.barrier_step_scale);
+  pb_settings->set_postsolve_info(settings.postsolve_info);
   pb_settings->set_save_best_primal_so_far(settings.save_best_primal_so_far);
   pb_settings->set_first_primal_feasible(settings.first_primal_feasible);
   pb_settings->set_pdlp_precision(static_cast<int32_t>(settings.pdlp_precision));

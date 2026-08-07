@@ -1,11 +1,12 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 
 #include <cuopt/error.hpp>
+#include <cuopt/export.hpp>
 #include <cuopt/routing/solver_settings.hpp>
 
 namespace cuopt {
@@ -62,6 +63,6 @@ std::tuple<i_t, bool, std::string> solver_settings_t<i_t, f_t>::get_dump_best_re
   return std::make_tuple(dump_interval_, dump_best_results_, best_result_file_name_);
 }
 
-template class solver_settings_t<int, float>;
+template class CUOPT_EXPORT solver_settings_t<int, float>;
 }  // namespace routing
 }  // namespace cuopt
