@@ -146,19 +146,6 @@ struct fj_bin_tabu_t {
   }
 };
 
-// What the apply path still needs per row once the row walk is vectorized: everything else it used
-// to read from here now reaches it at unit stride.
-//
-// The mutable state moved out to the engine's row_slack, which holds bound - lhs rather than lhs,
-// because that is what turns the walk's update into a subtraction and lets it gather one array
-// instead of four. bound went with it -- only the rebuild paths need it, and they read pb.bound.
-// cmax went to pb.incident_row_cmax, replicated per incidence. Every row is stored as a'x <= b, so
-// there is no sign to carry. Only the weight is left, and it is genuinely mutable.
-template <typename coef_t>
-struct fj_bin_row_t {
-  int32_t weight;
-};
-
 // Narrowed problem: one-sided rows, integer coefficients, CSR plus its transpose.
 template <typename coef_t>
 struct fj_bin_problem_t {
@@ -453,7 +440,10 @@ static bool fj_bin_narrow(const fj_cpu_climber_t<i_t, f_t>& c,
 template <typename i_t, typename f_t, typename coef_t>
 struct fj_bin_engine_t {
   fj_bin_problem_t<coef_t> pb;
-  std::vector<fj_bin_row_t<coef_t>> rows;
+  // The only mutable per-row state besides the slack. Everything else the apply path once read
+  // per row now reaches it at unit stride: bound stayed in pb, where only the rebuild paths need
+  // it, and cmax went to pb.incident_row_cmax, replicated per incidence.
+  std::vector<int32_t> row_weight;
 
   // Per row, bound - lhs: negative exactly when the row is violated, and moved by a flip by exactly
   // -reverse_coefficients. The only mutable state the vectorized walk gathers.
@@ -577,11 +567,11 @@ struct fj_bin_engine_t {
       const int8_t flip = (int8_t)(1 - 2 * assign[v]);
       int32_t agg_base = 0, agg_bonus = 0;
       for (int32_t i = pb.reverse_offsets[v]; i < pb.reverse_offsets[v + 1]; ++i) {
-        const fj_bin_row_t<coef_t>& h = rows[pb.reverse_constraints[i]];
-        const int32_t os = row_slack[pb.reverse_constraints[i]];
+        const int32_t r  = pb.reverse_constraints[i];
+        const int32_t os = row_slack[r];
         const int32_t ns = os - (int32_t)pb.reverse_coefficients[i] * flip;
         int32_t base = 0, bonus = 0;
-        fj_bin_score_delta_parts(os, ns, h.weight, base, bonus);
+        fj_bin_score_delta_parts(os, ns, row_weight[r], base, bonus);
         agg_base += base;
         agg_bonus += bonus;
       }
@@ -620,7 +610,7 @@ struct fj_bin_engine_t {
   {
     std::fill(var_score.begin(), var_score.end(), 0);
     for (int32_t r = 0; r < pb.n_constraints; ++r) {
-      const int32_t weight = rows[r].weight;
+      const int32_t weight = row_weight[r];
       const int32_t os     = row_slack[r];
       for (int32_t k = pb.offsets[r]; k < pb.offsets[r + 1]; ++k) {
         const int32_t v    = pb.variables[k];
@@ -686,7 +676,7 @@ struct fj_bin_engine_t {
     // The tail writes a score delta through int32_t* and calls out to the patch, either of which may
     // alias a vector's internal pointer as far as the compiler can prove. Without these locals it
     // reloads every base pointer below out of `this` on each visit.
-    fj_bin_row_t<coef_t>* const rows_p = rows.data();
+    int32_t* const weight_p            = row_weight.data();
     int32_t* const slack_p             = row_slack.data();
     const int32_t* const rcon_p        = pb.reverse_constraints.data();
     const coef_t* const skv_p          = pb.reverse_coefficients.data();
@@ -703,7 +693,7 @@ struct fj_bin_engine_t {
     // so the walk's shape is the only thing that differs between them.
     auto finish = [&](int32_t ii) {
       const int32_t r         = rcon_p[ii];
-      fj_bin_row_t<coef_t>& h = rows_p[r];
+      const int32_t weight    = weight_p[r];
       const int32_t skv       = (int32_t)skv_p[ii];
       const int32_t new_slack = slack_p[r];
       const int32_t old_slack = new_slack + skv * delta;
@@ -730,7 +720,7 @@ struct fj_bin_engine_t {
                            var_score_p,
                            nnz_delta_p,
                            assign_p,
-                           h.weight,
+                           weight,
                            new_slack,
                            var);
         nnz_touched += ke - kb;
@@ -739,7 +729,7 @@ struct fj_bin_engine_t {
 
       // The flipped variable's own score delta. Zero on the rows the walk absorbed -- deeply
       // satisfied both ways -- and already stored as zero there.
-      const int32_t pv = fj_bin_packed_score_delta(new_slack, new_slack - skv * new_flip, h.weight);
+      const int32_t pv = fj_bin_packed_score_delta(new_slack, new_slack - skv * new_flip, weight);
       own_score += pv;
       nnz_delta_p[rcsr_p[ii]] = pv;
     };
@@ -804,9 +794,8 @@ struct fj_bin_engine_t {
 
   void reweight_constraint(int32_t r, int32_t new_weight)
   {
-    fj_bin_row_t<coef_t>& h = rows[r];
-    if (new_weight == h.weight) return;
-    h.weight = new_weight;
+    if (new_weight == row_weight[r]) return;
+    row_weight[r] = new_weight;
     if (new_weight > max_weight) max_weight = new_weight;
     // The slack is unchanged here, and no variable is excluded, so skip_var matches no index.
     const int32_t kb = pb.offsets[r], ke = pb.offsets[r + 1];
@@ -817,7 +806,7 @@ struct fj_bin_engine_t {
                      var_score.data(),
                      nnz_score_delta.data(),
                      assign_i32.data(),
-                     h.weight,
+                     new_weight,
                      row_slack[r],
                      -1);
     nnz_touched += ke - kb;
@@ -829,7 +818,7 @@ struct fj_bin_engine_t {
   void update_weights()
   {
     for (int32_t cf : violated_list) {
-      reweight_constraint(cf, rows[cf].weight + fj_bin_ddfw_transfer);
+      reweight_constraint(cf, row_weight[cf] + fj_bin_ddfw_transfer);
       const int32_t vo = pb.offsets[cf], ve = pb.offsets[cf + 1];
       if (ve <= vo) continue;
       int32_t best_donor = -1, best_w = fj_bin_ddfw_init;
@@ -839,12 +828,13 @@ struct fj_bin_engine_t {
         if (ne <= no) continue;
         const int32_t d =
           pb.reverse_constraints[no + (int32_t)(rng.next_u32() % (uint32_t)(ne - no))];
-        if (d != cf && !is_violated[d] && rows[d].weight > best_w) {
-          best_w     = rows[d].weight;
+        if (d != cf && !is_violated[d] && row_weight[d] > best_w) {
+          best_w     = row_weight[d];
           best_donor = d;
         }
       }
-      if (best_donor >= 0) reweight_constraint(best_donor, rows[best_donor].weight - fj_bin_ddfw_transfer);
+      if (best_donor >= 0)
+        reweight_constraint(best_donor, row_weight[best_donor] - fj_bin_ddfw_transfer);
     }
     if (violated_list.empty()) objective_weight += 1;
   }
@@ -983,7 +973,7 @@ struct fj_bin_engine_t {
   {
     assign = seed_assign;
     for (int32_t v = 0; v < pb.n_variables; ++v) assign_i32[v] = assign[v];
-    for (int32_t r = 0; r < pb.n_constraints; ++r) rows[r].weight = pb.initial_weight[r];
+    for (int32_t r = 0; r < pb.n_constraints; ++r) row_weight[r] = pb.initial_weight[r];
     max_weight       = fj_bin_ddfw_init;
     objective_weight = 0;
     tabu.clear(iters);
@@ -1025,9 +1015,7 @@ struct fj_bin_engine_t {
     assign_i32.assign(n, 0);
     for (int32_t v = 0; v < n; ++v) assign_i32[v] = assign[v];
 
-    rows.resize(m);
-    for (int32_t r = 0; r < m; ++r)
-      rows[r] = fj_bin_row_t<coef_t>{pb.initial_weight[r]};
+    row_weight.assign(pb.initial_weight.begin(), pb.initial_weight.end());
     row_slack.assign(m, 0);
 
     var_score.assign(n, 0);
