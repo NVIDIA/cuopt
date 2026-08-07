@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cuopt/export.hpp>
 #include <cuopt/routing/assignment.hpp>
 #include <cuopt/routing/cython/generator.hpp>
 #include <cuopt/routing/data_model_view.hpp>
@@ -19,7 +20,7 @@
 #include <vector>
 
 namespace cuopt {
-namespace cython {
+namespace CUOPT_EXPORT cython {
 
 template <typename i_t, typename f_t>
 void populate_dataset_params(routing::generator::dataset_params_t<i_t, f_t>& params,
@@ -91,5 +92,5 @@ std::vector<std::unique_ptr<vehicle_routing_ret_t>> call_batch_solve(
 std::unique_ptr<dataset_ret_t> call_generate_dataset(
   raft::handle_t& handle, routing::generator::dataset_params_t<int, float> const& params);
 
-}  // namespace cython
+}  // namespace CUOPT_EXPORT cython
 }  // namespace cuopt

@@ -7,12 +7,14 @@
 
 #pragma once
 
+#include <cuopt/export.hpp>
 // Include the solution interface definitions so unique_ptr can properly delete them
 #include <cuopt/mathematical_optimization/optimization_problem_solution_interface.hpp>
 
 #include <memory>
 
-namespace cuopt::mathematical_optimization {
+namespace cuopt {
+namespace CUOPT_EXPORT mathematical_optimization {
 
 // Forward declarations (only declaration needed, not definition)
 template <typename i_t, typename f_t>
@@ -44,4 +46,5 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip_remote(
   cpu_optimization_problem_t<i_t, f_t> const& cpu_problem,
   mip_solver_settings_t<i_t, f_t> const& settings);
 
-}  // namespace cuopt::mathematical_optimization
+}  // namespace CUOPT_EXPORT mathematical_optimization
+}  // namespace cuopt

@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/io/data_model_view.hpp>
 #include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
 
@@ -18,7 +19,9 @@
 #include <unordered_set>
 #include <vector>
 
-namespace cuopt::mathematical_optimization::io {
+namespace cuopt {
+namespace CUOPT_EXPORT mathematical_optimization {
+namespace io {
 
 /**
  * @brief Main writer class for MPS files
@@ -60,4 +63,6 @@ class mps_writer_t {
   static data_model_view_t<i_t, f_t> create_view(const mps_data_model_t<i_t, f_t>& model);
 };  // class mps_writer_t
 
-}  // namespace cuopt::mathematical_optimization::io
+}  // namespace io
+}  // namespace CUOPT_EXPORT mathematical_optimization
+}  // namespace cuopt
