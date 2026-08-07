@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include <cuopt/export.hpp>
+
 #include <cuopt/mathematical_optimization/optimization_problem_solution_interface.hpp>
 
 #include <atomic>
@@ -66,7 +68,7 @@ extern std::atomic<bool> g_remote_solvers_ready;
  *
  * Called by libcuopt_grpc.so's ELF constructor. Thread-safe.
  */
-void register_remote_solvers(solve_lp_remote_fn_t lp_fn, solve_mip_remote_fn_t mip_fn);
+CUOPT_EXPORT void register_remote_solvers(solve_lp_remote_fn_t lp_fn, solve_mip_remote_fn_t mip_fn);
 
 /**
  * @brief Load libcuopt_grpc.so on demand so its constructor populates the registry.

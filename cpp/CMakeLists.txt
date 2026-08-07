@@ -554,6 +554,9 @@ if (NOT SKIP_GRPC_BUILD)
     # at runtime with "undefined symbol: absl::…::Mutex::Dtor".
     set_property(SOURCE ${GRPC_INFRA_FILES} DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             APPEND PROPERTY COMPILE_OPTIONS "-DNDEBUG")
+    set_property(SOURCE ${PROTO_SRCS} ${GRPC_PROTO_SRCS} ${GRPC_SERVICE_SRCS} ${DATA_PROTO_SRCS} DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+            APPEND PROPERTY COMPILE_OPTIONS "$<$<COMPILE_LANGUAGE:CXX>:-fvisibility=default>")
+
     # Include gRPC sources in CUOPT_SRC_FILES so cuopt_objs (and cuopt_static for tests)
     # have solve_lp_remote / solve_mip_remote defined when CUOPT_ENABLE_GRPC is set.
     list(APPEND CUOPT_SRC_FILES ${GRPC_INFRA_FILES})
@@ -568,6 +571,11 @@ function(cuopt_configure_component target)
             CXX_SCAN_FOR_MODULES OFF
             BUILD_RPATH_USE_ORIGIN TRUE
             INSTALL_RPATH "\$ORIGIN"
+            # Same hidden-by-default visibility that #1625 applies to cuopt_objs. The
+            # components are the shipped artifacts, so they need it too.
+            CXX_VISIBILITY_PRESET hidden
+            CUDA_VISIBILITY_PRESET hidden
+            VISIBILITY_INLINES_HIDDEN ON
     )
     target_compile_options(${target}
             PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
@@ -724,6 +732,9 @@ add_library(cuopt_objs OBJECT
 )
 set_target_properties(cuopt_objs
         PROPERTIES POSITION_INDEPENDENT_CODE ON
+        CXX_VISIBILITY_PRESET hidden
+        CUDA_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN ON
         CXX_SCAN_FOR_MODULES OFF
 )
 target_compile_definitions(cuopt_objs
@@ -811,6 +822,7 @@ target_link_libraries(cuopt_objs
         PRIVATE
         ${CUOPT_PRIVATE_CUDA_LIBS}
         simde::simde
+        OpenMP::OpenMP_CXX
         OpenMP::OpenMP_CUDA
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:protobuf::libprotobuf>
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:gRPC::grpc++>

@@ -108,6 +108,12 @@ outputs:
       script:
         content: |
           cmake --install cpp/build
+          # libcuopt.so is a linker script, so the components are what carry symbols.
+          # Only mathematical_optimization provides the C API.
+          ./ci/check_symbols.sh cpp/build/libcuopt_mathematical_optimization.so
+          ./ci/check_symbols.sh cpp/build/libcuopt_base.so --no-public-api-check
+          ./ci/check_symbols.sh cpp/build/libcuopt_routing.so --no-public-api-check
+          ./ci/check_symbols.sh cpp/build/libcuopt_grpc.so --no-public-api-check
       dynamic_linking:
         overlinking_behavior: "error"
       prefix_detection:
@@ -122,6 +128,7 @@ outputs:
       build:
         - cmake ${{ cmake_version }}
         - ${{ stdlib("c") }}
+        - binutils
       host:
         - libboost-devel
         - cuda-version =${{ cuda_version }}

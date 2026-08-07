@@ -6,13 +6,15 @@
 /* clang-format on */
 
 #pragma once
+
+#include <cuopt/export.hpp>
 #include <raft/random/rng_device.cuh>
 #include <utilities/cuda_helpers.cuh>
 
 namespace cuopt {
 
 // TODO: should be thread local?
-class seed_generator {
+class CUOPT_EXPORT seed_generator {
   static int64_t seed_;
 
  public:

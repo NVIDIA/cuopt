@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include <cuopt/export.hpp>
+
 #include <string>
 
 namespace cuopt {
@@ -34,7 +36,7 @@ double getCurrentTimestamp();
  *
  * @param label The label to print with the timestamp
  */
-void printTimestamp(const std::string& label);
+CUOPT_EXPORT void printTimestamp(const std::string& label);
 
 }  // namespace utilities
 }  // namespace cuopt
