@@ -7,11 +7,14 @@
 
 #pragma once
 
+#include <cuopt/export.hpp>
+
 #include <rmm/device_uvector.hpp>
 
 #include <span>
 
-namespace cuopt::mathematical_optimization {
+namespace cuopt {
+namespace CUOPT_EXPORT mathematical_optimization {
 
 template <typename i_t, typename f_t>
 struct pdlp_warm_start_data_view_t;
@@ -99,4 +102,5 @@ struct pdlp_warm_start_data_view_t {
   i_t iterations_since_last_restart_{-1};
 };
 
-}  // namespace cuopt::mathematical_optimization
+}  // namespace CUOPT_EXPORT mathematical_optimization
+}  // namespace cuopt
