@@ -20,7 +20,21 @@
 #pragma GCC diagnostic pop
 #endif
 
+#include <cstdint>
+#include <vector>
+
 namespace cuopt::mathematical_optimization::mip {
+
+enum class gf2_status_t { Feasible, Infeasible };
+
+// Solves A x = b over GF(2). A is m x n, each row packed into ceil(n/64) words (column c lives at
+// word c/64, bit c%64). Trashes A and b. On Feasible, x is the solution obtained by setting the
+// free variables to 0, and determined[c] is set iff x[c] is the same in every solution.
+gf2_status_t gf2_solve(std::vector<std::vector<uint64_t>>& A,
+                       int n_cols,
+                       std::vector<int>& b,
+                       std::vector<int>& x,
+                       std::vector<uint8_t>& determined);
 
 template <typename f_t>
 class GF2Presolve : public papilo::PresolveMethod<f_t> {

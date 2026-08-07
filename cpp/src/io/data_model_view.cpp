@@ -5,6 +5,7 @@
  */
 /* clang-format on */
 
+#include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/io/data_model_view.hpp>
 #include <utilities/error.hpp>
 
@@ -377,8 +378,8 @@ data_model_view_t<i_t, f_t>::get_quadratic_constraints() const noexcept
 }
 
 // NOTE: Explicitly instantiate all types here in order to avoid linker error
-template class data_model_view_t<int, float>;
+template class CUOPT_EXPORT data_model_view_t<int, float>;
 
-template class data_model_view_t<int, double>;
+template class CUOPT_EXPORT data_model_view_t<int, double>;
 
 }  // namespace cuopt::mathematical_optimization::io

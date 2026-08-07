@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/utilities/cython_solve.hpp>
 
 #include <cstddef>
@@ -22,7 +23,8 @@ class data_model_view_t;
 }  // namespace io
 }  // namespace cuopt::mathematical_optimization
 
-namespace cuopt::cython {
+namespace cuopt {
+namespace CUOPT_EXPORT cython {
 
 /** Mirrors cuopt::mathematical_optimization::job_status_t for the Python bindings. */
 enum class grpc_job_status_t : int {
@@ -167,4 +169,5 @@ class grpc_python_client_t {
   std::unique_ptr<impl_t> impl_;
 };
 
-}  // namespace cuopt::cython
+}  // namespace CUOPT_EXPORT cython
+}  // namespace cuopt
