@@ -79,10 +79,13 @@ jobs:
           commit_title="$(printf '%s' "${HEAD_COMMIT_MESSAGE}" | sed -n '1p')"
 
           if [ "${EVENT_NAME}" = "push" ]; then
-            if [ "${commit_title}" != "${SIGNATURE_COMMIT_TITLE}" ]; then
-              echo "Push is not the configured NVSkills signature commit; skipping dispatch."
-              exit 0
-            fi
+            case "${commit_title}" in
+              "${SIGNATURE_COMMIT_TITLE}"*) ;;
+              *)
+                echo "Push is not the configured NVSkills signature commit; skipping dispatch."
+                exit 0
+                ;;
+            esac
             if [ "${ACTOR}" != "${SIGNATURE_PUSH_ACTOR}" ]; then
               echo "Push actor ${ACTOR} is not the configured NVSkills signing actor; skipping dispatch."
               exit 0
@@ -127,7 +130,7 @@ jobs:
               -H "Accept: application/vnd.github+json" \
               "https://api.github.com/repos/${owner}/${repo}/pulls/${pr_number}/files?per_page=100&page=${page}")"
             if printf '%s' "${files_json}" | jq -e '
-              any(.[]; .filename |
+              any(.[]; (.filename, .previous_filename // "") |
                 startswith("skills/") or
                 startswith("team-skills/") or
                 startswith("rules/team-rules/") or
