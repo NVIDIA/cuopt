@@ -149,15 +149,14 @@ struct fj_bin_tabu_t {
 // What the apply path still needs per row once the row walk is vectorized: everything else it used
 // to read from here now reaches it at unit stride.
 //
-// The mutable state moved out to the engine's row_slack, which holds sign * (bound - lhs) rather
-// than lhs, because that is what turns the walk's update into a subtraction and lets it gather one
-// array instead of four. bound went with it -- only the rebuild paths need it, and they read
-// pb.bound. cmax went to pb.incident_row_cmax, replicated per incidence. sign stays because
-// fj_bin_patch_row still takes it, and weight because it is genuinely mutable.
+// The mutable state moved out to the engine's row_slack, which holds bound - lhs rather than lhs,
+// because that is what turns the walk's update into a subtraction and lets it gather one array
+// instead of four. bound went with it -- only the rebuild paths need it, and they read pb.bound.
+// cmax went to pb.incident_row_cmax, replicated per incidence. Every row is stored as a'x <= b, so
+// there is no sign to carry. Only the weight is left, and it is genuinely mutable.
 template <typename coef_t>
 struct fj_bin_row_t {
   int32_t weight;
-  int8_t sign;
 };
 
 // Narrowed problem: one-sided rows, integer coefficients, CSR plus its transpose.
@@ -173,17 +172,15 @@ struct fj_bin_problem_t {
 
   std::vector<int32_t> reverse_offsets;
   std::vector<int32_t> reverse_constraints;
-  std::vector<coef_t> reverse_coefficients;
   std::vector<int32_t> reverse_to_csr;
 
-  // Per incidence, for the vectorized row walk: sign * coefficient folded once, and the row's cmax
-  // replicated. Both are structural. Indexed like the transpose above, so the walk reads them at
-  // unit stride instead of gathering sign, coefficient and cmax per row.
-  std::vector<coef_t> signed_coefficient;
+  // Per incidence, for the vectorized row walk: the coefficient and the row's cmax, both replicated
+  // in transpose order so the walk reads them at unit stride instead of gathering per row. Both are
+  // structural.
+  std::vector<coef_t> reverse_coefficients;
   std::vector<coef_t> incident_row_cmax;
 
   std::vector<int32_t> bound;
-  std::vector<int8_t> sign;
   std::vector<coef_t> cmax;
   std::vector<int32_t> initial_weight;
 
@@ -335,7 +332,6 @@ static bool fj_bin_narrow(const fj_cpu_climber_t<i_t, f_t>& c,
   pb.offsets.assign(1, 0);
   pb.offsets.reserve(n_split + 1);
   pb.bound.reserve(n_split);
-  pb.sign.reserve(n_split);
   pb.cmax.reserve(n_split);
   pb.initial_weight.reserve(n_split);
 
@@ -344,11 +340,17 @@ static bool fj_bin_narrow(const fj_cpu_climber_t<i_t, f_t>& c,
 
   // Each split row inherits the weight of the side it came from: left is the lower-bound side,
   // right the upper.
-  auto emit = [&](int32_t r, double side_bound, int8_t sign, double weight) -> bool {
+  //
+  // Both sides are stored as a'x <= b. The lower-bound side is negated on the way in, which costs
+  // nothing because each side already gets its own copy of the row, and it leaves the slack as
+  // bound - lhs everywhere -- so no per-row sign reaches the engine at all. Negation is safe on both
+  // fields: the scan admits |coef| up to 127 for int8 and 32767 for int16, and the bound is checked
+  // for int32 range after negating.
+  auto emit = [&](int32_t r, double side_bound, long side, double weight) -> bool {
     coef_t row_cmax = 1;
     for (int32_t k = offsets[r]; k < offsets[r + 1]; ++k) {
       const double a = coeffs[k];
-      const long ai  = std::lround(a);
+      const long ai  = side * std::lround(a);
       if (!is_integer(a, tol) || ai < std::numeric_limits<coef_t>::min() ||
           ai > std::numeric_limits<coef_t>::max()) {
         return false;
@@ -358,11 +360,10 @@ static bool fj_bin_narrow(const fj_cpu_climber_t<i_t, f_t>& c,
       const coef_t abs_a = (coef_t)std::labs(ai);
       if (abs_a > row_cmax) row_cmax = abs_a;
     }
-    const long b = std::lround(side_bound);
+    const long b = side * std::lround(side_bound);
     if (!fj_bin_in_int32((double)b)) return false;
     pb.offsets.push_back((int32_t)pb.variables.size());
     pb.bound.push_back((int32_t)b);
-    pb.sign.push_back(sign);
     pb.cmax.push_back(row_cmax);
     incoming_weight.push_back(weight);
     return true;
@@ -371,8 +372,8 @@ static bool fj_bin_narrow(const fj_cpu_climber_t<i_t, f_t>& c,
   for (int32_t r = 0; r < m; ++r) {
     const double lb = cstr_lb[r];
     const double ub = cstr_ub[r];
-    if (std::isfinite(lb) && !emit(r, lb, (int8_t)-1, left_w[r])) return false;
-    if (std::isfinite(ub) && !emit(r, ub, (int8_t)1, right_w[r])) return false;
+    if (std::isfinite(lb) && !emit(r, lb, -1, left_w[r])) return false;
+    if (std::isfinite(ub) && !emit(r, ub, 1, right_w[r])) return false;
   }
   if ((int32_t)pb.bound.size() != n_split) return false;
   pb.nnz = (int32_t)pb.variables.size();
@@ -416,20 +417,16 @@ static bool fj_bin_narrow(const fj_cpu_climber_t<i_t, f_t>& c,
   pb.reverse_constraints.resize(pb.nnz);
   pb.reverse_coefficients.resize(pb.nnz);
   pb.reverse_to_csr.resize(pb.nnz);
-  pb.signed_coefficient.resize(pb.nnz);
   pb.incident_row_cmax.resize(pb.nnz);
   {
     std::vector<int32_t> cursor(pb.reverse_offsets.begin(), pb.reverse_offsets.begin() + n);
     for (int32_t r = 0; r < n_split; ++r) {
       for (int32_t k = pb.offsets[r]; k < pb.offsets[r + 1]; ++k) {
-        const int32_t slot           = cursor[pb.variables[k]]++;
-        pb.reverse_constraints[slot] = r;
+        const int32_t slot            = cursor[pb.variables[k]]++;
+        pb.reverse_constraints[slot]  = r;
         pb.reverse_coefficients[slot] = pb.coefficients[k];
         pb.reverse_to_csr[slot]       = k;
-        // The scan admits int8 only up to |coef| 127 and int16 only up to 32767, so negating a
-        // coefficient cannot overflow its own width.
-        pb.signed_coefficient[slot] = (coef_t)(pb.sign[r] * pb.coefficients[k]);
-        pb.incident_row_cmax[slot]  = pb.cmax[r];
+        pb.incident_row_cmax[slot]    = pb.cmax[r];
       }
     }
   }
@@ -439,7 +436,7 @@ static bool fj_bin_narrow(const fj_cpu_climber_t<i_t, f_t>& c,
   const int32_t rpad =
     fj_bin_pf_dist > fj_bin_simd_padding ? fj_bin_pf_dist : fj_bin_simd_padding;
   pb.reverse_constraints.resize(pb.nnz + rpad, 0);
-  pb.signed_coefficient.resize(pb.nnz + rpad, (coef_t)0);
+  pb.reverse_coefficients.resize(pb.nnz + rpad, (coef_t)0);
   pb.incident_row_cmax.resize(pb.nnz + rpad, (coef_t)1);
 
   pb.objective.resize(n);
@@ -458,8 +455,8 @@ struct fj_bin_engine_t {
   fj_bin_problem_t<coef_t> pb;
   std::vector<fj_bin_row_t<coef_t>> rows;
 
-  // Per row, sign * (bound - lhs): negative exactly when the row is violated, and moved by a flip
-  // by exactly -signed_coefficient. The only mutable state the vectorized walk gathers.
+  // Per row, bound - lhs: negative exactly when the row is violated, and moved by a flip by exactly
+  // -reverse_coefficients. The only mutable state the vectorized walk gathers.
   std::vector<int32_t> row_slack;
 
   std::vector<int8_t> assign;
@@ -541,7 +538,7 @@ struct fj_bin_engine_t {
         lhs += (int64_t)pb.coefficients[k] * (int64_t)best_assign[pb.variables[k]];
       }
       if (lhs < INT32_MIN || lhs > INT32_MAX) lhs_overflow = true;
-      const int64_t slack = (int64_t)pb.sign[r] * ((int64_t)pb.bound[r] - lhs);
+      const int64_t slack = (int64_t)pb.bound[r] - lhs;
       if (slack < 0) {
         ++n_violated;
         if (-slack > worst) worst = -slack;
@@ -582,7 +579,7 @@ struct fj_bin_engine_t {
       for (int32_t i = pb.reverse_offsets[v]; i < pb.reverse_offsets[v + 1]; ++i) {
         const fj_bin_row_t<coef_t>& h = rows[pb.reverse_constraints[i]];
         const int32_t os = row_slack[pb.reverse_constraints[i]];
-        const int32_t ns = os - (int32_t)pb.signed_coefficient[i] * flip;
+        const int32_t ns = os - (int32_t)pb.reverse_coefficients[i] * flip;
         int32_t base = 0, bonus = 0;
         fj_bin_score_delta_parts(os, ns, h.weight, base, bonus);
         agg_base += base;
@@ -624,12 +621,11 @@ struct fj_bin_engine_t {
     std::fill(var_score.begin(), var_score.end(), 0);
     for (int32_t r = 0; r < pb.n_constraints; ++r) {
       const int32_t weight = rows[r].weight;
-      const int32_t sign   = rows[r].sign;
       const int32_t os     = row_slack[r];
       for (int32_t k = pb.offsets[r]; k < pb.offsets[r + 1]; ++k) {
         const int32_t v    = pb.variables[k];
         const int32_t flip = 1 - 2 * assign[v];
-        const int32_t ns   = os - sign * ((int32_t)pb.coefficients[k] * flip);
+        const int32_t ns   = os - (int32_t)pb.coefficients[k] * flip;
         const int32_t p    = fj_bin_packed_score_delta(os, ns, weight);
         nnz_score_delta[k] = p;
         var_score[v] += p;
@@ -646,7 +642,7 @@ struct fj_bin_engine_t {
       int32_t lhs = 0;
       for (int32_t k = pb.offsets[r]; k < pb.offsets[r + 1]; ++k)
         lhs += (int32_t)pb.coefficients[k] * assign[pb.variables[k]];
-      const int32_t slack = pb.sign[r] * (pb.bound[r] - lhs);
+      const int32_t slack = pb.bound[r] - lhs;
       row_slack[r]        = slack;
       if (slack < 0) set_violated(r);
     }
@@ -693,7 +689,7 @@ struct fj_bin_engine_t {
     fj_bin_row_t<coef_t>* const rows_p = rows.data();
     int32_t* const slack_p             = row_slack.data();
     const int32_t* const rcon_p        = pb.reverse_constraints.data();
-    const coef_t* const skv_p          = pb.signed_coefficient.data();
+    const coef_t* const skv_p          = pb.reverse_coefficients.data();
     const coef_t* const rcmax_p        = pb.incident_row_cmax.data();
     const int32_t* const rcsr_p        = pb.reverse_to_csr.data();
     const int32_t* const offsets_p     = pb.offsets.data();
@@ -734,7 +730,6 @@ struct fj_bin_engine_t {
                            var_score_p,
                            nnz_delta_p,
                            assign_p,
-                           h.sign,
                            h.weight,
                            new_slack,
                            var);
@@ -822,7 +817,6 @@ struct fj_bin_engine_t {
                      var_score.data(),
                      nnz_score_delta.data(),
                      assign_i32.data(),
-                     h.sign,
                      h.weight,
                      row_slack[r],
                      -1);
@@ -1033,7 +1027,7 @@ struct fj_bin_engine_t {
 
     rows.resize(m);
     for (int32_t r = 0; r < m; ++r)
-      rows[r] = fj_bin_row_t<coef_t>{pb.initial_weight[r], pb.sign[r]};
+      rows[r] = fj_bin_row_t<coef_t>{pb.initial_weight[r]};
     row_slack.assign(m, 0);
 
     var_score.assign(n, 0);

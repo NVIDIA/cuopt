@@ -80,7 +80,6 @@ void fj_bin_patch_row(const int32_t* variables,
                       int32_t* var_score,
                       int32_t* nnz_score_delta,
                       const int32_t* assign_i32,
-                      int32_t sign,
                       int32_t weight,
                       int32_t os_new,
                       int32_t skip_var);
@@ -91,13 +90,13 @@ constexpr int32_t fj_bin_walk_tile = 256;
 // must finish by hand (e.g. if the row needs patching)
 //
 // For every incidence i in the range this applies
-//   row_slack[incident_row[i]] -= signed_coefficient[i] * delta
+//   row_slack[incident_row[i]] -= reverse_coefficients[i] * delta
 // then writes to out_incidence, in increasing order, the subset of i whose row is not deeply
 // satisfied on both sides of the flip and returns how many.
 template <typename coef_t>
 int32_t fj_bin_walk_rows(int32_t* row_slack,
                          const int32_t* incident_row,
-                         const coef_t* signed_coefficient,
+                         const coef_t* reverse_coefficients,
                          const coef_t* incident_row_cmax,
                          int32_t incidence_begin,
                          int32_t incidence_end,
