@@ -1,19 +1,20 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 
 #pragma once
 
+#include <cuopt/export.hpp>
 #include <cuopt/routing/routing_structures.hpp>
 #include <fstream>
 #include <limits>
 #include <ostream>
 
 namespace cuopt {
-namespace routing {
+namespace CUOPT_EXPORT routing {
 
 template <typename i_t, typename f_t>
 class solver_settings_t {
@@ -94,5 +95,5 @@ class solver_settings_t {
   std::string best_result_file_name_;
 };
 
-}  // namespace routing
+}  // namespace CUOPT_EXPORT routing
 }  // namespace cuopt
