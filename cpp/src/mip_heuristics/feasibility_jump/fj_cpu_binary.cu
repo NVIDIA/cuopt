@@ -18,6 +18,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <unistd.h>
 #include <limits>
 #include <vector>
 
@@ -201,6 +202,36 @@ constexpr int32_t fj_bin_bonus_limit = 1 << 14;
 static inline bool fj_bin_in_int32(double v)
 {
   return v >= (double)INT32_MIN && v <= (double)INT32_MAX;
+}
+
+// Tile width of the argmax sweep, in variables: min(algorithm target, L1-residency cap).
+//
+// The target is about the shape of the sweep rather than cache capacity -- it sets how often the
+// running maximum is raised, which is what bounds the index re-scan -- and 256 is the measured
+// optimum. The cap is a residency guard, and it is the reason this is not simply a constant: the
+// re-scan pays off only because it revisits a tile that is still L1-hot, so the tile must not be
+// wide enough to spill. It bites only on a small L1, where an unguarded 256 would push the re-scan
+// out to L2 and cost more than the split saves.
+//
+// Bytes per variable is the score array alone. Tabu does not appear: the sweep reads var_score
+// only, with the handful of tabu variables held at the invalid sentinel across it, so flip_until is
+// never touched here.
+constexpr int32_t fj_bin_argmax_tile_target = 256;
+constexpr int32_t fj_bin_argmax_tile_cap_k  = 4;
+
+static int32_t fj_bin_argmax_tile()
+{
+#ifdef _SC_LEVEL1_DCACHE_SIZE
+  long l1 = sysconf(_SC_LEVEL1_DCACHE_SIZE);
+#else
+  long l1 = 0;
+#endif
+  if (l1 <= 0) l1 = 32768;  // fallback: 32 KiB, the common x86 L1d
+  const int32_t bpv = (int32_t)sizeof(int32_t);
+  const int32_t cap = (int32_t)(l1 / (fj_bin_argmax_tile_cap_k * bpv));
+  int32_t t = fj_bin_argmax_tile_target < cap ? fj_bin_argmax_tile_target : cap;
+  t &= ~15;  // whole vectors
+  return t < 16 ? 16 : t;
 }
 
 // Width-independent eligibility scan over the climber's host mirrors. Mutates nothing.
@@ -488,9 +519,8 @@ struct fj_bin_engine_t {
   int64_t nnz_patched{0};
   int64_t rows_walked{0};
 
-  // Tile width for the argmax sweep. Governs how often the running maximum is raised, which is
-  // what bounds the index re-scan, so it is about the shape of the sweep and not cache capacity.
-  int32_t argmax_tile{256};
+  // Tile width for the argmax sweep, in variables. Set at init from fj_bin_argmax_tile().
+  int32_t argmax_tile{fj_bin_argmax_tile_target};
 
   // Settings read at solve entry, where the climber carries populated values.
   int32_t seed{0};
@@ -1026,6 +1056,7 @@ struct fj_bin_engine_t {
     violated_list.clear();
     var_bitmap.assign(n, 0);
 
+    argmax_tile         = fj_bin_argmax_tile();
     objective_weight    = 0;
     max_weight          = fj_bin_ddfw_init;
     incumbent_objective = 0;
