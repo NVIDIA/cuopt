@@ -145,7 +145,11 @@ void local_search_t<i_t, f_t>::stop_cpufj_scratch_threads()
 {
   if (omp_get_num_threads() < CUOPT_MIP_FJ_REQUIRED_THREAD_COUNT) return;
 
+  // Climbers are null until the matching start_* fills them (and start_lptopt
+  // is independent of start_scratch). Skip unset slots so stop is safe if a
+  // start never ran.
   for (size_t i = 0; i < scratch_cpu_fj.size(); ++i) {
+    if (!scratch_cpu_fj[i]) continue;
     scratch_cpu_fj[i]->halted = true;
 #pragma omp taskwait depend(in : *scratch_cpu_fj[i])  // Wait for each scratch CPU FJ task to finish
   }
@@ -231,7 +235,7 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
 {
   if (time_limit == 0.) return solution.get_feasible();
 
-  timer_t timer(time_limit);
+  timer_t timer(time_limit, context.settings.cancel_requested);
   const auto old_n_cstr_weights      = in_fj.cstr_weights.size();
   const auto expected_n_cstr_weights = static_cast<size_t>(solution.problem_ptr->n_constraints);
   // in case this is the first time run, resize
@@ -349,7 +353,8 @@ void local_search_t<i_t, f_t>::generate_fast_solution(solution_t<i_t, f_t>& solu
   fj.settings.feasibility_run        = true;
   fj.settings.time_limit             = std::min(30., timer.remaining_time());
   while (!context.diversity_manager_ptr->check_b_b_preemption() && !timer.check_time_limit()) {
-    timer_t constr_prop_timer = timer_t(std::min(timer.remaining_time(), 2.));
+    timer_t constr_prop_timer(std::min(timer.remaining_time(), 2.),
+                              context.settings.cancel_requested);
     // do constraint prop on lp optimal solution
     constraint_prop.apply_round(solution, 1., constr_prop_timer);
     if (solution.compute_feasibility()) { return; }
@@ -376,10 +381,10 @@ bool local_search_t<i_t, f_t>::run_local_search(solution_t<i_t, f_t>& solution,
   if (!solution.get_feasible()) {
     if (ls_config.at_least_one_parent_feasible) {
       fj_settings.time_limit = 0.5;
-      timer                  = timer_t(fj_settings.time_limit);
+      timer                  = timer_t(fj_settings.time_limit, context.settings.cancel_requested);
     } else {
       fj_settings.time_limit = 0.25;
-      timer                  = timer_t(fj_settings.time_limit);
+      timer                  = timer_t(fj_settings.time_limit, context.settings.cancel_requested);
     }
   } else {
     fj_settings.time_limit = std::min(1., timer.remaining_time());
@@ -498,14 +503,16 @@ bool local_search_t<i_t, f_t>::check_fj_on_lp_optimal(solution_t<i_t, f_t>& solu
   }
   cuopt_func_call(solution.test_variable_bounds(false));
   f_t lp_run_time_after_feasible = std::min(1., timer.remaining_time());
-  timer_t bounds_prop_timer      = timer_t(std::min(timer.remaining_time(), 10.));
+  timer_t bounds_prop_timer(std::min(timer.remaining_time(), 10.),
+                            context.settings.cancel_requested);
   bool is_feasible =
     constraint_prop.apply_round(solution, lp_run_time_after_feasible, bounds_prop_timer);
   if (!is_feasible) {
     const f_t lp_run_time = 2.;
     relaxed_lp_settings_t lp_settings;
-    lp_settings.time_limit = std::min(lp_run_time, timer.remaining_time());
-    lp_settings.tolerance  = solution.problem_ptr->tolerances.absolute_tolerance;
+    lp_settings.time_limit       = std::min(lp_run_time, timer.remaining_time());
+    lp_settings.tolerance        = solution.problem_ptr->tolerances.absolute_tolerance;
+    lp_settings.cancel_requested = context.settings.cancel_requested;
     run_lp_with_vars_fixed(
       *solution.problem_ptr, solution, solution.problem_ptr->integer_indices, lp_settings);
   } else {
@@ -569,7 +576,7 @@ bool local_search_t<i_t, f_t>::run_staged_fp(solution_t<i_t, f_t>& solution,
       }
       CUOPT_LOG_DEBUG("Running staged FP from beginning it %d", i);
       fp.relax_general_integers(solution);
-      timer_t binary_timer(timer.remaining_time() / 3);
+      timer_t binary_timer(timer.remaining_time() / 3, context.settings.cancel_requested);
       i_t binary_it_counter = 0;
       for (; binary_it_counter < 100; ++binary_it_counter) {
         population_ptr->add_external_solutions_to_population();
@@ -747,7 +754,7 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
     is_feasible ? solution.get_objective() : std::numeric_limits<double>::max();
   rmm::device_uvector<f_t> best_solution(solution.assignment, solution.handle_ptr->get_stream());
   problem_t<i_t, f_t>* old_problem_ptr = solution.problem_ptr;
-  fp.timer                             = timer_t(timer.remaining_time());
+  fp.timer = timer_t(timer.remaining_time(), context.settings.cancel_requested);
   // if it has not been initialized yet, create a new problem and move it to the cut problem
   if (!problem_with_objective_cut.cutting_plane_added) {
     problem_with_objective_cut = std::move(problem_t<i_t, f_t>(*old_problem_ptr));
@@ -848,7 +855,7 @@ bool local_search_t<i_t, f_t>::generate_solution(solution_t<i_t, f_t>& solution,
 {
   raft::common::nvtx::range fun_scope("generate_solution");
   cuopt_assert(population_ptr != nullptr, "Population pointer must not be null");
-  timer_t timer(time_limit);
+  timer_t timer(time_limit, context.settings.cancel_requested);
   auto n_vars         = solution.problem_ptr->n_variables;
   auto n_binary_vars  = solution.problem_ptr->get_n_binary_variables();
   auto n_integer_vars = solution.problem_ptr->n_integer_vars;

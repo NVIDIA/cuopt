@@ -482,9 +482,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       raft::common::nvtx::range fun_scope("Barrier: cuDSS Analyze : CUDSS_PHASE_ANALYSIS");
       status =
         cudssExecute(handle, CUDSS_PHASE_REORDERING, solverConfig, solverData, A, cudss_x, cudss_b);
-      if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
-        return CONCURRENT_HALT_RETURN;
-      }
+      if (settings_.cancel_or_halt_requested()) { return CONCURRENT_HALT_RETURN; }
       if (status != CUDSS_STATUS_SUCCESS) {
         settings_.log.printf(
           "FAILED: CUDSS call ended unsuccessfully with status = %d, details: cuDSSExecute for "
@@ -498,9 +496,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
 
       status = cudssExecute(
         handle, CUDSS_PHASE_SYMBOLIC_FACTORIZATION, solverConfig, solverData, A, cudss_x, cudss_b);
-      if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
-        return CONCURRENT_HALT_RETURN;
-      }
+      if (settings_.cancel_or_halt_requested()) { return CONCURRENT_HALT_RETURN; }
       if (status != CUDSS_STATUS_SUCCESS) {
         settings_.log.printf(
           "FAILED: CUDSS call ended unsuccessfully with status = %d, details: cuDSSExecute for "
@@ -556,9 +552,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     f_t start_numeric = tic();
     status            = cudssExecute(
       handle, CUDSS_PHASE_FACTORIZATION, solverConfig, solverData, A, cudss_x, cudss_b);
-    if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
-      return CONCURRENT_HALT_RETURN;
-    }
+    if (settings_.cancel_or_halt_requested()) { return CONCURRENT_HALT_RETURN; }
     if (status != CUDSS_STATUS_SUCCESS) {
       settings_.log.printf(
         "FAILED: CUDSS call ended unsuccessfully with status = %d, details: cuDSSExecute for "
@@ -572,9 +566,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
 #endif
 
     f_t numeric_time = toc(start_numeric);
-    if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
-      return CONCURRENT_HALT_RETURN;
-    }
+    if (settings_.cancel_or_halt_requested()) { return CONCURRENT_HALT_RETURN; }
 
     int info;
     size_t sizeWritten = 0;
@@ -691,9 +683,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     A_created = true;
 
     // Perform symbolic analysis
-    if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
-      return CONCURRENT_HALT_RETURN;
-    }
+    if (settings_.cancel_or_halt_requested()) { return CONCURRENT_HALT_RETURN; }
     f_t start_analysis = tic();
     CUDSS_CALL_AND_CHECK(
       cudssExecute(handle, CUDSS_PHASE_REORDERING, solverConfig, solverData, A, cudss_x, cudss_b),
@@ -701,9 +691,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       "cudssExecute for reordering");
 
     f_t reorder_time = toc(start_analysis);
-    if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
-      return CONCURRENT_HALT_RETURN;
-    }
+    if (settings_.cancel_or_halt_requested()) { return CONCURRENT_HALT_RETURN; }
 
     f_t start_symbolic = tic();
 
@@ -716,7 +704,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     f_t symbolic_time = toc(start_symbolic);
     f_t analysis_time = toc(start_analysis);
     settings_.log.printf("Symbolic factorization time : %.2fs\n", symbolic_time);
-    if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
+    if (settings_.cancel_or_halt_requested()) {
       RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
       handle_ptr_->get_stream().synchronize();
       return CONCURRENT_HALT_RETURN;
@@ -767,9 +755,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       "cudssExecute for factorization");
 
     f_t numeric_time = toc(start_numeric);
-    if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
-      return CONCURRENT_HALT_RETURN;
-    }
+    if (settings_.cancel_or_halt_requested()) { return CONCURRENT_HALT_RETURN; }
 
     int info;
     size_t sizeWritten = 0;
@@ -832,9 +818,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       cudssMatrixSetValues(cudss_x, x.data()), status, "cudssMatrixSetValues for x");
 
     status = cudssExecute(handle, CUDSS_PHASE_SOLVE, solverConfig, solverData, A, cudss_x, cudss_b);
-    if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
-      return CONCURRENT_HALT_RETURN;
-    }
+    if (settings_.cancel_or_halt_requested()) { return CONCURRENT_HALT_RETURN; }
     if (status != CUDSS_STATUS_SUCCESS) {
       settings_.log.printf(
         "FAILED: CUDSS call ended unsuccessfully with status = %d, details: cuDSSExecute for "

@@ -318,6 +318,7 @@ std::string optimization_problem_solution_t<i_t, f_t>::get_termination_status_st
     case pdlp_termination_status_t::PrimalFeasible: return "Primal Feasible";
     case pdlp_termination_status_t::ConcurrentLimit: return "Concurrent Limit";
     case pdlp_termination_status_t::UnboundedOrInfeasible: return "UnboundedOrInfeasible";
+    case pdlp_termination_status_t::Cancelled: return "Cancelled";
     case pdlp_termination_status_t::NoTermination:
       return "NoTermination";
       // Do not implement default case to trigger compile time error if new enum is added

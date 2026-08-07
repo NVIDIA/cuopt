@@ -37,7 +37,8 @@ enum class pdlp_termination_status_t : int8_t {
   TimeLimit             = CUOPT_TERMINATION_STATUS_TIME_LIMIT,
   PrimalFeasible        = CUOPT_TERMINATION_STATUS_PRIMAL_FEASIBLE,
   ConcurrentLimit       = CUOPT_TERMINATION_STATUS_CONCURRENT_LIMIT,
-  UnboundedOrInfeasible = CUOPT_TERMINATION_STATUS_UNBOUNDED_OR_INFEASIBLE
+  UnboundedOrInfeasible = CUOPT_TERMINATION_STATUS_UNBOUNDED_OR_INFEASIBLE,
+  Cancelled             = CUOPT_TERMINATION_STATUS_CANCELLED
 };
 
 /**

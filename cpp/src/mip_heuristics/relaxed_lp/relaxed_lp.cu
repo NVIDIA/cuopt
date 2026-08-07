@@ -49,6 +49,7 @@ optimization_problem_solution_t<i_t, f_t> get_relaxed_lp_solution(
   pdlp_settings.tolerances.relative_dual_tolerance   = settings.tolerance / tolerance_divisor;
   pdlp_settings.time_limit                           = settings.time_limit;
   pdlp_settings.concurrent_halt                      = settings.concurrent_halt;
+  pdlp_settings.cancel_requested                     = settings.cancel_requested;
   pdlp_settings.per_constraint_residual              = settings.per_constraint_residual;
   pdlp_settings.first_primal_feasible                = settings.return_first_feasible;
   pdlp_settings.pdlp_solver_mode                     = pdlp_solver_mode_t::Stable2;
@@ -84,7 +85,7 @@ optimization_problem_solution_t<i_t, f_t> get_relaxed_lp_solution(
   // before LP flush the logs as it takes quite some time
   cuopt::default_logger().flush();
   // temporarily add timer
-  auto start_time = timer_t(pdlp_settings.time_limit);
+  auto start_time = timer_t(pdlp_settings.time_limit, pdlp_settings.cancel_requested);
   lp_solver.set_inside_mip(true);
   auto solver_response = lp_solver.run_solver(start_time);
 

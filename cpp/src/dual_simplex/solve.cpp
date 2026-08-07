@@ -26,6 +26,8 @@
 #include <math_optimization/tic_toc.hpp>
 #include <math_optimization/types.hpp>
 
+#include <utilities/solve_limits.hpp>
+
 #include <raft/core/nvtx.hpp>
 
 #include <cstdio>
@@ -36,6 +38,18 @@
 namespace cuopt::mathematical_optimization::simplex {
 
 namespace {
+
+template <typename i_t, typename f_t>
+lp_status_t remap_lp_status_if_cancelled(const simplex_solver_settings_t<i_t, f_t>& settings,
+                                         lp_status_t status)
+{
+  return cuopt::remap_limit_status_if_cancelled(settings.cancel_requested,
+                                                status,
+                                                lp_status_t::CANCELLED,
+                                                lp_status_t::TIME_LIMIT,
+                                                lp_status_t::CONCURRENT_LIMIT,
+                                                lp_status_t::ITERATION_LIMIT);
+}
 
 template <typename i_t, typename f_t>
 void write_matlab(const std::string& filename, const simplex::lp_problem_t<i_t, f_t>& lp)
@@ -154,8 +168,12 @@ lp_status_t solve_linear_program_with_advanced_basis(
     raft::common::nvtx::range scope_presolve("DualSimplex::presolve");
     ok = presolve(original_lp, settings, presolved_lp, presolve_info);
   }
-  if (ok == CONCURRENT_HALT_RETURN) { return lp_status_t::CONCURRENT_LIMIT; }
-  if (ok == TIME_LIMIT_RETURN) { return lp_status_t::TIME_LIMIT; }
+  if (ok == CONCURRENT_HALT_RETURN) {
+    return remap_lp_status_if_cancelled(settings, lp_status_t::CONCURRENT_LIMIT);
+  }
+  if (ok == TIME_LIMIT_RETURN) {
+    return remap_lp_status_if_cancelled(settings, lp_status_t::TIME_LIMIT);
+  }
   if (ok == -1) { return lp_status_t::INFEASIBLE; }
 
   constexpr bool write_out_matlab = false;
@@ -372,8 +390,12 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
   presolve_info_t<i_t, f_t> presolve_info;
   lp_problem_t<i_t, f_t> presolved_lp(handle_ptr, 1, 1, 1);
   const i_t ok = presolve(original_lp, barrier_settings, presolved_lp, presolve_info);
-  if (ok == CONCURRENT_HALT_RETURN) { return lp_status_t::CONCURRENT_LIMIT; }
-  if (ok == TIME_LIMIT_RETURN) { return lp_status_t::TIME_LIMIT; }
+  if (ok == CONCURRENT_HALT_RETURN) {
+    return remap_lp_status_if_cancelled(settings, lp_status_t::CONCURRENT_LIMIT);
+  }
+  if (ok == TIME_LIMIT_RETURN) {
+    return remap_lp_status_if_cancelled(settings, lp_status_t::TIME_LIMIT);
+  }
   if (ok == -1) { return lp_status_t::INFEASIBLE; }
 
   // Apply columns scaling to the presolve LP
@@ -602,10 +624,14 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
     solution.iterations         = barrier_solution.iterations;
   }
 
-  if (barrier_status == lp_status_t::CONCURRENT_LIMIT) { return lp_status_t::CONCURRENT_LIMIT; }
+  if (barrier_status == lp_status_t::CONCURRENT_LIMIT) {
+    return remap_lp_status_if_cancelled(settings, lp_status_t::CONCURRENT_LIMIT);
+  }
 
   // If we aren't doing crossover, we're done
-  if (!settings.crossover || barrier_lp.Q.n > 0) { return barrier_status; }
+  if (!settings.crossover || barrier_lp.Q.n > 0) {
+    return remap_lp_status_if_cancelled(settings, barrier_status);
+  }
 
   if (settings.crossover && barrier_status == lp_status_t::OPTIMAL) {
     {
@@ -676,7 +702,7 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
     settings.log.printf("Crossover status: %d\n", crossover_status);
     if (crossover_status == crossover_status_t::OPTIMAL) { barrier_status = lp_status_t::OPTIMAL; }
   }
-  return barrier_status;
+  return remap_lp_status_if_cancelled(settings, barrier_status);
 }
 
 template <typename i_t, typename f_t>
@@ -716,7 +742,7 @@ lp_status_t solve_linear_program(const user_problem_t<i_t, f_t>& user_problem,
     original_lp, start_time, settings, lp_solution, vstatus, edge_norms);
   if (status == lp_status_t::CONCURRENT_LIMIT) {
     solution.iterations = lp_solution.iterations;
-    return lp_status_t::CONCURRENT_LIMIT;
+    return remap_lp_status_if_cancelled(settings, lp_status_t::CONCURRENT_LIMIT);
   }
   uncrush_primal_solution(user_problem, original_lp, lp_solution.x, solution.x);
   uncrush_dual_solution(
@@ -726,7 +752,7 @@ lp_status_t solve_linear_program(const user_problem_t<i_t, f_t>& user_problem,
   solution.iterations         = lp_solution.iterations;
   solution.l2_primal_residual = lp_solution.l2_primal_residual;
   solution.l2_dual_residual   = lp_solution.l2_dual_residual;
-  return status;
+  return remap_lp_status_if_cancelled(settings, status);
 }
 
 template <typename i_t, typename f_t>

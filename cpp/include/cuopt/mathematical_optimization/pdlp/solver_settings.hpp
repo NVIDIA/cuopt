@@ -340,6 +340,9 @@ class pdlp_solver_settings_t {
   bool inside_mip{false};
   // For concurrent termination
   std::atomic<int>* concurrent_halt{nullptr};
+  // Optional cooperative cancel (level-triggered). Non-owning. Cleared by
+  // solve_lp on return. Set true from another thread to request early exit.
+  std::atomic<bool>* cancel_requested{nullptr};
   // Shared strong branching solved flags for cooperative DS + PDLP
   cuda::std::span<std::atomic<int>> shared_sb_solved;
   static constexpr f_t minimal_absolute_tolerance = 1.0e-12;

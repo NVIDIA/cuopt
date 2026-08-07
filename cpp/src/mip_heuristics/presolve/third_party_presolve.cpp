@@ -745,11 +745,20 @@ void set_presolve_parameters(
     };
     // Papilo has work unit measurements for probing. Because of this when the first batch fails to
     // produce any reductions, the algorithm stops. To avoid stopping the algorithm, we set a
-    // minimum badge size to a huge value. The time limit makes sure that we exit if it takes too
-    // long
+    // minimum badge size to a large value. The time limit makes sure that we exit if it takes too
+    // long.
+    //
+    // Also cap maxbadgesize so presolve.tlim / cancel can be observed between badges. Without a
+    // cap, one badge can be ~ncols/2 and run far past tlim (observed on seymour1.mps), blocking
+    // cooperative cancel until the badge finishes. The alternative would be a much longer
+    // watchdog grace before SIGKILL while Papilo ignores cancel mid-badge; capping badges is
+    // preferable. Keep minbadgesize <= maxbadgesize. Cap may slow probing on huge MIPs vs
+    // unlimited badges.
     if (reduction_allowed("probing")) {
-      int min_badgesize = std::max(ncols / 2, 32);
+      constexpr int max_badgesize = 512;
+      int min_badgesize           = std::min(std::max(ncols / 2, 32), max_badgesize);
       params.setParameter("probing.minbadgesize", min_badgesize);
+      params.setParameter("probing.maxbadgesize", max_badgesize);
     }
     if (reduction_allowed("cliquemerging")) {
       params.setParameter("cliquemerging.enabled", true);

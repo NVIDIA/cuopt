@@ -177,7 +177,8 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
     if (guiding_solution.get_feasible() && !a.problem_ptr->expensive_to_fix_vars) {
       this->compute_vars_to_fix(offspring, vars_to_fix, n_vars_from_other, n_vars_from_guiding);
       auto [fixed_problem, fixed_assignment, variable_map] = offspring.fix_variables(vars_to_fix);
-      timer_t timer(bp_recombiner_config_t::bounds_prop_time_limit);
+      timer_t timer(bp_recombiner_config_t::bounds_prop_time_limit,
+                    this->context.settings.cancel_requested);
       rmm::device_uvector<f_t> old_assignment(offspring.assignment,
                                               offspring.handle_ptr->get_stream());
       offspring.handle_ptr->sync_stream();
@@ -211,7 +212,8 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
       //              "Feasible after unfix should be same as feasible after bounds prop!");
       a.handle_ptr->sync_stream();
     } else {
-      timer_t timer(bp_recombiner_config_t::bounds_prop_time_limit);
+      timer_t timer(bp_recombiner_config_t::bounds_prop_time_limit,
+                    this->context.settings.cancel_requested);
       get_probing_values_for_infeasible(
         guiding_solution, other_solution, offspring, probing_values, n_vars_from_other);
       probing_config.probing_values = host_copy(probing_values, offspring.handle_ptr->get_stream());

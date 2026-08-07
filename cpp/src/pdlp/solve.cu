@@ -39,6 +39,7 @@
 #include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/omp_helpers.hpp>
+#include <utilities/solve_limits.hpp>
 #include <utilities/version_info.hpp>
 
 #include <barrier/sparse_cholesky.cuh>
@@ -377,6 +378,7 @@ optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
       case simplex::lp_status_t::ITERATION_LIMIT: return pdlp_termination_status_t::IterationLimit;
       case simplex::lp_status_t::CONCURRENT_LIMIT:
         return pdlp_termination_status_t::ConcurrentLimit;
+      case simplex::lp_status_t::CANCELLED: return pdlp_termination_status_t::Cancelled;
       case simplex::lp_status_t::UNBOUNDED_OR_INFEASIBLE:
         return pdlp_termination_status_t::UnboundedOrInfeasible;
       default: return pdlp_termination_status_t::NumericalError;
@@ -502,6 +504,7 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   barrier_settings.time_limit                      = settings.time_limit;
   barrier_settings.iteration_limit                 = settings.iteration_limit;
   barrier_settings.concurrent_halt                 = settings.concurrent_halt;
+  barrier_settings.cancel_requested                = settings.cancel_requested;
   barrier_settings.folding                         = settings.folding;
   barrier_settings.augmented                       = settings.augmented;
   barrier_settings.dualize                         = settings.dualize;
@@ -543,6 +546,13 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
     // We finished. Tell PDLP to stop if it is still running.
     *settings.concurrent_halt = 1;
   }
+
+  status = cuopt::remap_limit_status_if_cancelled(settings.cancel_requested,
+                                                  status,
+                                                  simplex::lp_status_t::CANCELLED,
+                                                  simplex::lp_status_t::TIME_LIMIT,
+                                                  simplex::lp_status_t::CONCURRENT_LIMIT,
+                                                  simplex::lp_status_t::ITERATION_LIMIT);
 
   return {std::move(solution), status, timer.elapsed_time(), norm_user_objective, norm_rhs};
 }
@@ -594,9 +604,10 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   f_t norm_rhs            = vector_norm2<i_t, f_t>(user_problem.rhs);
 
   simplex::simplex_solver_settings_t<i_t, f_t> dual_simplex_settings;
-  dual_simplex_settings.time_limit      = settings.time_limit;
-  dual_simplex_settings.iteration_limit = settings.iteration_limit;
-  dual_simplex_settings.concurrent_halt = settings.concurrent_halt;
+  dual_simplex_settings.time_limit       = settings.time_limit;
+  dual_simplex_settings.iteration_limit  = settings.iteration_limit;
+  dual_simplex_settings.concurrent_halt  = settings.concurrent_halt;
+  dual_simplex_settings.cancel_requested = settings.cancel_requested;
   if (dual_simplex_settings.concurrent_halt != nullptr) {
     // Don't show the dual simplex log in concurrent mode. Show the PDLP log instead
     dual_simplex_settings.log.log = false;
@@ -616,6 +627,13 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
     // We finished. Tell PDLP to stop if it is still running.
     *settings.concurrent_halt = 1;
   }
+
+  status = cuopt::remap_limit_status_if_cancelled(settings.cancel_requested,
+                                                  status,
+                                                  simplex::lp_status_t::CANCELLED,
+                                                  simplex::lp_status_t::TIME_LIMIT,
+                                                  simplex::lp_status_t::CONCURRENT_LIMIT,
+                                                  simplex::lp_status_t::ITERATION_LIMIT);
 
   return {std::move(solution), status, timer.elapsed_time(), norm_user_objective, norm_rhs};
 }
@@ -845,9 +863,10 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(mip::problem_t<i_t, f_t>& pro
       simplex::lp_solution_t<i_t, f_t> initial_solution(1, 1);
       translate_to_crossover_problem(problem, sol, lp, initial_solution);
       simplex::simplex_solver_settings_t<i_t, f_t> dual_simplex_settings;
-      dual_simplex_settings.time_limit      = settings.time_limit;
-      dual_simplex_settings.iteration_limit = settings.iteration_limit;
-      dual_simplex_settings.concurrent_halt = settings.concurrent_halt;
+      dual_simplex_settings.time_limit       = settings.time_limit;
+      dual_simplex_settings.iteration_limit  = settings.iteration_limit;
+      dual_simplex_settings.concurrent_halt  = settings.concurrent_halt;
+      dual_simplex_settings.cancel_requested = settings.cancel_requested;
       simplex::lp_solution_t<i_t, f_t> vertex_solution(lp.num_rows, lp.num_cols);
       std::vector<simplex::variable_status_t> vstatus(lp.num_cols);
       simplex::crossover_status_t crossover_status = simplex::crossover(lp,
@@ -1694,6 +1713,11 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   f_t end_time = timer.elapsed_time();
   CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "Concurrent time: %.3fs", end_time);
 
+  auto remap_pdlp_if_cancelled = [&](optimization_problem_solution_t<i_t, f_t>& sol) {
+    if (!cuopt::cancel_flag_set(settings.cancel_requested)) { return; }
+    sol.set_termination_status(pdlp_termination_status_t::Cancelled);
+  };
+
   const auto dual_simplex_status = !settings.inside_mip ? std::get<1>(*sol_dual_simplex_ptr)
                                                         : simplex::lp_status_t::CONCURRENT_LIMIT;
   const auto barrier_status =
@@ -1717,6 +1741,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
     CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "Solved with dual simplex");
     sol_pdlp.copy_from(problem.handle_ptr, sol_dual_simplex);
     sol_pdlp.set_solve_time(end_time);
+    remap_pdlp_if_cancelled(sol_pdlp);
     CUOPT_LOG_CONDITIONAL_INFO(
       !settings.inside_mip,
       "Status: %s   Objective: %.8e  Iterations: %d  Time: %.3fs",
@@ -1748,6 +1773,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
     CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "Solved with barrier");
     sol_pdlp.copy_from(problem.handle_ptr, sol_barrier);
     sol_pdlp.set_solve_time(end_time);
+    remap_pdlp_if_cancelled(sol_pdlp);
     CUOPT_LOG_CONDITIONAL_INFO(
       !settings.inside_mip,
       "Status: %s   Objective: %.8e  Iterations: %d  Time: %.3fs",
@@ -1770,6 +1796,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
     sol_dual_simplex_ptr.reset();
     sol_barrier_ptr.reset();
     CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "Solved with PDLP");
+    remap_pdlp_if_cancelled(sol_pdlp);
     return sol_pdlp;
   } else if (!settings.inside_mip &&
              sol_pdlp.get_termination_status() == pdlp_termination_status_t::ConcurrentLimit) {
@@ -1784,11 +1811,13 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
                                                      method_t::DualSimplex);
     sol_dual_simplex_ptr.reset();
     CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "Using dual simplex solve info");
+    remap_pdlp_if_cancelled(sol_dual_simplex);
     return sol_dual_simplex;
   } else {
     sol_dual_simplex_ptr.reset();
     sol_barrier_ptr.reset();
     CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "Using PDLP solve info");
+    remap_pdlp_if_cancelled(sol_pdlp);
     return sol_pdlp;
   }
 }
@@ -2022,7 +2051,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     }
     validate_new_bounds(op_problem, settings);
 
-    auto lp_timer = cuopt::timer_t(settings.time_limit);
+    auto lp_timer = cuopt::timer_t(settings.time_limit, settings.cancel_requested);
     std::optional<mip::problem_t<i_t, f_t>> problem;
     // handle default presolve
     if (settings.presolver == presolver_t::Default) {
@@ -2173,6 +2202,10 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     if (settings.sol_file != "") {
       CUOPT_LOG_INFO("Writing solution to file %s", settings.sol_file.c_str());
       solution.write_to_sol_file(settings.sol_file, op_problem.get_handle_ptr()->get_stream());
+    }
+
+    if (cuopt::cancel_flag_set(settings.cancel_requested)) {
+      solution.set_termination_status(pdlp_termination_status_t::Cancelled);
     }
 
     return solution;

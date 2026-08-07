@@ -19,7 +19,9 @@
 #include <pdlp/solve.cuh>
 
 #include <utilities/scope_guard.hpp>
+#include <utilities/solve_limits.hpp>
 
+#include <atomic>
 #include <memory>
 #include <numeric>
 
@@ -248,6 +250,7 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
       lp_settings.tolerance             = problem_ptr->tolerances.absolute_tolerance;
       lp_settings.save_state            = false;
       lp_settings.return_first_feasible = true;
+      lp_settings.cancel_requested      = context.settings.cancel_requested;
       run_lp_with_vars_fixed(*problem_ptr,
                              sol,
                              problem_ptr->integer_indices,
@@ -284,7 +287,8 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
 {
   raft::common::nvtx::range fun_scope("run_presolve");
   CUOPT_LOG_INFO("\nRunning cuOpt presolve");
-  timer_t presolve_timer(time_limit);
+
+  timer_t presolve_timer(time_limit, context.settings.cancel_requested);
 
   auto term_crit = ls.constraint_prop.bounds_update.solve(*problem_ptr);
   if (ls.constraint_prop.bounds_update.infeas_constraints_count > 0) {
@@ -308,7 +312,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
     // Run probing cache before trivial presolve to discover variable implications
     const f_t max_time_on_probing = diversity_config.max_time_on_probing;
     f_t time_for_probing_cache    = std::min(max_time_on_probing, time_limit);
-    timer_t probing_timer{time_for_probing_cache};
+    timer_t probing_timer{time_for_probing_cache, context.settings.cancel_requested};
     // this function computes probing cache, finds singletons, substitutions and changes the problem
     bool problem_is_infeasible =
       compute_probing_cache(ls.constraint_prop.bounds_update, *problem_ptr, probing_timer);
@@ -377,7 +381,7 @@ void diversity_manager_t<i_t, f_t>::generate_quick_feasible_solution()
   // min 1 second, max 10 seconds
   const f_t generate_fast_solution_time =
     std::min(diversity_config.max_fast_sol_time, std::max(1., timer.remaining_time() / 20.));
-  timer_t sol_timer(generate_fast_solution_time);
+  timer_t sol_timer(generate_fast_solution_time, context.settings.cancel_requested);
   // do very short LP run to get somewhere close to the optimal point
   ls.generate_fast_solution(solution, sol_timer);
   if (solution.get_feasible()) {
@@ -402,6 +406,12 @@ void diversity_manager_t<i_t, f_t>::generate_quick_feasible_solution()
 template <typename i_t, typename f_t>
 bool diversity_manager_t<i_t, f_t>::check_b_b_preemption()
 {
+  if (context.settings.cancel_requested != nullptr &&
+      context.settings.cancel_requested->load(std::memory_order_acquire)) {
+    // Stop heuristics in parallel with B&B when cancel is requested.
+    context.preempt_heuristic_solver_.store(true, std::memory_order_release);
+    population.preempt_heuristic_solver();
+  }
   if (context.preempt_heuristic_solver_.load()) {
     if (population.current_size() == 0) { population.allocate_solutions(); }
     population.add_external_solutions_to_population();
@@ -547,6 +557,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     pdlp_settings.time_limit              = lp_time_limit;
     pdlp_settings.first_primal_feasible   = false;
     pdlp_settings.concurrent_halt         = &global_concurrent_halt;
+    pdlp_settings.cancel_requested        = context.settings.cancel_requested;
     pdlp_settings.method                  = method_t::Concurrent;
     pdlp_settings.inside_mip              = true;
     pdlp_settings.pdlp_solver_mode        = pdlp_solver_mode_t::Stable2;
@@ -554,7 +565,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     pdlp_settings.presolver               = presolver_t::None;
     pdlp_settings.per_constraint_residual = true;
     set_pdlp_solver_mode(pdlp_settings);
-    timer_t lp_timer(lp_time_limit);
+    timer_t lp_timer(lp_time_limit, context.settings.cancel_requested);
     auto lp_result = solve_lp_with_method<i_t, f_t>(*problem_ptr, pdlp_settings, lp_timer);
 
     // The concurrent root LP can fail to produce a usable solution -- e.g. the barrier
@@ -897,6 +908,7 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
   lp_settings.return_first_feasible   = false;
   lp_settings.save_state              = true;
   lp_settings.per_constraint_residual = true;
+  lp_settings.cancel_requested        = context.settings.cancel_requested;
   run_lp_with_vars_fixed(*lp_offspring.problem_ptr,
                          lp_offspring,
                          lp_offspring.problem_ptr->integer_indices,

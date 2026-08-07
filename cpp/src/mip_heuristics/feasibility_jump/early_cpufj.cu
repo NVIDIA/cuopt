@@ -15,9 +15,11 @@ template <typename i_t, typename f_t>
 early_cpufj_t<i_t, f_t>::early_cpufj_t(
   const optimization_problem_t<i_t, f_t>& op_problem,
   const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances,
-  early_incumbent_callback_t<f_t> incumbent_callback)
+  early_incumbent_callback_t<f_t> incumbent_callback,
+  std::atomic<bool>* cancel_requested)
   : early_heuristic_t<i_t, f_t, early_cpufj_t<i_t, f_t>>(
-      op_problem, tolerances, std::move(incumbent_callback))
+      op_problem, tolerances, std::move(incumbent_callback)),
+    cancel_requested_(cancel_requested)
 {
 }
 
@@ -36,7 +38,12 @@ void early_cpufj_t<i_t, f_t>::start()
   this->preemption_flag_.store(false);
   this->start_time_ = std::chrono::steady_clock::now();
 
-  fj_cpu_ = init_fj_cpu_standalone(*this->problem_ptr_, *this->solution_ptr_, preemption_flag_);
+  // Prefer the gRPC cancel flag as the climber's preemption signal so cancel
+  // aborts early CPUFJ during Papilo without waiting for stop()/taskwait.
+  std::atomic<bool>& preempt_ref =
+    (cancel_requested_ != nullptr) ? *cancel_requested_ : preemption_flag_;
+
+  fj_cpu_ = init_fj_cpu_standalone(*this->problem_ptr_, *this->solution_ptr_, preempt_ref);
 
   fj_cpu_->log_prefix = "[Early CPUFJ] ";
 
@@ -56,6 +63,11 @@ void early_cpufj_t<i_t, f_t>::stop()
   if (!fj_cpu_) { return; }
 
   preemption_flag_.store(true);
+  // The climber exits when either its preempt atomic or halted is true. If
+  // cancel_requested_ was wired as that preempt atomic, writing
+  // preemption_flag_ here does not affect the climber; fj_cpu_->halted below
+  // still stops it on the normal (non-cancel) path. On cancel,
+  // *cancel_requested_ is already true so the climber is already exiting.
 
   fj_cpu_->halted = true;
 #pragma omp taskwait depend(in : *fj_cpu_)  // Wait for the early CPUFJ task to finish

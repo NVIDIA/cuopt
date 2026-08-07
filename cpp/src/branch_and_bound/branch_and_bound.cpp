@@ -33,6 +33,7 @@
 #include <raft/core/nvtx.hpp>
 #include <utilities/circular_deque.hpp>
 #include <utilities/hashing.hpp>
+#include <utilities/solve_limits.hpp>
 
 #include <omp.h>
 
@@ -824,6 +825,10 @@ void branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t, f_t>& 
 
   if (solver_status_ == mip_status_t::TIME_LIMIT) {
     settings_.log.printf("Time limit reached. Stopping the solver...\n");
+  }
+
+  if (solver_status_ == mip_status_t::CANCELLED) {
+    settings_.log.printf("Solve cancelled. Stopping the solver...\n");
   }
 
   if (solver_status_ == mip_status_t::WORK_LIMIT) {
@@ -1728,6 +1733,14 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
 
     if (now > settings_.time_limit) {
       solver_status_ = mip_status_t::TIME_LIMIT;
+      stack.push_front(node_ptr);
+      --exploration_stats_.nodes_being_solved;
+      break;
+    }
+
+    if (settings_.cancel_requested != nullptr &&
+        settings_.cancel_requested->load(std::memory_order_acquire)) {
+      solver_status_ = mip_status_t::CANCELLED;
       stack.push_front(node_ptr);
       --exploration_stats_.nodes_being_solved;
       break;
@@ -2800,6 +2813,15 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
   // Wait for the root relaxation solution to be sent by the diversity manager or dual simplex
   while (!root_crossover_solution_set_.load(std::memory_order_acquire) &&
          *get_root_concurrent_halt() == 0) {
+    // Dual may early-return on time/cancel without crossover; also poll limits
+    // here so this sleep loop cannot outlive the solve budget.
+    if (cuopt::solve_limit_reached(toc(exploration_stats_.start_time),
+                                   settings_.time_limit,
+                                   settings_.cancel_requested,
+                                   nullptr)) {
+      set_root_concurrent_halt(1);
+      break;
+    }
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
 #pragma omp taskyield
   }
@@ -3340,9 +3362,15 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     return mip_status_t::UNBOUNDED;
   }
 
-  if (root_status == lp_status_t::TIME_LIMIT) {
+  // Concurrent root: dual may return CONCURRENT_LIMIT when the waiter raises
+  // concurrent_halt on cancel/TL (no crossover). Treat like TIME_LIMIT/CANCELLED.
+  if (root_status == lp_status_t::TIME_LIMIT || root_status == lp_status_t::CANCELLED ||
+      root_status == lp_status_t::CONCURRENT_LIMIT) {
     settings_.log.printf("\n");
-    solver_status_ = mip_status_t::TIME_LIMIT;
+    solver_status_ =
+      (root_status == lp_status_t::CANCELLED || cuopt::cancel_flag_set(settings_.cancel_requested))
+        ? mip_status_t::CANCELLED
+        : mip_status_t::TIME_LIMIT;
     set_final_solution(solution, -inf);
     signal_extend_cliques_.store(true, std::memory_order_release);
 #pragma omp taskwait depend(in : *clique_signal)

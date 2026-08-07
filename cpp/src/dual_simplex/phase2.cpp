@@ -1420,7 +1420,12 @@ i_t initialize_steepest_edge_norms(const lp_problem_t<i_t, f_t>& lp,
       last_log = tic();
       settings.log.printf("Initialized %d of %d steepest edge norms in %.2fs\n", k, m, now);
     }
-    if (toc(start_time) > settings.time_limit) { return -1; }
+    if (cuopt::solve_limit_reached(cuopt::mathematical_optimization::toc(start_time),
+                                   settings.time_limit,
+                                   settings.cancel_requested,
+                                   nullptr)) {
+      return -1;
+    }
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       return CONCURRENT_HALT_RETURN;
     }
@@ -2573,6 +2578,16 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
 
   dual_status_t status = dual_status_t::UNSET;
 
+  // Concurrent root MIP: dual and barrier/PDLP/crossover race. On any phase-2
+  // exit (optimal, time limit, cancel→TIME_LIMIT early return, etc.), raise
+  // concurrent_halt so waiters in solve_root_relaxation are not stuck forever
+  // when dual returns before the success-path epilogue below.
+  auto root_concurrent_halt_guard = cuopt::scope_guard([&]() {
+    if (phase == 2 && settings.inside_mip == 1 && settings.concurrent_halt != nullptr) {
+      *settings.concurrent_halt = 1;
+    }
+  });
+
   nvtx_range_guard init_scope("DualSimplex::phase2_advanced_init");
 
   settings.log.printf("Dual Simplex Phase %d\n", phase);
@@ -2606,7 +2621,12 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
     if (refactor_status == TIME_LIMIT_RETURN) { return dual_status_t::TIME_LIMIT; }
     if (refactor_status > 0) { return dual_status_t::NUMERICAL; }
 
-    if (toc(start_time) > settings.time_limit) { return dual_status_t::TIME_LIMIT; }
+    if (cuopt::solve_limit_reached(cuopt::mathematical_optimization::toc(start_time),
+                                   settings.time_limit,
+                                   settings.cancel_requested,
+                                   nullptr)) {
+      return dual_status_t::TIME_LIMIT;
+    }
   }
 
   // Populate c_basic after basis is initialized
@@ -2618,7 +2638,12 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
 
   // Solve B'*y = cB
   ft.b_transpose_solve(c_basic, y);
-  if (toc(start_time) > settings.time_limit) { return dual_status_t::TIME_LIMIT; }
+  if (cuopt::solve_limit_reached(cuopt::mathematical_optimization::toc(start_time),
+                                 settings.time_limit,
+                                 settings.cancel_requested,
+                                 nullptr)) {
+    return dual_status_t::TIME_LIMIT;
+  }
   constexpr bool print_norms = false;
   if constexpr (print_norms) {
     settings.log.printf(
@@ -2674,7 +2699,12 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
                                    xB_workspace,
                                    phase2_work_estimate);
 
-  if (toc(start_time) > settings.time_limit) { return dual_status_t::TIME_LIMIT; }
+  if (cuopt::solve_limit_reached(cuopt::mathematical_optimization::toc(start_time),
+                                 settings.time_limit,
+                                 settings.cancel_requested,
+                                 nullptr)) {
+    return dual_status_t::TIME_LIMIT;
+  }
   if (print_norms) { settings.log.printf("|| x || %e\n", vector_norm2<i_t, f_t>(x)); }
 
 #ifdef COMPUTE_PRIMAL_RESIDUAL
@@ -2990,7 +3020,12 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
       break;
     }
 
-    if (toc(start_time) > settings.time_limit) { return dual_status_t::TIME_LIMIT; }
+    if (cuopt::solve_limit_reached(cuopt::mathematical_optimization::toc(start_time),
+                                   settings.time_limit,
+                                   settings.cancel_requested,
+                                   nullptr)) {
+      return dual_status_t::TIME_LIMIT;
+    }
 
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       return dual_status_t::CONCURRENT_LIMIT;
@@ -3597,7 +3632,12 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
         if (refactor_status > 0) {
           should_recompute_x = true;
           settings.log.printf("Failed to factorize basis. Iteration %d\n", iter);
-          if (toc(start_time) > settings.time_limit) { return dual_status_t::TIME_LIMIT; }
+          if (cuopt::solve_limit_reached(cuopt::mathematical_optimization::toc(start_time),
+                                         settings.time_limit,
+                                         settings.cancel_requested,
+                                         nullptr)) {
+            return dual_status_t::TIME_LIMIT;
+          }
           i_t count          = 0;
           i_t deficient_size = 0;
           while (true) {
@@ -3612,7 +3652,12 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
                                 iter,
                                 static_cast<int>(deficient_size));
 
-            if (toc(start_time) > settings.time_limit) { return dual_status_t::TIME_LIMIT; }
+            if (cuopt::solve_limit_reached(cuopt::mathematical_optimization::toc(start_time),
+                                           settings.time_limit,
+                                           settings.cancel_requested,
+                                           nullptr)) {
+              return dual_status_t::TIME_LIMIT;
+            }
             settings.threshold_partial_pivoting_tol = 1.0;
 
             count++;
@@ -3717,7 +3762,12 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
       return dual_status_t::WORK_LIMIT;
     }
 
-    if (now > settings.time_limit) { return dual_status_t::TIME_LIMIT; }
+    if (cuopt::solve_limit_reached(cuopt::mathematical_optimization::toc(start_time),
+                                   settings.time_limit,
+                                   settings.cancel_requested,
+                                   nullptr)) {
+      return dual_status_t::TIME_LIMIT;
+    }
 
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       return dual_status_t::CONCURRENT_LIMIT;
@@ -3737,10 +3787,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
                           100.0 * dense_delta_z / (sparse_delta_z + dense_delta_z));
       ft.print_stats();
     }
-    if (settings.inside_mip == 1 && settings.concurrent_halt != nullptr) {
-      settings.log.debug("Setting concurrent halt in Dual Simplex Phase 2\n");
-      *settings.concurrent_halt = 1;
-    }
+    // concurrent_halt for inside_mip root is set by root_concurrent_halt_guard
   }
   return status;
 }

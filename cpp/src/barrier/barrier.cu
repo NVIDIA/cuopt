@@ -500,7 +500,7 @@ class iteration_data_t {
           find_dense_columns(
             lp.A, settings, dense_columns_unordered, n_dense_rows, max_row_nz, estimated_nz_AAT);
         }
-        if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
+        if (settings.cancel_or_halt_requested()) { return; }
 #ifdef PRINT_INFO
         for (i_t j : dense_columns_unordered) {
           settings.log.printf("Dense column %6d\n", j);
@@ -576,7 +576,7 @@ class iteration_data_t {
       if (n_upper_bounds > 0 || (has_Q && !use_augmented)) { inv_diag.sqrt(inv_sqrt_diag); }
     }
 
-    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
+    if (settings.cancel_or_halt_requested()) { return; }
 
     {
       raft::common::nvtx::range scope("Barrier: LP Data: AD matrix setup");
@@ -642,7 +642,7 @@ class iteration_data_t {
       RAFT_CHECK_CUDA(handle_ptr->get_stream());
     }
 
-    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
+    if (settings.cancel_or_halt_requested()) { return; }
     {
       raft::common::nvtx::range scope("Barrier: LP Data: Cholesky init");
       i_t factorization_size =
@@ -651,7 +651,7 @@ class iteration_data_t {
         handle_ptr, settings, factorization_size);
       chol->set_positive_definite(false);
     }
-    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
+    if (settings.cancel_or_halt_requested()) { return; }
     {
       raft::common::nvtx::range scope("Barrier: LP Data: symbolic analysis");
       // Perform symbolic analysis
@@ -662,14 +662,14 @@ class iteration_data_t {
           // Build the sparsity pattern of the augmented system
           form_augmented(true);
         }
-        if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
+        if (settings.cancel_or_halt_requested()) { return; }
         symbolic_status = chol->analyze(device_augmented);
       } else {
         {
           raft::common::nvtx::range form_scope("Barrier: LP Data: form ADAT");
           form_adat(true);
         }
-        if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
+        if (settings.cancel_or_halt_requested()) { return; }
         symbolic_status = chol->analyze(device_ADAT);
       }
     }
@@ -918,7 +918,7 @@ class iteration_data_t {
                          });
       RAFT_CHECK_CUDA(stream_view_);
     }
-    if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return; }
+    if (settings_.cancel_or_halt_requested()) { return; }
     if (first_call) {
       raft::common::nvtx::range scope("Barrier: Form ADAT: cusparse init");
       try {
@@ -929,7 +929,7 @@ class iteration_data_t {
         return;
       }
     }
-    if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return; }
+    if (settings_.cancel_or_halt_requested()) { return; }
 
     {
       raft::common::nvtx::range scope("Barrier: Form ADAT: ADAT multiply");
@@ -1023,9 +1023,7 @@ class iteration_data_t {
           dense_vector_t<i_t, f_t> M_col(AD.m);
           solve_status = chol->solve(U_col, M_col);
           if (solve_status != 0) { return solve_status; }
-          if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
-            return CONCURRENT_HALT_RETURN;
-          }
+          if (settings_.cancel_or_halt_requested()) { return CONCURRENT_HALT_RETURN; }
           M.set_column(k, M_col);
 
           if (debug) {
@@ -1042,9 +1040,7 @@ class iteration_data_t {
         for (i_t k = 0; k < n_dense_columns; k++) {
           AD_dense.transpose_multiply(
             1.0, M.values.data() + k * M.m, 0.0, H.values.data() + k * H.m);
-          if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
-            return CONCURRENT_HALT_RETURN;
-          }
+          if (settings_.cancel_or_halt_requested()) { return CONCURRENT_HALT_RETURN; }
         }
 
         dense_vector_t<i_t, f_t> e(n_dense_columns);
@@ -1442,7 +1438,7 @@ class iteration_data_t {
     std::sort(column_nz_permutation.begin(),
               column_nz_permutation.end(),
               [&column_nz](i_t i, i_t j) { return column_nz[i] < column_nz[j]; });
-    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
+    if (settings.cancel_or_halt_requested()) { return; }
 
     // We then compute the exact sparsity pattern for columns of A whose where
     // the number of nonzeros is less than a threshold. This part can be done
@@ -1473,7 +1469,7 @@ class iteration_data_t {
     // The best way to do that is to have A stored in CSR format.
     csr_matrix_t<i_t, f_t> A_row(0, 0, 0);
     A.to_compressed_row(A_row);
-    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
+    if (settings.cancel_or_halt_requested()) { return; }
 
     std::vector<i_t> histogram(m + 1, 0);
     for (i_t j = 0; j < n; j++) {
@@ -1545,7 +1541,7 @@ class iteration_data_t {
         delta_nz[j] +=
           fill;  // Capture contributions from A(:, j). j will be encountered multiple times
       }
-      if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
+      if (settings.cancel_or_halt_requested()) { return; }
     }
 
     int64_t sparse_nz_C = 0;
@@ -1585,7 +1581,7 @@ class iteration_data_t {
           delta_nz[j] + static_cast<int64_t>(
                           fill_estimate));  // Capture the estimated fill associated with column j
       }
-      if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
+      if (settings.cancel_or_halt_requested()) { return; }
     }
 
     int64_t estimated_nz_C = 0;
@@ -1603,7 +1599,7 @@ class iteration_data_t {
     std::sort(permutation.begin(), permutation.end(), [&delta_nz](i_t i, i_t j) {
       return delta_nz[i] < delta_nz[j];
     });
-    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
+    if (settings.cancel_or_halt_requested()) { return; }
 
     // Now we make a forward pass and compute the number of nonzeros in C
     // assuming we had included column j
@@ -2786,9 +2782,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       // Check halt after form_augmented (synchronous) and before factorize (~1s).
       // If halt was set while form_augmented ran, we catch it here and skip the
       // expensive factorization entirely.
-      if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-        return CONCURRENT_HALT_RETURN;
-      }
+      if (settings.cancel_or_halt_requested()) { return CONCURRENT_HALT_RETURN; }
       {
         raft::common::nvtx::range fun_scope("Barrier: factorize");
         status = data.chol->factorize(data.device_augmented);
@@ -2806,9 +2800,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       // Check halt after form_adat (synchronous) and before factorize (~1s).
       // If halt was set while form_adat ran, we catch it here and skip the
       // expensive Cholesky factorization entirely.
-      if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-        return CONCURRENT_HALT_RETURN;
-      }
+      if (settings.cancel_or_halt_requested()) { return CONCURRENT_HALT_RETURN; }
       {
         raft::common::nvtx::range fun_scope("Barrier: factorize");
         status = data.chol->factorize(data.device_ADAT);
@@ -4102,6 +4094,21 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
   try {
     raft::common::nvtx::range fun_scope("Barrier: solve");
 
+    auto barrier_limit_status = [&]() -> std::optional<lp_status_t> {
+      const auto limit = settings.check_solve_limits(start_time);
+      if (limit == cuopt::solve_limit_reason_t::None) { return std::nullopt; }
+      if (limit == cuopt::solve_limit_reason_t::Cancelled) {
+        settings.log.printf("Barrier solve cancelled\n");
+        return lp_status_t::CANCELLED;
+      }
+      if (limit == cuopt::solve_limit_reason_t::ConcurrentHalt) {
+        settings.log.printf("Barrier solver halted\n");
+        return lp_status_t::CONCURRENT_LIMIT;
+      }
+      settings.log.printf("Barrier time limit exceeded\n");
+      return lp_status_t::TIME_LIMIT;
+    };
+
     i_t n = lp.num_cols;
     i_t m = lp.num_rows;
 
@@ -4136,10 +4143,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
 
     iteration_data_t<i_t, f_t> data(
       lp, num_upper_bounds, presolve_info.direct_free_variables, Q, settings);
-    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-      settings.log.printf("Barrier solver halted\n");
-      return lp_status_t::CONCURRENT_LIMIT;
-    }
+    if (auto st = barrier_limit_status()) { return *st; }
     if (data.indefinite_Q) { return lp_status_t::NUMERICAL_ISSUES; }
     if (data.symbolic_status != 0) {
       settings.log.printf("Error in symbolic analysis\n");
@@ -4155,20 +4159,10 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
     data.cusparse_y_residual_    = data.cusparse_view_.create_vector(data.d_y_residual_);
     data.restrict_u_.resize(num_upper_bounds);
 
-    if (toc(start_time) > settings.time_limit) {
-      settings.log.printf("Barrier time limit exceeded\n");
-      return lp_status_t::TIME_LIMIT;
-    }
+    if (auto st = barrier_limit_status()) { return *st; }
 
     i_t initial_status = initial_point(data);
-    if (toc(start_time) > settings.time_limit) {
-      settings.log.printf("Barrier time limit exceeded\n");
-      return lp_status_t::TIME_LIMIT;
-    }
-    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-      settings.log.printf("Barrier solver halted\n");
-      return lp_status_t::CONCURRENT_LIMIT;
-    }
+    if (auto st = barrier_limit_status()) { return *st; }
     if (initial_status != 0) {
       settings.log.printf("Unable to compute initial point\n");
       return lp_status_t::NUMERICAL_ISSUES;
@@ -4274,14 +4268,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
     while (iter < iteration_limit) {
       raft::common::nvtx::range fun_scope("Barrier: iteration");
 
-      if (toc(start_time) > settings.time_limit) {
-        settings.log.printf("Barrier time limit exceeded\n");
-        return lp_status_t::TIME_LIMIT;
-      }
-      if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-        settings.log.printf("Barrier solver halted\n");
-        return lp_status_t::CONCURRENT_LIMIT;
-      }
+      if (auto st = barrier_limit_status()) { return *st; }
 
       // Compute the affine step. This is the call that (re)factorizes the
       // augmented system, so the IR residual here drives the adaptation of
@@ -4295,10 +4282,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
         status =
           gpu_compute_search_direction(data, dual_perturb, primal_perturb, max_affine_residual);
       }
-      if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-        settings.log.printf("Barrier solver halted\n");
-        return lp_status_t::CONCURRENT_LIMIT;
-      }
+      if (auto st = barrier_limit_status()) { return *st; }
 
       if (status < 0) {
         return check_for_suboptimal_solution(data,
@@ -4313,14 +4297,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
                                              relative_complementarity_residual,
                                              solution);
       }
-      if (toc(start_time) > settings.time_limit) {
-        settings.log.printf("Barrier time limit exceeded\n");
-        return lp_status_t::TIME_LIMIT;
-      }
-      if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-        settings.log.printf("Barrier solver halted\n");
-        return lp_status_t::CONCURRENT_LIMIT;
-      }
+      if (auto st = barrier_limit_status()) { return *st; }
 
       f_t mu_aff, sigma, new_mu;
       compute_target_mu(data, mu, mu_aff, sigma, new_mu);
@@ -4336,10 +4313,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
         status =
           gpu_compute_search_direction(data, dual_perturb, primal_perturb, max_corrector_residual);
       }
-      if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-        settings.log.printf("Barrier solver halted\n");
-        return lp_status_t::CONCURRENT_LIMIT;
-      }
+      if (auto st = barrier_limit_status()) { return *st; }
       if (status < 0) {
         return check_for_suboptimal_solution(data,
                                              start_time,
@@ -4355,14 +4329,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
       }
       data.has_factorization = false;
       data.has_solve_info    = false;
-      if (toc(start_time) > settings.time_limit) {
-        settings.log.printf("Barrier time limit exceeded\n");
-        return lp_status_t::TIME_LIMIT;
-      }
-      if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-        settings.log.printf("Barrier solver halted\n");
-        return lp_status_t::CONCURRENT_LIMIT;
-      }
+      if (auto st = barrier_limit_status()) { return *st; }
 
       compute_final_direction(data);
       f_t step_primal, step_dual;

@@ -6,6 +6,7 @@
 /* clang-format on */
 #pragma once
 
+#include <atomic>
 #include <chrono>
 #include <string>
 
@@ -19,10 +20,10 @@ class timer_t {
  public:
   timer_t()               = delete;
   timer_t(const timer_t&) = default;
-  timer_t(double time_limit_)
+  timer_t(double time_limit_) : timer_t(time_limit_, nullptr) {}
+  timer_t(double time_limit_, std::atomic<bool>* cancel_requested)
+    : time_limit(time_limit_), begin(steady_clock::now()), cancel_requested_(cancel_requested)
   {
-    time_limit = time_limit_;
-    begin      = steady_clock::now();
   }
 
   void print_debug(std::string msg) const
@@ -34,7 +35,20 @@ class timer_t {
            elapsed_time());
   }
 
-  bool check_time_limit() const noexcept { return elapsed_time() >= time_limit; }
+  /** True if cancel was requested or the wall-clock budget is exhausted. */
+  bool check_time_limit() const noexcept
+  {
+    if (cancel_requested()) { return true; }
+    return time_exhausted();
+  }
+
+  /** Wall-clock budget only (ignores cancel). */
+  bool time_exhausted() const noexcept { return elapsed_time() >= time_limit; }
+
+  bool cancel_requested() const noexcept
+  {
+    return cancel_requested_ != nullptr && cancel_requested_->load(std::memory_order_acquire);
+  }
 
   bool check_half_time() const noexcept { return elapsed_time() >= time_limit / 2; }
 
@@ -54,6 +68,8 @@ class timer_t {
   }
 
   double get_time_limit() const noexcept { return time_limit; }
+
+  std::atomic<bool>* get_cancel_requested() const noexcept { return cancel_requested_; }
 
   double get_tic_start() const noexcept
   {
@@ -87,6 +103,7 @@ class timer_t {
  private:
   double time_limit;
   steady_clock::time_point begin;
+  std::atomic<bool>* cancel_requested_{nullptr};
 };
 
 }  // namespace cuopt

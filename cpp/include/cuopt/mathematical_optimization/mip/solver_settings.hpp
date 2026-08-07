@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <optional>
 #include <vector>
 
@@ -182,6 +183,10 @@ class mip_solver_settings_t {
   // this is for extracting info from different places of the solver during
   // benchmarks
   benchmark_info_t* benchmark_info_ptr = nullptr;
+
+  // Optional cooperative cancel (level-triggered). Non-owning. Cleared by
+  // solve_mip on return. Set true from another thread to request early exit.
+  std::atomic<bool>* cancel_requested{nullptr};
 
   // TODO check with Akif and Alice
   pdlp::pdlp_hyper_params_t hyper_params;

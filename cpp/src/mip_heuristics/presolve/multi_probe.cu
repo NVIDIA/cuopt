@@ -380,7 +380,7 @@ termination_criterion_t multi_probe_t<i_t, f_t>::solve_for_interval(
   const std::tuple<i_t, std::pair<f_t, f_t>, std::pair<f_t, f_t>>& var_interval_vals,
   const raft::handle_t* handle_ptr)
 {
-  timer_t timer(settings.time_limit);
+  timer_t timer(settings.time_limit, context.settings.cancel_requested);
 
   copy_problem_into_probing_buffers(pb, handle_ptr);
   set_interval_bounds(var_interval_vals, pb, handle_ptr);
@@ -394,7 +394,7 @@ termination_criterion_t multi_probe_t<i_t, f_t>::solve(
   const std::tuple<std::vector<i_t>, std::vector<f_t>, std::vector<f_t>>& var_probe_vals,
   bool use_host_bounds)
 {
-  timer_t timer(settings.time_limit);
+  timer_t timer(settings.time_limit, context.settings.cancel_requested);
   auto& handle_ptr = pb.handle_ptr;
   if (use_host_bounds) {
     update_device_bounds(handle_ptr);

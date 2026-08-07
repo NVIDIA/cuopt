@@ -232,7 +232,7 @@ termination_criterion_t bound_presolve_t<i_t, f_t>::solve(problem_t<i_t, f_t>& p
                                                           i_t var_idx)
 {
   auto& handle_ptr = pb.handle_ptr;
-  timer_t timer(settings.time_limit);
+  timer_t timer(settings.time_limit, context.settings.cancel_requested);
   copy_input_bounds(pb);
   upd.lb.set_element_async(var_idx, var_lb, handle_ptr->get_stream());
   upd.ub.set_element_async(var_idx, var_ub, handle_ptr->get_stream());
@@ -245,7 +245,7 @@ termination_criterion_t bound_presolve_t<i_t, f_t>::solve(
   const std::vector<thrust::pair<i_t, f_t>>& var_probe_val_pairs,
   bool use_host_bounds)
 {
-  timer_t timer(settings.time_limit);
+  timer_t timer(settings.time_limit, context.settings.cancel_requested);
   auto& handle_ptr = pb.handle_ptr;
   if (use_host_bounds) {
     update_device_bounds(handle_ptr);
@@ -260,7 +260,7 @@ termination_criterion_t bound_presolve_t<i_t, f_t>::solve(
 template <typename i_t, typename f_t>
 termination_criterion_t bound_presolve_t<i_t, f_t>::solve(problem_t<i_t, f_t>& pb)
 {
-  timer_t timer(settings.time_limit);
+  timer_t timer(settings.time_limit, context.settings.cancel_requested);
   auto& handle_ptr = pb.handle_ptr;
   copy_input_bounds(pb);
   return bound_update_loop(pb, timer);

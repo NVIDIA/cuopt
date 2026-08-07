@@ -312,8 +312,12 @@ primal_status_t primal_phase2(i_t phase,
   } else if (rank == TIME_LIMIT_RETURN) {
     return primal_status_t::TIME_LIMIT;
   } else if (rank < 0) {
-    return toc(start_time) > settings.time_limit ? primal_status_t::TIME_LIMIT
-                                                 : primal_status_t::NUMERICAL;
+    return cuopt::solve_limit_reached(cuopt::mathematical_optimization::toc(start_time),
+                                      settings.time_limit,
+                                      settings.cancel_requested,
+                                      nullptr)
+             ? primal_status_t::TIME_LIMIT
+             : primal_status_t::NUMERICAL;
   } else if (rank != m) {
     settings.log.debug("Failed to factorize basis. rank %d m %d\n", rank, m);
     basis_repair(lp.A,
@@ -345,8 +349,12 @@ primal_status_t primal_phase2(i_t phase,
       return primal_status_t::TIME_LIMIT;
     } else if (rank < 0) {
       settings.log.printf("Failed to factorize basis after repair. rank %d m %d\n", rank, m);
-      return toc(start_time) > settings.time_limit ? primal_status_t::TIME_LIMIT
-                                                   : primal_status_t::NUMERICAL;
+      return cuopt::solve_limit_reached(cuopt::mathematical_optimization::toc(start_time),
+                                        settings.time_limit,
+                                        settings.cancel_requested,
+                                        nullptr)
+               ? primal_status_t::TIME_LIMIT
+               : primal_status_t::NUMERICAL;
     } else {
       settings.log.debug("Basis repaired\n");
     }
