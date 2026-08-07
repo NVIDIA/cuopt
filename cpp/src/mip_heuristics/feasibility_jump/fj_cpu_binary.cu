@@ -15,12 +15,10 @@
 
 #include <raft/random/rng_device.cuh>
 
-#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <limits>
-#include <numeric>
 #include <vector>
 
 namespace cuopt::mathematical_optimization::mip {
@@ -41,31 +39,25 @@ const char* fj_binary_reject_name(fj_binary_reject_t reason)
   return "unknown";
 }
 
-
-// Work-unit proxy: bytes attributed per nnz touched. Stands in for the byte counters the general
-// path reads off its instrumented vectors. Calibrated by the owner.
+// work unit proxy. will likely require a lot of tuning
 constexpr double fj_bin_bytes_per_nnz = 16.0;
 
-// Tabu for binary variables. A binary variable's only move is a flip, so the direction is a
-// function of the current assignment and the general four-array scheme collapses to two.
-// flip_until is biased by a rolling base so it fits uint16.
+// Tabu for binary variables, expressed as a ring buffer
+// There can be at most max_tenure tabu'd variables at any given time.
+// since max_tenure << n_vars, it's cheaper to maintain a ring buffer than a full array
+// and it allows smaller instances to become L1 resident
 struct fj_bin_tabu_t {
-  static constexpr int32_t window = 65535 - 64;
+  static constexpr int32_t ring_size  = 16;
+  static constexpr int32_t max_tenure = ring_size;
+  // Headroom so iter + tenure - iter_bias still fits uint16 when iter - iter_bias is at the rebase
+  // threshold.
+  static constexpr int32_t window =
+    (int32_t)std::numeric_limits<uint16_t>::max() - max_tenure;
 
   std::vector<uint16_t> flip_until;
   std::vector<int32_t> last_flip;
-  int32_t base{0};
+  int32_t iter_bias{0};
 
-  // Ring of the last ring_size flips, indexed by iteration rather than by expiry. One variable
-  // flips per iteration, so each slot takes exactly one entry and nothing is ever displaced while
-  // still tabu; indexing by expiry instead would collide whenever two flips share a deadline, which
-  // a simulation over the [3,12] tenure range puts at 35% of insertions.
-  //
-  // This is what lets the global argmax stop reading flip_until. Tenure is bounded by the ring, so
-  // at most ring_size variables are tabu at once out of n: reading two bytes per variable to answer
-  // a question that is almost always no costs a third of that scan's traffic. On crypt16 it is the
-  // difference between a 31 KB working set that overflows a 32 KB L1 and a 21 KB one that does not.
-  static constexpr int32_t ring_size = 16;
   int32_t ring_var[ring_size];
   int32_t ring_expiry[ring_size];
 
@@ -75,7 +67,7 @@ struct fj_bin_tabu_t {
     flip_until.assign(n, 0);
     last_flip.assign(n, 0);
     clear_ring();
-    base = 0;
+    iter_bias = 0;
   }
 
   void clear(int32_t iter)
@@ -83,7 +75,7 @@ struct fj_bin_tabu_t {
     std::fill(flip_until.begin(), flip_until.end(), (uint16_t)0);
     std::fill(last_flip.begin(), last_flip.end(), 0);
     clear_ring();
-    base = iter;
+    iter_bias = iter;
   }
 
   void clear_ring()
@@ -96,15 +88,10 @@ struct fj_bin_tabu_t {
 
   void on_flip(int32_t v, int32_t iter, int32_t tenure)
   {
-    flip_until[v] = (uint16_t)(iter + tenure - base);
+    flip_until[v] = (uint16_t)(iter + tenure - iter_bias);
     last_flip[v]  = iter;
 
-    // Drop any earlier entry for v before inserting the new one. flip_until keeps one deadline per
-    // variable and a reflip overwrites it, so without this the ring would hold a superseded, later
-    // deadline and block v past the point the per-variable test would have released it. A variable
-    // can be reflipped while still tabu: the local-minimum path tests the weaker
-    // iter == last_flip + 1. With this the ring holds at most one live entry per variable carrying
-    // its current deadline, which is exactly the invariant flip_until maintains.
+    // keep only one tabu entry per var
     for (int32_t i = 0; i < ring_size; ++i) {
       if (ring_var[i] == v) ring_var[i] = -1;
     }
@@ -114,9 +101,7 @@ struct fj_bin_tabu_t {
     ring_expiry[slot]  = iter + tenure;
   }
 
-  // Blocks every currently-tabu variable by writing the invalid sentinel over its score, and reports
-  // how many were touched. Paired with unblock around one argmax and nothing else: the score is
-  // maintained incrementally, so it may only be disturbed across a window in which no patch runs.
+  // replace the scores of tabu'd variable with sentinel values
   int32_t block_tabu(int32_t iter,
                      int32_t* var_score,
                      int32_t (&saved_var)[ring_size],
@@ -135,8 +120,7 @@ struct fj_bin_tabu_t {
     return k;
   }
 
-  // Reverse order on purpose: a variable flipped twice inside the ring appears twice, and its second
-  // save holds the sentinel written by the first. Unwinding backwards restores the true score last.
+  // reverse the above operation.
   static void unblock_tabu(int32_t k,
                            int32_t* var_score,
                            const int32_t (&saved_var)[ring_size],
@@ -148,17 +132,17 @@ struct fj_bin_tabu_t {
 
   bool blocked(int32_t v, int32_t iter, bool localmin) const
   {
-    return localmin ? (iter == last_flip[v] + 1) : ((uint16_t)(iter - base) < flip_until[v]);
+    return localmin ? (iter == last_flip[v] + 1)
+                    : ((uint16_t)(iter - iter_bias) < flip_until[v]);
   }
 
-  // Rebase before iter - base can overflow the uint16 window. Expired entries saturate to 0,
-  // which reads as not-tabu.
-  void maybe_advance(int32_t iter)
+  // rebase the iteration bias value every 64k iter
+  void maybe_rebase(int32_t iter)
   {
-    if ((int64_t)iter - base <= window) return;
-    const uint16_t shift = (uint16_t)(iter - base);
+    if ((int64_t)iter - iter_bias <= window) return;
+    const uint16_t shift = (uint16_t)(iter - iter_bias);
     for (uint16_t& fu : flip_until) fu = (fu > shift) ? (uint16_t)(fu - shift) : (uint16_t)0;
-    base = iter;
+    iter_bias = iter;
   }
 };
 
@@ -223,18 +207,12 @@ constexpr int32_t fj_bin_ddfw_transfer      = 1;
 constexpr int32_t fj_bin_ddfw_donor_samples = 1;
 constexpr int32_t fj_bin_restart_period     = 5000000;
 
-// `[study]` Prefetch distance for the reverse-CSR row walk, in rows. Each move visits the rows of
-// one variable through reverse_constraints, whose entries are effectively random indices into a row
-// array far larger than L2, and the sequence is data-dependent so no hardware prefetcher can follow
-// it. reverse_constraints is padded by this much so the lookahead needs no bounds test.
+// prefetch distance
+// TODO: check if it actually matters at all for performance
 constexpr int32_t fj_bin_pf_dist = 8;
 
-// Limits of the packed score. Breaching either corrupts the ordering, so compute_saturation
-// reports the observed peaks against them at end of solve.
 constexpr int32_t fj_bin_base_limit  = 1 << 16;
 constexpr int32_t fj_bin_bonus_limit = 1 << 14;
-
-static inline bool fj_bin_is_integral(double v, double tol) { return std::fabs(v - std::round(v)) <= tol; }
 
 static inline bool fj_bin_in_int32(double v)
 {
@@ -253,14 +231,13 @@ static fj_bin_scan_t fj_bin_scan(const fj_cpu_climber_t<i_t, f_t>& c)
     return out;
   }
 
-  const double tol       = c.view.pb.tolerances.integrality_tolerance;
-  const auto& var_bounds = c.h_var_bounds;
-  const auto& var_types  = c.h_var_types;
+  const double tol             = c.view.pb.tolerances.integrality_tolerance;
+  const auto& is_binary_variable = c.h_is_binary_variable;
+  cuopt_assert((int32_t)is_binary_variable.size() == n, "is_binary_variable size mismatch");
 
   for (int32_t v = 0; v < n; ++v) {
-    auto bounds = var_bounds[v];
-    if (var_types[v] != var_t::INTEGER || std::fabs(get_lower(bounds)) > tol ||
-        std::fabs(get_upper(bounds) - 1.0) > tol) {
+    // Populated at climber init with integer_equal on [0,1] bounds.
+    if (!is_binary_variable[v]) {
       out.reject  = fj_binary_reject_t::non_binary_var;
       out.bad_var = v;
       return out;
@@ -277,7 +254,7 @@ static fj_bin_scan_t fj_bin_scan(const fj_cpu_climber_t<i_t, f_t>& c)
     double row_abs_sum = 0;
     for (int32_t k = offsets[r]; k < offsets[r + 1]; ++k) {
       const double a = coeffs[k];
-      if (!fj_bin_is_integral(a, tol)) {
+      if (!is_integer(a, tol)) {
         out.reject  = fj_binary_reject_t::fractional_coefficient;
         out.bad_row = r;
         return out;
@@ -303,7 +280,7 @@ static fj_bin_scan_t fj_bin_scan(const fj_cpu_climber_t<i_t, f_t>& c)
     const bool finite[2]  = {lb_fin, ub_fin};
     for (int s = 0; s < 2; ++s) {
       if (!finite[s]) continue;
-      if (!fj_bin_is_integral(sides[s], tol)) {
+      if (!is_integer(sides[s], tol)) {
         out.reject  = fj_binary_reject_t::fractional_row_bound;
         out.bad_row = r;
         return out;
@@ -372,7 +349,7 @@ static bool fj_bin_narrow(const fj_cpu_climber_t<i_t, f_t>& c,
     for (int32_t k = offsets[r]; k < offsets[r + 1]; ++k) {
       const double a = coeffs[k];
       const long ai  = std::lround(a);
-      if (!fj_bin_is_integral(a, tol) || ai < std::numeric_limits<coef_t>::min() ||
+      if (!is_integer(a, tol) || ai < std::numeric_limits<coef_t>::min() ||
           ai > std::numeric_limits<coef_t>::max()) {
         return false;
       }
@@ -404,9 +381,8 @@ static bool fj_bin_narrow(const fj_cpu_climber_t<i_t, f_t>& c,
   // row without running off the end and can therefore mask its remainder rather than peeling it
   // into a scalar tail. The padding is never read as data: every lane past a row's end is excluded
   // from the gather, the scatter and the store by the row-length mask.
-  const int32_t pad = fj_bin_simd_padding();
-  pb.variables.resize(pb.nnz + pad, 0);
-  pb.coefficients.resize(pb.nnz + pad, (coef_t)0);
+  pb.variables.resize(pb.nnz + fj_bin_simd_padding, 0);
+  pb.coefficients.resize(pb.nnz + fj_bin_simd_padding, (coef_t)0);
 
   // Scale the incoming weights into the DDFW band by one global factor, so relative structure
   // survives while every row clears the donation floor. Capped so the largest scaled weight stays
@@ -460,7 +436,8 @@ static bool fj_bin_narrow(const fj_cpu_climber_t<i_t, f_t>& c,
   // Lookahead room for the row walk: a vector of overhang for the kernel's unit-stride loads, and
   // the prefetch distance the scalar path uses. Reads land on row 0, harmlessly, and every lane past
   // a variable's range is masked out of the gather, the scatter and the compress.
-  const int32_t rpad = fj_bin_pf_dist > pad ? fj_bin_pf_dist : pad;
+  const int32_t rpad =
+    fj_bin_pf_dist > fj_bin_simd_padding ? fj_bin_pf_dist : fj_bin_simd_padding;
   pb.reverse_constraints.resize(pb.nnz + rpad, 0);
   pb.signed_coefficient.resize(pb.nnz + rpad, (coef_t)0);
   pb.incident_row_cmax.resize(pb.nnz + rpad, (coef_t)1);
@@ -477,7 +454,7 @@ static bool fj_bin_narrow(const fj_cpu_climber_t<i_t, f_t>& c,
 // The integer engine. Feasibility is an exact compare against one bound per row, so there is no
 // tolerance arithmetic and no compensated summation anywhere below.
 template <typename i_t, typename f_t, typename coef_t>
-struct fj_bin_engine_t : fj_binary_state_t<i_t, f_t> {
+struct fj_bin_engine_t {
   fj_bin_problem_t<coef_t> pb;
   std::vector<fj_bin_row_t<coef_t>> rows;
 
@@ -528,11 +505,6 @@ struct fj_bin_engine_t : fj_binary_state_t<i_t, f_t> {
   // what bounds the index re-scan, so it is about the shape of the sweep and not cache capacity.
   int32_t argmax_tile{256};
 
-  // Rows at or below these lengths go to the 4- and 8-lane patch kernels; 0 disables that width.
-  int32_t narrow4_max{0};
-  int32_t narrow8_max{0};
-
-
   // Settings read at solve entry, where the climber carries populated values.
   int32_t seed{0};
   int32_t tabu_tenure_min{3};
@@ -545,15 +517,7 @@ struct fj_bin_engine_t : fj_binary_state_t<i_t, f_t> {
   int32_t max_aggregate_base{0};
   int32_t max_aggregate_bonus{0};
 
-  int coefficient_bits() const override { return 8 * (int)sizeof(coef_t); }
-  int n_split_constraints() const override { return pb.n_constraints; }
-  i_t iterations() const override { return (i_t)iters; }
-
-  void saturation(int& base_peak, int& bonus_peak) const override
-  {
-    base_peak  = max_aggregate_base;
-    bonus_peak = max_aggregate_bonus;
-  }
+  int coefficient_bits() const { return 8 * (int)sizeof(coef_t); }
 
   // Largest per-variable aggregate base and bonus under the final weights and assignment, in raw
   // int32. The packed representation is only order-preserving while these stay inside their
@@ -762,11 +726,8 @@ struct fj_bin_engine_t : fj_binary_state_t<i_t, f_t> {
       const int32_t margin = (int32_t)rcmax_p[ii];
       if (!(old_slack < -margin && new_slack < -margin)) {
           const int32_t kb = offsets_p[r], ke = offsets_p[r + 1];
-          // The offsets are already loaded for the call, so the width choice is a compare rather
-          // than a stored per-row flag.
           // TODO: check that this may not cause AVX512 powerdown overheads if the AVX2 row/AVX512 row ratio is unbalanced
-          fj_bin_patch_row(fj_bin_patch_width_for(ke - kb, narrow4_max, narrow8_max),
-                           vars_p,
+          fj_bin_patch_row(vars_p,
                            coefs_p,
                            kb,
                            ke,
@@ -854,8 +815,7 @@ struct fj_bin_engine_t : fj_binary_state_t<i_t, f_t> {
     if (new_weight > max_weight) max_weight = new_weight;
     // The slack is unchanged here, and no variable is excluded, so skip_var matches no index.
     const int32_t kb = pb.offsets[r], ke = pb.offsets[r + 1];
-    fj_bin_patch_row(fj_bin_patch_width_for(ke - kb, narrow4_max, narrow8_max),
-                     pb.variables.data(),
+    fj_bin_patch_row(pb.variables.data(),
                      pb.coefficients.data(),
                      kb,
                      ke,
@@ -1042,8 +1002,6 @@ struct fj_bin_engine_t : fj_binary_state_t<i_t, f_t> {
   {
     const auto& params  = climber.settings.parameters;
     seed                = climber.settings.seed;
-    narrow4_max         = fj_bin_simd_narrow4_max();
-    narrow8_max         = fj_bin_simd_narrow8_max();
     rng                 = raft::random::PCGenerator((uint64_t)seed, 0, 0);
     tabu_tenure_min     = params.tabu_tenure_min;
     tabu_tenure_max     = params.tabu_tenure_max;
@@ -1057,9 +1015,9 @@ struct fj_bin_engine_t : fj_binary_state_t<i_t, f_t> {
     // iterations. A tenure that long would be overwritten while the variable is still tabu, and the
     // argmax would stop excluding it. Clamped as well as asserted: release builds compile the assert
     // out, and silently dropping tabu entries is worse than a shorter tenure.
-    cuopt_assert(tabu_tenure_max <= fj_bin_tabu_t::ring_size,
+    cuopt_assert(tabu_tenure_max <= fj_bin_tabu_t::max_tenure,
                  "tabu tenure exceeds the tabu ring, live entries would be evicted");
-    if (tabu_tenure_max > fj_bin_tabu_t::ring_size) tabu_tenure_max = fj_bin_tabu_t::ring_size;
+    if (tabu_tenure_max > fj_bin_tabu_t::max_tenure) tabu_tenure_max = fj_bin_tabu_t::max_tenure;
 
     const int32_t n = pb.n_variables, m = pb.n_constraints;
     const auto& h_assign = climber.h_assignment;
@@ -1079,7 +1037,7 @@ struct fj_bin_engine_t : fj_binary_state_t<i_t, f_t> {
     row_slack.assign(m, 0);
 
     var_score.assign(n, 0);
-    nnz_score_delta.assign(pb.nnz + fj_bin_simd_padding(), 0);
+    nnz_score_delta.assign(pb.nnz + fj_bin_simd_padding, 0);
     tabu.resize(n);
     is_violated.assign(m, 0);
     vpos.assign(m, -1);
@@ -1096,7 +1054,7 @@ struct fj_bin_engine_t : fj_binary_state_t<i_t, f_t> {
     recompute_slack();
   }
 
-  void solve(fj_cpu_climber_t<i_t, f_t>& climber, f_t time_limit, double work_unit_limit) override
+  void solve(fj_cpu_climber_t<i_t, f_t>& climber, f_t time_limit, double work_unit_limit)
   {
     init(climber);
 
@@ -1109,7 +1067,7 @@ struct fj_bin_engine_t : fj_binary_state_t<i_t, f_t> {
       if (bounded_time && std::chrono::high_resolution_clock::now() - loop_start > limit) break;
       if (iters >= climber.settings.iteration_limit) break;
       if (iters - last_restart_iter >= fj_bin_restart_period) do_restart();
-      tabu.maybe_advance(iters);
+      tabu.maybe_rebase(iters);
 
       int32_t move_var = -1, score = fj_bin_score_invalid;
       if (violated_list.empty()) std::tie(move_var, score) = find_lift_move();
@@ -1182,13 +1140,9 @@ struct fj_bin_engine_t : fj_binary_state_t<i_t, f_t> {
 };
 
 template <typename i_t, typename f_t>
-void fj_binary_state_deleter_t<i_t, f_t>::operator()(fj_binary_state_t<i_t, f_t>* ptr) const
-{
-  delete ptr;
-}
-
-template <typename i_t, typename f_t>
-void try_build_binary_fastpath(fj_cpu_climber_t<i_t, f_t>& climber)
+bool try_cpufj_binary_solve(fj_cpu_climber_t<i_t, f_t>& climber,
+                            f_t time_limit,
+                            double work_unit_limit)
 {
   const fj_bin_scan_t scan = fj_bin_scan(climber);
   if (scan.reject != fj_binary_reject_t::none) {
@@ -1197,41 +1151,43 @@ void try_build_binary_fastpath(fj_cpu_climber_t<i_t, f_t>& climber)
                     fj_binary_reject_name(scan.reject),
                     scan.bad_row,
                     scan.bad_var);
-    return;
+    return false;
   }
 
-  bool built = false;
+  auto run = [&](auto& engine) -> bool {
+    if (!fj_bin_narrow(climber, scan.n_split_constraints, engine.pb)) {
+      CUOPT_LOG_DEBUG("%sCPUFJ binary fast path declined: %s",
+                      climber.log_prefix.c_str(),
+                      fj_binary_reject_name(fj_binary_reject_t::narrow_check_failed));
+      return false;
+    }
+    CUOPT_LOG_DEBUG(
+      "%sCPUFJ binary fast path enabled: int%d coefficients, %d rows after one-sided split",
+      climber.log_prefix.c_str(),
+      scan.coefficient_bits,
+      scan.n_split_constraints);
+    engine.solve(climber, time_limit, work_unit_limit);
+    return true;
+  };
+
   if (scan.coefficient_bits == 8) {
-    auto engine = std::make_unique<fj_bin_engine_t<i_t, f_t, int8_t>>();
-    built       = fj_bin_narrow(climber, scan.n_split_constraints, engine->pb);
-    if (built) climber.binary_fast.reset(engine.release());
-  } else {
-    auto engine = std::make_unique<fj_bin_engine_t<i_t, f_t, int16_t>>();
-    built       = fj_bin_narrow(climber, scan.n_split_constraints, engine->pb);
-    if (built) climber.binary_fast.reset(engine.release());
+    fj_bin_engine_t<i_t, f_t, int8_t> engine;
+    return run(engine);
   }
-
-  if (!built) {
-    CUOPT_LOG_DEBUG("%sCPUFJ binary fast path declined: %s",
-                    climber.log_prefix.c_str(),
-                    fj_binary_reject_name(fj_binary_reject_t::narrow_check_failed));
-    return;
-  }
-
-  CUOPT_LOG_DEBUG("%sCPUFJ binary fast path enabled: int%d coefficients, %d rows after one-sided split",
-                  climber.log_prefix.c_str(),
-                  scan.coefficient_bits,
-                  scan.n_split_constraints);
+  fj_bin_engine_t<i_t, f_t, int16_t> engine;
+  return run(engine);
 }
 
 #if MIP_INSTANTIATE_FLOAT
-template struct fj_binary_state_deleter_t<int, float>;
-template void try_build_binary_fastpath(fj_cpu_climber_t<int, float>& climber);
+template bool try_cpufj_binary_solve(fj_cpu_climber_t<int, float>& climber,
+                                     float time_limit,
+                                     double work_unit_limit);
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
-template struct fj_binary_state_deleter_t<int, double>;
-template void try_build_binary_fastpath(fj_cpu_climber_t<int, double>& climber);
+template bool try_cpufj_binary_solve(fj_cpu_climber_t<int, double>& climber,
+                                     double time_limit,
+                                     double work_unit_limit);
 #endif
 
 }  // namespace cuopt::mathematical_optimization::mip
