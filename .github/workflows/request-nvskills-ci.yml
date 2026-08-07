@@ -26,7 +26,7 @@ jobs:
       contents: read
       pull-requests: read
       statuses: read
-    uses: ./.github/workflows/require-nvskills-status.yml
+    uses: NVIDIA/skills/.github/workflows/require-nvskills-status.yml@main
 
   request:
     if: >
@@ -79,13 +79,10 @@ jobs:
           commit_title="$(printf '%s' "${HEAD_COMMIT_MESSAGE}" | sed -n '1p')"
 
           if [ "${EVENT_NAME}" = "push" ]; then
-            case "${commit_title}" in
-              "${SIGNATURE_COMMIT_TITLE}"*) ;;
-              *)
-                echo "Push is not the configured NVSkills signature commit; skipping dispatch."
-                exit 0
-                ;;
-            esac
+            if [ "${commit_title}" != "${SIGNATURE_COMMIT_TITLE}" ]; then
+              echo "Push is not the configured NVSkills signature commit; skipping dispatch."
+              exit 0
+            fi
             if [ "${ACTOR}" != "${SIGNATURE_PUSH_ACTOR}" ]; then
               echo "Push actor ${ACTOR} is not the configured NVSkills signing actor; skipping dispatch."
               exit 0
