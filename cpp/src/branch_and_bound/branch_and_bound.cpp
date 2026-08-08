@@ -445,6 +445,69 @@ void branch_and_bound_t<i_t, f_t>::report(
   settings_.log.printf("%s\n", log_line.c_str());
 }
 
+
+template <typename i_t, typename f_t>
+void branch_and_bound_t<i_t, f_t>::update_reduced_cost_bounds(
+  f_t relaxation_objective,
+  const std::vector<f_t>& reduced_costs,
+  const std::vector<variable_status_t>& var_status,
+  reduced_cost_bounds_t<i_t, f_t>& reduced_cost_bounds)
+{
+  const i_t n         = reduced_cost_bounds.num_cols();
+  const f_t threshold = 100.0 * settings_.integer_tol;
+  const f_t tol       = 1e-2;
+  for (i_t j = 0; j < n; ++j) {
+    if (std::isfinite(reduced_costs[j]) && std::abs(reduced_costs[j]) > threshold &&
+        var_status[j] != variable_status_t::BASIC) {
+      const f_t lower_j = original_lp_.lower[j];
+      const f_t upper_j = original_lp_.upper[j];
+
+      // x_j <= l_j + (incumbent_objective - relaxation_objective) / reduced_costs[j]
+      // Let u_tilde_j = u_j - epsilon, so that floor(u_tilde_j) = u_j - 1
+      // We want to solve for want the incumbent objective needs to be to make
+      // x_j <= u_tilde_j
+      // This means l_j + (incumbent_objective - relaxation_objective) / reduced_costs[j] <= u_tilde_j
+      // Or equivalently, incumbent_objective <= relaxation_objective + reduced_costs[j] * (u_tilde_j - l_j) when reduced_costs[j] > 0
+      if (lower_j > -inf && reduced_costs[j] > 0) {
+        const f_t u_tilde_j = var_types_[j] == variable_type_t::INTEGER
+                                ? upper_j - tol
+                                : std::max(upper_j - 1.0, lower_j);
+        const f_t bound_j =
+          var_types_[j] == variable_type_t::INTEGER ? std::floor(u_tilde_j) : u_tilde_j;
+        const f_t diff        = u_tilde_j - lower_j;
+        const f_t objective_j = relaxation_objective + diff * reduced_costs[j];
+        if (((var_types_[j] == variable_type_t::INTEGER && bound_j == upper_j - 1.0) ||
+            var_types_[j] != variable_type_t::INTEGER) && std::isfinite(objective_j) && std::isfinite(bound_j)) {
+          i_t info = reduced_cost_bounds.add_upper_bound(j, objective_j, bound_j);
+          //settings_.log.printf("Added objective bound pair (%e, %e) for variable %d upper bound. Info %d\n", objective_j, bound_j, j, info);
+        }
+      }
+
+      // x_j >= u_j + (incumbent_objective - relaxation_objective) / reduced_costs[j] when reduced_costs[j] < 0
+      // Let l_tilde_j = l_j + epsilon, so that ceil(l_tilde_j) = l_j + 1
+      // We want to solve for want the incumbent objective needs to be to make
+      // x_j >= l_tilde_j
+      // This means u_j + (incumbent_objective - relaxation_objective) / reduced_costs[j] >= l_tilde_j
+      // Or equivalently, incumbent_objective <=  relaxation_objective + reduced_costs[j] * (l_tilde_j - u_j) when reduced_costs[j] < 0
+      if (upper_j < inf && reduced_costs[j] < 0) {
+        const f_t l_tilde_j = var_types_[j] == variable_type_t::INTEGER
+                                ? lower_j + tol
+                                : std::min(lower_j + 1.0, upper_j);
+        const f_t bound_j =
+          var_types_[j] == variable_type_t::INTEGER ? std::ceil(l_tilde_j) : l_tilde_j;
+        const f_t diff        = l_tilde_j - upper_j;
+        const f_t objective_j = relaxation_objective + diff * reduced_costs[j];
+        if (((var_types_[j] == variable_type_t::INTEGER && bound_j == lower_j + 1.0) ||
+            var_types_[j] != variable_type_t::INTEGER) && std::isfinite(objective_j) && std::isfinite(bound_j)) {
+          i_t info = reduced_cost_bounds.add_lower_bound(j, objective_j, bound_j);
+          //settings_.log.printf("Added objective bound pair (%e, %e) for variable %d lower bound. Info %d\n", objective_j, bound_j, j, info);
+        }
+      }
+    }
+  }
+}
+
+
 template <typename i_t, typename f_t>
 i_t branch_and_bound_t<i_t, f_t>::find_reduced_cost_fixings(f_t upper_bound,
                                                             std::vector<f_t>& lower_bounds,
@@ -2946,7 +3009,7 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
 }
 
 template <typename i_t, typename f_t>
-auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
+typename branch_and_bound_t<i_t, f_t>::cut_pass_result_t branch_and_bound_t<i_t, f_t>::do_cut_pass(
   [[maybe_unused]] i_t cut_pass,
   mip_solution_t<i_t, f_t>& solution,
   i_t& num_fractional,
@@ -2963,8 +3026,9 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   f_t& last_upper_bound,
   f_t& last_objective,
   f_t root_relax_objective,
+  reduced_cost_bounds_t<i_t, f_t>& reduced_cost_bounds,
   i_t& cut_pool_size,
-  [[maybe_unused]] const std::vector<f_t>& saved_solution) -> cut_pass_result_t
+  [[maybe_unused]] const std::vector<f_t>& saved_solution)
 {
 #ifdef PRINT_FRACTIONAL_INFO
   settings_.log.printf("Found %d fractional variables on cut pass %d\n", num_fractional, cut_pass);
@@ -3006,6 +3070,28 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   if (cut_generation_time > 1.0) {
     settings_.log.debug("Cut generation time %.2f seconds\n", cut_generation_time);
   }
+
+  num_fractional = fractional_variables(settings_, root_relax_soln_.x, var_types_, fractional);
+
+  f_t pivot_out_integer_variables_start_time = tic();
+  i_t num_integer_increased = pivot_out_integer_variables(original_lp_,
+                              basic_list,
+                              nonbasic_list,
+                              root_vstatus_,
+                              root_relax_soln_,
+                              basis_update,
+                              num_fractional,
+                              fractional);
+  settings_.log.printf("Pivoted out %d integer variables in %e seconds\n", num_integer_increased, toc(pivot_out_integer_variables_start_time));
+  dual_degenerate_feasibility_pump(original_lp_,
+                                   basic_list,
+                                   nonbasic_list,
+                                   root_vstatus_,
+                                   root_relax_soln_,
+                                   basis_update,
+                                   num_fractional,
+                                   fractional);
+
   // Score the cuts
   f_t score_start_time = tic();
   cut_pool.score_cuts(root_relax_soln_.x);
@@ -3073,14 +3159,20 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   if (settings_.reduced_cost_strengthening >= 1 && upper_bound_.load() < last_upper_bound) {
     mutex_upper_.lock();
     last_upper_bound = upper_bound_.load();
-    std::vector<f_t> lower_bounds;
-    std::vector<f_t> upper_bounds;
-    find_reduced_cost_fixings(upper_bound_.load(), lower_bounds, upper_bounds);
+    std::vector<f_t> lower_bounds = original_lp_.lower;
+    std::vector<f_t> upper_bounds = original_lp_.upper;
+    f_t previous_max_objective = reduced_cost_bounds.get_max_objective();
+    i_t new_bounds = reduced_cost_bounds.update_bounds_from_new_incumbent(
+      upper_bound_.load(), var_types_, lower_bounds, upper_bounds);
     mutex_upper_.unlock();
     mutex_original_lp_.lock();
     original_lp_.lower = lower_bounds;
     original_lp_.upper = upper_bounds;
     mutex_original_lp_.unlock();
+    if (1 || new_bounds > 0) {
+      settings_.log.printf(
+        "Updated %d bounds using reduced cost strengthening from new incumbent. Max objective %e Current objective %e Previous max objective %e\n", new_bounds, reduced_cost_bounds.get_max_objective(), upper_bound_.load(), previous_max_objective);
+    }
   }
 
   // Try to do bound strengthening
@@ -3178,26 +3270,12 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   }
   root_objective_ = compute_objective(original_lp_, root_relax_soln_.x);
 
+  if (settings_.reduced_cost_strengthening >= 1) {
+    update_reduced_cost_bounds(root_objective_, root_relax_soln_.z, root_vstatus_, reduced_cost_bounds);
+  }
+
   // Refresh fractional info after re-solving with cuts; the pre-cut count is stale.
   num_fractional = fractional_variables(settings_, root_relax_soln_.x, var_types_, fractional);
-
-  pivot_out_integer_variables(original_lp_,
-                              basic_list,
-                              nonbasic_list,
-                              root_vstatus_,
-                              root_relax_soln_,
-                              basis_update,
-                              num_fractional,
-                              fractional);
-
-  dual_degenerate_feasibility_pump(original_lp_,
-                                   basic_list,
-                                   nonbasic_list,
-                                   root_vstatus_,
-                                   root_relax_soln_,
-                                   basis_update,
-                                   num_fractional,
-                                   fractional);
 
   if (settings_.benchmark_info_ptr != nullptr) {
     settings_.benchmark_info_ptr->root_lp_with_cuts =
@@ -3395,6 +3473,7 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(
   }
 
   simplex::basis_update_mpf_t<i_t, f_t> reduced_basis_update = basis_update;
+  reduced_basis_update.clear_work_estimate();
   for (i_t k = 0; k < m; k++) {
     reduced_basic_list[k] = original_col_to_reduced_col[basic_list[k]];
   }
@@ -3426,14 +3505,75 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(
               lp_reduced.objective[reduced_col] = -1;
             }
           } else if (reduced_vstatus[reduced_col] == variable_status_t::NONBASIC_LOWER) {
-            lp_reduced.objective[reduced_col] = 1;
+            lp_reduced.objective[reduced_col] = 0.1;
           } else if (reduced_vstatus[reduced_col] == variable_status_t::NONBASIC_UPPER) {
-            lp_reduced.objective[reduced_col] = -1;
+            lp_reduced.objective[reduced_col] = -0.1;
           }
         }
         reduced_col++;
       }
     }
+
+    // Check reduced costs before calling primal simplex.
+    // Compute y = B^{-T} * c_B (BTRAN with the pump objective on basic variables)
+    std::vector<f_t> c_basic_pump(m, 0.0);
+    for (i_t k = 0; k < m; k++) {
+      c_basic_pump[k] = lp_reduced.objective[reduced_basic_list[k]];
+    }
+    std::vector<f_t> y_pump(m);
+    reduced_basis_update.b_transpose_solve(c_basic_pump, y_pump);
+
+    // Check if any nonbasic has a violated reduced cost
+    i_t num_violated = 0;
+    f_t max_violation = 0.0;
+    const i_t num_nonbasics_reduced = reduced_nonbasic_list.size();
+    for (i_t k = 0; k < num_nonbasics_reduced; k++) {
+      const i_t j = reduced_nonbasic_list[k];
+      // z[j] = c[j] - y^T * A(:,j)
+      f_t zj = lp_reduced.objective[j];
+      const i_t col_start = A_reduced.col_start[j];
+      const i_t col_end = A_reduced.col_start[j + 1];
+      for (i_t p = col_start; p < col_end; p++) {
+        zj -= y_pump[A_reduced.i[p]] * A_reduced.x[p];
+      }
+      // Check pricing condition
+      bool violated = false;
+      if (reduced_vstatus[j] == variable_status_t::NONBASIC_LOWER ||
+          reduced_vstatus[j] == variable_status_t::NONBASIC_FIXED) {
+        if (zj < -settings_.dual_tol) { violated = true; }
+      } else if (reduced_vstatus[j] == variable_status_t::NONBASIC_UPPER) {
+        if (zj > settings_.dual_tol) { violated = true; }
+      }
+      if (violated) {
+        num_violated++;
+        max_violation = std::max(max_violation, std::abs(zj));
+      }
+    }
+
+    if (num_violated == 0) {
+      settings_.log.printf(
+        "Degenerate feasibility pump (%d/%d): skipping primal simplex, no violated reduced costs "
+        "(%d nonbasics checked)\n",
+        pump_iter,
+        max_pump_iter,
+        num_nonbasics_reduced);
+      primal_work_estimate += reduced_basis_update.work_estimate();
+      reduced_basis_update.clear_work_estimate();
+      // Don't count this as a pump iteration, but break if we've skipped twice
+      // in a row (perturbation isn't helping)
+      if (stalled) { break; }
+      stalled = true;
+      pump_iter--;
+      continue;
+    }
+    settings_.log.printf(
+      "Degenerate feasibility pump (%d/%d): %d violated reduced costs (max %.2e) out of %d "
+      "nonbasics\n",
+      pump_iter,
+      max_pump_iter,
+      num_violated,
+      max_violation,
+      num_nonbasics_reduced);
 
     bool recompute_basis                                = false;
     const i_t iter_before                               = iter;
@@ -3498,18 +3638,59 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(
         best_reduced_vstatus = reduced_vstatus;
       }
     } else {
+      settings_.log.printf(
+        "Degenerate feasibility pump: primal simplex returned non-optimal status %d at pump_iter "
+        "%d. Work estimate %.2e\n",
+        static_cast<int>(lp_status),
+        pump_iter,
+        primal_work_estimate);
+      // Even if we hit work/time limit, the solution may have improved.
+      // Check fractional count before breaking.
+      if (lp_status == simplex::primal_status_t::WORK_LIMIT ||
+          lp_status == simplex::primal_status_t::TIME_LIMIT) {
+        std::vector<f_t> adjusted_solution(lp.num_cols, 0.0);
+        reduced_col = 0;
+        for (i_t j = 0; j < lp.num_cols; j++) {
+          if (vstatus[j] == variable_status_t::BASIC ||
+              std::abs(soln.z[j]) <= settings_.tight_tol) {
+            adjusted_solution[j] = reduced_solution.x[reduced_col++];
+          } else {
+            adjusted_solution[j] = soln.x[j];
+          }
+        }
+        std::vector<f_t> residual = lp.rhs;
+        matrix_vector_multiply(lp.A, 1.0, adjusted_solution, -1.0, residual);
+        const f_t primal_residual = vector_norm_inf<i_t, f_t>(residual);
+        if (primal_residual <= 1e-6) {
+          std::vector<i_t> tmp_fractional;
+          i_t num_fractional_reduced =
+            fractional_variables(settings_, adjusted_solution, var_types_, tmp_fractional);
+          settings_.log.printf(
+            "Degenerate feasibility pump (%d/%d): after work/time limit, fractional "
+            "variables %d/%d\n",
+            pump_iter,
+            max_pump_iter,
+            num_fractional_reduced,
+            num_fractional);
+          if (num_fractional_reduced < best_num_fractional) {
+            best_num_fractional  = num_fractional_reduced;
+            best_reduced_vstatus = reduced_vstatus;
+          }
+        }
+      }
       break;
     }
   }
 
   settings_.log.printf(
     "Degenerate feasibility pump: Simplex iterations %d, Best number of fractional variables "
-    "%d/%d. Work estimate %.2e, Time %.2f\n",
+    "%d/%d. Work estimate %.2e, Time %.2f, Basis updates %d\n",
     iter,
     best_num_fractional,
     num_fractional,
     primal_work_estimate,
-    toc(dual_degenerate_feasibility_pump_start_time));
+    toc(dual_degenerate_feasibility_pump_start_time),
+    reduced_basis_update.num_updates());
   if (best_num_fractional < num_fractional) {
     // Translate the vstatus from the reduced problem to the vstatus for the original problem
     i_t reduced_cols = 0;
@@ -3690,7 +3871,7 @@ void branch_and_bound_t<i_t, f_t>::apply_delta_x_for_integer_pivot(
 }
 
 template <typename i_t, typename f_t>
-void branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
+i_t branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
   const simplex::lp_problem_t<i_t, f_t>& lp,
   std::vector<i_t>& basic_list,
   std::vector<i_t>& nonbasic_list,
@@ -3700,13 +3881,13 @@ void branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
   i_t& num_fractional,
   std::vector<i_t>& fractional)
 {
-  if (num_fractional == 0) { return; }
+  if (num_fractional == 0) { return 0; }
   f_t pivot_out_integer_variables_start_time = tic();
   std::vector<i_t> zero_reduced_costs_vars;
   std::vector<i_t> zero_reduced_costs_vars_nonbasic_index;
   bool dual_degenerate = check_for_dual_degeneracy(
     solution, nonbasic_list, zero_reduced_costs_vars, zero_reduced_costs_vars_nonbasic_index);
-  if (!dual_degenerate) { return; }
+  if (!dual_degenerate) { return 0; }
 
   lp_solution_t<i_t, f_t> soln_copy                       = solution;
   std::vector<i_t> basic_list_copy                        = basic_list;
@@ -3937,11 +4118,13 @@ void branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
   if (num_new_fractional < start_num_fractional) {
     i_t num_integer_increased = start_num_fractional - num_new_fractional;
     integer_pivots_.fetch_add(num_integer_increased, std::memory_order_release);
+#if 0
     settings_.log.printf("Pivoted out %d integer variables: %d -> %d in %.2f\n",
                          num_integer_increased,
                          start_num_fractional,
                          num_new_fractional,
                          toc(pivot_out_integer_variables_start_time));
+#endif
     num_fractional = num_new_fractional;
     fractional     = new_fractional;
     basic_list     = basic_list_copy;
@@ -3949,7 +4132,9 @@ void branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
     vstatus        = vstatus_copy;
     basis_update   = basis_update_copy;
     solution       = soln_copy;
+    return num_integer_increased;
   }
+  return 0;
 }
 
 template <typename i_t, typename f_t>
@@ -4168,7 +4353,11 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   is_running_            = true;
   lower_bound_numerical_ = inf;
 
-  pivot_out_integer_variables(original_lp_,
+  reduced_cost_bounds_t<i_t, f_t> reduced_cost_bounds(original_lp_.num_cols);
+  update_reduced_cost_bounds(root_objective_, root_relax_soln_.z, root_vstatus_, reduced_cost_bounds);
+
+  f_t pivot_out_integer_variables_start_time = tic();
+  i_t num_integer_increased = pivot_out_integer_variables(original_lp_,
                               basic_list,
                               nonbasic_list,
                               root_vstatus_,
@@ -4176,6 +4365,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                               basis_update,
                               num_fractional,
                               fractional);
+  settings_.log.printf("Pivoted out %d integer variables in %e seconds\n", num_integer_increased, toc(pivot_out_integer_variables_start_time));
 
   dual_degenerate_feasibility_pump(original_lp_,
                                    basic_list,
@@ -4274,6 +4464,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                   last_upper_bound,
                                   last_objective,
                                   root_relax_objective,
+                                  reduced_cost_bounds,
                                   cut_pool_size,
                                   saved_solution);
     root_fj_cpu_worker.stop();
@@ -4390,10 +4581,17 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   }
 
   if (settings_.reduced_cost_strengthening >= 2 && upper_bound_.load() < last_upper_bound) {
-    std::vector<f_t> lower_bounds;
-    std::vector<f_t> upper_bounds;
-    i_t num_fixed = find_reduced_cost_fixings(upper_bound_.load(), lower_bounds, upper_bounds);
-    if (num_fixed > 0) {
+    std::vector<f_t> lower_bounds = original_lp_.lower;
+    std::vector<f_t> upper_bounds = original_lp_.upper;
+    f_t previous_max_objective = reduced_cost_bounds.get_max_objective();
+    i_t num_changed = reduced_cost_bounds.update_bounds_from_new_incumbent(
+      upper_bound_.load(), var_types_, lower_bounds, upper_bounds);
+    settings_.log.printf("Updated %d bounds using reduced cost strengthening from new incumbent. Max objective %e Current objective %e Previous max objective %e\n", num_changed, reduced_cost_bounds.get_max_objective(), upper_bound_.load(), previous_max_objective);
+    mutex_original_lp_.lock();
+    original_lp_.lower = lower_bounds;
+    original_lp_.upper = upper_bounds;
+    mutex_original_lp_.unlock();
+    if (num_changed > 0) {
       std::vector<bool> bounds_changed(original_lp_.num_cols, true);
       std::vector<char> row_sense;
 
