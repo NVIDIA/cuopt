@@ -3016,9 +3016,18 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
   basis_update_mpf_t<i_t, f_t>& basis_update,
   std::vector<i_t>& basic_list,
   std::vector<i_t>& nonbasic_list,
-  std::vector<f_t>& edge_norms)
+  std::vector<f_t>& edge_norms,
+  variable_bounds_t<i_t, f_t>& variable_bounds,
+  cut_pool_t<i_t, f_t>& cut_pool)
 {
   lp_status_t root_status;
+  i_t relaxation_cut_task_status = 0;
+  bool relaxation_cut_task_started{false};
+  f_t relaxation_cut_task_elapsed{0.0};
+  method_t relaxation_cut_method{Unset};
+  std::vector<f_t> relaxation_root_x;
+  std::vector<f_t> relaxation_root_y;
+  std::vector<f_t> relaxation_root_z;
 
 // Launch a task for solving the root LP relaxation via dual simplex.
 #pragma omp task default(shared) depend(out : root_status) priority(CUOPT_CRITICAL_TASK_PRIORITY)
@@ -3061,6 +3070,47 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
     root_crossover_soln_.x = crushed_root_x;
     root_crossover_soln_.y = crushed_root_y;
     root_crossover_soln_.z = crushed_root_z;
+
+    if ((root_relax_solved_by == PDLP || root_relax_solved_by == Barrier) &&
+        settings_.max_cut_passes > 0 && omp_get_num_threads() >= 3) {
+      relaxation_root_x           = root_crossover_soln_.x;
+      relaxation_root_y           = root_crossover_soln_.y;
+      relaxation_root_z           = root_crossover_soln_.z;
+      relaxation_cut_method       = root_relax_solved_by;
+      relaxation_cut_task_started = true;
+
+#pragma omp task default(shared) depend(out : relaxation_cut_task_status) \
+  priority(CUOPT_DEFAULT_TASK_PRIORITY)
+      {
+        const f_t cut_start_time = tic();
+        auto cut_settings        = settings_;
+        // The clique table is still being built asynchronously. Keep this pass independent of it;
+        // the normal root pass runs clique and zero-half separation after the join.
+        cut_settings.clique_cuts    = 0;
+        cut_settings.zero_half_cuts = 0;
+        cut_generation_t<i_t, f_t> relaxation_cut_generation(cut_pool,
+                                                             original_lp_,
+                                                             cut_settings,
+                                                             Arow_,
+                                                             new_slacks_,
+                                                             var_types_,
+                                                             original_problem_,
+                                                             probing_implied_bound_);
+        const bool feasible =
+          relaxation_cut_generation.generate_basis_independent_cuts(original_lp_,
+                                                                    cut_settings,
+                                                                    Arow_,
+                                                                    new_slacks_,
+                                                                    var_types_,
+                                                                    relaxation_root_x,
+                                                                    relaxation_root_y,
+                                                                    relaxation_root_z,
+                                                                    variable_bounds,
+                                                                    exploration_stats_.start_time);
+        relaxation_cut_task_elapsed = toc(cut_start_time);
+        relaxation_cut_task_status  = feasible ? 1 : -1;
+      }
+    }
 
     // Call crossover on the crushed solution
     auto root_crossover_settings            = settings_;
@@ -3142,6 +3192,16 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
 #pragma omp taskwait depend(in : root_status)
     root_relax_solved_by                   = DualSimplex;
     exploration_stats_.total_simplex_iters = root_relax_soln_.iterations;
+  }
+
+  if (relaxation_cut_task_started) {
+#pragma omp taskwait depend(in : relaxation_cut_task_status)
+    settings_.log.printf(
+      "%s root cut pass generated %d candidates in %.2f seconds%s\n",
+      method_to_string(relaxation_cut_method).c_str(),
+      cut_pool.pool_size(),
+      relaxation_cut_task_elapsed,
+      relaxation_cut_task_status < 0 ? " (separator reported infeasibility)" : "");
   }
 
   is_root_solution_set = true;
@@ -3464,6 +3524,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   variable_bounds_t<i_t, f_t> variable_bounds(
     original_lp_, settings_, var_types_, Arow_, new_slacks_);
+  cut_pool_t<i_t, f_t> cut_pool(original_lp_.num_cols, settings_);
 
   if (guess_.size() != 0) {
     raft::common::nvtx::range scope_guess("BB::check_initial_guess");
@@ -3552,7 +3613,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                         basis_update,
                                         basic_list,
                                         nonbasic_list,
-                                        edge_norms_);
+                                        edge_norms_,
+                                        variable_bounds,
+                                        cut_pool);
   }
   settings_.log.printf("\n");
 
@@ -3652,7 +3715,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   if (num_fractional != 0 && settings_.max_cut_passes > 0) { print_table_header(); }
 
-  cut_pool_t<i_t, f_t> cut_pool(original_lp_.num_cols, settings_);
   cut_generation_t<i_t, f_t> cut_generation(cut_pool,
                                             original_lp_,
                                             settings_,

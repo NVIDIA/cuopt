@@ -3550,6 +3550,23 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
     }
   }
 
+  return generate_basis_independent_cuts(
+    lp, settings, Arow, new_slacks, var_types, xstar, ystar, zstar, variable_bounds, start_time);
+}
+
+template <typename i_t, typename f_t>
+bool cut_generation_t<i_t, f_t>::generate_basis_independent_cuts(
+  const lp_problem_t<i_t, f_t>& lp,
+  const simplex_solver_settings_t<i_t, f_t>& settings,
+  csr_matrix_t<i_t, f_t>& Arow,
+  const std::vector<i_t>& new_slacks,
+  const std::vector<variable_type_t>& var_types,
+  const std::vector<f_t>& xstar,
+  const std::vector<f_t>& ystar,
+  const std::vector<f_t>& zstar,
+  variable_bounds_t<i_t, f_t>& variable_bounds,
+  f_t start_time)
+{
   // Generate Knapsack cuts
   if (settings.knapsack_cuts != 0) {
     if (toc(start_time) >= settings.time_limit) { return true; }

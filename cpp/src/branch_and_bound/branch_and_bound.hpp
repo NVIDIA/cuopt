@@ -175,7 +175,9 @@ class branch_and_bound_t {
     simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
     std::vector<i_t>& basic_list,
     std::vector<i_t>& nonbasic_list,
-    std::vector<f_t>& edge_norms);
+    std::vector<f_t>& edge_norms,
+    variable_bounds_t<i_t, f_t>& variable_bounds,
+    cut_pool_t<i_t, f_t>& cut_pool);
 
   i_t find_reduced_cost_fixings(f_t upper_bound,
                                 std::vector<f_t>& lower_bounds,
