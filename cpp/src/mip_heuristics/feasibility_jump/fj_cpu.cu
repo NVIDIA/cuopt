@@ -2112,13 +2112,19 @@ void fj_cpu_worker_t<i_t, f_t>::create_worker(
 }
 
 template <typename i_t, typename f_t>
-void fj_cpu_worker_t<i_t, f_t>::run_async(f_t time_limit, double work_unit_limit)
+void fj_cpu_worker_t<i_t, f_t>::run_async(f_t time_limit,
+                                          double work_unit_limit,
+                                          omp_atomic_t<i_t>* worker_count)
 {
   if (!fj_cpu) return;
 
-#pragma omp task shared(fj_cpu) firstprivate(time_limit, work_unit_limit) \
+  if (worker_count) ++(*worker_count);
+#pragma omp task shared(fj_cpu) firstprivate(time_limit, work_unit_limit, worker_count) \
   priority(CUOPT_DEFAULT_TASK_PRIORITY) default(none) depend(out : *fj_cpu)
-  cpufj_solve(fj_cpu.get(), time_limit, work_unit_limit);
+  {
+    cpufj_solve(fj_cpu.get(), time_limit, work_unit_limit);
+    if (worker_count) --(*worker_count);
+  }
 }
 
 template <typename i_t, typename f_t>
