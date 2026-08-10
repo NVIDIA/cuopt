@@ -41,6 +41,11 @@ struct mip_submip_hyper_params_t {
   // number of simplex iteration from the parent B&B.
   f_t iteration_limit_ratio = 0.8;
 
+  // If there is not enough variables fixed or we already found an improving solution,
+  // perform a short DFS to quickly find a feasible solution. This setting controls
+  // the maximum number of nodes allow for backtracking.
+  i_t dfs_max_backtrack = 5;
+
   // Run CPU FJ over the sub-MIP
   bool enable_cpufj = true;
 };
