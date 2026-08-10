@@ -340,6 +340,7 @@ jobs:
     uses: rapidsai/shared-workflows/.github/workflows/checks.yaml@main
     with:
       enable_check_generated_files: false
+      ignored_pr_jobs: "pr-test-summary"
   conda-cpp-build:
     needs: [build-details, checks, compute-matrix-filters, changed-files]
     # Consumed by conda-cpp-tests, conda-python-build, and (transitively) docs-build.
