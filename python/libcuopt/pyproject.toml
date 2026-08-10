@@ -65,11 +65,6 @@ sdist.reproducible = true
 wheel.packages = ["libcuopt"]
 wheel.install-dir = "libcuopt"
 wheel.py-api = "py3"
-# libcuopt.so is a GNU ld script, not an ELF object. It exists so that -lcuopt keeps
-# working for C consumers, who link against the conda or deb packages. Shipping a
-# non-ELF file with a .so name would trip auditwheel, and nothing in the wheel loads
-# it -- load.py dlopen()s the components directly.
-wheel.exclude = ["**/libcuopt.so"]
 
 [tool.scikit-build.metadata.version]
 provider = "scikit_build_core.metadata.regex"
