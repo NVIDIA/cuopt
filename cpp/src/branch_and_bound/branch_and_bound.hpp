@@ -34,12 +34,14 @@
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
+#include <mip_heuristics/root_heuristics.hpp>
 
 #include <omp.h>
 
 #include <atomic>
 #include <functional>
 #include <future>
+#include <list>
 #include <memory>
 #include <vector>
 
@@ -370,8 +372,7 @@ class branch_and_bound_t {
   bool launch_rins_worker(const std::vector<f_t>& sol);
   void set_solution_from_submip(const std::vector<f_t>& solution,
                                 const third_party_presolve_t<i_t, f_t>& presolver,
-                                f_t fixrate,
-                                f_t obj);
+                                f_t fixrate);
 
   // Solve the RINS sub-MIP
   void solve_submip(diving_worker_t<i_t, f_t>* worker,
@@ -379,13 +380,18 @@ class branch_and_bound_t {
                     i_t num_var_fixed,
                     i_t num_integers,
                     i_t submip_level,
-                    std::string_view log_prefix);
+                    std::string_view log_prefix,
+                    bool is_root_heuristic);
 
   // Creates and solves the RINS sub-MIP
-  void rins(diving_worker_t<i_t, f_t>* rins_worker, const std::vector<f_t>& node_solution);
+  void rins(diving_worker_t<i_t, f_t>* worker,
+            const std::vector<f_t>& current_incumbent,
+            bool is_root_heuristic);
 
-  // Get the simplex settings for solving the LP of a single node
-  simplex::simplex_solver_settings_t<i_t, f_t> get_node_lp_settings();
+  void launch_root_heuristics(const simplex::lp_problem_t<i_t, f_t>& lp,
+                              const std::vector<f_t>& sol,
+                              std::list<root_heuristics_t<i_t, f_t>>& heuristics,
+                              omp_atomic_t<i_t>* worker_count);
 
   // Solve the LP relaxation of a leaf node
   simplex::dual_status_t solve_node_lp(mip_node_t<i_t, f_t>* node_ptr,

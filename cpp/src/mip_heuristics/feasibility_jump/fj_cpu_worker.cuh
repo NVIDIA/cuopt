@@ -47,8 +47,9 @@ struct fj_cpu_worker_t {
 
   // Run the worker asynchronously (i.e., launch an openmp task and then continue the
   // execution). Call `stop()` for stopping the worker
-  void run_async(f_t time_limit         = std::numeric_limits<f_t>::infinity(),
-                 double work_unit_limit = std::numeric_limits<double>::infinity());
+  void run_async(f_t time_limit                  = std::numeric_limits<f_t>::infinity(),
+                 double work_unit_limit          = std::numeric_limits<double>::infinity(),
+                 omp_atomic_t<i_t>* worker_count = nullptr);
 
   // Run the CPU FJ synchronously (i.e., wait for it to finish before proceeding)
   void run_sync(f_t time_limit         = std::numeric_limits<f_t>::infinity(),
