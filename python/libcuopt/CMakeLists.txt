@@ -62,9 +62,9 @@ set(CUOPT_BUILD_TESTUTIL OFF)
 
 add_subdirectory(../../cpp cuopt-cpp)
 
-target_link_libraries(cuopt PRIVATE
-    argparse
-)
+# cuopt is an INTERFACE target (libcuopt.so is a linker script) and compiles nothing,
+# so it has no use for argparse. cuopt_cli and cuopt_grpc_server, which do, already link
+# argparse::argparse in cpp/CMakeLists.txt.
 target_link_libraries(cuopt_cli PRIVATE
     argparse
 )
