@@ -64,6 +64,10 @@ rapids-print-env
 rapids-logger "Check GPU usage"
 nvidia-smi
 
+# Dump the GPU topology matrix
+rapids-logger "Check GPU topology"
+nvidia-smi topo -m
+
 # Multi-GPU tests are meaningless on a single device — fail loudly rather than
 # passing a run that never exercised NCCL.
 GPU_COUNT=$(nvidia-smi -L | wc -l)
@@ -73,6 +77,17 @@ if [ "${GPU_COUNT}" -lt 2 ]; then
   echo "::error::This job must run on a 2-GPU runner (e.g. linux-amd64-gpu-rtxpro6000-latest-2)." >&2
   exit 1
 fi
+
+# Distributed PDLP parity tests use a small set of git-ignored MPS instances.
+# Download only those direct-MPS fixtures here: downloading the full PDLP suite
+# falls back to netlib conversion when S3 credentials are not available, and that
+# path needs gcc (not present in this test environment).
+rapids-logger "Download datasets"
+python benchmarks/linear_programming/utils/get_datasets.py -datasets graph40-40
+python benchmarks/linear_programming/utils/get_datasets.py -datasets ex10
+
+RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
+export RAPIDS_DATASET_ROOT_DIR
 
 # Locate the installed gtest binaries (same search order as ci/run_ctests.sh).
 installed_test_location="${INSTALL_PREFIX:-${CONDA_PREFIX:-/usr}}/bin/gtests/libcuopt/"
@@ -96,6 +111,11 @@ if [ "${#mg_tests[@]}" -eq 0 ]; then
   echo "::notice::No multi-GPU tests present yet — skipping. This job lights up once *_MG_TEST binaries land (distributed PDLP)."
   exit 0
 fi
+
+# PHB topology on the 2-GPU runner: disable direct GPU peer access (see topo above).
+# NCCL then uses the SHM transport, which needs a larger /dev/shm than the 64 MB
+# container default — the workflow launches the container with --shm-size for this.
+export NCCL_P2P_DISABLE=1
 
 EXITCODE=0
 for gt in "${mg_tests[@]}"; do

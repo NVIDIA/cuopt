@@ -5,6 +5,7 @@
  */
 /* clang-format on */
 
+#include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
 #include <utilities/error.hpp>
 
@@ -469,13 +470,13 @@ void canonicalize_quadratic_constraints(
 }
 
 // NOTE: Explicitly instantiate all types here in order to avoid linker error
-template class mps_data_model_t<int, float>;
+template class CUOPT_EXPORT mps_data_model_t<int, float>;
 
-template class mps_data_model_t<int, double>;
+template class CUOPT_EXPORT mps_data_model_t<int, double>;
 
-template void canonicalize_quadratic_constraints<int, float>(
+template CUOPT_EXPORT void canonicalize_quadratic_constraints<int, float>(
   std::vector<mps_data_model_t<int, float>::quadratic_constraint_t>&);
-template void canonicalize_quadratic_constraints<int, double>(
+template CUOPT_EXPORT void canonicalize_quadratic_constraints<int, double>(
   std::vector<mps_data_model_t<int, double>::quadratic_constraint_t>&);
 //  TODO current raft to cusparse wrappers only support int64_t
 //  can be CUSPARSE_INDEX_16U, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_64I

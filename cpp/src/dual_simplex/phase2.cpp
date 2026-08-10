@@ -1790,7 +1790,7 @@ i_t compute_delta_x(const lp_problem_t<i_t, f_t>& lp,
 
   f_t scale = scaled_delta_xB_sparse.find_coefficient(basic_leaving_index);
   work_estimate += 2 * scaled_delta_xB_sparse.i.size();
-  if (scale != scale) {
+  if (std::isnan(scale)) {
     // We couldn't find a coefficient for the basic leaving index.
     // The coefficient might be very small. Switch to a regular solve and try to recover.
     std::vector<f_t> rhs;

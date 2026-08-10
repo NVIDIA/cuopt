@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 #pragma once
@@ -8,6 +8,7 @@
 #include <array>
 #include <bit>
 #include <cerrno>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -423,7 +424,7 @@ static inline double parse_fp64_advance(const char*& p, const char* end)
   }
 
   double v = assemble_fp64(dec);
-  if (v == v) {
+  if (!std::isnan(v)) {
     if (p < end && (unsigned char)*p > 32) {
       mps_parser_fail(error_type_t::ValidationError, "Invalid or out-of-range MPS numeric token");
     }

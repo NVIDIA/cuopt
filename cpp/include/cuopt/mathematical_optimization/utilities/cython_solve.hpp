@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_solution_interface.hpp>
 #include <cuopt/mathematical_optimization/solver_settings.hpp>
@@ -20,7 +21,7 @@
 #include <vector>
 
 namespace cuopt {
-namespace cython {
+namespace CUOPT_EXPORT cython {
 
 // Type definitions moved to cython_types.hpp to avoid circular dependencies
 // The types linear_programming_ret_t and mip_ret_t are defined in cython_types.hpp.
@@ -65,5 +66,5 @@ std::pair<std::vector<std::unique_ptr<solver_ret_t>>, double> call_batch_solve(
   std::vector<cuopt::mathematical_optimization::io::data_model_view_t<int, double>*>,
   mathematical_optimization::solver_settings_t<int, double>*);
 
-}  // namespace cython
+}  // namespace CUOPT_EXPORT cython
 }  // namespace cuopt

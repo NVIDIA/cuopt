@@ -40,6 +40,7 @@ nvidia-smi
 rapids-logger "Download datasets"
 ./datasets/linear_programming/download_pdlp_test_dataset.sh
 ./datasets/mip/download_miplib_test_dataset.sh
+./datasets/quadratic_programming/download_qplib_test_dataset.sh
 
 RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
 export RAPIDS_DATASET_ROOT_DIR

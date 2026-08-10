@@ -4,7 +4,7 @@ Routing Examples
 
 This section contains examples for the cuOpt routing Python API.
 
-Intra-factory Transport
+Intra-Factory Transport
 -----------------------
 
 A capacitated pickup-and-delivery problem with time windows (PDPTW) for a fleet

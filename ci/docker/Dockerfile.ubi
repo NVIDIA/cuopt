@@ -17,14 +17,18 @@ FROM nvidia/cuda:${CUDA_VER}-base-ubi10 AS python-env
 ARG CUDA_VER
 ARG CUOPT_VER
 
-# Apply all available OS security patches (fixes openssl-libs, expat, vim CVEs),
-# remove packages not needed at runtime, and install Python 3.14.
-# Note: curl/libcurl-minimal cannot be removed — rpm itself requires curl.
-#   vim-minimal / vim-data  — removed (patched by dnf update, but not needed at runtime)
-#   tar                     — CVE-2026-59874, CVE-2026-59873 (no fix in repos yet)
-# Switch to Python 3.14 (eliminates CVE-2024-12254 in the default python3 3.12 stream).
+# Apply all available OS security patches (fixes openssl-libs, expat, vim CVEs).
+# Remove vim-minimal/vim-data (not needed at runtime; patched by dnf update above).
+# Install Python 3.14 from UBI10 appstream — cuOpt uses python3.14 at runtime.
+#
+# Packages intentionally kept despite unpatched CVEs:
+#   curl/libcurl-minimal: rpm hard-requires curl; cannot be removed.
+#   python3-libs (3.12):  dnf requires python3.12 to execute (#!/usr/bin/python3);
+#                         removing it breaks dnf and therefore test_image.sh.
+#   tar:                  kept so Actions checkout works when this image is used as
+#                         a CI job container (checkout uses tar to extract repo archive).
 RUN dnf update -y \
-    && dnf remove -y vim-minimal vim-data tar \
+    && dnf remove -y vim-minimal vim-data \
     && dnf install -y python3.14 python3.14-devel \
     && dnf clean all
 
@@ -38,8 +42,8 @@ ARG CUOPT_VER
 
 # Install gcc (needed to build psutils), pip-install cuopt, then remove gcc
 # — all in one layer so the build-only dep never persists in the final image.
-# Use python3.14 explicitly: dnf relies on the system python3 (3.12) internally
-# and setting the python3 alternative to 3.14 before this step breaks dnf.
+# Use python3.14 explicitly: dnf relies on the system python3 (3.12) internally,
+# so wiring /usr/bin/python → python3.14 is deferred until after dnf remove.
 RUN \
     cuda_suffix=cu$(echo ${CUDA_VER} | cut -d'.' -f1) && \
     dnf install -y gcc && \
@@ -54,43 +58,38 @@ RUN \
       "cuopt-sh-client==${CUOPT_VER}" && \
     python3.14 -m pip list && \
     dnf remove -y gcc && \
-    dnf clean all
+    dnf clean all && \
+    ln -sf /usr/bin/python3.14 /usr/bin/python
 
 FROM install-env AS cuopt-final
 
-# All dnf usage is complete. Now:
-# 1. Wire python/python3 to python3.14 (safe — dnf no longer runs after this).
-# 2. Remove the entire package-manager stack (dnf, rpm, curl) since the running
-#    container never needs them. rpm -e --nodeps removes all in one shot.
-RUN alternatives --install /usr/bin/python  python  /usr/bin/python3.14 100 \
-    && alternatives --install /usr/bin/python3 python3 /usr/bin/python3.14 100 \
-    && rpm -e --nodeps \
-        curl \
-        libcurl-minimal \
-        dnf \
-        dnf-data \
-        python3-dnf \
-        python3-dnf-plugins-core \
-        python3-hawkey \
-        python3-libcomps \
-        python3-rpm \
-        python3 \
-        python3-libs \
-        libdnf \
-        libdnf-plugin-subscription-manager \
-        librepo \
-        libmodulemd \
-        libsolv \
-        rpm-build-libs \
-        rpm-sign-libs \
-        rpm-sequoia \
-        rpm \
-        rpm-libs \
-    && rm -rf /var/lib/rpm /var/lib/dnf /var/cache/dnf /etc/dnf
+# Register python via alternatives so the system alternatives database is
+# consistent with the /usr/bin/python symlink created in install-env.
+# NOTE: do NOT register python3 → python3.14 here: /usr/bin/dnf uses
+# #!/usr/bin/python3 and requires the system python3.12 (python3-libs) to
+# find its 'dnf' module; overriding python3 would break dnf at runtime.
+RUN alternatives --install /usr/bin/python python /usr/bin/python3.14 100
 
 # On UBI10: libcuopt, cuopt, rapids_logger install to lib64; cuopt_server to lib.
 ENV PATH="/usr/local/cuda/bin:/usr/bin:/usr/local/bin:/usr/local/nvidia/bin/:/usr/local/lib64/python3.14/site-packages/libcuopt/bin:${PATH}"
 ENV LD_LIBRARY_PATH="/usr/lib64:/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/lib/wsl/lib:/usr/local/lib64/python3.14/site-packages/libcuopt/lib64/:/usr/local/lib64/python3.14/site-packages/rapids_logger/lib64:/usr/local/lib/python3.14/site-packages/nvidia/cu13/lib:${LD_LIBRARY_PATH}"
+
+# libcuopt's RPATH reaches the NVIDIA wheels via $ORIGIN/../../nvidia/<pkg>/lib,
+# which assumes libcuopt and those wheels share one site-packages directory. That
+# holds on Debian/Ubuntu (purelib == platlib == dist-packages) but not on RHEL,
+# where platlib is lib64 and purelib is lib: libcuopt installs to lib64 while the
+# NVIDIA wheels (Root-Is-Purelib: true) install to lib, so every $ORIGIN-relative
+# entry misses. Index the wheel lib dirs with the dynamic linker instead of
+# extending LD_LIBRARY_PATH per package — this covers wheels added later, and
+# keeps a lower lookup precedence than the driver libs the container runtime
+# injects at start. Without it, cuopt_grpc_server dies on libnccl.so.2.
+RUN find /usr/local/lib/python*/site-packages/nvidia \
+         /usr/local/lib64/python*/site-packages/nvidia \
+         -maxdepth 2 -type d -name lib 2>/dev/null \
+      | tee /etc/ld.so.conf.d/cuopt-nvidia-wheels.conf \
+    && grep -q '/nvidia/nccl/lib$' /etc/ld.so.conf.d/cuopt-nvidia-wheels.conf \
+    && ldconfig \
+    && ldconfig -p | grep -qE 'libnccl\.so\.2([.0-9]*)[[:space:]].*/nvidia/nccl/lib/'
 
 # Directory creation, permissions
 RUN mkdir -p /opt/cuopt && \

@@ -1117,7 +1117,8 @@ struct nondeterministic_policy_t : tree_update_policy_t<i_t, f_t> {
     tree.graphviz_node(log, node, label, value);
   }
 
-  void on_node_completed(mip_node_t<i_t, f_t>*, node_status_t, branch_direction_t) override {}
+  void on_node_completed(mip_node_t<i_t, f_t>*, node_status_t, branch_direction_t) override
+  { /* no-op */ }
 };
 
 template <typename i_t, typename f_t, typename WorkerT>
@@ -1145,8 +1146,9 @@ struct deterministic_policy_base_t : tree_update_policy_t<i_t, f_t> {
     }
   }
 
-  void on_numerical_issue(mip_node_t<i_t, f_t>*) override {}
-  void graphviz(search_tree_t<i_t, f_t>&, mip_node_t<i_t, f_t>*, const char*, f_t) override {}
+  void on_numerical_issue(mip_node_t<i_t, f_t>*) override { /* no-op */ }
+  void graphviz(search_tree_t<i_t, f_t>&, mip_node_t<i_t, f_t>*, const char*, f_t) override
+  { /* no-op */ }
 };
 
 template <typename i_t, typename f_t>
@@ -1290,7 +1292,7 @@ struct deterministic_diving_policy_t
   void update_objective_estimate(mip_node_t<i_t, f_t>* node,
                                  const std::vector<i_t>& fractional,
                                  const std::vector<f_t>& x) override
-  {
+  { /* no-op */
   }
 
   void on_node_completed(mip_node_t<i_t, f_t>* node,

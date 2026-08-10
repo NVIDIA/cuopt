@@ -173,10 +173,10 @@ conda activate ./.cuopt_env
   pinnings are changed.
 
 - A `build.sh` script is provided in `$CUOPT_HOME`. Running the script with no additional arguments
-  will install the `libcuopt`, `cuopt`, `cuopt-server`, `cuopt-sh-client` libraries and build the`documentation`. By default, the libraries are
-  installed to the `$CONDA_PREFIX` directory. To install into a different location, set the location
-  in `$INSTALL_PREFIX`. Finally, note that the script depends on the `nvcc` executable being on your
-  path, or defined in `$CUDACXX`.
+  will build the `libcuopt`, `cuopt`, `cuopt-server`, and `cuopt-sh-client` libraries without
+  installing them into the conda environment. Pass `--install` to also install `libcuopt` into the
+  active conda environment (`$CONDA_PREFIX`, or a custom location via `$PREFIX`). Note that
+  the script depends on the `nvcc` executable being on your path, or defined in `$CUDACXX`.
 
 ```bash
 cd $CUOPT_HOME
@@ -222,6 +222,7 @@ To run the C++ tests, run
 cd $CUOPT_HOME/datasets && ./get_test_data.sh
 cd $CUOPT_HOME && datasets/linear_programming/download_pdlp_test_dataset.sh
 datasets/mip/download_miplib_test_dataset.sh
+datasets/quadratic_programming/download_qplib_test_dataset.sh
 export RAPIDS_DATASET_ROOT_DIR=$CUOPT_HOME/datasets/
 ctest --test-dir ${CUOPT_HOME}/cpp/build  # libcuopt
 ```
@@ -234,6 +235,7 @@ To run python tests, run
 cd $CUOPT_HOME/datasets && ./get_test_data.sh
 cd $CUOPT_HOME && datasets/linear_programming/download_pdlp_test_dataset.sh
 datasets/mip/download_miplib_test_dataset.sh
+datasets/quadratic_programming/download_qplib_test_dataset.sh
 export RAPIDS_DATASET_ROOT_DIR=$CUOPT_HOME/datasets/
 cd $CUOPT_HOME/python
 pytest -v ${CUOPT_HOME}/python/cuopt/cuopt/tests

@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/utilities/cython_solve.hpp>
 
 #include <cstddef>
@@ -22,7 +23,8 @@ class data_model_view_t;
 }  // namespace io
 }  // namespace cuopt::mathematical_optimization
 
-namespace cuopt::cython {
+namespace cuopt {
+namespace CUOPT_EXPORT cython {
 
 /** Mirrors cuopt::mathematical_optimization::job_status_t for the Python bindings. */
 enum class grpc_job_status_t : int {
@@ -132,9 +134,10 @@ class grpc_python_client_t {
   bool delete_job(const std::string& job_id, std::string& error_out);
 
   /**
-   * @param is_mip When true, fetch a MIP result; otherwise LP.
+   * Fetch the solution for a completed job. LP vs MIP is determined from the
+   * server response via grpc_client_t::get_result().
    */
-  grpc_result_outcome_t result(const std::string& job_id, bool is_mip);
+  grpc_result_outcome_t result(const std::string& job_id);
 
   /**
    * @brief Block until the job completes, collecting all solver log lines.
@@ -166,4 +169,5 @@ class grpc_python_client_t {
   std::unique_ptr<impl_t> impl_;
 };
 
-}  // namespace cuopt::cython
+}  // namespace CUOPT_EXPORT cython
+}  // namespace cuopt
