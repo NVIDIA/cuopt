@@ -981,22 +981,6 @@ TEST(cuts, test_duplicate_cuts_detection)
   cut_pool.add_cut(mip::cut_type_t::MIXED_INTEGER_GOMORY, cut8);
 
   cut_pool.check_for_duplicate_cuts();
-
-  std::vector<double> xstar(4, 0.0);
-  const double scoring_work = cut_pool.score_cuts(xstar, 1.0);
-  EXPECT_GT(scoring_work, 1.0);
-  EXPECT_TRUE(std::isfinite(scoring_work));
-}
-
-TEST(cuts, cut_work_stats_total)
-{
-  mip::cut_work_stats_t<double> stats;
-  stats.gomory         = 1.0;
-  stats.mir            = 2.0;
-  stats.zero_half      = 3.0;
-  stats.conflict_graph = 4.0;
-  EXPECT_DOUBLE_EQ(stats.total(), 10.0);
-  EXPECT_DOUBLE_EQ(stats.work_units(), 1e-7);
 }
 
 TEST(cuts, clique_phase1_smoke_conflict_graph_edges)
@@ -1539,9 +1523,6 @@ TEST(cuts, zero_half_unit_mod2_row_finder_stops_at_work_limit)
   const std::vector<std::vector<int>> parity_rows(256, support);
   const std::vector<char> rhs_parity(256, 0);
 
-  // The budget admits preprocessing and the first basis row, then expires at
-  // the next symmetric difference. The search must return immediately rather
-  // than repeating an over-budget reduction for every remaining input row.
   constexpr double max_work = 18900.0;
   double work               = 0.0;
   const auto combinations =

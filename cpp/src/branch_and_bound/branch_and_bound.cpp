@@ -69,8 +69,6 @@ using simplex::variable_type_t;
 
 namespace {
 
-bool cut_ab_logging_enabled() { return std::getenv("CUOPT_CUT_AB_MODE") != nullptr; }
-
 template <typename f_t>
 bool is_fractional(f_t x, variable_type_t var_type, f_t integer_tol)
 {
@@ -279,11 +277,6 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
     solver_status_(mip_status_t::UNSET)
 {
   exploration_stats_.start_time = start_time;
-  work_unit_context_.deterministic = settings_.deterministic;
-  // Root LP and cut work contributes to the public work limit, but it must not
-  // enter the outer heuristic/B&B horizon barrier. The heuristic may finish
-  // before root processing, leaving no matching barrier participant.
-  work_unit_context_.sync_on_horizon = false;
 #ifdef PRINT_CONSTRAINT_MATRIX
   settings_.log.printf("A");
   original_problem_.A.print_matrix();
@@ -2801,7 +2794,7 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
                                                            nonbasic_list,
                                                            root_vstatus_,
                                                            edge_norms_,
-                                                           &work_unit_context_);
+                                                           nullptr);
   }
 
   // Wait for the root relaxation solution to be sent by the diversity manager or dual simplex
@@ -2964,31 +2957,11 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
                                                        nonbasic_list,
                                                        variable_bounds,
                                                        exploration_stats_.start_time);
-  const auto& separator_work = cut_generation.last_work_stats();
-  work_unit_context_.record_work_sync_on_horizon(separator_work.work_units());
-  settings_.log.debug(
-    "Cut pass %d separator work %.4f units: gomory %.4f, knapsack %.4f, flow %.4f, "
-    "MIR %.4f, implied %.4f, graph %.4f, clique %.4f, zero-half %.4f\n",
-    cut_pass,
-    separator_work.work_units(),
-    separator_work.gomory / 1e8,
-    separator_work.knapsack / 1e8,
-    separator_work.flow_cover / 1e8,
-    separator_work.mir / 1e8,
-    separator_work.implied_bound / 1e8,
-    separator_work.conflict_graph / 1e8,
-    separator_work.clique / 1e8,
-    separator_work.zero_half / 1e8);
   if (!problem_feasible) {
     if (settings_.heuristic_preemption_callback != nullptr) {
       settings_.heuristic_preemption_callback();
     }
     return {cut_pass_action_t::RETURN, mip_status_t::INFEASIBLE};
-  }
-  if (work_unit_context_.global_work_units_elapsed >= settings_.work_limit) {
-    solver_status_ = mip_status_t::WORK_LIMIT;
-    set_final_solution(solution, root_objective_);
-    return {cut_pass_action_t::RETURN, solver_status_};
   }
   if (toc(exploration_stats_.start_time) >= settings_.time_limit) {
     solver_status_ = mip_status_t::TIME_LIMIT;
@@ -3001,48 +2974,15 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   }
   // Score the cuts
   f_t score_start_time = tic();
-  constexpr f_t max_cut_scoring_work = static_cast<f_t>(1e8);
-  const f_t cut_scoring_work = cut_pool.score_cuts(root_relax_soln_.x, max_cut_scoring_work);
-  work_unit_context_.record_work_sync_on_horizon(cut_scoring_work / static_cast<f_t>(1e8));
+  cut_pool.score_cuts(root_relax_soln_.x);
   f_t score_time = toc(score_start_time);
   if (score_time > 1.0) { settings_.log.debug("Cut scoring time %.2f seconds\n", score_time); }
-  settings_.log.debug(
-    "Cut pass %d scoring work %.4f units\n", cut_pass, cut_scoring_work / static_cast<f_t>(1e8));
-  settings_.log.printf(
-    "Cut pass %d work units: total %.4f, separation %.4f "
-    "(Gomory %.4f, knapsack %.4f, flow %.4f, MIR %.4f, implied %.4f, graph %.4f, "
-    "clique %.4f, zero-half %.4f), scoring %.4f\n",
-    cut_pass,
-    separator_work.work_units() + cut_scoring_work / static_cast<f_t>(1e8),
-    separator_work.work_units(),
-    separator_work.gomory / 1e8,
-    separator_work.knapsack / 1e8,
-    separator_work.flow_cover / 1e8,
-    separator_work.mir / 1e8,
-    separator_work.implied_bound / 1e8,
-    separator_work.conflict_graph / 1e8,
-    separator_work.clique / 1e8,
-    separator_work.zero_half / 1e8,
-    cut_scoring_work / static_cast<f_t>(1e8));
-  if (work_unit_context_.global_work_units_elapsed >= settings_.work_limit) {
-    solver_status_ = mip_status_t::WORK_LIMIT;
-    set_final_solution(solution, root_objective_);
-    return {cut_pass_action_t::RETURN, solver_status_};
-  }
   // Get the best cuts from the cut pool
   csr_matrix_t<i_t, f_t> cuts_to_add(0, original_lp_.num_cols, 0);
   std::vector<f_t> cut_rhs;
   std::vector<cut_type_t> cut_types;
   i_t num_cuts = cut_pool.get_best_cuts(cuts_to_add, cut_rhs, cut_types);
   if (num_cuts == 0) { return {cut_pass_action_t::BREAK, mip_status_t::UNSET}; }
-  const f_t cut_assembly_work =
-    static_cast<f_t>(5 * cuts_to_add.row_start[cuts_to_add.m] + 4 * num_cuts);
-  work_unit_context_.record_work_sync_on_horizon(cut_assembly_work / static_cast<f_t>(1e8));
-  if (work_unit_context_.global_work_units_elapsed >= settings_.work_limit) {
-    solver_status_ = mip_status_t::WORK_LIMIT;
-    set_final_solution(solution, root_objective_);
-    return {cut_pass_action_t::RETURN, solver_status_};
-  }
   cut_info.record_cut_types(cut_types);
 #ifdef PRINT_CUT_POOL_TYPES
   cut_pool.print_cutpool_types();
@@ -3124,8 +3064,6 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   std::vector<f_t> new_upper = original_lp_.upper;
   bool feasible =
     node_presolve.bounds_strengthening(settings_, bounds_changed, new_lower, new_upper);
-  work_unit_context_.record_work_sync_on_horizon(node_presolve.last_nnz_processed /
-                                                 static_cast<f_t>(1e8));
   mutex_original_lp_.lock();
   original_lp_.lower = new_lower;
   original_lp_.upper = new_upper;
@@ -3140,12 +3078,6 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
     original_lp_.write_mps("bound_strengthening_infeasible.mps");
 #endif
     return {cut_pass_action_t::RETURN, mip_status_t::INFEASIBLE};
-  }
-
-  if (work_unit_context_.global_work_units_elapsed >= settings_.work_limit) {
-    solver_status_ = mip_status_t::WORK_LIMIT;
-    set_final_solution(solution, root_objective_);
-    return {cut_pass_action_t::RETURN, solver_status_};
   }
 
   if (toc(exploration_stats_.start_time) >= settings_.time_limit) {
@@ -3170,8 +3102,7 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
                                                              nonbasic_list,
                                                              root_relax_soln_,
                                                              iter,
-                                                             edge_norms_,
-                                                             &work_unit_context_);
+                                                             edge_norms_);
   exploration_stats_.total_simplex_iters += iter;
   f_t dual_phase2_time = toc(dual_phase2_start_time);
   if (dual_phase2_time > 1.0) {
@@ -3179,11 +3110,6 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   }
   if (cut_status == dual_status_t::TIME_LIMIT) {
     solver_status_ = mip_status_t::TIME_LIMIT;
-    set_final_solution(solution, root_objective_);
-    return {cut_pass_action_t::RETURN, solver_status_};
-  }
-  if (cut_status == dual_status_t::WORK_LIMIT) {
-    solver_status_ = mip_status_t::WORK_LIMIT;
     set_final_solution(solution, root_objective_);
     return {cut_pass_action_t::RETURN, solver_status_};
   }
@@ -3199,17 +3125,12 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
                                                basic_list,
                                                nonbasic_list,
                                                root_vstatus_,
-                                               edge_norms_,
-                                               &work_unit_context_);
+                                               edge_norms_);
     if (scratch_status == lp_status_t::OPTIMAL) {
       // We recovered
       cut_status = convert_lp_status_to_dual_status(scratch_status);
       exploration_stats_.total_simplex_iters += root_relax_soln_.iterations;
       root_objective_ = compute_objective(original_lp_, root_relax_soln_.x);
-    } else if (scratch_status == lp_status_t::WORK_LIMIT) {
-      solver_status_ = mip_status_t::WORK_LIMIT;
-      set_final_solution(solution, root_objective_);
-      return {cut_pass_action_t::RETURN, solver_status_};
     } else {
       settings_.log.printf("Cut status %s\n", simplex::dual_status_to_string(cut_status).c_str());
 #ifdef WRITE_CUT_INFEASIBLE_MPS
@@ -3380,8 +3301,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                                            basic_list,
                                                            nonbasic_list,
                                                            root_vstatus_,
-                                                           edge_norms_,
-                                                           &work_unit_context_);
+                                                           edge_norms_);
     root_relax_solved_by                   = DualSimplex;
     exploration_stats_.total_simplex_iters = root_relax_soln_.iterations;
 
@@ -3447,15 +3367,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     return solver_status_;
   }
 
-  if (work_unit_context_.global_work_units_elapsed >= settings_.work_limit) {
-    settings_.log.printf("\n");
-    solver_status_ = mip_status_t::WORK_LIMIT;
-    set_final_solution(solution, -inf);
-    signal_extend_cliques_.store(true, std::memory_order_release);
-#pragma omp taskwait depend(in : *clique_signal)
-    return solver_status_;
-  }
-
   assert(root_status == lp_status_t::OPTIMAL);
   settings_.log.printf("\n");
   settings_.log.print_format("Root relaxation solution found in {} iterations and {:.2f}s by {}\n",
@@ -3468,10 +3379,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   set_uninitialized_steepest_edge_norms<i_t, f_t>(original_lp_, basic_list, edge_norms_);
 
   root_objective_ = compute_objective(original_lp_, root_relax_soln_.x);
-  if (cut_ab_logging_enabled()) {
-    settings_.log.printf("CUT_AB_ROOT_NO_CUTS %.17g\n",
-                         compute_user_objective(original_lp_, root_objective_));
-  }
 
   if (settings_.set_simplex_solution_callback != nullptr) {
     std::vector<f_t> original_x;
@@ -3494,10 +3401,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   cut_info_t<i_t, f_t> cut_info;
 
   if (num_fractional == 0) {
-    if (cut_ab_logging_enabled()) {
-      settings_.log.printf("CUT_AB_ROOT_WITH_CUTS %.17g\n",
-                           compute_user_objective(original_lp_, root_objective_));
-    }
     if (settings_.benchmark_info_ptr != nullptr) {
       const double v = static_cast<double>(compute_user_objective(original_lp_, root_objective_));
       settings_.benchmark_info_ptr->root_lp_no_cuts   = v;
@@ -3572,10 +3475,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
         settings_.benchmark_info_ptr->root_lp_with_cuts =
           compute_user_objective(original_lp_, root_objective_);
       }
-      if (cut_ab_logging_enabled()) {
-        settings_.log.printf("CUT_AB_ROOT_WITH_CUTS %.17g\n",
-                             compute_user_objective(original_lp_, root_objective_));
-      }
       set_solution_at_root(solution, cut_info);
       if (settings_.benchmark_info_ptr != nullptr) {
         settings_.benchmark_info_ptr->cut_generation_time_sec = toc(cut_generation_start_time);
@@ -3609,10 +3508,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     root_fj_cpu_worker.stop();
 
     if (cut_pass_result.action == cut_pass_action_t::RETURN) {
-      if (cut_ab_logging_enabled()) {
-        settings_.log.printf("CUT_AB_ROOT_WITH_CUTS %.17g\n",
-                             compute_user_objective(original_lp_, root_objective_));
-      }
       if (settings_.benchmark_info_ptr != nullptr) {
         settings_.benchmark_info_ptr->cut_generation_time_sec = toc(cut_generation_start_time);
       }
@@ -3637,10 +3532,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   if (settings_.benchmark_info_ptr != nullptr) {
     settings_.benchmark_info_ptr->root_lp_with_cuts =
       compute_user_objective(original_lp_, root_objective_);
-  }
-  if (cut_ab_logging_enabled()) {
-    settings_.log.printf("CUT_AB_ROOT_WITH_CUTS %.17g\n",
-                         compute_user_objective(original_lp_, root_objective_));
   }
 
   print_cut_info(settings_, cut_info);
@@ -3670,16 +3561,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                          original_lp_.A.col_start[original_lp_.A.n]);
   } else {
     settings_.log.printf("\n");
-  }
-
-  // Benchmark-only root stop: CUT_AB measurements compare separator families
-  // at the completed root LP, before strong branching or tree exploration.
-  if (cut_ab_logging_enabled()) {
-    solver_status_ = mip_status_t::NODE_LIMIT;
-    set_final_solution(solution, root_objective_);
-    signal_extend_cliques_.store(true, std::memory_order_release);
-#pragma omp taskwait depend(in : *clique_signal)
-    return solver_status_;
   }
 
   if (enable_root_cut_cpufj && cut_info.has_cuts()) {
@@ -3820,8 +3701,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     calculate_variable_locks(original_lp_, var_up_locks_, var_down_locks_);
   }
   print_table_header();
-
-  deterministic_root_work_offset_ = work_unit_context_.global_work_units_elapsed;
 
 #pragma omp taskgroup
   {
@@ -4310,7 +4189,7 @@ void branch_and_bound_t<i_t, f_t>::deterministic_sync_callback()
   }
 
   // Stop early if next horizon exceeds work limit
-  if (deterministic_root_work_offset_ + deterministic_current_horizon_ > settings_.work_limit) {
+  if (deterministic_current_horizon_ > settings_.work_limit) {
     deterministic_global_termination_status_ = mip_status_t::WORK_LIMIT;
   }
 

@@ -18,7 +18,6 @@ struct work_limit_context_t {
   double global_work_units_elapsed{0.0};
   double total_sync_time{0.0};  // Total time spent waiting at sync barriers (seconds)
   bool deterministic{false};
-  bool sync_on_horizon{true};
   work_unit_scheduler_t* scheduler{nullptr};
   std::string name;
 
@@ -28,9 +27,7 @@ struct work_limit_context_t {
   {
     if (!deterministic) return;
     global_work_units_elapsed += work;
-    if (scheduler && sync_on_horizon) {
-      scheduler->on_work_recorded(*this, global_work_units_elapsed);
-    }
+    if (scheduler) { scheduler->on_work_recorded(*this, global_work_units_elapsed); }
   }
 };
 
