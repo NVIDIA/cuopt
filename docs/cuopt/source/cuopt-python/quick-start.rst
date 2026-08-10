@@ -2,7 +2,7 @@
 Quickstart Guide
 =================
 
-NVIDIA cuOpt provides a Python API for routing optimization and LP/QP/MILP that enables users to solve complex optimization problems efficiently.
+NVIDIA cuOpt provides a Python API for routing optimization and LP/QP/MIP that enables users to solve complex optimization problems efficiently.
 
 Installation
 ============

@@ -11,7 +11,16 @@ The **CuOptRemoteService** gRPC API is defined in Protocol Buffers under the ``c
 * ``cpp/src/grpc/cuopt_remote_service.proto`` — service and job/chunk/log RPCs
 * ``cpp/src/grpc/cuopt_remote.proto`` — LP/MIP problem, settings, and result messages
 
-Most users do **not** call these RPCs directly: the NVIDIA cuOpt **Python** API, **C API**, and **cuopt_cli** submit jobs using solver APIs plus :doc:`environment variables <advanced>`. **Custom** clients call ``CuOptRemoteService`` over gRPC using these definitions. This page summarizes the service for custom integrators and debugging.
+Most users do **not** call these RPCs directly:
+
+* **Remote execution** — Python, C (``cuOptSolve``), and ``cuopt_cli`` forward
+  solves when ``CUOPT_REMOTE_HOST`` and ``CUOPT_REMOTE_PORT`` are set
+  (:doc:`quick-start`, :doc:`advanced`).
+* **Python async gRPC client** — ``cuopt.grpc.linear_programming.Client``
+  (:doc:`python-async-client`).
+
+**Custom** clients call ``CuOptRemoteService`` over gRPC using these definitions.
+This page summarizes the service for custom integrators and debugging.
 
 Service: ``CuOptRemoteService``
 ================================
@@ -26,7 +35,7 @@ Asynchronous Jobs
    * - RPC
      - Purpose
    * - ``SubmitJob``
-     - Submit an LP or MILP job in one message (within gRPC message size limits).
+     - Submit an LP or MIP job in one message (within gRPC message size limits).
    * - ``CheckStatus``
      - Poll job status by ``job_id``.
    * - ``GetResult``
@@ -82,17 +91,27 @@ Streaming and Callbacks
    * - ``StreamLogs``
      - Server-streaming solver log lines for a job.
    * - ``GetIncumbents``
-     - MILP incumbent solutions since a given index.
+     - MIP incumbent solutions since a given index (only if the job was
+       submitted with ``enable_incumbents``; otherwise the list is empty).
 
 Messages and Constraints
 ========================
 
-* **Problem types** — LP and MILP in the enum; the problem payload can include quadratic objective data for **QP**-style solves where the client API supports it. **Routing** over this gRPC service is **not** available yet; it is planned for an **upcoming** release (use REST for remote routing today).
+* **Problem types** — Wire categories are LP/QP or MIP. QP is submitted as
+  ``lp_request`` (``SolveLPRequest``) with quadratic fields on
+  ``OptimizationProblem``. **Routing** over this gRPC service is **not**
+  available yet (planned; use REST for remote routing today).
 * **Solver settings** — Carried as ``PDLPSolverSettings`` or ``MIPSolverSettings`` inside the request or chunked header, aligned with the NVIDIA cuOpt solver options documentation.
-* **Errors** — gRPC status codes carry failures (see comments at the end of ``cuopt_remote_service.proto``).
+* **Errors** — Transport failures use gRPC status codes. Some outcomes use
+  ``Status::OK`` with response fields: ``CheckStatus`` reports unknown jobs as
+  ``job_status=NOT_FOUND``; ``GetResult`` uses transport ``NOT_FOUND`` /
+  ``UNAVAILABLE`` (not ready) and ``status=ERROR_SOLVE_FAILED`` for failed
+  solves; ``DeleteResult`` / ``CancelJob`` report outcomes in the response.
+  See ``cuopt_remote_service.proto``.
 
 Further Reading
 ===============
 
+* :doc:`python-async-client` / :doc:`python-async-client-api` — Python job client (``cuopt.grpc``) built on these RPCs.
 * :doc:`grpc-server-architecture` — Server process model and job lifecycle (overview); :doc:`advanced` for ``cuopt_grpc_server`` flags. Contributor details: ``cpp/docs/grpc-server-architecture.md``.
 * :doc:`advanced` — TLS, Docker, client environment variables, and limitations.

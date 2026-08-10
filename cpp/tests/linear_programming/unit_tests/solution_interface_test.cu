@@ -515,6 +515,24 @@ End
   expect_adopt_matches_populate(model);
 }
 
+TEST_F(SolutionInterfaceTest, gpu_adopt_consumes_mps_data_model)
+{
+  auto model               = io::read_mps<int, double>(lp_file_);
+  const auto n_variables   = model.get_n_variables();
+  const auto n_constraints = model.get_n_constraints();
+  const auto nnz           = model.get_nnz();
+
+  raft::handle_t handle;
+  optimization_problem_t<int, double> problem(&handle);
+  adopt_from_mps_data_model(&problem, std::move(model));
+
+  EXPECT_EQ(model.get_n_variables(), 0);
+  EXPECT_EQ(model.get_n_constraints(), 0);
+  EXPECT_EQ(problem.get_n_variables(), n_variables);
+  EXPECT_EQ(problem.get_n_constraints(), n_constraints);
+  EXPECT_EQ(problem.get_nnz(), nnz);
+}
+
 // =============================================================================
 // Solution conversion tests (hand-constructed, known values)
 // =============================================================================

@@ -5,6 +5,7 @@
  */
 /* clang-format on */
 
+#include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/io/mps_writer.hpp>
 
 #include <cuopt/mathematical_optimization/io/data_model_view.hpp>
@@ -530,7 +531,7 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
   mps_file.close();
 }
 
-template class mps_writer_t<int, float>;
-template class mps_writer_t<int, double>;
+template class CUOPT_EXPORT mps_writer_t<int, float>;
+template class CUOPT_EXPORT mps_writer_t<int, double>;
 
 }  // namespace cuopt::mathematical_optimization::io

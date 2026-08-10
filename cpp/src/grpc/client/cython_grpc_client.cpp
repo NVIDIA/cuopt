@@ -204,7 +204,7 @@ bool grpc_python_client_t::delete_job(const std::string& job_id, std::string& er
   return true;
 }
 
-grpc_result_outcome_t grpc_python_client_t::result(const std::string& job_id, bool is_mip)
+grpc_result_outcome_t grpc_python_client_t::result(const std::string& job_id)
 {
   grpc_result_outcome_t out;
 
@@ -222,26 +222,19 @@ grpc_result_outcome_t grpc_python_client_t::result(const std::string& job_id, bo
     return out;
   }
 
-  out.solution = std::make_unique<solver_ret_t>();
+  auto remote = impl_->client.get_result<int, double>(job_id);
+  if (!remote.success) {
+    out.error_message = remote.error_message;
+    return out;
+  }
 
-  if (is_mip) {
-    auto remote = impl_->client.get_mip_result<int, double>(job_id);
-    if (!remote.success) {
-      out.error_message = remote.error_message;
-      out.solution.reset();
-      return out;
-    }
+  out.solution = std::make_unique<solver_ret_t>();
+  if (remote.is_mip) {
     out.solution->problem_type = cuopt::mathematical_optimization::problem_category_t::MIP;
-    out.solution->mip_ret      = remote.solution->to_cpu_mip_ret_t();
+    out.solution->mip_ret      = remote.mip_solution->to_cpu_mip_ret_t();
   } else {
-    auto remote = impl_->client.get_lp_result<int, double>(job_id);
-    if (!remote.success) {
-      out.error_message = remote.error_message;
-      out.solution.reset();
-      return out;
-    }
     out.solution->problem_type = cuopt::mathematical_optimization::problem_category_t::LP;
-    out.solution->lp_ret       = remote.solution->to_cpu_linear_programming_ret_t();
+    out.solution->lp_ret       = remote.lp_solution->to_cpu_linear_programming_ret_t();
   }
 
   out.success = true;

@@ -1,10 +1,10 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 """
-Basic MILP Server Example
+Basic MIP Server Example
 
 This example demonstrates how to use the cuOpt Self-Hosted Service Client
-to solve MILP (Mixed Integer Linear Programming) problems via the cuOpt server.
+to solve MIP (Mixed Integer Programming) problems via the cuOpt server.
 
 The major difference between this example and the LP example is that some of
 the variables are integers, so 'variable_types' need to be specified.
@@ -66,8 +66,8 @@ def repoll(cuopt_service_client, solution, repoll_tries):
 
 
 def main():
-    """Run the basic MILP example."""
-    # Example data for MILP problem
+    """Run the basic MIP example."""
+    # Example data for MIP problem
     # The data is structured as per the OpenAPI specification for the server
     data = {
         "csr_constraint_matrix": {
@@ -96,7 +96,7 @@ def main():
         ip="localhost", port=5000, polling_timeout=25, timeout_exception=False
     )
 
-    print("=== Solving MILP Problem ===")
+    print("=== Solving MIP Problem ===")
     solution = cuopt_service_client.get_LP_solve(data, response_type="dict")
 
     # Number of repoll requests to be carried out for a successful response

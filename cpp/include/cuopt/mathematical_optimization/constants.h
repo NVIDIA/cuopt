@@ -47,6 +47,7 @@
 #define CUOPT_DUALIZE                              "dualize"
 #define CUOPT_ORDERING                             "ordering"
 #define CUOPT_BARRIER_DUAL_INITIAL_POINT           "barrier_dual_initial_point"
+#define CUOPT_POSTSOLVE_INFO                       "postsolve_info"
 #define CUOPT_BARRIER_ITERATIVE_REFINEMENT         "barrier_iterative_refinement"
 #define CUOPT_BARRIER_STEP_SCALE                   "barrier_step_scale"
 #define CUOPT_ELIMINATE_DENSE_COLUMNS              "eliminate_dense_columns"
@@ -97,8 +98,9 @@
 
 #define CUOPT_MIP_HYPER_HEURISTIC_POPULATION_SIZE     "mip_hyper_heuristic_population_size"
 #define CUOPT_MIP_HYPER_HEURISTIC_NUM_CPUFJ_THREADS   "mip_hyper_heuristic_num_cpufj_threads"
-#define CUOPT_MIP_HYPER_HEURISTIC_PRESOLVE_TIME_RATIO "mip_hyper_heuristic_presolve_time_ratio"
-#define CUOPT_MIP_HYPER_HEURISTIC_PRESOLVE_MAX_TIME   "mip_hyper_heuristic_presolve_max_time"
+#define CUOPT_MIP_HYPER_HEURISTIC_PRESOLVE_MAX_ROUNDS "mip_hyper_heuristic_presolve_max_rounds"
+#define CUOPT_MIP_HYPER_HEURISTIC_PAPILO_PROBING_MAX_BADGESIZE \
+  "mip_hyper_heuristic_papilo_probing_max_badgesize"
 #define CUOPT_MIP_HYPER_HEURISTIC_ROOT_LP_TIME_RATIO  "mip_hyper_heuristic_root_lp_time_ratio"
 #define CUOPT_MIP_HYPER_HEURISTIC_ROOT_LP_MAX_TIME    "mip_hyper_heuristic_root_lp_max_time"
 #define CUOPT_MIP_HYPER_HEURISTIC_RINS_TIME_LIMIT     "mip_hyper_heuristic_rins_time_limit"

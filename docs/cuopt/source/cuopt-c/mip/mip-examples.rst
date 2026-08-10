@@ -1,11 +1,11 @@
-MILP C API Examples
+MIP C API Examples
 ===================
 
 
-Example With Data
+Example with Data
 -----------------
 
-This example demonstrates how to use the MILP solver in C. More details on the API can be found in :doc:`MIP C API <mip-c-api>`.
+This example demonstrates how to use the MIP solver in C. More details on the API can be found in :doc:`MIP C API <mip-c-api>`.
 
 The example code is available at ``../lp-milp/examples/simple_milp_example.c`` (:download:`download <examples/simple_milp_example.c>`):
 
@@ -41,7 +41,7 @@ You should see the following output:
 .. code-block:: bash
   :caption: Output
 
-   Creating and solving simple LP problem...
+   Creating and solving simple MIP problem...
    Solving a problem with 2 constraints 2 variables (1 integers) and 4 nonzeros
    Objective offset 0.000000 scaling_factor 1.000000
    After trivial presolve updated 2 constraints 2 variables
@@ -75,7 +75,7 @@ You should see the following output:
    Test completed successfully!
 
 
-Example With MPS File
+Example with MPS File
 ---------------------
 
 This example demonstrates how to use the cuOpt solver in C to solve an MPS file.
@@ -98,7 +98,7 @@ If you have built it locally, libcuopt.so will be in the build directory ``cpp/b
    # Find the libcuopt library directory and assign to LIBCUOPT_LIBRARY_PATH
    LIBCUOPT_LIBRARY_PATH=$(dirname $(find / -name "libcuopt.so" 2>/dev/null))
 
-A sample MILP MPS file (:download:`download mip_sample.mps <https://raw.githubusercontent.com/coin-or/SYMPHONY/master/Datasets/sample.mps>`):
+A sample MIP MPS file (:download:`download mip_sample.mps <https://raw.githubusercontent.com/coin-or/SYMPHONY/master/Datasets/sample.mps>`):
 
 .. literalinclude:: examples/mip_sample.mps
    :language: text
