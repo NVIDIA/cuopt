@@ -3,7 +3,7 @@ Convex Optimization C API Examples
 ==================================
 
 
-LP Example With Data
+LP Example with Data
 --------------------
 
 This example demonstrates how to use the LP solver in C. More details on the API can be found in :doc:`C API <convex-c-api>`.

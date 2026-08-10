@@ -657,46 +657,55 @@ void check_postsolve_status(const papilo::PostsolveStatus& status)
 }
 
 template <typename f_t>
-void set_presolve_methods(papilo::Presolve<f_t>& presolver,
-                          problem_category_t category,
-                          bool dual_postsolve)
+void set_presolve_methods(
+  papilo::Presolve<f_t>& presolver,
+  problem_category_t category,
+  bool dual_postsolve,
+  std::optional<std::unordered_set<std::string>> const& method_allowlist = std::nullopt)
 {
   using uptr = std::unique_ptr<papilo::PresolveMethod<f_t>>;
 
+  auto maybe_add = [&](uptr method) {
+    if (method_allowlist.has_value()) {
+      const std::string& name = method->getName();
+      if (!method_allowlist->count(name)) { return; }
+    }
+    presolver.addPresolveMethod(std::move(method));
+  };
+
   if (category == problem_category_t::MIP) {
     // cuOpt custom GF2 presolver
-    presolver.addPresolveMethod(
-      uptr(new cuopt::mathematical_optimization::mip::GF2Presolve<f_t>()));
+    maybe_add(uptr(new cuopt::mathematical_optimization::mip::GF2Presolve<f_t>()));
   }
   // fast presolvers
-  presolver.addPresolveMethod(uptr(new papilo::SingletonCols<f_t>()));
-  presolver.addPresolveMethod(uptr(new papilo::CoefficientStrengthening<f_t>()));
-  presolver.addPresolveMethod(uptr(new papilo::ConstraintPropagation<f_t>()));
+  maybe_add(uptr(new papilo::SingletonCols<f_t>()));
+  maybe_add(uptr(new papilo::CoefficientStrengthening<f_t>()));
+  maybe_add(uptr(new papilo::ConstraintPropagation<f_t>()));
 
   // medium presolvers
-  presolver.addPresolveMethod(uptr(new papilo::FixContinuous<f_t>()));
-  presolver.addPresolveMethod(uptr(new papilo::SimpleProbing<f_t>()));
-  presolver.addPresolveMethod(uptr(new papilo::ParallelRowDetection<f_t>()));
-  presolver.addPresolveMethod(uptr(new papilo::ParallelColDetection<f_t>()));
-  presolver.addPresolveMethod(uptr(new papilo::DualFix<f_t>()));
-  presolver.addPresolveMethod(uptr(new papilo::SimplifyInequalities<f_t>()));
-  presolver.addPresolveMethod(uptr(new papilo::CliqueMerging<f_t>()));
+  maybe_add(uptr(new papilo::FixContinuous<f_t>()));
+  maybe_add(uptr(new papilo::SimpleProbing<f_t>()));
+  maybe_add(uptr(new papilo::ParallelRowDetection<f_t>()));
+  maybe_add(uptr(new papilo::ParallelColDetection<f_t>()));
+  maybe_add(uptr(new papilo::DualFix<f_t>()));
+  maybe_add(uptr(new papilo::SimplifyInequalities<f_t>()));
+  maybe_add(uptr(new papilo::CliqueMerging<f_t>()));
 
   // exhaustive presolvers
-  presolver.addPresolveMethod(uptr(new papilo::ImplIntDetection<f_t>()));
-  presolver.addPresolveMethod(uptr(new papilo::DominatedCols<f_t>()));
-  presolver.addPresolveMethod(uptr(new papilo::Probing<f_t>()));
+  maybe_add(uptr(new papilo::ImplIntDetection<f_t>()));
+  maybe_add(uptr(new papilo::DominatedCols<f_t>()));
+  maybe_add(uptr(new papilo::Probing<f_t>()));
 
   if (!dual_postsolve) {
     // SingletonStuffing causes dual crushing failures on:
     //   tr12-30, ns1208400, gmu-35-50, dws008-01, neos-1445765,
     //   neos-5107597-kakapo, rocI-4-11, traininstance2, traininstance6,
     //   radiationm18-12-05, rococoB10-011000, b1c1s1
-    presolver.addPresolveMethod(uptr(new papilo::SingletonStuffing<f_t>()));
-    presolver.addPresolveMethod(uptr(new papilo::DualInfer<f_t>()));
-    presolver.addPresolveMethod(uptr(new papilo::SimpleSubstitution<f_t>()));
-    presolver.addPresolveMethod(uptr(new papilo::Sparsify<f_t>()));
-    presolver.addPresolveMethod(uptr(new papilo::Substitution<f_t>()));
+    maybe_add(uptr(new papilo::SingletonStuffing<f_t>()));
+    maybe_add(uptr(new papilo::DualInfer<f_t>()));
+    maybe_add(uptr(new papilo::SimpleSubstitution<f_t>()));
+    maybe_add(uptr(new papilo::Sparsify<f_t>()));
+    maybe_add(uptr(new papilo::Substitution<f_t>()));
   } else {
     CUOPT_LOG_INFO("Disabling the presolver methods that do not support dual postsolve");
   }
@@ -721,22 +730,31 @@ void set_presolve_options(papilo::Presolve<f_t>& presolver,
 }
 
 template <typename f_t>
-void set_presolve_parameters(papilo::Presolve<f_t>& presolver,
-                             problem_category_t category,
-                             int nrows,
-                             int ncols)
+void set_presolve_parameters(
+  papilo::Presolve<f_t>& presolver,
+  problem_category_t category,
+  int nrows,
+  int ncols,
+  std::optional<std::unordered_set<std::string>> const& method_allowlist = std::nullopt)
 {
   // It looks like a copy. But this copy has the pointers to relevant variables in papilo
   auto params = presolver.getParameters();
   if (category == problem_category_t::MIP) {
+    auto reduction_allowed = [&](char const* name) {
+      return !method_allowlist.has_value() || method_allowlist->count(name) > 0;
+    };
     // Papilo has work unit measurements for probing. Because of this when the first batch fails to
     // produce any reductions, the algorithm stops. To avoid stopping the algorithm, we set a
     // minimum badge size to a huge value. The time limit makes sure that we exit if it takes too
     // long
-    int min_badgesize = std::max(ncols / 2, 32);
-    params.setParameter("probing.minbadgesize", min_badgesize);
-    params.setParameter("cliquemerging.enabled", true);
-    params.setParameter("cliquemerging.maxcalls", 50);
+    if (reduction_allowed("probing")) {
+      int min_badgesize = std::max(ncols / 2, 32);
+      params.setParameter("probing.minbadgesize", min_badgesize);
+    }
+    if (reduction_allowed("cliquemerging")) {
+      params.setParameter("cliquemerging.enabled", true);
+      params.setParameter("cliquemerging.maxcalls", 50);
+    }
   }
 }
 
@@ -835,7 +853,7 @@ third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_papilo(
   CUOPT_LOG_INFO("\nRunning Papilo presolve (git hash %s)", PAPILO_GITHASH);
   if (category == problem_category_t::MIP) { dual_postsolve = false; }
   papilo::Presolve<f_t> papilo_presolver;
-  set_presolve_methods(papilo_presolver, category, dual_postsolve);
+  set_presolve_methods(papilo_presolver, category, dual_postsolve, reduction_allowlist_);
   set_presolve_options<i_t, f_t>(papilo_presolver,
                                  category,
                                  absolute_tolerance,
@@ -843,7 +861,8 @@ third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_papilo(
                                  time_limit,
                                  dual_postsolve,
                                  num_cpu_threads);
-  set_presolve_parameters(papilo_presolver, category, original_n_cons, original_n_vars);
+  set_presolve_parameters(
+    papilo_presolver, category, original_n_cons, original_n_vars, reduction_allowlist_);
   papilo_presolver.setVerbosityLevel(papilo::VerbosityLevel::kQuiet);
 
   auto result = papilo_presolver.apply(papilo_problem);
@@ -1067,7 +1086,8 @@ third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_to_subprob
                      papilo_problem.getConstraintMatrix().getNnz());
 
   papilo::Presolve<f_t> papilo_presolver;
-  set_presolve_methods(papilo_presolver, problem_category_t::MIP, dual_postsolve);
+  set_presolve_methods(
+    papilo_presolver, problem_category_t::MIP, dual_postsolve, reduction_allowlist_);
   set_presolve_options<i_t, f_t>(papilo_presolver,
                                  problem_category_t::MIP,
                                  settings.primal_tol,
@@ -1075,7 +1095,8 @@ third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_to_subprob
                                  time_limit,
                                  dual_postsolve,
                                  num_threads);
-  set_presolve_parameters(papilo_presolver, problem_category_t::MIP, orig_rows, orig_cols);
+  set_presolve_parameters(
+    papilo_presolver, problem_category_t::MIP, orig_rows, orig_cols, reduction_allowlist_);
 
   // Disable papilo logs
   papilo_presolver.setVerbosityLevel(papilo::VerbosityLevel::kQuiet);

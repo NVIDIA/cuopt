@@ -5,6 +5,7 @@
  */
 /* clang-format on */
 
+#include <cuopt/export.hpp>
 #include <cuopt/routing/data_model_view.hpp>
 #include <limits>
 #include <ostream>
@@ -743,6 +744,6 @@ raft::handle_t const* data_model_view_t<i_t, f_t>::get_handle_ptr() const noexce
   return handle_ptr_;
 }
 
-template class data_model_view_t<int, float>;
+template class CUOPT_EXPORT data_model_view_t<int, float>;
 }  // namespace routing
 }  // namespace cuopt

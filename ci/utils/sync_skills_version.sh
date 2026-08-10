@@ -49,4 +49,17 @@ for skill_md in "${SKILLS_DIR}"/*/SKILL.md; do
   echo "  updated $skill_md"
 done
 
+# skills/*/skill-card.md: update the version on the line after "## Skill Version(s):"
+for skill_card in "${SKILLS_DIR}"/*/skill-card.md; do
+  [[ -f "$skill_card" ]] || continue
+  # Scope the substitution to the line immediately following the header.
+  sed -i '/^## Skill Version(s): <br>$/{n; s|^[0-9][0-9]\.[0-9][0-9]\.[0-9][0-9]\( (source:.*) <br>\)$|'"${RELEASE_VERSION}"'\1|}' "$skill_card"
+  # Verify the replacement actually landed; fail loudly if the version line is missing or malformed.
+  if ! grep -A1 "^## Skill Version(s):" "$skill_card" | grep -q "^${RELEASE_VERSION}"; then
+    echo "ERROR: $skill_card: version line under '## Skill Version(s):' is missing or malformed; manual repair needed"
+    exit 1
+  fi
+  echo "  updated $skill_card"
+done
+
 echo "Done. Skills version is now ${RELEASE_VERSION}."
