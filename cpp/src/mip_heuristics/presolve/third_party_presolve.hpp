@@ -9,6 +9,8 @@
 
 #include <memory>
 #include <optional>
+#include <string>
+#include <unordered_set>
 #include <vector>
 
 #include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
@@ -105,6 +107,12 @@ class third_party_presolve_t {
     i_t num_cpu_threads = 0,
     i_t max_rounds      = -1,
     i_t max_badgesize   = -1);
+
+  // If set, only Papilo methods whose getName() is listed are registered
+  void set_reduction_allowlist(std::optional<std::unordered_set<std::string>> allowlist)
+  {
+    reduction_allowlist_ = std::move(allowlist);
+  }
 
   // Apply the presolve on an simplex::user_problem in-place. Used in sub MIP and (in the future)
   // restarts.
@@ -208,6 +216,8 @@ class third_party_presolve_t {
   std::vector<f_t> original_objective_coefficients_{};
   f_t original_objective_offset_{0};
   f_t original_objective_scaling_factor_{1};
+
+  std::optional<std::unordered_set<std::string>> reduction_allowlist_{};
 };
 
 // Just for testing the conversion: user_problem -> Papilo problem -> user_problem.

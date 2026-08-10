@@ -112,7 +112,7 @@ static simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
 
 template <typename i_t, typename f_t>
 static simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
-  raft::handle_t const* handle_ptr, mip::problem_t<i_t, f_t>& model)
+  raft::handle_t const* handle_ptr, mip::problem_t<i_t, f_t>& model, bool copy_names = true)
 {
   simplex::user_problem_t<i_t, f_t> user_problem(handle_ptr);
 
@@ -165,7 +165,7 @@ static simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
   std::tie(user_problem.lower, user_problem.upper) =
     extract_host_bounds<f_t>(model.variable_bounds, handle_ptr);
   user_problem.problem_name = model.original_problem_ptr->get_problem_name();
-  if (model.row_names.size() > 0) {
+  if (copy_names && model.row_names.size() > 0) {
     user_problem.row_names.resize(m);
     for (int i = 0; i < m; ++i) {
       if (i < (int)model.row_names.size()) {
@@ -175,7 +175,7 @@ static simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
       }
     }
   }
-  if (model.var_names.size() > 0) {
+  if (copy_names && model.var_names.size() > 0) {
     user_problem.col_names.resize(n);
     for (int j = 0; j < n; ++j) {
       if (j < (int)model.var_names.size()) {
