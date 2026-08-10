@@ -4530,7 +4530,10 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
   } catch (const raft::cuda_error& e) {
     settings.log.printf("Error in barrier_solver_t: %s\n", e.what());
     return lp_status_t::NUMERICAL_ISSUES;
-  } catch (const rmm::out_of_memory& e) {
+  } catch (const std::bad_alloc& e) {
+    // Covers rmm::out_of_memory and any other allocation failure. The barrier sizes its normal
+    // equations from the problem, so a shape it cannot hold is a property of the input rather
+    // than a defect, and the solvers running concurrently with it are unaffected.
     settings.log.printf("Out of memory in barrier_solver_t: %s\n", e.what());
     return lp_status_t::NUMERICAL_ISSUES;
   }
