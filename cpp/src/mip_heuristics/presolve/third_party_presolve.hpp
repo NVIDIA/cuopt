@@ -17,6 +17,7 @@
 #include <cuopt/mathematical_optimization/optimization_problem.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/user_problem.hpp>
+#include <mip_heuristics/presolve/presolve_budget_policy.hpp>
 
 #include <PSLP/PSLP_API.h>
 
@@ -43,6 +44,11 @@ enum class third_party_presolve_status_t {
   REDUCED,
   UNCHANGED,
 };
+
+// Features of the problem as the user handed it in, i.e. before any reduction. This is what Papilo
+// itself will work on, so its budget is derived from these rather than from the reduced problem.
+template <typename i_t, typename f_t>
+presolve_features_t papilo_presolve_features(optimization_problem_t<i_t, f_t> const& op_problem);
 
 template <typename i_t, typename f_t, typename ProblemT>
 struct third_party_presolve_result_t {
@@ -84,7 +90,9 @@ class third_party_presolve_t {
     f_t absolute_tolerance,
     f_t relative_tolerance,
     double time_limit,
-    i_t num_cpu_threads = 0);
+    i_t num_cpu_threads = 0,
+    i_t max_rounds      = -1,
+    i_t max_badgesize   = -1);
 
   // Host entry: takes an mps_data_model_t and returns a host-side reduced
   // mps_data_model_t. Pure-host throughout
@@ -96,7 +104,9 @@ class third_party_presolve_t {
     f_t absolute_tolerance,
     f_t relative_tolerance,
     double time_limit,
-    i_t num_cpu_threads = 0);
+    i_t num_cpu_threads = 0,
+    i_t max_rounds      = -1,
+    i_t max_badgesize   = -1);
 
   // If set, only Papilo methods whose getName() is listed are registered
   void set_reduction_allowlist(std::optional<std::unordered_set<std::string>> allowlist)
@@ -172,7 +182,9 @@ class third_party_presolve_t {
                                              f_t absolute_tolerance,
                                              f_t relative_tolerance,
                                              double time_limit,
-                                             i_t num_cpu_threads);
+                                             i_t num_cpu_threads,
+                                             i_t max_rounds,
+                                             i_t max_badgesize);
 
   // Host-only per-backend postsolve helpers. Both resize their vector args
   // to original-problem dimensions.

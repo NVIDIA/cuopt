@@ -107,12 +107,6 @@
   if (pb_settings.has_num_cpufj_threads()) {
     settings.heuristic_params.num_cpufj_threads = pb_settings.num_cpufj_threads();
   }
-  if (pb_settings.has_presolve_time_ratio()) {
-    settings.heuristic_params.presolve_time_ratio = pb_settings.presolve_time_ratio();
-  }
-  if (pb_settings.has_presolve_max_time()) {
-    settings.heuristic_params.presolve_max_time = pb_settings.presolve_max_time();
-  }
   if (pb_settings.has_root_lp_time_ratio()) {
     settings.heuristic_params.root_lp_time_ratio = pb_settings.root_lp_time_ratio();
   }
@@ -151,4 +145,10 @@
   }
   if (pb_settings.has_related_vars_time_limit()) {
     settings.heuristic_params.related_vars_time_limit = pb_settings.related_vars_time_limit();
+  }
+  if (pb_settings.has_presolve_max_rounds()) {
+    settings.heuristic_params.presolve_max_rounds = pb_settings.presolve_max_rounds();
+  }
+  if (pb_settings.has_papilo_probing_max_badgesize()) {
+    settings.heuristic_params.papilo_probing_max_badgesize = pb_settings.papilo_probing_max_badgesize();
   }
