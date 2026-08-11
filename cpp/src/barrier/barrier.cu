@@ -105,17 +105,12 @@ static void ensure_initial_point_interior(dense_vector_t<i_t, f_t>& values,
                                           i_t linear_end,
                                           const std::vector<i_t>& cone_dims)
 {
-  f_t min_linear = inf;
-  for (i_t j = 0; j < linear_end; ++j) {
-    if (linear_mask[j]) { min_linear = std::min(min_linear, values[j]); }
-  }
-  if (min_linear <= epsilon_adjust) {
-    const f_t delta = -min_linear + epsilon_adjust;
-    for (i_t j = 0; j < linear_end; ++j) {
-      if (linear_mask[j]) { values[j] += delta; }
-    }
-  }
+  // Linear shift
+  std::vector<i_t> linear_only_mask(values.size(), 0);
+  std::copy(linear_mask.begin(), linear_mask.begin() + linear_end, linear_only_mask.begin());
+  values.ensure_positive(epsilon_adjust, linear_only_mask);
 
+  // Cone shift
   i_t off = 0;
   for (i_t q_k : cone_dims) {
     const i_t base = linear_end + off;
@@ -2405,12 +2400,8 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   const i_t linear_end = has_soc ? data.cone_start() : lp.num_cols;
   auto ensure_interior = [&](dense_vector_t<i_t, f_t>& values,
                              const std::vector<i_t>& linear_mask) {
-    if (has_soc) {
-      ensure_initial_point_interior(
-        values, epsilon_adjust, linear_mask, linear_end, lp.second_order_cone_dims);
-    } else {
-      values.ensure_positive(epsilon_adjust, linear_mask);
-    }
+    ensure_initial_point_interior(
+      values, epsilon_adjust, linear_mask, linear_end, lp.second_order_cone_dims);
   };
 
   if (init_strategy == barrier_dual_initial_point_t::Automatic ||
