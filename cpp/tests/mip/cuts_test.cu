@@ -983,6 +983,39 @@ TEST(cuts, test_duplicate_cuts_detection)
   cut_pool.check_for_duplicate_cuts();
 }
 
+TEST(cuts, count_violated_cuts_deduplicates_and_rescores)
+{
+  simplex::simplex_solver_settings_t<int, double> settings;
+  mip::cut_pool_t<int, double> cut_pool(2, settings);
+
+  mip::inequality_t<int, double> cut;
+  cut.push_back(0, 1.0);
+  cut.rhs = 1.0;
+  cut_pool.add_cut(mip::cut_type_t::KNAPSACK, cut);
+
+  mip::inequality_t<int, double> duplicate;
+  duplicate.push_back(0, 2.0);
+  duplicate.rhs = 2.0;
+  cut_pool.add_cut(mip::cut_type_t::KNAPSACK, duplicate);
+
+  mip::inequality_t<int, double> satisfied;
+  satisfied.push_back(1, 1.0);
+  satisfied.rhs = 0.0;
+  cut_pool.add_cut(mip::cut_type_t::FLOW_COVER, satisfied);
+
+  int violated_cuts = 0;
+#pragma omp parallel num_threads(4) shared(cut_pool, violated_cuts)
+  {
+#pragma omp single
+    {
+      violated_cuts = cut_pool.count_violated_cuts({0.0, 0.0});
+    }
+  }
+  EXPECT_EQ(violated_cuts, 1);
+  EXPECT_EQ(cut_pool.pool_size(), 2);
+  EXPECT_EQ(cut_pool.count_violated_cuts({1.0, 0.0}), 0);
+}
+
 TEST(cuts, clique_initial_builder_publishes_completion)
 {
   const raft::handle_t handle{};

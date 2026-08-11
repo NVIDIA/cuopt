@@ -3109,11 +3109,11 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
                                                   new_slacks_,
                                                   var_types_,
                                                   std::nullopt,
-                                                  std::nullopt,
-                                                  std::nullopt,
                                                   relaxation_root_x,
                                                   relaxation_root_y,
                                                   relaxation_root_z,
+                                                  std::nullopt,
+                                                  std::nullopt,
                                                   variable_bounds,
                                                   exploration_stats_.start_time);
         relaxation_cut_task_elapsed = toc(cut_start_time);
@@ -3205,11 +3205,16 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
 
   if (relaxation_cut_task_started) {
 #pragma omp taskwait depend(in : relaxation_cut_task_status)
+    const i_t generated_cuts = cut_pool.pool_size();
+    const i_t retained_cuts =
+      generated_cuts == 0 ? 0 : cut_pool.count_violated_cuts(root_relax_soln.x);
     settings_.log.printf(
-      "%s root cut pass generated %d candidates in %.2f seconds%s\n",
+      "%s root cut pass generated %d candidates in %.2f seconds; %d remain violated after the "
+      "basis solve%s\n",
       method_to_string(relaxation_cut_method).c_str(),
-      cut_pool.pool_size(),
+      generated_cuts,
       relaxation_cut_task_elapsed,
+      retained_cuts,
       relaxation_cut_task_status < 0 ? " (separator reported infeasibility)" : "");
   }
 
@@ -3257,11 +3262,11 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
                                                        new_slacks_,
                                                        var_types_,
                                                        std::ref(basis_update),
-                                                       std::cref(basic_list),
-                                                       std::cref(nonbasic_list),
                                                        root_relax_soln_.x,
                                                        root_relax_soln_.y,
                                                        root_relax_soln_.z,
+                                                       std::cref(basic_list),
+                                                       std::cref(nonbasic_list),
                                                        variable_bounds,
                                                        exploration_stats_.start_time);
   if (!problem_feasible) {

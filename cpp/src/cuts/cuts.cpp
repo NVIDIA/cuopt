@@ -14,6 +14,7 @@
 #include <utilities/logger.hpp>
 #include <utilities/macros.cuh>
 
+#include <omp.h>
 #include <array>
 #include <cstdint>
 #include <cstdio>
@@ -1357,24 +1358,36 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
 }
 
 template <typename i_t, typename f_t>
+auto cut_pool_t<i_t, f_t>::count_violated_cuts(const std::vector<f_t>& x_relax) -> i_t
+{
+  check_for_duplicate_cuts();
+  if (cut_storage_.m == 0) { return 0; }
+
+  i_t violated_cuts   = 0;
+  const i_t num_tasks = std::min<i_t>(omp_get_num_threads(), cut_storage_.m);
+#pragma omp taskloop num_tasks(num_tasks) default(shared) reduction(+ : violated_cuts)
+  for (i_t i = 0; i < cut_storage_.m; i++) {
+    f_t violation;
+    f_t cut_norm;
+    if (cut_distance(i, x_relax, violation, cut_norm) > min_cut_distance_) { violated_cuts++; }
+  }
+  return violated_cuts;
+}
+
+template <typename i_t, typename f_t>
 void cut_pool_t<i_t, f_t>::score_cuts(std::vector<f_t>& x_relax)
 {
   check_for_duplicate_cuts();
   cut_distances_.resize(cut_storage_.m, 0.0);
   cut_norms_.resize(cut_storage_.m, 0.0);
 
-  const bool verbose = false;
-  for (i_t i = 0; i < cut_storage_.m; i++) {
-    f_t violation;
-    f_t cut_dist      = cut_distance(i, x_relax, violation, cut_norms_[i]);
-    cut_distances_[i] = cut_dist <= min_cut_distance_ ? 0.0 : cut_dist;
-    if (verbose) {
-      settings_.log.printf("Cut %d type %d distance %+e violation %+e cut_norm %e\n",
-                           i,
-                           static_cast<int>(cut_type_[i]),
-                           cut_distances_[i],
-                           violation,
-                           cut_norms_[i]);
+  if (cut_storage_.m > 0) {
+    const i_t num_tasks = std::min<i_t>(omp_get_num_threads(), cut_storage_.m);
+#pragma omp taskloop num_tasks(num_tasks) default(shared)
+    for (i_t i = 0; i < cut_storage_.m; i++) {
+      f_t violation;
+      f_t cut_dist      = cut_distance(i, x_relax, violation, cut_norms_[i]);
+      cut_distances_[i] = cut_dist <= min_cut_distance_ ? 0.0 : cut_dist;
     }
   }
 
@@ -3524,11 +3537,11 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(
   const std::vector<i_t>& new_slacks,
   const std::vector<variable_type_t>& var_types,
   std::optional<std::reference_wrapper<basis_update_mpf_t<i_t, f_t>>> basis_update,
-  std::optional<std::reference_wrapper<const std::vector<i_t>>> basic_list,
-  std::optional<std::reference_wrapper<const std::vector<i_t>>> nonbasic_list,
   const std::vector<f_t>& xstar,
   const std::vector<f_t>& ystar,
   const std::vector<f_t>& zstar,
+  std::optional<std::reference_wrapper<const std::vector<i_t>>> basic_list,
+  std::optional<std::reference_wrapper<const std::vector<i_t>>> nonbasic_list,
   variable_bounds_t<i_t, f_t>& variable_bounds,
   f_t start_time)
 {

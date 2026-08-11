@@ -323,6 +323,8 @@ class cut_pool_t {
   // We expect that the cut is violated by the current relaxation xstar.
   void add_cut(cut_type_t cut_type, const inequality_t<i_t, f_t>& cut);
 
+  i_t count_violated_cuts(const std::vector<f_t>& x_relax);
+
   void score_cuts(std::vector<f_t>& x_relax);
 
   // We return the cuts in the form best_cuts*x <= best_rhs
@@ -690,11 +692,11 @@ class cut_generation_t {
     const std::vector<i_t>& new_slacks,
     const std::vector<simplex::variable_type_t>& var_types,
     std::optional<std::reference_wrapper<simplex::basis_update_mpf_t<i_t, f_t>>> basis_update,
-    std::optional<std::reference_wrapper<const std::vector<i_t>>> basic_list,
-    std::optional<std::reference_wrapper<const std::vector<i_t>>> nonbasic_list,
     const std::vector<f_t>& xstar,
     const std::vector<f_t>& ystar,
     const std::vector<f_t>& zstar,
+    std::optional<std::reference_wrapper<const std::vector<i_t>>> basic_list,
+    std::optional<std::reference_wrapper<const std::vector<i_t>>> nonbasic_list,
     variable_bounds_t<i_t, f_t>& variable_bounds,
     f_t start_time);
 
