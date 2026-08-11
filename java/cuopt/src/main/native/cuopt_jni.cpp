@@ -952,61 +952,25 @@ DEFINE_DOUBLE_PROBLEM_GETTER(
   cuOptGetConstraintRightHandSide,
   Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getNumConstraints(env, nullptr, handle))
 
-extern "C" JNIEXPORT jdoubleArray JNICALL
-Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getConstraintLowerBounds(JNIEnv* env,
-                                                                                   jclass,
-                                                                                   jlong handle)
-{
-  std::vector<cuopt_float_t> values;
-  if (!run_problem_operation(env, "getConstraintLowerBounds", [&] {
-        values = to_problem_view(handle)->get_problem()->get_constraint_lower_bounds_host();
-      })) {
-    return nullptr;
-  }
-  return to_double_array(env, values);
-}
+DEFINE_DOUBLE_PROBLEM_GETTER(
+  getConstraintLowerBounds,
+  cuOptGetConstraintLowerBounds,
+  Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getNumConstraints(env, nullptr, handle))
 
-extern "C" JNIEXPORT jdoubleArray JNICALL
-Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getConstraintUpperBounds(JNIEnv* env,
-                                                                                   jclass,
-                                                                                   jlong handle)
-{
-  std::vector<cuopt_float_t> values;
-  if (!run_problem_operation(env, "getConstraintUpperBounds", [&] {
-        values = to_problem_view(handle)->get_problem()->get_constraint_upper_bounds_host();
-      })) {
-    return nullptr;
-  }
-  return to_double_array(env, values);
-}
+DEFINE_DOUBLE_PROBLEM_GETTER(
+  getConstraintUpperBounds,
+  cuOptGetConstraintUpperBounds,
+  Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getNumConstraints(env, nullptr, handle))
 
-extern "C" JNIEXPORT jdoubleArray JNICALL
-Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getVariableLowerBounds(JNIEnv* env,
-                                                                                 jclass,
-                                                                                 jlong handle)
-{
-  std::vector<cuopt_float_t> values;
-  if (!run_problem_operation(env, "getVariableLowerBounds", [&] {
-        values = to_problem_view(handle)->get_problem()->get_variable_lower_bounds_host();
-      })) {
-    return nullptr;
-  }
-  return to_double_array(env, values);
-}
+DEFINE_DOUBLE_PROBLEM_GETTER(
+  getVariableLowerBounds,
+  cuOptGetVariableLowerBounds,
+  Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getNumVariables(env, nullptr, handle))
 
-extern "C" JNIEXPORT jdoubleArray JNICALL
-Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getVariableUpperBounds(JNIEnv* env,
-                                                                                 jclass,
-                                                                                 jlong handle)
-{
-  std::vector<cuopt_float_t> values;
-  if (!run_problem_operation(env, "getVariableUpperBounds", [&] {
-        values = to_problem_view(handle)->get_problem()->get_variable_upper_bounds_host();
-      })) {
-    return nullptr;
-  }
-  return to_double_array(env, values);
-}
+DEFINE_DOUBLE_PROBLEM_GETTER(
+  getVariableUpperBounds,
+  cuOptGetVariableUpperBounds,
+  Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getNumVariables(env, nullptr, handle))
 
 DEFINE_BYTE_PROBLEM_GETTER(
   getConstraintSense,

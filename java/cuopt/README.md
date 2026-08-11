@@ -23,11 +23,29 @@ that library and runs the Maven tests. Java 11 or newer and a C++20 compiler
 are required. Native solve tests require a CUDA driver and skip automatically
 when one is unavailable.
 
-The standalone native project links to `${CUOPT_PREFIX}/lib/libcuopt.so` and
-uses private cuOpt headers from the checkout to implement the Java-local
-bridge. The Java-required native extensions need C API review before this
-module can become a supported binary distribution. No Java-specific symbol or
-source file is currently required by the main cuOpt build.
+The standalone native project links to `${CUOPT_PREFIX}/lib/libcuopt.so`. No
+Java-specific symbol or source file is required by the main cuOpt build.
+
+The seven entry points the bindings once declared in a Java-local shim are now
+part of the public C API (`cuOptLoadParametersFromFile`,
+`cuOptDumpParametersToFile`, `cuOptGetNumSolverParameters`,
+`cuOptGetSolverParameterName`, `cuOptSolutionIsMIP`, `cuOptGetLPSolverStats`,
+and `cuOptGetMIPSolverStats`), so nothing in the settings or solution path
+depends on private headers any more.
+
+The problem path still does. `cuopt_jni.cpp` includes
+`pdlp/cuopt_c_internal.hpp` from the checkout for the operations the C API does
+not yet cover:
+
+- setting the problem, variable, and row names (the C API only reads them),
+- reading the quadratic objective matrix and the quadratic constraint rows
+  (see the `TODO` in `cuopt_c.h`),
+- reading variable and row names when the problem has none, which the C API
+  string-array getter rejects rather than reporting as empty,
+- reading the problem category.
+
+Closing those gaps in the C API is the remaining prerequisite for shipping this
+module as a standalone binary distribution.
 
 ## Generated constants
 
