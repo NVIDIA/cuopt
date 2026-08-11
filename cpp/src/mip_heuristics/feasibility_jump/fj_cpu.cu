@@ -2123,6 +2123,7 @@ void fj_cpu_worker_t<i_t, f_t>::run_async(f_t time_limit,
   priority(CUOPT_DEFAULT_TASK_PRIORITY) default(none) depend(out : *fj_cpu)
   {
     cpufj_solve(fj_cpu.get(), time_limit, work_unit_limit);
+    fj_cpu.reset();
     if (worker_count) --(*worker_count);
   }
 }
