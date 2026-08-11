@@ -10,6 +10,7 @@ import jsonref
 from pydantic import BaseModel, Extra, Field, RootModel, root_validator
 
 from ..._version import __version_major_minor__
+from .validation_fleet_data import MAX_DISTANCE_BREAK_CYCLES
 
 
 class LocationTypeEnum(str, Enum):
@@ -137,7 +138,7 @@ class VehicleDistanceBreak(StrictModel):
     vehicle_id: int = Field(
         ...,
         description=(
-            "dtype: int32, vehicle_id >= 0."
+            "dtype: int32, 0 <= vehicle_id < n_vehicles."
             " \n\n "
             "Vehicle id as an integer denoting the vehicle index this"
             " distance break schedule applies to."
@@ -182,7 +183,7 @@ class VehicleDistanceBreak(StrictModel):
     n_cycles: Optional[int] = Field(
         default=1,
         description=(
-            "dtype: int32, n_cycles > 0."
+            f"dtype: int32, 0 < n_cycles <= {MAX_DISTANCE_BREAK_CYCLES}."
             " \n\n "
             "Number of cycles per route. Defaults to 1."
         ),

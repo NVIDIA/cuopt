@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include <routing/node/distance_node.cuh>
+#include <routing/route/distance_route.cuh>
 #include <routing/utilities/check_constraints.hpp>
 #include <routing/utilities/test_utilities.hpp>
 
@@ -13,6 +14,7 @@
 #include <utilities/copy_helpers.hpp>
 
 #include <gtest/gtest.h>
+#include <array>
 #include <limits>
 #include <unordered_map>
 #include <vector>
@@ -23,7 +25,26 @@ namespace test {
 
 namespace {
 
-using distance_node = detail::distance_node_t<int, float>;
+using distance_node         = detail::distance_node_t<int, float>;
+using distance_route        = detail::distance_route_t<int, float>;
+constexpr auto DISTANCE_INF = detail::DISTANCE_WINDOW_INFINITY;
+
+template <typename T, size_t N>
+auto copy_array_to_device(std::array<T, N> const& values, rmm::cuda_stream_view stream)
+{
+  rmm::device_uvector<T> result(values.size(), stream);
+  raft::copy(result.data(), values.data(), values.size(), stream);
+  return result;
+}
+
+__global__ void compute_distance_route_cost(distance_route::view_t route, double* result)
+{
+  detail::objective_cost_t objective_cost;
+  detail::infeasible_cost_t infeasible_cost;
+  detail::VehicleInfo<float> vehicle_info;
+  route.compute_cost(vehicle_info, 0, objective_cost, infeasible_cost);
+  result[0] = objective_cost[objective_t::DISTANCE_BREAK_COST];
+}
 
 struct test_route {
   std::vector<distance_node> nodes;
@@ -42,7 +63,8 @@ struct test_route {
   }
 };
 
-// windows.size() must equal arcs.size() + 1; window {0, 1e18} means unconstrained.
+// windows.size() must equal arcs.size() + 1;
+// {0, DISTANCE_INF} means unconstrained.
 test_route make_route(std::vector<float> arcs,
                       std::vector<std::pair<double, double>> windows,
                       float max_cost = std::numeric_limits<float>::max())
@@ -56,7 +78,7 @@ test_route make_route(std::vector<float> arcs,
     r.nodes[i].window_start = windows[i].first;
     r.nodes[i].window_end   = windows[i].second;
   }
-  r.nodes.back().distance_window_backward = 1e18;
+  r.nodes.back().distance_window_backward = DISTANCE_INF;
   return r;
 }
 
@@ -65,7 +87,8 @@ test_route make_route(std::vector<float> arcs,
 // Forward sweep clamps cumulative distance at hard upper bounds and accumulates excess.
 TEST(distance_node, forward_propagation)
 {
-  auto r = make_route({80.f, 600.f, 400.f}, {{0., 1e18}, {0., 60.}, {0., 1e18}, {0., 1e18}});
+  auto r = make_route({80.f, 600.f, 400.f},
+                      {{0., DISTANCE_INF}, {0., 60.}, {0., DISTANCE_INF}, {0., DISTANCE_INF}});
   r.run_passes();
 
   EXPECT_DOUBLE_EQ(r.nodes[0].distance_forward, 0.);
@@ -88,7 +111,7 @@ TEST(distance_node, forward_propagation)
 TEST(distance_node, early_arrival_cost_is_maximum_per_route)
 {
   auto r = make_route({10.f, 10.f, 0.f},
-                      {{0., 1e18}, {50., 100.}, {80., 100.}, {0., 1e18}},
+                      {{0., DISTANCE_INF}, {50., 100.}, {80., 100.}, {0., DISTANCE_INF}},
                       /*max_cost=*/1000.f);
   r.run_passes();
 
@@ -118,7 +141,7 @@ TEST(distance_node, early_arrival_cost_is_maximum_per_route)
 TEST(distance_node, early_arrival_does_not_create_later_upper_excess)
 {
   auto r = make_route({0.f, 40.f, 0.f},
-                      {{0., 1e18}, {100., 200.}, {0., 30.}, {0., 1e18}},
+                      {{0., DISTANCE_INF}, {100., 200.}, {0., 30.}, {0., DISTANCE_INF}},
                       /*max_cost=*/1000.f);
   r.run_passes();
 
@@ -154,7 +177,7 @@ TEST(distance_node, early_arrival_does_not_create_later_upper_excess)
 TEST(distance_node, backward_propagation)
 {
   auto r = make_route({80.f, 600.f, 400.f},
-                      {{0., 1e18}, {0., 60.}, {0., 1e18}, {0., 1e18}},
+                      {{0., DISTANCE_INF}, {0., 60.}, {0., DISTANCE_INF}, {0., DISTANCE_INF}},
                       /*max_cost=*/800.f);
   r.run_passes();
 
@@ -174,7 +197,7 @@ TEST(distance_node, backward_propagation)
 TEST(distance_node, combine_invariant_feasible)
 {
   auto r = make_route({50.f, 55.f, 100.f},
-                      {{0., 1e18}, {0., 60.}, {0., 1e18}, {0., 1e18}},
+                      {{0., DISTANCE_INF}, {0., 60.}, {0., DISTANCE_INF}, {0., DISTANCE_INF}},
                       /*max_cost=*/1000.f);
   r.run_passes();
 
@@ -188,7 +211,7 @@ TEST(distance_node, combine_invariant_feasible)
 TEST(distance_node, combine_invariant_window_violation)
 {
   auto r = make_route({80.f, 600.f, 400.f},
-                      {{0., 1e18}, {0., 60.}, {0., 1e18}, {0., 1e18}},
+                      {{0., DISTANCE_INF}, {0., 60.}, {0., DISTANCE_INF}, {0., DISTANCE_INF}},
                       /*max_cost=*/800.f);
   r.run_passes();
 
@@ -204,9 +227,10 @@ TEST(distance_node, combine_invariant_window_violation)
 // combine() reports the max_cost overage at every split point of a window-free route.
 TEST(distance_node, combine_invariant_max_cost_only)
 {
-  auto r = make_route({400.f, 300.f, 400.f},
-                      {{0., 1e18}, {0., 1e18}, {0., 1e18}, {0., 1e18}},
-                      /*max_cost=*/1000.f);
+  auto r =
+    make_route({400.f, 300.f, 400.f},
+               {{0., DISTANCE_INF}, {0., DISTANCE_INF}, {0., DISTANCE_INF}, {0., DISTANCE_INF}},
+               /*max_cost=*/1000.f);
   r.run_passes();
 
   double reference = distance_node::combine(r.nodes[0], r.nodes[1], r.vehicle_info, r.arcs[0]);
@@ -221,7 +245,7 @@ TEST(distance_node, combine_invariant_max_cost_only)
 TEST(distance_node, compute_cost_combine_consistency)
 {
   auto r = make_route({80.f, 600.f, 400.f},
-                      {{0., 1e18}, {0., 60.}, {0., 1e18}, {0., 1e18}},
+                      {{0., DISTANCE_INF}, {0., 60.}, {0., DISTANCE_INF}, {0., DISTANCE_INF}},
                       /*max_cost=*/800.f);
   r.run_passes();
 
@@ -239,11 +263,35 @@ TEST(distance_node, compute_cost_combine_consistency)
   EXPECT_DOUBLE_EQ(total, combine_at_first);
 }
 
+// compute_cost must not read the soft-cost span unless distance windows are enabled.
+TEST(distance_route, distance_break_cost_requires_distance_window)
+{
+  raft::handle_t handle;
+  auto stream = handle.get_stream();
+
+  auto distance_forward = cuopt::device_copy(std::vector<double>{0.}, stream);
+  rmm::device_uvector<double> result(1, stream);
+
+  distance_route::view_t route;
+  route.dim_info.has_distance_window     = false;
+  route.dim_info.has_distance_break_cost = true;
+  route.distance_forward =
+    raft::device_span<double>{distance_forward.data(), distance_forward.size()};
+  ASSERT_TRUE(route.distance_break_cost_forward.empty());
+  EXPECT_EQ(distance_route::get_shared_size(1, route.dim_info), 2 * sizeof(double));
+
+  compute_distance_route_cost<<<1, 1, 0, stream>>>(route, result.data());
+  RAFT_CUDA_TRY(cudaGetLastError());
+
+  auto host_result = cuopt::host_copy(result, stream);
+  EXPECT_DOUBLE_EQ(host_result[0], 0.);
+}
+
 // get_cost() agrees with combine() at every split point of a route.
 TEST(distance_node, get_cost_combine_consistency)
 {
   auto r = make_route({80.f, 600.f, 400.f},
-                      {{0., 1e18}, {0., 60.}, {0., 1e18}, {0., 1e18}},
+                      {{0., DISTANCE_INF}, {0., 60.}, {0., DISTANCE_INF}, {0., DISTANCE_INF}},
                       /*max_cost=*/800.f);
   r.run_passes();
 
@@ -278,7 +326,7 @@ TEST(distance_node, combine_additive_break_and_max_cost)
   // Route total = 130, max_cost = 120, so max_cost overage = 10.
   // Expected combine value at every split = 50 (break) + 10 (max_cost) = 60.
   auto r = make_route({100.f, 20.f, 10.f},
-                      {{0., 1e18}, {0., 50.}, {0., 1e18}, {0., 1e18}},
+                      {{0., DISTANCE_INF}, {0., 50.}, {0., DISTANCE_INF}, {0., DISTANCE_INF}},
                       /*max_cost=*/120.f);
   r.run_passes();
 
@@ -292,12 +340,12 @@ TEST(distance_node, combine_additive_break_and_max_cost)
 
 // depot=0, orders=1-2, optional break locations=3-4 (used in 5x5 tests)
 // clang-format off
-static std::vector<float> cost_matrix_3x3 = {
+constexpr std::array<float, 9> cost_matrix_3x3 = {
   0, 1, 1,
   1, 0, 1,
   1, 1, 0,
 };
-static std::vector<float> cost_matrix_5x5 = {
+constexpr std::array<float, 25> cost_matrix_5x5 = {
   0, 1, 1, 1, 1,
   1, 0, 1, 1, 1,
   1, 1, 0, 1, 1,
@@ -312,7 +360,7 @@ TEST(distance_breaks, default_case)
   raft::handle_t handle;
   auto stream = handle.get_stream();
 
-  auto v_cost_matrix = cuopt::device_copy(cost_matrix_3x3, stream);
+  auto v_cost_matrix = copy_array_to_device(cost_matrix_3x3, stream);
   cuopt::routing::data_model_view_t<int, float> data_model(&handle, 3, 2);
   data_model.add_cost_matrix(v_cost_matrix.data());
   data_model.add_distance_break(0, 0.f, 2.f, 1, nullptr, 0);
@@ -392,7 +440,7 @@ TEST(distance_breaks, with_break_locations)
   std::vector<int> order_locations = {1, 2};
   std::vector<int> break_locations = {3, 4};
 
-  auto v_cost_matrix     = cuopt::device_copy(cost_matrix_5x5, stream);
+  auto v_cost_matrix     = copy_array_to_device(cost_matrix_5x5, stream);
   auto v_order_locations = cuopt::device_copy(order_locations, stream);
   auto v_break_locations = cuopt::device_copy(break_locations, stream);
 
@@ -432,7 +480,7 @@ TEST(distance_breaks, multi_cycle)
   // Two vehicles, each with two charge cycles: [0, 2) and [2, 4).
   std::vector<int> order_locations = {1, 2};
 
-  auto v_cost_matrix     = cuopt::device_copy(cost_matrix_5x5, stream);
+  auto v_cost_matrix     = copy_array_to_device(cost_matrix_5x5, stream);
   auto v_order_locations = cuopt::device_copy(order_locations, stream);
 
   cuopt::routing::data_model_view_t<int, float> data_model(&handle, 5, 2, 2);
@@ -581,7 +629,7 @@ TEST(distance_breaks, mixed_fleet)
   raft::handle_t handle;
   auto stream = handle.get_stream();
 
-  auto v_cost_matrix = cuopt::device_copy(cost_matrix_3x3, stream);
+  auto v_cost_matrix = copy_array_to_device(cost_matrix_3x3, stream);
   cuopt::routing::data_model_view_t<int, float> data_model(&handle, 3, 2);
   data_model.add_cost_matrix(v_cost_matrix.data());
   data_model.add_distance_break(0, 0.f, 2.f, 1, nullptr, 0);

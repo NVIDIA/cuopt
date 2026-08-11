@@ -870,8 +870,15 @@ def test_vehicle_fixed_costs(cuoptproc):  # noqa
     )
 
 
+@pytest.mark.parametrize(
+    "objectives, expected_cost",
+    [
+        pytest.param(None, 11.0, id="default-weight"),
+        pytest.param({"distance_break_cost": 0}, 3.0, id="disabled"),
+    ],
+)
 @pytest.mark.usefixtures("cuoptproc")
-def test_distance_break_cost_default():
+def test_distance_break_cost_default_and_disabled(objectives, expected_cost):
     cost_matrix = {0: [[0, 1, 1], [1, 0, 1], [1, 1, 0]]}
     distance_breaks = [
         {
@@ -884,37 +891,30 @@ def test_distance_break_cost_default():
         }
     ]
 
-    for objectives, expected_cost in [
-        (None, 11.0),
-        ({"distance_break_cost": 0}, 3.0),
-    ]:
-        res = get_routes(
-            client,
-            cost_matrix=cost_matrix,
-            vehicle_locations=[[0, 0]],
-            vehicle_distance_breaks=distance_breaks,
-            task_locations=[1],
-            objectives=objectives,
-            time_limit=10,
-        )
+    res = get_routes(
+        client,
+        cost_matrix=cost_matrix,
+        vehicle_locations=[[0, 0]],
+        vehicle_distance_breaks=distance_breaks,
+        task_locations=[1],
+        objectives=objectives,
+        time_limit=10,
+    )
 
-        assert res.status_code == 200
-        solver_response = res.json()["response"]["solver_response"]
-        expected_objectives = {"cost": 3.0}
-        if objectives is None:
-            expected_objectives["distance_break_cost"] = 8.0
-        validate_solver_sol(
-            solver_response,
-            expected_status=0,
-            expected_cost=expected_cost,
-            expected_vehicle_count=1,
-            expected_objective_values=expected_objectives,
-        )
-        if objectives is not None:
-            assert (
-                "distance_break_cost"
-                not in solver_response["objective_values"]
-            )
+    assert res.status_code == 200
+    solver_response = res.json()["response"]["solver_response"]
+    expected_objectives = {"cost": 3.0}
+    if objectives is None:
+        expected_objectives["distance_break_cost"] = 8.0
+    validate_solver_sol(
+        solver_response,
+        expected_status=0,
+        expected_cost=expected_cost,
+        expected_vehicle_count=1,
+        expected_objective_values=expected_objectives,
+    )
+    if objectives is not None:
+        assert "distance_break_cost" not in solver_response["objective_values"]
 
 
 def test_cost_matrix_solution(cuoptproc):  # noqa

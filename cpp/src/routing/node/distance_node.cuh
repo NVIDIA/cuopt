@@ -17,6 +17,8 @@ namespace cuopt {
 namespace routing {
 namespace detail {
 
+constexpr double DISTANCE_WINDOW_INFINITY = 1e18;
+
 // Distance dimension. Tracks the cumulative route distance (for vehicle.max_cost) and, when
 // distance-based charging breaks are configured, per-node distance windows. The upper-bound
 // state and lower-bound state propagate independently: arriving after window_end is hard
@@ -32,11 +34,12 @@ class distance_node_t {
   double distance_backward = 0.0;
   // Upper-bound propagation: clamped cumulative-from-start (forward) and latest-allowable
   // cumulative-from-start (backward).
-  // [window_start, window_end] = [0, 1e18] means unconstrained (non-break node).
+  // [window_start, window_end] = [0, DISTANCE_WINDOW_INFINITY] means unconstrained
+  // (non-break node).
   double distance_window_forward  = 0.0;
-  double distance_window_backward = 1e18;
+  double distance_window_backward = DISTANCE_WINDOW_INFINITY;
   double window_start             = 0.0;
-  double window_end               = 1e18;
+  double window_end               = DISTANCE_WINDOW_INFINITY;
   double excess_forward           = 0.0;
   double excess_backward          = 0.0;
   // Lower-bound propagation: maximum raw-distance shortfall in the prefix and the earliest
@@ -128,7 +131,7 @@ class distance_node_t {
     double total_distance       = distance_forward + distance_backward;
     obj_cost[objective_t::COST] = total_distance;
 
-    if (dim_info.has_distance_break_cost) {
+    if (dim_info.has_distance_window && dim_info.has_distance_break_cost) {
       obj_cost[objective_t::DISTANCE_BREAK_COST] =
         max(distance_break_cost_forward, distance_window_backward_min - distance_forward);
     }

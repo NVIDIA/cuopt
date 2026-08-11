@@ -485,7 +485,11 @@ class DataModel(_DeferredDataModel):
             vehicle_ids = [int(vehicle_ids)]
 
         if n_cycles is not None:
-            if not isinstance(n_cycles, (int, np.integer)) or n_cycles <= 0:
+            if (
+                isinstance(n_cycles, bool)
+                or not isinstance(n_cycles, (int, np.integer))
+                or n_cycles <= 0
+            ):
                 raise ValueError("n_cycles must be a positive integer")
         else:
             n_cycles = 1

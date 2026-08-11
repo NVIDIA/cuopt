@@ -192,7 +192,7 @@ def test_invalid_n_cycles_non_positive(model, n_cycles):
         )
 
 
-@pytest.mark.parametrize("n_cycles", [1.5, "3"])
+@pytest.mark.parametrize("n_cycles", [1.5, "3", True])
 def test_invalid_n_cycles_wrong_type(model, n_cycles):
     """Non-integer n_cycles raises ValueError."""
     with pytest.raises(ValueError, match="n_cycles"):

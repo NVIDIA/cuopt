@@ -204,7 +204,7 @@ class distance_route_t {
                          infeasible_cost_t& inf_cost) const noexcept
     {
       obj_cost[objective_t::COST] = distance_forward[n_nodes_route];
-      if (dim_info.has_distance_break_cost) {
+      if (dim_info.has_distance_window && dim_info.has_distance_break_cost) {
         obj_cost[objective_t::DISTANCE_BREAK_COST] = distance_break_cost_forward[n_nodes_route];
       }
 
@@ -295,7 +295,8 @@ class distance_route_t {
                                     [[maybe_unused]] cost_dimension_info_t dim_info,
                                     [[maybe_unused]] bool is_tsp = false)
   {
-    return (2 + 6 * dim_info.has_distance_window + 2 * dim_info.has_distance_break_cost) *
+    return (2 + 6 * dim_info.has_distance_window +
+            2 * (dim_info.has_distance_window && dim_info.has_distance_break_cost)) *
            route_size * sizeof(double);
   }
 
