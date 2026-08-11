@@ -25,6 +25,8 @@ enum class heuristics_origin_t {
 // [3] E. Danna, E. Rothberg, and C. L. Pape, “Exploring relaxation induced neighborhoods to
 // improve MIP solutions,” Math. Program., vol. 102, no. 1, pp. 71–90, Jan. 2005,
 // doi: 10.1007/s10107-004-0518-7.
+// [4] T. Berthold, “RENS: The optimal rounding,” Math. Prog. Comp., vol. 6, no. 1,
+// pp. 33–54, Mar. 2014, doi: 10.1007/s12532-013-0060-9.
 enum class search_strategy_t : int {
   BEST_FIRST           = 0,  // Best-First + Plunging.
   PSEUDOCOST_DIVING    = 1,  // Pseudocost diving [1, Section 9.2.5]
@@ -34,6 +36,7 @@ enum class search_strategy_t : int {
   FARKAS_DIVING        = 5,  // Farkas Diving (see [2])
   VECTOR_LENGTH_DIVING = 6,  // Vector Length Diving [1, Section 9.2.6]
   RINS                 = 7,  // RINS (see [3])
+  RENS                 = 8   // RENS (see [1, Section 9.1.1], [4])
 };
 
 enum class branch_direction_t { NONE = -1, DOWN = 0, UP = 1 };
@@ -49,6 +52,7 @@ inline const char* search_strategy_to_string(search_strategy_t search_strategy)
     case search_strategy_t::FARKAS_DIVING: return "FARKAS_DIVING";
     case search_strategy_t::VECTOR_LENGTH_DIVING: return "VECTOR_LENGTH_DIVING";
     case search_strategy_t::RINS: return "RINS";
+    case search_strategy_t::RENS: return "RENS";
   }
 
   return "UNKNOWN";

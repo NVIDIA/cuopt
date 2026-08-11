@@ -275,8 +275,8 @@ class branch_and_bound_t {
   diving_worker_pool_t<i_t, f_t> diving_worker_pool_;
 
   // Worker pool dedicated to recursive RINS
-  diving_worker_pool_t<i_t, f_t> rins_worker_pool_;
-  submip_stats_t rins_stats_;
+  diving_worker_pool_t<i_t, f_t> submip_worker_pool_;
+  submip_stats_t submip_stats_;
 
   // Global status of the solver.
   omp_atomic_t<mip_status_t> solver_status_;
@@ -369,7 +369,7 @@ class branch_and_bound_t {
   void dive_with(diving_worker_t<i_t, f_t>* worker, i_t backtrack_limit);
 
   // Launch a new RINS worker
-  bool launch_rins_worker(const std::vector<f_t>& sol);
+  bool launch_submip_worker(const std::vector<f_t>& sol);
   void set_solution_from_submip(const simplex::lp_problem_t<i_t, f_t>& lp,
                                 const std::vector<f_t>& solution,
                                 const third_party_presolve_t<i_t, f_t>& presolver,
@@ -386,8 +386,8 @@ class branch_and_bound_t {
                     bool is_root_heuristic = false);
 
   // Creates and solves the RINS sub-MIP
-  void rins(diving_worker_t<i_t, f_t>* worker,
-            const std::vector<f_t>& current_incumbent,
+  void recursive_submip(diving_worker_t<i_t, f_t>* worker,
+                        const std::vector<f_t>& current_incumbent,
             const std::vector<simplex::variable_type_t>& var_types,
             bool is_root_heuristic = false);
 

@@ -58,7 +58,8 @@ struct cut_pass_heuristics_t {
     const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
     f_t root_obj,
     const std::vector<simplex::variable_status_t>& root_vstatus,
-    const std::vector<f_t>& sol)
+                            const std::vector<f_t>& sol,
+                            search_strategy_t type)
   {
     submip_worker_ = std::make_unique<diving_worker_t<i_t, f_t>>(
       id, lp, Arow_, var_types_, settings, root_solution_, root_edge_norm_);
@@ -67,7 +68,7 @@ struct cut_pass_heuristics_t {
     submip_worker_->leaf_solution.x  = sol;
     submip_worker_->recompute_bounds = false;
     submip_worker_->recompute_basis  = true;
-    submip_worker_->search_strategy  = search_strategy_t::RINS;
+    submip_worker_->search_strategy  = type;
     submip_worker_->set_active();
 
     return submip_worker_.get();
