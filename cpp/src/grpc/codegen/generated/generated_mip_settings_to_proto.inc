@@ -43,8 +43,6 @@
   pb_settings->set_semi_continuous_big_m(settings.semi_continuous_big_m);
   pb_settings->set_population_size(settings.heuristic_params.population_size);
   pb_settings->set_num_cpufj_threads(settings.heuristic_params.num_cpufj_threads);
-  pb_settings->set_presolve_time_ratio(settings.heuristic_params.presolve_time_ratio);
-  pb_settings->set_presolve_max_time(settings.heuristic_params.presolve_max_time);
   pb_settings->set_root_lp_time_ratio(settings.heuristic_params.root_lp_time_ratio);
   pb_settings->set_root_lp_max_time(settings.heuristic_params.root_lp_max_time);
   pb_settings->set_rins_time_limit(settings.heuristic_params.rins_time_limit);
@@ -58,3 +56,5 @@
   pb_settings->set_cycle_detection_length(settings.heuristic_params.cycle_detection_length);
   pb_settings->set_relaxed_lp_time_limit(settings.heuristic_params.relaxed_lp_time_limit);
   pb_settings->set_related_vars_time_limit(settings.heuristic_params.related_vars_time_limit);
+  pb_settings->set_presolve_max_rounds(settings.heuristic_params.presolve_max_rounds);
+  pb_settings->set_papilo_probing_max_badgesize(settings.heuristic_params.papilo_probing_max_badgesize);

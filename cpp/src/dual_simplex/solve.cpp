@@ -351,10 +351,11 @@ template <typename i_t, typename f_t>
 lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& user_problem,
                                               const simplex_solver_settings_t<i_t, f_t>& settings,
                                               f_t start_time,
-                                              lp_solution_t<i_t, f_t>& solution)
+                                              lp_solution_t<i_t, f_t>& solution,
+                                              const raft::handle_t* handle_ptr)
 {
   lp_status_t status = lp_status_t::UNSET;
-  lp_problem_t<i_t, f_t> original_lp(user_problem.handle_ptr, 1, 1, 1);
+  lp_problem_t<i_t, f_t> original_lp(handle_ptr, 1, 1, 1);
 
   // Convert the user problem to a linear program with only equality constraints
   std::vector<i_t> new_slacks;
@@ -369,14 +370,14 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
 
   // Presolve the linear program
   presolve_info_t<i_t, f_t> presolve_info;
-  lp_problem_t<i_t, f_t> presolved_lp(user_problem.handle_ptr, 1, 1, 1);
+  lp_problem_t<i_t, f_t> presolved_lp(handle_ptr, 1, 1, 1);
   const i_t ok = presolve(original_lp, barrier_settings, presolved_lp, presolve_info);
   if (ok == CONCURRENT_HALT_RETURN) { return lp_status_t::CONCURRENT_LIMIT; }
   if (ok == TIME_LIMIT_RETURN) { return lp_status_t::TIME_LIMIT; }
   if (ok == -1) { return lp_status_t::INFEASIBLE; }
 
   // Apply columns scaling to the presolve LP
-  lp_problem_t<i_t, f_t> barrier_lp(user_problem.handle_ptr,
+  lp_problem_t<i_t, f_t> barrier_lp(handle_ptr,
                                     presolved_lp.num_rows,
                                     presolved_lp.num_cols,
                                     presolved_lp.A.col_start[presolved_lp.num_cols]);
@@ -681,6 +682,16 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
 template <typename i_t, typename f_t>
 lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& user_problem,
                                               const simplex_solver_settings_t<i_t, f_t>& settings,
+                                              f_t start_time,
+                                              lp_solution_t<i_t, f_t>& solution)
+{
+  return solve_linear_program_with_barrier(
+    user_problem, settings, start_time, solution, user_problem.handle_ptr);
+}
+
+template <typename i_t, typename f_t>
+lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& user_problem,
+                                              const simplex_solver_settings_t<i_t, f_t>& settings,
                                               lp_solution_t<i_t, f_t>& solution)
 {
   f_t start_time = tic();
@@ -833,6 +844,13 @@ template lp_status_t solve_linear_program_with_barrier(
   const simplex_solver_settings_t<int, double>& settings,
   double start_time,
   lp_solution_t<int, double>& solution);
+
+template lp_status_t solve_linear_program_with_barrier(
+  const user_problem_t<int, double>& user_problem,
+  const simplex_solver_settings_t<int, double>& settings,
+  double start_time,
+  lp_solution_t<int, double>& solution,
+  const raft::handle_t* handle_ptr);
 
 template lp_status_t solve_linear_program(const user_problem_t<int, double>& user_problem,
                                           const simplex_solver_settings_t<int, double>& settings,

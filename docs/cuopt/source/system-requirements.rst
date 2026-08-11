@@ -95,7 +95,7 @@ Container
 * `nvidia-container-toolkit <https://docs.nvidia.com/ai-enterprise/deployment/vmware/latest/docker.html>`_ needs to be installed
 
 
-Thin-client for Self-Hosted
+Thin-Client for Self-Hosted
 ----------------------------
 
 * OS: Linux

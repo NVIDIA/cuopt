@@ -33,13 +33,15 @@ from cuopt.linear_programming.solver_settings.solver_settings cimport (
 
 from enum import IntEnum
 import math
+import threading
+import time
+import warnings
+
 from libc.stdint cimport int64_t
 from libc.stddef cimport size_t
 from libcpp.memory cimport unique_ptr
 from libcpp.string cimport string
 from libcpp.utility cimport move
-import threading
-import time
 
 import numpy as np
 
@@ -236,6 +238,14 @@ cdef class Client:
         return Client(self._host, self._port, tls=self._tls)
 
     def submit(self, problem, SolverSettings settings not None):
+        """
+        Submit a problem for solving and return its ``job_id``.
+
+        ``problem`` is a :class:`~cuopt.linear_programming.problem.Problem` or
+        :class:`~cuopt.linear_programming.data_model.DataModel`. The job runs
+        asynchronously; use :meth:`wait` or :meth:`status` to track it and
+        :meth:`result` to fetch the solution. Always :meth:`delete` when done.
+        """
         cdef DataModel data_model
         cdef grpc_submit_result_t submit_result
         cdef bint mip
@@ -260,6 +270,9 @@ cdef class Client:
         return submit_result.job_id.decode("utf-8")
 
     def status(self, str job_id):
+        """
+        Return the current :class:`JobStatus` for ``job_id`` without blocking.
+        """
         cdef grpc_status_result_t status_result = self._client.get().status(
             job_id.encode("utf-8")
         )
@@ -268,6 +281,16 @@ cdef class Client:
         return JobStatus(<int>status_result.status)
 
     def wait(self, str job_id, timeout=None):
+        """
+        Block until ``job_id`` reaches a terminal state and return its
+        :class:`JobStatus`.
+
+        ``timeout`` is in whole seconds. ``None`` waits indefinitely.
+        Non-``None`` values are converted with ``int(timeout)`` (so ``0.5``
+        becomes ``0`` and waits indefinitely). Positive timeouts poll about
+        once per second and raise :class:`GrpcError` if the deadline expires
+        (they do not return a non-terminal :class:`JobStatus`).
+        """
         cdef int timeout_seconds = 0 if timeout is None else int(timeout)
         cdef grpc_status_result_t wait_result = self._client.get().wait(
             job_id.encode("utf-8"), timeout_seconds
@@ -277,11 +300,21 @@ cdef class Client:
         return JobStatus(<int>wait_result.status)
 
     def cancel(self, str job_id):
+        """
+        Request cancellation of a running job. The job moves to
+        :attr:`JobStatus.CANCELLED`; call :meth:`delete` to release its state.
+        """
         cdef string error_out
         if not self._client.get().cancel(job_id.encode("utf-8"), error_out):
             raise GrpcError(error_out.decode("utf-8"))
 
     def delete(self, str job_id):
+        """
+        Cancel ``job_id`` if it is still running, then delete it on the server
+        and release its state. Joins any client-side incumbent-stream thread
+        for this job first. Call once you no longer need the job's result or
+        logs.
+        """
         if job_id in self._incumbent_threads:
             self.join_incumbent_stream(job_id)
         cdef string error_out
@@ -294,7 +327,8 @@ cdef class Client:
 
         LP vs MIP is determined from the server response (via
         ``grpc_client_t::get_result``). Pass ``variable_names`` (column order)
-        to key ``solution.get_vars()`` by name.
+        to key ``solution.get_vars()`` by name. Raises :class:`GrpcError` if the job
+        failed or was cancelled.
         """
         cdef grpc_result_outcome_t outcome
         cdef unique_ptr[solver_ret_t] sol_ret
@@ -373,10 +407,19 @@ cdef class Client:
         return thread
 
     def join_log_stream(self, str job_id, timeout=None):
-        """Wait for a background log stream started by :meth:`start_log_stream`.
+        """Wait for the background log-stream thread started by :meth:`start_log_stream`.
 
-        Returns a dict with stream stats (``live_lines``, ``lines``, ``backfilled``)
-        when a stream was started for ``job_id``, else ``None``.
+        Returns a dict when a thread was started for ``job_id``, else ``None``.
+        Useful keys:
+
+        * ``lines`` — list of log line strings collected so far
+        * ``live_lines`` — count of lines received from the live stream thread
+        * ``backfilled`` — ``True`` if the live stream received no lines and
+          this method then called :meth:`logs` as a client-side fallback to
+          fill ``lines`` (and re-invoke the callback). That fetch is not
+          destructive; the server keeps the log until :meth:`delete`.
+
+        Other keys in the dict are internal; do not rely on them.
         """
         thread = self._log_threads.get(job_id)
         if thread is not None:
@@ -476,8 +519,9 @@ cdef class Client:
         Poll for MIP incumbent solutions on a background thread until the job
         completes.
 
-        Pass ``settings`` with :meth:`SolverSettings.set_mip_callback`
-        registered :class:`GetSolutionCallback` instances (same as local solve).
+        Pass ``settings`` with ``GetSolutionCallback`` instances registered via
+        :meth:`~cuopt.linear_programming.solver_settings.SolverSettings.set_mip_callback`
+        (same as local solve).
 
         Call :meth:`join_incumbent_stream` before :meth:`delete`.
         """
@@ -508,10 +552,16 @@ cdef class Client:
         return thread
 
     def join_incumbent_stream(self, str job_id, timeout=None):
-        """Wait for a background incumbent poll started by :meth:`start_incumbent_stream`."""
-        thread = self._incumbent_threads.pop(job_id, None)
+        """Wait for the background incumbent-stream thread started by :meth:`start_incumbent_stream`."""
+        thread = self._incumbent_threads.get(job_id)
         if thread is not None:
             thread.join(timeout)
+            if thread.is_alive():
+                exc = self._incumbent_thread_errors.get(job_id)
+                if exc is not None:
+                    raise exc
+                return
+            self._incumbent_threads.pop(job_id, None)
         exc = self._incumbent_thread_errors.pop(job_id, None)
         if exc is not None:
             raise exc

@@ -360,7 +360,7 @@ else
         mapfile -t mps_files < <(find "$MPS_DIR" -type f \( -name "*.mps" -o -name "*.MPS" -o -name "*.SIF" \) | sort)
     else
         # Gather .mps/.MPS and .SIF files in the directory
-        mapfile -t mps_files < <(ls "$MPS_DIR"/*.mps "$MPS_DIR"/*.MPS "$MPS_DIR"/*.SIF 2>/dev/null)
+        mapfile -t mps_files < <(ls "$MPS_DIR"/*.mps "$MPS_DIR"/*.MPS "$MPS_DIR"/*.SIF "$MPS_DIR"/*.mps.gz 2>/dev/null)
     fi
 
     echo "Found ${#mps_files[@]} .mps and .SIF files in $MPS_DIR"

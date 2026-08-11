@@ -33,5 +33,5 @@ Please note that you need to choose a `Runtime` as `GPU` in order to run the not
 `Blogs <https://developer.nvidia.com/blog/recent-posts/?products=cuOpt>`_
 ----------------------------------------------------------------------------
 
-Contact us - cuopt@nvidia.com
+Contact Us - cuopt@nvidia.com
 -----------------------------

@@ -172,7 +172,11 @@ html_theme_options = {
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ["_static"]
-html_css_files = ["swagger-nvidia.css", "install-selector.css"]
+html_css_files = [
+    "swagger-nvidia.css",
+    "install-selector.css",
+    "large-rubric.css",
+]
 html_js_files = ["cuopt-install-version.js", "install-selector.js"]
 html_extra_path = ["versions1.json"]
 

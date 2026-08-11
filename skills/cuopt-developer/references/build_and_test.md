@@ -32,11 +32,17 @@ cat "$CG/cpu.max"      # "<quota> <period>"; effective cores = quota / period
 ./build.sh
 ```
 
+By default, `build.sh` builds without installing `libcuopt` into the conda environment. This prevents stale installed libraries from shadowing freshly compiled code. Pass `--install` to explicitly install into the active conda environment:
+
+```bash
+./build.sh --install      # build and install libcuopt into conda env
+```
+
 ## Build Specific Components
 
 ```bash
 ./build.sh --help                                       # Lists build options
-./build.sh libcuopt                                     # C++ library
+./build.sh libcuopt                                     # C++ library (no conda install)
 ./build.sh libcuopt --skip-routing-build --skip-tests-build --skip-c-python-adapters --cache-tool=ccache  # native LP/MIP-focused build without routing/tests/adapters
 ./build.sh cuopt                                        # Python package
 ./build.sh cuopt_server                                 # Server
