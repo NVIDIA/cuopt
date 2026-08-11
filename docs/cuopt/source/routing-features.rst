@@ -64,17 +64,20 @@ Distance-Based Breaks
 ---------------------
 
 ``add_distance_break`` configures mandatory break stops triggered by
-cumulative route distance. Each call adds ``n_cycles`` consecutive distance
-windows; the solver must insert one break stop in each window
-``[k * max_range + min_range, (k + 1) * max_range]`` for
-``k = 0, ..., n_cycles - 1``. Each window therefore has width
-``max_range - min_range`` (equal to ``max_range`` when ``min_range = 0``).
+cumulative route distance. Each call adds ``n_cycles`` consecutive cycles;
+the solver must insert one break stop per cycle no later than the hard limit
+``(k + 1) * max_range`` for ``k = 0, ..., n_cycles - 1``. The value
+``k * max_range + min_range`` is the soft target for each cycle.
 
-Both window endpoints are hard feasibility constraints: a feasible solution
-places every break inside its window. Unlike time-based breaks the distance
-dimension has no "wait" analogue, so a break that lands before ``min_range``
-or after ``max_range`` is infeasible — the solver cannot stall the vehicle to
-shift the cumulative distance.
+The upper endpoint is a hard feasibility constraint. Keeping the lower endpoint
+soft lets local search consider early break placements while improving the
+incumbent and exploring diverse routes. ``DISTANCE_BREAK_COST`` guides the
+search toward the soft target. A break after its cycle's
+``(k + 1) * max_range`` upper limit makes the route infeasible. The objective
+value is the sum of the maximum lower-bound shortfall on each route. Add
+``Objective.DISTANCE_BREAK_COST`` with a positive objective weight to penalize
+early breaks more strongly. Its default weight is ``1.0``; explicitly set it
+to ``0.0`` to disable the early-break penalty.
 
 Pass ``locations`` to restrict the eligible break locations; if omitted, any
 location is eligible.

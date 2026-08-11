@@ -247,7 +247,14 @@ void problem_t<i_t, f_t>::populate_dimensions_info()
   if (auto vehicle_max_costs = data_view_ptr->get_vehicle_max_costs(); !vehicle_max_costs.empty()) {
     cost_dim_info.has_max_constraint = true;
   }
-  if (special_nodes.has_distance_break) { cost_dim_info.has_distance_window = true; }
+  if (special_nodes.has_distance_break) {
+    cost_dim_info.has_distance_window = true;
+    if (!specified_weights.count(objective_t::DISTANCE_BREAK_COST)) {
+      dimensions_info.enable_objective(objective_t::DISTANCE_BREAK_COST, 1.0);
+    }
+    cost_dim_info.has_distance_break_cost =
+      dimensions_info.has_objective(objective_t::DISTANCE_BREAK_COST);
+  }
 
   // TIME dimensions info
   // check vehicle max times exists

@@ -18,10 +18,11 @@ namespace routing {
 namespace detail {
 
 // Distance dimension. Tracks the cumulative route distance (for vehicle.max_cost) and, when
-// distance-based charging breaks are configured, per-node distance windows. The window fields
-// mirror time_node_t: arriving before window_start is free (the analogue of waiting), arriving
-// after window_end accumulates excess. distance_forward / distance_backward keep raw-sum
-// semantics for CVRP/TSP and fragment kernels that read them directly.
+// distance-based charging breaks are configured, per-node distance windows. The upper-bound
+// state and lower-bound state propagate independently: arriving after window_end is hard
+// infeasibility, while arriving before window_start contributes to a separately weighted
+// objective. distance_forward / distance_backward keep raw-sum semantics for CVRP/TSP and
+// fragment kernels that read them directly.
 template <typename i_t, typename f_t>
 class distance_node_t {
  public:
@@ -29,7 +30,8 @@ class distance_node_t {
   double distance_forward = 0.0;
   //! Distance gathered after node
   double distance_backward = 0.0;
-  // Window-clamped cumulative-from-start (forward) and latest-allowable-from-start (backward).
+  // Upper-bound propagation: clamped cumulative-from-start (forward) and latest-allowable
+  // cumulative-from-start (backward).
   // [window_start, window_end] = [0, 1e18] means unconstrained (non-break node).
   double distance_window_forward  = 0.0;
   double distance_window_backward = 1e18;
@@ -37,6 +39,10 @@ class distance_node_t {
   double window_end               = 1e18;
   double excess_forward           = 0.0;
   double excess_backward          = 0.0;
+  // Lower-bound propagation: maximum raw-distance shortfall in the prefix and the earliest
+  // cumulative distance required by the suffix.
+  double distance_window_backward_min = 0.0;
+  double distance_break_cost_forward  = 0.0;
 
   /*! \brief { Calculate next node forward gathered distance data based on actual node} */
   void HDI calculate_forward(distance_node_t& next, double distance_between) const noexcept
@@ -45,12 +51,13 @@ class distance_node_t {
 
     next.distance_window_forward = distance_window_forward + distance_between;
     next.excess_forward          = excess_forward;
-    if (next.distance_window_forward < next.window_start) {
-      next.distance_window_forward = next.window_start;
-    } else if (next.distance_window_forward > next.window_end) {
+    if (next.distance_window_forward > next.window_end) {
       next.excess_forward += next.distance_window_forward - next.window_end;
       next.distance_window_forward = next.window_end;
     }
+
+    next.distance_break_cost_forward =
+      max(distance_break_cost_forward, next.window_start - next.distance_forward);
   }
 
   /*! \brief { Calculate prev node gathered distance backward data based on actual node} */
@@ -62,9 +69,14 @@ class distance_node_t {
     prev.excess_backward          = excess_backward;
     if (prev.distance_window_backward > prev.window_end) {
       prev.distance_window_backward = prev.window_end;
-    } else if (prev.distance_window_backward < prev.window_start) {
-      prev.excess_backward += prev.window_start - prev.distance_window_backward;
-      prev.distance_window_backward = prev.window_start;
+    } else if (prev.distance_window_backward < 0.) {
+      prev.excess_backward -= prev.distance_window_backward;
+      prev.distance_window_backward = 0.;
+    }
+
+    prev.distance_window_backward_min = distance_window_backward_min - distance_between;
+    if (prev.distance_window_backward_min < prev.window_start) {
+      prev.distance_window_backward_min = prev.window_start;
     }
   }
 
@@ -115,6 +127,11 @@ class distance_node_t {
   {
     double total_distance       = distance_forward + distance_backward;
     obj_cost[objective_t::COST] = total_distance;
+
+    if (dim_info.has_distance_break_cost) {
+      obj_cost[objective_t::DISTANCE_BREAK_COST] =
+        max(distance_break_cost_forward, distance_window_backward_min - distance_forward);
+    }
 
     inf_cost[dim_t::DIST] = 0.;
     if (dim_info.has_max_constraint) {

@@ -29,6 +29,7 @@ enum class objective_t {
   VARIANCE_ROUTE_SERVICE_TIME,  // Variance in route service times
   PRIZE,                        // Sum of prizes of all orders that are served
   VEHICLE_FIXED_COST,           // Used when fixed vehicle cost are enabled
+  DISTANCE_BREAK_COST,          // Maximum distance-break lower-bound shortfall per route
   SIZE  // Helper enum to keep track of number of supported objective functions
 };
 
@@ -78,7 +79,7 @@ class vehicle_break_t {
   {
   }
 
-  /// Distance-windowed break: must occur within cumulative distance [distance_min, distance_max].
+  /// Distance-windowed break: distance_min is soft and distance_max is hard.
   vehicle_break_t(f_t distance_min,
                   f_t distance_max,
                   i_t duration,

@@ -40,6 +40,13 @@ def main():
         max_range=75.0,
         duration=10,
         locations=cudf.Series([3], dtype=np.int32),
+        min_range=25.0,
+    )
+    data_model.set_objective_function(
+        cudf.Series(
+            [routing.Objective.COST, routing.Objective.DISTANCE_BREAK_COST]
+        ),
+        cudf.Series([1.0, 10.0], dtype=np.float32),
     )
 
     settings = routing.SolverSettings()
@@ -52,7 +59,7 @@ def main():
 
     labels = {0: "depot", 1: "customer 1", 2: "customer 2", 3: "break"}
     route = solution.get_route().to_pandas()
-    print(f"Total route cost: {solution.get_total_objective():.1f} km\n")
+    print(f"Weighted objective: {solution.get_total_objective():.1f}\n")
     for _, stop in route.iterrows():
         print(f"  {stop['type']:<10}  {labels[stop['location']]}")
 

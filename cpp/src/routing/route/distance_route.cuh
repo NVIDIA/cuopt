@@ -33,10 +33,12 @@ class distance_route_t {
       reverse_distance(0, sol_handle_->get_stream()),
       distance_window_forward(0, sol_handle_->get_stream()),
       distance_window_backward(0, sol_handle_->get_stream()),
+      distance_window_backward_min(0, sol_handle_->get_stream()),
       window_start(0, sol_handle_->get_stream()),
       window_end(0, sol_handle_->get_stream()),
       excess_forward(0, sol_handle_->get_stream()),
-      excess_backward(0, sol_handle_->get_stream())
+      excess_backward(0, sol_handle_->get_stream()),
+      distance_break_cost_forward(0, sol_handle_->get_stream())
   {
     raft::common::nvtx::range fun_scope("zero distance_route_t copy_ctr");
   }
@@ -49,10 +51,14 @@ class distance_route_t {
       reverse_distance(distance_route.reverse_distance, sol_handle_->get_stream()),
       distance_window_forward(distance_route.distance_window_forward, sol_handle_->get_stream()),
       distance_window_backward(distance_route.distance_window_backward, sol_handle_->get_stream()),
+      distance_window_backward_min(distance_route.distance_window_backward_min,
+                                   sol_handle_->get_stream()),
       window_start(distance_route.window_start, sol_handle_->get_stream()),
       window_end(distance_route.window_end, sol_handle_->get_stream()),
       excess_forward(distance_route.excess_forward, sol_handle_->get_stream()),
-      excess_backward(distance_route.excess_backward, sol_handle_->get_stream())
+      excess_backward(distance_route.excess_backward, sol_handle_->get_stream()),
+      distance_break_cost_forward(distance_route.distance_break_cost_forward,
+                                  sol_handle_->get_stream())
   {
     raft::common::nvtx::range fun_scope("distance route copy_ctr");
   }
@@ -71,6 +77,10 @@ class distance_route_t {
       window_end.resize(max_nodes_per_route, stream);
       excess_forward.resize(max_nodes_per_route, stream);
       excess_backward.resize(max_nodes_per_route, stream);
+      if (dim_info.has_distance_break_cost) {
+        distance_window_backward_min.resize(max_nodes_per_route, stream);
+        distance_break_cost_forward.resize(max_nodes_per_route, stream);
+      }
     }
   }
 
@@ -89,6 +99,10 @@ class distance_route_t {
         distance_node.window_end               = window_end[idx];
         distance_node.excess_forward           = excess_forward[idx];
         distance_node.excess_backward          = excess_backward[idx];
+        if (dim_info.has_distance_break_cost) {
+          distance_node.distance_window_backward_min = distance_window_backward_min[idx];
+          distance_node.distance_break_cost_forward  = distance_break_cost_forward[idx];
+        }
       }
       return distance_node;
     }
@@ -109,6 +123,9 @@ class distance_route_t {
       if (dim_info.has_distance_window) {
         distance_window_forward[idx] = node.distance_window_forward;
         excess_forward[idx]          = node.excess_forward;
+        if (dim_info.has_distance_break_cost) {
+          distance_break_cost_forward[idx] = node.distance_break_cost_forward;
+        }
       }
     }
 
@@ -118,6 +135,9 @@ class distance_route_t {
       if (dim_info.has_distance_window) {
         distance_window_backward[idx] = node.distance_window_backward;
         excess_backward[idx]          = node.excess_backward;
+        if (dim_info.has_distance_break_cost) {
+          distance_window_backward_min[idx] = node.distance_window_backward_min;
+        }
       }
     }
 
@@ -133,6 +153,11 @@ class distance_route_t {
                    size);
         block_copy(
           excess_forward.subspan(write_start), orig_route.excess_forward.subspan(start_idx), size);
+        if (dim_info.has_distance_break_cost) {
+          block_copy(distance_break_cost_forward.subspan(write_start),
+                     orig_route.distance_break_cost_forward.subspan(start_idx),
+                     size);
+        }
       }
     }
 
@@ -152,6 +177,11 @@ class distance_route_t {
         block_copy(excess_backward.subspan(write_start),
                    orig_route.excess_backward.subspan(start_idx),
                    size);
+        if (dim_info.has_distance_break_cost) {
+          block_copy(distance_window_backward_min.subspan(write_start),
+                     orig_route.distance_window_backward_min.subspan(start_idx),
+                     size);
+        }
       }
     }
 
@@ -174,6 +204,9 @@ class distance_route_t {
                          infeasible_cost_t& inf_cost) const noexcept
     {
       obj_cost[objective_t::COST] = distance_forward[n_nodes_route];
+      if (dim_info.has_distance_break_cost) {
+        obj_cost[objective_t::DISTANCE_BREAK_COST] = distance_break_cost_forward[n_nodes_route];
+      }
 
       inf_cost[dim_t::DIST] = 0.;
       if (dim_info.has_max_constraint) {
@@ -199,6 +232,11 @@ class distance_route_t {
         thrust::tie(v.window_end, sh_ptr)               = wrap_ptr_as_span<double>(sh_ptr, sz);
         thrust::tie(v.excess_forward, sh_ptr)           = wrap_ptr_as_span<double>(sh_ptr, sz);
         thrust::tie(v.excess_backward, sh_ptr)          = wrap_ptr_as_span<double>(sh_ptr, sz);
+        if (dim_info.has_distance_break_cost) {
+          thrust::tie(v.distance_window_backward_min, sh_ptr) =
+            wrap_ptr_as_span<double>(sh_ptr, sz);
+          thrust::tie(v.distance_break_cost_forward, sh_ptr) = wrap_ptr_as_span<double>(sh_ptr, sz);
+        }
       }
 
       return thrust::make_tuple(v, sh_ptr);
@@ -210,10 +248,12 @@ class distance_route_t {
     raft::device_span<double> reverse_distance;
     raft::device_span<double> distance_window_forward;
     raft::device_span<double> distance_window_backward;
+    raft::device_span<double> distance_window_backward_min;
     raft::device_span<double> window_start;
     raft::device_span<double> window_end;
     raft::device_span<double> excess_forward;
     raft::device_span<double> excess_backward;
+    raft::device_span<double> distance_break_cost_forward;
   };
 
   view_t view()
@@ -235,6 +275,12 @@ class distance_route_t {
       v.window_end      = raft::device_span<double>{window_end.data(), window_end.size()};
       v.excess_forward  = raft::device_span<double>{excess_forward.data(), excess_forward.size()};
       v.excess_backward = raft::device_span<double>{excess_backward.data(), excess_backward.size()};
+      if (dim_info.has_distance_break_cost) {
+        v.distance_window_backward_min = raft::device_span<double>{
+          distance_window_backward_min.data(), distance_window_backward_min.size()};
+        v.distance_break_cost_forward = raft::device_span<double>{
+          distance_break_cost_forward.data(), distance_break_cost_forward.size()};
+      }
     }
     return v;
   }
@@ -249,7 +295,8 @@ class distance_route_t {
                                     [[maybe_unused]] cost_dimension_info_t dim_info,
                                     [[maybe_unused]] bool is_tsp = false)
   {
-    return (2 + 6 * dim_info.has_distance_window) * route_size * sizeof(double);
+    return (2 + 6 * dim_info.has_distance_window + 2 * dim_info.has_distance_break_cost) *
+           route_size * sizeof(double);
   }
 
   cost_dimension_info_t dim_info;
@@ -261,10 +308,13 @@ class distance_route_t {
   // Allocated only when has_distance_window.
   rmm::device_uvector<double> distance_window_forward;
   rmm::device_uvector<double> distance_window_backward;
+  // Allocated only when has_distance_break_cost.
+  rmm::device_uvector<double> distance_window_backward_min;
   rmm::device_uvector<double> window_start;
   rmm::device_uvector<double> window_end;
   rmm::device_uvector<double> excess_forward;
   rmm::device_uvector<double> excess_backward;
+  rmm::device_uvector<double> distance_break_cost_forward;
 };
 
 }  // namespace detail

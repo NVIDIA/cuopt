@@ -121,6 +121,52 @@ def test_export_breaks():
     assert not _has_device_ref(p)
 
 
+def test_export_distance_breaks():
+    d = routing.DataModel(5, 2)
+    d.add_distance_break(
+        0,
+        max_range=10.0,
+        duration=3,
+        locations=np.array([1, 2], np.int32),
+        min_range=2.0,
+        n_cycles=2,
+    )
+    d.add_distance_break(
+        1,
+        max_range=20.0,
+        duration=4,
+        locations=cudf.Series([3]).astype("int32"),
+    )
+
+    p = to_host_problem(d)
+
+    veh0, veh1 = p["vehicle_distance_breaks"]
+    assert veh0["vehicle_id"] == 0 and len(veh0["breaks"]) == 2
+    b0, b1 = veh0["breaks"]
+    assert (b0["distance_min"], b0["distance_max"], b0["duration"]) == (
+        2.0,
+        10.0,
+        3,
+    )
+    assert (b1["distance_min"], b1["distance_max"], b1["duration"]) == (
+        12.0,
+        20.0,
+        3,
+    )
+    np.testing.assert_array_equal(b0["locations"], np.array([1, 2], np.int32))
+    np.testing.assert_array_equal(b1["locations"], np.array([1, 2], np.int32))
+
+    assert veh1["vehicle_id"] == 1 and len(veh1["breaks"]) == 1
+    b2 = veh1["breaks"][0]
+    assert (b2["distance_min"], b2["distance_max"], b2["duration"]) == (
+        0.0,
+        20.0,
+        4,
+    )
+    np.testing.assert_array_equal(b2["locations"], np.array([3], np.int32))
+    assert not _has_device_ref(p)
+
+
 def test_multi_arg_set_without_handler_raises():
     """A set_* call that is not a single-array setter (and has no handler) must
     raise rather than silently drop its extra arguments.

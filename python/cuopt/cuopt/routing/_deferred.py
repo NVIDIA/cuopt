@@ -46,6 +46,7 @@ _SETTERS = (
     "add_break_dimension",
     "add_capacity_dimension",
     "add_cost_matrix",
+    "add_distance_break",
     "add_initial_solutions",
     "add_order_precedence",
     "add_order_vehicle_match",

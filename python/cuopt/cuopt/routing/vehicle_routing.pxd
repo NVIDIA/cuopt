@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 
@@ -25,6 +25,7 @@ cdef extern from "cuopt/routing/solve.hpp" namespace "cuopt::routing":
         VARIANCE_ROUTE_SERVICE_TIME "cuopt::routing::objective_t::VARIANCE_ROUTE_SERVICE_TIME" # noqa
         PRIZE "cuopt::routing::objective_t::PRIZE"
         VEHICLE_FIXED_COST "cuopt::routing::objective_t::VEHICLE_FIXED_COST"
+        DISTANCE_BREAK_COST "cuopt::routing::objective_t::DISTANCE_BREAK_COST"
 
     ctypedef enum node_type_t "cuopt::routing::node_type_t":
         DEPOT "cuopt::routing::node_type_t::DEPOT"

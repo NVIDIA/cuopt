@@ -146,6 +146,33 @@ def _vehicle_break(p, args):
     entry["breaks"].append(brk)
 
 
+def _distance_break(p, args):
+    vehicle_id = int(args[0])
+    locations = args[4] if len(args) > 4 else None
+    brk = {
+        "distance_min": float(args[1]),
+        "distance_max": float(args[2]),
+        "duration": int(args[3]),
+        "locations": (
+            _to_host(locations)
+            if locations is not None
+            else np.empty(0, np.int32)
+        ),
+    }
+    entry = next(
+        (
+            e
+            for e in p["vehicle_distance_breaks"]
+            if e["vehicle_id"] == vehicle_id
+        ),
+        None,
+    )
+    if entry is None:
+        entry = {"vehicle_id": vehicle_id, "breaks": []}
+        p["vehicle_distance_breaks"].append(entry)
+    entry["breaks"].append(brk)
+
+
 _HANDLERS = {
     "add_cost_matrix": _matrix("cost_matrices"),
     "add_transit_time_matrix": _matrix("transit_time_matrices"),
@@ -164,6 +191,7 @@ _HANDLERS = {
     "add_order_precedence": _precedence,
     "add_break_dimension": _uniform_break,
     "add_vehicle_break": _vehicle_break,
+    "add_distance_break": _distance_break,
     "set_objective_function": _objective,
     "add_initial_solutions": _initial_solutions,
     "set_min_vehicles": _scalar("min_vehicles"),
@@ -181,6 +209,7 @@ _LIST_FIELDS = (
     "order_precedence",
     "uniform_breaks",
     "vehicle_breaks",
+    "vehicle_distance_breaks",
 )
 
 

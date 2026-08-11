@@ -431,15 +431,18 @@ class DataModel(_DeferredDataModel):
         Add distance-based breaks for a set of vehicles.
 
         Each call adds ``n_cycles`` consecutive cycles. One mandatory break is
-        inserted per cycle within the cumulative-distance window
-        ``[k * max_range + min_range, (k + 1) * max_range]`` for
-        ``k = 0, ..., n_cycles - 1`` (window width ``max_range - min_range``).
+        inserted per cycle no later than the hard cumulative-distance limit
+        ``(k + 1) * max_range`` for ``k = 0, ..., n_cycles - 1``. The value
+        ``k * max_range + min_range`` is the soft target for that cycle.
 
-        Both window endpoints are hard feasibility constraints. Unlike
-        time-based breaks the distance dimension has no "wait" analogue, so a
-        break that lands before ``min_range`` or after ``max_range`` is
-        infeasible — the solver cannot stall the vehicle to shift the
-        cumulative distance.
+        The upper endpoint is a hard feasibility constraint. Keeping the lower
+        endpoint soft lets local search consider early break placements while
+        improving the incumbent and exploring diverse routes. Arriving before
+        ``min_range`` contributes to ``Objective.DISTANCE_BREAK_COST``, which
+        guides the search toward the target. Its value is the maximum shortfall
+        on each route, summed across routes. Its default weight is ``1.0``;
+        use :meth:`set_objective_function` to tune it or explicitly set it to
+        ``0.0`` to disable the early-break penalty.
 
         ``max_range`` and ``min_range`` are expressed in the same units as the
         primary cost matrix. The method mutates the data model in place.
@@ -456,8 +459,9 @@ class DataModel(_DeferredDataModel):
         locations : cudf.Series dtype int32, optional
             Location IDs eligible for the break. Defaults to all locations.
         min_range : float, optional
-            Minimum cumulative distance into each cycle before a break may
-            occur. Must be non-negative and strictly less than ``max_range``.
+            Soft lower bound on cumulative distance in each cycle. The maximum
+            shortfall per route contributes to ``Objective.DISTANCE_BREAK_COST``.
+            Must be non-negative and strictly less than ``max_range``.
             Defaults to ``0.0``.
         n_cycles : int, optional
             Number of cycles per route. Must be a positive integer.
@@ -513,8 +517,11 @@ class DataModel(_DeferredDataModel):
         """
         The objective function can be defined as a linear combination of
         the different objectives. Solver optimizes for vehicle
-        count first and then the total objective. The default value of
-        1 is used for COST objective weight and 0 for other objective weights
+        count first and then the total objective. ``COST`` defaults to weight
+        ``1.0``. ``PRIZE``, ``VEHICLE_FIXED_COST``, and
+        ``DISTANCE_BREAK_COST`` also default to ``1.0`` when their associated
+        model data is configured; explicitly pass ``0.0`` to disable them.
+        Other objective weights default to ``0.0``.
 
         Parameters
         ----------

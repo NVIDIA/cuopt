@@ -62,7 +62,7 @@ test_route make_route(std::vector<float> arcs,
 
 }  // namespace
 
-// Forward sweep clamps cumulative distance at break windows and accumulates excess.
+// Forward sweep clamps cumulative distance at hard upper bounds and accumulates excess.
 TEST(distance_node, forward_propagation)
 {
   auto r = make_route({80.f, 600.f, 400.f}, {{0., 1e18}, {0., 60.}, {0., 1e18}, {0., 1e18}});
@@ -84,7 +84,73 @@ TEST(distance_node, forward_propagation)
   EXPECT_DOUBLE_EQ(r.nodes[3].excess_forward, 20.);
 }
 
-// Backward sweep clamps distance_window_backward at break windows and accumulates excess.
+// Multiple early breaks contribute the route's maximum shortfall, not a sum of hinges.
+TEST(distance_node, early_arrival_cost_is_maximum_per_route)
+{
+  auto r = make_route({10.f, 10.f, 0.f},
+                      {{0., 1e18}, {50., 100.}, {80., 100.}, {0., 1e18}},
+                      /*max_cost=*/1000.f);
+  r.run_passes();
+
+  EXPECT_DOUBLE_EQ(r.nodes[1].distance_break_cost_forward, 40.);
+  EXPECT_DOUBLE_EQ(r.nodes[2].distance_break_cost_forward, 60.);
+  EXPECT_DOUBLE_EQ(r.nodes[3].distance_break_cost_forward, 60.);
+
+  detail::cost_dimension_info_t dim_info;
+  dim_info.has_distance_window     = true;
+  dim_info.has_distance_break_cost = true;
+
+  for (size_t k = 0; k + 1 < r.nodes.size(); ++k) {
+    auto next_copy = r.nodes[k + 1];
+    r.nodes[k].calculate_forward(next_copy, r.arcs[k]);
+
+    detail::objective_cost_t obj_cost;
+    detail::infeasible_cost_t inf_cost;
+    next_copy.get_cost(r.nodes[k], r.vehicle_info, dim_info, obj_cost, inf_cost);
+
+    EXPECT_DOUBLE_EQ(obj_cost[objective_t::DISTANCE_BREAK_COST], 60.)
+      << "split (" << k << ", " << (k + 1) << ")";
+    EXPECT_DOUBLE_EQ(inf_cost[detail::dim_t::DIST], 0.);
+  }
+}
+
+// A soft lower-bound correction must not shift the independently propagated hard upper state.
+TEST(distance_node, early_arrival_does_not_create_later_upper_excess)
+{
+  auto r = make_route({0.f, 40.f, 0.f},
+                      {{0., 1e18}, {100., 200.}, {0., 30.}, {0., 1e18}},
+                      /*max_cost=*/1000.f);
+  r.run_passes();
+
+  EXPECT_DOUBLE_EQ(r.nodes[1].distance_forward, 0.);
+  EXPECT_DOUBLE_EQ(r.nodes[2].distance_forward, 40.);
+  EXPECT_DOUBLE_EQ(r.nodes[2].distance_window_forward, 30.);
+  EXPECT_DOUBLE_EQ(r.nodes[2].distance_break_cost_forward, 100.);
+  EXPECT_DOUBLE_EQ(r.nodes[2].excess_forward, 10.);
+
+  detail::cost_dimension_info_t dim_info;
+  dim_info.has_distance_window     = true;
+  dim_info.has_distance_break_cost = true;
+
+  for (size_t k = 0; k + 1 < r.nodes.size(); ++k) {
+    auto next_copy = r.nodes[k + 1];
+    r.nodes[k].calculate_forward(next_copy, r.arcs[k]);
+
+    detail::objective_cost_t obj_cost;
+    detail::infeasible_cost_t inf_cost;
+    next_copy.get_cost(r.nodes[k], r.vehicle_info, dim_info, obj_cost, inf_cost);
+
+    EXPECT_DOUBLE_EQ(obj_cost[objective_t::DISTANCE_BREAK_COST], 100.)
+      << "split (" << k << ", " << (k + 1) << ")";
+    EXPECT_DOUBLE_EQ(inf_cost[detail::dim_t::DIST], 10.)
+      << "split (" << k << ", " << (k + 1) << ")";
+    EXPECT_DOUBLE_EQ(distance_node::combine(r.nodes[k], r.nodes[k + 1], r.vehicle_info, r.arcs[k]),
+                     10.)
+      << "split (" << k << ", " << (k + 1) << ")";
+  }
+}
+
+// Backward sweep propagates the latest cumulative distance allowed by upper bounds.
 TEST(distance_node, backward_propagation)
 {
   auto r = make_route({80.f, 600.f, 400.f},
@@ -101,6 +167,7 @@ TEST(distance_node, backward_propagation)
   EXPECT_DOUBLE_EQ(r.nodes[1].excess_backward, 0.);
   EXPECT_DOUBLE_EQ(r.nodes[0].distance_window_backward, 0.);
   EXPECT_DOUBLE_EQ(r.nodes[0].excess_backward, 20.);
+  EXPECT_DOUBLE_EQ(r.nodes[0].backward_excess(r.vehicle_info), 300.);
 }
 
 // combine() returns 0 at every split point of a window-feasible route.
@@ -181,8 +248,9 @@ TEST(distance_node, get_cost_combine_consistency)
   r.run_passes();
 
   detail::cost_dimension_info_t dim_info;
-  dim_info.has_max_constraint  = true;
-  dim_info.has_distance_window = true;
+  dim_info.has_max_constraint      = true;
+  dim_info.has_distance_window     = true;
+  dim_info.has_distance_break_cost = true;
 
   for (size_t k = 0; k + 1 < r.nodes.size(); ++k) {
     auto next_copy = r.nodes[k + 1];
@@ -199,6 +267,7 @@ TEST(distance_node, get_cost_combine_consistency)
     EXPECT_DOUBLE_EQ(get_cost_total, combine_value)
       << "split (" << k << ", " << (k + 1) << "): get_cost = " << get_cost_total
       << ", combine = " << combine_value;
+    EXPECT_DOUBLE_EQ(obj_cost[objective_t::DISTANCE_BREAK_COST], 0.);
   }
 }
 
@@ -256,6 +325,62 @@ TEST(distance_breaks, default_case)
   ASSERT_EQ(routing_solution.get_status(), cuopt::routing::solution_status_t::SUCCESS);
   host_assignment_t<int> h_routing_solution(routing_solution);
   check_route(data_model, h_routing_solution);
+}
+
+// Distance-break cost defaults to weight 1, including when another objective is configured;
+// an explicit zero disables it.
+TEST(distance_breaks, default_objective_weight)
+{
+  enum class objective_mode { DEFAULTS, OMIT_DISTANCE_BREAK_COST, DISABLE_DISTANCE_BREAK_COST };
+  for (auto mode : {objective_mode::DEFAULTS,
+                    objective_mode::OMIT_DISTANCE_BREAK_COST,
+                    objective_mode::DISABLE_DISTANCE_BREAK_COST}) {
+    raft::handle_t handle;
+    auto stream = handle.get_stream();
+
+    std::vector<float> cost_matrix      = {0.f, 1.f, 1.f, 1.f, 0.f, 1.f, 1.f, 1.f, 0.f};
+    std::vector<int> order_locations    = {1};
+    std::vector<int> break_locations    = {2};
+    std::vector<objective_t> objectives = {objective_t::COST};
+    std::vector<float> weights = {mode == objective_mode::OMIT_DISTANCE_BREAK_COST ? 2.f : 1.f};
+    if (mode == objective_mode::DISABLE_DISTANCE_BREAK_COST) {
+      objectives.push_back(objective_t::DISTANCE_BREAK_COST);
+      weights.push_back(0.f);
+    }
+
+    auto v_cost_matrix     = cuopt::device_copy(cost_matrix, stream);
+    auto v_order_locations = cuopt::device_copy(order_locations, stream);
+    auto v_break_locations = cuopt::device_copy(break_locations, stream);
+    auto v_objectives      = cuopt::device_copy(objectives, stream);
+    auto v_weights         = cuopt::device_copy(weights, stream);
+
+    cuopt::routing::data_model_view_t<int, float> data_model(&handle, 3, 1, 1);
+    data_model.add_cost_matrix(v_cost_matrix.data());
+    data_model.set_order_locations(v_order_locations.data());
+    data_model.add_distance_break(0, 10.f, 100.f, 0, v_break_locations.data(), 1);
+
+    if (mode != objective_mode::DEFAULTS) {
+      data_model.set_objective_function(v_objectives.data(), v_weights.data(), weights.size());
+    }
+
+    auto settings = cuopt::routing::solver_settings_t<int, float>{};
+    settings.set_time_limit(10);
+
+    auto solution = cuopt::routing::solve(data_model, settings);
+    handle.sync_stream();
+
+    ASSERT_EQ(solution.get_status(), cuopt::routing::solution_status_t::SUCCESS);
+    auto const& objective_values = solution.get_objectives();
+    EXPECT_DOUBLE_EQ(objective_values.at(objective_t::COST), 3.);
+    if (mode == objective_mode::DISABLE_DISTANCE_BREAK_COST) {
+      EXPECT_EQ(objective_values.count(objective_t::DISTANCE_BREAK_COST), 0u);
+      EXPECT_DOUBLE_EQ(solution.get_total_objective(), 3.);
+    } else {
+      EXPECT_DOUBLE_EQ(objective_values.at(objective_t::DISTANCE_BREAK_COST), 8.);
+      EXPECT_DOUBLE_EQ(solution.get_total_objective(),
+                       mode == objective_mode::OMIT_DISTANCE_BREAK_COST ? 14. : 11.);
+    }
+  }
 }
 
 // Break locations restrict where the break can be inserted.
@@ -390,6 +515,64 @@ TEST(distance_breaks, break_distance_window_enforced)
     prev_loc = loc;
   }
   EXPECT_TRUE(found_break) << "no break found in solution";
+}
+
+// A configured objective weight makes the solver prefer a route that reaches distance_min.
+TEST(distance_breaks, early_arrival_objective)
+{
+  raft::handle_t handle;
+  auto stream = handle.get_stream();
+
+  // clang-format off
+  std::vector<float> cost_matrix_4 = {
+    0,   50,  50,  1,
+    50,  0,   10,  60,
+    50,  10,  0,   60,
+    1,   60,  60,  0,
+  };
+  // clang-format on
+  std::vector<int> order_locations     = {1, 2};
+  std::vector<int> break_locations     = {3};
+  std::vector<objective_t> objectives  = {objective_t::COST, objective_t::DISTANCE_BREAK_COST};
+  std::vector<float> objective_weights = {1.f, 100.f};
+
+  auto v_cost_matrix       = cuopt::device_copy(cost_matrix_4, stream);
+  auto v_order_locations   = cuopt::device_copy(order_locations, stream);
+  auto v_break_locations   = cuopt::device_copy(break_locations, stream);
+  auto v_objectives        = cuopt::device_copy(objectives, stream);
+  auto v_objective_weights = cuopt::device_copy(objective_weights, stream);
+
+  cuopt::routing::data_model_view_t<int, float> data_model(&handle, 4, 1, 2);
+  data_model.add_cost_matrix(v_cost_matrix.data());
+  data_model.set_order_locations(v_order_locations.data());
+  data_model.add_distance_break(0, 40.f, 200.f, 0, v_break_locations.data(), 1);
+  data_model.set_objective_function(
+    v_objectives.data(), v_objective_weights.data(), v_objective_weights.size());
+
+  auto settings = cuopt::routing::solver_settings_t<int, float>{};
+  settings.set_time_limit(10);
+
+  auto routing_solution = cuopt::routing::solve(data_model, settings);
+  handle.sync_stream();
+
+  ASSERT_EQ(routing_solution.get_status(), cuopt::routing::solution_status_t::SUCCESS);
+  EXPECT_DOUBLE_EQ(routing_solution.get_objectives().at(objective_t::DISTANCE_BREAK_COST), 0.);
+
+  host_assignment_t<int> h(routing_solution);
+  float cumulative = 0.f;
+  int prev_loc     = 0;
+  bool found_break = false;
+  for (size_t i = 0; i < h.locations.size(); ++i) {
+    int loc = h.locations[i];
+    cumulative += cost_matrix_4[prev_loc * 4 + loc];
+    if (static_cast<node_type_t>(h.node_types[i]) == node_type_t::BREAK) {
+      found_break = true;
+      EXPECT_GE(cumulative, 40.f - 1e-3f);
+      EXPECT_LE(cumulative, 200.f + 1e-3f);
+    }
+    prev_loc = loc;
+  }
+  EXPECT_TRUE(found_break);
 }
 
 // Only vehicles configured with a distance break receive break nodes.

@@ -592,9 +592,10 @@ class base_test_t {
    * @brief Verifies that every Break node in the assignment is taken no later than its
    * configured cumulative-distance upper bound @p max_range, reset at the depot of each route.
    *
-   * The lower bound (min_range) is intentionally not checked: like the time dimension, arriving
-   * before the window start carries no penalty, so the solver may legitimately place a break
-   * earlier than min_range.
+   * The lower bound (min_range) is intentionally not checked here. Early arrival is a soft
+   * objective controlled by objective_t::DISTANCE_BREAK_COST, so a solution may legitimately
+   * place a break before min_range when that objective is explicitly disabled or outweighed by
+   * other costs.
    */
   void check_distance_break_windows(host_assignment_t<i_t> const& h_routing_solution, f_t max_range)
   {
@@ -1036,8 +1037,8 @@ class routing_test_t : public base_test_t<i_t, f_t> {
    * @brief Regression test for the distance-break feature on a CVRPTW benchmark.
    *
    * Builds the standard CVRPTW data model and additionally attaches one distance
-   * break per vehicle with a cumulative-distance window of [min_range, max_range].
-   * Validates routes, capacities, and that every Break node falls within its window.
+   * break per vehicle with a soft target of min_range and a hard deadline of max_range.
+   * Validates routes, capacities, and that every Break node meets its hard deadline.
    */
   void test_cvrptw_distance_breaks(f_t min_range, f_t max_range, i_t duration = 0)
   {

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 
@@ -181,7 +181,14 @@ class Objective(IntEnum):
 
     PRIZE               - Models with respect to prizes collected by the
                           serviced orders
-    VEHICLE_FIXED_COST                - Models cost per vehicle. Enabled when set_vehicle_fixed_costs is used.
+    VEHICLE_FIXED_COST  - Models cost per vehicle. Enabled when
+                          set_vehicle_fixed_costs is used.
+
+    DISTANCE_BREAK_COST - Models each route's maximum distance shortfall below
+                          the soft lower bounds of distance-based breaks. The
+                          solution value sums those route maxima. Its default
+                          weight is 1.0 when distance breaks are configured;
+                          an explicit zero disables it.
     """
 
     COST = objective_t.COST
@@ -190,6 +197,7 @@ class Objective(IntEnum):
     VARIANCE_ROUTE_SERVICE_TIME = objective_t.VARIANCE_ROUTE_SERVICE_TIME
     PRIZE = objective_t.PRIZE
     VEHICLE_FIXED_COST = objective_t.VEHICLE_FIXED_COST
+    DISTANCE_BREAK_COST = objective_t.DISTANCE_BREAK_COST
 
 
 class NodeType(IntEnum):

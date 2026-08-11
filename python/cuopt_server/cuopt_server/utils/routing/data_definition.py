@@ -84,6 +84,18 @@ class Objective(StrictModel):
             "The weight assigned to the accumulated fixed costs of each vehicle used in solution"  # noqa
         ),
     )
+    distance_break_cost: Optional[float] = Field(
+        default=None,
+        examples=[1],
+        description=(
+            "dtype: float32."
+            " \n\n "
+            "The weight assigned to each route's maximum shortfall below the "
+            "soft lower bounds of distance-based breaks. The solution value "
+            "sums those route maxima. It defaults to 1 when distance breaks "
+            "are configured; explicitly set it to 0 to disable the penalty."
+        ),
+    )
 
 
 class VehicleBreak(StrictModel):
@@ -136,8 +148,8 @@ class VehicleDistanceBreak(StrictModel):
         description=(
             "dtype: float32, max_range > 0."
             " \n\n "
-            "Length of each cycle. A break must be taken at most every"
-            " max_range cumulative distance units."
+            "Cycle length used to derive the cumulative hard deadline"
+            " (k + 1) * max_range for each break."
         ),
     )
     duration: int = Field(
@@ -162,8 +174,9 @@ class VehicleDistanceBreak(StrictModel):
         description=(
             "dtype: float32, 0 <= min_range < max_range."
             " \n\n "
-            "Minimum cumulative distance into each cycle before a break may"
-            " be taken. Defaults to 0."
+            "Soft lower bound on cumulative distance into each cycle. The"
+            " maximum shortfall per route contributes to distance_break_cost."
+            " Defaults to 0."
         ),
     )
     n_cycles: Optional[int] = Field(
@@ -438,9 +451,11 @@ class FleetData(StrictModel):
         description=(
             "Per-vehicle distance-based breaks. Each entry adds"
             " n_cycles cycles of length max_range; one mandatory"
-            " break is inserted per cycle within the cumulative-distance"
-            " window [k * max_range + min_range, (k+1) * max_range] for"
-            " k = 0, ..., n_cycles - 1."
+            " break is inserted per cycle no later than the hard"
+            " cumulative-distance limit (k+1) * max_range for"
+            " k = 0, ..., n_cycles - 1. The value k * max_range +"
+            " min_range is a soft target and uses distance_break_cost with a"
+            " default weight of 1."
         ),
     )
     vehicle_types: Optional[List[int]] = Field(

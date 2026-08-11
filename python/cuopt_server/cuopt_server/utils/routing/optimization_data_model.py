@@ -47,6 +47,9 @@ def get_objectives_as_lists(objectives):
     if objectives.vehicle_fixed_cost is not None:
         cuopt_objectives.append(routing.Objective.VEHICLE_FIXED_COST)
         objective_weights.append(objectives.vehicle_fixed_cost)
+    if objectives.distance_break_cost is not None:
+        cuopt_objectives.append(routing.Objective.DISTANCE_BREAK_COST)
+        objective_weights.append(objectives.distance_break_cost)
 
     return cuopt_objectives, objective_weights
 
@@ -58,6 +61,7 @@ objective_names = {
     routing.Objective.VARIANCE_ROUTE_SERVICE_TIME: "variance_route_service_time",  # noqa
     routing.Objective.PRIZE: "prize",
     routing.Objective.VEHICLE_FIXED_COST: "vehicle_fixed_cost",
+    routing.Objective.DISTANCE_BREAK_COST: "distance_break_cost",
 }
 
 

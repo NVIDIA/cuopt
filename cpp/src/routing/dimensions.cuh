@@ -182,8 +182,9 @@ using infeasible_cost_t = static_vec_t<dim_t>;
 using objective_cost_t  = static_vec_t<objective_t>;
 
 struct cost_dimension_info_t {
-  bool has_max_constraint  = false;
-  bool has_distance_window = false;
+  bool has_max_constraint      = false;
+  bool has_distance_window     = false;
+  bool has_distance_break_cost = false;
   HDI bool has_constraints() const { return has_max_constraint || has_distance_window; }
 };
 

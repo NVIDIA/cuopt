@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import pytest
@@ -61,7 +61,7 @@ def test_distance_break_api_int_vehicle_id():
 
 
 def test_distance_break_api_min_range():
-    """min_range shifts the start of the first cycle's distance window."""
+    """min_range sets the first cycle's soft cumulative-distance target."""
     d = _small_data_model()
     d.add_distance_break(0, max_range=100.0, duration=10, min_range=30.0)
 
@@ -71,7 +71,7 @@ def test_distance_break_api_min_range():
 
 
 def test_distance_break_api_multi_cycle():
-    """n_cycles creates successive non-overlapping distance windows per cycle."""
+    """n_cycles creates successive soft-target/hard-deadline pairs."""
     max_range = 100.0
     min_range = 20.0
     n_cycles = 3
@@ -259,21 +259,41 @@ def test_solve_basic_break_assigned():
     assert breaks_per_vehicle[1] == 1
 
 
-def test_solve_no_regression_without_distance_break():
-    """Baseline: an identical problem with no distance break configured solves successfully and
-    produces zero break nodes, confirming the dimension is invisible when its data is absent.
-    """
-    dm = routing.DataModel(3, 2)
+@pytest.mark.parametrize("objective_mode", ["defaults", "omit", "disable"])
+def test_default_distance_break_cost_weight(objective_mode):
+    """Distance-break cost defaults to 1 when omitted; an explicit zero disables it."""
+    dm = routing.DataModel(3, 1, 1)
     dm.add_cost_matrix(cudf.DataFrame(_COST_3X3, dtype="float32"))
-    dm.set_min_vehicles(2)
+    dm.set_order_locations(cudf.Series([1], dtype="int32"))
+    dm.add_distance_break(
+        0,
+        max_range=100.0,
+        duration=0,
+        locations=cudf.Series([2], dtype="int32"),
+        min_range=10.0,
+    )
+    if objective_mode != "defaults":
+        objectives = [routing.Objective.COST]
+        weights = [2.0 if objective_mode == "omit" else 1.0]
+        if objective_mode == "disable":
+            objectives.append(routing.Objective.DISTANCE_BREAK_COST)
+            weights.append(0.0)
+        dm.set_objective_function(
+            cudf.Series(objectives),
+            cudf.Series(weights, dtype="float32"),
+        )
 
     sol = _solve(dm)
     assert sol.get_status() == 0
-
-    routes = sol.get_route().to_pandas()
-    for i in range(routes.shape[0]):
-        assert routes["type"][i] != "Break", (
-            "no distance break configured but solver emitted a break node"
+    objectives = sol.get_objective_values()
+    assert objectives[routing.Objective.COST] == 3.0
+    if objective_mode == "disable":
+        assert routing.Objective.DISTANCE_BREAK_COST not in objectives
+        assert sol.get_total_objective() == 3.0
+    else:
+        assert objectives[routing.Objective.DISTANCE_BREAK_COST] == 8.0
+        assert sol.get_total_objective() == (
+            14.0 if objective_mode == "omit" else 11.0
         )
 
 
@@ -387,9 +407,9 @@ def test_solve_break_distance_window_enforced():
 def test_solve_full_feature_api():
     """Exercises every add_distance_break parameter at non-default values.
 
-    Two non-overlapping cycle windows [10, 20] and [30, 40] separated by a 10-unit gap
-    force the solver to pick distinct break locations for each cycle on a 5-location
-    unit-cost grid (arc 10 between any two distinct locations).
+    Two cycle targets of 10 and 30, with hard limits of 20 and 40 and a high
+    early-break penalty, make the solver prefer distinct break locations for
+    each cycle on a 5-location unit-cost grid (arc 10 between distinct locations).
     """
     # depot(0), customers(1, 2), break locations(3, 4); arc 10 between distinct locations.
     cost = [[0 if i == j else 10 for j in range(5)] for i in range(5)]
@@ -411,6 +431,12 @@ def test_solve_full_feature_api():
         locations=locations,
         min_range=min_range,
         n_cycles=n_cycles,
+    )
+    dm.set_objective_function(
+        cudf.Series(
+            [routing.Objective.COST, routing.Objective.DISTANCE_BREAK_COST]
+        ),
+        cudf.Series([1.0, 100.0], dtype="float32"),
     )
     dm.set_min_vehicles(2)
 

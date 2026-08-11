@@ -1,7 +1,8 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import pandas as pd
+import pytest
 
 from cuopt_server.tests.utils.utils import cuoptproc  # noqa
 from cuopt_server.tests.utils.utils import (
@@ -867,6 +868,53 @@ def test_vehicle_fixed_costs(cuoptproc):  # noqa
         expected_vehicle_count=2,
         expected_objective_values={"vehicle_fixed_cost": 20.0},
     )
+
+
+@pytest.mark.usefixtures("cuoptproc")
+def test_distance_break_cost_default():
+    cost_matrix = {0: [[0, 1, 1], [1, 0, 1], [1, 1, 0]]}
+    distance_breaks = [
+        {
+            "vehicle_id": 0,
+            "max_range": 100.0,
+            "duration": 0,
+            "locations": [2],
+            "min_range": 10.0,
+            "n_cycles": 1,
+        }
+    ]
+
+    for objectives, expected_cost in [
+        (None, 11.0),
+        ({"distance_break_cost": 0}, 3.0),
+    ]:
+        res = get_routes(
+            client,
+            cost_matrix=cost_matrix,
+            vehicle_locations=[[0, 0]],
+            vehicle_distance_breaks=distance_breaks,
+            task_locations=[1],
+            objectives=objectives,
+            time_limit=10,
+        )
+
+        assert res.status_code == 200
+        solver_response = res.json()["response"]["solver_response"]
+        expected_objectives = {"cost": 3.0}
+        if objectives is None:
+            expected_objectives["distance_break_cost"] = 8.0
+        validate_solver_sol(
+            solver_response,
+            expected_status=0,
+            expected_cost=expected_cost,
+            expected_vehicle_count=1,
+            expected_objective_values=expected_objectives,
+        )
+        if objectives is not None:
+            assert (
+                "distance_break_cost"
+                not in solver_response["objective_values"]
+            )
 
 
 def test_cost_matrix_solution(cuoptproc):  # noqa

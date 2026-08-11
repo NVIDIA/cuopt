@@ -165,14 +165,19 @@ class data_model_view_t {
   /**
    * @brief Add a distance-windowed break for a vehicle.
    *
-   * The solver inserts one break stop per call within the distance
-   * interval [distance_min, distance_max] (measured along the cost matrix).
+   * The solver inserts one break stop per call no later than distance_max,
+   * measured as cumulative distance along the cost matrix. distance_max is a
+   * hard upper bound. distance_min is a soft target whose shortfall contributes to
+   * objective_t::DISTANCE_BREAK_COST when that objective has a positive
+   * weight. The objective value is the maximum lower-bound shortfall on each
+   * route, summed across routes. Its default weight is 1.0 when distance
+   * breaks are configured; explicitly set its weight to 0.0 to disable it.
    * Call this function multiple times for the same vehicle to model successive
    * distance cycles (e.g. first stop: [0, 150], second stop: [150, 300]).
    *
    * @param vehicle_id         Vehicle to apply the break to.
-   * @param distance_min       Earliest cumulative route distance at which the
-   *                           vehicle may stop.
+   * @param distance_min       Soft lower bound on cumulative route distance at
+   *                           the break.
    * @param distance_max       Latest cumulative route distance by which the
    *                           vehicle must have stopped.
    * @param duration           Service time at the break location (same unit

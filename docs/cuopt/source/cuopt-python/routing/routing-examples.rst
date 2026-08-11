@@ -70,15 +70,19 @@ Sample output:
 Distance-Based Breaks
 ---------------------
 
-:meth:`cuopt.routing.DataModel.add_distance_break` configures a break stop
-that the solver must insert within a cumulative-distance window along the
-route. With ``n_cycles=k``, the call adds ``k`` consecutive windows
-``[i * max_range + min_range, (i + 1) * max_range]`` for ``i = 0, ..., k - 1``
-(each of width ``max_range - min_range``), requiring one stop per window.
-Both endpoints are hard feasibility constraints: a feasible solution places
-every break inside its window. Unlike time-based breaks, the distance
-dimension has no "wait" analogue, so a break that lands before ``min_range``
-or after ``max_range`` is infeasible.
+:meth:`cuopt.routing.DataModel.add_distance_break` configures mandatory break
+stops along the route. With ``n_cycles=k``, the call adds ``k`` consecutive
+cycles, requiring one stop per cycle no later than the hard cumulative-distance
+limit ``(i + 1) * max_range`` for ``i = 0, ..., k - 1``. The value
+``i * max_range + min_range`` is the soft target for each cycle.
+The upper endpoint is a hard feasibility constraint. Keeping the lower endpoint
+soft lets local search consider early break placements while improving the
+incumbent and exploring diverse routes. ``Objective.DISTANCE_BREAK_COST``
+guides the search toward the soft target and sums the maximum lower-bound
+shortfall on each route. A break after its cycle's
+``(i + 1) * max_range`` upper limit makes the route infeasible. The objective's
+default weight is ``1.0``; configure another positive weight to change the
+tradeoff, or explicitly set it to ``0.0`` to disable the early-break penalty.
 
 The example below sets up one vehicle, two customers, and a single break
 location. With ``max_range=75``, the solver must insert one break within the
@@ -94,7 +98,7 @@ Sample output:
 
 .. code-block:: text
 
-   Total route cost: 143.2 km
+   Weighted objective: 143.2
 
      Depot       depot
      Delivery    customer 1
