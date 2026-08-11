@@ -97,7 +97,6 @@ final class NativeCuOpt {
   static native int getErrorStatus(long handle);
   static native String getErrorString(long handle);
   static native double[] getPrimalSolution(long handle, int size);
-  static native int getDualSolutionSize(long handle);
   static native double[] getDualSolution(long handle, int size);
   static native double[] getReducedCosts(long handle, int size);
   static native double getObjectiveValue(long handle);

@@ -8,6 +8,7 @@
 #include "c_api_tests.h"
 
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -1077,3 +1078,175 @@ TEST(c_api, problem_attributes_names)
 
 // Note: cuopt_cli subprocess tests are in Python (test_cpu_only_execution.py)
 // which provides better cross-platform subprocess handling
+
+// =============================================================================
+// Parameter introspection / persistence and solver statistics
+//
+// These entry points were previously reachable only through a private header in
+// the Java bindings; they are part of the public C API.
+// =============================================================================
+
+TEST(c_api, solver_parameter_enumeration)
+{
+  cuopt_int_t num_parameters = 0;
+  ASSERT_EQ(cuOptGetNumSolverParameters(&num_parameters), CUOPT_SUCCESS);
+  EXPECT_GT(num_parameters, 0);
+
+  // Every enumerated name must round-trip through cuOptGetParameter.
+  cuOptSolverSettings settings = nullptr;
+  ASSERT_EQ(cuOptCreateSolverSettings(&settings), CUOPT_SUCCESS);
+  for (cuopt_int_t i = 0; i < num_parameters; ++i) {
+    char name[256]  = {};
+    char value[256] = {};
+    ASSERT_EQ(cuOptGetSolverParameterName(i, sizeof(name), name), CUOPT_SUCCESS);
+    EXPECT_GT(std::strlen(name), 0u);
+    EXPECT_EQ(cuOptGetParameter(settings, name, sizeof(value), value), CUOPT_SUCCESS);
+  }
+  cuOptDestroySolverSettings(&settings);
+
+  // Out-of-range and null arguments are rejected rather than writing past the buffer.
+  char name[256] = {};
+  EXPECT_EQ(cuOptGetSolverParameterName(num_parameters, sizeof(name), name), CUOPT_INVALID_ARGUMENT);
+  EXPECT_EQ(cuOptGetSolverParameterName(-1, sizeof(name), name), CUOPT_INVALID_ARGUMENT);
+  EXPECT_EQ(cuOptGetSolverParameterName(0, sizeof(name), nullptr), CUOPT_INVALID_ARGUMENT);
+  EXPECT_EQ(cuOptGetNumSolverParameters(nullptr), CUOPT_INVALID_ARGUMENT);
+}
+
+TEST(c_api, solver_parameter_file_round_trip)
+{
+  const std::string path =
+    std::filesystem::temp_directory_path().string() + "/cuopt_c_api_parameters.txt";
+
+  cuOptSolverSettings settings = nullptr;
+  ASSERT_EQ(cuOptCreateSolverSettings(&settings), CUOPT_SUCCESS);
+  ASSERT_EQ(cuOptSetFloatParameter(settings, CUOPT_TIME_LIMIT, 12.5), CUOPT_SUCCESS);
+
+  cuopt_int_t dumped = 0;
+  ASSERT_EQ(cuOptDumpParametersToFile(settings, path.c_str(), 0, &dumped), CUOPT_SUCCESS);
+  EXPECT_NE(dumped, 0);
+  cuOptDestroySolverSettings(&settings);
+
+  cuOptSolverSettings reloaded = nullptr;
+  ASSERT_EQ(cuOptCreateSolverSettings(&reloaded), CUOPT_SUCCESS);
+  ASSERT_EQ(cuOptLoadParametersFromFile(reloaded, path.c_str()), CUOPT_SUCCESS);
+  cuopt_float_t time_limit = 0;
+  ASSERT_EQ(cuOptGetFloatParameter(reloaded, CUOPT_TIME_LIMIT, &time_limit), CUOPT_SUCCESS);
+  EXPECT_DOUBLE_EQ(time_limit, 12.5);
+  cuOptDestroySolverSettings(&reloaded);
+
+  std::filesystem::remove(path);
+
+  cuOptSolverSettings empty = nullptr;
+  ASSERT_EQ(cuOptCreateSolverSettings(&empty), CUOPT_SUCCESS);
+  EXPECT_EQ(cuOptLoadParametersFromFile(empty, ""), CUOPT_INVALID_ARGUMENT);
+  EXPECT_EQ(cuOptLoadParametersFromFile(empty, nullptr), CUOPT_INVALID_ARGUMENT);
+  EXPECT_EQ(cuOptLoadParametersFromFile(nullptr, path.c_str()), CUOPT_INVALID_ARGUMENT);
+  EXPECT_EQ(cuOptDumpParametersToFile(empty, path.c_str(), 0, nullptr), CUOPT_INVALID_ARGUMENT);
+  cuOptDestroySolverSettings(&empty);
+}
+
+namespace {
+
+// Builds and solves a two-variable problem, integral when `mip` is set.
+cuOptSolution solve_tiny_problem(bool mip)
+{
+  cuopt_int_t row_offsets[]      = {0, 2};
+  cuopt_int_t column_indices[]   = {0, 1};
+  cuopt_float_t matrix_values[]  = {1.0, 1.0};
+  cuopt_float_t objective[]      = {-1.0, -1.0};
+  cuopt_float_t rhs[]            = {3.5};
+  char constraint_sense[]        = {CUOPT_LESS_THAN};
+  cuopt_float_t lower_bounds[]   = {0.0, 0.0};
+  cuopt_float_t upper_bounds[]   = {10.0, 10.0};
+  char variable_types[]          = {mip ? CUOPT_INTEGER : CUOPT_CONTINUOUS,
+                                    mip ? CUOPT_INTEGER : CUOPT_CONTINUOUS};
+
+  cuOptOptimizationProblem problem = nullptr;
+  cuOptSolverSettings settings     = nullptr;
+  cuOptSolution solution           = nullptr;
+  EXPECT_EQ(cuOptCreateProblem(1,
+                               2,
+                               CUOPT_MINIMIZE,
+                               0,
+                               objective,
+                               row_offsets,
+                               column_indices,
+                               matrix_values,
+                               constraint_sense,
+                               rhs,
+                               lower_bounds,
+                               upper_bounds,
+                               variable_types,
+                               &problem),
+            CUOPT_SUCCESS);
+  EXPECT_EQ(cuOptCreateSolverSettings(&settings), CUOPT_SUCCESS);
+  EXPECT_EQ(cuOptSolve(problem, settings, &solution), CUOPT_SUCCESS);
+  cuOptDestroyProblem(&problem);
+  cuOptDestroySolverSettings(&settings);
+  return solution;
+}
+
+}  // namespace
+
+TEST(c_api, lp_solver_stats)
+{
+  cuOptSolution solution = solve_tiny_problem(false);
+  ASSERT_NE(solution, nullptr);
+
+  cuopt_int_t is_mip = -1;
+  ASSERT_EQ(cuOptSolutionIsMIP(solution, &is_mip), CUOPT_SUCCESS);
+  EXPECT_EQ(is_mip, 0);
+
+  cuopt_float_t primal_residual = -1, dual_residual = -1, gap = -1;
+  cuopt_int_t num_iterations = -1, solved_by = -1;
+  ASSERT_EQ(cuOptGetLPSolverStats(
+              solution, &primal_residual, &dual_residual, &gap, &num_iterations, &solved_by),
+            CUOPT_SUCCESS);
+  EXPECT_GE(primal_residual, 0.0);
+  EXPECT_GE(dual_residual, 0.0);
+  EXPECT_GE(num_iterations, 0);
+
+  // Every out-pointer is optional.
+  EXPECT_EQ(cuOptGetLPSolverStats(solution, nullptr, nullptr, nullptr, nullptr, nullptr),
+            CUOPT_SUCCESS);
+
+  // MIP statistics are unavailable for an LP solution.
+  EXPECT_EQ(
+    cuOptGetMIPSolverStats(solution, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr),
+    CUOPT_INVALID_ARGUMENT);
+
+  cuOptDestroySolution(&solution);
+
+  EXPECT_EQ(cuOptSolutionIsMIP(nullptr, &is_mip), CUOPT_INVALID_ARGUMENT);
+}
+
+TEST(c_api, mip_solver_stats)
+{
+  cuOptSolution solution = solve_tiny_problem(true);
+  ASSERT_NE(solution, nullptr);
+
+  cuopt_int_t is_mip = -1;
+  ASSERT_EQ(cuOptSolutionIsMIP(solution, &is_mip), CUOPT_SUCCESS);
+  EXPECT_NE(is_mip, 0);
+
+  cuopt_float_t presolve_time = -1, max_constraint_violation = -1, max_int_violation = -1,
+                max_variable_bound_violation = -1;
+  cuopt_int_t num_nodes = -1, num_simplex_iterations = -1;
+  ASSERT_EQ(cuOptGetMIPSolverStats(solution,
+                                   &presolve_time,
+                                   &max_constraint_violation,
+                                   &max_int_violation,
+                                   &max_variable_bound_violation,
+                                   &num_nodes,
+                                   &num_simplex_iterations),
+            CUOPT_SUCCESS);
+  EXPECT_GE(presolve_time, 0.0);
+  EXPECT_GE(max_constraint_violation, 0.0);
+  EXPECT_GE(num_nodes, 0);
+
+  // LP statistics are unavailable for a MIP solution.
+  EXPECT_EQ(cuOptGetLPSolverStats(solution, nullptr, nullptr, nullptr, nullptr, nullptr),
+            CUOPT_INVALID_ARGUMENT);
+
+  cuOptDestroySolution(&solution);
+}

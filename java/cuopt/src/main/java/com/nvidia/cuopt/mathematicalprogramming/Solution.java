@@ -58,7 +58,7 @@ public final class Solution implements AutoCloseable {
 
   public double[] getDualSolution() {
     requireLP("getDualSolution");
-    return NativeCuOpt.getDualSolution(handle(), NativeCuOpt.getDualSolutionSize(handle()));
+    return NativeCuOpt.getDualSolution(handle(), numConstraints);
   }
 
   public double[] getReducedCost() {

@@ -522,10 +522,6 @@ public final class Problem implements AutoCloseable {
     return List.copyOf(values);
   }
 
-  public List<Double> get_incumbent_values(double[] solution, List<Variable> requestedVariables) {
-    return getIncumbentValues(solution, requestedVariables);
-  }
-
   public Problem relax() {
     Map<Variable, Variable> mapping = new LinkedHashMap<>();
     Problem relaxed = new Problem(name);

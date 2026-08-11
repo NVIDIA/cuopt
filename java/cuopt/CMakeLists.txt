@@ -38,7 +38,6 @@ endif()
 get_filename_component(CUOPT_CUDA_RUNTIME_DIR "${CUOPT_CUDART_LIBRARY}" DIRECTORY)
 
 add_library(cuopt_jni SHARED
-  src/main/native/cuopt_java_native_api.cpp
   src/main/native/cuopt_jni.cpp)
 
 target_include_directories(cuopt_jni PRIVATE

@@ -5,6 +5,8 @@
 package com.nvidia.cuopt.mathematicalprogramming;
 
 public class CuOptException extends RuntimeException {
+  private static final long serialVersionUID = 1L;
+
   private final int statusCode;
 
   public CuOptException(int statusCode, String message) {

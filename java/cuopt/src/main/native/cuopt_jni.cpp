@@ -19,8 +19,6 @@
 #include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
 #include <pdlp/cuopt_c_internal.hpp>
 
-#include "cuopt_java_native_api.hpp"
-
 #include <jni.h>
 
 namespace {
@@ -183,18 +181,6 @@ bool check_status(JNIEnv* env, cuopt_int_t status, const char* operation)
   throw_cuopt_exception(
     env, status, std::string(operation) + " failed with status " + std::to_string(status));
   return false;
-}
-
-cuopt::mathematical_optimization::lp_solution_interface_t<cuopt_int_t, cuopt_float_t>*
-to_lp_solution(JNIEnv* env, jlong handle, const char* operation)
-{
-  auto* solution =
-    reinterpret_cast<cuopt::mathematical_optimization::solution_and_stream_view_t*>(handle);
-  if (solution == nullptr || solution->is_mip || solution->lp_solution_interface_ptr == nullptr) {
-    throw_illegal_state(env, std::string(operation) + " is only available for LP solutions");
-    return nullptr;
-  }
-  return solution->lp_solution_interface_ptr;
 }
 
 template <typename F>
@@ -1094,48 +1080,32 @@ Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getPrimalSolution(JNIE
   return to_double_array(env, values);
 }
 
-extern "C" JNIEXPORT jint JNICALL
-Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getDualSolutionSize(JNIEnv* env,
-                                                                              jclass,
-                                                                              jlong handle)
-{
-  auto* solution = to_lp_solution(env, handle, "getDualSolution");
-  if (solution == nullptr) { return 0; }
-  return solution->get_dual_solution_size();
-}
-
 extern "C" JNIEXPORT jdoubleArray JNICALL
 Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getDualSolution(JNIEnv* env,
                                                                           jclass,
                                                                           jlong handle,
-                                                                          jint)
+                                                                          jint size)
 {
-  auto* solution = to_lp_solution(env, handle, "getDualSolution");
-  if (solution == nullptr) { return nullptr; }
-  try {
-    return to_double_array(env, solution->get_dual_solution_host());
-  } catch (const std::exception& e) {
-    throw_cuopt_exception(
-      env, CUOPT_INVALID_ARGUMENT, std::string("getDualSolution failed: ") + e.what());
+  std::vector<cuopt_float_t> values(static_cast<size_t>(size));
+  if (!check_status(
+        env, cuOptGetDualSolution(to_solution(handle), values.data()), "cuOptGetDualSolution")) {
     return nullptr;
   }
+  return to_double_array(env, values);
 }
 
 extern "C" JNIEXPORT jdoubleArray JNICALL
 Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getReducedCosts(JNIEnv* env,
                                                                           jclass,
                                                                           jlong handle,
-                                                                          jint)
+                                                                          jint size)
 {
-  auto* solution = to_lp_solution(env, handle, "getReducedCost");
-  if (solution == nullptr) { return nullptr; }
-  try {
-    return to_double_array(env, solution->get_reduced_cost_host());
-  } catch (const std::exception& e) {
-    throw_cuopt_exception(
-      env, CUOPT_INVALID_ARGUMENT, std::string("getReducedCost failed: ") + e.what());
+  std::vector<cuopt_float_t> values(static_cast<size_t>(size));
+  if (!check_status(
+        env, cuOptGetReducedCosts(to_solution(handle), values.data()), "cuOptGetReducedCosts")) {
     return nullptr;
   }
+  return to_double_array(env, values);
 }
 
 extern "C" JNIEXPORT jdouble JNICALL
@@ -1153,15 +1123,10 @@ Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getDualObjectiveValue(
                                                                                 jclass,
                                                                                 jlong handle)
 {
-  auto* solution = to_lp_solution(env, handle, "getDualObjective");
-  if (solution == nullptr) { return 0; }
-  try {
-    return solution->get_dual_objective_value(0);
-  } catch (const std::exception& e) {
-    throw_cuopt_exception(
-      env, CUOPT_INVALID_ARGUMENT, std::string("getDualObjective failed: ") + e.what());
-    return 0;
-  }
+  cuopt_float_t value = 0;
+  check_status(
+    env, cuOptGetDualObjectiveValue(to_solution(handle), &value), "cuOptGetDualObjectiveValue");
+  return value;
 }
 
 extern "C" JNIEXPORT jdouble JNICALL

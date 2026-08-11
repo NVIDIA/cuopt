@@ -9,7 +9,7 @@ public enum ProblemCategory {
   LP(0),
   MIP(1),
   /** @deprecated Integer problems are categorized as {@link #MIP}. */
-  @Deprecated(since = "26.08")
+  @Deprecated(since = "26.10")
   IP(2);
 
   private final int nativeValue;

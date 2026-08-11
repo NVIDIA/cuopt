@@ -23,6 +23,7 @@
 #include <cuopt/version_config.hpp>
 
 #include <algorithm>
+#include <cstdio>
 #include <cstdlib>
 #include <memory>
 #include <span>
@@ -34,6 +35,8 @@ using cuopt::mathematical_optimization::csc_matrix_t;
 using cuopt::mathematical_optimization::csr_matrix_t;
 using cuopt::mathematical_optimization::get_memory_backend_type;
 using cuopt::mathematical_optimization::is_valid_public_var_type_code;
+using cuopt::mathematical_optimization::lp_solution_interface_t;
+using cuopt::mathematical_optimization::mip_solution_interface_t;
 using cuopt::mathematical_optimization::optimization_problem_interface_t;
 using cuopt::mathematical_optimization::problem_and_stream_view_t;
 using cuopt::mathematical_optimization::problem_category_t;
@@ -1043,6 +1046,69 @@ cuopt_int_t cuOptGetFloatParameter(cuOptSolverSettings settings,
   return CUOPT_SUCCESS;
 }
 
+cuopt_int_t cuOptLoadParametersFromFile(cuOptSolverSettings settings, const char* path)
+{
+  if (settings == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  if (path == nullptr || path[0] == '\0') { return CUOPT_INVALID_ARGUMENT; }
+  try {
+    get_settings_handle(settings)->settings->load_parameters_from_file(path);
+  } catch (const std::exception& e) {
+    return CUOPT_INVALID_ARGUMENT;
+  }
+  return CUOPT_SUCCESS;
+}
+
+cuopt_int_t cuOptDumpParametersToFile(cuOptSolverSettings settings,
+                                      const char* path,
+                                      cuopt_int_t hyperparameters_only,
+                                      cuopt_int_t* dumped_successfully)
+{
+  if (settings == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  if (path == nullptr || path[0] == '\0') { return CUOPT_INVALID_ARGUMENT; }
+  if (dumped_successfully == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  try {
+    *dumped_successfully =
+      static_cast<cuopt_int_t>(get_settings_handle(settings)->settings->dump_parameters_to_file(
+        path, hyperparameters_only != 0));
+  } catch (const std::exception& e) {
+    return CUOPT_INVALID_ARGUMENT;
+  }
+  return CUOPT_SUCCESS;
+}
+
+cuopt_int_t cuOptGetNumSolverParameters(cuopt_int_t* num_parameters_ptr)
+{
+  if (num_parameters_ptr == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  try {
+    solver_settings_t<cuopt_int_t, cuopt_float_t> settings;
+    *num_parameters_ptr = static_cast<cuopt_int_t>(settings.get_parameter_names().size());
+  } catch (const std::exception& e) {
+    return CUOPT_RUNTIME_ERROR;
+  }
+  return CUOPT_SUCCESS;
+}
+
+cuopt_int_t cuOptGetSolverParameterName(cuopt_int_t index,
+                                        cuopt_int_t parameter_name_size,
+                                        char* parameter_name)
+{
+  if (index < 0) { return CUOPT_INVALID_ARGUMENT; }
+  if (parameter_name_size <= 0) { return CUOPT_INVALID_ARGUMENT; }
+  if (parameter_name == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  try {
+    solver_settings_t<cuopt_int_t, cuopt_float_t> settings;
+    const auto names = settings.get_parameter_names();
+    if (index >= static_cast<cuopt_int_t>(names.size())) { return CUOPT_INVALID_ARGUMENT; }
+    std::snprintf(parameter_name,
+                  static_cast<size_t>(parameter_name_size),
+                  "%s",
+                  names[static_cast<size_t>(index)].c_str());
+  } catch (const std::exception& e) {
+    return CUOPT_RUNTIME_ERROR;
+  }
+  return CUOPT_SUCCESS;
+}
+
 cuopt_int_t cuOptSetMIPGetSolutionCallback(cuOptSolverSettings settings,
                                            cuOptMIPGetSolutionCallback callback,
                                            void* user_data)
@@ -1360,6 +1426,81 @@ cuopt_int_t cuOptGetReducedCosts(cuOptSolution solution, cuopt_float_t* reduced_
   } catch (const std::logic_error&) {
     return CUOPT_INVALID_ARGUMENT;
   }
+}
+
+cuopt_int_t cuOptSolutionIsMIP(cuOptSolution solution, cuopt_int_t* is_mip_ptr)
+{
+  if (solution == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  if (is_mip_ptr == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  *is_mip_ptr =
+    static_cast<cuopt_int_t>(static_cast<solution_and_stream_view_t*>(solution)->is_mip);
+  return CUOPT_SUCCESS;
+}
+
+cuopt_int_t cuOptGetLPSolverStats(cuOptSolution solution,
+                                  cuopt_float_t* primal_residual_ptr,
+                                  cuopt_float_t* dual_residual_ptr,
+                                  cuopt_float_t* gap_ptr,
+                                  cuopt_int_t* num_iterations_ptr,
+                                  cuopt_int_t* solved_by_ptr)
+{
+  if (solution == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  solution_and_stream_view_t* solution_and_stream_view =
+    static_cast<solution_and_stream_view_t*>(solution);
+  if (solution_and_stream_view->is_mip) { return CUOPT_INVALID_ARGUMENT; }
+  lp_solution_interface_t<cuopt_int_t, cuopt_float_t>* lp_solution =
+    solution_and_stream_view->lp_solution_interface_ptr;
+  if (lp_solution == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  try {
+    if (primal_residual_ptr != nullptr) {
+      *primal_residual_ptr = lp_solution->get_l2_primal_residual();
+    }
+    if (dual_residual_ptr != nullptr) { *dual_residual_ptr = lp_solution->get_l2_dual_residual(); }
+    if (gap_ptr != nullptr) { *gap_ptr = lp_solution->get_gap(); }
+    if (num_iterations_ptr != nullptr) { *num_iterations_ptr = lp_solution->get_num_iterations(); }
+    if (solved_by_ptr != nullptr) {
+      *solved_by_ptr = static_cast<cuopt_int_t>(lp_solution->solved_by());
+    }
+  } catch (const std::exception& e) {
+    return CUOPT_RUNTIME_ERROR;
+  }
+  return CUOPT_SUCCESS;
+}
+
+cuopt_int_t cuOptGetMIPSolverStats(cuOptSolution solution,
+                                   cuopt_float_t* presolve_time_ptr,
+                                   cuopt_float_t* max_constraint_violation_ptr,
+                                   cuopt_float_t* max_int_violation_ptr,
+                                   cuopt_float_t* max_variable_bound_violation_ptr,
+                                   cuopt_int_t* num_nodes_ptr,
+                                   cuopt_int_t* num_simplex_iterations_ptr)
+{
+  if (solution == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  solution_and_stream_view_t* solution_and_stream_view =
+    static_cast<solution_and_stream_view_t*>(solution);
+  if (!solution_and_stream_view->is_mip) { return CUOPT_INVALID_ARGUMENT; }
+  mip_solution_interface_t<cuopt_int_t, cuopt_float_t>* mip_solution =
+    solution_and_stream_view->mip_solution_interface_ptr;
+  if (mip_solution == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  try {
+    if (presolve_time_ptr != nullptr) { *presolve_time_ptr = mip_solution->get_presolve_time(); }
+    if (max_constraint_violation_ptr != nullptr) {
+      *max_constraint_violation_ptr = mip_solution->get_max_constraint_violation();
+    }
+    if (max_int_violation_ptr != nullptr) {
+      *max_int_violation_ptr = mip_solution->get_max_int_violation();
+    }
+    if (max_variable_bound_violation_ptr != nullptr) {
+      *max_variable_bound_violation_ptr = mip_solution->get_max_variable_bound_violation();
+    }
+    if (num_nodes_ptr != nullptr) { *num_nodes_ptr = mip_solution->get_num_nodes(); }
+    if (num_simplex_iterations_ptr != nullptr) {
+      *num_simplex_iterations_ptr = mip_solution->get_num_simplex_iterations();
+    }
+  } catch (const std::exception& e) {
+    return CUOPT_RUNTIME_ERROR;
+  }
+  return CUOPT_SUCCESS;
 }
 
 /* -------------------------------------------------------------------------- */

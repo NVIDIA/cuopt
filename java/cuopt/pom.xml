@@ -11,7 +11,7 @@ SPDX-License-Identifier: Apache-2.0
   <groupId>com.nvidia.cuopt</groupId>
   <artifactId>cuopt</artifactId>
   <!-- NOTE: This version is updated by ci/release/update-version.sh. -->
-  <!--CUOPT_JAVA#VERSION_UPDATE_MARKER_START--><version>26.08.00</version><!--CUOPT_JAVA#VERSION_UPDATE_MARKER_END-->
+  <!--CUOPT_JAVA#VERSION_UPDATE_MARKER_START--><version>26.10.00</version><!--CUOPT_JAVA#VERSION_UPDATE_MARKER_END-->
   <name>cuOpt Java Bindings</name>
   <description>Java JNI bindings for cuOpt numerical optimization.</description>
 
