@@ -16,9 +16,11 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <functional>
 #include <future>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -657,50 +659,44 @@ struct fractional_conflict_subgraph_t {
 template <typename i_t, typename f_t>
 class cut_generation_t {
  public:
-  cut_generation_t(cut_pool_t<i_t, f_t>& cut_pool,
-                   const simplex::lp_problem_t<i_t, f_t>& lp,
-                   const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
-                   csr_matrix_t<i_t, f_t>& Arow,
-                   const std::vector<i_t>& new_slacks,
-                   const std::vector<simplex::variable_type_t>& var_types,
-                   const simplex::user_problem_t<i_t, f_t>& user_problem,
-                   const probing_implied_bound_t<i_t, f_t>& probing_implied_bound,
-                   std::shared_ptr<mip::clique_table_t<i_t, f_t>> clique_table = nullptr,
-                   omp_atomic_t<bool>* signal_extend                           = nullptr)
+  cut_generation_t(
+    cut_pool_t<i_t, f_t>& cut_pool,
+    const simplex::lp_problem_t<i_t, f_t>& lp,
+    const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+    csr_matrix_t<i_t, f_t>& Arow,
+    const std::vector<i_t>& new_slacks,
+    const std::vector<simplex::variable_type_t>& var_types,
+    const simplex::user_problem_t<i_t, f_t>& user_problem,
+    const probing_implied_bound_t<i_t, f_t>& probing_implied_bound,
+    std::shared_ptr<mip::clique_table_t<i_t, f_t>> clique_table = nullptr,
+    omp_atomic_t<bool>* signal_extend                           = nullptr,
+    std::optional<std::reference_wrapper<std::shared_ptr<mip::clique_table_t<i_t, f_t>>>>
+      clique_table_source = std::nullopt)
     : cut_pool_(cut_pool),
       knapsack_generation_(lp, settings, Arow, new_slacks, var_types),
       flow_cover_generation_(lp, settings, Arow, new_slacks),
       user_problem_(user_problem),
       probing_implied_bound_(probing_implied_bound),
       clique_table_(std::move(clique_table)),
-      signal_extend_(signal_extend)
+      signal_extend_(signal_extend),
+      clique_table_source_(clique_table_source)
   {
   }
 
-  bool generate_cuts(const simplex::lp_problem_t<i_t, f_t>& lp,
-                     const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
-                     csr_matrix_t<i_t, f_t>& Arow,
-                     const std::vector<i_t>& new_slacks,
-                     const std::vector<simplex::variable_type_t>& var_types,
-                     simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
-                     const std::vector<f_t>& xstar,
-                     const std::vector<f_t>& ystar,
-                     const std::vector<f_t>& zstar,
-                     const std::vector<i_t>& basic_list,
-                     const std::vector<i_t>& nonbasic_list,
-                     variable_bounds_t<i_t, f_t>& variable_bounds,
-                     f_t start_time);
-
-  bool generate_basis_independent_cuts(const simplex::lp_problem_t<i_t, f_t>& lp,
-                                       const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
-                                       csr_matrix_t<i_t, f_t>& Arow,
-                                       const std::vector<i_t>& new_slacks,
-                                       const std::vector<simplex::variable_type_t>& var_types,
-                                       const std::vector<f_t>& xstar,
-                                       const std::vector<f_t>& ystar,
-                                       const std::vector<f_t>& zstar,
-                                       variable_bounds_t<i_t, f_t>& variable_bounds,
-                                       f_t start_time);
+  bool generate_cuts(
+    const simplex::lp_problem_t<i_t, f_t>& lp,
+    const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+    csr_matrix_t<i_t, f_t>& Arow,
+    const std::vector<i_t>& new_slacks,
+    const std::vector<simplex::variable_type_t>& var_types,
+    std::optional<std::reference_wrapper<simplex::basis_update_mpf_t<i_t, f_t>>> basis_update,
+    std::optional<std::reference_wrapper<const std::vector<i_t>>> basic_list,
+    std::optional<std::reference_wrapper<const std::vector<i_t>>> nonbasic_list,
+    const std::vector<f_t>& xstar,
+    const std::vector<f_t>& ystar,
+    const std::vector<f_t>& zstar,
+    variable_bounds_t<i_t, f_t>& variable_bounds,
+    f_t start_time);
 
  private:
   // Generate all mixed integer gomory cuts
@@ -783,6 +779,8 @@ class cut_generation_t {
   const probing_implied_bound_t<i_t, f_t>& probing_implied_bound_;
   std::shared_ptr<mip::clique_table_t<i_t, f_t>> clique_table_;
   omp_atomic_t<bool>* signal_extend_{nullptr};
+  std::optional<std::reference_wrapper<std::shared_ptr<mip::clique_table_t<i_t, f_t>>>>
+    clique_table_source_;
   fractional_conflict_subgraph_t<i_t, f_t> sub_cg_;
 };
 

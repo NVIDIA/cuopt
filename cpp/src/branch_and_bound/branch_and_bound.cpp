@@ -289,6 +289,7 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
     solver_status_(mip_status_t::UNSET)
 {
   exploration_stats_.start_time = start_time;
+  clique_table_complete_.store(clique_table_ != nullptr, std::memory_order_relaxed);
 #ifdef PRINT_CONSTRAINT_MATRIX
   settings_.log.printf("A");
   original_problem_.A.print_matrix();
@@ -3084,29 +3085,37 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
       {
         const f_t cut_start_time = tic();
         auto cut_settings        = settings_;
-        // The clique table is still being built asynchronously. Keep this pass independent of it;
-        // the normal root pass runs clique and zero-half separation after the join.
-        cut_settings.clique_cuts    = 0;
-        cut_settings.zero_half_cuts = 0;
-        cut_generation_t<i_t, f_t> relaxation_cut_generation(cut_pool,
-                                                             original_lp_,
-                                                             cut_settings,
-                                                             Arow_,
-                                                             new_slacks_,
-                                                             var_types_,
-                                                             original_problem_,
-                                                             probing_implied_bound_);
+        // Consume a completed clique table without stopping or waiting for its producer. If it is
+        // still being built, leave it running and defer clique/zero-half cuts to the normal pass.
+        const bool clique_table_ready = clique_table_complete_.load(std::memory_order_acquire);
+        if (!clique_table_ready) {
+          cut_settings.clique_cuts    = 0;
+          cut_settings.zero_half_cuts = 0;
+        }
+        cut_generation_t<i_t, f_t> relaxation_cut_generation(
+          cut_pool,
+          original_lp_,
+          cut_settings,
+          Arow_,
+          new_slacks_,
+          var_types_,
+          original_problem_,
+          probing_implied_bound_,
+          clique_table_ready ? clique_table_ : nullptr);
         const bool feasible =
-          relaxation_cut_generation.generate_basis_independent_cuts(original_lp_,
-                                                                    cut_settings,
-                                                                    Arow_,
-                                                                    new_slacks_,
-                                                                    var_types_,
-                                                                    relaxation_root_x,
-                                                                    relaxation_root_y,
-                                                                    relaxation_root_z,
-                                                                    variable_bounds,
-                                                                    exploration_stats_.start_time);
+          relaxation_cut_generation.generate_cuts(original_lp_,
+                                                  cut_settings,
+                                                  Arow_,
+                                                  new_slacks_,
+                                                  var_types_,
+                                                  std::nullopt,
+                                                  std::nullopt,
+                                                  std::nullopt,
+                                                  relaxation_root_x,
+                                                  relaxation_root_y,
+                                                  relaxation_root_z,
+                                                  variable_bounds,
+                                                  exploration_stats_.start_time);
         relaxation_cut_task_elapsed = toc(cut_start_time);
         relaxation_cut_task_status  = feasible ? 1 : -1;
       }
@@ -3247,12 +3256,12 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
                                                        Arow_,
                                                        new_slacks_,
                                                        var_types_,
-                                                       basis_update,
+                                                       std::ref(basis_update),
+                                                       std::cref(basic_list),
+                                                       std::cref(nonbasic_list),
                                                        root_relax_soln_.x,
                                                        root_relax_soln_.y,
                                                        root_relax_soln_.z,
-                                                       basic_list,
-                                                       nonbasic_list,
                                                        variable_bounds,
                                                        exploration_stats_.start_time);
   if (!problem_feasible) {
@@ -3554,6 +3563,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   if ((settings_.clique_cuts != 0 || settings_.zero_half_cuts != 0) && clique_table_ == nullptr &&
       omp_get_num_threads() >= CUOPT_MIP_CLIQUE_CUTS_REQUIRED_THREAD_COUNT) {
     signal_extend_cliques_.store(false, std::memory_order_release);
+    clique_table_complete_.store(false, std::memory_order_release);
     typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances_for_clique{};
     tolerances_for_clique.presolve_absolute_tolerance = settings_.primal_tol;
     tolerances_for_clique.absolute_tolerance          = settings_.primal_tol;
@@ -3567,8 +3577,12 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     {
       user_problem_t<i_t, f_t> problem_copy = original_problem_;
       timer_t timer(std::numeric_limits<double>::infinity());
-      mip::find_initial_cliques(
-        problem_copy, tolerances_for_clique, clique_table_, timer, clique_signal);
+      mip::find_initial_cliques(problem_copy,
+                                tolerances_for_clique,
+                                clique_table_,
+                                timer,
+                                clique_signal,
+                                &clique_table_complete_);
     }
   }
 
@@ -3723,8 +3737,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                             var_types_,
                                             original_problem_,
                                             probing_implied_bound_,
-                                            clique_table_,
-                                            clique_signal);
+                                            nullptr,
+                                            clique_signal,
+                                            std::ref(clique_table_));
 
   std::vector<f_t> saved_solution;
 #ifdef CHECK_CUTS_AGAINST_SAVED_SOLUTION

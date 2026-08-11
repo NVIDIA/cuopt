@@ -983,6 +983,29 @@ TEST(cuts, test_duplicate_cuts_detection)
   cut_pool.check_for_duplicate_cuts();
 }
 
+TEST(cuts, clique_initial_builder_publishes_completion)
+{
+  const raft::handle_t handle{};
+  auto model      = create_pairwise_triangle_set_packing_problem();
+  auto op_problem = mps_data_model_to_optimization_problem(&handle, model);
+  mip::problem_t<int, double> mip_problem(op_problem);
+  simplex::user_problem_t<int, double> host_problem(op_problem.get_handle_ptr());
+  mip_problem.get_host_user_problem(host_problem);
+
+  mip_solver_settings_t<int, double> settings;
+  cuopt::timer_t timer(std::numeric_limits<double>::infinity());
+  std::shared_ptr<mip::clique_table_t<int, double>> clique_table;
+  omp_atomic_t<bool> stop_requested{false};
+  omp_atomic_t<bool> complete{false};
+
+  mip::find_initial_cliques(
+    host_problem, settings.tolerances, clique_table, timer, &stop_requested, &complete);
+
+  EXPECT_TRUE(complete.load(std::memory_order_acquire));
+  ASSERT_NE(clique_table, nullptr);
+  EXPECT_EQ(clique_table->n_variables, host_problem.num_cols);
+}
+
 TEST(cuts, clique_phase1_smoke_conflict_graph_edges)
 {
   const raft::handle_t handle{};

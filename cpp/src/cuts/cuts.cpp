@@ -3264,6 +3264,7 @@ void cut_generation_t<i_t, f_t>::prepare_fractional_sub_conflict_graph(
     signal_extend_->store(true, std::memory_order_release);
 #pragma omp taskwait depend(in : *signal_extend_)
   }
+  if (clique_table_source_.has_value()) { clique_table_ = clique_table_source_->get(); }
 
   if (clique_table_ == nullptr) { return; }
   const bool has_probing_conflicts =
@@ -3516,22 +3517,30 @@ void cut_generation_t<i_t, f_t>::prepare_fractional_sub_conflict_graph(
 }
 
 template <typename i_t, typename f_t>
-bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
-                                               const simplex_solver_settings_t<i_t, f_t>& settings,
-                                               csr_matrix_t<i_t, f_t>& Arow,
-                                               const std::vector<i_t>& new_slacks,
-                                               const std::vector<variable_type_t>& var_types,
-                                               basis_update_mpf_t<i_t, f_t>& basis_update,
-                                               const std::vector<f_t>& xstar,
-                                               const std::vector<f_t>& ystar,
-                                               const std::vector<f_t>& zstar,
-                                               const std::vector<i_t>& basic_list,
-                                               const std::vector<i_t>& nonbasic_list,
-                                               variable_bounds_t<i_t, f_t>& variable_bounds,
-                                               f_t start_time)
+bool cut_generation_t<i_t, f_t>::generate_cuts(
+  const lp_problem_t<i_t, f_t>& lp,
+  const simplex_solver_settings_t<i_t, f_t>& settings,
+  csr_matrix_t<i_t, f_t>& Arow,
+  const std::vector<i_t>& new_slacks,
+  const std::vector<variable_type_t>& var_types,
+  std::optional<std::reference_wrapper<basis_update_mpf_t<i_t, f_t>>> basis_update,
+  std::optional<std::reference_wrapper<const std::vector<i_t>>> basic_list,
+  std::optional<std::reference_wrapper<const std::vector<i_t>>> nonbasic_list,
+  const std::vector<f_t>& xstar,
+  const std::vector<f_t>& ystar,
+  const std::vector<f_t>& zstar,
+  variable_bounds_t<i_t, f_t>& variable_bounds,
+  f_t start_time)
 {
+  const bool has_basis =
+    basis_update.has_value() && basic_list.has_value() && nonbasic_list.has_value();
+  cuopt_assert(has_basis || (!basis_update.has_value() && !basic_list.has_value() &&
+                             !nonbasic_list.has_value()),
+               "Cut basis references must be provided together");
+
   // Generate Gomory and CG Cuts
-  if (settings.mixed_integer_gomory_cuts != 0 || settings.strong_chvatal_gomory_cuts != 0) {
+  if (has_basis &&
+      (settings.mixed_integer_gomory_cuts != 0 || settings.strong_chvatal_gomory_cuts != 0)) {
     if (toc(start_time) >= settings.time_limit) { return true; }
     f_t cut_start_time = tic();
     generate_gomory_cuts(lp,
@@ -3539,10 +3548,10 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
                          Arow,
                          new_slacks,
                          var_types,
-                         basis_update,
+                         basis_update->get(),
                          xstar,
-                         basic_list,
-                         nonbasic_list,
+                         basic_list->get(),
+                         nonbasic_list->get(),
                          start_time);
     f_t cut_generation_time = toc(cut_start_time);
     if (cut_generation_time > 1.0) {
@@ -3550,23 +3559,6 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
     }
   }
 
-  return generate_basis_independent_cuts(
-    lp, settings, Arow, new_slacks, var_types, xstar, ystar, zstar, variable_bounds, start_time);
-}
-
-template <typename i_t, typename f_t>
-bool cut_generation_t<i_t, f_t>::generate_basis_independent_cuts(
-  const lp_problem_t<i_t, f_t>& lp,
-  const simplex_solver_settings_t<i_t, f_t>& settings,
-  csr_matrix_t<i_t, f_t>& Arow,
-  const std::vector<i_t>& new_slacks,
-  const std::vector<variable_type_t>& var_types,
-  const std::vector<f_t>& xstar,
-  const std::vector<f_t>& ystar,
-  const std::vector<f_t>& zstar,
-  variable_bounds_t<i_t, f_t>& variable_bounds,
-  f_t start_time)
-{
   // Generate Knapsack cuts
   if (settings.knapsack_cuts != 0) {
     if (toc(start_time) >= settings.time_limit) { return true; }
