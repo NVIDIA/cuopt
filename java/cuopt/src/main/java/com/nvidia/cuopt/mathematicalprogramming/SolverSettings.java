@@ -106,6 +106,28 @@ public final class SolverSettings implements AutoCloseable {
     return this;
   }
 
+  /**
+   * Warm-start PDLP with a primal solution of length {@code numVariables}.
+   *
+   * <p>The Python API exposes this on {@code DataModel}; in Java it lives here, matching the C API,
+   * where it is a solver setting rather than part of the problem.
+   */
+  public SolverSettings setInitialPrimalSolution(double[] values) {
+    NativeCuOpt.setInitialPrimalSolution(handle(), Arrays.copyOf(values, values.length));
+    return this;
+  }
+
+  /**
+   * Warm-start PDLP with a dual solution of length {@code numConstraints}.
+   *
+   * <p>The Python API exposes this on {@code DataModel}; in Java it lives here, matching the C API,
+   * where it is a solver setting rather than part of the problem.
+   */
+  public SolverSettings setInitialDualSolution(double[] values) {
+    NativeCuOpt.setInitialDualSolution(handle(), Arrays.copyOf(values, values.length));
+    return this;
+  }
+
   public SolverSettings setMIPCallback(
       MIPSolutionCallback callback, Object userData, int numVariables) {
     NativeCuOpt.registerMIPGetSolutionCallback(handle(), callback, userData, numVariables);

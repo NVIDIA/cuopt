@@ -519,6 +519,28 @@ Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_addMIPStart(JNIEnv* en
 }
 
 extern "C" JNIEXPORT void JNICALL
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_setInitialPrimalSolution(
+  JNIEnv* env, jclass, jlong handle, jdoubleArray values)
+{
+  const auto data = get_double_array(env, values);
+  check_status(env,
+               cuOptSetInitialPrimalSolution(
+                 to_settings(handle), data.data(), static_cast<cuopt_int_t>(data.size())),
+               "cuOptSetInitialPrimalSolution");
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_setInitialDualSolution(
+  JNIEnv* env, jclass, jlong handle, jdoubleArray values)
+{
+  const auto data = get_double_array(env, values);
+  check_status(env,
+               cuOptSetInitialDualSolution(
+                 to_settings(handle), data.data(), static_cast<cuopt_int_t>(data.size())),
+               "cuOptSetInitialDualSolution");
+}
+
+extern "C" JNIEXPORT void JNICALL
 Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_registerMIPGetSolutionCallback(
   JNIEnv* env, jclass, jlong handle, jobject callback, jobject user_data, jint num_variables)
 {

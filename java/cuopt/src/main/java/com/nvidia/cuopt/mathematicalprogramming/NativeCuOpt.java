@@ -32,6 +32,8 @@ final class NativeCuOpt {
   static native void loadSettingsFromFile(long handle, String path);
   static native boolean dumpSettingsToFile(long handle, String path, boolean hyperparametersOnly);
   static native void addMIPStart(long handle, double[] values);
+  static native void setInitialPrimalSolution(long handle, double[] values);
+  static native void setInitialDualSolution(long handle, double[] values);
   static native void registerMIPGetSolutionCallback(
       long handle, MIPSolutionCallback callback, Object userData, int numVariables);
   static native void registerMIPSetSolutionCallback(

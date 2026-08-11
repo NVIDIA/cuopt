@@ -76,6 +76,23 @@ final class NativeIntegrationTest {
   }
 
   @Test
+  void warmStartsPDLPFromInitialPrimalAndDualSolutions() {
+    NativeTestSupport.assumeNativeLibrary();
+    NativeTestSupport.assumeCudaDriverAvailable();
+    // tinyLP has two variables and one constraint; the optimum lies on x0 + x1 == 1.
+    try (Problem problem = tinyLP();
+        SolverSettings settings =
+            new SolverSettings()
+                .setMethod(SolverMethod.PDLP)
+                .setInitialPrimalSolution(new double[] {0.5, 0.5})
+                .setInitialDualSolution(new double[] {1.0});
+        Solution solution = problem.solve(settings)) {
+      assertEquals(TerminationStatus.OPTIMAL, solution.getTerminationStatus());
+      assertEquals(1.0, solution.getPrimalObjective(), 1e-3);
+    }
+  }
+
+  @Test
   void solvesProblemApiMIPAndLifecycleCloseIsIdempotent() {
     NativeTestSupport.assumeNativeLibrary();
     NativeTestSupport.assumeCudaDriverAvailable();
