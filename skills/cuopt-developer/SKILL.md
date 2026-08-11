@@ -168,9 +168,16 @@ cuopt/
 - All PRs must pass CI
 
 ### Never Hand-Edit Generated Files
-- `cpp/src/grpc/codegen/generated/` is generated from `field_registry.yaml`
-- Edit the registry, then run `./build.sh codegen`, then commit both
-- Codegen is an explicit build target, never automatic — see [gRPC wire fields](#grpc-wire-fields-and-codegen)
+Edit the source, run the generator, commit both. A generated file usually says so in its first line or two — check before editing anything unfamiliar.
+
+| Generated | Source | Regenerate with |
+|-----------|--------|-----------------|
+| `cpp/src/grpc/codegen/generated/` | `cpp/src/grpc/codegen/field_registry.yaml` | `./build.sh codegen` |
+| `conda/environments/*.yaml`, `pyproject.toml` | `dependencies.yaml` | `pre-commit run --all-files` |
+| `docs/cuopt/source/versions1.json` | `ci/utils/update_doc_versions.py` | `pre-commit run --all-files` |
+| `version:` in `skills/*/SKILL.md`, plugin/marketplace JSONs | `VERSION` | `pre-commit run --all-files` |
+
+Only the gRPC codegen needs an explicit command — the rest are pre-commit hooks that fix the file for you, so a `git commit` that trips one just needs the regenerated file staged and re-committed. **The gRPC codegen never runs on its own**, so a missed `./build.sh codegen` surfaces only as a CI failure in `ci/verify_grpc_codegen.sh`. See [gRPC wire fields](#grpc-wire-fields-and-codegen).
 
 ### CUDA/GPU Hygiene
 - Keep operations stream-ordered
