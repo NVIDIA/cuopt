@@ -67,3 +67,7 @@ env -u CFLAGS -u CXXFLAGS -u CPPFLAGS -u LDFLAGS \
   --parallel "${PARALLEL_LEVEL:-2}"
 
 echo "Built ${BUILD_DIR}/libcuopt_jni.so"
+
+# Fail fast on a Java native declaration and its JNI entry point drifting apart, which the
+# compiler cannot catch and which otherwise surfaces as a run-time UnsatisfiedLinkError.
+CUOPT_JAVA_NATIVE_BUILD_DIR="${BUILD_DIR}" bash "${MODULE_DIR}/scripts/check_jni_symbols.sh"

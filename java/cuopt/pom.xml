@@ -14,6 +14,30 @@ SPDX-License-Identifier: Apache-2.0
   <!--CUOPT_JAVA#VERSION_UPDATE_MARKER_START--><version>26.10.0</version><!--CUOPT_JAVA#VERSION_UPDATE_MARKER_END-->
   <name>cuOpt Java Bindings</name>
   <description>Java JNI bindings for cuOpt numerical optimization.</description>
+  <url>https://docs.nvidia.com/cuopt/introduction.html</url>
+
+  <!-- url, licenses, scm, and developers are required by Maven Central. -->
+  <licenses>
+    <license>
+      <name>Apache-2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <developers>
+    <developer>
+      <name>NVIDIA Corporation</name>
+      <url>https://github.com/NVIDIA/cuopt</url>
+    </developer>
+  </developers>
+
+  <scm>
+    <connection>scm:git:https://github.com/NVIDIA/cuopt.git</connection>
+    <developerConnection>scm:git:ssh://git@github.com/NVIDIA/cuopt.git</developerConnection>
+    <url>https://github.com/NVIDIA/cuopt</url>
+    <tag>HEAD</tag>
+  </scm>
 
   <properties>
     <maven.compiler.release>11</maven.compiler.release>

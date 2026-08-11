@@ -71,6 +71,25 @@ not yet cover:
 Closing those gaps in the C API is the remaining prerequisite for shipping this
 module as a standalone binary distribution.
 
+## JNI symbol check
+
+The bindings are hand-written, so every `static native` method in
+`NativeCuOpt.java` needs a matching `Java_com_nvidia_..._name` function in
+`cuopt_jni.cpp`. Nothing in the compiler enforces that pairing: a missing entry
+point compiles cleanly and fails at run time with `UnsatisfiedLinkError`, and a
+renamed one leaves dead code behind in the library.
+
+`scripts/check_jni_symbols.sh` compares the prototypes `javac -h` derives from
+the Java sources against the symbols the built library actually exports, and
+fails on a mismatch in either direction. `build_native.sh` runs it after every
+native build, so `./build.sh java` and CI both cover it. It can also be run on
+its own once the library exists:
+
+```bash
+cd java/cuopt
+bash scripts/check_jni_symbols.sh
+```
+
 ## Generated constants
 
 Maven generates `CuOptConstants.java` under
