@@ -68,6 +68,12 @@ env -u CFLAGS -u CXXFLAGS -u CPPFLAGS -u LDFLAGS \
 
 echo "Built ${BUILD_DIR}/libcuopt_jni.so"
 
-# Fail fast on a Java native declaration and its JNI entry point drifting apart, which the
-# compiler cannot catch and which otherwise surfaces as a run-time UnsatisfiedLinkError.
-CUOPT_JAVA_NATIVE_BUILD_DIR="${BUILD_DIR}" bash "${MODULE_DIR}/scripts/check_jni_symbols.sh"
+# Fail fast on a Java native declaration and its JNI entry point drifting apart. The compiler
+# cannot catch that, and JNI resolves methods lazily, so the library still loads and the failure
+# only appears when something calls the method. Set CUOPT_SKIP_JNI_SYMBOL_CHECK=1 to skip it while
+# iterating, for instance after adding a native declaration but before writing its entry point.
+if [[ "${CUOPT_SKIP_JNI_SYMBOL_CHECK:-0}" == "1" ]]; then
+  echo "Skipping the JNI symbol check (CUOPT_SKIP_JNI_SYMBOL_CHECK=1)."
+else
+  CUOPT_JAVA_NATIVE_BUILD_DIR="${BUILD_DIR}" bash "${MODULE_DIR}/scripts/check_jni_symbols.sh"
+fi

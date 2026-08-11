@@ -81,9 +81,17 @@ renamed one leaves dead code behind in the library.
 
 `scripts/check_jni_symbols.sh` compares the prototypes `javac -h` derives from
 the Java sources against the symbols the built library actually exports, and
-fails on a mismatch in either direction. `build_native.sh` runs it after every
-native build, so `./build.sh java` and CI both cover it. It can also be run on
-its own once the library exists:
+fails on a mismatch in either direction. It reads the built library rather than
+parsing the source, so the macro-generated entry points need no special casing.
+
+`build_native.sh` runs it after every native build, so `./build.sh java` and
+both CI jobs cover it. It takes about a second. It is not a pre-commit hook,
+because it needs a built `libcuopt_jni.so` and therefore a full `libcuopt`
+build, which the other hooks do not require.
+
+To skip it while iterating — say, after adding a `native` declaration but
+before writing its entry point — set `CUOPT_SKIP_JNI_SYMBOL_CHECK=1`. It can
+also be run on its own once the library exists:
 
 ```bash
 cd java/cuopt
