@@ -43,15 +43,13 @@ set -u
 rapids-print-env
 
 export CUOPT_PREFIX="${CONDA_PREFIX}"
-export CUOPT_JAVA_NATIVE_BUILD_DIR="${PWD}/java/cuopt/build/native"
 
+# libcuopt comes from the conda artifact here, not a local build tree, so build.sh's 'java'
+# target uses the install prefix directly.
 if [[ "${RUN_TESTS}" == true ]]; then
   rapids-logger "Building and testing the Java bindings"
-  bash java/cuopt/scripts/test.sh
+  ./build.sh java --run-java-tests
 else
   rapids-logger "Building the Java bindings"
-  bash java/cuopt/scripts/build_native.sh
-  mvn -f java/cuopt/pom.xml clean package \
-    -DskipTests \
-    -Dcuopt.native.dir="${CUOPT_JAVA_NATIVE_BUILD_DIR}"
+  ./build.sh java
 fi

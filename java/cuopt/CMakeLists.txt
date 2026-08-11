@@ -26,7 +26,19 @@ find_package(JNI REQUIRED)
 find_package(CUDAToolkit REQUIRED)
 
 set(CUOPT_INCLUDE_DIR "${CUOPT_PREFIX}/include")
-set(CUOPT_LIBRARY "${CUOPT_PREFIX}/lib/libcuopt.so")
+
+# Building against a cuOpt build tree rather than an install prefix: the top-level build.sh
+# points these at cpp/build and its CPM-fetched dependencies. The rmm and raft headers must
+# be the exact ones libcuopt was compiled with -- rmm puts its version in an inline namespace
+# (rmm::_RMM_26_10), so mixing a different copy links cleanly and then fails at dlopen with an
+# undefined symbol.
+set(CUOPT_LIBRARY "" CACHE FILEPATH "Path to libcuopt.so (defaults to CUOPT_PREFIX/lib)")
+set(CUOPT_EXTRA_INCLUDE_DIRS "" CACHE STRING
+    "Extra include directories searched before CUOPT_PREFIX/include")
+
+if(NOT CUOPT_LIBRARY)
+  set(CUOPT_LIBRARY "${CUOPT_PREFIX}/lib/libcuopt.so")
+endif()
 if(NOT EXISTS "${CUOPT_LIBRARY}")
   message(FATAL_ERROR "cuOpt shared library was not found at ${CUOPT_LIBRARY}")
 endif()
@@ -42,6 +54,7 @@ add_library(cuopt_jni SHARED
 
 target_include_directories(cuopt_jni PRIVATE
   ${JNI_INCLUDE_DIRS}
+  ${CUOPT_EXTRA_INCLUDE_DIRS}
   ${CUOPT_INCLUDE_DIR}
   ${CUOPT_PREFIX}/include/rapids
   ${CUDAToolkit_INCLUDE_DIRS}

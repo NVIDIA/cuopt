@@ -24,8 +24,18 @@ if [[ -z "${CMAKE}" ]]; then
   exit 1
 fi
 
-if [[ ! -f "${CUOPT_PREFIX}/lib/libcuopt.so" ]]; then
+# CUOPT_LIBRARY and CUOPT_EXTRA_INCLUDE_DIRS let the top-level build.sh point this at a
+# cuOpt build tree instead of an install prefix. Left unset, the conda prefix is used.
+CUOPT_LIBRARY="${CUOPT_LIBRARY:-}"
+CUOPT_EXTRA_INCLUDE_DIRS="${CUOPT_EXTRA_INCLUDE_DIRS:-}"
+
+if [[ -z "${CUOPT_LIBRARY}" && ! -f "${CUOPT_PREFIX}/lib/libcuopt.so" ]]; then
   echo "cuOpt shared library was not found at ${CUOPT_PREFIX}/lib/libcuopt.so." >&2
+  echo "Build it first ('./build.sh libcuopt' from the repository root) or set CUOPT_LIBRARY." >&2
+  exit 1
+fi
+if [[ -n "${CUOPT_LIBRARY}" && ! -f "${CUOPT_LIBRARY}" ]]; then
+  echo "cuOpt shared library was not found at ${CUOPT_LIBRARY}." >&2
   exit 1
 fi
 
@@ -40,11 +50,15 @@ if [[ -z "${CXX_COMPILER}" && -x "${CUOPT_PREFIX}/bin/c++" ]]; then
   CXX_COMPILER="${CUOPT_PREFIX}/bin/c++"
 fi
 
+CUOPT_RUNTIME_LIBRARY_DIR="${CUOPT_RUNTIME_LIBRARY_DIR:-${CUOPT_PREFIX}/lib}"
+
 env -u CFLAGS -u CXXFLAGS -u CPPFLAGS -u LDFLAGS \
   "${CMAKE}" -S "${MODULE_DIR}" -B "${BUILD_DIR}" \
   -DCMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE:-Release}" \
   -DCUOPT_PREFIX="${CUOPT_PREFIX}" \
-  -DCUOPT_RUNTIME_LIBRARY_DIR="${CUOPT_PREFIX}/lib" \
+  -DCUOPT_RUNTIME_LIBRARY_DIR="${CUOPT_RUNTIME_LIBRARY_DIR}" \
+  ${CUOPT_LIBRARY:+-DCUOPT_LIBRARY="${CUOPT_LIBRARY}"} \
+  ${CUOPT_EXTRA_INCLUDE_DIRS:+-DCUOPT_EXTRA_INCLUDE_DIRS="${CUOPT_EXTRA_INCLUDE_DIRS}"} \
   ${CXX_COMPILER:+-DCMAKE_CXX_COMPILER="${CXX_COMPILER}"} \
   -DJAVA_HOME="${JAVA_HOME}"
 

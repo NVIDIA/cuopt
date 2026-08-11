@@ -24,7 +24,25 @@ library_path="${CUOPT_PREFIX}/lib:${NATIVE_BUILD_DIR}"
 if [[ -d "${CUDA_RUNTIME_DIR}" ]]; then
   library_path="${CUDA_RUNTIME_DIR}:${library_path}"
 fi
+if [[ -n "${CUOPT_EXTRA_LIBRARY_DIRS:-}" ]]; then
+  library_path="${CUOPT_EXTRA_LIBRARY_DIRS}:${library_path}"
+fi
 export LD_LIBRARY_PATH="${library_path}${existing_ld_library_path:+:${existing_ld_library_path}}"
+
+# When CPM fetches its own rmm (because the conda prefix has a different version), libcuopt is
+# compiled against that copy but records the conda lib dir ahead of the _deps directories in its
+# RPATH. DT_RPATH is searched before LD_LIBRARY_PATH, so the loader would pick up the conda
+# librmm and fail on rmm's version-tagged inline namespace. Preloading the matching library is
+# the only way to win that lookup without relinking libcuopt.
+preload="${LD_PRELOAD:-}"
+for candidate in ${CUOPT_PRELOAD_LIBS:-}; do
+  if [[ -f "${candidate}" ]]; then
+    preload="${candidate}${preload:+:${preload}}"
+  fi
+done
+if [[ -n "${preload}" ]]; then
+  export LD_PRELOAD="${preload}"
+fi
 
 cd "${MODULE_DIR}"
 mvn verify \
