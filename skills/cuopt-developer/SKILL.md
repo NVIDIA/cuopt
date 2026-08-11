@@ -265,6 +265,14 @@ When implementing or debugging **VRP dimensions** (constraints, objectives, forw
 
 Read it **before** adding a new dimension or changing combine semantics.
 
+## Budgeting a solver stage and attributing regressions
+
+When adding or tuning a **limit on a stage that shares the solve's time budget** (presolve, probing, cut generation, heuristics), or when a benchmark regression looks like it came from one, read:
+
+- **`references/stage_budgets.md`** — why a deterministic work counter does not bound wall time, how to size a limit so the stage concludes before its ceiling, and the ordered checks that attribute a regression to a budget before tuning its value.
+
+Run the attribution checks **before** changing a limit's value — the common failure is tuning a limit that was never what bound.
+
 ## Numerical issues in non-routing solver internals
 
 When a bug surfaces as **wrong-but-plausible** solver output (invalid lower bound, unexpectedly large duals, 10× iteration blow-up after a small change) rather than a crash, read:

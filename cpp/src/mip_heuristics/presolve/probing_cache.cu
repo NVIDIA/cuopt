@@ -21,6 +21,7 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/timer.hpp>
 
+#include <chrono>
 #include <unordered_set>
 #include <utilities/omp_helpers.hpp>
 
@@ -847,7 +848,9 @@ std::vector<i_t> compute_priority_indices_by_implied_integers(problem_t<i_t, f_t
 template <typename i_t, typename f_t>
 bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
                            problem_t<i_t, f_t>& problem,
-                           timer_t timer)
+                           timer_t timer,
+                           double work_limit,
+                           size_t step_size_hint)
 {
   raft::common::nvtx::range fun_scope("compute_probing_cache");
   // we dont want to compute the probing cache for all variables for time and computation resources
@@ -869,11 +872,14 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   std::vector<std::vector<std::tuple<f_t, i_t, f_t, f_t>>> modification_vector_pool(num_tasks);
   std::vector<std::vector<substitution_t<i_t, f_t>>> substitution_vector_pool(num_tasks);
 
+  std::vector<double> iter_accum_pool(num_tasks, 0.0);
+
   // Initialize multi_probe_presolve_pool
   for (size_t i = 0; i < num_tasks; i++) {
     multi_probe_presolve_pool.emplace_back(bound_presolve.context);
     multi_probe_presolve_pool[i].resize(problem);
-    multi_probe_presolve_pool[i].compute_stats = true;
+    multi_probe_presolve_pool[i].compute_stats          = true;
+    multi_probe_presolve_pool[i].local_iter_accumulator = &iter_accum_pool[i];
   }
 
   // Atomic variables for tracking progress
@@ -882,18 +888,32 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   std::atomic<bool> problem_is_infeasible(false);
   size_t last_it_implied_singletons = 0;
   bool early_exit                   = false;
-  const size_t step_size            = min((size_t)2048, priority_indices.size());
+  const double iter_cost            = probing_iter_work;
+  const double probe_cost           = probing_probe_work;
+  const auto probing_t0             = std::chrono::steady_clock::now();
+  double iters_done                 = 0.0;
+  size_t probes_done                = 0;
+  double work_used                  = 0.0;
+  // Work is only folded in at the step barrier, so the step size is also the granularity at which
+  // the budget can be enforced: too large and a single step runs effectively unbudgeted.
+  const size_t step_size = min(step_size_hint, priority_indices.size());
 
   // The pool buffers above were allocated on the main stream.
   // Each OMP thread below uses its own stream, so we must ensure all allocations
   // are visible before any per-thread kernel can reference that memory.
   problem.handle_ptr->sync_stream();
 
-  CUOPT_LOG_INFO("Running probing cache with %zu tasks", num_tasks);
+  CUOPT_LOG_DEBUG(
+    "Running probing cache with %zu tasks (%zu candidate vars, work limit %.3f, step %zu)",
+    num_tasks,
+    priority_indices.size(),
+    work_limit,
+    step_size);
 
   // Main parallel loop
   for (size_t step_start = 0; step_start < priority_indices.size(); step_start += step_size) {
     if (timer.check_time_limit() || early_exit || problem_is_infeasible.load()) { break; }
+    if (work_used >= work_limit) { break; }
     size_t step_end = std::min(step_start + step_size, priority_indices.size());
 
 #pragma omp taskloop num_tasks(num_tasks) default(shared) priority(CUOPT_DEFAULT_TASK_PRIORITY)
@@ -926,8 +946,15 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
       }
     }  // implicit barrier that waits for all iterations to finish before proceeding
 
-    // TODO when we have determinism, check current threads work/time counter and filter queue
-    // items that are smaller or equal to that
+    // Single-threaded from here to the end of the step, so folding the per-task counts in a fixed
+    // order gives the same work_used for any thread count.
+    for (size_t t = 0; t < num_tasks; ++t) {
+      iters_done += iter_accum_pool[t];
+      iter_accum_pool[t] = 0.0;
+    }
+    probes_done += step_end - step_start;
+    work_used = iters_done * iter_cost + (double)probes_done * probe_cost;
+
     apply_modification_queue_to_problem(modification_vector_pool, problem);
     // copy host bounds again, because we changed some problem bounds
     raft::copy(h_var_bounds.data(),
@@ -943,9 +970,28 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   }  // end of step
 
   apply_substitution_queue_to_problem(substitution_vector_pool, problem);
-  CUOPT_LOG_DEBUG("Total number of cached probings %lu number of implied singletons %lu",
-                  n_of_cached_probings.load(),
-                  n_of_implied_singletons.load());
+  const double probing_wall =
+    std::chrono::duration<double>(std::chrono::steady_clock::now() - probing_t0).count();
+  CUOPT_LOG_DEBUG(
+    "PRESOLVE_PROBING probes=%zu candidates=%zu iters=%.0f work=%.3f work_limit=%.3f step=%zu "
+    "iter_cost=%.5f probe_cost=%.5f wall=%.3f wall_limit=%.3f units_per_s=%.1f "
+    "budget_exhausted=%d early_exit=%d timed_out=%d cached=%lu implied_singletons=%lu",
+    probes_done,
+    priority_indices.size(),
+    iters_done,
+    work_used,
+    work_limit,
+    step_size,
+    iter_cost,
+    probe_cost,
+    probing_wall,
+    timer.get_time_limit(),
+    probing_wall > 0.0 ? work_used / probing_wall : 0.0,
+    (int)(work_used >= work_limit),
+    (int)early_exit,
+    (int)timer.check_time_limit(),
+    n_of_cached_probings.load(),
+    n_of_implied_singletons.load());
   // restore the settings
   bound_presolve.settings = {};
   return problem_is_infeasible.load();
@@ -954,7 +1000,9 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
 #define INSTANTIATE(F_TYPE)                                                                        \
   template bool compute_probing_cache<int, F_TYPE>(bound_presolve_t<int, F_TYPE> & bound_presolve, \
                                                    problem_t<int, F_TYPE> & problem,               \
-                                                   timer_t timer);                                 \
+                                                   timer_t timer,                                  \
+                                                   double work_limit,                              \
+                                                   size_t step_size_hint);                         \
   template class probing_cache_t<int, F_TYPE>;
 
 #if MIP_INSTANTIATE_FLOAT
