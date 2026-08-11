@@ -657,8 +657,9 @@ template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::set_solution_from_submip(
   const std::vector<f_t>& solution, const third_party_presolve_t<i_t, f_t>& presolver, f_t fixrate)
 {
+  bool check_postsolve = false;
   std::vector<f_t> leaf_sol;
-  presolver.uncrush_primal_solution(solution, leaf_sol);
+  presolver.uncrush_primal_solution(solution, leaf_sol, check_postsolve);
   f_t obj = compute_objective(original_lp_, leaf_sol);
 
   std::vector<f_t> user_sol;
