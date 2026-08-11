@@ -830,17 +830,23 @@ cuopt_int_t cuOptGetFloatParameter(cuOptSolverSettings settings,
 
 /** @brief Load solver parameters from a file.
  *
- * The file uses the same `name value` format written by cuOptDumpParametersToFile.
+ * Each line is either blank, a `#` comment, or `name = value`. String values may be quoted.
  *
  * @param[in, out] settings - The solver settings object to populate.
  *
  * @param[in] path - Path of the file to read.
  *
- * @return A status code indicating success or failure.
+ * @return A status code indicating success or failure. Returns CUOPT_INVALID_ARGUMENT if the file
+ *  is missing or malformed.
  */
 cuopt_int_t cuOptLoadParametersFromFile(cuOptSolverSettings settings, const char* path);
 
-/** @brief Write solver parameters to a file.
+/** @brief Write a solver parameter template to a file.
+ *
+ * Writes every parameter with its description and current value, but with each assignment
+ * commented out, as a starting point for a configuration file the user edits. Because the output
+ * is fully commented, feeding it straight back to cuOptLoadParametersFromFile changes nothing;
+ * uncomment the lines you want to apply first.
  *
  * @param[in] settings - The solver settings object to dump.
  *

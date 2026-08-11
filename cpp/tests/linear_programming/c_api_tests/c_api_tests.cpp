@@ -1112,36 +1112,76 @@ TEST(c_api, solver_parameter_enumeration)
   EXPECT_EQ(cuOptGetNumSolverParameters(nullptr), CUOPT_INVALID_ARGUMENT);
 }
 
-TEST(c_api, solver_parameter_file_round_trip)
+TEST(c_api, solver_parameter_file_dump_and_load)
 {
-  const std::string path =
+  const std::string dumped =
     std::filesystem::temp_directory_path().string() + "/cuopt_c_api_parameters.txt";
 
   cuOptSolverSettings settings = nullptr;
   ASSERT_EQ(cuOptCreateSolverSettings(&settings), CUOPT_SUCCESS);
   ASSERT_EQ(cuOptSetFloatParameter(settings, CUOPT_TIME_LIMIT, 12.5), CUOPT_SUCCESS);
 
-  cuopt_int_t dumped = 0;
-  ASSERT_EQ(cuOptDumpParametersToFile(settings, path.c_str(), 0, &dumped), CUOPT_SUCCESS);
-  EXPECT_NE(dumped, 0);
+  cuopt_int_t was_dumped = 0;
+  ASSERT_EQ(cuOptDumpParametersToFile(settings, dumped.c_str(), 0, &was_dumped), CUOPT_SUCCESS);
+  EXPECT_NE(was_dumped, 0);
   cuOptDestroySolverSettings(&settings);
 
-  cuOptSolverSettings reloaded = nullptr;
-  ASSERT_EQ(cuOptCreateSolverSettings(&reloaded), CUOPT_SUCCESS);
-  ASSERT_EQ(cuOptLoadParametersFromFile(reloaded, path.c_str()), CUOPT_SUCCESS);
-  cuopt_float_t time_limit = 0;
-  ASSERT_EQ(cuOptGetFloatParameter(reloaded, CUOPT_TIME_LIMIT, &time_limit), CUOPT_SUCCESS);
-  EXPECT_DOUBLE_EQ(time_limit, 12.5);
-  cuOptDestroySolverSettings(&reloaded);
+  // The dump is a template, not a state snapshot: every parameter is written commented out
+  // ("# name = value") for the user to uncomment. Loading it back is therefore a no-op, and
+  // time_limit stays at its default rather than becoming the 12.5 that was dumped.
+  {
+    std::ifstream in(dumped);
+    std::string line;
+    bool saw_time_limit_comment = false;
+    while (std::getline(in, line)) {
+      const auto first = line.find_first_not_of(" \t");
+      ASSERT_TRUE(first == std::string::npos || line[first] == '#')
+        << "expected every dumped line to be blank or commented, got: " << line;
+      if (line.find(CUOPT_TIME_LIMIT) != std::string::npos) { saw_time_limit_comment = true; }
+    }
+    EXPECT_TRUE(saw_time_limit_comment);
+  }
 
-  std::filesystem::remove(path);
+  cuOptSolverSettings from_dump = nullptr;
+  ASSERT_EQ(cuOptCreateSolverSettings(&from_dump), CUOPT_SUCCESS);
+  cuopt_float_t default_time_limit = 0;
+  ASSERT_EQ(cuOptGetFloatParameter(from_dump, CUOPT_TIME_LIMIT, &default_time_limit),
+            CUOPT_SUCCESS);
+  ASSERT_EQ(cuOptLoadParametersFromFile(from_dump, dumped.c_str()), CUOPT_SUCCESS);
+  cuopt_float_t after_load = 0;
+  ASSERT_EQ(cuOptGetFloatParameter(from_dump, CUOPT_TIME_LIMIT, &after_load), CUOPT_SUCCESS);
+  EXPECT_DOUBLE_EQ(after_load, default_time_limit);
+  cuOptDestroySolverSettings(&from_dump);
+
+  std::filesystem::remove(dumped);
+
+  // An uncommented "name = value" file is what actually applies settings.
+  const std::string overrides =
+    std::filesystem::temp_directory_path().string() + "/cuopt_c_api_overrides.txt";
+  {
+    std::ofstream out(overrides);
+    out << "# a comment line\n"
+        << CUOPT_TIME_LIMIT << " = 12.5\n";
+  }
+
+  cuOptSolverSettings loaded = nullptr;
+  ASSERT_EQ(cuOptCreateSolverSettings(&loaded), CUOPT_SUCCESS);
+  ASSERT_EQ(cuOptLoadParametersFromFile(loaded, overrides.c_str()), CUOPT_SUCCESS);
+  cuopt_float_t time_limit = 0;
+  ASSERT_EQ(cuOptGetFloatParameter(loaded, CUOPT_TIME_LIMIT, &time_limit), CUOPT_SUCCESS);
+  EXPECT_DOUBLE_EQ(time_limit, 12.5);
+  cuOptDestroySolverSettings(&loaded);
+
+  std::filesystem::remove(overrides);
 
   cuOptSolverSettings empty = nullptr;
   ASSERT_EQ(cuOptCreateSolverSettings(&empty), CUOPT_SUCCESS);
   EXPECT_EQ(cuOptLoadParametersFromFile(empty, ""), CUOPT_INVALID_ARGUMENT);
   EXPECT_EQ(cuOptLoadParametersFromFile(empty, nullptr), CUOPT_INVALID_ARGUMENT);
-  EXPECT_EQ(cuOptLoadParametersFromFile(nullptr, path.c_str()), CUOPT_INVALID_ARGUMENT);
-  EXPECT_EQ(cuOptDumpParametersToFile(empty, path.c_str(), 0, nullptr), CUOPT_INVALID_ARGUMENT);
+  EXPECT_EQ(cuOptLoadParametersFromFile(nullptr, "somewhere"), CUOPT_INVALID_ARGUMENT);
+  EXPECT_EQ(cuOptLoadParametersFromFile(empty, "/nonexistent/cuopt/params.txt"),
+            CUOPT_INVALID_ARGUMENT);
+  EXPECT_EQ(cuOptDumpParametersToFile(empty, "somewhere", 0, nullptr), CUOPT_INVALID_ARGUMENT);
   cuOptDestroySolverSettings(&empty);
 }
 

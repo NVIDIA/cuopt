@@ -42,7 +42,12 @@ not yet cover:
   (see the `TODO` in `cuopt_c.h`),
 - reading variable and row names when the problem has none, which the C API
   string-array getter rejects rather than reporting as empty,
-- reading the problem category.
+- reading the problem category,
+- reading the dual solution and reduced costs. These are empty when the solve
+  did not produce them (an infeasible LP, for instance), and the Java API
+  reports that as an empty array. The C API getters are copy-out into a
+  caller-sized buffer and report no length, so switching to them would turn
+  "unavailable" into a buffer of zeros.
 
 Closing those gaps in the C API is the remaining prerequisite for shipping this
 module as a standalone binary distribution.
