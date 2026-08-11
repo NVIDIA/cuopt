@@ -655,16 +655,19 @@ void branch_and_bound_t<i_t, f_t>::set_solution_from_cpu_fj(f_t obj,
 // user space.
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::set_solution_from_submip(
-  const std::vector<f_t>& solution, const third_party_presolve_t<i_t, f_t>& presolver, f_t fixrate)
+  const lp_problem_t<i_t, f_t>& lp,
+  const std::vector<f_t>& solution,
+  const third_party_presolve_t<i_t, f_t>& presolver,
+  f_t fixrate)
 {
   bool check_postsolve = false;
   std::vector<f_t> leaf_sol;
   presolver.uncrush_primal_solution(solution, leaf_sol, check_postsolve);
-  f_t obj = compute_objective(original_lp_, leaf_sol);
+  f_t obj = compute_objective(lp, leaf_sol);
 
   std::vector<f_t> user_sol;
   mutex_original_lp_.lock();
-  uncrush_primal_solution(original_problem_, original_lp_, leaf_sol, user_sol);
+  uncrush_primal_solution(original_problem_, lp, leaf_sol, user_sol);
   mutex_original_lp_.unlock();
   settings_.log.debug_format("SubMIP found a feasible solution with obj={:.4g}", obj);
   bool success = set_solution_from_heuristics(user_sol, heuristics_origin_t::SUBMIP);
@@ -2202,11 +2205,11 @@ bool branch_and_bound_t<i_t, f_t>::launch_rins_worker(const std::vector<f_t>& so
   if (settings_.inside_submip) {
     // LLVM libomp's GOMP compatibility path skips GCC's firstprivate copy
     // function for included tasks.
-    rins(worker, current_incumbent, is_root_heuristic);
+    rins(worker, current_incumbent, var_types_, is_root_heuristic);
   } else {
 #pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) affinity(worker) \
   firstprivate(worker, current_incumbent)
-    rins(worker, current_incumbent, is_root_heuristic);
+    rins(worker, current_incumbent, var_types_, is_root_heuristic);
   }
 
   return true;
@@ -2336,16 +2339,16 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
       }
     }
 
-    set_solution_from_submip(reduced_sol, presolver, fixrate);
+    set_solution_from_submip(worker->leaf_problem, reduced_sol, presolver, fixrate);
     return;
   }
 
   submip_settings.heuristic_preemption_callback   = nullptr;
   submip_settings.dual_simplex_objective_callback = nullptr;
   submip_settings.set_simplex_solution_callback   = nullptr;
-  submip_settings.solution_callback = [this, &presolver, fixrate](const std::vector<f_t>& solution,
-                                                                  f_t obj) {
-    this->set_solution_from_submip(solution, presolver, fixrate);
+  submip_settings.solution_callback               = [this, &presolver, fixrate, worker](
+                                        const std::vector<f_t>& solution, f_t obj) {
+    this->set_solution_from_submip(worker->leaf_problem, solution, presolver, fixrate);
   };
 
 #ifdef DEBUG_SUBMIP
@@ -2438,7 +2441,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   }
 
   if (submip_solution.has_incumbent) {
-    set_solution_from_submip(submip_solution.x, presolver, fixrate);
+    set_solution_from_submip(worker->leaf_problem, submip_solution.x, presolver, fixrate);
   }
 
   // Accumulate simplex iterations to determine when to stop exploring the sub-MIP
@@ -2575,6 +2578,7 @@ void extend_variable_fixings(const simplex_solver_settings_t<i_t, f_t>& settings
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* worker,
                                         const std::vector<f_t>& current_incumbent,
+                                        const std::vector<variable_type_t>& var_types,
                                         bool is_root_heuristic)
 {
   raft::common::nvtx::range scope("BB::rins_thread");
@@ -2596,10 +2600,10 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* worker,
   std::vector<f_t>& current_sol     = worker->leaf_solution.x;
 
   std::vector<i_t> fractional;
-  i_t num_frac = fractional_variables(settings_, current_sol, var_types_, fractional);
+  i_t num_frac = fractional_variables(settings_, current_sol, var_types, fractional);
 
   std::vector<i_t> integer_list;
-  get_unfixed_integer_variables(lower, upper, var_types_, settings_.fixed_tol, integer_list);
+  get_unfixed_integer_variables(lower, upper, var_types, settings_.fixed_tol, integer_list);
 
   i_t num_integers = integer_list.size();
 
@@ -2609,7 +2613,7 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* worker,
   i_t min_var_fixed = min_fixrate * num_integers;
   i_t num_var_fixed = 0;
 
-  while (solver_status_ == mip_status_t::UNSET && is_running_) {
+  while (solver_status_ == mip_status_t::UNSET && is_running_ && !worker->halt) {
     // RINS neighbourhood 1: Fix all the integer variables where the starting solution matches the
     // current incumbent, considering only the fractional values in the current node
     i_t prev_num_fixed = num_var_fixed;
@@ -2723,7 +2727,7 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* worker,
     if (lp_status != dual_status_t::OPTIMAL) { break; }
 
     fractional.clear();
-    num_frac = fractional_variables(settings_, current_sol, var_types_, fractional);
+    num_frac = fractional_variables(settings_, current_sol, var_types, fractional);
 
     f_t leaf_obj     = compute_objective(worker->leaf_problem, current_sol);
     node.lower_bound = leaf_obj;
@@ -2850,13 +2854,13 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
     if (settings_.inside_submip) {
       // LLVM libomp's GOMP compatibility path skips GCC's firstprivate copy
       // function for included tasks.
-      rins(worker, current_incumbent, is_root_heuristic);
+      rins(worker, current_incumbent, heuristic.var_types_, is_root_heuristic);
     } else {
       ++(*worker_count);
 #pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) affinity(worker) \
-  firstprivate(worker, current_incumbent, worker_count) depend(out : *worker)
+  firstprivate(worker, current_incumbent, worker_count) shared(heuristic) depend(out : *worker)
       {
-        rins(worker, current_incumbent, is_root_heuristic);
+        rins(worker, current_incumbent, heuristic.var_types_, is_root_heuristic);
         --(*worker_count);
       }
     }
