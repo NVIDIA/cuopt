@@ -1223,9 +1223,9 @@ void third_party_presolve_t<i_t, f_t>::undo(std::vector<f_t>& primal_solution,
 
 template <typename i_t, typename f_t>
 void third_party_presolve_t<i_t, f_t>::uncrush_primal_solution(
-  const std::vector<f_t>& reduced_primal, std::vector<f_t>& full_primal) const
+  const std::vector<f_t>& reduced_primal, std::vector<f_t>& full_primal, bool check_postsolve) const
 {
-  if (presolver_ == cuopt::mathematical_optimization::presolver_t::PSLP) {
+  if (presolver_ == PSLP) {
     cuopt_expects(false,
                   error_type_t::RuntimeError,
                   "This code path should be never called, as this is meant for callbacks and they "
@@ -1241,7 +1241,7 @@ void third_party_presolve_t<i_t, f_t>::uncrush_primal_solution(
 
   bool is_optimal = false;
   auto status = post_solver.undo(reduced_sol, full_sol, *papilo_post_solve_storage_, is_optimal);
-  check_postsolve_status(status);
+  if (check_postsolve) check_postsolve_status(status);
   full_primal = std::move(full_sol.primal);
 }
 
