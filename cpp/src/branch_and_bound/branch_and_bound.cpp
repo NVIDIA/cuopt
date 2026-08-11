@@ -2218,6 +2218,7 @@ bool branch_and_bound_t<i_t, f_t>::launch_rins_worker(const std::vector<f_t>& so
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worker,
                                                 const std::vector<f_t>& current_incumbent,
+                                                const std::vector<variable_type_t>& var_type,
                                                 i_t num_var_fixed,
                                                 i_t num_integers,
                                                 i_t submip_level,
@@ -2300,7 +2301,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   // there is only equality rows (the range row vector is empty) and it contains
   // structural + slacks + cuts constraints/variables.
   user_problem_t<i_t, f_t> submip_problem(original_problem_.handle_ptr);
-  simplex::convert_lp_to_user_problem(worker->leaf_problem, var_types_, settings_, submip_problem);
+  simplex::convert_lp_to_user_problem(worker->leaf_problem, var_type, settings_, submip_problem);
 
   third_party_presolve_t<i_t, f_t> presolver;
   f_t presolve_time_limit = std::min(0.1 * submip_settings.time_limit, 60.0);
@@ -2770,7 +2771,7 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* worker,
             std::max<f_t>(settings_.time_limit - toc(exploration_stats_.start_time), 0);
           f_t work_limit = 1.0;
           submip_fj_cpu_worker.create_worker(worker->leaf_problem,
-                                             var_types_,
+                                             var_types,
                                              worker->leaf_solution.x,
                                              settings_,
                                              std::format("{} [CPU FJ]", log_prefix),
@@ -2791,6 +2792,7 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* worker,
     } else {
       solve_submip(worker,
                    current_incumbent,
+                   var_types,
                    num_var_fixed,
                    num_integers,
                    submip_level,
@@ -2841,8 +2843,24 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
   i_t id                                 = heuristics.size();
   root_heuristics_t<i_t, f_t>& heuristic = heuristics.emplace_back(Arow_, var_types_);
 
-  if (settings_.submip_settings.rins != 0 && incumbent_.has_incumbent &&
-      (*worker_count < settings_.num_threads - 1)) {
+  constexpr bool is_cpufj_enabled = true;
+  if (is_cpufj_enabled) {
+    fj_cpu_worker_t<i_t, f_t>& worker = heuristic.fj_cpu_worker_;
+
+    f_t work_limit = 2.0;
+    f_t time_limit = settings_.time_limit - toc(exploration_stats_.start_time);
+
+    worker.improvement_callback =
+      [this](f_t obj, const std::vector<f_t>& assignment, double work_units) {
+        set_solution_from_cpu_fj(obj, assignment, work_units);
+      };
+    worker.create_worker(lp, var_types_, sol, settings_, "[RootCut CPUFJ] ");
+    worker.run_async(time_limit, work_limit, worker_count);
+  }
+
+  if (*worker_count >= settings_.num_threads - 1) return;
+
+  if (settings_.submip_settings.rins != 0 && incumbent_.has_incumbent) {
     heuristic.create_submip_worker(id, lp, settings_, root_objective_, root_vstatus_, sol);
     diving_worker_t<i_t, f_t>* worker = heuristic.submip_worker_.get();
 
@@ -2862,23 +2880,11 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
       {
         rins(worker, current_incumbent, heuristic.var_types_, is_root_heuristic);
         --(*worker_count);
+        heuristic.Arow_      = csr_matrix_t<i_t, f_t>(1, 1, 1);
+        heuristic.var_types_ = {};
+        heuristic.submip_worker_.reset();
       }
     }
-  }
-
-  constexpr bool is_cpufj_enabled = true;
-  if (is_cpufj_enabled && (*worker_count < settings_.num_threads - 1)) {
-    fj_cpu_worker_t<i_t, f_t>& worker = heuristic.fj_cpu_worker_;
-
-    f_t work_limit = 2.0;
-    f_t time_limit = settings_.time_limit - toc(exploration_stats_.start_time);
-
-    worker.improvement_callback =
-      [this](f_t obj, const std::vector<f_t>& assignment, double work_units) {
-        set_solution_from_cpu_fj(obj, assignment, work_units);
-      };
-    worker.create_worker(lp, var_types_, sol, settings_, "[RootCut CPUFJ] ");
-    worker.run_async(time_limit, work_limit, worker_count);
   }
 }
 
