@@ -1565,8 +1565,9 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   } else {
     lp_settings.cut_off = cutoff + settings_.dual_tol;
   }
-  lp_settings.inside_mip      = 2;
-  lp_settings.time_limit      = settings_.time_limit - toc(exploration_stats_.start_time);
+  lp_settings.inside_mip = 2;
+  lp_settings.time_limit = settings_.time_limit - toc(exploration_stats_.start_time);
+  if (lp_settings.time_limit <= 0.0) { return dual_status_t::TIME_LIMIT; }
   lp_settings.scale_columns   = false;
   lp_settings.iteration_limit = iter_limit;
 
@@ -1727,7 +1728,8 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
     }
 
     if (now > settings_.time_limit) {
-      solver_status_ = mip_status_t::TIME_LIMIT;
+      node_concurrent_halt_ = 1;
+      solver_status_        = mip_status_t::TIME_LIMIT;
       stack.push_front(node_ptr);
       --exploration_stats_.nodes_being_solved;
       break;
@@ -1760,7 +1762,8 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
     --exploration_stats_.nodes_being_solved;
 
     if (lp_status == dual_status_t::TIME_LIMIT) {
-      solver_status_ = mip_status_t::TIME_LIMIT;
+      node_concurrent_halt_ = 1;
+      solver_status_        = mip_status_t::TIME_LIMIT;
       stack.push_front(node_ptr);
       break;
     }
@@ -1948,7 +1951,8 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
     }
 
     if (toc(exploration_stats_.start_time) > settings_.time_limit) {
-      solver_status_ = mip_status_t::TIME_LIMIT;
+      node_concurrent_halt_ = 1;
+      solver_status_        = mip_status_t::TIME_LIMIT;
       break;
     }
 
@@ -2044,7 +2048,8 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker, 
     }
 
     if (toc(exploration_stats_.start_time) > settings_.time_limit) {
-      solver_status_ = mip_status_t::TIME_LIMIT;
+      node_concurrent_halt_ = 1;
+      solver_status_        = mip_status_t::TIME_LIMIT;
       break;
     }
     if (dive_stats.nodes_explored >= diving_node_limit) { break; }
@@ -2063,7 +2068,8 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker, 
     ++dive_stats.nodes_explored;
 
     if (lp_status == dual_status_t::TIME_LIMIT) {
-      solver_status_ = mip_status_t::TIME_LIMIT;
+      node_concurrent_halt_ = 1;
+      solver_status_        = mip_status_t::TIME_LIMIT;
       break;
     }
     if (lp_status == dual_status_t::CONCURRENT_LIMIT) { break; }
@@ -2930,6 +2936,8 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   f_t& last_objective,
   f_t root_relax_objective,
   i_t& cut_pool_size,
+  f_t& cut_scoring_time,
+  i_t& max_scoring_pool_size,
   [[maybe_unused]] const std::vector<f_t>& saved_solution) -> cut_pass_result_t
 {
 #ifdef PRINT_FRACTIONAL_INFO
@@ -2973,10 +2981,10 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
     settings_.log.debug("Cut generation time %.2f seconds\n", cut_generation_time);
   }
   // Score the cuts
-  f_t score_start_time = tic();
+  max_scoring_pool_size = std::max(max_scoring_pool_size, cut_pool.pool_size());
+  f_t score_start_time  = tic();
   cut_pool.score_cuts(root_relax_soln_.x);
-  f_t score_time = toc(score_start_time);
-  if (score_time > 1.0) { settings_.log.debug("Cut scoring time %.2f seconds\n", score_time); }
+  cut_scoring_time += toc(score_start_time);
   // Get the best cuts from the cut pool
   csr_matrix_t<i_t, f_t> cuts_to_add(0, original_lp_.num_cols, 0);
   std::vector<f_t> cut_rhs;
@@ -3456,6 +3464,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   f_t cut_generation_start_time = tic();
   i_t cut_pool_size             = 0;
+  f_t cut_scoring_time          = 0.0;
+  i_t max_scoring_pool_size     = 0;
   for (i_t cut_pass = 0; cut_pass < settings_.max_cut_passes; cut_pass++) {
     if (toc(exploration_stats_.start_time) >= settings_.time_limit) {
       solver_status_ = mip_status_t::TIME_LIMIT;
@@ -3504,6 +3514,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                   last_objective,
                                   root_relax_objective,
                                   cut_pool_size,
+                                  cut_scoring_time,
+                                  max_scoring_pool_size,
                                   saved_solution);
     root_fj_cpu_worker.stop();
 
@@ -3554,7 +3566,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     mutex_upper_.unlock();
 
     settings_.log.printf("Cut generation time: %.2f seconds\n", cut_generation_time);
-    settings_.log.printf("Cut pool size  : %d\n", cut_pool_size);
+    settings_.log.printf("Cut scoring time   : %.2f seconds\n", cut_scoring_time);
+    settings_.log.printf("Cut scoring max pool: %d\n", max_scoring_pool_size);
+    settings_.log.printf("Cut pool size       : %d\n", cut_pool_size);
     settings_.log.printf("Size with cuts : %d constraints, %d variables, %d nonzeros\n",
                          original_lp_.num_rows,
                          original_lp_.num_cols,

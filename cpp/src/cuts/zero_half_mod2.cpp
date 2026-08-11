@@ -315,15 +315,16 @@ void mod2_add_transformed_zero_half_cut(
   f_t& work_estimate,
   i_t& cuts_added)
 {
-  work_estimate += (f_t)(10 * transformed_cut.size() + 1);
+  work_estimate += (f_t)(4 * transformed_cut.size() + 1);
   complemented_mir.untransform_inequality(variable_bounds, var_types, transformed_cut);
   complemented_mir.remove_small_coefficients(lp.lower, lp.upper, transformed_cut);
-  complemented_mir.substitute_slacks(lp, Arow, transformed_cut);
+  complemented_mir.substitute_slacks(lp, Arow, transformed_cut, &work_estimate);
   complemented_mir.remove_small_coefficients(lp.lower, lp.upper, transformed_cut);
   const f_t violation = complemented_mir.compute_violation(transformed_cut, xstar);
   if (violation > min_violation) {
+    const i_t pool_size = cut_pool.pool_size();
     cut_pool.add_cut(cut_type_t::ZERO_HALF, transformed_cut);
-    ++cuts_added;
+    if (cut_pool.pool_size() > pool_size) { ++cuts_added; }
   }
 }
 
@@ -477,17 +478,24 @@ bool generate_mod2_zero_half_cuts(cut_pool_t<i_t, f_t>& cut_pool,
                                   f_t start_time,
                                   f_t& work_estimate)
 {
-  constexpr i_t max_combination_size = 64;
-  constexpr i_t max_row_combinations = 1000;
-  constexpr f_t min_violation        = (f_t)1e-6;
-  const f_t max_work_estimate        = work_estimate + (f_t)1e8;
-  bool work_limit_reached            = false;
+  constexpr i_t max_combination_size   = 64;
+  constexpr i_t max_row_combinations   = 1000;
+  constexpr f_t min_violation          = (f_t)1e-6;
+  constexpr f_t candidate_work_limit   = (f_t)3e7;
+  constexpr f_t combination_work_limit = (f_t)3e7;
+  constexpr f_t generation_work_limit  = (f_t)4e7;
+  f_t candidate_work                   = 0.0;
+  f_t combination_work                 = 0.0;
+  f_t generation_work                  = 0.0;
+  bool candidate_limit_reached         = false;
+  bool generation_limit_reached        = false;
 
   if (add_work_estimate((f_t)(3 * lp.num_cols) + (f_t)(variable_bounds.upper_variables.size() +
                                                        variable_bounds.lower_variables.size()),
-                        &work_estimate,
-                        max_work_estimate,
-                        &work_limit_reached)) {
+                        &candidate_work,
+                        candidate_work_limit,
+                        &candidate_limit_reached)) {
+    work_estimate = candidate_work;
     return false;
   }
   complemented_mixed_integer_rounding_cut_t<i_t, f_t> complemented_mir(lp, settings, new_slacks);
@@ -503,26 +511,38 @@ bool generate_mod2_zero_half_cuts(cut_pool_t<i_t, f_t>& cut_pool,
                                             transformed_xstar,
                                             start_time,
                                             settings.time_limit,
-                                            work_estimate,
-                                            max_work_estimate,
-                                            work_limit_reached);
+                                            candidate_work,
+                                            candidate_work_limit,
+                                            candidate_limit_reached);
 
-  auto row_combinations = find_mod2_row_combinations<i_t, f_t>(
-    candidates, max_combination_size, max_row_combinations, &work_estimate, max_work_estimate);
-  if (work_estimate > max_work_estimate) { work_limit_reached = true; }
+  auto row_combinations = find_mod2_row_combinations<i_t, f_t>(candidates,
+                                                               max_combination_size,
+                                                               max_row_combinations,
+                                                               &combination_work,
+                                                               combination_work_limit);
+  if (add_work_estimate((f_t)(2 * lp.num_cols),
+                        &generation_work,
+                        generation_work_limit,
+                        &generation_limit_reached)) {
+    work_estimate = candidate_work + combination_work + generation_work;
+    return true;
+  }
   scratch_pad_t<i_t, f_t> aggregate_pad(lp.num_cols);
 
   for (const auto& combination : row_combinations) {
-    if (toc(start_time) >= settings.time_limit || work_limit_reached) { break; }
+    if (toc(start_time) >= settings.time_limit || generation_limit_reached ||
+        cut_pool.generation_limit_reached(ZERO_HALF)) {
+      break;
+    }
 
     size_t aggregate_input_nz = 0;
     for (const i_t candidate_index : combination) {
       aggregate_input_nz += candidates[candidate_index].transformed_inequality.size();
     }
-    const f_t aggregate_work =
-      (f_t)(4 * aggregate_input_nz + 1) +
-      (f_t)aggregate_input_nz * std::log2((f_t)aggregate_input_nz + (f_t)1.0);
-    if (add_work_estimate(aggregate_work, &work_estimate, max_work_estimate, &work_limit_reached)) {
+    if (add_work_estimate((f_t)(2 * aggregate_input_nz + 1),
+                          &generation_work,
+                          generation_work_limit,
+                          &generation_limit_reached)) {
       break;
     }
 
@@ -539,6 +559,15 @@ bool generate_mod2_zero_half_cuts(cut_pool_t<i_t, f_t>& cut_pool,
     }
     aggregate_pad.get_pad(aggregate.vector.i, aggregate.vector.x);
     aggregate_pad.clear_pad();
+    const f_t aggregate_output_work =
+      (f_t)(3 * aggregate.size()) +
+      (f_t)aggregate.size() * std::log2((f_t)aggregate.size() + (f_t)1.0);
+    if (add_work_estimate(aggregate_output_work,
+                          &generation_work,
+                          generation_work_limit,
+                          &generation_limit_reached)) {
+      break;
+    }
     aggregate.sort();
     aggregate.scale((f_t)0.5);
 
@@ -555,12 +584,12 @@ bool generate_mod2_zero_half_cuts(cut_pool_t<i_t, f_t>& cut_pool,
                                       aggregate,
                                       min_violation,
                                       start_time,
-                                      work_estimate,
-                                      max_work_estimate,
-                                      work_limit_reached,
+                                      generation_work,
+                                      generation_work_limit,
+                                      generation_limit_reached,
                                       cuts_added);
     // if the final inequality is reversable, try the reversed version as well
-    if (reversible && toc(start_time) < settings.time_limit && !work_limit_reached) {
+    if (reversible && toc(start_time) < settings.time_limit && !generation_limit_reached) {
       aggregate.negate();
       mod2_generate_cuts_from_aggregate(complemented_mir,
                                         cut_pool,
@@ -574,12 +603,13 @@ bool generate_mod2_zero_half_cuts(cut_pool_t<i_t, f_t>& cut_pool,
                                         aggregate,
                                         min_violation,
                                         start_time,
-                                        work_estimate,
-                                        max_work_estimate,
-                                        work_limit_reached,
+                                        generation_work,
+                                        generation_work_limit,
+                                        generation_limit_reached,
                                         cuts_added);
     }
   }
+  work_estimate = candidate_work + combination_work + generation_work;
   return true;
 }
 
@@ -670,6 +700,14 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::generate_lifted_mixed_
     }
   }
   if (p == 0) { return false; }
+
+  size_t non_cover_count = 0;
+  for (i_t k = 0; k < (i_t)base.size(); ++k) {
+    if (is_integral[k] && !in_cover[k]) { non_cover_count++; }
+  }
+  if (add_work_estimate((f_t)(non_cover_count * p), &work_estimate, max_work_estimate)) {
+    return false;
+  }
 
   transformed_cut     = base;
   transformed_cut.rhs = -lambda;
