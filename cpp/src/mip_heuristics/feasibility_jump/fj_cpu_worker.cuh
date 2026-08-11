@@ -10,6 +10,8 @@
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 
+#include <utilities/omp_helpers.hpp>
+
 #include <atomic>
 #include <functional>
 #include <limits>

@@ -370,7 +370,8 @@ class branch_and_bound_t {
 
   // Launch a new RINS worker
   bool launch_rins_worker(const std::vector<f_t>& sol);
-  void set_solution_from_submip(const std::vector<f_t>& solution,
+  void set_solution_from_submip(const simplex::lp_problem_t<i_t, f_t>& lp,
+                                const std::vector<f_t>& solution,
                                 const third_party_presolve_t<i_t, f_t>& presolver,
                                 f_t fixrate);
 
@@ -386,6 +387,7 @@ class branch_and_bound_t {
   // Creates and solves the RINS sub-MIP
   void rins(diving_worker_t<i_t, f_t>* worker,
             const std::vector<f_t>& current_incumbent,
+            const std::vector<simplex::variable_type_t>& var_types,
             bool is_root_heuristic);
 
   void launch_root_heuristics(const simplex::lp_problem_t<i_t, f_t>& lp,
