@@ -36,12 +36,13 @@ struct root_heuristics_t {
     }
   }
 
-  void create_submip_worker(i_t id,
-                            const simplex::lp_problem_t<i_t, f_t>& lp,
-                            const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
-                            f_t root_obj,
-                            const std::vector<simplex::variable_status_t>& root_vstatus,
-                            const std::vector<f_t>& sol)
+  diving_worker_t<i_t, f_t>* create_submip_worker(
+    i_t id,
+    const simplex::lp_problem_t<i_t, f_t>& lp,
+    const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+    f_t root_obj,
+    const std::vector<simplex::variable_status_t>& root_vstatus,
+    const std::vector<f_t>& sol)
   {
     submip_worker_ =
       std::make_unique<diving_worker_t<i_t, f_t>>(id, lp, Arow_, var_types_, settings);
@@ -52,6 +53,8 @@ struct root_heuristics_t {
     submip_worker_->recompute_basis  = true;
     submip_worker_->search_strategy  = search_strategy_t::RINS;
     submip_worker_->set_active();
+
+    return submip_worker_.get();
   }
 };
 }  // namespace cuopt::mathematical_optimization::mip
