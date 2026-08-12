@@ -7,7 +7,9 @@
 
 #include "c_api_tests.h"
 
+#include <cmath>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -1077,3 +1079,139 @@ TEST(c_api, problem_attributes_names)
 
 // Note: cuopt_cli subprocess tests are in Python (test_cpu_only_execution.py)
 // which provides better cross-platform subprocess handling
+
+// =============================================================================
+// Solution attributes
+//
+// Solver statistics are read through the scalar solution attribute accessors rather than
+// dedicated getters, so a new statistic is a new constant instead of a new exported symbol.
+// =============================================================================
+
+namespace {
+
+// Builds and solves a two-variable problem, integral when `mip` is set.
+cuOptSolution solve_tiny_problem(bool mip)
+{
+  cuopt_int_t row_offsets[]     = {0, 2};
+  cuopt_int_t column_indices[]  = {0, 1};
+  cuopt_float_t matrix_values[] = {1.0, 1.0};
+  cuopt_float_t objective[]     = {-1.0, -1.0};
+  cuopt_float_t rhs[]           = {3.5};
+  char constraint_sense[]       = {CUOPT_LESS_THAN};
+  cuopt_float_t lower_bounds[]  = {0.0, 0.0};
+  cuopt_float_t upper_bounds[]  = {10.0, 10.0};
+  char variable_types[]         = {mip ? CUOPT_INTEGER : CUOPT_CONTINUOUS,
+                           mip ? CUOPT_INTEGER : CUOPT_CONTINUOUS};
+
+  cuOptOptimizationProblem problem = nullptr;
+  cuOptSolverSettings settings     = nullptr;
+  cuOptSolution solution           = nullptr;
+  EXPECT_EQ(cuOptCreateProblem(1,
+                               2,
+                               CUOPT_MINIMIZE,
+                               0,
+                               objective,
+                               row_offsets,
+                               column_indices,
+                               matrix_values,
+                               constraint_sense,
+                               rhs,
+                               lower_bounds,
+                               upper_bounds,
+                               variable_types,
+                               &problem),
+            CUOPT_SUCCESS);
+  EXPECT_EQ(cuOptCreateSolverSettings(&settings), CUOPT_SUCCESS);
+  EXPECT_EQ(cuOptSolve(problem, settings, &solution), CUOPT_SUCCESS);
+  cuOptDestroyProblem(&problem);
+  cuOptDestroySolverSettings(&settings);
+  return solution;
+}
+
+}  // namespace
+
+TEST(c_api, lp_solution_attributes)
+{
+  cuOptSolution solution = solve_tiny_problem(false);
+  ASSERT_NE(solution, nullptr);
+
+  // Seed with NaN rather than a numeric sentinel: the solver cannot legitimately report NaN,
+  // so "still NaN" means the accessor never wrote the value. A numeric sentinel would be
+  // indistinguishable from a real result.
+  for (cuopt_int_t attribute : {CUOPT_SOLUTION_ATTR_LP_PRIMAL_RESIDUAL,
+                                CUOPT_SOLUTION_ATTR_LP_DUAL_RESIDUAL,
+                                CUOPT_SOLUTION_ATTR_LP_GAP}) {
+    cuopt_float_t value = std::nan("");
+    ASSERT_EQ(cuOptGetSolutionFloatAttribute(solution, attribute, &value), CUOPT_SUCCESS)
+      << "attribute " << attribute;
+    EXPECT_FALSE(std::isnan(value)) << "attribute " << attribute;
+  }
+  cuopt_float_t primal_residual = std::nan("");
+  ASSERT_EQ(cuOptGetSolutionFloatAttribute(
+              solution, CUOPT_SOLUTION_ATTR_LP_PRIMAL_RESIDUAL, &primal_residual),
+            CUOPT_SUCCESS);
+  EXPECT_GE(primal_residual, 0.0);
+
+  for (cuopt_int_t attribute :
+       {CUOPT_SOLUTION_ATTR_LP_NUM_ITERATIONS, CUOPT_SOLUTION_ATTR_LP_SOLVED_BY}) {
+    cuopt_int_t value = -1;
+    ASSERT_EQ(cuOptGetSolutionIntAttribute(solution, attribute, &value), CUOPT_SUCCESS)
+      << "attribute " << attribute;
+    EXPECT_GE(value, 0) << "attribute " << attribute;
+  }
+
+  // Asking for a float attribute through the int accessor, and the reverse, is rejected.
+  cuopt_int_t as_int     = 0;
+  cuopt_float_t as_float = 0;
+  EXPECT_EQ(cuOptGetSolutionIntAttribute(solution, CUOPT_SOLUTION_ATTR_LP_GAP, &as_int),
+            CUOPT_INVALID_ARGUMENT);
+  EXPECT_EQ(
+    cuOptGetSolutionFloatAttribute(solution, CUOPT_SOLUTION_ATTR_LP_NUM_ITERATIONS, &as_float),
+    CUOPT_INVALID_ARGUMENT);
+
+  // MIP selectors do not apply to an LP solution.
+  EXPECT_EQ(cuOptGetSolutionIntAttribute(solution, CUOPT_SOLUTION_ATTR_MIP_NUM_NODES, &as_int),
+            CUOPT_INVALID_ARGUMENT);
+
+  // Unknown selectors and null arguments are rejected.
+  EXPECT_EQ(cuOptGetSolutionIntAttribute(solution, 99999, &as_int), CUOPT_INVALID_ARGUMENT);
+  EXPECT_EQ(cuOptGetSolutionFloatAttribute(solution, CUOPT_SOLUTION_ATTR_LP_GAP, nullptr),
+            CUOPT_INVALID_ARGUMENT);
+  EXPECT_EQ(cuOptGetSolutionFloatAttribute(nullptr, CUOPT_SOLUTION_ATTR_LP_GAP, &as_float),
+            CUOPT_INVALID_ARGUMENT);
+
+  cuOptDestroySolution(&solution);
+}
+
+TEST(c_api, mip_solution_attributes)
+{
+  cuOptSolution solution = solve_tiny_problem(true);
+  ASSERT_NE(solution, nullptr);
+
+  // Violations are magnitudes, so they cannot be negative.
+  for (cuopt_int_t attribute : {CUOPT_SOLUTION_ATTR_MIP_PRESOLVE_TIME,
+                                CUOPT_SOLUTION_ATTR_MIP_MAX_CONSTRAINT_VIOLATION,
+                                CUOPT_SOLUTION_ATTR_MIP_MAX_INT_VIOLATION,
+                                CUOPT_SOLUTION_ATTR_MIP_MAX_VARIABLE_BOUND_VIOLATION}) {
+    cuopt_float_t value = std::nan("");
+    ASSERT_EQ(cuOptGetSolutionFloatAttribute(solution, attribute, &value), CUOPT_SUCCESS)
+      << "attribute " << attribute;
+    EXPECT_FALSE(std::isnan(value)) << "attribute " << attribute;
+    EXPECT_GE(value, 0.0) << "attribute " << attribute;
+  }
+
+  for (cuopt_int_t attribute :
+       {CUOPT_SOLUTION_ATTR_MIP_NUM_NODES, CUOPT_SOLUTION_ATTR_MIP_NUM_SIMPLEX_ITERATIONS}) {
+    cuopt_int_t value = -1;
+    ASSERT_EQ(cuOptGetSolutionIntAttribute(solution, attribute, &value), CUOPT_SUCCESS)
+      << "attribute " << attribute;
+    EXPECT_GE(value, 0) << "attribute " << attribute;
+  }
+
+  // LP selectors do not apply to a MIP solution.
+  cuopt_float_t as_float = 0;
+  EXPECT_EQ(cuOptGetSolutionFloatAttribute(solution, CUOPT_SOLUTION_ATTR_LP_GAP, &as_float),
+            CUOPT_INVALID_ARGUMENT);
+
+  cuOptDestroySolution(&solution);
+}
