@@ -2394,7 +2394,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
 #endif
   }
 
-  float64_t epsilon_adjust = 10.0;
+  const f_t epsilon_adjust = settings.barrier_hyper_initial_point_safeguard;
   // Push entries into interior of nonnegative orthant and SOC.
   const bool has_soc   = data.has_cones();
   const i_t linear_end = has_soc ? data.cone_start() : lp.num_cols;
