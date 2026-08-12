@@ -2825,36 +2825,50 @@ template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
   const lp_problem_t<i_t, f_t>& lp,
   const std::vector<f_t>& sol,
+  i_t cut_pass,
   std::list<root_heuristics_t<i_t, f_t>>& heuristics,
-  omp_atomic_t<i_t>* worker_count)
+  omp_atomic_t<i_t>& worker_count)
 {
-  assert(worker_count);
-  if (settings_.deterministic || *worker_count >= settings_.num_threads - 1) return;
+  if (settings_.deterministic) return;
+  if (settings_.num_threads < 2) return;
+
+  // If we already exhausted all threads for the root heuristics, stop workers for the
+  // oldest set of heuristics launched. Leave 2 threads for the cut passes and the clique
+  // table generation. Add the number of workers that will be launched (1 submip worker +
+  // 1 CPU FJ worker).
+  if (worker_count + 4 > settings_.num_threads && !heuristics.empty()) {
+    heuristics.erase(heuristics.begin());
+  }
 
   bool is_root_heuristic                 = true;
-  i_t id                                 = heuristics.size();
-  root_heuristics_t<i_t, f_t>& heuristic = heuristics.emplace_back(Arow_, var_types_);
+  i_t id                                 = cut_pass;
+  root_heuristics_t<i_t, f_t>* heuristic = &heuristics.emplace_back(Arow_, var_types_);
 
   constexpr bool is_cpufj_enabled = true;
   if (is_cpufj_enabled) {
-    fj_cpu_worker_t<i_t, f_t>& worker = heuristic.fj_cpu_worker_;
+    fj_cpu_worker_t<i_t, f_t>* worker = &heuristic->fj_cpu_worker_;
 
     f_t work_limit = 2.0;
     f_t time_limit = settings_.time_limit - toc(exploration_stats_.start_time);
 
-    worker.improvement_callback =
+    worker->improvement_callback =
       [this](f_t obj, const std::vector<f_t>& assignment, double work_units) {
         set_solution_from_cpu_fj(obj, assignment, work_units);
       };
-    worker.create_worker(lp, var_types_, sol, settings_, "[RootCut CPUFJ] ");
-    worker.run_async(time_limit, work_limit, worker_count);
+    worker->create_worker(lp, var_types_, sol, settings_, "[RootCut CPUFJ] ");
+
+    ++worker_count;
+#pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) affinity(worker) \
+  firstprivate(worker, heuristic) shared(heuristics, worker_count) depend(out : *worker -> fj_cpu)
+    {
+      worker->run_sync(time_limit, work_limit);
+      --worker_count;
+    }
   }
 
-  if (*worker_count >= settings_.num_threads - 1) return;
-
   if (settings_.submip_settings.rins != 0 && incumbent_.has_incumbent) {
-    heuristic.create_submip_worker(id, lp, settings_, root_objective_, root_vstatus_, sol);
-    diving_worker_t<i_t, f_t>* worker = heuristic.submip_worker_.get();
+    diving_worker_t<i_t, f_t>* worker =
+      heuristic->create_submip_worker(id, lp, settings_, root_objective_, root_vstatus_, sol);
 
     std::vector<f_t> current_incumbent;
     mutex_upper_.lock();
@@ -2864,17 +2878,22 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
     if (settings_.inside_submip) {
       // LLVM libomp's GOMP compatibility path skips GCC's firstprivate copy
       // function for included tasks.
-      rins(worker, current_incumbent, heuristic.var_types_, is_root_heuristic);
+      rins(worker, current_incumbent, heuristic->var_types_, is_root_heuristic);
+      heuristic->Arow_      = csr_matrix_t<i_t, f_t>(1, 1, 1);
+      heuristic->var_types_ = {};
+      heuristic->submip_worker_.reset();
+
     } else {
-      ++(*worker_count);
-#pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) affinity(worker) \
-  firstprivate(worker, current_incumbent, worker_count) shared(heuristic) depend(out : *worker)
+      ++worker_count;
+#pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) affinity(worker)               \
+  shared(heuristics, worker_count) firstprivate(worker, current_incumbent, heuristic) \
+  depend(out : *worker)
       {
-        rins(worker, current_incumbent, heuristic.var_types_, is_root_heuristic);
-        --(*worker_count);
-        heuristic.Arow_      = csr_matrix_t<i_t, f_t>(1, 1, 1);
-        heuristic.var_types_ = {};
-        heuristic.submip_worker_.reset();
+        rins(worker, current_incumbent, heuristic->var_types_, is_root_heuristic);
+        --worker_count;
+        heuristic->Arow_      = csr_matrix_t<i_t, f_t>(1, 1, 1);
+        heuristic->var_types_ = {};
+        heuristic->submip_worker_.reset();
       }
     }
   }
@@ -3556,7 +3575,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   omp_atomic_t<i_t> root_worker_count = 0;
   std::list<root_heuristics_t<i_t, f_t>> root_heuristics;
-  launch_root_heuristics(original_lp_, root_relax_soln_.x, root_heuristics, &root_worker_count);
+  launch_root_heuristics(original_lp_, root_relax_soln_.x, 0, root_heuristics, root_worker_count);
 
   f_t cut_generation_start_time = tic();
   i_t cut_pool_size             = 0;
@@ -3627,7 +3646,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     }
     if (cut_pass_result.action == cut_pass_action_t::BREAK) { break; }
 
-    launch_root_heuristics(original_lp_, root_relax_soln_.x, root_heuristics, &root_worker_count);
+    launch_root_heuristics(
+      original_lp_, root_relax_soln_.x, cut_pass + 1, root_heuristics, root_worker_count);
   }
 
   // Publish the post-cuts root LP value.
@@ -3753,6 +3773,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
         symmetry_->num_generators);
     }
   }
+
+  // Stops the root heuristics and clear the associated data
+  root_heuristics.clear();
 
   settings_.log.printf("Exploring the B&B tree using %d threads\n\n", settings_.num_threads);
   node_concurrent_halt_ = 0;
