@@ -6,7 +6,7 @@ These examples show the Java modeling patterns corresponding to the Python
 LP/QP examples. They assume the Java module has been compiled as described in
 :doc:`../quick-start` and that the application can load ``libcuopt_jni``.
 
-Simple linear programming
+Simple Linear Programming
 --------------------------
 
 The high-level API uses fluent expressions and explicit comparison methods.
@@ -42,7 +42,7 @@ The high-level API uses fluent expressions and explicit comparison methods.
 the solve. The solution object remains available for detailed native results
 and statistics.
 
-Simple quadratic programming
+Simple Quadratic Programming
 -----------------------------
 
 Quadratic objectives combine quadratic, linear, and constant terms:
@@ -75,7 +75,7 @@ For QP solutions, ``getPrimalSolution``, ``getDualSolution``,
 ``getReducedCost``, ``getDualObjective``, and ``getLPStats`` are available when
 the solver returns the corresponding values.
 
-Quadratic constraints
+Quadratic Constraints
 ---------------------
 
 Quadratic constraints can be added directly to a ``Problem``:
@@ -101,7 +101,7 @@ Quadratic constraints can be added directly to a ``Problem``:
 Only ``LE`` and ``GE`` quadratic constraints are supported;
 ``QuadraticExpression`` does not expose an ``eq`` method.
 
-Reading and writing MPS/QPS
+Reading and Writing MPS/QPS
 ---------------------------
 
 ``Problem`` exposes both extension-dispatch and direct MPS entry points:
@@ -120,7 +120,7 @@ Reading and writing MPS/QPS
 Parsing failures are reported as ``CuOptException`` with the cuOpt status code
 available from ``getStatusCode``.
 
-Inspecting solutions
+Inspecting Solutions
 --------------------
 
 LP solutions expose residuals and solver metadata through ``LPStats``:

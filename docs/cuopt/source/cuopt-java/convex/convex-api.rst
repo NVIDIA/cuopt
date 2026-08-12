@@ -7,7 +7,7 @@ The Java LP/MIP/QP bindings are in the package
 role. Method names are Java names and therefore use fluent methods instead of
 Python operator overloads.
 
-High-level problem
+High-Level Problem
 ------------------
 
 ``Problem`` is the recommended entry point for problems built in Java.
@@ -50,7 +50,7 @@ the concrete linear and quadratic forms without an ``Object`` downcast.
 same order used by cuOpt CSR arrays. The arrays are available through
 ``getValues``, ``getColumnIndices``, and ``getRowOffsets``.
 
-Variables, expressions, and constraints
+Variables, Expressions, and Constraints
 ----------------------------------------
 
 ``Variable`` stores the problem index, bounds, objective coefficient, type,
@@ -92,7 +92,7 @@ category to ``ProblemCategory.MIP``.
 ``getLinearExpression``, ``getQuadraticExpression``, ``isQuadratic``,
 ``computeSlack``, ``getSlack``, and ``getDualValue``.
 
-Solver settings
+Solver Settings
 ---------------
 
 ``SolverSettings`` owns native solver configuration and implements
@@ -116,7 +116,7 @@ The settings API also includes:
 ``CONCURRENT``, and ``UNSET``. ``PDLPSolverMode`` exposes the supported PDLP
 solver modes.
 
-Solutions and statistics
+Solutions and Statistics
 ------------------------
 
 ``Solution`` implements ``AutoCloseable`` and exposes:
@@ -132,7 +132,7 @@ LP solutions additionally expose ``getLPStats``. ``LPStats`` contains primal
 residual, dual residual, gap, iteration count, and the ``SolverMethod`` used.
 MIP-only solution fields are documented in :doc:`../mip/mip-api`.
 
-MPS and errors
+MPS and Errors
 --------------
 
 ``Problem.read`` and ``Problem.readMPS`` support MPS/QPS parsing, including a

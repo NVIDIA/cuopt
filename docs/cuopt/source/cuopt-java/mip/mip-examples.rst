@@ -41,7 +41,7 @@ The MIP solver can return a feasible solution before proving optimality. Use
 the termination status, MIP gap, and solution bound together when interpreting
 the result.
 
-Semi-continuous variables
+Semi-Continuous Variables
 -------------------------
 
 ``SEMI_CONTINUOUS`` variables are zero or lie within their declared bounds.
@@ -59,7 +59,7 @@ Semi-continuous variables
      }
    }
 
-MIP starts
+MIP Starts
 ----------
 
 Set starts on variables when using the high-level ``Problem`` API:
@@ -78,7 +78,7 @@ For the deprecated lower-level representation, pass a full
 variable-index-ordered array through
 ``SolverSettings.addMIPStart``.
 
-Incumbent callback
+Incumbent Callback
 ------------------
 
 Register an incumbent callback before solving:
@@ -102,7 +102,7 @@ Register an incumbent callback before solving:
 The callback receives a defensive Java array containing the incumbent vector,
 the incumbent objective, the current solution bound, and the user data object.
 
-LP relaxation
+LP Relaxation
 -------------
 
 Create a continuous relaxation without changing the original MIP:

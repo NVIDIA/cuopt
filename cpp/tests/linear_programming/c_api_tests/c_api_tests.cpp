@@ -7,8 +7,8 @@
 
 #include "c_api_tests.h"
 
-#include <cstdlib>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -1107,7 +1107,8 @@ TEST(c_api, solver_parameter_enumeration)
 
   // Out-of-range and null arguments are rejected rather than writing past the buffer.
   char name[256] = {};
-  EXPECT_EQ(cuOptGetSolverParameterName(num_parameters, sizeof(name), name), CUOPT_INVALID_ARGUMENT);
+  EXPECT_EQ(cuOptGetSolverParameterName(num_parameters, sizeof(name), name),
+            CUOPT_INVALID_ARGUMENT);
   EXPECT_EQ(cuOptGetSolverParameterName(-1, sizeof(name), name), CUOPT_INVALID_ARGUMENT);
   EXPECT_EQ(cuOptGetSolverParameterName(0, sizeof(name), nullptr), CUOPT_INVALID_ARGUMENT);
   EXPECT_EQ(cuOptGetNumSolverParameters(nullptr), CUOPT_INVALID_ARGUMENT);
@@ -1161,8 +1162,7 @@ TEST(c_api, solver_parameter_file_dump_and_load)
     std::filesystem::temp_directory_path().string() + "/cuopt_c_api_overrides.txt";
   {
     std::ofstream out(overrides);
-    out << "# a comment line\n"
-        << CUOPT_TIME_LIMIT << " = 12.5\n";
+    out << "# a comment line\n" << CUOPT_TIME_LIMIT << " = 12.5\n";
   }
 
   cuOptSolverSettings loaded = nullptr;
@@ -1191,16 +1191,16 @@ namespace {
 // Builds and solves a two-variable problem, integral when `mip` is set.
 cuOptSolution solve_tiny_problem(bool mip)
 {
-  cuopt_int_t row_offsets[]      = {0, 2};
-  cuopt_int_t column_indices[]   = {0, 1};
-  cuopt_float_t matrix_values[]  = {1.0, 1.0};
-  cuopt_float_t objective[]      = {-1.0, -1.0};
-  cuopt_float_t rhs[]            = {3.5};
-  char constraint_sense[]        = {CUOPT_LESS_THAN};
-  cuopt_float_t lower_bounds[]   = {0.0, 0.0};
-  cuopt_float_t upper_bounds[]   = {10.0, 10.0};
-  char variable_types[]          = {mip ? CUOPT_INTEGER : CUOPT_CONTINUOUS,
-                                    mip ? CUOPT_INTEGER : CUOPT_CONTINUOUS};
+  cuopt_int_t row_offsets[]     = {0, 2};
+  cuopt_int_t column_indices[]  = {0, 1};
+  cuopt_float_t matrix_values[] = {1.0, 1.0};
+  cuopt_float_t objective[]     = {-1.0, -1.0};
+  cuopt_float_t rhs[]           = {3.5};
+  char constraint_sense[]       = {CUOPT_LESS_THAN};
+  cuopt_float_t lower_bounds[]  = {0.0, 0.0};
+  cuopt_float_t upper_bounds[]  = {10.0, 10.0};
+  char variable_types[]         = {mip ? CUOPT_INTEGER : CUOPT_CONTINUOUS,
+                           mip ? CUOPT_INTEGER : CUOPT_CONTINUOUS};
 
   cuOptOptimizationProblem problem = nullptr;
   cuOptSolverSettings settings     = nullptr;
@@ -1259,9 +1259,8 @@ TEST(c_api, lp_solver_stats)
             CUOPT_SUCCESS);
 
   // MIP statistics are unavailable for an LP solution.
-  EXPECT_EQ(
-    cuOptGetMIPSolverStats(solution, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr),
-    CUOPT_INVALID_ARGUMENT);
+  EXPECT_EQ(cuOptGetMIPSolverStats(solution, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr),
+            CUOPT_INVALID_ARGUMENT);
 
   cuOptDestroySolution(&solution);
 

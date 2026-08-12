@@ -6,7 +6,7 @@ MIP uses the shared Java problem construction and solve APIs documented in
 :doc:`../convex/convex-api`. The following features are particularly relevant
 to mixed-integer problems.
 
-Variable types
+Variable Types
 --------------
 
 Use ``VariableType`` when adding a variable or updating an existing variable:
@@ -25,7 +25,7 @@ The supported values are ``CONTINUOUS``, ``INTEGER``, and
 ``SEMI_CONTINUOUS``. ``Problem.isMIP()`` and ``Solution.isMIP()`` report
 whether a problem or result contains a noncontinuous variable.
 
-MIP starts
+MIP Starts
 ----------
 
 MIP starts can be provided per variable through ``Variable.setMIPStart``. The
@@ -46,7 +46,7 @@ to the native solver. A complete start can also be supplied directly through
      }
    }
 
-MIP settings
+MIP Settings
 ------------
 
 All solver settings are set through ``SolverSettings``. Use the overloaded
@@ -57,7 +57,7 @@ are available at runtime through ``SolverSettings.getSolverSettingNames``;
 the generated ``CuOptConstants`` class contains string and integer constants
 from the cuOpt public constants header.
 
-MIP callbacks
+MIP Callbacks
 -------------
 
 ``SolverSettings.setMIPCallback`` accepts either callback interface:
@@ -89,7 +89,7 @@ valid for the duration of the solve, and close the ``SolverSettings`` after the
 solve completes. Registered callbacks can be inspected with
 ``getMIPCallbacks``.
 
-MIP solution fields
+MIP Solution Fields
 -------------------
 
 For a MIP ``Solution``:
@@ -108,7 +108,7 @@ iteration count. LP-only accessors such as ``getDualSolution``,
 ``getReducedCost``, and ``getLPStats`` raise ``IllegalStateException`` for a
 MIP result.
 
-Relaxing and inspecting a MIP
+Relaxing and Inspecting a MIP
 -----------------------------
 
 ``Problem.relax()`` returns a separate continuous problem while preserving
