@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cuopt/export.hpp>
 #include <cuopt/routing/data_model_view.hpp>
 #include <cuopt/routing/routing_structures.hpp>
 
@@ -22,7 +23,7 @@ class handle_t;
 }
 
 namespace cuopt {
-namespace routing {
+namespace CUOPT_EXPORT routing {
 
 /**
  * @brief Host-memory owning routing problem (gRPC / remote-execution analog of
@@ -145,5 +146,5 @@ struct cpu_routing_solution_t {
   std::string error_message;
 };
 
-}  // namespace routing
+}  // namespace CUOPT_EXPORT routing
 }  // namespace cuopt

@@ -306,6 +306,7 @@ termination_criterion_t multi_probe_t<i_t, f_t>::bound_update_loop(problem_t<i_t
     iter_0 += !skip_0;
     iter_1 += !skip_1;
   }
+  if (local_iter_accumulator != nullptr) { *local_iter_accumulator += (double)(iter_0 + iter_1); }
   handle_ptr->sync_stream();
   if (compute_stats) {
     upd_0.init_changed_constraints(handle_ptr);

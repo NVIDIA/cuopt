@@ -270,14 +270,14 @@ endif ()
 
 FetchContent_Declare(
         papilo
-        GIT_REPOSITORY "https://github.com/nguidotti/papilo.git"
+        GIT_REPOSITORY "https://github.com/akifcorduk/papilo.git"
         # We would want to get the main branch. However, the main branch
         # does not have some of the presolvers and settings that we need
         # Mainly, probing and clique merging.
         # This is the reason we are using the development branch
         # from Oct 12, 2025. Once these changes are merged into the main branch,
         #we can switch to the main branch.
-        GIT_TAG "0cfea20c5655249174dbd04f0fb7bd6b1f6e9a0c"
+        GIT_TAG "32b3a87dbf4955d5a2803be74145c389ea31434d"
         GIT_PROGRESS TRUE
         EXCLUDE_FROM_ALL
         SYSTEM
@@ -295,7 +295,7 @@ FetchContent_MakeAvailable(papilo)
 FetchContent_Declare(
         pslp
         GIT_REPOSITORY "https://github.com/dance858/PSLP.git"
-        GIT_TAG "v0.0.8"
+        GIT_TAG "v0.0.10"
         GIT_PROGRESS TRUE
         EXCLUDE_FROM_ALL
         SYSTEM
@@ -586,6 +586,8 @@ if (NOT SKIP_GRPC_BUILD)
     # at runtime with "undefined symbol: absl::…::Mutex::Dtor".
     set_property(SOURCE ${GRPC_INFRA_FILES} DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             APPEND PROPERTY COMPILE_OPTIONS "-DNDEBUG")
+    set_property(SOURCE ${PROTO_SRCS} ${GRPC_PROTO_SRCS} ${GRPC_SERVICE_SRCS} ${DATA_PROTO_SRCS} DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+            APPEND PROPERTY COMPILE_OPTIONS "$<$<COMPILE_LANGUAGE:CXX>:-fvisibility=default>")
 endif (NOT SKIP_GRPC_BUILD)
 
 add_library(cuopt_objs OBJECT
@@ -594,6 +596,9 @@ add_library(cuopt_objs OBJECT
 
 set_target_properties(cuopt_objs
         PROPERTIES POSITION_INDEPENDENT_CODE ON
+        CXX_VISIBILITY_PRESET hidden
+        CUDA_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN ON
         CXX_SCAN_FOR_MODULES OFF
 )
 
@@ -721,6 +726,7 @@ target_link_libraries(cuopt_objs
         PRIVATE
         ${CUOPT_PRIVATE_CUDA_LIBS}
         simde::simde
+        OpenMP::OpenMP_CXX
         OpenMP::OpenMP_CUDA
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:protobuf::libprotobuf>
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:gRPC::grpc++>

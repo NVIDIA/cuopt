@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -108,6 +108,7 @@ TEST_F(cli_test_t, basic_usage)
   std::string content((std::istreambuf_iterator<char>(sol)), std::istreambuf_iterator<char>());
   EXPECT_TRUE(content.find("Status:") != std::string::npos);
   EXPECT_TRUE(content.find("Objective value:") != std::string::npos);
+  EXPECT_TRUE(output.find("RAM (available/total):") != std::string::npos);
 }
 
 TEST_F(cli_test_t, with_initial_solution)

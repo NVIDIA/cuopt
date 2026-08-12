@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include <cuopt/export.hpp>
+
 #include <cuopt/logger_macros.hpp>
 
 #include <rapids_logger/logger.hpp>
@@ -20,7 +22,7 @@
 #include <type_traits>
 #include <vector>
 
-namespace cuopt {
+namespace CUOPT_EXPORT cuopt {
 
 /**
  * @brief Get the default logger.
@@ -45,7 +47,9 @@ class init_logger_t {
   init_logger_t(std::string log_file, bool log_to_console);
 };
 
-namespace detail {
+}  // namespace CUOPT_EXPORT cuopt
+
+namespace cuopt::detail {
 
 // Returns true for the first N calls sharing this counter.
 template <auto N>
@@ -69,9 +73,7 @@ inline bool log_every_n_should_emit(std::atomic<uint64_t>& counter)
   return counter.fetch_add(1, std::memory_order_relaxed) % (uint64_t)N == 0;
 }
 
-}  // namespace detail
-
-}  // namespace cuopt
+}  // namespace cuopt::detail
 
 // Rate-limited logging built on the generated CUOPT_LOG_<level> macros. `level` is one of
 // TRACE/DEBUG/INFO/WARN/ERROR/CRITICAL; `n` must be a positive compile-time constant. Each

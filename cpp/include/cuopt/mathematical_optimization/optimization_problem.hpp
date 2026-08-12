@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 #include <cuopt/mathematical_optimization/utilities/internals.hpp>
 
@@ -20,7 +21,8 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::mathematical_optimization {
+namespace cuopt {
+namespace CUOPT_EXPORT mathematical_optimization {
 
 // Forward declarations
 template <typename i_t, typename f_t>
@@ -425,4 +427,5 @@ class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t>
   std::vector<std::string> row_names_{};
 };
 
-}  // namespace cuopt::mathematical_optimization
+}  // namespace CUOPT_EXPORT mathematical_optimization
+}  // namespace cuopt

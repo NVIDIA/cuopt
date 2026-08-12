@@ -2,14 +2,14 @@
 Introduction
 ==========================
 
-**NVIDIA® cuOpt™** is a GPU-accelerated optimization library that solves `Linear Programming (LP) <https://en.wikipedia.org/wiki/Linear_programming>`_, `Quadratic Programming (QP) <https://en.wikipedia.org/wiki/Quadratic_programming>`_, and `Vehicle Routing Problems (VRP) <https://en.wikipedia.org/wiki/Vehicle_routing_problem>`_, with support for `Quadratically Constrained Quadratic Programming (QCQP) <https://en.wikipedia.org/wiki/Quadratically_constrained_quadratic_program>`_ (beta), `Second-Order Cone Programming (SOCP) <https://en.wikipedia.org/wiki/Second-order_cone_programming>`_ (beta), and `Mixed Integer Linear Programming (MILP) <https://en.wikipedia.org/wiki/Linear_programming#Integer_unknowns>`_ (beta). It enables solutions for large-scale problems with millions of variables and constraints, offering seamless deployment across hybrid and multi-cloud environments.
+**NVIDIA® cuOpt™** is a GPU-accelerated optimization library that solves `Linear Programming (LP) <https://en.wikipedia.org/wiki/Linear_programming>`_, `Quadratic Programming (QP) <https://en.wikipedia.org/wiki/Quadratic_programming>`_, and `Vehicle Routing Problems (VRP) <https://en.wikipedia.org/wiki/Vehicle_routing_problem>`_, with support for `Quadratically Constrained Quadratic Programming (QCQP) <https://en.wikipedia.org/wiki/Quadratically_constrained_quadratic_program>`_ (beta), `Second-Order Cone Programming (SOCP) <https://en.wikipedia.org/wiki/Second-order_cone_programming>`_ (beta), and `Mixed Integer Programming (MIP) <https://en.wikipedia.org/wiki/Linear_programming#Integer_unknowns>`_ (beta). It enables solutions for large-scale problems with millions of variables and constraints, offering seamless deployment across hybrid and multi-cloud environments.
 
 Using accelerated computing, NVIDIA® cuOpt optimizes operations research and logistics by enabling better, faster decisions.
 
 As part of `NVIDIA AI Enterprise <https://www.nvidia.com/en-us/data-center/products/ai-enterprise/>`_, NVIDIA cuOpt offers a secure, efficient way to rapidly generate world-class route optimization solutions. Using a single optimized container, you can deploy the AI microservice in under 5 minutes on accelerated NVIDIA GPU systems in the cloud, data center, workstations, or PCs. A license for NVIDIA AI Enterprise or membership in the NVIDIA Developer Program is required. For more information about NVAIE licensing, accessing NGC registry, and pulling container images, please refer to the :doc:`FAQ section <faq>`.
 
 .. note::
-   NVAIE support is extended to only cuOpt Routing service API. LP and MILP are not supported as part of it, they are just add-ons.
+   NVAIE support is extended to only cuOpt Routing service API. LP and MIP are not supported as part of it, they are just add-ons.
 
 .. note::
    Check out this `FAQ <https://forums.developer.nvidia.com/t/nvidia-nim-faq/300317>`__ for more information about the NVIDIA Developer Program.
@@ -76,10 +76,10 @@ cuOpt includes three LP solving methods:
 
 All three algorithms can be run concurrently on both GPU and CPU, with the fastest solution returned automatically.
 
-Mixed Integer Linear Programming (MILP) (Beta)
-==============================================
+Mixed Integer Programming (MIP) (Beta)
+======================================
 
-A **Mixed Integer Program (MIP)** is an optimization problem where some variables are restricted to take on only integer values, while other variables can vary continuously. A **Mixed Integer Linear Program (MILP)** is a MIP with a linear objective and linear constraints.
+A **Mixed Integer Program (MIP)** is an optimization problem where some variables are restricted to take on only integer values, while other variables can vary continuously. cuOpt's MIP support covers problems with a linear objective and linear constraints.
 
 .. note::
 
@@ -102,12 +102,12 @@ and suppose we wish to maximize the objective function
 
                           f(x,y) = 5x + 3y.
 
-This is a mixed integer linear program.
+This is a mixed integer program.
 
-Although MILPs seems similar to a LPs, they require much more computation to solve.
+Although MIPs seem similar to LPs, they require much more computation to solve.
 
-How cuOpt Solves the Mixed-Integer Linear Programming Problem
--------------------------------------------------------------
+How cuOpt Solves the Mixed-Integer Programming Problem
+------------------------------------------------------
 
 cuOpt combines GPU-accelerated primal heuristics for improving the primal bound with traditional CPU algorithms, including branch and bound, to improve the dual bound. Primal heuristics such as local search, feasibility pump, and feasibility jump run on the GPU. Integer feasible solutions are shared between these components.
 
@@ -120,17 +120,19 @@ cuOpt supports the following APIs:
 
 - C API support
    - :doc:`Linear Programming (LP) / Quadratic Programming (QP) - C <cuopt-c/quick-start>`
-   - :doc:`Mixed Integer Linear Programming (MILP) - C <cuopt-c/quick-start>`
+   - :doc:`Mixed Integer Programming (MIP) - C <cuopt-c/quick-start>`
 - C++ API support
    - cuOpt is written in C++ and includes a native C++ API. However, we do not provide documentation for the C++ API at this time. We anticipate that the C++ API will change significantly in the future. Use it at your own risk.
 - Python support
    - :doc:`Routing (TSP, VRP, and PDP) - Python <cuopt-python/quick-start>`
-   - :doc:`Linear Programming (LP) / Quadratic Programming (QP) and Mixed Integer Linear Programming (MILP) - Python <cuopt-python/quick-start>`
-- gRPC remote execution
-   - :doc:`Linear Programming (LP) / Quadratic Programming (QP) and Mixed Integer Linear Programming (MILP) - gRPC remote <cuopt-grpc/quick-start>`
+   - :doc:`Linear Programming (LP) / Quadratic Programming (QP) and Mixed Integer Programming (MIP) - Python <cuopt-python/quick-start>`
+- gRPC remote execution and gRPC clients
+   - :doc:`Remote execution (zero code change) <cuopt-grpc/quick-start>` — set ``CUOPT_REMOTE_HOST`` / ``CUOPT_REMOTE_PORT``; Python, C (``cuOptSolve``), and ``cuopt_cli`` forward automatically
+   - :doc:`Python async gRPC client <cuopt-grpc/python-async-client>` — explicit job API (submit / wait / cancel / stream logs and incumbents)
+   - :doc:`Custom CuOptRemoteService clients <cuopt-grpc/api>` — speak the gRPC protos directly
 - Server support
    - :doc:`Linear Programming (LP) - Server <cuopt-server/quick-start>`
-   - :doc:`Mixed Integer Linear Programming (MILP) - Server <cuopt-server/quick-start>`
+   - :doc:`Mixed Integer Programming (MIP) - Server <cuopt-server/quick-start>`
    - :doc:`Routing (TSP, VRP, and PDP) - Server <cuopt-server/quick-start>`
 - Third-party modeling languages
    - `AMPL <https://www.ampl.com/>`_
