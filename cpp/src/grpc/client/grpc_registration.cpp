@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-// Registers the gRPC-based remote solve implementations with libcuopt_mathematical_optimization.so
+// Registers the gRPC-based remote solve implementations with libcuopt_mathopt.so
 // at dynamic-link time (before any user code runs).  This breaks the circular
-// dependency: libcuopt_mathematical_optimization.so holds nullable function pointers rather than a
+// dependency: libcuopt_mathopt.so holds nullable function pointers rather than a
 // hard reference to symbols in libcuopt_grpc.so.
 
 #include <cuopt/mathematical_optimization/remote_solve_registry.hpp>

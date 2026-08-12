@@ -14,7 +14,7 @@
 #include <atomic>
 #include <memory>
 
-// Forward declarations — full types live in libcuopt_mathematical_optimization / libcuopt_grpc
+// Forward declarations — full types live in libcuopt_mathopt / libcuopt_grpc
 // headers.
 namespace cuopt::mathematical_optimization {
 
@@ -46,7 +46,7 @@ using solve_mip_remote_fn_t = std::unique_ptr<mip_solution_interface_t<int, doub
   cpu_optimization_problem_t<int, double> const&, mip_solver_settings_t<int, double> const&);
 
 /**
- * @brief Registry slots defined in libcuopt_mathematical_optimization.so
+ * @brief Registry slots defined in libcuopt_mathopt.so
  * (remote_solve_registry.cpp).
  *
  * Null until libcuopt_grpc.so is loaded and calls register_remote_solvers(). Atomic

@@ -111,7 +111,7 @@ if [[ -n "${CONDA_PREFIX:-}" ]]; then
     base=$(basename "$cfile" .c)
     rel="${cfile#"$REPO_ROOT/"}"
     log "Building and running C asset: $rel"
-    if ! (cd "$dir" && "${CC}" -I"${INCLUDE_PATH}" -L"${LIB_PATH}" -o "$base" "$(basename "$cfile")" -lcuopt -lcuopt_mathematical_optimization); then
+    if ! (cd "$dir" && "${CC}" -I"${INCLUDE_PATH}" -L"${LIB_PATH}" -o "$base" "$(basename "$cfile")" -lcuopt -lcuopt_mathopt); then
       FAILED+=("$rel (build)")
       log "FAIL: $rel (build)"
       continue

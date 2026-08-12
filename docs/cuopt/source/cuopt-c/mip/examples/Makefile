@@ -22,7 +22,7 @@ CC = gcc
 
 # Compiler flags
 CFLAGS = -I$(INCLUDE_PATH) -Wall -Wextra
-LDFLAGS = -L$(LIBCUOPT_LIBRARY_PATH) -lcuopt -lcuopt_mathematical_optimization -Wl,--allow-shlib-undefined -Wl,-rpath,$(LIBCUOPT_LIBRARY_PATH)
+LDFLAGS = -L$(LIBCUOPT_LIBRARY_PATH) -lcuopt -lcuopt_mathopt -Wl,--allow-shlib-undefined -Wl,-rpath,$(LIBCUOPT_LIBRARY_PATH)
 
 # Automatically discover all C source files in current directory
 SOURCES = $(wildcard *.c)

@@ -96,7 +96,7 @@ endif()
 message(STATUS "libcuopt: Final RPATH = ${rpaths}")
 
 # cuopt is an INTERFACE target (libcuopt.so is a linker script), so it has no RPATH.
-foreach(_target cuopt_base cuopt_routing cuopt_mathematical_optimization cuopt_grpc cuopt_cli cuopt_grpc_server)
+foreach(_target cuopt_base cuopt_routing cuopt_mathopt cuopt_grpc cuopt_cli cuopt_grpc_server)
   if(TARGET ${_target})
     set_property(TARGET ${_target} APPEND PROPERTY INSTALL_RPATH ${rpaths})
   endif()
