@@ -27,15 +27,31 @@ enum class heuristics_origin_t {
 // doi: 10.1007/s10107-004-0518-7.
 enum class search_strategy_t : int {
   BEST_FIRST           = 0,  // Best-First + Plunging.
-  PSEUDOCOST_DIVING    = 1,  // Pseudocost diving (9.2.5)
-  LINE_SEARCH_DIVING   = 2,  // Line search diving (9.2.4)
-  GUIDED_DIVING        = 3,  // Guided diving (9.2.3).
-  COEFFICIENT_DIVING   = 4,  // Coefficient diving (9.2.1)
+  PSEUDOCOST_DIVING    = 1,  // Pseudocost diving [1, Section 9.2.5]
+  LINE_SEARCH_DIVING   = 2,  // Line search diving [1, Section 9.2.4]
+  GUIDED_DIVING        = 3,  // Guided diving. [1, Section 9.2.3]
+  COEFFICIENT_DIVING   = 4,  // Coefficient diving [1, Section 9.2.1]
   FARKAS_DIVING        = 5,  // Farkas Diving (see [2])
-  VECTOR_LENGTH_DIVING = 6,  // Vector Length Diving (9.2.6)
-  SUBMIP               = 7   // RINS (see [3])
+  VECTOR_LENGTH_DIVING = 6,  // Vector Length Diving [1, Section 9.2.6]
+  RINS                 = 7,  // RINS (see [3])
 };
 
 enum class branch_direction_t { NONE = -1, DOWN = 0, UP = 1 };
+
+inline const char* search_strategy_to_string(search_strategy_t search_strategy)
+{
+  switch (search_strategy) {
+    case search_strategy_t::BEST_FIRST: return "BEST_FIRST";
+    case search_strategy_t::PSEUDOCOST_DIVING: return "PSEUDOCOST_DIVING";
+    case search_strategy_t::LINE_SEARCH_DIVING: return "LINE_SEARCH_DIVING";
+    case search_strategy_t::GUIDED_DIVING: return "GUIDED_DIVING";
+    case search_strategy_t::COEFFICIENT_DIVING: return "COEFFICIENT_DIVING";
+    case search_strategy_t::FARKAS_DIVING: return "FARKAS_DIVING";
+    case search_strategy_t::VECTOR_LENGTH_DIVING: return "VECTOR_LENGTH_DIVING";
+    case search_strategy_t::RINS: return "RINS";
+  }
+
+  return "UNKNOWN";
+}
 
 }  // namespace cuopt::mathematical_optimization::mip

@@ -50,7 +50,7 @@ struct root_heuristics_t {
     submip_worker_->leaf_solution.x  = sol;
     submip_worker_->recompute_bounds = false;
     submip_worker_->recompute_basis  = true;
-    submip_worker_->search_strategy  = search_strategy_t::SUBMIP;
+    submip_worker_->search_strategy  = search_strategy_t::RINS;
     submip_worker_->set_active();
   }
 };
