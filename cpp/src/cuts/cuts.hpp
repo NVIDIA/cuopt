@@ -306,9 +306,6 @@ std::vector<std::vector<int>> find_mod2_row_combinations_for_test(
 template <typename i_t, typename f_t>
 class cut_pool_t {
  public:
-  static constexpr i_t max_pool_size       = 150000;
-  static constexpr i_t max_cut_family_size = 20000;
-
   cut_pool_t(i_t original_vars, const simplex::simplex_solver_settings_t<i_t, f_t>& settings)
     : original_vars_(original_vars),
       settings_(settings),
@@ -323,15 +320,6 @@ class cut_pool_t {
   // Add a cut in the form: cut'*x >= rhs.
   // We expect that the cut is violated by the current relaxation xstar.
   void add_cut(cut_type_t cut_type, const inequality_t<i_t, f_t>& cut);
-
-  bool generation_limit_reached(cut_type_t cut_type) const
-  {
-    return cut_storage_.m >= max_pool_size || cut_type_counts_[cut_type] >= max_cut_family_size;
-  }
-
-  bool pool_limit_reached() const { return cut_storage_.m >= max_pool_size; }
-
-  i_t cut_family_size(cut_type_t cut_type) const { return cut_type_counts_[cut_type]; }
 
   void score_cuts(std::vector<f_t>& x_relax);
 
@@ -362,7 +350,6 @@ class cut_pool_t {
   std::vector<f_t> rhs_storage_;
   std::vector<i_t> cut_age_;
   std::vector<cut_type_t> cut_type_;
-  std::array<i_t, MAX_CUT_TYPE> cut_type_counts_{};
 
   i_t scored_cuts_;
   std::vector<f_t> cut_distances_;

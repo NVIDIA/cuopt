@@ -1146,8 +1146,6 @@ inline uint64_t hash64_with_seed(uint64_t value, uint64_t seed)
 template <typename i_t, typename f_t>
 void cut_pool_t<i_t, f_t>::add_cut(cut_type_t cut_type, const inequality_t<i_t, f_t>& cut)
 {
-  if (generation_limit_reached(cut_type)) { return; }
-
   // TODO: Add fast duplicate check and only add if the cut is not already in the pool
 
   for (i_t p = 0; p < cut.size(); p++) {
@@ -1170,7 +1168,6 @@ void cut_pool_t<i_t, f_t>::add_cut(cut_type_t cut_type, const inequality_t<i_t, 
   rhs_storage_.push_back(cut_squeezed.rhs);
   cut_type_.push_back(cut_type);
   cut_age_.push_back(0);
-  cut_type_counts_[cut_type]++;
 }
 
 template <typename i_t, typename f_t>
@@ -3113,10 +3110,7 @@ void cut_generation_t<i_t, f_t>::generate_implied_bound_cuts(
   const f_t max_work_estimate = 1e8;
 
   for (i_t j = 0; j < n_cols; j++) {
-    if (toc(start_time) >= settings.time_limit ||
-        cut_pool_.generation_limit_reached(IMPLIED_BOUND)) {
-      return;
-    }
+    if (toc(start_time) >= settings.time_limit) { return; }
     if (var_types[j] == variable_type_t::CONTINUOUS) { continue; }
     const f_t xstar_j = xstar[j];
 
@@ -3534,22 +3528,16 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
   if (settings.mixed_integer_gomory_cuts != 0 || settings.strong_chvatal_gomory_cuts != 0) {
     if (toc(start_time) >= settings.time_limit) { return true; }
     f_t cut_start_time = tic();
-    if (!cut_pool_.pool_limit_reached() &&
-        !((settings.strong_chvatal_gomory_cuts == 0 ||
-           cut_pool_.generation_limit_reached(CHVATAL_GOMORY)) &&
-          (settings.mixed_integer_gomory_cuts == 0 ||
-           cut_pool_.generation_limit_reached(MIXED_INTEGER_GOMORY)))) {
-      generate_gomory_cuts(lp,
-                           settings,
-                           Arow,
-                           new_slacks,
-                           var_types,
-                           basis_update,
-                           xstar,
-                           basic_list,
-                           nonbasic_list,
-                           start_time);
-    }
+    generate_gomory_cuts(lp,
+                         settings,
+                         Arow,
+                         new_slacks,
+                         var_types,
+                         basis_update,
+                         xstar,
+                         basic_list,
+                         nonbasic_list,
+                         start_time);
     f_t cut_generation_time = toc(cut_start_time);
     if (cut_generation_time > 1.0) {
       settings.log.debug("Gomory and CG cut generation time %.2f seconds\n", cut_generation_time);
@@ -3560,9 +3548,7 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
   if (settings.knapsack_cuts != 0) {
     if (toc(start_time) >= settings.time_limit) { return true; }
     f_t cut_start_time = tic();
-    if (!cut_pool_.generation_limit_reached(KNAPSACK)) {
-      generate_knapsack_cuts(lp, settings, Arow, new_slacks, var_types, xstar, start_time);
-    }
+    generate_knapsack_cuts(lp, settings, Arow, new_slacks, var_types, xstar, start_time);
     f_t cut_generation_time = toc(cut_start_time);
     if (cut_generation_time > 1.0) {
       settings.log.debug("Knapsack cut generation time %.2f seconds\n", cut_generation_time);
@@ -3573,9 +3559,7 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
   if (settings.flow_cover_cuts != 0) {
     if (toc(start_time) >= settings.time_limit) { return true; }
     f_t cut_start_time = tic();
-    if (!cut_pool_.generation_limit_reached(FLOW_COVER)) {
-      generate_flow_cover_cuts(lp, settings, Arow, var_types, xstar, variable_bounds, start_time);
-    }
+    generate_flow_cover_cuts(lp, settings, Arow, var_types, xstar, variable_bounds, start_time);
     f_t cut_generation_time = toc(cut_start_time);
     if (cut_generation_time > 1.0) {
       settings.log.debug("Flow cover cut generation time %.2f seconds\n", cut_generation_time);
@@ -3586,14 +3570,8 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
   if (settings.mir_cuts != 0 || settings.strong_chvatal_gomory_cuts != 0) {
     if (toc(start_time) >= settings.time_limit) { return true; }
     f_t cut_start_time = tic();
-    const bool mir_families_limited =
-      (settings.strong_chvatal_gomory_cuts == 0 ||
-       cut_pool_.generation_limit_reached(CHVATAL_GOMORY)) &&
-      (settings.mir_cuts == 0 || cut_pool_.generation_limit_reached(MIXED_INTEGER_ROUNDING));
-    if (!cut_pool_.pool_limit_reached() && !mir_families_limited) {
-      generate_mir_cuts(
-        lp, settings, Arow, new_slacks, var_types, xstar, ystar, variable_bounds, start_time);
-    }
+    generate_mir_cuts(
+      lp, settings, Arow, new_slacks, var_types, xstar, ystar, variable_bounds, start_time);
     f_t cut_generation_time = toc(cut_start_time);
     if (cut_generation_time > 1.0) {
       settings.log.debug("MIR and CG cut generation time %.2f seconds\n", cut_generation_time);
@@ -3604,9 +3582,7 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
   if (settings.implied_bound_cuts != 0) {
     if (toc(start_time) >= settings.time_limit) { return true; }
     f_t cut_start_time = tic();
-    if (!cut_pool_.generation_limit_reached(IMPLIED_BOUND)) {
-      generate_implied_bound_cuts(lp, settings, var_types, xstar, start_time);
-    }
+    generate_implied_bound_cuts(lp, settings, var_types, xstar, start_time);
     f_t cut_generation_time = toc(cut_start_time);
     if (cut_generation_time > 1.0) {
       settings.log.debug("Implied bounds cut generation time %.2f seconds\n", cut_generation_time);
@@ -3626,10 +3602,7 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
   if (settings.clique_cuts != 0) {
     if (toc(start_time) >= settings.time_limit) { return true; }
     f_t cut_start_time = tic();
-    bool feasible      = true;
-    if (!cut_pool_.generation_limit_reached(CLIQUE)) {
-      feasible = generate_clique_cuts(lp, settings, var_types, xstar, zstar, start_time);
-    }
+    bool feasible      = generate_clique_cuts(lp, settings, var_types, xstar, zstar, start_time);
     if (!feasible) {
       settings.log.printf("Clique cuts proved infeasible\n");
       return false;
@@ -3645,11 +3618,8 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
     if (toc(start_time) >= settings.time_limit) { return true; }
     ZERO_HALF_DEBUG("generate_cuts: about to call generate_zero_half_cuts");
     f_t cut_start_time = tic();
-    bool feasible      = true;
-    if (!cut_pool_.generation_limit_reached(ZERO_HALF)) {
-      feasible = generate_zero_half_cuts(
-        lp, settings, Arow, new_slacks, var_types, xstar, zstar, variable_bounds, start_time);
-    }
+    bool feasible      = generate_zero_half_cuts(
+      lp, settings, Arow, new_slacks, var_types, xstar, zstar, variable_bounds, start_time);
     ZERO_HALF_DEBUG("generate_cuts: returned from generate_zero_half_cuts feasible=%d",
                     static_cast<int>(feasible));
     if (!feasible) {
@@ -3679,9 +3649,7 @@ void cut_generation_t<i_t, f_t>::generate_knapsack_cuts(
 {
   if (knapsack_generation_.num_knapsack_constraints() > 0) {
     for (i_t knapsack_row : knapsack_generation_.get_knapsack_constraints()) {
-      if (toc(start_time) >= settings.time_limit || cut_pool_.generation_limit_reached(KNAPSACK)) {
-        return;
-      }
+      if (toc(start_time) >= settings.time_limit) { return; }
       inequality_t<i_t, f_t> cut(lp.num_cols);
       i_t knapsack_status = knapsack_generation_.generate_knapsack_cut(
         lp, settings, Arow, new_slacks, var_types, xstar, knapsack_row, cut, start_time);
@@ -3702,10 +3670,7 @@ void cut_generation_t<i_t, f_t>::generate_flow_cover_cuts(
 {
   if (flow_cover_generation_.num_constraints() > 0) {
     for (const auto& flow_cover_row : flow_cover_generation_.get_constraints()) {
-      if (toc(start_time) >= settings.time_limit ||
-          cut_pool_.generation_limit_reached(FLOW_COVER)) {
-        return;
-      }
+      if (toc(start_time) >= settings.time_limit) { return; }
       inequality_t<i_t, f_t> cut(lp.num_cols);
       i_t status = flow_cover_generation_.generate_cut(
         lp, settings, Arow, variable_bounds, var_types, xstar, flow_cover_row, cut);
@@ -3820,9 +3785,7 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
   size_t extension_gain    = 0;
 #endif
   for (std::vector<i_t>& clique_local : ctx.cliques) {
-    if (toc(start_time) >= settings.time_limit || cut_pool_.generation_limit_reached(CLIQUE)) {
-      return true;
-    }
+    if (toc(start_time) >= settings.time_limit) { return true; }
 #if DEBUG_CLIQUE_CUTS
     candidate_cliques++;
 #endif
@@ -4003,7 +3966,6 @@ bool cut_generation_t<i_t, f_t>::generate_zero_half_cuts(
   for (i_t s = 0; s < num_local; ++s) {
     if (toc(start_time) >= settings.time_limit) { break; }
     if (work_estimate > max_work_estimate) { break; }
-    if (cut_pool_.generation_limit_reached(ZERO_HALF)) { break; }
     if (already_used[s]) { continue; }
     ZERO_HALF_DEBUG("separation loop s=%lld / %lld",
                     static_cast<long long>(s),
@@ -4147,11 +4109,6 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
 
   f_t work_estimate = 0.0;
   while (!score_queue.empty()) {
-    const bool mir_families_limited =
-      (settings.strong_chvatal_gomory_cuts == 0 ||
-       cut_pool_.generation_limit_reached(CHVATAL_GOMORY)) &&
-      (settings.mir_cuts == 0 || cut_pool_.generation_limit_reached(MIXED_INTEGER_ROUNDING));
-    if (cut_pool_.pool_limit_reached() || mir_families_limited) { break; }
     if (toc(start_time) >= settings.time_limit) { break; }
     // Get the row with the highest score from the queue
     auto [max_score, i] = score_queue.top();
@@ -4411,13 +4368,7 @@ void cut_generation_t<i_t, f_t>::generate_gomory_cuts(
   complemented_mir.bound_substitution(lp, variable_bounds, var_types, xstar, transformed_xstar);
 
   for (i_t i = 0; i < lp.num_rows; i++) {
-    if (toc(start_time) >= settings.time_limit || cut_pool_.pool_limit_reached() ||
-        ((settings.strong_chvatal_gomory_cuts == 0 ||
-          cut_pool_.generation_limit_reached(CHVATAL_GOMORY)) &&
-         (settings.mixed_integer_gomory_cuts == 0 ||
-          cut_pool_.generation_limit_reached(MIXED_INTEGER_GOMORY)))) {
-      break;
-    }
+    if (toc(start_time) >= settings.time_limit) { break; }
     inequality_t<i_t, f_t> inequality(lp.num_cols);
     const i_t j = basic_list[i];
     if (var_types[j] != variable_type_t::INTEGER) { continue; }

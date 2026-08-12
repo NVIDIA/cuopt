@@ -542,10 +542,7 @@ bool generate_mod2_zero_half_cuts(cut_pool_t<i_t, f_t>& cut_pool,
   scratch_pad_t<i_t, f_t> aggregate_pad(lp.num_cols);
 
   for (const auto& combination : row_combinations) {
-    if (toc(start_time) >= settings.time_limit || generation_limit_reached ||
-        cut_pool.generation_limit_reached(ZERO_HALF)) {
-      break;
-    }
+    if (toc(start_time) >= settings.time_limit || generation_limit_reached) { break; }
 
     size_t aggregate_input_nz = 0;
     for (const i_t candidate_index : combination) {

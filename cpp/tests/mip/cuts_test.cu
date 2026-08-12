@@ -983,45 +983,6 @@ TEST(cuts, test_duplicate_cuts_detection)
   cut_pool.check_for_duplicate_cuts();
 }
 
-TEST(cuts, cut_pool_enforces_cut_family_limit)
-{
-  simplex::simplex_solver_settings_t<int, double> settings;
-  mip::cut_pool_t<int, double> cut_pool(1, settings);
-  mip::inequality_t<int, double> cut;
-  cut.push_back(0, 1.0);
-  cut.rhs = 1.0;
-
-  for (int i = 0; i <= cut_pool.max_cut_family_size; ++i) {
-    cut_pool.add_cut(mip::cut_type_t::MIXED_INTEGER_GOMORY, cut);
-  }
-
-  EXPECT_EQ(cut_pool.pool_size(), cut_pool.max_cut_family_size);
-  EXPECT_EQ(cut_pool.cut_family_size(mip::cut_type_t::MIXED_INTEGER_GOMORY),
-            cut_pool.max_cut_family_size);
-  EXPECT_TRUE(cut_pool.generation_limit_reached(mip::cut_type_t::MIXED_INTEGER_GOMORY));
-
-  cut_pool.add_cut(mip::cut_type_t::MIXED_INTEGER_ROUNDING, cut);
-  EXPECT_EQ(cut_pool.pool_size(), cut_pool.max_cut_family_size + 1);
-}
-
-TEST(cuts, cut_pool_enforces_total_limit)
-{
-  simplex::simplex_solver_settings_t<int, double> settings;
-  mip::cut_pool_t<int, double> cut_pool(1, settings);
-  mip::inequality_t<int, double> cut;
-  cut.push_back(0, 1.0);
-  cut.rhs = 1.0;
-
-  for (int i = 0; i < cut_pool.max_pool_size; ++i) {
-    const auto cut_type = (mip::cut_type_t)(i / cut_pool.max_cut_family_size);
-    cut_pool.add_cut(cut_type, cut);
-  }
-  cut_pool.add_cut(mip::cut_type_t::FLOW_COVER, cut);
-
-  EXPECT_EQ(cut_pool.pool_size(), cut_pool.max_pool_size);
-  EXPECT_TRUE(cut_pool.pool_limit_reached());
-}
-
 TEST(cuts, clique_phase1_smoke_conflict_graph_edges)
 {
   const raft::handle_t handle{};
