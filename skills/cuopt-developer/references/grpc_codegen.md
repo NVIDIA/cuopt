@@ -57,13 +57,24 @@ that bite:
   reserved wire value (e.g. `-1`). Composes with `optional`: the sentinel covers
   the explicitly-sent case, `optional` covers the omitted case. `iteration_limit`
   and `node_limit` need both.
-- **`description`** / **`default`** — documentation, emitted as leading comments
-  on the generated proto field. The generated `.proto` is part of the public
-  wire contract (`cpp/src/grpc/GRPC_INTERFACE.md`, "Custom Clients"), so a
-  third-party client reading only the `.proto` should learn what a settings
-  field means and what omitting it does. `default` is a free-text string
-  describing the C++ member initializer (`"1e-4"`, `"-1 (automatic)"`); the
-  generator neither derives nor validates it.
+- **`description`** / **`default`** — documentation for a settings field,
+  emitted into `cuopt_mcp_schema.json`. `description` becomes the JSON Schema
+  `description`, which is what an MCP client shows a model deciding whether to
+  set the field, so write it for someone choosing a value rather than for
+  someone reading the struct. `default` is a free-text string describing the
+  C++ member initializer (`"1e-4"`, `"-1 (automatic)"`); the generator neither
+  derives nor validates it, so take it from the C++ struct — `docs/` is known
+  to disagree in several places.
+- **`param_name`** — the `CUOPT_*` string parameter a client passes to
+  `set_parameter`, when it differs from the field name. The field name is the
+  *proto* name, and MIP diverges heavily: `relative_mip_gap` is
+  `mip_relative_gap`, `mir_cuts` is `mip_mixed_integer_rounding_cuts`, `seed`
+  is `random_seed`. **44 of 85 settings fields need this.** Omitting it on a
+  diverging field produces a setting that fails at solve time with "Invalid
+  parameter". Set it to `null` for a field with no `CUOPT_*` constant at all,
+  which drops it from the MCP schema.
+  `python/cuopt_mcp/tests/test_parameter_names.py` asserts every advertised
+  name exists in `constants.h`.
 
 ## Field numbers are permanent
 

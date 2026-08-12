@@ -38,17 +38,19 @@
 # Attributes (all optional unless noted):
 #
 # Per-field:
-#   description        – human-readable meaning of the field, emitted as a
-#                          leading comment on the generated proto field so a
-#                          third-party client reading only the .proto learns
-#                          what it does (see GRPC_INTERFACE.md, "Custom
-#                          Clients"). Currently consumed for settings messages.
+#   description        – human-readable meaning of the field. Emitted into
+#                          cuopt_mcp_schema.json as the JSON Schema
+#                          `description`, which is what an MCP client shows a
+#                          model deciding whether to set the field. Consumed
+#                          for settings sections only.
 #   default            – what the field does when omitted, written as a string
 #                          describing the C++ member initializer (e.g. "1e-4",
-#                          "-1 (automatic)"). Appended to the generated proto
-#                          comment as "(default: ...)". Documentation only —
+#                          "-1 (automatic)"). Appended to the emitted
+#                          description as "Default: ...". Documentation only —
 #                          the generator neither derives nor validates it, and
-#                          it does not affect the wire format.
+#                          it does not affect the wire format. Take the value
+#                          from the C++ struct, not from docs/: the two are
+#                          known to disagree.
 #   param_name         – the CUOPT_* string parameter this field corresponds
 #                          to, when it differs from the field name (the field
 #                          name is the *proto* name; MIP diverges heavily —

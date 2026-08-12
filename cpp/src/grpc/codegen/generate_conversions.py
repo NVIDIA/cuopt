@@ -335,52 +335,6 @@ def _array_wire_type_comment(f):
     return f"raw bytes ({size} B/elem)"
 
 
-_DOC_COMMENT_WIDTH = 78
-
-
-def _field_doc_comment(f, indent="  "):
-    """Render a field's `description:` / `default:` registry attributes as
-    proto leading comment lines.
-
-    The generated proto is part of the public wire contract (see
-    GRPC_INTERFACE.md, "Custom Clients"), so a third-party client reading
-    only the .proto should learn what a settings field means and what it
-    does when omitted.  Returns [] when the field carries neither
-    attribute, so undocumented fields emit exactly as before.
-
-    `default:` is rendered verbatim from the registry — it is a string
-    describing the C++ member initializer, not a value the generator
-    derives or validates.
-    """
-    description = f.get("description")
-    default = f.get("default")
-    if not description and default is None:
-        return []
-    body = " ".join(str(description).split()) if description else ""
-    if f.get("sentinel") == "max_as_negative_1":
-        # Rendered from `sentinel:` rather than written into `description:`
-        # so each consumer can phrase it correctly: the proto documents the
-        # wire encoding, while the MCP schema tells a client to omit the
-        # field instead of sending the reserved value.
-        body = f"{body} Wire encoding: -1 means no limit.".strip()
-    if default is not None:
-        suffix = f"(default: {default})"
-        body = f"{body} {suffix}" if body else suffix
-    prefix = f"{indent}// "
-    width = max(_DOC_COMMENT_WIDTH - len(prefix), 20)
-    lines, current = [], ""
-    for word in body.split():
-        candidate = f"{current} {word}" if current else word
-        if current and len(candidate) > width:
-            lines.append(f"{prefix}{current}")
-            current = word
-        else:
-            current = candidate
-    if current:
-        lines.append(f"{prefix}{current}")
-    return lines
-
-
 _JSON_SCHEMA_TYPES = {
     "double": "number",
     "float": "number",
@@ -1436,9 +1390,7 @@ def generate_settings_message_proto(registry, message_name, obj):
             continue
         ptype = _settings_field_proto_type(registry, f)
         prefix = "optional " if f.get("optional") else ""
-        decl = f"  {prefix}{ptype} {f['name']} = {num};"
-        doc = _field_doc_comment(f)
-        lines.append((num, "\n".join(doc + [decl])))
+        lines.append((num, f"  {prefix}{ptype} {f['name']} = {num};"))
     lines.extend(_iter_embeds(obj))
     lines.sort(key=lambda x: x[0])
     return "\n".join(item[1] for item in lines)

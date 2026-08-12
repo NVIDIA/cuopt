@@ -161,328 +161,94 @@ message OptimizationProblem {
 }
 
 message PDLPSolverSettings {
-  // Absolute term in PDLP's duality gap check: duality_gap <
-  // absolute_gap_tolerance + relative_gap_tolerance * (|primal_objective| +
-  // |dual_objective|). (default: 1e-4)
   optional double absolute_gap_tolerance = 1;
-  // Relative term in PDLP's duality gap check; multiplies (|primal_objective|
-  // + |dual_objective|). Significant impact on accuracy and runtime.
-  // (default: 1e-4)
   optional double relative_gap_tolerance = 2;
-  // Tolerance used when PDLP declares the problem primal infeasible. Only
-  // consulted when detect_infeasibility is enabled. (default: 1e-10)
   optional double primal_infeasible_tolerance = 3;
-  // Tolerance used when PDLP declares the problem dual infeasible
-  // (unbounded). Only consulted when detect_infeasibility is enabled.
-  // (default: 1e-10)
   optional double dual_infeasible_tolerance = 4;
-  // Absolute term in PDLP's dual feasibility check: dual_feasibility <
-  // absolute_dual_tolerance + relative_dual_tolerance * l2_norm(c). (default:
-  // 1e-4)
   optional double absolute_dual_tolerance = 5;
-  // Relative term in PDLP's dual feasibility check; multiplies the objective
-  // vector L2 norm. (default: 1e-4)
   optional double relative_dual_tolerance = 6;
-  // Absolute term in PDLP's primal feasibility check: primal_feasibility <
-  // absolute_primal_tolerance + relative_primal_tolerance * l2_norm(b).
-  // (default: 1e-4)
   optional double absolute_primal_tolerance = 7;
-  // Relative term in PDLP's primal feasibility check; multiplies the
-  // right-hand-side vector L2 norm. (default: 1e-4)
   optional double relative_primal_tolerance = 8;
-  // Wall-clock limit in seconds after which the solver stops and returns the
-  // current solution. Checked periodically rather than continuously, so the
-  // solver may run slightly over. When set together with iteration_limit, the
-  // first limit reached wins. (default: no limit (infinity))
   optional double time_limit = 9;
-  // Iteration limit after which the solver stops and returns the current
-  // solution. Checked periodically, so the solver may run a few extra
-  // iterations. When set together with time_limit, the first limit reached
-  // wins. Wire encoding: -1 means no limit. (default: no limit (INT_MAX))
   optional int64 iteration_limit = 10;
-  // Whether the solver writes log output to the console. Logs may still be
-  // written to a file when this is false. (default: true)
   optional bool log_to_console = 11;
-  // Whether PDLP attempts to detect infeasibility. Detection is not always
-  // accurate — some problems reported infeasible converge under a different
-  // tolerance — and costs roughly 3-7% runtime and 10-20% memory. Dual
-  // simplex always detects infeasibility regardless of this setting.
-  // (default: false)
   bool detect_infeasibility = 12;
-  // When true, PDLP stops if either the current or the average solution is
-  // detected infeasible. When false, both must be detected infeasible.
-  // (default: false)
   bool strict_infeasibility = 13;
-  // Mode under which PDLP operates; changes how the problem is internally
-  // optimized and can drastically change solve time. Stable3 is the best
-  // overall mode from cuOpt experiments; Methodical1 takes slower but fewer
-  // steps at 1.3-1.7x the memory; Fast1 is fastest but converges less often.
-  // There is no way to know upfront which mode suits a given problem —
-  // testing is encouraged. (default: Stable3)
   optional PDLPSolverMode pdlp_solver_mode = 14;
-  // Method used to solve the LP. Concurrent runs PDLP, dual simplex and
-  // barrier in parallel. Default accuracy differs per method: PDLP 1e-4
-  // relative, barrier 1e-8 relative, dual simplex 1e-6 absolute. (default:
-  // Concurrent)
   LPMethod method = 15;
-  // Which presolver performs presolve reductions: 0 disables presolve, 1
-  // selects Papilo, 2 selects PSLP. By default LP uses PSLP and MIP uses
-  // Papilo. (default: Default (PSLP for LP, Papilo for MIP))
   optional int32 presolver = 16;
-  // Whether dual postsolve runs when the Papilo presolver is used on an LP.
-  // Disabling it can improve solve time at the cost of losing access to the
-  // dual solution. Not relevant for MIP. (default: true)
   optional bool dual_postsolve = 17;
-  // Whether PDLP or barrier crosses over to a basic solution after reaching
-  // optimality. PDLP and barrier solutions need not lie at a vertex;
-  // crossover yields a basic solution with n - m variables on their bounds.
-  // Significant impact on accuracy and runtime. (default: false)
   bool crossover = 18;
-  // Number of GPUs used for the solve. Relevant to LP in concurrent mode (up
-  // to 2 GPUs), where PDLP and barrier run on separate GPUs rather than
-  // sharing one. For distributed PDLP, -1 selects all visible devices.
-  // (default: 1)
   optional int32 num_gpus = 19;
-  // Whether PDLP computes primal and dual residuals per constraint instead of
-  // globally. (default: false)
   bool per_constraint_residual = 20;
-  // Whether cuDSS runs in deterministic mode. Deterministic mode makes
-  // results reproducible across runs but may be slower. (default: false)
   bool cudss_deterministic = 21;
-  // Barrier: whether to fold the LP, reducing problem size by exploiting
-  // symmetry. -1 automatic, 0 disabled, 1 forced. (default: -1 (automatic))
   optional int32 folding = 22;
-  // Barrier: which linear system to solve at each iteration. -1 automatic, 0
-  // the ADAT system (normal equations), 1 the augmented system. The augmented
-  // system can be more stable, ADAT is often faster. (default: -1
-  // (automatic))
   optional int32 augmented = 23;
-  // Barrier: whether presolve dualizes the LP, which can help problems with
-  // inequality constraints that have more constraints than variables. -1
-  // automatic, 0 disabled, 1 forced. (default: -1 (automatic))
   optional int32 dualize = 24;
-  // Barrier: ordering algorithm cuDSS uses for sparse factorizations, which
-  // can significantly affect runtime. -1 automatic, 0 cuDSS default ordering,
-  // 1 AMD (approximate minimum degree). (default: -1 (automatic))
   optional int32 ordering = 25;
-  // Barrier: how the dual initial point is computed, which affects the
-  // iteration count. -1 automatic, 0 the Lustig-Marsten-Shanno heuristic, 1 a
-  // least-squares problem minimizing the norms of the dual variables and
-  // reduced costs subject to the dual equality constraints. (default: -1
-  // (automatic))
   optional int32 barrier_dual_initial_point = 26;
-  // Barrier: whether dense columns are eliminated from the constraint matrix
-  // before solving, reducing factorization fill-in at the cost of extra
-  // solves per iteration. Only has an effect when the ADAT (normal equation)
-  // system is solved. (default: true)
   optional bool eliminate_dense_columns = 27;
-  // Whether PDLP keeps the best primal solution seen so far. When enabled, a
-  // primal feasible iterate always beats an infeasible one; among feasible
-  // iterates the best primal objective wins; among infeasible ones the lowest
-  // primal residual wins, breaking ties on objective. (default: false)
   bool save_best_primal_so_far = 28;
-  // Whether the solver stops as soon as a primal feasible iterate is found,
-  // without waiting for optimality or dual feasibility. Composable with
-  // per_constraint_residual. (default: false)
   bool first_primal_feasible = 29;
-  // Precision mode for the PDLP solver. DefaultPrecision uses the problem's
-  // native precision; SinglePrecision runs PDHG in FP32 (half the memory,
-  // roughly 2x faster iterations, possibly more of them); DoublePrecision
-  // forces FP64; MixedPrecision stores the constraint matrix in FP32 for
-  // faster SpMV while keeping vectors and compute in FP64 (convergence checks
-  // still use the FP64 matrix, so memory is not reduced). (default:
-  // DefaultPrecision)
   optional int32 pdlp_precision = 30;
-  // Barrier: whether iterative refinement runs after each barrier solve to
-  // improve solution accuracy (see cpp/src/barrier/barrier.cu). (default:
-  // true)
   optional bool barrier_iterative_refinement = 31;
-  // Barrier: scaling factor applied to the primal/dual step size. Must be
-  // strictly less than 1 — 0.9 is conservative, 0.999 aggressive. The
-  // local-solve binding restricts the range to [0.5, 0.9999]; this field is
-  // not clamped after decoding, for consistency with the other float scalars.
-  // (default: 0.9)
   optional double barrier_step_scale = 32;
-  // (default: -1)
   optional int32 postsolve_info = 33;
   PDLPWarmStartData warm_start_data = 50;
 }
 
 message MIPSolverSettings {
-  // Wall-clock limit in seconds after which the solver stops and returns the
-  // best solution found so far. When set together with node_limit or
-  // work_limit, the first limit reached wins. (default: no limit (infinity))
   optional double time_limit = 1;
-  // Relative gap at which the solve terminates: abs(best_objective -
-  // dual_bound) / abs(best_objective). The gap is zero when both are zero,
-  // and infinite when only the best objective is zero. (default: 1e-4)
   optional double relative_mip_gap = 2;
-  // Absolute gap at which the solve terminates: best_objective - dual_bound
-  // when minimizing, dual_bound - best_objective when maximizing. (default:
-  // 1e-10)
   optional double absolute_mip_gap = 3;
-  // How close to an integer a variable must be to count as integral.
-  // (default: 1e-5)
   optional double integrality_tolerance = 4;
-  // MIP absolute tolerance. (default: 1e-6)
   optional double absolute_tolerance = 5;
-  // MIP relative tolerance. (default: 1e-12)
   optional double relative_tolerance = 6;
-  // (default: 1e-6)
   optional double presolve_absolute_tolerance = 7;
-  // Whether the solver writes log output to the console. Logs may still be
-  // written to a file when this is false. (default: true)
   optional bool log_to_console = 8;
-  // When true only the GPU heuristics run, improving the primal bound alone.
-  // When false both GPU and CPU are used and the dual bound is improved on
-  // the CPU. (default: false)
   bool heuristics_only = 9;
-  // Number of CPU threads used by the MIP solver. Lower values cap cuOpt's
-  // CPU footprint; higher values speed up the CPU-parallel parts. -1 derives
-  // the count from the number of CPU cores. (default: -1 (automatic))
   optional int32 num_cpu_threads = 10;
-  // Number of GPUs used for the solve. (default: 1)
   optional int32 num_gpus = 11;
-  // Which presolver performs presolve reductions: 0 disables presolve, 1
-  // selects Papilo, 2 selects PSLP. MIP uses Papilo by default. (default:
-  // Default (Papilo for MIP))
   optional int32 presolver = 12;
-  // Whether scaling is applied to the MIP problem. 0 off, 1 on, 2 applied but
-  // not to the objective. (default: 2 (no objective scaling))
   optional int32 mip_scaling = 13;
-  // Limit in work units — a machine-independent measure of solver effort —
-  // after which the solver stops and returns the current solution. When set
-  // together with time_limit or node_limit, the first limit reached wins.
-  // (default: no limit (infinity))
   optional double work_limit = 14;
-  // Maximum number of branch-and-bound nodes explored before the solver stops
-  // and returns the best feasible solution found, if any. When set together
-  // with time_limit, the first limit reached wins. Wire encoding: -1 means no
-  // limit. (default: no limit (INT_MAX))
   optional int32 node_limit = 15;
-  // Reliability branching mode. -1 automatic (the solver picks whether to use
-  // it and with what factor), 0 disabled, k > 0 enables it and treats a
-  // variable as reliable once it has been branched on k times. (default: -1
-  // (automatic))
   optional int32 reliability_branching = 16;
-  // Whether strong branching at the root evaluates candidates with a single
-  // batched PDLP solve instead of solving them in parallel with dual simplex,
-  // which can cut strong-branching time when dual simplex struggles. 0
-  // disabled, 1 enabled. (default: 0 (disabled))
   int32 mip_batch_pdlp_strong_branching = 17;
-  // Maximum number of cut passes to run. 0 disables cuts entirely; larger
-  // values perform more passes. (default: 10)
   optional int32 max_cut_passes = 18;
-  // Whether mixed-integer rounding cuts are used. -1 automatic (the solver
-  // decides from problem characteristics), 0 disabled, 1 enabled. (default:
-  // -1 (automatic))
   optional int32 mir_cuts = 19;
-  // Whether mixed-integer Gomory cuts are used. -1 automatic, 0 disabled, 1
-  // enabled. (default: -1 (automatic))
   optional int32 mixed_integer_gomory_cuts = 20;
-  // Whether knapsack cuts are used. -1 automatic, 0 disabled, 1 enabled.
-  // (default: -1 (automatic))
   optional int32 knapsack_cuts = 21;
-  // Whether clique cuts are used. -1 automatic, 0 disabled, 1 enabled.
-  // (default: -1 (automatic))
   optional int32 clique_cuts = 22;
-  // Whether strong Chvatal-Gomory cuts are used. -1 automatic, 0 disabled, 1
-  // enabled. (default: -1 (automatic))
   optional int32 strong_chvatal_gomory_cuts = 23;
-  // Whether integer feasible solutions are used to strengthen integer
-  // variable bounds. -1 automatic, 0 disabled, 1 during the root cut passes,
-  // 2 during the root cut passes and after strong branching. (default: -1
-  // (automatic))
   optional int32 reduced_cost_strengthening = 24;
-  // Required improvement in the dual bound per cut pass. Larger values demand
-  // significant improvement each pass; -1 lets cut passes continue even
-  // without improvement. (default: -1 (no threshold))
   optional double cut_change_threshold = 25;
-  // Minimum orthogonality a cut needs to be added to the LP relaxation.
-  // Values near 1 require cuts to be nearly orthogonal to each other; values
-  // near 0 admit more cuts. (default: 0.5)
   optional double cut_min_orthogonality = 26;
-  // 0 opportunistic — results may vary between runs due to parallelism. 1
-  // deterministic — improves reproducibility across runs with the same thread
-  // count. Deterministic mode is experimental and does not yet guarantee
-  // fully deterministic results in every scenario. (default: 0
-  // (opportunistic))
   int32 determinism_mode = 27;
-  // Random seed. A fixed seed gives reproducible results when running in
-  // deterministic mode. (default: -1 (chosen automatically))
   optional int32 seed = 28;
-  // Whether the probing-cache step of MIP presolve runs. Probing evaluates
-  // variable fixings to discover implications later used by branch-and-bound
-  // and the rounding heuristics. Only meaningful when presolve is otherwise
-  // enabled — presolver=0 disables the whole pipeline. Probing is also
-  // skipped in deterministic mode and on LP-only solves. (default: true)
   optional bool probing = 29;
-  // Maximum simplex iterations per candidate during strong branching.
-  // Lowering it speeds up strong branching at the cost of less accurate
-  // candidate evaluations. (default: -1 (automatic))
   optional int32 strong_branching_simplex_iteration_limit = 30;
-  // Whether implied bound cuts are used. -1 automatic, 0 disabled, 1 enabled.
-  // (default: -1 (automatic))
   optional int32 implied_bound_cuts = 31;
-  // Whether reliability-branching candidates are evaluated simultaneously
-  // with a single batched PDLP solve. 0 disabled, 1 enabled. (default: 0
-  // (disabled))
   int32 mip_batch_pdlp_reliability_branching = 32;
-  // Symmetry detection and handling. -1 automatic, 0 disabled, 1 orbital
-  // fixing, 2 orbital fixing plus lexical reduction. (default: -1
-  // (automatic))
   optional int32 symmetry = 33;
-  // Big-M coefficient used when linearizing semi-continuous variable
-  // constraints (such a variable is either zero or lies in [lower_bound,
-  // upper_bound]). Should be at least as large as the upper bound of any
-  // semi-continuous variable in the problem. Serves as the fallback upper
-  // bound when bounds-strengthening cannot derive a finite one. The
-  // local-solve binding restricts the range to [1.0, +inf]. (default: 1e10)
   optional double semi_continuous_big_m = 34;
-  // Maximum number of solutions held in the solution pool. (default: 32)
   optional int32 population_size = 35;
-  // Number of parallel CPU Feasibility Jump climbers. (default: 8)
   optional int32 num_cpufj_threads = 36;
-  // Fraction of the total time budget given to the root LP. (default: 0.1)
   optional double root_lp_time_ratio = 39;
-  // Hard cap in seconds on the root LP solve. (default: 15.0)
   optional double root_lp_max_time = 40;
-  // Per-call time budget in seconds for the RINS sub-MIP. (default: 3.0)
   optional double rins_time_limit = 41;
-  // Ceiling in seconds on the adaptive RINS time budget. (default: 20.0)
   optional double rins_max_time_limit = 42;
-  // Fraction of variables RINS fixes before solving the sub-MIP. (default:
-  // 0.5)
   optional double rins_fix_rate = 43;
-  // Number of Feasibility Pump loops without improvement before recombination
-  // is triggered. (default: 3)
   optional int32 stagnation_trigger = 44;
-  // Depth of the diversity step taken after stagnation. (default: 8)
   optional int32 max_iterations_without_improvement = 45;
-  // Seed value for the constraint violation penalty. (default: 1000.0)
   optional double initial_infeasibility_weight = 46;
-  // Number of local minima after which the Feasibility Jump baseline exits.
-  // (default: 7000)
   optional int32 n_of_minimums_for_exit = 47;
-  // Bitmask of enabled recombiners: 1 bound propagation, 2 feasibility pump,
-  // 4 local search, 8 sub-MIP. (default: 15 (all enabled))
   optional int32 enabled_recombiners = 48;
-  // Size of the ring buffer used to detect Feasibility Pump assignment
-  // cycles. (default: 30)
   optional int32 cycle_detection_length = 49;
-  // Base time cap in seconds for relaxed LP solves inside the heuristics.
-  // (default: 1.0)
   optional double relaxed_lp_time_limit = 50;
-  // Time in seconds allowed for building the related-variable structure.
-  // (default: 30.0)
   optional double related_vars_time_limit = 51;
-  // Whether zero-half cuts are used. -1 automatic, 0 disabled, 1 enabled.
-  // (default: -1 (automatic))
   optional int32 zero_half_cuts = 52;
-  // Cap on Papilo presolve rounds. A value <= 0 removes the cap entirely.
-  // (default: -1 (no override))
   optional int32 presolve_max_rounds = 53;
-  // Ceiling on Papilo's probing.minbadgesize. (default: -1 (no override))
   optional int32 papilo_probing_max_badgesize = 54;
 }
 
