@@ -206,6 +206,7 @@ inline char feasible_solution_symbol(heuristics_origin_t origin)
 inline char feasible_solution_symbol(search_strategy_t strategy, bool show_diving)
 {
   if (strategy == search_strategy_t::BEST_FIRST) return 'B';
+  if (strategy == search_strategy_t::RINS) return 'S';
   if (!show_diving) return 'D';
 
   switch (strategy) {
@@ -216,8 +217,10 @@ inline char feasible_solution_symbol(search_strategy_t strategy, bool show_divin
     case search_strategy_t::GUIDED_DIVING: return 'G';
     case search_strategy_t::FARKAS_DIVING: return 'F';
     case search_strategy_t::VECTOR_LENGTH_DIVING: return 'V';
-    default: return 'U';
+    case search_strategy_t::RINS: return 'S';
   }
+
+  return 'U';
 }
 
 template <typename f_t>
@@ -1022,7 +1025,7 @@ branch_variable_t<i_t> branch_and_bound_t<i_t, f_t>::variable_selection(
     case search_strategy_t::VECTOR_LENGTH_DIVING:
       return vector_length_diving(worker->leaf_problem, fractional, solution, log);
 
-    case search_strategy_t::SUBMIP:  // This is used for solving the DFS of the sub-MIP.
+    case search_strategy_t::RINS:  // This is used for solving the DFS of the sub-MIP.
       branch_var = pc_.variable_selection(fractional, solution);
       round_dir  = martin_criteria(solution[branch_var], root_relax_soln_.x[branch_var]);
       return {branch_var, round_dir};
@@ -2117,7 +2120,7 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker, 
 
   // This is called from the RINS method which already handle the return to the
   // pool part. Besides, they do not share the same pool.
-  if (worker->search_strategy != search_strategy_t::SUBMIP) {
+  if (worker->search_strategy != search_strategy_t::RINS) {
     diving_worker_pool_.return_worker_to_pool(worker);
   }
 }
@@ -2198,9 +2201,8 @@ bool branch_and_bound_t<i_t, f_t>::launch_rins_worker(const std::vector<f_t>& so
   worker->leaf_solution.x    = sol;
   worker->recompute_bounds   = false;
   worker->recompute_basis    = true;
-
+  worker->search_strategy    = search_strategy_t::RINS;
   worker->set_active();
-  worker->search_strategy = search_strategy_t::SUBMIP;
 
   if (settings_.inside_submip) {
     // LLVM libomp's GOMP compatibility path skips GCC's firstprivate copy
@@ -2238,6 +2240,11 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   if (!feasible) {
     // This should never happen since we are fixing bounds that are already in the incumbent.
     rins_stats_.save_infeasible(fixrate);
+
+#ifdef DEBUG_SUBMIP
+    settings_.log.print_format("{} The problem is infeasible after running bound strengthening!",
+                               log_prefix);
+#endif
     return;
   }
 
@@ -2281,8 +2288,8 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   submip_settings.relative_mip_gap_tol =
     std::min(settings_.submip_settings.target_mip_gap, rel_gap);
 
-  submip_settings.submip_settings.rins =
-    settings_.submip_settings.rins != 0 && submip_level <= settings_.submip_settings.max_level;
+  bool max_recursion                   = submip_level > settings_.submip_settings.max_level;
+  submip_settings.submip_settings.rins = settings_.submip_settings.rins != 0 && !max_recursion;
 
 #ifdef DEBUG_SUBMIP
   submip_settings.log.print_format(
@@ -2371,7 +2378,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   submip_bnb.set_initial_guess(presolved_incumbent);
 
   const f_t user_upper    = compute_user_objective(worker->leaf_problem, upper_bound_.load());
-  const f_t submip_cutoff = compute_solver_objective(submip_bnb.original_lp_, user_upper);
+  const f_t submip_cutoff = compute_internal_objective(submip_bnb.original_lp_, user_upper);
   submip_bnb.set_initial_upper_bound(submip_cutoff);
 
   if (!is_root_heuristic)
@@ -2452,9 +2459,9 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
 }
 
 template <typename i_t, typename f_t>
-inline f_t submip_get_max_fixrate(const submip_stats_t& stats,
-                                  const mip_submip_hyper_params_t<i_t, f_t>& submip_settings,
-                                  pcgenerator_t& rng)
+f_t submip_get_max_fixrate(const submip_stats_t& stats,
+                           const mip_submip_hyper_params_t<i_t, f_t>& submip_settings,
+                           pcgenerator_t& rng)
 {
   // Adaptive fix rate based on previous successes and failures.
   f_t low  = submip_settings.base_target_fixrate;
@@ -2738,7 +2745,7 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* worker,
 
     if (num_frac == 0) {
       // We found a feasible solution when fixing the variables in RINS.
-      add_feasible_solution(leaf_obj, current_sol, -1, search_strategy_t::SUBMIP);
+      add_feasible_solution(leaf_obj, current_sol, -1, search_strategy_t::RINS);
       break;
     }
 
@@ -3943,22 +3950,23 @@ Producer Sync:
   Producing solutions in the past would break determinism, therefore this unidirectional sync
 ensures no such thing can occur. Instrumentation Aggregator: Collects multiple instrument vectors
 into a single aggregation point for estimating work from memory operations. Worker Context: Object
-representing the "context" (e.g.: the worker) that should register the amount of work recorded
-There is a 1context:1worker mapping. The Work Unit Scheduler registers such contexts and ensure
-they remained synchronized together. Queued Integer Solutions: New integer solutions found within
-horizons are queued with a work unit timestamp, in order to be sorted and played in order during
-the sync callback. Creation Sequence: In nondeterministic mode, a single global atomic integer is
-used to generate sequential IDs for the nodes. Since this is a global atomic, it is inherently
+representing the "context" (e.g.: the worker) that should register the amount of work recorded There
+is a 1context:1worker mapping. The Work Unit Scheduler registers such contexts and ensure they
+remained synchronized together. Queued Integer Solutions: New integer solutions found within
+horizons are queued with a work unit timestamp, in order to be sorted and played in order during the
+sync callback. Creation Sequence: In nondeterministic mode, a single global atomic integer is used
+to generate sequential IDs for the nodes. Since this is a global atomic, it is inherently
 nondeterministic. To fix this, in deterministic mode, nodes are addressed by a tuple <worker_id,
 seq_id>
-  where "worker_id" is the ID of the worker that created this node, and "seq_id" is a sequential
-ID local to the worker.\ This sequential ID is similar in principle to the global atomic ID
-sequence of the nondeterminsitic mode but since it is local to each worker, it is updated serially
-and thus is deterministic. worker IDs are unique, and sequence IDs are unique to their workers,
-therefor <worker_id, seq_id> is a globally unique node identifier. Pseudocost Update: Each worker
-updates its local pseudocosts when branching. These updates are queued within horizons. During the
-horizon sync, these updates are all played in order, and the newly updated global pseudocosts are
-broadcast to the worker's pseudocost snapshots for the coming horizon.
+  where "worker_id" is the ID of the worker that created this node, and "seq_id" is a sequential ID
+local to the worker.\ This sequential ID is similar in principle to the global atomic ID sequence of
+the nondeterminsitic mode but since it is local to each worker, it is updated serially and thus is
+deterministic. worker IDs are unique, and sequence IDs are unique to their workers, therefor
+  <worker_id, seq_id> is a globally unique node identifier.
+Pseudocost Update:
+  Each worker updates its local pseudocosts when branching. These updates are queued within
+horizons. During the horizon sync, these updates are all played in order, and the newly updated
+global pseudocosts are broadcast to the worker's pseudocost snapshots for the coming horizon.
 
 */
 
@@ -4068,8 +4076,7 @@ void branch_and_bound_t<i_t, f_t>::run_deterministic_coordinator(const csr_matri
     "Sync%% | NoWork\n");
   settings_.log.printf(
     "  "
-    "-------+---------+----------+--------+---------+--------+----------+----------+-------+-----"
-    "--"
+    "-------+---------+----------+--------+---------+--------+----------+----------+-------+-------"
     "\n");
   for (const auto& worker : *deterministic_workers_) {
     double sync_time    = worker.work_context.total_sync_time;
