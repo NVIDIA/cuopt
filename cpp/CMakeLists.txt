@@ -291,7 +291,7 @@ option(LUSOL "Disable LUSOL" OFF)
 FetchContent_MakeAvailable(papilo)
 
 # PSLP - Lightweight C presolver for linear programs
-# https://github.com/hlinsen/PSLP/tree/codex/reduce-transpose-memory
+# https://github.com/hlinsen/PSLP/tree/reduce-transpose-memory
 FetchContent_Declare(
         pslp
         GIT_REPOSITORY "https://github.com/hlinsen/PSLP.git"
