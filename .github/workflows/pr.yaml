@@ -35,7 +35,6 @@ jobs:
       - wheel-tests-cuopt-server
       - wheel-build-cuopt-sh-client
       - test-self-hosted-server
-      - pr-test-summary
     permissions:
       contents: read
     uses: rapidsai/shared-workflows/.github/workflows/pr-builder.yaml@main
@@ -362,6 +361,7 @@ jobs:
     uses: rapidsai/shared-workflows/.github/workflows/checks.yaml@main
     with:
       enable_check_generated_files: false
+      ignored_pr_jobs: "pr-test-summary"
   conda-cpp-build:
     needs: [build-details, checks, compute-matrix-filters, changed-files]
     # Consumed by C++, Java, Python, and docs jobs.
@@ -414,8 +414,6 @@ jobs:
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
     with:
       build_type: pull-request
-      # Non-blocking while the multi-GPU test suite is maturing.
-      continue-on-error: true
   conda-python-build:
     needs: [build-details, conda-cpp-build, changed-files]
     # Consumed by conda-python-tests and docs-build.
@@ -621,6 +619,7 @@ jobs:
       build_type: pull-request
       script: ci/test_self_hosted_service.sh
   pr-test-summary:
+    name: "PR test summary (non-blocking)"
     needs:
       - conda-cpp-tests
       - conda-python-tests
@@ -628,7 +627,6 @@ jobs:
       - wheel-tests-cuopt-server
       - test-self-hosted-server
     if: always()
-    continue-on-error: true
     runs-on: ubuntu-latest
     permissions:
       actions: read
