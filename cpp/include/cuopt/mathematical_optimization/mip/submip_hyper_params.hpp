@@ -30,7 +30,10 @@ struct mip_submip_hyper_params_t {
   f_t target_mip_gap = 0.01;
 
   // The base node limit for the sub-MIP
-  i_t node_limit_base = 200;
+  i_t node_limit_offset = 200;
+
+  // The base iteration limit for the sub-MIP
+  i_t iteration_limit_offset = 10000;
 
   // The current level in the recursion. This is an internal parameter and will set automatically.
   i_t level = 0;
