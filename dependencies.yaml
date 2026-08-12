@@ -212,6 +212,29 @@ files:
       key: mps
     includes:
       - mps_cuopt_sh_client
+  py_build_cuopt_mcp:
+    output: pyproject
+    pyproject_dir: python/cuopt_mcp/
+    extras:
+      table: build-system
+    includes:
+      - build_wheels
+  py_run_cuopt_mcp:
+    output: pyproject
+    pyproject_dir: python/cuopt_mcp/
+    extras:
+      table: project
+    includes:
+      - run_cuopt_mcp
+      - depends_on_cuopt
+  py_test_cuopt_mcp:
+    output: pyproject
+    pyproject_dir: python/cuopt_mcp/
+    extras:
+      table: project.optional-dependencies
+      key: test
+    includes:
+      - test_python_common
 channels:
   - rapidsai-nightly
   - rapidsai
@@ -372,6 +395,19 @@ dependencies:
       - output_types: [requirements, pyproject]
         packages:
           - *msgpack
+
+  run_cuopt_mcp:
+    # cuopt itself comes from depends_on_cuopt (CUDA-suffixed on PyPI).
+    # cuopt_mcp imports it lazily so the MCP handshake stays fast, which
+    # means an undeclared dependency would only surface on the first tool
+    # call rather than at install time.
+    common:
+      - output_types: [conda, requirements, pyproject]
+        packages:
+          - mcp>=2.0
+      - output_types: conda
+        packages:
+          - pip
 
   run_cuopt_sh_client:
     common:
