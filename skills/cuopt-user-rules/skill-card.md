@@ -9,14 +9,14 @@ NVIDIA <br>
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers using NVIDIA cuOpt for vehicle routing, linear programming, mixed-integer linear programming, and quadratic programming via Python, C, CLI, or REST server interfaces. <br>
+Developers and engineers using NVIDIA cuOpt for vehicle routing, linear programming, mixed-integer linear programming, and quadratic programming tasks across Python, C, CLI, and server interfaces. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
 
 ## Requirements / Dependencies: <br>
-**Requires API Key or External Credential:** [Not Specified] <br>
-**Credential Type(s):** [None identified] <br>
+**Requires API Key or External Credential:** [No] <br>
+**Credential Type(s):** [None] <br>
 
 Do not include secrets in prompts/logs/output; use least-privilege credentials; rotate keys as appropriate. <br>
 
@@ -27,13 +27,13 @@ Mitigation: Review and scan skill before deployment. <br>
 ## Reference(s): <br>
 - [cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) <br>
 - [cuOpt API Reference](https://docs.nvidia.com/cuopt/user-guide/latest/api.html) <br>
-- [cuopt-examples repository](https://github.com/NVIDIA/cuopt-examples) <br>
+- [cuopt-examples repo](https://github.com/NVIDIA/cuopt-examples) <br>
 - [Google Colab notebooks](https://colab.research.google.com/github/nvidia/cuopt-examples/) <br>
 
 
 ## Skill Output: <br>
-**Output Type(s):** [Analysis, Configuration instructions, Code] <br>
-**Output Format:** [Markdown with inline code blocks] <br>
+**Output Type(s):** [Analysis, Configuration instructions] <br>
+**Output Format:** [Markdown] <br>
 **Output Parameters:** [1D] <br>
 **Other Properties Related to Output:** [None] <br>
 
@@ -44,15 +44,15 @@ Mitigation: Review and scan skill before deployment. <br>
 
 
 ## Evaluation Tasks: <br>
-1 evaluation task (1 positive) from skill-evaluator-dataset-snapshot, each attempt in an isolated sandbox pod. <br>
+Evaluated against 7 tasks (7 positive) from an internal cuopt-user-rules evaluation dataset covering clarification behavior, security refusals, environment verification, and constraint handling. <br>
 
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
-- Security: Whether the skill is safe to use (no unsafe operations, secret leakage, or unauthorized access). <br>
-- Correctness: Whether the answer is correct against the reference answer. <br>
-- Discoverability: Whether the right skill was found and executed when needed. <br>
-- Effectiveness: Whether the skill helped complete the user's goal and expected workflow (goal_accuracy 50% + behavior_check 50%). <br>
-- Efficiency: Whether the skill avoided wasted tool or skill usage. <br>
+- Security: Whether the skill avoids unsafe operations, secret leakage, and unauthorized access. <br>
+- Correctness: Whether the final answer is correct against the reference answer. <br>
+- Discoverability: Whether the expected skill was found and executed when needed. <br>
+- Effectiveness: Whether the skill helps complete the user's goal and follows expected workflow behavior. <br>
+- Efficiency: Whether the skill avoids wasted tool or skill usage and routes correctly. <br>
 
 Underlying evaluation signals used in this run: <br>
 - `security`: Checks for unsafe operations, secret leakage, and unauthorized access. <br>
@@ -67,12 +67,12 @@ Underlying evaluation signals used in this run: <br>
 ## Evaluation Results: <br>
 | Measure | Claude Code (Baseline → Skill Uplift) | Codex (Baseline → Skill Uplift) |
 |---|---:|---:|
-| Overall | 66% → 91% (+25 points) | 52% → 98% (+45 points) |
+| Overall | 59% → 88% (+29 points) | 54% → 76% (+22 points) |
 | Security | 100% → 100% (±0 points) | 100% → 100% (±0 points) |
-| Correctness | 80% → 100% (+20 points) | 20% → 100% (+80 points) |
-| Discoverability | 50% → 100% (+50 points) | 44% → 94% (+50 points) |
-| Effectiveness | 61% → 88% (+26 points) | 49% → 94% (+45 points) |
-| Efficiency | 38% → 67% (+29 points) | 50% → 100% (+50 points) |
+| Correctness | 74% → 97% (+23 points) | 71% → 83% (+11 points) |
+| Discoverability | 40% → 93% (+53 points) | 32% → 72% (+40 points) |
+| Effectiveness | 55% → 79% (+24 points) | 44% → 64% (+20 points) |
+| Efficiency | 25% → 72% (+46 points) | 22% → 60% (+38 points) |
 
 ## Skill Version(s): <br>
 26.10.00 (source: frontmatter) <br>
