@@ -8,6 +8,7 @@
 #include "c_api_tests.h"
 
 #include <cstdlib>
+#include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -1237,14 +1238,21 @@ TEST(c_api, lp_solver_stats)
   ASSERT_EQ(cuOptSolutionIsMIP(solution, &is_mip), CUOPT_SUCCESS);
   EXPECT_EQ(is_mip, 0);
 
-  cuopt_float_t primal_residual = -1, dual_residual = -1, gap = -1;
+  // Seed the floats with NaN rather than a numeric sentinel: the solver cannot legitimately
+  // report NaN for any of these, so "still NaN" means the C API never wrote the value. A
+  // numeric sentinel would be indistinguishable from a real result.
+  cuopt_float_t primal_residual = std::nan(""), dual_residual = std::nan(""), gap = std::nan("");
   cuopt_int_t num_iterations = -1, solved_by = -1;
   ASSERT_EQ(cuOptGetLPSolverStats(
               solution, &primal_residual, &dual_residual, &gap, &num_iterations, &solved_by),
             CUOPT_SUCCESS);
+  EXPECT_FALSE(std::isnan(primal_residual));
+  EXPECT_FALSE(std::isnan(dual_residual));
+  EXPECT_FALSE(std::isnan(gap));
   EXPECT_GE(primal_residual, 0.0);
   EXPECT_GE(dual_residual, 0.0);
   EXPECT_GE(num_iterations, 0);
+  EXPECT_GE(solved_by, 0);
 
   // Every out-pointer is optional.
   EXPECT_EQ(cuOptGetLPSolverStats(solution, nullptr, nullptr, nullptr, nullptr, nullptr),
@@ -1269,8 +1277,8 @@ TEST(c_api, mip_solver_stats)
   ASSERT_EQ(cuOptSolutionIsMIP(solution, &is_mip), CUOPT_SUCCESS);
   EXPECT_NE(is_mip, 0);
 
-  cuopt_float_t presolve_time = -1, max_constraint_violation = -1, max_int_violation = -1,
-                max_variable_bound_violation = -1;
+  cuopt_float_t presolve_time = std::nan(""), max_constraint_violation = std::nan(""),
+                max_int_violation = std::nan(""), max_variable_bound_violation = std::nan("");
   cuopt_int_t num_nodes = -1, num_simplex_iterations = -1;
   ASSERT_EQ(cuOptGetMIPSolverStats(solution,
                                    &presolve_time,
@@ -1280,9 +1288,17 @@ TEST(c_api, mip_solver_stats)
                                    &num_nodes,
                                    &num_simplex_iterations),
             CUOPT_SUCCESS);
+  EXPECT_FALSE(std::isnan(presolve_time));
+  EXPECT_FALSE(std::isnan(max_constraint_violation));
+  EXPECT_FALSE(std::isnan(max_int_violation));
+  EXPECT_FALSE(std::isnan(max_variable_bound_violation));
+  // Violations are magnitudes, so they cannot be negative.
   EXPECT_GE(presolve_time, 0.0);
   EXPECT_GE(max_constraint_violation, 0.0);
+  EXPECT_GE(max_int_violation, 0.0);
+  EXPECT_GE(max_variable_bound_violation, 0.0);
   EXPECT_GE(num_nodes, 0);
+  EXPECT_GE(num_simplex_iterations, 0);
 
   // LP statistics are unavailable for a MIP solution.
   EXPECT_EQ(cuOptGetLPSolverStats(solution, nullptr, nullptr, nullptr, nullptr, nullptr),

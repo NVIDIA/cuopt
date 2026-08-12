@@ -4,6 +4,7 @@
  */
 package com.nvidia.cuopt.mathematicalprogramming;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.TimeUnit;
@@ -24,6 +25,11 @@ final class NativeTestSupport {
 
   static void assumeCudaDriverAvailable() {
     Process process = null;
+    // The assumptions are made after the try block on purpose. Assumptions.assumeTrue signals a
+    // skip by throwing TestAbortedException, which a catch here would swallow and re-report under
+    // the wrong reason.
+    boolean exited = false;
+    int exitCode = -1;
     try {
       // Discard the output rather than leaving it in the pipe: nothing reads it, and a full
       // pipe buffer would block nvidia-smi instead of letting it exit.
@@ -33,19 +39,23 @@ final class NativeTestSupport {
               .redirectOutput(ProcessBuilder.Redirect.DISCARD)
               .start();
       // A wedged driver makes nvidia-smi hang indefinitely, which would hang the whole suite.
-      Assumptions.assumeTrue(
-          process.waitFor(NVIDIA_SMI_TIMEOUT_SECONDS, TimeUnit.SECONDS),
-          "CUDA driver check timed out after " + NVIDIA_SMI_TIMEOUT_SECONDS + "s");
-      Assumptions.assumeTrue(process.exitValue() == 0, "CUDA driver is unavailable");
+      exited = process.waitFor(NVIDIA_SMI_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+      if (exited) {
+        exitCode = process.exitValue();
+      }
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
-      Assumptions.assumeTrue(false, "CUDA driver check was interrupted");
-    } catch (Exception e) {
-      Assumptions.assumeTrue(false, "CUDA driver check failed: " + e.getMessage());
+      Assumptions.abort("CUDA driver check was interrupted");
+    } catch (IOException | SecurityException e) {
+      Assumptions.abort("CUDA driver check failed: " + e.getMessage());
     } finally {
       if (process != null && process.isAlive()) {
         process.destroyForcibly();
       }
     }
+
+    Assumptions.assumeTrue(
+        exited, "CUDA driver check timed out after " + NVIDIA_SMI_TIMEOUT_SECONDS + "s");
+    Assumptions.assumeTrue(exitCode == 0, "CUDA driver is unavailable");
   }
 }

@@ -57,8 +57,10 @@ env -u CFLAGS -u CXXFLAGS -u CPPFLAGS -u LDFLAGS \
   -DCMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE:-Release}" \
   -DCUOPT_PREFIX="${CUOPT_PREFIX}" \
   -DCUOPT_RUNTIME_LIBRARY_DIR="${CUOPT_RUNTIME_LIBRARY_DIR}" \
-  ${CUOPT_LIBRARY:+-DCUOPT_LIBRARY="${CUOPT_LIBRARY}"} \
-  ${CUOPT_EXTRA_INCLUDE_DIRS:+-DCUOPT_EXTRA_INCLUDE_DIRS="${CUOPT_EXTRA_INCLUDE_DIRS}"} \
+  `# Passed unconditionally, including empty: omitting them would leave a previous run's` \
+  `# values in CMakeCache.txt and silently link a stale libcuopt with mismatched headers.` \
+  -DCUOPT_LIBRARY="${CUOPT_LIBRARY}" \
+  -DCUOPT_EXTRA_INCLUDE_DIRS="${CUOPT_EXTRA_INCLUDE_DIRS}" \
   ${CXX_COMPILER:+-DCMAKE_CXX_COMPILER="${CXX_COMPILER}"} \
   -DJAVA_HOME="${JAVA_HOME}"
 
