@@ -13,6 +13,7 @@
 #include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
 #include <cuopt/mathematical_optimization/solve.hpp>
 #include <cuts/cuts.hpp>
+#include <math_optimization/tic_toc.hpp>
 #include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
 #include <mip_heuristics/problem/problem.cuh>
 #include <utilities/common_utils.hpp>
@@ -1014,6 +1015,53 @@ TEST(cuts, count_violated_cuts_deduplicates_and_rescores)
   EXPECT_EQ(violated_cuts, 1);
   EXPECT_EQ(cut_pool.pool_size(), 2);
   EXPECT_EQ(cut_pool.count_violated_cuts({1.0, 0.0}), 0);
+}
+
+TEST(cuts, cut_generation_honors_concurrent_halt)
+{
+  const raft::handle_t handle{};
+  auto model      = create_cuts_problem_2();
+  auto op_problem = mps_data_model_to_optimization_problem(&handle, model);
+  mip::problem_t<int, double> mip_problem(op_problem);
+  simplex::user_problem_t<int, double> user_problem(op_problem.get_handle_ptr());
+  mip_problem.get_host_user_problem(user_problem);
+
+  simplex::simplex_solver_settings_t<int, double> settings;
+  std::atomic<int> concurrent_halt{1};
+  settings.concurrent_halt = &concurrent_halt;
+
+  simplex::lp_problem_t<int, double> lp(&handle, 1, 1, 1);
+  std::vector<int> new_slacks;
+  simplex::dualize_info_t<int, double> dualize_info;
+  simplex::convert_user_problem(user_problem, settings, lp, new_slacks, dualize_info);
+  std::vector<simplex::variable_type_t> var_types = user_problem.var_types;
+  var_types.resize(lp.num_cols, simplex::variable_type_t::CONTINUOUS);
+  csr_matrix_t<int, double> Arow(0, 0, 0);
+  lp.A.to_compressed_row(Arow);
+
+  mip::probing_implied_bound_t<int, double> probing_implied_bound(lp.num_cols);
+  mip::variable_bounds_t<int, double> variable_bounds(lp, settings, var_types, Arow, new_slacks);
+  mip::cut_pool_t<int, double> cut_pool(lp.num_cols, settings);
+  mip::cut_generation_t<int, double> cut_generation(
+    cut_pool, lp, settings, Arow, new_slacks, var_types, user_problem, probing_implied_bound);
+
+  const std::vector<double> xstar(lp.num_cols, 0.0);
+  const std::vector<double> ystar(lp.num_rows, 0.0);
+  const std::vector<double> zstar(lp.num_cols, 0.0);
+  EXPECT_TRUE(cut_generation.generate_cuts(lp,
+                                           settings,
+                                           Arow,
+                                           new_slacks,
+                                           var_types,
+                                           std::nullopt,
+                                           xstar,
+                                           ystar,
+                                           zstar,
+                                           std::nullopt,
+                                           std::nullopt,
+                                           variable_bounds,
+                                           tic()));
+  EXPECT_EQ(cut_pool.pool_size(), 0);
 }
 
 TEST(cuts, clique_initial_builder_publishes_completion)

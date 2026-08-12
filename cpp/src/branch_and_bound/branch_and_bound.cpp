@@ -3023,6 +3023,8 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
 {
   lp_status_t root_status;
   i_t relaxation_cut_task_status = 0;
+  std::atomic<int> relaxation_cut_halt{0};
+  std::atomic<bool> relaxation_cut_task_complete{false};
   bool relaxation_cut_task_started{false};
   f_t relaxation_cut_task_elapsed{0.0};
   method_t relaxation_cut_method{Unset};
@@ -3083,8 +3085,9 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
 #pragma omp task default(shared) depend(out : relaxation_cut_task_status) \
   priority(CUOPT_DEFAULT_TASK_PRIORITY)
       {
-        const f_t cut_start_time = tic();
-        auto cut_settings        = settings_;
+        const f_t cut_start_time     = tic();
+        auto cut_settings            = settings_;
+        cut_settings.concurrent_halt = &relaxation_cut_halt;
         // Consume a completed clique table without stopping or waiting for its producer. If it is
         // still being built, leave it running and defer clique/zero-half cuts to the normal pass.
         const bool clique_table_ready = clique_table_complete_.load(std::memory_order_acquire);
@@ -3118,6 +3121,7 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
                                                   exploration_stats_.start_time);
         relaxation_cut_task_elapsed = toc(cut_start_time);
         relaxation_cut_task_status  = feasible ? 1 : -1;
+        relaxation_cut_task_complete.store(true, std::memory_order_release);
       }
     }
 
@@ -3134,6 +3138,7 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
 
     // Check if crossover was stopped by dual simplex
     if (crossover_status == crossover_status_t::OPTIMAL) {
+      if (relaxation_cut_task_started) { relaxation_cut_halt.store(1, std::memory_order_release); }
       // Stop dual simplex and then wait it to finish
       set_root_concurrent_halt(1);
 #pragma omp taskwait depend(in : root_status)
@@ -3193,28 +3198,33 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
     } else {
 // Wait for the dual simplex to finish (after telling PDLP/Barrier to stop)
 #pragma omp taskwait depend(in : root_status)
+      if (relaxation_cut_task_started) { relaxation_cut_halt.store(1, std::memory_order_release); }
       root_relax_solved_by                   = DualSimplex;
       exploration_stats_.total_simplex_iters = root_relax_soln_.iterations;
     }
   } else {
     // Wait for the dual simplex to finish (crossover do not produced a solution)
 #pragma omp taskwait depend(in : root_status)
+    if (relaxation_cut_task_started) { relaxation_cut_halt.store(1, std::memory_order_release); }
     root_relax_solved_by                   = DualSimplex;
     exploration_stats_.total_simplex_iters = root_relax_soln_.iterations;
   }
 
   if (relaxation_cut_task_started) {
+    const bool relaxation_cut_task_interrupted =
+      !relaxation_cut_task_complete.load(std::memory_order_acquire);
 #pragma omp taskwait depend(in : relaxation_cut_task_status)
     const i_t generated_cuts = cut_pool.pool_size();
     const i_t retained_cuts =
       generated_cuts == 0 ? 0 : cut_pool.count_violated_cuts(root_relax_soln.x);
     settings_.log.printf(
       "%s root cut pass generated %d candidates in %.2f seconds; %d remain violated after the "
-      "basis solve%s\n",
+      "basis solve%s%s\n",
       method_to_string(relaxation_cut_method).c_str(),
       generated_cuts,
       relaxation_cut_task_elapsed,
       retained_cuts,
+      relaxation_cut_task_interrupted ? " (stopped when the basis became available)" : "",
       relaxation_cut_task_status < 0 ? " (separator reported infeasibility)" : "");
   }
 
@@ -3242,7 +3252,8 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   f_t& last_objective,
   f_t root_relax_objective,
   i_t& cut_pool_size,
-  [[maybe_unused]] const std::vector<f_t>& saved_solution) -> cut_pass_result_t
+  [[maybe_unused]] const std::vector<f_t>& saved_solution,
+  cut_pass_mode_t mode) -> cut_pass_result_t
 {
 #ifdef PRINT_FRACTIONAL_INFO
   settings_.log.printf("Found %d fractional variables on cut pass %d\n", num_fractional, cut_pass);
@@ -3255,34 +3266,41 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   }
 #endif
 
-  f_t cut_start_time    = tic();
-  bool problem_feasible = cut_generation.generate_cuts(original_lp_,
-                                                       settings_,
-                                                       Arow_,
-                                                       new_slacks_,
-                                                       var_types_,
-                                                       std::ref(basis_update),
-                                                       root_relax_soln_.x,
-                                                       root_relax_soln_.y,
-                                                       root_relax_soln_.z,
-                                                       std::cref(basic_list),
-                                                       std::cref(nonbasic_list),
-                                                       variable_bounds,
-                                                       exploration_stats_.start_time);
-  if (!problem_feasible) {
-    if (settings_.heuristic_preemption_callback != nullptr) {
-      settings_.heuristic_preemption_callback();
+  if (mode == cut_pass_mode_t::GENERATE_AND_APPLY) {
+    f_t cut_start_time    = tic();
+    bool problem_feasible = cut_generation.generate_cuts(original_lp_,
+                                                         settings_,
+                                                         Arow_,
+                                                         new_slacks_,
+                                                         var_types_,
+                                                         std::ref(basis_update),
+                                                         root_relax_soln_.x,
+                                                         root_relax_soln_.y,
+                                                         root_relax_soln_.z,
+                                                         std::cref(basic_list),
+                                                         std::cref(nonbasic_list),
+                                                         variable_bounds,
+                                                         exploration_stats_.start_time);
+    if (!problem_feasible) {
+      if (settings_.heuristic_preemption_callback != nullptr) {
+        settings_.heuristic_preemption_callback();
+      }
+      return {cut_pass_action_t::RETURN, mip_status_t::INFEASIBLE};
     }
-    return {cut_pass_action_t::RETURN, mip_status_t::INFEASIBLE};
+    if (toc(exploration_stats_.start_time) >= settings_.time_limit) {
+      solver_status_ = mip_status_t::TIME_LIMIT;
+      set_final_solution(solution, root_objective_);
+      return {cut_pass_action_t::RETURN, solver_status_};
+    }
+    f_t cut_generation_time = toc(cut_start_time);
+    if (cut_generation_time > 1.0) {
+      settings_.log.debug("Cut generation time %.2f seconds\n", cut_generation_time);
+    }
   }
   if (toc(exploration_stats_.start_time) >= settings_.time_limit) {
     solver_status_ = mip_status_t::TIME_LIMIT;
     set_final_solution(solution, root_objective_);
     return {cut_pass_action_t::RETURN, solver_status_};
-  }
-  f_t cut_generation_time = toc(cut_start_time);
-  if (cut_generation_time > 1.0) {
-    settings_.log.debug("Cut generation time %.2f seconds\n", cut_generation_time);
   }
   // Score the cuts
   f_t score_start_time = tic();
@@ -3294,6 +3312,9 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   std::vector<f_t> cut_rhs;
   std::vector<cut_type_t> cut_types;
   i_t num_cuts = cut_pool.get_best_cuts(cuts_to_add, cut_rhs, cut_types);
+  if (mode == cut_pass_mode_t::APPLY_EXISTING_POOL) {
+    settings_.log.printf("Applying %d speculative root cuts to the basis solution\n", num_cuts);
+  }
   if (num_cuts == 0) { return {cut_pass_action_t::BREAK, mip_status_t::UNSET}; }
   cut_info.record_cut_types(cut_types);
 #ifdef PRINT_CUT_POOL_TYPES
@@ -3506,7 +3527,7 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   f_t change_in_objective = root_objective_ - last_objective;
   const f_t factor        = settings_.cut_change_threshold;
   const f_t min_objective = 1e-3;
-  if (factor > 0.0 &&
+  if (mode == cut_pass_mode_t::GENERATE_AND_APPLY && factor > 0.0 &&
       change_in_objective <= factor * std::max(min_objective, std::abs(root_relax_objective))) {
     settings_.log.printf(
       "Change in objective %.16e is less than 1e-3 of root relax objective %.16e\n",
@@ -3514,6 +3535,8 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
       root_relax_objective);
     return {cut_pass_action_t::BREAK, mip_status_t::UNSET};
   }
+  // Pass 0 must update the baseline for the first ordinary cut pass, but it must not terminate the
+  // normal loop based on the speculative pass's objective movement.
   last_objective = root_objective_;
   return {cut_pass_action_t::CONTINUE, mip_status_t::UNSET};
 }
@@ -3768,6 +3791,40 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   f_t cut_generation_start_time = tic();
   i_t cut_pool_size             = 0;
+
+  // Pass 0 consumes cuts completed from the PDLP/Barrier relaxation while the winning basis was
+  // being built. Score them against that basis solution and reoptimize before generating any
+  // basis-aware cuts. This deliberately does not consume one of max_cut_passes.
+  if (cut_pool.pool_size() > 0) {
+    cut_pass_result_t speculative_cut_result = do_cut_pass(-1,
+                                                           solution,
+                                                           num_fractional,
+                                                           fractional,
+                                                           cut_generation,
+                                                           basis_update,
+                                                           basic_list,
+                                                           nonbasic_list,
+                                                           variable_bounds,
+                                                           cut_pool,
+                                                           cut_info,
+                                                           lp_settings,
+                                                           original_rows,
+                                                           last_upper_bound,
+                                                           last_objective,
+                                                           root_relax_objective,
+                                                           cut_pool_size,
+                                                           saved_solution,
+                                                           cut_pass_mode_t::APPLY_EXISTING_POOL);
+    if (speculative_cut_result.action == cut_pass_action_t::RETURN) {
+      if (settings_.benchmark_info_ptr != nullptr) {
+        settings_.benchmark_info_ptr->cut_generation_time_sec = toc(cut_generation_start_time);
+      }
+      signal_extend_cliques_.store(true, std::memory_order_release);
+#pragma omp taskwait depend(in : *clique_signal)
+      return speculative_cut_result.status;
+    }
+  }
+
   for (i_t cut_pass = 0; cut_pass < settings_.max_cut_passes; cut_pass++) {
     if (toc(exploration_stats_.start_time) >= settings_.time_limit) {
       solver_status_ = mip_status_t::TIME_LIMIT;
