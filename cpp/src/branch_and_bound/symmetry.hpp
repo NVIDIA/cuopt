@@ -319,7 +319,7 @@ class orbital_fixing_t {
       node = node->parent;
     }
 
-    surviving_generators_.resize(max_generators_);
+    surviving_generators_.resize(symmetry->num_generators);
     std::iota(surviving_generators_.begin(), surviving_generators_.end(), 0);
 
     // Seed cumulative fixings from the parent's stored orbital fixings.

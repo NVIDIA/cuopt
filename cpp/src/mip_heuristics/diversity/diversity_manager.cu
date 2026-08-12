@@ -20,6 +20,9 @@
 
 #include <utilities/scope_guard.hpp>
 
+#include <chrono>
+#include <cmath>
+#include <limits>
 #include <memory>
 #include <numeric>
 
@@ -294,10 +297,10 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
   if (termination_criterion_t::NO_UPDATE != term_crit) {
     ls.constraint_prop.bounds_update.set_updated_bounds(*problem_ptr);
   }
-  bool run_probing_cache = !fj_only_run;
-  // Don't run probing cache in deterministic mode yet as neither B&B nor CPUFJ need it
-  // and it doesn't make use of work units yet
-  if (context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC) { run_probing_cache = false; }
+  const auto& hp              = context.settings.heuristic_params;
+  const auto probing_features = probing_presolve_features(*problem_ptr);
+  const auto probing_budget   = evaluate_presolve_budget(hp, probing_features);
+  bool run_probing_cache      = !fj_only_run;
   // Allow the user to disable the probing-cache step of cuOpt's internal presolve
   // independently of the higher-level presolver setting.
   if (!context.settings.probing) {
@@ -305,13 +308,20 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
     run_probing_cache = false;
   }
   if (run_probing_cache) {
-    // Run probing cache before trivial presolve to discover variable implications
-    const f_t max_time_on_probing = diversity_config.max_time_on_probing;
-    f_t time_for_probing_cache    = std::min(max_time_on_probing, time_limit);
+    log_presolve_budget("PROBING", probing_features, probing_budget);
+    f_t time_for_probing_cache = std::min(time_limit, (f_t)global_timer.remaining_time());
     timer_t probing_timer{time_for_probing_cache};
+    [[maybe_unused]] const auto probing_t0 = std::chrono::steady_clock::now();
     // this function computes probing cache, finds singletons, substitutions and changes the problem
-    bool problem_is_infeasible =
-      compute_probing_cache(ls.constraint_prop.bounds_update, *problem_ptr, probing_timer);
+    bool problem_is_infeasible = compute_probing_cache(ls.constraint_prop.bounds_update,
+                                                       *problem_ptr,
+                                                       probing_timer,
+                                                       probing_budget.probing_work_limit,
+                                                       (size_t)probing_budget.probing_step_size);
+    problem_ptr->handle_ptr->sync_stream();
+    CUOPT_LOG_DEBUG(
+      "PRESOLVE_PROBING_WALL wall=%.3f",
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - probing_t0).count());
     if (problem_is_infeasible) { return false; }
   }
   const bool remap_cache_ids           = true;

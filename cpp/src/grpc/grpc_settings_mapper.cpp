@@ -5,6 +5,8 @@
 
 #include "grpc_settings_mapper.hpp"
 
+#include <cuopt/export.hpp>
+
 #include <cuopt/mathematical_optimization/constants.h>
 #include <cuopt_remote.pb.h>
 #include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
@@ -92,25 +94,33 @@ void map_proto_to_mip_settings(const cuopt::remote::MIPSolverSettings& pb_settin
 
 // Explicit template instantiations
 #if CUOPT_INSTANTIATE_FLOAT
-template void map_pdlp_settings_to_proto(const pdlp_solver_settings_t<int32_t, float>& settings,
-                                         cuopt::remote::PDLPSolverSettings* pb_settings);
-template void map_proto_to_pdlp_settings(const cuopt::remote::PDLPSolverSettings& pb_settings,
-                                         pdlp_solver_settings_t<int32_t, float>& settings);
-template void map_mip_settings_to_proto(const mip_solver_settings_t<int32_t, float>& settings,
-                                        cuopt::remote::MIPSolverSettings* pb_settings);
-template void map_proto_to_mip_settings(const cuopt::remote::MIPSolverSettings& pb_settings,
-                                        mip_solver_settings_t<int32_t, float>& settings);
+template CUOPT_EXPORT void map_pdlp_settings_to_proto(
+  const pdlp_solver_settings_t<int32_t, float>& settings,
+  cuopt::remote::PDLPSolverSettings* pb_settings);
+template CUOPT_EXPORT void map_proto_to_pdlp_settings(
+  const cuopt::remote::PDLPSolverSettings& pb_settings,
+  pdlp_solver_settings_t<int32_t, float>& settings);
+template CUOPT_EXPORT void map_mip_settings_to_proto(
+  const mip_solver_settings_t<int32_t, float>& settings,
+  cuopt::remote::MIPSolverSettings* pb_settings);
+template CUOPT_EXPORT void map_proto_to_mip_settings(
+  const cuopt::remote::MIPSolverSettings& pb_settings,
+  mip_solver_settings_t<int32_t, float>& settings);
 #endif
 
 #if CUOPT_INSTANTIATE_DOUBLE
-template void map_pdlp_settings_to_proto(const pdlp_solver_settings_t<int32_t, double>& settings,
-                                         cuopt::remote::PDLPSolverSettings* pb_settings);
-template void map_proto_to_pdlp_settings(const cuopt::remote::PDLPSolverSettings& pb_settings,
-                                         pdlp_solver_settings_t<int32_t, double>& settings);
-template void map_mip_settings_to_proto(const mip_solver_settings_t<int32_t, double>& settings,
-                                        cuopt::remote::MIPSolverSettings* pb_settings);
-template void map_proto_to_mip_settings(const cuopt::remote::MIPSolverSettings& pb_settings,
-                                        mip_solver_settings_t<int32_t, double>& settings);
+template CUOPT_EXPORT void map_pdlp_settings_to_proto(
+  const pdlp_solver_settings_t<int32_t, double>& settings,
+  cuopt::remote::PDLPSolverSettings* pb_settings);
+template CUOPT_EXPORT void map_proto_to_pdlp_settings(
+  const cuopt::remote::PDLPSolverSettings& pb_settings,
+  pdlp_solver_settings_t<int32_t, double>& settings);
+template CUOPT_EXPORT void map_mip_settings_to_proto(
+  const mip_solver_settings_t<int32_t, double>& settings,
+  cuopt::remote::MIPSolverSettings* pb_settings);
+template CUOPT_EXPORT void map_proto_to_mip_settings(
+  const cuopt::remote::MIPSolverSettings& pb_settings,
+  mip_solver_settings_t<int32_t, double>& settings);
 #endif
 
 }  // namespace cuopt::mathematical_optimization
