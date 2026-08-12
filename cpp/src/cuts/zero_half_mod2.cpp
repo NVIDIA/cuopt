@@ -487,9 +487,9 @@ bool generate_mod2_zero_half_cuts(cut_pool_t<i_t, f_t>& cut_pool,
   constexpr i_t max_combination_size   = 64;
   constexpr i_t max_row_combinations   = 1000;
   constexpr f_t min_violation          = (f_t)1e-6;
-  constexpr f_t candidate_work_limit   = (f_t)3e7;
-  constexpr f_t combination_work_limit = (f_t)3e7;
-  constexpr f_t generation_work_limit  = (f_t)4e7;
+  constexpr f_t candidate_work_limit   = (f_t)3e6;
+  constexpr f_t combination_work_limit = (f_t)3e6;
+  constexpr f_t generation_work_limit  = (f_t)4e6;
   f_t candidate_work                   = 0.0;
   f_t combination_work                 = 0.0;
   f_t generation_work                  = 0.0;
