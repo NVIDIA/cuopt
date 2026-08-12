@@ -1456,7 +1456,7 @@ i_t update_steepest_edge_norms(const simplex_solver_settings_t<i_t, f_t>& settin
     work_estimate += 2 * v_sparse.i.size();
   }
   v_sparse.scatter(v);
-  work_estimate += 2 * v_sparse.i.size();
+  work_estimate += 4 * v_sparse.i.size();
 
   const i_t leaving_index        = basic_list[basic_leaving_index];
   const f_t prev_dy_norm_squared = delta_y_steepest_edge[leaving_index];
@@ -1508,7 +1508,7 @@ i_t update_steepest_edge_norms(const simplex_solver_settings_t<i_t, f_t>& settin
       delta_y_steepest_edge[j] = new_val;
     }
   }
-  work_estimate += 5 * scaled_delta_xB_nz;
+  work_estimate += 6 * scaled_delta_xB_nz;
 
   const i_t v_nz = v_sparse.i.size();
   for (i_t k = 0; k < v_nz; ++k) {
@@ -2904,7 +2904,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
   i_t num_refactors         = 0;
   i_t total_bound_flips     = 0;
   f_t delta_y_nz_percentage = 0.0;
-  phase2::phase2_timers_t<i_t, f_t> timers(false);
+  phase2::phase2_timers_t<i_t, f_t> timers(true);
 
   // Sparse vectors for main loop (declared outside loop for instrumentation)
   sparse_vector_t<i_t, f_t> delta_y_sparse(m, 0);
@@ -2922,10 +2922,11 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
 
   phase2_work_estimate += ft.work_estimate();
   ft.clear_work_estimate();
+  f_t last_work_reported = 0.0;
   if (work_unit_context) {
     work_unit_context->record_work_sync_on_horizon((phase2_work_estimate) / 1e8);
+    last_work_reported = phase2_work_estimate;
   }
-  phase2_work_estimate = 0.0;
 
   if (phase == 2) {
     settings.log.printf("%5d %+.16e %7d %.8e %.2e %.2f\n",
@@ -3080,6 +3081,8 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
         }
       }
 
+      phase2_work_estimate += ft.work_estimate();
+      ft.clear_work_estimate();
       phase2::prepare_optimality(0,
                                  primal_infeasibility,
                                  lp,
@@ -3301,6 +3304,8 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
             obj = phase2::compute_perturbed_objective(objective, x);
             phase2_work_estimate += 2 * n;
             if (dual_infeas <= settings.dual_tol && primal_infeasibility <= settings.primal_tol) {
+              phase2_work_estimate += ft.work_estimate();
+              ft.clear_work_estimate();
               phase2::prepare_optimality(1,
                                          primal_infeasibility,
                                          lp,
@@ -3358,6 +3363,8 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
 
             if (primal_infeasibility <= settings.primal_tol &&
                 orig_dual_infeas <= settings.dual_tol) {
+              phase2_work_estimate += ft.work_estimate();
+              ft.clear_work_estimate();
               phase2::prepare_optimality(2,
                                          primal_infeasibility,
                                          lp,
@@ -3790,16 +3797,19 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
     phase2_work_estimate += 3 * delta_z_indices.size();
     phase2::clear_delta_z(entering_index, leaving_index, delta_z_mark, delta_z_indices, delta_z);
 
+    // Flush basis update work into the total work estimate every iteration
+    phase2_work_estimate += ft.work_estimate();
+    ft.clear_work_estimate();
+
     f_t now = toc(start_time);
 
     // Feature logging for regression training (every FEATURE_LOG_INTERVAL iterations)
     if ((iter % FEATURE_LOG_INTERVAL) == 0 && work_unit_context) {
       [[maybe_unused]] i_t iters_elapsed = iter - last_feature_log_iter;
 
-      phase2_work_estimate += ft.work_estimate();
-      ft.clear_work_estimate();
-      work_unit_context->record_work_sync_on_horizon(phase2_work_estimate / 1e8);
-      phase2_work_estimate = 0.0;
+      work_unit_context->record_work_sync_on_horizon(
+        (phase2_work_estimate - last_work_reported) / 1e8);
+      last_work_reported = phase2_work_estimate;
 
       last_feature_log_iter = iter;
     }
@@ -3838,6 +3848,10 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
     }
   }
   if (iter >= iter_limit) { status = dual_status_t::ITERATION_LIMIT; }
+
+  // Flush any remaining work from the basis update into the total work estimate
+  phase2_work_estimate += ft.work_estimate();
+  ft.clear_work_estimate();
 
   if (phase == 2) {
     timers.print_timers(settings);

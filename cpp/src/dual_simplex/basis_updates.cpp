@@ -1507,7 +1507,7 @@ f_t basis_update_mpf_t<i_t, f_t>::dot_product(i_t col,
       nz_mark++;
     }
   }
-  work_estimate_ += 2 * nz_mark + (col_end - col_start);
+  work_estimate_ += 2 * (col_end - col_start) + 2 * nz_mark;
   return dot;
 }
 
@@ -1524,7 +1524,7 @@ void basis_update_mpf_t<i_t, f_t>::add_sparse_column(const csc_matrix_t<i_t, f_t
     const i_t i = S.i[p];
     x[i] += theta * S.x[p];
   }
-  work_estimate_ += 3 * (col_end - col_start);
+  work_estimate_ += 4 * (col_end - col_start);
 }
 
 template <typename i_t, typename f_t>
@@ -1549,7 +1549,7 @@ void basis_update_mpf_t<i_t, f_t>::add_sparse_column(const csc_matrix_t<i_t, f_t
     }
     x[i] += theta * S.x[p];
   }
-  work_estimate_ += 4 * (col_end - col_start) + 2 * (nz - nz_start);
+  work_estimate_ += 5 * (col_end - col_start) + 2 * (nz - nz_start);
 }
 
 template <typename i_t, typename f_t>

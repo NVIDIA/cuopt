@@ -184,14 +184,14 @@ class reduced_cost_bounds_t {
   {
     const i_t n        = static_cast<i_t>(lower_bounds_.size());
     f_t max_objective = -std::numeric_limits<f_t>::infinity();
-    i_t bounds_updated = 0;
+    i_t integer_bounds_updated = 0;
     for (i_t j = 0; j < n; ++j) {
       if (lower_bounds_[j].is_valid()) {
         if (incumbent_objective <= lower_bounds_[j].objective &&
             lower_bounds_[j].bound > lower_bounds[j]) {
           //printf("RCF Variable %d (%d): lower %e -> %e\n", j, static_cast<int>(var_types[j]), lower_bounds[j], lower_bounds_[j].bound);
           lower_bounds[j] = lower_bounds_[j].bound;
-          bounds_updated++;
+          if (var_types[j] == simplex::variable_type_t::INTEGER) { integer_bounds_updated++; }
           lower_bounds_[j].bound = lower_bounds_[j].objective = std::numeric_limits<f_t>::quiet_NaN();
         }
         if (lower_bounds_[j].objective > max_objective) {
@@ -203,7 +203,7 @@ class reduced_cost_bounds_t {
             upper_bounds_[j].bound < upper_bounds[j]) {
           //printf("RCF Variable %d (%d): upper %e -> %e\n", j, static_cast<int>(var_types[j]), upper_bounds[j], upper_bounds_[j].bound);
           upper_bounds[j] = upper_bounds_[j].bound;
-          bounds_updated++;
+          if (var_types[j] == simplex::variable_type_t::INTEGER) { integer_bounds_updated++; }
           upper_bounds_[j].bound = upper_bounds_[j].objective = std::numeric_limits<f_t>::quiet_NaN();
         }
         if (upper_bounds_[j].objective > max_objective) {
@@ -212,7 +212,7 @@ class reduced_cost_bounds_t {
       }
     }
     max_objective_ = max_objective;
-    return bounds_updated;
+    return integer_bounds_updated;
   }
 
   f_t get_current_lower_bound(i_t col)
@@ -500,16 +500,28 @@ class branch_and_bound_t {
                                  std::vector<i_t>& zero_reduced_costs_vars,
                                  std::vector<i_t>& zero_reduced_costs_vars_nonbasic_index);
 
-  i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
-                                   std::vector<i_t>& basic_list,
-                                   std::vector<i_t>& nonbasic_list,
-                                   std::vector<simplex::variable_status_t>& vstatus,
-                                   simplex::lp_solution_t<i_t, f_t>& soln,
-                                   simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
-                                   i_t& num_fractional,
-                                   std::vector<i_t>& fractional);
+  void fast_slack_integer_pivot(const simplex::lp_problem_t<i_t, f_t>& lp,
+                                const std::vector<i_t>& fractional,
+                                const std::vector<i_t>& row_to_slack,
+                                const simplex::lp_solution_t<i_t, f_t>& solution,
+                                std::vector<i_t>& basic_list,
+                                std::vector<i_t>& nonbasic_list,
+                                std::vector<i_t>& nonbasic_index,
+                                std::vector<simplex::variable_status_t>& vstatus,
+                                simplex::lp_solution_t<i_t, f_t>& soln,
+                                simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
+                                f_t& work_estimate);
 
-  void apply_delta_x_for_integer_pivot(const simplex::lp_problem_t<i_t, f_t>& lp,
+  i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
+                                  std::vector<i_t>& basic_list,
+                                  std::vector<i_t>& nonbasic_list,
+                                  std::vector<simplex::variable_status_t>& vstatus,
+                                  simplex::lp_solution_t<i_t, f_t>& soln,
+                                  simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
+                                  i_t& num_fractional,
+                                  std::vector<i_t>& fractional);
+
+  i_t apply_delta_x_for_integer_pivot(const simplex::lp_problem_t<i_t, f_t>& lp,
                                        std::vector<i_t>& basic_list,
                                        std::vector<i_t>& nonbasic_list,
                                        std::vector<i_t>& nonbasic_index,
@@ -531,6 +543,18 @@ class branch_and_bound_t {
                                         simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
                                         i_t& num_fractional,
                                         std::vector<i_t>& fractional);
+
+  void pivot_to_improve_reduced_cost_strengthening(
+    const simplex::lp_problem_t<i_t, f_t>& lp,
+    const std::vector<i_t>& basic_list,
+    const std::vector<i_t>& nonbasic_list,
+    const std::vector<simplex::variable_status_t>& vstatus,
+    const simplex::lp_solution_t<i_t, f_t>& soln,
+    const simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
+    i_t num_fractional,
+    const std::vector<i_t>& fractional,
+    f_t relaxation_objective,
+    reduced_cost_bounds_t<i_t, f_t>& reduced_cost_bounds);
 
   // Repairs low-quality solutions from the heuristics, if it is applicable.
   void repair_heuristic_solutions();
