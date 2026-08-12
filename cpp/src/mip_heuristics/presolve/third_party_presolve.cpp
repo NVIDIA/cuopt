@@ -1053,6 +1053,9 @@ third_party_presolve_t<i_t, f_t>::apply_presolve_from_mps_data(
 
     auto reduced_mps =
       build_reduced_mps_from_pslp<i_t, f_t>(pslp_presolver_, maximize_, original_obj_offset);
+    // mps_data_model_t deep-copies every PSLP array. Keep only PSLP's compact
+    // postsolve state while the reduced problem is being solved.
+    free_presolver_reduced_problem(pslp_presolver_);
     reduced_mps.set_problem_name(mps.get_problem_name());
     reduced_mps.set_objective_scaling_factor(mps.get_objective_scaling_factor());
     return third_party_presolve_host_result_t<i_t, f_t>{status, std::move(reduced_mps), {}, {}, {}};
