@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+[build-system]
+requires = [
+    "setuptools>=77.0.0",
+    "wheel",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cuopt_mcp"
+dynamic = ["version"]
+description = "MCP server exposing NVIDIA cuOpt LP/MILP solving to AI agents"
+readme = { file = "README.md", content-type = "text/markdown" }
+authors = [
+    { name = "NVIDIA Corporation" },
+]
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+dependencies = [
+    "mcp>=2.0",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Operating System :: OS Independent",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest<9.0",
+]
+
+[project.urls]
+Homepage = "https://docs.nvidia.com/cuopt/introduction.html"
+Source = "https://github.com/nvidia/cuopt"
+
+[project.scripts]
+cuopt-mcp = "cuopt_mcp:main"
+
+[tool.setuptools]
+zip-safe = false
+
+[tool.setuptools.dynamic]
+version = {file = "cuopt_mcp/VERSION"}
+
+[tool.setuptools.packages.find]
+include = ["cuopt_mcp*"]
+
+[tool.setuptools.package-data]
+cuopt_mcp = ["VERSION", "_generated/*.json"]

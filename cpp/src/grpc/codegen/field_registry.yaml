@@ -49,6 +49,17 @@
 #                          comment as "(default: ...)". Documentation only —
 #                          the generator neither derives nor validates it, and
 #                          it does not affect the wire format.
+#   param_name         – the CUOPT_* string parameter this field corresponds
+#                          to, when it differs from the field name (the field
+#                          name is the *proto* name; MIP diverges heavily —
+#                          relative_mip_gap vs mip_relative_gap, mir_cuts vs
+#                          mip_mixed_integer_rounding_cuts). Emitted into the
+#                          MCP schema as "x-parameter-name". Set it explicitly
+#                          to `null` for a field with no CUOPT_* constant at
+#                          all: it stays on the wire but is dropped from the
+#                          MCP schema, since set_parameter would reject it.
+#                          python/cuopt_mcp/tests/test_parameter_names.py
+#                          asserts every advertised name exists in constants.h.
 #   type               – proto wire type (default: double for scalars, repeated double for arrays)
 #   field_num          – proto message field number (see "Field numbers" above)
 #   array_id           – enum value for ArrayFieldId or ResultFieldId
@@ -517,7 +528,7 @@ pdlp_settings:
         Iteration limit after which the solver stops and returns the current
         solution. Checked periodically, so the solver may run a few extra
         iterations. When set together with time_limit, the first limit reached
-        wins. Encoded on the wire as -1 for "no limit".
+        wins.
       default: "no limit (INT_MAX)"
       field_num: 10
       type: int64
@@ -534,6 +545,7 @@ pdlp_settings:
       type: bool
       optional: true
   - detect_infeasibility:
+      param_name: infeasibility_detection
       description: >-
         Whether PDLP attempts to detect infeasibility. Detection is not always
         accurate — some problems reported infeasible converge under a different
@@ -575,6 +587,7 @@ pdlp_settings:
       field_num: 15
       type: lp_method
   - presolver:
+      param_name: presolve
       description: >-
         Which presolver performs presolve reductions: 0 disables presolve,
         1 selects Papilo, 2 selects PSLP. By default LP uses PSLP and MIP uses
@@ -772,6 +785,7 @@ mip_settings:
     # Tolerances (nested: settings.tolerances.<field>)
   - tolerances:
     - relative_mip_gap:
+        param_name: mip_relative_gap
         description: >-
           Relative gap at which the solve terminates:
           abs(best_objective - dual_bound) / abs(best_objective). The gap is
@@ -781,6 +795,7 @@ mip_settings:
         field_num: 2
         optional: true
     - absolute_mip_gap:
+        param_name: mip_absolute_gap
         description: >-
           Absolute gap at which the solve terminates: best_objective -
           dual_bound when minimizing, dual_bound - best_objective when
@@ -789,22 +804,28 @@ mip_settings:
         field_num: 3
         optional: true
     - integrality_tolerance:
+        param_name: mip_integrality_tolerance
         description: >-
           How close to an integer a variable must be to count as integral.
         default: "1e-5"
         field_num: 4
         optional: true
     - absolute_tolerance:
+        param_name: mip_absolute_tolerance
         description: MIP absolute tolerance.
         default: "1e-6"
         field_num: 5
         optional: true
     - relative_tolerance:
+        param_name: mip_relative_tolerance
         description: MIP relative tolerance.
         default: "1e-12"
         field_num: 6
         optional: true
     - presolve_absolute_tolerance:
+        # Not settable through cuOpt's string parameter API (no CUOPT_*
+        # constant in constants.h), so it is omitted from the MCP schema.
+        param_name: null
         # No user-facing documentation exists for this field yet (it is absent
         # from docs/cuopt/source/mip-settings.rst); only the C++ default is
         # recorded here. Add a `description:` once the behavior is documented.
@@ -822,6 +843,7 @@ mip_settings:
       type: bool
       optional: true
   - heuristics_only:
+      param_name: mip_heuristics_only
       description: >-
         When true only the GPU heuristics run, improving the primal bound
         alone. When false both GPU and CPU are used and the dual bound is
@@ -845,6 +867,7 @@ mip_settings:
       type: int32
       optional: true
   - presolver:
+      param_name: presolve
       description: >-
         Which presolver performs presolve reductions: 0 disables presolve,
         1 selects Papilo, 2 selects PSLP. MIP uses Papilo by default.
@@ -862,6 +885,7 @@ mip_settings:
       type: int32
       optional: true
   - symmetry:
+      param_name: mip_symmetry
       # Symmetry-detection level (dejavu). Valid: -1 (default), 0 (off),
       # 1 (orbital fixing), 2 (orbital fixing + lexical reduction). The
       # mapper clamps out-of-range values to -1 to match the local-solve
@@ -890,8 +914,7 @@ mip_settings:
       description: >-
         Maximum number of branch-and-bound nodes explored before the solver
         stops and returns the best feasible solution found, if any. When set
-        together with time_limit, the first limit reached wins. Encoded on the
-        wire as -1 for "no limit".
+        together with time_limit, the first limit reached wins.
       default: "no limit (INT_MAX)"
       field_num: 15
       type: int32
@@ -900,6 +923,7 @@ mip_settings:
 
     # Branching
   - reliability_branching:
+      param_name: mip_reliability_branching
       description: >-
         Reliability branching mode. -1 automatic (the solver picks whether to
         use it and with what factor), 0 disabled, k > 0 enables it and treats a
@@ -925,6 +949,7 @@ mip_settings:
       field_num: 32
       type: int32
   - strong_branching_simplex_iteration_limit:
+      param_name: mip_strong_branching_simplex_iteration_limit
       description: >-
         Maximum simplex iterations per candidate during strong branching.
         Lowering it speeds up strong branching at the cost of less accurate
@@ -940,6 +965,7 @@ mip_settings:
     # strong_chvatal_gomory_cuts) share the same tri-state contract:
     # -1 automatic, 0 disabled, 1 enabled.
   - max_cut_passes:
+      param_name: mip_cut_passes
       description: >-
         Maximum number of cut passes to run. 0 disables cuts entirely; larger
         values perform more passes.
@@ -948,6 +974,7 @@ mip_settings:
       type: int32
       optional: true
   - mir_cuts:
+      param_name: mip_mixed_integer_rounding_cuts
       description: >-
         Whether mixed-integer rounding cuts are used. -1 automatic (the solver
         decides from problem characteristics), 0 disabled, 1 enabled.
@@ -956,6 +983,7 @@ mip_settings:
       type: int32
       optional: true
   - mixed_integer_gomory_cuts:
+      param_name: mip_mixed_integer_gomory_cuts
       description: >-
         Whether mixed-integer Gomory cuts are used. -1 automatic, 0 disabled,
         1 enabled.
@@ -964,6 +992,7 @@ mip_settings:
       type: int32
       optional: true
   - knapsack_cuts:
+      param_name: mip_knapsack_cuts
       description: >-
         Whether knapsack cuts are used. -1 automatic, 0 disabled, 1 enabled.
       default: "-1 (automatic)"
@@ -971,6 +1000,7 @@ mip_settings:
       type: int32
       optional: true
   - clique_cuts:
+      param_name: mip_clique_cuts
       description: >-
         Whether clique cuts are used. -1 automatic, 0 disabled, 1 enabled.
       default: "-1 (automatic)"
@@ -978,6 +1008,7 @@ mip_settings:
       type: int32
       optional: true
   - zero_half_cuts:
+      param_name: mip_zero_half_cuts
       description: >-
         Whether zero-half cuts are used. -1 automatic, 0 disabled, 1 enabled.
       default: "-1 (automatic)"
@@ -985,6 +1016,7 @@ mip_settings:
       type: int32
       optional: true
   - implied_bound_cuts:
+      param_name: mip_implied_bound_cuts
       description: >-
         Whether implied bound cuts are used. -1 automatic, 0 disabled,
         1 enabled.
@@ -993,6 +1025,7 @@ mip_settings:
       type: int32
       optional: true
   - strong_chvatal_gomory_cuts:
+      param_name: mip_strong_chvatal_gomory_cuts
       description: >-
         Whether strong Chvatal-Gomory cuts are used. -1 automatic, 0 disabled,
         1 enabled.
@@ -1001,6 +1034,7 @@ mip_settings:
       type: int32
       optional: true
   - reduced_cost_strengthening:
+      param_name: mip_reduced_cost_strengthening
       description: >-
         Whether integer feasible solutions are used to strengthen integer
         variable bounds. -1 automatic, 0 disabled, 1 during the root cut
@@ -1010,6 +1044,7 @@ mip_settings:
       type: int32
       optional: true
   - cut_change_threshold:
+      param_name: mip_cut_change_threshold
       description: >-
         Required improvement in the dual bound per cut pass. Larger values
         demand significant improvement each pass; -1 lets cut passes continue
@@ -1018,6 +1053,7 @@ mip_settings:
       field_num: 25
       optional: true
   - cut_min_orthogonality:
+      param_name: mip_cut_min_orthogonality
       description: >-
         Minimum orthogonality a cut needs to be added to the LP relaxation.
         Values near 1 require cuts to be nearly orthogonal to each other;
@@ -1028,6 +1064,7 @@ mip_settings:
 
     # Determinism and reproducibility
   - determinism_mode:
+      param_name: mip_determinism_mode
       description: >-
         0 opportunistic — results may vary between runs due to parallelism.
         1 deterministic — improves reproducibility across runs with the same
@@ -1037,6 +1074,7 @@ mip_settings:
       field_num: 27
       type: int32
   - seed:
+      param_name: random_seed
       description: >-
         Random seed. A fixed seed gives reproducible results when running in
         deterministic mode.
@@ -1047,6 +1085,7 @@ mip_settings:
 
     # Presolve sub-steps
   - probing:
+      param_name: mip_probing
       # C++ default is `true`; declared as proto3 `optional` so that a client
       # which omits this field preserves the solver default. Without
       # `optional`, the proto3 wire zero (`false`) would silently overwrite
@@ -1068,6 +1107,7 @@ mip_settings:
     # cannot derive a finite UB. Local-solve binding restricts the range to
     # [1.0, +inf] with default 1e10; see solver_settings.cu.
   - semi_continuous_big_m:
+      param_name: mip_semi_continuous_big_m
       description: >-
         Big-M coefficient used when linearizing semi-continuous variable
         constraints (such a variable is either zero or lies in
@@ -1090,12 +1130,14 @@ mip_settings:
     # heuristics_hyper_params.hpp rather than from docs/.
   - heuristic_params:
     - population_size:
+        param_name: mip_hyper_heuristic_population_size
         description: Maximum number of solutions held in the solution pool.
         default: "32"
         field_num: 35
         type: int32
         optional: true
     - num_cpufj_threads:
+        param_name: mip_hyper_heuristic_num_cpufj_threads
         description: Number of parallel CPU Feasibility Jump climbers.
         default: "8"
         field_num: 36
@@ -1105,32 +1147,38 @@ mip_settings:
     # presolve stopped taking a wall budget. Do not reuse: an older client
     # still sends them on those numbers.
     - root_lp_time_ratio:
+        param_name: mip_hyper_heuristic_root_lp_time_ratio
         description: Fraction of the total time budget given to the root LP.
         default: "0.1"
         field_num: 39
         optional: true
     - root_lp_max_time:
+        param_name: mip_hyper_heuristic_root_lp_max_time
         description: Hard cap in seconds on the root LP solve.
         default: "15.0"
         field_num: 40
         optional: true
     - rins_time_limit:
+        param_name: mip_hyper_heuristic_rins_time_limit
         description: Per-call time budget in seconds for the RINS sub-MIP.
         default: "3.0"
         field_num: 41
         optional: true
     - rins_max_time_limit:
+        param_name: mip_hyper_heuristic_rins_max_time_limit
         description: >-
           Ceiling in seconds on the adaptive RINS time budget.
         default: "20.0"
         field_num: 42
         optional: true
     - rins_fix_rate:
+        param_name: mip_hyper_heuristic_rins_fix_rate
         description: Fraction of variables RINS fixes before solving the sub-MIP.
         default: "0.5"
         field_num: 43
         optional: true
     - stagnation_trigger:
+        param_name: mip_hyper_heuristic_stagnation_trigger
         description: >-
           Number of Feasibility Pump loops without improvement before
           recombination is triggered.
@@ -1139,17 +1187,20 @@ mip_settings:
         type: int32
         optional: true
     - max_iterations_without_improvement:
+        param_name: mip_hyper_heuristic_max_iterations_without_improvement
         description: Depth of the diversity step taken after stagnation.
         default: "8"
         field_num: 45
         type: int32
         optional: true
     - initial_infeasibility_weight:
+        param_name: mip_hyper_heuristic_initial_infeasibility_weight
         description: Seed value for the constraint violation penalty.
         default: "1000.0"
         field_num: 46
         optional: true
     - n_of_minimums_for_exit:
+        param_name: mip_hyper_heuristic_n_of_minimums_for_exit
         description: >-
           Number of local minima after which the Feasibility Jump baseline
           exits.
@@ -1158,6 +1209,7 @@ mip_settings:
         type: int32
         optional: true
     - enabled_recombiners:
+        param_name: mip_hyper_heuristic_enabled_recombiners
         description: >-
           Bitmask of enabled recombiners: 1 bound propagation, 2 feasibility
           pump, 4 local search, 8 sub-MIP.
@@ -1166,6 +1218,7 @@ mip_settings:
         type: int32
         optional: true
     - cycle_detection_length:
+        param_name: mip_hyper_heuristic_cycle_detection_length
         description: >-
           Size of the ring buffer used to detect Feasibility Pump assignment
           cycles.
@@ -1174,18 +1227,21 @@ mip_settings:
         type: int32
         optional: true
     - relaxed_lp_time_limit:
+        param_name: mip_hyper_heuristic_relaxed_lp_time_limit
         description: >-
           Base time cap in seconds for relaxed LP solves inside the heuristics.
         default: "1.0"
         field_num: 50
         optional: true
     - related_vars_time_limit:
+        param_name: mip_hyper_heuristic_related_vars_time_limit
         description: >-
           Time in seconds allowed for building the related-variable structure.
         default: "30.0"
         field_num: 51
         optional: true
     - presolve_max_rounds:
+        param_name: mip_hyper_heuristic_presolve_max_rounds
         description: >-
           Cap on Papilo presolve rounds. A value <= 0 removes the cap entirely.
         default: "-1 (no override)"
@@ -1193,6 +1249,7 @@ mip_settings:
         type: int32
         optional: true
     - papilo_probing_max_badgesize:
+        param_name: mip_hyper_heuristic_papilo_probing_max_badgesize
         description: Ceiling on Papilo's probing.minbadgesize.
         default: "-1 (no override)"
         field_num: 54

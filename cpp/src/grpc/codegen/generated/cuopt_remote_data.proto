@@ -198,8 +198,7 @@ message PDLPSolverSettings {
   // Iteration limit after which the solver stops and returns the current
   // solution. Checked periodically, so the solver may run a few extra
   // iterations. When set together with time_limit, the first limit reached
-  // wins. Encoded on the wire as -1 for "no limit". (default: no limit
-  // (INT_MAX))
+  // wins. Wire encoding: -1 means no limit. (default: no limit (INT_MAX))
   optional int64 iteration_limit = 10;
   // Whether the solver writes log output to the console. Logs may still be
   // written to a file when this is false. (default: true)
@@ -358,8 +357,8 @@ message MIPSolverSettings {
   optional double work_limit = 14;
   // Maximum number of branch-and-bound nodes explored before the solver stops
   // and returns the best feasible solution found, if any. When set together
-  // with time_limit, the first limit reached wins. Encoded on the wire as -1
-  // for "no limit". (default: no limit (INT_MAX))
+  // with time_limit, the first limit reached wins. Wire encoding: -1 means no
+  // limit. (default: no limit (INT_MAX))
   optional int32 node_limit = 15;
   // Reliability branching mode. -1 automatic (the solver picks whether to use
   // it and with what factor), 0 disabled, k > 0 enables it and treats a
