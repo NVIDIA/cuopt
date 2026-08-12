@@ -105,11 +105,9 @@ representation. The ``getSetting(name, type)`` overload provides a typed
 
 The settings API also includes:
 
-* ``getSolverSettingNames`` and the static setting accessors;
+* the static setting accessors;
 * ``setMethod`` and ``setPDLPSolverMode``;
 * ``setOptimalityTolerance``;
-* ``dumpSettingsToFile`` and ``loadSettingsFromFile``;
-* ``toDict``;
 * MIP callback registration through ``setMIPCallback``.
 
 ``SolverMethod`` includes ``PDLP``, ``DUAL_SIMPLEX``, ``BARRIER``,

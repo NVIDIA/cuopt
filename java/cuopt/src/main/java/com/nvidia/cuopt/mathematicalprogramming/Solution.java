@@ -34,8 +34,10 @@ public final class Solution implements AutoCloseable {
     this.cleanable = CLEANER.register(this, nativeHandle);
     this.numVariables = numVariables;
     this.numConstraints = numConstraints;
-    this.mip = NativeCuOpt.solutionIsMIP(handle);
     this.problemCategory = problemCategory;
+    // The category comes from the problem this solution was produced for, so it already
+    // answers LP vs MIP; asking the native layer a second time would only add a round trip.
+    this.mip = problemCategory == ProblemCategory.MIP;
     this.variableNames = variableNames == null ? new String[0] : Arrays.copyOf(variableNames, variableNames.length);
   }
 

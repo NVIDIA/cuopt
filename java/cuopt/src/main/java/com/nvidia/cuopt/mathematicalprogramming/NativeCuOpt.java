@@ -19,7 +19,6 @@ final class NativeCuOpt {
   private NativeCuOpt() {}
 
   static native int getFloatSize();
-  static native String[] getSolverSettingNames();
   static native long parseMPSProblem(String path, boolean fixedMPSFormat);
   static native long readProblemWithFormat(String path, boolean fixedMPSFormat);
 
@@ -29,8 +28,6 @@ final class NativeCuOpt {
   static native void setIntegerSetting(long handle, String name, int value);
   static native void setFloatSetting(long handle, String name, double value);
   static native String getSetting(long handle, String name);
-  static native void loadSettingsFromFile(long handle, String path);
-  static native boolean dumpSettingsToFile(long handle, String path, boolean hyperparametersOnly);
   static native void addMIPStart(long handle, double[] values);
   static native void setInitialPrimalSolution(long handle, double[] values);
   static native void setInitialDualSolution(long handle, double[] values);
@@ -94,7 +91,6 @@ final class NativeCuOpt {
   static native long solve(long problemHandle, long settingsHandle);
 
   static native void destroySolution(long handle);
-  static native boolean solutionIsMIP(long handle);
   static native int getTerminationStatus(long handle);
   static native int getErrorStatus(long handle);
   static native String getErrorString(long handle);

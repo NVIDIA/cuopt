@@ -45,14 +45,22 @@ symbol.
 The standalone native project links to `${CUOPT_PREFIX}/lib/libcuopt.so`. No
 Java-specific symbol or source file is required by the main cuOpt build.
 
-The seven entry points the bindings once declared in a Java-local shim are now
-part of the public C API (`cuOptLoadParametersFromFile`,
-`cuOptDumpParametersToFile`, `cuOptGetNumSolverParameters`,
-`cuOptGetSolverParameterName`, `cuOptSolutionIsMIP`, `cuOptGetLPSolverStats`,
-and `cuOptGetMIPSolverStats`), so nothing in the settings or solution path
-depends on private headers any more.
+The bindings once declared seven entry points in a Java-local shim, reaching
+into the opaque solver settings handle to do it. Nothing in the settings or
+solution path depends on private headers any more:
 
-The problem path still does. `cuopt_jni.cpp` includes
+- Solver statistics are read through `cuOptGetSolutionIntAttribute` and
+  `cuOptGetSolutionFloatAttribute` with the `CUOPT_SOLUTION_ATTR_*` selectors.
+  A new statistic is then a new constant rather than a new exported symbol, and
+  because `CuOptConstants.java` is generated from `constants.h`, it reaches
+  Java with no hand-written code.
+- Whether a solution came from the MIP solver is taken from the problem's
+  category, which `Solution` already carries, rather than from a native call.
+- The parameter-file and parameter-enumeration entry points were dropped
+  rather than promoted. They were convenience rather than necessity; the
+  capability is tracked in #1705.
+
+The problem path is still an exception. `cuopt_jni.cpp` includes
 `pdlp/cuopt_c_internal.hpp` from the checkout for the operations the C API does
 not yet cover:
 

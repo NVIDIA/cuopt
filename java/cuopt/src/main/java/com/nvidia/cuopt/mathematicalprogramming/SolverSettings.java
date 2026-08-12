@@ -8,11 +8,8 @@ import java.lang.ref.Cleaner;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 public final class SolverSettings implements AutoCloseable {
   private static final Cleaner CLEANER = Cleaner.create();
@@ -28,10 +25,6 @@ public final class SolverSettings implements AutoCloseable {
   long handle() {
     nativeHandle.requireOpen();
     return nativeHandle.handle;
-  }
-
-  public static Set<String> getSolverSettingNames() {
-    return new LinkedHashSet<>(Arrays.asList(NativeCuOpt.getSolverSettingNames()));
   }
 
   public static String getSolverSetting(String name) {
@@ -90,16 +83,23 @@ public final class SolverSettings implements AutoCloseable {
     return setSetting(CuOptConstants.CUOPT_PDLP_SOLVER_MODE, mode.nativeValue());
   }
 
+  /** The LP optimality tolerances, previously discovered by filtering on parameter names. */
+  private static final String[] OPTIMALITY_TOLERANCES = {
+    CuOptConstants.CUOPT_ABSOLUTE_PRIMAL_TOLERANCE,
+    CuOptConstants.CUOPT_RELATIVE_PRIMAL_TOLERANCE,
+    CuOptConstants.CUOPT_ABSOLUTE_DUAL_TOLERANCE,
+    CuOptConstants.CUOPT_RELATIVE_DUAL_TOLERANCE,
+    CuOptConstants.CUOPT_ABSOLUTE_GAP_TOLERANCE,
+    CuOptConstants.CUOPT_RELATIVE_GAP_TOLERANCE,
+  };
+
   public SolverSettings setOptimalityTolerance(double tolerance) {
-    for (String setting : getSolverSettingNames()) {
-      if (setting.endsWith("tolerance")
-          && !setting.startsWith("mip")
-          && !setting.contains("infeasible")) {
-        setSetting(setting, tolerance);
-      }
+    for (String setting : OPTIMALITY_TOLERANCES) {
+      setSetting(setting, tolerance);
     }
     return this;
   }
+
 
   public SolverSettings addMIPStart(double[] values) {
     NativeCuOpt.addMIPStart(handle(), Arrays.copyOf(values, values.length));
@@ -146,33 +146,7 @@ public final class SolverSettings implements AutoCloseable {
     return Collections.unmodifiableList(mipCallbacks);
   }
 
-  public boolean dumpSettingsToFile(String path, boolean hyperparametersOnly) {
-    return NativeCuOpt.dumpSettingsToFile(handle(), path, hyperparametersOnly);
-  }
 
-  public boolean dumpSettingsToFile(String path) {
-    return dumpSettingsToFile(path, true);
-  }
-
-  public SolverSettings loadSettingsFromFile(String path) {
-    NativeCuOpt.loadSettingsFromFile(handle(), path);
-    return this;
-  }
-
-  public Map<String, Object> toDict() {
-    Map<String, Object> result = new LinkedHashMap<>();
-    Map<String, Object> tolerances = new LinkedHashMap<>();
-    for (String setting : getSolverSettingNames()) {
-      Object value = inferredValue(getSettingAsString(setting));
-      if (setting.endsWith("tolerance")) {
-        tolerances.put(setting, value);
-      } else {
-        result.put(setting, value instanceof Double && ((Double) value).isInfinite() ? null : value);
-      }
-    }
-    result.put("tolerances", tolerances);
-    return Collections.unmodifiableMap(result);
-  }
 
   private static <T> T parseValue(String value, Class<T> type) {
     if (type == String.class) {
@@ -201,23 +175,7 @@ public final class SolverSettings implements AutoCloseable {
             + "; use String, Boolean, Integer, or Double");
   }
 
-  private static Object inferredValue(String value) {
-    if ("true".equalsIgnoreCase(value)) {
-      return true;
-    }
-    if ("false".equalsIgnoreCase(value)) {
-      return false;
-    }
-    try {
-      return Integer.valueOf(value);
-    } catch (NumberFormatException ignored) {
-      try {
-        return Double.valueOf(value);
-      } catch (NumberFormatException ignoredAgain) {
-        return value;
-      }
-    }
-  }
+
 
   @Override
   public void close() {

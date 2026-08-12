@@ -52,10 +52,9 @@ MIP Settings
 All solver settings are set through ``SolverSettings``. Use the overloaded
 ``setSetting`` methods for string, integer, floating-point, and boolean
 values. MIP-relevant settings include time and node limits, MIP tolerances,
-presolve, heuristics, scaling, determinism, and cut controls. Setting names
-are available at runtime through ``SolverSettings.getSolverSettingNames``;
-the generated ``CuOptConstants`` class contains string and integer constants
-from the cuOpt public constants header.
+presolve, heuristics, scaling, determinism, and cut controls. The generated
+``CuOptConstants`` class contains the string and integer constants from the
+cuOpt public constants header, including every setting name.
 
 MIP Callbacks
 -------------

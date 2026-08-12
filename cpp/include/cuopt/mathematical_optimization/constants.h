@@ -272,4 +272,25 @@
 #define CUOPT_STRING_ARRAY_VARIABLE_NAMES 200
 #define CUOPT_STRING_ARRAY_ROW_NAMES      201
 
+/* @brief Scalar solution attribute selectors
+ * (see cuOptGetSolution{Int,Float}Attribute). Passed as cuopt_int_t; numbered in a separate
+ * range from the problem selectors so a problem selector passed to a solution accessor, or the
+ * reverse, is rejected rather than silently read.
+ *
+ * LP attributes require an LP solution and MIP attributes require a MIP solution; the accessors
+ * return CUOPT_INVALID_ARGUMENT otherwise. Use CUOPT_ATTR_IS_MIP on the originating problem to
+ * tell which set applies.
+ */
+#define CUOPT_SOLUTION_ATTR_LP_PRIMAL_RESIDUAL   300
+#define CUOPT_SOLUTION_ATTR_LP_DUAL_RESIDUAL     301
+#define CUOPT_SOLUTION_ATTR_LP_GAP               302
+#define CUOPT_SOLUTION_ATTR_LP_NUM_ITERATIONS    303
+#define CUOPT_SOLUTION_ATTR_LP_SOLVED_BY         304
+#define CUOPT_SOLUTION_ATTR_MIP_PRESOLVE_TIME    305
+#define CUOPT_SOLUTION_ATTR_MIP_NUM_NODES        306
+#define CUOPT_SOLUTION_ATTR_MIP_NUM_SIMPLEX_ITERATIONS   307
+#define CUOPT_SOLUTION_ATTR_MIP_MAX_CONSTRAINT_VIOLATION 308
+#define CUOPT_SOLUTION_ATTR_MIP_MAX_INT_VIOLATION        309
+#define CUOPT_SOLUTION_ATTR_MIP_MAX_VARIABLE_BOUND_VIOLATION 310
+
 #endif  // CUOPT_CONSTANTS_H

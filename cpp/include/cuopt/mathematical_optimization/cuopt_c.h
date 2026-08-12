@@ -828,70 +828,6 @@ cuopt_int_t cuOptGetFloatParameter(cuOptSolverSettings settings,
                                    const char* parameter_name,
                                    cuopt_float_t* parameter_value);
 
-/** @brief Load solver parameters from a file.
- *
- * Each line is either blank, a `#` comment, or `name = value`. String values may be quoted.
- *
- * @param[in, out] settings - The solver settings object to populate.
- *
- * @param[in] path - Path of the file to read.
- *
- * @return A status code indicating success or failure. Returns CUOPT_INVALID_ARGUMENT if the file
- *  is missing or malformed.
- */
-cuopt_int_t cuOptLoadParametersFromFile(cuOptSolverSettings settings, const char* path);
-
-/** @brief Write a solver parameter template to a file.
- *
- * Writes every parameter with its description and current value, but with each assignment
- * commented out, as a starting point for a configuration file the user edits. Because the output
- * is fully commented, feeding it straight back to cuOptLoadParametersFromFile changes nothing;
- * uncomment the lines you want to apply first.
- *
- * @param[in] settings - The solver settings object to dump.
- *
- * @param[in] path - Path of the file to write.
- *
- * @param[in] hyperparameters_only - Non-zero to write only hyperparameters, zero to write every
- *  parameter.
- *
- * @param[out] dumped_successfully - A pointer to a cuopt_int_t that on output will be non-zero if
- *  the file was written.
- *
- * @return A status code indicating success or failure.
- */
-cuopt_int_t cuOptDumpParametersToFile(cuOptSolverSettings settings,
-                                      const char* path,
-                                      cuopt_int_t hyperparameters_only,
-                                      cuopt_int_t* dumped_successfully);
-
-/** @brief Get the number of solver parameters cuOpt exposes.
- *
- * Together with cuOptGetSolverParameterName this allows a caller to enumerate every parameter
- * name accepted by cuOptSetParameter.
- *
- * @param[out] num_parameters_ptr - A pointer to a cuopt_int_t that on output will contain the
- *  number of parameters.
- *
- * @return A status code indicating success or failure.
- */
-cuopt_int_t cuOptGetNumSolverParameters(cuopt_int_t* num_parameters_ptr);
-
-/** @brief Get the name of a solver parameter by index.
- *
- * @param[in] index - The parameter index, in [0, cuOptGetNumSolverParameters()).
- *
- * @param[in] parameter_name_size - The size of the parameter name buffer.
- *
- * @param[out] parameter_name - A pointer to an array of characters that on output will contain the
- *  parameter name, truncated to parameter_name_size.
- *
- * @return A status code indicating success or failure.
- */
-cuopt_int_t cuOptGetSolverParameterName(cuopt_int_t index,
-                                        cuopt_int_t parameter_name_size,
-                                        char* parameter_name);
-
 /**
  * @brief Type of callback for receiving incumbent MIP solutions with user context.
  *
@@ -1174,75 +1110,53 @@ cuopt_int_t cuOptGetDualObjectiveValue(cuOptSolution solution,
  */
 cuopt_int_t cuOptGetReducedCosts(cuOptSolution solution, cuopt_float_t* reduced_cost_ptr);
 
-/** @brief Report whether a solution came from the MIP solver.
+/* -------------------------------------------------------------------------- */
+/* Solution attributes                                                        */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Solver statistics are read as scalar attributes, using the CUOPT_SOLUTION_ATTR_* selectors in
+ * constants.h. New statistics can then be added as constants rather than as new exported
+ * functions, which keeps the ABI stable for existing callers.
  *
- * Solution accessors are split between the two solvers: cuOptGetLPSolverStats,
- * cuOptGetDualSolution, and cuOptGetReducedCosts apply to LP solutions, while
- * cuOptGetMIPSolverStats, cuOptGetMIPGap, and cuOptGetSolutionBound apply to MIP solutions.
+ * LP and MIP statistics come from different solvers, so an LP selector requires an LP solution
+ * and a MIP selector requires a MIP solution. Query CUOPT_ATTR_IS_MIP on the originating problem
+ * to decide which set applies.
+ */
+
+/** @brief Get a scalar integer solution attribute (a CUOPT_SOLUTION_ATTR_* with an integer
+ * value: iteration counts, node counts, or the method that solved the problem).
  *
  * @param[in] solution - The solution object.
  *
- * @param[out] is_mip_ptr - A pointer to a cuopt_int_t that on output will be non-zero if the
- *  solution came from the MIP solver.
+ * @param[in] attribute - The attribute selector.
  *
- * @return A status code indicating success or failure.
- */
-cuopt_int_t cuOptSolutionIsMIP(cuOptSolution solution, cuopt_int_t* is_mip_ptr);
-
-/** @brief Get LP solver statistics for a solution.
- *
- * Every output pointer is optional; pass NULL to skip a statistic.
- *
- * @param[in] solution - The solution object. Must be an LP solution (see cuOptSolutionIsMIP).
- *
- * @param[out] primal_residual_ptr - The L2 primal residual, or NULL.
- *
- * @param[out] dual_residual_ptr - The L2 dual residual, or NULL.
- *
- * @param[out] gap_ptr - The primal-dual gap, or NULL.
- *
- * @param[out] num_iterations_ptr - The number of iterations, or NULL.
- *
- * @param[out] solved_by_ptr - The method that solved the problem (a CUOPT_METHOD_* value), or NULL.
+ * @param[out] value_out - A pointer to a cuopt_int_t that on output will contain the value.
  *
  * @return A status code indicating success or failure. Returns CUOPT_INVALID_ARGUMENT if the
- *  solution is a MIP solution.
+ *  selector is unknown, does not have an integer value, or does not apply to this solution's
+ *  solver.
  */
-cuopt_int_t cuOptGetLPSolverStats(cuOptSolution solution,
-                                  cuopt_float_t* primal_residual_ptr,
-                                  cuopt_float_t* dual_residual_ptr,
-                                  cuopt_float_t* gap_ptr,
-                                  cuopt_int_t* num_iterations_ptr,
-                                  cuopt_int_t* solved_by_ptr);
+cuopt_int_t cuOptGetSolutionIntAttribute(cuOptSolution solution,
+                                         cuopt_int_t attribute,
+                                         cuopt_int_t* value_out);
 
-/** @brief Get MIP solver statistics for a solution.
+/** @brief Get a scalar floating-point solution attribute (a CUOPT_SOLUTION_ATTR_* with a
+ * floating-point value: residuals, gap, presolve time, or violation magnitudes).
  *
- * Every output pointer is optional; pass NULL to skip a statistic.
+ * @param[in] solution - The solution object.
  *
- * @param[in] solution - The solution object. Must be a MIP solution (see cuOptSolutionIsMIP).
+ * @param[in] attribute - The attribute selector.
  *
- * @param[out] presolve_time_ptr - The presolve time in seconds, or NULL.
- *
- * @param[out] max_constraint_violation_ptr - The maximum constraint violation, or NULL.
- *
- * @param[out] max_int_violation_ptr - The maximum integrality violation, or NULL.
- *
- * @param[out] max_variable_bound_violation_ptr - The maximum variable bound violation, or NULL.
- *
- * @param[out] num_nodes_ptr - The number of branch-and-bound nodes explored, or NULL.
- *
- * @param[out] num_simplex_iterations_ptr - The number of simplex iterations, or NULL.
+ * @param[out] value_out - A pointer to a cuopt_float_t that on output will contain the value.
  *
  * @return A status code indicating success or failure. Returns CUOPT_INVALID_ARGUMENT if the
- *  solution is an LP solution.
+ *  selector is unknown, does not have a floating-point value, or does not apply to this
+ *  solution's solver.
  */
-cuopt_int_t cuOptGetMIPSolverStats(cuOptSolution solution,
-                                   cuopt_float_t* presolve_time_ptr,
-                                   cuopt_float_t* max_constraint_violation_ptr,
-                                   cuopt_float_t* max_int_violation_ptr,
-                                   cuopt_float_t* max_variable_bound_violation_ptr,
-                                   cuopt_int_t* num_nodes_ptr,
-                                   cuopt_int_t* num_simplex_iterations_ptr);
+cuopt_int_t cuOptGetSolutionFloatAttribute(cuOptSolution solution,
+                                           cuopt_int_t attribute,
+                                           cuopt_float_t* value_out);
 
 /* -------------------------------------------------------------------------- */
 /* Generic problem attributes                                                 */

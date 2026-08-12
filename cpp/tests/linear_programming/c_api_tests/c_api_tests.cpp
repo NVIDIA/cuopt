@@ -1081,110 +1081,11 @@ TEST(c_api, problem_attributes_names)
 // which provides better cross-platform subprocess handling
 
 // =============================================================================
-// Parameter introspection / persistence and solver statistics
+// Solution attributes
 //
-// These entry points were previously reachable only through a private header in
-// the Java bindings; they are part of the public C API.
+// Solver statistics are read through the scalar solution attribute accessors rather than
+// dedicated getters, so a new statistic is a new constant instead of a new exported symbol.
 // =============================================================================
-
-TEST(c_api, solver_parameter_enumeration)
-{
-  cuopt_int_t num_parameters = 0;
-  ASSERT_EQ(cuOptGetNumSolverParameters(&num_parameters), CUOPT_SUCCESS);
-  EXPECT_GT(num_parameters, 0);
-
-  // Every enumerated name must round-trip through cuOptGetParameter.
-  cuOptSolverSettings settings = nullptr;
-  ASSERT_EQ(cuOptCreateSolverSettings(&settings), CUOPT_SUCCESS);
-  for (cuopt_int_t i = 0; i < num_parameters; ++i) {
-    char name[256]  = {};
-    char value[256] = {};
-    ASSERT_EQ(cuOptGetSolverParameterName(i, sizeof(name), name), CUOPT_SUCCESS);
-    EXPECT_GT(std::strlen(name), 0u);
-    EXPECT_EQ(cuOptGetParameter(settings, name, sizeof(value), value), CUOPT_SUCCESS);
-  }
-  cuOptDestroySolverSettings(&settings);
-
-  // Out-of-range and null arguments are rejected rather than writing past the buffer.
-  char name[256] = {};
-  EXPECT_EQ(cuOptGetSolverParameterName(num_parameters, sizeof(name), name),
-            CUOPT_INVALID_ARGUMENT);
-  EXPECT_EQ(cuOptGetSolverParameterName(-1, sizeof(name), name), CUOPT_INVALID_ARGUMENT);
-  EXPECT_EQ(cuOptGetSolverParameterName(0, sizeof(name), nullptr), CUOPT_INVALID_ARGUMENT);
-  EXPECT_EQ(cuOptGetNumSolverParameters(nullptr), CUOPT_INVALID_ARGUMENT);
-}
-
-TEST(c_api, solver_parameter_file_dump_and_load)
-{
-  const std::string dumped =
-    std::filesystem::temp_directory_path().string() + "/cuopt_c_api_parameters.txt";
-
-  cuOptSolverSettings settings = nullptr;
-  ASSERT_EQ(cuOptCreateSolverSettings(&settings), CUOPT_SUCCESS);
-  ASSERT_EQ(cuOptSetFloatParameter(settings, CUOPT_TIME_LIMIT, 12.5), CUOPT_SUCCESS);
-
-  cuopt_int_t was_dumped = 0;
-  ASSERT_EQ(cuOptDumpParametersToFile(settings, dumped.c_str(), 0, &was_dumped), CUOPT_SUCCESS);
-  EXPECT_NE(was_dumped, 0);
-  cuOptDestroySolverSettings(&settings);
-
-  // The dump is a template, not a state snapshot: every parameter is written commented out
-  // ("# name = value") for the user to uncomment. Loading it back is therefore a no-op, and
-  // time_limit stays at its default rather than becoming the 12.5 that was dumped.
-  {
-    std::ifstream in(dumped);
-    std::string line;
-    bool saw_time_limit_comment = false;
-    while (std::getline(in, line)) {
-      const auto first = line.find_first_not_of(" \t");
-      ASSERT_TRUE(first == std::string::npos || line[first] == '#')
-        << "expected every dumped line to be blank or commented, got: " << line;
-      if (line.find(CUOPT_TIME_LIMIT) != std::string::npos) { saw_time_limit_comment = true; }
-    }
-    EXPECT_TRUE(saw_time_limit_comment);
-  }
-
-  cuOptSolverSettings from_dump = nullptr;
-  ASSERT_EQ(cuOptCreateSolverSettings(&from_dump), CUOPT_SUCCESS);
-  cuopt_float_t default_time_limit = 0;
-  ASSERT_EQ(cuOptGetFloatParameter(from_dump, CUOPT_TIME_LIMIT, &default_time_limit),
-            CUOPT_SUCCESS);
-  ASSERT_EQ(cuOptLoadParametersFromFile(from_dump, dumped.c_str()), CUOPT_SUCCESS);
-  cuopt_float_t after_load = 0;
-  ASSERT_EQ(cuOptGetFloatParameter(from_dump, CUOPT_TIME_LIMIT, &after_load), CUOPT_SUCCESS);
-  EXPECT_DOUBLE_EQ(after_load, default_time_limit);
-  cuOptDestroySolverSettings(&from_dump);
-
-  std::filesystem::remove(dumped);
-
-  // An uncommented "name = value" file is what actually applies settings.
-  const std::string overrides =
-    std::filesystem::temp_directory_path().string() + "/cuopt_c_api_overrides.txt";
-  {
-    std::ofstream out(overrides);
-    out << "# a comment line\n" << CUOPT_TIME_LIMIT << " = 12.5\n";
-  }
-
-  cuOptSolverSettings loaded = nullptr;
-  ASSERT_EQ(cuOptCreateSolverSettings(&loaded), CUOPT_SUCCESS);
-  ASSERT_EQ(cuOptLoadParametersFromFile(loaded, overrides.c_str()), CUOPT_SUCCESS);
-  cuopt_float_t time_limit = 0;
-  ASSERT_EQ(cuOptGetFloatParameter(loaded, CUOPT_TIME_LIMIT, &time_limit), CUOPT_SUCCESS);
-  EXPECT_DOUBLE_EQ(time_limit, 12.5);
-  cuOptDestroySolverSettings(&loaded);
-
-  std::filesystem::remove(overrides);
-
-  cuOptSolverSettings empty = nullptr;
-  ASSERT_EQ(cuOptCreateSolverSettings(&empty), CUOPT_SUCCESS);
-  EXPECT_EQ(cuOptLoadParametersFromFile(empty, ""), CUOPT_INVALID_ARGUMENT);
-  EXPECT_EQ(cuOptLoadParametersFromFile(empty, nullptr), CUOPT_INVALID_ARGUMENT);
-  EXPECT_EQ(cuOptLoadParametersFromFile(nullptr, "somewhere"), CUOPT_INVALID_ARGUMENT);
-  EXPECT_EQ(cuOptLoadParametersFromFile(empty, "/nonexistent/cuopt/params.txt"),
-            CUOPT_INVALID_ARGUMENT);
-  EXPECT_EQ(cuOptDumpParametersToFile(empty, "somewhere", 0, nullptr), CUOPT_INVALID_ARGUMENT);
-  cuOptDestroySolverSettings(&empty);
-}
 
 namespace {
 
@@ -1229,78 +1130,87 @@ cuOptSolution solve_tiny_problem(bool mip)
 
 }  // namespace
 
-TEST(c_api, lp_solver_stats)
+TEST(c_api, lp_solution_attributes)
 {
   cuOptSolution solution = solve_tiny_problem(false);
   ASSERT_NE(solution, nullptr);
 
-  cuopt_int_t is_mip = -1;
-  ASSERT_EQ(cuOptSolutionIsMIP(solution, &is_mip), CUOPT_SUCCESS);
-  EXPECT_EQ(is_mip, 0);
-
-  // Seed the floats with NaN rather than a numeric sentinel: the solver cannot legitimately
-  // report NaN for any of these, so "still NaN" means the C API never wrote the value. A
-  // numeric sentinel would be indistinguishable from a real result.
-  cuopt_float_t primal_residual = std::nan(""), dual_residual = std::nan(""), gap = std::nan("");
-  cuopt_int_t num_iterations = -1, solved_by = -1;
-  ASSERT_EQ(cuOptGetLPSolverStats(
-              solution, &primal_residual, &dual_residual, &gap, &num_iterations, &solved_by),
+  // Seed with NaN rather than a numeric sentinel: the solver cannot legitimately report NaN,
+  // so "still NaN" means the accessor never wrote the value. A numeric sentinel would be
+  // indistinguishable from a real result.
+  for (cuopt_int_t attribute : {CUOPT_SOLUTION_ATTR_LP_PRIMAL_RESIDUAL,
+                                CUOPT_SOLUTION_ATTR_LP_DUAL_RESIDUAL,
+                                CUOPT_SOLUTION_ATTR_LP_GAP}) {
+    cuopt_float_t value = std::nan("");
+    ASSERT_EQ(cuOptGetSolutionFloatAttribute(solution, attribute, &value), CUOPT_SUCCESS)
+      << "attribute " << attribute;
+    EXPECT_FALSE(std::isnan(value)) << "attribute " << attribute;
+  }
+  cuopt_float_t primal_residual = std::nan("");
+  ASSERT_EQ(cuOptGetSolutionFloatAttribute(
+              solution, CUOPT_SOLUTION_ATTR_LP_PRIMAL_RESIDUAL, &primal_residual),
             CUOPT_SUCCESS);
-  EXPECT_FALSE(std::isnan(primal_residual));
-  EXPECT_FALSE(std::isnan(dual_residual));
-  EXPECT_FALSE(std::isnan(gap));
   EXPECT_GE(primal_residual, 0.0);
-  EXPECT_GE(dual_residual, 0.0);
-  EXPECT_GE(num_iterations, 0);
-  EXPECT_GE(solved_by, 0);
 
-  // Every out-pointer is optional.
-  EXPECT_EQ(cuOptGetLPSolverStats(solution, nullptr, nullptr, nullptr, nullptr, nullptr),
-            CUOPT_SUCCESS);
+  for (cuopt_int_t attribute :
+       {CUOPT_SOLUTION_ATTR_LP_NUM_ITERATIONS, CUOPT_SOLUTION_ATTR_LP_SOLVED_BY}) {
+    cuopt_int_t value = -1;
+    ASSERT_EQ(cuOptGetSolutionIntAttribute(solution, attribute, &value), CUOPT_SUCCESS)
+      << "attribute " << attribute;
+    EXPECT_GE(value, 0) << "attribute " << attribute;
+  }
 
-  // MIP statistics are unavailable for an LP solution.
-  EXPECT_EQ(cuOptGetMIPSolverStats(solution, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr),
+  // Asking for a float attribute through the int accessor, and the reverse, is rejected.
+  cuopt_int_t as_int     = 0;
+  cuopt_float_t as_float = 0;
+  EXPECT_EQ(cuOptGetSolutionIntAttribute(solution, CUOPT_SOLUTION_ATTR_LP_GAP, &as_int),
+            CUOPT_INVALID_ARGUMENT);
+  EXPECT_EQ(
+    cuOptGetSolutionFloatAttribute(solution, CUOPT_SOLUTION_ATTR_LP_NUM_ITERATIONS, &as_float),
+    CUOPT_INVALID_ARGUMENT);
+
+  // MIP selectors do not apply to an LP solution.
+  EXPECT_EQ(cuOptGetSolutionIntAttribute(solution, CUOPT_SOLUTION_ATTR_MIP_NUM_NODES, &as_int),
+            CUOPT_INVALID_ARGUMENT);
+
+  // Unknown selectors and null arguments are rejected.
+  EXPECT_EQ(cuOptGetSolutionIntAttribute(solution, 99999, &as_int), CUOPT_INVALID_ARGUMENT);
+  EXPECT_EQ(cuOptGetSolutionFloatAttribute(solution, CUOPT_SOLUTION_ATTR_LP_GAP, nullptr),
+            CUOPT_INVALID_ARGUMENT);
+  EXPECT_EQ(cuOptGetSolutionFloatAttribute(nullptr, CUOPT_SOLUTION_ATTR_LP_GAP, &as_float),
             CUOPT_INVALID_ARGUMENT);
 
   cuOptDestroySolution(&solution);
-
-  EXPECT_EQ(cuOptSolutionIsMIP(nullptr, &is_mip), CUOPT_INVALID_ARGUMENT);
 }
 
-TEST(c_api, mip_solver_stats)
+TEST(c_api, mip_solution_attributes)
 {
   cuOptSolution solution = solve_tiny_problem(true);
   ASSERT_NE(solution, nullptr);
 
-  cuopt_int_t is_mip = -1;
-  ASSERT_EQ(cuOptSolutionIsMIP(solution, &is_mip), CUOPT_SUCCESS);
-  EXPECT_NE(is_mip, 0);
-
-  cuopt_float_t presolve_time = std::nan(""), max_constraint_violation = std::nan(""),
-                max_int_violation = std::nan(""), max_variable_bound_violation = std::nan("");
-  cuopt_int_t num_nodes = -1, num_simplex_iterations = -1;
-  ASSERT_EQ(cuOptGetMIPSolverStats(solution,
-                                   &presolve_time,
-                                   &max_constraint_violation,
-                                   &max_int_violation,
-                                   &max_variable_bound_violation,
-                                   &num_nodes,
-                                   &num_simplex_iterations),
-            CUOPT_SUCCESS);
-  EXPECT_FALSE(std::isnan(presolve_time));
-  EXPECT_FALSE(std::isnan(max_constraint_violation));
-  EXPECT_FALSE(std::isnan(max_int_violation));
-  EXPECT_FALSE(std::isnan(max_variable_bound_violation));
   // Violations are magnitudes, so they cannot be negative.
-  EXPECT_GE(presolve_time, 0.0);
-  EXPECT_GE(max_constraint_violation, 0.0);
-  EXPECT_GE(max_int_violation, 0.0);
-  EXPECT_GE(max_variable_bound_violation, 0.0);
-  EXPECT_GE(num_nodes, 0);
-  EXPECT_GE(num_simplex_iterations, 0);
+  for (cuopt_int_t attribute : {CUOPT_SOLUTION_ATTR_MIP_PRESOLVE_TIME,
+                                CUOPT_SOLUTION_ATTR_MIP_MAX_CONSTRAINT_VIOLATION,
+                                CUOPT_SOLUTION_ATTR_MIP_MAX_INT_VIOLATION,
+                                CUOPT_SOLUTION_ATTR_MIP_MAX_VARIABLE_BOUND_VIOLATION}) {
+    cuopt_float_t value = std::nan("");
+    ASSERT_EQ(cuOptGetSolutionFloatAttribute(solution, attribute, &value), CUOPT_SUCCESS)
+      << "attribute " << attribute;
+    EXPECT_FALSE(std::isnan(value)) << "attribute " << attribute;
+    EXPECT_GE(value, 0.0) << "attribute " << attribute;
+  }
 
-  // LP statistics are unavailable for a MIP solution.
-  EXPECT_EQ(cuOptGetLPSolverStats(solution, nullptr, nullptr, nullptr, nullptr, nullptr),
+  for (cuopt_int_t attribute :
+       {CUOPT_SOLUTION_ATTR_MIP_NUM_NODES, CUOPT_SOLUTION_ATTR_MIP_NUM_SIMPLEX_ITERATIONS}) {
+    cuopt_int_t value = -1;
+    ASSERT_EQ(cuOptGetSolutionIntAttribute(solution, attribute, &value), CUOPT_SUCCESS)
+      << "attribute " << attribute;
+    EXPECT_GE(value, 0) << "attribute " << attribute;
+  }
+
+  // LP selectors do not apply to a MIP solution.
+  cuopt_float_t as_float = 0;
+  EXPECT_EQ(cuOptGetSolutionFloatAttribute(solution, CUOPT_SOLUTION_ATTR_LP_GAP, &as_float),
             CUOPT_INVALID_ARGUMENT);
 
   cuOptDestroySolution(&solution);

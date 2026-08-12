@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cstring>
 #include <exception>
+#include <initializer_list>
 #include <memory>
 #include <mutex>
 #include <span>
@@ -342,27 +343,6 @@ Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getFloatSize(JNIEnv*, 
   return cuOptGetFloatSize();
 }
 
-extern "C" JNIEXPORT jobjectArray JNICALL
-Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getSolverSettingNames(JNIEnv* env, jclass)
-{
-  cuopt_int_t count = 0;
-  if (!check_status(env, cuOptGetNumSolverParameters(&count), "cuOptGetNumSolverParameters")) {
-    return nullptr;
-  }
-  jclass string_class = env->FindClass("java/lang/String");
-  jobjectArray result = env->NewObjectArray(count, string_class, nullptr);
-  for (cuopt_int_t i = 0; i < count; ++i) {
-    char buffer[256] = {};
-    if (!check_status(env,
-                      cuOptGetSolverParameterName(i, sizeof(buffer), buffer),
-                      "cuOptGetSolverParameterName")) {
-      return nullptr;
-    }
-    env->SetObjectArrayElement(result, i, env->NewStringUTF(buffer));
-  }
-  return result;
-}
-
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_parseMPSProblem(JNIEnv* env,
                                                                           jclass,
@@ -486,35 +466,6 @@ Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getSetting(JNIEnv* env
     return nullptr;
   }
   return env->NewStringUTF(buffer);
-}
-
-extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_loadSettingsFromFile(JNIEnv* env,
-                                                                               jclass,
-                                                                               jlong handle,
-                                                                               jstring path)
-{
-  const auto filename = get_string(env, path);
-  check_status(env,
-               cuOptLoadParametersFromFile(to_settings(handle), filename.c_str()),
-               "cuOptLoadParametersFromFile");
-}
-
-extern "C" JNIEXPORT jboolean JNICALL
-Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_dumpSettingsToFile(
-  JNIEnv* env, jclass, jlong handle, jstring path, jboolean hyperparameters_only)
-{
-  const auto filename             = get_string(env, path);
-  cuopt_int_t dumped_successfully = 0;
-  if (!check_status(env,
-                    cuOptDumpParametersToFile(to_settings(handle),
-                                              filename.c_str(),
-                                              hyperparameters_only ? 1 : 0,
-                                              &dumped_successfully),
-                    "cuOptDumpParametersToFile")) {
-    return JNI_FALSE;
-  }
-  return dumped_successfully != 0 ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -1018,16 +969,6 @@ Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_destroySolution(JNIEnv
   cuOptDestroySolution(&solution);
 }
 
-extern "C" JNIEXPORT jboolean JNICALL
-Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_solutionIsMIP(JNIEnv* env,
-                                                                        jclass,
-                                                                        jlong handle)
-{
-  cuopt_int_t value = 0;
-  check_status(env, cuOptSolutionIsMIP(to_solution(handle), &value), "cuOptSolutionIsMIP");
-  return static_cast<jboolean>(value != 0);
-}
-
 extern "C" JNIEXPORT jint JNICALL
 Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getTerminationStatus(JNIEnv* env,
                                                                                jclass,
@@ -1178,28 +1119,53 @@ Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getSolutionBound(JNIEn
   return value;
 }
 
+namespace {
+
+// Reads a run of scalar solution attributes into one double[] for the Java stats records.
+// Ints are widened to double so both kinds travel in a single array; the Java side narrows
+// the entries it knows are integral.
+jdoubleArray solution_attributes(JNIEnv* env,
+                                 jlong handle,
+                                 const char* operation,
+                                 std::initializer_list<cuopt_int_t> float_attributes,
+                                 std::initializer_list<cuopt_int_t> int_attributes)
+{
+  std::vector<cuopt_float_t> values;
+  values.reserve(float_attributes.size() + int_attributes.size());
+  for (cuopt_int_t attribute : float_attributes) {
+    cuopt_float_t value = 0;
+    if (!check_status(
+          env, cuOptGetSolutionFloatAttribute(to_solution(handle), attribute, &value), operation)) {
+      return nullptr;
+    }
+    values.push_back(value);
+  }
+  for (cuopt_int_t attribute : int_attributes) {
+    cuopt_int_t value = 0;
+    if (!check_status(
+          env, cuOptGetSolutionIntAttribute(to_solution(handle), attribute, &value), operation)) {
+      return nullptr;
+    }
+    values.push_back(static_cast<cuopt_float_t>(value));
+  }
+  return to_double_array(env, values);
+}
+
+}  // namespace
+
 extern "C" JNIEXPORT jdoubleArray JNICALL
 Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getLPStats(JNIEnv* env,
                                                                      jclass,
                                                                      jlong handle)
 {
-  cuopt_float_t primal   = 0;
-  cuopt_float_t dual     = 0;
-  cuopt_float_t gap      = 0;
-  cuopt_int_t iterations = 0;
-  cuopt_int_t solved_by  = 0;
-  if (!check_status(
-        env,
-        cuOptGetLPSolverStats(to_solution(handle), &primal, &dual, &gap, &iterations, &solved_by),
-        "cuOptGetLPSolverStats")) {
-    return nullptr;
-  }
-  return to_double_array(env,
-                         {primal,
-                          dual,
-                          gap,
-                          static_cast<cuopt_float_t>(iterations),
-                          static_cast<cuopt_float_t>(solved_by)});
+  return solution_attributes(
+    env,
+    handle,
+    "cuOptGetSolutionAttribute(LP)",
+    {CUOPT_SOLUTION_ATTR_LP_PRIMAL_RESIDUAL,
+     CUOPT_SOLUTION_ATTR_LP_DUAL_RESIDUAL,
+     CUOPT_SOLUTION_ATTR_LP_GAP},
+    {CUOPT_SOLUTION_ATTR_LP_NUM_ITERATIONS, CUOPT_SOLUTION_ATTR_LP_SOLVED_BY});
 }
 
 extern "C" JNIEXPORT jdoubleArray JNICALL
@@ -1207,24 +1173,13 @@ Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getMIPStats(JNIEnv* en
                                                                       jclass,
                                                                       jlong handle)
 {
-  cuopt_float_t presolve       = 0;
-  cuopt_float_t max_constraint = 0;
-  cuopt_float_t max_int        = 0;
-  cuopt_float_t max_bound      = 0;
-  cuopt_int_t nodes            = 0;
-  cuopt_int_t simplex          = 0;
-  if (!check_status(
-        env,
-        cuOptGetMIPSolverStats(
-          to_solution(handle), &presolve, &max_constraint, &max_int, &max_bound, &nodes, &simplex),
-        "cuOptGetMIPSolverStats")) {
-    return nullptr;
-  }
-  return to_double_array(env,
-                         {presolve,
-                          max_constraint,
-                          max_int,
-                          max_bound,
-                          static_cast<cuopt_float_t>(nodes),
-                          static_cast<cuopt_float_t>(simplex)});
+  return solution_attributes(
+    env,
+    handle,
+    "cuOptGetSolutionAttribute(MIP)",
+    {CUOPT_SOLUTION_ATTR_MIP_PRESOLVE_TIME,
+     CUOPT_SOLUTION_ATTR_MIP_MAX_CONSTRAINT_VIOLATION,
+     CUOPT_SOLUTION_ATTR_MIP_MAX_INT_VIOLATION,
+     CUOPT_SOLUTION_ATTR_MIP_MAX_VARIABLE_BOUND_VIOLATION},
+    {CUOPT_SOLUTION_ATTR_MIP_NUM_NODES, CUOPT_SOLUTION_ATTR_MIP_NUM_SIMPLEX_ITERATIONS});
 }

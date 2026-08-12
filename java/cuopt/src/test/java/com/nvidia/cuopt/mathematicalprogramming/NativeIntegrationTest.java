@@ -15,16 +15,11 @@ import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
 final class NativeIntegrationTest {
-  @Test
-  void solverSettingNamesAreAvailable() {
-    NativeTestSupport.assumeNativeLibrary();
-    assertTrue(SolverSettings.getSolverSettingNames().contains(CuOptConstants.CUOPT_TIME_LIMIT));
-  }
+
 
   @Test
-  void settingsExposeTypedValuesAndSettingsFileRoundTrip() throws Exception {
+  void settingsExposeTypedValues() {
     NativeTestSupport.assumeNativeLibrary();
-    Path file = Files.createTempFile("cuopt-java-settings-", ".cfg");
     try (SolverSettings settings = new SolverSettings()) {
       settings.setSetting(CuOptConstants.CUOPT_LOG_TO_CONSOLE, false);
       settings.setSetting(CuOptConstants.CUOPT_TIME_LIMIT, 12.5);
@@ -47,14 +42,9 @@ final class NativeIntegrationTest {
           12.5,
           Double.parseDouble(settings.getSettingAsString(CuOptConstants.CUOPT_TIME_LIMIT)),
           1e-12);
-      assertTrue(settings.toDict().containsKey("tolerances"));
       MIPSolutionCallback callback = (solution, objective, bound, userData) -> {};
       settings.setMIPCallback(callback, "test-user-data", 2);
       assertTrue(settings.getMIPCallbacks().contains(callback));
-      assertDoesNotThrow(() -> settings.dumpSettingsToFile(file.toString(), true));
-      settings.loadSettingsFromFile(file.toString());
-    } finally {
-      Files.deleteIfExists(file);
     }
   }
 
