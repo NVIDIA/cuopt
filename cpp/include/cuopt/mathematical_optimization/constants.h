@@ -138,14 +138,15 @@
 #define CUOPT_MIP_HYPER_DIVING_SHOW_TYPE "mip_hyper_diving_show_type"
 
 /* @brief Recursive sub-MIP (RINS) hyper-parameters */
-#define CUOPT_MIP_HYPER_SUBMIP_BASE_TARGET_FIXRATE   "mip_hyper_submip_base_target_fixrate"
-#define CUOPT_MIP_HYPER_SUBMIP_MIN_FIXRATE           "mip_hyper_submip_min_fixrate"
-#define CUOPT_MIP_HYPER_SUBMIP_MIN_FIXRATE_CAP       "mip_hyper_submip_min_fixrate_cap"
-#define CUOPT_MIP_HYPER_SUBMIP_TARGET_MIP_GAP        "mip_hyper_submip_target_mip_gap"
-#define CUOPT_MIP_HYPER_SUBMIP_NODE_LIMIT_BASE       "mip_hyper_submip_node_limit_base"
-#define CUOPT_MIP_HYPER_SUBMIP_MAX_LEVEL             "mip_hyper_submip_max_level"
-#define CUOPT_MIP_HYPER_SUBMIP_ITERATION_LIMIT_RATIO "mip_hyper_submip_iteration_limit_ratio"
-#define CUOPT_MIP_HYPER_SUBMIP_ENABLE_CPUFJ          "mip_hyper_submip_enable_cpufj"
+#define CUOPT_MIP_HYPER_SUBMIP_BASE_TARGET_FIXRATE    "mip_hyper_submip_base_target_fixrate"
+#define CUOPT_MIP_HYPER_SUBMIP_MIN_FIXRATE            "mip_hyper_submip_min_fixrate"
+#define CUOPT_MIP_HYPER_SUBMIP_MIN_FIXRATE_CAP        "mip_hyper_submip_min_fixrate_cap"
+#define CUOPT_MIP_HYPER_SUBMIP_TARGET_MIP_GAP         "mip_hyper_submip_target_mip_gap"
+#define CUOPT_MIP_HYPER_SUBMIP_NODE_LIMIT_OFFSET      "mip_hyper_submip_node_limit_offset"
+#define CUOPT_MIP_HYPER_SUBMIP_ITERATION_LIMIT_OFFSET "mip_hyper_submip_iteration_limit_offset"
+#define CUOPT_MIP_HYPER_SUBMIP_MAX_LEVEL              "mip_hyper_submip_max_level"
+#define CUOPT_MIP_HYPER_SUBMIP_ITERATION_LIMIT_RATIO  "mip_hyper_submip_iteration_limit_ratio"
+#define CUOPT_MIP_HYPER_SUBMIP_ENABLE_CPUFJ           "mip_hyper_submip_enable_cpufj"
 
 /* @brief QCQP (barrier) scaling hyper-parameters */
 #define CUOPT_QCQP_HYPER_RUIZ_EQUILIBRATION "qcqp_hyper_ruiz_equilibration"

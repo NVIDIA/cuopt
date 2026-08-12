@@ -2279,9 +2279,17 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   submip_settings.log.log_prefix = log_prefix;
 #endif
 
-  submip_settings.node_limit = settings_.submip_settings.node_limit_base + explored / 20;
+  submip_settings.node_limit = settings_.submip_settings.node_limit_offset + explored / 20;
+
+  // Add offset only on the top call, we want number of simplex iteration to decay
+  // as we go down the recursion to avoid spending too much time in the deeper levels.
+  int64_t iter_offset =
+    settings_.inside_submip ? 0 : settings_.submip_settings.iteration_limit_offset;
+  int64_t simplex_iter = exploration_stats_.total_simplex_iters;
+  f_t iter_ratio       = settings_.submip_settings.iteration_limit_ratio;
+
   submip_settings.branch_and_bound_simplex_iteration_limit =
-    exploration_stats_.total_simplex_iters * settings_.submip_settings.iteration_limit_ratio;
+    iter_offset + simplex_iter * iter_ratio;
   submip_settings.time_limit = settings_.time_limit - toc(exploration_stats_.start_time);
   if (submip_settings.time_limit < 0) { return; }
 
@@ -2290,8 +2298,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
 
   bool max_recursion                   = submip_level > settings_.submip_settings.max_level;
   submip_settings.submip_settings.rins = settings_.submip_settings.rins != 0 && !max_recursion;
-  submip_settings.submip_settings.rens =
-    settings_.submip_settings.rens != 0 && submip_level <= settings_.submip_settings.max_level;
+  submip_settings.submip_settings.rens = settings_.submip_settings.rens != 0 && !max_recursion;
 
   DEBUG_SUBMIP("{}Sub-MIP: num variables fixed={}/{} ({:.2f}%)",
                log_prefix,
