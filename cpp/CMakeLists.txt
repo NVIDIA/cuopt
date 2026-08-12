@@ -295,7 +295,7 @@ FetchContent_MakeAvailable(papilo)
 FetchContent_Declare(
         pslp
         GIT_REPOSITORY "https://github.com/hlinsen/PSLP.git"
-        GIT_TAG "4aa4c11f44b00ff0e42206069e30f68af3e55cec"
+        GIT_TAG "a5da4309022353b77f787cb1eedd3e836418bfab"
         GIT_PROGRESS TRUE
         EXCLUDE_FROM_ALL
         SYSTEM
