@@ -141,7 +141,6 @@ repos:
         verbose: true
         language: system
         pass_filenames: false
-        args: [--output=line, --minAlertLevel=error]
         files: ^docs/cuopt/source/.*\.(rst|md)$
       - id: validate-skills
         name: Validate agent skills
