@@ -57,8 +57,11 @@ solution path depends on private headers any more:
 - Whether a solution came from the MIP solver is taken from the problem's
   category, which `Solution` already carries, rather than from a native call.
 - The parameter-file and parameter-enumeration entry points were dropped
-  rather than promoted. They were convenience rather than necessity; the
-  capability is tracked in #1705.
+  rather than promoted. Every solver parameter is registered from a `CUOPT_*`
+  macro in `constants.h`, so the generated `CuOptConstants` already carries the
+  complete list and runtime enumeration cannot add to it. Loading and dumping a
+  settings file is likewise expressible on top of `cuOptSetParameter` and
+  `cuOptGetParameter`. See #1705.
 
 The problem path is still an exception. `cuopt_jni.cpp` includes
 `pdlp/cuopt_c_internal.hpp` from the checkout for the operations the C API does
