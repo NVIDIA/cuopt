@@ -82,7 +82,7 @@ cache:
       - cuda-version =${{ cuda_version }}
       - libraft-headers =${{ minor_version }}
       - librmm =${{ minor_version }}
-      - rapids-logger =0.2
+      - rapids-logger =0.3
       - cuda-nvtx-dev
       - libcudss-dev >=0.7,<0.8
       - libcurand-dev
@@ -124,7 +124,7 @@ outputs:
       host:
         - libboost-devel
         - cuda-version =${{ cuda_version }}
-        - rapids-logger =0.2
+        - rapids-logger =0.3
         - librmm =${{ minor_version }}
         - libcublas
         - libcudss-dev >=0.7,<0.8
