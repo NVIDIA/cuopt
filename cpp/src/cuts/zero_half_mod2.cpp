@@ -74,7 +74,9 @@ std::vector<std::vector<i_t>> find_mod2_row_combinations(const std::vector<row_t
                                                          i_t max_combination_size,
                                                          i_t max_combinations,
                                                          f_t* work_estimate,
-                                                         f_t max_work_estimate)
+                                                         f_t max_work_estimate,
+                                                         f_t start_time = 0.0,
+                                                         f_t time_limit = inf)
 {
   cuopt_assert(max_combination_size > 0, "Maximum GF(2) combination size must be positive");
   cuopt_assert(max_combinations > 0, "Maximum number of GF(2) combinations must be positive");
@@ -111,6 +113,7 @@ std::vector<std::vector<i_t>> find_mod2_row_combinations(const std::vector<row_t
   std::vector<i_t> parity_tmp;
   std::vector<i_t> combination_tmp;
   for (const i_t candidate : permutation) {
+    if (toc(start_time) >= time_limit) { break; }
     f_t candidate_work = (f_t)(rows[candidate].parity.size() + 2);
     mod2_basis_row_t<i_t> current;
     current.parity      = rows[candidate].parity;
@@ -165,12 +168,13 @@ i_t mod2_integral_scale(const inequality_t<i_t, f_t>& inequality,
                         f_t coefficient_integral_tol,
                         f_t start_time,
                         f_t time_limit,
-                        f_t& work_estimate)
+                        f_t& work_estimate,
+                        f_t max_work_estimate,
+                        bool& work_limit_reached)
 {
-  if (toc(start_time) >= time_limit) { return i_t{0}; }
-  f_t scale_work = 0.0;
   for (i_t scale = 1; scale <= max_integral_scale; ++scale) {
-    scale_work += 1.0;
+    if (toc(start_time) >= time_limit || work_limit_reached) { return i_t{0}; }
+    f_t scale_work       = 1.0;
     bool integral        = true;
     const f_t scaled_rhs = (f_t)scale * inequality.rhs;
     if (std::abs(scaled_rhs - std::round(scaled_rhs)) >
@@ -189,12 +193,11 @@ i_t mod2_integral_scale(const inequality_t<i_t, f_t>& inequality,
         integral = false;
       }
     }
-    if (integral) {
-      work_estimate += scale_work;
-      return scale;
+    if (add_work_estimate(scale_work, &work_estimate, max_work_estimate, &work_limit_reached)) {
+      return i_t{0};
     }
+    if (integral) { return scale; }
   }
-  work_estimate += scale_work;
   return i_t{0};
 }
 
@@ -273,11 +276,9 @@ std::vector<mod2_candidate_t<i_t, f_t>> mod2_collect_candidates(
                                           coefficient_integral_tol,
                                           start_time,
                                           time_limit,
-                                          work_estimate);
-    if (work_estimate > max_work_estimate) {
-      work_limit_reached = true;
-      break;
-    }
+                                          work_estimate,
+                                          max_work_estimate,
+                                          work_limit_reached);
     // no integral scale found or time limit reached
     if (scale == 0) { continue; }
     if (scale != 1) { inequality.scale((f_t)scale); }
@@ -347,7 +348,12 @@ void mod2_generate_cuts_from_aggregate(
   bool& work_limit_reached,
   i_t& cuts_added)
 {
-  work_estimate += (f_t)(3 * oriented_aggregate.size() + 1);
+  if (add_work_estimate((f_t)(3 * oriented_aggregate.size() + 1),
+                        &work_estimate,
+                        max_work_estimate,
+                        &work_limit_reached)) {
+    return;
+  }
   inequality_t<i_t, f_t> mir_cut(lp.num_cols);
   const bool mir_cut_generated = complemented_mir.generate_cut_nonnegative_maintain_indicies(
     oriented_aggregate, var_types, mir_cut);
@@ -515,11 +521,17 @@ bool generate_mod2_zero_half_cuts(cut_pool_t<i_t, f_t>& cut_pool,
                                             candidate_work_limit,
                                             candidate_limit_reached);
 
+  if (toc(start_time) >= settings.time_limit) {
+    work_estimate = candidate_work;
+    return true;
+  }
   auto row_combinations = find_mod2_row_combinations<i_t, f_t>(candidates,
                                                                max_combination_size,
                                                                max_row_combinations,
                                                                &combination_work,
-                                                               combination_work_limit);
+                                                               combination_work_limit,
+                                                               start_time,
+                                                               settings.time_limit);
   if (add_work_estimate((f_t)(2 * lp.num_cols),
                         &generation_work,
                         generation_work_limit,

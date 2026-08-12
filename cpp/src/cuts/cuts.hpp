@@ -585,7 +585,8 @@ class knapsack_generation_t {
                             const std::vector<simplex::variable_type_t>& var_types,
                             const std::vector<f_t>& xstar,
                             i_t knapsack_row,
-                            inequality_t<i_t, f_t>& cut);
+                            inequality_t<i_t, f_t>& cut,
+                            f_t start_time);
 
   i_t num_knapsack_constraints() const { return knapsack_constraints_.size(); }
   const std::vector<i_t>& get_knapsack_constraints() const { return knapsack_constraints_; }
@@ -610,7 +611,8 @@ class knapsack_generation_t {
                          const inequality_t<i_t, f_t>& base_cut,
                          const std::vector<i_t>& c1_partition,
                          const std::vector<i_t>& c2_partition,
-                         inequality_t<i_t, f_t>& lifted_cut);
+                         inequality_t<i_t, f_t>& lifted_cut,
+                         f_t start_time);
 
   // Solve a 0-1 knapsack problem using dynamic programming
   f_t solve_knapsack_problem(const std::vector<f_t>& values,
@@ -621,7 +623,8 @@ class knapsack_generation_t {
   f_t exact_knapsack_problem_integer_values_fraction_values(const std::vector<i_t>& values,
                                                             const std::vector<f_t>& weights,
                                                             f_t rhs,
-                                                            std::vector<f_t>& solution);
+                                                            std::vector<f_t>& solution,
+                                                            f_t start_time);
 
   std::vector<i_t> is_slack_;
   std::vector<i_t> knapsack_constraints_;

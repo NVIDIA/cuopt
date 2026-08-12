@@ -2327,7 +2327,8 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
   const std::vector<variable_type_t>& var_types,
   const std::vector<f_t>& xstar,
   i_t knapsack_row,
-  inequality_t<i_t, f_t>& cut)
+  inequality_t<i_t, f_t>& cut,
+  f_t start_time)
 {
   const bool verbose = false;
   // Get the row associated with the knapsack constraint
@@ -2502,7 +2503,8 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
 
   // Lift the cut
   inequality_t<i_t, f_t> lifted_cut(lp.num_cols);
-  lift_knapsack_cut(knapsack_inequality, minimal_cover_cut, c1_partition, c2_partition, lifted_cut);
+  lift_knapsack_cut(
+    knapsack_inequality, minimal_cover_cut, c1_partition, c2_partition, lifted_cut, start_time);
   lifted_cut.negate();
 
   // The cut is now in the form:
@@ -2682,7 +2684,8 @@ void knapsack_generation_t<i_t, f_t>::lift_knapsack_cut(
   const inequality_t<i_t, f_t>& base_cut,
   const std::vector<i_t>& c1_partition,
   const std::vector<i_t>& c2_partition,
-  inequality_t<i_t, f_t>& lifted_cut)
+  inequality_t<i_t, f_t>& lifted_cut,
+  f_t start_time)
 {
   // The base cut is in the form: sum_{j in cover} x_j <= |cover| - 1
 
@@ -2798,14 +2801,15 @@ void knapsack_generation_t<i_t, f_t>::lift_knapsack_cut(
   best_score_last_permutation(remaining_coefficients, permutation);
 
   while (permutation.size() > 0) {
+    if (toc(start_time) >= settings_.time_limit) { break; }
     const i_t h   = permutation.back();
     const i_t k   = remaining_variables[h];
     const f_t a_k = remaining_coefficients[h];
 
     f_t capacity = knapsack_inequality.rhs - a_k;
 
-    f_t objective =
-      exact_knapsack_problem_integer_values_fraction_values(values, weights, capacity, solution);
+    f_t objective = exact_knapsack_problem_integer_values_fraction_values(
+      values, weights, capacity, solution, start_time);
     if (std::isnan(objective)) {
       settings_.log.debug("lifting knapsack problem failed\n");
       break;
@@ -3024,8 +3028,10 @@ f_t knapsack_generation_t<i_t, f_t>::exact_knapsack_problem_integer_values_fract
   const std::vector<i_t>& values,
   const std::vector<f_t>& weights,
   f_t rhs,
-  std::vector<f_t>& solution)
+  std::vector<f_t>& solution,
+  f_t start_time)
 {
+  if (toc(start_time) >= settings_.time_limit) { return std::numeric_limits<f_t>::quiet_NaN(); }
   // Solve the knapsack problem
   // maximize sum_{j=0}^n values[j] * solution[j]
   // subject to sum_{j=0}^n weights[j] * solution[j] <= rhs
@@ -3053,6 +3059,7 @@ f_t knapsack_generation_t<i_t, f_t>::exact_knapsack_problem_integer_values_fract
 
   // 4. Dynamic programming
   for (i_t j = 1; j <= n; ++j) {
+    if (toc(start_time) >= settings_.time_limit) { return std::numeric_limits<f_t>::quiet_NaN(); }
     for (i_t v = 0; v <= sum_value; ++v) {
       // Do not take item i-1
       dp(j, v) = dp(j - 1, v);
@@ -3677,7 +3684,7 @@ void cut_generation_t<i_t, f_t>::generate_knapsack_cuts(
       }
       inequality_t<i_t, f_t> cut(lp.num_cols);
       i_t knapsack_status = knapsack_generation_.generate_knapsack_cut(
-        lp, settings, Arow, new_slacks, var_types, xstar, knapsack_row, cut);
+        lp, settings, Arow, new_slacks, var_types, xstar, knapsack_row, cut, start_time);
       if (knapsack_status == 0) { cut_pool_.add_cut(cut_type_t::KNAPSACK, cut); }
     }
   }
