@@ -7,16 +7,16 @@ This skill is ready for commercial/non-commercial use. <br>
 NVIDIA <br>
 
 ### License/Terms of Use: <br>
-Apache-2.0 <br>
+Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers deploying the cuOpt optimization server and calling its REST API from Python or curl for vehicle routing, LP, and MILP workloads. <br>
+Developers and engineers deploying the NVIDIA cuOpt REST server or building client applications that submit optimization problems (routing, LP, MILP) to it via HTTP. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
 
 ## Requirements / Dependencies: <br>
-**Requires API Key or External Credential:** [Not Specified] <br>
-**Credential Type(s):** [None identified] <br>  
+**Requires API Key or External Credential:** [No] <br>
+**Credential Type(s):** [None] <br>
 
 Do not include secrets in prompts/logs/output; use least-privilege credentials; rotate keys as appropriate. <br>
 
@@ -26,53 +26,52 @@ Mitigation: Review and scan skill before deployment. <br>
 
 ## Reference(s): <br>
 - [cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) <br>
-- [cuOpt Docker Hub](https://hub.docker.com/r/nvidia/cuopt) <br>
-- [cuOpt Examples](https://github.com/NVIDIA/cuopt-examples) <br>
-- [assets/README.md](assets/README.md) <br>
+- [cuopt-examples (GitHub)](https://github.com/NVIDIA/cuopt-examples) <br>
+- [nvidia/cuopt (Docker Hub)](https://hub.docker.com/r/nvidia/cuopt) <br>
 
 
 ## Skill Output: <br>
 **Output Type(s):** [API Calls, Shell commands, Code] <br>
-**Output Format:** [Markdown with inline bash and Python code blocks] <br>
+**Output Format:** [Markdown with inline code blocks] <br>
 **Output Parameters:** [1D] <br>
 **Other Properties Related to Output:** [None] <br>
 
 ## Evaluation Agents Used: <br>
-- `claude-code` <br>
-- `codex` <br>
+- Claude Code (`aws/anthropic/bedrock-claude-opus-4-8`) <br>
+- Codex (`openai/openai/gpt-5.5`) <br>
 
 
 
 ## Evaluation Tasks: <br>
-Evaluated against 1 evaluation task (1 positive skill-activation case, 0 negative cases) in the NVSkills-Eval external profile, astra-sandbox environment. <br>
+8 evaluation tasks (8 positive), 1 attempt per task, in isolated k8s-sandbox pods. <br>
 
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
-- Security: Checks whether skill-assisted execution avoids unsafe behavior such as secret leakage, destructive commands, or unauthorized access. <br>
-- Correctness: Checks whether the agent follows the expected workflow and produces the correct final output. <br>
-- Discoverability: Checks whether the agent loads the skill when relevant and avoids using it when irrelevant. <br>
-- Effectiveness: Checks whether the agent performs measurably better with the skill than without it. <br>
-- Efficiency: Checks whether the agent uses fewer tokens and avoids redundant work. <br>
+- Security: Whether the skill is safe to use (unsafe operations, secret leakage, unauthorized access). <br>
+- Correctness: Whether the answer produced is correct against the reference answer. <br>
+- Discoverability: Whether the right skill was loaded and executed when needed. <br>
+- Effectiveness: Whether the skill helped complete the user’s goal and expected workflow. <br>
+- Efficiency: Whether wasted tool or skill usage was avoided. <br>
 
 Underlying evaluation signals used in this run: <br>
-- `security`: Checks for unsafe operations, secret leakage, and unauthorized access. <br>
-- `skill_execution`: Verifies that the agent loaded the expected skill and workflow. <br>
-- `skill_efficiency`: Checks routing quality, decoy avoidance, and redundant tool usage. <br>
-- `accuracy`: Grades final-answer correctness against the reference answer. <br>
-- `goal_accuracy`: Checks whether the overall user task completed successfully. <br>
-- `behavior_check`: Verifies expected behavior steps, including safety expectations. <br>
-- `token_efficiency`: Compares token usage with and without the skill. <br>
+- `security`: Unsafe operations, secret leakage, and unauthorized access. <br>
+- `skill_execution`: Whether the expected skill was found and executed. <br>
+- `skill_efficiency`: Routing quality, workspace-aware skill reads, and productive tool use. <br>
+- `accuracy`: Final-answer correctness against the reference answer. <br>
+- `goal_accuracy`: Whether the user’s goal was achieved. <br>
+- `behavior_check`: Whether the expected workflow behavior was followed. <br>
 
 
 
 ## Evaluation Results: <br>
-| Dimension | Num | `claude-code` | `codex` |
-|---|---:|---:|---:|
-| Security | 1 | 100% (+0%) | 100% (+0%) |
-| Correctness | 1 | 100% (+70%) | 97% (+35%) |
-| Discoverability | 1 | 100% (+100%) | 97% (+69%) |
-| Effectiveness | 1 | 100% (+56%) | 100% (+40%) |
-| Efficiency | 1 | 95% (+68%) | 95% (+67%) |
+| Measure | Claude Code (Baseline → Skill) | Codex (Baseline → Skill) |
+|---|---:|---:|
+| Overall | 55% → 99% (+44 pts) | 58% → 95% (+37 pts) |
+| Security | 100% → 100% (±0 pts) | 100% → 100% (±0 pts) |
+| Correctness | 82% → 100% (+18 pts) | 78% → 98% (+20 pts) |
+| Discoverability | 28% → 100% (+72 pts) | 42% → 92% (+50 pts) |
+| Effectiveness | 59% → 98% (+39 pts) | 51% → 89% (+38 pts) |
+| Efficiency | 6% → 96% (+90 pts) | 17% → 96% (+79 pts) |
 
 ## Skill Version(s): <br>
 26.10.00 (source: frontmatter) <br>
