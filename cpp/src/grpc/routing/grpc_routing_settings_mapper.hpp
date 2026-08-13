@@ -7,12 +7,13 @@
 
 #pragma once
 
+#include <cuopt/export.hpp>
 #include <cuopt/routing/solver_settings.hpp>
 
 #include <cuopt_routing.pb.h>
 
 namespace cuopt {
-namespace routing {
+namespace CUOPT_EXPORT routing {
 
 void map_proto_to_routing_settings(const cuopt::remote::RoutingSolverSettings& pb,
                                    cuopt::routing::solver_settings_t<int, float>& settings);
@@ -20,5 +21,5 @@ void map_proto_to_routing_settings(const cuopt::remote::RoutingSolverSettings& p
 void map_routing_settings_to_proto(const cuopt::routing::solver_settings_t<int, float>& settings,
                                    cuopt::remote::RoutingSolverSettings* pb);
 
-}  // namespace routing
+}  // namespace CUOPT_EXPORT routing
 }  // namespace cuopt

@@ -7,13 +7,14 @@
 
 #pragma once
 
+#include <cuopt/export.hpp>
 #include <cuopt/routing/assignment.hpp>
 #include <cuopt/routing/cpu_routing_problem.hpp>
 
 #include <cuopt_routing_solution.pb.h>  // RoutingSolution / RoutingSolutionStatus
 
 namespace cuopt {
-namespace routing {
+namespace CUOPT_EXPORT routing {
 
 // Server direction: serialize a solved assignment into a RoutingSolution proto.
 void map_routing_solution_to_proto(const cuopt::routing::assignment_t<int>& assignment,
@@ -24,5 +25,5 @@ void map_routing_solution_to_proto(const cuopt::routing::assignment_t<int>& assi
 void map_proto_to_routing_solution(const cuopt::remote::RoutingSolution& pb,
                                    cuopt::routing::cpu_routing_solution_t& sol);
 
-}  // namespace routing
+}  // namespace CUOPT_EXPORT routing
 }  // namespace cuopt
