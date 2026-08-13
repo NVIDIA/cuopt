@@ -274,8 +274,7 @@
 
 /* @brief Scalar solution attribute selectors
  * (see cuOptGetSolution{Int,Float}Attribute). Passed as cuopt_int_t; numbered in a separate
- * range from the problem selectors so a problem selector passed to a solution accessor, or the
- * reverse, is rejected rather than silently read.
+ * range from the problem selectors.
  *
  * Which of these a solution carries depends on the class of problem that produced it; the
  * accessors return CUOPT_INVALID_ARGUMENT for one that does not apply. Use CUOPT_ATTR_IS_MIP on
