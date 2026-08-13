@@ -1402,14 +1402,10 @@ void cut_pool_t<i_t, f_t>::score_cuts(std::vector<f_t>& x_relax)
   cut_distances_.resize(cut_storage_.m, 0.0);
   cut_norms_.resize(cut_storage_.m, 0.0);
 
-  if (cut_storage_.m > 0) {
-    const i_t num_tasks = std::min<i_t>(omp_get_num_threads(), cut_storage_.m);
-#pragma omp taskloop num_tasks(num_tasks) default(shared)
-    for (i_t i = 0; i < cut_storage_.m; i++) {
-      f_t violation;
-      f_t cut_dist      = cut_distance(i, x_relax, violation, cut_norms_[i]);
-      cut_distances_[i] = cut_dist <= min_cut_distance_ ? 0.0 : cut_dist;
-    }
+  for (i_t i = 0; i < cut_storage_.m; i++) {
+    f_t violation;
+    f_t cut_dist      = cut_distance(i, x_relax, violation, cut_norms_[i]);
+    cut_distances_[i] = cut_dist <= min_cut_distance_ ? 0.0 : cut_dist;
   }
 
   std::vector<i_t> sorted_indices;
