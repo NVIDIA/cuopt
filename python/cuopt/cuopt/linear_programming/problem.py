@@ -1335,7 +1335,9 @@ class Constraint:
     is_quadratic : bool
         True when the row is exported as a QCMATRIX quadratic constraint.
     Slack : float
-        Computed LHS - RHS with current solution.
+        Classical LP slack/surplus for the current solution: ``rhs - lhs``
+        for ``<=``, ``lhs - rhs`` for ``>=`` (non-negative if feasible). For
+        ``==``, the residual ``rhs - lhs`` (near zero if feasible).
     DualValue : float
         Constraint dual value in the current solution.
     """
@@ -1432,16 +1434,6 @@ class Constraint:
         """
         v_idx = var.index
         return self.vindex_coeff_dict[v_idx]
-
-    def compute_slack(self):
-        # Computes the constraint Slack in the current solution.
-        index_to_var = {var.index: var for var in self.vars}
-        lhs = sum(
-            index_to_var[v_idx].Value * coeff
-            for v_idx, coeff in self.vindex_coeff_dict.items()
-        )
-
-        return self.RHS - lhs
 
 
 class Problem:
@@ -1741,20 +1733,6 @@ class Problem:
         self._constraint_index_to_csr_row = None
         self._mark_stale(
             "structure", "variable", "objective", "rhs", "A_values"
-        )
-
-    def _constraint_csr_scipy_matrix(self):
-        """Build a temporary SciPy CSR for matvec; not retained on Problem."""
-        csr_dict = self.constraint_csr_matrix
-        if csr_dict is None or self.rhs is None:
-            return None
-        return csr_matrix(
-            (
-                csr_dict["values"],
-                csr_dict["column_indices"],
-                csr_dict["row_pointers"],
-            ),
-            shape=(len(self.rhs), len(self.vars)),
         )
 
     def _refresh_data_model_values(self):
@@ -2492,13 +2470,8 @@ class Problem:
         if not IsMIP:
             dual_sol = solution.get_dual_solution()
 
-        # Vectorized slacks when a full primal and CSR/`rhs` are available;
-        # otherwise leave Slack as NaN (same outcome as unset Values).
-        slacks = None
-        if len(primal_sol) == len(self.vars):
-            A = self._constraint_csr_scipy_matrix()
-            if A is not None and len(primal_sol) == A.shape[1]:
-                slacks = self.rhs - A.dot(primal_sol)
+        # Slack is computed when Solution is built (same path as primal/dual).
+        slacks = solution.get_slack()
 
         linear_row = 0
         for constr in self.constrs:

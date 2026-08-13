@@ -119,11 +119,10 @@ def _assert_feasible(problem: Problem) -> None:
                 _quadratic_constraint_violation(constr, variables) <= FEAS_TOL
             )
             continue
-        slack = constr.compute_slack()
-        if constr.Sense == LE:
+        # Classical slack/surplus from populate_solution (non-negative if feasible).
+        slack = constr.Slack
+        if constr.Sense in (LE, GE):
             assert slack >= -FEAS_TOL
-        elif constr.Sense == GE:
-            assert slack <= FEAS_TOL
         else:
             assert constr.Sense == EQ
             assert slack == pytest.approx(0.0, abs=FEAS_TOL)
