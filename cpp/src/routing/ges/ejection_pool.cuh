@@ -56,13 +56,15 @@ struct ejection_pool_t {
 
   void push_back_last() { ++index_; }
 
-  void random_shuffle()
+  // The seed is supplied by the caller: the pool has no route back to the problem
+  // that owns the seed source.
+  void random_shuffle(int64_t seed)
   {
     // replace with thrust shuffle
     // how to get sol_handle::get_thrust_policy?
     if (size() > 1)
       device_random_shuffle<elemt_t>
-        <<<1, 1, 0, stream_>>>(stack_.data(), size(), seed_generator::get_seed());
+        <<<1, 1, 0, stream_>>>(stack_.data(), size(), seed);
   }
 
   bool empty() const

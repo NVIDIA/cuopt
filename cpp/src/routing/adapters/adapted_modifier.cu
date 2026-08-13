@@ -77,7 +77,7 @@ void adapted_modifier_t<i_t, f_t, REQUEST>::add_unserviced_request(
   auto gpu_weight = get_cuopt_cost(final_weight);
   resource.ls.set_active_weights(gpu_weight, std::numeric_limits<f_t>::max());
   adapted_solution.sol.populate_ep_with_unserved(resource.ges.EP);
-  resource.ges.EP.random_shuffle();
+  resource.ges.EP.random_shuffle(adapted_solution.sol.problem_ptr->seed_gen.get_seed());
   resource.ges.squeeze_all_ep();
   adapted_solution.populate_host_data();
   adapted_solution.check_device_host_coherence();
@@ -101,7 +101,7 @@ void adapted_modifier_t<i_t, f_t, REQUEST>::add_selected_unserviced_requests(
   auto gpu_weight = get_cuopt_cost(final_weight);
   resource.ls.set_active_weights(gpu_weight, std::numeric_limits<f_t>::max());
   adapted_solution.sol.populate_ep_with_selected_unserved(resource.ges.EP, unserviced_nodes);
-  resource.ges.EP.random_shuffle();
+  resource.ges.EP.random_shuffle(adapted_solution.sol.problem_ptr->seed_gen.get_seed());
   resource.ges.squeeze_all_ep();
   adapted_solution.populate_host_data();
   adapted_solution.check_device_host_coherence();

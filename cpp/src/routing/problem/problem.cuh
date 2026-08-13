@@ -267,6 +267,10 @@ class problem_t {
   const data_model_view_t<i_t, f_t>* data_view_ptr;
   const solver_settings_t<i_t, f_t>* solver_settings_ptr;
 
+  // Seed source for this problem. Seeded in the constructor from the solver settings, or
+  // derived from the problem when the user has not supplied one.
+  seed_generator_t seed_gen;
+
   i_t get_num_orders() const;
 
   i_t get_num_requests() const;

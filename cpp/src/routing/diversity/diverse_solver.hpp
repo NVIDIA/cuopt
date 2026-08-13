@@ -245,7 +245,7 @@ struct solve {
       temp_pair(solution{p_, pool_allocator_.sol_handles[0].get()},
                 solution{p_, pool_allocator_.sol_handles[0].get()}),
       f(file_name),
-      rng(seed_generator::get_seed()),
+      rng(p->seed_gen.get_seed()),
       timer(timer_),
       improvement_timer(timer_),
       perturbation_count(0)

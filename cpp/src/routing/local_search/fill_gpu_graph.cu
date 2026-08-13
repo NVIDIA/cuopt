@@ -159,7 +159,7 @@ void local_search_t<i_t, f_t, REQUEST>::fill_gpu_graph(solution_t<i_t, f_t, REQU
   const auto stream                   = solution.sol_handle->get_stream();
   move_candidates.graph.special_index = solution.get_num_orders() + solution.n_routes;
   fill_intra_candidates<i_t, f_t, REQUEST><<<solution.n_routes, TPB, 0, stream>>>(
-    solution.view(), move_candidates.view(), seed_generator::get_seed());
+    solution.view(), move_candidates.view(), solution.problem_ptr->seed_gen.get_seed());
   // +1 for special node
   i_t n_blocks = solution.get_num_requests() + 1;
   fill_graph_kernel<i_t, f_t, REQUEST, TPB>

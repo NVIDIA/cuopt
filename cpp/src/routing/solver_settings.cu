@@ -39,6 +39,12 @@ void solver_settings_t<i_t, f_t>::dump_best_results(const std::string& file_path
 }
 
 template <typename i_t, typename f_t>
+void solver_settings_t<i_t, f_t>::set_seed(i_t seed)
+{
+  seed_ = seed;
+}
+
+template <typename i_t, typename f_t>
 f_t solver_settings_t<i_t, f_t>::get_time_limit() const noexcept
 {
   return time_limit_;
@@ -61,6 +67,12 @@ std::tuple<i_t, bool, std::string> solver_settings_t<i_t, f_t>::get_dump_best_re
   const noexcept
 {
   return std::make_tuple(dump_interval_, dump_best_results_, best_result_file_name_);
+}
+
+template <typename i_t, typename f_t>
+i_t solver_settings_t<i_t, f_t>::get_seed() const noexcept
+{
+  return seed_;
 }
 
 template class CUOPT_EXPORT solver_settings_t<int, float>;
