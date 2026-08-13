@@ -28,6 +28,12 @@ from .schema import known_parameters, settings_schema, validate_settings
 # routinely have millions.
 INLINE_SOLUTION_LIMIT = 200
 
+# Magnitude below which a solution value is treated as zero by nonzero_only.
+ZERO_TOL = 1e-9
+
+# At or beyond this magnitude a caller-supplied bound means infinity.
+INFINITY_SENTINEL = 1e30
+
 
 def _solution_dir() -> Path:
     path = Path(
@@ -49,6 +55,200 @@ def _read_problem(path: str):
         return Read(str(resolved))
     except Exception as exc:
         raise CuOptMCPError(f"failed to parse {resolved}: {exc}") from exc
+
+
+def _require(problem: dict, key: str):
+    if key not in problem:
+        raise CuOptMCPError(f"problem is missing required key {key!r}")
+    return problem[key]
+
+
+def _merge_duplicate_cells(rows, cols, values):
+    """Sum COO entries that name the same cell.
+
+    Building a row incrementally naturally emits a cell twice (``2*x`` after
+    collecting ``x`` from two terms). Passing both through would leave the
+    row's meaning dependent on how the backend treats repeated indices, so
+    they are summed here where the intent is unambiguous.
+    """
+    import numpy as np
+
+    if len(rows) == 0:
+        return rows, cols, values
+    starts = np.empty(len(rows), dtype=bool)
+    starts[0] = True
+    starts[1:] = (rows[1:] != rows[:-1]) | (cols[1:] != cols[:-1])
+    if starts.all():
+        return rows, cols, values
+    group = np.cumsum(starts) - 1
+    merged = np.zeros(int(group[-1]) + 1, dtype=np.float64)
+    np.add.at(merged, group, values)
+    return rows[starts], cols[starts], merged
+
+
+def _to_csr(matrix: dict, n_vars: int, n_cons: int | None = None):
+    """Accept either CSR or COO triplets and return CSR arrays.
+
+    COO is what a caller naturally builds when emitting a model row by row,
+    so taking it directly removes the most error-prone step of the handoff.
+
+    n_cons pins the row count. Without it the count is inferred from the
+    largest row index present, which silently loses a trailing row whose
+    coefficients are all zero.
+    """
+    import numpy as np
+
+    if "offsets" in matrix:
+        offsets = np.asarray(matrix["offsets"], dtype=np.int32)
+        indices = np.asarray(matrix["indices"], dtype=np.int32)
+        values = np.asarray(matrix["values"], dtype=np.float64)
+        if len(indices) != len(values):
+            raise CuOptMCPError(
+                f"constraint_matrix indices ({len(indices)}) and values "
+                f"({len(values)}) must have equal length"
+            )
+        if n_cons is not None and len(offsets) - 1 != n_cons:
+            raise CuOptMCPError(
+                f"constraint_matrix has {len(offsets) - 1} rows but "
+                f"{n_cons} constraint bounds were given"
+            )
+        return offsets, indices, values
+
+    rows = np.asarray(matrix.get("rows", []), dtype=np.int64)
+    cols = np.asarray(matrix.get("cols", []), dtype=np.int64)
+    values = np.asarray(matrix.get("values", []), dtype=np.float64)
+    if not (len(rows) == len(cols) == len(values)):
+        raise CuOptMCPError(
+            f"constraint_matrix rows/cols/values must have equal length, got "
+            f"{len(rows)}/{len(cols)}/{len(values)}"
+        )
+    if len(cols) and int(cols.max()) >= n_vars:
+        raise CuOptMCPError(
+            f"constraint_matrix references column {int(cols.max())} but the "
+            f"objective declares only {n_vars} variables"
+        )
+    inferred = int(rows.max()) + 1 if len(rows) else 0
+    if n_cons is None:
+        n_cons = inferred
+    elif inferred > n_cons:
+        raise CuOptMCPError(
+            f"constraint_matrix references row {inferred - 1} but only "
+            f"{n_cons} constraint bounds were given"
+        )
+    order = np.lexsort((cols, rows))
+    rows, cols, values = _merge_duplicate_cells(
+        rows[order], cols[order], values[order]
+    )
+    counts = np.bincount(rows, minlength=n_cons).astype(np.int32)
+    offsets = np.zeros(n_cons + 1, dtype=np.int32)
+    np.cumsum(counts, out=offsets[1:])
+    return offsets, cols.astype(np.int32), values
+
+
+def _build_model_from_json(problem: dict):
+    """Build a DataModel from plain arrays, with no file in the loop.
+
+    Integrality is declared as a type vector rather than MPS INTORG/INTEND
+    markers, so integer columns keep the bounds given here instead of
+    silently defaulting to [0, 1].
+    """
+    import numpy as np
+
+    from cuopt.linear_programming import DataModel
+
+    if not isinstance(problem, dict):
+        raise CuOptMCPError("problem must be an object")
+
+    objective = np.asarray(_require(problem, "objective"), dtype=np.float64)
+    n_vars = len(objective)
+
+    # Prefer a row count the caller stated over one guessed from the largest
+    # row index, so a trailing all-zero row is not silently dropped and a
+    # genuine mismatch is reported against the matrix rather than the bounds.
+    lengths = {
+        key: len(problem[key])
+        for key in ("constraint_lower_bounds", "constraint_upper_bounds")
+        if problem.get(key) is not None
+    }
+    if len(set(lengths.values())) > 1:
+        raise CuOptMCPError(
+            "constraint_lower_bounds and constraint_upper_bounds must have "
+            f"the same length, got {lengths}"
+        )
+    declared = problem.get("n_constraints")
+    if declared is None and lengths:
+        declared = next(iter(lengths.values()))
+
+    offsets, indices, values = _to_csr(
+        _require(problem, "constraint_matrix"), n_vars, declared
+    )
+    n_cons = max(len(offsets) - 1, 0)
+
+    def vec(key, default, size, dtype=np.float64):
+        raw = problem.get(key)
+        if raw is None:
+            return np.full(size, default, dtype=dtype)
+        # JSON has no infinity literal, so null means "unbounded on this
+        # side" and is the only way a caller can express a one-sided row.
+        arr = np.asarray(
+            [default if x is None else x for x in raw], dtype=dtype
+        )
+        # Callers routinely spell infinity as a large sentinel (1e30 is the
+        # MPS-era convention). Left finite, such a bound is not merely loose
+        # — cuOpt can return a constraint-violating point reported as
+        # Optimal — so normalise it to a true infinity.
+        if dtype is np.float64:
+            arr = np.where(arr >= INFINITY_SENTINEL, np.inf, arr)
+            arr = np.where(arr <= -INFINITY_SENTINEL, -np.inf, arr)
+        if len(arr) != size:
+            raise CuOptMCPError(
+                f"{key} has length {len(arr)}, expected {size}"
+            )
+        return arr
+
+    model = DataModel()
+    model.set_csr_constraint_matrix(values, indices, offsets)
+    model.set_objective_coefficients(objective)
+    model.set_constraint_lower_bounds(
+        vec("constraint_lower_bounds", -np.inf, n_cons)
+    )
+    model.set_constraint_upper_bounds(
+        vec("constraint_upper_bounds", np.inf, n_cons)
+    )
+    model.set_variable_lower_bounds(vec("variable_lower_bounds", 0.0, n_vars))
+    model.set_variable_upper_bounds(
+        vec("variable_upper_bounds", np.inf, n_vars)
+    )
+    model.set_maximize(bool(problem.get("maximize", False)))
+    if problem.get("objective_offset"):
+        model.set_objective_offset(float(problem["objective_offset"]))
+    if problem.get("problem_name"):
+        model.set_problem_name(str(problem["problem_name"]))
+
+    types = problem.get("variable_types")
+    if types is not None:
+        if len(types) != n_vars:
+            raise CuOptMCPError(
+                f"variable_types has length {len(types)}, expected {n_vars}"
+            )
+        allowed = {"C", "I"}
+        bad = sorted({str(t).upper() for t in types} - allowed)
+        if bad:
+            raise CuOptMCPError(
+                f"variable_types entries must be 'C' or 'I', got {bad}"
+            )
+        model.set_variable_types(
+            np.asarray([str(t).upper() for t in types], dtype="<U1")
+        )
+
+    names = problem.get("variable_names")
+    if names is not None:
+        if len(names) != n_vars:
+            raise CuOptMCPError(
+                f"variable_names has length {len(names)}, expected {n_vars}"
+            )
+        model.set_variable_names(np.asarray([str(v) for v in names]))
+    return model
 
 
 def _build_settings(kind: str, settings: dict | None):
@@ -76,14 +276,40 @@ def _build_settings(kind: str, settings: dict | None):
 def _variable_names(names_from: str | None):
     if not names_from:
         return None
+    # A JSON submission has no problem file to re-parse, so its names are
+    # kept in a sidecar written at submit time. Same contract either way:
+    # pass back the "source" the solve returned.
+    resolved = Path(names_from).expanduser()
+    if resolved.suffix == ".json" and resolved.is_file():
+        return list(json.loads(resolved.read_text()))
     model = _read_problem(names_from)
     names = model.get_variable_names()
     return list(names) if names is not None else None
 
 
-def submit(problem_path: str, kind: str, settings: dict | None = None) -> dict:
-    """Parse a problem file and submit it; return the job handle."""
-    model = _read_problem(problem_path)
+def _write_names_file(job_id: str, names) -> str:
+    path = _solution_dir() / f"{job_id}.names.json"
+    path.write_text(json.dumps([str(v) for v in names]))
+    return str(path)
+
+
+def submit(
+    kind: str,
+    problem_path: str | None = None,
+    problem: dict | None = None,
+    settings: dict | None = None,
+) -> dict:
+    """Submit a model given either as a file path or as plain JSON arrays."""
+    if (problem_path is None) == (problem is None):
+        raise CuOptMCPError(
+            "pass exactly one of problem_path (an MPS/QPS/LP file) or "
+            "problem (a JSON model object)"
+        )
+    model = (
+        _read_problem(problem_path)
+        if problem_path is not None
+        else _build_model_from_json(problem)
+    )
     solver_settings = _build_settings(kind, settings)
     try:
         job_id = get_client().submit(model, solver_settings)
@@ -94,14 +320,23 @@ def submit(problem_path: str, kind: str, settings: dict | None = None) -> dict:
     # arrays it does expose: one lower bound per column, and CSR row offsets
     # numbering rows + 1.
     offsets = model.get_constraint_matrix_offsets()
+    if problem_path is not None:
+        source = str(Path(problem_path).expanduser())
+    else:
+        names = problem.get("variable_names")
+        source = _write_names_file(job_id, names) if names else None
     return {
         "job_id": job_id,
-        "source": str(Path(problem_path).expanduser()),
+        "source": source,
         "num_variables": int(len(model.get_variable_lower_bounds())),
         "num_constraints": int(max(len(offsets) - 1, 0)),
         "next": (
             "Poll cuopt_status(job_id). When it reports COMPLETED, call "
             "cuopt_result(job_id, names_from=source) for a named solution."
+            if source
+            else "Poll cuopt_status(job_id). When it reports COMPLETED, call "
+            "cuopt_result(job_id). Values will be keyed by column index; "
+            "pass variable_names in the problem to label them."
         ),
     }
 
@@ -180,7 +415,10 @@ def result(
 
     selected = vars_by_name
     if nonzero_only:
-        selected = {k: v for k, v in vars_by_name.items() if v != 0}
+        # PDLP is first-order, so an exact != 0 test lets numerical dust
+        # (values around 1e-13, sometimes negative on a variable bounded
+        # below by 0) through as if it were signal.
+        selected = {k: v for k, v in vars_by_name.items() if abs(v) > ZERO_TOL}
         summary["num_nonzero"] = len(selected)
 
     if len(selected) <= limit:

@@ -49,11 +49,33 @@ def _guard(fn, /, **kwargs) -> dict[str, Any]:
 
 @server.tool(structured_output=True)
 def cuopt_solve_lp(
-    problem_path: str, settings: dict | None = None
+    problem_path: str | None = None,
+    problem: dict | None = None,
+    settings: dict | None = None,
 ) -> dict[str, Any]:
     """Submit a linear program to cuOpt and return a job handle immediately.
 
+    Give the model exactly one of two ways:
+
     problem_path: path to an MPS, QPS, or LP file readable by this process.
+    problem: the model as plain JSON arrays, with no file involved:
+        objective: cost per variable (its length defines the column count)
+        constraint_matrix: {"rows": [...], "cols": [...], "values": [...]}
+            COO triplets, or {"offsets", "indices", "values"} for CSR
+        constraint_lower_bounds / constraint_upper_bounds: one per row,
+            defaulting to -inf / +inf. Set both equal for an equality row.
+            Their length fixes the row count, so a trailing row with all
+            zero coefficients is kept rather than inferred away.
+        variable_lower_bounds / variable_upper_bounds: default 0 / +inf
+        variable_names: labels echoed back by cuopt_result
+        maximize: true to maximise (default false)
+        objective_offset: constant added to the objective
+
+    Bounds: use null for an unbounded side, since JSON has no infinity
+    literal. A magnitude of 1e30 or more is also read as infinite — left
+    finite, such a bound can make the solver return a constraint-violating
+    point reported as Optimal. Repeated matrix cells are summed.
+
     settings: optional PDLP solver settings, e.g. {"time_limit": 60,
         "method": "Barrier"}. Call cuopt_list_settings("pdlp_settings") for
         the full list with descriptions and defaults. Omit any setting to
@@ -65,6 +87,7 @@ def cuopt_solve_lp(
     return _guard(
         tools.submit,
         problem_path=problem_path,
+        problem=problem,
         kind="pdlp_settings",
         settings=settings,
     )
@@ -72,11 +95,22 @@ def cuopt_solve_lp(
 
 @server.tool(structured_output=True)
 def cuopt_solve_milp(
-    problem_path: str, settings: dict | None = None
+    problem_path: str | None = None,
+    problem: dict | None = None,
+    settings: dict | None = None,
 ) -> dict[str, Any]:
     """Submit a mixed-integer program to cuOpt and return a job handle.
 
+    Give the model exactly one of two ways:
+
     problem_path: path to an MPS file containing integer variables.
+    problem: the model as plain JSON arrays — same keys as cuopt_solve_lp,
+        plus variable_types: a per-variable "I" (integer) or "C"
+        (continuous). Prefer this over MPS for integer models: an integer
+        column in MPS that has no explicit bound entry silently defaults to
+        [0, 1], which turns an ordinary model infeasible for no visible
+        reason. variable_types carries integrality without touching bounds.
+
     settings: optional MIP solver settings, e.g. {"time_limit": 300,
         "relative_mip_gap": 0.01}. Call cuopt_list_settings("mip_settings")
         for the full list.
@@ -87,6 +121,7 @@ def cuopt_solve_milp(
     return _guard(
         tools.submit,
         problem_path=problem_path,
+        problem=problem,
         kind="mip_settings",
         settings=settings,
     )
