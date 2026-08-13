@@ -1368,13 +1368,7 @@ cuopt_int_t cuOptGetReducedCosts(cuOptSolution solution, cuopt_float_t* reduced_
 namespace {
 
 // Solution attribute plumbing. Each selector names one scalar on the LP or MIP solution
-// interface; adding a statistic later means adding a constant and one case, not a new symbol.
-
-bool is_lp_solution_attribute(cuopt_int_t attribute)
-{
-  return attribute >= CUOPT_SOLUTION_ATTR_LP_PRIMAL_RESIDUAL &&
-         attribute <= CUOPT_SOLUTION_ATTR_LP_SOLVED_BY;
-}
+// interface; adding a statistic later means adding a constant and one line, not a new symbol.
 
 lp_solution_interface_t<cuopt_int_t, cuopt_float_t>* as_lp_solution(cuOptSolution solution)
 {
@@ -1390,6 +1384,24 @@ mip_solution_interface_t<cuopt_int_t, cuopt_float_t>* as_mip_solution(cuOptSolut
 
 }  // namespace
 
+// Each case states which kind of solution it reads, so a selector's numeric value carries no
+// meaning beyond identity and new selectors can be appended anywhere.
+#define CUOPT_READ_LP_ATTRIBUTE(selector, getter, cast_to) \
+  case selector: {                                         \
+    auto* lp = as_lp_solution(solution);                   \
+    if (lp == nullptr) { return CUOPT_INVALID_ARGUMENT; }  \
+    *value_out = static_cast<cast_to>(lp->getter());       \
+    return CUOPT_SUCCESS;                                  \
+  }
+
+#define CUOPT_READ_MIP_ATTRIBUTE(selector, getter, cast_to) \
+  case selector: {                                          \
+    auto* mip = as_mip_solution(solution);                  \
+    if (mip == nullptr) { return CUOPT_INVALID_ARGUMENT; }  \
+    *value_out = static_cast<cast_to>(mip->getter());       \
+    return CUOPT_SUCCESS;                                   \
+  }
+
 cuopt_int_t cuOptGetSolutionIntAttribute(cuOptSolution solution,
                                          cuopt_int_t attribute,
                                          cuopt_int_t* value_out)
@@ -1398,29 +1410,13 @@ cuopt_int_t cuOptGetSolutionIntAttribute(cuOptSolution solution,
   if (value_out == nullptr) { return CUOPT_INVALID_ARGUMENT; }
 
   try {
-    if (is_lp_solution_attribute(attribute)) {
-      auto* lp = as_lp_solution(solution);
-      if (lp == nullptr) { return CUOPT_INVALID_ARGUMENT; }
-      switch (attribute) {
-        case CUOPT_SOLUTION_ATTR_LP_NUM_ITERATIONS:
-          *value_out = static_cast<cuopt_int_t>(lp->get_num_iterations());
-          return CUOPT_SUCCESS;
-        case CUOPT_SOLUTION_ATTR_LP_SOLVED_BY:
-          *value_out = static_cast<cuopt_int_t>(lp->solved_by());
-          return CUOPT_SUCCESS;
-        default: return CUOPT_INVALID_ARGUMENT;  // a float-valued LP selector
-      }
-    }
-
-    auto* mip = as_mip_solution(solution);
-    if (mip == nullptr) { return CUOPT_INVALID_ARGUMENT; }
     switch (attribute) {
-      case CUOPT_SOLUTION_ATTR_MIP_NUM_NODES:
-        *value_out = static_cast<cuopt_int_t>(mip->get_num_nodes());
-        return CUOPT_SUCCESS;
-      case CUOPT_SOLUTION_ATTR_MIP_NUM_SIMPLEX_ITERATIONS:
-        *value_out = static_cast<cuopt_int_t>(mip->get_num_simplex_iterations());
-        return CUOPT_SUCCESS;
+      CUOPT_READ_LP_ATTRIBUTE(
+        CUOPT_SOLUTION_ATTR_LP_NUM_ITERATIONS, get_num_iterations, cuopt_int_t)
+      CUOPT_READ_LP_ATTRIBUTE(CUOPT_SOLUTION_ATTR_LP_SOLVED_BY, solved_by, cuopt_int_t)
+      CUOPT_READ_MIP_ATTRIBUTE(CUOPT_SOLUTION_ATTR_MIP_NUM_NODES, get_num_nodes, cuopt_int_t)
+      CUOPT_READ_MIP_ATTRIBUTE(
+        CUOPT_SOLUTION_ATTR_MIP_NUM_SIMPLEX_ITERATIONS, get_num_simplex_iterations, cuopt_int_t)
       default: return CUOPT_INVALID_ARGUMENT;
     }
   } catch (const std::exception& e) {
@@ -1436,42 +1432,31 @@ cuopt_int_t cuOptGetSolutionFloatAttribute(cuOptSolution solution,
   if (value_out == nullptr) { return CUOPT_INVALID_ARGUMENT; }
 
   try {
-    if (is_lp_solution_attribute(attribute)) {
-      auto* lp = as_lp_solution(solution);
-      if (lp == nullptr) { return CUOPT_INVALID_ARGUMENT; }
-      switch (attribute) {
-        case CUOPT_SOLUTION_ATTR_LP_PRIMAL_RESIDUAL:
-          *value_out = lp->get_l2_primal_residual();
-          return CUOPT_SUCCESS;
-        case CUOPT_SOLUTION_ATTR_LP_DUAL_RESIDUAL:
-          *value_out = lp->get_l2_dual_residual();
-          return CUOPT_SUCCESS;
-        case CUOPT_SOLUTION_ATTR_LP_GAP: *value_out = lp->get_gap(); return CUOPT_SUCCESS;
-        default: return CUOPT_INVALID_ARGUMENT;  // an int-valued LP selector
-      }
-    }
-
-    auto* mip = as_mip_solution(solution);
-    if (mip == nullptr) { return CUOPT_INVALID_ARGUMENT; }
     switch (attribute) {
-      case CUOPT_SOLUTION_ATTR_MIP_PRESOLVE_TIME:
-        *value_out = mip->get_presolve_time();
-        return CUOPT_SUCCESS;
-      case CUOPT_SOLUTION_ATTR_MIP_MAX_CONSTRAINT_VIOLATION:
-        *value_out = mip->get_max_constraint_violation();
-        return CUOPT_SUCCESS;
-      case CUOPT_SOLUTION_ATTR_MIP_MAX_INT_VIOLATION:
-        *value_out = mip->get_max_int_violation();
-        return CUOPT_SUCCESS;
-      case CUOPT_SOLUTION_ATTR_MIP_MAX_VARIABLE_BOUND_VIOLATION:
-        *value_out = mip->get_max_variable_bound_violation();
-        return CUOPT_SUCCESS;
+      CUOPT_READ_LP_ATTRIBUTE(
+        CUOPT_SOLUTION_ATTR_LP_PRIMAL_RESIDUAL, get_l2_primal_residual, cuopt_float_t)
+      CUOPT_READ_LP_ATTRIBUTE(
+        CUOPT_SOLUTION_ATTR_LP_DUAL_RESIDUAL, get_l2_dual_residual, cuopt_float_t)
+      CUOPT_READ_LP_ATTRIBUTE(CUOPT_SOLUTION_ATTR_LP_GAP, get_gap, cuopt_float_t)
+      CUOPT_READ_MIP_ATTRIBUTE(
+        CUOPT_SOLUTION_ATTR_MIP_PRESOLVE_TIME, get_presolve_time, cuopt_float_t)
+      CUOPT_READ_MIP_ATTRIBUTE(CUOPT_SOLUTION_ATTR_MIP_MAX_CONSTRAINT_VIOLATION,
+                               get_max_constraint_violation,
+                               cuopt_float_t)
+      CUOPT_READ_MIP_ATTRIBUTE(
+        CUOPT_SOLUTION_ATTR_MIP_MAX_INT_VIOLATION, get_max_int_violation, cuopt_float_t)
+      CUOPT_READ_MIP_ATTRIBUTE(CUOPT_SOLUTION_ATTR_MIP_MAX_VARIABLE_BOUND_VIOLATION,
+                               get_max_variable_bound_violation,
+                               cuopt_float_t)
       default: return CUOPT_INVALID_ARGUMENT;
     }
   } catch (const std::exception& e) {
     return CUOPT_RUNTIME_ERROR;
   }
 }
+
+#undef CUOPT_READ_LP_ATTRIBUTE
+#undef CUOPT_READ_MIP_ATTRIBUTE
 
 /* -------------------------------------------------------------------------- */
 /* Generic problem attribute getters                                          */
