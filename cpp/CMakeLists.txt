@@ -395,6 +395,18 @@ if (NOT SKIP_GRPC_BUILD)
     add_compile_definitions(CUOPT_ENABLE_GRPC)
     message(STATUS "gRPC enabled (target gRPC::grpc++ is available)")
 
+    # The routing arm of the gRPC layer needs the routing engine. The wire
+    # protocol (including the routing protos) is always generated so LP-only
+    # builds still speak the same protocol; only the mappers and the VRP
+    # client/worker paths are dropped.
+    if (NOT SKIP_ROUTING_BUILD)
+        set(CUOPT_ENABLE_GRPC_ROUTING ON)
+        add_compile_definitions(CUOPT_ENABLE_GRPC_ROUTING)
+        message(STATUS "gRPC routing (VRP) support enabled")
+    else ()
+        message(STATUS "gRPC routing (VRP) support disabled (SKIP_ROUTING_BUILD)")
+    endif ()
+
     # Find protoc compiler (provided by config package or target)
     if (TARGET protobuf::protoc)
         get_target_property(_PROTOBUF_PROTOC protobuf::protoc IMPORTED_LOCATION_RELEASE)
@@ -423,13 +435,17 @@ if (NOT SKIP_GRPC_BUILD)
         endif ()
     endif ()
 
-    # Proto search paths: manual protos in src/grpc, generated data proto in src/grpc/codegen/generated
+    # Proto search paths: LP/protocol protos in src/grpc, routing protos in
+    # src/grpc/routing, generated data proto in src/grpc/codegen/generated.
+    # Routing protos live under their own search root so the routing gRPC layer
+    # stays a self-contained directory; their import names are unchanged.
     set(PROTO_PATH_MANUAL "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc")
     set(PROTO_PATH_GEN "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc/codegen/generated")
+    set(PROTO_PATH_ROUTING "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc/routing")
 
     # Routing solution proto (leaf; no imports). Embedded structurally by the
     # generated data proto and by cuopt_remote.proto, so it is generated first.
-    set(ROUTING_SOLUTION_PROTO_FILE "${PROTO_PATH_MANUAL}/cuopt_routing_solution.proto")
+    set(ROUTING_SOLUTION_PROTO_FILE "${PROTO_PATH_ROUTING}/cuopt_routing_solution.proto")
     set(ROUTING_SOLUTION_PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/cuopt_routing_solution.pb.cc")
     set(ROUTING_SOLUTION_PROTO_HDRS "${CMAKE_CURRENT_BINARY_DIR}/cuopt_routing_solution.pb.h")
 
@@ -437,7 +453,7 @@ if (NOT SKIP_GRPC_BUILD)
             OUTPUT "${ROUTING_SOLUTION_PROTO_SRCS}" "${ROUTING_SOLUTION_PROTO_HDRS}"
             COMMAND ${_PROTOBUF_PROTOC}
             ARGS --cpp_out ${CMAKE_CURRENT_BINARY_DIR}
-            --proto_path ${PROTO_PATH_MANUAL}
+            --proto_path ${PROTO_PATH_ROUTING}
             ${ROUTING_SOLUTION_PROTO_FILE}
             DEPENDS ${ROUTING_SOLUTION_PROTO_FILE}
             COMMENT "Generating C++ code from cuopt_routing_solution.proto"
@@ -455,6 +471,7 @@ if (NOT SKIP_GRPC_BUILD)
             ARGS --cpp_out ${CMAKE_CURRENT_BINARY_DIR}
             --proto_path ${PROTO_PATH_GEN}
             --proto_path ${PROTO_PATH_MANUAL}
+            --proto_path ${PROTO_PATH_ROUTING}
             ${DATA_PROTO_FILE}
             DEPENDS ${DATA_PROTO_FILE} ${ROUTING_SOLUTION_PROTO_FILE}
             COMMENT "Generating C++ code from cuopt_remote_data.proto"
@@ -472,6 +489,7 @@ if (NOT SKIP_GRPC_BUILD)
             ARGS --cpp_out ${CMAKE_CURRENT_BINARY_DIR}
             --proto_path ${PROTO_PATH_MANUAL}
             --proto_path ${PROTO_PATH_GEN}
+            --proto_path ${PROTO_PATH_ROUTING}
             ${PROTO_FILE}
             DEPENDS ${PROTO_FILE} ${DATA_PROTO_FILE} ${ROUTING_SOLUTION_PROTO_FILE}
             COMMENT "Generating C++ code from cuopt_remote.proto"
@@ -486,7 +504,7 @@ if (NOT SKIP_GRPC_BUILD)
     set(GRPC_SERVICE_HDRS "${CMAKE_CURRENT_BINARY_DIR}/cuopt_remote_service.grpc.pb.h")
 
     # Routing proto (standalone VRP messages; imported by service proto)
-    set(ROUTING_PROTO_FILE "${PROTO_PATH_MANUAL}/cuopt_routing.proto")
+    set(ROUTING_PROTO_FILE "${PROTO_PATH_ROUTING}/cuopt_routing.proto")
     set(ROUTING_PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/cuopt_routing.pb.cc")
     set(ROUTING_PROTO_HDRS "${CMAKE_CURRENT_BINARY_DIR}/cuopt_routing.pb.h")
 
@@ -494,6 +512,7 @@ if (NOT SKIP_GRPC_BUILD)
             OUTPUT "${ROUTING_PROTO_SRCS}" "${ROUTING_PROTO_HDRS}"
             COMMAND ${_PROTOBUF_PROTOC}
             ARGS --cpp_out ${CMAKE_CURRENT_BINARY_DIR}
+            --proto_path ${PROTO_PATH_ROUTING}
             --proto_path ${PROTO_PATH_MANUAL}
             --proto_path ${PROTO_PATH_GEN}
             ${ROUTING_PROTO_FILE}
@@ -510,6 +529,7 @@ if (NOT SKIP_GRPC_BUILD)
             --plugin=protoc-gen-grpc=${_GRPC_CPP_PLUGIN_EXECUTABLE}
             --proto_path ${PROTO_PATH_MANUAL}
             --proto_path ${PROTO_PATH_GEN}
+            --proto_path ${PROTO_PATH_ROUTING}
             ${GRPC_PROTO_FILE}
             DEPENDS ${GRPC_PROTO_FILE} ${PROTO_FILE} ${DATA_PROTO_FILE} ${ROUTING_PROTO_FILE} ${ROUTING_SOLUTION_PROTO_FILE}
             COMMENT "Generating gRPC C++ code from cuopt_remote_service.proto"
@@ -559,24 +579,46 @@ if (DEFINE_ASSERT)
 endif ()
 
 if (NOT SKIP_GRPC_BUILD)
-    # Add gRPC mapper files and generated protobuf sources
-    set(GRPC_INFRA_FILES
+    # Generated protobuf sources. The whole wire protocol is generated in every
+    # gRPC build, routing messages included: cuopt_remote.proto embeds
+    # RoutingSolution, so these carry no dependency on the routing engine.
+    set(GRPC_PROTO_GENERATED_FILES
             ${ROUTING_SOLUTION_PROTO_SRCS}
             ${DATA_PROTO_SRCS}
             ${PROTO_SRCS}
             ${ROUTING_PROTO_SRCS}
             ${GRPC_PROTO_SRCS}
             ${GRPC_SERVICE_SRCS}
+    )
+
+    # LP/MIP arm: proto <-> mathematical_optimization, plus the shared client
+    # infrastructure (connection, chunking, polling, Cython shim).
+    set(GRPC_MATHOPT_FILES
             src/grpc/grpc_problem_mapper.cpp
             src/grpc/grpc_solution_mapper.cpp
             src/grpc/grpc_settings_mapper.cpp
             src/grpc/grpc_service_mapper.cpp
-            src/grpc/grpc_routing_problem_mapper.cpp
             src/grpc/client/grpc_client.cpp
             src/grpc/client/grpc_client_env.cpp
             src/grpc/client/cython_grpc_client.cpp
             src/grpc/client/solve_remote.cpp
     )
+
+    # Routing (VRP) arm: everything that depends on the routing engine. Kept as
+    # its own list so a routing-only gRPC client can be split out of the
+    # cuopt_grpc component without moving code around again.
+    set(GRPC_ROUTING_FILES
+            src/grpc/routing/grpc_routing_problem_mapper.cpp
+            src/grpc/routing/grpc_routing_settings_mapper.cpp
+            src/grpc/routing/grpc_routing_solution_mapper.cpp
+            src/grpc/routing/grpc_client_vrp.cpp
+            src/grpc/routing/cython_grpc_client_vrp.cpp
+    )
+
+    set(GRPC_INFRA_FILES ${GRPC_PROTO_GENERATED_FILES} ${GRPC_MATHOPT_FILES})
+    if (CUOPT_ENABLE_GRPC_ROUTING)
+        list(APPEND GRPC_INFRA_FILES ${GRPC_ROUTING_FILES})
+    endif ()
     list(APPEND CUOPT_SRC_FILES ${GRPC_INFRA_FILES})
 
     # Always keep NDEBUG defined for gRPC infrastructure files so that abseil

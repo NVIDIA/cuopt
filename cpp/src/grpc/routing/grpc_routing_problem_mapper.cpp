@@ -7,83 +7,18 @@
 
 #include "grpc_routing_problem_mapper.hpp"
 
-#include <cuopt/error.hpp>
+#include "grpc_routing_mapper_utils.hpp"
 
-#include <algorithm>
 #include <cstdint>
-#include <limits>
+#include <utility>
 
 namespace cuopt {
-namespace mathematical_optimization {
+namespace routing {
 
-namespace {
-
-template <typename T>
-void copy_repeated_to_vector(const google::protobuf::RepeatedField<T>& src, std::vector<T>& dst)
-{
-  dst.assign(src.begin(), src.end());
-}
-
-template <typename T>
-void copy_vector_to_repeated(const std::vector<T>& src, google::protobuf::RepeatedField<T>* dst)
-{
-  dst->Clear();
-  dst->Reserve(static_cast<int>(src.size()));
-  for (auto v : src) {
-    dst->Add(v);
-  }
-}
-
-void copy_u32_to_u8(const google::protobuf::RepeatedField<uint32_t>& src, std::vector<uint8_t>& dst)
-{
-  dst.clear();
-  dst.reserve(static_cast<size_t>(src.size()));
-  for (auto v : src) {
-    dst.push_back(static_cast<uint8_t>(v));
-  }
-}
-
-void copy_bool_to_u8(const google::protobuf::RepeatedField<bool>& src, std::vector<uint8_t>& dst)
-{
-  dst.clear();
-  dst.reserve(static_cast<size_t>(src.size()));
-  for (bool v : src) {
-    dst.push_back(v ? 1 : 0);
-  }
-}
-
-// Mirror grpc_server_types.hpp's format_cuopt_error without pulling that heavy
-// server header into this (client-linked) mapper: parse the structured
-// {"error_type","msg"} payload logic_error embeds down to a clean "type: msg"
-// so raw internal error detail is not sent to remote clients.
-std::string sanitize_error_message(const cuopt::logic_error& e)
-{
-  std::string s = e.what();
-  std::string msg;
-  auto pos = s.find("\"msg\": \"");
-  if (pos != std::string::npos) {
-    pos += 8;
-    auto end = s.rfind('"');
-    if (end > pos) { msg = s.substr(pos, end - pos); }
-  }
-  if (msg.empty()) { msg = s; }
-  return cuopt::error_to_string(e.get_error_type()) + ": " + msg;
-}
-
-cuopt::remote::RoutingSolutionStatus to_proto_status(cuopt::routing::solution_status_t s)
-{
-  using cuopt::routing::solution_status_t;
-  switch (s) {
-    case solution_status_t::SUCCESS: return cuopt::remote::ROUTING_SUCCESS;
-    case solution_status_t::INFEASIBLE: return cuopt::remote::ROUTING_INFEASIBLE;
-    case solution_status_t::TIMEOUT: return cuopt::remote::ROUTING_TIMEOUT;
-    case solution_status_t::EMPTY: return cuopt::remote::ROUTING_EMPTY;
-    case solution_status_t::ERROR: return cuopt::remote::ROUTING_ERROR;
-  }
-  return cuopt::remote::ROUTING_ERROR;
-}
-
-}  // namespace
+using grpc_map_detail::copy_bool_to_u8;
+using grpc_map_detail::copy_repeated_to_vector;
+using grpc_map_detail::copy_u32_to_u8;
+using grpc_map_detail::copy_vector_to_repeated;
 
 void map_proto_to_routing_problem(const cuopt::remote::RoutingProblem& pb,
                                   cuopt::routing::cpu_routing_problem_t& p)
@@ -297,88 +232,5 @@ void map_routing_problem_to_proto(const cuopt::routing::cpu_routing_problem_t& p
   }
 }
 
-void map_proto_to_routing_settings(const cuopt::remote::RoutingSolverSettings& pb,
-                                   cuopt::routing::solver_settings_t<int, float>& settings)
-{
-  // Honor an explicit time_limit (including 0); absence means "use solver default".
-  if (pb.has_time_limit()) { settings.set_time_limit(pb.time_limit()); }
-  settings.set_verbose_mode(pb.verbose());
-  settings.set_error_logging_mode(pb.error_logging());
-  if (!pb.dump_best_results_path().empty()) {
-    settings.dump_best_results(pb.dump_best_results_path(), pb.dump_best_results_interval());
-  }
-}
-
-void map_routing_settings_to_proto(const cuopt::routing::solver_settings_t<int, float>& settings,
-                                   cuopt::remote::RoutingSolverSettings* pb)
-{
-  pb->Clear();
-  // Only emit time_limit when the caller set it; the unset sentinel (f_t max)
-  // stays absent so the server derives its default instead of receiving a huge
-  // value. An explicit 0 is a real value and is forwarded.
-  if (settings.get_time_limit() != std::numeric_limits<float>::max()) {
-    pb->set_time_limit(settings.get_time_limit());
-  }
-  pb->set_verbose(settings.get_verbose_mode());
-  pb->set_error_logging(settings.get_error_logging_mode());
-  auto [interval, dump, path] = settings.get_dump_best_results();
-  if (dump) {
-    pb->set_dump_best_results_path(path);
-    pb->set_dump_best_results_interval(interval);
-  }
-}
-
-void map_routing_solution_to_proto(const cuopt::routing::assignment_t<int>& assignment,
-                                   const cuopt::routing::host_assignment_t<int>& host,
-                                   cuopt::remote::RoutingSolution* pb)
-{
-  pb->Clear();
-  copy_vector_to_repeated(host.route, pb->mutable_route());
-  copy_vector_to_repeated(host.stamp, pb->mutable_arrival_stamp());
-  copy_vector_to_repeated(host.truck_id, pb->mutable_truck_id());
-  copy_vector_to_repeated(host.locations, pb->mutable_locations());
-  copy_vector_to_repeated(host.node_types, pb->mutable_node_types());
-  copy_vector_to_repeated(host.unserviced_nodes, pb->mutable_unserviced_nodes());
-  copy_vector_to_repeated(host.accepted, pb->mutable_accepted());
-
-  pb->set_vehicle_count(assignment.get_vehicle_count());
-  pb->set_total_objective_value(assignment.get_total_objective());
-  for (auto const& [obj, value] : assignment.get_objectives()) {
-    (*pb->mutable_objective_values())[static_cast<int32_t>(obj)] = value;
-  }
-
-  pb->set_status(to_proto_status(assignment.get_status()));
-  pb->set_status_message(assignment.get_status_string());
-  if (assignment.get_status() == cuopt::routing::solution_status_t::ERROR) {
-    try {
-      pb->set_error_message(sanitize_error_message(assignment.get_error_status()));
-    } catch (...) {
-      pb->set_error_message("routing solve error");
-    }
-  }
-}
-
-void map_proto_to_routing_solution(const cuopt::remote::RoutingSolution& pb,
-                                   cuopt::routing::cpu_routing_solution_t& sol)
-{
-  copy_repeated_to_vector(pb.route(), sol.route);
-  copy_repeated_to_vector(pb.arrival_stamp(), sol.arrival_stamp);
-  copy_repeated_to_vector(pb.truck_id(), sol.truck_id);
-  copy_repeated_to_vector(pb.locations(), sol.locations);
-  copy_repeated_to_vector(pb.node_types(), sol.node_types);
-  copy_repeated_to_vector(pb.unserviced_nodes(), sol.unserviced_nodes);
-  copy_repeated_to_vector(pb.accepted(), sol.accepted);
-
-  sol.vehicle_count         = pb.vehicle_count();
-  sol.total_objective_value = pb.total_objective_value();
-  sol.objective_values.clear();
-  for (auto const& [obj, value] : pb.objective_values()) {
-    sol.objective_values[static_cast<int32_t>(obj)] = value;
-  }
-  sol.status         = static_cast<int32_t>(pb.status());
-  sol.status_message = pb.status_message();
-  sol.error_message  = pb.error_message();
-}
-
-}  // namespace mathematical_optimization
+}  // namespace routing
 }  // namespace cuopt

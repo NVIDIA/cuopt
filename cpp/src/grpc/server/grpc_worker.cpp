@@ -7,12 +7,17 @@
 
 #include "grpc_incumbent_proto.hpp"
 #include "grpc_pipe_serialization.hpp"
-#include "grpc_routing_problem_mapper.hpp"
 #include "grpc_server_types.hpp"
+
+#ifdef CUOPT_ENABLE_GRPC_ROUTING
+#include "routing/grpc_routing_problem_mapper.hpp"
+#include "routing/grpc_routing_settings_mapper.hpp"
+#include "routing/grpc_routing_solution_mapper.hpp"
 
 #include <cuopt/routing/cpu_routing_problem.hpp>
 #include <cuopt/routing/solve.hpp>
 #include <cuopt/routing/solver_settings.hpp>
+#endif
 
 #include <rmm/mr/cuda_memory_resource.hpp>
 #include <rmm/mr/pool_memory_resource.hpp>
@@ -25,9 +30,11 @@
 using cuopt::mathematical_optimization::map_proto_to_mip_settings;
 using cuopt::mathematical_optimization::map_proto_to_pdlp_settings;
 using cuopt::mathematical_optimization::map_proto_to_problem;
-using cuopt::mathematical_optimization::map_proto_to_routing_problem;
-using cuopt::mathematical_optimization::map_proto_to_routing_settings;
-using cuopt::mathematical_optimization::map_routing_solution_to_proto;
+#ifdef CUOPT_ENABLE_GRPC_ROUTING
+using cuopt::routing::map_proto_to_routing_problem;
+using cuopt::routing::map_proto_to_routing_settings;
+using cuopt::routing::map_routing_solution_to_proto;
+#endif
 
 namespace {
 
@@ -99,8 +106,10 @@ struct DeserializedJob {
   cuopt::mathematical_optimization::cpu_optimization_problem_t<int, double> problem;
   cuopt::mathematical_optimization::pdlp_solver_settings_t<int, double> lp_settings;
   cuopt::mathematical_optimization::mip_solver_settings_t<int, double> mip_settings;
+#ifdef CUOPT_ENABLE_GRPC_ROUTING
   cuopt::routing::cpu_routing_problem_t routing_problem;
   cuopt::routing::solver_settings_t<int, float> routing_settings;
+#endif
   bool enable_incumbents = true;
   bool is_vrp            = false;
   bool success           = false;
@@ -369,11 +378,16 @@ static DeserializedJob read_problem_from_pipe(int worker_id, const JobQueueEntry
       map_proto_to_mip_settings(req.settings(), dj.mip_settings);
       dj.enable_incumbents = req.has_enable_incumbents() ? req.enable_incumbents() : true;
     } else {
+#ifdef CUOPT_ENABLE_GRPC_ROUTING
       const auto& req = submit_request.vrp_request();
       SERVER_LOG_INFO("[Worker] IPC path: UNARY VRP (%zu bytes)", request_data.size());
       map_proto_to_routing_problem(req.problem(), dj.routing_problem);
       map_proto_to_routing_settings(req.settings(), dj.routing_settings);
       dj.is_vrp = true;
+#else
+      SERVER_LOG_ERROR("[Worker] VRP request received but this build has no routing support");
+      return dj;
+#endif
     }
   }
 
@@ -534,9 +548,14 @@ static SolveResult run_lp_solve(DeserializedJob& dj,
 
 // Run the routing solver on the GPU and embed the RoutingSolution proto in
 // ChunkedResultHeader (VRP results are typically small; no array chunking).
-static SolveResult run_vrp_solve(DeserializedJob& dj, raft::handle_t& handle)
+static SolveResult run_vrp_solve([[maybe_unused]] DeserializedJob& dj,
+                                 [[maybe_unused]] raft::handle_t& handle)
 {
   SolveResult sr;
+#ifndef CUOPT_ENABLE_GRPC_ROUTING
+  sr.error_message = "ValidationError: this server was built without routing support";
+  return sr;
+#else
   try {
     auto [view, device_data] = dj.routing_problem.to_device(&handle);
     auto assignment          = cuopt::routing::solve(view, dj.routing_settings);
@@ -556,6 +575,7 @@ static SolveResult run_vrp_solve(DeserializedJob& dj, raft::handle_t& handle)
     sr.error_message = std::string("RuntimeError: ") + e.what();
   }
   return sr;
+#endif
 }
 
 // Publish a solve result: claim a slot in the shared-memory result_queue
@@ -702,12 +722,14 @@ void worker_process(int worker_id)
     }
 
     if (deserialized.is_vrp || problem_category == cuopt::remote::VRP) {
+#ifdef CUOPT_ENABLE_GRPC_ROUTING
       SERVER_LOG_INFO("[Worker] VRP problem reconstructed: %d locations, %d vehicles, %d orders",
                       deserialized.routing_problem.num_locations,
                       deserialized.routing_problem.fleet_size,
                       deserialized.routing_problem.num_orders < 0
                         ? deserialized.routing_problem.num_locations
                         : deserialized.routing_problem.num_orders);
+#endif
     } else {
       SERVER_LOG_INFO("[Worker] Problem reconstructed: %d constraints, %d variables, %d nonzeros",
                       deserialized.problem.get_n_constraints(),

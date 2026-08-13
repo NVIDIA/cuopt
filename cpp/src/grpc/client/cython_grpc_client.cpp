@@ -13,6 +13,7 @@
 #include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
 #include <cuopt/mathematical_optimization/solver_settings.hpp>
 
+#include "cython_grpc_client_impl.hpp"
 #include "grpc_client.hpp"
 
 #include <chrono>
@@ -48,23 +49,6 @@ grpc_status_result_t map_status_result(
   out.result_size_bytes = in.result_size_bytes;
   return out;
 }
-
-bool is_in_flight(grpc_job_status_t status)
-{
-  return status == grpc_job_status_t::QUEUED || status == grpc_job_status_t::PROCESSING;
-}
-
-}  // namespace
-
-struct grpc_python_client_t::impl_t {
-  cuopt::mathematical_optimization::grpc_client_t client;
-  explicit impl_t(cuopt::mathematical_optimization::grpc_client_config_t config)
-    : client(std::move(config))
-  {
-  }
-};
-
-namespace {
 
 cuopt::mathematical_optimization::grpc_client_config_t make_config(
   const std::string& host, int port, const grpc_python_client_connect_options_t& options)
@@ -148,49 +132,6 @@ grpc_submit_result_t grpc_python_client_t::submit(
     out.is_mip        = false;
   }
 
-  return out;
-}
-
-grpc_submit_result_t grpc_python_client_t::submit_vrp(
-  cuopt::routing::cpu_routing_problem_t* problem,
-  cuopt::routing::solver_settings_t<int, float>* settings)
-{
-  grpc_submit_result_t out;
-  if (problem == nullptr || settings == nullptr) {
-    out.error_message = "problem and settings must not be null";
-    return out;
-  }
-  auto sub          = impl_->client.submit_vrp(*problem, *settings);
-  out.success       = sub.success;
-  out.error_message = sub.error_message;
-  out.job_id        = sub.job_id;
-  out.is_mip        = false;
-  return out;
-}
-
-grpc_vrp_result_outcome_t grpc_python_client_t::result_vrp(const std::string& job_id)
-{
-  grpc_vrp_result_outcome_t out;
-
-  // Mirror result(): surface a structured "still running" signal instead of a
-  // generic GetResult failure when a caller polls result_vrp on an in-flight job.
-  auto st = status(job_id);
-  if (!st.success) {
-    out.error_message = st.error_message;
-    return out;
-  }
-  if (is_in_flight(st.status)) {
-    out.not_ready = true;
-    return out;
-  }
-
-  auto remote = impl_->client.get_vrp_result(job_id);
-  if (!remote.success) {
-    out.error_message = remote.error_message;
-    return out;
-  }
-  out.success  = true;
-  out.solution = std::move(remote.solution);
   return out;
 }
 

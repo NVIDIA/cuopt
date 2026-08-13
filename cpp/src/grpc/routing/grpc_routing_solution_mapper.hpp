@@ -9,26 +9,13 @@
 
 #include <cuopt/routing/assignment.hpp>
 #include <cuopt/routing/cpu_routing_problem.hpp>
-#include <cuopt/routing/solver_settings.hpp>
 
-#include <cuopt_routing.pb.h>
 #include <cuopt_routing_solution.pb.h>  // RoutingSolution / RoutingSolutionStatus
 
 namespace cuopt {
-namespace mathematical_optimization {
+namespace routing {
 
-void map_proto_to_routing_problem(const cuopt::remote::RoutingProblem& pb,
-                                  cuopt::routing::cpu_routing_problem_t& problem);
-
-void map_routing_problem_to_proto(const cuopt::routing::cpu_routing_problem_t& problem,
-                                  cuopt::remote::RoutingProblem* pb);
-
-void map_proto_to_routing_settings(const cuopt::remote::RoutingSolverSettings& pb,
-                                   cuopt::routing::solver_settings_t<int, float>& settings);
-
-void map_routing_settings_to_proto(const cuopt::routing::solver_settings_t<int, float>& settings,
-                                   cuopt::remote::RoutingSolverSettings* pb);
-
+// Server direction: serialize a solved assignment into a RoutingSolution proto.
 void map_routing_solution_to_proto(const cuopt::routing::assignment_t<int>& assignment,
                                    const cuopt::routing::host_assignment_t<int>& host,
                                    cuopt::remote::RoutingSolution* pb);
@@ -37,5 +24,5 @@ void map_routing_solution_to_proto(const cuopt::routing::assignment_t<int>& assi
 void map_proto_to_routing_solution(const cuopt::remote::RoutingSolution& pb,
                                    cuopt::routing::cpu_routing_solution_t& sol);
 
-}  // namespace mathematical_optimization
+}  // namespace routing
 }  // namespace cuopt

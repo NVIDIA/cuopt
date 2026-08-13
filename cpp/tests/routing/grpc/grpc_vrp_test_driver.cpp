@@ -16,7 +16,7 @@
  *     --json datasets/cuopt_service_data/cuopt_problem_data.json
  */
 
-#include "grpc_routing_problem_mapper.hpp"
+#include "routing/grpc_routing_problem_mapper.hpp"
 
 #include <cuopt/routing/cpu_routing_problem.hpp>
 
@@ -218,7 +218,7 @@ int main(int argc, char** argv)
     auto* vrp = submit_req.mutable_vrp_request();
     vrp->mutable_header()->set_version(1);
     vrp->mutable_header()->set_problem_category(cuopt::remote::VRP);
-    cuopt::mathematical_optimization::map_routing_problem_to_proto(problem, vrp->mutable_problem());
+    cuopt::routing::map_routing_problem_to_proto(problem, vrp->mutable_problem());
     vrp->mutable_settings()->set_time_limit(time_limit);
     vrp->mutable_settings()->set_verbose(verbose);
 
