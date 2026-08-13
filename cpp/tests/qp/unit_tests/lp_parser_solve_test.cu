@@ -206,16 +206,11 @@ End
                           {4.0, 2.0});
 }
 
-// Regression test for issue #1598: l2_dual_residual dropped the Q*x term,
-// so an optimal QP solution reported a large spurious dual residual instead
-// of a value near zero. Reuses the qp_diagonal_only problem above.
-//
-// Minimize x1^2 + 4 x2^2 - 8 x1 - 16 x2 s.t. x1 + x2 >= 5, 0 <= x1, x2 <= 10.
-// Optimum (4, 2), obj = -32.
+// Dual residual check for QP.
 TEST(lp_parser_solve, qp_diagonal_only_dual_residual)
 {
   raft::handle_t handle;
-  auto problem = io::read_lp_from_string<int, double>(R"LP(
+  auto problem  = io::read_lp_from_string<int, double>(R"LP(
 Minimize
   obj: -8 x1 - 16 x2 + [ 2 x1 ^ 2 + 8 x2 ^ 2 ] / 2
 Subject To
