@@ -277,9 +277,9 @@
  * range from the problem selectors so a problem selector passed to a solution accessor, or the
  * reverse, is rejected rather than silently read.
  *
- * LP attributes require an LP solution and MIP attributes require a MIP solution; the accessors
- * return CUOPT_INVALID_ARGUMENT otherwise. Use CUOPT_ATTR_IS_MIP on the originating problem to
- * tell which set applies.
+ * Which of these a solution carries depends on the class of problem that produced it; the
+ * accessors return CUOPT_INVALID_ARGUMENT for one that does not apply. Use CUOPT_ATTR_IS_MIP on
+ * the originating problem to determine the class.
  */
 #define CUOPT_SOLUTION_ATTR_LP_PRIMAL_RESIDUAL               300
 #define CUOPT_SOLUTION_ATTR_LP_DUAL_RESIDUAL                 301

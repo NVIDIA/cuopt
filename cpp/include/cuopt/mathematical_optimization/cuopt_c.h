@@ -1115,13 +1115,19 @@ cuopt_int_t cuOptGetReducedCosts(cuOptSolution solution, cuopt_float_t* reduced_
 /* -------------------------------------------------------------------------- */
 
 /*
- * Solver statistics are read as scalar attributes, using the CUOPT_SOLUTION_ATTR_* selectors in
- * constants.h. New statistics can then be added as constants rather than as new exported
- * functions, which keeps the ABI stable for existing callers.
+ * A solution attribute is a read-only value describing a completed solve, selected by one of the
+ * CUOPT_SOLUTION_ATTR_* integer constants in constants.h and passed as cuopt_int_t. The
+ * attributes available here are solver statistics: residuals, gap, iteration and node counts,
+ * presolve time, and violation magnitudes.
  *
- * LP and MIP statistics come from different solvers, so an LP selector requires an LP solution
- * and a MIP selector requires a MIP solution. Query CUOPT_ATTR_IS_MIP on the originating problem
- * to decide which set applies.
+ * Attributes are distinct from parameters. A parameter is an input, set on a cuOptSolverSettings
+ * before solving with cuOptSetParameter and read back with cuOptGetParameter. An attribute is an
+ * output, read from a solved cuOptSolution, or from a cuOptOptimizationProblem in the case of the
+ * problem attributes further below.
+ *
+ * Not every attribute applies to every solution: which statistics a solve produces depends on the
+ * class of problem it was given. An attribute that does not apply returns CUOPT_INVALID_ARGUMENT.
+ * Use CUOPT_ATTR_IS_MIP on the originating problem to determine the class.
  */
 
 /** @brief Get a scalar integer solution attribute (a CUOPT_SOLUTION_ATTR_* with an integer
@@ -1135,7 +1141,7 @@ cuopt_int_t cuOptGetReducedCosts(cuOptSolution solution, cuopt_float_t* reduced_
  *
  * @return A status code indicating success or failure. Returns CUOPT_INVALID_ARGUMENT if the
  *  selector is unknown, does not have an integer value, or does not apply to this solution's
- *  solver.
+ *  problem class.
  */
 cuopt_int_t cuOptGetSolutionIntAttribute(cuOptSolution solution,
                                          cuopt_int_t attribute,
@@ -1152,7 +1158,7 @@ cuopt_int_t cuOptGetSolutionIntAttribute(cuOptSolution solution,
  *
  * @return A status code indicating success or failure. Returns CUOPT_INVALID_ARGUMENT if the
  *  selector is unknown, does not have a floating-point value, or does not apply to this
- *  solution's solver.
+ *  solution's problem class.
  */
 cuopt_int_t cuOptGetSolutionFloatAttribute(cuOptSolution solution,
                                            cuopt_int_t attribute,
