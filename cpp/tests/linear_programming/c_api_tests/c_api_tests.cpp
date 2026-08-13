@@ -1089,6 +1089,25 @@ TEST(c_api, problem_attributes_names)
 
 namespace {
 
+// Destroys the solution however the test leaves scope. The checks below use ASSERT, which
+// returns early on failure, so an explicit destroy at the end of the test would be skipped
+// exactly when a test fails and leak the solution into the rest of the binary.
+class scoped_solution_t {
+ public:
+  explicit scoped_solution_t(cuOptSolution solution) : solution_(solution) {}
+  ~scoped_solution_t()
+  {
+    if (solution_ != nullptr) { cuOptDestroySolution(&solution_); }
+  }
+  scoped_solution_t(const scoped_solution_t&)            = delete;
+  scoped_solution_t& operator=(const scoped_solution_t&) = delete;
+
+  cuOptSolution get() const { return solution_; }
+
+ private:
+  cuOptSolution solution_;
+};
+
 // Builds and solves a two-variable problem, integral when `mip` is set.
 cuOptSolution solve_tiny_problem(bool mip)
 {
@@ -1132,8 +1151,10 @@ cuOptSolution solve_tiny_problem(bool mip)
 
 TEST(c_api, lp_solution_attributes)
 {
-  cuOptSolution solution = solve_tiny_problem(false);
-  ASSERT_NE(solution, nullptr);
+  cuOptSolution raw_solution = solve_tiny_problem(false);
+  ASSERT_NE(raw_solution, nullptr);
+  scoped_solution_t scoped(raw_solution);
+  cuOptSolution solution = scoped.get();
 
   // Seed with NaN rather than a numeric sentinel: the solver cannot legitimately report NaN,
   // so "still NaN" means the accessor never wrote the value. A numeric sentinel would be
@@ -1179,14 +1200,14 @@ TEST(c_api, lp_solution_attributes)
             CUOPT_INVALID_ARGUMENT);
   EXPECT_EQ(cuOptGetSolutionFloatAttribute(nullptr, CUOPT_SOLUTION_ATTR_LP_GAP, &as_float),
             CUOPT_INVALID_ARGUMENT);
-
-  cuOptDestroySolution(&solution);
 }
 
 TEST(c_api, mip_solution_attributes)
 {
-  cuOptSolution solution = solve_tiny_problem(true);
-  ASSERT_NE(solution, nullptr);
+  cuOptSolution raw_solution = solve_tiny_problem(true);
+  ASSERT_NE(raw_solution, nullptr);
+  scoped_solution_t scoped(raw_solution);
+  cuOptSolution solution = scoped.get();
 
   // Violations are magnitudes, so they cannot be negative.
   for (cuopt_int_t attribute : {CUOPT_SOLUTION_ATTR_MIP_PRESOLVE_TIME,
@@ -1212,6 +1233,4 @@ TEST(c_api, mip_solution_attributes)
   cuopt_float_t as_float = 0;
   EXPECT_EQ(cuOptGetSolutionFloatAttribute(solution, CUOPT_SOLUTION_ATTR_LP_GAP, &as_float),
             CUOPT_INVALID_ARGUMENT);
-
-  cuOptDestroySolution(&solution);
 }
