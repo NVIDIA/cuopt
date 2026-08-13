@@ -1,6 +1,6 @@
 ---
 name: cuopt-developer
-version: "26.08.00"
+version: "26.10.00"
 description: Modify, build, test, debug, and contribute to NVIDIA cuOpt (C++/CUDA, Python, server, CI). Use for solver internals, PRs, DCO, and code conventions.
 license: Apache-2.0
 metadata:
@@ -264,6 +264,14 @@ When implementing or debugging **VRP dimensions** (constraints, objectives, forw
 - **`references/vrp_skills.md`** — architecture contracts, required interfaces, and implementation checklist.
 
 Read it **before** adding a new dimension or changing combine semantics.
+
+## Budgeting a solver stage and attributing regressions
+
+When adding or tuning a **limit on a stage that shares the solve's time budget** (presolve, probing, cut generation, heuristics), or when a benchmark regression looks like it came from one, read:
+
+- **`references/stage_budgets.md`** — why a deterministic work counter does not bound wall time, how to size a limit so the stage concludes before its ceiling, and the ordered checks that attribute a regression to a budget before tuning its value.
+
+Run the attribution checks **before** changing a limit's value — the common failure is tuning a limit that was never what bound.
 
 ## Numerical issues in non-routing solver internals
 

@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -232,5 +232,3 @@ INSTANTIATE_TEST_SUITE_P(level1_retail, retail_float_test_t, ::testing::ValuesIn
 }  // namespace test
 }  // namespace routing
 }  // namespace cuopt
-
-CUOPT_TEST_PROGRAM_MAIN()
