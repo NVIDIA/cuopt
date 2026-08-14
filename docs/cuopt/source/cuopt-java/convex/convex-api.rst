@@ -42,7 +42,7 @@ High-Level Problem
 
 ``Problem`` also exposes ``getVariables``, ``getVariable``, ``getConstraints``,
 ``getConstraint``, ``getNumVariables``, ``getNumConstraints``,
-``getNumNonZeros``, ``isMIP``, ``isSolved``, ``getStatus``,
+``getNumNonZeros``, ``isMIP``, ``getStatus``,
 ``getObjective``, ``getObjectiveValue``, and ``getSolveTime``. ``getObjective``
 returns the common ``ObjectiveExpression`` type; ``isQuadratic`` distinguishes
 the concrete linear and quadratic forms without an ``Object`` downcast.

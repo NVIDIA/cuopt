@@ -7,6 +7,7 @@ package com.nvidia.cuopt.mathematicalprogramming;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -94,7 +95,9 @@ final class ProblemIntegrationTest {
   private static void assertSolution(CaseSpec testCase, Problem problem, Solution solution) {
     assertEquals(testCase.hasIntegerVariables(), solution.isMIP());
     assertEquals(testCase.expectedCategory(), solution.getProblemCategory());
-    assertTrue(problem.isSolved());
+    // getStatus is the way to tell a solved problem from an unsolved one: it stays
+    // NO_TERMINATION until a solve populates it.
+    assertNotEquals(TerminationStatus.NO_TERMINATION, problem.getStatus());
     assertEquals(solution.getTerminationStatus(), problem.getStatus());
     assertTrue(
         Double.isNaN(solution.getSolveTime()) || solution.getSolveTime() >= 0.0,

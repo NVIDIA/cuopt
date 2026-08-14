@@ -19,7 +19,6 @@ public final class Problem implements AutoCloseable {
   private QuadraticExpression quadraticObjective = null;
   private ObjectiveSense objectiveSense = ObjectiveSense.MINIMIZE;
   private boolean objectiveSet = false;
-  private boolean solved = false;
   private TerminationStatus status = TerminationStatus.NO_TERMINATION;
   private double objectiveValue = Double.NaN;
   private double solveTime = Double.NaN;
@@ -72,7 +71,6 @@ public final class Problem implements AutoCloseable {
     this.objectiveSense = sense;
     this.objectiveSet = true;
     syncVariableObjectiveCoefficients(expression);
-    solved = false;
     resetSolvedValues();
     return this;
   }
@@ -91,7 +89,6 @@ public final class Problem implements AutoCloseable {
     this.objectiveSense = sense;
     this.objectiveSet = true;
     syncVariableObjectiveCoefficients(expression.getLinearExpression());
-    solved = false;
     resetSolvedValues();
     return this;
   }
@@ -140,10 +137,6 @@ public final class Problem implements AutoCloseable {
 
   public boolean isMIP() {
     return variables.stream().anyMatch(v -> v.getVariableType() != VariableType.CONTINUOUS);
-  }
-
-  public boolean isSolved() {
-    return solved;
   }
 
   public TerminationStatus getStatus() {
@@ -362,7 +355,6 @@ public final class Problem implements AutoCloseable {
   public void resetSolvedValues() {
     variables.forEach(Variable::resetSolvedValues);
     constraints.forEach(Constraint::resetSolvedValues);
-    solved = false;
     status = TerminationStatus.NO_TERMINATION;
     objectiveValue = Double.NaN;
     solveTime = Double.NaN;
@@ -610,7 +602,6 @@ public final class Problem implements AutoCloseable {
       constraint.setSlack(constraint.computeSlack());
     }
     objectiveValue = solution.getPrimalObjective();
-    solved = true;
   }
 
   private void addMIPStarts(SolverSettings settings) {
