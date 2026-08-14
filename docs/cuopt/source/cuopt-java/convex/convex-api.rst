@@ -86,9 +86,6 @@ The enums used in problem construction are:
   ``VariableType.SEMI_CONTINUOUS``; and
 * ``ProblemCategory`` for the native problem classification.
 
-``ProblemCategory.IP`` is deprecated. Java normalizes the legacy native IP
-category to ``ProblemCategory.MIP``.
-
 ``Constraint`` provides ``getSense``, ``getRHS``, ``getCoefficient``,
 ``getLinearExpression``, ``getQuadraticExpression``, ``isQuadratic``,
 ``computeSlack``, ``getSlack``, and ``getDualValue``.
