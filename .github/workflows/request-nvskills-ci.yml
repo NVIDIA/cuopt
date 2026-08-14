@@ -21,6 +21,7 @@ permissions:
 
 jobs:
   require-nvskills-ci:
+    name: "NVSkills CI (non-blocking)"
     if: github.event_name == 'pull_request'
     permissions:
       contents: read
