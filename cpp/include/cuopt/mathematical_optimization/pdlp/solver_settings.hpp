@@ -298,6 +298,8 @@ class pdlp_solver_settings_t {
   i_t dualize{-1};
   i_t ordering{-1};
   i_t initial_perturbation{-1};
+  i_t remove_perturbation{-1};
+  i_t primal_pricing{0};
   i_t barrier_dual_initial_point{-1};
   i_t postsolve_info{-1};
   // Ruiz equilibration for QCQP (barrier) scaling: -1 automatic (row/column

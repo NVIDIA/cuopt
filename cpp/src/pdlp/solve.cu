@@ -598,6 +598,8 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   dual_simplex_settings.iteration_limit      = settings.iteration_limit;
   dual_simplex_settings.concurrent_halt      = settings.concurrent_halt;
   dual_simplex_settings.initial_perturbation = settings.initial_perturbation;
+  dual_simplex_settings.remove_perturbation  = settings.remove_perturbation;
+  dual_simplex_settings.primal_pricing       = settings.primal_pricing;
   if (dual_simplex_settings.concurrent_halt != nullptr) {
     // Don't show the dual simplex log in concurrent mode. Show the PDLP log instead
     dual_simplex_settings.log.log = false;
@@ -653,6 +655,7 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   primal_settings.time_limit      = settings.time_limit;
   primal_settings.iteration_limit = settings.iteration_limit;
   primal_settings.concurrent_halt = settings.concurrent_halt;
+  primal_settings.primal_pricing  = settings.primal_pricing;
   if (primal_settings.concurrent_halt != nullptr) {
     // Don't show the primal simplex log in concurrent mode. Show the PDLP log instead
     primal_settings.log.log = false;

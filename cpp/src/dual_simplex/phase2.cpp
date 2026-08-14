@@ -464,7 +464,30 @@ void initial_perturbation(const lp_problem_t<i_t, f_t>& lp,
     max_abs_obj_coeff = std::max(max_abs_obj_coeff, std::abs(lp.objective[j]));
   }
 
-  const f_t dual_tol = settings.dual_tol;
+  // Dampen large costs 
+  if (max_abs_obj_coeff > 100.0) {
+    max_abs_obj_coeff = std::sqrt(std::sqrt(max_abs_obj_coeff));
+  }
+  // Ensure a minimum perturbation even for tiny-cost problems
+  if (max_abs_obj_coeff < 1.0) {
+    max_abs_obj_coeff = 1.0;
+  }
+
+  // If few boxed variables, cap max_abs_obj_coeff at 1.0
+  i_t num_boxed = 0;
+  for (i_t j = 0; j < n; ++j) {
+    if (lp.lower[j] > -inf && lp.upper[j] < inf && lp.lower[j] != lp.upper[j]) {
+      num_boxed++;
+    }
+  }
+  if (static_cast<f_t>(num_boxed) / n < 0.01) {
+    max_abs_obj_coeff = std::min(max_abs_obj_coeff, f_t(1.0));
+  }
+
+  const f_t perturbation_base = 5e-7 * max_abs_obj_coeff;
+
+  settings.log.printf("Perturbation debug: max_abs_obj_coeff=%e (dampened), perturbation_base=%e, n=%d, num_boxed=%d\n",
+                      max_abs_obj_coeff, perturbation_base, n, num_boxed);
 
   objective.resize(n);
   f_t sum_perturb = 0.0;
@@ -476,22 +499,26 @@ void initial_perturbation(const lp_problem_t<i_t, f_t>& lp,
 
     const f_t lower = lp.lower[j];
     const f_t upper = lp.upper[j];
-    if (vstatus[j] == variable_status_t::NONBASIC_FIXED ||
-        vstatus[j] == variable_status_t::NONBASIC_FREE || lower == upper ||
-        lower == -inf && upper == inf) {
+    // Skip truly fixed variables and free variables
+    if (lower == upper || (lower == -inf && upper == inf)) {
+      continue;
+    }
+    // Skip basic variables
+    if (vstatus[j] == variable_status_t::BASIC) {
       continue;
     }
 
     const f_t rand_val = random.random();
-    const f_t perturb =
-      (1e-5 * std::abs(obj) + 1e-7 * max_abs_obj_coeff + 10 * dual_tol) * (1.0 + rand_val);
+    const f_t cost_factor = std::min(std::abs(obj) + 1.0, max_abs_obj_coeff + 1.0);
+    const f_t perturb  = (1.0 + rand_val) * cost_factor * perturbation_base;
 
-    if (vstatus[j] == variable_status_t::NONBASIC_LOWER || lower > -inf && upper < inf && obj > 0) {
+    if (vstatus[j] == variable_status_t::NONBASIC_LOWER ||
+        vstatus[j] == variable_status_t::NONBASIC_FIXED) {
+      // NONBASIC_FIXED from phase 1 for boxed variables — treat as at lower bound
       objective[j] = obj + perturb;
       sum_perturb += perturb;
       num_perturb++;
-    } else if (vstatus[j] == variable_status_t::NONBASIC_UPPER ||
-               lower > -inf && upper < inf && obj < 0) {
+    } else if (vstatus[j] == variable_status_t::NONBASIC_UPPER) {
       objective[j] = obj - perturb;
       sum_perturb += perturb;
       num_perturb++;
@@ -1541,6 +1568,40 @@ i_t check_steepest_edge_norms(const simplex_solver_settings_t<i_t, f_t>& setting
     }
   }
   return 0;
+}
+
+// Remove the perturbation from a variable that is leaving the basis. Since it
+// is nonbasic, its cost affects only its own reduced cost. If removing the
+// perturbation would violate dual feasibility, apply just enough perturbation
+// to maintain feasibility (for one-sided variables) or leave it unperturbed
+// (for boxed variables, which can be flipped).
+template <typename i_t, typename f_t>
+void remove_leaving_perturbation(const lp_problem_t<i_t, f_t>& lp,
+                                 const simplex_solver_settings_t<i_t, f_t>& settings,
+                                 i_t leaving_index,
+                                 std::vector<f_t>& z,
+                                 std::vector<f_t>& objective)
+{
+  const f_t perturb = objective[leaving_index] - lp.objective[leaving_index];
+  if (perturb == 0.0) return;
+
+  z[leaving_index] -= perturb;
+  objective[leaving_index] = lp.objective[leaving_index];
+
+  // Restore dual feasibility if needed
+  const f_t lower = lp.lower[leaving_index];
+  const f_t upper = lp.upper[leaving_index];
+  if (upper == inf && lower > -inf && z[leaving_index] < -settings.tight_tol) {
+    // At lower bound, needs z >= 0
+    const f_t correction = -z[leaving_index];
+    z[leaving_index] = 0.0;
+    objective[leaving_index] += correction;
+  } else if (lower == -inf && upper < inf && z[leaving_index] > settings.tight_tol) {
+    // At upper bound, needs z <= 0
+    const f_t correction = z[leaving_index];
+    z[leaving_index] = 0.0;
+    objective[leaving_index] -= correction;
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -3657,6 +3718,9 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
       basic_list, entering_index, scaled_delta_xB_sparse, delta_x, phase2_work_estimate);
 
     timers.start_timer(phase2_work_estimate + ft.work_estimate());
+    if (settings.remove_perturbation == 1) {
+      phase2::remove_leaving_perturbation(lp, settings, leaving_index, z, objective);
+    }
     f_t sum_perturb = 0.0;
     phase2::compute_perturbation(
       lp, settings, delta_z_indices, z, objective, sum_perturb, phase2_work_estimate);

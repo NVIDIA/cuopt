@@ -221,6 +221,14 @@ lp_status_t solve_linear_program_with_advanced_basis(
                             presolved_lp.A.col_start[presolved_lp.num_cols]);
   std::vector<f_t> column_scales;
   std::vector<f_t> row_scales_simplex;
+  // Compute max |c_j| before scaling for perturbation calibration
+  if (settings.unscaled_max_abs_obj_coeff < 0.0) {
+    f_t max_obj = 0.0;
+    for (i_t j = 0; j < presolved_lp.num_cols; ++j) {
+      max_obj = std::max(max_obj, std::abs(presolved_lp.objective[j]));
+    }
+    const_cast<simplex_solver_settings_t<i_t, f_t>&>(settings).unscaled_max_abs_obj_coeff = max_obj;
+  }
   {
     raft::common::nvtx::range scope_scaling("DualSimplex::scaling");
     scaling(presolved_lp, settings, lp, column_scales, row_scales_simplex);

@@ -54,6 +54,8 @@
 #define CUOPT_CUDSS_DETERMINISTIC                  "cudss_deterministic"
 #define CUOPT_PRESOLVE                             "presolve"
 #define CUOPT_INITIAL_PERTURBATION                 "initial_perturbation"
+#define CUOPT_REMOVE_PERTURBATION                  "remove_perturbation"
+#define CUOPT_PRIMAL_PRICING                       "primal_pricing"
 #define CUOPT_MIP_PROBING                          "mip_probing"
 #define CUOPT_DUAL_POSTSOLVE                       "dual_postsolve"
 #define CUOPT_MIP_DETERMINISM_MODE                 "mip_determinism_mode"

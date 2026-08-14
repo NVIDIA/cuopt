@@ -78,11 +78,14 @@ struct simplex_solver_settings_t {
       dualize(-1),
       ordering(-1),
       initial_perturbation(-1),
+      remove_perturbation(-1),
+      primal_pricing(0),
       barrier_dual_initial_point(-1),
       postsolve_info(-1),
       qcqp_ruiz_equilibration(-1),
       check_Q(false),
       crossover(false),
+      unscaled_max_abs_obj_coeff(-1.0),
       refactor_frequency(100),
       iteration_log_frequency(1000),
       first_iteration_log(2),
@@ -173,12 +176,15 @@ struct simplex_solver_settings_t {
   i_t dualize;    // -1 automatic, 0 to not dualize, 1 to dualize
   i_t ordering;   // -1 automatic, 0 to use nested dissection, 1 to use AMD
   i_t initial_perturbation;        // -1 automatic, 0 to not perturb, 1 to perturb
+  i_t remove_perturbation;         // -1 automatic, 0 disabled, 1 enabled
+  i_t primal_pricing;              // 0 Dantzig (default), 1 Devex
   i_t barrier_dual_initial_point;  // -1 automatic, 0 to use Lustig, Marsten, and Shanno initial
                                    // point, 1 to use initial point form dual least squares problem
   i_t postsolve_info;              // -1 automatic (disabled), 0 disabled, 1 enabled
   i_t qcqp_ruiz_equilibration;     // -1 automatic (imbalance heuristic), 0 disabled, 1 enabled
   bool check_Q;                    // true to check if Q is positive semidefinite
   bool crossover;                  // true to do crossover, false to not
+  f_t unscaled_max_abs_obj_coeff;  // max |c_j| before scaling (-1 = not set, compute from lp)
   i_t refactor_frequency;          // number of basis updates before refactorization
   i_t iteration_log_frequency;     // number of iterations between log updates
   i_t first_iteration_log;         // number of iterations to log at beginning of solve

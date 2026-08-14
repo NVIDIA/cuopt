@@ -267,6 +267,54 @@ i_t phase2_pricing(const lp_problem_t<i_t, f_t>& lp,
 }
 
 template <typename i_t, typename f_t>
+i_t devex_pricing(const lp_problem_t<i_t, f_t>& lp,
+                  const std::vector<f_t>& z,
+                  const std::vector<f_t>& devex_weight,
+                  const std::vector<i_t>& nonbasic_list,
+                  const std::vector<variable_status_t>& vstatus,
+                  f_t dual_tol,
+                  i_t& direction,
+                  i_t& basic_entering,
+                  f_t& dual_inf,
+                  f_t& work_estimate)
+{
+  const i_t m        = lp.num_rows;
+  const i_t n        = lp.num_cols;
+  i_t entering_index = -1;
+  f_t max_score      = 0.0;
+  dual_inf           = 0.0;
+  for (i_t k = 0; k < n - m; ++k) {
+    const i_t j = nonbasic_list[k];
+    if (vstatus[j] == variable_status_t::NONBASIC_FIXED) { continue; }
+    f_t infeas = 0.0;
+    i_t dir    = 0;
+    if ((vstatus[j] == variable_status_t::NONBASIC_LOWER ||
+         vstatus[j] == variable_status_t::NONBASIC_FREE) &&
+        z[j] < -dual_tol) {
+      infeas = -z[j];
+      dir    = 1;
+    } else if ((vstatus[j] == variable_status_t::NONBASIC_UPPER ||
+                vstatus[j] == variable_status_t::NONBASIC_FREE) &&
+               z[j] > dual_tol) {
+      infeas = z[j];
+      dir    = -1;
+    }
+    if (infeas > 0.0) {
+      dual_inf += infeas;
+      const f_t score = (infeas * infeas) / devex_weight[j];
+      if (score > max_score) {
+        max_score      = score;
+        basic_entering = k;
+        entering_index = j;
+        direction      = dir;
+      }
+    }
+  }
+  work_estimate += 7 * (n - m);
+  return entering_index;
+}
+
+template <typename i_t, typename f_t>
 f_t primal_infeasibility(const lp_problem_t<i_t, f_t>& lp,
                          const simplex_solver_settings_t<i_t, f_t>& settings,
                          const std::vector<variable_status_t>& vstatus,
@@ -811,6 +859,7 @@ primal_status_t primal_phase2_with_advanced_basis(
   std::vector<variable_status_t> incoming_vstatus = vstatus;
   work_estimate += 2.0 * n;
   settings.log.printf("Primal Simplex\n");
+  settings.log.printf("Pricing: %s\n", settings.primal_pricing == 1 ? "Devex" : "Dantzig");
   // Nonbasics must be on their bounds before forming B x_B = b - A_N x_N.
   // Setting them after the solve leaves ||A*x - b|| large whenever x_N != 0.
   set_primal_variables_on_bounds(lp, settings, vstatus, x, work_estimate);
@@ -893,7 +942,9 @@ primal_status_t primal_phase2_with_advanced_basis(
   sparse_vector_t<i_t, f_t> etilde(m, 0);
   std::vector<f_t> delta_z(n);
   std::vector<f_t> delta_x(n);
-  work_estimate += 2 * m + 2 * n;
+  std::vector<f_t> devex_weight(n, 1.0);
+  i_t num_bad_devex_weight = 0;
+  work_estimate += 2 * m + 3 * n;
 
   f_t dual_inf = init_dual_inf;
   f_t obj      = compute_objective(lp, x);
@@ -922,15 +973,29 @@ primal_status_t primal_phase2_with_advanced_basis(
     timers.start_timer(work_estimate + basis_update.work_estimate());
     i_t nonbasic_entering = -1;
     i_t direction;
-    i_t entering_index = phase2_pricing(lp,
-                                        z,
-                                        nonbasic_list,
-                                        vstatus,
-                                        pricing_dual_tol,
-                                        direction,
-                                        nonbasic_entering,
-                                        dual_inf,
-                                        work_estimate);
+    i_t entering_index;
+    if (settings.primal_pricing == 1) {
+      entering_index = devex_pricing(lp,
+                                     z,
+                                     devex_weight,
+                                     nonbasic_list,
+                                     vstatus,
+                                     pricing_dual_tol,
+                                     direction,
+                                     nonbasic_entering,
+                                     dual_inf,
+                                     work_estimate);
+    } else {
+      entering_index = phase2_pricing(lp,
+                                      z,
+                                      nonbasic_list,
+                                      vstatus,
+                                      pricing_dual_tol,
+                                      direction,
+                                      nonbasic_entering,
+                                      dual_inf,
+                                      work_estimate);
+    }
     timers.pricing_time += timers.stop_timer(work_estimate + basis_update.work_estimate());
     if (entering_index == -1) {
       if (phase == 2) {
@@ -1249,6 +1314,37 @@ primal_status_t primal_phase2_with_advanced_basis(
         update_y(dual_step_length, delta_y, y, work_estimate);
         update_z(dual_step_length, nonbasic_list, entering_index, delta_z, z, work_estimate);
         timers.update_duals_time += timers.stop_timer(work_estimate + basis_update.work_estimate());
+
+        // Devex weight update (only when using Devex pricing)
+        if (settings.primal_pricing == 1) {
+          const f_t pivot    = scaled_delta_xB[basic_leaving];
+          const f_t pivot_sq = pivot * pivot;
+          const f_t w_enter  = devex_weight[entering_index];
+          // Exact pivot weight for entering variable is 1/pivot_sq
+          // Check if stored weight was a bad approximation
+          const f_t exact_pivot_weight = 1.0 / pivot_sq;
+          if (w_enter > 3.0 * exact_pivot_weight) { num_bad_devex_weight++; }
+          // Update weights for all nonbasic columns using the pivot row (delta_z)
+          // After compute_delta_z and update_z, delta_z[j] still holds the raw
+          // pivot row entries (update_z multiplies by dual_step_length into z, not delta_z)
+          for (i_t k = 0; k < n - m; ++k) {
+            const i_t j        = nonbasic_list[k];
+            const f_t a_j      = delta_z[j];
+            const f_t candidate = (a_j * a_j / pivot_sq) * w_enter;
+            if (candidate > devex_weight[j]) { devex_weight[j] = candidate; }
+          }
+          // Weight for leaving variable (now nonbasic)
+          devex_weight[leaving_index] = std::max(1.0 / pivot_sq, f_t(1e-4));
+          // Weight for entering variable (now basic) — reset
+          devex_weight[entering_index] = 1.0;
+          work_estimate += 5 * (n - m);
+          // Reset framework if too many bad weights
+          if (num_bad_devex_weight > 3) {
+            std::fill(devex_weight.begin(), devex_weight.end(), f_t(1.0));
+            num_bad_devex_weight = 0;
+          }
+        }
+
         timers.start_timer(work_estimate + basis_update.work_estimate());
         should_refactor = basis_update.update(utilde_sparse, etilde, basic_leaving) == 1;
         timers.lu_update_time += timers.stop_timer(work_estimate + basis_update.work_estimate());
