@@ -1,13 +1,23 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-from libc.stdint cimport int32_t, uint8_t
-from libcpp cimport bool
+# Single set of declarations for the one C++ client class, cuopt::cython::
+# grpc_python_client_t, which carries both the LP/MIP and the routing arms.
+# These used to be declared twice -- once under grpc/linear_programming and once
+# under grpc/routing -- and the two copies had already drifted (routing omitted
+# is_mip and most methods, and used bool where LP used bint).
+
+from libc.stdint cimport int32_t, int64_t, uint8_t
 from libcpp.map cimport map as cpp_map
 from libcpp.memory cimport unique_ptr
 from libcpp.string cimport string
 from libcpp.vector cimport vector
 
+from cuopt.linear_programming.data_model.data_model cimport data_model_view_t
+from cuopt.linear_programming.solver.solver cimport solver_ret_t
+from cuopt.linear_programming.solver_settings.solver_settings cimport (
+    solver_settings_t as lp_solver_settings_t,
+)
 
 cdef extern from "cuopt/routing/cpu_routing_problem.hpp" namespace "cuopt::routing":  # noqa
     cdef cppclass cpu_cost_matrix_t:
@@ -93,14 +103,29 @@ cdef extern from "cuopt/routing/cpu_routing_problem.hpp" namespace "cuopt::routi
 
 
 cdef extern from "cuopt/routing/solver_settings.hpp" namespace "cuopt::routing":  # noqa
-    cdef cppclass solver_settings_t[i_t, f_t]:
-        solver_settings_t() except +
+    # Aliased: cuopt::routing::solver_settings_t and the LP one above share a
+    # name but are unrelated types.
+    # bint, not libcpp bool: cimporting bool into this .pxd would shadow the
+    # Python builtin inside grpc_client.pyx, which the LP arm calls.
+    cdef cppclass routing_solver_settings_t "cuopt::routing::solver_settings_t" [i_t, f_t]:  # noqa
+        routing_solver_settings_t() except +
         void set_time_limit(f_t seconds) except +
-        void set_verbose_mode(bool verbose) except +
-        void set_error_logging_mode(bool logging) except +
+        void set_verbose_mode(bint verbose) except +
+        void set_error_logging_mode(bint logging) except +
 
 
-cdef extern from "cuopt/grpc/cython_grpc_client.hpp" namespace "cuopt::cython":  # noqa
+cdef extern from "cuopt/grpc/cython_grpc_client.hpp" namespace "cuopt::cython":
+    ctypedef enum grpc_python_tls_mode_t "cuopt::cython::grpc_python_tls_mode_t":
+        ENV "cuopt::cython::grpc_python_tls_mode_t::ENV"
+        DISABLED "cuopt::cython::grpc_python_tls_mode_t::DISABLED"
+        EXPLICIT "cuopt::cython::grpc_python_tls_mode_t::EXPLICIT"
+
+    cdef cppclass grpc_python_client_connect_options_t:
+        grpc_python_tls_mode_t tls_mode
+        string tls_root_certs
+        string tls_client_cert
+        string tls_client_key
+
     ctypedef enum grpc_job_status_t "cuopt::cython::grpc_job_status_t":
         QUEUED "cuopt::cython::grpc_job_status_t::QUEUED"
         PROCESSING "cuopt::cython::grpc_job_status_t::PROCESSING"
@@ -110,9 +135,10 @@ cdef extern from "cuopt/grpc/cython_grpc_client.hpp" namespace "cuopt::cython": 
         NOT_FOUND "cuopt::cython::grpc_job_status_t::NOT_FOUND"
 
     cdef cppclass grpc_submit_result_t:
-        bool success
+        bint success
         string error_message
         string job_id
+        bint is_mip
 
     cdef cppclass grpc_status_result_t:
         bint success
@@ -121,18 +147,75 @@ cdef extern from "cuopt/grpc/cython_grpc_client.hpp" namespace "cuopt::cython": 
         string message
         long long result_size_bytes
 
+    cdef cppclass grpc_result_outcome_t:
+        bint not_ready
+        bint success
+        string error_message
+        unique_ptr[solver_ret_t] solution
+
     cdef cppclass grpc_vrp_result_outcome_t:
-        bool not_ready
-        bool success
+        bint not_ready
+        bint success
         string error_message
         cpu_routing_solution_t solution
 
+    cdef cppclass grpc_logs_result_t:
+        bint success
+        string error_message
+        vector[string] lines
+
+    cdef cppclass grpc_incumbent_entry_t:
+        int64_t index
+        double objective
+        vector[double] assignment
+
+    cdef cppclass grpc_incumbents_result_t:
+        bint success
+        string error_message
+        vector[grpc_incumbent_entry_t] incumbents
+        int64_t next_index
+        bint job_complete
+
+    ctypedef int (*grpc_log_line_callback_t)(
+        const char* line, size_t line_len, int job_complete, void* user_data
+    ) noexcept nogil
+
     cdef cppclass grpc_python_client_t:
         grpc_python_client_t(const string& host, int port) except +
-        bool connect(string& error_out) except +
+        grpc_python_client_t(
+            const string& host,
+            int port,
+            const grpc_python_client_connect_options_t& options,
+        ) except +
+        bint connect(string& error_out) except +
+        string last_error()
+
+        # Shared job control
+        grpc_status_result_t status(const string& job_id) except +
+        grpc_status_result_t wait(const string& job_id, int timeout_seconds) except +
+        bint cancel(const string& job_id, string& error_out) except +
+        bint delete_job(const string& job_id, string& error_out) except +
+
+        # LP / MIP arm
+        grpc_submit_result_t submit(
+            data_model_view_t[int, double]* data_model,
+            lp_solver_settings_t[int, double]* settings,
+            bint enable_incumbents,
+        ) except +
+        grpc_result_outcome_t result(const string& job_id) except +
+        grpc_logs_result_t fetch_logs(const string& job_id, long long from_byte) except +
+        bint stream_logs(
+            const string& job_id,
+            long long from_byte,
+            grpc_log_line_callback_t callback,
+            void* user_data,
+        ) except +
+        grpc_incumbents_result_t fetch_incumbents(
+            const string& job_id, int64_t from_index, int max_count
+        ) except +
+
+        # Routing arm
         grpc_submit_result_t submit_vrp(
             cpu_routing_problem_t* problem,
-            solver_settings_t[int, float]* settings) except +
-        grpc_status_result_t wait(const string& job_id, int timeout_seconds) except +
+            routing_solver_settings_t[int, float]* settings) except +
         grpc_vrp_result_outcome_t result_vrp(const string& job_id) except +
-        bool delete_job(const string& job_id, string& error_out) except +
