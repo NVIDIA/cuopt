@@ -113,5 +113,5 @@ Relaxing and Inspecting a MIP
 ``Problem.relax()`` returns a separate continuous problem while preserving
 variable names, bounds, objective, and constraints. This is useful for
 inspecting the LP relaxation without changing the original MIP. The original
-problem can also be inspected through ``getCSR``, ``getQCSR``, and
+problem can also be inspected through ``getConstraintMatrix``, ``getQuadraticObjectiveMatrix``, and
 ``getIncumbentValues``.

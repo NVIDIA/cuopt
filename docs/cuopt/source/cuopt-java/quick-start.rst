@@ -143,7 +143,7 @@ MPS I/O
 .. code-block:: java
 
    try (Problem problem = Problem.read("problem.mps")) {
-     problem.writeMPS("roundtrip.mps");
+     problem.write("roundtrip.mps");
    }
 
 Lifecycle

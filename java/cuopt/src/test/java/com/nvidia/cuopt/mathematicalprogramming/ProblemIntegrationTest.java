@@ -46,7 +46,7 @@ final class ProblemIntegrationTest {
   private static void assertProblemConstruction(CaseSpec testCase, Problem problem) {
     assertEquals(testCase.numVariables, problem.getNumVariables());
     assertEquals(testCase.problemConstraintCount(), problem.getNumConstraints());
-    assertEquals(testCase.linearProblemConstraintCount(), problem.getCSR().getRowOffsets().length - 1);
+    assertEquals(testCase.linearProblemConstraintCount(), problem.getConstraintMatrix().getRowOffsets().length - 1);
     assertEquals(testCase.objectiveSense, problem.getObjectiveSense());
     assertEquals(testCase.objectiveOffset, problem.getObjectiveConstant(), 0.0);
     assertEquals(testCase.problemName, problem.getName());
@@ -61,7 +61,7 @@ final class ProblemIntegrationTest {
     }
 
     if (!testCase.isRanged()) {
-      CSRMatrix matrix = problem.getCSR();
+      CSRMatrix matrix = problem.getConstraintMatrix();
       assertArrayEquals(testCase.rowOffsets, matrix.getRowOffsets());
       assertArrayEquals(testCase.columnIndices, matrix.getColumnIndices());
       assertDoubleArrayEquals(testCase.values, matrix.getValues(), 0.0);
@@ -75,7 +75,7 @@ final class ProblemIntegrationTest {
 
     if (testCase.hasQuadraticObjective()) {
       assertTrue(problem.getObjective().isQuadratic());
-      CSRMatrix matrix = problem.getQCSR();
+      CSRMatrix matrix = problem.getQuadraticObjectiveMatrix();
       assertArrayEquals(testCase.quadraticObjectiveRowOffsets, matrix.getRowOffsets());
       assertArrayEquals(testCase.quadraticObjectiveColumnIndices, matrix.getColumnIndices());
       assertDoubleArrayEquals(testCase.quadraticObjectiveValues, matrix.getValues(), 0.0);

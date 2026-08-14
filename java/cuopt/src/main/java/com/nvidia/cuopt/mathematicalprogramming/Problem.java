@@ -158,7 +158,8 @@ public final class Problem implements AutoCloseable {
     return solveTime;
   }
 
-  public CSRMatrix getCSR() {
+  /** The linear constraint matrix in CSR form. Quadratic constraints are not included. */
+  public CSRMatrix getConstraintMatrix() {
     return buildLinearConstraintMatrix().matrix;
   }
 
@@ -233,12 +234,14 @@ public final class Problem implements AutoCloseable {
     }
   }
 
-  public void writeMPS(String path) {
+  /** Writes the problem to {@code path}. The format follows the file extension. */
+  public void write(String path) {
     try (NativeProblem nativeProblem = toNativeProblem()) {
-      nativeProblem.writeMPS(path);
+      nativeProblem.write(path);
     }
   }
 
+  /** Reads a problem from {@code path}. The parser is chosen from the file extension. */
   public static Problem read(String path) {
     return read(path, false);
   }
@@ -345,15 +348,7 @@ public final class Problem implements AutoCloseable {
     return problem;
   }
 
-  public static Problem readMPS(String path) {
-    return readMPS(path, false);
-  }
 
-  public static Problem readMPS(String path, boolean fixedMPSFormat) {
-    try (NativeProblem nativeProblem = NativeProblem.parseMPS(path, fixedMPSFormat)) {
-      return fromNativeProblem(nativeProblem);
-    }
-  }
 
   @Override
   public void close() {
@@ -481,7 +476,8 @@ public final class Problem implements AutoCloseable {
     return List.copyOf(result);
   }
 
-  public CSRMatrix getQCSR() {
+  /** The quadratic objective matrix Q in CSR form, or null when the objective is linear. */
+  public CSRMatrix getQuadraticObjectiveMatrix() {
     if (quadraticObjective == null) {
       return null;
     }
@@ -685,7 +681,7 @@ public final class Problem implements AutoCloseable {
           return expression.eq(lowerBound);
         }
         throw new IllegalArgumentException(
-            "Ranged constraints are not supported by Problem.read/readMPS: row "
+            "Ranged constraints are not supported by Problem.read: row "
                 + row
                 + " has lower bound "
                 + lowerBound

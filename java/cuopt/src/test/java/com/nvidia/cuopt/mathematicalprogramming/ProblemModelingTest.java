@@ -48,7 +48,7 @@ final class ProblemModelingTest {
     assertFalse(objective.isQuadratic());
     assertEquals(50.0, objective.getConstant());
 
-    CSRMatrix csr = problem.getCSR();
+    CSRMatrix csr = problem.getConstraintMatrix();
     assertArrayEquals(new int[] {0, 2, 4}, csr.getRowOffsets());
     assertArrayEquals(new int[] {0, 1, 0, 1}, csr.getColumnIndices());
     assertArrayEquals(new double[] {2.0, 4.0, 3.0, 2.0}, csr.getValues());
@@ -151,7 +151,7 @@ final class ProblemModelingTest {
     problem.setObjective(quadratic, ObjectiveSense.MINIMIZE);
     assertTrue(problem.getObjective().isQuadratic());
     assertEquals(quadratic, problem.getObjective());
-    CSRMatrix qcsr = problem.getQCSR();
+    CSRMatrix qcsr = problem.getQuadraticObjectiveMatrix();
     assertArrayEquals(new int[] {0, 1, 2}, qcsr.getRowOffsets());
     assertArrayEquals(new int[] {0, 1}, qcsr.getColumnIndices());
     assertArrayEquals(new double[] {2.0, 3.0}, qcsr.getValues());

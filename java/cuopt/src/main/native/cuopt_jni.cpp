@@ -344,34 +344,6 @@ Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getFloatSize(JNIEnv*, 
 }
 
 extern "C" JNIEXPORT jlong JNICALL
-Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_parseMPSProblem(JNIEnv* env,
-                                                                          jclass,
-                                                                          jstring path,
-                                                                          jboolean fixed_mps_format)
-{
-  const auto filename = get_string(env, path);
-  auto problem = std::make_unique<cuopt::mathematical_optimization::problem_and_stream_view_t>(
-    cuopt::mathematical_optimization::get_memory_backend_type());
-  try {
-    auto data_model = cuopt::mathematical_optimization::io::read_mps<int, double>(
-      filename, static_cast<bool>(fixed_mps_format));
-    cuopt::mathematical_optimization::populate_from_mps_data_model(problem->get_problem(),
-                                                                   data_model);
-    auto* raw_problem = problem.get();
-    remember_jni_owned_problem(raw_problem);
-    problem.release();
-    return from_handle(raw_problem);
-  } catch (const std::exception& e) {
-    const cuopt_int_t status =
-      std::string(e.what()).find("Error opening input file") != std::string::npos
-        ? CUOPT_MPS_FILE_ERROR
-        : CUOPT_MPS_PARSE_ERROR;
-    throw_cuopt_exception(env, status, std::string("parseMPSProblem failed: ") + e.what());
-    return 0;
-  }
-}
-
-extern "C" JNIEXPORT jlong JNICALL
 Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_readProblemWithFormat(
   JNIEnv* env, jclass, jstring path, jboolean fixed_mps_format)
 {

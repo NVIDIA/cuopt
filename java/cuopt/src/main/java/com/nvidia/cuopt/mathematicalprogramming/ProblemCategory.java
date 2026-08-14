@@ -7,10 +7,15 @@ package com.nvidia.cuopt.mathematicalprogramming;
 /** Problem categories returned by cuOpt solutions. */
 public enum ProblemCategory {
   LP(0),
-  MIP(1),
-  /** @deprecated Integer problems are categorized as {@link #MIP}. */
-  @Deprecated(since = "26.10")
-  IP(2);
+  MIP(1);
+
+  /**
+   * The engine still reports a third category for a problem whose variables are all discrete (see
+   * problem_category_t::IP). It is not surfaced here, because the distinction carries no meaning
+   * for a caller that has already been told the problem is not an LP, and it is folded into
+   * {@link #MIP} instead.
+   */
+  private static final int NATIVE_ALL_INTEGER = 2;
 
   private final int nativeValue;
 
@@ -23,7 +28,7 @@ public enum ProblemCategory {
   }
 
   static ProblemCategory fromNative(int value) {
-    if (value == IP.nativeValue) {
+    if (value == NATIVE_ALL_INTEGER) {
       return MIP;
     }
     for (ProblemCategory category : values()) {

@@ -56,10 +56,6 @@ final class NativeProblem implements AutoCloseable {
     return new NativeProblem(NativeCuOpt.readProblemWithFormat(path, fixedMPSFormat));
   }
 
-  static NativeProblem parseMPS(String path, boolean fixedMPSFormat) {
-    return new NativeProblem(NativeCuOpt.parseMPSProblem(path, fixedMPSFormat));
-  }
-
   long handle() {
     nativeHandle.requireOpen();
     return nativeHandle.handle;
@@ -250,7 +246,7 @@ final class NativeProblem implements AutoCloseable {
     }
   }
 
-  void writeMPS(String path) {
+  void write(String path) {
     NativeCuOpt.writeProblem(handle(), path);
   }
 

@@ -129,20 +129,21 @@ final class NativeIntegrationTest {
   }
 
   @Test
-  void writesAndReadsMPSThroughReadAndParseMPS() throws Exception {
+  void writesAndReadsProblemFiles() throws Exception {
     NativeTestSupport.assumeNativeLibrary();
     NativeTestSupport.assumeCudaDriverAvailable();
     Path file = Files.createTempFile("cuopt-java-roundtrip-", ".mps");
     try {
       try (Problem source = tinyLP()) {
-        source.writeMPS(file.toString());
+        source.write(file.toString());
       }
-      try (Problem read = Problem.read(file.toString(), false);
-          Problem parsed = Problem.readMPS(file.toString(), false)) {
+      // The extension drives the parser; the boolean overload forces fixed-format MPS.
+      try (Problem read = Problem.read(file.toString());
+          Problem fixedFormat = Problem.read(file.toString(), false)) {
         assertEquals(2, read.getNumVariables());
         assertEquals(1, read.getNumConstraints());
-        assertEquals(read.getNumVariables(), parsed.getNumVariables());
-        assertEquals(read.getNumConstraints(), parsed.getNumConstraints());
+        assertEquals(read.getNumVariables(), fixedFormat.getNumVariables());
+        assertEquals(read.getNumConstraints(), fixedFormat.getNumConstraints());
       }
     } finally {
       Files.deleteIfExists(file);

@@ -110,10 +110,10 @@ Reading and Writing MPS/QPS
 
    try (Problem problem = Problem.read("problem.mps")) {
      System.out.println("Variables: " + problem.getNumVariables());
-     problem.writeMPS("roundtrip.mps");
+     problem.write("roundtrip.mps");
    }
 
-   try (Problem fixed = Problem.readMPS("fixed-format.mps", true)) {
+   try (Problem fixed = Problem.read("fixed-format.mps", true)) {
      // Use fixed-format parsing explicitly.
    }
 

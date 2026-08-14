@@ -30,10 +30,11 @@ High-Level Problem
      - Set a quadratic objective with optional linear and constant terms.
    * - ``solve()`` / ``solve(SolverSettings)``
      - Solve the problem and return a ``Solution``.
-   * - ``getCSR()`` / ``getQCSR()``
-     - Inspect the linear or quadratic objective matrix in CSR form.
-   * - ``writeMPS(String)`` / ``read(String)`` / ``readMPS(String)``
-     - Write or load MPS/QPS-backed problems. The fixed-format overloads accept a boolean flag.
+   * - ``getConstraintMatrix()`` / ``getQuadraticObjectiveMatrix()``
+     - Inspect the linear constraint matrix, or the quadratic objective matrix Q, in CSR form.
+   * - ``read(String)`` / ``write(String)``
+     - Load or write a problem. The format follows the file extension; a fixed-format MPS
+       overload of ``read`` accepts a boolean flag.
    * - ``update()`` / ``updateConstraint(...)`` / ``updateObjective(...)``
      - Update problem state and reset solved values where appropriate.
    * - ``relax()``
@@ -133,9 +134,9 @@ MIP-only solution fields are documented in :doc:`../mip/mip-api`.
 MPS and Errors
 --------------
 
-``Problem.read`` and ``Problem.readMPS`` support MPS/QPS parsing, including a
-fixed-format boolean overload. ``writeMPS`` writes a problem for round trips
-or use by another cuOpt interface.
+``Problem.read`` loads a problem, choosing the parser from the file extension,
+and takes a boolean overload to force fixed-format MPS. ``Problem.write``
+writes a problem for round trips or use by another cuOpt interface.
 
 Native failures are reported as ``CuOptException`` with a cuOpt status code
 available through ``getStatusCode``. Accessing an LP-only field on a MIP

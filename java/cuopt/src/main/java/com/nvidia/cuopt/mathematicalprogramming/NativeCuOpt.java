@@ -19,7 +19,6 @@ final class NativeCuOpt {
   private NativeCuOpt() {}
 
   static native int getFloatSize();
-  static native long parseMPSProblem(String path, boolean fixedMPSFormat);
   static native long readProblemWithFormat(String path, boolean fixedMPSFormat);
 
   static native long createSolverSettings();
