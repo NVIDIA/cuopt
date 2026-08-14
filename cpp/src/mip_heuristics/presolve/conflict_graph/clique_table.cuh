@@ -9,6 +9,7 @@
 #include <dual_simplex/user_problem.hpp>
 
 #include <memory>
+#include <utilities/macros.cuh>
 #include <utilities/timer.hpp>
 
 #include <algorithm>
@@ -174,6 +175,12 @@ struct clique_table_t {
   clique_table_t& operator=(clique_table_t&&) = delete;
 
   std::unordered_set<i_t> get_adj_set_of_var(i_t var_idx) const;
+  // Yields the conflict partners of `literal`, also as literals, until `fn` returns false. A
+  // partner is yielded once per clique it shares with `literal`, so a caller that cannot tolerate
+  // repeats has to filter them. Nothing is materialized: a caller that wants only a few partners
+  // returns false early and pays for those only.
+  template <typename callable_t>
+  void for_each_conflict_partner(i_t literal, callable_t&& fn) const;
   i_t get_degree_of_var(i_t var_idx);
   bool check_adjacency(i_t var_idx1, i_t var_idx2) const;
   bool empty() const
@@ -200,6 +207,43 @@ struct clique_table_t {
   const i_t max_clique_size_for_extension;
   typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances;
 };
+
+template <typename i_t, typename f_t>
+template <typename callable_t>
+void clique_table_t<i_t, f_t>::for_each_conflict_partner(i_t literal, callable_t&& fn) const
+{
+  cuopt_assert(literal >= 0 && literal < 2 * n_variables, "literal out of range");
+  const i_t complement =
+    (literal >= n_variables) ? (literal - n_variables) : (literal + n_variables);
+  if (!fn(complement)) { return; }
+
+  for (i_t clique_idx : var_clique_first.slice(literal)) {
+    for (i_t member : first[clique_idx]) {
+      if (member != literal && !fn(member)) { return; }
+    }
+  }
+
+  for (i_t addtl_idx : var_clique_addtl.slice(literal)) {
+    const auto& addtl = addtl_cliques[addtl_idx];
+    if (addtl.vertex_idx == literal) {
+      // literal is the extension vertex; its new neighbors are the base suffix
+      const auto& base = first[addtl.clique_idx];
+      cuopt_assert(addtl.start_pos_on_clique >= 0 &&
+                     static_cast<size_t>(addtl.start_pos_on_clique) <= base.size(),
+                   "extension start position out of range");
+      for (auto it = base.begin() + addtl.start_pos_on_clique; it != base.end(); ++it) {
+        if (*it != literal && !fn(*it)) { return; }
+      }
+    } else if (!fn(addtl.vertex_idx)) {
+      // literal is a base member; the only new edge is to the extension vertex
+      return;
+    }
+  }
+
+  for (i_t member : small_clique_adj.slice(literal)) {
+    if (member != literal && !fn(member)) { return; }
+  }
+}
 
 // Builds the conflict-graph clique table for `problem`. The base cliques are
 // published to `clique_table_out` before the (optional, signal-gated) extension

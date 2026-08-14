@@ -145,8 +145,11 @@ void local_search_t<i_t, f_t>::stop_cpufj_scratch_threads()
 {
   if (omp_get_num_threads() < CUOPT_MIP_FJ_REQUIRED_THREAD_COUNT) return;
 
+  for (auto& cpu_fj : scratch_cpu_fj) {
+    cuopt_assert(cpu_fj != nullptr, "scratch climbers must have been created");
+    cpu_fj->halted = true;
+  }
   for (size_t i = 0; i < scratch_cpu_fj.size(); ++i) {
-    scratch_cpu_fj[i]->halted = true;
 #pragma omp taskwait depend(in : *scratch_cpu_fj[i])  // Wait for each scratch CPU FJ task to finish
   }
 

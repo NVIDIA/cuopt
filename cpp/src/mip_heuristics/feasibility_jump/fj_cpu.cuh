@@ -44,6 +44,8 @@ struct fj_cpu_climber_t {
                                                      ADD_INSTRUMENTED(h_is_binary_variable),
                                                      ADD_INSTRUMENTED(h_objective_vars),
                                                      ADD_INSTRUMENTED(h_binary_indices),
+                                                     ADD_INSTRUMENTED(h_related_variables),
+                                                     ADD_INSTRUMENTED(h_related_variables_offsets),
                                                      ADD_INSTRUMENTED(h_tabu_nodec_until),
                                                      ADD_INSTRUMENTED(h_tabu_noinc_until),
                                                      ADD_INSTRUMENTED(h_tabu_lastdec),
@@ -83,6 +85,12 @@ struct fj_cpu_climber_t {
   ins_vector<i_t> h_is_binary_variable;
   ins_vector<i_t> h_objective_vars;
   ins_vector<i_t> h_binary_indices;
+  ins_vector<i_t> h_related_variables;
+  ins_vector<i_t> h_related_variables_offsets;
+  // Conflict graph of the problem this climber was built from, null when presolve built none. Held
+  // by shared_ptr and snapshotted alongside the host copies above because it is indexed by that
+  // problem's variable ids.
+  std::shared_ptr<const clique_table_t<i_t, f_t>> clique_table;
 
   ins_vector<i_t> h_tabu_nodec_until;
   ins_vector<i_t> h_tabu_noinc_until;
@@ -133,6 +141,12 @@ struct fj_cpu_climber_t {
 
   std::vector<bool> var_bitmap;
   ins_vector<i_t> iter_mtm_vars;
+
+  // Scratch reused by the binary 2-opt search, which runs at every local minimum
+  std::vector<i_t> two_opt_target_cstrs;
+  std::vector<i_t> two_opt_first_vars;
+  std::vector<std::pair<i_t, f_t>> two_opt_partners;
+  std::vector<std::pair<i_t, f_t>> two_opt_row_deltas;
 
   i_t mtm_viol_samples{25};
   i_t mtm_sat_samples{15};

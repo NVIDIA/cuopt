@@ -288,6 +288,9 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
   raft::common::nvtx::range fun_scope("run_presolve");
   CUOPT_LOG_INFO("\nRunning cuOpt presolve");
   timer_t presolve_timer(time_limit);
+  // Presolve remaps variable ids, so a conflict graph from an earlier presolve of this problem no
+  // longer describes it. It is rebuilt at the end of this function.
+  problem_ptr->clique_table.reset();
 
   auto term_crit = ls.constraint_prop.bounds_update.solve(*problem_ptr);
   if (ls.constraint_prop.bounds_update.infeas_constraints_count > 0) {
@@ -328,32 +331,24 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
   problem_ptr->related_vars_time_limit = context.settings.heuristic_params.related_vars_time_limit;
   if (!global_timer.check_time_limit()) { trivial_presolve(*problem_ptr, remap_cache_ids); }
   if (!problem_ptr->empty && !check_bounds_sanity(*problem_ptr)) { return false; }
-  // if (!presolve_timer.check_time_limit() && !context.settings.heuristics_only &&
-  //     !problem_ptr->empty) {
-  //   f_t time_limit_for_clique_table = std::min(3., presolve_timer.remaining_time() / 5);
-  //   timer_t clique_timer(time_limit_for_clique_table);
-  //   simplex::user_problem_t<i_t, f_t> host_problem(problem_ptr->handle_ptr);
-  //   problem_ptr->get_host_user_problem(host_problem);
-  //   std::shared_ptr<clique_table_t<i_t, f_t>> clique_table;
-  //   constexpr bool modify_problem_with_cliques = false;
-  //   find_initial_cliques(host_problem,
-  //                        context.settings.tolerances,
-  //                        &clique_table,
-  //                        clique_timer,
-  //                        modify_problem_with_cliques,
-  //                        nullptr);
-  //   if (modify_problem_with_cliques) {
-  //     problem_ptr->set_constraints_from_host_user_problem(host_problem);
-  //     cuopt_assert(host_problem.lower.size() == static_cast<size_t>(problem_ptr->n_variables),
-  //                  "host lower bound size mismatch");
-  //     cuopt_assert(host_problem.upper.size() == static_cast<size_t>(problem_ptr->n_variables),
-  //                  "host upper bound size mismatch");
-  //     std::vector<i_t> all_var_indices(problem_ptr->n_variables);
-  //     std::iota(all_var_indices.begin(), all_var_indices.end(), 0);
-  //     problem_ptr->update_variable_bounds(all_var_indices, host_problem.lower,
-  //     host_problem.upper); trivial_presolve(*problem_ptr, remap_cache_ids);
-  //   }
-  // }
+  // Build the conflict graph once the problem has its final shape: it is indexed by post-presolve
+  // variable ids. Consumed by the CPU FJ compound binary move and, through solver.cu, by the B&B
+  // clique and zero-half cut separators. The problem itself is left untouched.
+  if (!problem_ptr->empty && !presolve_timer.check_time_limit() &&
+      !global_timer.check_time_limit()) {
+    const f_t clique_time_limit = std::min({(f_t)3.,
+                                            (f_t)presolve_timer.remaining_time(),
+                                            (f_t)global_timer.remaining_time()});
+    timer_t clique_timer(clique_time_limit);
+    simplex::user_problem_t<i_t, f_t> host_problem(problem_ptr->handle_ptr);
+    problem_ptr->get_host_user_problem(host_problem);
+    find_initial_cliques(
+      host_problem, context.settings.tolerances, problem_ptr->clique_table, clique_timer);
+    // Publishing an empty table would make B&B skip its own build and lose clique cuts entirely.
+    if (problem_ptr->clique_table != nullptr && problem_ptr->clique_table->empty()) {
+      problem_ptr->clique_table.reset();
+    }
+  }
   // May overconstrain if Papilo presolve has been run before
   if (context.settings.presolver == presolver_t::None) {
     if (!problem_ptr->empty) {
@@ -392,19 +387,17 @@ void diversity_manager_t<i_t, f_t>::generate_quick_feasible_solution()
   ls.generate_fast_solution(solution, sol_timer);
   if (solution.get_feasible()) {
     population.run_solution_callbacks(solution);
-    initial_sol_vector.emplace_back(std::move(solution));
     problem_ptr->handle_ptr->sync_stream();
-    solution_t<i_t, f_t> searched_sol(initial_sol_vector.back());
+    solution_t<i_t, f_t> searched_sol(solution);
     ls_config_t<i_t, f_t> ls_config;
     run_local_search(searched_sol, population.weights, sol_timer, ls_config);
     population.run_solution_callbacks(searched_sol);
-    initial_sol_vector.emplace_back(std::move(searched_sol));
-    auto& feas_sol = initial_sol_vector.back().get_feasible()
-                       ? initial_sol_vector.back()
-                       : initial_sol_vector[initial_sol_vector.size() - 2];
+    auto& feas_sol = searched_sol.get_feasible() ? searched_sol : solution;
     CUOPT_LOG_INFO("Generated fast solution in %f seconds with objective %f",
                    timer.elapsed_time(),
                    feas_sol.get_user_objective());
+    population.add_solution(std::move(searched_sol));
+    population.add_solution(std::move(solution));
   }
   problem_ptr->handle_ptr->sync_stream();
 }

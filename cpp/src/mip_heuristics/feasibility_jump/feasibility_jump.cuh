@@ -75,6 +75,12 @@ struct fj_hyper_parameters_t {
   double small_move_tabu_threshold = 1e-6;
   int small_move_tabu_tenure       = 4;
 
+  // binary 2-opt caps: violated rows sampled per local minimum, candidate variables taken from each
+  // sampled row, and total candidate pairs scored
+  int two_opt_max_rows     = 4;
+  int two_opt_max_row_vars = 256;
+  int two_opt_max_pairs    = 256;
+
   // load-balancing related settings
   int old_codepath_total_var_to_relvar_ratio_threshold = 200;
   int load_balancing_codepath_min_varcount             = 3200;

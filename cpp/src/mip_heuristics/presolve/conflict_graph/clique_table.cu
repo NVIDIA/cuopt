@@ -314,34 +314,10 @@ template <typename i_t, typename f_t>
 std::unordered_set<i_t> clique_table_t<i_t, f_t>::get_adj_set_of_var(i_t var_idx) const
 {
   std::unordered_set<i_t> adj_set;
-
-  // First-clique edges: every member of each first-clique containing var_idx.
-  for (i_t clique_idx : var_clique_first.slice(var_idx)) {
-    const auto& c = first[clique_idx];
-    adj_set.insert(c.begin(), c.end());
-  }
-
-  // Addtl-clique edges.
-  for (i_t addtl_idx : var_clique_addtl.slice(var_idx)) {
-    const auto& a = addtl_cliques[addtl_idx];
-    if (a.vertex_idx == var_idx) {
-      // var_idx is the extension vertex; new neighbors are the base suffix.
-      const auto& base = first[a.clique_idx];
-      adj_set.insert(base.begin() + a.start_pos_on_clique, base.end());
-    } else {
-      // var_idx is a base member; only new edge is to the extension vertex.
-      adj_set.insert(a.vertex_idx);
-    }
-  }
-
-  for (i_t adj_var : small_clique_adj.slice(var_idx)) {
-    adj_set.insert(adj_var);
-  }
-
-  // Add the complement of var_idx to the adjacency set
-  i_t complement_idx = (var_idx >= n_variables) ? (var_idx - n_variables) : (var_idx + n_variables);
-  adj_set.insert(complement_idx);
-  adj_set.erase(var_idx);
+  for_each_conflict_partner(var_idx, [&](i_t partner) {
+    adj_set.insert(partner);
+    return true;
+  });
   return adj_set;
 }
 
