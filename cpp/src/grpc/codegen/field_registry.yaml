@@ -559,6 +559,20 @@ pdlp_settings:
       field_num: 33
       type: int32
       optional: true
+  - cudss_nd_nlevels:
+      field_num: 34
+      type: int32
+      optional: true
+  - cudss_hybrid_mode:
+      field_num: 35
+      type: bool
+  - cudss_hybrid_execute_mode:
+      field_num: 36
+      type: bool
+  - cudss_host_nthreads:
+      field_num: 37
+      type: int32
+      optional: true
   - save_best_primal_so_far:
       field_num: 28
       type: bool

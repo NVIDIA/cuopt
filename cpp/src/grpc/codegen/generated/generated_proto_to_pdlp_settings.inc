@@ -82,6 +82,14 @@
   if (pb_settings.has_postsolve_info()) {
     settings.postsolve_info = pb_settings.postsolve_info();
   }
+  if (pb_settings.has_cudss_nd_nlevels()) {
+    settings.cudss_nd_nlevels = pb_settings.cudss_nd_nlevels();
+  }
+  settings.cudss_hybrid_mode = pb_settings.cudss_hybrid_mode();
+  settings.cudss_hybrid_execute_mode = pb_settings.cudss_hybrid_execute_mode();
+  if (pb_settings.has_cudss_host_nthreads()) {
+    settings.cudss_host_nthreads = pb_settings.cudss_host_nthreads();
+  }
   settings.save_best_primal_so_far = pb_settings.save_best_primal_so_far();
   settings.first_primal_feasible = pb_settings.first_primal_feasible();
   if (pb_settings.has_pdlp_precision()) {

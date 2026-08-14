@@ -290,6 +290,10 @@ class pdlp_solver_settings_t {
   bool per_constraint_residual{false};
   bool crossover{false};
   bool cudss_deterministic{false};
+  i_t cudss_nd_nlevels{-1};
+  bool cudss_hybrid_mode{false};
+  bool cudss_hybrid_execute_mode{false};
+  i_t cudss_host_nthreads{-1};
   i_t folding{-1};
   i_t augmented{-1};
   i_t dualize{-1};

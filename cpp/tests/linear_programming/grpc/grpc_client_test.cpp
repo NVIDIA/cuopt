@@ -2237,6 +2237,10 @@ TEST(MapperRoundtrip, PDLPSettingsAllFields)
   orig.num_gpus                     = 4;
   orig.per_constraint_residual      = true;
   orig.cudss_deterministic          = true;
+  orig.cudss_nd_nlevels             = 8;
+  orig.cudss_hybrid_mode            = true;
+  orig.cudss_hybrid_execute_mode    = true;
+  orig.cudss_host_nthreads          = 4;
   orig.folding                      = 1;
   orig.augmented                    = 1;
   orig.dualize                      = 1;
@@ -2278,6 +2282,10 @@ TEST(MapperRoundtrip, PDLPSettingsAllFields)
   EXPECT_EQ(restored.num_gpus, 4);
   EXPECT_EQ(restored.per_constraint_residual, true);
   EXPECT_EQ(restored.cudss_deterministic, true);
+  EXPECT_EQ(restored.cudss_nd_nlevels, 8);
+  EXPECT_EQ(restored.cudss_hybrid_mode, true);
+  EXPECT_EQ(restored.cudss_hybrid_execute_mode, true);
+  EXPECT_EQ(restored.cudss_host_nthreads, 4);
   EXPECT_EQ(restored.folding, 1);
   EXPECT_EQ(restored.augmented, 1);
   EXPECT_EQ(restored.dualize, 1);
@@ -2434,6 +2442,8 @@ TEST(MapperRoundtrip, PDLPSettingsDefaultProtoPreservesAllCppDefaults)
   EXPECT_EQ(after.augmented, fresh.augmented);
   EXPECT_EQ(after.dualize, fresh.dualize);
   EXPECT_EQ(after.ordering, fresh.ordering);
+  EXPECT_EQ(after.cudss_nd_nlevels, fresh.cudss_nd_nlevels);
+  EXPECT_EQ(after.cudss_host_nthreads, fresh.cudss_host_nthreads);
   EXPECT_EQ(after.barrier_dual_initial_point, fresh.barrier_dual_initial_point);
   EXPECT_DOUBLE_EQ(after.barrier_step_scale, fresh.barrier_step_scale);
   // Enum-int32 fields (post-decode clamping defends out-of-range; default `0`

@@ -296,6 +296,43 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
         status,
         "cudssConfigSet for deterministic mode");
     }
+
+    if (settings_.cudss_nd_nlevels >= 0) {
+      settings_.log.printf("cuDSS ND levels             : %d\n", settings_.cudss_nd_nlevels);
+      int32_t nd_nlevels = settings_.cudss_nd_nlevels;
+      CUDSS_CALL_AND_CHECK_EXIT(
+        cudssConfigSet(solverConfig, CUDSS_CONFIG_ND_NLEVELS, &nd_nlevels, sizeof(int32_t)),
+        status,
+        "cudssConfigSet for nd nlevels");
+    }
+
+    if (settings_.cudss_hybrid_mode) {
+      settings_.log.printf("cuDSS hybrid mode           : enabled\n");
+      int32_t hybrid_mode = 1;
+      CUDSS_CALL_AND_CHECK_EXIT(
+        cudssConfigSet(solverConfig, CUDSS_CONFIG_HYBRID_MODE, &hybrid_mode, sizeof(int32_t)),
+        status,
+        "cudssConfigSet for hybrid mode");
+    }
+
+    if (settings_.cudss_hybrid_execute_mode) {
+      settings_.log.printf("cuDSS hybrid execute mode    : enabled\n");
+      int32_t hybrid_execute_mode = 1;
+      CUDSS_CALL_AND_CHECK_EXIT(
+        cudssConfigSet(
+          solverConfig, CUDSS_CONFIG_HYBRID_EXECUTE_MODE, &hybrid_execute_mode, sizeof(int32_t)),
+        status,
+        "cudssConfigSet for hybrid execute mode");
+    }
+
+    if (settings_.cudss_host_nthreads >= 0) {
+      settings_.log.printf("cuDSS host nthreads         : %d\n", settings_.cudss_host_nthreads);
+      int32_t host_nthreads = settings_.cudss_host_nthreads;
+      CUDSS_CALL_AND_CHECK_EXIT(
+        cudssConfigSet(solverConfig, CUDSS_CONFIG_HOST_NTHREADS, &host_nthreads, sizeof(int32_t)),
+        status,
+        "cudssConfigSet for host nthreads");
+    }
 #endif
 
 #if USE_ITERATIVE_REFINEMENT

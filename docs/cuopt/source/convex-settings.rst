@@ -284,6 +284,46 @@ cuDSS Deterministic Mode
 
 .. note:: The default value is ``false``. Enable deterministic mode if reproducibility is more important than performance.
 
+cuDSS Nested-Dissection Levels
+"""""""""""""""""""""""""""""""
+
+``CUOPT_CUDSS_ND_NLEVELS`` controls the METIS nested-dissection depth used by cuDSS during reordering.
+
+* ``-1``: Leave unset, cuDSS chooses (default)
+* Non-negative value: Explicit nested-dissection depth
+
+.. note:: The default value is ``-1`` (unset).
+
+cuDSS Hybrid Mode
+"""""""""""""""""
+
+``CUOPT_CUDSS_HYBRID_MODE`` controls whether cuDSS stores factorization data in host (CPU) memory in addition to GPU memory, instead of GPU-only storage. This is primarily useful when a problem's factors do not fit in GPU memory; for problems that already fit, GPU-only storage is typically faster.
+
+* ``true``: Use hybrid CPU/GPU factor storage
+* ``false``: Use GPU-only factor storage (default)
+
+.. note:: The default value is ``false``.
+
+cuDSS Hybrid Execute Mode
+""""""""""""""""""""""""""
+
+``CUOPT_CUDSS_HYBRID_EXECUTE_MODE`` controls whether cuDSS overlaps CPU and GPU computation while in hybrid mode. This setting only has an effect when ``CUOPT_CUDSS_HYBRID_MODE`` is enabled.
+
+* ``true``: Overlap CPU/GPU work
+* ``false``: Do not overlap CPU/GPU work (default)
+
+.. note:: The default value is ``false``.
+
+cuDSS Host Threads
+"""""""""""""""""""
+
+``CUOPT_CUDSS_HOST_NTHREADS`` controls the number of host worker threads cuDSS uses. This only takes effect when a cuDSS threading layer is loaded (via the ``CUDSS_THREADING_LIB`` environment variable or the build-time threading layer default).
+
+* ``-1``: Leave unset, cuDSS chooses (default)
+* Non-negative value: Explicit host thread count
+
+.. note:: The default value is ``-1`` (unset).
+
 Dual Initial Point
 """"""""""""""""""
 
