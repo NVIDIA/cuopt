@@ -323,7 +323,6 @@ class branch_and_bound_t {
                                 f_t& last_objective,
                                 f_t root_relax_objective,
                                 i_t& cut_pool_size,
-                                f_t& cut_scoring_time,
                                 const std::vector<f_t>& saved_solution);
 
   // Set the solution when found at the root node
