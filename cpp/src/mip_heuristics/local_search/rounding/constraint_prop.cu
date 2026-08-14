@@ -41,7 +41,7 @@ constraint_prop_t<i_t, f_t>::constraint_prop_t(mip_solver_context_t<i_t, f_t>& c
     ub_restore(context.problem_ptr->n_variables, context.problem_ptr->handle_ptr->get_stream()),
     assignment_restore(context.problem_ptr->n_variables,
                        context.problem_ptr->handle_ptr->get_stream()),
-    rng(cuopt::seed_generator::get_seed(), 0, 0)
+    rng(context.problem_ptr->seed_gen.get_seed(), 0, 0)
 {
 }
 
@@ -604,7 +604,7 @@ thrust::pair<f_t, f_t> constraint_prop_t<i_t, f_t>::generate_double_probing_pair
   if (probing_config.has_value()) {
     // for now get the first one
     auto [from_first, from_second] = probing_config.value().get().probing_values[unset_var_idx];
-    std::mt19937 rng(cuopt::seed_generator::get_seed());
+    std::mt19937 rng(context.problem_ptr->seed_gen.get_seed());
     std::uniform_real_distribution<float> dist(0.0f, 1.0f);
     f_t random_value  = dist(rng);
     f_t average_value = (from_first + from_second) / 2;
@@ -848,7 +848,7 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
 {
   using crit_t             = termination_criterion_t;
   auto& unset_integer_vars = unset_vars;
-  std::mt19937 rng(cuopt::seed_generator::get_seed());
+  std::mt19937 rng(context.problem_ptr->seed_gen.get_seed());
   lb_restore.resize(sol.problem_ptr->n_variables, sol.handle_ptr->get_stream());
   ub_restore.resize(sol.problem_ptr->n_variables, sol.handle_ptr->get_stream());
   assignment_restore.resize(sol.problem_ptr->n_variables, sol.handle_ptr->get_stream());
@@ -883,7 +883,7 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
         sol.handle_ptr->get_thrust_policy(),
         unset_integer_vars.begin(),
         unset_integer_vars.begin() + n_to_round,
-        [sol = sol.view(), seed = cuopt::seed_generator::get_seed()] __device__(i_t var_idx) {
+        [sol = sol.view(), seed = context.problem_ptr->seed_gen.get_seed()] __device__(i_t var_idx) {
           raft::random::PCGenerator rng(seed, var_idx, 0);
           auto var_bnd            = sol.problem.variable_bounds[var_idx];
           sol.assignment[var_idx] = round_nearest(sol.assignment[var_idx],

@@ -14,6 +14,7 @@
 #include "presolve_data.cuh"
 
 #include <mip_heuristics/logger.hpp>
+#include <utilities/seed_generator.cuh>
 #include <mip_heuristics/relaxed_lp/lp_state.cuh>
 
 #include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
@@ -327,6 +328,8 @@ class problem_t {
   /** name of the objective (only a single objective is currently allowed) */
   std::string objective_name;
   f_t objective_offset;
+  // Seed source for this problem, seeded from the solver settings.
+  seed_generator_t seed_gen;
   bool is_scaled_{false};
   bool preprocess_called{false};
   bool objective_is_integral{false};

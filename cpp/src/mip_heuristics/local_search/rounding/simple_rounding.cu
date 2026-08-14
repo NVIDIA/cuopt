@@ -112,7 +112,7 @@ void invoke_round_nearest(solution_t<i_t, f_t>& solution)
 
   i_t n_blocks = (solution.problem_ptr->n_integer_vars + TPB - 1) / TPB;
   nearest_rounding_kernel<i_t, f_t><<<n_blocks, TPB, 0, solution.handle_ptr->get_stream()>>>(
-    solution.view(), cuopt::seed_generator::get_seed());
+    solution.view(), solution.problem_ptr->seed_gen.get_seed());
   RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
 }
 
@@ -127,7 +127,7 @@ void invoke_random_round_nearest(solution_t<i_t, f_t>& solution, i_t n_target_ra
                   solution.problem_ptr->n_integer_vars);
   rmm::device_scalar<i_t> n_randomly_rounded(0, solution.handle_ptr->get_stream());
   random_nearest_rounding_kernel<i_t, f_t><<<n_blocks, TPB, 0, solution.handle_ptr->get_stream()>>>(
-    solution.view(), cuopt::seed_generator::get_seed(), n_randomly_rounded.data());
+    solution.view(), solution.problem_ptr->seed_gen.get_seed(), n_randomly_rounded.data());
   i_t h_n_random_rounds = n_randomly_rounded.value(solution.handle_ptr->get_stream());
   CUOPT_LOG_TRACE("Randomly rounded integers %d", h_n_random_rounds);
   i_t additional_roundings_needed = n_target_random_rounds - h_n_random_rounds;
@@ -135,7 +135,7 @@ void invoke_random_round_nearest(solution_t<i_t, f_t>& solution, i_t n_target_ra
     // TODO sort the remaining integers with fractionality and round them randomly
     rmm::device_uvector<i_t> shuffled_indices(solution.problem_ptr->integer_indices,
                                               solution.handle_ptr->get_stream());
-    thrust::default_random_engine rng(cuopt::seed_generator::get_seed());
+    thrust::default_random_engine rng(solution.problem_ptr->seed_gen.get_seed());
     // from the remaining integers, populate randomly.
     thrust::shuffle(solution.handle_ptr->get_thrust_policy(),
                     shuffled_indices.begin(),
@@ -143,7 +143,7 @@ void invoke_random_round_nearest(solution_t<i_t, f_t>& solution, i_t n_target_ra
                     rng);
     random_rounding_kernel<i_t, f_t>
       <<<1, 1, 0, solution.handle_ptr->get_stream()>>>(solution.view(),
-                                                       cuopt::seed_generator::get_seed(),
+                                                       solution.problem_ptr->seed_gen.get_seed(),
                                                        shuffled_indices.data(),
                                                        n_randomly_rounded.data(),
                                                        additional_roundings_needed);

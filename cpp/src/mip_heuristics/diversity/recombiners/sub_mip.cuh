@@ -57,7 +57,7 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
     i_t n_vars_from_other = n_different_vars;
     if (n_vars_from_other > (i_t)sub_mip_recombiner_config_t::max_n_of_vars_from_other) {
       n_vars_from_other = sub_mip_recombiner_config_t::max_n_of_vars_from_other;
-      thrust::default_random_engine g{(unsigned int)cuopt::seed_generator::get_seed()};
+      thrust::default_random_engine g{(unsigned int)this->context.problem_ptr->seed_gen.get_seed()};
       thrust::shuffle(a.handle_ptr->get_thrust_policy(),
                       this->remaining_indices.data(),
                       this->remaining_indices.data() + n_different_vars,

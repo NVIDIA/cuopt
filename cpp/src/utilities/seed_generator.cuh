@@ -51,8 +51,18 @@ class seed_generator_t {
   seed_generator_t() = default;
   explicit seed_generator_t(int64_t initial) : seed_(initial) {}
 
-  seed_generator_t(seed_generator_t const&) = delete;
-  void operator=(seed_generator_t const&)   = delete;
+  // std::atomic is not copyable, so the counter value is transferred explicitly. Without
+  // these, declaring the copy operations deleted would also suppress the implicit move
+  // assignment of any class holding a generator (problem_t is move-assigned).
+  seed_generator_t(seed_generator_t const& other)
+    : seed_(other.seed_.load(std::memory_order_relaxed))
+  {
+  }
+  seed_generator_t& operator=(seed_generator_t const& other)
+  {
+    seed_.store(other.seed_.load(std::memory_order_relaxed), std::memory_order_relaxed);
+    return *this;
+  }
 
   template <typename... args>
   void set_seed(args... seeds)
@@ -65,33 +75,6 @@ class seed_generator_t {
   }
 
   int64_t get_seed() const { return seed_.fetch_add(1, std::memory_order_relaxed); }
-};
-
-/**
- * @brief Legacy process-wide seed source.
- *
- * @deprecated Being replaced by seed_generator_t owned by each solver. Call sites are
- *             migrating; do not add new uses.
- */
-class seed_generator {
-  static inline std::atomic<int64_t> seed_{0};
-
- public:
-  template <typename... args>
-  static void set_seed(args... seeds)
-  {
-#ifdef BENCHMARK
-    seed_.store(std::random_device{}(), std::memory_order_relaxed);
-#else
-    seed_.store(detail::fold_seed(seeds...), std::memory_order_relaxed);
-#endif
-  }
-
-  static int64_t get_seed() { return seed_.fetch_add(1, std::memory_order_relaxed); }
-
- public:
-  seed_generator(seed_generator const&) = delete;
-  void operator=(seed_generator const&) = delete;
 };
 
 }  // namespace cuopt

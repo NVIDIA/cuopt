@@ -27,7 +27,7 @@ lb_bounds_repair_t<i_t, f_t>::lb_bounds_repair_t(const raft::handle_t* handle_pt
     violated_constraints(0, handle_ptr->get_stream()),
     violated_cstr_map(0, handle_ptr->get_stream()),
     total_vio(handle_ptr->get_stream()),
-    gen(cuopt::seed_generator::get_seed()),
+    gen(problem.seed_gen.get_seed()),
     cycle_vector(MAX_CYCLE_SEQUENCE, -1)
 {
 }

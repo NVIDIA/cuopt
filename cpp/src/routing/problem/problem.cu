@@ -81,11 +81,8 @@ problem_t<i_t, f_t>::problem_t(const data_model_view_t<i_t, f_t>& data_model_vie
   // problem still reproduces run to run, which is the historical behaviour.
   if (solver_settings_ptr != nullptr && solver_settings_ptr->get_seed() >= 0) {
     seed_gen.set_seed(solver_settings_ptr->get_seed());
-    seed_generator::set_seed(solver_settings_ptr->get_seed());
   } else {
     seed_gen.set_seed(
-      order_info.get_num_requests(), order_info.get_num_orders(), order_info.get_num_orders());
-    seed_generator::set_seed(
       order_info.get_num_requests(), order_info.get_num_orders(), order_info.get_num_orders());
   }
 }
