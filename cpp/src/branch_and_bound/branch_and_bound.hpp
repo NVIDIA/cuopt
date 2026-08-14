@@ -276,7 +276,8 @@ class branch_and_bound_t {
 
   // Worker pool dedicated to recursive RINS
   diving_worker_pool_t<i_t, f_t> submip_worker_pool_;
-  submip_stats_t submip_stats_;
+  submip_stats_t rins_stats_;
+  submip_stats_t rens_stats_;
 
   // Global status of the solver.
   omp_atomic_t<mip_status_t> solver_status_;
@@ -374,6 +375,7 @@ class branch_and_bound_t {
   void set_solution_from_submip(const simplex::lp_problem_t<i_t, f_t>& lp,
                                 const std::vector<f_t>& solution,
                                 const third_party_presolve_t<i_t, f_t>& presolver,
+                                submip_stats_t& submip_stats,
                                 f_t fixrate,
                                 std::string_view log_prefix);
 
@@ -381,6 +383,7 @@ class branch_and_bound_t {
   void solve_submip(diving_worker_t<i_t, f_t>* worker,
                     const std::vector<f_t>& current_incumbent,
                     const std::vector<simplex::variable_type_t>& var_types,
+                    submip_stats_t& submip_stats,
                     i_t num_var_fixed,
                     i_t num_integers);
 
