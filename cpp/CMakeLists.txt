@@ -399,9 +399,12 @@ if (NOT SKIP_GRPC_BUILD)
     # protocol (including the routing protos) is always generated so LP-only
     # builds still speak the same protocol; only the mappers and the VRP
     # client/worker paths are dropped.
+    #
+    # This only gates which sources are compiled (see GRPC_ROUTING_FILES below).
+    # The matching -D is attached to cuopt_grpc_server alone, the one target
+    # whose sources test the macro, rather than to every target in the tree.
     if (NOT SKIP_ROUTING_BUILD)
         set(CUOPT_ENABLE_GRPC_ROUTING ON)
-        add_compile_definitions(CUOPT_ENABLE_GRPC_ROUTING)
         message(STATUS "gRPC routing (VRP) support enabled")
     else ()
         message(STATUS "gRPC routing (VRP) support disabled (SKIP_ROUTING_BUILD)")
@@ -1114,6 +1117,12 @@ if (NOT SKIP_GRPC_BUILD)
             CXX_SCAN_FOR_MODULES OFF
             POSITION_INDEPENDENT_CODE ON
     )
+
+    # grpc_worker.cpp is the only source that tests this macro, so scope it to
+    # this target instead of leaking a -D into every target in the directory.
+    if (CUOPT_ENABLE_GRPC_ROUTING)
+        target_compile_definitions(cuopt_grpc_server PRIVATE CUOPT_ENABLE_GRPC_ROUTING)
+    endif ()
 
     target_compile_options(cuopt_grpc_server
             PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
