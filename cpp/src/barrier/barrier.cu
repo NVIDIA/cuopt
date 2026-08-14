@@ -1378,6 +1378,7 @@ class iteration_data_t {
     dense_vector_t<i_t, f_t> dual_res = z_tilde;
     dual_res.axpy(-1.0, lp.objective, 1.0);
     cusparse_view.transpose_spmv(1.0, solution.y, 1.0, dual_res);
+    if (Q.n > 0) { matrix_vector_multiply(Q, -1.0, x, 1.0, dual_res); }
     f_t dual_residual_norm = vector_norm_inf<i_t, f_t>(dual_res, stream_view_);
 #ifdef PRINT_INFO
     settings_.log.printf("Solution Dual residual: %e\n", dual_residual_norm);
@@ -1717,6 +1718,26 @@ class iteration_data_t {
 
     // y = alpha * A * w + beta * v = alpha * A * Dinv * A^T * y + beta * v
     cusparse_view.spmv(alpha, cusparse_u, beta, cusparse_v);
+  }
+
+  // v = alpha * A * Dinv * A^T * y + beta * v. Simple interface (plain device vectors,
+  // no pre-built cusparse descriptors) so it can be used as the `a_multiply` callback of
+  // the generic iterative-refinement operator for the ADAT (non-augmented) solve path.
+  void gpu_adat_multiply_simple(f_t alpha,
+                                const rmm::device_uvector<f_t>& y,
+                                f_t beta,
+                                rmm::device_uvector<f_t>& v)
+  {
+    const i_t n = A.n;
+    rmm::device_uvector<f_t> u(n, stream_view_);
+    cusparse_view_.transpose_spmv(1.0, y, 0.0, u);
+    cub::DeviceTransform::Transform(cuda::std::make_tuple(u.data(), d_inv_diag.data()),
+                                    u.data(),
+                                    u.size(),
+                                    cuda::std::multiplies<>{},
+                                    stream_view_.value());
+    RAFT_CHECK_CUDA(stream_view_);
+    cusparse_view_.spmv(alpha, u, beta, v);
   }
 
   // v = alpha * A * Dinv * A^T * y + beta * v
@@ -2951,6 +2972,37 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
         settings.log.printf("Linear solve failed\n");
         return -1;
       }
+
+      // Iterative refinement on the ADAT (Schur-complement) system using GMRES.
+      // The direct Cholesky solve can degrade in accuracy on ill-conditioned D near
+      // convergence, as the diagonal D can span many orders of magnitude with small
+      // barrier parameter. In this case, we launch a GMRES-based iterative refinement
+      // loop for added robustness in the Schur-complement (ADAT) approach.
+      // GMRES can handle large, potentially ill-conditioned systems better than simple Richardson
+      // or classical iterative refinement, at the potential cost of higher computational work and
+      // memory. This is only used on the pure Schur-complement (n_dense_columns == 0).
+      if (settings.barrier_iterative_refinement && data.n_dense_columns == 0) {
+        struct adat_op_t {
+          adat_op_t(iteration_data_t<i_t, f_t>& data) : data_(data) {}
+          iteration_data_t<i_t, f_t>& data_;
+          void a_multiply(f_t alpha,
+                          const rmm::device_uvector<f_t>& x,
+                          f_t beta,
+                          rmm::device_uvector<f_t>& y) const
+          {
+            data_.gpu_adat_multiply_simple(alpha, x, beta, y);
+          }
+          void solve(rmm::device_uvector<f_t>& b, rmm::device_uvector<f_t>& x) const
+          {
+            data_.gpu_solve_adat(b, x);
+          }
+        } adat_op(data);
+        const f_t adat_solve_err =
+          iterative_refinement<i_t, f_t, adat_op_t>(adat_op, data.d_h_, data.d_dy_);
+        if (adat_solve_err > 1e-1) {
+          settings.log.printf("||ADAT*dy - h|| %e after IR\n", adat_solve_err);
+        }
+      }
     }  // Close NVTX range
 
     // y_residual <- ADAT*dy - h
@@ -4108,6 +4160,8 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
     data.cusparse_y_residual_    = data.cusparse_view_.create_vector(data.d_y_residual_);
     data.restrict_u_.resize(num_upper_bounds);
 
+    settings.log.printf("Elapsed time                : %.2fs\n", toc(start_time));
+
     if (toc(start_time) > settings.time_limit) {
       settings.log.printf("Barrier time limit exceeded\n");
       return lp_status_t::TIME_LIMIT;
@@ -4483,7 +4537,10 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
   } catch (const raft::cuda_error& e) {
     settings.log.printf("Error in barrier_solver_t: %s\n", e.what());
     return lp_status_t::NUMERICAL_ISSUES;
-  } catch (const rmm::out_of_memory& e) {
+  } catch (const std::bad_alloc& e) {
+    // Covers rmm::out_of_memory and any other allocation failure. The barrier sizes its normal
+    // equations from the problem, so a shape it cannot hold is a property of the input rather
+    // than a defect, and the solvers running concurrently with it are unaffected.
     settings.log.printf("Out of memory in barrier_solver_t: %s\n", e.what());
     return lp_status_t::NUMERICAL_ISSUES;
   }

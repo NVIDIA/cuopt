@@ -10,6 +10,11 @@
 #include <barrier/cusparse_info.hpp>
 #include <barrier/device_sparse_matrix.cuh>
 
+#include <rmm/error.hpp>
+
+#include <limits>
+#include <string>
+
 namespace cuopt::mathematical_optimization::barrier {
 
 template <typename i_t, typename f_t>
@@ -140,6 +145,15 @@ void multiply_kernels(raft::handle_t const* handle,
   int64_t ADAT_num_rows, ADAT_num_cols, ADAT_nnz1;
   RAFT_CUSPARSE_TRY(
     cusparseSpMatGetSize(cusparse_data.matADAT_descr, &ADAT_num_rows, &ADAT_num_cols, &ADAT_nnz1));
+  // cuSPARSE sizes the product in 64 bits while the CSR arrays are indexed by i_t; narrowing would
+  // reach RMM as a negative count and surface as an unrelated device_uvector overflow.
+  if (ADAT_nnz1 > std::numeric_limits<i_t>::max()) {
+    throw rmm::out_of_memory(
+      "ADAT needs " + std::to_string(ADAT_nnz1) + " nonzeros over " +
+      std::to_string(ADAT_num_rows) + " rows, past the " +
+      std::to_string(std::numeric_limits<i_t>::max()) +
+      " its index type can address: the normal equations are too dense for this problem");
+  }
   ADAT.resize_to_nnz(ADAT_nnz1, handle->get_stream());
 
   thrust::fill(rmm::exec_policy(handle->get_stream()), ADAT.x.begin(), ADAT.x.end(), 0.0);
