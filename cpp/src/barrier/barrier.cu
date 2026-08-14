@@ -643,7 +643,6 @@ class iteration_data_t {
       RAFT_CHECK_CUDA(handle_ptr->get_stream());
     }
 
-    settings.log.printf("Elapsed time           : %.3f seconds\n", toc(start_time));
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
     {
       raft::common::nvtx::range scope("Barrier: LP Data: Cholesky init");
@@ -677,6 +676,7 @@ class iteration_data_t {
         settings.log.printf("Elapsed time for ADAT        : %.3f seconds\n", toc(start_time));
       }
     }
+    settings.log.printf("Elapsed time           : %.3f seconds\n", toc(start_time));
   }
 
   bool has_cones() const { return cones_.has_value(); }
@@ -4160,7 +4160,6 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
     data.cusparse_y_residual_    = data.cusparse_view_.create_vector(data.d_y_residual_);
     data.restrict_u_.resize(num_upper_bounds);
 
-    settings.log.printf("Elapsed time                : %.2fs\n", toc(start_time));
 
     if (toc(start_time) > settings.time_limit) {
       settings.log.printf("Barrier time limit exceeded\n");
@@ -4242,9 +4241,15 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
       data.b.inner_product(data.y) - data.restrict_u_.inner_product(data.v) - quad_objective;
 
     f_t objective_gap_abs = std::abs(primal_objective - dual_objective);
-    f_t objective_gap_rel =
+    f_t presolved_gap_rel =
       objective_gap_abs /
       std::max(f_t(1), std::min(std::abs(primal_objective), std::abs(dual_objective)));
+    f_t user_primal_obj = compute_user_objective(lp, primal_objective);
+    f_t user_dual_obj   = compute_user_objective(lp, dual_objective);
+    f_t user_gap_abs    = std::abs(user_primal_obj - user_dual_obj);
+    f_t user_gap_rel    = user_gap_abs /
+      std::max(f_t(1), std::min(std::abs(user_primal_obj), std::abs(user_dual_obj)));
+    f_t objective_gap_rel = std::max(user_gap_rel, presolved_gap_rel);
 
     data.w_save = data.w;
     data.x_save = data.x;
@@ -4392,9 +4397,15 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
                         std::abs(primal_objective)));
 
       objective_gap_abs = std::abs(primal_objective - dual_objective);
-      objective_gap_rel =
+      presolved_gap_rel =
         objective_gap_abs /
         std::max(f_t(1), std::min(std::abs(primal_objective), std::abs(dual_objective)));
+      user_primal_obj = compute_user_objective(lp, primal_objective);
+      user_dual_obj   = compute_user_objective(lp, dual_objective);
+      user_gap_abs    = std::abs(user_primal_obj - user_dual_obj);
+      user_gap_rel    = user_gap_abs /
+        std::max(f_t(1), std::min(std::abs(user_primal_obj), std::abs(user_dual_obj)));
+      objective_gap_rel = std::max(user_gap_rel, presolved_gap_rel);
 
       if (relative_primal_residual < settings.barrier_relaxed_feasibility_tol &&
           relative_dual_residual < settings.barrier_relaxed_optimality_tol &&
@@ -4461,8 +4472,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
       bool dual_feasible   = relative_dual_residual < settings.barrier_relative_optimality_tol;
       bool small_gap =
         relative_complementarity_residual < settings.barrier_relative_complementarity_tol;
-      bool small_objective_gap =
-        !data.has_cones() || objective_gap_rel < settings.barrier_relaxed_complementarity_tol;
+      bool small_objective_gap = objective_gap_rel < settings.barrier_relaxed_complementarity_tol;
 
       converged = primal_feasible && dual_feasible && small_gap && small_objective_gap;
 
