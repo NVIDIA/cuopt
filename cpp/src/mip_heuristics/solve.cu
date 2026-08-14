@@ -370,7 +370,6 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
 
     print_version_info();
 
-
     raft::common::nvtx::range fun_scope("Running solver");
     auto timer = timer_t(time_limit);
 
@@ -432,7 +431,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
     bool has_symmetry = false;
     if (settings.symmetry != 0) {
       mip::problem_t<i_t, f_t> problem(op_problem);
-        if (settings.seed >= 0) { problem.seed_gen.set_seed(settings.seed); }
+      if (settings.seed >= 0) { problem.seed_gen.set_seed(settings.seed); }
       simplex_solver_settings_t<i_t, f_t> simplex_settings;
       simplex_settings.set_log(true);
       simplex_settings.time_limit = settings.time_limit;
@@ -452,7 +451,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
     std::optional<mip::third_party_presolve_device_result_t<i_t, f_t>> presolve_result_opt;
     mip::problem_t<i_t, f_t> problem(
       op_problem, settings.get_tolerances(), settings.determinism_mode == CUOPT_MODE_DETERMINISTIC);
-      if (settings.seed >= 0) { problem.seed_gen.set_seed(settings.seed); }
+    if (settings.seed >= 0) { problem.seed_gen.set_seed(settings.seed); }
 
     auto run_presolve              = settings.presolver != presolver_t::None;
     bool has_set_solution_callback = false;

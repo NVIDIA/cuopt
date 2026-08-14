@@ -879,19 +879,20 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
     // round first unset_integer_vars.size() - 50, leave last 50 to be rounded by the algo
     i_t n_to_round = std::max(unset_integer_vars.size() - 50, 0lu);
     if (n_to_round > 0) {
-      thrust::for_each(
-        sol.handle_ptr->get_thrust_policy(),
-        unset_integer_vars.begin(),
-        unset_integer_vars.begin() + n_to_round,
-        [sol = sol.view(), seed = context.problem_ptr->seed_gen.get_seed()] __device__(i_t var_idx) {
-          raft::random::PCGenerator rng(seed, var_idx, 0);
-          auto var_bnd            = sol.problem.variable_bounds[var_idx];
-          sol.assignment[var_idx] = round_nearest(sol.assignment[var_idx],
-                                                  get_lower(var_bnd),
-                                                  get_upper(var_bnd),
-                                                  sol.problem.tolerances.integrality_tolerance,
-                                                  rng);
-        });
+      thrust::for_each(sol.handle_ptr->get_thrust_policy(),
+                       unset_integer_vars.begin(),
+                       unset_integer_vars.begin() + n_to_round,
+                       [sol  = sol.view(),
+                        seed = context.problem_ptr->seed_gen.get_seed()] __device__(i_t var_idx) {
+                         raft::random::PCGenerator rng(seed, var_idx, 0);
+                         auto var_bnd = sol.problem.variable_bounds[var_idx];
+                         sol.assignment[var_idx] =
+                           round_nearest(sol.assignment[var_idx],
+                                         get_lower(var_bnd),
+                                         get_upper(var_bnd),
+                                         sol.problem.tolerances.integrality_tolerance,
+                                         rng);
+                       });
       find_unset_integer_vars(sol, unset_integer_vars);
     }
     set_bounds_on_fixed_vars(sol);

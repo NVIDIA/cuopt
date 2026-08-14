@@ -14,8 +14,8 @@
 #include "presolve_data.cuh"
 
 #include <mip_heuristics/logger.hpp>
-#include <utilities/seed_generator.cuh>
 #include <mip_heuristics/relaxed_lp/lp_state.cuh>
+#include <utilities/seed_generator.cuh>
 
 #include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem.hpp>
