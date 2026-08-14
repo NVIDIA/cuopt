@@ -25,7 +25,7 @@ lb_constraint_prop_t<i_t, f_t>::lb_constraint_prop_t(mip_solver_context_t<i_t, f
   : context(context_),
     temp_problem(*context.problem_ptr),
     bounds_update(temp_problem, context),
-    bounds_repair(context.problem_ptr->handle_ptr),
+    bounds_repair(context.problem_ptr->handle_ptr, context.problem_ptr->seed_gen.get_seed()),
     unset_vars(context.problem_ptr->n_variables, context.problem_ptr->handle_ptr->get_stream()),
     temp_assignment(context.problem_ptr->n_variables,
                     context.problem_ptr->handle_ptr->get_stream()),

@@ -17,17 +17,24 @@ namespace cuopt {
 
 namespace detail {
 
-// Folds several values into one seed. Shared by the instance and the legacy static API.
+// Folds several values into one seed using the Cantor pairing function.
+//
+// The arithmetic is done in uint64_t: routing folds `int` problem dimensions, and the
+// product overflows a 32-bit int once two equal dimensions reach 181. Signed overflow is
+// undefined behaviour, so widen first and let the unsigned type wrap deterministically.
 template <typename seed_t>
 inline int64_t fold_seed(seed_t seed)
 {
-  return static_cast<int64_t>(seed);
+  return static_cast<int64_t>(static_cast<uint64_t>(seed));
 }
 
 template <typename arg0, typename arg1, typename... args>
 inline int64_t fold_seed(arg0 seed0, arg1 seed1, args... seeds)
 {
-  return fold_seed(seed1 + ((seed0 + seed1) * (seed0 + seed1 + 1) / 2), seeds...);
+  const uint64_t a   = static_cast<uint64_t>(seed0);
+  const uint64_t b   = static_cast<uint64_t>(seed1);
+  const uint64_t sum = a + b;
+  return fold_seed(b + sum * (sum + 1) / 2, seeds...);
 }
 
 }  // namespace detail

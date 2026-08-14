@@ -40,7 +40,9 @@ struct lb_bounds_t {
 template <typename i_t, typename f_t>
 class lb_bounds_repair_t {
  public:
-  lb_bounds_repair_t(const raft::handle_t* handle_ptr);
+  // The seed is supplied by the caller: this class has no route back to the problem
+  // that owns the seed source.
+  lb_bounds_repair_t(const raft::handle_t* handle_ptr, int64_t seed);
   void resize(const load_balanced_problem_t<i_t, f_t>& problem);
   void reset();
   std::tuple<f_t, i_t> get_ii_violation(

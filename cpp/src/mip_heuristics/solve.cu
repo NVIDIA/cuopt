@@ -600,6 +600,8 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
       presolve_result_opt.emplace(std::move(result));
 
       problem = mip::problem_t<i_t, f_t>(presolve_result_opt->reduced_problem);
+      // The reduced problem is a fresh instance, so it carries a fresh seed source.
+      if (settings.seed >= 0) { problem.seed_gen.set_seed(settings.seed); }
       problem.set_papilo_presolve_data(presolver.get(),
                                        presolve_result_opt->reduced_to_original_map,
                                        presolve_result_opt->original_to_reduced_map,
