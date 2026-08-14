@@ -519,23 +519,6 @@ class SolverConfig(BaseModel):
         description="Set the METIS nested-dissection depth used by cuDSS. "
         "-1 to leave it unset (cuDSS default), or a non-negative depth",
     )
-    cudss_hybrid_mode: Optional[bool] = Field(
-        default=False,
-        description="Set if cuDSS should use hybrid CPU/GPU factor storage. "
-        "True to enable hybrid mode, False to keep factors GPU-only",
-    )
-    cudss_hybrid_execute_mode: Optional[bool] = Field(
-        default=False,
-        description="Set if cuDSS should overlap CPU/GPU work in hybrid mode. "
-        "Only meaningful when cudss_hybrid_mode is True. "
-        "True to overlap CPU/GPU work, False to not overlap",
-    )
-    cudss_host_nthreads: Optional[int] = Field(
-        default=-1,
-        description="Set the number of host worker threads cuDSS uses. "
-        "-1 to leave it unset (cuDSS default), or a non-negative thread "
-        "count. Only takes effect when a cuDSS threading layer is loaded",
-    )
     barrier_iterative_refinement_method: Optional[int] = Field(
         default=1,
         description="Set which iterative refinement method the barrier "

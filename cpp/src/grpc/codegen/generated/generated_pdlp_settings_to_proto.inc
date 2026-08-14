@@ -37,9 +37,6 @@
   pb_settings->set_barrier_step_scale(settings.barrier_step_scale);
   pb_settings->set_postsolve_info(settings.postsolve_info);
   pb_settings->set_cudss_nd_nlevels(settings.cudss_nd_nlevels);
-  pb_settings->set_cudss_hybrid_mode(settings.cudss_hybrid_mode);
-  pb_settings->set_cudss_hybrid_execute_mode(settings.cudss_hybrid_execute_mode);
-  pb_settings->set_cudss_host_nthreads(settings.cudss_host_nthreads);
   pb_settings->set_barrier_iterative_refinement_method(settings.barrier_iterative_refinement_method);
   pb_settings->set_save_best_primal_so_far(settings.save_best_primal_so_far);
   pb_settings->set_first_primal_feasible(settings.first_primal_feasible);

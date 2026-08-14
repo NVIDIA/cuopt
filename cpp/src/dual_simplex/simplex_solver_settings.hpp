@@ -67,9 +67,6 @@ struct simplex_solver_settings_t {
       barrier_presolve(false),
       cudss_deterministic(false),
       cudss_nd_nlevels(-1),
-      cudss_hybrid_mode(false),
-      cudss_hybrid_execute_mode(false),
-      cudss_host_nthreads(-1),
       deterministic(false),
       barrier(false),
       eliminate_dense_columns(true),
@@ -166,12 +163,7 @@ struct simplex_solver_settings_t {
   bool barrier_presolve;      // true to use barrier presolve
   bool cudss_deterministic;   // true to use cuDSS deterministic mode, false for non-deterministic
   i_t cudss_nd_nlevels;       // -1 automatic/unset, else METIS nested-dissection depth for cuDSS
-  bool cudss_hybrid_mode;     // true for hybrid CPU/GPU factor storage in cuDSS
-  bool cudss_hybrid_execute_mode;  // true to overlap CPU/GPU work in cuDSS (only meaningful when
-                                   // cudss_hybrid_mode is true)
-  i_t cudss_host_nthreads;         // -1 automatic/unset, else host worker thread count for cuDSS
-                                   // (only takes effect when a cuDSS threading layer is loaded)
-  bool barrier;                    // true to use barrier method, false to use dual simplex method
+  bool barrier;               // true to use barrier method, false to use dual simplex method
   bool deterministic;  // true to use B&B deterministic mode, false to use non-deterministic mode
   bool eliminate_dense_columns;             // true to eliminate dense columns from A*D*A^T
   bool barrier_iterative_refinement;        // true to use iterative refinement for barrier method

@@ -85,11 +85,6 @@
   if (pb_settings.has_cudss_nd_nlevels()) {
     settings.cudss_nd_nlevels = pb_settings.cudss_nd_nlevels();
   }
-  settings.cudss_hybrid_mode = pb_settings.cudss_hybrid_mode();
-  settings.cudss_hybrid_execute_mode = pb_settings.cudss_hybrid_execute_mode();
-  if (pb_settings.has_cudss_host_nthreads()) {
-    settings.cudss_host_nthreads = pb_settings.cudss_host_nthreads();
-  }
   if (pb_settings.has_barrier_iterative_refinement_method()) {
     settings.barrier_iterative_refinement_method = pb_settings.barrier_iterative_refinement_method();
   }

@@ -563,16 +563,8 @@ pdlp_settings:
       field_num: 34
       type: int32
       optional: true
-  - cudss_hybrid_mode:
-      field_num: 35
-      type: bool
-  - cudss_hybrid_execute_mode:
-      field_num: 36
-      type: bool
-  - cudss_host_nthreads:
-      field_num: 37
-      type: int32
-      optional: true
+  # field_num 35-37 previously used by cudss_hybrid_mode/cudss_hybrid_execute_mode/
+  # cudss_host_nthreads, removed — do not reuse these numbers.
   - barrier_iterative_refinement_method:
       field_num: 38
       type: int32

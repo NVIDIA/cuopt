@@ -142,24 +142,22 @@ def test_sample_milp(
 )
 @pytest.mark.parametrize(
     "folding, dualize, ordering, augmented, eliminate_dense, cudss_determ, "
-    "dual_initial_point, cudss_nd_nlevels, cudss_hybrid_mode, "
-    "cudss_hybrid_execute_mode, cudss_host_nthreads, "
-    "barrier_ir_method",
+    "dual_initial_point, cudss_nd_nlevels, barrier_ir_method",
     [
         # Test automatic settings (default)
-        (-1, -1, -1, -1, True, False, -1, -1, False, False, -1, 1),
+        (-1, -1, -1, -1, True, False, -1, -1, 1),
         # Test folding off, no dualization, cuDSS default ordering, ADAT system
-        (0, 0, 0, 0, True, False, 0, -1, False, False, -1, 1),
+        (0, 0, 0, 0, True, False, 0, -1, 1),
         # Test folding on, force dualization, AMD ordering, augmented system
-        (1, 1, 1, 1, True, True, 1, 8, True, True, 4, 0),
+        (1, 1, 1, 1, True, True, 1, 8, 0),
         # Test mixed settings: automatic folding, no dualize, AMD, augmented
-        (-1, 0, 1, 1, False, False, 0, 4, True, False, 2, 0),
+        (-1, 0, 1, 1, False, False, 0, 4, 0),
         # Test no folding, automatic dualize, cuDSS default, ADAT
-        (0, -1, 0, 0, True, True, -1, -1, False, False, -1, 1),
+        (0, -1, 0, 0, True, True, -1, -1, 1),
         # Test dual initial point with Lustig-Marsten-Shanno
-        (-1, -1, -1, -1, True, False, 0, -1, False, False, -1, 1),
+        (-1, -1, -1, -1, True, False, 0, -1, 1),
         # Test dual initial point with least squares
-        (-1, -1, -1, 1, True, False, 1, -1, False, False, -1, 0),
+        (-1, -1, -1, 1, True, False, 1, -1, 0),
     ],
 )
 def test_barrier_solver_options(
@@ -172,9 +170,6 @@ def test_barrier_solver_options(
     cudss_determ,
     dual_initial_point,
     cudss_nd_nlevels,
-    cudss_hybrid_mode,
-    cudss_hybrid_execute_mode,
-    cudss_host_nthreads,
     barrier_ir_method,
 ):
     """
@@ -190,12 +185,6 @@ def test_barrier_solver_options(
       (1) dual least squares
     - cudss_nd_nlevels: (-1) unset/automatic, else METIS nested-dissection
       depth
-    - cudss_hybrid_mode: True for hybrid CPU/GPU factor storage, False for
-      GPU-only
-    - cudss_hybrid_execute_mode: True to overlap CPU/GPU work in hybrid mode,
-      False to not overlap
-    - cudss_host_nthreads: (-1) unset/automatic, else host worker thread
-      count for cuDSS
     - barrier_ir_method: (0) fixed-point residual-correction, (1) restarted
       GMRES (default)
     """
@@ -213,11 +202,6 @@ def test_barrier_solver_options(
     data["solver_config"]["cudss_deterministic"] = cudss_determ
     data["solver_config"]["barrier_dual_initial_point"] = dual_initial_point
     data["solver_config"]["cudss_nd_nlevels"] = cudss_nd_nlevels
-    data["solver_config"]["cudss_hybrid_mode"] = cudss_hybrid_mode
-    data["solver_config"]["cudss_hybrid_execute_mode"] = (
-        cudss_hybrid_execute_mode
-    )
-    data["solver_config"]["cudss_host_nthreads"] = cudss_host_nthreads
     data["solver_config"]["barrier_iterative_refinement_method"] = (
         barrier_ir_method
     )
@@ -233,9 +217,6 @@ def test_barrier_solver_options(
     print(f"barrier_dual_initial_point={dual_initial_point}")
     print(
         f"cudss_nd_nlevels={cudss_nd_nlevels}, "
-        f"cudss_hybrid_mode={cudss_hybrid_mode}, "
-        f"cudss_hybrid_execute_mode={cudss_hybrid_execute_mode}, "
-        f"cudss_host_nthreads={cudss_host_nthreads}, "
         f"barrier_ir_method={barrier_ir_method}"
     )
     print(res.json())
