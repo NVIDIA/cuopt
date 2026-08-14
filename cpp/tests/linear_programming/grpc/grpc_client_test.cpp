@@ -2248,11 +2248,12 @@ TEST(MapperRoundtrip, PDLPSettingsAllFields)
   orig.barrier_dual_initial_point   = 1;
   orig.eliminate_dense_columns      = true;
   orig.barrier_iterative_refinement = false;  // not the default true, to detect overwrite-on-decode
-  orig.barrier_step_scale           = 0.75;   // not the default 0.9
-  orig.postsolve_info               = 1;
-  orig.pdlp_precision               = pdlp_precision_t::MixedPrecision;
-  orig.save_best_primal_so_far      = true;
-  orig.first_primal_feasible        = true;
+  orig.barrier_iterative_refinement_method = 0;     // not the default 1 (gmres)
+  orig.barrier_step_scale                  = 0.75;  // not the default 0.9
+  orig.postsolve_info                      = 1;
+  orig.pdlp_precision                      = pdlp_precision_t::MixedPrecision;
+  orig.save_best_primal_so_far             = true;
+  orig.first_primal_feasible               = true;
 
   cuopt::remote::PDLPSolverSettings pb;
   map_pdlp_settings_to_proto(orig, &pb);
@@ -2293,6 +2294,7 @@ TEST(MapperRoundtrip, PDLPSettingsAllFields)
   EXPECT_EQ(restored.barrier_dual_initial_point, 1);
   EXPECT_EQ(restored.eliminate_dense_columns, true);
   EXPECT_EQ(restored.barrier_iterative_refinement, false);
+  EXPECT_EQ(restored.barrier_iterative_refinement_method, 0);
   EXPECT_DOUBLE_EQ(restored.barrier_step_scale, 0.75);
   EXPECT_EQ(restored.postsolve_info, 1);
   EXPECT_EQ(restored.pdlp_precision, pdlp_precision_t::MixedPrecision);
@@ -2444,6 +2446,7 @@ TEST(MapperRoundtrip, PDLPSettingsDefaultProtoPreservesAllCppDefaults)
   EXPECT_EQ(after.ordering, fresh.ordering);
   EXPECT_EQ(after.cudss_nd_nlevels, fresh.cudss_nd_nlevels);
   EXPECT_EQ(after.cudss_host_nthreads, fresh.cudss_host_nthreads);
+  EXPECT_EQ(after.barrier_iterative_refinement_method, fresh.barrier_iterative_refinement_method);
   EXPECT_EQ(after.barrier_dual_initial_point, fresh.barrier_dual_initial_point);
   EXPECT_DOUBLE_EQ(after.barrier_step_scale, fresh.barrier_step_scale);
   // Enum-int32 fields (post-decode clamping defends out-of-range; default `0`

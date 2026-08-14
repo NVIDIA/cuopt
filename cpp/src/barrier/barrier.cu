@@ -2279,7 +2279,8 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
 
     if (settings.barrier_iterative_refinement) {
       const f_t ir_tol = data.has_sparse_cones() ? f_t(1e-12) : f_t(1e-8);
-      iterative_refinement<i_t, f_t, op_t>(op, rhs, soln, ir_tol);
+      iterative_refinement<i_t, f_t, op_t>(
+        op, rhs, soln, ir_tol, settings.barrier_iterative_refinement_method);
     }
 
     for (i_t k = 0; k < lp.num_cols; k++) {
@@ -2904,9 +2905,13 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
     } op(data);
     if (settings.barrier_iterative_refinement) {
       raft::common::nvtx::range fun_scope("Barrier: iterative_refinement");
-      const f_t ir_tol    = data.has_sparse_cones() ? f_t(1e-12) : f_t(1e-8);
-      const f_t solve_err = iterative_refinement<i_t, f_t, op_t>(
-        op, data.d_augmented_rhs_, data.d_augmented_soln_, ir_tol);
+      const f_t ir_tol = data.has_sparse_cones() ? f_t(1e-12) : f_t(1e-8);
+      const f_t solve_err =
+        iterative_refinement<i_t, f_t, op_t>(op,
+                                             data.d_augmented_rhs_,
+                                             data.d_augmented_soln_,
+                                             ir_tol,
+                                             settings.barrier_iterative_refinement_method);
       if (solve_err > 1e-1) {
         settings.log.printf("|| Aug (dx, dy) - aug_rhs || %e after IR\n", solve_err);
       }
@@ -2992,8 +2997,8 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
             data_.gpu_solve_adat(b, x);
           }
         } adat_op(data);
-        const f_t adat_solve_err =
-          iterative_refinement<i_t, f_t, adat_op_t>(adat_op, data.d_h_, data.d_dy_);
+        const f_t adat_solve_err = iterative_refinement<i_t, f_t, adat_op_t>(
+          adat_op, data.d_h_, data.d_dy_, f_t(1e-8), settings.barrier_iterative_refinement_method);
         if (adat_solve_err > 1e-1) {
           settings.log.printf("||ADAT*dy - h|| %e after IR\n", adat_solve_err);
         }

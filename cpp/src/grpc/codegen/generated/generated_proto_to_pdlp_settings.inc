@@ -90,6 +90,9 @@
   if (pb_settings.has_cudss_host_nthreads()) {
     settings.cudss_host_nthreads = pb_settings.cudss_host_nthreads();
   }
+  if (pb_settings.has_barrier_iterative_refinement_method()) {
+    settings.barrier_iterative_refinement_method = pb_settings.barrier_iterative_refinement_method();
+  }
   settings.save_best_primal_so_far = pb_settings.save_best_primal_so_far();
   settings.first_primal_feasible = pb_settings.first_primal_feasible();
   if (pb_settings.has_pdlp_precision()) {

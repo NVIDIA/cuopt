@@ -420,6 +420,16 @@ Barrier Iterative Refinement
 
 .. note:: The default value is ``0`` (off).
 
+Barrier Iterative Refinement Method
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_BARRIER_ITERATIVE_REFINEMENT_METHOD`` controls which iterative refinement method the barrier solver uses when ``CUOPT_BARRIER_ITERATIVE_REFINEMENT`` is enabled.
+
+* ``0``: Fixed-point 
+* ``1``: Restarted GMRES (default)
+
+.. note:: The default value is ``1`` (GMRES).
+
 Barrier Step Scale
 ^^^^^^^^^^^^^^^^^^^
 

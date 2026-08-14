@@ -573,6 +573,10 @@ pdlp_settings:
       field_num: 37
       type: int32
       optional: true
+  - barrier_iterative_refinement_method:
+      field_num: 38
+      type: int32
+      optional: true
   - save_best_primal_so_far:
       field_num: 28
       type: bool

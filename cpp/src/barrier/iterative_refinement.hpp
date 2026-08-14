@@ -55,10 +55,10 @@ struct subtract_scaled_op {
 };
 
 template <typename i_t, typename f_t, typename T>
-f_t iterative_refinement_simple(T& op,
-                                const rmm::device_uvector<f_t>& b,
-                                rmm::device_uvector<f_t>& x,
-                                f_t tol = 1e-8)
+f_t iterative_refinement_fixed_point(T& op,
+                                     const rmm::device_uvector<f_t>& b,
+                                     rmm::device_uvector<f_t>& x,
+                                     f_t tol = 1e-8)
 {
   rmm::device_uvector<f_t> x_sav(x, x.stream());
 
@@ -365,13 +365,15 @@ template <typename i_t, typename f_t, typename T>
 f_t iterative_refinement(T& op,
                          const dense_vector_t<i_t, f_t>& b,
                          dense_vector_t<i_t, f_t>& x,
-                         f_t tol = 1e-8)
+                         f_t tol    = 1e-8,
+                         i_t method = 1)
 {
   rmm::device_uvector<f_t> d_b(b.size(), op.data_.handle_ptr->get_stream());
   raft::copy(d_b.data(), b.data(), b.size(), op.data_.handle_ptr->get_stream());
   rmm::device_uvector<f_t> d_x(x.size(), op.data_.handle_ptr->get_stream());
   raft::copy(d_x.data(), x.data(), x.size(), op.data_.handle_ptr->get_stream());
-  auto err = iterative_refinement_gmres<i_t, f_t, T>(op, d_b, d_x, tol);
+  auto err = (method == 0) ? iterative_refinement_fixed_point<i_t, f_t, T>(op, d_b, d_x, tol)
+                           : iterative_refinement_gmres<i_t, f_t, T>(op, d_b, d_x, tol);
 
   raft::copy(x.data(), d_x.data(), x.size(), op.data_.handle_ptr->get_stream());
 
@@ -383,9 +385,11 @@ template <typename i_t, typename f_t, typename T>
 f_t iterative_refinement(T& op,
                          const rmm::device_uvector<f_t>& b,
                          rmm::device_uvector<f_t>& x,
-                         f_t tol = 1e-8)
+                         f_t tol    = 1e-8,
+                         i_t method = 1)
 {
-  return iterative_refinement_gmres<i_t, f_t, T>(op, b, x, tol);
+  return (method == 0) ? iterative_refinement_fixed_point<i_t, f_t, T>(op, b, x, tol)
+                       : iterative_refinement_gmres<i_t, f_t, T>(op, b, x, tol);
 }
 
 }  // namespace cuopt::mathematical_optimization::barrier

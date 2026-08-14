@@ -498,21 +498,23 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   f_t norm_rhs            = vector_norm2<i_t, f_t>(user_problem.rhs);
 
   simplex::simplex_solver_settings_t<i_t, f_t> barrier_settings;
-  barrier_settings.num_gpus                        = settings.num_gpus;
-  barrier_settings.time_limit                      = settings.time_limit;
-  barrier_settings.iteration_limit                 = settings.iteration_limit;
-  barrier_settings.concurrent_halt                 = settings.concurrent_halt;
-  barrier_settings.folding                         = settings.folding;
-  barrier_settings.augmented                       = settings.augmented;
-  barrier_settings.dualize                         = settings.dualize;
-  barrier_settings.ordering                        = settings.ordering;
-  barrier_settings.barrier_dual_initial_point      = settings.barrier_dual_initial_point;
-  barrier_settings.postsolve_info                  = settings.postsolve_info;
-  barrier_settings.barrier                         = true;
-  barrier_settings.barrier_presolve                = true;
-  barrier_settings.crossover                       = settings.crossover;
-  barrier_settings.eliminate_dense_columns         = settings.eliminate_dense_columns;
-  barrier_settings.barrier_iterative_refinement    = settings.barrier_iterative_refinement;
+  barrier_settings.num_gpus                     = settings.num_gpus;
+  barrier_settings.time_limit                   = settings.time_limit;
+  barrier_settings.iteration_limit              = settings.iteration_limit;
+  barrier_settings.concurrent_halt              = settings.concurrent_halt;
+  barrier_settings.folding                      = settings.folding;
+  barrier_settings.augmented                    = settings.augmented;
+  barrier_settings.dualize                      = settings.dualize;
+  barrier_settings.ordering                     = settings.ordering;
+  barrier_settings.barrier_dual_initial_point   = settings.barrier_dual_initial_point;
+  barrier_settings.postsolve_info               = settings.postsolve_info;
+  barrier_settings.barrier                      = true;
+  barrier_settings.barrier_presolve             = true;
+  barrier_settings.crossover                    = settings.crossover;
+  barrier_settings.eliminate_dense_columns      = settings.eliminate_dense_columns;
+  barrier_settings.barrier_iterative_refinement = settings.barrier_iterative_refinement;
+  barrier_settings.barrier_iterative_refinement_method =
+    settings.barrier_iterative_refinement_method;
   barrier_settings.barrier_soc_threshold           = settings.barrier_soc_threshold;
   barrier_settings.barrier_step_scale              = settings.barrier_step_scale;
   barrier_settings.qcqp_ruiz_equilibration         = settings.qcqp_ruiz_equilibration;

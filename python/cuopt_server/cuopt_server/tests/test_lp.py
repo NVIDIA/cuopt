@@ -143,22 +143,23 @@ def test_sample_milp(
 @pytest.mark.parametrize(
     "folding, dualize, ordering, augmented, eliminate_dense, cudss_determ, "
     "dual_initial_point, cudss_nd_nlevels, cudss_hybrid_mode, "
-    "cudss_hybrid_execute_mode, cudss_host_nthreads",
+    "cudss_hybrid_execute_mode, cudss_host_nthreads, "
+    "barrier_ir_method",
     [
         # Test automatic settings (default)
-        (-1, -1, -1, -1, True, False, -1, -1, False, False, -1),
+        (-1, -1, -1, -1, True, False, -1, -1, False, False, -1, 1),
         # Test folding off, no dualization, cuDSS default ordering, ADAT system
-        (0, 0, 0, 0, True, False, 0, -1, False, False, -1),
+        (0, 0, 0, 0, True, False, 0, -1, False, False, -1, 1),
         # Test folding on, force dualization, AMD ordering, augmented system
-        (1, 1, 1, 1, True, True, 1, 8, True, True, 4),
+        (1, 1, 1, 1, True, True, 1, 8, True, True, 4, 0),
         # Test mixed settings: automatic folding, no dualize, AMD, augmented
-        (-1, 0, 1, 1, False, False, 0, 4, True, False, 2),
+        (-1, 0, 1, 1, False, False, 0, 4, True, False, 2, 0),
         # Test no folding, automatic dualize, cuDSS default, ADAT
-        (0, -1, 0, 0, True, True, -1, -1, False, False, -1),
+        (0, -1, 0, 0, True, True, -1, -1, False, False, -1, 1),
         # Test dual initial point with Lustig-Marsten-Shanno
-        (-1, -1, -1, -1, True, False, 0, -1, False, False, -1),
+        (-1, -1, -1, -1, True, False, 0, -1, False, False, -1, 1),
         # Test dual initial point with least squares
-        (-1, -1, -1, 1, True, False, 1, -1, False, False, -1),
+        (-1, -1, -1, 1, True, False, 1, -1, False, False, -1, 0),
     ],
 )
 def test_barrier_solver_options(
@@ -174,6 +175,7 @@ def test_barrier_solver_options(
     cudss_hybrid_mode,
     cudss_hybrid_execute_mode,
     cudss_host_nthreads,
+    barrier_ir_method,
 ):
     """
     Test the barrier solver (method=3) with various configuration options:
@@ -194,6 +196,8 @@ def test_barrier_solver_options(
       False to not overlap
     - cudss_host_nthreads: (-1) unset/automatic, else host worker thread
       count for cuDSS
+    - barrier_ir_method: (0) fixed-point residual-correction, (1) restarted
+      GMRES (default)
     """
     data = get_std_data_for_lp()
 
@@ -214,6 +218,9 @@ def test_barrier_solver_options(
         cudss_hybrid_execute_mode
     )
     data["solver_config"]["cudss_host_nthreads"] = cudss_host_nthreads
+    data["solver_config"]["barrier_iterative_refinement_method"] = (
+        barrier_ir_method
+    )
 
     res = get_lp(client, data)
 
@@ -228,7 +235,8 @@ def test_barrier_solver_options(
         f"cudss_nd_nlevels={cudss_nd_nlevels}, "
         f"cudss_hybrid_mode={cudss_hybrid_mode}, "
         f"cudss_hybrid_execute_mode={cudss_hybrid_execute_mode}, "
-        f"cudss_host_nthreads={cudss_host_nthreads}"
+        f"cudss_host_nthreads={cudss_host_nthreads}, "
+        f"barrier_ir_method={barrier_ir_method}"
     )
     print(res.json())
 

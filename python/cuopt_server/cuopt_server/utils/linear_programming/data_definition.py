@@ -536,6 +536,12 @@ class SolverConfig(BaseModel):
         "-1 to leave it unset (cuDSS default), or a non-negative thread "
         "count. Only takes effect when a cuDSS threading layer is loaded",
     )
+    barrier_iterative_refinement_method: Optional[int] = Field(
+        default=1,
+        description="Set which iterative refinement method the barrier "
+        "solver uses. 0 for a fixed-point residual-correction loop, 1 for "
+        "restarted GMRES (default)",
+    )
     crossover: Optional[bool] = Field(
         default=False,
         description="Set True to use crossover, False to not use crossover.",

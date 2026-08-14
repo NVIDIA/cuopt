@@ -40,6 +40,7 @@
   pb_settings->set_cudss_hybrid_mode(settings.cudss_hybrid_mode);
   pb_settings->set_cudss_hybrid_execute_mode(settings.cudss_hybrid_execute_mode);
   pb_settings->set_cudss_host_nthreads(settings.cudss_host_nthreads);
+  pb_settings->set_barrier_iterative_refinement_method(settings.barrier_iterative_refinement_method);
   pb_settings->set_save_best_primal_so_far(settings.save_best_primal_so_far);
   pb_settings->set_first_primal_feasible(settings.first_primal_feasible);
   pb_settings->set_pdlp_precision(static_cast<int32_t>(settings.pdlp_precision));

@@ -138,6 +138,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_ORDERING, &pdlp_settings.ordering, -1, 1, -1},
     {CUOPT_CUDSS_ND_NLEVELS, &pdlp_settings.cudss_nd_nlevels, -1, std::numeric_limits<i_t>::max(), -1},
     {CUOPT_CUDSS_HOST_NTHREADS, &pdlp_settings.cudss_host_nthreads, -1, std::numeric_limits<i_t>::max(), -1},
+    {CUOPT_BARRIER_ITERATIVE_REFINEMENT_METHOD, &pdlp_settings.barrier_iterative_refinement_method, 0, 1, 1},
     {CUOPT_BARRIER_DUAL_INITIAL_POINT, &pdlp_settings.barrier_dual_initial_point, -1, 1, -1},
     {CUOPT_POSTSOLVE_INFO, &pdlp_settings.postsolve_info, -1, 1, -1},
     {CUOPT_MIP_CUT_PASSES, &mip_settings.max_cut_passes, -1, std::numeric_limits<i_t>::max(), 10},
