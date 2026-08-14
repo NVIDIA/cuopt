@@ -2081,6 +2081,15 @@ class iteration_data_t {
   const simplex_solver_settings_t<i_t, f_t>& settings_;
 };
 
+// -1 automatic: enable for cones, disable otherwise; 0 off; 1 on
+template <typename i_t, typename f_t>
+bool should_use_adaptive_regularization(const simplex_solver_settings_t<i_t, f_t>& settings,
+                                        const iteration_data_t<i_t, f_t>& data)
+{
+  return settings.barrier_adaptive_regularization > 0 ||
+         (settings.barrier_adaptive_regularization < 0 && data.has_cones());
+}
+
 // Move the Cholesky debug logic to a reusable function.
 
 template <typename i_t, typename f_t>
@@ -2914,7 +2923,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
 
       // Adaptive regularization: increase/decrease based on IR quality.
       // Only adapt on calls where we actually (re)factorized — the affine step.
-      if (did_factorize && data.has_cones()) {
+      if (did_factorize && should_use_adaptive_regularization(settings, data)) {
         constexpr f_t min_perturb = 1e-8;
         constexpr f_t max_perturb = 1e-1;
         if (solve_err > 1e-2) {
@@ -4176,6 +4185,13 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
       settings.log.printf("Unable to compute initial point\n");
       return lp_status_t::NUMERICAL_ISSUES;
     }
+
+    // Handle automatic adaptive regularization (-1: auto, 0: off, 1: on).
+    const bool adaptive_regularization = should_use_adaptive_regularization(settings, data);
+    if (settings.barrier_adaptive_regularization == -1 && adaptive_regularization) {
+      settings.log.printf("Adaptive regularization enabled\n");
+    }
+
     // Upload initial point to device and compute initial residuals/norms on GPU
     data.d_complementarity_wv_residual_.resize(data.n_upper_bounds, stream_view_);
     data.d_complementarity_wv_rhs_.resize(data.n_upper_bounds, stream_view_);
@@ -4271,7 +4287,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
     const i_t iteration_limit = settings.iteration_limit;
 
     // Adaptive regularization for the augmented system.
-    f_t dual_perturb   = data.has_cones() ? 1e-8 : 0;
+    f_t dual_perturb   = adaptive_regularization ? 1e-8 : 0;
     f_t primal_perturb = data.has_cones() ? 1e-8 : 1e-6;
 
     while (iter < iteration_limit) {
