@@ -112,6 +112,7 @@ class barrier_solver_t {
                                                      f_t& relative_primal_residual,
                                                      f_t& relative_dual_residual,
                                                      f_t& relative_complementarity_residual,
+                                                     f_t& relative_objective_gap,
                                                      simplex::lp_solution_t<i_t, f_t>& solution);
 
   const simplex::lp_problem_t<i_t, f_t>& lp;
