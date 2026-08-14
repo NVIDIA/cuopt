@@ -2699,8 +2699,11 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* w
   std::vector<i_t> integer_list;
   get_unfixed_integer_variables(lower, upper, var_types, settings_.fixed_tol, integer_list);
 
-  i_t num_integers = integer_list.size();
+  // Shuffle the integer list, so every variable has the same chance to the picked
+  // (we iterate the list in order).
+  worker->rng.shuffle(integer_list);
 
+  i_t num_integers  = integer_list.size();
   f_t max_fixrate   = submip_get_max_fixrate(submip_stats, settings_.submip_settings, worker->rng);
   f_t min_fixrate   = std::min(settings_.submip_settings.min_fixrate, max_fixrate);
   i_t max_var_fixed = max_fixrate * num_integers;
@@ -2708,6 +2711,9 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* w
   i_t num_var_fixed = 0;
 
   while (solver_status_ == mip_status_t::UNSET && is_running_ && !worker->halt) {
+    // Shuffle the fractional list, so every variable has the same chance to the picked
+    // (we iterate the list in order).
+    worker->rng.shuffle(fractional);
     // RINS neighbourhood 1: Fix all the integer variables where the starting solution matches the
     // current incumbent, considering only the fractional values in the current node
     i_t prev_num_fixed = num_var_fixed;
