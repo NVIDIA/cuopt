@@ -3102,15 +3102,17 @@ void cut_generation_t<i_t, f_t>::generate_implied_bound_cuts(
 {
   if (probing_implied_bound_.zero_offsets.empty()) { return; }
 
-  const f_t tol               = 1e-4;
-  i_t num_cuts                = 0;
-  const i_t pib_cols          = static_cast<i_t>(probing_implied_bound_.zero_offsets.size()) - 1;
-  const i_t n_cols            = std::min(lp.num_cols, pib_cols);
-  f_t work_estimate           = 0.0;
-  const f_t max_work_estimate = 1e8;
+  const f_t tol                  = 1e-4;
+  i_t num_cuts                   = 0;
+  const i_t pib_cols             = static_cast<i_t>(probing_implied_bound_.zero_offsets.size()) - 1;
+  const i_t n_cols               = std::min(lp.num_cols, pib_cols);
+  f_t work_estimate              = 0.0;
+  const f_t max_work_estimate    = 1e8;
+  constexpr f_t implication_work = 16.0;
+  constexpr f_t generated_cut_work = 16.0;
 
   for (i_t j = 0; j < n_cols; j++) {
-    if (toc(start_time) >= settings.time_limit) { return; }
+    if (work_estimate > max_work_estimate || toc(start_time) >= settings.time_limit) { return; }
     if (var_types[j] == variable_type_t::CONTINUOUS) { continue; }
     const f_t xstar_j = xstar[j];
 
@@ -3119,11 +3121,8 @@ void cut_generation_t<i_t, f_t>::generate_implied_bound_cuts(
     const i_t zero_end   = probing_implied_bound_.zero_offsets[j + 1];
     const i_t one_begin  = probing_implied_bound_.one_offsets[j];
     const i_t one_end    = probing_implied_bound_.one_offsets[j + 1];
-    if (add_work_estimate(
-          (f_t)(zero_end - zero_begin + one_end - one_begin), &work_estimate, max_work_estimate)) {
-      return;
-    }
     for (i_t p = zero_begin; p < zero_end; p++) {
+      work_estimate += implication_work;
       const i_t i = probing_implied_bound_.zero_variables[p];
       if (i == j) { continue; }
       const f_t l_i = lp.lower[i];
@@ -3143,6 +3142,7 @@ void cut_generation_t<i_t, f_t>::generate_implied_bound_cuts(
           cut.push_back(j, coeff_j);
           cut.rhs = -b_ub;
           cut_pool_.add_cut(cut_type_t::IMPLIED_BOUND, cut);
+          work_estimate += generated_cut_work;
           num_cuts++;
         }
       }
@@ -3161,13 +3161,16 @@ void cut_generation_t<i_t, f_t>::generate_implied_bound_cuts(
           cut.push_back(j, coeff_j);
           cut.rhs = b_lb;
           cut_pool_.add_cut(cut_type_t::IMPLIED_BOUND, cut);
+          work_estimate += generated_cut_work;
           num_cuts++;
         }
       }
     }
+    if (work_estimate > max_work_estimate || toc(start_time) >= settings.time_limit) { return; }
 
     // x_j = 1 implications
     for (i_t p = one_begin; p < one_end; p++) {
+      work_estimate += implication_work;
       const i_t i = probing_implied_bound_.one_variables[p];
       if (i == j) { continue; }
       const f_t l_i = lp.lower[i];
@@ -3187,6 +3190,7 @@ void cut_generation_t<i_t, f_t>::generate_implied_bound_cuts(
           cut.push_back(j, coeff_j);
           cut.rhs = -u_i;
           cut_pool_.add_cut(cut_type_t::IMPLIED_BOUND, cut);
+          work_estimate += generated_cut_work;
           num_cuts++;
         }
       }
@@ -3204,10 +3208,12 @@ void cut_generation_t<i_t, f_t>::generate_implied_bound_cuts(
           cut.push_back(j, coeff_j);
           cut.rhs = rhs_val;
           cut_pool_.add_cut(cut_type_t::IMPLIED_BOUND, cut);
+          work_estimate += generated_cut_work;
           num_cuts++;
         }
       }
     }
+    if (work_estimate > max_work_estimate || toc(start_time) >= settings.time_limit) { return; }
   }
 
   if (num_cuts > 0) {
@@ -3900,19 +3906,18 @@ bool cut_generation_t<i_t, f_t>::generate_zero_half_cuts(
     static_cast<int>(sub_cg_.ready),
     sub_cg_.vertices.size());
 
-  f_t mod2_work_estimate = 0.0;
-  if (!generate_mod2_zero_half_cuts(cut_pool_,
-                                    lp,
-                                    settings,
-                                    Arow,
-                                    new_slacks,
-                                    var_types,
-                                    xstar,
-                                    variable_bounds,
-                                    start_time,
-                                    mod2_work_estimate)) {
-    return true;
-  }
+  f_t mod2_work_estimate    = 0.0;
+  const bool mod2_completed = generate_mod2_zero_half_cuts(cut_pool_,
+                                                           lp,
+                                                           settings,
+                                                           Arow,
+                                                           new_slacks,
+                                                           var_types,
+                                                           xstar,
+                                                           variable_bounds,
+                                                           start_time,
+                                                           mod2_work_estimate);
+  if (!mod2_completed) { return true; }
 
   // The fractional conflict-graph subgraph is built once per cut pass in
   // prepare_fractional_sub_conflict_graph() and remains a complementary
@@ -4102,19 +4107,22 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
   // at the beginning of each iteration of the for loop below
   std::vector<i_t> aggregated_rows;
   std::vector<i_t> aggregated_mark(lp.num_rows, 0);
+  const i_t max_cuts = std::min(lp.num_rows, 100000);
 
   // Transform the relaxation solution
   std::vector<f_t> transformed_xstar;
   complemented_mir.bound_substitution(lp, variable_bounds, var_types, xstar, transformed_xstar);
 
-  f_t work_estimate = 0.0;
-  while (!score_queue.empty()) {
+  f_t work_estimate  = 0.0;
+  i_t cuts_processed = 0;
+  while (cuts_processed < max_cuts && !score_queue.empty()) {
     if (toc(start_time) >= settings.time_limit) { break; }
     // Get the row with the highest score from the queue
     auto [max_score, i] = score_queue.top();
     score_queue.pop();
     // skip stale score entries
     if (max_score != scores[i]) { continue; }
+    ++cuts_processed;
 
     // Add the current row to the aggregated set
     aggregated_mark[i] = 1;
