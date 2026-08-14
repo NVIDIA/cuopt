@@ -228,7 +228,8 @@ class iteration_data_t {
                    i_t num_upper_bounds,
                    const std::vector<i_t>& direct_free_variables,
                    const csc_matrix_t<i_t, f_t>& Qin,
-                   const simplex_solver_settings_t<i_t, f_t>& settings)
+                   const simplex_solver_settings_t<i_t, f_t>& settings,
+                  f_t start_time)
     : upper_bounds(num_upper_bounds),
       c(lp.objective),
       b(lp.rhs),
@@ -642,6 +643,7 @@ class iteration_data_t {
       RAFT_CHECK_CUDA(handle_ptr->get_stream());
     }
 
+    settings.log.printf("Elapsed time           : %.3f seconds\n", toc(start_time));
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
     {
       raft::common::nvtx::range scope("Barrier: LP Data: Cholesky init");
@@ -664,6 +666,7 @@ class iteration_data_t {
         }
         if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
         symbolic_status = chol->analyze(device_augmented);
+        settings.log.printf("Elapsed time for augmented  : %.3f seconds\n", toc(start_time));
       } else {
         {
           raft::common::nvtx::range form_scope("Barrier: LP Data: form ADAT");
@@ -671,6 +674,7 @@ class iteration_data_t {
         }
         if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
         symbolic_status = chol->analyze(device_ADAT);
+        settings.log.printf("Elapsed time for ADAT        : %.3f seconds\n", toc(start_time));
       }
     }
   }
@@ -4047,7 +4051,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
 template <typename i_t, typename f_t>
 lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t, f_t>& solution)
 {
-  settings.log.printf("Barrier solver started at %.2f seconds\n", toc(start_time));
+  settings.log.printf("Barrier solver started at %.3f seconds\n", toc(start_time));
   try {
     raft::common::nvtx::range fun_scope("Barrier: solve");
 
@@ -4084,7 +4088,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
     if (lp.Q.n > 0) { create_Q(lp, Q); }
 
     iteration_data_t<i_t, f_t> data(
-      lp, num_upper_bounds, presolve_info.direct_free_variables, Q, settings);
+      lp, num_upper_bounds, presolve_info.direct_free_variables, Q, settings, start_time);
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       settings.log.printf("Barrier solver halted\n");
       return lp_status_t::CONCURRENT_LIMIT;
@@ -4201,7 +4205,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
     settings.log.printf(
       "Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed\n");
     float64_t elapsed_time = toc(start_time);
-    settings.log.printf("%3d   %+.12e %+.12e %.2e %.2e %.2e %.1f\n",
+    settings.log.printf("%3d   %+.12e %+.12e %.2e %.2e %.2e %.3f\n",
                         iter,
                         compute_user_objective(lp, primal_objective),
                         compute_user_objective(lp, dual_objective),
@@ -4390,7 +4394,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
                                              solution);
       }
 
-      settings.log.printf("%3d   %+.12e %+.12e %.2e %.2e %.2e %.1f\n",
+      settings.log.printf("%3d   %+.12e %+.12e %.2e %.2e %.2e %.3f\n",
                           iter,
                           compute_user_objective(lp, primal_objective),
                           compute_user_objective(lp, dual_objective),

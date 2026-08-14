@@ -493,7 +493,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
         return -1;
       }
       f_t reordering_time = toc(start_symbolic);
-      settings_.log.printf("Reordering time             : %.2fs\n", reordering_time);
+      settings_.log.printf("Reordering time             : %.3fs\n", reordering_time);
       start_symbolic_factor = tic();
 
       status = cudssExecute(
@@ -511,8 +511,8 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     }
     RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
     f_t symbolic_factorization_time = toc(start_symbolic_factor);
-    settings_.log.printf("Symbolic factorization time : %.2fs\n", symbolic_factorization_time);
-    settings_.log.printf("Total symbolic time         : %.2fs\n", toc(start_symbolic));
+    settings_.log.printf("Symbolic factorization time : %.3fs\n", symbolic_factorization_time);
+    settings_.log.printf("Total symbolic time         : %.3fs\n", toc(start_symbolic));
     int64_t lu_nz       = 0;
     size_t size_written = 0;
     CUDSS_CALL_AND_CHECK(
