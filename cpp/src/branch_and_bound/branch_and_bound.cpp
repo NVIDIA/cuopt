@@ -3315,7 +3315,10 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   if (mode == cut_pass_mode_t::APPLY_EXISTING_POOL) {
     settings_.log.printf("Applying %d speculative root cuts to the basis solution\n", num_cuts);
   }
-  if (num_cuts == 0) { return {cut_pass_action_t::BREAK, mip_status_t::UNSET}; }
+  if (num_cuts == 0) {
+    if (mode == cut_pass_mode_t::APPLY_EXISTING_POOL) { cut_pool.clear(); }
+    return {cut_pass_action_t::BREAK, mip_status_t::UNSET};
+  }
   cut_info.record_cut_types(cut_types);
 #ifdef PRINT_CUT_POOL_TYPES
   cut_pool.print_cutpool_types();
@@ -3335,6 +3338,7 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
 #ifdef CHECK_CUTS_AGAINST_SAVED_SOLUTION
   verify_cuts_against_saved_solution(cuts_to_add, cut_rhs, saved_solution);
 #endif
+  if (mode == cut_pass_mode_t::APPLY_EXISTING_POOL) { cut_pool.clear(); }
   cut_pool_size = cut_pool.pool_size();
 
   // Resolve the LP with the new cuts

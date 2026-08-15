@@ -1483,6 +1483,26 @@ void cut_pool_t<i_t, f_t>::age_cuts()
 }
 
 template <typename i_t, typename f_t>
+void cut_pool_t<i_t, f_t>::clear()
+{
+  cut_storage_.m      = 0;
+  cut_storage_.nz_max = 0;
+  cut_storage_.row_start.resize(1);
+  cut_storage_.row_start[0] = 0;
+  cut_storage_.j.clear();
+  cut_storage_.x.clear();
+  rhs_storage_.clear();
+  cut_age_.clear();
+  cut_type_.clear();
+  cut_distances_.clear();
+  cut_norms_.clear();
+  cut_orthogonality_.clear();
+  cut_scores_.clear();
+  best_cuts_.clear();
+  scored_cuts_ = 0;
+}
+
+template <typename i_t, typename f_t>
 void cut_pool_t<i_t, f_t>::drop_cuts()
 {
   // TODO: Implement this

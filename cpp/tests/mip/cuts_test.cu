@@ -1017,6 +1017,40 @@ TEST(cuts, count_violated_cuts_deduplicates_and_rescores)
   EXPECT_EQ(cut_pool.count_violated_cuts({1.0, 0.0}), 0);
 }
 
+TEST(cuts, clear_cut_pool_resets_state_for_new_cuts)
+{
+  simplex::simplex_solver_settings_t<int, double> settings;
+  mip::cut_pool_t<int, double> cut_pool(2, settings);
+
+  mip::inequality_t<int, double> first_cut;
+  first_cut.push_back(0, 1.0);
+  first_cut.rhs = 1.0;
+  cut_pool.add_cut(mip::cut_type_t::KNAPSACK, first_cut);
+  std::vector<double> relaxation_solution{0.0, 0.0};
+  cut_pool.score_cuts(relaxation_solution);
+
+  csr_matrix_t<int, double> selected_cuts(0, 2, 0);
+  std::vector<double> selected_rhs;
+  std::vector<mip::cut_type_t> selected_types;
+  EXPECT_EQ(cut_pool.get_best_cuts(selected_cuts, selected_rhs, selected_types), 1);
+
+  cut_pool.clear();
+  EXPECT_EQ(cut_pool.pool_size(), 0);
+  ASSERT_EQ(selected_cuts.m, 1);
+  ASSERT_EQ(selected_rhs.size(), 1);
+  ASSERT_EQ(selected_types.size(), 1);
+  EXPECT_EQ(selected_types[0], mip::cut_type_t::KNAPSACK);
+
+  mip::inequality_t<int, double> second_cut;
+  second_cut.push_back(1, 1.0);
+  second_cut.rhs = 1.0;
+  cut_pool.add_cut(mip::cut_type_t::FLOW_COVER, second_cut);
+  cut_pool.score_cuts(relaxation_solution);
+  EXPECT_EQ(cut_pool.get_best_cuts(selected_cuts, selected_rhs, selected_types), 1);
+  ASSERT_EQ(selected_types.size(), 1);
+  EXPECT_EQ(selected_types[0], mip::cut_type_t::FLOW_COVER);
+}
+
 TEST(cuts, cut_generation_honors_concurrent_halt)
 {
   const raft::handle_t handle{};
