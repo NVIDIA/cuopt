@@ -109,6 +109,7 @@ class barrier_solver_t {
                                                      f_t& primal_residual_norm,
                                                      f_t& dual_residual_norm,
                                                      f_t& complementarity_residual_norm,
+                                                     f_t& objective_gap,
                                                      f_t& relative_primal_residual,
                                                      f_t& relative_dual_residual,
                                                      f_t& relative_complementarity_residual,
