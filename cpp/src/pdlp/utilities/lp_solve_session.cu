@@ -5,7 +5,7 @@
  */
 /* clang-format on */
 
-#include <cuopt/linear_programming/utilities/lp_solve_session.hpp>
+#include <cuopt/mathematical_optimization/utilities/lp_solve_session.hpp>
 
 #include <barrier/barrier_symbolic_cache.hpp>
 
@@ -17,7 +17,7 @@ namespace cuopt::cython {
 struct lp_solve_session_t::impl {
   std::unique_ptr<rmm::cuda_stream> stream;
   std::unique_ptr<raft::handle_t> handle;
-  std::optional<linear_programming::dual_simplex::barrier_symbolic_cache_t<int, double>>
+  std::optional<mathematical_optimization::barrier::barrier_symbolic_cache_t<int, double>>
     symbolic_cache;
 };
 
@@ -55,7 +55,7 @@ rmm::cuda_stream_view lp_solve_session_t::stream_view() const
   return impl_->stream->view();
 }
 
-linear_programming::dual_simplex::barrier_symbolic_cache_t<int, double>*
+mathematical_optimization::barrier::barrier_symbolic_cache_t<int, double>*
 lp_solve_session_t::symbolic_cache_for_reuse(raft::handle_t const* handle)
 {
   if (handle == nullptr || !impl_->symbolic_cache.has_value() || !impl_->symbolic_cache->valid ||
@@ -71,12 +71,12 @@ void lp_solve_session_t::clear_symbolic_cache()
 }
 
 void lp_solve_session_t::store_symbolic_cache(
-  linear_programming::dual_simplex::iteration_data_t<int, double>& data)
+  mathematical_optimization::barrier::iteration_data_t<int, double>& data)
 {
   if (!impl_->symbolic_cache.has_value()) {
     impl_->symbolic_cache.emplace(impl_->handle->get_stream());
   }
-  linear_programming::dual_simplex::barrier_store_symbolic_cache_from_iteration_data(
+  mathematical_optimization::barrier::barrier_store_symbolic_cache_from_iteration_data(
     data, *impl_->symbolic_cache);
 }
 

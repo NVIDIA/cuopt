@@ -9,12 +9,12 @@
 
 #include <barrier/device_sparse_matrix.cuh>
 
-#include <dual_simplex/sparse_matrix.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
 
 #include <cstdint>
 #include <vector>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::barrier {
 
 using barrier_sparsity_hash_t = std::uint64_t;
 
@@ -123,4 +123,4 @@ template <typename i_t, typename f_t>
 barrier_sparsity_hash_t hash_device_csr_sparsity_pattern(
   device_csr_matrix_t<i_t, f_t>& mat, rmm::cuda_stream_view stream);
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::barrier

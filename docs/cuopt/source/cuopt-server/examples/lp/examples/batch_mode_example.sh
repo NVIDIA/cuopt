@@ -1,5 +1,5 @@
 #!/bin/bash
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # LP Batch Mode CLI Example
@@ -7,7 +7,7 @@
 # This example demonstrates how to solve multiple LP problems in batch mode
 # using MPS files with the cuopt_sh CLI tool.
 #
-# Note: Batch mode works only with MPS files in CLI and is not available for MILP.
+# Note: Batch mode works only with MPS files in CLI and is not available for MIP.
 #
 # Requirements:
 #   - cuOpt server running on localhost:5000
@@ -52,4 +52,4 @@ echo "=== Solving Multiple MPS Files in Batch Mode ==="
 cuopt_sh "$mps_file" "$mps_file" "$mps_file" -t LP -i $ip -p $port -ss '{"tolerances": {"optimality": 0.0001}, "time_limit": 5}'
 
 echo ""
-echo "Note: Batch mode is only available for LP with MPS files, not for MILP."
+echo "Note: Batch mode is only available for LP with MPS files, not for MIP."

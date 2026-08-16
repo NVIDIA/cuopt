@@ -109,6 +109,9 @@
 # Proto value names: proto_prefix + UPPER_SNAKE(CppName), or just CppName if
 # no prefix.
 #
+
+# yamllint disable rule:indentation
+
 enums:
   pdlp_termination_status:
     domain: solution
@@ -552,6 +555,10 @@ pdlp_settings:
       # consistency with the other f_t scalars (tolerances, time_limit, ...).
       field_num: 32
       optional: true
+  - postsolve_info:
+      field_num: 33
+      type: int32
+      optional: true
   - save_best_primal_so_far:
       field_num: 28
       type: bool
@@ -682,6 +689,10 @@ mip_settings:
       field_num: 22
       type: int32
       optional: true
+  - zero_half_cuts:
+      field_num: 52
+      type: int32
+      optional: true
   - implied_bound_cuts:
       field_num: 31
       type: int32
@@ -731,7 +742,7 @@ mip_settings:
 
     # MIP heuristic hyper-parameters (nested: settings.heuristic_params.<field>)
     # Tuning knobs for MIP GPU heuristics; see mip_heuristics_hyper_params_t
-    # in cpp/include/cuopt/linear_programming/mip/heuristics_hyper_params.hpp.
+    # in cpp/include/cuopt/mathematical_optimization/mip/heuristics_hyper_params.hpp.
     # All fields carry non-zero defaults on the C++ side, so they are declared
     # `optional` in the proto: a client that omits any of them gets the C++
     # default rather than the proto3 wire zero (0).
@@ -744,12 +755,9 @@ mip_settings:
         field_num: 36
         type: int32
         optional: true
-    - presolve_time_ratio:
-        field_num: 37
-        optional: true
-    - presolve_max_time:
-        field_num: 38
-        optional: true
+    # 37 and 38 held presolve_time_ratio and presolve_max_time, removed when
+    # presolve stopped taking a wall budget. Do not reuse: an older client
+    # still sends them on those numbers.
     - root_lp_time_ratio:
         field_num: 39
         optional: true
@@ -794,6 +802,14 @@ mip_settings:
     - related_vars_time_limit:
         field_num: 51
         optional: true
+    - presolve_max_rounds:
+        field_num: 53
+        type: int32
+        optional: true
+    - papilo_probing_max_badgesize:
+        field_num: 54
+        type: int32
+        optional: true
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Optimization Problem (cpu_optimization_problem_t)
@@ -815,6 +831,10 @@ optimization_problem:
       getter: get_sense()
   - objective_scaling_factor:
       field_num: 4
+      # C++ defaults to 1 while an absent proto3 scalar reads as 0. Track
+      # presence so external clients may omit the field without changing the
+      # objective to an unsupported zero scaling factor.
+      optional: true
   - objective_offset:
       field_num: 5
 

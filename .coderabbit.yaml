@@ -71,7 +71,7 @@ reviews:
         - Suggest documenting thread-safety, GPU requirements, numerical behavior
         - For breaking changes, recommend migration notes
 
-    - path: "cpp/include/cuopt/linear_programming/cuopt_c.h"
+    - path: "cpp/include/cuopt/mathematical_optimization/cuopt_c.h"
       instructions: |
         This is the C ABI surface. Flag ANY change to struct layout, function
         signatures, enum values, or typedef shape as potentially ABI-breaking.

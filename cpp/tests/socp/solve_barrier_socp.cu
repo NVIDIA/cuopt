@@ -7,8 +7,8 @@
 
 #include <gtest/gtest.h>
 
-#include <cuopt/linear_programming/constants.h>
-#include <cuopt/linear_programming/solve.hpp>
+#include <cuopt/mathematical_optimization/constants.h>
+#include <cuopt/mathematical_optimization/solve.hpp>
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/scaling.hpp>
 #include <dual_simplex/solve.hpp>
@@ -20,7 +20,7 @@
 #include <cmath>
 #include <vector>
 
-namespace cuopt::linear_programming::dual_simplex::test {
+namespace cuopt::mathematical_optimization::simplex::test {
 
 // This serves as both a warm up but also a mandatory initial call to setup cuSparse and cuBLAS
 static void init_handler(const raft::handle_t* handle_ptr)
@@ -37,7 +37,6 @@ TEST(barrier, cone_metadata_reindexed_when_slack_is_inserted_before_cones)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<int, double> user_problem(&handle);
 
   constexpr int m       = 1;
@@ -98,7 +97,6 @@ TEST(barrier, presolve_reindexes_cone_start_after_empty_column_removal)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<int, double> user_problem(&handle);
 
   constexpr int m  = 1;
@@ -167,7 +165,6 @@ TEST(barrier, presolve_keeps_direct_free_variables_before_cones)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<int, double> user_problem(&handle);
 
   constexpr int m  = 1;
@@ -230,7 +227,6 @@ TEST(barrier, rejects_middle_cone_input_before_barrier)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<int, double> user_problem(&handle);
 
   constexpr int m  = 3;
@@ -282,7 +278,6 @@ TEST(barrier, socp_min_x0_subject_to_norm_constraint)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<int, double> user_problem(&handle);
 
   constexpr int m  = 1;
@@ -343,7 +338,6 @@ TEST(barrier, mixed_linear_and_soc_block)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<int, double> user_problem(&handle);
 
   constexpr int m  = 2;
@@ -409,7 +403,6 @@ TEST(barrier, mixed_linear_and_soc_tail_coupling)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<int, double> user_problem(&handle);
 
   constexpr int m  = 2;
@@ -476,7 +469,6 @@ TEST(barrier, mixed_linear_and_soc_tail_coupling_with_inequality)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<int, double> user_problem(&handle);
 
   constexpr int m  = 2;
@@ -546,7 +538,6 @@ TEST(barrier, mixed_linear_and_two_soc_blocks)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<int, double> user_problem(&handle);
 
   constexpr int m  = 4;
@@ -627,7 +618,6 @@ TEST(barrier, mixed_linear_and_two_soc_blocks_with_inequality)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<int, double> user_problem(&handle);
 
   constexpr int m  = 4;
@@ -707,7 +697,6 @@ TEST(barrier, free_linear_prefix_is_uncrushed_correctly_with_soc_block)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<int, double> user_problem(&handle);
 
   constexpr int m  = 2;
@@ -771,7 +760,6 @@ TEST(barrier, qp_with_soc_block)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<int, double> user_problem(&handle);
 
   constexpr int m  = 1;
@@ -824,4 +812,211 @@ TEST(barrier, qp_with_soc_block)
   EXPECT_NEAR(std::abs(solution.x[3]), 0.0, 1e-4);
 }
 
-}  // namespace cuopt::linear_programming::dual_simplex::test
+TEST(barrier, sparse_soc_expansion_solves_large_single_cone)
+{
+  // minimize x_0
+  // subject to x_1 = 1
+  //            (x_0, ..., x_5) in Q^6
+  //
+  // Optimal: x* = (1, 1, 0, 0, 0, 0), obj* = 1
+
+  raft::handle_t handle{};
+  init_handler(&handle);
+
+  user_problem_t<int, double> user_problem(&handle);
+
+  constexpr int m  = 1;
+  constexpr int n  = 6;
+  constexpr int nz = 1;
+
+  user_problem.num_rows = m;
+  user_problem.num_cols = n;
+  user_problem.objective.assign(n, 0.0);
+  user_problem.objective[0] = 1.0;
+
+  user_problem.A.m      = m;
+  user_problem.A.n      = n;
+  user_problem.A.nz_max = nz;
+  user_problem.A.reallocate(nz);
+  user_problem.A.col_start = {0, 0, 1, 1, 1, 1, 1};
+  user_problem.A.i[0]      = 0;
+  user_problem.A.x[0]      = 1.0;
+
+  user_problem.rhs       = {1.0};
+  user_problem.row_sense = {'E'};
+  user_problem.lower.assign(n, 0.0);
+  user_problem.upper.assign(n, inf);
+
+  user_problem.num_range_rows         = 0;
+  user_problem.problem_name           = "sparse_soc_single_large_cone";
+  user_problem.cone_var_start         = 0;
+  user_problem.second_order_cone_dims = {6};
+  user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
+
+  simplex_solver_settings_t<int, double> settings;
+  settings.barrier                      = true;
+  settings.barrier_presolve             = true;
+  settings.dualize                      = 0;
+  settings.barrier_soc_threshold        = 4;
+  settings.barrier_iterative_refinement = true;
+
+  lp_solution_t<int, double> solution(m, n);
+  auto status = solve_linear_program_with_barrier(user_problem, settings, solution);
+  EXPECT_EQ(status, lp_status_t::OPTIMAL);
+  EXPECT_NEAR(solution.objective, 1.0, 1e-4);
+  EXPECT_NEAR(solution.x[0], 1.0, 1e-4);
+  EXPECT_NEAR(solution.x[1], 1.0, 1e-4);
+  for (int j = 2; j < n; ++j) {
+    EXPECT_NEAR(std::abs(solution.x[j]), 0.0, 1e-4) << "index " << j;
+  }
+}
+
+TEST(barrier, mixed_dense_and_sparse_soc_blocks)
+{
+  // Variables ordered as [l1, l2 | dense Q^3 | sparse Q^6].
+  //
+  // minimize   t_dense + t_sparse
+  // subject to l1 - u_dense = 0
+  //            l2 - u_sparse = 0
+  //            l1 + l2 >= 3
+  //            l1 - l2 = 1
+  //
+  // Same optimum as mixed_linear_and_two_soc_blocks_with_inequality: obj* = 3.
+  raft::handle_t handle{};
+  init_handler(&handle);
+
+  user_problem_t<int, double> user_problem(&handle);
+
+  constexpr int m  = 4;
+  constexpr int n  = 11;
+  constexpr int nz = 8;
+
+  user_problem.num_rows = m;
+  user_problem.num_cols = n;
+  user_problem.objective.assign(n, 0.0);
+  user_problem.objective[2] = 1.0;  // t_dense (head of dense Q^3 block)
+  user_problem.objective[5] = 1.0;  // t_sparse (head of sparse Q^6 block)
+
+  user_problem.A.m      = m;
+  user_problem.A.n      = n;
+  user_problem.A.nz_max = nz;
+  user_problem.A.reallocate(nz);
+  // Columns: l1, l2, t_d, u_d, v_d, t_s, u_s, v_s, w_s, y_s, z_s
+  user_problem.A.col_start = {0, 3, 6, 6, 7, 7, 7, 8, 8, 8, 8, 8};
+  user_problem.A.i[0]      = 0;
+  user_problem.A.x[0]      = 1.0;
+  user_problem.A.i[1]      = 2;
+  user_problem.A.x[1]      = 1.0;
+  user_problem.A.i[2]      = 3;
+  user_problem.A.x[2]      = 1.0;
+  user_problem.A.i[3]      = 1;
+  user_problem.A.x[3]      = 1.0;
+  user_problem.A.i[4]      = 2;
+  user_problem.A.x[4]      = 1.0;
+  user_problem.A.i[5]      = 3;
+  user_problem.A.x[5]      = -1.0;
+  user_problem.A.i[6]      = 0;
+  user_problem.A.x[6]      = -1.0;
+  user_problem.A.i[7]      = 1;
+  user_problem.A.x[7]      = -1.0;
+
+  user_problem.rhs       = {0.0, 0.0, 3.0, 1.0};
+  user_problem.row_sense = {'E', 'E', 'G', 'E'};
+  user_problem.lower.assign(n, 0.0);
+  user_problem.upper.assign(n, inf);
+
+  user_problem.num_range_rows         = 0;
+  user_problem.problem_name           = "mixed_dense_and_sparse_soc_blocks";
+  user_problem.cone_var_start         = 2;
+  user_problem.second_order_cone_dims = {3, 6};
+  user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
+
+  simplex_solver_settings_t<int, double> settings;
+  settings.barrier                      = true;
+  settings.barrier_presolve             = true;
+  settings.dualize                      = 0;
+  settings.scale_columns                = true;
+  settings.barrier_soc_threshold        = 4;
+  settings.barrier_iterative_refinement = true;
+
+  lp_solution_t<int, double> solution(m, n);
+  auto status = solve_linear_program_with_barrier(user_problem, settings, solution);
+
+  EXPECT_EQ(status, lp_status_t::OPTIMAL);
+  EXPECT_NEAR(solution.objective, 3.0, 1e-4);
+  EXPECT_NEAR(solution.x[0], 2.0, 1e-4);
+  EXPECT_NEAR(solution.x[1], 1.0, 1e-4);
+  EXPECT_NEAR(solution.x[2], 2.0, 1e-4);
+  EXPECT_NEAR(solution.x[3], 2.0, 1e-4);
+  EXPECT_NEAR(std::abs(solution.x[4]), 0.0, 1e-4);
+  EXPECT_NEAR(solution.x[5], 1.0, 1e-4);
+  EXPECT_NEAR(solution.x[6], 1.0, 1e-4);
+  for (int j = 7; j < n; ++j) {
+    EXPECT_NEAR(std::abs(solution.x[j]), 0.0, 1e-4) << "index " << j;
+  }
+}
+
+TEST(barrier, sparse_soc_expansion_solves_dim_500_cone)
+{
+  // minimize x_0
+  // subject to x_1 = 1
+  //            (x_0, ..., x_499) in Q^500
+  //
+  // Optimal: x* = (1, 1, 0, ..., 0), obj* = 1
+  // Sparse cone (dim 500 > default threshold 5) with barrier IR enabled.
+  raft::handle_t handle{};
+  init_handler(&handle);
+
+  user_problem_t<int, double> user_problem(&handle);
+
+  constexpr int m  = 1;
+  constexpr int n  = 500;
+  constexpr int nz = 1;
+
+  user_problem.num_rows = m;
+  user_problem.num_cols = n;
+  user_problem.objective.assign(n, 0.0);
+  user_problem.objective[0] = 1.0;
+
+  user_problem.A.m      = m;
+  user_problem.A.n      = n;
+  user_problem.A.nz_max = nz;
+  user_problem.A.reallocate(nz);
+  // x_1 = 1: nonzero in column 1.
+  user_problem.A.col_start.assign(n + 1, 1);
+  user_problem.A.col_start[0] = 0;
+  user_problem.A.col_start[1] = 0;
+  user_problem.A.i[0]         = 0;
+  user_problem.A.x[0]         = 1.0;
+
+  user_problem.rhs       = {1.0};
+  user_problem.row_sense = {'E'};
+  user_problem.lower.assign(n, 0.0);
+  user_problem.upper.assign(n, inf);
+
+  user_problem.num_range_rows         = 0;
+  user_problem.problem_name           = "sparse_soc_dim_500";
+  user_problem.cone_var_start         = 0;
+  user_problem.second_order_cone_dims = {500};
+  user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
+
+  simplex_solver_settings_t<int, double> settings;
+  settings.barrier                      = true;
+  settings.barrier_presolve             = true;
+  settings.dualize                      = 0;
+  settings.barrier_soc_threshold        = 5;
+  settings.barrier_iterative_refinement = true;
+
+  lp_solution_t<int, double> solution(m, n);
+  auto status = solve_linear_program_with_barrier(user_problem, settings, solution);
+
+  EXPECT_EQ(status, lp_status_t::OPTIMAL);
+  EXPECT_NEAR(solution.objective, 1.0, 1e-3);
+  EXPECT_NEAR(solution.x[0], 1.0, 1e-3);
+  EXPECT_NEAR(solution.x[1], 1.0, 1e-3);
+  for (int j = 2; j < n; ++j) {
+    EXPECT_NEAR(std::abs(solution.x[j]), 0.0, 1e-3) << "index " << j;
+  }
+}
+
+}  // namespace cuopt::mathematical_optimization::simplex::test

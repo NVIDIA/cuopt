@@ -7,8 +7,8 @@
 
 #pragma once
 
-#include <dual_simplex/sparse_matrix.hpp>
-#include <dual_simplex/types.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
+#include <math_optimization/types.hpp>
 
 #include <cub/cub.cuh>
 #include <rmm/device_scalar.hpp>
@@ -23,7 +23,7 @@
 #include <thrust/tabulate.h>
 #include <thrust/tuple.h>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::barrier {
 
 template <typename IndexType, typename ValueType>
 class device_csr_matrix_t;
@@ -69,6 +69,60 @@ struct transform_reduce_helper_t {
                        i_t size,
                        rmm::cuda_stream_view stream_view)
   {
+    cub::DeviceReduce::TransformReduce(
+      nullptr, buffer_size, input, out.data(), size, reduce_op, transform_op, init, stream_view);
+
+    buffer_data.resize(buffer_size, stream_view);
+
+    cub::DeviceReduce::TransformReduce(buffer_data.data(),
+                                       buffer_size,
+                                       input,
+                                       out.data(),
+                                       size,
+                                       reduce_op,
+                                       transform_op,
+                                       init,
+                                       stream_view);
+
+    return out.value(stream_view);
+  }
+};
+
+template <typename f_t>
+struct f2_t {
+  f_t a;
+  f_t b;
+};
+
+template <typename f_t>
+struct f2_min_t {
+  HD f2_t<f_t> operator()(const f2_t<f_t>& lhs, const f2_t<f_t>& rhs) const
+  {
+    return f2_t<f_t>{cuda::std::min(lhs.a, rhs.a), cuda::std::min(lhs.b, rhs.b)};
+  }
+};
+
+template <typename f_t>
+struct transform_reduce_pair_helper_t {
+  rmm::device_buffer buffer_data;
+  rmm::device_scalar<f2_t<f_t>> out;
+  size_t buffer_size;
+
+  transform_reduce_pair_helper_t(rmm::cuda_stream_view stream_view)
+    : buffer_data(0, stream_view), out(stream_view)
+  {
+  }
+
+  // TransformOpT must map each input element to an f2_t<f_t>{a, b} pair; the two
+  // components are reduced independently (elementwise min) in a single kernel launch.
+  template <typename InputIteratorT, typename TransformOpT, typename i_t>
+  f2_t<f_t> transform_reduce(InputIteratorT input,
+                             TransformOpT transform_op,
+                             f2_t<f_t> init,
+                             i_t size,
+                             rmm::cuda_stream_view stream_view)
+  {
+    f2_min_t<f_t> reduce_op{};
     cub::DeviceReduce::TransformReduce(
       nullptr, buffer_size, input, out.data(), size, reduce_op, transform_op, init, stream_view);
 
@@ -135,7 +189,8 @@ class device_csc_matrix_t {
       nz_max(A.col_start[A.n]),
       col_start(A.col_start.size(), stream),
       i(A.i.size(), stream),
-      x(A.x.size(), stream)
+      x(A.x.size(), stream),
+      col_index(0, stream)
   {
     col_start = cuopt::device_copy(A.col_start, stream);
     i         = cuopt::device_copy(A.i, stream);
@@ -159,7 +214,7 @@ class device_csc_matrix_t {
     return A;
   }
 
-  void copy(csc_matrix_t<i_t, f_t>& A, rmm::cuda_stream_view stream)
+  void copy(const csc_matrix_t<i_t, f_t>& A, rmm::cuda_stream_view stream)
   {
     m      = A.m;
     n      = A.n;
@@ -172,7 +227,18 @@ class device_csc_matrix_t {
     raft::copy(x.data(), A.x.data(), A.x.size(), stream);
   }
 
-  /** Same semantics as csc_matrix_t::to_compressed_row, entirely on device. */
+  /** Reset to an empty (all-zero col_start, no nonzeros) matrix of the given shape. */
+  void reset_empty(i_t rows, i_t cols, rmm::cuda_stream_view stream)
+  {
+    m      = rows;
+    n      = cols;
+    nz_max = 0;
+    resize_to_nnz(0, stream);
+    thrust::fill(rmm::exec_policy(stream), col_start.begin(), col_start.end(), i_t(0));
+  }
+
+  /** Same semantics as csc_matrix_t::to_compressed_row, entirely on
+   * device. */
   void to_compressed_row(device_csr_matrix_t<i_t, f_t>& Arow, rmm::cuda_stream_view stream) const;
 
   void form_col_index(rmm::cuda_stream_view stream)
@@ -396,4 +462,4 @@ void device_csc_matrix_t<i_t, f_t>::to_compressed_row(device_csr_matrix_t<i_t, f
                       thrust::device_pointer_cast(Arow.x.data()));
 }
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::barrier

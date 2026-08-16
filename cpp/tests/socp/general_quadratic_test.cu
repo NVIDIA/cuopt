@@ -5,13 +5,18 @@
  */
 /* clang-format on */
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 #include <barrier/translate_soc.hpp>
-#include <cuopt/linear_programming/optimization_problem_interface.hpp>
+#include <cuopt/error.hpp>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
 #include <dual_simplex/solve.hpp>
-#include <dual_simplex/sparse_matrix.hpp>
 #include <dual_simplex/user_problem.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/cusparse_macros.hpp>
@@ -19,7 +24,14 @@
 #include <cmath>
 #include <vector>
 
-namespace cuopt::linear_programming::detail::test {
+namespace cuopt::mathematical_optimization::barrier::test {
+
+using simplex::lp_solution_t;
+using simplex::lp_status_t;
+using simplex::simplex_solver_settings_t;
+using simplex::solve_linear_program_with_barrier;
+using simplex::user_problem_t;
+using simplex::variable_type_t;
 
 using i_t  = int;
 using f_t  = double;
@@ -46,7 +58,6 @@ TEST(general_quadratic, dense_pd_2x2_solve)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<i_t, f_t> user_problem(&handle);
 
   // Need at least one linear constraint for the barrier solver.
@@ -79,7 +90,7 @@ TEST(general_quadratic, dense_pd_2x2_solve)
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
   // Build quadratic constraint: x^T [2 1; 1 2] x <= 1
-  // Q in COO (lower triangular stored):
+  // Q in COO:
   // (0,0,2), (1,0,1), (1,1,2)
   qc_t qc;
   qc.constraint_row_index = 0;
@@ -91,7 +102,7 @@ TEST(general_quadratic, dense_pd_2x2_solve)
   qc.vals                 = {2.0, 1.0, 2.0};
 
   // Convert to CSR for translation (must include the linear constraint row)
-  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
+  csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
   csr_A.m         = m;
   csr_A.n         = n;
   csr_A.row_start = {0, 2};
@@ -159,7 +170,6 @@ TEST(general_quadratic, rejects_non_convex)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<i_t, f_t> user_problem(&handle);
 
   constexpr int m  = 0;
@@ -194,7 +204,7 @@ TEST(general_quadratic, rejects_non_convex)
   qc.cols                 = {0, 0, 1};
   qc.vals                 = {1.0, 4.0, 1.0};
 
-  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
+  csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
   csr_A.m         = m;
   csr_A.n         = n;
   csr_A.row_start = {0};
@@ -207,6 +217,90 @@ TEST(general_quadratic, rejects_non_convex)
     cuopt::logic_error);
 }
 
+// End-to-end: cross-only indefinite Q (issue #1434). H = [[0, 2]; [2, 0]] has zero diagonals so
+// LDLT returns rank 0 without a negative pivot; must still be rejected as non-convex via
+// solve_qcqp.
+TEST(general_quadratic, rejects_cross_only_indefinite)
+{
+  raft::handle_t handle{};
+  init_handler(&handle);
+
+  // H = [[0, 2]; [2, 0]] from [ 4 x * y ] in LP bracket notation.
+  auto lp = io::read_lp_from_string<i_t, f_t>(R"LP(
+Minimize
+  obj: x + y
+Subject To
+  q0: [ 4 x * y ] <= 0.5
+Bounds
+  -1 <= x <= 1
+  -1 <= y <= 1
+End
+)LP");
+
+  ASSERT_TRUE(lp.has_quadratic_constraints());
+  ASSERT_EQ(lp.get_quadratic_constraints().size(), 1u);
+
+  const i_t n = lp.get_n_variables();
+  const i_t m = lp.get_n_constraints();
+  EXPECT_EQ(n, 2);
+  EXPECT_EQ(m, 0);
+
+  user_problem_t<i_t, f_t> user_problem(&handle);
+  user_problem.num_rows  = m;
+  user_problem.num_cols  = n;
+  user_problem.objective = lp.get_objective_coefficients();
+
+  // Initialize the empty A matrix
+  user_problem.A.m      = m;
+  user_problem.A.n      = n;
+  user_problem.A.nz_max = 0;
+  user_problem.A.reallocate(0);
+  user_problem.A.col_start.assign(n + 1, 0);
+
+  user_problem.rhs.clear();
+  user_problem.row_sense.clear();
+  user_problem.lower          = lp.get_variable_lower_bounds();
+  user_problem.upper          = lp.get_variable_upper_bounds();
+  user_problem.num_range_rows = 0;
+  user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
+
+  const auto& src_qc = lp.get_quadratic_constraints()[0];
+  qc_t qc;
+  qc.constraint_row_index = src_qc.constraint_row_index;
+  qc.constraint_row_name  = src_qc.constraint_row_name;
+  qc.constraint_row_type  = src_qc.constraint_row_type;
+  qc.linear_values        = src_qc.linear_values;
+  qc.linear_indices       = src_qc.linear_indices;
+  qc.rhs_value            = src_qc.rhs_value;
+  qc.rows                 = src_qc.rows;
+  qc.cols                 = src_qc.cols;
+  qc.vals                 = src_qc.vals;
+
+  csr_matrix_t<i_t, f_t> csr_A(m, n, 0);
+  csr_A.m         = m;
+  csr_A.n         = n;
+  csr_A.row_start = {0};
+
+  std::vector<qc_t> qcs = {qc};
+
+  simplex_solver_settings_t<i_t, f_t> settings;
+  settings.barrier          = true;
+  settings.barrier_presolve = true;
+  settings.dualize          = 0;
+
+  try {
+    convert_quadratic_constraints_to_second_order_cones<i_t, f_t>(n, qcs, csr_A, user_problem);
+    csr_A.to_compressed_col(user_problem.A);
+    lp_solution_t<i_t, f_t> solution(user_problem.num_rows, user_problem.num_cols);
+    (void)solve_linear_program_with_barrier(user_problem, settings, solution);
+    FAIL() << "Expected ValidationError for cross-only indefinite Q";
+  } catch (const cuopt::logic_error& e) {
+    EXPECT_EQ(e.get_error_type(), cuopt::error_type_t::ValidationError);
+    EXPECT_THAT(e.what(), testing::HasSubstr("non-convex"));
+    EXPECT_THAT(e.what(), testing::HasSubstr("q0"));
+  }
+}
+
 // Test: rank-deficient PSD Q (e.g., Q = v*v^T with v = [1, 1])
 // minimize x0 + x1
 // subject to (x0 + x1)^2 <= 4   (i.e., |x0 + x1| <= 2)
@@ -217,7 +311,6 @@ TEST(general_quadratic, rank_deficient_psd_solve)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<i_t, f_t> user_problem(&handle);
 
   constexpr int m  = 1;
@@ -257,7 +350,7 @@ TEST(general_quadratic, rank_deficient_psd_solve)
   qc.cols                 = {0, 0, 1};
   qc.vals                 = {1.0, 2.0, 1.0};
 
-  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
+  csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
   csr_A.m         = m;
   csr_A.n         = n;
   csr_A.row_start = {0, 2};
@@ -291,6 +384,118 @@ TEST(general_quadratic, rank_deficient_psd_solve)
   EXPECT_NEAR(solution.objective, -1.0, 1e-4);
 }
 
+TEST(general_quadratic, mixed_general_and_affine_soc_conversion)
+{
+  raft::handle_t handle{};
+  init_handler(&handle);
+
+  // qc_general: [ x ^ 2 + 2 x * y + y ^ 2 ] <= 4  (nonzero rhs -> general LDLT path)
+  // affine:  - z + [ 2 x ^ 2 + 2 y ^ 2 ] <= 0 (linear part -> general LDLT path)
+  // Order matters: general first reproduces the hub1 failure mode before the fix.
+  auto lp = io::read_lp_from_string<i_t, f_t>(R"LP(
+Minimize
+  obj: x + y
+Subject To
+  qc_general: [ x ^ 2 + 2 x * y + y ^ 2 ] <= 4
+  affine: - z + [ 2 x ^ 2 + 2 y ^ 2 ] <= 0
+Bounds
+  x free
+  y free
+  z free
+End
+)LP");
+
+  ASSERT_TRUE(lp.has_quadratic_constraints());
+  ASSERT_EQ(lp.get_quadratic_constraints().size(), 2u);
+  EXPECT_EQ(lp.get_quadratic_constraints()[0].constraint_row_name, "qc_general");
+  EXPECT_EQ(lp.get_quadratic_constraints()[1].constraint_row_name, "affine");
+
+  const i_t n = lp.get_n_variables();
+  const i_t m = lp.get_n_constraints();
+  EXPECT_EQ(n, 3);
+  EXPECT_EQ(m, 0);
+
+  user_problem_t<i_t, f_t> user_problem(&handle);
+  user_problem.num_rows  = m;
+  user_problem.num_cols  = n;
+  user_problem.objective = lp.get_objective_coefficients();
+
+  user_problem.A.m      = m;
+  user_problem.A.n      = n;
+  user_problem.A.nz_max = 0;
+  user_problem.A.reallocate(0);
+  user_problem.A.col_start.assign(n + 1, 0);
+
+  user_problem.rhs.clear();
+  user_problem.row_sense.clear();
+  user_problem.lower          = lp.get_variable_lower_bounds();
+  user_problem.upper          = lp.get_variable_upper_bounds();
+  user_problem.num_range_rows = 0;
+  user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
+
+  csr_matrix_t<i_t, f_t> csr_A(m, n, 0);
+  csr_A.m         = m;
+  csr_A.n         = n;
+  csr_A.row_start = {0};
+
+  std::vector<qc_t> qcs;
+  qcs.reserve(lp.get_quadratic_constraints().size());
+  for (const auto& src_qc : lp.get_quadratic_constraints()) {
+    qc_t qc;
+    qc.constraint_row_index = src_qc.constraint_row_index;
+    qc.constraint_row_name  = src_qc.constraint_row_name;
+    qc.constraint_row_type  = src_qc.constraint_row_type;
+    qc.linear_values        = src_qc.linear_values;
+    qc.linear_indices       = src_qc.linear_indices;
+    qc.rhs_value            = src_qc.rhs_value;
+    qc.rows                 = src_qc.rows;
+    qc.cols                 = src_qc.cols;
+    qc.vals                 = src_qc.vals;
+    qcs.push_back(std::move(qc));
+  }
+  EXPECT_NO_THROW(
+    (convert_quadratic_constraints_to_second_order_cones<i_t, f_t>(n, qcs, csr_A, user_problem)));
+
+  csr_A.to_compressed_col(user_problem.A);
+
+  EXPECT_EQ(user_problem.A.n, user_problem.num_cols);
+  EXPECT_EQ(static_cast<int>(user_problem.objective.size()), user_problem.num_cols);
+  EXPECT_EQ(static_cast<int>(user_problem.lower.size()), user_problem.num_cols);
+  EXPECT_EQ(static_cast<int>(user_problem.upper.size()), user_problem.num_cols);
+  EXPECT_EQ(static_cast<int>(user_problem.var_types.size()), user_problem.num_cols);
+  EXPECT_GE(user_problem.num_cols, n + 2);
+  EXPECT_GT(user_problem.second_order_cone_dims.size(), 0u);
+  EXPECT_GT(user_problem.cone_var_start, 0);
+
+  i_t cone_end = user_problem.cone_var_start;
+  for (i_t d : user_problem.second_order_cone_dims) {
+    cone_end += d;
+  }
+  EXPECT_EQ(cone_end, user_problem.num_cols);
+
+  // Solve and verify optimum: min (x+y) s.t. (x+y)^2 <= 4 and 2(x^2+y^2) - z <= 0.
+  simplex_solver_settings_t<i_t, f_t> settings;
+  settings.barrier          = true;
+  settings.barrier_presolve = true;
+  settings.dualize          = 0;
+
+  lp_solution_t<i_t, f_t> solution(user_problem.num_rows, user_problem.num_cols);
+  auto status = solve_linear_program_with_barrier(user_problem, settings, solution);
+
+  EXPECT_EQ(status, lp_status_t::OPTIMAL);
+  EXPECT_NEAR(solution.objective, -2.0, 1e-4);
+
+  project_barrier_solution_to_model_variables(user_problem, solution);
+  ASSERT_EQ(static_cast<int>(solution.x.size()), n);
+
+  const f_t x = solution.x[0];
+  const f_t y = solution.x[1];
+  const f_t z = solution.x[2];
+  EXPECT_NEAR(x + y, -2.0, 1e-3);
+  EXPECT_LE(x * x + 2.0 * x * y + y * y - 4.0, 1e-6);
+  EXPECT_LE(-z + 2.0 * x * x + 2.0 * y * y, 1e-6);
+}
+
 // Test: general quadratic constraint WITH an inequality linear constraint.
 // minimize x0 + x1
 // subject to x^T [2 1; 1 2] x <= 1   (quadratic, via general path)
@@ -302,7 +507,6 @@ TEST(general_quadratic, with_inequality_constraint)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<i_t, f_t> user_problem(&handle);
 
   // 2 constraints: one equality, one inequality
@@ -348,7 +552,7 @@ TEST(general_quadratic, with_inequality_constraint)
   qc.vals                 = {2.0, 1.0, 2.0};
 
   // Build CSR matching the A matrix
-  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
+  csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
   csr_A.m         = m;
   csr_A.n         = n;
   csr_A.row_start = {0, 2, 4};
@@ -400,7 +604,6 @@ TEST(general_quadratic, least_squares_b_in_range)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<i_t, f_t> user_problem(&handle);
 
   // Variables: x0, x1, u (u = t - b^T*b = t - 5).
@@ -460,7 +663,7 @@ TEST(general_quadratic, least_squares_b_in_range)
   qc.linear_indices       = {0, 1, 2};
 
   // Build CSR with the linear constraint: x0 + x1 = 2
-  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
+  csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
   csr_A.m         = m;
   csr_A.n         = n;
   csr_A.row_start = {0, 2};
@@ -519,7 +722,6 @@ TEST(general_quadratic, least_squares_b_not_in_range)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<i_t, f_t> user_problem(&handle);
 
   constexpr int m  = 1;
@@ -562,7 +764,7 @@ TEST(general_quadratic, least_squares_b_not_in_range)
   qc.linear_indices       = {0, 1, 2};
 
   // Build CSR: x0 + x1 = 2
-  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
+  csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
   csr_A.m         = m;
   csr_A.n         = n;
   csr_A.row_start = {0, 2};
@@ -592,7 +794,6 @@ TEST(general_quadratic, soc_head_nonneg_accepted)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<i_t, f_t> user_problem(&handle);
 
   // Variables: x0, x1, t. Constraint: x0^2 + x1^2 - t^2 <= 0
@@ -637,7 +838,7 @@ TEST(general_quadratic, soc_head_nonneg_accepted)
   qc.cols                 = {0, 1, 2};
   qc.vals                 = {1.0, 1.0, -1.0};
 
-  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, 1);
+  csr_matrix_t<i_t, f_t> csr_A(m, n, 1);
   csr_A.m         = m;
   csr_A.n         = n;
   csr_A.row_start = {0, 1};
@@ -659,7 +860,6 @@ TEST(general_quadratic, soc_head_free_rejected)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<i_t, f_t> user_problem(&handle);
 
   constexpr int m  = 1;
@@ -695,7 +895,7 @@ TEST(general_quadratic, soc_head_free_rejected)
   qc.cols                 = {0, 1, 2};
   qc.vals                 = {1.0, 1.0, -1.0};
 
-  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
+  csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
   csr_A.m         = m;
   csr_A.n         = n;
   csr_A.row_start = {0, 1};
@@ -715,7 +915,6 @@ TEST(general_quadratic, rotated_soc_heads_nonneg_accepted)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<i_t, f_t> user_problem(&handle);
 
   // Variables: x0, x1, y, z. Constraint: x0^2 + x1^2 - 2*y*z <= 0
@@ -742,18 +941,17 @@ TEST(general_quadratic, rotated_soc_heads_nonneg_accepted)
   user_problem.num_range_rows = 0;
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
-  // Q COO: x0^2 + x1^2 - 2*y*z <= 0
-  // Diagonal: (0,0,1), (1,1,1). Off-diagonal: (2,3,-1), (3,2,-1)
+  // Q COO: x0^2 + x1^2 - 2*y*z <= 0 (canonical single cross term)
   qc_t qc;
   qc.constraint_row_index = 0;
   qc.constraint_row_name  = "rsoc_valid";
   qc.constraint_row_type  = 'L';
   qc.rhs_value            = 0.0;
-  qc.rows                 = {0, 1, 2, 3};
-  qc.cols                 = {0, 1, 3, 2};
-  qc.vals                 = {1.0, 1.0, -1.0, -1.0};
+  qc.rows                 = {0, 1, 2};
+  qc.cols                 = {0, 1, 3};
+  qc.vals                 = {1.0, 1.0, -2.0};
 
-  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
+  csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
   csr_A.m         = m;
   csr_A.n         = n;
   csr_A.row_start = {0, 1};
@@ -774,7 +972,6 @@ TEST(general_quadratic, rotated_soc_heads_free_rejected)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<i_t, f_t> user_problem(&handle);
 
   constexpr int m  = 1;
@@ -806,11 +1003,11 @@ TEST(general_quadratic, rotated_soc_heads_free_rejected)
   qc.constraint_row_name  = "rsoc_invalid";
   qc.constraint_row_type  = 'L';
   qc.rhs_value            = 0.0;
-  qc.rows                 = {0, 1, 2, 3};
-  qc.cols                 = {0, 1, 3, 2};
-  qc.vals                 = {1.0, 1.0, -1.0, -1.0};
+  qc.rows                 = {0, 1, 2};
+  qc.cols                 = {0, 1, 3};
+  qc.vals                 = {1.0, 1.0, -2.0};
 
-  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
+  csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
   csr_A.m         = m;
   csr_A.n         = n;
   csr_A.row_start = {0, 1};
@@ -824,4 +1021,40 @@ TEST(general_quadratic, rotated_soc_heads_free_rejected)
     cuopt::logic_error);
 }
 
-}  // namespace cuopt::linear_programming::detail::test
+// Test QCQP with rotated SOC constraint and quadratic objective using high-level API.
+// This is the recommended way to solve QCQP problems.
+// minimize (1/2)*x^2 - x   (quadratic objective)
+// subject to x^2 - 2*t*u <= 0  (rotated SOC)
+//            t = 1, u = 0.5
+// Optimal: x = 1, objective = -0.5
+TEST(general_quadratic, qcqp_rotated_soc)
+{
+  raft::handle_t handle{};
+
+  auto problem = io::read_lp_from_string<i_t, f_t>(R"LP(
+Minimize
+  - x + [ x ^2 ] / 2
+Subject To
+  t_eq: t = 1
+  u_eq: u = 0.5
+  rsoc: [ x ^2 - 2 t * u ] <= 0
+Bounds
+  x free
+  t >= 0
+  u >= 0
+End
+)LP");
+
+  ASSERT_TRUE(problem.has_quadratic_objective());
+  ASSERT_TRUE(problem.has_quadratic_constraints());
+  ASSERT_EQ(problem.get_quadratic_constraints().size(), 1u);
+
+  pdlp_solver_settings_t<i_t, f_t> settings;
+  auto solution = solve_lp(&handle, problem, settings);
+
+  EXPECT_EQ(solution.get_termination_status(), pdlp_termination_status_t::Optimal);
+  // Optimal: x=1, objective = (1/2)*1 - 1 = -0.5
+  EXPECT_NEAR(solution.get_objective_value(), -0.5, 1e-4);
+}
+
+}  // namespace cuopt::mathematical_optimization::barrier::test

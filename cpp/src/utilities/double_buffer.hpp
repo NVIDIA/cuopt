@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -9,7 +9,7 @@
 
 #include <rmm/device_uvector.hpp>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt {
 
 template <typename i_t, typename f_t, typename T>
 struct double_buffer_t {
@@ -40,4 +40,4 @@ struct double_buffer_t {
   rmm::device_uvector<T> bufs[2];
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt

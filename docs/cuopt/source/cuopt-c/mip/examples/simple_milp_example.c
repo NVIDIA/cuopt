@@ -3,11 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 /*
- * Simple test program for cuOpt MILP solver
+ * Simple test program for cuOpt MIP solver
  */
 
 // Include the cuOpt linear programming solver header
-#include <cuopt/linear_programming/cuopt_c.h>
+#include <cuopt/mathematical_optimization/cuopt_c.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -36,14 +36,14 @@ const char* termination_status_to_string(cuopt_int_t termination_status)
   }
 }
 
-// Test simple MILP problem
+// Test simple MIP problem
 cuopt_int_t test_simple_milp()
 {
   cuOptOptimizationProblem problem = NULL;
   cuOptSolverSettings settings     = NULL;
   cuOptSolution solution           = NULL;
 
-  /* Solve the following MILP:
+  /* Solve the following MIP:
      minimize -0.2*x1 + 0.1*x2
      subject to:
      3.0*x1 + 4.0*x2 <= 5.4
@@ -95,7 +95,7 @@ cuopt_int_t test_simple_milp()
   cuopt_int_t termination_status;
   cuopt_float_t objective_value;
 
-  printf("Creating and solving simple MILP problem...\n");
+  printf("Creating and solving simple MIP problem...\n");
 
   // Create the problem
   status = cuOptCreateRangedProblem(num_constraints,

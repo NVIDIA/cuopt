@@ -9,7 +9,7 @@ General FAQ
 
     There are two options:
     - NVIDIA Docker Hub (https://hub.docker.com/r/nvidia/cuopt)
-    - NVIDIA NGC registry (https://catalog.ngc.nvidia.com/orgs/nvidia/teams/cuopt/containers/cuopt/tags) with NVAIE license.
+    - NVIDIA NGC registry (https://catalog.ngc.nvidia.com/orgs/nvidia/cuopt/containers/cuopt/tags) with an NVAIE license or NVIDIA Developer Program membership.
 
 .. dropdown:: How to get a NVAIE license?
 
@@ -17,7 +17,7 @@ General FAQ
 
 .. dropdown:: How to access NGC registry?
 
-    Once you have a NVAIE license, you can access the `NGC registry <https://catalog.ngc.nvidia.com/orgs/nvidia/teams/cuopt/containers/cuopt/tags>`_ for cuOpt container images.
+    With an NVAIE license or NVIDIA Developer Program membership, you can access the `NGC registry <https://catalog.ngc.nvidia.com/orgs/nvidia/cuopt/containers/cuopt/tags>`_ for cuOpt container images.
 
 .. dropdown:: How to pull cuOpt container images from NGC registry?
 
@@ -177,7 +177,7 @@ General FAQ
 
         while openssl x509 -noout -text; do :; done < test.pem.txt
 
-gRPC remote execution (``cuopt_grpc_server``)
+gRPC Remote Execution (``cuopt_grpc_server``)
 -----------------------------------------------
 
 .. dropdown:: Where are log files for the gRPC server / StreamLogs?
@@ -401,7 +401,7 @@ Linear Programming FAQs
 
 .. dropdown:: What are the limitations of the LP solver?
 
-    #. There is no inherit limit imposed on the number of variables, number of constraints, or number of non-zeros you can have in a MILP or LP, except the restrictions due to the number of bits in an integer and the amount of memory in the CPU and GPU.
+    #. There is no inherit limit imposed on the number of variables, number of constraints, or number of non-zeros you can have in a MIP or LP, except the restrictions due to the number of bits in an integer and the amount of memory in the CPU and GPU.
 
     Depending on these factors, the problems that can be solved can vary, for example:
 
@@ -419,7 +419,7 @@ Linear Programming FAQs
     This is required because presolve transforms the problem, and the warm start solution from the original problem
     cannot be applied to the presolved problem.
 
-Mixed Integer Linear Programming FAQs
+Mixed Integer Programming FAQs
 --------------------------------------
 
 .. dropdown:: How do I run the MIP solver with cuOpt?
@@ -431,9 +431,9 @@ Mixed Integer Linear Programming FAQs
     heuristics. Proving feasible solutions optimal remains under active
     development.
 
-.. dropdown:: What are the limitations of the MILP solver?
+.. dropdown:: What are the limitations of the MIP solver?
 
-    #. There is no inherit limit imposed on the number of variables, number of constraints, or number of non-zeros you can have in a MILP or LP, except the restrictions due to the number of bits in integer and the amount of memory in the CPU and GPU.
+    #. There is no inherit limit imposed on the number of variables, number of constraints, or number of non-zeros you can have in a MIP or LP, except the restrictions due to the number of bits in an integer and the amount of memory in the CPU and GPU.
 
     Depending on these factors, the problems that can be solved can vary, for example:
 

@@ -6,7 +6,7 @@
 /* clang-format on */
 
 #pragma once
-#include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 #include <mip_heuristics/problem/problem.cuh>
 #include <pdlp/cusparse_view.hpp>
 #include <pdlp/pdlp_climber_strategy.hpp>
@@ -23,15 +23,21 @@
 #include <tuple>
 #include <vector>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
+
+// Forward-declared to avoid include cycle: multi_gpu_engine.hpp itself includes pdhg.hpp
+// (engine calls per-shard pdhg compute_*). pdhg.cu does the full include.
+template <typename i_t, typename f_t>
+struct multi_gpu_engine_t;
+
 template <typename i_t, typename f_t>
 class pdhg_solver_t {
  public:
   pdhg_solver_t(raft::handle_t const* handle_ptr,
-                problem_t<i_t, f_t>& op_problem,
+                mip::problem_t<i_t, f_t>& op_problem,
                 bool is_legacy_batch_mode,
                 const std::vector<pdlp_climber_strategy_t>& climber_strategies,
-                const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params,
+                const pdlp::pdlp_hyper_params_t& hyper_params,
                 const std::vector<std::tuple<i_t, i_t, f_t, f_t>>& new_bounds,
                 bool enable_mixed_precision_spmv = false);
 
@@ -76,6 +82,42 @@ class pdhg_solver_t {
   void update_solution(cusparse_view_t<i_t, f_t>& current_op_problem_evaluation_cusparse_view_);
   void refine_initial_primal_projection(const rmm::device_uvector<f_t>& bound_rescaling);
 
+  // SpMV primitives. Public so the multi-GPU engine can drive them per-shard
+  // after halo-exchanging the relevant vector.
+  //
+  // If set_multi_gpu_engine() has been called, these dispatch to the engine
+  // (halo exchange + per-shard SpMV). Otherwise they run the single-GPU
+  // cusparse path on the local matrix.
+  void compute_At_y();
+  void compute_A_x();
+
+  void spmvop_At_y();
+  void spmvop_A_x();
+
+  // Parameterized SpMVs used by the multi-GPU engine. Thin wrappers around
+  // cusparsespmv on this shard's local A / A^T
+  void spmv_At_into(cusparseDnVecDescr_t in_desc, cusparseDnVecDescr_t out_desc);
+  void spmv_A_into(cusparseDnVecDescr_t in_desc, cusparseDnVecDescr_t out_desc);
+
+  // Pure cub-transform extractions. Allows for clearer containment of the calls and ensures
+  // the single-GPU vs distributed-GPU uses the same calls
+  void primal_reflected_major_projection_transform(rmm::device_uvector<f_t>& primal_step_size);
+  void dual_reflected_major_projection_transform(rmm::device_uvector<f_t>& dual_step_size);
+  void primal_reflected_projection_transform(rmm::device_uvector<f_t>& primal_step_size);
+  void dual_reflected_projection_transform(rmm::device_uvector<f_t>& dual_step_size);
+
+  // Master PDLP wires the engine pointer here after the engine is built. Only
+  // the master's pdhg_solver_ holds a non-null engine; shards leave it null and
+  // run single-GPU SpMV on their local matrix.
+  void set_multi_gpu_engine(multi_gpu_engine_t<i_t, f_t>* engine) { mgpu_engine_ = engine; }
+  multi_gpu_engine_t<i_t, f_t>* get_mgpu_engine() const { return mgpu_engine_; }
+
+  // True only on the master pdhg of a distributed run (the one wired to the
+  // engine, which orchestrates the shards).
+  // Shards report false.
+  // Single-GPU PDHG reports false.
+  bool is_distributed_master() const { return mgpu_engine_ != nullptr; }
+
   i_t total_pdhg_iterations_;
 
  private:
@@ -93,16 +135,12 @@ class pdhg_solver_t {
 
   void compute_primal_projection_with_gradient(rmm::device_uvector<f_t>& primal_step_size);
   void compute_primal_projection(rmm::device_uvector<f_t>& primal_step_size);
-  void compute_At_y();
-  void compute_A_x();
-  void spmvop_At_y();
-  void spmvop_A_x();
 
   bool batch_mode_{false};
   raft::handle_t const* handle_ptr_{nullptr};
   rmm::cuda_stream_view stream_view_;
 
-  problem_t<i_t, f_t>* problem_ptr;
+  mip::problem_t<i_t, f_t>* problem_ptr;
 
   i_t primal_size_h_;
   i_t dual_size_h_;
@@ -144,12 +182,16 @@ class pdhg_solver_t {
   rmm::device_scalar<i_t> d_total_pdhg_iterations_;
 
   const std::vector<pdlp_climber_strategy_t>& climber_strategies_;
-  const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params_;
+  const pdlp::pdlp_hyper_params_t& hyper_params_;
   rmm::device_uvector<i_t> new_bounds_climber_id_;
   rmm::device_uvector<i_t> new_bounds_idx_;
   rmm::device_uvector<f_t> new_bounds_lower_;
   rmm::device_uvector<f_t> new_bounds_upper_;
   cuda::fast_mod_div<size_t> batch_size_divisor_;
+
+  // Non-owning. Set on the master pdhg_solver_ in distributed mode; null
+  // (default) means single-GPU path.
+  multi_gpu_engine_t<i_t, f_t>* mgpu_engine_{nullptr};
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

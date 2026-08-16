@@ -5,7 +5,7 @@
  */
 /* clang-format on */
 
-#include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 
 #include <pdlp/pdlp_climber_strategy.hpp>
 #include <pdlp/pdlp_constants.hpp>
@@ -33,7 +33,7 @@
 
 #include <limits>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 
 template <typename i_t, typename f_t>
 adaptive_step_size_strategy_t<i_t, f_t>::adaptive_step_size_strategy_t(
@@ -44,7 +44,7 @@ adaptive_step_size_strategy_t<i_t, f_t>::adaptive_step_size_strategy_t(
   i_t primal_size,
   i_t dual_size,
   const std::vector<pdlp_climber_strategy_t>& climber_strategies,
-  const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params)
+  const pdlp::pdlp_hyper_params_t& hyper_params)
   : batch_mode_(climber_strategies.size() > 1),
     handle_ptr_(handle_ptr),
     stream_view_(handle_ptr_->get_stream()),
@@ -310,6 +310,24 @@ adaptive_step_size_strategy_t<i_t, f_t>::get_norm_squared_delta_dual() const
 }
 
 template <typename i_t, typename f_t>
+rmm::device_uvector<f_t>& adaptive_step_size_strategy_t<i_t, f_t>::get_interaction()
+{
+  return interaction_;
+}
+
+template <typename i_t, typename f_t>
+rmm::device_uvector<f_t>& adaptive_step_size_strategy_t<i_t, f_t>::get_norm_squared_delta_primal()
+{
+  return norm_squared_delta_primal_;
+}
+
+template <typename i_t, typename f_t>
+rmm::device_uvector<f_t>& adaptive_step_size_strategy_t<i_t, f_t>::get_norm_squared_delta_dual()
+{
+  return norm_squared_delta_dual_;
+}
+
+template <typename i_t, typename f_t>
 void adaptive_step_size_strategy_t<i_t, f_t>::set_valid_step_size(i_t valid)
 {
   valid_step_size_[0] = valid;
@@ -346,8 +364,15 @@ template <typename i_t, typename f_t>
 void adaptive_step_size_strategy_t<i_t, f_t>::compute_interaction_and_movement(
   rmm::device_uvector<f_t>& tmp_primal,
   cusparse_view_t<i_t, f_t>& cusparse_view,
-  saddle_point_state_t<i_t, f_t>& current_saddle_point_state)
+  saddle_point_state_t<i_t, f_t>& current_saddle_point_state,
+  std::optional<i_t> owned_primal_size,
+  std::optional<i_t> owned_cstr_size)
 {
+  // mGPU needs to know owned size to restrict the reductions to the owned prefix
+  const i_t reduce_primal_size =
+    owned_primal_size.value_or(current_saddle_point_state.get_primal_size());
+  const i_t reduce_dual_size = owned_cstr_size.value_or(current_saddle_point_state.get_dual_size());
+
   // QP would need this:
   // if iszero(problem.objective_matrix)
   //   primal_objective_interaction = 0.0
@@ -426,7 +451,7 @@ void adaptive_step_size_strategy_t<i_t, f_t>::compute_interaction_and_movement(
     // compute interaction (x'-x) . (A(y'-y))
     RAFT_CUBLAS_TRY(
       raft::linalg::detail::cublasdot(handle_ptr_->get_cublas_handle(),
-                                      current_saddle_point_state.get_primal_size(),
+                                      reduce_primal_size,
                                       tmp_primal.data(),
                                       primal_stride,
                                       current_saddle_point_state.get_delta_primal().data(),
@@ -444,7 +469,7 @@ void adaptive_step_size_strategy_t<i_t, f_t>::compute_interaction_and_movement(
     //               norm(delta_dual) ^ 2;
     RAFT_CUBLAS_TRY(
       raft::linalg::detail::cublasdot(handle_ptr_->get_cublas_handle(),
-                                      current_saddle_point_state.get_primal_size(),
+                                      reduce_primal_size,
                                       current_saddle_point_state.get_delta_primal().data(),
                                       primal_stride,
                                       current_saddle_point_state.get_delta_primal().data(),
@@ -454,7 +479,7 @@ void adaptive_step_size_strategy_t<i_t, f_t>::compute_interaction_and_movement(
 
     RAFT_CUBLAS_TRY(
       raft::linalg::detail::cublasdot(handle_ptr_->get_cublas_handle(),
-                                      current_saddle_point_state.get_dual_size(),
+                                      reduce_dual_size,
                                       current_saddle_point_state.get_delta_dual().data(),
                                       dual_stride,
                                       current_saddle_point_state.get_delta_dual().data(),
@@ -585,4 +610,4 @@ INSTANTIATE(float)
 INSTANTIATE(double)
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

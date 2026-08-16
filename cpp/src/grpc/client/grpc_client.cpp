@@ -1,12 +1,12 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 #include "grpc_client.hpp"
 
-#include <cuopt/linear_programming/constants.h>
-#include <cuopt/linear_programming/cpu_optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/constants.h>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
 #include <utilities/logger.hpp>
 #include "grpc_problem_mapper.hpp"
 #include "grpc_service_mapper.hpp"
@@ -28,7 +28,7 @@
 #include <sstream>
 #include <thread>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 // =============================================================================
 // Constants
@@ -281,12 +281,14 @@ void grpc_client_t::start_log_streaming(const std::string& job_id)
   }
 
   stop_logs_.store(false);
+  log_stream_done_.store(false);
   log_thread_ = std::make_unique<std::thread>([this, job_id]() {
     stream_logs(job_id, 0, [this](const std::string& line, bool /*job_complete*/) {
       if (stop_logs_.load()) return false;
       if (config_.log_callback) { config_.log_callback(line); }
       return true;
     });
+    log_stream_done_.store(true);
   });
 }
 
@@ -306,6 +308,28 @@ void grpc_client_t::stop_log_streaming()
   std::unique_ptr<std::thread> t;
   std::swap(t, log_thread_);
   if (t && t->joinable()) { t->join(); }
+}
+
+void grpc_client_t::drain_log_streaming()
+{
+  // No-op when streaming was never started (config_.stream_logs or
+  // config_.log_callback disabled): log_stream_done_ stays false but
+  // log_thread_ is null, so stop_log_streaming() is also a no-op.
+  // Avoid the polling loop entirely to prevent a 5-second delay on the
+  // common non-streaming solve path.
+  if (!log_thread_) return;
+
+  // On the success path the server drains all pending log lines and then sends
+  // a job_complete sentinel; the streaming thread exits naturally when that
+  // sentinel arrives.  Poll for natural completion (up to kDrainTimeout) so
+  // callers receive the final log lines (e.g. "Best objective …") before we
+  // force-cancel.  Fall back to stop_log_streaming() if the deadline passes.
+  static constexpr auto kDrainTimeout = std::chrono::seconds(5);
+  auto deadline                       = std::chrono::steady_clock::now() + kDrainTimeout;
+  while (!log_stream_done_.load() && std::chrono::steady_clock::now() < deadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  stop_log_streaming();
 }
 
 // =============================================================================
@@ -737,6 +761,58 @@ remote_mip_result_t<i_t, f_t> grpc_client_t::get_mip_result(const std::string& j
   return result;
 }
 
+template <typename i_t, typename f_t>
+remote_result_t<i_t, f_t> grpc_client_t::get_result(const std::string& job_id)
+{
+  remote_result_t<i_t, f_t> result;
+
+  if (!is_connected()) {
+    result.error_message = "Not connected to server";
+    return result;
+  }
+
+  downloaded_result_t dl;
+  if (!get_result_or_download(job_id, dl)) {
+    result.error_message = last_error_;
+    return result;
+  }
+
+  const bool is_mip = dl.was_chunked ? (dl.chunked_header->problem_category() == cuopt::remote::MIP)
+                                     : dl.response->has_mip_solution();
+
+  if (is_mip) {
+    if (dl.was_chunked) {
+      result.mip_solution = std::make_unique<cpu_mip_solution_t<i_t, f_t>>(
+        chunked_result_to_mip_solution<i_t, f_t>(*dl.chunked_header, dl.chunked_arrays));
+    } else {
+      if (!dl.response->has_mip_solution()) {
+        result.error_message = "GetResult succeeded but no MIP solution in response";
+        return result;
+      }
+      result.mip_solution = std::make_unique<cpu_mip_solution_t<i_t, f_t>>(
+        map_proto_to_mip_solution<i_t, f_t>(dl.response->mip_solution()));
+    }
+    result.is_mip  = true;
+    result.success = true;
+    return result;
+  }
+
+  if (dl.was_chunked) {
+    result.lp_solution = std::make_unique<cpu_lp_solution_t<i_t, f_t>>(
+      chunked_result_to_lp_solution<i_t, f_t>(*dl.chunked_header, dl.chunked_arrays));
+  } else {
+    if (!dl.response->has_lp_solution()) {
+      result.error_message = "GetResult succeeded but no LP solution in response";
+      return result;
+    }
+    result.lp_solution = std::make_unique<cpu_lp_solution_t<i_t, f_t>>(
+      map_proto_to_lp_solution<i_t, f_t>(dl.response->lp_solution()));
+  }
+  result.is_mip  = false;
+  result.success = true;
+  return result;
+}
+
 // =============================================================================
 // Polling helper
 // =============================================================================
@@ -848,7 +924,13 @@ remote_lp_result_t<i_t, f_t> grpc_client_t::solve_lp(
 
   start_log_streaming(sub.job_id);
   auto poll = poll_for_completion(sub.job_id);
-  stop_log_streaming();
+  // On success, wait for the server to send the job_complete sentinel so all
+  // final log lines are received before the stream is torn down.
+  if (poll.completed) {
+    drain_log_streaming();
+  } else {
+    stop_log_streaming();
+  }
 
   if (!poll.completed) { return {.error_message = poll.error_message}; }
 
@@ -875,7 +957,11 @@ remote_mip_result_t<i_t, f_t> grpc_client_t::solve_mip(
 
   start_log_streaming(sub.job_id);
   auto poll = poll_for_completion(sub.job_id);
-  stop_log_streaming();
+  if (poll.completed) {
+    drain_log_streaming();
+  } else {
+    stop_log_streaming();
+  }
 
   if (!poll.completed) { return {.error_message = poll.error_message}; }
 
@@ -1224,6 +1310,7 @@ template submit_result_t grpc_client_t::submit_mip(
 template remote_lp_result_t<int32_t, float> grpc_client_t::get_lp_result(const std::string& job_id);
 template remote_mip_result_t<int32_t, float> grpc_client_t::get_mip_result(
   const std::string& job_id);
+template remote_result_t<int32_t, float> grpc_client_t::get_result(const std::string& job_id);
 template bool grpc_client_t::upload_chunked_arrays(
   const cpu_optimization_problem_t<int32_t, float>& problem,
   const cuopt::remote::ChunkedProblemHeader& header,
@@ -1249,10 +1336,11 @@ template remote_lp_result_t<int32_t, double> grpc_client_t::get_lp_result(
   const std::string& job_id);
 template remote_mip_result_t<int32_t, double> grpc_client_t::get_mip_result(
   const std::string& job_id);
+template remote_result_t<int32_t, double> grpc_client_t::get_result(const std::string& job_id);
 template bool grpc_client_t::upload_chunked_arrays(
   const cpu_optimization_problem_t<int32_t, double>& problem,
   const cuopt::remote::ChunkedProblemHeader& header,
   std::string& job_id_out);
 #endif
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

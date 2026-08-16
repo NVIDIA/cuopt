@@ -6,7 +6,8 @@
 /* clang-format on */
 
 #include <cuopt/error.hpp>
-#include <cuopt/linear_programming/solver_settings.hpp>
+#include <cuopt/export.hpp>
+#include <cuopt/mathematical_optimization/solver_settings.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <utilities/logger.hpp>
 
@@ -16,7 +17,7 @@
 #include <fstream>
 #include <sstream>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 namespace {
 
@@ -93,8 +94,8 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_RELATIVE_PRIMAL_TOLERANCE, &pdlp_settings.tolerances.relative_primal_tolerance, f_t(0.0), f_t(1e-1), f_t(1e-4)},
     {CUOPT_ABSOLUTE_GAP_TOLERANCE, &pdlp_settings.tolerances.absolute_gap_tolerance, f_t(0.0), f_t(1e-1), f_t(1e-4)},
     {CUOPT_RELATIVE_GAP_TOLERANCE, &pdlp_settings.tolerances.relative_gap_tolerance, f_t(0.0), f_t(1e-1), f_t(1e-4)},
-    {CUOPT_MIP_ABSOLUTE_TOLERANCE, &mip_settings.tolerances.absolute_tolerance, f_t(0.0), f_t(1e-1), f_t(1e-4)},
-    {CUOPT_MIP_RELATIVE_TOLERANCE, &mip_settings.tolerances.relative_tolerance, f_t(0.0), f_t(1e-1), f_t(1e-4)},
+    {CUOPT_MIP_ABSOLUTE_TOLERANCE, &mip_settings.tolerances.absolute_tolerance, f_t(0.0), f_t(1e-1), f_t(1e-6)},
+    {CUOPT_MIP_RELATIVE_TOLERANCE, &mip_settings.tolerances.relative_tolerance, f_t(0.0), f_t(1e-1), f_t(1e-12)},
     {CUOPT_MIP_INTEGRALITY_TOLERANCE, &mip_settings.tolerances.integrality_tolerance, f_t(0.0), f_t(1e-1), f_t(1e-5)},
     {CUOPT_MIP_ABSOLUTE_GAP, &mip_settings.tolerances.absolute_mip_gap, f_t(0.0), std::numeric_limits<f_t>::infinity(), std::max(f_t(1e-10), std::numeric_limits<f_t>::epsilon())},
     {CUOPT_MIP_RELATIVE_GAP, &mip_settings.tolerances.relative_mip_gap, f_t(0.0), f_t(1e-1), f_t(1e-4)},
@@ -104,8 +105,6 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_CUT_MIN_ORTHOGONALITY, &mip_settings.cut_min_orthogonality, f_t(0.0), f_t(1.0), f_t(0.5)},
     {CUOPT_BARRIER_STEP_SCALE, &pdlp_settings.barrier_step_scale, f_t(0.5), f_t(0.9999), f_t(0.9)},
     // MIP heuristic hyper-parameters (hidden from default --help: name contains "hyper_")
-    {CUOPT_MIP_HYPER_HEURISTIC_PRESOLVE_TIME_RATIO, &mip_settings.heuristic_params.presolve_time_ratio, f_t(0.0), f_t(1.0), f_t(0.1), "fraction of total time for presolve"},
-    {CUOPT_MIP_HYPER_HEURISTIC_PRESOLVE_MAX_TIME, &mip_settings.heuristic_params.presolve_max_time, f_t(0.0), std::numeric_limits<f_t>::infinity(), f_t(60.0), "hard cap on presolve seconds"},
     {CUOPT_MIP_HYPER_HEURISTIC_ROOT_LP_TIME_RATIO, &mip_settings.heuristic_params.root_lp_time_ratio, f_t(0.0), f_t(1.0), f_t(0.1), "fraction of total time for root LP"},
     {CUOPT_MIP_HYPER_HEURISTIC_ROOT_LP_MAX_TIME, &mip_settings.heuristic_params.root_lp_max_time, f_t(0.0), std::numeric_limits<f_t>::infinity(), f_t(15.0), "hard cap on root LP seconds"},
     {CUOPT_MIP_HYPER_HEURISTIC_RINS_TIME_LIMIT, &mip_settings.heuristic_params.rins_time_limit, f_t(0.0), std::numeric_limits<f_t>::infinity(), f_t(3.0), "per-call RINS sub-MIP time"},
@@ -117,6 +116,12 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_SEMICONTINUOUS_BIG_M, &mip_settings.semi_continuous_big_m, f_t(1.0), std::numeric_limits<f_t>::infinity(), f_t(1e10), "big-M value for semi-continuous variables with no finite upper bound"},
     // Diving heuristic hyper-parameters (hidden from default --help: name contains "hyper_")
     {CUOPT_MIP_HYPER_DIVING_ITERATION_LIMIT_FACTOR, &mip_settings.diving_params.iteration_limit_factor, f_t(0.0), f_t(1.0), f_t(0.05), "fraction of best-first iterations allowed per dive"},
+    // Recursive sub-MIP (RINS) hyper-parameters (hidden from default --help: name contains "hyper_")
+    {CUOPT_MIP_HYPER_SUBMIP_BASE_TARGET_FIXRATE, &mip_settings.submip_params.base_target_fixrate, f_t(0.0), f_t(1.0), f_t(0.6), "base target fix rate for the RINS neighbourhood"},
+    {CUOPT_MIP_HYPER_SUBMIP_MIN_FIXRATE, &mip_settings.submip_params.min_fixrate, f_t(0.0), f_t(1.0), f_t(0.25), "minimum fix rate for accepting the RINS neighbourhood"},
+    {CUOPT_MIP_HYPER_SUBMIP_MIN_FIXRATE_CAP, &mip_settings.submip_params.min_fixrate_cap, f_t(0.0), f_t(1.0), f_t(0.1), "hard cap on the minimum fix rate for solving a sub-MIP"},
+    {CUOPT_MIP_HYPER_SUBMIP_TARGET_MIP_GAP, &mip_settings.submip_params.target_mip_gap, f_t(0.0), f_t(1.0), f_t(0.01), "MIP gap target for the sub-MIP"},
+    {CUOPT_MIP_HYPER_SUBMIP_ITERATION_LIMIT_RATIO, &mip_settings.submip_params.iteration_limit_ratio, f_t(0.0), f_t(1.0), f_t(0.8), "sub-MIP simplex-iteration limit as a factor of parent B&B iterations"},
    };
 
   // Int parameters
@@ -132,23 +137,27 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_DUALIZE, &pdlp_settings.dualize, -1, 1, -1},
     {CUOPT_ORDERING, &pdlp_settings.ordering, -1, 1, -1},
     {CUOPT_BARRIER_DUAL_INITIAL_POINT, &pdlp_settings.barrier_dual_initial_point, -1, 1, -1},
+    {CUOPT_POSTSOLVE_INFO, &pdlp_settings.postsolve_info, -1, 1, -1},
     {CUOPT_MIP_CUT_PASSES, &mip_settings.max_cut_passes, -1, std::numeric_limits<i_t>::max(), 10},
     {CUOPT_MIP_MIXED_INTEGER_ROUNDING_CUTS, &mip_settings.mir_cuts, -1, 1, -1},
     {CUOPT_MIP_MIXED_INTEGER_GOMORY_CUTS, &mip_settings.mixed_integer_gomory_cuts, -1, 1, -1},
     {CUOPT_MIP_KNAPSACK_CUTS, &mip_settings.knapsack_cuts, -1, 1, -1},
     {CUOPT_MIP_FLOW_COVER_CUTS, &mip_settings.flow_cover_cuts, -1, 1, -1},
     {CUOPT_MIP_CLIQUE_CUTS, &mip_settings.clique_cuts, -1, 1, -1},
+    {CUOPT_MIP_ZERO_HALF_CUTS, &mip_settings.zero_half_cuts, -1, 1, -1},
     {CUOPT_MIP_IMPLIED_BOUND_CUTS, &mip_settings.implied_bound_cuts, -1, 1, -1},
     {CUOPT_MIP_STRONG_CHVATAL_GOMORY_CUTS, &mip_settings.strong_chvatal_gomory_cuts, -1, 1, -1},
     {CUOPT_MIP_REDUCED_COST_STRENGTHENING, &mip_settings.reduced_cost_strengthening, -1, std::numeric_limits<i_t>::max(), -1},
+    {CUOPT_MIP_RINS, &mip_settings.submip_params.rins, -1, 1, -1},
     {CUOPT_MIP_OBJECTIVE_STEP, &mip_settings.objective_step, 0, 1, 1},
-    {CUOPT_NUM_GPUS, &pdlp_settings.num_gpus, 1, 2, 1},
-    {CUOPT_NUM_GPUS, &mip_settings.num_gpus, 1, 2, 1},
+    {CUOPT_NUM_GPUS, &pdlp_settings.num_gpus, -1, 72, 1},
+    {CUOPT_NUM_GPUS, &mip_settings.num_gpus, -1, 72, 1},
     {CUOPT_MIP_BATCH_PDLP_STRONG_BRANCHING, &mip_settings.mip_batch_pdlp_strong_branching, 0, 2, 0},
     {CUOPT_MIP_BATCH_PDLP_RELIABILITY_BRANCHING, &mip_settings.mip_batch_pdlp_reliability_branching, 0, 2, 0},
     {CUOPT_MIP_STRONG_BRANCHING_SIMPLEX_ITERATION_LIMIT, &mip_settings.strong_branching_simplex_iteration_limit, -1,std::numeric_limits<i_t>::max(), -1},
     {CUOPT_PRESOLVE, reinterpret_cast<int*>(&pdlp_settings.presolver), CUOPT_PRESOLVE_DEFAULT, CUOPT_PRESOLVE_PSLP, CUOPT_PRESOLVE_DEFAULT},
     {CUOPT_PRESOLVE, reinterpret_cast<int*>(&mip_settings.presolver), CUOPT_PRESOLVE_DEFAULT, CUOPT_PRESOLVE_PSLP, CUOPT_PRESOLVE_DEFAULT},
+    {CUOPT_DISTRIBUTED_PDLP_PARTITIONER, reinterpret_cast<int*>(&pdlp_settings.distributed_pdlp_partitioner), CUOPT_DISTRIBUTED_PDLP_PARTITIONER_AUTO, CUOPT_DISTRIBUTED_PDLP_PARTITIONER_ROUND_ROBIN, CUOPT_DISTRIBUTED_PDLP_PARTITIONER_AUTO},
     {CUOPT_MIP_DETERMINISM_MODE, &mip_settings.determinism_mode, CUOPT_MODE_OPPORTUNISTIC, CUOPT_MODE_DETERMINISTIC, CUOPT_MODE_OPPORTUNISTIC},
     {CUOPT_RANDOM_SEED, &mip_settings.seed, -1, std::numeric_limits<i_t>::max(), -1},
     {CUOPT_MIP_RELIABILITY_BRANCHING, &mip_settings.reliability_branching, -1, std::numeric_limits<i_t>::max(), -1},
@@ -158,6 +167,8 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     // MIP heuristic hyper-parameters (hidden from default --help: name contains "hyper_")
     {CUOPT_MIP_HYPER_HEURISTIC_POPULATION_SIZE, &mip_settings.heuristic_params.population_size, 1, std::numeric_limits<i_t>::max(), 32, "max solutions in pool"},
     {CUOPT_MIP_HYPER_HEURISTIC_NUM_CPUFJ_THREADS, &mip_settings.heuristic_params.num_cpufj_threads, 0, std::numeric_limits<i_t>::max(), 8, "parallel CPU FJ climbers"},
+    {CUOPT_MIP_HYPER_HEURISTIC_PRESOLVE_MAX_ROUNDS, &mip_settings.heuristic_params.presolve_max_rounds, -1, std::numeric_limits<i_t>::max(), -1, "Papilo presolve rounds cap (<0 derives it from the problem, 0 keeps Papilo default)"},
+    {CUOPT_MIP_HYPER_HEURISTIC_PAPILO_PROBING_MAX_BADGESIZE, &mip_settings.heuristic_params.papilo_probing_max_badgesize, -1, std::numeric_limits<i_t>::max(), -1, "ceiling on Papilo probing.minbadgesize (<0 derives it from the problem, 0 leaves it uncapped)"},
     {CUOPT_MIP_HYPER_HEURISTIC_STAGNATION_TRIGGER, &mip_settings.heuristic_params.stagnation_trigger, 1, std::numeric_limits<i_t>::max(), 3, "FP loops w/o improvement before recombination"},
     {CUOPT_MIP_HYPER_HEURISTIC_MAX_ITERS_WITHOUT_IMPROVEMENT, &mip_settings.heuristic_params.max_iterations_without_improvement, 1, std::numeric_limits<i_t>::max(), 8, "diversity step depth after stagnation"},
     {CUOPT_MIP_HYPER_HEURISTIC_N_OF_MINIMUMS_FOR_EXIT, &mip_settings.heuristic_params.n_of_minimums_for_exit, 1, std::numeric_limits<i_t>::max(), 7000, "FJ baseline local-minima exit threshold"},
@@ -173,6 +184,12 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_HYPER_DIVING_MIN_NODE_DEPTH, &mip_settings.diving_params.min_node_depth, 0, std::numeric_limits<i_t>::max(), 10, "minimum depth at which to start diving"},
     {CUOPT_MIP_HYPER_DIVING_NODE_LIMIT, &mip_settings.diving_params.node_limit, 0, std::numeric_limits<i_t>::max(), 500, "maximum nodes explored per dive"},
     {CUOPT_MIP_HYPER_DIVING_BACKTRACK_LIMIT, &mip_settings.diving_params.backtrack_limit, 0, std::numeric_limits<int16_t>::max(), 5, "maximum backtracking allowed per dive"},
+    // Recursive sub-MIP (RINS) hyper-parameters (hidden from default --help: name contains "hyper_")
+    {CUOPT_MIP_HYPER_SUBMIP_NODE_LIMIT_BASE, &mip_settings.submip_params.node_limit_base, 0, std::numeric_limits<i_t>::max(), 200, "base node limit for the sub-MIP"},
+    {CUOPT_MIP_HYPER_SUBMIP_MAX_LEVEL, &mip_settings.submip_params.max_level, 0, std::numeric_limits<i_t>::max(), 10, "maximum sub-MIP recursion level"},
+    {CUOPT_BARRIER_PRESOLVE_BOUND_FREE_VARIABLES, &pdlp_settings.barrier_presolve_bound_free_variables, -1, 1, -1, "Bound free variables during barrier presolve: -1 automatic (current default behavior), 0 disabled, 1 enabled"},
+    // QCQP (barrier) scaling hyper-parameter
+    {CUOPT_QCQP_HYPER_RUIZ_EQUILIBRATION, &pdlp_settings.qcqp_ruiz_equilibration, -1, 1, -1, "Ruiz equilibration for QCQP barrier scaling: -1 automatic (row/column imbalance heuristic), 0 disabled, 1 enabled"},
   };
 
     // Bool parameters
@@ -191,8 +208,11 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_DUAL_POSTSOLVE, &pdlp_settings.dual_postsolve, true},
     {CUOPT_BARRIER_ITERATIVE_REFINEMENT, &pdlp_settings.barrier_iterative_refinement, true},
     {CUOPT_MIP_PROBING, &mip_settings.probing, true},
+    {CUOPT_USE_DISTRIBUTED_PDLP, &pdlp_settings.use_distributed_pdlp, false},
     // Diving heuristic hyper-parameters (hidden from default --help: name contains "hyper_")
     {CUOPT_MIP_HYPER_DIVING_SHOW_TYPE, &mip_settings.diving_params.show_type, false, "log diving heuristic type when it finds a new incumbent"},
+    // Recursive sub-MIP (RINS) hyper-parameters (hidden from default --help: name contains "hyper_")
+    {CUOPT_MIP_HYPER_SUBMIP_ENABLE_CPUFJ, &mip_settings.submip_params.enable_cpufj, true, "run CPU FJ over the sub-MIP"},
   };
   // String parameters
   string_parameters = {
@@ -203,7 +223,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_USER_PROBLEM_FILE, &mip_settings.user_problem_file, ""},
     {CUOPT_USER_PROBLEM_FILE, &pdlp_settings.user_problem_file, ""},
     {CUOPT_PRESOLVE_FILE, &mip_settings.presolve_file, ""},
-    {CUOPT_PRESOLVE_FILE, &pdlp_settings.presolve_file, ""}
+    {CUOPT_PRESOLVE_FILE, &pdlp_settings.presolve_file, ""},
   };
   // clang-format on
 }
@@ -651,25 +671,39 @@ bool solver_settings_t<i_t, f_t>::dump_parameters_to_file(const std::string& pat
 }
 
 #if MIP_INSTANTIATE_FLOAT
-template class solver_settings_t<int, float>;
-template void solver_settings_t<int, float>::set_parameter(const std::string& name, int value);
-template void solver_settings_t<int, float>::set_parameter(const std::string& name, float value);
-template void solver_settings_t<int, float>::set_parameter(const std::string& name, bool value);
-template int solver_settings_t<int, float>::get_parameter(const std::string& name) const;
-template float solver_settings_t<int, float>::get_parameter(const std::string& name) const;
-template bool solver_settings_t<int, float>::get_parameter(const std::string& name) const;
-template std::string solver_settings_t<int, float>::get_parameter(const std::string& name) const;
+template class CUOPT_EXPORT solver_settings_t<int, float>;
+template CUOPT_EXPORT void solver_settings_t<int, float>::set_parameter(const std::string& name,
+                                                                        int value);
+template CUOPT_EXPORT void solver_settings_t<int, float>::set_parameter(const std::string& name,
+                                                                        float value);
+template CUOPT_EXPORT void solver_settings_t<int, float>::set_parameter(const std::string& name,
+                                                                        bool value);
+template CUOPT_EXPORT int solver_settings_t<int, float>::get_parameter(
+  const std::string& name) const;
+template CUOPT_EXPORT float solver_settings_t<int, float>::get_parameter(
+  const std::string& name) const;
+template CUOPT_EXPORT bool solver_settings_t<int, float>::get_parameter(
+  const std::string& name) const;
+template CUOPT_EXPORT std::string solver_settings_t<int, float>::get_parameter(
+  const std::string& name) const;
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
-template class solver_settings_t<int, double>;
-template void solver_settings_t<int, double>::set_parameter(const std::string& name, int value);
-template void solver_settings_t<int, double>::set_parameter(const std::string& name, double value);
-template void solver_settings_t<int, double>::set_parameter(const std::string& name, bool value);
-template int solver_settings_t<int, double>::get_parameter(const std::string& name) const;
-template double solver_settings_t<int, double>::get_parameter(const std::string& name) const;
-template bool solver_settings_t<int, double>::get_parameter(const std::string& name) const;
-template std::string solver_settings_t<int, double>::get_parameter(const std::string& name) const;
+template class CUOPT_EXPORT solver_settings_t<int, double>;
+template CUOPT_EXPORT void solver_settings_t<int, double>::set_parameter(const std::string& name,
+                                                                         int value);
+template CUOPT_EXPORT void solver_settings_t<int, double>::set_parameter(const std::string& name,
+                                                                         double value);
+template CUOPT_EXPORT void solver_settings_t<int, double>::set_parameter(const std::string& name,
+                                                                         bool value);
+template CUOPT_EXPORT int solver_settings_t<int, double>::get_parameter(
+  const std::string& name) const;
+template CUOPT_EXPORT double solver_settings_t<int, double>::get_parameter(
+  const std::string& name) const;
+template CUOPT_EXPORT bool solver_settings_t<int, double>::get_parameter(
+  const std::string& name) const;
+template CUOPT_EXPORT std::string solver_settings_t<int, double>::get_parameter(
+  const std::string& name) const;
 #endif
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

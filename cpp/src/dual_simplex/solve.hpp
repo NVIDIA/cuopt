@@ -11,7 +11,7 @@
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
-#include <dual_simplex/types.hpp>
+#include <math_optimization/types.hpp>
 
 namespace cuopt {
 struct work_limit_context_t;
@@ -21,7 +21,7 @@ namespace cuopt::cython {
 class lp_solve_session_t;
 }  // namespace cuopt::cython
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 template <typename i_t, typename f_t>
 bool is_mip(const user_problem_t<i_t, f_t>& problem);
@@ -107,6 +107,14 @@ lp_status_t solve_linear_program_with_barrier(
   cuopt::cython::lp_solve_session_t* session = nullptr);
 
 template <typename i_t, typename f_t>
+lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& user_problem,
+                                              const simplex_solver_settings_t<i_t, f_t>& settings,
+                                              f_t start_time,
+                                              lp_solution_t<i_t, f_t>& solution,
+                                              cuopt::cython::lp_solve_session_t* session,
+                                              const raft::handle_t* handle_ptr);
+
+template <typename i_t, typename f_t>
 lp_status_t solve_linear_program(const user_problem_t<i_t, f_t>& user_problem,
                                  const simplex_solver_settings_t<i_t, f_t>& settings,
                                  lp_solution_t<i_t, f_t>& solution);
@@ -131,4 +139,4 @@ i_t solve(const user_problem_t<i_t, f_t>& user_problem,
           const simplex_solver_settings_t<i_t, f_t>& settings,
           std::vector<f_t>& primal_solution);
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

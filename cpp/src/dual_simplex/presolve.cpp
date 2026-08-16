@@ -11,13 +11,13 @@
 #include <dual_simplex/folding.hpp>
 #include <dual_simplex/right_looking_lu.hpp>
 #include <dual_simplex/solve.hpp>
-#include <dual_simplex/tic_toc.hpp>
+#include <math_optimization/tic_toc.hpp>
 
 #include <algorithm>
 #include <cmath>
 #include <iostream>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 template <typename i_t, typename f_t>
 /** Number of leading linear columns; SOCP cone variables occupy [linear_cols, num_cols). */
@@ -467,6 +467,17 @@ i_t convert_greater_to_less(const user_problem_t<i_t, f_t>& user_problem,
   return 0;
 }
 
+template <typename f_t>
+row_bounds_t<f_t> get_range_bounds_from_sense(char row_sense, f_t rhs, f_t range_value)
+{
+  const f_t abs_r = std::abs(range_value);
+  if (row_sense == 'L') { return {rhs - abs_r, rhs}; }
+  if (row_sense == 'G') { return {rhs, rhs + abs_r}; }
+  // 'E' with a range becomes a two-sided row
+  return range_value > 0 ? row_bounds_t<f_t>{rhs, rhs + abs_r}
+                         : row_bounds_t<f_t>{rhs - abs_r, rhs};
+}
+
 template <typename i_t, typename f_t>
 i_t convert_range_rows(const user_problem_t<i_t, f_t>& user_problem,
                        std::vector<char>& row_sense,
@@ -497,32 +508,19 @@ i_t convert_range_rows(const user_problem_t<i_t, f_t>& user_problem,
   i_t p = problem.A.col_start[problem.num_cols];
   i_t j = problem.num_cols;
   for (i_t k = 0; k < num_range_rows; k++) {
-    const i_t i = user_problem.range_rows[k];
-    const f_t r = user_problem.range_value[k];
-    const f_t b = problem.rhs[i];
-    f_t h;
-    f_t u;
+    const i_t i         = user_problem.range_rows[k];
+    const f_t r         = user_problem.range_value[k];
+    const f_t b         = problem.rhs[i];
+    auto [lower, upper] = get_range_bounds_from_sense(row_sense[i], b, r);
     if (row_sense[i] == 'L') {
-      h = b - std::abs(r);
-      u = b;
       less_rows--;
       equal_rows++;
     } else if (row_sense[i] == 'G') {
-      h = b;
-      u = b + std::abs(r);
       greater_rows--;
       equal_rows++;
-    } else if (row_sense[i] == 'E') {
-      if (r > 0) {
-        h = b;
-        u = b + std::abs(r);
-      } else {
-        h = b - std::abs(r);
-        u = b;
-      }
     }
-    problem.lower[j]     = h;
-    problem.upper[j]     = u;
+    problem.lower[j]     = lower;
+    problem.upper[j]     = upper;
     problem.objective[j] = 0.0;
     problem.A.i[p]       = i;
     problem.A.x[p]       = -1.0;
@@ -674,6 +672,50 @@ i_t add_artifical_variables(lp_problem_t<i_t, f_t>& problem,
   problem.A.n      = num_cols;
   problem.num_cols = num_cols;
   return 0;
+}
+
+template <typename i_t, typename f_t>
+void convert_lp_to_user_problem(const lp_problem_t<i_t, f_t>& lp,
+                                const std::vector<variable_type_t>& var_types,
+                                const simplex_solver_settings_t<i_t, f_t>& settings,
+                                user_problem_t<i_t, f_t>& user_problem)
+{
+  constexpr bool verbose = false;
+  if (verbose) {
+    settings.log.printf("Converting simplex problem with %d rows and %d columns and %d nonzeros\n",
+                        lp.num_rows,
+                        lp.num_cols,
+                        lp.A.col_start[lp.num_cols]);
+  }
+
+  const i_t m = lp.num_rows;
+  const i_t n = lp.num_cols;
+
+  user_problem.handle_ptr = lp.handle_ptr;
+  user_problem.num_cols   = n;
+  user_problem.num_rows   = m;
+  user_problem.objective  = lp.objective;
+
+  user_problem.A = lp.A;
+
+  user_problem.rhs   = lp.rhs;
+  user_problem.lower = lp.lower;
+  user_problem.upper = lp.upper;
+  user_problem.row_sense.assign(m, 'E');
+  user_problem.range_rows.clear();
+  user_problem.range_value.clear();
+  user_problem.num_range_rows = 0;
+
+  user_problem.var_types = var_types;
+
+  user_problem.obj_scale             = lp.obj_scale;
+  user_problem.obj_constant          = lp.obj_constant;
+  user_problem.objective_is_integral = lp.objective_is_integral;
+  user_problem.objective_step        = lp.objective_step;
+
+  user_problem.Q_indices.clear();
+  user_problem.Q_offsets.clear();
+  user_problem.Q_values.clear();
 }
 
 template <typename i_t, typename f_t>
@@ -957,7 +999,8 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     if (problem.lower[j] == -inf && problem.upper[j] == inf) { free_variables++; }
   }
 
-  if (settings.barrier_presolve && free_variables > 0) {
+  if (settings.barrier_presolve && settings.barrier_presolve_bound_free_variables != 0 &&
+      free_variables > 0) {
     // Try to remove free variables
     std::vector<i_t> constraints_to_check;
     std::vector<i_t> current_free_variables;
@@ -1202,15 +1245,15 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     if (problem.Q.n > 0 && !presolve_info.negated_variables.empty()) {
       std::vector<bool> is_negated(static_cast<size_t>(problem.num_cols), false);
       for (i_t const j : presolve_info.negated_variables) {
-        is_negated[static_cast<size_t>(j)] = true;
+        is_negated[j] = true;
       }
       for (i_t row = 0; row < problem.Q.m; ++row) {
         const i_t q_start         = problem.Q.row_start[row];
         const i_t q_end           = problem.Q.row_start[row + 1];
-        const bool is_negated_row = is_negated[static_cast<size_t>(row)];
+        const bool is_negated_row = is_negated[row];
         for (i_t p = q_start; p < q_end; ++p) {
           const i_t col = problem.Q.j[p];
-          if (is_negated_row != is_negated[static_cast<size_t>(col)]) { problem.Q.x[p] *= -1.0; }
+          if (is_negated_row != is_negated[col]) { problem.Q.x[p] *= -1.0; }
         }
       }
     }
@@ -1737,7 +1780,10 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
     }
     matrix_transpose_vector_multiply(
       presolve_info.folding_info.A_tilde, 1.0, ytilde, 1.0, dual_residual);
-    settings.log.printf("Unfolded dual residual = %e\n", vector_norm_inf<i_t, f_t>(dual_residual));
+    if (settings.postsolve_info == 1) {
+      settings.log.printf("Unfolded dual residual = %e\n",
+                          vector_norm_inf<i_t, f_t>(dual_residual));
+    }
 
     // Now we need to map the solution back to the original problem
     // minimize c^T x
@@ -1757,7 +1803,9 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
 
   const i_t num_free_variables = free_variable_pairs.size() / 2;
   if (num_free_variables > 0) {
-    settings.log.printf("Post-solve: Handling free variables %d\n", num_free_variables);
+    if (settings.postsolve_info == 1) {
+      settings.log.printf("Post-solve: Handling free variables %d\n", num_free_variables);
+    }
     // We added free variables so we need to map the crushed solution back to the original variables
     for (i_t k = 0; k < 2 * num_free_variables; k += 2) {
       const i_t u = free_variable_pairs[k];
@@ -1769,8 +1817,10 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
   }
 
   if (presolve_info.removed_variables.size() > 0) {
-    settings.log.printf("Post-solve: Handling removed variables %d\n",
-                        presolve_info.removed_variables.size());
+    if (settings.postsolve_info == 1) {
+      settings.log.printf("Post-solve: Handling removed variables %d\n",
+                          presolve_info.removed_variables.size());
+    }
     // We removed some variables, so we need to map the crushed solution back to the original
     // variables
     const i_t n = presolve_info.removed_variables.size() + presolve_info.remaining_variables.size();
@@ -1797,8 +1847,10 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
   }
 
   if (presolve_info.removed_constraints.size() > 0) {
-    settings.log.printf("Post-solve: Handling removed constraints %d\n",
-                        presolve_info.removed_constraints.size());
+    if (settings.postsolve_info == 1) {
+      settings.log.printf("Post-solve: Handling removed constraints %d\n",
+                          presolve_info.removed_constraints.size());
+    }
     // We removed some constraints, so we need to map the crushed solution back to the original
     // constraints
     const i_t m =
@@ -1826,7 +1878,9 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
       if (presolve_info.removed_lower_bounds[j] != 0.0) { num_lower_bounds++; }
       input_x[j] += presolve_info.removed_lower_bounds[j];
     }
-    settings.log.printf("Post-solve: Handling removed lower bounds %d\n", num_lower_bounds);
+    if (settings.postsolve_info == 1) {
+      settings.log.printf("Post-solve: Handling removed lower bounds %d\n", num_lower_bounds);
+    }
   }
 
   if (presolve_info.negated_variables.size() > 0) {
@@ -1852,7 +1906,9 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
   // z_bar_{j_f} = 0.
   if (!presolve_info.bounded_free_variables.empty()) {
     const i_t num_bfv = static_cast<i_t>(presolve_info.bounded_free_variables.size());
-    settings.log.printf("Post-solve: Correcting duals for %d bounded free variables\n", num_bfv);
+    if (settings.postsolve_info == 1) {
+      settings.log.printf("Post-solve: Correcting duals for %d bounded free variables\n", num_bfv);
+    }
     const csc_matrix_t<i_t, f_t>& A = original_problem.A;
 
     // Traverse in reverse order, to ensure that all z_j = 0 after the correction
@@ -1891,6 +1947,12 @@ template void convert_user_problem<int, double>(
   lp_problem_t<int, double>& problem,
   std::vector<int>& new_slacks,
   dualize_info_t<int, double>& dualize_info);
+
+template void convert_lp_to_user_problem<int, double>(
+  const lp_problem_t<int, double>& simplex_problem,
+  const std::vector<variable_type_t>& var_types,
+  const simplex_solver_settings_t<int, double>& settings,
+  user_problem_t<int, double>& user_problem);
 
 template void convert_user_lp_with_guess<int, double>(
   const user_problem_t<int, double>& user_problem,
@@ -1940,6 +2002,14 @@ template void uncrush_solution<int, double>(const presolve_info_t<int, double>& 
                                             std::vector<double>& uncrushed_y,
                                             std::vector<double>& uncrushed_z);
 
+template row_bounds_t<double> get_range_bounds_from_sense<double>(char, double, double);
+
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+// Emitted unconditionally: third_party_presolve.cpp always instantiates its <int, float>
+// variant (its guard MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT is always true because
+// PDLP_INSTANTIATE_FLOAT == 1), so this float symbol must exist even though the rest of this
+// dual_simplex TU is double-only.
+template row_bounds_t<float> get_range_bounds_from_sense<float>(char, float, float);
+
+}  // namespace cuopt::mathematical_optimization::simplex

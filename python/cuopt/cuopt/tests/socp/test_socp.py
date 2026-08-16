@@ -14,19 +14,12 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from cuopt.linear_programming.problem import EQ, GE, LE, Problem
+from cuopt.linear_programming.problem import EQ, GE, LE, MAXIMIZE, Problem
 from cuopt.linear_programming.solver.solver_parameters import CUOPT_METHOD
 from cuopt.linear_programming.solver_settings import (
     SolverMethod,
     SolverSettings,
 )
-
-EXPECTED_SOCP_1_OBJECTIVE = -13.548638904065102
-EXPECTED_SOCP_1_X = (-3.874621860638774, -2.129788233677883, 2.33480343377204)
-EXPECTED_SOCP_1_Y = 5.0
-
-EXPECTED_SOCP_3_OBJECTIVE = -1.932105
-EXPECTED_SOCP_3_X = (0.83666003, -0.54772256)
 
 OBJ_TOL = 1e-6
 PRIMAL_TOL = 1e-6
@@ -48,21 +41,6 @@ def _soc_two_dim_constraint(problem, x0, x1, mat, head) -> None:
     problem.addConstraint(z0 * z0 + z1 * z1 - head * head <= 0)
 
 
-def build_socp_1() -> tuple[Problem, tuple]:
-    """Min 3*x0+2*x1+x2  s.t. ||x||_2 <= y, x0+x1+3*x2 >= 1, 0 <= y <= 5."""
-    problem = Problem("socp_1")
-    x0 = problem.addVariable(lb=-np.inf, name="x0")
-    x1 = problem.addVariable(lb=-np.inf, name="x1")
-    x2 = problem.addVariable(lb=-np.inf, name="x2")
-    y = problem.addVariable(lb=0, name="y")
-    problem.setObjective(3 * x0 + 2 * x1 + x2)
-    problem.addConstraint(y >= 0)
-    problem.addConstraint(x0 * x0 + x1 * x1 + x2 * x2 - y * y <= 0)
-    problem.addConstraint(x0 + x1 + 3 * x2 >= 1)
-    problem.addConstraint(y <= 5)
-    return problem, (x0, x1, x2, y)
-
-
 def build_socp_3() -> tuple[Problem, tuple]:
     """Min -x0+2*x1  s.t. ||M_i x||_2 <= 1  for three fixed 2x2 maps M_i."""
     root2 = np.sqrt(2.0)
@@ -82,6 +60,27 @@ def build_socp_3() -> tuple[Problem, tuple]:
     _soc_two_dim_constraint(problem, x0, x1, mat2, h2)
     _soc_two_dim_constraint(problem, x0, x1, mat3, h3)
     return problem, (x0, x1, h1, h2, h3)
+
+
+def build_rotated_soc_natural_cross_term_example() -> tuple[Problem, tuple]:
+    """Rotated SOC with the natural single cross term ``-2*t*u``.
+
+    max  v0 + v1
+    s.t. t = 0.5, u = 1.0
+         t + u + v0 + v1 <= 100
+         v0^2 + v1^2 - 2*t*u <= 0
+    """
+    problem = Problem("rotated_soc_natural_cross")
+    t = problem.addVariable(lb=0.5, ub=0.5, name="t")
+    u = problem.addVariable(lb=1.0, ub=1.0, name="u")
+    v0 = problem.addVariable(lb=-np.inf, name="v0")
+    v1 = problem.addVariable(lb=-np.inf, name="v1")
+    problem.addConstraint(t + u + v0 + v1 <= 100.0, name="slack")
+    problem.addConstraint(
+        v0 * v0 + v1 * v1 - 2 * t * u <= 0.0, name="rotated_soc"
+    )
+    problem.setObjective(v0 + v1, sense=MAXIMIZE)
+    return problem, (t, u, v0, v1)
 
 
 def _quadratic_constraint_violation(constr, variables) -> float:
@@ -136,66 +135,38 @@ def _solve(problem: Problem):
     return solution
 
 
-def test_socp_1_barrier_solution():
-    problem, (x0, x1, x2, y) = build_socp_1()
-    solution = _solve(problem)
-    _assert_solution_on_original_model(problem, solution)
-    _assert_feasible(problem)
-
-    assert problem.ObjValue == pytest.approx(
-        EXPECTED_SOCP_1_OBJECTIVE, abs=OBJ_TOL
-    )
-    assert x0.Value == pytest.approx(EXPECTED_SOCP_1_X[0], abs=PRIMAL_TOL)
-    assert x1.Value == pytest.approx(EXPECTED_SOCP_1_X[1], abs=PRIMAL_TOL)
-    assert x2.Value == pytest.approx(EXPECTED_SOCP_1_X[2], abs=PRIMAL_TOL)
-    assert y.Value == pytest.approx(EXPECTED_SOCP_1_Y, abs=PRIMAL_TOL)
-
-
 def test_socp_3_barrier_solution():
     problem, (x0, x1, h1, h2, h3) = build_socp_3()
     solution = _solve(problem)
     _assert_solution_on_original_model(problem, solution)
     _assert_feasible(problem)
 
-    assert problem.ObjValue == pytest.approx(
-        EXPECTED_SOCP_3_OBJECTIVE, abs=OBJ_TOL
-    )
-    assert x0.Value == pytest.approx(EXPECTED_SOCP_3_X[0], abs=PRIMAL_TOL)
-    assert x1.Value == pytest.approx(EXPECTED_SOCP_3_X[1], abs=PRIMAL_TOL)
+    expected_obj = -1.932105
+    expected_x = (0.83666003, -0.54772256)
+    assert problem.ObjValue == pytest.approx(expected_obj, abs=OBJ_TOL)
+    assert x0.Value == pytest.approx(expected_x[0], abs=PRIMAL_TOL)
+    assert x1.Value == pytest.approx(expected_x[1], abs=PRIMAL_TOL)
     assert h1.Value == pytest.approx(1.0, abs=PRIMAL_TOL)
     assert h2.Value == pytest.approx(1.0, abs=PRIMAL_TOL)
     assert h3.Value == pytest.approx(1.0, abs=PRIMAL_TOL)
 
 
-def test_general_quadratic_unsymmetric():
-    """
-    Min x0 + x1
-    s.t. 2*x0^2 + 3*x0*x1 + 2*x1^2 <= 1  (unsymmetric Q: cross term only as x0*x1)
-         x0 - x1 = 0
-
-    Q is given unsymmetrically: the 3*x0*x1 term is stored as a single
-    entry (row=0, col=1, val=3) rather than symmetric (0,1,1.5)+(1,0,1.5).
-    After symmetrization H = [4 3; 3 4], eigenvalues 1 and 7 (PD).
-
-    With x0 = x1 = t: 2t^2 + 3t^2 + 2t^2 = 7t^2 <= 1
-    min 2t at t = -1/sqrt(7), obj = -2/sqrt(7) ≈ -0.755929
-    """
-    problem = Problem("general_qc_unsymmetric")
-    x0 = problem.addVariable(lb=-np.inf, name="x0")
-    x1 = problem.addVariable(lb=-np.inf, name="x1")
-    problem.setObjective(x0 + x1)
-    problem.addConstraint(2 * x0 * x0 + 3 * x0 * x1 + 2 * x1 * x1 <= 1)
-    problem.addConstraint(x0 - x1 == 0)
-
+def test_rotated_soc_natural_cross_term_barrier_solution():
+    """Barrier solve for rotated SOC with a single ``-2*t*u`` cross term."""
+    problem, (t, u, v0, v1) = build_rotated_soc_natural_cross_term_example()
     solution = _solve(problem)
     _assert_solution_on_original_model(problem, solution)
     _assert_feasible(problem)
 
-    expected_obj = -2.0 / np.sqrt(7.0)
-    expected_x = -1.0 / np.sqrt(7.0)
+    # Single canonical cross term -2*t*u; optimum max v0+v1 is sqrt(2).
+    sqrt2 = np.sqrt(2.0)
+    expected_obj = sqrt2
+    expected_v = sqrt2 / 2.0
     assert problem.ObjValue == pytest.approx(expected_obj, abs=OBJ_TOL)
-    assert x0.Value == pytest.approx(expected_x, abs=PRIMAL_TOL)
-    assert x1.Value == pytest.approx(expected_x, abs=PRIMAL_TOL)
+    assert t.Value == pytest.approx(0.5, abs=PRIMAL_TOL)
+    assert u.Value == pytest.approx(1.0, abs=PRIMAL_TOL)
+    assert v0.Value == pytest.approx(expected_v, abs=PRIMAL_TOL)
+    assert v1.Value == pytest.approx(expected_v, abs=PRIMAL_TOL)
 
 
 def test_maximize_with_quadratic_constraint():
@@ -214,7 +185,7 @@ def test_maximize_with_quadratic_constraint():
     are present (regression for a bug where the QCQP path ignored the
     objective sense).
     """
-    from cuopt.linear_programming.problem import MAXIMIZE, MINIMIZE
+    from cuopt.linear_programming.problem import MINIMIZE
 
     # Solve as MINIMIZE first to establish baseline
     prob_min = Problem("qc_maximize_min")

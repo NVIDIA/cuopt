@@ -56,6 +56,17 @@ for dir in "$SKILLS_DIR"/*/; do
       echo "ERROR: $name/SKILL.md missing version in frontmatter. Run: ./ci/utils/sync_skills_version.sh"
       ERRORS=$((ERRORS + 1))
     fi
+    skill_card="${dir}skill-card.md"
+    if [[ -f "$skill_card" ]]; then
+      CARD_VERSION=$(grep -A 1 "^## Skill Version(s):" "$skill_card" | tail -1 | sed -n 's/^\([0-9][0-9]\.[0-9][0-9]\.[0-9][0-9]\).*/\1/p')
+      if [[ -z "${CARD_VERSION}" ]]; then
+        echo "ERROR: $name/skill-card.md missing version under '## Skill Version(s):'. Run: ./ci/utils/sync_skills_version.sh"
+        ERRORS=$((ERRORS + 1))
+      elif [[ "${CARD_VERSION}" != "${RELEASE_VERSION}" ]]; then
+        echo "ERROR: $name/skill-card.md has version \"${CARD_VERSION}\" but VERSION file has \"${RELEASE_VERSION}\". Run: ./ci/utils/sync_skills_version.sh"
+        ERRORS=$((ERRORS + 1))
+      fi
+    fi
   fi
 done
 

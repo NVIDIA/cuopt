@@ -5,14 +5,17 @@
  */
 /* clang-format on */
 
-#include <cuopt/linear_programming/cpu_optimization_problem.hpp>
-#include <cuopt/linear_programming/optimization_problem.hpp>
-#include <cuopt/linear_programming/optimization_problem_utils.hpp>
-#include <cuopt/linear_programming/solve_remote.hpp>
+#include <cuopt/export.hpp>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
+#include <cuopt/mathematical_optimization/solve_remote.hpp>
+
+#include <mps_parser_internal.hpp>
 
 #include <cuopt/error.hpp>
-#include <cuopt/linear_programming/csr_matrix_utils.hpp>
-#include <cuopt/linear_programming/io/writer.hpp>
+#include <cuopt/mathematical_optimization/csr_matrix_utils.hpp>
+#include <cuopt/mathematical_optimization/io/writer.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/logger.hpp>
@@ -49,7 +52,7 @@
 #include <stdexcept>
 #include <unordered_map>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 template <typename i_t, typename f_t>
 optimization_problem_t<i_t, f_t>::optimization_problem_t(raft::handle_t const* handle_ptr)
@@ -242,6 +245,7 @@ void optimization_problem_t<i_t, f_t>::add_quadratic_constraint(char constraint_
   qc.vals.assign(coeff.begin(), coeff.end());
   qc.linear_values.assign(linear_values.begin(), linear_values.end());
   qc.linear_indices.assign(linear_indices.begin(), linear_indices.end());
+  io::canonicalize_coo_matrix(qc.rows, qc.cols, qc.vals);
   quadratic_constraints_.push_back(std::move(qc));
 }
 
@@ -795,7 +799,7 @@ typename optimization_problem_t<i_t, f_t>::view_t optimization_problem_t<i_t, f_
 template <typename i_t, typename f_t>
 void optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_path)
 {
-  cuopt::linear_programming::io::data_model_view_t<i_t, f_t> data_model_view;
+  cuopt::mathematical_optimization::io::data_model_view_t<i_t, f_t> data_model_view;
 
   // Set optimization sense
   data_model_view.set_maximize(get_sense());
@@ -882,7 +886,7 @@ void optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_
       variable_types.resize(enum_variable_types.size());
       // Convert enum types to char types
       for (size_t i = 0; i < variable_types.size(); ++i) {
-        variable_types[i] = detail::var_type_to_char(enum_variable_types[i]);
+        variable_types[i] = var_type_to_char(enum_variable_types[i]);
       }
     }
 
@@ -905,7 +909,7 @@ void optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_
     data_model_view.set_quadratic_constraints(quadratic_constraints_);
   }
 
-  cuopt::linear_programming::io::write_mps(data_model_view, mps_file_path);
+  cuopt::mathematical_optimization::io::write_mps(data_model_view, mps_file_path);
 }
 
 template <typename i_t, typename f_t>
@@ -1629,16 +1633,16 @@ optimization_problem_t<i_t, other_f_t> optimization_problem_t<i_t, f_t>::convert
 // ==============================================================================
 // Explicit template instantiations matching MIP constants
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
-template class optimization_problem_t<int32_t, float>;
+template class CUOPT_EXPORT optimization_problem_t<int32_t, float>;
 #endif
 #if MIP_INSTANTIATE_DOUBLE
-template class optimization_problem_t<int32_t, double>;
+template class CUOPT_EXPORT optimization_problem_t<int32_t, double>;
 #endif
 
 #if PDLP_INSTANTIATE_FLOAT || MIP_INSTANTIATE_FLOAT
-template optimization_problem_t<int32_t, float>
+template CUOPT_EXPORT optimization_problem_t<int32_t, float>
   optimization_problem_t<int32_t, double>::convert_to_other_prec<float>(
     rmm::cuda_stream_view) const;
 #endif
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

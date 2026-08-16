@@ -9,11 +9,9 @@
 
 #include <cstddef>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 struct diversity_config_t {
-  double time_ratio_of_probing_cache = 0.1;
-  double max_time_on_probing         = 60.0;
   int max_var_diff                   = 256;
   double default_time_limit          = 10.;
   int initial_island_size            = 3;
@@ -28,4 +26,4 @@ struct diversity_config_t {
   bool halve_population              = false;
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

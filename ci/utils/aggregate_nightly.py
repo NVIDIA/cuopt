@@ -711,7 +711,7 @@ def main():
     )
 
     args = parser.parse_args()
-    output_dir = Path(args.output_dir)
+    output_dir = Path(args.output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # ---- Step 1: Collect summaries ----

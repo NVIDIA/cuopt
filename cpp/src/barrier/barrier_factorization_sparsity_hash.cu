@@ -7,7 +7,7 @@
 
 #include <barrier/barrier_factorization_sparsity_hash.hpp>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::barrier {
 
 template <typename i_t, typename f_t>
 barrier_sparsity_hash_t hash_device_csr_sparsity_pattern(
@@ -22,4 +22,4 @@ template barrier_sparsity_hash_t hash_device_csr_sparsity_pattern<int, float>(
 template barrier_sparsity_hash_t hash_device_csr_sparsity_pattern<int, double>(
   device_csr_matrix_t<int, double>&, rmm::cuda_stream_view);
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::barrier

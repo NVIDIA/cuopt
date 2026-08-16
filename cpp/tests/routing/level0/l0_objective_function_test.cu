@@ -111,5 +111,3 @@ INSTANTIATE_TEST_SUITE_P(level0_objective_function,
 }  // namespace test
 }  // namespace routing
 }  // namespace cuopt
-
-CUOPT_TEST_PROGRAM_MAIN()

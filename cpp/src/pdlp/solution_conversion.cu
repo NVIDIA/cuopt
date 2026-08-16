@@ -10,14 +10,15 @@
  * @brief Implementations of conversion methods from solution classes to Cython ret structs
  */
 
-#include <cuopt/linear_programming/cpu_optimization_problem_solution.hpp>
-#include <cuopt/linear_programming/optimization_problem_solution.hpp>
-#include <cuopt/linear_programming/utilities/cython_solve.hpp>
+#include <cuopt/export.hpp>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem_solution.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_solution.hpp>
+#include <cuopt/mathematical_optimization/utilities/cython_solve.hpp>
 
 #include <rmm/device_buffer.hpp>
 #include <rmm/device_uvector.hpp>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 // ===========================
 // GPU LP Solution Conversion
@@ -215,11 +216,11 @@ cuopt::cython::mip_ret_t cpu_mip_solution_t<i_t, f_t>::to_cpu_mip_ret_t()
 }
 
 // Explicit template instantiations
-template cuopt::cython::linear_programming_ret_t
+template CUOPT_EXPORT cuopt::cython::linear_programming_ret_t
 gpu_lp_solution_t<int, double>::to_linear_programming_ret_t();
-template cuopt::cython::mip_ret_t gpu_mip_solution_t<int, double>::to_mip_ret_t();
-template cuopt::cython::linear_programming_ret_t
+template CUOPT_EXPORT cuopt::cython::mip_ret_t gpu_mip_solution_t<int, double>::to_mip_ret_t();
+template CUOPT_EXPORT cuopt::cython::linear_programming_ret_t
 cpu_lp_solution_t<int, double>::to_cpu_linear_programming_ret_t();
-template cuopt::cython::mip_ret_t cpu_mip_solution_t<int, double>::to_cpu_mip_ret_t();
+template CUOPT_EXPORT cuopt::cython::mip_ret_t cpu_mip_solution_t<int, double>::to_cpu_mip_ret_t();
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

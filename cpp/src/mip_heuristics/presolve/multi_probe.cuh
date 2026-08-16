@@ -17,7 +17,7 @@
 #include "bounds_update_data.cuh"
 #include "utils.cuh"
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 class multi_probe_t {
@@ -75,6 +75,8 @@ class multi_probe_t {
   bool skip_0;
   bool skip_1;
   settings_t settings;
+  // Per-task iteration count; a shared counter would race and make the budget nondeterministic.
+  double* local_iter_accumulator = nullptr;
   bool compute_stats             = true;
   bool init_changed_constraints  = true;
   i_t infeas_constraints_count_0 = 0;
@@ -83,4 +85,4 @@ class multi_probe_t {
   i_t redund_constraints_count_1 = 0;
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

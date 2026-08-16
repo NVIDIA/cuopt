@@ -5,12 +5,13 @@
  */
 /* clang-format on */
 
-#include <cuopt/linear_programming/io/data_model_view.hpp>
+#include <cuopt/export.hpp>
+#include <cuopt/mathematical_optimization/io/data_model_view.hpp>
 #include <utilities/error.hpp>
 
 #include <span>
 
-namespace cuopt::linear_programming::io {
+namespace cuopt::mathematical_optimization::io {
 
 template <typename i_t, typename f_t>
 void data_model_view_t<i_t, f_t>::set_maximize(bool maximize)
@@ -377,8 +378,8 @@ data_model_view_t<i_t, f_t>::get_quadratic_constraints() const noexcept
 }
 
 // NOTE: Explicitly instantiate all types here in order to avoid linker error
-template class data_model_view_t<int, float>;
+template class CUOPT_EXPORT data_model_view_t<int, float>;
 
-template class data_model_view_t<int, double>;
+template class CUOPT_EXPORT data_model_view_t<int, double>;
 
-}  // namespace cuopt::linear_programming::io
+}  // namespace cuopt::mathematical_optimization::io

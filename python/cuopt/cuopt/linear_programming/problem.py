@@ -1728,7 +1728,7 @@ class Problem:
                 raise ValueError("addConstraint requires a Constraint object")
         return constr
 
-    def updateConstraint(self, constr, coeffs=[], rhs=None):
+    def updateConstraint(self, constr, coeffs=None, rhs=None):
         """
         Updates a previously added constraint. Values that can be updated are
         constraint coefficients and RHS.
@@ -1753,6 +1753,8 @@ class Problem:
         >>> problem.updateConstraint(c1, coeffs=[(x, 1)], rhs=10)
         """
         self.reset_solved_values()
+        if coeffs is None:
+            coeffs = []
         if isinstance(constr, Constraint):
             if constr.is_quadratic:
                 raise ValueError(
@@ -1763,7 +1765,7 @@ class Problem:
             for var, coeff in coeffs:
                 idx = var.index
                 constr.vindex_coeff_dict[idx] = coeff
-            if rhs:
+            if rhs is not None:
                 constr.RHS = rhs
         else:
             raise ValueError("Object to update must be a Constraint")
@@ -1842,7 +1844,7 @@ class Problem:
                     "Objective must be a Variable, Expression or a constant"
                 )
 
-    def updateObjective(self, coeffs=[], constant=None, sense=None):
+    def updateObjective(self, coeffs=None, constant=None, sense=None):
         """
         Updates the objective of the problem. Values that can be updated are
         objective coefficients, constant and sense.
@@ -1867,13 +1869,15 @@ class Problem:
                 sense=MINIMIZE)
         """
         self.reset_solved_values()
+        if coeffs is None:
+            coeffs = []
         if isinstance(coeffs, dict):
             coeffs = coeffs.items()
         for var, coeff in coeffs:
             var.setObjectiveCoefficient(coeff)
-        if constant:
+        if constant is not None:
             self.ObjConstant = constant
-        if sense:
+        if sense is not None:
             self.ObjSense = sense
 
     def getIncumbentValues(self, solution, vars):

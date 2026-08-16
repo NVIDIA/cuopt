@@ -33,7 +33,7 @@
 
 #include <unordered_set>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 void test_renumbered_coo(raft::device_span<i_t> coo_major, const problem_t<i_t, f_t>& pb)
@@ -365,10 +365,10 @@ void trivial_presolve(problem_t<i_t, f_t>& problem, bool remap_cache_ids = false
   problem.recompute_auxilliary_data(
     false);  // check problem representation later once cstr bounds are computed
   cuopt_func_call(test_reverse_matches(problem));
-  combine_constraint_bounds<i_t, f_t>(problem, problem.combined_bounds);
+  pdlp::combine_constraint_bounds<i_t, f_t>(problem, problem.combined_bounds);
   // The problem has been solved by presolve. Mark its empty status as valid
   if (problem.n_variables == 0) { problem.empty = true; }
   problem.check_problem_representation(true);
 }
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

@@ -47,6 +47,7 @@ from enum import IntEnum
 
 import cupy as cp
 import numpy as np
+import pandas as pd
 from numba import cuda
 
 import cudf
@@ -61,7 +62,33 @@ class ErrorStatus(IntEnum):
     RuntimeError = error_type_t.RuntimeError
 
 
+def _reject_list(obj, name):
+    if isinstance(obj, (list, tuple)):
+        raise TypeError(
+            name + " must be a numpy array, pandas Series/DataFrame, or cudf "
+            "Series/DataFrame; Python lists/tuples are not supported"
+        )
+
+
 def type_cast(cudf_obj, np_type, name):
+    # Accept host inputs (numpy / pandas) by moving them to device; the local
+    # GPU solver requires device memory. Python lists/tuples are rejected.
+    _reject_list(cudf_obj, name)
+    if isinstance(cudf_obj, np.ndarray):
+        cudf_obj = (
+            cudf.Series(cudf_obj) if cudf_obj.ndim == 1
+            else cudf.DataFrame(cudf_obj)
+        )
+    elif isinstance(cudf_obj, pd.Series):
+        cudf_obj = cudf.Series(cudf_obj)
+    elif isinstance(cudf_obj, pd.DataFrame):
+        cudf_obj = cudf.DataFrame(cudf_obj)
+    elif not isinstance(cudf_obj, (cudf.Series, cudf.DataFrame)):
+        raise TypeError(
+            name + " must be a numpy array, pandas Series/DataFrame, or cudf "
+            "Series/DataFrame; got " + type(cudf_obj).__name__
+        )
+
     if isinstance(cudf_obj, cudf.Series):
         cudf_type = cudf_obj.dtype
     elif isinstance(cudf_obj, cudf.DataFrame):
@@ -80,6 +107,38 @@ def type_cast(cudf_obj, np_type, name):
         warnings.warn(msg)
     cudf_obj = cudf_obj.astype(np.dtype(np_type))
     return cudf_obj
+
+
+def prepare_matrix(mat, name):
+    # Return a C-contiguous float32 device (cupy) 2D array for the C++ view,
+    # which reads the matrix row-major. cudf.DataFrame.to_cupy() is column-major
+    # (F-contiguous), so the reorder below is required for cudf input; for
+    # numpy/pandas we go straight to device with a single host->device copy.
+    _reject_list(mat, name)
+    if isinstance(mat, cudf.DataFrame):
+        arr = mat.to_cupy()
+    elif isinstance(mat, pd.DataFrame):
+        arr = cp.asarray(mat.to_numpy())
+    elif isinstance(mat, np.ndarray):
+        arr = cp.asarray(mat)
+    elif isinstance(mat, cp.ndarray):
+        arr = mat
+    else:
+        raise TypeError(
+            name + " must be a numpy array, pandas DataFrame, or cudf "
+            "DataFrame; got " + type(mat).__name__
+        )
+    # Warn on a non-float source dtype, matching type_cast's behavior for the
+    # vector setters (the matrix target dtype is always float32).
+    if not np.issubdtype(arr.dtype, np.floating):
+        warnings.warn(
+            "Casting " + name + " from " + str(arr.dtype) + " to "
+            + str(np.dtype(np.float32))
+        )
+    arr = arr.astype(np.float32, copy=False)
+    # No-op when arr is already C-contiguous (e.g. numpy input); reorders only
+    # the column-major cudf case.
+    return cp.ascontiguousarray(arr)
 
 
 def handle_exception(exc_type, exc_value, exc_traceback):
@@ -207,9 +266,7 @@ cdef class DataModel:
         self.initial_sol_offsets = cudf.Series()
 
     def add_cost_matrix(self, costs, vehicle_type):
-        costs = type_cast(costs, np.float32, "cost_matrix")
-
-        costs = cp.array(costs.to_cupy(), order='C', dtype=np.float32)
+        costs = prepare_matrix(costs, "cost_matrix")
         self.costs[vehicle_type] = costs
         cdef uintptr_t c_costs = self.costs[vehicle_type].data.ptr
         self.c_data_model_view.get().add_cost_matrix(
@@ -217,9 +274,7 @@ cdef class DataModel:
         )
 
     def add_transit_time_matrix(self, times, vehicle_type):
-        times = type_cast(times, np.float32, "transit_time_matrix")
-
-        times = cp.array(times.to_cupy(), order='C', dtype=np.float32)
+        times = prepare_matrix(times, "transit_time_matrix")
         self.transit_times[vehicle_type] = times
         cdef uintptr_t c_times = self.transit_times[vehicle_type].data.ptr
         self.c_data_model_view.get().add_transit_time_matrix(
@@ -515,7 +570,7 @@ cdef class DataModel:
         )
 
     def set_order_prizes(self, prizes):
-        self.order_prizes = prizes.astype(np.dtype(np.float32))
+        self.order_prizes = type_cast(prizes, np.float32, "order_prizes")
 
         cdef uintptr_t c_prizes = (
             self.order_prizes.__cuda_array_interface__['data'][0]

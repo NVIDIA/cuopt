@@ -6,8 +6,8 @@
 /* clang-format on */
 
 #include <cuopt/error.hpp>
-#include <cuopt/linear_programming/mip/heuristics_hyper_params.hpp>
-#include <cuopt/linear_programming/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/mip/heuristics_hyper_params.hpp>
+#include <cuopt/mathematical_optimization/solver_settings.hpp>
 
 #include <gtest/gtest.h>
 
@@ -16,7 +16,7 @@
 #include <fstream>
 #include <string>
 
-namespace cuopt::linear_programming::test {
+namespace cuopt::mathematical_optimization::test {
 
 using settings_t = solver_settings_t<int, double>;
 
@@ -59,8 +59,6 @@ TEST_F(HeuristicsHyperParamsTest, CustomValuesRoundTrip)
     std::ofstream f(tmp_path);
     f << "mip_hyper_heuristic_population_size = 64\n";
     f << "mip_hyper_heuristic_num_cpufj_threads = 4\n";
-    f << "mip_hyper_heuristic_presolve_time_ratio = 0.2\n";
-    f << "mip_hyper_heuristic_presolve_max_time = 120\n";
     f << "mip_hyper_heuristic_root_lp_time_ratio = 0.05\n";
     f << "mip_hyper_heuristic_root_lp_max_time = 30\n";
     f << "mip_hyper_heuristic_rins_time_limit = 5\n";
@@ -82,8 +80,6 @@ TEST_F(HeuristicsHyperParamsTest, CustomValuesRoundTrip)
 
   EXPECT_EQ(hp.population_size, 64);
   EXPECT_EQ(hp.num_cpufj_threads, 4);
-  EXPECT_DOUBLE_EQ(hp.presolve_time_ratio, 0.2);
-  EXPECT_DOUBLE_EQ(hp.presolve_max_time, 120.0);
   EXPECT_DOUBLE_EQ(hp.root_lp_time_ratio, 0.05);
   EXPECT_DOUBLE_EQ(hp.root_lp_max_time, 30.0);
   EXPECT_DOUBLE_EQ(hp.rins_time_limit, 5.0);
@@ -116,7 +112,7 @@ TEST_F(HeuristicsHyperParamsTest, PartialConfigKeepsDefaults)
 
   mip_heuristics_hyper_params_t<int, double> defaults;
   EXPECT_EQ(hp.num_cpufj_threads, defaults.num_cpufj_threads);
-  EXPECT_DOUBLE_EQ(hp.presolve_time_ratio, defaults.presolve_time_ratio);
+  EXPECT_DOUBLE_EQ(hp.root_lp_time_ratio, defaults.root_lp_time_ratio);
   EXPECT_EQ(hp.n_of_minimums_for_exit, defaults.n_of_minimums_for_exit);
   EXPECT_EQ(hp.enabled_recombiners, defaults.enabled_recombiners);
 }
@@ -280,4 +276,4 @@ TEST_F(HeuristicsHyperParamsTest, UnterminatedQuoteThrows)
   EXPECT_THROW(settings.load_parameters_from_file(tmp_path), cuopt::logic_error);
 }
 
-}  // namespace cuopt::linear_programming::test
+}  // namespace cuopt::mathematical_optimization::test

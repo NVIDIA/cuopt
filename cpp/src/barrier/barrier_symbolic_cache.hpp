@@ -16,7 +16,7 @@
 #include <cstdint>
 #include <memory>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::barrier {
 
 using barrier_sparsity_hash_t = std::uint64_t;
 
@@ -79,4 +79,4 @@ struct barrier_symbolic_cache_t {
   }
 };
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::barrier
