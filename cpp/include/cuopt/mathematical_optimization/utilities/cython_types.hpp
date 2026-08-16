@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/mip/solver_solution.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
 #include <cuopt/mathematical_optimization/utilities/internals.hpp>
@@ -19,7 +20,7 @@
 #include <vector>
 
 namespace cuopt {
-namespace cython {
+namespace CUOPT_EXPORT cython {
 
 using gpu_buffer = std::unique_ptr<rmm::device_buffer>;
 using cpu_buffer = std::vector<double>;
@@ -112,5 +113,5 @@ struct mip_ret_t {
   bool is_gpu() const { return std::holds_alternative<gpu_buffer>(solution_); }
 };
 
-}  // namespace cython
+}  // namespace CUOPT_EXPORT cython
 }  // namespace cuopt

@@ -1,10 +1,11 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 
+#include <cuopt/export.hpp>
 #include <cuopt/routing/solve.hpp>
 #include <routing/solver.hpp>
 #include <utilities/logger.hpp>
@@ -29,7 +30,7 @@ assignment_t<i_t> solve(data_model_view_t<i_t, f_t> const& data_model,
   }
 }
 
-template assignment_t<int> solve(data_model_view_t<int, float> const& data_model,
-                                 solver_settings_t<int, float> const& settings);
+template CUOPT_EXPORT assignment_t<int> solve(data_model_view_t<int, float> const& data_model,
+                                              solver_settings_t<int, float> const& settings);
 }  // namespace routing
 }  // namespace cuopt

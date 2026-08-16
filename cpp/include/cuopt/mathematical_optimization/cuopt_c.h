@@ -9,12 +9,17 @@
 #define CUOPT_C_API_H
 
 #include <cuopt/mathematical_optimization/constants.h>
+#include <cuopt/export.hpp>
 
 #include <stdint.h>
 
 #ifdef __cplusplus
 
 extern "C" {
+#endif
+
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC visibility push(default)
 #endif
 
 /**
@@ -1106,6 +1111,60 @@ cuopt_int_t cuOptGetDualObjectiveValue(cuOptSolution solution,
 cuopt_int_t cuOptGetReducedCosts(cuOptSolution solution, cuopt_float_t* reduced_cost_ptr);
 
 /* -------------------------------------------------------------------------- */
+/* Solution attributes                                                        */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * A solution attribute is a read-only value describing a completed solve, selected by one of the
+ * CUOPT_SOLUTION_ATTR_* integer constants in constants.h and passed as cuopt_int_t. The
+ * attributes available here are solver statistics: residuals, gap, iteration and node counts,
+ * presolve time, and violation magnitudes.
+ *
+ * Attributes are distinct from parameters. A parameter is an input, set on a cuOptSolverSettings
+ * before solving with cuOptSetParameter and read back with cuOptGetParameter. An attribute is an
+ * output, read from a solved cuOptSolution, or from a cuOptOptimizationProblem in the case of the
+ * problem attributes further below.
+ *
+ * Not every attribute applies to every solution: which statistics a solve produces depends on the
+ * class of problem it was given. An attribute that does not apply returns CUOPT_INVALID_ARGUMENT.
+ * Use CUOPT_ATTR_IS_MIP on the originating problem to determine the class.
+ */
+
+/** @brief Get a scalar integer solution attribute (a CUOPT_SOLUTION_ATTR_* with an integer
+ * value: iteration counts, node counts, or the method that solved the problem).
+ *
+ * @param[in] solution - The solution object.
+ *
+ * @param[in] attribute - The attribute selector.
+ *
+ * @param[out] value_out - A pointer to a cuopt_int_t that on output will contain the value.
+ *
+ * @return A status code indicating success or failure. Returns CUOPT_INVALID_ARGUMENT if the
+ *  selector is unknown, does not have an integer value, or does not apply to this solution's
+ *  problem class.
+ */
+cuopt_int_t cuOptGetSolutionIntAttribute(cuOptSolution solution,
+                                         cuopt_int_t attribute,
+                                         cuopt_int_t* value_out);
+
+/** @brief Get a scalar floating-point solution attribute (a CUOPT_SOLUTION_ATTR_* with a
+ * floating-point value: residuals, gap, presolve time, or violation magnitudes).
+ *
+ * @param[in] solution - The solution object.
+ *
+ * @param[in] attribute - The attribute selector.
+ *
+ * @param[out] value_out - A pointer to a cuopt_float_t that on output will contain the value.
+ *
+ * @return A status code indicating success or failure. Returns CUOPT_INVALID_ARGUMENT if the
+ *  selector is unknown, does not have a floating-point value, or does not apply to this
+ *  solution's problem class.
+ */
+cuopt_int_t cuOptGetSolutionFloatAttribute(cuOptSolution solution,
+                                           cuopt_int_t attribute,
+                                           cuopt_float_t* value_out);
+
+/* -------------------------------------------------------------------------- */
 /* Generic problem attributes                                                 */
 /* -------------------------------------------------------------------------- */
 
@@ -1162,6 +1221,10 @@ cuopt_int_t cuOptGetProblemStringArrayAttribute(cuOptOptimizationProblem problem
                                                 cuopt_int_t attribute,
                                                 const char** strings_out,
                                                 cuopt_int_t count);
+
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC visibility pop
+#endif
 
 #ifdef __cplusplus
 }

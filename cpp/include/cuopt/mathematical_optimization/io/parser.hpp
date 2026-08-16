@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
 
 #include <algorithm>
@@ -16,7 +17,9 @@
 #include <string>
 #include <string_view>
 
-namespace cuopt::mathematical_optimization::io {
+namespace cuopt {
+namespace CUOPT_EXPORT mathematical_optimization {
+namespace io {
 
 /**
  * @brief Selects which MPS reader implementation should be used by dispatching entry points.
@@ -201,4 +204,6 @@ inline mps_data_model_t<i_t, f_t> read(const std::string& path, bool fixed_mps_f
   return read<i_t, f_t>(path, mps_reader_type_t::default_reader, fixed_mps_format);
 }
 
-}  // namespace cuopt::mathematical_optimization::io
+}  // namespace io
+}  // namespace CUOPT_EXPORT mathematical_optimization
+}  // namespace cuopt

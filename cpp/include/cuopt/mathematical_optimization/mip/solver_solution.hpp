@@ -9,6 +9,7 @@
 
 #include <cuopt/mathematical_optimization/constants.h>
 #include <cuopt/error.hpp>
+#include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/mip/solver_stats.hpp>
 #include <cuopt/mathematical_optimization/utilities/internals.hpp>
 
@@ -21,7 +22,8 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::mathematical_optimization {
+namespace cuopt {
+namespace CUOPT_EXPORT mathematical_optimization {
 
 enum class mip_termination_status_t : int8_t {
   NoTermination         = CUOPT_TERMINATION_STATUS_NO_TERMINATION,
@@ -92,4 +94,5 @@ class mip_solution_t : public base_solution_t {
   std::vector<rmm::device_uvector<f_t>> solution_pool_;
 };
 
-}  // namespace cuopt::mathematical_optimization
+}  // namespace CUOPT_EXPORT mathematical_optimization
+}  // namespace cuopt

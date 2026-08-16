@@ -31,6 +31,38 @@ if(BUILD_TESTS)
   if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
     target_link_options(cuopttestutils PRIVATE -Wl,--enable-new-dtags)
   endif()
+
+  # Static-linking flavor of the test utilities for tests built with STATIC_LIB
+  # (see ConfigureTest). These link cuopt_static to reach internal symbols, so
+  # their utilities must also resolve against cuopt_static rather than the shared
+  # cuopt, which would otherwise mix static and shared cuopt in one binary.
+  add_library(cuopttestutils_static STATIC
+      routing/utilities/check_constraints.cu
+  )
+
+  target_compile_options(cuopttestutils_static
+      PUBLIC "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
+      "$<BUILD_INTERFACE:$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>>"
+  )
+
+  target_include_directories(cuopttestutils_static
+      PRIVATE
+      "${CMAKE_CURRENT_SOURCE_DIR}/../src"
+      "${CMAKE_CURRENT_SOURCE_DIR}"
+      "${dejavu_SOURCE_DIR}"
+  )
+
+  target_link_libraries(cuopttestutils_static
+      PUBLIC
+      cuopt_static
+      OpenMP::OpenMP_CXX
+      OpenMP::OpenMP_CUDA
+      GTest::gmock
+      GTest::gtest
+  )
+  if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
+    target_link_options(cuopttestutils_static PRIVATE -Wl,--enable-new-dtags)
+  endif()
 endif()
 
 
@@ -45,7 +77,7 @@ function(ConfigureTest CMAKE_TEST_NAME)
     cmake_parse_arguments(CT "STATIC_LIB" "" "LABELS" ${ARGN})
     if(CT_STATIC_LIB)
         set(_cuopt_link_target cuopt_static)
-        set(_extra_libs "")
+        set(_extra_libs cuopttestutils_static)
     else()
         set(_cuopt_link_target cuopt)
         set(_extra_libs cuopttestutils)
