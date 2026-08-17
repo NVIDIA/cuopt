@@ -441,6 +441,12 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
       break;
     }
 
+    if (!bve_has_stageable_row(*problem_ptr)) {
+      CUOPT_LOG_DEBUG("Block-BVE skipped: every row exceeds the %d-nonzero block row cap",
+                      BVE_MAX_ROW_LEN);
+      break;
+    }
+
     const i_t n_vars_before = problem_ptr->n_variables;
     const i_t n_rows_before = problem_ptr->n_constraints;
     auto impl_adj           = bve_build_impl_adj(ls.constraint_prop.bounds_update.probing_cache,

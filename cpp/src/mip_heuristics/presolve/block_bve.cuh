@@ -135,6 +135,12 @@ std::vector<std::vector<i_t>> bve_build_impl_adj(
   const timer_t& timer,
   const probe_findings_t<i_t>* prior_original_id_findings = nullptr);
 
+// True when some row is short enough to appear in a staged block. A block's scope spans whole rows,
+// so a model whose every row exceeds BVE_MAX_ROW_LEN has no stageable candidate no matter what the
+// implication graph holds, and the pass can be skipped before that graph is built.
+template <typename i_t, typename f_t>
+bool bve_has_stageable_row(const problem_t<i_t, f_t>& problem);
+
 // Run block BVE using caller-provided implication adjacency and deadline. Returns true iff at least
 // one validated reduction was installed; `work_units` receives a deterministic unscaled estimate.
 // `out_findings`, when given, is appended with the implications read off every projected block
