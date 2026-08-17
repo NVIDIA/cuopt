@@ -45,7 +45,7 @@
 #include <string>
 #include <vector>
 
-#define SUBMIP_VERBOSE true
+#define SUBMIP_VERBOSE false
 #if SUBMIP_VERBOSE
 #define DEBUG_SUBMIP(fmt, ...) settings_.log.print_format(fmt, __VA_ARGS__);
 #else
@@ -2653,6 +2653,20 @@ void extend_variable_fixings(const simplex_solver_settings_t<i_t, f_t>& settings
 }
 
 template <typename i_t, typename f_t>
+i_t calculate_num_fixed(const std::vector<i_t>& integer_list,
+                        const std::vector<f_t>& lower,
+                        const std::vector<f_t>& upper,
+                        f_t fixed_tol)
+{
+  i_t num_fixed = 0;
+  for (i_t j : integer_list) {
+    if (std::abs(lower[j] - upper[j]) <= fixed_tol) ++num_fixed;
+  }
+
+  return num_fixed;
+}
+
+template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* worker,
                                                     const std::vector<f_t>& current_incumbent,
                                         const std::vector<variable_type_t>& var_types,
@@ -2693,10 +2707,6 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* w
   std::vector<i_t> integer_list;
   get_unfixed_integer_variables(lower, upper, var_types, settings_.fixed_tol, integer_list);
 
-  // Shuffle the integer list, so every variable has the same chance to the picked
-  // (we iterate the list in order).
-  worker->rng.shuffle(integer_list);
-
   i_t num_integers  = integer_list.size();
   f_t max_fixrate   = submip_get_max_fixrate(submip_stats, settings_.submip_settings, worker->rng);
   f_t min_fixrate   = std::min(settings_.submip_settings.min_fixrate, max_fixrate);
@@ -2710,8 +2720,9 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* w
     f_t round_fixrate = std::min(
       1.0 - (1.0 - prev_fixrate) * settings_.submip_settings.round_close_ratio, max_fixrate);
     i_t round_target = std::max<i_t>(round_fixrate * num_integers, num_var_fixed + 1);
-    // Shuffle the fractional list, so every variable has the same chance to the picked
+    // Shuffle the fractional and integer list, so every variable has the same chance to the picked
     // (we iterate the list in order).
+    worker->rng.shuffle(integer_list);
     worker->rng.shuffle(fractional);
     // RINS neighbourhood 1: Fix all the integer variables where the starting solution matches the
     // current incumbent, considering only the fractional values in the current node
@@ -2772,10 +2783,45 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* w
       }
     }
 
+    if (toc(exploration_stats_.start_time) > settings_.time_limit) {
+      solver_status_ = mip_status_t::TIME_LIMIT;
+      break;
+    }
+
+    f_t fixrate = (f_t)num_var_fixed / num_integers;
+    DEBUG_SUBMIP(
+      "{}Round {}: fixed {} ({:.2f}) -> {} ({:.2f}) variables. target fixrate = {} ({:.2f}). max "
+      "fixrate = {} ({:.2f})",
+      log_prefix,
+      round,
+      prev_num_fixed,
+      prev_fixrate,
+      num_var_fixed,
+      fixrate,
+      round_target,
+      round_fixrate,
+      max_var_fixed,
+      max_fixrate);
+
+    if (num_var_fixed > prev_num_fixed) {
+      bool is_feasible =
+        worker->node_presolver.bounds_strengthening(settings_, bounds_changed, lower, upper);
+      if (!is_feasible) {
+        DEBUG_SUBMIP("{}Round {}: bound strengthening detected infeasibility.", log_prefix, round)
+        submip_stats.save_infeasible(fixrate);
+        break;
+      }
+
+      num_var_fixed = calculate_num_fixed(integer_list, lower, upper, settings_.fixed_tol);
+    }
+
     // Even considering the entire integer list, we were unable to fix a single variable in this
     // iteration. Iterate over the fractional variables again and fixing those that closest to
     // an integer solution first in order to reach the fixing threshold.
-    if (prev_num_fixed == num_var_fixed) {
+    if (num_var_fixed <= round_target) {
+      prev_num_fixed = num_var_fixed;
+      std::fill(bounds_changed.begin(), bounds_changed.end(), false);
+
       extend_variable_fixings(settings_,
                               worker->leaf_problem.objective,
                               fractional,
@@ -2791,6 +2837,17 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* w
         break;
       }
 
+      fixrate = (f_t)num_var_fixed / num_integers;
+      bool is_feasible =
+        worker->node_presolver.bounds_strengthening(settings_, bounds_changed, lower, upper);
+      if (!is_feasible) {
+        DEBUG_SUBMIP("{}Round {}: bound strengthening detected infeasibility.", log_prefix, round)
+        submip_stats.save_infeasible(fixrate);
+        break;
+      }
+
+      num_var_fixed = calculate_num_fixed(integer_list, lower, upper, settings_.fixed_tol);
+
       // Even sweep over all integer variables, we exhausted all variables that can be fixed.
       // If this is the case, then tries to solve the sub-mip anyway.
       if (prev_num_fixed == num_var_fixed) {
@@ -2799,31 +2856,8 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* w
       }
     }
 
-    f_t fixrate = (f_t)num_var_fixed / num_integers;
-
-    DEBUG_SUBMIP(
-      "{}Round {}: fixed {} ({:.2f}) -> {} ({:.2f}) variables. target fixrate = {} ({:.2f}). max "
-      "fixrate = {} ({:.2f})",
-      log_prefix,
-      round,
-      prev_num_fixed,
-      prev_fixrate,
-      num_var_fixed,
-      fixrate,
-      round_target,
-      round_fixrate,
-      max_var_fixed,
-      max_fixrate);
-
     if (toc(exploration_stats_.start_time) > settings_.time_limit) {
       solver_status_ = mip_status_t::TIME_LIMIT;
-      break;
-    }
-
-    bool is_feasible =
-      worker->node_presolver.bounds_strengthening(settings_, bounds_changed, lower, upper);
-    if (!is_feasible) {
-      submip_stats.save_infeasible(fixrate);
       break;
     }
 
@@ -2840,10 +2874,23 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* w
     int64_t simplex_iter_limit = iter_offset + simplex_iter * iter_ratio;
     i_t max_iter               = std::min<int64_t>(simplex_iter_limit - stats.total_simplex_iters,
                                      std::numeric_limits<i_t>::max());
-    if (max_iter <= 0) { break; }
+    if (max_iter <= 0) {
+      DEBUG_SUBMIP("{}Round {}: max iteration reached! {}/{}",
+                   log_prefix,
+                   round,
+                   stats.total_simplex_iters.load(),
+                   simplex_iter_limit)
+      break;
+    }
 
     dual_status_t lp_status = solve_node_lp(&node, worker, stats, log, max_iter);
-    if (lp_status != dual_status_t::OPTIMAL) { break; }
+    if (lp_status != dual_status_t::OPTIMAL) {
+      DEBUG_SUBMIP("{}Round {}: simplex returned {}",
+                   log_prefix,
+                   round,
+                   simplex::dual_status_to_string(lp_status))
+      break;
+    }
 
     fractional.clear();
     num_frac = fractional_variables(settings_, current_sol, var_types, fractional);
@@ -2852,11 +2899,23 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* w
     node.lower_bound = leaf_obj;
 
     snap_to_lattice(&node, leaf_obj);
-    if (leaf_obj > upper_bound_.load()) { break; }
+    if (leaf_obj > upper_bound_.load()) {
+      DEBUG_SUBMIP("{}Round {}: reached cutoff point. obj={:.4g}. upper_bound={:.4g}",
+                   log_prefix,
+                   round,
+                   leaf_obj,
+                   upper_bound_.load())
+      break;
+    }
 
     if (num_frac == 0) {
       // We found a feasible solution when fixing the variables in RINS/RENS.
       add_feasible_solution(leaf_obj, current_sol, -1, worker->search_strategy);
+      DEBUG_SUBMIP("{}Round {}: found a solution with obj={:.4g}. upper_bound={:.4g}",
+                   log_prefix,
+                   round,
+                   leaf_obj,
+                   upper_bound_.load())
       break;
     }
 

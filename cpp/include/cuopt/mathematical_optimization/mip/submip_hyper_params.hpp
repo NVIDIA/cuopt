@@ -52,7 +52,7 @@ struct mip_submip_hyper_params_t {
 
   // How many variables a single round can fix. Set in terms of ratio of
   // (1 - current fixrate).
-  f_t round_close_ratio = 0.9;
+  f_t round_close_ratio = 0.8;
 
   // Run CPU FJ over the sub-MIP
   bool enable_cpufj = true;
