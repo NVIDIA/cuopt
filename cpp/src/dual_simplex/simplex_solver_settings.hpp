@@ -48,7 +48,7 @@ struct simplex_solver_settings_t {
       barrier_relative_feasibility_tol(1e-8),
       barrier_relative_optimality_tol(1e-8),
       barrier_relative_complementarity_tol(1e-8),
-      barrier_relative_objective_gap_tol(1e-6),
+      barrier_relative_objective_gap_tol(1e-8),
       barrier_relaxed_feasibility_tol(1e-4),
       barrier_relaxed_optimality_tol(1e-4),
       barrier_relaxed_complementarity_tol(1e-4),
