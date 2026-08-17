@@ -46,6 +46,10 @@ static constexpr int BVE_MAX_ROW_LEN  = 24;  // nnz within one block row (interi
 static constexpr int BVE_MAX_NNZ      = BVE_MAX_ROWS * BVE_MAX_ROW_LEN;
 static constexpr int BVE_MAX_CLAUSES  = 64;  // <= |rows| for any committed block
 static constexpr int BVE_MAX_PATTERNS = 1 << BVE_MAX_BOUNDARY;
+static constexpr double BVE_MIN_ROUND_YIELD = 0.01;
+// Seconds for the whole phase: implication graph build plus every round. Install and compact finish
+// the round already committed, so a phase can exceed this by that tail.
+static constexpr double BVE_STAGE_TIME_LIMIT = 1.5;
 
 // Packed projection block. Local ids [0, na) are interior and [na, na+nb) are boundary; rows use
 // CSR layout and missing bounds are +/- infinity.
@@ -117,15 +121,18 @@ struct bve_candidate_t {
 template <typename i_t, typename f_t>
 double bve_project_batch_gpu(const raft::handle_t& handle,
                              std::vector<bve_candidate_t<i_t, f_t>>& cands,
-                             f_t tol);
+                             f_t tol,
+                             const timer_t& timer);
 
 // Build symmetric current-problem implication adjacency from the original-id keyed probing cache,
 // optionally unioned with forcings harvested from earlier block projections (also original-id).
+// Returns an edgeless adjacency when `timer` expires, which leaves the pass with no seeds.
 template <typename i_t, typename f_t>
 std::vector<std::vector<i_t>> bve_build_impl_adj(
   const probing_cache_t<i_t, f_t>& cache,
   const std::vector<i_t>& reverse_original_ids,
   i_t n_vars,
+  const timer_t& timer,
   const probe_findings_t<i_t>* prior_original_id_findings = nullptr);
 
 // Run block BVE using caller-provided implication adjacency and deadline. Returns true iff at least

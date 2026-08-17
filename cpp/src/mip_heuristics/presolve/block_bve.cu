@@ -46,6 +46,12 @@ static constexpr int BVE_MAX_INTERIOR = BVE_MAX_SCOPE - 1;
 static constexpr int BVE_MAX_GROWTH_NBRS = 256;
 // Cap peak device allocation for each projection chunk.
 static constexpr size_t BVE_PROJECT_DEVICE_BUDGET = 64ull << 20;  // 64 MiB
+// Cap the enumeration cost of one projection batch, summed as 2^(na+nb) * nnz over the candidates
+// accepted into it. Candidates past the cap are deferred, so no round enumerates an unbounded batch
+// before any commit result is known.
+static constexpr double BVE_BATCH_PROJECTION_BUDGET = 1e8;
+// Stop the closure loop once a batch commits fewer than one in this many projected candidates.
+static constexpr int BVE_MIN_COMMIT_RATIO = 20;
 
 // Largest per-row rational multiplier / denominator we will apply. A row that would need a larger
 // multiplier to become integer is treated as not exactly representable (passed to
@@ -677,7 +683,8 @@ __global__ void bve_enumerate_kernel(
 template <typename i_t, typename f_t>
 double bve_project_batch_gpu(const raft::handle_t& handle,
                              std::vector<bve_candidate_t<i_t, f_t>>& cands,
-                             f_t tol)
+                             f_t tol,
+                             const timer_t& timer)
 {
   if (cands.empty()) return 0.0;
   auto stream       = handle.get_stream();
@@ -715,6 +722,10 @@ double bve_project_batch_gpu(const raft::handle_t& handle,
   }
 
   for (const auto& kv : bins) {
+    // Bin and chunk boundaries are the only points where nothing is in flight on the stream, so an
+    // expired deadline leaves the remaining candidates with the unset tables stage() gave them. The
+    // caller must therefore discard the whole round rather than commit any of this batch.
+    if (timer.check_time_limit()) return work_units;
     const std::vector<size_t>& idxs = kv.second;
     const auto& proto               = cands[idxs[0]].blk;
     const i_t na                    = proto.na;
@@ -746,6 +757,7 @@ double bve_project_batch_gpu(const raft::handle_t& handle,
     const size_t shmem  = size_t(nrows) * sizeof(uint8_t);
 
     for (size_t offset = 0; offset < idxs.size(); offset += chunk) {
+      if (timer.check_time_limit()) return work_units;
       const size_t num_sz = std::min(chunk, idxs.size() - offset);
       const i_t num       = num_sz;
 
@@ -894,7 +906,8 @@ template <typename i_t, typename f_t>
 static bve_growth_result_t<i_t> grow_seed_interior(
   i_t seed,
   const bve_reducer_t<i_t, f_t>& reducer,
-  const std::vector<std::vector<i_t>>& implication_adjacency)
+  const std::vector<std::vector<i_t>>& implication_adjacency,
+  const timer_t& timer)
 {
   auto has_adj = [&](i_t v) {
     return v >= 0 && v < (i_t)implication_adjacency.size() && !implication_adjacency[v].empty();
@@ -907,7 +920,9 @@ static bve_growth_result_t<i_t> grow_seed_interior(
   bve_growth_result_t<i_t> result;
   std::unordered_set<i_t> interior_set = {seed};
   std::vector<i_t> probe_rows, probe_bnd;  // scope_of scratch, reused across probes
+  bool timed_out = false;
   for (;;) {
+    if (timer.check_time_limit()) break;
     // Hub fast-path: raw implication degree upper-bounds |cands_w|. Skip boundary walks
     // and adj materialization when the neighborhood is past the probe cap.
     if (interior_set.size() == 1) {
@@ -939,7 +954,13 @@ static bve_growth_result_t<i_t> grow_seed_interior(
     // Pick the neighbor with the smallest boundary; stop when none strictly improves.
     i_t best    = -1;
     i_t best_nb = cur;
+    i_t probes  = 0;
     for (i_t w : cands_w) {
+      // Each probe is a boundary walk, so the deadline is honoured within a single seed's growth.
+      if ((++probes & 0xF) == 0 && timer.check_time_limit()) {
+        timed_out = true;
+        break;
+      }
       candidate_interior.push_back(w);  // probe interior ∪ {w}; the pop below restores it
       const i_t na = candidate_interior.size();
       reducer.scope_of(candidate_interior, probe_rows, probe_bnd, result.ops);
@@ -950,7 +971,7 @@ static bve_growth_result_t<i_t> grow_seed_interior(
         best    = w;
       }
     }
-    if (best < 0) break;
+    if (timed_out || best < 0) break;
     interior_set.insert(best);
   }
   result.interior.assign(interior_set.begin(), interior_set.end());
@@ -986,9 +1007,13 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
 {
   auto has_adj = [&](i_t v) { return v >= 0 && v < (i_t)impl_adj.size() && !impl_adj[v].empty(); };
   std::vector<i_t> order;
-  for (i_t c = 0; c < reducer.n_vars; ++c)
-    if (reducer.is_bin[c] && !reducer.obj_nz[c] && !reducer.col2rows[c].empty() && has_adj(c))
+  for (i_t c = 0; c < reducer.n_vars; ++c) {
+    // grow_seed_interior's hub fast path refuses to grow a seed whose implication degree is past the
+    // probe cap, so such a seed only ever reaches stage() as a singleton interior.
+    const bool growable = has_adj(c) && (i_t)impl_adj[c].size() <= BVE_MAX_GROWTH_NBRS;
+    if (reducer.is_bin[c] && !reducer.obj_nz[c] && !reducer.col2rows[c].empty() && growable)
       order.push_back(c);
+  }
   std::sort(order.begin(), order.end(), [&](i_t a, i_t b) {
     return reducer.col2rows[a].size() < reducer.col2rows[b].size();
   });
@@ -1020,7 +1045,7 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
         interiors[k] = growth_interior[seed];
         continue;
       }
-      bve_growth_result_t<i_t> grown = grow_seed_interior(seed, reducer, impl_adj);
+      bve_growth_result_t<i_t> grown = grow_seed_interior(seed, reducer, impl_adj, timer);
       growth_ops[k]                  = grown.ops;
       interiors[k]                   = std::move(grown.interior);
       growth_interior[seed]          = interiors[k];
@@ -1038,6 +1063,7 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
     // round_seeds order. Nothing mutates the model until commit, so this stays serial.
     std::vector<bve_candidate_t<i_t, f_t>> cands;
     std::unordered_set<i_t> claimed;  // interior+boundary columns of already-accepted candidates
+    double batch_projection_ops = 0.0;
     for (size_t k = 0; k < round_seeds.size(); ++k) {
       if (timer.check_time_limit()) break;
       const i_t seed = round_seeds[k];
@@ -1069,13 +1095,18 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
         claimed.insert(c);
       for (i_t c : cand.boundary)
         claimed.insert(c);
+      cuopt_assert(cand.blk.na + cand.blk.nb <= BVE_MAX_SCOPE, "staged scope past enumeration cap");
+      batch_projection_ops += double(uint32_t(1) << (cand.blk.na + cand.blk.nb)) *
+                              double(cand.blk.row_off[cand.blk.n_rows]);
       cands.push_back(std::move(cand));
+
+      if (batch_projection_ops >= BVE_BATCH_PROJECTION_BUDGET) break;
     }
 
     if (cands.empty() || timer.check_time_limit()) break;
     // Staged blocks are integerized (integerize_projection_rows), so the subset-sum feasibility
     // test is exact: project with tolerance 0 rather than reducer.tol.
-    work_units += bve_project_batch_gpu<i_t, f_t>(handle, cands, f_t(0));
+    work_units += bve_project_batch_gpu<i_t, f_t>(handle, cands, f_t(0), timer);
     if (timer.check_time_limit()) break;
     i_t committed = 0;
     for (auto& cand : cands) {
@@ -1092,6 +1123,8 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
       work_units += double(commit_ops);
     }
     if (committed == 0) break;
+    cuopt_assert(committed <= (i_t)cands.size(), "committed more candidates than were projected");
+    if ((i_t)cands.size() > committed * BVE_MIN_COMMIT_RATIO) break;
   }
   return reducer.finalize();
 }
@@ -1102,6 +1135,7 @@ std::vector<std::vector<i_t>> bve_build_impl_adj(
   const probing_cache_t<i_t, f_t>& cache,
   const std::vector<i_t>& reverse_original_ids,
   i_t n_vars,
+  const timer_t& timer,
   const probe_findings_t<i_t>* prior_original_id_findings)
 {
   // original-id -> current column index (or -1 if the column no longer exists)
@@ -1118,7 +1152,13 @@ std::vector<std::vector<i_t>> bve_build_impl_adj(
     adj[x].insert(y);
     adj[y].insert(x);
   };
+  // An abandoned build returns no edges rather than a partial graph, so which reductions exist never
+  // depends on where the clock landed.
+  i_t entries_seen = 0;
   for (const auto& kv : cache.probing_cache) {
+    if ((++entries_seen & 0x3F) == 0 && timer.check_time_limit()) {
+      return std::vector<std::vector<i_t>>(n_vars);
+    }
     for (int p = 0; p < 2; ++p) {
       for (const auto& yb : kv.second[p].var_to_cached_bound_map)
         add_edge(kv.first, yb.first);
@@ -1127,8 +1167,13 @@ std::vector<std::vector<i_t>> bve_build_impl_adj(
   // Forcings mined from earlier projections. Pairs the cache never held become seed/absorb
   // candidates, so a later round can grow blocks the first round could not see.
   if (prior_original_id_findings != nullptr) {
-    for (const auto& forcing : prior_original_id_findings->forcings)
+    i_t forcings_seen = 0;
+    for (const auto& forcing : prior_original_id_findings->forcings) {
+      if ((++forcings_seen & 0x3FF) == 0 && timer.check_time_limit()) {
+        return std::vector<std::vector<i_t>>(n_vars);
+      }
       add_edge(forcing.var, forcing.forced_var);
+    }
   }
   std::vector<std::vector<i_t>> out(n_vars);
   for (i_t v = 0; v < n_vars; ++v)
@@ -1235,6 +1280,8 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
     is_integer[c] = (h_vtype[c] == var_t::INTEGER) ? 1 : 0;
   }
   std::vector<f_t> obj(h_obj.begin(), h_obj.end());
+
+  if (timer.check_time_limit()) return false;  // the reducer below walks the CSR again
 
   // ---- 3. detect + sanity check (probing-cache implication closure). Projection of each candidate
   // block runs on the GPU: the batched detector stages scope-disjoint candidates per round and
@@ -1349,11 +1396,15 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
 
 #define INSTANTIATE(F_TYPE)                                                           \
   template double bve_project_batch_gpu<int, F_TYPE>(                                 \
-    const raft::handle_t&, std::vector<bve_candidate_t<int, F_TYPE>>&, F_TYPE);       \
+    const raft::handle_t&,                                                            \
+    std::vector<bve_candidate_t<int, F_TYPE>>&,                                       \
+    F_TYPE,                                                                           \
+    const timer_t&);                                                                  \
   template std::vector<std::vector<int>> bve_build_impl_adj<int, F_TYPE>(             \
     const probing_cache_t<int, F_TYPE>&,                                              \
     const std::vector<int>&,                                                          \
     int,                                                                              \
+    const timer_t&,                                                                   \
     const probe_findings_t<int>*);                                                    \
   template bool block_bve_presolve<int, F_TYPE>(problem_t<int, F_TYPE>&,              \
                                                 const std::vector<std::vector<int>>&, \
