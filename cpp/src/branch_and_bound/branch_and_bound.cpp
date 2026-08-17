@@ -683,10 +683,9 @@ void branch_and_bound_t<i_t, f_t>::set_solution_from_submip(
   uncrush_primal_solution(original_problem_, lp, leaf_sol, user_sol);
   mutex_original_lp_.unlock();
 
-  std::cout << std::format("{} Sub-MIP found a feasible solution with obj={:.4g}",
-                           log_prefix,
-                           compute_user_objective(lp, obj))
-            << std::endl;
+  DEBUG_SUBMIP("{} Sub-MIP found a feasible solution with obj={:.4g}",
+               log_prefix,
+               compute_user_objective(lp, obj));
 
   bool success = set_solution_from_heuristics(user_sol, heuristics_origin_t::SUBMIP);
   if (success) {
