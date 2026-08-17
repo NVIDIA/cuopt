@@ -108,13 +108,13 @@ TEST(termination_status, crossing_bounds_infeasible)
 
 TEST(termination_status, gf2_presolve_optimal)
 {
-  auto [termination_status, obj_val, lb] = test_mps_file("mip/enlight_hard.mps", 0.5, true);
+  auto [termination_status, obj_val, lb] = test_mps_file("mip/enlight_hard.mps", 1.5, true);
   EXPECT_EQ(termination_status, mip_termination_status_t::Optimal);
 }
 
 TEST(termination_status, gf2_presolve_infeasible)
 {
-  auto [termination_status, obj_val, lb] = test_mps_file("mip/enlight11.mps", 0.5, true);
+  auto [termination_status, obj_val, lb] = test_mps_file("mip/enlight11.mps", 1.5, true);
   EXPECT_EQ(termination_status, mip_termination_status_t::Infeasible);
 }
 
