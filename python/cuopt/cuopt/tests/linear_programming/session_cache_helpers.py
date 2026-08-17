@@ -33,6 +33,9 @@ _REUSE_SYMBOLIC_LINE = re.compile(
 _REBUILT_SYMBOLIC_LINE = re.compile(
     r"Barrier: rebuilt cuDSS symbolic analysis"
 )
+_A_SPARSITY_MISMATCH_LINE = re.compile(
+    r"Barrier: ADAT A-sparsity hash mismatch; rebuilding symbolic analysis"
+)
 _STORE_AUGMENTED_LINE = re.compile(
     r"Barrier: stored augmented symbolic cache hash=0x[0-9a-f]+"
 )
@@ -206,14 +209,19 @@ def rewire_lp_row_sparsity(
         raise RuntimeError("could not pick a different sparsity pattern for constraint row")
 
     constr.vindex_coeff_dict.clear()
+    new_vars = []
     for j in new_cols:
-        constr.vindex_coeff_dict[int(j)] = float(rng.uniform(0.5, 2.0))
+        var = xs[int(j)]
+        constr.vindex_coeff_dict[var.index] = float(rng.uniform(0.5, 2.0))
+        new_vars.append(var)
+    # compute_slack() maps coeffs via constr.vars; keep it aligned with the new pattern.
+    constr.vars = new_vars
     constr.RHS = float(rng.uniform(50.0, 200.0))
+    # Force rebuild on next solve (Problem has no private index-cache invalidator).
     prob.solved = False
     prob.warmstart_data = None
     prob.model = None
     prob.constraint_csr_matrix = None
-    prob._invalidate_index_to_var_cache()
 
 
 def build_augmented_qp(
@@ -340,10 +348,13 @@ def assert_full_symbolic_reanalyze(
     if allow_cache_clear and count_log_matches(log_text, _CLEAR_CACHE_LINE) >= 1:
         return
     c07 = profile.get("C07", 0.0)
-    rebuilt = count_log_matches(log_text, _REBUILT_SYMBOLIC_LINE) >= 1
+    rebuilt = (
+        count_log_matches(log_text, _REBUILT_SYMBOLIC_LINE) >= 1
+        or count_log_matches(log_text, _A_SPARSITY_MISMATCH_LINE) >= 1
+    )
     if cold_c07 is not None and cold_c07 > 5.0:
         assert rebuilt or c07 >= 0.1 * cold_c07, (
-            f"expected full re-analyze (rebuilt log or C07; got C07={c07:.2f} ms, "
+            f"expected full re-analyze (rebuilt/mismatch log or C07; got C07={c07:.2f} ms, "
             f"cold ref={cold_c07:.2f} ms, rebuilt={rebuilt})"
         )
     else:

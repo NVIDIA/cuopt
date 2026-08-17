@@ -715,20 +715,23 @@ class iteration_data_t {
         }
         if (!adopt_symbolic->valid || adopt_symbolic->use_augmented) { return false; }
 
+        // Gate on the *incoming* A sparsity before pinning SpGEMM workspace.
+        // Hashing ADAT after pin/form used the cached A and could false-match when
+        // only the new problem's pattern changed (same idea as augmented host gate).
+        // device_A already holds the current problem's CSR (uploaded above).
+        const barrier_sparsity_hash_t a_hash =
+          hash_device_csr_sparsity_pattern(device_A, stream_view_);
+        if (!adopt_symbolic->matches_reuse(a_hash, false, handle_ptr)) {
+          settings_.log.printf(
+            "Barrier: ADAT A-sparsity hash mismatch; rebuilding symbolic analysis\n");
+          adopt_symbolic->clear();
+          return false;
+        }
+
         pin_adat_from_cache(*adopt_symbolic);
         form_adat(true);
         if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
           unpin_adat_workspace();
-          return false;
-        }
-
-        const barrier_sparsity_hash_t adat_hash =
-          hash_device_csr_sparsity_pattern(adat_mat(), stream_view_);
-        const bool matched =
-          adopt_symbolic->matches_reuse(adat_hash, false, handle_ptr);
-        if (!matched) {
-          unpin_adat_workspace();
-          adopt_symbolic->clear();
           return false;
         }
 
@@ -820,7 +823,7 @@ class iteration_data_t {
 
     cache.use_augmented = false;
     if (pinned_device_ADAT_ != nullptr) {
-      // Warm reuse: sparsity_hash unchanged since adopt (values-only refresh); unpin only.
+      // Warm reuse: sparsity_hash is the A-pattern hash from adopt; unpin only.
       pinned_device_ADAT_         = nullptr;
       pinned_device_A_            = nullptr;
       pinned_device_AD_           = nullptr;
@@ -828,8 +831,9 @@ class iteration_data_t {
       pinned_device_A_x_values_   = nullptr;
       pinned_cusparse_info_       = nullptr;
     } else {
+      // Store A sparsity (not ADAT): adopt compares the incoming A CSR before pin.
       cache.sparsity_hash =
-        hash_device_csr_sparsity_pattern(device_ADAT, handle_ptr->get_stream());
+        hash_device_csr_sparsity_pattern(device_A, handle_ptr->get_stream());
       cache.device_ADAT         = std::move(device_ADAT);
       cache.device_A            = std::move(device_A);
       cache.device_AD           = std::move(device_AD);

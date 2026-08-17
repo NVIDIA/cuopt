@@ -26,8 +26,12 @@ class sparse_cholesky_cudss_t;
 /**
  * @brief Cached cuDSS symbolic state and GPU buffers for hash-gated barrier reuse.
  *
- * Holds reordering + symbolic factorization in @p chol, the sparsity hash of the matrix
- * that was analyzed, and path-specific GPU workspace (augmented KKT or ADAT + cuSPARSE).
+ * Holds reordering + symbolic factorization in @p chol, a sparsity hash used to gate reuse,
+ * and path-specific GPU workspace (augmented KKT or ADAT + cuSPARSE).
+ *
+ * Hash meaning: augmented store uses device KKT CSR (adopt uses matching host synthetic);
+ * ADAT store/adopt use the constraint-matrix @c device_A CSR pattern (not ADAT), so adopt can
+ * reject before pinning SpGEMM workspace.
  */
 template <typename i_t, typename f_t>
 struct barrier_symbolic_cache_t {
