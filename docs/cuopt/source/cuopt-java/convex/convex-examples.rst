@@ -71,9 +71,10 @@ Quadratic objectives combine quadratic, linear, and constant terms:
      }
    }
 
-For QP solutions, ``getPrimalSolution``, ``getDualSolution``,
-``getReducedCost``, ``getDualObjective``, and ``getLPStats`` are available when
-the solver returns the corresponding values.
+For QP solutions, ``getDualObjective`` and ``getLPStats`` are available when the
+solver returns the corresponding values, and variable and constraint values are
+read from the model through ``Variable.getValue``, ``Variable.getReducedCost``,
+and ``Constraint.getDualValue``.
 
 Quadratic Constraints
 ---------------------

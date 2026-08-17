@@ -1029,7 +1029,9 @@ cuopt_int_t cuOptGetErrorString(cuOptSolution solution,
  * @param[in, out] solution_values - A pointer to an array of type cuopt_float_t of size
  * num_variables that will contain the solution values.
  *
- * @return A status code indicating success or failure.
+ * @return A status code indicating success or failure. Returns CUOPT_INVALID_ARGUMENT if the
+ *  solve produced no primal solution, for instance when the problem was infeasible; the output
+ *  buffer is not written in that case.
  */
 cuopt_int_t cuOptGetPrimalSolution(cuOptSolution solution, cuopt_float_t* solution_values);
 
@@ -1083,7 +1085,8 @@ cuopt_int_t cuOptGetSolutionBound(cuOptSolution solution, cuopt_float_t* solutio
  * @param[in, out] dual_solution_ptr - A pointer to an array of type cuopt_float_t of size
  * num_constraints that will contain the dual solution.
  *
- * @return A status code indicating success or failure.
+ * @return A status code indicating success or failure. Returns CUOPT_INVALID_ARGUMENT if the
+ *  solve produced no dual solution; the output buffer is not written in that case.
  */
 cuopt_int_t cuOptGetDualSolution(cuOptSolution solution, cuopt_float_t* dual_solution_ptr);
 
@@ -1106,7 +1109,8 @@ cuopt_int_t cuOptGetDualObjectiveValue(cuOptSolution solution,
  * @param[in,out] reduced_cost_ptr - A pointer to an array of type cuopt_float_t of size
  * num_variables that will contain the reduced cost.
  *
- * @return A status code indicating success or failure.
+ * @return A status code indicating success or failure. Returns CUOPT_INVALID_ARGUMENT if the
+ *  solve produced no reduced costs; the output buffer is not written in that case.
  */
 cuopt_int_t cuOptGetReducedCosts(cuOptSolution solution, cuopt_float_t* reduced_cost_ptr);
 

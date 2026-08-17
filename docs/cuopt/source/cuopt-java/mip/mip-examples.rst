@@ -105,11 +105,13 @@ the incumbent objective, the current solution bound, and the user data object.
 LP Relaxation
 -------------
 
-Create a continuous relaxation without changing the original MIP:
+Relax the integer variables before solving:
 
 .. code-block:: java
 
-   try (Problem relaxed = problem.relax();
-        Solution solution = relaxed.solve()) {
+   for (Variable variable : problem.getVariables()) {
+     variable.setVariableType(VariableType.CONTINUOUS);
+   }
+   try (Solution solution = problem.solve()) {
      System.out.println("LP relaxation objective = " + solution.getPrimalObjective());
    }

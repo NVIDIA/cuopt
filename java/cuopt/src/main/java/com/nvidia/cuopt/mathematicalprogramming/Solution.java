@@ -50,22 +50,26 @@ public final class Solution implements AutoCloseable {
     return mip;
   }
 
-  public ProblemCategory getProblemCategory() {
-    return problemCategory;
-  }
-
-  public double[] getPrimalSolution() {
+  double[] getPrimalSolution() {
     return NativeCuOpt.getPrimalSolution(handle(), numVariables);
   }
 
-  public double[] getDualSolution() {
+  double[] getDualSolution() {
     requireLP("getDualSolution");
     return NativeCuOpt.getDualSolution(handle(), NativeCuOpt.getDualSolutionSize(handle()));
   }
 
-  public double[] getReducedCost() {
+  double[] getReducedCost() {
     requireLP("getReducedCost");
     return NativeCuOpt.getReducedCosts(handle(), numVariables);
+  }
+
+  /**
+   * Package-private: Problem copies this onto itself after a solve, and Problem.getSolveTime is
+   * the public way to read it.
+   */
+  double getSolveTime() {
+    return NativeCuOpt.getSolveTime(handle());
   }
 
   public double getPrimalObjective() {
@@ -81,38 +85,12 @@ public final class Solution implements AutoCloseable {
     return TerminationStatus.fromNative(NativeCuOpt.getTerminationStatus(handle()));
   }
 
-  public String getTerminationReason() {
-    return getTerminationStatus().name();
-  }
-
   public int getErrorStatus() {
     return NativeCuOpt.getErrorStatus(handle());
   }
 
   public String getErrorMessage() {
     return NativeCuOpt.getErrorString(handle());
-  }
-
-  public double getSolveTime() {
-    return NativeCuOpt.getSolveTime(handle());
-  }
-
-  public SolverMethod getSolvedBy() {
-    return mip ? SolverMethod.UNSET : getLPStats().getSolvedBy();
-  }
-
-  public boolean getSolvedByPDLP() {
-    return !mip && getSolvedBy() == SolverMethod.PDLP;
-  }
-
-  public Map<String, Double> getVars() {
-    double[] values = getPrimalSolution();
-    Map<String, Double> result = new LinkedHashMap<>();
-    int count = Math.min(variableNames.length, values.length);
-    for (int i = 0; i < count; ++i) {
-      result.put(variableNames[i], values[i]);
-    }
-    return Collections.unmodifiableMap(result);
   }
 
   public double getMIPGap() {

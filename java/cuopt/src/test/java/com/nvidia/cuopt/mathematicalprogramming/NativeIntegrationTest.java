@@ -32,9 +32,6 @@ final class NativeIntegrationTest {
           settings.getSetting(CuOptConstants.CUOPT_TIME_LIMIT, Double.class),
           1e-12);
       assertEquals(
-          SolverSettings.getSolverSetting(CuOptConstants.CUOPT_TIME_LIMIT),
-          SolverSettings.getSolverSetting(CuOptConstants.CUOPT_TIME_LIMIT, String.class));
-      assertEquals(
           1.0e-6,
           settings.getSetting(CuOptConstants.CUOPT_ABSOLUTE_PRIMAL_TOLERANCE, Double.class),
           1e-12);

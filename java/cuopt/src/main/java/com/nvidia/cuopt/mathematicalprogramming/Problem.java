@@ -348,11 +348,7 @@ public final class Problem implements AutoCloseable {
     // Problem is a Java-side model; native handles are scoped to solve/read/write calls.
   }
 
-  public void update() {
-    resetSolvedValues();
-  }
-
-  public void resetSolvedValues() {
+  void resetSolvedValues() {
     variables.forEach(Variable::resetSolvedValues);
     constraints.forEach(Constraint::resetSolvedValues);
     status = TerminationStatus.NO_TERMINATION;
@@ -360,90 +356,12 @@ public final class Problem implements AutoCloseable {
     solveTime = Double.NaN;
   }
 
-  public void updateConstraint(Constraint constraint, Map<Variable, Double> coefficients, Double rhs) {
-    if (!constraints.contains(constraint)) {
-      throw new IllegalArgumentException("Constraint does not belong to this problem");
-    }
-    if (constraint.isQuadratic()) {
-      throw new IllegalArgumentException("updateConstraint applies to linear constraints only");
-    }
-    LinearExpression expression = new LinearExpression();
-    for (Map.Entry<Variable, Double> entry : constraint.getLinearExpression().getTerms().entrySet()) {
-      expression = expression.plus(entry.getKey(), entry.getValue());
-    }
-    if (coefficients != null) {
-      for (Map.Entry<Variable, Double> entry : coefficients.entrySet()) {
-        if (!variables.contains(entry.getKey())) {
-          throw new IllegalArgumentException("Constraint variable does not belong to this problem");
-        }
-        expression = expression.plus(entry.getKey(), entry.getValue() - constraint.getCoefficient(entry.getKey()));
-      }
-    }
-    constraint.updateLinearExpression(expression);
-    if (rhs != null) {
-      constraint.updateRHS(rhs);
-    }
-    resetSolvedValues();
-  }
-
-  public void updateObjective(Map<Variable, Double> coefficients, Double constant, ObjectiveSense sense) {
-    if (coefficients != null) {
-      for (Map.Entry<Variable, Double> entry : coefficients.entrySet()) {
-        if (!variables.contains(entry.getKey())) {
-          throw new IllegalArgumentException("Objective variable does not belong to this problem");
-        }
-        entry.getKey().setObjectiveCoefficient(entry.getValue());
-      }
-      if (objectiveSet) {
-        LinearExpression updated =
-            LinearExpression.ofConstant(constant == null ? linearObjective.getConstant() : constant);
-        for (Map.Entry<Variable, Double> entry : linearObjective.getTerms().entrySet()) {
-          updated = updated.plus(entry.getKey(), coefficients.getOrDefault(entry.getKey(), entry.getValue()));
-        }
-        for (Map.Entry<Variable, Double> entry : coefficients.entrySet()) {
-          if (!linearObjective.getTerms().containsKey(entry.getKey())) {
-            updated = updated.plus(entry.getKey(), entry.getValue());
-          }
-        }
-        linearObjective = updated;
-        if (quadraticObjective != null) {
-          QuadraticExpression updatedQuadratic =
-              new QuadraticExpression().constant(linearObjective.getConstant());
-          for (Map.Entry<Variable, Double> entry : linearObjective.getTerms().entrySet()) {
-            updatedQuadratic = updatedQuadratic.plus(entry.getKey(), entry.getValue());
-          }
-          for (QuadraticExpression.QuadraticTerm term : quadraticObjective.getQuadraticTerms()) {
-            updatedQuadratic =
-                updatedQuadratic.plus(term.getFirst(), term.getSecond(), term.getCoefficient());
-          }
-          quadraticObjective = updatedQuadratic;
-        }
-      } else {
-        linearObjective = objectiveFromVariableCoefficients(constant == null ? 0.0 : constant);
-        objectiveSet = true;
-      }
-    } else if (constant != null) {
-      if (objectiveSet) {
-        linearObjective = linearObjective.constant(constant - linearObjective.getConstant());
-        if (quadraticObjective != null) {
-          quadraticObjective =
-              quadraticObjective.plus(
-                  LinearExpression.ofConstant(
-                      constant - quadraticObjective.getLinearExpression().getConstant()));
-        }
-      } else {
-        linearObjective = objectiveFromVariableCoefficients(constant);
-      }
-      objectiveSet = true;
-    }
-    if (sense != null) {
-      objectiveSense = sense;
-    }
-    resetSolvedValues();
-  }
-
-  public ObjectiveExpression getObjective() {
-    return quadraticObjective == null ? linearObjective : quadraticObjective;
+  /**
+   * The linear part of the objective. The quadratic part, when there is one, is available as a
+   * matrix from {@link #getQuadraticObjectiveMatrix()}.
+   */
+  public LinearExpression getObjective() {
+    return linearObjective;
   }
 
   public ObjectiveSense getObjectiveSense() {
@@ -500,73 +418,6 @@ public final class Problem implements AutoCloseable {
       }
     }
     return new CSRMatrix(coefficients, columns, offsets);
-  }
-
-  public List<Double> getIncumbentValues(double[] solution, List<Variable> requestedVariables) {
-    List<Double> values = new ArrayList<>();
-    for (Variable variable : requestedVariables) {
-      values.add(solution[variable.getIndex()]);
-    }
-    return List.copyOf(values);
-  }
-
-  public Problem relax() {
-    Map<Variable, Variable> mapping = new LinkedHashMap<>();
-    Problem relaxed = new Problem(name);
-    for (Variable variable : variables) {
-      mapping.put(variable, relaxed.addVariable(variable.getLowerBound(), variable.getUpperBound(),
-          variable.getObjectiveCoefficient(), VariableType.CONTINUOUS, variable.getVariableName()));
-    }
-    for (Constraint constraint : constraints) {
-      if (constraint.isQuadratic()) {
-        QuadraticExpression expression = new QuadraticExpression();
-        for (Map.Entry<Variable, Double> entry : constraint.getLinearExpression().getTerms().entrySet()) {
-          expression = expression.plus(mapping.get(entry.getKey()), entry.getValue());
-        }
-        for (QuadraticExpression.QuadraticTerm term : constraint.getQuadraticExpression().getQuadraticTerms()) {
-          expression = expression.plus(mapping.get(term.getFirst()), mapping.get(term.getSecond()), term.getCoefficient());
-        }
-        relaxed.addConstraint(constraint.getSense() == ConstraintSense.LE
-            ? expression.le(constraint.getRHS()) : expression.ge(constraint.getRHS()), constraint.getConstraintName());
-      } else {
-        LinearExpression expression = new LinearExpression();
-        for (Map.Entry<Variable, Double> entry : constraint.getLinearExpression().getTerms().entrySet()) {
-          expression = expression.plus(mapping.get(entry.getKey()), entry.getValue());
-        }
-        Constraint copy;
-        switch (constraint.getSense()) {
-          case LE:
-            copy = expression.le(constraint.getRHS());
-            break;
-          case GE:
-            copy = expression.ge(constraint.getRHS());
-            break;
-          case EQ:
-            copy = expression.eq(constraint.getRHS());
-            break;
-          default:
-            throw new IllegalStateException("Unsupported constraint sense");
-        }
-        relaxed.addConstraint(copy, constraint.getConstraintName());
-      }
-    }
-    if (quadraticObjective != null) {
-      QuadraticExpression expression = new QuadraticExpression().constant(quadraticObjective.getLinearExpression().getConstant());
-      for (Map.Entry<Variable, Double> entry : quadraticObjective.getLinearExpression().getTerms().entrySet()) {
-        expression = expression.plus(mapping.get(entry.getKey()), entry.getValue());
-      }
-      for (QuadraticExpression.QuadraticTerm term : quadraticObjective.getQuadraticTerms()) {
-        expression = expression.plus(mapping.get(term.getFirst()), mapping.get(term.getSecond()), term.getCoefficient());
-      }
-      relaxed.setObjective(expression, objectiveSense);
-    } else {
-      LinearExpression expression = new LinearExpression().constant(linearObjective.getConstant());
-      for (Map.Entry<Variable, Double> entry : linearObjective.getTerms().entrySet()) {
-        expression = expression.plus(mapping.get(entry.getKey()), entry.getValue());
-      }
-      relaxed.setObjective(expression, objectiveSense);
-    }
-    return relaxed;
   }
 
   private void populateSolution(Solution solution) {

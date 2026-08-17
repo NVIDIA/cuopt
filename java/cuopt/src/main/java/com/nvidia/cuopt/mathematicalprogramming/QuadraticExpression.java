@@ -8,7 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-public final class QuadraticExpression implements ObjectiveExpression {
+public final class QuadraticExpression {
   public static final class QuadraticTerm {
     private final Variable first;
     private final Variable second;
@@ -144,19 +144,12 @@ public final class QuadraticExpression implements ObjectiveExpression {
     return minus(expression).ge(0.0);
   }
 
-  @Override
   public LinearExpression getLinearExpression() {
     return linearExpression;
   }
 
-  @Override
   public double getConstant() {
     return linearExpression.getConstant();
-  }
-
-  @Override
-  public boolean isQuadratic() {
-    return true;
   }
 
   public List<QuadraticTerm> getQuadraticTerms() {
@@ -191,7 +184,6 @@ public final class QuadraticExpression implements ObjectiveExpression {
     return quadraticTerms.get(index).coefficient;
   }
 
-  @Override
   public double getValue() {
     double value = linearExpression.getValue();
     for (QuadraticTerm term : quadraticTerms) {

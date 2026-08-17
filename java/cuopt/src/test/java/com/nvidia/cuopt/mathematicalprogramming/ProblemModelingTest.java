@@ -44,8 +44,7 @@ final class ProblemModelingTest {
     problem.addConstraint(LinearExpression.of(x, 3).plus(y, 2).constant(10).le(200), "c2");
     problem.setObjective(LinearExpression.of(x, 5).plus(y, 3).constant(50), ObjectiveSense.MAXIMIZE);
 
-    ObjectiveExpression objective = problem.getObjective();
-    assertFalse(objective.isQuadratic());
+    LinearExpression objective = problem.getObjective();
     assertEquals(50.0, objective.getConstant());
 
     CSRMatrix csr = problem.getConstraintMatrix();
@@ -101,76 +100,6 @@ final class ProblemModelingTest {
     assertThrows(
         IllegalArgumentException.class,
         () -> QuadraticExpression.of(x, x, 1.0).dividedBy(-0.0));
-  }
-
-  @Test
-  void coefficientOnlyObjectiveUpdateInitializesObjectiveExpression() {
-    Problem problem = new Problem();
-    Variable x = problem.addVariable();
-    Variable y = problem.addVariable();
-
-    problem.updateObjective(Map.of(x, 2.0, y, 3.0), null, null);
-
-    assertEquals(0.0, problem.getObjectiveConstant());
-    assertEquals(2.0, problem.getObjective().getLinearExpression().getCoefficient(x));
-    assertEquals(3.0, problem.getObjective().getLinearExpression().getCoefficient(y));
-    assertEquals(2.0, x.getObjectiveCoefficient());
-    assertEquals(3.0, y.getObjectiveCoefficient());
-  }
-
-  @Test
-  void updateRelaxAndQuadraticInspectionMatchProblemContracts() {
-    Problem problem = new Problem("problem");
-    Variable x = problem.addVariable(0.0, 5.0, 1.0, VariableType.INTEGER, "x");
-    Variable y = problem.addVariable(0.0, 5.0, 2.0, VariableType.CONTINUOUS, "y");
-    Constraint constraint =
-        problem.addConstraint(LinearExpression.of(x, 2.0).plus(y).le(7.0), "c");
-    x.setValue(4.0);
-    constraint.setSlack(1.0);
-
-    Variable foreign = new Problem().addVariable();
-    assertThrows(
-        IllegalArgumentException.class,
-        () -> problem.updateConstraint(constraint, Map.of(foreign, 1.0), null));
-
-    problem.updateConstraint(constraint, Map.of(x, 1.0), 8.0);
-    assertEquals(1.0, constraint.getCoefficient(x));
-    assertEquals(8.0, constraint.getRHS());
-    assertTrue(Double.isNaN(x.getValue()));
-    assertTrue(Double.isNaN(constraint.getSlack()));
-
-    problem.updateObjective(Map.of(x, 3.0, y, 4.0), 5.0, ObjectiveSense.MAXIMIZE);
-    assertEquals(ObjectiveSense.MAXIMIZE, problem.getObjectiveSense());
-    assertEquals(5.0, problem.getObjectiveConstant());
-    assertEquals(3.0, x.getObjectiveCoefficient());
-    assertEquals(4.0, y.getObjectiveCoefficient());
-    assertEquals(3.0, problem.getObjective().getLinearExpression().getCoefficient(x));
-    assertEquals(4.0, problem.getObjective().getLinearExpression().getCoefficient(y));
-
-    QuadraticExpression quadratic = QuadraticExpression.of(x, x, 2.0).plus(y, y, 3.0);
-    problem.setObjective(quadratic, ObjectiveSense.MINIMIZE);
-    assertTrue(problem.getObjective().isQuadratic());
-    assertEquals(quadratic, problem.getObjective());
-    CSRMatrix qcsr = problem.getQuadraticObjectiveMatrix();
-    assertArrayEquals(new int[] {0, 1, 2}, qcsr.getRowOffsets());
-    assertArrayEquals(new int[] {0, 1}, qcsr.getColumnIndices());
-    assertArrayEquals(new double[] {2.0, 3.0}, qcsr.getValues());
-    assertEquals(2, quadratic.getCoefficients().size());
-    assertEquals(2.0, quadratic.getCoefficient(0));
-
-    Constraint quadraticConstraint =
-        problem.addConstraint(QuadraticExpression.of(x, x, 1.0).plus(y, y, 1.0).le(10.0), "qc");
-    x.setValue(1.0);
-    y.setValue(2.0);
-    assertEquals(1, quadraticConstraint.getIndex());
-    assertEquals(5.0, quadraticConstraint.computeSlack());
-    assertEquals(1, problem.getQuadraticConstraints().size());
-
-    Problem relaxed = problem.relax();
-    assertFalse(relaxed.isMIP());
-    assertEquals(VariableType.CONTINUOUS, relaxed.getVariable(0).getVariableType());
-    assertEquals("x", relaxed.getVariable(0).getVariableName());
-    assertEquals("y", relaxed.getVariable(1).getVariableName());
   }
 
   @Test

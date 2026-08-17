@@ -93,25 +93,24 @@ MIP Solution Fields
 
 For a MIP ``Solution``:
 
-* ``getPrimalSolution`` returns the incumbent primal vector;
-* ``getPrimalObjective`` returns its objective value;
+* ``getPrimalObjective`` returns the incumbent objective value;
 * ``getMIPGap`` returns the current relative MIP gap;
 * ``getSolutionBound`` returns the best bound reported by the solver;
 * ``getMIPStats`` returns ``MIPStats``; and
-* ``getTerminationStatus``, ``getTerminationReason``, ``getErrorStatus``,
-  ``getErrorMessage``, and ``getSolveTime`` describe the solve.
+* ``getTerminationStatus``, ``getErrorStatus``, and ``getErrorMessage``
+  describe the solve.
+
+Incumbent values are read from the model: ``Variable.getValue`` after the solve.
 
 ``MIPStats`` contains presolve time, maximum constraint violation, maximum
 integer violation, maximum variable-bound violation, node count, and simplex
-iteration count. LP-only accessors such as ``getDualSolution``,
-``getReducedCost``, and ``getLPStats`` raise ``IllegalStateException`` for a
-MIP result.
+iteration count. LP-only accessors such as ``getLPStats`` raise
+``IllegalStateException`` for a MIP result.
 
-Relaxing and Inspecting a MIP
------------------------------
+Inspecting a MIP
+----------------
 
-``Problem.relax()`` returns a separate continuous problem while preserving
-variable names, bounds, objective, and constraints. This is useful for
-inspecting the LP relaxation without changing the original MIP. The original
-problem can also be inspected through ``getConstraintMatrix``, ``getQuadraticObjectiveMatrix``, and
-``getIncumbentValues``.
+A problem can be inspected through ``getConstraintMatrix`` and
+``getQuadraticObjectiveMatrix``. To examine an LP relaxation, build the problem
+with ``VariableType.CONTINUOUS``, or set the types through
+``Variable.setVariableType`` before solving.

@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -75,7 +76,7 @@ final class ProblemIntegrationTest {
     }
 
     if (testCase.hasQuadraticObjective()) {
-      assertTrue(problem.getObjective().isQuadratic());
+      assertNotNull(problem.getQuadraticObjectiveMatrix());
       CSRMatrix matrix = problem.getQuadraticObjectiveMatrix();
       assertArrayEquals(testCase.quadraticObjectiveRowOffsets, matrix.getRowOffsets());
       assertArrayEquals(testCase.quadraticObjectiveColumnIndices, matrix.getColumnIndices());
@@ -94,7 +95,6 @@ final class ProblemIntegrationTest {
 
   private static void assertSolution(CaseSpec testCase, Problem problem, Solution solution) {
     assertEquals(testCase.hasIntegerVariables(), solution.isMIP());
-    assertEquals(testCase.expectedCategory(), solution.getProblemCategory());
     // getStatus is the way to tell a solved problem from an unsolved one: it stays
     // NO_TERMINATION until a solve populates it.
     assertNotEquals(TerminationStatus.NO_TERMINATION, problem.getStatus());
@@ -597,10 +597,6 @@ final class ProblemIntegrationTest {
         }
       }
       return false;
-    }
-
-    private ProblemCategory expectedCategory() {
-      return hasIntegerVariables() ? ProblemCategory.MIP : ProblemCategory.LP;
     }
 
     private int linearProblemConstraintCount() {

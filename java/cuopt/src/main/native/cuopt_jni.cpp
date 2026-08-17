@@ -983,11 +983,13 @@ Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getPrimalSolution(JNIE
                                                                             jint size)
 {
   std::vector<cuopt_float_t> values(static_cast<size_t>(size));
-  if (!check_status(env,
-                    cuOptGetPrimalSolution(to_solution(handle), values.data()),
-                    "cuOptGetPrimalSolution")) {
-    return nullptr;
-  }
+  const cuopt_int_t status = cuOptGetPrimalSolution(to_solution(handle), values.data());
+  // The solution carries no primal values when the solve did not produce any, an infeasible
+  // problem for instance. This layer always passes a live handle and a correctly sized buffer,
+  // so CUOPT_INVALID_ARGUMENT can only mean the values are absent. Report that as an empty
+  // array, which is how the Java side already distinguishes "unavailable" from a real result.
+  if (status == CUOPT_INVALID_ARGUMENT) { return to_double_array(env, {}); }
+  if (!check_status(env, status, "cuOptGetPrimalSolution")) { return nullptr; }
   return to_double_array(env, values);
 }
 

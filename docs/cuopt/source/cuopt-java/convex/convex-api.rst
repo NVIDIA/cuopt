@@ -35,17 +35,13 @@ High-Level Problem
    * - ``read(String)`` / ``write(String)``
      - Load or write a problem. The format follows the file extension; a fixed-format MPS
        overload of ``read`` accepts a boolean flag.
-   * - ``update()`` / ``updateConstraint(...)`` / ``updateObjective(...)``
-     - Update problem state and reset solved values where appropriate.
-   * - ``relax()``
-     - Return a copy with variables converted to continuous type.
 
 ``Problem`` also exposes ``getVariables``, ``getVariable``, ``getConstraints``,
 ``getConstraint``, ``getNumVariables``, ``getNumConstraints``,
-``getNumNonZeros``, ``isMIP``, ``getStatus``,
-``getObjective``, ``getObjectiveValue``, and ``getSolveTime``. ``getObjective``
-returns the common ``ObjectiveExpression`` type; ``isQuadratic`` distinguishes
-the concrete linear and quadratic forms without an ``Object`` downcast.
+``getNumNonZeros``, ``isMIP``, ``getStatus``, ``getObjective``,
+``getObjectiveValue``, and ``getSolveTime``. ``getObjective`` returns the linear
+part of the objective; the quadratic part, when there is one, is available as a
+matrix from ``getQuadraticObjectiveMatrix``.
 
 ``CSRMatrix`` takes ``values``, ``columnIndices``, and ``rowOffsets`` in the
 same order used by cuOpt CSR arrays. The arrays are available through
@@ -75,20 +71,16 @@ arithmetic pattern. It can also contain linear and constant terms. Its
 ``le`` and ``ge`` methods return quadratic constraints. It does not expose an
 ``eq`` method because equality quadratic constraints are not supported.
 
-Both expression classes implement ``ObjectiveExpression``, which exposes the
-linear portion, constant, current value, and ``isQuadratic``.
-
 The enums used in problem construction are:
 
 * ``ObjectiveSense.MINIMIZE`` and ``ObjectiveSense.MAXIMIZE``;
 * ``ConstraintSense.LE``, ``ConstraintSense.GE``, and ``ConstraintSense.EQ``;
 * ``VariableType.CONTINUOUS``, ``VariableType.INTEGER``, and
-  ``VariableType.SEMI_CONTINUOUS``; and
-* ``ProblemCategory`` for the native problem classification.
+  ``VariableType.SEMI_CONTINUOUS``.
 
 ``Constraint`` provides ``getSense``, ``getRHS``, ``getCoefficient``,
 ``getLinearExpression``, ``getQuadraticExpression``, ``isQuadratic``,
-``computeSlack``, ``getSlack``, and ``getDualValue``.
+``getSlack``, and ``getDualValue``.
 
 Solver Settings
 ---------------
@@ -117,12 +109,16 @@ Solutions and Statistics
 
 ``Solution`` implements ``AutoCloseable`` and exposes:
 
-* ``getPrimalSolution``, ``getDualSolution``, and ``getReducedCost``;
 * ``getPrimalObjective`` and ``getDualObjective``;
-* ``getTerminationStatus`` and ``getTerminationReason``;
+* ``getTerminationStatus``;
 * ``getErrorStatus`` and ``getErrorMessage``;
-* ``getSolveTime`` and ``getProblemCategory``; and
-* ``getVars`` when variable names are available.
+* ``getMIPGap`` and ``getSolutionBound`` for MIP solves; and
+* ``isMIP``.
+
+Solution values are read from the model rather than as bulk arrays:
+``Variable.getValue`` and ``Variable.getReducedCost`` for variables, and
+``Constraint.getDualValue`` and ``Constraint.getSlack`` for constraints. They
+are populated on the ``Problem`` after each solve.
 
 LP solutions additionally expose ``getLPStats``. ``LPStats`` contains primal
 residual, dual residual, gap, iteration count, and the ``SolverMethod`` used.

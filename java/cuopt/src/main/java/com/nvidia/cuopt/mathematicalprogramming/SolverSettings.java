@@ -27,22 +27,6 @@ public final class SolverSettings implements AutoCloseable {
     return nativeHandle.handle;
   }
 
-  public static String getSolverSetting(String name) {
-    try (SolverSettings settings = new SolverSettings()) {
-      return settings.getSettingAsString(name);
-    }
-  }
-
-  public static <T> T getSolverSetting(String name, Class<T> type) {
-    return parseValue(getSolverSetting(name), type);
-  }
-
-  public static String getSolverSettingAsString(String name) {
-    try (SolverSettings settings = new SolverSettings()) {
-      return settings.getSettingAsString(name);
-    }
-  }
-
   public SolverSettings setSetting(String name, String value) {
     NativeCuOpt.setSetting(handle(), name, value);
     return this;

@@ -81,7 +81,7 @@ public final class Constraint {
     return quadraticExpression;
   }
 
-  public double computeSlack() {
+  double computeSlack() {
     double lhs = 0.0;
     for (Map.Entry<Variable, Double> entry : linearExpression.getTerms().entrySet()) {
       lhs += entry.getValue() * entry.getKey().getValue();

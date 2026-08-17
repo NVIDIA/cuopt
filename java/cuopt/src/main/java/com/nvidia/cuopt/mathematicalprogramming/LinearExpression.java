@@ -10,7 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-public final class LinearExpression implements ObjectiveExpression {
+public final class LinearExpression {
   private final LinkedHashMap<Variable, Double> terms;
   private final double constant;
 
@@ -172,22 +172,10 @@ public final class LinearExpression implements ObjectiveExpression {
     return terms.getOrDefault(variable, 0.0);
   }
 
-  @Override
   public double getConstant() {
     return constant;
   }
 
-  @Override
-  public LinearExpression getLinearExpression() {
-    return this;
-  }
-
-  @Override
-  public boolean isQuadratic() {
-    return false;
-  }
-
-  @Override
   public double getValue() {
     double value = constant;
     for (Map.Entry<Variable, Double> entry : terms.entrySet()) {
