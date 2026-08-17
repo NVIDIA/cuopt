@@ -3215,15 +3215,11 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
       !relaxation_cut_task_complete.load(std::memory_order_acquire);
 #pragma omp taskwait depend(in : relaxation_cut_task_status)
     const i_t generated_cuts = cut_pool.pool_size();
-    const i_t retained_cuts =
-      generated_cuts == 0 ? 0 : cut_pool.count_violated_cuts(root_relax_soln.x);
     settings_.log.printf(
-      "%s root cut pass generated %d candidates in %.2f seconds; %d remain violated after the "
-      "basis solve%s%s\n",
+      "%s speculative root cut pass generated %d candidates in %.2f seconds%s%s\n",
       method_to_string(relaxation_cut_method).c_str(),
       generated_cuts,
       relaxation_cut_task_elapsed,
-      retained_cuts,
       relaxation_cut_task_interrupted ? " (stopped when the basis became available)" : "",
       relaxation_cut_task_status < 0 ? " (separator reported infeasibility)" : "");
   }
@@ -3313,7 +3309,8 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   std::vector<cut_type_t> cut_types;
   i_t num_cuts = cut_pool.get_best_cuts(cuts_to_add, cut_rhs, cut_types);
   if (mode == cut_pass_mode_t::APPLY_EXISTING_POOL) {
-    settings_.log.printf("Applying %d speculative root cuts to the basis solution\n", num_cuts);
+    settings_.log.printf("Retained and applying %d speculative root cuts to the basis solution\n",
+                         num_cuts);
   }
   if (num_cuts == 0) {
     if (mode == cut_pass_mode_t::APPLY_EXISTING_POOL) { cut_pool.clear(); }
