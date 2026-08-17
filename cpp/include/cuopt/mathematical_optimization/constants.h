@@ -146,6 +146,7 @@
 #define CUOPT_MIP_HYPER_SUBMIP_ITERATION_LIMIT_OFFSET "mip_hyper_submip_iteration_limit_offset"
 #define CUOPT_MIP_HYPER_SUBMIP_MAX_LEVEL              "mip_hyper_submip_max_level"
 #define CUOPT_MIP_HYPER_SUBMIP_ITERATION_LIMIT_RATIO  "mip_hyper_submip_iteration_limit_ratio"
+#define CUOPT_MIP_HYPER_SUBMIP_ROUND_CLOSE_RATIO      "mip_hyper_submip_round_close_ratio"
 #define CUOPT_MIP_HYPER_SUBMIP_ENABLE_CPUFJ           "mip_hyper_submip_enable_cpufj"
 
 /* @brief Block bounded-variable-elimination step of cuOpt's internal MIP presolve */

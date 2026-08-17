@@ -50,6 +50,10 @@ struct mip_submip_hyper_params_t {
   // the maximum number of nodes allow for backtracking.
   i_t dfs_max_backtrack = 5;
 
+  // How many variables a single round can fix. Set in terms of ratio of
+  // (1 - current fixrate).
+  f_t round_close_ratio = 0.9;
+
   // Run CPU FJ over the sub-MIP
   bool enable_cpufj = true;
 };
