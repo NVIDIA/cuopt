@@ -1234,3 +1234,100 @@ TEST(c_api, mip_solution_attributes)
   EXPECT_EQ(cuOptGetSolutionFloatAttribute(solution, CUOPT_SOLUTION_ATTR_LP_GAP, &as_float),
             CUOPT_INVALID_ARGUMENT);
 }
+
+// =============================================================================
+// Solution accessors on a solve that produced no values
+// =============================================================================
+
+namespace {
+
+// x >= 2 and x <= 1 has no feasible point, so the solve returns no primal, dual, or reduced
+// cost values.
+cuOptSolution solve_infeasible_problem()
+{
+  cuopt_int_t row_offsets[]     = {0, 1, 2};
+  cuopt_int_t column_indices[]  = {0, 0};
+  cuopt_float_t matrix_values[] = {1.0, 1.0};
+  cuopt_float_t objective[]     = {1.0};
+  cuopt_float_t rhs[]           = {2.0, 1.0};
+  char constraint_sense[]       = {CUOPT_GREATER_THAN, CUOPT_LESS_THAN};
+  cuopt_float_t lower_bounds[]  = {-CUOPT_INFINITY};
+  cuopt_float_t upper_bounds[]  = {CUOPT_INFINITY};
+  char variable_types[]         = {CUOPT_CONTINUOUS};
+
+  cuOptOptimizationProblem problem = nullptr;
+  cuOptSolverSettings settings     = nullptr;
+  cuOptSolution solution           = nullptr;
+  EXPECT_EQ(cuOptCreateProblem(2,
+                               1,
+                               CUOPT_MINIMIZE,
+                               0,
+                               objective,
+                               row_offsets,
+                               column_indices,
+                               matrix_values,
+                               constraint_sense,
+                               rhs,
+                               lower_bounds,
+                               upper_bounds,
+                               variable_types,
+                               &problem),
+            CUOPT_SUCCESS);
+  EXPECT_EQ(cuOptCreateSolverSettings(&settings), CUOPT_SUCCESS);
+  EXPECT_EQ(cuOptSolve(problem, settings, &solution), CUOPT_SUCCESS);
+  cuOptDestroyProblem(&problem);
+  cuOptDestroySolverSettings(&settings);
+  return solution;
+}
+
+}  // namespace
+
+TEST(c_api, solution_accessors_report_absent_values)
+{
+  cuOptSolution raw_solution = solve_infeasible_problem();
+  ASSERT_NE(raw_solution, nullptr);
+  scoped_solution_t scoped(raw_solution);
+  cuOptSolution solution = scoped.get();
+
+  cuopt_int_t termination_status = -1;
+  ASSERT_EQ(cuOptGetTerminationStatus(solution, &termination_status), CUOPT_SUCCESS);
+  ASSERT_EQ(termination_status, CUOPT_TERMINATION_STATUS_INFEASIBLE);
+
+  // The buffers carry a sentinel no solve would produce. Each accessor must report the absence
+  // rather than returning success having written nothing, which would leave the caller reading
+  // whatever the buffer already held and unable to tell that from a real result.
+  const cuopt_float_t sentinel = -12345.0;
+  cuopt_float_t primal[1]      = {sentinel};
+  cuopt_float_t dual[2]        = {sentinel, sentinel};
+  cuopt_float_t reduced[1]     = {sentinel};
+
+  EXPECT_EQ(cuOptGetPrimalSolution(solution, primal), CUOPT_INVALID_ARGUMENT);
+  EXPECT_EQ(cuOptGetDualSolution(solution, dual), CUOPT_INVALID_ARGUMENT);
+  EXPECT_EQ(cuOptGetReducedCosts(solution, reduced), CUOPT_INVALID_ARGUMENT);
+
+  EXPECT_EQ(primal[0], sentinel);
+  EXPECT_EQ(dual[0], sentinel);
+  EXPECT_EQ(reduced[0], sentinel);
+}
+
+TEST(c_api, solution_accessors_return_values_when_present)
+{
+  // The same accessors must keep working on a solve that did produce values.
+  cuOptSolution raw_solution = solve_tiny_problem(false);
+  ASSERT_NE(raw_solution, nullptr);
+  scoped_solution_t scoped(raw_solution);
+  cuOptSolution solution = scoped.get();
+
+  const cuopt_float_t sentinel = -12345.0;
+  cuopt_float_t primal[2]      = {sentinel, sentinel};
+  cuopt_float_t dual[1]        = {sentinel};
+  cuopt_float_t reduced[2]     = {sentinel, sentinel};
+
+  EXPECT_EQ(cuOptGetPrimalSolution(solution, primal), CUOPT_SUCCESS);
+  EXPECT_EQ(cuOptGetDualSolution(solution, dual), CUOPT_SUCCESS);
+  EXPECT_EQ(cuOptGetReducedCosts(solution, reduced), CUOPT_SUCCESS);
+
+  EXPECT_NE(primal[0], sentinel);
+  EXPECT_NE(dual[0], sentinel);
+  EXPECT_NE(reduced[0], sentinel);
+}
