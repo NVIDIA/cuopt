@@ -522,7 +522,8 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   barrier_settings.barrier_relaxed_feasibility_tol = settings.tolerances.relative_primal_tolerance;
   barrier_settings.barrier_relaxed_optimality_tol  = settings.tolerances.relative_dual_tolerance;
   barrier_settings.barrier_relaxed_complementarity_tol = settings.tolerances.relative_gap_tolerance;
-  barrier_settings.barrier_relaxed_objective_gap_tol   = settings.tolerances.relative_gap_tolerance;
+  barrier_settings.barrier_relaxed_relative_objective_gap_tol =
+    settings.tolerances.relative_gap_tolerance;
   if (barrier_settings.concurrent_halt != nullptr) {
     // Don't show the barrier log in concurrent mode. Show the PDLP log instead
     barrier_settings.log.log = false;
