@@ -81,7 +81,7 @@ struct simplex_solver_settings_t {
       postsolve_info(-1),
       barrier_presolve_bound_free_variables(-1),
       qcqp_ruiz_equilibration(-1),
-      barrier_hyper_initial_point_safeguard(10.0),
+      barrier_initial_point_safeguard(10.0),
       check_Q(false),
       crossover(false),
       refactor_frequency(100),
@@ -177,8 +177,8 @@ struct simplex_solver_settings_t {
                                               // 1 dual least squares, 2 SeDuMi mu-based
   i_t postsolve_info;                         // -1 automatic (disabled), 0 disabled, 1 enabled
   i_t barrier_presolve_bound_free_variables;  // -1 automatic, 0 disabled, 1 enabled
-  i_t qcqp_ruiz_equilibration;  // -1 automatic (imbalance heuristic), 0 disabled, 1 enabled
-  f_t barrier_hyper_initial_point_safeguard;  // margin pushing the barrier initial iterate into
+  i_t qcqp_ruiz_equilibration;          // -1 automatic (imbalance heuristic), 0 disabled, 1 enabled
+  f_t barrier_initial_point_safeguard;  // margin pushing the barrier initial iterate into
   // the interior of the nonnegative orthant / SOC
   bool check_Q;                    // true to check if Q is positive semidefinite
   bool crossover;                  // true to do crossover, false to not

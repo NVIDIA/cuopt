@@ -104,6 +104,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_CUT_CHANGE_THRESHOLD, &mip_settings.cut_change_threshold, f_t(-1.0), std::numeric_limits<f_t>::infinity(), f_t(-1.0)},
     {CUOPT_MIP_CUT_MIN_ORTHOGONALITY, &mip_settings.cut_min_orthogonality, f_t(0.0), f_t(1.0), f_t(0.5)},
     {CUOPT_BARRIER_STEP_SCALE, &pdlp_settings.barrier_step_scale, f_t(0.5), f_t(0.9999), f_t(0.9)},
+    {CUOPT_BARRIER_INITIAL_POINT_SAFEGUARD, &pdlp_settings.barrier_initial_point_safeguard, f_t(0.0), std::numeric_limits<f_t>::infinity(), f_t(10.0), "margin pushing the barrier initial iterate into the interior of the nonnegative orthant / SOC"},
     // MIP heuristic hyper-parameters (hidden from default --help: name contains "hyper_")
     {CUOPT_MIP_HYPER_HEURISTIC_ROOT_LP_TIME_RATIO, &mip_settings.heuristic_params.root_lp_time_ratio, f_t(0.0), f_t(1.0), f_t(0.1), "fraction of total time for root LP"},
     {CUOPT_MIP_HYPER_HEURISTIC_ROOT_LP_MAX_TIME, &mip_settings.heuristic_params.root_lp_max_time, f_t(0.0), std::numeric_limits<f_t>::infinity(), f_t(15.0), "hard cap on root LP seconds"},
@@ -122,8 +123,6 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_HYPER_SUBMIP_MIN_FIXRATE_CAP, &mip_settings.submip_params.min_fixrate_cap, f_t(0.0), f_t(1.0), f_t(0.1), "hard cap on the minimum fix rate for solving a sub-MIP"},
     {CUOPT_MIP_HYPER_SUBMIP_TARGET_MIP_GAP, &mip_settings.submip_params.target_mip_gap, f_t(0.0), f_t(1.0), f_t(0.01), "MIP gap target for the sub-MIP"},
     {CUOPT_MIP_HYPER_SUBMIP_ITERATION_LIMIT_RATIO, &mip_settings.submip_params.iteration_limit_ratio, f_t(0.0), f_t(1.0), f_t(0.8), "sub-MIP simplex-iteration limit as a factor of parent B&B iterations"},
-    // QCQP (barrier) hyper-parameter (hidden from default --help: name contains "hyper_")
-    {CUOPT_BARRIER_HYPER_INITIAL_POINT_SAFEGUARD, &pdlp_settings.barrier_hyper_initial_point_safeguard, f_t(0.0), std::numeric_limits<f_t>::infinity(), f_t(10.0), "margin pushing the barrier initial iterate into the interior of the nonnegative orthant / SOC"},
    };
 
   // Int parameters
