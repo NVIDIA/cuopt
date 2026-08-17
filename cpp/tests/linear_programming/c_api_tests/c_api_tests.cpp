@@ -1239,12 +1239,10 @@ TEST(c_api, mip_solution_attributes)
 // Solution accessors on a solve that produced no values
 // =============================================================================
 
-namespace {
-
-// x >= 2 and x <= 1 has no feasible point, so the solve returns no primal, dual, or reduced
-// cost values.
-cuOptSolution solve_infeasible_problem()
+TEST(c_api, solution_accessors_report_absent_values)
 {
+  // x >= 2 and x <= 1 has no feasible point, so the solve produces no primal, dual, or reduced
+  // cost values.
   cuopt_int_t row_offsets[]     = {0, 1, 2};
   cuopt_int_t column_indices[]  = {0, 0};
   cuopt_float_t matrix_values[] = {1.0, 1.0};
@@ -1257,8 +1255,8 @@ cuOptSolution solve_infeasible_problem()
 
   cuOptOptimizationProblem problem = nullptr;
   cuOptSolverSettings settings     = nullptr;
-  cuOptSolution solution           = nullptr;
-  EXPECT_EQ(cuOptCreateProblem(2,
+  cuOptSolution raw_solution       = nullptr;
+  ASSERT_EQ(cuOptCreateProblem(2,
                                1,
                                CUOPT_MINIMIZE,
                                0,
@@ -1273,18 +1271,11 @@ cuOptSolution solve_infeasible_problem()
                                variable_types,
                                &problem),
             CUOPT_SUCCESS);
-  EXPECT_EQ(cuOptCreateSolverSettings(&settings), CUOPT_SUCCESS);
-  EXPECT_EQ(cuOptSolve(problem, settings, &solution), CUOPT_SUCCESS);
+  ASSERT_EQ(cuOptCreateSolverSettings(&settings), CUOPT_SUCCESS);
+  ASSERT_EQ(cuOptSolve(problem, settings, &raw_solution), CUOPT_SUCCESS);
   cuOptDestroyProblem(&problem);
   cuOptDestroySolverSettings(&settings);
-  return solution;
-}
 
-}  // namespace
-
-TEST(c_api, solution_accessors_report_absent_values)
-{
-  cuOptSolution raw_solution = solve_infeasible_problem();
   ASSERT_NE(raw_solution, nullptr);
   scoped_solution_t scoped(raw_solution);
   cuOptSolution solution = scoped.get();
