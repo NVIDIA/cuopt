@@ -4018,7 +4018,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
 {
   raft::common::nvtx::range fun_scope("Barrier: check_for_suboptimal_solution");
   bool small_gap = (!data.has_cones() && data.Q.n == 0) ||
-                   relative_objective_gap < settings.barrier_relaxed_objective_gap_tol;
+                   relative_objective_gap < settings.barrier_relaxed_relative_objective_gap_tol;
   if (relative_primal_residual < settings.barrier_relaxed_feasibility_tol &&
       relative_dual_residual < settings.barrier_relaxed_optimality_tol &&
       relative_complementarity_residual < settings.barrier_relaxed_complementarity_tol &&
@@ -4072,8 +4072,9 @@ lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
   f_t relative_objective_gap_save =
     objective_gap_save /
     (1.0 + std::min(std::abs(user_primal_objective_save), std::abs(primal_objective_save)));
-  bool small_gap_save = (!data.has_cones() && data.Q.n == 0) ||
-                        relative_objective_gap_save < settings.barrier_relaxed_objective_gap_tol;
+  bool small_gap_save =
+    (!data.has_cones() && data.Q.n == 0) ||
+    relative_objective_gap_save < settings.barrier_relaxed_relative_objective_gap_tol;
 
   if (data.relative_primal_residual_save < settings.barrier_relaxed_feasibility_tol &&
       data.relative_dual_residual_save < settings.barrier_relaxed_optimality_tol &&
@@ -4288,7 +4289,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
                         elapsed_time);
 
     bool small_gap = (!data.has_cones() && data.Q.n == 0) ||
-                     relative_objective_gap < settings.barrier_relaxed_objective_gap_tol;
+                     relative_objective_gap < settings.barrier_relaxed_relative_objective_gap_tol;
     bool converged =
       primal_residual_norm < settings.barrier_relative_feasibility_tol &&
       dual_residual_norm < settings.barrier_relative_optimality_tol &&
