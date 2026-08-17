@@ -223,7 +223,7 @@ static std::vector<std::vector<int>> probing_impl_adj(mip::problem_t<int, double
   }
   if (infeasible) { return {}; }
   return mip::bve_build_impl_adj(
-    bound_presolve.probing_cache, problem.reverse_original_ids, problem.n_variables);
+    bound_presolve.probing_cache, problem.reverse_original_ids, problem.n_variables, timer);
 }
 
 // Build one block by hand for the projection-core tests. Local ids: a=0 (interior), b=1, c=2.
@@ -468,7 +468,8 @@ TEST(block_bve_projection, gpu_batch_matches_host_oracle)
     cands[i].blk =
       blocks[i];  // the service reads only .blk; interior/boundary/rows are unused here
 
-  mip::bve_project_batch_gpu<int, double>(handle_, cands, 1e-6);
+  cuopt::timer_t no_deadline(std::numeric_limits<double>::infinity());
+  mip::bve_project_batch_gpu<int, double>(handle_, cands, 1e-6, no_deadline);
 
   for (size_t i = 0; i < blocks.size(); ++i) {
     uint8_t exp_feas[mip::BVE_MAX_PATTERNS];
@@ -532,7 +533,8 @@ TEST(block_bve_projection, exact_projection_matches_host_at_tol0)
   for (size_t i = 0; i < blocks.size(); ++i)
     cands[i].blk = blocks[i];
 
-  mip::bve_project_batch_gpu<int, double>(handle_, cands, 0.0);  // exact: tol 0
+  cuopt::timer_t no_deadline(std::numeric_limits<double>::infinity());
+  mip::bve_project_batch_gpu<int, double>(handle_, cands, 0.0, no_deadline);  // exact: tol 0
 
   for (size_t i = 0; i < blocks.size(); ++i) {
     uint8_t exp_feas[mip::BVE_MAX_PATTERNS];

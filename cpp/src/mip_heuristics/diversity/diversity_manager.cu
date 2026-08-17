@@ -425,12 +425,19 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
   const i_t n_rows_before_bve = problem_ptr->n_constraints;
 
   if (!run_probing_cache) max_bve_rounds = 0;
+  const char* disable_block_bve_env = std::getenv("CUOPT_DISABLE_BLOCK_BVE");
+  if (disable_block_bve_env != nullptr && std::string(disable_block_bve_env) == "1") {
+    CUOPT_LOG_INFO("Block-BVE disabled via CUOPT_DISABLE_BLOCK_BVE=1");
+    max_bve_rounds = 0;
+  }
   // Implications read off the projection tables, accumulated across rounds. They feed the next
   // round's adjacency (pairs the cache never held) and are folded back into the cache afterwards.
   probe_findings_t<i_t> bve_findings;
+  timer_t bve_stage_timer(global_timer.clamp_remaining_time(
+    std::min(BVE_STAGE_TIME_LIMIT, presolve_timer.remaining_time())));
   for (i_t bve_round = 0; bve_round < max_bve_rounds; ++bve_round) {
     if (!context.settings.block_bve || problem_ptr->empty || global_timer.check_time_limit() ||
-        presolve_timer.check_time_limit()) {
+        presolve_timer.check_time_limit() || bve_stage_timer.check_time_limit()) {
       break;
     }
 
@@ -439,9 +446,16 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
     auto impl_adj           = bve_build_impl_adj(ls.constraint_prop.bounds_update.probing_cache,
                                        problem_ptr->reverse_original_ids,
                                        problem_ptr->n_variables,
+                                       bve_stage_timer,
                                        &bve_findings);
-    double bve_work_units   = 0.0;
-    timer_t bve_timer(global_timer.clamp_remaining_time(presolve_timer.remaining_time()));
+    if (bve_stage_timer.check_time_limit()) {
+      CUOPT_LOG_DEBUG("Block-BVE hit its %.2fs phase limit building the implication graph",
+                      bve_stage_timer.get_time_limit());
+      break;
+    }
+    double bve_work_units = 0.0;
+    timer_t bve_timer(bve_stage_timer.clamp_remaining_time(
+      global_timer.clamp_remaining_time(presolve_timer.remaining_time())));
     const bool reduced =
       block_bve_presolve(*problem_ptr, impl_adj, bve_timer, bve_work_units, &bve_findings);
     CUOPT_LOG_DEBUG("Block-BVE outer round %d/%d: reduced=%d vars %d->%d rows %d->%d",
@@ -454,6 +468,9 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
                     problem_ptr->n_constraints);
     if (!reduced) { break; }
     if (problem_ptr->n_variables >= n_vars_before) { break; }
+    if (n_vars_before - problem_ptr->n_variables < n_vars_before * BVE_MIN_ROUND_YIELD) {
+      break;
+    }
   }
 
   // Harvest the projections: tighten the cache in place, pin the variables the blocks left with a
