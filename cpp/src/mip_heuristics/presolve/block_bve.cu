@@ -22,6 +22,8 @@
 #include <cuda/bit>  // cuda::bitfield_extract
 
 #include <thrust/count.h>
+#include <thrust/iterator/counting_iterator.h>
+#include <thrust/logical.h>
 
 #include <utilities/logger.hpp>
 #include <utilities/scope_guard.hpp>
@@ -1213,6 +1215,21 @@ static void append_bve_reconstructions(const bve_plan_t<i_t, f_t>& plan,
   }
 }
 
+template <typename i_t, typename f_t>
+bool bve_has_stageable_row(const problem_t<i_t, f_t>& problem)
+{
+  const i_t n_rows = problem.n_constraints;
+  if (problem.empty || n_rows == 0) { return false; }
+  const i_t* offsets    = problem.offsets.data();
+  constexpr i_t max_len = BVE_MAX_ROW_LEN;
+  return thrust::any_of(problem.handle_ptr->get_thrust_policy(),
+                        thrust::make_counting_iterator<i_t>(0),
+                        thrust::make_counting_iterator<i_t>(n_rows),
+                        [offsets, max_len] __device__(i_t r) -> bool {
+                          return offsets[r + 1] - offsets[r] <= max_len;
+                        });
+}
+
 // ---- the pass: detect (GPU-projected) -> install reduced model -> record reconstructions ----
 template <typename i_t, typename f_t>
 bool block_bve_presolve(problem_t<i_t, f_t>& problem,
@@ -1406,6 +1423,7 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
     int,                                                                              \
     const timer_t&,                                                                   \
     const probe_findings_t<int>*);                                                    \
+  template bool bve_has_stageable_row<int, F_TYPE>(const problem_t<int, F_TYPE>&);    \
   template bool block_bve_presolve<int, F_TYPE>(problem_t<int, F_TYPE>&,              \
                                                 const std::vector<std::vector<int>>&, \
                                                 timer_t&,                             \
