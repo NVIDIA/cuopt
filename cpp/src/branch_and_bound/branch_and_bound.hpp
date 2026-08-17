@@ -385,7 +385,8 @@ class branch_and_bound_t {
                     const std::vector<simplex::variable_type_t>& var_types,
                     submip_stats_t& submip_stats,
                     i_t num_var_fixed,
-                    i_t num_integers);
+                    i_t num_integers,
+                    i_t simplex_iter_used);
 
   // Creates and solves the RINS sub-MIP
   void recursive_submip(diving_worker_t<i_t, f_t>* worker,

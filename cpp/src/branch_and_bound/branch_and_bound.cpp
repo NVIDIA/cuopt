@@ -2239,7 +2239,8 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
                                                 const std::vector<variable_type_t>& var_types,
                                                 submip_stats_t& submip_stats,
                                                 i_t num_var_fixed,
-                                                i_t num_integers)
+                                                i_t num_integers,
+                                                i_t simplex_iter_used)
 {
   double start_time = tic();
 
@@ -2298,9 +2299,11 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   f_t iter_ratio       = settings_.submip_settings.iteration_limit_ratio;
 
   submip_settings.branch_and_bound_simplex_iteration_limit =
-    iter_offset + simplex_iter * iter_ratio;
+    iter_offset + simplex_iter * iter_ratio - simplex_iter_used;
+  if (submip_settings.branch_and_bound_simplex_iteration_limit <= 0) { return; }
+
   submip_settings.time_limit = settings_.time_limit - toc(exploration_stats_.start_time);
-  if (submip_settings.time_limit < 0) { return; }
+  if (submip_settings.time_limit <= 0) { return; }
 
   submip_settings.relative_mip_gap_tol =
     std::min(settings_.submip_settings.target_mip_gap, rel_gap);
@@ -2797,7 +2800,7 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* w
     f_t fixrate = (f_t)num_var_fixed / num_integers;
 
     DEBUG_SUBMIP(
-      "{} Round {}: fixed {} ({:.2f}) -> {} ({:.2f}) variables. target fixrate = {} ({:.2f}). max "
+      "{}Round {}: fixed {} ({:.2f}) -> {} ({:.2f}) variables. target fixrate = {} ({:.2f}). max "
       "fixrate = {} ({:.2f})",
       log_prefix,
       round,
@@ -2859,6 +2862,11 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* w
     ++round;
   }
 
+  // Accumulate the iterations for sub-MIP so it stops when it reaches the allocated budget.
+  if (settings_.inside_submip) {
+    exploration_stats_.total_simplex_iters += stats.total_simplex_iters;
+  }
+
   f_t fixrate = (f_t)num_var_fixed / num_integers;
 
   if (has_submip) {
@@ -2910,13 +2918,9 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* w
                    var_types,
                    submip_stats,
                    num_var_fixed,
-                   num_integers);
+                   num_integers,
+                   stats.total_simplex_iters);
     }
-  }
-
-  // Accumulate the iterations for sub-MIP so it stops when it reaches the allocated budget.
-  if (settings_.inside_submip) {
-    exploration_stats_.total_simplex_iters += stats.total_simplex_iters;
   }
 
   DEBUG_SUBMIP(
