@@ -1372,15 +1372,18 @@ TEST(c_api, solution_accessors_accept_a_problem_with_no_constraints)
   ASSERT_EQ(cuOptGetTerminationStatus(solution, &termination_status), CUOPT_SUCCESS);
   ASSERT_EQ(termination_status, CUOPT_TERMINATION_STATUS_OPTIMAL);
 
-  cuopt_float_t primal[1]  = {-12345.0};
-  cuopt_float_t reduced[1] = {-12345.0};
-  cuopt_float_t dual[1]    = {-12345.0};
+  const cuopt_float_t sentinel = -12345.0;
+  cuopt_float_t primal[1]      = {sentinel};
+  cuopt_float_t reduced[1]     = {sentinel};
+  cuopt_float_t dual[1]        = {sentinel};
 
   EXPECT_EQ(cuOptGetPrimalSolution(solution, primal), CUOPT_SUCCESS);
   EXPECT_EQ(cuOptGetReducedCosts(solution, reduced), CUOPT_SUCCESS);
-  EXPECT_NE(primal[0], -12345.0);
-  EXPECT_NE(reduced[0], -12345.0);
+  EXPECT_NE(primal[0], sentinel);
+  EXPECT_NE(reduced[0], sentinel);
 
-  // No constraints, so there is nothing to copy, but the call still succeeds.
+  // No constraints, so there is nothing to copy, but the call still succeeds and must not
+  // write past the zero elements it has.
   EXPECT_EQ(cuOptGetDualSolution(solution, dual), CUOPT_SUCCESS);
+  EXPECT_EQ(dual[0], sentinel);
 }
