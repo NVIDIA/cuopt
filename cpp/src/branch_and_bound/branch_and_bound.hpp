@@ -385,6 +385,7 @@ class branch_and_bound_t {
                     submip_stats_t& submip_stats,
                     i_t num_var_fixed,
                     i_t num_integers,
+                    i_t simplex_iter_used,
                     bool is_root_heuristic = false);
 
   // Creates and solves the RINS sub-MIP
