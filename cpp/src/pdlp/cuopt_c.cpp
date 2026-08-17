@@ -1266,9 +1266,13 @@ cuopt_int_t cuOptGetPrimalSolution(cuOptSolution solution, cuopt_float_t* soluti
 
   try {
     const auto solution_host = solution_and_stream_view->get_solution()->get_solution_host();
-    // An empty vector means the solve produced no values, not that every value is zero. Copying
-    // nothing and reporting success would leave the caller's buffer at whatever it held and give
-    // them no way to tell the difference.
+    // A solve that produced nothing, an infeasible problem for instance, carries no primal
+    // vector. Copying nothing and reporting success would leave the caller's buffer at whatever
+    // it held and give them no way to tell that from a real result.
+    //
+    // The test is whether the solve produced a primal vector, not whether the vector being asked
+    // for is empty: a problem with no constraints has an empty dual solution and is perfectly
+    // well solved.
     if (solution_host.empty()) { return CUOPT_INVALID_ARGUMENT; }
     std::memcpy(
       solution_values_ptr, solution_host.data(), solution_host.size() * sizeof(cuopt_float_t));
@@ -1334,8 +1338,12 @@ cuopt_int_t cuOptGetDualSolution(cuOptSolution solution, cuopt_float_t* dual_sol
     static_cast<solution_and_stream_view_t*>(solution);
   try {
     const auto dual_host = solution_and_stream_view->get_solution()->get_dual_solution();
-    // See cuOptGetPrimalSolution: empty means unavailable, not all-zero.
-    if (dual_host.empty()) { return CUOPT_INVALID_ARGUMENT; }
+    // See cuOptGetPrimalSolution. Availability is decided by whether the solve produced a
+    // solution, not by the length of this vector, which is legitimately empty for a problem with
+    // no constraints.
+    if (solution_and_stream_view->get_solution()->get_solution_host().empty()) {
+      return CUOPT_INVALID_ARGUMENT;
+    }
     std::memcpy(dual_solution_ptr, dual_host.data(), dual_host.size() * sizeof(cuopt_float_t));
     return CUOPT_SUCCESS;
   } catch (const std::logic_error&) {
@@ -1367,8 +1375,12 @@ cuopt_int_t cuOptGetReducedCosts(cuOptSolution solution, cuopt_float_t* reduced_
     static_cast<solution_and_stream_view_t*>(solution);
   try {
     const auto reduced_cost_host = solution_and_stream_view->get_solution()->get_reduced_costs();
-    // See cuOptGetPrimalSolution: empty means unavailable, not all-zero.
-    if (reduced_cost_host.empty()) { return CUOPT_INVALID_ARGUMENT; }
+    // See cuOptGetPrimalSolution. Availability is decided by whether the solve produced a
+    // solution, not by the length of this vector, which is legitimately empty for a problem with
+    // no constraints.
+    if (solution_and_stream_view->get_solution()->get_solution_host().empty()) {
+      return CUOPT_INVALID_ARGUMENT;
+    }
     std::memcpy(
       reduced_cost_ptr, reduced_cost_host.data(), reduced_cost_host.size() * sizeof(cuopt_float_t));
     return CUOPT_SUCCESS;

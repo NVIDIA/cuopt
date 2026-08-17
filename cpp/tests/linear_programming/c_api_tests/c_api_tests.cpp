@@ -1298,6 +1298,7 @@ TEST(c_api, solution_accessors_report_absent_values)
 
   EXPECT_EQ(primal[0], sentinel);
   EXPECT_EQ(dual[0], sentinel);
+  EXPECT_EQ(dual[1], sentinel);
   EXPECT_EQ(reduced[0], sentinel);
 }
 
@@ -1319,6 +1320,67 @@ TEST(c_api, solution_accessors_return_values_when_present)
   EXPECT_EQ(cuOptGetReducedCosts(solution, reduced), CUOPT_SUCCESS);
 
   EXPECT_NE(primal[0], sentinel);
+  EXPECT_NE(primal[1], sentinel);
   EXPECT_NE(dual[0], sentinel);
   EXPECT_NE(reduced[0], sentinel);
+  EXPECT_NE(reduced[1], sentinel);
+}
+
+TEST(c_api, solution_accessors_accept_a_problem_with_no_constraints)
+{
+  // A box-constrained LP with no constraints solves to optimality and its dual vector is
+  // legitimately empty. Availability must not be inferred from that emptiness, or this valid
+  // result would be reported as missing.
+  cuopt_int_t row_offsets[]     = {0};
+  cuopt_int_t column_indices[]  = {0};
+  cuopt_float_t matrix_values[] = {0.0};
+  cuopt_float_t objective[]     = {1.0};
+  cuopt_float_t rhs[]           = {0.0};
+  char constraint_sense[]       = {CUOPT_LESS_THAN};
+  cuopt_float_t lower_bounds[]  = {0.0};
+  cuopt_float_t upper_bounds[]  = {5.0};
+  char variable_types[]         = {CUOPT_CONTINUOUS};
+
+  cuOptOptimizationProblem problem = nullptr;
+  cuOptSolverSettings settings     = nullptr;
+  cuOptSolution raw_solution       = nullptr;
+  ASSERT_EQ(cuOptCreateProblem(0,
+                               1,
+                               CUOPT_MINIMIZE,
+                               0,
+                               objective,
+                               row_offsets,
+                               column_indices,
+                               matrix_values,
+                               constraint_sense,
+                               rhs,
+                               lower_bounds,
+                               upper_bounds,
+                               variable_types,
+                               &problem),
+            CUOPT_SUCCESS);
+  ASSERT_EQ(cuOptCreateSolverSettings(&settings), CUOPT_SUCCESS);
+  ASSERT_EQ(cuOptSolve(problem, settings, &raw_solution), CUOPT_SUCCESS);
+  cuOptDestroyProblem(&problem);
+  cuOptDestroySolverSettings(&settings);
+
+  ASSERT_NE(raw_solution, nullptr);
+  scoped_solution_t scoped(raw_solution);
+  cuOptSolution solution = scoped.get();
+
+  cuopt_int_t termination_status = -1;
+  ASSERT_EQ(cuOptGetTerminationStatus(solution, &termination_status), CUOPT_SUCCESS);
+  ASSERT_EQ(termination_status, CUOPT_TERMINATION_STATUS_OPTIMAL);
+
+  cuopt_float_t primal[1]  = {-12345.0};
+  cuopt_float_t reduced[1] = {-12345.0};
+  cuopt_float_t dual[1]    = {-12345.0};
+
+  EXPECT_EQ(cuOptGetPrimalSolution(solution, primal), CUOPT_SUCCESS);
+  EXPECT_EQ(cuOptGetReducedCosts(solution, reduced), CUOPT_SUCCESS);
+  EXPECT_NE(primal[0], -12345.0);
+  EXPECT_NE(reduced[0], -12345.0);
+
+  // No constraints, so there is nothing to copy, but the call still succeeds.
+  EXPECT_EQ(cuOptGetDualSolution(solution, dual), CUOPT_SUCCESS);
 }
