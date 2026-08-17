@@ -999,7 +999,8 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     if (problem.lower[j] == -inf && problem.upper[j] == inf) { free_variables++; }
   }
 
-  if (settings.barrier_presolve && free_variables > 0) {
+  if (settings.barrier_presolve && settings.barrier_presolve_bound_free_variables != 0 &&
+      free_variables > 0) {
     // Try to remove free variables
     std::vector<i_t> constraints_to_check;
     std::vector<i_t> current_free_variables;
