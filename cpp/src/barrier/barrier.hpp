@@ -9,6 +9,7 @@
 #include <linear_algebra/dense_vector.hpp>
 
 #include <cuopt/mathematical_optimization/constants.h>
+#include <cuopt/mathematical_optimization/utilities/internals.hpp>
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/solution.hpp>
@@ -20,21 +21,6 @@
 
 #include <utility>
 namespace cuopt::mathematical_optimization::barrier {
-
-/**
- * @brief Barrier primal-dual initial-point strategy.
- *
- * Automatic: use Lustig-Marsten-Shanno for LP/QP; Sturm/SeDuMi mu-based point for conic problems.
- * LustigMarstenShanno: Mehrotra-style dual start (Lustig, Marsten, Shanno, SIAM J. Optim. 1992).
- * DualLeastSquares: solve augmented or ADAT dual least-squares system.
- * SedumiMu: Sturm/SeDuMi mu-based primal+dual point (no factorization).
- */
-enum barrier_dual_initial_point_t : int {
-  Automatic           = CUOPT_BARRIER_DUAL_INITIAL_POINT_AUTOMATIC,
-  LustigMarstenShanno = CUOPT_BARRIER_DUAL_INITIAL_POINT_LUSTIG_MARSTEN_SHANNO,
-  DualLeastSquares    = CUOPT_BARRIER_DUAL_INITIAL_POINT_DUAL_LEAST_SQUARES,
-  SedumiMu            = CUOPT_BARRIER_DUAL_INITIAL_POINT_SEDUMI_MU
-};
 
 /** Validates SOC layout on an simplex::lp_problem_t before barrier presolve/solve. */
 template <typename i_t, typename f_t>

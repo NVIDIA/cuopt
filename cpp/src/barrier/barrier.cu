@@ -2204,8 +2204,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   const bool use_augmented          = data.use_augmented;
   const bool has_direct_free_linear = data.n_direct_free_linear > 0;
 
-  const barrier_dual_initial_point_t input_strategy =
-    static_cast<barrier_dual_initial_point_t>(settings.barrier_dual_initial_point);
+  const barrier_dual_initial_point_t input_strategy = settings.barrier_dual_initial_point;
 
   const barrier_dual_initial_point_t init_strategy =
     (data.has_cones() && input_strategy == barrier_dual_initial_point_t::Automatic)
