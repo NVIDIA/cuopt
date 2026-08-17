@@ -296,6 +296,7 @@ class pdlp_solver_settings_t {
   i_t ordering{-1};
   i_t barrier_dual_initial_point{-1};
   i_t postsolve_info{-1};
+  i_t barrier_presolve_bound_free_variables{-1};  // -1 automatic, 0 disabled, 1 enabled
   // Ruiz equilibration for QCQP (barrier) scaling: -1 automatic (row/column
   // imbalance heuristic), 0 disabled, 1 enabled. Distinct from PDLP's own Ruiz
   // scaling in pdlp_hyper_params_t.

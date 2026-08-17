@@ -79,6 +79,7 @@ struct simplex_solver_settings_t {
       ordering(-1),
       barrier_dual_initial_point(-1),
       postsolve_info(-1),
+      barrier_presolve_bound_free_variables(-1),
       qcqp_ruiz_equilibration(-1),
       barrier_hyper_initial_point_safeguard(10.0),
       check_Q(false),
@@ -172,10 +173,11 @@ struct simplex_solver_settings_t {
   i_t augmented;  // -1 automatic, 0 to solve with ADAT, 1 to solve with augmented system
   i_t dualize;    // -1 automatic, 0 to not dualize, 1 to dualize
   i_t ordering;   // -1 automatic, 0 to use nested dissection, 1 to use AMD
-  i_t barrier_dual_initial_point;  // -1 automatic, 0 Lustig-Marsten-Shanno,
-                                   // 1 dual least squares, 2 SeDuMi mu-based
-  i_t postsolve_info;              // -1 automatic (disabled), 0 disabled, 1 enabled
-  i_t qcqp_ruiz_equilibration;     // -1 automatic (imbalance heuristic), 0 disabled, 1 enabled
+  i_t barrier_dual_initial_point;             // -1 automatic, 0 Lustig-Marsten-Shanno,
+                                              // 1 dual least squares, 2 SeDuMi mu-based
+  i_t postsolve_info;                         // -1 automatic (disabled), 0 disabled, 1 enabled
+  i_t barrier_presolve_bound_free_variables;  // -1 automatic, 0 disabled, 1 enabled
+  i_t qcqp_ruiz_equilibration;  // -1 automatic (imbalance heuristic), 0 disabled, 1 enabled
   f_t barrier_hyper_initial_point_safeguard;  // margin pushing the barrier initial iterate into
   // the interior of the nonnegative orthant / SOC
   bool check_Q;                    // true to check if Q is positive semidefinite
