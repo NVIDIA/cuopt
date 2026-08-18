@@ -160,6 +160,43 @@ def test_constraint_duplicate_terms_slack():
     assert c.compute_slack() == pytest.approx(6.0)
 
 
+def test_updateConstraint_tracks_new_variables():
+    """Variables added via updateConstraint end up in Constraint.vars."""
+    prob = Problem()
+    x1 = prob.addVariable(name="x1")
+    x2 = prob.addVariable(name="x2")
+    c = prob.addConstraint(2 * x1 <= 10)
+    assert [v.index for v in c.vars] == [0]
+
+    prob.updateConstraint(c, coeffs=[(x2, 4.0)])
+    assert [v.index for v in c.vars] == [0, 1]
+    x1.Value = 1.0
+    x2.Value = 2.0
+    assert c.compute_slack() == pytest.approx(0.0)
+
+
+def test_updateConstraint_does_not_mutate_expression():
+    """The expression a constraint was built from is left unchanged."""
+    prob = Problem()
+    a = prob.addVariable(name="a")
+    b = prob.addVariable(name="b")
+    expr = 2 * a
+    c = prob.addConstraint(expr <= 10)
+    prob.updateConstraint(c, coeffs=[(b, 1.0)])
+    assert len(expr.vars) == 1
+    assert len(expr.coefficients) == 1
+
+
+def test_constraint_vars_includes_quadratic_only_variables():
+    """Variables that appear only in quadratic terms are in Constraint.vars."""
+    prob = Problem()
+    x = prob.addVariable(name="x")
+    y = prob.addVariable(name="y")
+    c = prob.addConstraint(x * x + 2 * x * y <= 4)
+    assert c.is_quadratic
+    assert [v.index for v in c.vars] == [0, 1]
+
+
 def test_semi_continuous_variable():
     prob = Problem("Semi-continuous")
     x = prob.addVariable(lb=5.0, ub=10.0, vtype=SEMI_CONTINUOUS, name="x")

@@ -1341,7 +1341,12 @@ class Constraint:
             self.rhs_value = rhs_value
             self.RHS = rhs_value
             self.vindex_coeff_dict = {}
-            self.vars = expr.vars
+            # expr.vars holds only the linear terms; id() because Variable
+            # overrides __eq__ and is unhashable.
+            seen = {}
+            for var in (*expr.vars, *expr.qvars1, *expr.qvars2, *expr.qvars):
+                seen.setdefault(id(var), var)
+            self.vars = list(seen.values())
             return
 
         self.is_quadratic = False
@@ -1760,9 +1765,15 @@ class Problem:
                 )
             if isinstance(coeffs, dict):
                 coeffs = coeffs.items()
+            new_vars = []
             for var, coeff in coeffs:
                 idx = var.index
+                if idx not in constr.vindex_coeff_dict:
+                    new_vars.append(var)
                 constr.vindex_coeff_dict[idx] = coeff
+            if new_vars:
+                # constr.vars aliases the expression's list; rebind it.
+                constr.vars = constr.vars + new_vars
             if rhs is not None:
                 constr.RHS = rhs
         else:
