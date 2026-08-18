@@ -190,7 +190,7 @@ endif ()
 # Add jobserver flags for parallel compilation if PARALLEL_LEVEL is set
 if (PARALLEL_LEVEL AND NOT "${PARALLEL_LEVEL}" STREQUAL "")
     message(STATUS "Enabling nvcc parallel compilation support")
-    list(APPEND CUOPT_CUDA_FLAGS --threads=0 --split-compile=0)
+    list(APPEND CUOPT_CUDA_FLAGS --threads=0)
     if (USE_NVCC_JOBSERVER AND CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.0)
         message(STATUS "Enabling nvcc jobserver support (NVCC >= 13.0)")
         list(APPEND CUOPT_CUDA_FLAGS --jobserver)
@@ -494,12 +494,6 @@ endif ()
 set(CUOPT_SRC_FILES)
 set(MPS_FAST_SRC_FILES)
 add_subdirectory(src)
-
-# nvcc 13.0.3 ICE (signal 11) compiling sliding_window.cu with 7 GPU architectures;
-# --split-compile breaks the codegen into per-arch sub-jobs to avoid the crash
-set_source_files_properties(
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/routing/local_search/sliding_window.cu
-        PROPERTIES COMPILE_OPTIONS "--split-compile=0")
 
 if (HOST_LINEINFO)
     set_source_files_properties(${CUOPT_SRC_FILES} DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTIES COMPILE_OPTIONS "-g1")
