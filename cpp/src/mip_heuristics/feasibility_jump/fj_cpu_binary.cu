@@ -12,6 +12,7 @@
 
 #include <mip_heuristics/mip_constants.hpp>
 #include <utilities/copy_helpers.hpp>
+#include <utilities/integer_scaling.hpp>
 
 #include <raft/random/rng_device.cuh>
 
@@ -184,7 +185,10 @@ struct fj_bin_scan_t {
   int32_t n_split_constraints{0};
   int32_t bad_row{-1};
   int32_t bad_var{-1};
+  std::vector<double> row_scale;
 };
+
+constexpr int64_t fj_bin_scale_cap = std::numeric_limits<int16_t>::max();
 
 // DDFW and restart have no general-path equivalent, so their defaults live here until there is a
 // reason to promote them alongside the other FJ knobs.
@@ -266,15 +270,54 @@ static fj_bin_scan_t fj_bin_scan(const fj_cpu_climber_t<i_t, f_t>& c)
   const auto& cstr_ub = c.h_cstr_ub;
 
   double max_abs_coefficient = 0;
+  std::vector<double> row_values;
   for (int32_t r = 0; r < m; ++r) {
-    double row_abs_sum = 0;
+    const double lb    = cstr_lb[r];
+    const double ub    = cstr_ub[r];
+    const bool lb_fin  = std::isfinite(lb);
+    const bool ub_fin  = std::isfinite(ub);
+    const double sides[2] = {lb, ub};
+    const bool finite[2]  = {lb_fin, ub_fin};
+
+    bool fractional_coefficient_seen = false;
+    bool integral                    = true;
     for (int32_t k = offsets[r]; k < offsets[r + 1]; ++k) {
-      const double a = coeffs[k];
-      if (!is_integer(a, tol)) {
-        out.reject  = fj_binary_reject_t::fractional_coefficient;
+      if (!is_integer(coeffs[k], tol)) {
+        fractional_coefficient_seen = true;
+        integral                    = false;
+        break;
+      }
+    }
+    for (int s = 0; s < 2 && integral; ++s) {
+      if (finite[s] && !is_integer(sides[s], tol)) integral = false;
+    }
+
+    double row_s = 1.0;
+    if (!integral) {
+      row_values.clear();
+      for (int32_t k = offsets[r]; k < offsets[r + 1]; ++k) row_values.push_back(coeffs[k]);
+      for (int s = 0; s < 2; ++s) {
+        if (finite[s]) row_values.push_back(sides[s]);
+      }
+      row_s = find_scaling_rational(row_values,
+                                    /*maxscale=*/1.0 / tol,
+                                    /*maxdnom=*/fj_bin_scale_cap,
+                                    /*maxfinal=*/(double)fj_bin_scale_cap,
+                                    /*intcheck_tol=*/tol);
+      if (!std::isfinite(row_s) || row_s <= 0.0) {
+        out.reject  = fractional_coefficient_seen ? fj_binary_reject_t::fractional_coefficient
+                                                  : fj_binary_reject_t::fractional_row_bound;
         out.bad_row = r;
         return out;
       }
+      if (out.row_scale.empty()) out.row_scale.assign(m, 1.0);
+      out.row_scale[r] = row_s;
+    }
+
+    double row_abs_sum = 0;
+    for (int32_t k = offsets[r]; k < offsets[r + 1]; ++k) {
+      const double a = row_s * coeffs[k];
+      cuopt_assert(is_integer(a, tol), "row scaling left a fractional coefficient");
       const double abs_a = std::fabs(std::round(a));
       row_abs_sum += abs_a;
       if (abs_a > max_abs_coefficient) max_abs_coefficient = abs_a;
@@ -288,20 +331,11 @@ static fj_bin_scan_t fj_bin_scan(const fj_cpu_climber_t<i_t, f_t>& c)
       return out;
     }
 
-    const double lb    = cstr_lb[r];
-    const double ub    = cstr_ub[r];
-    const bool lb_fin  = std::isfinite(lb);
-    const bool ub_fin  = std::isfinite(ub);
-    const double sides[2] = {lb, ub};
-    const bool finite[2]  = {lb_fin, ub_fin};
     for (int s = 0; s < 2; ++s) {
       if (!finite[s]) continue;
-      if (!is_integer(sides[s], tol)) {
-        out.reject  = fj_binary_reject_t::fractional_row_bound;
-        out.bad_row = r;
-        return out;
-      }
-      if (!fj_bin_in_int32(std::round(sides[s]))) {
+      const double scaled_side = row_s * sides[s];
+      cuopt_assert(is_integer(scaled_side, tol), "row scaling left a fractional row bound");
+      if (!fj_bin_in_int32(std::round(scaled_side))) {
         out.reject  = fj_binary_reject_t::row_bound_out_of_range;
         out.bad_row = r;
         return out;
@@ -330,9 +364,10 @@ static fj_bin_scan_t fj_bin_scan(const fj_cpu_climber_t<i_t, f_t>& c)
 // failing check here is a self-consistency bug and refuses the fast path rather than truncating.
 template <typename i_t, typename f_t, typename coef_t>
 static bool fj_bin_narrow(const fj_cpu_climber_t<i_t, f_t>& c,
-                   int32_t n_split,
+                   const fj_bin_scan_t& scan,
                    fj_bin_problem_t<coef_t>& pb)
 {
+  const int32_t n_split = scan.n_split_constraints;
   const int32_t n = c.view.pb.n_variables;
   const int32_t m = c.view.pb.n_constraints;
   const double tol = c.view.pb.tolerances.integrality_tolerance;
@@ -366,9 +401,10 @@ static bool fj_bin_narrow(const fj_cpu_climber_t<i_t, f_t>& c,
   // fields: the scan admits |coef| up to 127 for int8 and 32767 for int16, and the bound is checked
   // for int32 range after negating.
   auto emit = [&](int32_t r, double side_bound, long side, double weight) -> bool {
+    const double s  = scan.row_scale.empty() ? 1.0 : scan.row_scale[r];
     coef_t row_cmax = 1;
     for (int32_t k = offsets[r]; k < offsets[r + 1]; ++k) {
-      const double a = coeffs[k];
+      const double a = s * coeffs[k];
       const long ai  = side * std::lround(a);
       if (!is_integer(a, tol) || ai < std::numeric_limits<coef_t>::min() ||
           ai > std::numeric_limits<coef_t>::max()) {
@@ -379,7 +415,7 @@ static bool fj_bin_narrow(const fj_cpu_climber_t<i_t, f_t>& c,
       const coef_t abs_a = (coef_t)std::labs(ai);
       if (abs_a > row_cmax) row_cmax = abs_a;
     }
-    const long b = side * std::lround(side_bound);
+    const long b = side * std::lround(s * side_bound);
     if (!fj_bin_in_int32((double)b)) return false;
     pb.offsets.push_back((int32_t)pb.variables.size());
     pb.bound.push_back((int32_t)b);
@@ -1181,7 +1217,7 @@ bool try_cpufj_binary_solve(fj_cpu_climber_t<i_t, f_t>& climber,
   }
 
   auto run = [&](auto& engine) -> bool {
-    if (!fj_bin_narrow(climber, scan.n_split_constraints, engine.pb)) {
+    if (!fj_bin_narrow(climber, scan, engine.pb)) {
       CUOPT_LOG_DEBUG("%sCPUFJ binary fast path declined: %s",
                       climber.log_prefix.c_str(),
                       fj_binary_reject_name(fj_binary_reject_t::narrow_check_failed));
