@@ -291,11 +291,11 @@ option(LUSOL "Disable LUSOL" OFF)
 FetchContent_MakeAvailable(papilo)
 
 # PSLP - Lightweight C presolver for linear programs
-# https://github.com/hlinsen/PSLP/tree/reduce-transpose-memory
+# https://github.com/dance858/PSLP
 FetchContent_Declare(
         pslp
-        GIT_REPOSITORY "https://github.com/hlinsen/PSLP.git"
-        GIT_TAG "00635f80505051d1474c56eb575a94b68b4fb30a"
+        GIT_REPOSITORY "https://github.com/dance858/PSLP.git"
+        GIT_TAG "v0.0.11"
         GIT_PROGRESS TRUE
         EXCLUDE_FROM_ALL
         SYSTEM
