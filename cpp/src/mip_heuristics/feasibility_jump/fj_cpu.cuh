@@ -10,6 +10,7 @@
 #include <atomic>
 #include <functional>
 #include <limits>
+#include <random>
 #include <unordered_set>
 #include <vector>
 
@@ -76,6 +77,7 @@ struct fj_cpu_climber_t {
 
   problem_t<i_t, f_t>* pb_ptr;
   fj_settings_t settings;
+  std::mt19937 rng;
   typename fj_t<i_t, f_t>::climber_data_t::view_t view;
   // Host copies of device data as struct members
   ins_vector<f_t> h_reverse_coefficients;
@@ -98,9 +100,6 @@ struct fj_cpu_climber_t {
   // precompute the binary variables per row for bin 2opt
   ins_vector<i_t> h_binrow_offsets;
   ins_vector<i_t> h_binrow_vars;
-  // Implications recorded by probing: for a probed variable set to a value, the bounds propagation
-  // implies on everything else. The 2-opt reads it to learn which value a partner has to take. Null
-  // when probing was disabled or had not run yet when this climber was created.
   const probing_cache_t<i_t, f_t>* probing_cache{nullptr};
   // Probing cache keys are pre-trivial-presolve variable ids; these translate to and from them
   ins_vector<i_t> h_original_ids;

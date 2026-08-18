@@ -649,8 +649,6 @@ static inline std::pair<fj_staged_score_t, f_t> compute_score(fj_cpu_climber_t<i
   return std::make_pair(score, base_feas_sum);
 }
 
-// A binary 2-opt move: two flips applied as one compound move, see find_two_opt_move. `age` is the
-// most recent tabu touch of either endpoint.
 struct two_opt_move_t {
   fj_move_t first{-1, 0};
   fj_move_t second{-1, 0};
@@ -670,11 +668,6 @@ static bool two_opt_cand_better(const two_opt_move_t& a, const two_opt_move_t& b
 
 /**
  * @brief Score the combined effect of flipping two binaries at once.
- *
- * Scoring each flip on its own and summing would double count the rows both variables appear in,
- * and would miss the case the compound move exists for: the two contributions cancelling out in a
- * shared row. So the per-row LHS deltas of both flips are gathered, entries of the same row merged,
- * and every touched row scored once from its aggregated delta.
  */
 template <typename i_t, typename f_t>
 static fj_staged_score_t two_opt_compute_pair_score(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
@@ -877,16 +870,16 @@ static two_opt_move_t find_two_opt_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   const bool partner_source_exists =
     (fj_cpu.probing_cache != nullptr && !fj_cpu.probing_cache->probing_cache.empty()) ||
     fj_cpu.h_related_variables_offsets.size() ==
-      static_cast<size_t>(fj_cpu.view.pb.n_variables) + 1;
+      fj_cpu.view.pb.n_variables + 1;
+
   if (fj_cpu.n_binary_vars == 0 || !partner_source_exists) return best;
 
-  std::mt19937 rng(fj_cpu.settings.seed + fj_cpu.iterations);
   auto& first_vars = fj_cpu.two_opt_first_vars;
   first_vars.clear();
 
   if (!fj_cpu.violated_constraints.empty()) {
     cuopt_assert(fj_cpu.h_binrow_offsets.size() ==
-                   static_cast<size_t>(fj_cpu.view.pb.n_constraints) + 1,
+                   fj_cpu.view.pb.n_constraints + 1,
                  "binary row table missing");
     auto& target_cstrs = fj_cpu.two_opt_target_cstrs;
     target_cstrs.clear();
@@ -894,7 +887,7 @@ static two_opt_move_t find_two_opt_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
                 fj_cpu.violated_constraints.end(),
                 std::back_inserter(target_cstrs),
                 max_target_rows,
-                rng);
+                fj_cpu.rng);
     for (i_t cstr_idx : target_cstrs) {
       const i_t bin_begin = fj_cpu.h_binrow_offsets[cstr_idx];
       const i_t bin_end   = fj_cpu.h_binrow_offsets[cstr_idx + 1];
@@ -907,7 +900,7 @@ static two_opt_move_t find_two_opt_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
                 fj_cpu.h_objective_vars.underlying().end(),
                 std::back_inserter(first_vars),
                 max_obj_starts,
-                rng);
+                fj_cpu.rng);
     // Nothing is violated, so a pair can only help by improving the objective: keep the flips that
     // move it down and let the pair scoring pay for the feasibility damage.
     first_vars.erase(std::remove_if(first_vars.begin(),
@@ -920,10 +913,11 @@ static two_opt_move_t find_two_opt_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
                                     }),
                      first_vars.end());
   }
-  std::shuffle(first_vars.begin(), first_vars.end(), rng);
+  std::shuffle(first_vars.begin(), first_vars.end(), fj_cpu.rng);
 
   const i_t nnz_at_entry = fj_cpu.nnz_processed_window;
   size_t pairs_scored    = 0;
+  // find a (first, second) pair for the 2opt
   for (i_t first : first_vars) {
     if (pairs_scored >= max_pairs) break;
     if (fj_cpu.nnz_processed_window - nnz_at_entry > fj_cpu.nnz_samples) break;
@@ -932,21 +926,20 @@ static two_opt_move_t find_two_opt_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
     const f_t first_delta = round(1 - 2 * first_val);
     if (tabu_check<i_t, f_t>(fj_cpu, first, first_delta, true)) continue;
     if (!check_variable_within_bounds<i_t, f_t>(fj_cpu, first, first_val + first_delta)) continue;
-    const i_t first_inc   = fj_cpu.h_tabu_lastinc[first];
-    const i_t first_dec   = fj_cpu.h_tabu_lastdec[first];
-    const i_t first_touch = std::max(first_inc, first_dec);
+    const i_t first_touch = std::max(fj_cpu.h_tabu_lastinc[first], fj_cpu.h_tabu_lastdec[first]);
 
+    // look for potential other binary vars to flip alongside the first var
     two_opt_collect_partners(fj_cpu, first, first_delta, max_partners_per_var);
     for (const auto& [second, second_delta] : fj_cpu.two_opt_partners) {
-      const i_t second_inc = fj_cpu.h_tabu_lastinc[second];
-      const i_t second_dec = fj_cpu.h_tabu_lastdec[second];
+      const i_t second_touch = std::max(fj_cpu.h_tabu_lastinc[second], fj_cpu.h_tabu_lastdec[second]);
       two_opt_move_t cand;
       cand.first  = {first, first_delta};
       cand.second = {second, second_delta};
       cand.score = two_opt_compute_pair_score(fj_cpu, first, first_delta, second, second_delta);
-      cand.age = std::max(first_touch, std::max(second_inc, second_dec));
+      cand.age = std::max(first_touch, second_touch);
       if (two_opt_cand_better(cand, best)) { best = cand; }
       ++pairs_scored;
+
       if (pairs_scored >= max_pairs) return best;
       if (fj_cpu.nnz_processed_window - nnz_at_entry > fj_cpu.nnz_samples) return best;
     }
@@ -1335,7 +1328,7 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move_viol(
               fj_cpu.violated_constraints.end(),
               std::back_inserter(sampled_cstrs),
               sample_size,
-              std::mt19937(fj_cpu.settings.seed + fj_cpu.iterations));
+              fj_cpu.rng);
 
   return find_mtm_move<i_t, f_t, MTMMoveType::FJ_MTM_VIOLATED>(fj_cpu, sampled_cstrs, localmin);
 }
@@ -1353,7 +1346,7 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move_sat(
               fj_cpu.satisfied_constraints.end(),
               std::back_inserter(sampled_cstrs),
               sample_size,
-              std::mt19937(fj_cpu.settings.seed + fj_cpu.iterations));
+              fj_cpu.rng);
 
   return find_mtm_move<i_t, f_t, MTMMoveType::FJ_MTM_SATISFIED>(fj_cpu, sampled_cstrs);
 }
@@ -1521,7 +1514,7 @@ static void perturb(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
               fj_cpu.h_objective_vars.end(),
               std::back_inserter(sampled_vars),
               2,
-              std::mt19937(fj_cpu.settings.seed + fj_cpu.iterations));
+              fj_cpu.rng);
   raft::random::PCGenerator rng(fj_cpu.settings.seed + fj_cpu.iterations, 0, 0);
 
   for (auto var_idx : sampled_vars) {
@@ -1721,6 +1714,7 @@ void finalize_fj_cpu_host_initialization(
     }
   }
 
+  // precompute the binvars-pre-row tables for 2opt
   fj_cpu.h_binrow_offsets.resize(n_constraints + 1);
   fj_cpu.h_binrow_vars.clear();
   for (i_t cstr_idx = 0; cstr_idx < n_constraints; ++cstr_idx) {
@@ -1939,6 +1933,8 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
   auto time_limit = std::chrono::milliseconds(static_cast<i_t>(std::floor(in_time_limit * 1000.0)));
   auto loop_time_start = std::chrono::high_resolution_clock::now();
 
+  fj_cpu->rng.seed(fj_cpu->settings.seed);
+
   // Initialize feature tracking
   fj_cpu->last_feature_log_time = loop_start;
   fj_cpu->prev_best_objective   = fj_cpu->h_best_objective;
@@ -2017,13 +2013,10 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
         for (size_t i = 0; i < fj_cpu->cached_mtm_moves.size(); i++)
           fj_cpu->cached_mtm_moves[i].first = 0;
       }
-      // A simultaneous flip of two binaries escapes minima that no single flip can. Not attempted
-      // right after a perturbation, whose whole point is to leave the current region.
+
       two_opt_move_t two_opt_move;
       if (!should_perturb) two_opt_move = find_two_opt_move(*fj_cpu);
       if (two_opt_move.score > fj_staged_score_t::zero()) {
-        // Applied as two moves; they were scored jointly, so the intermediate state after the first
-        // one may well be worse than the local minimum we came from
         apply_move(*fj_cpu, two_opt_move.first.var_idx, two_opt_move.first.value, true);
         apply_move(*fj_cpu, two_opt_move.second.var_idx, two_opt_move.second.value, true);
         fj_cpu->n_mtm_viol_moves_window += 2;
