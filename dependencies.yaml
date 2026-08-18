@@ -52,6 +52,11 @@ files:
       - cuda
       - cuda_version
       - depends_on_libcuopt
+      # The JNI layer compiles against libcuopt's public headers, which include
+      # raft, rmm and rapids_logger headers transitively.
+      - depends_on_libraft_headers
+      - depends_on_librmm
+      - depends_on_rapids_logger
       - java
   test_python:
     output: none
