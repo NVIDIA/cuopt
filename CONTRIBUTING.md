@@ -216,8 +216,8 @@ To build all libraries and tests, simply run
 
 - **Note**: if Cython files (`*.pyx` or `*.pxd`) have changed, the Python build must be rerun.
 - **Note**: the `cuopt` wheel is built against the CPython Limited API (abi3), so Cython code must
-  avoid CPython APIs outside it. Using one surfaces as a compile error under `-DPy_LIMITED_API`,
-  not at runtime.
+  use only APIs the Limited API exposes. An unsupported API fails to compile under
+  `-DPy_LIMITED_API` rather than failing at runtime.
 
 To run the C++ tests, run
 

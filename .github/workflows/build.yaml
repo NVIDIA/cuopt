@@ -157,8 +157,10 @@ jobs:
       script: ci/build_wheel_cuopt.sh
       package-name: cuopt
       package-type: python
-      # abi3 wheel: build one per CUDA x ARCH, using the minimum supported Python
-      matrix_filter: group_by({CUDA_VER, ARCH}) | map(min_by(.PY_VER | split(".") | map(tonumber)))
+      # abi3 wheel: build one per ARCH + CUDA major, using the minimum supported Python.
+      # Grouping on the CUDA major (not the full version) keeps one job per published
+      # artifact name, which only encodes the major.
+      matrix_filter: group_by([.ARCH, (.CUDA_VER|split(".")|map(tonumber)|.[0])]) | map(min_by((.PY_VER|split(".")|map(tonumber)), (.CUDA_VER|split(".")|map(-tonumber))))
   wheel-publish-cuopt:
     needs: wheel-build-cuopt
     permissions:
