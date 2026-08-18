@@ -288,8 +288,6 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
   raft::common::nvtx::range fun_scope("run_presolve");
   CUOPT_LOG_INFO("\nRunning cuOpt presolve");
   timer_t presolve_timer(time_limit);
-  // Presolve remaps variable ids, so a conflict graph from an earlier presolve of this problem no
-  // longer describes it. It is rebuilt at the end of this function.
   problem_ptr->clique_table.reset();
 
   auto term_crit = ls.constraint_prop.bounds_update.solve(*problem_ptr);

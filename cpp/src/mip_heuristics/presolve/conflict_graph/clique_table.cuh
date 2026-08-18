@@ -175,10 +175,7 @@ struct clique_table_t {
   clique_table_t& operator=(clique_table_t&&) = delete;
 
   std::unordered_set<i_t> get_adj_set_of_var(i_t var_idx) const;
-  // Yields the conflict partners of `literal`, also as literals, until `fn` returns false. A
-  // partner is yielded once per clique it shares with `literal`, so a caller that cannot tolerate
-  // repeats has to filter them. Nothing is materialized: a caller that wants only a few partners
-  // returns false early and pays for those only.
+  // Yields the conflict partners of literal, also as literals, until fn returns false
   template <typename callable_t>
   void for_each_conflict_partner(i_t literal, callable_t&& fn) const;
   i_t get_degree_of_var(i_t var_idx);

@@ -838,7 +838,7 @@ static two_opt_move_t find_two_opt_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   const size_t max_pairs       = params.two_opt_max_pairs;
 
   two_opt_move_t best;
-  // Climbers built from a host LP have neither partner source, so there is nothing to pair with
+
   const bool partner_source_exists =
     fj_cpu.clique_table != nullptr ||
     fj_cpu.h_related_variables_offsets.size() ==
