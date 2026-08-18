@@ -49,10 +49,21 @@ twine check \
 
 rapids-logger "validate packages with 'abi3audit'"
 
-# 'abi3audit' fails on wheels with DSOs that lack an ABI tag (e.g. 'lib*' wheels).
-# Filtering by '*abi*' avoids those.
-find \
-    "${wheel_dir_relative_path}" \
-    -type f \
-    -name '*abi*' \
-    -exec abi3audit --strict --summary --verbose '{}' \+
+# 'abi3audit' fails on wheels with DSOs that lack an ABI tag, so only the abi3 wheels
+# are audited. Of the packages sharing this script, only 'cuopt' builds one; the rest
+# are 'py3-none'.
+abi3_wheels=()
+while IFS= read -r -d '' wheel; do
+    abi3_wheels+=("${wheel}")
+done < <(find "${wheel_dir_relative_path}" -type f -name '*-abi3-*.whl' -print0)
+
+# Guard against 'cuopt' silently losing its abi3 tag: without this, dropping
+# 'wheel.py-api' would skip the audit entirely and leave CI green.
+if [[ "${package_dir}" == "python/cuopt" ]] && [[ "${#abi3_wheels[@]}" -eq 0 ]]; then
+    rapids-echo-stderr "expected an abi3 wheel in '${wheel_dir_relative_path}', found none"
+    exit 1
+fi
+
+if [[ "${#abi3_wheels[@]}" -gt 0 ]]; then
+    abi3audit --strict --summary --verbose "${abi3_wheels[@]}"
+fi
