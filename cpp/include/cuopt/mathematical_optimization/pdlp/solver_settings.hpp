@@ -304,6 +304,9 @@ class pdlp_solver_settings_t {
   bool eliminate_dense_columns{true};
   pdlp_precision_t pdlp_precision{pdlp_precision_t::DefaultPrecision};
   bool barrier_iterative_refinement{true};
+  // true to use a single cuSPARSE SpMV over the unperturbed augmented CSR for the barrier
+  // solver's IR matvec, instead of the matrix-free path. Experimental; default off.
+  bool barrier_csr_ir_matvec{false};
   i_t barrier_soc_threshold{100};
   f_t barrier_step_scale{0.9};
   bool save_best_primal_so_far{false};
