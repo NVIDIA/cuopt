@@ -120,9 +120,12 @@ Solution values are read from the model rather than as bulk arrays:
 ``Constraint.getDualValue`` and ``Constraint.getSlack`` for constraints. They
 are populated on the ``Problem`` after each solve.
 
-LP solutions additionally expose ``getLPStats``. ``LPStats`` contains primal
-residual, dual residual, gap, iteration count, and the ``SolverMethod`` used.
 MIP-only solution fields are documented in :doc:`../mip/mip-api`.
+
+Solver statistics such as residuals, iteration counts and violation magnitudes
+are not exposed by the Java API. They are available through the C API as scalar
+solution attributes; see ``cuOptGetSolutionIntAttribute`` and
+``cuOptGetSolutionFloatAttribute``.
 
 MPS and Errors
 --------------

@@ -130,15 +130,13 @@ final class ProblemIntegrationTest {
           "objective value");
     }
 
+    // Dual values and reduced costs belong to an LP solve and are rejected for a MIP.
     if (testCase.hasIntegerVariables()) {
-      assertDoesNotThrow(solution::getMIPStats);
       assertThrows(IllegalStateException.class, solution::getDualSolution);
-      assertThrows(IllegalStateException.class, solution::getLPStats);
+      assertThrows(IllegalStateException.class, solution::getReducedCost);
     } else {
       assertDoesNotThrow(solution::getDualSolution);
       assertDoesNotThrow(solution::getReducedCost);
-      assertDoesNotThrow(solution::getLPStats);
-      assertThrows(IllegalStateException.class, solution::getMIPStats);
     }
   }
 

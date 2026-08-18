@@ -101,7 +101,6 @@ instead of operator overloading.
         Solution solution = problem.solve(settings)) {
      System.out.println(solution.getTerminationStatus());
      System.out.println(solution.getPrimalObjective());
-     System.out.println(solution.getLPStats().getSolvedBy());
    }
 
 MILP Example
@@ -117,7 +116,7 @@ MILP Example
             .setSetting(CuOptConstants.CUOPT_TIME_LIMIT, 10.0);
         Solution solution = problem.solve(settings)) {
      System.out.println(solution.getMIPGap());
-     System.out.println(solution.getMIPStats().getNumNodes());
+     System.out.println(solution.getSolutionBound());
    }
 
 QP Example

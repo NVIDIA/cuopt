@@ -57,8 +57,6 @@ final class NativeIntegrationTest {
       assertEquals(1.0, solution.getPrimalObjective(), 1e-3);
       double[] primal = solution.getPrimalSolution();
       assertEquals(1.0, primal[0] + primal[1], 1e-3);
-      assertDoesNotThrow(solution::getLPStats);
-      assertThrows(IllegalStateException.class, solution::getMIPStats);
     }
   }
 
@@ -92,7 +90,6 @@ final class NativeIntegrationTest {
       assertTrue(solution.isMIP());
       assertEquals(TerminationStatus.OPTIMAL, solution.getTerminationStatus());
       assertEquals(1.0, x.getValue(), 1e-6);
-      assertDoesNotThrow(solution::getMIPStats);
       assertThrows(IllegalStateException.class, solution::getDualSolution);
       solution.close();
       solution.close();

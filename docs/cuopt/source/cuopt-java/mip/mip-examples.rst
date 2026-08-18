@@ -33,7 +33,6 @@ Simple MILP
        System.out.println("Objective = " + solution.getPrimalObjective());
        System.out.println("MIP gap = " + solution.getMIPGap());
        System.out.println("Bound = " + solution.getSolutionBound());
-       System.out.println("Nodes = " + solution.getMIPStats().getNumNodes());
      }
    }
 

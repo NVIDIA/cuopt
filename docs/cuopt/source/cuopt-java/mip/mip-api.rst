@@ -95,16 +95,13 @@ For a MIP ``Solution``:
 
 * ``getPrimalObjective`` returns the incumbent objective value;
 * ``getMIPGap`` returns the current relative MIP gap;
-* ``getSolutionBound`` returns the best bound reported by the solver;
-* ``getMIPStats`` returns ``MIPStats``; and
+* ``getSolutionBound`` returns the best bound reported by the solver; and
 * ``getTerminationStatus``, ``getErrorStatus``, and ``getErrorMessage``
   describe the solve.
 
 Incumbent values are read from the model: ``Variable.getValue`` after the solve.
 
-``MIPStats`` contains presolve time, maximum constraint violation, maximum
-integer violation, maximum variable-bound violation, node count, and simplex
-iteration count. LP-only accessors such as ``getLPStats`` raise
+LP-only accessors such as ``getDualSolution`` and ``getReducedCost`` raise
 ``IllegalStateException`` for a MIP result.
 
 Inspecting a MIP

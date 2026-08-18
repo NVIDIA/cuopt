@@ -67,14 +67,13 @@ Quadratic objectives combine quadratic, linear, and constant terms:
        System.out.println("x = " + x.getValue());
        System.out.println("y = " + y.getValue());
        System.out.println("Objective = " + solution.getPrimalObjective());
-       System.out.println("LP stats gap = " + solution.getLPStats().getGap());
      }
    }
 
-For QP solutions, ``getDualObjective`` and ``getLPStats`` are available when the
-solver returns the corresponding values, and variable and constraint values are
-read from the model through ``Variable.getValue``, ``Variable.getReducedCost``,
-and ``Constraint.getDualValue``.
+For QP solutions, ``getDualObjective`` is available when the solver returns it,
+and variable and constraint values are read from the model through
+``Variable.getValue``, ``Variable.getReducedCost``, and
+``Constraint.getDualValue``.
 
 Quadratic Constraints
 ---------------------
@@ -120,17 +119,3 @@ Reading and Writing MPS/QPS
 
 Parsing failures are reported as ``CuOptException`` with the cuOpt status code
 available from ``getStatusCode``.
-
-Inspecting Solutions
---------------------
-
-LP solutions expose residuals and solver metadata through ``LPStats``:
-
-.. code-block:: java
-
-   try (SolverSettings settings = new SolverSettings().setMethod(SolverMethod.PDLP);
-        Solution solution = problem.solve(settings)) {
-     LPStats stats = solution.getLPStats();
-     System.out.println(stats.getNumIterations());
-     System.out.println(stats.getPrimalResidual());
-   }

@@ -103,16 +103,6 @@ public final class Solution implements AutoCloseable {
     return NativeCuOpt.getSolutionBound(handle());
   }
 
-  public LPStats getLPStats() {
-    requireLP("getLPStats");
-    return new LPStats(NativeCuOpt.getLPStats(handle()));
-  }
-
-  public MIPStats getMIPStats() {
-    requireMIP("getMIPStats");
-    return new MIPStats(NativeCuOpt.getMIPStats(handle()));
-  }
-
   @Override
   public void close() {
     cleanable.clean();

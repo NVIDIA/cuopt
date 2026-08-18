@@ -102,6 +102,4 @@ final class NativeCuOpt {
   static native double getSolveTime(long handle);
   static native double getMIPGap(long handle);
   static native double getSolutionBound(long handle);
-  static native double[] getLPStats(long handle);
-  static native double[] getMIPStats(long handle);
 }
