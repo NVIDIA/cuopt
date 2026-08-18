@@ -206,7 +206,7 @@ std::pair<f_t, f_t> feas_score_constraint(const typename fj_t<i_t, f_t>::climber
       base_feas += (i_t)(cstr_weight * fj.settings->parameters.excess_improvement_weight);
     }
     // simple worsening
-    else if (!old_sat && !new_sat && old_lhs <= new_lhs) {
+    else if (!old_sat && !new_sat && old_lhs < new_lhs) {
       cuopt_assert(old_viol && new_viol, "");
       base_feas -= (i_t)(cstr_weight * fj.settings->parameters.excess_improvement_weight);
     }
@@ -664,9 +664,8 @@ struct two_opt_move_t {
   }
 };
 
-/**
- * @brief Score the combined effect of flipping two binaries at once.
- */
+
+// returns the combined score of a joint 2opt move
 template <typename i_t, typename f_t>
 static fj_staged_score_t two_opt_compute_pair_score(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
                                                     i_t first,
@@ -676,7 +675,8 @@ static fj_staged_score_t two_opt_compute_pair_score(fj_cpu_climber_t<i_t, f_t>& 
 {
   auto& row_deltas = fj_cpu.two_opt_row_deltas;
   row_deltas.clear();
-  auto collect = [&](i_t var_idx, f_t delta) {
+  const fj_move_t endpoints[2] = {{first, first_delta}, {second, second_delta}};
+  for (const auto& [var_idx, delta] : endpoints) {
     const auto [offset_begin, offset_end] = reverse_range_for_var<i_t, f_t>(fj_cpu, var_idx);
     fj_cpu.nnz_processed_window += offset_end - offset_begin;
     for (i_t i = offset_begin; i < offset_end; ++i) {
@@ -684,9 +684,7 @@ static fj_staged_score_t two_opt_compute_pair_score(fj_cpu_climber_t<i_t, f_t>& 
       const f_t coeff    = fj_cpu.h_reverse_coefficients[i];
       row_deltas.emplace_back(cstr_idx, coeff * delta);
     }
-  };
-  collect(first, first_delta);
-  collect(second, second_delta);
+  }
   // Brings the entries of a shared row next to each other
   std::sort(row_deltas.begin(), row_deltas.end());
 
@@ -736,6 +734,24 @@ static fj_staged_score_t two_opt_compute_pair_score(fj_cpu_climber_t<i_t, f_t>& 
   return score;
 }
 
+template <typename i_t, typename f_t>
+static void two_opt_add_partner(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
+                                i_t first,
+                                i_t var_idx,
+                                f_t target)
+{
+  if (var_idx == first) return;
+  const f_t val = fj_cpu.h_assignment[var_idx].get();
+  // A partner between two integers has no opposite value to swap to
+  if (!fj_cpu.view.pb.is_integer(val)) return;
+  const f_t delta = target - val;
+  // Already at the value we would move it to, so there is no compound move to make
+  if (fabs(delta) < 0.5) return;
+  if (!check_variable_within_bounds<i_t, f_t>(fj_cpu, var_idx, target)) return;
+  if (tabu_check<i_t, f_t>(fj_cpu, var_idx, delta, true)) return;
+  fj_cpu.two_opt_partners.emplace_back(var_idx, delta);
+}
+
 /**
  * @brief Fill fj_cpu.two_opt_partners with candidates to flip together with `first`.
  *
@@ -762,19 +778,6 @@ static void two_opt_collect_partners(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
                  fj_cpu.h_reverse_original_ids.size() >= fj_cpu.h_original_ids.size(),
                "reverse original id map smaller than the problem");
 
-  auto add_partner = [&](i_t var_idx, f_t target) {
-    if (var_idx == first) return;
-    const f_t val = fj_cpu.h_assignment[var_idx].get();
-    // A partner between two integers has no opposite value to swap to
-    if (!fj_cpu.view.pb.is_integer(val)) return;
-    const f_t delta = target - val;
-    // Already at the value we would move it to, so there is no compound move to make
-    if (fabs(delta) < 0.5) return;
-    if (!check_variable_within_bounds<i_t, f_t>(fj_cpu, var_idx, target)) return;
-    if (tabu_check<i_t, f_t>(fj_cpu, var_idx, delta, true)) return;
-    partners.emplace_back(var_idx, delta);
-  };
-
   if (fj_cpu.probing_cache != nullptr) {
     const auto& cache       = fj_cpu.probing_cache->probing_cache;
     const auto cached_probe = cache.find(fj_cpu.h_original_ids[first]);
@@ -797,7 +800,7 @@ static void two_opt_collect_partners(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
           cuopt_assert(var_idx < n_variables, "implied variable out of range");
           if (!fj_cpu.h_is_binary_variable[var_idx]) { continue; }
           if (!fj_cpu.view.pb.integer_equal(implied.lb, implied.ub)) { continue; }
-          add_partner(var_idx, round(implied.lb));
+          two_opt_add_partner<i_t, f_t>(fj_cpu, first, var_idx, round(implied.lb));
         }
       }
     }
@@ -812,23 +815,15 @@ static void two_opt_collect_partners(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
   const i_t related_end   = related_offsets[first + 1];
   for (i_t i = related_begin; i < related_end && partners.size() < max_partners; ++i) {
     const i_t var_idx = related[i];
-    if (fj_cpu.h_is_binary_variable[var_idx]) { add_partner(var_idx, swap_target); }
+    if (fj_cpu.h_is_binary_variable[var_idx]) {
+      two_opt_add_partner<i_t, f_t>(fj_cpu, first, var_idx, swap_target);
+    }
   }
 }
 
-/**
- * @brief Look for an improving simultaneous flip of two binaries (binary 2-opt).
- *
- * At a local minimum no single flip improves the score, but a pair often does: in set partitioning
- * style rows the only way out is to turn one variable off and another on in the same step. The
- * neighbourhood is sampled rather than enumerated, which would be quadratic. First variables come
- * from a few violated rows, or from objective variables whose flip improves the objective when
- * nothing is violated; partners come from two_opt_collect_partners. The search stops at
- * two_opt_max_pairs candidates or once it has touched nnz_samples nonzeros, whichever comes first:
- * the pair count bounds the neighbourhood, the nonzero count bounds the cost, which here is
- * proportional to the degrees of both endpoints. Returns an invalid-scored move when no pair was
- * worth applying.
- */
+// Look for binary 2opt moves at a local minimum. by definition no 1opt move can improve, but combined moves may
+// especially in the case of set partitioning constraints / cliques. Use information from the probing cache
+// to find potential good 2opt moves.
 template <typename i_t, typename f_t>
 static two_opt_move_t find_two_opt_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 {
