@@ -340,21 +340,24 @@ class Variable:
             case _:
                 raise ValueError("Unsupported operation")
 
-    def __str__(self):
+    def _display_name(self):
         if self.VariableName:
             return self.VariableName
         if self.index >= 0:
+            # Same name an unnamed variable gets on export.
             return f"C{self.index}"
-        # Not yet added to a problem: no name and no index to show.
-        return f"V{id(self)}"
+        return ""
+
+    def __str__(self):
+        return self._display_name() or repr(self)
 
     def __repr__(self):
         vtype = self.VariableType
         if isinstance(vtype, (bytes, bytearray)):
-            # The MPS data model yields variable types as byte codes.
+            # VariableType is not normalized, see #1736.
             vtype = vtype.decode()
         return (
-            f"<cuopt.Variable '{self}' (index={self.index}), "
+            f"<cuopt.Variable {self._display_name()!r} (index={self.index}), "
             f"type={VType(vtype).name}, bounds=[{self.LB}, {self.UB}], "
             f"value={self.Value}>"
         )
@@ -366,6 +369,11 @@ class Variable:
 # readable in a REPL or notebook instead of flooding the output. Set to
 # ``None`` to disable truncation entirely.
 _MAX_DISPLAY_TERMS = 10
+
+
+def _same_variable(var1, var2):
+    """Identity/index comparison; Variable.__eq__ builds a Constraint."""
+    return var1 is var2 or (var1.index >= 0 and var1.index == var2.index)
 
 
 class _ExprBuilder:
@@ -408,7 +416,7 @@ class _ExprBuilder:
             return
         v1_str = str(var1)
         v2_str = str(var2)
-        if v1_str == v2_str:
+        if _same_variable(var1, var2):
             term_str = f"{v1_str}^2"
         elif v1_str <= v2_str:
             term_str = f"{v1_str} * {v2_str}"

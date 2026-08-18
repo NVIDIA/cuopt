@@ -20,6 +20,7 @@ from cuopt.linear_programming.problem import (
     CType,
     LinearExpression,
     Problem,
+    Variable,
     VType,
     sense,
     QuadraticExpression,
@@ -905,6 +906,8 @@ def test_str_and_repr():
     assert str(y) == "y"
     # __str__: without name falls back to C{index}
     assert str(z) == "C2"
+    # __str__: outside a problem there is neither name nor index
+    assert str(Variable()).startswith("<cuopt.Variable '' (index=-1), ")
 
     # __repr__: detailed summary
     r = repr(x)
@@ -953,6 +956,13 @@ def test_str_and_repr():
     # Empty quadratic expression
     assert str(QuadraticExpression()) == "0.0"
 
+    # __str__: two distinct variables sharing a name are not a square
+    dup_prob = Problem()
+    x_a = dup_prob.addVariable(name="x")
+    x_b = dup_prob.addVariable(name="x")
+    assert str(x_a * x_b) == "x * x"
+    assert str(x_a * x_a) == "x^2"
+
     # __repr__
     assert repr(qexpr1) == "<cuopt.QuadraticExpression: x^2>"
 
@@ -989,6 +999,10 @@ def test_str_and_repr():
     c_upd = prob_upd.addConstraint(2 * a + 3 * b <= 10, name="c_upd")
     prob_upd.updateConstraint(c_upd, coeffs=[(a, 7.0)], rhs=20.0)
     assert str(c_upd) == "7.0 * a + 3.0 * b <= 20.0"
+    # __str__: variable introduced by updateConstraint
+    c_new = prob_upd.addConstraint(2 * a <= 10, name="c_new")
+    prob_upd.updateConstraint(c_new, coeffs=[(b, 4.0)])
+    assert str(c_new) == "2.0 * a + 4.0 * b <= 10.0"
 
     # __repr__
     assert repr(c1) == "<cuopt.Constraint 'c1': 2.0 * x + 3.0 * y <= 10.0>"
@@ -1020,60 +1034,49 @@ def test_str_and_repr():
     assert "Status:" not in s
     assert "Objective value:" not in s
 
-    # __str__: after solve includes status and objective value
-    settings = SolverSettings()
-    settings.set_parameter("time_limit", 5)
-    prob.solve(settings)
-    s = str(prob)
-    assert "Status: Optimal" in s
-    assert "Objective value:" in s
-
     # Unnamed problem
     empty_prob = Problem()
     assert "Problem: <unnamed>" in str(empty_prob)
     assert "<cuopt.Problem '<unnamed>'" in repr(empty_prob)
 
 
+def test_problem_str_after_solve():
+    """Problem.__str__ reports status and objective value once solved."""
+    prob = Problem("solved")
+    x = prob.addVariable(lb=0.0, ub=1.0, name="x")
+    prob.setObjective(x, sense=MINIMIZE)
+    settings = SolverSettings()
+    settings.set_parameter("time_limit", 5)
+    prob.solve(settings)
+    s = str(prob)
+    assert "Status: Optimal" in s
+    assert f"Objective value: {prob.ObjValue}" in s
+
+
 def test_str_truncation_large_expression():
-    """Large expressions truncate so a model with thousands of terms stays
-    readable in a REPL or notebook instead of flooding the output."""
-    from cuopt.linear_programming.problem import _MAX_DISPLAY_TERMS
+    """Expressions past the display cap end in a "more terms" marker."""
+    prob = Problem()
+    xs = [prob.addVariable(name=f"x{i}") for i in range(12)]
 
-    cap = _MAX_DISPLAY_TERMS
-    n = cap * 3  # comfortably over the cap
+    expr = xs[0] + xs[1]
+    for x in xs[2:]:
+        expr = expr + x
+    assert str(expr) == (
+        "x0 + x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9 + ... (2 more terms)"
+    )
+    assert repr(expr) == f"<cuopt.LinearExpression: {expr}>"
 
-    prob = Problem("trunc_test")
-    xs = [prob.addVariable(name=f"x{i}") for i in range(n)]
+    at_cap = xs[0] + xs[1]
+    for x in xs[2:10]:
+        at_cap = at_cap + x
+    assert str(at_cap) == "x0 + x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9"
+    assert str(at_cap + xs[10]).endswith("+ x9 + ... (1 more term)")
 
-    # === LinearExpression: head is rendered, tail is summarized ===
-    expr = 1 * xs[0]
-    for i in range(1, n):
-        expr = expr + (i + 1) * xs[i]
-    s = str(expr)
-    # Exactly `cap` terms rendered (all positive -> all " + " separators),
-    # plus the trailing marker joined with one more " + ".
-    assert s.count(" + ") == cap
-    assert s.startswith("x0 + ")
-    assert s.endswith(f"... ({n - cap} more terms)")
-    # repr wraps the same (truncated) string.
-    assert repr(expr) == f"<cuopt.LinearExpression: {s}>"
-
-    # === Exactly at the cap: no truncation ===
-    at_cap = 1 * xs[0]
-    for i in range(1, cap):
-        at_cap = at_cap + xs[i]
-    assert "more terms" not in str(at_cap)
-
-    # === One over the cap: singular "term" wording ===
-    over = at_cap + xs[cap]
-    assert str(over).endswith("... (1 more term)")
-
-    # === QuadraticExpression also truncates ===
     qexpr = xs[0] * xs[0]
-    for i in range(1, n):
-        qexpr = qexpr + xs[i] * xs[i]
-    qs = str(qexpr)
-    assert qs.count("^2") == cap
-    assert qs.startswith("x0^2 + ")
-    assert qs.endswith(f"... ({n - cap} more terms)")
-    assert repr(qexpr) == f"<cuopt.QuadraticExpression: {qs}>"
+    for x in xs[1:]:
+        qexpr = qexpr + x * x
+    assert str(qexpr) == (
+        "x0^2 + x1^2 + x2^2 + x3^2 + x4^2 + x5^2 + x6^2 + x7^2 + x8^2 + x9^2"
+        " + ... (2 more terms)"
+    )
+    assert repr(qexpr) == f"<cuopt.QuadraticExpression: {qexpr}>"
