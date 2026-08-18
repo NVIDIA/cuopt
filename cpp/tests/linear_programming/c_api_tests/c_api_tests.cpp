@@ -1302,11 +1302,11 @@ TEST(c_api, solution_accessors_report_absent_values)
   EXPECT_EQ(reduced[0], sentinel);
 }
 
-TEST(c_api, solution_accessors_accept_a_problem_with_no_constraints)
+TEST(c_api, solution_accessors_on_a_problem_with_no_constraints)
 {
-  // A box-constrained LP with no constraints solves to optimality and its dual vector is
-  // legitimately empty. Availability must not be inferred from that emptiness, or this valid
-  // result would be reported as missing.
+  // A box-constrained LP with no constraints solves to optimality. Its primal and reduced-cost
+  // vectors are populated; its dual vector is empty because there are no constraints to have
+  // duals for, and asking for it reports CUOPT_INVALID_ARGUMENT.
   cuopt_int_t row_offsets[]     = {0};
   cuopt_int_t column_indices[]  = {0};
   cuopt_float_t matrix_values[] = {0.0};
@@ -1364,8 +1364,8 @@ TEST(c_api, solution_accessors_accept_a_problem_with_no_constraints)
   EXPECT_EQ(cuOptGetObjectiveValue(solution, &objective_value), CUOPT_SUCCESS);
   EXPECT_NEAR(objective_value, 0.0, 1e-6);
 
-  // No constraints, so there is nothing to copy, but the call still succeeds and must not
-  // write past the zero elements it has.
-  EXPECT_EQ(cuOptGetDualSolution(solution, dual), CUOPT_SUCCESS);
+  // No constraints means no dual vector to return. Reporting that as an absence is intended,
+  // so this assertion is what pins it down.
+  EXPECT_EQ(cuOptGetDualSolution(solution, dual), CUOPT_INVALID_ARGUMENT);
   EXPECT_EQ(dual[0], sentinel);
 }

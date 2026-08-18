@@ -1331,10 +1331,7 @@ cuopt_int_t cuOptGetDualSolution(cuOptSolution solution, cuopt_float_t* dual_sol
     static_cast<solution_and_stream_view_t*>(solution);
   try {
     const auto dual_host = solution_and_stream_view->get_solution()->get_dual_solution();
-    // Empty here is valid for a problem with no constraints, so the solve is what is tested.
-    if (solution_and_stream_view->get_solution()->get_solution_host().empty()) {
-      return CUOPT_INVALID_ARGUMENT;
-    }
+    if (dual_host.empty()) { return CUOPT_INVALID_ARGUMENT; }
     std::memcpy(dual_solution_ptr, dual_host.data(), dual_host.size() * sizeof(cuopt_float_t));
     return CUOPT_SUCCESS;
   } catch (const std::logic_error&) {
@@ -1366,10 +1363,7 @@ cuopt_int_t cuOptGetReducedCosts(cuOptSolution solution, cuopt_float_t* reduced_
     static_cast<solution_and_stream_view_t*>(solution);
   try {
     const auto reduced_cost_host = solution_and_stream_view->get_solution()->get_reduced_costs();
-    // As above: the solve is what is tested, not the length of this vector.
-    if (solution_and_stream_view->get_solution()->get_solution_host().empty()) {
-      return CUOPT_INVALID_ARGUMENT;
-    }
+    if (reduced_cost_host.empty()) { return CUOPT_INVALID_ARGUMENT; }
     std::memcpy(
       reduced_cost_ptr, reduced_cost_host.data(), reduced_cost_host.size() * sizeof(cuopt_float_t));
     return CUOPT_SUCCESS;
