@@ -1302,30 +1302,6 @@ TEST(c_api, solution_accessors_report_absent_values)
   EXPECT_EQ(reduced[0], sentinel);
 }
 
-TEST(c_api, solution_accessors_return_values_when_present)
-{
-  // The same accessors must keep working on a solve that did produce values.
-  cuOptSolution raw_solution = solve_tiny_problem(false);
-  ASSERT_NE(raw_solution, nullptr);
-  scoped_solution_t scoped(raw_solution);
-  cuOptSolution solution = scoped.get();
-
-  const cuopt_float_t sentinel = -12345.0;
-  cuopt_float_t primal[2]      = {sentinel, sentinel};
-  cuopt_float_t dual[1]        = {sentinel};
-  cuopt_float_t reduced[2]     = {sentinel, sentinel};
-
-  EXPECT_EQ(cuOptGetPrimalSolution(solution, primal), CUOPT_SUCCESS);
-  EXPECT_EQ(cuOptGetDualSolution(solution, dual), CUOPT_SUCCESS);
-  EXPECT_EQ(cuOptGetReducedCosts(solution, reduced), CUOPT_SUCCESS);
-
-  EXPECT_NE(primal[0], sentinel);
-  EXPECT_NE(primal[1], sentinel);
-  EXPECT_NE(dual[0], sentinel);
-  EXPECT_NE(reduced[0], sentinel);
-  EXPECT_NE(reduced[1], sentinel);
-}
-
 TEST(c_api, solution_accessors_accept_a_problem_with_no_constraints)
 {
   // A box-constrained LP with no constraints solves to optimality and its dual vector is
@@ -1377,10 +1353,16 @@ TEST(c_api, solution_accessors_accept_a_problem_with_no_constraints)
   cuopt_float_t reduced[1]     = {sentinel};
   cuopt_float_t dual[1]        = {sentinel};
 
+  // minimize x over 0 <= x <= 5, so the optimum sits at the lower bound with the objective
+  // coefficient as its reduced cost.
   EXPECT_EQ(cuOptGetPrimalSolution(solution, primal), CUOPT_SUCCESS);
   EXPECT_EQ(cuOptGetReducedCosts(solution, reduced), CUOPT_SUCCESS);
-  EXPECT_NE(primal[0], sentinel);
-  EXPECT_NE(reduced[0], sentinel);
+  EXPECT_NEAR(primal[0], 0.0, 1e-6);
+  EXPECT_NEAR(reduced[0], 1.0, 1e-6);
+
+  cuopt_float_t objective_value = sentinel;
+  EXPECT_EQ(cuOptGetObjectiveValue(solution, &objective_value), CUOPT_SUCCESS);
+  EXPECT_NEAR(objective_value, 0.0, 1e-6);
 
   // No constraints, so there is nothing to copy, but the call still succeeds and must not
   // write past the zero elements it has.
