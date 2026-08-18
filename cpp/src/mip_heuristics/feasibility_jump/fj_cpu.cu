@@ -654,17 +654,15 @@ struct two_opt_move_t {
   fj_move_t second{-1, 0};
   fj_staged_score_t score{fj_staged_score_t::invalid()};
   int age{std::numeric_limits<int>::max()};
-};
 
-// Deterministic total order over 2-opt candidates: higher score, then older last touch, then
-// smaller variable indices.
-static bool two_opt_cand_better(const two_opt_move_t& a, const two_opt_move_t& b)
-{
-  if (a.score != b.score) return a.score > b.score;
-  if (a.age != b.age) return a.age < b.age;
-  if (a.first.var_idx != b.first.var_idx) return a.first.var_idx < b.first.var_idx;
-  return a.second.var_idx < b.second.var_idx;
-}
+  bool operator>(const two_opt_move_t& other) const
+  {
+    if (score != other.score) return score > other.score;
+    if (age != other.age) return age < other.age;
+    if (first.var_idx != other.first.var_idx) return first.var_idx < other.first.var_idx;
+    return second.var_idx < other.second.var_idx;
+  }
+};
 
 /**
  * @brief Score the combined effect of flipping two binaries at once.
@@ -716,7 +714,6 @@ static fj_staged_score_t two_opt_compute_pair_score(fj_cpu_climber_t<i_t, f_t>& 
     bonus_robust_sum += cstr_bonus_robust;
   }
 
-  // Same staged score convention as the single variable path
   const f_t obj_diff =
     fj_cpu.h_obj_coeffs[first] * first_delta + fj_cpu.h_obj_coeffs[second] * second_delta;
   f_t base_obj = 0;
@@ -739,25 +736,6 @@ static fj_staged_score_t two_opt_compute_pair_score(fj_cpu_climber_t<i_t, f_t>& 
   return score;
 }
 
-// Translate a variable of this problem into the pre-trivial-presolve id the probing cache is keyed
-// by. An empty map means presolve removed nothing, so the ids coincide.
-template <typename i_t, typename f_t>
-static inline i_t two_opt_probed_id(const fj_cpu_climber_t<i_t, f_t>& fj_cpu, i_t var_idx)
-{
-  if (fj_cpu.h_original_ids.size() == 0) { return var_idx; }
-  cuopt_assert(var_idx < (i_t)fj_cpu.h_original_ids.size(), "variable has no original id");
-  return fj_cpu.h_original_ids[var_idx];
-}
-
-// Reverse of two_opt_probed_id. Returns -1 for a variable presolve has since removed.
-template <typename i_t, typename f_t>
-static inline i_t two_opt_problem_id(const fj_cpu_climber_t<i_t, f_t>& fj_cpu, i_t probed_id)
-{
-  if (fj_cpu.h_reverse_original_ids.size() == 0) { return probed_id; }
-  if (probed_id < 0 || probed_id >= (i_t)fj_cpu.h_reverse_original_ids.size()) { return -1; }
-  return fj_cpu.h_reverse_original_ids[probed_id];
-}
-
 /**
  * @brief Fill fj_cpu.two_opt_partners with candidates to flip together with `first`.
  *
@@ -777,6 +755,12 @@ static void two_opt_collect_partners(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
   const i_t n_variables = fj_cpu.view.pb.n_variables;
   partners.clear();
   cuopt_assert(fj_cpu.h_is_binary_variable[first], "2-opt is only defined for binaries");
+  cuopt_assert(fj_cpu.probing_cache == nullptr ||
+                 fj_cpu.h_original_ids.size() == (size_t)n_variables,
+               "original id map does not cover every variable");
+  cuopt_assert(fj_cpu.probing_cache == nullptr ||
+                 fj_cpu.h_reverse_original_ids.size() >= fj_cpu.h_original_ids.size(),
+               "reverse original id map smaller than the problem");
 
   auto add_partner = [&](i_t var_idx, f_t target) {
     if (var_idx == first) return;
@@ -792,14 +776,12 @@ static void two_opt_collect_partners(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
   };
 
   if (fj_cpu.probing_cache != nullptr) {
-    const auto& cache      = fj_cpu.probing_cache->probing_cache;
-    const auto cached_probe = cache.find(two_opt_probed_id<i_t, f_t>(fj_cpu, first));
+    const auto& cache       = fj_cpu.probing_cache->probing_cache;
+    const auto cached_probe = cache.find(fj_cpu.h_original_ids[first]);
     if (cached_probe != cache.end()) {
       const f_t new_val = fj_cpu.h_assignment[first].get() + first_delta;
-      // Pick the probed interval that covers the value `first` is moving to; the two entries per
-      // variable are the two values or intervals it was probed at.
-      i_t hit_interval = -1;
-      i_t unused_hit   = -1;
+      i_t hit_interval  = -1;
+      i_t unused_hit    = -1;
       for (i_t interval = 0; interval < 2; ++interval) {
         const auto& entry = cached_probe->second[interval];
         if (entry.var_to_cached_bound_map.empty()) { continue; }
@@ -809,13 +791,11 @@ static void two_opt_collect_partners(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
         const auto& implications = cached_probe->second[hit_interval].var_to_cached_bound_map;
         for (const auto& [probed_id, implied] : implications) {
           if (partners.size() >= max_partners) break;
-          const i_t var_idx = two_opt_problem_id<i_t, f_t>(fj_cpu, probed_id);
+          const i_t var_idx = fj_cpu.h_reverse_original_ids[probed_id];
           // -1 means presolve removed the variable after the probe recorded it
           if (var_idx < 0) { continue; }
           cuopt_assert(var_idx < n_variables, "implied variable out of range");
           if (!fj_cpu.h_is_binary_variable[var_idx]) { continue; }
-          // Only an implication that pins the partner names a value to move it to; a bound that
-          // still admits both says nothing about what the partner should do.
           if (!fj_cpu.view.pb.integer_equal(implied.lb, implied.ub)) { continue; }
           add_partner(var_idx, round(implied.lb));
         }
@@ -826,10 +806,7 @@ static void two_opt_collect_partners(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
 
   const auto& related         = fj_cpu.h_related_variables;
   const auto& related_offsets = fj_cpu.h_related_variables_offsets;
-  if (related_offsets.size() != static_cast<size_t>(n_variables) + 1) return;
-  // Row sharing carries no polarity, so take the value `first` is vacating: only a partner holding
-  // the opposite value then moves in the compensating direction, and one holding the same value is
-  // filtered out as a no-op. Same opposite-value rule as the GPU candidate build.
+  if (related_offsets.size() != (size_t)n_variables + 1) return;
   const f_t swap_target   = fj_cpu.h_assignment[first].get();
   const i_t related_begin = related_offsets[first];
   const i_t related_end   = related_offsets[first + 1];
@@ -856,8 +833,7 @@ template <typename i_t, typename f_t>
 static two_opt_move_t find_two_opt_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 {
   CPUFJ_NVTX_RANGE("CPUFJ::find_two_opt_move");
-  constexpr size_t max_obj_starts = 64;
-  // The GPU candidate table is indexed by pair, so it has no per-first-variable level to cap
+  constexpr size_t max_obj_starts       = 64;
   constexpr size_t max_partners_per_var = 16;
 
   const auto& params           = fj_cpu.settings.parameters;
@@ -869,7 +845,7 @@ static two_opt_move_t find_two_opt_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 
   const bool partner_source_exists =
     (fj_cpu.probing_cache != nullptr && !fj_cpu.probing_cache->probing_cache.empty()) ||
-    fj_cpu.h_related_variables_offsets.size() ==
+    (int64_t)fj_cpu.h_related_variables_offsets.size() ==
       fj_cpu.view.pb.n_variables + 1;
 
   if (fj_cpu.n_binary_vars == 0 || !partner_source_exists) return best;
@@ -877,6 +853,7 @@ static two_opt_move_t find_two_opt_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   auto& first_vars = fj_cpu.two_opt_first_vars;
   first_vars.clear();
 
+  // target binvars in violated constraints for flips
   if (!fj_cpu.violated_constraints.empty()) {
     cuopt_assert(fj_cpu.h_binrow_offsets.size() ==
                    fj_cpu.view.pb.n_constraints + 1,
@@ -896,13 +873,12 @@ static two_opt_move_t find_two_opt_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
       }
     }
   } else {
+    // target objective-bearing binary vars in satisfied constraints
     std::sample(fj_cpu.h_objective_vars.underlying().begin(),
                 fj_cpu.h_objective_vars.underlying().end(),
                 std::back_inserter(first_vars),
                 max_obj_starts,
                 fj_cpu.rng);
-    // Nothing is violated, so a pair can only help by improving the objective: keep the flips that
-    // move it down and let the pair scoring pay for the feasibility damage.
     first_vars.erase(std::remove_if(first_vars.begin(),
                                     first_vars.end(),
                                     [&](i_t var_idx) {
@@ -937,7 +913,7 @@ static two_opt_move_t find_two_opt_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
       cand.second = {second, second_delta};
       cand.score = two_opt_compute_pair_score(fj_cpu, first, first_delta, second, second_delta);
       cand.age = std::max(first_touch, second_touch);
-      if (two_opt_cand_better(cand, best)) { best = cand; }
+      if (cand > best) { best = cand; }
       ++pairs_scored;
 
       if (pairs_scored >= max_pairs) return best;
