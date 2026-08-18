@@ -20,6 +20,9 @@
 
 namespace cuopt::mathematical_optimization::mip {
 
+template <typename i_t, typename f_t>
+class probing_cache_t;
+
 // NOTE: this seems an easy pick for reflection/xmacros once this is available (C++26?)
 // Maintaining a single source of truth for all members would be nice
 template <typename i_t, typename f_t>
@@ -46,6 +49,10 @@ struct fj_cpu_climber_t {
                                                      ADD_INSTRUMENTED(h_binary_indices),
                                                      ADD_INSTRUMENTED(h_related_variables),
                                                      ADD_INSTRUMENTED(h_related_variables_offsets),
+                                                     ADD_INSTRUMENTED(h_binrow_offsets),
+                                                     ADD_INSTRUMENTED(h_binrow_vars),
+                                                     ADD_INSTRUMENTED(h_original_ids),
+                                                     ADD_INSTRUMENTED(h_reverse_original_ids),
                                                      ADD_INSTRUMENTED(h_tabu_nodec_until),
                                                      ADD_INSTRUMENTED(h_tabu_noinc_until),
                                                      ADD_INSTRUMENTED(h_tabu_lastdec),
@@ -87,10 +94,17 @@ struct fj_cpu_climber_t {
   ins_vector<i_t> h_binary_indices;
   ins_vector<i_t> h_related_variables;
   ins_vector<i_t> h_related_variables_offsets;
-  // Conflict graph of the problem this climber was built from, null when presolve built none. Held
-  // by shared_ptr and snapshotted alongside the host copies above because it is indexed by that
-  // problem's variable ids.
-  std::shared_ptr<const clique_table_t<i_t, f_t>> clique_table;
+
+  // precompute the binary variables per row for bin 2opt
+  ins_vector<i_t> h_binrow_offsets;
+  ins_vector<i_t> h_binrow_vars;
+  // Implications recorded by probing: for a probed variable set to a value, the bounds propagation
+  // implies on everything else. The 2-opt reads it to learn which value a partner has to take. Null
+  // when probing was disabled or had not run yet when this climber was created.
+  const probing_cache_t<i_t, f_t>* probing_cache{nullptr};
+  // Probing cache keys are pre-trivial-presolve variable ids; these translate to and from them
+  ins_vector<i_t> h_original_ids;
+  ins_vector<i_t> h_reverse_original_ids;
 
   ins_vector<i_t> h_tabu_nodec_until;
   ins_vector<i_t> h_tabu_noinc_until;

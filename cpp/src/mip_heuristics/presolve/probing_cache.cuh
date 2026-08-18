@@ -44,7 +44,7 @@ struct val_interval_t {
                        f_t first_probe,
                        f_t second_probe,
                        i_t& hit_interval_for_first_probe,
-                       i_t& hit_interval_for_second_probe)
+                       i_t& hit_interval_for_second_probe) const
   {
     if (interval_type == interval_type_t::EQUALS) {
       if (val == first_probe) { hit_interval_for_first_probe = interval; }

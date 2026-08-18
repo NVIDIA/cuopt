@@ -1862,9 +1862,6 @@ void problem_t<i_t, f_t>::remove_given_variables(problem_t<i_t, f_t>& original_p
   thrust::fill(handle_ptr->get_thrust_policy(), offsets.begin(), offsets.end(), 0);
   cuopt_assert(assignment.size() == n_variables, "Variable size mismatch");
   cuopt_assert(variable_map.size() < n_variables, "Too many variables to fix");
-
-  // the clique table could be propagated after fixings. but to err on the safe side, reset it here
-  clique_table.reset();
   rmm::device_uvector<f_t> tmp_assignment(assignment, handle_ptr->get_stream());
 
   // first remove the assignment and variable related vectors

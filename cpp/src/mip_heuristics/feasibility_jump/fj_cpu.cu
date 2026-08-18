@@ -15,7 +15,7 @@
 #include "fj_cpu.cuh"
 #include "fj_cpu_worker.cuh"
 
-#include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
+#include <mip_heuristics/presolve/probing_cache.cuh>
 
 #include <utilities/seed_generator.cuh>
 
@@ -746,14 +746,33 @@ static fj_staged_score_t two_opt_compute_pair_score(fj_cpu_climber_t<i_t, f_t>& 
   return score;
 }
 
+// Translate a variable of this problem into the pre-trivial-presolve id the probing cache is keyed
+// by. An empty map means presolve removed nothing, so the ids coincide.
+template <typename i_t, typename f_t>
+static inline i_t two_opt_probed_id(const fj_cpu_climber_t<i_t, f_t>& fj_cpu, i_t var_idx)
+{
+  if (fj_cpu.h_original_ids.size() == 0) { return var_idx; }
+  cuopt_assert(var_idx < (i_t)fj_cpu.h_original_ids.size(), "variable has no original id");
+  return fj_cpu.h_original_ids[var_idx];
+}
+
+// Reverse of two_opt_probed_id. Returns -1 for a variable presolve has since removed.
+template <typename i_t, typename f_t>
+static inline i_t two_opt_problem_id(const fj_cpu_climber_t<i_t, f_t>& fj_cpu, i_t probed_id)
+{
+  if (fj_cpu.h_reverse_original_ids.size() == 0) { return probed_id; }
+  if (probed_id < 0 || probed_id >= (i_t)fj_cpu.h_reverse_original_ids.size()) { return -1; }
+  return fj_cpu.h_reverse_original_ids[probed_id];
+}
+
 /**
  * @brief Fill fj_cpu.two_opt_partners with candidates to flip together with `first`.
  *
- * Preferred source is the conflict graph: the literals conflicting with the one `first` is about to
- * make true are exactly the ones that must become false, which gives both the partner and the value
- * to move it to. A conflict with a negated literal asks for a same-direction pair, which is how
- * covering rows contribute. When the graph has nothing for `first`, the variables sharing a row
- * with it are the fallback, and there the only defensible direction is the swap.
+ * Preferred source is the probing cache: it recorded, for each probed variable and value, the
+ * bounds propagation implies on every other variable. An implied bound pinning a binary to a value
+ * names both the partner and the value it has to take once `first` moves, so a pair moving in the
+ * same direction is reached as naturally as a swap. When probing has nothing for `first`, the
+ * variables sharing a row with it are the fallback, and the only defensible direction is the swap.
  */
 template <typename i_t, typename f_t>
 static void two_opt_collect_partners(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
@@ -779,20 +798,36 @@ static void two_opt_collect_partners(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
     partners.emplace_back(var_idx, delta);
   };
 
-  if (fj_cpu.clique_table != nullptr) {
-    cuopt_assert(fj_cpu.clique_table->n_variables == n_variables,
-                 "conflict graph belongs to another problem");
-    const f_t new_val = fj_cpu.h_assignment[first].get() + first_delta;
-    // Literal `v` stands for "variable v is 1", literal `v + n_variables` for "variable v is 0"
-    const i_t literal = new_val > 0.5 ? first : first + n_variables;
-    fj_cpu.clique_table->for_each_conflict_partner(literal, [&](i_t partner_literal) {
-      // The conflicting literal has to become false
-      add_partner(partner_literal % n_variables, partner_literal < n_variables ? 0 : 1);
-      return partners.size() < max_partners;
-    });
-    // A partner is yielded once per shared clique
-    std::sort(partners.begin(), partners.end());
-    partners.erase(std::unique(partners.begin(), partners.end()), partners.end());
+  if (fj_cpu.probing_cache != nullptr) {
+    const auto& cache      = fj_cpu.probing_cache->probing_cache;
+    const auto cached_probe = cache.find(two_opt_probed_id<i_t, f_t>(fj_cpu, first));
+    if (cached_probe != cache.end()) {
+      const f_t new_val = fj_cpu.h_assignment[first].get() + first_delta;
+      // Pick the probed interval that covers the value `first` is moving to; the two entries per
+      // variable are the two values or intervals it was probed at.
+      i_t hit_interval = -1;
+      i_t unused_hit   = -1;
+      for (i_t interval = 0; interval < 2; ++interval) {
+        const auto& entry = cached_probe->second[interval];
+        if (entry.var_to_cached_bound_map.empty()) { continue; }
+        entry.val_interval.fill_cache_hits(interval, new_val, new_val, hit_interval, unused_hit);
+      }
+      if (hit_interval != -1) {
+        const auto& implications = cached_probe->second[hit_interval].var_to_cached_bound_map;
+        for (const auto& [probed_id, implied] : implications) {
+          if (partners.size() >= max_partners) break;
+          const i_t var_idx = two_opt_problem_id<i_t, f_t>(fj_cpu, probed_id);
+          // -1 means presolve removed the variable after the probe recorded it
+          if (var_idx < 0) { continue; }
+          cuopt_assert(var_idx < n_variables, "implied variable out of range");
+          if (!fj_cpu.h_is_binary_variable[var_idx]) { continue; }
+          // Only an implication that pins the partner names a value to move it to; a bound that
+          // still admits both says nothing about what the partner should do.
+          if (!fj_cpu.view.pb.integer_equal(implied.lb, implied.ub)) { continue; }
+          add_partner(var_idx, round(implied.lb));
+        }
+      }
+    }
   }
   if (!partners.empty()) return;
 
@@ -840,7 +875,7 @@ static two_opt_move_t find_two_opt_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   two_opt_move_t best;
 
   const bool partner_source_exists =
-    fj_cpu.clique_table != nullptr ||
+    (fj_cpu.probing_cache != nullptr && !fj_cpu.probing_cache->probing_cache.empty()) ||
     fj_cpu.h_related_variables_offsets.size() ==
       static_cast<size_t>(fj_cpu.view.pb.n_variables) + 1;
   if (fj_cpu.n_binary_vars == 0 || !partner_source_exists) return best;
@@ -850,6 +885,9 @@ static two_opt_move_t find_two_opt_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   first_vars.clear();
 
   if (!fj_cpu.violated_constraints.empty()) {
+    cuopt_assert(fj_cpu.h_binrow_offsets.size() ==
+                   static_cast<size_t>(fj_cpu.view.pb.n_constraints) + 1,
+                 "binary row table missing");
     auto& target_cstrs = fj_cpu.two_opt_target_cstrs;
     target_cstrs.clear();
     std::sample(fj_cpu.violated_constraints.begin(),
@@ -858,10 +896,10 @@ static two_opt_move_t find_two_opt_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
                 max_target_rows,
                 rng);
     for (i_t cstr_idx : target_cstrs) {
-      const auto [offset_begin, offset_end] = range_for_constraint<i_t, f_t>(fj_cpu, cstr_idx);
-      for (i_t i = offset_begin; i < offset_end && first_vars.size() < max_first_vars; ++i) {
-        const i_t var_idx = fj_cpu.h_variables[i];
-        if (fj_cpu.h_is_binary_variable[var_idx]) first_vars.push_back(var_idx);
+      const i_t bin_begin = fj_cpu.h_binrow_offsets[cstr_idx];
+      const i_t bin_end   = fj_cpu.h_binrow_offsets[cstr_idx + 1];
+      for (i_t i = bin_begin; i < bin_end && first_vars.size() < max_first_vars; ++i) {
+        first_vars.push_back(fj_cpu.h_binrow_vars[i].get());
       }
     }
   } else {
@@ -1510,7 +1548,8 @@ static void init_fj_cpu(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
                         solution_t<i_t, f_t>& solution,
                         const std::vector<f_t>& left_weights,
                         const std::vector<f_t>& right_weights,
-                        f_t objective_weight)
+                        f_t objective_weight,
+                        const probing_cache_t<i_t, f_t>* probing_cache)
 {
   auto& problem   = *solution.problem_ptr;
   auto handle_ptr = solution.handle_ptr;
@@ -1543,13 +1582,9 @@ static void init_fj_cpu(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
     cuopt::host_copy(problem.related_variables, handle_ptr->get_stream());
   fj_cpu.h_related_variables_offsets =
     cuopt::host_copy(problem.related_variables_offsets, handle_ptr->get_stream());
-  fj_cpu.clique_table = problem.clique_table;
-  // A problem built by fixing variables drops the graph, so a size mismatch means it outlived the
-  // index space it describes. Refuse to use it rather than index out of range.
-  if (fj_cpu.clique_table != nullptr && fj_cpu.clique_table->n_variables != problem.n_variables) {
-    cuopt_assert(false, "conflict graph does not match the problem");
-    fj_cpu.clique_table.reset();
-  }
+  fj_cpu.probing_cache         = probing_cache;
+  fj_cpu.h_original_ids        = problem.original_ids;
+  fj_cpu.h_reverse_original_ids = problem.reverse_original_ids;
 
   fj_cpu.h_cstr_left_weights  = left_weights;
   fj_cpu.h_cstr_right_weights = right_weights;
@@ -1685,6 +1720,18 @@ void finalize_fj_cpu_host_initialization(
                        fj_cpu.h_cstr_ub[fj_cpu.h_reverse_constraints[i]]);
     }
   }
+
+  fj_cpu.h_binrow_offsets.resize(n_constraints + 1);
+  fj_cpu.h_binrow_vars.clear();
+  for (i_t cstr_idx = 0; cstr_idx < n_constraints; ++cstr_idx) {
+    fj_cpu.h_binrow_offsets[cstr_idx] = fj_cpu.h_binrow_vars.size();
+    auto [offset_begin, offset_end]   = range_for_constraint<i_t, f_t>(fj_cpu, cstr_idx);
+    for (i_t i = offset_begin; i < offset_end; ++i) {
+      const i_t var_idx = fj_cpu.h_variables[i];
+      if (fj_cpu.h_is_binary_variable[var_idx]) { fj_cpu.h_binrow_vars.push_back(var_idx); }
+    }
+  }
+  fj_cpu.h_binrow_offsets[n_constraints] = fj_cpu.h_binrow_vars.size();
 
   fj_cpu.flip_move_computed.resize(n_variables, false);
   fj_cpu.var_bitmap.resize(n_variables, false);
@@ -1862,6 +1909,7 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_t<i_t, f_t>::create_cpu_climber(
   const std::vector<f_t>& right_weights,
   f_t objective_weight,
   std::atomic<bool>& preemption_flag,
+  const probing_cache_t<i_t, f_t>* probing_cache,
   fj_settings_t settings,
   bool randomize_params)
 {
@@ -1870,7 +1918,7 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_t<i_t, f_t>::create_cpu_climber(
   auto fj_cpu = std::make_unique<fj_cpu_climber_t<i_t, f_t>>(preemption_flag);
 
   // Initialize fj_cpu with all the data
-  init_fj_cpu(*fj_cpu, solution, left_weights, right_weights, objective_weight);
+  init_fj_cpu(*fj_cpu, solution, left_weights, right_weights, objective_weight, probing_cache);
   fj_cpu->settings = settings;
   if (randomize_params) {
     auto rng                 = std::mt19937(cuopt::seed_generator::get_seed());
@@ -2074,7 +2122,9 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_standalone(
   auto fj_cpu = std::make_unique<fj_cpu_climber_t<i_t, f_t>>(preemption_flag);
 
   std::vector<f_t> default_weights(problem.n_constraints, 1.0);
-  init_fj_cpu(*fj_cpu, solution, default_weights, default_weights, 0.0);
+  // Early CPUFJ runs while presolve is still probing, so there are no implications to hand it
+  const probing_cache_t<i_t, f_t>* no_implications = nullptr;
+  init_fj_cpu(*fj_cpu, solution, default_weights, default_weights, 0.0, no_implications);
   fj_cpu->settings      = settings;
   fj_cpu->settings.seed = cuopt::seed_generator::get_seed();
 

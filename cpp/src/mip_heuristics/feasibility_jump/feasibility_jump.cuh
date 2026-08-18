@@ -205,6 +205,9 @@ template <typename i_t, typename f_t>
 struct fj_cpu_climber_t;
 
 template <typename i_t, typename f_t>
+class probing_cache_t;
+
+template <typename i_t, typename f_t>
 class fj_t {
  public:
   using move_score_t      = fj_staged_score_t;
@@ -221,6 +224,7 @@ class fj_t {
     const std::vector<f_t>& right_weights,
     f_t objective_weight,
     std::atomic<bool>& preemption_flag,
+    const probing_cache_t<i_t, f_t>* probing_cache,
     fj_settings_t settings = fj_settings_t{},
     bool randomize_params  = false);
   i_t alloc_max_climbers(i_t desired_climbers);
