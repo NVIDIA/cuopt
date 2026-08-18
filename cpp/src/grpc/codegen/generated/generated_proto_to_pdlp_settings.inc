@@ -73,9 +73,6 @@
   if (pb_settings.has_eliminate_dense_columns()) {
     settings.eliminate_dense_columns = pb_settings.eliminate_dense_columns();
   }
-  if (pb_settings.has_barrier_iterative_refinement()) {
-    settings.barrier_iterative_refinement = pb_settings.barrier_iterative_refinement();
-  }
   if (pb_settings.has_barrier_step_scale()) {
     settings.barrier_step_scale = pb_settings.barrier_step_scale();
   }
@@ -85,8 +82,8 @@
   if (pb_settings.has_cudss_nd_nlevels()) {
     settings.cudss_nd_nlevels = pb_settings.cudss_nd_nlevels();
   }
-  if (pb_settings.has_barrier_iterative_refinement_method()) {
-    settings.barrier_iterative_refinement_method = pb_settings.barrier_iterative_refinement_method();
+  if (pb_settings.has_barrier_iterative_refinement()) {
+    settings.barrier_iterative_refinement = pb_settings.barrier_iterative_refinement();
   }
   settings.save_best_primal_so_far = pb_settings.save_best_primal_so_far();
   settings.first_primal_feasible = pb_settings.first_primal_feasible();

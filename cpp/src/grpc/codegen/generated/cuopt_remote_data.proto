@@ -191,11 +191,10 @@ message PDLPSolverSettings {
   bool save_best_primal_so_far = 28;
   bool first_primal_feasible = 29;
   optional int32 pdlp_precision = 30;
-  optional bool barrier_iterative_refinement = 31;
   optional double barrier_step_scale = 32;
   optional int32 postsolve_info = 33;
   optional int32 cudss_nd_nlevels = 34;
-  optional int32 barrier_iterative_refinement_method = 38;
+  optional int32 barrier_iterative_refinement = 38;
   PDLPWarmStartData warm_start_data = 50;
 }
 

@@ -142,5 +142,19 @@ enum presolver_t : int {
   PSLP    = CUOPT_PRESOLVE_PSLP
 };
 
+/**
+ * @brief Enum representing the iterative refinement method used by the barrier
+ * solver after each solve.
+ *
+ * Off: Disable iterative refinement.
+ * GMRES: Use restarted GMRES (default).
+ * FixedPoint: Use a fixed-point residual-correction loop.
+ */
+enum barrier_iterative_refinement_t : int {
+  Off        = CUOPT_BARRIER_IR_OFF,
+  GMRES      = CUOPT_BARRIER_IR_GMRES,
+  FixedPoint = CUOPT_BARRIER_IR_FIXED_POINT
+};
+
 }  // namespace mathematical_optimization
 }  // namespace cuopt

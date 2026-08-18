@@ -185,8 +185,8 @@ def test_barrier_solver_options(
       (1) dual least squares
     - cudss_nd_nlevels: (-1) unset/automatic, else METIS nested-dissection
       depth
-    - barrier_ir_method: (0) fixed-point residual-correction, (1) restarted
-      GMRES (default)
+    - barrier_ir_method: (0) off, (1) restarted GMRES (default), (2)
+      fixed-point residual-correction
     """
     data = get_std_data_for_lp()
 
@@ -202,9 +202,7 @@ def test_barrier_solver_options(
     data["solver_config"]["cudss_deterministic"] = cudss_determ
     data["solver_config"]["barrier_dual_initial_point"] = dual_initial_point
     data["solver_config"]["cudss_nd_nlevels"] = cudss_nd_nlevels
-    data["solver_config"]["barrier_iterative_refinement_method"] = (
-        barrier_ir_method
-    )
+    data["solver_config"]["barrier_iterative_refinement"] = barrier_ir_method
 
     res = get_lp(client, data)
 

@@ -2244,13 +2244,12 @@ TEST(MapperRoundtrip, PDLPSettingsAllFields)
   orig.ordering                     = 2;
   orig.barrier_dual_initial_point   = 1;
   orig.eliminate_dense_columns      = true;
-  orig.barrier_iterative_refinement = false;  // not the default true, to detect overwrite-on-decode
-  orig.barrier_iterative_refinement_method = 0;     // not the default 1 (gmres)
-  orig.barrier_step_scale                  = 0.75;  // not the default 0.9
-  orig.postsolve_info                      = 1;
-  orig.pdlp_precision                      = pdlp_precision_t::MixedPrecision;
-  orig.save_best_primal_so_far             = true;
-  orig.first_primal_feasible               = true;
+  orig.barrier_iterative_refinement = 0;     // not the default 1 (gmres)
+  orig.barrier_step_scale           = 0.75;  // not the default 0.9
+  orig.postsolve_info               = 1;
+  orig.pdlp_precision               = pdlp_precision_t::MixedPrecision;
+  orig.save_best_primal_so_far      = true;
+  orig.first_primal_feasible        = true;
 
   cuopt::remote::PDLPSolverSettings pb;
   map_pdlp_settings_to_proto(orig, &pb);
@@ -2287,8 +2286,7 @@ TEST(MapperRoundtrip, PDLPSettingsAllFields)
   EXPECT_EQ(restored.ordering, 2);
   EXPECT_EQ(restored.barrier_dual_initial_point, 1);
   EXPECT_EQ(restored.eliminate_dense_columns, true);
-  EXPECT_EQ(restored.barrier_iterative_refinement, false);
-  EXPECT_EQ(restored.barrier_iterative_refinement_method, 0);
+  EXPECT_EQ(restored.barrier_iterative_refinement, 0);
   EXPECT_DOUBLE_EQ(restored.barrier_step_scale, 0.75);
   EXPECT_EQ(restored.postsolve_info, 1);
   EXPECT_EQ(restored.pdlp_precision, pdlp_precision_t::MixedPrecision);
@@ -2371,28 +2369,6 @@ TEST(MapperRoundtrip, PDLPSettingsDualPostsolveExplicitFalseRoundtrips)
   EXPECT_FALSE(restored.dual_postsolve);
 }
 
-TEST(MapperRoundtrip, PDLPSettingsBarrierIterativeRefinementOmittedPreservesDefault)
-{
-  cuopt::remote::PDLPSolverSettings pb;
-
-  pdlp_solver_settings_t<int32_t, double> fresh;
-  ASSERT_TRUE(fresh.barrier_iterative_refinement);
-  map_proto_to_pdlp_settings(pb, fresh);
-  EXPECT_TRUE(fresh.barrier_iterative_refinement)
-    << "Omitted optional bool must preserve the C++ default `true`";
-}
-
-TEST(MapperRoundtrip, PDLPSettingsBarrierIterativeRefinementExplicitFalseRoundtrips)
-{
-  cuopt::remote::PDLPSolverSettings pb;
-  pb.set_barrier_iterative_refinement(false);
-  ASSERT_TRUE(pb.has_barrier_iterative_refinement());
-
-  pdlp_solver_settings_t<int32_t, double> restored;
-  map_proto_to_pdlp_settings(pb, restored);
-  EXPECT_FALSE(restored.barrier_iterative_refinement);
-}
-
 // Wide-coverage sanity: a default-constructed proto (no fields touched on the
 // wire) must, after the mapper, leave every C++ scalar settings field at its
 // in-class default. Spot-checks a representative cross-section of the fields
@@ -2431,7 +2407,6 @@ TEST(MapperRoundtrip, PDLPSettingsDefaultProtoPreservesAllCppDefaults)
   EXPECT_EQ(after.log_to_console, fresh.log_to_console);
   EXPECT_EQ(after.dual_postsolve, fresh.dual_postsolve);
   EXPECT_EQ(after.eliminate_dense_columns, fresh.eliminate_dense_columns);
-  EXPECT_EQ(after.barrier_iterative_refinement, fresh.barrier_iterative_refinement);
   // Numeric defaults != 0.
   EXPECT_EQ(after.num_gpus, fresh.num_gpus);
   EXPECT_EQ(after.folding, fresh.folding);
@@ -2439,7 +2414,7 @@ TEST(MapperRoundtrip, PDLPSettingsDefaultProtoPreservesAllCppDefaults)
   EXPECT_EQ(after.dualize, fresh.dualize);
   EXPECT_EQ(after.ordering, fresh.ordering);
   EXPECT_EQ(after.cudss_nd_nlevels, fresh.cudss_nd_nlevels);
-  EXPECT_EQ(after.barrier_iterative_refinement_method, fresh.barrier_iterative_refinement_method);
+  EXPECT_EQ(after.barrier_iterative_refinement, fresh.barrier_iterative_refinement);
   EXPECT_EQ(after.barrier_dual_initial_point, fresh.barrier_dual_initial_point);
   EXPECT_DOUBLE_EQ(after.barrier_step_scale, fresh.barrier_step_scale);
   // Enum-int32 fields (post-decode clamping defends out-of-range; default `0`

@@ -362,11 +362,8 @@ f_t iterative_refinement_gmres(T& op,
 }
 
 template <typename i_t, typename f_t, typename T>
-f_t iterative_refinement(T& op,
-                         const dense_vector_t<i_t, f_t>& b,
-                         dense_vector_t<i_t, f_t>& x,
-                         f_t tol    = 1e-8,
-                         i_t method = 1)
+f_t iterative_refinement(
+  T& op, const dense_vector_t<i_t, f_t>& b, dense_vector_t<i_t, f_t>& x, f_t tol, i_t method)
 {
   rmm::device_uvector<f_t> d_b(b.size(), op.data_.handle_ptr->get_stream());
   raft::copy(d_b.data(), b.data(), b.size(), op.data_.handle_ptr->get_stream());
@@ -382,11 +379,8 @@ f_t iterative_refinement(T& op,
 }
 
 template <typename i_t, typename f_t, typename T>
-f_t iterative_refinement(T& op,
-                         const rmm::device_uvector<f_t>& b,
-                         rmm::device_uvector<f_t>& x,
-                         f_t tol    = 1e-8,
-                         i_t method = 1)
+f_t iterative_refinement(
+  T& op, const rmm::device_uvector<f_t>& b, rmm::device_uvector<f_t>& x, f_t tol, i_t method)
 {
   return (method == 0) ? iterative_refinement_fixed_point<i_t, f_t, T>(op, b, x, tol)
                        : iterative_refinement_gmres<i_t, f_t, T>(op, b, x, tol);

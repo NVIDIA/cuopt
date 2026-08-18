@@ -287,7 +287,7 @@ cuDSS Deterministic Mode
 cuDSS Nested-Dissection Levels
 """""""""""""""""""""""""""""""
 
-``CUOPT_CUDSS_ND_NLEVELS`` controls the METIS nested-dissection depth used by cuDSS during reordering.
+``CUOPT_CUDSS_HYPER_ND_NLEVELS`` controls the METIS nested-dissection depth used by cuDSS during reordering.
 
 * ``-1``: Leave unset, cuDSS chooses (default)
 * Non-negative value: Explicit nested-dissection depth
@@ -383,20 +383,11 @@ The duality gap is computed as follows::
 Barrier Iterative Refinement
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-``CUOPT_BARRIER_ITERATIVE_REFINEMENT`` controls whether iterative refinement is applied after each barrier iteration to improve solution accuracy.
+``CUOPT_BARRIER_ITERATIVE_REFINEMENT`` controls whether, and how, iterative refinement is applied after each barrier iteration to improve solution accuracy.
 
-* ``0`` (``CUOPT_BARRIER_ITERATIVE_REFINEMENT_OFF``): Disable iterative refinement (default).
-* ``1`` (``CUOPT_BARRIER_ITERATIVE_REFINEMENT_ON``): Enable iterative refinement.
-
-.. note:: The default value is ``0`` (off).
-
-Barrier Iterative Refinement Method
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-``CUOPT_BARRIER_ITERATIVE_REFINEMENT_METHOD`` controls which iterative refinement method the barrier solver uses when ``CUOPT_BARRIER_ITERATIVE_REFINEMENT`` is enabled.
-
-* ``0``: Fixed-point
-* ``1``: Restarted GMRES (default)
+* ``0`` (``CUOPT_BARRIER_IR_OFF``): Disable iterative refinement.
+* ``1`` (``CUOPT_BARRIER_IR_GMRES``): Restarted GMRES (default).
+* ``2`` (``CUOPT_BARRIER_IR_FIXED_POINT``): Fixed-point residual-correction.
 
 .. note:: The default value is ``1`` (GMRES).
 

@@ -519,11 +519,12 @@ class SolverConfig(BaseModel):
         description="Set the METIS nested-dissection depth used by cuDSS. "
         "-1 to leave it unset (cuDSS default), or a non-negative depth",
     )
-    barrier_iterative_refinement_method: Optional[int] = Field(
+    barrier_iterative_refinement: Optional[int] = Field(
         default=1,
-        description="Set which iterative refinement method the barrier "
-        "solver uses. 0 for a fixed-point residual-correction loop, 1 for "
-        "restarted GMRES (default)",
+        description="Set whether, and how, the barrier solver applies "
+        "iterative refinement after each solve. 0 to disable, 1 for "
+        "restarted GMRES (default), 2 for a fixed-point residual-correction "
+        "loop",
     )
     crossover: Optional[bool] = Field(
         default=False,

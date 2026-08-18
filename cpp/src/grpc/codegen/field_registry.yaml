@@ -496,8 +496,7 @@ pdlp_settings:
   - dual_postsolve:
       # C++ default is `true`; using proto3 `optional` so that a client that
       # omits this field gets the solver default rather than the proto3 zero
-      # (`false`). See also the matching `optional` markers on
-      # `barrier_iterative_refinement` (pdlp) and `probing` (mip).
+      # (`false`). See also the matching `optional` marker on `probing` (mip).
       field_num: 17
       type: bool
       optional: true
@@ -539,15 +538,6 @@ pdlp_settings:
       field_num: 27
       type: bool
       optional: true
-  - barrier_iterative_refinement:
-      # Whether the barrier method runs iterative refinement after each solve
-      # (see cpp/src/barrier/barrier.cu). C++ default is `true`. Declared as
-      # proto3 `optional` so that a client which omits this field preserves
-      # the solver default; without `optional`, the proto3 wire zero (`false`)
-      # would silently overwrite the C++ default.
-      field_num: 31
-      type: bool
-      optional: true
   - barrier_step_scale:
       # Step scale used by the barrier method primal/dual updates. Local-solve
       # binding restricts the range to [0.5, 0.9999] with default 0.9; see
@@ -565,7 +555,10 @@ pdlp_settings:
       optional: true
   # field_num 35-37 previously used by cudss_hybrid_mode/cudss_hybrid_execute_mode/
   # cudss_host_nthreads, removed — do not reuse these numbers.
-  - barrier_iterative_refinement_method:
+  # field_num 31 previously held `barrier_iterative_refinement` as a bool; that field
+  # was retired and the name reused below (field_num 38) for the merged int method,
+  # so the exposed parameter name is unchanged even though the wire field_num moved.
+  - barrier_iterative_refinement:
       field_num: 38
       type: int32
       optional: true
@@ -736,8 +729,7 @@ mip_settings:
       # C++ default is `true`; declared as proto3 `optional` so that a client
       # which omits this field preserves the solver default. Without
       # `optional`, the proto3 wire zero (`false`) would silently overwrite
-      # the C++ default. See also `dual_postsolve` and
-      # `barrier_iterative_refinement` in pdlp_settings.
+      # the C++ default. See also `dual_postsolve` in pdlp_settings.
       field_num: 29
       type: bool
       optional: true
