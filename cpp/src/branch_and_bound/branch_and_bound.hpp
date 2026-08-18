@@ -383,8 +383,7 @@ class branch_and_bound_t {
                     const std::vector<f_t>& current_incumbent,
                     const std::vector<simplex::variable_type_t>& var_types,
                     submip_stats_t& submip_stats,
-                    i_t num_var_fixed,
-                    i_t num_integers,
+                    f_t fixrate,
                     i_t simplex_iter_used,
                     bool is_root_heuristic = false);
 
