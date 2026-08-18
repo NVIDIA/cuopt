@@ -100,6 +100,8 @@ final class NativeCuOpt {
   static native double getObjectiveValue(long handle);
   static native double getDualObjectiveValue(long handle);
   static native double getSolveTime(long handle);
+  static native int getSolutionIntAttribute(long handle, int attribute);
+  static native double getSolutionFloatAttribute(long handle, int attribute);
   static native double getMIPGap(long handle);
   static native double getSolutionBound(long handle);
 }

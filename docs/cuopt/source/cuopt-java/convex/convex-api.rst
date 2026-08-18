@@ -122,10 +122,22 @@ are populated on the ``Problem`` after each solve.
 
 MIP-only solution fields are documented in :doc:`../mip/mip-api`.
 
-Solver statistics such as residuals, iteration counts and violation magnitudes
-are not exposed by the Java API. They are available through the C API as scalar
-solution attributes; see ``cuOptGetSolutionIntAttribute`` and
-``cuOptGetSolutionFloatAttribute``.
+Solver statistics are read as scalar solution attributes through
+``getIntAttribute`` and ``getFloatAttribute``, selected by a
+``CuOptConstants.CUOPT_SOLUTION_ATTR_*`` value. This mirrors the problem
+attribute accessors in the C API, so a statistic added later becomes a new
+constant rather than a new method.
+
+.. code-block:: java
+
+   double gap = solution.getFloatAttribute(
+       CuOptConstants.CUOPT_SOLUTION_ATTR_LP_GAP);
+   int iterations = solution.getIntAttribute(
+       CuOptConstants.CUOPT_SOLUTION_ATTR_LP_NUM_ITERATIONS);
+
+Which attributes a solution carries depends on the class of problem that
+produced it. A selector that does not apply, or that does not have the
+requested value type, raises ``CuOptException``.
 
 MPS and Errors
 --------------

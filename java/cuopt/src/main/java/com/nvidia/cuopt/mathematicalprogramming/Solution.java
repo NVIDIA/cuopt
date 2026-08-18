@@ -108,6 +108,30 @@ public final class Solution implements AutoCloseable {
     cleanable.clean();
   }
 
+  /**
+   * Read a scalar integer solution attribute, selected by a
+   * {@code CuOptConstants.CUOPT_SOLUTION_ATTR_*} value.
+   *
+   * <p>Which attributes a solution carries depends on the class of problem that produced it. A
+   * selector that does not apply, or that does not have an integer value, raises
+   * {@link CuOptException}.
+   */
+  public int getIntAttribute(int attribute) {
+    return NativeCuOpt.getSolutionIntAttribute(handle(), attribute);
+  }
+
+  /**
+   * Read a scalar floating-point solution attribute, selected by a
+   * {@code CuOptConstants.CUOPT_SOLUTION_ATTR_*} value.
+   *
+   * <p>Which attributes a solution carries depends on the class of problem that produced it. A
+   * selector that does not apply, or that does not have a floating-point value, raises
+   * {@link CuOptException}.
+   */
+  public double getFloatAttribute(int attribute) {
+    return NativeCuOpt.getSolutionFloatAttribute(handle(), attribute);
+  }
+
   private void requireLP(String method) {
     if (mip) {
       throw new IllegalStateException(method + " is not available for MIP solutions");

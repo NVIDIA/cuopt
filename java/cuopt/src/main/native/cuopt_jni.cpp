@@ -1092,3 +1092,29 @@ Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getSolutionBound(JNIEn
   check_status(env, cuOptGetSolutionBound(to_solution(handle), &value), "cuOptGetSolutionBound");
   return value;
 }
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getSolutionIntAttribute(JNIEnv* env,
+                                                                                  jclass,
+                                                                                  jlong handle,
+                                                                                  jint attribute)
+{
+  cuopt_int_t value = 0;
+  check_status(env,
+               cuOptGetSolutionIntAttribute(to_solution(handle), attribute, &value),
+               "cuOptGetSolutionIntAttribute");
+  return value;
+}
+
+extern "C" JNIEXPORT jdouble JNICALL
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getSolutionFloatAttribute(JNIEnv* env,
+                                                                                    jclass,
+                                                                                    jlong handle,
+                                                                                    jint attribute)
+{
+  cuopt_float_t value = 0;
+  check_status(env,
+               cuOptGetSolutionFloatAttribute(to_solution(handle), attribute, &value),
+               "cuOptGetSolutionFloatAttribute");
+  return value;
+}

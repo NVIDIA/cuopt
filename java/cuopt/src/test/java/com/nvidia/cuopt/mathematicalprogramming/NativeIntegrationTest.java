@@ -144,6 +144,77 @@ final class NativeIntegrationTest {
     }
   }
 
+  @Test
+  void readsSolverStatisticsAsSolutionAttributes() {
+    NativeTestSupport.assumeNativeLibrary();
+    NativeTestSupport.assumeCudaDriverAvailable();
+    try (Problem problem = tinyLP();
+        SolverSettings settings = new SolverSettings().setMethod(SolverMethod.PDLP);
+        Solution solution = problem.solve(settings)) {
+      assertEquals(TerminationStatus.OPTIMAL, solution.getTerminationStatus());
+
+      // Requesting a method does not mean that method is credited with the solve; a problem
+      // resolved without one reports CUOPT_METHOD_UNSET. What must hold is that the value is a
+      // method the API defines.
+      int solvedBy = solution.getIntAttribute(CuOptConstants.CUOPT_SOLUTION_ATTR_LP_SOLVED_BY);
+      assertTrue(
+          solvedBy == CuOptConstants.CUOPT_METHOD_CONCURRENT
+              || solvedBy == CuOptConstants.CUOPT_METHOD_PDLP
+              || solvedBy == CuOptConstants.CUOPT_METHOD_DUAL_SIMPLEX
+              || solvedBy == CuOptConstants.CUOPT_METHOD_BARRIER
+              || solvedBy == CuOptConstants.CUOPT_METHOD_UNSET,
+          "solved-by was " + solvedBy);
+      assertTrue(
+          solution.getIntAttribute(CuOptConstants.CUOPT_SOLUTION_ATTR_LP_NUM_ITERATIONS) >= 0);
+
+      // An optimal solve has converged, so the residuals and gap are at most the tolerance.
+      assertEquals(
+          0.0,
+          solution.getFloatAttribute(CuOptConstants.CUOPT_SOLUTION_ATTR_LP_PRIMAL_RESIDUAL),
+          1e-3);
+      assertEquals(
+          0.0,
+          solution.getFloatAttribute(CuOptConstants.CUOPT_SOLUTION_ATTR_LP_DUAL_RESIDUAL),
+          1e-3);
+      assertEquals(
+          0.0, solution.getFloatAttribute(CuOptConstants.CUOPT_SOLUTION_ATTR_LP_GAP), 1e-3);
+
+      // A float selector through the integer accessor, and a MIP selector on an LP solution, are
+      // both rejected rather than silently returning something.
+      assertThrows(
+          CuOptException.class,
+          () -> solution.getIntAttribute(CuOptConstants.CUOPT_SOLUTION_ATTR_LP_GAP));
+      assertThrows(
+          CuOptException.class,
+          () -> solution.getIntAttribute(CuOptConstants.CUOPT_SOLUTION_ATTR_MIP_NUM_NODES));
+    }
+  }
+
+  @Test
+  void readsMIPStatisticsAsSolutionAttributes() {
+    NativeTestSupport.assumeNativeLibrary();
+    NativeTestSupport.assumeCudaDriverAvailable();
+    Problem problem = new Problem("integer");
+    Variable x = problem.addVariable(0, 10, 1.0, VariableType.INTEGER, "x");
+    problem.addConstraint(LinearExpression.of(x).ge(1.0));
+
+    try (SolverSettings settings = new SolverSettings().setSetting(CuOptConstants.CUOPT_TIME_LIMIT, 10.0);
+        Solution solution = problem.solve(settings)) {
+      assertEquals(TerminationStatus.OPTIMAL, solution.getTerminationStatus());
+      assertTrue(solution.getIntAttribute(CuOptConstants.CUOPT_SOLUTION_ATTR_MIP_NUM_NODES) >= 0);
+      // Violations are magnitudes on a solved problem, so they are non-negative and small.
+      double violation =
+          solution.getFloatAttribute(
+              CuOptConstants.CUOPT_SOLUTION_ATTR_MIP_MAX_CONSTRAINT_VIOLATION);
+      assertTrue(violation >= 0.0 && violation < 1e-3, "constraint violation was " + violation);
+
+      // LP selectors do not apply to a MIP solution.
+      assertThrows(
+          CuOptException.class,
+          () -> solution.getFloatAttribute(CuOptConstants.CUOPT_SOLUTION_ATTR_LP_GAP));
+    }
+  }
+
   private static Problem tinyLP() {
     Problem problem = new Problem("tiny");
     Variable x0 = problem.addVariable(0.0, Double.POSITIVE_INFINITY, 1.0, VariableType.CONTINUOUS, "x0");

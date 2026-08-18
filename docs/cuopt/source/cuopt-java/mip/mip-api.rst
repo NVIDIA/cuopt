@@ -104,6 +104,18 @@ Incumbent values are read from the model: ``Variable.getValue`` after the solve.
 LP-only accessors such as ``getDualSolution`` and ``getReducedCost`` raise
 ``IllegalStateException`` for a MIP result.
 
+MIP statistics — presolve time, node and simplex iteration counts, and the
+violation magnitudes — are read as solution attributes:
+
+.. code-block:: java
+
+   int nodes = solution.getIntAttribute(
+       CuOptConstants.CUOPT_SOLUTION_ATTR_MIP_NUM_NODES);
+   double violation = solution.getFloatAttribute(
+       CuOptConstants.CUOPT_SOLUTION_ATTR_MIP_MAX_CONSTRAINT_VIOLATION);
+
+An LP selector on a MIP solution raises ``CuOptException``.
+
 Inspecting a MIP
 ----------------
 
