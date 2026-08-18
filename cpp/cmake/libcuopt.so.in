@@ -1,0 +1,8 @@
+/* GNU ld script -- generated from cmake/libcuopt.so.in, do not edit the generated copy.
+   libcuopt.so is not an ELF object. cuOpt ships as component libraries, and the linker
+   does not resolve a consumer's undefined symbols through a dependency's DT_NEEDED
+   (--no-copy-dt-needed-entries, the default since binutils 2.22). Naming this script
+   libcuopt.so keeps -lcuopt resolving to the whole set, exactly as it did before the
+   library was split. Consumers end up with a direct DT_NEEDED on each component.
+   Anything that loads cuOpt at runtime must dlopen the components, not this file. */
+INPUT(@CUOPT_LINKER_SCRIPT_INPUTS@)

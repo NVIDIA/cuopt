@@ -1,5 +1,5 @@
 # cmake-format: off
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 # cmake-format: on
 
@@ -50,4 +50,5 @@ set(ROUTING_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/utilities/check_input.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/utilities/cython.cu)
 
+set(ROUTING_SRC_FILES ${ROUTING_SRC_FILES} PARENT_SCOPE)
 set(CUOPT_SRC_FILES ${CUOPT_SRC_FILES} ${ROUTING_SRC_FILES} PARENT_SCOPE)

@@ -7,7 +7,8 @@
 
 #include <cuopt/error.hpp>
 #include <cuopt/export.hpp>
-#include <cuopt/mathematical_optimization/solve_remote.hpp>
+#include <cuopt/mathematical_optimization/remote_solve_registry.hpp>
+
 #include <pdlp/cusparse_view.hpp>
 #include <pdlp/optimal_batch_size_handler/optimal_batch_size_handler.hpp>
 #include <pdlp/pdlp.cuh>
@@ -2708,7 +2709,6 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
                 "problem_interface cannot be null");
 
   // Check if remote execution is enabled (always uses CPU backend)
-#ifdef CUOPT_ENABLE_GRPC
   if (is_remote_execution_enabled()) {
     cuopt_expects(!is_batch_mode,
                   error_type_t::ValidationError,
@@ -2718,13 +2718,13 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
     cuopt_expects(cpu_prob != nullptr,
                   error_type_t::ValidationError,
                   "Remote execution requires CPU memory backend");
-    return solve_lp_remote(*cpu_prob, settings);
+    ensure_remote_solvers_loaded();
+    auto* remote_fn = g_solve_lp_remote_fn.load(std::memory_order_acquire);
+    cuopt_expects(remote_fn != nullptr,
+                  error_type_t::RuntimeError,
+                  "Remote execution requires the gRPC component (libcuopt_grpc.so) to be loaded");
+    return remote_fn(*cpu_prob, settings);
   }
-#else
-  cuopt_expects(!is_remote_execution_enabled(),
-                error_type_t::ValidationError,
-                "Remote execution was requested, but this build was compiled without gRPC support");
-#endif
 
   // Local execution - dispatch to appropriate overload based on problem type
   auto* cpu_prob = dynamic_cast<cpu_optimization_problem_t<i_t, f_t>*>(problem_interface);

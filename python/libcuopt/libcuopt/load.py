@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 
@@ -53,7 +53,33 @@ def load_library():
         != "false"
     )
 
-    soname = "libcuopt.so"
+    # cuOpt ships as component libraries. libcuopt.so is a linker script,
+    # not an ELF object, so it cannot be dlopen()ed -- load the components
+    # instead. Each pulls its own dependencies in through DT_NEEDED, so this
+    # order only needs to be valid, not exhaustive. routing and grpc are
+    # optional (SKIP_ROUTING_BUILD, SKIP_GRPC_BUILD) and may be absent.
+    components = [
+        ("libcuopt_base.so", True),
+        ("libcuopt_routing.so", False),
+        ("libcuopt_mathopt.so", True),
+        ("libcuopt_grpc.so", False),
+    ]
+    loaded = []
+    for soname, required in components:
+        lib = _load_component(soname, prefer_system_installation, required)
+        if lib is not None:
+            loaded.append(lib)
+    return loaded
+
+
+def _load_component(
+    soname: str, prefer_system_installation: bool, required: bool
+):
+    """Load one cuOpt component.
+
+    Returns the handle, or ``None`` if it could not be loaded. Failing to
+    load an optional component is silent; failing a required one warns.
+    """
     libcuopt_lib = None
     if prefer_system_installation:
         # Prefer a system library if one is present to
@@ -76,6 +102,8 @@ def load_library():
             # If none of the searches above succeed, just silently return None
             # and rely on other mechanisms (like RPATHs on other DSOs) to
             # help the loader find the library.
+            if not required:
+                return None
 
             import warnings
 
@@ -84,11 +112,10 @@ def load_library():
                 f"Error: {str(e)}. "
                 "Falling back to relying on system loader. "
                 "cuOpt functionality may be unavailable. "
-                "This might lead to a generic error such as "
-                "'libcuopt.so missing' if the library cannot be found.",
+                f"This might lead to a generic error such as "
+                f"'{soname} missing' if the library cannot be found.",
                 RuntimeWarning,
             )
-            pass
     # The caller almost never needs to do anything with this library, but no
     # harm in offering the option since this object at least provides a handle
     # to inspect where libcuopt was loaded from.

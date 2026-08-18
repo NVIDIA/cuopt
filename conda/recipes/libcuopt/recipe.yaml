@@ -108,13 +108,21 @@ outputs:
       script:
         content: |
           cmake --install cpp/build
-          ./ci/check_symbols.sh cpp/build/libcuopt.so
+          # libcuopt.so is a linker script, so the components are what carry symbols.
+          # Only cuopt_mathopt provides the C API.
+          ./ci/check_symbols.sh cpp/build/libcuopt_mathopt.so
+          ./ci/check_symbols.sh cpp/build/libcuopt_base.so --no-public-api-check
+          ./ci/check_symbols.sh cpp/build/libcuopt_routing.so --no-public-api-check
+          ./ci/check_symbols.sh cpp/build/libcuopt_grpc.so --no-public-api-check
       dynamic_linking:
         overlinking_behavior: "error"
       prefix_detection:
         ignore:
           # See https://github.com/rapidsai/build-planning/issues/160
-          - lib/libcuopt.so
+          - lib/libcuopt_base.so
+          - lib/libcuopt_routing.so
+          - lib/libcuopt_mathopt.so
+          - lib/libcuopt_grpc.so
       string: cuda${{ cuda_major }}_${{ datetime_string }}_${{ head_rev }}
     requirements:
       build:
@@ -167,6 +175,10 @@ outputs:
       - package_contents:
           files:
             - lib/libcuopt.so
+            - lib/libcuopt_base.so
+            - lib/libcuopt_routing.so
+            - lib/libcuopt_mathopt.so
+            - lib/libcuopt_grpc.so
             - bin/cuopt_cli
             - bin/cuopt_grpc_server
     about:

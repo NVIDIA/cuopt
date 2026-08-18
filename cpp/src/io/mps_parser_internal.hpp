@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include <cuopt/export.hpp>
+
 #include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
 
 #include <stdarg.h>
@@ -63,9 +65,9 @@ void check_symmetric_offdiagonal_pairs(const std::vector<i_t>& rows,
  * - Sorts output by (row, col).
  */
 template <typename i_t, typename f_t>
-void canonicalize_coo_matrix(std::vector<i_t>& rows,
-                             std::vector<i_t>& cols,
-                             std::vector<f_t>& vals);
+CUOPT_EXPORT void canonicalize_coo_matrix(std::vector<i_t>& rows,
+                                          std::vector<i_t>& cols,
+                                          std::vector<f_t>& vals);
 
 /**
  * @brief Different possible types of 'ROWS'

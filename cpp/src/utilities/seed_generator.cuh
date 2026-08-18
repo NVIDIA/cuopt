@@ -1,18 +1,20 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 
 #pragma once
+
+#include <cuopt/export.hpp>
 #include <raft/random/rng_device.cuh>
 #include <utilities/cuda_helpers.cuh>
 
 namespace cuopt {
 
 // TODO: should be thread local?
-class seed_generator {
+class CUOPT_EXPORT seed_generator {
   static int64_t seed_;
 
  public:

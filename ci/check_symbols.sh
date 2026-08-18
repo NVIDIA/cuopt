@@ -8,6 +8,14 @@ echo "checking for symbol visibility issues"
 
 LIBRARY="${1}"
 
+# The forbidden-symbol checks apply to every cuOpt library. The required public API
+# check only applies to the component that provides the C API, so components that do
+# not (base, routing, grpc) pass --no-public-api-check.
+CHECK_PUBLIC_API=1
+if [[ "${2:-}" == "--no-public-api-check" ]]; then
+    CHECK_PUBLIC_API=0
+fi
+
 echo ""
 echo "Checking exported symbols in '${LIBRARY}'"
 symbol_file="$(mktemp)"
@@ -89,16 +97,18 @@ required_symbols=(
     cuOptDestroyProblem
 )
 
-exported_funcs="$(readelf --dyn-syms --wide "${LIBRARY}" | awk '$7 != "UND" && $4 == "FUNC" { print $8 }')"
+if [[ "${CHECK_PUBLIC_API}" -eq 1 ]]; then
+    exported_funcs="$(readelf --dyn-syms --wide "${LIBRARY}" | awk '$7 != "UND" && $4 == "FUNC" { print $8 }')"
 
-for sym in "${required_symbols[@]}"; do
-    echo "Checking that required symbol '${sym}' is exported..."
-    if ! grep -qxF "${sym}" <<< "${exported_funcs}"; then
-        echo "ERROR: Required public API symbol '${sym}' is not exported from ${LIBRARY}."
-        echo "ERROR: Symbol visibility may be over-restricted and hiding the public API."
-        failed=1
-    fi
-done
+    for sym in "${required_symbols[@]}"; do
+        echo "Checking that required symbol '${sym}' is exported..."
+        if ! grep -qxF "${sym}" <<< "${exported_funcs}"; then
+            echo "ERROR: Required public API symbol '${sym}' is not exported from ${LIBRARY}."
+            echo "ERROR: Symbol visibility may be over-restricted and hiding the public API."
+            failed=1
+        fi
+    done
+fi
 
 if [[ "${failed}" -ne 0 ]]; then
     exit 1

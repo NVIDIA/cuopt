@@ -5,6 +5,7 @@
 
 # Core LP files always included
 set(LP_CORE_FILES
+  ${CMAKE_CURRENT_SOURCE_DIR}/remote_solve_registry.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/solver_settings.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/optimization_problem.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/cpu_optimization_problem.cpp
@@ -49,4 +50,5 @@ else()
   set(LP_SRC_FILES ${LP_CORE_FILES} ${LP_ADAPTER_FILES})
 endif()
 
+set(LP_SRC_FILES ${LP_SRC_FILES} PARENT_SCOPE)
 set(CUOPT_SRC_FILES ${CUOPT_SRC_FILES} ${LP_SRC_FILES} PARENT_SCOPE)

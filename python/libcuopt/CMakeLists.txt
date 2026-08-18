@@ -62,9 +62,9 @@ set(CUOPT_BUILD_TESTUTIL OFF)
 
 add_subdirectory(../../cpp cuopt-cpp)
 
-target_link_libraries(cuopt PRIVATE
-    argparse
-)
+# cuopt is an INTERFACE target (libcuopt.so is a linker script) and compiles nothing,
+# so it has no use for argparse. cuopt_cli and cuopt_grpc_server, which do, already link
+# argparse::argparse in cpp/CMakeLists.txt.
 target_link_libraries(cuopt_cli PRIVATE
     argparse
 )
@@ -95,6 +95,9 @@ else()
 endif()
 message(STATUS "libcuopt: Final RPATH = ${rpaths}")
 
-set_property(TARGET cuopt PROPERTY INSTALL_RPATH ${rpaths} APPEND)
-set_property(TARGET cuopt_cli PROPERTY INSTALL_RPATH ${rpaths} APPEND)
-set_property(TARGET cuopt_grpc_server PROPERTY INSTALL_RPATH ${rpaths} APPEND)
+# cuopt is an INTERFACE target (libcuopt.so is a linker script), so it has no RPATH.
+foreach(_target cuopt_base cuopt_routing cuopt_mathopt cuopt_grpc cuopt_cli cuopt_grpc_server)
+  if(TARGET ${_target})
+    set_property(TARGET ${_target} APPEND PROPERTY INSTALL_RPATH ${rpaths})
+  endif()
+endforeach()
