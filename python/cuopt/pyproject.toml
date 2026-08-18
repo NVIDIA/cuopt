@@ -76,7 +76,7 @@ select = [
 ]
 
 # PyPI hard limit is 1GiB, but try to keep this as small as possible
-max_allowed_size_compressed = '55Mi'
+max_allowed_size_compressed = '10Mi'
 
 [tool.pytest.ini_options]
 testpaths = ["cuopt/tests"]
@@ -89,6 +89,7 @@ minimum-version = "build-system.requires"
 ninja.make-fallback = false
 sdist.reproducible = true
 wheel.packages = ["cuopt"]
+wheel.py-api = "cp311" # overridden in CI builds by arguments from `ci/build_wheel_cuopt.sh`
 
 [tool.scikit-build.metadata.version]
 provider = "scikit_build_core.metadata.regex"
@@ -102,7 +103,7 @@ matrix-entry = "cuda_suffixed=true;use_cuda_wheels=true"
 requires = [
     "cmake>=4.0",
     "cupy-cuda13x[ctk]>=14.0.1,!=14.1.0",
-    "cython>=3.0.3",
+    "cython>=3.2.2,<3.3.0a0",
     "libcuopt==26.10.*,>=0.0.0a0",
     "ninja",
     "pylibraft==26.10.*,>=0.0.0a0",
