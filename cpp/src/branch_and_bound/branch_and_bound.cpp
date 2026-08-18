@@ -45,7 +45,7 @@
 #include <string>
 #include <vector>
 
-#define SUBMIP_VERBOSE false
+#define SUBMIP_VERBOSE true
 #if SUBMIP_VERBOSE
 #define DEBUG_SUBMIP(fmt, ...) settings_.log.print_format(fmt, __VA_ARGS__);
 #else
@@ -2249,21 +2249,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   std::string log_prefix =
     std::format("[{} {}] ", search_strategy_to_string(worker->search_strategy), submip_level);
 
-  std::vector<f_t>& lower           = worker->leaf_problem.lower;
-  std::vector<f_t>& upper           = worker->leaf_problem.upper;
-  std::vector<bool>& bounds_changed = worker->bounds_changed;
-  f_t fixrate                       = (f_t)num_var_fixed / num_integers;
-
-  bool feasible =
-    worker->node_presolver.bounds_strengthening(settings_, bounds_changed, lower, upper);
-
-  if (!feasible) {
-    // RINS: This should never happen since we are fixing bounds that are already in the incumbent.
-    submip_stats.save_infeasible(fixrate);
-    DEBUG_SUBMIP("{} The problem is infeasible after running bound strengthening!", log_prefix);
-    return;
-  }
-
+  f_t fixrate    = (f_t)num_var_fixed / num_integers;
   f_t user_lower = compute_user_objective(worker->leaf_problem, get_lower_bound());
   f_t user_obj   = compute_user_objective(worker->leaf_problem, upper_bound_.load());
   f_t rel_gap    = user_relative_gap(user_obj, user_lower);
@@ -2313,7 +2299,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   submip_settings.submip_settings.rins = settings_.submip_settings.rins != 0 && !max_recursion;
   submip_settings.submip_settings.rens = settings_.submip_settings.rens != 0 && !max_recursion;
 
-  DEBUG_SUBMIP("{}Sub-MIP: num variables fixed={}/{} ({:.2f}%)",
+  DEBUG_SUBMIP("{}Sub-MIP: variables fixed={}/{} ({:.2f}%)",
                log_prefix,
                num_var_fixed,
                num_integers,
@@ -2345,13 +2331,14 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   if (presolver_status == third_party_presolve_status_t::INFEASIBLE ||
       presolver_status == third_party_presolve_status_t::UNBNDORINFEAS ||
       presolver_status == third_party_presolve_status_t::UNBOUNDED) {
+    DEBUG_SUBMIP("{}Presolve detected infeasibility", log_prefix);
     submip_stats.save_infeasible(fixrate);
     return;
   }
 
   // Also handle optimal
   if (submip_problem.num_rows == 0 || submip_problem.num_cols == 0) {
-    DEBUG_SUBMIP("{}Sub-MIP presolved to a trivial {} x {} problem; solving by bound pushing",
+    DEBUG_SUBMIP("{}Reduced to a trivial {} x {} problem; solving by bound pushing",
                  log_prefix,
                  submip_problem.num_rows,
                  submip_problem.num_cols);
@@ -2653,17 +2640,17 @@ void extend_variable_fixings(const simplex_solver_settings_t<i_t, f_t>& settings
 }
 
 template <typename i_t, typename f_t>
-i_t calculate_num_fixed(const std::vector<i_t>& integer_list,
-                        const std::vector<f_t>& lower,
-                        const std::vector<f_t>& upper,
-                        f_t fixed_tol)
+f_t calculate_fixrate(const std::vector<i_t>& integer_list,
+                      const std::vector<f_t>& lower,
+                      const std::vector<f_t>& upper,
+                      f_t fixed_tol)
 {
   i_t num_fixed = 0;
   for (i_t j : integer_list) {
     if (std::abs(lower[j] - upper[j]) <= fixed_tol) ++num_fixed;
   }
 
-  return num_fixed;
+  return (f_t)num_fixed / integer_list.size();
 }
 
 template <typename i_t, typename f_t>
@@ -2709,14 +2696,14 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* w
 
   i_t num_integers  = integer_list.size();
   f_t max_fixrate   = submip_get_max_fixrate(submip_stats, settings_.submip_settings, worker->rng);
-  f_t min_fixrate   = std::min(settings_.submip_settings.min_fixrate, max_fixrate);
-  i_t max_var_fixed = max_fixrate * num_integers;
+  f_t min_fixrate   = settings_.submip_settings.min_fixrate;
   i_t num_var_fixed = 0;
+  f_t fixrate       = 0;
 
   i_t round = 0;
 
   while (solver_status_ == mip_status_t::UNSET && is_running_ && !worker->halt) {
-    f_t prev_fixrate  = (f_t)num_var_fixed / num_integers;
+    f_t prev_fixrate  = fixrate;
     f_t round_fixrate = std::min(
       1.0 - (1.0 - prev_fixrate) * settings_.submip_settings.round_close_ratio, max_fixrate);
     i_t round_target = std::max<i_t>(round_fixrate * num_integers, num_var_fixed + 1);
@@ -2738,10 +2725,6 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* w
                          upper,
                          bounds_changed,
                          num_var_fixed);
-      if (num_var_fixed >= max_var_fixed) {
-        has_submip = true;
-        break;
-      }
 
       if (prev_num_fixed == num_var_fixed) {
         // RINS neighbourhood 2: Search the entire list of integer variables where the current
@@ -2755,10 +2738,6 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* w
                            upper,
                            bounds_changed,
                            num_var_fixed);
-        if (num_var_fixed >= max_var_fixed) {
-          has_submip = true;
-          break;
-        }
       }
 
       // The RINS neighbourhood ran dry. If it is already tight enough, take it rather than
@@ -2777,10 +2756,6 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* w
                          upper,
                          bounds_changed,
                          num_var_fixed);
-      if (num_var_fixed >= max_var_fixed) {
-        has_submip = true;
-        break;
-      }
     }
 
     if (toc(exploration_stats_.start_time) > settings_.time_limit) {
@@ -2788,10 +2763,14 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* w
       break;
     }
 
-    f_t fixrate = (f_t)num_var_fixed / num_integers;
+    bool is_feasible =
+      worker->node_presolver.bounds_strengthening(settings_, bounds_changed, lower, upper);
+    fixrate       = calculate_fixrate(integer_list, lower, upper, settings_.fixed_tol);
+    num_var_fixed = fixrate * num_integers;
+
     DEBUG_SUBMIP(
       "{}Round {}: fixed {} ({:.2f}) -> {} ({:.2f}) variables. target fixrate = {} ({:.2f}). max "
-      "fixrate = {} ({:.2f})",
+      "fixrate = {:.4g}",
       log_prefix,
       round,
       prev_num_fixed,
@@ -2800,25 +2779,22 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* w
       fixrate,
       round_target,
       round_fixrate,
-      max_var_fixed,
       max_fixrate);
 
-    if (num_var_fixed > prev_num_fixed) {
-      bool is_feasible =
-        worker->node_presolver.bounds_strengthening(settings_, bounds_changed, lower, upper);
-      if (!is_feasible) {
-        DEBUG_SUBMIP("{}Round {}: bound strengthening detected infeasibility.", log_prefix, round)
-        submip_stats.save_infeasible(fixrate);
-        break;
-      }
+    if (!is_feasible) {
+      DEBUG_SUBMIP("{}Round {}: bound strengthening detected infeasibility.", log_prefix, round)
+      break;
+    }
 
-      num_var_fixed = calculate_num_fixed(integer_list, lower, upper, settings_.fixed_tol);
+    if (fixrate >= max_fixrate) {
+      has_submip = true;
+      break;
     }
 
     // Even considering the entire integer list, we were unable to fix a single variable in this
     // iteration. Iterate over the fractional variables again and fixing those that closest to
     // an integer solution first in order to reach the fixing threshold.
-    if (num_var_fixed <= round_target) {
+    if (num_var_fixed < round_target) {
       prev_num_fixed = num_var_fixed;
       std::fill(bounds_changed.begin(), bounds_changed.end(), false);
 
@@ -2832,21 +2808,35 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* w
                               upper,
                               bounds_changed,
                               num_var_fixed);
-      if (num_var_fixed >= max_var_fixed) {
+
+      is_feasible =
+        worker->node_presolver.bounds_strengthening(settings_, bounds_changed, lower, upper);
+      fixrate       = calculate_fixrate(integer_list, lower, upper, settings_.fixed_tol);
+      num_var_fixed = fixrate * num_integers;
+
+      DEBUG_SUBMIP(
+        "{}Round {}: extended fixings {} ({:.2f}) -> {} ({:.2f}) variables. target fixrate = {} "
+        "({:.2f}). max "
+        "fixrate = {:.4g}",
+        log_prefix,
+        round,
+        prev_num_fixed,
+        prev_fixrate,
+        num_var_fixed,
+        fixrate,
+        round_target,
+        round_fixrate,
+        max_fixrate);
+
+      if (!is_feasible) {
+        DEBUG_SUBMIP("{}Round {}: bound strengthening detected infeasibility.", log_prefix, round)
+        break;
+      }
+
+      if (fixrate >= max_fixrate) {
         has_submip = true;
         break;
       }
-
-      fixrate = (f_t)num_var_fixed / num_integers;
-      bool is_feasible =
-        worker->node_presolver.bounds_strengthening(settings_, bounds_changed, lower, upper);
-      if (!is_feasible) {
-        DEBUG_SUBMIP("{}Round {}: bound strengthening detected infeasibility.", log_prefix, round)
-        submip_stats.save_infeasible(fixrate);
-        break;
-      }
-
-      num_var_fixed = calculate_num_fixed(integer_list, lower, upper, settings_.fixed_tol);
 
       // Even sweep over all integer variables, we exhausted all variables that can be fixed.
       // If this is the case, then tries to solve the sub-mip anyway.
@@ -2928,8 +2918,6 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* w
     exploration_stats_.total_simplex_iters += stats.total_simplex_iters;
   }
 
-  f_t fixrate = (f_t)num_var_fixed / num_integers;
-
   if (has_submip) {
     // If not enough variables was fixed (the neighbourhood is too loose) or the sub-MIP already
     // found a solution that improved the incumbent, then do a DFS with a backtrack_limit of 5
@@ -2986,7 +2974,7 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* w
   }
 
   DEBUG_SUBMIP(
-    "{}success={}, infeasible={}, calls={}, fixrate={:.4g} ({}), max_fixrate={:.4g} ({}), "
+    "{}success={}, infeasible={}, calls={}, fixrate={:.4g} ({}), max_fixrate={:.4g}, "
     "min_fixrate={:.4g}\n",
     log_prefix,
     submip_stats.total_success.load(),
@@ -2995,7 +2983,6 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* w
     fixrate,
     num_var_fixed,
     max_fixrate,
-    max_var_fixed,
     min_fixrate);
 
   // If the pool is uninitialized (i.e., in the root node), then this just inactivate the worker.
