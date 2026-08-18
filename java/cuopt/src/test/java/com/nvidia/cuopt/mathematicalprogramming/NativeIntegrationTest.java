@@ -4,6 +4,7 @@
  */
 package com.nvidia.cuopt.mathematicalprogramming;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -213,6 +214,105 @@ final class NativeIntegrationTest {
           CuOptException.class,
           () -> solution.getFloatAttribute(CuOptConstants.CUOPT_SOLUTION_ATTR_LP_GAP));
     }
+  }
+
+  @Test
+  void mutatingTheModelChangesTheSolve() {
+    NativeTestSupport.assumeNativeLibrary();
+    NativeTestSupport.assumeCudaDriverAvailable();
+    // maximize x subject to x <= 10, so the optimum sits on whichever bound binds. Each setter
+    // below has to reach the solver, which only a change in the answer can demonstrate.
+    Problem problem = new Problem("mutable");
+    Variable x = problem.addVariable(0.0, 10.0, 1.0, VariableType.CONTINUOUS, "x");
+    problem.addConstraint(LinearExpression.of(x).le(10.0), "cap");
+    problem.setObjective(LinearExpression.of(x), ObjectiveSense.MAXIMIZE);
+
+    assertEquals(1, problem.getNumNonZeros());
+    try (Solution solution = problem.solve()) {
+      assertEquals(TerminationStatus.OPTIMAL, solution.getTerminationStatus());
+      assertEquals(10.0, problem.getObjectiveValue(), 1e-6);
+      assertEquals(0, solution.getErrorStatus());
+      assertEquals("", solution.getErrorMessage());
+      assertEquals(10.0, solution.getDualObjective(), 1e-6);
+    }
+
+    // Tightening the upper bound must move the optimum.
+    x.setUpperBound(4.0);
+    try (Solution solution = problem.solve()) {
+      assertEquals(4.0, problem.getObjectiveValue(), 1e-6);
+      assertEquals(4.0, x.getValue(), 1e-6);
+    }
+
+    // Raising the lower bound above the objective's preference pins the variable.
+    x.setLowerBound(4.0).setUpperBound(4.0);
+    try (Solution solution = problem.solve()) {
+      assertEquals(4.0, x.getValue(), 1e-6);
+    }
+
+    // Doubling the objective coefficient doubles the objective at a fixed solution.
+    x.setLowerBound(0.0).setUpperBound(4.0).setObjectiveCoefficient(2.0);
+    problem.setObjective(LinearExpression.of(x, 2.0), ObjectiveSense.MAXIMIZE);
+    try (Solution solution = problem.solve()) {
+      assertEquals(8.0, problem.getObjectiveValue(), 1e-6);
+    }
+
+    // Making the variable integral makes the solve a MIP, which changes which accessors apply.
+    x.setVariableType(VariableType.INTEGER).setVariableName("x_int");
+    assertEquals("x_int", x.getVariableName());
+    assertTrue(problem.isMIP());
+    try (Solution solution = problem.solve()) {
+      assertTrue(solution.isMIP());
+      assertEquals(4.0, x.getValue(), 1e-6);
+      assertThrows(IllegalStateException.class, solution::getDualObjective);
+    }
+
+    Constraint constraint = problem.getConstraint(0);
+    assertFalse(constraint.isQuadratic());
+    assertEquals(1.0, constraint.getLinearExpression().getCoefficient(x), 0.0);
+  }
+
+  @Test
+  void mipStartsAndMIPOnlySolutionFields() {
+    NativeTestSupport.assumeNativeLibrary();
+    NativeTestSupport.assumeCudaDriverAvailable();
+    // A small knapsack: maximise value subject to a weight cap.
+    Problem problem = new Problem("knapsack");
+    Variable a = problem.addVariable(0.0, 1.0, 5.0, VariableType.INTEGER, "a");
+    Variable b = problem.addVariable(0.0, 1.0, 4.0, VariableType.INTEGER, "b");
+    problem.addConstraint(LinearExpression.of(a, 3.0).plus(b, 2.0).le(3.0), "weight");
+    problem.setObjective(LinearExpression.of(a, 5.0).plus(b, 4.0), ObjectiveSense.MAXIMIZE);
+
+    // Seed a feasible starting point. Problem.addMIPStarts collects these by variable index and
+    // hands them to the settings, so a wrong index would seed the wrong variable.
+    a.setMIPStart(1.0);
+    b.setMIPStart(0.0);
+    assertEquals(1.0, a.getMIPStart(), 0.0);
+    assertEquals(0.0, b.getMIPStart(), 0.0);
+
+    try (SolverSettings settings =
+            new SolverSettings().setSetting(CuOptConstants.CUOPT_TIME_LIMIT, 10.0);
+        Solution solution = problem.solve(settings)) {
+      assertEquals(TerminationStatus.OPTIMAL, solution.getTerminationStatus());
+      // Taking a alone scores 5 and weighs 3; taking b alone scores 4. a is optimal.
+      assertEquals(5.0, solution.getPrimalObjective(), 1e-6);
+      assertEquals(1.0, a.getValue(), 1e-6);
+      assertEquals(0.0, b.getValue(), 1e-6);
+
+      // MIP-only reporting: an optimal solve has closed the gap and bounds its own objective.
+      assertEquals(0.0, solution.getMIPGap(), 1e-4);
+      assertEquals(5.0, solution.getSolutionBound(), 1e-4);
+    }
+
+    // addMIPStart is also callable directly, taking one value per variable in index order.
+    try (SolverSettings settings = new SolverSettings()) {
+      assertDoesNotThrow(() -> settings.addMIPStart(new double[] {1.0, 0.0}));
+    }
+
+    // The callback payload is a value type, so it can be checked without waiting for the solver
+    // to produce an incumbent.
+    MIPCallbackSolution payload = new MIPCallbackSolution(new double[] {1.0, 0.0}, 5.0);
+    assertArrayEquals(new double[] {1.0, 0.0}, payload.getSolution(), 0.0);
+    assertEquals(5.0, payload.getObjectiveValue(), 0.0);
   }
 
   private static Problem tinyLP() {
