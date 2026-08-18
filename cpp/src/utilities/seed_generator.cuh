@@ -9,7 +9,6 @@
 #include <raft/random/rng_device.cuh>
 #include <utilities/cuda_helpers.cuh>
 
-#include <atomic>
 #include <cstdint>
 #include <random>
 
@@ -45,43 +44,57 @@ inline int64_t fold_seed(arg0 seed0, arg1 seed1, args... seeds)
  * Each solver holds its own generator, seeded from its own settings, so that two solvers
  * running in the same process cannot overwrite each other's seed.
  *
- * @note Thread-safe. get_seed() hands out distinct values to concurrent callers, but the
- *       order in which they are handed out is not deterministic; reproducibility therefore
- *       still requires a deterministic call order.
+ * The counter that hands out seeds is thread-local and is rebased whenever the owning
+ * solver's base seed changes. Each thread therefore walks its own deterministic sequence
+ * from that base, so the order in which concurrent workers happen to ask for seeds does
+ * not change which seed any of them receives. A shared counter would hand out values in a
+ * nondeterministic order and break reproducibility across synchronisation points.
+ *
+ * Two solvers configured with the *same* base seed and used from one thread continue a
+ * single sequence rather than restarting, since the rebase is triggered by a change of
+ * base.
  */
 class seed_generator_t {
-  // Mutable so that a solver reachable only through a const pointer can still draw seeds;
-  // drawing a seed does not change the solver's logical state.
-  mutable std::atomic<int64_t> seed_{0};
+  int64_t base_seed_{0};
+
+  struct thread_state_t {
+    int64_t counter{0};
+    int64_t last_base{0};
+    bool initialized{false};
+  };
+
+  // Shared by every generator on this thread; the base check rebases when the caller
+  // switches to a solver seeded differently.
+  static thread_state_t& local_state()
+  {
+    thread_local thread_state_t state;
+    return state;
+  }
 
  public:
   seed_generator_t() = default;
-  explicit seed_generator_t(int64_t initial) : seed_(initial) {}
-
-  // std::atomic is not copyable, so the counter value is transferred explicitly. Without
-  // these, declaring the copy operations deleted would also suppress the implicit move
-  // assignment of any class holding a generator (problem_t is move-assigned).
-  seed_generator_t(seed_generator_t const& other)
-    : seed_(other.seed_.load(std::memory_order_relaxed))
-  {
-  }
-  seed_generator_t& operator=(seed_generator_t const& other)
-  {
-    seed_.store(other.seed_.load(std::memory_order_relaxed), std::memory_order_relaxed);
-    return *this;
-  }
+  explicit seed_generator_t(int64_t initial) : base_seed_(initial) {}
 
   template <typename... args>
   void set_seed(args... seeds)
   {
 #ifdef BENCHMARK
-    seed_.store(std::random_device{}(), std::memory_order_relaxed);
+    base_seed_ = static_cast<int64_t>(std::random_device{}());
 #else
-    seed_.store(detail::fold_seed(seeds...), std::memory_order_relaxed);
+    base_seed_ = detail::fold_seed(seeds...);
 #endif
   }
 
-  int64_t get_seed() const { return seed_.fetch_add(1, std::memory_order_relaxed); }
+  int64_t get_seed() const
+  {
+    auto& state = local_state();
+    if (!state.initialized || state.last_base != base_seed_) {
+      state.counter     = base_seed_;
+      state.last_base   = base_seed_;
+      state.initialized = true;
+    }
+    return state.counter++;
+  }
 };
 
 }  // namespace cuopt
