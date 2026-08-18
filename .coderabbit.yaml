@@ -107,6 +107,14 @@ reviews:
       instructions: |
         C++ tests (gtest). Focus on:
         - Numerical correctness validation (not just "runs without error")
+        - Assertions that pin the expected answer. EXPECT_NE(x, sentinel) and
+          "returns without error" pass for a solver producing the wrong number;
+          ask for EXPECT_NEAR against a computed optimum. A sentinel is right
+          only when the point is that a buffer must stay untouched.
+        - Complete output buffers, not just element [0], so an accessor that
+          fills a prefix and stops cannot pass
+        - Duplicate coverage. If a new test exercises a path the suite already
+          covers, ask what it adds that existing tests do not
         - Edge cases: empty, infeasible, unbounded, degenerate, singleton problems
         - Test isolation — no leaked GPU state or global mutation across tests
         - Flakiness: GPU timing races, uninitialized memory, non-deterministic order

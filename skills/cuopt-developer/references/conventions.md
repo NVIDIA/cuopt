@@ -23,6 +23,23 @@ window_count)),  // NOSONAR: window_count declared before window_state_ (line 86
 
 This applies to all comment types: inline comments, block comments, suppression directives (`// NOSONAR`, `// NOLINT`, `# noqa`, `# type: ignore`), and doc comments.
 
+**Comment what the code does, not how it came to be.** A comment explaining the bug that motivated a check, the alternatives that were considered, or what a reviewer asked for is narration. It belongs in the commit message or the pull request, where it is dated and attributed. In the code it reads as noise to everyone who arrives later without that context.
+
+Add a comment where the code is genuinely non-obvious — an unusual invariant, a non-local dependency, a deliberate deviation. Self-evident code needs none.
+
+```cpp
+// ✅ GOOD — explains a non-local dependency the reader cannot see here
+// Empty here is valid for a problem with no constraints, so the solve is what is tested.
+if (solution->get_solution_host().empty()) { return CUOPT_INVALID_ARGUMENT; }
+
+// ❌ BAD — narrates the fix rather than the code
+// An empty vector means the solve produced no values, not that every value is zero.
+// Copying nothing and reporting success would leave the caller's buffer at whatever it
+// held and give them no way to tell the difference. Review pointed out that the earlier
+// version regressed the zero-constraint case, so this now tests the solve instead.
+if (solution_host.empty()) { return CUOPT_INVALID_ARGUMENT; }
+```
+
 ## C++ Naming
 
 | Element | Convention | Example |
@@ -158,3 +175,18 @@ Read existing code in `cpp/src/` for real examples of RMM allocation, stream-ord
    - Python pytest: `python/.../tests/`
 
 **Add at least one regression test for new behavior.**
+
+**Assert the expected answer, not that something happened.** `EXPECT_NE(x, sentinel)` and "returns without error" pass for a solver that produces the wrong number. Work out the correct result and assert it with `EXPECT_NEAR` or `EXPECT_EQ`. A sentinel is the right assertion only when the point is that a buffer must be left untouched.
+
+```cpp
+// ✅ GOOD — minimizing x over 0 <= x <= 5 has a known optimum
+EXPECT_NEAR(primal[0], 0.0, 1e-6);
+EXPECT_NEAR(reduced[0], 1.0, 1e-6);
+
+// ❌ BAD — passes for any value the solver happens to write
+EXPECT_NE(primal[0], sentinel);
+```
+
+**Assert every element of an output buffer**, not just the first. An accessor that fills a prefix and stops will pass a test that checks `buffer[0]` alone.
+
+**Check whether the case is already covered before adding a test.** Grep the existing suite first. A test added for symmetry — "the failing path is covered, so cover the working path too" — is worth nothing if the working path already has coverage, and it is one more thing to maintain. Being able to answer "what does this cover that existing tests do not?" is the bar.
