@@ -109,6 +109,7 @@ Follow YAGNI strictly here — flags, fallbacks, env-var overrides, and config k
 A few non-YAGNI points worth keeping in mind:
 
 - Prefer extending an existing script over adding a new one.
+- For build/CI conventions shared across RAPIDS (wheel packaging, artifact naming, matrix filters), read the reference implementation in `rapidsai/rmm` or `NVIDIA/cudf` on `main` before writing anything. cuOpt's `ci/` scripts and shared-workflow inputs are near-copies of theirs, and gha-tools expects exact conventions — an equivalent-but-different local invention silently breaks the download side, which looks for the name the build side wrote.
 - Validate inputs at the top, before any expensive work.
 - One shell command per line over chained `&&`; no comments that restate the next line.
 - Keep informational CI jobs (reporting, dashboards, comment posting) out of any required-checks list.

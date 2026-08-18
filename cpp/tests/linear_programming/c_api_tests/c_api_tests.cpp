@@ -1364,7 +1364,8 @@ TEST(c_api, solution_accessors_on_a_problem_with_no_constraints)
   EXPECT_EQ(cuOptGetObjectiveValue(solution, &objective_value), CUOPT_SUCCESS);
   EXPECT_NEAR(objective_value, 0.0, 1e-6);
 
-  // No constraints means no dual vector to return.
+  // No constraints means no dual vector to return. Reporting that as an absence is intended,
+  // so this assertion is what pins it down.
   EXPECT_EQ(cuOptGetDualSolution(solution, dual), CUOPT_INVALID_ARGUMENT);
   EXPECT_EQ(dual[0], sentinel);
 }
