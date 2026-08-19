@@ -105,6 +105,7 @@ bool bve_sanity_check(const uint8_t* feas, int nb, const bve_clause_t* clauses, 
 struct bve_projection_t {
   std::vector<uint8_t> feasible;  // [2^nb] 1 iff the boundary pattern admits some interior
   std::vector<uint32_t> witness;  // [2^nb] smallest feasible interior, 0 where infeasible
+  bool projected{false};          // set by the backend once both tables hold its result
 };
 
 // Staged candidate. Vector fields use sorted current-problem ids; `blk` uses local ids.
@@ -151,6 +152,7 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
                         timer_t& timer,
                         double& work_units,
                         probe_findings_t<i_t>* out_findings = nullptr,
+                        bool* out_infeasible                = nullptr,
                         i_t boundary_cap                    = BVE_MAX_BOUNDARY,
                         i_t scope_cap                       = BVE_MAX_SCOPE,
                         i_t clause_growth_margin            = 0);

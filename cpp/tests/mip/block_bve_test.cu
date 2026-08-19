@@ -699,6 +699,62 @@ static bve_bf_t brute_force_binary(mip::problem_t<int, double>& problem)
   return r;
 }
 
+TEST(block_bve_regression, all_feasible_projection_can_remove_the_last_rows)
+{
+  const raft::handle_t handle_{};
+  auto model = io::read_mps<int, double>(
+    make_path_absolute("mip/block_bve/all_feasible_projection.mps"), /*fixed_format=*/false);
+  auto op_problem = mps_data_model_to_optimization_problem(&handle_, model);
+  mip::problem_t<int, double> problem(op_problem);
+  problem.preprocess_problem();
+  problem.presolve_data.initialize_var_mapping(problem, problem.handle_ptr);
+
+  bool probing_infeasible = false;
+  auto impl_adj           = probing_impl_adj(problem, &probing_infeasible);
+  ASSERT_FALSE(probing_infeasible) << "probing must leave the all-feasible projection for BVE";
+  ASSERT_TRUE(
+    std::any_of(impl_adj.begin(), impl_adj.end(), [](const auto& adj) { return !adj.empty(); }))
+    << "fixture must provide an implication edge for the zero-objective auxiliary";
+
+  cuopt::timer_t bve_timer(10.0);
+  double bve_work_units = 0.0;
+  bool applied          = false;
+  ASSERT_NO_THROW(applied = mip::block_bve_presolve(problem, impl_adj, bve_timer, bve_work_units));
+  ASSERT_TRUE(applied) << "the all-feasible projection should eliminate its auxiliary";
+
+  ASSERT_LE(problem.n_variables, 24);
+  const auto bf = brute_force_binary(problem);
+  ASSERT_TRUE(bf.found) << "eliminating a tautological projection changed feasibility";
+  EXPECT_NEAR(bf.solver_obj, 0.0, 1e-6);
+}
+
+TEST(block_bve_regression, all_infeasible_projection_remains_infeasible)
+{
+  const raft::handle_t handle_{};
+  auto model = io::read_mps<int, double>(
+    make_path_absolute("mip/block_bve/all_infeasible_projection.mps"), /*fixed_format=*/false);
+  auto op_problem = mps_data_model_to_optimization_problem(&handle_, model);
+  mip::problem_t<int, double> problem(op_problem);
+  problem.preprocess_problem();
+  problem.presolve_data.initialize_var_mapping(problem, problem.handle_ptr);
+
+  bool probing_infeasible = false;
+  auto impl_adj           = probing_impl_adj(problem, &probing_infeasible);
+  ASSERT_FALSE(probing_infeasible)
+    << "the fixture must reach BVE instead of being discharged by probing";
+  ASSERT_TRUE(
+    std::any_of(impl_adj.begin(), impl_adj.end(), [](const auto& adj) { return !adj.empty(); }))
+    << "fixture must provide an implication edge for the zero-objective auxiliary";
+
+  cuopt::timer_t bve_timer(10.0);
+  double bve_work_units = 0.0;
+  ASSERT_NO_THROW((void)mip::block_bve_presolve(problem, impl_adj, bve_timer, bve_work_units));
+
+  ASSERT_LE(problem.n_variables, 24);
+  const auto bf = brute_force_binary(problem);
+  EXPECT_FALSE(bf.found) << "BVE lost the empty clause produced by the projection";
+}
+
 // Corpus of small 0-1 instances whose optima were cross-checked OFFLINE by brute force AND HiGHS.
 // MPS live in datasets/mip/block_bve/; optima inlined here. Mix: gadget-rich (block-BVE fires),
 // no-op/soundness (aux-with-objective, random feasible ILPs), and infeasible.

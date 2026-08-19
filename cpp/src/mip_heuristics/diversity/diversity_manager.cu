@@ -405,8 +405,14 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
     double bve_work_units = 0.0;
     timer_t bve_timer(bve_stage_timer.clamp_remaining_time(
       global_timer.clamp_remaining_time(presolve_timer.remaining_time())));
-    const bool reduced =
-      block_bve_presolve(*problem_ptr, impl_adj, bve_timer, bve_work_units, &bve_findings);
+    bool bve_proved_infeasible = false;
+    const bool reduced         = block_bve_presolve(
+      *problem_ptr, impl_adj, bve_timer, bve_work_units, &bve_findings, &bve_proved_infeasible);
+    if (bve_proved_infeasible) {
+      CUOPT_LOG_INFO("Block-BVE proved the problem infeasible");
+      stats.presolve_time = timer.elapsed_time();
+      return false;
+    }
     CUOPT_LOG_DEBUG("Block-BVE outer round %d/%d: reduced=%d vars %d->%d rows %d->%d",
                     bve_round + 1,
                     max_bve_rounds,
