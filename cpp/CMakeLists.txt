@@ -49,6 +49,7 @@ rapids_cmake_build_type(Release)
 option(CMAKE_CUDA_LINEINFO "Enable the -lineinfo option for nvcc useful for cuda-memcheck / profiler" ON)
 option(BUILD_TESTS "Configure CMake to build tests" ON)
 option(BUILD_LP_ONLY "Build only linear programming components, exclude routing and MIP-specific files" OFF)
+option(BUILD_MIP_BENCHMARKS "Build MIP benchmarks" OFF)
 option(SKIP_C_PYTHON_ADAPTERS "Skip building C and Python adapter files (cython_solve.cu and cuopt_c.cpp)" OFF)
 option(SKIP_ROUTING_BUILD "Skip building routing components" OFF)
 option(SKIP_GRPC_BUILD "Skip building gRPC and protobuf components" OFF)
@@ -800,6 +801,9 @@ target_link_libraries(cuopt_objs
 # - generate tests --------------------------------------------------------------------------------
 if (BUILD_TESTS)
     include(CTest)
+endif ()
+
+if (BUILD_TESTS OR (BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY))
     add_library(cuopt_static STATIC $<TARGET_OBJECTS:cuopt_objs>)
     target_link_libraries(cuopt_static
             PUBLIC
@@ -842,6 +846,9 @@ if (BUILD_TESTS)
     if (TARGET KaMinPar)
         add_dependencies(cuopt_static KaMinPar)
     endif ()
+endif ()
+
+if (BUILD_TESTS)
     add_subdirectory(tests)
 endif (BUILD_TESTS)
 
@@ -1058,7 +1065,6 @@ if (NOT BUILD_LP_ONLY)
 endif ()
 
 
-option(BUILD_MIP_BENCHMARKS "Build MIP benchmarks" OFF)
 if (BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
     add_executable(solve_MIP ../benchmarks/linear_programming/cuopt/run_mip.cpp)
     target_include_directories(solve_MIP
@@ -1102,7 +1108,7 @@ if (BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
     )
     target_link_libraries(solve_CPUFJ
             PUBLIC
-            cuopt
+            cuopt_static
             OpenMP::OpenMP_CXX
             OpenMP::OpenMP_CUDA
     )
