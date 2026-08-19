@@ -144,7 +144,7 @@ class problem_t {
   void set_constraints_from_host_user_problem(
     const cuopt::mathematical_optimization::simplex::user_problem_t<i_t, f_t>& user_problem);
   // Replace the constraint matrix + row bounds in place from host CSR
-  // Used by presolve passes that rewrite rows in place (e.g. block-BVE)
+  // Used by presolve passes that rewrite rows in place
   void set_constraints_from_host_csr(const std::vector<i_t>& offsets,
                                      const std::vector<i_t>& variables,
                                      const std::vector<f_t>& coefficients,

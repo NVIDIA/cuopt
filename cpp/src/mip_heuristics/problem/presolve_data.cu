@@ -135,8 +135,7 @@ void presolve_data_t<i_t, f_t>::post_process_assignment(
     }
   }
 
-  // Reverse-append undo of the unified GPU-presolve reconstruction log (probe AffineSub and BVE
-  // BlockBve interleaved in commit order across outer rounds).
+  // Reverse-append undo of the unified GPU-presolve reconstruction log
   for (auto it = var_postsolve.rbegin(); it != var_postsolve.rend(); ++it) {
     const auto& rec = *it;
     switch (rec.kind) {

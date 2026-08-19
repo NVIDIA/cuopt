@@ -879,12 +879,8 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
 {
   raft::common::nvtx::range fun_scope("compute_probing_cache");
 
-  // Probing runs once per solve, ahead of the block-BVE rounds that consume the cache. A second
-  // call would drop everything those rounds folded back in, so refuse to start on a populated one.
   cuopt_assert(bound_presolve.probing_cache.probing_cache.empty(),
                "probing cache is built once per solve");
-  // Entries are keyed by original id, so every caller must have compacted the problem with
-  // remap_cache_ids set.
   cuopt_assert(problem.original_ids.size() == (size_t)problem.n_variables,
                "probing cache needs id maps that match the current column set");
   // we dont want to compute the probing cache for all variables for time and computation resources
