@@ -204,4 +204,31 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_standalone(
   std::atomic<bool>& preemption_flag,
   fj_settings_t settings = fj_settings_t{});
 
+// A model held entirely on the host, row major.  Row bounds are carried as given, so ranged and one
+// sided rows need no slack columns.
+template <typename i_t, typename f_t>
+struct fj_cpu_host_model_t {
+  i_t n_variables{0};
+  i_t n_constraints{0};
+  std::vector<f_t> coefficients;
+  std::vector<i_t> variables;
+  std::vector<i_t> offsets;
+  std::vector<f_t> row_lb;
+  std::vector<f_t> row_ub;
+  std::vector<f_t> var_lb;
+  std::vector<f_t> var_ub;
+  std::vector<f_t> objective;
+  std::vector<var_t> var_types;
+};
+
+// CPUFJ init from host arrays alone: no problem_t, no device allocation, no handle.  The model is
+// taken by value and moved from.  Callers holding a device problem want init_fj_cpu_standalone.
+template <typename i_t, typename f_t>
+std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_from_host_model(
+  fj_cpu_host_model_t<i_t, f_t> model,
+  const std::vector<f_t>& seed_assignment,
+  const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances,
+  std::atomic<bool>& preemption_flag,
+  fj_settings_t settings);
+
 }  // namespace cuopt::mathematical_optimization::mip

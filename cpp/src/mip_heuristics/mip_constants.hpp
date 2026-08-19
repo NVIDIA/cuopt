@@ -15,9 +15,16 @@
 #define PDLP_INSTANTIATE_FLOAT 1
 
 /* @brief Minimimum number of threads to enable each part of the MIP Solver */
-#define CUOPT_MIP_FJ_REQUIRED_THREAD_COUNT          8
-#define CUOPT_MIP_EARLY_GPUFJ_REQUIRED_THREAD_COUNT 3
-#define CUOPT_MIP_EARLY_CPUFJ_REQUIRED_THREAD_COUNT 2
+#define CUOPT_MIP_FJ_REQUIRED_THREAD_COUNT               8
+#define CUOPT_MIP_EARLY_GPUFJ_REQUIRED_THREAD_COUNT      3
+#define CUOPT_MIP_EARLY_CPUFJ_REQUIRED_THREAD_COUNT      2
+#define CUOPT_MIP_EARLY_STRUCTURAL_REQUIRED_THREAD_COUNT 2
+
+// Thread slots the root structural pass must leave free for the tasks that share the team while it
+// runs: the B&B task itself, dual simplex, the diversity manager, the concurrent barrier, clique
+// extension, the LS scratch climber and the ls_cpu_fj taskloop.  B&B's own worker pools are not
+// created until the cut loop ends, which is what makes the remaining slots safe to take.
+#define CUOPT_MIP_ROOT_STRUCTURAL_RESERVED_THREADS  8
 #define CUOPT_MIP_BATCH_PDLP_REQUIRED_THREAD_COUNT  3
 #define CUOPT_MIP_CLIQUE_CUTS_REQUIRED_THREAD_COUNT 3
 
