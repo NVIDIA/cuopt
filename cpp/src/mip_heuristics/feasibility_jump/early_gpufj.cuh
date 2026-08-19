@@ -8,8 +8,11 @@
 #pragma once
 
 #include <mip_heuristics/early_heuristic.cuh>
+#include <mip_heuristics/problem/problem.cuh>
+#include <mip_heuristics/solution/solution.cuh>
 
 #include <memory>
+#include <vector>
 
 namespace cuopt::mathematical_optimization::mip {
 
@@ -34,6 +37,18 @@ class early_gpufj_t : public early_heuristic_t<i_t, f_t, early_gpufj_t<i_t, f_t>
   void stop();
 
  private:
+  friend class early_heuristic_t<i_t, f_t, early_gpufj_t<i_t, f_t>>;
+
+  std::vector<f_t> to_user_assignment(const std::vector<f_t>& assignment);
+
+  int device_id_{0};
+
+  // handle_ must be declared before problem_ptr_/solution_ptr_ so it outlives them
+  // (C++ destroys members in reverse declaration order)
+  raft::handle_t handle_;
+
+  std::unique_ptr<problem_t<i_t, f_t>> problem_ptr_;
+  std::unique_ptr<solution_t<i_t, f_t>> solution_ptr_;
   std::unique_ptr<mip_solver_context_t<i_t, f_t>> context_ptr_;
   std::unique_ptr<fj_t<i_t, f_t>> fj_ptr_;
 };

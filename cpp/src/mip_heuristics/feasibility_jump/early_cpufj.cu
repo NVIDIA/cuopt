@@ -16,8 +16,9 @@ early_cpufj_t<i_t, f_t>::early_cpufj_t(
   const optimization_problem_t<i_t, f_t>& op_problem,
   const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances,
   early_incumbent_callback_t<f_t> incumbent_callback)
-  : early_heuristic_t<i_t, f_t, early_cpufj_t<i_t, f_t>>(
-      op_problem, tolerances, std::move(incumbent_callback))
+  : early_heuristic_t<i_t, f_t, early_cpufj_t<i_t, f_t>>(op_problem, std::move(incumbent_callback)),
+    problem_ptr_(&op_problem),
+    tolerances_(tolerances)
 {
 }
 
@@ -36,7 +37,8 @@ void early_cpufj_t<i_t, f_t>::start()
   this->preemption_flag_.store(false);
   this->start_time_ = std::chrono::steady_clock::now();
 
-  fj_cpu_ = init_fj_cpu_standalone(*this->problem_ptr_, *this->solution_ptr_, preemption_flag_);
+  fj_cpu_ =
+    init_fj_cpu_from_optimization_problem(*this->problem_ptr_, tolerances_, preemption_flag_);
 
   fj_cpu_->log_prefix = "[Early CPUFJ] ";
 
@@ -65,6 +67,12 @@ void early_cpufj_t<i_t, f_t>::stop()
                   this->solution_found_);
 
   fj_cpu_.reset();
+}
+
+template <typename i_t, typename f_t>
+std::vector<f_t> early_cpufj_t<i_t, f_t>::to_user_assignment(const std::vector<f_t>& assignment)
+{
+  return assignment;
 }
 
 #if MIP_INSTANTIATE_FLOAT

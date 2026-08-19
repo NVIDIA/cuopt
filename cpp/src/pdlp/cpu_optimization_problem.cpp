@@ -29,20 +29,36 @@ namespace cuopt::mathematical_optimization {
 
 namespace {
 
-// Classify a problem as LP / MIP / IP from its (enum) variable types. Single source of truth
-// shared by set_variable_types() and adopt_from_mps_data_model() so the detection rule lives in
-// one place. Empty types (no variables declared) classify as LP, matching the populate path where
-// set_variable_types() is skipped and the category keeps its LP default.
-problem_category_t problem_category_from_variable_types(const std::vector<var_t>& variable_types)
+// Classify a problem as LP / MIP / IP from its (enum) variable types, and whether any
+// SEMI_CONTINUOUS vars are present. Single source of truth shared by set_variable_types() and
+// adopt_from_mps_data_model() so the detection rule lives in one place. Empty types (no variables
+// declared) classify as LP with no SC, matching the populate path where set_variable_types() is
+// skipped and the category keeps its LP default.
+struct variable_type_summary_t {
+  problem_category_t category;
+  bool has_semi_continuous;
+};
+
+variable_type_summary_t summarize_variable_types(const std::vector<var_t>& variable_types)
 {
-  if (variable_types.empty()) { return problem_category_t::LP; }
-  const std::size_t n_discrete = static_cast<std::size_t>(
-    std::count_if(variable_types.begin(), variable_types.end(), [](var_t v) {
-      return v == var_t::INTEGER || v == var_t::SEMI_CONTINUOUS;
-    }));
-  if (n_discrete == variable_types.size()) { return problem_category_t::IP; }
-  if (n_discrete > 0) { return problem_category_t::MIP; }
-  return problem_category_t::LP;
+  if (variable_types.empty()) {
+    return {problem_category_t::LP, false};
+  }
+  size_t n_discrete = 0;
+  bool has_semi_continuous = false;
+  for (var_t v : variable_types) {
+    if (v == var_t::SEMI_CONTINUOUS) {
+      has_semi_continuous = true;
+      ++n_discrete;
+    } else if (v == var_t::INTEGER) {
+      ++n_discrete;
+    }
+  }
+  if (n_discrete == variable_types.size()) {
+    return {problem_category_t::IP, has_semi_continuous};
+  }
+  if (n_discrete > 0) { return {problem_category_t::MIP, has_semi_continuous}; }
+  return {problem_category_t::LP, false};
 }
 
 }  // namespace
@@ -232,7 +248,9 @@ void cpu_optimization_problem_t<i_t, f_t>::set_variable_types(const var_t* varia
   variable_types_.resize(size);
   std::copy(variable_types, variable_types + size, variable_types_.begin());
 
-  problem_category_ = problem_category_from_variable_types(variable_types_);
+  const auto summary               = summarize_variable_types(variable_types_);
+  problem_category_                = summary.category;
+  has_semi_continuous_variables_   = summary.has_semi_continuous;
 }
 
 template <typename i_t, typename f_t>
@@ -511,6 +529,12 @@ template <typename i_t, typename f_t>
 problem_category_t cpu_optimization_problem_t<i_t, f_t>::get_problem_category() const
 {
   return problem_category_;
+}
+
+template <typename i_t, typename f_t>
+bool cpu_optimization_problem_t<i_t, f_t>::has_semi_continuous_variables() const noexcept
+{
+  return has_semi_continuous_variables_;
 }
 
 template <typename i_t, typename f_t>
@@ -1171,7 +1195,9 @@ void cpu_optimization_problem_t<i_t, f_t>::adopt_from_mps_data_model(
   for (size_t i = 0; i < model.var_types_.size(); ++i) {
     variable_types_[i] = char_to_var_type(model.var_types_[i]);
   }
-  problem_category_ = problem_category_from_variable_types(variable_types_);
+  const auto summary             = summarize_variable_types(variable_types_);
+  problem_category_              = summary.category;
+  has_semi_continuous_variables_ = summary.has_semi_continuous;
 
   if (model.has_quadratic_constraints()) {
     move_quadratic_constraints_from_model(*this, model.quadratic_constraints_);
