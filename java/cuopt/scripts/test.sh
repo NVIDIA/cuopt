@@ -11,7 +11,9 @@ NATIVE_BUILD_DIR="${CUOPT_JAVA_NATIVE_BUILD_DIR:-${MODULE_DIR}/build/native}"
 export CUOPT_PREFIX CUOPT_JAVA_NATIVE_BUILD_DIR="${NATIVE_BUILD_DIR}"
 
 source "${MODULE_DIR}/scripts/java_home.sh"
+source "${MODULE_DIR}/scripts/maven.sh"
 cuopt_java_setup_home javac
+cuopt_maven_args
 
 bash "${MODULE_DIR}/scripts/build_native.sh"
 
@@ -46,5 +48,6 @@ fi
 
 cd "${MODULE_DIR}"
 mvn verify \
+  "${CUOPT_MVN_ARGS[@]}" \
   -Dcuopt.native.dir="${NATIVE_BUILD_DIR}" \
   "$@"

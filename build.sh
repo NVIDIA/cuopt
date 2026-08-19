@@ -496,7 +496,10 @@ if hasArg java; then
         bash "${REPODIR}"/java/cuopt/scripts/test.sh
     else
         bash "${REPODIR}"/java/cuopt/scripts/build_native.sh
+        source "${REPODIR}"/java/cuopt/scripts/maven.sh
+        cuopt_maven_args
         mvn -f "${REPODIR}"/java/cuopt/pom.xml clean package \
+            "${CUOPT_MVN_ARGS[@]}" \
             -DskipTests \
             -Dcuopt.native.dir="${CUOPT_JAVA_NATIVE_BUILD_DIR}"
     fi
