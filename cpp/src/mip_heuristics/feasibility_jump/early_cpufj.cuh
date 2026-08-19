@@ -12,6 +12,7 @@
 
 #include <atomic>
 #include <memory>
+#include <vector>
 
 namespace cuopt::mathematical_optimization::mip {
 
@@ -30,6 +31,12 @@ class early_cpufj_t : public early_heuristic_t<i_t, f_t, early_cpufj_t<i_t, f_t>
   void stop();
 
  private:
+  friend class early_heuristic_t<i_t, f_t, early_cpufj_t<i_t, f_t>>;
+
+  std::vector<f_t> to_user_assignment(const std::vector<f_t>& assignment);
+
+  const optimization_problem_t<i_t, f_t>* problem_ptr_;
+  typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances_;
   std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_cpu_;
   std::atomic<bool> preemption_flag_{false};
 };

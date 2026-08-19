@@ -115,6 +115,8 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
                                  std::vector<uint8_t>* used_fallback_big_m,
                                  std::vector<i_t>* semi_continuous_binary_to_original_indices)
 {
+  if (!op_problem.has_semi_continuous_variables()) { return false; }
+
   // 1. Identify semi-continuous variables
   auto var_types = op_problem.get_variable_types_host();
   auto var_lb    = op_problem.get_variable_lower_bounds_host();

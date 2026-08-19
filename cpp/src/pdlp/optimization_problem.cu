@@ -54,6 +54,8 @@
 
 namespace cuopt::mathematical_optimization {
 
+constexpr size_t host_variable_type_summary_limit = 50'000;
+
 template <typename i_t, typename f_t>
 optimization_problem_t<i_t, f_t>::optimization_problem_t(raft::handle_t const* handle_ptr)
   : handle_ptr_(handle_ptr),
@@ -101,6 +103,7 @@ optimization_problem_t<i_t, f_t>::optimization_problem_t(
     objective_name_{other.get_objective_name()},
     problem_name_{other.get_problem_name()},
     problem_category_{other.get_problem_category()},
+    has_semi_continuous_variables_{other.has_semi_continuous_variables()},
     var_names_{other.get_variable_names()},
     row_names_{other.get_row_names()},
     quadratic_constraints_{other.get_quadratic_constraints()}
@@ -285,14 +288,40 @@ void optimization_problem_t<i_t, f_t>::set_variable_types(const var_t* variable_
   variable_types_.resize(size, stream_view_);
   raft::copy(variable_types_.data(), variable_types, size, stream_view_);
 
-  // Auto-detect problem category based on variable types.
+  // Auto-detect problem category and cache presence of SEMI_CONTINUOUS vars.
   // SEMI_CONTINUOUS vars will be reformulated into binary + continuous before solving,
   // so a problem with only SC vars is treated as MIP.
-  i_t n_discrete = thrust::count_if(
-    handle_ptr_->get_thrust_policy(),
-    variable_types_.begin(),
-    variable_types_.end(),
-    [] __device__(auto val) { return val == var_t::INTEGER || val == var_t::SEMI_CONTINUOUS; });
+  // Prefer host-side for small instances to reduce latency between launch and first-feasible.
+  i_t n_discrete                      = 0;
+  bool has_semi_continuous_variables  = false;
+  if ((size_t)size < host_variable_type_summary_limit) {
+    for (i_t i = 0; i < size; ++i) {
+      const var_t val = variable_types[i];
+      if (val == var_t::SEMI_CONTINUOUS) {
+        has_semi_continuous_variables = true;
+        ++n_discrete;
+      } else if (val == var_t::INTEGER) {
+        ++n_discrete;
+      }
+    }
+  } else {
+    auto is_discrete = [] __host__ __device__(var_t val) {
+      return val == var_t::INTEGER || val == var_t::SEMI_CONTINUOUS;
+    };
+    auto is_semi_continuous = [] __host__ __device__(var_t val) {
+      return val == var_t::SEMI_CONTINUOUS;
+    };
+    n_discrete = thrust::count_if(handle_ptr_->get_thrust_policy(),
+                                  variable_types_.begin(),
+                                  variable_types_.end(),
+                                  is_discrete);
+    has_semi_continuous_variables =
+      thrust::count_if(handle_ptr_->get_thrust_policy(),
+                       variable_types_.begin(),
+                       variable_types_.end(),
+                       is_semi_continuous) > 0;
+  }
+  has_semi_continuous_variables_ = has_semi_continuous_variables;
   if (n_discrete == size) {
     problem_category_ = problem_category_t::IP;
   } else if (n_discrete > 0) {
@@ -578,6 +607,12 @@ template <typename i_t, typename f_t>
 problem_category_t optimization_problem_t<i_t, f_t>::get_problem_category() const
 {
   return problem_category_;
+}
+
+template <typename i_t, typename f_t>
+bool optimization_problem_t<i_t, f_t>::has_semi_continuous_variables() const noexcept
+{
+  return has_semi_continuous_variables_;
 }
 
 template <typename i_t, typename f_t>
