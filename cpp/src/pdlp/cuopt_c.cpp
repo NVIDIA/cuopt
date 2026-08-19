@@ -1264,10 +1264,15 @@ cuopt_int_t cuOptGetPrimalSolution(cuOptSolution solution, cuopt_float_t* soluti
   solution_and_stream_view_t* solution_and_stream_view =
     static_cast<solution_and_stream_view_t*>(solution);
 
-  const auto solution_host = solution_and_stream_view->get_solution()->get_solution_host();
-  std::memcpy(
-    solution_values_ptr, solution_host.data(), solution_host.size() * sizeof(cuopt_float_t));
-  return CUOPT_SUCCESS;
+  try {
+    const auto solution_host = solution_and_stream_view->get_solution()->get_solution_host();
+    if (solution_host.empty()) { return CUOPT_INVALID_ARGUMENT; }
+    std::memcpy(
+      solution_values_ptr, solution_host.data(), solution_host.size() * sizeof(cuopt_float_t));
+    return CUOPT_SUCCESS;
+  } catch (const std::logic_error&) {
+    return CUOPT_INVALID_ARGUMENT;
+  }
 }
 
 cuopt_int_t cuOptGetObjectiveValue(cuOptSolution solution, cuopt_float_t* objective_value_ptr)
@@ -1326,6 +1331,7 @@ cuopt_int_t cuOptGetDualSolution(cuOptSolution solution, cuopt_float_t* dual_sol
     static_cast<solution_and_stream_view_t*>(solution);
   try {
     const auto dual_host = solution_and_stream_view->get_solution()->get_dual_solution();
+    if (dual_host.empty()) { return CUOPT_INVALID_ARGUMENT; }
     std::memcpy(dual_solution_ptr, dual_host.data(), dual_host.size() * sizeof(cuopt_float_t));
     return CUOPT_SUCCESS;
   } catch (const std::logic_error&) {
@@ -1357,6 +1363,7 @@ cuopt_int_t cuOptGetReducedCosts(cuOptSolution solution, cuopt_float_t* reduced_
     static_cast<solution_and_stream_view_t*>(solution);
   try {
     const auto reduced_cost_host = solution_and_stream_view->get_solution()->get_reduced_costs();
+    if (reduced_cost_host.empty()) { return CUOPT_INVALID_ARGUMENT; }
     std::memcpy(
       reduced_cost_ptr, reduced_cost_host.data(), reduced_cost_host.size() * sizeof(cuopt_float_t));
     return CUOPT_SUCCESS;

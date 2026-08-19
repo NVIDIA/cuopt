@@ -41,16 +41,22 @@ EXCLUDE_ARGS=(
   --exclude "libcusolver.so.*"
   --exclude "libcusparse.so.*"
   --exclude "libcuopt.so"
+  --exclude "libnvJitLink.so*"
   --exclude "librapids_logger.so"
   --exclude "librmm.so"
 )
 
-ci/build_wheel.sh cuopt ${package_dir}
+# TODO: move this variable into `ci-wheel`
+# Format Python limited API version string
+RAPIDS_PY_API="cp${RAPIDS_PY_VERSION//./}"
+export RAPIDS_PY_API
+
+ci/build_wheel.sh cuopt ${package_dir} --stable
 
 # repair wheels and write to the location that artifact-uploading code expects to find them
 python -m auditwheel repair "${EXCLUDE_ARGS[@]}" -w ${RAPIDS_WHEEL_BLD_OUTPUT_DIR} ${package_dir}/dist/*
 
 ci/validate_wheel.sh "${package_dir}" "${RAPIDS_WHEEL_BLD_OUTPUT_DIR}"
 
-RAPIDS_PACKAGE_NAME="$(rapids-artifact-name wheel_python cuopt cuopt --py "$RAPIDS_PY_VERSION" --cuda "$RAPIDS_CUDA_VERSION")"
+RAPIDS_PACKAGE_NAME="$(rapids-artifact-name wheel_python cuopt cuopt --stable --cuda "$RAPIDS_CUDA_VERSION")"
 export RAPIDS_PACKAGE_NAME
