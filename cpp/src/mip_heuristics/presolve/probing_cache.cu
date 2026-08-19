@@ -753,6 +753,18 @@ void apply_substitution_queue_to_problem(
                       staged_reconstructions.back().sub.substituting_var);
     }
   }
+  // check are_exclusive to avoid emitting a nonsensical substitution with the variable on both sides
+  std::unordered_set<i_t> substituting_vars(substituting_var_indices.begin(),
+                                            substituting_var_indices.end());
+  for (i_t substituted_var : var_indices) {
+    if (substituting_vars.count(substituted_var) == 0) { continue; }
+    CUOPT_LOG_WARN(
+      "Skipping %zu probing substitutions: variable %d is both substituted and substituting",
+      var_indices.size(),
+      substituted_var);
+    return;
+  }
+
   std::sort(staged_reconstructions.begin(),
             staged_reconstructions.end(),
             [](const postsolve_reconstruction_t<i_t, f_t>& a,
@@ -1048,6 +1060,7 @@ void probing_cache_t<i_t, f_t>::merge_forcings(const std::vector<probe_forcing_t
     for (cache_entry_t<i_t, f_t>& entry : entry_it->second) {
       if (entry.var_to_cached_bound_map.empty()) { continue; }
       if (entry.val_interval.interval_type != interval_type_t::EQUALS) { continue; }
+      cuopt_assert(entry.val_interval.val == f_t(0) || entry.val_interval.val == f_t(1), "");
       if (entry.val_interval.val != probed_val) { continue; }
       auto [bound_it, inserted] = entry.var_to_cached_bound_map.insert(
         {forcing.forced_var, cached_bound_t<f_t>{forced_val, forced_val}});
@@ -1056,6 +1069,7 @@ void probing_cache_t<i_t, f_t>::merge_forcings(const std::vector<probe_forcing_t
         continue;
       }
       cached_bound_t<f_t>& bound = bound_it->second;
+      cuopt_assert(bound.lb >= f_t(0) && bound.ub <= f_t(1), "");
       const f_t lb               = std::max(bound.lb, forced_val);
       const f_t ub               = std::min(bound.ub, forced_val);
       // Both the cached bound and the projection are valid and share the antecedent var == probed
