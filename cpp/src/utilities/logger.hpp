@@ -38,12 +38,8 @@ rapids_logger::logger& default_logger();
  */
 void reset_default_logger();
 
-// C-compatible log callback type: void callback(const char* msg, void* user_data)
-// Matches cuOptLogCallback in cuopt_c.h — layout-compatible, no dependency on that header.
-//
-// Deliberately carries no severity. Exposing a level would let callers branch on
-// it, which makes our internal log taxonomy a de-facto public API; the callback
-// is for displaying or forwarding standard solver output only.
+// C-compatible log callback type. Matches cuOptLogCallback in cuopt_c.h.
+// Carries no severity by design: a level would become a de-facto public API.
 using log_callback_with_data_t = void (*)(const char* message, void* user_data);
 
 /**

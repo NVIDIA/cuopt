@@ -210,12 +210,8 @@ static void* g_pending_callback_data               = nullptr;
 
 static void user_log_bridge(int lvl, const char* msg)
 {
-  // Deliver only standard solver output — the lines a user would see on the
-  // console. Debug and trace are internal diagnostics: they are normally
-  // compiled out (CUOPT_LOG_ACTIVE_LEVEL defaults to INFO), but a build with a
-  // lower level, or CUOPT_LOG_LEVEL=DEBUG against such a build, would otherwise
-  // route them into user code. Filtering here makes the guarantee a property of
-  // the API rather than of the build configuration.
+  // Standard solver output only; debug/trace are internal diagnostics and must
+  // not reach user code even in a lower-level build.
   if (lvl < static_cast<int>(rapids_logger::level_enum::info)) { return; }
 
   // g_active_log_callback is stable for the duration of any bridge call:
@@ -244,8 +240,12 @@ init_logger_t::init_logger_t(std::string log_file, bool log_to_console)
 
   auto existing_guard = g_active_guard.lock();
   if (existing_guard) {
-    // Reuse existing configuration, just hold a reference to keep it alive
-    guard_ = existing_guard;
+    // Reuse existing configuration, just hold a reference to keep it alive.
+    // Drop any pending callback: it cannot be installed on an already-configured
+    // guard, and a later guard would otherwise adopt it with stale user_data (#1752).
+    g_pending_callback      = nullptr;
+    g_pending_callback_data = nullptr;
+    guard_                  = existing_guard;
     return;
   }
 
@@ -269,6 +269,10 @@ init_logger_t::init_logger_t(std::string log_file, bool log_to_console)
     g_active_log_callback = guard->callback_state.get();
     cuopt::default_logger().sinks().push_back(
       std::make_shared<rapids_logger::callback_sink_mt>(user_log_bridge));
+
+    // Consume the slot; the guard owns a copy now.
+    g_pending_callback      = nullptr;
+    g_pending_callback_data = nullptr;
   }
 
 #if CUOPT_LOG_ACTIVE_LEVEL >= RAPIDS_LOGGER_LOG_LEVEL_INFO
