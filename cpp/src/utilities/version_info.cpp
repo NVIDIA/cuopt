@@ -15,135 +15,208 @@
 #include <hwy/per_target.h>
 #include <hwy/targets.h>
 
-#include <fstream>
-#include <iomanip>
-#include <set>
-#include <sstream>
-#include <string>
-#include <thread>
+#include <fcntl.h>
+#include <sched.h>
+#include <unistd.h>
+
+#include <algorithm>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
 namespace cuopt {
 
-static int get_physical_cores()
+// Reads up to buf_size-1 bytes, NUL-terminates, strips trailing whitespace/NULs.
+// Returns bytes kept (excluding the terminator), or -1 on failure.
+static ssize_t read_file_buf(const char* path, char* buf, size_t buf_size)
 {
-  std::ifstream cpuinfo("/proc/cpuinfo");
-  if (!cpuinfo.is_open()) return 0;
+  if (buf_size == 0) return -1;
+  const int fd = open(path, O_RDONLY);
+  if (fd < 0) return -1;
+  const ssize_t n = read(fd, buf, buf_size - 1);
+  close(fd);
+  if (n < 0) return -1;
+  buf[n] = '\0';
 
-  std::string line;
-  int physical_id = -1, core_id = -1;
-  std::set<std::pair<int, int>> cores;
-
-  while (std::getline(cpuinfo, line)) {
-    if (line.find("physical id") != std::string::npos) {
-      physical_id = std::stoi(line.substr(line.find(":") + 1));
-    } else if (line.find("core id") != std::string::npos) {
-      core_id = std::stoi(line.substr(line.find(":") + 1));
-    }
-
-    if (physical_id != -1 && core_id != -1) {
-      cores.insert({physical_id, core_id});
-      physical_id = -1;
-      core_id     = -1;
-    }
+  // Device-tree properties are often NUL-terminated without a trailing newline.
+  size_t len = 0;
+  while (len < (size_t)n && buf[len] != '\0') {
+    ++len;
   }
+  buf[len] = '\0';
+  while (len > 0 &&
+         (buf[len - 1] == '\n' || buf[len - 1] == '\r' || buf[len - 1] == ' ' ||
+          buf[len - 1] == '\t')) {
+    buf[--len] = '\0';
+  }
+  return (ssize_t)len;
+}
 
-  if (cores.empty()) {
-    cpuinfo.clear();
-    cpuinfo.seekg(0);
-    while (std::getline(cpuinfo, line)) {
-      if (line.find("cpu cores") != std::string::npos) {
-        return std::stoi(line.substr(line.find(":") + 1));
+// Parses a kernel CPU list ("0-3,8,10-11") into cpus[0..max_cpus). Returns count written.
+static int parse_cpu_list(const char* list, int* cpus, int max_cpus)
+{
+  int count     = 0;
+  const char* p = list;
+  while (*p && count < max_cpus) {
+    while (*p == ',' || *p == ' ' || *p == '\t' || *p == '\n' || *p == '\r') {
+      ++p;
+    }
+    if (*p == '\0') break;
+
+    char* end     = nullptr;
+    const long lo = std::strtol(p, &end, 10);
+    if (end == p) break;
+    p = end;
+
+    if (*p == '-') {
+      ++p;
+      const long hi = std::strtol(p, &end, 10);
+      if (end == p) break;
+      p = end;
+      for (long cpu = lo; cpu <= hi && count < max_cpus; ++cpu) {
+        cpus[count++] = (int)cpu;
       }
-    }
-    return 1;
-  }
-  return cores.size();
-}
-
-static std::string get_cpu_model_from_proc()
-{
-  std::ifstream cpuinfo("/proc/cpuinfo");
-  if (!cpuinfo.is_open()) return "";
-
-  std::string line;
-  while (std::getline(cpuinfo, line)) {
-    std::size_t pos = line.find("model name");
-    if (pos == std::string::npos) pos = line.find("Processor");
-    if (pos != std::string::npos) {
-      std::size_t colon = line.find(':', pos);
-      if (colon != std::string::npos) return line.substr(colon + 2);  // Skip ": "
+    } else {
+      cpus[count++] = (int)lo;
     }
   }
-  return "";
+  return count;
 }
 
-// From https://gcc.gnu.org/onlinedocs/gcc/x86-Built-in-Functions.html
-// Also supported by clang
-static std::string get_cpu_model_builtin()
+static void mark_cpus_from_list(const char* list, char visited[CPU_SETSIZE])
 {
-#if (defined(__x86_64__) || defined(__i386__)) && (defined(__GNUC__) || defined(__clang__))
-  __builtin_cpu_init();
-  return __builtin_cpu_is("amd")               ? "AMD CPU"
-         : __builtin_cpu_is("intel")           ? "Intel CPU"
-         : __builtin_cpu_is("atom")            ? "Intel Atom CPU"
-         : __builtin_cpu_is("slm")             ? "Intel Silvermont CPU"
-         : __builtin_cpu_is("core2")           ? "Intel Core 2 CPU"
-         : __builtin_cpu_is("corei7")          ? "Intel Core i7 CPU"
-         : __builtin_cpu_is("nehalem")         ? "Intel Core i7 Nehalem CPU"
-         : __builtin_cpu_is("westmere")        ? "Intel Core i7 Westmere CPU"
-         : __builtin_cpu_is("sandybridge")     ? "Intel Core i7 Sandy Bridge CPU"
-         : __builtin_cpu_is("ivybridge")       ? "Intel Core i7 Ivy Bridge CPU"
-         : __builtin_cpu_is("haswell")         ? "Intel Core i7 Haswell CPU"
-         : __builtin_cpu_is("broadwell")       ? "Intel Core i7 Broadwell CPU"
-         : __builtin_cpu_is("skylake")         ? "Intel Core i7 Skylake CPU"
-         : __builtin_cpu_is("skylake-avx512")  ? "Intel Core i7 Skylake AVX512 CPU"
-         : __builtin_cpu_is("cannonlake")      ? "Intel Core i7 Cannon Lake CPU"
-         : __builtin_cpu_is("icelake-client")  ? "Intel Core i7 Ice Lake Client CPU"
-         : __builtin_cpu_is("icelake-server")  ? "Intel Core i7 Ice Lake Server CPU"
-         : __builtin_cpu_is("cascadelake")     ? "Intel Core i7 Cascadelake CPU"
-         : __builtin_cpu_is("tigerlake")       ? "Intel Core i7 Tigerlake CPU"
-         : __builtin_cpu_is("cooperlake")      ? "Intel Core i7 Cooperlake CPU"
-         : __builtin_cpu_is("sapphirerapids")  ? "Intel Core i7 sapphirerapids CPU"
-         : __builtin_cpu_is("alderlake")       ? "Intel Core i7 Alderlake CPU"
-         : __builtin_cpu_is("rocketlake")      ? "Intel Core i7 Rocketlake CPU"
-         : __builtin_cpu_is("graniterapids")   ? "Intel Core i7 graniterapids CPU"
-         : __builtin_cpu_is("graniterapids-d") ? "Intel Core i7 graniterapids D CPU"
-         : __builtin_cpu_is("bonnell")         ? "Intel Atom Bonnell CPU"
-         : __builtin_cpu_is("silvermont")      ? "Intel Atom Silvermont CPU"
-         : __builtin_cpu_is("goldmont")        ? "Intel Atom Goldmont CPU"
-         : __builtin_cpu_is("goldmont-plus")   ? "Intel Atom Goldmont Plus CPU"
-         : __builtin_cpu_is("tremont")         ? "Intel Atom Tremont CPU"
-         : __builtin_cpu_is("sierraforest")    ? "Intel Atom Sierra Forest CPU"
-         : __builtin_cpu_is("grandridge")      ? "Intel Atom Grand Ridge CPU"
-         : __builtin_cpu_is("amdfam10h")       ? "AMD Family 10h CPU"
-         : __builtin_cpu_is("barcelona")       ? "AMD Family 10h Barcelona CPU"
-         : __builtin_cpu_is("shanghai")        ? "AMD Family 10h Shanghai CPU"
-         : __builtin_cpu_is("istanbul")        ? "AMD Family 10h Istanbul CPU"
-         : __builtin_cpu_is("btver1")          ? "AMD Family 14h CPU"
-         : __builtin_cpu_is("amdfam15h")       ? "AMD Family 15h CPU"
-         : __builtin_cpu_is("bdver1")          ? "AMD Family 15h Bulldozer version 1"
-         : __builtin_cpu_is("bdver2")          ? "AMD Family 15h Bulldozer version 2"
-         : __builtin_cpu_is("bdver3")          ? "AMD Family 15h Bulldozer version 3"
-         : __builtin_cpu_is("bdver4")          ? "AMD Family 15h Bulldozer version 4"
-         : __builtin_cpu_is("btver2")          ? "AMD Family 16h CPU"
-         : __builtin_cpu_is("amdfam17h")       ? "AMD Family 17h CPU"
-         : __builtin_cpu_is("znver1")          ? "AMD Family 17h Zen version 1"
-         : __builtin_cpu_is("znver2")          ? "AMD Family 17h Zen version 2"
-         : __builtin_cpu_is("amdfam19h")       ? "AMD Family 19h CPU"
-                                               : "Unknown";
-#else
-  return "Unknown";
-#endif
-}
+  const char* p = list;
+  while (*p) {
+    while (*p == ',' || *p == ' ' || *p == '\t' || *p == '\n' || *p == '\r') {
+      ++p;
+    }
+    if (*p == '\0') break;
 
-static std::string get_cpu_model()
-{
-  if (auto model_from_proc = get_cpu_model_from_proc(); !model_from_proc.empty()) {
-    return model_from_proc;
-  } else if (auto model_from_builtin = get_cpu_model_builtin(); !model_from_builtin.empty()) {
-    return model_from_builtin;
+    char* end     = nullptr;
+    const long lo = std::strtol(p, &end, 10);
+    if (end == p) break;
+    p = end;
+
+    if (*p == '-') {
+      ++p;
+      const long hi = std::strtol(p, &end, 10);
+      if (end == p) break;
+      p = end;
+      for (long cpu = lo; cpu <= hi; ++cpu) {
+        if (cpu >= 0 && cpu < CPU_SETSIZE) { visited[cpu] = 1; }
+      }
+    } else if (lo >= 0 && lo < CPU_SETSIZE) {
+      visited[lo] = 1;
+    }
   }
-  return "Unknown";
+}
+
+// CPUs this process may run on (respects Slurm/cgroup cpusets, taskset, etc.).
+static int get_allowed_cpus(int* cpus, int max_cpus)
+{
+  cpu_set_t set;
+  CPU_ZERO(&set);
+  int count = 0;
+  if (sched_getaffinity(0, sizeof(set), &set) == 0) {
+    for (int cpu = 0; cpu < CPU_SETSIZE && count < max_cpus; ++cpu) {
+      if (CPU_ISSET(cpu, &set)) { cpus[count++] = cpu; }
+    }
+  }
+  if (count > 0) return count;
+
+  char buf[256];
+  if (read_file_buf("/sys/devices/system/cpu/online", buf, sizeof(buf)) < 0) return 0;
+  return parse_cpu_list(buf, cpus, max_cpus);
+}
+
+static int get_physical_cores(const int* allowed_cpus, int allowed_count)
+{
+  if (allowed_count <= 0) return 0;
+
+  char visited[CPU_SETSIZE];
+  std::memset(visited, 0, sizeof(visited));
+  int cores = 0;
+
+  for (int i = 0; i < allowed_count; ++i) {
+    const int cpu = allowed_cpus[i];
+    if (cpu < 0 || cpu >= CPU_SETSIZE || visited[cpu]) continue;
+
+    char path[128];
+    char buf[256];
+    snprintf(path,
+             sizeof(path),
+             "/sys/devices/system/cpu/cpu%d/topology/core_cpus_list",
+             cpu);
+    ssize_t n = read_file_buf(path, buf, sizeof(buf));
+    if (n < 0) {
+      snprintf(path,
+               sizeof(path),
+               "/sys/devices/system/cpu/cpu%d/topology/thread_siblings_list",
+               cpu);
+      n = read_file_buf(path, buf, sizeof(buf));
+    }
+
+    if (n >= 0) {
+      mark_cpus_from_list(buf, visited);
+    }
+    visited[cpu] = 1;
+    ++cores;
+  }
+
+  return cores > 0 ? cores : allowed_count;
+}
+
+static bool copy_stripped(char* dst, size_t dst_size, const char* src)
+{
+  if (dst_size == 0) return false;
+  size_t len = std::strlen(src);
+  while (len > 0 && (src[len - 1] == '\n' || src[len - 1] == '\r' || src[len - 1] == ' ')) {
+    --len;
+  }
+  if (len >= dst_size) len = dst_size - 1;
+  std::memcpy(dst, src, len);
+  dst[len] = '\0';
+  return len > 0;
+}
+
+static bool get_cpu_model_from_proc(char* out, size_t out_size)
+{
+  FILE* cpuinfo = fopen("/proc/cpuinfo", "r");
+  if (cpuinfo == nullptr) return false;
+
+  char line[512];
+  while (fgets(line, sizeof(line), cpuinfo) != nullptr) {
+    const char* field = std::strstr(line, "model name");
+    if (field == nullptr) field = std::strstr(line, "Processor");
+    if (field == nullptr) continue;
+
+    const char* colon = std::strchr(field, ':');
+    if (colon == nullptr) continue;
+    ++colon;
+    while (*colon == ' ' || *colon == '\t') {
+      ++colon;
+    }
+    const bool ok = copy_stripped(out, out_size, colon);
+    fclose(cpuinfo);
+    return ok;
+  }
+  fclose(cpuinfo);
+  return false;
+}
+
+static void get_cpu_model(char* out, size_t out_size)
+{
+  if (get_cpu_model_from_proc(out, out_size)) return;
+
+  char buf[256];
+  if (read_file_buf("/sys/firmware/devicetree/base/model", buf, sizeof(buf)) >= 0 ||
+      read_file_buf("/proc/device-tree/model", buf, sizeof(buf)) >= 0) {
+    if (copy_stripped(out, out_size, buf)) return;
+  }
+  if (read_file_buf("/sys/devices/virtual/dmi/id/product_name", buf, sizeof(buf)) >= 0) {
+    if (copy_stripped(out, out_size, buf)) return;
+  }
+  std::snprintf(out, out_size, "Unknown");
 }
 
 static const char* get_simd_target()
@@ -166,26 +239,28 @@ struct host_memory_info_t {
 
 static host_memory_info_t get_host_memory_info()
 {
-  std::ifstream meminfo("/proc/meminfo");
-  if (!meminfo.is_open()) return {};
+  FILE* meminfo = fopen("/proc/meminfo", "r");
+  if (meminfo == nullptr) return {};
 
-  std::string line;
+  char line[256];
   long total_kb     = 0;
   long available_kb = 0;
   long free_kb      = 0;
-  while (std::getline(meminfo, line)) {
-    std::istringstream fields(line);
-    std::string key;
+  int found         = 0;
+  while (found < 3 && fgets(line, sizeof(line), meminfo) != nullptr) {
     long value_kb = 0;
-    fields >> key >> value_kb;
-    if (key == "MemTotal:") {
+    if (std::sscanf(line, "MemTotal: %ld", &value_kb) == 1) {
       total_kb = value_kb;
-    } else if (key == "MemAvailable:") {
+      ++found;
+    } else if (std::sscanf(line, "MemAvailable: %ld", &value_kb) == 1) {
       available_kb = value_kb;
-    } else if (key == "MemFree:") {
+      ++found;
+    } else if (std::sscanf(line, "MemFree: %ld", &value_kb) == 1) {
       free_kb = value_kb;
+      ++found;
     }
   }
+  fclose(meminfo);
 
   if (available_kb == 0) { available_kb = free_kb; }
   constexpr double kb_per_gib = 1024.0 * 1024.0;
@@ -209,14 +284,18 @@ void print_version_info(int num_devices)
                  CUOPT_GIT_COMMIT_HASH,
                  CUOPT_CPU_ARCHITECTURE,
                  CUOPT_CUDA_ARCHITECTURES);
+
   const auto memory = get_host_memory_info();
-  CUOPT_LOG_INFO(
-    "CPU: %s, threads (physical/logical): %d/%d, RAM (available/total): %.2f / %.2f GiB",
-    get_cpu_model().c_str(),
-    get_physical_cores(),
-    std::thread::hardware_concurrency(),
-    memory.available_gb,
-    memory.total_gb);
+  int allowed_cpus[CPU_SETSIZE];
+  const int allowed_count = get_allowed_cpus(allowed_cpus, CPU_SETSIZE);
+  char cpu_model[256];
+  get_cpu_model(cpu_model, sizeof(cpu_model));
+  CUOPT_LOG_INFO("CPU: %s, threads: %dC/%dT, RAM usage: %.2f/%.2fGiB",
+                 cpu_model,
+                 get_physical_cores(allowed_cpus, allowed_count),
+                 allowed_count,
+                 std::max(0.0, memory.total_gb - memory.available_gb),
+                 memory.total_gb);
   CUOPT_LOG_INFO("CPU SIMD target: %s", get_simd_target());
 
   for (int device_id = 0; device_id < num_devices; ++device_id) {

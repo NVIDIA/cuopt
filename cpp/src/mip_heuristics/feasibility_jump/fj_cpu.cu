@@ -607,7 +607,6 @@ static inline std::pair<fj_staged_score_t, f_t> compute_score(fj_cpu_climber_t<i
 
   for (i_t i = offset_begin; i < offset_end; i++) {
     auto cstr_idx = fj_cpu.h_reverse_constraints[i];
-    fj_cpu.unique_cstrs_accessed_window.insert(cstr_idx);
     auto cstr_coeff   = fj_cpu.h_reverse_coefficients[i];
     auto [c_lb, c_ub] = fj_cpu.cached_cstr_bounds[i].get();
 
@@ -1030,7 +1029,6 @@ static void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
     auto [c_lb, c_ub] = fj_cpu.cached_cstr_bounds[i].get();
 
     auto cstr_idx = fj_cpu.h_reverse_constraints[i];
-    fj_cpu.unique_cstrs_accessed_window.insert(cstr_idx);
     auto cstr_coeff = fj_cpu.h_reverse_coefficients[i];
 
     f_t old_lhs = fj_cpu.h_lhs[cstr_idx];
@@ -2072,6 +2070,182 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
 #endif
 }
 
+template <typename T>
+static std::vector<T> copy_to_host_async(const rmm::device_uvector<T>& input,
+                                         rmm::cuda_stream_view stream)
+{
+  std::vector<T> output(input.size());
+  raft::copy(output.data(), input.data(), input.size(), stream);
+  return output;
+}
+
+template <typename i_t, typename f_t>
+std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_from_optimization_problem(
+  const optimization_problem_t<i_t, f_t>& problem,
+  const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances,
+  std::atomic<bool>& preemption_flag,
+  fj_settings_t settings)
+{
+  using f_t2 = typename type_2<f_t>::type;
+
+  raft::common::nvtx::range scope("init_fj_cpu_from_optimization_problem");
+
+  const i_t n_variables   = problem.get_n_variables();
+  const i_t n_constraints = problem.get_n_constraints();
+  const i_t nnz           = problem.get_nnz();
+  auto stream             = problem.get_handle_ptr()->get_stream();
+
+  auto coefficients           = copy_to_host_async(problem.get_constraint_matrix_values(), stream);
+  auto variables              = copy_to_host_async(problem.get_constraint_matrix_indices(), stream);
+  auto offsets                = copy_to_host_async(problem.get_constraint_matrix_offsets(), stream);
+  auto objective_coefficients = copy_to_host_async(problem.get_objective_coefficients(), stream);
+  auto variable_lower_bounds  = copy_to_host_async(problem.get_variable_lower_bounds(), stream);
+  auto variable_upper_bounds  = copy_to_host_async(problem.get_variable_upper_bounds(), stream);
+  auto constraint_lower_bounds = copy_to_host_async(problem.get_constraint_lower_bounds(), stream);
+  auto constraint_upper_bounds = copy_to_host_async(problem.get_constraint_upper_bounds(), stream);
+  auto constraint_bounds       = copy_to_host_async(problem.get_constraint_bounds(), stream);
+  auto row_types               = copy_to_host_async(problem.get_row_types(), stream);
+  auto variable_types          = copy_to_host_async(problem.get_variable_types(), stream);
+  problem.get_handle_ptr()->sync_stream();
+
+  cuopt_assert(coefficients.size() == (size_t)nnz, "coefficient size mismatch");
+  cuopt_assert(variables.size() == (size_t)nnz, "variable index size mismatch");
+  cuopt_assert(offsets.size() == (size_t)(n_constraints + 1),
+               "constraint offset size mismatch");
+  cuopt_assert(!offsets.empty() && offsets.front() == 0, "invalid first constraint offset");
+  cuopt_assert(offsets.back() == nnz, "invalid final constraint offset");
+  cuopt_assert(std::is_sorted(offsets.begin(), offsets.end()), "unsorted constraint offsets");
+  cuopt_assert(
+    std::all_of(variables.begin(),
+                variables.end(),
+                [n_variables](i_t variable) { return variable >= 0 && variable < n_variables; }),
+    "variable index out of range");
+  cuopt_assert(objective_coefficients.size() == (size_t)n_variables,
+               "objective size mismatch");
+  cuopt_assert(variable_lower_bounds.empty() ||
+                 variable_lower_bounds.size() == (size_t)n_variables,
+               "variable lower bound size mismatch");
+  cuopt_assert(variable_upper_bounds.empty() ||
+                 variable_upper_bounds.size() == (size_t)n_variables,
+               "variable upper bound size mismatch");
+
+  if (constraint_lower_bounds.empty() && constraint_upper_bounds.empty()) {
+    cuopt_assert(row_types.size() == (size_t)n_constraints, "row type size mismatch");
+    cuopt_assert(constraint_bounds.size() == (size_t)n_constraints,
+                 "constraint bound size mismatch");
+    constraint_lower_bounds.resize(n_constraints);
+    constraint_upper_bounds.resize(n_constraints);
+    for (i_t row = 0; row < n_constraints; ++row) {
+      const f_t bound = constraint_bounds[row];
+      if (row_types[row] == 'E') {
+        constraint_lower_bounds[row] = bound;
+        constraint_upper_bounds[row] = bound;
+      } else if (row_types[row] == 'G') {
+        constraint_lower_bounds[row] = bound;
+        constraint_upper_bounds[row] = std::numeric_limits<f_t>::infinity();
+      } else {
+        cuopt_assert(row_types[row] == 'L', "invalid row type");
+        constraint_lower_bounds[row] = -std::numeric_limits<f_t>::infinity();
+        constraint_upper_bounds[row] = bound;
+      }
+    }
+  } else {
+    cuopt_assert(constraint_lower_bounds.size() == (size_t)n_constraints,
+                 "constraint lower bound size mismatch");
+    cuopt_assert(constraint_upper_bounds.size() == (size_t)n_constraints,
+                 "constraint upper bound size mismatch");
+  }
+
+  if (variable_lower_bounds.empty()) { variable_lower_bounds.assign(n_variables, f_t{0}); }
+  if (variable_upper_bounds.empty()) {
+    variable_upper_bounds.assign(n_variables, std::numeric_limits<f_t>::infinity());
+  }
+  if (variable_types.empty()) { variable_types.assign(n_variables, var_t::CONTINUOUS); }
+  cuopt_assert(variable_types.size() == (size_t)n_variables,
+               "variable type size mismatch");
+
+  if (problem.get_sense()) {
+    std::transform(objective_coefficients.begin(),
+                   objective_coefficients.end(),
+                   objective_coefficients.begin(),
+                   std::negate<f_t>{});
+  }
+
+  std::vector<f_t2> variable_bounds(n_variables);
+  std::vector<i_t> is_binary_variable(n_variables, 0);
+  std::vector<i_t> binary_indices;
+  binary_indices.reserve(n_variables);
+  i_t n_integer_vars = 0;
+  for (i_t variable = 0; variable < n_variables; ++variable) {
+    f_t lower             = variable_lower_bounds[variable];
+    f_t upper             = variable_upper_bounds[variable];
+    const bool is_integer = variable_types[variable] == var_t::INTEGER;
+    if (is_integer) {
+      lower = std::ceil(lower);
+      upper = std::floor(upper);
+      ++n_integer_vars;
+    }
+    cuopt_assert(lower <= upper, "crossing variable bounds");
+    variable_bounds[variable] = f_t2{lower, upper};
+    if (is_integer && lower == f_t{0} && upper == f_t{1}) {
+      is_binary_variable[variable] = 1;
+      binary_indices.push_back(variable);
+    }
+  }
+
+  csr_matrix_t<i_t, f_t> csr(n_constraints, n_variables, nnz);
+  csr.x         = coefficients;
+  csr.j         = variables;
+  csr.row_start = offsets;
+  csc_matrix_t<i_t, f_t> csc(n_constraints, n_variables, nnz);
+  csr.to_compressed_col(csc);
+
+  std::vector<f_t> assignment(n_variables, f_t{0});
+  for (i_t variable = 0; variable < n_variables; ++variable) {
+    f_t value = std::clamp(
+      f_t{0}, get_lower(variable_bounds[variable]), get_upper(variable_bounds[variable]));
+    if (variable_types[variable] == var_t::INTEGER) { value = std::round(value); }
+    assignment[variable] = value;
+  }
+
+  auto fj_cpu      = std::make_unique<fj_cpu_climber_t<i_t, f_t>>(preemption_flag);
+  fj_cpu->view     = typename fj_t<i_t, f_t>::climber_data_t::view_t{};
+  fj_cpu->pb_ptr   = nullptr;
+  fj_cpu->settings = settings;
+
+  fj_cpu->h_reverse_coefficients = std::move(csc.x);
+  fj_cpu->h_reverse_constraints  = std::move(csc.i);
+  fj_cpu->h_reverse_offsets      = std::move(csc.col_start);
+  fj_cpu->h_coefficients         = std::move(coefficients);
+  fj_cpu->h_offsets              = std::move(offsets);
+  fj_cpu->h_variables            = std::move(variables);
+  fj_cpu->h_obj_coeffs           = std::move(objective_coefficients);
+  fj_cpu->h_var_bounds           = std::move(variable_bounds);
+  fj_cpu->h_cstr_lb              = std::move(constraint_lower_bounds);
+  fj_cpu->h_cstr_ub              = std::move(constraint_upper_bounds);
+  fj_cpu->h_var_types            = std::move(variable_types);
+  fj_cpu->h_is_binary_variable   = std::move(is_binary_variable);
+  fj_cpu->h_binary_indices       = std::move(binary_indices);
+  fj_cpu->h_cstr_left_weights.resize(n_constraints, f_t{1});
+  fj_cpu->h_cstr_right_weights.resize(n_constraints, f_t{1});
+  fj_cpu->max_weight         = f_t{1};
+  fj_cpu->h_objective_weight = f_t{0};
+  fj_cpu->h_assignment       = assignment;
+  fj_cpu->h_best_assignment  = std::move(assignment);
+  fj_cpu->h_lhs.resize(n_constraints);
+  fj_cpu->h_lhs_sumcomp.resize(n_constraints, f_t{0});
+  fj_cpu->h_tabu_nodec_until.resize(n_variables, 0);
+  fj_cpu->h_tabu_noinc_until.resize(n_variables, 0);
+  fj_cpu->h_tabu_lastdec.resize(n_variables, 0);
+  fj_cpu->h_tabu_lastinc.resize(n_variables, 0);
+  fj_cpu->iterations    = 0;
+  fj_cpu->settings.seed = cuopt::seed_generator::get_seed();
+
+  finalize_fj_cpu_host_initialization(
+    *fj_cpu, n_variables, n_constraints, n_integer_vars, nnz, tolerances);
+  return fj_cpu;
+}
+
 template <typename i_t, typename f_t>
 std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_standalone(
   problem_t<i_t, f_t>& problem,
@@ -2170,6 +2344,11 @@ template std::unique_ptr<fj_cpu_climber_t<int, float>> init_fj_cpu_standalone(
   solution_t<int, float>& solution,
   std::atomic<bool>& preemption_flag,
   fj_settings_t settings);
+template std::unique_ptr<fj_cpu_climber_t<int, float>> init_fj_cpu_from_optimization_problem(
+  const optimization_problem_t<int, float>& problem,
+  const typename mip_solver_settings_t<int, float>::tolerances_t& tolerances,
+  std::atomic<bool>& preemption_flag,
+  fj_settings_t settings);
 template void finalize_fj_cpu_host_initialization(
   fj_cpu_climber_t<int, float>& fj_cpu,
   int n_variables,
@@ -2188,6 +2367,11 @@ template void cpufj_solve(fj_cpu_climber_t<int, double>* fj_cpu,
 template std::unique_ptr<fj_cpu_climber_t<int, double>> init_fj_cpu_standalone(
   problem_t<int, double>& problem,
   solution_t<int, double>& solution,
+  std::atomic<bool>& preemption_flag,
+  fj_settings_t settings);
+template std::unique_ptr<fj_cpu_climber_t<int, double>> init_fj_cpu_from_optimization_problem(
+  const optimization_problem_t<int, double>& problem,
+  const typename mip_solver_settings_t<int, double>::tolerances_t& tolerances,
   std::atomic<bool>& preemption_flag,
   fj_settings_t settings);
 template void finalize_fj_cpu_host_initialization(
