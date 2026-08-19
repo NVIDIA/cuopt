@@ -43,7 +43,6 @@ struct bve_postsolve_t {
 
 enum class reconstruction_kind_t : uint8_t { AffineSub = 0, BlockBve = 1 };
 
-// could be a tagged union, but alas non-trivial members
 template <typename i_t, typename f_t>
 struct var_postsolve_t {
   reconstruction_kind_t kind{};

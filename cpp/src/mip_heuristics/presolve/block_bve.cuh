@@ -144,7 +144,7 @@ bool bve_has_stageable_row(const problem_t<i_t, f_t>& problem);
 // Run block BVE using caller-provided implication adjacency and deadline. Returns true iff at least
 // one validated reduction was installed; `work_units` receives a deterministic unscaled estimate.
 // `out_findings`, when given, is appended with the implications read off every projected block
-// (original-id frame) -- including blocks that were not eliminated.
+// (original-id frame), including blocks that were not eliminated.
 template <typename i_t, typename f_t>
 bool block_bve_presolve(problem_t<i_t, f_t>& problem,
                         const std::vector<std::vector<i_t>>& impl_adj,
