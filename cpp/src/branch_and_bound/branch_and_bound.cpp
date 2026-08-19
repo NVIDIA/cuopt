@@ -1824,6 +1824,10 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
     abs_gap     = compute_user_abs_gap(original_lp_, upper_bound, lower_bound);
   }
 
+  if (solver_status_ == mip_status_t::TIME_LIMIT || solver_status_ == mip_status_t::OPTIMAL) {
+    node_concurrent_halt_ = 1;
+  }
+
   // If the solver exits early without consuming the local stack, or converged according to
   // the gap rules while nodes are still pending, put those nodes back into the global queue
   // before returning.
@@ -1836,14 +1840,14 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
   // The worker is no longer exploring the tree. Set its lower bound to infinity to avoid
   // interfering with the global lower bound calculation.
   worker->lower_bound = std::numeric_limits<f_t>::infinity();
-  if (solver_status_ == mip_status_t::TIME_LIMIT || solver_status_ == mip_status_t::OPTIMAL) {
-    node_concurrent_halt_ = 1;
-  }
 }
 
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::launch_bfs_worker(bfs_worker_t<i_t, f_t>* worker)
 {
+  // The status may change after the caller checks its search-loop condition.
+  if (solver_status_ != mip_status_t::UNSET) { return; }
+
   bfs_worker_t<i_t, f_t>* idle_worker = bfs_worker_pool_.pop_idle_worker();
   if (!idle_worker) return;
 
@@ -1990,6 +1994,10 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
     }
   }
 
+  if (solver_status_ == mip_status_t::TIME_LIMIT || solver_status_ == mip_status_t::OPTIMAL) {
+    node_concurrent_halt_ = 1;
+  }
+
   // If the worker has still nodes in the queue (this can happen if it was stopped due to
   // time limit, small gap or other reason), then do not add back to the pool to avoid
   // constantly trying to start it again
@@ -2002,9 +2010,6 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
   if (exploration_stats_.nodes_unexplored == 0 &&
       bfs_worker_pool_.num_idle() == bfs_worker_pool_.size()) {
     is_running_ = false;
-  }
-  if (solver_status_ == mip_status_t::TIME_LIMIT || solver_status_ == mip_status_t::OPTIMAL) {
-    node_concurrent_halt_ = 1;
   }
 }
 
