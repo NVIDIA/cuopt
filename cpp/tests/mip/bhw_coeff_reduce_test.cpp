@@ -60,16 +60,16 @@ bool same_feasible_set(const std::vector<double>& coefficients,
 }  // namespace
 
 // Bradley, Hammer and Wolsey (1974) open with this row and reduce it to 4,4,2,2,1,1,1,0 <= 5. That
-// rewrite enlarges the LP relaxation -- it admits a fractional point of activity 91.75 against a
-// right-hand side of 80 -- so the LP-strength check rejects it and no smaller equivalent form
+// rewrite enlarges the LP relaxation (it admits a fractional point of activity 91.75 against a
+// right-hand side of 80), so the LP-strength check rejects it and no smaller equivalent form
 // survives.
 TEST(bhw_coeff_reduce, rejects_a_rewrite_that_weakens_the_relaxation)
 {
   EXPECT_FALSE(reduce({65, 64, 41, 22, 13, 12, 8, 2}, 80).accepted);
 }
 
-// The shape that motivated the pass: bnatt400 leaves rows whose coefficients are 9/10 and 1/3
-// against a right-hand side of 2/3. Integerizing and reducing lands them in int8 range.
+// The shape that motivated the pass: a 9/10 coefficient against thirds, with a fractional
+// right-hand side. Integerizing and reducing lands it in int8 range.
 TEST(bhw_coeff_reduce, rational_row_integerizes_and_reduces)
 {
   const std::vector<double> row{0.9, 1.0 / 3, 1.0 / 3, 1.0 / 3};

@@ -31,28 +31,27 @@
 // points, which are supersets of BHW's ceilings and roofs because we skip their ordering condition.
 // That costs nothing: with all coefficients positive the activity is monotone, so the maximum of
 // w.x over the feasible points is attained at a maximal one and the minimum over the infeasible
-// points at a minimal one. Checked exhaustively over 9.4M (row, weight) pairs against full 2^k
-// equivalence, in both directions, before landing.
+// points at a minimal one.
 //
 // BHW's minimization is not implemented. Section 5 obtains the minimum equivalent inequality by LP
 // over the polytope. We instead search weight vectors by increasing max|w| up to a cap, which is
 // minimal by construction below the cap, and fall back to two heuristic candidates above it. That
 // search is affordable at every width we enumerate only because conditions N1 and N3 restrict
 // candidates to non-negative non-increasing sequences: at most sum_{m=1..6} C(11+m, m) = 18563
-// vectors for a 12-entry row, measured at 187us for the worst shape. Lemma 3.6 supplies the lower
-// bound that seeds and prunes the search.
+// vectors for a 12-entry row. Lemma 3.6 supplies the lower bound that seeds and prunes the search.
 //
-// TODO: extend the fallback path to the row generation of Section 6. On the PaPILO-reduced corpus
-// the LP reaches 1489 reducible rows where these heuristics match the optimum on roughly 60%, and
-// unlocks int8 on 321 of them. The separation oracle in step 3 is a 0-1 knapsack, max w.x subject
-// to a.x <= b, which solve_knapsack_problem in cuts/cuts.hpp already solves by DP. Note that
-// routine is the wrong tool for the LP-strength gate below, which needs the continuous relaxation.
-// Boyd (1993) Generating Fenchel Cutting Planes for Knapsack Polyhedra, SIAM J. Optim.
-// 3(4):734-750, treats the same separation problem as cut generation.
+// TODO: extend the fallback path to the row generation of Section 6, which reaches rows the two
+// heuristics below leave at a larger magnitude than necessary. The separation oracle in step 3 is a
+// 0-1 knapsack, max w.x subject to a.x <= b, which solve_knapsack_problem in cuts/cuts.hpp already
+// solves by DP. Boyd (1993) Generating Fenchel Cutting Planes for Knapsack Polyhedra, SIAM J.
+// Optim. 3(4):734-750, treats the same separation problem as cut generation.
 
 namespace cuopt::mathematical_optimization::mip {
 
 namespace {
+
+// Rows between two interrupt checks in execute; screening one row is cheap next to the check.
+constexpr int BHW_INTERRUPT_CHECK_STRIDE = 256;
 
 // One row in BHW's normalized frame: condition N1 (every coefficient positive, negatives
 // complemented by x_i = 1 - y_i) and condition N3 (coefficients sorted descending). N1 is what
@@ -271,8 +270,9 @@ void search_positions(search_state_t& st, int pos)
 }
 
 // Fallback for the rows whose smallest equivalent magnitude exceeds BHW_EXACT_MAX_WEIGHT, where the
-// exhaustive search gives up: w = round(a / min a), which was the optimal scale in 131 of 131
-// measured cases, and the all-ones clause form. N3 already sorted a, so both are non-increasing.
+// exhaustive search gives up: w = round(a / min a) and the all-ones clause form, both put through
+// the same acceptance and LP-strength gates as a searched vector. N3 already sorted a, so both
+// candidates are non-increasing.
 bool heuristic_reduce(const norm_row_t& row,
                       const partition_t& part,
                       std::vector<int64_t>& weights,
@@ -364,17 +364,17 @@ bhw_row_rewrite_t bhw_reduce_row(
   std::array<int64_t, BHW_MAX_LEN> integral{};
   int64_t largest = 0;
   for (int j = 0; j < len; ++j) {
-    integral[j] = (int64_t)std::llround((double)coefficients[j] * scale) * direction;
+    integral[j] = std::llround((double)coefficients[j] * scale) * direction;
     if (integral[j] == 0) return rewrite;
     largest = std::max(largest, std::abs(integral[j]));
   }
-  // A row already at +/-1 has no magnitude to give back. The census puts most of the corpus here,
-  // so this test carries the screening cost.
+  // A row already at +/-1 has no magnitude to give back; rejecting it here is what keeps screening
+  // cheap on the rows that dominate a model.
   if (largest <= 1) return rewrite;
 
   norm_row_t norm_row;
   norm_row.k   = len;
-  norm_row.rhs = (int64_t)std::llround((double)side * scale) * direction;
+  norm_row.rhs = std::llround((double)side * scale) * direction;
   std::array<int, BHW_MAX_LEN> order{};
   for (int j = 0; j < len; ++j) {
     order[j] = j;
@@ -419,7 +419,7 @@ bhw_row_rewrite_t bhw_reduce_row(
     *std::max_element(result->weights.begin(), result->weights.end()) == result->weights[0],
     "N3 leaves the reduced weights non-increasing");
   cuopt_assert(result->weights[0] < norm_row.coef[0] ||
-                 std::count(result->weights.begin(), result->weights.end(), (int64_t)0) > 0,
+                 std::count(result->weights.begin(), result->weights.end(), 0) > 0,
                "an accepted rewrite must shrink the magnitude or drop a variable");
   cuopt_assert(verify_equivalent(norm_row, result->weights.data(), result->bound),
                "BHW rewrite changed the 0/1 feasible set");
@@ -445,7 +445,59 @@ bhw_row_rewrite_t bhw_reduce_row(
   rewrite.accepted        = true;
   return rewrite;
 }
-static constexpr int BHW_INTERRUPT_CHECK_STRIDE = 256;
+
+namespace {
+
+// Coefficient-shrink figures behind the DEBUG line. Both the accumulation and the summary compile
+// away below DEBUG, so a release build carries neither the per-row vector nor the selection.
+struct bhw_stats_t {
+#if (CUOPT_LOG_ACTIVE_LEVEL <= RAPIDS_LOGGER_LOG_LEVEL_DEBUG)
+  int64_t coefficients_reduced = 0;
+  int64_t coefficients_dropped = 0;
+  std::vector<double> row_shrinks;
+
+  void changed_coefficient(int64_t new_coefficient)
+  {
+    ++coefficients_reduced;
+    coefficients_dropped += new_coefficient == 0;
+  }
+
+  void rewrote_row(int64_t max_coef_before, int64_t max_coef_after)
+  {
+    row_shrinks.push_back((double)max_coef_before / max_coef_after);
+  }
+
+  void report()
+  {
+    if (coefficients_reduced == 0) return;
+    const size_t n_rows_rewritten = row_shrinks.size();
+    cuopt_assert(n_rows_rewritten > 0, "a changed coefficient implies an accepted row");
+    const double mean =
+      std::accumulate(row_shrinks.begin(), row_shrinks.end(), 0.0) / n_rows_rewritten;
+    // One row collapsing to magnitude 1 dominates the mean, so report the median next to it.
+    const auto middle = row_shrinks.begin() + n_rows_rewritten / 2;
+    std::nth_element(row_shrinks.begin(), middle, row_shrinks.end());
+    double median = *middle;
+    if (n_rows_rewritten % 2 == 0)
+      median = (median + *std::max_element(row_shrinks.begin(), middle)) / 2.0;
+
+    CUOPT_LOG_DEBUG(
+      "BHW reduced %ld coefficients (%ld dropped) in %zu rows, "
+      "max|a| shrank %.1fx mean, %.1fx median",
+      coefficients_reduced,
+      coefficients_dropped,
+      n_rows_rewritten,
+      mean,
+      median);
+  }
+#else
+  void changed_coefficient(int64_t) {}
+  void rewrote_row(int64_t, int64_t) {}
+  void report() {}
+#endif
+};
+
+}  // namespace
 
 template <typename f_t>
 papilo::PresolveStatus BHWCoeffReduce<f_t>::execute(const papilo::Problem<f_t>& problem,
@@ -467,9 +519,7 @@ papilo::PresolveStatus BHWCoeffReduce<f_t>::execute(const papilo::Problem<f_t>& 
 
   const int num_rows            = constraint_matrix.getNRows();
   papilo::PresolveStatus status = papilo::PresolveStatus::kUnchanged;
-  int64_t coefficients_reduced  = 0;
-  int64_t coefficients_dropped  = 0;
-  std::vector<double> row_shrinks;
+  bhw_stats_t stats;
 
   // Every eligible row is screened, not only problemUpdate.getChangedActivities(): that worklist is
   // seeded in full once and afterwards fed only by activity changes, so a row whose side changes is
@@ -514,10 +564,10 @@ papilo::PresolveStatus BHWCoeffReduce<f_t>::execute(const papilo::Problem<f_t>& 
 
     cuopt_assert(rewrite.max_coef_after >= 1,
                  "an accepted rewrite keeps at least one nonzero weight");
-    row_shrinks.push_back((double)rewrite.max_coef_before / (double)rewrite.max_coef_after);
+    stats.rewrote_row(rewrite.max_coef_before, rewrite.max_coef_after);
 
     // Same shape as papilo's own sparsifier, SimplifyInequalities: lock the row, then the entries,
-    // then the side. Dropping an entry needs no column lock -- ProblemUpdate marks the column
+    // then the side. Dropping an entry needs no column lock: ProblemUpdate marks the column
     // modified and derives the resulting singleton rows and empty columns itself. The zero has to
     // be exact: SparseStorage::changeRowInplace compacts an entry out on newval == 0, not on
     // num.isZero.
@@ -528,8 +578,7 @@ papilo::PresolveStatus BHWCoeffReduce<f_t>::execute(const papilo::Problem<f_t>& 
       if ((f_t)rewrite.coefficients[j] == values[j]) continue;
       reductions.changeMatrixEntry(row, indices[j], (f_t)rewrite.coefficients[j]);
       ++emitted;
-      ++coefficients_reduced;
-      coefficients_dropped += rewrite.coefficients[j] == 0;
+      stats.changed_coefficient(rewrite.coefficients[j]);
     }
     if (direction == 1) {
       if ((f_t)rewrite.side != rhs_values[row]) {
@@ -548,28 +597,7 @@ papilo::PresolveStatus BHWCoeffReduce<f_t>::execute(const papilo::Problem<f_t>& 
     status = papilo::PresolveStatus::kReduced;
   }
 
-  if (coefficients_reduced > 0) {
-    const size_t n_rows_rewritten = row_shrinks.size();
-    cuopt_assert(n_rows_rewritten > 0, "a changed coefficient implies an accepted row");
-    const double mean =
-      std::accumulate(row_shrinks.begin(), row_shrinks.end(), 0.0) / (double)n_rows_rewritten;
-    // Mean alone is outlier-driven here: one row collapsing from a large coefficient to 1 outweighs
-    // hundreds of modest rewrites, so report the median next to it.
-    const auto middle = row_shrinks.begin() + n_rows_rewritten / 2;
-    std::nth_element(row_shrinks.begin(), middle, row_shrinks.end());
-    double median = *middle;
-    if (n_rows_rewritten % 2 == 0)
-      median = (median + *std::max_element(row_shrinks.begin(), middle)) / 2.0;
-
-    CUOPT_LOG_DEBUG(
-      "BHW reduced %ld coefficients (%ld dropped) in %zu rows, "
-      "max|a| shrank %.1fx mean, %.1fx median",
-      coefficients_reduced,
-      coefficients_dropped,
-      n_rows_rewritten,
-      mean,
-      median);
-  }
+  stats.report();
 
   return status;
 }

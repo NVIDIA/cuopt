@@ -26,12 +26,12 @@
 
 namespace cuopt::mathematical_optimization::mip {
 
-// Widest row we enumerate: building the point partition walks 2^BHW_MAX_LEN patterns. A census of
-// the PaPILO-reduced MIPLIB corpus (6.2M all-binary one-sided rows) puts 98.0% of the exactly
-// integralizable ones at nnz <= 12; raising this to 40 would add 2.0%.
+// Widest row we enumerate: building the point partition walks 2^BHW_MAX_LEN patterns, so this caps
+// the cost of screening one row. Wider rows are left alone; nearly every row that integerizes
+// exactly is narrower than this.
 static constexpr int BHW_MAX_LEN = 12;
 // Largest max|w| the exhaustive search considers before falling back to the heuristic candidates.
-// Accepted weights were at most 3 throughout the corpus study.
+// Reductions needing a larger magnitude are rare enough not to pay for the extra search depth.
 static constexpr int64_t BHW_EXACT_MAX_WEIGHT = 6;
 // Largest per-row rational multiplier / denominator used to integerize a row (passed to
 // row_int_scale as its maxdnom/maxfinal caps).
