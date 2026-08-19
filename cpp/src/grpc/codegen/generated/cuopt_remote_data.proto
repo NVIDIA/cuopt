@@ -5,6 +5,8 @@ syntax = "proto3";
 
 package cuopt.remote;
 
+import "cuopt_routing_solution.proto";
+
 enum PDLPTerminationStatus {
   PDLP_NO_TERMINATION = 0;
   PDLP_NUMERICAL_ERROR = 1;
@@ -51,6 +53,7 @@ enum VariableType {
 enum ProblemCategory {
   LP = 0;
   MIP = 1;
+  VRP = 1000;
 }
 
 enum ResultFieldId {
@@ -344,4 +347,6 @@ message ChunkedResultHeader {
   double ws_last_restart_kkt_score = 3005;
   double ws_sum_solution_weight = 3006;
   int32 ws_iterations_since_last_restart = 3007;
+  bool is_vrp = 4000;
+  RoutingSolution routing_solution = 4001;
 }
