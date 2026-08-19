@@ -2200,14 +2200,12 @@ bool branch_and_bound_t<i_t, f_t>::launch_rins_worker(const std::vector<f_t>& so
   current_incumbent = incumbent_.x;
   mutex_upper_.unlock();
 
-  // Note that this node does not have the vstatus (it was clear at the start of B&B exploration)
+  // Note that this node does not have the vstatus (it was cleared at the start of B&B exploration)
   worker->start_node         = mip_node_t<i_t, f_t>(root_objective_, root_vstatus_);
   worker->leaf_vstatus       = root_vstatus_;
   worker->leaf_problem.lower = original_lp_.lower;
   worker->leaf_problem.upper = original_lp_.upper;
   worker->leaf_solution.x    = sol;
-  worker->recompute_bounds   = false;
-  worker->recompute_basis    = true;
   worker->search_strategy    = search_strategy_t::RINS;
   worker->set_active();
 
@@ -2227,7 +2225,7 @@ bool branch_and_bound_t<i_t, f_t>::launch_rins_worker(const std::vector<f_t>& so
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worker,
                                                 const std::vector<f_t>& current_incumbent,
-                                                const std::vector<variable_type_t>& var_type,
+                                                const std::vector<variable_type_t>& var_types,
                                                 i_t num_var_fixed,
                                                 i_t num_integers,
                                                 i_t submip_level,
@@ -2309,7 +2307,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   // there is only equality rows (the range row vector is empty) and it contains
   // structural + slacks + cuts constraints/variables.
   user_problem_t<i_t, f_t> submip_problem(original_problem_.handle_ptr);
-  simplex::convert_lp_to_user_problem(worker->leaf_problem, var_type, settings_, submip_problem);
+  simplex::convert_lp_to_user_problem(worker->leaf_problem, var_types, settings_, submip_problem);
 
   third_party_presolve_t<i_t, f_t> presolver;
   f_t presolve_time_limit = std::min(0.1 * submip_settings.time_limit, 60.0);
@@ -2376,7 +2374,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   submip_bnb.set_initial_guess(presolved_incumbent);
 
   const f_t user_upper    = compute_user_objective(worker->leaf_problem, upper_bound_.load());
-  const f_t submip_cutoff = compute_internal_objective(submip_bnb.original_lp_, user_upper);
+  const f_t submip_cutoff = compute_presolved_objective(submip_bnb.original_lp_, user_upper);
   submip_bnb.set_initial_upper_bound(submip_cutoff);
 
   if (!is_root_heuristic)
@@ -2595,7 +2593,8 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* worker,
   ++rins_stats_.total_calls;
 
   bool has_submip          = false;
-  const f_t abs_fathom_tol = settings_.absolute_mip_gap_tol / 10;
+  worker->recompute_bounds = false;
+  worker->recompute_basis  = true;
 
   branch_and_bound_stats_t<i_t, f_t> rins_stats;
   mip_node_t<i_t, f_t>& node        = worker->start_node;
@@ -2778,7 +2777,6 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* worker,
         // We need the pseudocost to do the DFS, which we do not have during the cut passes.
         if (!is_root_heuristic) {
           DEBUG_SUBMIP("{} Running a quick DFS for the submip!", log_prefix);
-
           dive_with(worker, settings_.submip_settings.dfs_max_backtrack);
         }
       }
@@ -2836,7 +2834,8 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
   // oldest set of heuristics launched. Leave 2 threads for the cut passes and the clique
   // table generation. Add the number of workers that will be launched (1 submip worker +
   // 1 CPU FJ worker).
-  if (worker_count + 4 > settings_.num_threads && !heuristics.empty()) {
+  i_t clique_table_generation = cut_pass == 0 ? 1 : 0;
+  if (worker_count + 3 + clique_table_generation > settings_.num_threads && !heuristics.empty()) {
     heuristics.erase(heuristics.begin());
   }
 
@@ -3663,7 +3662,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     settings_.benchmark_info_ptr->cut_generation_time_sec = cut_generation_time;
   }
   if (cut_info.has_cuts()) {
-    settings_.log.printf("Cut generation time: %.2f seconds\n", cut_generation_time);
+    settings_.log.printf("Root cut passes time: %.2f seconds\n", cut_generation_time);
     settings_.log.printf("Cut pool size  : %d\n", cut_pool_size);
     settings_.log.printf("Size with cuts : %d constraints, %d variables, %d nonzeros\n",
                          original_lp_.num_rows,
