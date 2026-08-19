@@ -1689,7 +1689,8 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
 
   bool can_launch_rins = true;
 
-  while (stack.size() > 0 && (solver_status_ == mip_status_t::UNSET && is_running_) &&
+  while (stack.size() > 0 &&
+         (solver_status_ == mip_status_t::UNSET && is_running_ && !this->is_halted()) &&
          rel_gap > settings_.relative_mip_gap_tol && abs_gap > settings_.absolute_mip_gap_tol) {
     if (worker->worker_id == 0) { repair_heuristic_solutions(); }
 
@@ -1938,8 +1939,9 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
   worker->calculate_max_diving_workers(bfs_worker_pool_.size(), diving_worker_pool_.size());
   worker->update_diving_heuristic_list(diving_settings);
 
-  while (solver_status_ == mip_status_t::UNSET && abs_gap > settings_.absolute_mip_gap_tol &&
-         rel_gap > settings_.relative_mip_gap_tol && node_queue.best_first_queue_size() > 0) {
+  while ((solver_status_ == mip_status_t::UNSET && is_running_ && !this->is_halted()) &&
+         abs_gap > settings_.absolute_mip_gap_tol && rel_gap > settings_.relative_mip_gap_tol &&
+         node_queue.best_first_queue_size() > 0) {
     if (submip_halt_callback_) {
       // Stops the solver if the callback returns "true". This happens when the lower bound
       // in the sub-MIP solve is greater than the upper bound of the main solve (this can
@@ -2055,7 +2057,8 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker, 
   f_t rel_gap     = user_relative_gap(user_obj, user_lower);
   f_t abs_gap     = compute_user_abs_gap(original_lp_, upper_bound, lower_bound);
 
-  while (stack.size() > 0 && (solver_status_ == mip_status_t::UNSET && is_running_) &&
+  while (stack.size() > 0 &&
+         (solver_status_ == mip_status_t::UNSET && is_running_ && !this->is_halted()) &&
          rel_gap > settings_.relative_mip_gap_tol && abs_gap > settings_.absolute_mip_gap_tol) {
     mip_node_t<i_t, f_t>* node_ptr = stack.front();
     stack.pop_front();
@@ -2229,7 +2232,8 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
                                                 i_t num_var_fixed,
                                                 i_t num_integers,
                                                 i_t submip_level,
-                                                std::string_view log_prefix)
+                                                std::string_view log_prefix,
+                                                std::atomic<int>* halt)
 {
   double start_time = tic();
 
@@ -2264,6 +2268,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   submip_settings.submip_settings.level                    = submip_level;
   submip_settings.benchmark_info_ptr                       = nullptr;
   submip_settings.log.log                                  = SUBMIP_VERBOSE;
+  submip_settings.concurrent_halt                          = halt;
 
 #ifdef SAVE_SUBMIP_TO_FILE
   submip_settings.log.log_prefix = std::format("{}{}", settings_.log.log_prefix, worker->worker_id);
@@ -2376,7 +2381,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   const f_t submip_cutoff = compute_presolved_objective(submip_bnb.original_lp_, user_upper);
   submip_bnb.set_initial_upper_bound(submip_cutoff);
 
-  if (during_cut_passes_)
+  if (!during_cut_passes_)
     submip_bnb.set_initial_pseudocost(pc_, presolver.get_reduced_to_original_map());
 
   if (submip_halt_callback_) {
@@ -2384,12 +2389,12 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
     submip_bnb.set_submip_halt_callback(submip_halt_callback_);
   } else {
     // This should only be called by the main solver.
-    submip_bnb.set_submip_halt_callback([this, worker](f_t, f_t submip_lower_bound) {
+    submip_bnb.set_submip_halt_callback([this](f_t, f_t submip_lower_bound) {
       f_t user_upper = compute_user_objective(this->original_lp_, this->upper_bound_.load());
       bool is_cutoff = original_lp_.obj_scale > 0 ? submip_lower_bound > user_upper
                                                   : user_upper > submip_lower_bound;
       bool is_solver_running = this->solver_status_ == mip_status_t::UNSET && this->is_running_;
-      return is_cutoff || !is_solver_running || worker->halt;
+      return is_cutoff || !is_solver_running || this->is_halted();
     });
   }
 
@@ -2580,7 +2585,8 @@ void extend_variable_fixings(const simplex_solver_settings_t<i_t, f_t>& settings
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* worker,
                                         const std::vector<f_t>& current_incumbent,
-                                        const std::vector<variable_type_t>& var_types)
+                                        const std::vector<variable_type_t>& var_types,
+                                        std::atomic<int>* halt)
 {
   raft::common::nvtx::range scope("BB::rins_thread");
   if (worker->orbital_fixing) { worker->orbital_fixing->disable(); }
@@ -2615,7 +2621,7 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* worker,
   i_t min_var_fixed = min_fixrate * num_integers;
   i_t num_var_fixed = 0;
 
-  while (solver_status_ == mip_status_t::UNSET && is_running_ && !worker->halt) {
+  while (solver_status_ == mip_status_t::UNSET && is_running_ && !this->is_halted()) {
     // RINS neighbourhood 1: Fix all the integer variables where the starting solution matches the
     // current incumbent, considering only the fractional values in the current node
     i_t prev_num_fixed = num_var_fixed;
@@ -2786,7 +2792,8 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* worker,
                    num_var_fixed,
                    num_integers,
                    submip_level,
-                   log_prefix);
+                   log_prefix,
+                   halt);
     }
   }
 
@@ -2870,7 +2877,7 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
     if (settings_.inside_submip) {
       // LLVM libomp's GOMP compatibility path skips GCC's firstprivate copy
       // function for included tasks.
-      rins(worker, current_incumbent, heuristic->var_types_);
+      rins(worker, current_incumbent, heuristic->var_types_, &heuristic->halt_);
       heuristic->Arow_      = csr_matrix_t<i_t, f_t>(1, 1, 1);
       heuristic->var_types_ = {};
       heuristic->submip_worker_.reset();
@@ -2881,7 +2888,7 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
   shared(heuristics, worker_count) firstprivate(worker, current_incumbent, heuristic) \
   depend(out : *worker)
       {
-        rins(worker, current_incumbent, heuristic->var_types_);
+        rins(worker, current_incumbent, heuristic->var_types_, &heuristic->halt_);
         --worker_count;
         heuristic->Arow_      = csr_matrix_t<i_t, f_t>(1, 1, 1);
         heuristic->var_types_ = {};
