@@ -35,7 +35,7 @@ struct substitution_t {
 };
 
 template <typename i_t>
-struct bve_postsolve_t {
+struct bve_reconstruction_t {
   std::vector<i_t> interior;
   std::vector<i_t> boundary;
   std::vector<uint32_t> witness;  // size 2^boundary.size()
@@ -44,10 +44,10 @@ struct bve_postsolve_t {
 enum class reconstruction_kind_t : uint8_t { AffineSub = 0, BlockBve = 1 };
 
 template <typename i_t, typename f_t>
-struct var_postsolve_t {
+struct postsolve_reconstruction_t {
   reconstruction_kind_t kind{};
   substitution_t<i_t, f_t> sub{};
-  bve_postsolve_t<i_t> bve{};
+  bve_reconstruction_t<i_t> bve{};
 };
 
 template <typename i_t, typename f_t>
@@ -78,7 +78,7 @@ class presolve_data_t {
       papilo_reduced_to_original_map(other.papilo_reduced_to_original_map),
       papilo_original_to_reduced_map(other.papilo_original_to_reduced_map),
       papilo_original_num_variables(other.papilo_original_num_variables),
-      var_postsolve(other.var_postsolve)
+      postsolve_reconstructions(other.postsolve_reconstructions)
   {
   }
 
@@ -92,7 +92,7 @@ class presolve_data_t {
                                fixed_var_assignment.begin(),
                                fixed_var_assignment.end(),
                                0.);
-    var_postsolve.clear();
+    postsolve_reconstructions.clear();
   }
 
   void reset_additional_vars(const problem_t<i_t, f_t>& problem, const raft::handle_t* handle_ptr)
@@ -146,7 +146,7 @@ class presolve_data_t {
   i_t papilo_original_num_variables{0};
   // Append-only GPU-presolve reconstruction log (AffineSub from probing, BlockBve from block-BVE).
   // post_process_assignment replays in reverse append order.
-  std::vector<var_postsolve_t<i_t, f_t>> var_postsolve;
+  std::vector<postsolve_reconstruction_t<i_t, f_t>> postsolve_reconstructions;
 };
 
 }  // namespace mathematical_optimization::mip

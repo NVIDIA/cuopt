@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "bounds_presolve.cuh"
 #include "probing_cache.cuh"
 
 #include <mip_heuristics/problem/problem.cuh>
@@ -46,10 +47,6 @@ static constexpr int BVE_MAX_ROW_LEN  = 24;  // nnz within one block row (interi
 static constexpr int BVE_MAX_NNZ      = BVE_MAX_ROWS * BVE_MAX_ROW_LEN;
 static constexpr int BVE_MAX_CLAUSES  = 64;  // <= |rows| for any committed block
 static constexpr int BVE_MAX_PATTERNS = 1 << BVE_MAX_BOUNDARY;
-static constexpr double BVE_MIN_ROUND_YIELD = 0.01;
-// Seconds for the whole phase: implication graph build plus every round. Install and compact finish
-// the round already committed, so a phase can exceed this by that tail.
-static constexpr double BVE_STAGE_TIME_LIMIT = 1.5;
 
 // Packed projection block. Local ids [0, na) are interior and [na, na+nb) are boundary; rows use
 // CSR layout and missing bounds are +/- infinity.
@@ -141,6 +138,16 @@ std::vector<std::vector<i_t>> bve_build_impl_adj(
 // implication graph holds, and the pass can be skipped before that graph is built.
 template <typename i_t, typename f_t>
 bool bve_has_stageable_row(const problem_t<i_t, f_t>& problem);
+
+// cuOpt's block-BVE presolve phase, and the only entry point production code needs: bounded rounds
+// of detect and install against the probing implication graph, followed by the projection harvest
+// (cache tightening, single-value fixings, bound propagation). Mutates `problem` in place and
+// returns false when the phase proved it infeasible. Requires a populated probing cache in
+// `bound_presolve`; the caller decides whether the phase runs at all.
+template <typename i_t, typename f_t>
+bool block_bve_phase(bound_presolve_t<i_t, f_t>& bound_presolve,
+                     problem_t<i_t, f_t>& problem,
+                     const timer_t& deadline);
 
 // Run block BVE using caller-provided implication adjacency and deadline. Returns true iff at least
 // one validated reduction was installed; `work_units` receives a deterministic unscaled estimate.

@@ -284,42 +284,6 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
   }
 }
 
-// Pin variables that a BVE projection table showed to have a single admissible value. Ids arrive in
-// the original frame and may repeat across blocks and rounds. Returns false when two blocks
-// disagree on a variable, which proves infeasibility since each fixing is a consequence of its
-// block alone.
-template <typename i_t, typename f_t>
-static bool apply_bve_fixings(problem_t<i_t, f_t>& problem,
-                              const std::vector<std::pair<i_t, bool>>& fixings,
-                              i_t& n_applied)
-{
-  n_applied = 0;
-  if (fixings.empty()) { return true; }
-  std::vector<std::pair<i_t, bool>> sorted(fixings);
-  std::sort(sorted.begin(), sorted.end());
-
-  const std::vector<i_t>& reverse_original_ids = problem.reverse_original_ids;
-  std::vector<i_t> var_indices;
-  std::vector<f_t> lb_values;
-  std::vector<f_t> ub_values;
-  for (size_t k = 0; k < sorted.size(); ++k) {
-    const auto [original_id, value] = sorted[k];
-    if (k > 0 && original_id == sorted[k - 1].first) {
-      if (value != sorted[k - 1].second) { return false; }
-      continue;
-    }
-    if (original_id < 0 || original_id >= (i_t)reverse_original_ids.size()) { continue; }
-    const i_t column = reverse_original_ids[original_id];
-    if (column < 0 || column >= problem.n_variables) { continue; }  // already eliminated
-    var_indices.push_back(column);
-    lb_values.push_back(value ? f_t(1) : f_t(0));
-    ub_values.push_back(value ? f_t(1) : f_t(0));
-  }
-  n_applied = var_indices.size();
-  problem.update_variable_bounds(var_indices, lb_values, ub_values);
-  return true;
-}
-
 template <typename i_t, typename f_t>
 bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_timer)
 {
@@ -368,93 +332,12 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
 
   if (!global_timer.check_time_limit()) { trivial_presolve(*problem_ptr, remap_cache_ids); }
 
-  i_t max_bve_rounds          = 3;
-  const i_t n_vars_before_bve = problem_ptr->n_variables;
-  const i_t n_rows_before_bve = problem_ptr->n_constraints;
-
-  if (!run_probing_cache) max_bve_rounds = 0;
-  // Implications read off the projection tables, accumulated across rounds. They feed the next
-  // round's adjacency (pairs the cache never held) and are folded back into the cache afterwards.
-  probe_findings_t<i_t> bve_findings;
-  timer_t bve_stage_timer(global_timer.clamp_remaining_time(
-    std::min(BVE_STAGE_TIME_LIMIT, presolve_timer.remaining_time())));
-  for (i_t bve_round = 0; bve_round < max_bve_rounds; ++bve_round) {
-    if (!context.settings.block_bve || problem_ptr->empty || global_timer.check_time_limit() ||
-        presolve_timer.check_time_limit() || bve_stage_timer.check_time_limit()) {
-      break;
-    }
-
-    if (!bve_has_stageable_row(*problem_ptr)) {
-      CUOPT_LOG_DEBUG("Block-BVE skipped: every row exceeds the %d-nonzero block row cap",
-                      BVE_MAX_ROW_LEN);
-      break;
-    }
-
-    const i_t n_vars_before = problem_ptr->n_variables;
-    const i_t n_rows_before = problem_ptr->n_constraints;
-    auto impl_adj           = bve_build_impl_adj(ls.constraint_prop.bounds_update.probing_cache,
-                                       problem_ptr->reverse_original_ids,
-                                       problem_ptr->n_variables,
-                                       bve_stage_timer,
-                                       &bve_findings);
-    if (bve_stage_timer.check_time_limit()) {
-      CUOPT_LOG_DEBUG("Block-BVE hit its %.2fs phase limit building the implication graph",
-                      bve_stage_timer.get_time_limit());
-      break;
-    }
-    double bve_work_units = 0.0;
-    timer_t bve_timer(bve_stage_timer.clamp_remaining_time(
-      global_timer.clamp_remaining_time(presolve_timer.remaining_time())));
-    bool bve_proved_infeasible = false;
-    const bool reduced         = block_bve_presolve(
-      *problem_ptr, impl_adj, bve_timer, bve_work_units, &bve_findings, &bve_proved_infeasible);
-    if (bve_proved_infeasible) {
-      CUOPT_LOG_INFO("Block-BVE proved the problem infeasible");
+  if (context.settings.block_bve && run_probing_cache) {
+    timer_t bve_deadline(
+      std::min(global_timer.remaining_time(), presolve_timer.remaining_time()));
+    if (!block_bve_phase(ls.constraint_prop.bounds_update, *problem_ptr, bve_deadline)) {
       stats.presolve_time = timer.elapsed_time();
       return false;
-    }
-    CUOPT_LOG_DEBUG("Block-BVE outer round %d/%d: reduced=%d vars %d->%d rows %d->%d",
-                    bve_round + 1,
-                    max_bve_rounds,
-                    (int)reduced,
-                    n_vars_before,
-                    problem_ptr->n_variables,
-                    n_rows_before,
-                    problem_ptr->n_constraints);
-    if (!reduced) { break; }
-    if (problem_ptr->n_variables >= n_vars_before) { break; }
-    if (n_vars_before - problem_ptr->n_variables < n_vars_before * BVE_MIN_ROUND_YIELD) {
-      break;
-    }
-  }
-
-  // Harvest the projections: tighten the cache in place, pin the variables the blocks left with a
-  // single value, then propagate.
-  ls.constraint_prop.bounds_update.probing_cache.merge_forcings(bve_findings.forcings,
-                                                                bve_findings.fixings);
-  i_t n_bve_fixings = 0;
-  if (!global_timer.check_time_limit()) {
-    if (!apply_bve_fixings(*problem_ptr, bve_findings.fixings, n_bve_fixings)) {
-      stats.presolve_time = timer.elapsed_time();
-      return false;
-    }
-    if (n_bve_fixings > 0) { trivial_presolve(*problem_ptr, remap_cache_ids); }
-  }
-  const bool bve_changed_model = problem_ptr->n_variables != n_vars_before_bve ||
-                                 problem_ptr->n_constraints != n_rows_before_bve ||
-                                 n_bve_fixings > 0;
-  if (bve_changed_model) {
-    CUOPT_LOG_DEBUG("Block-BVE projections fixed %d variables", n_bve_fixings);
-    if (!problem_ptr->empty && !global_timer.check_time_limit()) {
-      ls.constraint_prop.bounds_update.resize(*problem_ptr);
-      auto bve_term_crit = ls.constraint_prop.bounds_update.solve(*problem_ptr);
-      if (ls.constraint_prop.bounds_update.infeas_constraints_count > 0) {
-        stats.presolve_time = timer.elapsed_time();
-        return false;
-      }
-      if (termination_criterion_t::NO_UPDATE != bve_term_crit) {
-        ls.constraint_prop.bounds_update.set_updated_bounds(*problem_ptr);
-      }
     }
   }
 
