@@ -1728,8 +1728,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
     }
 
     if (now > settings_.time_limit) {
-      node_concurrent_halt_ = 1;
-      solver_status_        = mip_status_t::TIME_LIMIT;
+      solver_status_ = mip_status_t::TIME_LIMIT;
       stack.push_front(node_ptr);
       --exploration_stats_.nodes_being_solved;
       break;
@@ -1762,8 +1761,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
     --exploration_stats_.nodes_being_solved;
 
     if (lp_status == dual_status_t::TIME_LIMIT) {
-      node_concurrent_halt_ = 1;
-      solver_status_        = mip_status_t::TIME_LIMIT;
+      solver_status_ = mip_status_t::TIME_LIMIT;
       stack.push_front(node_ptr);
       break;
     }
@@ -1838,6 +1836,9 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
   // The worker is no longer exploring the tree. Set its lower bound to infinity to avoid
   // interfering with the global lower bound calculation.
   worker->lower_bound = std::numeric_limits<f_t>::infinity();
+  if (solver_status_ == mip_status_t::TIME_LIMIT || solver_status_ == mip_status_t::OPTIMAL) {
+    node_concurrent_halt_ = 1;
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -1951,8 +1952,7 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
     }
 
     if (toc(exploration_stats_.start_time) > settings_.time_limit) {
-      node_concurrent_halt_ = 1;
-      solver_status_        = mip_status_t::TIME_LIMIT;
+      solver_status_ = mip_status_t::TIME_LIMIT;
       break;
     }
 
@@ -1980,8 +1980,7 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
     rel_gap     = user_relative_gap(user_obj, user_lower);
 
     if (abs_gap <= settings_.absolute_mip_gap_tol || rel_gap <= settings_.relative_mip_gap_tol) {
-      node_concurrent_halt_ = 1;
-      solver_status_        = mip_status_t::OPTIMAL;
+      solver_status_ = mip_status_t::OPTIMAL;
       break;
     }
 
@@ -2003,6 +2002,9 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
   if (exploration_stats_.nodes_unexplored == 0 &&
       bfs_worker_pool_.num_idle() == bfs_worker_pool_.size()) {
     is_running_ = false;
+  }
+  if (solver_status_ == mip_status_t::TIME_LIMIT || solver_status_ == mip_status_t::OPTIMAL) {
+    node_concurrent_halt_ = 1;
   }
 }
 

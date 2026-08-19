@@ -3102,13 +3102,13 @@ void cut_generation_t<i_t, f_t>::generate_implied_bound_cuts(
 {
   if (probing_implied_bound_.zero_offsets.empty()) { return; }
 
-  const f_t tol                  = 1e-4;
-  i_t num_cuts                   = 0;
-  const i_t pib_cols             = static_cast<i_t>(probing_implied_bound_.zero_offsets.size()) - 1;
-  const i_t n_cols               = std::min(lp.num_cols, pib_cols);
-  f_t work_estimate              = 0.0;
-  const f_t max_work_estimate    = 1e8;
-  constexpr f_t implication_work = 16.0;
+  const f_t tol                    = 1e-4;
+  i_t num_cuts                     = 0;
+  const i_t pib_cols               = probing_implied_bound_.zero_offsets.size() - 1;
+  const i_t n_cols                 = std::min(lp.num_cols, pib_cols);
+  f_t work_estimate                = 0.0;
+  const f_t max_work_estimate      = 1e8;
+  constexpr f_t implication_work   = 16.0;
   constexpr f_t generated_cut_work = 16.0;
 
   for (i_t j = 0; j < n_cols; j++) {
