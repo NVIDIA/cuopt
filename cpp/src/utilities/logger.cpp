@@ -210,10 +210,18 @@ static void* g_pending_callback_data               = nullptr;
 
 static void user_log_bridge(int lvl, const char* msg)
 {
+  // Deliver only standard solver output — the lines a user would see on the
+  // console. Debug and trace are internal diagnostics: they are normally
+  // compiled out (CUOPT_LOG_ACTIVE_LEVEL defaults to INFO), but a build with a
+  // lower level, or CUOPT_LOG_LEVEL=DEBUG against such a build, would otherwise
+  // route them into user code. Filtering here makes the guarantee a property of
+  // the API rather than of the build configuration.
+  if (lvl < static_cast<int>(rapids_logger::level_enum::info)) { return; }
+
   // g_active_log_callback is stable for the duration of any bridge call:
   // it points into the guard's callback_state, which outlives the sink.
   const captured_log_callback_t* state = g_active_log_callback;
-  if (state) { state->callback(lvl, msg, state->user_data); }
+  if (state) { state->callback(msg, state->user_data); }
 }
 
 void set_pending_log_callback(log_callback_with_data_t cb, void* user_data)

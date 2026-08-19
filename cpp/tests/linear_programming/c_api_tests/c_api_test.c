@@ -323,9 +323,8 @@ typedef struct {
   void* received_user_data;
 } log_cb_context_t;
 
-static void counting_log_callback(int level, const char* message, void* user_data)
+static void counting_log_callback(const char* message, void* user_data)
 {
-  (void)level;
   (void)message;
   log_cb_context_t* ctx  = (log_cb_context_t*)user_data;
   ctx->calls++;

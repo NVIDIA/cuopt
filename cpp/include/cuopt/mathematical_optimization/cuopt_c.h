@@ -824,11 +824,13 @@ cuopt_int_t cuOptGetFloatParameter(cuOptSolverSettings settings,
                                    cuopt_float_t* parameter_value);
 
 /**
- * @brief Type of callback invoked once per log line emitted by the solver.
+ * @brief Type of callback invoked once per standard solver log line.
  *
- * @param level    Severity of the log line, increasing with value
- *  (0=trace, 1=debug, 2=info, 3=warn, 4=error, 5=critical). Intended only for
- *  display/filtering of output, not as a stable programmatic API.
+ * Receives the same lines the solver would print to the console — nothing more.
+ * Internal diagnostics (debug and trace messages) are never delivered, and no
+ * severity is reported: the callback exists to display or forward solver
+ * output, not to let callers classify or branch on it.
+ *
  * @param message  Null-terminated log line without trailing newline.
  * @param user_data Opaque pointer passed to cuOptSetLogCallback.
  *
@@ -839,7 +841,7 @@ cuopt_int_t cuOptGetFloatParameter(cuOptSolverSettings settings,
  *  log forwarding, stdout capture) — do not parse message content for programmatic
  *  control flow.
  */
-typedef void (*cuOptLogCallback)(int level, const char* message, void* user_data);
+typedef void (*cuOptLogCallback)(const char* message, void* user_data);
 
 /**
  * @brief Register a callback to receive solver log messages.
