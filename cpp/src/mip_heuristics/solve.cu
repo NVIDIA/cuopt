@@ -470,8 +470,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
     bool run_early_fj = run_presolve && settings.determinism_mode != CUOPT_MODE_DETERMINISTIC &&
                         op_problem.get_problem_category() != problem_category_t::LP &&
                         op_problem.get_n_constraints() > 0;
-    const f_t objective_sense =
-      op_problem.get_objective_scaling_factor() >= f_t{0} ? f_t{1} : f_t{-1};
+    const f_t objective_sense = op_problem.get_sense() ? f_t{-1} : f_t{1};
     f_t no_bound = objective_sense > f_t{0} ? (f_t)-1e20 : (f_t)1e20;
     auto early_fj_callback =
       [&early_best_user_score,
