@@ -664,14 +664,10 @@ struct two_opt_move_t {
   }
 };
 
-
 // returns the combined score of a joint 2opt move
 template <typename i_t, typename f_t>
-static fj_staged_score_t two_opt_compute_pair_score(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
-                                                    i_t first,
-                                                    f_t first_delta,
-                                                    i_t second,
-                                                    f_t second_delta)
+static fj_staged_score_t two_opt_compute_pair_score(
+  fj_cpu_climber_t<i_t, f_t>& fj_cpu, i_t first, f_t first_delta, i_t second, f_t second_delta)
 {
   auto& row_deltas = fj_cpu.two_opt_row_deltas;
   row_deltas.clear();
@@ -771,9 +767,9 @@ static void two_opt_collect_partners(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
   const i_t n_variables = fj_cpu.view.pb.n_variables;
   partners.clear();
   cuopt_assert(fj_cpu.h_is_binary_variable[first], "2-opt is only defined for binaries");
-  cuopt_assert(fj_cpu.probing_cache == nullptr ||
-                 fj_cpu.h_original_ids.size() == (size_t)n_variables,
-               "original id map does not cover every variable");
+  cuopt_assert(
+    fj_cpu.probing_cache == nullptr || fj_cpu.h_original_ids.size() == (size_t)n_variables,
+    "original id map does not cover every variable");
   cuopt_assert(fj_cpu.probing_cache == nullptr ||
                  fj_cpu.h_reverse_original_ids.size() >= fj_cpu.h_original_ids.size(),
                "reverse original id map smaller than the problem");
@@ -821,9 +817,9 @@ static void two_opt_collect_partners(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
   }
 }
 
-// Look for binary 2opt moves at a local minimum. by definition no 1opt move can improve, but combined moves may
-// especially in the case of set partitioning constraints / cliques. Use information from the probing cache
-// to find potential good 2opt moves.
+// Look for binary 2opt moves at a local minimum. by definition no 1opt move can improve, but
+// combined moves may especially in the case of set partitioning constraints / cliques. Use
+// information from the probing cache to find potential good 2opt moves.
 template <typename i_t, typename f_t>
 static two_opt_move_t find_two_opt_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 {
@@ -840,8 +836,7 @@ static two_opt_move_t find_two_opt_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 
   const bool partner_source_exists =
     (fj_cpu.probing_cache != nullptr && !fj_cpu.probing_cache->probing_cache.empty()) ||
-    (int64_t)fj_cpu.h_related_variables_offsets.size() ==
-      fj_cpu.view.pb.n_variables + 1;
+    (int64_t)fj_cpu.h_related_variables_offsets.size() == fj_cpu.view.pb.n_variables + 1;
 
   if (fj_cpu.n_binary_vars == 0 || !partner_source_exists) return best;
 
@@ -850,8 +845,7 @@ static two_opt_move_t find_two_opt_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 
   // target binvars in violated constraints for flips
   if (!fj_cpu.violated_constraints.empty()) {
-    cuopt_assert(fj_cpu.h_binrow_offsets.size() ==
-                   fj_cpu.view.pb.n_constraints + 1,
+    cuopt_assert(fj_cpu.h_binrow_offsets.size() == fj_cpu.view.pb.n_constraints + 1,
                  "binary row table missing");
     auto& target_cstrs = fj_cpu.two_opt_target_cstrs;
     target_cstrs.clear();
@@ -902,12 +896,13 @@ static two_opt_move_t find_two_opt_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
     // look for potential other binary vars to flip alongside the first var
     two_opt_collect_partners(fj_cpu, first, first_delta, max_partners_per_var);
     for (const auto& [second, second_delta] : fj_cpu.two_opt_partners) {
-      const i_t second_touch = std::max(fj_cpu.h_tabu_lastinc[second], fj_cpu.h_tabu_lastdec[second]);
+      const i_t second_touch =
+        std::max(fj_cpu.h_tabu_lastinc[second], fj_cpu.h_tabu_lastdec[second]);
       two_opt_move_t cand;
       cand.first  = {first, first_delta};
       cand.second = {second, second_delta};
-      cand.score = two_opt_compute_pair_score(fj_cpu, first, first_delta, second, second_delta);
-      cand.age = std::max(first_touch, second_touch);
+      cand.score  = two_opt_compute_pair_score(fj_cpu, first, first_delta, second, second_delta);
+      cand.age    = std::max(first_touch, second_touch);
       if (cand > best) { best = cand; }
       ++pairs_scored;
 
@@ -1546,8 +1541,8 @@ static void init_fj_cpu(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
     cuopt::host_copy(problem.related_variables, handle_ptr->get_stream());
   fj_cpu.h_related_variables_offsets =
     cuopt::host_copy(problem.related_variables_offsets, handle_ptr->get_stream());
-  fj_cpu.probing_cache         = probing_cache;
-  fj_cpu.h_original_ids        = problem.original_ids;
+  fj_cpu.probing_cache          = probing_cache;
+  fj_cpu.h_original_ids         = problem.original_ids;
   fj_cpu.h_reverse_original_ids = problem.reverse_original_ids;
 
   fj_cpu.h_cstr_left_weights  = left_weights;

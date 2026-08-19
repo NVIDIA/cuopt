@@ -118,7 +118,7 @@ void local_search_t<i_t, f_t>::start_cpufj_lptopt_scratch_threads(
   solution_lp.copy_new_assignment(
     host_copy(lp_optimal_solution, context.problem_ptr->handle_ptr->get_stream()));
   solution_lp.round_random_nearest(500);
-  scratch_cpu_fj_on_lp_opt = fj.create_cpu_climber(solution_lp,
+  scratch_cpu_fj_on_lp_opt             = fj.create_cpu_climber(solution_lp,
                                                    default_weights,
                                                    default_weights,
                                                    0.,
