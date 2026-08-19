@@ -529,6 +529,7 @@ bool bve_reducer_t<i_t, f_t>::commit_projected(const bve_candidate_t<i_t, f_t>& 
   for (i_t ci = 0; ci < n_clauses; ++ci) {
     const uint32_t lit = clauses[ci].lit_mask;
     const uint32_t bit = clauses[ci].bit_mask;
+    cuopt_assert(lit != 0u, "empty clause reached the row builder");
     work_row_t R;
     R.active = true;
     R.up     = INF;
@@ -787,6 +788,7 @@ double bve_project_batch_gpu(const raft::handle_t& handle,
           cand.projection.feasible[m] = feasible ? 1 : 0;
           cand.projection.witness[m]  = feasible ? w : 0u;
         }
+        cand.projection.projected = true;
       }
     }
   }
@@ -834,7 +836,7 @@ static void bve_extract_forcings(const bve_candidate_t<i_t, f_t>& cand, probe_fi
     }
   }
   // Vacuous accumulators would otherwise read as "every position forced to 1".
-  if (n_feasible == 0u) return;  // block alone is infeasible; left to the bound presolve
+  if (n_feasible == 0u) return;  // the caller turns this block into an infeasibility proof
 
   // Positions the block fixes outright.
   const uint32_t fixed_mask = and_acc[unconditional] | (~or_acc[unconditional] & all_ones);
@@ -956,6 +958,9 @@ static bve_growth_result_t<i_t> grow_seed_interior(
 // staged projection is still valid at commit time. Candidates deferred for overlap are retried in
 // later rounds; the loop stops when a round accepts nothing or commits nothing (each committing
 // round retires >= 1 column, hence terminates).
+//
+// A block whose projection admits no boundary assignment sets `out_infeasible` and abandons the
+// round with an empty plan, so nothing this call staged is ever installed.
 template <typename i_t, typename f_t>
 static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
   const raft::handle_t& handle,
@@ -963,7 +968,8 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
   const std::vector<std::vector<i_t>>& impl_adj,
   timer_t& timer,
   double& work_units,
-  probe_findings_t<i_t>* findings)
+  probe_findings_t<i_t>* findings,
+  bool* out_infeasible)
 {
   std::vector<i_t> order;
   for (i_t c = 0; c < reducer.n_vars; ++c) {
@@ -1067,6 +1073,15 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
     i_t committed = 0;
     for (auto& cand : cands) {
       if (timer.check_time_limit()) break;
+      cuopt_assert(cand.projection.projected, "commit loop reached an unprojected candidate");
+      const bool admits_nothing =
+        cand.projection.projected && std::none_of(cand.projection.feasible.begin(),
+                                                  cand.projection.feasible.end(),
+                                                  [](uint8_t feasible) { return feasible != 0; });
+      if (admits_nothing) {
+        if (out_infeasible != nullptr) *out_infeasible = true;
+        return {};
+      }
       // Valid for the block's rows regardless of the clause gates below, so harvest before them.
       if (findings != nullptr) {
         bve_extract_forcings<i_t, f_t>(cand, *findings);
@@ -1188,6 +1203,7 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
                         timer_t& timer,
                         double& work_units,
                         probe_findings_t<i_t>* out_findings,
+                        bool* out_infeasible,
                         i_t boundary_cap,
                         i_t scope_cap,
                         i_t clause_growth_margin)
@@ -1268,14 +1284,22 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
                                   clause_growth_margin);
   t_setup = wall.elapsed_time();
   probe_findings_t<i_t> current_id_findings;
+  bool detected_infeasible = false;
   bve_plan_t<i_t, f_t> plan =
     bve_detect_closure_batched<i_t, f_t>(*handle,
                                          reducer,
                                          impl_adj,
                                          timer,
                                          work_units,
-                                         out_findings != nullptr ? &current_id_findings : nullptr);
+                                         out_findings != nullptr ? &current_id_findings : nullptr,
+                                         &detected_infeasible);
   t_detect = wall.elapsed_time() - t_setup;
+
+  if (detected_infeasible) {
+    cuopt_assert(plan.reductions.empty(), "an infeasibility proof must abandon the round's plan");
+    if (out_infeasible != nullptr) *out_infeasible = true;
+    return false;
+  }
 
   // Projection findings hold for the block's rows whether or not the block was eliminated, so they
   // are exported before the no-reduction exit; the rejected blocks are often the interesting ones.
@@ -1318,6 +1342,7 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
     new_cub.push_back(row_upper[r]);
   }
   for (const auto& ar : plan.added_rows) {
+    cuopt_assert(!ar.terms.empty(), "installing a term-free row loses whatever it constrained");
     for (const auto& [var, coef] : ar.terms) {
       new_var.push_back(var);
       new_coef.push_back(coef);
@@ -1373,6 +1398,7 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
                                                 timer_t&,                             \
                                                 double&,                              \
                                                 probe_findings_t<int>*,               \
+                                                bool*,                                \
                                                 int,                                  \
                                                 int,                                  \
                                                 int)
