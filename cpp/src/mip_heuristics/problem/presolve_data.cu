@@ -147,14 +147,14 @@ void presolve_data_t<i_t, f_t>::post_process_assignment(
         for (size_t j = 0; j < rec.bve.boundary.size(); ++j) {
           cuopt_assert(rec.bve.boundary[j] < (i_t)h_assignment.size(),
                        "block boundary out of bounds");
-          const int bit = (h_assignment[rec.bve.boundary[j]] > static_cast<f_t>(0.5)) ? 1 : 0;
-          pattern |= (static_cast<uint32_t>(bit) << j);
+          const int bit = (h_assignment[rec.bve.boundary[j]] > 0.5) ? 1 : 0;
+          pattern |= (uint32_t)bit << j;
         }
         const uint32_t w = rec.bve.witness[pattern];
         for (size_t k = 0; k < rec.bve.interior.size(); ++k) {
           cuopt_assert(rec.bve.interior[k] < (i_t)h_assignment.size(),
                        "block interior out of bounds");
-          h_assignment[rec.bve.interior[k]] = static_cast<f_t>((w >> k) & 1u);
+          h_assignment[rec.bve.interior[k]] = (w >> k) & 1u;
         }
         break;
       }

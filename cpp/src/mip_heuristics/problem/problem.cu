@@ -368,8 +368,8 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_, bool no_deep
     var_names(problem_.var_names),
     row_names(problem_.row_names),
     objective_name(problem_.objective_name),
-    // presolve_data above picks its source from no_deep_copy and presolve moves that offset, so
-    // read the member just built (declared ahead of this one) rather than problem_ again.
+    // presolve_data is declared ahead of this member and holds the live offset once presolve has
+    // moved it; problem_.objective_offset can be stale here.
     objective_offset(presolve_data.objective_offset),
     is_scaled_(problem_.is_scaled_),
     preprocess_called(problem_.preprocess_called),

@@ -71,7 +71,7 @@ static double bve_commit_wall_ops(int nb, int clause_budget)
   double three_nb = 1.0;
   for (int i = 0; i < nb; ++i)
     three_nb *= 3.0;
-  return double(nb) * three_nb + double(1 << nb) * double(clause_budget + 1);
+  return nb * three_nb + (double)(1 << nb) * (clause_budget + 1);
 }
 
 bool bve_sanity_check(const uint8_t* feas, int nb, const bve_clause_t* clauses, int n_clauses)
@@ -107,12 +107,9 @@ bool bve_sanity_check(const uint8_t* feas, int nb, const bve_clause_t* clauses, 
 // The covering step is the greedy max-gain heuristic of Johnson, "Approximation Algorithms for
 // Combinatorial Problems" (JCSS 1974), Lovász (Discrete Math. 1975) and Chvátal (Math. of OR 1979):
 // repeatedly take the cube covering the most still-uncovered patterns, which lands within a factor
-// 1 + ln m of the minimum cover for m infeasible patterns. An exact minimum cover (Petrick / unate
-// covering) was measured against it: the greedy already hit the optimum on 90% of blocks and took
-// 61% of the clauses an exact cover would have saved, which did not pay for owning a
-// branch-and-bound with a node cap and a fallback path.
+// 1 + ln m of the minimum cover for m infeasible patterns.
 
-static size_t bve_mask_words(int nb) { return size_t(((1u << nb) + 63u) / 64u); }
+static size_t bve_mask_words(int nb) { return ((1u << nb) + 63u) / 64u; }
 
 static int bve_mask_size(const bve_mask_t& m)
 {
@@ -238,20 +235,20 @@ int bve_greedy_prime_cover(const uint8_t* feas,
   for (size_t q = 0; q < primes.size(); ++q) {
     bve_cube_cover(primes[q].lit_mask, primes[q].bit_mask, full_mask, n_words, scratch.cover[q]);
     // Zeroing the words, then one set-bit per pattern the cube matches.
-    ops += (int64_t)n_words + (int64_t{1} << (nb - std::popcount(primes[q].lit_mask)));
+    ops += n_words + (int64_t{1} << (nb - std::popcount(primes[q].lit_mask)));
   }
 
   int n = 0;
   while (bve_mask_size(uncovered) > 0) {
     // Per pick: the size test above, one bve_mask_overlap per prime, then the subtract below.
-    ops += (int64_t)((primes.size() + 2) * n_words);
+    ops += (primes.size() + 2) * n_words;
     int best_q    = -1;
     int best_gain = 0;
     for (size_t q = 0; q < primes.size(); ++q) {
       const int gain = bve_mask_overlap(uncovered, scratch.cover[q]);
       if (gain > best_gain) {
         best_gain = gain;
-        best_q    = (int)q;
+        best_q    = q;
       }
     }
     cuopt_assert(best_q >= 0, "prime cubes do not cover the infeasible patterns");
@@ -259,7 +256,7 @@ int bve_greedy_prime_cover(const uint8_t* feas,
     out[n++] = primes[best_q];
     bve_mask_subtract(uncovered, scratch.cover[best_q]);
   }
-  ops += (int64_t)n_words;  // the size test that ended the loop
+  ops += n_words;  // the size test that ended the loop
   cuopt_assert(n >= 1, "non-empty infeasible set covered by zero clauses");
   return n;
 }
@@ -398,7 +395,7 @@ void bve_reducer_t<i_t, f_t>::scope_of(const std::vector<i_t>& interior,
                                        std::vector<i_t>& boundary_out,
                                        int64_t& ops) const
 {
-  ops += (int64_t)interior.size();
+  ops += interior.size();
   std::unordered_set<i_t> interior_set(interior.begin(), interior.end());
   std::unordered_set<i_t> affected_rows;
   for (i_t a : interior)
@@ -416,12 +413,12 @@ void bve_reducer_t<i_t, f_t>::scope_of(const std::vector<i_t>& interior,
   boundary_out.assign(b.begin(), b.end());
 }
 
-// This is where the block leaves floating point behind: rescale every row to integer coefficients
-// and bounds so the projection can run at tolerance 0. Returns false if any row does not scale to
-// bounded integers, which rejects the whole block rather than risk a tolerance-sensitive
-// feasibility misclassification on large or non-rational coefficients. Only the projection's
-// private copy is scaled -- the block rows are dropped from the model and the appended no-goods are
-// scale-independent +/-1 clauses, so this never perturbs the installed model.
+// Rescale every row to integer coefficients and bounds so the projection can run at tolerance 0.
+// Returns false if any row does not scale to bounded integers, which rejects the whole block rather
+// than risk a tolerance-sensitive feasibility misclassification on large or non-rational
+// coefficients. Only the projection's private copy is scaled: the block rows are dropped from the
+// model and the appended no-goods are scale-independent +/-1 clauses, so the installed model is
+// never perturbed.
 template <typename f_t>
 static bool integerize_projection_rows(bve_block_t<f_t>& block)
 {
@@ -436,11 +433,11 @@ static bool integerize_projection_rows(bve_block_t<f_t>& block)
                                         BVE_INT_SCALE_MAX);
     if (s == 0.0) return false;
     for (int k = rb; k < re; ++k)
-      block.row_coef[k] = (f_t)std::llround((double)block.row_coef[k] * s);
+      block.row_coef[k] = std::llround((double)block.row_coef[k] * s);
     if (scaling_bound_finite(block.row_lo[rr]))
-      block.row_lo[rr] = (f_t)std::llround((double)block.row_lo[rr] * s);
+      block.row_lo[rr] = std::llround((double)block.row_lo[rr] * s);
     if (scaling_bound_finite(block.row_up[rr]))
-      block.row_up[rr] = (f_t)std::llround((double)block.row_up[rr] * s);
+      block.row_up[rr] = std::llround((double)block.row_up[rr] * s);
   }
   return true;
 }
@@ -461,9 +458,9 @@ bool bve_reducer_t<i_t, f_t>::stage(const std::vector<i_t>& interior_in,
   scope_of(interior, affected_rows, boundary, ops);
   // row order is result-invariant; sorting improves GPU shape-binning
   std::sort(affected_rows.begin(), affected_rows.end());
-  ops += (int64_t)affected_rows.size();
+  ops += affected_rows.size();
   std::sort(boundary.begin(), boundary.end());
-  ops += (int64_t)boundary.size();
+  ops += boundary.size();
 
   const i_t nb = boundary.size();
   const i_t na = interior.size();
@@ -482,7 +479,7 @@ bool bve_reducer_t<i_t, f_t>::stage(const std::vector<i_t>& interior_in,
     local[interior[j]] = j;
   for (i_t j = 0; j < nb; ++j)
     local[boundary[j]] = na + j;
-  ops += (int64_t)(na + nb);
+  ops += na + nb;
   i_t nzc           = 0;
   bool row_overflow = false;
   for (i_t rr = 0; rr < blk.n_rows && !row_overflow; ++rr) {
@@ -511,7 +508,7 @@ bool bve_reducer_t<i_t, f_t>::stage(const std::vector<i_t>& interior_in,
   out.rows     = std::move(affected_rows);
   out.projection.feasible.assign(size_t(1) << nb, 0);
   out.projection.witness.assign(size_t(1) << nb, 0u);
-  ops += (int64_t)(1 << nb);
+  ops += 1 << nb;
   return true;
 }
 
@@ -605,9 +602,9 @@ bve_plan_t<i_t, f_t> bve_reducer_t<i_t, f_t>::finalize()
 //     witness [block][m] ==  out_witness[block][m]        // the smallest feasible interior
 // `out_witness` must be initialized to 0xFFFFFFFF by the caller before launch.
 //
-// Shape (nb, na, nrows, and the row layout) is passed at RUNTIME, not as template parameters: it
-// would otherwise need one instantiation per distinct shape. All blocks in a single launch share
-// the shape (they are pre-binned), so every CTA still runs the identical loop structure.
+// Shape (nb, na, nrows, and the row layout) is a runtime parameter; templating it would cost one
+// instantiation per distinct shape. All blocks in a single launch share the shape (they are
+// pre-binned), so every CTA still runs the identical loop structure.
 // `row_start` and `local_var_of_entry` describe that shared layout; `nnz == row_start[nrows]`.
 // `row_satisfied` uses dynamic shared memory of `nrows` bytes.
 template <typename i_t, typename f_t>
@@ -639,9 +636,9 @@ __global__ void bve_enumerate_kernel(
   // one CTA per assignment (block, m, am), grid-strided over CTAs
   for (int64_t assignment = blockIdx.x; assignment < num_assignments; assignment += gridDim.x) {
     const auto a               = (uint64_t)assignment;
-    const i_t interior_pattern = (i_t)cuda::bitfield_extract(a, 0, na);
-    const i_t boundary_pattern = (i_t)cuda::bitfield_extract(a, na, nb);
-    const i_t block            = (i_t)(a >> (na + nb));
+    const i_t interior_pattern = cuda::bitfield_extract(a, 0, na);
+    const i_t boundary_pattern = cuda::bitfield_extract(a, na, nb);
+    const i_t block            = a >> (na + nb);
 
     const f_t* coeffs = block_coeffs + block * nnz;
     const f_t* lower  = block_row_lower + block * nrows;
@@ -651,9 +648,9 @@ __global__ void bve_enumerate_kernel(
     for (i_t row = warp_id; row < nrows; row += num_warps) {
       f_t partial = 0;
       for (i_t entry = row_start[row] + lane_id; entry < row_start[row + 1]; entry += 32) {
-        const i_t var   = local_var_of_entry[entry];
-        const f_t value = (var < na) ? (f_t)((interior_pattern >> var) & 1)
-                                     : (f_t)((boundary_pattern >> (var - na)) & 1);
+        const i_t var = local_var_of_entry[entry];
+        const f_t value =
+          (var < na) ? ((interior_pattern >> var) & 1) : ((boundary_pattern >> (var - na)) & 1);
         partial += coeffs[entry] * value;
       }
       // Lane 0 holds the result for both XOR-butterfly and typical down-sweep warp reduces.
@@ -693,7 +690,7 @@ double bve_project_batch_gpu(const raft::handle_t& handle,
   double work_units = 0.0;
 
   // Bin candidates by identical shape so every CTA in a launch runs the same loop structure. The
-  // key is (na, nb, n_rows, nnz, row_off[...], row_var[...]) — everything the kernel reads as
+  // key is (na, nb, n_rows, nnz, row_off[...], row_var[...]), everything the kernel reads as
   // shared; only the coefficients and row bounds differ per block. Hash map avoids O(key_len ·
   // log n_bins) tree compares on long keys (up to ~1605 ints at the BVE caps).
   struct shape_key_hash {
@@ -802,8 +799,8 @@ double bve_project_batch_gpu(const raft::handle_t& handle,
       RAFT_CUDA_TRY(cudaGetLastError());
 
       // Unscaled op counts: host pack/unpack touches + one coeff read per assignment.
-      work_units += double(num_sz) * double(nnz + 2 * nrows + patterns);
-      work_units += double(total) * double(nnz);
+      work_units += (double)num_sz * (nnz + 2 * nrows + patterns);
+      work_units += (double)total * nnz;
 
       std::vector<uint32_t> h_witness(num_sz * size_t(patterns));
       raft::copy(h_witness.data(), d_witness.data(), h_witness.size(), stream);
@@ -914,10 +911,6 @@ static bve_growth_result_t<i_t> grow_seed_interior(
   auto has_adj = [&](i_t v) {
     return v >= 0 && v < (i_t)implication_adjacency.size() && !implication_adjacency[v].empty();
   };
-  auto eligible = [&](i_t w) {
-    return reducer.is_bin[w] && !reducer.obj_nz[w] && !reducer.done[w] &&
-           !reducer.col2rows[w].empty();
-  };
 
   bve_growth_result_t<i_t> result;
   std::unordered_set<i_t> interior_set = {seed};
@@ -942,7 +935,9 @@ static bve_growth_result_t<i_t> grow_seed_interior(
       if (!has_adj(a)) continue;
       for (i_t w : implication_adjacency[a]) {
         ++result.ops;
-        if (interior_set.count(w) || !eligible(w)) continue;
+        const bool eligible = reducer.is_bin[w] && !reducer.obj_nz[w] && !reducer.done[w] &&
+                              !reducer.col2rows[w].empty();
+        if (interior_set.count(w) || !eligible) continue;
         cands_w.insert(w);
         if ((i_t)cands_w.size() > BVE_MAX_GROWTH_NBRS) {
           gated = true;
@@ -984,20 +979,17 @@ static bve_growth_result_t<i_t> grow_seed_interior(
 //
 // Implication-closure block growth over the probing-cache adjacency: each seed absorbs the
 // implication-neighbor that most shrinks its boundary (subject to enum/interior caps) until no
-// such neighbor remains. Restructured so many candidate blocks are projected in ONE GPU launch.
-// Within a round the working model is FROZEN — every seed grows its interior against the same
-// model. Because that growth is read-only on the model, it runs in an OpenMP parallel-for across
-// the round's seeds; the results are deterministic per seed and acceptance is then applied
-// serially in seed order, so the committed plan is identical to a serial run of the same frozen
-// growth. Candidates are staged and only mutually SCOPE-DISJOINT ones (no shared interior or
-// boundary column, which also forbids a shared row) are accepted into the batch. The batch is
-// projected on the device (bve_project_batch_gpu), then committed on the host; because the accepted
-// candidates touch disjoint columns/rows, commit order is irrelevant and each block's staged
-// projection is still valid at commit time. Candidates deferred for overlap are retried in later
-// rounds; the loop stops when a round accepts nothing or commits nothing (each committing round
-// retires >= 1 column => terminates). The scope-disjoint rule is deliberately conservative (it also
-// rejects candidates that merely share a boundary column, which would be safe); relax it if
-// per-round batch sizes prove too small. TU-local (only the pass uses it).
+// such neighbor remains. Within a round the working model is frozen, so every seed grows its
+// interior against the same model. Because that growth is read-only on the model, it runs in an
+// OpenMP parallel-for across the round's seeds; the results are deterministic per seed and
+// acceptance is then applied serially in seed order, so the committed plan is identical to a serial
+// run of the same frozen growth. Candidates are staged and only mutually scope-disjoint ones (no
+// shared interior or boundary column, which also forbids a shared row) are accepted into the batch.
+// The batch is projected on the device (bve_project_batch_gpu), then committed on the host; because
+// the accepted candidates touch disjoint columns/rows, commit order is irrelevant and each block's
+// staged projection is still valid at commit time. Candidates deferred for overlap are retried in
+// later rounds; the loop stops when a round accepts nothing or commits nothing (each committing
+// round retires >= 1 column, hence terminates).
 template <typename i_t, typename f_t>
 static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
   const raft::handle_t& handle,
@@ -1007,12 +999,12 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
   double& work_units,
   probe_findings_t<i_t>* findings)
 {
-  auto has_adj = [&](i_t v) { return v >= 0 && v < (i_t)impl_adj.size() && !impl_adj[v].empty(); };
   std::vector<i_t> order;
   for (i_t c = 0; c < reducer.n_vars; ++c) {
     // grow_seed_interior's hub fast path refuses to grow a seed whose implication degree is past the
     // probe cap, so such a seed only ever reaches stage() as a singleton interior.
-    const bool growable = has_adj(c) && (i_t)impl_adj[c].size() <= BVE_MAX_GROWTH_NBRS;
+    const i_t degree    = c < (i_t)impl_adj.size() ? (i_t)impl_adj[c].size() : 0;
+    const bool growable = degree > 0 && degree <= BVE_MAX_GROWTH_NBRS;
     if (reducer.is_bin[c] && !reducer.obj_nz[c] && !reducer.col2rows[c].empty() && growable)
       order.push_back(c);
   }
@@ -1023,7 +1015,6 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
   std::vector<char> attempted(reducer.n_vars,
                               0);  // a seed is attempted once (whether or not it commits)
   // Grow each seed at most once; overlap-deferred seeds only re-stage from the cached interior.
-  // Re-growing hubs every round dominated wall; retiring them on first overlap killed reductions.
   std::vector<char> growth_done(reducer.n_vars, 0);
   std::vector<std::vector<i_t>> growth_interior(reducer.n_vars);
   for (;;) {
@@ -1057,7 +1048,7 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
     int64_t max_growth_ops = 0;
     for (int64_t ops : growth_ops)
       max_growth_ops = std::max(max_growth_ops, ops);
-    work_units += double(max_growth_ops);
+    work_units += max_growth_ops;
 
     if (timer.check_time_limit()) break;
 
@@ -1072,12 +1063,11 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
       bve_candidate_t<i_t, f_t> cand;
       int64_t stage_ops = 0;
       if (!reducer.stage(interiors[k], cand, &stage_ops)) {
-        work_units += double(stage_ops);
-        attempted[seed] =
-          1;  // failed the caps against this model; treat as one touch, like sequential
+        work_units += stage_ops;
+        attempted[seed] = 1;  // failed the caps against this model; one attempt per seed
         continue;
       }
-      work_units += double(stage_ops);
+      work_units += stage_ops;
       bool overlap = false;
       for (i_t c : cand.interior)
         if (claimed.count(c)) {
@@ -1098,8 +1088,8 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
       for (i_t c : cand.boundary)
         claimed.insert(c);
       cuopt_assert(cand.blk.na + cand.blk.nb <= BVE_MAX_SCOPE, "staged scope past enumeration cap");
-      batch_projection_ops += double(uint32_t(1) << (cand.blk.na + cand.blk.nb)) *
-                              double(cand.blk.row_off[cand.blk.n_rows]);
+      batch_projection_ops +=
+        (double)(1u << (cand.blk.na + cand.blk.nb)) * cand.blk.row_off[cand.blk.n_rows];
       cands.push_back(std::move(cand));
 
       if (batch_projection_ops >= BVE_BATCH_PROJECTION_BUDGET) break;
@@ -1107,7 +1097,7 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
 
     if (cands.empty() || timer.check_time_limit()) break;
     // Staged blocks are integerized (integerize_projection_rows), so the subset-sum feasibility
-    // test is exact: project with tolerance 0 rather than reducer.tol.
+    // test is exact at tolerance 0.
     work_units += bve_project_batch_gpu<i_t, f_t>(handle, cands, f_t(0), timer);
     if (timer.check_time_limit()) break;
     i_t committed = 0;
@@ -1116,13 +1106,13 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
       // Valid for the block's rows regardless of the clause gates below, so harvest before them.
       if (findings != nullptr) {
         bve_extract_forcings<i_t, f_t>(cand, *findings);
-        work_units += double(uint32_t(1) << cand.blk.nb) * double(cand.blk.nb);
+        work_units += (double)(1u << cand.blk.nb) * cand.blk.nb;
       }
       work_units +=
         bve_commit_wall_ops(cand.blk.nb, cand.blk.n_rows + reducer.clause_growth_margin);
       int64_t commit_ops = 0;
       if (reducer.commit_projected(cand, &commit_ops)) ++committed;
-      work_units += double(commit_ops);
+      work_units += commit_ops;
     }
     if (committed == 0) break;
     cuopt_assert(committed <= (i_t)cands.size(), "committed more candidates than were projected");
@@ -1201,7 +1191,7 @@ static void append_bve_reconstructions(const bve_plan_t<i_t, f_t>& plan,
   auto& recs = presolve_data.var_postsolve;
   recs.reserve(recs.size() + plan.reductions.size());
   for (const auto& red : plan.reductions) {
-    work_units += double(red.interior.size() + red.boundary.size() + red.witness.size());
+    work_units += red.interior.size() + red.boundary.size() + red.witness.size();
     var_postsolve_t<i_t, f_t> rec;
     rec.kind = reconstruction_kind_t::BlockBve;
     rec.bve.interior.reserve(red.interior.size());
@@ -1278,8 +1268,8 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
   handle->sync_stream();
 
   // Host mirror + reducer construction (each walks the CSR once).
-  const i_t nnz0 = (i_t)h_off.back();
-  work_units     = double(2 * nnz0) + double(2 * n_vars) + double(n_rows);
+  const i_t nnz0 = h_off.back();
+  work_units     = 2.0 * nnz0 + 2.0 * n_vars + n_rows;
 
   if (timer.check_time_limit()) return false;
 
@@ -1382,7 +1372,7 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
     new_cub.push_back(std::numeric_limits<f_t>::infinity());
   }
   // ---- 5. install the rewritten rows into problem_t (matrix + derived state) ----
-  work_units += double(new_var.size()) + double(new_clb.size());
+  work_units += new_var.size() + new_clb.size();
   problem.set_constraints_from_host_csr(new_off, new_var, new_coef, new_clb, new_cub, {});
 
   // ---- 6. record reconstructions ----
@@ -1391,7 +1381,7 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
 
   // ---- 7. compact the now-empty interior columns and update variable_mapping ----
   const double t_compact_begin = wall.elapsed_time();
-  work_units += double(n_vars) + double(new_var.size());
+  work_units += n_vars + new_var.size();
   trivial_presolve(problem, /*remap_cache_ids=*/true);
   handle->sync_stream();
   t_compact              = wall.elapsed_time() - t_compact_begin;

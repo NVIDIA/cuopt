@@ -50,7 +50,7 @@ template <typename f_t>
 inline bool bve_is_finite(f_t x)
 {
   // finite iff it equals itself (rules out NaN) and is strictly within +/- inf
-  return (x == x) && (x < static_cast<f_t>(INFINITY)) && (x > static_cast<f_t>(-INFINITY));
+  return (x == x) && (x < INFINITY) && (x > -INFINITY);
 }
 
 // Feasibility of one packed row under a full local assignment `val` (length na+nb), with tolerance.
@@ -59,7 +59,7 @@ inline bool bve_row_sat(const bve_block_t<f_t>& blk, int r, const int* val, f_t 
 {
   f_t s = 0;
   for (int k = blk.row_off[r]; k < blk.row_off[r + 1]; ++k) {
-    s += blk.row_coef[k] * static_cast<f_t>(val[blk.row_var[k]]);
+    s += blk.row_coef[k] * (f_t)val[blk.row_var[k]];
   }
   if (bve_is_finite(blk.row_up[r]) && s > blk.row_up[r] + tol) return false;
   if (bve_is_finite(blk.row_lo[r]) && s < blk.row_lo[r] - tol) return false;
@@ -69,7 +69,7 @@ inline bool bve_row_sat(const bve_block_t<f_t>& blk, int r, const int* val, f_t 
 // Project the block onto its boundary. `feas[m]` (length 2^nb) is set to 1 iff boundary pattern m
 // (nb bits) admits SOME interior assignment satisfying every block row, and `witness[m]` receives
 // the packed interior assignment (na bits) of the FIRST feasible completion. Both are left 0 for
-// infeasible patterns. Mirrors the double loop in bve_blocks.cpp; the GPU kernel must match this.
+// infeasible patterns. The GPU kernel must match this exactly.
 template <typename f_t>
 inline void bve_project(const bve_block_t<f_t>& blk, f_t tol, uint8_t* feas, uint32_t* witness)
 {
@@ -155,10 +155,10 @@ End
 )LP";
 
 // Same gadget with every row scaled by 1/2, so the block coefficients and bounds are FRACTIONAL.
-// The feasible region (hence the reduction: b + c <= 1, `a` eliminated) is identical — positive
+// The feasible region (hence the reduction: b + c <= 1, `a` eliminated) is identical, as positive
 // row scaling preserves feasibility. This forces block-BVE's per-row integerization
-// (row_int_scale) to recover integer coefficients before the exact tol-0 projection; if that
-// path were wrong (N1), the reduction or its reconstruction would break.
+// (row_int_scale) to recover integer coefficients before the exact tol-0 projection; a wrong
+// integerization breaks either the reduction or its reconstruction.
 static constexpr const char* kFractionalBlockLp = R"LP(
 Minimize
  obj: b + c
@@ -289,7 +289,7 @@ TEST(block_bve_core, sanity_check_rejects_corrupted_clauses)
   EXPECT_FALSE(mip::bve_sanity_check(feas, 2, wrong, 1));
 }
 
-// --- N1 (numerical): the row integerization GATE. block-BVE scales each block row to integers via
+// --- the row integerization GATE. block-BVE scales each block row to integers via
 // find_scaling_rational (strict caps mirroring row_int_scale) so the projection is exact at
 // tolerance 0; a row that will not integerize within the caps must be REJECTED (NaN), never rounded
 // into a different model. This pins the accept/reject decision that keeps large / non-rational
@@ -336,8 +336,8 @@ TEST(block_bve_core, integer_scaling_accepts_rational_rejects_pathological)
 // A cached probe and a block projection are both valid, so they can only disagree when the
 // antecedent they share is unsatisfiable. That fixes the variable to the opposite value; the model
 // is infeasible only once both polarities are contradicted, which apply_bve_fixings derives from
-// two fixings that disagree. Regression: the empty intersection used to be reported as global
-// infeasibility outright, turning a feasible model into an INFEASIBLE answer.
+// two fixings that disagree. An empty intersection on its own must not be reported as global
+// infeasibility.
 TEST(block_bve_core, cache_contradiction_fixes_the_variable_instead_of_failing)
 {
   constexpr int var    = 7;
@@ -433,9 +433,9 @@ static void randomize_block_data(std::mt19937& rng, mip::bve_block_t<double>& bl
     const int terms = blk.row_off[r + 1] - blk.row_off[r];
     // Activity under 0/1 vars and coefs in {-2,-1,1,2} lies in [-2*terms, 2*terms]. Pick finite
     // uppers in [0, 2*terms] so they can bind (not always equal to the loose max activity).
-    const double lo = -static_cast<double>(terms);
+    const double lo = -terms;
     std::uniform_int_distribution<int> up_pick(0, 2 * terms);
-    const double up = static_cast<double>(up_pick(rng));
+    const double up = up_pick(rng);
     const int kind  = bnd_pick(rng);
     blk.row_lo[r]   = (kind == 1) ? -INF : lo;
     blk.row_up[r]   = (kind == 0) ? INF : up;
@@ -500,16 +500,16 @@ static void randomize_block_data_integer(std::mt19937& rng, mip::bve_block_t<dou
     const int terms = blk.row_off[r + 1] - blk.row_off[r];
     // Activity lies in [-5e6*terms, 5e6*terms]; pick finite integer bounds (multiples of 1e6) that
     // can bind.
-    const double lo = -5e6 * static_cast<double>(terms);
+    const double lo = -5e6 * terms;
     std::uniform_int_distribution<int> up_pick(0, 2 * terms);
-    const double up = 1e6 * static_cast<double>(up_pick(rng));
+    const double up = 1e6 * up_pick(rng);
     const int kind  = bnd_pick(rng);
     blk.row_lo[r]   = (kind == 1) ? -INF : lo;
     blk.row_up[r]   = (kind == 0) ? INF : up;
   }
 }
 
-// --- N1: the EXACT projection path. Production integerizes each block and projects at tolerance 0;
+// --- the EXACT projection path. Production integerizes each block and projects at tolerance 0;
 //     the 1e-6 differential test above never exercises that. On large-integer-coefficient blocks
 //     the GPU projection at tol 0 must still equal the host enumeration oracle at tol 0 everywhere.
 //     ---
@@ -582,7 +582,7 @@ TEST(block_bve_presolve, end_to_end_reduction_and_reconstruction)
   // The reconstructed full assignment must satisfy EVERY original constraint. This is order-
   // independent (no assumption about which index is a/b/c): if the eliminated aux is reconstructed
   // wrongly, a - b >= 0 or a - c >= 0 is violated. Since one boundary variable is set to 1, a
-  // correct reconstruction forces the aux to 1 — the feasibility check below is exactly that
+  // correct reconstruction forces the aux to 1, so the feasibility check below is exactly that
   // correctness test.
   auto m_off = model.get_constraint_matrix_offsets();
   auto m_var = model.get_constraint_matrix_indices();
@@ -598,8 +598,8 @@ TEST(block_bve_presolve, end_to_end_reduction_and_reconstruction)
   }
 }
 
-// --- N1 end-to-end: the SAME gadget with fractional block coefficients (rows scaled by 1/2). The
-//     reduction and its reconstruction must be identical to the integer gadget — block-BVE has to
+// --- end-to-end with fractional block coefficients (the same gadget, rows scaled by 1/2). The
+//     reduction and its reconstruction must be identical to the integer gadget: block-BVE has to
 //     integerize the 0.5 coefficients before the exact projection and undo it correctly at
 //     postsolve.
 TEST(block_bve_presolve, fractional_gadget_reduces_and_reconstructs)
@@ -678,7 +678,7 @@ static bve_bf_t brute_force_binary(mip::problem_t<int, double>& problem)
   std::vector<double> x(nv);
   for (uint64_t mask = 0; mask < total; ++mask) {
     for (int v = 0; v < nv; ++v)
-      x[v] = static_cast<double>((mask >> v) & 1u);
+      x[v] = (mask >> v) & 1u;
     bool ok = true;
     for (int rr = 0; rr < nr && ok; ++rr) {
       double s = 0.0;
@@ -700,9 +700,8 @@ static bve_bf_t brute_force_binary(mip::problem_t<int, double>& problem)
 }
 
 // Corpus of small 0-1 instances whose optima were cross-checked OFFLINE by brute force AND HiGHS.
-// MPS live in datasets/mip/block_bve/ (generated by cpufj_sc22/bve_gen_fixtures.py); optima inlined
-// here. Mix: gadget-rich (block-BVE fires), no-op/soundness (aux-with-objective, random feasible
-// ILPs), and infeasible.
+// MPS live in datasets/mip/block_bve/; optima inlined here. Mix: gadget-rich (block-BVE fires),
+// no-op/soundness (aux-with-objective, random feasible ILPs), and infeasible.
 struct bve_case_t {
   const char* file;
   bool feasible;
