@@ -333,8 +333,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
   if (!global_timer.check_time_limit()) { trivial_presolve(*problem_ptr, remap_cache_ids); }
 
   if (context.settings.block_bve && run_probing_cache) {
-    timer_t bve_deadline(
-      std::min(global_timer.remaining_time(), presolve_timer.remaining_time()));
+    timer_t bve_deadline(std::min(global_timer.remaining_time(), presolve_timer.remaining_time()));
     if (!block_bve_phase(ls.constraint_prop.bounds_update, *problem_ptr, bve_deadline)) {
       stats.presolve_time = timer.elapsed_time();
       return false;

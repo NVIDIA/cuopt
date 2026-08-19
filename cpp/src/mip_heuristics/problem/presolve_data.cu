@@ -133,8 +133,7 @@ static void reconstruct_affine_sub(const substitution_t<i_t, f_t>& sub,
 {
   cuopt_assert(sub.substituted_var < (i_t)assignment.size(), "substituted_var out of bounds");
   cuopt_assert(sub.substituting_var < (i_t)assignment.size(), "substituting_var out of bounds");
-  assignment[sub.substituted_var] =
-    sub.offset + sub.coefficient * assignment[sub.substituting_var];
+  assignment[sub.substituted_var] = sub.offset + sub.coefficient * assignment[sub.substituting_var];
   CUOPT_LOG_DEBUG("Post-process substitution: x[%d] = %f + %f * x[%d] = %f",
                   sub.substituted_var,
                   sub.offset,

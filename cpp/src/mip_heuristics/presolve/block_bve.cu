@@ -48,7 +48,7 @@ static constexpr size_t BVE_PROJECT_DEVICE_BUDGET = 64ull << 20;  // 64 MiB
 // Cap the enumeration cost of one projection batch, summed as 2^(na+nb) * nnz over the candidates
 // accepted into it.
 static constexpr double BVE_BATCH_PROJECTION_BUDGET = 1e8;
-static constexpr int BVE_MIN_COMMIT_RATIO = 20;
+static constexpr int BVE_MIN_COMMIT_RATIO           = 20;
 // Outer rounds of the phase: each re-derives the implication graph from the model the previous one
 // left behind.
 static constexpr int BVE_MAX_ROUNDS = 3;
@@ -983,8 +983,8 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
 {
   std::vector<i_t> order;
   for (i_t c = 0; c < reducer.n_vars; ++c) {
-    // grow_seed_interior's hub fast path refuses to grow a seed whose implication degree is past the
-    // probe cap, so such a seed only ever reaches stage() as a singleton interior.
+    // grow_seed_interior's hub fast path refuses to grow a seed whose implication degree is past
+    // the probe cap, so such a seed only ever reaches stage() as a singleton interior.
     const i_t degree    = c < (i_t)impl_adj.size() ? (i_t)impl_adj[c].size() : 0;
     const bool growable = degree > 0 && degree <= BVE_MAX_GROWTH_NBRS;
     if (reducer.is_bin[c] && !reducer.obj_nz[c] && !reducer.col2rows[c].empty() && growable)
@@ -1133,8 +1133,8 @@ std::vector<std::vector<i_t>> bve_build_impl_adj(
     adj[x].insert(y);
     adj[y].insert(x);
   };
-  // An abandoned build returns no edges rather than a partial graph, so which reductions exist never
-  // depends on where the clock landed.
+  // An abandoned build returns no edges rather than a partial graph, so which reductions exist
+  // never depends on where the clock landed.
   i_t entries_seen = 0;
   for (const auto& kv : cache.probing_cache) {
     if ((++entries_seen & 0x3F) == 0 && timer.check_time_limit()) {
@@ -1285,7 +1285,7 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
   auto h_vb    = cuopt::host_copy(problem.variable_bounds, stream);
   auto h_vtype = cuopt::host_copy(problem.variable_types, stream);
   auto h_obj   = cuopt::host_copy(problem.objective_coefficients, stream);
-  auto h_vmap = cuopt::host_copy(problem.presolve_data.variable_mapping, stream);
+  auto h_vmap  = cuopt::host_copy(problem.presolve_data.variable_mapping, stream);
   handle->sync_stream();
 
   const i_t nnz0 = h_off.back();
@@ -1475,8 +1475,8 @@ bool block_bve_phase(bound_presolve_t<i_t, f_t>& bound_presolve,
     double work_units      = 0.0;
     bool proved_infeasible = false;
     timer_t round_timer(stage_timer.clamp_remaining_time(deadline.remaining_time()));
-    const bool reduced = block_bve_presolve(
-      problem, impl_adj, round_timer, work_units, &findings, &proved_infeasible);
+    const bool reduced =
+      block_bve_presolve(problem, impl_adj, round_timer, work_units, &findings, &proved_infeasible);
     if (proved_infeasible) {
       CUOPT_LOG_DEBUG("Block-BVE proved the problem infeasible");
       return false;
@@ -1518,29 +1518,26 @@ bool block_bve_phase(bound_presolve_t<i_t, f_t>& bound_presolve,
   return true;
 }
 
-#define INSTANTIATE(F_TYPE)                                                           \
-  template double bve_project_batch_gpu<int, F_TYPE>(                                 \
-    const raft::handle_t&,                                                            \
-    std::vector<bve_candidate_t<int, F_TYPE>>&,                                       \
-    F_TYPE,                                                                           \
-    const timer_t&);                                                                  \
-  template std::vector<std::vector<int>> bve_build_impl_adj<int, F_TYPE>(             \
-    const probing_cache_t<int, F_TYPE>&,                                              \
-    const std::vector<int>&,                                                          \
-    int,                                                                              \
-    const timer_t&,                                                                   \
-    const probe_findings_t<int>*);                                                    \
-  template bool bve_has_stageable_row<int, F_TYPE>(const problem_t<int, F_TYPE>&);    \
-  template bool block_bve_phase<int, F_TYPE>(                                         \
-    bound_presolve_t<int, F_TYPE>&, problem_t<int, F_TYPE>&, const timer_t&);         \
-  template bool block_bve_presolve<int, F_TYPE>(problem_t<int, F_TYPE>&,              \
-                                                const std::vector<std::vector<int>>&, \
-                                                timer_t&,                             \
-                                                double&,                              \
-                                                probe_findings_t<int>*,               \
-                                                bool*,                                \
-                                                int,                                  \
-                                                int,                                  \
+#define INSTANTIATE(F_TYPE)                                                                     \
+  template double bve_project_batch_gpu<int, F_TYPE>(                                           \
+    const raft::handle_t&, std::vector<bve_candidate_t<int, F_TYPE>>&, F_TYPE, const timer_t&); \
+  template std::vector<std::vector<int>> bve_build_impl_adj<int, F_TYPE>(                       \
+    const probing_cache_t<int, F_TYPE>&,                                                        \
+    const std::vector<int>&,                                                                    \
+    int,                                                                                        \
+    const timer_t&,                                                                             \
+    const probe_findings_t<int>*);                                                              \
+  template bool bve_has_stageable_row<int, F_TYPE>(const problem_t<int, F_TYPE>&);              \
+  template bool block_bve_phase<int, F_TYPE>(                                                   \
+    bound_presolve_t<int, F_TYPE>&, problem_t<int, F_TYPE>&, const timer_t&);                   \
+  template bool block_bve_presolve<int, F_TYPE>(problem_t<int, F_TYPE>&,                        \
+                                                const std::vector<std::vector<int>>&,           \
+                                                timer_t&,                                       \
+                                                double&,                                        \
+                                                probe_findings_t<int>*,                         \
+                                                bool*,                                          \
+                                                int,                                            \
+                                                int,                                            \
                                                 int)
 
 INSTANTIATE(double);

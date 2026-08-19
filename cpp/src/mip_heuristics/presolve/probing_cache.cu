@@ -718,9 +718,9 @@ void apply_substitution_queue_to_problem(
     host_copy(problem.presolve_data.variable_mapping, problem.handle_ptr->get_stream());
   problem.handle_ptr->sync_stream();
 
-  // Staged rather than appended directly: all_substitutions is a hash map, so its iteration order is
-  // not reproducible, and the log's order has to be. merge_substitutions has already flattened chains
-  // and dropped bidirectional edges, so no record here depends on another and sorting by
+  // Staged rather than appended directly: all_substitutions is a hash map, so its iteration order
+  // is not reproducible, and the log's order has to be. merge_substitutions has already flattened
+  // chains and dropped bidirectional edges, so no record here depends on another and sorting by
   // substituted_var only has to be a fixed order, not a particular one.
   std::vector<postsolve_reconstruction_t<i_t, f_t>> staged_reconstructions;
   staged_reconstructions.reserve(all_substitutions.size());
@@ -753,7 +753,8 @@ void apply_substitution_queue_to_problem(
                       staged_reconstructions.back().sub.substituting_var);
     }
   }
-  // check are_exclusive to avoid emitting a nonsensical substitution with the variable on both sides
+  // check are_exclusive to avoid emitting a nonsensical substitution with the variable on both
+  // sides
   std::unordered_set<i_t> substituting_vars(substituting_var_indices.begin(),
                                             substituting_var_indices.end());
   for (i_t substituted_var : var_indices) {
@@ -1070,8 +1071,8 @@ void probing_cache_t<i_t, f_t>::merge_forcings(const std::vector<probe_forcing_t
       }
       cached_bound_t<f_t>& bound = bound_it->second;
       cuopt_assert(bound.lb >= f_t(0) && bound.ub <= f_t(1), "");
-      const f_t lb               = std::max(bound.lb, forced_val);
-      const f_t ub               = std::min(bound.ub, forced_val);
+      const f_t lb = std::max(bound.lb, forced_val);
+      const f_t ub = std::min(bound.ub, forced_val);
       // Both the cached bound and the projection are valid and share the antecedent var == probed
       // value, so an empty intersection proves only that the antecedent cannot hold. The slot is
       // dead from here on, hence no tightening; the opposite value is the sound conclusion.
