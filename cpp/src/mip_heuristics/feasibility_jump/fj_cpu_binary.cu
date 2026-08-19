@@ -16,6 +16,11 @@
 
 #include <raft/random/rng_device.cuh>
 
+#include <thrust/adjacent_find.h>
+#include <thrust/execution_policy.h>
+#include <thrust/iterator/counting_iterator.h>
+#include <thrust/logical.h>
+
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -264,10 +269,24 @@ static fj_bin_scan_t fj_bin_scan(const fj_cpu_climber_t<i_t, f_t>& c)
     }
   }
 
-  const auto& offsets = c.h_offsets;
-  const auto& coeffs  = c.h_coefficients;
-  const auto& cstr_lb = c.h_cstr_lb;
-  const auto& cstr_ub = c.h_cstr_ub;
+  const auto& offsets            = c.h_offsets;
+  const auto& reverse_offsets    = c.h_reverse_offsets;
+  const auto& reverse_constraints = c.h_reverse_constraints;
+  const auto& coeffs             = c.h_coefficients;
+  const auto& cstr_lb            = c.h_cstr_lb;
+  const auto& cstr_ub            = c.h_cstr_ub;
+
+  cuopt_assert(
+    thrust::all_of(
+      thrust::host,
+      thrust::make_counting_iterator<int32_t>(0),
+      thrust::make_counting_iterator<int32_t>(n),
+      [&reverse_offsets, &reverse_constraints](int32_t v) {
+        const auto first = reverse_constraints.begin() + reverse_offsets[v];
+        const auto last  = reverse_constraints.begin() + reverse_offsets[v + 1];
+        return thrust::adjacent_find(thrust::host, first, last) == last;
+      }),
+    "duplicate variable in CSR row");
 
   double max_abs_coefficient = 0;
   std::vector<double> row_values;
@@ -315,11 +334,19 @@ static fj_bin_scan_t fj_bin_scan(const fj_cpu_climber_t<i_t, f_t>& c)
     }
 
     double row_abs_sum = 0;
+    double row_lhs_min = 0;
+    double row_lhs_max = 0;
     for (int32_t k = offsets[r]; k < offsets[r + 1]; ++k) {
       const double a = row_s * coeffs[k];
       cuopt_assert(is_integer(a, tol), "row scaling left a fractional coefficient");
-      const double abs_a = std::fabs(std::round(a));
+      const double integral_a = std::round(a);
+      const double abs_a      = std::fabs(integral_a);
       row_abs_sum += abs_a;
+      if (integral_a < 0) {
+        row_lhs_min += integral_a;
+      } else {
+        row_lhs_max += integral_a;
+      }
       if (abs_a > max_abs_coefficient) max_abs_coefficient = abs_a;
     }
 
@@ -337,6 +364,16 @@ static fj_bin_scan_t fj_bin_scan(const fj_cpu_climber_t<i_t, f_t>& c)
       cuopt_assert(is_integer(scaled_side, tol), "row scaling left a fractional row bound");
       if (!fj_bin_in_int32(std::round(scaled_side))) {
         out.reject  = fj_binary_reject_t::row_bound_out_of_range;
+        out.bad_row = r;
+        return out;
+      }
+      const double integral_side = std::round(scaled_side);
+      const double min_slack =
+        s == 0 ? row_lhs_min - integral_side : integral_side - row_lhs_max;
+      const double max_slack =
+        s == 0 ? row_lhs_max - integral_side : integral_side - row_lhs_min;
+      if (!fj_bin_in_int32(min_slack) || !fj_bin_in_int32(max_slack)) {
+        out.reject  = fj_binary_reject_t::lhs_headroom;
         out.bad_row = r;
         return out;
       }
