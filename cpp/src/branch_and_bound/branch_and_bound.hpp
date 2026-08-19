@@ -281,6 +281,7 @@ class branch_and_bound_t {
   // Global status of the solver.
   omp_atomic_t<mip_status_t> solver_status_;
   omp_atomic_t<bool> is_running_{false};
+  omp_atomic_t<bool> during_cut_passes_{false};
 
   // Minimum number of node in the queue. When the queue size is less than
   // this variable, the nodes are added directly to the queue instead of
@@ -382,14 +383,12 @@ class branch_and_bound_t {
                     i_t num_var_fixed,
                     i_t num_integers,
                     i_t submip_level,
-                    std::string_view log_prefix,
-                    bool is_root_heuristic);
+                    std::string_view log_prefix);
 
   // Creates and solves the RINS sub-MIP
   void rins(diving_worker_t<i_t, f_t>* worker,
             const std::vector<f_t>& current_incumbent,
-            const std::vector<simplex::variable_type_t>& var_types,
-            bool is_root_heuristic);
+            const std::vector<simplex::variable_type_t>& var_types);
 
   void launch_root_heuristics(const simplex::lp_problem_t<i_t, f_t>& lp,
                               const std::vector<f_t>& sol,
