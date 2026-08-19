@@ -908,6 +908,218 @@ TEST_F(GrpcClientTest, ChunkedDownload_StartFails)
 }
 
 // =============================================================================
+// get_result (unified LP/MIP) Tests (Mock)
+// =============================================================================
+
+TEST_F(GrpcClientTest, GetResultUnified_UnaryLP)
+{
+  EXPECT_CALL(*mock_stub_, CheckStatus(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::StatusRequest&,
+                 cuopt::remote::StatusResponse* resp) {
+      resp->set_job_status(cuopt::remote::COMPLETED);
+      resp->set_result_size_bytes(64);
+      resp->set_max_message_bytes(256 * 1024 * 1024);
+      return grpc::Status::OK;
+    });
+
+  EXPECT_CALL(*mock_stub_, GetResult(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::GetResultRequest& req,
+                 cuopt::remote::ResultResponse* resp) {
+      EXPECT_EQ(req.job_id(), "unified-lp-unary");
+      cuopt::remote::LPSolution solution;
+      solution.add_primal_solution(1.5);
+      solution.add_primal_solution(2.5);
+      solution.set_primal_objective(-464.753);
+      solution.set_lp_termination_status(cuopt::remote::PDLP_OPTIMAL);
+      resp->mutable_lp_solution()->CopyFrom(solution);
+      resp->set_status(cuopt::remote::SUCCESS);
+      return grpc::Status::OK;
+    });
+
+  auto result = client_->get_result<int32_t, double>("unified-lp-unary");
+
+  EXPECT_TRUE(result.success) << result.error_message;
+  EXPECT_FALSE(result.is_mip);
+  ASSERT_NE(result.lp_solution, nullptr);
+  EXPECT_EQ(result.mip_solution, nullptr);
+  EXPECT_NEAR(result.lp_solution->get_objective_value(), -464.753, 0.01);
+}
+
+TEST_F(GrpcClientTest, GetResultUnified_UnaryMIP)
+{
+  EXPECT_CALL(*mock_stub_, CheckStatus(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::StatusRequest&,
+                 cuopt::remote::StatusResponse* resp) {
+      resp->set_job_status(cuopt::remote::COMPLETED);
+      resp->set_result_size_bytes(64);
+      resp->set_max_message_bytes(256 * 1024 * 1024);
+      return grpc::Status::OK;
+    });
+
+  EXPECT_CALL(*mock_stub_, GetResult(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::GetResultRequest& req,
+                 cuopt::remote::ResultResponse* resp) {
+      EXPECT_EQ(req.job_id(), "unified-mip-unary");
+      cuopt::remote::MIPSolution solution;
+      solution.add_mip_solution(1.0);
+      solution.add_mip_solution(0.0);
+      solution.set_mip_objective(42.0);
+      solution.set_mip_termination_status(cuopt::remote::MIP_OPTIMAL);
+      resp->mutable_mip_solution()->CopyFrom(solution);
+      resp->set_status(cuopt::remote::SUCCESS);
+      return grpc::Status::OK;
+    });
+
+  auto result = client_->get_result<int32_t, double>("unified-mip-unary");
+
+  EXPECT_TRUE(result.success) << result.error_message;
+  EXPECT_TRUE(result.is_mip);
+  ASSERT_NE(result.mip_solution, nullptr);
+  EXPECT_EQ(result.lp_solution, nullptr);
+  EXPECT_DOUBLE_EQ(result.mip_solution->get_objective_value(), 42.0);
+}
+
+TEST_F(GrpcClientTest, GetResultUnified_ChunkedLP_FallbackOnResourceExhausted)
+{
+  EXPECT_CALL(*mock_stub_, CheckStatus(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::StatusRequest&,
+                 cuopt::remote::StatusResponse* resp) {
+      resp->set_job_status(cuopt::remote::COMPLETED);
+      resp->set_result_size_bytes(500);
+      resp->set_max_message_bytes(256 * 1024 * 1024);
+      return grpc::Status::OK;
+    });
+
+  EXPECT_CALL(*mock_stub_, GetResult(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::GetResultRequest&,
+                 cuopt::remote::ResultResponse*) {
+      return grpc::Status(grpc::StatusCode::RESOURCE_EXHAUSTED, "Too large");
+    });
+
+  EXPECT_CALL(*mock_stub_, StartChunkedDownload(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::StartChunkedDownloadRequest&,
+                 cuopt::remote::StartChunkedDownloadResponse* resp) {
+      resp->set_download_id("dl-unified-lp");
+      auto* h = resp->mutable_header();
+      h->set_problem_category(cuopt::remote::LP);
+      h->set_lp_termination_status(cuopt::remote::PDLP_OPTIMAL);
+      h->set_primal_objective(-464.753);
+      auto* arr = h->add_arrays();
+      arr->set_field_id(cuopt::remote::RESULT_PRIMAL_SOLUTION);
+      arr->set_total_elements(2);
+      arr->set_element_size_bytes(8);
+      resp->set_max_message_bytes(4 * 1024 * 1024);
+      return grpc::Status::OK;
+    });
+
+  EXPECT_CALL(*mock_stub_, GetResultChunk(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::GetResultChunkRequest& req,
+                 cuopt::remote::GetResultChunkResponse* resp) {
+      EXPECT_EQ(req.download_id(), "dl-unified-lp");
+      EXPECT_EQ(req.field_id(), cuopt::remote::RESULT_PRIMAL_SOLUTION);
+      resp->set_download_id("dl-unified-lp");
+      resp->set_field_id(req.field_id());
+      resp->set_element_offset(0);
+      resp->set_elements_in_chunk(2);
+      double vals[2] = {1.5, 2.5};
+      resp->set_data(reinterpret_cast<const char*>(vals), sizeof(vals));
+      return grpc::Status::OK;
+    });
+
+  EXPECT_CALL(*mock_stub_, FinishChunkedDownload(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::FinishChunkedDownloadRequest& req,
+                 cuopt::remote::FinishChunkedDownloadResponse* resp) {
+      resp->set_download_id(req.download_id());
+      return grpc::Status::OK;
+    });
+
+  auto result = client_->get_result<int32_t, double>("unified-lp-chunked");
+
+  EXPECT_TRUE(result.success) << result.error_message;
+  EXPECT_FALSE(result.is_mip);
+  ASSERT_NE(result.lp_solution, nullptr);
+  EXPECT_EQ(result.mip_solution, nullptr);
+  EXPECT_NEAR(result.lp_solution->get_objective_value(), -464.753, 0.01);
+}
+
+TEST_F(GrpcClientTest, GetResultUnified_ChunkedMIP_FallbackOnResourceExhausted)
+{
+  EXPECT_CALL(*mock_stub_, CheckStatus(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::StatusRequest&,
+                 cuopt::remote::StatusResponse* resp) {
+      resp->set_job_status(cuopt::remote::COMPLETED);
+      resp->set_result_size_bytes(500);
+      resp->set_max_message_bytes(256 * 1024 * 1024);
+      return grpc::Status::OK;
+    });
+
+  EXPECT_CALL(*mock_stub_, GetResult(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::GetResultRequest&,
+                 cuopt::remote::ResultResponse*) {
+      return grpc::Status(grpc::StatusCode::RESOURCE_EXHAUSTED, "Too large");
+    });
+
+  EXPECT_CALL(*mock_stub_, StartChunkedDownload(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::StartChunkedDownloadRequest&,
+                 cuopt::remote::StartChunkedDownloadResponse* resp) {
+      resp->set_download_id("dl-unified-mip");
+      auto* h = resp->mutable_header();
+      h->set_problem_category(cuopt::remote::MIP);
+      h->set_mip_termination_status(cuopt::remote::MIP_OPTIMAL);
+      h->set_mip_objective(42.0);
+      auto* arr = h->add_arrays();
+      arr->set_field_id(cuopt::remote::RESULT_MIP_SOLUTION);
+      arr->set_total_elements(2);
+      arr->set_element_size_bytes(8);
+      resp->set_max_message_bytes(4 * 1024 * 1024);
+      return grpc::Status::OK;
+    });
+
+  EXPECT_CALL(*mock_stub_, GetResultChunk(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::GetResultChunkRequest& req,
+                 cuopt::remote::GetResultChunkResponse* resp) {
+      EXPECT_EQ(req.download_id(), "dl-unified-mip");
+      EXPECT_EQ(req.field_id(), cuopt::remote::RESULT_MIP_SOLUTION);
+      resp->set_download_id("dl-unified-mip");
+      resp->set_field_id(req.field_id());
+      resp->set_element_offset(0);
+      resp->set_elements_in_chunk(2);
+      double vals[2] = {1.0, 0.0};
+      resp->set_data(reinterpret_cast<const char*>(vals), sizeof(vals));
+      return grpc::Status::OK;
+    });
+
+  EXPECT_CALL(*mock_stub_, FinishChunkedDownload(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::FinishChunkedDownloadRequest& req,
+                 cuopt::remote::FinishChunkedDownloadResponse* resp) {
+      resp->set_download_id(req.download_id());
+      return grpc::Status::OK;
+    });
+
+  auto result = client_->get_result<int32_t, double>("unified-mip-chunked");
+
+  EXPECT_TRUE(result.success) << result.error_message;
+  EXPECT_TRUE(result.is_mip);
+  ASSERT_NE(result.mip_solution, nullptr);
+  EXPECT_EQ(result.lp_solution, nullptr);
+  EXPECT_DOUBLE_EQ(result.mip_solution->get_objective_value(), 42.0);
+}
+
+// =============================================================================
 // Helper: Build minimal test problems
 // =============================================================================
 
@@ -1679,8 +1891,8 @@ TEST(MapperRoundtrip, MIPSettingsAllFields)
   // mapping line would produce a default-valued mismatch on decode.
   orig.heuristic_params.population_size                    = 64;     // default 32
   orig.heuristic_params.num_cpufj_threads                  = 4;      // default 8
-  orig.heuristic_params.presolve_time_ratio                = 0.2;    // default 0.1
-  orig.heuristic_params.presolve_max_time                  = 45.0;   // default 60.0
+  orig.heuristic_params.presolve_max_rounds                = 12;     // default -1
+  orig.heuristic_params.papilo_probing_max_badgesize       = 64;     // default -1
   orig.heuristic_params.root_lp_time_ratio                 = 0.25;   // default 0.1
   orig.heuristic_params.root_lp_max_time                   = 7.5;    // default 15.0
   orig.heuristic_params.rins_time_limit                    = 4.0;    // default 3.0
@@ -1749,8 +1961,8 @@ TEST(MapperRoundtrip, MIPSettingsAllFields)
   // Heuristic hyper-parameters
   EXPECT_EQ(restored.heuristic_params.population_size, 64);
   EXPECT_EQ(restored.heuristic_params.num_cpufj_threads, 4);
-  EXPECT_DOUBLE_EQ(restored.heuristic_params.presolve_time_ratio, 0.2);
-  EXPECT_DOUBLE_EQ(restored.heuristic_params.presolve_max_time, 45.0);
+  EXPECT_EQ(restored.heuristic_params.presolve_max_rounds, 12);
+  EXPECT_EQ(restored.heuristic_params.papilo_probing_max_badgesize, 64);
   EXPECT_DOUBLE_EQ(restored.heuristic_params.root_lp_time_ratio, 0.25);
   EXPECT_DOUBLE_EQ(restored.heuristic_params.root_lp_max_time, 7.5);
   EXPECT_DOUBLE_EQ(restored.heuristic_params.rins_time_limit, 4.0);
@@ -2033,6 +2245,7 @@ TEST(MapperRoundtrip, PDLPSettingsAllFields)
   orig.eliminate_dense_columns      = true;
   orig.barrier_iterative_refinement = false;  // not the default true, to detect overwrite-on-decode
   orig.barrier_step_scale           = 0.75;   // not the default 0.9
+  orig.postsolve_info               = 1;
   orig.pdlp_precision               = pdlp_precision_t::MixedPrecision;
   orig.save_best_primal_so_far      = true;
   orig.first_primal_feasible        = true;
@@ -2073,6 +2286,7 @@ TEST(MapperRoundtrip, PDLPSettingsAllFields)
   EXPECT_EQ(restored.eliminate_dense_columns, true);
   EXPECT_EQ(restored.barrier_iterative_refinement, false);
   EXPECT_DOUBLE_EQ(restored.barrier_step_scale, 0.75);
+  EXPECT_EQ(restored.postsolve_info, 1);
   EXPECT_EQ(restored.pdlp_precision, pdlp_precision_t::MixedPrecision);
   EXPECT_EQ(restored.save_best_primal_so_far, true);
   EXPECT_EQ(restored.first_primal_feasible, true);
@@ -2282,10 +2496,13 @@ TEST(MapperRoundtrip, MIPSettingsDefaultProtoPreservesAllCppDefaults)
   // heuristic_params: spot-check one of each kind (int, double).
   EXPECT_EQ(after.heuristic_params.population_size, fresh.heuristic_params.population_size);
   EXPECT_EQ(after.heuristic_params.num_cpufj_threads, fresh.heuristic_params.num_cpufj_threads);
-  EXPECT_DOUBLE_EQ(after.heuristic_params.presolve_time_ratio,
-                   fresh.heuristic_params.presolve_time_ratio);
-  EXPECT_DOUBLE_EQ(after.heuristic_params.presolve_max_time,
-                   fresh.heuristic_params.presolve_max_time);
+  EXPECT_EQ(after.heuristic_params.presolve_max_rounds, fresh.heuristic_params.presolve_max_rounds);
+  EXPECT_EQ(after.heuristic_params.papilo_probing_max_badgesize,
+            fresh.heuristic_params.papilo_probing_max_badgesize);
+  EXPECT_DOUBLE_EQ(after.heuristic_params.root_lp_time_ratio,
+                   fresh.heuristic_params.root_lp_time_ratio);
+  EXPECT_DOUBLE_EQ(after.heuristic_params.root_lp_max_time,
+                   fresh.heuristic_params.root_lp_max_time);
   EXPECT_DOUBLE_EQ(after.heuristic_params.rins_fix_rate, fresh.heuristic_params.rins_fix_rate);
   EXPECT_EQ(after.heuristic_params.enabled_recombiners, fresh.heuristic_params.enabled_recombiners);
   EXPECT_DOUBLE_EQ(after.heuristic_params.initial_infeasibility_weight,

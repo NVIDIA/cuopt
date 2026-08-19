@@ -23,6 +23,7 @@ dm.set_constraint_bounds(b)
 
 c = np.array([0.2, 0.1], dtype=np.float64)
 dm.set_objective_coefficients(c)
+dm.set_maximize(True)
 
 dm.set_row_types(np.array(["L", "L"]))
 

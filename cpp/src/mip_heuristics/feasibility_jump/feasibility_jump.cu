@@ -1036,9 +1036,20 @@ void fj_t<i_t, f_t>::resize_vectors(const raft::handle_t* handle_ptr)
   climbers[0]->grid_delta_buf.resize(update_weights_launch_dims.first.x, handle_ptr->get_stream());
 
   // FJ related vars
-  cstr_weights.resize(pb_ptr->n_constraints, handle_ptr->get_stream());
-  cstr_right_weights.resize(pb_ptr->n_constraints, handle_ptr->get_stream());
-  cstr_left_weights.resize(pb_ptr->n_constraints, handle_ptr->get_stream());
+  // the problem can gain constraints between two runs (e.g. the objective cutting plane added by
+  // the feasibility pump), and resize leaves the new elements uninitialized: give them the default
+  // weight
+  auto resize_weights = [&](rmm::device_uvector<f_t>& weights) {
+    const auto old_size = weights.size();
+    weights.resize(pb_ptr->n_constraints, handle_ptr->get_stream());
+    if (old_size < weights.size()) {
+      thrust::uninitialized_fill(
+        handle_ptr->get_thrust_policy(), weights.begin() + old_size, weights.end(), 1.);
+    }
+  };
+  resize_weights(cstr_weights);
+  resize_weights(cstr_right_weights);
+  resize_weights(cstr_left_weights);
   constraint_lower_bounds_csr.resize(pb_ptr->coefficients.size(), handle_ptr->get_stream());
   constraint_upper_bounds_csr.resize(pb_ptr->coefficients.size(), handle_ptr->get_stream());
   cstr_coeff_reciprocal.resize(pb_ptr->coefficients.size(), handle_ptr->get_stream());

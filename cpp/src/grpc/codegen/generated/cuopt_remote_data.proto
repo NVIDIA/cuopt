@@ -193,6 +193,7 @@ message PDLPSolverSettings {
   optional int32 pdlp_precision = 30;
   optional bool barrier_iterative_refinement = 31;
   optional double barrier_step_scale = 32;
+  optional int32 postsolve_info = 33;
   PDLPWarmStartData warm_start_data = 50;
 }
 
@@ -233,8 +234,6 @@ message MIPSolverSettings {
   optional double semi_continuous_big_m = 34;
   optional int32 population_size = 35;
   optional int32 num_cpufj_threads = 36;
-  optional double presolve_time_ratio = 37;
-  optional double presolve_max_time = 38;
   optional double root_lp_time_ratio = 39;
   optional double root_lp_max_time = 40;
   optional double rins_time_limit = 41;
@@ -249,6 +248,8 @@ message MIPSolverSettings {
   optional double relaxed_lp_time_limit = 50;
   optional double related_vars_time_limit = 51;
   optional int32 zero_half_cuts = 52;
+  optional int32 presolve_max_rounds = 53;
+  optional int32 papilo_probing_max_badgesize = 54;
 }
 
 message PDLPWarmStartData {
