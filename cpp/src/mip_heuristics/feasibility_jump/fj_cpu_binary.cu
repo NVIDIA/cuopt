@@ -853,6 +853,12 @@ struct fj_bin_engine_t {
     climber.h_incumbent_objective = (f_t)incumbent_objective;
     climber.h_best_objective      = (f_t)best_objective;
     climber.feasible_found        = true;
+    // Emitted once per improvement so the benchmark harness can reconstruct the
+    // incumbent trajectory exactly, rather than sampling it at log_interval.
+    CUOPT_LOG_DEBUG("%sCPUFJ[bin%d] new incumbent: objective %.17g",
+                    climber.log_prefix.c_str(),
+                    coefficient_bits(),
+                    best_objective);
     if (climber.improvement_callback) {
       const double work_units = climber.work_units_elapsed.load(std::memory_order_acquire);
       climber.improvement_callback((f_t)best_objective, h_best, work_units);

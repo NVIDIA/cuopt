@@ -1086,8 +1086,11 @@ static void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
         fj_cpu.h_incumbent_objective - fj_cpu.settings.parameters.breakthrough_move_epsilon;
       fj_cpu.h_best_assignment     = fj_cpu.h_assignment;
       fj_cpu.iterations_since_best = 0;
-      CUOPT_LOG_TRACE(
-        "%sCPUFJ: new best objective: %g", fj_cpu.log_prefix.c_str(), fj_cpu.h_incumbent_objective);
+      // DEBUG, and reporting the stored best rather than the pre-epsilon incumbent,
+      // so it matches the binary path and the end-of-solve incumbent audit.
+      CUOPT_LOG_DEBUG("%sCPUFJ new incumbent: objective %.17g",
+                      fj_cpu.log_prefix.c_str(),
+                      fj_cpu.h_best_objective);
       if (fj_cpu.improvement_callback) {
         double current_work_units = fj_cpu.work_units_elapsed.load(std::memory_order_acquire);
         fj_cpu.improvement_callback(
