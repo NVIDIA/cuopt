@@ -5,7 +5,9 @@
  */
 /* clang-format on */
 
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
 #include <pdlp/distributed_pdlp/multi_gpu_engine.hpp>
+#endif
 #include <pdlp/pdlp.cuh>
 #include <pdlp/pdlp_climber_strategy.hpp>
 #include <pdlp/pdlp_constants.hpp>
@@ -215,6 +217,7 @@ void convergence_information_t<i_t, f_t>::init_l2_norms()
   }
 }
 
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
 template <typename i_t, typename f_t>
 void convergence_information_t<i_t, f_t>::distributed_init_l2_norms(
   multi_gpu_engine_t<i_t, f_t>& engine)
@@ -269,6 +272,7 @@ void convergence_information_t<i_t, f_t>::distributed_init_l2_norms(
     },
     [](pdlp_shard_t<i_t, f_t>& s) -> i_t { return s.rank_data.owned_var_size; });
 }
+#endif
 
 // ---------------------------------------------------------------------------
 // init_reduction_storage: allocate and size the temporary buffers used by
@@ -444,6 +448,7 @@ __global__ void compute_remaining_stats_kernel(
     raft::abs(convergence_information_view.dual_objective[idx]);
 }
 
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
 template <typename i_t, typename f_t>
 void convergence_information_t<i_t, f_t>::distributed_compute_primal_residual_and_objective(
   multi_gpu_engine_t<i_t, f_t>& engine, const pdlp_solver_settings_t<i_t, f_t>& settings)
@@ -515,6 +520,7 @@ void convergence_information_t<i_t, f_t>::distributed_compute_dual_residual_and_
   });
   apply_dual_objective_scaling_and_offset();
 }
+#endif
 
 template <typename i_t, typename f_t>
 void convergence_information_t<i_t, f_t>::compute_convergence_information(
@@ -558,8 +564,10 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
 #endif
 
   if (current_pdhg_solver.is_distributed_master()) {
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
     distributed_compute_primal_residual_and_objective(*current_pdhg_solver.get_mgpu_engine(),
                                                       settings);
+#endif
   } else {
     compute_primal_residual(
       op_problem_cusparse_view_, current_pdhg_solver.get_dual_tmp_resource(), dual_iterate);
@@ -572,6 +580,7 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
 
   // L2 Norm
   if (current_pdhg_solver.is_distributed_master()) {
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
     // Fused per-shard L2 reduction + D2D mirror to master.
     current_pdhg_solver.get_mgpu_engine()->distributed_l2_norm_to_master(
       [](pdlp_solver_t<i_t, f_t>& sp) -> rmm::device_uvector<f_t>& {
@@ -583,6 +592,7 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
           .l2_primal_residual_.data();
       },
       [](pdlp_shard_t<i_t, f_t>& shard) -> i_t { return shard.rank_data.owned_cstr_size; });
+#endif
   } else if (!batch_mode_) {
     my_l2_norm<i_t, f_t>(primal_residual_, l2_primal_residual_, handle_ptr_);
   } else {
@@ -627,7 +637,9 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
   }
 
   if (current_pdhg_solver.is_distributed_master()) {
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
     distributed_compute_dual_residual_and_objective(*current_pdhg_solver.get_mgpu_engine());
+#endif
   } else {
     compute_dual_residual(op_problem_cusparse_view_,
                           current_pdhg_solver.get_primal_tmp_resource(),
@@ -641,6 +653,7 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
 #endif
 
   if (current_pdhg_solver.is_distributed_master()) {
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
     // Same pattern as the primal L2 above.
     current_pdhg_solver.get_mgpu_engine()->distributed_l2_norm_to_master(
       [](pdlp_solver_t<i_t, f_t>& sp) -> rmm::device_uvector<f_t>& {
@@ -652,6 +665,7 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
           .l2_dual_residual_.data();
       },
       [](pdlp_shard_t<i_t, f_t>& shard) -> i_t { return shard.rank_data.owned_var_size; });
+#endif
   } else if (!batch_mode_) {
     my_l2_norm<i_t, f_t>(dual_residual_, l2_dual_residual_, handle_ptr_);
   } else {

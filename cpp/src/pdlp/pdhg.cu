@@ -4,7 +4,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
 #include <pdlp/distributed_pdlp/multi_gpu_engine.hpp>
+#endif
 #include <pdlp/pdhg.hpp>
 #include <pdlp/pdlp.cuh>
 #include <pdlp/pdlp_climber_strategy.hpp>
@@ -510,10 +512,12 @@ void pdhg_solver_t<i_t, f_t>::compute_At_y()
 
   // Multi-GPU dispatch: when the master pdhg has an engine, drive halo
   // exchange + per-shard SpMV via the engine.
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
   if (is_distributed_master()) {
     mgpu_engine_->distributed_compute_At_y();
     return;
   }
+#endif
 
   if (!batch_mode_) {
     if constexpr (std::is_same_v<f_t, double>) {
@@ -568,10 +572,12 @@ void pdhg_solver_t<i_t, f_t>::compute_A_x()
   // Multi-GPU dispatch: see compute_At_y. The engine halo-updates the
   // reflected_primal vector (the buffer this SpMV reads) and then drives
   // per-shard local cusparse SpMV.
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
   if (is_distributed_master()) {
     mgpu_engine_->distributed_compute_A_x();
     return;
   }
+#endif
 
   if (!batch_mode_) {
     if constexpr (std::is_same_v<f_t, double>) {
@@ -1229,23 +1235,29 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
 
   using f_t2 = typename type_2<f_t>::type;
 
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
   if (is_distributed_master()) { mgpu_engine_->sync_await_shards(stream_view_); }
+#endif
 
   // Compute next primal solution reflected.
 
   if (should_major) {
     graph_all.run(should_major, [&]() {
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
       // Adds all the shards streams into the graph capture
       if (is_distributed_master()) { mgpu_engine_->graph_capture_fork_to_shards(stream_view_); }
+#endif
 
       compute_At_y();
 
       if (is_distributed_master()) {
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
         mgpu_engine_->for_each_shard([](auto& shard) {
           auto& sub_pdlp = *shard.sub_pdlp;
           sub_pdlp.pdhg_solver_.primal_reflected_major_projection_transform(
             sub_pdlp.get_primal_step_size());
         });
+#endif
       } else if (!batch_mode_) {
         primal_reflected_major_projection_transform(primal_step_size);
       } else {
@@ -1307,11 +1319,13 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
       compute_A_x();
 
       if (is_distributed_master()) {
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
         mgpu_engine_->for_each_shard([](auto& shard) {
           auto& sub_pdlp = *shard.sub_pdlp;
           sub_pdlp.pdhg_solver_.dual_reflected_major_projection_transform(
             sub_pdlp.get_dual_step_size());
         });
+#endif
       } else if (!batch_mode_) {
         dual_reflected_major_projection_transform(dual_step_size);
       } else {
@@ -1338,13 +1352,17 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
       // Multi-GPU: close the fork by joining every shard stream back into
       // the master stream so cudaStreamEndCapture sees a single graph
       // spanning all streams.
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
       if (is_distributed_master()) { mgpu_engine_->graph_capture_join_from_shards(stream_view_); }
+#endif
     });
 
   } else {
     graph_all.run(should_major, [&]() {
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
       // Same reason as above, adds all the shards streams into the graph capture
       if (is_distributed_master()) { mgpu_engine_->graph_capture_fork_to_shards(stream_view_); }
+#endif
 
       // Compute next primal
       compute_At_y();
@@ -1358,11 +1376,13 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
 #endif
 
       if (is_distributed_master()) {
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
         mgpu_engine_->for_each_shard([](auto& shard) {
           auto& sub_pdlp = *shard.sub_pdlp;
           sub_pdlp.pdhg_solver_.primal_reflected_projection_transform(
             sub_pdlp.get_primal_step_size());
         });
+#endif
       } else if (!batch_mode_) {
         primal_reflected_projection_transform(primal_step_size);
       } else {
@@ -1425,10 +1445,12 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
       compute_A_x();
 
       if (is_distributed_master()) {
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
         mgpu_engine_->for_each_shard([](auto& shard) {
           auto& sub_pdlp = *shard.sub_pdlp;
           sub_pdlp.pdhg_solver_.dual_reflected_projection_transform(sub_pdlp.get_dual_step_size());
         });
+#endif
       } else if (!batch_mode_) {
         dual_reflected_projection_transform(dual_step_size);
       } else {
@@ -1449,12 +1471,16 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
       print("reflected_dual_", reflected_dual_);
 #endif
 
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
       if (is_distributed_master()) { mgpu_engine_->graph_capture_join_from_shards(stream_view_); }
+#endif
     });
   }
 
   // sync to master stream after the graph is captured
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
   if (is_distributed_master()) { mgpu_engine_->sync_await_master(stream_view_); }
+#endif
 }
 
 template <typename i_t, typename f_t>

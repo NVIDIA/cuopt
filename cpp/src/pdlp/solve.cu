@@ -2399,6 +2399,13 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
   bool problem_checking,
   bool use_pdlp_solver_mode)
 {
+#ifndef CUOPT_ENABLE_DISTRIBUTED_PDLP
+  cuopt_expects(
+    !settings.use_distributed_pdlp &&
+      !(settings.method == method_t::PDLP && (settings.num_gpus == -1 || settings.num_gpus > 1)),
+    error_type_t::ValidationError,
+    "Distributed PDLP is not available in this build");
+#else
   if (settings.use_distributed_pdlp) {
     return solve_lp_distributed_from_mps(
       handle_ptr, mps_data_model, settings, use_pdlp_solver_mode);
@@ -2410,10 +2417,12 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     return solve_lp_distributed_from_mps(
       handle_ptr, mps_data_model, distributed_settings, use_pdlp_solver_mode);
   }
+#endif
   auto op_problem = mps_data_model_to_optimization_problem(handle_ptr, mps_data_model);
   return solve_lp(op_problem, settings, problem_checking, use_pdlp_solver_mode, false);
 }
 
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
   raft::handle_t const* handle_ptr,
@@ -2655,6 +2664,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
 
   return sol;
 }
+#endif
 
 // ============================================================================
 // CPU problem overloads (convert to GPU, solve, convert solution back)
@@ -2746,6 +2756,17 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
   return std::make_unique<gpu_lp_solution_t<i_t, f_t>>(std::move(gpu_solution));
 }
 
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
+#define INSTANTIATE_DISTRIBUTED_PDLP(F_TYPE)                                                   \
+  template optimization_problem_solution_t<int, F_TYPE> solve_lp_distributed_from_mps(         \
+    raft::handle_t const* handle_ptr,                                                          \
+    const cuopt::mathematical_optimization::io::mps_data_model_t<int, F_TYPE>& mps_data_model, \
+    pdlp_solver_settings_t<int, F_TYPE> const& settings,                                       \
+    bool use_pdlp_solver_mode);
+#else
+#define INSTANTIATE_DISTRIBUTED_PDLP(F_TYPE)
+#endif
+
 #define INSTANTIATE(F_TYPE)                                                                      \
   template CUOPT_EXPORT optimization_problem_solution_t<int, F_TYPE> solve_lp(                   \
     optimization_problem_t<int, F_TYPE>& op_problem,                                             \
@@ -2805,11 +2826,7 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
   template cuopt::mathematical_optimization::io::mps_data_model_t<int, F_TYPE>                   \
   op_problem_to_mps_data_model(const optimization_problem_t<int, F_TYPE>& op_problem);           \
                                                                                                  \
-  template optimization_problem_solution_t<int, F_TYPE> solve_lp_distributed_from_mps(           \
-    raft::handle_t const* handle_ptr,                                                            \
-    const cuopt::mathematical_optimization::io::mps_data_model_t<int, F_TYPE>& mps_data_model,   \
-    pdlp_solver_settings_t<int, F_TYPE> const& settings,                                         \
-    bool use_pdlp_solver_mode);                                                                  \
+  INSTANTIATE_DISTRIBUTED_PDLP(F_TYPE)                                                           \
                                                                                                  \
   template void set_pdlp_solver_mode(pdlp_solver_settings_t<int, F_TYPE>& settings);
 

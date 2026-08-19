@@ -66,6 +66,7 @@ class convergence_information_t {
   const rmm::device_uvector<f_t>& get_l2_norm_primal_linear_objective() const;
   const rmm::device_uvector<f_t>& get_l2_norm_primal_right_hand_side() const;
 
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
   // Multi-GPU counterpart of init_l2_norms().
   //   - per-shard thrust::transform_reduce on the OWNED prefix, folded into
   //     host scalars (blocking on each shard's stream);
@@ -75,6 +76,7 @@ class convergence_information_t {
   // rhs_sum_of_squares_t (skips infinite bounds and degenerate ranges,
   // matching the single-GPU compute_sum_bounds semantics).
   void distributed_init_l2_norms(multi_gpu_engine_t<i_t, f_t>& engine);
+#endif
 
   struct view_t {
     i_t primal_size;
@@ -174,12 +176,14 @@ class convergence_information_t {
 
   void compute_reduced_costs_dual_objective_contribution();
 
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
   // ----- Distributed-PDLP sub-steps of compute_convergence_information -----
   // Halo exchange, per-shard primal/residual + partial (owned) primal/dual objective, allreduce and
   // apply scaling+offset.
   void distributed_compute_primal_residual_and_objective(
     multi_gpu_engine_t<i_t, f_t>& engine, const pdlp_solver_settings_t<i_t, f_t>& settings);
   void distributed_compute_dual_residual_and_objective(multi_gpu_engine_t<i_t, f_t>& engine);
+#endif
 
   // Ctor helpers — each handles both batch and non-batch internally.
   void init_objective_offsets();

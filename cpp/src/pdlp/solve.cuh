@@ -33,6 +33,7 @@ cuopt::mathematical_optimization::optimization_problem_solution_t<i_t, f_t> solv
   const timer_t& timer,
   bool is_batch_mode = false);
 
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
 /**
  * @brief Distributed-PDLP entry point that consumes the host MPS data model
  *        directly, partitioning it across GPUs without ever materializing the
@@ -73,6 +74,7 @@ solve_lp_distributed_from_mps(
   const cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t>& mps_data_model,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   bool use_pdlp_solver_mode);
+#endif
 
 /**
  * @brief Entry point for batch PDLP. Solves multiple LPs sharing the same constraint
