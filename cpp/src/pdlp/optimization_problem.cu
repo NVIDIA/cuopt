@@ -295,8 +295,8 @@ void optimization_problem_t<i_t, f_t>::set_variable_types(const var_t* variable_
   i_t n_discrete                      = 0;
   bool has_semi_continuous_variables  = false;
   if ((size_t)size < host_variable_type_summary_limit) {
-    for (i_t i = 0; i < size; ++i) {
-      const var_t val = variable_types[i];
+    const auto h_variable_types = cuopt::host_copy(variable_types_, stream_view_);
+    for (const var_t val : h_variable_types) {
       if (val == var_t::SEMI_CONTINUOUS) {
         has_semi_continuous_variables = true;
         ++n_discrete;
