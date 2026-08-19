@@ -263,7 +263,7 @@ struct submip_stats_t {
   omp_atomic_t<int> total_infeasible          = 0;
   omp_atomic_t<double> infeasible_fixrate_sum = 0;
   omp_atomic_t<int> total_calls               = 0;
-  omp_atomic_t<double> total_empty            = 0;
+  omp_atomic_t<int> total_empty               = 0;
 
   void save_success(double fixrate)
   {

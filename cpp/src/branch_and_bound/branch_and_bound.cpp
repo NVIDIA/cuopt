@@ -3974,13 +3974,13 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     if (!std::isfinite(lower_bound)) { lower_bound = search_tree_.root.lower_bound; }
   }
 
-  DEBUG_SUBMIP("RINS: success={}, infeasible={}, infeasible={}, calls={}",
+  DEBUG_SUBMIP("RINS: success={}, infeasible={}, empty={}, calls={}",
                rins_stats_.total_success.load(),
                rins_stats_.total_infeasible.load(),
                rins_stats_.total_empty.load(),
                rins_stats_.total_calls.load());
 
-  DEBUG_SUBMIP("RENS: success={}, infeasible={}, infeasible={}, calls={}",
+  DEBUG_SUBMIP("RENS: success={}, infeasible={}, empty={}, calls={}",
                rens_stats_.total_success.load(),
                rens_stats_.total_infeasible.load(),
                rens_stats_.total_empty.load(),
