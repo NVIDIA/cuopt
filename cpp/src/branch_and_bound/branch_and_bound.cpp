@@ -2645,8 +2645,8 @@ f_t calculate_fixrate(const std::vector<i_t>& integer_list,
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* worker,
                                                     const std::vector<f_t>& current_incumbent,
-                                        const std::vector<variable_type_t>& var_types,
-                                        bool is_root_heuristic)
+                                                    const std::vector<variable_type_t>& var_types,
+                                                    bool is_root_heuristic)
 {
   raft::common::nvtx::range scope("BB::submip_thread");
   if (worker->orbital_fixing) { worker->orbital_fixing->disable(); }
@@ -2664,7 +2664,7 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* w
 
   ++submip_stats.total_calls;
 
-  bool has_submip = false;
+  bool has_submip          = false;
   worker->recompute_bounds = false;
   worker->recompute_basis  = true;
 
@@ -2752,7 +2752,7 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* w
                                                   worker->leaf_problem.objective,
                                                   fractional,
                                                   current_sol,
-                              worker->root_solution,
+                                                  worker->root_solution,
                                                   round_target,
                                                   lower,
                                                   upper,
@@ -3000,7 +3000,8 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
 #pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) affinity(worker) \
   firstprivate(current_incumbent, current_heuristic, worker_count) depend(out : *worker)
       {
-        recursive_submip(worker, current_incumbent, current_heuristic->var_types_, is_root_heuristic);
+        recursive_submip(
+          worker, current_incumbent, current_heuristic->var_types_, is_root_heuristic);
         --(*worker_count);
       }
     }
@@ -3913,14 +3914,14 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                             root_relax_soln_.x,
                             edge_norms_);
       submip_worker_pool_.init(num_submip_workers,
-                             original_lp_,
-                             Arow_,
-                             var_types_,
-                             symmetry_,
-                             settings_,
-                             root_relax_soln_.x,
-                             edge_norms_,
-                             num_bfs_workers);
+                               original_lp_,
+                               Arow_,
+                               var_types_,
+                               symmetry_,
+                               settings_,
+                               root_relax_soln_.x,
+                               edge_norms_,
+                               num_bfs_workers);
 
       if (num_diving_workers > 0) {
         diving_worker_pool_.init(num_diving_workers,
@@ -3975,13 +3976,13 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     if (!std::isfinite(lower_bound)) { lower_bound = search_tree_.root.lower_bound; }
   }
 
-  DEBUG_SUBMIP("RINS: success={}, infeasible={}, infeasible={}, calls={}",
+  DEBUG_SUBMIP("RINS: success={}, infeasible={}, empty={}, calls={}",
                rins_stats_.total_success.load(),
                rins_stats_.total_infeasible.load(),
                rins_stats_.total_empty.load(),
                rins_stats_.total_calls.load());
 
-  DEBUG_SUBMIP("RENS: success={}, infeasible={}, infeasible={}, calls={}",
+  DEBUG_SUBMIP("RENS: success={}, infeasible={}, empty={}, calls={}",
                rens_stats_.total_success.load(),
                rens_stats_.total_infeasible.load(),
                rens_stats_.total_empty.load(),
