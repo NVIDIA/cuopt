@@ -33,6 +33,7 @@
 #include <bit>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <limits>
 #include <utility>
 #include <vector>
@@ -48,6 +49,15 @@ static constexpr size_t BVE_PROJECT_DEVICE_BUDGET = 64ull << 20;  // 64 MiB
 // accepted into it.
 static constexpr double BVE_BATCH_PROJECTION_BUDGET = 1e8;
 static constexpr int BVE_MIN_COMMIT_RATIO = 20;
+// Outer rounds of the phase: each re-derives the implication graph from the model the previous one
+// left behind.
+static constexpr int BVE_MAX_ROUNDS = 3;
+// Share of the model's columns a round must retire for another round's detect pass to be worth
+// running.
+static constexpr double BVE_MIN_ROUND_YIELD = 0.01;
+// Seconds for the whole phase: implication graph build plus every round. Install and compact finish
+// the round already committed, so a phase can exceed this by that tail.
+static constexpr double BVE_STAGE_TIME_LIMIT = 1.5;
 
 // Largest per-row rational multiplier / denominator we will apply. A row that would need a larger
 // multiplier to become integer is treated as not exactly representable
@@ -1164,20 +1174,20 @@ static void append_bve_reconstructions(const bve_plan_t<i_t, f_t>& plan,
     return current_to_post_papilo[column];
   };
 
-  auto& recs = presolve_data.var_postsolve;
-  recs.reserve(recs.size() + plan.reductions.size());
+  auto& reconstructions = presolve_data.postsolve_reconstructions;
+  reconstructions.reserve(reconstructions.size() + plan.reductions.size());
   for (const auto& red : plan.reductions) {
     work_units += red.interior.size() + red.boundary.size() + red.witness.size();
-    var_postsolve_t<i_t, f_t> rec;
-    rec.kind = reconstruction_kind_t::BlockBve;
-    rec.bve.interior.reserve(red.interior.size());
+    postsolve_reconstruction_t<i_t, f_t> reconstruction;
+    reconstruction.kind = reconstruction_kind_t::BlockBve;
+    reconstruction.bve.interior.reserve(red.interior.size());
     for (i_t c : red.interior)
-      rec.bve.interior.push_back(to_post_papilo(c));
-    rec.bve.boundary.reserve(red.boundary.size());
+      reconstruction.bve.interior.push_back(to_post_papilo(c));
+    reconstruction.bve.boundary.reserve(red.boundary.size());
     for (i_t c : red.boundary)
-      rec.bve.boundary.push_back(to_post_papilo(c));
-    rec.bve.witness = red.witness;
-    recs.push_back(std::move(rec));
+      reconstruction.bve.boundary.push_back(to_post_papilo(c));
+    reconstruction.bve.witness = red.witness;
+    reconstructions.push_back(std::move(reconstruction));
   }
 }
 
@@ -1194,6 +1204,43 @@ bool bve_has_stageable_row(const problem_t<i_t, f_t>& problem)
                         [offsets, max_len] __device__(i_t r) -> bool {
                           return offsets[r + 1] - offsets[r] <= max_len;
                         });
+}
+
+// Pin variables that a BVE projection table showed to have a single admissible value. Ids arrive in
+// the original frame and may repeat across blocks and rounds. Returns false when two blocks
+// disagree on a variable, which proves infeasibility since each fixing is a consequence of its
+// block alone.
+template <typename i_t, typename f_t>
+static bool apply_bve_fixings(problem_t<i_t, f_t>& problem,
+                              const std::vector<std::pair<i_t, bool>>& fixings,
+                              i_t& n_applied)
+{
+  n_applied = 0;
+  if (fixings.empty()) { return true; }
+  std::vector<std::pair<i_t, bool>> sorted(fixings);
+  std::sort(sorted.begin(), sorted.end());
+
+  const std::vector<i_t>& reverse_original_ids = problem.reverse_original_ids;
+  std::vector<i_t> var_indices;
+  std::vector<f_t> lb_values;
+  std::vector<f_t> ub_values;
+  for (size_t k = 0; k < sorted.size(); ++k) {
+    const auto [original_id, value] = sorted[k];
+    if (k > 0 && original_id == sorted[k - 1].first) {
+      if (value != sorted[k - 1].second) { return false; }
+      continue;
+    }
+    cuopt_assert(original_id >= 0 && original_id < (i_t)reverse_original_ids.size(),
+                 "fixings are keyed by original id");
+    const i_t column = reverse_original_ids[original_id];
+    if (column < 0 || column >= problem.n_variables) { continue; }  // already eliminated
+    var_indices.push_back(column);
+    lb_values.push_back(value ? f_t(1) : f_t(0));
+    ub_values.push_back(value ? f_t(1) : f_t(0));
+  }
+  n_applied = var_indices.size();
+  problem.update_variable_bounds(var_indices, lb_values, ub_values);
+  return true;
 }
 
 // ---- the pass: detect (GPU-projected) -> install reduced model -> record reconstructions ----
@@ -1380,6 +1427,97 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
   return true;
 }
 
+template <typename i_t, typename f_t>
+bool block_bve_phase(bound_presolve_t<i_t, f_t>& bound_presolve,
+                     problem_t<i_t, f_t>& problem,
+                     const timer_t& deadline)
+{
+  if (const char* disabled = std::getenv("CUOPT_DISABLE_BLOCK_BVE");
+      disabled != nullptr && std::atoi(disabled) != 0) {
+    CUOPT_LOG_DEBUG("Block-BVE disabled via CUOPT_DISABLE_BLOCK_BVE");
+    return true;
+  }
+
+  if (bound_presolve.probing_cache.probing_cache.empty()) {
+    CUOPT_LOG_DEBUG("Block-BVE skipped: the probing cache is empty");
+    return true;
+  }
+
+  const i_t n_vars_before_phase = problem.n_variables;
+  const i_t n_rows_before_phase = problem.n_constraints;
+
+  // Implications read off the projection tables, accumulated across rounds. They feed the next
+  // round's adjacency (pairs the cache never held) and are folded back into the cache afterwards.
+  probe_findings_t<i_t> findings;
+  timer_t stage_timer(deadline.clamp_remaining_time(BVE_STAGE_TIME_LIMIT));
+  for (i_t round = 0; round < BVE_MAX_ROUNDS; ++round) {
+    if (problem.empty || deadline.check_time_limit() || stage_timer.check_time_limit()) { break; }
+
+    if (!bve_has_stageable_row(problem)) {
+      CUOPT_LOG_DEBUG("Block-BVE skipped: every row exceeds the %d-nonzero block row cap",
+                      BVE_MAX_ROW_LEN);
+      break;
+    }
+
+    const i_t n_vars_before = problem.n_variables;
+    const i_t n_rows_before = problem.n_constraints;
+    auto impl_adj           = bve_build_impl_adj(bound_presolve.probing_cache,
+                                       problem.reverse_original_ids,
+                                       problem.n_variables,
+                                       stage_timer,
+                                       &findings);
+    if (stage_timer.check_time_limit()) {
+      CUOPT_LOG_DEBUG("Block-BVE hit its %.2fs phase limit building the implication graph",
+                      stage_timer.get_time_limit());
+      break;
+    }
+
+    double work_units      = 0.0;
+    bool proved_infeasible = false;
+    timer_t round_timer(stage_timer.clamp_remaining_time(deadline.remaining_time()));
+    const bool reduced = block_bve_presolve(
+      problem, impl_adj, round_timer, work_units, &findings, &proved_infeasible);
+    if (proved_infeasible) {
+      CUOPT_LOG_DEBUG("Block-BVE proved the problem infeasible");
+      return false;
+    }
+    CUOPT_LOG_DEBUG("Block-BVE outer round %d/%d: reduced=%d vars %d->%d rows %d->%d",
+                    round + 1,
+                    BVE_MAX_ROUNDS,
+                    (int)reduced,
+                    n_vars_before,
+                    problem.n_variables,
+                    n_rows_before,
+                    problem.n_constraints);
+    if (!reduced) { break; }
+    if (problem.n_variables >= n_vars_before) { break; }
+    if (n_vars_before - problem.n_variables < n_vars_before * BVE_MIN_ROUND_YIELD) { break; }
+  }
+
+  // Harvest the projections: tighten the cache in place, pin the variables the blocks left with a
+  // single value, then propagate.
+  bound_presolve.probing_cache.merge_forcings(findings.forcings, findings.fixings);
+  i_t n_fixings = 0;
+  if (!deadline.check_time_limit()) {
+    if (!apply_bve_fixings(problem, findings.fixings, n_fixings)) { return false; }
+    if (n_fixings > 0) { trivial_presolve(problem, /*remap_cache_ids=*/true); }
+  }
+  const bool changed_model = problem.n_variables != n_vars_before_phase ||
+                             problem.n_constraints != n_rows_before_phase || n_fixings > 0;
+  if (changed_model) {
+    CUOPT_LOG_DEBUG("Block-BVE projections fixed %d variables", n_fixings);
+    if (!problem.empty && !deadline.check_time_limit()) {
+      bound_presolve.resize(problem);
+      auto term_crit = bound_presolve.solve(problem);
+      if (bound_presolve.infeas_constraints_count > 0) { return false; }
+      if (termination_criterion_t::NO_UPDATE != term_crit) {
+        bound_presolve.set_updated_bounds(problem);
+      }
+    }
+  }
+  return true;
+}
+
 #define INSTANTIATE(F_TYPE)                                                           \
   template double bve_project_batch_gpu<int, F_TYPE>(                                 \
     const raft::handle_t&,                                                            \
@@ -1393,6 +1531,8 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
     const timer_t&,                                                                   \
     const probe_findings_t<int>*);                                                    \
   template bool bve_has_stageable_row<int, F_TYPE>(const problem_t<int, F_TYPE>&);    \
+  template bool block_bve_phase<int, F_TYPE>(                                         \
+    bound_presolve_t<int, F_TYPE>&, problem_t<int, F_TYPE>&, const timer_t&);         \
   template bool block_bve_presolve<int, F_TYPE>(problem_t<int, F_TYPE>&,              \
                                                 const std::vector<std::vector<int>>&, \
                                                 timer_t&,                             \

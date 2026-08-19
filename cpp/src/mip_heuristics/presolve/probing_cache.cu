@@ -718,9 +718,12 @@ void apply_substitution_queue_to_problem(
     host_copy(problem.presolve_data.variable_mapping, problem.handle_ptr->get_stream());
   problem.handle_ptr->sync_stream();
 
-  // Collect AffineSub reconstructions, then append in deterministic order (by substituted_var).
-  std::vector<var_postsolve_t<i_t, f_t>> batch_recs;
-  batch_recs.reserve(all_substitutions.size());
+  // Staged rather than appended directly: all_substitutions is a hash map, so its iteration order is
+  // not reproducible, and the log's order has to be. merge_substitutions has already flattened chains
+  // and dropped bidirectional edges, so no record here depends on another and sorting by
+  // substituted_var only has to be a fixed order, not a particular one.
+  std::vector<postsolve_reconstruction_t<i_t, f_t>> staged_reconstructions;
+  staged_reconstructions.reserve(all_substitutions.size());
   for (const auto& [substituting_var, substitutions] : all_substitutions) {
     for (const auto& [substituted_var, substitution] : substitutions) {
       CUOPT_LOG_TRACE("Applying substitution: %d -> %d",
@@ -737,28 +740,29 @@ void apply_substitution_queue_to_problem(
       offset_values.push_back(substitution.offset);
       coefficient_values.push_back(substitution.coefficient);
 
-      var_postsolve_t<i_t, f_t> rec;
-      rec.kind                 = reconstruction_kind_t::AffineSub;
-      rec.sub                  = substitution;
-      rec.sub.substituted_var  = h_variable_mapping[substitution.substituted_var];
-      rec.sub.substituting_var = h_variable_mapping[substitution.substituting_var];
-      batch_recs.push_back(std::move(rec));
+      postsolve_reconstruction_t<i_t, f_t> reconstruction;
+      reconstruction.kind                 = reconstruction_kind_t::AffineSub;
+      reconstruction.sub                  = substitution;
+      reconstruction.sub.substituted_var  = h_variable_mapping[substitution.substituted_var];
+      reconstruction.sub.substituting_var = h_variable_mapping[substitution.substituting_var];
+      staged_reconstructions.push_back(std::move(reconstruction));
       CUOPT_LOG_TRACE("Stored AffineSub for post-processing: x[%d] = %f + %f * x[%d]",
-                      batch_recs.back().sub.substituted_var,
-                      batch_recs.back().sub.offset,
-                      batch_recs.back().sub.coefficient,
-                      batch_recs.back().sub.substituting_var);
+                      staged_reconstructions.back().sub.substituted_var,
+                      staged_reconstructions.back().sub.offset,
+                      staged_reconstructions.back().sub.coefficient,
+                      staged_reconstructions.back().sub.substituting_var);
     }
   }
-  std::sort(batch_recs.begin(),
-            batch_recs.end(),
-            [](const var_postsolve_t<i_t, f_t>& a, const var_postsolve_t<i_t, f_t>& b) {
+  std::sort(staged_reconstructions.begin(),
+            staged_reconstructions.end(),
+            [](const postsolve_reconstruction_t<i_t, f_t>& a,
+               const postsolve_reconstruction_t<i_t, f_t>& b) {
               return a.sub.substituted_var < b.sub.substituted_var;
             });
-  auto& recs = problem.presolve_data.var_postsolve;
-  recs.insert(recs.end(),
-              std::make_move_iterator(batch_recs.begin()),
-              std::make_move_iterator(batch_recs.end()));
+  auto& reconstructions = problem.presolve_data.postsolve_reconstructions;
+  reconstructions.insert(reconstructions.end(),
+                         std::make_move_iterator(staged_reconstructions.begin()),
+                         std::make_move_iterator(staged_reconstructions.end()));
 
   if (!var_indices.empty()) {
     problem.substitute_variables(
