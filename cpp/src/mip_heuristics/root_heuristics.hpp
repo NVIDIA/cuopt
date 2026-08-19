@@ -15,10 +15,12 @@ namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 struct root_heuristics_t {
-  std::unique_ptr<diving_worker_t<i_t, f_t>> submip_worker_;
-  fj_cpu_worker_t<i_t, f_t> fj_cpu_worker_;
   std::vector<simplex::variable_type_t> var_types_;
   csr_matrix_t<i_t, f_t> Arow_;
+  std::atomic<int> halt_{false};
+
+  std::unique_ptr<diving_worker_t<i_t, f_t>> submip_worker_;
+  fj_cpu_worker_t<i_t, f_t> fj_cpu_worker_;
 
   root_heuristics_t(const csr_matrix_t<i_t, f_t>& Arow,
                     const std::vector<simplex::variable_type_t>& var_types)
@@ -28,9 +30,9 @@ struct root_heuristics_t {
 
   void stop()
   {
+    halt_.store(true, std::memory_order_release);
     fj_cpu_worker_.stop();
     if (submip_worker_) {
-      submip_worker_->halt              = true;
       diving_worker_t<i_t, f_t>* worker = submip_worker_.get();
 #pragma omp taskwait depend(in : *worker)
     }
