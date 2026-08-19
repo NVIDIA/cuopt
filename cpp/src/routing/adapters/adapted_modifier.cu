@@ -5,7 +5,7 @@
  */
 /* clang-format on */
 
-#include <utilities/seed_generator.cuh>
+#include <routing/utilities/seed_generator.cuh>
 #include "../diversity/helpers.hpp"
 #include "../ges/guided_ejection_search.cuh"
 

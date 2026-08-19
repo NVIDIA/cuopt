@@ -39,7 +39,7 @@ local_search_t<i_t, f_t>::local_search_t(mip_solver_context_t<i_t, f_t>& context
        constraint_prop,
        line_segment_search,
        lp_optimal_solution_),
-    rng(context.problem_ptr->seed_gen.get_seed()),
+    rng(cuopt::seed_generator::get_seed()),
     problem_with_objective_cut(*context.problem_ptr, context.problem_ptr->handle_ptr)
 {
   const int n_cpufj = context.settings.heuristic_params.num_cpufj_threads;

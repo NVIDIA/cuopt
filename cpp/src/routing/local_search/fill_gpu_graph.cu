@@ -8,7 +8,7 @@
 #include "../solution/solution.cuh"
 #include "local_search.cuh"
 
-#include <utilities/seed_generator.cuh>
+#include <routing/utilities/seed_generator.cuh>
 #include "../util_kernels/top_k.cuh"
 #include "cycle_finder/cycle_graph.hpp"
 #include "routing/utilities/cuopt_utils.cuh"

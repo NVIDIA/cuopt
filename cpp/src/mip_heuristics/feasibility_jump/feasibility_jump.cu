@@ -134,7 +134,7 @@ void fj_t<i_t, f_t>::reset_weights(const rmm::cuda_stream_view& climber_stream, 
 template <typename i_t, typename f_t>
 void fj_t<i_t, f_t>::randomize_weights(const raft::handle_t* handle_ptr)
 {
-  std::mt19937 rng(context.problem_ptr->seed_gen.get_seed());
+  std::mt19937 rng(cuopt::seed_generator::get_seed());
   constexpr f_t min_weight = 10.;
   constexpr f_t max_weight = 30.;
   // generate a range of weights between 10. and 30.
@@ -671,7 +671,7 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
 
   auto& data    = *climbers[climber_idx];
   auto v        = data.view();
-  settings.seed = context.problem_ptr->seed_gen.get_seed();
+  settings.seed = cuopt::seed_generator::get_seed();
   // ensure an updated copy of the settings is used device-side
   raft::copy(v.settings, &settings, 1, climber_stream);
 

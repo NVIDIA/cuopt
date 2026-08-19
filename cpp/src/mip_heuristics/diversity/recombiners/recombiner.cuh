@@ -119,7 +119,7 @@ class recombiner_t {
                     objective_indices.size());
     if (objective_indices.size() > 0 &&
         objective_indices_in_subproblem.size() < 0.4 * remaining_variables) {
-      std::default_random_engine rng_host(context.problem_ptr->seed_gen.get_seed());
+      std::default_random_engine rng_host(cuopt::seed_generator::get_seed());
       std::vector<i_t> objective_indices_not_in_subproblem;
       std::set_difference(objective_indices.begin(),
                           objective_indices.end(),

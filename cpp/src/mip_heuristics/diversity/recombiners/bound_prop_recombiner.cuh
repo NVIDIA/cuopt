@@ -26,7 +26,7 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
                           const raft::handle_t* handle_ptr)
     : recombiner_t<i_t, f_t>(context, n_vars, handle_ptr),
       constraint_prop(constraint_prop_),
-      rng(context.problem_ptr->seed_gen.get_seed()),
+      rng(cuopt::seed_generator::get_seed()),
       vars_to_fix(n_vars, handle_ptr->get_stream())
   {
   }
@@ -65,7 +65,7 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
        offspring_view,
        int_tol,
        probing_values = probing_values.data(),
-       seed           = this->context.problem_ptr->seed_gen.get_seed()] __device__(i_t idx) {
+       seed           = cuopt::seed_generator::get_seed()] __device__(i_t idx) {
         f_t guiding_val = guiding_view.assignment[idx];
         f_t other_val   = other_view.assignment[idx];
         cuopt_assert(guiding_view.problem.check_variable_within_bounds(idx, guiding_val), "");
@@ -151,7 +151,7 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
     if (n_different_vars > (i_t)bp_recombiner_config_t::max_n_of_vars_from_other) {
       fixed_from_guiding = n_vars_from_other - bp_recombiner_config_t::max_n_of_vars_from_other;
       n_vars_from_other  = bp_recombiner_config_t::max_n_of_vars_from_other;
-      thrust::default_random_engine g{(unsigned int)this->context.problem_ptr->seed_gen.get_seed()};
+      thrust::default_random_engine g{(unsigned int)cuopt::seed_generator::get_seed()};
       thrust::shuffle(a.handle_ptr->get_thrust_policy(),
                       this->remaining_indices.data(),
                       this->remaining_indices.data() + n_different_vars,

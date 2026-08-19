@@ -25,7 +25,7 @@ lb_constraint_prop_t<i_t, f_t>::lb_constraint_prop_t(mip_solver_context_t<i_t, f
   : context(context_),
     temp_problem(*context.problem_ptr),
     bounds_update(temp_problem, context),
-    bounds_repair(context.problem_ptr->handle_ptr, context.problem_ptr->seed_gen.get_seed()),
+    bounds_repair(context.problem_ptr->handle_ptr),
     unset_vars(context.problem_ptr->n_variables, context.problem_ptr->handle_ptr->get_stream()),
     temp_assignment(context.problem_ptr->n_variables,
                     context.problem_ptr->handle_ptr->get_stream()),
@@ -33,7 +33,7 @@ lb_constraint_prop_t<i_t, f_t>::lb_constraint_prop_t(mip_solver_context_t<i_t, f
                    context.problem_ptr->handle_ptr->get_stream()),
     assignment_restore(context.problem_ptr->n_variables,
                        context.problem_ptr->handle_ptr->get_stream()),
-    rng(context.problem_ptr->seed_gen.get_seed(), 0, 0)
+    rng(cuopt::seed_generator::get_seed(), 0, 0)
 {
 }
 
@@ -765,7 +765,7 @@ bool lb_constraint_prop_t<i_t, f_t>::find_integer(
 
   using crit_t             = termination_criterion_t;
   auto& unset_integer_vars = unset_vars;
-  std::mt19937 rng(context.problem_ptr->seed_gen.get_seed());
+  std::mt19937 rng(cuopt::seed_generator::get_seed());
 
   bounds_restore.resize(2 * orig_sol.problem_ptr->n_variables, orig_sol.handle_ptr->get_stream());
   assignment_restore.resize(orig_sol.problem_ptr->n_variables, orig_sol.handle_ptr->get_stream());

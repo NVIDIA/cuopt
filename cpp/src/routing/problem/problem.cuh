@@ -18,7 +18,7 @@
 #include <routing/routing_helpers.cuh>
 #include <routing/structures.hpp>
 #include <routing/utilities/check_input.hpp>
-#include <utilities/seed_generator.cuh>
+#include <routing/utilities/seed_generator.cuh>
 
 #include <raft/core/handle.hpp>
 

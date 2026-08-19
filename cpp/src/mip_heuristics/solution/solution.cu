@@ -229,7 +229,7 @@ template <typename i_t, typename f_t>
 void solution_t<i_t, f_t>::assign_random_within_bounds(f_t ratio_of_vars_to_random_assign,
                                                        bool only_integers)
 {
-  std::mt19937 rng(problem_ptr->seed_gen.get_seed());
+  std::mt19937 rng(cuopt::seed_generator::get_seed());
   auto stream                   = handle_ptr->get_stream();
   std::vector<f_t> h_assignment = host_copy(assignment, stream);
   std::uniform_real_distribution<f_t> unif_prob(0, 1);

@@ -11,7 +11,7 @@
 
 #include <utilities/vector_helpers.cuh>
 
-#include <utilities/seed_generator.cuh>
+#include <routing/utilities/seed_generator.cuh>
 namespace cuopt {
 namespace routing {
 namespace detail {

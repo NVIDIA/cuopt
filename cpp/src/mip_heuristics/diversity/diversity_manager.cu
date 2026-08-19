@@ -77,13 +77,10 @@ diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t
                             context.problem_ptr->handle_ptr),
     sub_mip_recombiner(
       context, population, context.problem_ptr->n_variables, context.problem_ptr->handle_ptr),
-    rng(context.problem_ptr->seed_gen.get_seed()),
+    rng(cuopt::seed_generator::get_seed()),
     stats(context.stats),
-    mab_recombiner(0, context.problem_ptr->seed_gen.get_seed(), recombiner_alpha, "recombiner"),
-    mab_ls(mab_ls_config_t<i_t, f_t>::n_of_arms,
-           context.problem_ptr->seed_gen.get_seed(),
-           ls_alpha,
-           "ls"),
+    mab_recombiner(0, cuopt::seed_generator::get_seed(), recombiner_alpha, "recombiner"),
+    mab_ls(mab_ls_config_t<i_t, f_t>::n_of_arms, cuopt::seed_generator::get_seed(), ls_alpha, "ls"),
     ls_hash_map(*context.problem_ptr)
 {
   int max_config             = -1;

@@ -1492,7 +1492,7 @@ static std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_from_host_lp(
   fj_settings.iteration_limit        = std::numeric_limits<int>::max();
   fj_settings.update_weights         = true;
   fj_settings.feasibility_run        = false;
-  fj_settings.seed                   = seed >= 0 ? seed : settings.random_seed;
+  fj_settings.seed                   = seed >= 0 ? seed : cuopt::seed_generator::get_seed();
 
   auto fj_cpu      = std::make_unique<fj_cpu_climber_t<i_t, f_t>>(preemption_flag);
   fj_cpu->view     = typename fj_t<i_t, f_t>::climber_data_t::view_t{};
@@ -1595,13 +1595,13 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_t<i_t, f_t>::create_cpu_climber(
   init_fj_cpu(*fj_cpu, solution, left_weights, right_weights, objective_weight);
   fj_cpu->settings = settings;
   if (randomize_params) {
-    auto rng                 = std::mt19937(solution.problem_ptr->seed_gen.get_seed());
+    auto rng                 = std::mt19937(cuopt::seed_generator::get_seed());
     fj_cpu->mtm_viol_samples = std::uniform_int_distribution<i_t>(15, 50)(rng);
     fj_cpu->mtm_sat_samples  = std::uniform_int_distribution<i_t>(10, 30)(rng);
     fj_cpu->nnz_samples      = std::uniform_int_distribution<i_t>(2000, 15000)(rng);
     fj_cpu->perturb_interval = std::uniform_int_distribution<i_t>(50, 500)(rng);
   }
-  fj_cpu->settings.seed = solution.problem_ptr->seed_gen.get_seed();
+  fj_cpu->settings.seed = cuopt::seed_generator::get_seed();
   return fj_cpu;  // move
 }
 
@@ -1786,7 +1786,7 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_standalone(
   std::vector<f_t> default_weights(problem.n_constraints, 1.0);
   init_fj_cpu(*fj_cpu, solution, default_weights, default_weights, 0.0);
   fj_cpu->settings      = settings;
-  fj_cpu->settings.seed = solution.problem_ptr->seed_gen.get_seed();
+  fj_cpu->settings.seed = cuopt::seed_generator::get_seed();
 
   return fj_cpu;
 }

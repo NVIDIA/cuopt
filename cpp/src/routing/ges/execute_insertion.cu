@@ -7,8 +7,8 @@
 
 #include "../solution/solution.cuh"
 
+#include <routing/utilities/seed_generator.cuh>
 #include <utilities/copy_helpers.hpp>
-#include <utilities/seed_generator.cuh>
 #include "compute_delivery_insertions.cuh"
 #include "compute_fragment_ejections.cuh"
 #include "ejection_pool.cuh"

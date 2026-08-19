@@ -10,8 +10,8 @@
 #include "../node/node.cuh"
 
 #include <cuopt/error.hpp>
+#include <routing/utilities/seed_generator.cuh>
 #include <utilities/cuda_helpers.cuh>
-#include <utilities/seed_generator.cuh>
 
 #include <rmm/cuda_stream_view.hpp>
 #include <rmm/device_scalar.hpp>

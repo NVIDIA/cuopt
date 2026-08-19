@@ -11,7 +11,7 @@
 #include "helpers.hpp"
 #include "population.hpp"
 
-#include <utilities/seed_generator.cuh>
+#include <routing/utilities/seed_generator.cuh>
 #include <utilities/timer.hpp>
 #include "../crossovers/dispose.hpp"
 #include "../crossovers/eax_recombiner.hpp"

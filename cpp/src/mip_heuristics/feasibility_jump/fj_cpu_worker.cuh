@@ -35,9 +35,9 @@ struct fj_cpu_worker_t {
   ~fj_cpu_worker_t() { stop(); }
 
   // `seed` selects the FJ RNG seed: pass a non-negative value for a deterministic seed,
-  // or -1 to fall back to the simplex settings' random_seed.
+  // or -1 to draw from the global cuopt::seed_generator (the historical behavior).
   // In deterministic mode the caller MUST pass an explicit seed, otherwise the underlying
-  // shared seed source racing with concurrent callers breaks reproducibility.
+  // seed_generator::get_seed() racing with concurrent callers breaks reproducibility.
   void create_worker(const simplex::lp_problem_t<i_t, f_t>& problem,
                      const std::vector<simplex::variable_type_t>& variable_types,
                      const std::vector<f_t>& seed_assignment,
