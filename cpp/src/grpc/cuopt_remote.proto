@@ -9,11 +9,13 @@ package cuopt.remote;
 // auto-generated from field_registry.yaml.  Using "import public" so that any
 // file importing cuopt_remote.proto also sees the data types.
 import public "cuopt_remote_data.proto";
+// RoutingSolution (leaf proto, no back-imports) embedded structurally below.
+import "cuopt_routing_solution.proto";
 
 // Protocol version and metadata
 message RequestHeader {
   uint32 version = 1;           // Protocol version (currently 1)
-  ProblemCategory problem_category = 2; // LP or MIP
+  ProblemCategory problem_category = 2; // LP, MIP, or VRP
 }
 
 // LP solve request
@@ -65,6 +67,7 @@ message ResultResponse {
   oneof solution {
     LPSolution lp_solution = 10;
     MIPSolution mip_solution = 11;
+    RoutingSolution routing_solution = 12;
   }
 }
 

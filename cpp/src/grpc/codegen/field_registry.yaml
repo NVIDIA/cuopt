@@ -110,6 +110,12 @@
 # no prefix.
 #
 
+# Extra `import "...";` lines emitted at the top of the generated
+# cuopt_remote_data.proto — needed when a field references a message defined in
+# a hand-authored proto (e.g. ChunkedResultHeader.routing_solution : RoutingSolution).
+proto_imports:
+  - cuopt_routing_solution.proto
+
 # yamllint disable rule:indentation
 
 enums:
@@ -168,9 +174,17 @@ enums:
 
   problem_category:
     domain: problem
+    # Transport-only wire enum. Deliberately generates NO C++ <-> proto converter
+    # (proto_enum_only): the job's category is assigned directly from the request
+    # oneof in the service (has_lp_request / has_mip_request / has_vrp_request), so
+    # no enum conversion — and no problem-representation decision — lives in the
+    # grpc codegen. VRP sits at 1000 to leave the low numbers for future math-opt
+    # categories (QP, SOCP, ...).
+    proto_enum_only: true
     values:
-    - LP
-    - MIP
+    - LP: 0
+    - MIP: 1
+    - VRP: 1000
 
   # ResultFieldId is auto-derived from solution/warm-start array_id fields.
   # Aliases here preserve backward compatibility with upstream's abbreviated
@@ -405,6 +419,16 @@ chunked_result_header:
       type: ResultArrayDescriptor
       field_num: 50
       repeated: true
+  # VRP result routing carried in the header. Set directly by the worker
+  # (set_is_vrp / set_routing_solution), so these only emit into the proto --
+  # no LP/MIP conversion code is generated for them.
+  scalars:
+    - is_vrp:
+        field_num: 4000
+        type: bool
+    - routing_solution:
+        field_num: 4001
+        type: RoutingSolution   # structured; from cuopt_routing_solution.proto (see proto_imports)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PDLP Solver Settings

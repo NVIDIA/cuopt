@@ -31,6 +31,17 @@ EOF
 # generate constraints (possibly pinning to oldest support versions of dependencies)
 rapids-generate-pip-constraints test_python "${PIP_CONSTRAINT}"
 
+python -m venv libcuopt-env
+. libcuopt-env/bin/activate
+
+rapids-pip-retry install \
+    -v \
+    --prefer-binary \
+    --constraint "${PIP_CONSTRAINT}" \
+    "${LIBCUOPT_WHEELHOUSE}"/libcuopt*.whl
+python -c "import libcuopt; assert libcuopt.load_library() is not None"
+deactivate
+
 # notes:
 #
 #   * echo to expand wildcard before adding `[test]` requires for pip

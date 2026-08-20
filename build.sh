@@ -438,8 +438,15 @@ fi
 if buildAll || hasArg cuopt; then
     cd "${REPODIR}"/python/cuopt
 
+    # Only 'cuopt' builds extension modules, so the stable ABI floor applies to it
+    # alone. If 'RAPIDS_PY_VERSION' is set, use it as that floor.
+    CUOPT_PYTHON_ARGS_FOR_INSTALL=("${PYTHON_ARGS_FOR_INSTALL[@]}")
+    if [ -n "${RAPIDS_PY_VERSION:-}" ]; then
+        CUOPT_PYTHON_ARGS_FOR_INSTALL+=(--config-settings "skbuild.wheel.py-api=cp${RAPIDS_PY_VERSION//./}")
+    fi
+
     SKBUILD_CMAKE_ARGS="-DCMAKE_PREFIX_PATH=${INSTALL_PREFIX};-DCMAKE_LIBRARY_PATH=${LIBCUOPT_BUILD_DIR};-DCMAKE_CUDA_ARCHITECTURES=${CUOPT_CMAKE_CUDA_ARCHITECTURES};$(IFS=';'; echo "${EXTRA_CMAKE_ARGS[*]}")" \
-        python "${PYTHON_ARGS_FOR_INSTALL[@]}" .
+        python "${CUOPT_PYTHON_ARGS_FOR_INSTALL[@]}" .
 fi
 
 # Build and install the cuopt_server Python package
