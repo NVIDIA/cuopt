@@ -2247,7 +2247,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
     worker->node_presolver.bounds_strengthening(settings_, bounds_changed, lower, upper);
 
   if (!feasible) {
-    // This should never happen since we are fixing bounds that are already in the incumbent.
+    // RINS: This should never happen since we are fixing bounds that are already in the incumbent.
     submip_stats_.save_infeasible(fixrate);
     DEBUG_SUBMIP("{} The problem is infeasible after running bound strengthening!", log_prefix);
     return;
@@ -2392,7 +2392,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   // heuristics.
   if (std::isfinite(upper_bound_.load())) {
     const f_t user_upper    = compute_user_objective(worker->leaf_problem, upper_bound_.load());
-  const f_t submip_cutoff = compute_presolved_objective(submip_bnb.original_lp_, user_upper);
+    const f_t submip_cutoff = compute_presolved_objective(submip_bnb.original_lp_, user_upper);
     submip_bnb.set_initial_upper_bound(submip_cutoff);
   }
 
@@ -2547,7 +2547,7 @@ bool apply_rens_fixings(const simplex_solver_settings_t<i_t, f_t>& settings,
     f_t old_upper     = upper[j];
     lower[j]          = std::clamp(std::floor(node_solution[j]), old_lower, old_upper);
     upper[j]          = std::clamp(std::ceil(node_solution[j]), old_lower, old_upper);
-    bounds_changed[j] = true;
+    bounds_changed[j] = lower[j] != old_lower || upper[j] != old_upper;
 
     if (std::abs(lower[j] - upper[j]) <= settings.fixed_tol) {
       ++num_var_fixed;
@@ -2742,11 +2742,11 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* w
       if (has_submip) { break; }
 
       if (prev_num_fixed == num_var_fixed) {
-          DEBUG_SUBMIP("{}Could not fix more variables ({}, max={}, min={})\n",
-                                   log_prefix,
-                                   num_var_fixed,
-                                   max_var_fixed,
-                                   min_var_fixed);
+        DEBUG_SUBMIP("{}Could not fix more variables ({}, max={}, min={})\n",
+                     log_prefix,
+                     num_var_fixed,
+                     max_var_fixed,
+                     min_var_fixed);
         has_submip = true;
         break;
       }
@@ -2776,7 +2776,7 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* w
     if (leaf_obj > upper_bound_.load()) { break; }
 
     if (num_frac == 0) {
-      // We found a feasible solution when fixing the variables in RINS.
+      // We found a feasible solution when fixing the variables in RINS/RENS.
       add_feasible_solution(leaf_obj, current_sol, -1, worker->search_strategy);
       break;
     }
@@ -2901,8 +2901,7 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
   bool use_rins = settings_.submip_settings.rins != 0 && incumbent_.has_incumbent;
   if (use_rins || settings_.submip_settings.rens != 0) {
     search_strategy_t strategy = use_rins ? search_strategy_t::RINS : search_strategy_t::RENS;
-    diving_worker_t<i_t, f_t>* worker =
-      heuristic->create_submip_worker(
+    diving_worker_t<i_t, f_t>* worker = heuristic->create_submip_worker(
       id, lp, settings_, root_objective_, root_vstatus_, sol, strategy);
 
     std::vector<f_t> current_incumbent;
