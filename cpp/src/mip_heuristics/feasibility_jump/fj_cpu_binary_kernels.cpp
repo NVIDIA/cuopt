@@ -98,7 +98,8 @@ int32_t WalkRowsImpl(int32_t* HWY_RESTRICT row_slack,
       const V cmax = hn::PromoteTo(d, hn::LoadU(dc, incident_row_cmax + ii));
 
       const V os = hn::MaskedGatherIndex(active, d, row_slack, rows);
-      const V ns = hn::Sub(os, hn::Mul(skv, vdelta));
+      // os - skv * vdelta
+      const V ns = hn::NegMulAdd(skv, vdelta, os);
 
       // Only the satisfied side. deep_viol is the caller's business: it fires on 0.02% of visits but
       // guards the widest rows in the matrix, so it belongs where the row length is already known.
@@ -178,9 +179,8 @@ static HWY_INLINE void PatchRowBody(D d,
                                     int32_t os_new,
                                     int32_t skip_var)
 {
-  const hn::Rebind<coef_t, D> dc;    // same lane count, narrower lanes
+  const hn::Rebind<coef_t, D> dc;        // same lane count, narrower lanes
   const hn::Repartition<int64_t, D> dw;  // half the lanes, twice as wide: the packed score
-  const hn::Half<D> dh;                  // int32 half, the source of each promotion
   using V         = hn::Vec<decltype(d)>;
   using VW        = hn::Vec<decltype(dw)>;
   const size_t N  = hn::Lanes(d);
@@ -201,9 +201,10 @@ static HWY_INLINE void PatchRowBody(D d,
   const V vos = hn::Set(d, os_new);
   const V vw = hn::Set(d, weight), vw2 = hn::Set(d, weight / 2);
 
-  // The row's own slack is uniform across lanes, so its flags are scalars.
+  // The row's own slack is uniform across lanes, so its flags are scalars. Broadcast negated to
+  // match the new-state flags below, which come from VecFromMask and are 0 or -1.
   const int32_t osat = os_new >= 0, ost = os_new > 0;
-  const V vosat = hn::Set(d, osat), vost = hn::Set(d, ost);
+  const V vneg_osat = hn::Set(d, -osat), vneg_ost = hn::Set(d, -ost);
   const V v_not_osat = hn::Set(d, 1 - osat);
 
   // The loads always run unmasked and read into the per-nnz padding; when the remainder is masked,
@@ -222,19 +223,27 @@ static HWY_INLINE void PatchRowBody(D d,
     // which cannot store-to-load forward, and that cost 959 interlocks per iteration against 72.
     // The score update escapes this because it already needs the spill for its read-modify-write.
     const V a01  = hn::MaskedGatherIndex(active, d, assign_i32, v);
-    const V flip = vone - hn::ShiftLeft<1>(a01);
+    const V flip = hn::Sub(vone, hn::ShiftLeft<1>(a01));
     const V coef = hn::PromoteTo(d, hn::LoadU(dc, coefficients + k));
 
-    const V ns = vos - coef * flip;
+    // vos - coef * flip
+    const V ns = hn::NegMulAdd(coef, flip, vos);
 
-    const V nsat = hn::IfThenElseZero(hn::Ge(ns, vzero), vone);
-    const V nst  = hn::IfThenElseZero(hn::Gt(ns, vzero), vone);
+    // -(ns >= 0)
+    const V nsat_neg = hn::VecFromMask(d, hn::Ge(ns, vzero));
+    // -(ns > 0)
+    const V nst_neg = hn::VecFromMask(d, hn::Gt(ns, vzero));
+    // (ns > vos) - (ns < vos)
     const V improving =
-      hn::IfThenElseZero(hn::Gt(ns, vos), vone) - hn::IfThenElseZero(hn::Lt(ns, vos), vone);
+      hn::Sub(hn::VecFromMask(d, hn::Lt(ns, vos)), hn::VecFromMask(d, hn::Gt(ns, vos)));
 
-    const V both_violated = v_not_osat * (vone - nsat);
-    const V base          = vw * (nsat - vosat) + both_violated * improving * vw2;
-    const V bonus         = vw * (nst - vost);
+    // (1 - osat) * (1 - nsat)
+    const V both_violated = hn::Mul(v_not_osat, hn::Add(vone, nsat_neg));
+    // vw * (nsat - osat) + both_violated * improving * vw2
+    const V base =
+      hn::MulAdd(vw, hn::Sub(vneg_osat, nsat_neg), hn::Mul(hn::Mul(both_violated, improving), vw2));
+    // vw * (nst - ost)
+    const V bonus = hn::Mul(vw, hn::Sub(vneg_ost, nst_neg));
 
     // The score is int64, so packing it costs two vectors where the fields took one. Both fields
     // are per-row here and fit int32, so they are computed at full lane count above and widened
@@ -242,23 +251,23 @@ static HWY_INLINE void PatchRowBody(D d,
     // difference and the store back. What reaches the scalar loop is one add per nonzero, which is
     // what it was before the score widened -- that loop is 38% of all cycles, so work belongs
     // anywhere but there.
-    const VW base_lo  = hn::PromoteTo(dw, hn::LowerHalf(dh, base));
-    const VW base_hi  = hn::PromoteTo(dw, hn::UpperHalf(dh, base));
-    const VW bonus_lo = hn::PromoteTo(dw, hn::LowerHalf(dh, bonus));
-    const VW bonus_hi = hn::PromoteTo(dw, hn::UpperHalf(dh, bonus));
+    const VW base_lo  = hn::PromoteLowerTo(dw, base);
+    const VW base_hi  = hn::PromoteUpperTo(dw, base);
+    const VW bonus_lo = hn::PromoteLowerTo(dw, bonus);
+    const VW bonus_hi = hn::PromoteUpperTo(dw, bonus);
 
-    const VW packed_lo = hn::ShiftLeft<fj_bin_score_shift>(base_lo) + bonus_lo;
-    const VW packed_hi = hn::ShiftLeft<fj_bin_score_shift>(base_hi) + bonus_hi;
+    const VW packed_lo = hn::Add(hn::ShiftLeft<fj_bin_score_shift>(base_lo), bonus_lo);
+    const VW packed_hi = hn::Add(hn::ShiftLeft<fj_bin_score_shift>(base_hi), bonus_hi);
 
-    const VW delta_lo = packed_lo - hn::LoadU(dw, nnz_score_delta + k);
-    const VW delta_hi = packed_hi - hn::LoadU(dw, nnz_score_delta + k + NW);
+    const VW delta_lo = hn::Sub(packed_lo, hn::LoadU(dw, nnz_score_delta + k));
+    const VW delta_hi = hn::Sub(packed_hi, hn::LoadU(dw, nnz_score_delta + k + NW));
 
     // The store mask is rebuilt at int64 width rather than narrowed from `active`: the same two
     // conditions, on the promoted indices. FirstN is applied on every target because where the
     // remainder is peeled the body never runs short, so it is all-true there anyway.
     const size_t rem  = (size_t)(ke - k);
-    const VW v_lo     = hn::PromoteTo(dw, hn::LowerHalf(dh, v));
-    const VW v_hi     = hn::PromoteTo(dw, hn::UpperHalf(dh, v));
+    const VW v_lo     = hn::PromoteLowerTo(dw, v);
+    const VW v_hi     = hn::PromoteUpperTo(dw, v);
     const VW vskip_w  = hn::Set(dw, skip_var);
     const auto act_lo = hn::And(hn::Ne(v_lo, vskip_w), hn::FirstN(dw, rem));
     const auto act_hi = hn::And(hn::Ne(v_hi, vskip_w), hn::FirstN(dw, rem > NW ? rem - NW : 0));
@@ -285,8 +294,8 @@ static HWY_INLINE void PatchRowBody(D d,
     // indices, in the two halves the pack already produced.
     const VW cur_lo = hn::MaskedGatherIndex(act_lo, dw, var_score, v_lo);
     const VW cur_hi = hn::MaskedGatherIndex(act_hi, dw, var_score, v_hi);
-    hn::MaskedScatterIndex(cur_lo + delta_lo, act_lo, dw, var_score, v_lo);
-    hn::MaskedScatterIndex(cur_hi + delta_hi, act_hi, dw, var_score, v_hi);
+    hn::MaskedScatterIndex(hn::Add(cur_lo, delta_lo), act_lo, dw, var_score, v_lo);
+    hn::MaskedScatterIndex(hn::Add(cur_hi, delta_hi), act_hi, dw, var_score, v_hi);
 #endif
   }
 
