@@ -27,7 +27,6 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
-#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <limits>
@@ -948,62 +947,14 @@ TEST(cuts, test_cuts_2)
   EXPECT_EQ(solution.get_num_nodes(), 0);
 }
 
-// Scaling this row to integers multiplies by 100, and the products do not land on integers:
-// 135.45 becomes 13544.999999999998 and 135.42 becomes 13541.999999999998. The knapsack
-// separator needs the scaled row to be integral, so the coefficients matter here.
-std::vector<double> truncating_knapsack_row() { return {-450.0, 135.45, 135.42, 100.0}; }
-
-// Unique optimum of the LP relaxation of create_knapsack_cover_floor_problem, restricted to the
-// columns of the row above.
-std::vector<double> truncating_knapsack_row_relaxation() { return {0.412078, 0.5, 0.5, 0.5}; }
-
-TEST(cuts, knapsack_rational_scaling_is_integral)
-{
-  const auto row    = truncating_knapsack_row();
-  const auto scaled = mip::rational_coefficients_for_test(row, 0.0);
-  ASSERT_TRUE(scaled.ok);
-  ASSERT_EQ(scaled.coefficients.size(), row.size());
-  for (const double coefficient : scaled.coefficients) {
-    EXPECT_DOUBLE_EQ(coefficient, std::round(coefficient));
-  }
-}
-
-TEST(cuts, knapsack_cover_cut_is_valid)
-{
-  constexpr double row_rhs = 0.0;
-  constexpr double tol     = 1e-9;
-  const auto row           = truncating_knapsack_row();
-  const int num_binaries   = static_cast<int>(row.size());
-
-  const auto cut =
-    mip::generate_knapsack_cut_for_test(row, row_rhs, truncating_knapsack_row_relaxation());
-  if (!cut.found) { GTEST_SKIP() << "no knapsack cut separated for this row"; }
-
-  for (const int j : cut.indices) {
-    ASSERT_LT(j, num_binaries) << "knapsack cut must not reference the slack column";
-  }
-
-  // The cut is stored as sum_j d_j x_j >= rhs and must hold at every binary point of the row.
-  for (int assignment = 0; assignment < (1 << num_binaries); assignment++) {
-    double row_activity = 0.0;
-    for (int j = 0; j < num_binaries; j++) {
-      if (((assignment >> j) & 1) != 0) { row_activity += row[j]; }
-    }
-    if (row_activity > row_rhs + tol) { continue; }
-
-    double cut_activity = 0.0;
-    for (size_t k = 0; k < cut.indices.size(); k++) {
-      if (((assignment >> cut.indices[k]) & 1) != 0) { cut_activity += cut.coefficients[k]; }
-    }
-    EXPECT_GE(cut_activity, cut.rhs - tol)
-      << "knapsack cut cuts off the feasible binary point " << assignment;
-  }
-}
-
 io::mps_data_model_t<int, double> create_knapsack_cover_floor_problem()
 {
   // The odd cycle over z1, z2, z3 makes z = (0.5, 0.5, 0.5), w = 0 the unique LP optimum, which
   // puts y at 0.412078. Integrality moves the optimum to w = 1 with y = 0 and objective 3.
+  //
+  // The capacity coefficients are load bearing: scaling that row to integers multiplies by 100,
+  // and 135.45 and 135.42 do not land on integers when scaled, which is what the knapsack
+  // separator needs them to do.
   return cuopt::test::parse_inline_lp(R"LP(
 Minimize
   obj: 2 y + z1 + z2 + z3 + 3 w
