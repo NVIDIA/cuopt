@@ -199,8 +199,12 @@ constexpr int64_t fj_bin_scale_cap = std::numeric_limits<int16_t>::max();
 // reason to promote them alongside the other FJ knobs.
 constexpr int32_t fj_bin_ddfw_init          = 10;  // initial weight, also the donation floor
 constexpr int32_t fj_bin_ddfw_transfer      = 1;
-constexpr int32_t fj_bin_ddfw_donor_samples = 1;
+constexpr int32_t fj_bin_ddfw_donor_samples = 4;
 constexpr int32_t fj_bin_restart_period     = 5000000;
+
+// Escalation threshold and step, in infeasible local minima without a severity improvement.
+constexpr int32_t fj_bin_ddfw_escalate_after = 2000;
+constexpr int32_t fj_bin_ddfw_escalate_max   = 100;
 
 // prefetch distance
 // TODO: check if it actually matters at all for performance
@@ -940,13 +944,27 @@ struct fj_bin_engine_t {
 
   // DDFW: every violated row gains weight taken from a satisfied neighbour above the donation
   // floor, so total weight is roughly conserved and differentiation stays local to the hard region.
+  // Unit transfers stop moving the landscape on a long stall, so the amount grows with the stall.
+  int32_t ddfw_transfer() const
+  {
+    if (iters_since_infeasible_improve <= fj_bin_ddfw_escalate_after) return fj_bin_ddfw_transfer;
+    const int32_t over  = iters_since_infeasible_improve - fj_bin_ddfw_escalate_after;
+    const int32_t steps = over / fj_bin_ddfw_escalate_after + 1;
+    const int32_t scale = steps < fj_bin_ddfw_escalate_max ? steps : fj_bin_ddfw_escalate_max;
+    return fj_bin_ddfw_transfer * scale;
+  }
+
   void update_weights()
   {
+    const int32_t transfer = ddfw_transfer();
+    // Donors must stay above the floor, or weights go negative and every base score inverts.
+    const int32_t donor_floor = fj_bin_ddfw_init + transfer - 1;
+
     for (int32_t cf : violated_list) {
-      reweight_constraint(cf, row_weight[cf] + fj_bin_ddfw_transfer);
+      reweight_constraint(cf, row_weight[cf] + transfer);
       const int32_t vo = pb.offsets[cf], ve = pb.offsets[cf + 1];
       if (ve <= vo) continue;
-      int32_t best_donor = -1, best_w = fj_bin_ddfw_init;
+      int32_t best_donor = -1, best_w = donor_floor;
       for (int32_t s = 0; s < fj_bin_ddfw_donor_samples; ++s) {
         const int32_t v  = pb.variables[vo + (int32_t)(rng.next_u32() % (uint32_t)(ve - vo))];
         const int32_t no = pb.reverse_offsets[v], ne = pb.reverse_offsets[v + 1];
@@ -958,8 +976,11 @@ struct fj_bin_engine_t {
           best_donor = d;
         }
       }
-      if (best_donor >= 0)
-        reweight_constraint(best_donor, row_weight[best_donor] - fj_bin_ddfw_transfer);
+      if (best_donor >= 0) {
+        const int32_t donated = row_weight[best_donor] - transfer;
+        cuopt_assert(donated >= fj_bin_ddfw_init, "donation broke the weight floor");
+        reweight_constraint(best_donor, donated);
+      }
     }
     if (violated_list.empty()) objective_weight += 1;
     track_infeasible_checkpoint();
