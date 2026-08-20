@@ -801,7 +801,6 @@ static void two_opt_collect_partners(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
       }
     }
   }
-  if (!partners.empty()) return;
 
   const auto& related         = fj_cpu.h_related_variables;
   const auto& related_offsets = fj_cpu.h_related_variables_offsets;
