@@ -2657,4 +2657,51 @@ template void finalize_fj_cpu_host_initialization(
   const typename mip_solver_settings_t<int, double>::tolerances_t& tolerances);
 #endif
 
+// Portfolio construction for the standalone benchmark. Host logic, but it lives
+// in a .cu because fj_cpu.cuh pulls in raft/util/cuda_dev_essentials.cuh through
+// solution.cuh, which does not compile under the host compiler. Kept out of the
+// header regardless: editing this file rebuilds one translation unit rather than
+// the fifteen that including headers pull in.
+template <typename i_t, typename f_t>
+void build_climber_portfolio(problem_t<i_t, f_t>& problem,
+                             solution_t<i_t, f_t>& solution,
+                             std::vector<std::atomic<bool>>& preemption_flags,
+                             std::vector<std::unique_ptr<fj_cpu_climber_t<i_t, f_t>>>& climbers,
+                             int64_t base_seed)
+{
+  const int n_climbers = static_cast<int>(climbers.size());
+  for (int k = 0; k < n_climbers; ++k) {
+    preemption_flags[k].store(false);
+    fj_settings_t settings;
+    settings.seed = (int)(base_seed + k);
+    // Built serially: the first climber host-copies the problem, the rest clone it.
+    if (k == 0) {
+      climbers[k] = init_fj_cpu_standalone(problem, solution, preemption_flags[k], settings);
+    } else {
+      climbers[k] =
+        init_fj_cpu_standalone_from_template(problem, *climbers[0], preemption_flags[k], settings);
+    }
+
+    // Default: every climber identical apart from its seed and a random draw of the
+    // four sampling parameters. Diversification, decorrelated from the value RNG.
+    std::mt19937 rng(base_seed + 7919u * k);
+    climbers[k]->mtm_viol_samples = std::uniform_int_distribution<i_t>(15, 50)(rng);
+    climbers[k]->mtm_sat_samples  = std::uniform_int_distribution<i_t>(10, 30)(rng);
+    climbers[k]->nnz_samples      = std::uniform_int_distribution<i_t>(2000, 15000)(rng);
+    climbers[k]->perturb_interval = std::uniform_int_distribution<i_t>(50, 500)(rng);
+  }
+}
+
+#if MIP_INSTANTIATE_FLOAT
+template void build_climber_portfolio<int, float>(
+  problem_t<int, float>&, solution_t<int, float>&, std::vector<std::atomic<bool>>&,
+  std::vector<std::unique_ptr<fj_cpu_climber_t<int, float>>>&, int64_t);
+#endif
+
+#if MIP_INSTANTIATE_DOUBLE
+template void build_climber_portfolio<int, double>(
+  problem_t<int, double>&, solution_t<int, double>&, std::vector<std::atomic<bool>>&,
+  std::vector<std::unique_ptr<fj_cpu_climber_t<int, double>>>&, int64_t);
+#endif
+
 }  // namespace cuopt::mathematical_optimization::mip

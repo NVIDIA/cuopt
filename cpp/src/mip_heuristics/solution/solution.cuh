@@ -153,4 +153,13 @@ class solution_t {
   void test_variable_bounds(bool check_integer = true, i_t* is_feasible = nullptr);
 };
 
+// Builds the start assignment every climber is derived from. Defined in
+// solution.cu, so editing it recompiles one translation unit rather than every
+// file that includes this header. Runs inside the measured window: a better start
+// has to be worth what it costs to build.
+template <typename i_t, typename f_t>
+void build_start_assignment(problem_t<i_t, f_t>& problem,
+                            solution_t<i_t, f_t>& solution,
+                            const raft::handle_t* handle_ptr);
+
 }  // namespace cuopt::mathematical_optimization::mip
