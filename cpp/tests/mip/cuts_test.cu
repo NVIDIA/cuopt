@@ -1096,6 +1096,15 @@ TEST(cuts, cut_generation_honors_concurrent_halt)
                                            variable_bounds,
                                            tic()));
   EXPECT_EQ(cut_pool.pool_size(), 0);
+
+  mip::complemented_mixed_integer_rounding_cut_t<int, double> complemented_mir(
+    lp, settings, new_slacks);
+  mip::inequality_t<int, double> transformed_inequality;
+  transformed_inequality.push_back(0, 1.0);
+  mip::inequality_t<int, double> transformed_cut;
+  double work_estimate = 0.0;
+  EXPECT_FALSE(complemented_mir.cut_generation_heuristic(
+    transformed_inequality, var_types, xstar, transformed_cut, work_estimate, &concurrent_halt));
 }
 
 TEST(cuts, clique_initial_builder_publishes_completion)

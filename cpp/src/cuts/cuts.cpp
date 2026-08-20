@@ -4292,16 +4292,24 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
     work_estimate += lp.num_cols;
 
     while (!add_cut && num_aggregated < max_aggregated) {
+      if (cut_generation_stopped(settings, start_time)) { return; }
+
       inequality_t<i_t, f_t> transformed_inequality;
       inequality.squeeze(transformed_inequality);
       work_estimate += transformed_inequality.size();
 
       complemented_mir.transform_inequality(variable_bounds, var_types, transformed_inequality);
       work_estimate += transformed_inequality.size();
+      if (cut_generation_stopped(settings, start_time)) { return; }
 
       inequality_t<i_t, f_t> cut;
-      bool cut_found = complemented_mir.cut_generation_heuristic(
-        transformed_inequality, var_types, transformed_xstar, cut, work_estimate);
+      bool cut_found = complemented_mir.cut_generation_heuristic(transformed_inequality,
+                                                                 var_types,
+                                                                 transformed_xstar,
+                                                                 cut,
+                                                                 work_estimate,
+                                                                 settings.concurrent_halt);
+      if (cut_generation_stopped(settings, start_time)) { return; }
       // Note cut is in the transformed variables
 
       if (cut_found) {
@@ -4326,6 +4334,7 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
         f_t max_off_bound     = 0.0;
         i_t max_off_bound_var = -1;
         for (i_t p = 0; p < inequality.size(); p++) {
+          if ((p & 1023) == 0 && concurrent_cut_generation_halted(settings)) { return; }
           const i_t j  = inequality.index(p);
           const f_t aj = inequality.coeff(p);
           if (aj == 0.0) { continue; }
@@ -4360,6 +4369,9 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
 
             const f_t threshold = 1e-4;
             for (i_t q = col_start; q < col_end; q++) {
+              if (((q - col_start) & 1023) == 0 && concurrent_cut_generation_halted(settings)) {
+                return;
+              }
               const i_t i   = lp.A.i[q];
               const f_t val = lp.A.x[q];
               // Can't use rows that have already been aggregated
@@ -4370,6 +4382,7 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
 
             bool did_aggregate = false;
             while (!potential_rows.empty()) {
+              if (cut_generation_stopped(settings, start_time)) { return; }
               const i_t pivot_row =
                 *std::max_element(potential_rows.begin(), potential_rows.end(), [&](i_t a, i_t b) {
                   return scores[a] < scores[b];
@@ -4382,6 +4395,7 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
               inequality_t<i_t, f_t> saved_inequality = inequality;
               f_t multiplier                          = complemented_mir.combine_rows(
                 lp, Arow, max_off_bound_var, pivot_row_inequality, inequality);
+              if (cut_generation_stopped(settings, start_time)) { return; }
               if (max_abs_multiplier / std::abs(multiplier) > 10000 ||
                   std::abs(multiplier) / min_abs_multiplier > 10000) {
                 inequality = saved_inequality;
@@ -5148,8 +5162,14 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::cut_generation_heurist
   const std::vector<variable_type_t>& var_types,
   const std::vector<f_t>& transformed_xstar,
   inequality_t<i_t, f_t>& transformed_cut,
-  f_t& work_estimate)
+  f_t& work_estimate,
+  const std::atomic<int>* concurrent_halt)
 {
+  const auto halted = [concurrent_halt]() {
+    return concurrent_halt != nullptr &&
+           concurrent_halt->load(std::memory_order_acquire) != 0;
+  };
+
   std::vector<f_t> deltas_to_try;
   deltas_to_try.reserve(transformed_inequality.size());
   deltas_to_try.push_back(1.0);
@@ -5157,6 +5177,7 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::cut_generation_heurist
   i_t num_integers = 0;
   f_t max_coeff    = 0.0;
   for (i_t k = 0; k < transformed_inequality.size(); k++) {
+    if ((k & 1023) == 0 && halted()) { return false; }
     const i_t j      = transformed_inequality.index(k);
     const f_t abs_aj = std::abs(transformed_inequality.coeff(k));
     if (var_types[j] == variable_type_t::INTEGER) {
@@ -5182,6 +5203,7 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::cut_generation_heurist
   std::vector<i_t> integer_indices;
   integer_indices.reserve(num_integers);
   for (i_t k = 0; k < transformed_inequality.size(); k++) {
+    if ((k & 1023) == 0 && halted()) { return false; }
     const i_t j = transformed_inequality.index(k);
     if (var_types[j] == variable_type_t::INTEGER && new_upper(j) < inf) {
       const f_t x_j         = transformed_xstar[j];
@@ -5209,6 +5231,7 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::cut_generation_heurist
 
   // First try without any complementation
   for (const f_t tmp_delta : deltas_to_try) {
+    if (halted()) { return false; }
     bool cut_ok = scale_uncomplement_and_generate_cut(var_types,
                                                       transformed_xstar,
                                                       complemented_indices,
@@ -5230,6 +5253,7 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::cut_generation_heurist
   if (!cut_found) {
     // Complement an integer variable
     for (const i_t idx : perm) {
+      if (halted()) { return false; }
       const i_t l = integer_indices[idx];
       const i_t j = complemented_inequality.index(l);
       // We have an integer variable x_j <= b_j
@@ -5250,6 +5274,7 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::cut_generation_heurist
       complemented_indices.push_back(l);
 
       for (const f_t tmp_delta : deltas_to_try) {
+        if (halted()) { return false; }
         bool cut_ok = scale_uncomplement_and_generate_cut(var_types,
                                                           transformed_xstar,
                                                           complemented_indices,
@@ -5276,6 +5301,7 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::cut_generation_heurist
   // We have found a cut. Now try to improve the violation by scaling the cut by 1/2, 1/4, 1/8, etc.
   std::vector<f_t> scaled_deltas_to_try = {delta / 2.0, delta / 4.0, delta / 8.0};
   for (const f_t tmp_delta : scaled_deltas_to_try) {
+    if (halted()) { return false; }
     inequality_t<i_t, f_t> tmp_cut_delta;
     bool cut_ok = scale_uncomplement_and_generate_cut(var_types,
                                                       transformed_xstar,
@@ -5304,6 +5330,7 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::cut_generation_heurist
   work_estimate += 4 * transformed_inequality.size();
   complemented_indices.clear();
   for (const i_t idx : perm) {
+    if (halted()) { return false; }
     const i_t l = integer_indices[idx];
     const i_t j = complemented_inequality.index(l);
     // We have an integer variable x_j <= b_j

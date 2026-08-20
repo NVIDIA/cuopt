@@ -3792,10 +3792,11 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   f_t cut_generation_start_time = tic();
   i_t cut_pool_size             = 0;
+  i_t first_normal_cut_pass     = 0;
 
   // Pass 0 consumes cuts completed from the PDLP/Barrier relaxation while the winning basis was
   // being built. Score them against that basis solution and reoptimize before generating any
-  // basis-aware cuts. This deliberately does not consume one of max_cut_passes.
+  // basis-aware cuts. If cuts are applied, this replaces normal cut pass 0.
   if (cut_pool.pool_size() > 0) {
     cut_pass_result_t speculative_cut_result = do_cut_pass(-1,
                                                            solution,
@@ -3824,9 +3825,12 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 #pragma omp taskwait depend(in : *clique_signal)
       return speculative_cut_result.status;
     }
+    if (speculative_cut_result.action == cut_pass_action_t::CONTINUE) {
+      first_normal_cut_pass = 1;
+    }
   }
 
-  for (i_t cut_pass = 0; cut_pass < settings_.max_cut_passes; cut_pass++) {
+  for (i_t cut_pass = first_normal_cut_pass; cut_pass < settings_.max_cut_passes; cut_pass++) {
     if (toc(exploration_stats_.start_time) >= settings_.time_limit) {
       solver_status_ = mip_status_t::TIME_LIMIT;
       set_final_solution(solution, root_objective_);
