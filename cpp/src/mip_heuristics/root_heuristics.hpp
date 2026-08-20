@@ -17,14 +17,22 @@ template <typename i_t, typename f_t>
 struct root_heuristics_t {
   std::vector<simplex::variable_type_t> var_types_;
   csr_matrix_t<i_t, f_t> Arow_;
+  std::vector<f_t> root_solution_;
+  std::vector<f_t> root_edge_norm_;
   std::atomic<int> halt_{false};
 
   std::unique_ptr<diving_worker_t<i_t, f_t>> submip_worker_;
   fj_cpu_worker_t<i_t, f_t> fj_cpu_worker_;
 
   root_heuristics_t(const csr_matrix_t<i_t, f_t>& Arow,
-                    const std::vector<simplex::variable_type_t>& var_types)
-    : submip_worker_(nullptr), var_types_(var_types), Arow_(Arow) {};
+                    const std::vector<simplex::variable_type_t>& var_types,
+                    const std::vector<f_t>& root_solution,
+                    const std::vector<f_t>& root_edge_norm)
+    : var_types_(var_types),
+      Arow_(Arow),
+      root_solution_(root_solution),
+      root_edge_norm_(root_edge_norm),
+      submip_worker_(nullptr) {};
 
   ~root_heuristics_t() { stop(); }
 
@@ -46,8 +54,8 @@ struct root_heuristics_t {
     const std::vector<simplex::variable_status_t>& root_vstatus,
     const std::vector<f_t>& sol)
   {
-    submip_worker_ =
-      std::make_unique<diving_worker_t<i_t, f_t>>(id, lp, Arow_, var_types_, settings);
+    submip_worker_ = std::make_unique<diving_worker_t<i_t, f_t>>(
+      id, lp, Arow_, var_types_, settings, root_solution_, root_edge_norm_);
     submip_worker_->start_node       = mip_node_t<i_t, f_t>(root_obj, root_vstatus);
     submip_worker_->leaf_vstatus     = root_vstatus;
     submip_worker_->leaf_solution.x  = sol;

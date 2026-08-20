@@ -1005,7 +1005,7 @@ branch_variable_t<i_t> branch_and_bound_t<i_t, f_t>::variable_selection(
         branch_var = pc_.variable_selection(fractional, solution);
       }
 
-      round_dir = martin_criteria(solution[branch_var], root_relax_soln_.x[branch_var]);
+      round_dir = martin_criteria(solution[branch_var], worker->root_solution[branch_var]);
 
       return {branch_var, round_dir};
 
@@ -1014,10 +1014,10 @@ branch_variable_t<i_t> branch_and_bound_t<i_t, f_t>::variable_selection(
         original_lp_, fractional, solution, var_up_locks_, var_down_locks_, log);
 
     case search_strategy_t::LINE_SEARCH_DIVING:
-      return line_search_diving(fractional, solution, root_relax_soln_.x, log);
+      return line_search_diving(fractional, solution, worker->root_solution, log);
 
     case search_strategy_t::PSEUDOCOST_DIVING:
-      return pseudocost_diving(pc_, fractional, solution, root_relax_soln_.x, log);
+      return pseudocost_diving(pc_, fractional, solution, worker->root_solution, log);
 
     case search_strategy_t::GUIDED_DIVING:
       assert(incumbent_.has_incumbent);
@@ -1034,7 +1034,7 @@ branch_variable_t<i_t> branch_and_bound_t<i_t, f_t>::variable_selection(
 
     case search_strategy_t::RINS:  // This is used for solving the DFS of the sub-MIP.
       branch_var = pc_.variable_selection(fractional, solution);
-      round_dir  = martin_criteria(solution[branch_var], root_relax_soln_.x[branch_var]);
+      round_dir  = martin_criteria(solution[branch_var], worker->root_solution[branch_var]);
       return {branch_var, round_dir};
   }
 
@@ -1187,7 +1187,7 @@ struct deterministic_bfs_policy_t
                                                 const std::vector<f_t>& x) override
   {
     i_t var  = this->worker.pc_snapshot.variable_selection(fractional, x);
-    auto dir = martin_criteria(x[var], this->bnb.root_relax_soln_.x[var]);
+    auto dir = martin_criteria(x[var], this->worker.root_solution[var]);
     return {var, dir};
   }
 
@@ -1523,7 +1523,8 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   branch_and_bound_worker_t<i_t, f_t>* worker,
   branch_and_bound_stats_t<i_t, f_t>& stats,
   logger_t& log,
-  i_t iter_limit)
+  i_t iter_limit,
+  std::atomic<int>* halt)
 {
   raft::common::nvtx::range scope("BB::solve_node");
 #ifdef DEBUG_BRANCHING
@@ -1562,7 +1563,7 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
 #endif
 
   simplex_solver_settings_t lp_settings = settings_;
-  lp_settings.concurrent_halt           = &node_concurrent_halt_;
+  lp_settings.concurrent_halt           = halt ? halt : &node_concurrent_halt_;
   lp_settings.set_log(false);
   f_t cutoff = upper_bound_.load();
   if (original_lp_.objective_step.has_step()) {
@@ -1609,7 +1610,7 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
 
   bool feasible           = worker->set_lp_variable_bounds(node_ptr, settings_);
   dual_status_t lp_status = dual_status_t::DUAL_UNBOUNDED;
-  worker->leaf_edge_norms = edge_norms_;
+  worker->leaf_edge_norms = worker->root_edge_norm;
   if (worker->recompute_bounds && worker->orbital_fixing &&
       worker->search_strategy == search_strategy_t::BEST_FIRST) {
     worker->orbital_fixing->reset(symmetry_, node_ptr);
@@ -2352,6 +2353,13 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
     return;
   }
 
+  if (toc(exploration_stats_.start_time) > settings_.time_limit) {
+    solver_status_ = mip_status_t::TIME_LIMIT;
+    return;
+  }
+
+  if (halt && halt->load(std::memory_order::acquire)) { return; }
+
   submip_settings.heuristic_preemption_callback   = nullptr;
   submip_settings.dual_simplex_objective_callback = nullptr;
   submip_settings.set_simplex_solution_callback   = nullptr;
@@ -2621,7 +2629,8 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* worker,
   i_t min_var_fixed = min_fixrate * num_integers;
   i_t num_var_fixed = 0;
 
-  while (solver_status_ == mip_status_t::UNSET && is_running_ && !this->is_halted()) {
+  while (solver_status_ == mip_status_t::UNSET && is_running_ && !this->is_halted() &&
+         (halt ? !halt->load() : true)) {
     // RINS neighbourhood 1: Fix all the integer variables where the starting solution matches the
     // current incumbent, considering only the fractional values in the current node
     i_t prev_num_fixed = num_var_fixed;
@@ -2683,7 +2692,7 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* worker,
                                 worker->leaf_problem.objective,
                                 fractional,
                                 current_sol,
-                                root_relax_soln_.x,
+                                worker->root_solution,
                                 max_var_fixed,
                                 lower,
                                 upper,
@@ -2719,10 +2728,11 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* worker,
 
     // After fixing the variables, re-solve the LP relaxation. We use the optimal solution
     // in the next iteration to find additional variable fixings.
-    // We continue to do this until enough variables were fixed or no variable is left to fix.
+    // We continue to do this until enough variables were fixed or no variable is left to fix
+    i_t iter_max = std::numeric_limits<i_t>::max();
     logger_t log;
     log.log                 = false;
-    dual_status_t lp_status = solve_node_lp(&node, worker, rins_stats, log);
+    dual_status_t lp_status = solve_node_lp(&node, worker, rins_stats, log, iter_max, halt);
 
     if (lp_status != dual_status_t::OPTIMAL) { break; }
 
@@ -2840,8 +2850,9 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
     heuristics.erase(heuristics.begin());
   }
 
-  i_t id                                 = cut_pass;
-  root_heuristics_t<i_t, f_t>* heuristic = &heuristics.emplace_back(Arow_, var_types_);
+  i_t id = cut_pass;
+  root_heuristics_t<i_t, f_t>* heuristic =
+    &heuristics.emplace_back(Arow_, var_types_, sol, edge_norms_);
 
   constexpr bool is_cpufj_enabled = true;
   if (is_cpufj_enabled) {
@@ -2855,14 +2866,7 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
         set_solution_from_cpu_fj(obj, assignment, work_units);
       };
     worker->create_worker(lp, var_types_, sol, settings_, "[RootCut CPUFJ] ");
-
-    ++worker_count;
-#pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) affinity(worker) \
-  firstprivate(worker, heuristic) shared(heuristics, worker_count) depend(out : *worker -> fj_cpu)
-    {
-      worker->run_sync(time_limit, work_limit);
-      --worker_count;
-    }
+    worker->run_async(time_limit, work_limit, &worker_count);
   }
 
   if (settings_.submip_settings.rins != 0 && incumbent_.has_incumbent) {
@@ -2878,9 +2882,6 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
       // LLVM libomp's GOMP compatibility path skips GCC's firstprivate copy
       // function for included tasks.
       rins(worker, current_incumbent, heuristic->var_types_, &heuristic->halt_);
-      heuristic->Arow_      = csr_matrix_t<i_t, f_t>(1, 1, 1);
-      heuristic->var_types_ = {};
-      heuristic->submip_worker_.reset();
 
     } else {
       ++worker_count;
@@ -2890,9 +2891,6 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
       {
         rins(worker, current_incumbent, heuristic->var_types_, &heuristic->halt_);
         --worker_count;
-        heuristic->Arow_      = csr_matrix_t<i_t, f_t>(1, 1, 1);
-        heuristic->var_types_ = {};
-        heuristic->submip_worker_.reset();
       }
     }
   }
@@ -3646,6 +3644,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     }
     if (cut_pass_result.action == cut_pass_action_t::BREAK) { break; }
 
+    set_uninitialized_steepest_edge_norms<i_t, f_t>(original_lp_, basic_list, edge_norms_);
     launch_root_heuristics(
       original_lp_, root_relax_soln_.x, cut_pass + 1, root_heuristics, root_worker_count);
   }
@@ -3801,9 +3800,23 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       const i_t num_bfs_workers    = std::max(num_workers / 2, 1);
       const i_t num_submip_workers = std::max(num_workers / 8, 1);
       const i_t num_diving_workers = std::max(num_workers - num_bfs_workers, 1);
-      bfs_worker_pool_.init(num_bfs_workers, original_lp_, Arow_, var_types_, symmetry_, settings_);
-      rins_worker_pool_.init(
-        num_submip_workers, original_lp_, Arow_, var_types_, symmetry_, settings_, num_bfs_workers);
+      bfs_worker_pool_.init(num_bfs_workers,
+                            original_lp_,
+                            Arow_,
+                            var_types_,
+                            symmetry_,
+                            settings_,
+                            root_relax_soln_.x,
+                            edge_norms_);
+      rins_worker_pool_.init(num_submip_workers,
+                             original_lp_,
+                             Arow_,
+                             var_types_,
+                             symmetry_,
+                             settings_,
+                             root_relax_soln_.x,
+                             edge_norms_,
+                             num_bfs_workers);
 
       if (num_diving_workers > 0) {
         diving_worker_pool_.init(num_diving_workers,
@@ -3812,6 +3825,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                  var_types_,
                                  symmetry_,
                                  settings_,
+                                 root_relax_soln_.x,
+                                 edge_norms_,
                                  num_bfs_workers + num_submip_workers);
       }
 
@@ -3994,7 +4009,7 @@ void branch_and_bound_t<i_t, f_t>::run_deterministic_coordinator(const csr_matri
   deterministic_global_termination_status_ = mip_status_t::UNSET;
 
   deterministic_workers_ = std::make_unique<deterministic_bfs_worker_pool_t<i_t, f_t>>(
-    num_bfs_workers, original_lp_, Arow, var_types_, settings_);
+    num_bfs_workers, original_lp_, Arow, var_types_, settings_, root_relax_soln_.x, edge_norms_);
 
   if (num_diving_workers > 0) {
     // Extract diving types from search_strategies (skip BEST_FIRST at index 0)
@@ -4013,6 +4028,8 @@ void branch_and_bound_t<i_t, f_t>::run_deterministic_coordinator(const csr_matri
                                                                        Arow,
                                                                        var_types_,
                                                                        settings_,
+                                                                       root_relax_soln_.x,
+                                                                       edge_norms_,
                                                                        &root_relax_soln_.x);
     }
   }
