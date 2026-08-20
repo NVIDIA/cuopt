@@ -8,6 +8,7 @@
 #pragma once
 
 #include <atomic>
+#include <cstdint>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -20,6 +21,65 @@
 #include <utilities/producer_sync.hpp>
 
 namespace cuopt::mathematical_optimization::mip {
+
+template <typename i_t>
+struct host_contiguous_set_t {
+  void resize(i_t max_size)
+  {
+    cuopt_assert(max_size >= 0, "invalid max size");
+    contents.clear();
+    contents.reserve(max_size);
+    index_map.assign(max_size, -1);
+    is_member.assign(max_size, 0);
+  }
+
+  void clear()
+  {
+    for (i_t val : contents) {
+      index_map[val] = -1;
+      is_member[val] = 0;
+    }
+    contents.clear();
+  }
+
+  void insert(i_t val)
+  {
+    cuopt_assert(val >= 0 && val < max_size(), "Value is out of bounds");
+    cuopt_assert(!contains(val), "Value already exists");
+    index_map[val] = contents.size();
+    is_member[val] = 1;
+    contents.push_back(val);
+  }
+
+  void remove(i_t val)
+  {
+    cuopt_assert(val >= 0 && val < max_size(), "Value is out of bounds");
+    cuopt_assert(contains(val), "Value not found");
+    const i_t idx       = index_map[val];
+    const i_t last_val  = contents.back();
+    contents[idx]       = last_val;
+    index_map[last_val] = idx;
+    contents.pop_back();
+    index_map[val] = -1;
+    is_member[val] = 0;
+  }
+
+  bool contains(i_t val) const
+  {
+    cuopt_assert(val >= 0 && val < max_size(), "Value is out of bounds");
+    return is_member[val] != 0;
+  }
+
+  auto begin() const { return contents.begin(); }
+  auto end() const { return contents.end(); }
+  i_t size() const { return contents.size(); }
+  i_t max_size() const { return index_map.size(); }
+  bool empty() const { return contents.empty(); }
+
+  std::vector<i_t> contents;
+  std::vector<i_t> index_map;
+  std::vector<uint8_t> is_member;
+};
 
 // NOTE: this seems an easy pick for reflection/xmacros once this is available (C++26?)
 // Maintaining a single source of truth for all members would be nice
@@ -102,8 +162,8 @@ struct fj_cpu_climber_t {
   f_t h_best_objective;
   i_t last_feasible_entrance_iter{0};
   i_t iterations;
-  std::unordered_set<i_t> violated_constraints;
-  std::unordered_set<i_t> satisfied_constraints;
+  host_contiguous_set_t<i_t> violated_constraints;
+  host_contiguous_set_t<i_t> satisfied_constraints;
   bool feasible_found{false};
   bool trigger_early_lhs_recomputation{false};
   f_t total_violations{0};
@@ -202,6 +262,13 @@ template <typename i_t, typename f_t>
 std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_standalone(
   problem_t<i_t, f_t>& problem,
   solution_t<i_t, f_t>& solution,
+  std::atomic<bool>& preemption_flag,
+  fj_settings_t settings = fj_settings_t{});
+
+template <typename i_t, typename f_t>
+std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_standalone_from_template(
+  problem_t<i_t, f_t>& problem,
+  const fj_cpu_climber_t<i_t, f_t>& tmpl,
   std::atomic<bool>& preemption_flag,
   fj_settings_t settings = fj_settings_t{});
 
