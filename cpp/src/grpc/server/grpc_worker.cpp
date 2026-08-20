@@ -9,6 +9,16 @@
 #include "grpc_pipe_serialization.hpp"
 #include "grpc_server_types.hpp"
 
+#ifdef CUOPT_ENABLE_GRPC_ROUTING
+#include "routing/grpc_routing_problem_mapper.hpp"
+#include "routing/grpc_routing_settings_mapper.hpp"
+#include "routing/grpc_routing_solution_mapper.hpp"
+
+#include <cuopt/routing/cpu_routing_problem.hpp>
+#include <cuopt/routing/solve.hpp>
+#include <cuopt/routing/solver_settings.hpp>
+#endif
+
 #include <rmm/mr/cuda_memory_resource.hpp>
 #include <rmm/mr/pool_memory_resource.hpp>
 
@@ -20,6 +30,11 @@
 using cuopt::mathematical_optimization::map_proto_to_mip_settings;
 using cuopt::mathematical_optimization::map_proto_to_pdlp_settings;
 using cuopt::mathematical_optimization::map_proto_to_problem;
+#ifdef CUOPT_ENABLE_GRPC_ROUTING
+using cuopt::routing::map_proto_to_routing_problem;
+using cuopt::routing::map_proto_to_routing_settings;
+using cuopt::routing::map_routing_solution_to_proto;
+#endif
 
 namespace {
 
@@ -91,7 +106,12 @@ struct DeserializedJob {
   cuopt::mathematical_optimization::cpu_optimization_problem_t<int, double> problem;
   cuopt::mathematical_optimization::pdlp_solver_settings_t<int, double> lp_settings;
   cuopt::mathematical_optimization::mip_solver_settings_t<int, double> mip_settings;
+#ifdef CUOPT_ENABLE_GRPC_ROUTING
+  cuopt::routing::cpu_routing_problem_t routing_problem;
+  cuopt::routing::solver_settings_t<int, float> routing_settings;
+#endif
   bool enable_incumbents = true;
+  bool is_vrp            = false;
   bool success           = false;
 };
 
@@ -287,6 +307,11 @@ static DeserializedJob read_problem_from_pipe(int worker_id, const JobQueueEntry
   auto pipe_recv_t0 = std::chrono::steady_clock::now();
 
   if (is_chunked_job) {
+    // Chunked path: LP/MIP only for now (VRP is unary-only in this POC).
+    if (job.problem_category == cuopt::remote::VRP) {
+      SERVER_LOG_ERROR("[Worker] Chunked VRP upload is not supported");
+      return dj;
+    }
     // Chunked path: the server wrote a ChunkedProblemHeader followed by
     // a set of raw typed arrays (constraint matrix, bounds, etc.).
     // This avoids a single giant protobuf allocation for large problems.
@@ -337,7 +362,8 @@ static DeserializedJob read_problem_from_pipe(int worker_id, const JobQueueEntry
     cuopt::remote::SubmitJobRequest submit_request;
     if (!submit_request.ParseFromArray(request_data.data(),
                                        static_cast<int>(request_data.size())) ||
-        (!submit_request.has_lp_request() && !submit_request.has_mip_request())) {
+        (!submit_request.has_lp_request() && !submit_request.has_mip_request() &&
+         !submit_request.has_vrp_request())) {
       return dj;
     }
     if (submit_request.has_lp_request()) {
@@ -345,12 +371,23 @@ static DeserializedJob read_problem_from_pipe(int worker_id, const JobQueueEntry
       SERVER_LOG_INFO("[Worker] IPC path: UNARY LP (%zu bytes)", request_data.size());
       map_proto_to_problem(req.problem(), dj.problem);
       map_proto_to_pdlp_settings(req.settings(), dj.lp_settings);
-    } else {
+    } else if (submit_request.has_mip_request()) {
       const auto& req = submit_request.mip_request();
       SERVER_LOG_INFO("[Worker] IPC path: UNARY MIP (%zu bytes)", request_data.size());
       map_proto_to_problem(req.problem(), dj.problem);
       map_proto_to_mip_settings(req.settings(), dj.mip_settings);
       dj.enable_incumbents = req.has_enable_incumbents() ? req.enable_incumbents() : true;
+    } else {
+#ifdef CUOPT_ENABLE_GRPC_ROUTING
+      const auto& req = submit_request.vrp_request();
+      SERVER_LOG_INFO("[Worker] IPC path: UNARY VRP (%zu bytes)", request_data.size());
+      map_proto_to_routing_problem(req.problem(), dj.routing_problem);
+      map_proto_to_routing_settings(req.settings(), dj.routing_settings);
+      dj.is_vrp = true;
+#else
+      SERVER_LOG_ERROR("[Worker] VRP request received but this build has no routing support");
+      return dj;
+#endif
     }
   }
 
@@ -509,6 +546,38 @@ static SolveResult run_lp_solve(DeserializedJob& dj,
   return sr;
 }
 
+// Run the routing solver on the GPU and embed the RoutingSolution proto in
+// ChunkedResultHeader (VRP results are typically small; no array chunking).
+static SolveResult run_vrp_solve([[maybe_unused]] DeserializedJob& dj,
+                                 [[maybe_unused]] raft::handle_t& handle)
+{
+  SolveResult sr;
+#ifndef CUOPT_ENABLE_GRPC_ROUTING
+  sr.error_message = "ValidationError: this server was built without routing support";
+  return sr;
+#else
+  try {
+    auto [view, device_data] = dj.routing_problem.to_device(&handle);
+    auto assignment          = cuopt::routing::solve(view, dj.routing_settings);
+    cuopt::routing::host_assignment_t<int> host(assignment);
+
+    sr.header.set_problem_category(cuopt::remote::VRP);
+    sr.header.set_is_vrp(true);
+    // Embed the RoutingSolution structurally (ChunkedResultHeader.routing_solution
+    // is a message field now, not a serialized blob).
+    map_routing_solution_to_proto(assignment, host, sr.header.mutable_routing_solution());
+    SERVER_LOG_INFO("[Worker] Result path: VRP solution -> embedded RoutingSolution (%zu bytes)",
+                    sr.header.routing_solution().ByteSizeLong());
+    sr.success = true;
+  } catch (const cuopt::logic_error& e) {
+    sr.error_message = format_cuopt_error(e);
+  } catch (const std::exception& e) {
+    sr.error_message = std::string("RuntimeError: ") + e.what();
+  }
+  return sr;
+#endif
+}
+
 // Publish a solve result: claim a slot in the shared-memory result_queue
 // (metadata) and, for successful solves, stream the full solution payload
 // through the worker's result pipe for the server thread to read.
@@ -519,6 +588,10 @@ static void publish_result(const SolveResult& sr, const std::string& job_id, int
     for (const auto& [fid, data] : sr.arrays) {
       result_total_bytes += data.size();
     }
+    // VRP embeds its solution in the header (sr.header.routing_solution), not in
+    // sr.arrays. Count it too, otherwise data_size stays ~0 and the GetResult
+    // oversized-result guard (RESOURCE_EXHAUSTED) and reported size are wrong.
+    result_total_bytes += static_cast<int64_t>(sr.header.routing_solution().ByteSizeLong());
   }
 
   // Same CAS protocol as store_simple_result (see comment there).
@@ -636,7 +709,9 @@ void worker_process(int worker_id)
     SERVER_LOG_INFO("[Worker %d] Processing job: %s (type: %s)",
                     worker_id,
                     job_id.c_str(),
-                    problem_category == cuopt::remote::MIP ? "MIP" : "LP");
+                    problem_category == cuopt::remote::MIP
+                      ? "MIP"
+                      : (problem_category == cuopt::remote::VRP ? "VRP" : "LP"));
 
     auto deserialized = read_problem_from_pipe(worker_id, job);
     if (!deserialized.success) {
@@ -646,17 +721,33 @@ void worker_process(int worker_id)
       continue;
     }
 
-    SERVER_LOG_INFO("[Worker] Problem reconstructed: %d constraints, %d variables, %d nonzeros",
-                    deserialized.problem.get_n_constraints(),
-                    deserialized.problem.get_n_variables(),
-                    deserialized.problem.get_nnz());
+    if (deserialized.is_vrp || problem_category == cuopt::remote::VRP) {
+#ifdef CUOPT_ENABLE_GRPC_ROUTING
+      SERVER_LOG_INFO("[Worker] VRP problem reconstructed: %d locations, %d vehicles, %d orders",
+                      deserialized.routing_problem.num_locations,
+                      deserialized.routing_problem.fleet_size,
+                      deserialized.routing_problem.num_orders < 0
+                        ? deserialized.routing_problem.num_locations
+                        : deserialized.routing_problem.num_orders);
+#endif
+    } else {
+      SERVER_LOG_INFO("[Worker] Problem reconstructed: %d constraints, %d variables, %d nonzeros",
+                      deserialized.problem.get_n_constraints(),
+                      deserialized.problem.get_n_variables(),
+                      deserialized.problem.get_nnz());
+    }
 
     std::string log_file = get_log_file_path(job_id);
     raft::handle_t handle;
 
-    SolveResult result = (problem_category == cuopt::remote::MIP)
-                           ? run_mip_solve(deserialized, handle, log_file, job_id, worker_id)
-                           : run_lp_solve(deserialized, handle, log_file);
+    SolveResult result;
+    if (problem_category == cuopt::remote::VRP || deserialized.is_vrp) {
+      result = run_vrp_solve(deserialized, handle);
+    } else if (problem_category == cuopt::remote::MIP) {
+      result = run_mip_solve(deserialized, handle, log_file, job_id, worker_id);
+    } else {
+      result = run_lp_solve(deserialized, handle, log_file);
+    }
 
     publish_result(result, job_id, worker_id);
     reset_job_slot(job);
