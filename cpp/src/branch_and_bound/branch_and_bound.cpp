@@ -2662,7 +2662,7 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* w
 
   ++submip_stats.total_calls;
 
-  bool has_submip = false;
+  bool has_submip          = false;
   worker->recompute_bounds = false;
   worker->recompute_basis  = true;
 
