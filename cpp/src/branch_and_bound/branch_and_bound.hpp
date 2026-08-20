@@ -409,7 +409,8 @@ class branch_and_bound_t {
                                        branch_and_bound_worker_t<i_t, f_t>* worker,
                                        branch_and_bound_stats_t<i_t, f_t>& stats,
                                        simplex::logger_t& log,
-                                       i_t iter_limit = std::numeric_limits<i_t>::max());
+                                       i_t iter_limit         = std::numeric_limits<i_t>::max(),
+                                       std::atomic<int>* halt = nullptr);
 
   // Apply symmetry-based bound reductions (orbital fixing and, when
   // settings_.symmetry == 2, lexical reduction) to the current node.
