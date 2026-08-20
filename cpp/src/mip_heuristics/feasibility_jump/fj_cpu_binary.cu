@@ -559,6 +559,12 @@ struct fj_bin_engine_t {
   std::vector<int8_t> seed_assign;   // restart target
   std::vector<int32_t> assign_i32;   // gather mirror for the SIMD patch (Batch B)
 
+  std::vector<int8_t> best_infeasible_assign;
+  int64_t best_infeasible_severity{std::numeric_limits<int64_t>::max()};
+  int64_t checkpoint_severity{std::numeric_limits<int64_t>::max()};
+  int32_t iters_since_infeasible_improve{0};
+  int32_t restores_since_improvement{0};
+
   std::vector<int64_t> var_score;    // live feasibility score of flipping each variable
   std::vector<int64_t> nnz_score_delta;  // per CSR nnz: last score delta of variables[k] in its row
 
@@ -594,6 +600,10 @@ struct fj_bin_engine_t {
   int64_t nnz_patched{0};
   int64_t rows_walked{0};
 
+  int64_t n_checkpoint_restores{0};
+  int64_t n_checkpoint_snapshots{0};
+  int32_t max_restores_since_improvement{0};
+
   // Tile width for the argmax sweep, in variables. Set at init from fj_bin_argmax_tile().
   int32_t argmax_tile{fj_bin_argmax_tile_target};
 
@@ -604,6 +614,10 @@ struct fj_bin_engine_t {
   int32_t perturb_interval{100};
   int32_t mtm_viol_samples{25};
   int32_t mtm_sat_samples{15};
+  int32_t infeasible_restart_window{300};
+  int32_t infeasible_restart_max_streak{20};
+  double infeasible_restart_degrade_ratio{1.15};
+  double infeasible_checkpoint_refresh_ratio{0.99};
   double breakthrough_margin{1e-4};
 
   int32_t max_aggregate_base{0};
@@ -948,6 +962,61 @@ struct fj_bin_engine_t {
         reweight_constraint(best_donor, row_weight[best_donor] - fj_bin_ddfw_transfer);
     }
     if (violated_list.empty()) objective_weight += 1;
+    track_infeasible_checkpoint();
+  }
+
+  void reset_infeasible_checkpoint()
+  {
+    best_infeasible_assign.clear();
+    best_infeasible_severity       = std::numeric_limits<int64_t>::max();
+    checkpoint_severity            = std::numeric_limits<int64_t>::max();
+    iters_since_infeasible_improve = 0;
+  }
+
+  void track_infeasible_checkpoint()
+  {
+    if (violated_list.empty()) {
+      reset_infeasible_checkpoint();
+      return;
+    }
+
+    int64_t severity = 0;
+    for (int32_t r : violated_list) {
+      cuopt_assert(row_slack[r] < 0, "row in violated_list is not violated");
+      severity -= (int64_t)row_slack[r];
+    }
+
+    if (severity < best_infeasible_severity) {
+      best_infeasible_severity       = severity;
+      iters_since_infeasible_improve = 0;
+      restores_since_improvement     = 0;
+      if ((double)severity < (double)checkpoint_severity * infeasible_checkpoint_refresh_ratio) {
+        best_infeasible_assign = assign;
+        checkpoint_severity    = severity;
+        ++n_checkpoint_snapshots;
+      }
+      return;
+    }
+
+    if (restores_since_improvement >= infeasible_restart_max_streak) return;
+    if (++iters_since_infeasible_improve < infeasible_restart_window) return;
+    if ((double)severity <= (double)best_infeasible_severity * infeasible_restart_degrade_ratio)
+      return;
+    if (best_infeasible_assign.empty()) return;
+
+    cuopt_assert(checkpoint_severity >= best_infeasible_severity,
+                 "checkpoint cannot beat the best severity seen");
+
+    assign = best_infeasible_assign;
+    for (int32_t v = 0; v < pb.n_variables; ++v)
+      assign_i32[v] = assign[v];
+    recompute_slack();
+
+    ++n_checkpoint_restores;
+    ++restores_since_improvement;
+    if (restores_since_improvement > max_restores_since_improvement)
+      max_restores_since_improvement = restores_since_improvement;
+    iters_since_infeasible_improve = 0;
   }
 
   // Global argmax over every variable, affordable because var_score is maintained live. While the
@@ -1096,6 +1165,7 @@ struct fj_bin_engine_t {
     for (int32_t r = 0; r < pb.n_constraints; ++r) row_weight[r] = pb.initial_weight[r];
     max_weight       = fj_bin_ddfw_init;
     objective_weight = seed_objective_weight;
+    reset_infeasible_checkpoint();
     tabu.clear(iters);
     recompute_slack();
     last_restart_iter           = iters;
@@ -1113,6 +1183,18 @@ struct fj_bin_engine_t {
     perturb_interval    = climber.perturb_interval;
     mtm_viol_samples    = climber.mtm_viol_samples;
     mtm_sat_samples     = climber.mtm_sat_samples;
+
+    infeasible_restart_window           = climber.infeasible_restart_window;
+    infeasible_restart_max_streak       = climber.infeasible_restart_max_streak;
+    infeasible_restart_degrade_ratio    = (double)climber.infeasible_restart_degrade_ratio;
+    infeasible_checkpoint_refresh_ratio = (double)climber.infeasible_checkpoint_refresh_ratio;
+    cuopt_assert(infeasible_restart_window > 0, "invalid infeasible restart window");
+    cuopt_assert(infeasible_restart_max_streak > 0, "invalid infeasible restart streak cap");
+    cuopt_assert(infeasible_restart_degrade_ratio >= 1.0, "degrade ratio should be at least one");
+    cuopt_assert(
+      infeasible_checkpoint_refresh_ratio > 0.0 && infeasible_checkpoint_refresh_ratio <= 1.0,
+      "checkpoint refresh ratio should be in (0, 1]");
+
     if (tabu_tenure_max <= tabu_tenure_min) tabu_tenure_max = tabu_tenure_min + 1;
 
     // The tabu ring is indexed by iteration modulo its size, so a slot is reused after ring_size
@@ -1132,6 +1214,7 @@ struct fj_bin_engine_t {
     }
     seed_assign = assign;
     best_assign = assign;
+    reset_infeasible_checkpoint();
     assign_i32.assign(n, 0);
     for (int32_t v = 0; v < n; ++v) assign_i32[v] = assign[v];
 
@@ -1244,6 +1327,12 @@ struct fj_bin_engine_t {
                     coefficient_bits(),
                     (long long)nnz_patched,
                     (long long)rows_walked);
+    CUOPT_LOG_DEBUG("%sCPUFJ[bin%d] checkpoint: %lld restores, %lld snapshots, max streak %d",
+                    climber.log_prefix.c_str(),
+                    coefficient_bits(),
+                    (long long)n_checkpoint_restores,
+                    (long long)n_checkpoint_snapshots,
+                    max_restores_since_improvement);
   }
 };
 

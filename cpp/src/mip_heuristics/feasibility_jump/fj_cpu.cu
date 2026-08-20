@@ -1257,6 +1257,12 @@ template <typename i_t, typename f_t>
 static void perturb(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 {
   CPUFJ_NVTX_RANGE("CPUFJ::perturb");
+  if (fj_cpu.feasible_found) {
+    cuopt_assert(fj_cpu.h_assignment.size() == fj_cpu.h_best_assignment.size(),
+                 "incumbent_assignment span would be invalidated");
+    fj_cpu.h_assignment = fj_cpu.h_best_assignment;
+  }
+
   // select N variables, assign them a random value between their bounds
   std::vector<i_t> sampled_vars;
   std::sample(fj_cpu.h_objective_vars.begin(),
@@ -1283,6 +1289,67 @@ static void perturb(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   }
 
   recompute_lhs(fj_cpu);
+}
+
+template <typename i_t, typename f_t>
+static void reset_infeasible_checkpoint(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
+{
+  fj_cpu.h_best_infeasible_assignment.clear();
+  fj_cpu.best_infeasible_severity       = std::numeric_limits<f_t>::infinity();
+  fj_cpu.checkpoint_severity            = std::numeric_limits<f_t>::infinity();
+  fj_cpu.iters_since_infeasible_improve = 0;
+}
+
+template <typename i_t, typename f_t>
+static void restart_from_infeasible_checkpoint(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
+{
+  cuopt_assert(fj_cpu.h_assignment.size() == fj_cpu.h_best_infeasible_assignment.size(),
+               "incumbent_assignment span would be invalidated");
+  fj_cpu.h_assignment = fj_cpu.h_best_infeasible_assignment;
+  recompute_lhs(fj_cpu);
+  for (size_t i = 0; i < fj_cpu.cached_mtm_moves.size(); ++i)
+    fj_cpu.cached_mtm_moves[i].first = 0;
+}
+
+template <typename i_t, typename f_t>
+static void track_infeasible_checkpoint(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
+{
+  CPUFJ_NVTX_RANGE("CPUFJ::track_infeasible_checkpoint");
+  if (fj_cpu.violated_constraints.empty()) {
+    reset_infeasible_checkpoint(fj_cpu);
+    return;
+  }
+
+  const f_t severity = -fj_cpu.total_violations;
+  cuopt_assert(severity >= 0, "violation severity should be positive or zero");
+
+  if (severity < fj_cpu.best_infeasible_severity) {
+    fj_cpu.best_infeasible_severity       = severity;
+    fj_cpu.iters_since_infeasible_improve = 0;
+    fj_cpu.restores_since_improvement     = 0;
+    if (severity < fj_cpu.checkpoint_severity * fj_cpu.infeasible_checkpoint_refresh_ratio) {
+      fj_cpu.h_best_infeasible_assignment = fj_cpu.h_assignment;
+      fj_cpu.checkpoint_severity          = severity;
+      ++fj_cpu.n_checkpoint_snapshots;
+    }
+    return;
+  }
+
+  if (fj_cpu.restores_since_improvement >= fj_cpu.infeasible_restart_max_streak) return;
+  if (++fj_cpu.iters_since_infeasible_improve < fj_cpu.infeasible_restart_window) return;
+  if (severity <= fj_cpu.best_infeasible_severity * fj_cpu.infeasible_restart_degrade_ratio) return;
+  if (fj_cpu.h_best_infeasible_assignment.empty()) return;
+
+  cuopt_assert(fj_cpu.checkpoint_severity >= fj_cpu.best_infeasible_severity,
+               "checkpoint cannot beat the best severity seen");
+
+  restart_from_infeasible_checkpoint(fj_cpu);
+
+  ++fj_cpu.n_checkpoint_restores;
+  ++fj_cpu.restores_since_improvement;
+  if (fj_cpu.restores_since_improvement > fj_cpu.max_restores_since_improvement)
+    fj_cpu.max_restores_since_improvement = fj_cpu.restores_since_improvement;
+  fj_cpu.iters_since_infeasible_improve = 0;
 }
 
 template <typename i_t, typename f_t>
@@ -1782,6 +1849,11 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
   fj_cpu->last_feature_log_time = loop_start;
   fj_cpu->prev_best_objective   = fj_cpu->h_best_objective;
   fj_cpu->iterations_since_best = 0;
+  reset_infeasible_checkpoint(*fj_cpu);
+  fj_cpu->n_checkpoint_restores          = 0;
+  fj_cpu->n_checkpoint_snapshots         = 0;
+  fj_cpu->restores_since_improvement     = 0;
+  fj_cpu->max_restores_since_improvement = 0;
 
   while (!fj_cpu->halted && !fj_cpu->preemption_flag.load()) {
     // Check if 5 seconds have passed
@@ -1851,6 +1923,7 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
     } else {
       // Local Min
       update_weights(*fj_cpu);
+      track_infeasible_checkpoint(*fj_cpu);
       if (should_perturb) {
         perturb(*fj_cpu);
         for (size_t i = 0; i < fj_cpu->cached_mtm_moves.size(); i++)
@@ -1929,6 +2002,11 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
   CUOPT_LOG_TRACE("%sCPUFJ Average time per iteration: %.8fms",
                   fj_cpu->log_prefix.c_str(),
                   avg_time_per_iter * 1000.0);
+  CUOPT_LOG_DEBUG("%sCPUFJ checkpoint: %lld restores, %lld snapshots, max streak %d",
+                  fj_cpu->log_prefix.c_str(),
+                  (long long)fj_cpu->n_checkpoint_restores,
+                  (long long)fj_cpu->n_checkpoint_snapshots,
+                  fj_cpu->max_restores_since_improvement);
 
 #if CPUFJ_TIMING_TRACE
   // Print final timing statistics

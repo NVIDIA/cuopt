@@ -115,6 +115,7 @@ struct fj_cpu_climber_t {
                                                      ADD_INSTRUMENTED(h_cstr_right_weights),
                                                      ADD_INSTRUMENTED(h_assignment),
                                                      ADD_INSTRUMENTED(h_best_assignment),
+                                                     ADD_INSTRUMENTED(h_best_infeasible_assignment),
                                                      ADD_INSTRUMENTED(cached_cstr_bounds),
                                                      ADD_INSTRUMENTED(iter_mtm_vars)};
 
@@ -195,10 +196,23 @@ struct fj_cpu_climber_t {
   std::vector<bool> var_bitmap;
   ins_vector<i_t> iter_mtm_vars;
 
+  ins_vector<f_t> h_best_infeasible_assignment;
+  f_t best_infeasible_severity{std::numeric_limits<f_t>::infinity()};
+  f_t checkpoint_severity{std::numeric_limits<f_t>::infinity()};
+  i_t iters_since_infeasible_improve{0};
+  i_t restores_since_improvement{0};
+  i_t max_restores_since_improvement{0};
+  int64_t n_checkpoint_restores{0};
+  int64_t n_checkpoint_snapshots{0};
+
   i_t mtm_viol_samples{25};
   i_t mtm_sat_samples{15};
   i_t nnz_samples{50000};
   i_t perturb_interval{100};
+  i_t infeasible_restart_window{300};
+  i_t infeasible_restart_max_streak{20};
+  f_t infeasible_restart_degrade_ratio{1.15};
+  f_t infeasible_checkpoint_refresh_ratio{0.99};
 
   i_t log_interval{1000};
   i_t diversity_callback_interval{3000};
