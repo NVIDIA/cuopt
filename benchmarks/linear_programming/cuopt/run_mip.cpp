@@ -407,6 +407,8 @@ void return_gpu_to_the_queue(std::unordered_map<pid_t, int>& pid_gpu_map,
 
 int main(int argc, char* argv[])
 {
+  (void)cudaFree(0);
+
   argparse::ArgumentParser program("solve_MIP");
 
   // Define all arguments with appropriate defaults and help messages
