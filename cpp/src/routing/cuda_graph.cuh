@@ -31,8 +31,9 @@ struct cuda_graph_t {
   {
     cuopt_assert(capture_started, "start_capture was not called before end_capture!");
     cuopt_expects(capture_started, error_type_t::RuntimeError, "A runtime error occurred!");
-    RAFT_CUDA_TRY(cudaStreamEndCapture(stream, &graph));
+    auto end_err    = cudaStreamEndCapture(stream, &graph);
     capture_started = false;
+    RAFT_CUDA_TRY(end_err);
     if (graph_created) {
       // If the graph fails to update, errorNode will be set to the
       // node causing the failure and updateResult will be set to a
@@ -47,7 +48,9 @@ struct cuda_graph_t {
       if (graph_created) { RAFT_CUDA_TRY(cudaGraphExecDestroy(instance)); }
       // Instantiate graphExec from graph. The error node and
       // error message parameters are unused here.
-      RAFT_CUDA_TRY(cudaGraphInstantiate(&instance, graph));
+      auto inst_err = cudaGraphInstantiate(&instance, graph);
+      if (inst_err != cudaSuccess) { cudaGraphDestroy(graph); }
+      RAFT_CUDA_TRY(inst_err);
       graph_created = true;
     }
     RAFT_CUDA_TRY(cudaGraphDestroy(graph));
