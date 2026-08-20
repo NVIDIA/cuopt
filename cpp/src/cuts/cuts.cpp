@@ -4629,6 +4629,17 @@ bool rational_coefficients(const std::vector<variable_type_t>& var_types,
 
   rational_inequality.scale(scalar);
 
+  // The scaled product can land an ulp off the integer it represents. Callers rely on the
+  // integer-variable coefficients being exact integers: the knapsack cover test
+  // sum_C a_j > beta is only equivalent to sum_C a_j >= beta + 1 for integral a_j.
+  constexpr f_t integral_tol = 1e-6;
+  for (i_t k : indices) {
+    const f_t scaled  = rational_inequality.vector.x[k];
+    const f_t rounded = std::round(scaled);
+    if (std::abs(scaled - rounded) > integral_tol) { return false; }
+    rational_inequality.vector.x[k] = rounded;
+  }
+
   return true;
 }
 
