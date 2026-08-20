@@ -1124,6 +1124,94 @@ std::vector<std::vector<int>> find_violated_odd_cycles_for_test(
   return result;
 }
 
+// This function is only used in tests
+rational_row_for_test_t rational_coefficients_for_test(const std::vector<double>& coefficients,
+                                                       double rhs)
+{
+  const int num_cols = static_cast<int>(coefficients.size());
+  inequality_t<int, double> row(num_cols);
+  for (int j = 0; j < num_cols; j++) {
+    row.push_back(j, coefficients[j]);
+  }
+  row.rhs = rhs;
+
+  const std::vector<variable_type_t> var_types(num_cols, variable_type_t::INTEGER);
+  inequality_t<int, double> scaled_row = row;
+
+  rational_row_for_test_t result;
+  result.ok = rational_coefficients<int, double>(var_types, row, scaled_row);
+  if (!result.ok) { return result; }
+
+  result.coefficients.reserve(scaled_row.size());
+  for (int k = 0; k < static_cast<int>(scaled_row.size()); k++) {
+    result.coefficients.push_back(scaled_row.coeff(k));
+  }
+  result.rhs = scaled_row.rhs;
+  return result;
+}
+
+// This function is only used in tests
+knapsack_cut_for_test_t generate_knapsack_cut_for_test(const std::vector<double>& row_coefficients,
+                                                       double row_rhs,
+                                                       const std::vector<double>& x_relax)
+{
+  cuopt_assert(x_relax.size() == row_coefficients.size(),
+               "x_relax size mismatch in knapsack test helper");
+
+  const int num_binaries = static_cast<int>(row_coefficients.size());
+  const int slack_col    = num_binaries;
+  const int num_cols     = num_binaries + 1;
+
+  lp_problem_t<int, double> lp(nullptr, 1, num_cols, num_cols);
+  lp.rhs[0] = row_rhs;
+  for (int j = 0; j < num_binaries; j++) {
+    lp.lower[j] = 0.0;
+    lp.upper[j] = 1.0;
+  }
+  lp.lower[slack_col] = 0.0;
+  lp.upper[slack_col] = inf;
+
+  sparse_vector_t<int, double> row(num_cols, 0);
+  for (int j = 0; j < num_binaries; j++) {
+    row.i.push_back(j);
+    row.x.push_back(row_coefficients[j]);
+  }
+  row.i.push_back(slack_col);
+  row.x.push_back(1.0);
+
+  csr_matrix_t<int, double> Arow(0, num_cols, 0);
+  Arow.append_row(row);
+
+  std::vector<variable_type_t> var_types(num_binaries, variable_type_t::INTEGER);
+  var_types.push_back(variable_type_t::CONTINUOUS);
+  const std::vector<int> new_slacks{slack_col};
+
+  std::vector<double> xstar = x_relax;
+  xstar.push_back(0.0);
+
+  const simplex_solver_settings_t<int, double> settings;
+  knapsack_generation_t<int, double> knapsack_generation(lp, settings, Arow, new_slacks, var_types);
+
+  knapsack_cut_for_test_t result;
+  if (knapsack_generation.num_knapsack_constraints() == 0) { return result; }
+
+  inequality_t<int, double> cut(num_cols);
+  if (knapsack_generation.generate_knapsack_cut(
+        lp, settings, Arow, new_slacks, var_types, xstar, 0, cut) != 0) {
+    return result;
+  }
+
+  result.found = true;
+  result.indices.reserve(cut.size());
+  result.coefficients.reserve(cut.size());
+  for (int k = 0; k < static_cast<int>(cut.size()); k++) {
+    result.indices.push_back(cut.index(k));
+    result.coefficients.push_back(cut.coeff(k));
+  }
+  result.rhs = cut.rhs;
+  return result;
+}
+
 namespace {
 
 // 64-bit integer mixer (SplitMix64). Used as the building block for the

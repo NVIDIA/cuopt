@@ -286,6 +286,32 @@ std::vector<std::vector<int>> find_violated_odd_cycles_for_test(
   double min_violation,
   double time_limit);
 
+struct rational_row_for_test_t {
+  bool ok{false};
+  std::vector<double> coefficients;
+  double rhs{0.0};
+};
+
+// Test-only helper to run the production rational scaling used by the cut separators on a
+// dense row over integer variables.
+rational_row_for_test_t rational_coefficients_for_test(const std::vector<double>& coefficients,
+                                                       double rhs);
+
+struct knapsack_cut_for_test_t {
+  bool found{false};
+  std::vector<int> indices;
+  std::vector<double> coefficients;
+  double rhs{0.0};
+};
+
+// Test-only helper to run the production knapsack separator on the single row
+// sum_j row_coefficients[j] x_j <= row_rhs over binaries, with a non-negative slack appended.
+// The returned cut is in the >= form the cut pool stores. found is false when the row is not
+// treated as a knapsack row or no cut is separated at x_relax.
+knapsack_cut_for_test_t generate_knapsack_cut_for_test(const std::vector<double>& row_coefficients,
+                                                       double row_rhs,
+                                                       const std::vector<double>& x_relax);
+
 template <typename i_t, typename f_t>
 class cut_pool_t {
  public:
