@@ -715,11 +715,7 @@ i_t solution_t<i_t, f_t, REQUEST>::compute_max_active()
   raft::common::nvtx::range fun_scope("compute_max_active");
   i_t TPB = 1024;
   compute_max_active_kernel<i_t, f_t, REQUEST><<<1, TPB, 0, sol_handle->get_stream()>>>(view());
-  // device_scalar::value() routes through rmm::detail::memcpy_async
-  // (cudaMemcpyBatchAsync on CUDA 13); raft::copy uses cudaMemcpyAsync.
-  raft::copy(
-    &max_active_nodes, max_active_nodes_for_all_routes.data(), 1, sol_handle->get_stream());
-  sol_handle->sync_stream();
+  max_active_nodes = max_active_nodes_for_all_routes.value(sol_handle->get_stream());
   return max_active_nodes;
 }
 
