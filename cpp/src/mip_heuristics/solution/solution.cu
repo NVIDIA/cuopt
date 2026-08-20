@@ -5,6 +5,7 @@
  */
 /* clang-format on */
 
+#include <mip_heuristics/utils.cuh>
 #include "feasibility_test.cuh"
 #include "solution.cuh"
 #include "solution_kernels.cuh"
@@ -650,6 +651,31 @@ template class solution_t<int, float>;
 
 #if MIP_INSTANTIATE_DOUBLE
 template class solution_t<int, double>;
+#endif
+
+template <typename i_t, typename f_t>
+void build_start_assignment(problem_t<i_t, f_t>& problem,
+                            solution_t<i_t, f_t>& solution,
+                            const raft::handle_t* handle_ptr)
+{
+  // Default: zero, projected into the variable bounds. Deliberately the simplest
+  // thing that works -- the seeding strategy is what this hook exists to change.
+  thrust::fill(handle_ptr->get_thrust_policy(),
+               solution.assignment.begin(),
+               solution.assignment.end(),
+               f_t{0});
+  clamp_within_var_bounds<i_t, f_t>(solution.assignment, &problem, handle_ptr);
+  handle_ptr->sync_stream();
+}
+
+#if MIP_INSTANTIATE_FLOAT
+template void build_start_assignment<int, float>(
+  problem_t<int, float>&, solution_t<int, float>&, const raft::handle_t*);
+#endif
+
+#if MIP_INSTANTIATE_DOUBLE
+template void build_start_assignment<int, double>(
+  problem_t<int, double>&, solution_t<int, double>&, const raft::handle_t*);
 #endif
 
 }  // namespace cuopt::mathematical_optimization::mip

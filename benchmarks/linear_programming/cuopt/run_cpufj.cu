@@ -116,40 +116,54 @@ int main(int argc, char** argv)
     cuopt::mathematical_optimization::mps_data_model_to_optimization_problem<i_t, f_t>(
       &handle, mps_data_model);
   mip::problem_t<i_t, f_t> problem(op_problem);
+
+  // Anonymise the instance before anything under evolution can see it.
+  //
+  // problem_t exposes var_names, row_names and objective_name as public members, and
+  // the FJ code receives problem_t&. For a fixed benchmark set those strings are an
+  // exact fingerprint -- row_names[0] alone identifies most MIPLIB instances -- so a
+  // candidate could branch on identity and return a memorised objective. Reading the
+  // MODEL is intended and useful: coefficients, bounds, variable types, sparsity and
+  // row structure are all untouched here, so recognising set-packing rows, knapsack
+  // substructure or GUB constraints still works exactly as before. Only the labels go.
+  //
+  // Each string is cleared in place rather than the vectors being emptied, so size()
+  // and indexing stay valid and any code that walks names by variable index still
+  // works -- it just gets empty strings.
+  //
+  // This file is outside target_code and is sha256-gated by evaluate.py's FROZEN_FILES,
+  // so a candidate cannot restore the names. Do not move this below the solve.
+  for (auto& name : problem.var_names) name.clear();
+  for (auto& name : problem.row_names) name.clear();
+  problem.objective_name.clear();
+
   std::printf("instance: %s  n_vars=%d n_cstrs=%d nnz=%d\n",
               path.c_str(),
               problem.n_variables,
               problem.n_constraints,
               problem.nnz);
 
-  // Zero start, clamped into the variable bounds. Shared by every climber; diversity comes from
-  // the per-climber seed and sampling parameters below.
-  mip::solution_t<i_t, f_t> solution(problem);
-  thrust::fill(handle.get_thrust_policy(), solution.assignment.begin(), solution.assignment.end(), f_t{0});
-  mip::clamp_within_var_bounds<i_t, f_t>(solution.assignment, &problem, &handle);
-  handle.sync_stream();
+  // FROZEN -- defines t=0 for the benchmark. Everything above it (the MPS parse,
+  // problem construction under problem/, and the name anonymisation) is outside
+  // target_code; everything below it is editable. A marker any later would leave
+  // editable code ahead of the clock, which is somewhere to do unmeasured work; any
+  // earlier would charge the budget for a parse and a CUDA context no candidate can
+  // influence.
+  CUOPT_LOG_INFO("CPUFJ solve window start");
 
-  // Built serially: the first climber host-copies the problem, the rest clone it.
+  // Shared by every climber. Built by build_start_assignment, which is editable --
+  // this driver is not.
+  mip::solution_t<i_t, f_t> solution(problem);
+  mip::build_start_assignment<i_t, f_t>(problem, solution, &handle);
+
   std::vector<std::atomic<bool>> preemption_flags(n_climbers);
   std::vector<std::unique_ptr<mip::fj_cpu_climber_t<i_t, f_t>>> climbers(n_climbers);
+  // Composition and per-climber parameters come from build_climber_portfolio, which
+  // is editable. The log prefix is assigned here and not there, so every climber
+  // stays identifiable in the log whatever the portfolio does.
+  mip::build_climber_portfolio<i_t, f_t>(problem, solution, preemption_flags, climbers, base_seed);
   for (int k = 0; k < n_climbers; ++k) {
-    preemption_flags[k].store(false);
-    mip::fj_settings_t settings;
-    settings.seed = (int)(base_seed + k);
-    if (k == 0) {
-      climbers[k] = mip::init_fj_cpu_standalone(problem, solution, preemption_flags[k], settings);
-    } else {
-      climbers[k] = mip::init_fj_cpu_standalone_from_template(
-        problem, *climbers[0], preemption_flags[k], settings);
-    }
-
-    // Portfolio diversification, decorrelated from the value RNG.
-    std::mt19937 rng(base_seed + 7919u * k);
-    climbers[k]->mtm_viol_samples = std::uniform_int_distribution<i_t>(15, 50)(rng);
-    climbers[k]->mtm_sat_samples  = std::uniform_int_distribution<i_t>(10, 30)(rng);
-    climbers[k]->nnz_samples      = std::uniform_int_distribution<i_t>(2000, 15000)(rng);
-    climbers[k]->perturb_interval = std::uniform_int_distribution<i_t>(50, 500)(rng);
-    climbers[k]->log_prefix       = "[climber " + std::to_string(k) + "] ";
+    climbers[k]->log_prefix = "[climber " + std::to_string(k) + "] ";
   }
 
   const std::vector<int> cpus = allowed_cpus();

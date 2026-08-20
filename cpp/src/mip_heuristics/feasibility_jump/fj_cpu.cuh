@@ -286,6 +286,18 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_standalone_from_template
   std::atomic<bool>& preemption_flag,
   fj_settings_t settings = fj_settings_t{});
 
+// Builds the climber portfolio the standalone benchmark races: how many distinct
+// behaviours, what parameters each gets, whether they are randomized or
+// specialized. Defined in fj_cpu_portfolio.cpp -- host code, compiled by the host
+// compiler, so editing it is markedly cheaper than editing this header. Runs
+// inside the measured window.
+template <typename i_t, typename f_t>
+void build_climber_portfolio(problem_t<i_t, f_t>& problem,
+                             solution_t<i_t, f_t>& solution,
+                             std::vector<std::atomic<bool>>& preemption_flags,
+                             std::vector<std::unique_ptr<fj_cpu_climber_t<i_t, f_t>>>& climbers,
+                             int64_t base_seed);
+
 template <typename i_t, typename f_t>
 std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_from_optimization_problem(
   const optimization_problem_t<i_t, f_t>& problem,
