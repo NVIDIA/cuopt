@@ -2958,8 +2958,7 @@ f_t knapsack_generation_t<i_t, f_t>::solve_knapsack_problem(const std::vector<f_
     }
   }
 
-  i_t sum_value     = std::accumulate(scaled_values.begin(), scaled_values.end(), 0);
-  const i_t INT_INF = std::numeric_limits<i_t>::max() / 2;
+  i_t sum_value = std::accumulate(scaled_values.begin(), scaled_values.end(), 0);
   if (verbose) { settings_.log.printf("sum value %d\n", sum_value); }
   const i_t max_size = 10000;
   if (sum_value <= 0.0 || sum_value >= max_size) {
@@ -2972,10 +2971,12 @@ f_t knapsack_generation_t<i_t, f_t>::solve_knapsack_problem(const std::vector<f_
 
   solution.assign(n, 0.0);
 
-  // dp(j, v) = minimum weight using first j items to get value v
-  dense_matrix_t<i_t, i_t> dp(n + 1, sum_value + 1, INT_INF);
+  // dp(j, v) = minimum weight using first j items to get value v.
+  // The weights are carried at full precision: rounding one down would let the DP return a set
+  // that violates the capacity, and the caller reads the complement of that set as a cover.
+  dense_matrix_t<i_t, f_t> dp(n + 1, sum_value + 1, inf);
   dense_matrix_t<i_t, uint8_t> take(n + 1, sum_value + 1, 0);
-  dp(0, 0) = 0;
+  dp(0, 0) = 0.0;
 
   // 4. Dynamic programming
   for (i_t j = 1; j <= n; ++j) {
@@ -2985,8 +2986,7 @@ f_t knapsack_generation_t<i_t, f_t>::solve_knapsack_problem(const std::vector<f_
 
       // Take item j-1 if possible
       if (v >= scaled_values[j - 1]) {
-        i_t candidate =
-          dp(j - 1, v - scaled_values[j - 1]) + static_cast<i_t>(std::floor(weights[j - 1]));
+        f_t candidate = dp(j - 1, v - scaled_values[j - 1]) + weights[j - 1];
         if (candidate < dp(j, v)) {
           dp(j, v)   = candidate;
           take(j, v) = 1;
@@ -3011,6 +3011,15 @@ f_t knapsack_generation_t<i_t, f_t>::solve_knapsack_problem(const std::vector<f_
       solution[j - 1] = 0.0;
     }
   }
+
+#ifdef ASSERT_MODE
+  f_t selected_weight = 0.0;
+  for (i_t j = 0; j < n; ++j) {
+    selected_weight += solution[j] * weights[j];
+  }
+  cuopt_assert(selected_weight <= rhs + settings_.primal_tol,
+               "knapsack dynamic program returned a solution over capacity");
+#endif
 
   objective = best_value * scale;
   return objective;
