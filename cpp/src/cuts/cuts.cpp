@@ -2406,6 +2406,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
   f_t objective_constant = 0.0;
   std::vector<i_t> fixed_variables;
   std::vector<f_t> fixed_values;
+  std::vector<f_t> fixed_weights;
   const f_t x_tol = 1e-5;
   for (i_t k = 0; k < knapsack_inequality.size(); k++) {
     const i_t j = knapsack_inequality.index(k);
@@ -2417,6 +2418,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
         // if xstar_j is close to 0, then we can fix z to zero
         fixed_variables.push_back(j);
         fixed_values.push_back(0.0);
+        fixed_weights.push_back(knapsack_inequality.vector.x[k]);
         seperation_rhs -= knapsack_inequality.vector.x[k];
         // No need to adjust the objective constant
         continue;
@@ -2425,6 +2427,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
         // if xstar_j is close to 1, then we can fix z to 1
         fixed_variables.push_back(j);
         fixed_values.push_back(1.0);
+        fixed_weights.push_back(knapsack_inequality.vector.x[k]);
         // Note seperation rhs is unchanged
         objective_constant += vj;
         continue;
@@ -2466,12 +2469,28 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
     return -1;
   }
 
-  i_t cover_size = 0;
+  i_t cover_size   = 0;
+  f_t cover_weight = 0.0;
   for (i_t k = 0; k < solution.size(); k++) {
-    if (solution[k] == 0.0) { cover_size++; }
+    if (solution[k] == 0.0) {
+      cover_size++;
+      cover_weight += weights[k];
+    }
   }
   for (i_t k = 0; k < fixed_values.size(); k++) {
-    if (fixed_values[k] == 1.0) { cover_size++; }
+    if (fixed_values[k] == 1.0) {
+      cover_size++;
+      cover_weight += fixed_weights[k];
+    }
+  }
+
+  // sum_{j in C} a_j > beta is what makes sum_{j in C} x_j <= |C| - 1 valid. The coefficients are
+  // integral here, so demand a full unit rather than letting rounding in the sums decide.
+  const bool is_cover = cover_weight >= knapsack_inequality.rhs + 1.0 - tol;
+  cuopt_assert(is_cover, "knapsack separation produced a set that is not a cover");
+  if (!is_cover) {
+    restore_complemented(complemented_variables);
+    return -1;
   }
 
   cut.reserve(cover_size);
@@ -2640,6 +2659,9 @@ void knapsack_generation_t<i_t, f_t>::minimal_cover_and_partition(
       continue;
     }
   }
+
+  cuopt_assert(cover_sum >= beta + 1.0 - 1e-6,
+               "minimal cover reduction dropped an item the cover needed");
 
   // Go through and correct cover_indicies and cover_coefficients
   for (i_t k = 0; k < cover_coefficients.size();) {
