@@ -578,6 +578,7 @@ struct fj_bin_engine_t {
   std::vector<int32_t> sample_buf;  // move-selection row sample, reused to keep the loop allocation-free
 
   int32_t objective_weight{0};
+  int32_t seed_objective_weight{0};
   double incumbent_objective{0};
   double best_objective{std::numeric_limits<double>::infinity()};
   int32_t max_weight{1};
@@ -1055,12 +1056,16 @@ struct fj_bin_engine_t {
 
   std::pair<int32_t, int64_t> find_lift_move() const
   {
+    cuopt_assert(violated_list.empty(), "lift moves require a feasible incumbent");
+
     int32_t best_v = -1;
     int64_t best_s = 0;
     for (int32_t v : pb.objective_vars) {
       const int8_t delta = (int8_t)(1 - 2 * assign[v]);
       if ((double)delta * pb.objective[v] >= 0) continue;
       if (tabu_blocked(v, false)) continue;
+      // Base field is zero iff the flip breaks no row; K/2 splits it while |bonus| < 2^31.
+      if (var_score[v] <= -(fj_bin_score_k / 2)) continue;
       const int64_t s = (int64_t)(-std::llround(pb.objective[v] * delta)) * fj_bin_score_k;
       if (s > best_s) {
         best_s = s;
@@ -1090,7 +1095,7 @@ struct fj_bin_engine_t {
     for (int32_t v = 0; v < pb.n_variables; ++v) assign_i32[v] = assign[v];
     for (int32_t r = 0; r < pb.n_constraints; ++r) row_weight[r] = pb.initial_weight[r];
     max_weight       = fj_bin_ddfw_init;
-    objective_weight = 0;
+    objective_weight = seed_objective_weight;
     tabu.clear(iters);
     recompute_slack();
     last_restart_iter           = iters;
@@ -1141,14 +1146,18 @@ struct fj_bin_engine_t {
     violated_list.clear();
     var_bitmap.assign(n, 0);
 
-    argmax_tile         = fj_bin_argmax_tile();
-    objective_weight    = 0;
-    max_weight          = fj_bin_ddfw_init;
-    incumbent_objective = 0;
-    best_objective      = std::numeric_limits<double>::infinity();
-    feasible_found      = false;
-    iters               = 0;
-    last_restart_iter   = 0;
+    const int32_t seeded_weight = (int32_t)std::lround(climber.h_objective_weight);
+    cuopt_assert(seeded_weight >= 0, "objective weight should be positive or zero");
+
+    argmax_tile           = fj_bin_argmax_tile();
+    objective_weight      = seeded_weight > 0 ? seeded_weight : 0;
+    seed_objective_weight = objective_weight;
+    max_weight            = fj_bin_ddfw_init;
+    incumbent_objective   = 0;
+    best_objective        = std::numeric_limits<double>::infinity();
+    feasible_found        = false;
+    iters                 = 0;
+    last_restart_iter     = 0;
     recompute_slack();
   }
 

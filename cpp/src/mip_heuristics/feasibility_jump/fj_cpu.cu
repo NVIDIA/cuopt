@@ -1415,6 +1415,23 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_lift_move(
       delta = round(1.0 - 2 * val);
       // flip move wouldn't improve
       if (delta * obj_coeff >= 0) continue;
+
+      auto [offset_begin, offset_end] = reverse_range_for_var<i_t, f_t>(fj_cpu, var_idx);
+      bool breaks_a_row               = false;
+      for (i_t j = offset_begin; j < offset_end; ++j) {
+        auto [c_lb, c_ub]    = fj_cpu.cached_cstr_bounds[j].get();
+        const i_t cstr_idx   = fj_cpu.h_reverse_constraints[j];
+        const f_t cstr_coeff = fj_cpu.h_reverse_coefficients[j];
+        const f_t lhs        = fj_cpu.h_lhs[cstr_idx];
+        const f_t sumcomp    = fj_cpu.h_lhs_sumcomp[cstr_idx];
+        const f_t new_lhs    = lhs + (cstr_coeff * delta - sumcomp);
+        if (fj_cpu.view.excess_score(cstr_idx, new_lhs, c_lb, c_ub) <
+            -fj_cpu.view.get_corrected_tolerance(cstr_idx, c_lb, c_ub)) {
+          breaks_a_row = true;
+          break;
+        }
+      }
+      if (breaks_a_row) continue;
     } else {
       f_t lfd_lb                      = get_lower(fj_cpu.h_var_bounds[var_idx].get()) - val;
       f_t lfd_ub                      = get_upper(fj_cpu.h_var_bounds[var_idx].get()) - val;

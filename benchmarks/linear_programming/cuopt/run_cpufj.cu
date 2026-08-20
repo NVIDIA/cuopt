@@ -129,8 +129,7 @@ int main(int argc, char** argv)
   mip::clamp_within_var_bounds<i_t, f_t>(solution.assignment, &problem, &handle);
   handle.sync_stream();
 
-  // Built serially: only the first climber host-copies the problem off the stream, the rest clone
-  // its host data.
+  // Built serially: the first climber host-copies the problem, the rest clone it.
   std::vector<std::atomic<bool>> preemption_flags(n_climbers);
   std::vector<std::unique_ptr<mip::fj_cpu_climber_t<i_t, f_t>>> climbers(n_climbers);
   for (int k = 0; k < n_climbers; ++k) {
