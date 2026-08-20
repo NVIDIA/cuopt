@@ -1119,7 +1119,8 @@ bool grpc_client_t::get_result_or_download(const std::string& job_id,
   auto status   = impl_->stub->GetResult(&context, request, response.get());
 
   if (status.ok() && response->status() == cuopt::remote::SUCCESS) {
-    if (response->has_lp_solution() || response->has_mip_solution()) {
+    if (response->has_lp_solution() || response->has_mip_solution() ||
+        response->has_routing_solution()) {
       GRPC_CLIENT_THROUGHPUT_LOG(config_, "download_unary", response->ByteSizeLong(), download_t0);
       GRPC_CLIENT_DEBUG_LOG(config_,
                             "[grpc_client] Unary GetResult succeeded, result_size="
