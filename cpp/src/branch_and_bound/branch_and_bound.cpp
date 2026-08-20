@@ -2779,7 +2779,7 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* worker,
         }
 
         // We need the pseudocost to do the DFS, which we do not have during the cut passes.
-        if (during_cut_passes_) {
+        if (!during_cut_passes_) {
           DEBUG_SUBMIP("{} Running a quick DFS for the submip!", log_prefix);
           dive_with(worker, settings_.submip_settings.dfs_max_backtrack);
         }
