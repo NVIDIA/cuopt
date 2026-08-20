@@ -1540,10 +1540,14 @@ bool block_bve_phase(bound_presolve_t<i_t, f_t>& bound_presolve,
                                                 int,                                            \
                                                 int)
 
-INSTANTIATE(double);
-#ifdef MIP_INSTANTIATE_FLOAT
+#if MIP_INSTANTIATE_FLOAT
 INSTANTIATE(float);
 #endif
+
+#if MIP_INSTANTIATE_DOUBLE
+INSTANTIATE(double);
+#endif
+
 #undef INSTANTIATE
 
 }  // namespace cuopt::mathematical_optimization::mip
