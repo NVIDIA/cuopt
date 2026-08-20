@@ -754,8 +754,8 @@ static void two_opt_add_partner(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
  * Preferred source is the probing cache: it recorded, for each probed variable and value, the
  * bounds propagation implies on every other variable. An implied bound pinning a binary to a value
  * names both the partner and the value it has to take once `first` moves, so a pair moving in the
- * same direction is reached as naturally as a swap. When probing has nothing for `first`, the
- * variables sharing a row with it are the fallback, and the only defensible direction is the swap.
+ * same direction is reached as naturally as a swap. The
+ * variables sharing a row with it are used as fallback.
  */
 template <typename i_t, typename f_t>
 static void two_opt_collect_partners(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
