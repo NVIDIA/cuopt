@@ -8,7 +8,6 @@
 #include <cuopt/error.hpp>
 #include <utilities/macros.cuh>
 
-#include <raft/core/error.hpp>
 #include <raft/util/cudart_utils.hpp>
 #include <rmm/cuda_stream_view.hpp>
 
@@ -32,21 +31,13 @@ struct cuda_graph_t {
   {
     cuopt_assert(capture_started, "start_capture was not called before end_capture!");
     cuopt_expects(capture_started, error_type_t::RuntimeError, "A runtime error occurred!");
-    graph = nullptr;
     RAFT_CUDA_TRY(cudaStreamEndCapture(stream, &graph));
     capture_started = false;
-    // An invalidated capture yields a null graph; fail here rather than later.
-    cuopt_expects(graph != nullptr,
-                  error_type_t::RuntimeError,
-                  "CUDA graph capture produced no graph; an operation issued during "
-                  "capture was not capturable.");
     if (graph_created) {
       // If the graph fails to update, errorNode will be set to the
       // node causing the failure and updateResult will be set to a
-      // reason code. A failed update is handled below, but the error must be
-      // consumed so it does not leak into a later cudaGetLastError().
+      // reason code.
       cudaGraphExecUpdate(instance, graph, &errorNode, &updateResult);
-      (void)cudaGetLastError();
     }
     // Instantiate during the first iteration or whenever the update
     // fails for any reason
@@ -60,7 +51,6 @@ struct cuda_graph_t {
       graph_created = true;
     }
     RAFT_CUDA_TRY(cudaGraphDestroy(graph));
-    graph = nullptr;
   }
 
   void launch_graph(rmm::cuda_stream_view stream)
