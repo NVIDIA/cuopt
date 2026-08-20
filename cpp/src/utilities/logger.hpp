@@ -43,14 +43,23 @@ void reset_default_logger();
 using log_callback_with_data_t = void (*)(const char* message, void* user_data);
 
 /**
- * @brief Install a user log callback to be picked up by the next init_logger_t.
+ * @brief Registers a log callback for the calling thread, for its own lifetime.
  *
- * Must be called before the init_logger_t that starts the targeted solve.
- * Protected by the same mutex as init_logger_t so it is safe to call from
- * any thread, but do not call from inside the callback itself.
+ * Registration is per-thread so concurrent solves cannot capture each other's
+ * callback. Log lines emitted on other threads are not delivered.
  */
-void set_pending_log_callback(log_callback_with_data_t cb, void* user_data);
-void clear_pending_log_callback();
+class scoped_log_callback_t {
+ public:
+  scoped_log_callback_t(log_callback_with_data_t cb, void* user_data);
+  ~scoped_log_callback_t();
+
+  scoped_log_callback_t(const scoped_log_callback_t&)            = delete;
+  scoped_log_callback_t& operator=(const scoped_log_callback_t&) = delete;
+
+ private:
+  log_callback_with_data_t prev_callback_;
+  void* prev_user_data_;
+};
 
 // Ref-counted logger initializer
 class init_logger_t {

@@ -18,6 +18,8 @@
 #include <pdlp/cuopt_c_internal.hpp>
 #include <utilities/logger.hpp>
 
+#include <optional>
+
 #include <cuopt/mathematical_optimization/io/parser.hpp>
 
 #include <cuopt/version_config.hpp>
@@ -1159,21 +1161,12 @@ cuopt_int_t cuOptSolve(cuOptOptimizationProblem problem,
   if (settings == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   if (solution_ptr == nullptr) { return CUOPT_INVALID_ARGUMENT; }
 
-  // Install user log callback so init_logger_t inside the solver picks it up.
-  // The RAII guard clears it on scope exit (whether by return or exception).
+  // Register the callback for this thread for the duration of the solve.
+  // cuOptLogCallback and log_callback_with_data_t share the same signature.
   solver_settings_handle_t* handle = get_settings_handle(settings);
-  struct log_scope_guard_t {
-    bool has_callback;
-    ~log_scope_guard_t()
-    {
-      if (has_callback) { cuopt::clear_pending_log_callback(); }
-    }
-  } log_scope{false};
-
+  std::optional<cuopt::scoped_log_callback_t> log_scope;
   if (handle->log_callback) {
-    // cuOptLogCallback and log_callback_with_data_t share the same signature.
-    cuopt::set_pending_log_callback(handle->log_callback, handle->log_callback_user_data);
-    log_scope.has_callback = true;
+    log_scope.emplace(handle->log_callback, handle->log_callback_user_data);
   }
 
   problem_and_stream_view_t* problem_and_stream_view =

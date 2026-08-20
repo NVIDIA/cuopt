@@ -173,40 +173,26 @@ void reset_default_logger()
   default_logger().flush_on(rapids_logger::level_enum::debug);
 }
 
-// Forward declarations needed by logger_config_guard destructor.
 static std::mutex g_guard_mutex;
-static const struct captured_log_callback_t* g_active_log_callback;
-
-// Captured (immutable) callback state owned by the active logger guard.
-struct captured_log_callback_t {
-  log_callback_with_data_t callback;
-  void* user_data;
-};
 
 // Guard object whose destructor resets the logger.
-// Owns the captured callback state to guarantee its lifetime.
 struct logger_config_guard {
-  std::unique_ptr<captured_log_callback_t> callback_state;
-  ~logger_config_guard()
-  {
-    cuopt::reset_default_logger();  // removes the sink; blocks until in-flight log calls finish
-    std::lock_guard<std::mutex> lock(g_guard_mutex);
-    g_active_log_callback = nullptr;  // safe: the sink (and the bridge) are already gone
-  }
+  ~logger_config_guard() { cuopt::reset_default_logger(); }
 };
 
 // Weak reference to detect if any init_logger_t instance is still alive
 static std::weak_ptr<logger_config_guard> g_active_guard;
 
-// g_active_log_callback: written only under g_guard_mutex (at guard create/destroy time).
-// Read lock-free by user_log_bridge — safe because the bridge is only reachable
-// while the sink is alive, and the sink is removed (in reset_default_logger) before
-// this pointer is cleared.
-
-// Pending user log callback set by the C API before cuOptSolve.
-// Consumed once (under g_guard_mutex) by init_logger_t to build the guard state.
-static log_callback_with_data_t g_pending_callback = nullptr;
-static void* g_pending_callback_data               = nullptr;
+// Registration is per-thread, not global: the sink is shared by every solve, so
+// the callback has to be selected by who is logging rather than by who
+// registered last (#1752).
+namespace {
+struct thread_log_callback_t {
+  log_callback_with_data_t callback = nullptr;
+  void* user_data                   = nullptr;
+};
+thread_local thread_log_callback_t t_log_callback;
+}  // namespace
 
 static void user_log_bridge(int lvl, const char* msg)
 {
@@ -214,24 +200,21 @@ static void user_log_bridge(int lvl, const char* msg)
   // not reach user code even in a lower-level build.
   if (lvl < static_cast<int>(rapids_logger::level_enum::info)) { return; }
 
-  // g_active_log_callback is stable for the duration of any bridge call:
-  // it points into the guard's callback_state, which outlives the sink.
-  const captured_log_callback_t* state = g_active_log_callback;
-  if (state) { state->callback(msg, state->user_data); }
+  const auto& cb = t_log_callback;
+  if (cb.callback) { cb.callback(msg, cb.user_data); }
 }
 
-void set_pending_log_callback(log_callback_with_data_t cb, void* user_data)
+scoped_log_callback_t::scoped_log_callback_t(log_callback_with_data_t cb, void* user_data)
+  : prev_callback_(t_log_callback.callback), prev_user_data_(t_log_callback.user_data)
 {
-  std::lock_guard<std::mutex> lock(g_guard_mutex);
-  g_pending_callback      = cb;
-  g_pending_callback_data = user_data;
+  t_log_callback.callback  = cb;
+  t_log_callback.user_data = user_data;
 }
 
-void clear_pending_log_callback()
+scoped_log_callback_t::~scoped_log_callback_t()
 {
-  std::lock_guard<std::mutex> lock(g_guard_mutex);
-  g_pending_callback      = nullptr;
-  g_pending_callback_data = nullptr;
+  t_log_callback.callback  = prev_callback_;
+  t_log_callback.user_data = prev_user_data_;
 }
 
 init_logger_t::init_logger_t(std::string log_file, bool log_to_console)
@@ -241,11 +224,7 @@ init_logger_t::init_logger_t(std::string log_file, bool log_to_console)
   auto existing_guard = g_active_guard.lock();
   if (existing_guard) {
     // Reuse existing configuration, just hold a reference to keep it alive.
-    // Drop any pending callback: it cannot be installed on an already-configured
-    // guard, and a later guard would otherwise adopt it with stale user_data (#1752).
-    g_pending_callback      = nullptr;
-    g_pending_callback_data = nullptr;
-    guard_                  = existing_guard;
+    guard_ = existing_guard;
     return;
   }
 
@@ -261,19 +240,12 @@ init_logger_t::init_logger_t(std::string log_file, bool log_to_console)
       std::make_shared<rapids_logger::basic_file_sink_mt>(log_file, true));
     cuopt::default_logger().flush_on(rapids_logger::level_enum::debug);
   }
-  // Capture pending callback into the guard so the bridge reads stable (immutable) state.
   auto guard = std::make_shared<logger_config_guard>();
-  if (g_pending_callback) {
-    guard->callback_state = std::make_unique<captured_log_callback_t>(
-      captured_log_callback_t{g_pending_callback, g_pending_callback_data});
-    g_active_log_callback = guard->callback_state.get();
-    cuopt::default_logger().sinks().push_back(
-      std::make_shared<rapids_logger::callback_sink_mt>(user_log_bridge));
 
-    // Consume the slot; the guard owns a copy now.
-    g_pending_callback      = nullptr;
-    g_pending_callback_data = nullptr;
-  }
+  // Always installed: the bridge no-ops unless the logging thread has a
+  // registration, so delivery no longer depends on which solve built the guard.
+  cuopt::default_logger().sinks().push_back(
+    std::make_shared<rapids_logger::callback_sink_mt>(user_log_bridge));
 
 #if CUOPT_LOG_ACTIVE_LEVEL >= RAPIDS_LOGGER_LOG_LEVEL_INFO
   cuopt::default_logger().set_pattern("%v");
