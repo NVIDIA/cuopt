@@ -8,7 +8,6 @@
 #include <cuopt/error.hpp>
 #include <utilities/macros.cuh>
 
-#include <raft/util/cudart_utils.hpp>
 #include <rmm/cuda_stream_view.hpp>
 
 #pragma once
@@ -23,7 +22,7 @@ struct cuda_graph_t {
   {
     // Use ThreadLocal mode to allow multi-threaded batch execution
     // Global mode blocks other streams from performing operations during capture
-    RAFT_CUDA_TRY(cudaStreamBeginCapture(stream, cudaStreamCaptureModeThreadLocal));
+    cudaStreamBeginCapture(stream, cudaStreamCaptureModeThreadLocal);
     capture_started = true;
   }
 
@@ -31,9 +30,8 @@ struct cuda_graph_t {
   {
     cuopt_assert(capture_started, "start_capture was not called before end_capture!");
     cuopt_expects(capture_started, error_type_t::RuntimeError, "A runtime error occurred!");
-    auto end_err    = cudaStreamEndCapture(stream, &graph);
+    cudaStreamEndCapture(stream, &graph);
     capture_started = false;
-    RAFT_CUDA_TRY(end_err);
     if (graph_created) {
       // If the graph fails to update, errorNode will be set to the
       // node causing the failure and updateResult will be set to a
@@ -45,21 +43,16 @@ struct cuda_graph_t {
     if (!graph_created || updateResult != cudaGraphExecUpdateSuccess) {
       // If a previous update failed, destroy the cudaGraphExec_t
       // before re-instantiating it
-      if (graph_created) { RAFT_CUDA_TRY(cudaGraphExecDestroy(instance)); }
+      if (graph_created) { cudaGraphExecDestroy(instance); }
       // Instantiate graphExec from graph. The error node and
       // error message parameters are unused here.
-      auto inst_err = cudaGraphInstantiate(&instance, graph);
-      if (inst_err != cudaSuccess) { cudaGraphDestroy(graph); }
-      RAFT_CUDA_TRY(inst_err);
+      cudaGraphInstantiate(&instance, graph);
       graph_created = true;
     }
-    RAFT_CUDA_TRY(cudaGraphDestroy(graph));
+    cudaGraphDestroy(graph);
   }
 
-  void launch_graph(rmm::cuda_stream_view stream)
-  {
-    RAFT_CUDA_TRY(cudaGraphLaunch(instance, stream));
-  }
+  void launch_graph(rmm::cuda_stream_view stream) { cudaGraphLaunch(instance, stream); }
 
   bool graph_created   = false;
   bool capture_started = false;
