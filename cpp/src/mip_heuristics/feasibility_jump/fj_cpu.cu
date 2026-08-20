@@ -18,6 +18,7 @@
 
 #include <mip_heuristics/presolve/probing_cache.cuh>
 
+#include <utilities/pcgenerator.hpp>
 #include <utilities/seed_generator.cuh>
 
 #include <raft/core/nvtx.hpp>
@@ -58,6 +59,16 @@ using simplex::variable_type_t;
 template <typename i_t, typename f_t>
 void finalize_fj_cpu_host_initialization(
   fj_cpu_climber_t<i_t, f_t>& fj_cpu,
+  i_t n_variables,
+  i_t n_constraints,
+  i_t n_integer_vars,
+  i_t nnz,
+  const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances);
+
+template <typename i_t, typename f_t>
+static void finalize_fj_cpu_host_initialization_from_template(
+  fj_cpu_climber_t<i_t, f_t>& fj_cpu,
+  const fj_cpu_climber_t<i_t, f_t>& tmpl,
   i_t n_variables,
   i_t n_constraints,
   i_t n_integer_vars,
@@ -918,7 +929,7 @@ static void smooth_weights(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   CPUFJ_NVTX_RANGE("CPUFJ::smooth_weights");
   for (i_t cstr_idx = 0; cstr_idx < fj_cpu.view.pb.n_constraints; cstr_idx++) {
     // consider only satisfied constraints
-    if (fj_cpu.violated_constraints.count(cstr_idx)) continue;
+    if (fj_cpu.violated_constraints.contains(cstr_idx)) continue;
 
     f_t weight_l = max((f_t)0, fj_cpu.h_cstr_left_weights[cstr_idx] - 1);
     f_t weight_r = max((f_t)0, fj_cpu.h_cstr_right_weights[cstr_idx] - 1);
@@ -1047,13 +1058,13 @@ static void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
     if (fabs(fj_cpu.h_lhs_sumcomp[cstr_idx]) > BIGVAL_THRESHOLD)
       fj_cpu.trigger_early_lhs_recomputation = true;
 
-    if (new_cost < -cstr_tolerance && !fj_cpu.violated_constraints.count(cstr_idx)) {
+    if (new_cost < -cstr_tolerance && !fj_cpu.violated_constraints.contains(cstr_idx)) {
       fj_cpu.violated_constraints.insert(cstr_idx);
-      cuopt_assert(fj_cpu.satisfied_constraints.count(cstr_idx) == 1, "");
-      fj_cpu.satisfied_constraints.erase(cstr_idx);
-    } else if (!(new_cost < -cstr_tolerance) && fj_cpu.violated_constraints.count(cstr_idx)) {
-      cuopt_assert(fj_cpu.satisfied_constraints.count(cstr_idx) == 0, "");
-      fj_cpu.violated_constraints.erase(cstr_idx);
+      cuopt_assert(fj_cpu.satisfied_constraints.contains(cstr_idx), "");
+      fj_cpu.satisfied_constraints.remove(cstr_idx);
+    } else if (!(new_cost < -cstr_tolerance) && fj_cpu.violated_constraints.contains(cstr_idx)) {
+      cuopt_assert(!fj_cpu.satisfied_constraints.contains(cstr_idx), "");
+      fj_cpu.violated_constraints.remove(cstr_idx);
       fj_cpu.satisfied_constraints.insert(cstr_idx);
     }
 
@@ -1282,6 +1293,27 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
   return thrust::make_tuple(best_move, best_score);
 }
 
+template <typename i_t>
+static void sample_with_replacement(const host_contiguous_set_t<i_t>& pool,
+                                    i_t sample_size,
+                                    uint64_t seed,
+                                    std::vector<i_t>& out)
+{
+  cuopt_assert(sample_size > 0, "invalid sample size");
+  out.clear();
+  const i_t pool_size = pool.size();
+  if (pool_size == 0) { return; }
+  if (pool_size <= sample_size) {
+    out.assign(pool.begin(), pool.end());
+    return;
+  }
+  out.reserve(sample_size);
+  cuopt::pcgenerator_t rng(seed);
+  for (i_t i = 0; i < sample_size; ++i) {
+    out.push_back(pool.contents[rng.next_u32() % (uint32_t)pool_size]);
+  }
+}
+
 template <typename i_t, typename f_t>
 static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move_viol(
   fj_cpu_climber_t<i_t, f_t>& fj_cpu, i_t sample_size = 100, bool localmin = false)
@@ -1290,12 +1322,10 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move_viol(
   CPUFJ_NVTX_RANGE("CPUFJ::find_mtm_move_viol");
 
   std::vector<i_t> sampled_cstrs;
-  sampled_cstrs.reserve(sample_size);
-  std::sample(fj_cpu.violated_constraints.begin(),
-              fj_cpu.violated_constraints.end(),
-              std::back_inserter(sampled_cstrs),
-              sample_size,
-              fj_cpu.rng);
+  sample_with_replacement(fj_cpu.violated_constraints,
+                          sample_size,
+                          fj_cpu.settings.seed + fj_cpu.iterations,
+                          sampled_cstrs);
 
   return find_mtm_move<i_t, f_t, MTMMoveType::FJ_MTM_VIOLATED>(fj_cpu, sampled_cstrs, localmin);
 }
@@ -1308,12 +1338,10 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move_sat(
   CPUFJ_NVTX_RANGE("CPUFJ::find_mtm_move_sat");
 
   std::vector<i_t> sampled_cstrs;
-  sampled_cstrs.reserve(sample_size);
-  std::sample(fj_cpu.satisfied_constraints.begin(),
-              fj_cpu.satisfied_constraints.end(),
-              std::back_inserter(sampled_cstrs),
-              sample_size,
-              fj_cpu.rng);
+  sample_with_replacement(fj_cpu.satisfied_constraints,
+                          sample_size,
+                          fj_cpu.settings.seed + fj_cpu.iterations,
+                          sampled_cstrs);
 
   return find_mtm_move<i_t, f_t, MTMMoveType::FJ_MTM_SATISFIED>(fj_cpu, sampled_cstrs);
 }
@@ -1570,6 +1598,60 @@ static void init_fj_cpu(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
 }
 
 template <typename i_t, typename f_t>
+static void init_fj_cpu_from_template(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
+                                      const fj_cpu_climber_t<i_t, f_t>& tmpl,
+                                      problem_t<i_t, f_t>& problem,
+                                      const std::vector<f_t>& left_weights,
+                                      const std::vector<f_t>& right_weights,
+                                      f_t objective_weight)
+{
+  cuopt_assert(tmpl.h_offsets.size() == static_cast<size_t>(problem.n_constraints + 1),
+               "template built on a different problem");
+  cuopt_assert(tmpl.h_reverse_offsets.size() == static_cast<size_t>(problem.n_variables + 1),
+               "template built on a different problem");
+  cuopt_assert(tmpl.h_coefficients.size() == static_cast<size_t>(problem.nnz),
+               "template built on a different problem");
+
+  fj_cpu.view    = typename fj_t<i_t, f_t>::climber_data_t::view_t{};
+  fj_cpu.view.pb = problem.view();
+  fj_cpu.pb_ptr  = &problem;
+
+  fj_cpu.h_reverse_coefficients = tmpl.h_reverse_coefficients;
+  fj_cpu.h_reverse_constraints  = tmpl.h_reverse_constraints;
+  fj_cpu.h_reverse_offsets      = tmpl.h_reverse_offsets;
+  fj_cpu.h_coefficients         = tmpl.h_coefficients;
+  fj_cpu.h_offsets              = tmpl.h_offsets;
+  fj_cpu.h_variables            = tmpl.h_variables;
+  fj_cpu.h_obj_coeffs           = tmpl.h_obj_coeffs;
+  fj_cpu.h_var_bounds           = tmpl.h_var_bounds;
+  fj_cpu.h_cstr_lb              = tmpl.h_cstr_lb;
+  fj_cpu.h_cstr_ub              = tmpl.h_cstr_ub;
+  fj_cpu.h_var_types            = tmpl.h_var_types;
+  fj_cpu.h_is_binary_variable   = tmpl.h_is_binary_variable;
+  fj_cpu.h_binary_indices       = tmpl.h_binary_indices;
+
+  fj_cpu.h_cstr_left_weights  = left_weights;
+  fj_cpu.h_cstr_right_weights = right_weights;
+  fj_cpu.max_weight           = 1.0;
+  fj_cpu.h_objective_weight   = objective_weight;
+  fj_cpu.h_assignment         = tmpl.h_assignment;
+  fj_cpu.h_best_assignment    = tmpl.h_assignment;
+  fj_cpu.h_tabu_nodec_until.resize(problem.n_variables, 0);
+  fj_cpu.h_tabu_noinc_until.resize(problem.n_variables, 0);
+  fj_cpu.h_tabu_lastdec.resize(problem.n_variables, 0);
+  fj_cpu.h_tabu_lastinc.resize(problem.n_variables, 0);
+  fj_cpu.iterations = 0;
+
+  finalize_fj_cpu_host_initialization_from_template(fj_cpu,
+                                                    tmpl,
+                                                    problem.n_variables,
+                                                    problem.n_constraints,
+                                                    problem.n_integer_vars,
+                                                    problem.nnz,
+                                                    problem.tolerances);
+}
+
+template <typename i_t, typename f_t>
 static void set_host_data_view(
   fj_cpu_climber_t<i_t, f_t>& fj_cpu,
   i_t n_variables,
@@ -1612,7 +1694,7 @@ static void set_host_data_view(
 }
 
 template <typename i_t, typename f_t>
-void finalize_fj_cpu_host_initialization(
+static void wire_fj_cpu_host_views(
   fj_cpu_climber_t<i_t, f_t>& fj_cpu,
   i_t n_variables,
   i_t n_constraints,
@@ -1620,8 +1702,6 @@ void finalize_fj_cpu_host_initialization(
   i_t nnz,
   const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances)
 {
-  raft::common::nvtx::range scope("finalize_fj_cpu_host_initialization");
-
   cuopt_assert(n_variables >= 0, "invalid variable count");
   cuopt_assert(n_constraints >= 0, "invalid constraint count");
   cuopt_assert(fj_cpu.h_offsets.size() == static_cast<size_t>(n_constraints + 1),
@@ -1655,6 +1735,30 @@ void finalize_fj_cpu_host_initialization(
   fj_cpu.view.best_objective      = &fj_cpu.h_best_objective;
   fj_cpu.view.settings            = &fj_cpu.settings;
 
+  fj_cpu.h_best_objective = +std::numeric_limits<f_t>::infinity();
+
+  // nnz count
+  fj_cpu.cached_mtm_moves.resize(fj_cpu.h_coefficients.size(),
+                                 std::make_pair(0, fj_staged_score_t::zero()));
+
+  fj_cpu.flip_move_computed.resize(n_variables, false);
+  fj_cpu.var_bitmap.resize(n_variables, false);
+  fj_cpu.iter_mtm_vars.reserve(n_variables);
+}
+
+template <typename i_t, typename f_t>
+void finalize_fj_cpu_host_initialization(
+  fj_cpu_climber_t<i_t, f_t>& fj_cpu,
+  i_t n_variables,
+  i_t n_constraints,
+  i_t n_integer_vars,
+  i_t nnz,
+  const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances)
+{
+  raft::common::nvtx::range scope("finalize_fj_cpu_host_initialization");
+
+  wire_fj_cpu_host_views(fj_cpu, n_variables, n_constraints, n_integer_vars, nnz, tolerances);
+
   fj_cpu.h_objective_vars.resize(n_variables);
   auto end = std::copy_if(
     thrust::counting_iterator<i_t>(0),
@@ -1664,12 +1768,6 @@ void finalize_fj_cpu_host_initialization(
   fj_cpu.h_objective_vars.resize(end - fj_cpu.h_objective_vars.begin());
   fj_cpu.view.objective_vars =
     raft::device_span<i_t>(fj_cpu.h_objective_vars.data(), fj_cpu.h_objective_vars.size());
-
-  fj_cpu.h_best_objective = +std::numeric_limits<f_t>::infinity();
-
-  // nnz count
-  fj_cpu.cached_mtm_moves.resize(fj_cpu.h_coefficients.size(),
-                                 std::make_pair(0, fj_staged_score_t::zero()));
 
   fj_cpu.cached_cstr_bounds.resize(fj_cpu.h_reverse_coefficients.size());
   for (i_t var_idx = 0; var_idx < n_variables; ++var_idx) {
@@ -1698,10 +1796,59 @@ void finalize_fj_cpu_host_initialization(
   fj_cpu.var_bitmap.resize(n_variables, false);
   fj_cpu.iter_mtm_vars.reserve(n_variables);
 
+  // Must precede recompute_lhs, which is what first populates them.
+  fj_cpu.violated_constraints.resize(n_constraints);
+  fj_cpu.satisfied_constraints.resize(n_constraints);
+
   recompute_lhs(fj_cpu);
 
   // Precompute static problem features for regression model
   precompute_problem_features(fj_cpu);
+}
+
+template <typename i_t, typename f_t>
+static void finalize_fj_cpu_host_initialization_from_template(
+  fj_cpu_climber_t<i_t, f_t>& fj_cpu,
+  const fj_cpu_climber_t<i_t, f_t>& tmpl,
+  i_t n_variables,
+  i_t n_constraints,
+  i_t n_integer_vars,
+  i_t nnz,
+  const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances)
+{
+  raft::common::nvtx::range scope("finalize_fj_cpu_host_initialization_from_template");
+
+  cuopt_assert(tmpl.h_lhs.size() == static_cast<size_t>(n_constraints), "template lhs mismatch");
+  cuopt_assert(tmpl.violated_constraints.max_size() == n_constraints,
+               "template violated set mismatch");
+  cuopt_assert(tmpl.satisfied_constraints.max_size() == n_constraints,
+               "template satisfied set mismatch");
+  cuopt_assert(tmpl.cached_cstr_bounds.size() == fj_cpu.h_reverse_coefficients.size(),
+               "template cached bounds mismatch");
+
+  fj_cpu.h_objective_vars   = tmpl.h_objective_vars;
+  fj_cpu.cached_cstr_bounds = tmpl.cached_cstr_bounds;
+
+  fj_cpu.h_lhs                 = tmpl.h_lhs;
+  fj_cpu.h_lhs_sumcomp         = tmpl.h_lhs_sumcomp;
+  fj_cpu.violated_constraints  = tmpl.violated_constraints;
+  fj_cpu.satisfied_constraints = tmpl.satisfied_constraints;
+  fj_cpu.total_violations      = tmpl.total_violations;
+  fj_cpu.h_incumbent_objective = tmpl.h_incumbent_objective;
+
+  fj_cpu.n_binary_vars   = tmpl.n_binary_vars;
+  fj_cpu.n_integer_vars  = tmpl.n_integer_vars;
+  fj_cpu.avg_var_degree  = tmpl.avg_var_degree;
+  fj_cpu.max_var_degree  = tmpl.max_var_degree;
+  fj_cpu.var_degree_cv   = tmpl.var_degree_cv;
+  fj_cpu.avg_cstr_degree = tmpl.avg_cstr_degree;
+  fj_cpu.max_cstr_degree = tmpl.max_cstr_degree;
+  fj_cpu.cstr_degree_cv  = tmpl.cstr_degree_cv;
+  fj_cpu.problem_density = tmpl.problem_density;
+
+  wire_fj_cpu_host_views(fj_cpu, n_variables, n_constraints, n_integer_vars, nnz, tolerances);
+  fj_cpu.view.objective_vars =
+    raft::device_span<i_t>(fj_cpu.h_objective_vars.data(), fj_cpu.h_objective_vars.size());
 }
 
 template <typename i_t, typename f_t>
@@ -1830,7 +1977,7 @@ static void sanity_checks(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   // Check that each violated constraint is actually violated and not present in
   // satisfied_constraints
   for (const auto& cstr_idx : fj_cpu.violated_constraints) {
-    cuopt_assert(fj_cpu.satisfied_constraints.count(cstr_idx) == 0,
+    cuopt_assert(!fj_cpu.satisfied_constraints.contains(cstr_idx),
                  "Violated constraint also in satisfied_constraints");
     f_t lhs    = fj_cpu.h_lhs[cstr_idx];
     f_t tol    = fj_cpu.view.get_corrected_tolerance(cstr_idx);
@@ -1841,7 +1988,7 @@ static void sanity_checks(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   // Check that each satisfied constraint is actually satisfied and not present in
   // violated_constraints
   for (const auto& cstr_idx : fj_cpu.satisfied_constraints) {
-    cuopt_assert(fj_cpu.violated_constraints.count(cstr_idx) == 0,
+    cuopt_assert(!fj_cpu.violated_constraints.contains(cstr_idx),
                  "Satisfied constraint also in violated_constraints");
     f_t lhs    = fj_cpu.h_lhs[cstr_idx];
     f_t tol    = fj_cpu.view.get_corrected_tolerance(cstr_idx);
@@ -1851,8 +1998,8 @@ static void sanity_checks(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 
   // Check that each constraint is in exactly one of violated_constraints or satisfied_constraints
   for (i_t cstr_idx = 0; cstr_idx < fj_cpu.view.pb.n_constraints; ++cstr_idx) {
-    bool in_viol = fj_cpu.violated_constraints.count(cstr_idx) > 0;
-    bool in_sat  = fj_cpu.satisfied_constraints.count(cstr_idx) > 0;
+    bool in_viol = fj_cpu.violated_constraints.contains(cstr_idx);
+    bool in_sat  = fj_cpu.satisfied_constraints.contains(cstr_idx);
     cuopt_assert(
       in_viol != in_sat,
       "Constraint must be in exactly one of violated_constraints or satisfied_constraints");
@@ -2271,6 +2418,25 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_standalone(
 }
 
 template <typename i_t, typename f_t>
+std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_standalone_from_template(
+  problem_t<i_t, f_t>& problem,
+  const fj_cpu_climber_t<i_t, f_t>& tmpl,
+  std::atomic<bool>& preemption_flag,
+  fj_settings_t settings)
+{
+  raft::common::nvtx::range scope("init_fj_cpu_standalone_from_template");
+
+  auto fj_cpu = std::make_unique<fj_cpu_climber_t<i_t, f_t>>(preemption_flag);
+
+  std::vector<f_t> default_weights(problem.n_constraints, 1.0);
+  init_fj_cpu_from_template(*fj_cpu, tmpl, problem, default_weights, default_weights, 0.0);
+  fj_cpu->settings      = settings;
+  fj_cpu->settings.seed = cuopt::seed_generator::get_seed();
+
+  return fj_cpu;
+}
+
+template <typename i_t, typename f_t>
 void fj_cpu_worker_t<i_t, f_t>::fj_cpu_deleter_t::operator()(fj_cpu_climber_t<i_t, f_t>* ptr) const
 {
   delete ptr;
@@ -2347,6 +2513,11 @@ template std::unique_ptr<fj_cpu_climber_t<int, float>> init_fj_cpu_standalone(
   solution_t<int, float>& solution,
   std::atomic<bool>& preemption_flag,
   fj_settings_t settings);
+template std::unique_ptr<fj_cpu_climber_t<int, float>> init_fj_cpu_standalone_from_template(
+  problem_t<int, float>& problem,
+  const fj_cpu_climber_t<int, float>& tmpl,
+  std::atomic<bool>& preemption_flag,
+  fj_settings_t settings);
 template std::unique_ptr<fj_cpu_climber_t<int, float>> init_fj_cpu_from_optimization_problem(
   const optimization_problem_t<int, float>& problem,
   const typename mip_solver_settings_t<int, float>::tolerances_t& tolerances,
@@ -2370,6 +2541,11 @@ template void cpufj_solve(fj_cpu_climber_t<int, double>* fj_cpu,
 template std::unique_ptr<fj_cpu_climber_t<int, double>> init_fj_cpu_standalone(
   problem_t<int, double>& problem,
   solution_t<int, double>& solution,
+  std::atomic<bool>& preemption_flag,
+  fj_settings_t settings);
+template std::unique_ptr<fj_cpu_climber_t<int, double>> init_fj_cpu_standalone_from_template(
+  problem_t<int, double>& problem,
+  const fj_cpu_climber_t<int, double>& tmpl,
   std::atomic<bool>& preemption_flag,
   fj_settings_t settings);
 template std::unique_ptr<fj_cpu_climber_t<int, double>> init_fj_cpu_from_optimization_problem(

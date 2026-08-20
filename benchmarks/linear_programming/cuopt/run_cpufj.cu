@@ -129,14 +129,20 @@ int main(int argc, char** argv)
   mip::clamp_within_var_bounds<i_t, f_t>(solution.assignment, &problem, &handle);
   handle.sync_stream();
 
-  // Built serially: each climber host-copies the problem off the same stream.
+  // Built serially: only the first climber host-copies the problem off the stream, the rest clone
+  // its host data.
   std::vector<std::atomic<bool>> preemption_flags(n_climbers);
   std::vector<std::unique_ptr<mip::fj_cpu_climber_t<i_t, f_t>>> climbers(n_climbers);
   for (int k = 0; k < n_climbers; ++k) {
     preemption_flags[k].store(false);
     mip::fj_settings_t settings;
     settings.seed = (int)(base_seed + k);
-    climbers[k]   = mip::init_fj_cpu_standalone(problem, solution, preemption_flags[k], settings);
+    if (k == 0) {
+      climbers[k] = mip::init_fj_cpu_standalone(problem, solution, preemption_flags[k], settings);
+    } else {
+      climbers[k] = mip::init_fj_cpu_standalone_from_template(
+        problem, *climbers[0], preemption_flags[k], settings);
+    }
 
     // Portfolio diversification, decorrelated from the value RNG.
     std::mt19937 rng(base_seed + 7919u * k);
