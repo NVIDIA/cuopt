@@ -2192,9 +2192,10 @@ void problem_t<i_t, f_t>::set_papilo_presolve_data(
 }
 
 template <typename i_t, typename f_t>
-void problem_t<i_t, f_t>::papilo_uncrush_assignment(rmm::device_uvector<f_t>& assignment) const
+void problem_t<i_t, f_t>::papilo_uncrush_assignment(rmm::device_uvector<f_t>& assignment,
+                                                    rmm::cuda_stream_view stream) const
 {
-  presolve_data.papilo_uncrush_assignment(const_cast<problem_t&>(*this), assignment);
+  presolve_data.papilo_uncrush_assignment(assignment, stream);
 }
 
 template <typename i_t, typename f_t>

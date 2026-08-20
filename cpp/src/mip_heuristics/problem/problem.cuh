@@ -119,7 +119,12 @@ class problem_t {
   {
     return presolve_data.get_papilo_original_num_variables();
   }
-  void papilo_uncrush_assignment(rmm::device_uvector<f_t>& assignment) const;
+  void papilo_uncrush_assignment(rmm::device_uvector<f_t>& assignment,
+                                 rmm::cuda_stream_view stream) const;
+  void papilo_uncrush_assignment(rmm::device_uvector<f_t>& assignment) const
+  {
+    papilo_uncrush_assignment(assignment, handle_ptr->get_stream());
+  }
   void compute_transpose_of_problem();
   f_t get_user_obj_from_solver_obj(f_t solver_obj) const;
   f_t get_solver_obj_from_user_obj(f_t user_obj) const;
