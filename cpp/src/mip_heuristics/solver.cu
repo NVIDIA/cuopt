@@ -69,6 +69,10 @@ struct branch_and_bound_solution_helper_t {
 
   void solution_callback(std::vector<f_t>& solution, f_t objective)
   {
+    if (dm->context.settings.determinism_mode == CUOPT_MODE_OPPORTUNISTIC) {
+      dm->context.solution_publication.publish_if_better(
+        dm->context.problem_ptr, solution, objective);
+    }
     dm->population.add_external_solution(solution, objective, solution_origin_t::BRANCH_AND_BOUND);
   }
 
@@ -197,12 +201,8 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   if (context.problem_ptr->empty) {
     CUOPT_LOG_INFO("Problem fully reduced in presolve");
     sol.set_problem_fully_reduced();
-    for (auto callback : context.settings.get_mip_callbacks()) {
-      if (callback->get_type() == internals::base_solution_callback_type::GET_SOLUTION) {
-        auto get_sol_callback = static_cast<internals::get_solution_callback_t*>(callback);
-        dm.population.invoke_get_solution_callback(sol, get_sol_callback);
-      }
-    }
+    context.solution_publication.publish_if_better(
+      context.problem_ptr, sol.get_host_assignment(), sol.get_objective());
     context.problem_ptr->post_process_solution(sol);
     return sol;
   }
@@ -237,12 +237,8 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   if (run_presolve && context.problem_ptr->empty) {
     CUOPT_LOG_INFO("Problem full reduced in presolve");
     sol.set_problem_fully_reduced();
-    for (auto callback : context.settings.get_mip_callbacks()) {
-      if (callback->get_type() == internals::base_solution_callback_type::GET_SOLUTION) {
-        auto get_sol_callback = static_cast<internals::get_solution_callback_t*>(callback);
-        dm.population.invoke_get_solution_callback(sol, get_sol_callback);
-      }
-    }
+    context.solution_publication.publish_if_better(
+      context.problem_ptr, sol.get_host_assignment(), sol.get_objective());
     context.problem_ptr->post_process_solution(sol);
     return sol;
   }
@@ -273,12 +269,8 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
       sol.set_problem_fully_reduced();
     }
     if (opt_sol.get_termination_status() == pdlp_termination_status_t::Optimal) {
-      for (auto callback : context.settings.get_mip_callbacks()) {
-        if (callback->get_type() == internals::base_solution_callback_type::GET_SOLUTION) {
-          auto get_sol_callback = static_cast<internals::get_solution_callback_t*>(callback);
-          dm.population.invoke_get_solution_callback(sol, get_sol_callback);
-        }
-      }
+      context.solution_publication.publish_if_better(
+        context.problem_ptr, sol.get_host_assignment(), sol.get_objective());
     }
     context.problem_ptr->post_process_solution(sol);
     return sol;
@@ -445,10 +437,10 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
       branch_and_bound->set_concurrent_lp_root_solve(true);
 
       context.problem_ptr->branch_and_bound_callback =
-        std::bind(&mip::branch_and_bound_t<i_t, f_t>::set_solution_from_heuristics,
-                  branch_and_bound.get(),
-                  std::placeholders::_1,
-                  std::placeholders::_2);
+        [bb = branch_and_bound.get()](const std::vector<f_t>& solution,
+                                      heuristics_origin_t origin) {
+          return bb->set_solution_from_heuristics(solution, origin);
+        };
     } else if (context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC) {
       branch_and_bound->set_concurrent_lp_root_solve(false);
       // TODO once deterministic GPU heuristics are integrated

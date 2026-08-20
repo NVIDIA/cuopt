@@ -9,6 +9,7 @@
 
 #include <mip_heuristics/problem/problem.cuh>
 #include <mip_heuristics/relaxed_lp/lp_state.cuh>
+#include <mip_heuristics/solution_publication.cuh>
 #include <utilities/work_limit_context.hpp>
 #include <utilities/work_unit_scheduler.hpp>
 
@@ -58,6 +59,8 @@ struct mip_solver_context_t {
   std::atomic<bool> preempt_heuristic_solver_ = false;
   const mip_solver_settings_t<i_t, f_t> settings;
   solver_stats_t<i_t, f_t> stats;
+  // Every incumbent reported to the user goes through here, from whichever thread found it.
+  solution_publication_t<i_t, f_t> solution_publication{settings, stats};
   // Work limit context for tracking work units in deterministic mode (shared across all timers in
   // GPU heuristic loop)
   work_limit_context_t gpu_heur_loop{"GPUHeur"};

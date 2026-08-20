@@ -130,8 +130,12 @@ class branch_and_bound_t {
     }
   }
 
-  // Set a solution based on the user problem during the course of the solve
-  bool set_solution_from_heuristics(const std::vector<f_t>& solution, heuristics_origin_t origin);
+  // Set a solution based on the user problem during the course of the solve.
+  // When non-null, `solver_objective` receives the objective of `solution` in original_lp_ space,
+  // which is the space every solution_callback consumer expects.
+  bool set_solution_from_heuristics(const std::vector<f_t>& solution,
+                                    heuristics_origin_t origin,
+                                    f_t* solver_objective = nullptr);
 
   // Apply a solution found by a CPU FJ worker.
   void set_solution_from_cpu_fj(f_t obj, const std::vector<f_t>& assignment, double work_units);

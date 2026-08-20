@@ -257,8 +257,8 @@ void presolve_data_t<i_t, f_t>::set_papilo_presolve_data(
 }
 
 template <typename i_t, typename f_t>
-void presolve_data_t<i_t, f_t>::papilo_uncrush_assignment(
-  problem_t<i_t, f_t>& problem, rmm::device_uvector<f_t>& assignment) const
+void presolve_data_t<i_t, f_t>::papilo_uncrush_assignment(rmm::device_uvector<f_t>& assignment,
+                                                          rmm::cuda_stream_view stream) const
 {
   if (papilo_presolve_ptr == nullptr) {
     CUOPT_LOG_INFO("Papilo presolve data not set, skipping uncrushing assignment");
@@ -266,15 +266,12 @@ void presolve_data_t<i_t, f_t>::papilo_uncrush_assignment(
   }
   cuopt_assert(assignment.size() == papilo_reduced_to_original_map.size(),
                "Papilo uncrush assignment size mismatch");
-  auto h_assignment = cuopt::host_copy(assignment, problem.handle_ptr->get_stream());
+  auto h_assignment = cuopt::host_copy(assignment, stream);
   std::vector<f_t> full_assignment;
   papilo_presolve_ptr->uncrush_primal_solution(h_assignment, full_assignment);
-  assignment.resize(full_assignment.size(), problem.handle_ptr->get_stream());
-  raft::copy(assignment.data(),
-             full_assignment.data(),
-             full_assignment.size(),
-             problem.handle_ptr->get_stream());
-  problem.handle_ptr->sync_stream();
+  assignment.resize(full_assignment.size(), stream);
+  raft::copy(assignment.data(), full_assignment.data(), full_assignment.size(), stream);
+  stream.synchronize();
 }
 
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
