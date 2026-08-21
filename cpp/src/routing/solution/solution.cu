@@ -96,7 +96,7 @@ void solution_t<i_t, f_t, REQUEST>::add_route(route_t<i_t, f_t, REQUEST>&& route
   i_t route_slot     = route_id_to_idx[route_id];
   routes[route_slot] = std::move(route);
   cuopt_assert(route_id < (int)routes_view.size(), "route id should be in range");
-  set_route_views();
+  set_route_views(route_id, route_id + 1);
   if (max_nodes_per_route < get_route(route_id).max_nodes_per_route()) {
     resize_routes(raft::alignTo(get_route(route_id).max_nodes_per_route(), base_route_size));
   }
@@ -125,9 +125,6 @@ void solution_t<i_t, f_t, REQUEST>::add_routes(
   // sync_stream() after this loop, so per-iteration locals cannot be used. vehicle_id and
   // route are references into new_routes and already outlive this function; the scalars
   // are staged here, reserved up front so no reallocation can invalidate a pending copy.
-  static_assert(std::is_same_v<NodeInfo<i_t>, NodeInfo<>>,
-                "add_routes copies node info straight out of new_routes, which requires the "
-                "caller's NodeInfo<> to be the same type as NodeInfo<i_t>");
   std::vector<i_t> h_n_nodes;
   std::vector<i_t> h_route_ids;
   h_n_nodes.reserve(new_routes.size());
@@ -155,8 +152,8 @@ void solution_t<i_t, f_t, REQUEST>::add_routes(
     cuopt_assert(route_id < (int)routes_view.size(), "route id should be in range");
     ++route_id;
   }
-  // Publish every view once, through the single path that owns the lifetime rule.
-  set_route_views();
+  // Publish once, through the single path that owns the lifetime rule.
+  set_route_views(prev_route_size, n_routes);
   set_nodes_data_of_new_routes(added_routes, prev_route_size);
   sol_handle->sync_stream();
 }
@@ -292,13 +289,16 @@ void solution_t<i_t, f_t, REQUEST>::set_routes_to_search()
 }
 
 template <typename i_t, typename f_t, request_t REQUEST>
-void solution_t<i_t, f_t, REQUEST>::set_route_views()
+void solution_t<i_t, f_t, REQUEST>::set_route_views(i_t start, i_t end)
 {
   raft::common::nvtx::range fun_scope("set_route_views");
   if (routes.size() > routes_view.size()) {
     // reserve with the max size
     routes_view.resize(routes.size(), sol_handle->get_stream());
   }
+  if (end < 0) { end = (i_t)routes.size(); }
+  cuopt_assert(start >= 0 && end <= (i_t)routes.size(), "route view range out of bounds");
+  if (end <= start) { return; }
 
   // Single point where route views are published to the device. The host source of an async
   // copy must stay valid and unmodified until the stream is synchronized -- rmm's
@@ -306,12 +306,14 @@ void solution_t<i_t, f_t, REQUEST>::set_route_views()
   // the copy runs, not when it is enqueued. Staging in a member buffer and synchronizing here
   // keeps that rule in one place instead of at every call site.
   h_routes_view.clear();
-  h_routes_view.reserve(routes.size());
-  for (size_t i = 0; i < routes.size(); ++i) {
+  h_routes_view.reserve(end - start);
+  for (i_t i = start; i < end; ++i) {
     h_routes_view.push_back(get_route(i).view());
   }
-  raft::copy(
-    routes_view.data(), h_routes_view.data(), h_routes_view.size(), sol_handle->get_stream());
+  raft::copy(routes_view.data() + start,
+             h_routes_view.data(),
+             h_routes_view.size(),
+             sol_handle->get_stream());
   sol_handle->sync_stream();
 }
 
@@ -531,7 +533,7 @@ void solution_t<i_t, f_t, REQUEST>::copy_device_solution(solution_t<i_t, f_t, RE
   check_and_allocate_routes(src_sol.n_routes);
 
   // copy_routes below reads these entries, so they must be published before it launches.
-  if (src_sol.n_routes > n_routes) { set_route_views(); }
+  set_route_views(n_routes, src_sol.n_routes);
 
   n_routes = src_sol.n_routes;
 

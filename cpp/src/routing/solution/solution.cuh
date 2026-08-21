@@ -494,7 +494,8 @@ class solution_t {
   size_t get_temp_route_shared_size(i_t added_size = 0) const;
   void compute_initial_data(bool check_feasibility = true);
   void random_init_routes();
-  void set_route_views();
+  // Publishes routes[start, end) to the device. end < 0 means routes.size().
+  void set_route_views(i_t start = 0, i_t end = -1);
   void expand_route(i_t route_id);
   void resize_route(i_t route_id, i_t new_route_size);
   void clear_routes(std::vector<i_t> vehicle_ids);
