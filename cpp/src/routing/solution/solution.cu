@@ -93,11 +93,10 @@ void solution_t<i_t, f_t, REQUEST>::add_route(route_t<i_t, f_t, REQUEST>&& route
   route.n_nodes.set_value_async(n_nodes, sol_handle->get_stream());
   route.route_id.set_value_async(route_id, sol_handle->get_stream());
   sol_handle->sync_stream();
-  i_t route_slot        = route_id_to_idx[route_id];
-  routes[route_slot]    = std::move(route);
-  const auto route_view = routes[route_slot].view();
+  i_t route_slot     = route_id_to_idx[route_id];
+  routes[route_slot] = std::move(route);
   cuopt_assert(route_id < (int)routes_view.size(), "route id should be in range");
-  routes_view.set_element_async(route_id, route_view, sol_handle->get_stream());
+  set_route_views();
   if (max_nodes_per_route < get_route(route_id).max_nodes_per_route()) {
     resize_routes(raft::alignTo(get_route(route_id).max_nodes_per_route(), base_route_size));
   }
@@ -122,18 +121,17 @@ void solution_t<i_t, f_t, REQUEST>::add_routes(
   n_routes += added_routes;
 
   check_and_allocate_routes(n_routes);
-  // Host sources of the async copies below must stay alive and unmodified until the
-  // sync_stream() after this loop. Stage them here (reserved up front so no reallocation
-  // can invalidate a pending copy) instead of using per-iteration locals. vehicle_id and
-  // route are references into new_routes, which already outlives this function.
-  std::vector<std::vector<NodeInfo<i_t>>> h_node_infos;
+  // Host sources of the async copies below must stay valid and unmodified until the
+  // sync_stream() after this loop, so per-iteration locals cannot be used. vehicle_id and
+  // route are references into new_routes and already outlive this function; the scalars
+  // are staged here, reserved up front so no reallocation can invalidate a pending copy.
+  static_assert(std::is_same_v<NodeInfo<i_t>, NodeInfo<>>,
+                "add_routes copies node info straight out of new_routes, which requires the "
+                "caller's NodeInfo<> to be the same type as NodeInfo<i_t>");
   std::vector<i_t> h_n_nodes;
   std::vector<i_t> h_route_ids;
-  std::vector<typename route_t<i_t, f_t, REQUEST>::view_t> h_route_views;
-  h_node_infos.reserve(new_routes.size());
   h_n_nodes.reserve(new_routes.size());
   h_route_ids.reserve(new_routes.size());
-  h_route_views.reserve(new_routes.size());
   for (const auto& [vehicle_id, route] : new_routes) {
     // depot for the beginning and the end
     i_t new_route_size = route.size() + 2;
@@ -143,28 +141,22 @@ void solution_t<i_t, f_t, REQUEST>::add_routes(
         std::max(max_nodes_per_route, raft::alignTo(new_route_size, base_route_size));
       resize_routes(new_route_size);
     }
-    auto& node_info_h = h_node_infos.emplace_back();
-    node_info_h.reserve(route.size());
-    for (size_t x = 0; x < route.size(); ++x) {
-      // Dummy, will be overriden in set_nodes_data_of_route
-      node_info_h.emplace_back(route[x]);
-    }
-    // skip depot
+    // Values are overridden in set_nodes_data_of_route; copy straight out of new_routes,
+    // which outlives this function, rather than through a temporary. Skip the depot.
     raft::copy(d_route.dimensions.requests.node_info.data() + 1,
-               node_info_h.data(),
-               node_info_h.size(),
+               route.data(),
+               route.size(),
                sol_handle->get_stream());
     const i_t& n_nodes = h_n_nodes.emplace_back(route.size() + 1);
     d_route.n_nodes.set_value_async(n_nodes, sol_handle->get_stream());
     const i_t& stable_route_id = h_route_ids.emplace_back(route_id);
     d_route.route_id.set_value_async(stable_route_id, sol_handle->get_stream());
     d_route.vehicle_id.set_value_async(vehicle_id, sol_handle->get_stream());
-    i_t route_slot = route_id_to_idx[route_id];
     cuopt_assert(route_id < (int)routes_view.size(), "route id should be in range");
-    const auto& route_view = h_route_views.emplace_back(routes[route_slot].view());
-    routes_view.set_element_async(route_id, route_view, sol_handle->get_stream());
     ++route_id;
   }
+  // Publish every view once, through the single path that owns the lifetime rule.
+  set_route_views();
   set_nodes_data_of_new_routes(added_routes, prev_route_size);
   sol_handle->sync_stream();
 }
@@ -308,16 +300,18 @@ void solution_t<i_t, f_t, REQUEST>::set_route_views()
     routes_view.resize(routes.size(), sol_handle->get_stream());
   }
 
-  // The host source of an async copy must stay alive until the stream is synchronized
-  // (rmm::device_uvector::set_element_async does not synchronize). Stage the views in a
-  // vector that outlives the copy instead of copying from a per-iteration stack local.
-  std::vector<typename route_t<i_t, f_t, REQUEST>::view_t> h_route_views;
-  h_route_views.reserve(routes.size());
+  // Single point where route views are published to the device. The host source of an async
+  // copy must stay valid and unmodified until the stream is synchronized -- rmm's
+  // memcpy_async uses cudaMemcpySrcAccessOrderStream on CUDA 13, so the bytes are read when
+  // the copy runs, not when it is enqueued. Staging in a member buffer and synchronizing here
+  // keeps that rule in one place instead of at every call site.
+  h_routes_view.clear();
+  h_routes_view.reserve(routes.size());
   for (size_t i = 0; i < routes.size(); ++i) {
-    h_route_views.push_back(get_route(i).view());
+    h_routes_view.push_back(get_route(i).view());
   }
   raft::copy(
-    routes_view.data(), h_route_views.data(), h_route_views.size(), sol_handle->get_stream());
+    routes_view.data(), h_routes_view.data(), h_routes_view.size(), sol_handle->get_stream());
   sol_handle->sync_stream();
 }
 
@@ -395,22 +389,17 @@ void solution_t<i_t, f_t, REQUEST>::resize_routes(i_t new_size)
 {
   raft::common::nvtx::range fun_scope("resize_routes");
 
-  // See set_route_views: the host source must outlive the async copy, so the resized views
-  // are staged here rather than copied from a stack local that dies each iteration.
-  std::vector<typename route_t<i_t, f_t, REQUEST>::view_t> h_route_views;
-  std::vector<i_t> h_route_indices;
+  bool any_resized = false;
   for (i_t i = 0; i < n_routes; ++i) {
     auto& route_i = get_route(i);
     if (route_i.max_nodes_per_route() < new_size) {
       route_i.resize(new_size);
-      h_route_views.push_back(get_route(i).view());
-      h_route_indices.push_back(i);
+      any_resized = true;
     }
   }
-  for (size_t k = 0; k < h_route_indices.size(); ++k) {
-    routes_view.set_element_async(h_route_indices[k], h_route_views[k], sol_handle->get_stream());
-  }
-  if (!h_route_indices.empty()) { sol_handle->sync_stream(); }
+  // A resize reallocates the route buffers, so the device-side views are stale. Republish
+  // through set_route_views rather than copying each changed view from a local here.
+  if (any_resized) { set_route_views(); }
   max_nodes_per_route = std::max(max_nodes_per_route, new_size);
 }
 
@@ -541,17 +530,8 @@ void solution_t<i_t, f_t, REQUEST>::copy_device_solution(solution_t<i_t, f_t, RE
   if (!src_sol.n_routes) { return; }
   check_and_allocate_routes(src_sol.n_routes);
 
-  // See set_route_views: the host source must outlive the async copy. copy_routes below
-  // reads these entries, so a dangling source here corrupts the route span sizes it uses.
-  std::vector<typename route_t<i_t, f_t, REQUEST>::view_t> h_route_views;
-  h_route_views.reserve(std::max(0, src_sol.n_routes - n_routes));
-  for (i_t i = n_routes; i < src_sol.n_routes; ++i) {
-    h_route_views.push_back(get_route(i).view());
-  }
-  for (size_t k = 0; k < h_route_views.size(); ++k) {
-    routes_view.set_element_async(n_routes + (i_t)k, h_route_views[k], sol_handle->get_stream());
-  }
-  if (!h_route_views.empty()) { sol_handle->sync_stream(); }
+  // copy_routes below reads these entries, so they must be published before it launches.
+  if (src_sol.n_routes > n_routes) { set_route_views(); }
 
   n_routes = src_sol.n_routes;
 

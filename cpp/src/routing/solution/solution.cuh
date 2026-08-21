@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -665,6 +665,10 @@ class solution_t {
   std::vector<i_t> route_id_to_idx;
   // route view for device
   rmm::device_uvector<typename route_t<i_t, f_t, REQUEST>::view_t> routes_view;
+  // Host staging for routes_view. set_route_views() synchronizes before returning, so no
+  // copy is ever left pending against this buffer and it is safe to reuse across calls.
+  // Kept as a member so the hot paths that publish views do not allocate.
+  std::vector<typename route_t<i_t, f_t, REQUEST>::view_t> h_routes_view;
 
   route_node_map_t<i_t> route_node_map;
 
