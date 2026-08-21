@@ -85,6 +85,9 @@ struct host_contiguous_set_t {
   std::vector<uint8_t> is_member;
 };
 
+constexpr double fj_obj_mult_min = 0.25;
+constexpr double fj_obj_mult_max = 4.0;
+
 // NOTE: this seems an easy pick for reflection/xmacros once this is available (C++26?)
 // Maintaining a single source of truth for all members would be nice
 template <typename i_t, typename f_t>
@@ -180,6 +183,10 @@ struct fj_cpu_climber_t {
   ins_vector<f_t> h_assignment;
   ins_vector<f_t> h_best_assignment;
   f_t h_objective_weight;
+  // Lower bound h_objective_weight decays to, so a lane seeded with objective pressure keeps it.
+  f_t seed_objective_weight{0};
+  // Mean absolute nonzero objective coefficient; the unit of the objective score term.
+  f_t obj_magnitude{1};
   f_t h_incumbent_objective;
   f_t h_best_objective;
   i_t last_feasible_entrance_iter{0};
@@ -209,6 +216,10 @@ struct fj_cpu_climber_t {
 
   // CSR nnz offset -> (delta, score)
   std::vector<std::pair<f_t, fj_staged_score_t>> cached_mtm_moves;
+
+  // Entry i is live only while cached_mtm_moves_version[i] == h_cstr_version of i's row.
+  std::vector<i_t> cached_mtm_moves_version;
+  std::vector<i_t> h_cstr_version;
 
   // CSC (transposed!) nnz-offset-indexed constraint bounds (lb, ub)
   // std::pair<f_t, f_t> better compile down to 16 bytes!! GCC do your job!

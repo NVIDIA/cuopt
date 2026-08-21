@@ -38,7 +38,7 @@
 #include <unordered_set>
 #include <vector>
 
-#define CPUFJ_TIMING_TRACE 0
+#define CPUFJ_TIMING_TRACE 1
 
 // Define CPUFJ_NVTX_RANGES to enable detailed NVTX profiling ranges
 #ifdef CPUFJ_NVTX_RANGES
@@ -639,10 +639,18 @@ static inline std::pair<fj_staged_score_t, f_t> compute_score(fj_cpu_climber_t<i
   }
 
   f_t base_obj = 0;
-  if (obj_diff < 0)  // improving move wrt objective
-    base_obj = fj_cpu.h_objective_weight;
-  else if (obj_diff > 0)
-    base_obj = -fj_cpu.h_objective_weight;
+  if (fj_cpu.h_objective_weight > 0 && obj_diff != 0) {
+    // Scaling base by the objective magnitude only means something where there is feasibility
+    // impact to trade against; at base_feas_sum zero it would only make base distinct across
+    // candidates, which strands the bonus stage of the staged comparison.
+    f_t weighted = fj_cpu.h_objective_weight;
+    if (base_feas_sum != 0) {
+      cuopt_assert(fj_cpu.obj_magnitude > 0, "objective magnitude unit must be positive");
+      weighted *= min((f_t)fj_obj_mult_max,
+                      max((f_t)fj_obj_mult_min, fabs(obj_diff) / fj_cpu.obj_magnitude));
+    }
+    base_obj = obj_diff < 0 ? weighted : -weighted;
+  }
 
   f_t bonus_breakthrough = 0;
 
@@ -939,7 +947,8 @@ static void smooth_weights(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   }
 
   if (fj_cpu.h_objective_weight > 0 && fj_cpu.h_incumbent_objective >= fj_cpu.h_best_objective) {
-    fj_cpu.h_objective_weight = max((f_t)0, fj_cpu.h_objective_weight - 1);
+    fj_cpu.h_objective_weight =
+      max(fj_cpu.seed_objective_weight, fj_cpu.h_objective_weight - 1);
   }
 }
 
@@ -989,11 +998,7 @@ static void update_weights(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
     }
 
     // Invalidate related cached move scores
-    auto [relvar_offset_begin, relvar_offset_end] =
-      range_for_constraint<i_t, f_t>(fj_cpu, cstr_idx);
-    for (auto i = relvar_offset_begin; i < relvar_offset_end; i++) {
-      fj_cpu.cached_mtm_moves[i].first = 0;
-    }
+    fj_cpu.h_cstr_version[cstr_idx]++;
   }
 
   if (fj_cpu.violated_constraints.empty()) { fj_cpu.h_objective_weight += 1; }
@@ -1072,11 +1077,7 @@ static void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
     cuopt_assert(isfinite(fj_cpu.h_lhs[cstr_idx]), "assignment should be finite");
 
     // Invalidate related cached move scores
-    auto [relvar_offset_begin, relvar_offset_end] =
-      range_for_constraint<i_t, f_t>(fj_cpu, cstr_idx);
-    for (auto i = relvar_offset_begin; i < relvar_offset_end; i++) {
-      fj_cpu.cached_mtm_moves[i].first = 0;
-    }
+    fj_cpu.h_cstr_version[cstr_idx]++;
   }
 
   if (previous_viol > 0 && fj_cpu.violated_constraints.empty()) {
@@ -1171,7 +1172,11 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
     auto [offset_begin, offset_end] = range_for_constraint<i_t, f_t>(fj_cpu, cstr_idx);
     for (auto i = offset_begin; i < offset_end; i++) {
       // early cached check
-      if (auto& cached_move = fj_cpu.cached_mtm_moves[i]; cached_move.first != 0) {
+      cuopt_assert(fj_cpu.cached_mtm_moves_version[i] <= fj_cpu.h_cstr_version[cstr_idx],
+                   "cached move newer than its constraint");
+      if (auto& cached_move = fj_cpu.cached_mtm_moves[i];
+          cached_move.first != 0 &&
+          fj_cpu.cached_mtm_moves_version[i] == fj_cpu.h_cstr_version[cstr_idx]) {
         if (best_score < cached_move.second) {
           auto var_idx = fj_cpu.h_variables[i];
           if (check_variable_within_bounds<i_t, f_t>(
@@ -1241,8 +1246,9 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
       cuopt_assert(move.var_idx < fj_cpu.h_assignment.size(), "move.var_idx is out of bounds");
       cuopt_assert(move.var_idx >= 0, "move.var_idx is not positive");
 
-      auto [score, infeasibility] = compute_score<i_t, f_t>(fj_cpu, var_idx, delta);
-      fj_cpu.cached_mtm_moves[i]  = std::make_pair(delta, score);
+      auto [score, infeasibility]        = compute_score<i_t, f_t>(fj_cpu, var_idx, delta);
+      fj_cpu.cached_mtm_moves[i]         = std::make_pair(delta, score);
+      fj_cpu.cached_mtm_moves_version[i] = fj_cpu.h_cstr_version[cstr_idx];
       fj_cpu.miss_count++;
       // reject this move if it would increase the target variable to a numerically unstable value
       if (fj_cpu.view.move_numerically_stable(
@@ -1388,6 +1394,7 @@ static void recompute_lhs(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   fj_cpu.h_incumbent_objective = thrust::inner_product(
     fj_cpu.h_assignment.begin(), fj_cpu.h_assignment.end(), fj_cpu.h_obj_coeffs.begin(), 0.);
 }
+
 
 template <typename i_t, typename f_t>
 static thrust::tuple<fj_move_t, fj_staged_score_t> find_lift_move(
@@ -1564,14 +1571,20 @@ static void reset_infeasible_checkpoint(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 }
 
 template <typename i_t, typename f_t>
+static void invalidate_mtm_cache(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
+{
+  for (size_t c = 0; c < fj_cpu.h_cstr_version.size(); ++c)
+    fj_cpu.h_cstr_version[c]++;
+}
+
+template <typename i_t, typename f_t>
 static void restart_from_infeasible_checkpoint(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 {
   cuopt_assert(fj_cpu.h_assignment.size() == fj_cpu.h_best_infeasible_assignment.size(),
                "incumbent_assignment span would be invalidated");
   fj_cpu.h_assignment = fj_cpu.h_best_infeasible_assignment;
   recompute_lhs(fj_cpu);
-  for (size_t i = 0; i < fj_cpu.cached_mtm_moves.size(); ++i)
-    fj_cpu.cached_mtm_moves[i].first = 0;
+  invalidate_mtm_cache(fj_cpu);
 }
 
 template <typename i_t, typename f_t>
@@ -1824,6 +1837,8 @@ static void wire_fj_cpu_host_views(
   // nnz count
   fj_cpu.cached_mtm_moves.resize(fj_cpu.h_coefficients.size(),
                                  std::make_pair(0, fj_staged_score_t::zero()));
+  fj_cpu.cached_mtm_moves_version.assign(fj_cpu.h_coefficients.size(), -1);
+  fj_cpu.h_cstr_version.assign(n_constraints, 0);
 
   fj_cpu.flip_move_computed.resize(n_variables, false);
   fj_cpu.var_bitmap.resize(n_variables, false);
@@ -1852,6 +1867,15 @@ void finalize_fj_cpu_host_initialization(
   fj_cpu.h_objective_vars.resize(end - fj_cpu.h_objective_vars.begin());
   fj_cpu.view.objective_vars =
     raft::device_span<i_t>(fj_cpu.h_objective_vars.data(), fj_cpu.h_objective_vars.size());
+
+  f_t abs_obj_sum = 0;
+  for (auto var_idx : fj_cpu.h_objective_vars) {
+    const f_t coeff = fj_cpu.h_obj_coeffs[var_idx];
+    abs_obj_sum += coeff < 0 ? -coeff : coeff;
+  }
+  fj_cpu.obj_magnitude = abs_obj_sum > 0 ? abs_obj_sum / fj_cpu.h_objective_vars.size() : f_t{1};
+  cuopt_assert(isfinite(fj_cpu.obj_magnitude) && fj_cpu.obj_magnitude > 0,
+               "objective magnitude unit must be finite and positive");
 
   fj_cpu.cached_cstr_bounds.resize(fj_cpu.h_reverse_coefficients.size());
   for (i_t var_idx = 0; var_idx < n_variables; ++var_idx) {
@@ -1912,6 +1936,7 @@ static void finalize_fj_cpu_host_initialization_from_template(
 
   fj_cpu.h_objective_vars   = tmpl.h_objective_vars;
   fj_cpu.cached_cstr_bounds = tmpl.cached_cstr_bounds;
+  fj_cpu.obj_magnitude      = tmpl.obj_magnitude;
 
   fj_cpu.h_lhs                 = tmpl.h_lhs;
   fj_cpu.h_lhs_sumcomp         = tmpl.h_lhs_sumcomp;
@@ -2092,6 +2117,8 @@ static void sanity_checks(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
     cuopt_assert(fj_cpu.h_cstr_right_weights[cstr_idx] >= 0, "Weights should be positive or zero");
   }
   cuopt_assert(fj_cpu.h_objective_weight >= 0, "Objective weight should be positive or zero");
+  cuopt_assert(fj_cpu.seed_objective_weight >= 0,
+               "Objective weight floor should be positive or zero");
 }
 
 template <typename i_t, typename f_t>
@@ -2123,6 +2150,9 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_t<i_t, f_t>::create_cpu_climber(
   return fj_cpu;  // move
 }
 
+constexpr int32_t fj_nnz_per_refresh_stretch = 100000;
+constexpr int32_t fj_max_refresh_stretch     = 8;
+
 template <typename i_t, typename f_t>
 void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double work_unit_limit)
 {
@@ -2146,6 +2176,14 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
   fj_cpu->restores_since_improvement     = 0;
   fj_cpu->max_restores_since_improvement = 0;
 
+  // The recompute is O(nnz), so a fixed period costs a growing share of the budget.
+  cuopt_assert(fj_cpu->settings.parameters.lhs_refresh_period > 0,
+               "lhs_refresh_period should be positive");
+  const i_t nnz_stretch    = std::min<i_t>(
+    (i_t)fj_cpu->h_coefficients.size() / fj_nnz_per_refresh_stretch, fj_max_refresh_stretch);
+  const i_t refresh_period = fj_cpu->settings.parameters.lhs_refresh_period * (1 + nnz_stretch);
+  cuopt_assert(refresh_period > 0, "refresh period overflowed");
+
   while (!fj_cpu->halted && !fj_cpu->preemption_flag.load()) {
     // Check if 5 seconds have passed
     auto now = std::chrono::high_resolution_clock::now();
@@ -2167,10 +2205,7 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
 
     // periodically recompute the LHS and violation scores
     // to correct any accumulated numerical errors
-    cuopt_assert(fj_cpu->settings.parameters.lhs_refresh_period > 0,
-                 "lhs_refresh_period should be positive");
-    if (fj_cpu->iterations % fj_cpu->settings.parameters.lhs_refresh_period == 0 ||
-        fj_cpu->trigger_early_lhs_recomputation) {
+    if (fj_cpu->iterations % refresh_period == 0 || fj_cpu->trigger_early_lhs_recomputation) {
       recompute_lhs(*fj_cpu);
       fj_cpu->trigger_early_lhs_recomputation = false;
     }
@@ -2217,8 +2252,7 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
       track_infeasible_checkpoint(*fj_cpu);
       if (should_perturb) {
         perturb(*fj_cpu);
-        for (size_t i = 0; i < fj_cpu->cached_mtm_moves.size(); i++)
-          fj_cpu->cached_mtm_moves[i].first = 0;
+        invalidate_mtm_cache(*fj_cpu);
       }
 
       two_opt_move_t two_opt_move;

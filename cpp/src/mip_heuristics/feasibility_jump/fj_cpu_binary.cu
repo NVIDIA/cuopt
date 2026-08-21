@@ -205,7 +205,6 @@ constexpr int32_t fj_bin_restart_period     = 5000000;
 // Escalation threshold and step, in infeasible local minima without a severity improvement.
 constexpr int32_t fj_bin_ddfw_escalate_after = 2000;
 constexpr int32_t fj_bin_ddfw_escalate_max   = 100;
-
 // prefetch distance
 // TODO: check if it actually matters at all for performance
 constexpr int32_t fj_bin_pf_dist = 8;
@@ -589,6 +588,8 @@ struct fj_bin_engine_t {
 
   int32_t objective_weight{0};
   int32_t seed_objective_weight{0};
+  // Mean absolute nonzero objective coefficient; the unit of the objective score term.
+  double obj_magnitude{1.0};
   double incumbent_objective{0};
   double best_objective{std::numeric_limits<double>::infinity()};
   int32_t max_weight{1};
@@ -768,8 +769,18 @@ struct fj_bin_engine_t {
   int64_t objective_terms(int32_t v, int8_t delta) const
   {
     const double obj_diff = pb.objective[v] * delta;
-    const int32_t base = obj_diff < 0 ? objective_weight : (obj_diff > 0 ? -objective_weight : 0);
-    int32_t bonus      = 0;
+    int32_t base          = 0;
+    if (obj_diff != 0) {
+      cuopt_assert(obj_magnitude > 0, "objective magnitude unit must be positive");
+      const double rel  = std::fabs(obj_diff) / obj_magnitude;
+      const double mult =
+        rel < fj_obj_mult_min ? fj_obj_mult_min : (rel > fj_obj_mult_max ? fj_obj_mult_max : rel);
+      const double raw = objective_weight * mult;
+      cuopt_assert(fj_bin_in_int32(raw), "scaled objective weight out of int32 range");
+      const int32_t scaled = (int32_t)std::lround(raw);
+      base                 = obj_diff < 0 ? scaled : -scaled;
+    }
+    int32_t bonus = 0;
     const bool old_better = incumbent_objective < best_objective;
     const bool new_better = incumbent_objective + obj_diff < best_objective;
     if (!old_better && new_better) {
@@ -1252,6 +1263,12 @@ struct fj_bin_engine_t {
 
     const int32_t seeded_weight = (int32_t)std::lround(climber.h_objective_weight);
     cuopt_assert(seeded_weight >= 0, "objective weight should be positive or zero");
+
+    double abs_obj_sum = 0;
+    for (int32_t v : pb.objective_vars) abs_obj_sum += std::fabs(pb.objective[v]);
+    obj_magnitude = abs_obj_sum > 0 ? abs_obj_sum / (double)pb.objective_vars.size() : 1.0;
+    cuopt_assert(std::isfinite(obj_magnitude) && obj_magnitude > 0,
+                 "objective magnitude unit must be finite and positive");
 
     argmax_tile           = fj_bin_argmax_tile();
     objective_weight      = seeded_weight > 0 ? seeded_weight : 0;
