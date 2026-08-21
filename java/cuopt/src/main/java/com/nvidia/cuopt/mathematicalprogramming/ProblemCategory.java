@@ -5,7 +5,7 @@
 package com.nvidia.cuopt.mathematicalprogramming;
 
 /** Problem categories returned by cuOpt solutions. */
-public enum ProblemCategory {
+enum ProblemCategory {
   LP(0),
   MIP(1);
 

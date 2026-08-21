@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
 
@@ -58,6 +59,7 @@ public final class Problem implements AutoCloseable {
   }
 
   public Constraint addConstraint(Constraint constraint, String name) {
+    requireOwnedVariables(constraint);
     constraint.setConstraintName(name);
     constraint.setIndex(constraints.size());
     constraints.add(constraint);
@@ -227,8 +229,18 @@ public final class Problem implements AutoCloseable {
     }
   }
 
-  /** Writes the problem to {@code path}. The format follows the file extension. */
+  /**
+   * Writes the problem to {@code path} in MPS format, which is the only format the engine can
+   * write. {@code path} must end in {@code .mps} or {@code .qps}.
+   *
+   * @throws IllegalArgumentException if {@code path} has any other extension
+   */
   public void write(String path) {
+    String lower = path.toLowerCase(Locale.ROOT);
+    if (!lower.endsWith(".mps") && !lower.endsWith(".qps")) {
+      throw new IllegalArgumentException(
+          "Problem.write only writes MPS; expected a .mps or .qps path but got '" + path + "'");
+    }
     try (NativeProblem nativeProblem = toNativeProblem()) {
       nativeProblem.write(path);
     }
@@ -482,6 +494,34 @@ public final class Problem implements AutoCloseable {
       }
     }
     return coefficients;
+  }
+
+  /**
+   * A variable carries only its index, and the matrix is built from those indices, so a variable
+   * from another problem would be read as whichever variable holds that index here and would
+   * silently solve a different model.
+   */
+  private void requireOwnedVariables(Constraint constraint) {
+    for (Variable variable : constraint.getLinearExpression().getTerms().keySet()) {
+      requireOwnedVariable(variable);
+    }
+    if (constraint.isQuadratic()) {
+      for (QuadraticExpression.QuadraticTerm term :
+          constraint.getQuadraticExpression().getQuadraticTerms()) {
+        requireOwnedVariable(term.getFirst());
+        requireOwnedVariable(term.getSecond());
+      }
+    }
+  }
+
+  private void requireOwnedVariable(Variable variable) {
+    int index = variable.getIndex();
+    if (index < 0 || index >= variables.size() || variables.get(index) != variable) {
+      throw new IllegalArgumentException(
+          "Constraint variable '"
+              + variable.getVariableName()
+              + "' does not belong to this problem");
+    }
   }
 
   private void syncVariableObjectiveCoefficients(LinearExpression expression) {

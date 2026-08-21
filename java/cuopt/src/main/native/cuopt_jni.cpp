@@ -30,6 +30,10 @@ struct java_callback_context_t {
   jobject callback{nullptr};
   jobject user_data{nullptr};
   int num_variables{0};
+  // First exception thrown by the Java callback, held as a global ref so solve() can rethrow it
+  // from the calling thread. Callbacks may run on a solver-created thread, where a pending
+  // exception would otherwise be discarded when that thread is detached.
+  jthrowable failure{nullptr};
 };
 
 std::mutex g_callback_mutex;
@@ -221,6 +225,42 @@ JNIEnv* get_callback_env(bool& detach)
   return nullptr;
 }
 
+// Takes any pending exception off the callback thread and stores it on the context. Clearing it
+// keeps the remaining JNI calls on this thread well defined; solve() rethrows it afterwards.
+void capture_callback_exception(JNIEnv* env, java_callback_context_t* context)
+{
+  if (env->ExceptionCheck() == JNI_FALSE) { return; }
+  jthrowable pending = env->ExceptionOccurred();
+  env->ExceptionClear();
+  if (pending == nullptr) { return; }
+  if (context->failure == nullptr) {
+    context->failure = static_cast<jthrowable>(env->NewGlobalRef(pending));
+  }
+  env->DeleteLocalRef(pending);
+}
+
+// Rethrows the first callback exception recorded for this settings handle, if any.
+bool rethrow_callback_failure(JNIEnv* env, jlong settings_handle)
+{
+  jthrowable failure = nullptr;
+  {
+    std::lock_guard<std::mutex> lock(g_callback_mutex);
+    auto it = g_callback_contexts.find(settings_handle);
+    if (it == g_callback_contexts.end()) { return false; }
+    for (auto* context : it->second) {
+      if (context->failure != nullptr) {
+        failure          = context->failure;
+        context->failure = nullptr;
+        break;
+      }
+    }
+  }
+  if (failure == nullptr) { return false; }
+  env->Throw(failure);
+  env->DeleteGlobalRef(failure);
+  return true;
+}
+
 void cleanup_callback_contexts(JNIEnv* env, jlong settings_handle)
 {
   std::vector<java_callback_context_t*> contexts;
@@ -234,6 +274,7 @@ void cleanup_callback_contexts(JNIEnv* env, jlong settings_handle)
   for (auto* context : contexts) {
     if (context->callback != nullptr) { env->DeleteGlobalRef(context->callback); }
     if (context->user_data != nullptr) { env->DeleteGlobalRef(context->user_data); }
+    if (context->failure != nullptr) { env->DeleteGlobalRef(context->failure); }
     delete context;
   }
 }
@@ -268,6 +309,7 @@ void mip_get_solution_callback(const cuopt_float_t* solution,
                           static_cast<jdouble>(*objective_value),
                           static_cast<jdouble>(*solution_bound),
                           context->user_data);
+      capture_callback_exception(env, context);
       env->DeleteLocalRef(solution_array);
     }
     env->DeleteLocalRef(cls);
@@ -297,6 +339,7 @@ void mip_set_solution_callback(cuopt_float_t* solution,
     if (method != nullptr) {
       jobject callback_solution = env->CallObjectMethod(
         context->callback, method, static_cast<jdouble>(*solution_bound), context->user_data);
+      capture_callback_exception(env, context);
       if (callback_solution != nullptr) {
         jclass result_cls = env->GetObjectClass(callback_solution);
         if (result_cls != nullptr) {
@@ -315,6 +358,7 @@ void mip_set_solution_callback(cuopt_float_t* solution,
                                   "MIP set-solution callback returned " +
                                     std::to_string(values.size()) + " values for " +
                                     std::to_string(context->num_variables) + " variables");
+              capture_callback_exception(env, context);
             }
             if (solution_array != nullptr) { env->DeleteLocalRef(solution_array); }
           }
@@ -923,11 +967,17 @@ extern "C" JNIEXPORT jlong JNICALL Java_com_nvidia_cuopt_mathematicalprogramming
   JNIEnv* env, jclass, jlong problem_handle, jlong settings_handle)
 {
   cuOptSolution solution = nullptr;
-  if (!check_status(env,
-                    cuOptSolve(to_problem(problem_handle), to_settings(settings_handle), &solution),
-                    "cuOptSolve")) {
+  const cuopt_int_t status =
+    cuOptSolve(to_problem(problem_handle), to_settings(settings_handle), &solution);
+
+  // A callback that threw takes precedence over the solver's own status: the solve ran against a
+  // model the caller did not get to finish describing, so its result is not meaningful.
+  if (rethrow_callback_failure(env, settings_handle)) {
+    if (solution != nullptr) { cuOptDestroySolution(&solution); }
     return 0;
   }
+
+  if (!check_status(env, status, "cuOptSolve")) { return 0; }
   return from_handle(solution);
 }
 

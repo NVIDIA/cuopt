@@ -120,4 +120,49 @@ final class ProblemModelingTest {
     assertTrue(Double.isNaN(x.getValue()));
     assertTrue(Double.isNaN(constraint.getSlack()));
   }
+
+  @Test
+  void rejectsLinearConstraintOverAForeignVariable() {
+    Problem owner = new Problem("owner");
+    owner.addVariable(0, 10, 1, VariableType.CONTINUOUS, "mine");
+
+    Problem other = new Problem("other");
+    Variable foreign = other.addVariable(0, 10, 1, VariableType.CONTINUOUS, "theirs");
+
+    // foreign.getIndex() is 0, the same index 'mine' holds, so without the check the term would
+    // be applied to 'mine' and the wrong model would solve without an error.
+    assertEquals(0, foreign.getIndex());
+    IllegalArgumentException error =
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> owner.addConstraint(LinearExpression.of(foreign, 2.0).le(5.0)));
+    assertTrue(error.getMessage().contains("theirs"));
+    assertEquals(0, owner.getConstraints().size());
+  }
+
+  @Test
+  void rejectsQuadraticConstraintOverAForeignVariable() {
+    Problem owner = new Problem("owner");
+    Variable mine = owner.addVariable(0, 10, 1, VariableType.CONTINUOUS, "mine");
+
+    Problem other = new Problem("other");
+    Variable foreign = other.addVariable(0, 10, 1, VariableType.CONTINUOUS, "theirs");
+
+    IllegalArgumentException error =
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> owner.addConstraint(QuadraticExpression.of(mine, foreign, 1.0).le(5.0)));
+    assertTrue(error.getMessage().contains("theirs"));
+    assertEquals(0, owner.getConstraints().size());
+  }
+
+  @Test
+  void writeRejectsANonMPSExtension() {
+    Problem problem = new Problem("write");
+    problem.addVariable(0, 1, 1, VariableType.CONTINUOUS, "x");
+
+    IllegalArgumentException error =
+        assertThrows(IllegalArgumentException.class, () -> problem.write("/tmp/model.lp"));
+    assertTrue(error.getMessage().contains(".mps"));
+  }
 }
