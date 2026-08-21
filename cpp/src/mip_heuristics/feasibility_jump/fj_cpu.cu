@@ -2754,8 +2754,9 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_standalone(
   // Early CPUFJ runs while presolve is still probing, so there are no implications to hand it
   const probing_cache_t<i_t, f_t>* no_implications = nullptr;
   init_fj_cpu(*fj_cpu, solution, default_weights, default_weights, 0.0, no_implications);
-  fj_cpu->settings      = settings;
-  fj_cpu->settings.seed = cuopt::seed_generator::get_seed();
+  // settings.seed is caller-drawn: seed_generator steps a non-atomic global and this may run
+  // concurrently across lanes.
+  fj_cpu->settings = settings;
 
   return fj_cpu;
 }
@@ -2773,8 +2774,8 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_standalone_from_template
 
   std::vector<f_t> default_weights(problem.n_constraints, 1.0);
   init_fj_cpu_from_template(*fj_cpu, tmpl, problem, default_weights, default_weights, 0.0);
-  fj_cpu->settings      = settings;
-  fj_cpu->settings.seed = cuopt::seed_generator::get_seed();
+  // See init_fj_cpu_standalone: the seed is caller-drawn, not taken from the global generator.
+  fj_cpu->settings = settings;
 
   return fj_cpu;
 }
@@ -2905,6 +2906,201 @@ template void finalize_fj_cpu_host_initialization(
   const typename mip_solver_settings_t<int, double>::tolerances_t& tolerances);
 #endif
 
+// Above this the O(nnz) seed passes eat a meaningful slice of a short budget, so they are skipped.
+constexpr int64_t fj_seed_nnz_limit = 8'000'000;
+
+// Jumps each two-sided variable to whichever bound has fewer rows locking it in that direction.
+template <typename i_t, typename f_t>
+static void apply_lock_weighted_seed(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
+{
+  if (fj_cpu.view.pb.nnz > fj_seed_nnz_limit) return;
+
+  const i_t n_variables = fj_cpu.view.pb.n_variables;
+  for (i_t var_idx = 0; var_idx < n_variables; ++var_idx) {
+    const f_t lb = get_lower(fj_cpu.h_var_bounds[var_idx].get());
+    const f_t ub = get_upper(fj_cpu.h_var_bounds[var_idx].get());
+    if (!isfinite(lb) || !isfinite(ub) || lb >= ub) continue;
+
+    i_t lock_up       = 0;
+    i_t lock_down     = 0;
+    const auto range  = reverse_range_for_var<i_t, f_t>(fj_cpu, var_idx);
+    for (i_t i = range.first; i < range.second; ++i) {
+      const f_t coeff    = fj_cpu.h_reverse_coefficients[i];
+      const i_t cstr_idx = fj_cpu.h_reverse_constraints[i];
+      const bool has_lb  = isfinite((f_t)fj_cpu.h_cstr_lb[cstr_idx]);
+      const bool has_ub  = isfinite((f_t)fj_cpu.h_cstr_ub[cstr_idx]);
+      if (coeff > 0) {
+        lock_up += has_ub;
+        lock_down += has_lb;
+      } else if (coeff < 0) {
+        lock_up += has_lb;
+        lock_down += has_ub;
+      }
+    }
+
+    f_t new_val = lock_up <= lock_down ? ub : lb;
+    if (is_integer_var<i_t, f_t>(fj_cpu, var_idx)) new_val = std::round(new_val);
+    fj_cpu.h_assignment[var_idx] = new_val;
+  }
+
+  recompute_lhs(fj_cpu);
+  fj_cpu.h_best_assignment = fj_cpu.h_assignment;
+}
+
+// Jumps each bounded objective variable to the bound that minimises its own objective term.
+template <typename i_t, typename f_t>
+static void apply_objective_corner_seed(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
+{
+  if (fj_cpu.view.pb.nnz > fj_seed_nnz_limit) return;
+
+  const i_t n_variables = fj_cpu.view.pb.n_variables;
+  for (i_t var_idx = 0; var_idx < n_variables; ++var_idx) {
+    const f_t coeff = fj_cpu.h_obj_coeffs[var_idx];
+    if (coeff == 0) continue;
+
+    const f_t lb = get_lower(fj_cpu.h_var_bounds[var_idx].get());
+    const f_t ub = get_upper(fj_cpu.h_var_bounds[var_idx].get());
+    if (!isfinite(lb) || !isfinite(ub) || lb >= ub) continue;
+
+    f_t new_val = coeff > 0 ? lb : ub;
+    if (is_integer_var<i_t, f_t>(fj_cpu, var_idx)) new_val = std::round(new_val);
+    fj_cpu.h_assignment[var_idx] = new_val;
+  }
+
+  recompute_lhs(fj_cpu);
+  fj_cpu.h_best_assignment = fj_cpu.h_assignment;
+}
+
+// A single-variable integer step on a row, with the magnitude of its effect on the row sum.
+template <typename i_t, typename f_t>
+struct row_repair_move_t {
+  f_t effect;
+  i_t var;
+  f_t coeff;
+  f_t new_val;
+};
+
+// Collects the unit integer steps that push this row's sum in `direction`, largest effect first.
+template <typename i_t, typename f_t>
+static void collect_row_repair_moves(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
+                                     i_t row_begin,
+                                     i_t row_end,
+                                     f_t direction,
+                                     f_t tol,
+                                     std::vector<row_repair_move_t<i_t, f_t>>& out)
+{
+  out.clear();
+  for (i_t i = row_begin; i < row_end; ++i) {
+    const i_t var = fj_cpu.h_variables[i];
+    if (!is_integer_var<i_t, f_t>(fj_cpu, var)) continue;
+
+    const f_t coeff   = fj_cpu.h_coefficients[i];
+    const f_t val     = fj_cpu.h_assignment[var];
+    const f_t lb      = get_lower(fj_cpu.h_var_bounds[var].get());
+    const f_t ub      = get_upper(fj_cpu.h_var_bounds[var].get());
+    const bool is_bin = fj_cpu.h_is_binary_variable[var] != 0;
+
+    // Raising the variable shifts the sum by `direction * coeff`; lowering it by the negation.
+    const f_t raise = direction * coeff;
+    if (raise > 0 && val < ub - tol) {
+      const f_t new_val = is_bin ? (f_t)1 : std::floor(val) + 1;
+      if (new_val > val && new_val <= ub + tol) out.push_back({raise, var, coeff, new_val});
+    } else if (raise < 0 && val > lb + tol) {
+      const f_t new_val = is_bin ? (f_t)0 : std::ceil(val) - 1;
+      if (new_val < val && new_val >= lb - tol) out.push_back({-raise, var, coeff, new_val});
+    }
+  }
+  std::sort(out.begin(), out.end(), [](const row_repair_move_t<i_t, f_t>& a,
+                                       const row_repair_move_t<i_t, f_t>& b) {
+    return a.effect > b.effect;
+  });
+}
+
+// Time-boxed greedy row repair. Deliberately myopic, so it reverts unless it strictly reduces the
+// violated-row count against the incoming anchor.
+template <typename i_t, typename f_t>
+static void apply_greedy_covering_seed(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
+{
+  if (fj_cpu.view.pb.nnz > fj_seed_nnz_limit) return;
+
+  recompute_lhs(fj_cpu);
+  const i_t baseline_violated  = fj_cpu.violated_constraints.size();
+  const auto anchor_assignment = fj_cpu.h_assignment;
+
+  const i_t n_constraints = fj_cpu.view.pb.n_constraints;
+  std::vector<i_t> row_order(n_constraints);
+  for (i_t i = 0; i < n_constraints; ++i)
+    row_order[i] = i;
+  std::sort(row_order.begin(), row_order.end(), [&](i_t a, i_t b) {
+    return (fj_cpu.h_offsets[a + 1] - fj_cpu.h_offsets[a]) <
+           (fj_cpu.h_offsets[b + 1] - fj_cpu.h_offsets[b]);
+  });
+
+  const auto started         = std::chrono::steady_clock::now();
+  const double time_budget_s = 0.4;
+  const f_t tol              = 1e-6;
+  const i_t max_passes       = 2;
+  std::vector<row_repair_move_t<i_t, f_t>> candidates;
+  bool out_of_time = false;
+
+  for (i_t pass = 0; pass < max_passes && !out_of_time; ++pass) {
+    for (i_t k = 0; k < n_constraints; ++k) {
+      if ((k & 0xFFF) == 0 &&
+          std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count() >
+            time_budget_s) {
+        out_of_time = true;
+        break;
+      }
+      const i_t cstr_idx  = row_order[k];
+      const i_t row_begin = fj_cpu.h_offsets[cstr_idx];
+      const i_t row_end   = fj_cpu.h_offsets[cstr_idx + 1];
+      if (row_begin == row_end) continue;
+
+      const f_t lb      = fj_cpu.h_cstr_lb[cstr_idx];
+      const f_t ub      = fj_cpu.h_cstr_ub[cstr_idx];
+      const bool has_lb = isfinite(lb);
+      const bool has_ub = isfinite(ub);
+      if (!has_lb && !has_ub) continue;
+
+      f_t sum = 0;
+      for (i_t i = row_begin; i < row_end; ++i)
+        sum += (f_t)fj_cpu.h_coefficients[i] * (f_t)fj_cpu.h_assignment[fj_cpu.h_variables[i]];
+
+      // Equality rows are driven to their bound; one-sided rows only to the side they violate.
+      const bool is_equality = has_lb && has_ub && std::abs(lb - ub) < tol;
+      f_t direction          = 0;
+      f_t target             = 0;
+      if (is_equality && std::abs(sum - lb) > tol) {
+        direction = sum < lb ? (f_t)1 : (f_t)-1;
+        target    = lb;
+      } else if (has_lb && sum < lb - tol) {
+        direction = 1;
+        target    = lb;
+      } else if (has_ub && sum > ub + tol) {
+        direction = -1;
+        target    = ub;
+      } else {
+        continue;
+      }
+
+      collect_row_repair_moves<i_t, f_t>(fj_cpu, row_begin, row_end, direction, tol, candidates);
+      for (const auto& m : candidates) {
+        if (direction > 0 ? sum >= target - tol : sum <= target + tol) break;
+        const f_t delta = m.new_val - (f_t)fj_cpu.h_assignment[m.var];
+        sum += m.coeff * delta;
+        fj_cpu.h_assignment[m.var] = m.new_val;
+      }
+    }
+  }
+
+  recompute_lhs(fj_cpu);
+  if ((i_t)fj_cpu.violated_constraints.size() >= baseline_violated) {
+    fj_cpu.h_assignment = anchor_assignment;
+    recompute_lhs(fj_cpu);
+  }
+  fj_cpu.h_best_assignment = fj_cpu.h_assignment;
+}
+
 // Portfolio construction for the standalone benchmark. Host logic, but it lives
 // in a .cu because fj_cpu.cuh pulls in raft/util/cuda_dev_essentials.cuh through
 // solution.cuh, which does not compile under the host compiler. Kept out of the
@@ -2926,17 +3122,24 @@ void build_climber_portfolio(problem_t<i_t, f_t>& problem,
   const f_t obj_weight_ladder[4] = {0, 4, 32, 0};
   const f_t obj_weight_floor[4]  = {1, 4, 32, 1};
 
-  for (int k = 0; k < n_climbers; ++k) {
+  for (int k = 0; k < n_climbers; ++k)
     preemption_flags[k].store(false);
-    fj_settings_t settings;
-    settings.seed = (int)(base_seed + k);
-    // Built serially: the first climber host-copies the problem, the rest clone it.
-    if (k == 0) {
-      climbers[k] = init_fj_cpu_standalone(problem, solution, preemption_flags[k], settings);
-    } else {
-      climbers[k] =
-        init_fj_cpu_standalone_from_template(problem, *climbers[0], preemption_flags[k], settings);
-    }
+
+  // cuopt::seed_generator::get_seed() steps a non-atomic global, so every lane's seed is drawn here
+  // in lane order before any concurrent construction below.
+  std::vector<int64_t> lane_seed(n_climbers);
+  for (int k = 0; k < n_climbers; ++k)
+    lane_seed[k] = cuopt::seed_generator::get_seed();
+
+  // Per-lane work that must run identically whether the lane was built serially or in parallel.
+  auto finish_lane = [&](int k) {
+    // Fewer-lock corner, objective-favorable corner, greedy row repair; lane 0 keeps the anchor.
+    if (k % 4 == 1)
+      apply_lock_weighted_seed<i_t, f_t>(*climbers[k]);
+    else if (k % 4 == 2)
+      apply_objective_corner_seed<i_t, f_t>(*climbers[k]);
+    else if (k % 4 == 3)
+      apply_greedy_covering_seed<i_t, f_t>(*climbers[k]);
 
     // Default: every climber identical apart from its seed and a random draw of the
     // four sampling parameters. Diversification, decorrelated from the value RNG.
@@ -2948,6 +3151,27 @@ void build_climber_portfolio(problem_t<i_t, f_t>& problem,
 
     climbers[k]->h_objective_weight    = obj_weight_ladder[k % 4];
     //climbers[k]->seed_objective_weight = obj_weight_floor[k % 4];
+  };
+
+  // Lane 0 is a genuine dependency: it host-copies the problem and every other lane clones it.
+  {
+    fj_settings_t settings;
+    settings.seed = (int)lane_seed[0];
+    climbers[0]   = init_fj_cpu_standalone(problem, solution, preemption_flags[0], settings);
+    finish_lane(0);
+  }
+
+  // The remaining lanes depend only on lane 0's finished, read-only template, and the O(nnz) clone
+  // and seed passes are otherwise paid serially on one thread while the other pinned CPUs idle.
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(std::max(1, n_climbers - 1)) schedule(static)
+#endif
+  for (int k = 1; k < n_climbers; ++k) {
+    fj_settings_t settings;
+    settings.seed = (int)lane_seed[k];
+    climbers[k] =
+      init_fj_cpu_standalone_from_template(problem, *climbers[0], preemption_flags[k], settings);
+    finish_lane(k);
   }
 }
 
