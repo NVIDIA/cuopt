@@ -1523,8 +1523,7 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   branch_and_bound_worker_t<i_t, f_t>* worker,
   branch_and_bound_stats_t<i_t, f_t>& stats,
   logger_t& log,
-  i_t iter_limit,
-  std::atomic<int>* halt)
+  i_t iter_limit)
 {
   raft::common::nvtx::range scope("BB::solve_node");
 #ifdef DEBUG_BRANCHING
@@ -1563,7 +1562,7 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
 #endif
 
   simplex_solver_settings_t lp_settings = settings_;
-  lp_settings.concurrent_halt           = halt ? halt : &node_concurrent_halt_;
+  lp_settings.concurrent_halt           = &node_concurrent_halt_;
   lp_settings.set_log(false);
   f_t cutoff = upper_bound_.load();
   if (original_lp_.objective_step.has_step()) {
@@ -1690,8 +1689,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
 
   bool can_launch_rins = true;
 
-  while (stack.size() > 0 &&
-         (solver_status_ == mip_status_t::UNSET && is_running_ && !this->is_halted()) &&
+  while (stack.size() > 0 && (solver_status_ == mip_status_t::UNSET && is_running_) &&
          rel_gap > settings_.relative_mip_gap_tol && abs_gap > settings_.absolute_mip_gap_tol) {
     if (worker->worker_id == 0) { repair_heuristic_solutions(); }
 
@@ -1940,9 +1938,8 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
   worker->calculate_max_diving_workers(bfs_worker_pool_.size(), diving_worker_pool_.size());
   worker->update_diving_heuristic_list(diving_settings);
 
-  while ((solver_status_ == mip_status_t::UNSET && is_running_ && !this->is_halted()) &&
-         abs_gap > settings_.absolute_mip_gap_tol && rel_gap > settings_.relative_mip_gap_tol &&
-         node_queue.best_first_queue_size() > 0) {
+  while (solver_status_ == mip_status_t::UNSET && abs_gap > settings_.absolute_mip_gap_tol &&
+         rel_gap > settings_.relative_mip_gap_tol && node_queue.best_first_queue_size() > 0) {
     if (submip_halt_callback_) {
       // Stops the solver if the callback returns "true". This happens when the lower bound
       // in the sub-MIP solve is greater than the upper bound of the main solve (this can
@@ -2058,8 +2055,7 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker, 
   f_t rel_gap     = user_relative_gap(user_obj, user_lower);
   f_t abs_gap     = compute_user_abs_gap(original_lp_, upper_bound, lower_bound);
 
-  while (stack.size() > 0 &&
-         (solver_status_ == mip_status_t::UNSET && is_running_ && !this->is_halted()) &&
+  while (stack.size() > 0 && (solver_status_ == mip_status_t::UNSET && is_running_) &&
          rel_gap > settings_.relative_mip_gap_tol && abs_gap > settings_.absolute_mip_gap_tol) {
     mip_node_t<i_t, f_t>* node_ptr = stack.front();
     stack.pop_front();
@@ -2232,8 +2228,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
                                                 i_t num_var_fixed,
                                                 i_t num_integers,
                                                 i_t submip_level,
-                                                std::string_view log_prefix,
-                                                std::atomic<int>* halt)
+                                                std::string_view log_prefix)
 {
   double start_time = tic();
 
@@ -2268,7 +2263,6 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   submip_settings.submip_settings.level                    = submip_level;
   submip_settings.benchmark_info_ptr                       = nullptr;
   submip_settings.log.log                                  = SUBMIP_VERBOSE;
-  submip_settings.concurrent_halt                          = halt;
 
 #ifdef SAVE_SUBMIP_TO_FILE
   submip_settings.log.log_prefix = std::format("{}{}", settings_.log.log_prefix, worker->worker_id);
@@ -2357,8 +2351,6 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
     return;
   }
 
-  if (halt && halt->load(std::memory_order::acquire)) { return; }
-
   submip_settings.heuristic_preemption_callback   = nullptr;
   submip_settings.dual_simplex_objective_callback = nullptr;
   submip_settings.set_simplex_solution_callback   = nullptr;
@@ -2396,12 +2388,12 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
     submip_bnb.set_submip_halt_callback(submip_halt_callback_);
   } else {
     // This should only be called by the main solver.
-    submip_bnb.set_submip_halt_callback([this](f_t, f_t submip_lower_bound) {
+    submip_bnb.set_submip_halt_callback([this, worker](f_t, f_t submip_lower_bound) {
       f_t user_upper = compute_user_objective(this->original_lp_, this->upper_bound_.load());
       bool is_cutoff = original_lp_.obj_scale > 0 ? submip_lower_bound > user_upper
                                                   : user_upper > submip_lower_bound;
       bool is_solver_running = this->solver_status_ == mip_status_t::UNSET && this->is_running_;
-      return is_cutoff || !is_solver_running || this->is_halted();
+      return is_cutoff || !is_solver_running || worker->halt;
     });
   }
 
@@ -2592,8 +2584,7 @@ void extend_variable_fixings(const simplex_solver_settings_t<i_t, f_t>& settings
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* worker,
                                         const std::vector<f_t>& current_incumbent,
-                                        const std::vector<variable_type_t>& var_types,
-                                        std::atomic<int>* halt)
+                                        const std::vector<variable_type_t>& var_types)
 {
   raft::common::nvtx::range scope("BB::rins_thread");
   if (worker->orbital_fixing) { worker->orbital_fixing->disable(); }
@@ -2628,8 +2619,7 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* worker,
   i_t min_var_fixed = min_fixrate * num_integers;
   i_t num_var_fixed = 0;
 
-  while (solver_status_ == mip_status_t::UNSET && is_running_ && !this->is_halted() &&
-         (halt ? !halt->load() : true)) {
+  while (solver_status_ == mip_status_t::UNSET && is_running_ && !worker->halt) {
     // RINS neighbourhood 1: Fix all the integer variables where the starting solution matches the
     // current incumbent, considering only the fractional values in the current node
     i_t prev_num_fixed = num_var_fixed;
@@ -2727,11 +2717,10 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* worker,
 
     // After fixing the variables, re-solve the LP relaxation. We use the optimal solution
     // in the next iteration to find additional variable fixings.
-    // We continue to do this until enough variables were fixed or no variable is left to fix
-    i_t iter_max = std::numeric_limits<i_t>::max();
+    // We continue to do this until enough variables were fixed or no variable is left to fix.
     logger_t log;
     log.log                 = false;
-    dual_status_t lp_status = solve_node_lp(&node, worker, rins_stats, log, iter_max, halt);
+    dual_status_t lp_status = solve_node_lp(&node, worker, rins_stats, log);
 
     if (lp_status != dual_status_t::OPTIMAL) { break; }
 
@@ -2801,8 +2790,7 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* worker,
                    num_var_fixed,
                    num_integers,
                    submip_level,
-                   log_prefix,
-                   halt);
+                   log_prefix);
     }
   }
 
@@ -2880,7 +2868,7 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
     if (settings_.inside_submip) {
       // LLVM libomp's GOMP compatibility path skips GCC's firstprivate copy
       // function for included tasks.
-      rins(worker, current_incumbent, heuristic->var_types_, &heuristic->halt_);
+      rins(worker, current_incumbent, heuristic->var_types_);
 
     } else {
       ++worker_count;
@@ -2888,7 +2876,7 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
   shared(heuristics, worker_count) firstprivate(worker, current_incumbent, heuristic) \
   depend(out : *worker)
       {
-        rins(worker, current_incumbent, heuristic->var_types_, &heuristic->halt_);
+        rins(worker, current_incumbent, heuristic->var_types_);
         --worker_count;
       }
     }
