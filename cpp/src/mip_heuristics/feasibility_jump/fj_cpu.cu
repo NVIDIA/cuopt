@@ -38,7 +38,7 @@
 #include <unordered_set>
 #include <vector>
 
-#define CPUFJ_TIMING_TRACE 1
+#define CPUFJ_TIMING_TRACE 0
 
 // Define CPUFJ_NVTX_RANGES to enable detailed NVTX profiling ranges
 #ifdef CPUFJ_NVTX_RANGES
@@ -1004,6 +1004,12 @@ static void update_weights(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   if (fj_cpu.violated_constraints.empty()) { fj_cpu.h_objective_weight += 1; }
 }
 
+// Applied to the objective weight when a new incumbent lands: the bump it gains, and the ceiling
+// it is held at so smooth_weights and update_weights cannot walk it out of scale with the
+// feasibility term.
+constexpr double fj_obj_weight_incumbent_bump = 4.0;
+constexpr double fj_obj_weight_incumbent_cap  = 64.0;
+
 template <typename i_t, typename f_t>
 static void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
                        i_t var_idx,
@@ -1109,6 +1115,13 @@ static void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
           fj_cpu.h_incumbent_objective, fj_cpu.h_assignment, current_work_units);
       }
       fj_cpu.feasible_found = true;
+      // Counteract the smooth_weights decay for a lane that is actively improving, and hold the
+      // weight at a scale where base_feas_sum still registers against it.
+      if (fj_cpu.h_objective_weight > 0) {
+        fj_cpu.h_objective_weight =
+          min((f_t)fj_obj_weight_incumbent_cap,
+              fj_cpu.h_objective_weight + (f_t)fj_obj_weight_incumbent_bump);
+      }
     }
   }
 
@@ -2704,6 +2717,14 @@ void build_climber_portfolio(problem_t<i_t, f_t>& problem,
                              int64_t base_seed)
 {
   const int n_climbers = static_cast<int>(climbers.size());
+
+  // Objective pressure across the portfolio, indexed by lane. Lanes 0 and 3 stay pure feasibility
+  // seekers until they cross, since the objective term only enters the score once the weight is
+  // positive; their nonzero floor then keeps a pull on the objective afterwards rather than letting
+  // smooth_weights decay it back to nothing.
+  const f_t obj_weight_ladder[4] = {0, 4, 32, 0};
+  const f_t obj_weight_floor[4]  = {1, 4, 32, 1};
+
   for (int k = 0; k < n_climbers; ++k) {
     preemption_flags[k].store(false);
     fj_settings_t settings;
@@ -2723,6 +2744,9 @@ void build_climber_portfolio(problem_t<i_t, f_t>& problem,
     climbers[k]->mtm_sat_samples  = std::uniform_int_distribution<i_t>(10, 30)(rng);
     climbers[k]->nnz_samples      = std::uniform_int_distribution<i_t>(2000, 15000)(rng);
     climbers[k]->perturb_interval = std::uniform_int_distribution<i_t>(50, 500)(rng);
+
+    climbers[k]->h_objective_weight    = obj_weight_ladder[k % 4];
+    //climbers[k]->seed_objective_weight = obj_weight_floor[k % 4];
   }
 }
 

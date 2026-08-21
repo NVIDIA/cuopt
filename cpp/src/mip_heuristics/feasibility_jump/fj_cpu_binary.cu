@@ -205,6 +205,10 @@ constexpr int32_t fj_bin_restart_period     = 5000000;
 // Escalation threshold and step, in infeasible local minima without a severity improvement.
 constexpr int32_t fj_bin_ddfw_escalate_after = 2000;
 constexpr int32_t fj_bin_ddfw_escalate_max   = 100;
+
+// The same, in feasible local minima without a best-objective improvement.
+constexpr int32_t fj_bin_obj_stall_after   = 50;
+constexpr int32_t fj_bin_obj_escalate_max  = 10;
 // prefetch distance
 // TODO: check if it actually matters at all for performance
 constexpr int32_t fj_bin_pf_dist = 8;
@@ -588,6 +592,9 @@ struct fj_bin_engine_t {
 
   int32_t objective_weight{0};
   int32_t seed_objective_weight{0};
+  // Feasible local minima since best_objective last moved, and the value it was last seen at.
+  int32_t iterations_at_same_objective{0};
+  double last_best_objective{std::numeric_limits<double>::infinity()};
   // Mean absolute nonzero objective coefficient; the unit of the objective score term.
   double obj_magnitude{1.0};
   double incumbent_objective{0};
@@ -993,8 +1000,27 @@ struct fj_bin_engine_t {
         reweight_constraint(best_donor, donated);
       }
     }
-    if (violated_list.empty()) objective_weight += 1;
+    if (violated_list.empty()) {
+      if (best_objective < last_best_objective) {
+        iterations_at_same_objective = 0;
+        last_best_objective          = best_objective;
+      } else {
+        ++iterations_at_same_objective;
+      }
+      objective_weight += objective_weight_increment();
+    }
     track_infeasible_checkpoint();
+  }
+
+  // Stall-escalation for the objective weight, the feasible-region counterpart of ddfw_transfer:
+  // a lane that keeps reaching local minima without moving its best objective needs more
+  // objective pressure than one that is still improving.
+  int32_t objective_weight_increment() const
+  {
+    if (iterations_at_same_objective <= fj_bin_obj_stall_after) return 1;
+    const int32_t steps =
+      1 + (iterations_at_same_objective - fj_bin_obj_stall_after) / fj_bin_obj_stall_after;
+    return steps < fj_bin_obj_escalate_max ? steps : fj_bin_obj_escalate_max;
   }
 
   void reset_infeasible_checkpoint()
@@ -1270,15 +1296,17 @@ struct fj_bin_engine_t {
     cuopt_assert(std::isfinite(obj_magnitude) && obj_magnitude > 0,
                  "objective magnitude unit must be finite and positive");
 
-    argmax_tile           = fj_bin_argmax_tile();
-    objective_weight      = seeded_weight > 0 ? seeded_weight : 0;
-    seed_objective_weight = objective_weight;
-    max_weight            = fj_bin_ddfw_init;
-    incumbent_objective   = 0;
-    best_objective        = std::numeric_limits<double>::infinity();
-    feasible_found        = false;
-    iters                 = 0;
-    last_restart_iter     = 0;
+    argmax_tile                  = fj_bin_argmax_tile();
+    objective_weight             = seeded_weight > 0 ? seeded_weight : 0;
+    seed_objective_weight        = objective_weight;
+    max_weight                   = fj_bin_ddfw_init;
+    incumbent_objective          = 0;
+    best_objective               = std::numeric_limits<double>::infinity();
+    last_best_objective          = std::numeric_limits<double>::infinity();
+    iterations_at_same_objective = 0;
+    feasible_found               = false;
+    iters                        = 0;
+    last_restart_iter            = 0;
     recompute_slack();
   }
 
