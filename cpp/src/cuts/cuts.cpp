@@ -1143,23 +1143,6 @@ inline uint64_t hash64_with_seed(uint64_t value, uint64_t seed)
   return splitmix64_mix(value ^ (seed * 0xbf58476d1ce4e5b9ULL + 0x9e3779b97f4a7c15ULL));
 }
 
-struct duplicate_cut_signature_t {
-  uint64_t support;
-  uint64_t coefficients;
-
-  bool operator==(const duplicate_cut_signature_t& other) const
-  {
-    return support == other.support && coefficients == other.coefficients;
-  }
-};
-
-struct duplicate_cut_signature_hash_t {
-  size_t operator()(const duplicate_cut_signature_t& signature) const
-  {
-    return splitmix64_mix(signature.support ^ splitmix64_mix(signature.coefficients));
-  }
-};
-
 }  // namespace
 
 template <typename i_t, typename f_t>
@@ -1248,9 +1231,8 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
 {
   const i_t m = cut_storage_.m;
 
-  constexpr f_t coefficient_bucket_width = 1e-8;
-  constexpr f_t duplicate_tolerance      = 1e-10;
-  const i_t no_group                     = -1;
+  constexpr f_t duplicate_tolerance = 1e-10;
+  const i_t no_group                = -1;
 
   struct duplicate_group_t {
     i_t representative;
@@ -1261,7 +1243,7 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
   std::vector<f_t> divisors(m, 0.0);
   std::vector<duplicate_group_t> groups;
   groups.reserve(m);
-  std::unordered_map<duplicate_cut_signature_t, i_t, duplicate_cut_signature_hash_t> buckets;
+  std::unordered_map<uint64_t, i_t> buckets;
   buckets.reserve(m);
 
   auto coefficients_match = [&](f_t a, f_t divisor_a, f_t b, f_t divisor_b) {
@@ -1341,19 +1323,13 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
     divisors[r]       = divisor;
 
     uint64_t support_hash = splitmix64_mix(static_cast<uint64_t>(row_end - row_start));
-    uint64_t coefficient_hash =
-      splitmix64_mix(static_cast<uint64_t>(row_end - row_start) ^ 0x6a09e667f3bcc909ULL);
     for (i_t p = row_start; p < row_end; p++) {
       const uint64_t column_hash =
         splitmix64_mix(static_cast<uint64_t>(cut_storage_.j[p]) + 0x9e3779b97f4a7c15ULL);
-      const int64_t quantized = static_cast<int64_t>(
-        std::llround((cut_storage_.x[p] / divisor) / coefficient_bucket_width));
       support_hash += column_hash;
-      coefficient_hash += splitmix64_mix(column_hash ^ static_cast<uint64_t>(quantized));
     }
-    const duplicate_cut_signature_t signature{support_hash, coefficient_hash};
 
-    auto bucket        = buckets.emplace(signature, no_group).first;
+    auto bucket        = buckets.emplace(support_hash, no_group).first;
     i_t matching_group = no_group;
     for (i_t group = bucket->second; group != no_group; group = groups[group].next) {
       if (rows_are_duplicates(groups[group].representative, r)) {
