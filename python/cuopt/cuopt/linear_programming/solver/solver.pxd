@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 
@@ -109,6 +109,8 @@ cdef extern from "cuopt/mathematical_optimization/utilities/cython_solve.hpp" na
         pdlp_termination_status_t termination_status_
         error_type_t error_status_
         string error_message_
+        # TMP: once dual recovery of QCQP is implemented, we can remove this field
+        bool has_dual_solution_
         double l2_primal_residual_
         double l2_dual_residual_
         double primal_objective_

@@ -75,6 +75,8 @@ struct linear_programming_ret_t {
   mathematical_optimization::pdlp_termination_status_t termination_status_{};
   error_type_t error_status_{};
   std::string error_message_;
+  // TMP: once dual recovery of QCQP is implemented, we can remove this field
+  bool has_dual_solution_{true};
 
   /*Termination stats*/
   double l2_primal_residual_{};

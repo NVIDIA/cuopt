@@ -71,6 +71,10 @@ class gpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
 
   std::vector<f_t> get_dual_solution_host() const override
   {
+    if (!solution_.has_dual_solution_) {
+      throw std::logic_error(
+        "get_dual_solution() is not available for solutions with quadratic constraints");
+    }
     auto stream = solution_.get_dual_solution().stream();
     std::vector<f_t> result(solution_.get_dual_solution().size());
     raft::copy(result.data(),
@@ -83,6 +87,10 @@ class gpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
 
   std::vector<f_t> get_reduced_cost_host() const override
   {
+    if (!solution_.has_dual_solution_) {
+      throw std::logic_error(
+        "get_reduced_costs() is not available for solutions with quadratic constraints");
+    }
     auto& reduced_cost =
       const_cast<optimization_problem_solution_t<i_t, f_t>&>(solution_).get_reduced_cost();
     auto stream = reduced_cost.stream();
@@ -320,9 +328,16 @@ class gpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
    */
   std::unique_ptr<cpu_lp_solution_t<i_t, f_t>> to_cpu_solution() const
   {
-    auto primal_host  = get_primal_solution_host();
-    auto dual_host    = get_dual_solution_host();
-    auto reduced_host = get_reduced_cost_host();
+    auto primal_host = get_primal_solution_host();
+    // Dual recovery of QCQP is not supported yet: skip the (throwing) dual/reduced-cost
+    // getters and carry the flag through so cpu_lp_solution_t raises only if the caller
+    // explicitly requests the dual solution, rather than failing this conversion outright.
+    std::vector<f_t> dual_host;
+    std::vector<f_t> reduced_host;
+    if (solution_.has_dual_solution_) {
+      dual_host    = get_dual_solution_host();
+      reduced_host = get_reduced_cost_host();
+    }
 
     if (has_warm_start_data()) {
       auto& gpu_ws = const_cast<optimization_problem_solution_t<i_t, f_t>&>(solution_)
@@ -341,7 +356,8 @@ class gpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
                                                            get_gap(),
                                                            get_num_iterations(),
                                                            solved_by(),
-                                                           std::move(cpu_ws));
+                                                           std::move(cpu_ws),
+                                                           solution_.has_dual_solution_);
     }
 
     return std::make_unique<cpu_lp_solution_t<i_t, f_t>>(std::move(primal_host),
@@ -355,7 +371,8 @@ class gpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
                                                          get_l2_dual_residual(),
                                                          get_gap(),
                                                          get_num_iterations(),
-                                                         solved_by());
+                                                         solved_by(),
+                                                         solution_.has_dual_solution_);
   }
 
   /**

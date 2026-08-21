@@ -241,6 +241,14 @@ class optimization_problem_solution_t : public base_solution_t {
   rmm::device_uvector<f_t>& get_reduced_cost();
 
   /**
+   * @brief Whether a meaningful dual solution / reduced cost is available for this solution.
+   * False for problems with quadratic constraints, since dual recovery of QCQP is not yet
+   * supported.
+   */
+  // TMP: once dual recovery of QCQP is implemented, we can remove this symbol
+  bool has_dual_solution_{true};
+
+  /**
    * @brief Get termination reason
    * @return Termination reason
    */

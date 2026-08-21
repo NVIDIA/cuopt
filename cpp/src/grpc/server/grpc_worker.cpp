@@ -471,9 +471,17 @@ static SolveResult run_lp_solve(DeserializedJob& dj,
 
     SERVER_LOG_INFO("[Worker] Converting solution to CPU format...");
 
-    auto host_primal       = device_to_host<double>(gpu_solution.get_primal_solution());
-    auto host_dual         = device_to_host<double>(gpu_solution.get_dual_solution());
-    auto host_reduced_cost = device_to_host<double>(gpu_solution.get_reduced_cost());
+    auto host_primal = device_to_host<double>(gpu_solution.get_primal_solution());
+    // Dual recovery of QCQP is not supported yet: omit dual_solution/reduced_cost from the
+    // response rather than shipping the internal (wrong-sized/NaN) reformulated-problem vectors.
+    // collect_lp_solution_arrays() already drops empty arrays from the wire payload, so the
+    // solve still succeeds normally; only the dual-specific fields are absent.
+    std::vector<double> host_dual;
+    std::vector<double> host_reduced_cost;
+    if (gpu_solution.has_dual_solution_) {
+      host_dual         = device_to_host<double>(gpu_solution.get_dual_solution());
+      host_reduced_cost = device_to_host<double>(gpu_solution.get_reduced_cost());
+    }
 
     auto term_info = gpu_solution.get_additional_termination_information();
 
@@ -495,7 +503,8 @@ static SolveResult run_lp_solve(DeserializedJob& dj,
       term_info.gap,
       term_info.number_of_steps_taken,
       term_info.solved_by,
-      std::move(cpu_ws));
+      std::move(cpu_ws),
+      gpu_solution.has_dual_solution_);
 
     cuopt::mathematical_optimization::populate_chunked_result_header_lp(cpu_solution, &sr.header);
     sr.arrays = cuopt::mathematical_optimization::collect_lp_solution_arrays(cpu_solution);

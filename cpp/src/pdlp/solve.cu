@@ -1891,6 +1891,7 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
                    solution.get_reduced_cost().begin(),
                    solution.get_reduced_cost().end(),
                    nan_val);
+      solution.has_dual_solution_ = false;
     }
 
     if (settings.sol_file != "") {

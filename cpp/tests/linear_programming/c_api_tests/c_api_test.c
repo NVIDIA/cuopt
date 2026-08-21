@@ -2505,6 +2505,135 @@ DONE:
 }
 
 /**
+ * Dual recovery for QCQP is not
+ * supported yet, so requesting the dual solution / reduced costs must now return
+ * CUOPT_INVALID_ARGUMENT instead of overrunning the caller's buffer.
+ */
+cuopt_int_t test_qcqp_solution_dual_methods()
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuOptSolverSettings settings     = NULL;
+  cuOptSolution solution           = NULL;
+  cuopt_int_t status;
+  cuopt_int_t num_constraints;
+
+  /*
+   * minimize t
+   * subject to
+   *     t >= 0
+   *     x1^2 + x2^2 - t^2 <= 0
+   *     t >= -1
+   *     x1 >= 3
+   *     x2 >= 4
+   */
+  cuopt_int_t num_linear_constraints = 1;
+  cuopt_int_t num_variables          = 3;
+
+  cuopt_float_t objective[]     = {1.0, 0.0, 0.0};
+  cuopt_int_t row_offsets[]     = {0, 1};
+  cuopt_int_t column_indices[]  = {0};
+  cuopt_float_t matrix_values[] = {1.0};
+  char constraint_sense[]       = {CUOPT_GREATER_THAN};
+  cuopt_float_t rhs[]           = {0.0};
+
+  cuopt_float_t lower_bounds[] = {-1.0, 3.0, 4.0};
+  cuopt_float_t upper_bounds[] = {CUOPT_INFINITY, CUOPT_INFINITY, CUOPT_INFINITY};
+  char variable_types[]        = {CUOPT_CONTINUOUS, CUOPT_CONTINUOUS, CUOPT_CONTINUOUS};
+
+  cuopt_int_t qc_row[]    = {0, 1, 2};
+  cuopt_int_t qc_col[]    = {0, 1, 2};
+  cuopt_float_t qc_coeff[] = {-1.0, 1.0, 1.0};
+
+  cuopt_float_t dual_solution[16];
+  cuopt_float_t reduced_costs[3];
+
+  printf("Testing QCQP solution dual/reduced-cost methods...\n");
+
+  status = cuOptCreateProblem(num_linear_constraints,
+                              num_variables,
+                              CUOPT_MINIMIZE,
+                              0.0,
+                              objective,
+                              row_offsets,
+                              column_indices,
+                              matrix_values,
+                              constraint_sense,
+                              rhs,
+                              lower_bounds,
+                              upper_bounds,
+                              variable_types,
+                              &problem);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating QCQP problem: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptAddQuadraticConstraint(
+    problem, 3, qc_row, qc_col, qc_coeff, 0, NULL, NULL, CUOPT_LESS_THAN, 0.0);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error adding quadratic constraint: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetNumConstraints(problem, &num_constraints);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting num constraints: %d\n", status);
+    goto DONE;
+  }
+  if (num_constraints != 1) {
+    printf("Error: expected 1 documented constraint, got %d\n", num_constraints);
+    status = -1;
+    goto DONE;
+  }
+
+  status = cuOptCreateSolverSettings(&settings);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating solver settings: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptSetIntegerParameter(settings, CUOPT_METHOD, CUOPT_METHOD_BARRIER);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error setting barrier method: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptSolve(problem, settings, &solution);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error solving QCQP: %d\n", status);
+    goto DONE;
+  }
+
+  /* Calling get_dual_solution on a QCQP solution should return CUOPT_INVALID_ARGUMENT,
+   * and must not write anything into the (intentionally oversized) buffer. */
+  status = cuOptGetDualSolution(solution, dual_solution);
+  if (status != CUOPT_INVALID_ARGUMENT) {
+    printf("Error: cuOptGetDualSolution on QCQP should return CUOPT_INVALID_ARGUMENT, got %d\n",
+           status);
+    status = -1;
+    goto DONE;
+  }
+
+  /* Calling get_reduced_costs on a QCQP solution should return CUOPT_INVALID_ARGUMENT */
+  status = cuOptGetReducedCosts(solution, reduced_costs);
+  if (status != CUOPT_INVALID_ARGUMENT) {
+    printf("Error: cuOptGetReducedCosts on QCQP should return CUOPT_INVALID_ARGUMENT, got %d\n",
+           status);
+    status = -1;
+    goto DONE;
+  }
+
+  printf("QCQP solution dual methods test passed\n");
+  status = CUOPT_SUCCESS;
+
+DONE:
+  cuOptDestroyProblem(&problem);
+  cuOptDestroySolverSettings(&settings);
+  cuOptDestroySolution(&solution);
+  return status;
+}
+
+/**
  * Test CPU-only execution with CUDA_VISIBLE_DEVICES="" and remote execution enabled.
  * This simulates a CPU host without GPU access.
  * Note: Environment variables must be set before calling this function.

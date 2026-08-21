@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 
@@ -417,6 +417,7 @@ cdef create_solution_with_names(unique_ptr[solver_ret_t] sol_ret_ptr,
                 lp_ptr.gap_,
                 lp_ptr.nb_iterations_,
                 lp_ptr.solved_by_,
+                has_dual_solution=lp_ptr.has_dual_solution_,
             )
         else:
             return Solution(
@@ -436,6 +437,7 @@ cdef create_solution_with_names(unique_ptr[solver_ret_t] sol_ret_ptr,
                 gap=lp_ptr.gap_,
                 nb_iterations=lp_ptr.nb_iterations_,
                 solved_by=lp_ptr.solved_by_,
+                has_dual_solution=lp_ptr.has_dual_solution_,
             )
 
 

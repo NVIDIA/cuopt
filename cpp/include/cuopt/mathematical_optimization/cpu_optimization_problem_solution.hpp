@@ -67,7 +67,8 @@ class cpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
                     f_t l2_dual_residual,
                     f_t gap,
                     i_t num_iterations,
-                    method_t solved_by)
+                    method_t solved_by,
+                    bool has_dual_solution = true)
     : primal_solution_(std::move(primal_solution)),
       dual_solution_(std::move(dual_solution)),
       reduced_cost_(std::move(reduced_cost)),
@@ -80,7 +81,8 @@ class cpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
       l2_dual_residual_(l2_dual_residual),
       gap_(gap),
       num_iterations_(num_iterations),
-      solved_by_(solved_by)
+      solved_by_(solved_by),
+      has_dual_solution_(has_dual_solution)
   {
   }
 
@@ -100,7 +102,8 @@ class cpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
                     f_t gap,
                     i_t num_iterations,
                     method_t solved_by,
-                    cpu_pdlp_warm_start_data_t<i_t, f_t>&& warmstart_data)
+                    cpu_pdlp_warm_start_data_t<i_t, f_t>&& warmstart_data,
+                    bool has_dual_solution = true)
     : primal_solution_(std::move(primal_solution)),
       dual_solution_(std::move(dual_solution)),
       reduced_cost_(std::move(reduced_cost)),
@@ -114,14 +117,29 @@ class cpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
       gap_(gap),
       num_iterations_(num_iterations),
       solved_by_(solved_by),
-      pdlp_warm_start_data_(std::move(warmstart_data))
+      pdlp_warm_start_data_(std::move(warmstart_data)),
+      has_dual_solution_(has_dual_solution)
   {
   }
 
   // Host memory accessors (interface implementations)
   std::vector<f_t> get_primal_solution_host() const override { return primal_solution_; }
-  std::vector<f_t> get_dual_solution_host() const override { return dual_solution_; }
-  std::vector<f_t> get_reduced_cost_host() const override { return reduced_cost_; }
+  std::vector<f_t> get_dual_solution_host() const override
+  {
+    if (!has_dual_solution_) {
+      throw std::logic_error(
+        "get_dual_solution() is not available for solutions with quadratic constraints");
+    }
+    return dual_solution_;
+  }
+  std::vector<f_t> get_reduced_cost_host() const override
+  {
+    if (!has_dual_solution_) {
+      throw std::logic_error(
+        "get_reduced_costs() is not available for solutions with quadratic constraints");
+    }
+    return reduced_cost_;
+  }
 
   // Interface implementations
   cuopt::logic_error get_error_status() const override { return error_status_; }
@@ -272,6 +290,8 @@ class cpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
 
   // PDLP warm start data (embedded struct, CPU-backed using std::vector)
   cpu_pdlp_warm_start_data_t<i_t, f_t> pdlp_warm_start_data_;
+  // TMP: once dual recovery of QCQP is implemented, we can remove this field
+  bool has_dual_solution_{true};
 };
 
 /**
