@@ -1562,6 +1562,27 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_lift_move(
   return thrust::make_tuple(best_move, best_score);
 }
 
+// Draws a uniform in-bounds value, rounded and re-clamped for integer variables.
+template <typename i_t, typename f_t>
+static void randomize_variable(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
+                               i_t var_idx,
+                               raft::random::PCGenerator& rng)
+{
+  f_t lb  = std::max(get_lower(fj_cpu.h_var_bounds[var_idx].get()), -1e7);
+  f_t ub  = std::min(get_upper(fj_cpu.h_var_bounds[var_idx].get()), 1e7);
+  f_t val = lb + (ub - lb) * rng.next_double();
+  if (is_integer_var<i_t, f_t>(fj_cpu, var_idx)) {
+    lb  = std::ceil(lb);
+    ub  = std::floor(ub);
+    val = std::round(val);
+    val = std::min(std::max(val, lb), ub);
+  }
+
+  cuopt_assert((check_variable_within_bounds<i_t, f_t>(fj_cpu, var_idx, val)),
+               "value is out of bounds");
+  fj_cpu.h_assignment[var_idx] = val;
+}
+
 template <typename i_t, typename f_t>
 static void perturb(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 {
@@ -1581,21 +1602,8 @@ static void perturb(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
               fj_cpu.rng);
   raft::random::PCGenerator rng(fj_cpu.settings.seed + fj_cpu.iterations, 0, 0);
 
-  for (auto var_idx : sampled_vars) {
-    f_t lb  = std::max(get_lower(fj_cpu.h_var_bounds[var_idx].get()), -1e7);
-    f_t ub  = std::min(get_upper(fj_cpu.h_var_bounds[var_idx].get()), 1e7);
-    f_t val = lb + (ub - lb) * rng.next_double();
-    if (is_integer_var<i_t, f_t>(fj_cpu, var_idx)) {
-      lb  = std::ceil(lb);
-      ub  = std::floor(ub);
-      val = std::round(val);
-      val = std::min(std::max(val, lb), ub);
-    }
-
-    cuopt_assert((check_variable_within_bounds<i_t, f_t>(fj_cpu, var_idx, val)),
-                 "value is out of bounds");
-    fj_cpu.h_assignment[var_idx] = val;
-  }
+  for (auto var_idx : sampled_vars)
+    randomize_variable<i_t, f_t>(fj_cpu, var_idx, rng);
 
   recompute_lhs(fj_cpu);
 }
@@ -1626,6 +1634,11 @@ static void restart_from_infeasible_checkpoint(fj_cpu_climber_t<i_t, f_t>& fj_cp
   invalidate_mtm_cache(fj_cpu);
 }
 
+// Nonzeros per extra restart window, the cap on that, and how many windows a lane waits.
+constexpr int32_t fj_restart_window_nnz_scale = 100000;
+constexpr int32_t fj_restart_window_scale_max = 4;
+constexpr int32_t fj_restart_window_multiple  = 4;
+
 template <typename i_t, typename f_t>
 static void track_infeasible_checkpoint(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 {
@@ -1648,6 +1661,31 @@ static void track_infeasible_checkpoint(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
       ++fj_cpu.n_checkpoint_snapshots;
     }
     return;
+  }
+
+  // A lane that has never crossed and has exhausted its restores abandons the basin outright.
+  if (!fj_cpu.feasible_found) {
+    const i_t nnz_scale =
+      1 + (i_t)fj_cpu.h_coefficients.size() / fj_restart_window_nnz_scale;
+    const i_t capped = nnz_scale < fj_restart_window_scale_max ? nnz_scale
+                                                              : fj_restart_window_scale_max;
+    if (fj_cpu.iters_since_infeasible_improve >=
+          fj_restart_window_multiple * fj_cpu.infeasible_restart_window * capped &&
+        fj_cpu.restores_since_improvement >= fj_cpu.infeasible_restart_max_streak) {
+      raft::random::PCGenerator rng(fj_cpu.settings.seed + fj_cpu.iterations, 0, 0);
+      for (i_t var_idx = 0; var_idx < fj_cpu.view.pb.n_variables; ++var_idx)
+        randomize_variable<i_t, f_t>(fj_cpu, var_idx, rng);
+
+      recompute_lhs(fj_cpu);
+      invalidate_mtm_cache(fj_cpu);
+      reset_infeasible_checkpoint(fj_cpu);
+      fj_cpu.restores_since_improvement = 0;
+
+      CUOPT_LOG_DEBUG("%sCPUFJ randomized restart at iteration %d",
+                      fj_cpu.log_prefix.c_str(),
+                      fj_cpu.iterations);
+      return;
+    }
   }
 
   if (fj_cpu.restores_since_improvement >= fj_cpu.infeasible_restart_max_streak) return;

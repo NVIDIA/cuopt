@@ -209,6 +209,13 @@ constexpr int32_t fj_bin_ddfw_escalate_max   = 100;
 // The same, in feasible local minima without a best-objective improvement.
 constexpr int32_t fj_bin_obj_stall_after   = 50;
 constexpr int32_t fj_bin_obj_escalate_max  = 10;
+
+// Infeasible-region kick: stall, cooldown, post-restart quiet window, rows drawn, flips per row.
+constexpr int32_t fj_bin_kick_after         = 200;
+constexpr int32_t fj_bin_kick_cooldown      = 200;
+constexpr int32_t fj_bin_kick_restart_guard = 50;
+constexpr int32_t fj_bin_kick_rows          = 3;
+constexpr int32_t fj_bin_kick_vars_per_row  = 2;
 // prefetch distance
 // TODO: check if it actually matters at all for performance
 constexpr int32_t fj_bin_pf_dist = 8;
@@ -605,6 +612,7 @@ struct fj_bin_engine_t {
   int32_t iters{0};
   int32_t last_feasible_entrance_iter{0};
   int32_t last_restart_iter{0};
+  int32_t last_kick_iter{0};
   int64_t nnz_touched{0};
 
   // Denominator for the ops-per-nnz roofline: nonzeros the row kernel actually processes, and the
@@ -1202,6 +1210,39 @@ struct fj_bin_engine_t {
     return {best_v, best_s};
   }
 
+  // Flips a few variables drawn from violated rows, to leave a basin the weights cannot escape.
+  void infeasible_region_kick()
+  {
+    const int32_t n_viol = (int32_t)violated_list.size();
+    cuopt_assert(n_viol > 0, "kick requires a violated row");
+
+    int32_t flipped[fj_bin_kick_rows * fj_bin_kick_vars_per_row];
+    int32_t n_flipped = 0;
+
+    for (int32_t i = 0; i < fj_bin_kick_rows; ++i) {
+      const int32_t r        = violated_list[rng.next_u32() % (uint32_t)n_viol];
+      const int32_t row_begin = pb.offsets[r];
+      const int32_t row_end   = pb.offsets[r + 1];
+      if (row_begin >= row_end) continue;
+
+      for (int32_t j = 0; j < fj_bin_kick_vars_per_row; ++j) {
+        const int32_t k = row_begin + (int32_t)(rng.next_u32() % (uint32_t)(row_end - row_begin));
+        const int32_t v = pb.variables[k];
+
+        bool already = false;
+        for (int32_t f = 0; f < n_flipped && !already; ++f)
+          already = flipped[f] == v;
+        if (already) continue;
+
+        cuopt_assert(n_flipped < fj_bin_kick_rows * fj_bin_kick_vars_per_row, "flip list overflow");
+        flipped[n_flipped++] = v;
+        assign[v]            = (int8_t)(1 - assign[v]);
+        assign_i32[v]        = assign[v];
+      }
+    }
+    recompute_slack();
+  }
+
   void perturb()
   {
     if (pb.objective_vars.empty()) return;
@@ -1307,6 +1348,7 @@ struct fj_bin_engine_t {
     feasible_found               = false;
     iters                        = 0;
     last_restart_iter            = 0;
+    last_kick_iter               = 0;
     recompute_slack();
   }
 
@@ -1341,7 +1383,16 @@ struct fj_bin_engine_t {
         apply_move(move_var, (int8_t)(1 - 2 * assign[move_var]), climber);
       } else {
         update_weights();
-        if (perturb_now) perturb();
+        const bool kick_ready = !violated_list.empty() &&
+                                iters_since_infeasible_improve >= fj_bin_kick_after &&
+                                iters - last_kick_iter >= fj_bin_kick_cooldown &&
+                                iters - last_restart_iter >= fj_bin_kick_restart_guard;
+        if (kick_ready) {
+          infeasible_region_kick();
+          last_kick_iter = iters;
+        } else if (perturb_now) {
+          perturb();
+        }
         std::tie(move_var, score) = find_move_violated(1, true);
         const int32_t v           = move_var >= 0 ? move_var : 0;
         apply_move(v, (int8_t)(1 - 2 * assign[v]), climber);
