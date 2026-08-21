@@ -2927,8 +2927,12 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* w
       }
 
     } else {
-      solve_submip(
-        worker, current_incumbent, var_types, submip_stats, fixrate, stats.total_simplex_iters,
+      solve_submip(worker,
+                   current_incumbent,
+                   var_types,
+                   submip_stats,
+                   fixrate,
+                   stats.total_simplex_iters,
                    halt);
     }
   }
@@ -3186,7 +3190,7 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   f_t& last_objective,
   f_t root_relax_objective,
   i_t& cut_pool_size,
-  [[maybe_unused]] const std::vector<f_t>& saved_solution) -> cut_pass_result_t
+  [[maybe_unused]] const std::vector<f_t>& saved_solution) -> cut_pass_action_t
 {
 #ifdef PRINT_FRACTIONAL_INFO
   settings_.log.printf("Found %d fractional variables on cut pass %d\n", num_fractional, cut_pass);
@@ -3217,12 +3221,14 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
     if (settings_.heuristic_preemption_callback != nullptr) {
       settings_.heuristic_preemption_callback();
     }
-    return {cut_pass_action_t::RETURN, mip_status_t::INFEASIBLE};
+
+    solver_status_ = mip_status_t::INFEASIBLE;
+    return cut_pass_action_t::RETURN;
   }
   if (toc(exploration_stats_.start_time) >= settings_.time_limit) {
     solver_status_ = mip_status_t::TIME_LIMIT;
     set_final_solution(solution, root_objective_);
-    return {cut_pass_action_t::RETURN, solver_status_};
+    return cut_pass_action_t::RETURN;
   }
   f_t cut_generation_time = toc(cut_start_time);
   if (cut_generation_time > 1.0) {
@@ -3238,7 +3244,7 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   std::vector<f_t> cut_rhs;
   std::vector<cut_type_t> cut_types;
   i_t num_cuts = cut_pool.get_best_cuts(cuts_to_add, cut_rhs, cut_types);
-  if (num_cuts == 0) { return {cut_pass_action_t::BREAK, mip_status_t::UNSET}; }
+  if (num_cuts == 0) { return cut_pass_action_t::BREAK; }
   cut_info.record_cut_types(cut_types);
 #ifdef PRINT_CUT_POOL_TYPES
   cut_pool.print_cutpool_types();
@@ -3252,7 +3258,8 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
     for (i_t i = 0; i < static_cast<i_t>(cut_types.size()); ++i) {
       settings_.log.printf("row %d cut type %d\n", i, cut_types[i]);
     }
-    return {cut_pass_action_t::RETURN, mip_status_t::NUMERICAL};
+    solver_status_ = mip_status_t::NUMERICAL;
+    return cut_pass_action_t::RETURN;
   }
 #endif
 #ifdef CHECK_CUTS_AGAINST_SAVED_SOLUTION
@@ -3289,7 +3296,8 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   if (add_cuts_time > 1.0) { settings_.log.debug("Add cuts time %.2f seconds\n", add_cuts_time); }
   if (add_cuts_status != 0) {
     settings_.log.printf("Failed to add cuts\n");
-    return {cut_pass_action_t::RETURN, mip_status_t::NUMERICAL};
+    solver_status_ = mip_status_t::NUMERICAL;
+    return cut_pass_action_t::RETURN;
   }
 
   if (settings_.reduced_cost_strengthening >= 1 && upper_bound_.load() < last_upper_bound) {
@@ -3333,13 +3341,14 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
 #ifdef WRITE_BOUND_STRENGTHENING_INFEASIBLE_MPS
     original_lp_.write_mps("bound_strengthening_infeasible.mps");
 #endif
-    return {cut_pass_action_t::RETURN, mip_status_t::INFEASIBLE};
+    solver_status_ = mip_status_t::INFEASIBLE;
+    return cut_pass_action_t::RETURN;
   }
 
   if (toc(exploration_stats_.start_time) >= settings_.time_limit) {
     solver_status_ = mip_status_t::TIME_LIMIT;
     set_final_solution(solution, root_objective_);
-    return {cut_pass_action_t::RETURN, solver_status_};
+    return cut_pass_action_t::RETURN;
   }
 
   i_t iter                    = 0;
@@ -3367,13 +3376,13 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   if (cut_status == dual_status_t::TIME_LIMIT) {
     solver_status_ = mip_status_t::TIME_LIMIT;
     set_final_solution(solution, root_objective_);
-    return {cut_pass_action_t::RETURN, solver_status_};
+    return cut_pass_action_t::RETURN;
   }
 
   if (cut_status == dual_status_t::CONCURRENT_LIMIT) {
     solver_status_ = mip_status_t::HALT;
     set_final_solution(solution, root_objective_);
-    return {cut_pass_action_t::RETURN, solver_status_};
+    return cut_pass_action_t::RETURN;
   }
 
   if (cut_status != dual_status_t::OPTIMAL) {
@@ -3393,12 +3402,19 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
       cut_status = convert_lp_status_to_dual_status(scratch_status);
       exploration_stats_.total_simplex_iters += root_relax_soln_.iterations;
       root_objective_ = compute_objective(original_lp_, root_relax_soln_.x);
+
+    } else if (scratch_status == lp_status_t::CONCURRENT_LIMIT) {
+      cut_status     = convert_lp_status_to_dual_status(scratch_status);
+      solver_status_ = mip_status_t::HALT;
+      set_final_solution(solution, root_objective_);
+      return cut_pass_action_t::RETURN;
     } else {
       settings_.log.printf("Cut status %s\n", simplex::dual_status_to_string(cut_status).c_str());
 #ifdef WRITE_CUT_INFEASIBLE_MPS
       original_lp_.write_mps("cut_infeasible.mps");
 #endif
-      return {cut_pass_action_t::RETURN, mip_status_t::NUMERICAL};
+      solver_status_ = mip_status_t::NUMERICAL;
+      return cut_pass_action_t::RETURN;
     }
   }
   root_objective_ = compute_objective(original_lp_, root_relax_soln_.x);
@@ -3431,13 +3447,13 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   if (remove_cuts_status == TIME_LIMIT_RETURN) {
     solver_status_ = mip_status_t::TIME_LIMIT;
     set_final_solution(solution, root_objective_);
-    return {cut_pass_action_t::RETURN, solver_status_};
+    return cut_pass_action_t::RETURN;
   }
 
   if (remove_cuts_status == CONCURRENT_HALT_RETURN) {
     solver_status_ = mip_status_t::HALT;
     set_final_solution(solution, root_objective_);
-    return {cut_pass_action_t::RETURN, solver_status_};
+    return cut_pass_action_t::RETURN;
   }
 
   f_t remove_cuts_time = toc(remove_cuts_start_time);
@@ -3463,7 +3479,8 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   if (rel_gap < settings_.relative_mip_gap_tol || abs_gap < settings_.absolute_mip_gap_tol) {
     if (num_fractional == 0) { set_solution_at_root(solution, cut_info); }
     set_final_solution(solution, root_objective_);
-    return {cut_pass_action_t::RETURN, mip_status_t::OPTIMAL};
+    solver_status_ = mip_status_t::OPTIMAL;
+    return cut_pass_action_t::RETURN;
   }
 
   f_t change_in_objective = root_objective_ - last_objective;
@@ -3475,10 +3492,10 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
       "Change in objective %.16e is less than 1e-3 of root relax objective %.16e\n",
       change_in_objective,
       root_relax_objective);
-    return {cut_pass_action_t::BREAK, mip_status_t::UNSET};
+    return cut_pass_action_t::BREAK;
   }
   last_objective = root_objective_;
-  return {cut_pass_action_t::CONTINUE, mip_status_t::UNSET};
+  return cut_pass_action_t::CONTINUE;
 }
 
 template <typename i_t, typename f_t>
@@ -3604,6 +3621,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   });
 
   if (root_status == lp_status_t::CONCURRENT_LIMIT) {
+    solver_status_ = mip_status_t::HALT;
     set_final_solution(solution, -inf);
     return mip_status_t::HALT;
   }
@@ -3751,25 +3769,24 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     launch_root_heuristics(
       original_lp_, root_relax_soln_.x, cut_pass, root_heuristics, root_worker_count);
 
-    cut_pass_result_t cut_pass_result;
-    cut_pass_result = do_cut_pass(cut_pass,
-                                  solution,
-                                  num_fractional,
-                                  fractional,
-                                  cut_generation,
-                                  basis_update,
-                                  basic_list,
-                                  nonbasic_list,
-                                  variable_bounds,
-                                  cut_pool,
-                                  cut_info,
-                                  lp_settings,
-                                  original_rows,
-                                  last_upper_bound,
-                                  last_objective,
-                                  root_relax_objective,
-                                  cut_pool_size,
-                                  saved_solution);
+    cut_pass_action_t cut_pass_action = do_cut_pass(cut_pass,
+                                                    solution,
+                                                    num_fractional,
+                                                    fractional,
+                                                    cut_generation,
+                                                    basis_update,
+                                                    basic_list,
+                                                    nonbasic_list,
+                                                    variable_bounds,
+                                                    cut_pool,
+                                                    cut_info,
+                                                    lp_settings,
+                                                    original_rows,
+                                                    last_upper_bound,
+                                                    last_objective,
+                                                    root_relax_objective,
+                                                    cut_pool_size,
+                                                    saved_solution);
 
     mutex_upper_.lock();
     if (incumbent_.has_incumbent && incumbent_.x.size() != original_lp_.num_cols) {
@@ -3780,13 +3797,14 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     }
     mutex_upper_.unlock();
 
-    if (cut_pass_result.action == cut_pass_action_t::RETURN) {
+    if (cut_pass_action == cut_pass_action_t::RETURN) {
       if (settings_.benchmark_info_ptr != nullptr) {
         settings_.benchmark_info_ptr->cut_generation_time_sec = toc(cut_generation_start_time);
       }
-      return cut_pass_result.status;
+      assert(solver_status_ != mip_status_t::UNSET);
+      return solver_status_;
     }
-    if (cut_pass_result.action == cut_pass_action_t::BREAK) { break; }
+    if (cut_pass_action == cut_pass_action_t::BREAK) { break; }
   }
 
   // Publish the post-cuts root LP value.

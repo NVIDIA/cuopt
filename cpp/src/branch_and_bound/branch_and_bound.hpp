@@ -311,12 +311,8 @@ class branch_and_bound_t {
   }
 
   enum class cut_pass_action_t { CONTINUE, BREAK, RETURN };
-  struct cut_pass_result_t {
-    cut_pass_action_t action{cut_pass_action_t::CONTINUE};
-    mip_status_t status{mip_status_t::UNSET};
-  };
 
-  cut_pass_result_t do_cut_pass(i_t cut_pass,
+  cut_pass_action_t do_cut_pass(i_t cut_pass,
                                 simplex::mip_solution_t<i_t, f_t>& solution,
                                 i_t& num_fractional,
                                 std::vector<i_t>& fractional,
