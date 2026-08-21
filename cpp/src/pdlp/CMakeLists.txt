@@ -39,6 +39,7 @@ set(LP_CORE_FILES
 # C and Python adapter files
 set(LP_ADAPTER_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/utilities/cython_solve.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/utilities/barrier_cache.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/cuopt_c.cpp
 )
 

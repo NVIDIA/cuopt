@@ -22,6 +22,11 @@
 
 #include <cuda/std/span>
 
+
+namespace cuopt::cython {
+class barrier_cache_t;
+}
+
 namespace cuopt {
 namespace CUOPT_EXPORT mathematical_optimization {
 
@@ -356,6 +361,10 @@ class pdlp_solver_settings_t {
   // Used to force batch PDLP to solve a subbatch of the problems at a time
   // The 0 default value will make the solver use its heuristic to determine the subbatch size
   i_t fixed_batch_size{0};
+  /** When true, first GPU barrier/QCQP solve returns a ``barrier_cache_t`` capsule. */
+  bool sequence_solve{false};
+  /** Non-owning cache pointer set by ``call_solve`` for barrier symbolic reuse. */
+  cuopt::cython::barrier_cache_t* barrier_cache{nullptr};
 
  private:
   /** Initial primal solution */

@@ -15,9 +15,16 @@
 #include <linear_algebra/sparse_matrix.hpp>
 #include <math_optimization/tic_toc.hpp>
 
+#include <memory>
+
 #include <rmm/device_uvector.hpp>
 
 #include <utility>
+
+namespace cuopt::cython {
+class barrier_cache_t;
+}  // namespace cuopt::cython
+
 namespace cuopt::mathematical_optimization::barrier {
 
 /** Validates SOC layout on an simplex::lp_problem_t before barrier presolve/solve. */
@@ -34,9 +41,20 @@ class barrier_solver_t {
   barrier_solver_t(const simplex::lp_problem_t<i_t, f_t>& lp,
                    const simplex::presolve_info_t<i_t, f_t>& presolve,
                    const simplex::simplex_solver_settings_t<i_t, f_t>& settings);
-  simplex::lp_status_t solve(f_t start_time, simplex::lp_solution_t<i_t, f_t>& solution);
+  simplex::lp_status_t solve(f_t start_time,
+                             simplex::lp_solution_t<i_t, f_t>& solution,
+                             cuopt::cython::barrier_cache_t* session = nullptr);
+  // Continue path: cached iteration_data_t already has the updated linear objective.
+  // Rebind settings, compute a new initial point, run IPM. Same status/solution contract as solve().
+  simplex::lp_status_t barrier_solve_advanced(f_t start_time,
+                                              simplex::lp_solution_t<i_t, f_t>& solution,
+                                              cuopt::cython::barrier_cache_t* session);
 
  private:
+  simplex::lp_status_t run_ipm(f_t start_time,
+                               simplex::lp_solution_t<i_t, f_t>& solution,
+                               cuopt::cython::barrier_cache_t* session,
+                               std::unique_ptr<iteration_data_t<i_t, f_t>>& owned_data);
   void my_pop_range(bool debug) const;
   void create_Q(const simplex::lp_problem_t<i_t, f_t>& lp, csc_matrix_t<i_t, f_t>& Q);
   int initial_point(iteration_data_t<i_t, f_t>& data);

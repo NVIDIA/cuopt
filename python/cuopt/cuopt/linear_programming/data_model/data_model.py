@@ -229,6 +229,23 @@ class DataModel(data_model_wrapper.DataModel):
         super().set_objective_coefficients(c)
 
     @catch_cuopt_exception
+    def update_q(self, c):
+        """
+        Update the linear objective coefficients (c) for a session re-solve.
+
+        Writes user-space ``c`` onto this DataModel. If a Barrier session is
+        present, also maps ``c`` into the cached barrier workspace and marks
+        it dirty (quadratic ``Q``, ``A``, and bounds must stay unchanged).
+
+        Parameters
+        ----------
+        c : array-like of float64
+            Linear objective coefficients, length equal to the number of
+            variables on the first session solve.
+        """
+        super().update_q(c)
+
+    @catch_cuopt_exception
     def set_objective_scaling_factor(self, objective_scaling_factor):
         """
         Set the scaling factor of the objective function

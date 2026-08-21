@@ -6,6 +6,7 @@
 set(BARRIER_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/cusparse_view.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/barrier.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/barrier_factorization_sparsity_hash.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/device_sparse_matrix.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/pinned_host_allocator.cu
   )

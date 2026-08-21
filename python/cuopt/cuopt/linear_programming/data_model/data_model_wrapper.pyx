@@ -21,6 +21,14 @@ from libcpp.string cimport string
 from libcpp.utility cimport move
 from libcpp.vector cimport vector
 
+cdef extern from "Python.h":
+    bint PyCapsule_IsValid(object cap, const char* name)
+    void* PyCapsule_GetPointer(object cap, const char* name)
+
+cdef extern from "cuopt/mathematical_optimization/utilities/barrier_cache.hpp" namespace "cuopt::cython":  # noqa
+    cdef cppclass barrier_cache_t:
+        void update_linear_objective(const double* c, int n) except +
+
 
 def type_cast(np_obj, np_type, name):
     if not isinstance(np_obj, np.ndarray):
@@ -41,6 +49,7 @@ cdef class DataModel:
 
     def __init__(self):
         self.c_data_model_view.reset(new data_model_view_t[int, double]())
+        self.barrier_cache_capsule = None
 
         self.maximize = False
         self.A_values = np.array([])
@@ -67,6 +76,14 @@ cdef class DataModel:
         self.variable_names = np.array([])
         self.row_names = np.array([])
         self.quadratic_constraints = []
+
+    def has_barrier_cache(self):
+        """Return whether this data model owns a reusable solver session."""
+        return self.barrier_cache_capsule is not None
+
+    def clear_barrier_cache(self):
+        """Release this data model's reusable solver session and GPU cache."""
+        self.barrier_cache_capsule = None
 
     def clear_quadratic_constraints(self):
         self.quadratic_constraints = []
@@ -157,6 +174,34 @@ cdef class DataModel:
 
     def set_objective_coefficients(self, c):
         self.c = type_cast(c, np.float64, "c")
+
+    def update_q(self, c):
+        """Update linear objective coefficients (user-space ``c``).
+
+        Always writes the DataModel objective. If this model owns a solver
+        session from a prior Barrier solve, also crushes ``c`` into the cached
+        ``iteration_data_t`` and sets ``c_dirty`` so a later continue path can
+        skip convert/presolve. Session crush runs first so a length error
+        leaves the DataModel coefficients unchanged.
+        """
+        cdef barrier_cache_t* session
+        cdef double[::1] c_view
+        new_c = type_cast(c, np.float64, "c")
+        if self.barrier_cache_capsule is not None:
+            if not PyCapsule_IsValid(
+                self.barrier_cache_capsule, b"cuopt.barrier_cache"
+            ):
+                raise ValueError("Invalid barrier cache stored on DataModel.")
+            session = <barrier_cache_t*>PyCapsule_GetPointer(
+                self.barrier_cache_capsule,
+                b"cuopt.barrier_cache",
+            )
+            c_view = np.ascontiguousarray(new_c, dtype=np.float64)
+            if c_view.shape[0] == 0:
+                session.update_linear_objective(NULL, 0)
+            else:
+                session.update_linear_objective(&c_view[0], <int>c_view.shape[0])
+        self.c = new_c
 
     def set_objective_scaling_factor(self, objective_scaling_factor):
         self.objective_scaling_factor = objective_scaling_factor

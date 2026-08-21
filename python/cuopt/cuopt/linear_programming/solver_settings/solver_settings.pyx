@@ -117,6 +117,7 @@ cdef class SolverSettings:
         self.settings_dict = {}
         self.pdlp_warm_start_data = None
         self.mip_callbacks = []
+        self.sequence_solve = False
 
     def to_base_type(self, value):
         """Convert a string to a base type.
@@ -458,6 +459,16 @@ cdef class SolverSettings:
                 warm_start_data.sum_solution_weight,
                 warm_start_data.iterations_since_last_restart # noqa
             )
+
+        c_solver_settings.get_pdlp_settings().sequence_solve = self.sequence_solve
+
+    def set_sequence_solve(self, enabled):
+        """Enable barrier cache reuse across a sequence of solves (same sparsity)."""
+        self.sequence_solve = True if enabled else False
+
+    def get_sequence_solve(self):
+        """Return whether sequence-solve barrier cache reuse is enabled."""
+        return self.sequence_solve
 
     def dump_parameters_to_file(self, path, hyperparameters_only=True):
         """Apply ``settings_dict`` / warm start to C++, then dump parameters to *path*.
