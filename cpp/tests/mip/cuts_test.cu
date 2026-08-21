@@ -981,6 +981,37 @@ TEST(cuts, test_duplicate_cuts_detection)
   cut_pool.add_cut(mip::cut_type_t::MIXED_INTEGER_GOMORY, cut8);
 
   cut_pool.check_for_duplicate_cuts();
+  EXPECT_EQ(cut_pool.pool_size(), 5);
+}
+
+TEST(cuts, duplicate_cuts_support_unordered_and_strongest_retained)
+{
+  simplex::simplex_solver_settings_t<int, double> settings;
+  mip::cut_pool_t<int, double> cut_pool(2, settings);
+
+  mip::inequality_t<int, double> weaker;
+  weaker.push_back(0, 1.0);
+  weaker.push_back(1, 2.0);
+  weaker.rhs = 1.0;
+  cut_pool.add_cut(mip::cut_type_t::KNAPSACK, weaker);
+
+  mip::inequality_t<int, double> stronger;
+  stronger.push_back(1, 4.0);
+  stronger.push_back(0, 2.0);
+  stronger.rhs = 4.0;
+  cut_pool.add_cut(mip::cut_type_t::FLOW_COVER, stronger);
+
+  cut_pool.check_for_duplicate_cuts();
+  EXPECT_EQ(cut_pool.pool_size(), 1);
+  EXPECT_EQ(cut_pool.count_violated_cuts({1.5, 0.0}), 1);
+
+  mip::inequality_t<int, double> opposite;
+  opposite.push_back(0, -1.0);
+  opposite.push_back(1, -2.0);
+  opposite.rhs = -2.0;
+  cut_pool.add_cut(mip::cut_type_t::KNAPSACK, opposite);
+  cut_pool.check_for_duplicate_cuts();
+  EXPECT_EQ(cut_pool.pool_size(), 2);
 }
 
 TEST(cuts, clique_phase1_smoke_conflict_graph_edges)
