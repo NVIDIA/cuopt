@@ -1269,15 +1269,15 @@ struct deterministic_diving_policy_t
     switch (this->worker.diving_type) {
       case search_strategy_t::PSEUDOCOST_DIVING:
         return pseudocost_diving(
-          this->worker.pc_snapshot, fractional, x, *this->worker.root_solution, log);
+          this->worker.pc_snapshot, fractional, x, this->worker.root_solution, log);
 
       case search_strategy_t::LINE_SEARCH_DIVING:
-        return line_search_diving<i_t, f_t>(fractional, x, *this->worker.root_solution, log);
+        return line_search_diving<i_t, f_t>(fractional, x, this->worker.root_solution, log);
 
       case search_strategy_t::GUIDED_DIVING:
         if (this->worker.incumbent_snapshot.empty()) {
           return pseudocost_diving(
-            this->worker.pc_snapshot, fractional, x, *this->worker.root_solution, log);
+            this->worker.pc_snapshot, fractional, x, this->worker.root_solution, log);
         } else {
           return guided_diving(
             this->worker.pc_snapshot, fractional, x, this->worker.incumbent_snapshot, log);
@@ -2195,7 +2195,6 @@ bool branch_and_bound_t<i_t, f_t>::launch_rins_worker(const std::vector<f_t>& so
   if (!incumbent_.has_incumbent) return false;
   if (rins_worker_pool_.num_idle() == 0) return false;
 
-  bool is_root_heuristic            = false;
   diving_worker_t<i_t, f_t>* worker = rins_worker_pool_.pop_idle_worker();
   if (!worker) return false;
 
@@ -3573,7 +3572,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   omp_atomic_t<i_t> root_worker_count = 0;
   std::list<root_heuristics_t<i_t, f_t>> root_heuristics;
-  launch_root_heuristics(original_lp_, root_relax_soln_.x, 0, root_heuristics, root_worker_count);
 
   f_t cut_generation_start_time = tic();
   i_t cut_pool_size             = 0;
@@ -3604,6 +3602,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 #pragma omp taskwait depend(in : *clique_signal)
       return mip_status_t::OPTIMAL;
     }
+
+    launch_root_heuristics(
+      original_lp_, root_relax_soln_.x, cut_pass, root_heuristics, root_worker_count);
 
     cut_pass_result_t cut_pass_result;
     cut_pass_result = do_cut_pass(cut_pass,
@@ -3643,10 +3644,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       return cut_pass_result.status;
     }
     if (cut_pass_result.action == cut_pass_action_t::BREAK) { break; }
-
-    set_uninitialized_steepest_edge_norms<i_t, f_t>(original_lp_, basic_list, edge_norms_);
-    launch_root_heuristics(
-      original_lp_, root_relax_soln_.x, cut_pass + 1, root_heuristics, root_worker_count);
   }
 
   // Publish the post-cuts root LP value.
@@ -4029,8 +4026,7 @@ void branch_and_bound_t<i_t, f_t>::run_deterministic_coordinator(const csr_matri
                                                                        var_types_,
                                                                        settings_,
                                                                        root_relax_soln_.x,
-                                                                       edge_norms_,
-                                                                       &root_relax_soln_.x);
+                                                                       edge_norms_);
     }
   }
 

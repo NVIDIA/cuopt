@@ -43,6 +43,7 @@ struct root_heuristics_t {
     if (submip_worker_) {
       diving_worker_t<i_t, f_t>* worker = submip_worker_.get();
 #pragma omp taskwait depend(in : *worker)
+      submip_worker_.reset();
     }
   }
 
