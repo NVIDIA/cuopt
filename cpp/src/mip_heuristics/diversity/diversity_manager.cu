@@ -1028,6 +1028,21 @@ void diversity_manager_t<i_t, f_t>::set_simplex_solution(const std::vector<f_t>&
   CUOPT_LOG_DEBUG("Staged simplex solution and requested concurrent halt");
 }
 
+template <typename i_t, typename f_t>
+std::vector<f_t> diversity_manager_t<i_t, f_t>::pick_random_feasible_solution(pcgenerator_t& rng,
+                                                                              i_t max_attempts)
+{
+  std::lock_guard<std::recursive_mutex> lock(population.write_mutex);
+  if (population.current_size() == 0 || !population.is_feasible()) return {};
+  if (population.current_size() == 1) return population.best_feasible().get_host_assignment();
+
+  for (i_t attempt = 0; attempt < max_attempts; ++attempt) {
+    solution_t<i_t, f_t>& sol = population.get_random_solution_with(rng);
+    if (sol.compute_feasibility()) return sol.get_host_assignment();
+  }
+  return {};
+}
+
 #if MIP_INSTANTIATE_FLOAT
 template class diversity_manager_t<int, float>;
 #endif

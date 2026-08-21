@@ -91,6 +91,18 @@ void population_t<i_t, f_t>::initialize_population()
 }
 
 template <typename i_t, typename f_t>
+solution_t<i_t, f_t>& population_t<i_t, f_t>::get_random_solution_with(pcgenerator_t& rng)
+{
+  raft::common::nvtx::range fun_scope("get_random_solution_with");
+  cuopt_assert(indices.size() > 2, "There should be enough solutions");
+  size_t add = (size_t)(!solutions[0].first);
+  size_t i   = add + rng.uniform(0UL, indices.size() - 1UL);
+  size_t j   = add + rng.uniform(0UL, indices.size() - 1UL);
+  size_t k   = std::min(i, j);
+  return solutions[indices[k].first].second;
+}
+
+template <typename i_t, typename f_t>
 std::pair<solution_t<i_t, f_t>, solution_t<i_t, f_t>> population_t<i_t, f_t>::get_two_random(
   bool tournament)
 {

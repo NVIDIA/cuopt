@@ -14,6 +14,7 @@
 #include <cuopt/mathematical_optimization/mip/solver_settings.hpp>  // benchmark_info_t
 
 #include <cuts/cuts.hpp>
+#include <mip_heuristics/diversity/diversity_manager.cuh>
 #include <mip_heuristics/feasibility_jump/fj_cpu_worker.cuh>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
@@ -276,7 +277,8 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
   f_t start_time,
   const probing_implied_bound_t<i_t, f_t>& probing_implied_bound,
   std::shared_ptr<mip::clique_table_t<i_t, f_t>> clique_table,
-  mip_symmetry_t<i_t, f_t>* symmetry)
+  mip_symmetry_t<i_t, f_t>* symmetry,
+  diversity_manager_t<i_t, f_t>* diversity_manager)
   : original_problem_(user_problem),
     settings_(solver_settings),
     probing_implied_bound_(probing_implied_bound),
@@ -288,7 +290,8 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
     root_relax_soln_(1, 1),
     root_crossover_soln_(1, 1),
     pc_(1, solver_settings),
-    solver_status_(mip_status_t::UNSET)
+    solver_status_(mip_status_t::UNSET),
+    diversity_manager_(diversity_manager)
 {
   exploration_stats_.start_time = start_time;
 #ifdef PRINT_CONSTRAINT_MATRIX
@@ -2222,11 +2225,24 @@ bool branch_and_bound_t<i_t, f_t>::launch_submip_worker(const std::vector<f_t>& 
   diving_worker_t<i_t, f_t>* worker = submip_worker_pool_.pop_idle_worker();
   if (!worker) return false;
 
-  std::vector<f_t> current_incumbent;
-  mutex_upper_.lock();
-  bool use_rins = incumbent_.has_incumbent && settings_.submip_settings.rins != 0;
-  if (use_rins) current_incumbent = incumbent_.x;
-  mutex_upper_.unlock();
+  std::vector<f_t> ref_sol;
+
+  if (settings_.submip_settings.rins != 0) {
+    if (diversity_manager_) {
+      std::vector<f_t> sol_from_population =
+        diversity_manager_->pick_random_feasible_solution(worker->rng);
+      if (!sol_from_population.empty()) {
+        crush_primal_solution<i_t, f_t>(
+          original_problem_, original_lp_, sol_from_population, new_slacks_, ref_sol);
+      }
+    }
+
+    if (ref_sol.empty()) {
+      mutex_upper_.lock();
+      if (incumbent_.has_incumbent) ref_sol = incumbent_.x;
+      mutex_upper_.unlock();
+    }
+  }
 
   // Note that this node does not have the vstatus (it was cleared at the start of B&B exploration)
   worker->start_node         = mip_node_t<i_t, f_t>(root_objective_, root_vstatus_);
@@ -2234,17 +2250,17 @@ bool branch_and_bound_t<i_t, f_t>::launch_submip_worker(const std::vector<f_t>& 
   worker->leaf_problem.lower = original_lp_.lower;
   worker->leaf_problem.upper = original_lp_.upper;
   worker->leaf_solution.x    = sol;
-  worker->search_strategy    = use_rins ? search_strategy_t::RINS : search_strategy_t::RENS;
+  worker->search_strategy    = !ref_sol.empty() ? search_strategy_t::RINS : search_strategy_t::RENS;
   worker->set_active();
 
   if (settings_.inside_submip) {
     // LLVM libomp's GOMP compatibility path skips GCC's firstprivate copy
     // function for included tasks.
-    recursive_submip(worker, current_incumbent, var_types_);
+    recursive_submip(worker, ref_sol, var_types_);
   } else {
 #pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) affinity(worker) \
-  firstprivate(worker, current_incumbent)
-    recursive_submip(worker, current_incumbent, var_types_);
+  firstprivate(worker, ref_sol)
+    recursive_submip(worker, ref_sol, var_types_);
   }
 
   return true;
@@ -3002,28 +3018,41 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
     worker->run_async(time_limit, work_limit, &worker_count);
   }
 
-  bool use_rins = settings_.submip_settings.rins != 0 && incumbent_.has_incumbent;
-  if (use_rins || settings_.submip_settings.rens != 0) {
-    search_strategy_t strategy = use_rins ? search_strategy_t::RINS : search_strategy_t::RENS;
-    diving_worker_t<i_t, f_t>* worker = heuristic->create_submip_worker(
-      id, lp, settings_, root_objective_, root_vstatus_, sol, strategy);
+  if (settings_.submip_settings.rins != 0 || settings_.submip_settings.rens != 0) {
+    diving_worker_t<i_t, f_t>* worker =
+      heuristic->create_submip_worker(id, lp, settings_, root_objective_, root_vstatus_, sol);
 
-    std::vector<f_t> current_incumbent;
-    mutex_upper_.lock();
-    if (use_rins) current_incumbent = incumbent_.x;
-    mutex_upper_.unlock();
+    std::vector<f_t> ref_sol;
+
+    if (settings_.submip_settings.rins != 0) {
+      if (diversity_manager_) {
+        std::vector<f_t> sol_from_population =
+          diversity_manager_->pick_random_feasible_solution(worker->rng);
+        if (!sol_from_population.empty()) {
+          crush_primal_solution<i_t, f_t>(
+            original_problem_, original_lp_, sol_from_population, new_slacks_, ref_sol);
+        }
+      }
+
+      if (ref_sol.empty()) {
+        mutex_upper_.lock();
+        if (incumbent_.has_incumbent) ref_sol = incumbent_.x;
+        mutex_upper_.unlock();
+      }
+    }
+
+    worker->search_strategy = !ref_sol.empty() ? search_strategy_t::RINS : search_strategy_t::RENS;
 
     if (settings_.inside_submip) {
       // LLVM libomp's GOMP compatibility path skips GCC's firstprivate copy
       // function for included tasks.
-      recursive_submip(worker, current_incumbent, heuristic->var_types_, &heuristic->halt_);
+      recursive_submip(worker, ref_sol, heuristic->var_types_, &heuristic->halt_);
     } else {
       ++worker_count;
-#pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) affinity(worker)               \
-  shared(heuristics, worker_count) firstprivate(worker, current_incumbent, heuristic) \
-  depend(out : *worker)
+#pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) affinity(worker) \
+  shared(heuristics, worker_count) firstprivate(worker, ref_sol, heuristic) depend(out : *worker)
       {
-        recursive_submip(worker, current_incumbent, heuristic->var_types_, &heuristic->halt_);
+        recursive_submip(worker, ref_sol, heuristic->var_types_, &heuristic->halt_);
         --worker_count;
       }
     }

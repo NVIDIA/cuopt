@@ -84,6 +84,9 @@ template <typename i_t, typename f_t>
 struct mip_symmetry_t;
 
 template <typename i_t, typename f_t>
+class diversity_manager_t;
+
+template <typename i_t, typename f_t>
 struct nondeterministic_policy_t;
 template <typename i_t, typename f_t, typename WorkerT>
 struct deterministic_policy_base_t;
@@ -100,7 +103,8 @@ class branch_and_bound_t {
                      f_t start_time,
                      const probing_implied_bound_t<i_t, f_t>& probing_implied_bound,
                      std::shared_ptr<mip::clique_table_t<i_t, f_t>> clique_table = nullptr,
-                     mip_symmetry_t<i_t, f_t>* symmetry                          = nullptr);
+                     mip_symmetry_t<i_t, f_t>* symmetry                          = nullptr,
+                     diversity_manager_t<i_t, f_t>* diversity_manager            = nullptr);
 
   // Set an initial guess based on the user_problem. This should be called before solve.
   void set_initial_guess(const std::vector<f_t>& user_guess) { guess_ = user_guess; }
@@ -294,6 +298,8 @@ class branch_and_bound_t {
   // corresponding subtree.
   omp_atomic_t<f_t> lower_bound_numerical_;
   std::function<void(f_t)> user_bound_callback_;
+
+  diversity_manager_t<i_t, f_t>* diversity_manager_;
 
   void print_table_header();
   void report_heuristic(f_t obj, heuristics_origin_t origin);

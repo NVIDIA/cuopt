@@ -71,6 +71,9 @@ class diversity_manager_t {
   void set_simplex_solution(const std::vector<f_t>& solution,
                             const std::vector<f_t>& dual_solution,
                             f_t objective);
+
+  std::vector<f_t> pick_random_feasible_solution(pcgenerator_t& rng, i_t max_attempts = 5);
+
   mip_solver_context_t<i_t, f_t>& context;
   mip::branch_and_bound_t<i_t, f_t>* branch_and_bound_ptr;
   problem_t<i_t, f_t>* problem_ptr;

@@ -17,6 +17,7 @@
 #include <mutex>
 #include <random>
 #include <string>
+#include <utilities/pcgenerator.hpp>
 #include <vector>
 
 namespace cuopt::mathematical_optimization::mip {
@@ -96,7 +97,8 @@ class population_t {
   // -------------------
   // functions with logic:
   // --------------------
-  solution_t<i_t, f_t> get_random_solution(bool tournament);
+  solution_t<i_t, f_t>& get_random_solution_with(pcgenerator_t& rng);
+
   // return a pair of random solutions,
   std::pair<solution_t<i_t, f_t>, solution_t<i_t, f_t>> get_two_random(bool tournament);
   /*! \brief { Add a solution to population. Similar solutions may be ejected from the pool. }

@@ -421,7 +421,8 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
                                                           timer_.get_tic_start(),
                                                           probing_implied_bound,
                                                           context.problem_ptr->clique_table,
-                                                          context.symmetry.get());
+                                                          context.symmetry.get(),
+                                                          &dm);
     context.branch_and_bound_ptr = branch_and_bound.get();
 
     // Convert the best external upper bound from user-space to B&B's internal objective space.
