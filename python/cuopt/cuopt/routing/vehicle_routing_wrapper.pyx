@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 
@@ -182,11 +182,6 @@ class Objective(IntEnum):
     PRIZE               - Models with respect to prizes collected by the
                           serviced orders
     VEHICLE_FIXED_COST  - Models cost per vehicle. Enabled when set_vehicle_fixed_costs is used.
-
-    WEIGHTED_COMPLETION_TIME - Sum of lot_weight * completion_time for each lot.
-                               Used in lot scheduling problems. Enabled when
-                               set_order_lot_weights is used.
-
     VEHICLE_ORDER_COST  - Sum of vehicle-order assignment costs. Used to steer
                           tool-to-lot assignments in lot scheduling. Enabled
                           when set_vehicle_order_cost is used.
@@ -198,7 +193,6 @@ class Objective(IntEnum):
     VARIANCE_ROUTE_SERVICE_TIME = objective_t.VARIANCE_ROUTE_SERVICE_TIME
     PRIZE = objective_t.PRIZE
     VEHICLE_FIXED_COST = objective_t.VEHICLE_FIXED_COST
-    WEIGHTED_COMPLETION_TIME = objective_t.WEIGHTED_COMPLETION_TIME
     VEHICLE_ORDER_COST = objective_t.VEHICLE_ORDER_COST
 
 
