@@ -55,9 +55,20 @@ This applies to all comment types: inline comments, block comments, suppression 
 
 ## C++ Implementation Style
 
-- Prefer direct loops or named helpers for performance-critical traversal logic. Reserve lambdas for
-  short predicates and callbacks; large local lambdas obscure control flow and can lead to repeated
-  scans.
+- **Never write large lambdas inside a function body.** If a lambda is more than a short
+  predicate/comparator (roughly more than ~3–5 lines, or it has nested lambdas, local state,
+  or non-trivial control flow), extract it as a named free function, file-local helper in an
+  anonymous namespace, or private method. Large local lambdas obscure control flow, hide reuse,
+  and make work/time accounting harder to reason about.
+- Prefer direct loops or named helpers for performance-critical traversal logic. Reserve
+  in-function lambdas for short predicates and callbacks only.
+- Keep work-estimate and time-limit checks at phase or outer-loop boundaries. Accumulate the work
+  performed by cheap inner loops and charge it once when the phase completes; do not gate every
+  inner iteration. Do not separately test a sticky limit or raw estimate immediately before or
+  after `add_work_estimate` when that call already provides the gate for the same work.
+- Charge the operation that is actually performed. For vector copies and sparse traversals, base
+  work on the number of visited or copied entries rather than only the number of containers.
+  Avoid charging the same traversal in both its caller and callee.
 
 ### Suppression comments (`// NOSONAR`, `// NOLINT`, etc.)
 

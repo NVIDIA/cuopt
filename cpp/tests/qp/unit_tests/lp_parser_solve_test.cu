@@ -206,4 +206,26 @@ End
                           {4.0, 2.0});
 }
 
+// Dual residual check for QP.
+TEST(lp_parser_solve, qp_diagonal_only_dual_residual)
+{
+  raft::handle_t handle;
+  auto problem  = io::read_lp_from_string<int, double>(R"LP(
+Minimize
+  obj: -8 x1 - 16 x2 + [ 2 x1 ^ 2 + 8 x2 ^ 2 ] / 2
+Subject To
+  c1: x1 + x2 >= 5
+Bounds
+  0 <= x1 <= 10
+  0 <= x2 <= 10
+End
+)LP");
+  auto settings = pdlp_solver_settings_t<int, double>();
+  auto solution = solve_lp(&handle, problem, settings);
+
+  ASSERT_EQ(solution.get_termination_status(), pdlp_termination_status_t::Optimal);
+  EXPECT_NEAR(solution.get_objective_value(), -32.0, 1e-4);
+  EXPECT_NEAR(solution.get_additional_termination_information().l2_dual_residual, 0.0, 1e-4);
+}
+
 }  // namespace cuopt::mathematical_optimization

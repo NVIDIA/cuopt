@@ -14,7 +14,7 @@ ARGS=$*
 REPODIR=$(cd "$(dirname "$0")"; pwd)
 LIBCUOPT_BUILD_DIR=${LIBCUOPT_BUILD_DIR:=${REPODIR}/cpp/build}
 
-VALIDARGS="clean codegen libcuopt cuopt_grpc_server cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -fsanitize -tsan -msan -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-grpc-build --skip-fatbin-write --host-lineinfo [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] --install --allgpuarch --ci-only-arch --show_depr_warn -h --help"
+VALIDARGS="clean codegen libcuopt cuopt_grpc_server cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -fsanitize -tsan -msan -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-grpc-build --skip-fatbin-write --host-lineinfo --split-compile [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] --install --allgpuarch --ci-only-arch --show_depr_warn -h --help"
 HELP="$0 [<target> ...] [<flag> ...]
  where <target> is:
    clean            - remove all existing build artifacts and configuration (start over)
@@ -45,6 +45,7 @@ HELP="$0 [<target> ...] [<flag> ...]
    --skip-grpc-build    - skip building gRPC and protobuf components (auto-enabled with -tsan)
    --skip-fatbin-write      - skip the fatbin write
    --host-lineinfo           - build with debug line information for host code
+   --split-compile           - opt in to nvcc split compilation; builds may be nondeterministic
    --cache-tool=<tool> - pass the build cache tool (eg: ccache, sccache, distcc) that will be used
                       to speedup the build process.
    --cmake-args=\\\"<args>\\\"   - pass arbitrary list of CMake configuration options (escape all quotes in argument)
@@ -260,6 +261,11 @@ fi
 if hasArg --host-lineinfo; then
     HOST_LINEINFO=1
 fi
+if hasArg --split-compile; then
+    # nvcc split compilation can produce nondeterministic cuOpt builds, so keep it opt-in.
+    echo "WARNING: nvcc split compilation may produce nondeterministic cuOpt builds."
+    export NVCC_PREPEND_FLAGS="${NVCC_PREPEND_FLAGS:+${NVCC_PREPEND_FLAGS} }--split-compile=0"
+fi
 
 function contains_string {
     local search_string="$1"
@@ -432,8 +438,15 @@ fi
 if buildAll || hasArg cuopt; then
     cd "${REPODIR}"/python/cuopt
 
+    # Only 'cuopt' builds extension modules, so the stable ABI floor applies to it
+    # alone. If 'RAPIDS_PY_VERSION' is set, use it as that floor.
+    CUOPT_PYTHON_ARGS_FOR_INSTALL=("${PYTHON_ARGS_FOR_INSTALL[@]}")
+    if [ -n "${RAPIDS_PY_VERSION:-}" ]; then
+        CUOPT_PYTHON_ARGS_FOR_INSTALL+=(--config-settings "skbuild.wheel.py-api=cp${RAPIDS_PY_VERSION//./}")
+    fi
+
     SKBUILD_CMAKE_ARGS="-DCMAKE_PREFIX_PATH=${INSTALL_PREFIX};-DCMAKE_LIBRARY_PATH=${LIBCUOPT_BUILD_DIR};-DCMAKE_CUDA_ARCHITECTURES=${CUOPT_CMAKE_CUDA_ARCHITECTURES};$(IFS=';'; echo "${EXTRA_CMAKE_ARGS[*]}")" \
-        python "${PYTHON_ARGS_FOR_INSTALL[@]}" .
+        python "${CUOPT_PYTHON_ARGS_FOR_INSTALL[@]}" .
 fi
 
 # Build and install the cuopt_server Python package

@@ -190,7 +190,7 @@ endif ()
 # Add jobserver flags for parallel compilation if PARALLEL_LEVEL is set
 if (PARALLEL_LEVEL AND NOT "${PARALLEL_LEVEL}" STREQUAL "")
     message(STATUS "Enabling nvcc parallel compilation support")
-    list(APPEND CUOPT_CUDA_FLAGS --threads=0 --split-compile=0)
+    list(APPEND CUOPT_CUDA_FLAGS --threads=0)
     if (USE_NVCC_JOBSERVER AND CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.0)
         message(STATUS "Enabling nvcc jobserver support (NVCC >= 13.0)")
         list(APPEND CUOPT_CUDA_FLAGS --jobserver)
@@ -277,7 +277,7 @@ FetchContent_Declare(
         # This is the reason we are using the development branch
         # from Oct 12, 2025. Once these changes are merged into the main branch,
         #we can switch to the main branch.
-        GIT_TAG "32b3a87dbf4955d5a2803be74145c389ea31434d"
+        GIT_TAG "55d5edece584885061639ecf3a6eb8a4629be9f2"
         GIT_PROGRESS TRUE
         EXCLUDE_FROM_ALL
         SYSTEM
@@ -295,7 +295,7 @@ FetchContent_MakeAvailable(papilo)
 FetchContent_Declare(
         pslp
         GIT_REPOSITORY "https://github.com/dance858/PSLP.git"
-        GIT_TAG "v0.0.10"
+        GIT_TAG "v0.0.11"
         GIT_PROGRESS TRUE
         EXCLUDE_FROM_ALL
         SYSTEM
@@ -395,6 +395,21 @@ if (NOT SKIP_GRPC_BUILD)
     add_compile_definitions(CUOPT_ENABLE_GRPC)
     message(STATUS "gRPC enabled (target gRPC::grpc++ is available)")
 
+    # The routing arm of the gRPC layer needs the routing engine. The wire
+    # protocol (including the routing protos) is always generated so LP-only
+    # builds still speak the same protocol; only the mappers and the VRP
+    # client/worker paths are dropped.
+    #
+    # This only gates which sources are compiled (see GRPC_ROUTING_FILES below).
+    # The matching -D is attached to cuopt_grpc_server alone, the one target
+    # whose sources test the macro, rather than to every target in the tree.
+    if (NOT SKIP_ROUTING_BUILD)
+        set(CUOPT_ENABLE_GRPC_ROUTING ON)
+        message(STATUS "gRPC routing (VRP) support enabled")
+    else ()
+        message(STATUS "gRPC routing (VRP) support disabled (SKIP_ROUTING_BUILD)")
+    endif ()
+
     # Find protoc compiler (provided by config package or target)
     if (TARGET protobuf::protoc)
         get_target_property(_PROTOBUF_PROTOC protobuf::protoc IMPORTED_LOCATION_RELEASE)
@@ -423,9 +438,30 @@ if (NOT SKIP_GRPC_BUILD)
         endif ()
     endif ()
 
-    # Proto search paths: manual protos in src/grpc, generated data proto in src/grpc/codegen/generated
+    # Proto search paths: LP/protocol protos in src/grpc, routing protos in
+    # src/grpc/routing, generated data proto in src/grpc/codegen/generated.
+    # Routing protos live under their own search root so the routing gRPC layer
+    # stays a self-contained directory; their import names are unchanged.
     set(PROTO_PATH_MANUAL "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc")
     set(PROTO_PATH_GEN "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc/codegen/generated")
+    set(PROTO_PATH_ROUTING "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc/routing")
+
+    # Routing solution proto (leaf; no imports). Embedded structurally by the
+    # generated data proto and by cuopt_remote.proto, so it is generated first.
+    set(ROUTING_SOLUTION_PROTO_FILE "${PROTO_PATH_ROUTING}/cuopt_routing_solution.proto")
+    set(ROUTING_SOLUTION_PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/cuopt_routing_solution.pb.cc")
+    set(ROUTING_SOLUTION_PROTO_HDRS "${CMAKE_CURRENT_BINARY_DIR}/cuopt_routing_solution.pb.h")
+
+    add_custom_command(
+            OUTPUT "${ROUTING_SOLUTION_PROTO_SRCS}" "${ROUTING_SOLUTION_PROTO_HDRS}"
+            COMMAND ${_PROTOBUF_PROTOC}
+            ARGS --cpp_out ${CMAKE_CURRENT_BINARY_DIR}
+            --proto_path ${PROTO_PATH_ROUTING}
+            ${ROUTING_SOLUTION_PROTO_FILE}
+            DEPENDS ${ROUTING_SOLUTION_PROTO_FILE}
+            COMMENT "Generating C++ code from cuopt_routing_solution.proto"
+            VERBATIM
+    )
 
     # Generate C++ code from cuopt_remote_data.proto (auto-generated data definitions)
     set(DATA_PROTO_FILE "${PROTO_PATH_GEN}/cuopt_remote_data.proto")
@@ -437,8 +473,10 @@ if (NOT SKIP_GRPC_BUILD)
             COMMAND ${_PROTOBUF_PROTOC}
             ARGS --cpp_out ${CMAKE_CURRENT_BINARY_DIR}
             --proto_path ${PROTO_PATH_GEN}
+            --proto_path ${PROTO_PATH_MANUAL}
+            --proto_path ${PROTO_PATH_ROUTING}
             ${DATA_PROTO_FILE}
-            DEPENDS ${DATA_PROTO_FILE}
+            DEPENDS ${DATA_PROTO_FILE} ${ROUTING_SOLUTION_PROTO_FILE}
             COMMENT "Generating C++ code from cuopt_remote_data.proto"
             VERBATIM
     )
@@ -454,8 +492,9 @@ if (NOT SKIP_GRPC_BUILD)
             ARGS --cpp_out ${CMAKE_CURRENT_BINARY_DIR}
             --proto_path ${PROTO_PATH_MANUAL}
             --proto_path ${PROTO_PATH_GEN}
+            --proto_path ${PROTO_PATH_ROUTING}
             ${PROTO_FILE}
-            DEPENDS ${PROTO_FILE} ${DATA_PROTO_FILE}
+            DEPENDS ${PROTO_FILE} ${DATA_PROTO_FILE} ${ROUTING_SOLUTION_PROTO_FILE}
             COMMENT "Generating C++ code from cuopt_remote.proto"
             VERBATIM
     )
@@ -467,6 +506,24 @@ if (NOT SKIP_GRPC_BUILD)
     set(GRPC_SERVICE_SRCS "${CMAKE_CURRENT_BINARY_DIR}/cuopt_remote_service.grpc.pb.cc")
     set(GRPC_SERVICE_HDRS "${CMAKE_CURRENT_BINARY_DIR}/cuopt_remote_service.grpc.pb.h")
 
+    # Routing proto (standalone VRP messages; imported by service proto)
+    set(ROUTING_PROTO_FILE "${PROTO_PATH_ROUTING}/cuopt_routing.proto")
+    set(ROUTING_PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/cuopt_routing.pb.cc")
+    set(ROUTING_PROTO_HDRS "${CMAKE_CURRENT_BINARY_DIR}/cuopt_routing.pb.h")
+
+    add_custom_command(
+            OUTPUT "${ROUTING_PROTO_SRCS}" "${ROUTING_PROTO_HDRS}"
+            COMMAND ${_PROTOBUF_PROTOC}
+            ARGS --cpp_out ${CMAKE_CURRENT_BINARY_DIR}
+            --proto_path ${PROTO_PATH_ROUTING}
+            --proto_path ${PROTO_PATH_MANUAL}
+            --proto_path ${PROTO_PATH_GEN}
+            ${ROUTING_PROTO_FILE}
+            DEPENDS ${ROUTING_PROTO_FILE} ${PROTO_FILE} ${DATA_PROTO_FILE} ${ROUTING_SOLUTION_PROTO_FILE}
+            COMMENT "Generating C++ code from cuopt_routing.proto"
+            VERBATIM
+    )
+
     add_custom_command(
             OUTPUT "${GRPC_PROTO_SRCS}" "${GRPC_PROTO_HDRS}" "${GRPC_SERVICE_SRCS}" "${GRPC_SERVICE_HDRS}"
             COMMAND ${_PROTOBUF_PROTOC}
@@ -475,8 +532,9 @@ if (NOT SKIP_GRPC_BUILD)
             --plugin=protoc-gen-grpc=${_GRPC_CPP_PLUGIN_EXECUTABLE}
             --proto_path ${PROTO_PATH_MANUAL}
             --proto_path ${PROTO_PATH_GEN}
+            --proto_path ${PROTO_PATH_ROUTING}
             ${GRPC_PROTO_FILE}
-            DEPENDS ${GRPC_PROTO_FILE} ${PROTO_FILE} ${DATA_PROTO_FILE}
+            DEPENDS ${GRPC_PROTO_FILE} ${PROTO_FILE} ${DATA_PROTO_FILE} ${ROUTING_PROTO_FILE} ${ROUTING_SOLUTION_PROTO_FILE}
             COMMENT "Generating gRPC C++ code from cuopt_remote_service.proto"
             VERBATIM
     )
@@ -494,12 +552,6 @@ endif ()
 set(CUOPT_SRC_FILES)
 set(MPS_FAST_SRC_FILES)
 add_subdirectory(src)
-
-# nvcc 13.0.3 ICE (signal 11) compiling sliding_window.cu with 7 GPU architectures;
-# --split-compile breaks the codegen into per-arch sub-jobs to avoid the crash
-set_source_files_properties(
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/routing/local_search/sliding_window.cu
-        PROPERTIES COMPILE_OPTIONS "--split-compile=0")
 
 if (HOST_LINEINFO)
     set_source_files_properties(${CUOPT_SRC_FILES} DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTIES COMPILE_OPTIONS "-g1")
@@ -524,12 +576,21 @@ if (DEFINE_ASSERT)
 endif ()
 
 if (NOT SKIP_GRPC_BUILD)
-    # Add gRPC mapper files and generated protobuf sources
-    set(GRPC_INFRA_FILES
+    # Generated protobuf sources. The whole wire protocol is generated in every
+    # gRPC build, routing messages included: cuopt_remote.proto embeds
+    # RoutingSolution, so these carry no dependency on the routing engine.
+    set(GRPC_PROTO_GENERATED_FILES
+            ${ROUTING_SOLUTION_PROTO_SRCS}
             ${DATA_PROTO_SRCS}
             ${PROTO_SRCS}
+            ${ROUTING_PROTO_SRCS}
             ${GRPC_PROTO_SRCS}
             ${GRPC_SERVICE_SRCS}
+    )
+
+    # LP/MIP arm: proto <-> mathematical_optimization, plus the shared client
+    # infrastructure (connection, chunking, polling, Cython shim).
+    set(GRPC_MATHOPT_FILES
             src/grpc/grpc_problem_mapper.cpp
             src/grpc/grpc_solution_mapper.cpp
             src/grpc/grpc_settings_mapper.cpp
@@ -539,6 +600,22 @@ if (NOT SKIP_GRPC_BUILD)
             src/grpc/client/cython_grpc_client.cpp
             src/grpc/client/solve_remote.cpp
     )
+
+    # Routing (VRP) arm: everything that depends on the routing engine. Kept as
+    # its own list so a routing-only gRPC client can be split out of the
+    # cuopt_grpc component without moving code around again.
+    set(GRPC_ROUTING_FILES
+            src/grpc/routing/grpc_routing_problem_mapper.cpp
+            src/grpc/routing/grpc_routing_settings_mapper.cpp
+            src/grpc/routing/grpc_routing_solution_mapper.cpp
+            src/grpc/routing/grpc_client_vrp.cpp
+            src/grpc/routing/cython_grpc_client_vrp.cpp
+    )
+
+    set(GRPC_INFRA_FILES ${GRPC_PROTO_GENERATED_FILES} ${GRPC_MATHOPT_FILES})
+    if (CUOPT_ENABLE_GRPC_ROUTING)
+        list(APPEND GRPC_INFRA_FILES ${GRPC_ROUTING_FILES})
+    endif ()
     list(APPEND CUOPT_SRC_FILES ${GRPC_INFRA_FILES})
 
     # Always keep NDEBUG defined for gRPC infrastructure files so that abseil
@@ -548,7 +625,9 @@ if (NOT SKIP_GRPC_BUILD)
     # at runtime with "undefined symbol: absl::…::Mutex::Dtor".
     set_property(SOURCE ${GRPC_INFRA_FILES} DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             APPEND PROPERTY COMPILE_OPTIONS "-DNDEBUG")
-    set_property(SOURCE ${PROTO_SRCS} ${GRPC_PROTO_SRCS} ${GRPC_SERVICE_SRCS} ${DATA_PROTO_SRCS} DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    # Generated protobuf symbols must stay visible in libcuopt.so: cuopt_grpc_server
+    # links them from the library rather than compiling the protos itself.
+    set_property(SOURCE ${GRPC_PROTO_GENERATED_FILES} DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
             APPEND PROPERTY COMPILE_OPTIONS "$<$<COMPILE_LANGUAGE:CXX>:-fvisibility=default>")
 endif (NOT SKIP_GRPC_BUILD)
 
@@ -1032,6 +1111,12 @@ if (NOT SKIP_GRPC_BUILD)
             CXX_SCAN_FOR_MODULES OFF
             POSITION_INDEPENDENT_CODE ON
     )
+
+    # grpc_worker.cpp is the only source that tests this macro, so scope it to
+    # this target instead of leaking a -D into every target in the directory.
+    if (CUOPT_ENABLE_GRPC_ROUTING)
+        target_compile_definitions(cuopt_grpc_server PRIVATE CUOPT_ENABLE_GRPC_ROUTING)
+    endif ()
 
     target_compile_options(cuopt_grpc_server
             PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
