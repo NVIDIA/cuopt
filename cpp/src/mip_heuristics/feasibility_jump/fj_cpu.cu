@@ -38,7 +38,7 @@
 #include <unordered_set>
 #include <vector>
 
-#define CPUFJ_TIMING_TRACE 0
+#define CPUFJ_TIMING_TRACE 1
 
 // Define CPUFJ_NVTX_RANGES to enable detailed NVTX profiling ranges
 #ifdef CPUFJ_NVTX_RANGES
@@ -163,6 +163,13 @@ std::pair<f_t, f_t> feas_score_constraint(const typename fj_t<i_t, f_t>::climber
 
   f_t bounds[2] = {c_lb, c_ub};
   cuopt_assert(isfinite(c_lb) || isfinite(c_ub), "no range");
+
+  // Independent of bound_idx, so paid once rather than on both passes of an equality row.
+  const f_t moved_lhs      = current_lhs + cstr_coeff * delta;
+  const f_t cstr_tolerance = fj.get_corrected_tolerance(cstr_idx, c_lb, c_ub);
+  const bool old_viol = fj.excess_score(cstr_idx, current_lhs, c_lb, c_ub) < -cstr_tolerance;
+  const bool new_viol = fj.excess_score(cstr_idx, moved_lhs, c_lb, c_ub) < -cstr_tolerance;
+
   for (i_t bound_idx = 0; bound_idx < 2; ++bound_idx) {
     if (!isfinite(bounds[bound_idx])) continue;
 
@@ -177,7 +184,7 @@ std::pair<f_t, f_t> feas_score_constraint(const typename fj_t<i_t, f_t>::climber
     f_t sign        = bound_idx == 0 ? -1 : 1;
     f_t rhs         = bounds[bound_idx] * sign;
     f_t old_lhs     = current_lhs * sign;
-    f_t new_lhs     = (current_lhs + cstr_coeff * delta) * sign;
+    f_t new_lhs     = moved_lhs * sign;
     f_t old_slack   = rhs - old_lhs;
     f_t new_slack   = rhs - new_lhs;
 
@@ -186,12 +193,6 @@ std::pair<f_t, f_t> feas_score_constraint(const typename fj_t<i_t, f_t>::climber
     cuopt_assert(isfinite(old_lhs), "");
     cuopt_assert(isfinite(new_lhs), "");
     cuopt_assert(isfinite(old_slack) && isfinite(new_slack), "");
-
-    f_t cstr_tolerance = fj.get_corrected_tolerance(cstr_idx, c_lb, c_ub);
-
-    bool old_viol = fj.excess_score(cstr_idx, current_lhs, c_lb, c_ub) < -cstr_tolerance;
-    bool new_viol =
-      fj.excess_score(cstr_idx, current_lhs + cstr_coeff * delta, c_lb, c_ub) < -cstr_tolerance;
 
     bool old_sat = old_lhs < rhs + cstr_tolerance;
     bool new_sat = new_lhs < rhs + cstr_tolerance;
@@ -288,43 +289,43 @@ static void print_timing_stats(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   auto [apply_avg, apply_total]     = compute_avg_and_total(fj_cpu.apply_move_times);
   auto [weights_avg, weights_total] = compute_avg_and_total(fj_cpu.update_weights_times);
   auto [compute_score_avg, compute_score_total] = compute_avg_and_total(fj_cpu.compute_score_times);
-  CUOPT_LOG_TRACE("=== Timing Statistics (Iteration %d) ===", fj_cpu.iterations);
-  CUOPT_LOG_TRACE("find_lift_move:      avg=%.6f ms, total=%.6f ms, calls=%zu",
+  CUOPT_LOG_DEBUG("=== Timing Statistics (Iteration %d) ===", fj_cpu.iterations);
+  CUOPT_LOG_DEBUG("find_lift_move:      avg=%.6f ms, total=%.6f ms, calls=%zu",
                   lift_avg * 1000.0,
                   lift_total * 1000.0,
                   fj_cpu.find_lift_move_times.size());
-  CUOPT_LOG_TRACE("find_mtm_move_viol:  avg=%.6f ms, total=%.6f ms, calls=%zu",
+  CUOPT_LOG_DEBUG("find_mtm_move_viol:  avg=%.6f ms, total=%.6f ms, calls=%zu",
                   viol_avg * 1000.0,
                   viol_total * 1000.0,
                   fj_cpu.find_mtm_move_viol_times.size());
-  CUOPT_LOG_TRACE("find_mtm_move_sat:   avg=%.6f ms, total=%.6f ms, calls=%zu",
+  CUOPT_LOG_DEBUG("find_mtm_move_sat:   avg=%.6f ms, total=%.6f ms, calls=%zu",
                   sat_avg * 1000.0,
                   sat_total * 1000.0,
                   fj_cpu.find_mtm_move_sat_times.size());
-  CUOPT_LOG_TRACE("apply_move:          avg=%.6f ms, total=%.6f ms, calls=%zu",
+  CUOPT_LOG_DEBUG("apply_move:          avg=%.6f ms, total=%.6f ms, calls=%zu",
                   apply_avg * 1000.0,
                   apply_total * 1000.0,
                   fj_cpu.apply_move_times.size());
-  CUOPT_LOG_TRACE("update_weights:      avg=%.6f ms, total=%.6f ms, calls=%zu",
+  CUOPT_LOG_DEBUG("update_weights:      avg=%.6f ms, total=%.6f ms, calls=%zu",
                   weights_avg * 1000.0,
                   weights_total * 1000.0,
                   fj_cpu.update_weights_times.size());
-  CUOPT_LOG_TRACE("compute_score:       avg=%.6f ms, total=%.6f ms, calls=%zu",
+  CUOPT_LOG_DEBUG("compute_score:       avg=%.6f ms, total=%.6f ms, calls=%zu",
                   compute_score_avg * 1000.0,
                   compute_score_total * 1000.0,
                   fj_cpu.compute_score_times.size());
-  CUOPT_LOG_TRACE("cache hit percentage: %.2f%%",
+  CUOPT_LOG_DEBUG("cache hit percentage: %.2f%%",
                   (double)fj_cpu.hit_count / (fj_cpu.hit_count + fj_cpu.miss_count) * 100.0);
-  CUOPT_LOG_TRACE("bin  candidate move hit percentage: %.2f%%",
+  CUOPT_LOG_DEBUG("bin  candidate move hit percentage: %.2f%%",
                   (double)fj_cpu.candidate_move_hits[0] /
                     (fj_cpu.candidate_move_hits[0] + fj_cpu.candidate_move_misses[0]) * 100.0);
-  CUOPT_LOG_TRACE("int  candidate move hit percentage: %.2f%%",
+  CUOPT_LOG_DEBUG("int  candidate move hit percentage: %.2f%%",
                   (double)fj_cpu.candidate_move_hits[1] /
                     (fj_cpu.candidate_move_hits[1] + fj_cpu.candidate_move_misses[1]) * 100.0);
-  CUOPT_LOG_TRACE("cont candidate move hit percentage: %.2f%%",
+  CUOPT_LOG_DEBUG("cont candidate move hit percentage: %.2f%%",
                   (double)fj_cpu.candidate_move_hits[2] /
                     (fj_cpu.candidate_move_hits[2] + fj_cpu.candidate_move_misses[2]) * 100.0);
-  CUOPT_LOG_TRACE("========================================");
+  CUOPT_LOG_DEBUG("========================================");
 }
 
 template <typename i_t, typename f_t>
@@ -2357,7 +2358,7 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
 
 #if CPUFJ_TIMING_TRACE
   // Print final timing statistics
-  CUOPT_LOG_TRACE("=== Final Timing Statistics ===");
+  CUOPT_LOG_DEBUG("=== Final Timing Statistics ===");
   print_timing_stats(*fj_cpu);
 #endif
 }

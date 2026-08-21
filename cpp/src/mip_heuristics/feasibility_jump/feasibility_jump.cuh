@@ -529,12 +529,14 @@ class fj_t {
 
       HDI f_t lower_excess_score(i_t cstr, f_t lhs, f_t c_lb) const
       {
-        return raft::min(lhs - c_lb, (f_t)0);
+        const f_t excess = lhs - c_lb;
+        return excess < (f_t)0 ? excess : (f_t)0;
       }
 
       HDI f_t upper_excess_score(i_t cstr, f_t lhs, f_t c_ub) const
       {
-        return raft::min(c_ub - lhs, (f_t)0);
+        const f_t excess = c_ub - lhs;
+        return excess < (f_t)0 ? excess : (f_t)0;
       }
 
       // Computes the constraint's contribution to the feasibility score:
@@ -564,7 +566,8 @@ class fj_t {
       {
         f_t cstr_tolerance = get_cstr_tolerance<i_t, f_t>(
           c_lb, c_ub, pb.tolerances.absolute_tolerance, pb.tolerances.relative_tolerance);
-        return max((f_t)1e-12, cstr_tolerance - MACHINE_EPSILON);
+        const f_t corrected = cstr_tolerance - MACHINE_EPSILON;
+        return corrected > (f_t)1e-12 ? corrected : (f_t)1e-12;
       }
       HDI f_t get_corrected_tolerance(i_t cstr) const
       {
