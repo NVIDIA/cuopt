@@ -81,6 +81,8 @@ jobs:
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
       script: ci/build_python.sh
+      # Build a conda package for each CUDA x ARCH x minimum supported Python version
+      matrix_filter: group_by({CUDA_VER, ARCH}) | map(min_by(.PY_VER | split(".") | map(tonumber)))
   upload-conda:
     needs: [cpp-build, python-build]
     permissions:
@@ -157,6 +159,8 @@ jobs:
       script: ci/build_wheel_cuopt.sh
       package-name: cuopt
       package-type: python
+      # Build a wheel for each CUDA x ARCH x minimum supported Python version
+      matrix_filter: group_by({CUDA_VER, ARCH}) | map(min_by(.PY_VER | split(".") | map(tonumber)))
   wheel-publish-cuopt:
     needs: wheel-build-cuopt
     permissions:

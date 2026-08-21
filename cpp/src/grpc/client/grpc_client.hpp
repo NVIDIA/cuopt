@@ -9,6 +9,8 @@
 #include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
+#include <cuopt/routing/cpu_routing_problem.hpp>
+#include <cuopt/routing/solver_settings.hpp>
 
 #include "../cuopt_default_grpc_port.h"
 
@@ -202,6 +204,16 @@ struct remote_result_t {
 };
 
 /**
+ * @brief Result of a remote VRP solve. Routing is always <int, float>, so this
+ * is not templated. The solution is a host-owned parse of RoutingSolution.
+ */
+struct remote_vrp_result_t {
+  bool success = false;
+  std::string error_message;
+  cuopt::routing::cpu_routing_solution_t solution;
+};
+
+/**
  * @brief gRPC client for remote cuOpt solving
  *
  * This class provides a high-level interface for submitting optimization problems
@@ -362,6 +374,18 @@ class grpc_client_t {
    */
   template <typename i_t, typename f_t>
   remote_result_t<i_t, f_t> get_result(const std::string& job_id);
+
+  /**
+   * @brief Submit a VRP problem without waiting (unary only; no chunking yet).
+   * @return Submit result with job ID
+   */
+  submit_result_t submit_vrp(const cuopt::routing::cpu_routing_problem_t& problem,
+                             const cuopt::routing::solver_settings_t<int, float>& settings);
+
+  /**
+   * @brief Get the VRP result for a completed job (parses the RoutingSolution).
+   */
+  remote_vrp_result_t get_vrp_result(const std::string& job_id);
 
   /**
    * @brief Cancel a running job
