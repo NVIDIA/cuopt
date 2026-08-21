@@ -317,12 +317,18 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_standalone(
   std::atomic<bool>& preemption_flag,
   fj_settings_t settings = fj_settings_t{});
 
+// Copies a climber that has already paid the O(nnz) problem construction. Everything the engine
+// reads is host-owned, so this needs neither a problem handle nor any GPU work.
 template <typename i_t, typename f_t>
-std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_standalone_from_template(
-  problem_t<i_t, f_t>& problem,
+std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_clone(
   const fj_cpu_climber_t<i_t, f_t>& tmpl,
   std::atomic<bool>& preemption_flag,
   fj_settings_t settings = fj_settings_t{});
+
+// Per-lane behaviour for a CPUFJ portfolio, shared by every caller that races several climbers so
+// the composition cannot drift between them.
+template <typename i_t, typename f_t>
+void apply_lane_diversification(fj_cpu_climber_t<i_t, f_t>& climber, int lane, int64_t base_seed);
 
 // Builds the climber portfolio the standalone benchmark races: how many distinct
 // behaviours, what parameters each gets, whether they are randomized or

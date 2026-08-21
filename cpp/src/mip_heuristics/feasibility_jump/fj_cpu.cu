@@ -1893,21 +1893,28 @@ static void init_fj_cpu(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
 template <typename i_t, typename f_t>
 static void init_fj_cpu_from_template(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
                                       const fj_cpu_climber_t<i_t, f_t>& tmpl,
-                                      problem_t<i_t, f_t>& problem,
                                       const std::vector<f_t>& left_weights,
                                       const std::vector<f_t>& right_weights,
                                       f_t objective_weight)
 {
-  cuopt_assert(tmpl.h_offsets.size() == static_cast<size_t>(problem.n_constraints + 1),
-               "template built on a different problem");
-  cuopt_assert(tmpl.h_reverse_offsets.size() == static_cast<size_t>(problem.n_variables + 1),
-               "template built on a different problem");
-  cuopt_assert(tmpl.h_coefficients.size() == static_cast<size_t>(problem.nnz),
-               "template built on a different problem");
+  const i_t n_variables   = (i_t)tmpl.h_reverse_offsets.size() - 1;
+  const i_t n_constraints = (i_t)tmpl.h_offsets.size() - 1;
+  const i_t nnz           = (i_t)tmpl.h_coefficients.size();
 
-  fj_cpu.view    = typename fj_t<i_t, f_t>::climber_data_t::view_t{};
-  fj_cpu.view.pb = problem.view();
-  fj_cpu.pb_ptr  = &problem;
+  cuopt_assert(n_variables == tmpl.view.pb.n_variables, "template variable count mismatch");
+  cuopt_assert(n_constraints == tmpl.view.pb.n_constraints, "template constraint count mismatch");
+  cuopt_assert(nnz == tmpl.view.pb.nnz, "template nnz mismatch");
+  cuopt_assert(left_weights.size() == static_cast<size_t>(n_constraints),
+               "left weight size mismatch");
+  cuopt_assert(right_weights.size() == static_cast<size_t>(n_constraints),
+               "right weight size mismatch");
+
+  fj_cpu.view = typename fj_t<i_t, f_t>::climber_data_t::view_t{};
+  // Every span the host views cover is re-pointed at this climber's own arrays below. The rest of
+  // the problem view carries over from the template, which is also what makes this usable on
+  // climbers built without a problem_t at all.
+  fj_cpu.view.pb = tmpl.view.pb;
+  fj_cpu.pb_ptr  = tmpl.pb_ptr;
 
   fj_cpu.h_reverse_coefficients = tmpl.h_reverse_coefficients;
   fj_cpu.h_reverse_constraints  = tmpl.h_reverse_constraints;
@@ -1929,19 +1936,19 @@ static void init_fj_cpu_from_template(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
   fj_cpu.h_objective_weight   = objective_weight;
   fj_cpu.h_assignment         = tmpl.h_assignment;
   fj_cpu.h_best_assignment    = tmpl.h_assignment;
-  fj_cpu.h_tabu_nodec_until.resize(problem.n_variables, 0);
-  fj_cpu.h_tabu_noinc_until.resize(problem.n_variables, 0);
-  fj_cpu.h_tabu_lastdec.resize(problem.n_variables, 0);
-  fj_cpu.h_tabu_lastinc.resize(problem.n_variables, 0);
+  fj_cpu.h_tabu_nodec_until.resize(n_variables, 0);
+  fj_cpu.h_tabu_noinc_until.resize(n_variables, 0);
+  fj_cpu.h_tabu_lastdec.resize(n_variables, 0);
+  fj_cpu.h_tabu_lastinc.resize(n_variables, 0);
   fj_cpu.iterations = 0;
 
   finalize_fj_cpu_host_initialization_from_template(fj_cpu,
                                                     tmpl,
-                                                    problem.n_variables,
-                                                    problem.n_constraints,
-                                                    problem.n_integer_vars,
-                                                    problem.nnz,
-                                                    problem.tolerances);
+                                                    n_variables,
+                                                    n_constraints,
+                                                    tmpl.n_integer_vars,
+                                                    nnz,
+                                                    tmpl.view.pb.tolerances);
 }
 
 template <typename i_t, typename f_t>
@@ -2762,18 +2769,17 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_standalone(
 }
 
 template <typename i_t, typename f_t>
-std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_standalone_from_template(
-  problem_t<i_t, f_t>& problem,
+std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_clone(
   const fj_cpu_climber_t<i_t, f_t>& tmpl,
   std::atomic<bool>& preemption_flag,
   fj_settings_t settings)
 {
-  raft::common::nvtx::range scope("init_fj_cpu_standalone_from_template");
+  raft::common::nvtx::range scope("init_fj_cpu_clone");
 
   auto fj_cpu = std::make_unique<fj_cpu_climber_t<i_t, f_t>>(preemption_flag);
 
-  std::vector<f_t> default_weights(problem.n_constraints, 1.0);
-  init_fj_cpu_from_template(*fj_cpu, tmpl, problem, default_weights, default_weights, 0.0);
+  std::vector<f_t> default_weights(tmpl.view.pb.n_constraints, 1.0);
+  init_fj_cpu_from_template(*fj_cpu, tmpl, default_weights, default_weights, f_t{0});
   // See init_fj_cpu_standalone: the seed is caller-drawn, not taken from the global generator.
   fj_cpu->settings = settings;
 
@@ -2857,8 +2863,7 @@ template std::unique_ptr<fj_cpu_climber_t<int, float>> init_fj_cpu_standalone(
   solution_t<int, float>& solution,
   std::atomic<bool>& preemption_flag,
   fj_settings_t settings);
-template std::unique_ptr<fj_cpu_climber_t<int, float>> init_fj_cpu_standalone_from_template(
-  problem_t<int, float>& problem,
+template std::unique_ptr<fj_cpu_climber_t<int, float>> init_fj_cpu_clone(
   const fj_cpu_climber_t<int, float>& tmpl,
   std::atomic<bool>& preemption_flag,
   fj_settings_t settings);
@@ -2887,8 +2892,7 @@ template std::unique_ptr<fj_cpu_climber_t<int, double>> init_fj_cpu_standalone(
   solution_t<int, double>& solution,
   std::atomic<bool>& preemption_flag,
   fj_settings_t settings);
-template std::unique_ptr<fj_cpu_climber_t<int, double>> init_fj_cpu_standalone_from_template(
-  problem_t<int, double>& problem,
+template std::unique_ptr<fj_cpu_climber_t<int, double>> init_fj_cpu_clone(
   const fj_cpu_climber_t<int, double>& tmpl,
   std::atomic<bool>& preemption_flag,
   fj_settings_t settings);
@@ -3101,6 +3105,39 @@ static void apply_greedy_covering_seed(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   fj_cpu.h_best_assignment = fj_cpu.h_assignment;
 }
 
+// What makes one lane of a CPUFJ portfolio behave differently from another: which corner it starts
+// from, how it samples, and how hard it pulls on the objective. Lane 0 keeps the anchor assignment
+// so it is the lane every clone is built from.
+template <typename i_t, typename f_t>
+void apply_lane_diversification(fj_cpu_climber_t<i_t, f_t>& climber, int lane, int64_t base_seed)
+{
+  // Objective pressure across the portfolio, indexed by lane. Lanes 0 and 3 stay pure feasibility
+  // seekers until they cross, since the objective term only enters the score once the weight is
+  // positive; their nonzero floor then keeps a pull on the objective afterwards rather than letting
+  // smooth_weights decay it back to nothing.
+  const f_t obj_weight_ladder[4] = {0, 4, 32, 0};
+  const f_t obj_weight_floor[4]  = {1, 4, 32, 1};
+
+  // Fewer-lock corner, objective-favorable corner, greedy row repair; lane 0 keeps the anchor.
+  if (lane % 4 == 1)
+    apply_lock_weighted_seed<i_t, f_t>(climber);
+  else if (lane % 4 == 2)
+    apply_objective_corner_seed<i_t, f_t>(climber);
+  else if (lane % 4 == 3)
+    apply_greedy_covering_seed<i_t, f_t>(climber);
+
+  // Default: every climber identical apart from its seed and a random draw of the
+  // four sampling parameters. Diversification, decorrelated from the value RNG.
+  std::mt19937 rng(base_seed + 7919u * lane);
+  climber.mtm_viol_samples = std::uniform_int_distribution<i_t>(15, 50)(rng);
+  climber.mtm_sat_samples  = std::uniform_int_distribution<i_t>(10, 30)(rng);
+  climber.nnz_samples      = std::uniform_int_distribution<i_t>(2000, 15000)(rng);
+  climber.perturb_interval = std::uniform_int_distribution<i_t>(50, 500)(rng);
+
+  climber.h_objective_weight    = obj_weight_ladder[lane % 4];
+  //climber.seed_objective_weight = obj_weight_floor[lane % 4];
+}
+
 // Portfolio construction for the standalone benchmark. Host logic, but it lives
 // in a .cu because fj_cpu.cuh pulls in raft/util/cuda_dev_essentials.cuh through
 // solution.cuh, which does not compile under the host compiler. Kept out of the
@@ -3115,13 +3152,6 @@ void build_climber_portfolio(problem_t<i_t, f_t>& problem,
 {
   const int n_climbers = static_cast<int>(climbers.size());
 
-  // Objective pressure across the portfolio, indexed by lane. Lanes 0 and 3 stay pure feasibility
-  // seekers until they cross, since the objective term only enters the score once the weight is
-  // positive; their nonzero floor then keeps a pull on the objective afterwards rather than letting
-  // smooth_weights decay it back to nothing.
-  const f_t obj_weight_ladder[4] = {0, 4, 32, 0};
-  const f_t obj_weight_floor[4]  = {1, 4, 32, 1};
-
   for (int k = 0; k < n_climbers; ++k)
     preemption_flags[k].store(false);
 
@@ -3131,34 +3161,12 @@ void build_climber_portfolio(problem_t<i_t, f_t>& problem,
   for (int k = 0; k < n_climbers; ++k)
     lane_seed[k] = cuopt::seed_generator::get_seed();
 
-  // Per-lane work that must run identically whether the lane was built serially or in parallel.
-  auto finish_lane = [&](int k) {
-    // Fewer-lock corner, objective-favorable corner, greedy row repair; lane 0 keeps the anchor.
-    if (k % 4 == 1)
-      apply_lock_weighted_seed<i_t, f_t>(*climbers[k]);
-    else if (k % 4 == 2)
-      apply_objective_corner_seed<i_t, f_t>(*climbers[k]);
-    else if (k % 4 == 3)
-      apply_greedy_covering_seed<i_t, f_t>(*climbers[k]);
-
-    // Default: every climber identical apart from its seed and a random draw of the
-    // four sampling parameters. Diversification, decorrelated from the value RNG.
-    std::mt19937 rng(base_seed + 7919u * k);
-    climbers[k]->mtm_viol_samples = std::uniform_int_distribution<i_t>(15, 50)(rng);
-    climbers[k]->mtm_sat_samples  = std::uniform_int_distribution<i_t>(10, 30)(rng);
-    climbers[k]->nnz_samples      = std::uniform_int_distribution<i_t>(2000, 15000)(rng);
-    climbers[k]->perturb_interval = std::uniform_int_distribution<i_t>(50, 500)(rng);
-
-    climbers[k]->h_objective_weight    = obj_weight_ladder[k % 4];
-    //climbers[k]->seed_objective_weight = obj_weight_floor[k % 4];
-  };
-
   // Lane 0 is a genuine dependency: it host-copies the problem and every other lane clones it.
   {
     fj_settings_t settings;
     settings.seed = (int)lane_seed[0];
     climbers[0]   = init_fj_cpu_standalone(problem, solution, preemption_flags[0], settings);
-    finish_lane(0);
+    apply_lane_diversification<i_t, f_t>(*climbers[0], 0, base_seed);
   }
 
   // The remaining lanes depend only on lane 0's finished, read-only template, and the O(nnz) clone
@@ -3169,19 +3177,20 @@ void build_climber_portfolio(problem_t<i_t, f_t>& problem,
   for (int k = 1; k < n_climbers; ++k) {
     fj_settings_t settings;
     settings.seed = (int)lane_seed[k];
-    climbers[k] =
-      init_fj_cpu_standalone_from_template(problem, *climbers[0], preemption_flags[k], settings);
-    finish_lane(k);
+    climbers[k]   = init_fj_cpu_clone(*climbers[0], preemption_flags[k], settings);
+    apply_lane_diversification<i_t, f_t>(*climbers[k], k, base_seed);
   }
 }
 
 #if MIP_INSTANTIATE_FLOAT
+template void apply_lane_diversification<int, float>(fj_cpu_climber_t<int, float>&, int, int64_t);
 template void build_climber_portfolio<int, float>(
   problem_t<int, float>&, solution_t<int, float>&, std::vector<std::atomic<bool>>&,
   std::vector<std::unique_ptr<fj_cpu_climber_t<int, float>>>&, int64_t);
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
+template void apply_lane_diversification<int, double>(fj_cpu_climber_t<int, double>&, int, int64_t);
 template void build_climber_portfolio<int, double>(
   problem_t<int, double>&, solution_t<int, double>&, std::vector<std::atomic<bool>>&,
   std::vector<std::unique_ptr<fj_cpu_climber_t<int, double>>>&, int64_t);

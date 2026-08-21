@@ -12,6 +12,7 @@
 
 #include <atomic>
 #include <memory>
+#include <mutex>
 #include <vector>
 
 namespace cuopt::mathematical_optimization::mip {
@@ -37,8 +38,11 @@ class early_cpufj_t : public early_heuristic_t<i_t, f_t, early_cpufj_t<i_t, f_t>
 
   const optimization_problem_t<i_t, f_t>* problem_ptr_;
   typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances_;
-  std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_cpu_;
+  std::vector<std::unique_ptr<fj_cpu_climber_t<i_t, f_t>>> climbers_;
   std::atomic<bool> preemption_flag_{false};
+  // try_update_best and the incumbent callback behind it are not thread-safe, and every lane
+  // reports into them from its own task.
+  std::mutex incumbent_mutex_;
 };
 
 }  // namespace cuopt::mathematical_optimization::mip
