@@ -125,7 +125,8 @@ bool is_int_attribute(cuopt_int_t attribute)
     case CUOPT_ATTR_PROBLEM_CATEGORY:
     case CUOPT_ATTR_IS_MIP:
     case CUOPT_ATTR_HAS_QUADRATIC_OBJECTIVE:
-    case CUOPT_ATTR_HAS_QUADRATIC_CONSTRAINTS: return true;
+    case CUOPT_ATTR_HAS_QUADRATIC_CONSTRAINTS:
+    case CUOPT_ATTR_NUM_QUADRATIC_CONSTRAINTS: return true;
     default: return false;
   }
 }
@@ -730,7 +731,9 @@ cuopt_int_t cuOptGetNumConstraints(cuOptOptimizationProblem problem,
   if (num_constraints_ptr == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   problem_and_stream_view_t* problem_and_stream_view =
     static_cast<problem_and_stream_view_t*>(problem);
-  *num_constraints_ptr = problem_and_stream_view->get_problem()->get_n_constraints();
+  auto* iface          = problem_and_stream_view->get_problem();
+  *num_constraints_ptr = iface->get_n_constraints() +
+                         static_cast<cuopt_int_t>(iface->get_quadratic_constraints().size());
   return CUOPT_SUCCESS;
 }
 
@@ -1473,7 +1476,10 @@ cuopt_int_t cuOptGetProblemIntAttribute(cuOptOptimizationProblem problem,
   auto* iface = get_iface(problem);
   switch (attribute) {
     case CUOPT_ATTR_NUM_VARIABLES: *value_out = iface->get_n_variables(); return CUOPT_SUCCESS;
-    case CUOPT_ATTR_NUM_CONSTRAINTS: *value_out = iface->get_n_constraints(); return CUOPT_SUCCESS;
+    case CUOPT_ATTR_NUM_CONSTRAINTS:
+      *value_out = iface->get_n_constraints() +
+                   static_cast<cuopt_int_t>(iface->get_quadratic_constraints().size());
+      return CUOPT_SUCCESS;
     case CUOPT_ATTR_NUM_NONZEROS: *value_out = iface->get_nnz(); return CUOPT_SUCCESS;
     case CUOPT_ATTR_NUM_INTEGERS: *value_out = iface->get_n_integers(); return CUOPT_SUCCESS;
     case CUOPT_ATTR_OBJECTIVE_SENSE:
@@ -1493,6 +1499,9 @@ cuopt_int_t cuOptGetProblemIntAttribute(cuOptOptimizationProblem problem,
       return CUOPT_SUCCESS;
     case CUOPT_ATTR_HAS_QUADRATIC_CONSTRAINTS:
       *value_out = iface->has_quadratic_constraints() ? 1 : 0;
+      return CUOPT_SUCCESS;
+    case CUOPT_ATTR_NUM_QUADRATIC_CONSTRAINTS:
+      *value_out = static_cast<cuopt_int_t>(iface->get_quadratic_constraints().size());
       return CUOPT_SUCCESS;
     default: return CUOPT_INVALID_ARGUMENT;
   }

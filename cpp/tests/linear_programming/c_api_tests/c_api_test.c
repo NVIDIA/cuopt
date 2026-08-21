@@ -2516,6 +2516,7 @@ cuopt_int_t test_qcqp_solution_dual_methods()
   cuOptSolution solution           = NULL;
   cuopt_int_t status;
   cuopt_int_t num_constraints;
+  cuopt_int_t num_quadratic;
 
   /*
    * minimize t
@@ -2580,8 +2581,21 @@ cuopt_int_t test_qcqp_solution_dual_methods()
     printf("Error getting num constraints: %d\n", status);
     goto DONE;
   }
-  if (num_constraints != 1) {
-    printf("Error: expected 1 documented constraint, got %d\n", num_constraints);
+  /* 1 linear + 1 quadratic constraint = 2 combined. */
+  if (num_constraints != 2) {
+    printf("Error: expected 2 combined constraints, got %d\n", num_constraints);
+    status = -1;
+    goto DONE;
+  }
+
+  status =
+    cuOptGetProblemIntAttribute(problem, CUOPT_ATTR_NUM_QUADRATIC_CONSTRAINTS, &num_quadratic);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting num quadratic constraints: %d\n", status);
+    goto DONE;
+  }
+  if (num_quadratic != 1) {
+    printf("Error: expected 1 quadratic constraint, got %d\n", num_quadratic);
     status = -1;
     goto DONE;
   }
