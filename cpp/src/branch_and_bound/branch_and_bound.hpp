@@ -390,7 +390,7 @@ class branch_and_bound_t {
   // Creates and solves the RINS sub-MIP
   void recursive_submip(diving_worker_t<i_t, f_t>* worker,
                         const std::vector<f_t>& current_incumbent,
-            const std::vector<simplex::variable_type_t>& var_types);
+                        const std::vector<simplex::variable_type_t>& var_types);
 
   void launch_root_heuristics(const simplex::lp_problem_t<i_t, f_t>& lp,
                               const std::vector<f_t>& sol,

@@ -2644,7 +2644,7 @@ f_t calculate_fixrate(const std::vector<i_t>& integer_list,
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* worker,
                                                     const std::vector<f_t>& current_incumbent,
-                                        const std::vector<variable_type_t>& var_types)
+                                                    const std::vector<variable_type_t>& var_types)
 {
   raft::common::nvtx::range scope("BB::submip_thread");
   if (worker->orbital_fixing) { worker->orbital_fixing->disable(); }
@@ -2750,7 +2750,7 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* w
                                                   worker->leaf_problem.objective,
                                                   fractional,
                                                   current_sol,
-                              worker->root_solution,
+                                                  worker->root_solution,
                                                   round_target,
                                                   lower,
                                                   upper,
@@ -2908,12 +2908,8 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* w
       }
 
     } else {
-      solve_submip(worker,
-                   current_incumbent,
-                   var_types,
-                   submip_stats,
-                   fixrate,
-                   stats.total_simplex_iters);
+      solve_submip(
+        worker, current_incumbent, var_types, submip_stats, fixrate, stats.total_simplex_iters);
     }
   }
 
@@ -3912,14 +3908,14 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                             root_relax_soln_.x,
                             edge_norms_);
       submip_worker_pool_.init(num_submip_workers,
-                             original_lp_,
-                             Arow_,
-                             var_types_,
-                             symmetry_,
-                             settings_,
-                             root_relax_soln_.x,
-                             edge_norms_,
-                             num_bfs_workers);
+                               original_lp_,
+                               Arow_,
+                               var_types_,
+                               symmetry_,
+                               settings_,
+                               root_relax_soln_.x,
+                               edge_norms_,
+                               num_bfs_workers);
 
       if (num_diving_workers > 0) {
         diving_worker_pool_.init(num_diving_workers,
