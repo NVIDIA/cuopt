@@ -126,6 +126,7 @@ bool is_int_attribute(cuopt_int_t attribute)
     case CUOPT_ATTR_IS_MIP:
     case CUOPT_ATTR_HAS_QUADRATIC_OBJECTIVE:
     case CUOPT_ATTR_HAS_QUADRATIC_CONSTRAINTS:
+    case CUOPT_ATTR_NUM_LINEAR_CONSTRAINTS:
     case CUOPT_ATTR_NUM_QUADRATIC_CONSTRAINTS: return true;
     default: return false;
   }
@@ -1499,6 +1500,9 @@ cuopt_int_t cuOptGetProblemIntAttribute(cuOptOptimizationProblem problem,
       return CUOPT_SUCCESS;
     case CUOPT_ATTR_HAS_QUADRATIC_CONSTRAINTS:
       *value_out = iface->has_quadratic_constraints() ? 1 : 0;
+      return CUOPT_SUCCESS;
+    case CUOPT_ATTR_NUM_LINEAR_CONSTRAINTS:
+      *value_out = iface->get_n_constraints();
       return CUOPT_SUCCESS;
     case CUOPT_ATTR_NUM_QUADRATIC_CONSTRAINTS:
       *value_out = static_cast<cuopt_int_t>(iface->get_quadratic_constraints().size());

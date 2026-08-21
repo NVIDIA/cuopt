@@ -1175,9 +1175,8 @@ cuopt_int_t cuOptGetSolutionFloatAttribute(cuOptSolution solution,
  * These accessors use copy-out semantics: the caller allocates the output buffer and cuOpt copies
  * values into it. Array attributes are sized by the problem dimensions: variable-indexed arrays
  * have num_variables entries and constraint-indexed arrays (CUOPT_ARRAY_ATTR_CONSTRAINT_*) have
- * one entry per LINEAR constraint only — not the CUOPT_ATTR_NUM_CONSTRAINTS value, which for
- * QCQP problems also includes quadratic constraints. Use CUOPT_ATTR_NUM_QUADRATIC_CONSTRAINTS
- * (via cuOptGetProblemIntAttribute) if you need to distinguish the two. The sole exception to
+ * one entry per LINEAR constraint only — i.e. CUOPT_ATTR_NUM_LINEAR_CONSTRAINTS.
+ * The sole exception to
  * copy-out is the string-array getter, which fills a caller-provided array of pointers with
  * borrowed pointers into cuOpt-owned string storage; those pointers are valid until the problem
  * is modified or destroyed and must not be freed.

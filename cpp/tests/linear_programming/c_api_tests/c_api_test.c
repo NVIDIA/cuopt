@@ -2517,6 +2517,7 @@ cuopt_int_t test_qcqp_solution_dual_methods()
   cuOptSolution solution           = NULL;
   cuopt_int_t status;
   cuopt_int_t num_constraints;
+  cuopt_int_t num_linear;
   cuopt_int_t num_quadratic;
   int i;
 
@@ -2593,6 +2594,17 @@ cuopt_int_t test_qcqp_solution_dual_methods()
     goto DONE;
   }
 
+  status = cuOptGetProblemIntAttribute(problem, CUOPT_ATTR_NUM_LINEAR_CONSTRAINTS, &num_linear);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting num linear constraints: %d\n", status);
+    goto DONE;
+  }
+  if (num_linear != 1) {
+    printf("Error: expected 1 linear constraint, got %d\n", num_linear);
+    status = -1;
+    goto DONE;
+  }
+
   status =
     cuOptGetProblemIntAttribute(problem, CUOPT_ATTR_NUM_QUADRATIC_CONSTRAINTS, &num_quadratic);
   if (status != CUOPT_SUCCESS) {
@@ -2601,6 +2613,15 @@ cuopt_int_t test_qcqp_solution_dual_methods()
   }
   if (num_quadratic != 1) {
     printf("Error: expected 1 quadratic constraint, got %d\n", num_quadratic);
+    status = -1;
+    goto DONE;
+  }
+
+  if (num_linear + num_quadratic != num_constraints) {
+    printf("Error: num_linear (%d) + num_quadratic (%d) != num_constraints (%d)\n",
+           num_linear,
+           num_quadratic,
+           num_constraints);
     status = -1;
     goto DONE;
   }
