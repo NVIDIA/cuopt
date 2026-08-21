@@ -651,6 +651,11 @@ class solution_t {
   // we shouldn't access this directly as route ids map differently
   std::vector<route_t<i_t, f_t, REQUEST>> routes;
 
+  // Host staging for routes_view, internal to set_route_views(). That function synchronizes
+  // before returning, so no copy is ever left pending against this buffer and it is safe to
+  // reuse across calls. Kept as a member so the paths that publish views do not allocate.
+  std::vector<typename route_t<i_t, f_t, REQUEST>::view_t> h_routes_view;
+
  public:
   static constexpr i_t fragment_step = 1;
 
@@ -666,10 +671,6 @@ class solution_t {
   std::vector<i_t> route_id_to_idx;
   // route view for device
   rmm::device_uvector<typename route_t<i_t, f_t, REQUEST>::view_t> routes_view;
-  // Host staging for routes_view. set_route_views() synchronizes before returning, so no
-  // copy is ever left pending against this buffer and it is safe to reuse across calls.
-  // Kept as a member so the hot paths that publish views do not allocate.
-  std::vector<typename route_t<i_t, f_t, REQUEST>::view_t> h_routes_view;
 
   route_node_map_t<i_t> route_node_map;
 
