@@ -265,41 +265,6 @@ bool population_t<i_t, f_t>::is_better_than_best_feasible(solution_t<i_t, f_t>& 
 }
 
 template <typename i_t, typename f_t>
-void population_t<i_t, f_t>::invoke_get_solution_callback(
-  solution_t<i_t, f_t>& sol, internals::get_solution_callback_t* callback)
-{
-  f_t user_objective = sol.get_user_objective();
-  f_t user_bound     = context.stats.get_solution_bound();
-  solution_t<i_t, f_t> temp_sol(sol);
-  problem_ptr->post_process_assignment(temp_sol.assignment);
-  if (problem_ptr->has_papilo_presolve_data()) {
-    problem_ptr->papilo_uncrush_assignment(temp_sol.assignment);
-  }
-
-  std::vector<f_t> user_objective_vec(1);
-  std::vector<f_t> user_bound_vec(1);
-  std::vector<f_t> user_assignment_vec(temp_sol.assignment.size());
-  user_objective_vec[0] = user_objective;
-  user_bound_vec[0]     = user_bound;
-  raft::copy(user_assignment_vec.data(),
-             temp_sol.assignment.data(),
-             temp_sol.assignment.size(),
-             temp_sol.handle_ptr->get_stream());
-  temp_sol.handle_ptr->sync_stream();
-  if (mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(
-        context.settings)) {
-    mip::strip_semi_continuous_auxiliaries_from_assignment(
-      user_assignment_vec,
-      mip_solver_settings_accessor<i_t, f_t>::get_semi_continuous_original_num_variables(
-        context.settings));
-  }
-  callback->get_solution(user_assignment_vec.data(),
-                         user_objective_vec.data(),
-                         user_bound_vec.data(),
-                         callback->get_user_data());
-}
-
-template <typename i_t, typename f_t>
 void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
 {
   bool better_solution_found = is_better_than_best_feasible(sol);
@@ -309,15 +274,14 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
       context.settings.benchmark_info_ptr->last_improvement_of_best_feasible = timer.elapsed_time();
     }
     CUOPT_LOG_DEBUG("Population: Found new best solution %g", sol.get_user_objective());
-    if (problem_ptr->branch_and_bound_callback != nullptr) {
-      problem_ptr->branch_and_bound_callback(sol.get_host_assignment(),
-                                             heuristics_origin_t::HEURISTICS);
-    }
-    for (auto callback : user_callbacks) {
-      if (callback->get_type() == internals::base_solution_callback_type::GET_SOLUTION) {
-        auto get_sol_callback = static_cast<internals::get_solution_callback_t*>(callback);
-        invoke_get_solution_callback(sol, get_sol_callback);
+    if (problem_ptr->branch_and_bound_callback != nullptr ||
+        context.solution_publication.enabled()) {
+      auto host_assignment = sol.get_host_assignment();
+      if (problem_ptr->branch_and_bound_callback != nullptr) {
+        problem_ptr->branch_and_bound_callback(host_assignment, heuristics_origin_t::HEURISTICS);
       }
+      context.solution_publication.publish_if_better(
+        problem_ptr, host_assignment, sol.get_objective());
     }
     // Save the best objective here even if callback handling later exits early.
     // This prevents older solutions from being reported as "new best" in subsequent callbacks.

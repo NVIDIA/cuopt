@@ -49,6 +49,7 @@ rapids_cmake_build_type(Release)
 option(CMAKE_CUDA_LINEINFO "Enable the -lineinfo option for nvcc useful for cuda-memcheck / profiler" ON)
 option(BUILD_TESTS "Configure CMake to build tests" ON)
 option(BUILD_LP_ONLY "Build only linear programming components, exclude routing and MIP-specific files" OFF)
+option(BUILD_MIP_BENCHMARKS "Build MIP benchmarks" OFF)
 option(SKIP_C_PYTHON_ADAPTERS "Skip building C and Python adapter files (cython_solve.cu and cuopt_c.cpp)" OFF)
 option(SKIP_ROUTING_BUILD "Skip building routing components" OFF)
 option(SKIP_GRPC_BUILD "Skip building gRPC and protobuf components" OFF)
@@ -305,6 +306,25 @@ FetchContent_Declare(
 set(BUILD_SHARED_LIBS_SAVED ${BUILD_SHARED_LIBS})
 set(BUILD_SHARED_LIBS OFF)
 FetchContent_MakeAvailable(pslp)
+set(BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS_SAVED})
+
+FetchContent_Declare(
+        highway
+        GIT_REPOSITORY "https://github.com/google/highway.git"
+        GIT_TAG "1.4.0"
+        GIT_PROGRESS TRUE
+        EXCLUDE_FROM_ALL
+        SYSTEM
+)
+
+set(HWY_ENABLE_CONTRIB OFF CACHE BOOL "" FORCE)
+set(HWY_ENABLE_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(HWY_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
+set(HWY_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+
+set(BUILD_SHARED_LIBS_SAVED ${BUILD_SHARED_LIBS})
+set(BUILD_SHARED_LIBS OFF)
+FetchContent_MakeAvailable(highway)
 set(BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS_SAVED})
 
 
@@ -666,6 +686,7 @@ target_include_directories(cuopt_objs PRIVATE
 target_include_directories(cuopt_objs SYSTEM PRIVATE
   "${pslp_SOURCE_DIR}/include"
   "${dejavu_SOURCE_DIR}"
+  "${highway_SOURCE_DIR}"
 )
 
 target_include_directories(cuopt_objs
@@ -690,6 +711,9 @@ target_include_directories(cuopt_objs
 # Link PSLP by file to avoid export dependency tracking
 target_link_libraries(cuopt_objs PRIVATE $<TARGET_FILE:PSLP>)
 add_dependencies(cuopt_objs PSLP)
+
+target_link_libraries(cuopt_objs PRIVATE $<TARGET_FILE:hwy>)
+add_dependencies(cuopt_objs hwy)
 
 # Link KaMinPar by file to avoid export dependency tracking (mirrors PSLP above).
 # KaMinPar is a from-source static library fully embedded into libcuopt.so; it is never
@@ -777,6 +801,9 @@ target_link_libraries(cuopt_objs
 # - generate tests --------------------------------------------------------------------------------
 if (BUILD_TESTS)
     include(CTest)
+endif ()
+
+if (BUILD_TESTS OR (BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY))
     add_library(cuopt_static STATIC $<TARGET_OBJECTS:cuopt_objs>)
     target_link_libraries(cuopt_static
             PUBLIC
@@ -813,10 +840,15 @@ if (BUILD_TESTS)
     )
     target_link_libraries(cuopt_static PRIVATE $<TARGET_FILE:PSLP>)
     add_dependencies(cuopt_static PSLP)
+    target_link_libraries(cuopt_static PRIVATE $<TARGET_FILE:hwy>)
+    add_dependencies(cuopt_static hwy)
     target_link_libraries(cuopt_static PRIVATE $<TARGET_FILE:KaMinPar::KaMinPar>)
     if (TARGET KaMinPar)
         add_dependencies(cuopt_static KaMinPar)
     endif ()
+endif ()
+
+if (BUILD_TESTS)
     add_subdirectory(tests)
 endif (BUILD_TESTS)
 
@@ -857,6 +889,8 @@ target_link_libraries(cuopt
 )
 target_link_libraries(cuopt PRIVATE $<TARGET_FILE:PSLP>)
 add_dependencies(cuopt PSLP)
+target_link_libraries(cuopt PRIVATE $<TARGET_FILE:hwy>)
+add_dependencies(cuopt hwy)
 target_link_libraries(cuopt PRIVATE $<TARGET_FILE:KaMinPar::KaMinPar>)
 if (TARGET KaMinPar)
         add_dependencies(cuopt KaMinPar)
@@ -1031,7 +1065,6 @@ if (NOT BUILD_LP_ONLY)
 endif ()
 
 
-option(BUILD_MIP_BENCHMARKS "Build MIP benchmarks" OFF)
 if (BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
     add_executable(solve_MIP ../benchmarks/linear_programming/cuopt/run_mip.cpp)
     target_include_directories(solve_MIP
@@ -1063,6 +1096,31 @@ if (BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
     target_include_directories(solve_MIP
             PRIVATE
             "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    )
+
+    # CPU FJ standalone portfolio benchmark
+    add_executable(solve_CPUFJ ../benchmarks/linear_programming/cuopt/run_cpufj.cu)
+    set_target_properties(solve_CPUFJ PROPERTIES CXX_SCAN_FOR_MODULES OFF)
+    target_compile_options(solve_CPUFJ
+            PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
+            "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
+            "$<$<COMPILE_LANGUAGE:CUDA>:-fopenmp>"
+    )
+    target_link_libraries(solve_CPUFJ
+            PUBLIC
+            cuopt_static
+            OpenMP::OpenMP_CXX
+            OpenMP::OpenMP_CUDA
+    )
+    target_include_directories(solve_CPUFJ
+            PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/src"
+            "${papilo_SOURCE_DIR}/src"
+            "${papilo_BINARY_DIR}"
+    )
+    target_include_directories(solve_CPUFJ SYSTEM PRIVATE
+            "${pslp_SOURCE_DIR}/include"
+            "${dejavu_SOURCE_DIR}"
     )
 
 endif ()

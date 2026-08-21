@@ -14,6 +14,7 @@
 #include <cuopt/mathematical_optimization/mip/solver_solution.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 #include <cuopt/mathematical_optimization/solve.hpp>
+#include <cuopt/mathematical_optimization/utilities/internals.hpp>
 #include <utilities/logger.hpp>
 
 #include <raft/core/handle.hpp>
@@ -136,6 +137,52 @@ std::vector<std::vector<double>> read_solution_from_dir(const std::string file_p
   return initial_solutions;
 }
 
+struct incumbent_record_t {
+  double objective;
+  double work_timestamp;
+  double wall_time;
+};
+
+class incumbent_tracker_t : public cuopt::internals::get_solution_callback_t {
+ public:
+  explicit incumbent_tracker_t(std::chrono::high_resolution_clock::time_point start_time)
+    : start_time_(start_time)
+  {
+  }
+
+  void get_solution(void* /*data*/,
+                    void* cost,
+                    void* /*solution_bound*/,
+                    void* /*user_data*/) override
+  {
+    const auto now = std::chrono::high_resolution_clock::now();
+    records_.push_back({*static_cast<double*>(cost),
+                        0.0,
+                        std::chrono::duration<double>(now - start_time_).count()});
+  }
+
+  void write_csv(const std::string& path) const
+  {
+    std::ofstream file(path);
+    if (!file.is_open()) {
+      std::cerr << "Error opening incumbent file " << path << std::endl;
+      return;
+    }
+    file << "index,objective,work_timestamp,wall_time_s\n";
+    for (size_t i = 0; i < records_.size(); ++i) {
+      file << i << "," << std::setprecision(15) << records_[i].objective << ","
+           << records_[i].work_timestamp << "," << std::setprecision(6) << records_[i].wall_time
+           << "\n";
+    }
+  }
+
+  size_t size() const { return records_.size(); }
+
+ private:
+  std::chrono::high_resolution_clock::time_point start_time_;
+  std::vector<incumbent_record_t> records_;
+};
+
 int run_single_file(std::string file_path,
                     int device,
                     int batch_id,
@@ -151,6 +198,8 @@ int run_single_file(std::string file_path,
                     double work_limit,
                     bool deterministic)
 {
+  (void)cudaFree(0);
+
   const raft::handle_t handle_{};
   cuopt::mathematical_optimization::mip_solver_settings_t<int, double> settings;
   std::string base_filename = file_path.substr(file_path.find_last_of("/\\") + 1);
@@ -218,6 +267,8 @@ int run_single_file(std::string file_path,
   cuopt::mathematical_optimization::benchmark_info_t benchmark_info;
   settings.benchmark_info_ptr = &benchmark_info;
   auto start_run_solver       = std::chrono::high_resolution_clock::now();
+  incumbent_tracker_t incumbent_tracker(start_run_solver);
+  settings.set_mip_callback(&incumbent_tracker);
   auto solution = cuopt::mathematical_optimization::solve_mip(&handle_, mps_data_model, settings);
   CUOPT_LOG_INFO(
     "first obj: %f last improvement of best feasible: %f last improvement after recombination: %f",
@@ -291,6 +342,13 @@ int run_single_file(std::string file_path,
      << "\n";
   write_to_output_file(out_dir, base_filename, device, n_gpus, batch_id, ss.str());
   CUOPT_LOG_INFO("Results written to the file %s", base_filename.c_str());
+  if (out_dir != "") {
+    std::string csv_path =
+      out_dir + "/" + base_filename.substr(0, base_filename.find(".mps")) + "_incumbents.csv";
+    incumbent_tracker.write_csv(csv_path);
+    CUOPT_LOG_INFO(
+      "Incumbent trace (%zu entries) written to %s", incumbent_tracker.size(), csv_path.c_str());
+  }
   return sol_found;
 }
 

@@ -8,8 +8,10 @@
 #pragma once
 
 #include <atomic>
+#include <cstdint>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <unordered_set>
 #include <vector>
 
@@ -19,6 +21,65 @@
 #include <utilities/producer_sync.hpp>
 
 namespace cuopt::mathematical_optimization::mip {
+
+template <typename i_t>
+struct host_contiguous_set_t {
+  void resize(i_t max_size)
+  {
+    cuopt_assert(max_size >= 0, "invalid max size");
+    contents.clear();
+    contents.reserve(max_size);
+    index_map.assign(max_size, -1);
+    is_member.assign(max_size, 0);
+  }
+
+  void clear()
+  {
+    for (i_t val : contents) {
+      index_map[val] = -1;
+      is_member[val] = 0;
+    }
+    contents.clear();
+  }
+
+  void insert(i_t val)
+  {
+    cuopt_assert(val >= 0 && val < max_size(), "Value is out of bounds");
+    cuopt_assert(!contains(val), "Value already exists");
+    index_map[val] = contents.size();
+    is_member[val] = 1;
+    contents.push_back(val);
+  }
+
+  void remove(i_t val)
+  {
+    cuopt_assert(val >= 0 && val < max_size(), "Value is out of bounds");
+    cuopt_assert(contains(val), "Value not found");
+    const i_t idx       = index_map[val];
+    const i_t last_val  = contents.back();
+    contents[idx]       = last_val;
+    index_map[last_val] = idx;
+    contents.pop_back();
+    index_map[val] = -1;
+    is_member[val] = 0;
+  }
+
+  bool contains(i_t val) const
+  {
+    cuopt_assert(val >= 0 && val < max_size(), "Value is out of bounds");
+    return is_member[val] != 0;
+  }
+
+  auto begin() const { return contents.begin(); }
+  auto end() const { return contents.end(); }
+  i_t size() const { return contents.size(); }
+  i_t max_size() const { return index_map.size(); }
+  bool empty() const { return contents.empty(); }
+
+  std::vector<i_t> contents;
+  std::vector<i_t> index_map;
+  std::vector<uint8_t> is_member;
+};
 
 // NOTE: this seems an easy pick for reflection/xmacros once this is available (C++26?)
 // Maintaining a single source of truth for all members would be nice
@@ -54,6 +115,7 @@ struct fj_cpu_climber_t {
                                                      ADD_INSTRUMENTED(h_cstr_right_weights),
                                                      ADD_INSTRUMENTED(h_assignment),
                                                      ADD_INSTRUMENTED(h_best_assignment),
+                                                     ADD_INSTRUMENTED(h_best_infeasible_assignment),
                                                      ADD_INSTRUMENTED(cached_cstr_bounds),
                                                      ADD_INSTRUMENTED(iter_mtm_vars)};
 
@@ -101,8 +163,8 @@ struct fj_cpu_climber_t {
   f_t h_best_objective;
   i_t last_feasible_entrance_iter{0};
   i_t iterations;
-  std::unordered_set<i_t> violated_constraints;
-  std::unordered_set<i_t> satisfied_constraints;
+  host_contiguous_set_t<i_t> violated_constraints;
+  host_contiguous_set_t<i_t> satisfied_constraints;
   bool feasible_found{false};
   bool trigger_early_lhs_recomputation{false};
   f_t total_violations{0};
@@ -134,10 +196,23 @@ struct fj_cpu_climber_t {
   std::vector<bool> var_bitmap;
   ins_vector<i_t> iter_mtm_vars;
 
+  ins_vector<f_t> h_best_infeasible_assignment;
+  f_t best_infeasible_severity{std::numeric_limits<f_t>::infinity()};
+  f_t checkpoint_severity{std::numeric_limits<f_t>::infinity()};
+  i_t iters_since_infeasible_improve{0};
+  i_t restores_since_improvement{0};
+  i_t max_restores_since_improvement{0};
+  int64_t n_checkpoint_restores{0};
+  int64_t n_checkpoint_snapshots{0};
+
   i_t mtm_viol_samples{25};
   i_t mtm_sat_samples{15};
   i_t nnz_samples{50000};
   i_t perturb_interval{100};
+  i_t infeasible_restart_window{300};
+  i_t infeasible_restart_max_streak{20};
+  f_t infeasible_restart_degrade_ratio{1.15};
+  f_t infeasible_checkpoint_refresh_ratio{0.99};
 
   i_t log_interval{1000};
   i_t diversity_callback_interval{3000};
@@ -201,6 +276,32 @@ template <typename i_t, typename f_t>
 std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_standalone(
   problem_t<i_t, f_t>& problem,
   solution_t<i_t, f_t>& solution,
+  std::atomic<bool>& preemption_flag,
+  fj_settings_t settings = fj_settings_t{});
+
+template <typename i_t, typename f_t>
+std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_standalone_from_template(
+  problem_t<i_t, f_t>& problem,
+  const fj_cpu_climber_t<i_t, f_t>& tmpl,
+  std::atomic<bool>& preemption_flag,
+  fj_settings_t settings = fj_settings_t{});
+
+// Builds the climber portfolio the standalone benchmark races: how many distinct
+// behaviours, what parameters each gets, whether they are randomized or
+// specialized. Defined in fj_cpu_portfolio.cpp -- host code, compiled by the host
+// compiler, so editing it is markedly cheaper than editing this header. Runs
+// inside the measured window.
+template <typename i_t, typename f_t>
+void build_climber_portfolio(problem_t<i_t, f_t>& problem,
+                             solution_t<i_t, f_t>& solution,
+                             std::vector<std::atomic<bool>>& preemption_flags,
+                             std::vector<std::unique_ptr<fj_cpu_climber_t<i_t, f_t>>>& climbers,
+                             int64_t base_seed);
+
+template <typename i_t, typename f_t>
+std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_from_optimization_problem(
+  const optimization_problem_t<i_t, f_t>& problem,
+  const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances,
   std::atomic<bool>& preemption_flag,
   fj_settings_t settings = fj_settings_t{});
 

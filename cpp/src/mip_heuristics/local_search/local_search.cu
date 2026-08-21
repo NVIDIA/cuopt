@@ -78,6 +78,7 @@ void local_search_t<i_t, f_t>::start_cpufj_scratch_threads(population_t<i_t, f_t
     cpu_fj->improvement_callback =
       [this, &population, problem_ptr = context.problem_ptr](
         f_t obj, const std::vector<f_t>& h_vec, double /*work_units*/) {
+        context.solution_publication.publish_if_better(problem_ptr, h_vec, obj);
         population.add_external_solution(h_vec, obj, solution_origin_t::CPUFJ);
         (void)problem_ptr;
         if (obj < this->local_search_best_obj) {
@@ -122,6 +123,7 @@ void local_search_t<i_t, f_t>::start_cpufj_lptopt_scratch_threads(
   scratch_cpu_fj_on_lp_opt->log_prefix = "******* scratch on LP optimal: ";
   scratch_cpu_fj_on_lp_opt->improvement_callback =
     [this, &population](f_t obj, const std::vector<f_t>& h_vec, double /*work_units*/) {
+      context.solution_publication.publish_if_better(context.problem_ptr, h_vec, obj);
       population.add_external_solution(h_vec, obj, solution_origin_t::CPUFJ);
       if (obj < this->local_search_best_obj) {
         CUOPT_LOG_DEBUG("******* New local search best obj %g, best overall %g",
