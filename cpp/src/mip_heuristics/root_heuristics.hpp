@@ -19,7 +19,6 @@ struct root_heuristics_t {
   csr_matrix_t<i_t, f_t> Arow_;
   std::vector<f_t> root_solution_;
   std::vector<f_t> root_edge_norm_;
-  std::atomic<int> halt_{false};
 
   std::unique_ptr<diving_worker_t<i_t, f_t>> submip_worker_;
   fj_cpu_worker_t<i_t, f_t> fj_cpu_worker_;
@@ -38,10 +37,10 @@ struct root_heuristics_t {
 
   void stop()
   {
-    halt_.store(true, std::memory_order_release);
     fj_cpu_worker_.stop();
     if (submip_worker_) {
       diving_worker_t<i_t, f_t>* worker = submip_worker_.get();
+      worker->halt                      = true;
 #pragma omp taskwait depend(in : *worker)
       submip_worker_.reset();
     }
