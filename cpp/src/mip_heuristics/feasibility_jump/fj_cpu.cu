@@ -38,7 +38,7 @@
 #include <unordered_set>
 #include <vector>
 
-#define CPUFJ_TIMING_TRACE 1
+#define CPUFJ_TIMING_TRACE 0
 
 // Define CPUFJ_NVTX_RANGES to enable detailed NVTX profiling ranges
 #ifdef CPUFJ_NVTX_RANGES
@@ -164,7 +164,7 @@ std::pair<f_t, f_t> feas_score_constraint(const typename fj_t<i_t, f_t>::climber
   f_t bounds[2] = {c_lb, c_ub};
   cuopt_assert(isfinite(c_lb) || isfinite(c_ub), "no range");
 
-  // Independent of bound_idx, so paid once rather than on both passes of an equality row.
+  // Independent of bound_idx.
   const f_t moved_lhs      = current_lhs + cstr_coeff * delta;
   const f_t cstr_tolerance = fj.get_corrected_tolerance(cstr_idx, c_lb, c_ub);
   const bool old_viol = fj.excess_score(cstr_idx, current_lhs, c_lb, c_ub) < -cstr_tolerance;
@@ -617,23 +617,37 @@ static inline std::pair<fj_staged_score_t, f_t> compute_score(fj_cpu_climber_t<i
   auto [offset_begin, offset_end] = reverse_range_for_var<i_t, f_t>(fj_cpu, var_idx);
   fj_cpu.nnz_processed_window += (offset_end - offset_begin);
 
+  const size_t nnz_read = (size_t)(offset_end - offset_begin);
+  fj_cpu.h_reverse_constraints.byte_loads += nnz_read * sizeof(i_t);
+  fj_cpu.h_reverse_coefficients.byte_loads += nnz_read * sizeof(f_t);
+  fj_cpu.cached_cstr_bounds.byte_loads += nnz_read * sizeof(std::pair<f_t, f_t>);
+  fj_cpu.h_lhs.byte_loads += nnz_read * sizeof(f_t);
+  fj_cpu.h_cstr_left_weights.byte_loads += nnz_read * sizeof(f_t);
+  fj_cpu.h_cstr_right_weights.byte_loads += nnz_read * sizeof(f_t);
+
+  const i_t* const rev_cstr                    = fj_cpu.view.pb.reverse_constraints.data();
+  const f_t* const rev_coeff                   = fj_cpu.view.pb.reverse_coefficients.data();
+  const f_t* const row_lhs                     = fj_cpu.view.incumbent_lhs.data();
+  const f_t* const weight_l                    = fj_cpu.view.cstr_left_weights.data();
+  const f_t* const weight_r                    = fj_cpu.view.cstr_right_weights.data();
+  const std::pair<f_t, f_t>* const cstr_bounds = fj_cpu.cached_cstr_bounds.data();
+
   for (i_t i = offset_begin; i < offset_end; i++) {
-    auto cstr_idx = fj_cpu.h_reverse_constraints[i];
-    auto cstr_coeff   = fj_cpu.h_reverse_coefficients[i];
-    auto [c_lb, c_ub] = fj_cpu.cached_cstr_bounds[i].get();
+    const i_t cstr_idx      = rev_cstr[i];
+    const f_t cstr_coeff    = rev_coeff[i];
+    const auto [c_lb, c_ub] = cstr_bounds[i];
 
     cuopt_assert(c_lb <= c_ub, "invalid bounds");
 
-    auto [cstr_base_feas, cstr_bonus_robust] =
-      feas_score_constraint<i_t, f_t>(fj_cpu.view,
-                                      delta,
-                                      cstr_idx,
-                                      cstr_coeff,
-                                      c_lb,
-                                      c_ub,
-                                      fj_cpu.h_lhs[cstr_idx],
-                                      fj_cpu.h_cstr_left_weights[cstr_idx],
-                                      fj_cpu.h_cstr_right_weights[cstr_idx]);
+    auto [cstr_base_feas, cstr_bonus_robust] = feas_score_constraint<i_t, f_t>(fj_cpu.view,
+                                                                              delta,
+                                                                              cstr_idx,
+                                                                              cstr_coeff,
+                                                                              c_lb,
+                                                                              c_ub,
+                                                                              row_lhs[cstr_idx],
+                                                                              weight_l[cstr_idx],
+                                                                              weight_r[cstr_idx]);
 
     base_feas_sum += cstr_base_feas;
     bonus_robust_sum += cstr_bonus_robust;

@@ -197,6 +197,24 @@ rmm::device_uvector<int> data(100, stream);
 
 Read existing code in `cpp/src/` for real examples of RMM allocation, stream-ordering, RAFT utilities, and kernel launch patterns.
 
+### Bypassing `ins_vector`: credit the bytes back to the wrapper
+
+The instrumented accessors record a load per element read, and the counter lives in the
+wrapper while the data lives in the vector's buffer. The compiler cannot prove those do not
+alias, so the counter round-trips through memory every iteration and serializes the loop.
+That cost is measurable in the innermost scoring loops.
+
+Two instrumentation-free paths to the same buffers already exist: `data()` on the wrapper
+returns the raw pointer without recording, and the spans published on `fj_cpu.view` alias the
+same allocations.
+
+When you take either path, add the skipped bytes back into the wrapper you bypassed —
+`byte_loads` and `byte_stores` are public `mutable size_t` on
+`memory_instrumentation_base_t`, so one `+= n * sizeof(element)` above the loop replaces N
+per-element records. Do not route them into a separate counter: the byte totals feed the
+deterministic work-unit proxy, and crediting the wrapper keeps both `collect()` and
+`collect_per_wrapper()` correct and leaves the work-unit calibration untouched.
+
 ## Test Impact Check
 
 **Before any behavioral change, ask:**
