@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import cudf
+import cupy
 import numpy as np
+import pytest
 
 from cuopt import routing
 
@@ -16,6 +18,12 @@ def create_tsp_cost_matrix(n_locations):
     return cudf.DataFrame(cost_matrix)
 
 
+@pytest.mark.skipif(
+    13030 <= cupy.cuda.get_local_runtime_version() < 13040,
+    reason="block_copy destination overflow on CUDA 13.3, see "
+    "https://github.com/NVIDIA/cuopt/issues/1756. The device-side assert "
+    "aborts the process, so xfail cannot catch it.",
+)
 def test_batch_solve_varying_sizes():
     """Test batch solving TSPs of varying sizes."""
     tsp_sizes = [
