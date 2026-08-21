@@ -216,6 +216,9 @@ constexpr int32_t fj_bin_kick_cooldown      = 200;
 constexpr int32_t fj_bin_kick_restart_guard = 50;
 constexpr int32_t fj_bin_kick_rows          = 3;
 constexpr int32_t fj_bin_kick_vars_per_row  = 2;
+
+// Candidate draws per 2-opt lift search.
+constexpr int32_t fj_bin_2opt_candidates = 64;
 // prefetch distance
 // TODO: check if it actually matters at all for performance
 constexpr int32_t fj_bin_pf_dist = 8;
@@ -1189,6 +1192,82 @@ struct fj_bin_engine_t {
     return find_move_in_rows(sample_buf, false);
   }
 
+  // True when flipping both variables leaves every row they touch satisfied. Both reverse ranges
+  // are row-ascending, so shared rows are handled jointly by merging them.
+  bool paired_flip_keeps_feasible(
+    int32_t var1, int8_t delta1, int32_t var2, int8_t delta2) const
+  {
+    int32_t i = pb.reverse_offsets[var1], ie = pb.reverse_offsets[var1 + 1];
+    int32_t j = pb.reverse_offsets[var2], je = pb.reverse_offsets[var2 + 1];
+
+    while (i < ie || j < je) {
+      const int32_t r1 = i < ie ? pb.reverse_constraints[i] : INT32_MAX;
+      const int32_t r2 = j < je ? pb.reverse_constraints[j] : INT32_MAX;
+      const int32_t r  = r1 < r2 ? r1 : r2;
+
+      int32_t change = 0;
+      if (r1 == r) change += (int32_t)pb.reverse_coefficients[i++] * delta1;
+      if (r2 == r) change += (int32_t)pb.reverse_coefficients[j++] * delta2;
+      if (row_slack[r] - change < 0) return false;
+    }
+    return true;
+  }
+
+  std::pair<std::pair<int32_t, int32_t>, int64_t> find_lift_2opt_move()
+  {
+    cuopt_assert(violated_list.empty(), "lift moves require a feasible incumbent");
+
+    std::pair<int32_t, int32_t> best_pair = {-1, -1};
+    int64_t best_s                        = 0;
+    if (pb.objective_vars.empty()) return {best_pair, best_s};
+
+    const uint32_t n_obj  = (uint32_t)pb.objective_vars.size();
+    const int32_t n_draws = n_obj < (uint32_t)fj_bin_2opt_candidates ? (int32_t)n_obj
+                                                                    : fj_bin_2opt_candidates;
+
+    for (int32_t t = 0; t < n_draws; ++t) {
+      const int32_t var1  = pb.objective_vars[rng.next_u32() % n_obj];
+      const int8_t delta1 = (int8_t)(1 - 2 * assign[var1]);
+      if ((double)delta1 * pb.objective[var1] >= 0) continue;
+      if (tabu_blocked(var1, false)) continue;
+
+      // Only pairs are useful here: a flip breaking nothing is already the single-flip lift's job,
+      // and one breaking several rows cannot be repaired by a single companion.
+      int32_t broken   = -1;
+      bool multiple    = false;
+      for (int32_t i = pb.reverse_offsets[var1]; i < pb.reverse_offsets[var1 + 1] && !multiple;
+           ++i) {
+        const int32_t r = pb.reverse_constraints[i];
+        if (row_slack[r] - (int32_t)pb.reverse_coefficients[i] * delta1 < 0) {
+          if (broken >= 0)
+            multiple = true;
+          else
+            broken = r;
+        }
+      }
+      if (multiple || broken < 0) continue;
+
+      for (int32_t k = pb.offsets[broken]; k < pb.offsets[broken + 1]; ++k) {
+        const int32_t var2 = pb.variables[k];
+        if (var2 == var1) continue;
+
+        const int8_t delta2    = (int8_t)(1 - 2 * assign[var2]);
+        const double combined  = (double)delta1 * pb.objective[var1] +
+                                (double)delta2 * pb.objective[var2];
+        if (combined >= 0) continue;
+        if (tabu_blocked(var2, false)) continue;
+        if (!paired_flip_keeps_feasible(var1, delta1, var2, delta2)) continue;
+
+        const int64_t s = (int64_t)(-std::llround(combined)) * fj_bin_score_k;
+        if (s > best_s) {
+          best_s    = s;
+          best_pair = {var1, var2};
+        }
+      }
+    }
+    return {best_pair, best_s};
+  }
+
   std::pair<int32_t, int64_t> find_lift_move() const
   {
     cuopt_assert(violated_list.empty(), "lift moves require a feasible incumbent");
@@ -1367,11 +1446,21 @@ struct fj_bin_engine_t {
       if (iters - last_restart_iter >= fj_bin_restart_period) do_restart();
       tabu.maybe_rebase(iters);
 
-      int32_t move_var = -1;
-      int64_t score    = fj_bin_score_invalid;
-      if (violated_list.empty()) std::tie(move_var, score) = find_lift_move();
-      if (score <= 0) std::tie(move_var, score) = find_move_global(false);
-      if (feasible_found && score <= 0) std::tie(move_var, score) = find_move_satisfied(mtm_sat_samples);
+      int32_t move_var                 = -1;
+      int64_t score                    = fj_bin_score_invalid;
+      std::pair<int32_t, int32_t> pair2 = {-1, -1};
+      if (violated_list.empty()) {
+        std::tie(move_var, score) = find_lift_move();
+        // Pairs are only reachable once no single improving flip preserves feasibility.
+        if (score <= 0) {
+          int64_t pair_score;
+          std::tie(pair2, pair_score) = find_lift_2opt_move();
+          if (pair_score > 0) score = pair_score;
+        }
+      }
+      if (pair2.first < 0 && score <= 0) std::tie(move_var, score) = find_move_global(false);
+      if (pair2.first < 0 && feasible_found && score <= 0)
+        std::tie(move_var, score) = find_move_satisfied(mtm_sat_samples);
 
       bool perturb_now = false;
       if (violated_list.empty() && iters - last_feasible_entrance_iter > perturb_interval) {
@@ -1379,7 +1468,10 @@ struct fj_bin_engine_t {
         last_feasible_entrance_iter = iters;
       }
 
-      if (score > 0 && move_var >= 0 && !perturb_now) {
+      if (pair2.first >= 0 && !perturb_now) {
+        apply_move(pair2.first, (int8_t)(1 - 2 * assign[pair2.first]), climber);
+        apply_move(pair2.second, (int8_t)(1 - 2 * assign[pair2.second]), climber);
+      } else if (score > 0 && move_var >= 0 && !perturb_now) {
         apply_move(move_var, (int8_t)(1 - 2 * assign[move_var]), climber);
       } else {
         update_weights();

@@ -1435,6 +1435,125 @@ static void recompute_lhs(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 }
 
 
+// Candidate draws per 2-opt lift search.
+constexpr int32_t fj_2opt_candidates = 32;
+
+// True when flipping both variables leaves every row they touch satisfied. Both reverse ranges are
+// row-ascending, so a merge handles rows containing both variables with their joint delta.
+template <typename i_t, typename f_t>
+static bool paired_flip_keeps_feasible(
+  fj_cpu_climber_t<i_t, f_t>& fj_cpu, i_t var1, f_t delta1, i_t var2, f_t delta2)
+{
+  const auto range1 = reverse_range_for_var<i_t, f_t>(fj_cpu, var1);
+  const auto range2 = reverse_range_for_var<i_t, f_t>(fj_cpu, var2);
+  i_t i = range1.first, ie = range1.second;
+  i_t j = range2.first, je = range2.second;
+
+  while (i < ie || j < je) {
+    const i_t r1 = i < ie ? (i_t)fj_cpu.h_reverse_constraints[i] : std::numeric_limits<i_t>::max();
+    const i_t r2 = j < je ? (i_t)fj_cpu.h_reverse_constraints[j] : std::numeric_limits<i_t>::max();
+    const i_t r  = r1 < r2 ? r1 : r2;
+
+    f_t change = 0;
+    f_t c_lb   = 0;
+    f_t c_ub   = 0;
+    if (r1 == r) {
+      auto [lb, ub] = fj_cpu.cached_cstr_bounds[i].get();
+      c_lb          = lb;
+      c_ub          = ub;
+      change += (f_t)fj_cpu.h_reverse_coefficients[i] * delta1;
+      ++i;
+    }
+    if (r2 == r) {
+      auto [lb, ub] = fj_cpu.cached_cstr_bounds[j].get();
+      c_lb          = lb;
+      c_ub          = ub;
+      change += (f_t)fj_cpu.h_reverse_coefficients[j] * delta2;
+      ++j;
+    }
+
+    const f_t new_lhs = fj_cpu.h_lhs[r] + (change - fj_cpu.h_lhs_sumcomp[r]);
+    if (fj_cpu.view.excess_score(r, new_lhs, c_lb, c_ub) <
+        -fj_cpu.view.get_corrected_tolerance(r, c_lb, c_ub))
+      return false;
+  }
+  return true;
+}
+
+template <typename i_t, typename f_t>
+static thrust::tuple<fj_move_t, fj_move_t, fj_staged_score_t> find_lift_2opt_move(
+  fj_cpu_climber_t<i_t, f_t>& fj_cpu)
+{
+  timing_raii_t<i_t, f_t> timer(fj_cpu.find_lift_move_times);
+  CPUFJ_NVTX_RANGE("CPUFJ::find_lift_2opt_move");
+  cuopt_assert(fj_cpu.violated_constraints.empty(), "lift moves require a feasible incumbent");
+
+  fj_move_t best_first         = fj_move_t{-1, 0};
+  fj_move_t best_second        = fj_move_t{-1, 0};
+  fj_staged_score_t best_score = fj_staged_score_t::zero();
+
+  const i_t n_obj = (i_t)fj_cpu.h_objective_vars.size();
+  if (n_obj == 0) return thrust::make_tuple(best_first, best_second, best_score);
+
+  raft::random::PCGenerator rng(fj_cpu.settings.seed + fj_cpu.iterations, 0, 0);
+  const i_t n_draws = n_obj < fj_2opt_candidates ? n_obj : fj_2opt_candidates;
+
+  for (i_t t = 0; t < n_draws; ++t) {
+    const i_t var1 = fj_cpu.h_objective_vars[rng.next_u32() % (uint32_t)n_obj];
+    if (!fj_cpu.h_is_binary_variable[var1]) continue;
+
+    const f_t coeff1 = fj_cpu.h_obj_coeffs[var1];
+    const f_t val1   = fj_cpu.h_assignment[var1];
+    const f_t delta1 = round(1.0 - 2 * val1);
+    if (delta1 * coeff1 >= 0) continue;
+    if (tabu_check<i_t, f_t>(fj_cpu, var1, delta1)) continue;
+
+    // Breaking nothing is the single-flip lift's job; breaking several rows cannot be repaired by
+    // one companion.
+    const auto range1 = reverse_range_for_var<i_t, f_t>(fj_cpu, var1);
+    i_t broken        = -1;
+    bool multiple     = false;
+    for (i_t k = range1.first; k < range1.second && !multiple; ++k) {
+      auto [c_lb, c_ub] = fj_cpu.cached_cstr_bounds[k].get();
+      const i_t r       = fj_cpu.h_reverse_constraints[k];
+      const f_t new_lhs = fj_cpu.h_lhs[r] + ((f_t)fj_cpu.h_reverse_coefficients[k] * delta1 -
+                                             fj_cpu.h_lhs_sumcomp[r]);
+      if (fj_cpu.view.excess_score(r, new_lhs, c_lb, c_ub) <
+          -fj_cpu.view.get_corrected_tolerance(r, c_lb, c_ub)) {
+        if (broken >= 0)
+          multiple = true;
+        else
+          broken = r;
+      }
+    }
+    if (multiple || broken < 0) continue;
+
+    const auto row = range_for_constraint<i_t, f_t>(fj_cpu, broken);
+    for (i_t k = row.first; k < row.second; ++k) {
+      const i_t var2 = fj_cpu.h_variables[k];
+      if (var2 == var1) continue;
+      if (!fj_cpu.h_is_binary_variable[var2]) continue;
+
+      const f_t coeff2   = fj_cpu.h_obj_coeffs[var2];
+      const f_t val2     = fj_cpu.h_assignment[var2];
+      const f_t delta2   = round(1.0 - 2 * val2);
+      const f_t combined = delta1 * coeff1 + delta2 * coeff2;
+      if (combined >= 0) continue;
+      if (tabu_check<i_t, f_t>(fj_cpu, var2, delta2)) continue;
+      if (!paired_flip_keeps_feasible<i_t, f_t>(fj_cpu, var1, delta1, var2, delta2)) continue;
+
+      fj_staged_score_t score = fj_staged_score_t::zero();
+      score.base              = round(-combined);
+      if (best_score < score) {
+        best_score  = score;
+        best_first  = fj_move_t{var1, delta1};
+        best_second = fj_move_t{var2, delta2};
+      }
+    }
+  }
+  return thrust::make_tuple(best_first, best_second, best_score);
+}
+
 template <typename i_t, typename f_t>
 static thrust::tuple<fj_move_t, fj_staged_score_t> find_lift_move(
   fj_cpu_climber_t<i_t, f_t>& fj_cpu)
@@ -2294,9 +2413,23 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
     bool is_mtm_sat         = false;
 
     // Perform lift moves
+    fj_move_t lift_companion = fj_move_t{-1, 0};
     if (fj_cpu->violated_constraints.empty()) {
       thrust::tie(move, score) = find_lift_move(*fj_cpu);
-      if (score > fj_staged_score_t::zero()) is_lift = true;
+      if (score > fj_staged_score_t::zero()) {
+        is_lift = true;
+      } else {
+        // Pairs are only reachable once no single improving flip preserves feasibility.
+        fj_move_t first, second;
+        fj_staged_score_t pair_score;
+        thrust::tie(first, second, pair_score) = find_lift_2opt_move(*fj_cpu);
+        if (pair_score > fj_staged_score_t::zero()) {
+          move           = first;
+          lift_companion = second;
+          score          = pair_score;
+          is_lift        = true;
+        }
+      }
     }
     // Regular MTM
     if (!(score > fj_staged_score_t::zero())) {
@@ -2319,6 +2452,10 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
 
     if (score > fj_staged_score_t::zero() && !should_perturb) {
       apply_move(*fj_cpu, move.var_idx, move.value, false);
+      if (lift_companion.var_idx >= 0) {
+        apply_move(*fj_cpu, lift_companion.var_idx, lift_companion.value, false);
+        fj_cpu->n_lift_moves_window++;
+      }
       // Track move types
       if (is_lift) fj_cpu->n_lift_moves_window++;
       if (is_mtm_viol) fj_cpu->n_mtm_viol_moves_window++;
