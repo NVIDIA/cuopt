@@ -10,7 +10,7 @@
 
 #include <cuopt/error.hpp>
 
-#include <branch_and_bound/branch_and_bound.hpp>
+#include <branch_and_bound/branch_and_bound.cuh>
 #include <mip_heuristics/diversity/diversity_manager.cuh>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/relaxed_lp/relaxed_lp.cuh>

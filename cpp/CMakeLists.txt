@@ -338,22 +338,22 @@ if (DEFINED ENV{CONDA_PREFIX} AND NOT "$ENV{CONDA_PREFIX}" STREQUAL "")
     list(APPEND NCCL_HINT_PREFIXES "$ENV{CONDA_PREFIX}")
 endif ()
 find_path(NCCL_INCLUDE_DIR
-    NAMES nccl.h
-    HINTS ${NCCL_HINT_PREFIXES}
-    PATH_SUFFIXES include
+        NAMES nccl.h
+        HINTS ${NCCL_HINT_PREFIXES}
+        PATH_SUFFIXES include
 )
 find_library(NCCL_LIBRARY
-    NAMES nccl
-    HINTS ${NCCL_HINT_PREFIXES}
-    PATH_SUFFIXES lib lib64
+        NAMES nccl
+        HINTS ${NCCL_HINT_PREFIXES}
+        PATH_SUFFIXES lib lib64
 )
 if (NOT NCCL_INCLUDE_DIR OR NOT NCCL_LIBRARY)
     message(FATAL_ERROR "NCCL not found. Looked in ${NCCL_HINT_PREFIXES}. Install nccl-dev / libnccl-dev in the active env.")
 endif ()
 add_library(nccl_external UNKNOWN IMPORTED GLOBAL)
 set_target_properties(nccl_external PROPERTIES
-    IMPORTED_LOCATION "${NCCL_LIBRARY}"
-    INTERFACE_INCLUDE_DIRECTORIES "${NCCL_INCLUDE_DIR}"
+        IMPORTED_LOCATION "${NCCL_LIBRARY}"
+        INTERFACE_INCLUDE_DIRECTORIES "${NCCL_INCLUDE_DIR}"
 )
 message(STATUS "Using NCCL: ${NCCL_LIBRARY}")
 
@@ -644,8 +644,8 @@ set_target_properties(cuopt_objs
 )
 
 target_compile_definitions(cuopt_objs
-  PUBLIC "CUOPT_LOG_ACTIVE_LEVEL=RAPIDS_LOGGER_LOG_LEVEL_${LIBCUOPT_LOGGING_LEVEL}"
-  PUBLIC CUSPARSE_ENABLE_EXPERIMENTAL_API
+        PUBLIC "CUOPT_LOG_ACTIVE_LEVEL=RAPIDS_LOGGER_LOG_LEVEL_${LIBCUOPT_LOGGING_LEVEL}"
+        PUBLIC CUSPARSE_ENABLE_EXPERIMENTAL_API
 )
 
 target_compile_options(cuopt_objs
@@ -664,8 +664,8 @@ target_include_directories(cuopt_objs PRIVATE
 )
 
 target_include_directories(cuopt_objs SYSTEM PRIVATE
-  "${pslp_SOURCE_DIR}/include"
-  "${dejavu_SOURCE_DIR}"
+        "${pslp_SOURCE_DIR}/include"
+        "${dejavu_SOURCE_DIR}"
 )
 
 target_include_directories(cuopt_objs
@@ -713,7 +713,7 @@ target_compile_definitions(cuopt_objs PRIVATE TBB_PREVIEW_GLOBAL_CONTROL KAMINPA
 # Real (non-imported) target only exists when KaMinPar is built from source via CPM;
 # force it to build before the objects that include its headers since it is EXCLUDE_FROM_ALL.
 if (TARGET KaMinPar)
-        add_dependencies(cuopt_objs KaMinPar)
+    add_dependencies(cuopt_objs KaMinPar)
 endif ()
 
 # ##################################################################################################
@@ -859,7 +859,7 @@ target_link_libraries(cuopt PRIVATE $<TARGET_FILE:PSLP>)
 add_dependencies(cuopt PSLP)
 target_link_libraries(cuopt PRIVATE $<TARGET_FILE:KaMinPar::KaMinPar>)
 if (TARGET KaMinPar)
-        add_dependencies(cuopt KaMinPar)
+    add_dependencies(cuopt KaMinPar)
 endif ()
 # Propagate compile definitions that consumers need when including cuopt headers.
 # These were on cuopt directly before the cuopt_objs refactor; $<TARGET_OBJECTS:...>

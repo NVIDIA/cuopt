@@ -135,7 +135,8 @@ class node_queue_t {
     std::scoped_lock lock(mutex_, victim.mutex_);
 
     for (i_t k = 0; k < nodes_to_steal; ++k) {
-      if (victim.best_first_heap_.size() < nodes_to_steal) break;
+      const i_t victim_size = victim.best_first_heap_.size();
+      if (victim_size < nodes_to_steal) break;
       auto entry = victim.best_first_heap_.pop();
 
       // Invalidate the node for diving

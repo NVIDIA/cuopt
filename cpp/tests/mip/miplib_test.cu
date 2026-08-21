@@ -6,7 +6,7 @@
 /* clang-format on */
 
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
-#include "branch_and_bound/branch_and_bound.hpp"
+#include "branch_and_bound/branch_and_bound.cuh"
 #include "cuopt/mathematical_optimization/mip/solver_settings.hpp"
 #include "dual_simplex/simplex_solver_settings.hpp"
 #include "mip_utils.cuh"

@@ -178,7 +178,8 @@ class pseudo_costs_t {
   {
     has_initial_pseudocost = true;
 
-    for (i_t k = 0; k < reduced_to_original.size(); ++k) {
+    const i_t num_reduced = reduced_to_original.size();
+    for (i_t k = 0; k < num_reduced; ++k) {
       const i_t orig = reduced_to_original[k];
       assert(orig >= 0);
       assert(orig < parent.pseudo_cost_num_up.size());

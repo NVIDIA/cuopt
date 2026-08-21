@@ -5,7 +5,7 @@
  */
 /* clang-format on */
 
-#include <branch_and_bound/branch_and_bound.hpp>
+#include <branch_and_bound/branch_and_bound.cuh>
 #include <branch_and_bound/diving_heuristics.hpp>
 #include <branch_and_bound/mip_node.hpp>
 #include <branch_and_bound/pseudo_costs.hpp>
@@ -168,7 +168,8 @@ void set_uninitialized_steepest_edge_norms(const lp_problem_t<i_t, f_t>& lp,
                                            const std::vector<i_t>& basic_list,
                                            std::vector<f_t>& edge_norms)
 {
-  if (edge_norms.size() != lp.num_cols) { edge_norms.resize(lp.num_cols, -1.0); }
+  const i_t num_edge_norms = edge_norms.size();
+  if (num_edge_norms != lp.num_cols) { edge_norms.resize(lp.num_cols, -1.0); }
   for (i_t k = 0; k < lp.num_rows; k++) {
     const i_t j = basic_list[k];
     if (edge_norms[j] <= 0.0) { edge_norms[j] = 1e-4; }
@@ -528,9 +529,10 @@ bool branch_and_bound_t<i_t, f_t>::set_solution_from_heuristics(const std::vecto
                                                                 heuristics_origin_t origin)
 {
   mutex_original_lp_.lock();
-  if (solution.size() != original_problem_.num_cols) {
+  const i_t solution_size = solution.size();
+  if (solution_size != original_problem_.num_cols) {
     settings_.log.printf(
-      "Solution size mismatch %ld %d\n", solution.size(), original_problem_.num_cols);
+      "Solution size mismatch %d %d\n", solution_size, original_problem_.num_cols);
   }
   std::vector<f_t> crushed_solution;
   crush_primal_solution<i_t, f_t>(
@@ -551,7 +553,8 @@ bool branch_and_bound_t<i_t, f_t>::set_solution_from_heuristics(const std::vecto
     f_t bound_err;
     i_t num_fractional;
     mutex_original_lp_.lock();
-    if (crushed_solution.size() != original_lp_.num_cols) {
+    const i_t crushed_size = crushed_solution.size();
+    if (crushed_size != original_lp_.num_cols) {
       // original problem has been modified since the solution was crushed
       // we need to re-crush the solution
       crush_primal_solution<i_t, f_t>(
@@ -603,9 +606,10 @@ void branch_and_bound_t<i_t, f_t>::queue_external_solution_deterministic(
   // In deterministic mode, queue the solution to be processed at the correct work unit timestamp
   // This ensures deterministic ordering of solution events
 
-  if (solution.size() != original_problem_.num_cols) {
+  const i_t solution_size = solution.size();
+  if (solution_size != original_problem_.num_cols) {
     settings_.log.printf(
-      "Solution size mismatch %ld %d\n", solution.size(), original_problem_.num_cols);
+      "Solution size mismatch %d %d\n", solution_size, original_problem_.num_cols);
     return;
   }
 
@@ -2514,7 +2518,8 @@ void get_unfixed_integer_variables(const std::vector<f_t>& lower,
                                    f_t fixed_tol,
                                    std::vector<i_t>& integer_list)
 {
-  for (i_t j = 0; j < var_types.size(); ++j) {
+  const i_t num_variables = var_types.size();
+  for (i_t j = 0; j < num_variables; ++j) {
     if (var_types[j] == variable_type_t::CONTINUOUS) { continue; }
     if (std::abs(lower[j] - upper[j]) <= fixed_tol) { continue; }
     integer_list.push_back(j);
@@ -3123,16 +3128,17 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
           nonbasic_list.push_back(j);
         }
       }
-      if (basic_list.size() != original_lp_.num_rows) {
-        settings_.log.printf(
-          "basic_list size %d != m %d\n", basic_list.size(), original_lp_.num_rows);
-        assert(basic_list.size() == original_lp_.num_rows);
+      const i_t num_basic    = basic_list.size();
+      const i_t num_nonbasic = nonbasic_list.size();
+      if (num_basic != original_lp_.num_rows) {
+        settings_.log.printf("basic_list size %d != m %d\n", num_basic, original_lp_.num_rows);
+        assert(num_basic == original_lp_.num_rows);
       }
-      if (nonbasic_list.size() != original_lp_.num_cols - original_lp_.num_rows) {
+      if (num_nonbasic != original_lp_.num_cols - original_lp_.num_rows) {
         settings_.log.printf("nonbasic_list size %d != n - m %d\n",
-                             nonbasic_list.size(),
+                             num_nonbasic,
                              original_lp_.num_cols - original_lp_.num_rows);
-        assert(nonbasic_list.size() == original_lp_.num_cols - original_lp_.num_rows);
+        assert(num_nonbasic == original_lp_.num_cols - original_lp_.num_rows);
       }
       // Populate the basis_update from the crossover vstatus
       i_t refactor_status = basis_update.refactor_basis(original_lp_.A,
@@ -3789,7 +3795,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                                     saved_solution);
 
     mutex_upper_.lock();
-    if (incumbent_.has_incumbent && incumbent_.x.size() != original_lp_.num_cols) {
+    const i_t incumbent_size = incumbent_.x.size();
+    if (incumbent_.has_incumbent && incumbent_size != original_lp_.num_cols) {
       std::vector<f_t> uncrushed_incumbent;
       uncrush_primal_solution(original_problem_, original_lp_, incumbent_.x, uncrushed_incumbent);
       crush_primal_solution(
@@ -3894,9 +3901,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       }
       // Go through and check the fractional variables and remove any that are now fixed to their
       // bounds
-      std::vector<i_t> to_remove(fractional.size(), 0);
+      std::vector<i_t> to_remove(num_fractional, 0);
       i_t num_to_remove = 0;
-      for (i_t k = 0; k < fractional.size(); k++) {
+      for (i_t k = 0; k < num_fractional; k++) {
         const i_t j = fractional[k];
         if (std::abs(original_lp_.upper[j] - original_lp_.lower[j]) < settings_.fixed_tol) {
           to_remove[k] = 1;
@@ -3905,8 +3912,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       }
       if (num_to_remove > 0) {
         std::vector<i_t> new_fractional;
-        new_fractional.reserve(fractional.size() - num_to_remove);
-        for (i_t k = 0; k < fractional.size(); k++) {
+        new_fractional.reserve(num_fractional - num_to_remove);
+        for (i_t k = 0; k < num_fractional; k++) {
           if (!to_remove[k]) { new_fractional.push_back(fractional[k]); }
         }
         fractional     = new_fractional;

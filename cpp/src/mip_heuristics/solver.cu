@@ -14,7 +14,7 @@
 #include <pdlp/pdlp.cuh>
 #include <pdlp/solve.cuh>
 
-#include <branch_and_bound/branch_and_bound.hpp>
+#include <branch_and_bound/branch_and_bound.cuh>
 #include <branch_and_bound/symmetry.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/solve.hpp>

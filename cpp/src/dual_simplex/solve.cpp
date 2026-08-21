@@ -9,7 +9,7 @@
 
 #include <barrier/barrier.hpp>
 
-#include <branch_and_bound/branch_and_bound.hpp>
+#include <branch_and_bound/branch_and_bound.cuh>
 
 #include <dual_simplex/basis_solves.hpp>
 #include <dual_simplex/crossover.hpp>

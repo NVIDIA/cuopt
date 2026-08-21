@@ -360,7 +360,8 @@ class mip_node_t {
 template <typename i_t, typename f_t>
 void remove_fathomed_nodes(std::vector<mip_node_t<i_t, f_t>*>& stack)
 {
-  for (int i = 0; i < stack.size(); ++i) {
+  const i_t num_stacked = stack.size();
+  for (i_t i = 0; i < num_stacked; ++i) {
     for (int child = 0; child < 2; ++child) {
       if (stack[i]->children[child] != nullptr) { stack[i]->children[child].reset(); }
     }
