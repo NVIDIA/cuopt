@@ -655,9 +655,7 @@ static inline std::pair<fj_staged_score_t, f_t> compute_score(fj_cpu_climber_t<i
 
   f_t base_obj = 0;
   if (fj_cpu.h_objective_weight > 0 && obj_diff != 0) {
-    // Scaling base by the objective magnitude only means something where there is feasibility
-    // impact to trade against; at base_feas_sum zero it would only make base distinct across
-    // candidates, which strands the bonus stage of the staged comparison.
+    // Scaling base is only meaningful where there is feasibility impact to trade against.
     f_t weighted = fj_cpu.h_objective_weight;
     if (base_feas_sum != 0) {
       cuopt_assert(fj_cpu.obj_magnitude > 0, "objective magnitude unit must be positive");
@@ -967,6 +965,19 @@ static void smooth_weights(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   }
 }
 
+// Escalation threshold and step for the violated-row bump, in local minima without a severity gain.
+constexpr int32_t fj_weight_escalate_after = 2000;
+constexpr int32_t fj_weight_escalate_max   = 100;
+
+template <typename i_t, typename f_t>
+static i_t weight_escalation_delta(const fj_cpu_climber_t<i_t, f_t>& fj_cpu)
+{
+  const i_t stall = fj_cpu.iters_since_infeasible_improve;
+  if (stall <= fj_weight_escalate_after) return 1;
+  const i_t steps = (stall - fj_weight_escalate_after) / fj_weight_escalate_after + 1;
+  return steps < fj_weight_escalate_max ? steps : fj_weight_escalate_max;
+}
+
 template <typename i_t, typename f_t>
 static void update_weights(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 {
@@ -980,6 +991,8 @@ static void update_weights(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
     smooth_weights<i_t, f_t>(fj_cpu);
     return;
   }
+
+  const i_t escalated_delta = weight_escalation_delta<i_t, f_t>(fj_cpu);
 
   for (auto cstr_idx : fj_cpu.violated_constraints) {
     f_t curr_incumbent_lhs = fj_cpu.h_lhs[cstr_idx];
@@ -998,7 +1011,7 @@ static void update_weights(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 
     cuopt_assert(curr_excess_score < 0, "constraint not violated");
 
-    i_t int_delta = 1.0;
+    i_t int_delta = escalated_delta;
     f_t delta     = int_delta;
 
     f_t new_weight = old_weight + delta;
@@ -1019,9 +1032,7 @@ static void update_weights(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   if (fj_cpu.violated_constraints.empty()) { fj_cpu.h_objective_weight += 1; }
 }
 
-// Applied to the objective weight when a new incumbent lands: the bump it gains, and the ceiling
-// it is held at so smooth_weights and update_weights cannot walk it out of scale with the
-// feasibility term.
+// Bump and ceiling applied to the objective weight when a new incumbent lands.
 constexpr double fj_obj_weight_incumbent_bump = 4.0;
 constexpr double fj_obj_weight_incumbent_cap  = 64.0;
 
