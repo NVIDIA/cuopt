@@ -198,6 +198,8 @@ int run_single_file(std::string file_path,
                     double work_limit,
                     bool deterministic)
 {
+  (void)cudaFree(0);
+
   const raft::handle_t handle_{};
   cuopt::mathematical_optimization::mip_solver_settings_t<int, double> settings;
   std::string base_filename = file_path.substr(file_path.find_last_of("/\\") + 1);
@@ -407,8 +409,6 @@ void return_gpu_to_the_queue(std::unordered_map<pid_t, int>& pid_gpu_map,
 
 int main(int argc, char* argv[])
 {
-  (void)cudaFree(0);
-
   argparse::ArgumentParser program("solve_MIP");
 
   // Define all arguments with appropriate defaults and help messages
