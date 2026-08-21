@@ -33,7 +33,7 @@ cuopt::cython::linear_programming_ret_t gpu_lp_solution_t<i_t, f_t>::to_linear_p
   auto& sol = solution_;
   gpu_solutions_t gpu;
 
-  ret.has_dual_solution_ = sol.has_dual_solution_;
+  ret.has_dual_solution_ = sol.has_dual_solution();
 
   gpu.primal_solution_ =
     std::make_unique<rmm::device_buffer>(std::move(sol.get_primal_solution()).release());
@@ -41,7 +41,7 @@ cuopt::cython::linear_programming_ret_t gpu_lp_solution_t<i_t, f_t>::to_linear_p
   // buffers rather than the internal (wrong-sized/NaN) reformulated-problem vectors.
   // Python raises only if the caller explicitly accesses dual_solution/reduced_cost
   // (see Solution.raise_if_no_dual_solution), so a normal solve still succeeds.
-  if (sol.has_dual_solution_) {
+  if (sol.has_dual_solution()) {
     gpu.dual_solution_ =
       std::make_unique<rmm::device_buffer>(std::move(sol.get_dual_solution()).release());
     gpu.reduced_cost_ =

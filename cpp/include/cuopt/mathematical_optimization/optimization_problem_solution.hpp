@@ -71,7 +71,7 @@ class gpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
 
   std::vector<f_t> get_dual_solution_host() const override
   {
-    if (!solution_.has_dual_solution_) {
+    if (!solution_.has_dual_solution()) {
       throw std::logic_error(
         "get_dual_solution() is not available for solutions with quadratic constraints");
     }
@@ -87,7 +87,7 @@ class gpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
 
   std::vector<f_t> get_reduced_cost_host() const override
   {
-    if (!solution_.has_dual_solution_) {
+    if (!solution_.has_dual_solution()) {
       throw std::logic_error(
         "get_reduced_costs() is not available for solutions with quadratic constraints");
     }
@@ -334,7 +334,7 @@ class gpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
     // explicitly requests the dual solution, rather than failing this conversion outright.
     std::vector<f_t> dual_host;
     std::vector<f_t> reduced_host;
-    if (solution_.has_dual_solution_) {
+    if (solution_.has_dual_solution()) {
       dual_host    = get_dual_solution_host();
       reduced_host = get_reduced_cost_host();
     }
@@ -357,7 +357,7 @@ class gpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
                                                            get_num_iterations(),
                                                            solved_by(),
                                                            std::move(cpu_ws),
-                                                           solution_.has_dual_solution_);
+                                                           solution_.has_dual_solution());
     }
 
     return std::make_unique<cpu_lp_solution_t<i_t, f_t>>(std::move(primal_host),
@@ -372,7 +372,7 @@ class gpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
                                                          get_gap(),
                                                          get_num_iterations(),
                                                          solved_by(),
-                                                         solution_.has_dual_solution_);
+                                                         solution_.has_dual_solution());
   }
 
   /**

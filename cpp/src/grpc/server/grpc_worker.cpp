@@ -478,7 +478,7 @@ static SolveResult run_lp_solve(DeserializedJob& dj,
     // solve still succeeds normally; only the dual-specific fields are absent.
     std::vector<double> host_dual;
     std::vector<double> host_reduced_cost;
-    if (gpu_solution.has_dual_solution_) {
+    if (gpu_solution.has_dual_solution()) {
       host_dual         = device_to_host<double>(gpu_solution.get_dual_solution());
       host_reduced_cost = device_to_host<double>(gpu_solution.get_reduced_cost());
     }
@@ -504,7 +504,7 @@ static SolveResult run_lp_solve(DeserializedJob& dj,
       term_info.number_of_steps_taken,
       term_info.solved_by,
       std::move(cpu_ws),
-      gpu_solution.has_dual_solution_);
+      gpu_solution.has_dual_solution());
 
     cuopt::mathematical_optimization::populate_chunked_result_header_lp(cpu_solution, &sr.header);
     sr.arrays = cuopt::mathematical_optimization::collect_lp_solution_arrays(cpu_solution);

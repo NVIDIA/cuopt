@@ -378,6 +378,18 @@ rmm::device_uvector<f_t>& optimization_problem_solution_t<i_t, f_t>::get_reduced
 }
 
 template <typename i_t, typename f_t>
+bool optimization_problem_solution_t<i_t, f_t>::has_dual_solution() const
+{
+  return has_dual_solution_;
+}
+
+template <typename i_t, typename f_t>
+void optimization_problem_solution_t<i_t, f_t>::set_has_dual_solution(bool value)
+{
+  has_dual_solution_ = value;
+}
+
+template <typename i_t, typename f_t>
 pdlp_termination_status_t optimization_problem_solution_t<i_t, f_t>::get_termination_status(
   i_t id) const
 {
