@@ -168,13 +168,10 @@ class Solution:
         max_variable_bound_violation=0.0,
         num_nodes=0,
         num_simplex_iterations=0,
-        has_dual_solution=True,
     ):
         self.problem_category = problem_category
         self.primal_solution = primal_solution
         self.dual_solution = dual_solution
-        # TMP: once dual recovery of QCQP is implemented, we can remove this attribute
-        self.has_dual_solution = has_dual_solution
         if problem_category == ProblemCategory.LP:
             self.pdlp_warm_start_data = PDLPWarmStartData(
                 current_primal_solution,
@@ -251,13 +248,6 @@ class Solution:
                 f"Attribute {function_name} is not supported for lp solution"
             )
 
-    def raise_if_no_dual_solution(self, function_name):
-        if not self.has_dual_solution:
-            raise AttributeError(
-                f"Attribute {function_name} is not supported: dual recovery of "
-                "quadratic constraints is not yet implemented"
-            )
-
     def get_primal_solution(self):
         """
         Returns the primal solution as numpy.array with float64 type.
@@ -270,7 +260,6 @@ class Solution:
         Returns the dual solution as numpy.array with float64 type.
         """
         self.raise_if_milp_solution("get_dual_solution")
-        self.raise_if_no_dual_solution("get_dual_solution")
         return self.dual_solution
 
     def get_primal_objective(self):
@@ -363,7 +352,6 @@ class Solution:
         Returns the reduced cost as numpy.array with float64 type.
         """
         self.raise_if_milp_solution("get_reduced_cost")
-        self.raise_if_no_dual_solution("get_reduced_cost")
         return self.reduced_cost
 
     def get_pdlp_warm_start_data(self):

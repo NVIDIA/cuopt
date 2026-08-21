@@ -2505,9 +2505,10 @@ DONE:
 }
 
 /**
- * Dual recovery for QCQP is not
- * supported yet, so requesting the dual solution / reduced costs must now return
- * CUOPT_INVALID_ARGUMENT instead of overrunning the caller's buffer.
+ * Dual recovery
+ * for QCQP is not supported yet, so solve_qcqp() resizes the dual solution / reduced
+ * cost vectors down to the documented lengths and fills them with NaN (cuOpt's
+ * existing "value not computed" convention) rather than leaving them oversized.
  */
 cuopt_int_t test_qcqp_solution_dual_methods()
 {
@@ -2517,6 +2518,7 @@ cuopt_int_t test_qcqp_solution_dual_methods()
   cuopt_int_t status;
   cuopt_int_t num_constraints;
   cuopt_int_t num_quadratic;
+  int i;
 
   /*
    * minimize t
@@ -2545,8 +2547,11 @@ cuopt_int_t test_qcqp_solution_dual_methods()
   cuopt_int_t qc_col[]    = {0, 1, 2};
   cuopt_float_t qc_coeff[] = {-1.0, 1.0, 1.0};
 
-  cuopt_float_t dual_solution[16];
-  cuopt_float_t reduced_costs[3];
+  /* Allocated to the documented sizes (queried below) rather than a guessed capacity, so a
+   * regression back to issue #1751 (writing more than num_constraints/num_variables entries)
+   * would corrupt the heap and be caught by ASan/valgrind rather than silently fitting. */
+  cuopt_float_t* dual_solution = NULL;
+  cuopt_float_t* reduced_costs = NULL;
 
   printf("Testing QCQP solution dual/reduced-cost methods...\n");
 
@@ -2600,6 +2605,11 @@ cuopt_int_t test_qcqp_solution_dual_methods()
     goto DONE;
   }
 
+  /* Sized to the documented lengths (num_constraints just queried above, num_variables
+   * used to build the problem), not a guessed capacity. */
+  dual_solution = (cuopt_float_t*)malloc(num_constraints * sizeof(cuopt_float_t));
+  reduced_costs = (cuopt_float_t*)malloc(num_variables * sizeof(cuopt_float_t));
+
   status = cuOptCreateSolverSettings(&settings);
   if (status != CUOPT_SUCCESS) {
     printf("Error creating solver settings: %d\n", status);
@@ -2618,29 +2628,46 @@ cuopt_int_t test_qcqp_solution_dual_methods()
     goto DONE;
   }
 
-  /* Calling get_dual_solution on a QCQP solution should return CUOPT_INVALID_ARGUMENT,
-   * and must not write anything into the (intentionally oversized) buffer. */
+  /* cuOptGetDualSolution on a QCQP solution should return CUOPT_SUCCESS and fill exactly
+   * the num_constraints-sized buffer with NaN (dual recovery not yet supported). A
+   * regression back to issue #1751 (writing more than num_constraints entries) would
+   * overrun this exactly-sized heap allocation. */
   status = cuOptGetDualSolution(solution, dual_solution);
-  if (status != CUOPT_INVALID_ARGUMENT) {
-    printf("Error: cuOptGetDualSolution on QCQP should return CUOPT_INVALID_ARGUMENT, got %d\n",
-           status);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error: cuOptGetDualSolution on QCQP should return CUOPT_SUCCESS, got %d\n", status);
     status = -1;
     goto DONE;
   }
+  for (i = 0; i < num_constraints; ++i) {
+    if (!isnan(dual_solution[i])) {
+      printf("Error: dual_solution[%d] expected NaN, got %g\n", i, dual_solution[i]);
+      status = -1;
+      goto DONE;
+    }
+  }
 
-  /* Calling get_reduced_costs on a QCQP solution should return CUOPT_INVALID_ARGUMENT */
+  /* cuOptGetReducedCosts on a QCQP solution should return CUOPT_SUCCESS and fill exactly
+   * the num_variables-sized buffer with NaN. */
   status = cuOptGetReducedCosts(solution, reduced_costs);
-  if (status != CUOPT_INVALID_ARGUMENT) {
-    printf("Error: cuOptGetReducedCosts on QCQP should return CUOPT_INVALID_ARGUMENT, got %d\n",
-           status);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error: cuOptGetReducedCosts on QCQP should return CUOPT_SUCCESS, got %d\n", status);
     status = -1;
     goto DONE;
+  }
+  for (i = 0; i < num_variables; ++i) {
+    if (!isnan(reduced_costs[i])) {
+      printf("Error: reduced_costs[%d] expected NaN, got %g\n", i, reduced_costs[i]);
+      status = -1;
+      goto DONE;
+    }
   }
 
   printf("QCQP solution dual methods test passed\n");
   status = CUOPT_SUCCESS;
 
 DONE:
+  free(dual_solution);
+  free(reduced_costs);
   cuOptDestroyProblem(&problem);
   cuOptDestroySolverSettings(&settings);
   cuOptDestroySolution(&solution);
