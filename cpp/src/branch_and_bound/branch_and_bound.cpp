@@ -43,6 +43,7 @@
 #include <limits>
 #include <list>
 #include <string>
+#include <utilities/scope_guard.hpp>
 #include <vector>
 
 #define SUBMIP_VERBOSE false
@@ -835,9 +836,7 @@ template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t, f_t>& solution,
                                                       f_t lower_bound)
 {
-  if (solver_status_ == mip_status_t::SUBMIP_HALT) {
-    settings_.log.debug("Stopping the sub-MIP solve...\n");
-  }
+  if (solver_status_ == mip_status_t::HALT) { settings_.log.debug("Stopping the solver...\n"); }
 
   if (solver_status_ == mip_status_t::NUMERICAL) {
     settings_.log.printf("Numerical issue encountered. Stopping the solver...\n");
@@ -1749,6 +1748,14 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
       }
     }
 
+    if (received_halt_signal()) {
+      solver_status_        = mip_status_t::HALT;
+      node_concurrent_halt_ = true;
+      stack.push_front(node_ptr);
+      --exploration_stats_.nodes_being_solved;
+      break;
+    }
+
     if (now > settings_.time_limit) {
       solver_status_ = mip_status_t::TIME_LIMIT;
       stack.push_front(node_ptr);
@@ -1960,13 +1967,19 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
       bool stop = submip_halt_callback_(user_obj, user_lower);
       if (stop) {
         node_concurrent_halt_ = 1;
-        solver_status_        = mip_status_t::SUBMIP_HALT;
+        solver_status_        = mip_status_t::HALT;
         settings_.log.debug_format(
           "Received halt signal. Current best obj={:.6e} and best bound={:.6e}\n",
           user_obj,
           user_lower);
         break;
       }
+    }
+
+    if (received_halt_signal()) {
+      solver_status_        = mip_status_t::HALT;
+      node_concurrent_halt_ = true;
+      break;
     }
 
     // If the guided diving was disabled previously due to the lack of an incumbent solution,
@@ -2239,7 +2252,8 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
                                                 const std::vector<variable_type_t>& var_types,
                                                 submip_stats_t& submip_stats,
                                                 f_t fixrate,
-                                                i_t simplex_iter_used)
+                                                i_t simplex_iter_used,
+                                                std::atomic<int>* halt)
 {
   double start_time = tic();
 
@@ -2263,6 +2277,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   submip_settings.submip_settings.level                    = submip_level;
   submip_settings.benchmark_info_ptr                       = nullptr;
   submip_settings.log.log                                  = SUBMIP_VERBOSE;
+  submip_settings.concurrent_halt = halt ? halt : settings_.concurrent_halt;
 
 #ifdef SAVE_SUBMIP_TO_FILE
   submip_settings.log.log_prefix = std::format("{}{}", settings_.log.log_prefix, worker->worker_id);
@@ -2343,6 +2358,8 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
     return;
   }
 
+  if (halt != nullptr && halt->load(std::memory_order_acquire)) { return; }
+
   submip_settings.heuristic_preemption_callback   = nullptr;
   submip_settings.dual_simplex_objective_callback = nullptr;
   submip_settings.set_simplex_solution_callback   = nullptr;
@@ -2390,12 +2407,12 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
     submip_bnb.set_submip_halt_callback(submip_halt_callback_);
   } else {
     // This should only be called by the main solver.
-    submip_bnb.set_submip_halt_callback([this, worker](f_t, f_t submip_lower_bound) {
+    submip_bnb.set_submip_halt_callback([this](f_t, f_t submip_lower_bound) {
       f_t user_upper = compute_user_objective(this->original_lp_, this->upper_bound_.load());
       bool is_cutoff = original_lp_.obj_scale > 0 ? submip_lower_bound > user_upper
                                                   : user_upper > submip_lower_bound;
       bool is_solver_running = this->solver_status_ == mip_status_t::UNSET && this->is_running_;
-      return is_cutoff || !is_solver_running || worker->halt;
+      return is_cutoff || !is_solver_running || this->received_halt_signal();
     });
   }
 
@@ -2644,7 +2661,8 @@ f_t calculate_fixrate(const std::vector<i_t>& integer_list,
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* worker,
                                                     const std::vector<f_t>& current_incumbent,
-                                                    const std::vector<variable_type_t>& var_types)
+                                                    const std::vector<variable_type_t>& var_types,
+                                                    std::atomic<int>* halt)
 {
   raft::common::nvtx::range scope("BB::submip_thread");
   if (worker->orbital_fixing) { worker->orbital_fixing->disable(); }
@@ -2689,7 +2707,8 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* w
 
   i_t round = 0;
 
-  while (solver_status_ == mip_status_t::UNSET && is_running_ && !worker->halt) {
+  while (solver_status_ == mip_status_t::UNSET && is_running_ &&
+         !(halt && halt->load(std::memory_order::acquire))) {
     f_t prev_fixrate         = fixrate;
     f_t distance             = 1.0 - (1.0 - prev_fixrate) * close_ratio;
     f_t round_target_fixrate = std::min(distance, max_fixrate) - prev_fixrate;
@@ -2909,7 +2928,8 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* w
 
     } else {
       solve_submip(
-        worker, current_incumbent, var_types, submip_stats, fixrate, stats.total_simplex_iters);
+        worker, current_incumbent, var_types, submip_stats, fixrate, stats.total_simplex_iters,
+                   halt);
     }
   }
 
@@ -2927,7 +2947,11 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* w
     min_fixrate);
 
   // If the pool is uninitialized (i.e., in the root node), then this just inactivate the worker.
-  submip_worker_pool_.return_worker_to_pool(worker);
+  if (!during_cut_passes_) {
+    submip_worker_pool_.return_worker_to_pool(worker);
+  } else {
+    worker->set_inactive();
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -2983,14 +3007,14 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
     if (settings_.inside_submip) {
       // LLVM libomp's GOMP compatibility path skips GCC's firstprivate copy
       // function for included tasks.
-      recursive_submip(worker, current_incumbent, heuristic->var_types_);
+      recursive_submip(worker, current_incumbent, heuristic->var_types_, &heuristic->halt_);
     } else {
       ++worker_count;
 #pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) affinity(worker)               \
   shared(heuristics, worker_count) firstprivate(worker, current_incumbent, heuristic) \
   depend(out : *worker)
       {
-        recursive_submip(worker, current_incumbent, heuristic->var_types_);
+        recursive_submip(worker, current_incumbent, heuristic->var_types_, &heuristic->halt_);
         --worker_count;
       }
     }
@@ -3027,6 +3051,11 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
   // Wait for the root relaxation solution to be sent by the diversity manager or dual simplex
   while (!root_crossover_solution_set_.load(std::memory_order_acquire) &&
          *get_root_concurrent_halt() == 0) {
+    if (received_halt_signal()) {
+      root_concurrent_halt_.store(true, std::memory_order_release);
+      return lp_status_t::CONCURRENT_LIMIT;
+    }
+
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
 #pragma omp taskyield
   }
@@ -3315,7 +3344,7 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
 
   i_t iter                    = 0;
   bool initialize_basis       = false;
-  lp_settings.concurrent_halt = NULL;
+  lp_settings.concurrent_halt = settings_.concurrent_halt;
   f_t dual_phase2_start_time  = tic();
   dual_status_t cut_status    = dual_phase2_with_advanced_basis(2,
                                                              0,
@@ -3337,6 +3366,12 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   }
   if (cut_status == dual_status_t::TIME_LIMIT) {
     solver_status_ = mip_status_t::TIME_LIMIT;
+    set_final_solution(solution, root_objective_);
+    return {cut_pass_action_t::RETURN, solver_status_};
+  }
+
+  if (cut_status == dual_status_t::CONCURRENT_LIMIT) {
+    solver_status_ = mip_status_t::HALT;
     set_final_solution(solution, root_objective_);
     return {cut_pass_action_t::RETURN, solver_status_};
   }
@@ -3375,23 +3410,36 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
 
   f_t remove_cuts_start_time = tic();
   mutex_original_lp_.lock();
-  remove_cuts(original_lp_,
-              settings_,
-              exploration_stats_.start_time,
-              Arow_,
-              new_slacks_,
-              original_rows,
-              var_types_,
-              root_vstatus_,
-              edge_norms_,
-              root_relax_soln_.x,
-              root_relax_soln_.y,
-              root_relax_soln_.z,
-              basic_list,
-              nonbasic_list,
-              basis_update);
+  i_t remove_cuts_status = remove_cuts(original_lp_,
+                                       lp_settings,
+                                       exploration_stats_.start_time,
+                                       Arow_,
+                                       new_slacks_,
+                                       original_rows,
+                                       var_types_,
+                                       root_vstatus_,
+                                       edge_norms_,
+                                       root_relax_soln_.x,
+                                       root_relax_soln_.y,
+                                       root_relax_soln_.z,
+                                       basic_list,
+                                       nonbasic_list,
+                                       basis_update);
   variable_bounds.resize(original_lp_.num_cols);
   mutex_original_lp_.unlock();
+
+  if (remove_cuts_status == TIME_LIMIT_RETURN) {
+    solver_status_ = mip_status_t::TIME_LIMIT;
+    set_final_solution(solution, root_objective_);
+    return {cut_pass_action_t::RETURN, solver_status_};
+  }
+
+  if (remove_cuts_status == CONCURRENT_HALT_RETURN) {
+    solver_status_ = mip_status_t::HALT;
+    set_final_solution(solution, root_objective_);
+    return {cut_pass_action_t::RETURN, solver_status_};
+  }
+
   f_t remove_cuts_time = toc(remove_cuts_start_time);
   if (remove_cuts_time > 1.0) {
     settings_.log.debug("Remove cuts time %.2f seconds\n", remove_cuts_time);
@@ -3520,6 +3568,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     // RINS/SUBMIP path
     settings_.log.printf("\n");
     settings_.log.printf("Solving LP root relaxation with dual simplex\n");
+    lp_settings.concurrent_halt            = settings_.concurrent_halt;
     root_status                            = solve_linear_program_with_advanced_basis(original_lp_,
                                                            exploration_stats_.start_time,
                                                            lp_settings,
@@ -3549,11 +3598,19 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   f_t root_relax_elapsed_time            = toc(root_relax_start_time);
   exploration_stats_.total_lp_solve_time = root_relax_elapsed_time;
 
+  scope_guard cliques_scope([&]() {
+    signal_extend_cliques_.store(true, std::memory_order_release);
+#pragma omp taskwait depend(in : *clique_signal)
+  });
+
+  if (root_status == lp_status_t::CONCURRENT_LIMIT) {
+    set_final_solution(solution, -inf);
+    return mip_status_t::HALT;
+  }
+
   if (root_status == lp_status_t::INFEASIBLE) {
     settings_.log.printf("The root LP relaxation is infeasible\n",
                          lp_status_to_string(root_status).c_str());
-    signal_extend_cliques_.store(true, std::memory_order_release);
-#pragma omp taskwait depend(in : *clique_signal)
     return mip_status_t::INFEASIBLE;
   }
 
@@ -3563,32 +3620,24 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     if (settings_.heuristic_preemption_callback != nullptr) {
       settings_.heuristic_preemption_callback();
     }
-    signal_extend_cliques_.store(true, std::memory_order_release);
-#pragma omp taskwait depend(in : *clique_signal)
     return mip_status_t::UNBOUNDED;
   }
 
   if (root_status == lp_status_t::TIME_LIMIT) {
     solver_status_ = mip_status_t::TIME_LIMIT;
     set_final_solution(solution, -inf);
-    signal_extend_cliques_.store(true, std::memory_order_release);
-#pragma omp taskwait depend(in : *clique_signal)
     return solver_status_;
   }
 
   if (root_status == lp_status_t::WORK_LIMIT) {
     solver_status_ = mip_status_t::WORK_LIMIT;
     set_final_solution(solution, -inf);
-    signal_extend_cliques_.store(true, std::memory_order_release);
-#pragma omp taskwait depend(in : *clique_signal)
     return solver_status_;
   }
 
   if (root_status == lp_status_t::NUMERICAL_ISSUES) {
     solver_status_ = mip_status_t::NUMERICAL;
     set_final_solution(solution, -inf);
-    signal_extend_cliques_.store(true, std::memory_order_release);
-#pragma omp taskwait depend(in : *clique_signal)
     return solver_status_;
   }
 
@@ -3626,13 +3675,11 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   if (num_fractional == 0) {
     if (settings_.benchmark_info_ptr != nullptr) {
-      const double v = static_cast<double>(compute_user_objective(original_lp_, root_objective_));
+      f_t v = compute_user_objective(original_lp_, root_objective_);
       settings_.benchmark_info_ptr->root_lp_no_cuts   = v;
       settings_.benchmark_info_ptr->root_lp_with_cuts = v;
     }
     set_solution_at_root(solution, cut_info);
-    signal_extend_cliques_.store(true, std::memory_order_release);
-#pragma omp taskwait depend(in : *clique_signal)
     return mip_status_t::OPTIMAL;
   }
 
@@ -3684,8 +3731,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       if (settings_.benchmark_info_ptr != nullptr) {
         settings_.benchmark_info_ptr->cut_generation_time_sec = toc(cut_generation_start_time);
       }
-      signal_extend_cliques_.store(true, std::memory_order_release);
-#pragma omp taskwait depend(in : *clique_signal)
       return solver_status_;
     }
     if (num_fractional == 0) {
@@ -3700,8 +3745,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       if (settings_.benchmark_info_ptr != nullptr) {
         settings_.benchmark_info_ptr->cut_generation_time_sec = toc(cut_generation_start_time);
       }
-      signal_extend_cliques_.store(true, std::memory_order_release);
-#pragma omp taskwait depend(in : *clique_signal)
       return mip_status_t::OPTIMAL;
     }
 
@@ -3741,8 +3784,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       if (settings_.benchmark_info_ptr != nullptr) {
         settings_.benchmark_info_ptr->cut_generation_time_sec = toc(cut_generation_start_time);
       }
-      signal_extend_cliques_.store(true, std::memory_order_release);
-#pragma omp taskwait depend(in : *clique_signal)
       return cut_pass_result.status;
     }
     if (cut_pass_result.action == cut_pass_action_t::BREAK) { break; }
@@ -3798,6 +3839,12 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                basis_update,
                                symmetry_,
                                pc_);
+  }
+
+  if (received_halt_signal()) {
+    solver_status_ = mip_status_t::HALT;
+    set_final_solution(solution, root_objective_);
+    return solver_status_;
   }
 
   if (toc(exploration_stats_.start_time) > settings_.time_limit) {
