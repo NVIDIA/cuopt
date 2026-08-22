@@ -1491,6 +1491,7 @@ static thrust::tuple<fj_move_t, fj_move_t, fj_staged_score_t> find_lift_2opt_mov
   fj_move_t best_first         = fj_move_t{-1, 0};
   fj_move_t best_second        = fj_move_t{-1, 0};
   fj_staged_score_t best_score = fj_staged_score_t::zero();
+  f_t best_improvement         = 0;
 
   const i_t n_obj = (i_t)fj_cpu.h_objective_vars.size();
   if (n_obj == 0) return thrust::make_tuple(best_first, best_second, best_score);
@@ -1542,15 +1543,19 @@ static thrust::tuple<fj_move_t, fj_move_t, fj_staged_score_t> find_lift_2opt_mov
       if (tabu_check<i_t, f_t>(fj_cpu, var2, delta2)) continue;
       if (!paired_flip_keeps_feasible<i_t, f_t>(fj_cpu, var1, delta1, var2, delta2)) continue;
 
-      fj_staged_score_t score = fj_staged_score_t::zero();
-      score.base              = round(-combined);
-      if (best_score < score) {
-        best_score  = score;
-        best_first  = fj_move_t{var1, delta1};
-        best_second = fj_move_t{var2, delta2};
+      // Both lift operators rank on the objective gain in its own units: the score quantization
+      // used elsewhere counts weights, so rounding a gain below 0.5 into it discards the move.
+      const f_t improvement = -combined;
+      if (improvement > best_improvement) {
+        best_improvement = improvement;
+        best_score.base  = 1;  // sign only, never compared against another operator's score
+        best_first       = fj_move_t{var1, delta1};
+        best_second      = fj_move_t{var2, delta2};
       }
     }
   }
+  cuopt_assert((best_first.var_idx < 0) == (best_improvement <= 0),
+               "pair and score must agree on whether a move was found");
   return thrust::make_tuple(best_first, best_second, best_score);
 }
 
@@ -1563,6 +1568,7 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_lift_move(
 
   fj_move_t best_move          = fj_move_t{-1, 0};
   fj_staged_score_t best_score = fj_staged_score_t::zero();
+  f_t best_improvement         = 0;
 
   for (auto var_idx : fj_cpu.h_objective_vars) {
     cuopt_assert(var_idx < fj_cpu.h_obj_coeffs.size(), "var_idx is out of bounds");
@@ -1666,18 +1672,16 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_lift_move(
 
     cuopt_assert(delta * obj_coeff < 0, "lift move doesn't improve the objective!");
 
-    // get the score
-    auto move               = fj_move_t{var_idx, delta};
-    fj_staged_score_t score = fj_staged_score_t::zero();
-    f_t obj_score           = -1 * obj_coeff * delta;  // negated to turn this into a positive score
-    score.base              = round(obj_score);
-
-    if (best_score < score) {
-      best_score = score;
-      best_move  = move;
+    const f_t improvement = -obj_coeff * delta;
+    if (improvement > best_improvement) {
+      best_improvement = improvement;
+      best_score.base  = 1;
+      best_move        = fj_move_t{var_idx, delta};
     }
   }
 
+  cuopt_assert((best_move.var_idx < 0) == (best_improvement <= 0),
+               "move and score must agree on whether a move was found");
   return thrust::make_tuple(best_move, best_score);
 }
 

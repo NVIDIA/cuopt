@@ -1219,6 +1219,7 @@ struct fj_bin_engine_t {
 
     std::pair<int32_t, int32_t> best_pair = {-1, -1};
     int64_t best_s                        = 0;
+    double best_improvement               = 0;
     if (pb.objective_vars.empty()) return {best_pair, best_s};
 
     const uint32_t n_obj  = (uint32_t)pb.objective_vars.size();
@@ -1258,13 +1259,18 @@ struct fj_bin_engine_t {
         if (tabu_blocked(var2, false)) continue;
         if (!paired_flip_keeps_feasible(var1, delta1, var2, delta2)) continue;
 
-        const int64_t s = (int64_t)(-std::llround(combined)) * fj_bin_score_k;
-        if (s > best_s) {
-          best_s    = s;
-          best_pair = {var1, var2};
+        // Both lift operators rank on the objective gain in its own units: the packed score counts
+        // weights, and this engine requires an integral matrix but not integral objective terms.
+        const double improvement = -combined;
+        if (improvement > best_improvement) {
+          best_improvement = improvement;
+          best_s           = 1;  // sign only, never compared against another operator's score
+          best_pair        = {var1, var2};
         }
       }
     }
+    cuopt_assert((best_pair.first < 0) == (best_improvement <= 0),
+                 "pair and score must agree on whether a move was found");
     return {best_pair, best_s};
   }
 
@@ -1272,20 +1278,24 @@ struct fj_bin_engine_t {
   {
     cuopt_assert(violated_list.empty(), "lift moves require a feasible incumbent");
 
-    int32_t best_v = -1;
-    int64_t best_s = 0;
+    int32_t best_v          = -1;
+    int64_t best_s          = 0;
+    double best_improvement = 0;
     for (int32_t v : pb.objective_vars) {
       const int8_t delta = (int8_t)(1 - 2 * assign[v]);
       if ((double)delta * pb.objective[v] >= 0) continue;
       if (tabu_blocked(v, false)) continue;
       // Base field is zero iff the flip breaks no row; K/2 splits it while |bonus| < 2^31.
       if (var_score[v] <= -(fj_bin_score_k / 2)) continue;
-      const int64_t s = (int64_t)(-std::llround(pb.objective[v] * delta)) * fj_bin_score_k;
-      if (s > best_s) {
-        best_s = s;
-        best_v = v;
+      const double improvement = -pb.objective[v] * (double)delta;
+      if (improvement > best_improvement) {
+        best_improvement = improvement;
+        best_s           = 1;
+        best_v           = v;
       }
     }
+    cuopt_assert((best_v < 0) == (best_improvement <= 0),
+                 "move and score must agree on whether a move was found");
     return {best_v, best_s};
   }
 
