@@ -2922,6 +2922,11 @@ template void finalize_fj_cpu_host_initialization(
 // Above this the O(nnz) seed passes eat a meaningful slice of a short budget, so they are skipped.
 constexpr int64_t fj_seed_nnz_limit = 8'000'000;
 
+// The aggressive corner pushes harder than the covering seed: more passes, a longer budget, a
+// tighter clock, and it gives up as soon as a pass changes nothing.
+constexpr int32_t fj_aggressive_passes  = 6;
+constexpr double fj_aggressive_budget_s = 0.9;
+
 // Cardinality-row detection: coefficient agreement tolerance and the widest row worth peeling.
 constexpr double fj_exact_k_tol       = 1e-6;
 constexpr int32_t fj_exact_k_max_width = 20000;
@@ -3122,6 +3127,97 @@ static void apply_greedy_covering_seed(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   fj_cpu.h_best_assignment = fj_cpu.h_assignment;
 }
 
+// Repeated one-sided row repair in CSR order. Unlike the covering seed it revisits rows until a
+// pass changes nothing, so a repair that breaks a row already visited gets another chance.
+template <typename i_t, typename f_t>
+static void apply_aggressive_constraint_seed(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
+{
+  if (fj_cpu.view.pb.nnz > fj_seed_nnz_limit) return;
+
+  const auto started = std::chrono::steady_clock::now();
+  auto timed_out     = [&] {
+    return std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count() >
+           fj_aggressive_budget_s;
+  };
+
+  recompute_lhs(fj_cpu);
+  const i_t baseline = fj_cpu.violated_constraints.size();
+  const auto anchor  = fj_cpu.h_assignment;
+  const f_t tol      = 1e-6;
+  std::vector<row_repair_move_t<i_t, f_t>> candidates;
+
+  for (i_t pass = 0; pass < fj_aggressive_passes && !timed_out(); ++pass) {
+    i_t moves = 0;
+    for (i_t row = 0; row < fj_cpu.view.pb.n_constraints; ++row) {
+      if ((row & 0xFF) == 0 && timed_out()) break;
+
+      const i_t begin = fj_cpu.h_offsets[row];
+      const i_t end   = fj_cpu.h_offsets[row + 1];
+      if (begin == end) continue;
+
+      const f_t lb      = fj_cpu.h_cstr_lb[row];
+      const f_t ub      = fj_cpu.h_cstr_ub[row];
+      const bool has_lb = isfinite(lb);
+      const bool has_ub = isfinite(ub);
+      if (!has_lb && !has_ub) continue;
+
+      f_t sum = 0;
+      for (i_t p = begin; p < end; ++p)
+        sum += (f_t)fj_cpu.h_coefficients[p] * (f_t)fj_cpu.h_assignment[fj_cpu.h_variables[p]];
+
+      f_t direction = 0;
+      f_t target    = 0;
+      if (has_lb && sum < lb - tol) {
+        direction = 1;
+        target    = lb;
+      } else if (has_ub && sum > ub + tol) {
+        direction = -1;
+        target    = ub;
+      } else {
+        continue;
+      }
+
+      collect_row_repair_moves<i_t, f_t>(fj_cpu, begin, end, direction, tol, candidates);
+      for (const auto& move : candidates) {
+        if (direction > 0 ? sum >= target - tol : sum <= target + tol) break;
+        const f_t delta = move.new_val - (f_t)fj_cpu.h_assignment[move.var];
+        sum += move.coeff * delta;
+        fj_cpu.h_assignment[move.var] = move.new_val;
+        ++moves;
+      }
+    }
+    if (moves == 0) break;
+  }
+
+  recompute_lhs(fj_cpu);
+  if ((i_t)fj_cpu.violated_constraints.size() >= baseline) {
+    fj_cpu.h_assignment = anchor;
+    recompute_lhs(fj_cpu);
+  }
+  fj_cpu.h_best_assignment = fj_cpu.h_assignment;
+}
+
+// Every variable to its lower bound, or its upper where the lower is infinite.
+template <typename i_t, typename f_t>
+static void apply_lower_bound_seed(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
+{
+  if (fj_cpu.view.pb.nnz > fj_seed_nnz_limit) return;
+
+  for (i_t var_idx = 0; var_idx < fj_cpu.view.pb.n_variables; ++var_idx) {
+    auto bounds     = fj_cpu.h_var_bounds[var_idx].get();
+    const f_t lower = get_lower(bounds);
+    const f_t upper = get_upper(bounds);
+    if (!isfinite(lower) && !isfinite(upper)) continue;
+
+    f_t new_val = isfinite(lower) ? lower : upper;
+    if (is_integer_var<i_t, f_t>(fj_cpu, var_idx)) new_val = std::round(new_val);
+    fj_cpu.h_assignment[var_idx] = new_val;
+  }
+
+  recompute_lhs(fj_cpu);
+  fj_cpu.h_best_assignment = fj_cpu.h_assignment;
+}
+
 // Constructively satisfies the equality rows that read as sum(x) = k over binaries sharing one
 // coefficient: pick k members of each, narrowest rows first so the wide ones inherit the choices,
 // and within a row the variables appearing in fewest other such rows.
@@ -3289,13 +3385,17 @@ void apply_lane_diversification(fj_cpu_climber_t<i_t, f_t>& climber, int lane, i
   const f_t obj_weight_ladder[4] = {0, 4, 32, 0};
   const f_t obj_weight_floor[4]  = {1, 4, 32, 1};
 
-  // Fewer-lock corner, objective-favorable corner, greedy row repair; lane 0 keeps the anchor.
-  if (lane % 4 == 1)
-    apply_lock_weighted_seed<i_t, f_t>(climber);
-  else if (lane % 4 == 2)
-    apply_objective_corner_seed<i_t, f_t>(climber);
-  else if (lane % 4 == 3)
-    apply_greedy_covering_seed<i_t, f_t>(climber);
+  // One structural start per lane. Lanes 0 and 4 keep the shared anchor, and lane 5 doubles the
+  // fewer-lock corner until it has a seed of its own.
+  switch (lane % 8) {
+    case 1: apply_lock_weighted_seed<i_t, f_t>(climber); break;
+    case 2: apply_aggressive_constraint_seed<i_t, f_t>(climber); break;
+    case 3: apply_greedy_covering_seed<i_t, f_t>(climber); break;
+    case 5: apply_lock_weighted_seed<i_t, f_t>(climber); break;
+    case 6: apply_objective_corner_seed<i_t, f_t>(climber); break;
+    case 7: apply_lower_bound_seed<i_t, f_t>(climber); break;
+    default: break;
+  }
 
   // Default: every climber identical apart from its seed and a random draw of the
   // four sampling parameters. Diversification, decorrelated from the value RNG.
