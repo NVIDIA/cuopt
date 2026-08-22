@@ -2922,6 +2922,14 @@ template void finalize_fj_cpu_host_initialization(
 // Above this the O(nnz) seed passes eat a meaningful slice of a short budget, so they are skipped.
 constexpr int64_t fj_seed_nnz_limit = 8'000'000;
 
+// Cardinality-row detection: coefficient agreement tolerance and the widest row worth peeling.
+constexpr double fj_exact_k_tol       = 1e-6;
+constexpr int32_t fj_exact_k_max_width = 20000;
+constexpr double fj_exact_k_budget_s   = 0.5;
+// The anchor repair only runs when this fraction of the rows is violated, and gets this long.
+constexpr int32_t fj_anchor_repair_violated_share = 5;
+constexpr double fj_anchor_repair_budget_s        = 0.1;
+
 // Jumps each two-sided variable to whichever bound has fewer rows locking it in that direction.
 template <typename i_t, typename f_t>
 static void apply_lock_weighted_seed(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
@@ -3114,6 +3122,160 @@ static void apply_greedy_covering_seed(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   fj_cpu.h_best_assignment = fj_cpu.h_assignment;
 }
 
+// Constructively satisfies the equality rows that read as sum(x) = k over binaries sharing one
+// coefficient: pick k members of each, narrowest rows first so the wide ones inherit the choices,
+// and within a row the variables appearing in fewest other such rows.
+template <typename i_t, typename f_t>
+static void apply_exact_k_seed(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
+{
+  if (fj_cpu.view.pb.nnz > fj_seed_nnz_limit) return;
+
+  const auto started = std::chrono::steady_clock::now();
+  auto timed_out     = [&] {
+    return std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count() >
+           fj_exact_k_budget_s;
+  };
+
+  struct exact_k_row_t {
+    i_t k, begin, end;
+  };
+  std::vector<exact_k_row_t> rows;
+  for (i_t row = 0; row < fj_cpu.view.pb.n_constraints; ++row) {
+    if ((row & 0xFFF) == 0 && timed_out()) return;
+
+    const f_t lb = fj_cpu.h_cstr_lb[row];
+    const f_t ub = fj_cpu.h_cstr_ub[row];
+    if (!isfinite(lb) || !isfinite(ub) || std::abs(lb - ub) > fj_exact_k_tol) continue;
+
+    const i_t begin = fj_cpu.h_offsets[row];
+    const i_t end   = fj_cpu.h_offsets[row + 1];
+    if (end - begin < 2 || end - begin > fj_exact_k_max_width) continue;
+
+    const f_t scale = fj_cpu.h_coefficients[begin];
+    if (scale <= 0) continue;
+    bool uniform_binary = true;
+    for (i_t p = begin; p < end && uniform_binary; ++p) {
+      const i_t var       = fj_cpu.h_variables[p];
+      const f_t coeff     = fj_cpu.h_coefficients[p];
+      const f_t agreement = fj_exact_k_tol * std::max((f_t)1, std::abs(scale));
+      uniform_binary =
+        fj_cpu.h_is_binary_variable[var] && coeff > 0 && std::abs(coeff - scale) <= agreement;
+    }
+    if (!uniform_binary) continue;
+
+    const double cardinality = (double)lb / scale;
+    const i_t k              = (i_t)std::lround(cardinality);
+    if (std::abs(cardinality - k) <= 1e-4 && k >= 0 && k <= end - begin)
+      rows.push_back({k, begin, end});
+  }
+  if (rows.empty()) return;
+
+  std::sort(rows.begin(), rows.end(), [](const exact_k_row_t& a, const exact_k_row_t& b) {
+    return a.end - a.begin < b.end - b.begin;
+  });
+
+  const i_t n_variables = fj_cpu.view.pb.n_variables;
+  std::vector<i_t> degree(n_variables, 0);
+  for (const auto& row : rows)
+    for (i_t p = row.begin; p < row.end; ++p)
+      ++degree[fj_cpu.h_variables[p]];
+
+  std::vector<int8_t> state(n_variables, -1);
+  std::vector<i_t> free_vars;
+  for (size_t index = 0; index < rows.size(); ++index) {
+    if ((index & 0xFFF) == 0 && timed_out()) break;
+    const auto& row = rows[index];
+
+    i_t selected = 0;
+    free_vars.clear();
+    for (i_t p = row.begin; p < row.end; ++p) {
+      const i_t var = fj_cpu.h_variables[p];
+      selected += state[var] == 1;
+      if (state[var] < 0) free_vars.push_back(var);
+    }
+    const i_t needed = row.k - selected;
+    if (needed < 0 || (i_t)free_vars.size() < needed) continue;
+
+    std::sort(free_vars.begin(), free_vars.end(), [&degree](i_t a, i_t b) {
+      return degree[a] < degree[b];
+    });
+    for (i_t p = 0; p < (i_t)free_vars.size(); ++p)
+      state[free_vars[p]] = (int8_t)(p < needed);
+  }
+
+  recompute_lhs(fj_cpu);
+  const i_t baseline = fj_cpu.violated_constraints.size();
+  const auto anchor  = fj_cpu.h_assignment;
+  for (i_t var = 0; var < n_variables; ++var)
+    if (state[var] >= 0) fj_cpu.h_assignment[var] = state[var];
+
+  recompute_lhs(fj_cpu);
+  if ((i_t)fj_cpu.violated_constraints.size() >= baseline) {
+    fj_cpu.h_assignment = anchor;
+    recompute_lhs(fj_cpu);
+  }
+  fj_cpu.h_best_assignment = fj_cpu.h_assignment;
+}
+
+// One repair pass over the violated rows of a start that is mostly violated. Row sums are read from
+// the lhs computed on entry, so a row does not see the repairs made for earlier rows; the revert
+// below is what keeps that myopia from costing anything.
+template <typename i_t, typename f_t>
+static void repair_difficult_anchor(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
+{
+  recompute_lhs(fj_cpu);
+  const i_t baseline = fj_cpu.violated_constraints.size();
+  if (baseline == 0 || baseline <= fj_cpu.view.pb.n_constraints / fj_anchor_repair_violated_share)
+    return;
+
+  const auto started = std::chrono::steady_clock::now();
+  const auto anchor  = fj_cpu.h_assignment;
+  const std::vector<i_t> violated(fj_cpu.violated_constraints.begin(),
+                                  fj_cpu.violated_constraints.end());
+  std::vector<row_repair_move_t<i_t, f_t>> candidates;
+
+  for (i_t row : violated) {
+    if (std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count() >
+        fj_anchor_repair_budget_s)
+      break;
+
+    const f_t lb = fj_cpu.h_cstr_lb[row];
+    const f_t ub = fj_cpu.h_cstr_ub[row];
+    f_t sum      = fj_cpu.h_lhs[row];
+    f_t target   = 0;
+    f_t direction = 0;
+    if (sum < lb) {
+      direction = 1;
+      target    = lb;
+    } else if (sum > ub) {
+      direction = -1;
+      target    = ub;
+    } else {
+      continue;
+    }
+
+    collect_row_repair_moves<i_t, f_t>(fj_cpu,
+                                       fj_cpu.h_offsets[row],
+                                       fj_cpu.h_offsets[row + 1],
+                                       direction,
+                                       fj_exact_k_tol,
+                                       candidates);
+    for (const auto& move : candidates) {
+      if (direction > 0 ? sum >= target : sum <= target) break;
+      const f_t delta = move.new_val - (f_t)fj_cpu.h_assignment[move.var];
+      sum += move.coeff * delta;
+      fj_cpu.h_assignment[move.var] = move.new_val;
+    }
+  }
+
+  recompute_lhs(fj_cpu);
+  if ((i_t)fj_cpu.violated_constraints.size() >= baseline) {
+    fj_cpu.h_assignment = anchor;
+    recompute_lhs(fj_cpu);
+  }
+  fj_cpu.h_best_assignment = fj_cpu.h_assignment;
+}
+
 // What makes one lane of a CPUFJ portfolio behave differently from another: which corner it starts
 // from, how it samples, and how hard it pulls on the objective. Lane 0 keeps the anchor assignment
 // so it is the lane every clone is built from.
@@ -3175,6 +3337,9 @@ void build_climber_portfolio(problem_t<i_t, f_t>& problem,
     fj_settings_t settings;
     settings.seed = (int)lane_seed[0];
     climbers[0]   = init_fj_cpu_standalone(problem, solution, preemption_flags[0], settings);
+    // Runs before the clones are taken, so every lane starts from the repaired anchor.
+    apply_exact_k_seed<i_t, f_t>(*climbers[0]);
+    repair_difficult_anchor<i_t, f_t>(*climbers[0]);
     apply_lane_diversification<i_t, f_t>(*climbers[0], 0, base_seed);
   }
 
