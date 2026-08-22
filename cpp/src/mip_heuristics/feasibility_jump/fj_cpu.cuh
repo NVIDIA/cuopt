@@ -226,7 +226,6 @@ struct fj_cpu_climber_t {
   // objective is re-derived from the assignment.
   f_t h_objective_sumcomp{0};
   f_t h_best_objective;
-  i_t last_feasible_entrance_iter{0};
   i_t iterations;
   host_contiguous_set_t<i_t> violated_constraints;
   host_contiguous_set_t<i_t> satisfied_constraints;

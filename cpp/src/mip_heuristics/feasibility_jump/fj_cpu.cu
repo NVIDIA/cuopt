@@ -1071,8 +1071,6 @@ static void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
   fj_cpu.n_variable_updates_window++;
   fj_cpu.unique_vars_accessed_window.insert(var_idx);
 
-  i_t previous_viol = fj_cpu.violated_constraints.size();
-
   for (auto i = offset_begin; i < offset_end; i++) {
     cuopt_assert(i < (i_t)fj_cpu.h_reverse_constraints.size(), "");
     auto [c_lb, c_ub] = fj_cpu.cached_cstr_bounds[i].get();
@@ -1111,10 +1109,6 @@ static void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
 
     // Invalidate related cached move scores
     fj_cpu.h_cstr_version[cstr_idx]++;
-  }
-
-  if (previous_viol > 0 && fj_cpu.violated_constraints.empty()) {
-    fj_cpu.last_feasible_entrance_iter = fj_cpu.iterations;
   }
 
   // update the assignment and objective proper
@@ -2470,9 +2464,10 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
     // perturb
     bool should_perturb = false;
     if (fj_cpu->violated_constraints.empty() &&
-        fj_cpu->iterations - fj_cpu->last_feasible_entrance_iter > fj_cpu->perturb_interval) {
-      should_perturb                      = true;
-      fj_cpu->last_feasible_entrance_iter = fj_cpu->iterations;
+        fj_cpu->iterations_since_best > fj_cpu->perturb_interval) {
+      should_perturb = true;
+      // Without this the counter stays above the interval and every later iteration perturbs.
+      fj_cpu->iterations_since_best = 0;
     }
 
     if (score > fj_staged_score_t::zero() && !should_perturb) {

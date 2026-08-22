@@ -623,7 +623,9 @@ struct fj_bin_engine_t {
   bool feasible_found{false};
 
   int32_t iters{0};
-  int32_t last_feasible_entrance_iter{0};
+  // Iterations since best_objective last moved. Counts iterations, unlike
+  // iterations_at_same_objective, so it is comparable against perturb_interval.
+  int32_t iters_since_best{0};
   int32_t last_restart_iter{0};
   int32_t last_kick_iter{0};
   int64_t nnz_touched{0};
@@ -854,8 +856,7 @@ struct fj_bin_engine_t {
     const int8_t new_val  = (int8_t)(assign[var] + delta);
     const int8_t new_flip = (int8_t)(1 - 2 * new_val);
     const int32_t ob = pb.reverse_offsets[var], oe = pb.reverse_offsets[var + 1];
-    const int32_t prev_violated = (int32_t)violated_list.size();
-    int64_t own_score           = 0;
+    int64_t own_score = 0;
 
     // The tail writes a score delta through int32_t* and calls out to the patch, either of which may
     // alias a vector's internal pointer as far as the compiler can prove. Without these locals it
@@ -939,8 +940,6 @@ struct fj_bin_engine_t {
     nnz_touched += oe - ob;
     rows_walked += oe - ob;
 
-    if (prev_violated > 0 && violated_list.empty()) last_feasible_entrance_iter = iters;
-
     assign[var]     = new_val;
     assign_i32[var] = new_val;
     var_score[var]  = own_score;
@@ -950,9 +949,10 @@ struct fj_bin_engine_t {
       obj_base_score[var] = flip_objective_base(var);
 
     if (violated_list.empty() && incumbent_objective < best_objective) {
-      best_objective = incumbent_objective;
-      best_assign    = assign;
-      feasible_found = true;
+      best_objective   = incumbent_objective;
+      best_assign      = assign;
+      feasible_found   = true;
+      iters_since_best = 0;
       report_incumbent(climber);
     }
 
@@ -1426,8 +1426,9 @@ struct fj_bin_engine_t {
     reset_infeasible_checkpoint();
     tabu.clear(iters);
     recompute_slack();
-    last_restart_iter           = iters;
-    last_feasible_entrance_iter = iters;
+    last_restart_iter = iters;
+    // The restarted walk gets a full window before the stall gate can perturb it.
+    iters_since_best = 0;
   }
 
   void init(fj_cpu_climber_t<i_t, f_t>& climber)
@@ -1512,6 +1513,7 @@ struct fj_bin_engine_t {
     iterations_at_same_objective = 0;
     feasible_found               = false;
     iters                        = 0;
+    iters_since_best             = 0;
     last_restart_iter            = 0;
     last_kick_iter               = 0;
     recompute_slack();
@@ -1549,9 +1551,10 @@ struct fj_bin_engine_t {
         std::tie(move_var, score) = find_move_satisfied(mtm_sat_samples);
 
       bool perturb_now = false;
-      if (violated_list.empty() && iters - last_feasible_entrance_iter > perturb_interval) {
-        perturb_now                 = true;
-        last_feasible_entrance_iter = iters;
+      if (violated_list.empty() && iters_since_best > perturb_interval) {
+        perturb_now = true;
+        // Without this the counter stays above the interval and every later iteration perturbs.
+        iters_since_best = 0;
       }
 
       if (pair2.first >= 0 && !perturb_now) {
@@ -1601,6 +1604,7 @@ struct fj_bin_engine_t {
       }
 
       ++iters;
+      ++iters_since_best;
     }
 
     compute_saturation();
