@@ -393,8 +393,7 @@ class branch_and_bound_t {
   void launch_root_heuristics(const simplex::lp_problem_t<i_t, f_t>& lp,
                               const std::vector<f_t>& sol,
                               i_t cut_pass,
-                              std::list<root_heuristics_t<i_t, f_t>>& heuristics,
-                              omp_atomic_t<i_t>& worker_count);
+                              root_heuristics_t<i_t, f_t>& root_heuristics);
 
   // Solve the LP relaxation of a leaf node
   simplex::dual_status_t solve_node_lp(mip_node_t<i_t, f_t>* node_ptr,

@@ -14,7 +14,7 @@
 namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
-struct root_heuristics_t {
+struct cut_pass_heuristics_t {
   std::vector<simplex::variable_type_t> var_types_;
   csr_matrix_t<i_t, f_t> Arow_;
   std::vector<f_t> root_solution_;
@@ -23,19 +23,25 @@ struct root_heuristics_t {
   std::unique_ptr<diving_worker_t<i_t, f_t>> submip_worker_;
   fj_cpu_worker_t<i_t, f_t> fj_cpu_worker_;
 
-  root_heuristics_t(const csr_matrix_t<i_t, f_t>& Arow,
-                    const std::vector<simplex::variable_type_t>& var_types,
-                    const std::vector<f_t>& root_solution,
-                    const std::vector<f_t>& root_edge_norm)
+  cut_pass_heuristics_t(const csr_matrix_t<i_t, f_t>& Arow,
+                        const std::vector<simplex::variable_type_t>& var_types,
+                        const std::vector<f_t>& root_solution,
+                        const std::vector<f_t>& root_edge_norm)
     : var_types_(var_types),
       Arow_(Arow),
       root_solution_(root_solution),
       root_edge_norm_(root_edge_norm),
       submip_worker_(nullptr) {};
 
-  ~root_heuristics_t() { stop(); }
+  ~cut_pass_heuristics_t() { stop_and_sync(); }
 
-  void stop()
+  void send_stop_signal()
+  {
+    fj_cpu_worker_.send_stop_signal();
+    if (submip_worker_) { submip_worker_->halt = true; }
+  }
+
+  void stop_and_sync()
   {
     fj_cpu_worker_.stop();
     if (submip_worker_) {
@@ -67,4 +73,62 @@ struct root_heuristics_t {
     return submip_worker_.get();
   }
 };
+
+/// \brief Object Representing the heuristics run on the root node.
+template <typename i_t, typename f_t>
+struct root_heuristics_t {
+  // List of the heuristics that run alongside a single cut pass.
+  // It holds the workers and all the necessary information.
+  //
+  // We use the `shared_ptr` here so the object is only destroyed when the task terminates
+  // (we declare the `shared_ptr` as firstprivate in the task, so they live until the end the
+  // task). In this way, we can send the stop signal, destroy the entry in the list and the
+  // object itself will be destroyed when all related tasks ends.
+  std::list<std::shared_ptr<cut_pass_heuristics_t<i_t, f_t>>> cut_passes_heuristics_;
+
+  // Count the number of active workers. Same reason as above.
+  std::shared_ptr<omp_atomic_t<i_t>> worker_count_;
+  i_t max_workers_;
+
+  root_heuristics_t(i_t max_workers)
+    : worker_count_(std::make_shared<omp_atomic_t<i_t>>(0)), max_workers_(max_workers)
+  {
+  }
+
+  ~root_heuristics_t() { stop_and_sync(); }
+
+  void stop_and_sync()
+  {
+    for (auto& heuristic : cut_passes_heuristics_) {
+      heuristic->send_stop_signal();
+    }
+
+    for (auto& heuristic : cut_passes_heuristics_) {
+      heuristic->stop_and_sync();
+    }
+  }
+
+  std::shared_ptr<cut_pass_heuristics_t<i_t, f_t>> create_new_cut_pass_heuristic(
+    i_t cut_pass,
+    const csr_matrix_t<i_t, f_t>& Arow,
+    const std::vector<simplex::variable_type_t>& var_types,
+    const std::vector<f_t>& root_solution,
+    const std::vector<f_t>& root_edge_norm)
+  {
+    // If we already exhausted all threads for the root heuristics, stop workers for the
+    // oldest set of heuristics launched. Leave 2 threads for the cut passes and the clique
+    // table generation. Add the number of workers that will be launched (1 submip worker +
+    // 1 CPU FJ worker).
+    i_t clique_table_generation = cut_pass == 0 ? 1 : 0;
+    if (*worker_count_ + 3 + clique_table_generation > max_workers_ &&
+        !cut_passes_heuristics_.empty()) {
+      cut_passes_heuristics_.begin()->get()->send_stop_signal();
+      cut_passes_heuristics_.erase(cut_passes_heuristics_.begin());
+    }
+
+    return cut_passes_heuristics_.emplace_back(std::make_shared<cut_pass_heuristics_t<i_t, f_t>>(
+      Arow, var_types, root_solution, root_edge_norm));
+  }
+};
+
 }  // namespace cuopt::mathematical_optimization::mip

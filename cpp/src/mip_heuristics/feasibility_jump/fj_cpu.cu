@@ -2109,41 +2109,50 @@ void fj_cpu_worker_t<i_t, f_t>::create_worker(
   fj_cpu.reset(new_climber.release());
   fj_cpu->log_prefix           = std::move(log_prefix);
   fj_cpu->improvement_callback = improvement_callback;
+  fj_cpu->halted               = false;
+  preemption_flag              = false;
+  is_initialized               = true;
 }
 
 template <typename i_t, typename f_t>
-void fj_cpu_worker_t<i_t, f_t>::run_async(f_t time_limit,
-                                          double work_unit_limit,
-                                          omp_atomic_t<i_t>* worker_count)
+void fj_cpu_worker_t<i_t, f_t>::run_async(f_t time_limit, double work_unit_limit)
 {
-  if (!fj_cpu) return;
+  if (!is_initialized) return;
 
-  if (worker_count) ++(*worker_count);
-#pragma omp task shared(fj_cpu) firstprivate(time_limit, work_unit_limit, worker_count) \
-  priority(CUOPT_DEFAULT_TASK_PRIORITY) default(none) depend(out : *fj_cpu)
+  auto& fj_ptr = fj_cpu;
+#pragma omp task shared(fj_cpu, is_initialized, fj_ptr) firstprivate(time_limit, work_unit_limit) \
+  priority(CUOPT_DEFAULT_TASK_PRIORITY) default(none) depend(out : fj_ptr)
   {
-    cpufj_solve(fj_cpu.get(), time_limit, work_unit_limit);
-    if (worker_count) --(*worker_count);
+    if (is_initialized) { cpufj_solve(fj_cpu.get(), time_limit, work_unit_limit); }
   }
 }
 
 template <typename i_t, typename f_t>
 void fj_cpu_worker_t<i_t, f_t>::run_sync(f_t time_limit, double work_unit_limit)
 {
-  if (!fj_cpu) return;
+  if (!is_initialized) return;
   cpufj_solve(fj_cpu.get(), time_limit, work_unit_limit);
+  is_initialized = false;
   fj_cpu.reset();
 }
 
 template <typename i_t, typename f_t>
 void fj_cpu_worker_t<i_t, f_t>::stop()
 {
-  if (!fj_cpu) return;
+  if (!is_initialized) return;
 
-  fj_cpu->preemption_flag = true;
-  fj_cpu->halted          = true;
-#pragma omp taskwait depend(in : *fj_cpu)
+  preemption_flag = true;
+
+  auto& fj_ptr = fj_cpu;
+#pragma omp taskwait depend(in : fj_ptr)
+  is_initialized = false;
   fj_cpu.reset();
+}
+
+template <typename i_t, typename f_t>
+void fj_cpu_worker_t<i_t, f_t>::send_stop_signal()
+{
+  preemption_flag = true;
 }
 
 #if MIP_INSTANTIATE_FLOAT

@@ -30,6 +30,8 @@ struct fj_cpu_worker_t {
   struct fj_cpu_deleter_t {
     void operator()(fj_cpu_climber_t<i_t, f_t>* ptr) const;
   };
+
+  std::atomic<bool> is_initialized{false};
   std::atomic<bool> preemption_flag{false};
   std::unique_ptr<fj_cpu_climber_t<i_t, f_t>, fj_cpu_deleter_t> fj_cpu;
   std::function<void(f_t, const std::vector<f_t>&, double)> improvement_callback;
@@ -49,15 +51,16 @@ struct fj_cpu_worker_t {
 
   // Run the worker asynchronously (i.e., launch an openmp task and then continue the
   // execution). Call `stop()` for stopping the worker
-  void run_async(f_t time_limit                  = std::numeric_limits<f_t>::infinity(),
-                 double work_unit_limit          = std::numeric_limits<double>::infinity(),
-                 omp_atomic_t<i_t>* worker_count = nullptr);
+  void run_async(f_t time_limit         = std::numeric_limits<f_t>::infinity(),
+                 double work_unit_limit = std::numeric_limits<double>::infinity());
 
   // Run the CPU FJ synchronously (i.e., wait for it to finish before proceeding)
   void run_sync(f_t time_limit         = std::numeric_limits<f_t>::infinity(),
                 double work_unit_limit = std::numeric_limits<double>::infinity());
 
   void stop();
+
+  void send_stop_signal();
 };
 
 }  // namespace cuopt::mathematical_optimization::mip
