@@ -573,6 +573,9 @@ struct fj_bin_engine_t {
 
   std::vector<int8_t> assign;
   std::vector<int8_t> best_assign;
+  std::shared_ptr<fj_cpu_shared_incumbent_t<i_t, f_t>> shared_incumbent;
+  // Staging for an adopted assignment, which arrives as f_t. Sized only when sharing is on.
+  std::vector<f_t> adopt_buffer;
   std::vector<int8_t> seed_assign;   // restart target
   std::vector<int32_t> assign_i32;   // gather mirror for the SIMD patch (Batch B)
 
@@ -970,6 +973,7 @@ struct fj_bin_engine_t {
     climber.h_incumbent_objective = (f_t)incumbent_objective;
     climber.h_best_objective      = (f_t)best_objective;
     climber.feasible_found        = true;
+    if (shared_incumbent) { shared_incumbent->publish((f_t)best_objective, h_best); }
     // Emitted once per improvement so the benchmark harness can reconstruct the
     // incumbent trajectory exactly, rather than sampling it at log_interval.
     CUOPT_LOG_DEBUG("%sCPUFJ[bin%d] new incumbent: objective %.17g",
@@ -1395,6 +1399,10 @@ struct fj_bin_engine_t {
     if (feasible_found) {
       cuopt_assert((int32_t)best_assign.size() == pb.n_variables, "incumbent size mismatch");
       assign = best_assign;
+      if (shared_incumbent && shared_incumbent->adopt((f_t)best_objective, adopt_buffer)) {
+        for (int32_t v = 0; v < pb.n_variables; ++v)
+          assign[v] = (int8_t)(adopt_buffer[v] >= 0.5 ? 1 : 0);
+      }
       for (int32_t v = 0; v < pb.n_variables; ++v) assign_i32[v] = assign[v];
     }
     const uint32_t n = (uint32_t)pb.objective_vars.size();
@@ -1462,8 +1470,10 @@ struct fj_bin_engine_t {
       const double val = (double)h_assign[v];
       assign[v]        = (int8_t)(val >= 0.5 ? 1 : 0);
     }
-    seed_assign = assign;
-    best_assign = assign;
+    seed_assign      = assign;
+    best_assign      = assign;
+    shared_incumbent = climber.shared_incumbent;
+    if (shared_incumbent) adopt_buffer.assign(n, 0);
     reset_infeasible_checkpoint();
     assign_i32.assign(n, 0);
     for (int32_t v = 0; v < n; ++v) assign_i32[v] = assign[v];

@@ -88,6 +88,40 @@ struct host_contiguous_set_t {
 constexpr double fj_obj_mult_min = 0.25;
 constexpr double fj_obj_mult_max = 4.0;
 
+// Best feasible assignment found by any lane of one portfolio. A lane publishes its own
+// improvements and adopts a better one when it perturbs, so a lane that has stalled resumes from
+// the portfolio's progress instead of its own. Lanes run concurrently, so which lane observes
+// which incumbent depends on scheduling: a portfolio that shares is not run-to-run reproducible.
+template <typename i_t, typename f_t>
+struct fj_cpu_shared_incumbent_t {
+  // True when the candidate beat the shared best, in which case it was stored.
+  bool publish(f_t candidate_objective, const std::vector<f_t>& candidate)
+  {
+    // Unlocked reject first: the publish sites are hot on instances that improve in tiny steps.
+    if (!(candidate_objective < objective.load(std::memory_order_relaxed))) return false;
+    std::lock_guard<std::mutex> lock(guard);
+    if (!(candidate_objective < objective.load(std::memory_order_relaxed))) return false;
+    assignment = candidate;
+    objective.store(candidate_objective, std::memory_order_relaxed);
+    return true;
+  }
+
+  // True when the shared best beat local_objective, in which case it was copied into destination.
+  bool adopt(f_t local_objective, std::vector<f_t>& destination)
+  {
+    if (!(objective.load(std::memory_order_relaxed) < local_objective)) return false;
+    std::lock_guard<std::mutex> lock(guard);
+    if (!(objective.load(std::memory_order_relaxed) < local_objective)) return false;
+    cuopt_assert(assignment.size() == destination.size(), "shared incumbent size mismatch");
+    destination = assignment;
+    return true;
+  }
+
+  std::mutex guard;
+  std::vector<f_t> assignment;
+  std::atomic<f_t> objective{std::numeric_limits<f_t>::infinity()};
+};
+
 // NOTE: this seems an easy pick for reflection/xmacros once this is available (C++26?)
 // Maintaining a single source of truth for all members would be nice
 template <typename i_t, typename f_t>
@@ -264,6 +298,10 @@ struct fj_cpu_climber_t {
   std::function<void(f_t, const std::vector<f_t>&, double)> improvement_callback{nullptr};
   std::function<void(f_t, const std::vector<f_t>&)> diversity_callback{nullptr};
   std::string log_prefix{""};
+
+  // Held with the other lanes of the same portfolio. Null when the climber runs alone, which is
+  // what keeps a solo climber reproducible.
+  std::shared_ptr<fj_cpu_shared_incumbent_t<i_t, f_t>> shared_incumbent;
 
   // Work unit tracking for deterministic synchronization
   std::atomic<double> work_units_elapsed{0.0};

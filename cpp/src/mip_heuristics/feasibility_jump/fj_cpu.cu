@@ -1146,6 +1146,11 @@ static void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
         fj_cpu.h_incumbent_objective, fj_cpu.h_assignment, current_work_units);
     }
     fj_cpu.feasible_found = true;
+    // The true objective of the assignment, not the epsilon-reduced threshold stored above, so
+    // another lane comparing against it is not misled into adopting something no better.
+    if (fj_cpu.shared_incumbent) {
+      fj_cpu.shared_incumbent->publish(fj_cpu.h_incumbent_objective, fj_cpu.h_assignment);
+    }
     // Counteract the smooth_weights decay for a lane that is actively improving, and hold the
     // weight at a scale where base_feas_sum still registers against it.
     if (fj_cpu.h_objective_weight > 0) {
@@ -1719,6 +1724,9 @@ static void perturb(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
     cuopt_assert(fj_cpu.h_assignment.size() == fj_cpu.h_best_assignment.size(),
                  "incumbent_assignment span would be invalidated");
     fj_cpu.h_assignment = fj_cpu.h_best_assignment;
+    if (fj_cpu.shared_incumbent) {
+      fj_cpu.shared_incumbent->adopt(fj_cpu.h_best_objective, fj_cpu.h_assignment);
+    }
   }
 
   // select N variables, assign them a random value between their bounds
@@ -3688,6 +3696,10 @@ void build_climber_portfolio(problem_t<i_t, f_t>& problem,
     climbers[k]   = init_fj_cpu_clone(*climbers[0], preemption_flags[k], settings);
     apply_lane_diversification<i_t, f_t>(*climbers[k], k, base_seed);
   }
+
+  auto shared = std::make_shared<fj_cpu_shared_incumbent_t<i_t, f_t>>();
+  for (int k = 0; k < n_climbers; ++k)
+    climbers[k]->shared_incumbent = shared;
 }
 
 #if MIP_INSTANTIATE_FLOAT

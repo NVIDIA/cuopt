@@ -71,6 +71,10 @@ void early_cpufj_t<i_t, f_t>::start()
     climbers_[k]->improvement_callback = report_incumbent;
   }
 
+  auto shared = std::make_shared<fj_cpu_shared_incumbent_t<i_t, f_t>>();
+  for (int k = 0; k < n_lanes; ++k)
+    climbers_[k]->shared_incumbent = shared;
+
   CUOPT_LOG_DEBUG("Launching %d early CPUFJ tasks", n_lanes);
   for (int k = 0; k < n_lanes; ++k) {
     auto* climber = climbers_[k].get();
