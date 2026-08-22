@@ -585,6 +585,13 @@ struct fj_bin_engine_t {
   std::vector<int64_t> var_score;    // live feasibility score of flipping each variable
   std::vector<int64_t> nnz_score_delta;  // per CSR nnz: last score delta of variables[k] in its row
 
+  // Objective half of the move score, held live so a weighted global scan can stay vectorized.
+  // Its support is pb.objective_vars, so entries outside that set are zero for the whole solve.
+  std::vector<int64_t> obj_base_score;
+  std::vector<int64_t> combined_score;
+  // Objective weight obj_base_score was built for; -1 marks it stale.
+  int32_t obj_base_weight{-1};
+
   fj_bin_tabu_t tabu;
 
   std::vector<uint8_t> is_violated;
@@ -782,23 +789,32 @@ struct fj_bin_engine_t {
     for (int32_t v = 0; v < pb.n_variables; ++v) incumbent_objective += pb.objective[v] * assign[v];
     nnz_touched += pb.nnz;
     rebuild_scores();
+    // Every caller of this reached it by replacing the assignment wholesale, so the cached
+    // per-variable flip directions no longer describe it.
+    obj_base_weight = -1;
+  }
+
+  // Base field of the objective term: the weight, signed by the direction of the gain and scaled by
+  // how large that gain is against the model's typical coefficient. Depends only on the variable's
+  // own value and the weight, which is what lets a global scan cache it.
+  int64_t objective_base(int32_t v, int8_t delta) const
+  {
+    const double obj_diff = pb.objective[v] * delta;
+    if (obj_diff == 0) return 0;
+    cuopt_assert(obj_magnitude > 0, "objective magnitude unit must be positive");
+    const double rel  = std::fabs(obj_diff) / obj_magnitude;
+    const double mult =
+      rel < fj_obj_mult_min ? fj_obj_mult_min : (rel > fj_obj_mult_max ? fj_obj_mult_max : rel);
+    const double raw = objective_weight * mult;
+    cuopt_assert(fj_bin_in_int32(raw), "scaled objective weight out of int32 range");
+    const int32_t scaled = (int32_t)std::lround(raw);
+    return (int64_t)(obj_diff < 0 ? scaled : -scaled) * fj_bin_score_k;
   }
 
   int64_t objective_terms(int32_t v, int8_t delta) const
   {
     const double obj_diff = pb.objective[v] * delta;
-    int32_t base          = 0;
-    if (obj_diff != 0) {
-      cuopt_assert(obj_magnitude > 0, "objective magnitude unit must be positive");
-      const double rel  = std::fabs(obj_diff) / obj_magnitude;
-      const double mult =
-        rel < fj_obj_mult_min ? fj_obj_mult_min : (rel > fj_obj_mult_max ? fj_obj_mult_max : rel);
-      const double raw = objective_weight * mult;
-      cuopt_assert(fj_bin_in_int32(raw), "scaled objective weight out of int32 range");
-      const int32_t scaled = (int32_t)std::lround(raw);
-      base                 = obj_diff < 0 ? scaled : -scaled;
-    }
-    int32_t bonus = 0;
+    int32_t bonus         = 0;
     const bool old_better = incumbent_objective < best_objective;
     const bool new_better = incumbent_objective + obj_diff < best_objective;
     if (!old_better && new_better) {
@@ -806,7 +822,20 @@ struct fj_bin_engine_t {
     } else if (old_better && !new_better) {
       bonus -= objective_weight;
     }
-    return (int64_t)base * fj_bin_score_k + bonus;
+    return objective_base(v, delta) + bonus;
+  }
+
+  int64_t flip_objective_base(int32_t v) const
+  {
+    return objective_base(v, (int8_t)(1 - 2 * assign[v]));
+  }
+
+  // Only the objective variables are written: the rest of the array is zero from init onwards.
+  void ensure_objective_base()
+  {
+    if (obj_base_weight == objective_weight) return;
+    for (int32_t v : pb.objective_vars) obj_base_score[v] = flip_objective_base(v);
+    obj_base_weight = objective_weight;
   }
 
   int64_t full_score(int32_t v, int8_t delta) const
@@ -913,6 +942,9 @@ struct fj_bin_engine_t {
     assign_i32[var] = new_val;
     var_score[var]  = own_score;
     incumbent_objective += pb.objective[var] * delta;
+    // Only this variable's flip direction moved, so a live cache needs one entry rewritten.
+    if (obj_base_weight == objective_weight && pb.objective[var] != 0)
+      obj_base_score[var] = flip_objective_base(var);
 
     if (violated_list.empty() && incumbent_objective < best_objective) {
       best_objective = incumbent_objective;
@@ -1089,8 +1121,8 @@ struct fj_bin_engine_t {
   }
 
   // Global argmax over every variable, affordable because var_score is maintained live. While the
-  // objective weight is zero the full score is exactly var_score, which is the vectorized sweep's
-  // precondition; the objective and local-minimum paths fall to the scalar loop.
+  // objective weight is zero the full score is exactly var_score; above zero the sweep runs over
+  // var_score plus the cached objective base. Only the local-minimum path falls to the scalar loop.
   std::pair<int32_t, int64_t> find_move_global(bool localmin)
   {
     if (!localmin && objective_weight == 0) {
@@ -1105,6 +1137,31 @@ struct fj_bin_engine_t {
       fj_bin_argmax(var_score.data(), pb.n_variables, argmax_tile, v, s);
 
       fj_bin_tabu_t::unblock_tabu(blocked, var_score.data(), saved_var, saved_score);
+      return {v, s};
+    }
+
+    if (!localmin) {
+      // The breakthrough bonus is deliberately absent from the ranking: it depends on
+      // incumbent_objective, so no per-variable form of it survives a move, and it occupies the low
+      // field where it can only separate variables already tied on the base. The winner's score is
+      // then taken from full_score so the caller sees the true value.
+      ensure_objective_base();
+      const int64_t* const obj_p = obj_base_score.data();
+      const int64_t* const var_p = var_score.data();
+      int64_t* const comb_p      = combined_score.data();
+      for (int32_t v = 0; v < pb.n_variables; ++v)
+        comb_p[v] = var_p[v] + obj_p[v];
+
+      int32_t saved_var[fj_bin_tabu_t::ring_size];
+      int64_t saved_score[fj_bin_tabu_t::ring_size];
+      const int32_t blocked = tabu.block_tabu(iters, comb_p, saved_var, saved_score);
+
+      int32_t v = -1;
+      int64_t s = fj_bin_score_invalid;
+      fj_bin_argmax(comb_p, pb.n_variables, argmax_tile, v, s);
+
+      fj_bin_tabu_t::unblock_tabu(blocked, comb_p, saved_var, saved_score);
+      if (v >= 0) s = full_score(v, (int8_t)(1 - 2 * assign[v]));
       return {v, s};
     }
 
@@ -1411,6 +1468,10 @@ struct fj_bin_engine_t {
 
     var_score.assign(n, 0);
     nnz_score_delta.assign(pb.nnz + fj_bin_simd_padding, 0);
+    // Zeroed once: ensure_objective_base only ever rewrites the objective variables.
+    obj_base_score.assign(n, 0);
+    combined_score.assign(n, 0);
+    obj_base_weight = -1;
     tabu.resize(n);
     is_violated.assign(m, 0);
     vpos.assign(m, -1);
