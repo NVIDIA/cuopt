@@ -5,6 +5,8 @@
  */
 /* clang-format on */
 
+#include "miplib2017_bks.hpp"
+
 #include <mip_heuristics/feasibility_jump/fj_cpu.cuh>
 #include <mip_heuristics/problem/problem.cuh>
 #include <mip_heuristics/solution/solution.cuh>
@@ -19,7 +21,9 @@
 #include <pthread.h>
 #include <sched.h>
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <limits>
@@ -203,6 +207,107 @@ int main(int argc, char** argv)
                 r.iterations,
                 r.seconds > 0 ? r.iterations / r.seconds : 0.0);
   }
+  // Runs after the measured window closes, so its cost is off the clock.
+  // Solver space is always a minimisation, so beating the best known is always a smaller value.
+  const auto bks_user = cuopt_bench::lookup_miplib_bks(path);
+  const double bks = bks_user ? (double)problem.get_solver_obj_from_user_obj((f_t)*bks_user) : 0.0;
+  const double bks_slack = std::max(1e-6, std::fabs(bks) * 1e-9);
+
+  int audited = 0, invalid = 0;
+  std::printf("\n climber | viol rows  worst/tol | bnd viol  worst/tol | int viol  worst/tol |"
+              "     obj drift    rel |    vs bks\n");
+  std::printf("---------+----------------------+---------------------+---------------------+"
+              "----------------------+----------\n");
+  for (int k = 0; k < n_climbers; ++k) {
+    auto& c = *climbers[k];
+    if (c.feasible_found != results[k].crossed) {
+      std::printf(" %7d | feasible_found=%d disagrees with a reported incumbent=%d\n",
+                  k,
+                  (int)c.feasible_found,
+                  (int)results[k].crossed);
+      ++invalid;
+      continue;
+    }
+    if (!c.feasible_found) continue;
+    ++audited;
+
+    const double int_tol = c.view.pb.tolerances.integrality_tolerance;
+
+    i_t rows_over          = 0;
+    double worst_row_ratio = 0.0;
+    for (i_t r = 0; r < c.view.pb.n_constraints; ++r) {
+      __float128 activity = 0;
+      for (i_t j = c.h_offsets[r]; j < c.h_offsets[r + 1]; ++j) {
+        const i_t var            = c.h_variables[j];
+        const double coefficient = c.h_coefficients[j];
+        const double value       = c.h_best_assignment[var];
+        activity += (__float128)coefficient * (__float128)value;
+      }
+
+      const f_t lb           = c.h_cstr_lb[r];
+      const f_t ub           = c.h_cstr_ub[r];
+      const __float128 below = (__float128)lb - activity;
+      const __float128 above = activity - (__float128)ub;
+      const double excess    = (double)std::max(std::max(below, above), (__float128)0);
+      if (excess <= 0.0) continue;
+
+      const double tol   = c.view.get_corrected_tolerance(r, lb, ub);
+      const double ratio = tol > 0 ? excess / tol : std::numeric_limits<double>::infinity();
+      if (ratio > 1.0) ++rows_over;
+      worst_row_ratio = std::max(worst_row_ratio, ratio);
+    }
+
+    i_t bounds_over            = 0;
+    i_t integers_over          = 0;
+    double worst_bound_ratio   = 0.0;
+    double worst_integer_ratio = 0.0;
+    __float128 objective       = 0;
+    for (i_t v = 0; v < c.view.pb.n_variables; ++v) {
+      auto bounds      = c.h_var_bounds[v].get();
+      const double x   = (double)c.h_best_assignment[v];
+      const double out = std::max(
+        std::max((double)cuopt::get_lower(bounds) - x, x - (double)cuopt::get_upper(bounds)), 0.0);
+      if (out > int_tol) ++bounds_over;
+      worst_bound_ratio = std::max(worst_bound_ratio, int_tol > 0 ? out / int_tol : 0.0);
+
+      if (c.view.pb.is_integer_var(v)) {
+        const double residual = std::fabs(x - std::round(x));
+        if (residual > int_tol) ++integers_over;
+        worst_integer_ratio = std::max(worst_integer_ratio, int_tol > 0 ? residual / int_tol : 0.0);
+      }
+      const double coefficient = c.h_obj_coeffs[v];
+      objective += (__float128)coefficient * (__float128)x;
+    }
+
+    // Differenced before narrowing; the drift is smaller than a double ulp of the sum.
+    const __float128 difference = objective - (__float128)results[k].best_objective;
+    const double drift          = (double)(difference < 0 ? -difference : difference);
+    const double exact          = (double)objective;
+    const double scale          = std::max(std::fabs(exact), 1.0);
+    const bool below_bks        = bks_user && exact < bks - bks_slack;
+    const bool bad = rows_over > 0 || bounds_over > 0 || integers_over > 0 || below_bks;
+    if (bad) ++invalid;
+    std::printf(" %7d | %9d %10.3g | %8d %10.3g | %8d %10.3g | %12.3g %6.1e | %9.3g%s%s\n",
+                k,
+                rows_over,
+                worst_row_ratio,
+                bounds_over,
+                worst_bound_ratio,
+                integers_over,
+                worst_integer_ratio,
+                drift,
+                drift / scale,
+                bks_user ? exact - bks : 0.0,
+                below_bks ? "  BELOW BKS" : "",
+                bad ? "  INVALID" : "");
+  }
+  std::printf("AUDIT: %d/%d reporting climbers checked, %d invalid, bks %s\n",
+              audited,
+              crossed,
+              invalid,
+              bks_user ? std::to_string(*bks_user).c_str()
+                       : (cuopt_bench::is_known_infeasible(path) ? "known infeasible" : "unknown"));
+
   std::printf("\nSUMMARY: %d/%d crossed (%.0f%%)  wall=%.1fs  total_iters=%.0f  agg_iters/s=%.0f\n",
               crossed,
               n_climbers,

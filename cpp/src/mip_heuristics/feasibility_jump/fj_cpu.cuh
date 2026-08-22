@@ -188,6 +188,9 @@ struct fj_cpu_climber_t {
   // Mean absolute nonzero objective coefficient; the unit of the objective score term.
   f_t obj_magnitude{1};
   f_t h_incumbent_objective;
+  // Kahan compensation for h_incumbent_objective, mirroring h_lhs_sumcomp. Reset wherever the
+  // objective is re-derived from the assignment.
+  f_t h_objective_sumcomp{0};
   f_t h_best_objective;
   i_t last_feasible_entrance_iter{0};
   i_t iterations;

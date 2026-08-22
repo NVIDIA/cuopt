@@ -1118,36 +1118,39 @@ static void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
 
   // update the assignment and objective proper
   fj_cpu.h_assignment[var_idx] = new_val;
-  fj_cpu.h_incumbent_objective += fj_cpu.h_obj_coeffs[var_idx] * delta;
-  if (fj_cpu.h_incumbent_objective < fj_cpu.h_best_objective &&
-      fj_cpu.violated_constraints.empty()) {
-    // recompute the LHS values to cancel out accumulation errors, then check if feasibility remains
-    recompute_lhs(fj_cpu);
 
-    if (fj_cpu.violated_constraints.empty() && check_variable_feasibility<i_t, f_t>(fj_cpu)) {
-      cuopt_assert(fj_cpu.satisfied_constraints.size() == fj_cpu.view.pb.n_constraints, "");
-      fj_cpu.h_best_objective =
-        fj_cpu.h_incumbent_objective - fj_cpu.settings.parameters.breakthrough_move_epsilon;
-      fj_cpu.h_best_assignment     = fj_cpu.h_assignment;
-      fj_cpu.iterations_since_best = 0;
-      // DEBUG, and reporting the stored best rather than the pre-epsilon incumbent,
-      // so it matches the binary path and the end-of-solve incumbent audit.
-      CUOPT_LOG_DEBUG("%sCPUFJ new incumbent: objective %.17g",
-                      fj_cpu.log_prefix.c_str(),
-                      fj_cpu.h_best_objective);
-      if (fj_cpu.improvement_callback) {
-        double current_work_units = fj_cpu.work_units_elapsed.load(std::memory_order_acquire);
-        fj_cpu.improvement_callback(
-          fj_cpu.h_incumbent_objective, fj_cpu.h_assignment, current_work_units);
-      }
-      fj_cpu.feasible_found = true;
-      // Counteract the smooth_weights decay for a lane that is actively improving, and hold the
-      // weight at a scale where base_feas_sum still registers against it.
-      if (fj_cpu.h_objective_weight > 0) {
-        fj_cpu.h_objective_weight =
-          min((f_t)fj_obj_weight_incumbent_cap,
-              fj_cpu.h_objective_weight + (f_t)fj_obj_weight_incumbent_bump);
-      }
+  // Kahan compensated summation, as for h_lhs. The incumbent objective is reported as-is, so it
+  // cannot carry the drift of a long uncompensated chain of deltas.
+  const f_t obj_old = fj_cpu.h_incumbent_objective;
+  const f_t obj_y   = fj_cpu.h_obj_coeffs[var_idx] * delta - fj_cpu.h_objective_sumcomp;
+  const f_t obj_t   = obj_old + obj_y;
+  fj_cpu.h_objective_sumcomp   = (obj_t - obj_old) - obj_y;
+  fj_cpu.h_incumbent_objective = obj_t;
+
+  if (fj_cpu.h_incumbent_objective < fj_cpu.h_best_objective &&
+      fj_cpu.violated_constraints.empty() && check_variable_feasibility<i_t, f_t>(fj_cpu)) {
+    cuopt_assert(fj_cpu.satisfied_constraints.size() == fj_cpu.view.pb.n_constraints, "");
+    fj_cpu.h_best_objective =
+      fj_cpu.h_incumbent_objective - fj_cpu.settings.parameters.breakthrough_move_epsilon;
+    fj_cpu.h_best_assignment     = fj_cpu.h_assignment;
+    fj_cpu.iterations_since_best = 0;
+    // DEBUG, and reporting the stored best rather than the pre-epsilon incumbent,
+    // so it matches the binary path and the end-of-solve incumbent audit.
+    CUOPT_LOG_DEBUG("%sCPUFJ new incumbent: objective %.17g",
+                    fj_cpu.log_prefix.c_str(),
+                    fj_cpu.h_best_objective);
+    if (fj_cpu.improvement_callback) {
+      double current_work_units = fj_cpu.work_units_elapsed.load(std::memory_order_acquire);
+      fj_cpu.improvement_callback(
+        fj_cpu.h_incumbent_objective, fj_cpu.h_assignment, current_work_units);
+    }
+    fj_cpu.feasible_found = true;
+    // Counteract the smooth_weights decay for a lane that is actively improving, and hold the
+    // weight at a scale where base_feas_sum still registers against it.
+    if (fj_cpu.h_objective_weight > 0) {
+      fj_cpu.h_objective_weight =
+        min((f_t)fj_obj_weight_incumbent_cap,
+            fj_cpu.h_objective_weight + (f_t)fj_obj_weight_incumbent_bump);
     }
   }
 
@@ -1432,6 +1435,7 @@ static void recompute_lhs(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   // compute incumbent objective
   fj_cpu.h_incumbent_objective = thrust::inner_product(
     fj_cpu.h_assignment.begin(), fj_cpu.h_assignment.end(), fj_cpu.h_obj_coeffs.begin(), 0.);
+  fj_cpu.h_objective_sumcomp = 0;
 }
 
 
@@ -2151,6 +2155,7 @@ static void finalize_fj_cpu_host_initialization_from_template(
   fj_cpu.satisfied_constraints = tmpl.satisfied_constraints;
   fj_cpu.total_violations      = tmpl.total_violations;
   fj_cpu.h_incumbent_objective = tmpl.h_incumbent_objective;
+  fj_cpu.h_objective_sumcomp   = tmpl.h_objective_sumcomp;
 
   fj_cpu.n_binary_vars   = tmpl.n_binary_vars;
   fj_cpu.n_integer_vars  = tmpl.n_integer_vars;
