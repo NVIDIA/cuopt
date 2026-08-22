@@ -309,14 +309,12 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
     CUOPT_LOG_INFO("Probing-cache step disabled via %s=false", CUOPT_MIP_PROBING);
     run_probing_cache = false;
   }
-  if (run_probing_cache) { log_presolve_budget("PROBING", probing_features, probing_budget); }
   const bool remap_cache_ids           = true;
   problem_ptr->related_vars_time_limit = context.settings.heuristic_params.related_vars_time_limit;
 
   if (run_probing_cache && !global_timer.check_time_limit() && !presolve_timer.check_time_limit()) {
-    const f_t max_time_on_probing = diversity_config.max_time_on_probing;
-    f_t time_for_probing_cache =
-      std::min(max_time_on_probing, std::min(time_limit, (f_t)presolve_timer.remaining_time()));
+    log_presolve_budget("PROBING", probing_features, probing_budget);
+    f_t time_for_probing_cache = std::min(time_limit, (f_t)global_timer.remaining_time());
     timer_t probing_timer{time_for_probing_cache};
     [[maybe_unused]] const auto probing_t0 = std::chrono::steady_clock::now();
     // this function computes probing cache, finds singletons, substitutions and changes the problem
