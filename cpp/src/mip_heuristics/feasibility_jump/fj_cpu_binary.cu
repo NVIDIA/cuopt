@@ -1392,6 +1392,11 @@ struct fj_bin_engine_t {
   void perturb()
   {
     if (pb.objective_vars.empty()) return;
+    if (feasible_found) {
+      cuopt_assert((int32_t)best_assign.size() == pb.n_variables, "incumbent size mismatch");
+      assign = best_assign;
+      for (int32_t v = 0; v < pb.n_variables; ++v) assign_i32[v] = assign[v];
+    }
     const uint32_t n = (uint32_t)pb.objective_vars.size();
     for (int i = 0; i < 2; ++i) {
       const int32_t v = pb.objective_vars[rng.next_u32() % n];
