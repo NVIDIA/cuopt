@@ -181,6 +181,12 @@ struct fj_bin_problem_t {
 
   std::vector<double> objective;
   std::vector<int32_t> objective_vars;
+
+  // Cardinality census, for the repair-pair gate. A cardinality row is an equality over binaries
+  // sharing one coefficient, so a variable of degree two across them can only be switched on by
+  // switching exactly one other off: the exchange a pair can represent.
+  int32_t n_exchange_vars{0};
+  int32_t max_card_degree{0};
 };
 
 // Result of the width-independent eligibility scan.
@@ -216,6 +222,18 @@ constexpr int32_t fj_bin_kick_cooldown      = 200;
 constexpr int32_t fj_bin_kick_restart_guard = 50;
 constexpr int32_t fj_bin_kick_rows          = 3;
 constexpr int32_t fj_bin_kick_vars_per_row  = 2;
+
+// Infeasible-phase pair repair: iterations between attempts, violated rows sampled per attempt,
+// and the pool size the O(pool^2) pair scan is capped to.
+constexpr int32_t fj_bin_repair_interval = 20;
+constexpr int32_t fj_bin_repair_max_rows = 4;
+constexpr int32_t fj_bin_repair_max_vars = 12;
+
+// Structure the pair repair needs before it is worth running: enough variables that are shared by
+// exactly two cardinality rows, and no variable shared by so many that closing the exchange takes a
+// chain rather than a pair.
+constexpr int32_t fj_bin_repair_min_exchange_vars = 64;
+constexpr int32_t fj_bin_repair_max_card_degree   = 4;
 
 // Candidate draws per 2-opt lift search.
 constexpr int32_t fj_bin_2opt_candidates = 64;
@@ -553,6 +571,41 @@ static bool fj_bin_narrow(const fj_cpu_climber_t<i_t, f_t>& c,
     pb.objective[v] = obj[v];
     if (pb.objective[v] != 0.0) pb.objective_vars.push_back(v);
   }
+
+  // Every variable here is binary, so an equality row whose members share one coefficient reads as
+  // a cardinality constraint. Counted on the unscaled row: the row scale multiplies bound and
+  // coefficients alike and leaves the ratio alone.
+  {
+    std::vector<int32_t> card_degree(n, 0);
+    for (int32_t r = 0; r < m; ++r) {
+      const double lb = cstr_lb[r];
+      const double ub = cstr_ub[r];
+      if (!std::isfinite(lb) || !std::isfinite(ub) || std::fabs(lb - ub) > tol) continue;
+
+      const int32_t begin = offsets[r];
+      const int32_t end   = offsets[r + 1];
+      if (end - begin < 2) continue;
+
+      const double shared = coeffs[begin];
+      if (std::fabs(shared) <= tol) continue;
+      const double k = lb / shared;
+      if (k < 1.0 - tol || std::fabs(k - std::round(k)) > tol) continue;
+
+      bool uniform = true;
+      for (int32_t p = begin; p < end && uniform; ++p) {
+        const double a = coeffs[p];
+        uniform        = std::fabs(a - shared) <= tol * std::max(1.0, std::fabs(shared));
+      }
+      if (!uniform) continue;
+
+      for (int32_t p = begin; p < end; ++p)
+        card_degree[variables[p]]++;
+    }
+    for (int32_t v = 0; v < n; ++v) {
+      if (card_degree[v] == 2) ++pb.n_exchange_vars;
+      if (card_degree[v] > pb.max_card_degree) pb.max_card_degree = card_degree[v];
+    }
+  }
   return true;
 }
 
@@ -649,6 +702,8 @@ struct fj_bin_engine_t {
   int32_t perturb_interval{100};
   int32_t mtm_viol_samples{25};
   int32_t mtm_sat_samples{15};
+  bool enable_infeasible_repair{false};
+  int32_t last_repair_iter{0};
   int32_t infeasible_restart_window{300};
   int32_t infeasible_restart_max_streak{20};
   double infeasible_restart_degrade_ratio{1.15};
@@ -1274,6 +1329,92 @@ struct fj_bin_engine_t {
     return true;
   }
 
+  // Net change in the violated-row count from flipping both variables. Positive is an improvement.
+  // Both reverse ranges are row-ascending, so shared rows are counted once with their joint delta.
+  int32_t paired_flip_violation_delta(int32_t var1,
+                                      int8_t delta1,
+                                      int32_t var2,
+                                      int8_t delta2) const
+  {
+    int32_t i = pb.reverse_offsets[var1], ie = pb.reverse_offsets[var1 + 1];
+    int32_t j = pb.reverse_offsets[var2], je = pb.reverse_offsets[var2 + 1];
+    int32_t net = 0;
+
+    while (i < ie || j < je) {
+      const int32_t r1 = i < ie ? pb.reverse_constraints[i] : INT32_MAX;
+      const int32_t r2 = j < je ? pb.reverse_constraints[j] : INT32_MAX;
+      const int32_t r  = r1 < r2 ? r1 : r2;
+
+      int32_t change = 0;
+      if (r1 == r) change += (int32_t)pb.reverse_coefficients[i++] * delta1;
+      if (r2 == r) change += (int32_t)pb.reverse_coefficients[j++] * delta2;
+
+      const bool was_violated = row_slack[r] < 0;
+      const bool now_violated = row_slack[r] - change < 0;
+      if (was_violated && !now_violated)
+        ++net;
+      else if (!was_violated && now_violated)
+        --net;
+    }
+    return net;
+  }
+
+  // Draws a few violated rows and searches their members for a joint flip that strictly reduces the
+  // violated-row count. The single-flip path cannot see these: each half may be neutral or worsening
+  // on its own. Rate-limited by the caller because the pair scan is quadratic in the pool.
+  std::pair<int32_t, int32_t> find_infeasible_pair_repair()
+  {
+    const std::pair<int32_t, int32_t> none{-1, -1};
+    if (violated_list.empty()) return none;
+
+    sample_buf.clear();
+    const int32_t n_viol = (int32_t)violated_list.size();
+    const int32_t n_rows = n_viol < fj_bin_repair_max_rows ? n_viol : fj_bin_repair_max_rows;
+    for (int32_t t = 0; t < n_rows; ++t)
+      sample_buf.push_back(violated_list[rng.next_u32() % (uint32_t)n_viol]);
+
+    int32_t pool[fj_bin_repair_max_vars];
+    int32_t n_pool = 0;
+    for (int32_t r : sample_buf) {
+      const int32_t begin = pb.offsets[r];
+      const int32_t width = pb.offsets[r + 1] - begin;
+      if (width == 0) continue;
+
+      // A random cyclic start rather than the CSR prefix. At a repeated local minimum the prefix
+      // makes the neighbourhood deterministic and leaves the tail of a wide covering row permanently
+      // invisible, at the same pool size and cost.
+      const int32_t start = (int32_t)(rng.next_u32() % (uint32_t)width);
+      for (int32_t q = 0; q < width && n_pool < fj_bin_repair_max_vars; ++q) {
+        const int32_t v = pb.variables[begin + (start + q) % width];
+        bool dup        = false;
+        for (int32_t p = 0; p < n_pool && !dup; ++p)
+          dup = pool[p] == v;
+        if (!dup) pool[n_pool++] = v;
+      }
+    }
+
+    std::pair<int32_t, int32_t> best_pair = none;
+    int32_t best_net                      = 0;
+    for (int32_t a = 0; a < n_pool; ++a) {
+      const int32_t v1 = pool[a];
+      if (tabu_blocked(v1, false)) continue;
+      const int8_t delta1 = (int8_t)(1 - 2 * assign[v1]);
+
+      for (int32_t b = a + 1; b < n_pool; ++b) {
+        const int32_t v2 = pool[b];
+        if (tabu_blocked(v2, false)) continue;
+        const int8_t delta2 = (int8_t)(1 - 2 * assign[v2]);
+        const int32_t net   = paired_flip_violation_delta(v1, delta1, v2, delta2);
+        if (net > best_net) {
+          best_net  = net;
+          best_pair = {v1, v2};
+        }
+      }
+    }
+    cuopt_assert(best_pair.first < 0 || best_net > 0, "accepted a repair that gains no row");
+    return best_pair;
+  }
+
   std::pair<std::pair<int32_t, int32_t>, int64_t> find_lift_2opt_move()
   {
     cuopt_assert(violated_list.empty(), "lift moves require a feasible incumbent");
@@ -1439,9 +1580,13 @@ struct fj_bin_engine_t {
     tabu_tenure_min     = params.tabu_tenure_min;
     tabu_tenure_max     = params.tabu_tenure_max;
     breakthrough_margin = params.breakthrough_move_epsilon;
-    perturb_interval    = climber.perturb_interval;
-    mtm_viol_samples    = climber.mtm_viol_samples;
-    mtm_sat_samples     = climber.mtm_sat_samples;
+    perturb_interval         = climber.perturb_interval;
+    mtm_viol_samples         = climber.mtm_viol_samples;
+    mtm_sat_samples          = climber.mtm_sat_samples;
+    enable_infeasible_repair = climber.enable_infeasible_repair &&
+                               pb.n_exchange_vars >= fj_bin_repair_min_exchange_vars &&
+                               pb.max_card_degree <= fj_bin_repair_max_card_degree;
+    last_repair_iter = 0;
 
     infeasible_restart_window           = climber.infeasible_restart_window;
     infeasible_restart_max_streak       = climber.infeasible_restart_max_streak;
@@ -1563,20 +1708,36 @@ struct fj_bin_engine_t {
       } else if (score > 0 && move_var >= 0 && !perturb_now) {
         apply_move(move_var, (int8_t)(1 - 2 * assign[move_var]), climber);
       } else {
-        update_weights();
-        const bool kick_ready = !violated_list.empty() &&
-                                iters_since_infeasible_improve >= fj_bin_kick_after &&
-                                iters - last_kick_iter >= fj_bin_kick_cooldown &&
-                                iters - last_restart_iter >= fj_bin_kick_restart_guard;
-        if (kick_ready) {
-          infeasible_region_kick();
-          last_kick_iter = iters;
-        } else if (perturb_now) {
-          perturb();
+        // A pair that reduces the violated count takes precedence over reweighting: the weights
+        // exist to escape a minimum no move can improve, and this found one that can.
+        bool repaired = false;
+        if (enable_infeasible_repair && !violated_list.empty() &&
+            iters - last_repair_iter >= fj_bin_repair_interval) {
+          last_repair_iter       = iters;
+          const auto repair_pair = find_infeasible_pair_repair();
+          if (repair_pair.first >= 0) {
+            apply_move(repair_pair.first, (int8_t)(1 - 2 * assign[repair_pair.first]), climber);
+            apply_move(repair_pair.second, (int8_t)(1 - 2 * assign[repair_pair.second]), climber);
+            repaired = true;
+          }
         }
-        std::tie(move_var, score) = find_move_violated(1, true);
-        const int32_t v           = move_var >= 0 ? move_var : 0;
-        apply_move(v, (int8_t)(1 - 2 * assign[v]), climber);
+
+        if (!repaired) {
+          update_weights();
+          const bool kick_ready = !violated_list.empty() &&
+                                  iters_since_infeasible_improve >= fj_bin_kick_after &&
+                                  iters - last_kick_iter >= fj_bin_kick_cooldown &&
+                                  iters - last_restart_iter >= fj_bin_kick_restart_guard;
+          if (kick_ready) {
+            infeasible_region_kick();
+            last_kick_iter = iters;
+          } else if (perturb_now) {
+            perturb();
+          }
+          std::tie(move_var, score) = find_move_violated(1, true);
+          const int32_t v           = move_var >= 0 ? move_var : 0;
+          apply_move(v, (int8_t)(1 - 2 * assign[v]), climber);
+        }
       }
 
       if (iters % climber.log_interval == 0) {

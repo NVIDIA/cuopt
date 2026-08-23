@@ -3642,6 +3642,8 @@ void apply_lane_diversification(fj_cpu_climber_t<i_t, f_t>& climber, int lane, i
   climber.nnz_samples      = std::uniform_int_distribution<i_t>(2000, 15000)(rng);
   climber.perturb_interval = std::uniform_int_distribution<i_t>(50, 500)(rng);
 
+  climber.enable_infeasible_repair = (lane % 8 == 1) || (lane % 8 == 5);
+
   climber.h_objective_weight    = obj_weight_ladder[lane % 4];
   //climber.seed_objective_weight = obj_weight_floor[lane % 4];
 }

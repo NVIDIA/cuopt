@@ -283,6 +283,9 @@ struct fj_cpu_climber_t {
   i_t mtm_sat_samples{15};
   i_t nnz_samples{50000};
   i_t perturb_interval{100};
+  // Enables the binary engine's infeasible-phase pair repair. Per lane, since the pair scan costs
+  // iterations that a well-tuned single-flip lane would rather spend elsewhere.
+  bool enable_infeasible_repair{false};
   i_t infeasible_restart_window{300};
   i_t infeasible_restart_max_streak{20};
   f_t infeasible_restart_degrade_ratio{1.15};
