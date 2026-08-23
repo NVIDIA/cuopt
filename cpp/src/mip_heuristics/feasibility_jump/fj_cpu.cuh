@@ -283,6 +283,9 @@ struct fj_cpu_climber_t {
   i_t mtm_sat_samples{15};
   i_t nnz_samples{50000};
   i_t perturb_interval{100};
+  // One lane replaces its start with a rounded LP relaxation, solved inside that lane's own task so
+  // portfolio construction does not wait on an LP.
+  bool use_lp_seed{false};
   // Enables the binary engine's infeasible-phase pair repair. Per lane, since the pair scan costs
   // iterations that a well-tuned single-flip lane would rather spend elsewhere.
   bool enable_infeasible_repair{false};
