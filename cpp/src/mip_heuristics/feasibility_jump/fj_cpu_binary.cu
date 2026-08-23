@@ -1205,11 +1205,8 @@ struct fj_bin_engine_t {
       // field where it can only separate variables already tied on the base. The winner's score is
       // then taken from full_score so the caller sees the true value.
       ensure_objective_base();
-      const int64_t* const obj_p = obj_base_score.data();
-      const int64_t* const var_p = var_score.data();
-      int64_t* const comb_p      = combined_score.data();
-      for (int32_t v = 0; v < pb.n_variables; ++v)
-        comb_p[v] = var_p[v] + obj_p[v];
+      int64_t* const comb_p = combined_score.data();
+      fj_bin_add_scores(var_score.data(), obj_base_score.data(), pb.n_variables, comb_p);
 
       int32_t saved_var[fj_bin_tabu_t::ring_size];
       int64_t saved_score[fj_bin_tabu_t::ring_size];

@@ -121,4 +121,11 @@ void fj_bin_argmax(const int64_t* var_score,
                    int32_t& best_var,
                    int64_t& best_score);
 
+// combined[v] = var_score[v] + obj_score[v] over n variables, which is the full score once the
+// objective weight is nonzero. The three arrays must not overlap.
+void fj_bin_add_scores(const int64_t* var_score,
+                       const int64_t* obj_score,
+                       int32_t n,
+                       int64_t* combined);
+
 }  // namespace cuopt::mathematical_optimization::mip

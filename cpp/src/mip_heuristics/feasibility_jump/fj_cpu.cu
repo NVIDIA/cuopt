@@ -1075,41 +1075,72 @@ static void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
   fj_cpu.n_variable_updates_window++;
   fj_cpu.unique_vars_accessed_window.insert(var_idx);
 
+  const size_t nnz_touched = (size_t)(offset_end - offset_begin);
+  fj_cpu.h_reverse_constraints.byte_loads += nnz_touched * sizeof(i_t);
+  fj_cpu.h_reverse_coefficients.byte_loads += nnz_touched * sizeof(f_t);
+  fj_cpu.cached_cstr_bounds.byte_loads += nnz_touched * sizeof(std::pair<f_t, f_t>);
+  fj_cpu.h_lhs.byte_loads += nnz_touched * sizeof(f_t);
+  fj_cpu.h_lhs.byte_stores += nnz_touched * sizeof(f_t);
+  fj_cpu.h_lhs_sumcomp.byte_loads += nnz_touched * sizeof(f_t);
+  fj_cpu.h_lhs_sumcomp.byte_stores += nnz_touched * sizeof(f_t);
+
+  const i_t* const rev_cstr                    = fj_cpu.view.pb.reverse_constraints.data();
+  const f_t* const rev_coeff                   = fj_cpu.view.pb.reverse_coefficients.data();
+  const std::pair<f_t, f_t>* const cstr_bounds = fj_cpu.cached_cstr_bounds.data();
+  f_t* const row_lhs                           = fj_cpu.view.incumbent_lhs.data();
+  f_t* const row_sumcomp                       = fj_cpu.view.incumbent_lhs_sumcomp.data();
+
   for (auto i = offset_begin; i < offset_end; i++) {
     cuopt_assert(i < (i_t)fj_cpu.h_reverse_constraints.size(), "");
-    auto [c_lb, c_ub] = fj_cpu.cached_cstr_bounds[i].get();
+    const auto [c_lb, c_ub] = cstr_bounds[i];
 
-    auto cstr_idx = fj_cpu.h_reverse_constraints[i];
-    auto cstr_coeff = fj_cpu.h_reverse_coefficients[i];
+    const i_t cstr_idx   = rev_cstr[i];
+    const f_t cstr_coeff = rev_coeff[i];
 
-    f_t old_lhs = fj_cpu.h_lhs[cstr_idx];
+    const f_t old_lhs = row_lhs[cstr_idx];
     // Kahan compensated summation
-    f_t y                          = cstr_coeff * delta - fj_cpu.h_lhs_sumcomp[cstr_idx];
-    f_t t                          = old_lhs + y;
-    fj_cpu.h_lhs_sumcomp[cstr_idx] = (t - old_lhs) - y;
-    fj_cpu.h_lhs[cstr_idx]         = t;
-    f_t new_lhs                    = fj_cpu.h_lhs[cstr_idx];
-    f_t old_cost                   = fj_cpu.view.excess_score(cstr_idx, old_lhs, c_lb, c_ub);
-    f_t new_cost                   = fj_cpu.view.excess_score(cstr_idx, new_lhs, c_lb, c_ub);
-    f_t cstr_tolerance             = fj_cpu.view.get_corrected_tolerance(cstr_idx, c_lb, c_ub);
+    const f_t y           = cstr_coeff * delta - row_sumcomp[cstr_idx];
+    const f_t t           = old_lhs + y;
+    const f_t new_sumcomp = (t - old_lhs) - y;
+    row_sumcomp[cstr_idx] = new_sumcomp;
+    row_lhs[cstr_idx]     = t;
+
+    const f_t old_cost       = fj_cpu.view.excess_score(cstr_idx, old_lhs, c_lb, c_ub);
+    const f_t new_cost       = fj_cpu.view.excess_score(cstr_idx, t, c_lb, c_ub);
+    const f_t cstr_tolerance = fj_cpu.view.get_corrected_tolerance(cstr_idx, c_lb, c_ub);
 
     // trigger early lhs recomputation if the sumcomp term gets too large
     // to avoid large numerical errors
-    if (fabs(fj_cpu.h_lhs_sumcomp[cstr_idx]) > BIGVAL_THRESHOLD)
-      fj_cpu.trigger_early_lhs_recomputation = true;
+    if (fabs(new_sumcomp) > BIGVAL_THRESHOLD) fj_cpu.trigger_early_lhs_recomputation = true;
 
-    if (new_cost < -cstr_tolerance && !fj_cpu.violated_constraints.contains(cstr_idx)) {
+    const bool was_violated = fj_cpu.violated_constraints.contains(cstr_idx);
+    const bool now_violated = new_cost < -cstr_tolerance;
+
+    // total_violations sums the excess over the violated set alone, so a row crossing the boundary
+    // contributes its whole cost rather than a difference. Kahan compensated, as h_lhs is: this is
+    // now the only place the total is maintained between refreshes.
+    const f_t viol_delta =
+      (now_violated ? new_cost : f_t{0}) - (was_violated ? old_cost : f_t{0});
+    if (viol_delta != f_t{0}) {
+      const f_t viol_old              = fj_cpu.total_violations;
+      const f_t viol_y                = viol_delta - fj_cpu.total_violations_sumcomp;
+      const f_t viol_t                = viol_old + viol_y;
+      fj_cpu.total_violations_sumcomp = (viol_t - viol_old) - viol_y;
+      fj_cpu.total_violations         = viol_t;
+    }
+
+    if (now_violated && !was_violated) {
       fj_cpu.violated_constraints.insert(cstr_idx);
       cuopt_assert(fj_cpu.satisfied_constraints.contains(cstr_idx), "");
       fj_cpu.satisfied_constraints.remove(cstr_idx);
-    } else if (!(new_cost < -cstr_tolerance) && fj_cpu.violated_constraints.contains(cstr_idx)) {
+    } else if (!now_violated && was_violated) {
       cuopt_assert(!fj_cpu.satisfied_constraints.contains(cstr_idx), "");
       fj_cpu.violated_constraints.remove(cstr_idx);
       fj_cpu.satisfied_constraints.insert(cstr_idx);
     }
 
     cuopt_assert(isfinite(delta), "delta should be finite");
-    cuopt_assert(isfinite(fj_cpu.h_lhs[cstr_idx]), "assignment should be finite");
+    cuopt_assert(isfinite(t), "assignment should be finite");
 
     // Invalidate related cached move scores
     fj_cpu.h_cstr_version[cstr_idx]++;
@@ -1413,7 +1444,8 @@ static void recompute_lhs(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 
   fj_cpu.violated_constraints.clear();
   fj_cpu.satisfied_constraints.clear();
-  fj_cpu.total_violations = 0;
+  fj_cpu.total_violations         = 0;
+  fj_cpu.total_violations_sumcomp = 0;
   for (i_t cstr_idx = 0; cstr_idx < fj_cpu.view.pb.n_constraints; ++cstr_idx) {
     auto [offset_begin, offset_end] = range_for_constraint<i_t, f_t>(fj_cpu, cstr_idx);
     auto c_lb                       = fj_cpu.h_cstr_lb[cstr_idx];
@@ -1596,20 +1628,37 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_lift_move(
       if (delta * obj_coeff >= 0) continue;
 
       auto [offset_begin, offset_end] = reverse_range_for_var<i_t, f_t>(fj_cpu, var_idx);
-      bool breaks_a_row               = false;
+
+      const i_t* const rev_cstr                    = fj_cpu.view.pb.reverse_constraints.data();
+      const f_t* const rev_coeff                   = fj_cpu.view.pb.reverse_coefficients.data();
+      const f_t* const row_lhs                     = fj_cpu.view.incumbent_lhs.data();
+      const f_t* const row_sumcomp                 = fj_cpu.view.incumbent_lhs_sumcomp.data();
+      const std::pair<f_t, f_t>* const cstr_bounds = fj_cpu.cached_cstr_bounds.data();
+
+      bool breaks_a_row = false;
+      i_t scanned       = 0;
       for (i_t j = offset_begin; j < offset_end; ++j) {
-        auto [c_lb, c_ub]    = fj_cpu.cached_cstr_bounds[j].get();
-        const i_t cstr_idx   = fj_cpu.h_reverse_constraints[j];
-        const f_t cstr_coeff = fj_cpu.h_reverse_coefficients[j];
-        const f_t lhs        = fj_cpu.h_lhs[cstr_idx];
-        const f_t sumcomp    = fj_cpu.h_lhs_sumcomp[cstr_idx];
-        const f_t new_lhs    = lhs + (cstr_coeff * delta - sumcomp);
+        ++scanned;
+        const auto [c_lb, c_ub] = cstr_bounds[j];
+        const i_t cstr_idx      = rev_cstr[j];
+        const f_t cstr_coeff    = rev_coeff[j];
+        const f_t lhs           = row_lhs[cstr_idx];
+        const f_t sumcomp       = row_sumcomp[cstr_idx];
+        const f_t new_lhs       = lhs + (cstr_coeff * delta - sumcomp);
         if (fj_cpu.view.excess_score(cstr_idx, new_lhs, c_lb, c_ub) <
             -fj_cpu.view.get_corrected_tolerance(cstr_idx, c_lb, c_ub)) {
           breaks_a_row = true;
           break;
         }
       }
+
+      const size_t nnz_scanned = (size_t)scanned;
+      fj_cpu.h_reverse_constraints.byte_loads += nnz_scanned * sizeof(i_t);
+      fj_cpu.h_reverse_coefficients.byte_loads += nnz_scanned * sizeof(f_t);
+      fj_cpu.cached_cstr_bounds.byte_loads += nnz_scanned * sizeof(std::pair<f_t, f_t>);
+      fj_cpu.h_lhs.byte_loads += nnz_scanned * sizeof(f_t);
+      fj_cpu.h_lhs_sumcomp.byte_loads += nnz_scanned * sizeof(f_t);
+
       if (breaks_a_row) continue;
     } else {
       f_t lfd_lb                      = get_lower(fj_cpu.h_var_bounds[var_idx].get()) - val;
@@ -2156,13 +2205,14 @@ static void finalize_fj_cpu_host_initialization_from_template(
   fj_cpu.cached_cstr_bounds = tmpl.cached_cstr_bounds;
   fj_cpu.obj_magnitude      = tmpl.obj_magnitude;
 
-  fj_cpu.h_lhs                 = tmpl.h_lhs;
-  fj_cpu.h_lhs_sumcomp         = tmpl.h_lhs_sumcomp;
-  fj_cpu.violated_constraints  = tmpl.violated_constraints;
-  fj_cpu.satisfied_constraints = tmpl.satisfied_constraints;
-  fj_cpu.total_violations      = tmpl.total_violations;
-  fj_cpu.h_incumbent_objective = tmpl.h_incumbent_objective;
-  fj_cpu.h_objective_sumcomp   = tmpl.h_objective_sumcomp;
+  fj_cpu.h_lhs                    = tmpl.h_lhs;
+  fj_cpu.h_lhs_sumcomp            = tmpl.h_lhs_sumcomp;
+  fj_cpu.violated_constraints     = tmpl.violated_constraints;
+  fj_cpu.satisfied_constraints    = tmpl.satisfied_constraints;
+  fj_cpu.total_violations         = tmpl.total_violations;
+  fj_cpu.total_violations_sumcomp = tmpl.total_violations_sumcomp;
+  fj_cpu.h_incumbent_objective    = tmpl.h_incumbent_objective;
+  fj_cpu.h_objective_sumcomp      = tmpl.h_objective_sumcomp;
 
   fj_cpu.n_binary_vars   = tmpl.n_binary_vars;
   fj_cpu.n_integer_vars  = tmpl.n_integer_vars;
@@ -2620,12 +2670,6 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
       ++fj_cpu->n_local_minima_window;
     }
 
-    // number of violated constraints is usually small (<100). recomputing from all LHSs is cheap
-    // and more numerically precise than just adding to the accumulator in apply_move
-    fj_cpu->total_violations = 0;
-    for (auto cstr_idx : fj_cpu->violated_constraints) {
-      fj_cpu->total_violations += fj_cpu->view.excess_score(cstr_idx, fj_cpu->h_lhs[cstr_idx]);
-    }
     if (fj_cpu->iterations % fj_cpu->log_interval == 0) {
       CUOPT_LOG_DEBUG(
         "%sCPUFJ iteration: %d/%d, local mins: %d, best_objective: %g, viol: %zu, obj weight %g, "

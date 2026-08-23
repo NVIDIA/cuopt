@@ -232,6 +232,9 @@ struct fj_cpu_climber_t {
   bool feasible_found{false};
   bool trigger_early_lhs_recomputation{false};
   f_t total_violations{0};
+  // Kahan compensation for total_violations, mirroring h_lhs_sumcomp. Reset wherever the total is
+  // re-derived from the violated set.
+  f_t total_violations_sumcomp{0};
 
   // Timing data structures
   std::vector<double> find_lift_move_times;

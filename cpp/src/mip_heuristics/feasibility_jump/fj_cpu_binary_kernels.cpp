@@ -456,6 +456,26 @@ void ArgmaxImpl(const int64_t* HWY_RESTRICT var_score,
   *best_score = bs;
 }
 
+// combined[v] = var_score[v] + obj_score[v] over all n variables. Materialized rather than fused
+// into the argmax because block_tabu writes sentinels into the result and restores them afterwards,
+// so the array has to outlive the scan. None of the three has SIMD padding, hence the scalar tail.
+void AddScoresImpl(const int64_t* HWY_RESTRICT var_score,
+                   const int64_t* HWY_RESTRICT obj_score,
+                   int32_t n,
+                   int64_t* HWY_RESTRICT combined)
+{
+  const hn::ScalableTag<int64_t> d;
+  const int32_t step = (int32_t)hn::Lanes(d);
+  const int32_t nblk = n - (n % step);
+
+  for (int32_t v = 0; v < nblk; v += step) {
+    hn::StoreU(hn::Add(hn::LoadU(d, var_score + v), hn::LoadU(d, obj_score + v)), d, combined + v);
+  }
+  for (int32_t v = nblk; v < n; ++v) {
+    combined[v] = var_score[v] + obj_score[v];
+  }
+}
+
 }  // namespace HWY_NAMESPACE
 }  // namespace cuopt::mathematical_optimization::mip
 HWY_AFTER_NAMESPACE();
@@ -472,6 +492,7 @@ HWY_EXPORT_T(PatchRowI16, PatchRowDispatchImpl<int16_t>);
 HWY_EXPORT_T(WalkRowsI8, WalkRowsImpl<int8_t>);
 HWY_EXPORT_T(WalkRowsI16, WalkRowsImpl<int16_t>);
 HWY_EXPORT(ArgmaxImpl);
+HWY_EXPORT(AddScoresImpl);
 
 // HWY_DYNAMIC_DISPATCH resolves the target on every call, and the hwy::GetChosenTarget() call it
 // expands to is a real out-of-line call: it clobbers the argument registers, so the compiler spills
@@ -527,6 +548,8 @@ static fj_bin_walk_fn_t<int8_t> fj_bin_walk_fn(int8_t) { return fj_bin_walk_i8; 
 static fj_bin_walk_fn_t<int16_t> fj_bin_walk_fn(int16_t) { return fj_bin_walk_i16; }
 
 static const auto fj_bin_argmax_fn = (fj_bin_choose_target(), HWY_DYNAMIC_POINTER(ArgmaxImpl));
+static const auto fj_bin_add_scores_fn =
+  (fj_bin_choose_target(), HWY_DYNAMIC_POINTER(AddScoresImpl));
 
 template <typename coef_t>
 int32_t fj_bin_walk_rows(int32_t* row_slack,
@@ -598,6 +621,14 @@ void fj_bin_argmax(const int64_t* var_score,
                    int64_t& best_score)
 {
   fj_bin_argmax_fn(var_score, n, tile, &best_var, &best_score);
+}
+
+void fj_bin_add_scores(const int64_t* var_score,
+                       const int64_t* obj_score,
+                       int32_t n,
+                       int64_t* combined)
+{
+  fj_bin_add_scores_fn(var_score, obj_score, n, combined);
 }
 
 }  // namespace cuopt::mathematical_optimization::mip
