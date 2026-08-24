@@ -19,6 +19,7 @@
 #include <iostream>
 #include <memory>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -93,10 +94,11 @@ inline void buffer_log_callback(int lvl, const char* msg)
 }
 
 /**
- * @brief Returns the default sink for the global logger.
+ * @brief Returns the default sink, used until something configures the logger.
  *
- * If the environment variable `CUOPT_DEBUG_LOG_FILE` is defined, the default sink is a sink to that
- * file. Otherwise, the default is to dump to stderr.
+ * Messages go into an in-memory buffer rather than to a stream, and are replayed once a
+ * configuration arrives. Anything logged before that, and never followed by a configure,
+ * is dropped.
  *
  * @return sink_ptr The sink to use
  */
@@ -240,6 +242,14 @@ inline std::shared_ptr<logger_config_guard>& external_config_guard()
   return guard;
 }
 
+// Nesting depth of external configuration, so overlapping callers behave like overlapping
+// init_logger_t instances: the outermost configuration wins and only its exit tears down.
+inline int& external_config_depth()
+{
+  static int depth = 0;
+  return depth;
+}
+
 /**
  * @brief Body of a component's exported configure entry point.
  *
@@ -252,6 +262,15 @@ inline void configure_logging_impl(const std::string& log_file, bool log_to_cons
 {
   std::lock_guard<std::mutex> lock(g_guard_mutex);
 
+  // An inner caller reuses the configuration already in place rather than replacing it,
+  // matching init_logger_t. Reconfiguring here would also re-truncate the log file.
+  if (external_config_depth()++ > 0) { return; }
+
+  // Drop the previous guard *before* applying the new sinks. ~logger_config_guard calls
+  // reset_default_logger(), so releasing it afterwards would run that reset on top of the
+  // configuration we just applied and silently put the buffer sink back.
+  external_config_guard().reset();
+
   apply_logger_config(log_file, log_to_console, truncate);
 
   auto guard              = std::make_shared<logger_config_guard>();
@@ -262,6 +281,10 @@ inline void configure_logging_impl(const std::string& log_file, bool log_to_cons
 inline void reset_logging_impl()
 {
   std::lock_guard<std::mutex> lock(g_guard_mutex);
+
+  if (external_config_depth() == 0) { return; }
+  if (--external_config_depth() > 0) { return; }
+
   external_config_guard().reset();
 }
 
@@ -342,6 +365,12 @@ class init_component_logger_t {
       case log_target_t::routing:
 #ifdef CUOPT_HAS_ROUTING
         cuopt::routing::configure_logging(log_file, log_to_console, truncate);
+#else
+        // Silently doing nothing here would look like a working logger that drops every
+        // message, and the cause -- a SKIP_ROUTING_BUILD mismatch -- would be invisible.
+        throw std::runtime_error(
+          "cuOpt was built with SKIP_ROUTING_BUILD, so routing's logger does not exist and "
+          "log_target_t::routing cannot be configured.");
 #endif
         break;
       case log_target_t::mathopt:

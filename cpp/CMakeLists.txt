@@ -570,7 +570,9 @@ target_compile_definitions(cuopt_objs
 )
 
 # Lets callers reach routing's logger through init_component_logger_t. Routing is optional,
-# so the entry point it declares is only linkable when routing was actually built.
+# so the entry point it declares is only linkable when routing was actually built. This is
+# also set on cuopt and cuopt_static: $<TARGET_OBJECTS:...> does not carry INTERFACE
+# properties, and consumers such as cuopt_cli and the tests link those, not cuopt_objs.
 if(NOT SKIP_ROUTING_BUILD)
   target_compile_definitions(cuopt_objs PUBLIC CUOPT_HAS_ROUTING)
 endif()
@@ -738,6 +740,9 @@ if (BUILD_TESTS)
             "CUOPT_LOG_ACTIVE_LEVEL=RAPIDS_LOGGER_LOG_LEVEL_${LIBCUOPT_LOGGING_LEVEL}"
             CUSPARSE_ENABLE_EXPERIMENTAL_API
     )
+    if(NOT SKIP_ROUTING_BUILD)
+        target_compile_definitions(cuopt_static PUBLIC CUOPT_HAS_ROUTING)
+    endif()
     target_link_libraries(cuopt_static PRIVATE $<TARGET_FILE:PSLP>)
     add_dependencies(cuopt_static PSLP)
     target_link_libraries(cuopt_static PRIVATE $<TARGET_FILE:KaMinPar::KaMinPar>)
@@ -796,6 +801,9 @@ target_compile_definitions(cuopt
         "CUOPT_LOG_ACTIVE_LEVEL=RAPIDS_LOGGER_LOG_LEVEL_${LIBCUOPT_LOGGING_LEVEL}"
         CUSPARSE_ENABLE_EXPERIMENTAL_API
 )
+if(NOT SKIP_ROUTING_BUILD)
+    target_compile_definitions(cuopt PUBLIC CUOPT_HAS_ROUTING)
+endif()
 
 if (WRITE_FATBIN)
     file(WRITE "${CUOPT_BINARY_DIR}/fatbin.ld"
