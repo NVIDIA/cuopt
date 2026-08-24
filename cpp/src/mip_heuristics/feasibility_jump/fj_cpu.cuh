@@ -142,6 +142,7 @@ struct fj_cpu_climber_t {
                                                      ADD_INSTRUMENTED(h_var_bounds),
                                                      ADD_INSTRUMENTED(h_cstr_lb),
                                                      ADD_INSTRUMENTED(h_cstr_ub),
+                                                     ADD_INSTRUMENTED(h_cstr_tolerance),
                                                      ADD_INSTRUMENTED(h_var_types),
                                                      ADD_INSTRUMENTED(h_is_binary_variable),
                                                      ADD_INSTRUMENTED(h_objective_vars),
@@ -163,8 +164,7 @@ struct fj_cpu_climber_t {
                                                      ADD_INSTRUMENTED(h_assignment),
                                                      ADD_INSTRUMENTED(h_best_assignment),
                                                      ADD_INSTRUMENTED(h_best_infeasible_assignment),
-                                                     ADD_INSTRUMENTED(cached_cstr_bounds),
-                                                     ADD_INSTRUMENTED(iter_mtm_vars)};
+                                                     ADD_INSTRUMENTED(cached_cstr_bounds)};
 
 #undef ADD_INSTRUMENTED
   }
@@ -189,6 +189,8 @@ struct fj_cpu_climber_t {
   ins_vector<typename type_2<f_t>::type> h_var_bounds;
   ins_vector<f_t> h_cstr_lb;
   ins_vector<f_t> h_cstr_ub;
+  // get_corrected_tolerance of each row, held because the bounds it derives from never move.
+  ins_vector<f_t> h_cstr_tolerance;
   ins_vector<var_t> h_var_types;
   ins_vector<i_t> h_is_binary_variable;
   ins_vector<i_t> h_objective_vars;
@@ -244,14 +246,41 @@ struct fj_cpu_climber_t {
   std::vector<double> update_weights_times;
   std::vector<double> compute_score_times;
 
-  i_t hit_count{0};
-  i_t miss_count{0};
+  int64_t hit_count{0};
+  int64_t miss_count{0};
 
   i_t candidate_move_hits[3]   = {0};
   i_t candidate_move_misses[3] = {0};
 
-  // vector<bool> is actually likely beneficial here since we're memory bound
-  std::vector<bool> flip_move_computed;
+  // Hot-loop accounting, reported off the clock by the standalone harness.
+  int64_t n_moves_applied{0};
+  int64_t apply_move_nnz{0};
+  int64_t n_mtm_calls{0};
+  // Row entries find_mtm_move visits, and the ones the per-row cap kept it from visiting.
+  int64_t mtm_row_entries{0};
+  int64_t mtm_entries_capped{0};
+  int64_t n_compute_score_calls{0};
+  int64_t compute_score_nnz{0};
+  int64_t n_version_bumps_apply{0};
+  int64_t n_version_bumps_weights{0};
+  int64_t n_mtm_cache_invalidations{0};
+  int64_t n_lhs_recompute_total{0};
+  int64_t n_lhs_recompute_periodic{0};
+  int64_t n_lhs_recompute_bigval{0};
+  int64_t n_lhs_recompute_perturb{0};
+  int64_t n_lhs_recompute_restart{0};
+  i_t lhs_refresh_period_used{0};
+
+  // A variable's flip move has already been considered when its stamp equals flip_move_epoch,
+  // which advances once per applied move. An epoch avoids clearing an n_variables bitmap per move.
+  std::vector<int64_t> flip_move_stamp;
+  int64_t flip_move_epoch{1};
+
+  // Continuous objective variables bounded by their rows only opposite the objective's pull, so
+  // the tightest row bound is their value. epigraph_push is +1 pushing up, -1 pushing down.
+  std::vector<int8_t> epigraph_push;
+  std::vector<i_t> epigraph_vars;
+  int64_t n_epigraph_projections{0};
 
   // CSR nnz offset -> (delta, score)
   std::vector<std::pair<f_t, fj_staged_score_t>> cached_mtm_moves;
@@ -263,9 +292,6 @@ struct fj_cpu_climber_t {
   // CSC (transposed!) nnz-offset-indexed constraint bounds (lb, ub)
   // std::pair<f_t, f_t> better compile down to 16 bytes!! GCC do your job!
   ins_vector<std::pair<f_t, f_t>> cached_cstr_bounds;
-
-  std::vector<bool> var_bitmap;
-  ins_vector<i_t> iter_mtm_vars;
 
   // Scratch reused by the binary 2-opt search, which runs at every local minimum
   std::vector<i_t> two_opt_target_cstrs;
@@ -286,6 +312,8 @@ struct fj_cpu_climber_t {
   i_t mtm_sat_samples{15};
   i_t nnz_samples{50000};
   i_t perturb_interval{100};
+  // Number of variables randomized by one perturbation.
+  i_t perturb_vars{2};
   // One lane replaces its start with a rounded LP relaxation, solved inside that lane's own task so
   // portfolio construction does not wait on an LP.
   bool use_lp_seed{false};
@@ -330,8 +358,8 @@ struct fj_cpu_climber_t {
   i_t iterations_since_best{0};
 
   // Cache and locality tracking
-  i_t hit_count_window_start{0};
-  i_t miss_count_window_start{0};
+  int64_t hit_count_window_start{0};
+  int64_t miss_count_window_start{0};
   std::unordered_set<i_t> unique_cstrs_accessed_window;
   std::unordered_set<i_t> unique_vars_accessed_window;
 

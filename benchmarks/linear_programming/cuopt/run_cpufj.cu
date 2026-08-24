@@ -147,6 +147,68 @@ int main(int argc, char** argv)
               problem.n_constraints,
               problem.nnz);
 
+  // Taken from the host-side parse, so it is independent of everything under target_code.
+  {
+    const auto& col_indices = mps_data_model.get_constraint_matrix_indices();
+    const auto& row_lb      = mps_data_model.get_constraint_lower_bounds();
+    const auto& row_ub      = mps_data_model.get_constraint_upper_bounds();
+    const int64_t nnz       = (int64_t)col_indices.size();
+
+    const i_t n_cols = mps_data_model.get_n_variables();
+    std::vector<i_t> degree(n_cols, 0);
+    for (i_t index : col_indices) {
+      if (index >= 0 && index < n_cols) ++degree[index];
+    }
+    std::sort(degree.begin(), degree.end());
+
+    const i_t max_degree = degree.empty() ? 0 : degree.back();
+    auto quantile        = [&](double q) {
+      return degree.empty()
+                      ? 0
+                      : degree[std::min<size_t>(degree.size() - 1, (size_t)(q * degree.size()))];
+    };
+    int64_t top10 = 0;
+    for (size_t k = 0; k < 10 && k < degree.size(); ++k)
+      top10 += degree[degree.size() - 1 - k];
+    const double mean_degree = n_cols > 0 ? (double)nnz / n_cols : 0.0;
+    std::printf("census cols: n=%d degree max=%d p99=%d p90=%d median=%d mean=%.1f"
+                "  widest=%.1f%% top10=%.1f%% of nnz  hub=%.0fx mean\n",
+                n_cols,
+                max_degree,
+                quantile(0.99),
+                quantile(0.90),
+                quantile(0.50),
+                mean_degree,
+                nnz > 0 ? 100.0 * max_degree / nnz : 0.0,
+                nnz > 0 ? 100.0 * top10 / nnz : 0.0,
+                mean_degree > 0 ? max_degree / mean_degree : 0.0);
+
+    const i_t n_rows = (i_t)std::min(row_lb.size(), row_ub.size());
+    i_t lb_only = 0, ub_only = 0, equality = 0, ranged = 0, free_rows = 0;
+    for (i_t r = 0; r < n_rows; ++r) {
+      const bool has_lb = std::isfinite((double)row_lb[r]);
+      const bool has_ub = std::isfinite((double)row_ub[r]);
+      if (has_lb && has_ub) {
+        ++(row_lb[r] == row_ub[r] ? equality : ranged);
+      } else if (has_lb) {
+        ++lb_only;
+      } else if (has_ub) {
+        ++ub_only;
+      } else {
+        ++free_rows;
+      }
+    }
+    std::printf("census rows: n=%d lb_only=%d ub_only=%d equality=%d ranged=%d free=%d"
+                "  one_sided=%.1f%%\n",
+                n_rows,
+                lb_only,
+                ub_only,
+                equality,
+                ranged,
+                free_rows,
+                n_rows > 0 ? 100.0 * (lb_only + ub_only) / n_rows : 0.0);
+  }
+
   // FROZEN -- defines t=0 for the benchmark. Everything above it (the MPS parse,
   // problem construction under problem/, and the name anonymisation) is outside
   // target_code; everything below it is editable. A marker any later would leave
@@ -307,6 +369,68 @@ int main(int argc, char** argv)
               invalid,
               bks_user ? std::to_string(*bks_user).c_str()
                        : (cuopt_bench::is_known_infeasible(path) ? "known infeasible" : "unknown"));
+
+  std::printf("\n climber |     moves |  apply nnz | nnz/move | bitmap elems | ratio |"
+              " bump/apply | bump/weight | mtm inval | cache hit%%\n");
+  std::printf("---------+-----------+------------+----------+--------------+-------+"
+              "------------+-------------+-----------+-----------\n");
+  for (int k = 0; k < n_climbers; ++k) {
+    const auto& c        = *climbers[k];
+    const int64_t bitmap = 2 * c.n_moves_applied * (int64_t)c.view.pb.n_variables;
+    const int64_t probes = c.hit_count + c.miss_count;
+    std::printf(" %7d | %9lld | %10lld | %8.1f | %12lld | %5.0f | %10lld | %11lld | %9lld |"
+                " %9.2f\n",
+                k,
+                (long long)c.n_moves_applied,
+                (long long)c.apply_move_nnz,
+                c.n_moves_applied > 0 ? (double)c.apply_move_nnz / c.n_moves_applied : 0.0,
+                (long long)bitmap,
+                c.apply_move_nnz > 0 ? (double)bitmap / c.apply_move_nnz : 0.0,
+                (long long)c.n_version_bumps_apply,
+                (long long)c.n_version_bumps_weights,
+                (long long)c.n_mtm_cache_invalidations,
+                probes > 0 ? 100.0 * c.hit_count / probes : 0.0);
+  }
+
+  std::printf("\n climber | mtm calls | row entries | ent/call |  capped ent | capped/call |"
+              " score calls | score nnz | nnz/score | nnz budget\n");
+  std::printf("---------+-----------+-------------+----------+-------------+-------------+"
+              "-------------+-----------+-----------+-----------\n");
+  for (int k = 0; k < n_climbers; ++k) {
+    const auto& c = *climbers[k];
+    std::printf(" %7d | %9lld | %11lld | %8.0f | %11lld | %11.0f | %11lld | %9lld | %9.1f |"
+                " %10d\n",
+                k,
+                (long long)c.n_mtm_calls,
+                (long long)c.mtm_row_entries,
+                c.n_mtm_calls > 0 ? (double)c.mtm_row_entries / c.n_mtm_calls : 0.0,
+                (long long)c.mtm_entries_capped,
+                c.n_mtm_calls > 0 ? (double)c.mtm_entries_capped / c.n_mtm_calls : 0.0,
+                (long long)c.n_compute_score_calls,
+                (long long)c.compute_score_nnz,
+                c.n_compute_score_calls > 0
+                  ? (double)c.compute_score_nnz / c.n_compute_score_calls
+                  : 0.0,
+                c.nnz_samples);
+  }
+
+  std::printf("\n climber | refresh period | lhs total | periodic | bigval | perturb | restart |"
+              " epi vars | epi projections\n");
+  std::printf("---------+----------------+-----------+----------+--------+---------+---------+"
+              "----------+----------------\n");
+  for (int k = 0; k < n_climbers; ++k) {
+    const auto& c = *climbers[k];
+    std::printf(" %7d | %14d | %9lld | %8lld | %6lld | %7lld | %7lld | %8zu | %15lld\n",
+                k,
+                c.lhs_refresh_period_used,
+                (long long)c.n_lhs_recompute_total,
+                (long long)c.n_lhs_recompute_periodic,
+                (long long)c.n_lhs_recompute_bigval,
+                (long long)c.n_lhs_recompute_perturb,
+                (long long)c.n_lhs_recompute_restart,
+                c.epigraph_vars.size(),
+                (long long)c.n_epigraph_projections);
+  }
 
   std::printf("\nSUMMARY: %d/%d crossed (%.0f%%)  wall=%.1fs  total_iters=%.0f  agg_iters/s=%.0f\n",
               crossed,
