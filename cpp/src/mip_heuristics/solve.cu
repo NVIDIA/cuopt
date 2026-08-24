@@ -198,7 +198,7 @@ mip_solution_t<i_t, f_t> run_mip_solver(
     scaled_problem.preprocess_problem();
     scaled_problem.related_vars_time_limit = settings.heuristic_params.related_vars_time_limit;
     const i_t n_vars_before                = scaled_problem.n_variables;
-    mip::trivial_presolve(scaled_problem);
+    mip::trivial_presolve(scaled_problem, /*remap_cache_ids=*/true);
 
 #ifdef DETECT_SYMMETRY_BEFORE_PRESOLVE
     // Trivial presolve may remove unused variables and renumber the remaining ones.

@@ -394,7 +394,7 @@ i_t extract_non_overlapping_moves(solution_t<i_t, f_t, REQUEST>& sol,
   cuopt_expects(is_set, error_type_t::OutOfMemoryError, "Not enough shared memory on device");
   extract_non_overlapping_moves_kernel<i_t, f_t, REQUEST>
     <<<1, TPB, sh_size, sol.sol_handle->get_stream()>>>(
-      sol.view(), move_candidates.view(), seed_generator::get_seed());
+      sol.view(), move_candidates.view(), sol.problem_ptr->seed_gen.get_seed());
   return move_candidates.vrp_move_candidates.n_of_selected_moves.value(
     sol.sol_handle->get_stream());
 }

@@ -71,6 +71,7 @@ void local_search_t<i_t, f_t>::start_cpufj_scratch_threads(population_t<i_t, f_t
                                    default_weights,
                                    0.,
                                    context.preempt_heuristic_solver_,
+                                   &constraint_prop.bounds_update.probing_cache,
                                    fj_settings_t{},
                                    /*randomize=*/counter > 0);
 
@@ -117,8 +118,12 @@ void local_search_t<i_t, f_t>::start_cpufj_lptopt_scratch_threads(
   solution_lp.copy_new_assignment(
     host_copy(lp_optimal_solution, context.problem_ptr->handle_ptr->get_stream()));
   solution_lp.round_random_nearest(500);
-  scratch_cpu_fj_on_lp_opt = fj.create_cpu_climber(
-    solution_lp, default_weights, default_weights, 0., context.preempt_heuristic_solver_);
+  scratch_cpu_fj_on_lp_opt             = fj.create_cpu_climber(solution_lp,
+                                                   default_weights,
+                                                   default_weights,
+                                                   0.,
+                                                   context.preempt_heuristic_solver_,
+                                                   &constraint_prop.bounds_update.probing_cache);
   scratch_cpu_fj_on_lp_opt->log_prefix = "******* scratch on LP optimal: ";
   scratch_cpu_fj_on_lp_opt->improvement_callback =
     [this, &population](f_t obj, const std::vector<f_t>& h_vec, double /*work_units*/) {
@@ -145,8 +150,11 @@ void local_search_t<i_t, f_t>::stop_cpufj_scratch_threads()
 {
   if (omp_get_num_threads() < CUOPT_MIP_FJ_REQUIRED_THREAD_COUNT) return;
 
+  for (auto& cpu_fj : scratch_cpu_fj) {
+    cuopt_assert(cpu_fj != nullptr, "scratch climbers must have been created");
+    cpu_fj->halted = true;
+  }
   for (size_t i = 0; i < scratch_cpu_fj.size(); ++i) {
-    scratch_cpu_fj[i]->halted = true;
 #pragma omp taskwait depend(in : *scratch_cpu_fj[i])  // Wait for each scratch CPU FJ task to finish
   }
 
@@ -183,6 +191,7 @@ void local_search_t<i_t, f_t>::start_cpufj_deterministic(mip::branch_and_bound_t
                                                default_weights,
                                                0.,
                                                context.preempt_heuristic_solver_,
+                                               &constraint_prop.bounds_update.probing_cache,
                                                fj_settings_t{},
                                                /*randomize=*/true);
 
@@ -258,6 +267,7 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
                                    h_weights,
                                    h_objective_weight,
                                    context.preempt_heuristic_solver_,
+                                   &constraint_prop.bounds_update.probing_cache,
                                    fj_settings_t{},
                                    true);
   }

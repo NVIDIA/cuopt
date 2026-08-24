@@ -2505,6 +2505,193 @@ DONE:
 }
 
 /**
+ * Dual recovery
+ * for QCQP is not supported yet, so solve_qcqp() resizes the dual solution / reduced
+ * cost vectors down to the documented lengths and fills them with NaN (cuOpt's
+ * existing "value not computed" convention) rather than leaving them oversized.
+ */
+cuopt_int_t test_qcqp_solution_dual_methods()
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuOptSolverSettings settings     = NULL;
+  cuOptSolution solution           = NULL;
+  cuopt_int_t status;
+  cuopt_int_t num_constraints;
+  cuopt_int_t num_linear;
+  cuopt_int_t num_quadratic;
+  int i;
+
+  /*
+   * minimize t
+   * subject to
+   *     t >= 0                    (linear constraint)
+   *     x1^2 + x2^2 - t^2 <= 0    (quadratic constraint)
+   *     t >= -1, x1 >= 3, x2 >= 4 (variable bounds, not counted as constraints)
+   */
+  cuopt_int_t num_linear_constraints = 1;
+  cuopt_int_t num_variables          = 3;
+
+  cuopt_float_t objective[]     = {1.0, 0.0, 0.0};
+  cuopt_int_t row_offsets[]     = {0, 1};
+  cuopt_int_t column_indices[]  = {0};
+  cuopt_float_t matrix_values[] = {1.0};
+  char constraint_sense[]       = {CUOPT_GREATER_THAN};
+  cuopt_float_t rhs[]           = {0.0};
+
+  cuopt_float_t lower_bounds[] = {-1.0, 3.0, 4.0};
+  cuopt_float_t upper_bounds[] = {CUOPT_INFINITY, CUOPT_INFINITY, CUOPT_INFINITY};
+  char variable_types[]        = {CUOPT_CONTINUOUS, CUOPT_CONTINUOUS, CUOPT_CONTINUOUS};
+
+  cuopt_int_t qc_row[]    = {0, 1, 2};
+  cuopt_int_t qc_col[]    = {0, 1, 2};
+  cuopt_float_t qc_coeff[] = {-1.0, 1.0, 1.0};
+
+  /* Allocated to the documented sizes (queried below). */
+  cuopt_float_t* dual_solution = NULL;
+  cuopt_float_t* reduced_costs = NULL;
+
+  printf("Testing QCQP solution dual/reduced-cost methods...\n");
+
+  status = cuOptCreateProblem(num_linear_constraints,
+                              num_variables,
+                              CUOPT_MINIMIZE,
+                              0.0,
+                              objective,
+                              row_offsets,
+                              column_indices,
+                              matrix_values,
+                              constraint_sense,
+                              rhs,
+                              lower_bounds,
+                              upper_bounds,
+                              variable_types,
+                              &problem);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating QCQP problem: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptAddQuadraticConstraint(
+    problem, 3, qc_row, qc_col, qc_coeff, 0, NULL, NULL, CUOPT_LESS_THAN, 0.0);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error adding quadratic constraint: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetNumConstraints(problem, &num_constraints);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting num constraints: %d\n", status);
+    goto DONE;
+  }
+  /* 1 linear + 1 quadratic constraint = 2 combined. */
+  if (num_constraints != 2) {
+    printf("Error: expected 2 combined constraints, got %d\n", num_constraints);
+    status = -1;
+    goto DONE;
+  }
+
+  status = cuOptGetProblemIntAttribute(problem, CUOPT_ATTR_NUM_LINEAR_CONSTRAINTS, &num_linear);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting num linear constraints: %d\n", status);
+    goto DONE;
+  }
+  if (num_linear != 1) {
+    printf("Error: expected 1 linear constraint, got %d\n", num_linear);
+    status = -1;
+    goto DONE;
+  }
+
+  status =
+    cuOptGetProblemIntAttribute(problem, CUOPT_ATTR_NUM_QUADRATIC_CONSTRAINTS, &num_quadratic);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting num quadratic constraints: %d\n", status);
+    goto DONE;
+  }
+  if (num_quadratic != 1) {
+    printf("Error: expected 1 quadratic constraint, got %d\n", num_quadratic);
+    status = -1;
+    goto DONE;
+  }
+
+  if (num_linear + num_quadratic != num_constraints) {
+    printf("Error: num_linear (%d) + num_quadratic (%d) != num_constraints (%d)\n",
+           num_linear,
+           num_quadratic,
+           num_constraints);
+    status = -1;
+    goto DONE;
+  }
+
+  /* Sized to the documented lengths (num_constraints just queried above, num_variables
+   * used to build the problem), not a guessed capacity. */
+  dual_solution = (cuopt_float_t*)malloc(num_constraints * sizeof(cuopt_float_t));
+  reduced_costs = (cuopt_float_t*)malloc(num_variables * sizeof(cuopt_float_t));
+
+  status = cuOptCreateSolverSettings(&settings);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating solver settings: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptSetIntegerParameter(settings, CUOPT_METHOD, CUOPT_METHOD_BARRIER);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error setting barrier method: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptSolve(problem, settings, &solution);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error solving QCQP: %d\n", status);
+    goto DONE;
+  }
+
+  /* cuOptGetDualSolution on a QCQP solution should return CUOPT_SUCCESS and fill exactly
+   * the num_constraints-sized buffer with NaN (dual recovery not yet supported). A
+   * regression back to issue #1751 (writing more than num_constraints entries) would
+   * overrun this exactly-sized heap allocation. */
+  status = cuOptGetDualSolution(solution, dual_solution);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error: cuOptGetDualSolution on QCQP should return CUOPT_SUCCESS, got %d\n", status);
+    status = -1;
+    goto DONE;
+  }
+  for (i = 0; i < num_constraints; ++i) {
+    if (!isnan(dual_solution[i])) {
+      printf("Error: dual_solution[%d] expected NaN, got %g\n", i, dual_solution[i]);
+      status = -1;
+      goto DONE;
+    }
+  }
+
+  /* cuOptGetReducedCosts on a QCQP solution should return CUOPT_SUCCESS and fill exactly
+   * the num_variables-sized buffer with NaN. */
+  status = cuOptGetReducedCosts(solution, reduced_costs);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error: cuOptGetReducedCosts on QCQP should return CUOPT_SUCCESS, got %d\n", status);
+    status = -1;
+    goto DONE;
+  }
+  for (i = 0; i < num_variables; ++i) {
+    if (!isnan(reduced_costs[i])) {
+      printf("Error: reduced_costs[%d] expected NaN, got %g\n", i, reduced_costs[i]);
+      status = -1;
+      goto DONE;
+    }
+  }
+
+  printf("QCQP solution dual methods test passed\n");
+  status = CUOPT_SUCCESS;
+
+DONE:
+  free(dual_solution);
+  free(reduced_costs);
+  cuOptDestroyProblem(&problem);
+  cuOptDestroySolverSettings(&settings);
+  cuOptDestroySolution(&solution);
+  return status;
+}
+
+/**
  * Test CPU-only execution with CUDA_VISIBLE_DEVICES="" and remote execution enabled.
  * This simulates a CPU host without GPU access.
  * Note: Environment variables must be set before calling this function.

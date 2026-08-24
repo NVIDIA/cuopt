@@ -13,7 +13,7 @@
 #include "../../solution/solution.cuh"
 
 #include <routing/utilities/cuopt_utils.cuh>
-#include <utilities/seed_generator.cuh>
+#include <routing/utilities/seed_generator.cuh>
 
 #include "raft/core/span.hpp"
 

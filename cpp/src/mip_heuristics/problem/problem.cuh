@@ -143,6 +143,14 @@ class problem_t {
     cuopt::mathematical_optimization::simplex::user_problem_t<i_t, f_t>& user_problem) const;
   void set_constraints_from_host_user_problem(
     const cuopt::mathematical_optimization::simplex::user_problem_t<i_t, f_t>& user_problem);
+  // Replace the constraint matrix + row bounds in place from host CSR
+  // Used by presolve passes that rewrite rows in place
+  void set_constraints_from_host_csr(const std::vector<i_t>& offsets,
+                                     const std::vector<i_t>& variables,
+                                     const std::vector<f_t>& coefficients,
+                                     const std::vector<f_t>& row_lower,
+                                     const std::vector<f_t>& row_upper,
+                                     const std::vector<std::string>& names);
 
   uint32_t get_fingerprint() const;
 
@@ -326,7 +334,7 @@ class problem_t {
   std::vector<std::string> row_names{};
   /** name of the objective (only a single objective is currently allowed) */
   std::string objective_name;
-  f_t objective_offset;
+  f_t objective_offset{0};
   bool is_scaled_{false};
   bool preprocess_called{false};
   bool objective_is_integral{false};

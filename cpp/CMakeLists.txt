@@ -277,7 +277,7 @@ FetchContent_Declare(
         # This is the reason we are using the development branch
         # from Oct 12, 2025. Once these changes are merged into the main branch,
         #we can switch to the main branch.
-        GIT_TAG "32b3a87dbf4955d5a2803be74145c389ea31434d"
+        GIT_TAG "55d5edece584885061639ecf3a6eb8a4629be9f2"
         GIT_PROGRESS TRUE
         EXCLUDE_FROM_ALL
         SYSTEM

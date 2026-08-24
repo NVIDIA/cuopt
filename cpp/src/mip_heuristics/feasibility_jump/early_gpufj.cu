@@ -12,7 +12,7 @@
 #include <mip_heuristics/solver_context.cuh>
 #include <utilities/logger.hpp>
 
-#include <raft/core/error.hpp>
+#include <raft/core/device_setter.hpp>
 
 #include <limits>
 
@@ -63,7 +63,7 @@ void early_gpufj_t<i_t, f_t>::start()
 #pragma omp task default(none) shared(fj_ptr_) priority(CUOPT_DEFAULT_TASK_PRIORITY) \
   depend(out : *fj_ptr_)
   {
-    RAFT_CUDA_TRY(cudaSetDevice(this->device_id_));
+    raft::device_setter guard(this->device_id_);
     fj_ptr_->solve(*this->solution_ptr_);
   }
 }

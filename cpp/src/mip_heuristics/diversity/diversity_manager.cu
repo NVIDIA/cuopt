@@ -11,6 +11,7 @@
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
 
+#include <mip_heuristics/presolve/block_bve.cuh>
 #include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
 #include <mip_heuristics/presolve/probing_cache.cuh>
 #include <mip_heuristics/presolve/trivial_presolve.cuh>
@@ -18,6 +19,7 @@
 
 #include <pdlp/solve.cuh>
 
+#include <utilities/copy_helpers.hpp>
 #include <utilities/scope_guard.hpp>
 
 #include <chrono>
@@ -307,7 +309,10 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
     CUOPT_LOG_INFO("Probing-cache step disabled via %s=false", CUOPT_MIP_PROBING);
     run_probing_cache = false;
   }
-  if (run_probing_cache) {
+  const bool remap_cache_ids           = true;
+  problem_ptr->related_vars_time_limit = context.settings.heuristic_params.related_vars_time_limit;
+
+  if (run_probing_cache && !global_timer.check_time_limit() && !presolve_timer.check_time_limit()) {
     log_presolve_budget("PROBING", probing_features, probing_budget);
     f_t time_for_probing_cache = std::min(time_limit, (f_t)global_timer.remaining_time());
     timer_t probing_timer{time_for_probing_cache};
@@ -324,9 +329,17 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
       std::chrono::duration<double>(std::chrono::steady_clock::now() - probing_t0).count());
     if (problem_is_infeasible) { return false; }
   }
-  const bool remap_cache_ids           = true;
-  problem_ptr->related_vars_time_limit = context.settings.heuristic_params.related_vars_time_limit;
+
   if (!global_timer.check_time_limit()) { trivial_presolve(*problem_ptr, remap_cache_ids); }
+
+  if (context.settings.block_bve && run_probing_cache) {
+    timer_t bve_deadline(std::min(global_timer.remaining_time(), presolve_timer.remaining_time()));
+    if (!block_bve_phase(ls.constraint_prop.bounds_update, *problem_ptr, bve_deadline)) {
+      stats.presolve_time = timer.elapsed_time();
+      return false;
+    }
+  }
+
   if (!problem_ptr->empty && !check_bounds_sanity(*problem_ptr)) { return false; }
   // if (!presolve_timer.check_time_limit() && !context.settings.heuristics_only &&
   //     !problem_ptr->empty) {

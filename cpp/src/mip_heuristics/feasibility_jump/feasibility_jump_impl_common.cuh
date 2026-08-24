@@ -171,7 +171,7 @@ HDI std::pair<f_t, f_t> feas_score_constraint(
       base_feas += (i_t)(cstr_weight * fj.settings->parameters.excess_improvement_weight);
     }
     // simple worsening
-    else if (!old_sat && !new_sat && old_lhs <= new_lhs) {
+    else if (!old_sat && !new_sat && old_lhs < new_lhs) {
       cuopt_assert(old_viol && new_viol, "");
       base_feas -= (i_t)(cstr_weight * fj.settings->parameters.excess_improvement_weight);
     }

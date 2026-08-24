@@ -483,6 +483,11 @@ TEST(c_api, lp_solution_mip_methods) { EXPECT_EQ(test_lp_solution_mip_methods(),
 
 TEST(c_api, mip_solution_lp_methods) { EXPECT_EQ(test_mip_solution_lp_methods(), CUOPT_SUCCESS); }
 
+TEST(c_api, qcqp_solution_dual_methods)
+{
+  EXPECT_EQ(test_qcqp_solution_dual_methods(), CUOPT_SUCCESS);
+}
+
 // =============================================================================
 // CPU-Only Execution Tests
 // These tests verify that cuOpt can run on a CPU-only host with remote execution

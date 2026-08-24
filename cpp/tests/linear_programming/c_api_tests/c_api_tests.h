@@ -67,6 +67,7 @@ cuopt_int_t test_deterministic_bb(const char* filename,
 /* Tests for solution interface polymorphism (use inline problems, no file I/O) */
 cuopt_int_t test_lp_solution_mip_methods();
 cuopt_int_t test_mip_solution_lp_methods();
+cuopt_int_t test_qcqp_solution_dual_methods();
 
 cuopt_int_t test_pdlp_precision_single(const char* filename,
                                        cuopt_int_t* termination_status_ptr,

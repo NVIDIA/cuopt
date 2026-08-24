@@ -1565,8 +1565,9 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   } else {
     lp_settings.cut_off = cutoff + settings_.dual_tol;
   }
-  lp_settings.inside_mip      = 2;
-  lp_settings.time_limit      = settings_.time_limit - toc(exploration_stats_.start_time);
+  lp_settings.inside_mip = 2;
+  lp_settings.time_limit = settings_.time_limit - toc(exploration_stats_.start_time);
+  if (lp_settings.time_limit <= 0.0) { return dual_status_t::TIME_LIMIT; }
   lp_settings.scale_columns   = false;
   lp_settings.iteration_limit = iter_limit;
 
@@ -1823,6 +1824,10 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
     abs_gap     = compute_user_abs_gap(original_lp_, upper_bound, lower_bound);
   }
 
+  if (solver_status_ == mip_status_t::TIME_LIMIT || solver_status_ == mip_status_t::OPTIMAL) {
+    node_concurrent_halt_ = 1;
+  }
+
   // If the solver exits early without consuming the local stack, or converged according to
   // the gap rules while nodes are still pending, put those nodes back into the global queue
   // before returning.
@@ -1840,6 +1845,9 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::launch_bfs_worker(bfs_worker_t<i_t, f_t>* worker)
 {
+  // The status may change after the caller checks its search-loop condition.
+  if (solver_status_ != mip_status_t::UNSET) { return; }
+
   bfs_worker_t<i_t, f_t>* idle_worker = bfs_worker_pool_.pop_idle_worker();
   if (!idle_worker) return;
 
@@ -1976,8 +1984,7 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
     rel_gap     = user_relative_gap(user_obj, user_lower);
 
     if (abs_gap <= settings_.absolute_mip_gap_tol || rel_gap <= settings_.relative_mip_gap_tol) {
-      node_concurrent_halt_ = 1;
-      solver_status_        = mip_status_t::OPTIMAL;
+      solver_status_ = mip_status_t::OPTIMAL;
       break;
     }
 
@@ -1985,6 +1992,10 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
     if (node_queue.best_first_queue_size() == 0 || worker->rng.next_double() < steal_chance) {
       work_stealing(worker);
     }
+  }
+
+  if (solver_status_ == mip_status_t::TIME_LIMIT || solver_status_ == mip_status_t::OPTIMAL) {
+    node_concurrent_halt_ = 1;
   }
 
   // If the worker has still nodes in the queue (this can happen if it was stopped due to
@@ -2044,7 +2055,8 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker, 
     }
 
     if (toc(exploration_stats_.start_time) > settings_.time_limit) {
-      solver_status_ = mip_status_t::TIME_LIMIT;
+      node_concurrent_halt_ = 1;
+      solver_status_        = mip_status_t::TIME_LIMIT;
       break;
     }
     if (dive_stats.nodes_explored >= diving_node_limit) { break; }
@@ -2063,7 +2075,8 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker, 
     ++dive_stats.nodes_explored;
 
     if (lp_status == dual_status_t::TIME_LIMIT) {
-      solver_status_ = mip_status_t::TIME_LIMIT;
+      node_concurrent_halt_ = 1;
+      solver_status_        = mip_status_t::TIME_LIMIT;
       break;
     }
     if (lp_status == dual_status_t::CONCURRENT_LIMIT) { break; }

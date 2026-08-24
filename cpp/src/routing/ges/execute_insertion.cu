@@ -7,8 +7,8 @@
 
 #include "../solution/solution.cuh"
 
+#include <routing/utilities/seed_generator.cuh>
 #include <utilities/copy_helpers.hpp>
-#include <utilities/seed_generator.cuh>
 #include "compute_delivery_insertions.cuh"
 #include "compute_fragment_ejections.cuh"
 #include "ejection_pool.cuh"
@@ -281,7 +281,7 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::execute_best_insertion_ejectio
                                      solution_ptr->get_num_orders(),
                                      solution_ptr->problem_ptr->get_max_break_dimensions(),
                                      solution_ptr->get_n_routes());
-      int64_t seed          = seed_generator::get_seed();
+      int64_t seed          = solution_ptr->problem_ptr->seed_gen.get_seed();
       i_t* p_scores         = p_scores_.data();
       i_t fragment_size_arg = fragment_size;
       i_t fragment_step_arg = fragment_step;
@@ -406,7 +406,7 @@ i_t guided_ejection_search_t<i_t, f_t, REQUEST>::find_single_insertion(
                       solution_ptr->get_num_orders(),
                       solution_ptr->problem_ptr->get_max_break_dimensions(),
                       solution_ptr->get_n_routes()),
-      seed_generator::get_seed());
+      solution_ptr->problem_ptr->seed_gen.get_seed());
 
   RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream());
 

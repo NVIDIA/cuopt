@@ -163,6 +163,15 @@ class mip_solver_settings_t {
    */
   bool probing{true};
   /**
+   * @brief Enable the block bounded-variable-elimination step of cuOpt's MIP presolve.
+   *
+   * Runs after trivial_presolve and eliminates blocks of functionally-determined binary auxiliary
+   * variables discovered via the probing-cache implication closure, re-encoding each block's
+   * projected relation as certified prime-implicate clauses. Requires the probing-cache step; a
+   * no-op when no certified reduction exists.
+   */
+  bool block_bve{true};
+  /**
    * @brief Determinism mode for MIP solver.
    *
    * Controls the determinism behavior of the MIP solver:

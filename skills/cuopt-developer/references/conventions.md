@@ -55,9 +55,20 @@ This applies to all comment types: inline comments, block comments, suppression 
 
 ## C++ Implementation Style
 
-- Prefer direct loops or named helpers for performance-critical traversal logic. Reserve lambdas for
-  short predicates and callbacks; large local lambdas obscure control flow and can lead to repeated
-  scans.
+- **Never write large lambdas inside a function body.** If a lambda is more than a short
+  predicate/comparator (roughly more than ~3–5 lines, or it has nested lambdas, local state,
+  or non-trivial control flow), extract it as a named free function, file-local helper in an
+  anonymous namespace, or private method. Large local lambdas obscure control flow, hide reuse,
+  and make work/time accounting harder to reason about.
+- Prefer direct loops or named helpers for performance-critical traversal logic. Reserve
+  in-function lambdas for short predicates and callbacks only.
+- Keep work-estimate and time-limit checks at phase or outer-loop boundaries. Accumulate the work
+  performed by cheap inner loops and charge it once when the phase completes; do not gate every
+  inner iteration. Do not separately test a sticky limit or raw estimate immediately before or
+  after `add_work_estimate` when that call already provides the gate for the same work.
+- Charge the operation that is actually performed. For vector copies and sparse traversals, base
+  work on the number of visited or copied entries rather than only the number of containers.
+  Avoid charging the same traversal in both its caller and callee.
 
 ### Suppression comments (`// NOSONAR`, `// NOLINT`, etc.)
 
@@ -126,11 +137,50 @@ signed subtraction (`std::vector<i_t> v(static_cast<size_t>(hi - lo) + 2, 0)`), 
 the narrowing `size_t`→`i_t` in `static_cast<i_t>(x.size())` (established style;
 keep it)
 
+### Integer widths — prefer fixed-width types
+
+Prefer `<cstdint>` fixed-width types (`int32_t`, `int64_t`, `uint32_t`, …) over
+plain `int` / `long` / `long long` when the value range or ABI width matters
+(counts that can exceed 32 bits, device grid math, work estimates, file offsets).
+
+Avoid multi-word functional casts such as `long long(x)` in `.cu`/`.cuh` — they
+confuse CUDA-aware tooling (`type name is not allowed`). Use a C-style cast to a
+fixed-width type instead: `(int64_t)x`.
+
+```cpp
+const long long total = long long(num) * long long(patterns);  // ❌
+const int64_t total = (int64_t)num * (int64_t)patterns;          // ✅
+```
+
+Keep `i_t` / `f_t` for problem-index and numeric template parameters; use
+`int64_t` (etc.) for host-side wide counters outside that abstraction.
+
 ### CUDA Error Checking
 
 ```cpp
 RAFT_CUDA_TRY(cudaMemcpy(...));
 ```
+
+### Prefer modern CCCL utilities in device code
+
+When writing or editing CUDA kernels, prefer CCCL / libcu++ helpers over hand-rolled
+bit math, reductions, or integer tricks. They encode the PTX-friendly form and avoid
+boilerplate that compilers often fail to recover from runtime values.
+
+Examples (CUDA 13 / CCCL 3.x era — headers already used elsewhere in `cpp/src`):
+
+| Need | Prefer | Instead of |
+|------|--------|------------|
+| Extract a bitfield / decode packed indices | `cuda::bitfield_extract` (`<cuda/bit>`) | `%` / `/` by a runtime `1 << k` (nvcc usually will not strength-reduce those to mask/shift) |
+| Build a contiguous bit mask | `cuda::bitmask` | Hand-written `((1u << w) - 1u) << start` |
+| Test / round to power of two | `cuda::is_power_of_two`, `next_power_of_two`, `prev_power_of_two` (`<cuda/cmath>`), or `cuda::std::has_single_bit` / `bit_ceil` / `bit_floor` (`<cuda/std/bit>`) | Ad-hoc `(x & (x - 1)) == 0` / manual ceil loops |
+| Divide/mod by a value that is constant for a launch (or across many ops) but not a compile-time constant | `cuda::fast_mod_div` (`<cuda/cmath>`) — construct on the host (or once), pass into the kernel, use `/` `%` / `cuda::div` | Hot-path `idiv` / handwritten libdivide magic |
+| Warp/block algorithms | CUB / CCCL / RAFT primitives already used in-tree | Homegrown shared-memory reductions when an existing primitive fits |
+
+Docs: [CCCL bit extensions](https://nvidia.github.io/cccl/unstable/libcudacxx/extended_api/bit.html),
+[pow2 helpers](https://nvidia.github.io/cccl/unstable/libcudacxx/extended_api/math/pow2.html),
+[`cuda::fast_mod_div`](https://nvidia.github.io/cccl/unstable/libcudacxx/extended_api/math/fast_mod_div.html).
+Check signatures in the installed headers rather than guessing — APIs evolve with CCCL.
 
 ## Memory Management
 
@@ -158,3 +208,15 @@ Read existing code in `cpp/src/` for real examples of RMM allocation, stream-ord
    - Python pytest: `python/.../tests/`
 
 **Add at least one regression test for new behavior.**
+
+When a new MIP test loads a MIPLIB instance (e.g. via `make_path_absolute("mip/<name>.mps")`),
+that instance must appear in `datasets/mip/download_miplib_test_dataset.sh`'s `INSTANCES`
+list. CI and local setups only fetch that allowlist — an unlisted name fails at parse time
+with a missing-file error even though the test itself is correct. Add the basename there as part of the same change that introduces the test.
+
+Calling cuOpt MIP internals that use OpenMP taskloops (notably `diversity_manager::run_presolve`
+→ `compute_probing_cache`) from a plain gtest must open an OMP team first, the same way
+`solve_mip` does (`#pragma omp parallel num_threads(...)` + `#pragma omp masked`, with
+`omp_set_max_active_levels(2)` if needed). Probing sizes its pool as
+`omp_get_num_threads() - 1`; outside a parallel region that is 0 and probing becomes a silent
+no-op (Papilo size unchanged, test finishes in a few hundred ms).
