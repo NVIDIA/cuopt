@@ -30,6 +30,22 @@ on:
           publish wheels.
         type: boolean
         default: false
+    secrets:
+      KITMAKER_PORTAL_AUTHORIZATION:
+        description: Bearer token (bare, no 'Bearer ' prefix) for the Kitmaker Portal API.
+        required: true
+      KITMAKER_PORTAL_ACC_OWNER_EMAIL:
+        description: Fallback for the 'pic' input. Required if 'pic' isn't passed.
+        required: false
+      CUOPT_SLACK_BOT_TOKEN:
+        description: Slack bot token for the on-failure notification. Optional; skipped if unset.
+        required: false
+      CUOPT_SLACK_CHANNEL_ID:
+        description: Slack channel ID for the on-failure notification. Optional; skipped if unset.
+        required: false
+      CUOPT_SLACK_MENTION_ID:
+        description: Slack user or subteam ID to mention on failure. Optional.
+        required: false
     outputs:
       status_id:
         description: Kitmaker Portal status UUID created by this release.
@@ -71,6 +87,7 @@ jobs:
       status_id: ${{ steps.kitmaker-release.outputs.status_id }}
     env:
       GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
       PROJECT_NAME: ${{ inputs.project_name }}
       PROJECT_ID: ${{ inputs.project_id }}
       ASSET_PATTERN: ${{ inputs.wheel_asset_pattern }}
@@ -78,7 +95,7 @@ jobs:
     steps:
       - name: Validate inputs
         run: |
-          [[ -n "${{ inputs.release_tag }}" ]] || { echo "::error::'release_tag' is required"; exit 1; }
+          [[ -n "$RELEASE_TAG" ]] || { echo "::error::'release_tag' is required"; exit 1; }
           [[ -n "$PROJECT_NAME" ]] || { echo "::error::'project_name' is required"; exit 1; }
           [[ -n "$PROJECT_ID" ]] || { echo "::error::'project_id' is required"; exit 1; }
           [[ -n "$ASSET_PATTERN" ]] || { echo "::error::'wheel_asset_pattern' is required"; exit 1; }
@@ -87,11 +104,11 @@ jobs:
       - name: Collect wheel asset URLs from the GitHub Release
         id: assets
         env:
-          RELEASE_TAG: ${{ inputs.release_tag }}
           UPLOAD: ${{ inputs.upload }}
         run: |
-          urls_json=$(gh release view "$RELEASE_TAG" --repo "${{ github.repository }}" --json assets \
-            --jq "[.assets[] | select(.name | test(\"$ASSET_PATTERN\")) | .url]")
+          assets_json=$(gh release view "$RELEASE_TAG" --repo "${{ github.repository }}" --json assets)
+          urls_json=$(echo "$assets_json" | jq -c --arg pattern "$ASSET_PATTERN" \
+            '[.assets[] | select(.name | test($pattern)) | .url]')
 
           if [[ "$(echo "$urls_json" | jq 'length')" -eq 0 ]]; then
             echo "::error::No assets on release '$RELEASE_TAG' matched pattern '$ASSET_PATTERN'"
@@ -138,7 +155,7 @@ jobs:
           body=$(jq -n --arg project_name "$PROJECT_NAME" --argjson payload "$PAYLOAD" \
             '{project_name: $project_name, payload: $payload}')
 
-          http_response=$(curl -sS --retry 3 --retry-delay 5 -w '\n%{http_code}' \
+          http_response=$(curl -sS --retry 3 --retry-delay 5 --connect-timeout 10 --max-time 60 -w '\n%{http_code}' \
             -H "X-Charon-GHA-Token: $FERRY_TOKEN" \
             -H "Authorization: Bearer $PORTAL_AUTHORIZATION" \
             -H "Content-Type: application/json" \
@@ -155,7 +172,10 @@ jobs:
             exit 1
           fi
 
-          status_id=$(echo "$response" | jq -r '.release_uuid')
+          status_id=$(echo "$response" | jq -e -r '.release_uuid | strings | select(length > 0)') || {
+            echo "::error::Response missing a non-empty 'release_uuid'"
+            exit 1
+          }
           echo "status_id=$status_id" >> "$GITHUB_OUTPUT"
 
       - name: Poll Kitmaker Portal status
@@ -167,11 +187,11 @@ jobs:
             # Re-mint on every iteration: the poll loop can run up to 30 minutes and the
             # GitHub OIDC token minted once at job start can expire before a large wheel
             # (e.g. libcuopt) finishes processing on Kitmaker's side.
-            FERRY_TOKEN=$(curl -sS --retry 3 --retry-delay 5 \
+            FERRY_TOKEN=$(curl -sS --retry 3 --retry-delay 5 --connect-timeout 10 --max-time 30 \
               -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
               "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=charon.nvidia.com" | jq -r '.value')
 
-            http_response=$(curl -sS --retry 3 --retry-delay 5 -w '\n%{http_code}' \
+            http_response=$(curl -sS --retry 3 --retry-delay 5 --connect-timeout 10 --max-time 60 -w '\n%{http_code}' \
               -H "X-Charon-GHA-Token: $FERRY_TOKEN" \
               -H "Authorization: Bearer $PORTAL_AUTHORIZATION" \
               "http://127.0.0.1:8888/kitmaker-portal/api/v0/status/$STATUS_ID")
@@ -184,7 +204,11 @@ jobs:
               exit 1
             fi
 
-            status=$(echo "$response" | jq -r '.status')
+            status=$(echo "$response" | jq -e -r '.status | strings | select(length > 0)') || {
+              echo "::error::Response missing a non-empty 'status'"
+              echo "$response"
+              exit 1
+            }
             echo "Kitmaker Portal release status: $status"
             case "$status" in
               completed)

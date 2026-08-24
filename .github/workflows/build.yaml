@@ -315,6 +315,10 @@ jobs:
         run: |
           tag="${GITHUB_REF#refs/tags/}"
           mapfile -t wheels < <(find dist -name '*.whl')
+          if [[ ${#wheels[@]} -eq 0 ]]; then
+            echo "::error::No wheel files found in dist/ -- refusing to create an asset-free release"
+            exit 1
+          fi
           gh release create "$tag" \
             --repo "${{ github.repository }}" \
             --title "$tag" \
@@ -332,7 +336,12 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    secrets: inherit # zizmor: ignore[secrets-inherit]
+    secrets:
+      KITMAKER_PORTAL_AUTHORIZATION: ${{ secrets.KITMAKER_PORTAL_AUTHORIZATION }}
+      KITMAKER_PORTAL_ACC_OWNER_EMAIL: ${{ secrets.KITMAKER_PORTAL_ACC_OWNER_EMAIL }}
+      CUOPT_SLACK_BOT_TOKEN: ${{ secrets.CUOPT_SLACK_BOT_TOKEN }}
+      CUOPT_SLACK_CHANNEL_ID: ${{ secrets.CUOPT_SLACK_CHANNEL_ID }}
+      CUOPT_SLACK_MENTION_ID: ${{ secrets.CUOPT_SLACK_MENTION_ID }}
     uses: ./.github/workflows/kitmaker_portal.yaml
     with:
       release_tag: ${{ needs.release-github.outputs.release-tag }}
@@ -346,7 +355,12 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    secrets: inherit # zizmor: ignore[secrets-inherit]
+    secrets:
+      KITMAKER_PORTAL_AUTHORIZATION: ${{ secrets.KITMAKER_PORTAL_AUTHORIZATION }}
+      KITMAKER_PORTAL_ACC_OWNER_EMAIL: ${{ secrets.KITMAKER_PORTAL_ACC_OWNER_EMAIL }}
+      CUOPT_SLACK_BOT_TOKEN: ${{ secrets.CUOPT_SLACK_BOT_TOKEN }}
+      CUOPT_SLACK_CHANNEL_ID: ${{ secrets.CUOPT_SLACK_CHANNEL_ID }}
+      CUOPT_SLACK_MENTION_ID: ${{ secrets.CUOPT_SLACK_MENTION_ID }}
     uses: ./.github/workflows/kitmaker_portal.yaml
     with:
       release_tag: ${{ needs.release-github.outputs.release-tag }}
@@ -360,7 +374,12 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    secrets: inherit # zizmor: ignore[secrets-inherit]
+    secrets:
+      KITMAKER_PORTAL_AUTHORIZATION: ${{ secrets.KITMAKER_PORTAL_AUTHORIZATION }}
+      KITMAKER_PORTAL_ACC_OWNER_EMAIL: ${{ secrets.KITMAKER_PORTAL_ACC_OWNER_EMAIL }}
+      CUOPT_SLACK_BOT_TOKEN: ${{ secrets.CUOPT_SLACK_BOT_TOKEN }}
+      CUOPT_SLACK_CHANNEL_ID: ${{ secrets.CUOPT_SLACK_CHANNEL_ID }}
+      CUOPT_SLACK_MENTION_ID: ${{ secrets.CUOPT_SLACK_MENTION_ID }}
     uses: ./.github/workflows/kitmaker_portal.yaml
     with:
       release_tag: ${{ needs.release-github.outputs.release-tag }}
@@ -374,7 +393,12 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    secrets: inherit # zizmor: ignore[secrets-inherit]
+    secrets:
+      KITMAKER_PORTAL_AUTHORIZATION: ${{ secrets.KITMAKER_PORTAL_AUTHORIZATION }}
+      KITMAKER_PORTAL_ACC_OWNER_EMAIL: ${{ secrets.KITMAKER_PORTAL_ACC_OWNER_EMAIL }}
+      CUOPT_SLACK_BOT_TOKEN: ${{ secrets.CUOPT_SLACK_BOT_TOKEN }}
+      CUOPT_SLACK_CHANNEL_ID: ${{ secrets.CUOPT_SLACK_CHANNEL_ID }}
+      CUOPT_SLACK_MENTION_ID: ${{ secrets.CUOPT_SLACK_MENTION_ID }}
     uses: ./.github/workflows/kitmaker_portal.yaml
     with:
       release_tag: ${{ needs.release-github.outputs.release-tag }}
@@ -388,7 +412,12 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    secrets: inherit # zizmor: ignore[secrets-inherit]
+    secrets:
+      KITMAKER_PORTAL_AUTHORIZATION: ${{ secrets.KITMAKER_PORTAL_AUTHORIZATION }}
+      KITMAKER_PORTAL_ACC_OWNER_EMAIL: ${{ secrets.KITMAKER_PORTAL_ACC_OWNER_EMAIL }}
+      CUOPT_SLACK_BOT_TOKEN: ${{ secrets.CUOPT_SLACK_BOT_TOKEN }}
+      CUOPT_SLACK_CHANNEL_ID: ${{ secrets.CUOPT_SLACK_CHANNEL_ID }}
+      CUOPT_SLACK_MENTION_ID: ${{ secrets.CUOPT_SLACK_MENTION_ID }}
     uses: ./.github/workflows/kitmaker_portal.yaml
     with:
       release_tag: ${{ needs.release-github.outputs.release-tag }}
@@ -402,7 +431,12 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    secrets: inherit # zizmor: ignore[secrets-inherit]
+    secrets:
+      KITMAKER_PORTAL_AUTHORIZATION: ${{ secrets.KITMAKER_PORTAL_AUTHORIZATION }}
+      KITMAKER_PORTAL_ACC_OWNER_EMAIL: ${{ secrets.KITMAKER_PORTAL_ACC_OWNER_EMAIL }}
+      CUOPT_SLACK_BOT_TOKEN: ${{ secrets.CUOPT_SLACK_BOT_TOKEN }}
+      CUOPT_SLACK_CHANNEL_ID: ${{ secrets.CUOPT_SLACK_CHANNEL_ID }}
+      CUOPT_SLACK_MENTION_ID: ${{ secrets.CUOPT_SLACK_MENTION_ID }}
     uses: ./.github/workflows/kitmaker_portal.yaml
     with:
       release_tag: ${{ needs.release-github.outputs.release-tag }}
@@ -416,7 +450,12 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    secrets: inherit # zizmor: ignore[secrets-inherit]
+    secrets:
+      KITMAKER_PORTAL_AUTHORIZATION: ${{ secrets.KITMAKER_PORTAL_AUTHORIZATION }}
+      KITMAKER_PORTAL_ACC_OWNER_EMAIL: ${{ secrets.KITMAKER_PORTAL_ACC_OWNER_EMAIL }}
+      CUOPT_SLACK_BOT_TOKEN: ${{ secrets.CUOPT_SLACK_BOT_TOKEN }}
+      CUOPT_SLACK_CHANNEL_ID: ${{ secrets.CUOPT_SLACK_CHANNEL_ID }}
+      CUOPT_SLACK_MENTION_ID: ${{ secrets.CUOPT_SLACK_MENTION_ID }}
     uses: ./.github/workflows/kitmaker_portal.yaml
     with:
       release_tag: ${{ needs.release-github.outputs.release-tag }}
