@@ -305,7 +305,7 @@ jobs:
       - name: Download built wheels
         uses: actions/download-artifact@v4
         with:
-          pattern: "wheel_*"
+          pattern: "cuopt_wheel_*"
           path: dist
           merge-multiple: true
       - name: Create GitHub Release and upload wheels
