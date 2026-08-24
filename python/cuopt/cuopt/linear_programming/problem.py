@@ -38,10 +38,8 @@ SEMI_CONTINUOUS = VType.SEMI_CONTINUOUS
 def _to_vtype(value):
     """
     Coerces a variable type to a :py:class:`VType` member.
-
     Besides VType members, the single character codes are accepted as ``str``
-    or ``bytes``: MPS/LP parsing yields ``str`` and the data model exchanges
-    variable types with the solver as characters.
+    or ``bytes``.
     """
     if isinstance(value, VType):
         return value
