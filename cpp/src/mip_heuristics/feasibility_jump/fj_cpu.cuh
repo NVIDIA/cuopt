@@ -233,6 +233,32 @@ struct fj_cpu_climber_t {
   host_contiguous_set_t<i_t> satisfied_constraints;
   bool feasible_found{false};
   bool trigger_early_lhs_recomputation{false};
+
+  // Move batching over a colouring of the variable co-occurrence graph, where each row is a clique.
+  // Same colour means no shared row, so a batch of same-coloured moves has disjoint row support.
+  bool use_move_batching{false};
+  i_t n_colors{0};
+  std::vector<i_t> h_var_color;
+  // Per variable, the best move seen since the epoch below, and the sum of its incident row
+  // versions at that moment. The entry is usable while both still match.
+  std::vector<fj_staged_score_t> h_var_best_score;
+  std::vector<f_t> h_var_best_delta;
+  std::vector<int64_t> h_var_best_stamp;
+  std::vector<int64_t> h_var_best_rowsum;
+  int64_t var_best_epoch{1};
+  // Variables that entered the table with a positive score, bucketed by colour. Stale entries are
+  // skipped at selection, so each bucket carries the epoch it was last cleared in.
+  std::vector<std::vector<i_t>> h_color_candidates;
+  std::vector<int64_t> h_color_epoch;
+  // Membership is stamped separately from validity: a variable consumed by a batch is invalidated
+  // while staying in its bucket, so it cannot be enqueued twice in one epoch.
+  std::vector<int64_t> h_var_bucket_stamp;
+  int64_t n_batch_attempts{0};
+  int64_t n_batched_moves{0};
+  // Companions per attempt, in unit bins. The last bin saturates, so max_batch_size carries the
+  // tail exactly.
+  std::vector<int64_t> batch_size_hist;
+  int64_t max_batch_size{0};
   f_t total_violations{0};
   // Kahan compensation for total_violations, mirroring h_lhs_sumcomp. Reset wherever the total is
   // re-derived from the violated set.

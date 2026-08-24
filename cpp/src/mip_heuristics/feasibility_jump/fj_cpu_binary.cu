@@ -329,7 +329,7 @@ static fj_bin_scan_t fj_bin_scan(const fj_cpu_climber_t<i_t, f_t>& c)
       [&reverse_offsets, &reverse_constraints](int32_t v) {
         const auto first = reverse_constraints.begin() + reverse_offsets[v];
         const auto last  = reverse_constraints.begin() + reverse_offsets[v + 1];
-        return thrust::adjacent_find(thrust::host, first, last) == last;
+        return std::adjacent_find(first, last) == last;
       }),
     "duplicate variable in CSR row");
 

@@ -196,7 +196,6 @@ HDI f_t get_breakthrough_move(typename fj_t<i_t, f_t>::climber_data_t::view_t fj
   auto bounds   = fj.pb.variable_bounds[var_idx];
   f_t v_lb      = get_lower(bounds);
   f_t v_ub      = get_upper(bounds);
-  cuopt_assert(isfinite(v_lb) || isfinite(v_ub), "unexpected free variable");
   cuopt_assert(v_lb <= v_ub, "invalid bounds");
   cuopt_assert(fj.pb.check_variable_within_bounds(var_idx, fj.incumbent_assignment[var_idx]),
                "invalid incumbent assignment");
@@ -220,10 +219,12 @@ HDI f_t get_breakthrough_move(typename fj_t<i_t, f_t>::climber_data_t::view_t fj
     new_val = old_val + delta_ij;
   }
 
-  // fallback
+  // A positive coefficient gives a negative delta, so only the lower bound can be the one broken,
+  // and a broken bound is finite. Free and half-free variables therefore land here finite too.
   if (!fj.pb.check_variable_within_bounds(var_idx, new_val)) {
     new_val = obj_coeff > 0 ? v_lb : v_ub;
   }
+  cuopt_assert(isfinite(new_val), "breakthrough move left the representable range");
 
   return new_val;
 }

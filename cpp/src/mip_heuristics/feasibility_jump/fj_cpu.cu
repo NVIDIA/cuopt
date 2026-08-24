@@ -160,7 +160,8 @@ std::pair<f_t, f_t> feas_score_constraint(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
 {
   const auto& fj = fj_cpu.view;
   cuopt_assert(isfinite(delta), "invalid delta");
-  cuopt_assert(cstr_coeff != 0 && isfinite(cstr_coeff), "invalid coefficient");
+  // A model may store explicit zeros, and a zero coefficient contributes nothing to the row.
+  cuopt_assert(isfinite(cstr_coeff), "invalid coefficient");
 
   f_t base_feas    = 0;
   f_t bonus_robust = 0;
@@ -385,6 +386,11 @@ static void precompute_problem_features(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   fj_cpu.problem_density = (double)total_nnz / ((double)n_vars * n_cstrs);
 }
 
+// Greedy first-fit colouring of the variable co-occurrence graph, where each row is a clique. The
+// adjacency is walked per variable and never stored: the clique expansion is far larger than nnz.
+template <typename i_t, typename f_t>
+static void compute_variable_coloring(fj_cpu_climber_t<i_t, f_t>& fj_cpu);
+
 template <typename i_t, typename f_t>
 static void log_regression_features(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
                                     double time_window_ms,
@@ -548,6 +554,207 @@ static inline std::pair<i_t, i_t> range_for_constraint(fj_cpu_climber_t<i_t, f_t
   return std::make_pair(fj_cpu.h_offsets[cstr_idx], fj_cpu.h_offsets[cstr_idx + 1]);
 }
 
+// Structure a colouring needs to pay for itself: enough variables per row that colour classes hold
+// more than one member, and a clique expansion small enough to colour cheaply.
+constexpr double fj_batch_min_class_size    = 2.0;
+constexpr double fj_batch_max_edges_per_nnz = 32.0;
+// A lane stops batching once this many attempts have yielded fewer companions per attempt than the
+// floor, so a model whose improving moves are never independent pays the probe and nothing more.
+constexpr int64_t fj_batch_probe_attempts = 2000;
+constexpr double fj_batch_min_yield       = 0.05;
+constexpr int32_t fj_batch_hist_bins      = 64;
+
+template <typename i_t, typename f_t>
+static void compute_variable_coloring(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
+{
+  const i_t n_vars  = fj_cpu.view.pb.n_variables;
+  const i_t n_cstrs = fj_cpu.view.pb.n_constraints;
+
+  i_t max_row_length  = 0;
+  double clique_edges = 0;
+  for (i_t row = 0; row < n_cstrs; ++row) {
+    const i_t length = fj_cpu.h_offsets[row + 1] - fj_cpu.h_offsets[row];
+    max_row_length   = std::max(max_row_length, length);
+    if (length > 1) clique_edges += (double)length * (length - 1) / 2.0;
+  }
+  if (n_vars <= 0 || max_row_length <= 0) return;
+
+  const double class_size    = (double)n_vars / max_row_length;
+  const double edges_per_nnz = clique_edges / std::max<double>(1, (double)fj_cpu.view.pb.nnz);
+  if (class_size < fj_batch_min_class_size || edges_per_nnz > fj_batch_max_edges_per_nnz) {
+    CUOPT_LOG_DEBUG("CPUFJ move batching declined: class size %.2f, clique edges/nnz %.2f",
+                    class_size,
+                    edges_per_nnz);
+    return;
+  }
+
+  const auto started = std::chrono::steady_clock::now();
+  fj_cpu.h_var_color.assign(n_vars, -1);
+  fj_cpu.n_colors = 0;
+  std::vector<i_t> neighbor_stamp(n_vars, -1);
+  std::vector<i_t> color_stamp(n_vars, -1);
+
+  for (i_t var = 0; var < n_vars; ++var) {
+    const auto [rev_begin, rev_end] = reverse_range_for_var<i_t, f_t>(fj_cpu, var);
+    for (i_t p = rev_begin; p < rev_end; ++p) {
+      const auto [begin, end] =
+        range_for_constraint<i_t, f_t>(fj_cpu, fj_cpu.h_reverse_constraints[p]);
+      for (i_t k = begin; k < end; ++k) {
+        const i_t other = fj_cpu.h_variables[k];
+        if (other == var || neighbor_stamp[other] == var) continue;
+        neighbor_stamp[other] = var;
+        const i_t taken       = fj_cpu.h_var_color[other];
+        if (taken >= 0) color_stamp[taken] = var;
+      }
+    }
+
+    i_t color = 0;
+    while (color < fj_cpu.n_colors && color_stamp[color] == var) ++color;
+    if (color == fj_cpu.n_colors) ++fj_cpu.n_colors;
+    fj_cpu.h_var_color[var] = color;
+  }
+
+  fj_cpu.h_var_best_score.assign(n_vars, fj_staged_score_t::invalid());
+  fj_cpu.h_var_best_delta.assign(n_vars, f_t{0});
+  fj_cpu.h_var_best_stamp.assign(n_vars, 0);
+  fj_cpu.h_var_best_rowsum.assign(n_vars, 0);
+  fj_cpu.h_var_bucket_stamp.assign(n_vars, 0);
+  fj_cpu.batch_size_hist.assign(fj_batch_hist_bins, 0);
+  fj_cpu.h_color_candidates.assign(fj_cpu.n_colors, {});
+  fj_cpu.h_color_epoch.assign(fj_cpu.n_colors, 0);
+  fj_cpu.var_best_epoch = 1;
+
+  CUOPT_LOG_DEBUG("CPUFJ move batching: %d colours over %d variables in %.3f ms",
+                  fj_cpu.n_colors,
+                  n_vars,
+                  std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                            started)
+                    .count());
+}
+
+// Sum of the versions of the rows a variable appears in. Versions only ever increase, so an
+// unchanged sum means no incident row has been touched.
+template <typename i_t, typename f_t>
+static inline int64_t incident_row_version_sum(fj_cpu_climber_t<i_t, f_t>& fj_cpu, i_t var_idx)
+{
+  const auto [begin, end] = reverse_range_for_var<i_t, f_t>(fj_cpu, var_idx);
+  int64_t sum             = 0;
+  for (i_t p = begin; p < end; ++p)
+    sum += fj_cpu.h_cstr_version[fj_cpu.h_reverse_constraints[p]];
+  return sum;
+}
+
+// Records a candidate move for its variable. The table keeps a best per variable, independent of
+// the argmax the caller is tracking, which is what lets a batch be assembled later.
+template <typename i_t, typename f_t>
+static inline void record_var_best_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
+                                        i_t var_idx,
+                                        fj_staged_score_t score,
+                                        f_t delta)
+{
+  if (!fj_cpu.use_move_batching) return;
+  if (!(score > fj_staged_score_t::zero())) return;
+
+  const bool current = fj_cpu.h_var_best_stamp[var_idx] == fj_cpu.var_best_epoch;
+  if (current && !(score > fj_cpu.h_var_best_score[var_idx])) return;
+
+  fj_cpu.h_var_best_score[var_idx]  = score;
+  fj_cpu.h_var_best_delta[var_idx]  = delta;
+  fj_cpu.h_var_best_stamp[var_idx]  = fj_cpu.var_best_epoch;
+  fj_cpu.h_var_best_rowsum[var_idx] = incident_row_version_sum<i_t, f_t>(fj_cpu, var_idx);
+
+  const i_t color = fj_cpu.h_var_color[var_idx];
+  cuopt_assert(color >= 0 && color < fj_cpu.n_colors, "variable has no colour");
+  if (fj_cpu.h_color_epoch[color] != fj_cpu.var_best_epoch) {
+    fj_cpu.h_color_candidates[color].clear();
+    fj_cpu.h_color_epoch[color] = fj_cpu.var_best_epoch;
+  }
+  if (fj_cpu.h_var_bucket_stamp[var_idx] == fj_cpu.var_best_epoch) return;
+  fj_cpu.h_var_bucket_stamp[var_idx] = fj_cpu.var_best_epoch;
+  fj_cpu.h_color_candidates[color].push_back(var_idx);
+}
+
+// Retires the whole table in constant time. Called wherever the weights or the assignment move far
+// enough that every cached score is suspect.
+template <typename i_t, typename f_t>
+static inline void retire_var_best_moves(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
+{
+  if (!fj_cpu.use_move_batching) return;
+  ++fj_cpu.var_best_epoch;
+}
+
+// Companions per batch attempt, as min, median, max and mean. A median landing in the saturating
+// last bin reads as that bin's index, and max_batch_size carries the true tail.
+template <typename i_t, typename f_t>
+static void log_batch_distribution(const fj_cpu_climber_t<i_t, f_t>& fj_cpu)
+{
+  if (fj_cpu.n_batch_attempts == 0) return;
+
+  int32_t smallest = -1;
+  int32_t median   = -1;
+  int64_t seen     = 0;
+  for (size_t bin = 0; bin < fj_cpu.batch_size_hist.size(); ++bin) {
+    if (fj_cpu.batch_size_hist[bin] == 0) continue;
+    if (smallest < 0) smallest = (int32_t)bin;
+    seen += fj_cpu.batch_size_hist[bin];
+    if (median < 0 && 2 * seen > fj_cpu.n_batch_attempts) median = (int32_t)bin;
+  }
+
+  CUOPT_LOG_DEBUG(
+    "%sCPUFJ batch companions: min %d median %d max %lld mean %.3f over %lld attempts, %lld total, "
+    "%d colours, batching %s",
+    fj_cpu.log_prefix.c_str(),
+    smallest,
+    median,
+    (long long)fj_cpu.max_batch_size,
+    (double)fj_cpu.n_batched_moves / (double)fj_cpu.n_batch_attempts,
+    (long long)fj_cpu.n_batch_attempts,
+    (long long)fj_cpu.n_batched_moves,
+    fj_cpu.n_colors,
+    fj_cpu.use_move_batching ? "on" : "off");
+}
+
+// Companions for the chosen move: same colour, so they share no row with it or with each other and
+// their recorded scores and deltas hold as the batch is applied. Excludes the chosen move itself.
+template <typename i_t, typename f_t>
+static void collect_move_batch(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
+                               fj_move_t chosen,
+                               std::vector<fj_move_t>& batch)
+{
+  batch.clear();
+  if (!fj_cpu.use_move_batching) return;
+
+  const i_t color = fj_cpu.h_var_color[chosen.var_idx];
+  cuopt_assert(color >= 0 && color < fj_cpu.n_colors, "chosen move has no colour");
+  if (fj_cpu.h_color_epoch[color] != fj_cpu.var_best_epoch) return;
+
+  for (i_t var_idx : fj_cpu.h_color_candidates[color]) {
+    if (var_idx == chosen.var_idx) continue;
+    if (fj_cpu.h_var_best_stamp[var_idx] != fj_cpu.var_best_epoch) continue;
+    if (!(fj_cpu.h_var_best_score[var_idx] > fj_staged_score_t::zero())) continue;
+    if (fj_cpu.h_var_best_rowsum[var_idx] != incident_row_version_sum<i_t, f_t>(fj_cpu, var_idx))
+      continue;
+
+    batch.push_back({var_idx, fj_cpu.h_var_best_delta[var_idx]});
+    // Invalidated so a second pass over the bucket cannot apply the move twice.
+    fj_cpu.h_var_best_stamp[var_idx] = 0;
+  }
+
+  ++fj_cpu.n_batch_attempts;
+  fj_cpu.n_batched_moves += (int64_t)batch.size();
+  ++fj_cpu.batch_size_hist[std::min<size_t>(batch.size(), fj_cpu.batch_size_hist.size() - 1)];
+  if ((int64_t)batch.size() > fj_cpu.max_batch_size)
+    fj_cpu.max_batch_size = (int64_t)batch.size();
+  if (fj_cpu.n_batch_attempts == fj_batch_probe_attempts &&
+      (double)fj_cpu.n_batched_moves < fj_batch_min_yield * (double)fj_batch_probe_attempts) {
+    fj_cpu.use_move_batching = false;
+    CUOPT_LOG_DEBUG("%sCPUFJ move batching off: %lld companions over %lld attempts",
+                    fj_cpu.log_prefix.c_str(),
+                    (long long)fj_cpu.n_batched_moves,
+                    (long long)fj_cpu.n_batch_attempts);
+  }
+}
+
 template <typename i_t, typename f_t>
 static inline bool check_variable_within_bounds(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
                                                 i_t var_idx,
@@ -557,6 +764,69 @@ static inline bool check_variable_within_bounds(fj_cpu_climber_t<i_t, f_t>& fj_c
   auto bounds        = fj_cpu.h_var_bounds[var_idx].get();
   bool within_bounds = val <= (get_upper(bounds) + int_tol) && val >= (get_lower(bounds) - int_tol);
   return within_bounds;
+}
+
+// Names the first variable whose assignment sits outside its own bounds, so the writer that left it
+// there is identified by the call site. Scans, and is only reached through cuopt_func_call.
+template <typename i_t, typename f_t>
+static void audit_assignment_bounds(fj_cpu_climber_t<i_t, f_t>& fj_cpu, const char* site)
+{
+  for (i_t var = 0; var < fj_cpu.view.pb.n_variables; ++var) {
+    const f_t val    = fj_cpu.h_assignment[var];
+    auto bounds      = fj_cpu.h_var_bounds[var].get();
+    const bool inbox = fj_cpu.view.pb.check_variable_within_bounds(var, val);
+    const bool integral =
+      var_t::INTEGER != fj_cpu.h_var_types[var] || fj_cpu.view.pb.is_integer(val);
+    if (inbox && integral) continue;
+
+    // stderr and flushed, so the abort below cannot swallow it.
+    std::fprintf(stderr,
+                 "%sCPUFJ %s left var %d at %.17g outside [%.17g, %.17g], integer %d\n",
+                 fj_cpu.log_prefix.c_str(),
+                 site,
+                 (int)var,
+                 (double)val,
+                 (double)get_lower(bounds),
+                 (double)get_upper(bounds),
+                 (int)(var_t::INTEGER == fj_cpu.h_var_types[var]));
+    std::fflush(stderr);
+    cuopt_assert(false, "assignment left the variable bounds");
+    return;
+  }
+}
+
+// Reports the first objective variable get_breakthrough_move would reject, reading the value both
+// from the climber's vector and through the view span so a bad value is told from a stale span.
+template <typename i_t, typename f_t>
+static void audit_breakthrough_inputs(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
+{
+  for (auto var_idx : fj_cpu.h_objective_vars) {
+    const f_t viewed = fj_cpu.view.incumbent_assignment[var_idx];
+    if (fj_cpu.view.pb.check_variable_within_bounds(var_idx, viewed)) continue;
+
+    const f_t direct = fj_cpu.h_assignment[var_idx];
+    auto bounds      = fj_cpu.h_var_bounds[var_idx].get();
+    auto viewed_bnd  = fj_cpu.view.pb.variable_bounds[var_idx];
+    // stderr and flushed, so the abort below cannot swallow it.
+    std::fprintf(stderr,
+                 "%sCPUFJ breakthrough input var %d: direct %.17g viewed %.17g nan %d, bounds "
+                 "direct [%.17g, %.17g] viewed [%.17g, %.17g], obj %.17g, degree %d, integer %d\n",
+                 fj_cpu.log_prefix.c_str(),
+                 (int)var_idx,
+                 (double)direct,
+                 (double)viewed,
+                 (int)(viewed != viewed),
+                 (double)get_lower(bounds),
+                 (double)get_upper(bounds),
+                 (double)get_lower(viewed_bnd),
+                 (double)get_upper(viewed_bnd),
+                 (double)fj_cpu.h_obj_coeffs[var_idx],
+                 (int)(fj_cpu.h_reverse_offsets[var_idx + 1] - fj_cpu.h_reverse_offsets[var_idx]),
+                 (int)(var_t::INTEGER == fj_cpu.h_var_types[var_idx]));
+    std::fflush(stderr);
+    cuopt_assert(false, "breakthrough move input out of bounds");
+    return;
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -639,6 +909,8 @@ static inline std::pair<fj_staged_score_t, f_t> compute_score(fj_cpu_climber_t<i
     const f_t cstr_coeff    = rev_coeff[i];
     const auto [c_lb, c_ub] = cstr_bounds[i];
 
+    // An explicit zero moves no row, so the move cannot change this row's score.
+    if (cstr_coeff == f_t{0}) continue;
     cuopt_assert(c_lb <= c_ub, "invalid bounds");
 
     auto [cstr_base_feas, cstr_bonus_robust] = feas_score_constraint<i_t, f_t>(fj_cpu,
@@ -1043,6 +1315,8 @@ static void update_weights(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   raft::random::PCGenerator rng(fj_cpu.settings.seed + fj_cpu.iterations, 0, 0);
   bool smoothing = rng.next_float() <= fj_cpu.settings.parameters.weight_smoothing_probability;
 
+  retire_var_best_moves<i_t, f_t>(fj_cpu);
+
   if (smoothing) {
     smooth_weights<i_t, f_t>(fj_cpu);
     return;
@@ -1210,6 +1484,9 @@ static void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
 
   // update the assignment and objective proper
   fj_cpu.h_assignment[var_idx] = new_val;
+  // The clamp above passes a NaN straight through, and every comparison against one is false.
+  cuopt_assert(fj_cpu.view.pb.check_variable_within_bounds(var_idx, new_val),
+               "apply_move left the variable bounds");
 
   // Kahan compensated summation, as for h_lhs. The incumbent objective is reported as-is, so it
   // cannot carry the drift of a long uncompensated chain of deltas.
@@ -1248,6 +1525,8 @@ static void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
       fj_cpu.h_objective_weight =
         min((f_t)fj_obj_weight_incumbent_cap,
             fj_cpu.h_objective_weight + (f_t)fj_obj_weight_incumbent_bump);
+      // The weight enters every score, and row versions cannot see it move.
+      retire_var_best_moves<i_t, f_t>(fj_cpu);
     }
   }
 
@@ -1438,6 +1717,7 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
       // reject this move if it would increase the target variable to a numerically unstable value
       if (fj_cpu.view.move_numerically_stable(
             val, new_val, infeasibility, fj_cpu.total_violations)) {
+        record_var_best_move<i_t, f_t>(fj_cpu, var_idx, score, delta);
         if (best_score < score) {
           best_score = score;
           best_move  = move;
@@ -1451,6 +1731,7 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
       fj_cpu.h_best_objective < std::numeric_limits<f_t>::infinity() &&
       fj_cpu.h_incumbent_objective >=
         fj_cpu.h_best_objective + fj_cpu.settings.parameters.breakthrough_move_epsilon) {
+    cuopt_func_call(audit_breakthrough_inputs(fj_cpu));
     for (auto var_idx : fj_cpu.h_objective_vars) {
       f_t old_val = fj_cpu.h_assignment[var_idx];
       f_t new_val = get_breakthrough_move<i_t, f_t>(fj_cpu.view, var_idx);
@@ -1473,6 +1754,7 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
 
       if (fj_cpu.view.move_numerically_stable(
             old_val, new_val, infeasibility, fj_cpu.total_violations)) {
+        record_var_best_move<i_t, f_t>(fj_cpu, var_idx, score, delta);
         if (best_score < score) {
           best_score = score;
           best_move  = move;
@@ -1880,6 +2162,7 @@ static void perturb(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
     fj_cpu.h_assignment = fj_cpu.h_best_assignment;
     if (fj_cpu.shared_incumbent) {
       fj_cpu.shared_incumbent->adopt(fj_cpu.h_best_objective, fj_cpu.h_assignment);
+      cuopt_func_call(audit_assignment_bounds(fj_cpu, "shared adopt"));
     }
   }
 
@@ -1897,6 +2180,7 @@ static void perturb(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 
   ++fj_cpu.n_lhs_recompute_perturb;
   recompute_lhs(fj_cpu);
+  retire_var_best_moves<i_t, f_t>(fj_cpu);
 }
 
 template <typename i_t, typename f_t>
@@ -1925,6 +2209,7 @@ static void restart_from_infeasible_checkpoint(fj_cpu_climber_t<i_t, f_t>& fj_cp
   ++fj_cpu.n_lhs_recompute_restart;
   recompute_lhs(fj_cpu);
   invalidate_mtm_cache(fj_cpu);
+  cuopt_func_call(audit_assignment_bounds(fj_cpu, "checkpoint restore"));
 }
 
 // Nonzeros per extra restart window, the cap on that, and how many windows a lane waits.
@@ -1974,6 +2259,7 @@ static void track_infeasible_checkpoint(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
       invalidate_mtm_cache(fj_cpu);
       reset_infeasible_checkpoint(fj_cpu);
       fj_cpu.restores_since_improvement = 0;
+      cuopt_func_call(audit_assignment_bounds(fj_cpu, "randomized restart"));
 
       CUOPT_LOG_DEBUG("%sCPUFJ randomized restart at iteration %d",
                       fj_cpu.log_prefix.c_str(),
@@ -2291,6 +2577,11 @@ void finalize_fj_cpu_host_initialization(
   fj_cpu.h_objective_vars.resize(end - fj_cpu.h_objective_vars.begin());
   fj_cpu.view.objective_vars =
     raft::device_span<i_t>(fj_cpu.h_objective_vars.data(), fj_cpu.h_objective_vars.size());
+  // get_breakthrough_move divides by the coefficient of every variable in here.
+  for (auto var_idx : fj_cpu.h_objective_vars) {
+    cuopt_assert(fj_cpu.h_obj_coeffs[var_idx] != f_t{0}, "null coefficient in the objective vars");
+    cuopt_assert(isfinite((f_t)fj_cpu.h_obj_coeffs[var_idx]), "non-finite objective coefficient");
+  }
 
   f_t abs_obj_sum = 0;
   for (auto var_idx : fj_cpu.h_objective_vars) {
@@ -2332,6 +2623,7 @@ void finalize_fj_cpu_host_initialization(
 
   // Precompute static problem features for regression model
   precompute_problem_features(fj_cpu);
+  compute_variable_coloring(fj_cpu);
 }
 
 template <typename i_t, typename f_t>
@@ -2371,6 +2663,21 @@ static void finalize_fj_cpu_host_initialization_from_template(
   fj_cpu.total_violations_sumcomp = tmpl.total_violations_sumcomp;
   fj_cpu.h_incumbent_objective    = tmpl.h_incumbent_objective;
   fj_cpu.h_objective_sumcomp      = tmpl.h_objective_sumcomp;
+
+  // The colouring is structural, so it carries over; the score table is this climber's own.
+  fj_cpu.h_var_color = tmpl.h_var_color;
+  fj_cpu.n_colors    = tmpl.n_colors;
+  if (fj_cpu.n_colors > 0) {
+    fj_cpu.h_var_best_score.assign(n_variables, fj_staged_score_t::invalid());
+    fj_cpu.h_var_best_delta.assign(n_variables, f_t{0});
+    fj_cpu.h_var_best_stamp.assign(n_variables, 0);
+    fj_cpu.h_var_best_rowsum.assign(n_variables, 0);
+    fj_cpu.h_var_bucket_stamp.assign(n_variables, 0);
+    fj_cpu.batch_size_hist.assign(fj_batch_hist_bins, 0);
+    fj_cpu.h_color_candidates.assign(fj_cpu.n_colors, {});
+    fj_cpu.h_color_epoch.assign(fj_cpu.n_colors, 0);
+    fj_cpu.var_best_epoch = 1;
+  }
 
   fj_cpu.n_binary_vars   = tmpl.n_binary_vars;
   fj_cpu.n_integer_vars  = tmpl.n_integer_vars;
@@ -2503,6 +2810,14 @@ static std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_from_host_lp(
 template <typename i_t, typename f_t>
 static void sanity_checks(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 {
+  // Assigning any of these wrappers from a plain vector rebinds its buffer and strands the span.
+  cuopt_assert(fj_cpu.view.incumbent_assignment.data() == fj_cpu.h_assignment.data(),
+               "incumbent_assignment span no longer covers h_assignment");
+  cuopt_assert(fj_cpu.view.incumbent_lhs.data() == fj_cpu.h_lhs.data(),
+               "incumbent_lhs span no longer covers h_lhs");
+  cuopt_assert(fj_cpu.view.pb.variable_bounds.data() == fj_cpu.h_var_bounds.data(),
+               "variable_bounds span no longer covers h_var_bounds");
+
   // Check that each variable is within its bounds
   for (i_t var_idx = 0; var_idx < fj_cpu.view.pb.n_variables; ++var_idx) {
     f_t val = fj_cpu.h_assignment[var_idx];
@@ -2874,6 +3189,7 @@ static void apply_bound_propagation(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
     raft::device_span<i_t>(fj_cpu.h_binary_indices.data(), fj_cpu.h_binary_indices.size());
 
   if (clamped) recompute_lhs(fj_cpu);
+  cuopt_func_call(audit_assignment_bounds(fj_cpu, "bound prop"));
 
   CUOPT_LOG_DEBUG("%sCPUFJ bound prop: %d passes, %d domains tightened, %d binary of %d integer",
                   fj_cpu.log_prefix.c_str(),
@@ -2945,7 +3261,9 @@ static void apply_lp_rounded_seed(fj_cpu_climber_t<i_t, f_t>& fj_cpu, f_t lane_t
     }
     if (!valid) break;
 
-    fj_cpu.h_assignment = rounded;
+    // Copied in place: assigning the wrapper from a plain vector rebinds its buffer and leaves the
+    // incumbent_assignment span on freed memory.
+    std::copy(rounded.begin(), rounded.end(), fj_cpu.h_assignment.begin());
     recompute_lhs(fj_cpu);
     // total_violations sums a non-positive excess, so the greater value is the closer point.
     if (fj_cpu.total_violations > selected_violation) {
@@ -2956,7 +3274,7 @@ static void apply_lp_rounded_seed(fj_cpu_climber_t<i_t, f_t>& fj_cpu, f_t lane_t
     // The rounded point can already be integral-feasible. It never passed through apply_move, so
     // the incumbent is recorded here through the same contract that path uses.
     if (fj_cpu.violated_constraints.empty() && check_variable_feasibility<i_t, f_t>(fj_cpu)) {
-      fj_cpu.h_best_assignment = rounded;
+      std::copy(rounded.begin(), rounded.end(), fj_cpu.h_best_assignment.begin());
       fj_cpu.h_best_objective =
         fj_cpu.h_incumbent_objective - fj_cpu.settings.parameters.breakthrough_move_epsilon;
       fj_cpu.feasible_found = true;
@@ -2976,9 +3294,10 @@ static void apply_lp_rounded_seed(fj_cpu_climber_t<i_t, f_t>& fj_cpu, f_t lane_t
   }
 
   if (selected.empty()) return;
-  fj_cpu.h_assignment      = selected;
-  fj_cpu.h_best_assignment = selected;
+  std::copy(selected.begin(), selected.end(), fj_cpu.h_assignment.begin());
+  std::copy(selected.begin(), selected.end(), fj_cpu.h_best_assignment.begin());
   recompute_lhs(fj_cpu);
+  cuopt_func_call(audit_assignment_bounds(fj_cpu, "lp pump"));
 }
 
 template <typename i_t, typename f_t>
@@ -3003,6 +3322,7 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
   if (try_cpufj_binary_solve(*fj_cpu, remaining, work_unit_limit)) return;
 
   i_t local_mins = 0;
+  std::vector<fj_move_t> batch_moves;
   // The LP comes out of this lane's own budget; every other lane's clock starts where it did.
   auto loop_start = (fj_cpu->use_lp_seed || fj_cpu->use_bound_prop)
                       ? solve_start
@@ -3128,6 +3448,13 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
     }
 
     if (score > fj_staged_score_t::zero() && !should_perturb) {
+      // A 2-opt lift already commits two coupled moves, and its second half is scored against the
+      // state before both, so it stays on its own.
+      if (lift_companion.var_idx < 0) {
+        collect_move_batch(*fj_cpu, move, batch_moves);
+        for (const auto& batched : batch_moves)
+          apply_move(*fj_cpu, batched.var_idx, batched.value, false);
+      }
       apply_move(*fj_cpu, move.var_idx, move.value, false);
       if (lift_companion.var_idx >= 0) {
         apply_move(*fj_cpu, lift_companion.var_idx, lift_companion.value, false);
@@ -3226,6 +3553,7 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
                   (long long)fj_cpu->n_checkpoint_restores,
                   (long long)fj_cpu->n_checkpoint_snapshots,
                   fj_cpu->max_restores_since_improvement);
+  log_batch_distribution(*fj_cpu);
 
 #if CPUFJ_TIMING_TRACE
   // Print final timing statistics
@@ -4282,6 +4610,12 @@ void apply_lane_diversification(fj_cpu_climber_t<i_t, f_t>& climber, int lane, i
   climber.use_bound_prop = lane % 2 == 0;
 
   climber.use_weight_donation = (lane % 8 == 5) || (lane % 8 == 6);
+
+  // Only where the colouring came out; n_colors is zero when the structure declined it.
+  climber.use_move_batching =
+    climber.n_colors > 0 && ((lane % 8 == 2) || (lane % 8 == 6));
+  climber.use_move_batching = true;
+  if (climber.n_colors == 0) climber.use_move_batching = false;
   switch (lane % 8) {
     case 1: apply_lock_weighted_seed<i_t, f_t>(climber); break;
     case 2: apply_aggressive_constraint_seed<i_t, f_t>(climber); break;
