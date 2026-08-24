@@ -728,14 +728,7 @@ void cuOptDestroyProblem(cuOptOptimizationProblem* problem_ptr)
 cuopt_int_t cuOptGetNumConstraints(cuOptOptimizationProblem problem,
                                    cuopt_int_t* num_constraints_ptr)
 {
-  if (problem == nullptr) { return CUOPT_INVALID_ARGUMENT; }
-  if (num_constraints_ptr == nullptr) { return CUOPT_INVALID_ARGUMENT; }
-  problem_and_stream_view_t* problem_and_stream_view =
-    static_cast<problem_and_stream_view_t*>(problem);
-  auto* iface          = problem_and_stream_view->get_problem();
-  *num_constraints_ptr = iface->get_n_constraints() +
-                         static_cast<cuopt_int_t>(iface->get_quadratic_constraints().size());
-  return CUOPT_SUCCESS;
+  return cuOptGetProblemIntAttribute(problem, CUOPT_ATTR_NUM_CONSTRAINTS, num_constraints_ptr);
 }
 
 cuopt_int_t cuOptGetNumVariables(cuOptOptimizationProblem problem, cuopt_int_t* num_variables_ptr)
