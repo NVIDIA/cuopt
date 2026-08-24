@@ -160,6 +160,49 @@ def test_constraint_duplicate_terms_slack():
     assert c.compute_slack() == pytest.approx(6.0)
 
 
+def test_variable_type_is_normalized():
+    prob = Problem()
+    from_enum = prob.addVariable(vtype=INTEGER)
+    from_str = prob.addVariable(vtype="I")
+    from_bytes = prob.addVariable(vtype=b"I")
+    default = prob.addVariable()
+
+    for var in (from_enum, from_str, from_bytes):
+        assert var.VariableType is VType.INTEGER
+    assert default.VariableType is VType.CONTINUOUS
+    assert prob.IsMIP
+
+    # Both the setter and direct assignment normalize.
+    from_str.setVariableType(b"S")
+    assert from_str.VariableType is VType.SEMI_CONTINUOUS
+    from_bytes.VariableType = "C"
+    assert from_bytes.VariableType is VType.CONTINUOUS
+
+    with pytest.raises(ValueError):
+        prob.addVariable(vtype="banana")
+    with pytest.raises(ValueError):
+        prob.addVariable(vtype=b"\xff")
+    with pytest.raises(ValueError):
+        from_enum.setVariableType(7)
+
+
+def test_variable_type_normalized_from_mps(tmp_path):
+    prob = Problem("mip")
+    x = prob.addVariable(lb=0.0, ub=10.0, vtype=INTEGER, name="x")
+    y = prob.addVariable(lb=0.0, ub=10.0, name="y")
+    prob.addConstraint(x + y <= 5, name="c")
+    prob.setObjective(x + y, sense=MAXIMIZE)
+
+    path = str(tmp_path / "mip.mps")
+    prob.writeMPS(path)
+
+    loaded = Problem.read(path)
+    types = [v.VariableType for v in loaded.getVariables()]
+    assert all(isinstance(t, VType) for t in types)
+    assert VType.INTEGER in types
+    assert loaded.IsMIP
+
+
 def test_semi_continuous_variable():
     prob = Problem("Semi-continuous")
     x = prob.addVariable(lb=5.0, ub=10.0, vtype=SEMI_CONTINUOUS, name="x")
