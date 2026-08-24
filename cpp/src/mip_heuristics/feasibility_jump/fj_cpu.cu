@@ -2583,7 +2583,133 @@ constexpr int32_t fj_max_refresh_stretch     = 8;
 // Above this a short LP spends more time moving the matrix than it can pay back as a seed, and the
 // wall budget the LP is allowed out of the lane's own.
 constexpr int64_t fj_lp_seed_nnz_limit = 8'000'000;
-constexpr double fj_lp_seed_budget_s   = 2;
+constexpr double fj_lp_pump_max_budget_s = 2.0;
+constexpr double fj_lp_pump_budget_share = 0.25;
+constexpr int32_t fj_lp_pump_projections = 3;
+
+// One dual simplex solve of a relaxation on the calling thread. Reports whether the returned point
+// is usable: a vertex reached at a limit is dual feasible and still worth rounding.
+template <typename i_t, typename f_t>
+static bool solve_lp_relaxation(const simplex::user_problem_t<i_t, f_t>& relaxation,
+                                double time_limit,
+                                std::vector<f_t>& x)
+{
+  simplex::lp_status_t status = simplex::lp_status_t::UNSET;
+  double seconds              = 0;
+
+  // solve_linear_program_advanced, whose status separates a limit -- which leaves a usable vertex
+  // behind -- from infeasibility. Guarded on f_t because dual simplex is only built for double.
+  if constexpr (std::is_same_v<f_t, double>) {
+    simplex_solver_settings_t<i_t, f_t> lp_settings;
+    lp_settings.relaxation = true;
+    lp_settings.time_limit = time_limit;
+    lp_settings.log.log    = false;
+    // The portfolio already pins one CPU per lane, and the simplex default is
+    // omp_get_max_threads() - 1, which would open a second portfolio inside this lane's worker.
+    lp_settings.num_threads = 1;
+
+    const f_t lp_start = tic();
+    lp_problem_t<i_t, f_t> converted(relaxation.handle_ptr,
+                                     relaxation.num_rows,
+                                     relaxation.num_cols,
+                                     relaxation.A.col_start[relaxation.A.n]);
+    std::vector<i_t> new_slacks;
+    simplex::dualize_info_t<i_t, f_t> dualize_info;
+    simplex::convert_user_problem(relaxation, lp_settings, converted, new_slacks, dualize_info);
+
+    simplex::lp_solution_t<i_t, f_t> lp_solution(converted.num_rows, converted.num_cols);
+    std::vector<simplex::variable_status_t> vstatus;
+    std::vector<f_t> edge_norms;
+    status = simplex::solve_linear_program_advanced(
+      converted, lp_start, lp_settings, lp_solution, vstatus, edge_norms);
+    x       = std::move(lp_solution.x);
+    seconds = toc(lp_start);
+  }
+
+  const bool usable = status == simplex::lp_status_t::OPTIMAL ||
+                      status == simplex::lp_status_t::TIME_LIMIT ||
+                      status == simplex::lp_status_t::ITERATION_LIMIT ||
+                      status == simplex::lp_status_t::CONCURRENT_LIMIT ||
+                      status == simplex::lp_status_t::WORK_LIMIT;
+  CUOPT_LOG_DEBUG("CPUFJ LP relaxation: %s after %.3fs of %.3fs%s",
+                  simplex::lp_status_to_string(status).c_str(),
+                  seconds,
+                  time_limit,
+                  usable ? "" : ", discarded");
+  return usable;
+}
+
+// The L1 distance to a rounded point, as an exact LP. Every integer x gains a d with the pair
+// x - d <= r and -x - d <= -r, so minimising sum(d) minimises sum(abs(x - r)).
+template <typename i_t, typename f_t>
+static simplex::user_problem_t<i_t, f_t> make_lp_distance_problem(
+  const simplex::user_problem_t<i_t, f_t>& base,
+  fj_cpu_climber_t<i_t, f_t>& fj_cpu,
+  const std::vector<f_t>& rounded)
+{
+  std::vector<i_t> integer_vars;
+  for (i_t var = 0; var < fj_cpu.view.pb.n_variables; ++var)
+    if (is_integer_var<i_t, f_t>(fj_cpu, var)) integer_vars.push_back(var);
+  const i_t n_distance = (i_t)integer_vars.size();
+
+  simplex::user_problem_t<i_t, f_t> result(base.handle_ptr);
+  result.num_rows = base.num_rows + 2 * n_distance;
+  result.num_cols = base.num_cols + n_distance;
+
+  // The model's own objective is dropped: this LP measures distance alone.
+  result.objective.assign(result.num_cols, f_t{0});
+  for (i_t k = 0; k < n_distance; ++k) result.objective[base.num_cols + k] = f_t{1};
+
+  result.lower = base.lower;
+  result.upper = base.upper;
+  result.lower.resize(result.num_cols, f_t{0});
+  result.upper.resize(result.num_cols, std::numeric_limits<f_t>::infinity());
+
+  result.rhs       = base.rhs;
+  result.row_sense = base.row_sense;
+  result.rhs.reserve(result.num_rows);
+  result.row_sense.reserve(result.num_rows);
+  for (i_t k = 0; k < n_distance; ++k) {
+    result.rhs.push_back(rounded[integer_vars[k]]);
+    result.row_sense.push_back('L');
+    result.rhs.push_back(-rounded[integer_vars[k]]);
+    result.row_sense.push_back('L');
+  }
+  result.range_rows     = base.range_rows;
+  result.range_value    = base.range_value;
+  result.num_range_rows = base.num_range_rows;
+
+  const i_t base_nnz = base.A.col_start[base.A.n];
+  csc_matrix_t<i_t, f_t> matrix(result.num_rows, result.num_cols, base_nnz + 4 * n_distance);
+  i_t out          = 0;
+  i_t next_integer = 0;
+  for (i_t j = 0; j < base.num_cols; ++j) {
+    matrix.col_start[j] = out;
+    for (i_t p = base.A.col_start[j]; p < base.A.col_start[j + 1]; ++p) {
+      matrix.i[out]   = base.A.i[p];
+      matrix.x[out++] = base.A.x[p];
+    }
+    if (next_integer < n_distance && integer_vars[next_integer] == j) {
+      const i_t row   = base.num_rows + 2 * next_integer++;
+      matrix.i[out]   = row;
+      matrix.x[out++] = f_t{1};
+      matrix.i[out]   = row + 1;
+      matrix.x[out++] = f_t{-1};
+    }
+  }
+  for (i_t k = 0; k < n_distance; ++k) {
+    matrix.col_start[base.num_cols + k] = out;
+    const i_t row                       = base.num_rows + 2 * k;
+    matrix.i[out]                       = row;
+    matrix.x[out++]                     = f_t{-1};
+    matrix.i[out]                       = row + 1;
+    matrix.x[out++]                     = f_t{-1};
+  }
+  matrix.col_start[result.num_cols] = out;
+  cuopt_assert(out == base_nnz + 4 * n_distance, "distance problem nonzero count mismatch");
+  result.A = std::move(matrix);
+  return result;
+}
 
 constexpr int32_t fj_bound_prop_rounds = 10;
 // A deduction is committed only when it moves a bound by more than this many absolute tolerances.
@@ -2757,105 +2883,102 @@ static void apply_bound_propagation(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
                   fj_cpu.n_binary_vars + fj_cpu.n_integer_vars);
 }
 
-// Rounds the LP relaxation into this lane's start point. Solved by dual simplex on the lane's own
-// thread rather than during portfolio construction, so the other seven start searching immediately.
+// A bounded feasibility pump for the LP lane, run on the lane's own thread. An integral-feasible
+// projection is published; otherwise FJ starts from the least violated rounding the pump saw.
 template <typename i_t, typename f_t>
-static void apply_lp_rounded_seed(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
+static void apply_lp_rounded_seed(fj_cpu_climber_t<i_t, f_t>& fj_cpu, f_t lane_time_limit)
 {
   if (!fj_cpu.use_lp_seed || fj_cpu.pb_ptr == nullptr) return;
   if (fj_cpu.view.pb.nnz > fj_lp_seed_nnz_limit) return;
 
-  simplex::user_problem_t<i_t, f_t> relaxation(fj_cpu.pb_ptr->handle_ptr);
-  fj_cpu.pb_ptr->get_host_user_problem(relaxation);
+  const double budget =
+    std::min(fj_lp_pump_max_budget_s, fj_lp_pump_budget_share * (double)lane_time_limit);
+  if (budget <= 0) return;
 
-  simplex_solver_settings_t<i_t, f_t> lp_settings;
-  lp_settings.relaxation = true;
-  lp_settings.time_limit = fj_lp_seed_budget_s;
-  lp_settings.log.log    = false;
+  simplex::user_problem_t<i_t, f_t> base(fj_cpu.pb_ptr->handle_ptr);
+  fj_cpu.pb_ptr->get_host_user_problem(base);
 
-  std::vector<f_t> relaxed;
-  simplex::lp_status_t lp_status = simplex::lp_status_t::UNSET;
-  double lp_seconds              = 0;
-
-  // solve_linear_program_advanced rather than simplex::solve, whose collapsed int return cannot
-  // separate a limit -- which leaves a usable vertex behind -- from infeasibility, which does not.
-  // Guarded on f_t because dual simplex is only instantiated for double.
-  if constexpr (std::is_same_v<f_t, double>) {
-    const f_t lp_start = tic();
-    lp_problem_t<i_t, f_t> converted(relaxation.handle_ptr,
-                                     relaxation.num_rows,
-                                     relaxation.num_cols,
-                                     relaxation.A.col_start[relaxation.A.n]);
-    std::vector<i_t> new_slacks;
-    simplex::dualize_info_t<i_t, f_t> dualize_info;
-    simplex::convert_user_problem(relaxation, lp_settings, converted, new_slacks, dualize_info);
-
-    simplex::lp_solution_t<i_t, f_t> lp_solution(converted.num_rows, converted.num_cols);
-    std::vector<simplex::variable_status_t> vstatus;
-    std::vector<f_t> edge_norms;
-    lp_status = simplex::solve_linear_program_advanced(
-      converted, lp_start, lp_settings, lp_solution, vstatus, edge_norms);
-    relaxed    = lp_solution.x;
-    lp_seconds = toc(lp_start);
-  }
-
-  // A vertex reached at a limit is dual feasible and still worth rounding. The remaining
-  // terminations leave nothing to round.
-  const bool usable = lp_status == simplex::lp_status_t::OPTIMAL ||
-                      lp_status == simplex::lp_status_t::TIME_LIMIT ||
-                      lp_status == simplex::lp_status_t::ITERATION_LIMIT ||
-                      lp_status == simplex::lp_status_t::CONCURRENT_LIMIT ||
-                      lp_status == simplex::lp_status_t::WORK_LIMIT;
-  CUOPT_LOG_DEBUG("%sCPUFJ LP seed: %s after %.3fs of %.3fs%s",
-                  fj_cpu.log_prefix.c_str(),
-                  simplex::lp_status_to_string(lp_status).c_str(),
-                  lp_seconds,
-                  fj_lp_seed_budget_s,
-                  usable ? "" : ", discarded");
-  if (!usable) return;
-
+  const auto started    = std::chrono::steady_clock::now();
   const i_t n_variables = fj_cpu.view.pb.n_variables;
-  // convert_user_problem appends slacks, so the model's own variables are the leading columns.
-  cuopt_assert((i_t)relaxed.size() >= n_variables, "dual simplex returned too few columns");
 
-  std::vector<f_t> candidate(n_variables);
-  for (i_t var = 0; var < n_variables; ++var) {
-    cuopt_assert(isfinite(relaxed[var]), "dual simplex returned a non-finite value");
-    const auto bounds = fj_cpu.h_var_bounds[var].get();
-    const f_t lower   = get_lower(bounds);
-    const f_t upper   = get_upper(bounds);
-    f_t value         = std::clamp(relaxed[var], lower, upper);
-    if (is_integer_var<i_t, f_t>(fj_cpu, var)) {
-      value = round(value);
-      // Rounding can leave the bounds, and a variable with no integral value inside them cannot be
-      // seeded at all without breaking the engine's integrality invariant.
-      if (value < lower || value > upper) return;
+  std::vector<f_t> rounded;
+  std::vector<f_t> selected;
+  f_t selected_violation = -std::numeric_limits<f_t>::infinity();
+
+  for (int32_t projection = 0; projection < fj_lp_pump_projections; ++projection) {
+    const double remaining =
+      budget - std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+    if (remaining <= 0) break;
+
+    // Projection 0 is the plain relaxation; the rest chase the previous rounding.
+    const auto distance = projection == 0 ? simplex::user_problem_t<i_t, f_t>(base.handle_ptr)
+                                          : make_lp_distance_problem(base, fj_cpu, rounded);
+    const auto& relaxation = projection == 0 ? base : distance;
+
+    std::vector<f_t> x;
+    if (!solve_lp_relaxation(relaxation, remaining, x)) break;
+    // convert_user_problem appends slacks, so the model's own variables are the leading columns.
+    if ((i_t)x.size() < n_variables) break;
+
+    rounded.resize(n_variables);
+    cuopt::pcgenerator_t rng(fj_cpu.settings.seed);
+    bool valid = true;
+    for (i_t var = 0; var < n_variables && valid; ++var) {
+      const auto bounds = fj_cpu.h_var_bounds[var].get();
+      const f_t lower   = get_lower(bounds);
+      const f_t upper   = get_upper(bounds);
+      f_t value         = std::clamp(x[var], lower, upper);
+      if (!isfinite(value)) {
+        valid = false;
+        break;
+      }
+      if (is_integer_var<i_t, f_t>(fj_cpu, var)) {
+        // Rounded up with probability equal to the fractional part, so successive projections of
+        // the same point explore different corners.
+        const f_t fraction = value - floor(value);
+        value              = rng.next_double() < fraction ? ceil(value) : floor(value);
+        // A variable with no integral value inside its bounds cannot be seeded at all without
+        // breaking the engine's integrality invariant.
+        valid = value >= lower && value <= upper;
+      }
+      rounded[var] = value;
     }
-    candidate[var] = value;
+    if (!valid) break;
+
+    fj_cpu.h_assignment = rounded;
+    recompute_lhs(fj_cpu);
+    // total_violations sums a non-positive excess, so the greater value is the closer point.
+    if (fj_cpu.total_violations > selected_violation) {
+      selected_violation = fj_cpu.total_violations;
+      selected           = rounded;
+    }
+
+    // The rounded point can already be integral-feasible. It never passed through apply_move, so
+    // the incumbent is recorded here through the same contract that path uses.
+    if (fj_cpu.violated_constraints.empty() && check_variable_feasibility<i_t, f_t>(fj_cpu)) {
+      fj_cpu.h_best_assignment = rounded;
+      fj_cpu.h_best_objective =
+        fj_cpu.h_incumbent_objective - fj_cpu.settings.parameters.breakthrough_move_epsilon;
+      fj_cpu.feasible_found = true;
+      CUOPT_LOG_DEBUG("%sCPUFJ new incumbent: objective %.17g",
+                      fj_cpu.log_prefix.c_str(),
+                      fj_cpu.h_best_objective);
+      if (fj_cpu.improvement_callback) {
+        fj_cpu.improvement_callback(fj_cpu.h_incumbent_objective,
+                                    fj_cpu.h_assignment,
+                                    fj_cpu.work_units_elapsed.load(std::memory_order_acquire));
+      }
+      if (fj_cpu.shared_incumbent) {
+        fj_cpu.shared_incumbent->publish(fj_cpu.h_incumbent_objective, fj_cpu.h_assignment);
+      }
+      return;
+    }
   }
 
-  fj_cpu.h_assignment      = candidate;
-  fj_cpu.h_best_assignment = candidate;
+  if (selected.empty()) return;
+  fj_cpu.h_assignment      = selected;
+  fj_cpu.h_best_assignment = selected;
   recompute_lhs(fj_cpu);
-
-  // The rounded point can already be integral-feasible. It never passed through apply_move, so the
-  // incumbent is recorded here through the same contract that path uses.
-  if (fj_cpu.violated_constraints.empty() && check_variable_feasibility<i_t, f_t>(fj_cpu)) {
-    fj_cpu.h_best_objective =
-      fj_cpu.h_incumbent_objective - fj_cpu.settings.parameters.breakthrough_move_epsilon;
-    fj_cpu.feasible_found = true;
-    CUOPT_LOG_DEBUG("%sCPUFJ new incumbent: objective %.17g",
-                    fj_cpu.log_prefix.c_str(),
-                    fj_cpu.h_best_objective);
-    if (fj_cpu.improvement_callback) {
-      fj_cpu.improvement_callback(fj_cpu.h_incumbent_objective,
-                                  fj_cpu.h_assignment,
-                                  fj_cpu.work_units_elapsed.load(std::memory_order_acquire));
-    }
-    if (fj_cpu.shared_incumbent) {
-      fj_cpu.shared_incumbent->publish(fj_cpu.h_incumbent_objective, fj_cpu.h_assignment);
-    }
-  }
 }
 
 template <typename i_t, typename f_t>
@@ -2865,15 +2988,19 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
   // Precedes the dispatch below because a variable it squeezes to [0,1] can bring the whole model
   // into the binary engine's shape.
   apply_bound_propagation(*fj_cpu);
-  const f_t prop_seconds =
-    fj_cpu->use_bound_prop
+  // Also ahead of the dispatch, so an all-binary model gets the same LP-derived start.
+  apply_lp_rounded_seed(*fj_cpu, in_time_limit);
+
+  const bool paid_setup = fj_cpu->use_bound_prop || fj_cpu->use_lp_seed;
+  const f_t setup_seconds =
+    paid_setup
       ? std::chrono::duration<f_t>(std::chrono::high_resolution_clock::now() - solve_start).count()
       : f_t{0};
+  const f_t remaining = std::max<f_t>(f_t{0}, in_time_limit - setup_seconds);
+  if (remaining <= f_t{0}) return;
 
   // problem fits the binary fastpath shape? run it (engine is solve-local)
-  if (try_cpufj_binary_solve(*fj_cpu, in_time_limit - prop_seconds, work_unit_limit)) return;
-
-  apply_lp_rounded_seed(*fj_cpu);
+  if (try_cpufj_binary_solve(*fj_cpu, remaining, work_unit_limit)) return;
 
   i_t local_mins = 0;
   // The LP comes out of this lane's own budget; every other lane's clock starts where it did.
@@ -4147,12 +4274,11 @@ void apply_lane_diversification(fj_cpu_climber_t<i_t, f_t>& climber, int lane, i
   const f_t obj_weight_ladder[4] = {0, 4, 32, 0};
   const f_t obj_weight_floor[4]  = {1, 4, 32, 1};
 
-  // One structural start per lane; lanes 0 and 4 keep the shared anchor. Lane 7 also keeps it here,
-  // because its replacement is an LP solved inside that lane's own task rather than in setup.
-  climber.use_lp_seed = lane % 8 == 7;
+  // One structural start per lane; lanes 0, 4 and 7 keep the shared anchor here. Lane 4's is
+  // replaced inside its own task by the LP pump, so construction does not wait on an LP.
+  climber.use_lp_seed = lane % 8 == 4;
 
-  // Half the portfolio searches the propagated model, half the model as parsed. Off the LP lane, so
-  // one lane does not carry both setup passes.
+  // Half the portfolio searches the propagated model, half the model as parsed.
   climber.use_bound_prop = lane % 2 == 0;
 
   climber.use_weight_donation = (lane % 8 == 5) || (lane % 8 == 6);
