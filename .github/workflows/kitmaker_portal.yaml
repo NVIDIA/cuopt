@@ -229,11 +229,17 @@ jobs:
 
       - name: Poll Kitmaker Portal status
         env:
-          FERRY_TOKEN: ${{ steps.ferry-token.outputs.token }}
           PORTAL_AUTHORIZATION: ${{ secrets.KITMAKER_PORTAL_AUTHORIZATION }}
           STATUS_ID: ${{ steps.kitmaker-release.outputs.status_id }}
         run: |
           for _ in $(seq 1 60); do
+            # Re-mint on every iteration: the poll loop can run up to 30 minutes and the
+            # GitHub OIDC token minted once at job start can expire before a large wheel
+            # (e.g. libcuopt) finishes processing on Kitmaker's side.
+            FERRY_TOKEN=$(curl -sS --retry 3 --retry-delay 5 \
+              -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+              "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=charon.nvidia.com" | jq -r '.value')
+
             http_response=$(curl -sS --retry 3 --retry-delay 5 -w '\n%{http_code}' \
               -H "X-Charon-GHA-Token: $FERRY_TOKEN" \
               -H "Authorization: Bearer $PORTAL_AUTHORIZATION" \
