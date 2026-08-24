@@ -75,6 +75,10 @@ struct fj_hyper_parameters_t {
   double small_move_tabu_threshold = 1e-6;
   int small_move_tabu_tenure       = 4;
 
+  int two_opt_max_rows     = 4;
+  int two_opt_max_row_vars = 256;
+  int two_opt_max_pairs    = 256;
+
   // load-balancing related settings
   int old_codepath_total_var_to_relvar_ratio_threshold = 200;
   int load_balancing_codepath_min_varcount             = 3200;
@@ -199,6 +203,9 @@ template <typename i_t, typename f_t>
 struct fj_cpu_climber_t;
 
 template <typename i_t, typename f_t>
+class probing_cache_t;
+
+template <typename i_t, typename f_t>
 class fj_t {
  public:
   using move_score_t      = fj_staged_score_t;
@@ -215,6 +222,7 @@ class fj_t {
     const std::vector<f_t>& right_weights,
     f_t objective_weight,
     std::atomic<bool>& preemption_flag,
+    const probing_cache_t<i_t, f_t>* probing_cache,
     fj_settings_t settings = fj_settings_t{},
     bool randomize_params  = false);
   i_t alloc_max_climbers(i_t desired_climbers);
