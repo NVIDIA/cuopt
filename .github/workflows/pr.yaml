@@ -7,43 +7,6 @@ on:
   push:
     branches:
       - "pull-request/[0-9]+"
-  workflow_dispatch:
-    inputs:
-      kitmaker_mode:
-        description: |
-          kitmaker_mode: POC entry point for testing kitmaker_portal.yaml without merging it
-          to main first ('workflow_dispatch' can't target a brand-new file on another branch,
-          but this already-registered workflow can 'uses:' one via workflow_call).
-          'smoke-test' polls 'kitmaker_status_id'. 'release' requests a release using the
-          kitmaker_* inputs below.
-        required: true
-        type: choice
-        default: smoke-test
-        options:
-          - smoke-test
-          - release
-      kitmaker_status_id:
-        description: "kitmaker_status_id: existing Kitmaker Portal status UUID. Required for kitmaker_mode == 'smoke-test'."
-        type: string
-      kitmaker_release_tag:
-        description: "kitmaker_release_tag: git tag whose GitHub Release assets should be published. Required for kitmaker_mode == 'release'."
-        type: string
-      kitmaker_project_name:
-        description: "kitmaker_project_name: Kitmaker project name. Required for kitmaker_mode == 'release'."
-        type: string
-      kitmaker_project_id:
-        description: "kitmaker_project_id: numeric Kitmaker project ID. Required for kitmaker_mode == 'release'."
-        type: string
-      kitmaker_wheel_asset_pattern:
-        description: "kitmaker_wheel_asset_pattern: regex selecting wheel/sdist assets from the release. Required for kitmaker_mode == 'release'."
-        type: string
-      kitmaker_pic:
-        description: "kitmaker_pic: 'person in charge' email required by the Kitmaker release API."
-        type: string
-      kitmaker_upload:
-        description: "kitmaker_upload: 'false' (default) validates only, no real publish. Only used for kitmaker_mode == 'release'."
-        type: boolean
-        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -622,29 +585,6 @@ jobs:
     with:
       build_type: pull-request
       script: ci/test_self_hosted_service.sh
-  kitmaker-portal-test:
-    # Manual-only POC call to validate the Charon Ferry -> kitmaker-portal.nvidia.com
-    # path before wiring the real publish call in build.yaml. Also used as a workaround
-    # to test kitmaker_portal.yaml before merging it to main: 'workflow_dispatch' can't
-    # target a workflow file that only exists on a branch, but this already-registered
-    # workflow can 'uses:' one via workflow_call. Not part of pr-builder's required
-    # checks since it isn't triggered by normal PR pushes.
-    if: github.event_name == 'workflow_dispatch'
-    permissions:
-      id-token: write
-      contents: read
-    secrets: inherit # zizmor: ignore[secrets-inherit]
-    uses: ./.github/workflows/kitmaker_portal.yaml
-    with:
-      mode: ${{ inputs.kitmaker_mode }}
-      status_id: ${{ inputs.kitmaker_status_id }}
-      release_tag: ${{ inputs.kitmaker_release_tag }}
-      project_name: ${{ inputs.kitmaker_project_name }}
-      project_id: ${{ inputs.kitmaker_project_id }}
-      wheel_asset_pattern: ${{ inputs.kitmaker_wheel_asset_pattern }}
-      pic: ${{ inputs.kitmaker_pic }}
-      upload: ${{ inputs.kitmaker_upload }}
-
   pr-test-summary:
     name: "PR test summary (non-blocking)"
     needs:

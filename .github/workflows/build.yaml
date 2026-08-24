@@ -340,7 +340,7 @@ jobs:
       project_name: libcuopt-cu12
       project_id: ${{ vars.KITMAKER_PROJECT_ID_LIBCUOPT_CU12 }}
       wheel_asset_pattern: "^libcuopt_cu12-"
-      upload: false  # TODO: flip to true once POC is validated
+      upload: false  # Staged rollout: flip to true once the team signs off on going live
   kitmaker-portal-release-libcuopt-cu13:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: release-github
@@ -355,7 +355,7 @@ jobs:
       project_name: libcuopt-cu13
       project_id: ${{ vars.KITMAKER_PROJECT_ID_LIBCUOPT_CU13 }}
       wheel_asset_pattern: "^libcuopt_cu13-"
-      upload: false  # TODO: flip to true once POC is validated
+      upload: false  # Staged rollout: flip to true once the team signs off on going live
   kitmaker-portal-release-cuopt-cu12:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: release-github
@@ -370,7 +370,7 @@ jobs:
       project_name: cuopt-cu12
       project_id: ${{ vars.KITMAKER_PROJECT_ID_CUOPT_CU12 }}
       wheel_asset_pattern: "^cuopt_cu12-"
-      upload: false  # TODO: flip to true once POC is validated
+      upload: false  # Staged rollout: flip to true once the team signs off on going live
   kitmaker-portal-release-cuopt-cu13:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: release-github
@@ -385,7 +385,7 @@ jobs:
       project_name: cuopt-cu13
       project_id: ${{ vars.KITMAKER_PROJECT_ID_CUOPT_CU13 }}
       wheel_asset_pattern: "^cuopt_cu13-"
-      upload: false  # TODO: flip to true once POC is validated
+      upload: false  # Staged rollout: flip to true once the team signs off on going live
   kitmaker-portal-release-cuopt-server-cu12:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: release-github
@@ -400,7 +400,7 @@ jobs:
       project_name: cuopt-server-cu12
       project_id: ${{ vars.KITMAKER_PROJECT_ID_CUOPT_SERVER_CU12 }}
       wheel_asset_pattern: "^cuopt_server_cu12-"
-      upload: false  # TODO: flip to true once POC is validated
+      upload: false  # Staged rollout: flip to true once the team signs off on going live
   kitmaker-portal-release-cuopt-server-cu13:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: release-github
@@ -415,7 +415,7 @@ jobs:
       project_name: cuopt-server-cu13
       project_id: ${{ vars.KITMAKER_PROJECT_ID_CUOPT_SERVER_CU13 }}
       wheel_asset_pattern: "^cuopt_server_cu13-"
-      upload: false  # TODO: flip to true once POC is validated
+      upload: false  # Staged rollout: flip to true once the team signs off on going live
   kitmaker-portal-release-cuopt-sh-client:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: release-github
@@ -430,7 +430,7 @@ jobs:
       project_name: cuopt-sh-client
       project_id: ${{ vars.KITMAKER_PROJECT_ID_CUOPT_SH_CLIENT }}
       wheel_asset_pattern: "^cuopt_sh_client-"
-      upload: false  # TODO: flip to true once POC is validated
+      upload: false  # Staged rollout: flip to true once the team signs off on going live
 
   tests:
     # Docker image build / tests aren't necessary for the 'test.yaml' workflow,
