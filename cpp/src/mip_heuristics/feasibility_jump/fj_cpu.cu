@@ -973,6 +973,58 @@ static void smooth_weights(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 constexpr int32_t fj_weight_escalate_after = 2000;
 constexpr int32_t fj_weight_escalate_max   = 100;
 
+// Satisfied neighbours sampled per violated row for the donation, and the floor a donor keeps.
+constexpr int32_t fj_weight_donor_samples = 4;
+constexpr double fj_weight_donation_floor = 1.0;
+
+// DDFW donation: reach through a variable of this violated row to a satisfied neighbour and take
+// the bump back off its heavier side, so total weight stays roughly conserved.
+template <typename i_t, typename f_t>
+static void donate_row_weight(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
+                              i_t cstr_idx,
+                              f_t delta,
+                              raft::random::PCGenerator& rng)
+{
+  const auto [row_begin, row_end] = range_for_constraint<i_t, f_t>(fj_cpu, cstr_idx);
+  const uint32_t row_width        = (uint32_t)(row_end - row_begin);
+  // What a donor has to carry to still hold the floor once the delta comes off it.
+  const f_t donor_minimum = (f_t)fj_weight_donation_floor + delta;
+  i_t donor               = -1;
+  bool donor_left         = true;
+  f_t donor_weight        = 0;
+
+  for (i_t sample = 0; row_width > 0 && sample < fj_weight_donor_samples; ++sample) {
+    const i_t var_idx = fj_cpu.h_variables[row_begin + (i_t)(rng.next_u32() % row_width)];
+    const auto [col_begin, col_end] = reverse_range_for_var<i_t, f_t>(fj_cpu, var_idx);
+    if (col_end <= col_begin) continue;
+    const i_t candidate = fj_cpu.h_reverse_constraints[
+      col_begin + (i_t)(rng.next_u32() % (uint32_t)(col_end - col_begin))];
+    if (candidate == cstr_idx || !fj_cpu.satisfied_constraints.contains(candidate)) continue;
+
+    const f_t left       = fj_cpu.h_cstr_left_weights[candidate];
+    const f_t right      = fj_cpu.h_cstr_right_weights[candidate];
+    const bool take_left = left >= right;
+    const f_t weight     = take_left ? left : right;
+    if (weight < donor_minimum) continue;
+    if (donor >= 0 && weight <= donor_weight) continue;
+
+    donor        = candidate;
+    donor_left   = take_left;
+    donor_weight = weight;
+  }
+  if (donor < 0) return;
+
+  const f_t donated = donor_weight - delta;
+  cuopt_assert(donated >= (f_t)fj_weight_donation_floor, "donation broke the weight floor");
+  if (donor_left) {
+    fj_cpu.h_cstr_left_weights[donor] = donated;
+  } else {
+    fj_cpu.h_cstr_right_weights[donor] = donated;
+  }
+  ++fj_cpu.n_version_bumps_weights;
+  fj_cpu.h_cstr_version[donor]++;
+}
+
 template <typename i_t, typename f_t>
 static i_t weight_escalation_delta(const fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 {
@@ -1028,6 +1080,11 @@ static void update_weights(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
       fj_cpu.h_cstr_right_weights[cstr_idx] = new_weight;
       fj_cpu.max_weight                     = max(fj_cpu.max_weight, new_weight);
     }
+
+    // Only before this lane's first crossing: past that the search oscillates in and out of
+    // feasibility, and draining satisfied rows costs the objective phase.
+    if (fj_cpu.use_weight_donation && !fj_cpu.feasible_found)
+      donate_row_weight<i_t, f_t>(fj_cpu, cstr_idx, delta, rng);
 
     // Invalidate related cached move scores
     ++fj_cpu.n_version_bumps_weights;
@@ -4097,6 +4154,8 @@ void apply_lane_diversification(fj_cpu_climber_t<i_t, f_t>& climber, int lane, i
   // Half the portfolio searches the propagated model, half the model as parsed. Off the LP lane, so
   // one lane does not carry both setup passes.
   climber.use_bound_prop = lane % 2 == 0;
+
+  climber.use_weight_donation = (lane % 8 == 5) || (lane % 8 == 6);
   switch (lane % 8) {
     case 1: apply_lock_weighted_seed<i_t, f_t>(climber); break;
     case 2: apply_aggressive_constraint_seed<i_t, f_t>(climber); break;

@@ -320,6 +320,8 @@ struct fj_cpu_climber_t {
   // Half the lanes narrow their own domains by activity propagation before searching, so the
   // portfolio covers both the propagated and the as-parsed model.
   bool use_bound_prop{false};
+  // Two lanes move weight from satisfied rows into the violated ones while still infeasible.
+  bool use_weight_donation{false};
   // Enables the binary engine's infeasible-phase pair repair. Per lane, since the pair scan costs
   // iterations that a well-tuned single-flip lane would rather spend elsewhere.
   bool enable_infeasible_repair{false};
