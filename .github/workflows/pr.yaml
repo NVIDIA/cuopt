@@ -48,6 +48,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       libcuopt_filter: ${{ steps.set-filters.outputs.libcuopt_filter }}
+      cuopt_filter: ${{ steps.set-filters.outputs.cuopt_filter }}
       cuopt_server_filter: ${{ steps.set-filters.outputs.cuopt_server_filter }}
       cuopt_server_test_filter: ${{ steps.set-filters.outputs.cuopt_server_test_filter }}
       cuopt_sh_client_filter: ${{ steps.set-filters.outputs.cuopt_sh_client_filter }}
@@ -56,6 +57,7 @@ jobs:
         id: set-filters
         run: |
           echo "libcuopt_filter=group_by([.ARCH, (.CUDA_VER|split(\".\")|map(tonumber)|.[0])]) | map(max_by(.PY_VER|split(\".\")|map(tonumber)))" >> $GITHUB_OUTPUT
+          echo "cuopt_filter=group_by({CUDA_VER, ARCH}) | map(min_by(.PY_VER | split(\".\") | map(tonumber)))" >> $GITHUB_OUTPUT
           echo "cuopt_server_filter=map(select(.ARCH == \"amd64\")) | group_by(.CUDA_VER|split(\".\")|map(tonumber)|.[0]) | map(max_by([(.PY_VER|split(\".\")|map(tonumber)), (.CUDA_VER|split(\".\")|map(tonumber))]))" >> $GITHUB_OUTPUT
           echo "cuopt_server_test_filter=map(select(.ARCH == \"amd64\")) | group_by(.CUDA_VER | split(\".\") | map(tonumber) | .[0]) | map(max_by([(.PY_VER | split(\".\") | map(tonumber)), (.CUDA_VER | split(\".\") | map(tonumber))]))" >> $GITHUB_OUTPUT
           echo "cuopt_sh_client_filter=[map(select(.ARCH == \"amd64\")) | min_by((.PY_VER | split(\".\") | map(tonumber)), (.CUDA_VER | split(\".\") | map(-tonumber)))]" >> $GITHUB_OUTPUT
@@ -414,6 +416,8 @@ jobs:
       build_type: pull-request
       build-datetime: ${{ needs.build-details.outputs.build-datetime }}
       script: ci/build_python.sh
+      # Build a conda package for each CUDA x ARCH x minimum supported Python version
+      matrix_filter: group_by({CUDA_VER, ARCH}) | map(min_by(.PY_VER | split(".") | map(tonumber)))
   conda-python-tests:
     needs: [conda-python-build, changed-files]
     permissions:
@@ -483,6 +487,8 @@ jobs:
       script: ci/build_wheel_cuopt.sh
       package-name: cuopt
       package-type: python
+      # Build a wheel for each CUDA x ARCH x minimum supported Python version
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.cuopt_filter }}
   wheel-tests-cuopt:
     needs: [wheel-build-cuopt, wheel-build-cuopt-sh-client, changed-files]
     permissions:
