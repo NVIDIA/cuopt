@@ -85,10 +85,7 @@ jobs:
         id: compute-cuopt-ver
         run: |
           source rapids-datetime-string
-          # Nightly wheels are published with a ".post<datetime>" suffix (see ci/build_wheel.sh)
-          # to ensure every nightly build produces a new package; match that here so the
-          # version pinned in the Dockerfile actually resolves on the package index.
-          # RAPIDS_VERSION_SUFFIX is ignored by rapids-generate-version for release builds.
+          # .post<datetime> makes every nightly version unique (see ci/build_wheel.sh); ignored on release builds.
           ver=$(RAPIDS_VERSION_SUFFIX=".post${RAPIDS_DATETIME_STRING}" rapids-generate-version)
           # Remove starting 0s from version 25.08.0a18 -> 25.8.0a18
           CUOPT_VER=$(echo "$ver" | sed -E 's/\.0+([0-9])/\.\1/g')
