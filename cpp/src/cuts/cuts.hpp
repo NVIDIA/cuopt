@@ -303,6 +303,10 @@ std::vector<std::vector<int>> find_mod2_row_combinations_for_test(
   double max_work_estimate,
   double* work_estimate);
 
+// Test-only helper for the absolute integrality check used to construct
+// general zero-half parity rows.
+bool mod2_value_is_integral_for_test(double value, double tolerance);
+
 template <typename i_t, typename f_t>
 class cut_pool_t {
  public:
