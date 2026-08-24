@@ -48,6 +48,7 @@ set(ROUTING_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/solve.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solver.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solver_settings.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/cpu_routing_problem.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/utilities/check_input.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/utilities/cython.cu)
 
