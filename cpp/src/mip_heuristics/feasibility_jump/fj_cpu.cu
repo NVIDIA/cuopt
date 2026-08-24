@@ -2528,6 +2528,178 @@ constexpr int32_t fj_max_refresh_stretch     = 8;
 constexpr int64_t fj_lp_seed_nnz_limit = 8'000'000;
 constexpr double fj_lp_seed_budget_s   = 2;
 
+constexpr int32_t fj_bound_prop_rounds = 10;
+// A deduction is committed only when it moves a bound by more than this many absolute tolerances.
+constexpr double fj_bound_prop_commit_scale = 1e3;
+
+// Raises a lower bound to a deduced limit. Returns whether the domain moved.
+template <typename i_t, typename f_t>
+static bool tighten_lower_bound(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
+                                std::vector<f_t>& lower,
+                                const std::vector<f_t>& upper,
+                                i_t var,
+                                f_t limit,
+                                f_t commit_threshold)
+{
+  if (!isfinite(limit)) return false;
+  if (is_integer_var<i_t, f_t>(fj_cpu, var))
+    limit = ceil(limit - fj_cpu.view.pb.tolerances.integrality_tolerance);
+  if (limit > upper[var]) return false;
+  if (limit <= lower[var] + commit_threshold) return false;
+  lower[var] = limit;
+  return true;
+}
+
+// Lowers an upper bound to a deduced limit. Returns whether the domain moved.
+template <typename i_t, typename f_t>
+static bool tighten_upper_bound(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
+                                const std::vector<f_t>& lower,
+                                std::vector<f_t>& upper,
+                                i_t var,
+                                f_t limit,
+                                f_t commit_threshold)
+{
+  if (!isfinite(limit)) return false;
+  if (is_integer_var<i_t, f_t>(fj_cpu, var))
+    limit = floor(limit + fj_cpu.view.pb.tolerances.integrality_tolerance);
+  if (limit < lower[var]) return false;
+  if (limit >= upper[var] - commit_threshold) return false;
+  upper[var] = limit;
+  return true;
+}
+
+// Narrows this lane's domains by activity propagation, then reclassifies: an integer squeezed to
+// [0,1] becomes eligible for the binary engine.
+template <typename i_t, typename f_t>
+static void apply_bound_propagation(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
+{
+  if (!fj_cpu.use_bound_prop) return;
+
+  const i_t n_variables   = fj_cpu.view.pb.n_variables;
+  const i_t n_constraints = fj_cpu.view.pb.n_constraints;
+  const f_t commit =
+    (f_t)fj_bound_prop_commit_scale * fj_cpu.view.pb.tolerances.absolute_tolerance;
+
+  std::vector<f_t> lower(n_variables);
+  std::vector<f_t> upper(n_variables);
+  for (i_t var = 0; var < n_variables; ++var) {
+    auto bounds = fj_cpu.h_var_bounds[var].get();
+    lower[var]  = get_lower(bounds);
+    upper[var]  = get_upper(bounds);
+  }
+
+  bool changed = true;
+  int32_t pass = 0;
+  for (; changed && pass < fj_bound_prop_rounds; ++pass) {
+    changed = false;
+    for (i_t row = 0; row < n_constraints; ++row) {
+      const f_t row_lb  = fj_cpu.h_cstr_lb[row];
+      const f_t row_ub  = fj_cpu.h_cstr_ub[row];
+      const bool has_lb = isfinite(row_lb);
+      const bool has_ub = isfinite(row_ub);
+      if (!has_lb && !has_ub) continue;
+
+      const i_t begin = fj_cpu.h_offsets[row];
+      const i_t end   = fj_cpu.h_offsets[row + 1];
+
+      f_t min_activity = 0;
+      f_t max_activity = 0;
+      bool finite_min  = true;
+      bool finite_max  = true;
+      for (i_t p = begin; p < end; ++p) {
+        const f_t coeff = fj_cpu.h_coefficients[p];
+        if (coeff == f_t{0}) continue;
+        const i_t var   = fj_cpu.h_variables[p];
+        const f_t min_x = coeff > 0 ? lower[var] : upper[var];
+        const f_t max_x = coeff > 0 ? upper[var] : lower[var];
+        finite_min &= isfinite(min_x);
+        finite_max &= isfinite(max_x);
+        if (finite_min) min_activity += coeff * min_x;
+        if (finite_max) max_activity += coeff * max_x;
+      }
+
+      const bool from_row_ub = finite_min && has_ub;
+      const bool from_row_lb = finite_max && has_lb;
+      if (!from_row_ub && !from_row_lb) continue;
+
+      // The activities are not refreshed as the loop below narrows the row's own variables, and a
+      // stale bound is the looser one, so a deduction taken against it is the weaker one.
+      for (i_t p = begin; p < end; ++p) {
+        const f_t coeff = fj_cpu.h_coefficients[p];
+        if (coeff == f_t{0}) continue;
+        const i_t var = fj_cpu.h_variables[p];
+
+        if (from_row_ub) {
+          const f_t rest  = min_activity - coeff * (coeff > 0 ? lower[var] : upper[var]);
+          const f_t limit = (row_ub - rest) / coeff;
+          changed |= coeff > 0 ? tighten_upper_bound(fj_cpu, lower, upper, var, limit, commit)
+                               : tighten_lower_bound(fj_cpu, lower, upper, var, limit, commit);
+        }
+        if (from_row_lb) {
+          const f_t rest  = max_activity - coeff * (coeff > 0 ? upper[var] : lower[var]);
+          const f_t limit = (row_lb - rest) / coeff;
+          changed |= coeff > 0 ? tighten_lower_bound(fj_cpu, lower, upper, var, limit, commit)
+                               : tighten_upper_bound(fj_cpu, lower, upper, var, limit, commit);
+        }
+      }
+    }
+  }
+
+  fj_cpu.h_binary_indices.clear();
+  fj_cpu.n_binary_vars  = 0;
+  fj_cpu.n_integer_vars = 0;
+  i_t tightened         = 0;
+  bool clamped          = false;
+  for (i_t var = 0; var < n_variables; ++var) {
+    auto bounds = fj_cpu.h_var_bounds[var].get();
+    cuopt_assert(!(lower[var] < get_lower(bounds)), "propagation widened a lower bound");
+    cuopt_assert(!(upper[var] > get_upper(bounds)), "propagation widened an upper bound");
+    cuopt_assert(!(lower[var] > upper[var]), "propagation emptied a domain");
+    const bool moved = lower[var] != get_lower(bounds) || upper[var] != get_upper(bounds);
+
+    // Same rule as problem_t::compute_binary_var_table, fixed binaries included: a domain narrowed
+    // to a point is no longer binary.
+    const bool integer = is_integer_var<i_t, f_t>(fj_cpu, var);
+    const bool binary  = integer && fj_cpu.view.pb.integer_equal(lower[var], (f_t)0) &&
+                        fj_cpu.view.pb.integer_equal(upper[var], (f_t)1);
+    fj_cpu.h_is_binary_variable[var] = binary;
+    if (binary) {
+      fj_cpu.h_binary_indices.push_back(var);
+      ++fj_cpu.n_binary_vars;
+    } else if (integer) {
+      ++fj_cpu.n_integer_vars;
+    }
+    if (!moved) continue;
+
+    ++tightened;
+    fj_cpu.h_var_bounds[var] = typename type_2<f_t>::type{lower[var], upper[var]};
+
+    const f_t value         = fj_cpu.h_assignment[var];
+    const f_t clamped_value = std::clamp(value, lower[var], upper[var]);
+    if (clamped_value != value) {
+      cuopt_assert(!integer || fj_cpu.view.pb.is_integer(clamped_value),
+                   "bound clamp broke integrality");
+      fj_cpu.h_assignment[var] = clamped_value;
+      clamped                  = true;
+    }
+    fj_cpu.h_best_assignment[var] =
+      std::clamp((f_t)fj_cpu.h_best_assignment[var], lower[var], upper[var]);
+  }
+
+  // h_binary_indices reallocated, so the span over it would otherwise dangle.
+  fj_cpu.view.pb.binary_indices =
+    raft::device_span<i_t>(fj_cpu.h_binary_indices.data(), fj_cpu.h_binary_indices.size());
+
+  if (clamped) recompute_lhs(fj_cpu);
+
+  CUOPT_LOG_DEBUG("%sCPUFJ bound prop: %d passes, %d domains tightened, %d binary of %d integer",
+                  fj_cpu.log_prefix.c_str(),
+                  pass,
+                  tightened,
+                  fj_cpu.n_binary_vars,
+                  fj_cpu.n_binary_vars + fj_cpu.n_integer_vars);
+}
+
 // Rounds the LP relaxation into this lane's start point. Solved by dual simplex on the lane's own
 // thread rather than during portfolio construction, so the other seven start searching immediately.
 template <typename i_t, typename f_t>
@@ -2633,14 +2805,24 @@ template <typename i_t, typename f_t>
 void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double work_unit_limit)
 {
   const auto solve_start = std::chrono::high_resolution_clock::now();
+  // Precedes the dispatch below because a variable it squeezes to [0,1] can bring the whole model
+  // into the binary engine's shape.
+  apply_bound_propagation(*fj_cpu);
+  const f_t prop_seconds =
+    fj_cpu->use_bound_prop
+      ? std::chrono::duration<f_t>(std::chrono::high_resolution_clock::now() - solve_start).count()
+      : f_t{0};
+
   // problem fits the binary fastpath shape? run it (engine is solve-local)
-  if (try_cpufj_binary_solve(*fj_cpu, in_time_limit, work_unit_limit)) return;
+  if (try_cpufj_binary_solve(*fj_cpu, in_time_limit - prop_seconds, work_unit_limit)) return;
 
   apply_lp_rounded_seed(*fj_cpu);
 
   i_t local_mins = 0;
   // The LP comes out of this lane's own budget; every other lane's clock starts where it did.
-  auto loop_start = fj_cpu->use_lp_seed ? solve_start : std::chrono::high_resolution_clock::now();
+  auto loop_start = (fj_cpu->use_lp_seed || fj_cpu->use_bound_prop)
+                      ? solve_start
+                      : std::chrono::high_resolution_clock::now();
   auto time_limit = std::chrono::milliseconds(static_cast<i_t>(std::floor(in_time_limit * 1000.0)));
   auto loop_time_start = loop_start;
 
@@ -3911,6 +4093,10 @@ void apply_lane_diversification(fj_cpu_climber_t<i_t, f_t>& climber, int lane, i
   // One structural start per lane; lanes 0 and 4 keep the shared anchor. Lane 7 also keeps it here,
   // because its replacement is an LP solved inside that lane's own task rather than in setup.
   climber.use_lp_seed = lane % 8 == 7;
+
+  // Half the portfolio searches the propagated model, half the model as parsed. Off the LP lane, so
+  // one lane does not carry both setup passes.
+  climber.use_bound_prop = lane % 2 == 0;
   switch (lane % 8) {
     case 1: apply_lock_weighted_seed<i_t, f_t>(climber); break;
     case 2: apply_aggressive_constraint_seed<i_t, f_t>(climber); break;

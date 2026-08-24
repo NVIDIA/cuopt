@@ -317,6 +317,9 @@ struct fj_cpu_climber_t {
   // One lane replaces its start with a rounded LP relaxation, solved inside that lane's own task so
   // portfolio construction does not wait on an LP.
   bool use_lp_seed{false};
+  // Half the lanes narrow their own domains by activity propagation before searching, so the
+  // portfolio covers both the propagated and the as-parsed model.
+  bool use_bound_prop{false};
   // Enables the binary engine's infeasible-phase pair repair. Per lane, since the pair scan costs
   // iterations that a well-tuned single-flip lane would rather spend elsewhere.
   bool enable_infeasible_repair{false};
