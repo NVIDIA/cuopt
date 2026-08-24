@@ -1885,6 +1885,12 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
       CUOPT_LOG_INFO("Dual variables for problems with quadratic constraints not returned.");
       const f_t nan_val = std::numeric_limits<f_t>::quiet_NaN();
       auto stream       = op_problem.get_handle_ptr()->get_stream();
+      // solve_qcqp() reformulates quadratic constraints into second-order cones, which grows
+      // the internal row/column count beyond the documented num_constraints/num_variables.
+      // Resize back down to the documented lengths.
+      solution.get_dual_solution().resize(
+        op_problem.get_n_constraints() + op_problem.get_quadratic_constraints().size(), stream);
+      solution.get_reduced_cost().resize(op_problem.get_n_variables(), stream);
       thrust::fill(rmm::exec_policy(stream),
                    solution.get_dual_solution().begin(),
                    solution.get_dual_solution().end(),
