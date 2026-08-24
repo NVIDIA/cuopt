@@ -184,8 +184,10 @@ std::pair<f_t, f_t> feas_score_constraint(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
     f_t rhs         = bounds[bound_idx] * sign;
     f_t old_lhs     = current_lhs * sign;
     f_t new_lhs     = moved_lhs * sign;
-    f_t old_slack   = rhs - old_lhs;
-    f_t new_slack   = rhs - new_lhs;
+    [[maybe_unused]]
+    f_t old_slack = rhs - old_lhs;
+    [[maybe_unused]]
+    f_t new_slack = rhs - new_lhs;
 
     cuopt_assert(isfinite(cstr_weight), "invalid weight");
     cuopt_assert(cstr_weight >= 0, "invalid weight");
@@ -1839,8 +1841,6 @@ static void recompute_lhs(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   fj_cpu.total_violations_sumcomp = 0;
   for (i_t cstr_idx = 0; cstr_idx < fj_cpu.view.pb.n_constraints; ++cstr_idx) {
     auto [offset_begin, offset_end] = range_for_constraint<i_t, f_t>(fj_cpu, cstr_idx);
-    auto c_lb                       = fj_cpu.h_cstr_lb[cstr_idx];
-    auto c_ub                       = fj_cpu.h_cstr_ub[cstr_idx];
     auto delta_it =
       thrust::make_transform_iterator(thrust::make_counting_iterator(0), [&fj_cpu](i_t j) {
         return fj_cpu.h_coefficients[j] * fj_cpu.h_assignment[fj_cpu.h_variables[j]];
@@ -2578,7 +2578,7 @@ void finalize_fj_cpu_host_initialization(
   fj_cpu.view.objective_vars =
     raft::device_span<i_t>(fj_cpu.h_objective_vars.data(), fj_cpu.h_objective_vars.size());
   // get_breakthrough_move divides by the coefficient of every variable in here.
-  for (auto var_idx : fj_cpu.h_objective_vars) {
+  for ([[maybe_unused]] auto var_idx : fj_cpu.h_objective_vars) {
     cuopt_assert(fj_cpu.h_obj_coeffs[var_idx] != f_t{0}, "null coefficient in the objective vars");
     cuopt_assert(isfinite((f_t)fj_cpu.h_obj_coeffs[var_idx]), "non-finite objective coefficient");
   }
