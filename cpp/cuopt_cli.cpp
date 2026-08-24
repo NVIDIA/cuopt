@@ -100,8 +100,15 @@ int run_single_file(const std::string& file_path,
                     cuopt::mathematical_optimization::io::mps_reader_type_t mps_reader,
                     cuopt::mathematical_optimization::solver_settings_t<int, double>& settings)
 {
-  cuopt::init_logger_t log(settings.get_parameter<std::string>(CUOPT_LOG_FILE),
-                           settings.get_parameter<bool>(CUOPT_LOG_TO_CONSOLE));
+  // The solver's logger lives in the solver library and is not reachable from here, so
+  // configure it through its exported entry point. The CLI then configures its own logger
+  // for the messages it emits itself; it appends rather than truncates so that it does not
+  // clear the file the solver has just opened.
+  const auto log_file    = settings.get_parameter<std::string>(CUOPT_LOG_FILE);
+  const auto log_console = settings.get_parameter<bool>(CUOPT_LOG_TO_CONSOLE);
+
+  cuopt::init_component_logger_t solver_log(log_file, log_console);
+  cuopt::init_logger_t log(log_file, log_console, /*truncate=*/false);
 
   std::string base_filename = file_path.substr(file_path.find_last_of("/\\") + 1);
 

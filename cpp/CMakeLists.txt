@@ -569,6 +569,12 @@ target_compile_definitions(cuopt_objs
   PUBLIC CUSPARSE_ENABLE_EXPERIMENTAL_API
 )
 
+# Lets callers reach routing's logger through init_component_logger_t. Routing is optional,
+# so the entry point it declares is only linkable when routing was actually built.
+if(NOT SKIP_ROUTING_BUILD)
+  target_compile_definitions(cuopt_objs PUBLIC CUOPT_HAS_ROUTING)
+endif()
+
 target_compile_options(cuopt_objs
         PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
         "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
