@@ -33,12 +33,23 @@ done
 export PYTHONPATH="${SCRIPT_DIR}/utils:${PYTHONPATH:-}"
 
 rc=0
+# A test that never returns takes the whole step down when the outer 'timeout'
+# fires, and pytest is killed before it can say which test was running. -v names
+# each test as it is dispatched, and faulthandler_timeout dumps the stack of any
+# test still running after FAULTHANDLER_TIMEOUT seconds, so a stuck test
+# identifies itself while the step is still alive. Neither kills the test; they
+# only make it visible.
+FAULTHANDLER_TIMEOUT=${FAULTHANDLER_TIMEOUT:-600}
+PYTEST_DIAG_ARGS=(-v -o "faulthandler_timeout=${FAULTHANDLER_TIMEOUT}" --durations=25)
+
 if [ "${IS_NIGHTLY}" = "nightly" ]; then
-    pytest -s --cache-clear --reruns 2 --reruns-delay 5 -p cuopt_rerun_xml "$@" tests || rc=$?
+    pytest -s --cache-clear --reruns 2 --reruns-delay 5 -p cuopt_rerun_xml \
+        "${PYTEST_DIAG_ARGS[@]}" "$@" tests || rc=$?
 else
     # loadgroup keeps xdist_group (grpc server) tests on one worker;
     # max-worker-restart=0 stops a crashed worker from respawning.
-    pytest -s --cache-clear -n 4 --dist loadgroup --max-worker-restart=0 "$@" tests || rc=$?
+    pytest -s --cache-clear -n 4 --dist loadgroup --max-worker-restart=0 \
+        "${PYTEST_DIAG_ARGS[@]}" "$@" tests || rc=$?
 fi
 
 # If not a crash, exit normally
