@@ -21,6 +21,7 @@
 #include <thrust/iterator/counting_iterator.h>
 #include <thrust/logical.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -187,6 +188,15 @@ struct fj_bin_problem_t {
   // switching exactly one other off: the exchange a pair can represent.
   int32_t n_exchange_vars{0};
   int32_t max_card_degree{0};
+
+  // Empty unless encoded, when every engine variable is one bit of a bounded general integer and
+  // original[j] = var_offset[j] + sum of bit_weight[b] * assign[b] over the bits b owned by j.
+  bool encoded{false};
+  int32_t n_original{0};
+  std::vector<double> var_offset;
+  std::vector<int32_t> bit_owner;
+  std::vector<double> bit_weight;
+  std::vector<double> orig_objective;
 };
 
 // Result of the width-independent eligibility scan.
@@ -610,6 +620,237 @@ static bool fj_bin_narrow(const fj_cpu_climber_t<i_t, f_t>& c,
 }
 
 
+// Bit budget for one general integer's domain.
+constexpr int32_t fj_bin_encode_max_bits = 16;
+// Cap on the bit-variable count relative to the model's variable count, bounding the SIMD sweep.
+constexpr int64_t fj_bin_encode_max_growth = 6;
+
+// Bits needed to represent the integers 0..W inclusive.
+static inline int32_t fj_bin_encode_nbits(int64_t W)
+{
+  int32_t bits = 0;
+  while (((int64_t)1 << bits) - 1 < W) ++bits;
+  return bits;
+}
+
+// Encodes an all-integer model with bounded general integers into bits: x in [L,U] becomes
+// x = L + sum_k w_k b_k over weights 1, 2, ..., 2^(nbits-2), R, with R closing the range at W = U-L.
+template <typename i_t, typename f_t, typename coef_t>
+static bool fj_bin_encode(const fj_cpu_climber_t<i_t, f_t>& c,
+                          fj_bin_problem_t<coef_t>& pb,
+                          int& coefficient_bits)
+{
+  const int32_t n = c.view.pb.n_variables;
+  const int32_t m = c.view.pb.n_constraints;
+  if (n <= 0 || m <= 0) return false;
+
+  const double tol = c.view.pb.tolerances.integrality_tolerance;
+
+  const auto& var_bounds = c.h_var_bounds;
+  const auto& var_types  = c.h_var_types;
+  const auto& offsets    = c.h_offsets;
+  const auto& variables  = c.h_variables;
+  const auto& coeffs     = c.h_coefficients;
+  const auto& cstr_lb    = c.h_cstr_lb;
+  const auto& cstr_ub    = c.h_cstr_ub;
+  const auto& left_w     = c.h_cstr_left_weights;
+  const auto& right_w    = c.h_cstr_right_weights;
+  const auto& obj        = c.h_obj_coeffs;
+
+  std::vector<double> lower(n);
+  std::vector<double> upper(n);
+  std::vector<int32_t> nbits(n);
+  std::vector<int32_t> bit_start(n);
+  int64_t total_bits = 0;
+  for (int32_t v = 0; v < n; ++v) {
+    if (var_types[v] != var_t::INTEGER) return false;
+    auto bounds    = var_bounds[v];
+    const double x = (double)cuopt::get_lower(bounds);
+    const double y = (double)cuopt::get_upper(bounds);
+    if (!std::isfinite(x) || !std::isfinite(y) || y < x) return false;
+    if (!is_integer(x, tol) || !is_integer(y, tol)) return false;
+
+    lower[v]        = std::round(x);
+    upper[v]        = std::round(y);
+    const int64_t W = (int64_t)(upper[v] - lower[v]);
+
+    nbits[v] = fj_bin_encode_nbits(W);
+    if (nbits[v] > fj_bin_encode_max_bits) return false;
+    bit_start[v] = (int32_t)total_bits;
+    total_bits += nbits[v];
+  }
+  if (total_bits <= 0 || total_bits > (int64_t)INT32_MAX / 2) return false;
+  if (total_bits > fj_bin_encode_max_growth * (int64_t)n) return false;
+
+  const int32_t n_bits = (int32_t)total_bits;
+
+  pb.encoded    = true;
+  pb.n_original = n;
+  pb.var_offset = lower;
+  pb.orig_objective.assign(n, 0.0);
+  pb.bit_owner.assign(n_bits, 0);
+  pb.bit_weight.assign(n_bits, 0.0);
+  for (int32_t v = 0; v < n; ++v) {
+    int64_t covered = 0;
+    const int64_t W = (int64_t)(upper[v] - lower[v]);
+    for (int32_t k = 0; k < nbits[v]; ++k) {
+      const int64_t w = k + 1 < nbits[v] ? (int64_t)1 << k : W - covered;
+      covered += w;
+      pb.bit_owner[bit_start[v] + k]  = v;
+      pb.bit_weight[bit_start[v] + k] = (double)w;
+    }
+    cuopt_assert(covered == W, "bit weights do not close the domain exactly");
+  }
+
+  pb.n_variables = n_bits;
+  pb.offsets.assign(1, 0);
+  pb.bound.clear();
+  pb.cmax.clear();
+  pb.initial_weight.clear();
+  pb.variables.clear();
+  pb.coefficients.clear();
+
+  std::vector<double> incoming_weight;
+  std::vector<double> row_values;
+  double max_abs_coefficient = 0;
+
+  // One side of one row, as a'b <= bound in bit space with sum(a_j L_j) folded into the bound.
+  auto emit = [&](int32_t r, double side_bound, long side, double weight) -> bool {
+    double fixed = 0;
+    for (int32_t k = offsets[r]; k < offsets[r + 1]; ++k)
+      fixed += coeffs[k] * lower[variables[k]];
+    const double folded_bound = side_bound - fixed;
+
+    row_values.clear();
+    bool integral = is_integer(folded_bound, tol);
+    for (int32_t k = offsets[r]; k < offsets[r + 1]; ++k) {
+      row_values.push_back(coeffs[k]);
+      if (!is_integer(coeffs[k], tol)) integral = false;
+    }
+    row_values.push_back(folded_bound);
+
+    double s = 1.0;
+    if (!integral) {
+      s = find_scaling_rational(
+        row_values, 1.0 / tol, fj_bin_scale_cap, (double)fj_bin_scale_cap, tol);
+      if (!std::isfinite(s) || s <= 0.0) return false;
+    }
+
+    coef_t row_cmax    = 1;
+    double row_abs_sum = 0;
+    for (int32_t k = offsets[r]; k < offsets[r + 1]; ++k) {
+      const int32_t v = variables[k];
+      const double a  = s * coeffs[k];
+      if (!is_integer(a, tol)) return false;
+      const long ai = std::lround(a);
+      for (int32_t bk = 0; bk < nbits[v]; ++bk) {
+        const int32_t bit = bit_start[v] + bk;
+        const long scaled = side * ai * std::lround(pb.bit_weight[bit]);
+        const long abs_a  = std::labs(scaled);
+        // Bounded by magnitude, so cmax below and the negated side both stay representable.
+        if (abs_a > (long)std::numeric_limits<coef_t>::max()) return false;
+        pb.variables.push_back(bit);
+        pb.coefficients.push_back((coef_t)scaled);
+
+        if (abs_a > (long)row_cmax) row_cmax = (coef_t)abs_a;
+        row_abs_sum += (double)abs_a;
+        if ((double)abs_a > max_abs_coefficient) max_abs_coefficient = (double)abs_a;
+      }
+    }
+    if (row_abs_sum > (double)(INT32_MAX / 2)) return false;
+
+    const double scaled_bound = side * s * folded_bound;
+    if (!is_integer(scaled_bound, tol)) return false;
+    const double bound = std::round(scaled_bound);
+    if (!fj_bin_in_int32(bound)) return false;
+    // A bit assignment can drive lhs anywhere in [-row_abs_sum, row_abs_sum].
+    if (!fj_bin_in_int32(bound - row_abs_sum) || !fj_bin_in_int32(bound + row_abs_sum)) return false;
+
+    pb.offsets.push_back((int32_t)pb.variables.size());
+    pb.bound.push_back((int32_t)bound);
+    pb.cmax.push_back(row_cmax);
+    incoming_weight.push_back(weight);
+    return true;
+  };
+
+  for (int32_t r = 0; r < m; ++r) {
+    const double lb = cstr_lb[r];
+    const double ub = cstr_ub[r];
+    if (std::isfinite(lb) && !emit(r, lb, -1, left_w[r])) return false;
+    if (std::isfinite(ub) && !emit(r, ub, 1, right_w[r])) return false;
+  }
+  pb.n_constraints = (int32_t)pb.bound.size();
+  if (pb.n_constraints <= 0) return false;
+  pb.nnz = (int32_t)pb.variables.size();
+
+  if (max_abs_coefficient <= 127.0) {
+    coefficient_bits = 8;
+  } else if (max_abs_coefficient <= 32767.0) {
+    coefficient_bits = 16;
+  } else {
+    return false;
+  }
+
+  pb.variables.resize(pb.nnz + fj_bin_simd_padding, 0);
+  pb.coefficients.resize(pb.nnz + fj_bin_simd_padding, (coef_t)0);
+
+  double w_min = std::numeric_limits<double>::infinity();
+  for (double w : incoming_weight) {
+    if (w > 0 && w < w_min) w_min = w;
+  }
+  double scale = 1.0;
+  if (std::isfinite(w_min) && w_min > 0) {
+    scale = (double)fj_bin_ddfw_init / w_min;
+    if (scale < 1.0) scale = 1.0;
+  }
+  for (double w : incoming_weight) {
+    int32_t scaled = w > 0 ? (int32_t)std::lround(w * scale) : fj_bin_ddfw_init;
+    if (scaled < 1) scaled = 1;
+    pb.initial_weight.push_back(scaled);
+  }
+
+  pb.reverse_offsets.assign(n_bits + 1, 0);
+  for (int32_t k = 0; k < pb.nnz; ++k) pb.reverse_offsets[pb.variables[k] + 1]++;
+  for (int32_t v = 0; v < n_bits; ++v) pb.reverse_offsets[v + 1] += pb.reverse_offsets[v];
+  pb.reverse_constraints.resize(pb.nnz);
+  pb.reverse_coefficients.resize(pb.nnz);
+  pb.reverse_to_csr.resize(pb.nnz);
+  pb.incident_row_cmax.resize(pb.nnz);
+  {
+    std::vector<int32_t> cursor(pb.reverse_offsets.begin(), pb.reverse_offsets.begin() + n_bits);
+    for (int32_t r = 0; r < pb.n_constraints; ++r) {
+      for (int32_t k = pb.offsets[r]; k < pb.offsets[r + 1]; ++k) {
+        const int32_t slot            = cursor[pb.variables[k]]++;
+        pb.reverse_constraints[slot]  = r;
+        pb.reverse_coefficients[slot] = pb.coefficients[k];
+        pb.reverse_to_csr[slot]       = k;
+        pb.incident_row_cmax[slot]    = pb.cmax[r];
+      }
+    }
+  }
+  const int32_t rpad = fj_bin_pf_dist > fj_bin_simd_padding ? fj_bin_pf_dist : fj_bin_simd_padding;
+  pb.reverse_constraints.resize(pb.nnz + rpad, 0);
+  pb.reverse_coefficients.resize(pb.nnz + rpad, (coef_t)0);
+  pb.incident_row_cmax.resize(pb.nnz + rpad, (coef_t)1);
+
+  pb.objective.assign(n_bits, 0.0);
+  pb.objective_vars.clear();
+  for (int32_t v = 0; v < n; ++v) {
+    pb.orig_objective[v] = obj[v];
+    if (obj[v] == 0.0) continue;
+    for (int32_t bk = 0; bk < nbits[v]; ++bk) {
+      const int32_t bit = bit_start[v] + bk;
+      pb.objective[bit] = obj[v] * pb.bit_weight[bit];
+      if (pb.objective[bit] != 0.0) pb.objective_vars.push_back(bit);
+    }
+  }
+
+  // The cardinality census only reads as a count on rows of plain binaries.
+  pb.n_exchange_vars = 0;
+  pb.max_card_degree = 0;
+  return true;
+}
+
 // The integer engine. Feasibility is an exact compare against one bound per row, so there is no
 // tolerance arithmetic and no compensated summation anywhere below.
 template <typename i_t, typename f_t, typename coef_t>
@@ -671,6 +912,9 @@ struct fj_bin_engine_t {
   // Mean absolute nonzero objective coefficient; the unit of the objective score term.
   double obj_magnitude{1.0};
   double incumbent_objective{0};
+  // sum(obj_j * L_j), folded out of the encoded objective and carried here so both tracked
+  // objectives hold the model's own value. Zero on the all-binary path.
+  double objective_offset{0};
   double best_objective{std::numeric_limits<double>::infinity()};
   int32_t max_weight{1};
   bool feasible_found{false};
@@ -744,7 +988,7 @@ struct fj_bin_engine_t {
       }
     }
 
-    double objective = 0;
+    double objective = objective_offset;
     for (int32_t v = 0; v < pb.n_variables; ++v) objective += pb.objective[v] * (double)best_assign[v];
     const double drift = std::fabs(objective - best_objective);
 
@@ -845,7 +1089,7 @@ struct fj_bin_engine_t {
       row_slack[r]        = slack;
       if (slack < 0) set_violated(r);
     }
-    incumbent_objective = 0;
+    incumbent_objective = objective_offset;
     for (int32_t v = 0; v < pb.n_variables; ++v) incumbent_objective += pb.objective[v] * assign[v];
     nnz_touched += pb.nnz;
     rebuild_scores();
@@ -1021,9 +1265,22 @@ struct fj_bin_engine_t {
   {
     auto& h_assign = climber.h_assignment;
     auto& h_best   = climber.h_best_assignment;
-    for (int32_t v = 0; v < pb.n_variables; ++v) {
-      h_assign[v] = (f_t)assign[v];
-      h_best[v]   = (f_t)assign[v];
+    if (pb.encoded) {
+      for (int32_t v = 0; v < pb.n_original; ++v) {
+        h_assign[v] = (f_t)pb.var_offset[v];
+        h_best[v]   = (f_t)pb.var_offset[v];
+      }
+      for (int32_t b = 0; b < pb.n_variables; ++b) {
+        if (!assign[b]) continue;
+        const int32_t v = pb.bit_owner[b];
+        h_assign[v] += (f_t)pb.bit_weight[b];
+        h_best[v] += (f_t)pb.bit_weight[b];
+      }
+    } else {
+      for (int32_t v = 0; v < pb.n_variables; ++v) {
+        h_assign[v] = (f_t)assign[v];
+        h_best[v]   = (f_t)assign[v];
+      }
     }
     climber.h_incumbent_objective = (f_t)incumbent_objective;
     climber.h_best_objective      = (f_t)best_objective;
@@ -1537,7 +1794,10 @@ struct fj_bin_engine_t {
     if (feasible_found) {
       cuopt_assert((int32_t)best_assign.size() == pb.n_variables, "incumbent size mismatch");
       assign = best_assign;
-      if (shared_incumbent && shared_incumbent->adopt((f_t)best_objective, adopt_buffer)) {
+      // The shared buffer holds decoded integers, so the flat 0/1 read below only lines up when
+      // engine variables are the model's own variables.
+      if (!pb.encoded && shared_incumbent &&
+          shared_incumbent->adopt((f_t)best_objective, adopt_buffer)) {
         for (int32_t v = 0; v < pb.n_variables; ++v)
           assign[v] = (int8_t)(adopt_buffer[v] >= 0.5 ? 1 : 0);
       }
@@ -1608,10 +1868,33 @@ struct fj_bin_engine_t {
 
     const int32_t n = pb.n_variables, m = pb.n_constraints;
     const auto& h_assign = climber.h_assignment;
-    assign.resize(n);
-    for (int32_t v = 0; v < n; ++v) {
-      const double val = (double)h_assign[v];
-      assign[v]        = (int8_t)(val >= 0.5 ? 1 : 0);
+    assign.assign(n, 0);
+    if (pb.encoded) {
+      // Descending weight, so the bit pattern reproduces the start value wherever it is
+      // representable: with exact closure that is every integer of the domain.
+      std::vector<std::vector<int32_t>> bits_of(pb.n_original);
+      for (int32_t b = 0; b < n; ++b) bits_of[pb.bit_owner[b]].push_back(b);
+      for (int32_t v = 0; v < pb.n_original; ++v) {
+        long residual = std::lround((double)h_assign[v] - pb.var_offset[v]);
+        if (residual < 0) residual = 0;
+        auto& bits = bits_of[v];
+        std::sort(bits.begin(), bits.end(), [&](int32_t a, int32_t b) {
+          return pb.bit_weight[a] > pb.bit_weight[b];
+        });
+        for (int32_t b : bits) {
+          const long w = std::lround(pb.bit_weight[b]);
+          if (w <= residual) {
+            assign[b] = 1;
+            residual -= w;
+          }
+        }
+        cuopt_assert(residual == 0, "greedy bit encode left the start value unrepresented");
+      }
+    } else {
+      for (int32_t v = 0; v < n; ++v) {
+        const double val = (double)h_assign[v];
+        assign[v]        = (int8_t)(val >= 0.5 ? 1 : 0);
+      }
     }
     seed_assign      = assign;
     best_assign      = assign;
@@ -1644,6 +1927,12 @@ struct fj_bin_engine_t {
     obj_magnitude = abs_obj_sum > 0 ? abs_obj_sum / (double)pb.objective_vars.size() : 1.0;
     cuopt_assert(std::isfinite(obj_magnitude) && obj_magnitude > 0,
                  "objective magnitude unit must be finite and positive");
+
+    objective_offset = 0;
+    if (pb.encoded) {
+      for (int32_t v = 0; v < pb.n_original; ++v)
+        objective_offset += pb.orig_objective[v] * pb.var_offset[v];
+    }
 
     argmax_tile                  = fj_bin_argmax_tile();
     objective_weight             = seeded_weight > 0 ? seeded_weight : 0;
@@ -1748,7 +2037,13 @@ struct fj_bin_engine_t {
       }
       if (iters % climber.diversity_callback_interval == 0 && climber.diversity_callback) {
         auto& h_assign = climber.h_assignment;
-        for (int32_t v = 0; v < pb.n_variables; ++v) h_assign[v] = (f_t)assign[v];
+        if (pb.encoded) {
+          for (int32_t v = 0; v < pb.n_original; ++v) h_assign[v] = (f_t)pb.var_offset[v];
+          for (int32_t b = 0; b < pb.n_variables; ++b)
+            if (assign[b]) h_assign[pb.bit_owner[b]] += (f_t)pb.bit_weight[b];
+        } else {
+          for (int32_t v = 0; v < pb.n_variables; ++v) h_assign[v] = (f_t)assign[v];
+        }
         climber.diversity_callback((f_t)incumbent_objective, h_assign);
       }
 
@@ -1806,6 +2101,34 @@ bool try_cpufj_binary_solve(fj_cpu_climber_t<i_t, f_t>& climber,
 
   const fj_bin_scan_t scan = fj_bin_scan(climber);
   if (scan.reject != fj_binary_reject_t::none) {
+    // A non-binary variable is the one rejection the encoding can answer: the model may still be
+    // all-integer with finite domains. Every other reason fails the encoded model just the same.
+    if (scan.reject == fj_binary_reject_t::non_binary_var) {
+      // The width the encoded coefficients need is only known once they are built, so probe with
+      // int16 and rebuild on int8 for the narrower kernel when that is enough.
+      fj_bin_engine_t<i_t, f_t, int16_t> probe;
+      int bits = 0;
+      if (fj_bin_encode(climber, probe.pb, bits)) {
+        if (bits == 8) {
+          fj_bin_engine_t<i_t, f_t, int8_t> engine8;
+          int bits8 = 0;
+          if (fj_bin_encode(climber, engine8.pb, bits8)) {
+            CUOPT_LOG_DEBUG("%sCPUFJ binary fast path enabled (encoded int8): %d bits, %d rows",
+                            climber.log_prefix.c_str(),
+                            engine8.pb.n_variables,
+                            engine8.pb.n_constraints);
+            engine8.solve(climber, time_limit, work_unit_limit);
+            return true;
+          }
+        }
+        CUOPT_LOG_DEBUG("%sCPUFJ binary fast path enabled (encoded int16): %d bits, %d rows",
+                        climber.log_prefix.c_str(),
+                        probe.pb.n_variables,
+                        probe.pb.n_constraints);
+        probe.solve(climber, time_limit, work_unit_limit);
+        return true;
+      }
+    }
     CUOPT_LOG_DEBUG("%sCPUFJ binary fast path declined: %s (row %d, var %d)",
                     climber.log_prefix.c_str(),
                     fj_binary_reject_name(scan.reject),
