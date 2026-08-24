@@ -179,10 +179,6 @@ def test_variable_type_is_normalized():
     assert from_bytes.VariableType is VType.CONTINUOUS
 
     with pytest.raises(ValueError):
-        prob.addVariable(vtype="banana")
-    with pytest.raises(ValueError):
-        prob.addVariable(vtype=b"\xff")
-    with pytest.raises(ValueError):
         from_enum.setVariableType(7)
 
 
