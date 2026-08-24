@@ -35,8 +35,8 @@ RUN apt-get update \
         unzip \
     && ( for i in 1 2 3 4 5; do \
             add-apt-repository -y ppa:deadsnakes/ppa && exit 0; \
-            echo "add-apt-repository failed (attempt ${i}/5), retrying in 10s..."; \
-            sleep 10; \
+            echo "add-apt-repository failed (attempt ${i}/5), retrying in 5s..."; \
+            sleep 5; \
          done; \
          exit 1 ) \
     && apt-get install -y --no-install-recommends \
