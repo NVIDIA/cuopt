@@ -84,7 +84,9 @@ jobs:
       - name: Compute cuopt version
         id: compute-cuopt-ver
         run: |
-          ver=$(rapids-generate-version)
+          source rapids-datetime-string
+          # .post<datetime> makes every nightly version unique (see ci/build_wheel.sh); ignored on release builds.
+          ver=$(RAPIDS_VERSION_SUFFIX=".post${RAPIDS_DATETIME_STRING}" rapids-generate-version)
           # Remove starting 0s from version 25.08.0a18 -> 25.8.0a18
           CUOPT_VER=$(echo "$ver" | sed -E 's/\.0+([0-9])/\.\1/g')
           echo "CUOPT_VER=$CUOPT_VER" >> $GITHUB_OUTPUT
