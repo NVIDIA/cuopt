@@ -335,7 +335,6 @@ jobs:
     secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: ./.github/workflows/kitmaker_portal.yaml
     with:
-      mode: release
       release_tag: ${{ needs.release-github.outputs.release-tag }}
       project_name: libcuopt-cu12
       project_id: ${{ vars.KITMAKER_PROJECT_ID_LIBCUOPT_CU12 }}
@@ -350,7 +349,6 @@ jobs:
     secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: ./.github/workflows/kitmaker_portal.yaml
     with:
-      mode: release
       release_tag: ${{ needs.release-github.outputs.release-tag }}
       project_name: libcuopt-cu13
       project_id: ${{ vars.KITMAKER_PROJECT_ID_LIBCUOPT_CU13 }}
@@ -365,7 +363,6 @@ jobs:
     secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: ./.github/workflows/kitmaker_portal.yaml
     with:
-      mode: release
       release_tag: ${{ needs.release-github.outputs.release-tag }}
       project_name: cuopt-cu12
       project_id: ${{ vars.KITMAKER_PROJECT_ID_CUOPT_CU12 }}
@@ -380,7 +377,6 @@ jobs:
     secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: ./.github/workflows/kitmaker_portal.yaml
     with:
-      mode: release
       release_tag: ${{ needs.release-github.outputs.release-tag }}
       project_name: cuopt-cu13
       project_id: ${{ vars.KITMAKER_PROJECT_ID_CUOPT_CU13 }}
@@ -395,7 +391,6 @@ jobs:
     secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: ./.github/workflows/kitmaker_portal.yaml
     with:
-      mode: release
       release_tag: ${{ needs.release-github.outputs.release-tag }}
       project_name: cuopt-server-cu12
       project_id: ${{ vars.KITMAKER_PROJECT_ID_CUOPT_SERVER_CU12 }}
@@ -410,7 +405,6 @@ jobs:
     secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: ./.github/workflows/kitmaker_portal.yaml
     with:
-      mode: release
       release_tag: ${{ needs.release-github.outputs.release-tag }}
       project_name: cuopt-server-cu13
       project_id: ${{ vars.KITMAKER_PROJECT_ID_CUOPT_SERVER_CU13 }}
@@ -425,7 +419,6 @@ jobs:
     secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: ./.github/workflows/kitmaker_portal.yaml
     with:
-      mode: release
       release_tag: ${{ needs.release-github.outputs.release-tag }}
       project_name: cuopt-sh-client
       project_id: ${{ vars.KITMAKER_PROJECT_ID_CUOPT_SH_CLIENT }}

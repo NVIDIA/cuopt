@@ -6,29 +6,19 @@ name: Kitmaker Portal (via Charon Ferry)
 on:
   workflow_call:
     inputs:
-      mode:
-        description: |
-          mode: 'smoke-test' polls an existing Kitmaker Portal status ID (no side effects).
-          'release' requests a new release for 'release_tag' and polls it to completion.
-        required: true
-        type: string
-      status_id:
-        description: "status_id: existing Kitmaker Portal status UUID. Required for mode == 'smoke-test'."
-        type: string
       release_tag:
-        description: "release_tag: git tag whose GitHub Release assets should be published to Kitmaker. Required for mode == 'release'."
+        description: "release_tag: git tag whose GitHub Release assets should be published to Kitmaker."
         type: string
       project_name:
-        description: "project_name: Kitmaker project name. Must exactly match the wheel/component name. Required for mode == 'release'."
+        description: "project_name: Kitmaker project name. Must exactly match the wheel/component name."
         type: string
       project_id:
-        description: "project_id: numeric Kitmaker project ID (from GET /api/v0/projects). Required for mode == 'release'."
+        description: "project_id: numeric Kitmaker project ID (from GET /api/v0/projects)."
         type: string
       wheel_asset_pattern:
         description: |
           wheel_asset_pattern: extended regex (matched with jq's 'test()') selecting this
           project's wheel/sdist asset names out of the GitHub Release, e.g. '^libcuopt-'.
-          Required for mode == 'release'.
         type: string
       pic:
         description: "pic: 'person in charge' email required by the Kitmaker release API. Defaults to secrets.KITMAKER_PORTAL_ACC_OWNER_EMAIL."
@@ -37,39 +27,28 @@ on:
         description: |
           upload: forwarded to the Kitmaker release API. 'false' (default) runs validation
           checks only, with no real publish. Must be explicitly set to 'true' to actually
-          publish wheels. Only used for mode == 'release'.
+          publish wheels.
         type: boolean
         default: false
     outputs:
       status_id:
-        description: Kitmaker Portal status UUID created by mode == 'release'.
+        description: Kitmaker Portal status UUID created by this release.
         value: ${{ jobs.release.outputs.status_id }}
   workflow_dispatch:
     inputs:
-      mode:
-        description: "mode: 'smoke-test' polls an existing status ID. 'release' requests a new release and polls it."
-        required: true
-        type: choice
-        options:
-          - smoke-test
-          - release
-      status_id:
-        description: "status_id: existing Kitmaker Portal status UUID. Required for mode == 'smoke-test'."
-        type: string
       release_tag:
-        description: "release_tag: git tag whose GitHub Release assets should be published to Kitmaker. Required for mode == 'release'."
+        description: "release_tag: git tag whose GitHub Release assets should be published to Kitmaker."
         type: string
       project_name:
-        description: "project_name: Kitmaker project name. Must exactly match the registered project. Required for mode == 'release'."
+        description: "project_name: Kitmaker project name. Must exactly match the registered project."
         type: string
       project_id:
-        description: "project_id: numeric Kitmaker project ID (from GET /api/v0/projects). Required for mode == 'release'."
+        description: "project_id: numeric Kitmaker project ID (from GET /api/v0/projects)."
         type: string
       wheel_asset_pattern:
         description: |
           wheel_asset_pattern: extended regex (matched with jq's 'test()') selecting this
           project's wheel/sdist asset names out of the GitHub Release, e.g. '^libcuopt-'.
-          Required for mode == 'release'.
         type: string
       pic:
         description: "pic: 'person in charge' email required by the Kitmaker release API. Defaults to secrets.KITMAKER_PORTAL_ACC_OWNER_EMAIL."
@@ -77,7 +56,7 @@ on:
       upload:
         description: |
           upload: forwarded to the Kitmaker release API. 'false' (default) runs validation
-          checks only, with no real publish. Only used for mode == 'release'.
+          checks only, with no real publish.
         type: boolean
         default: false
 
@@ -86,55 +65,7 @@ permissions:
   contents: read
 
 jobs:
-  smoke-test:
-    if: inputs.mode == 'smoke-test'
-    runs-on: ubuntu-latest
-    env:
-      # Referenced here (unused) so GitHub Actions masks it in this job's logs too,
-      # since a polled status response can echo a release's pic email back.
-      PIC: ${{ secrets.KITMAKER_PORTAL_ACC_OWNER_EMAIL }}
-    steps:
-      - name: Install Teleport
-        uses: teleport-actions/setup@v1
-        with:
-          version: auto
-          proxy: nv-stg-ps.teleport.sh:443
-
-      - name: Start staging Ferry tunnel
-        uses: teleport-actions/application-tunnel@v1
-        with:
-          proxy: nv-stg-ps.teleport.sh:443
-          token: charon-gha-runners
-          app: charon
-          listen: tcp://127.0.0.1:8888
-
-      - name: Mint Ferry identity token
-        id: ferry-token
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const token = await core.getIDToken('charon.nvidia.com');
-            core.setSecret(token);
-            core.setOutput('token', token);
-
-      - name: Poll Kitmaker Portal status
-        env:
-          FERRY_TOKEN: ${{ steps.ferry-token.outputs.token }}
-          PORTAL_AUTHORIZATION: ${{ secrets.KITMAKER_PORTAL_AUTHORIZATION }}
-          STATUS_ID: ${{ inputs.status_id }}
-        run: |
-          if [[ -z "$STATUS_ID" ]]; then
-            echo "::error::mode == 'smoke-test' requires 'status_id'"
-            exit 1
-          fi
-
-          curl --fail-with-body --show-error --retry 3 --retry-delay 5 \
-            -H "X-Charon-GHA-Token: $FERRY_TOKEN" \
-            -H "Authorization: Bearer $PORTAL_AUTHORIZATION" \
-            "http://127.0.0.1:8888/kitmaker-portal/api/v0/status/$STATUS_ID"
-
   release:
-    if: inputs.mode == 'release'
     runs-on: ubuntu-latest
     outputs:
       status_id: ${{ steps.kitmaker-release.outputs.status_id }}
@@ -147,10 +78,10 @@ jobs:
     steps:
       - name: Validate inputs
         run: |
-          [[ -n "${{ inputs.release_tag }}" ]] || { echo "::error::mode == 'release' requires 'release_tag'"; exit 1; }
-          [[ -n "$PROJECT_NAME" ]] || { echo "::error::mode == 'release' requires 'project_name'"; exit 1; }
-          [[ -n "$PROJECT_ID" ]] || { echo "::error::mode == 'release' requires 'project_id'"; exit 1; }
-          [[ -n "$ASSET_PATTERN" ]] || { echo "::error::mode == 'release' requires 'wheel_asset_pattern'"; exit 1; }
+          [[ -n "${{ inputs.release_tag }}" ]] || { echo "::error::'release_tag' is required"; exit 1; }
+          [[ -n "$PROJECT_NAME" ]] || { echo "::error::'project_name' is required"; exit 1; }
+          [[ -n "$PROJECT_ID" ]] || { echo "::error::'project_id' is required"; exit 1; }
+          [[ -n "$ASSET_PATTERN" ]] || { echo "::error::'wheel_asset_pattern' is required"; exit 1; }
           [[ -n "$PIC" ]] || { echo "::error::'pic' input or secrets.KITMAKER_PORTAL_ACC_OWNER_EMAIL must be set"; exit 1; }
 
       - name: Collect wheel asset URLs from the GitHub Release
