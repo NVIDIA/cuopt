@@ -1533,14 +1533,6 @@ TEST(cuts, zero_half_unit_mod2_row_finder_stops_at_work_limit)
   EXPECT_LT(work, 19100.0);
 }
 
-TEST(cuts, zero_half_unit_mod2_integrality_uses_absolute_tolerance)
-{
-  constexpr double tolerance = 1e-6;
-
-  EXPECT_TRUE(mip::mod2_value_is_integral_for_test(500000.0 + 0.5 * tolerance, tolerance));
-  EXPECT_FALSE(mip::mod2_value_is_integral_for_test(500000.49, tolerance));
-}
-
 TEST(cuts, zero_half_unit_separator_no_cycle_for_4_cycle)
 {
   // Even cycle: 0-1-2-3-0

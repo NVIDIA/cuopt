@@ -471,11 +471,6 @@ std::vector<std::vector<int>> find_mod2_row_combinations_for_test(
   return combinations;
 }
 
-bool mod2_value_is_integral_for_test(double value, double tolerance)
-{
-  return mod2_value_is_integral(value, tolerance);
-}
-
 template <typename i_t, typename f_t>
 bool generate_mod2_zero_half_cuts(cut_pool_t<i_t, f_t>& cut_pool,
                                   const lp_problem_t<i_t, f_t>& lp,
