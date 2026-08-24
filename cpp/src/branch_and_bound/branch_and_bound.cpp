@@ -3268,6 +3268,12 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   if ((settings_.clique_cuts != 0 || settings_.zero_half_cuts != 0) && clique_table_ == nullptr &&
       omp_get_num_threads() >= CUOPT_MIP_CLIQUE_CUTS_REQUIRED_THREAD_COUNT) {
     signal_extend_cliques_.store(false, std::memory_order_release);
+    mip::clique_config_t clique_config;
+    clique_table_ =
+      std::make_shared<mip::clique_table_t<i_t, f_t>>(2 * original_problem_.num_cols,
+                                                      clique_config.min_clique_size,
+                                                      clique_config.max_clique_size_for_extension);
+    auto* initial_clique_table = clique_table_.get();
     typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances_for_clique{};
     tolerances_for_clique.presolve_absolute_tolerance = settings_.primal_tol;
     tolerances_for_clique.absolute_tolerance          = settings_.primal_tol;
@@ -3277,12 +3283,12 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     tolerances_for_clique.relative_mip_gap            = settings_.relative_mip_gap_tol;
 
 #pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) depend(out : *clique_signal) \
-  firstprivate(tolerances_for_clique)
+  firstprivate(tolerances_for_clique, initial_clique_table)
     {
       user_problem_t<i_t, f_t> problem_copy = original_problem_;
       timer_t timer(std::numeric_limits<double>::infinity());
       mip::find_initial_cliques(
-        problem_copy, tolerances_for_clique, clique_table_, timer, clique_signal);
+        problem_copy, tolerances_for_clique, *initial_clique_table, timer, clique_signal);
     }
   }
 
