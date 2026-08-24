@@ -2228,7 +2228,8 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
                                                 i_t num_var_fixed,
                                                 i_t num_integers,
                                                 i_t submip_level,
-                                                std::string_view log_prefix)
+                                                std::string_view log_prefix,
+                                                bool is_root_heuristic)
 {
   double start_time = tic();
 
@@ -2380,7 +2381,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   const f_t submip_cutoff = compute_presolved_objective(submip_bnb.original_lp_, user_upper);
   submip_bnb.set_initial_upper_bound(submip_cutoff);
 
-  if (!during_cut_passes_)
+  if (!is_root_heuristic)
     submip_bnb.set_initial_pseudocost(pc_, presolver.get_reduced_to_original_map());
 
   if (submip_halt_callback_) {
@@ -2584,7 +2585,8 @@ void extend_variable_fixings(const simplex_solver_settings_t<i_t, f_t>& settings
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* worker,
                                         const std::vector<f_t>& current_incumbent,
-                                        const std::vector<variable_type_t>& var_types)
+                                        const std::vector<variable_type_t>& var_types,
+                                        bool is_root_heuristic)
 {
   raft::common::nvtx::range scope("BB::rins_thread");
   if (worker->orbital_fixing) { worker->orbital_fixing->disable(); }
@@ -2777,7 +2779,7 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* worker,
         }
 
         // We need the pseudocost to do the DFS, which we do not have during the cut passes.
-        if (!during_cut_passes_) {
+        if (!is_root_heuristic) {
           DEBUG_SUBMIP("{} Running a quick DFS for the submip!", log_prefix);
           dive_with(worker, settings_.submip_settings.dfs_max_backtrack);
         }
@@ -2790,7 +2792,8 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* worker,
                    num_var_fixed,
                    num_integers,
                    submip_level,
-                   log_prefix);
+                   log_prefix,
+                   is_root_heuristic);
     }
   }
 
@@ -2814,7 +2817,7 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* worker,
     min_var_fixed);
 
   // If the pool is uninitialized (i.e., in the root node), then this just inactivate the worker.
-  if (!during_cut_passes_) {
+  if (!is_root_heuristic) {
     rins_worker_pool_.return_worker_to_pool(worker);
   } else {
     worker->set_inactive();
@@ -2835,9 +2838,10 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
   // the solver to send the stop signal and immediately continue the execution.
   auto current_heuristic =
     root_heuristics.create_new_cut_pass_heuristic(cut_pass, Arow_, var_types_, sol, edge_norms_);
-  auto worker_count = root_heuristics.worker_count_;
+  auto worker_count                = root_heuristics.worker_count_;
+  constexpr bool is_root_heuristic = true;
+  constexpr bool is_cpufj_enabled  = true;
 
-  constexpr bool is_cpufj_enabled = true;
   if (is_cpufj_enabled) {
     f_t work_limit = std::numeric_limits<f_t>::infinity();
     f_t time_limit = settings_.time_limit - toc(exploration_stats_.start_time);
@@ -2871,14 +2875,14 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
     if (settings_.inside_submip) {
       // LLVM libomp's GOMP compatibility path skips GCC's firstprivate copy
       // function for included tasks.
-      rins(worker, current_incumbent, current_heuristic->var_types_);
+      rins(worker, current_incumbent, current_heuristic->var_types_, is_root_heuristic);
 
     } else {
       ++(*worker_count);
 #pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) affinity(worker) \
   firstprivate(current_incumbent, current_heuristic, worker_count) depend(out : *worker)
       {
-        rins(worker, current_incumbent, current_heuristic->var_types_);
+        rins(worker, current_incumbent, current_heuristic->var_types_, is_root_heuristic);
         --(*worker_count);
       }
     }
@@ -3525,7 +3529,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   }
 
   is_running_            = true;
-  during_cut_passes_     = true;
   lower_bound_numerical_ = inf;
 
   if (num_fractional != 0 && settings_.max_cut_passes > 0) { print_table_header(); }
@@ -3659,8 +3662,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   // Stops the root heuristics and clear the associated data
   root_heuristics.stop_and_sync();
-  during_cut_passes_ = false;
-
   set_uninitialized_steepest_edge_norms(original_lp_, basic_list, edge_norms_);
 
   pc_.resize(original_lp_.num_cols);
