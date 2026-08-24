@@ -2524,11 +2524,9 @@ cuopt_int_t test_qcqp_solution_dual_methods()
   /*
    * minimize t
    * subject to
-   *     t >= 0
-   *     x1^2 + x2^2 - t^2 <= 0
-   *     t >= -1
-   *     x1 >= 3
-   *     x2 >= 4
+   *     t >= 0                    (linear constraint)
+   *     x1^2 + x2^2 - t^2 <= 0    (quadratic constraint)
+   *     t >= -1, x1 >= 3, x2 >= 4 (variable bounds, not counted as constraints)
    */
   cuopt_int_t num_linear_constraints = 1;
   cuopt_int_t num_variables          = 3;
@@ -2548,9 +2546,7 @@ cuopt_int_t test_qcqp_solution_dual_methods()
   cuopt_int_t qc_col[]    = {0, 1, 2};
   cuopt_float_t qc_coeff[] = {-1.0, 1.0, 1.0};
 
-  /* Allocated to the documented sizes (queried below) rather than a guessed capacity, so a
-   * regression back to issue #1751 (writing more than num_constraints/num_variables entries)
-   * would corrupt the heap and be caught by ASan/valgrind rather than silently fitting. */
+  /* Allocated to the documented sizes (queried below). */
   cuopt_float_t* dual_solution = NULL;
   cuopt_float_t* reduced_costs = NULL;
 
