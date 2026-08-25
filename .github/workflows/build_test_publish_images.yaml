@@ -16,6 +16,7 @@ on:
         type: string
       build-datetime:
         type: string
+        required: true
         description: 'Build datetime from compute-build-details, matching the published wheels'
       arch:
         type: string
