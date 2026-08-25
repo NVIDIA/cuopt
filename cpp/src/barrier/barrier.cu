@@ -709,6 +709,8 @@ class iteration_data_t {
 
   i_t augmented_system_size(i_t n, i_t m) const { return n + m + augmented_expansion_count(); }
 
+  bool use_csr_ir_matvec() const { return settings_.barrier_csr_ir_matvec && use_augmented; }
+
   bool is_cone_variable(i_t variable) const
   {
     return has_cones() && variable >= cone_start() && variable < cone_end();
@@ -1898,6 +1900,55 @@ class iteration_data_t {
     handle_ptr->sync_stream();
   }
 
+  // Undo the dual_perturb/primal_perturb regularization baked into device_augmented.x by
+  // form_augmented, in place. Must be called after every chol->factorize(device_augmented) and
+  // before augmented_csr_multiply is used, since IR's matvec needs the true unperturbed KKT
+  // operator while the factorization itself must stay regularized for stability. No-op unless
+  // use_csr_ir_matvec().
+  void strip_augmented_perturbation()
+  {
+    if (!use_csr_ir_matvec()) { return; }
+    raft::common::nvtx::range fun_scope("Barrier: strip_augmented_perturbation");
+    cuopt::mathematical_optimization::barrier::strip_augmented_perturbation<i_t, f_t>(
+      A.n,
+      A.m,
+      augmented_expansion_count(),
+      dual_perturb,
+      primal_perturb,
+      d_augmented_diagonal_indices_,
+      cone_kkt_data_,
+      device_augmented,
+      stream_view_);
+    handle_ptr->sync_stream();
+  }
+
+  // Lazily wire a no-copy cuSparse view over device_augmented's buffers. Built once (the
+  // augmented CSR's sparsity pattern is only constructed on first_call, so device_augmented.x's
+  // pointer is stable thereafter); rebuilt defensively if that pointer ever changes.
+  void ensure_augmented_csr_view()
+  {
+    if (cusparse_augmented_view_ != nullptr &&
+        cusparse_augmented_view_data_ptr_ == device_augmented.x.data()) {
+      return;
+    }
+    cusparse_augmented_view_ =
+      std::make_unique<cusparse_view_t<i_t, f_t>>(handle_ptr, device_augmented);
+    cusparse_augmented_view_data_ptr_ = device_augmented.x.data();
+  }
+
+  // Drop-in alternative to augmented_multiply(): a single cuSPARSE SpMV over the already-
+  // factorized, perturbation-stripped device_augmented CSR buffer.
+  void augmented_csr_multiply(f_t alpha,
+                              const rmm::device_uvector<f_t>& x,
+                              f_t beta,
+                              rmm::device_uvector<f_t>& y)
+  {
+    raft::common::nvtx::range fun_scope("Barrier: augmented_csr_multiply");
+    cuopt_assert(use_csr_ir_matvec(), "augmented_csr_multiply requires CSR IR matvec path");
+    ensure_augmented_csr_view();
+    cusparse_augmented_view_->spmv(alpha, x, beta, y);
+  }
+
   raft::handle_t const* handle_ptr;
   i_t n_upper_bounds;
   dense_vector_t<i_t, i_t> upper_bounds;
@@ -1981,6 +2032,11 @@ class iteration_data_t {
   f_t primal_perturb{1e-8};
 
   std::unique_ptr<sparse_cholesky_base_t<i_t, f_t>> chol;
+
+  // No-copy cuSparse SpMV view over device_augmented, used by augmented_csr_multiply() when
+  // use_csr_ir_matvec() is enabled. Built lazily by ensure_augmented_csr_view().
+  std::unique_ptr<cusparse_view_t<i_t, f_t>> cusparse_augmented_view_;
+  const f_t* cusparse_augmented_view_data_ptr_{nullptr};
 
   bool has_factorization;
   bool has_solve_info;
@@ -2226,6 +2282,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   i_t status;
   if (use_augmented) {
     status = data.chol->factorize(data.device_augmented);
+    data.strip_augmented_perturbation();
 
 #ifdef CHOLESKY_DEBUG_CHECK
     cholesky_debug_check(data, lp, use_augmented);
@@ -2270,7 +2327,11 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
                       f_t beta,
                       rmm::device_uvector<f_t>& y) const
       {
-        data_.augmented_multiply(alpha, x, beta, y);
+        if (data_.use_csr_ir_matvec()) {
+          data_.augmented_csr_multiply(alpha, x, beta, y);
+        } else {
+          data_.augmented_multiply(alpha, x, beta, y);
+        }
       }
       void solve(rmm::device_uvector<f_t>& b, rmm::device_uvector<f_t>& x) const
       {
@@ -2793,6 +2854,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       {
         raft::common::nvtx::range fun_scope("Barrier: factorize");
         status = data.chol->factorize(data.device_augmented);
+        data.strip_augmented_perturbation();
       }
 
 #ifdef CHOLESKY_DEBUG_CHECK
@@ -2895,7 +2957,11 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
                       f_t beta,
                       rmm::device_uvector<f_t>& y)
       {
-        data_.augmented_multiply(alpha, x, beta, y);
+        if (data_.use_csr_ir_matvec()) {
+          data_.augmented_csr_multiply(alpha, x, beta, y);
+        } else {
+          data_.augmented_multiply(alpha, x, beta, y);
+        }
       }
 
       void solve(rmm::device_uvector<f_t>& b, rmm::device_uvector<f_t>& x) const

@@ -29,6 +29,11 @@ class cusparse_view_t {
   // Copy CSC -> owned CSR + CSC-transpose, with preprocess. Supports forward and transpose SpMV.
   // TMP matrix data should already be on the GPU and in CSR not CSC
   cusparse_view_t(raft::handle_t const* handle_ptr, const csc_matrix_t<i_t, f_t>& A);
+
+  // Wire cuSparse SpMV over existing device CSR buffers (no copy). Forward SpMV only (A_T_ stays
+  // null). The caller must keep `csr` alive and its row_start/j arrays unresized for the life of
+  // this view; only the contents of csr.x may change between spmv() calls.
+  cusparse_view_t(raft::handle_t const* handle_ptr, device_csr_matrix_t<i_t, f_t>& csr);
   ~cusparse_view_t();
 
   pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> create_vector(rmm::device_uvector<f_t> const& vec);

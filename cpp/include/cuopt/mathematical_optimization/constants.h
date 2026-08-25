@@ -50,6 +50,7 @@
 #define CUOPT_POSTSOLVE_INFO                        "postsolve_info"
 #define CUOPT_BARRIER_PRESOLVE_BOUND_FREE_VARIABLES "barrier_presolve_bound_free_variables"
 #define CUOPT_BARRIER_ITERATIVE_REFINEMENT          "barrier_iterative_refinement"
+#define CUOPT_BARRIER_CSR_IR_MATVEC                 "barrier_csr_ir_matvec"
 #define CUOPT_BARRIER_STEP_SCALE                    "barrier_step_scale"
 #define CUOPT_ELIMINATE_DENSE_COLUMNS               "eliminate_dense_columns"
 #define CUOPT_CUDSS_DETERMINISTIC                   "cudss_deterministic"
@@ -246,6 +247,9 @@
 
 #define CUOPT_BARRIER_ITERATIVE_REFINEMENT_OFF 0
 #define CUOPT_BARRIER_ITERATIVE_REFINEMENT_ON  1
+
+#define CUOPT_BARRIER_CSR_IR_MATVEC_OFF 0
+#define CUOPT_BARRIER_CSR_IR_MATVEC_ON  1
 
 /* @brief Scalar problem attribute selectors
  * Passed as cuopt_int_t; the valid set depends on the accessor's value type. */
