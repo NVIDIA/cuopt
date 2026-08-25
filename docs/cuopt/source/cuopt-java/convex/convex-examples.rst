@@ -2,8 +2,8 @@
 Convex Optimization Examples
 ============================
 
-These examples show the Java modeling patterns corresponding to the Python
-LP/QP examples. They assume the Java module has been compiled as described in
+These examples show the Java modeling patterns for LP and QP problems. They
+assume the Java module has been compiled as described in
 :doc:`../quick-start` and that the application can load ``libcuopt_jni``.
 
 Simple Linear Programming

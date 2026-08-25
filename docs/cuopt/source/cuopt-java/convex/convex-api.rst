@@ -2,10 +2,10 @@
 Convex Optimization API Reference
 ===================================
 
-The Java LP/MIP/QP bindings are in the package
+The Java LP/QP/QCQP/SOCP bindings are in the package
 ``com.nvidia.cuopt.mathematicalprogramming``. The public API is documented below by
-role. Method names are Java names and therefore use fluent methods instead of
-Python operator overloads.
+role. Expressions and comparisons are formed through fluent methods. MIP is
+documented separately in :doc:`../mip/index`.
 
 High-Level Problem
 ------------------
@@ -33,8 +33,8 @@ High-Level Problem
    * - ``getConstraintMatrix()`` / ``getQuadraticObjectiveMatrix()``
      - Inspect the linear constraint matrix, or the quadratic objective matrix Q, in CSR form.
    * - ``read(String)`` / ``write(String)``
-     - Load or write a problem. The format follows the file extension; a fixed-format MPS
-       overload of ``read`` accepts a boolean flag.
+     - Load a problem, choosing the parser from the file extension, or write one as MPS.
+       A fixed-format MPS overload of ``read`` accepts a boolean flag.
 
 ``Problem`` also exposes ``getVariables``, ``getVariable``, ``getConstraints``,
 ``getConstraint``, ``getNumVariables``, ``getNumConstraints``,
@@ -97,8 +97,7 @@ The settings API also includes:
 
 * the static setting accessors;
 * ``setMethod`` and ``setPDLPSolverMode``;
-* ``setOptimalityTolerance``;
-* MIP callback registration through ``setMIPCallback``.
+* ``setOptimalityTolerance``.
 
 ``SolverMethod`` includes ``PDLP``, ``DUAL_SIMPLEX``, ``BARRIER``,
 ``CONCURRENT``, and ``UNSET``. ``PDLPSolverMode`` exposes the supported PDLP
@@ -139,12 +138,18 @@ Which attributes a solution carries depends on the class of problem that
 produced it. A selector that does not apply, or that does not have the
 requested value type, raises ``CuOptException``.
 
-MPS and Errors
---------------
+Reading and Writing Problems
+----------------------------
 
-``Problem.read`` loads a problem, choosing the parser from the file extension,
-and takes a boolean overload to force fixed-format MPS. ``Problem.write``
-writes a problem for round trips or use by another cuOpt interface.
+``Problem.read`` loads a problem, choosing the parser from the file extension:
+``.mps``, ``.lp`` and ``.sif`` are recognised, along with their ``.gz``,
+``.bz2`` and ``.lz4`` variants. A boolean overload forces fixed-format MPS.
+
+``Problem.write`` writes MPS, which is the only format the engine can write, so
+the path must end in ``.mps`` or ``.qps``.
+
+Errors
+------
 
 Native failures are reported as ``CuOptException`` with a cuOpt status code
 available through ``getStatusCode``. Accessing an LP-only field on a MIP

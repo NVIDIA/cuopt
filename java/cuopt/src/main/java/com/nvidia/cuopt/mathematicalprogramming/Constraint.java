@@ -94,8 +94,8 @@ public final class Constraint {
                 * term.getSecond().getValue();
       }
     }
-    // Match Python's Constraint.compute_slack contract: RHS minus the evaluated LHS for
-    // every row sense. This intentionally keeps the sign convention stable for GE rows too.
+    // RHS minus the evaluated LHS, for every row sense, so the sign convention does not flip
+    // between LE and GE rows.
     return rhs - lhs;
   }
 

@@ -22,6 +22,11 @@
 
 #include <jni.h>
 
+// These bindings are hand-written JNI so they can run on Java 17, which is still a common
+// default. Java 22 and later offer the Foreign Function & Memory API, which calls the C API
+// directly and would remove this file; cuVS already takes that route. Raising the floor to 22
+// is tracked in #1794.
+
 namespace {
 
 JavaVM* g_jvm = nullptr;

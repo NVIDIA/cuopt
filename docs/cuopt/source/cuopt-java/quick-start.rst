@@ -81,8 +81,9 @@ exports it for Maven.
 LP Example
 ----------
 
-The modeling API mirrors the Python concepts while using Java builder methods
-instead of operator overloading.
+A ``Problem`` owns the variables and constraints. Expressions are assembled
+with methods that return a new expression, and a constraint is formed by
+comparing one against a bound with ``le``, ``ge`` or ``eq``.
 
 .. code-block:: java
 
@@ -152,7 +153,7 @@ Lifecycle
 ``AutoCloseable``. Prefer try-with-resources. They also register a ``Cleaner``
 fallback, but deterministic close keeps native memory pressure predictable.
 
-The Java module is not a drop-in translation of Python syntax. Java uses
-fluent expression methods such as ``plus``, ``minus``, ``le``, ``ge``, and
-``eq`` instead of Python operator overloads. The following pages document the
-implemented LP/MILP/QP/QCQP/SOCP surface and its Java names.
+Expressions are built and compared through methods — ``plus``, ``minus``,
+``le``, ``ge`` and ``eq`` — each returning a new object rather than mutating
+the receiver. The following pages document the implemented LP/MILP/QP/QCQP/SOCP
+surface.

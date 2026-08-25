@@ -10,7 +10,7 @@ Mixed Integer Programming (MIP)
    solution bound in production workflows.
 
 The Java MIP API uses the same ``Problem``, ``SolverSettings``, and
-``Solution`` classes as the LP/QP API. MIP problems are
+``Solution`` classes as the convex optimization API. MIP problems are
 identified by one or more variables with ``INTEGER`` or ``SEMI_CONTINUOUS``
 type.
 
