@@ -53,6 +53,7 @@
 #define CUOPT_BARRIER_STEP_SCALE                    "barrier_step_scale"
 #define CUOPT_ELIMINATE_DENSE_COLUMNS               "eliminate_dense_columns"
 #define CUOPT_CUDSS_DETERMINISTIC                   "cudss_deterministic"
+#define CUOPT_CUDSS_HYPER_ND_NLEVELS                "cudss_hyper_nd_nlevels"
 #define CUOPT_PRESOLVE                              "presolve"
 #define CUOPT_MIP_PROBING                           "mip_probing"
 #define CUOPT_DUAL_POSTSOLVE                        "dual_postsolve"
@@ -244,8 +245,10 @@
 #define CUOPT_MIP_SCALING_ON           1
 #define CUOPT_MIP_SCALING_NO_OBJECTIVE 2
 
-#define CUOPT_BARRIER_ITERATIVE_REFINEMENT_OFF 0
-#define CUOPT_BARRIER_ITERATIVE_REFINEMENT_ON  1
+/* @brief Iterative refinement for barrier method */
+#define CUOPT_BARRIER_IR_OFF         0
+#define CUOPT_BARRIER_IR_GMRES       1
+#define CUOPT_BARRIER_IR_FIXED_POINT 2
 
 /* @brief Scalar problem attribute selectors
  * Passed as cuopt_int_t; the valid set depends on the accessor's value type. */

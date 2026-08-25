@@ -290,6 +290,7 @@ class pdlp_solver_settings_t {
   bool per_constraint_residual{false};
   bool crossover{false};
   bool cudss_deterministic{false};
+  i_t cudss_nd_nlevels{-1};
   i_t folding{-1};
   i_t augmented{-1};
   i_t dualize{-1};
@@ -303,7 +304,8 @@ class pdlp_solver_settings_t {
   i_t qcqp_ruiz_equilibration{-1};
   bool eliminate_dense_columns{true};
   pdlp_precision_t pdlp_precision{pdlp_precision_t::DefaultPrecision};
-  bool barrier_iterative_refinement{true};
+  // Iterative refinement for barrier method: 0: off, 1: gmres (default), 2: fixed_point
+  i_t barrier_iterative_refinement{barrier_iterative_refinement_t::GMRES};
   i_t barrier_soc_threshold{100};
   f_t barrier_step_scale{0.9};
   bool save_best_primal_so_far{false};

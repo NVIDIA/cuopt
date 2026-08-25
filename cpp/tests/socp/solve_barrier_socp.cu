@@ -854,11 +854,10 @@ TEST(barrier, sparse_soc_expansion_solves_large_single_cone)
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
   simplex_solver_settings_t<int, double> settings;
-  settings.barrier                      = true;
-  settings.barrier_presolve             = true;
-  settings.dualize                      = 0;
-  settings.barrier_soc_threshold        = 4;
-  settings.barrier_iterative_refinement = true;
+  settings.barrier               = true;
+  settings.barrier_presolve      = true;
+  settings.dualize               = 0;
+  settings.barrier_soc_threshold = 4;
 
   lp_solution_t<int, double> solution(m, n);
   auto status = solve_linear_program_with_barrier(user_problem, settings, solution);
@@ -932,12 +931,11 @@ TEST(barrier, mixed_dense_and_sparse_soc_blocks)
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
   simplex_solver_settings_t<int, double> settings;
-  settings.barrier                      = true;
-  settings.barrier_presolve             = true;
-  settings.dualize                      = 0;
-  settings.scale_columns                = true;
-  settings.barrier_soc_threshold        = 4;
-  settings.barrier_iterative_refinement = true;
+  settings.barrier               = true;
+  settings.barrier_presolve      = true;
+  settings.dualize               = 0;
+  settings.scale_columns         = true;
+  settings.barrier_soc_threshold = 4;
 
   lp_solution_t<int, double> solution(m, n);
   auto status = solve_linear_program_with_barrier(user_problem, settings, solution);
@@ -1001,11 +999,10 @@ TEST(barrier, sparse_soc_expansion_solves_dim_500_cone)
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
   simplex_solver_settings_t<int, double> settings;
-  settings.barrier                      = true;
-  settings.barrier_presolve             = true;
-  settings.dualize                      = 0;
-  settings.barrier_soc_threshold        = 5;
-  settings.barrier_iterative_refinement = true;
+  settings.barrier               = true;
+  settings.barrier_presolve      = true;
+  settings.dualize               = 0;
+  settings.barrier_soc_threshold = 5;
 
   lp_solution_t<int, double> solution(m, n);
   auto status = solve_linear_program_with_barrier(user_problem, settings, solution);

@@ -9,6 +9,7 @@
 
 #include <cuopt/mathematical_optimization/mip/diving_hyper_params.hpp>
 #include <cuopt/mathematical_optimization/mip/submip_hyper_params.hpp>
+#include <cuopt/mathematical_optimization/utilities/internals.hpp>
 
 #include <dual_simplex/logger.hpp>
 #include <math_optimization/types.hpp>
@@ -66,10 +67,11 @@ struct simplex_solver_settings_t {
       print_presolve_stats(true),
       barrier_presolve(false),
       cudss_deterministic(false),
+      cudss_nd_nlevels(-1),
       deterministic(false),
       barrier(false),
       eliminate_dense_columns(true),
-      barrier_iterative_refinement(true),
+      barrier_iterative_refinement(barrier_iterative_refinement_t::GMRES),
       barrier_step_scale(0.9),
       barrier_soc_threshold(100),
       num_gpus(1),
@@ -161,12 +163,13 @@ struct simplex_solver_settings_t {
   bool print_presolve_stats;  // true to print presolve stats
   bool barrier_presolve;      // true to use barrier presolve
   bool cudss_deterministic;   // true to use cuDSS deterministic mode, false for non-deterministic
+  i_t cudss_nd_nlevels;       // -1 automatic/unset, else METIS nested-dissection depth for cuDSS
   bool barrier;               // true to use barrier method, false to use dual simplex method
   bool deterministic;  // true to use B&B deterministic mode, false to use non-deterministic mode
-  bool eliminate_dense_columns;       // true to eliminate dense columns from A*D*A^T
-  bool barrier_iterative_refinement;  // true to use iterative refinement for barrier method
-  f_t barrier_step_scale;             // step scale for barrier method
-  i_t barrier_soc_threshold;          // SOC dimension above which rank-2 sparse scaling is used
+  bool eliminate_dense_columns;      // true to eliminate dense columns from A*D*A^T
+  i_t barrier_iterative_refinement;  // 0: off, 1: gmres (default), 2: fixed_point
+  f_t barrier_step_scale;            // step scale for barrier method
+  i_t barrier_soc_threshold;         // SOC dimension above which rank-2 sparse scaling is used
   int num_gpus;   // Number of GPUs to use (maximum of 2 gpus are supported at the moment)
   i_t folding;    // -1 automatic, 0 don't fold, 1 fold
   i_t augmented;  // -1 automatic, 0 to solve with ADAT, 1 to solve with augmented system

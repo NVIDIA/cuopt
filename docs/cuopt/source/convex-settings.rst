@@ -284,6 +284,16 @@ cuDSS Deterministic Mode
 
 .. note:: The default value is ``false``. Enable deterministic mode if reproducibility is more important than performance.
 
+cuDSS Nested-Dissection Levels
+"""""""""""""""""""""""""""""""
+
+``CUOPT_CUDSS_HYPER_ND_NLEVELS`` controls the METIS nested-dissection depth used by cuDSS during reordering.
+
+* ``-1``: Leave unset, cuDSS chooses (default)
+* Non-negative value: Explicit nested-dissection depth
+
+.. note:: The default value is ``-1`` (unset).
+
 Dual Initial Point
 """"""""""""""""""
 
@@ -373,12 +383,13 @@ The duality gap is computed as follows::
 Barrier Iterative Refinement
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-``CUOPT_BARRIER_ITERATIVE_REFINEMENT`` controls whether iterative refinement is applied after each barrier iteration to improve solution accuracy.
+``CUOPT_BARRIER_ITERATIVE_REFINEMENT`` controls whether, and how, iterative refinement is applied after each barrier iteration to improve solution accuracy.
 
-* ``0`` (``CUOPT_BARRIER_ITERATIVE_REFINEMENT_OFF``): Disable iterative refinement (default).
-* ``1`` (``CUOPT_BARRIER_ITERATIVE_REFINEMENT_ON``): Enable iterative refinement.
+* ``0`` (``CUOPT_BARRIER_IR_OFF``): Disable iterative refinement.
+* ``1`` (``CUOPT_BARRIER_IR_GMRES``): Restarted GMRES (default).
+* ``2`` (``CUOPT_BARRIER_IR_FIXED_POINT``): Fixed-point residual-correction.
 
-.. note:: The default value is ``0`` (off).
+.. note:: The default value is ``1`` (GMRES).
 
 Barrier Step Scale
 ^^^^^^^^^^^^^^^^^^^

@@ -2278,9 +2278,13 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
       }
     } op(data);
 
-    if (settings.barrier_iterative_refinement) {
+    if (settings.barrier_iterative_refinement != barrier_iterative_refinement_t::Off) {
       const f_t ir_tol = data.has_sparse_cones() ? f_t(1e-12) : f_t(1e-8);
-      iterative_refinement<i_t, f_t, op_t>(op, rhs, soln, ir_tol);
+
+      const i_t internal_method =
+        (settings.barrier_iterative_refinement == barrier_iterative_refinement_t::FixedPoint) ? 0
+                                                                                              : 1;
+      iterative_refinement<i_t, f_t, op_t>(op, rhs, soln, ir_tol, internal_method);
     }
 
     for (i_t k = 0; k < lp.num_cols; k++) {
@@ -2903,11 +2907,15 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
         data_.chol->solve(b, x);
       }
     } op(data);
-    if (settings.barrier_iterative_refinement) {
+    if (settings.barrier_iterative_refinement != barrier_iterative_refinement_t::Off) {
       raft::common::nvtx::range fun_scope("Barrier: iterative_refinement");
-      const f_t ir_tol    = data.has_sparse_cones() ? f_t(1e-12) : f_t(1e-8);
+      const f_t ir_tol = data.has_sparse_cones() ? f_t(1e-12) : f_t(1e-8);
+
+      const i_t internal_method =
+        (settings.barrier_iterative_refinement == barrier_iterative_refinement_t::FixedPoint) ? 0
+                                                                                              : 1;
       const f_t solve_err = iterative_refinement<i_t, f_t, op_t>(
-        op, data.d_augmented_rhs_, data.d_augmented_soln_, ir_tol);
+        op, data.d_augmented_rhs_, data.d_augmented_soln_, ir_tol, internal_method);
       if (solve_err > 1e-1) {
         settings.log.printf("|| Aug (dx, dy) - aug_rhs || %e after IR\n", solve_err);
       }
@@ -2977,7 +2985,8 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       // GMRES can handle large, potentially ill-conditioned systems better than simple Richardson
       // or classical iterative refinement, at the potential cost of higher computational work and
       // memory. This is only used on the pure Schur-complement (n_dense_columns == 0).
-      if (settings.barrier_iterative_refinement && data.n_dense_columns == 0) {
+      if (settings.barrier_iterative_refinement != barrier_iterative_refinement_t::Off &&
+          data.n_dense_columns == 0) {
         struct adat_op_t {
           adat_op_t(iteration_data_t<i_t, f_t>& data) : data_(data) {}
           iteration_data_t<i_t, f_t>& data_;
@@ -2993,8 +3002,12 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
             data_.gpu_solve_adat(b, x);
           }
         } adat_op(data);
-        const f_t adat_solve_err =
-          iterative_refinement<i_t, f_t, adat_op_t>(adat_op, data.d_h_, data.d_dy_);
+
+        const i_t internal_method =
+          (settings.barrier_iterative_refinement == barrier_iterative_refinement_t::FixedPoint) ? 0
+                                                                                                : 1;
+        const f_t adat_solve_err = iterative_refinement<i_t, f_t, adat_op_t>(
+          adat_op, data.d_h_, data.d_dy_, f_t(1e-8), internal_method);
         if (adat_solve_err > 1e-1) {
           settings.log.printf("||ADAT*dy - h|| %e after IR\n", adat_solve_err);
         }

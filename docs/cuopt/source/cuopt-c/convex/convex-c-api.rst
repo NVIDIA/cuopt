@@ -258,8 +258,9 @@ Barrier Iterative Refinement Constants
 
 These constants are used to configure `CUOPT_BARRIER_ITERATIVE_REFINEMENT` via :c:func:`cuOptSetIntegerParameter`.
 
-.. doxygendefine:: CUOPT_BARRIER_ITERATIVE_REFINEMENT_OFF
-.. doxygendefine:: CUOPT_BARRIER_ITERATIVE_REFINEMENT_ON
+.. doxygendefine:: CUOPT_BARRIER_IR_OFF
+.. doxygendefine:: CUOPT_BARRIER_IR_GMRES
+.. doxygendefine:: CUOPT_BARRIER_IR_FIXED_POINT
 
 
 Warm Start

@@ -296,6 +296,16 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
         status,
         "cudssConfigSet for deterministic mode");
     }
+
+    if (settings_.cudss_nd_nlevels >= 0) {
+      settings_.log.printf("cuDSS ND levels             : %d\n", settings_.cudss_nd_nlevels);
+      int32_t nd_nlevels = settings_.cudss_nd_nlevels;
+      CUDSS_CALL_AND_CHECK_EXIT(
+        cudssConfigSet(solverConfig, CUDSS_CONFIG_ND_NLEVELS, &nd_nlevels, sizeof(int32_t)),
+        status,
+        "cudssConfigSet for nd nlevels");
+    }
+
 #endif
 
 #if USE_ITERATIVE_REFINEMENT
