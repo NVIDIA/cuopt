@@ -18,9 +18,9 @@
 
 namespace cuopt::detail {
 // handle the argument processing through the C++ parser instead of the preprocessor
-// since it chokes on colons in template arguments (e.g. cuopt_assert(std::is_same_v<T, int>,
-// "message")) constexpr because otherwise __host__ __device__ is required and it would break pure
-// host builds
+// since it chokes on colons in template arguments.
+// (e.g. cuopt_assert(std::is_same_v<T, int>, "message")).
+// constexpr because otherwise __host__ __device__ is required and it would break pure host builds
 template <typename T, size_t N>
 constexpr bool assert_msg(T&& cond, const char (&)[N])
 {
