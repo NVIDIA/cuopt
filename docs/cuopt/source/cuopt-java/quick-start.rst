@@ -104,8 +104,8 @@ comparing one against a bound with ``le``, ``ge`` or ``eq``.
      System.out.println(solution.getPrimalObjective());
    }
 
-MILP Example
-------------
+MIP Example
+-----------
 
 .. code-block:: java
 
@@ -155,5 +155,5 @@ fallback, but deterministic close keeps native memory pressure predictable.
 
 Expressions are built and compared through methods — ``plus``, ``minus``,
 ``le``, ``ge`` and ``eq`` — each returning a new object rather than mutating
-the receiver. The following pages document the implemented LP/MILP/QP/QCQP/SOCP
+the receiver. The following pages document the implemented LP/MIP/QP/QCQP/SOCP
 surface.

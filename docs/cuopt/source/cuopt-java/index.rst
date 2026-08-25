@@ -3,7 +3,7 @@ Java API
 ====================================
 
 NVIDIA cuOpt provides experimental Java bindings for linear programming (LP),
-mixed-integer linear programming (MILP), quadratic programming (QP),
+mixed-integer programming (MIP), quadratic programming (QP),
 quadratically constrained quadratic programming (QCQP), and second-order cone
 programming (SOCP) through JNI.
 

@@ -1,6 +1,6 @@
 # cuOpt Java bindings
 
-This directory contains a source module for cuOpt LP, MILP, QP,
+This directory contains a source module for cuOpt LP, MIP, QP,
 QCQP, and SOCP Java bindings. The repository CI and release workflows build
 and test the module against the matching `libcuopt` conda artifact and retain
 the Maven `target/` output as a workflow artifact. Publication to a supported

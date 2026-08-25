@@ -5,8 +5,8 @@ MIP Examples
 These examples show mixed-integer modeling, MIP starts, semi-continuous
 variables, and incumbent callbacks in Java.
 
-Simple MILP
------------
+Simple MIP
+----------
 
 .. code-block:: java
 
@@ -73,9 +73,10 @@ Set starts on variables when using the high-level ``Problem`` API:
      System.out.println(solution.getPrimalObjective());
    }
 
-For the deprecated lower-level representation, pass a full
-variable-index-ordered array through
-``SolverSettings.addMIPStart``.
+``SolverSettings.addMIPStart`` takes a full variable-index-ordered array. It
+is the way to supply more than one starting point, since it can be called
+repeatedly and each ``Variable`` holds a single value. MIP starts are currently
+unsupported with presolve on.
 
 Incumbent Callback
 ------------------
