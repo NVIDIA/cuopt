@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -11,6 +11,7 @@
 #include <routing/solution/solution_handle.cuh>
 
 #include <raft/core/host_span.hpp>
+#include <raft/util/cudart_utils.hpp>
 #include <rmm/device_uvector.hpp>
 
 namespace cuopt {
@@ -55,7 +56,9 @@ class vrp_move_candidates_t {
       best_cost_delta_per_node, std::numeric_limits<double>::max(), sol_handle->get_stream());
     async_fill(best_id_per_node, -1, sol_handle->get_stream());
     n_best_route_pair_moves.set_value_to_zero_async(sol_handle->get_stream());
-    max_added_size.set_value_async(max_fragment_size, sol_handle->get_stream());
+    // This runs inside a graph capture. set_value_async routes through
+    // rmm::detail::memcpy_async, which is not capturable on CUDA 13; raft::copy is.
+    raft::copy(max_added_size.data(), &max_fragment_size, 1, sol_handle->get_stream());
   }
 
   struct view_t {

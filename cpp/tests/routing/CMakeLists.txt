@@ -56,3 +56,9 @@ ConfigureTest(ROUTING_UNIT_TEST
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/set_shmem_of_kernel.cu
     LABELS routing
     STATIC_LIB)
+
+# ##################################################################################################
+# - gRPC VRP test driver ---------------------------------------------------------------------------
+if(CUOPT_ENABLE_GRPC)
+    add_subdirectory(grpc)
+endif()

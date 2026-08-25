@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -18,7 +18,7 @@
 #include <routing/routing_helpers.cuh>
 #include <routing/structures.hpp>
 #include <routing/utilities/check_input.hpp>
-#include <utilities/seed_generator.cuh>
+#include <routing/utilities/seed_generator.cuh>
 
 #include <raft/core/handle.hpp>
 
@@ -266,6 +266,10 @@ class problem_t {
 
   const data_model_view_t<i_t, f_t>* data_view_ptr;
   const solver_settings_t<i_t, f_t>* solver_settings_ptr;
+
+  // Seed source for this problem. Seeded in the constructor from the solver settings, or
+  // derived from the problem when the user has not supplied one.
+  seed_generator_t seed_gen;
 
   i_t get_num_orders() const;
 

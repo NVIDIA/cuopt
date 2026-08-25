@@ -21,7 +21,7 @@ dependencies:
 - cudf==26.10.*,>=0.0.0a0
 - cupy>=14.0.1,!=14.1.0
 - cxx-compiler
-- cython>=3.0.3
+- cython>=3.2.2,<3.3.0a0
 - docutils>=0.21
 - doxygen=1.9.1
 - fastapi
