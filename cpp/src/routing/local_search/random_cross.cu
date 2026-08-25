@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -204,7 +204,7 @@ void select_random_route_pairs(solution_t<i_t, f_t, REQUEST>& sol,
   }
   select_random_route_pairs_kernel<i_t, f_t, REQUEST>
     <<<nblocks, nthreads, sh_size, sol.sol_handle->get_stream()>>>(
-      sol.view(), move_candidates.view(), seed_generator::get_seed());
+      sol.view(), move_candidates.view(), sol.problem_ptr->seed_gen.get_seed());
   RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
 }
 
@@ -217,7 +217,7 @@ void pick_random_move_per_route_pair(solution_t<i_t, f_t, REQUEST>& sol,
   auto nblocks           = (n_route_pair + nthreads - 1) / nthreads;
   pick_random_move_per_route_pair_kernel<i_t, f_t, REQUEST>
     <<<nblocks, nthreads, 0, sol.sol_handle->get_stream()>>>(
-      sol.view(), move_candidates.view(), seed_generator::get_seed());
+      sol.view(), move_candidates.view(), sol.problem_ptr->seed_gen.get_seed());
   RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
 }
 
