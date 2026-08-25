@@ -7,6 +7,7 @@
 
 #include <cuopt/mathematical_optimization/mip/solver_stats.hpp>
 
+#include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/problem/problem.cuh>
 #include <mip_heuristics/relaxed_lp/lp_state.cuh>
 #include <utilities/work_limit_context.hpp>
@@ -40,7 +41,10 @@ struct mip_solver_context_t {
   explicit mip_solver_context_t(raft::handle_t const* handle_ptr_,
                                 problem_t<i_t, f_t>* problem_ptr_,
                                 mip_solver_settings_t<i_t, f_t> settings_)
-    : handle_ptr(handle_ptr_), problem_ptr(problem_ptr_), settings(settings_)
+    : handle_ptr(handle_ptr_),
+      problem_ptr(problem_ptr_),
+      settings(settings_),
+      base_seed(mip_resolve_base_seed(settings_.seed))
   {
     cuopt_assert(problem_ptr != nullptr, "problem_ptr is nullptr");
     stats.set_solution_bound(problem_ptr->maximize ? std::numeric_limits<f_t>::infinity()
@@ -57,6 +61,11 @@ struct mip_solver_context_t {
   diversity_manager_t<i_t, f_t>* diversity_manager_ptr{nullptr};
   std::atomic<bool> preempt_heuristic_solver_ = false;
   const mip_solver_settings_t<i_t, f_t> settings;
+  // Single source of truth for all MIP heuristics RNGs: settings.seed if the user requested a
+  // specific one (>= 0), otherwise a seed drawn once at solve start. Every worker/component
+  // derives its own independent RNG stream from this plus a fixed logical identity (never a
+  // runtime thread id, since OMP tasks can migrate between OS threads).
+  const int64_t base_seed;
   solver_stats_t<i_t, f_t> stats;
   // Work limit context for tracking work units in deterministic mode (shared across all timers in
   // GPU heuristic loop)

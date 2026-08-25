@@ -11,9 +11,10 @@
 
 #include <thrust/pair.h>
 #include <mip_heuristics/local_search/rounding/constraint_prop.cuh>
+#include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/relaxed_lp/relaxed_lp.cuh>
 #include <mip_heuristics/solution/solution.cuh>
-#include <utilities/seed_generator.cuh>
+#include <utilities/pcgenerator.hpp>
 
 namespace cuopt::mathematical_optimization::mip {
 
@@ -24,9 +25,9 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
                           i_t n_vars,
                           constraint_prop_t<i_t, f_t>& constraint_prop_,
                           const raft::handle_t* handle_ptr)
-    : recombiner_t<i_t, f_t>(context, n_vars, handle_ptr),
+    : recombiner_t<i_t, f_t>(
+        context, n_vars, handle_ptr, mip_rng_component_id_t::recombiner_bound_prop),
       constraint_prop(constraint_prop_),
-      rng(cuopt::seed_generator::get_seed()),
       vars_to_fix(n_vars, handle_ptr->get_stream())
   {
   }
@@ -65,7 +66,7 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
        offspring_view,
        int_tol,
        probing_values = probing_values.data(),
-       seed           = cuopt::seed_generator::get_seed()] __device__(i_t idx) {
+       seed           = this->rng.next_i64()] __device__(i_t idx) {
         f_t guiding_val = guiding_view.assignment[idx];
         f_t other_val   = other_view.assignment[idx];
         cuopt_assert(guiding_view.problem.check_variable_within_bounds(idx, guiding_val), "");
@@ -151,7 +152,7 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
     if (n_different_vars > (i_t)bp_recombiner_config_t::max_n_of_vars_from_other) {
       fixed_from_guiding = n_vars_from_other - bp_recombiner_config_t::max_n_of_vars_from_other;
       n_vars_from_other  = bp_recombiner_config_t::max_n_of_vars_from_other;
-      thrust::default_random_engine g{(unsigned int)cuopt::seed_generator::get_seed()};
+      thrust::default_random_engine g{(unsigned int)this->rng.next_i64()};
       thrust::shuffle(a.handle_ptr->get_thrust_policy(),
                       this->remaining_indices.data(),
                       this->remaining_indices.data() + n_different_vars,
@@ -245,7 +246,6 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
 
   rmm::device_uvector<i_t> vars_to_fix;
   constraint_prop_t<i_t, f_t>& constraint_prop;
-  thrust::default_random_engine rng;
 };
 
 }  // namespace cuopt::mathematical_optimization::mip

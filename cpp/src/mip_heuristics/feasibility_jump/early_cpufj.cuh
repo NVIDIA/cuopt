@@ -20,7 +20,8 @@ class early_cpufj_t : public early_heuristic_t<i_t, f_t, early_cpufj_t<i_t, f_t>
  public:
   early_cpufj_t(const optimization_problem_t<i_t, f_t>& op_problem,
                 const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances,
-                early_incumbent_callback_t<f_t> incumbent_callback);
+                early_incumbent_callback_t<f_t> incumbent_callback,
+                int64_t seed);
 
   ~early_cpufj_t();
 
@@ -32,6 +33,9 @@ class early_cpufj_t : public early_heuristic_t<i_t, f_t, early_cpufj_t<i_t, f_t>
  private:
   std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_cpu_;
   std::atomic<bool> preemption_flag_{false};
+  // Explicit seed for this climber's FJ RNG, resolved once from the solve's base seed (see
+  // mip_solver_context_t::base_seed) since this heuristic runs before that context exists.
+  int64_t seed_;
 };
 
 }  // namespace cuopt::mathematical_optimization::mip

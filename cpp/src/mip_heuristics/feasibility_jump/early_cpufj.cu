@@ -15,9 +15,11 @@ template <typename i_t, typename f_t>
 early_cpufj_t<i_t, f_t>::early_cpufj_t(
   const optimization_problem_t<i_t, f_t>& op_problem,
   const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances,
-  early_incumbent_callback_t<f_t> incumbent_callback)
+  early_incumbent_callback_t<f_t> incumbent_callback,
+  int64_t seed)
   : early_heuristic_t<i_t, f_t, early_cpufj_t<i_t, f_t>>(
-      op_problem, tolerances, std::move(incumbent_callback))
+      op_problem, tolerances, std::move(incumbent_callback)),
+    seed_(seed)
 {
 }
 
@@ -36,7 +38,8 @@ void early_cpufj_t<i_t, f_t>::start()
   this->preemption_flag_.store(false);
   this->start_time_ = std::chrono::steady_clock::now();
 
-  fj_cpu_ = init_fj_cpu_standalone(*this->problem_ptr_, *this->solution_ptr_, preemption_flag_);
+  fj_cpu_ =
+    init_fj_cpu_standalone(*this->problem_ptr_, *this->solution_ptr_, preemption_flag_, seed_);
 
   fj_cpu_->log_prefix = "[Early CPUFJ] ";
 
