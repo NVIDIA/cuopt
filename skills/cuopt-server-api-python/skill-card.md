@@ -9,7 +9,7 @@ NVIDIA <br>
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers deploying the NVIDIA cuOpt REST server or building client applications that submit optimization problems (routing, LP, MILP) to it via HTTP. <br>
+Developers and engineers deploying the NVIDIA cuOpt REST server or writing Python/curl clients against its optimization endpoints for routing, LP, and MILP problems. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
@@ -26,12 +26,13 @@ Mitigation: Review and scan skill before deployment. <br>
 
 ## Reference(s): <br>
 - [cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) <br>
-- [cuopt-examples (GitHub)](https://github.com/NVIDIA/cuopt-examples) <br>
-- [nvidia/cuopt (Docker Hub)](https://hub.docker.com/r/nvidia/cuopt) <br>
+- [cuOpt Docker Hub](https://hub.docker.com/r/nvidia/cuopt) <br>
+- [cuOpt Examples](https://github.com/NVIDIA/cuopt-examples) <br>
+- [assets/README.md](assets/README.md) <br>
 
 
 ## Skill Output: <br>
-**Output Type(s):** [API Calls, Shell commands, Code] <br>
+**Output Type(s):** [Shell commands, API Calls, Code, Configuration instructions] <br>
 **Output Format:** [Markdown with inline code blocks] <br>
 **Output Parameters:** [1D] <br>
 **Other Properties Related to Output:** [None] <br>
@@ -43,35 +44,35 @@ Mitigation: Review and scan skill before deployment. <br>
 
 
 ## Evaluation Tasks: <br>
-8 evaluation tasks (8 positive), 1 attempt per task, in isolated k8s-sandbox pods. <br>
+8 evaluation tasks (8 positive) from skill-evaluator-dataset-snapshot. <br>
 
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
-- Security: Whether the skill is safe to use (unsafe operations, secret leakage, unauthorized access). <br>
-- Correctness: Whether the answer produced is correct against the reference answer. <br>
-- Discoverability: Whether the right skill was loaded and executed when needed. <br>
-- Effectiveness: Whether the skill helped complete the user’s goal and expected workflow. <br>
-- Efficiency: Whether wasted tool or skill usage was avoided. <br>
+- Security: Checks for unsafe operations, secret leakage, and unauthorized access. <br>
+- Correctness: Verifies final-answer correctness against reference answers. <br>
+- Discoverability: Whether the expected skill was found and executed when needed. <br>
+- Effectiveness: Whether the skill helped complete the user's goal and expected workflow. <br>
+- Efficiency: Routing quality, workspace-aware skill reads, and productive tool use. <br>
 
 Underlying evaluation signals used in this run: <br>
-- `security`: Unsafe operations, secret leakage, and unauthorized access. <br>
+- `security`: Detects unsafe operations, secret leakage, and unauthorized access. <br>
 - `skill_execution`: Whether the expected skill was found and executed. <br>
 - `skill_efficiency`: Routing quality, workspace-aware skill reads, and productive tool use. <br>
 - `accuracy`: Final-answer correctness against the reference answer. <br>
-- `goal_accuracy`: Whether the user’s goal was achieved. <br>
+- `goal_accuracy`: Whether the user's goal was achieved. <br>
 - `behavior_check`: Whether the expected workflow behavior was followed. <br>
 
 
 
 ## Evaluation Results: <br>
-| Measure | Claude Code (Baseline → Skill) | Codex (Baseline → Skill) |
+| Measure | Claude Code (Baseline → Skill Uplift) | Codex (Baseline → Skill Uplift) |
 |---|---:|---:|
-| Overall | 55% → 99% (+44 pts) | 58% → 95% (+37 pts) |
-| Security | 100% → 100% (±0 pts) | 100% → 100% (±0 pts) |
-| Correctness | 82% → 100% (+18 pts) | 78% → 98% (+20 pts) |
-| Discoverability | 28% → 100% (+72 pts) | 42% → 92% (+50 pts) |
-| Effectiveness | 59% → 98% (+39 pts) | 51% → 89% (+38 pts) |
-| Efficiency | 6% → 96% (+90 pts) | 17% → 96% (+79 pts) |
+| Overall | 64% → 98% (+35 points) | 62% → 96% (+34 points) |
+| Security | 100% → 100% (±0 points) | 69% → 100% (+31 points) |
+| Correctness | 75% → 100% (+25 points) | 88% → 98% (+10 points) |
+| Discoverability | 44% → 100% (+56 points) | 45% → 93% (+48 points) |
+| Effectiveness | 56% → 95% (+38 points) | 72% → 88% (+15 points) |
+| Efficiency | 44% → 97% (+53 points) | 37% → 100% (+63 points) |
 
 ## Skill Version(s): <br>
 26.10.00 (source: frontmatter) <br>
