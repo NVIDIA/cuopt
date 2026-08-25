@@ -59,15 +59,14 @@ __global__ void feasibility_check(typename solution_t<i_t, f_t, REQUEST>::view_t
         node, route.get_node(i + 1), route.vehicle_info(), d_default_weights, 0.001);
       if (!res) {
         *solution.sol_found = 0;
-        cuopt_assert(true,
-                     printf("Failed node:%d f_excess:%f b_excess:%f route:%d, vehicle:%d "
-                            "n_nodes:%d\n",
-                            node.request.info.node(),
-                            node.time_dim.excess_forward,
-                            node.time_dim.excess_backward,
-                            route_id,
-                            vehicle_id,
-                            n_nodes));
+        cuopt_func_call(printf("Failed node:%d f_excess:%f b_excess:%f route:%d, vehicle:%d "
+                               "n_nodes:%d\n",
+                               node.request.info.node(),
+                               node.time_dim.excess_forward,
+                               node.time_dim.excess_backward,
+                               route_id,
+                               vehicle_id,
+                               n_nodes));
         cuopt_assert(false, "Node should be feasible combine");
         return;
       }
