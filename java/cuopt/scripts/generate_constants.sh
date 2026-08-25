@@ -6,7 +6,7 @@ set -euo pipefail
 
 HEADER=${1:?missing constants.h path}
 OUT_DIR=${2:?missing output directory}
-PACKAGE_DIR="${OUT_DIR}/com/nvidia/cuopt/mathematicalprogramming"
+PACKAGE_DIR="${OUT_DIR}/com/nvidia/cuopt/mathematicaloptimization"
 OUT_FILE="${PACKAGE_DIR}/CuOptConstants.java"
 
 mkdir -p "${PACKAGE_DIR}"
@@ -20,7 +20,7 @@ mkdir -p "${PACKAGE_DIR}"
   echo " * Generated from cpp/include/cuopt/mathematical_optimization/constants.h."
   echo " * Run 'mvn generate-sources' from java/cuopt to regenerate."
   echo " */"
-  echo "package com.nvidia.cuopt.mathematicalprogramming;"
+  echo "package com.nvidia.cuopt.mathematicaloptimization;"
   echo
   echo "public final class CuOptConstants {"
   echo "  private CuOptConstants() {}"

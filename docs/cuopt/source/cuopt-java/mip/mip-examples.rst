@@ -10,7 +10,7 @@ Simple MILP
 
 .. code-block:: java
 
-   import com.nvidia.cuopt.mathematicalprogramming.*;
+   import com.nvidia.cuopt.mathematicaloptimization.*;
 
    try (Problem problem = new Problem("simple-milp")) {
      Variable x = problem.addVariable(

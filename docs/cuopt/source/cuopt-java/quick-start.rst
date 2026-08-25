@@ -87,7 +87,7 @@ comparing one against a bound with ``le``, ``ge`` or ``eq``.
 
 .. code-block:: java
 
-   import com.nvidia.cuopt.mathematicalprogramming.*;
+   import com.nvidia.cuopt.mathematicaloptimization.*;
 
    Problem problem = new Problem("simple");
    Variable x = problem.addVariable(0, Double.POSITIVE_INFINITY, 0,

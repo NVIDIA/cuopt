@@ -75,7 +75,7 @@ bash scripts/check_jni_symbols.sh
 ## Generated constants
 
 Maven generates `CuOptConstants.java` under
-`target/generated-sources/cuopt/com/nvidia/cuopt/mathematicalprogramming/`
+`target/generated-sources/cuopt/com/nvidia/cuopt/mathematicaloptimization/`
 from `cpp/include/cuopt/mathematical_optimization/constants.h`. Do not edit the
 generated file. Regenerate it after changing the C++ constants header with:
 

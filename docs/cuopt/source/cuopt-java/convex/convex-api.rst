@@ -3,7 +3,7 @@ Convex Optimization API Reference
 ===================================
 
 The Java LP/QP/QCQP/SOCP bindings are in the package
-``com.nvidia.cuopt.mathematicalprogramming``. The public API is documented below by
+``com.nvidia.cuopt.mathematicaloptimization``. The public API is documented below by
 role. Expressions and comparisons are formed through fluent methods. MIP is
 documented separately in :doc:`../mip/index`.
 

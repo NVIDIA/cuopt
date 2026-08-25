@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 # cuOpt Java binding tests
 
 The Java module has three test classes under
-`src/test/java/com/nvidia/cuopt/mathematicalprogramming`:
+`src/test/java/com/nvidia/cuopt/mathematicaloptimization`:
 
 - `ProblemModelingTest`: five pure Java modeling tests.
 - `NativeIntegrationTest`: seven JNI/native cuOpt smoke tests.

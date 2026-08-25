@@ -13,7 +13,7 @@ The high-level API uses fluent expressions and explicit comparison methods.
 
 .. code-block:: java
 
-   import com.nvidia.cuopt.mathematicalprogramming.*;
+   import com.nvidia.cuopt.mathematicaloptimization.*;
 
    try (Problem problem = new Problem("simple-lp")) {
      Variable x = problem.addVariable(

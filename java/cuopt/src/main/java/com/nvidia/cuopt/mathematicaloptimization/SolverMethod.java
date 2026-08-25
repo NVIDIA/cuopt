@@ -2,7 +2,7 @@
  * SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
-package com.nvidia.cuopt.mathematicalprogramming;
+package com.nvidia.cuopt.mathematicaloptimization;
 
 /** Solver methods backed by constants generated from the C++ public header. */
 public enum SolverMethod {
