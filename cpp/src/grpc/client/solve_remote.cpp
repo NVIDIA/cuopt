@@ -14,6 +14,7 @@
 #include <utilities/logger.hpp>
 #include "grpc_client.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <fstream>
@@ -21,8 +22,6 @@
 #include <limits>
 #include <sstream>
 #include <stdexcept>
-
-#include <thrust/count.h>
 
 namespace cuopt::mathematical_optimization {
 
@@ -152,7 +151,7 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip_remote(
   auto mip_callbacks   = settings.get_mip_callbacks();
   const auto var_types = cpu_problem.get_variable_types_host();
   const bool has_sc_variables =
-    thrust::count(var_types.begin(), var_types.end(), var_t::SEMI_CONTINUOUS) > 0;
+    std::count(var_types.begin(), var_types.end(), var_t::SEMI_CONTINUOUS) > 0;
   if (has_sc_variables && !mip_callbacks.empty()) {
     CUOPT_LOG_WARN(
       "Disabling remote MIP get/set callbacks: semi-continuous models are not "
