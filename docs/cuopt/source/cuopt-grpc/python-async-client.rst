@@ -69,6 +69,37 @@ from the quick start (same constraint matrix and objective).
 :class:`~cuopt.linear_programming.problem.Problem`. Always call
 ``delete`` after you are done with the job so the server can release state.
 
+From a Legacy cuOpt JSON Format Dictionary
+===========================================
+
+Two data conversion routines have been added that make it easy to migrate clients from
+use of the cuOpt http server to the gRPC server. LP/MIP datasets in cuOpt JSON
+format can be converted to inputs for the gRPC server, and Solution objects
+returned from the gRPC server can be converted into cuOpt JSON response
+dictionaries.
+
+``toDataModelAndSettings`` accepts the same input dictionary format that
+``CuOptServiceSelfHostClient.get_LP_solve()`` accepts.
+``toDictFromSolution`` maps a ``Solution`` to the response dictionary
+format that ``CuOptServiceSelfHostClient.get_LP_solve()`` optionally returns.
+
+.. code-block:: python
+
+   from cuopt.linear_programming import toDataModelAndSettings, toDictFromSolution
+   from cuopt.grpc.linear_programming import Client, JobStatus
+
+   dm, settings = toDataModelAndSettings("problem.json")  # or a dict
+   client = Client("localhost", 5001)
+   job_id = client.submit(dm, settings)
+   try:
+       if client.wait(job_id, timeout=120) != JobStatus.COMPLETED:
+           raise RuntimeError("job did not complete")
+       solution = client.result(job_id)
+       envelope = toDictFromSolution(solution)
+       print(envelope["response"]["solver_response"]["status"])
+   finally:
+       client.delete(job_id)
+
 Variable Names
 ==============
 

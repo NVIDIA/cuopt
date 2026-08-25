@@ -334,26 +334,33 @@ dependencies:
     common:
       - output_types: [conda, requirements, pyproject]
         packages:
+          - &msgpack_numpy msgpack-numpy==0.4.8
           - numba-cuda>=0.22.1
           - numba>=0.60.0,<0.65.0
           - &pandas pandas>=2.0
           - *pyyaml
           - scipy>=1.14.1
-
-  test_python_cuopt_server:
-    common:
-      - output_types: [conda, requirements, pyproject]
-        packages:
-          - &jsonref jsonref==1.1.0
-          - &msgpack_numpy msgpack-numpy==0.4.8
-          - pexpect
-          - &requests requests
       - output_types: [requirements, pyproject]
         packages:
           - &msgpack msgpack==1.2.1
       - output_types: conda
         packages:
           - &msgpack_python msgpack-python==1.2.1
+
+  test_python_cuopt_server:
+    common:
+      - output_types: [conda, requirements, pyproject]
+        packages:
+          - &jsonref jsonref==1.1.0
+          - *msgpack_numpy
+          - pexpect
+          - &requests requests
+      - output_types: [requirements, pyproject]
+        packages:
+          - *msgpack
+      - output_types: conda
+        packages:
+          - *msgpack_python
 
   run_cuopt_server:
     common:
