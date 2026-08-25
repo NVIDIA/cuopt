@@ -14,17 +14,24 @@
 // 3) heavy
 #ifdef ASSERT_MODE
 #include <cassert>
-#define cuopt_assert(val, msg) assert(val&& msg)
-#define cuopt_func_call(func)  func;
-#else
-#define cuopt_assert(val, msg)
-#define cuopt_func_call(func) ;
-#endif
+#include <cstddef>
 
-#ifdef BENCHMARK
-#define benchmark_call(func) func;
+namespace cuopt::detail {
+// handle the argument processing through the C++ parser instead of the preprocessor
+// since it chokes on colons in template arguments (e.g. cuopt_assert(std::is_same_v<T, int>, "message"))
+// constexpr because otherwise __host__ __device__ is required and it would break pure host builds
+template <typename T, size_t N>
+constexpr bool assert_msg(T&& cond, const char (&)[N])
+{
+  return (bool)cond;
+}
+}  // namespace cuopt::detail
+
+#define cuopt_assert(...)     assert(::cuopt::detail::assert_msg(__VA_ARGS__))
+#define cuopt_func_call(func) func;
 #else
-#define benchmark_call(func) ;
+#define cuopt_assert(...)
+#define cuopt_func_call(func) ;
 #endif
 
 // For CUDA Driver API

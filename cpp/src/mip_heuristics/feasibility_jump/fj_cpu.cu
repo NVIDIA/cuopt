@@ -1012,7 +1012,7 @@ static void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
   delta   = new_val - old_val;
   cuopt_assert(isfinite(new_val), "assignment is not finite");
   cuopt_assert(isfinite(delta), "applied delta is not finite");
-  cuopt_assert((check_variable_within_bounds<i_t, f_t>(fj_cpu, var_idx, new_val)),
+  cuopt_assert(check_variable_within_bounds<i_t, f_t>(fj_cpu, var_idx, new_val),
                "assignment not within bounds");
 
   // Update the LHSs of all involved constraints.
@@ -1217,7 +1217,7 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
         }
       }
       if (!isfinite(new_val)) continue;
-      cuopt_assert((check_variable_within_bounds<i_t, f_t>(fj_cpu, var_idx, new_val)),
+      cuopt_assert(check_variable_within_bounds<i_t, f_t>(fj_cpu, var_idx, new_val),
                    "new_val is not within bounds");
       delta = new_val - val;
       // more permissive tabu in the case of local minima
@@ -1264,7 +1264,7 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
 
       auto [score, infeasibility] = compute_score<i_t, f_t>(fj_cpu, var_idx, delta);
 
-      cuopt_assert((check_variable_within_bounds<i_t, f_t>(fj_cpu, var_idx, new_val)), "");
+      cuopt_assert(check_variable_within_bounds<i_t, f_t>(fj_cpu, var_idx, new_val), "");
       cuopt_assert(isfinite(delta), "");
 
       if (fj_cpu.view.move_numerically_stable(
@@ -1493,7 +1493,7 @@ static void perturb(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
       val = std::min(std::max(val, lb), ub);
     }
 
-    cuopt_assert((check_variable_within_bounds<i_t, f_t>(fj_cpu, var_idx, val)),
+    cuopt_assert(check_variable_within_bounds<i_t, f_t>(fj_cpu, var_idx, val),
                  "value is out of bounds");
     fj_cpu.h_assignment[var_idx] = val;
   }
