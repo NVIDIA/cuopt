@@ -260,6 +260,8 @@
 #define CUOPT_ATTR_IS_MIP                    8
 #define CUOPT_ATTR_HAS_QUADRATIC_OBJECTIVE   9
 #define CUOPT_ATTR_HAS_QUADRATIC_CONSTRAINTS 10
+#define CUOPT_ATTR_NUM_LINEAR_CONSTRAINTS    11
+#define CUOPT_ATTR_NUM_QUADRATIC_CONSTRAINTS 12
 
 /* @brief Numeric/char array problem attribute selectors
  * (see cuOptGetProblem{Float,Char}ArrayAttribute; sized by num_variables / num_constraints).
