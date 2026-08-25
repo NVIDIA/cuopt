@@ -28,8 +28,12 @@ class early_cpufj_t : public early_heuristic_t<i_t, f_t, early_cpufj_t<i_t, f_t>
 
   static constexpr const char* name() { return "CPUFJ"; }
 
-  void start();
+  // Lanes are OMP tasks that never yield, so n_lanes threads are unavailable to anything else
+  // until stop(). Callers sharing the team with other work size it accordingly.
+  void start(int n_lanes);
   void stop();
+
+  int lane_count() const { return (int)climbers_.size(); }
 
  private:
   friend class early_heuristic_t<i_t, f_t, early_cpufj_t<i_t, f_t>>;

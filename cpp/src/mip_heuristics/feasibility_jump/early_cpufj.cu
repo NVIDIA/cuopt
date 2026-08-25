@@ -33,7 +33,7 @@ early_cpufj_t<i_t, f_t>::~early_cpufj_t()
 }
 
 template <typename i_t, typename f_t>
-void early_cpufj_t<i_t, f_t>::start()
+void early_cpufj_t<i_t, f_t>::start(int n_lanes)
 {
   // 1: presolve, 1: early GPU FJ, 1: early CPU FJ
   if (!climbers_.empty() || omp_get_num_threads() < CUOPT_MIP_EARLY_CPUFJ_REQUIRED_THREAD_COUNT) {
@@ -45,7 +45,7 @@ void early_cpufj_t<i_t, f_t>::start()
 
   // Tasks are not preempted, so a lane posted beyond the team size would sit in the queue for the
   // whole of presolve without running an iteration.
-  const int n_lanes       = std::min(CUOPT_MIP_EARLY_CPUFJ_MAX_CLIMBERS, omp_get_num_threads());
+  n_lanes                 = std::clamp(n_lanes, 1, omp_get_num_threads());
   const int64_t base_seed = cuopt::seed_generator::get_seed();
   climbers_.resize(n_lanes);
 

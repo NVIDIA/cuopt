@@ -296,9 +296,11 @@ mip_solution_t<i_t, f_t> run_mip_solver(
       if (std::isfinite(initial_upper_bound)) {
         early_cpufj->set_best_objective(problem.get_solver_obj_from_user_obj(initial_upper_bound));
       }
-      early_cpufj->start();
+      early_cpufj->start(omp_get_num_threads() - CUOPT_MIP_EARLY_CPUFJ_RESERVED_THREADS);
       solver.context.early_cpufj_ptr = early_cpufj.get();
-      CUOPT_LOG_DEBUG("Started early CPUFJ on papilo-presolved problem during cuOpt presolve");
+      CUOPT_LOG_DEBUG(
+        "Started early CPUFJ on papilo-presolved problem during cuOpt presolve with %d lanes",
+        early_cpufj->lane_count());
     }
 
     auto presolved_sol            = solver.run_solver();
@@ -512,8 +514,10 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
       // Start early CPUFJ on original problem (will restart on presolved problem after Papilo)
       early_cpufj = std::make_unique<mip::early_cpufj_t<i_t, f_t>>(
         op_problem, settings.get_tolerances(), early_fj_callback);
-      early_cpufj->start();
-      CUOPT_LOG_DEBUG("Started early CPUFJ on original problem");
+      // Papilo runs on its own threads, so the team is otherwise idle here.
+      early_cpufj->start(omp_get_num_threads() - CUOPT_MIP_EARLY_CPUFJ_RESERVED_THREADS);
+      CUOPT_LOG_DEBUG("Started early CPUFJ on original problem with %d lanes",
+                      early_cpufj->lane_count());
     }
 
     auto early_cpufj_guard = cuopt::scope_guard([&]() {

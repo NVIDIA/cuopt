@@ -8,6 +8,7 @@
 #include "cuda_profiler_api.h"
 #include "diversity_manager.cuh"
 
+#include <mip_heuristics/feasibility_jump/early_cpufj.cuh>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
 
@@ -22,6 +23,9 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/scope_guard.hpp>
 
+#include <omp.h>
+
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <limits>
@@ -314,6 +318,13 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
 
   if (run_probing_cache && !global_timer.check_time_limit() && !presolve_timer.check_time_limit()) {
     log_presolve_budget("PROBING", probing_features, probing_budget);
+    // The early CPUFJ lanes hold their threads for the whole of presolve, and probing's default
+    // task count assumes the whole team. Its pools are sized per task, so this bounds host memory
+    // as well as concurrency.
+    const i_t held_by_cpufj =
+      context.early_cpufj_ptr != nullptr ? (i_t)context.early_cpufj_ptr->lane_count() : 0;
+    ls.constraint_prop.bounds_update.settings.num_tasks =
+      std::max(1, omp_get_num_threads() - 1 - held_by_cpufj);
     f_t time_for_probing_cache = std::min(time_limit, (f_t)global_timer.remaining_time());
     timer_t probing_timer{time_for_probing_cache};
     [[maybe_unused]] const auto probing_t0 = std::chrono::steady_clock::now();
