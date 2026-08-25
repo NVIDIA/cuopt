@@ -211,14 +211,9 @@ bool bounds_strengthening_t<i_t, f_t>::bounds_strengthening(
 
       bool lb_updated = std::abs(new_lb - old_lb) > 1e3 * settings.primal_tol;
       bool ub_updated = std::abs(new_ub - old_ub) > 1e3 * settings.primal_tol;
-      if (lb_updated)
-        new_lb = std::max(new_lb, lower_bounds[k]);
-      else
-        new_lb = old_lb;
-      if (ub_updated)
-        new_ub = std::min(new_ub, upper_bounds[k]);
-      else
-        new_ub = old_ub;
+
+      new_lb = std::max(new_lb, lower_bounds[k]);
+      new_ub = std::min(new_ub, upper_bounds[k]);
 
       if (new_lb > new_ub + settings.primal_tol) {
         settings.log.debug(
