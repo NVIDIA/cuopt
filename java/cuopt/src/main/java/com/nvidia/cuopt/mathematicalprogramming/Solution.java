@@ -17,27 +17,25 @@ public final class Solution implements AutoCloseable {
   private final int numVariables;
   private final int numConstraints;
   private final boolean mip;
-  private final ProblemCategory problemCategory;
   private final String[] variableNames;
 
   Solution(long handle, int numVariables, int numConstraints) {
-    this(handle, numVariables, numConstraints, ProblemCategory.LP, new String[0]);
+    this(handle, numVariables, numConstraints, false, new String[0]);
   }
 
   Solution(
       long handle,
       int numVariables,
       int numConstraints,
-      ProblemCategory problemCategory,
+      boolean mip,
       String[] variableNames) {
     this.nativeHandle = new NativeHandle(handle);
     this.cleanable = CLEANER.register(this, nativeHandle);
     this.numVariables = numVariables;
     this.numConstraints = numConstraints;
-    this.problemCategory = problemCategory;
-    // The category comes from the problem this solution was produced for, so it already
-    // answers LP vs MIP; asking the native layer a second time would only add a round trip.
-    this.mip = problemCategory == ProblemCategory.MIP;
+    // Taken from the problem this solution was produced for, so the native layer is not
+    // asked a second time.
+    this.mip = mip;
     this.variableNames = variableNames == null ? new String[0] : Arrays.copyOf(variableNames, variableNames.length);
   }
 

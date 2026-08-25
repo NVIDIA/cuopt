@@ -26,11 +26,6 @@ final class ProblemModelingTest {
   }
 
   @Test
-  void mapsLegacyIPCategoryToMIP() {
-    assertEquals(ProblemCategory.MIP, ProblemCategory.fromNative(2));
-  }
-
-  @Test
   void buildsLinearProblemAndCSR() {
     Problem problem = new Problem("Simple MIP");
     Variable x = problem.addVariable(0, Double.POSITIVE_INFINITY, 0, VariableType.INTEGER, "x");

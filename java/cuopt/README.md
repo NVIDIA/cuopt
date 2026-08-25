@@ -45,43 +45,6 @@ symbol.
 The standalone native project links to `${CUOPT_PREFIX}/lib/libcuopt.so`. No
 Java-specific symbol or source file is required by the main cuOpt build.
 
-The bindings once declared seven entry points in a Java-local shim, reaching
-into the opaque solver settings handle to do it. Nothing in the settings or
-solution path depends on private headers any more:
-
-- Solver statistics are read through `cuOptGetSolutionIntAttribute` and
-  `cuOptGetSolutionFloatAttribute` with the `CUOPT_SOLUTION_ATTR_*` selectors.
-  A new statistic is then a new constant rather than a new exported symbol, and
-  because `CuOptConstants.java` is generated from `constants.h`, it reaches
-  Java with no hand-written code.
-- Whether a solution came from the MIP solver is taken from the problem's
-  category, which `Solution` already carries, rather than from a native call.
-- The parameter-file and parameter-enumeration entry points were dropped
-  rather than promoted. Every solver parameter is registered from a `CUOPT_*`
-  macro in `constants.h`, so the generated `CuOptConstants` already carries the
-  complete list and runtime enumeration cannot add to it. Loading and dumping a
-  settings file is likewise expressible on top of `cuOptSetParameter` and
-  `cuOptGetParameter`. See #1705.
-
-The problem path is still an exception. `cuopt_jni.cpp` includes
-`pdlp/cuopt_c_internal.hpp` from the checkout for the operations the C API does
-not yet cover:
-
-- setting the problem, variable, and row names (the C API only reads them),
-- reading the quadratic objective matrix and the quadratic constraint rows
-  (see the `TODO` in `cuopt_c.h`),
-- reading variable and row names when the problem has none, which the C API
-  string-array getter rejects rather than reporting as empty,
-- reading the problem category,
-- reading the dual solution and reduced costs. These are empty when the solve
-  did not produce them (an infeasible LP, for instance), and the Java API
-  reports that as an empty array. The C API getters are copy-out into a
-  caller-sized buffer and report no length, so switching to them would turn
-  "unavailable" into a buffer of zeros.
-
-Closing those gaps in the C API is the remaining prerequisite for shipping this
-module as a standalone binary distribution.
-
 ## JNI symbol check
 
 The bindings are hand-written, so every `static native` method in

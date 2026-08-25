@@ -159,8 +159,9 @@ final class NativeProblem implements AutoCloseable {
     return NativeCuOpt.getProblemName(handle());
   }
 
-  ProblemCategory getProblemCategory() {
-    return ProblemCategory.fromNative(NativeCuOpt.getProblemCategory(handle()));
+  /** The engine reports 0 for LP; every other category has discrete variables. */
+  boolean isMIP() {
+    return NativeCuOpt.getProblemCategory(handle()) != 0;
   }
 
   NativeProblem setQuadraticObjective(QuadraticExpression expression) {
@@ -237,7 +238,7 @@ final class NativeProblem implements AutoCloseable {
           solutionHandle,
           getNumVariables(),
           getNumConstraints(),
-          getProblemCategory(),
+          isMIP(),
           getVariableNames());
     } finally {
       if (closeSettings) {
