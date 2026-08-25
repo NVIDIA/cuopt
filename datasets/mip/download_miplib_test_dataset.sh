@@ -25,7 +25,6 @@ INSTANCES=(
     "swath1"
     "enlight_hard"
     "enlight11"
-    "neos-787933"
     "supportcase22"
     "pk1"
     "app1-1"

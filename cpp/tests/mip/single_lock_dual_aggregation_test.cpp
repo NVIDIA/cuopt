@@ -5,7 +5,11 @@
  */
 /* clang-format on */
 
+#include <utilities/inline_lp_test_utils.hpp>
+
+#include <cuopt/mathematical_optimization/solve.hpp>
 #include <mip_heuristics/presolve/single_lock_dual_aggregation.hpp>
+#include <mip_heuristics/presolve/third_party_presolve.hpp>
 
 #include <papilo/core/ProblemBuilder.hpp>
 #include <papilo/core/ProblemUpdate.hpp>
@@ -15,14 +19,23 @@
 #include <papilo/io/Message.hpp>
 #include <papilo/misc/Timer.hpp>
 
+#include <raft/core/handle.hpp>
+
 #include <gtest/gtest.h>
 
 #include <cmath>
 #include <limits>
+#include <memory>
+#include <string>
+#include <string_view>
 #include <tuple>
+#include <unordered_set>
 #include <vector>
 
 namespace cuopt::mathematical_optimization::mip::test {
+
+// Must match third_party_presolve.cpp; Papilo's own default is 1e-6.
+constexpr double kProductionFeasTol = 1e-5;
 
 struct papilo_harness_t {
   papilo::Num<double> num;
@@ -32,7 +45,11 @@ struct papilo_harness_t {
   papilo::Message msg;
   double timer_acc{0};
 
-  papilo_harness_t() { options.tlim = std::numeric_limits<double>::max(); }
+  papilo_harness_t()
+  {
+    options.tlim = std::numeric_limits<double>::max();
+    num.setFeasTol(kProductionFeasTol);
+  }
 
   papilo::PresolveStatus run(papilo::Problem<double>& problem,
                              SingleLockDualAggregation<double>& presolver)
@@ -187,24 +204,25 @@ TEST(SingleLockDualAggregation, FreeRowNonCase)
 // so the substitution is correctly rejected.
 //
 //   min -x
-//   s.t.  3x - 2y <= 0
+//   s.t.  3x - 2y <= 0     (the locking row)
+//         x + y   >= 0     (GEQ slack: positive coeffs add down-locks only)
 //         x, y in {0,1}
 //
 // A_min=-2, A_max=3. Probe(x=1,y=0): probed_min = -2-0-(-2)+3 = 3 > 0 => proven.
 // Favorable(y=1): A_max - max(0,-2) + (-2) = 3-0-2 = 1 > 0 => FAILS.
 TEST(SingleLockDualAggregation, FavorableStateRejects)
 {
-  auto problem = build_problem(1,
+  auto problem = build_problem(2,
                                2,
-                               {{0, 0, 3.0}, {0, 1, -2.0}},
+                               {{0, 0, 3.0}, {0, 1, -2.0}, {1, 0, 1.0}, {1, 1, 1.0}},
                                {-1.0, 0.0},
                                {0.0, 0.0},
                                {1.0, 1.0},
                                {true, true},
-                               {0.0},
-                               {0.0},
-                               {true},
-                               {false});
+                               {0.0, 0.0},
+                               {0.0, 0.0},
+                               {true, false},
+                               {false, true});
 
   SingleLockDualAggregation<double> presolver;
   papilo_harness_t h;
@@ -212,6 +230,194 @@ TEST(SingleLockDualAggregation, FavorableStateRejects)
 
   EXPECT_EQ(status, papilo::PresolveStatus::kUnchanged);
   EXPECT_EQ(h.reductions.size(), 0u);
+}
+
+// x has one down-lock in a GEQ row and a non-negative cost. The probe proves y=1 => x=1
+// from the maximum activity.
+//
+//   min x
+//   s.t.  3x - 4y >= -1    (the locking row)
+//         x + y   <= 2     (LEQ slack: positive coeffs add up-locks only)
+//         x, y in {0,1}
+//
+// A_min=-4, A_max=3. Probe(x=0,y=1): probed_max = 3-3-0+(-4) = -4 < -1 => proven.
+// Favorable(y=0): A_min - min(0,-4) + 0 = -4+4 = 0 >= -1 => safe.
+TEST(SingleLockDualAggregation, DownwardSubstitution)
+{
+  auto problem = build_problem(2,
+                               2,
+                               {{0, 0, 3.0}, {0, 1, -4.0}, {1, 0, 1.0}, {1, 1, 1.0}},
+                               {1.0, 0.0},
+                               {0.0, 0.0},
+                               {1.0, 1.0},
+                               {true, true},
+                               {-1.0, 0.0},
+                               {0.0, 2.0},
+                               {false, true},
+                               {true, false});
+
+  SingleLockDualAggregation<double> presolver;
+  papilo_harness_t h;
+  auto status = h.run(problem, presolver);
+
+  EXPECT_EQ(status, papilo::PresolveStatus::kReduced);
+  EXPECT_TRUE(h.has_replace(0, 1, 1.0, 0.0));  // x = y
+}
+
+// A two-sided row runs both halves of the favorable-state check.
+//
+//   min -x
+//   s.t.  -10 <= 3x - 4y <= 1    (the locking row)
+//         x + y >= 0
+//         x, y in {0,1}
+//
+// Exactly feasible: (0,0), (0,1), (1,1); optimum (1,1). Both favorable-state halves pass
+// (upper: 3-0-4 = -1 <= 1, lower: -4+4-4 = -4 >= -10), and x=y keeps the optimum.
+TEST(SingleLockDualAggregation, RangedRowSubstitution)
+{
+  auto problem = build_problem(2,
+                               2,
+                               {{0, 0, 3.0}, {0, 1, -4.0}, {1, 0, 1.0}, {1, 1, 1.0}},
+                               {-1.0, 0.0},
+                               {0.0, 0.0},
+                               {1.0, 1.0},
+                               {true, true},
+                               {-10.0, 0.0},
+                               {1.0, 0.0},
+                               {false, false},
+                               {false, true});
+
+  SingleLockDualAggregation<double> presolver;
+  papilo_harness_t h;
+  auto status = h.run(problem, presolver);
+
+  EXPECT_EQ(status, papilo::PresolveStatus::kReduced);
+  EXPECT_TRUE(h.has_replace(0, 1, 1.0, 0.0));  // x = y
+}
+
+// Equality rows lock both directions, so a variable confined to them is never single-locked.
+//
+//   min -x
+//   s.t.  3x - 4y = 1
+//         x + y   = 1
+//         x, y in {0,1}
+TEST(SingleLockDualAggregation, EqualityRowsLockBothDirections)
+{
+  auto problem = build_problem(2,
+                               2,
+                               {{0, 0, 3.0}, {0, 1, -4.0}, {1, 0, 1.0}, {1, 1, 1.0}},
+                               {-1.0, 0.0},
+                               {0.0, 0.0},
+                               {1.0, 1.0},
+                               {true, true},
+                               {1.0, 1.0},
+                               {1.0, 1.0},
+                               {false, false},
+                               {false, false});
+
+  SingleLockDualAggregation<double> presolver;
+  papilo_harness_t h;
+  auto status = h.run(problem, presolver);
+
+  EXPECT_EQ(status, papilo::PresolveStatus::kUnchanged);
+  EXPECT_EQ(h.reductions.size(), 0u);
+}
+
+// The favorable state violates the row by 5e-6, under the 1e-5 feasibility tolerance.
+// Exactly, x must be 0, so x=y would leave the problem with no exact optimum.
+//
+//   min -x
+//   s.t.  2x - 1.000001y <= 0.999994    (the locking row)
+//         x + y >= 0
+//         x, y in {0,1}
+//
+// Probe(x=1,y=0): probed_min = 2 > 0.999994 => proven.
+// Favorable(y=1): A_max - max(0,-1.000001) + (-1.000001) = 0.999999 > 0.999994 => reject.
+TEST(SingleLockDualAggregation, FavorableStateRejectsSubToleranceViolation)
+{
+  auto problem = build_problem(2,
+                               2,
+                               {{0, 0, 2.0}, {0, 1, -1.000001}, {1, 0, 1.0}, {1, 1, 1.0}},
+                               {-1.0, 0.0},
+                               {0.0, 0.0},
+                               {1.0, 1.0},
+                               {true, true},
+                               {0.0, 0.0},
+                               {0.999994, 0.0},
+                               {true, false},
+                               {false, true});
+
+  SingleLockDualAggregation<double> presolver;
+  papilo_harness_t h;
+  auto status = h.run(problem, presolver);
+
+  EXPECT_EQ(status, papilo::PresolveStatus::kUnchanged);
+  EXPECT_EQ(h.reductions.size(), 0u);
+}
+
+namespace {
+
+papilo::Problem<double> build_direct_substitution_problem(double candidate_objective)
+{
+  return build_problem(2,
+                       2,
+                       {{0, 0, 3.0}, {0, 1, -4.0}, {1, 0, 1.0}, {1, 1, 1.0}},
+                       {candidate_objective, 0.0},
+                       {0.0, 0.0},
+                       {1.0, 1.0},
+                       {true, true},
+                       {0.0, 0.0},
+                       {1.0, 0.0},
+                       {true, false},
+                       {false, true});
+}
+
+}  // namespace
+
+TEST(SingleLockDualAggregation, DualredsZeroDisables)
+{
+  auto problem = build_direct_substitution_problem(-1.0);
+
+  SingleLockDualAggregation<double> presolver;
+  papilo_harness_t h;
+  h.options.dualreds = 0;
+  auto status        = h.run(problem, presolver);
+
+  EXPECT_EQ(status, papilo::PresolveStatus::kUnchanged);
+  EXPECT_EQ(h.reductions.size(), 0u);
+}
+
+// A zero objective coefficient makes x=y discard alternative optima, which needs dualreds 2.
+TEST(SingleLockDualAggregation, ZeroObjectiveNeedsFullDualreds)
+{
+  {
+    auto problem = build_direct_substitution_problem(0.0);
+    SingleLockDualAggregation<double> presolver;
+    papilo_harness_t h;
+    h.options.dualreds = 1;
+    EXPECT_EQ(h.run(problem, presolver), papilo::PresolveStatus::kUnchanged);
+    EXPECT_EQ(h.reductions.size(), 0u);
+  }
+  {
+    auto problem = build_direct_substitution_problem(0.0);
+    SingleLockDualAggregation<double> presolver;
+    papilo_harness_t h;
+    h.options.dualreds = 2;
+    EXPECT_EQ(h.run(problem, presolver), papilo::PresolveStatus::kReduced);
+    EXPECT_TRUE(h.has_replace(0, 1, 1.0, 0.0));
+  }
+}
+
+third_party_presolve_device_result_t<int, double> static run_presolve(
+  std::string_view lp_text, std::unordered_set<std::string> allowlist)
+{
+  const raft::handle_t handle{};
+  auto mps_data_model = cuopt::test::parse_inline_lp(lp_text);
+  auto op_problem     = mps_data_model_to_optimization_problem(&handle, mps_data_model);
+  auto presolver      = std::make_unique<third_party_presolve_t<int, double>>();
+  presolver->set_reduction_allowlist(std::move(allowlist));
+  return presolver->apply_presolve_from_op_problem(
+    op_problem, problem_category_t::MIP, presolver_t::Papilo, false, 1e-6, 1e-12, 20, 1);
 }
 
 }  // namespace cuopt::mathematical_optimization::mip::test

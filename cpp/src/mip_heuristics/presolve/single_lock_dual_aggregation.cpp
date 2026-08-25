@@ -9,6 +9,7 @@
 
 #include <mip_heuristics/mip_constants.hpp>
 #include <utilities/logger.hpp>
+#include <utilities/macros.cuh>
 
 #include <algorithm>
 #include <vector>
@@ -152,7 +153,8 @@ void compute_single_locks(const papilo::Problem<f_t>& problem,
 template <typename f_t>
 std::vector<candidate_t> collect_candidates(const papilo::Problem<f_t>& problem,
                                             const std::vector<int> locks[2],
-                                            const std::vector<int> lock_row[2])
+                                            const std::vector<int> lock_row[2],
+                                            bool require_strict_objective)
 {
   const auto& constraint_matrix = problem.getConstraintMatrix();
   const auto& domains           = problem.getVariableDomains();
@@ -173,11 +175,13 @@ std::vector<candidate_t> collect_candidates(const papilo::Problem<f_t>& problem,
     // Skip singletons: PaPILO's stuffing presolver handles these.
     if (constraint_matrix.getColumnCoefficients(col).getLength() <= 1) continue;
 
-    // can be turned into strict checks if we need to guarantee
-    // that we never cut off any optimal solution
-    if (locks[UP][col] == 1 && objective[col] <= 0)
+    // Strict under dualreds < 2: a zero coefficient discards alternative optima.
+    const bool up_ok   = require_strict_objective ? objective[col] < 0 : objective[col] <= 0;
+    const bool down_ok = require_strict_objective ? objective[col] > 0 : objective[col] >= 0;
+
+    if (locks[UP][col] == 1 && up_ok)
       candidates.push_back({col, lock_row[UP][col], UP});
-    else if (locks[DOWN][col] == 1 && objective[col] >= 0)
+    else if (locks[DOWN][col] == 1 && down_ok)
       candidates.push_back({col, lock_row[DOWN][col], DOWN});
   }
   return candidates;
@@ -362,6 +366,10 @@ int try_substitutions_for_row(const papilo::Problem<f_t>& problem,
     try_prove(use_geq_check, is_upward ? pos_y : neg_y, is_upward ? neg_y : pos_y);
     if (!proven) continue;
 
+    cuopt_assert(master_col >= 0, "");
+    cuopt_assert(master_col != cand, "");
+    cuopt_assert(!substituted[master_col], "");
+
     // The probe proves a one-directional implication (e.g. y=0 => x=0).
     // The substitution x=y also asserts the reverse (y=1 => x=1), which is
     // only safe if forcing x to its bound doesn't starve other variables of
@@ -380,7 +388,7 @@ int try_substitutions_for_row(const papilo::Problem<f_t>& problem,
           return;
         }
         f_t fav = activity - orig_y + fav_y_contrib;
-        if (side == UPPER ? num.isFeasGT(fav, bound) : num.isFeasLT(fav, bound)) proven = false;
+        if (side == UPPER ? fav > bound : fav < bound) proven = false;
       };
     check_side(
       has_rhs, can_reach_pos_inf, A_max, std::max(f_t{0}, y_coef_val), rhs_values[row], UPPER);
@@ -419,13 +427,18 @@ papilo::PresolveStatus SingleLockDualAggregation<f_t>::execute(
   const papilo::Timer& timer,
   int& reason_of_infeasibility)
 {
-  const int ncols   = problem.getNCols();
-  const double tlim = problemUpdate.getPresolveOptions().tlim;
+  const int ncols     = problem.getNCols();
+  const auto& options = problemUpdate.getPresolveOptions();
+  const double tlim   = options.tlim;
+
+  // dualreds == 2 -> allow strong dual reductions (that can cut off some optimal solutions)
+  cuopt_assert(options.dualreds >= 0 && options.dualreds <= 2, "");
+  if (options.dualreds == 0) return papilo::PresolveStatus::kUnchanged;
 
   std::vector<int> locks[2], lock_row[2];
   compute_single_locks(problem, timer, tlim, locks, lock_row);
 
-  auto candidates = collect_candidates(problem, locks, lock_row);
+  auto candidates = collect_candidates(problem, locks, lock_row, options.dualreds < 2);
 
   if (this->is_time_exceeded(timer, tlim) || candidates.empty())
     return papilo::PresolveStatus::kUnchanged;
