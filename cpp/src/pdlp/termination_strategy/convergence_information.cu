@@ -12,6 +12,7 @@
 #include <pdlp/swap_and_resize_helper.cuh>
 #include <pdlp/termination_strategy/convergence_information.hpp>
 #include <pdlp/utils.cuh>
+#include <utilities/device_scalar_init.hpp>
 
 #include <mip_heuristics/mip_constants.hpp>
 
@@ -62,12 +63,12 @@ convergence_information_t<i_t, f_t>::convergence_information_t(
     objective_offsets_{climber_strategies.size(), stream_view_},
     primal_objective_{climber_strategies.size(), stream_view_},
     dual_objective_{climber_strategies.size(), stream_view_},
-    reduced_cost_dual_objective_{f_t(0.0), stream_view_},
+    reduced_cost_dual_objective_{zero_v<f_t>, stream_view_},
     l2_primal_residual_{climber_strategies.size(), stream_view_},
     l2_dual_residual_{climber_strategies.size(), stream_view_},
     linf_primal_residual_{climber_strategies.size(), stream_view_},
     linf_dual_residual_{climber_strategies.size(), stream_view_},
-    nb_violated_constraints_{0, stream_view_},
+    nb_violated_constraints_{zero_v<i_t>, stream_view_},
     gap_{climber_strategies.size(), stream_view_},
     abs_objective_{climber_strategies.size(), stream_view_},
     primal_residual_{climber_strategies.size() * dual_size_h_, stream_view_},
@@ -78,9 +79,9 @@ convergence_information_t<i_t, f_t>::convergence_information_t(
                     ? static_cast<size_t>(dual_size_h_ * climber_strategies.size())
                     : 0,
                   stream_view_},
-    reusable_device_scalar_value_1_{1.0, stream_view_},
-    reusable_device_scalar_value_0_{0.0, stream_view_},
-    reusable_device_scalar_value_neg_1_{-1.0, stream_view_},
+    reusable_device_scalar_value_1_{one_v<f_t>, stream_view_},
+    reusable_device_scalar_value_0_{zero_v<f_t>, stream_view_},
+    reusable_device_scalar_value_neg_1_{neg_one_v<f_t>, stream_view_},
     segmented_sum_handler_{stream_view_},
     dual_dot_{climber_strategies.size(), stream_view_},
     sum_primal_slack_{climber_strategies.size(), stream_view_},
@@ -236,7 +237,7 @@ void convergence_information_t<i_t, f_t>::distributed_init_l2_norms(
     const auto& problem =
       *s.sub_pdlp->get_current_termination_strategy().get_convergence_information().problem_ptr;
     const auto stream = s.stream.view();
-    rmm::device_scalar<f_t> d_rhs_sq(f_t(0), stream);
+    rmm::device_scalar<f_t> d_rhs_sq(zero_v<f_t>, stream);
 
     compute_sum_bounds_squared(problem.constraint_lower_bounds,
                                problem.constraint_upper_bounds,
