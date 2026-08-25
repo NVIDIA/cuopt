@@ -34,7 +34,6 @@ jobs:
       - wheel-tests-cuopt-server
       - wheel-build-cuopt-sh-client
       - test-self-hosted-server
-      - pr-test-summary
     permissions:
       contents: read
     uses: rapidsai/shared-workflows/.github/workflows/pr-builder.yaml@main
@@ -49,6 +48,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       libcuopt_filter: ${{ steps.set-filters.outputs.libcuopt_filter }}
+      cuopt_filter: ${{ steps.set-filters.outputs.cuopt_filter }}
       cuopt_server_filter: ${{ steps.set-filters.outputs.cuopt_server_filter }}
       cuopt_server_test_filter: ${{ steps.set-filters.outputs.cuopt_server_test_filter }}
       cuopt_sh_client_filter: ${{ steps.set-filters.outputs.cuopt_sh_client_filter }}
@@ -57,6 +57,7 @@ jobs:
         id: set-filters
         run: |
           echo "libcuopt_filter=group_by([.ARCH, (.CUDA_VER|split(\".\")|map(tonumber)|.[0])]) | map(max_by(.PY_VER|split(\".\")|map(tonumber)))" >> $GITHUB_OUTPUT
+          echo "cuopt_filter=group_by({CUDA_VER, ARCH}) | map(min_by(.PY_VER | split(\".\") | map(tonumber)))" >> $GITHUB_OUTPUT
           echo "cuopt_server_filter=map(select(.ARCH == \"amd64\")) | group_by(.CUDA_VER|split(\".\")|map(tonumber)|.[0]) | map(max_by([(.PY_VER|split(\".\")|map(tonumber)), (.CUDA_VER|split(\".\")|map(tonumber))]))" >> $GITHUB_OUTPUT
           echo "cuopt_server_test_filter=map(select(.ARCH == \"amd64\")) | group_by(.CUDA_VER | split(\".\") | map(tonumber) | .[0]) | map(max_by([(.PY_VER | split(\".\") | map(tonumber)), (.CUDA_VER | split(\".\") | map(tonumber))]))" >> $GITHUB_OUTPUT
           echo "cuopt_sh_client_filter=[map(select(.ARCH == \"amd64\")) | min_by((.PY_VER | split(\".\") | map(tonumber)), (.CUDA_VER | split(\".\") | map(-tonumber)))]" >> $GITHUB_OUTPUT
@@ -114,6 +115,7 @@ jobs:
           - '!ci/release/**'
           - '!ci/run_*.pytests.sh'
           - '!ci/run_ctests.sh'
+          - '!ci/run-vale.sh'
           - '!ci/test_cpp*.sh'
           - '!ci/test_notebooks.sh'
           - '!ci/test_python.sh'
@@ -174,6 +176,7 @@ jobs:
           - '!ci/check_style.sh'
           - '!ci/docker/**'
           - '!ci/release/**'
+          - '!ci/run-vale.sh'
           - '!ci/test_python.sh'
           - '!ci/test_self_hosted_service.sh'
           - '!ci/test_wheel*.sh'
@@ -244,6 +247,7 @@ jobs:
           - '!ci/check_style.sh'
           - '!ci/docker/**'
           - '!ci/release/**'
+          - '!ci/run-vale.sh'
           - '!ci/test_self_hosted_service.sh'
           - '!ci/test_wheel*.sh'
           - '!ci/thirdparty-testing/**'
@@ -314,6 +318,7 @@ jobs:
           - '!ci/docker/**'
           - '!ci/release/**'
           - '!ci/run_ctests.sh'
+          - '!ci/run-vale.sh'
           - '!ci/test_python.sh'
           - '!ci/thirdparty-testing/**'
           - '!ci/utils/sync_skills_version.sh'
@@ -341,6 +346,7 @@ jobs:
     uses: rapidsai/shared-workflows/.github/workflows/checks.yaml@main
     with:
       enable_check_generated_files: false
+      ignored_pr_jobs: "pr-test-summary"
   conda-cpp-build:
     needs: [build-details, checks, compute-matrix-filters, changed-files]
     # Consumed by conda-cpp-tests, conda-python-build, and (transitively) docs-build.
@@ -392,8 +398,6 @@ jobs:
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
     with:
       build_type: pull-request
-      # Non-blocking while the multi-GPU test suite is maturing.
-      continue-on-error: true
   conda-python-build:
     needs: [build-details, conda-cpp-build, changed-files]
     # Consumed by conda-python-tests and docs-build.
@@ -412,6 +416,8 @@ jobs:
       build_type: pull-request
       build-datetime: ${{ needs.build-details.outputs.build-datetime }}
       script: ci/build_python.sh
+      # Build a conda package for each CUDA x ARCH x minimum supported Python version
+      matrix_filter: group_by({CUDA_VER, ARCH}) | map(min_by(.PY_VER | split(".") | map(tonumber)))
   conda-python-tests:
     needs: [conda-python-build, changed-files]
     permissions:
@@ -481,6 +487,8 @@ jobs:
       script: ci/build_wheel_cuopt.sh
       package-name: cuopt
       package-type: python
+      # Build a wheel for each CUDA x ARCH x minimum supported Python version
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.cuopt_filter }}
   wheel-tests-cuopt:
     needs: [wheel-build-cuopt, wheel-build-cuopt-sh-client, changed-files]
     permissions:
@@ -578,6 +586,7 @@ jobs:
       build_type: pull-request
       script: ci/test_self_hosted_service.sh
   pr-test-summary:
+    name: "PR test summary (non-blocking)"
     needs:
       - conda-cpp-tests
       - conda-python-tests
@@ -585,7 +594,6 @@ jobs:
       - wheel-tests-cuopt-server
       - test-self-hosted-server
     if: always()
-    continue-on-error: true
     runs-on: ubuntu-latest
     permissions:
       actions: read
