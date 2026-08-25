@@ -353,6 +353,7 @@ jobs:
 
   build-images:
     needs:
+      - build-details
       - wheel-publish-cuopt
       - wheel-publish-cuopt-server
       - wheel-publish-cuopt-sh-client
@@ -369,3 +370,4 @@ jobs:
       sha: ${{ inputs.sha }}
       date: ${{ inputs.date }}
       build_type: ${{ inputs.build_type || 'branch' }}
+      build-datetime: ${{ needs.build-details.outputs.build-datetime }}
