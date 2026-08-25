@@ -95,7 +95,10 @@ void pdlp_solver_settings_t<i_t, f_t>::set_pdlp_warm_start_data(
   const rmm::device_uvector<i_t>& var_mapping,
   const rmm::device_uvector<i_t>& constraint_mapping)
 {
-  pdlp_warm_start_data_ = std::move(pdlp_warm_start_data_view);
+  // pdlp_warm_start_data_ is a shared_ptr now (see solver_settings.hpp); alias it so the
+  // device code below reads unchanged.
+  auto& pdlp_warm_start_data_ = ensure_pdlp_warm_start_data();
+  pdlp_warm_start_data_       = std::move(pdlp_warm_start_data_view);
 
   // A var_mapping was given
   if (var_mapping.size() != 0) {
@@ -382,37 +385,28 @@ std::optional<i_t> pdlp_solver_settings_t<i_t, f_t>::get_initial_pdlp_iteration(
 }
 
 template <typename i_t, typename f_t>
+pdlp_warm_start_data_t<i_t, f_t>& pdlp_solver_settings_t<i_t, f_t>::ensure_pdlp_warm_start_data()
+  const
+{
+  if (!pdlp_warm_start_data_) {
+    pdlp_warm_start_data_ = std::make_shared<pdlp_warm_start_data_t<i_t, f_t>>();
+  }
+  return *pdlp_warm_start_data_;
+}
+
+// These two live here rather than in solver_settings_accessors.cpp: they may have to
+// allocate the device-backed warm-start object, so they need CUDA.
+template <typename i_t, typename f_t>
 const pdlp_warm_start_data_t<i_t, f_t>& pdlp_solver_settings_t<i_t, f_t>::get_pdlp_warm_start_data()
   const noexcept
 {
-  return pdlp_warm_start_data_;
+  return ensure_pdlp_warm_start_data();
 }
 
 template <typename i_t, typename f_t>
 pdlp_warm_start_data_t<i_t, f_t>& pdlp_solver_settings_t<i_t, f_t>::get_pdlp_warm_start_data()
 {
-  return pdlp_warm_start_data_;
-}
-
-template <typename i_t, typename f_t>
-const cpu_pdlp_warm_start_data_t<i_t, f_t>&
-pdlp_solver_settings_t<i_t, f_t>::get_cpu_pdlp_warm_start_data() const noexcept
-{
-  return cpu_pdlp_warm_start_data_;
-}
-
-template <typename i_t, typename f_t>
-cpu_pdlp_warm_start_data_t<i_t, f_t>&
-pdlp_solver_settings_t<i_t, f_t>::get_cpu_pdlp_warm_start_data() noexcept
-{
-  return cpu_pdlp_warm_start_data_;
-}
-
-template <typename i_t, typename f_t>
-const pdlp_warm_start_data_view_t<i_t, f_t>&
-pdlp_solver_settings_t<i_t, f_t>::get_pdlp_warm_start_data_view() const noexcept
-{
-  return pdlp_warm_start_data_view_;
+  return ensure_pdlp_warm_start_data();
 }
 
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT

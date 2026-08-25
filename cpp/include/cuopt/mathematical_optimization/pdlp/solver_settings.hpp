@@ -13,6 +13,7 @@
 #include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 #include <cuopt/mathematical_optimization/pdlp/pdlp_warm_start_data.hpp>
 #include <cuopt/mathematical_optimization/utilities/internals.hpp>
+#include <memory>
 #include <optional>
 #include <raft/core/device_span.hpp>
 #include <rmm/device_uvector.hpp>
@@ -371,8 +372,24 @@ class pdlp_solver_settings_t {
   /** Initial pdlp iteration */
   // TODO batch mode: tmp
   std::optional<i_t> initial_pdlp_iteration_;
-  /** GPU-backed warm start data (device_uvector), used by C++ API and local GPU solves */
-  pdlp_warm_start_data_t<i_t, f_t> pdlp_warm_start_data_;
+  /** GPU-backed warm start data (device_uvector), used by C++ API and local GPU solves.
+   *
+   * Held by shared_ptr rather than by value so that constructing a settings object needs
+   * no CUDA. pdlp_warm_start_data_t owns nine rmm::device_uvector, and its default ctor is
+   * out-of-line in a CUDA TU (device_uvector has no default ctor -- it needs a stream, and
+   * building even a zero-size one calls cudaGetDevice). By value, that made every consumer
+   * of solver_settings_t -- including the CUDA-free gRPC client -- depend on libcuopt.
+   *
+   * shared_ptr specifically, not unique_ptr: shared_ptr type-erases its deleter into the
+   * control block at construction, so a host-only TU can copy and destroy this member
+   * without the complete type. unique_ptr would just move the problem to the destructor.
+   *
+   * Null until a GPU consumer first needs it; use ensure_pdlp_warm_start_data().
+   */
+  mutable std::shared_ptr<pdlp_warm_start_data_t<i_t, f_t>> pdlp_warm_start_data_;
+
+  /** Lazily allocate pdlp_warm_start_data_ and return it. Defined in a CUDA TU. */
+  pdlp_warm_start_data_t<i_t, f_t>& ensure_pdlp_warm_start_data() const;
   /** Warm start data as spans over external memory, used by Cython/Python interface */
   pdlp_warm_start_data_view_t<i_t, f_t> pdlp_warm_start_data_view_;
   /** CPU-backed warm start data (std::vector), used for remote execution on CPU-only hosts */

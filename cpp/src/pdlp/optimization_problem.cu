@@ -639,14 +639,6 @@ raft::handle_t const* optimization_problem_t<i_t, f_t>::get_handle_ptr() const n
 // Conversion
 // ==============================================================================
 
-template <typename i_t, typename f_t>
-std::unique_ptr<optimization_problem_t<i_t, f_t>>
-optimization_problem_t<i_t, f_t>::to_optimization_problem(raft::handle_t const* /*handle_ptr*/)
-{
-  // Already a GPU problem, return nullptr
-  return nullptr;
-}
-
 // ==============================================================================
 // Host Getters (copy from GPU to CPU)
 // ==============================================================================
@@ -1643,6 +1635,46 @@ template class CUOPT_EXPORT optimization_problem_t<int32_t, double>;
 template CUOPT_EXPORT optimization_problem_t<int32_t, float>
   optimization_problem_t<int32_t, double>::convert_to_other_prec<float>(
     rmm::cuda_stream_view) const;
+#endif
+
+
+// GPU-target warm-start handling, declared in optimization_problem_utils.hpp.
+//
+// Defined here rather than inline in the header so that CUDA-free consumers of that
+// header (the gRPC client in cuopt_client) never instantiate the device conversions.
+template <typename i_t, typename f_t>
+void apply_warmstart_gpu_target(solver_settings_t<i_t, f_t>* solver_settings,
+                                const raft::handle_t* handle)
+{
+  auto& pdlp = solver_settings->get_pdlp_settings();
+
+  const bool has_view = (solver_settings->get_pdlp_warm_start_data_view()
+                           .last_restart_duality_gap_dual_solution_.size() > 0);
+  const bool has_device_data = pdlp.get_pdlp_warm_start_data().is_populated();
+  const bool has_host_data   = pdlp.get_cpu_pdlp_warm_start_data().is_populated();
+
+  if (!has_view && !has_device_data && !has_host_data) { return; }
+
+  if (has_view) {
+    // Warmstart from Python (spans over cuDF) -> solver needs device_uvectors.
+    pdlp_warm_start_data_t<i_t, f_t> warm_start(solver_settings->get_pdlp_warm_start_data_view(),
+                                                handle->get_stream());
+    pdlp.set_pdlp_warm_start_data(warm_start);
+  } else if (has_device_data) {
+    // Already device-resident from the C++ API: nothing to do.
+  } else {
+    // Host warmstart -> GPU backend: convert H2D.
+    pdlp_warm_start_data_t<i_t, f_t> warm_start =
+      convert_to_gpu_warmstart(pdlp.get_cpu_pdlp_warm_start_data(), handle->get_stream());
+    pdlp.set_pdlp_warm_start_data(warm_start);
+  }
+}
+
+#if MIP_INSTANTIATE_FLOAT
+template void apply_warmstart_gpu_target(solver_settings_t<int, float>*, const raft::handle_t*);
+#endif
+#if MIP_INSTANTIATE_DOUBLE
+template void apply_warmstart_gpu_target(solver_settings_t<int, double>*, const raft::handle_t*);
 #endif
 
 }  // namespace cuopt::mathematical_optimization

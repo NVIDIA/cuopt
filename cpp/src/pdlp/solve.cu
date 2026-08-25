@@ -2679,7 +2679,7 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
   raft::handle_t handle(stream);
 
   // Convert CPU problem to GPU problem
-  auto gpu_problem = cpu_problem.to_optimization_problem(&handle);
+  auto gpu_problem = to_optimization_problem(cpu_problem, &handle);
 
   // Synchronize before solving to ensure conversion is complete
   stream.synchronize();

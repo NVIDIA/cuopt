@@ -173,9 +173,11 @@ class cpu_optimization_problem_t : public optimization_problem_interface_t<i_t, 
    * @param handle_ptr RAFT handle with CUDA resources for GPU memory allocation.
    * @return unique_ptr to new optimization_problem_t with all data copied to GPU
    * @throws std::runtime_error if handle_ptr is null
+   *
+   * Provided as the free function to_optimization_problem() in optimization_problem.hpp,
+   * not as a member: keeping it out of this class's vtable is what lets cuopt_client
+   * load without libcuopt.so.
    */
-  std::unique_ptr<optimization_problem_t<i_t, f_t>> to_optimization_problem(
-    raft::handle_t const* handle_ptr = nullptr) override;
 
   /**
    * @brief Write the optimization problem to an MPS file.
@@ -207,6 +209,13 @@ class cpu_optimization_problem_t : public optimization_problem_interface_t<i_t, 
   void copy_variable_types_to_host(var_t* output, i_t size) const override;
 
  private:
+  // to_optimization_problem() reads this class's host-side storage directly. It is a free
+  // function rather than a member so that it stays out of this class's vtable -- see the
+  // note in optimization_problem_interface.hpp.
+  template <typename I, typename F>
+  friend std::unique_ptr<optimization_problem_t<I, F>> to_optimization_problem(
+    optimization_problem_interface_t<I, F>&, raft::handle_t const*);
+
   problem_category_t problem_category_ = problem_category_t::LP;
   bool maximize_{false};
   i_t n_vars_{0};

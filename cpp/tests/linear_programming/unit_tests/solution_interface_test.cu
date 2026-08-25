@@ -305,7 +305,7 @@ TEST_F(SolutionInterfaceTest, gpu_problem_to_optimization_problem)
   EXPECT_EQ(problem->get_n_constraints(), kNCons);
 
   // GPU problem's to_optimization_problem() returns nullptr (already a GPU problem)
-  auto concrete = problem->to_optimization_problem(&handle);
+  auto concrete = to_optimization_problem(*problem, &handle);
   EXPECT_EQ(concrete, nullptr);
 
   // Verify the data is still accessible directly on the problem
@@ -340,7 +340,7 @@ TEST_F(SolutionInterfaceTest, cpu_problem_to_optimization_problem)
   EXPECT_EQ(problem->get_n_variables(), kNVars);
   EXPECT_EQ(problem->get_n_constraints(), kNCons);
 
-  auto concrete = problem->to_optimization_problem(&handle);
+  auto concrete = to_optimization_problem(*problem, &handle);
   ASSERT_NE(concrete, nullptr);
   EXPECT_EQ(concrete->get_n_variables(), kNVars);
   EXPECT_EQ(concrete->get_n_constraints(), kNCons);
