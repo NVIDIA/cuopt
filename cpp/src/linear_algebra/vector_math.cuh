@@ -14,6 +14,7 @@
 #include <raft/core/host_span.hpp>
 #include <raft/util/cuda_rt_essentials.hpp>
 
+#include <rmm/device_buffer.hpp>
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 #include <rmm/exec_policy.hpp>
@@ -66,6 +67,63 @@ f_t device_custom_vector_norm_inf(InputIteratorT in, i_t size, rmm::cuda_stream_
                             init,
                             stream_view);
   return d_out.value(stream_view);
+}
+
+// Same reduction as device_custom_vector_norm_inf, but writes into a caller-supplied device
+// pointer (and reuses a caller-supplied temp-storage buffer) instead of allocating a private
+// rmm::device_scalar and blocking on .value(). Lets callers batch several reductions and defer
+// the host readback to a single copy + sync.
+template <typename i_t, typename f_t, typename InputIteratorT>
+void enqueue_norm_inf_into(
+  InputIteratorT in, i_t size, f_t* out, rmm::device_buffer& tmp, rmm::cuda_stream_view stream_view)
+{
+  if (size == 0) {
+    RAFT_CUDA_TRY(cudaMemsetAsync(out, 0, sizeof(f_t), stream_view.value()));
+    return;
+  }
+  size_t temp_storage_bytes = 0;
+  f_t init                  = 0;
+  auto custom_op            = norm_inf_max{};
+  cub::DeviceReduce::Reduce(
+    nullptr, temp_storage_bytes, in, out, size, custom_op, init, stream_view);
+
+  tmp.resize(temp_storage_bytes, stream_view);
+
+  cub::DeviceReduce::Reduce(
+    tmp.data(), temp_storage_bytes, in, out, size, custom_op, init, stream_view);
+}
+
+// Sum reduction into a caller-supplied device pointer/temp-storage buffer, deferring the host
+// readback (see enqueue_norm_inf_into).
+template <typename i_t, typename f_t, typename InputIteratorT>
+void enqueue_sum_into(
+  InputIteratorT in, i_t size, f_t* out, rmm::device_buffer& tmp, rmm::cuda_stream_view stream_view)
+{
+  size_t temp_storage_bytes = 0;
+  cub::DeviceReduce::Sum(nullptr, temp_storage_bytes, in, out, size, stream_view);
+
+  tmp.resize(temp_storage_bytes, stream_view);
+
+  cub::DeviceReduce::Sum(tmp.data(), temp_storage_bytes, in, out, size, stream_view);
+}
+
+// Max reduction (with a floor of 0, matching this codebase's existing
+// thrust::reduce(..., f_t(0), thrust::maximum<f_t>()) usage) into a caller-supplied device
+// pointer/temp-storage buffer, deferring the host readback (see enqueue_norm_inf_into).
+template <typename i_t, typename f_t, typename InputIteratorT>
+void enqueue_max_into(
+  InputIteratorT in, i_t size, f_t* out, rmm::device_buffer& tmp, rmm::cuda_stream_view stream_view)
+{
+  size_t temp_storage_bytes = 0;
+  f_t init                  = 0;
+  auto custom_op            = thrust::maximum<f_t>{};
+  cub::DeviceReduce::Reduce(
+    nullptr, temp_storage_bytes, in, out, size, custom_op, init, stream_view);
+
+  tmp.resize(temp_storage_bytes, stream_view);
+
+  cub::DeviceReduce::Reduce(
+    tmp.data(), temp_storage_bytes, in, out, size, custom_op, init, stream_view);
 }
 
 template <typename i_t, typename f_t>
