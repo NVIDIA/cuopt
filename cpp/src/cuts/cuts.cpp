@@ -1232,131 +1232,122 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
   const i_t m = cut_storage_.m;
 
   constexpr f_t duplicate_tolerance = 1e-10;
-  const i_t no_group                = -1;
-
-  struct duplicate_group_t {
-    i_t representative;
-    i_t strongest;
-    i_t next;
-  };
-
   std::vector<f_t> divisors(m, 0.0);
-  std::vector<duplicate_group_t> groups;
-  groups.reserve(m);
-  std::unordered_map<uint64_t, i_t> buckets;
-  buckets.reserve(m);
+  std::vector<i_t> sets(m, 0);
+  csc_matrix_t<i_t, f_t> cut_storage_csc(0, 0, 1);
+  cut_storage_.to_compressed_col(cut_storage_csc);
+  const i_t n        = cut_storage_csc.n;
+  const i_t sentinel = std::numeric_limits<i_t>::max();
 
-  auto coefficients_match = [&](f_t a, f_t divisor_a, f_t b, f_t divisor_b) {
-    const f_t ratio = (a / divisor_a) * (divisor_b / b);
-    return ratio >= 1.0 - duplicate_tolerance && ratio <= 1.0 + duplicate_tolerance;
-  };
+  // Algorithm from Finding Duplicate Rows in a Linear Programming Model
+  // by J. A. Tomlin and J.S. Welch
+  // Operations Research Letters Volume 5, Number 1, June 1986.
+  //
+  // Preserve the legacy partition refinement and row-ordered deletion semantics, but index
+  // entries by their current set. This avoids scanning unrelated later entries without changing
+  // the first matching partner or the resulting removal mask.
+  i_t new_set                        = 1;
+  i_t remaining_potential_duplicates = m;
+  for (i_t j = 0; j < n; j++) {
+    i_t r0        = -1;
+    i_t new_rows  = 0;
+    i_t new_set_0 = new_set;
+    new_set++;
+    const i_t col_start = cut_storage_csc.col_start[j];
+    const i_t col_end   = cut_storage_csc.col_start[j + 1];
 
-  auto rows_are_duplicates = [&](i_t first, i_t second) {
-    const i_t first_start  = cut_storage_.row_start[first];
-    const i_t first_end    = cut_storage_.row_start[first + 1];
-    const i_t second_start = cut_storage_.row_start[second];
-    const i_t second_end   = cut_storage_.row_start[second + 1];
-    const i_t row_length   = first_end - first_start;
-    if (row_length != second_end - second_start) { return false; }
-
-    const f_t first_divisor  = divisors[first];
-    const f_t second_divisor = divisors[second];
-    if ((first_divisor > 0.0) != (second_divisor > 0.0)) { return false; }
-
-    bool same_order = true;
-    for (i_t k = 0; k < row_length; k++) {
-      if (cut_storage_.j[first_start + k] != cut_storage_.j[second_start + k]) {
-        same_order = false;
-        break;
-      }
+    std::unordered_map<i_t, std::vector<i_t>> positions_by_set;
+    positions_by_set.reserve(col_end - col_start);
+    for (i_t p = col_start; p < col_end; p++) {
+      const i_t set = sets[cut_storage_csc.i[p]];
+      if (set > 0 && set < new_set_0) { positions_by_set[set].push_back(p); }
     }
-    if (same_order) {
-      for (i_t k = 0; k < row_length; k++) {
-        if (!coefficients_match(cut_storage_.x[first_start + k],
-                                first_divisor,
-                                cut_storage_.x[second_start + k],
-                                second_divisor)) {
-          return false;
+
+    for (i_t p = col_start; p < col_end; p++) {
+      const i_t r    = cut_storage_csc.i[p];
+      const f_t a_rj = cut_storage_csc.x[p];
+      const f_t f_r  = divisors[r];
+      if (sets[r] == 0) {
+        r0          = r;
+        sets[r]     = new_set_0;
+        divisors[r] = a_rj;
+        new_rows++;
+      } else if (sets[r] < new_set_0) {
+        const i_t old_set = sets[r];
+        bool matched      = false;
+        const auto set_positions = positions_by_set.find(old_set);
+        if (set_positions != positions_by_set.end()) {
+          auto q_position = std::upper_bound(
+            set_positions->second.begin(), set_positions->second.end(), p);
+          for (; q_position != set_positions->second.end(); ++q_position) {
+            const i_t q    = *q_position;
+            const i_t i    = cut_storage_csc.i[q];
+            const f_t a_ij = cut_storage_csc.x[q];
+            if (sets[i] != old_set) { continue; }
+            const f_t f_i = divisors[i];
+            const f_t val = (a_rj / f_r) * (f_i / a_ij);
+            if (val >= 1.0 - duplicate_tolerance &&
+                val <= 1.0 + duplicate_tolerance) {
+              sets[r] = new_set;
+              sets[i] = new_set;
+              matched = true;
+              break;
+            }
+          }
+        }
+        if (matched) {
+          new_set++;
+        } else {
+          sets[r] = sentinel;
+          remaining_potential_duplicates--;
+          if (remaining_potential_duplicates == 0) { break; }
         }
       }
-      return true;
     }
-
-    std::vector<i_t> first_order(row_length);
-    std::vector<i_t> second_order(row_length);
-    std::iota(first_order.begin(), first_order.end(), first_start);
-    std::iota(second_order.begin(), second_order.end(), second_start);
-    const auto column_less = [&](i_t left, i_t right) {
-      return cut_storage_.j[left] < cut_storage_.j[right];
-    };
-    std::sort(first_order.begin(), first_order.end(), column_less);
-    std::sort(second_order.begin(), second_order.end(), column_less);
-    for (i_t k = 0; k < row_length; k++) {
-      const i_t first_position  = first_order[k];
-      const i_t second_position = second_order[k];
-      if (cut_storage_.j[first_position] != cut_storage_.j[second_position] ||
-          !coefficients_match(cut_storage_.x[first_position],
-                              first_divisor,
-                              cut_storage_.x[second_position],
-                              second_divisor)) {
-        return false;
-      }
+    if (remaining_potential_duplicates == 0) { break; }
+    if (new_rows == 1) {
+      sets[r0] = sentinel;
+      remaining_potential_duplicates--;
+      if (remaining_potential_duplicates == 0) { break; }
     }
-    return true;
-  };
-
-  std::vector<i_t> cuts_to_remove(m, 0);
-  i_t num_cuts_to_remove = 0;
-  for (i_t r = 0; r < m; r++) {
-    const i_t row_start = cut_storage_.row_start[r];
-    const i_t row_end   = cut_storage_.row_start[r + 1];
-    i_t pivot           = row_start;
-    for (i_t p = row_start + 1; p < row_end; p++) {
-      const f_t pivot_abs = std::abs(cut_storage_.x[pivot]);
-      const f_t value_abs = std::abs(cut_storage_.x[p]);
-      if (value_abs > pivot_abs ||
-          (value_abs == pivot_abs && cut_storage_.j[p] < cut_storage_.j[pivot])) {
-        pivot = p;
-      }
-    }
-    const f_t divisor = cut_storage_.x[pivot];
-    divisors[r]       = divisor;
-
-    uint64_t support_hash = splitmix64_mix(static_cast<uint64_t>(row_end - row_start));
-    for (i_t p = row_start; p < row_end; p++) {
-      const uint64_t column_hash =
-        splitmix64_mix(static_cast<uint64_t>(cut_storage_.j[p]) + 0x9e3779b97f4a7c15ULL);
-      support_hash += column_hash;
-    }
-
-    auto bucket        = buckets.emplace(support_hash, no_group).first;
-    i_t matching_group = no_group;
-    for (i_t group = bucket->second; group != no_group; group = groups[group].next) {
-      if (rows_are_duplicates(groups[group].representative, r)) {
-        matching_group = group;
-        break;
-      }
-    }
-    if (matching_group == no_group) {
-      groups.push_back({r, r, bucket->second});
-      bucket->second = static_cast<i_t>(groups.size() - 1);
-      continue;
-    }
-
-    const i_t strongest       = groups[matching_group].strongest;
-    const f_t strongest_theta = rhs_storage_[strongest] / divisors[strongest];
-    const f_t row_theta       = rhs_storage_[r] / divisor;
-    const bool row_is_stronger =
-      divisor > 0.0 ? row_theta >= strongest_theta : row_theta <= strongest_theta;
-    if (row_is_stronger) {
-      cuts_to_remove[strongest]        = 1;
-      groups[matching_group].strongest = r;
-    } else {
-      cuts_to_remove[r] = 1;
-    }
-    num_cuts_to_remove++;
   }
 
+  std::unordered_map<i_t, std::vector<i_t>> rows_by_set;
+  rows_by_set.reserve(m);
+  for (i_t r = 0; r < m; r++) {
+    if (sets[r] > 0 && sets[r] < sentinel) { rows_by_set[sets[r]].push_back(r); }
+  }
+
+  std::vector<i_t> cuts_to_remove(m, 0);
+  for (i_t r = 0; r < m; r++) {
+    const i_t set_r = sets[r];
+    if (set_r <= 0 || set_r >= sentinel || cuts_to_remove[r] != 0) { continue; }
+    const auto& members = rows_by_set.at(set_r);
+    auto member         = std::upper_bound(members.begin(), members.end(), r);
+    for (; member != members.end(); ++member) {
+      const i_t i       = *member;
+      const f_t f_r     = divisors[r];
+      const f_t f_i     = divisors[i];
+      const f_t theta_r = rhs_storage_[r] / f_r;
+      const f_t theta_i = rhs_storage_[i] / f_i;
+      if (f_r > 0.0 && f_i > 0.0) {
+        if (theta_r <= theta_i) {
+          cuts_to_remove[r] = 1;
+        } else {
+          cuts_to_remove[i] = 1;
+        }
+      } else if (f_r < 0.0 && f_i < 0.0) {
+        if (theta_r >= theta_i) {
+          cuts_to_remove[r] = 1;
+        } else {
+          cuts_to_remove[i] = 1;
+        }
+      }
+    }
+  }
+
+  const i_t num_cuts_to_remove =
+    std::accumulate(cuts_to_remove.begin(), cuts_to_remove.end(), i_t{0});
   if (num_cuts_to_remove > 0) {
     settings_.log.debug("Removing %d duplicate cuts\n", num_cuts_to_remove);
     csr_matrix_t<i_t, f_t> new_cut_storage(0, 0, 0);
