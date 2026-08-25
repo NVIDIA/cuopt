@@ -142,7 +142,7 @@ Reading and Writing Problems
 ----------------------------
 
 ``Problem.read`` loads a problem, choosing the parser from the file extension:
-``.mps``, ``.lp`` and ``.sif`` are recognised, along with their ``.gz``,
+``.mps``, ``.qps`` and ``.lp`` are recognised, along with their ``.gz``,
 ``.bz2`` and ``.lz4`` variants. A boolean overload forces fixed-format MPS.
 
 ``Problem.write`` writes MPS, which is the only format the engine can write, so
