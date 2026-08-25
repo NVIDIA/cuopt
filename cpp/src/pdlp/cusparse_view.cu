@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include <cuopt/error.hpp>
+#include <utilities/device_scalar_init.hpp>
 #include <utilities/macros.cuh>
 
 #include <mip_heuristics/mip_constants.hpp>
@@ -608,8 +609,8 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                                      _reflected_primal_solution.data());
   }
 
-  const rmm::device_scalar<f_t> alpha{1, handle_ptr->get_stream()};
-  const rmm::device_scalar<f_t> beta{0, handle_ptr->get_stream()};
+  const rmm::device_scalar<f_t> alpha{one_v<f_t>, handle_ptr->get_stream()};
+  const rmm::device_scalar<f_t> beta{zero_v<f_t>, handle_ptr->get_stream()};
   size_t buffer_size_non_transpose = 0;
   RAFT_CUSPARSE_TRY(
     raft::sparse::detail::cusparsespmv_buffersize(handle_ptr_->get_cusparse_handle(),
@@ -810,8 +811,8 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                         const_cast<i_t*>(A_T_indices_.data()),
                         A_T_float_.data());
 
-      const rmm::device_scalar<double> alpha_d{1.0, handle_ptr->get_stream()};
-      const rmm::device_scalar<double> beta_d{0.0, handle_ptr->get_stream()};
+      const rmm::device_scalar<double> alpha_d{one_v<double>, handle_ptr->get_stream()};
+      const rmm::device_scalar<double> beta_d{zero_v<double>, handle_ptr->get_stream()};
 
       size_t buffer_size_non_transpose_mixed =
         mixed_precision_spmv_buffersize(handle_ptr_->get_cusparse_handle(),
@@ -974,8 +975,8 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                              CUSPARSE_ORDER_COL);
   }
 
-  const rmm::device_scalar<f_t> alpha{1, handle_ptr->get_stream()};
-  const rmm::device_scalar<f_t> beta{1, handle_ptr->get_stream()};
+  const rmm::device_scalar<f_t> alpha{one_v<f_t>, handle_ptr->get_stream()};
+  const rmm::device_scalar<f_t> beta{one_v<f_t>, handle_ptr->get_stream()};
   size_t buffer_size_non_transpose = 0;
   RAFT_CUSPARSE_TRY(
     raft::sparse::detail::cusparsespmv_buffersize(handle_ptr_->get_cusparse_handle(),
@@ -1161,8 +1162,8 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   primal_gradient.create(op_problem.n_variables, _primal_gradient);
   dual_gradient.create(op_problem.n_constraints, _dual_gradient);
 
-  const rmm::device_scalar<f_t> alpha{1, handle_ptr->get_stream()};
-  const rmm::device_scalar<f_t> beta{1, handle_ptr->get_stream()};
+  const rmm::device_scalar<f_t> alpha{one_v<f_t>, handle_ptr->get_stream()};
+  const rmm::device_scalar<f_t> beta{one_v<f_t>, handle_ptr->get_stream()};
   size_t buffer_size_non_transpose = 0;
   RAFT_CUSPARSE_TRY(
     raft::sparse::detail::cusparsespmv_buffersize(handle_ptr_->get_cusparse_handle(),
