@@ -28,17 +28,17 @@ constexpr bool assert_msg(T&& cond, const char (&)[N])
 }
 }  // namespace cuopt::detail
 
-#define cuopt_assert(...)     assert(::cuopt::detail::assert_msg(__VA_ARGS__))
+#define cuopt_assert(...)    assert(::cuopt::detail::assert_msg(__VA_ARGS__))
 #define cuopt_func_call(...) __VA_ARGS__;
 #else
 #define cuopt_assert(...)
-#define cuopt_func_call(func) ;
+#define cuopt_func_call(...) ;
 #endif
 
 #ifdef BENCHMARK
 #define benchmark_call(...) __VA_ARGS__;
 #else
-#define benchmark_call(func) ;
+#define benchmark_call(...) ;
 #endif
 
 // For CUDA Driver API
