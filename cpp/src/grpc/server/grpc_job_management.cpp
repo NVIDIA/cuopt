@@ -1,12 +1,14 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 #ifdef CUOPT_ENABLE_GRPC
 
 #include "grpc_pipe_serialization.hpp"
 #include "grpc_server_types.hpp"
+
+#include <fstream>
 
 // write_to_pipe / read_from_pipe are defined in grpc_pipe_io.cpp
 
@@ -83,6 +85,8 @@ std::pair<bool, std::string> submit_job_async(std::vector<uint8_t>&& request_dat
   }
   if (slot < 0) { return {false, "Job queue full"}; }
 
+  create_job_log_file(job_id);
+
   // Populate the slot while we hold the `claimed` flag.
   copy_cstr(job_queue[slot].job_id, job_id);
   job_queue[slot].problem_category = problem_category;
@@ -136,6 +140,8 @@ std::pair<bool, std::string> submit_chunked_job_async(PendingChunkedUpload&& chu
     }
   }
   if (slot < 0) { return {false, "Job queue full"}; }
+
+  create_job_log_file(job_id);
 
   copy_cstr(job_queue[slot].job_id, job_id);
   job_queue[slot].problem_category = problem_category;
@@ -208,6 +214,14 @@ void ensure_log_dir_exists()
 {
   struct stat st;
   if (stat(LOG_DIR.c_str(), &st) != 0) { mkdir(LOG_DIR.c_str(), 0755); }
+}
+
+// Create an empty per-job log file at submit time so StreamLogs can tail it
+// immediately. The worker truncates and repopulates it when the solve starts.
+void create_job_log_file(const std::string& job_id)
+{
+  ensure_log_dir_exists();
+  std::ofstream out(get_log_file_path(job_id), std::ios::out | std::ios::trunc);
 }
 
 void delete_log_file(const std::string& job_id)
@@ -327,6 +341,39 @@ int cancel_job(const std::string& job_id, JobStatus& job_status_out, std::string
   }
 
   return 0;
+}
+
+bool delete_job(const std::string& job_id, std::string& message)
+{
+  // Cancel first so a queued job is never run and a running worker is killed.
+  // cancel_job returns 1 only when the job is unknown; other non-zero codes
+  // mean the job is already terminal (completed/failed/cancelled) and we still
+  // remove its stored state below.
+  JobStatus cancel_status = JobStatus::NOT_FOUND;
+  std::string cancel_msg;
+  if (cancel_job(job_id, cancel_status, cancel_msg) == 1) {
+    message = "Job not found: " + job_id;
+    return false;
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(tracker_mutex);
+    job_tracker.erase(job_id);
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(pending_data_mutex);
+    pending_job_data.erase(job_id);
+    pending_chunked_data.erase(job_id);
+  }
+
+  // No waiter handling here: cancel_job() already notified and erased any
+  // waiter for a queued/running job, and a job that was already terminal had
+  // its waiters signaled when it reached that state.
+
+  delete_log_file(job_id);
+  message = "Result deleted";
+  return true;
 }
 
 std::string generate_job_id()

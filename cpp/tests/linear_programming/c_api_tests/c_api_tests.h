@@ -5,7 +5,7 @@
  */
 /* clang-format on */
 
-#include <cuopt/linear_programming/cuopt_c.h>
+#include <cuopt/mathematical_optimization/cuopt_c.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -31,11 +31,26 @@ cuopt_int_t test_bad_parameter_name();
 cuopt_int_t test_mip_get_callbacks_only();
 cuopt_int_t test_mip_get_set_callbacks();
 cuopt_int_t test_ranged_problem(cuopt_int_t* termination_status_ptr, cuopt_float_t* objective_ptr);
+cuopt_int_t test_semi_continuous_problem(cuopt_int_t* termination_status_ptr,
+                                         cuopt_float_t* objective_ptr,
+                                         cuopt_float_t* solution_values);
 cuopt_int_t test_invalid_bounds(cuopt_int_t test_mip);
 cuopt_int_t test_quadratic_problem(cuopt_int_t* termination_status_ptr,
                                    cuopt_float_t* objective_ptr);
 cuopt_int_t test_quadratic_ranged_problem(cuopt_int_t* termination_status_ptr,
                                           cuopt_float_t* objective_ptr);
+cuopt_int_t test_quadratic_constraint_problem(cuopt_int_t* termination_status_ptr,
+                                              cuopt_float_t* objective_ptr,
+                                              cuopt_float_t* solution_values);
+cuopt_int_t test_general_quadratic_constraint_problem(cuopt_int_t* termination_status_ptr,
+                                                      cuopt_float_t* objective_ptr,
+                                                      cuopt_float_t* solution_values);
+cuopt_int_t test_rotated_soc_constraint_problem(cuopt_int_t* termination_status_ptr,
+                                                cuopt_float_t* objective_ptr,
+                                                cuopt_float_t* solution_values);
+cuopt_int_t test_rotated_soc_standard_cross_term_problem(cuopt_int_t* termination_status_ptr,
+                                                         cuopt_float_t* objective_ptr,
+                                                         cuopt_float_t* solution_values);
 cuopt_int_t test_write_problem(const char* input_filename, const char* output_filename);
 cuopt_int_t test_maximize_problem_dual_variables(cuopt_int_t method,
                                                  cuopt_int_t* termination_status_ptr,
@@ -52,6 +67,7 @@ cuopt_int_t test_deterministic_bb(const char* filename,
 /* Tests for solution interface polymorphism (use inline problems, no file I/O) */
 cuopt_int_t test_lp_solution_mip_methods();
 cuopt_int_t test_mip_solution_lp_methods();
+cuopt_int_t test_qcqp_solution_dual_methods();
 
 cuopt_int_t test_pdlp_precision_single(const char* filename,
                                        cuopt_int_t* termination_status_ptr,
@@ -64,6 +80,13 @@ cuopt_int_t test_pdlp_precision_mixed(const char* filename,
 /* CPU-only execution tests (require env vars CUDA_VISIBLE_DEVICES="" and CUOPT_REMOTE_HOST) */
 cuopt_int_t test_cpu_only_execution(const char* filename);
 cuopt_int_t test_cpu_only_mip_execution(const char* filename);
+
+/* CPU-host read/create C API (require CUDA_VISIBLE_DEVICES="", no remote, no solve) */
+cuopt_int_t test_cpu_host_read_problem_api(const char* filename);
+cuopt_int_t test_cpu_host_create_problem_api();
+
+/* GPU-backed problem created before remote env is set must reject remote solve */
+cuopt_int_t test_gpu_problem_remote_after_create(const char* filename);
 
 #ifdef __cplusplus
 }

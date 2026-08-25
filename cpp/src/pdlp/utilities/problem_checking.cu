@@ -8,7 +8,7 @@
 #include "problem_checking.cuh"
 
 #include <cuopt/error.hpp>
-#include <cuopt/linear_programming/optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <utilities/copy_helpers.hpp>
 
@@ -18,7 +18,7 @@
 #include <thrust/logical.h>
 #include <thrust/sort.h>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 template <typename i_t, typename f_t>
 void problem_checking_t<i_t, f_t>::check_csr_representation(
@@ -70,8 +70,17 @@ void problem_checking_t<i_t, f_t>::check_initial_primal_representation(
                                   thrust::make_counting_iterator(0) + op_problem.get_n_variables(),
                                   [lower_bounds = make_span(op_problem.get_variable_lower_bounds()),
                                    upper_bounds = make_span(op_problem.get_variable_upper_bounds()),
+                                   variable_types  = make_span(op_problem.get_variable_types()),
                                    assignment_span = make_span(primal_initial_solution),
                                    int_tol         = 1e-8] __device__(i_t idx) -> bool {
+                                    if (variable_types[idx] == var_t::SEMI_CONTINUOUS) {
+                                      const bool is_off = assignment_span[idx] >= -int_tol &&
+                                                          assignment_span[idx] <= int_tol;
+                                      const bool is_on =
+                                        assignment_span[idx] >= lower_bounds[idx] - int_tol &&
+                                        assignment_span[idx] <= upper_bounds[idx] + int_tol;
+                                      return !is_off && !is_on;
+                                    }
                                     return assignment_span[idx] < lower_bounds[idx] - int_tol ||
                                            assignment_span[idx] > upper_bounds[idx] + int_tol;
                                   }),
@@ -217,6 +226,33 @@ void problem_checking_t<i_t, f_t>::check_problem_representation(
                   op_problem.get_objective_coefficients().size(),
                   op_problem.get_variable_upper_bounds().size());
   }
+  if (!op_problem.get_variable_types().is_empty()) {
+    cuopt_expects(
+      op_problem.get_variable_types().size() == op_problem.get_objective_coefficients().size(),
+      error_type_t::ValidationError,
+      "Sizes for vectors related to the variables are not the same. The objective "
+      "vector has size %zu and the variable types vector has size %zu.",
+      op_problem.get_objective_coefficients().size(),
+      op_problem.get_variable_types().size());
+
+    if (!op_problem.get_variable_lower_bounds().is_empty() &&
+        !op_problem.get_variable_upper_bounds().is_empty()) {
+      const bool sc_bounds_valid = thrust::all_of(
+        op_problem.get_handle_ptr()->get_thrust_policy(),
+        thrust::make_counting_iterator<i_t>(0),
+        thrust::make_counting_iterator<i_t>(
+          static_cast<i_t>(op_problem.get_variable_types().size())),
+        [var_types = make_span(op_problem.get_variable_types()),
+         var_lb    = make_span(op_problem.get_variable_lower_bounds()),
+         var_ub    = make_span(op_problem.get_variable_upper_bounds())] __device__(i_t i) -> bool {
+          return var_types[i] != var_t::SEMI_CONTINUOUS ||
+                 (var_lb[i] >= f_t(0) && var_lb[i] <= var_ub[i]);
+        });
+      cuopt_expects(sc_bounds_valid,
+                    error_type_t::ValidationError,
+                    "Semi-continuous variable must satisfy 0 <= lower bound <= upper bound.");
+    }
+  }
 
   // Check constraints sizes
   cuopt_expects(
@@ -253,7 +289,7 @@ void problem_checking_t<i_t, f_t>::check_problem_representation(
 
 template <typename i_t, typename f_t>
 void problem_checking_t<i_t, f_t>::check_scaled_problem(
-  detail::problem_t<i_t, f_t> const& scaled_problem, detail::problem_t<i_t, f_t> const& op_problem)
+  mip::problem_t<i_t, f_t> const& scaled_problem, mip::problem_t<i_t, f_t> const& op_problem)
 {
   using f_t2 = typename type_2<f_t>::type;
   // original problem to host
@@ -292,7 +328,7 @@ void problem_checking_t<i_t, f_t>::check_scaled_problem(
 
 template <typename i_t, typename f_t>
 void problem_checking_t<i_t, f_t>::check_unscaled_solution(
-  detail::problem_t<i_t, f_t>& op_problem, rmm::device_uvector<f_t> const& assignment)
+  mip::problem_t<i_t, f_t>& op_problem, rmm::device_uvector<f_t> const& assignment)
 {
   using f_t2              = typename type_2<f_t>::type;
   auto& d_variable_bounds = op_problem.variable_bounds;
@@ -350,4 +386,4 @@ INSTANTIATE(double)
 
 #undef INSTANTIATE
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

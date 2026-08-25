@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -32,7 +32,7 @@ class __attribute__((aligned(4))) NodeInfo {
   constexpr NodeInfo(i_t node, i_t location, node_type_t node_type)
   {
     cuopt_assert(node < (1 << 17), "node id should be less than 131072");
-    cuopt_assert(location < (1 << 15), "location id should be less than 32678");
+    cuopt_assert(location < (1 << 15), "location id should be less than 32768");
     number_ = (uint32_t)node << 17 | (uint32_t)location << 2 | (uint32_t)node_type;
 
     cuopt_assert(is_valid(), "Corner case in NodeInfo struct!");

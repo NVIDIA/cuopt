@@ -1,8 +1,9 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import os
 import time
+
 
 from . import data_model_wrapper
 from .utilities import catch_cuopt_exception
@@ -127,7 +128,7 @@ class DataModel(data_model_wrapper.DataModel):
     >>>
     >>> # Method 1: directly set bounds
     >>> # Set lower bounds to -infinity and upper bounds to b
-    >>> constraint_lower_bounds = np.array([np.NINF, np.NINF],
+    >>> constraint_lower_bounds = np.array([-np.inf, -np.inf],
     >>>                                       dtype=np.float64)
     >>> constraint_upper_bounds = np.array(b, dtype=np.float64)
     >>> data_model.set_constraint_lower_bounds(constraint_lower_bounds)
@@ -136,7 +137,7 @@ class DataModel(data_model_wrapper.DataModel):
     >>>
     >>> # Set variable lower and upper bounds
     >>> variable_lower_bounds = np.array([0.0, 0.0], dtype=np.float64)
-    >>> variable_upper_bounds = np.array([2.0, np.PINF], dtype=np.float64)
+    >>> variable_upper_bounds = np.array([2.0, np.inf], dtype=np.float64)
     >>> data_model.set_variable_lower_bounds(variable_lower_bounds)
     >>> data_model.set_variable_upper_bounds(variable_upper_bounds)
     """
@@ -287,6 +288,81 @@ class DataModel(data_model_wrapper.DataModel):
         quadratic programming, Q + Q^T should be positive semi-definite.
         """
         super().set_quadratic_objective_matrix(Q_values, Q_indices, Q_offsets)
+
+    def get_quadratic_constraints(self):
+        """
+        Return quadratic constraints appended to this model.
+
+        Each entry is a dict with keys including ``constraint_row_index``,
+        ``constraint_row_name``, ``constraint_row_type``, COO arrays, and ``rhs_value``.
+        """
+        return self.quadratic_constraints
+
+    @catch_cuopt_exception
+    def clear_quadratic_constraints(self):
+        """
+        Remove all quadratic constraints from the model.
+        """
+        super().clear_quadratic_constraints()
+
+    @catch_cuopt_exception
+    def add_quadratic_constraint(
+        self,
+        constraint_row_name="",
+        linear_values=None,
+        linear_indices=None,
+        rhs_value=0.0,
+        vals=None,
+        rows=None,
+        cols=None,
+        sense="L",
+    ):
+        """
+        Add a quadratic constraint.
+
+        Each constraint has a linear part (optional) and a quadratic part in COO
+        format. Call multiple times to add several quadratic constraints.
+
+        Parameters
+        ----------
+        constraint_row_name : str, optional
+            Optional row name.
+        linear_values, linear_indices : array-like, optional
+            Sparse linear coefficients on the same variable index space.
+        rhs_value : float, optional
+            Right-hand side of the constraint.
+        vals, rows, cols : array-like
+            COO triplets for the quadratic matrix Q in
+            ``linear^T x + x^T Q x {sense} rhs_value``.
+        sense : str, optional
+            Constraint sense: ``'L'`` (default, ``<=``) or ``'G'`` (``>=``).
+            ``'G'`` constraints are converted to ``'L'`` internally.
+            Equality (``'E'``) is not supported.
+
+        Notes
+        -----
+        When any quadratic constraint is present, cuOpt selects the barrier
+        solver and converts quadratic constraints to second-order cones.
+        """
+        if hasattr(sense, "value"):
+            sense = sense.value
+        if sense == "E":
+            raise ValueError("Equality constraints are not supported.")
+        if sense not in ("L", "G"):
+            raise ValueError(
+                f"Invalid sense {sense!r}; use 'L' or 'G' like set_row_types "
+                "(equality 'E' is not supported)."
+            )
+        super().add_quadratic_constraint(
+            constraint_row_name,
+            linear_values,
+            linear_indices,
+            rhs_value,
+            vals,
+            rows,
+            cols,
+            constraint_row_type=sense,
+        )
 
     @catch_cuopt_exception
     def set_variable_lower_bounds(self, variable_lower_bounds):

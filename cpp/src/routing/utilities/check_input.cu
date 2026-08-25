@@ -15,6 +15,7 @@
 #include <thrust/equal.h>
 #include <thrust/extrema.h>
 #include <thrust/iterator/counting_iterator.h>
+#include <thrust/iterator/zip_iterator.h>
 #include <thrust/logical.h>
 #include <thrust/pair.h>
 #include <thrust/tuple.h>

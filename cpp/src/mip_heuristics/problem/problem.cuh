@@ -16,14 +16,16 @@
 #include <mip_heuristics/logger.hpp>
 #include <mip_heuristics/relaxed_lp/lp_state.cuh>
 
-#include <cuopt/linear_programming/mip/solver_settings.hpp>
-#include <cuopt/linear_programming/optimization_problem.hpp>
-#include <cuopt/linear_programming/utilities/internals.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
+#include <cuopt/mathematical_optimization/utilities/internals.hpp>
 #include "host_helper.cuh"
 #include "problem_fixing.cuh"
 
 #include <utilities/macros.cuh>
 
+#include <branch_and_bound/constants.hpp>
 #include <memory>
 #include <raft/core/nvtx.hpp>
 #include <raft/random/rng_device.cuh>
@@ -36,7 +38,7 @@
 
 namespace cuopt {
 
-namespace linear_programming::detail {
+namespace mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 struct clique_table_t;
@@ -93,12 +95,20 @@ class problem_t {
   void insert_constraints(constraints_delta_t<i_t, f_t>& h_constraints);
   void set_implied_integers(const std::vector<i_t>& implied_integer_indices);
   void recompute_objective_integrality();
+  void compute_objective_step();
   void resize_variables(size_t size);
   void resize_constraints(size_t matrix_size, size_t constraint_size, size_t var_size);
   void preprocess_problem();
   bool pre_process_assignment(rmm::device_uvector<f_t>& assignment);
   void post_process_assignment(rmm::device_uvector<f_t>& current_assignment,
-                               bool resize_to_original_problem = true);
+                               bool resize_to_original_problem,
+                               rmm::cuda_stream_view stream);
+  void post_process_assignment(rmm::device_uvector<f_t>& current_assignment,
+                               bool resize_to_original_problem = true)
+  {
+    post_process_assignment(
+      current_assignment, resize_to_original_problem, handle_ptr->get_stream());
+  }
   void post_process_solution(solution_t<i_t, f_t>& solution);
   void set_papilo_presolve_data(const third_party_presolve_t<i_t, f_t>* presolver_ptr,
                                 std::vector<i_t> reduced_to_original,
@@ -114,6 +124,10 @@ class problem_t {
   f_t get_user_obj_from_solver_obj(f_t solver_obj) const;
   f_t get_solver_obj_from_user_obj(f_t user_obj) const;
   bool is_objective_integral() const { return objective_is_integral; }
+  const cuopt::mathematical_optimization::simplex::objective_step_t<f_t>& get_objective_step() const
+  {
+    return objective_step;
+  }
   void compute_integer_fixed_problem();
   void fill_integer_fixed_problem(rmm::device_uvector<f_t>& assignment,
                                   const raft::handle_t* handle_ptr);
@@ -126,9 +140,17 @@ class problem_t {
   std::shared_ptr<clique_table_t<i_t, f_t>> clique_table;
 
   void get_host_user_problem(
-    cuopt::linear_programming::dual_simplex::user_problem_t<i_t, f_t>& user_problem) const;
+    cuopt::mathematical_optimization::simplex::user_problem_t<i_t, f_t>& user_problem) const;
   void set_constraints_from_host_user_problem(
-    const cuopt::linear_programming::dual_simplex::user_problem_t<i_t, f_t>& user_problem);
+    const cuopt::mathematical_optimization::simplex::user_problem_t<i_t, f_t>& user_problem);
+  // Replace the constraint matrix + row bounds in place from host CSR
+  // Used by presolve passes that rewrite rows in place
+  void set_constraints_from_host_csr(const std::vector<i_t>& offsets,
+                                     const std::vector<i_t>& variables,
+                                     const std::vector<f_t>& coefficients,
+                                     const std::vector<f_t>& row_lower,
+                                     const std::vector<f_t>& row_upper,
+                                     const std::vector<std::string>& names);
 
   uint32_t get_fingerprint() const;
 
@@ -241,9 +263,14 @@ class problem_t {
   std::shared_ptr<problem_t<i_t, f_t>> integer_fixed_problem = nullptr;
   rmm::device_uvector<i_t> integer_fixed_variable_map;
 
-  std::function<void(const std::vector<f_t>&)> branch_and_bound_callback;
-  std::function<void(
-    const std::vector<f_t>&, const std::vector<f_t>&, const std::vector<f_t>&, f_t, f_t, i_t)>
+  std::function<bool(const std::vector<f_t>&, heuristics_origin_t)> branch_and_bound_callback;
+  std::function<void(const std::vector<f_t>&,
+                     const std::vector<f_t>&,
+                     const std::vector<f_t>&,
+                     f_t,
+                     f_t,
+                     i_t,
+                     method_t)>
     set_root_relaxation_solution_callback;
 
   typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances{};
@@ -307,10 +334,11 @@ class problem_t {
   std::vector<std::string> row_names{};
   /** name of the objective (only a single objective is currently allowed) */
   std::string objective_name;
-  f_t objective_offset;
+  f_t objective_offset{0};
   bool is_scaled_{false};
   bool preprocess_called{false};
   bool objective_is_integral{false};
+  cuopt::mathematical_optimization::simplex::objective_step_t<f_t> objective_step;
   // this LP state keeps the warm start data of some solution of
   // 1. Original problem: it is unchanged and part of it is used
   // to warm start slightly modified problems.
@@ -321,10 +349,11 @@ class problem_t {
   bool cutting_plane_added{false};
   std::pair<std::vector<i_t>, std::vector<f_t>> vars_with_objective_coeffs;
   bool expensive_to_fix_vars{false};
+  double related_vars_time_limit{30.};
   std::vector<i_t> Q_offsets;
   std::vector<i_t> Q_indices;
   std::vector<f_t> Q_values;
 };
 
-}  // namespace linear_programming::detail
+}  // namespace mathematical_optimization::mip
 }  // namespace cuopt

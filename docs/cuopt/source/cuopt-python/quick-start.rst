@@ -2,7 +2,7 @@
 Quickstart Guide
 =================
 
-NVIDIA cuOpt provides a Python API for routing optimization and LP/QP/MILP that enables users to solve complex optimization problems efficiently.
+NVIDIA cuOpt provides a Python API for routing optimization and LP/QP/MIP that enables users to solve complex optimization problems efficiently.
 
 Installation
 ============
@@ -15,7 +15,7 @@ Choose your install method below; the selector is pre-set for the Python API. Co
 NVIDIA Launchable
 -------------------
 
-NVIDIA cuOpt can be tested with `NVIDIA Launchable <https://brev.nvidia.com/launchable/deploy?launchableID=env-2qIG6yjGKDtdMSjXHcuZX12mDNJ>`_ with `example notebooks <https://github.com/NVIDIA/cuopt-examples/>`_. For more details, please refer to the `NVIDIA Launchable documentation <https://docs.nvidia.com/brev/latest/>`_.
+NVIDIA cuOpt can be tested with `NVIDIA Launchable <https://brev.nvidia.com/launchable/deploy?launchableID=env-2qIG6yjGKDtdMSjXHcuZX12mDNJ>`_ with `example notebooks <https://github.com/NVIDIA/cuopt-examples>`_. For more details, please refer to the `NVIDIA Launchable documentation <https://docs.nvidia.com/brev/latest/>`_.
 
 Smoke Test
 ----------

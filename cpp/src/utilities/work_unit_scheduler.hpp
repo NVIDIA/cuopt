@@ -1,22 +1,11 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
 #pragma once
 
-#include <atomic>
+#include <utilities/omp_helpers.hpp>
+
 #include <functional>
 #include <vector>
 
@@ -56,14 +45,14 @@ class work_unit_scheduler_t {
   double sync_interval_;
   std::vector<std::reference_wrapper<work_limit_context_t>> contexts_;
 
-  size_t barrier_generation_{0};
+  omp_atomic_t<int> barrier_generation_{0};
   double current_sync_target_{0};
 
   // Sync callback - executed when all contexts reach sync point
   sync_callback_t sync_callback_;
 
   // Shutdown flag - prevents threads from entering barriers after termination is signaled
-  std::atomic<bool> shutdown_{false};
+  omp_atomic_t<bool> shutdown_{false};
 };
 
 // RAII helper for registering multiple contexts with automatic cleanup

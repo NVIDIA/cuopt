@@ -8,9 +8,9 @@
 #pragma once
 
 #include <branch_and_bound/bb_event.hpp>
-#include <branch_and_bound/branch_and_bound_worker.hpp>
 #include <branch_and_bound/diving_heuristics.hpp>
 #include <branch_and_bound/node_queue.hpp>
+#include <branch_and_bound/worker.hpp>
 
 #include <utilities/work_limit_context.hpp>
 
@@ -22,7 +22,7 @@
 #include <queue>
 #include <vector>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 struct backlog_node_compare_t {
@@ -58,7 +58,7 @@ struct deterministic_snapshot_t {
   f_t upper_bound;
   pseudo_cost_snapshot_t<i_t, f_t> pc_snapshot;
   std::vector<f_t> incumbent;
-  i_t total_lp_iters;
+  int64_t total_simplex_iters;
 };
 
 template <typename i_t, typename f_t, typename Derived>
@@ -74,7 +74,7 @@ class deterministic_worker_base_t : public branch_and_bound_worker_t<i_t, f_t> {
 
   // Diving-specific snapshots (ignored by BFS workers)
   std::vector<f_t> incumbent_snapshot;
-  i_t total_lp_iters_snapshot{0};
+  int64_t total_lp_iters_snapshot{0};
 
   std::vector<queued_integer_solution_t<i_t, f_t>> integer_solutions;
   int next_solution_seq{0};
@@ -85,12 +85,16 @@ class deterministic_worker_base_t : public branch_and_bound_worker_t<i_t, f_t> {
   double total_nowork_time{0.0};
 
   deterministic_worker_base_t(int id,
-                              const lp_problem_t<i_t, f_t>& original_lp,
+                              const simplex::lp_problem_t<i_t, f_t>& original_lp,
                               const csr_matrix_t<i_t, f_t>& Arow,
-                              const std::vector<variable_type_t>& var_types,
-                              const simplex_solver_settings_t<i_t, f_t>& settings,
+                              const std::vector<simplex::variable_type_t>& var_types,
+                              const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+                              const std::vector<f_t>& root_solution,
+                              const std::vector<f_t>& root_edge_norm,
                               const std::string& context_name)
-    : base_t(id, original_lp, Arow, var_types, settings), work_context(context_name)
+    : base_t(id, original_lp, Arow, var_types, settings, root_solution, root_edge_norm),
+      work_context(context_name),
+      pc_snapshot(1, settings)
   {
     work_context.deterministic = true;
   }
@@ -100,7 +104,7 @@ class deterministic_worker_base_t : public branch_and_bound_worker_t<i_t, f_t> {
     local_upper_bound       = snap.upper_bound;
     pc_snapshot             = snap.pc_snapshot;
     incumbent_snapshot      = snap.incumbent;
-    total_lp_iters_snapshot = snap.total_lp_iters;
+    total_lp_iters_snapshot = snap.total_simplex_iters;
   }
 
   bool has_work() const { return static_cast<const Derived*>(this)->has_work_impl(); }
@@ -135,11 +139,20 @@ class deterministic_bfs_worker_t
   i_t total_nodes_assigned{0};
 
   explicit deterministic_bfs_worker_t(int id,
-                                      const lp_problem_t<i_t, f_t>& original_lp,
+                                      const simplex::lp_problem_t<i_t, f_t>& original_lp,
                                       const csr_matrix_t<i_t, f_t>& Arow,
-                                      const std::vector<variable_type_t>& var_types,
-                                      const simplex_solver_settings_t<i_t, f_t>& settings)
-    : base_t(id, original_lp, Arow, var_types, settings, "BB_Worker_" + std::to_string(id))
+                                      const std::vector<simplex::variable_type_t>& var_types,
+                                      const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+                                      const std::vector<f_t>& root_solution,
+                                      const std::vector<f_t>& root_edge_norm)
+    : base_t(id,
+             original_lp,
+             Arow,
+             var_types,
+             settings,
+             root_solution,
+             root_edge_norm,
+             "BB_Worker_" + std::to_string(id))
   {
   }
 
@@ -156,7 +169,7 @@ class deterministic_bfs_worker_t
 
   mip_node_t<i_t, f_t>* enqueue_children_for_plunge(mip_node_t<i_t, f_t>* down_child,
                                                     mip_node_t<i_t, f_t>* up_child,
-                                                    rounding_direction_t preferred_direction)
+                                                    branch_direction_t preferred_direction)
   {
     if (!plunge_stack.empty()) {
       backlog.push(plunge_stack.back());
@@ -169,7 +182,7 @@ class deterministic_bfs_worker_t
     up_child->creation_seq       = next_creation_seq++;
 
     mip_node_t<i_t, f_t>* first_child;
-    if (preferred_direction == rounding_direction_t::UP) {
+    if (preferred_direction == branch_direction_t::UP) {
       plunge_stack.push_front(down_child);
       plunge_stack.push_front(up_child);
       first_child = up_child;
@@ -193,8 +206,8 @@ class deterministic_bfs_worker_t
       plunge_stack.pop_front();
       return node;
     }
-    auto node_opt = backlog.pop();
-    return node_opt.has_value() ? node_opt.value() : nullptr;
+
+    return !backlog.empty() ? backlog.pop() : nullptr;
   }
 
   size_t queue_size() const
@@ -280,9 +293,6 @@ class deterministic_diving_worker_t
   std::vector<f_t> dive_lower;
   std::vector<f_t> dive_upper;
 
-  // Root LP relaxation solution (constant, set once at construction)
-  const std::vector<f_t>* root_solution{nullptr};
-
   // Diving state
   bool recompute_bounds_and_basis{true};
 
@@ -291,29 +301,38 @@ class deterministic_diving_worker_t
   i_t total_dives{0};
   i_t lp_iters_this_dive{0};
 
-  explicit deterministic_diving_worker_t(int id,
-                                         search_strategy_t type,
-                                         const lp_problem_t<i_t, f_t>& original_lp,
-                                         const csr_matrix_t<i_t, f_t>& Arow,
-                                         const std::vector<variable_type_t>& var_types,
-                                         const simplex_solver_settings_t<i_t, f_t>& settings,
-                                         const std::vector<f_t>* root_sol)
-    : base_t(id, original_lp, Arow, var_types, settings, "Diving_Worker_" + std::to_string(id)),
-      diving_type(type),
-      root_solution(root_sol)
+  explicit deterministic_diving_worker_t(
+    int id,
+    search_strategy_t type,
+    const simplex::lp_problem_t<i_t, f_t>& original_lp,
+    const csr_matrix_t<i_t, f_t>& Arow,
+    const std::vector<simplex::variable_type_t>& var_types,
+    const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+    const std::vector<f_t>& root_solution,
+    const std::vector<f_t>& root_edge_norm)
+    : base_t(id,
+             original_lp,
+             Arow,
+             var_types,
+             settings,
+             root_solution,
+             root_edge_norm,
+             "Diving_Worker_" + std::to_string(id)),
+      diving_type(type)
   {
     dive_lower = original_lp.lower;
     dive_upper = original_lp.upper;
   }
 
-  deterministic_diving_worker_t(const deterministic_diving_worker_t&)            = delete;
-  deterministic_diving_worker_t& operator=(const deterministic_diving_worker_t&) = delete;
-  deterministic_diving_worker_t(deterministic_diving_worker_t&&)                 = default;
-  deterministic_diving_worker_t& operator=(deterministic_diving_worker_t&&)      = default;
+  deterministic_diving_worker_t(const deterministic_diving_worker_t&)                = delete;
+  deterministic_diving_worker_t& operator=(const deterministic_diving_worker_t&)     = delete;
+  deterministic_diving_worker_t(deterministic_diving_worker_t&&) noexcept            = default;
+  deterministic_diving_worker_t& operator=(deterministic_diving_worker_t&&) noexcept = default;
 
   bool has_work_impl() const { return !dive_queue.empty(); }
 
-  void enqueue_dive_node(mip_node_t<i_t, f_t>* node, const lp_problem_t<i_t, f_t>& original_lp)
+  void enqueue_dive_node(mip_node_t<i_t, f_t>* node,
+                         const simplex::lp_problem_t<i_t, f_t>& original_lp)
   {
     dive_queue_entry_t<i_t, f_t> entry;
     entry.resolved_lower = original_lp.lower;
@@ -341,22 +360,6 @@ class deterministic_diving_worker_t
     this->integer_solutions.push_back(
       {objective, solution, depth, this->worker_id, this->next_solution_seq++});
     ++this->total_integer_solutions;
-  }
-
-  branch_variable_t<i_t> variable_selection_from_snapshot(const std::vector<i_t>& fractional,
-                                                          const std::vector<f_t>& solution) const
-  {
-    assert(root_solution != nullptr);
-    return this->pc_snapshot.pseudocost_diving(fractional, solution, *root_solution);
-  }
-
-  branch_variable_t<i_t> guided_variable_selection(const std::vector<i_t>& fractional,
-                                                   const std::vector<f_t>& solution) const
-  {
-    if (this->incumbent_snapshot.empty()) {
-      return variable_selection_from_snapshot(fractional, solution);
-    }
-    return this->pc_snapshot.guided_diving(fractional, solution, this->incumbent_snapshot);
   }
 };
 
@@ -416,14 +419,17 @@ class deterministic_bfs_worker_pool_t
 
  public:
   deterministic_bfs_worker_pool_t(int num_workers,
-                                  const lp_problem_t<i_t, f_t>& original_lp,
+                                  const simplex::lp_problem_t<i_t, f_t>& original_lp,
                                   const csr_matrix_t<i_t, f_t>& Arow,
-                                  const std::vector<variable_type_t>& var_types,
-                                  const simplex_solver_settings_t<i_t, f_t>& settings)
+                                  const std::vector<simplex::variable_type_t>& var_types,
+                                  const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+                                  const std::vector<f_t>& root_solution,
+                                  const std::vector<f_t>& root_edge_norm)
   {
     this->workers_.reserve(num_workers);
     for (int i = 0; i < num_workers; ++i) {
-      this->workers_.emplace_back(i, original_lp, Arow, var_types, settings);
+      this->workers_.emplace_back(
+        i, original_lp, Arow, var_types, settings, root_solution, root_edge_norm);
     }
   }
 
@@ -451,22 +457,24 @@ class deterministic_diving_worker_pool_t
  public:
   deterministic_diving_worker_pool_t(int num_workers,
                                      const std::vector<search_strategy_t>& diving_types,
-                                     const lp_problem_t<i_t, f_t>& original_lp,
+                                     const simplex::lp_problem_t<i_t, f_t>& original_lp,
                                      const csr_matrix_t<i_t, f_t>& Arow,
-                                     const std::vector<variable_type_t>& var_types,
-                                     const simplex_solver_settings_t<i_t, f_t>& settings,
-                                     const std::vector<f_t>* root_solution)
+                                     const std::vector<simplex::variable_type_t>& var_types,
+                                     const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+                                     const std::vector<f_t>& root_solution,
+                                     const std::vector<f_t>& root_edge_norm)
   {
     this->workers_.reserve(num_workers);
     for (int i = 0; i < num_workers; ++i) {
       search_strategy_t type = diving_types[i % diving_types.size()];
-      this->workers_.emplace_back(i, type, original_lp, Arow, var_types, settings, root_solution);
+      this->workers_.emplace_back(
+        i, type, original_lp, Arow, var_types, settings, root_solution, root_edge_norm);
     }
   }
 
   void collect_worker_events(deterministic_diving_worker_t<i_t, f_t>&, bb_event_batch_t<i_t, f_t>&)
-  {
+  { /* no-op */
   }
 };
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::mip

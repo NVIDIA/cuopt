@@ -5,6 +5,8 @@
  */
 /* clang-format on */
 
+#include <pdlp/distributed_pdlp/multi_gpu_engine.hpp>
+#include <pdlp/pdlp.cuh>
 #include <pdlp/pdlp_climber_strategy.hpp>
 #include <pdlp/pdlp_constants.hpp>
 #include <pdlp/swap_and_resize_helper.cuh>
@@ -14,7 +16,7 @@
 #include <mip_heuristics/mip_constants.hpp>
 
 #include <cuopt/error.hpp>
-#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/nvtx.hpp>
@@ -24,21 +26,30 @@
 #include <raft/linalg/ternary_op.cuh>
 #include <raft/util/cuda_utils.cuh>
 
+#include <rmm/exec_policy.hpp>
+
 #include <thrust/device_ptr.h>
+#include <thrust/functional.h>
+#include <thrust/iterator/constant_iterator.h>
+#include <thrust/iterator/counting_iterator.h>
+#include <thrust/iterator/transform_iterator.h>
+#include <thrust/iterator/transform_output_iterator.h>
 #include <thrust/iterator/zip_iterator.h>
 
 #include <cub/cub.cuh>
 
-namespace cuopt::linear_programming::detail {
+#include <cmath>
+
+namespace cuopt::mathematical_optimization::pdlp {
 template <typename i_t, typename f_t>
 convergence_information_t<i_t, f_t>::convergence_information_t(
   raft::handle_t const* handle_ptr,
-  problem_t<i_t, f_t>& op_problem,
+  mip::problem_t<i_t, f_t>& op_problem,
   cusparse_view_t<i_t, f_t>& cusparse_view,
   i_t primal_size,
   i_t dual_size,
   const std::vector<pdlp_climber_strategy_t>& climber_strategies,
-  const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params)
+  const pdlp_solver_settings_t<i_t, f_t>& settings)
   : batch_mode_(climber_strategies.size() > 1),
     handle_ptr_(handle_ptr),
     stream_view_(handle_ptr_->get_stream()),
@@ -46,15 +57,16 @@ convergence_information_t<i_t, f_t>::convergence_information_t(
     dual_size_h_(dual_size),
     problem_ptr(&op_problem),
     op_problem_cusparse_view_(cusparse_view),
-    l2_norm_primal_linear_objective_{0.0, stream_view_},
-    l2_norm_primal_right_hand_side_{0.0, stream_view_},  // TODO later batch mode: per problem rhs
+    l2_norm_primal_linear_objective_{climber_strategies.size(), stream_view_},
+    l2_norm_primal_right_hand_side_{climber_strategies.size(), stream_view_},
+    objective_offsets_{climber_strategies.size(), stream_view_},
     primal_objective_{climber_strategies.size(), stream_view_},
     dual_objective_{climber_strategies.size(), stream_view_},
     reduced_cost_dual_objective_{f_t(0.0), stream_view_},
     l2_primal_residual_{climber_strategies.size(), stream_view_},
     l2_dual_residual_{climber_strategies.size(), stream_view_},
-    linf_primal_residual_{0.0, stream_view_},
-    linf_dual_residual_{0.0, stream_view_},
+    linf_primal_residual_{climber_strategies.size(), stream_view_},
+    linf_dual_residual_{climber_strategies.size(), stream_view_},
     nb_violated_constraints_{0, stream_view_},
     gap_{climber_strategies.size(), stream_view_},
     abs_objective_{climber_strategies.size(), stream_view_},
@@ -62,18 +74,20 @@ convergence_information_t<i_t, f_t>::convergence_information_t(
     dual_residual_{climber_strategies.size() * primal_size_h_, stream_view_},
     reduced_cost_{climber_strategies.size() * primal_size_h_, stream_view_},
     bound_value_{static_cast<size_t>(std::max(primal_size_h_, dual_size_h_)), stream_view_},
-    primal_slack_{(hyper_params.use_reflected_primal_dual)
+    primal_slack_{(settings.hyper_params.use_reflected_primal_dual)
                     ? static_cast<size_t>(dual_size_h_ * climber_strategies.size())
                     : 0,
                   stream_view_},
     reusable_device_scalar_value_1_{1.0, stream_view_},
     reusable_device_scalar_value_0_{0.0, stream_view_},
     reusable_device_scalar_value_neg_1_{-1.0, stream_view_},
+    segmented_sum_handler_{stream_view_},
     dual_dot_{climber_strategies.size(), stream_view_},
     sum_primal_slack_{climber_strategies.size(), stream_view_},
     climber_strategies_(climber_strategies),
-    hyper_params_(hyper_params)
+    hyper_params_(settings.hyper_params)
 {
+  // Zero-init per-climber scalars
   RAFT_CUDA_TRY(cudaMemsetAsync(
     primal_objective_.data(), 0, sizeof(f_t) * primal_objective_.size(), stream_view_));
   RAFT_CUDA_TRY(
@@ -81,35 +95,188 @@ convergence_information_t<i_t, f_t>::convergence_information_t(
   RAFT_CUDA_TRY(cudaMemsetAsync(gap_.data(), 0, sizeof(f_t) * gap_.size(), stream_view_));
   RAFT_CUDA_TRY(
     cudaMemsetAsync(abs_objective_.data(), 0, sizeof(f_t) * abs_objective_.size(), stream_view_));
-
   RAFT_CUDA_TRY(cudaMemsetAsync(
     l2_dual_residual_.data(), 0, sizeof(f_t) * l2_dual_residual_.size(), stream_view_));
   RAFT_CUDA_TRY(cudaMemsetAsync(
     l2_primal_residual_.data(), 0, sizeof(f_t) * l2_primal_residual_.size(), stream_view_));
+  RAFT_CUDA_TRY(cudaMemsetAsync(
+    linf_primal_residual_.data(), 0, sizeof(f_t) * linf_primal_residual_.size(), stream_view_));
+  RAFT_CUDA_TRY(cudaMemsetAsync(
+    linf_dual_residual_.data(), 0, sizeof(f_t) * linf_dual_residual_.size(), stream_view_));
 
-  combine_constraint_bounds(*problem_ptr,
-                            primal_residual_,
-                            batch_mode_);  // primal_residual_ will contain abs max of bounds when
-                                           // finite, otherwise 0 //just reused allocated mem here
+  init_objective_offsets();
+  init_reduction_storage();
+  init_l2_norms();
 
-  // TODO later batch mode: different objective coefficients
-  // constant throughout solving, so precompute
-  my_l2_norm<i_t, f_t>(
-    problem_ptr->objective_coefficients, l2_norm_primal_linear_objective_, handle_ptr_);
+  // Zero the residual workspace (reused each iteration by compute_convergence_information).
+  RAFT_CUDA_TRY(cudaMemsetAsync(
+    primal_residual_.data(), 0.0, sizeof(f_t) * primal_residual_.size(), stream_view_));
+  RAFT_CUDA_TRY(
+    cudaMemsetAsync(dual_residual_.data(), 0.0, sizeof(f_t) * dual_residual_.size(), stream_view_));
+}
 
+// ---------------------------------------------------------------------------
+// init_objective_offsets: fill the per-climber objective_offsets_ device vector.
+// - Non-batch: single entry = scalar problem offset.
+// - Batch with user-provided per-climber offsets: copy from host vector.
+// - Batch without per-climber offsets: replicate the scalar problem offset.
+// ---------------------------------------------------------------------------
+template <typename i_t, typename f_t>
+void convergence_information_t<i_t, f_t>::init_objective_offsets()
+{
+  const auto* original = (problem_ptr != nullptr) ? problem_ptr->original_problem_ptr : nullptr;
+  if (original != nullptr && !original->get_batch_objective_offsets().empty()) {
+    const auto& h_offsets = original->get_batch_objective_offsets();
+    cuopt_assert(h_offsets.size() == climber_strategies_.size(),
+                 "batch_objective_offsets size must equal batch size");
+    raft::copy(objective_offsets_.data(), h_offsets.data(), h_offsets.size(), stream_view_);
+  } else {
+    thrust::fill(handle_ptr_->get_thrust_policy(),
+                 objective_offsets_.begin(),
+                 objective_offsets_.end(),
+                 problem_ptr->presolve_data.objective_offset);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// init_l2_norms: precompute the L2 norms of objective coefficients and RHS
+// (constraint bounds) used in the relative termination criteria.
+//
+// In batch mode the problem fields may be single-problem-sized (splitting path,
+// only variable bounds differ) or batch-expanded (fixed path, per-climber
+// objectives / constraint bounds). Both cases are handled:
+//   - Single-problem: compute the norm once, broadcast to all climbers.
+//   - Batch-expanded: compute per-climber via segmented reduce.
+// ---------------------------------------------------------------------------
+template <typename i_t, typename f_t>
+void convergence_information_t<i_t, f_t>::init_l2_norms()
+{
+  const size_t obj_size              = problem_ptr->objective_coefficients.size();
+  const bool per_climber_objectives  = obj_size > static_cast<size_t>(primal_size_h_);
+  const size_t cstr_size             = problem_ptr->constraint_lower_bounds.size();
+  const bool per_climber_constraints = cstr_size > static_cast<size_t>(dual_size_h_);
+
+  // --- Objective L2 norm ---
+  if (!per_climber_objectives) {
+    // Shared objective coefficients: cublasnrm2 → single entry.
+    my_l2_norm<i_t, f_t>(
+      problem_ptr->objective_coefficients, l2_norm_primal_linear_objective_, handle_ptr_);
+    // Broadcast in case we are in batch mode, else is a no op anyways
+    thrust::fill(handle_ptr_->get_thrust_policy(),
+                 l2_norm_primal_linear_objective_.begin(),
+                 l2_norm_primal_linear_objective_.end(),
+                 l2_norm_primal_linear_objective_.element(0, stream_view_));
+  } else {
+    // Per-climber objective coefficients: Segmented reduce: one segment per climber.
+    segmented_sum_handler_.segmented_sum_helper(
+      thrust::make_transform_iterator(problem_ptr->objective_coefficients.data(),
+                                      power_two_func_t<f_t>{}),
+      thrust::make_transform_output_iterator(l2_norm_primal_linear_objective_.data(),
+                                             sqrt_func_t<f_t>{}),
+      climber_strategies_.size(),
+      primal_size_h_);
+  }
+
+  // --- RHS L2 norm (constraint bounds) ---
   if (hyper_params_.initial_primal_weight_combined_bounds) {
     cuopt_expects(!batch_mode_,
                   error_type_t::ValidationError,
                   "Batch mode not supported with initial_primal_weight_combined_bounds");
-    my_l2_norm<i_t, f_t>(primal_residual_, l2_norm_primal_right_hand_side_, handle_ptr_);
+    combine_constraint_bounds(*problem_ptr, primal_residual_);
+    my_l2_norm<i_t, f_t>(primal_residual_.data(),
+                         l2_norm_primal_right_hand_side_.data(),
+                         primal_residual_.size(),
+                         handle_ptr_);
   } else {
-    // TODO later batch mode: different constraints bounds
-    compute_sum_bounds(problem_ptr->constraint_lower_bounds,
-                       problem_ptr->constraint_upper_bounds,
-                       l2_norm_primal_right_hand_side_,
-                       handle_ptr_->get_stream());
+    if (!per_climber_constraints) {
+      // Shared constraint bounds: compute_sum_bounds gives sum-of-squares (matching the original
+      // formula).
+      compute_sum_bounds(problem_ptr->constraint_lower_bounds,
+                         problem_ptr->constraint_upper_bounds,
+                         l2_norm_primal_right_hand_side_.data(),
+                         handle_ptr_->get_stream());
+      // Broadcast in case we are in batch mode, else is a no op anyways
+      thrust::fill(handle_ptr_->get_thrust_policy(),
+                   l2_norm_primal_right_hand_side_.begin(),
+                   l2_norm_primal_right_hand_side_.end(),
+                   l2_norm_primal_right_hand_side_.element(0, stream_view_));
+    } else {
+      // Per-climber constraint bounds: Segmented reduce.
+      segmented_sum_handler_.segmented_sum_helper(
+        thrust::make_transform_iterator(
+          thrust::make_zip_iterator(problem_ptr->constraint_lower_bounds.data(),
+                                    problem_ptr->constraint_upper_bounds.data()),
+          rhs_sum_of_squares_t<f_t>{}),
+        thrust::make_transform_output_iterator(l2_norm_primal_right_hand_side_.data(),
+                                               sqrt_func_t<f_t>{}),
+        climber_strategies_.size(),
+        dual_size_h_);
+    }
   }
+}
 
+template <typename i_t, typename f_t>
+void convergence_information_t<i_t, f_t>::distributed_init_l2_norms(
+  multi_gpu_engine_t<i_t, f_t>& engine)
+{
+  cuopt_assert(!batch_mode_, "distributed PDLP is not supported in batch mode");
+
+  cuopt_expects(!hyper_params_.initial_primal_weight_combined_bounds,
+                error_type_t::ValidationError,
+                "distributed_init_l2_norms: only the Stable3-shaped path is "
+                "supported (initial_primal_weight_combined_bounds=false).");
+  raft::common::nvtx::range scope("distributed_init_l2_norms");
+
+  f_t global_rhs_sq = f_t(0);
+
+  // Mirrors init_l2_norms with hyper_params_.initial_primal_weight_combined_bounds = false.
+  // Bounds need their custom finite-bound transform. Accumulate raw squared sums
+  // across shards before taking sqrt because sqrt is not additive.
+  engine.for_each_shard([&](pdlp_shard_t<i_t, f_t>& s) {
+    const auto& problem =
+      *s.sub_pdlp->get_current_termination_strategy().get_convergence_information().problem_ptr;
+    const auto stream = s.stream.view();
+    rmm::device_scalar<f_t> d_rhs_sq(f_t(0), stream);
+
+    compute_sum_bounds_squared(problem.constraint_lower_bounds,
+                               problem.constraint_upper_bounds,
+                               d_rhs_sq,
+                               stream,
+                               static_cast<std::size_t>(s.rank_data.owned_cstr_size));
+
+    global_rhs_sq += d_rhs_sq.value(stream);
+  });
+
+  engine.set_scalar_on_master_and_shards(std::sqrt(global_rhs_sq),
+                                         [](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
+                                           return sp.get_current_termination_strategy()
+                                             .get_convergence_information()
+                                             .l2_norm_primal_right_hand_side_.data();
+                                         });
+
+  // Distributed PDLP is non-batch, so the objective side is an ordinary global
+  // L2 norm over the owned variable slices.
+  engine.distributed_l2_norm_to_master(
+    [](pdlp_solver_t<i_t, f_t>& sp) -> rmm::device_uvector<f_t>& {
+      return sp.get_current_termination_strategy()
+        .get_convergence_information()
+        .problem_ptr->objective_coefficients;
+    },
+    [](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
+      return sp.get_current_termination_strategy()
+        .get_convergence_information()
+        .l2_norm_primal_linear_objective_.data();
+    },
+    [](pdlp_shard_t<i_t, f_t>& s) -> i_t { return s.rank_data.owned_var_size; });
+}
+
+// ---------------------------------------------------------------------------
+// init_reduction_storage: allocate and size the temporary buffers used by
+// cub::DeviceReduce and cub::DeviceSegmentedReduce throughout solving.
+// ---------------------------------------------------------------------------
+template <typename i_t, typename f_t>
+void convergence_information_t<i_t, f_t>::init_reduction_storage()
+{
   void* d_temp_storage        = NULL;
   size_t temp_storage_bytes_1 = 0;
   cub::DeviceReduce::Sum(d_temp_storage,
@@ -129,71 +296,6 @@ convergence_information_t<i_t, f_t>::convergence_information_t(
 
   size_of_buffer_       = std::max({temp_storage_bytes_1, temp_storage_bytes_2});
   this->rmm_tmp_buffer_ = rmm::device_buffer{size_of_buffer_, stream_view_};
-
-  if (batch_mode_) {
-    // Pass down any input pointer of the right type, actual pointer does not matter
-    size_t byte_needed = 0;
-
-    cub::DeviceSegmentedReduce::Sum(
-      nullptr,
-      byte_needed,
-      thrust::make_transform_iterator(dual_dot_.data(), power_two_func_t<f_t>{}),
-      dual_dot_.data(),
-      climber_strategies_.size(),
-      dual_size,
-      stream_view_);
-    dot_product_bytes_ = std::max(dot_product_bytes_, byte_needed);
-
-    cub::DeviceSegmentedReduce::Sum(
-      nullptr,
-      byte_needed,
-      thrust::make_transform_iterator(dual_dot_.data(), power_two_func_t<f_t>{}),
-      dual_dot_.data(),
-      climber_strategies_.size(),
-      primal_size,
-      stream_view_);
-    dot_product_bytes_ = std::max(dot_product_bytes_, byte_needed);
-
-    cub::DeviceSegmentedReduce::Sum(
-      nullptr,
-      byte_needed,
-      thrust::make_transform_iterator(thrust::make_zip_iterator(dual_dot_.data(), dual_dot_.data()),
-                                      tuple_multiplies<f_t>{}),
-      dual_dot_.data(),
-      climber_strategies_.size(),
-      primal_size,
-      stream_view_);
-    dot_product_bytes_ = std::max(dot_product_bytes_, byte_needed);
-
-    cub::DeviceSegmentedReduce::Sum(nullptr,
-                                    byte_needed,
-                                    dual_dot_.data(),
-                                    dual_dot_.data(),
-                                    climber_strategies_.size(),
-                                    dual_size_h_,
-                                    stream_view_);
-    dot_product_bytes_ = std::max(dot_product_bytes_, byte_needed);
-
-    cub::DeviceSegmentedReduce::Sum(
-      nullptr,
-      dot_product_bytes_,
-      thrust::make_transform_iterator(
-        thrust::make_zip_iterator(dual_dot_.data(),
-                                  problem_wrap_container(problem_ptr->objective_coefficients)),
-        tuple_multiplies<f_t>{}),
-      primal_objective_.data(),
-      climber_strategies_.size(),
-      primal_size_h_,
-      stream_view_);
-    dot_product_bytes_ = std::max(dot_product_bytes_, byte_needed);
-
-    dot_product_storage_.resize(dot_product_bytes_, stream_view_);
-  }
-
-  RAFT_CUDA_TRY(cudaMemsetAsync(
-    primal_residual_.data(), 0.0, sizeof(f_t) * primal_residual_.size(), stream_view_));
-  RAFT_CUDA_TRY(
-    cudaMemsetAsync(dual_residual_.data(), 0.0, sizeof(f_t) * dual_residual_.size(), stream_view_));
 }
 
 template <typename i_t, typename f_t>
@@ -204,10 +306,15 @@ __global__ void convergence_information_swap_device_vectors_kernel(
   raft::device_span<f_t> dual_objective,
   raft::device_span<f_t> l2_primal_residual,
   raft::device_span<f_t> l2_dual_residual,
+  raft::device_span<f_t> linf_primal_residual,
+  raft::device_span<f_t> linf_dual_residual,
   raft::device_span<f_t> gap,
   raft::device_span<f_t> abs_objective,
   raft::device_span<f_t> dual_dot,
-  raft::device_span<f_t> sum_primal_slack)
+  raft::device_span<f_t> sum_primal_slack,
+  raft::device_span<f_t> objective_offsets,
+  raft::device_span<f_t> l2_norm_primal_linear_objective,
+  raft::device_span<f_t> l2_norm_primal_right_hand_side)
 {
   const i_t idx = static_cast<i_t>(blockIdx.x * blockDim.x + threadIdx.x);
   if (idx >= swap_count) { return; }
@@ -218,10 +325,15 @@ __global__ void convergence_information_swap_device_vectors_kernel(
   cuda::std::swap(dual_objective[left], dual_objective[right]);
   cuda::std::swap(l2_primal_residual[left], l2_primal_residual[right]);
   cuda::std::swap(l2_dual_residual[left], l2_dual_residual[right]);
+  cuda::std::swap(linf_primal_residual[left], linf_primal_residual[right]);
+  cuda::std::swap(linf_dual_residual[left], linf_dual_residual[right]);
   cuda::std::swap(gap[left], gap[right]);
   cuda::std::swap(abs_objective[left], abs_objective[right]);
   cuda::std::swap(dual_dot[left], dual_dot[right]);
   cuda::std::swap(sum_primal_slack[left], sum_primal_slack[right]);
+  cuda::std::swap(objective_offsets[left], objective_offsets[right]);
+  cuda::std::swap(l2_norm_primal_linear_objective[left], l2_norm_primal_linear_objective[right]);
+  cuda::std::swap(l2_norm_primal_right_hand_side[left], l2_norm_primal_right_hand_side[right]);
 }
 
 template <typename i_t, typename f_t>
@@ -252,10 +364,15 @@ void convergence_information_t<i_t, f_t>::swap_context(
                                                  make_span(dual_objective_),
                                                  make_span(l2_primal_residual_),
                                                  make_span(l2_dual_residual_),
+                                                 make_span(linf_primal_residual_),
+                                                 make_span(linf_dual_residual_),
                                                  make_span(gap_),
                                                  make_span(abs_objective_),
                                                  make_span(dual_dot_),
-                                                 make_span(sum_primal_slack_));
+                                                 make_span(sum_primal_slack_),
+                                                 make_span(objective_offsets_),
+                                                 make_span(l2_norm_primal_linear_objective_),
+                                                 make_span(l2_norm_primal_right_hand_side_));
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 }
 
@@ -276,6 +393,11 @@ void convergence_information_t<i_t, f_t>::resize_context(i_t new_size)
   dual_objective_.resize(new_size, stream_view_);
   l2_primal_residual_.resize(new_size, stream_view_);
   l2_dual_residual_.resize(new_size, stream_view_);
+  linf_primal_residual_.resize(new_size, stream_view_);
+  linf_dual_residual_.resize(new_size, stream_view_);
+  l2_norm_primal_linear_objective_.resize(new_size, stream_view_);
+  l2_norm_primal_right_hand_side_.resize(new_size, stream_view_);
+  if (objective_offsets_.size() > 1) { objective_offsets_.resize(new_size, stream_view_); }
   gap_.resize(new_size, stream_view_);
   abs_objective_.resize(new_size, stream_view_);
   dual_dot_.resize(new_size, stream_view_);
@@ -283,29 +405,28 @@ void convergence_information_t<i_t, f_t>::resize_context(i_t new_size)
 }
 
 template <typename i_t, typename f_t>
-void convergence_information_t<i_t, f_t>::set_relative_dual_tolerance_factor(
-  f_t dual_tolerance_factor)
-{
-  l2_norm_primal_linear_objective_.set_value_async(dual_tolerance_factor, stream_view_);
-}
-
-template <typename i_t, typename f_t>
 void convergence_information_t<i_t, f_t>::set_relative_primal_tolerance_factor(
   f_t primal_tolerance_factor)
 {
-  l2_norm_primal_right_hand_side_.set_value_async(primal_tolerance_factor, stream_view_);
+  cub::DeviceTransform::Transform(thrust::make_constant_iterator(primal_tolerance_factor),
+                                  l2_norm_primal_right_hand_side_.data(),
+                                  l2_norm_primal_right_hand_side_.size(),
+                                  cuda::std::identity{},
+                                  stream_view_);
 }
 
 template <typename i_t, typename f_t>
-f_t convergence_information_t<i_t, f_t>::get_relative_dual_tolerance_factor() const
+const rmm::device_uvector<f_t>&
+convergence_information_t<i_t, f_t>::get_l2_norm_primal_linear_objective() const
 {
-  return l2_norm_primal_linear_objective_.value(stream_view_);
+  return l2_norm_primal_linear_objective_;
 }
 
 template <typename i_t, typename f_t>
-f_t convergence_information_t<i_t, f_t>::get_relative_primal_tolerance_factor() const
+const rmm::device_uvector<f_t>&
+convergence_information_t<i_t, f_t>::get_l2_norm_primal_right_hand_side() const
 {
-  return l2_norm_primal_right_hand_side_.value(stream_view_);
+  return l2_norm_primal_right_hand_side_;
 }
 
 template <typename i_t, typename f_t>
@@ -324,6 +445,78 @@ __global__ void compute_remaining_stats_kernel(
 }
 
 template <typename i_t, typename f_t>
+void convergence_information_t<i_t, f_t>::distributed_compute_primal_residual_and_objective(
+  multi_gpu_engine_t<i_t, f_t>& engine, const pdlp_solver_settings_t<i_t, f_t>& settings)
+{
+  cuopt_expects(!settings.per_constraint_residual,
+                error_type_t::ValidationError,
+                "per_constraint_residual is not yet supported in multi-GPU mode");
+  cuopt_assert(!batch_mode_, "multi-GPU PDLP is not supported in batch mode");
+
+  // Prepare halo values in potential_next_primal_solution.
+  engine.halo_exchange_var([](pdlp_solver_t<i_t, f_t>& p) -> rmm::device_uvector<f_t>& {
+    return p.pdhg_solver_.get_potential_next_primal_solution();
+  });
+
+  // Per-shard primal residual + partial (owned) primal objective.
+  engine.for_each_shard([](pdlp_shard_t<i_t, f_t>& shard) {
+    auto& sub_pdlp = *shard.sub_pdlp;
+    auto& sub_conv = sub_pdlp.get_current_termination_strategy().get_convergence_information();
+    sub_conv.compute_primal_residual(sub_conv.op_problem_cusparse_view_,
+                                     sub_pdlp.pdhg_solver_.get_dual_tmp_resource(),
+                                     sub_pdlp.pdhg_solver_.get_potential_next_dual_solution());
+    sub_conv.compute_primal_objective_owned_partial(
+      sub_pdlp.pdhg_solver_.get_potential_next_primal_solution(), shard.rank_data.owned_var_size);
+  });
+
+  // Fused allreduce (shards' partial sums) + D2D mirror to master, then apply
+  // scaling+offset once on the reduced value.
+  engine.allreduce_sum_inplace_to_master([](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
+    return sp.get_current_termination_strategy()
+      .get_convergence_information()
+      .primal_objective_.data();
+  });
+  apply_primal_objective_scaling_and_offset();
+}
+
+template <typename i_t, typename f_t>
+void convergence_information_t<i_t, f_t>::distributed_compute_dual_residual_and_objective(
+  multi_gpu_engine_t<i_t, f_t>& engine)
+{
+  // Halo-exchange potential_next_dual_solution on every shard so the
+  // A_T_shard @ y SpMV inside compute_dual_residual reads correct values in
+  // the cstr halo region.
+  engine.halo_exchange_cstr([](pdlp_solver_t<i_t, f_t>& p) -> rmm::device_uvector<f_t>& {
+    return p.pdhg_solver_.get_potential_next_dual_solution();
+  });
+
+  // Per-shard dual residual + partial (owned) dual objective. Uses the
+  // shard's (fresh, unscaled) potential_next_primal_solution, matching
+  // single-GPU cuPDLPx.
+  engine.for_each_shard([](pdlp_shard_t<i_t, f_t>& shard) {
+    auto& sub_pdlp = *shard.sub_pdlp;
+    auto& sub_conv = sub_pdlp.get_current_termination_strategy().get_convergence_information();
+    sub_conv.compute_dual_residual(sub_conv.op_problem_cusparse_view_,
+                                   sub_pdlp.pdhg_solver_.get_primal_tmp_resource(),
+                                   sub_pdlp.pdhg_solver_.get_potential_next_primal_solution(),
+                                   sub_pdlp.pdhg_solver_.get_dual_slack());
+    sub_conv.compute_dual_objective_owned_partial(
+      sub_pdlp.pdhg_solver_.get_potential_next_primal_solution(),
+      sub_pdlp.pdhg_solver_.get_dual_slack(),
+      shard.rank_data.owned_var_size,
+      shard.rank_data.owned_cstr_size);
+  });
+
+  // Fused allreduce + D2D mirror to master, then apply scaling+offset once.
+  engine.allreduce_sum_inplace_to_master([](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
+    return sp.get_current_termination_strategy()
+      .get_convergence_information()
+      .dual_objective_.data();
+  });
+  apply_dual_objective_scaling_and_offset();
+}
+
+template <typename i_t, typename f_t>
 void convergence_information_t<i_t, f_t>::compute_convergence_information(
   pdhg_solver_t<i_t, f_t>& current_pdhg_solver,
   rmm::device_uvector<f_t>& primal_iterate,
@@ -333,22 +526,29 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
   const rmm::device_uvector<f_t>& objective_coefficients,
   const pdlp_solver_settings_t<i_t, f_t>& settings)
 {
-  cuopt_assert(
-    primal_residual_.size() == dual_size_h_ * climber_strategies_.size(),
-    "primal_residual_ size must be equal to primal_size_h_ * climber_strategies_.size()");
-  cuopt_assert(primal_iterate.size() == primal_size_h_ * climber_strategies_.size(),
-               "primal_iterate size must be equal to primal_size_h_ * climber_strategies_.size()");
-  cuopt_assert(dual_residual_.size() == primal_size_h_ * climber_strategies_.size(),
-               "dual_residual_ size must be equal to primal_size_h_ * climber_strategies_.size()");
-  cuopt_assert(dual_iterate.size() == dual_size_h_ * climber_strategies_.size(),
-               "dual_iterate size must be equal to dual_size_h_ * climber_strategies_.size()");
-  cuopt_assert(l2_primal_residual_.size() == climber_strategies_.size(),
-               "l2_primal_residual_ size must be equal to climber_strategies_.size()");
+  // Per-climber L2-norm scalars are uniform across single-GPU, master, and shards.
   cuopt_assert(l2_primal_residual_.size() == climber_strategies_.size(),
                "l2_primal_residual_ size must be equal to climber_strategies_.size()");
   cuopt_assert(l2_dual_residual_.size() == climber_strategies_.size(),
                "l2_dual_residual_ size must be equal to climber_strategies_.size()");
-
+  if (current_pdhg_solver.is_distributed_master()) {
+    cuopt_assert(primal_residual_.size() == 0,
+                 "master must not own a primal_residual_ buffer (shards compute it)");
+    cuopt_assert(dual_residual_.size() == 0,
+                 "master must not own a dual_residual_ buffer (shards compute it)");
+  } else {
+    cuopt_assert(
+      primal_iterate.size() == primal_size_h_ * climber_strategies_.size(),
+      "primal_iterate size must be equal to primal_size_h_ * climber_strategies_.size()");
+    cuopt_assert(dual_iterate.size() == dual_size_h_ * climber_strategies_.size(),
+                 "dual_iterate size must be equal to dual_size_h_ * climber_strategies_.size()");
+    cuopt_assert(
+      primal_residual_.size() == dual_size_h_ * climber_strategies_.size(),
+      "primal_residual_ size must be equal to dual_size_h_ * climber_strategies_.size()");
+    cuopt_assert(
+      dual_residual_.size() == primal_size_h_ * climber_strategies_.size(),
+      "dual_residual_ size must be equal to primal_size_h_ * climber_strategies_.size()");
+  }
   raft::common::nvtx::range fun_scope("compute_convergence_information");
 
 #ifdef CUPDLP_DEBUG_MODE
@@ -357,25 +557,40 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
   print("dual_slack", dual_slack);
 #endif
 
-  compute_primal_residual(
-    op_problem_cusparse_view_, current_pdhg_solver.get_dual_tmp_resource(), dual_iterate);
-  compute_primal_objective(primal_iterate);
+  if (current_pdhg_solver.is_distributed_master()) {
+    distributed_compute_primal_residual_and_objective(*current_pdhg_solver.get_mgpu_engine(),
+                                                      settings);
+  } else {
+    compute_primal_residual(
+      op_problem_cusparse_view_, current_pdhg_solver.get_dual_tmp_resource(), dual_iterate);
+    compute_primal_objective(primal_iterate);
+  }
 
 #ifdef CUPDLP_DEBUG_MODE
   print("Primal Residual", primal_residual_);
 #endif
 
-  if (!batch_mode_)
+  // L2 Norm
+  if (current_pdhg_solver.is_distributed_master()) {
+    // Fused per-shard L2 reduction + D2D mirror to master.
+    current_pdhg_solver.get_mgpu_engine()->distributed_l2_norm_to_master(
+      [](pdlp_solver_t<i_t, f_t>& sp) -> rmm::device_uvector<f_t>& {
+        return sp.get_current_termination_strategy().get_convergence_information().primal_residual_;
+      },
+      [](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
+        return sp.get_current_termination_strategy()
+          .get_convergence_information()
+          .l2_primal_residual_.data();
+      },
+      [](pdlp_shard_t<i_t, f_t>& shard) -> i_t { return shard.rank_data.owned_cstr_size; });
+  } else if (!batch_mode_) {
     my_l2_norm<i_t, f_t>(primal_residual_, l2_primal_residual_, handle_ptr_);
-  else {
-    cub::DeviceSegmentedReduce::Sum(
-      dot_product_storage_.data(),
-      dot_product_bytes_,
+  } else {
+    segmented_sum_handler_.segmented_sum_helper(
       thrust::make_transform_iterator(primal_residual_.data(), power_two_func_t<f_t>{}),
       l2_primal_residual_.data(),
       climber_strategies_.size(),
-      dual_size_h_,
-      stream_view_);
+      dual_size_h_);
     cub::DeviceTransform::Transform(
       l2_primal_residual_.data(),
       l2_primal_residual_.data(),
@@ -388,58 +603,63 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
   print("Absolute Primal Residual", l2_primal_residual_);
 #endif
   // If per_constraint_residual is false we still need to perform the l2 since it's used in kkt
+  // Not suported in mGPU
   if (settings.per_constraint_residual) {
-    // TODO later batch mode: handle per_constraint_residual here
-    cuopt_expects(!batch_mode_,
-                  error_type_t::ValidationError,
-                  "Batch mode not supported for per_constraint_residual");
-
     // Compute the linf of (residual_i - rel * b_i)
     if (settings.save_best_primal_so_far) {
       const i_t zero_int = 0;
       nb_violated_constraints_.set_value_async(zero_int, handle_ptr_->get_stream());
     }
+    // We may be solving a batch of problems so have a bigger primal_residual_ vector but not have
+    // per climber combined bounds (if it's the same accross climbers) So we need to use a wrapped
+    // iterator to iterate over the combined bounds
+    cuopt_assert(primal_residual_.size() % combined_bounds.size() == 0,
+                 "primal_residual_.size() must be divisible by combined_bounds.size()");
     auto transform_iter = thrust::make_transform_iterator(
-      thrust::make_zip_iterator(primal_residual_.cbegin(), combined_bounds.cbegin()),
+      thrust::make_zip_iterator(primal_residual_.cbegin(), problem_wrap_container(combined_bounds)),
       relative_residual_t<i_t, f_t>{settings.tolerances.relative_primal_tolerance});
-    void* d_temp_storage      = nullptr;
-    size_t temp_storage_bytes = 0;
-    RAFT_CUDA_TRY(cub::DeviceReduce::Max(d_temp_storage,
-                                         temp_storage_bytes,
-                                         transform_iter,
-                                         linf_primal_residual_.data(),
-                                         primal_residual_.size(),
-                                         stream_view_));
-    rmm::device_buffer temp_buf(temp_storage_bytes, stream_view_);
-    RAFT_CUDA_TRY(cub::DeviceReduce::Max(temp_buf.data(),
-                                         temp_storage_bytes,
-                                         transform_iter,
-                                         linf_primal_residual_.data(),
-                                         primal_residual_.size(),
-                                         stream_view_));
+    segmented_sum_handler_.segmented_reduce_helper(transform_iter,
+                                                   linf_primal_residual_.data(),
+                                                   climber_strategies_.size(),
+                                                   dual_size_h_,
+                                                   cuda::maximum<>{},
+                                                   std::numeric_limits<f_t>::lowest());
   }
 
-  compute_dual_residual(op_problem_cusparse_view_,
-                        current_pdhg_solver.get_primal_tmp_resource(),
-                        primal_iterate,
-                        dual_slack);
-  compute_dual_objective(dual_iterate, primal_iterate, dual_slack);
+  if (current_pdhg_solver.is_distributed_master()) {
+    distributed_compute_dual_residual_and_objective(*current_pdhg_solver.get_mgpu_engine());
+  } else {
+    compute_dual_residual(op_problem_cusparse_view_,
+                          current_pdhg_solver.get_primal_tmp_resource(),
+                          primal_iterate,
+                          dual_slack);
+    compute_dual_objective(dual_iterate, primal_iterate, dual_slack);
+  }
 
 #ifdef CUPDLP_DEBUG_MODE
   print("Dual Residual", dual_residual_);
 #endif
 
-  if (!batch_mode_)
+  if (current_pdhg_solver.is_distributed_master()) {
+    // Same pattern as the primal L2 above.
+    current_pdhg_solver.get_mgpu_engine()->distributed_l2_norm_to_master(
+      [](pdlp_solver_t<i_t, f_t>& sp) -> rmm::device_uvector<f_t>& {
+        return sp.get_current_termination_strategy().get_convergence_information().dual_residual_;
+      },
+      [](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
+        return sp.get_current_termination_strategy()
+          .get_convergence_information()
+          .l2_dual_residual_.data();
+      },
+      [](pdlp_shard_t<i_t, f_t>& shard) -> i_t { return shard.rank_data.owned_var_size; });
+  } else if (!batch_mode_) {
     my_l2_norm<i_t, f_t>(dual_residual_, l2_dual_residual_, handle_ptr_);
-  else {
-    cub::DeviceSegmentedReduce::Sum(
-      dot_product_storage_.data(),
-      dot_product_bytes_,
+  } else {
+    segmented_sum_handler_.segmented_sum_helper(
       thrust::make_transform_iterator(dual_residual_.data(), power_two_func_t<f_t>{}),
       l2_dual_residual_.data(),
       climber_strategies_.size(),
-      primal_size_h_,
-      stream_view_);
+      primal_size_h_);
     cub::DeviceTransform::Transform(
       l2_dual_residual_.data(),
       l2_dual_residual_.data(),
@@ -452,34 +672,21 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
 #endif
   // If per_constraint_residual is false we still need to perform the l2 since it's used in kkt
   if (settings.per_constraint_residual) {
-    // TODO later batch mode: handle per_constraint_residual here
-    cuopt_expects(!batch_mode_,
-                  error_type_t::ValidationError,
-                  "Batch mode not supported for per_constraint_residual");
-
     // Compute the linf of (residual_i - rel * c_i)
-    {
-      auto transform_iter = thrust::make_transform_iterator(
-        thrust::make_zip_iterator(dual_residual_.cbegin(), objective_coefficients.cbegin()),
-        relative_residual_t<i_t, f_t>{settings.tolerances.relative_dual_tolerance});
-      void* d_temp_storage      = nullptr;
-      size_t temp_storage_bytes = 0;
-      cub::DeviceReduce::Max(d_temp_storage,
-                             temp_storage_bytes,
-                             transform_iter,
-                             linf_dual_residual_.data(),
-                             dual_residual_.size(),
-                             stream_view_);
-      rmm::device_buffer temp_buf(temp_storage_bytes, stream_view_);
-      cub::DeviceReduce::Max(temp_buf.data(),
-                             temp_storage_bytes,
-                             transform_iter,
-                             linf_dual_residual_.data(),
-                             dual_residual_.size(),
-                             stream_view_);
-    }
+    auto transform_iter = thrust::make_transform_iterator(
+      thrust::make_zip_iterator(dual_residual_.cbegin(),
+                                problem_wrap_container(objective_coefficients)),
+      relative_residual_t<i_t, f_t>{settings.tolerances.relative_dual_tolerance});
+    segmented_sum_handler_.segmented_reduce_helper(transform_iter,
+                                                   linf_dual_residual_.data(),
+                                                   climber_strategies_.size(),
+                                                   primal_size_h_,
+                                                   cuda::maximum<>{},
+                                                   std::numeric_limits<f_t>::lowest());
   }
 
+  // In mGPU, full primal_objective and dual_objective already mirrored to master so no special
+  // behaviour
   const auto [grid_size, block_size] = kernel_config_from_batch_size(climber_strategies_.size());
   compute_remaining_stats_kernel<i_t, f_t>
     <<<grid_size, block_size, 0, stream_view_>>>(this->view(), climber_strategies_.size());
@@ -577,13 +784,33 @@ void convergence_information_t<i_t, f_t>::compute_primal_residual(
 template <typename i_t, typename f_t>
 __global__ void apply_objective_scaling_and_offset(raft::device_span<f_t> objective,
                                                    f_t objective_scaling_factor,
-                                                   f_t objective_offset,
+                                                   raft::device_span<const f_t> objective_offsets,
                                                    int batch_size)
 {
   const int idx = threadIdx.x + blockIdx.x * blockDim.x;
   if (idx >= batch_size) { return; }
 
-  objective[idx] = objective_scaling_factor * (objective[idx] + objective_offset);
+  objective[idx] = objective_scaling_factor * (objective[idx] + objective_offsets[idx]);
+}
+
+// Compute the primal objective using cublasdot. Takes a size as input so distributed and single use
+// the same kernel.
+template <typename i_t, typename f_t>
+void convergence_information_t<i_t, f_t>::compute_primal_objective_owned_partial(
+  const rmm::device_uvector<f_t>& primal_solution, i_t n_owned)
+{
+  raft::common::nvtx::range fun_scope("compute_primal_objective_owned_partial");
+  cuopt_assert(!batch_mode_, "owned-partial primal objective is only used in non-batch mGPU mode");
+  cuopt_assert(n_owned <= primal_size_h_,
+               "n_owned must be <= primal_size_h_ (owned slice is a prefix)");
+  RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(handle_ptr_->get_cublas_handle(),
+                                                  static_cast<int>(n_owned),
+                                                  primal_solution.data(),
+                                                  primal_stride,
+                                                  problem_ptr->objective_coefficients.data(),
+                                                  primal_stride,
+                                                  primal_objective_.data(),
+                                                  stream_view_));
 }
 
 template <typename i_t, typename f_t>
@@ -593,43 +820,37 @@ void convergence_information_t<i_t, f_t>::compute_primal_objective(
   raft::common::nvtx::range fun_scope("compute_primal_objective");
 
   if (!batch_mode_) {
-    RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(handle_ptr_->get_cublas_handle(),
-                                                    (int)primal_size_h_,
-                                                    primal_solution.data(),
-                                                    primal_stride,
-                                                    problem_ptr->objective_coefficients.data(),
-                                                    primal_stride,
-                                                    primal_objective_.data(),
-                                                    stream_view_));
+    compute_primal_objective_owned_partial(primal_solution, primal_size_h_);
   } else {
-    cub::DeviceSegmentedReduce::Sum(
-      dot_product_storage_.data(),
-      dot_product_bytes_,
+    segmented_sum_handler_.segmented_sum_helper(
       thrust::make_transform_iterator(
         thrust::make_zip_iterator(primal_solution.data(),
                                   problem_wrap_container(problem_ptr->objective_coefficients)),
         tuple_multiplies<f_t>{}),
       primal_objective_.data(),
       climber_strategies_.size(),
-      primal_size_h_,
-      stream_view_);
+      primal_size_h_);
   }
 
-  // primal_objective = 1 * (primal_objective + 0) = primal_objective
-  if (problem_ptr->presolve_data.objective_scaling_factor != 1 ||
-      problem_ptr->presolve_data.objective_offset != 0) {
-    const auto [grid_size, block_size] = kernel_config_from_batch_size(climber_strategies_.size());
-    apply_objective_scaling_and_offset<i_t, f_t><<<grid_size, block_size, 0, stream_view_>>>(
-      make_span(primal_objective_),
-      problem_ptr->presolve_data.objective_scaling_factor,
-      problem_ptr->presolve_data.objective_offset,
-      climber_strategies_.size());
-    RAFT_CUDA_TRY(cudaPeekAtLastError());
-  }
+  // Apply per-climber objective scaling and offset. objective_offsets_ is always populated
+  // (defaults to the scalar problem offset replicated, or user-specified per-climber offsets).
+  apply_primal_objective_scaling_and_offset();
 
 #ifdef CUPDLP_DEBUG_MODE
   print("Primal objective", primal_objective_);
 #endif
+}
+
+template <typename i_t, typename f_t>
+void convergence_information_t<i_t, f_t>::apply_primal_objective_scaling_and_offset()
+{
+  const auto [grid_size, block_size] = kernel_config_from_batch_size(climber_strategies_.size());
+  apply_objective_scaling_and_offset<i_t, f_t><<<grid_size, block_size, 0, stream_view_>>>(
+    make_span(primal_objective_),
+    problem_ptr->presolve_data.objective_scaling_factor,
+    make_span(objective_offsets_),
+    climber_strategies_.size());
+  RAFT_CUDA_TRY(cudaPeekAtLastError());
 }
 
 template <typename i_t, typename f_t>
@@ -715,6 +936,50 @@ void convergence_information_t<i_t, f_t>::compute_dual_residual(
 }
 
 template <typename i_t, typename f_t>
+void convergence_information_t<i_t, f_t>::compute_dual_objective_owned_partial(
+  const rmm::device_uvector<f_t>& primal_solution,
+  const rmm::device_uvector<f_t>& dual_slack,
+  i_t n_owned_var,
+  i_t n_owned_cstr)
+{
+  raft::common::nvtx::range fun_scope("compute_dual_objective_owned_partial");
+  cuopt_assert(!batch_mode_, "owned-partial dual objective is only used in non-batch mGPU mode");
+  cuopt_assert(hyper_params_.use_reflected_primal_dual,
+               "owned-partial dual objective requires use_reflected_primal_dual");
+  cuopt_assert(n_owned_var <= primal_size_h_,
+               "n_owned_var must be <= primal_size_h_ (owned slice is a prefix)");
+  cuopt_assert(n_owned_cstr <= dual_size_h_,
+               "n_owned_cstr must be <= dual_size_h_ (owned slice is a prefix)");
+
+  // dual_dot_ = dot(dual_slack[0:n_owned_var], primal_solution[0:n_owned_var])
+  RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(handle_ptr_->get_cublas_handle(),
+                                                  static_cast<int>(n_owned_var),
+                                                  dual_slack.data(),
+                                                  primal_stride,
+                                                  primal_solution.data(),
+                                                  primal_stride,
+                                                  dual_dot_.data(),
+                                                  stream_view_));
+
+  // sum_primal_slack_ = Σ primal_slack_[0:n_owned_cstr]
+  // primal_slack_ is assumed populated for owned cstrs by a prior
+  // compute_primal_residual call on this same shard.
+  cub::DeviceReduce::Sum(rmm_tmp_buffer_.data(),
+                         size_of_buffer_,
+                         primal_slack_.data(),
+                         sum_primal_slack_.data(),
+                         static_cast<int>(n_owned_cstr),
+                         stream_view_);
+
+  // dual_objective_ = dual_dot_ + sum_primal_slack_ (still a partial sum).
+  cub::DeviceTransform::Transform(cuda::std::make_tuple(dual_dot_.data(), sum_primal_slack_.data()),
+                                  dual_objective_.data(),
+                                  1,
+                                  cuda::std::plus<>{},
+                                  stream_view_);
+}
+
+template <typename i_t, typename f_t>
 void convergence_information_t<i_t, f_t>::compute_dual_objective(
   rmm::device_uvector<f_t>& dual_solution,
   [[maybe_unused]] const rmm::device_uvector<f_t>& primal_solution,
@@ -756,67 +1021,51 @@ void convergence_information_t<i_t, f_t>::compute_dual_objective(
                              1,
                              stream_view_);
   } else {
-    // Could be the same but changed for backward compatiblity
+    // Reflected path.
     if (!batch_mode_) {
-      RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(handle_ptr_->get_cublas_handle(),
-                                                      primal_size_h_,
-                                                      dual_slack.data(),
-                                                      primal_stride,
-                                                      primal_solution.data(),
-                                                      primal_stride,
-                                                      dual_dot_.data(),
-                                                      stream_view_));
-
-      cub::DeviceReduce::Sum(rmm_tmp_buffer_.data(),
-                             size_of_buffer_,
-                             primal_slack_.data(),
-                             sum_primal_slack_.data(),
-                             dual_size_h_,
-                             stream_view_);
+      // Full-vector case is a special case of the owned-prefix reduction used
+      // in mGPU (n_owned_var = primal_size_h_, n_owned_cstr = dual_size_h_).
+      compute_dual_objective_owned_partial(
+        primal_solution, dual_slack, primal_size_h_, dual_size_h_);
     } else {
-      cub::DeviceSegmentedReduce::Sum(
-        dot_product_storage_.data(),
-        dot_product_bytes_,
+      segmented_sum_handler_.segmented_sum_helper(
         thrust::make_transform_iterator(
           thrust::make_zip_iterator(dual_slack.data(), primal_solution.data()),
           tuple_multiplies<f_t>{}),
         dual_dot_.data(),
         climber_strategies_.size(),
-        primal_size_h_,
+        primal_size_h_);
+
+      segmented_sum_handler_.segmented_sum_helper(
+        primal_slack_.data(), sum_primal_slack_.data(), climber_strategies_.size(), dual_size_h_);
+
+      cub::DeviceTransform::Transform(
+        cuda::std::make_tuple(dual_dot_.data(), sum_primal_slack_.data()),
+        dual_objective_.data(),
+        dual_objective_.size(),
+        cuda::std::plus<>{},
         stream_view_);
-
-      cub::DeviceSegmentedReduce::Sum(dot_product_storage_.data(),
-                                      dot_product_bytes_,
-                                      primal_slack_.data(),
-                                      sum_primal_slack_.data(),
-                                      climber_strategies_.size(),
-                                      dual_size_h_,
-                                      stream_view_);
     }
-
-    cub::DeviceTransform::Transform(
-      cuda::std::make_tuple(dual_dot_.data(), sum_primal_slack_.data()),
-      dual_objective_.data(),
-      dual_objective_.size(),
-      cuda::std::plus<>{},
-      stream_view_);
   }
 
-  // dual_objective = 1 * (dual_objective + 0) = dual_objective
-  if (problem_ptr->presolve_data.objective_scaling_factor != 1 ||
-      problem_ptr->presolve_data.objective_offset != 0) {
-    const auto [grid_size, block_size] = kernel_config_from_batch_size(climber_strategies_.size());
-    apply_objective_scaling_and_offset<i_t, f_t><<<grid_size, block_size, 0, stream_view_>>>(
-      make_span(dual_objective_),
-      problem_ptr->presolve_data.objective_scaling_factor,
-      problem_ptr->presolve_data.objective_offset,
-      climber_strategies_.size());
-    RAFT_CUDA_TRY(cudaPeekAtLastError());
-  }
+  // Apply per-climber objective scaling and offset.
+  apply_dual_objective_scaling_and_offset();
 
 #ifdef CUPDLP_DEBUG_MODE
   print("Dual objective", dual_objective_);
 #endif
+}
+
+template <typename i_t, typename f_t>
+void convergence_information_t<i_t, f_t>::apply_dual_objective_scaling_and_offset()
+{
+  const auto [grid_size, block_size] = kernel_config_from_batch_size(climber_strategies_.size());
+  apply_objective_scaling_and_offset<i_t, f_t><<<grid_size, block_size, 0, stream_view_>>>(
+    make_span(dual_objective_),
+    problem_ptr->presolve_data.objective_scaling_factor,
+    make_span(objective_offsets_),
+    climber_strategies_.size());
+  RAFT_CUDA_TRY(cudaPeekAtLastError());
 }
 
 template <typename i_t, typename f_t>
@@ -912,14 +1161,14 @@ const rmm::device_uvector<f_t>& convergence_information_t<i_t, f_t>::get_l2_dual
 }
 
 template <typename i_t, typename f_t>
-const rmm::device_scalar<f_t>&
+const rmm::device_uvector<f_t>&
 convergence_information_t<i_t, f_t>::get_relative_linf_primal_residual() const
 {
   return linf_primal_residual_;
 }
 
 template <typename i_t, typename f_t>
-const rmm::device_scalar<f_t>&
+const rmm::device_uvector<f_t>&
 convergence_information_t<i_t, f_t>::get_relative_linf_dual_residual() const
 {
   return linf_dual_residual_;
@@ -942,18 +1191,16 @@ template <typename i_t, typename f_t>
 f_t convergence_information_t<i_t, f_t>::get_relative_l2_primal_residual_value(
   i_t climber_strategy_id) const
 {
-  // TODO later batch mode: handle per climber rhs
   return l2_primal_residual_.element(climber_strategy_id, stream_view_) /
-         (f_t(1.0) + l2_norm_primal_right_hand_side_.value(stream_view_));
+         (f_t(1.0) + l2_norm_primal_right_hand_side_.element(climber_strategy_id, stream_view_));
 }
 
 template <typename i_t, typename f_t>
 f_t convergence_information_t<i_t, f_t>::get_relative_l2_dual_residual_value(
   i_t climber_strategy_id) const
 {
-  // TODO later batch mode: handle per climber objective
   return l2_dual_residual_.element(climber_strategy_id, stream_view_) /
-         (f_t(1.0) + l2_norm_primal_linear_objective_.value(stream_view_));
+         (f_t(1.0) + l2_norm_primal_linear_objective_.element(climber_strategy_id, stream_view_));
 }
 
 template <typename i_t, typename f_t>
@@ -963,15 +1210,15 @@ typename convergence_information_t<i_t, f_t>::view_t convergence_information_t<i
   v.primal_size = primal_size_h_;
   v.dual_size   = dual_size_h_;
 
-  v.l2_norm_primal_linear_objective = l2_norm_primal_linear_objective_.data();
-  v.l2_norm_primal_right_hand_side  = l2_norm_primal_right_hand_side_.data();
+  v.l2_norm_primal_linear_objective = make_span(l2_norm_primal_linear_objective_);
+  v.l2_norm_primal_right_hand_side  = make_span(l2_norm_primal_right_hand_side_);
 
   v.primal_objective               = make_span(primal_objective_);
   v.dual_objective                 = make_span(dual_objective_);
   v.l2_primal_residual             = make_span(l2_primal_residual_);
   v.l2_dual_residual               = make_span(l2_dual_residual_);
-  v.relative_l_inf_primal_residual = linf_primal_residual_.data();
-  v.relative_l_inf_dual_residual   = linf_dual_residual_.data();
+  v.relative_l_inf_primal_residual = make_span(linf_primal_residual_);
+  v.relative_l_inf_dual_residual   = make_span(linf_dual_residual_);
 
   v.gap           = make_span(gap_);
   v.abs_objective = make_span(abs_objective_);
@@ -1012,4 +1259,4 @@ template __global__ void compute_remaining_stats_kernel<int, double>(
   int batch_size);
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

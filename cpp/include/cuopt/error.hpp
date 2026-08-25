@@ -6,13 +6,14 @@
 /* clang-format on */
 #pragma once
 
-#include "cuopt/linear_programming/constants.h"
+#include <cuopt/export.hpp>
+#include "cuopt/mathematical_optimization/constants.h"
 
 #include <stdarg.h>
 
 #include <raft/core/error.hpp>
 
-namespace cuopt {
+namespace CUOPT_EXPORT cuopt {
 
 /**
  * @brief Indicates different type of exceptions which cuOpt might throw
@@ -100,9 +101,7 @@ inline void cuopt_expects(bool cond, error_type_t error_type, const char* fmt, .
   if (not cond) {
     va_list args;
     va_start(args, fmt);
-
     char msg[2048];
-    va_start(args, fmt);
     vsnprintf(msg, sizeof(msg), fmt, args);
     va_end(args);
 
@@ -170,4 +169,4 @@ void execute_cuopt_fail(Args... args)
   throw cuopt::logic_error(msg, error_type_t::RuntimeError);
 }
 
-}  // namespace cuopt
+}  // namespace CUOPT_EXPORT cuopt

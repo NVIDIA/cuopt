@@ -1,14 +1,18 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 #pragma once
 
-#include <cuopt/linear_programming/cpu_optimization_problem_solution.hpp>
-#include <cuopt/linear_programming/mip/solver_settings.hpp>
-#include <cuopt/linear_programming/optimization_problem_interface.hpp>
-#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem_solution.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
+#include <cuopt/routing/cpu_routing_problem.hpp>
+#include <cuopt/routing/solver_settings.hpp>
+
+#include "../cuopt_default_grpc_port.h"
 
 #include <atomic>
 #include <cstdint>
@@ -33,7 +37,7 @@ class ResultResponse;
 class SubmitJobRequest;
 }  // namespace cuopt::remote
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 // Forward declarations for test helper functions (implemented in grpc_client.cpp)
 void grpc_test_inject_mock_stub(class grpc_client_t& client, std::shared_ptr<void> stub);
@@ -52,7 +56,7 @@ void grpc_test_mark_as_connected(class grpc_client_t& client);
  * - Result retrieval uses chunked download for results exceeding max_message_bytes.
  */
 struct grpc_client_config_t {
-  std::string server_address = "localhost:8765";
+  std::string server_address = std::string("localhost:") + std::to_string(cuopt_default_grpc_port);
   int poll_interval_ms       = 1000;   // How often to poll for job status
   int timeout_seconds        = 0;      // Max time to wait for job completion (0 = no limit)
   bool stream_logs           = false;  // Whether to stream logs from server
@@ -92,10 +96,6 @@ struct grpc_client_config_t {
   // Enable debug / throughput logging to stderr.
   // Controlled by CUOPT_GRPC_DEBUG env var (0|1). Default: off.
   bool enable_debug_log = false;
-
-  // Log FNV-1a hashes of uploaded/downloaded data on both client and server.
-  // Comparing the two hashes confirms data was not corrupted in transit.
-  bool enable_transfer_hash = false;
 
   // Override for the chunked upload threshold (bytes). Normally computed
   // automatically as 75% of max_message_bytes.  Set to 0 to force chunked
@@ -192,6 +192,28 @@ struct remote_mip_result_t {
 };
 
 /**
+ * @brief Result of get_result(): LP vs MIP is taken from the server response.
+ */
+template <typename i_t, typename f_t>
+struct remote_result_t {
+  bool success = false;
+  std::string error_message;
+  bool is_mip = false;
+  std::unique_ptr<cpu_lp_solution_t<i_t, f_t>> lp_solution;
+  std::unique_ptr<cpu_mip_solution_t<i_t, f_t>> mip_solution;
+};
+
+/**
+ * @brief Result of a remote VRP solve. Routing is always <int, float>, so this
+ * is not templated. The solution is a host-owned parse of RoutingSolution.
+ */
+struct remote_vrp_result_t {
+  bool success = false;
+  std::string error_message;
+  cuopt::routing::cpu_routing_solution_t solution;
+};
+
+/**
  * @brief gRPC client for remote cuOpt solving
  *
  * This class provides a high-level interface for submitting optimization problems
@@ -204,7 +226,7 @@ struct remote_mip_result_t {
  *
  * Usage:
  * @code
- * grpc_client_t client("localhost:8765");
+ * grpc_client_t client;  // default server: localhost:<cuopt_default_grpc_port>
  * if (!client.connect()) { ... handle error ... }
  *
  * auto result = client.solve_lp(problem, settings);
@@ -344,6 +366,28 @@ class grpc_client_t {
   remote_mip_result_t<i_t, f_t> get_mip_result(const std::string& job_id);
 
   /**
+   * @brief Get result for a completed job; LP vs MIP comes from the server.
+   *
+   * Used by the Python async gRPC client today. Existing internal call sites
+   * still use get_lp_result / get_mip_result; they can migrate to get_result
+   * in a later change.
+   */
+  template <typename i_t, typename f_t>
+  remote_result_t<i_t, f_t> get_result(const std::string& job_id);
+
+  /**
+   * @brief Submit a VRP problem without waiting (unary only; no chunking yet).
+   * @return Submit result with job ID
+   */
+  submit_result_t submit_vrp(const cuopt::routing::cpu_routing_problem_t& problem,
+                             const cuopt::routing::solver_settings_t<int, float>& settings);
+
+  /**
+   * @brief Get the VRP result for a completed job (parses the RoutingSolution).
+   */
+  remote_vrp_result_t get_vrp_result(const std::string& job_id);
+
+  /**
    * @brief Cancel a running job
    * @param job_id The job ID to cancel
    * @return Cancel result with status
@@ -352,6 +396,11 @@ class grpc_client_t {
 
   /**
    * @brief Delete a job and its results from server
+   *
+   * If the job is still queued or running, it is cancelled first (queued jobs
+   * will not run; running workers are killed), then all server-side state is
+   * removed.
+   *
    * @param job_id The job ID to delete
    * @return true if deletion successful
    */
@@ -410,6 +459,10 @@ class grpc_client_t {
   // Activated when config_.stream_logs is true and config_.log_callback is set.
   void start_log_streaming(const std::string& job_id);
   void stop_log_streaming();
+  // Graceful variant: waits up to kLogDrainTimeout for the server to send the
+  // job_complete sentinel before force-cancelling.  Use on the success path so
+  // final log lines (e.g. "Best objective …") are not dropped.
+  void drain_log_streaming();
 
   // Shared polling loop used by solve_lp and solve_mip.
   struct poll_result_t {
@@ -421,6 +474,7 @@ class grpc_client_t {
 
   std::unique_ptr<std::thread> log_thread_;
   std::atomic<bool> stop_logs_{false};
+  std::atomic<bool> log_stream_done_{false};
   mutable std::mutex log_context_mutex_;
   // Points to the grpc::ClientContext* of the in-flight StreamLogs RPC (if
   // any).  Typed as void* to avoid exposing grpc headers in the public API.
@@ -480,4 +534,4 @@ class grpc_client_t {
                              std::string& job_id_out);
 };
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

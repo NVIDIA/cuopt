@@ -5,22 +5,21 @@
  */
 /* clang-format on */
 
-#include <cuopt/linear_programming/mip/solver_settings.hpp>
-#include <cuopt/linear_programming/mip/solver_stats.hpp>
-#include <cuopt/linear_programming/pdlp/solver_solution.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_stats.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
 #include <mip_heuristics/problem/problem.cuh>
 #include <mip_heuristics/solver_context.cuh>
 #include <utilities/timer.hpp>
 #pragma once
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 class mip_solver_t {
  public:
   explicit mip_solver_t(const problem_t<i_t, f_t>& op_problem,
                         const mip_solver_settings_t<i_t, f_t>& solver_settings,
-                        pdlp_initial_scaling_strategy_t<i_t, f_t>& scaling,
                         timer_t timer);
 
   solution_t<i_t, f_t> run_solver();
@@ -33,4 +32,4 @@ class mip_solver_t {
   timer_t timer_;
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

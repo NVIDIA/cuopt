@@ -18,10 +18,9 @@
 #include "recombiners/recombiner_stats.hpp"
 #include "recombiners/sub_mip.cuh"
 
-#include <cuopt/linear_programming/mip/solver_settings.hpp>
-#include <cuopt/linear_programming/mip/solver_stats.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_stats.hpp>
 
-#include <mip_heuristics/diversity/lns/rins.cuh>
 #include <mip_heuristics/local_search/local_search.cuh>
 #include <mip_heuristics/solution/solution.cuh>
 #include <mip_heuristics/solver.cuh>
@@ -29,7 +28,7 @@
 
 #include <cstdint>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 class diversity_manager_t {
@@ -68,17 +67,21 @@ class diversity_manager_t {
                         timer_t& timer,
                         ls_config_t<i_t, f_t>& ls_config);
 
+  void consume_staged_simplex_solution(lp_state_t<i_t, f_t>& lp_state);
   void set_simplex_solution(const std::vector<f_t>& solution,
                             const std::vector<f_t>& dual_solution,
                             f_t objective);
   mip_solver_context_t<i_t, f_t>& context;
-  dual_simplex::branch_and_bound_t<i_t, f_t>* branch_and_bound_ptr;
+  mip::branch_and_bound_t<i_t, f_t>* branch_and_bound_ptr;
   problem_t<i_t, f_t>* problem_ptr;
   diversity_config_t diversity_config;
   population_t<i_t, f_t> population;
   rmm::device_uvector<f_t> lp_optimal_solution;
   rmm::device_uvector<f_t> lp_dual_optimal_solution;
   std::atomic<bool> simplex_solution_exists{false};
+  std::vector<f_t> staged_simplex_solution;
+  std::vector<f_t> staged_simplex_dual_solution;
+  f_t staged_simplex_objective{std::numeric_limits<f_t>::infinity()};
   local_search_t<i_t, f_t> ls;
   cuopt::timer_t timer;
   bound_prop_recombiner_t<i_t, f_t> bound_prop_recombiner;
@@ -98,12 +101,10 @@ class diversity_manager_t {
   // atomic for signalling pdlp to stop
   std::atomic<int> global_concurrent_halt{0};
 
-  rins_t<i_t, f_t> rins;
-
   bool run_only_ls_recombiner{false};
   bool run_only_bp_recombiner{false};
   bool run_only_fp_recombiner{false};
   bool run_only_sub_mip_recombiner{false};
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

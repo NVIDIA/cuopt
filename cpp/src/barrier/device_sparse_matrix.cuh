@@ -1,14 +1,14 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 
 #pragma once
 
-#include <dual_simplex/sparse_matrix.hpp>
-#include <dual_simplex/types.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
+#include <math_optimization/types.hpp>
 
 #include <cub/cub.cuh>
 #include <rmm/device_scalar.hpp>
@@ -16,7 +16,17 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/cuda_helpers.cuh>
 
-namespace cuopt::linear_programming::dual_simplex {
+#include <thrust/device_ptr.h>
+#include <thrust/iterator/counting_iterator.h>
+#include <thrust/iterator/zip_iterator.h>
+#include <thrust/sort.h>
+#include <thrust/tabulate.h>
+#include <thrust/tuple.h>
+
+namespace cuopt::mathematical_optimization::barrier {
+
+template <typename IndexType, typename ValueType>
+class device_csr_matrix_t;
 
 template <typename f_t>
 struct sum_reduce_helper_t {
@@ -59,6 +69,60 @@ struct transform_reduce_helper_t {
                        i_t size,
                        rmm::cuda_stream_view stream_view)
   {
+    cub::DeviceReduce::TransformReduce(
+      nullptr, buffer_size, input, out.data(), size, reduce_op, transform_op, init, stream_view);
+
+    buffer_data.resize(buffer_size, stream_view);
+
+    cub::DeviceReduce::TransformReduce(buffer_data.data(),
+                                       buffer_size,
+                                       input,
+                                       out.data(),
+                                       size,
+                                       reduce_op,
+                                       transform_op,
+                                       init,
+                                       stream_view);
+
+    return out.value(stream_view);
+  }
+};
+
+template <typename f_t>
+struct f2_t {
+  f_t a;
+  f_t b;
+};
+
+template <typename f_t>
+struct f2_min_t {
+  HD f2_t<f_t> operator()(const f2_t<f_t>& lhs, const f2_t<f_t>& rhs) const
+  {
+    return f2_t<f_t>{cuda::std::min(lhs.a, rhs.a), cuda::std::min(lhs.b, rhs.b)};
+  }
+};
+
+template <typename f_t>
+struct transform_reduce_pair_helper_t {
+  rmm::device_buffer buffer_data;
+  rmm::device_scalar<f2_t<f_t>> out;
+  size_t buffer_size;
+
+  transform_reduce_pair_helper_t(rmm::cuda_stream_view stream_view)
+    : buffer_data(0, stream_view), out(stream_view)
+  {
+  }
+
+  // TransformOpT must map each input element to an f2_t<f_t>{a, b} pair; the two
+  // components are reduced independently (elementwise min) in a single kernel launch.
+  template <typename InputIteratorT, typename TransformOpT, typename i_t>
+  f2_t<f_t> transform_reduce(InputIteratorT input,
+                             TransformOpT transform_op,
+                             f2_t<f_t> init,
+                             i_t size,
+                             rmm::cuda_stream_view stream_view)
+  {
+    f2_min_t<f_t> reduce_op{};
     cub::DeviceReduce::TransformReduce(
       nullptr, buffer_size, input, out.data(), size, reduce_op, transform_op, init, stream_view);
 
@@ -121,7 +185,8 @@ class device_csc_matrix_t {
       nz_max(A.col_start[A.n]),
       col_start(A.col_start.size(), stream),
       i(A.i.size(), stream),
-      x(A.x.size(), stream)
+      x(A.x.size(), stream),
+      col_index(0, stream)
   {
     col_start = cuopt::device_copy(A.col_start, stream);
     i         = cuopt::device_copy(A.i, stream);
@@ -145,7 +210,7 @@ class device_csc_matrix_t {
     return A;
   }
 
-  void copy(csc_matrix_t<i_t, f_t>& A, rmm::cuda_stream_view stream)
+  void copy(const csc_matrix_t<i_t, f_t>& A, rmm::cuda_stream_view stream)
   {
     m      = A.m;
     n      = A.n;
@@ -157,6 +222,20 @@ class device_csc_matrix_t {
     x.resize(A.x.size(), stream);
     raft::copy(x.data(), A.x.data(), A.x.size(), stream);
   }
+
+  /** Reset to an empty (all-zero col_start, no nonzeros) matrix of the given shape. */
+  void reset_empty(i_t rows, i_t cols, rmm::cuda_stream_view stream)
+  {
+    m      = rows;
+    n      = cols;
+    nz_max = 0;
+    resize_to_nnz(0, stream);
+    thrust::fill(rmm::exec_policy(stream), col_start.begin(), col_start.end(), i_t(0));
+  }
+
+  /** Same semantics as csc_matrix_t::to_compressed_row, entirely on
+   * device. */
+  void to_compressed_row(device_csr_matrix_t<i_t, f_t>& Arow, rmm::cuda_stream_view stream) const;
 
   void form_col_index(rmm::cuda_stream_view stream)
   {
@@ -293,4 +372,86 @@ class device_csr_matrix_t {
                                          // to avoid extra space / computation)
 };
 
-}  // namespace cuopt::linear_programming::dual_simplex
+template <typename i_t, typename f_t>
+void device_csc_matrix_t<i_t, f_t>::to_compressed_row(device_csr_matrix_t<i_t, f_t>& Arow,
+                                                      rmm::cuda_stream_view stream) const
+{
+  static_assert(std::is_signed_v<i_t>);
+
+  // Device CSC -> CSR: col_start[], i[], x[] (this) -> Arow.row_start[], j[], x[].
+  // Nonzeros are reordered by sorting (row, col) so each CSR row segment is contiguous.
+
+  i_t const nz = nz_max;
+
+  Arow.m      = m;
+  Arow.n      = n;
+  Arow.nz_max = nz_max;
+  Arow.row_start.resize(m + 1, stream);
+  Arow.j.resize(nz, stream);
+  Arow.x.resize(nz, stream);
+
+  auto exec = rmm::exec_policy(stream);
+
+  if (nz == 0) {
+    // Empty matrix: row_start all zero; j/x unused.
+    RAFT_CUDA_TRY(cudaMemsetAsync(Arow.row_start.data(), 0, sizeof(i_t) * (m + 1), stream));
+    return;
+  }
+
+  // Per-row nnz from CSC row indices i[] (one atomic add per nonzero).
+  rmm::device_uvector<i_t> row_counts(m, stream);
+  RAFT_CUDA_TRY(cudaMemsetAsync(row_counts.data(), 0, sizeof(i_t) * m, stream));
+
+  thrust::for_each(exec,
+                   thrust::make_counting_iterator<i_t>(0),
+                   thrust::make_counting_iterator<i_t>(nz),
+                   [row_ind = i.data(), counts = row_counts.data()] __device__(i_t p) {
+                     atomicAdd(counts + row_ind[p], i_t(1));
+                   });
+
+  // CSR row pointers: exclusive prefix sum of row_counts; Arow.row_start[m] = nz.
+  rmm::device_buffer scan_tmp;
+  std::size_t scan_bytes = 0;
+  cub::DeviceScan::ExclusiveSum(
+    nullptr, scan_bytes, row_counts.data(), Arow.row_start.data(), m, stream);
+  scan_tmp.resize(scan_bytes, stream);
+  cub::DeviceScan::ExclusiveSum(
+    scan_tmp.data(), scan_bytes, row_counts.data(), Arow.row_start.data(), m, stream);
+
+  RAFT_CUDA_TRY(
+    cudaMemcpyAsync(Arow.row_start.data() + m, &nz, sizeof(i_t), cudaMemcpyHostToDevice, stream));
+
+  // rows[]: CSC row indices (sort key). Arow.j / Arow.x hold (col, val) per flat CSC index,
+  // then sort_by_key permutes j and x in place into CSR (row, col) order.
+  rmm::device_uvector<i_t> rows(nz, stream);
+  raft::copy(rows.data(), i.data(), nz, stream);
+  raft::copy(Arow.x.data(), x.data(), nz, stream);
+
+  // Global CSC position p lies in column c iff col_start[c] <= p < col_start[c+1].
+  thrust::tabulate(exec,
+                   thrust::device_pointer_cast(Arow.j.data()),
+                   thrust::device_pointer_cast(Arow.j.data() + nz),
+                   [cs = col_start.data(), nn_c = n] __device__(i_t p) {
+                     i_t lo = 0;
+                     i_t hi = nn_c;
+                     while (lo < hi) {
+                       i_t mid = lo + (hi - lo) / 2;
+                       if (cs[mid] <= p) {
+                         lo = mid + 1;
+                       } else {
+                         hi = mid;
+                       }
+                     }
+                     return lo - 1;
+                   });
+
+  // CSR column order: sort (row, col) lexicographically; values follow the same permutation.
+  auto row_iter = thrust::device_pointer_cast(rows.data());
+  auto col_iter = thrust::device_pointer_cast(Arow.j.data());
+  thrust::sort_by_key(exec,
+                      thrust::make_zip_iterator(thrust::make_tuple(row_iter, col_iter)),
+                      thrust::make_zip_iterator(thrust::make_tuple(row_iter + nz, col_iter + nz)),
+                      thrust::device_pointer_cast(Arow.x.data()));
+}
+
+}  // namespace cuopt::mathematical_optimization::barrier

@@ -16,10 +16,12 @@
 #include <thrust/copy.h>
 #include <thrust/gather.h>
 #include <thrust/iterator/transform_output_iterator.h>
+#include <thrust/iterator/zip_iterator.h>
 #include <thrust/partition.h>
 #include <thrust/sort.h>
+#include <thrust/tuple.h>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 repair_stats_t constraint_prop_t<i_t, f_t>::repair_stats;
@@ -1257,4 +1259,4 @@ template class constraint_prop_t<int, float>;
 template class constraint_prop_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

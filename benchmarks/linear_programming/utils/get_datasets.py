@@ -2,10 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import os
+import sys
+import time
 import argparse
 import urllib.request
 import urllib.parse
-import ssl
 import subprocess
 
 
@@ -628,21 +629,30 @@ def parse_args():
     return args
 
 
-def download(url, dst):
+def download(url, dst, max_retries=3, timeout=60):
     if os.path.exists(dst):
         return
-    print(f"Downloading {url} into {dst}...")
-    # Bypass SSL verification for plato.asu.edu URLs
-    if "plato.asu.edu" in url:
-        context = ssl.create_default_context()
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
-        response = urllib.request.urlopen(url, context=context)
-    else:
-        response = urllib.request.urlopen(url)
-    data = response.read()
-    with open(dst, "wb") as fp:
-        fp.write(data)
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    for attempt in range(1, max_retries + 1):
+        print(
+            f"Downloading {url} into {dst} (attempt {attempt}/{max_retries})..."
+        )
+        try:
+            response = urllib.request.urlopen(url, timeout=timeout)
+            data = response.read()
+            with open(dst, "wb") as fp:
+                fp.write(data)
+            return
+        except Exception as e:
+            if os.path.exists(dst):
+                os.remove(dst)
+            if attempt < max_retries:
+                wait = 2**attempt
+                print(f"  Failed: {e}. Retrying in {wait}s...")
+                time.sleep(wait)
+            else:
+                print(f"  Failed after {max_retries} attempts: {e}")
+                raise
 
 
 def extract(file, dir, type):
@@ -652,12 +662,16 @@ def extract(file, dir, type):
     if basefile.endswith(".bz2"):
         outfile = basefile.replace(".bz2", ".mps")
         unzippedfile = basefile.replace(".bz2", "")
-        subprocess.run(f"cd {dir} && bzip2 -d {basefile}", shell=True)
+        subprocess.run(
+            f"cd {dir} && bzip2 -d {basefile}", shell=True, check=True
+        )
     elif basefile.endswith(".gz"):
         outfile = basefile.replace(".gz", ".mps")
         unzippedfile = basefile.replace(".gz", "")
         subprocess.run(
-            f"cd {dir} && gunzip -c {basefile} > {unzippedfile}", shell=True
+            f"cd {dir} && gunzip -c {basefile} > {unzippedfile}",
+            shell=True,
+            check=True,
         )
     else:
         raise Exception(f"Unknown file extension found for extraction {file}")
@@ -668,11 +682,15 @@ def extract(file, dir, type):
         file = os.path.join(dir, "emps.c")
         download(url, file)
         subprocess.run(
-            f"cd {dir} && gcc -Wno-implicit-int emps.c -o emps", shell=True
+            f"cd {dir} && gcc -Wno-implicit-int emps.c -o emps",
+            shell=True,
+            check=True,
         )
         # determine output file and run emps
         subprocess.run(
-            f"cd {dir} && ./emps {unzippedfile} > {outfile}", shell=True
+            f"cd {dir} && ./emps {unzippedfile} > {outfile}",
+            shell=True,
+            check=True,
         )
         # cleanup emps and emps.c
         subprocess.run(f"rm -rf {dir}/emps*", shell=True)
@@ -692,8 +710,7 @@ def download_dataset(name, root):
     if url == "":
         print(f"Dataset {name} doesn't have a URL. Skipping...")
         return
-    else:
-        os.mkdir(dir)
+    os.makedirs(dir, exist_ok=True)
     file = os.path.join(dir, os.path.basename(url))
     download(url, file)
     extract(file, dir, type)
@@ -715,17 +732,35 @@ def main():
         if not os.path.exists(args.instance_download_path):
             os.makedirs(args.instance_download_path)
         instance_download_path = args.instance_download_path
+
+    failed = []
+    datasets_to_download = []
     if args.LPfeasible:
-        for name in LPFeasibleMittelmannSet:
-            download_dataset(name, instance_download_path)
+        datasets_to_download.extend(LPFeasibleMittelmannSet)
     if args.datasets:
-        for name in args.datasets:
-            download_dataset(name, instance_download_path)
+        datasets_to_download.extend(args.datasets)
     if args.benchmarks:
         for bench in args.benchmarks:
-            for name in MittelmannInstances["benchmarks"][bench]:
-                download_dataset(name, instance_download_path)
-    return
+            if bench not in MittelmannInstances["benchmarks"]:
+                print(f"ERROR: Unknown benchmark '{bench}'")
+                failed.append(bench)
+                continue
+            datasets_to_download.extend(
+                MittelmannInstances["benchmarks"][bench]
+            )
+
+    for name in datasets_to_download:
+        try:
+            download_dataset(name, instance_download_path)
+        except Exception as e:
+            print(f"ERROR: Failed to download dataset '{name}': {e}")
+            failed.append(name)
+
+    if failed:
+        print(
+            f"\n{len(failed)} dataset(s) failed to download: {', '.join(failed)}"
+        )
+        sys.exit(1)
 
 
 if __name__ == "__main__":

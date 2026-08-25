@@ -169,6 +169,14 @@ struct OX {
     return graphs_size + sol_arrays_size + helper_arrays_size;
   }
 
+  /// @brief OX recombination of two parents into A (offspring built in place).
+  ///        In fixed_route mode (fleet_size == min_vehicles) the vehicle count
+  ///        is preserved; otherwise the offspring route count may vary.
+  /// @param A first parent; on success, replaced by the recombined offspring.
+  /// @param B second parent (read-only donor genome).
+  /// @return true if a valid offspring was produced and applied to A; false if
+  ///         recombination was rejected (e.g. mismatched parents, fixed-route
+  ///         count violation, size/memory guards) — A is then left unchanged.
   bool recombine(Solution& A, Solution& B)
   {
     raft::common::nvtx::range fun_scope("ox");
@@ -204,7 +212,13 @@ struct OX {
     routes_number = std::min(routesA.size(), routesB.size());
 
     const auto& dimensions_info = A.problem->dimensions_info;
-    if (dimensions_info.has_dimension(dim_t::VEHICLE_FIXED_COST)) {
+    // Optimal-routes search lets Bellman-Ford pick a variable number of routes to minimize
+    // vehicle fixed cost. This is incompatible with fixed_route mode (fleet_size ==
+    // min_vehicles): the vehicle count cannot change, so searching over route counts both
+    // breaks the recreate_solution invariant (routes removed == routes added) and can drift
+    // the solution below min_vehicles. When the route count is fixed there is nothing to
+    // optimize over, so keep the strict fixed-route path.
+    if (!fixed_route && dimensions_info.has_dimension(dim_t::VEHICLE_FIXED_COST)) {
       routes_number         = max_vehicle_increase + std::max(routesA.size(), routesB.size());
       optimal_routes_search = true;
     }
@@ -232,7 +246,7 @@ struct OX {
 
     if (genome_A.size() < 2) { return false; }
 
-    fill_offspring(A, routesA);
+    fill_offspring(A, routesA, true, use_linear_ox_for_path_tsp(A, routes_number));
 
     // FIXME: Guard to avoid crash on large sizes.
     if (get_allocated_bytes(n_buckets, offspring.size(), max_route_len) * 1e-9 >= gb_limit) {
@@ -390,9 +404,13 @@ struct OX {
       --i;
     }
 
-    if (fixed_route) {
-      cuopt_assert(routes_to_remove.size() == tmp_routes.size(),
-                   "number of routes removed and routes added should be same");
+    if (fixed_route && routes_to_remove.size() != tmp_routes.size()) {
+      // In fixed_route mode the vehicle count must be preserved: we add one route per changed
+      // offspring segment (tmp_routes) and remove the distinct original routes those segments
+      // touch (routes_to_remove). A mismatch would change the vehicle count and drop it below
+      // min_vehicles, so reject this offspring instead of applying it.
+      cuopt_assert(false, "number of routes removed and routes added should be same");
+      return false;
     }
     if (routes_to_remove.size() == 0 || tmp_routes.size() == 0) { return false; }
 
@@ -722,66 +740,104 @@ struct OX {
     }
   }
 
+  bool use_linear_ox_for_path_tsp(Solution const& S, int n_routes) const
+  {
+    if (!S.problem->is_tsp || n_routes != 1) { return false; }
+
+    // With distinct vehicle start/end locations the TSP is a fixed path, not a cycle.
+    // Classic OX may wrap across the end/start boundary or rotate the child, which is
+    // only neutral for a closed tour.
+    return !S.problem->get_single_depot().has_value();
+  }
+
   //! \brief{ Create offspring according to improved OX logic }
   void fill_offspring(Solution const& S,
                       std::vector<int> const& routesS,
-                      bool cycle_rotate_to_start = true)
+                      bool cycle_rotate_to_start = true,
+                      bool linear_path_tsp       = false)
   {
     helper.clear();
     offspring.clear();
-    offspring.assign(genome_A.size(), 0);
     offspring_tmp.clear();
-    offspring_tmp.assign(genome_A.size(), 0);
 
-    // Choose random fragment from genome B and inject to genome A
-    int i = 0;
-    if (S.routes.size() == 1) { i = next_random() % (genome_A.size() - 1); }
-    int j = i + 1 + (next_random() % (3 * max_route_len));
-    if ((size_t)j >= genome_A.size() - 1) {
-      j = i + next_random() % std::max(1, (((int)genome_A.size() - 1 - i) / 2));
-    }
+    if (linear_path_tsp) {
+      offspring_tmp.assign(genome_A.size(), -1);
 
-    for (int k = i; k <= j; k++) {
-      offspring[k] = genome_B[k];
-      helper.insert(genome_B[k]);
-    }
+      int genome_size = static_cast<int>(genome_A.size());
+      int i           = next_random() % genome_size;
+      int max_length  = std::min(genome_size - i, std::max(1, 3 * max_route_len));
+      int j           = i + (next_random() % max_length);
 
-    int last_node_ind = find(genome_A.begin(), genome_A.end(), genome_B[j]) - genome_A.begin();
-    int start_ind     = (1 + last_node_ind) % genome_A.size();
-
-    int offspring_ind = (j + 1) % offspring.size();
-    for (int k = start_ind; k != last_node_ind; k = (k + 1) % genome_A.size()) {
-      if (helper.count(genome_A[k]) == 0) {
-        offspring[offspring_ind] = genome_A[k];
-        helper.insert(genome_A[k]);
-        offspring_ind = (offspring_ind + 1) % offspring.size();
-      }
-    }
-
-    // Cycle the offspring until we find some route start
-    j = 0;
-    if (cycle_rotate_to_start) {
-      helper.clear();
-      for (auto& a : routesS) {
-        auto& b = S.get_routes()[a];
-        helper.insert(b.start.node());
+      for (int k = i; k <= j; ++k) {
+        offspring_tmp[k] = genome_B[k];
+        helper.insert(genome_B[k]);
       }
 
-      for (size_t i = 0; i < offspring.size(); i++) {
-        if (helper.count(offspring[i]) > 0) {
-          j = i;
-          break;
+      auto a_it = genome_A.begin();
+      for (auto& node : offspring_tmp) {
+        if (node != -1) { continue; }
+        while (a_it != genome_A.end() && helper.count(*a_it) > 0) {
+          ++a_it;
+        }
+        cuopt_assert(a_it != genome_A.end(), "Invalid OX path offspring");
+        node = *a_it;
+        helper.insert(node);
+        ++a_it;
+      }
+    } else {
+      offspring.assign(genome_A.size(), 0);
+      offspring_tmp.assign(genome_A.size(), 0);
+
+      // Choose random fragment from genome B and inject to genome A
+      int i = 0;
+      if (S.routes.size() == 1) { i = next_random() % (genome_A.size() - 1); }
+      int j = i + 1 + (next_random() % (3 * max_route_len));
+      if ((size_t)j >= genome_A.size() - 1) {
+        j = i + next_random() % std::max(1, (((int)genome_A.size() - 1 - i) / 2));
+      }
+
+      for (int k = i; k <= j; k++) {
+        offspring[k] = genome_B[k];
+        helper.insert(genome_B[k]);
+      }
+
+      int last_node_ind = find(genome_A.begin(), genome_A.end(), genome_B[j]) - genome_A.begin();
+      int start_ind     = (1 + last_node_ind) % genome_A.size();
+
+      int offspring_ind = (j + 1) % offspring.size();
+      for (int k = start_ind; k != last_node_ind; k = (k + 1) % genome_A.size()) {
+        if (helper.count(genome_A[k]) == 0) {
+          offspring[offspring_ind] = genome_A[k];
+          helper.insert(genome_A[k]);
+          offspring_ind = (offspring_ind + 1) % offspring.size();
         }
       }
-    }
-    int tmp = 0;
-    // Copy rotated offspring
-    for (size_t k = j;; k = (k + 1) % offspring.size()) {
-      offspring_tmp[tmp++] = offspring[k];
-      if ((j == 0 && k == offspring.size() - 1) || (int)k == j - 1) { break; }
+
+      // Cycle the offspring until we find some route start
+      j = 0;
+      if (cycle_rotate_to_start) {
+        helper.clear();
+        for (auto& a : routesS) {
+          auto& b = S.get_routes()[a];
+          helper.insert(b.start.node());
+        }
+
+        for (size_t i = 0; i < offspring.size(); i++) {
+          if (helper.count(offspring[i]) > 0) {
+            j = i;
+            break;
+          }
+        }
+      }
+      int tmp = 0;
+      // Copy rotated offspring
+      for (size_t k = j;; k = (k + 1) % offspring.size()) {
+        offspring_tmp[tmp++] = offspring[k];
+        if ((j == 0 && k == offspring.size() - 1) || (int)k == j - 1) { break; }
+      }
     }
 
-    offspring.push_back(0);
+    offspring.assign(genome_A.size() + 1, 0);
     // First node set to dummy -> calculate_edges will fill it with the depo
     for (size_t k = 0; k < offspring_tmp.size(); k++) {
       offspring[k + 1] = offspring_tmp[k];
@@ -841,8 +897,6 @@ struct OX {
       auto start_depot_node_info  = A.problem->start_depot_node_infos_h[vehicle_id];
       auto return_depot_node_info = A.problem->return_depot_node_infos_h[vehicle_id];
       auto cuopt_weights          = get_cuopt_cost(weights);
-      double optimal_vehicle_fixed_cost =
-        dimensions_info.has_dimension(dim_t::VEHICLE_FIXED_COST) ? vehicle_info.fixed_cost : 0.;
 
       // Here we have to use the vehicle type 'veh'
       HelperNodes[2] =
@@ -868,7 +922,8 @@ struct OX {
                                                                           cuopt_weights,
                                                                           objective_cost_t{},
                                                                           infeasible_cost_t{});
-          graph[i].emplace_back(j, optimal_vehicle_fixed_cost + cost, veh);
+          // cost includes vehicle_info.fixed_cost via vehicle_fixed_cost_node_t::get_cost
+          graph[i].emplace_back(j, cost, veh);
           if (j + 1 == offspring.size()) break;
 
           HelperNodes[!b] =

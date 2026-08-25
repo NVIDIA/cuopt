@@ -13,16 +13,14 @@ ARGS=$*
 # script, and that this script resides in the repo dir!
 REPODIR=$(cd "$(dirname "$0")"; pwd)
 LIBCUOPT_BUILD_DIR=${LIBCUOPT_BUILD_DIR:=${REPODIR}/cpp/build}
-LIBMPS_PARSER_BUILD_DIR=${LIBMPS_PARSER_BUILD_DIR:=${REPODIR}/cpp/libmps_parser/build}
 
-VALIDARGS="clean libcuopt cuopt_grpc_server libmps_parser cuopt_mps_parser cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -fsanitize -tsan -msan -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-fatbin-write --host-lineinfo [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --allgpuarch --ci-only-arch --show_depr_warn -h --help"
+VALIDARGS="clean codegen libcuopt cuopt_grpc_server cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -fsanitize -tsan -msan -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-grpc-build --skip-fatbin-write --host-lineinfo --split-compile [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] --install --allgpuarch --ci-only-arch --show_depr_warn -h --help"
 HELP="$0 [<target> ...] [<flag> ...]
  where <target> is:
    clean            - remove all existing build artifacts and configuration (start over)
+   codegen          - regenerate gRPC .inc files and proto from field_registry.yaml (requires pyyaml)
    libcuopt         - build the cuopt C++ code
    cuopt_grpc_server - build only the gRPC server binary (configures + builds libcuopt as needed)
-   libmps_parser    - build the libmps_parser C++ code
-   cuopt_mps_parser - build the cuopt_mps_parser python package
    cuopt            - build the cuopt Python package
    cuopt_server     - build the cuopt_server Python package
    cuopt_sh_client  - build cuopt self host client
@@ -36,7 +34,7 @@ HELP="$0 [<target> ...] [<flag> ...]
    -fsanitize       - Build with AddressSanitizer and UndefinedBehaviorSanitizer
    -tsan            - Build with ThreadSanitizer (cannot be used with -fsanitize or -msan)
    -msan            - Build with MemorySanitizer (cannot be used with -fsanitize or -tsan)
-   -n               - no install step
+   --install        - install built libraries into the active conda environment (default: build only, no install)
    --no-fetch-rapids  - don't fetch rapids dependencies
    -l=              - log level. Options are: TRACE | DEBUG | INFO | WARN | ERROR | CRITICAL | OFF. Default=INFO
    --verbose-pdlp   - verbose mode for pdlp solver
@@ -44,8 +42,10 @@ HELP="$0 [<target> ...] [<flag> ...]
    --skip-c-python-adapters - skip building C and Python adapter files (cython_solve.cu and cuopt_c.cpp)
    --skip-tests-build  - disable building of all tests
    --skip-routing-build - skip building routing components
+   --skip-grpc-build    - skip building gRPC and protobuf components (auto-enabled with -tsan)
    --skip-fatbin-write      - skip the fatbin write
    --host-lineinfo           - build with debug line information for host code
+   --split-compile           - opt in to nvcc split compilation; builds may be nondeterministic
    --cache-tool=<tool> - pass the build cache tool (eg: ccache, sccache, distcc) that will be used
                       to speedup the build process.
    --cmake-args=\\\"<args>\\\"   - pass arbitrary list of CMake configuration options (escape all quotes in argument)
@@ -54,26 +54,25 @@ HELP="$0 [<target> ...] [<flag> ...]
    --show_depr_warn - show cmake deprecation warnings
    -h               - print this text
 
- default action (no args) is to build and install 'libcuopt' then 'cuopt' then 'docs' targets
+ default action (no args) is to build 'libcuopt', 'cuopt', 'cuopt_server', and 'cuopt_sh_client' targets without installing into the conda environment (pass --install to also install libcuopt into the active conda environment; pass 'docs' explicitly to build documentation)
 
  libcuopt build dir is: ${LIBCUOPT_BUILD_DIR}
 
  Set env var LIBCUOPT_BUILD_DIR to override libcuopt build dir.
 "
-CUOPT_MPS_PARSER_BUILD_DIR=${REPODIR}/python/cuopt/cuopt/linear_programming/build
 PY_LIBCUOPT_BUILD_DIR=${REPODIR}/python/libcuopt/build
 CUOPT_BUILD_DIR=${REPODIR}/python/cuopt/build
 CUOPT_SERVER_BUILD_DIR=${REPODIR}/python/cuopt_server/build
 CUOPT_SH_CLIENT_BUILD_DIR=${REPODIR}/python/cuopt_self_hosted/build
 DOCS_BUILD_DIR=${REPODIR}/docs/cuopt/build
-BUILD_DIRS="${LIBCUOPT_BUILD_DIR} ${LIBMPS_PARSER_BUILD_DIR} ${CUOPT_BUILD_DIR} ${CUOPT_SERVER_BUILD_DIR} ${CUOPT_SERVICE_CLIENT_BUILD_DIR} ${CUOPT_SH_CLIENT_BUILD_DIR} ${CUOPT_MPS_PARSER_BUILD_DIR} ${PY_LIBCUOPT_BUILD_DIR} ${DOCS_BUILD_DIR}"
+BUILD_DIRS="${LIBCUOPT_BUILD_DIR} ${CUOPT_BUILD_DIR} ${CUOPT_SERVER_BUILD_DIR} ${CUOPT_SERVICE_CLIENT_BUILD_DIR} ${CUOPT_SH_CLIENT_BUILD_DIR} ${PY_LIBCUOPT_BUILD_DIR} ${DOCS_BUILD_DIR}"
 
 # Set defaults for vars modified by flags to this script
 VERBOSE_FLAG=""
 BUILD_TYPE=Release
 DEFINE_ASSERT=False
 DEFINE_PDLP_VERBOSE_MODE=False
-INSTALL_TARGET=install
+INSTALL_TARGET=""
 BUILD_DISABLE_DEPRECATION_WARNING=ON
 BUILD_ALL_GPU_ARCH=0
 BUILD_CI_ONLY=0
@@ -84,6 +83,7 @@ BUILD_MSAN=0
 SKIP_C_PYTHON_ADAPTERS=0
 SKIP_TESTS_BUILD=0
 SKIP_ROUTING_BUILD=0
+SKIP_GRPC_BUILD=0
 WRITE_FATBIN=1
 HOST_LINEINFO=0
 CACHE_ARGS=()
@@ -214,8 +214,8 @@ fi
 if hasArg --verbose-pdlp; then
     DEFINE_PDLP_VERBOSE_MODE=true
 fi
-if hasArg -n; then
-    INSTALL_TARGET=""
+if hasArg --install; then
+    INSTALL_TARGET=install
 fi
 if hasArg --no-fetch-rapids; then
     FETCH_RAPIDS=OFF
@@ -238,6 +238,7 @@ if hasArg -fsanitize; then
 fi
 if hasArg -tsan; then
     BUILD_TSAN=1
+    SKIP_GRPC_BUILD=1
 fi
 if hasArg -msan; then
     BUILD_MSAN=1
@@ -251,11 +252,19 @@ fi
 if hasArg --skip-routing-build; then
     SKIP_ROUTING_BUILD=1
 fi
+if hasArg --skip-grpc-build; then
+    SKIP_GRPC_BUILD=1
+fi
 if hasArg --skip-fatbin-write; then
     WRITE_FATBIN=0
 fi
 if hasArg --host-lineinfo; then
     HOST_LINEINFO=1
+fi
+if hasArg --split-compile; then
+    # nvcc split compilation can produce nondeterministic cuOpt builds, so keep it opt-in.
+    echo "WARNING: nvcc split compilation may produce nondeterministic cuOpt builds."
+    export NVCC_PREPEND_FLAGS="${NVCC_PREPEND_FLAGS:+${NVCC_PREPEND_FLAGS} }--split-compile=0"
 fi
 
 function contains_string {
@@ -275,10 +284,6 @@ function contains_string {
 # Append `-DFIND_CUOPT_CPP=ON` to CMAKE_ARGS unless a user specified the option.
 if ! contains_string "DFIND_CUOPT_CPP" "${EXTRA_CMAKE_ARGS[@]}"; then
     EXTRA_CMAKE_ARGS+=("-DFIND_CUOPT_CPP=ON")
-fi
-
-if ! contains_string "DFIND_MPS_PARSER_CPP" "${EXTRA_CMAKE_ARGS[@]}"; then
-    EXTRA_CMAKE_ARGS+=("-DFIND_MPS_PARSER_CPP=ON")
 fi
 
 # If clean given, run it prior to any other steps
@@ -342,19 +347,33 @@ else
 fi
 
 ################################################################################
-# Configure, build, and install libmps_parser
-if buildAll || hasArg libmps_parser; then
-    mkdir -p "${LIBMPS_PARSER_BUILD_DIR}"
-    cd "${LIBMPS_PARSER_BUILD_DIR}"
-    cmake -DDEFINE_ASSERT=${DEFINE_ASSERT} \
-          -DCMAKE_INSTALL_PREFIX="${INSTALL_PREFIX}" \
-          "${CACHE_ARGS[@]}" \
-          "${REPODIR}"/cpp/libmps_parser/
+# Regenerate gRPC codegen .inc files from the field registry (explicit target only)
+if hasArg codegen; then
+    echo "Regenerating codegen .inc files from field_registry.yaml..."
+    # Remove previously generated files so artifacts no longer emitted by the
+    # generator do not linger and cause verify_grpc_codegen.sh to fail.
+    if [ -d "${REPODIR}"/cpp/src/grpc/codegen/generated ]; then
+        find "${REPODIR}"/cpp/src/grpc/codegen/generated -mindepth 1 -maxdepth 1 -type f -delete
+    fi
+    python "${REPODIR}"/cpp/src/grpc/codegen/generate_conversions.py \
+        --registry "${REPODIR}"/cpp/src/grpc/codegen/field_registry.yaml \
+        --output-dir "${REPODIR}"/cpp/src/grpc/codegen/generated
+    echo "Done. Remember to commit the generated files."
+fi
 
-    if hasArg -n; then
-        cmake --build "${LIBMPS_PARSER_BUILD_DIR}" ${VERBOSE_FLAG}
-    else
-        cmake --build "${LIBMPS_PARSER_BUILD_DIR}" --target ${INSTALL_TARGET} ${VERBOSE_FLAG}
+################################################################################
+# When not installing and rebuilding the C++ library, remove any stale
+# libcuopt.so from the conda prefix. conda's $LDFLAGS injects
+# -rpath,$CONDA_PREFIX/lib into every binary, so a previously installed copy
+# would shadow the freshly compiled build-dir one.
+# Only done when actually building libcuopt (not Python-only builds) to avoid
+# removing a legitimately conda-installed libcuopt that Python packages depend on.
+if [ -z "${INSTALL_TARGET}" ] && [ -n "${INSTALL_PREFIX}" ]; then
+    if buildAll || hasArg libcuopt || hasArg cuopt_grpc_server; then
+        if compgen -G "${INSTALL_PREFIX}/lib/libcuopt*.so*" > /dev/null 2>&1; then
+            echo "Removing stale libcuopt from ${INSTALL_PREFIX}/lib to prevent shadowing the build-dir library..."
+            rm -f "${INSTALL_PREFIX}"/lib/libcuopt*.so*
+        fi
     fi
 fi
 
@@ -379,6 +398,7 @@ if buildAll || hasArg libcuopt || hasArg cuopt_grpc_server; then
           -DSKIP_C_PYTHON_ADAPTERS=${SKIP_C_PYTHON_ADAPTERS} \
           -DBUILD_TESTS=$((1 - ${SKIP_TESTS_BUILD})) \
           -DSKIP_ROUTING_BUILD=${SKIP_ROUTING_BUILD} \
+          -DSKIP_GRPC_BUILD=${SKIP_GRPC_BUILD} \
           -DWRITE_FATBIN=${WRITE_FATBIN} \
           -DHOST_LINEINFO=${HOST_LINEINFO} \
           -DPARALLEL_LEVEL="${PARALLEL_LEVEL}" \
@@ -389,12 +409,12 @@ if buildAll || hasArg libcuopt || hasArg cuopt_grpc_server; then
     JFLAG="${PARALLEL_LEVEL:+-j${PARALLEL_LEVEL}}"
     if hasArg cuopt_grpc_server && ! hasArg libcuopt && ! buildAll; then
         # Build only the gRPC server (ninja resolves libcuopt as a dependency)
-        cmake --build "${LIBCUOPT_BUILD_DIR}" --target cuopt_grpc_server ${VERBOSE_FLAG} ${JFLAG}
-    elif hasArg -n; then
-        # Manual make invocation to start its jobserver
-        make ${JFLAG} -C "${REPODIR}/cpp" LIBCUOPT_BUILD_DIR="${LIBCUOPT_BUILD_DIR}" VERBOSE_FLAG="${VERBOSE_FLAG}" PARALLEL_LEVEL="${PARALLEL_LEVEL}" ninja-build
+        cmake --build "${LIBCUOPT_BUILD_DIR}" --target cuopt_grpc_server ${VERBOSE_FLAG} "${JFLAG}"
+    elif hasArg --install; then
+        cmake --build "${LIBCUOPT_BUILD_DIR}" --target "${INSTALL_TARGET}" ${VERBOSE_FLAG} "${JFLAG}"
     else
-        cmake --build "${LIBCUOPT_BUILD_DIR}" --target ${INSTALL_TARGET} ${VERBOSE_FLAG} ${JFLAG}
+        # Manual make invocation to start its jobserver
+        make "${JFLAG}" -C "${REPODIR}/cpp" LIBCUOPT_BUILD_DIR="${LIBCUOPT_BUILD_DIR}" VERBOSE_FLAG="${VERBOSE_FLAG}" PARALLEL_LEVEL="${PARALLEL_LEVEL}" ninja-build
     fi
 fi
 
@@ -418,17 +438,15 @@ fi
 if buildAll || hasArg cuopt; then
     cd "${REPODIR}"/python/cuopt
 
-    # $EXTRA_CMAKE_ARGS gets concatenated into a string with [*] and then we find/replace spaces with semi-colons
-    SKBUILD_CMAKE_ARGS="-DCMAKE_PREFIX_PATH=${INSTALL_PREFIX};-DCMAKE_LIBRARY_PATH=${LIBCUOPT_BUILD_DIR};-DCMAKE_CUDA_ARCHITECTURES=${CUOPT_CMAKE_CUDA_ARCHITECTURES};${EXTRA_CMAKE_ARGS[*]// /;}" \
-        python "${PYTHON_ARGS_FOR_INSTALL[@]}" .
-fi
+    # Only 'cuopt' builds extension modules, so the stable ABI floor applies to it
+    # alone. If 'RAPIDS_PY_VERSION' is set, use it as that floor.
+    CUOPT_PYTHON_ARGS_FOR_INSTALL=("${PYTHON_ARGS_FOR_INSTALL[@]}")
+    if [ -n "${RAPIDS_PY_VERSION:-}" ]; then
+        CUOPT_PYTHON_ARGS_FOR_INSTALL+=(--config-settings "skbuild.wheel.py-api=cp${RAPIDS_PY_VERSION//./}")
+    fi
 
-# Build and install the cuopt MPS parser Python package
-if buildAll || hasArg cuopt_mps_parser; then
-    cd "${REPODIR}"/python/cuopt/cuopt/linear_programming
-
-    SKBUILD_CMAKE_ARGS="-DCMAKE_PREFIX_PATH=${INSTALL_PREFIX};-DCMAKE_LIBRARY_PATH=${LIBCUOPT_BUILD_DIR};-DCMAKE_CUDA_ARCHITECTURES=${CUOPT_CMAKE_CUDA_ARCHITECTURES};${EXTRA_CMAKE_ARGS[*]// /;}" \
-        python "${PYTHON_ARGS_FOR_INSTALL[@]}" .
+    SKBUILD_CMAKE_ARGS="-DCMAKE_PREFIX_PATH=${INSTALL_PREFIX};-DCMAKE_LIBRARY_PATH=${LIBCUOPT_BUILD_DIR};-DCMAKE_CUDA_ARCHITECTURES=${CUOPT_CMAKE_CUDA_ARCHITECTURES};$(IFS=';'; echo "${EXTRA_CMAKE_ARGS[*]}")" \
+        python "${CUOPT_PYTHON_ARGS_FOR_INSTALL[@]}" .
 fi
 
 # Build and install the cuopt_server Python package
@@ -443,8 +461,8 @@ if buildAll || hasArg cuopt_sh_client; then
     python "${PYTHON_ARGS_FOR_INSTALL[@]}" .
 fi
 
-# Build the docs
-if buildAll || hasArg docs; then
+# Build the docs (opt-in; pass 'docs' explicitly to build)
+if hasArg docs; then
     cd "${REPODIR}"/cpp/doxygen
     doxygen Doxyfile
 

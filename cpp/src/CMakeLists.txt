@@ -9,9 +9,11 @@ set(UTIL_SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/utilities/seed_generator.cu
                    ${CMAKE_CURRENT_SOURCE_DIR}/utilities/timestamp_utils.cpp
                    ${CMAKE_CURRENT_SOURCE_DIR}/utilities/work_unit_scheduler.cpp)
 
+add_subdirectory(linear_algebra)
 add_subdirectory(pdlp)
 add_subdirectory(math_optimization)
 add_subdirectory(mip_heuristics)
+add_subdirectory(io)
 
 # Only build routing for full builds, not LP-only builds
 if(NOT SKIP_ROUTING_BUILD)
@@ -24,3 +26,4 @@ add_subdirectory(branch_and_bound)
 add_subdirectory(cuts)
 
 set(CUOPT_SRC_FILES ${CUOPT_SRC_FILES} ${UTIL_SRC_FILES} PARENT_SCOPE)
+set(MPS_FAST_SRC_FILES ${MPS_FAST_SRC_FILES} PARENT_SCOPE)

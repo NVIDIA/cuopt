@@ -9,11 +9,11 @@
 #include "mip_utils.cuh"
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
+#include <mip_heuristics/mip_scaling_strategy.cuh>
 #include <mip_heuristics/presolve/bounds_presolve.cuh>
 #include <mip_heuristics/presolve/load_balanced_bounds_presolve.cuh>
 #include <mip_heuristics/problem/load_balanced_problem.cuh>
-#include <mps_parser/parser.hpp>
-#include <pdlp/initial_scaling_strategy/initial_scaling.cuh>
 #include <pdlp/utilities/problem_checking.cuh>
 #include <raft/core/handle.hpp>
 #include <raft/util/cudart_utils.hpp>
@@ -30,9 +30,9 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::linear_programming::test {
+namespace cuopt::mathematical_optimization::test {
 
-inline auto make_async() { return std::make_shared<rmm::mr::cuda_async_memory_resource>(); }
+inline auto make_async() { return rmm::mr::cuda_async_memory_resource(); }
 
 void init_handler(const raft::handle_t* handle_ptr)
 {
@@ -44,7 +44,7 @@ void init_handler(const raft::handle_t* handle_ptr)
 }
 
 std::tuple<std::vector<int>, std::vector<double>, std::vector<double>> select_k_random(
-  detail::problem_t<int, double>& problem, int sample_size)
+  mip::problem_t<int, double>& problem, int sample_size)
 {
   auto seed = std::random_device{}();
   std::cerr << "Tested with seed " << seed << "\n";
@@ -90,9 +90,9 @@ convert_probe_tuple(std::tuple<std::vector<int>, std::vector<double>, std::vecto
 }
 
 std::tuple<std::vector<double>, std::vector<double>, std::vector<double>, std::vector<double>>
-bounds_probe_results(detail::bound_presolve_t<int, double>& bnd_prb_0,
-                     detail::bound_presolve_t<int, double>& bnd_prb_1,
-                     detail::problem_t<int, double>& problem,
+bounds_probe_results(mip::bound_presolve_t<int, double>& bnd_prb_0,
+                     mip::bound_presolve_t<int, double>& bnd_prb_1,
+                     mip::problem_t<int, double>& problem,
                      const std::pair<std::vector<thrust::pair<int, double>>,
                                      std::vector<thrust::pair<int, double>>>& probe)
 {
@@ -119,30 +119,21 @@ bounds_probe_results(detail::bound_presolve_t<int, double>& bnd_prb_0,
 void test_multi_probe(std::string path)
 {
   auto memory_resource = make_async();
-  rmm::mr::set_current_device_resource(memory_resource.get());
+  rmm::mr::set_current_device_resource(memory_resource);
   const raft::handle_t handle_{};
-  cuopt::mps_parser::mps_data_model_t<int, double> mps_problem =
-    cuopt::mps_parser::parse_mps<int, double>(path, false);
+  cuopt::mathematical_optimization::io::mps_data_model_t<int, double> mps_problem =
+    cuopt::mathematical_optimization::io::read_mps<int, double>(path, false);
   handle_.sync_stream();
   auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps_problem);
   problem_checking_t<int, double>::check_problem_representation(op_problem);
-  detail::problem_t<int, double> problem(op_problem);
+  mip::problem_t<int, double> problem(op_problem);
   mip_solver_settings_t<int, double> default_settings{};
-  detail::pdhg_solver_t<int, double> pdhg_solver(problem.handle_ptr, problem);
-  detail::pdlp_initial_scaling_strategy_t<int, double> scaling(&handle_,
-                                                               problem,
-                                                               10,
-                                                               1.0,
-                                                               problem.reverse_coefficients,
-                                                               problem.reverse_offsets,
-                                                               problem.reverse_constraints,
-                                                               nullptr,
-                                                               true);
-  detail::mip_solver_t<int, double> solver(problem, default_settings, scaling, cuopt::timer_t(0));
-  detail::load_balanced_problem_t<int, double> lb_problem(problem);
-  detail::load_balanced_bounds_presolve_t<int, double> lb_prs(lb_problem, solver.context);
+  mip::mip_scaling_strategy_t<int, double> scaling(problem);
+  mip::mip_solver_t<int, double> solver(problem, default_settings, scaling, cuopt::timer_t(0));
+  mip::load_balanced_problem_t<int, double> lb_problem(problem);
+  mip::load_balanced_bounds_presolve_t<int, double> lb_prs(lb_problem, solver.context);
 
-  detail::bound_presolve_t<int, double> bnd_prb(solver.context);
+  mip::bound_presolve_t<int, double> bnd_prb(solver.context);
 
   auto probe_tuple       = select_k_random(problem, 100);
   auto bounds_probe_vals = convert_probe_tuple(probe_tuple);
@@ -177,4 +168,4 @@ TEST(presolve, multi_probe)
   }
 }
 
-}  // namespace cuopt::linear_programming::test
+}  // namespace cuopt::mathematical_optimization::test

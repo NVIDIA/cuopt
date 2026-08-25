@@ -11,28 +11,29 @@
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
-#include <dual_simplex/types.hpp>
+#include <math_optimization/types.hpp>
 
 namespace cuopt {
 struct work_limit_context_t;
 }
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 template <typename i_t, typename f_t>
 bool is_mip(const user_problem_t<i_t, f_t>& problem);
 
 enum class lp_status_t {
-  OPTIMAL          = 0,
-  INFEASIBLE       = 1,
-  UNBOUNDED        = 2,
-  ITERATION_LIMIT  = 3,
-  TIME_LIMIT       = 4,
-  NUMERICAL_ISSUES = 5,
-  CUTOFF           = 6,
-  CONCURRENT_LIMIT = 7,
-  WORK_LIMIT       = 8,
-  UNSET            = 9
+  OPTIMAL                 = 0,
+  INFEASIBLE              = 1,
+  UNBOUNDED               = 2,
+  UNBOUNDED_OR_INFEASIBLE = 3,
+  ITERATION_LIMIT         = 4,
+  TIME_LIMIT              = 5,
+  NUMERICAL_ISSUES        = 6,
+  CUTOFF                  = 7,
+  CONCURRENT_LIMIT        = 8,
+  WORK_LIMIT              = 9,
+  UNSET                   = 10
 };
 
 static std::string lp_status_to_string(lp_status_t status)
@@ -41,6 +42,7 @@ static std::string lp_status_to_string(lp_status_t status)
     case lp_status_t::OPTIMAL: return "OPTIMAL";
     case lp_status_t::INFEASIBLE: return "INFEASIBLE";
     case lp_status_t::UNBOUNDED: return "UNBOUNDED";
+    case lp_status_t::UNBOUNDED_OR_INFEASIBLE: return "UNBOUNDED_OR_INFEASIBLE";
     case lp_status_t::ITERATION_LIMIT: return "ITERATION_LIMIT";
     case lp_status_t::TIME_LIMIT: return "TIME_LIMIT";
     case lp_status_t::NUMERICAL_ISSUES: return "NUMERICAL_ISSUES";
@@ -60,6 +62,9 @@ f_t compute_user_objective(const lp_problem_t<i_t, f_t>& lp, const std::vector<f
 
 template <typename i_t, typename f_t>
 f_t compute_user_objective(const lp_problem_t<i_t, f_t>& lp, f_t obj);
+
+template <typename i_t, typename f_t>
+f_t compute_presolved_objective(const lp_problem_t<i_t, f_t>& lp, f_t user_obj);
 
 template <typename i_t, typename f_t>
 lp_status_t solve_linear_program_advanced(const lp_problem_t<i_t, f_t>& original_lp,
@@ -97,6 +102,13 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
                                               lp_solution_t<i_t, f_t>& solution);
 
 template <typename i_t, typename f_t>
+lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& user_problem,
+                                              const simplex_solver_settings_t<i_t, f_t>& settings,
+                                              f_t start_time,
+                                              lp_solution_t<i_t, f_t>& solution,
+                                              const raft::handle_t* handle_ptr);
+
+template <typename i_t, typename f_t>
 lp_status_t solve_linear_program(const user_problem_t<i_t, f_t>& user_problem,
                                  const simplex_solver_settings_t<i_t, f_t>& settings,
                                  lp_solution_t<i_t, f_t>& solution);
@@ -121,4 +133,4 @@ i_t solve(const user_problem_t<i_t, f_t>& user_problem,
           const simplex_solver_settings_t<i_t, f_t>& settings,
           std::vector<f_t>& primal_solution);
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

@@ -1,14 +1,34 @@
 ---
 name: cuopt-routing-api-python
-version: "26.04.00"
+version: "26.10.00"
 description: Vehicle routing (VRP, TSP, PDP) with cuOpt — Python API only. Use when the user is building or solving routing in Python.
+license: Apache-2.0
+metadata:
+  author: NVIDIA cuOpt Team
+  tags:
+    - cuopt
+    - routing
+    - vrp
+    - tsp
+    - python
 ---
+
+
+
 
 # cuOpt Routing — Python API
 
-Confirm problem type (TSP, VRP, PDP) and data (locations, orders, fleet, constraints) before coding.
-
 This skill is **Python only**. Routing has no C API in cuOpt.
+
+## Required questions
+
+Ask these if not already clear:
+
+1. **Problem type** — TSP, VRP, or PDP?
+2. **Locations** — How many? Depot(s)? Cost or distance between pairs (matrix or derived)?
+3. **Orders / tasks** — Which locations must be visited? Demand or service per stop?
+4. **Fleet** — Number of vehicles, capacity per vehicle (and per dimension if multiple), start/end locations?
+5. **Constraints** — Time windows (earliest/latest arrival), service times, precedence (order A before B)?
 
 ## Minimal VRP Example
 
@@ -83,6 +103,7 @@ ss.set_error_logging_mode(True)
 | Infeasible orders | Increase fleet or capacity |
 | Status != 0 with time windows | Add `add_transit_time_matrix()` |
 | Wrong cost | Check cost_matrix is symmetric |
+| `compute_waypoint_sequence` alters route_df | It replaces the `location` column with waypoint ids in place — pass `route_df.copy()` if you still need cost-matrix indices (e.g. when iterating per truck) |
 
 ## Debugging
 
@@ -92,8 +113,8 @@ ss.set_error_logging_mode(True)
 
 ## Examples
 
-- [examples.md](resources/examples.md) — VRP, PDP, multi-depot
-- [server_examples.md](resources/server_examples.md) — REST client (curl, Python)
+- [examples.md](references/examples.md) — VRP, PDP, multi-depot
+- [server_examples.md](references/server_examples.md) — REST client (curl, Python)
 - **Reference models:** This skill's `assets/` — [vrp_basic](assets/vrp_basic/), [pdp_basic](assets/pdp_basic/). See [assets/README.md](assets/README.md).
 
 ## Escalate

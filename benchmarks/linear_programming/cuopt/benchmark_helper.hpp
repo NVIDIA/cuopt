@@ -7,11 +7,11 @@
 
 #pragma once
 
-#include <cuopt/linear_programming/optimization_problem_interface.hpp>
-#include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
-#include <cuopt/linear_programming/pdlp/solver_solution.hpp>
-#include <cuopt/linear_programming/solve.hpp>
-#include <mps_parser/parser.hpp>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/cusparse_macros.hpp>
@@ -21,7 +21,6 @@
 
 #include <rmm/device_scalar.hpp>
 #include <rmm/mr/cuda_async_memory_resource.hpp>
-#include <rmm/mr/owning_wrapper.hpp>
 #include <rmm/mr/pool_memory_resource.hpp>
 
 #include <cstdlib>
@@ -34,7 +33,7 @@
 #include <stdexcept>
 #include <string>
 
-inline auto make_async() { return std::make_shared<rmm::mr::cuda_async_memory_resource>(); }
+inline auto make_async() { return rmm::mr::cuda_async_memory_resource(); }
 inline auto make_pool()
 {
   size_t free_mem, total_mem;
@@ -43,8 +42,7 @@ inline auto make_pool()
   double alloc_ratio    = 0.4;
   // allocate 40%
   size_t initial_pool_size = (size_t(free_mem * alloc_ratio) / rmm_alloc_gran) * rmm_alloc_gran;
-  return rmm::mr::make_owning_wrapper<rmm::mr::pool_memory_resource>(make_async(),
-                                                                     initial_pool_size);
+  return rmm::mr::pool_memory_resource(make_async(), initial_pool_size);
 }
 
 template <typename T>
@@ -59,9 +57,8 @@ void parse_value(std::istringstream& iss, bool& value)
   iss >> std::boolalpha >> value;
 }
 
-void fill_pdlp_hyper_params(
-  const std::string& pdlp_hyper_params_path,
-  cuopt::linear_programming::pdlp_hyper_params::pdlp_hyper_params_t& params)
+void fill_pdlp_hyper_params(const std::string& pdlp_hyper_params_path,
+                            cuopt::mathematical_optimization::pdlp::pdlp_hyper_params_t& params)
 {
   if (!std::filesystem::exists(pdlp_hyper_params_path)) {
     std::cerr << "PDLP config file path is not a valid: " << pdlp_hyper_params_path << std::endl;
@@ -207,8 +204,9 @@ std::vector<T> read_vector_from_file(const std::string& filename)
 }
 
 template <typename i_t, typename f_t>
-void write_problem_info(const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& op_problem,
-                        const std::string& filename)
+void write_problem_info(
+  const cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t>& op_problem,
+  const std::string& filename)
 {
   std::ofstream file(filename);
   if (!file) {
@@ -224,8 +222,9 @@ void write_problem_info(const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& op_
 }
 
 template <typename i_t, typename f_t>
-void read_problem_info(cuopt::linear_programming::optimization_problem_t<i_t, f_t>& op_problem,
-                       const std::string& filename)
+void read_problem_info(
+  cuopt::mathematical_optimization::optimization_problem_t<i_t, f_t>& op_problem,
+  const std::string& filename)
 {
   std::ifstream file(filename);
   if (!file) {
@@ -276,8 +275,8 @@ void mps_file_to_binary(const std::filesystem::path& filename)
 
   std::string p = std::string(filename);
 
-  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
-    cuopt::mps_parser::parse_mps<int, double>(p);
+  cuopt::mathematical_optimization::io::mps_data_model_t<int, double> op_problem =
+    cuopt::mathematical_optimization::io::read_mps<int, double>(p);
 
   auto filename_string = filename.filename().string();
 

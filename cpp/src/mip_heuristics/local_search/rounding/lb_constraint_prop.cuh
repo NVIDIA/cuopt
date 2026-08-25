@@ -15,7 +15,7 @@
 #include <utilities/timer.hpp>
 #include "lb_bounds_repair.cuh"
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 struct lb_constraint_prop_t {
@@ -112,4 +112,4 @@ struct lb_constraint_prop_t {
   double total_time_spent_on_bounds_prop           = 0.;
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

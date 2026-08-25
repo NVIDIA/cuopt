@@ -19,20 +19,19 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 // forward declare
 template <typename i_t, typename f_t>
 class diversity_manager_t;
 
-enum class solution_origin_t { BRANCH_AND_BOUND, CPUFJ, RINS, EXTERNAL };
+enum class solution_origin_t { BRANCH_AND_BOUND, CPUFJ, EXTERNAL };
 
 constexpr const char* solution_origin_to_string(solution_origin_t origin)
 {
   switch (origin) {
     case solution_origin_t::BRANCH_AND_BOUND: return "B&B";
     case solution_origin_t::CPUFJ: return "CPUFJ";
-    case solution_origin_t::RINS: return "RINS";
     case solution_origin_t::EXTERNAL: return "injected";
     default: return "unknown";
   }
@@ -207,9 +206,11 @@ class population_t {
   std::mutex solution_mutex;
   std::atomic<bool> early_exit_primal_generation = false;
   std::atomic<bool> solutions_in_external_queue_ = false;
-  f_t best_feasible_objective                    = std::numeric_limits<f_t>::max();
+  // Best known primal upper bound used to gate callbacks and external-solution handling. This may
+  // be seeded from an early-FJ incumbent objective before a matching population solution exists.
+  f_t best_feasible_objective = std::numeric_limits<f_t>::max();
   assignment_hash_map_t<i_t, f_t> population_hash_map;
   cuopt::timer_t timer;
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

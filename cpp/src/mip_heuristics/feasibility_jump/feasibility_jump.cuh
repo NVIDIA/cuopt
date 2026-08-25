@@ -9,7 +9,7 @@
 
 #include "utils.cuh"
 
-#include <cuopt/linear_programming/mip/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
 #include <mip_heuristics/diversity/weights.cuh>
 #include <mip_heuristics/logger.cuh>
 #include <mip_heuristics/problem/problem.cuh>
@@ -18,11 +18,18 @@
 #include <mip_heuristics/utils.cuh>
 
 #include <utilities/event_handler.cuh>
+#include <utilities/manual_cuda_graph.cuh>
+
+#include <functional>
 
 #define FJ_DEBUG_LOAD_BALANCING 0
 #define FJ_SINGLE_STEP          0
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
+
+template <typename f_t>
+using fj_improvement_callback_t =
+  std::function<void(f_t objective, const std::vector<f_t>& assignment)>;
 
 static constexpr int TPB_resetmoves                 = raft::WarpSize * 4;
 static constexpr int TPB_heavyvars                  = raft::WarpSize * 16;
@@ -67,6 +74,10 @@ struct fj_hyper_parameters_t {
 
   double small_move_tabu_threshold = 1e-6;
   int small_move_tabu_tenure       = 4;
+
+  int two_opt_max_rows     = 4;
+  int two_opt_max_row_vars = 256;
+  int two_opt_max_pairs    = 256;
 
   // load-balancing related settings
   int old_codepath_total_var_to_relvar_ratio_threshold = 200;
@@ -192,6 +203,9 @@ template <typename i_t, typename f_t>
 struct fj_cpu_climber_t;
 
 template <typename i_t, typename f_t>
+class probing_cache_t;
+
+template <typename i_t, typename f_t>
 class fj_t {
  public:
   using move_score_t      = fj_staged_score_t;
@@ -208,10 +222,9 @@ class fj_t {
     const std::vector<f_t>& right_weights,
     f_t objective_weight,
     std::atomic<bool>& preemption_flag,
+    const probing_cache_t<i_t, f_t>* probing_cache,
     fj_settings_t settings = fj_settings_t{},
     bool randomize_params  = false);
-  bool cpu_solve(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
-                 f_t time_limit = +std::numeric_limits<f_t>::infinity());
   i_t alloc_max_climbers(i_t desired_climbers);
   void resize_vectors(const raft::handle_t* handle_ptr);
   void device_init(const rmm::cuda_stream_view& stream);
@@ -263,8 +276,7 @@ class fj_t {
   rmm::device_uvector<fj_load_balancing_workid_mapping_t> work_id_to_nonbin_var_idx;
   rmm::device_uvector<i_t> work_ids_for_related_vars;
 
-  cudaGraphExec_t graph_instance;
-  bool graph_created = false;
+  cuopt::manual_cuda_graph_t step_graph_;
 
   // kernel launch dimensions, computed once inside the constructor
   std::pair<dim3, dim3> setval_launch_dims;
@@ -628,6 +640,13 @@ class fj_t {
   std::vector<std::unique_ptr<climber_data_t>> climbers;
   rmm::device_uvector<typename climber_data_t::view_t> climber_views;
   fj_settings_t settings;
+  // Device-side mirror of `settings`. `run_step_device` pushes the host
+  // `settings` here before each kernel launch; kernels read it via
+  // `view_t::settings`.
+  rmm::device_scalar<fj_settings_t> device_settings;
+
+  fj_improvement_callback_t<f_t> improvement_callback;
+  f_t last_reported_objective_{std::numeric_limits<f_t>::infinity()};
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

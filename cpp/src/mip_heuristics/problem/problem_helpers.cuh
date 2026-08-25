@@ -19,10 +19,12 @@
 #include <thrust/count.h>
 #include <thrust/functional.h>
 #include <thrust/gather.h>
+#include <thrust/iterator/zip_iterator.h>
 #include <thrust/logical.h>
 #include <thrust/sort.h>
+#include <thrust/tuple.h>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 template <typename f_t>
 struct transform_bounds_functor {
   __device__ thrust::tuple<f_t, f_t> operator()(const thrust::tuple<char, f_t>& input) const
@@ -51,7 +53,7 @@ struct transform_bounds_functor {
 };
 
 template <typename i_t, typename f_t>
-static void set_variable_bounds(detail::problem_t<i_t, f_t>& op_problem)
+static void set_variable_bounds(mip::problem_t<i_t, f_t>& op_problem)
 {
   op_problem.variable_bounds.resize(op_problem.n_variables, op_problem.handle_ptr->get_stream());
   auto vars_bnd = make_span(op_problem.variable_bounds);
@@ -81,7 +83,7 @@ static void set_variable_bounds(detail::problem_t<i_t, f_t>& op_problem)
 }
 
 template <typename i_t, typename f_t>
-static void set_bounds_if_not_set(detail::problem_t<i_t, f_t>& op_problem)
+static void set_bounds_if_not_set(mip::problem_t<i_t, f_t>& op_problem)
 {
   raft::common::nvtx::range scope("set_bounds_if_not_set");
 
@@ -114,8 +116,9 @@ static void set_bounds_if_not_set(detail::problem_t<i_t, f_t>& op_problem)
 
   set_variable_bounds(op_problem);
   if (op_problem.variable_types.is_empty() && !op_problem.objective_coefficients.is_empty()) {
-    op_problem.variable_types.resize(op_problem.objective_coefficients.size(),
-                                     op_problem.handle_ptr->get_stream());
+    // variable_types is a per-variable quantity so use n_variables (not
+    // objective_coefficients.size(), which may be batch-expanded in batch mode).
+    op_problem.variable_types.resize(op_problem.n_variables, op_problem.handle_ptr->get_stream());
     thrust::fill(op_problem.handle_ptr->get_thrust_policy(),
                  op_problem.variable_types.begin(),
                  op_problem.variable_types.end(),
@@ -129,7 +132,7 @@ struct negate {
 };
 
 template <typename i_t, typename f_t>
-static void convert_to_maximization_problem(detail::problem_t<i_t, f_t>& op_problem)
+static void convert_to_maximization_problem(mip::problem_t<i_t, f_t>& op_problem)
 {
   raft::common::nvtx::range scope("convert_to_maximization_problem");
 
@@ -138,7 +141,7 @@ static void convert_to_maximization_problem(detail::problem_t<i_t, f_t>& op_prob
     raft::linalg::unaryOp(op_problem.objective_coefficients.data(),
                           op_problem.objective_coefficients.data(),
                           op_problem.objective_coefficients.size(),
-                          detail::negate<f_t>(),
+                          mip::negate<f_t>(),
                           op_problem.handle_ptr->get_stream());
   }
   // Negate objective scaling factor and objective offset so that primal / dual stay same sign after
@@ -261,7 +264,7 @@ static void check_csr_representation([[maybe_unused]] const rmm::device_uvector<
 }
 
 template <typename i_t, typename f_t>
-static bool check_var_bounds_sanity(const detail::problem_t<i_t, f_t>& problem)
+static bool check_var_bounds_sanity(const mip::problem_t<i_t, f_t>& problem)
 {
   bool crossing_bounds_detected =
     thrust::any_of(problem.handle_ptr->get_thrust_policy(),
@@ -276,7 +279,7 @@ static bool check_var_bounds_sanity(const detail::problem_t<i_t, f_t>& problem)
 }
 
 template <typename i_t, typename f_t>
-static bool check_constraint_bounds_sanity(const detail::problem_t<i_t, f_t>& problem)
+static bool check_constraint_bounds_sanity(const mip::problem_t<i_t, f_t>& problem)
 {
   bool crossing_bounds_detected =
     thrust::any_of(problem.handle_ptr->get_thrust_policy(),
@@ -291,7 +294,7 @@ static bool check_constraint_bounds_sanity(const detail::problem_t<i_t, f_t>& pr
 }
 
 template <typename i_t, typename f_t>
-static void round_bounds(detail::problem_t<i_t, f_t>& problem)
+static void round_bounds(mip::problem_t<i_t, f_t>& problem)
 {
   // round bounds to integer for integer variables
   thrust::for_each(problem.handle_ptr->get_thrust_policy(),
@@ -308,7 +311,7 @@ static void round_bounds(detail::problem_t<i_t, f_t>& problem)
 }
 
 template <typename i_t, typename f_t>
-static bool check_bounds_sanity(const detail::problem_t<i_t, f_t>& problem)
+static bool check_bounds_sanity(const mip::problem_t<i_t, f_t>& problem)
 {
   return check_var_bounds_sanity<i_t, f_t>(problem) &&
          check_constraint_bounds_sanity<i_t, f_t>(problem);
@@ -399,7 +402,7 @@ static void csrsort_cusparse(rmm::device_uvector<f_t>& values,
 }
 
 template <typename i_t, typename f_t>
-static void convert_greater_to_less(detail::problem_t<i_t, f_t>& problem)
+static void convert_greater_to_less(mip::problem_t<i_t, f_t>& problem)
 {
   raft::common::nvtx::range scope("convert_greater_to_less");
 
@@ -421,4 +424,4 @@ static void convert_greater_to_less(detail::problem_t<i_t, f_t>& problem)
   handle_ptr->sync_stream();
 }
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

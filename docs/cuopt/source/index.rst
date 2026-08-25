@@ -19,7 +19,7 @@ NVIDIA cuOpt
    :name: Features
 
    routing-features.rst
-   lp-qp-features.rst
+   convex-features.rst
    milp-features.rst
 
 ==========================
@@ -41,6 +41,16 @@ Python (cuopt)
    :name: Python API
 
    Python Overview <cuopt-python/index.rst>
+
+====================================
+gRPC Remote Execution
+====================================
+.. toctree::
+   :maxdepth: 4
+   :caption: gRPC Remote Execution
+   :name: gRPC Remote Execution
+
+   gRPC Overview <cuopt-grpc/index.rst>
 
 ===============================
 Server (cuopt-server)

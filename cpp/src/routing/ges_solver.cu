@@ -16,8 +16,6 @@
 #include "adapters/assignment_adapter.cuh"
 #include "ges/guided_ejection_search.cuh"
 
-#include <rmm/mr/device_memory_resource.hpp>
-
 namespace cuopt {
 namespace routing {
 

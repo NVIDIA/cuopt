@@ -2,9 +2,14 @@
 Python API
 ========================================
 
-NVIDIA cuOpt supports Python API for routing optimization and LP/QP/MILP optimization
+NVIDIA cuOpt supports Python API for routing optimization, convex optimization, and mixed-integer programming.
 
 This section contains details on the cuOpt Python package.
+
+For remote solves with **no code changes**, set ``CUOPT_REMOTE_HOST`` /
+``CUOPT_REMOTE_PORT`` (see :doc:`../cuopt-grpc/quick-start`). For an
+**explicit** Python job API against ``cuopt_grpc_server``, see the
+:doc:`Python async gRPC client <../cuopt-grpc/python-async-client>`.
 
 .. toctree::
    :maxdepth: 3
@@ -26,8 +31,16 @@ This section contains details on the cuOpt Python package.
 
 .. toctree::
    :maxdepth: 3
-   :caption: Linear Programming, Quadratic Programming and Mixed Integer Linear Programming
-   :name: LP, QP and MILP API
+   :caption: Convex Optimization (LP/QP/QCQP/SOCP)
+   :name: Convex Optimization Python API
    :titlesonly:
 
-   LP, QP and MILP <lp-qp-milp/index.rst>
+   Convex Optimization <convex/index.rst>
+
+.. toctree::
+   :maxdepth: 3
+   :caption: Mixed Integer Programming (MIP)
+   :name: MIP Python API Index
+   :titlesonly:
+
+   MIP <mip/index.rst>

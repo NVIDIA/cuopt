@@ -370,13 +370,8 @@ struct adapted_sol_t {
     // we favor removal of routes with less number of nodes to maintain structure
     if (num_routes_to_remove <= remove_route_ids.size()) {
       // if remove_route_ids is sufficiently large then proceed to remove (a subset) of them
-      std::vector<i_t> route_priority;
-      route_priority.reserve(remove_route_ids.size());
-      for (auto& id : remove_route_ids) {
-        route_priority.push_back(routes[id].length);
-      }
       std::sort(remove_route_ids.begin(), remove_route_ids.end(), [&](auto i, auto j) {
-        return route_priority[i] < route_priority[j];
+        return routes[i].length < routes[j].length;
       });
       remove_route_ids.resize(num_routes_to_remove);
     } else {

@@ -8,15 +8,17 @@
 #include "bounds_repair.cuh"
 
 #include <thrust/copy.h>
+#include <thrust/iterator/zip_iterator.h>
 #include <thrust/partition.h>
 #include <thrust/sort.h>
+#include <thrust/tuple.h>
 #include <cuda/std/functional>
 #include <mip_heuristics/logger.cuh>
 #include <mip_heuristics/mip_constants.hpp>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/seed_generator.cuh>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 bounds_repair_t<i_t, f_t>::bounds_repair_t(const problem_t<i_t, f_t>& pb,
@@ -467,4 +469,4 @@ template class bounds_repair_t<int, float>;
 template class bounds_repair_t<int, double>;
 #endif
 
-};  // namespace cuopt::linear_programming::detail
+};  // namespace cuopt::mathematical_optimization::mip

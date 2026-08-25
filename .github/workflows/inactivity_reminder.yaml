@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 name: Inactivity Reminder with Different Times
@@ -7,12 +7,17 @@ on:
   schedule:
     - cron: '0 9 * * *'  # Runs daily at 09:00 UTC
 
+permissions: {}
+
 jobs:
   remind:
+    permissions:
+      issues: write
+      pull-requests: write
     runs-on: ubuntu-latest
     steps:
       - name: Remind inactive issues and PRs
-        uses: actions/github-script@v6
+        uses: actions/github-script@d7906e4ad0b1822421a7e6a35d5ca353c962f410 # v6.4.1
         with:
           script: |
             const MS_IN_DAY = 24 * 60 * 60 * 1000;

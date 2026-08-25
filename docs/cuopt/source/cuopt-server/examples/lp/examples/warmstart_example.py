@@ -8,7 +8,7 @@ Warmstart allows reusing solution context from a previous solve to speed up
 solving of similar problems.
 
 Note:
-    Warmstart is only applicable to LP, not for MILP.
+    Warmstart is only applicable to LP, not for MIP.
 
 Important:
     To use warm start with PDLP, presolve must be explicitly disabled.

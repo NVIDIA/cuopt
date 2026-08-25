@@ -5,6 +5,7 @@
  */
 /* clang-format on */
 
+#include <cuopt/export.hpp>
 #include <cuopt/routing/cython/cython.hpp>
 #include <cuopt/routing/solve.hpp>
 #include <raft/core/handle.hpp>
@@ -120,7 +121,7 @@ std::vector<std::unique_ptr<vehicle_routing_ret_t>> call_batch_solve(
     data_models[i]->get_handle_ptr()->sync_stream();
 
     // Set new non blocking stream for current data model
-    raft::resource::set_cuda_stream(*(data_models[i]->get_handle_ptr()), stream_pool.get_stream(i));
+    raft::resource::set_cuda_stream(*data_models[i]->get_handle_ptr(), stream_pool.get_stream(i));
     auto routing_solution = cuopt::routing::solve(*data_models[i], *settings);
 
     // Make sure current solve is finished
@@ -162,7 +163,7 @@ std::vector<std::unique_ptr<vehicle_routing_ret_t>> call_batch_solve(
  * @param solver Composable solver object
  */
 std::unique_ptr<dataset_ret_t> call_generate_dataset(
-  raft::handle_t const& handle, routing::generator::dataset_params_t<int, float> const& params)
+  raft::handle_t& handle, routing::generator::dataset_params_t<int, float> const& params)
 {
   auto data           = routing::generator::generate_dataset<int, float>(handle, params);
   auto [x_pos, y_pos] = data.get_coordinates();
@@ -187,7 +188,7 @@ std::unique_ptr<dataset_ret_t> call_generate_dataset(
   return std::make_unique<dataset_ret_t>(std::move(gen_ret));
 }
 
-template void populate_dataset_params<int, float>(
+template CUOPT_EXPORT void populate_dataset_params<int, float>(
   routing::generator::dataset_params_t<int, float>& params,
   int n_locations,
   bool asymmetric,

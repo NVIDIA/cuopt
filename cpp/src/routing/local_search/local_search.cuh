@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -199,6 +199,7 @@ class local_search_t {
   rmm::device_uvector<two_opt_cand_t<i_t>> two_opt_cand_data_;
   rmm::device_uvector<two_opt_cand_t<i_t>> sampled_nodes_data_;
   rmm::device_uvector<i_t> moved_regions_;
+  rmm::device_uvector<NodeInfo<i_t>> moved_region_node_infos_;
   rmm::device_uvector<sliding_tsp_cand_t<i_t>> sampled_tsp_data_;
   rmm::device_uvector<int> locks_;
   // random number generator

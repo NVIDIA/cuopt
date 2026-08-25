@@ -25,7 +25,7 @@ LP Supporting Classes
     :undoc-members:
     :no-inherited-members:
 
-.. autoclass:: data_model.DataModel
+.. autoclass:: cuopt.linear_programming.data_model.DataModel
     :members:
     :undoc-members:
 

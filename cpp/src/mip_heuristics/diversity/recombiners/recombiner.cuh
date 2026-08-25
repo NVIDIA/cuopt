@@ -24,7 +24,7 @@
 
 #include <unordered_set>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 // checks whether the values of a variable are equal when we consider them in a diversity
 // measurement context
@@ -195,10 +195,14 @@ class recombiner_t {
                  "vars_to_fix should be sorted!");
   }
 
-  static void init_enabled_recombiners(const problem_t<i_t, f_t>& problem)
+  static void init_enabled_recombiners(const problem_t<i_t, f_t>& problem,
+                                       int user_enabled_mask = -1)
   {
     std::unordered_set<recombiner_enum_t> enabled_recombiners;
     for (auto recombiner : recombiner_types) {
+      if (user_enabled_mask >= 0 && !(user_enabled_mask & (1 << (uint32_t)recombiner))) {
+        continue;
+      }
       enabled_recombiners.insert(recombiner);
     }
     if (problem.expensive_to_fix_vars) {
@@ -220,4 +224,4 @@ class recombiner_t {
   static std::vector<recombiner_enum_t> enabled_recombiners;
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

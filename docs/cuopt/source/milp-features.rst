@@ -1,27 +1,33 @@
 ====================
-MILP Features
+MIP Features
 ====================
 
 Availability
 ------------
 
-The MILP solver can be accessed in the following ways:
+The cuOpt MIP solver is in **beta** and under active development. The solver
+currently excels at finding high-quality feasible solutions quickly with
+GPU-accelerated primal heuristics. Proving feasible solutions optimal remains
+under active development.
 
-- **Third-Party Modeling Languages**: cuOpt's LP and MILP solver can be called directly from the following third-party modeling languages. This allows you to leverage GPU acceleration while maintaining your existing optimization workflow in these modeling languages.
+The MIP solver can be accessed in the following ways:
+
+- **Third-Party Modeling Languages**: cuOpt's LP and MIP solver can be called directly from the following third-party modeling languages. This allows you to leverage GPU acceleration while maintaining your existing optimization workflow in these modeling languages.
 
   Currently supported solvers:
    - AMPL
    - GAMS
    - PuLP
    - JuMP
+   - Pyomo
 
-- **C API**: A native C API that provides direct low-level access to cuOpt's MILP solver, enabling integration into any application or system that can interface with C.
+- **C API**: A native C API that provides direct low-level access to cuOpt's MIP solver, enabling integration into any application or system that can interface with C.
 
-- **Python SDK**: A Python package that provides direct access to cuOpt's MILP capabilities through a simple, intuitive API. This allows for seamless integration into Python applications and workflows. For more information, see :doc:`cuopt-python/quick-start`.
+- **Python SDK**: A Python package that provides direct access to cuOpt's MIP capabilities through a simple, intuitive API. This allows for seamless integration into Python applications and workflows. For more information, see :doc:`cuopt-python/quick-start`.
 
-- **As a Self-Hosted Service**: cuOpt's MILP solver can be deployed in your own infrastructure, enabling you to maintain full control while integrating it into your existing systems.
+- **As a Self-Hosted Service**: cuOpt's MIP solver can be deployed in your own infrastructure, enabling you to maintain full control while integrating it into your existing systems.
 
-Each option provide the same powerful mixed-integer linear optimization capabilities while offering flexibility in deployment and integration.
+Each option provides the same mixed-integer optimization capabilities while offering flexibility in deployment and integration.
 
 Variable Bounds
 ---------------
@@ -33,7 +39,7 @@ Constraints
 
 The constraint matrix is specified in `Compressed Sparse Row (CSR) format  <https://docs.nvidia.com/cuda/cusparse/#compressed-sparse-row-csr>`_.
 
-There are two ways to specify constraints in cuOpt MILP:
+There are two ways to specify constraints in cuOpt MIP:
 
 1. Using row_type and right-hand side:
 
@@ -61,7 +67,7 @@ When using the service, users can provide a callback to receive new integer feas
 Logging
 -------
 
-The CUOPT_LOG_FILE parameter can be set to write detailed solver logs for MILP problems. This parameter is available in all APIs that allow setting solver parameters except for the cuOpt service. For the service, see the logging callback below.
+The CUOPT_LOG_FILE parameter can be set to write detailed solver logs for MIP problems. This parameter is available in all APIs that allow setting solver parameters except for the cuOpt service. For the service, see the logging callback below.
 
 Logging Callback in the Service
 -------------------------------
@@ -78,4 +84,9 @@ The user may specify a time limit to the solver. By default the solver runs unti
 
 .. note::
 
-  Note that time_limit applies only to solve time inside the LP solver. This does not include time for network transfer, validation of input, and other operations that occur outside the solver. The overhead associated with these operations are usually small compared to the solve time.
+  Note that ``time_limit`` applies only to solve time inside the LP solver. This does not include time for network transfer, validation of input, and other operations that occur outside the solver. The overhead associated with these operations are usually small compared to the solve time.
+
+Node Limit
+--------------
+
+The user may specify a maximum number of branch-and-bound nodes via ``node_limit``. The solver stops once this limit is reached and returns the current best feasible solution, if any. If both ``time_limit`` and ``node_limit`` are set, the solver stops at whichever limit is hit first. By default there is no node limit.

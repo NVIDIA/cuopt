@@ -9,6 +9,7 @@
 #include <thrust/count.h>
 #include <thrust/extrema.h>
 #include <thrust/iterator/transform_input_output_iterator.h>
+#include <thrust/iterator/transform_iterator.h>
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/partition.h>
 #include <thrust/reduce.h>
@@ -25,7 +26,7 @@
 
 #include <limits>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 // Tobias Achterberg, Robert E. Bixby, Zonghao Gu, Edward Rothberg, Dieter Weninger (2019) Presolve
 // Reductions in Mixed Integer Programming. INFORMS Journal on Computing 32(2):473-506.
@@ -696,4 +697,4 @@ template class load_balanced_bounds_presolve_t<int, float>;
 template class load_balanced_bounds_presolve_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

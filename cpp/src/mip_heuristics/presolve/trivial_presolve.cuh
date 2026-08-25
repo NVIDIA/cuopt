@@ -14,9 +14,11 @@
 #include <utilities/copy_helpers.hpp>
 
 #include <thrust/count.h>
+#include <thrust/extrema.h>
 #include <thrust/for_each.h>
 #include <thrust/iterator/constant_iterator.h>
 #include <thrust/iterator/counting_iterator.h>
+#include <thrust/iterator/transform_iterator.h>
 #include <thrust/iterator/transform_output_iterator.h>
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/partition.h>
@@ -31,7 +33,7 @@
 
 #include <unordered_set>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 void test_renumbered_coo(raft::device_span<i_t> coo_major, const problem_t<i_t, f_t>& pb)
@@ -270,8 +272,10 @@ void update_from_csr(problem_t<i_t, f_t>& pb, bool remap_cache_ids)
 
   cuopt_func_call(test_renumbered_coo(make_span(cnst, 0, nnz_edge_count), pb));
 
-  auto updated_n_cnst = 1 + cnst_renum_ids.back_element(handle_ptr->get_stream());
-  auto updated_n_vars = 1 + var_renum_ids.back_element(handle_ptr->get_stream());
+  const i_t updated_n_cnst =
+    cnst_renum_ids.is_empty() ? 0 : 1 + cnst_renum_ids.back_element(handle_ptr->get_stream());
+  const i_t updated_n_vars =
+    var_renum_ids.is_empty() ? 0 : 1 + var_renum_ids.back_element(handle_ptr->get_stream());
 
   pb.n_constraints = updated_n_cnst;
   pb.n_variables   = updated_n_vars;
@@ -363,10 +367,10 @@ void trivial_presolve(problem_t<i_t, f_t>& problem, bool remap_cache_ids = false
   problem.recompute_auxilliary_data(
     false);  // check problem representation later once cstr bounds are computed
   cuopt_func_call(test_reverse_matches(problem));
-  combine_constraint_bounds<i_t, f_t>(problem, problem.combined_bounds);
+  pdlp::combine_constraint_bounds<i_t, f_t>(problem, problem.combined_bounds);
   // The problem has been solved by presolve. Mark its empty status as valid
   if (problem.n_variables == 0) { problem.empty = true; }
   problem.check_problem_representation(true);
 }
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

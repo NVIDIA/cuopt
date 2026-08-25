@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 set -euo pipefail
@@ -10,7 +10,7 @@ set -euo pipefail
 rapids-logger "Configuring conda strict channel priority"
 conda config --set channel_priority strict
 
-CPP_CHANNEL=$(rapids-download-conda-from-github cpp)
+CPP_CHANNEL=$(rapids-download-from-github "$(rapids-artifact-name conda_cpp libcuopt cuopt --cuda "$RAPIDS_CUDA_VERSION")")
 
 rapids-logger "Generate C++ testing dependencies"
 rapids-dependency-file-generator \
@@ -31,12 +31,16 @@ mkdir -p "${RAPIDS_TESTS_DIR}"
 
 rapids-print-env
 
+rapids-logger "Verify gRPC codegen output matches committed files"
+./ci/verify_grpc_codegen.sh
+
 rapids-logger "Check GPU usage"
 nvidia-smi
 
 rapids-logger "Download datasets"
 ./datasets/linear_programming/download_pdlp_test_dataset.sh
 ./datasets/mip/download_miplib_test_dataset.sh
+./datasets/quadratic_programming/download_qplib_test_dataset.sh
 
 RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
 export RAPIDS_DATASET_ROOT_DIR
@@ -45,14 +49,28 @@ pushd "${RAPIDS_DATASET_ROOT_DIR}"
 popd
 
 EXITCODE=0
+FAILED_STEPS=()
 trap "EXITCODE=1" ERR
 set +e
 
 # Run gtests from libcuopt-tests package
-export GTEST_OUTPUT=xml:${RAPIDS_TESTS_DIR}/
+# XML output and retry logic handled by run_ctests.sh
+export RAPIDS_TESTS_DIR
 
 rapids-logger "Run gtests"
-timeout 40m ./ci/run_ctests.sh
+timeout 60m ./ci/run_ctests.sh || FAILED_STEPS+=("gtests (run_ctests.sh)")
+
+rapids-logger "Generate nightly test report"
+source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/utils/nightly_report_helper.sh"
+generate_nightly_report "cpp"
+
+if [ "${#FAILED_STEPS[@]}" -gt 0 ]; then
+    EXITCODE=1
+    echo ""
+    echo "==================== FAILED TEST STEPS (${#FAILED_STEPS[@]}) ===================="
+    for s in "${FAILED_STEPS[@]}"; do echo "  - ${s}"; done
+    echo "================================================================"
+fi
 
 rapids-logger "Test script exiting with value: $EXITCODE"
 exit ${EXITCODE}

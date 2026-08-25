@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -13,11 +13,12 @@
 
 #include <gtest/gtest.h>
 
+#include <cuda/memory_resource>
+
 #include <rmm/mr/binning_memory_resource.hpp>
 #include <rmm/mr/cuda_async_memory_resource.hpp>
 #include <rmm/mr/cuda_memory_resource.hpp>
 #include <rmm/mr/managed_memory_resource.hpp>
-#include <rmm/mr/owning_wrapper.hpp>
 #include <rmm/mr/per_device_resource.hpp>
 #include <rmm/mr/pool_memory_resource.hpp>
 
@@ -25,18 +26,17 @@ namespace cuopt {
 namespace test {
 
 /// MR factory functions
-inline auto make_cuda() { return std::make_shared<rmm::mr::cuda_memory_resource>(); }
+inline auto make_cuda() { return rmm::mr::cuda_memory_resource(); }
 
-inline auto make_async() { return std::make_shared<rmm::mr::cuda_async_memory_resource>(); }
+inline auto make_async() { return rmm::mr::cuda_async_memory_resource(); }
 
-inline auto make_managed() { return std::make_shared<rmm::mr::managed_memory_resource>(); }
+inline auto make_managed() { return rmm::mr::managed_memory_resource(); }
 
 inline auto make_pool()
 {
   // 1GB of initial pool size
   const size_t initial_pool_size = 1024 * 1024 * 1024;
-  return rmm::mr::make_owning_wrapper<rmm::mr::pool_memory_resource>(make_async(),
-                                                                     initial_pool_size);
+  return rmm::mr::pool_memory_resource(make_async(), initial_pool_size);
 }
 
 inline auto make_binning()
@@ -44,8 +44,7 @@ inline auto make_binning()
   auto pool = make_pool();
   // Add a fixed_size_memory_resource for bins of size 256, 512, 1024, 2048 and
   // 4096KiB Larger allocations will use the pool resource
-  auto mr = rmm::mr::make_owning_wrapper<rmm::mr::binning_memory_resource>(pool, 18, 22);
-  return mr;
+  return rmm::mr::binning_memory_resource(pool, 18, 22);
 }
 
 /**
@@ -62,7 +61,7 @@ inline auto make_binning()
  *        Accepted types are "pool", "cuda", and "managed" only.
  * @return Memory resource instance
  */
-inline std::shared_ptr<rmm::mr::device_memory_resource> create_memory_resource(
+inline cuda::mr::any_resource<cuda::mr::device_accessible> create_memory_resource(
   std::string const& allocation_mode)
 {
   if (allocation_mode == "binning") return make_binning();
@@ -120,6 +119,6 @@ inline auto parse_test_options(int argc, char** argv)
     auto const cmd_opts = parse_test_options(argc, argv);                \
     auto const rmm_mode = cmd_opts["rmm_mode"].as<std::string>();        \
     auto resource       = cuopt::test::create_memory_resource(rmm_mode); \
-    rmm::mr::set_current_device_resource(resource.get());                \
+    rmm::mr::set_current_device_resource(resource);                      \
     return RUN_ALL_TESTS();                                              \
   }

@@ -277,12 +277,12 @@ Users can also upload a solution which might have been saved for later runs.
 Aborting a Running Job In CLI
 -----------------------------
 
-Please refer to the :ref:`aborting-cli` for more in MILP Example.
+Please refer to the :ref:`aborting-cli` in the MIP examples for more details.
 
 .. note::
    Please use solver settings while using .mps files.
 
-To enable HTTPS
+To Enable HTTPS
 ----------------
 
 * In the case of the server using public certificates, simply enable https.

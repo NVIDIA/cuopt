@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -10,6 +10,7 @@
 #include "load_balanced_bounds_presolve_kernels.cuh"
 #include "load_balanced_partition_helpers.cuh"
 
+#include <thrust/extrema.h>
 #include <thrust/iterator/constant_iterator.h>
 #include <thrust/iterator/counting_iterator.h>
 #include <thrust/iterator/transform_iterator.h>
@@ -20,7 +21,7 @@
 
 #include <cuda_runtime_api.h>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 #define CUDA_VER_13_0_UP (CUDART_VERSION >= 13000)
 
@@ -1157,4 +1158,4 @@ void create_update_bounds_heavy_vars(cudaGraph_t upd_graph,
   }
 }
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

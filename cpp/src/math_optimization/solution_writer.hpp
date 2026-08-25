@@ -10,7 +10,7 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 /**
  * @brief Writes a solution to a .sol file
@@ -30,4 +30,4 @@ class solution_writer_t {
                                          const std::vector<std::string>& variable_names,
                                          const std::vector<f_t>& variable_values);
 };
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

@@ -49,15 +49,16 @@ def _run_incumbent_callback(cuoptproc, include_set_callback):  # noqa
     cnt = 0
     while cnt < 60:
         res = client.get(f"/cuopt/solution/{reqId}/incumbents")
-        if res.json() != []:
-            i = res.json()[0]
+        payload = res.json()
+        if payload != []:
+            i = payload[0]
             assert "solution" in i
             assert isinstance(i["solution"], list)
             assert len(i["solution"]) > 0
             assert "cost" in i
             assert isinstance(i["cost"], float)
             assert "bound" in i
-            assert isinstance(i["bound"], float)
+            assert i["bound"] is None or isinstance(i["bound"], float)
             break
         time.sleep(1)
         cnt += 1

@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -118,6 +118,38 @@ auto test_vanilla_model()
 
 TEST(order_locations, vanilla_pdp) { test_vanilla_model<request_t::PDP>(); }
 TEST(order_locations, vanilla_vrp) { test_vanilla_model<request_t::VRP>(); }
+
+TEST(order_locations, tsp_vehicle_locations)
+{
+  int nlocations                   = 5;
+  int norders                      = 3;
+  std::vector<float> cost_matrix   = {0, 1, 4, 4, 9, 1, 0, 1, 4, 8, 4, 1, 0,
+                                      1, 4, 4, 4, 1, 0, 1, 9, 8, 4, 1, 0};
+  std::vector<int> order_locations = {1, 2, 3};
+  std::vector<int> start_locations = {0};
+  std::vector<int> end_locations   = {4};
+
+  raft::handle_t handle;
+  auto stream = handle.get_stream();
+
+  auto v_cost_matrix     = cuopt::device_copy(cost_matrix, stream);
+  auto v_order_locations = cuopt::device_copy(order_locations, stream);
+  auto v_start_locations = cuopt::device_copy(start_locations, stream);
+  auto v_end_locations   = cuopt::device_copy(end_locations, stream);
+
+  cuopt::routing::data_model_view_t<int, float> data_model(&handle, nlocations, 1, norders);
+  data_model.add_cost_matrix(v_cost_matrix.data());
+  data_model.set_order_locations(v_order_locations.data());
+  data_model.set_vehicle_locations(v_start_locations.data(), v_end_locations.data());
+
+  auto routing_solution = cuopt::routing::solve(data_model);
+
+  handle.sync_stream();
+  ASSERT_EQ(routing_solution.get_status(), cuopt::routing::solution_status_t::SUCCESS);
+
+  auto host_route = cuopt::routing::host_assignment_t(routing_solution);
+  check_route(data_model, host_route);
+}
 
 }  // namespace test
 }  // namespace routing

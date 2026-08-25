@@ -7,6 +7,7 @@ package cuopt.remote;
 
 // Import the existing message definitions
 import "cuopt_remote.proto";
+import "cuopt_routing.proto";
 
 // =============================================================================
 // gRPC Service Definition
@@ -17,8 +18,11 @@ service CuOptRemoteService {
   // Async Job Management
   // -------------------------
 
-  // Submit a new LP or MIP solve job (returns immediately with job_id).
-  // For problems that fit within gRPC max message size (~256 MiB default).
+  // Submit a new LP, MIP, or VRP solve job (returns immediately with job_id).
+  // Used for problems whose serialized SubmitJobRequest fits within the
+  // gRPC max message size (256 MiB default, configurable per-side).
+  // Larger problems use the chunked upload path below; see ArrayChunk.
+  // VRP is unary-only in this POC (no chunked VRP upload yet).
   rpc SubmitJob(SubmitJobRequest) returns (SubmitJobResponse);
 
   // -------------------------
@@ -96,6 +100,7 @@ message SubmitJobRequest {
   oneof job_data {
     SolveLPRequest lp_request = 1;
     SolveMIPRequest mip_request = 2;
+    SolveVRPRequest vrp_request = 3;
   }
 }
 
@@ -116,10 +121,11 @@ message ChunkedProblemHeader {
 
   // Problem scalars
   bool maximize = 2;
-  double objective_scaling_factor = 3;
+  optional double objective_scaling_factor = 3;
   double objective_offset = 4;
   string problem_name = 5;
   string objective_name = 6;
+  ProblemCategory problem_category = 9;
 
   // String arrays (included here since they are rarely the size bottleneck)
   repeated string variable_names = 7;
@@ -133,17 +139,69 @@ message ChunkedProblemHeader {
 
   // MIP-specific
   bool enable_incumbents = 30;
+
+  // Per-entry scalars for repeated_messages on OptimizationProblem (e.g. QC
+  // rows).  The arrays inside each entry are unbounded in size and travel
+  // separately via container-keyed ArrayChunks
+  // (container_field_num=25, container_index=<entry idx>, field_id=<0..4>);
+  // see field_registry.yaml and the ArrayChunk message above.  Field number
+  // matches the corresponding `repeated QuadraticConstraint quadratic_constraints`
+  // field on OptimizationProblem so client/server share the same tag.
+  repeated QuadraticConstraint quadratic_constraints = 25;
 }
 
 // A chunk of typed array data for large problem transfers.
-// Each chunk carries a slice of one array field, identified by field_id.
-// The server pre-allocates the target array on the first chunk (using total_elements)
-// and copies each chunk's data at the given element_offset.
+// Each chunk carries a slice of one array field. The chunk identifies its
+// target array via (container_field_num, container_index, field_id):
+//
+//   - Top-level array (default): container_field_num and container_index are
+//     unset.  field_id is interpreted as an `ArrayFieldId` enum value (e.g.,
+//     FIELD_A_VALUES).  See ArrayFieldId in cuopt_remote_data.proto for the
+//     full set of values; each entry there carries a comment describing the
+//     raw byte layout the server expects in `data`.
+//
+//   - Array inside a repeated nested message: container_field_num is the
+//     parent message's field_num for the repeated_messages entry (e.g. 25 for
+//     OptimizationProblem.quadratic_constraints), container_index is the
+//     0-based element index within that repeated field, and field_id is
+//     interpreted relative to the container's own array namespace.  These
+//     container-relative ids are published as a nested `ArrayId` enum on
+//     each repeated message type — e.g. QuadraticConstraint.LINEAR_VALUES —
+//     so external clients should reference the named enum value rather than
+//     the bare integer.
+//
+// `data` carries native-endian raw element bytes (memcpy'd directly from the
+// client's contiguous buffer), NOT a protobuf-encoded value.  total_elements
+// counts logical elements, so `data.size() == chunk_elements * element_size`.
+// All officially supported cuOpt platforms are little-endian; a from-scratch
+// client on a big-endian host must byte-swap doubles/int32s into LE before
+// populating `data`.
+//
+// The server pre-allocates the target array on the first chunk (using
+// total_elements) and copies each chunk's data at the given element_offset.
+//
+// Note for custom clients: this chunked path is required to escape
+// protobuf's ~2 GiB single-message ceiling, but it's also the faster
+// path on big problems — 16 MiB chunks fit in CPU L3 and consecutive
+// SendArrayChunk RPCs pipeline naturally, where a single
+// multi-hundred-MB unary message blows L3 and serializes.  A custom
+// client that wants to skip chunking entirely can raise
+// `--max-message-mb` (server) and `max_message_bytes` (client) up to
+// the ~2 GiB clamp and send problems via unary `SubmitJob`, at a small
+// throughput cost on the largest problems.  See GRPC_INTERFACE.md.
 message ArrayChunk {
-  ArrayFieldId field_id = 1;   // Which array this chunk belongs to
+  int32 field_id = 1;          // ArrayFieldId for top-level, or container-relative ArrayId
   int64 element_offset = 2;    // Element index offset within the array
   int64 total_elements = 3;    // Total elements in the complete array (for pre-allocation)
-  bytes data = 4;              // Raw bytes: sizeof(element_type) * elements_in_this_chunk
+  bytes data = 4;              // Raw native-endian element bytes; see message-level doc above
+
+  // For chunks targeting an array inside a repeated nested message (e.g. a
+  // single QuadraticConstraint's linear_values).  Both unset (proto3
+  // has_*()-style presence) means a top-level chunk — existing semantics.
+  // Both must be set or both unset; partial presence is rejected with
+  // INVALID_ARGUMENT (handlers must not silently default container_index to 0).
+  optional int32 container_field_num = 5;
+  optional int32 container_index = 6;
 }
 
 // Start a chunked upload: sends problem metadata and settings.
@@ -183,57 +241,8 @@ message GetResultRequest {
   string job_id = 1;
 }
 
-// Metadata about a single result array available for chunked download
-message ResultArrayDescriptor {
-  ResultFieldId field_id = 1;
-  int64 total_elements = 2;
-  int64 element_size_bytes = 3;   // 8 for double, 4 for int32, etc.
-}
-
-// Header for chunked result download - carries all scalar/enum/string fields
-// from LPSolution or MIPSolution. Array data is sent via GetResultChunk.
-message ChunkedResultHeader {
-  bool is_mip = 1;
-
-  // LP result scalars
-  PDLPTerminationStatus lp_termination_status = 10;
-  string error_message = 11;
-  double l2_primal_residual = 12;
-  double l2_dual_residual = 13;
-  double primal_objective = 14;
-  double dual_objective = 15;
-  double gap = 16;
-  int32 nb_iterations = 17;
-  double solve_time = 18;
-  bool solved_by_pdlp = 19;
-
-  // MIP result scalars
-  MIPTerminationStatus mip_termination_status = 30;
-  string mip_error_message = 31;
-  double mip_objective = 32;
-  double mip_gap = 33;
-  double solution_bound = 34;
-  double total_solve_time = 35;
-  double presolve_time = 36;
-  double max_constraint_violation = 37;
-  double max_int_violation = 38;
-  double max_variable_bound_violation = 39;
-  int32 nodes = 40;
-  int32 simplex_iterations = 41;
-
-  // LP warm start scalars (included in header since they are small)
-  double ws_initial_primal_weight = 60;
-  double ws_initial_step_size = 61;
-  int32 ws_total_pdlp_iterations = 62;
-  int32 ws_total_pdhg_iterations = 63;
-  double ws_last_candidate_kkt_score = 64;
-  double ws_last_restart_kkt_score = 65;
-  double ws_sum_solution_weight = 66;
-  int32 ws_iterations_since_last_restart = 67;
-
-  // Array metadata so client knows what to fetch
-  repeated ResultArrayDescriptor arrays = 50;
-}
+// ResultArrayDescriptor and ChunkedResultHeader are defined in
+// cuopt_remote_data.proto (auto-generated from field_registry.yaml).
 
 message StartChunkedDownloadRequest {
   string job_id = 1;

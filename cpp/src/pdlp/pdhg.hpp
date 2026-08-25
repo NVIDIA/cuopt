@@ -6,7 +6,7 @@
 /* clang-format on */
 
 #pragma once
-#include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 #include <mip_heuristics/problem/problem.cuh>
 #include <pdlp/cusparse_view.hpp>
 #include <pdlp/pdlp_climber_strategy.hpp>
@@ -20,16 +20,25 @@
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 
-namespace cuopt::linear_programming::detail {
+#include <tuple>
+#include <vector>
+
+namespace cuopt::mathematical_optimization::pdlp {
+
+// Forward-declared to avoid include cycle: multi_gpu_engine.hpp itself includes pdhg.hpp
+// (engine calls per-shard pdhg compute_*). pdhg.cu does the full include.
+template <typename i_t, typename f_t>
+struct multi_gpu_engine_t;
+
 template <typename i_t, typename f_t>
 class pdhg_solver_t {
  public:
   pdhg_solver_t(raft::handle_t const* handle_ptr,
-                problem_t<i_t, f_t>& op_problem,
+                mip::problem_t<i_t, f_t>& op_problem,
                 bool is_legacy_batch_mode,
                 const std::vector<pdlp_climber_strategy_t>& climber_strategies,
-                const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params,
-                const std::vector<std::tuple<i_t, f_t, f_t>>& new_bounds,
+                const pdlp::pdlp_hyper_params_t& hyper_params,
+                const std::vector<std::tuple<i_t, i_t, f_t, f_t>>& new_bounds,
                 bool enable_mixed_precision_spmv = false);
 
   saddle_point_state_t<i_t, f_t>& get_saddle_point_state();
@@ -53,21 +62,61 @@ class pdhg_solver_t {
   i_t get_dual_size() const;
 
   void swap_context(const thrust::universal_host_pinned_vector<swap_pair_t<i_t>>& swap_pairs);
+  void resize_and_swap_new_bounds_context(
+    const thrust::universal_host_pinned_vector<swap_pair_t<i_t>>& swap_pairs, i_t new_size);
   void resize_context(i_t new_size);
   ping_pong_graph_t<i_t>& get_graph_all();
 
+  rmm::device_uvector<i_t>& get_new_bounds_climber_id() { return new_bounds_climber_id_; }
   rmm::device_uvector<i_t>& get_new_bounds_idx() { return new_bounds_idx_; }
   rmm::device_uvector<f_t>& get_new_bounds_lower() { return new_bounds_lower_; }
   rmm::device_uvector<f_t>& get_new_bounds_upper() { return new_bounds_upper_; }
 
   void take_step(rmm::device_uvector<f_t>& primal_step_size,
                  rmm::device_uvector<f_t>& dual_step_size,
+                 const rmm::device_uvector<f_t>& bound_rescaling,  // Only used in batch mode
                  i_t iterations_since_last_restart,
                  bool last_restart_was_average,
                  i_t total_pdlp_iterations,
                  bool is_major_iteration);
   void update_solution(cusparse_view_t<i_t, f_t>& current_op_problem_evaluation_cusparse_view_);
-  void refine_initial_primal_projection();
+  void refine_initial_primal_projection(const rmm::device_uvector<f_t>& bound_rescaling);
+
+  // SpMV primitives. Public so the multi-GPU engine can drive them per-shard
+  // after halo-exchanging the relevant vector.
+  //
+  // If set_multi_gpu_engine() has been called, these dispatch to the engine
+  // (halo exchange + per-shard SpMV). Otherwise they run the single-GPU
+  // cusparse path on the local matrix.
+  void compute_At_y();
+  void compute_A_x();
+
+  void spmvop_At_y();
+  void spmvop_A_x();
+
+  // Parameterized SpMVs used by the multi-GPU engine. Thin wrappers around
+  // cusparsespmv on this shard's local A / A^T
+  void spmv_At_into(cusparseDnVecDescr_t in_desc, cusparseDnVecDescr_t out_desc);
+  void spmv_A_into(cusparseDnVecDescr_t in_desc, cusparseDnVecDescr_t out_desc);
+
+  // Pure cub-transform extractions. Allows for clearer containment of the calls and ensures
+  // the single-GPU vs distributed-GPU uses the same calls
+  void primal_reflected_major_projection_transform(rmm::device_uvector<f_t>& primal_step_size);
+  void dual_reflected_major_projection_transform(rmm::device_uvector<f_t>& dual_step_size);
+  void primal_reflected_projection_transform(rmm::device_uvector<f_t>& primal_step_size);
+  void dual_reflected_projection_transform(rmm::device_uvector<f_t>& dual_step_size);
+
+  // Master PDLP wires the engine pointer here after the engine is built. Only
+  // the master's pdhg_solver_ holds a non-null engine; shards leave it null and
+  // run single-GPU SpMV on their local matrix.
+  void set_multi_gpu_engine(multi_gpu_engine_t<i_t, f_t>* engine) { mgpu_engine_ = engine; }
+  multi_gpu_engine_t<i_t, f_t>* get_mgpu_engine() const { return mgpu_engine_; }
+
+  // True only on the master pdhg of a distributed run (the one wired to the
+  // engine, which orchestrates the shards).
+  // Shards report false.
+  // Single-GPU PDHG reports false.
+  bool is_distributed_master() const { return mgpu_engine_ != nullptr; }
 
   i_t total_pdhg_iterations_;
 
@@ -78,20 +127,20 @@ class pdhg_solver_t {
                                          rmm::device_uvector<f_t>& dual_step_size,
                                          i_t total_pdlp_iterations);
   void compute_next_dual_solution(rmm::device_uvector<f_t>& dual_step_size);
-  void compute_next_primal_dual_solution_reflected(rmm::device_uvector<f_t>& primal_step_size,
-                                                   rmm::device_uvector<f_t>& dual_step_size,
-                                                   bool should_major);
+  void compute_next_primal_dual_solution_reflected(
+    rmm::device_uvector<f_t>& primal_step_size,
+    rmm::device_uvector<f_t>& dual_step_size,
+    const rmm::device_uvector<f_t>& bound_rescaling,  // Only used in batch mode
+    bool should_major);
 
   void compute_primal_projection_with_gradient(rmm::device_uvector<f_t>& primal_step_size);
   void compute_primal_projection(rmm::device_uvector<f_t>& primal_step_size);
-  void compute_At_y();
-  void compute_A_x();
 
   bool batch_mode_{false};
   raft::handle_t const* handle_ptr_{nullptr};
   rmm::cuda_stream_view stream_view_;
 
-  problem_t<i_t, f_t>* problem_ptr;
+  mip::problem_t<i_t, f_t>* problem_ptr;
 
   i_t primal_size_h_;
   i_t dual_size_h_;
@@ -118,7 +167,13 @@ class pdhg_solver_t {
 
   // Different graphs for each case
   // Either compute the whole next primal step
-  // Or skip the SpMV (most cases) if it was done at the previous iteration
+  // Or skip the SpMV (most cases) if it was done at the previous iteration.
+  // The reflected primal/dual path branches on `should_major`, and the two branches build
+  // different graph topologies. They get separate ping-pong caches so each branch can key its
+  // 2-slot cache on `total_pdlp_iterations` parity (the swap state of the primal/dual buffers
+  // baked into the captured graph) without colliding with the other branch's topology.
+  // graph_all serves the non-reflected path and the major reflected branch (mutually exclusive
+  // at runtime); graph_all_non_major serves the non-major reflected branch.
   ping_pong_graph_t<i_t> graph_all;
   ping_pong_graph_t<i_t> graph_prim_proj_gradient_dual;
 
@@ -127,11 +182,16 @@ class pdhg_solver_t {
   rmm::device_scalar<i_t> d_total_pdhg_iterations_;
 
   const std::vector<pdlp_climber_strategy_t>& climber_strategies_;
-  const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params_;
+  const pdlp::pdlp_hyper_params_t& hyper_params_;
+  rmm::device_uvector<i_t> new_bounds_climber_id_;
   rmm::device_uvector<i_t> new_bounds_idx_;
   rmm::device_uvector<f_t> new_bounds_lower_;
   rmm::device_uvector<f_t> new_bounds_upper_;
   cuda::fast_mod_div<size_t> batch_size_divisor_;
+
+  // Non-owning. Set on the master pdhg_solver_ in distributed mode; null
+  // (default) means single-GPU path.
+  multi_gpu_engine_t<i_t, f_t>* mgpu_engine_{nullptr};
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

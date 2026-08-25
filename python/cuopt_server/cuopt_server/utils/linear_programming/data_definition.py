@@ -441,9 +441,15 @@ class SolverConfig(BaseModel):
         "<br>"
         "Note: Not supported for MILP. ",
     )
-    mip_scaling: Optional[bool] = Field(
-        default=True,
-        description="Set True to enable MIP scaling, False to disable.",
+    mip_scaling: Optional[int] = Field(
+        default=1,
+        description="MIP scaling mode:"
+        "<br>"
+        "- 0: No scaling"
+        "<br>"
+        "- 1: Full scaling (objective + row)"
+        "<br>"
+        "- 2: Row scaling only (no objective scaling), default",
     )
     mip_heuristics_only: Optional[bool] = Field(
         default=False,
@@ -452,12 +458,19 @@ class SolverConfig(BaseModel):
     )
     mip_batch_pdlp_strong_branching: Optional[int] = Field(
         default=0,
-        description="Set 1 to enable batch PDLP strong branching "
-        "in the MIP solver, 0 to disable.",
+        description="Strong branching mode: 0 = Dual Simplex only, "
+        "1 = cooperative work-stealing (DS + batch PDLP), "
+        "2 = batch PDLP only.",
+    )
+    mip_batch_pdlp_reliability_branching: Optional[int] = Field(
+        default=0,
+        description="Reliability branching mode: 0 = Dual Simplex only, "
+        "1 = cooperative work-stealing (DS + batch PDLP), "
+        "2 = batch PDLP only.",
     )
     num_cpu_threads: Optional[int] = Field(
         default=None,
-        description="Set the number of CPU threads to use for branch and bound.",  # noqa
+        description="Set the number of CPU threads to use in the MIP solver",  # noqa
     )
     num_gpus: Optional[int] = Field(
         default=None,
@@ -510,6 +523,15 @@ class SolverConfig(BaseModel):
         description="Set presolve mode: 0 to disable presolve, 1 for Papilo presolve for MIP or LPs, "  # noqa
         "2 for PSLP LP presolve. Presolve can reduce problem size and improve solve time. "  # noqa
         "Default is 1 for MIP problems and 2 for LP problems.",
+    )
+    mip_probing: Optional[bool] = Field(
+        default=None,
+        description="Enable or disable the cuOpt-internal probing-cache step of "  # noqa
+        "MIP presolve. True (default) runs probing as part of presolve; False "  # noqa
+        "skips probing while leaving the rest of presolve untouched. Has no "  # noqa
+        "effect if presolve is disabled (presolve=0) or when running in "  # noqa
+        "deterministic mode (probing is already skipped). LP-only solves "  # noqa
+        "ignore this setting.",
     )
     dual_postsolve: Optional[bool] = Field(
         default=None,
@@ -700,10 +722,10 @@ class SolutionData(StrictModel):
         default=None,
         description=("Returns the engine solve time in seconds"),
     )
-    solved_by_pdlp: bool = Field(
+    solved_by: int = Field(
         default=None,
         description=(
-            "Returns whether problem was solved by PDLP or Dual Simplex"
+            "Returns whether problem was solved by PDLP, Barrier or Dual Simplex"
         ),
     )
     primal_objective: float = Field(
@@ -757,6 +779,7 @@ LP_STATUS_NAMES = frozenset(
         "IterationLimit",
         "TimeLimit",
         "PrimalFeasible",
+        "UnboundedOrInfeasible",
     }
 )
 
@@ -771,6 +794,7 @@ MILP_STATUS_NAMES = frozenset(
         "Infeasible",
         "Unbounded",
         "TimeLimit",
+        "UnboundedOrInfeasible",
     }
 )
 

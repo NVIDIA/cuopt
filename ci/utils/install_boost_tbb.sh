@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 set -euo pipefail
@@ -18,7 +18,7 @@ if [ -f /etc/os-release ]; then
     elif [[ "$ID" == "ubuntu" ]]; then
         echo "Detected Ubuntu. Installing Boost and TBB via apt..."
         apt-get update
-        apt-get install -y libboost-dev libtbb-dev
+        apt-get install -y libboost-iostreams-dev libboost-serialization-dev libtbb-dev
     else
         echo "Unknown OS: $ID. Please install Boost development libraries manually."
         exit 1

@@ -23,7 +23,7 @@
 
 #include <omp.h>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 class probing_cache_t;
@@ -34,7 +34,7 @@ class bound_presolve_t {
   struct settings_t {
     f_t time_limit{60.0};
     i_t iteration_limit{std::numeric_limits<i_t>::max()};
-    i_t num_threads = -1;
+    i_t num_tasks = -1;
     bool parallel_bounds_update{true};
   };
 
@@ -84,4 +84,4 @@ class bound_presolve_t {
   i_t solve_iter;
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

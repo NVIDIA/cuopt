@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 #ifdef CUOPT_ENABLE_GRPC
@@ -14,43 +14,63 @@ void worker_monitor_thread()
   SERVER_LOG_INFO("[Server] Worker monitor thread started");
 
   while (keep_running) {
-    for (size_t i = 0; i < worker_pids.size(); ++i) {
-      pid_t pid = worker_pids[i];
-      if (pid <= 0) continue;
+    // Snapshot which slots need attention under the pid-list lock, then do
+    // mark/respawn work without holding it across fork().
+    struct DeadWorker {
+      size_t index;
+      pid_t pid;
+      bool was_clean_shutdown_exit;
+    };
+    std::vector<DeadWorker> dead;
 
-      int status;
-      pid_t result = waitpid(pid, &status, WNOHANG);
+    {
+      std::lock_guard<std::mutex> lock(worker_pids_mutex);
+      for (size_t i = 0; i < worker_pids.size(); ++i) {
+        pid_t pid = worker_pids[i];
+        if (pid <= 0) continue;
 
-      if (result == pid) {
-        int exit_code  = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
-        bool signaled  = WIFSIGNALED(status);
-        int signal_num = signaled ? WTERMSIG(status) : 0;
+        int status     = 0;
+        pid_t wait_ret = waitpid(pid, &status, WNOHANG);
+        if (wait_ret != pid) continue;
+
+        int exit_code                = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+        bool signaled                = WIFSIGNALED(status);
+        int signal_num               = signaled ? WTERMSIG(status) : 0;
+        bool was_clean_shutdown_exit = false;
 
         if (signaled) {
           SERVER_LOG_ERROR("[Server] Worker %d killed by signal %d", pid, signal_num);
         } else if (exit_code != 0) {
           SERVER_LOG_ERROR("[Server] Worker %d exited with code %d", pid, exit_code);
+        } else if (shm_ctrl && shm_ctrl->shutdown_requested) {
+          was_clean_shutdown_exit = true;
         } else {
-          if (shm_ctrl && shm_ctrl->shutdown_requested) {
-            worker_pids[i] = 0;
-            continue;
-          }
           SERVER_LOG_ERROR("[Server] Worker %d exited unexpectedly", pid);
         }
 
-        mark_worker_jobs_failed(pid);
+        worker_pids[i] = 0;
+        dead.push_back({i, pid, was_clean_shutdown_exit});
+      }
+    }
 
-        if (keep_running && shm_ctrl && !shm_ctrl->shutdown_requested) {
-          pid_t new_pid = spawn_single_worker(static_cast<int>(i));
-          if (new_pid > 0) {
-            worker_pids[i] = new_pid;
-            SERVER_LOG_INFO("[Server] Restarted worker %zu with PID %d", i, new_pid);
-          } else {
-            worker_pids[i] = 0;
-          }
-        } else {
-          worker_pids[i] = 0;
+    for (const auto& dw : dead) {
+      if (dw.was_clean_shutdown_exit) continue;
+
+      mark_worker_jobs_failed(dw.pid);
+
+      if (!(keep_running && shm_ctrl && !shm_ctrl->shutdown_requested)) { continue; }
+
+      pid_t new_pid = spawn_single_worker(static_cast<int>(dw.index));
+      {
+        std::lock_guard<std::mutex> lock(worker_pids_mutex);
+        if (dw.index < worker_pids.size() && worker_pids[dw.index] == 0) {
+          worker_pids[dw.index] = (new_pid > 0) ? new_pid : 0;
         }
+      }
+      if (new_pid > 0) {
+        SERVER_LOG_INFO("[Server] Restarted worker %zu with PID %d", dw.index, new_pid);
+      } else {
+        SERVER_LOG_ERROR("[Server] Failed to restart worker %zu", dw.index);
       }
     }
 
@@ -96,7 +116,9 @@ void result_retrieval_thread()
                 to_fd = worker_pipes[worker_idx].to_worker_fd;
               }
               auto pipe_t0 = std::chrono::steady_clock::now();
-              send_ok      = write_chunked_request_to_pipe(to_fd, chunked.header, chunked.chunks);
+              PipeWriteStatus chunked_status =
+                write_chunked_request_to_pipe(to_fd, chunked.header, chunked.chunks);
+              send_ok = (chunked_status == PipeWriteStatus::Success);
               if (send_ok && config.verbose) {
                 auto pipe_us = std::chrono::duration_cast<std::chrono::microseconds>(
                                  std::chrono::steady_clock::now() - pipe_t0)
@@ -108,6 +130,26 @@ void result_retrieval_thread()
                                  chunked.chunks.size(),
                                  worker_idx,
                                  job_id.c_str());
+              } else if (chunked_status == PipeWriteStatus::ValidationFailed) {
+                // Bad client input — reject the job but leave the worker
+                // alone (no bytes were sent on the pipe).
+                SERVER_LOG_ERROR(
+                  "[Server] Rejected malformed chunked job %s for worker %d "
+                  "(validation failed; worker unaffected)",
+                  job_id.c_str(),
+                  worker_idx);
+              } else if (chunked_status == PipeWriteStatus::PipeFailed) {
+                // Pipe is in an unknown state — the worker may be blocked
+                // reading bytes that will never arrive.  Kill it so it gets
+                // reaped and respawned by the worker monitor thread.
+                pid_t pid = job_queue[i].worker_pid.load(std::memory_order_relaxed);
+                SERVER_LOG_ERROR(
+                  "[Server] Pipe write to worker %d failed for job %s; "
+                  "killing worker pid=%d to avoid hung pipe",
+                  worker_idx,
+                  job_id.c_str(),
+                  static_cast<int>(pid));
+                if (pid > 0) kill(pid, SIGKILL);
               }
             }
           } else {

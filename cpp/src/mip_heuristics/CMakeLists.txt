@@ -15,17 +15,18 @@ set(MIP_LP_NECESSARY_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/presolve/single_lock_dual_aggregation.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/presolve/gf2_presolve.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/solution/solution.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/presolve/conflict_graph/clique_table.cu
 )
 
 # Files that are MIP-specific and not needed for pure LP
 set(MIP_NON_LP_FILES
+  ${CMAKE_CURRENT_SOURCE_DIR}/mip_scaling_strategy.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solve.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solver.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/diversity/assignment_hash_map.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/diversity/diversity_manager.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/diversity/multi_armed_bandit.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/diversity/population.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/diversity/lns/rins.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/relaxed_lp/relaxed_lp.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/local_search/local_search.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/local_search/rounding/bounds_repair.cu
@@ -33,16 +34,19 @@ set(MIP_NON_LP_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/local_search/rounding/simple_rounding.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/local_search/feasibility_pump/feasibility_pump.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/local_search/line_segment_search/line_segment_search.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/presolve/block_bve.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/presolve/bounds_presolve.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/presolve/bounds_update_data.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/presolve/semi_continuous.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/presolve/conditional_bound_strengthening.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/presolve/multi_probe.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/presolve/probing_cache.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/presolve/trivial_presolve.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/presolve/conflict_graph/clique_table.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/feasibility_jump.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/feasibility_jump_kernels.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/fj_cpu.cu)
+  ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/fj_cpu.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/early_cpufj.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/early_gpufj.cu)
 
 # Choose which files to include based on build mode
 if(BUILD_LP_ONLY)

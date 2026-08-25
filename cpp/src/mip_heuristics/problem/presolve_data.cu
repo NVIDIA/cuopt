@@ -22,14 +22,14 @@
 #include <thrust/gather.h>
 
 namespace cuopt {
-namespace linear_programming::detail {
+namespace mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 bool presolve_data_t<i_t, f_t>::pre_process_assignment(problem_t<i_t, f_t>& problem,
                                                        rmm::device_uvector<f_t>& assignment)
 {
   raft::common::nvtx::range fun_scope("pre_process_assignment");
-  auto has_nans = cuopt::linear_programming::detail::has_nans(problem.handle_ptr, assignment);
+  auto has_nans = cuopt::mathematical_optimization::mip::has_nans(problem.handle_ptr, assignment);
   if (has_nans) {
     CUOPT_LOG_DEBUG("Solution discarded due to nans");
     return false;
@@ -80,24 +80,66 @@ bool presolve_data_t<i_t, f_t>::pre_process_assignment(problem_t<i_t, f_t>& prob
                  assignment.begin());
   problem.handle_ptr->sync_stream();
 
-  auto has_integrality_discrepancy = cuopt::linear_programming::detail::has_integrality_discrepancy(
-    problem.handle_ptr,
-    problem.integer_indices,
-    assignment,
-    problem.tolerances.integrality_tolerance);
+  auto has_integrality_discrepancy =
+    cuopt::mathematical_optimization::mip::has_integrality_discrepancy(
+      problem.handle_ptr,
+      problem.integer_indices,
+      assignment,
+      problem.tolerances.integrality_tolerance);
   if (has_integrality_discrepancy) {
     CUOPT_LOG_DEBUG("Solution discarded due to integrality discrepancy");
     return false;
   }
 
   auto has_variable_bounds_violation =
-    cuopt::linear_programming::detail::has_variable_bounds_violation(
+    cuopt::mathematical_optimization::mip::has_variable_bounds_violation(
       problem.handle_ptr, assignment, &problem);
   if (has_variable_bounds_violation) {
     CUOPT_LOG_DEBUG("Solution discarded due to variable bounds violation");
     return false;
   }
   return true;
+}
+
+template <typename i_t, typename f_t>
+static uint32_t boundary_pattern(const bve_reconstruction_t<i_t>& bve,
+                                 const std::vector<f_t>& assignment)
+{
+  cuopt_assert(bve.witness.size() == (size_t{1} << bve.boundary.size()),
+               "block witness size mismatch");
+  uint32_t pattern = 0;
+  for (size_t j = 0; j < bve.boundary.size(); ++j) {
+    cuopt_assert(bve.boundary[j] < (i_t)assignment.size(), "block boundary out of bounds");
+    const int bit = (assignment[bve.boundary[j]] > 0.5) ? 1 : 0;
+    pattern |= (uint32_t)bit << j;
+  }
+  return pattern;
+}
+
+template <typename i_t, typename f_t>
+static void reconstruct_bve_block(const bve_reconstruction_t<i_t>& bve,
+                                  std::vector<f_t>& assignment)
+{
+  const uint32_t witness = bve.witness[boundary_pattern<i_t, f_t>(bve, assignment)];
+  for (size_t k = 0; k < bve.interior.size(); ++k) {
+    cuopt_assert(bve.interior[k] < (i_t)assignment.size(), "block interior out of bounds");
+    assignment[bve.interior[k]] = (witness >> k) & 1u;
+  }
+}
+
+template <typename i_t, typename f_t>
+static void reconstruct_affine_sub(const substitution_t<i_t, f_t>& sub,
+                                   std::vector<f_t>& assignment)
+{
+  cuopt_assert(sub.substituted_var < (i_t)assignment.size(), "substituted_var out of bounds");
+  cuopt_assert(sub.substituting_var < (i_t)assignment.size(), "substituting_var out of bounds");
+  assignment[sub.substituted_var] = sub.offset + sub.coefficient * assignment[sub.substituting_var];
+  CUOPT_LOG_DEBUG("Post-process substitution: x[%d] = %f + %f * x[%d] = %f",
+                  sub.substituted_var,
+                  sub.offset,
+                  sub.coefficient,
+                  sub.substituting_var,
+                  assignment[sub.substituted_var]);
 }
 
 // this function is used to post process the assignment
@@ -107,7 +149,8 @@ template <typename i_t, typename f_t>
 void presolve_data_t<i_t, f_t>::post_process_assignment(
   problem_t<i_t, f_t>& problem,
   rmm::device_uvector<f_t>& current_assignment,
-  bool resize_to_original_problem)
+  bool resize_to_original_problem,
+  rmm::cuda_stream_view stream)
 {
   raft::common::nvtx::range fun_scope("post_process_assignment");
   cuopt_assert(current_assignment.size() == variable_mapping.size(), "size mismatch");
@@ -115,15 +158,15 @@ void presolve_data_t<i_t, f_t>::post_process_assignment(
   auto fixed_assgn = make_span(fixed_var_assignment);
   auto var_map     = make_span(variable_mapping);
   if (current_assignment.size() > 0) {
-    thrust::for_each(problem.handle_ptr->get_thrust_policy(),
+    thrust::for_each(rmm::exec_policy(stream),
                      thrust::make_counting_iterator<i_t>(0),
                      thrust::make_counting_iterator<i_t>(current_assignment.size()),
                      [fixed_assgn, var_map, assgn] __device__(auto idx) {
                        fixed_assgn[var_map[idx]] = assgn[idx];
                      });
   }
-  expand_device_copy(current_assignment, fixed_var_assignment, problem.handle_ptr->get_stream());
-  auto h_assignment = cuopt::host_copy(current_assignment, problem.handle_ptr->get_stream());
+  expand_device_copy(current_assignment, fixed_var_assignment, stream);
+  auto h_assignment = cuopt::host_copy(current_assignment, stream);
   cuopt_assert(additional_var_id_per_var.size() == h_assignment.size(), "Size mismatch");
   cuopt_assert(additional_var_used.size() == h_assignment.size(), "Size mismatch");
   for (i_t i = 0; i < (i_t)h_assignment.size(); ++i) {
@@ -133,29 +176,18 @@ void presolve_data_t<i_t, f_t>::post_process_assignment(
     }
   }
 
-  // Apply variable substitutions from probing: x_substituted = offset + coefficient *
-  // x_substituting
-  for (const auto& sub : variable_substitutions) {
-    cuopt_assert(sub.substituted_var < (i_t)h_assignment.size(), "substituted_var out of bounds");
-    cuopt_assert(sub.substituting_var < (i_t)h_assignment.size(), "substituting_var out of bounds");
-    h_assignment[sub.substituted_var] =
-      sub.offset + sub.coefficient * h_assignment[sub.substituting_var];
-    CUOPT_LOG_DEBUG("Post-process substitution: x[%d] = %f + %f * x[%d] = %f",
-                    sub.substituted_var,
-                    sub.offset,
-                    sub.coefficient,
-                    sub.substituting_var,
-                    h_assignment[sub.substituted_var]);
+  // Reverse-append undo of the unified GPU-presolve reconstruction log
+  for (auto it = postsolve_reconstructions.rbegin(); it != postsolve_reconstructions.rend(); ++it) {
+    switch (it->kind) {
+      case reconstruction_kind_t::BlockBve: reconstruct_bve_block(it->bve, h_assignment); break;
+      case reconstruction_kind_t::AffineSub: reconstruct_affine_sub(it->sub, h_assignment); break;
+    }
   }
 
-  raft::copy(current_assignment.data(),
-             h_assignment.data(),
-             h_assignment.size(),
-             problem.handle_ptr->get_stream());
   // this separate resizing is needed because of the callback
+  raft::copy(current_assignment.data(), h_assignment.data(), h_assignment.size(), stream);
   if (resize_to_original_problem) {
-    current_assignment.resize(problem.original_problem_ptr->get_n_variables(),
-                              problem.handle_ptr->get_stream());
+    current_assignment.resize(problem.original_problem_ptr->get_n_variables(), stream);
   }
 }
 
@@ -253,5 +285,5 @@ template class presolve_data_t<int, float>;
 template class presolve_data_t<int, double>;
 #endif
 
-}  // namespace linear_programming::detail
+}  // namespace mathematical_optimization::mip
 }  // namespace cuopt

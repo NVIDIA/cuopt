@@ -9,7 +9,7 @@
 #include <cstring>
 #include <vector>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt {
 
 template <typename i_t>
 inline uint32_t compute_hash(const std::vector<i_t>& h_contents)
@@ -43,4 +43,4 @@ __host__ __device__
   return hash;
 }
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt

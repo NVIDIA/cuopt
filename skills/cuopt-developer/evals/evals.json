@@ -1,0 +1,104 @@
+[
+  {
+    "id": "dev-eval-001-dco-signoff-and-pr-workflow",
+    "question": "I made two commits to fix a bug but forgot to add the DCO sign-off to both. How do I fix this before opening a PR, and what is the correct PR workflow for contributing to cuOpt as an agent?",
+    "expected_skill": "cuopt-developer",
+    "expected_script": null,
+    "ground_truth": "To fix missing DCO sign-off: for the most recent commit use 'git commit --amend -s'; for multiple older commits use an interactive rebase ('git rebase -i HEAD~N') and add the Signed-off-by line to each. Never use --no-verify to bypass the DCO check. For the PR workflow: contributors (including agents) must use the fork workflow — never push branches directly to NVIDIA/cuopt. Add your fork as a remote ('git remote add fork https://github.com/<username>/cuopt.git'), push the branch there, then open a PR from the fork to the upstream base branch. When an AI agent opens the PR it must be a draft PR ('gh pr create --draft') so the developer can review before reviewers are pinged. The developer marks it ready for review when satisfied.",
+    "expected_behavior": [
+      "States 'git commit --amend -s' fixes the most recent commit's missing sign-off",
+      "States an interactive rebase is needed to fix sign-off on multiple older commits",
+      "Explicitly says --no-verify must NOT be used to bypass the DCO check",
+      "States contributors must use the fork workflow — never push to the upstream repo directly",
+      "States that agent-created PRs must be draft PRs (gh pr create --draft)"
+    ]
+  },
+  {
+    "id": "dev-eval-002-add-dependency-wrong-file",
+    "question": "I need to add a new Python test dependency to cuOpt. A colleague says I should edit conda/environments/all_cuda-132_arch-x86_64.yaml directly. Is that correct? What is the right approach?",
+    "expected_skill": "cuopt-developer",
+    "expected_script": null,
+    "ground_truth": "The colleague is wrong. All cuOpt dependencies are managed exclusively through the top-level dependencies.yaml — the conda/environments/*.yaml and pyproject.toml files are auto-generated and must never be edited by hand. The correct steps are: (1) Find the appropriate group in dependencies.yaml (for a Python test dependency, likely test_python_common). (2) Add the package entry under the right output_types. (3) Run 'pre-commit run --all-files' — the RAPIDS dependency-file-generator hook regenerates conda/environments/*.yaml and pyproject.toml automatically. (4) Verify the regenerated files were updated and commit them together with dependencies.yaml.",
+    "expected_behavior": [
+      "States that directly editing conda/environments/*.yaml is wrong",
+      "Names dependencies.yaml as the only file that should be edited by hand",
+      "Mentions finding the correct group (e.g., test_python_common) for a test dependency",
+      "States that 'pre-commit run --all-files' regenerates the downstream files via the RAPIDS hook",
+      "Mentions committing the regenerated files together with dependencies.yaml"
+    ]
+  },
+  {
+    "id": "dev-eval-004-no-push-to-protected-branch",
+    "question": "I just fixed a one-line typo in ci/utils/pr_test_summary.py. It is a tiny change — can I just run 'git push origin main' to get it in quickly?",
+    "expected_skill": "cuopt-developer",
+    "expected_script": null,
+    "ground_truth": "No. Pushing directly to main (or any release/* branch) is never allowed, regardless of how small the change is. main and release/* are protected branches that require a pull request, passing status checks, and DCO sign-off. A direct push bypasses all of these. The correct approach is: (1) Create a feature branch ('git checkout -b fix/short-description'). (2) Commit the change with DCO sign-off ('git commit -s -m \"...\"'). (3) Run pre-commit on the changed file. (4) Push the feature branch to your fork or to the upstream repo (following the fork/upstream rules for the file type changed). (5) Open a draft PR ('gh pr create --draft').",
+    "expected_behavior": [
+      "Refuses to push directly to main",
+      "States that main and release/* are protected branches requiring a PR",
+      "Instructs to create a feature branch first",
+      "Mentions DCO sign-off ('git commit -s') on the commit",
+      "Mentions running pre-commit before pushing",
+      "Instructs to open a draft PR after pushing the feature branch",
+      "Does not make an exception for small or trivial changes"
+    ]
+  },
+  {
+    "id": "dev-eval-005-skills-pr-must-use-upstream-branch",
+    "question": "I want to update a cuOpt skill file under skills/cuopt-developer/. Should I push the branch to my personal GitHub fork and open a PR from there, the same way I would for a code change?",
+    "expected_skill": "cuopt-developer",
+    "expected_script": null,
+    "ground_truth": "No — skills PRs are an exception to the fork workflow. NVSkills CI validation requires the PR to originate from a branch in the upstream NVIDIA/cuopt repository, not a personal fork. Fork-based PRs are not supported for changes under skills/. The correct approach is: create a feature branch in the upstream repo, push the branch there (not to your fork), and open a PR from that branch. Everything else still applies: never push to main or release/*, use a feature branch, include DCO sign-off, and open a draft PR.",
+    "expected_behavior": [
+      "States that the fork workflow does NOT apply to skills/ changes",
+      "Explains that NVSkills CI requires the PR to come from a branch in NVIDIA/cuopt",
+      "Instructs to push the branch to the upstream repo, not a personal fork",
+      "Still requires a feature branch — not pushing directly to main",
+      "Still requires DCO sign-off and a draft PR"
+    ]
+  },
+  {
+    "id": "dev-eval-006-add-solver-parameter",
+    "question": "I want to expose a new MIP cut toggle called 'flow_cover_cuts' to cuOpt users. The internal solver already reads a field 'flow_cover_cuts' from the MIP settings struct. What are all the steps required to fully expose it through the C API, Python, CLI, gRPC server, and docs — and what is the most common mistake people make when doing this?",
+    "expected_skill": "cuopt-developer",
+    "expected_script": null,
+    "ground_truth": "Since the solver already reads the field, the settings struct layer is done — verify the field and its default exist before proceeding. The remaining five layers still need to be wired, and missing any one silently drops the parameter from that interface. Use a sibling parameter (e.g. 'clique_cuts') as the template and grep for it across the repo to find every location. The steps are: (1) Settings struct — verify 'flow_cover_cuts' exists in cpp/include/cuopt/.../solver_settings.hpp with the correct default (-1 for automatic cut toggles); add it only if absent. (2) C constant — add '#define CUOPT_MIP_FLOW_COVER_CUTS \"mip_flow_cover_cuts\"' in cpp/include/cuopt/linear_programming/constants.h next to related parameters. (3) String-parameter registry — add a tuple to the int_parameters table in cpp/src/math_optimization/solver_settings.cu: {CUOPT_MIP_FLOW_COVER_CUTS, &mip_settings.flow_cover_cuts, min, max, default}. This single registry drives CLI parsing, set_parameter/get_parameter, and Python auto-discovery — no .pyx change is needed. (4) gRPC/server — add the field under the right message in cpp/src/grpc/codegen/field_registry.yaml with the next free field_num, then regenerate with 'python cpp/src/grpc/codegen/generate_conversions.py'. The generated .proto and .inc files are auto-generated — never hand-edit them. (5) Docs — add a doxygendefine directive to the C API rst, a settings section to mip-settings.rst, and the server schema in cuopt_spec.yaml. (6) Tests — add C++ and Python coverage. The most common mistake is hand-editing the auto-generated proto or .inc files instead of running the codegen script, or adding the constant but forgetting to add the registry tuple (which means the parameter is defined but silently ignored).",
+    "expected_behavior": [
+      "Recognizes the settings struct field already exists and says to verify it rather than unconditionally adding it",
+      "Identifies the remaining five layers to wire: C constant, string-parameter registry, gRPC codegen, docs, tests",
+      "States the string-parameter registry in solver_settings.cu is the single source driving CLI, set_parameter/get_parameter, and Python — no .pyx change needed",
+      "States that the gRPC .proto and .inc files are auto-generated and must NOT be hand-edited; the codegen script must be run",
+      "Recommends using a sibling parameter (e.g. clique_cuts) as a template and grepping for it",
+      "Names the most common mistake: hand-editing generated files or adding the constant but omitting the registry tuple"
+    ]
+  },
+  {
+    "id": "dev-eval-007-merge-conflict-resolution",
+    "question": "I am resolving a merge conflict in a C++ file. Branch A added a new field 'pending_tasks_' of type 'std::atomic<int>' to a class and Branch B refactored the same class to use an OpenMP task model and removed that field entirely. The conflict markers show Branch A's version has more lines and looks like a superset. Should I just pick Branch A's hunk since it seems more complete?",
+    "expected_skill": "cuopt-developer",
+    "expected_script": null,
+    "ground_truth": "No — picking the 'bigger hunk' is the wrong approach and will likely produce a broken merge that compiles but silently misbehaves. The correct approach is to reconstruct what each branch actually did before choosing a side. Diff the conflicting symbols across both branches and the merge base ('git show <branch>:<path>' and 'git merge-base A B') — not just the conflict hunks. Check how already-merged non-conflicted callers use the symbol — if a caller was auto-merged to Branch B's signature, the conflicted file must conform to Branch B. The resolution depends on what the inspection reveals: if Branch B's OpenMP refactor is the intended baseline (e.g. callers already use the new model), the correct resolution is to adopt Branch B's removal and re-port any genuinely new functionality from Branch A onto the new mechanism. Keeping Branch A's 'std::atomic<int>' field alongside Branch B's OpenMP model would leave a member that is never set and a synchronization guard that never fires. If the inspection instead shows Branch A is the intended baseline, re-port Branch B's changes onto it. The key principle is to determine which branch represents the correct baseline from history and callers — never pick a side based on line count. A wrong merge resolution frequently compiles cleanly and fails silently — compilation is not evidence of a correct merge.",
+    "expected_behavior": [
+      "Refuses to pick Branch A's hunk based on line count alone",
+      "Instructs to reconstruct what each branch did using 'git show <branch>:<path>' and 'git merge-base'",
+      "Instructs to check already-merged non-conflicted callers to determine which branch's API the resolution must conform to",
+      "States the resolution is conditional on inspection — not mandated to always be Branch B",
+      "Explains that keeping std::atomic alongside the OpenMP model would leave a field that is never set and a guard that never fires",
+      "Warns that a wrong merge resolution frequently compiles cleanly and fails silently"
+    ]
+  },
+  {
+    "id": "dev-eval-003-cuda-memory-and-error-handling",
+    "question": "I am adding a new C++ function to cuOpt that allocates a GPU buffer and calls a CUDA kernel. A colleague wrote the allocation as 'int* d_buf = new int[N];' and error-checked the kernel with 'if (cudaGetLastError() != cudaSuccess) return;'. What is wrong with both, and what should they be replaced with?",
+    "expected_skill": "cuopt-developer",
+    "expected_script": null,
+    "ground_truth": "Both are wrong. Raw 'new'/'delete' for GPU memory is forbidden in cuOpt — RMM (RAPIDS Memory Manager) allocators must be used instead. The correct pattern is to use rmm::device_uvector or rmm::device_buffer (e.g., rmm::device_uvector<int> d_buf(N, stream)) which handles allocation and deallocation safely and respects CUDA stream ordering. For CUDA error checking, bare 'if (cudaGetLastError() != cudaSuccess) return;' is insufficient — cuOpt uses RAFT_CUDA_TRY which throws on error and provides a proper message: RAFT_CUDA_TRY(cudaMemcpy(...)). Runtime assertion failures should use CUOPT_EXPECTS(condition, \"message\") rather than manual if-checks. The device buffer variable name should follow the d_ prefix convention (e.g. d_buf) which is already done here, but the allocation pattern must change.",
+    "expected_behavior": [
+      "States that raw 'new'/'delete' for GPU memory is forbidden — RMM allocators must be used",
+      "Names rmm::device_uvector or rmm::device_buffer as the correct replacement",
+      "States that RAFT_CUDA_TRY is the correct macro for CUDA error checking",
+      "Mentions CUOPT_EXPECTS for runtime assertion-style error handling",
+      "Does not suggest keeping 'new int[N]' with any workaround — the replacement is mandatory"
+    ]
+  }
+]

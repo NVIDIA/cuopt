@@ -19,7 +19,7 @@
 #pragma GCC diagnostic pop
 #endif
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename f_t>
 class SingleLockDualAggregation : public papilo::PresolveMethod<f_t> {
@@ -39,4 +39,4 @@ class SingleLockDualAggregation : public papilo::PresolveMethod<f_t> {
                                  int& reason_of_infeasibility) override;
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

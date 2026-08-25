@@ -70,9 +70,7 @@ extensions = [
     "sphinx_design",
     "sphinx_markdown_tables",
     "sphinx.ext.doctest",
-    "IPython.sphinxext.ipython_console_highlighting",
-    "IPython.sphinxext.ipython_directive",
-    "myst_nb",
+    "myst_parser",
     "sphinx.ext.autosectionlabel",
     "swagger_plugin_for_sphinx",
 ]
@@ -91,14 +89,6 @@ swagger = [
     },
 ]
 
-nbsphinx_execute = "never"
-ipython_mplbackend = "str"
-
-# GPU routing example: Sphinx execution can fail when CUDA/CuPy don't match the docs
-# environment. Listed paths are skipped by myst-nb; this notebook is rendered from
-# checked-in cell outputs.
-nb_execution_excludepatterns = ["cuopt-python/routing/routing-example.ipynb"]
-
 # Add any files to exclude from the build
 exclude_patterns = ["hidden"]
 
@@ -108,8 +98,7 @@ templates_path = ["_templates"]
 # The suffix(es) of source filenames.
 source_suffix = {
     ".rst": "restructuredtext",
-    ".md": "myst-nb",
-    ".ipynb": "myst-nb",
+    ".md": "markdown",
 }
 
 # The master toctree document.
@@ -146,12 +135,19 @@ language = "en"
 # a list of builtin themes.
 #
 html_theme = "nvidia_sphinx_theme"
-html_logo = "images/main_nv_logo_square.png"
 html_title = f"{project} ({version})"
 
 autosectionlabel_prefix_document = True
 
 html_theme_options = {
+    "icon_links": [
+        {
+            "name": "GitHub",
+            "url": "https://github.com/NVIDIA/cuopt",
+            "icon": "fa-brands fa-github",
+            "type": "fontawesome",
+        },
+    ],
     "collapse_navigation": False,
     "navigation_depth": 6,
     "switcher": {
@@ -176,7 +172,11 @@ html_theme_options = {
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ["_static"]
-html_css_files = ["swagger-nvidia.css", "install-selector.css"]
+html_css_files = [
+    "swagger-nvidia.css",
+    "install-selector.css",
+    "large-rubric.css",
+]
 html_js_files = ["cuopt-install-version.js", "install-selector.js"]
 html_extra_path = ["versions1.json"]
 
@@ -188,11 +188,6 @@ breathe_default_project = "libcuopt"
 # Configure Breathe to handle file types
 breathe_domain_by_extension = {"hpp": "cpp", "h": "c", "c": "c"}
 breathe_implementation_filename_extensions = [".cpp", ".cu"]
-
-# Configure Breathe to handle source files
-breathe_projects_source = {
-    "libcuopt": ("../../../cpp/src", ["*.hpp", "*.h", "*.cuh", "*.cu"])
-}
 
 # Configure Breathe to handle CUDA and template attributes
 breathe_doxygen_aliases = {
@@ -223,7 +218,7 @@ latex_documents = [
     (
         master_doc,
         "cuopt.tex",
-        "cuopt Documentation",
+        f"{project} Documentation",
         "NVIDIA Corporation",
         "manual",
     )
@@ -233,7 +228,7 @@ latex_documents = [
 
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
-man_pages = [(master_doc, "cuopt", "cuopt Documentation", [author], 1)]
+man_pages = [(master_doc, "cuopt", f"{project} Documentation", [author], 1)]
 
 
 # -- Options for Texinfo output -------------------------------------------
@@ -245,7 +240,7 @@ texinfo_documents = [
     (
         master_doc,
         "cuopt",
-        "cuopt Documentation",
+        f"{project} Documentation",
         author,
         "cuopt",
         "One line description of project.",
@@ -306,7 +301,10 @@ nitpick_ignore = [
     ("py:obj", "cuopt_sh_client.PDLPSolverMode.is_integer"),
     ("py:obj", "cuopt_sh_client.PDLPSolverMode.bit_count"),
     ("py:obj", "cuopt_sh_client.PDLPSolverMode.bit_length"),
-    ("py:obj", "data_model.DataModel.set_data_model_view"),
+    (
+        "py:obj",
+        "cuopt.linear_programming.data_model.DataModel.set_data_model_view",
+    ),
     (
         "py:obj",
         "cuopt.linear_programming.solver_settings.SolverSettings.to_base_type",

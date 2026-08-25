@@ -9,6 +9,7 @@
 
 #include <thrust/count.h>
 #include <thrust/extrema.h>
+#include <thrust/iterator/transform_iterator.h>
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/tuple.h>
 #include <utilities/copy_helpers.hpp>
@@ -19,7 +20,7 @@
 #include "bounds_update_helpers.cuh"
 #include "multi_probe.cuh"
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 // Tobias Achterberg, Robert E. Bixby, Zonghao Gu, Edward Rothberg, Dieter Weninger (2019) Presolve
 // Reductions in Mixed Integer Programming. INFORMS Journal on Computing 32(2):473-506.
@@ -140,6 +141,10 @@ bool multi_probe_t<i_t, f_t>::calculate_bounds_update(problem_t<i_t, f_t>& pb,
   constexpr i_t zero       = 0;
   constexpr auto n_threads = 256;
 
+  upd_0.candidate_bound_scale =
+    pb.tolerances.absolute_tolerance / context.settings.semi_continuous_big_m;
+  upd_1.candidate_bound_scale =
+    pb.tolerances.absolute_tolerance / context.settings.semi_continuous_big_m;
   if (skip_0 && skip_1) {
     return false;
   } else if (skip_0) {
@@ -301,6 +306,7 @@ termination_criterion_t multi_probe_t<i_t, f_t>::bound_update_loop(problem_t<i_t
     iter_0 += !skip_0;
     iter_1 += !skip_1;
   }
+  if (local_iter_accumulator != nullptr) { *local_iter_accumulator += (double)(iter_0 + iter_1); }
   handle_ptr->sync_stream();
   if (compute_stats) {
     upd_0.init_changed_constraints(handle_ptr);
@@ -491,4 +497,4 @@ template class multi_probe_t<int, float>;
 template class multi_probe_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

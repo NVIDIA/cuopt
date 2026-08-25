@@ -12,11 +12,15 @@
 
 #include <utilities/copy_helpers.hpp>
 #include <utilities/cuda_helpers.cuh>
+#include <utilities/integer_scaling.hpp>
 #include <utilities/macros.cuh>
 
 #include <mip_heuristics/mip_constants.hpp>
 #include <pdlp/utils.cuh>
 
+#include <cuts/objective_step.hpp>
+#include <cuts/rational.hpp>
+#include <math_optimization/tic_toc.hpp>
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
 #include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/utils.cuh>
@@ -27,9 +31,12 @@
 #include <thrust/count.h>
 #include <thrust/gather.h>
 #include <thrust/iterator/counting_iterator.h>
+#include <thrust/iterator/transform_iterator.h>
+#include <thrust/iterator/zip_iterator.h>
 #include <thrust/set_operations.h>
 #include <thrust/sort.h>
 #include <thrust/tabulate.h>
+#include <thrust/transform_reduce.h>
 #include <thrust/tuple.h>
 #include <cuda/std/functional>
 
@@ -42,7 +49,10 @@
 
 #include <cuda_profiler_api.h>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
+
+using simplex::user_problem_t;
+using simplex::variable_type_t;
 
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::op_problem_cstr_body(const optimization_problem_t<i_t, f_t>& problem_)
@@ -96,7 +106,7 @@ void problem_t<i_t, f_t>::op_problem_cstr_body(const optimization_problem_t<i_t,
   compute_auxiliary_data();
   // Check after modifications
   cuopt_func_call(check_problem_representation(true, is_mip));
-  combine_constraint_bounds<i_t, f_t>(*this, combined_bounds);
+  pdlp::combine_constraint_bounds<i_t, f_t>(*this, combined_bounds);
 }
 
 template <typename i_t, typename f_t>
@@ -195,14 +205,17 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_)
     var_names(problem_.var_names),
     row_names(problem_.row_names),
     objective_name(problem_.objective_name),
+    objective_offset(problem_.presolve_data.objective_offset),
     is_scaled_(problem_.is_scaled_),
     preprocess_called(problem_.preprocess_called),
     objective_is_integral(problem_.objective_is_integral),
+    objective_step(problem_.objective_step),
     lp_state(problem_.lp_state),
     fixing_helpers(problem_.fixing_helpers, handle_ptr),
     clique_table(problem_.clique_table),
     vars_with_objective_coeffs(problem_.vars_with_objective_coeffs),
     expensive_to_fix_vars(problem_.expensive_to_fix_vars),
+    related_vars_time_limit(problem_.related_vars_time_limit),
     Q_offsets(problem_.Q_offsets),
     Q_indices(problem_.Q_indices),
     Q_values(problem_.Q_values)
@@ -252,14 +265,17 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_,
     var_names(problem_.var_names),
     row_names(problem_.row_names),
     objective_name(problem_.objective_name),
+    objective_offset(problem_.presolve_data.objective_offset),
     is_scaled_(problem_.is_scaled_),
     preprocess_called(problem_.preprocess_called),
     objective_is_integral(problem_.objective_is_integral),
+    objective_step(problem_.objective_step),
     lp_state(problem_.lp_state, handle_ptr),
     fixing_helpers(problem_.fixing_helpers, handle_ptr),
     clique_table(problem_.clique_table),
     vars_with_objective_coeffs(problem_.vars_with_objective_coeffs),
     expensive_to_fix_vars(problem_.expensive_to_fix_vars),
+    related_vars_time_limit(problem_.related_vars_time_limit),
     Q_offsets(problem_.Q_offsets),
     Q_indices(problem_.Q_indices),
     Q_values(problem_.Q_values)
@@ -273,7 +289,8 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_, bool no_deep
     deterministic(problem_.deterministic),
     handle_ptr(problem_.handle_ptr),
     integer_fixed_problem(problem_.integer_fixed_problem),
-    integer_fixed_variable_map(problem_.n_variables, handle_ptr->get_stream()),
+    integer_fixed_variable_map((!no_deep_copy) ? 0 : problem_.n_variables,
+                               handle_ptr->get_stream()),
     n_variables(problem_.n_variables),
     n_constraints(problem_.n_constraints),
     n_binary_vars(problem_.n_binary_vars),
@@ -337,10 +354,7 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_, bool no_deep
       (!no_deep_copy)
         ? rmm::device_uvector<f_t>(problem_.combined_bounds, handle_ptr->get_stream())
         : rmm::device_uvector<f_t>(problem_.combined_bounds.size(), handle_ptr->get_stream())),
-    variable_types(
-      (!no_deep_copy)
-        ? rmm::device_uvector<var_t>(problem_.variable_types, handle_ptr->get_stream())
-        : rmm::device_uvector<var_t>(problem_.variable_types.size(), handle_ptr->get_stream())),
+    variable_types((!no_deep_copy) ? 0 : problem_.variable_types.size(), handle_ptr->get_stream()),
     integer_indices((!no_deep_copy) ? 0 : problem_.integer_indices.size(),
                     handle_ptr->get_stream()),
     binary_indices((!no_deep_copy) ? 0 : problem_.binary_indices.size(), handle_ptr->get_stream()),
@@ -349,17 +363,23 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_, bool no_deep
     is_binary_variable((!no_deep_copy) ? 0 : problem_.is_binary_variable.size(),
                        handle_ptr->get_stream()),
     related_variables(problem_.related_variables, handle_ptr->get_stream()),
-    related_variables_offsets(problem_.related_variables_offsets, handle_ptr->get_stream()),
+    related_variables_offsets((!no_deep_copy) ? 0 : problem_.related_variables_offsets.size(),
+                              handle_ptr->get_stream()),
     var_names(problem_.var_names),
     row_names(problem_.row_names),
     objective_name(problem_.objective_name),
+    // presolve_data is declared ahead of this member and holds the live offset once presolve has
+    // moved it; problem_.objective_offset can be stale here.
+    objective_offset(presolve_data.objective_offset),
     is_scaled_(problem_.is_scaled_),
     preprocess_called(problem_.preprocess_called),
     objective_is_integral(problem_.objective_is_integral),
+    objective_step(problem_.objective_step),
     lp_state(problem_.lp_state),
     fixing_helpers(problem_.fixing_helpers, handle_ptr),
     vars_with_objective_coeffs(problem_.vars_with_objective_coeffs),
     expensive_to_fix_vars(problem_.expensive_to_fix_vars),
+    related_vars_time_limit(problem_.related_vars_time_limit),
     Q_offsets(problem_.Q_offsets),
     Q_indices(problem_.Q_indices),
     Q_values(problem_.Q_values)
@@ -470,6 +490,7 @@ void csr_to_csc_transpose(const i_t* csr_offsets,
   // Copy sorted results back
   raft::copy(csc_indices, row_ind_sorted.data(), nnz, stream);
   raft::copy(csc_values, val_sorted.data(), nnz, stream);
+  RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
 }
 
 template <typename i_t, typename f_t>
@@ -562,8 +583,15 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
                    "A_indices must be set before calling the solver.");
     }
   }
-  cuopt_assert(objective_coefficients.size() == n_variables,
-               "objective_coefficients size mismatch");
+  if (n_variables == 0) {
+    cuopt_assert(objective_coefficients.is_empty(),
+                 "objective_coefficients must be empty when n_variables is 0.");
+  } else {
+    cuopt_assert(!objective_coefficients.is_empty(),
+                 "objective_coefficients must be set when n_variables > 0.");
+    cuopt_assert(objective_coefficients.size() % static_cast<size_t>(n_variables) == 0,
+                 "objective_coefficients size must be a multiple of n_variables");
+  }
 
   // Check CSR validity
   check_csr_representation(
@@ -588,8 +616,6 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
 
   // Check variable bounds are set and with the correct size
   if (!empty) { cuopt_assert(!variable_bounds.is_empty(), "Variable bounds must be set."); }
-  cuopt_assert(variable_bounds.size() == objective_coefficients.size(),
-               "Sizes for vectors related to the variables are not the same.");
   cuopt_assert(variable_bounds.size() == (std::size_t)n_variables,
                "Sizes for vectors related to the variables are not the same.");
 
@@ -602,15 +628,18 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
   }
   cuopt_assert(constraint_lower_bounds.size() == constraint_upper_bounds.size(),
                "Sizes for vectors related to the constraints are not the same.");
-  cuopt_assert(constraint_lower_bounds.size() == (size_t)n_constraints,
+  cuopt_assert(n_constraints == 0 ? constraint_lower_bounds.size() == 0
+                                  : constraint_lower_bounds.size() % (size_t)n_constraints == 0,
                "Sizes for vectors related to the constraints are not the same.");
-  cuopt_assert((offsets.size() - 1) == constraint_lower_bounds.size(),
+  cuopt_assert((offsets.size() - 1) == (size_t)n_constraints,
                "Sizes for vectors related to the constraints are not the same.");
 
   // Check combined bounds
-  cuopt_assert(combined_bounds.size() == (size_t)n_constraints,
+  // To handle batch case (% 0 is not allowed)
+  cuopt_assert(n_constraints == 0
+                 ? combined_bounds.size() == 0
+                 : combined_bounds.size() % static_cast<size_t>(n_constraints) == 0,
                "Sizes for vectors related to the constraints are not the same.");
-
   // Check the validity of bounds
   cuopt_expects(thrust::all_of(handle_ptr->get_thrust_policy(),
                                thrust::make_counting_iterator<i_t>(0),
@@ -802,8 +831,7 @@ void problem_t<i_t, f_t>::recompute_auxilliary_data(bool check_representation)
   compute_binary_var_table();
   compute_vars_with_objective_coeffs();
   // TODO: speedup compute related variables
-  const double time_limit = 30.;
-  compute_related_variables(time_limit);
+  compute_related_variables(related_vars_time_limit);
   if (check_representation) cuopt_func_call(check_problem_representation(true));
 }
 
@@ -1204,125 +1232,7 @@ void problem_t<i_t, f_t>::insert_constraints(constraints_delta_t<i_t, f_t>& h_co
   cuopt_assert(offsets.element(n_constraints, handle_ptr->get_stream()) == nnz,
                "nnz and offset should match!");
   cuopt_assert(offsets.size() == n_constraints + 1, "offset size should match!");
-  combine_constraint_bounds<i_t, f_t>(*this, combined_bounds);
-}
-
-// Best rational approximation p/q to x with q <= max_denom, via continued fractions.
-// Returns the last valid convergent if the denominator limit is reached.
-std::pair<int64_t, int64_t> rational_approximation(double x, int64_t max_denom, double epsilon)
-{
-  double ax = std::abs(x);
-  if (ax < epsilon) { return {0, 1}; }
-
-  if (x < 0) {
-    auto [p, q] = rational_approximation(-x, max_denom, epsilon);
-    return {-p, q};
-  }
-
-  int64_t p_prev2 = 1, q_prev2 = 0;
-  int64_t p_prev1 = (int64_t)std::floor(x), q_prev1 = 1;
-
-  double remainder = x - std::floor(x);
-
-  for (int iter = 0; iter < 100; ++iter) {
-    if (std::abs(remainder) < 1e-15) break;
-
-    remainder = 1.0 / remainder;
-    int64_t a = (int64_t)std::floor(remainder);
-    remainder -= a;
-
-    int64_t p_curr = a * p_prev1 + p_prev2;
-    int64_t q_curr = a * q_prev1 + q_prev2;
-
-    if (q_curr > max_denom) break;
-    // overflow guard
-    if (std::abs(p_curr) < std::abs(p_prev1)) break;
-
-    p_prev2 = p_prev1;
-    q_prev2 = q_prev1;
-    p_prev1 = p_curr;
-    q_prev1 = q_curr;
-
-    double approx_err = x - (double)p_curr / (double)q_curr;
-    if (std::abs(approx_err) < epsilon) break;
-  }
-
-  return {p_prev1, q_prev1};
-}
-
-// Brute-force: try scalars 1..max_brute and return the smallest that makes all coefficients
-// integral.
-double find_scaling_brute_force(const std::vector<double>& coefficients,
-                                int max_brute = 100,
-                                double tol    = 1e-6)
-{
-  for (int s = 1; s <= max_brute; ++s) {
-    bool ok = true;
-    for (double c : coefficients) {
-      double scaled = s * c;
-      if (std::abs(scaled - std::round(scaled)) > tol) {
-        ok = false;
-        break;
-      }
-    }
-    if (ok) return (double)s;
-  }
-  return std::numeric_limits<double>::quiet_NaN();
-}
-
-// Continued-fractions approach: rationalize each coefficient, compute scm/gcd incrementally.
-double find_scaling_rational(const std::vector<double>& coefficients,
-                             double maxscale     = 1e6,
-                             int64_t maxdnom     = 10000000,
-                             double maxfinal     = 10000,
-                             double intcheck_tol = 1e-6)
-{
-  constexpr double no_scaling = std::numeric_limits<double>::quiet_NaN();
-  double epsilon              = 1.0 / maxscale;
-
-  int64_t gcd = 0;
-  int64_t scm = 1;
-
-  for (double c : coefficients) {
-    auto [num, den] = rational_approximation(c, maxdnom, epsilon);
-    if (den == 0 || num == 0) continue;
-
-    int64_t abs_num = std::abs(num);
-    if (gcd == 0) {
-      gcd = abs_num;
-      scm = den;
-    } else {
-      gcd            = std::gcd(gcd, abs_num);
-      int64_t factor = den / std::gcd(scm, den);
-      int64_t new_scm;
-      if (__builtin_mul_overflow(scm, factor, &new_scm)) return no_scaling;
-      scm = new_scm;
-    }
-
-    if ((double)scm / (double)gcd > maxscale) return no_scaling;
-  }
-
-  if (gcd == 0) return 1.0;
-
-  double intscalar = (double)scm / (double)gcd;
-  if (intscalar > maxfinal) return no_scaling;
-
-  for (double c : coefficients) {
-    double scaled = intscalar * c;
-    if (std::abs(scaled - std::round(scaled)) > intcheck_tol) return no_scaling;
-  }
-
-  return intscalar;
-}
-
-// Finds the smallest integer scaling factor s such that s * c_i is integral for all i.
-// Tries a brute-force sweep first (cheap, numerically robust), then falls back to
-// continued fractions for larger scalars.
-double find_objective_scaling_factor(const std::vector<double>& coefficients)
-{
-  double s = find_scaling_brute_force(coefficients);
-  if (!std::isnan(s)) return s;
-  return find_scaling_rational(coefficients);
+  pdlp::combine_constraint_bounds<i_t, f_t>(*this, combined_bounds);
 }
 
 template <typename i_t, typename f_t>
@@ -1344,26 +1254,30 @@ void problem_t<i_t, f_t>::set_implied_integers(const std::vector<i_t>& implied_i
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::recompute_objective_integrality()
 {
-  // FIXME: we do not consider implied integers here
-  // because it incorrectly considers neos-827175 as having an integer optimal.
-  // need to figure out if Papilo is producing an incorrect flag.
-  objective_is_integral = thrust::all_of(handle_ptr->get_thrust_policy(),
-                                         thrust::make_counting_iterator(0),
-                                         thrust::make_counting_iterator(n_variables),
-                                         [v = view()] __device__(i_t var_idx) -> bool {
-                                           if (v.objective_coefficients[var_idx] == 0) return true;
-                                           return v.is_integer(v.objective_coefficients[var_idx]) &&
-                                                  (v.variable_types[var_idx] == var_t::INTEGER);
-                                         });
+  using cuopt::mathematical_optimization::mip::is_integer;
 
-  bool objvars_all_integral = thrust::all_of(handle_ptr->get_thrust_policy(),
-                                             thrust::make_counting_iterator(0),
-                                             thrust::make_counting_iterator(n_variables),
-                                             [v = view()] __device__(i_t var_idx) -> bool {
-                                               if (v.objective_coefficients[var_idx] == 0)
-                                                 return true;
-                                               return (v.variable_types[var_idx] == var_t::INTEGER);
-                                             });
+  objective_is_integral =
+    thrust::all_of(handle_ptr->get_thrust_policy(),
+                   thrust::make_counting_iterator(0),
+                   thrust::make_counting_iterator(n_variables),
+                   [v = view()] __device__(i_t var_idx) -> bool {
+                     if (v.objective_coefficients[var_idx] == 0) return true;
+                     // Need a tight tolerance for integrality to weed out instances like
+                     // neos-827175 with very small objective coefficients
+                     return is_integer<f_t>(v.objective_coefficients[var_idx], 1e-9) &&
+                            ((v.variable_types[var_idx] == var_t::INTEGER) ||
+                             (v.var_flags[var_idx] & (i_t)VAR_IMPLIED_INTEGER));
+                   });
+
+  bool objvars_all_integral =
+    thrust::all_of(handle_ptr->get_thrust_policy(),
+                   thrust::make_counting_iterator(0),
+                   thrust::make_counting_iterator(n_variables),
+                   [v = view()] __device__(i_t var_idx) -> bool {
+                     if (v.objective_coefficients[var_idx] == 0) return true;
+                     return (v.variable_types[var_idx] == var_t::INTEGER) ||
+                            (v.var_flags[var_idx] & (i_t)VAR_IMPLIED_INTEGER);
+                   });
   if (objvars_all_integral && !objective_is_integral) {
     auto h_objective_coefficients =
       cuopt::host_copy(objective_coefficients, handle_ptr->get_stream());
@@ -1387,6 +1301,85 @@ void problem_t<i_t, f_t>::recompute_objective_integrality()
       objective_is_integral = true;
     }
   }
+}
+
+template <typename i_t, typename f_t>
+void problem_t<i_t, f_t>::compute_objective_step()
+{
+  f_t start_time = tic();
+  // Copy info from device to host
+  auto h_obj_coefs = cuopt::host_copy(objective_coefficients, handle_ptr->get_stream());
+  auto h_var_types = cuopt::host_copy(variable_types, handle_ptr->get_stream());
+  auto h_var_flags = cuopt::host_copy(presolve_data.var_flags, handle_ptr->get_stream());
+
+  // Determine whether each variable's lattice is already known (integer or implied-integer).
+  // Track whether every variable with nonzero objective coefficient is already lattice-known:
+  // in that case we take the fast path below and never need to read the constraint matrix.
+  std::vector<bool> is_lattice_known_initially(n_variables, false);
+  bool all_obj_vars_integral = true;
+  for (i_t i = 0; i < n_variables; ++i) {
+    bool is_int                   = (h_var_types[i] == var_t::INTEGER);
+    bool is_impl_int              = (h_var_flags[i] & (i_t)VAR_IMPLIED_INTEGER) != 0;
+    is_lattice_known_initially[i] = is_int || is_impl_int;
+    if (h_obj_coefs[i] != 0 && !is_lattice_known_initially[i]) { all_obj_vars_integral = false; }
+  }
+
+  // Fast path: every variable with nonzero objective coefficient already has a known
+  // lattice (step=1). The objective step is gcd(|c_j|) and the bias is always 0, because
+  // each c_j is a multiple of the gcd, and each variable takes integer values, so the
+  // objective value sum(c_j * integer_j) is always a multiple of the gcd.
+  if (all_obj_vars_integral) {
+    std::vector<f_t> nonzero_coefs;
+    for (i_t i = 0; i < n_variables; ++i) {
+      if (h_obj_coefs[i] == 0) continue;
+      nonzero_coefs.push_back(h_obj_coefs[i]);
+    }
+    if (nonzero_coefs.empty()) {
+      objective_step = {};
+      return;
+    }
+
+    if (objective_is_integral) {
+      f_t g = mip::gcd_of_integer_values(nonzero_coefs);
+      if (g > 0) {
+        objective_step.step_size = g;
+        objective_step.bias      = 0;
+      } else {
+        objective_step = {};
+      }
+      return;
+    }
+
+    // Coefficients are not integer-valued; try to find a scaling factor that makes them so.
+    std::vector<double> nonzero_coefs_double(nonzero_coefs.begin(), nonzero_coefs.end());
+    double scaling_factor = find_objective_scaling_factor(nonzero_coefs_double);
+    if (!std::isnan(scaling_factor)) {
+      std::vector<f_t> scaled_coefs;
+      for (f_t c : nonzero_coefs) {
+        scaled_coefs.push_back(std::round(static_cast<f_t>(scaling_factor) * c));
+      }
+      f_t g = mip::gcd_of_integer_values(scaled_coefs);
+      if (g > 0) {
+        f_t sf                   = static_cast<f_t>(scaling_factor);
+        objective_step.step_size = g / sf;
+        objective_step.bias      = 0;
+        return;
+      }
+    }
+    objective_step = {};
+    return;
+  }
+
+  // Slow path: some objective variables have unknown lattice. Stage the CSR matrix and
+  // constraint bounds and run lattice propagation on the host.
+  auto h_offsets = cuopt::host_copy(offsets, handle_ptr->get_stream());
+  auto h_vars    = cuopt::host_copy(variables, handle_ptr->get_stream());
+  auto h_coefs   = cuopt::host_copy(coefficients, handle_ptr->get_stream());
+  auto h_con_lb  = cuopt::host_copy(constraint_lower_bounds, handle_ptr->get_stream());
+  auto h_con_ub  = cuopt::host_copy(constraint_upper_bounds, handle_ptr->get_stream());
+
+  objective_step = mip::compute_objective_step_info<i_t, f_t>(
+    h_obj_coefs, is_lattice_known_initially, h_offsets, h_vars, h_coefs, h_con_lb, h_con_ub);
 }
 
 template <typename i_t, typename f_t>
@@ -1601,6 +1594,13 @@ void problem_t<i_t, f_t>::fix_given_variables(problem_t<i_t, f_t>& original_prob
                    variables_to_fix.end(),
                    [variable_fix_mask = make_span(fixing_helpers.variable_fix_mask)] __device__(
                      i_t x) { variable_fix_mask[x] = 1; });
+  cuopt_func_call(thrust::for_each(handle_ptr->get_thrust_policy(),
+                                   variables_to_fix.begin(),
+                                   variables_to_fix.end(),
+                                   [assignment = make_span(assignment)] __device__(i_t x) {
+                                     cuopt_assert(isfinite(assignment[x]),
+                                                  "Fixing a variable to a non-finite value");
+                                   }));
   const i_t num_segments = original_problem.n_constraints;
   f_t initial_value{0.};
 
@@ -1702,8 +1702,8 @@ problem_t<i_t, f_t> problem_t<i_t, f_t>::get_problem_after_fixing_vars(
   cuopt_assert(result_end - variable_map.data() == variable_map.size(),
                "Size issue in set_difference");
   CUOPT_LOG_DEBUG("Fixing assignment hash 0x%x, vars to fix: 0x%x",
-                  detail::compute_hash(assignment, handle_ptr->get_stream()),
-                  detail::compute_hash(variables_to_fix, handle_ptr->get_stream()));
+                  mip::compute_hash(assignment, handle_ptr->get_stream()),
+                  mip::compute_hash(variables_to_fix, handle_ptr->get_stream()));
   problem.fix_given_variables(*this, assignment, variables_to_fix, handle_ptr);
   RAFT_CHECK_CUDA(handle_ptr->get_stream());
   problem.remove_given_variables(*this, assignment, variable_map, handle_ptr);
@@ -1809,7 +1809,7 @@ void problem_t<i_t, f_t>::remove_given_variables(problem_t<i_t, f_t>& original_p
   variables.resize(nnz, handle_ptr->get_stream());
   compute_transpose_of_problem();
   compute_auxiliary_data();
-  combine_constraint_bounds<i_t, f_t>(*this, combined_bounds);
+  pdlp::combine_constraint_bounds<i_t, f_t>(*this, combined_bounds);
   handle_ptr->sync_stream();
   recompute_auxilliary_data();
   cuopt_func_call(check_problem_representation(true));
@@ -1880,8 +1880,8 @@ void problem_t<i_t, f_t>::fill_integer_fixed_problem(rmm::device_uvector<f_t>& a
   cuopt_assert(integer_fixed_problem->n_variables > 0, "Integer fixed problem not computed");
   copy_rhs_from_problem(handle_ptr);
   integer_fixed_problem->fix_given_variables(*this, assignment, integer_indices, handle_ptr);
-  combine_constraint_bounds<i_t, f_t>(*integer_fixed_problem,
-                                      integer_fixed_problem->combined_bounds);
+  pdlp::combine_constraint_bounds<i_t, f_t>(*integer_fixed_problem,
+                                            integer_fixed_problem->combined_bounds);
   cuopt_func_call(integer_fixed_problem->check_problem_representation(true));
 }
 
@@ -2051,41 +2051,34 @@ void problem_t<i_t, f_t>::preprocess_problem()
 
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::set_constraints_from_host_user_problem(
-  const cuopt::linear_programming::dual_simplex::user_problem_t<i_t, f_t>& user_problem)
+  const user_problem_t<i_t, f_t>& user_problem)
 {
   raft::common::nvtx::range fun_scope("set_constraints_from_host_user_problem");
   cuopt_assert(user_problem.handle_ptr == handle_ptr, "handle mismatch");
   cuopt_assert(user_problem.num_cols == n_variables, "num cols mismatch");
-  n_constraints = user_problem.num_rows;
-  cuopt_assert(user_problem.rhs.size() == static_cast<size_t>(n_constraints), "rhs size mismatch");
-  cuopt_assert(user_problem.row_sense.size() == static_cast<size_t>(n_constraints),
+  const i_t num_rows = user_problem.num_rows;
+  cuopt_assert(user_problem.rhs.size() == static_cast<size_t>(num_rows), "rhs size mismatch");
+  cuopt_assert(user_problem.row_sense.size() == static_cast<size_t>(num_rows),
                "row sense size mismatch");
   cuopt_assert(user_problem.range_rows.size() == user_problem.range_value.size(),
                "range rows/value size mismatch");
 
-  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(n_constraints, n_variables, user_problem.A.nnz());
+  csr_matrix_t<i_t, f_t> csr_A(num_rows, n_variables, user_problem.A.nnz());
   user_problem.A.to_compressed_row(csr_A);
-  nnz   = csr_A.row_start[n_constraints];
-  empty = (nnz == 0 && n_constraints == 0 && n_variables == 0);
 
-  auto stream = handle_ptr->get_stream();
-  cuopt::device_copy(coefficients, csr_A.x, stream);
-  cuopt::device_copy(variables, csr_A.j, stream);
-  cuopt::device_copy(offsets, csr_A.row_start, stream);
-
-  std::vector<f_t> h_constraint_lower_bounds(n_constraints);
-  std::vector<f_t> h_constraint_upper_bounds(n_constraints);
-  std::vector<f_t> range_value_per_row(n_constraints, f_t{0});
-  std::vector<char> is_range_row(n_constraints, 0);
+  std::vector<f_t> h_constraint_lower_bounds(num_rows);
+  std::vector<f_t> h_constraint_upper_bounds(num_rows);
+  std::vector<f_t> range_value_per_row(num_rows, f_t{0});
+  std::vector<char> is_range_row(num_rows, 0);
   for (size_t idx = 0; idx < user_problem.range_rows.size(); ++idx) {
     auto row = user_problem.range_rows[idx];
-    cuopt_assert(row >= 0 && row < n_constraints, "range row out of bounds");
+    cuopt_assert(row >= 0 && row < num_rows, "range row out of bounds");
     is_range_row[row]        = 1;
     range_value_per_row[row] = user_problem.range_value[idx];
   }
 
   const auto inf = std::numeric_limits<f_t>::infinity();
-  for (i_t i = 0; i < n_constraints; ++i) {
+  for (i_t i = 0; i < num_rows; ++i) {
     const f_t rhs    = user_problem.rhs[i];
     const char sense = user_problem.row_sense[i];
     if (sense == 'E') {
@@ -2102,32 +2095,66 @@ void problem_t<i_t, f_t>::set_constraints_from_host_user_problem(
       cuopt_assert(false, "Unsupported row sense");
     }
   }
+  set_constraints_from_host_csr(csr_A.row_start,
+                                csr_A.j,
+                                csr_A.x,
+                                h_constraint_lower_bounds,
+                                h_constraint_upper_bounds,
+                                user_problem.row_names);
+}
 
-  cuopt::device_copy(constraint_lower_bounds, h_constraint_lower_bounds, stream);
-  cuopt::device_copy(constraint_upper_bounds, h_constraint_upper_bounds, stream);
-
-  if (!user_problem.row_names.empty()) {
-    row_names = user_problem.row_names;
-  } else if (row_names.size() != static_cast<size_t>(n_constraints)) {
-    row_names.clear();
+template <typename i_t, typename f_t>
+void problem_t<i_t, f_t>::set_constraints_from_host_csr(const std::vector<i_t>& offsets_in,
+                                                        const std::vector<i_t>& variables_in,
+                                                        const std::vector<f_t>& coefficients_in,
+                                                        const std::vector<f_t>& row_lower,
+                                                        const std::vector<f_t>& row_upper,
+                                                        const std::vector<std::string>& names)
+{
+  raft::common::nvtx::range fun_scope("set_constraints_from_host_csr");
+  n_constraints = static_cast<i_t>(row_lower.size());
+  cuopt_assert(row_upper.size() == static_cast<size_t>(n_constraints), "row bound size mismatch");
+  cuopt_assert(offsets_in.size() == static_cast<size_t>(n_constraints) + 1,
+               "offsets size mismatch");
+  cuopt_assert(!offsets_in.empty() && offsets_in.front() == 0, "invalid CSR offsets");
+  cuopt_assert(std::is_sorted(offsets_in.begin(), offsets_in.end()), "unsorted CSR offsets");
+  cuopt_assert(variables_in.size() == coefficients_in.size(), "csr index/value size mismatch");
+  cuopt_assert(static_cast<size_t>(offsets_in.back()) == variables_in.size(),
+               "CSR offsets/entries size mismatch");
+  cuopt_assert(names.empty() || names.size() == static_cast<size_t>(n_constraints),
+               "row names size mismatch");
+  for (i_t variable : variables_in) {
+    cuopt_assert(variable >= 0 && variable < n_variables, "CSR variable out of bounds");
   }
+  nnz   = static_cast<i_t>(variables_in.size());
+  empty = (nnz == 0 && n_constraints == 0 && n_variables == 0);
 
+  auto stream = handle_ptr->get_stream();
+  cuopt::device_copy(coefficients, coefficients_in, stream);
+  cuopt::device_copy(variables, variables_in, stream);
+  cuopt::device_copy(offsets, offsets_in, stream);
+  cuopt::device_copy(constraint_lower_bounds, row_lower, stream);
+  cuopt::device_copy(constraint_upper_bounds, row_upper, stream);
+
+  // the previous row set is gone: drop stale row names and any fixed-problem cache
+  row_names             = names;
   integer_fixed_problem = nullptr;
+
   fixing_helpers.reduction_in_rhs.resize(n_constraints, stream);
-  auto prev_dual_size = lp_state.prev_dual.size();
+  thrust::fill(handle_ptr->get_thrust_policy(),
+               fixing_helpers.reduction_in_rhs.begin(),
+               fixing_helpers.reduction_in_rhs.end(),
+               f_t{0});
   lp_state.prev_dual.resize(n_constraints, stream);
-  if (n_constraints > (i_t)prev_dual_size) {
-    thrust::fill(handle_ptr->get_thrust_policy(),
-                 lp_state.prev_dual.begin() + prev_dual_size,
-                 lp_state.prev_dual.end(),
-                 f_t{0});
-  }
+  thrust::fill(
+    handle_ptr->get_thrust_policy(), lp_state.prev_dual.begin(), lp_state.prev_dual.end(), f_t{0});
   handle_ptr->sync_stream();
   RAFT_CHECK_CUDA(stream);
 
   compute_transpose_of_problem();
   combined_bounds.resize(n_constraints, stream);
-  combine_constraint_bounds<i_t, f_t>(*this, combined_bounds);
+  pdlp::combine_constraint_bounds<i_t, f_t>(*this, combined_bounds);
+  recompute_auxilliary_data(false);
 }
 
 template <typename i_t, typename f_t>
@@ -2138,9 +2165,11 @@ bool problem_t<i_t, f_t>::pre_process_assignment(rmm::device_uvector<f_t>& assig
 
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::post_process_assignment(rmm::device_uvector<f_t>& current_assignment,
-                                                  bool resize_to_original_problem)
+                                                  bool resize_to_original_problem,
+                                                  rmm::cuda_stream_view stream)
 {
-  presolve_data.post_process_assignment(*this, current_assignment, resize_to_original_problem);
+  presolve_data.post_process_assignment(
+    *this, current_assignment, resize_to_original_problem, stream);
 }
 
 template <typename i_t, typename f_t>
@@ -2169,8 +2198,7 @@ void problem_t<i_t, f_t>::papilo_uncrush_assignment(rmm::device_uvector<f_t>& as
 }
 
 template <typename i_t, typename f_t>
-void problem_t<i_t, f_t>::get_host_user_problem(
-  cuopt::linear_programming::dual_simplex::user_problem_t<i_t, f_t>& user_problem) const
+void problem_t<i_t, f_t>::get_host_user_problem(user_problem_t<i_t, f_t>& user_problem) const
 {
   raft::common::nvtx::range fun_scope("get_host_user_problem");
   // std::lock_guard<std::mutex> lock(problem_mutex);
@@ -2182,7 +2210,7 @@ void problem_t<i_t, f_t>::get_host_user_problem(
   auto stream            = handle_ptr->get_stream();
   user_problem.objective = cuopt::host_copy(objective_coefficients, stream);
 
-  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
+  csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
   csr_A.x         = std::vector<f_t>(cuopt::host_copy(coefficients, stream));
   csr_A.j         = std::vector<i_t>(cuopt::host_copy(variables, stream));
   csr_A.row_start = std::vector<i_t>(cuopt::host_copy(offsets, stream));
@@ -2257,10 +2285,9 @@ void problem_t<i_t, f_t>::get_host_user_problem(
 
   auto model_variable_types = cuopt::host_copy(variable_types, stream);
   for (int j = 0; j < n; ++j) {
-    user_problem.var_types[j] =
-      model_variable_types[j] == var_t::CONTINUOUS
-        ? cuopt::linear_programming::dual_simplex::variable_type_t::CONTINUOUS
-        : cuopt::linear_programming::dual_simplex::variable_type_t::INTEGER;
+    user_problem.var_types[j] = model_variable_types[j] == var_t::CONTINUOUS
+                                  ? variable_type_t::CONTINUOUS
+                                  : variable_type_t::INTEGER;
   }
 }
 
@@ -2282,19 +2309,19 @@ uint32_t problem_t<i_t, f_t>::get_fingerprint() const
   // CSR representation should be unique and sorted at this point
   auto stream = handle_ptr->get_stream();
 
-  uint32_t h_coeff      = detail::compute_hash(coefficients, stream);
-  uint32_t h_vars       = detail::compute_hash(variables, stream);
-  uint32_t h_offsets    = detail::compute_hash(offsets, stream);
-  uint32_t h_rev_coeff  = detail::compute_hash(reverse_coefficients, stream);
-  uint32_t h_rev_off    = detail::compute_hash(reverse_offsets, stream);
-  uint32_t h_rev_constr = detail::compute_hash(reverse_constraints, stream);
-  uint32_t h_obj        = detail::compute_hash(objective_coefficients, stream);
-  uint32_t h_varbounds  = detail::compute_hash(variable_bounds, stream);
-  uint32_t h_clb        = detail::compute_hash(constraint_lower_bounds, stream);
-  uint32_t h_cub        = detail::compute_hash(constraint_upper_bounds, stream);
-  uint32_t h_vartypes   = detail::compute_hash(variable_types, stream);
-  uint32_t h_obj_off    = detail::compute_hash(presolve_data.objective_offset);
-  uint32_t h_obj_scale  = detail::compute_hash(presolve_data.objective_scaling_factor);
+  uint32_t h_coeff      = mip::compute_hash(coefficients, stream);
+  uint32_t h_vars       = mip::compute_hash(variables, stream);
+  uint32_t h_offsets    = mip::compute_hash(offsets, stream);
+  uint32_t h_rev_coeff  = mip::compute_hash(reverse_coefficients, stream);
+  uint32_t h_rev_off    = mip::compute_hash(reverse_offsets, stream);
+  uint32_t h_rev_constr = mip::compute_hash(reverse_constraints, stream);
+  uint32_t h_obj        = mip::compute_hash(objective_coefficients, stream);
+  uint32_t h_varbounds  = mip::compute_hash(variable_bounds, stream);
+  uint32_t h_clb        = mip::compute_hash(constraint_lower_bounds, stream);
+  uint32_t h_cub        = mip::compute_hash(constraint_upper_bounds, stream);
+  uint32_t h_vartypes   = mip::compute_hash(variable_types, stream);
+  uint32_t h_obj_off    = cuopt::compute_hash(presolve_data.objective_offset);
+  uint32_t h_obj_scale  = cuopt::compute_hash(presolve_data.objective_scaling_factor);
 
   std::vector<uint32_t> hashes = {
     h_coeff,
@@ -2311,7 +2338,7 @@ uint32_t problem_t<i_t, f_t>::get_fingerprint() const
     h_obj_off,
     h_obj_scale,
   };
-  return detail::compute_hash(hashes);
+  return cuopt::compute_hash(hashes);
 }
 
 template <typename i_t, typename f_t>
@@ -2392,4 +2419,4 @@ template class problem_t<int, float>;
 template class problem_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

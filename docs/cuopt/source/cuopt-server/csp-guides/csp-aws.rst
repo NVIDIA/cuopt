@@ -46,7 +46,7 @@ Step 1: Create an AWS VM with NVAIE Image
 Step 2: Activate NVAIE Subscription
 ------------------------------------
 
-Once connected to the VM, generate an identity token. Activate your NVIDIA AI Enterprise subscription using that identity token on NGC. Follow the instructions `here <https://docs.nvidia.com/ai-enterprise/deployment/cloud/latest/azure-ai-enterprise-vmi.html#accessing-the-ngc-catalog-on-ngc>`__.
+Once connected to the VM, generate an identity token. Activate your NVIDIA AI Enterprise subscription using that identity token on NGC. Follow the instructions `here <https://docs.nvidia.com/ai-enterprise/deployment/cloud/latest/aws-ai-enterprise-vmi.html#accessing-the-ngc-catalog-on-ngc>`__.
 
 Step 3: Run cuOpt
 ------------------
