@@ -17,6 +17,8 @@
 
 #include <mip_heuristics/mip_constants.hpp>
 
+#include <utilities/device_scalar_init.hpp>
+
 #ifdef CUPDLP_DEBUG_MODE
 #include <utilities/copy_helpers.hpp>
 #endif
@@ -88,8 +90,8 @@ pdlp_restart_strategy_t<i_t, f_t>::pdlp_restart_strategy_t(
                : static_cast<size_t>(primal_size_h_ + dual_size_h_),
              stream_view_},
     dual_norm_weight_{stream_view_},
-    restart_triggered_{0, stream_view_},
-    candidate_is_avg_{0, stream_view_},
+    restart_triggered_{zero_v<i_t>, stream_view_},
+    candidate_is_avg_{zero_v<i_t>, stream_view_},
     avg_duality_gap_{handle_ptr_,
                      hyper_params.never_restart_to_average ? 0 : primal_size,
                      hyper_params.never_restart_to_average ? 0 : dual_size,
@@ -189,10 +191,10 @@ pdlp_restart_strategy_t<i_t, f_t>::pdlp_restart_strategy_t(
     test_radius_squared_{stream_view_},
     testing_range_low_{stream_view_},
     testing_range_high_{stream_view_},
-    reusable_device_scalar_value_1_{f_t(1.0), stream_view_},
-    reusable_device_scalar_value_0_{f_t(0.0), stream_view_},
-    reusable_device_scalar_value_0_i_t_{i_t(0), stream_view_},
-    reusable_device_scalar_value_neg_1_{f_t(-1.0), stream_view_},
+    reusable_device_scalar_value_1_{one_v<f_t>, stream_view_},
+    reusable_device_scalar_value_0_{zero_v<f_t>, stream_view_},
+    reusable_device_scalar_value_0_i_t_{zero_v<i_t>, stream_view_},
+    reusable_device_scalar_value_neg_1_{neg_one_v<f_t>, stream_view_},
     dot_product_storage(0, stream_view_),
     dot_product_bytes{0},
     tmp_kkt_score_{stream_view_},
