@@ -83,12 +83,28 @@ jobs:
 
       - name: Compute cuopt version
         id: compute-cuopt-ver
+        env:
+          NIGHTLY_INDEX: https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
         run: |
-          source rapids-datetime-string
-          # .post<datetime> makes every nightly version unique (see ci/build_wheel.sh); ignored on release builds.
-          ver=$(RAPIDS_VERSION_SUFFIX=".post${RAPIDS_DATETIME_STRING}" rapids-generate-version)
+          ver=$(rapids-generate-version)
           # Remove starting 0s from version 25.08.0a18 -> 25.8.0a18
           CUOPT_VER=$(echo "$ver" | sed -E 's/\.0+([0-9])/\.\1/g')
+
+          # Nightly wheels carry a .post<datetime> suffix that cannot be recomputed here,
+          # so resolve the published version from the index. Release builds are exact already.
+          if ! rapids-is-release-build; then
+            # '|| true' so pipefail does not abort before the empty check below reports why.
+            resolved=$(curl -sf "${NIGHTLY_INDEX}/libcuopt-cu13/" \
+              | grep -oE "libcuopt_cu13-${CUOPT_VER//./\\.}\.post[0-9]+" \
+              | sed 's/^libcuopt_cu13-//' \
+              | sort -uV | tail -1 || true)
+            if [ -z "${resolved}" ]; then
+              echo "Could not resolve a published .post build for ${CUOPT_VER} on ${NIGHTLY_INDEX}." >&2
+              echo "wheel-publish-* should have published it before this job ran." >&2
+              exit 1
+            fi
+            CUOPT_VER="${resolved}"
+          fi
           echo "CUOPT_VER=$CUOPT_VER" >> $GITHUB_OUTPUT
           if rapids-is-release-build; then
             IMAGE_TAG_PREFIX="$CUOPT_VER"
