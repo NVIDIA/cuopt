@@ -25,6 +25,10 @@
  * the problem and occupies an OMP task for the whole of presolve. */
 #define CUOPT_MIP_EARLY_CPUFJ_MAX_CLIMBERS 8
 
+/* @brief Upper bound on the persistent root CPUFJ lane set. Every lane holds its own host copy of
+ * the root LP and occupies an OMP task for the whole of the cut loop. */
+#define CUOPT_MIP_ROOT_CPUFJ_MAX_LANES 4
+
 // MIP-only gate: skip the concurrent barrier when fewer threads are available than this
 // (1 PDLP + 1 dual simplex + 1 barrier). Stand-alone LP always runs all three.
 #define CUOPT_CONCURRENT_LP_BARRIER_REQUIRED_THREAD_COUNT 3

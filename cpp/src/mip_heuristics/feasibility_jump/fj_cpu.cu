@@ -2694,10 +2694,72 @@ static void finalize_fj_cpu_host_initialization_from_template(
     raft::device_span<i_t>(fj_cpu.h_objective_vars.data(), fj_cpu.h_objective_vars.size());
 }
 
+// Slacks at and above n_structural fold into their row's bounds: a*x + alpha*s = rhs with
+// s in [lo, hi] becomes rhs - max(alpha*lo, alpha*hi) <= a*x <= rhs - min(alpha*lo, alpha*hi).
+template <typename i_t, typename f_t>
+static void eliminate_slacks(const lp_problem_t<i_t, f_t>& problem,
+                             i_t n_structural,
+                             csr_matrix_t<i_t, f_t>& csr_A,
+                             std::vector<f_t>& row_lower,
+                             std::vector<f_t>& row_upper)
+{
+  cuopt_assert(csr_A.m == problem.num_rows, "row count mismatch");
+  cuopt_assert(csr_A.n == problem.num_cols, "column count mismatch");
+  cuopt_assert(n_structural > 0, "no structural columns");
+  cuopt_assert(n_structural < problem.num_cols, "no slacks to eliminate");
+  cuopt_assert(problem.num_cols - n_structural <= problem.num_rows, "more slacks than rows");
+
+  row_lower = problem.rhs;
+  row_upper = problem.rhs;
+
+  std::vector<char> row_has_slack(problem.num_rows, 0);
+  for (i_t j = n_structural; j < problem.num_cols; ++j) {
+    cuopt_assert(problem.A.col_length(j) == 1, "slack column is not a singleton");
+
+    const i_t entry = problem.A.col_start[j];
+    const i_t row   = problem.A.i[entry];
+    const f_t alpha = problem.A.x[entry];
+    cuopt_assert(std::abs(alpha) == f_t{1}, "slack coefficient is not +/-1");
+    cuopt_assert(!row_has_slack[row], "row has more than one slack");
+    row_has_slack[row] = 1;
+
+    const f_t scaled_lower = alpha * problem.lower[j];
+    const f_t scaled_upper = alpha * problem.upper[j];
+    row_lower[row]         = problem.rhs[row] - std::max(scaled_lower, scaled_upper);
+    row_upper[row]         = problem.rhs[row] - std::min(scaled_lower, scaled_upper);
+    cuopt_assert(std::isfinite(row_lower[row]) || std::isfinite(row_upper[row]),
+                 "eliminated row is free on both sides");
+    cuopt_assert(row_lower[row] <= row_upper[row], "eliminated row has crossed bounds");
+  }
+
+  i_t out = 0;
+  for (i_t row = 0; row < csr_A.m; ++row) {
+    const i_t row_start  = csr_A.row_start[row];
+    const i_t row_end    = csr_A.row_start[row + 1];
+    csr_A.row_start[row] = out;
+    for (i_t p = row_start; p < row_end; ++p) {
+      if (csr_A.j[p] >= n_structural) { continue; }
+      csr_A.j[out] = csr_A.j[p];
+      csr_A.x[out] = csr_A.x[p];
+      ++out;
+    }
+  }
+  cuopt_assert(
+    out == csr_A.row_start[csr_A.m] - static_cast<i_t>(problem.num_cols - n_structural),
+    "slack elimination removed the wrong number of entries");
+
+  csr_A.row_start[csr_A.m] = out;
+  csr_A.j.resize(out);
+  csr_A.x.resize(out);
+  csr_A.nz_max = out;
+  csr_A.n      = n_structural;
+}
+
 template <typename i_t, typename f_t>
 static std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_from_host_lp(
   const lp_problem_t<i_t, f_t>& problem,
   const std::vector<variable_type_t>& variable_types,
+  i_t n_structural,
   const std::vector<f_t>& seed_assignment,
   const simplex_solver_settings_t<i_t, f_t>& settings,
   std::atomic<bool>& preemption_flag,
@@ -2715,16 +2777,27 @@ static std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_from_host_lp(
   tolerances.absolute_mip_gap      = settings.absolute_mip_gap_tol;
   tolerances.relative_mip_gap      = settings.relative_mip_gap_tol;
 
-  const i_t n_variables   = problem.num_cols;
   const i_t n_constraints = problem.num_rows;
 
   csr_matrix_t<i_t, f_t> csr_A(problem.num_rows, problem.num_cols, problem.A.nnz());
   problem.A.to_compressed_row(csr_A);
-  std::vector<f_t> coefficients            = csr_A.x;
-  std::vector<i_t> variables               = csr_A.j;
-  std::vector<i_t> offsets                 = csr_A.row_start;
-  std::vector<f_t> constraint_lower_bounds = problem.rhs;
-  std::vector<f_t> constraint_upper_bounds = problem.rhs;
+
+  std::vector<f_t> constraint_lower_bounds;
+  std::vector<f_t> constraint_upper_bounds;
+  i_t n_variables;
+  if (n_structural > 0 && n_structural < problem.num_cols) {
+    eliminate_slacks(problem, n_structural, csr_A, constraint_lower_bounds, constraint_upper_bounds);
+    n_variables = n_structural;
+  } else {
+    n_variables = problem.num_cols;
+    // Standard form: every row is an equality.
+    constraint_lower_bounds = problem.rhs;
+    constraint_upper_bounds = problem.rhs;
+  }
+
+  std::vector<f_t> coefficients = csr_A.x;
+  std::vector<i_t> variables    = csr_A.j;
+  std::vector<i_t> offsets      = csr_A.row_start;
   std::vector<f_t2> variable_bounds(n_variables);
   std::vector<var_t> cpufj_variable_types(n_variables);
   std::vector<i_t> is_binary_variable(n_variables, 0);
@@ -2781,8 +2854,9 @@ static std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_from_host_lp(
   fj_cpu->h_coefficients         = std::move(coefficients);
   fj_cpu->h_offsets              = std::move(offsets);
   fj_cpu->h_variables            = std::move(variables);
-  fj_cpu->h_obj_coeffs           = problem.objective;
-  fj_cpu->h_var_bounds           = std::move(variable_bounds);
+  fj_cpu->h_obj_coeffs =
+    std::vector<f_t>(problem.objective.begin(), problem.objective.begin() + n_variables);
+  fj_cpu->h_var_bounds = std::move(variable_bounds);
   fj_cpu->h_cstr_lb              = std::move(constraint_lower_bounds);
   fj_cpu->h_cstr_ub              = std::move(constraint_upper_bounds);
   fj_cpu->h_var_types            = std::move(cpufj_variable_types);
@@ -3785,22 +3859,32 @@ void fj_cpu_worker_t<i_t, f_t>::fj_cpu_deleter_t::operator()(fj_cpu_climber_t<i_
 }
 
 template <typename i_t, typename f_t>
+std::shared_ptr<fj_cpu_shared_incumbent_t<i_t, f_t>> make_fj_cpu_shared_incumbent()
+{
+  return std::make_shared<fj_cpu_shared_incumbent_t<i_t, f_t>>();
+}
+
+template <typename i_t, typename f_t>
 void fj_cpu_worker_t<i_t, f_t>::create_worker(
   const lp_problem_t<i_t, f_t>& problem,
   const std::vector<simplex::variable_type_t>& variable_types,
+  i_t n_structural,
   const std::vector<f_t>& seed_assignment,
   const simplex_solver_settings_t<i_t, f_t>& settings,
   std::string log_prefix,
-  int64_t seed)
+  int64_t seed,
+  int lane)
 {
   auto new_climber = init_fj_cpu_from_host_lp(
-    problem, variable_types, seed_assignment, settings, preemption_flag, seed);
+    problem, variable_types, n_structural, seed_assignment, settings, preemption_flag, seed);
   fj_cpu.reset(new_climber.release());
   fj_cpu->log_prefix           = std::move(log_prefix);
   fj_cpu->improvement_callback = improvement_callback;
+  fj_cpu->shared_incumbent     = shared_incumbent;
   fj_cpu->halted               = false;
   preemption_flag              = false;
   is_initialized               = true;
+  if (lane >= 0) { apply_lane_diversification<i_t, f_t>(*fj_cpu, lane, fj_cpu->settings.seed); }
 }
 
 template <typename i_t, typename f_t>
@@ -3847,6 +3931,8 @@ void fj_cpu_worker_t<i_t, f_t>::send_stop_signal()
 #if MIP_INSTANTIATE_FLOAT
 template class fj_t<int, float>;
 template struct fj_cpu_worker_t<int, float>;
+template std::shared_ptr<fj_cpu_shared_incumbent_t<int, float>>
+make_fj_cpu_shared_incumbent<int, float>();
 template void cpufj_solve(fj_cpu_climber_t<int, float>* fj_cpu,
                           float in_time_limit,
                           double work_unit_limit);
@@ -3876,6 +3962,8 @@ template void finalize_fj_cpu_host_initialization(
 #if MIP_INSTANTIATE_DOUBLE
 template class fj_t<int, double>;
 template struct fj_cpu_worker_t<int, double>;
+template std::shared_ptr<fj_cpu_shared_incumbent_t<int, double>>
+make_fj_cpu_shared_incumbent<int, double>();
 template void cpufj_solve(fj_cpu_climber_t<int, double>* fj_cpu,
                           double in_time_limit,
                           double work_unit_limit);

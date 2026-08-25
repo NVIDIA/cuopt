@@ -2430,6 +2430,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
     f_t work_limit = 1.0;
     submip_fj_cpu_worker.create_worker(submip_bnb.original_lp_,
                                        submip_bnb.var_types_,
+                                       submip_bnb.original_problem_.num_cols,
                                        initial_guess,
                                        submip_bnb.settings_,
                                        std::format("{} [CPU FJ]", log_prefix),
@@ -2891,6 +2892,7 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(diving_worker_t<i_t, f_t>* w
           f_t work_limit = 1.0;
           submip_fj_cpu_worker.create_worker(worker->leaf_problem,
                                              var_types,
+                                             original_problem_.num_cols,
                                              worker->leaf_solution.x,
                                              settings_,
                                              std::format("{} [CPU FJ]", log_prefix),
@@ -2963,12 +2965,31 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
     f_t work_limit = std::numeric_limits<f_t>::infinity();
     f_t time_limit = settings_.time_limit - toc(exploration_stats_.start_time);
 
+    // Odd passes start from the incumbent, even ones from the relaxation. The size guard covers a
+    // concurrent pass having grown the LP past the crush the incumbent was last taken through.
+    std::vector<f_t> fj_seed;
+    if (cut_pass % 2 == 1) {
+      mutex_upper_.lock();
+      if (incumbent_.has_incumbent && incumbent_.x.size() == (size_t)lp.num_cols) {
+        fj_seed = incumbent_.x;
+      }
+      mutex_upper_.unlock();
+    }
+    if (fj_seed.empty()) { fj_seed = sol; }
+
     current_heuristic->fj_cpu_worker_.improvement_callback =
       [this](f_t obj, const std::vector<f_t>& assignment, double work_units) {
         set_solution_from_cpu_fj(obj, assignment, work_units);
       };
-    current_heuristic->fj_cpu_worker_.create_worker(
-      lp, var_types_, sol, settings_, "[RootCut CPUFJ] ");
+    current_heuristic->fj_cpu_worker_.create_worker(lp,
+                                                    var_types_,
+                                                    original_problem_.num_cols,
+                                                    fj_seed,
+                                                    settings_,
+                                                    "[RootCut CPUFJ " + std::to_string(cut_pass) +
+                                                      "] ",
+                                                    /*seed=*/-1,
+                                                    /*lane=*/cut_pass);
     ++(*worker_count);
 
 #pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY)                                        \
@@ -3525,6 +3546,29 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   lp_status_t root_status  = lp_status_t::UNSET;
   solving_root_relaxation_ = true;
 
+  // Started here so the lanes run through the root LP and every cut pass. No relaxation exists
+  // yet, so they seed from the anchor.
+  root_heuristics_t<i_t, f_t> root_heuristics(settings_.num_threads - 1);
+  const i_t n_root_fj_lanes =
+    std::clamp(settings_.num_threads / 4, 0, CUOPT_MIP_ROOT_CPUFJ_MAX_LANES);
+  const f_t root_fj_time_limit = settings_.time_limit - toc(exploration_stats_.start_time);
+  if (!settings_.deterministic && n_root_fj_lanes > 0 && root_fj_time_limit > 0) {
+    root_heuristics.start_persistent_lanes(
+      original_lp_,
+      var_types_,
+      original_problem_.num_cols,
+      {},
+      settings_,
+      n_root_fj_lanes,
+      root_fj_time_limit,
+      (int64_t)settings_.random_seed,
+      [this](f_t obj, const std::vector<f_t>& assignment, double work_units) {
+        cuopt_assert(assignment.size() == (size_t)original_problem_.num_cols,
+                     "root CPU FJ lanes must report a slack-free assignment");
+        set_solution_from_cpu_fj(obj, assignment, work_units);
+      });
+  }
+
   f_t root_relax_start_time = tic();
 
   if (!enable_concurrent_lp_root_solve()) {
@@ -3681,8 +3725,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     settings_.benchmark_info_ptr->root_lp_no_cuts =
       compute_user_objective(original_lp_, root_relax_objective);
   }
-
-  root_heuristics_t<i_t, f_t> root_heuristics(settings_.num_threads - 1);
 
   f_t cut_generation_start_time = tic();
   i_t cut_pool_size             = 0;

@@ -25,6 +25,13 @@ template <typename i_t, typename f_t>
 struct fj_cpu_climber_t;
 
 template <typename i_t, typename f_t>
+struct fj_cpu_shared_incumbent_t;
+
+// Defined in fj_cpu.cu, where the type is complete.
+template <typename i_t, typename f_t>
+std::shared_ptr<fj_cpu_shared_incumbent_t<i_t, f_t>> make_fj_cpu_shared_incumbent();
+
+template <typename i_t, typename f_t>
 struct fj_cpu_worker_t {
   // Custom deleter to avoid pulling the entire fj_cpu_climber_t class here.
   struct fj_cpu_deleter_t {
@@ -35,19 +42,26 @@ struct fj_cpu_worker_t {
   std::atomic<bool> preemption_flag{false};
   std::unique_ptr<fj_cpu_climber_t<i_t, f_t>, fj_cpu_deleter_t> fj_cpu;
   std::function<void(f_t, const std::vector<f_t>&, double)> improvement_callback;
+  // Set before create_worker to join a portfolio; left null when the climber runs alone.
+  std::shared_ptr<fj_cpu_shared_incumbent_t<i_t, f_t>> shared_incumbent;
 
   ~fj_cpu_worker_t() { stop(); }
 
+  // `n_structural` is where `problem`'s slack block starts; those columns fold into two-sided row
+  // bounds, so the climber and the assignment it reports span only the ones below. -1 keeps them.
   // `seed` selects the FJ RNG seed: pass a non-negative value for a deterministic seed,
   // or -1 to draw from the global cuopt::seed_generator (the historical behavior).
   // In deterministic mode the caller MUST pass an explicit seed, otherwise the underlying
   // seed_generator::get_seed() racing with concurrent callers breaks reproducibility.
+  // `lane` >= 0 applies that lane's persona from the portfolio diversification ladder.
   void create_worker(const simplex::lp_problem_t<i_t, f_t>& problem,
                      const std::vector<simplex::variable_type_t>& variable_types,
+                     i_t n_structural,
                      const std::vector<f_t>& seed_assignment,
                      const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
                      std::string log_prefix,
-                     int64_t seed = -1);
+                     int64_t seed = -1,
+                     int lane     = -1);
 
   // Run the worker asynchronously (i.e., launch an openmp task and then continue the
   // execution). Call `stop()` for stopping the worker
