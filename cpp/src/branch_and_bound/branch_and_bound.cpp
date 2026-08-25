@@ -524,8 +524,7 @@ void branch_and_bound_t<i_t, f_t>::update_user_bound(f_t lower_bound)
 
 template <typename i_t, typename f_t>
 bool branch_and_bound_t<i_t, f_t>::set_solution_from_heuristics(const std::vector<f_t>& solution,
-                                                                heuristics_origin_t origin,
-                                                                f_t* solver_objective)
+                                                                heuristics_origin_t origin)
 {
   mutex_original_lp_.lock();
   if (solution.size() != original_problem_.num_cols) {
@@ -538,7 +537,6 @@ bool branch_and_bound_t<i_t, f_t>::set_solution_from_heuristics(const std::vecto
   f_t obj = compute_objective(original_lp_, crushed_solution);
 
   mutex_original_lp_.unlock();
-  if (solver_objective != nullptr) { *solver_objective = obj; }
   bool is_feasible    = false;
   bool attempt_repair = false;
   bool success        = false;
@@ -689,18 +687,10 @@ void branch_and_bound_t<i_t, f_t>::set_solution_from_submip(
                log_prefix,
                compute_user_objective(lp, obj));
 
-  // `obj` is in the sub-MIP's own space (fixed variables, own presolve offset), so it cannot be
-  // handed to solution_callback alongside a user-space assignment.
-  f_t original_lp_objective = std::numeric_limits<f_t>::quiet_NaN();
-  bool success =
-    set_solution_from_heuristics(user_sol, heuristics_origin_t::SUBMIP, &original_lp_objective);
+  bool success = set_solution_from_heuristics(user_sol, heuristics_origin_t::SUBMIP);
   if (success) {
     submip_stats.save_success(fixrate);
-    cuopt_assert(std::isfinite(original_lp_objective),
-                 "SubMIP incumbent objective must be finite when accepted");
-    if (settings_.solution_callback != nullptr) {
-      settings_.solution_callback(user_sol, original_lp_objective);
-    }
+    if (settings_.solution_callback != nullptr) { settings_.solution_callback(user_sol, obj); }
   }
 }
 
