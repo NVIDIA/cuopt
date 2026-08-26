@@ -62,7 +62,7 @@ MIP Settings
 ------------
 
 All solver settings are set through ``SolverSettings``. Use the overloaded
-``setSetting`` methods for string, integer, floating-point, and boolean
+``setSetting`` methods for string, integer, floating-point, and Boolean
 values. MIP-relevant settings include time and node limits, MIP tolerances,
 presolve, heuristics, scaling, determinism, and cut controls. The generated
 ``CuOptConstants`` class contains the string and integer constants from the

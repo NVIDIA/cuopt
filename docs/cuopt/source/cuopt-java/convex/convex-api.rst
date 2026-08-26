@@ -131,16 +131,16 @@ becomes a new constant rather than a new method.
    int iterations = solution.getIntAttribute(
        CuOptConstants.CUOPT_SOLUTION_ATTR_LP_NUM_ITERATIONS);
 
-Which attributes a solution carries depends on the class of problem that
-produced it. A selector that does not apply, or that does not have the
-requested value type, raises ``CuOptException``.
+This depends on the class of problem that produced the solution. A selector
+that does not apply, or that does not have the requested value type, raises
+``CuOptException``.
 
 Reading and Writing Problems
 ----------------------------
 
 ``Problem.read`` loads a problem, choosing the parser from the file extension:
 ``.mps``, ``.qps`` and ``.lp`` are recognised, along with their ``.gz``,
-``.bz2`` and ``.lz4`` variants. A boolean overload forces fixed-format MPS.
+``.bz2`` and ``.lz4`` variants. A Boolean overload forces fixed-format MPS.
 
 ``Problem.write`` writes MPS, which is the only format the engine can write, so
 the path must end in ``.mps`` or ``.qps``.

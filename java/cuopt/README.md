@@ -1,4 +1,4 @@
-# cuOpt Java bindings
+# cuOpt Java Bindings
 
 This directory contains a source module for cuOpt LP, MIP, QP,
 QCQP, and SOCP Java bindings. The repository CI and release workflows build
@@ -45,7 +45,7 @@ symbol.
 The standalone native project links to `${CUOPT_PREFIX}/lib/libcuopt.so`. No
 Java-specific symbol or source file is required by the main cuOpt build.
 
-## JNI symbol check
+## JNI Symbol Check
 
 The bindings are hand-written, so every `static native` method in
 `NativeCuOpt.java` needs a matching `Java_com_nvidia_..._name` function in
@@ -72,7 +72,7 @@ cd java/cuopt
 bash scripts/check_jni_symbols.sh
 ```
 
-## Generated constants
+## Generated Constants
 
 Maven generates `CuOptConstants.java` under
 `target/generated-sources/cuopt/com/nvidia/cuopt/mathematicaloptimization/`

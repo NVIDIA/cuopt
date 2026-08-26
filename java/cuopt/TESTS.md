@@ -3,7 +3,7 @@ SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# cuOpt Java binding tests
+# cuOpt Java Binding Tests
 
 The Java module has three test classes under
 `src/test/java/com/nvidia/cuopt/mathematicaloptimization`:
@@ -14,7 +14,7 @@ The Java module has three test classes under
 
 The suite has no dependency on the cuOpt Python interface.
 
-## How to run
+## How to Run
 
 Build the JNI library and run all Java tests with:
 
@@ -62,7 +62,7 @@ quadratic-constraint construction; QP solve callability is covered by
 equality and ranged constraints, mixed bounds, mixed integer/continuous
 variables, metadata, and infeasibility.
 
-## Prerequisite behavior
+## Prerequisite Behavior
 
 - Pure modeling tests run without JNI or a GPU.
 - Native tests skip when `cuopt.native.dir` is unset or `libcuopt_jni` is not

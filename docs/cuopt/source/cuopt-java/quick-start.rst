@@ -150,8 +150,9 @@ Lifecycle
 ---------
 
 ``SolverSettings`` and ``Solution`` own native handles and implement
-``AutoCloseable``. Prefer try-with-resources. They also register a ``Cleaner``
-fallback, but deterministic close keeps native memory pressure predictable.
+``AutoCloseable``, so close them with try-with-resources. They also register a
+``Cleaner`` fallback, but closing them deterministically keeps native memory
+pressure predictable.
 
 Expressions are built and compared through methods — ``plus``, ``minus``,
 ``le``, ``ge`` and ``eq`` — each returning a new object rather than mutating
