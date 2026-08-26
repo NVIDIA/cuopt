@@ -76,6 +76,7 @@ class log_buffer {
     return out;
   }
 
+ private:
   std::vector<buffered_entry> messages;
   mutable std::mutex mutex;
 };
