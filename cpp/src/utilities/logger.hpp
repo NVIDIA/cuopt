@@ -277,7 +277,17 @@ inline void configure_logging_impl(const std::string& log_file, bool log_to_cons
   // configuration we just applied and silently put the buffer sink back.
   external_config_guard().reset();
 
-  apply_logger_config(log_file, log_to_console, truncate);
+  try {
+    apply_logger_config(log_file, log_to_console, truncate);
+  } catch (...) {
+    // Put the depth back. The caller's constructor is the one throwing, so its destructor
+    // never runs to balance the increment, and a depth stuck above zero would make every
+    // later configure look nested and silently do nothing -- logging dead for the process
+    // because one log file could not be opened.
+    --external_config_depth();
+    reset_default_logger();
+    throw;
+  }
 
   auto guard              = std::make_shared<logger_config_guard>();
   g_active_guard          = guard;

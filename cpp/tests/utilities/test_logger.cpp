@@ -154,6 +154,26 @@ TEST(logger, append_preserves_existing_contents)
   std::remove(path.c_str());
 }
 
+// A configure that throws must leave the depth counter as it found it. The caller's
+// constructor is the one throwing, so its destructor never runs to balance the increment,
+// and a stuck depth would make every later configure look nested and silently do nothing.
+TEST(logger, failed_configure_does_not_wedge_later_ones)
+{
+  const auto unopenable = "/nonexistent-directory-" + std::to_string(unique_id()) + "/x.log";
+  EXPECT_ANY_THROW(cuopt::configure_logging_impl(unopenable, false, true));
+
+  const auto path = temp_log_path("recovered");
+  {
+    scoped_config cfg{path};
+    CUOPT_LOG_ERROR("after_failed_configure");
+  }
+
+  EXPECT_NE(read_file(path).find("after_failed_configure"), std::string::npos)
+    << "a failed configure left the logger wedged";
+
+  std::remove(path.c_str());
+}
+
 // The library's logger is reachable only through the exported entry point. Its messages are
 // not observable here, but configuring it must clear the shared file exactly once.
 TEST(logger, component_logger_truncates_shared_file)
