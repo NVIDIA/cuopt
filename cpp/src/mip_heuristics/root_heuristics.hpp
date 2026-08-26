@@ -37,7 +37,10 @@ struct cut_pass_heuristics_t {
       root_edge_norm_(root_edge_norm),
       pseudo_costs_(root_solution.size(), settings),
       halt_(false),
-      submip_worker_(nullptr) {};
+      submip_worker_(nullptr)
+  {
+    pseudo_costs_.Arow = Arow;
+  };
 
   ~cut_pass_heuristics_t() { stop_and_sync(); }
 
