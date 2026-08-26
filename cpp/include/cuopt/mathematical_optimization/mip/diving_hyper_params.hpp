@@ -22,9 +22,6 @@ struct mip_diving_hyper_params_t {
   i_t farkas_diving        = -1;
   i_t vector_length_diving = -1;
 
-  // The minimum depth to start diving from.
-  i_t min_node_depth = 10;
-
   // The maximum number of nodes when performing a dive.
   i_t node_limit = 500;
 

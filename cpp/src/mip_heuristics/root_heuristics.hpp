@@ -19,19 +19,23 @@ struct cut_pass_heuristics_t {
   csr_matrix_t<i_t, f_t> Arow_;
   std::vector<f_t> root_solution_;
   std::vector<f_t> root_edge_norm_;
+  pseudo_costs_t<i_t, f_t> pseudo_costs_;
   std::atomic<int> halt_;
 
   std::unique_ptr<diving_worker_t<i_t, f_t>> submip_worker_;
+  std::vector<std::unique_ptr<diving_worker_t<i_t, f_t>>> diving_workers_;
   fj_cpu_worker_t<i_t, f_t> fj_cpu_worker_;
 
   cut_pass_heuristics_t(const csr_matrix_t<i_t, f_t>& Arow,
                         const std::vector<simplex::variable_type_t>& var_types,
                         const std::vector<f_t>& root_solution,
-                        const std::vector<f_t>& root_edge_norm)
+                        const std::vector<f_t>& root_edge_norm,
+                        const simplex::simplex_solver_settings_t<i_t, f_t>& settings)
     : var_types_(var_types),
       Arow_(Arow),
       root_solution_(root_solution),
       root_edge_norm_(root_edge_norm),
+      pseudo_costs_(root_solution.size(), settings),
       halt_(false),
       submip_worker_(nullptr) {};
 
@@ -65,7 +69,7 @@ struct cut_pass_heuristics_t {
     search_strategy_t type)
   {
     submip_worker_ = std::make_unique<diving_worker_t<i_t, f_t>>(
-      id, lp, Arow_, var_types_, settings, root_solution_, root_edge_norm_);
+      id, lp, Arow_, var_types_, settings, pseudo_costs_, root_solution_, root_edge_norm_);
     submip_worker_->start_node       = mip_node_t<i_t, f_t>(root_obj, root_vstatus);
     submip_worker_->leaf_vstatus     = root_vstatus;
     submip_worker_->leaf_solution.x  = sol;
@@ -75,6 +79,43 @@ struct cut_pass_heuristics_t {
     submip_worker_->set_active();
 
     return submip_worker_.get();
+  }
+
+  void initialize_pseudocost(const simplex::lp_problem_t<i_t, f_t>& lp,
+                             const std::vector<simplex::variable_status_t>& vstatus,
+                             const std::vector<i_t>& fractional,
+                             const simplex::lp_solution_t<i_t, f_t>& lp_solution,
+                             const std::vector<i_t>& basic_list,
+                             const std::vector<i_t>& nonbasic_list,
+                             simplex::basis_update_mpf_t<i_t, f_t>& basis_factors)
+  {
+    pseudo_costs_.initialize_with_estimate(
+      lp, vstatus, fractional, lp_solution, basic_list, nonbasic_list, basis_factors);
+  }
+
+  diving_worker_t<i_t, f_t>* create_diving_worker(
+    i_t cut_pass,
+    const simplex::lp_problem_t<i_t, f_t>& lp,
+    const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+    const mip_node_t<i_t, f_t>& root_node,
+    search_strategy_t strategy)
+  {
+    std::unique_ptr<diving_worker_t<i_t, f_t>>& worker = diving_workers_.emplace_back(
+      std::make_unique<diving_worker_t<i_t, f_t>>(diving_workers_.size(),
+                                                  lp,
+                                                  Arow_,
+                                                  var_types_,
+                                                  settings,
+                                                  pseudo_costs_,
+                                                  root_solution_,
+                                                  root_edge_norm_));
+    worker->start_node      = root_node.detach_copy();
+    worker->start_lower     = lp.lower;
+    worker->start_upper     = lp.upper;
+    worker->search_strategy = strategy;
+    worker->set_active();
+
+    return worker.get();
   }
 };
 
@@ -119,21 +160,22 @@ struct root_heuristics_t {
     const csr_matrix_t<i_t, f_t>& Arow,
     const std::vector<simplex::variable_type_t>& var_types,
     const std::vector<f_t>& root_solution,
-    const std::vector<f_t>& root_edge_norm)
+    const std::vector<f_t>& root_edge_norm,
+    const simplex::simplex_solver_settings_t<i_t, f_t>& settings)
   {
-    // If we already exhausted all threads for the root heuristics, stop workers for the
-    // oldest set of heuristics launched. Leave 2 threads for the cut passes and the clique
-    // table generation. Add the number of workers that will be launched (1 submip worker +
-    // 1 CPU FJ worker).
-    i_t clique_table_generation = cut_pass == 0 ? 1 : 0;
-    if (*worker_count_ + 3 + clique_table_generation > max_workers_ &&
-        !cut_passes_heuristics_.empty()) {
-      cut_passes_heuristics_.begin()->get()->send_stop_signal();
-      cut_passes_heuristics_.erase(cut_passes_heuristics_.begin());
-    }
+    // // If we already exhausted all threads for the root heuristics, stop workers for the
+    // // oldest set of heuristics launched. Leave 2 threads for the cut passes and the clique
+    // // table generation. Add the number of workers that will be launched (1 submip worker +
+    // // 1 CPU FJ worker).
+    // i_t clique_table_generation = cut_pass == 0 ? 1 : 0;
+    // if (*worker_count_ + 3 + clique_table_generation > max_workers_ &&
+    //     !cut_passes_heuristics_.empty()) {
+    //   cut_passes_heuristics_.begin()->get()->send_stop_signal();
+    //   cut_passes_heuristics_.erase(cut_passes_heuristics_.begin());
+    // }
 
     return cut_passes_heuristics_.emplace_back(std::make_shared<cut_pass_heuristics_t<i_t, f_t>>(
-      Arow, var_types, root_solution, root_edge_norm));
+      Arow, var_types, root_solution, root_edge_norm, settings));
   }
 };
 

@@ -68,6 +68,13 @@ class branch_and_bound_worker_t {
 
   std::vector<f_t> start_lower;
   std::vector<f_t> start_upper;
+  std::vector<f_t> current_incumbent;
+
+  // Variable locks (see definition 3.3 from T. Achterberg, “Constraint Integer Programming,”
+  // PhD, Technischen Universität Berlin, Berlin, 2007. doi: 10.14279/depositonce-1634).
+  // Here we assume that the constraints are in the form `Ax = b, l <= x <= u`.
+  std::vector<i_t> var_up_locks;
+  std::vector<i_t> var_down_locks;
 
   pcgenerator_t rng;
 
@@ -80,6 +87,8 @@ class branch_and_bound_worker_t {
 
   const std::vector<f_t>& root_solution;
   const std::vector<f_t>& root_edge_norm;
+
+  pseudo_costs_t<i_t, f_t>& pseudo_costs;
 
   void ensure_orbital_fixing()
   {
@@ -97,6 +106,7 @@ class branch_and_bound_worker_t {
                             const csr_matrix_t<i_t, f_t>& Arow,
                             const std::vector<simplex::variable_type_t>& var_type,
                             const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+                            pseudo_costs_t<i_t, f_t>& pc,
                             const std::vector<f_t>& root_solution,
                             const std::vector<f_t>& root_edge_norm,
                             uint64_t rng_offset = 0)
@@ -115,7 +125,8 @@ class branch_and_bound_worker_t {
       rng(settings.random_seed + pcgenerator_t::default_seed + rng_offset + worker_id,
           pcgenerator_t::default_stream ^ (worker_id + rng_offset)),
       root_solution(root_solution),
-      root_edge_norm(root_edge_norm)
+      root_edge_norm(root_edge_norm),
+      pseudo_costs(pc)
   {
   }
 
@@ -153,11 +164,19 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
                const csr_matrix_t<i_t, f_t>& Arow,
                const std::vector<simplex::variable_type_t>& var_type,
                const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+               pseudo_costs_t<i_t, f_t>& pc,
                const std::vector<f_t>& root_solution,
                const std::vector<f_t>& root_edge_norm,
                uint64_t rng_offset = 0)
-    : Base(
-        worker_id, original_lp, Arow, var_type, settings, root_solution, root_edge_norm, rng_offset)
+    : Base(worker_id,
+           original_lp,
+           Arow,
+           var_type,
+           settings,
+           pc,
+           root_solution,
+           root_edge_norm,
+           rng_offset)
   {
     this->start_lower     = original_lp.lower;
     this->start_upper     = original_lp.upper;
@@ -225,7 +244,31 @@ template <typename i_t, typename f_t>
 class diving_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
  public:
   using Base = branch_and_bound_worker_t<i_t, f_t>;
-  using Base::Base;
+
+  diving_worker_t(i_t worker_id,
+                  const simplex::lp_problem_t<i_t, f_t>& original_lp,
+                  const csr_matrix_t<i_t, f_t>& Arow,
+                  const std::vector<simplex::variable_type_t>& var_type,
+                  const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+                  pseudo_costs_t<i_t, f_t>& pc,
+                  const std::vector<f_t>& root_solution,
+                  const std::vector<f_t>& root_edge_norm,
+                  uint64_t rng_offset = 0)
+    : Base(worker_id,
+           original_lp,
+           Arow,
+           var_type,
+           settings,
+           pc,
+           root_solution,
+           root_edge_norm,
+           rng_offset)
+  {
+    this->start_lower     = original_lp.lower;
+    this->start_upper     = original_lp.upper;
+    this->search_strategy = search_strategy_t::COEFFICIENT_DIVING;
+    calculate_variable_locks(original_lp, this->var_up_locks, this->var_down_locks);
+  }
 
   // Apply bound strengthening to the starting variable bounds
   bool presolve_start_bounds(const simplex::simplex_solver_settings_t<i_t, f_t>& settings)

@@ -208,12 +208,6 @@ class branch_and_bound_t {
   std::vector<i_t> new_slacks_;
   std::vector<simplex::variable_type_t> var_types_;
 
-  // Variable locks (see definition 3.3 from T. Achterberg, “Constraint Integer Programming,”
-  // PhD, Technischen Universität Berlin, Berlin, 2007. doi: 10.14279/depositonce-1634).
-  // Here we assume that the constraints are in the form `Ax = b, l <= x <= u`.
-  std::vector<i_t> var_up_locks_;
-  std::vector<i_t> var_down_locks_;
-
   // Mutex for the original LP
   // The heuristics threads look at the original LP. But the main thread modifies the
   // size of the original LP by adding slacks for cuts. Heuristic threads should lock
@@ -369,7 +363,8 @@ class branch_and_bound_t {
 
   // Perform a deep dive in the subtree determined by the `start_node` in order
   // to find integer feasible solutions.
-  void dive_with(diving_worker_t<i_t, f_t>* worker, i_t backtrack_limit);
+  void dive_with(diving_worker_t<i_t, f_t>* worker,
+                 const simplex::simplex_solver_settings_t<i_t, f_t>& settings);
 
   // Launch a new RINS worker
   bool launch_submip_worker(const std::vector<f_t>& sol);
@@ -391,12 +386,15 @@ class branch_and_bound_t {
 
   // Creates and solves the RINS/RENS sub-MIP.
   void recursive_submip(diving_worker_t<i_t, f_t>* worker,
-                        const std::vector<f_t>& current_incumbent,
                         const std::vector<simplex::variable_type_t>& var_types,
                         simplex::simplex_solver_settings_t<i_t, f_t> submip_settings);
 
   void launch_root_heuristics(const simplex::lp_problem_t<i_t, f_t>& lp,
-                              const std::vector<f_t>& sol,
+                              const simplex::lp_solution_t<i_t, f_t>& lp_solution,
+                              const std::vector<i_t>& fractional,
+                              const std::vector<i_t>& basic_list,
+                              const std::vector<i_t>& nonbasic_list,
+                              simplex::basis_update_mpf_t<i_t, f_t>& basis_factor,
                               i_t cut_pass,
                               root_heuristics_t<i_t, f_t>& root_heuristics);
 
