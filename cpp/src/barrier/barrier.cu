@@ -97,6 +97,15 @@ bool validate_barrier_cone_layout(const lp_problem_t<i_t, f_t>& problem,
   return true;
 }
 
+// -1 automatic: enable for cones, disable otherwise; 0 off; 1 on
+template <typename i_t, typename f_t>
+bool should_use_adaptive_regularization(const simplex_solver_settings_t<i_t, f_t>& settings,
+                                        bool has_cones)
+{
+  return settings.barrier_adaptive_regularization > 0 ||
+         (settings.barrier_adaptive_regularization < 0 && has_cones);
+}
+
 template <typename f_t>
 [[maybe_unused]] static void pairwise_multiply(
   f_t* a, f_t* b, f_t* out, int size, rmm::cuda_stream_view stream)
@@ -479,14 +488,11 @@ class iteration_data_t {
       f_t estimated_nz_AAT = 0.0;
 
       const bool has_soc = has_cones();
-
-      if (has_soc) {
-        primal_perturb = 1e-8;
-        dual_perturb   = 1e-8;
-      } else {
-        primal_perturb = 1e-6;
-        dual_perturb   = 0;
-      }
+      // Apply the adaptive-regularization policy before form_augmented / initial
+      // factorization so an explicit enable/disable is honored from the start.
+      const bool adaptive_reg = should_use_adaptive_regularization(settings, has_soc);
+      primal_perturb          = has_soc ? 1e-8 : 1e-6;
+      dual_perturb            = adaptive_reg ? 1e-8 : 0;
 
       if (has_soc) {
         // SOCP always use the augmented KKT; skip dense-column / ADAT heuristics.
@@ -2914,7 +2920,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
 
       // Adaptive regularization: increase/decrease based on IR quality.
       // Only adapt on calls where we actually (re)factorized — the affine step.
-      if (did_factorize && data.has_cones()) {
+      if (did_factorize && should_use_adaptive_regularization(settings, data.has_cones())) {
         constexpr f_t min_perturb = 1e-8;
         constexpr f_t max_perturb = 1e-1;
         if (solve_err > 1e-2) {
@@ -4163,6 +4169,15 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
       return lp_status_t::TIME_LIMIT;
     }
 
+    // Handle automatic adaptive regularization (-1: auto, 0: off, 1: on).
+    // Policy is already applied to data.dual_perturb during construction
+    // (before form_augmented / initial_point).
+    const bool adaptive_regularization =
+      should_use_adaptive_regularization(settings, data.has_cones());
+    if (settings.barrier_adaptive_regularization == -1 && adaptive_regularization) {
+      settings.log.printf("Adaptive regularization enabled\n");
+    }
+
     i_t initial_status = initial_point(data);
     if (toc(start_time) > settings.time_limit) {
       settings.log.printf("Barrier time limit exceeded\n");
@@ -4176,6 +4191,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
       settings.log.printf("Unable to compute initial point\n");
       return lp_status_t::NUMERICAL_ISSUES;
     }
+
     // Upload initial point to device and compute initial residuals/norms on GPU
     data.d_complementarity_wv_residual_.resize(data.n_upper_bounds, stream_view_);
     data.d_complementarity_wv_rhs_.resize(data.n_upper_bounds, stream_view_);
@@ -4271,7 +4287,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
     const i_t iteration_limit = settings.iteration_limit;
 
     // Adaptive regularization for the augmented system.
-    f_t dual_perturb   = data.has_cones() ? 1e-8 : 0;
+    f_t dual_perturb   = adaptive_regularization ? 1e-8 : 0;
     f_t primal_perturb = data.has_cones() ? 1e-8 : 1e-6;
 
     while (iter < iteration_limit) {
