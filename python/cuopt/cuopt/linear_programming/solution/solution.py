@@ -75,7 +75,7 @@ class Solution:
         The reduced cost.
         It contains the dual multipliers for the linear constraints.
     slack : numpy.array
-        Classical LP slack/surplus per linear constraint in CSR row order:
+        Slack/surplus per linear constraint in CSR row order:
         ``rhs - lhs`` for ``<=``, ``lhs - rhs`` for ``>=``. Equality rows
         store the residual ``rhs - lhs``. None when it was not computed.
     termination_status: Integer
