@@ -99,6 +99,34 @@ public final class Problem implements AutoCloseable {
     return List.copyOf(variables);
   }
 
+  /**
+   * Reads the values of {@code variables} out of an array laid out in variable-index order, such
+   * as the incumbent a MIP callback receives, and returns them in the order asked for.
+   *
+   * <pre>{@code
+   * double[] picked = Problem.fromIncumbent(incumbent, z, y, x);
+   * }</pre>
+   *
+   * @throws IllegalArgumentException if a variable's index falls outside {@code indexOrdered}
+   */
+  public static double[] fromIncumbent(double[] indexOrdered, Variable... variables) {
+    double[] values = new double[variables.length];
+    for (int i = 0; i < variables.length; i++) {
+      int index = variables[i].getIndex();
+      if (index < 0 || index >= indexOrdered.length) {
+        throw new IllegalArgumentException(
+            "Variable '"
+                + variables[i].getVariableName()
+                + "' has index "
+                + index
+                + ", outside an array of length "
+                + indexOrdered.length);
+      }
+      values[i] = indexOrdered[index];
+    }
+    return values;
+  }
+
   public Variable getVariable(int index) {
     return variables.get(index);
   }

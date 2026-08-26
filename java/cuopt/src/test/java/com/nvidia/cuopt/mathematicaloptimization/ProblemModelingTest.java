@@ -152,6 +152,34 @@ final class ProblemModelingTest {
   }
 
   @Test
+  void fromIncumbentReordersByVariableIndex() {
+    Problem problem = new Problem("reorder");
+    Variable x = problem.addVariable(0, 10, 1, VariableType.CONTINUOUS, "x");
+    Variable y = problem.addVariable(0, 10, 1, VariableType.CONTINUOUS, "y");
+    Variable z = problem.addVariable(0, 10, 1, VariableType.CONTINUOUS, "z");
+
+    // An incumbent is always in variable-index order: x=1, y=2, z=3.
+    double[] incumbent = {1.0, 2.0, 3.0};
+
+    assertArrayEquals(new double[] {3.0, 2.0, 1.0}, Problem.fromIncumbent(incumbent, z, y, x));
+    assertArrayEquals(new double[] {2.0}, Problem.fromIncumbent(incumbent, y));
+    assertArrayEquals(new double[] {}, Problem.fromIncumbent(incumbent));
+  }
+
+  @Test
+  void fromIncumbentRejectsAnIndexOutsideTheArray() {
+    Problem problem = new Problem("short");
+    Variable a = problem.addVariable(0, 1, 1, VariableType.CONTINUOUS, "a");
+    Variable b = problem.addVariable(0, 1, 1, VariableType.CONTINUOUS, "b");
+
+    IllegalArgumentException error =
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> Problem.fromIncumbent(new double[] {1.0}, b));
+    assertTrue(error.getMessage().contains("'b'"));
+  }
+
+  @Test
   void writeRejectsANonMPSExtension() {
     Problem problem = new Problem("write");
     problem.addVariable(0, 1, 1, VariableType.CONTINUOUS, "x");

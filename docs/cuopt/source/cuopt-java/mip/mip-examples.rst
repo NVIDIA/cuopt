@@ -73,10 +73,24 @@ Set starts on variables when using the high-level ``Problem`` API:
      System.out.println(solution.getPrimalObjective());
    }
 
-``SolverSettings.addMIPStart`` takes a full variable-index-ordered array. It
-is the way to supply more than one starting point, since it can be called
-repeatedly and each ``Variable`` holds a single value. MIP starts are currently
-unsupported with presolve on.
+Setting a start per variable avoids handling the ordering at all, and is the
+form to prefer.
+
+``SolverSettings.addMIPStart`` takes a complete array instead, indexed by
+``Variable.getIndex()``. It is the way to supply more than one starting point,
+since it can be called repeatedly while each ``Variable`` holds a single value.
+Build it from ``getVariables`` so the ordering comes from the problem rather
+than from you:
+
+.. code-block:: java
+
+   double[] values = new double[problem.getNumVariables()];
+   for (Variable variable : problem.getVariables()) {
+     values[variable.getIndex()] = startFor(variable);
+   }
+   settings.addMIPStart(values);
+
+MIP starts are currently unsupported with presolve on.
 
 Incumbent Callback
 ------------------
@@ -99,8 +113,22 @@ Register an incumbent callback before solving:
      }
    }
 
-The callback receives a defensive Java array containing the incumbent vector,
-the incumbent objective, the current solution bound, and the user data object.
+The callback receives a defensive copy of the incumbent vector, the incumbent
+objective, the current solution bound, and the user data object.
+
+The vector is in variable-index order. To read specific variables out of it
+without depending on that order, pass them to ``Problem.fromIncumbent``, which
+returns their values in the order you ask for:
+
+.. code-block:: java
+
+   settings.setMIPCallback(
+       (incumbent, objective, bound, userData) -> {
+         double[] picked = Problem.fromIncumbent(incumbent, z, y, x);
+         System.out.println("z=" + picked[0] + " y=" + picked[1] + " x=" + picked[2]);
+       },
+       null,
+       problem.getNumVariables());
 
 LP Relaxation
 -------------

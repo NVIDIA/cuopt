@@ -38,9 +38,21 @@ to the native solver. A complete start can also be supplied directly through
    x.setMIPStart(3.0);
    y.setMIPStart(2.0);
 
+Passing a complete start directly means building the array yourself. It is
+indexed by ``Variable.getIndex()``, which is the order ``getVariables``
+returns, so build it from that list rather than by hand:
+
+.. code-block:: java
+
+   Map<Variable, Double> start = Map.of(x, 3.0, y, 2.0);
+
+   double[] values = new double[problem.getNumVariables()];
+   for (Variable variable : problem.getVariables()) {
+     values[variable.getIndex()] = start.getOrDefault(variable, 0.0);
+   }
+
    try (SolverSettings settings = new SolverSettings()) {
-     // The array follows the problem's variable-index order.
-     settings.addMIPStart(new double[] {3.0, 2.0});
+     settings.addMIPStart(values);
      try (Solution solution = problem.solve(settings)) {
        System.out.println(solution.getMIPGap());
      }
@@ -72,14 +84,25 @@ MIP Callbacks
        "my-user-data",
        problem.getNumVariables());
 
-``MIPSetSolutionCallback`` returns a candidate solution and objective when the
-native solver asks Java for one:
+``MIPSetSolutionCallback`` runs in the other direction: the solver asks your
+code for a solution to try, and the ``MIPCallbackSolution`` you return carries
+it back. Use it to feed in a solution found elsewhere — a heuristic of your
+own, or a result carried over from a previous solve. Returning ``null``
+declines, leaving the search untouched.
+
+The array is in variable-index order and must cover every variable, so build it
+the same way as a MIP start:
 
 .. code-block:: java
 
    settings.setMIPCallback(
-       (solutionBound, userData) ->
-           new MIPCallbackSolution(new double[] {3.0, 2.0}, 19.0),
+       (solutionBound, userData) -> {
+         double[] values = new double[problem.getNumVariables()];
+         for (Variable variable : problem.getVariables()) {
+           values[variable.getIndex()] = myHeuristic(variable);
+         }
+         return new MIPCallbackSolution(values, objectiveOf(values));
+       },
        null,
        problem.getNumVariables());
 
@@ -120,6 +143,6 @@ Inspecting a MIP
 ----------------
 
 A problem can be inspected through ``getConstraintMatrix`` and
-``getQuadraticObjectiveMatrix``. To examine an LP relaxation, build the problem
+``getQuadraticObjectiveMatrix``. To create an LP relaxation, build the problem
 with ``VariableType.CONTINUOUS``, or set the types through
 ``Variable.setVariableType`` before solving.

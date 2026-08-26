@@ -32,6 +32,9 @@ High-Level Problem
      - Solve the problem and return a ``Solution``.
    * - ``getConstraintMatrix()`` / ``getQuadraticObjectiveMatrix()``
      - Inspect the linear constraint matrix, or the quadratic objective matrix Q, in CSR form.
+   * - ``fromIncumbent(double[], Variable...)``
+     - Static. Read the given variables out of an array in variable-index order, returning
+       their values in the order asked for.
    * - ``read(String)`` / ``write(String)``
      - Load a problem, choosing the parser from the file extension, or write one as MPS.
        A fixed-format MPS overload of ``read`` accepts a boolean flag.
@@ -99,9 +102,8 @@ The settings API also includes:
 * ``setMethod`` and ``setPDLPSolverMode``;
 * ``setOptimalityTolerance``.
 
-``SolverMethod`` includes ``PDLP``, ``DUAL_SIMPLEX``, ``BARRIER``,
-``CONCURRENT``, and ``UNSET``. ``PDLPSolverMode`` exposes the supported PDLP
-solver modes.
+``SolverMethod`` includes ``PDLP``, ``DUAL_SIMPLEX``, ``BARRIER`` and
+``CONCURRENT``. ``PDLPSolverMode`` exposes the supported PDLP solver modes.
 
 Solutions and Statistics
 ------------------------
@@ -110,22 +112,17 @@ Solutions and Statistics
 
 * ``getPrimalObjective`` and ``getDualObjective``;
 * ``getTerminationStatus``;
-* ``getErrorStatus`` and ``getErrorMessage``;
-* ``getMIPGap`` and ``getSolutionBound`` for MIP solves; and
-* ``isMIP``.
+* ``getErrorStatus`` and ``getErrorMessage``.
 
 Solution values are read from the model rather than as bulk arrays:
 ``Variable.getValue`` and ``Variable.getReducedCost`` for variables, and
 ``Constraint.getDualValue`` and ``Constraint.getSlack`` for constraints. They
 are populated on the ``Problem`` after each solve.
 
-MIP-only solution fields are documented in :doc:`../mip/mip-api`.
-
 Solver statistics are read as scalar solution attributes through
 ``getIntAttribute`` and ``getFloatAttribute``, selected by a
-``CuOptConstants.CUOPT_SOLUTION_ATTR_*`` value. This mirrors the problem
-attribute accessors in the C API, so a statistic added later becomes a new
-constant rather than a new method.
+``CuOptConstants.CUOPT_SOLUTION_ATTR_*`` value, so a statistic added later
+becomes a new constant rather than a new method.
 
 .. code-block:: java
 
@@ -152,6 +149,6 @@ Errors
 ------
 
 Native failures are reported as ``CuOptException`` with a cuOpt status code
-available through ``getStatusCode``. Accessing an LP-only field on a MIP
-solution, or a MIP-only field on an LP solution, raises
+available through ``getStatusCode``. Reading a field that does not apply to
+the class of problem that produced the solution raises
 ``IllegalStateException``.
