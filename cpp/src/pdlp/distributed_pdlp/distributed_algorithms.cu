@@ -12,6 +12,8 @@
 
 #include <raft/core/nvtx.hpp>
 
+#include <utilities/device_scalar_init.hpp>
+
 #include <rmm/device_scalar.hpp>
 #include <rmm/exec_policy.hpp>
 
@@ -62,8 +64,8 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_bound_objective_rescaling(f_t c_s
   for_each_shard([&](auto& s) {
     const auto& scaled = s.sub_pdlp->get_initial_scaling_strategy().get_scaled_op_problem();
     const auto stream  = s.stream.view();
-    rmm::device_scalar<f_t> d_bound_sq(f_t(0), stream);
-    rmm::device_scalar<f_t> d_obj_sq(f_t(0), stream);
+    rmm::device_scalar<f_t> d_bound_sq(zero_v<f_t>, stream);
+    rmm::device_scalar<f_t> d_obj_sq(zero_v<f_t>, stream);
 
     compute_sum_bounds_squared(scaled.constraint_lower_bounds,
                                scaled.constraint_upper_bounds,

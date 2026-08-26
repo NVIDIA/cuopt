@@ -10,6 +10,7 @@
 #include <mip_heuristics/problem/problem.cuh>
 
 #include <utilities/copy_helpers.hpp>
+#include <utilities/device_scalar_init.hpp>
 #include <utilities/macros.cuh>
 
 #include <pdlp/utils.cuh>
@@ -206,7 +207,7 @@ void create_constraint_graph(const raft::handle_t* handle_ptr,
     make_span(reorg_ids), make_span(offsets), make_span(coeff), make_span(edge), bounds, pb.view());
 
   if (debug) {
-    rmm::device_scalar<i_t> errors(0, handle_ptr->get_stream());
+    rmm::device_scalar<i_t> errors(zero_v<i_t>, handle_ptr->get_stream());
     check_constraint_data<i_t, f_t>
       <<<reorg_ids.size(), 256, 0, handle_ptr->get_stream()>>>(make_span(reorg_ids),
                                                                make_span(offsets),
@@ -253,7 +254,7 @@ void create_variable_graph(const raft::handle_t* handle_ptr,
                                                              pb.view());
 
   if (debug) {
-    rmm::device_scalar<i_t> errors(0, handle_ptr->get_stream());
+    rmm::device_scalar<i_t> errors(zero_v<i_t>, handle_ptr->get_stream());
     check_variable_data<i_t, f_t>
       <<<reorg_ids.size(), 256, 0, handle_ptr->get_stream()>>>(make_span(reorg_ids),
                                                                make_span(offsets),

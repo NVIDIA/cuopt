@@ -159,6 +159,12 @@ std::vector<std::vector<i_t>> find_mod2_row_combinations(const std::vector<row_t
   return combinations;
 }
 
+template <typename f_t>
+bool value_is_integral(f_t value, f_t tolerance)
+{
+  return std::abs(value - std::round(value)) <= tolerance;
+}
+
 template <typename i_t, typename f_t>
 i_t mod2_integral_scale(const inequality_t<i_t, f_t>& inequality,
                         const std::vector<variable_type_t>& var_types,
@@ -177,10 +183,7 @@ i_t mod2_integral_scale(const inequality_t<i_t, f_t>& inequality,
     f_t scale_work       = 1.0;
     bool integral        = true;
     const f_t scaled_rhs = scale * inequality.rhs;
-    if (std::abs(scaled_rhs - std::round(scaled_rhs)) >
-        coefficient_integral_tol * std::max((f_t)1.0, std::abs(scaled_rhs))) {
-      integral = false;
-    }
+    if (!value_is_integral(scaled_rhs, coefficient_integral_tol)) { integral = false; }
     for (i_t k = 0; integral && k < (i_t)inequality.size(); ++k) {
       scale_work += 1.0;
       const i_t j = inequality.index(k);
@@ -188,10 +191,7 @@ i_t mod2_integral_scale(const inequality_t<i_t, f_t>& inequality,
         continue;
       }
       const f_t scaled_coefficient = scale * inequality.coeff(k);
-      if (std::abs(scaled_coefficient - std::round(scaled_coefficient)) >
-          coefficient_integral_tol * std::max((f_t)1.0, std::abs(scaled_coefficient))) {
-        integral = false;
-      }
+      if (!value_is_integral(scaled_coefficient, coefficient_integral_tol)) { integral = false; }
     }
     if (add_work_estimate(scale_work, &work_estimate, max_work_estimate, &work_limit_reached)) {
       return i_t{0};

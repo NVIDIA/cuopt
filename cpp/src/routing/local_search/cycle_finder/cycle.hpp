@@ -8,6 +8,7 @@
 #pragma once
 
 #include <utilities/copy_helpers.hpp>
+#include <utilities/device_scalar_init.hpp>
 #include <utilities/vector_helpers.cuh>
 #include "../../solution/solution_handle.cuh"
 
@@ -25,8 +26,8 @@ struct ret_cycles_t {
   ret_cycles_t(size_t max_size, rmm::cuda_stream_view stream_view)
     : paths(max_size, stream_view),
       offsets(max_size, stream_view),
-      n_cycles_(0, stream_view),
-      curr_iter_n_starts(0, stream_view)
+      n_cycles_(zero_v<i_t>, stream_view),
+      curr_iter_n_starts(zero_v<i_t>, stream_view)
   {
   }
 

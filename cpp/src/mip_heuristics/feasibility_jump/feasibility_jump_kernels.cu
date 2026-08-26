@@ -437,7 +437,7 @@ DI bool check_feasibility(const typename fj_t<i_t, f_t>::climber_data_t::view_t&
       fj_kahan_babushka_neumaier_sum<i_t, f_t>(delta_it + offset_begin, delta_it + offset_end);
     cuopt_assert(fj.cstr_satisfied(cIdx, lhs), "constraint violated");
   }
-  cuopt_func_call((check_variable_feasibility<i_t, f_t>(fj, check_integer)));
+  cuopt_func_call(check_variable_feasibility<i_t, f_t>(fj, check_integer));
 
   return true;
 }
@@ -488,7 +488,7 @@ DI bool save_best_solution(typename fj_t<i_t, f_t>::climber_data_t::view_t& fj)
 
       if (*fj.best_excess == 0) { *fj.saved_solution_objective = *fj.incumbent_objective; }
     }
-    cuopt_func_call((check_variable_feasibility<i_t, f_t>(fj, false)));
+    cuopt_func_call(check_variable_feasibility<i_t, f_t>(fj, false));
     for (i_t i = threadIdx.x; i < fj.pb.n_variables; i += blockDim.x) {
       fj.best_assignment[i] = fj.incumbent_assignment[i];
     }
@@ -499,7 +499,7 @@ DI bool save_best_solution(typename fj_t<i_t, f_t>::climber_data_t::view_t& fj)
       *fj.weighted_violation_score <= *fj.max_cstr_weight * fj.pb.tolerances.absolute_tolerance,
       "Violated constraint and score mismatch");
     bool check_integer = fj.settings->mode != fj_mode_t::ROUNDING;
-    cuopt_func_call((check_feasibility<i_t, f_t>(fj, check_integer)));
+    cuopt_func_call(check_feasibility<i_t, f_t>(fj, check_integer));
   }
   // return whether it is an improving local minimum
   return improving;

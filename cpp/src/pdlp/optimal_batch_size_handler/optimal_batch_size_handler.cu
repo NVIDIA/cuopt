@@ -9,6 +9,7 @@
 #include <pdlp/optimal_batch_size_handler/optimal_batch_size_handler.hpp>
 #include <pdlp/pdlp_constants.hpp>
 
+#include <utilities/device_scalar_init.hpp>
 #include <utilities/event_handler.cuh>
 
 #include <raft/core/cusparse_macros.hpp>
@@ -29,8 +30,8 @@ struct SpMM_benchmarks_context_t {
       y(static_cast<size_t>(dual_size) * current_batch_size, handle_ptr->get_stream()),
       buffer_non_transpose_batch(0, handle_ptr->get_stream()),
       buffer_transpose_batch(0, handle_ptr->get_stream()),
-      alpha(1, handle_ptr->get_stream()),
-      beta(0, handle_ptr->get_stream()),
+      alpha(one_v<f_t>, handle_ptr->get_stream()),
+      beta(zero_v<f_t>, handle_ptr->get_stream()),
       A(A),
       A_T(A_T),
       handle_ptr(handle_ptr)

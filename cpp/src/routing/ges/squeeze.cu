@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -11,13 +11,14 @@ namespace cuopt {
 namespace routing {
 namespace detail {
 
+static const cand_t empty_move{0, 0, std::numeric_limits<double>::max()};
+
 template <typename i_t, typename f_t, request_t REQUEST>
 bool guided_ejection_search_t<i_t, f_t, REQUEST>::repair_empty_routes()
 {
   int counter       = 0;
   auto min_vehicles = solution_ptr->problem_ptr->data_view_ptr->get_min_vehicles();
-  rmm::device_scalar<cand_t> best_move({0, 0, std::numeric_limits<double>::max()},
-                                       solution_ptr->sol_handle->get_stream());
+  rmm::device_scalar<cand_t> best_move(empty_move, solution_ptr->sol_handle->get_stream());
   // Try every request to non empty route
   auto const n_blocks       = solution_ptr->get_num_requests() * solution_ptr->get_n_routes();
   auto const n_empty_routes = solution_ptr->get_num_empty_vehicles();
@@ -288,7 +289,7 @@ void guided_ejection_search_t<i_t, f_t, REQUEST>::squeeze(
   size_t sh_size     = solution_ptr->check_routes_can_insert_and_get_sh_size() + sizeof(cand_t);
   const i_t TPB      = std::min(
     128, raft::alignTo(solution_ptr->get_max_active_nodes_for_all_routes(), raft::WarpSize));
-  rmm::device_scalar<cand_t> best_move({0, 0, std::numeric_limits<double>::max()}, stream);
+  rmm::device_scalar<cand_t> best_move(empty_move, stream);
 
   solution_ptr->d_lock.set_value_to_zero_async(stream);
   bool is_set = set_shmem_of_kernel(find_best_squeeze_pos<i_t, f_t, REQUEST>, sh_size);

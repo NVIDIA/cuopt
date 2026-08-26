@@ -387,3 +387,15 @@ Barrier Step Scale
 The step scale must be strictly less than 1. A value like 0.9 is conservative, while a value like 0.999 is aggressive.
 
 .. note:: By default cuOpt selects the step scale automatically.
+
+
+Barrier Adaptive Regularization
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_BARRIER_ADAPTIVE_REGULARIZATION`` controls whether adaptive regularization is enabled in the barrier method.
+
+* ``-1``: Automatic (default) - cuOpt decides whether to enable adaptive regularization based on problem characteristics
+* ``0``: Disable adaptive regularization
+* ``1``: Enable adaptive regularization
+
+.. note:: The default value is ``-1`` (automatic).

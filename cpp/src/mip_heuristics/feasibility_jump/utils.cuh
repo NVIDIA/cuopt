@@ -16,6 +16,7 @@
 #include <rmm/device_uvector.hpp>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/cuda_helpers.cuh>
+#include <utilities/device_scalar_init.hpp>
 #include <utilities/device_utils.cuh>
 #include <utilities/macros.cuh>
 
@@ -100,8 +101,8 @@ struct bitmap_t {
 template <typename i_t, typename f_t>
 struct contiguous_set_t {
   contiguous_set_t(i_t max_size, const rmm::cuda_stream_view& stream)
-    : set_size(0, stream),
-      lock(0, stream),
+    : set_size(zero_v<i_t>, stream),
+      lock(zero_v<i_t>, stream),
       contents(max_size, stream),
       index_map(max_size, stream),
       validity_bitmap(max_size, stream)

@@ -78,6 +78,9 @@ class branch_and_bound_worker_t {
   bool recompute_basis  = true;
   bool recompute_bounds = true;
 
+  const std::vector<f_t>& root_solution;
+  const std::vector<f_t>& root_edge_norm;
+
   void ensure_orbital_fixing()
   {
     if (orbital_fixing == nullptr && symmetry_ptr != nullptr) {
@@ -94,6 +97,8 @@ class branch_and_bound_worker_t {
                             const csr_matrix_t<i_t, f_t>& Arow,
                             const std::vector<simplex::variable_type_t>& var_type,
                             const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+                            const std::vector<f_t>& root_solution,
+                            const std::vector<f_t>& root_edge_norm,
                             uint64_t rng_offset = 0)
     : worker_id(worker_id),
       search_strategy(search_strategy_t::BEST_FIRST),
@@ -108,7 +113,9 @@ class branch_and_bound_worker_t {
       node_presolver(leaf_problem, Arow, {}, var_type),
       bounds_changed(original_lp.num_cols, false),
       rng(settings.random_seed + pcgenerator_t::default_seed + rng_offset + worker_id,
-          pcgenerator_t::default_stream ^ (worker_id + rng_offset))
+          pcgenerator_t::default_stream ^ (worker_id + rng_offset)),
+      root_solution(root_solution),
+      root_edge_norm(root_edge_norm)
   {
   }
 
@@ -146,8 +153,11 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
                const csr_matrix_t<i_t, f_t>& Arow,
                const std::vector<simplex::variable_type_t>& var_type,
                const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+               const std::vector<f_t>& root_solution,
+               const std::vector<f_t>& root_edge_norm,
                uint64_t rng_offset = 0)
-    : Base(worker_id, original_lp, Arow, var_type, settings, rng_offset)
+    : Base(
+        worker_id, original_lp, Arow, var_type, settings, root_solution, root_edge_norm, rng_offset)
   {
     this->start_lower     = original_lp.lower;
     this->start_upper     = original_lp.upper;
@@ -243,6 +253,8 @@ class diving_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
   // The best-first worker that is associated with this diving worker. Used for controlling the
   // number of active diving workers.
   bfs_worker_t<i_t, f_t>* bfs_worker{nullptr};
+
+  std::atomic<int> halt = false;
 };
 
 struct submip_stats_t {
@@ -251,6 +263,7 @@ struct submip_stats_t {
   omp_atomic_t<int> total_infeasible          = 0;
   omp_atomic_t<double> infeasible_fixrate_sum = 0;
   omp_atomic_t<int> total_calls               = 0;
+  omp_atomic_t<int> total_empty               = 0;
 
   void save_success(double fixrate)
   {
@@ -264,6 +277,7 @@ struct submip_stats_t {
     infeasible_fixrate_sum += fixrate;
   }
 
+  void save_empty() { ++total_empty; }
   double average_infeasible_fixrate() const { return infeasible_fixrate_sum / total_infeasible; }
   double average_success_fixrate() const { return success_fixrate_sum / total_success; }
 };

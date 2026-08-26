@@ -1012,7 +1012,7 @@ static void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
   delta   = new_val - old_val;
   cuopt_assert(isfinite(new_val), "assignment is not finite");
   cuopt_assert(isfinite(delta), "applied delta is not finite");
-  cuopt_assert((check_variable_within_bounds<i_t, f_t>(fj_cpu, var_idx, new_val)),
+  cuopt_assert(check_variable_within_bounds<i_t, f_t>(fj_cpu, var_idx, new_val),
                "assignment not within bounds");
 
   // Update the LHSs of all involved constraints.
@@ -1217,7 +1217,7 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
         }
       }
       if (!isfinite(new_val)) continue;
-      cuopt_assert((check_variable_within_bounds<i_t, f_t>(fj_cpu, var_idx, new_val)),
+      cuopt_assert(check_variable_within_bounds<i_t, f_t>(fj_cpu, var_idx, new_val),
                    "new_val is not within bounds");
       delta = new_val - val;
       // more permissive tabu in the case of local minima
@@ -1264,7 +1264,7 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
 
       auto [score, infeasibility] = compute_score<i_t, f_t>(fj_cpu, var_idx, delta);
 
-      cuopt_assert((check_variable_within_bounds<i_t, f_t>(fj_cpu, var_idx, new_val)), "");
+      cuopt_assert(check_variable_within_bounds<i_t, f_t>(fj_cpu, var_idx, new_val), "");
       cuopt_assert(isfinite(delta), "");
 
       if (fj_cpu.view.move_numerically_stable(
@@ -1493,7 +1493,7 @@ static void perturb(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
       val = std::min(std::max(val, lb), ub);
     }
 
-    cuopt_assert((check_variable_within_bounds<i_t, f_t>(fj_cpu, var_idx, val)),
+    cuopt_assert(check_variable_within_bounds<i_t, f_t>(fj_cpu, var_idx, val),
                  "value is out of bounds");
     fj_cpu.h_assignment[var_idx] = val;
   }
@@ -2109,35 +2109,50 @@ void fj_cpu_worker_t<i_t, f_t>::create_worker(
   fj_cpu.reset(new_climber.release());
   fj_cpu->log_prefix           = std::move(log_prefix);
   fj_cpu->improvement_callback = improvement_callback;
+  fj_cpu->halted               = false;
+  preemption_flag              = false;
+  is_initialized               = true;
 }
 
 template <typename i_t, typename f_t>
 void fj_cpu_worker_t<i_t, f_t>::run_async(f_t time_limit, double work_unit_limit)
 {
-  if (!fj_cpu) return;
+  if (!is_initialized) return;
 
-#pragma omp task shared(fj_cpu) firstprivate(time_limit, work_unit_limit) \
-  priority(CUOPT_DEFAULT_TASK_PRIORITY) default(none) depend(out : *fj_cpu)
-  cpufj_solve(fj_cpu.get(), time_limit, work_unit_limit);
+  auto& fj_ptr = fj_cpu;
+#pragma omp task shared(fj_cpu, is_initialized, fj_ptr) firstprivate(time_limit, work_unit_limit) \
+  priority(CUOPT_DEFAULT_TASK_PRIORITY) default(none) depend(out : fj_ptr)
+  {
+    if (is_initialized) { cpufj_solve(fj_cpu.get(), time_limit, work_unit_limit); }
+  }
 }
 
 template <typename i_t, typename f_t>
 void fj_cpu_worker_t<i_t, f_t>::run_sync(f_t time_limit, double work_unit_limit)
 {
-  if (!fj_cpu) return;
+  if (!is_initialized) return;
   cpufj_solve(fj_cpu.get(), time_limit, work_unit_limit);
+  is_initialized = false;
   fj_cpu.reset();
 }
 
 template <typename i_t, typename f_t>
 void fj_cpu_worker_t<i_t, f_t>::stop()
 {
-  if (!fj_cpu) return;
+  if (!is_initialized) return;
 
-  fj_cpu->preemption_flag = true;
-  fj_cpu->halted          = true;
-#pragma omp taskwait depend(in : *fj_cpu)
+  preemption_flag = true;
+
+  auto& fj_ptr = fj_cpu;
+#pragma omp taskwait depend(in : fj_ptr)
+  is_initialized = false;
   fj_cpu.reset();
+}
+
+template <typename i_t, typename f_t>
+void fj_cpu_worker_t<i_t, f_t>::send_stop_signal()
+{
+  preemption_flag = true;
 }
 
 #if MIP_INSTANTIATE_FLOAT

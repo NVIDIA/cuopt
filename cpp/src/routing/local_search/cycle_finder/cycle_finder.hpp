@@ -53,10 +53,11 @@ struct path_t {
     : key_ptr(max_routes, handle_ptr_->get_stream()),
       cost_ptr(max_routes, handle_ptr_->get_stream()),
       level_ptr(max_routes, handle_ptr_->get_stream()),
-      n_cycles(0, handle_ptr_->get_stream()),
-      all_mask(device_bitset_t<max_routes>{}, handle_ptr_->get_stream()),
-      all_found(false, handle_ptr_->get_stream())
+      n_cycles(handle_ptr_->get_stream()),
+      all_mask(handle_ptr_->get_stream()),
+      all_found(handle_ptr_->get_stream())
   {
+    reset(handle_ptr_->get_stream());
   }
 
   void reset(rmm::cuda_stream_view stream)

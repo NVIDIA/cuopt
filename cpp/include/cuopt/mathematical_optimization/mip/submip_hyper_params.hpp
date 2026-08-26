@@ -12,8 +12,9 @@
  */
 template <typename i_t, typename f_t>
 struct mip_submip_hyper_params_t {
-  // Enable or disable (recursive) RINS: -1 automatic, 0 disabled, 1 enabled
+  // Enable or disable (recursive) RINS/RENS: -1 automatic, 0 disabled, 1 enabled
   i_t rins = -1;
+  i_t rens = -1;
 
   // Base for calculating the target fix rate for the neighbourhood. Actual target value is
   // determined automatically according to the success and infeasible rate.
@@ -29,7 +30,10 @@ struct mip_submip_hyper_params_t {
   f_t target_mip_gap = 0.01;
 
   // The base node limit for the sub-MIP
-  i_t node_limit_base = 200;
+  i_t node_limit_offset = 200;
+
+  // The base iteration limit for the sub-MIP
+  i_t iteration_limit_offset = 10000;
 
   // The current level in the recursion. This is an internal parameter and will set automatically.
   i_t level = 0;
@@ -40,6 +44,15 @@ struct mip_submip_hyper_params_t {
   // Limit the number of simplex iterations spent in the submip. Set as a factor of the total
   // number of simplex iteration from the parent B&B.
   f_t iteration_limit_ratio = 0.8;
+
+  // If there is not enough variables fixed or we already found an improving solution,
+  // perform a short DFS to quickly find a feasible solution. This setting controls
+  // the maximum number of nodes allow for backtracking.
+  i_t dfs_max_backtrack = 5;
+
+  // How many variables a single round can fix. Set in terms of ratio of
+  // (1 - current fixrate).
+  f_t round_close_ratio = 0.8;
 
   // Run CPU FJ over the sub-MIP
   bool enable_cpufj = true;

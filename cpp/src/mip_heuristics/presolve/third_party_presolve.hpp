@@ -141,7 +141,8 @@ class third_party_presolve_t {
             bool dual_postsolve);
 
   void uncrush_primal_solution(const std::vector<f_t>& reduced_primal,
-                               std::vector<f_t>& full_primal) const;
+                               std::vector<f_t>& full_primal,
+                               bool check_postsolve = true) const;
 
   void crush_primal_solution(const optimization_problem_t<i_t, f_t>& reduced_problem,
                              const std::vector<f_t>& original_primal,
