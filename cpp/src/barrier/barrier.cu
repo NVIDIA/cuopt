@@ -347,9 +347,9 @@ class iteration_data_t {
       transform_reduce_helper_(lp.handle_ptr->get_stream()),
       transform_reduce_pair_helper_(lp.handle_ptr->get_stream()),
       sum_reduce_helper_(lp.handle_ptr->get_stream()),
-      d_scalar_batch_(kNumScalarBatchSlots, lp.handle_ptr->get_stream()),
-      h_scalar_batch_(kNumScalarBatchSlots),
-      d_reduce_tmp_(0, lp.handle_ptr->get_stream()),
+      d_reduction_results_(kNumScalarBatchSlots, lp.handle_ptr->get_stream()),
+      h_reduction_results_(kNumScalarBatchSlots),
+      d_reduce_temp_storage_(0, lp.handle_ptr->get_stream()),
       indefinite_Q(false),
       Q_diagonal(false),
       symbolic_status(0),
@@ -2077,12 +2077,12 @@ class iteration_data_t {
   sum_reduce_helper_t<f_t> sum_reduce_helper_;
 
   // Staging area for compute_residual_norms_mu_and_objective: several independent GPU
-  // reductions/dot-products write into slots of d_scalar_batch_, then a single copy into
-  // h_scalar_batch_ + one stream sync reads them all back at once instead of one sync each.
+  // reductions/dot-products write into slots of d_reduction_results_, then a single copy into
+  // h_reduction_results_ + one stream sync reads them all back at once instead of one sync each.
   static constexpr i_t kNumScalarBatchSlots = 12;
-  rmm::device_uvector<f_t> d_scalar_batch_;
-  pinned_dense_vector_t<i_t, f_t> h_scalar_batch_;
-  rmm::device_buffer d_reduce_tmp_;
+  rmm::device_uvector<f_t> d_reduction_results_;
+  pinned_dense_vector_t<i_t, f_t> h_reduction_results_;
+  rmm::device_buffer d_reduce_temp_storage_;
 
   bool cone_combined_step_;
   f_t cone_sigma_mu_;
@@ -3819,7 +3819,7 @@ void barrier_solver_t<i_t, f_t>::compute_residual_norms_mu_and_objective(
   constexpr i_t kSlotUv             = 10;
   constexpr i_t kSlotXQx            = 11;
 
-  f_t* d_batch = data.d_scalar_batch_.data();
+  f_t* d_batch = data.d_reduction_results_.data();
 
   const bool has_soc       = data.has_cones();
   const i_t linear_xz_size = data.linear_xz_size(data.d_complementarity_xz_residual_.size());
@@ -3832,46 +3832,49 @@ void barrier_solver_t<i_t, f_t>::compute_residual_norms_mu_and_objective(
   enqueue_norm_inf_into<i_t, f_t>(data.d_primal_residual_.data(),
                                   data.d_primal_residual_.size(),
                                   d_batch + kSlotPrimalResidual,
-                                  data.d_reduce_tmp_,
+                                  data.d_reduce_temp_storage_,
                                   stream_view_);
   enqueue_norm_inf_into<i_t, f_t>(data.d_bound_residual_.data(),
                                   data.d_bound_residual_.size(),
                                   d_batch + kSlotBoundResidual,
-                                  data.d_reduce_tmp_,
+                                  data.d_reduce_temp_storage_,
                                   stream_view_);
   enqueue_norm_inf_into<i_t, f_t>(data.d_dual_residual_.data(),
                                   data.d_dual_residual_.size(),
                                   d_batch + kSlotDualResidual,
-                                  data.d_reduce_tmp_,
+                                  data.d_reduce_temp_storage_,
                                   stream_view_);
   enqueue_norm_inf_into<i_t, f_t>(linear_xz_span.data(),
                                   linear_xz_span.size(),
                                   d_batch + kSlotComplXzLinear,
-                                  data.d_reduce_tmp_,
+                                  data.d_reduce_temp_storage_,
                                   stream_view_);
   enqueue_norm_inf_into<i_t, f_t>(data.d_complementarity_wv_residual_.data(),
                                   data.d_complementarity_wv_residual_.size(),
                                   d_batch + kSlotComplWv,
-                                  data.d_reduce_tmp_,
+                                  data.d_reduce_temp_storage_,
                                   stream_view_);
 
   if (has_soc) {
     raft::device_span<f_t> cone_dot = data.cones().scratch.template get_slot<0>();
     data.cones().segmented_sum(
       data.d_complementarity_xz_residual_.data() + data.cone_start(), cone_dot, stream_view_);
-    enqueue_max_into<i_t, f_t>(
-      cone_dot.data(), cone_dot.size(), d_batch + kSlotComplCone, data.d_reduce_tmp_, stream_view_);
+    enqueue_max_into<i_t, f_t>(cone_dot.data(),
+                               cone_dot.size(),
+                               d_batch + kSlotComplCone,
+                               data.d_reduce_temp_storage_,
+                               stream_view_);
   }
 
   enqueue_sum_into<i_t, f_t>(data.d_complementarity_xz_residual_.data(),
                              data.d_complementarity_xz_residual_.size(),
                              d_batch + kSlotMuXzSum,
-                             data.d_reduce_tmp_,
+                             data.d_reduce_temp_storage_,
                              stream_view_);
   enqueue_sum_into<i_t, f_t>(data.d_complementarity_wv_residual_.data(),
                              data.d_complementarity_wv_residual_.size(),
                              d_batch + kSlotMuWvSum,
-                             data.d_reduce_tmp_,
+                             data.d_reduce_temp_storage_,
                              stream_view_);
 
   RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
@@ -3912,13 +3915,13 @@ void barrier_solver_t<i_t, f_t>::compute_residual_norms_mu_and_objective(
                                                     stream_view_));
   }
 
-  raft::copy(data.h_scalar_batch_.data(),
-             data.d_scalar_batch_.data(),
+  raft::copy(data.h_reduction_results_.data(),
+             data.d_reduction_results_.data(),
              data.kNumScalarBatchSlots,
              stream_view_);
   stream_view_.synchronize();
 
-  const f_t* h = data.h_scalar_batch_.data();
+  const f_t* h = data.h_reduction_results_.data();
 
   primal_residual_norm          = std::max(h[kSlotPrimalResidual], h[kSlotBoundResidual]);
   dual_residual_norm            = h[kSlotDualResidual];
