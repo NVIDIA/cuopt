@@ -45,10 +45,10 @@ template <typename i_t, typename f_t>
 fj_t<i_t, f_t>::fj_t(mip_solver_context_t<i_t, f_t>& context_,
                      fj_settings_t in_settings,
                      mip_rng_component_id_t seed_component_id)
-  : context(context_),
-    rng(static_cast<uint64_t>(context.base_seed) + cuopt::pcgenerator_t::default_seed +
+  : rng(static_cast<uint64_t>(context_.base_seed) + cuopt::pcgenerator_t::default_seed +
           static_cast<uint64_t>(seed_component_id),
         cuopt::pcgenerator_t::default_stream ^ static_cast<uint64_t>(seed_component_id)),
+    context(context_),
     pb_ptr(context.problem_ptr),
     handle_ptr(const_cast<raft::handle_t*>(pb_ptr->handle_ptr)),
     settings(in_settings),

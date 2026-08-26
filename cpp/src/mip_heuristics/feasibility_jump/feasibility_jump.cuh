@@ -252,12 +252,20 @@ class fj_t {
   // executed after a roudning FJ run if any fractionals remain to eliminate them
   void round_remaining_fractionals(solution_t<i_t, f_t>& solution, i_t climber_idx = 0);
 
- public:
-  mip_solver_context_t<i_t, f_t>& context;
+  // Draws the next seed from this instance's persistent RNG (see `rng` below). Used by callers
+  // outside fj_t (e.g. line_segment_search_t) that need a seed derived from this fj_t's stream
+  // without being able to reseed or otherwise mutate it directly.
+  int64_t next_seed() { return rng.next_i64(); }
+
+ private:
   // Persistent RNG seeded once from context.base_seed and this instance's fixed component id,
   // used for every seed this fj_t (and the CPU climbers it creates) needs. Never a runtime
-  // thread id -- see mip_rng_component_id_t.
+  // thread id -- see mip_rng_component_id_t. Private: external callers must go through
+  // next_seed() rather than reseed or otherwise mutate this directly.
   cuopt::pcgenerator_t rng;
+
+ public:
+  mip_solver_context_t<i_t, f_t>& context;
   problem_t<i_t, f_t>* pb_ptr;
   raft::handle_t* handle_ptr;
 

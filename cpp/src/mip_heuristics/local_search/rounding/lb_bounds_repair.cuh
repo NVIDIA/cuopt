@@ -15,6 +15,8 @@
 #include <utilities/timer.hpp>
 #include "bounds_repair.cuh"
 
+#include <cstdint>
+
 namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>

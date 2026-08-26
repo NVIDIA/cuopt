@@ -16,6 +16,8 @@
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/tuple.h>
 
+#include <cstdint>
+
 namespace cuopt::mathematical_optimization::mip {
 
 // from the paper, probability of choosing random candidate= noise parameter

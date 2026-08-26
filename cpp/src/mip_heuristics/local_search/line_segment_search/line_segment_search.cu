@@ -161,7 +161,7 @@ bool line_segment_search_t<i_t, f_t>::search_line_segment(
     bool is_feasible = false;
     // if (!settings.recombiner_mode) {
     if (true) {
-      is_feasible = solution.round_nearest(fj.rng.next_i64());
+      is_feasible = solution.round_nearest(fj.next_seed());
     } else {
       fj.settings.mode            = fj_mode_t::ROUNDING;
       fj.settings.update_weights  = false;
