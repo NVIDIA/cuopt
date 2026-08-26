@@ -1587,6 +1587,23 @@ class Problem:
             else:
                 raise Exception("Couldn't initialize constraints")
 
+        # Quadratic (QCMATRIX) rows are kept out of the linear CSR by the
+        # reader, each in its own bundle. Rebuild them as quadratic
+        # Constraints so the Python problem is the whole model that was read.
+        for qc in dm.get_quadratic_constraints():
+            expr = QuadraticExpression(
+                qvars1=[vars[i] for i in qc["rows"]],
+                qvars2=[vars[j] for j in qc["cols"]],
+                qcoefficients=qc["vals"],
+                vars=[vars[j] for j in qc["linear_indices"]],
+                coefficients=qc["linear_values"],
+            )
+            rhs = qc["rhs_value"]
+            row = (
+                expr <= rhs if qc["constraint_row_type"] == LE else expr >= rhs
+            )
+            self.addConstraint(row, name=qc["constraint_row_name"])
+
         # setObjective(linear) leaves objective_qmatrix as None. Copy Q from
         # the source DataModel so later _to_data_model / writeMPS / solve keep
         # the quadratic objective.
@@ -1601,12 +1618,24 @@ class Problem:
         else:
             self.objective_qmatrix = None
 
-    def _to_data_model(self):
-        dm = data_model.DataModel()
+        # Adopt the source CSR and value arrays instead of leaving the caches
+        # empty. Without them the first solve/writeMPS falls back to a full
+        # rebuild from Python, which costs an O(nnz) pass and drops whatever
+        # the reader set but Python does not model.
+        self._rebuild_row_caches()
+        self._rebuild_variable_caches()
+        self.constraint_csr_matrix = {
+            "row_pointers": np.array(offsets, dtype=np.int32),
+            "column_indices": np.array(indices, dtype=np.int32),
+            "values": np.array(values, dtype=np.float64),
+        }
 
-        # A full DataModel rebuild always regenerates CSR from the constraint
-        # dictionaries. Warm value-only paths use _refresh_data_model_values().
-        n = len(self.vars)
+    def _rebuild_row_caches(self):
+        """Refresh the per-row caches and return the linear constraints.
+
+        Quadratic rows are excluded: they are not part of the linear CSR and
+        carry their own RHS, so every cache here is indexed by CSR row.
+        """
         linear_constrs = [
             constr for constr in self.constrs if not constr.is_quadratic
         ]
@@ -1626,6 +1655,35 @@ class Problem:
             constr.ConstraintName or "R" + str(constr.index)
             for constr in linear_constrs
         ]
+        return linear_constrs
+
+    def _rebuild_variable_caches(self):
+        """Refresh the per-variable caches from the Variable objects."""
+        n = len(self.vars)
+        self.objective = np.zeros(n)
+        self.lower_bound, self.upper_bound = np.zeros(n), np.zeros(n)
+        self.var_type = np.empty(n, dtype="S1")
+        self.var_names = []
+        self.mip_start = np.empty(n, dtype=np.float64)
+
+        for j in range(n):
+            self.objective[j] = self.vars[j].getObjectiveCoefficient()
+            self.var_type[j] = self.vars[j].getVariableType()
+            self.lower_bound[j] = self.vars[j].getLowerBound()
+            self.upper_bound[j] = self.vars[j].getUpperBound()
+            var_name = self.vars[j].VariableName
+            if var_name == "":
+                var_name = "C" + str(self.vars[j].index)
+            self.var_names.append(var_name)
+            self.mip_start[j] = self.vars[j].MIPStart
+
+    def _to_data_model(self):
+        dm = data_model.DataModel()
+
+        # A full DataModel rebuild always regenerates CSR from the constraint
+        # dictionaries. Warm value-only paths use _refresh_data_model_values().
+        linear_constrs = self._rebuild_row_caches()
+        m = len(linear_constrs)
 
         row_sizes = np.fromiter(
             (len(constr.vindex_coeff_dict) for constr in linear_constrs),
@@ -1657,22 +1715,7 @@ class Problem:
             "values": values,
         }
 
-        self.objective = np.zeros(n)
-        self.lower_bound, self.upper_bound = np.zeros(n), np.zeros(n)
-        self.var_type = np.empty(n, dtype="S1")
-        self.var_names = []
-        self.mip_start = np.empty(n, dtype=np.float64)
-
-        for j in range(n):
-            self.objective[j] = self.vars[j].getObjectiveCoefficient()
-            self.var_type[j] = self.vars[j].getVariableType()
-            self.lower_bound[j] = self.vars[j].getLowerBound()
-            self.upper_bound[j] = self.vars[j].getUpperBound()
-            var_name = self.vars[j].VariableName
-            if var_name == "":
-                var_name = "C" + str(self.vars[j].index)
-            self.var_names.append(var_name)
-            self.mip_start[j] = self.vars[j].MIPStart
+        self._rebuild_variable_caches()
 
         # Initialize datamodel
         dm.set_csr_constraint_matrix(
