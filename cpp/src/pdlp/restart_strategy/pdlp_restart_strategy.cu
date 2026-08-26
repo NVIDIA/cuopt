@@ -8,7 +8,9 @@
 #include <cuopt/error.hpp>
 
 #include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
 #include <pdlp/distributed_pdlp/multi_gpu_engine.hpp>
+#endif
 #include <pdlp/pdlp.cuh>
 #include <pdlp/pdlp_constants.hpp>
 #include <pdlp/restart_strategy/pdlp_restart_strategy.cuh>
@@ -896,6 +898,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
     "If any, all should be true");
 
   // Computing the distributed deltas
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
   if (auto* engine = pdhg_solver.get_mgpu_engine()) {
     engine->for_each_shard([&](auto& shard) {
       auto& sub = *shard.sub_pdlp;
@@ -909,7 +912,9 @@ void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
     engine->allreduce_sum_inplace_to_master([](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
       return sp.get_restart_strategy().last_restart_duality_gap_.dual_distance_traveled_.data();
     });
-  } else {
+  } else
+#endif
+  {
     primal_dual_distance_squared_moved_from_last_restart_period(
       pdhg_solver, primal_size_h_, dual_size_h_);
   }
@@ -959,6 +964,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
       hyper_params_.restart_k_i,
       hyper_params_.restart_k_d,
       hyper_params_.restart_i_smooth);
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
     if (auto* engine = pdhg_solver.get_mgpu_engine()) {
       engine->set_scalar_on_master_and_shards(
         primal_weight_value, [](auto& sp) { return sp.get_primal_weight().data(); });
@@ -968,7 +974,9 @@ void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
         dual_step_size_value, [](auto& sp) { return sp.get_dual_step_size().data(); });
       engine->set_scalar_on_master_and_shards(
         best_primal_weight_value, [](auto& sp) { return sp.get_best_primal_weight().data(); });
-    } else {
+    } else
+#endif
+    {
       primal_weight.set_element_async(0, primal_weight_value, stream_view_);
       primal_step_size.set_element_async(0, primal_step_size_value, stream_view_);
       dual_step_size.set_element_async(0, dual_step_size_value, stream_view_);
@@ -1000,13 +1008,16 @@ void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
                stream);
   };
 
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
   if (auto* engine = pdhg_solver.get_mgpu_engine()) {
     engine->for_each_shard([&](auto& shard) {
       auto& sub = *shard.sub_pdlp;
       commit_potential_next_as_last_restart(
         sub.get_restart_strategy(), sub.pdhg_solver_, shard.stream.view());
     });
-  } else {
+  } else
+#endif
+  {
     commit_potential_next_as_last_restart(*this, pdhg_solver, stream_view_);
   }
 
@@ -1024,12 +1035,14 @@ void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
     last_trial_fixed_point_error_[i] = std::numeric_limits<f_t>::infinity();
   }
 
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
   if (auto* engine = pdhg_solver.get_mgpu_engine()) {
     engine->for_each_shard([&](auto& shard) {
       shard.sub_pdlp->get_restart_strategy()
         .weighted_average_solution_.iterations_since_last_restart_ = 0;
     });
   }
+#endif
 }
 
 template <typename i_t, typename f_t>

@@ -14,7 +14,7 @@ ARGS=$*
 REPODIR=$(cd "$(dirname "$0")"; pwd)
 LIBCUOPT_BUILD_DIR=${LIBCUOPT_BUILD_DIR:=${REPODIR}/cpp/build}
 
-VALIDARGS="clean codegen libcuopt cuopt_grpc_server cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -fsanitize -tsan -msan -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-grpc-build --skip-fatbin-write --host-lineinfo --split-compile [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] --install --allgpuarch --ci-only-arch --show_depr_warn -h --help"
+VALIDARGS="clean codegen libcuopt cuopt_grpc_server cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -fsanitize -tsan -msan -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-grpc-build --skip-distributed-pdlp-build --skip-fatbin-write --host-lineinfo --split-compile [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] --install --allgpuarch --ci-only-arch --show_depr_warn -h --help"
 HELP="$0 [<target> ...] [<flag> ...]
  where <target> is:
    clean            - remove all existing build artifacts and configuration (start over)
@@ -43,6 +43,7 @@ HELP="$0 [<target> ...] [<flag> ...]
    --skip-tests-build  - disable building of all tests
    --skip-routing-build - skip building routing components
    --skip-grpc-build    - skip building gRPC and protobuf components (auto-enabled with -tsan)
+   --skip-distributed-pdlp-build - skip distributed PDLP, NCCL, and KaMinPar
    --skip-fatbin-write      - skip the fatbin write
    --host-lineinfo           - build with debug line information for host code
    --split-compile           - opt in to nvcc split compilation; builds may be nondeterministic
@@ -84,6 +85,7 @@ SKIP_C_PYTHON_ADAPTERS=0
 SKIP_TESTS_BUILD=0
 SKIP_ROUTING_BUILD=0
 SKIP_GRPC_BUILD=0
+SKIP_DISTRIBUTED_PDLP_BUILD=0
 WRITE_FATBIN=1
 HOST_LINEINFO=0
 CACHE_ARGS=()
@@ -255,6 +257,9 @@ fi
 if hasArg --skip-grpc-build; then
     SKIP_GRPC_BUILD=1
 fi
+if hasArg --skip-distributed-pdlp-build; then
+    SKIP_DISTRIBUTED_PDLP_BUILD=1
+fi
 if hasArg --skip-fatbin-write; then
     WRITE_FATBIN=0
 fi
@@ -399,6 +404,7 @@ if buildAll || hasArg libcuopt || hasArg cuopt_grpc_server; then
           -DBUILD_TESTS=$((1 - ${SKIP_TESTS_BUILD})) \
           -DSKIP_ROUTING_BUILD=${SKIP_ROUTING_BUILD} \
           -DSKIP_GRPC_BUILD=${SKIP_GRPC_BUILD} \
+          -DSKIP_DISTRIBUTED_PDLP_BUILD=${SKIP_DISTRIBUTED_PDLP_BUILD} \
           -DWRITE_FATBIN=${WRITE_FATBIN} \
           -DHOST_LINEINFO=${HOST_LINEINFO} \
           -DPARALLEL_LEVEL="${PARALLEL_LEVEL}" \

@@ -11,8 +11,10 @@
 #include <cuopt/mathematical_optimization/solver_settings.hpp>
 
 #include <pdlp/cusparse_view.hpp>
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
 #include <pdlp/distributed_pdlp/distributed_utils.hpp>
 #include <pdlp/distributed_pdlp/partitioner.hpp>
+#endif
 #include <pdlp/pdlp.cuh>
 #include <pdlp/swap_and_resize_helper.cuh>
 #include <pdlp/utils.cuh>
@@ -20,7 +22,9 @@
 #include <linear_algebra/sparse_matrix.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include "cuopt/mathematical_optimization/pdlp/solver_solution.hpp"
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
 #include "distributed_pdlp/multi_gpu_engine.hpp"
+#endif
 
 #include <utilities/copy_helpers.hpp>
 #include <utilities/device_scalar_init.hpp>
@@ -385,6 +389,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(mip::problem_t<i_t, f_t>& op_problem,
   }
 }
 
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
 // ============================================================================
 // Distributed multi-GPU ctor.
 // needs placeholder_problem to be a shape-0 problem
@@ -561,6 +566,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   current_termination_strategy_.get_convergence_information().distributed_init_l2_norms(
     *multi_gpu_engine);
 }
+#endif
 
 template <typename i_t, typename f_t>
 void pdlp_solver_t<i_t, f_t>::set_initial_primal_weight(f_t initial_primal_weight)
@@ -2236,17 +2242,21 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
 
   // Computing the deltas (delta = reflected - current)
   // TODO batch mdoe: this only works if everyone restarts
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
   if (is_distributed_master()) {
     multi_gpu_engine->for_each_shard([](auto& shard) {
       compute_primal_dual_deltas(shard.sub_pdlp->pdhg_solver_, shard.stream.view());
     });
-  } else {
+  } else
+#endif
+  {
     compute_primal_dual_deltas(pdhg_solver_, stream_view_);
   }
 
   auto& cusparse_view = pdhg_solver_.get_cusparse_view();
 
   // Distributed compute_fixed_error second part
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
   if (is_distributed_master()) {
     // SpMV is the first operation in compute_interaction_and_movement so we can do halo before and
     // call it naturally we then reduce the local dot products
@@ -2282,7 +2292,9 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
     });
     multi_gpu_engine->allreduce_sum_inplace_to_master(
       [](auto& sp) -> f_t* { return sp.step_size_strategy_.get_norm_squared_delta_dual().data(); });
-  } else {
+  } else
+#endif
+  {
     // Sync to make sure all previous cuSparse operations are finished before setting the
     // potential_next_dual_solution
     RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
@@ -2609,6 +2621,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     compute_initial_primal_weight();
 
   // Distributed counterpart of the single-GPU, happens later in the single-GPU path.
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
   if (settings_.use_distributed_pdlp) {
     step_size_strategy_.get_primal_and_dual_stepsizes(primal_step_size_, dual_step_size_);
     multi_gpu_engine->for_each_shard([&](auto& shard) {
@@ -2619,6 +2632,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     multi_gpu_engine->sync_await_shards(stream_view_);
     handle_ptr_->sync_stream(stream_view_);
   }
+#endif
 
   // Everything below (seed-from-settings, initial_k, get_primal_and_dual_stepsizes,
   // initial primal/dual, projection, transpose, verbose prints, log header)
@@ -2930,6 +2944,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
         initial_scaling_strategy_.unscale_solutions(pdhg_solver_.get_primal_solution(),
                                                     pdhg_solver_.get_dual_solution());
       } else {
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
         if (is_distributed_master()) {
           // The only branch in cuPDLPx (Stable3)
           multi_gpu_engine->for_each_shard([&](auto& shard) {
@@ -2939,7 +2954,9 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
               sub.pdhg_solver_.get_potential_next_dual_solution(),
               sub.pdhg_solver_.get_dual_slack());
           });
-        } else {
+        } else
+#endif
+        {
           initial_scaling_strategy_.unscale_solutions(
             pdhg_solver_.get_potential_next_primal_solution(),
             pdhg_solver_.get_potential_next_dual_solution(),
@@ -2976,6 +2993,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
           initial_scaling_strategy_.scale_solutions(pdhg_solver_.get_primal_solution(),
                                                     pdhg_solver_.get_dual_solution());
         } else {
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
           if (is_distributed_master()) {
             // The only branch in cuPDLPx (Stable3)
             multi_gpu_engine->for_each_shard([&](auto& shard) {
@@ -2985,7 +3003,9 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
                 sub.pdhg_solver_.get_potential_next_dual_solution(),
                 sub.pdhg_solver_.get_dual_slack());
             });
-          } else {
+          } else
+#endif
+          {
             initial_scaling_strategy_.scale_solutions(
               pdhg_solver_.get_potential_next_primal_solution(),
               pdhg_solver_.get_potential_next_dual_solution(),
@@ -3095,11 +3115,13 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     ++internal_solver_iterations_;
     if (settings_.hyper_params.never_restart_to_average) {
       restart_strategy_.increment_iteration_since_last_restart();
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
       if (is_distributed_master()) {
         multi_gpu_engine->for_each_shard([&](auto& shard) {
           shard.sub_pdlp->restart_strategy_.increment_iteration_since_last_restart();
         });
       }
+#endif
     }
   }
   return optimization_problem_solution_t<i_t, f_t>{pdlp_termination_status_t::NumericalError,
@@ -3164,10 +3186,12 @@ void pdlp_solver_t<i_t, f_t>::halpern_update()
 {
   raft::common::nvtx::range fun_scope("halpern_update");
 
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
   if (is_distributed_master()) {
     multi_gpu_engine->for_each_shard([&](auto& shard) { shard.sub_pdlp->halpern_update(); });
     return;
   }
+#endif
   // TODO later batch mode: handle if element in the batch have different one if restart per climber
   const f_t weight =
     f_t(restart_strategy_.weighted_average_solution_.get_iterations_since_last_restart() + 1) /
@@ -3249,6 +3273,7 @@ void pdlp_solver_t<i_t, f_t>::scale_problem()
 {
   // Scale problem then free scratch buffers
   raft::common::nvtx::range fun_scope("pdlp_solver_t::scale_problem");
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
   if (is_distributed_master()) {
     multi_gpu_engine->distributed_scaling(settings_.hyper_params, primal_size_h_, inside_mip_);
 
@@ -3258,7 +3283,9 @@ void pdlp_solver_t<i_t, f_t>::scale_problem()
       scaling.get_iteration_variable_scaling().resize(0, shard.stream.view());
       scaling.get_iteration_constraint_matrix_scaling().resize(0, shard.stream.view());
     });
-  } else {
+  } else
+#endif
+  {
     initial_scaling_strategy_.scale_problem();
 
     // Free scratch: no further scaling passes happen after this point.
@@ -3271,6 +3298,7 @@ template <typename i_t, typename f_t>
 void pdlp_solver_t<i_t, f_t>::create_spmv_op_plans()
 {
   raft::common::nvtx::range fun_scope("pdlp_solver_t::create_spmv_op_plans");
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
   if (is_distributed_master()) {
     // Distributed path: fan out the same per-shard cusparse_view call the
     // single-GPU path would make.
@@ -3282,6 +3310,7 @@ void pdlp_solver_t<i_t, f_t>::create_spmv_op_plans()
     handle_ptr_->sync_stream(stream_view_);
     return;
   }
+#endif
   if constexpr (std::is_same_v<f_t, double>) {
     if (!batch_mode_ && !pdhg_solver_.get_cusparse_view().mixed_precision_enabled_) {
       pdhg_solver_.get_cusparse_view().create_spmv_op_plans(
@@ -3301,6 +3330,7 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
   constexpr int max_iterations = 5000;
   constexpr f_t tolerance      = f_t{1e-4};
 
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
   if (is_distributed_master()) {
     // Distributed dispatch: everything (sigma_max, deriving primal/dual
     // step sizes from master's current primal_weight_, seeding master +
@@ -3309,6 +3339,7 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
       settings_.hyper_params, dual_size_h_, scaling_factor, max_iterations, tolerance);
     return;
   }
+#endif
 
   if (!settings_.hyper_params.initial_step_size_max_singular_value) {
     // set stepsize relative to maximum absolute value of A
@@ -3485,6 +3516,7 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_primal_weight()
 {
   raft::common::nvtx::range fun_scope("compute_initial_primal_weight");
 
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
   if (is_distributed_master()) {
     // Distributed dispatch:
     // - short-circuit -> 1
@@ -3493,6 +3525,7 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_primal_weight()
     multi_gpu_engine->distributed_compute_initial_primal_weight(settings_.hyper_params);
     return;
   }
+#endif
 
   // Here we use the combined bounds of the op_problem_scaled which may or may not be scaled yet
   // based on pdlp config
@@ -3584,12 +3617,6 @@ template <typename i_t, typename f_t>
 pdlp_restart_strategy_t<i_t, f_t>& pdlp_solver_t<i_t, f_t>::get_restart_strategy()
 {
   return restart_strategy_;
-}
-
-template <typename i_t, typename f_t>
-bool pdlp_solver_t<i_t, f_t>::is_distributed_master() const
-{
-  return multi_gpu_engine.has_value();
 }
 
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT

@@ -52,6 +52,7 @@ option(BUILD_LP_ONLY "Build only linear programming components, exclude routing 
 option(SKIP_C_PYTHON_ADAPTERS "Skip building C and Python adapter files (cython_solve.cu and cuopt_c.cpp)" OFF)
 option(SKIP_ROUTING_BUILD "Skip building routing components" OFF)
 option(SKIP_GRPC_BUILD "Skip building gRPC and protobuf components" OFF)
+option(SKIP_DISTRIBUTED_PDLP_BUILD "Skip distributed PDLP, NCCL, and KaMinPar" OFF)
 option(WRITE_FATBIN "Enable fatbin writing" ON)
 option(HOST_LINEINFO "Build with debug line information for host code" OFF)
 
@@ -62,8 +63,13 @@ message(VERBOSE "cuOpt: Disable OpenMP: ${DISABLE_OPENMP}")
 message(VERBOSE "cuOpt: Build LP-only mode: ${BUILD_LP_ONLY}")
 message(VERBOSE "cuOpt: Skip C/Python adapters: ${SKIP_C_PYTHON_ADAPTERS}")
 message(VERBOSE "cuOpt: Skip routing build: ${SKIP_ROUTING_BUILD}")
+message(VERBOSE "cuOpt: Skip distributed PDLP build: ${SKIP_DISTRIBUTED_PDLP_BUILD}")
 message(VERBOSE "cuOpt: Build with debug line information for host code: ${HOST_LINEINFO}")
 message(VERBOSE "cuOpt: fatbin: ${WRITE_FATBIN}")
+
+if (NOT SKIP_DISTRIBUTED_PDLP_BUILD)
+    add_compile_definitions(CUOPT_ENABLE_DISTRIBUTED_PDLP)
+endif ()
 
 # ##################################################################################################
 # - compiler options ------------------------------------------------------------------------------
@@ -333,39 +339,41 @@ find_package(CUDSS REQUIRED)
 # - NCCL (multi-GPU distributed PDLP) -------------------------------------------------------------
 # NCCL is shipped via the conda env; no canonical CMake config target, so look it
 # up by name in the standard lib paths (plus CONDA_PREFIX as a hint).
-set(NCCL_HINT_PREFIXES "")
-if (DEFINED ENV{CONDA_PREFIX} AND NOT "$ENV{CONDA_PREFIX}" STREQUAL "")
-    list(APPEND NCCL_HINT_PREFIXES "$ENV{CONDA_PREFIX}")
-endif ()
-find_path(NCCL_INCLUDE_DIR
-    NAMES nccl.h
-    HINTS ${NCCL_HINT_PREFIXES}
-    PATH_SUFFIXES include
-)
-find_library(NCCL_LIBRARY
-    NAMES nccl
-    HINTS ${NCCL_HINT_PREFIXES}
-    PATH_SUFFIXES lib lib64
-)
-if (NOT NCCL_INCLUDE_DIR OR NOT NCCL_LIBRARY)
-    message(FATAL_ERROR "NCCL not found. Looked in ${NCCL_HINT_PREFIXES}. Install nccl-dev / libnccl-dev in the active env.")
-endif ()
-add_library(nccl_external UNKNOWN IMPORTED GLOBAL)
-set_target_properties(nccl_external PROPERTIES
-    IMPORTED_LOCATION "${NCCL_LIBRARY}"
-    INTERFACE_INCLUDE_DIRECTORIES "${NCCL_INCLUDE_DIR}"
-)
-message(STATUS "Using NCCL: ${NCCL_LIBRARY}")
+if (NOT SKIP_DISTRIBUTED_PDLP_BUILD)
+    set(NCCL_HINT_PREFIXES "")
+    if (DEFINED ENV{CONDA_PREFIX} AND NOT "$ENV{CONDA_PREFIX}" STREQUAL "")
+        list(APPEND NCCL_HINT_PREFIXES "$ENV{CONDA_PREFIX}")
+    endif ()
+    find_path(NCCL_INCLUDE_DIR
+        NAMES nccl.h
+        HINTS ${NCCL_HINT_PREFIXES}
+        PATH_SUFFIXES include
+    )
+    find_library(NCCL_LIBRARY
+        NAMES nccl
+        HINTS ${NCCL_HINT_PREFIXES}
+        PATH_SUFFIXES lib lib64
+    )
+    if (NOT NCCL_INCLUDE_DIR OR NOT NCCL_LIBRARY)
+        message(FATAL_ERROR "NCCL not found. Looked in ${NCCL_HINT_PREFIXES}. Install nccl-dev / libnccl-dev in the active env.")
+    endif ()
+    add_library(nccl_external UNKNOWN IMPORTED GLOBAL)
+    set_target_properties(nccl_external PROPERTIES
+        IMPORTED_LOCATION "${NCCL_LIBRARY}"
+        INTERFACE_INCLUDE_DIRECTORIES "${NCCL_INCLUDE_DIR}"
+    )
+    message(STATUS "Using NCCL: ${NCCL_LIBRARY}")
 
-# ##################################################################################################
-# - KaMinPar (multi-threaded partitioning for distributed PDLP) ------------------------------------
-# Brought in the RAPIDS way (rapids_cpm_find): uses an installed KaMinPar (deb/rpm/conda,
-# discovered via its CMake config) if present, otherwise builds the pinned source via CPM.
-include(cmake/thirdparty/get_kaminpar.cmake)
-if (NOT TARGET KaMinPar::KaMinPar)
-    message(FATAL_ERROR "KaMinPar::KaMinPar was not made available by get_kaminpar.cmake")
+    # ##################################################################################################
+    # - KaMinPar (multi-threaded partitioning for distributed PDLP) ------------------------------------
+    # Brought in the RAPIDS way (rapids_cpm_find): uses an installed KaMinPar (deb/rpm/conda,
+    # discovered via its CMake config) if present, otherwise builds the pinned source via CPM.
+    include(cmake/thirdparty/get_kaminpar.cmake)
+    if (NOT TARGET KaMinPar::KaMinPar)
+        message(FATAL_ERROR "KaMinPar::KaMinPar was not made available by get_kaminpar.cmake")
+    endif ()
+    message(STATUS "Using KaMinPar (distributed PDLP graph partitioner)")
 endif ()
-message(STATUS "Using KaMinPar (distributed PDLP graph partitioner)")
 
 # ##################################################################################################
 # - gRPC and Protobuf setup -----------------------------------------------------------------------
@@ -698,8 +706,6 @@ add_dependencies(cuopt_objs PSLP)
 # "target KaMinPar is not in any export set"). libKaMinPar.a is self-contained (the
 # kaminpar-common OBJECT lib is archived into it); we only need its public headers
 # (<kaminpar.h>, which pulls in stdlib + TBB) at compile time.
-target_include_directories(cuopt_objs SYSTEM PRIVATE
-        $<TARGET_PROPERTY:KaMinPar::KaMinPar,INTERFACE_INCLUDE_DIRECTORIES>)
 # partitioner.cpp includes <kaminpar.h>. Because KaMinPar is linked by file, cuopt
 # does NOT inherit KaMinPar's PUBLIC compile definitions, so we must replicate the ones that
 # affect what <kaminpar.h> compiles to:
@@ -709,11 +715,15 @@ target_include_directories(cuopt_objs SYSTEM PRIVATE
 #                                   with the KAMINPAR_64BIT_* options in get_kaminpar.cmake;
 #                                   otherwise the public API types (e.g. copy_graph's span<>
 #                                   widths) mismatch the prebuilt archive => undefined refs.
-target_compile_definitions(cuopt_objs PRIVATE TBB_PREVIEW_GLOBAL_CONTROL KAMINPAR_64BIT_EDGE_IDS)
 # Real (non-imported) target only exists when KaMinPar is built from source via CPM;
 # force it to build before the objects that include its headers since it is EXCLUDE_FROM_ALL.
-if (TARGET KaMinPar)
+if (NOT SKIP_DISTRIBUTED_PDLP_BUILD)
+    target_include_directories(cuopt_objs SYSTEM PRIVATE
+            $<TARGET_PROPERTY:KaMinPar::KaMinPar,INTERFACE_INCLUDE_DIRECTORIES>)
+    target_compile_definitions(cuopt_objs PRIVATE TBB_PREVIEW_GLOBAL_CONTROL KAMINPAR_64BIT_EDGE_IDS)
+    if (TARGET KaMinPar)
         add_dependencies(cuopt_objs KaMinPar)
+    endif ()
 endif ()
 
 # ##################################################################################################
@@ -790,7 +800,6 @@ if (BUILD_TESTS)
             OpenMP::OpenMP_CXX
             PRIVATE
             ${CUOPT_PRIVATE_CUDA_LIBS}
-            nccl_external
             $<$<BOOL:${CUOPT_ENABLE_GRPC}>:protobuf::libprotobuf>
             $<$<BOOL:${CUOPT_ENABLE_GRPC}>:gRPC::grpc++>
     )
@@ -813,9 +822,11 @@ if (BUILD_TESTS)
     )
     target_link_libraries(cuopt_static PRIVATE $<TARGET_FILE:PSLP>)
     add_dependencies(cuopt_static PSLP)
-    target_link_libraries(cuopt_static PRIVATE $<TARGET_FILE:KaMinPar::KaMinPar>)
-    if (TARGET KaMinPar)
-        add_dependencies(cuopt_static KaMinPar)
+    if (NOT SKIP_DISTRIBUTED_PDLP_BUILD)
+        target_link_libraries(cuopt_static PRIVATE nccl_external $<TARGET_FILE:KaMinPar::KaMinPar>)
+        if (TARGET KaMinPar)
+            add_dependencies(cuopt_static KaMinPar)
+        endif ()
     endif ()
     add_subdirectory(tests)
 endif (BUILD_TESTS)
@@ -848,7 +859,6 @@ target_link_libraries(cuopt
         ${CUDSS_LIB_FILE}
         PRIVATE
         ${CUOPT_PRIVATE_CUDA_LIBS}
-        nccl_external
         simde::simde
         OpenMP::OpenMP_CXX
         OpenMP::OpenMP_CUDA
@@ -857,9 +867,11 @@ target_link_libraries(cuopt
 )
 target_link_libraries(cuopt PRIVATE $<TARGET_FILE:PSLP>)
 add_dependencies(cuopt PSLP)
-target_link_libraries(cuopt PRIVATE $<TARGET_FILE:KaMinPar::KaMinPar>)
-if (TARGET KaMinPar)
+if (NOT SKIP_DISTRIBUTED_PDLP_BUILD)
+    target_link_libraries(cuopt PRIVATE nccl_external $<TARGET_FILE:KaMinPar::KaMinPar>)
+    if (TARGET KaMinPar)
         add_dependencies(cuopt KaMinPar)
+    endif ()
 endif ()
 # Propagate compile definitions that consumers need when including cuopt headers.
 # These were on cuopt directly before the cuopt_objs refactor; $<TARGET_OBJECTS:...>

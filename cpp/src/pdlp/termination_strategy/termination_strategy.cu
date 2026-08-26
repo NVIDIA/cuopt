@@ -5,7 +5,9 @@
  */
 /* clang-format on */
 
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
 #include <pdlp/distributed_pdlp/multi_gpu_engine.hpp>
+#endif
 
 #include <pdlp/pdlp.cuh>
 #include <pdlp/pdlp_climber_strategy.hpp>
@@ -567,12 +569,14 @@ pdlp_termination_strategy_t<i_t, f_t>::fill_return_problem_solution(
   }
 
   // In distributed PDLP, gather solutions from the shards to the master.
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
   if (auto* engine = current_pdhg_solver.get_mgpu_engine()) {
     const bool is_current_live_iterate =
       (&primal_iterate == &current_pdhg_solver.get_potential_next_primal_solution()) ||
       (&primal_iterate == &current_pdhg_solver.get_primal_solution());
     if (is_current_live_iterate) { engine->gather_potential_next_solutions_to_master(); }
   }
+#endif
 
   typename convergence_information_t<i_t, f_t>::view_t convergence_information_view =
     convergence_information_.view();

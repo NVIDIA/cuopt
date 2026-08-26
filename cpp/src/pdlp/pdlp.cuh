@@ -13,7 +13,9 @@
 #include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
 
 #include <pdlp/cusparse_view.hpp>
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
 #include <pdlp/distributed_pdlp/multi_gpu_engine.hpp>
+#endif
 #include <pdlp/initial_scaling_strategy/initial_scaling.cuh>
 #include <pdlp/pdhg.hpp>
 #include <pdlp/pdlp_climber_strategy.hpp>
@@ -67,10 +69,12 @@ class pdlp_solver_t {
                 bool is_batch_mode           = false,
                 bool is_distributed_sub_pdlp = false);
 
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
   // Distributed Solver Constructor
   pdlp_solver_t(mip::problem_t<i_t, f_t>& placeholder_problem,
                 cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> const& mps,
                 pdlp_solver_settings_t<i_t, f_t> const& settings);
+#endif
 
   optimization_problem_solution_t<i_t, f_t> run_solver(const timer_t& timer);
 
@@ -215,10 +219,12 @@ class pdlp_solver_t {
   pdlp::adaptive_step_size_strategy_t<i_t, f_t> step_size_strategy_;
 
  public:
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
   // std::optional because multi_gpu_engine_t is non-default-constructible
   // (collectively bootstraps NCCL, owns RMM resources). Stays nullopt in
   // single-GPU mode; emplaced by the multi-GPU ctor.
   std::optional<multi_gpu_engine_t<i_t, f_t>> multi_gpu_engine;
+#endif
 
   // Inner solver
   pdlp::pdhg_solver_t<i_t, f_t> pdhg_solver_;
@@ -227,7 +233,14 @@ class pdlp_solver_t {
   // This solver is the distributed-PDLP master orchestrator iff it owns the
   // multi-GPU engine. Shards (sub-solvers) leave the optional empty -> false.
   // Single-GPU PDLP reports false.
-  bool is_distributed_master() const;
+  bool is_distributed_master() const
+  {
+#ifdef CUOPT_ENABLE_DISTRIBUTED_PDLP
+    return multi_gpu_engine.has_value();
+#else
+    return false;
+#endif
+  }
 
  private:
   void compute_fixed_error(std::vector<int>& has_restarted);
