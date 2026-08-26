@@ -267,7 +267,6 @@ class diving_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
     this->start_lower     = original_lp.lower;
     this->start_upper     = original_lp.upper;
     this->search_strategy = search_strategy_t::COEFFICIENT_DIVING;
-    calculate_variable_locks(original_lp, this->var_up_locks, this->var_down_locks);
   }
 
   // Apply bound strengthening to the starting variable bounds

@@ -1015,6 +1015,11 @@ branch_variable_t<i_t> branch_and_bound_t<i_t, f_t>::variable_selection(
       return {branch_var, round_dir};
 
     case search_strategy_t::COEFFICIENT_DIVING:
+      if (worker->var_up_locks.empty()) {
+        calculate_variable_locks(
+          worker->leaf_problem, worker->var_up_locks, worker->var_down_locks);
+      }
+
       return coefficient_diving(
         original_lp_, fractional, solution, worker->var_up_locks, worker->var_down_locks, log);
 
