@@ -238,6 +238,12 @@ inline std::mutex g_guard_mutex;
 // caller has no object in this image to own it.
 inline std::shared_ptr<logger_config_guard>& external_config_guard()
 {
+  // Force the logger's static to be constructed before this one, so it is destroyed after.
+  // ~logger_config_guard calls reset_default_logger(), and at process exit an unpaired
+  // guard released after the logger had already gone would touch a destroyed object.
+  static rapids_logger::logger& keep_logger_alive = default_logger();
+  static_cast<void>(keep_logger_alive);
+
   static std::shared_ptr<logger_config_guard> guard;
   return guard;
 }
