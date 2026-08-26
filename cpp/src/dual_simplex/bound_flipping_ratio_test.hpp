@@ -80,7 +80,6 @@ class bound_flipping_ratio_test_t {
                   i_t end,
                   const std::vector<i_t>& indices,
                   const std::vector<f_t>& ratios,
-                  f_t& slope,
                   f_t& step_length,
                   i_t& nonbasic_entering,
                   i_t& entering_index,

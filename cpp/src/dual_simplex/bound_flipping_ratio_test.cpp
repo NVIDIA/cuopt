@@ -61,7 +61,6 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::single_pass(i_t start,
                                                        i_t end,
                                                        const std::vector<i_t>& indicies,
                                                        const std::vector<f_t>& ratios,
-                                                       f_t& slope,
                                                        f_t& step_length,
                                                        i_t& nonbasic_entering,
                                                        i_t& entering_index,
@@ -95,20 +94,7 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::single_pass(i_t start,
   if (nonbasic_entering == -1) { return RATIO_TEST_NUMERICAL_ISSUES; }
   const i_t j = entering_index = nonbasic_list_[nonbasic_entering];
 
-  constexpr bool verbose = false;
-  if (bounded_variables_[j]) {
-    const f_t interval    = upper_[j] - lower_[j];
-    const f_t delta_slope = std::abs(delta_z_[j]) * interval;
-    if constexpr (verbose) {
-      settings_.log.printf("single pass delta slope %e slope %e after slope %e step length %e\n",
-                           delta_slope,
-                           slope,
-                           slope - delta_slope,
-                           step_length);
-    }
-    slope -= delta_slope;
-    return k_idx;  // we should see if we can continue to increase the step-length
-  }
+  if (bounded_variables_[j]) { return k_idx; }
   return -1;  // we are done. do not increase the step-length further
 }
 
@@ -150,10 +136,13 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
 
   t0 = tic();
   i_t k_idx = single_pass(
-    0, num_breakpoints, indicies, harris_ratios, slope, step_length, nonbasic_entering, entering_index, max_step_length);
+    0, num_breakpoints, indicies, harris_ratios, step_length, nonbasic_entering, entering_index, max_step_length);
   time_single_pass_ += toc(t0);
   if (k_idx == RATIO_TEST_NUMERICAL_ISSUES) { return RATIO_TEST_NUMERICAL_ISSUES; }
-  bool continue_search = k_idx >= 0 && num_breakpoints > 1 && slope > 0.0;
+  // The variable selected by single_pass is guaranteed to be in the first bucket: it
+  // defines the minimum Harris ratio, and its exact ratio is no greater than its Harris
+  // ratio. Its slope contribution is therefore applied by the bucket pass below.
+  bool continue_search = k_idx >= 0 && num_breakpoints > 1;
   if (!continue_search) {
     if constexpr (verbose) {
       settings_.log.printf(
