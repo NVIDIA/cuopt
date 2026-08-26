@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #pragma once
+#include <cstdint>
 
 namespace cuopt::mathematical_optimization {
 
@@ -26,9 +27,9 @@ struct mip_diving_hyper_params_t {
   i_t node_limit = 500;
 
   // The maximum number of dual simplex iteration allowed
-  // in a single dive. This set in terms of the total number of
-  // iterations in the best-first threads.
-  f_t iteration_limit_factor = 0.05;
+  // in a single dive.
+  f_t iteration_limit_factor     = 0.05;
+  int64_t iteration_limit_offset = 10000;
 
   // The maximum backtracking allowed.
   i_t backtrack_limit = 5;

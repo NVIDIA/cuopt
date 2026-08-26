@@ -1534,7 +1534,7 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   branch_and_bound_worker_t<i_t, f_t>* worker,
   branch_and_bound_stats_t<i_t, f_t>& stats,
   logger_t& log,
-  i_t iter_limit)
+  int64_t iter_limit)
 {
   raft::common::nvtx::range scope("BB::solve_node");
 #ifdef DEBUG_BRANCHING
@@ -2107,9 +2107,16 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker,
 
     int64_t bnb_lp_iters = exploration_stats_.total_simplex_iters;
     f_t factor           = settings_.diving_settings.iteration_limit_factor;
-    i_t max_iter         = std::min<int64_t>(factor * bnb_lp_iters - dive_stats.total_simplex_iters,
-                                     std::numeric_limits<i_t>::max());
-    if (max_iter <= 0) { break; }
+    int64_t offset       = settings_.diving_settings.iteration_limit_offset;
+    int64_t max_iter     = offset + factor * bnb_lp_iters - dive_stats.total_simplex_iters;
+    if (max_iter <= 0) {
+      std::cout << std::format("max iteration reached. current={} bnb={} max_iter={}",
+                               dive_stats.total_simplex_iters.load(),
+                               exploration_stats_.total_simplex_iters.load(),
+                               max_iter)
+                << std::endl;
+      break;
+    }
 
     decompress_vstatus(
       node_ptr->packed_vstatus, worker->leaf_problem.num_cols, worker->leaf_vstatus);
@@ -2833,8 +2840,7 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(
     int64_t simplex_iter       = exploration_stats_.total_simplex_iters;
     f_t iter_ratio             = settings_.submip_settings.iteration_limit_ratio;
     int64_t simplex_iter_limit = iter_offset + simplex_iter * iter_ratio;
-    i_t max_iter               = std::min<int64_t>(simplex_iter_limit - stats.total_simplex_iters,
-                                     std::numeric_limits<i_t>::max());
+    int64_t max_iter           = simplex_iter_limit - stats.total_simplex_iters;
     if (max_iter <= 0) {
       DEBUG_SUBMIP("{}Round {}: max iteration reached! {}/{}",
                    submip_settings.log.log_prefix,
