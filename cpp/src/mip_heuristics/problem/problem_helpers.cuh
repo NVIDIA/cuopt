@@ -14,6 +14,7 @@
 #include <mip_heuristics/logger.cuh>
 #include <raft/linalg/unary_op.cuh>
 #include <utilities/copy_helpers.hpp>
+#include <utilities/device_scalar_init.hpp>
 
 #include <cuda_runtime_api.h>
 #include <thrust/count.h>
@@ -216,7 +217,7 @@ static bool check_transpose_validity(const rmm::device_uvector<f_t>& coefficient
 {
   if (offsets.size() <= 1) { return true; }
 
-  rmm::device_scalar<bool> failed(false, handle_ptr->get_stream());
+  rmm::device_scalar<bool> failed(false_v, handle_ptr->get_stream());
   kernel_check_transpose_validity<i_t, f_t>
     <<<offsets.size() - 1, 64, 0, handle_ptr->get_stream()>>>(
       raft::device_span<const f_t>(coefficients.data(), coefficients.size()),

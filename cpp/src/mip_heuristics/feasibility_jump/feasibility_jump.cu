@@ -14,6 +14,7 @@
 #include <mip_heuristics/diversity/population.cuh>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/utils.cuh>
+#include <utilities/device_scalar_init.hpp>
 #include <utilities/seed_generator.cuh>
 #include <utilities/timer.hpp>
 
@@ -52,8 +53,8 @@ fj_t<i_t, f_t>::fj_t(mip_solver_context_t<i_t, f_t>& context_, fj_settings_t in_
     cstr_right_weights(pb_ptr->n_constraints, pb_ptr->handle_ptr->get_stream()),
     cstr_left_weights(pb_ptr->n_constraints, pb_ptr->handle_ptr->get_stream()),
     weight_update_increment(1.0),
-    objective_weight(0.0, pb_ptr->handle_ptr->get_stream()),
-    max_cstr_weight(0, pb_ptr->handle_ptr->get_stream()),
+    objective_weight(zero_v<f_t>, pb_ptr->handle_ptr->get_stream()),
+    max_cstr_weight(zero_v<f_t>, pb_ptr->handle_ptr->get_stream()),
     climber_views(0, pb_ptr->handle_ptr->get_stream()),
     objective_vars(0, pb_ptr->handle_ptr->get_stream()),
     constraint_lower_bounds_csr(pb_ptr->coefficients.size(), pb_ptr->handle_ptr->get_stream()),

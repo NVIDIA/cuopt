@@ -10,6 +10,7 @@
 #include <pdlp/restart_strategy/pdlp_restart_strategy.cuh>
 #include <pdlp/termination_strategy/infeasibility_information.hpp>
 #include <pdlp/utils.cuh>
+#include <utilities/device_scalar_init.hpp>
 
 #include <cuopt/mathematical_optimization/utilities/segmented_sum_handler.cuh>
 
@@ -65,8 +66,8 @@ infeasibility_information_t<i_t, f_t>::infeasibility_information_t(
     dual_ray_inf_norm_(climber_strategies.size(), stream_view_),
     max_dual_ray_infeasibility_{climber_strategies.size(), stream_view_},
     dual_ray_linear_objective_{climber_strategies.size(), stream_view_},
-    reduced_cost_dual_objective_{0.0, stream_view_},
-    reduced_cost_inf_norm_{0.0, stream_view_},
+    reduced_cost_dual_objective_{zero_v<f_t>, stream_view_},
+    reduced_cost_inf_norm_{zero_v<f_t>, stream_view_},
     // If infeasibility_detection is off, no need to allocate all those
     homogenous_primal_residual_{(!infeasibility_detection) ? 0 : static_cast<size_t>(dual_size_h_),
                                 stream_view_},
@@ -91,9 +92,9 @@ infeasibility_information_t<i_t, f_t>::infeasibility_information_t(
                 stream_view_},
     sum_primal_slack_{climber_strategies.size(), stream_view_},
     sum_dual_slack_{climber_strategies.size(), stream_view_},
-    reusable_device_scalar_value_1_{1.0, stream_view_},
-    reusable_device_scalar_value_0_{0.0, stream_view_},
-    reusable_device_scalar_value_neg_1_{-1.0, stream_view_},
+    reusable_device_scalar_value_1_{one_v<f_t>, stream_view_},
+    reusable_device_scalar_value_0_{zero_v<f_t>, stream_view_},
+    reusable_device_scalar_value_neg_1_{neg_one_v<f_t>, stream_view_},
     scaling_strategy_(scaling_strategy),
     segmented_sum_handler_(stream_view_),
     climber_strategies_(climber_strategies),
