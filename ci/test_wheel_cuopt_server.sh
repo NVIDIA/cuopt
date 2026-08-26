@@ -14,7 +14,7 @@ bash "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/utils/install_openssl3_runtim
 
 # Download the packages built in the previous step
 LIBCUOPT_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_cpp libcuopt cuopt --cuda "$RAPIDS_CUDA_VERSION")")
-CUOPT_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_python cuopt cuopt --py "$RAPIDS_PY_VERSION" --cuda "$RAPIDS_CUDA_VERSION")")
+CUOPT_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_python cuopt cuopt --stable --cuda "$RAPIDS_CUDA_VERSION")")
 CUOPT_SERVER_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_python cuopt-server cuopt --pure --arch any --cuda "$RAPIDS_CUDA_VERSION")")
 CUOPT_SH_CLIENT_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_python cuopt-sh-client cuopt --pure --arch any)")
 
@@ -46,9 +46,14 @@ FAILED_STEPS=()
 trap "EXITCODE=1" ERR
 set +e
 
-timeout 30m ./ci/run_cuopt_server_pytests.sh \
+# shellcheck source=ci/utils/crash_helpers.sh
+source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/utils/crash_helpers.sh"
+
+run_step_with_timeout "pytest cuopt-server (wheel)" 30m \
+  "${RAPIDS_TESTS_DIR}/junit-wheel-cuopt-server.xml" \
+  ./ci/run_cuopt_server_pytests.sh \
   --junitxml="${RAPIDS_TESTS_DIR}/junit-wheel-cuopt-server.xml" \
-  --verbose --capture=no || FAILED_STEPS+=("pytest cuopt-server (wheel)")
+  --verbose --capture=no
 
 # Run documentation tests
 ./ci/test_doc_examples.sh || FAILED_STEPS+=("doc examples")

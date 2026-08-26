@@ -89,8 +89,10 @@ class deterministic_worker_base_t : public branch_and_bound_worker_t<i_t, f_t> {
                               const csr_matrix_t<i_t, f_t>& Arow,
                               const std::vector<simplex::variable_type_t>& var_types,
                               const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+                              const std::vector<f_t>& root_solution,
+                              const std::vector<f_t>& root_edge_norm,
                               const std::string& context_name)
-    : base_t(id, original_lp, Arow, var_types, settings),
+    : base_t(id, original_lp, Arow, var_types, settings, root_solution, root_edge_norm),
       work_context(context_name),
       pc_snapshot(1, settings)
   {
@@ -140,8 +142,17 @@ class deterministic_bfs_worker_t
                                       const simplex::lp_problem_t<i_t, f_t>& original_lp,
                                       const csr_matrix_t<i_t, f_t>& Arow,
                                       const std::vector<simplex::variable_type_t>& var_types,
-                                      const simplex::simplex_solver_settings_t<i_t, f_t>& settings)
-    : base_t(id, original_lp, Arow, var_types, settings, "BB_Worker_" + std::to_string(id))
+                                      const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+                                      const std::vector<f_t>& root_solution,
+                                      const std::vector<f_t>& root_edge_norm)
+    : base_t(id,
+             original_lp,
+             Arow,
+             var_types,
+             settings,
+             root_solution,
+             root_edge_norm,
+             "BB_Worker_" + std::to_string(id))
   {
   }
 
@@ -282,9 +293,6 @@ class deterministic_diving_worker_t
   std::vector<f_t> dive_lower;
   std::vector<f_t> dive_upper;
 
-  // Root LP relaxation solution (constant, set once at construction)
-  const std::vector<f_t>* root_solution{nullptr};
-
   // Diving state
   bool recompute_bounds_and_basis{true};
 
@@ -300,10 +308,17 @@ class deterministic_diving_worker_t
     const csr_matrix_t<i_t, f_t>& Arow,
     const std::vector<simplex::variable_type_t>& var_types,
     const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
-    const std::vector<f_t>* root_sol)
-    : base_t(id, original_lp, Arow, var_types, settings, "Diving_Worker_" + std::to_string(id)),
-      diving_type(type),
-      root_solution(root_sol)
+    const std::vector<f_t>& root_solution,
+    const std::vector<f_t>& root_edge_norm)
+    : base_t(id,
+             original_lp,
+             Arow,
+             var_types,
+             settings,
+             root_solution,
+             root_edge_norm,
+             "Diving_Worker_" + std::to_string(id)),
+      diving_type(type)
   {
     dive_lower = original_lp.lower;
     dive_upper = original_lp.upper;
@@ -407,11 +422,14 @@ class deterministic_bfs_worker_pool_t
                                   const simplex::lp_problem_t<i_t, f_t>& original_lp,
                                   const csr_matrix_t<i_t, f_t>& Arow,
                                   const std::vector<simplex::variable_type_t>& var_types,
-                                  const simplex::simplex_solver_settings_t<i_t, f_t>& settings)
+                                  const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+                                  const std::vector<f_t>& root_solution,
+                                  const std::vector<f_t>& root_edge_norm)
   {
     this->workers_.reserve(num_workers);
     for (int i = 0; i < num_workers; ++i) {
-      this->workers_.emplace_back(i, original_lp, Arow, var_types, settings);
+      this->workers_.emplace_back(
+        i, original_lp, Arow, var_types, settings, root_solution, root_edge_norm);
     }
   }
 
@@ -443,12 +461,14 @@ class deterministic_diving_worker_pool_t
                                      const csr_matrix_t<i_t, f_t>& Arow,
                                      const std::vector<simplex::variable_type_t>& var_types,
                                      const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
-                                     const std::vector<f_t>* root_solution)
+                                     const std::vector<f_t>& root_solution,
+                                     const std::vector<f_t>& root_edge_norm)
   {
     this->workers_.reserve(num_workers);
     for (int i = 0; i < num_workers; ++i) {
       search_strategy_t type = diving_types[i % diving_types.size()];
-      this->workers_.emplace_back(i, type, original_lp, Arow, var_types, settings, root_solution);
+      this->workers_.emplace_back(
+        i, type, original_lp, Arow, var_types, settings, root_solution, root_edge_norm);
     }
   }
 

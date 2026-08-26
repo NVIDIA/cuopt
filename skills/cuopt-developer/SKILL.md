@@ -171,6 +171,7 @@ cuopt/
 - Keep operations stream-ordered
 - Follow existing RAFT/RMM patterns
 - No raw `new`/`delete` - use RMM allocators
+- Prefer modern CCCL bit/math helpers in kernels (`cuda::bitfield_extract`, `cuda::bitmask`, pow2 utilities) over hand-rolled `%`/`/` by runtime powers of two — see [references/conventions.md](references/conventions.md)
 
 ## Build & Test
 
@@ -224,13 +225,27 @@ For pre-commit setup, DCO sign-off (`git commit -s`), the fork-based PR workflow
 
 ## Coding Conventions
 
-For C++ naming (`snake_case`, `d_`/`h_` prefixes, `_t` suffix), file extensions (`.hpp`/`.cpp`/`.cu`/`.cuh` and which compiler each uses), include order, Python style, error handling (`CUOPT_EXPECTS`, `RAFT_CUDA_TRY`), memory management (RMM patterns, no raw `new`/`delete`), test-impact rules, and volatile-comment rules (hardware names and self-referential issue/PR numbers in comments or skip messages go stale; issue links to a separate tracking issue are fine), see [references/conventions.md](references/conventions.md).
+For C++ naming (`snake_case`, `d_`/`h_` prefixes, `_t` suffix), file extensions (`.hpp`/`.cpp`/`.cu`/`.cuh` and which compiler each uses), include order, Python style, error handling (`CUOPT_EXPECTS`, `RAFT_CUDA_TRY`), memory management (RMM patterns, no raw `new`/`delete`), CCCL bit/math helpers in device code, test-impact rules, volatile-comment rules (hardware names and self-referential issue/PR numbers in comments or skip messages go stale; issue links to a separate tracking issue are fine), **no large local lambdas** (extract named helpers instead), and **coarse work-estimate / time-limit gating** (phase/outer-loop only; no fine inner-loop or double checks), see [references/conventions.md](references/conventions.md).
 
 ## OpenMP task/runtime compatibility
 
 Treat `#pragma omp task if(...) firstprivate(...)` with a non-trivial C++ capture as runtime-ABI-sensitive. In affected LLVM libomp versions, the GCC `GOMP_task` compatibility path skips the GCC copy function for an included (`if(false)`) task, so the task body can observe an unconstructed object. Branch explicitly instead: create the OpenMP task only when deferral is wanted, and call the body synchronously otherwise.
 
 When diagnosing OpenMP-only failures, test compiler/runtime pairs separately. A Clang + libomp pass exercises the `__kmpc_*` ABI and does not cover GCC + libomp's `GOMP_*` path; reduce suspicious cases to a direct runtime-ABI probe before attributing them to solver logic.
+
+## PCG random number generator
+
+`cpp/src/utilities/pcgenerator.hpp` (`cuopt::pcgenerator_t`) is copied from RAFT's `PCGenerator` (`raft/random/detail/rng_device.cuh`), duplicated only because the RAFT header pulls in CUDA and therefore cannot be included from a `.cpp`. **Treat the generator core as frozen.** Do not "clean it up", modernise it, or swap it for `<random>`: reproducibility under `settings.random_seed` and `settings.deterministic` holds only while the byte-for-byte output sequence is preserved, and the CPU copy must keep producing the same stream as the GPU one. Adding a *new* helper that consumes `next_u32()`/`next_double()` is fine; changing how those values are produced is not.
+
+Each of the following looks like a defect or an obvious simplification, and is neither. Leave them alone:
+
+- `stream = (subsequence << 1u) | 1u` in `set_seed`. A 2^64 LCG has full period only when its increment is odd — the `| 1u` is what guarantees that — and the `<< 1u` is why two subsequences must differ in their **low 63 bits** to get independent streams.
+- The two `next(discard)` warm-up calls straddling `state += seed`. This is PCG's canonical seeding sequence, and it is what decorrelates *adjacent* seeds — which is exactly how cuOpt seeds workers (`settings.random_seed + pcgenerator_t::default_seed + rng_offset + worker_id`, `branch_and_bound/worker.hpp`). Collapsing it to `state = seed` makes neighbouring workers draw near-identical prefixes.
+- The output permutation in `next_u32` (`>> 18u`, `^`, `>> 27u`, `rot = oldstate >> 59u`, `(-rot) & 31u`) — the PCG-XSH-RR constants for a 64→32-bit output. In particular `(-rot) & 31u` relies on unsigned wraparound; rewriting it as `32 - rot` is a shift by 32, i.e. undefined behaviour, whenever `rot == 0`.
+- The multiplier `6364136223846793005ULL`, which appears in both `next_u32` and as `h` in `skipahead`. `skipahead` is the closed-form LCG jump (Brown's arbitrary-stride method) and matches N calls to `next_u32` only while the two constants are identical.
+- The `>> 8` / `>> 11` in `next_float` / `next_double`. They yield exactly 24 and 53 mantissa bits, so the result lies in `[0, 1)`. Dividing by `UINT32_MAX` instead makes `1.0` reachable and breaks every `rng.next_double() * n` used as an index.
+- The sign-bit masks in `next_i32` / `next_i64` (`& 0x7fffffff…`); callers rely on the results being non-negative.
+- `uniform()`'s floating-point scaling and `shuffle()`'s Fisher-Yates order. `uniform()`'s slight bias is documented and accepted; substituting a modulo or `std::uniform_int_distribution` changes every sampled sequence.
 
 ## Troubleshooting & CI
 

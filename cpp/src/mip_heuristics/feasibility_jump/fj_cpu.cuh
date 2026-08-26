@@ -10,6 +10,7 @@
 #include <atomic>
 #include <functional>
 #include <limits>
+#include <random>
 #include <unordered_set>
 #include <vector>
 
@@ -19,6 +20,9 @@
 #include <utilities/producer_sync.hpp>
 
 namespace cuopt::mathematical_optimization::mip {
+
+template <typename i_t, typename f_t>
+class probing_cache_t;
 
 // NOTE: this seems an easy pick for reflection/xmacros once this is available (C++26?)
 // Maintaining a single source of truth for all members would be nice
@@ -44,6 +48,12 @@ struct fj_cpu_climber_t {
                                                      ADD_INSTRUMENTED(h_is_binary_variable),
                                                      ADD_INSTRUMENTED(h_objective_vars),
                                                      ADD_INSTRUMENTED(h_binary_indices),
+                                                     ADD_INSTRUMENTED(h_related_variables),
+                                                     ADD_INSTRUMENTED(h_related_variables_offsets),
+                                                     ADD_INSTRUMENTED(h_binrow_offsets),
+                                                     ADD_INSTRUMENTED(h_binrow_vars),
+                                                     ADD_INSTRUMENTED(h_original_ids),
+                                                     ADD_INSTRUMENTED(h_reverse_original_ids),
                                                      ADD_INSTRUMENTED(h_tabu_nodec_until),
                                                      ADD_INSTRUMENTED(h_tabu_noinc_until),
                                                      ADD_INSTRUMENTED(h_tabu_lastdec),
@@ -67,6 +77,7 @@ struct fj_cpu_climber_t {
 
   problem_t<i_t, f_t>* pb_ptr;
   fj_settings_t settings;
+  std::mt19937 rng;
   typename fj_t<i_t, f_t>::climber_data_t::view_t view;
   // Host copies of device data as struct members
   ins_vector<f_t> h_reverse_coefficients;
@@ -83,6 +94,16 @@ struct fj_cpu_climber_t {
   ins_vector<i_t> h_is_binary_variable;
   ins_vector<i_t> h_objective_vars;
   ins_vector<i_t> h_binary_indices;
+  ins_vector<i_t> h_related_variables;
+  ins_vector<i_t> h_related_variables_offsets;
+
+  // precompute the binary variables per row for bin 2opt
+  ins_vector<i_t> h_binrow_offsets;
+  ins_vector<i_t> h_binrow_vars;
+  const probing_cache_t<i_t, f_t>* probing_cache{nullptr};
+  // Probing cache keys are pre-trivial-presolve variable ids; these translate to and from them
+  ins_vector<i_t> h_original_ids;
+  ins_vector<i_t> h_reverse_original_ids;
 
   ins_vector<i_t> h_tabu_nodec_until;
   ins_vector<i_t> h_tabu_noinc_until;
@@ -133,6 +154,12 @@ struct fj_cpu_climber_t {
 
   std::vector<bool> var_bitmap;
   ins_vector<i_t> iter_mtm_vars;
+
+  // Scratch reused by the binary 2-opt search, which runs at every local minimum
+  std::vector<i_t> two_opt_target_cstrs;
+  std::vector<i_t> two_opt_first_vars;
+  std::vector<std::pair<i_t, f_t>> two_opt_partners;
+  std::vector<std::pair<i_t, f_t>> two_opt_row_deltas;
 
   i_t mtm_viol_samples{25};
   i_t mtm_sat_samples{15};
