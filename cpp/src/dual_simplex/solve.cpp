@@ -105,6 +105,24 @@ f_t compute_user_objective(const lp_problem_t<i_t, f_t>& lp, f_t obj)
 }
 
 template <typename i_t, typename f_t>
+void compute_objective_gap(const lp_problem_t<i_t, f_t>& problem,
+                           f_t primal_obj,
+                           f_t dual_obj,
+                           f_t& objective_gap,
+                           f_t& relative_objective_gap)
+{
+  objective_gap       = std::abs(primal_obj - dual_obj);
+  f_t user_primal_obj = compute_user_objective(problem, primal_obj);
+  f_t user_dual_obj   = compute_user_objective(problem, dual_obj);
+
+  f_t denom_1 = std::min(std::abs(user_primal_obj), std::abs(primal_obj));
+  f_t denom_2 = std::min(std::abs(user_dual_obj), std::abs(dual_obj));
+  f_t denom   = 1.0 + std::max(denom_1, denom_2);
+
+  relative_objective_gap = objective_gap / denom;
+}
+
+template <typename i_t, typename f_t>
 f_t compute_presolved_objective(const lp_problem_t<i_t, f_t>& lp, f_t user_obj)
 {
   return user_obj / lp.obj_scale - lp.obj_constant;
@@ -818,6 +836,12 @@ template double compute_user_objective<int, double>(const lp_problem_t<int, doub
                                                     const std::vector<double>& x);
 
 template double compute_user_objective(const lp_problem_t<int, double>& lp, double obj);
+
+template void compute_objective_gap<int, double>(const lp_problem_t<int, double>& problem,
+                                                 double primal_obj,
+                                                 double dual_obj,
+                                                 double& objective_gap,
+                                                 double& relative_objective_gap);
 
 template double compute_presolved_objective(const lp_problem_t<int, double>& lp, double user_obj);
 

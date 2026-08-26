@@ -4028,7 +4028,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
   if (relative_primal_residual < settings.barrier_relaxed_feasibility_tol &&
       relative_dual_residual < settings.barrier_relaxed_optimality_tol &&
       relative_complementarity_residual < settings.barrier_relaxed_complementarity_tol &&
-      small_gap) {
+      small_gap && primal_objective == primal_objective) {
     raft::copy(data.x.data(), data.d_x_.data(), data.d_x_.size(), stream_view_);
     raft::copy(data.y.data(), data.d_y_.data(), data.d_y_.size(), stream_view_);
     raft::copy(data.z.data(), data.d_z_.data(), data.d_z_.size(), stream_view_);
@@ -4278,9 +4278,9 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
       data.b.inner_product(data.y) - data.restrict_u_.inner_product(data.v) - quad_objective;
     f_t user_dual_objective = compute_user_objective(lp, dual_objective);
 
-    f_t objective_gap = std::abs(primal_objective - dual_objective);
-    f_t relative_objective_gap =
-      objective_gap / (1.0 + std::min(std::abs(user_primal_objective), std::abs(primal_objective)));
+    f_t objective_gap, relative_objective_gap;
+    compute_objective_gap(
+      lp, primal_objective, dual_objective, objective_gap, relative_objective_gap);
 
     data.w_save = data.w;
     data.x_save = data.x;
@@ -4434,9 +4434,8 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
         complementarity_residual_norm /
         (1.0 + std::min(std::abs(user_primal_objective), std::abs(primal_objective)));
 
-      objective_gap          = std::abs(primal_objective - dual_objective);
-      relative_objective_gap = objective_gap / (1.0 + std::min(std::abs(user_primal_objective),
-                                                               std::abs(primal_objective)));
+      compute_objective_gap(
+        lp, primal_objective, dual_objective, objective_gap, relative_objective_gap);
 
       if (relative_primal_residual < settings.barrier_relaxed_feasibility_tol &&
           relative_dual_residual < settings.barrier_relaxed_optimality_tol &&
