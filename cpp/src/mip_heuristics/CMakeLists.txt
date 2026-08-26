@@ -12,6 +12,7 @@ set(MIP_LP_NECESSARY_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/solver_solution.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/local_search/rounding/simple_rounding.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/presolve/third_party_presolve.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/presolve/single_lock_dual_aggregation.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/presolve/gf2_presolve.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/solution/solution.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/presolve/conflict_graph/clique_table.cu
