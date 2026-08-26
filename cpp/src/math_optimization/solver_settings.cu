@@ -103,6 +103,8 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_DUAL_INFEASIBLE_TOLERANCE, &pdlp_settings.tolerances.dual_infeasible_tolerance, f_t(0.0), f_t(1e-1), std::max(f_t(1e-10), std::numeric_limits<f_t>::epsilon())},
     {CUOPT_MIP_CUT_CHANGE_THRESHOLD, &mip_settings.cut_change_threshold, f_t(-1.0), std::numeric_limits<f_t>::infinity(), f_t(-1.0)},
     {CUOPT_MIP_CUT_MIN_ORTHOGONALITY, &mip_settings.cut_min_orthogonality, f_t(0.0), f_t(1.0), f_t(0.5)},
+    {CUOPT_BARRIER_PRIMAL_PERTURB, &pdlp_settings.barrier_primal_perturb, f_t(-1.0), std::numeric_limits<f_t>::infinity(), f_t(-1.0), "initial primal regularization for the augmented system; -1 automatic"},
+    {CUOPT_BARRIER_DUAL_PERTURB, &pdlp_settings.barrier_dual_perturb, f_t(-1.0), std::numeric_limits<f_t>::infinity(), f_t(-1.0), "initial dual regularization for the augmented system; -1 automatic"},
     {CUOPT_BARRIER_STEP_SCALE, &pdlp_settings.barrier_step_scale, f_t(0.5), f_t(0.9999), f_t(0.9)},
     // MIP heuristic hyper-parameters (hidden from default --help: name contains "hyper_")
     {CUOPT_MIP_HYPER_HEURISTIC_ROOT_LP_TIME_RATIO, &mip_settings.heuristic_params.root_lp_time_ratio, f_t(0.0), f_t(1.0), f_t(0.1), "fraction of total time for root LP"},

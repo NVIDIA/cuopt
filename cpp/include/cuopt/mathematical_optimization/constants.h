@@ -51,6 +51,8 @@
 #define CUOPT_BARRIER_PRESOLVE_BOUND_FREE_VARIABLES "barrier_presolve_bound_free_variables"
 #define CUOPT_BARRIER_ITERATIVE_REFINEMENT          "barrier_iterative_refinement"
 #define CUOPT_BARRIER_ADAPTIVE_REGULARIZATION       "barrier_adaptive_regularization"
+#define CUOPT_BARRIER_PRIMAL_PERTURB                "barrier_primal_perturb"
+#define CUOPT_BARRIER_DUAL_PERTURB                  "barrier_dual_perturb"
 #define CUOPT_BARRIER_STEP_SCALE                    "barrier_step_scale"
 #define CUOPT_ELIMINATE_DENSE_COLUMNS               "eliminate_dense_columns"
 #define CUOPT_CUDSS_DETERMINISTIC                   "cudss_deterministic"
