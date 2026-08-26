@@ -47,7 +47,6 @@ if [[ -n "${preload}" ]]; then
 fi
 
 cd "${MODULE_DIR}"
-mvn verify \
-  "${CUOPT_MVN_ARGS[@]}" \
+cuopt_mvn verify \
   -Dcuopt.native.dir="${NATIVE_BUILD_DIR}" \
   "$@"
