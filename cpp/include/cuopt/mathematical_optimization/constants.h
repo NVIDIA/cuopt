@@ -50,6 +50,7 @@
 #define CUOPT_POSTSOLVE_INFO                        "postsolve_info"
 #define CUOPT_BARRIER_PRESOLVE_BOUND_FREE_VARIABLES "barrier_presolve_bound_free_variables"
 #define CUOPT_BARRIER_ITERATIVE_REFINEMENT          "barrier_iterative_refinement"
+#define CUOPT_BARRIER_ADAPTIVE_REGULARIZATION       "barrier_adaptive_regularization"
 #define CUOPT_BARRIER_STEP_SCALE                    "barrier_step_scale"
 #define CUOPT_ELIMINATE_DENSE_COLUMNS               "eliminate_dense_columns"
 #define CUOPT_CUDSS_DETERMINISTIC                   "cudss_deterministic"
@@ -78,6 +79,7 @@
 #define CUOPT_MIP_STRONG_CHVATAL_GOMORY_CUTS        "mip_strong_chvatal_gomory_cuts"
 #define CUOPT_MIP_REDUCED_COST_STRENGTHENING        "mip_reduced_cost_strengthening"
 #define CUOPT_MIP_RINS                              "mip_rins"
+#define CUOPT_MIP_RENS                              "mip_rens"
 #define CUOPT_MIP_OBJECTIVE_STEP                    "mip_objective_step"
 #define CUOPT_MIP_CUT_CHANGE_THRESHOLD              "mip_cut_change_threshold"
 #define CUOPT_MIP_CUT_MIN_ORTHOGONALITY             "mip_cut_min_orthogonality"
@@ -137,14 +139,19 @@
 #define CUOPT_MIP_HYPER_DIVING_SHOW_TYPE "mip_hyper_diving_show_type"
 
 /* @brief Recursive sub-MIP (RINS) hyper-parameters */
-#define CUOPT_MIP_HYPER_SUBMIP_BASE_TARGET_FIXRATE   "mip_hyper_submip_base_target_fixrate"
-#define CUOPT_MIP_HYPER_SUBMIP_MIN_FIXRATE           "mip_hyper_submip_min_fixrate"
-#define CUOPT_MIP_HYPER_SUBMIP_MIN_FIXRATE_CAP       "mip_hyper_submip_min_fixrate_cap"
-#define CUOPT_MIP_HYPER_SUBMIP_TARGET_MIP_GAP        "mip_hyper_submip_target_mip_gap"
-#define CUOPT_MIP_HYPER_SUBMIP_NODE_LIMIT_BASE       "mip_hyper_submip_node_limit_base"
-#define CUOPT_MIP_HYPER_SUBMIP_MAX_LEVEL             "mip_hyper_submip_max_level"
-#define CUOPT_MIP_HYPER_SUBMIP_ITERATION_LIMIT_RATIO "mip_hyper_submip_iteration_limit_ratio"
-#define CUOPT_MIP_HYPER_SUBMIP_ENABLE_CPUFJ          "mip_hyper_submip_enable_cpufj"
+#define CUOPT_MIP_HYPER_SUBMIP_BASE_TARGET_FIXRATE    "mip_hyper_submip_base_target_fixrate"
+#define CUOPT_MIP_HYPER_SUBMIP_MIN_FIXRATE            "mip_hyper_submip_min_fixrate"
+#define CUOPT_MIP_HYPER_SUBMIP_MIN_FIXRATE_CAP        "mip_hyper_submip_min_fixrate_cap"
+#define CUOPT_MIP_HYPER_SUBMIP_TARGET_MIP_GAP         "mip_hyper_submip_target_mip_gap"
+#define CUOPT_MIP_HYPER_SUBMIP_NODE_LIMIT_OFFSET      "mip_hyper_submip_node_limit_offset"
+#define CUOPT_MIP_HYPER_SUBMIP_ITERATION_LIMIT_OFFSET "mip_hyper_submip_iteration_limit_offset"
+#define CUOPT_MIP_HYPER_SUBMIP_MAX_LEVEL              "mip_hyper_submip_max_level"
+#define CUOPT_MIP_HYPER_SUBMIP_ITERATION_LIMIT_RATIO  "mip_hyper_submip_iteration_limit_ratio"
+#define CUOPT_MIP_HYPER_SUBMIP_ROUND_CLOSE_RATIO      "mip_hyper_submip_round_close_ratio"
+#define CUOPT_MIP_HYPER_SUBMIP_ENABLE_CPUFJ           "mip_hyper_submip_enable_cpufj"
+
+/* @brief Block bounded-variable-elimination step of cuOpt's internal MIP presolve */
+#define CUOPT_MIP_HYPER_BLOCK_BVE "mip_hyper_block_bve"
 
 /* @brief QCQP (barrier) scaling hyper-parameters */
 #define CUOPT_QCQP_HYPER_RUIZ_EQUILIBRATION "qcqp_hyper_ruiz_equilibration"
@@ -254,6 +261,8 @@
 #define CUOPT_ATTR_IS_MIP                    8
 #define CUOPT_ATTR_HAS_QUADRATIC_OBJECTIVE   9
 #define CUOPT_ATTR_HAS_QUADRATIC_CONSTRAINTS 10
+#define CUOPT_ATTR_NUM_LINEAR_CONSTRAINTS    11
+#define CUOPT_ATTR_NUM_QUADRATIC_CONSTRAINTS 12
 
 /* @brief Numeric/char array problem attribute selectors
  * (see cuOptGetProblem{Float,Char}ArrayAttribute; sized by num_variables / num_constraints).

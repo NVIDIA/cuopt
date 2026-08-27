@@ -76,6 +76,9 @@
   if (pb_settings.has_barrier_iterative_refinement()) {
     settings.barrier_iterative_refinement = pb_settings.barrier_iterative_refinement();
   }
+  if (pb_settings.has_barrier_adaptive_regularization()) {
+    settings.barrier_adaptive_regularization = pb_settings.barrier_adaptive_regularization();
+  }
   if (pb_settings.has_barrier_step_scale()) {
     settings.barrier_step_scale = pb_settings.barrier_step_scale();
   }

@@ -41,6 +41,7 @@
 #include <dual_simplex/presolve.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/presolve/gf2_presolve.hpp>
+#include <mip_heuristics/presolve/single_lock_dual_aggregation.hpp>
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
 #include <utilities/logger.hpp>
 #include <utilities/macros.cuh>
@@ -707,6 +708,7 @@ void set_presolve_methods(
     maybe_add(uptr(new papilo::SimpleSubstitution<f_t>()));
     maybe_add(uptr(new papilo::Sparsify<f_t>()));
     maybe_add(uptr(new papilo::Substitution<f_t>()));
+    maybe_add(uptr(new cuopt::mathematical_optimization::mip::SingleLockDualAggregation<f_t>()));
   } else {
     CUOPT_LOG_INFO("Disabling the presolver methods that do not support dual postsolve");
   }
@@ -724,7 +726,7 @@ void set_presolve_options(papilo::Presolve<f_t>& presolver,
 {
   presolver.getPresolveOptions().tlim    = time_limit;
   presolver.getPresolveOptions().threads = num_cpu_threads;  //  user setting or  0 (automatic)
-  presolver.getPresolveOptions().feastol = absolute_tolerance;
+  presolver.getPresolveOptions().feastol = 1e-5;
   if (max_rounds > 0) { presolver.getPresolveOptions().maxrounds = max_rounds; }
   if (dual_postsolve) {
     presolver.getPresolveOptions().componentsmaxint = -1;
@@ -1053,6 +1055,9 @@ third_party_presolve_t<i_t, f_t>::apply_presolve_from_mps_data(
 
     auto reduced_mps =
       build_reduced_mps_from_pslp<i_t, f_t>(pslp_presolver_, maximize_, original_obj_offset);
+    // mps_data_model_t deep-copies every PSLP array. Keep only PSLP's compact
+    // postsolve state while the reduced problem is being solved.
+    free_presolver_reduced_problem(pslp_presolver_);
     reduced_mps.set_problem_name(mps.get_problem_name());
     reduced_mps.set_objective_scaling_factor(mps.get_objective_scaling_factor());
     return third_party_presolve_host_result_t<i_t, f_t>{status, std::move(reduced_mps), {}, {}, {}};
@@ -1290,9 +1295,9 @@ void third_party_presolve_t<i_t, f_t>::undo(std::vector<f_t>& primal_solution,
 
 template <typename i_t, typename f_t>
 void third_party_presolve_t<i_t, f_t>::uncrush_primal_solution(
-  const std::vector<f_t>& reduced_primal, std::vector<f_t>& full_primal) const
+  const std::vector<f_t>& reduced_primal, std::vector<f_t>& full_primal, bool check_postsolve) const
 {
-  if (presolver_ == cuopt::mathematical_optimization::presolver_t::PSLP) {
+  if (presolver_ == PSLP) {
     cuopt_expects(false,
                   error_type_t::RuntimeError,
                   "This code path should be never called, as this is meant for callbacks and they "
@@ -1308,7 +1313,7 @@ void third_party_presolve_t<i_t, f_t>::uncrush_primal_solution(
 
   bool is_optimal = false;
   auto status = post_solver.undo(reduced_sol, full_sol, *papilo_post_solve_storage_, is_optimal);
-  check_postsolve_status(status);
+  if (check_postsolve) check_postsolve_status(status);
   full_primal = std::move(full_sol.primal);
 }
 

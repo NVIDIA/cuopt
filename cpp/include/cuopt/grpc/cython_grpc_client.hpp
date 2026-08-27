@@ -7,6 +7,7 @@
 
 #include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/utilities/cython_solve.hpp>
+#include <cuopt/routing/cpu_routing_problem.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -22,6 +23,11 @@ template <typename i_t, typename f_t>
 class data_model_view_t;
 }  // namespace io
 }  // namespace cuopt::mathematical_optimization
+
+namespace cuopt::routing {
+template <typename i_t, typename f_t>
+class solver_settings_t;
+}  // namespace cuopt::routing
 
 namespace cuopt {
 namespace CUOPT_EXPORT cython {
@@ -56,6 +62,13 @@ struct grpc_result_outcome_t {
   bool success   = false;
   std::string error_message;
   std::unique_ptr<solver_ret_t> solution;
+};
+
+struct grpc_vrp_result_outcome_t {
+  bool not_ready = false;
+  bool success   = false;
+  std::string error_message;
+  cuopt::routing::cpu_routing_solution_t solution;
 };
 
 struct grpc_logs_result_t {
@@ -138,6 +151,17 @@ class grpc_python_client_t {
    * server response via grpc_client_t::get_result().
    */
   grpc_result_outcome_t result(const std::string& job_id);
+
+  /**
+   * @brief Submit a VRP problem (unary only). Reuse status/wait/delete/result_vrp.
+   */
+  grpc_submit_result_t submit_vrp(cuopt::routing::cpu_routing_problem_t* problem,
+                                  cuopt::routing::solver_settings_t<int, float>* settings);
+
+  /**
+   * @brief Fetch and parse a completed VRP job's routing solution.
+   */
+  grpc_vrp_result_outcome_t result_vrp(const std::string& job_id);
 
   /**
    * @brief Block until the job completes, collecting all solver log lines.
