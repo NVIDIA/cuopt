@@ -516,8 +516,8 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   barrier_settings.eliminate_dense_columns         = settings.eliminate_dense_columns;
   barrier_settings.barrier_iterative_refinement    = settings.barrier_iterative_refinement;
   barrier_settings.barrier_adaptive_regularization = settings.barrier_adaptive_regularization;
-  barrier_settings.barrier_primal_perturb          = settings.barrier_primal_perturb;
-  barrier_settings.barrier_dual_perturb            = settings.barrier_dual_perturb;
+  barrier_settings.barrier_primal_regularization   = settings.barrier_primal_regularization;
+  barrier_settings.barrier_dual_regularization     = settings.barrier_dual_regularization;
   barrier_settings.barrier_soc_threshold           = settings.barrier_soc_threshold;
   barrier_settings.barrier_step_scale              = settings.barrier_step_scale;
   barrier_settings.qcqp_ruiz_equilibration         = settings.qcqp_ruiz_equilibration;
@@ -707,8 +707,8 @@ static optimization_problem_solution_t<i_t, double> run_pdlp_solver_in_fp32(
   fs.eliminate_dense_columns         = settings.eliminate_dense_columns;
   fs.barrier_iterative_refinement    = settings.barrier_iterative_refinement;
   fs.barrier_adaptive_regularization = settings.barrier_adaptive_regularization;
-  fs.barrier_primal_perturb          = settings.barrier_primal_perturb;
-  fs.barrier_dual_perturb            = settings.barrier_dual_perturb;
+  fs.barrier_primal_regularization   = settings.barrier_primal_regularization;
+  fs.barrier_dual_regularization     = settings.barrier_dual_regularization;
   fs.barrier_step_scale              = settings.barrier_step_scale;
   fs.pdlp_precision                  = pdlp_precision_t::DefaultPrecision;
   fs.method                          = method_t::PDLP;
