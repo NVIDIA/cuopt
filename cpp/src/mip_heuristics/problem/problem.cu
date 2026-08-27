@@ -12,6 +12,7 @@
 
 #include <utilities/copy_helpers.hpp>
 #include <utilities/cuda_helpers.cuh>
+#include <utilities/device_scalar_init.hpp>
 #include <utilities/integer_scaling.hpp>
 #include <utilities/macros.cuh>
 
@@ -1429,7 +1430,7 @@ void problem_t<i_t, f_t>::substitute_variables(const std::vector<i_t>& var_indic
                fixing_helpers.variable_fix_mask.end(),
                -1);
 
-  rmm::device_scalar<f_t> objective_offset(0., handle_ptr->get_stream());
+  rmm::device_scalar<f_t> objective_offset(zero_v<f_t>, handle_ptr->get_stream());
   constexpr f_t zero_value = f_t(0.);
   rmm::device_uvector<f_t> objective_offset_delta_per_variable(d_var_indices.size(),
                                                                handle_ptr->get_stream());
