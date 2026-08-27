@@ -19,6 +19,7 @@ struct cut_pass_heuristics_t {
   csr_matrix_t<i_t, f_t> Arow_;
   std::vector<f_t> root_solution_;
   std::vector<f_t> root_edge_norm_;
+  std::atomic<int> halt_;
 
   std::unique_ptr<diving_worker_t<i_t, f_t>> submip_worker_;
   fj_cpu_worker_t<i_t, f_t> fj_cpu_worker_;
@@ -31,6 +32,7 @@ struct cut_pass_heuristics_t {
       Arow_(Arow),
       root_solution_(root_solution),
       root_edge_norm_(root_edge_norm),
+      halt_(false),
       submip_worker_(nullptr) {};
 
   ~cut_pass_heuristics_t() { stop_and_sync(); }
@@ -38,15 +40,16 @@ struct cut_pass_heuristics_t {
   void send_stop_signal()
   {
     fj_cpu_worker_.send_stop_signal();
-    if (submip_worker_) { submip_worker_->halt = true; }
+    halt_ = true;
   }
 
   void stop_and_sync()
   {
     fj_cpu_worker_.stop();
+    halt_ = true;
+
     if (submip_worker_) {
       diving_worker_t<i_t, f_t>* worker = submip_worker_.get();
-      worker->halt                      = true;
 #pragma omp taskwait depend(in : *worker)
       submip_worker_.reset();
     }
@@ -107,6 +110,8 @@ struct root_heuristics_t {
     for (auto& heuristic : cut_passes_heuristics_) {
       heuristic->stop_and_sync();
     }
+
+    cut_passes_heuristics_.clear();
   }
 
   std::shared_ptr<cut_pass_heuristics_t<i_t, f_t>> create_new_cut_pass_heuristic(

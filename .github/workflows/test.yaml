@@ -73,6 +73,25 @@ jobs:
       script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
       script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
 
+  conda-java-tests:
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    secrets: inherit # zizmor: ignore[secrets-inherit]
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
+    with:
+      build_type: ${{ inputs.build_type }}
+      branch: ${{ inputs.branch }}
+      date: ${{ inputs.date }}
+      sha: ${{ inputs.sha }}
+      node_type: "gpu-l4-latest-1"
+      arch: "amd64"
+      container_image: "rapidsai/ci-conda:26.10-latest"
+      script: "ci/test_java.sh"
+
   wheel-tests-cuopt:
     permissions:
       actions: read
@@ -157,6 +176,7 @@ jobs:
     needs:
       - conda-cpp-tests
       - conda-python-tests
+      - conda-java-tests
       - wheel-tests-cuopt
       - wheel-tests-cuopt-server
       - conda-notebook-tests
