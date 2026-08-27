@@ -33,13 +33,27 @@ set(CUOPT_INCLUDE_DIR "${CUOPT_PREFIX}/include")
 # (rmm::_RMM_26_10), so mixing a different copy links cleanly and then fails at dlopen with an
 # undefined symbol.
 set(CUOPT_LIBRARY "" CACHE FILEPATH "Path to libcuopt.so (defaults to CUOPT_PREFIX/lib)")
+# Embedding cuOpt into libcuopt_jni.so instead of linking the shared library, so a published
+# classifier JAR carries everything it needs. See #1817.
+set(CUOPT_STATIC_BUILD_DIR "" CACHE PATH
+    "Build tree holding libcuopt_static.a; when set, cuOpt is linked into cuopt_jni statically")
 set(CUOPT_EXTRA_INCLUDE_DIRS "" CACHE STRING
     "Extra include directories searched before CUOPT_PREFIX/include")
 
-if(NOT CUOPT_LIBRARY)
+if(CUOPT_STATIC_BUILD_DIR)
+  set(CUOPT_STATIC_ARCHIVE "${CUOPT_STATIC_BUILD_DIR}/libcuopt_static.a")
+  if(NOT EXISTS "${CUOPT_STATIC_ARCHIVE}")
+    message(FATAL_ERROR "libcuopt_static.a was not found in ${CUOPT_STATIC_BUILD_DIR}")
+  endif()
+  # Fetched and built alongside cuOpt rather than installed, so they are found by path.
+  file(GLOB CUOPT_STATIC_DEP_ARCHIVES
+       "${CUOPT_STATIC_BUILD_DIR}/_deps/pslp-build/libPSLP.a"
+       "${CUOPT_STATIC_BUILD_DIR}/_deps/kaminpar-build/kaminpar-shm/libKaMinPar.a"
+       "${CUOPT_STATIC_BUILD_DIR}/_deps/kaminpar-build/kaminpar-common/libKaMinParCommon.a")
+elseif(NOT CUOPT_LIBRARY)
   set(CUOPT_LIBRARY "${CUOPT_PREFIX}/lib/libcuopt.so")
 endif()
-if(NOT EXISTS "${CUOPT_LIBRARY}")
+if(NOT CUOPT_STATIC_BUILD_DIR AND NOT EXISTS "${CUOPT_LIBRARY}")
   message(FATAL_ERROR "cuOpt shared library was not found at ${CUOPT_LIBRARY}")
 endif()
 
@@ -60,7 +74,29 @@ target_include_directories(cuopt_jni PRIVATE
   ${CUDAToolkit_INCLUDE_DIRS}
   ${CMAKE_CURRENT_SOURCE_DIR}/../../cpp/src)
 
-target_link_libraries(cuopt_jni PRIVATE "${CUOPT_LIBRARY}" CUDA::cudart)
+if(CUOPT_STATIC_BUILD_DIR)
+  find_package(OpenMP REQUIRED)
+  # The JNI layer references only a fraction of cuOpt directly; the rest is reached through
+  # registrations and virtual dispatch, so the archive has to be kept whole.
+  target_link_libraries(cuopt_jni PRIVATE
+    -Wl,--whole-archive "${CUOPT_STATIC_ARCHIVE}" -Wl,--no-whole-archive
+    ${CUOPT_STATIC_DEP_ARCHIVES}
+    CUDA::cublas CUDA::cusparse CUDA::cusolver CUDA::cudart_static
+    OpenMP::OpenMP_CXX
+    # rmm is mostly header-only, but its exception types are defined in librmm.so, and
+    # rapids_logger likewise. Conda ships no static variant of either, so they are linked
+    # shared and packaged next to cuopt_jni, which finds them through its $ORIGIN RPATH.
+    "${CUOPT_PREFIX}/lib/librmm.so"
+    "${CUOPT_PREFIX}/lib/librapids_logger.so"
+    # KaMinPar, which the static archive pulls in, throws through TBB.
+    "${CUOPT_PREFIX}/lib/libtbb.so.12"
+    # PDLP's distributed path references NCCL unconditionally; cpp/CMakeLists.txt has no
+    # switch to compile it out, so it has to be linked even for a single-GPU JAR.
+    "${CUOPT_PREFIX}/lib/libnccl.so.2"
+    "${CUOPT_PREFIX}/lib/libcudss.so.0")
+else()
+  target_link_libraries(cuopt_jni PRIVATE "${CUOPT_LIBRARY}" CUDA::cudart)
+endif()
 
 # The Java module is built outside the main cuOpt build.  Keep its native
 # loader self-contained while allowing the script to add the cuOpt runtime

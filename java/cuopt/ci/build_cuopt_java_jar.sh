@@ -78,6 +78,19 @@ cp "${NATIVE_LIB}" "${STAGING}/${RESOURCE_DIR}/libcuopt_jni.so"
 echo "Packaging classifier ${CLASSIFIER}"
 echo "  native library -> ${RESOURCE_DIR}/libcuopt_jni.so"
 
+# rmm and rapids_logger define the exception types cuOpt throws and have no static build, so
+# they ship beside the JNI library, which finds them through its $ORIGIN RPATH.
+for companion in librmm.so librapids_logger.so libtbb.so.12 libnccl.so.2 libcudss.so.0; do
+  companion_path="${CUOPT_PREFIX:-}/lib/${companion}"
+  if [[ ! -f "${companion_path}" ]]; then
+    echo "ERROR: ${companion} not found at ${companion_path}; set CUOPT_PREFIX" >&2
+    exit 1
+  fi
+  # Dereference, since the conda entries are symlinks into a versioned file.
+  cp -L "${companion_path}" "${STAGING}/${RESOURCE_DIR}/${companion}"
+  echo "  companion      -> ${RESOURCE_DIR}/${companion}"
+done
+
 mkdir -p "${OUTPUT_DIR}/${CLASSIFIER}"
 mvn -f "${MODULE_DIR}/pom.xml" -B \
   -DskipTests \
