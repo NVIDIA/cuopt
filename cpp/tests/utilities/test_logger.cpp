@@ -47,6 +47,17 @@ std::string temp_log_path(const std::string& tag)
   return "cuopt_logger_test_" + tag + "_" + std::to_string(unique_id()) + ".log";
 }
 
+// A path that cannot be opened as a log file for any user. Pointing at a missing directory
+// is not enough: the sink creates missing parents, so it only fails for a user who cannot
+// write to the parent, and CI runs as root. Nesting under a regular file fails with ENOTDIR
+// regardless of privileges.
+std::string unopenable_path_under(const std::string& blocker_file)
+{
+  std::ofstream blocker{blocker_file};
+  blocker << "not a directory";
+  return blocker_file + "/child.log";
+}
+
 std::string read_file(const std::string& path)
 {
   std::ifstream in{path};
@@ -159,7 +170,8 @@ TEST(logger, append_preserves_existing_contents)
 // A configure that throws must not leave the logger wedged for later callers.
 TEST(logger, failed_configure_does_not_wedge_later_ones)
 {
-  const auto unopenable = "/nonexistent-directory-" + std::to_string(unique_id()) + "/x.log";
+  const auto blocker    = temp_log_path("blocker");
+  const auto unopenable = unopenable_path_under(blocker);
   EXPECT_ANY_THROW(cuopt::make_logger_config(unopenable, false, true));
 
   const auto path = temp_log_path("recovered");
@@ -172,13 +184,15 @@ TEST(logger, failed_configure_does_not_wedge_later_ones)
     << "a failed configure left the logger wedged";
 
   std::remove(path.c_str());
+  std::remove(blocker.c_str());
 }
 
 // Same failure for the image-local entry point: apply_logger_config clears the sinks before
 // installing new ones, so a throw part way through must not leave the logger with none.
 TEST(logger, failed_init_logger_restores_a_sink)
 {
-  const auto unopenable = "/nonexistent-directory-" + std::to_string(unique_id()) + "/x.log";
+  const auto blocker    = temp_log_path("blocker");
+  const auto unopenable = unopenable_path_under(blocker);
   EXPECT_ANY_THROW(cuopt::init_logger_t(unopenable, false, true));
 
   const auto path = temp_log_path("init_recovered");
@@ -191,6 +205,7 @@ TEST(logger, failed_init_logger_restores_a_sink)
     << "a failed init_logger_t left the logger without sinks";
 
   std::remove(path.c_str());
+  std::remove(blocker.c_str());
 }
 
 // Exercises concurrent configure / release / emit. This is a smoke test, not a regression
