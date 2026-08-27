@@ -3057,10 +3057,6 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
     submip_settings.concurrent_halt                     = &current_heuristic->halt_;
     submip_settings.inside_root_node                    = true;
 
-    simplex_solver_settings_t<i_t, f_t> submip_settings = settings_;
-    submip_settings.concurrent_halt                     = &current_heuristic->halt_;
-    submip_settings.inside_root_node                    = true;
-
     if (settings_.inside_submip) {
       // LLVM libomp's GOMP compatibility path skips GCC's firstprivate copy
       // function for included tasks.
