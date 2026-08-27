@@ -2562,7 +2562,9 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     std::vector<int> has_restarted(climber_strategies_.size(), 0);
     bool is_conditional_major =
       (settings_.hyper_params.use_conditional_major)
-        ? (total_pdlp_iterations_ % conditional_major<i_t>(total_pdlp_iterations_)) == 0
+        ? (total_pdlp_iterations_ %
+           conditional_major<i_t>(total_pdlp_iterations_,
+                                  settings_.hyper_params.conditional_major_step)) == 0
         : false;
     if (settings_.hyper_params.artificial_restart_in_main_loop)
       artificial_restart_check_main_loop =
