@@ -2011,6 +2011,12 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
       break;
     }
 
+    if (received_halt_signal()) {
+      solver_status_        = mip_status_t::HALT;
+      node_concurrent_halt_ = true;
+      break;
+    }
+
     // If the guided diving was disabled previously due to the lack of an incumbent solution,
     // re-enable as soon as a new incumbent is found.
     if (diving_worker_pool_.size() > 0 && settings_.diving_settings.guided_diving != 0 &&
@@ -3046,6 +3052,10 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
       worker->current_incumbent = incumbent_.x;
       mutex_upper_.unlock();
     }
+
+    simplex_solver_settings_t<i_t, f_t> submip_settings = settings_;
+    submip_settings.concurrent_halt                     = &current_heuristic->halt_;
+    submip_settings.inside_root_node                    = true;
 
     simplex_solver_settings_t<i_t, f_t> submip_settings = settings_;
     submip_settings.concurrent_halt                     = &current_heuristic->halt_;
