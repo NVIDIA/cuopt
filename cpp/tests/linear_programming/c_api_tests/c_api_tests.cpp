@@ -483,6 +483,11 @@ TEST(c_api, lp_solution_mip_methods) { EXPECT_EQ(test_lp_solution_mip_methods(),
 
 TEST(c_api, mip_solution_lp_methods) { EXPECT_EQ(test_mip_solution_lp_methods(), CUOPT_SUCCESS); }
 
+TEST(c_api, qcqp_solution_dual_methods)
+{
+  EXPECT_EQ(test_qcqp_solution_dual_methods(), CUOPT_SUCCESS);
+}
+
 // =============================================================================
 // CPU-Only Execution Tests
 // These tests verify that cuOpt can run on a CPU-only host with remote execution
@@ -1233,4 +1238,139 @@ TEST(c_api, mip_solution_attributes)
   cuopt_float_t as_float = 0;
   EXPECT_EQ(cuOptGetSolutionFloatAttribute(solution, CUOPT_SOLUTION_ATTR_LP_GAP, &as_float),
             CUOPT_INVALID_ARGUMENT);
+}
+
+// =============================================================================
+// Solution accessors on a solve that produced no values
+// =============================================================================
+
+TEST(c_api, solution_accessors_report_absent_values)
+{
+  // x >= 2 and x <= 1 has no feasible point, so the solve produces no primal, dual, or reduced
+  // cost values.
+  cuopt_int_t row_offsets[]     = {0, 1, 2};
+  cuopt_int_t column_indices[]  = {0, 0};
+  cuopt_float_t matrix_values[] = {1.0, 1.0};
+  cuopt_float_t objective[]     = {1.0};
+  cuopt_float_t rhs[]           = {2.0, 1.0};
+  char constraint_sense[]       = {CUOPT_GREATER_THAN, CUOPT_LESS_THAN};
+  cuopt_float_t lower_bounds[]  = {-CUOPT_INFINITY};
+  cuopt_float_t upper_bounds[]  = {CUOPT_INFINITY};
+  char variable_types[]         = {CUOPT_CONTINUOUS};
+
+  cuOptOptimizationProblem problem = nullptr;
+  cuOptSolverSettings settings     = nullptr;
+  cuOptSolution raw_solution       = nullptr;
+  ASSERT_EQ(cuOptCreateProblem(2,
+                               1,
+                               CUOPT_MINIMIZE,
+                               0,
+                               objective,
+                               row_offsets,
+                               column_indices,
+                               matrix_values,
+                               constraint_sense,
+                               rhs,
+                               lower_bounds,
+                               upper_bounds,
+                               variable_types,
+                               &problem),
+            CUOPT_SUCCESS);
+  ASSERT_EQ(cuOptCreateSolverSettings(&settings), CUOPT_SUCCESS);
+  ASSERT_EQ(cuOptSolve(problem, settings, &raw_solution), CUOPT_SUCCESS);
+  cuOptDestroyProblem(&problem);
+  cuOptDestroySolverSettings(&settings);
+
+  ASSERT_NE(raw_solution, nullptr);
+  scoped_solution_t scoped(raw_solution);
+  cuOptSolution solution = scoped.get();
+
+  cuopt_int_t termination_status = -1;
+  ASSERT_EQ(cuOptGetTerminationStatus(solution, &termination_status), CUOPT_SUCCESS);
+  ASSERT_EQ(termination_status, CUOPT_TERMINATION_STATUS_INFEASIBLE);
+
+  // The buffers carry a sentinel no solve would produce. Each accessor must report the absence
+  // rather than returning success having written nothing, which would leave the caller reading
+  // whatever the buffer already held and unable to tell that from a real result.
+  const cuopt_float_t sentinel = -12345.0;
+  cuopt_float_t primal[1]      = {sentinel};
+  cuopt_float_t dual[2]        = {sentinel, sentinel};
+  cuopt_float_t reduced[1]     = {sentinel};
+
+  EXPECT_EQ(cuOptGetPrimalSolution(solution, primal), CUOPT_INVALID_ARGUMENT);
+  EXPECT_EQ(cuOptGetDualSolution(solution, dual), CUOPT_INVALID_ARGUMENT);
+  EXPECT_EQ(cuOptGetReducedCosts(solution, reduced), CUOPT_INVALID_ARGUMENT);
+
+  EXPECT_EQ(primal[0], sentinel);
+  EXPECT_EQ(dual[0], sentinel);
+  EXPECT_EQ(dual[1], sentinel);
+  EXPECT_EQ(reduced[0], sentinel);
+}
+
+TEST(c_api, solution_accessors_on_a_problem_with_no_constraints)
+{
+  // A box-constrained LP with no constraints solves to optimality. Its primal and reduced-cost
+  // vectors are populated; its dual vector is empty because there are no constraints to have
+  // duals for, and asking for it reports CUOPT_INVALID_ARGUMENT.
+  cuopt_int_t row_offsets[]     = {0};
+  cuopt_int_t column_indices[]  = {0};
+  cuopt_float_t matrix_values[] = {0.0};
+  cuopt_float_t objective[]     = {1.0};
+  cuopt_float_t rhs[]           = {0.0};
+  char constraint_sense[]       = {CUOPT_LESS_THAN};
+  cuopt_float_t lower_bounds[]  = {0.0};
+  cuopt_float_t upper_bounds[]  = {5.0};
+  char variable_types[]         = {CUOPT_CONTINUOUS};
+
+  cuOptOptimizationProblem problem = nullptr;
+  cuOptSolverSettings settings     = nullptr;
+  cuOptSolution raw_solution       = nullptr;
+  ASSERT_EQ(cuOptCreateProblem(0,
+                               1,
+                               CUOPT_MINIMIZE,
+                               0,
+                               objective,
+                               row_offsets,
+                               column_indices,
+                               matrix_values,
+                               constraint_sense,
+                               rhs,
+                               lower_bounds,
+                               upper_bounds,
+                               variable_types,
+                               &problem),
+            CUOPT_SUCCESS);
+  ASSERT_EQ(cuOptCreateSolverSettings(&settings), CUOPT_SUCCESS);
+  ASSERT_EQ(cuOptSolve(problem, settings, &raw_solution), CUOPT_SUCCESS);
+  cuOptDestroyProblem(&problem);
+  cuOptDestroySolverSettings(&settings);
+
+  ASSERT_NE(raw_solution, nullptr);
+  scoped_solution_t scoped(raw_solution);
+  cuOptSolution solution = scoped.get();
+
+  cuopt_int_t termination_status = -1;
+  ASSERT_EQ(cuOptGetTerminationStatus(solution, &termination_status), CUOPT_SUCCESS);
+  ASSERT_EQ(termination_status, CUOPT_TERMINATION_STATUS_OPTIMAL);
+
+  const cuopt_float_t sentinel = -12345.0;
+  cuopt_float_t primal[1]      = {sentinel};
+  cuopt_float_t reduced[1]     = {sentinel};
+  cuopt_float_t dual[1]        = {sentinel};
+
+  // minimize x over 0 <= x <= 5, so the optimum sits at the lower bound with the objective
+  // coefficient as its reduced cost.
+  EXPECT_EQ(cuOptGetPrimalSolution(solution, primal), CUOPT_SUCCESS);
+  EXPECT_EQ(cuOptGetReducedCosts(solution, reduced), CUOPT_SUCCESS);
+  EXPECT_NEAR(primal[0], 0.0, 1e-6);
+  EXPECT_NEAR(reduced[0], 1.0, 1e-6);
+
+  cuopt_float_t objective_value = sentinel;
+  EXPECT_EQ(cuOptGetObjectiveValue(solution, &objective_value), CUOPT_SUCCESS);
+  EXPECT_NEAR(objective_value, 0.0, 1e-6);
+
+  // No constraints means no dual vector to return. Reporting that as an absence is intended,
+  // so this assertion is what pins it down.
+  EXPECT_EQ(cuOptGetDualSolution(solution, dual), CUOPT_INVALID_ARGUMENT);
+  EXPECT_EQ(dual[0], sentinel);
 }
