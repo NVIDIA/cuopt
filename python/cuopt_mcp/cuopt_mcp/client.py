@@ -30,12 +30,17 @@ def endpoint() -> tuple:
     return host, port
 
 
-def _tls_config():
-    if os.environ.get("CUOPT_TLS_ENABLED", "").lower() not in (
+def tls_enabled() -> bool:
+    """Whether the channel is configured for TLS."""
+    return os.environ.get("CUOPT_TLS_ENABLED", "").lower() in (
         "1",
         "true",
         "yes",
-    ):
+    )
+
+
+def _tls_config():
+    if not tls_enabled():
         return None
     from cuopt.grpc.linear_programming import TlsConfig
 
@@ -78,9 +83,15 @@ def describe_connection_error(exc: Exception) -> CuOptMCPError:
     host, port = endpoint()
     text = str(exc)
     if "UNAVAILABLE" in text or "failed to connect" in text.lower():
+        # Being unreachable does not mean nothing is running: the server may
+        # be up on another port, or reachable only after the env below is
+        # corrected. Saying "start one" without that caveat invites a second
+        # server alongside the first, which is worse than the original fault.
         return CuOptMCPError(
-            f"cuOpt gRPC server unreachable at {host}:{port}. Start it with "
-            f"`cuopt_grpc_server --port {port}`, or set CUOPT_REMOTE_HOST / "
-            "CUOPT_REMOTE_PORT to point at a running server."
+            f"cuOpt gRPC server unreachable at {host}:{port}. Check whether "
+            "one is already running (`pgrep -af cuopt_grpc_server`) before "
+            "starting another, and confirm CUOPT_REMOTE_HOST / "
+            f"CUOPT_REMOTE_PORT point at it. Only if none is running, start "
+            f"one with `cuopt_grpc_server --port {port}`."
         )
     return CuOptMCPError(text)
