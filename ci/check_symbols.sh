@@ -100,6 +100,30 @@ for sym in "${required_symbols[@]}"; do
     fi
 done
 
+# The logger keeps one instance per component library, which only works while its state stays
+# hidden. Nothing fails to build or test if that state becomes visible -- the instances just
+# silently merge back into one via STB_GNU_UNIQUE, which glibc unifies process-wide even under
+# RTLD_LOCAL. Assert the state is absent from the dynamic symbol table so that regression is
+# loud. Only the per-component configure_logging entry points may cross the boundary.
+logger_state_symbols=(
+    "cuopt::default_logger()"
+    "cuopt::global_log_buffer()"
+    "cuopt::reset_default_logger()"
+)
+
+demangled_dyn_syms="$(readelf --dyn-syms --wide "${LIBRARY}" | awk '$7 != "UND" { print $8 }' | c++filt)"
+
+for sym in "${logger_state_symbols[@]}"; do
+    echo "Checking that logger state '${sym}' is NOT exported..."
+    if grep -qF "${sym}" <<< "${demangled_dyn_syms}"; then
+        echo "ERROR: Logger state '${sym}' is exported from ${LIBRARY}."
+        echo "ERROR: Per-component loggers silently collapse into one shared instance when this"
+        echo "ERROR: state is visible. Check that cpp/src/utilities/logger.hpp's namespace is not"
+        echo "ERROR: marked CUOPT_EXPORT and that hidden visibility is still set on the target."
+        failed=1
+    fi
+done
+
 if [[ "${failed}" -ne 0 ]]; then
     exit 1
 fi

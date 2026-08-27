@@ -11,6 +11,7 @@
 
 #include <cstdio>
 #include <fstream>
+#include <memory>
 #include <sstream>
 #include <string>
 
@@ -19,14 +20,14 @@
  * inside libcuopt. That means CUOPT_LOG_* here reaches *this* image's logger, and only the
  * entry points that operate on this image can be observed from here:
  *
- *   - init_logger_t and configure_logging_impl configure this image's logger, so their
- *     behaviour is testable directly. They are the code the exported per-component
- *     configure_logging entry points run, just reached without crossing a library boundary.
+ *   - init_logger_t and make_logger_config configure this image's logger, so their behaviour
+ *     is testable directly. They are the code the exported per-component configure_logging
+ *     entry points run, just reached without crossing a library boundary.
  *   - init_component_logger_t reaches into libcuopt's logger, which only emits during a
  *     solve. Its effect on a shared file is observable here; its messages are not.
  *
- * The separation itself is checked outside this test: libcuopt exports configure_logging and
- * reset_logging and none of the logger state.
+ * The separation itself is checked outside this test, by ci/check_symbols.sh: libcuopt must
+ * export the component configure_logging entry points and none of the logger state.
  */
 namespace cuopt::test {
 
@@ -51,21 +52,19 @@ std::string read_file(const std::string& path)
   return out.str();
 }
 
-// Every test must leave the depth counter at zero, or the next one's configure is treated as
-// nested and silently skipped.
+// Holding the handle keeps the configuration alive; dropping it resets the logger.
 struct scoped_config {
   explicit scoped_config(const std::string& path, bool truncate = true)
+    : handle(cuopt::make_logger_config(path, false, truncate))
   {
-    cuopt::configure_logging_impl(path, false, truncate);
   }
-  ~scoped_config() { cuopt::reset_logging_impl(); }
+  std::shared_ptr<void> handle;
 };
 
 }  // namespace
 
-// Releasing the previous guard after applying the new configuration ran
-// ~logger_config_guard -- and so reset_default_logger() -- on top of the sinks just
-// installed, sending everything back to the buffer sink.
+// A second configuration, after the first has been released, must actually take effect and
+// not leave the logger reset to the buffer sink.
 TEST(logger, reconfigure_does_not_reset_to_buffer)
 {
   const auto first  = temp_log_path("first");
@@ -154,13 +153,11 @@ TEST(logger, append_preserves_existing_contents)
   std::remove(path.c_str());
 }
 
-// A configure that throws must leave the depth counter as it found it. The caller's
-// constructor is the one throwing, so its destructor never runs to balance the increment,
-// and a stuck depth would make every later configure look nested and silently do nothing.
+// A configure that throws must not leave the logger wedged for later callers.
 TEST(logger, failed_configure_does_not_wedge_later_ones)
 {
   const auto unopenable = "/nonexistent-directory-" + std::to_string(unique_id()) + "/x.log";
-  EXPECT_ANY_THROW(cuopt::configure_logging_impl(unopenable, false, true));
+  EXPECT_ANY_THROW(cuopt::make_logger_config(unopenable, false, true));
 
   const auto path = temp_log_path("recovered");
   {

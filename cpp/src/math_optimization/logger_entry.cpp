@@ -14,11 +14,11 @@
  */
 namespace cuopt::mathematical_optimization {
 
-void configure_logging(const std::string& log_file, bool log_to_console, bool truncate)
+std::shared_ptr<void> configure_logging(const std::string& log_file,
+                                        bool log_to_console,
+                                        bool truncate)
 {
-  cuopt::configure_logging_impl(log_file, log_to_console, truncate);
+  return cuopt::make_logger_config(log_file, log_to_console, truncate);
 }
-
-void reset_logging() { cuopt::reset_logging_impl(); }
 
 }  // namespace cuopt::mathematical_optimization

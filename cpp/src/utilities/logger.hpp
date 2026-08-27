@@ -235,101 +235,44 @@ struct logger_config_guard {
 inline std::weak_ptr<logger_config_guard> g_active_guard;
 inline std::mutex g_guard_mutex;
 
-// Holds this library's configuration alive when it was set from outside, since the external
-// caller has no object in this image to own it.
-inline std::shared_ptr<logger_config_guard>& external_config_guard()
-{
-  // Force the logger's static to be constructed before this one, so it is destroyed after.
-  // ~logger_config_guard calls reset_default_logger(), and at process exit an unpaired
-  // guard released after the logger had already gone would touch a destroyed object.
-  static rapids_logger::logger& keep_logger_alive = default_logger();
-  static_cast<void>(keep_logger_alive);
-
-  static std::shared_ptr<logger_config_guard> guard;
-  return guard;
-}
-
-// Nesting depth of external configuration, so overlapping callers behave like overlapping
-// init_logger_t instances: the outermost configuration wins and only its exit tears down.
-inline int& external_config_depth()
-{
-  static int depth = 0;
-  return depth;
-}
-
 /**
- * @brief Body of a component's exported configure entry point.
+ * @brief Apply a configuration and return a handle that keeps it alive.
  *
- * Takes the same guard that init_logger_t takes, and keeps it alive. Library code that later
- * constructs an init_logger_t of its own -- the MIP and PDLP solve paths both do -- then sees
- * a live configuration and reuses it. Without that, the solver would reconfigure the logger
- * mid-run and, with truncate set, clear a log file the caller had already written to.
+ * This is the single lifetime mechanism for the logger of this image. Both init_logger_t and
+ * the exported per-component configure_logging go through it, so a caller inside the library
+ * and a caller outside it share one refcount: whoever asks first configures, later callers
+ * get a handle to the same configuration, and the logger is reset when the last handle is
+ * dropped. That is what stops the solver reconfiguring mid-run and re-truncating a log file
+ * the caller had already written to.
  */
-inline void configure_logging_impl(const std::string& log_file, bool log_to_console, bool truncate)
+inline std::shared_ptr<void> make_logger_config(const std::string& log_file,
+                                                bool log_to_console,
+                                                bool truncate)
 {
   std::lock_guard<std::mutex> lock(g_guard_mutex);
 
-  // An inner caller reuses the configuration already in place rather than replacing it,
-  // matching init_logger_t. Reconfiguring here would also re-truncate the log file.
-  if (external_config_depth()++ > 0) { return; }
-
-  // Drop the previous guard *before* applying the new sinks. ~logger_config_guard calls
-  // reset_default_logger(), so releasing it afterwards would run that reset on top of the
-  // configuration we just applied and silently put the buffer sink back.
-  external_config_guard().reset();
-
-  try {
-    apply_logger_config(log_file, log_to_console, truncate);
-  } catch (...) {
-    // Put the depth back. The caller's constructor is the one throwing, so its destructor
-    // never runs to balance the increment, and a depth stuck above zero would make every
-    // later configure look nested and silently do nothing -- logging dead for the process
-    // because one log file could not be opened.
-    --external_config_depth();
-    reset_default_logger();
-    throw;
-  }
-
-  auto guard              = std::make_shared<logger_config_guard>();
-  g_active_guard          = guard;
-  external_config_guard() = guard;
-}
-
-inline void reset_logging_impl()
-{
-  std::lock_guard<std::mutex> lock(g_guard_mutex);
-
-  if (external_config_depth() == 0) { return; }
-  if (--external_config_depth() > 0) { return; }
-
-  external_config_guard().reset();
-}
-
-inline init_logger_t::init_logger_t(std::string log_file, bool log_to_console, bool truncate)
-{
-  std::lock_guard<std::mutex> lock(g_guard_mutex);
-
-  auto existing_guard = g_active_guard.lock();
-  if (existing_guard) {
-    // Reuse existing configuration, just hold a reference to keep it alive
-    guard_ = existing_guard;
-    return;
-  }
+  // Reuse the configuration already in place rather than replacing it. Reconfiguring here
+  // would also re-truncate the log file.
+  if (auto existing = g_active_guard.lock()) { return existing; }
 
   try {
     apply_logger_config(log_file, log_to_console, truncate);
   } catch (...) {
     // apply_logger_config clears the sinks before installing the new ones, so a throw part
-    // way through leaves the logger with none at all and every later message is silently
-    // dropped. Put the default sink back before rethrowing.
+    // way through would otherwise leave the logger with none at all and silently drop every
+    // later message.
     reset_default_logger();
     throw;
   }
 
-  // Create guard and store weak reference for future instances to find
   auto guard     = std::make_shared<logger_config_guard>();
   g_active_guard = guard;
-  guard_         = guard;
+  return guard;
+}
+
+inline init_logger_t::init_logger_t(std::string log_file, bool log_to_console, bool truncate)
+  : guard_(make_logger_config(log_file, log_to_console, truncate))
+{
 }
 
 /**
@@ -348,18 +291,16 @@ enum class log_target_t {
  * a library boundary.
  */
 namespace cuopt::mathematical_optimization {
-CUOPT_EXPORT void configure_logging(const std::string& log_file,
-                                    bool log_to_console,
-                                    bool truncate);
-CUOPT_EXPORT void reset_logging();
+CUOPT_EXPORT std::shared_ptr<void> configure_logging(const std::string& log_file,
+                                                     bool log_to_console,
+                                                     bool truncate);
 }  // namespace cuopt::mathematical_optimization
 
 #ifdef CUOPT_HAS_ROUTING
 namespace cuopt::routing {
-CUOPT_EXPORT void configure_logging(const std::string& log_file,
-                                    bool log_to_console,
-                                    bool truncate);
-CUOPT_EXPORT void reset_logging();
+CUOPT_EXPORT std::shared_ptr<void> configure_logging(const std::string& log_file,
+                                                     bool log_to_console,
+                                                     bool truncate);
 }  // namespace cuopt::routing
 #endif
 
@@ -377,19 +318,21 @@ namespace cuopt {
  * into explicitly.
  */
 class init_component_logger_t {
-  log_target_t target_;
+  // The handle keeps the component's configuration alive; dropping it resets that
+  // component's logger. Same refcount init_logger_t uses, so a caller here and library code
+  // inside the component cannot tear down each other's configuration.
+  std::shared_ptr<void> handle_;
 
  public:
   explicit init_component_logger_t(const std::string& log_file,
                                    bool log_to_console,
                                    log_target_t target = log_target_t::mathopt,
                                    bool truncate       = true)
-    : target_(target)
   {
-    switch (target_) {
+    switch (target) {
       case log_target_t::routing:
 #ifdef CUOPT_HAS_ROUTING
-        cuopt::routing::configure_logging(log_file, log_to_console, truncate);
+        handle_ = cuopt::routing::configure_logging(log_file, log_to_console, truncate);
 #else
         // Silently doing nothing here would look like a working logger that drops every
         // message, and the cause -- a SKIP_ROUTING_BUILD mismatch -- would be invisible.
@@ -400,21 +343,9 @@ class init_component_logger_t {
         break;
       case log_target_t::mathopt:
       default:
-        cuopt::mathematical_optimization::configure_logging(log_file, log_to_console, truncate);
+        handle_ =
+          cuopt::mathematical_optimization::configure_logging(log_file, log_to_console, truncate);
         break;
-    }
-  }
-
-  ~init_component_logger_t()
-  {
-    switch (target_) {
-      case log_target_t::routing:
-#ifdef CUOPT_HAS_ROUTING
-        cuopt::routing::reset_logging();
-#endif
-        break;
-      case log_target_t::mathopt:
-      default: cuopt::mathematical_optimization::reset_logging(); break;
     }
   }
 
