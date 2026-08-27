@@ -43,6 +43,12 @@ SPDX-License-Identifier: Apache-2.0
     <maven.compiler.release>11</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <junit.jupiter.version>5.11.4</junit.jupiter.version>
+    <!-- Set by ci/build_cuopt_java_jar.sh when packaging a classifier JAR. Empty by default,
+         which produces the plain JAR the source build and the test suite use. -->
+    <cuopt.jar.classifier></cuopt.jar.classifier>
+    <!-- Directory whose tree is copied into the JAR, carrying the native library for the
+         classifier being built. Points at an empty placeholder unless overridden. -->
+    <cuopt.native.resources>${project.basedir}/src/main/no-native</cuopt.native.resources>
   </properties>
 
   <dependencies>
@@ -55,11 +61,19 @@ SPDX-License-Identifier: Apache-2.0
   </dependencies>
 
   <build>
+    <resources>
+      <resource>
+        <directory>${cuopt.native.resources}</directory>
+      </resource>
+    </resources>
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-jar-plugin</artifactId>
         <version>3.4.2</version>
+        <configuration>
+          <classifier>${cuopt.jar.classifier}</classifier>
+        </configuration>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
