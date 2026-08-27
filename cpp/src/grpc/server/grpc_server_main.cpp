@@ -22,6 +22,7 @@
 #include <argparse/argparse.hpp>
 #include <cuopt/version_config.hpp>
 
+#include <grpc/impl/channel_arg_names.h>
 #include <pthread.h>
 
 // Defined in grpc_service_impl.cpp
@@ -104,6 +105,11 @@ int main(int argc, char** argv)
 
   program.add_argument("--require-client-cert")
     .help("Require and verify client certs (mTLS)")
+    .default_value(false)
+    .implicit_value(true);
+
+  program.add_argument("--allow-reuseport")
+    .help("Permit a second server to share the listen port (multi-process pool)")
     .default_value(false)
     .implicit_value(true);
 
@@ -331,6 +337,15 @@ int main(int argc, char** argv)
   auto service = create_cuopt_grpc_service();
 
   ServerBuilder builder;
+  // gRPC enables SO_REUSEPORT by default, so a second server started against a
+  // port that is already served binds successfully instead of failing. Nothing
+  // reports the duplicate: the kernel then splits connections between the two
+  // processes, each holding its own workers and RMM pool, and a client that
+  // submits a job to one can be routed to the other when it polls for the
+  // result. Off by default; --allow-reuseport restores it for a deliberate
+  // multi-process pool behind one port.
+  builder.AddChannelArgument<int>(GRPC_ARG_ALLOW_REUSEPORT,
+                                  program.get<bool>("--allow-reuseport") ? 1 : 0);
   builder.AddListeningPort(server_address, creds);
   builder.RegisterService(service.get());
   const int64_t max_bytes = server_max_message_bytes();
@@ -342,6 +357,10 @@ int main(int argc, char** argv)
   std::unique_ptr<Server> server(builder.BuildAndStart());
   if (!server) {
     SERVER_LOG_ERROR("[Server] Failed to bind to %s", server_address);
+    SERVER_LOG_ERROR(
+      "[Server] A server may already be listening there; check with "
+      "`pgrep -af cuopt_grpc_server`. Use --port for a second instance, or "
+      "--allow-reuseport to deliberately share this one.");
     shutdown_all();
     return 1;
   }
