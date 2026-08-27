@@ -60,6 +60,12 @@ struct cut_pass_heuristics_t {
 #pragma omp taskwait depend(in : *worker)
       submip_worker_.reset();
     }
+
+    for (auto& worker : diving_workers_) {
+      diving_worker_t<i_t, f_t>* w = submip_worker_.get();
+#pragma omp taskwait depend(in : *w)
+      worker.reset();
+    }
   }
 
   diving_worker_t<i_t, f_t>* create_submip_worker(
@@ -138,8 +144,18 @@ struct root_heuristics_t {
   std::shared_ptr<omp_atomic_t<i_t>> worker_count_;
   i_t max_workers_;
 
+  // Keep track of the last diving heuristic used (so we can cycle between them in low thread
+  // count systems)
+  i_t next_diving_type_;
+
+  // Keep track of the last pass where we evicted older workers
+  i_t last_cut_pass_;
+
   root_heuristics_t(i_t max_workers)
-    : worker_count_(std::make_shared<omp_atomic_t<i_t>>(0)), max_workers_(max_workers)
+    : worker_count_(std::make_shared<omp_atomic_t<i_t>>(0)),
+      max_workers_(max_workers),
+      next_diving_type_(0),
+      last_cut_pass_(0)
   {
   }
 
@@ -158,25 +174,33 @@ struct root_heuristics_t {
     cut_passes_heuristics_.clear();
   }
 
+  void stop_oldest_active(i_t cut_pass, i_t new_workers)
+  {
+    // Already stopped the oldest worker in this cut pass
+    if (cut_pass == last_cut_pass_) return;
+
+    // On the first pass we use a thread to generate the clique table
+    i_t cut_generation = cut_pass == 0 ? 2 : 1;
+    i_t total_workers  = new_workers + worker_count_->load() + cut_generation;
+    if (total_workers <= max_workers_) { return; }
+
+    for (auto& heuristic : cut_passes_heuristics_) {
+      if (!heuristic->halt_.load(std::memory_order_acquire)) {
+        heuristic->send_stop_signal();
+        break;
+      }
+    }
+
+    last_cut_pass_ = cut_pass;
+  }
+
   std::shared_ptr<cut_pass_heuristics_t<i_t, f_t>> create_new_cut_pass_heuristic(
-    i_t cut_pass,
     const csr_matrix_t<i_t, f_t>& Arow,
     const std::vector<simplex::variable_type_t>& var_types,
     const std::vector<f_t>& root_solution,
     const std::vector<f_t>& root_edge_norm,
     const simplex::simplex_solver_settings_t<i_t, f_t>& settings)
   {
-    // // If we already exhausted all threads for the root heuristics, stop workers for the
-    // // oldest set of heuristics launched. Leave 2 threads for the cut passes and the clique
-    // // table generation. Add the number of workers that will be launched (1 submip worker +
-    // // 1 CPU FJ worker).
-    // i_t clique_table_generation = cut_pass == 0 ? 1 : 0;
-    // if (*worker_count_ + 3 + clique_table_generation > max_workers_ &&
-    //     !cut_passes_heuristics_.empty()) {
-    //   cut_passes_heuristics_.begin()->get()->send_stop_signal();
-    //   cut_passes_heuristics_.erase(cut_passes_heuristics_.begin());
-    // }
-
     return cut_passes_heuristics_.emplace_back(std::make_shared<cut_pass_heuristics_t<i_t, f_t>>(
       Arow, var_types, root_solution, root_edge_norm, settings));
   }

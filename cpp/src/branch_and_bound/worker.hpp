@@ -23,6 +23,9 @@
 namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
+class pseudo_costs_t;
+
+template <typename i_t, typename f_t>
 struct branch_and_bound_stats_t {
   f_t start_time                         = 0.0;
   omp_atomic_t<f_t> total_lp_solve_time  = 0.0;

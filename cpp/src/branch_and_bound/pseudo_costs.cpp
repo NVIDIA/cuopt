@@ -1419,10 +1419,15 @@ void pseudo_costs_t<i_t, f_t>::initialize_with_estimate(
                                                delta_z,
                                                work_estimate);
 
-      pseudo_cost_sum_down[j] = estimate.down_obj_change;
-      ++pseudo_cost_num_down[j];
-      pseudo_cost_sum_up[j] = estimate.up_obj_change;
-      ++pseudo_cost_num_up[j];
+      if (pseudo_cost_num_down[j] == 0) {
+        pseudo_cost_sum_down[j] += estimate.down_obj_change;
+        ++pseudo_cost_num_down[j];
+      }
+
+      if (pseudo_cost_num_up[j] == 0) {
+        pseudo_cost_sum_up[j] += estimate.up_obj_change;
+        ++pseudo_cost_num_up[j];
+      }
     }
   }
 }
