@@ -11,6 +11,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=java/cuopt/ci/argparse.sh
+source "${SCRIPT_DIR}/argparse.sh"
 MODULE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # shellcheck source=java/cuopt/ci/java_classifier.sh
 source "${SCRIPT_DIR}/java_classifier.sh"
@@ -41,17 +43,17 @@ EOF
 while [[ $# -gt 0 ]]; do
   case $1 in
     -h | --help) print_help; exit 0 ;;
-    -n | --native-lib) NATIVE_LIB="${2:?--native-lib needs a value}"; shift 2 ;;
-    -c | --cuda-version) CUDA_VERSION="${2:?--cuda-version needs a value}"; shift 2 ;;
-    -o | --output-dir) OUTPUT_DIR="${2:?--output-dir needs a value}"; shift 2 ;;
-    -a | --arch) ARCH="${2:?--arch needs a value}"; shift 2 ;;
+    -n | --native-lib) require_value "$1" "${2:-}"; NATIVE_LIB=$2; shift 2 ;;
+    -c | --cuda-version) require_value "$1" "${2:-}"; CUDA_VERSION=$2; shift 2 ;;
+    -o | --output-dir) require_value "$1" "${2:-}"; OUTPUT_DIR=$2; shift 2 ;;
+    -a | --arch) require_value "$1" "${2:-}"; ARCH=$2; shift 2 ;;
     *) echo "Unknown argument: $1" >&2; print_help >&2; exit 2 ;;
   esac
 done
 
-: "${NATIVE_LIB:?--native-lib is required}"
-: "${CUDA_VERSION:?--cuda-version is required}"
-: "${OUTPUT_DIR:?--output-dir is required}"
+require_arg --native-lib "${NATIVE_LIB}"
+require_arg --cuda-version "${CUDA_VERSION}"
+require_arg --output-dir "${OUTPUT_DIR}"
 
 if [[ ! -f "${NATIVE_LIB}" ]]; then
   echo "native library not found: ${NATIVE_LIB}" >&2
@@ -102,8 +104,17 @@ VERSION="$(mvn -f "${MODULE_DIR}/pom.xml" -B -q \
   -Dexec.executable=echo -Dexec.args='${project.version}' \
   --non-recursive exec:exec 2>/dev/null | tail -1)"
 
+# Each classifier directory carries everything Maven Central needs for the artifact, so the
+# gather step can work from the classifier directories alone.
 cp "${MODULE_DIR}/target/cuopt-${VERSION}-${CLASSIFIER}.jar" "${OUTPUT_DIR}/${CLASSIFIER}/"
 cp "${MODULE_DIR}/pom.xml" "${OUTPUT_DIR}/${CLASSIFIER}/cuopt-${VERSION}.pom"
+for kind in sources javadoc; do
+  if [[ -f "${MODULE_DIR}/target/cuopt-${VERSION}-${kind}.jar" ]]; then
+    cp "${MODULE_DIR}/target/cuopt-${VERSION}-${kind}.jar" "${OUTPUT_DIR}/${CLASSIFIER}/"
+  else
+    echo "WARNING: no ${kind} JAR in ${MODULE_DIR}/target; Maven Central requires one" >&2
+  fi
+done
 
 jar_mb=$(( $(stat -c%s "${OUTPUT_DIR}/${CLASSIFIER}/cuopt-${VERSION}-${CLASSIFIER}.jar") / 1048576 ))
 echo "  wrote ${OUTPUT_DIR}/${CLASSIFIER}/cuopt-${VERSION}-${CLASSIFIER}.jar (${jar_mb} MB)"

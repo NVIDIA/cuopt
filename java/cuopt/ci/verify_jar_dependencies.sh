@@ -17,6 +17,10 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=java/cuopt/ci/argparse.sh
+source "${SCRIPT_DIR}/argparse.sh"
+
 JAR=""
 
 # Supplied by the CUDA toolkit a consumer installs for the classifier's CUDA major version.
@@ -46,12 +50,12 @@ EOF
 while [[ $# -gt 0 ]]; do
   case $1 in
     -h | --help) print_help; exit 0 ;;
-    -j | --jar) JAR="${2:?--jar needs a value}"; shift 2 ;;
+    -j | --jar) require_value "$1" "${2:-}"; JAR=$2; shift 2 ;;
     *) echo "Unknown argument: $1" >&2; print_help >&2; exit 2 ;;
   esac
 done
 
-: "${JAR:?--jar is required}"
+require_arg --jar "${JAR}"
 if [[ ! -f "${JAR}" ]]; then
   echo "JAR not found: ${JAR}" >&2
   exit 1

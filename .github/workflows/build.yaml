@@ -64,9 +64,19 @@ jobs:
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
       script: ci/build_cpp.sh
-  # Exploratory: builds the self-contained classifier JAR from #1817 and checks it carries
-  # every native library it needs. Independent of java-build, which links the shared libcuopt.
+  # Exploratory (#1817): one self-contained classifier JAR per CUDA major and architecture,
+  # gathered into a single Maven-repository artifact for publishing.
+  java-static-build-matrix:
+    permissions:
+      contents: read
+    uses: rapidsai/shared-workflows/.github/workflows/compute-matrix.yaml@main
+    with:
+      build_type: ${{ inputs.build_type || 'branch' }}
+      matrix_name: conda-cpp-build
+      matrix_filter: 'map(. + {CUDA_MAJOR: (.CUDA_VER | split(".") | .[0])}) | unique_by([.ARCH, .CUDA_MAJOR])'
+
   java-static-build:
+    needs: [build-details, java-static-build-matrix]
     permissions:
       actions: read
       contents: read
@@ -75,19 +85,51 @@ jobs:
       pull-requests: read
     secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.java-static-build-matrix.outputs.matrix) }}
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
       node_type: "cpu16"
-      arch: "amd64"
+      arch: ${{ matrix.ARCH }}
       container_image: "rapidsai/ci-conda:26.10-latest"
       script: "ci/build_java_static.sh"
-      # One artifact in Maven repository layout, which is the form a publishing workflow
-      # consumes. See rapidsai/build-infra#379.
-      artifact-name: "cuopt_java_maven_repo"
-      file_to_upload: "java/cuopt/maven-repo/"
+      artifact-name: "cuopt_java_${{ matrix.ARCH }}_cu${{ matrix.CUDA_MAJOR }}"
+      file_to_upload: "java/cuopt/classifier-jars/"
+
+  # Combines every classifier into one Maven-repository-layout artifact, which is the form a
+  # publishing workflow consumes. See rapidsai/build-infra#379.
+  java-static-gather:
+    needs: [java-static-build]
+    runs-on: linux-amd64-cpu4
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code repo
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ inputs.sha }}
+          persist-credentials: false
+      - name: Download per-classifier JAR artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: cuopt_java_*
+          path: ${{ runner.temp }}/jars
+          merge-multiple: true
+      - name: Assemble Maven repository layout
+        run: |
+          ./java/cuopt/ci/assemble_maven_repo.sh \
+            --jars-dir "${RUNNER_TEMP}/jars" \
+            --output-dir "${RUNNER_TEMP}/maven-repo"
+      - name: Upload combined Maven repository artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cuopt_java_maven_repo
+          path: ${{ runner.temp }}/maven-repo
+          if-no-files-found: error
 
   java-build:
     needs: cpp-build

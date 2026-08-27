@@ -16,6 +16,10 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=java/cuopt/ci/argparse.sh
+source "${SCRIPT_DIR}/argparse.sh"
+
 GROUP_PATH="com/nvidia/cuopt"
 ARTIFACT_ID="cuopt"
 JARS_DIR=""
@@ -41,15 +45,15 @@ EOF
 while [[ $# -gt 0 ]]; do
   case $1 in
     -h | --help) print_help; exit 0 ;;
-    -j | --jars-dir) JARS_DIR="${2:?--jars-dir needs a value}"; shift 2 ;;
-    -o | --output-dir) OUTPUT_DIR="${2:?--output-dir needs a value}"; shift 2 ;;
-    -e | --extra-jars-dir) EXTRA_JARS_DIR="${2:?--extra-jars-dir needs a value}"; shift 2 ;;
+    -j | --jars-dir) require_value "$1" "${2:-}"; JARS_DIR=$2; shift 2 ;;
+    -o | --output-dir) require_value "$1" "${2:-}"; OUTPUT_DIR=$2; shift 2 ;;
+    -e | --extra-jars-dir) require_value "$1" "${2:-}"; EXTRA_JARS_DIR=$2; shift 2 ;;
     *) echo "Unknown argument: $1" >&2; print_help >&2; exit 2 ;;
   esac
 done
 
-: "${JARS_DIR:?--jars-dir is required}"
-: "${OUTPUT_DIR:?--output-dir is required}"
+require_arg --jars-dir "${JARS_DIR}"
+require_arg --output-dir "${OUTPUT_DIR}"
 
 if [[ ! -d "${JARS_DIR}" ]]; then
   echo "jars directory not found: ${JARS_DIR}" >&2
