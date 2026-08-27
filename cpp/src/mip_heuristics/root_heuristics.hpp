@@ -20,6 +20,7 @@ struct cut_pass_heuristics_t {
   std::vector<f_t> root_solution_;
   std::vector<f_t> root_edge_norm_;
   pseudo_costs_t<i_t, f_t> pseudo_costs_;
+  omp_atomic_t<i_t> active_workers_;
   std::atomic<int> halt_;
 
   std::unique_ptr<diving_worker_t<i_t, f_t>> submip_worker_;
@@ -36,6 +37,7 @@ struct cut_pass_heuristics_t {
       root_solution_(root_solution),
       root_edge_norm_(root_edge_norm),
       pseudo_costs_(root_solution.size(), settings),
+      active_workers_(0),
       halt_(false),
       submip_worker_(nullptr)
   {
@@ -150,14 +152,10 @@ struct root_heuristics_t {
   // count systems)
   i_t next_diving_type_;
 
-  // Keep track of the last pass where we evicted older workers
-  i_t last_cut_pass_;
-
   root_heuristics_t(i_t max_workers)
     : worker_count_(std::make_shared<omp_atomic_t<i_t>>(0)),
       max_workers_(max_workers),
-      next_diving_type_(0),
-      last_cut_pass_(0)
+      next_diving_type_(0)
   {
   }
 
@@ -176,24 +174,23 @@ struct root_heuristics_t {
     cut_passes_heuristics_.clear();
   }
 
-  void stop_oldest_active(i_t cut_pass, i_t new_workers)
+  void stop_old_workers(i_t cut_pass, i_t new_workers)
   {
-    // Already stopped the oldest worker in this cut pass
-    if (cut_pass == last_cut_pass_) return;
+    if (new_workers <= 0) return;
 
     // On the first pass we use a thread to generate the clique table
     i_t cut_generation = cut_pass == 0 ? 2 : 1;
     i_t total_workers  = new_workers + worker_count_->load() + cut_generation;
     if (total_workers <= max_workers_) { return; }
 
-    for (auto& heuristic : cut_passes_heuristics_) {
-      if (!heuristic->halt_.load(std::memory_order_acquire)) {
-        heuristic->send_stop_signal();
-        break;
+    for (i_t i = 0; i < cut_passes_heuristics_.size() - 1; ++i) {
+      i_t active = cut_passes_heuristics_[i]->active_workers_;
+      if (active > 0 && !cut_passes_heuristics_[i]->halt_.load(std::memory_order_acquire)) {
+        cut_passes_heuristics_[i]->send_stop_signal();
+        new_workers -= active;
+        if (new_workers <= 0) return;
       }
     }
-
-    last_cut_pass_ = cut_pass;
   }
 
   std::shared_ptr<cut_pass_heuristics_t<i_t, f_t>> create_new_cut_pass_heuristic(

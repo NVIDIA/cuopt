@@ -3006,7 +3006,7 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
 
   constexpr bool is_cpufj_enabled = true;
   if (is_cpufj_enabled) {
-    root_heuristics.stop_oldest_active(cut_pass, 1);
+    root_heuristics.stop_old_workers(cut_pass, 1);
 
     f_t work_limit = std::numeric_limits<f_t>::infinity();
     f_t time_limit = settings_.time_limit - toc(exploration_stats_.start_time);
@@ -3018,6 +3018,7 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
     current_heuristic->fj_cpu_worker_.create_worker(
       lp, var_types_, lp_solution.x, settings_, "[RootCut CPUFJ] ");
     ++(*worker_count);
+    ++current_heuristic->active_workers_;
 
 #pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY)                                        \
   affinity(current_heuristic -> fj_cpu_worker_) firstprivate(current_heuristic, worker_count) \
@@ -3025,6 +3026,7 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
     {
       current_heuristic->fj_cpu_worker_.run_sync(time_limit, work_limit);
       --(*worker_count);
+      --current_heuristic->active_workers_;
     }
   }
 
@@ -3053,13 +3055,13 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
 
     i_t available          = cut_pass == 0 ? settings_.num_threads - 3 : settings_.num_threads - 2;
     i_t num_diving_workers = std::min<i_t>(diving_heuristics.size(), available);
-    root_heuristics.stop_oldest_active(cut_pass, num_diving_workers);
+    root_heuristics.stop_old_workers(cut_pass, num_diving_workers);
 
     mip_node_t<i_t, f_t> root_node(root_objective_, root_vstatus_);
 
     for (i_t k = 0; k < num_diving_workers; ++k) {
-      i_t j                             = root_heuristics.next_diving_type_;
-      root_heuristics.next_diving_type_ = j + 1 >= diving_heuristics.size() ? 0 : j + 1;
+      i_t j = root_heuristics.next_diving_type_ % diving_heuristics.size();
+      root_heuristics.next_diving_type_ = j + 1 % diving_heuristics.size();
       search_strategy_t strategy        = diving_heuristics[j];
 
       diving_worker_t<i_t, f_t>* worker =
@@ -3071,6 +3073,7 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
         mutex_upper_.unlock();
       }
 
+      ++current_heuristic->active_workers_;
       ++(*worker_count);
 #pragma omp task affinity(*worker) priority(CUOPT_DEFAULT_TASK_PRIORITY) default(none) \
   firstprivate(worker, current_heuristic, worker_count) depend(out : *worker)
@@ -3081,6 +3084,7 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
         dive_settings.diving_settings.backtrack_limit     = 1;
         dive_with(worker, dive_settings);
         --(*worker_count);
+        --current_heuristic->active_workers_;
       }
     }
   }
@@ -3090,7 +3094,7 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
   mutex_upper_.unlock();
 
   if (use_rins || settings_.submip_settings.rens != 0) {
-    root_heuristics.stop_oldest_active(cut_pass, 1);
+    root_heuristics.stop_old_workers(cut_pass, 1);
 
     search_strategy_t strategy = use_rins ? search_strategy_t::RINS : search_strategy_t::RENS;
     diving_worker_t<i_t, f_t>* worker = current_heuristic->create_submip_worker(
@@ -3111,12 +3115,14 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
       // function for included tasks.
       recursive_submip(worker, submip_settings);
     } else {
+      ++current_heuristic->active_workers_;
       ++(*worker_count);
 #pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) affinity(worker) \
   firstprivate(current_heuristic, worker_count, submip_settings) depend(out : *worker)
       {
         recursive_submip(worker, submip_settings);
         --(*worker_count);
+        --current_heuristic->active_workers_;
       }
     }
   }
