@@ -218,6 +218,7 @@ files:
     extras:
       table: build-system
     includes:
+      - rapids_build_setuptools
       - build_wheels
   py_run_cuopt_mcp:
     output: pyproject

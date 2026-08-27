@@ -14,7 +14,7 @@ ARGS=$*
 REPODIR=$(cd "$(dirname "$0")"; pwd)
 LIBCUOPT_BUILD_DIR=${LIBCUOPT_BUILD_DIR:=${REPODIR}/cpp/build}
 
-VALIDARGS="clean codegen libcuopt cuopt_grpc_server cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -fsanitize -tsan -msan -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-grpc-build --skip-fatbin-write --host-lineinfo [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] --install --allgpuarch --ci-only-arch --show_depr_warn -h --help"
+VALIDARGS="clean codegen libcuopt cuopt_grpc_server cuopt cuopt_server cuopt_sh_client cuopt_mcp docs deb -a -b -g -fsanitize -tsan -msan -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-grpc-build --skip-fatbin-write --host-lineinfo [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] --install --allgpuarch --ci-only-arch --show_depr_warn -h --help"
 HELP="$0 [<target> ...] [<flag> ...]
  where <target> is:
    clean            - remove all existing build artifacts and configuration (start over)
@@ -24,6 +24,7 @@ HELP="$0 [<target> ...] [<flag> ...]
    cuopt            - build the cuopt Python package
    cuopt_server     - build the cuopt_server Python package
    cuopt_sh_client  - build cuopt self host client
+   cuopt_mcp        - build the cuopt_mcp Python package (MCP server)
    docs             - build the docs
    deb              - build deb package (requires libcuopt to be built first)
  and <flag> is:
@@ -53,7 +54,7 @@ HELP="$0 [<target> ...] [<flag> ...]
    --show_depr_warn - show cmake deprecation warnings
    -h               - print this text
 
- default action (no args) is to build 'libcuopt', 'cuopt', 'cuopt_server', and 'cuopt_sh_client' targets without installing into the conda environment (pass --install to also install libcuopt into the active conda environment; pass 'docs' explicitly to build documentation)
+ default action (no args) is to build 'libcuopt', 'cuopt', 'cuopt_server', 'cuopt_sh_client', and 'cuopt_mcp' targets without installing into the conda environment (pass --install to also install libcuopt into the active conda environment; pass 'docs' explicitly to build documentation)
 
  libcuopt build dir is: ${LIBCUOPT_BUILD_DIR}
 
@@ -445,6 +446,12 @@ fi
 # Build and install the cuopt_sh_client Python package
 if buildAll || hasArg cuopt_sh_client; then
     cd "${REPODIR}"/python/cuopt_self_hosted/
+    python "${PYTHON_ARGS_FOR_INSTALL[@]}" .
+fi
+
+# Build and install the cuopt_mcp Python package
+if buildAll || hasArg cuopt_mcp; then
+    cd "${REPODIR}"/python/cuopt_mcp/
     python "${PYTHON_ARGS_FOR_INSTALL[@]}" .
 fi
 
