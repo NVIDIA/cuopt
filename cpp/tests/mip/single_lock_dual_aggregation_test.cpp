@@ -78,8 +78,10 @@ struct papilo_harness_t {
     return false;
   }
 
-  bool replacement_locks_dependencies(
-    int col1, int col2, int row, const std::unordered_set<int>& bound_cols) const
+  bool replacement_locks_dependencies(int col1,
+                                      int col2,
+                                      int row,
+                                      const std::unordered_set<int>& bound_cols) const
   {
     const auto& txns = reductions.getTransactions();
     const auto& reds = reductions.getReductions();
@@ -448,11 +450,7 @@ TEST(SingleLockDualAggregation, PreventsSubstitutionChains)
 {
   auto problem = build_problem(2,
                                3,
-                               {{0, 0, 3.0},
-                                {0, 1, -3.0},
-                                {1, 0, -4.0},
-                                {1, 1, 4.0},
-                                {1, 2, -5.0}},
+                               {{0, 0, 3.0}, {0, 1, -3.0}, {1, 0, -4.0}, {1, 1, 4.0}, {1, 2, -5.0}},
                                {-1.0, -1.0, 0.0},
                                {0.0, 0.0, 0.0},
                                {1.0, 1.0, 1.0},
@@ -497,7 +495,7 @@ Binaries
   z
 End
 )LP",
-                            {"single_lock_dual_aggregation"});
+                             {"single_lock_dual_aggregation"});
 
   EXPECT_TRUE(result.status == third_party_presolve_status_t::REDUCED ||
               result.status == third_party_presolve_status_t::OPTIMAL);

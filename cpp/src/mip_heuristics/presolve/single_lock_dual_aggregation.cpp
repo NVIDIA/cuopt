@@ -325,11 +325,9 @@ int try_substitutions_for_row(const papilo::Problem<f_t>& problem,
   // Return the best master from the top-2 tracker, skipping excluded columns.
   auto pick_master = [&used_in_substitution](const top2_t<f_t>& t,
                                              int exclude) -> std::pair<int, f_t> {
-    if (t.top1.first >= 0 && t.top1.first != exclude &&
-        !used_in_substitution[t.top1.first])
+    if (t.top1.first >= 0 && t.top1.first != exclude && !used_in_substitution[t.top1.first])
       return t.top1;
-    if (t.top2.first >= 0 && t.top2.first != exclude &&
-        !used_in_substitution[t.top2.first])
+    if (t.top2.first >= 0 && t.top2.first != exclude && !used_in_substitution[t.top2.first])
       return t.top2;
     return {-1, f_t{0}};
   };
@@ -413,7 +411,8 @@ int try_substitutions_for_row(const papilo::Problem<f_t>& problem,
     for (int j = 0; j < length; ++j)
       reductions.lockColBounds(cols[j]);
 
-    // PaPILO encodes a replacement as REPLACE(source, factor) followed by a NONE(master, offset) payload.
+    // PaPILO encodes a replacement as REPLACE(source, factor) followed by a NONE(master, offset)
+    // payload.
     if (is_anti) {
       // x = 1 - y
       reductions.add_reduction(papilo::ColReduction::REPLACE, cand, f_t{-1});
