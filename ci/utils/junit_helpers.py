@@ -11,7 +11,6 @@ Called from shell scripts via: python3 ci/utils/junit_helpers.py <command> <args
 Commands:
   failed  <xml_file> [--sep SEP]   Print failed/errored test names
   passed  <xml_file> [--sep SEP]   Print passed test names (excludes skipped)
-  all-passed <xml_file>            Exit 0 if XML has >=1 testcase and 0 failures/errors
   gtest-list                        Parse gtest --gtest_list_tests from stdin
 """
 
@@ -51,26 +50,6 @@ def extract_tests(xml_path, status="failed", sep=".", include_skipped=False):
                     print(f"{cls}{sep}{name}")
 
 
-def xml_all_passed(xml_path):
-    """Return True if XML parses, has >=1 testcase, and no failure/error nodes.
-
-    Used to detect post-RUN_ALL_TESTS teardown crashes: gtest writes XML in
-    OnTestIterationEnd before main returns, so a complete all-green XML plus
-    a later SIGABRT means the crash was during static/atexit destruction.
-    """
-    try:
-        tree = ElementTree.parse(xml_path)
-    except (ElementTree.ParseError, FileNotFoundError, OSError):
-        return False
-
-    saw_testcase = False
-    for tc in tree.iter("testcase"):
-        saw_testcase = True
-        if tc.find("failure") is not None or tc.find("error") is not None:
-            return False
-    return saw_testcase
-
-
 def parse_gtest_list():
     """Parse gtest --gtest_list_tests output from stdin into Suite.TestName."""
     suite = ""
@@ -104,15 +83,6 @@ def main():
             if arg == "--sep" and i + 1 < len(sys.argv):
                 sep = sys.argv[i + 1]
         extract_tests(xml_path, status=cmd, sep=sep)
-
-    elif cmd == "all-passed":
-        if len(sys.argv) < 3:
-            print(
-                f"Usage: {sys.argv[0]} all-passed <xml_file>",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        sys.exit(0 if xml_all_passed(sys.argv[2]) else 1)
 
     elif cmd == "gtest-list":
         parse_gtest_list()
