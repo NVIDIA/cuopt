@@ -504,6 +504,10 @@ jobs:
       arch: "amd64"
       container_image: "rapidsai/ci-conda:26.10-latest"
       script: "ci/build_java_static.sh"
+      # One artifact in Maven repository layout, which is the form a publishing workflow
+      # consumes. See rapidsai/build-infra#379.
+      artifact-name: "cuopt_java_maven_repo"
+      file_to_upload: "java/cuopt/maven-repo/"
 
   java-build:
     needs: [conda-cpp-build, changed-files]
