@@ -226,14 +226,41 @@ class init_logger_t {
   init_logger_t(std::string log_file, bool log_to_console, bool truncate = true);
 };
 
-// Guard object whose destructor resets the logger
+inline std::mutex g_guard_mutex;
+
+// Bumped for every configuration applied. A guard resets the logger only if its own
+// configuration is still the current one.
+inline uint64_t& active_config_generation()
+{
+  static uint64_t generation = 0;
+  return generation;
+}
+
+/**
+ * @brief Guard whose destruction resets the logger, if its configuration is still current.
+ *
+ * The generation check is not optional. A guard's refcount reaching zero makes
+ * g_active_guard expire *before* this destructor runs, so another thread can see no live
+ * configuration, apply its own, and install a new guard in that window. Without the check
+ * this destructor would then reset the logger and wipe the configuration that thread had
+ * just installed.
+ */
 struct logger_config_guard {
-  ~logger_config_guard() { cuopt::reset_default_logger(); }
+  explicit logger_config_guard(uint64_t generation) : generation_(generation) {}
+
+  ~logger_config_guard()
+  {
+    std::lock_guard<std::mutex> lock(g_guard_mutex);
+    if (active_config_generation() != generation_) { return; }
+    cuopt::reset_default_logger();
+  }
+
+ private:
+  uint64_t generation_;
 };
 
 // Weak reference to detect if any init_logger_t instance is still alive
 inline std::weak_ptr<logger_config_guard> g_active_guard;
-inline std::mutex g_guard_mutex;
 
 /**
  * @brief Apply a configuration and return a handle that keeps it alive.
@@ -265,7 +292,7 @@ inline std::shared_ptr<void> make_logger_config(const std::string& log_file,
     throw;
   }
 
-  auto guard     = std::make_shared<logger_config_guard>();
+  auto guard     = std::make_shared<logger_config_guard>(++active_config_generation());
   g_active_guard = guard;
   return guard;
 }

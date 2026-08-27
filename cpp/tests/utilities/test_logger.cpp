@@ -9,11 +9,14 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <cstdio>
 #include <fstream>
 #include <memory>
 #include <sstream>
 #include <string>
+#include <thread>
+#include <vector>
 
 /*
  * The logger is hidden, so this test executable has its own instance, separate from the one
@@ -186,6 +189,39 @@ TEST(logger, failed_init_logger_restores_a_sink)
 
   EXPECT_NE(read_file(path).find("after_failed_init"), std::string::npos)
     << "a failed init_logger_t left the logger without sinks";
+
+  std::remove(path.c_str());
+}
+
+// Exercises concurrent configure / release / emit. This is a smoke test, not a regression
+// test: the race it relates to -- a guard whose refcount hit zero resetting the logger after
+// a newer configuration was installed -- needs the count to reach zero exactly while another
+// thread is inside make_logger_config, and under contention g_active_guard.lock() nearly
+// always succeeds instead. Disabling the generation check in logger_config_guard does not
+// make this fail. It is kept because it does cover concurrent use of the shared path, and is
+// where a sanitizer would surface the unsynchronized sink mutation.
+TEST(logger, concurrent_configure_and_emit)
+{
+  const auto path = temp_log_path("concurrent");
+
+  constexpr int kThreads    = 8;
+  constexpr int kIterations = 400;
+
+  std::vector<std::thread> threads;
+  threads.reserve(kThreads);
+  for (int t = 0; t < kThreads; ++t) {
+    threads.emplace_back([&path] {
+      for (int i = 0; i < kIterations; ++i) {
+        auto handle = cuopt::make_logger_config(path, false, /*truncate=*/false);
+        CUOPT_LOG_ERROR("concurrent_message");
+      }
+    });
+  }
+  for (auto& thread : threads) {
+    thread.join();
+  }
+
+  EXPECT_NE(read_file(path).find("concurrent_message"), std::string::npos);
 
   std::remove(path.c_str());
 }
