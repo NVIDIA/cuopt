@@ -62,10 +62,12 @@ struct cut_pass_heuristics_t {
     }
 
     for (auto& worker : diving_workers_) {
-      diving_worker_t<i_t, f_t>* w = submip_worker_.get();
+      diving_worker_t<i_t, f_t>* w = worker.get();
 #pragma omp taskwait depend(in : *w)
       worker.reset();
     }
+
+    diving_workers_.clear();
   }
 
   diving_worker_t<i_t, f_t>* create_submip_worker(

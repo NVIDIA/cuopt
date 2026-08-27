@@ -1585,18 +1585,10 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
   // Otherwise, the best ones are initialized via strong branching, while the other are ignored.  //
   // So we only need to initialize the average for the former.
   if (reliable_threshold == 0) {
-    initialize_with_estimate(worker->leaf_problem,
-                             worker->leaf_vstatus,
-                             fractional,
-                             worker->leaf_solution,
-                             worker->basic_list,
-                             worker->nonbasic_list,
-                             worker->basis_factors);
+    avg_down = compute_pseudocost_average_down();
+    avg_up   = compute_pseudocost_average_up();
+    settings.log.debug("PC: avg down %e up %e\n", avg_down, avg_up);
   }
-
-  avg_down = compute_pseudocost_average_down();
-  avg_up   = compute_pseudocost_average_up();
-  settings.log.debug("PC: avg down %e up %e\n", avg_down, avg_up);
 
   std::vector<std::pair<f_t, i_t>> unreliable_list;
   omp_mutex_t score_mutex;

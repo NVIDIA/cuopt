@@ -290,7 +290,8 @@ class branch_and_bound_t {
 
   void print_table_header();
   void report_heuristic(f_t obj, heuristics_origin_t origin);
-  void report(char symbol,
+  void report(const simplex::lp_problem_t<i_t, f_t>& lp,
+              char symbol,
               f_t obj,
               f_t lower_bound,
               i_t node_depth,
@@ -327,14 +328,15 @@ class branch_and_bound_t {
   // Set the solution when found at the root node
   void set_solution_at_root(simplex::mip_solution_t<i_t, f_t>& solution,
                             const cut_info_t<i_t, f_t>& cut_info);
-  void update_user_bound(f_t lower_bound);
+  void update_user_bound(const simplex::lp_problem_t<i_t, f_t>& lp, f_t lower_bound);
 
   // Set the final solution.
   void set_final_solution(simplex::mip_solution_t<i_t, f_t>& solution, f_t lower_bound);
 
   // Update the incumbent solution with the new feasible solution
   // found during branch and bound.
-  void add_feasible_solution(f_t leaf_objective,
+  void add_feasible_solution(const simplex::lp_problem_t<i_t, f_t>& lp,
+                             f_t leaf_objective,
                              const std::vector<f_t>& leaf_solution,
                              i_t leaf_depth,
                              search_strategy_t thread_type);
@@ -345,7 +347,9 @@ class branch_and_bound_t {
   // Launch a new diving worker from a given best-first worker.
   bool launch_diving_worker(bfs_worker_t<i_t, f_t>* bfs_worker);
 
-  void snap_to_lattice(mip_node_t<i_t, f_t>* node_ptr, f_t leaf_obj);
+  void snap_to_lattice(const simplex::lp_problem_t<i_t, f_t>& lp,
+                       mip_node_t<i_t, f_t>* node_ptr,
+                       f_t leaf_obj);
 
   // Launch a new best-first worker from a given bfs worker.
   void launch_bfs_worker(bfs_worker_t<i_t, f_t>* worker);
@@ -377,8 +381,6 @@ class branch_and_bound_t {
 
   // Solve the RINS sub-MIP.
   void solve_submip(diving_worker_t<i_t, f_t>* worker,
-                    const std::vector<f_t>& current_incumbent,
-                    const std::vector<simplex::variable_type_t>& var_types,
                     submip_stats_t& submip_stats,
                     f_t fixrate,
                     i_t simplex_iter_used,
@@ -386,7 +388,6 @@ class branch_and_bound_t {
 
   // Creates and solves the RINS/RENS sub-MIP.
   void recursive_submip(diving_worker_t<i_t, f_t>* worker,
-                        const std::vector<simplex::variable_type_t>& var_types,
                         simplex::simplex_solver_settings_t<i_t, f_t> submip_settings);
 
   void launch_root_heuristics(const simplex::lp_problem_t<i_t, f_t>& lp,

@@ -71,6 +71,10 @@ class branch_and_bound_worker_t {
 
   std::vector<f_t> start_lower;
   std::vector<f_t> start_upper;
+
+  // The incumbent may change while we are still constructing RINS
+  // sub-MIP or doing guided diving. Save it here so we always use
+  // the same value throughout.
   std::vector<f_t> current_incumbent;
 
   // Variable locks (see definition 3.3 from T. Achterberg, “Constraint Integer Programming,”
@@ -88,8 +92,12 @@ class branch_and_bound_worker_t {
   bool recompute_basis  = true;
   bool recompute_bounds = true;
 
+  // During the cut passes, this values can change. So we save a copy on root_heuristics
+  // and point these attributes to it. During normal exploration, this is set
+  // to the final values from the root node.
   const std::vector<f_t>& root_solution;
   const std::vector<f_t>& root_edge_norm;
+  const std::vector<simplex::variable_type_t>& var_types;
 
   pseudo_costs_t<i_t, f_t>& pseudo_costs;
 
@@ -129,6 +137,7 @@ class branch_and_bound_worker_t {
           pcgenerator_t::default_stream ^ (worker_id + rng_offset)),
       root_solution(root_solution),
       root_edge_norm(root_edge_norm),
+      var_types(var_type),
       pseudo_costs(pc)
   {
   }
