@@ -3030,6 +3030,44 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
     }
   }
 
+  mutex_upper_.lock();
+  bool use_rins = settings_.submip_settings.rins != 0 && incumbent_.has_incumbent;
+  mutex_upper_.unlock();
+
+  if (use_rins || settings_.submip_settings.rens != 0) {
+    root_heuristics.stop_old_workers(cut_pass, 1);
+
+    search_strategy_t strategy = use_rins ? search_strategy_t::RINS : search_strategy_t::RENS;
+    diving_worker_t<i_t, f_t>* worker = current_heuristic->create_submip_worker(
+      cut_pass, lp, settings_, root_objective_, root_vstatus_, lp_solution.x, strategy);
+
+    if (use_rins) {
+      mutex_upper_.lock();
+      worker->current_incumbent = incumbent_.x;
+      mutex_upper_.unlock();
+    }
+
+    simplex_solver_settings_t<i_t, f_t> submip_settings = settings_;
+    submip_settings.concurrent_halt                     = &current_heuristic->halt_;
+    submip_settings.inside_root_node                    = true;
+
+    if (settings_.inside_submip) {
+      // LLVM libomp's GOMP compatibility path skips GCC's firstprivate copy
+      // function for included tasks.
+      recursive_submip(worker, submip_settings);
+    } else {
+      ++current_heuristic->active_workers_;
+      ++(*worker_count);
+#pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) affinity(worker) \
+  firstprivate(current_heuristic, worker_count, submip_settings) depend(out : *worker)
+      {
+        recursive_submip(worker, submip_settings);
+        --(*worker_count);
+        --current_heuristic->active_workers_;
+      }
+    }
+  }
+
   constexpr bool use_diving = true;
   if (use_diving) {
     mip_diving_hyper_params_t<i_t, f_t> diving_settings = settings_.diving_settings;
@@ -3040,12 +3078,12 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
 
     if (diving_settings.farkas_diving != 0) {
       f_t obj_dyn;
-      if (std::abs(original_lp_.min_abs_obj_coeff) < settings_.zero_tol) {
-        obj_dyn = std::abs(original_lp_.max_abs_obj_coeff) < settings_.zero_tol
+      if (std::abs(lp.min_abs_obj_coeff) < settings_.zero_tol) {
+        obj_dyn = std::abs(lp.max_abs_obj_coeff) < settings_.zero_tol
                     ? 0
                     : std::numeric_limits<f_t>::infinity();
       } else {
-        obj_dyn = std::log10(original_lp_.max_abs_obj_coeff / original_lp_.min_abs_obj_coeff);
+        obj_dyn = std::log10(lp.max_abs_obj_coeff / lp.min_abs_obj_coeff);
       }
       if (obj_dyn < diving_settings.farkas_obj_dynamism_tol) { diving_settings.farkas_diving = 0; }
     }
@@ -3083,44 +3121,6 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
         dive_settings.inside_root_node                    = true;
         dive_settings.diving_settings.backtrack_limit     = 1;
         dive_with(worker, dive_settings);
-        --(*worker_count);
-        --current_heuristic->active_workers_;
-      }
-    }
-  }
-
-  mutex_upper_.lock();
-  bool use_rins = settings_.submip_settings.rins != 0 && incumbent_.has_incumbent;
-  mutex_upper_.unlock();
-
-  if (use_rins || settings_.submip_settings.rens != 0) {
-    root_heuristics.stop_old_workers(cut_pass, 1);
-
-    search_strategy_t strategy = use_rins ? search_strategy_t::RINS : search_strategy_t::RENS;
-    diving_worker_t<i_t, f_t>* worker = current_heuristic->create_submip_worker(
-      cut_pass, lp, settings_, root_objective_, root_vstatus_, lp_solution.x, strategy);
-
-    if (use_rins) {
-      mutex_upper_.lock();
-      worker->current_incumbent = incumbent_.x;
-      mutex_upper_.unlock();
-    }
-
-    simplex_solver_settings_t<i_t, f_t> submip_settings = settings_;
-    submip_settings.concurrent_halt                     = &current_heuristic->halt_;
-    submip_settings.inside_root_node                    = true;
-
-    if (settings_.inside_submip) {
-      // LLVM libomp's GOMP compatibility path skips GCC's firstprivate copy
-      // function for included tasks.
-      recursive_submip(worker, submip_settings);
-    } else {
-      ++current_heuristic->active_workers_;
-      ++(*worker_count);
-#pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) affinity(worker) \
-  firstprivate(current_heuristic, worker_count, submip_settings) depend(out : *worker)
-      {
-        recursive_submip(worker, submip_settings);
         --(*worker_count);
         --current_heuristic->active_workers_;
       }

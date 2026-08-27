@@ -183,10 +183,13 @@ struct root_heuristics_t {
     i_t total_workers  = new_workers + worker_count_->load() + cut_generation;
     if (total_workers <= max_workers_) { return; }
 
-    for (i_t i = 0; i < cut_passes_heuristics_.size() - 1; ++i) {
-      i_t active = cut_passes_heuristics_[i]->active_workers_;
-      if (active > 0 && !cut_passes_heuristics_[i]->halt_.load(std::memory_order_acquire)) {
-        cut_passes_heuristics_[i]->send_stop_signal();
+    for (auto& heuristic : cut_passes_heuristics_) {
+      // Skip the current heuristic entry
+      if (&heuristic == &cut_passes_heuristics_.back()) { break; }
+
+      i_t active = heuristic->active_workers_;
+      if (active > 0 && !heuristic->halt_.load(std::memory_order_acquire)) {
+        heuristic->send_stop_signal();
         new_workers -= active;
         if (new_workers <= 0) return;
       }
