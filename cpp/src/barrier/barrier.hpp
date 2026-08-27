@@ -40,15 +40,6 @@ class barrier_solver_t {
   void my_pop_range(bool debug) const;
   void create_Q(const simplex::lp_problem_t<i_t, f_t>& lp, csc_matrix_t<i_t, f_t>& Q);
   int initial_point(iteration_data_t<i_t, f_t>& data);
-  void compute_residual_norms(const dense_vector_t<i_t, f_t>& w,
-                              const dense_vector_t<i_t, f_t>& x,
-                              const dense_vector_t<i_t, f_t>& y,
-                              const dense_vector_t<i_t, f_t>& v,
-                              const dense_vector_t<i_t, f_t>& z,
-                              iteration_data_t<i_t, f_t>& data,
-                              f_t& primal_residual_norm,
-                              f_t& dual_residual_norm,
-                              f_t& complementarity_residual_norm);
 
   void compute_primal_dual_step_length(iteration_data_t<i_t, f_t>& data,
                                        f_t step_scale,
