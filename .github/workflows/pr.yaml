@@ -24,6 +24,7 @@ jobs:
       - conda-cpp-build
       - conda-cpp-tests
       - java-build
+      - java-static-build-matrix
       - java-static-build
       - java-static-test
       - java-static-gather
