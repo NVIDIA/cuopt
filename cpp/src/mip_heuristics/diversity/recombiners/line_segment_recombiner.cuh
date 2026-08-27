@@ -42,7 +42,7 @@ class line_segment_recombiner_t : public recombiner_t<i_t, f_t> {
     i_t n_vars_from_other = remaining_variables;
     if (n_vars_from_other > (i_t)ls_recombiner_config_t::max_n_of_vars_from_other) {
       n_vars_from_other = ls_recombiner_config_t::max_n_of_vars_from_other;
-      thrust::default_random_engine g{(unsigned int)this->rng.next_i64()};
+      thrust::default_random_engine g{this->rng.next_u32()};
       thrust::shuffle(guiding_solution.handle_ptr->get_thrust_policy(),
                       this->remaining_indices.data(),
                       this->remaining_indices.data() + remaining_variables,
