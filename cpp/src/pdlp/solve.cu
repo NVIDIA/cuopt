@@ -125,7 +125,6 @@ static void set_Stable1(pdlp::pdlp_hyper_params_t& hyper_params)
   hyper_params.use_fixed_point_error                                      = false;
   hyper_params.reflection_coefficient = 1.0;  // TODO test with other values
   hyper_params.use_conditional_major  = false;
-  hyper_params.conditional_major_step = 10;
 }
 
 // Even better general setting due to proper primal gradient handling for KKT restart and initial
@@ -169,7 +168,6 @@ static void set_Stable2(pdlp::pdlp_hyper_params_t& hyper_params)
   hyper_params.use_fixed_point_error                                      = false;
   hyper_params.reflection_coefficient                                     = 1.0;
   hyper_params.use_conditional_major                                      = false;
-  hyper_params.conditional_major_step                                     = 10;
 }
 
 /* 1 - 1 mapping of cuPDLPx(+) function from Haihao and al.
@@ -228,7 +226,6 @@ static void set_Stable3(pdlp::pdlp_hyper_params_t& hyper_params)
   hyper_params.use_reflected_primal_dual             = true;
   hyper_params.use_fixed_point_error                 = true;
   hyper_params.use_conditional_major                 = true;
-  hyper_params.conditional_major_step                = 10;
 }
 
 // Legacy/Original/Initial PDLP settings
@@ -271,7 +268,6 @@ static void set_Methodical1(pdlp::pdlp_hyper_params_t& hyper_params)
   hyper_params.use_fixed_point_error                                      = false;
   hyper_params.reflection_coefficient                                     = 1.0;
   hyper_params.use_conditional_major                                      = false;
-  hyper_params.conditional_major_step                                     = 10;
 }
 
 // Can be extremly faster but usually leads to more divergence
@@ -315,7 +311,6 @@ static void set_Fast1(pdlp::pdlp_hyper_params_t& hyper_params)
   hyper_params.use_fixed_point_error                                      = false;
   hyper_params.reflection_coefficient                                     = 1.0;
   hyper_params.use_conditional_major                                      = false;
-  hyper_params.conditional_major_step                                     = 10;
 }
 
 template <typename i_t, typename f_t>
