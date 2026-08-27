@@ -48,6 +48,11 @@ class CType(str, Enum):
     GE = "G"
     EQ = "E"
 
+    @property
+    def symbol(self):
+        """Algebraic symbol used when printing constraints."""
+        return {CType.LE: "<=", CType.GE: ">=", CType.EQ: "=="}[self]
+
 
 LE = CType.LE
 GE = CType.GE
@@ -334,6 +339,131 @@ class Variable:
                 return Constraint(expr, EQ, 0.0)
             case _:
                 raise ValueError("Unsupported operation")
+
+    def _display_name(self):
+        if self.VariableName:
+            return self.VariableName
+        if self.index >= 0:
+            # Same name an unnamed variable gets on export.
+            return f"C{self.index}"
+        return ""
+
+    def __str__(self):
+        return self._display_name() or repr(self)
+
+    def __repr__(self):
+        vtype = self.VariableType
+        if isinstance(vtype, (bytes, bytearray)):
+            # VariableType is not normalized, see #1736.
+            vtype = vtype.decode()
+        return (
+            f"<cuopt.Variable {self._display_name()!r} (index={self.index}), "
+            f"type={VType(vtype).name}, bounds=[{self.LB}, {self.UB}], "
+            f"value={self.Value}>"
+        )
+
+
+# Maximum number of terms rendered when stringifying a linear or quadratic
+# expression. Beyond this, the head is shown followed by a ``... (N more
+# terms)`` marker so that printing a model with thousands of terms stays
+# readable in a REPL or notebook instead of flooding the output. Set to
+# ``None`` to disable truncation entirely.
+_MAX_DISPLAY_TERMS = 10
+
+
+def _same_variable(var1, var2):
+    """Identity/index comparison; Variable.__eq__ builds a Constraint."""
+    return var1 is var2 or (var1.index >= 0 and var1.index == var2.index)
+
+
+class _ExprBuilder:
+    """Build an algebraic string from a sequence of terms.
+
+    The first term is emitted without a sign; subsequent terms are joined
+    with ' + ' or ' - ' separators. A coefficient of 1.0 or -1.0 is
+    elided, so '1.0 * x' becomes 'x' and '-1.0 * x' becomes '-x'.
+
+    When ``max_terms`` is set, only the first ``max_terms`` non-zero terms
+    are rendered; any remaining terms are counted and summarized as a
+    trailing ``... (N more terms)`` marker. This keeps the output bounded
+    for expressions with very many terms. ``max_terms=None`` (the default)
+    renders every term.
+    """
+
+    def __init__(self, max_terms=None):
+        self.parts = []
+        self.max_terms = max_terms
+        # Non-zero terms seen so far (rendered + hidden).
+        self.n_terms = 0
+        # Non-zero terms omitted because the cap was reached.
+        self.n_hidden = 0
+
+    def add_linear(self, coef, var):
+        """Add a linear term ``coef * var``."""
+        if coef == 0.0:
+            return
+        var_str = str(var)
+        if coef == 1.0:
+            self._append(var_str, negative=False)
+        elif coef == -1.0:
+            self._append(var_str, negative=True)
+        else:
+            self._append(f"{abs(coef)} * {var_str}", negative=coef < 0)
+
+    def add_quadratic(self, coef, var1, var2):
+        """Add a quadratic term ``coef * var1 * var2``."""
+        if coef == 0.0:
+            return
+        v1_str = str(var1)
+        v2_str = str(var2)
+        if _same_variable(var1, var2):
+            term_str = f"{v1_str}^2"
+        elif v1_str <= v2_str:
+            term_str = f"{v1_str} * {v2_str}"
+        else:
+            term_str = f"{v2_str} * {v1_str}"
+        if coef == 1.0:
+            self._append(term_str, negative=False)
+        elif coef == -1.0:
+            self._append(term_str, negative=True)
+        else:
+            self._append(f"{abs(coef)} * {term_str}", negative=coef < 0)
+
+    def add_constant(self, value):
+        """Add a constant term."""
+        if value == 0.0:
+            return
+        self._append(f"{abs(value)}", negative=value < 0)
+
+    def _append(self, term, negative):
+        self.n_terms += 1
+        if self.max_terms is not None and self.n_terms > self.max_terms:
+            # Past the cap: count the term but don't render it.
+            self.n_hidden += 1
+            return
+        if not self.parts:
+            self.parts.append(f"-{term}" if negative else term)
+        else:
+            self.parts.append(f" - {term}" if negative else f" + {term}")
+
+    def build(self):
+        if not self.parts and not self.n_hidden:
+            return "0.0"
+        result = "".join(self.parts)
+        if self.n_hidden:
+            plural = "term" if self.n_hidden == 1 else "terms"
+            marker = f"... ({self.n_hidden} more {plural})"
+            result = f"{result} + {marker}" if result else marker
+        return result
+
+
+def _format_linear(vars, coeffs, constant, max_terms=None):
+    """Format a linear expression as an algebraic string."""
+    builder = _ExprBuilder(max_terms=max_terms)
+    for var, coef in zip(vars, coeffs):
+        builder.add_linear(coef, var)
+    builder.add_constant(constant)
+    return builder.build()
 
 
 class QuadraticExpression:
@@ -889,6 +1019,25 @@ class QuadraticExpression:
     def __eq__(self, other):
         raise ValueError("Equality constraints are not supported.")
 
+    def __str__(self):
+        builder = _ExprBuilder(max_terms=_MAX_DISPLAY_TERMS)
+        if self.qmatrix is not None:
+            for row, col, val in zip(
+                self.qmatrix.row, self.qmatrix.col, self.qmatrix.data
+            ):
+                if val == 0.0:
+                    continue
+                builder.add_quadratic(val, self.qvars[row], self.qvars[col])
+        for v1, v2, coef in zip(self.qvars1, self.qvars2, self.qcoefficients):
+            builder.add_quadratic(coef, v1, v2)
+        for var, coef in zip(self.vars, self.coefficients):
+            builder.add_linear(coef, var)
+        builder.add_constant(self.constant)
+        return builder.build()
+
+    def __repr__(self):
+        return f"<cuopt.QuadraticExpression: {self}>"
+
 
 def _quadratic_expression_to_qcmatrix(expr, rhs):
     """Build QCMATRIX COO data for a quadratic row ``expr`` sense ``rhs``.
@@ -1280,6 +1429,17 @@ class LinearExpression:
                 expr = self - other
                 return Constraint(expr, EQ, 0.0)
 
+    def __str__(self):
+        return _format_linear(
+            self.vars,
+            self.coefficients,
+            self.constant,
+            max_terms=_MAX_DISPLAY_TERMS,
+        )
+
+    def __repr__(self):
+        return f"<cuopt.LinearExpression: {self}>"
+
 
 class Constraint:
     """
@@ -1341,7 +1501,12 @@ class Constraint:
             self.rhs_value = rhs_value
             self.RHS = rhs_value
             self.vindex_coeff_dict = {}
-            self.vars = expr.vars
+            # expr.vars holds only the linear terms; id() because Variable
+            # overrides __eq__ and is unhashable.
+            seen = {}
+            for var in (*expr.vars, *expr.qvars1, *expr.qvars2, *expr.qvars):
+                seen.setdefault(id(var), var)
+            self.vars = list(seen.values())
             return
 
         self.is_quadratic = False
@@ -1396,6 +1561,28 @@ class Constraint:
         )
 
         return self.RHS - lhs
+
+    def __str__(self):
+        # Rendered from the data the constraint stores for the solver, so
+        # the output is normalized: duplicate terms are merged and any
+        # expression constant is folded into the right-hand side.
+        builder = _ExprBuilder(max_terms=_MAX_DISPLAY_TERMS)
+        index_to_var = {v.index: v for v in self.vars}
+        if self.is_quadratic:
+            for row, col, val in zip(self.rows, self.cols, self.vals):
+                builder.add_quadratic(
+                    val, index_to_var[row], index_to_var[col]
+                )
+            for idx, val in zip(self.linear_indices, self.linear_values):
+                builder.add_linear(val, index_to_var[idx])
+        else:
+            for idx, coeff in self.vindex_coeff_dict.items():
+                builder.add_linear(coeff, index_to_var[idx])
+        return f"{builder.build()} {CType(self.Sense).symbol} {self.RHS}"
+
+    def __repr__(self):
+        name = self.ConstraintName if self.ConstraintName else "<unnamed>"
+        return f"<cuopt.Constraint '{name}': {self}>"
 
 
 class Problem:
@@ -1760,9 +1947,15 @@ class Problem:
                 )
             if isinstance(coeffs, dict):
                 coeffs = coeffs.items()
+            new_vars = []
             for var, coeff in coeffs:
                 idx = var.index
+                if idx not in constr.vindex_coeff_dict:
+                    new_vars.append(var)
                 constr.vindex_coeff_dict[idx] = coeff
+            if new_vars:
+                # constr.vars aliases the expression's list; rebind it.
+                constr.vars = constr.vars + new_vars
             if rhs is not None:
                 constr.RHS = rhs
         else:
@@ -2223,3 +2416,54 @@ class Problem:
         # Post Solve
         self.populate_solution(solution)
         return solution
+
+    def __repr__(self):
+        name = self.Name if self.Name else "<unnamed>"
+        return (
+            f"<cuopt.Problem '{name}' "
+            f"({len(self.vars)} vars, {len(self.constrs)} constrs, "
+            f"IsMIP={self.IsMIP})>"
+        )
+
+    def __str__(self):
+        lines = []
+        name = self.Name if self.Name else "<unnamed>"
+        lines.append(f"Problem: {name}")
+        sense_str = "MINIMIZE" if self.ObjSense == MINIMIZE else "MAXIMIZE"
+        lines.append(f"  Objective: {sense_str}")
+
+        n_cont = 0
+        n_int = 0
+        n_semi = 0
+        for v in self.vars:
+            t = v.VariableType
+            if isinstance(t, (bytes, bytearray)):
+                t = t.decode()
+            if t in ("I", VType.INTEGER):
+                n_int += 1
+            elif t in ("S", VType.SEMI_CONTINUOUS):
+                n_semi += 1
+            else:
+                n_cont += 1
+        lines.append(
+            f"  Variables: {len(self.vars)} "
+            f"(continuous={n_cont}, integer={n_int}, "
+            f"semi-continuous={n_semi})"
+        )
+
+        n_linear = sum(1 for c in self.constrs if not c.is_quadratic)
+        n_quad = sum(1 for c in self.constrs if c.is_quadratic)
+        lines.append(
+            f"  Constraints: {len(self.constrs)} "
+            f"(linear={n_linear}, quadratic={n_quad})"
+        )
+        lines.append(f"  Non-zeros: {self.NumNZs}")
+
+        if self.solved:
+            status = self.Status
+            if hasattr(status, "name"):
+                status = status.name
+            lines.append(f"  Status: {status}")
+            lines.append(f"  Objective value: {self.ObjValue}")
+
+        return "\n".join(lines)

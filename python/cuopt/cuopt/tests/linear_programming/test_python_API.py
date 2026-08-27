@@ -18,7 +18,9 @@ from cuopt.linear_programming.problem import (
     MINIMIZE,
     SEMI_CONTINUOUS,
     CType,
+    LinearExpression,
     Problem,
+    Variable,
     VType,
     sense,
     QuadraticExpression,
@@ -158,6 +160,43 @@ def test_constraint_duplicate_terms_slack():
     assert c.getCoefficient(x) == 12
     x.Value = 1.0
     assert c.compute_slack() == pytest.approx(6.0)
+
+
+def test_updateConstraint_tracks_new_variables():
+    """Variables added via updateConstraint end up in Constraint.vars."""
+    prob = Problem()
+    x1 = prob.addVariable(name="x1")
+    x2 = prob.addVariable(name="x2")
+    c = prob.addConstraint(2 * x1 <= 10)
+    assert [v.index for v in c.vars] == [0]
+
+    prob.updateConstraint(c, coeffs=[(x2, 4.0)])
+    assert [v.index for v in c.vars] == [0, 1]
+    x1.Value = 1.0
+    x2.Value = 2.0
+    assert c.compute_slack() == pytest.approx(0.0)
+
+
+def test_updateConstraint_does_not_mutate_expression():
+    """The expression a constraint was built from is left unchanged."""
+    prob = Problem()
+    a = prob.addVariable(name="a")
+    b = prob.addVariable(name="b")
+    expr = 2 * a
+    c = prob.addConstraint(expr <= 10)
+    prob.updateConstraint(c, coeffs=[(b, 1.0)])
+    assert len(expr.vars) == 1
+    assert len(expr.coefficients) == 1
+
+
+def test_constraint_vars_includes_quadratic_only_variables():
+    """Variables that appear only in quadratic terms are in Constraint.vars."""
+    prob = Problem()
+    x = prob.addVariable(name="x")
+    y = prob.addVariable(name="y")
+    c = prob.addConstraint(x * x + 2 * x * y <= 4)
+    assert c.is_quadratic
+    assert [v.index for v in c.vars] == [0, 1]
 
 
 def test_semi_continuous_variable():
@@ -851,3 +890,193 @@ def test_quadratic_matrix_2():
     assert x2.getValue() == pytest.approx(0.0000000, abs=1e-3)
     assert x3.getValue() == pytest.approx(0.1092896, abs=1e-3)
     assert problem.ObjValue == pytest.approx(3.715847, abs=1e-3)
+
+
+def test_str_and_repr():
+    """Verify algebraic __str__ and detailed __repr__ for LP API classes."""
+    prob = Problem("str_repr_test")
+
+    # === Variable ===
+    x = prob.addVariable(lb=0.0, ub=10.0, vtype=VType.CONTINUOUS, name="x")
+    y = prob.addVariable(lb=0.0, ub=5.0, vtype=VType.INTEGER, name="y")
+    z = prob.addVariable()
+
+    # __str__: with name returns the name
+    assert str(x) == "x"
+    assert str(y) == "y"
+    # __str__: without name falls back to C{index}
+    assert str(z) == "C2"
+    # __str__: outside a problem there is neither name nor index
+    assert str(Variable()).startswith("<cuopt.Variable '' (index=-1), ")
+
+    # __repr__: detailed summary
+    r = repr(x)
+    assert "cuopt.Variable" in r
+    assert "'x'" in r
+    assert "index=0" in r
+    assert "type=CONTINUOUS" in r
+    assert "bounds=[0.0, 10.0]" in r
+    assert "value=nan" in r
+
+    r = repr(y)
+    assert "type=INTEGER" in r
+    assert "bounds=[0.0, 5.0]" in r
+
+    r = repr(z)
+    assert "'C2'" in r
+    assert "index=2" in r
+
+    # === LinearExpression ===
+    expr1 = 2 * x + 3 * y
+    expr2 = expr1 - 5
+    expr3 = -x + 2.5
+
+    # __str__
+    assert str(expr1) == "2.0 * x + 3.0 * y"
+    assert str(expr2) == "2.0 * x + 3.0 * y - 5.0"
+    assert str(expr3) == "-x + 2.5"
+    # Empty expression collapses to 0.0
+    assert str(LinearExpression([], [], 0.0)) == "0.0"
+    # Constant-only expression
+    assert str(LinearExpression([], [], 3.0)) == "3.0"
+    assert str(LinearExpression([], [], -3.0)) == "-3.0"
+
+    # __repr__
+    assert repr(expr1) == "<cuopt.LinearExpression: 2.0 * x + 3.0 * y>"
+
+    # === QuadraticExpression ===
+    qexpr1 = x * x
+    qexpr2 = qexpr1 + 2 * x * y + 3 * x
+    qexpr3 = -x * x + 0.5 * y * y + x * y
+
+    # __str__
+    assert str(qexpr1) == "x^2"
+    assert str(qexpr2) == "x^2 + 2.0 * x * y + 3.0 * x"
+    assert str(qexpr3) == "-x^2 + 0.5 * y^2 + x * y"
+    # Empty quadratic expression
+    assert str(QuadraticExpression()) == "0.0"
+
+    # __str__: two distinct variables sharing a name are not a square
+    dup_prob = Problem()
+    x_a = dup_prob.addVariable(name="x")
+    x_b = dup_prob.addVariable(name="x")
+    assert str(x_a * x_b) == "x * x"
+    assert str(x_a * x_a) == "x^2"
+
+    # __repr__
+    assert repr(qexpr1) == "<cuopt.QuadraticExpression: x^2>"
+
+    # === Constraint ===
+    c1 = 2 * x + 3 * y <= 10
+    c2 = x - y >= 0
+    c3 = x + 1 == 5
+    prob.addConstraint(c1, name="c1")
+    prob.addConstraint(c2, name="c2")
+    prob.addConstraint(c3, name="c3")
+
+    # __str__: shows the normalized form the solver holds (duplicate terms
+    # merged, expression constants folded into the right-hand side)
+    assert str(c1) == "2.0 * x + 3.0 * y <= 10.0"
+    assert str(c2) == "x - y >= 0.0"
+    assert str(c3) == "x == 4.0"
+
+    # __str__: unnamed constraint
+    c_anon = 2 * x + 3 * y <= 10
+    assert "2.0 * x + 3.0 * y <= 10.0" in str(c_anon)
+
+    # __str__: duplicate terms are merged
+    c_dup = 2 * x + 3 * x <= 5
+    assert str(c_dup) == "5.0 * x <= 5.0"
+
+    # __str__: quadratic constraint rendered from its QCMATRIX data
+    c_quad = x * x + 2 * x * y <= 4
+    assert str(c_quad) == "x^2 + 2.0 * x * y <= 4.0"
+
+    # __str__: reflects updateConstraint (no stale expression data)
+    prob_upd = Problem("upd_test")
+    a = prob_upd.addVariable(name="a")
+    b = prob_upd.addVariable(name="b")
+    c_upd = prob_upd.addConstraint(2 * a + 3 * b <= 10, name="c_upd")
+    prob_upd.updateConstraint(c_upd, coeffs=[(a, 7.0)], rhs=20.0)
+    assert str(c_upd) == "7.0 * a + 3.0 * b <= 20.0"
+    # __str__: variable introduced by updateConstraint
+    c_new = prob_upd.addConstraint(2 * a <= 10, name="c_new")
+    prob_upd.updateConstraint(c_new, coeffs=[(b, 4.0)])
+    assert str(c_new) == "2.0 * a + 4.0 * b <= 10.0"
+
+    # __repr__
+    assert repr(c1) == "<cuopt.Constraint 'c1': 2.0 * x + 3.0 * y <= 10.0>"
+    assert repr(c2) == "<cuopt.Constraint 'c2': x - y >= 0.0>"
+    assert repr(c3) == "<cuopt.Constraint 'c3': x == 4.0>"
+
+    # === Problem ===
+    # __repr__
+    r = repr(prob)
+    assert "cuopt.Problem" in r
+    assert "str_repr_test" in r
+    assert "3 vars" in r
+    assert "3 constrs" in r
+    assert "IsMIP=True" in r  # y is integer
+
+    # __str__: before solve
+    s = str(prob)
+    assert "str_repr_test" in s
+    assert "MINIMIZE" in s
+    assert "Variables: 3" in s
+    assert "continuous=2" in s
+    assert "integer=1" in s
+    assert "semi-continuous=0" in s
+    assert "Constraints: 3" in s
+    assert "linear=3" in s
+    assert "quadratic=0" in s
+    assert "Non-zeros: 5" in s
+    # No status before solve
+    assert "Status:" not in s
+    assert "Objective value:" not in s
+
+    # Unnamed problem
+    empty_prob = Problem()
+    assert "Problem: <unnamed>" in str(empty_prob)
+    assert "<cuopt.Problem '<unnamed>'" in repr(empty_prob)
+
+
+def test_problem_str_after_solve():
+    """Problem.__str__ reports status and objective value once solved."""
+    prob = Problem("solved")
+    x = prob.addVariable(lb=0.0, ub=1.0, name="x")
+    prob.setObjective(x, sense=MINIMIZE)
+    settings = SolverSettings()
+    settings.set_parameter("time_limit", 5)
+    prob.solve(settings)
+    s = str(prob)
+    assert "Status: Optimal" in s
+    assert f"Objective value: {prob.ObjValue}" in s
+
+
+def test_str_truncation_large_expression():
+    """Expressions past the display cap end in a "more terms" marker."""
+    prob = Problem()
+    xs = [prob.addVariable(name=f"x{i}") for i in range(12)]
+
+    expr = xs[0] + xs[1]
+    for x in xs[2:]:
+        expr = expr + x
+    assert str(expr) == (
+        "x0 + x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9 + ... (2 more terms)"
+    )
+    assert repr(expr) == f"<cuopt.LinearExpression: {expr}>"
+
+    at_cap = xs[0] + xs[1]
+    for x in xs[2:10]:
+        at_cap = at_cap + x
+    assert str(at_cap) == "x0 + x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9"
+    assert str(at_cap + xs[10]).endswith("+ x9 + ... (1 more term)")
+
+    qexpr = xs[0] * xs[0]
+    for x in xs[1:]:
+        qexpr = qexpr + x * x
+    assert str(qexpr) == (
+        "x0^2 + x1^2 + x2^2 + x3^2 + x4^2 + x5^2 + x6^2 + x7^2 + x8^2 + x9^2"
+        " + ... (2 more terms)"
+    )
+    assert repr(qexpr) == f"<cuopt.QuadraticExpression: {qexpr}>"
