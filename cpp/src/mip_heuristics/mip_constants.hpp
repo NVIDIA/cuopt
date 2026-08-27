@@ -10,6 +10,7 @@
 #include <cuopt/mathematical_optimization/constants.h>
 
 #include <utilities/pcgenerator.hpp>
+#include <utilities/splitmix64.hpp>
 
 #include <cstdint>
 #include <random>
@@ -53,8 +54,8 @@ namespace cuopt::mathematical_optimization::mip {
 // compile-time-fixed constant to keep seeding reproducible across runs. Components that spawn a
 // variable number of parallel workers (e.g. local-search CPU-FJ climbers) additionally offset by
 // their own fixed slot index on top of the relevant id below.
-enum class mip_rng_component_id_t : uint32_t {
-  diversity_manager = 0,
+enum class mip_rng_component_id_t : uint64_t {
+  diversity_manager = 10000,
   population,
   local_search,
   feasibility_pump,
@@ -84,17 +85,29 @@ inline int64_t mip_resolve_base_seed(int64_t requested_seed)
 
 // Derives a well-mixed, reproducible 64-bit seed from the solve's base seed plus a fixed logical
 // identity, for owners that need a raw seed value (e.g. to hand to std::mt19937 or a multi-armed
-// bandit) rather than owning a cuopt::pcgenerator_t directly. `index` further distinguishes
-// multiple independent draws made by the same component (e.g. one per parallel worker slot).
-inline int64_t mip_derive_seed(int64_t base_seed,
-                               mip_rng_component_id_t component_id,
-                               uint32_t index = 0)
+// bandit) rather than owning a PCG-family generator built from (seed, stream) -- see
+// mip_derive_stream for the matching stream value. `index` further distinguishes multiple
+// independent draws made by the same component (e.g. one per parallel worker slot).
+inline uint64_t mip_derive_seed(uint64_t base_seed,
+                                mip_rng_component_id_t component_id,
+                                uint64_t index = 0)
 {
-  cuopt::pcgenerator_t gen(
-    static_cast<uint64_t>(base_seed) + cuopt::pcgenerator_t::default_seed +
-      static_cast<uint64_t>(component_id),
-    cuopt::pcgenerator_t::default_stream ^ (static_cast<uint64_t>(component_id) + index));
-  return gen.next_i64();
+  splitmix64_t seed_gen(base_seed + static_cast<uint64_t>(component_id) + index);
+  return seed_gen.next_u64();
+}
+
+// Derives a well-mixed, reproducible 64-bit stream/subsequence value from the solve's base seed
+// plus a fixed logical identity, for owners that construct their own PCG-family generator
+// (raft::PCGenerator, cuopt::pcgenerator_t) and need both a seed (mip_derive_seed) and an
+// independent stream. `index` further distinguishes multiple independent draws made by the same
+// component (e.g. one per parallel worker slot); pass the same `index` to mip_derive_seed and
+// mip_derive_stream to get the matching seed/stream pair for one generator instance.
+inline uint64_t mip_derive_stream(uint64_t base_seed,
+                                  mip_rng_component_id_t component_id,
+                                  uint64_t index = 0)
+{
+  splitmix64_t seed_gen(base_seed + static_cast<uint64_t>(component_id) + index);
+  return seed_gen.generate_stream();
 }
 
 }  // namespace cuopt::mathematical_optimization::mip

@@ -18,7 +18,7 @@
 namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
-lb_bounds_repair_t<i_t, f_t>::lb_bounds_repair_t(const raft::handle_t* handle_ptr, int64_t seed)
+lb_bounds_repair_t<i_t, f_t>::lb_bounds_repair_t(const raft::handle_t* handle_ptr, uint64_t seed)
   : candidates(handle_ptr),
     best_bounds(handle_ptr),
     cstr_violations_up(0, handle_ptr->get_stream()),

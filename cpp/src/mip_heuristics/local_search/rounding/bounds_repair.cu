@@ -22,7 +22,7 @@ namespace cuopt::mathematical_optimization::mip {
 template <typename i_t, typename f_t>
 bounds_repair_t<i_t, f_t>::bounds_repair_t(const problem_t<i_t, f_t>& pb,
                                            bound_presolve_t<i_t, f_t>& bound_presolve_,
-                                           int64_t seed)
+                                           uint64_t seed)
   : bound_presolve(bound_presolve_),
     candidates(pb.handle_ptr),
     best_bounds(pb.handle_ptr),

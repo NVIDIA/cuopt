@@ -115,7 +115,7 @@ class bounds_repair_t {
  public:
   bounds_repair_t(const problem_t<i_t, f_t>& p,
                   bound_presolve_t<i_t, f_t>& bound_presolve,
-                  int64_t seed);
+                  uint64_t seed);
   void resize(const problem_t<i_t, f_t>& problem);
   void reset();
   f_t get_ii_violation(problem_t<i_t, f_t>& problem);

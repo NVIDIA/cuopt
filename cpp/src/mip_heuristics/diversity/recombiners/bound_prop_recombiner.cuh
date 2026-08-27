@@ -152,7 +152,7 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
     if (n_different_vars > (i_t)bp_recombiner_config_t::max_n_of_vars_from_other) {
       fixed_from_guiding = n_vars_from_other - bp_recombiner_config_t::max_n_of_vars_from_other;
       n_vars_from_other  = bp_recombiner_config_t::max_n_of_vars_from_other;
-      thrust::default_random_engine g{(unsigned int)this->rng.next_i64()};
+      thrust::default_random_engine g{this->rng.next_u32()};
       thrust::shuffle(a.handle_ptr->get_thrust_policy(),
                       this->remaining_indices.data(),
                       this->remaining_indices.data() + n_different_vars,

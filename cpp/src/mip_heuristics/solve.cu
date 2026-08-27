@@ -295,7 +295,8 @@ mip_solution_t<i_t, f_t> run_mip_solver(
         *problem.original_problem_ptr,
         settings.get_tolerances(),
         incumbent_callback,
-        mip::mip_derive_seed(solver.context.base_seed, mip::mip_rng_component_id_t::early_cpufj));
+        static_cast<int64_t>(mip::mip_derive_seed(solver.context.base_seed,
+                                                  mip::mip_rng_component_id_t::early_cpufj)));
       // Convert initial_upper_bound from user-space to the CPUFJ's solver-space (papilo-presolved).
       // problem.get_solver_obj_from_user_obj uses the papilo offset/scale (matching the CPUFJ).
       if (std::isfinite(initial_upper_bound)) {
@@ -550,7 +551,8 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
         op_problem,
         settings.get_tolerances(),
         early_fj_callback,
-        mip::mip_derive_seed(early_fj_base_seed, mip::mip_rng_component_id_t::early_cpufj));
+        static_cast<int64_t>(
+          mip::mip_derive_seed(early_fj_base_seed, mip::mip_rng_component_id_t::early_cpufj)));
       early_cpufj->start();
       CUOPT_LOG_DEBUG("Started early CPUFJ on original problem");
 

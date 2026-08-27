@@ -69,9 +69,8 @@ class recombiner_t {
                const raft::handle_t* handle_ptr,
                mip_rng_component_id_t component_id)
     : context(context_),
-      rng(static_cast<uint64_t>(context.base_seed) + cuopt::pcgenerator_t::default_seed +
-            static_cast<uint64_t>(component_id),
-          cuopt::pcgenerator_t::default_stream ^ static_cast<uint64_t>(component_id)),
+      rng(mip_derive_seed(context.base_seed, component_id),
+          mip_derive_stream(context.base_seed, component_id)),
       remaining_indices(n_integer_vars, handle_ptr->get_stream()),
       n_remaining(handle_ptr->get_stream())
   {
