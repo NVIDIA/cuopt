@@ -99,13 +99,40 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::single_pass(i_t start,
 }
 
 template <typename i_t, typename f_t>
+void bound_flipping_ratio_test_t<i_t, f_t>::determine_flips(
+  f_t step_length, i_t entering_index, std::vector<i_t>& flip_indices) const
+{
+  // The piecewise-linear model below assumes that a variable flips bounds as soon as
+  // its reduced cost crosses zero. In practice, small changes between iterations can
+  // make a reduced cost oscillate around zero, causing excessive bound flips and
+  // cycling. We therefore flip only after the violation exceeds dual_tol / 10.
+  // A bounded variable l_j <= x_j <= u_j contributes l_j*z_j to the dual objective
+  // when z_j >= 0 and u_j*z_j when z_j < 0. If x_j = l_j and
+  // -dual_tol/10 <= z_j < 0, the model uses u_j*z_j while the unflipped state uses
+  // l_j*z_j. Their difference is (u_j - l_j)*|z_j|, bounded by
+  // (u_j - l_j)*dual_tol/10. For multiple unflipped variables, the discrepancy is
+  // bounded by sum_j (u_j - l_j)*dual_tol/10.
+  const f_t flip_tol = settings_.dual_tol / 10;
+  for (const i_t j : delta_z_indices_) {
+    if (j == entering_index || !bounded_variables_[j]) { continue; }
+    const f_t new_z = z_[j] + step_length * delta_z_[j];
+    if ((vstatus_[j] == variable_status_t::NONBASIC_LOWER && new_z < -flip_tol) ||
+        (vstatus_[j] == variable_status_t::NONBASIC_UPPER && new_z > flip_tol)) {
+      flip_indices.push_back(j);
+    }
+  }
+}
+
+template <typename i_t, typename f_t>
 i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
-                                                               i_t& nonbasic_entering)
+                                                               i_t& nonbasic_entering,
+                                                               std::vector<i_t>& flip_indices)
 {
   const i_t m            = m_;
   const i_t n            = n_;
   const i_t nz           = delta_z_indices_.size();
   constexpr bool verbose = false;
+  flip_indices.clear();
 
   // Compute the initial set of breakpoints
   std::vector<i_t> indicies(nz);
@@ -154,6 +181,7 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
     }
     num_buckets_used_   = 0;
     step_length_result_ = step_length;
+    determine_flips(step_length, entering_index, flip_indices);
     return entering_index;
   }
 
@@ -254,7 +282,8 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
 
   // This is O( log10(max_step_length/min_step_length) * num_breakpoints)
   t0 = tic();
-  while (total_slope >= 0.0 && coarse_threshold <= max_step_length && !found_unbounded) {
+  while (total_slope >= 0.0 && coarse_threshold <= max_step_length &&
+         scan_start < num_breakpoints && !found_unbounded) {
     for (i_t h = scan_start; h < num_breakpoints; ++h) {
       const i_t k = candidates[h];
       if (ratios[k] <= coarse_threshold) {
@@ -399,6 +428,7 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
     bucket_selected_    = -1;
     step_length_result_ = step_length;
     selected_is_slope_breaker_ = false;
+    determine_flips(step_length, entering_index, flip_indices);
     return entering_index;
   }
   step_length       = ratios[entering_k];
@@ -424,6 +454,7 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
     }
   }
   step_length_result_ = step_length;
+  determine_flips(step_length, entering_index, flip_indices);
 
   return entering_index;
 

@@ -53,7 +53,9 @@ class bound_flipping_ratio_test_t {
   {
   }
 
-  i_t compute_step_length(f_t& step_length, i_t& nonbasic_entering);
+  i_t compute_step_length(f_t& step_length,
+                          i_t& nonbasic_entering,
+                          std::vector<i_t>& flip_indices);
   f_t work_estimate() const { return work_estimate_; }
 
   // Timing fields (filled by compute_step_length)
@@ -84,6 +86,9 @@ class bound_flipping_ratio_test_t {
                   i_t& nonbasic_entering,
                   i_t& entering_index,
                   f_t& max_val);
+  void determine_flips(f_t step_length,
+                       i_t entering_index,
+                       std::vector<i_t>& flip_indices) const;
   const std::vector<f_t>& lower_;
   const std::vector<f_t>& upper_;
   const std::vector<uint8_t>& bounded_variables_;

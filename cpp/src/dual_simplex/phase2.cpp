@@ -1232,30 +1232,19 @@ i_t phase2_ratio_test(const lp_problem_t<i_t, f_t>& lp,
 
 template <typename i_t, typename f_t>
 i_t flip_bounds(const lp_problem_t<i_t, f_t>& lp,
-                const simplex_solver_settings_t<i_t, f_t>& settings,
-                const std::vector<uint8_t>& bounded_variables,
-                const std::vector<f_t>& objective,
-                const std::vector<f_t>& z,
-                const std::vector<i_t>& delta_z_indices,
-                const std::vector<i_t>& nonbasic_list,
-                i_t entering_index,
-                std::vector<variable_status_t>& vstatus,
+                 const std::vector<uint8_t>& bounded_variables,
+                 const std::vector<i_t>& flip_indices,
+                 std::vector<variable_status_t>& vstatus,
                 std::vector<f_t>& delta_x,
                 std::vector<i_t>& mark,
-                std::vector<f_t>& atilde,
-                std::vector<i_t>& atilde_index,
-                f_t& work_estimate)
+                 std::vector<f_t>& atilde,
+                 std::vector<i_t>& atilde_index,
+                 f_t& work_estimate)
 {
   i_t num_flipped = 0;
-  for (i_t k = 0; k < delta_z_indices.size(); ++k) {
-    const i_t j = delta_z_indices[k];
-    if (j == entering_index) { continue; }
-    if (!bounded_variables[j]) { continue; }
-    // x_j is now a nonbasic bounded variable that will not enter the basis this
-    // iteration
-    const f_t dual_tol =
-      settings.dual_tol;  // lower to 1e-7 or less will cause 25fv47 and d2q06c to cycle
-    if (vstatus[j] == variable_status_t::NONBASIC_LOWER && z[j] < -dual_tol) {
+  for (const i_t j : flip_indices) {
+    assert(bounded_variables[j]);
+    if (vstatus[j] == variable_status_t::NONBASIC_LOWER) {
       const f_t delta                = lp.upper[j] - lp.lower[j];
       const size_t atilde_start_size = atilde_index.size();
       scatter_dense(lp.A, j, -delta, atilde, mark, atilde_index);
@@ -1263,12 +1252,9 @@ i_t flip_bounds(const lp_problem_t<i_t, f_t>& lp,
                        4 * (lp.A.col_start[j + 1] - lp.A.col_start[j]) + 10;
       delta_x[j] += delta;
       vstatus[j] = variable_status_t::NONBASIC_UPPER;
-#ifdef BOUND_FLIP_DEBUG
-      settings.log.printf(
-        "Flipping nonbasic %d from lo %e to up %e. z %e\n", j, lp.lower[j], lp.upper[j], z[j]);
-#endif
       num_flipped++;
-    } else if (vstatus[j] == variable_status_t::NONBASIC_UPPER && z[j] > dual_tol) {
+    } else {
+      assert(vstatus[j] == variable_status_t::NONBASIC_UPPER);
       const f_t delta                = lp.lower[j] - lp.upper[j];
       const size_t atilde_start_size = atilde_index.size();
       scatter_dense(lp.A, j, -delta, atilde, mark, atilde_index);
@@ -1276,14 +1262,10 @@ i_t flip_bounds(const lp_problem_t<i_t, f_t>& lp,
                        4 * (lp.A.col_start[j + 1] - lp.A.col_start[j]) + 10;
       delta_x[j] += delta;
       vstatus[j] = variable_status_t::NONBASIC_LOWER;
-#ifdef BOUND_FLIP_DEBUG
-      settings.log.printf(
-        "Flipping nonbasic %d from up %e to lo %e. z %e\n", j, lp.upper[j], lp.lower[j], z[j]);
-#endif
       num_flipped++;
     }
   }
-  work_estimate += 4 * delta_z_indices.size();
+  work_estimate += 2 * flip_indices.size();
   return num_flipped;
 }
 
@@ -3629,6 +3611,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
     f_t step_length;
     i_t entering_index          = -1;
     i_t nonbasic_entering_index = -1;
+    std::vector<i_t> flip_indices;
     const bool harris_ratio     = settings.use_harris_ratio;
     const bool bound_flip_ratio = settings.use_bound_flip_ratio;
     {
@@ -3661,7 +3644,8 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
                                                    delta_z,
                                                    delta_z_indices,
                                                    nonbasic_mark);
-        entering_index = bfrt.compute_step_length(step_length, nonbasic_entering_index);
+        entering_index = bfrt.compute_step_length(
+          step_length, nonbasic_entering_index, flip_indices);
         phase2_work_estimate += bfrt.work_estimate();
         if (entering_index == RATIO_TEST_NUMERICAL_ISSUES) {
           settings.log.printf("Numerical issues encountered in ratio test.\n");
@@ -3835,20 +3819,16 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
 
     timers.start_timer(phase2_work_estimate + ft.work_estimate());
     // Update primal variable
-    const i_t num_flipped = phase2::flip_bounds(lp,
-                                                settings,
-                                                bounded_variables,
-                                                objective,
-                                                z,
-                                                delta_z_indices,
-                                                nonbasic_list,
-                                                entering_index,
-                                                vstatus,
-                                                delta_x_flip,
-                                                atilde_mark,
-                                                atilde,
-                                                atilde_index,
-                                                phase2_work_estimate);
+    const i_t num_flipped = bound_flip_ratio ? phase2::flip_bounds(lp,
+                                                                   bounded_variables,
+                                                                   flip_indices,
+                                                                   vstatus,
+                                                                   delta_x_flip,
+                                                                   atilde_mark,
+                                                                   atilde,
+                                                                   atilde_index,
+                                                                   phase2_work_estimate)
+                                               : 0;
 
     timers.flip_time += timers.stop_timer(phase2_work_estimate + ft.work_estimate());
     total_bound_flips += num_flipped;
