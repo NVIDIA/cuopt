@@ -4015,6 +4015,97 @@ void barrier_solver_t<i_t, f_t>::compute_residual_norms_mu_and_objective(
   const f_t quad_objective = (data.Q.n > 0) ? 0.5 * rh.xqx() : f_t(0);
   primal_objective         = rh.cx() + quad_objective;
   dual_objective           = rh.by() - rh.uv() - quad_objective;
+
+#ifdef CHECK_OBJECTIVE_GAP
+  rmm::device_scalar<f_t> d_xz(stream_view_);
+  rmm::device_scalar<f_t> d_wv(stream_view_);
+  rmm::device_scalar<f_t> d_rdx(stream_view_);
+  rmm::device_scalar<f_t> d_rpy(stream_view_);
+  rmm::device_scalar<f_t> d_rwv(stream_view_);
+  rmm::device_scalar<f_t> d_p(stream_view_);
+  rmm::device_scalar<f_t> d_y(stream_view_);
+  RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
+                                                  data.d_x_.size(),
+                                                  data.d_x_.data(),
+                                                  1,
+                                                  data.d_z_.data(),
+                                                  1,
+                                                  d_xz.data(),
+                                                  stream_view_));
+  RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
+                                                  data.d_w_.size(),
+                                                  data.d_w_.data(),
+                                                  1,
+                                                  data.d_v_.data(),
+                                                  1,
+                                                  d_wv.data(),
+                                                  stream_view_));
+  RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
+                                                  data.d_x_.size(),
+                                                  data.d_x_.data(),
+                                                  1,
+                                                  data.d_dual_residual_.data(),
+                                                  1,
+                                                  d_rdx.data(),
+                                                  stream_view_));
+  RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
+                                                  data.d_y_.size(),
+                                                  data.d_y_.data(),
+                                                  1,
+                                                  data.d_primal_residual_.data(),
+                                                  1,
+                                                  d_rpy.data(),
+                                                  stream_view_));
+  RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
+                                                  data.d_bound_residual_.size(),
+                                                  data.d_bound_residual_.data(),
+                                                  1,
+                                                  data.d_v_.data(),
+                                                  1,
+                                                  d_rwv.data(),
+                                                  stream_view_));
+  RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
+                                                  data.d_primal_residual_.size(),
+                                                  data.d_primal_residual_.data(),
+                                                  1,
+                                                  data.d_primal_residual_.data(),
+                                                  1,
+                                                  d_p.data(),
+                                                  stream_view_));
+  RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
+                                                  data.d_y_.size(),
+                                                  data.d_y_.data(),
+                                                  1,
+                                                  data.d_y_.data(),
+                                                  1,
+                                                  d_y.data(),
+                                                  stream_view_));
+  f_t xz  = d_xz.value(stream_view_);
+  f_t wv  = d_wv.value(stream_view_);
+  f_t rdx = d_rdx.value(stream_view_);
+  f_t rpy = d_rpy.value(stream_view_);
+  f_t rwv = d_rwv.value(stream_view_);
+  f_t p   = d_p.value(stream_view_);
+  f_t y   = d_y.value(stream_view_);
+
+  stream_view_.synchronize();
+
+  f_t objective_gap_1 = primal_objective - dual_objective;
+  f_t objective_gap_2 = xz + wv + rdx - rpy + rwv;
+
+  settings.log.printf("Objective gap 1: %.2e, Objective gap 2: %.2e Diff: %.2e\n",
+                      objective_gap_1,
+                      objective_gap_2,
+                      std::abs(objective_gap_1 - objective_gap_2));
+  settings.log.printf(
+    "Objective - Complementarity: %.2e, rdx: %.2e, rpy: %.2e, rwv: %.2e, p: %.2e, y: %.2e\n",
+    std::abs(objective_gap_1 - (xz + wv)),
+    rdx,
+    rpy,
+    rwv,
+    p,
+    y);
+#endif
 }
 
 template <typename i_t, typename f_t>
