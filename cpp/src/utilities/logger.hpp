@@ -316,7 +316,15 @@ inline init_logger_t::init_logger_t(std::string log_file, bool log_to_console, b
     return;
   }
 
-  apply_logger_config(log_file, log_to_console, truncate);
+  try {
+    apply_logger_config(log_file, log_to_console, truncate);
+  } catch (...) {
+    // apply_logger_config clears the sinks before installing the new ones, so a throw part
+    // way through leaves the logger with none at all and every later message is silently
+    // dropped. Put the default sink back before rethrowing.
+    reset_default_logger();
+    throw;
+  }
 
   // Create guard and store weak reference for future instances to find
   auto guard     = std::make_shared<logger_config_guard>();

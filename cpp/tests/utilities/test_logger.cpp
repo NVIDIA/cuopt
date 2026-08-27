@@ -174,6 +174,25 @@ TEST(logger, failed_configure_does_not_wedge_later_ones)
   std::remove(path.c_str());
 }
 
+// Same failure for the image-local entry point: apply_logger_config clears the sinks before
+// installing new ones, so a throw part way through must not leave the logger with none.
+TEST(logger, failed_init_logger_restores_a_sink)
+{
+  const auto unopenable = "/nonexistent-directory-" + std::to_string(unique_id()) + "/x.log";
+  EXPECT_ANY_THROW(cuopt::init_logger_t(unopenable, false, true));
+
+  const auto path = temp_log_path("init_recovered");
+  {
+    scoped_config cfg{path};
+    CUOPT_LOG_ERROR("after_failed_init");
+  }
+
+  EXPECT_NE(read_file(path).find("after_failed_init"), std::string::npos)
+    << "a failed init_logger_t left the logger without sinks";
+
+  std::remove(path.c_str());
+}
+
 // The library's logger is reachable only through the exported entry point. Its messages are
 // not observable here, but configuring it must clear the shared file exactly once.
 TEST(logger, component_logger_truncates_shared_file)
