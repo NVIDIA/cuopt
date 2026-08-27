@@ -19,7 +19,14 @@ import os
 import tempfile
 from pathlib import Path
 
-from .client import CuOptMCPError, describe_connection_error, get_client
+from .client import (
+    CuOptMCPError,
+    describe_connection_error,
+    endpoint,
+    get_client,
+    reset_client,
+    tls_enabled,
+)
 from .schema import known_parameters, settings_schema, validate_settings
 
 # Above this many variables a solution is written to a file instead of
@@ -33,6 +40,11 @@ ZERO_TOL = 1e-9
 
 # At or beyond this magnitude a caller-supplied bound means infinity.
 INFINITY_SENTINEL = 1e30
+
+# A job id no server can have issued. The gRPC service exposes no health or
+# version RPC, so reachability is probed with the cheapest call that still
+# requires a server to answer: a status lookup that must come back NOT_FOUND.
+PROBE_JOB_ID = "00000000-0000-0000-0000-000000000000"
 
 
 def _solution_dir() -> Path:
@@ -291,6 +303,36 @@ def _write_names_file(job_id: str, names) -> str:
     path = _solution_dir() / f"{job_id}.names.json"
     path.write_text(json.dumps([str(v) for v in names]))
     return str(path)
+
+
+def health() -> dict:
+    """Report where this server is pointed and whether that target answers.
+
+    Every other tool needs a model or a job_id, so without this there is no
+    way to check the connection except by submitting work and reading the
+    failure — by which point a caller has already built a model, and may
+    conclude from the error that no server is running anywhere.
+    """
+    host, port = endpoint()
+    info = {"host": host, "port": port, "tls": tls_enabled()}
+    try:
+        get_client().status(PROBE_JOB_ID)
+    except Exception as exc:
+        # The cached channel is process-wide and survives the failure, so a
+        # dead one would keep failing every later call. Drop it here and the
+        # next call redials.
+        reset_client()
+        return {
+            **info,
+            "reachable": False,
+            "error": str(describe_connection_error(exc)),
+        }
+    return {
+        **info,
+        "reachable": True,
+        "note": "This server does not start or stop cuopt_grpc_server; it "
+        "only holds a channel to one.",
+    }
 
 
 def submit(

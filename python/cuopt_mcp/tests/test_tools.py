@@ -43,9 +43,22 @@ class FakeSolution:
 
 
 class FakeClient:
-    def __init__(self, solution=None):
+    def __init__(self, solution=None, status_error=None):
         self.solution = solution
         self.cancelled = []
+        self.status_error = status_error
+        self.probed = []
+
+    def status(self, job_id):
+        self.probed.append(job_id)
+        if self.status_error is not None:
+            raise self.status_error
+        import enum
+
+        class JobStatus(enum.IntEnum):
+            NOT_FOUND = 5
+
+        return JobStatus.NOT_FOUND
 
     def result(self, job_id, variable_names=None):
         return self.solution
@@ -62,8 +75,8 @@ class FakeClient:
 
 @pytest.fixture
 def fake(monkeypatch):
-    def _install(solution=None):
-        stub = FakeClient(solution)
+    def _install(solution=None, status_error=None):
+        stub = FakeClient(solution, status_error)
         monkeypatch.setattr(tools, "get_client", lambda: stub)
         return stub
 
@@ -178,6 +191,48 @@ def test_unreachable_server_message_names_the_endpoint(monkeypatch):
     monkeypatch.setenv("CUOPT_REMOTE_PORT", "50999")
     err = client.describe_connection_error(RuntimeError("UNAVAILABLE"))
     assert "gpu-host:50999" in str(err)
+
+
+def test_unreachable_message_says_to_look_before_starting_a_server():
+    """The advice must not read as 'start one', full stop.
+
+    Told only to start a server, a caller that already has one running
+    elsewhere starts a second. Two servers can share a listen port, after
+    which jobs and result lookups land in different processes.
+    """
+    err = str(client.describe_connection_error(RuntimeError("UNAVAILABLE")))
+    assert "pgrep" in err
+    assert err.index("already running") < err.index("start one with")
+
+
+def test_health_names_the_endpoint_and_probes_it(fake, monkeypatch):
+    monkeypatch.setenv("CUOPT_REMOTE_HOST", "gpu-host")
+    monkeypatch.setenv("CUOPT_REMOTE_PORT", "50999")
+    stub = fake()
+    out = tools.health()
+    assert (out["host"], out["port"]) == ("gpu-host", 50999)
+    assert out["reachable"] is True
+    # A NOT_FOUND answer still proves a server answered.
+    assert stub.probed == [tools.PROBE_JOB_ID]
+
+
+def test_health_reports_unreachable_without_raising(fake, monkeypatch):
+    monkeypatch.setenv("CUOPT_REMOTE_HOST", "gpu-host")
+    monkeypatch.setenv("CUOPT_REMOTE_PORT", "50999")
+    fake(status_error=RuntimeError("failed to connect to all addresses"))
+    out = tools.health()
+    assert out["reachable"] is False
+    assert "gpu-host:50999" in out["error"]
+    assert "pgrep" in out["error"]
+
+
+def test_health_drops_a_dead_channel(fake, monkeypatch):
+    """A cached channel outlives the failure, so every later call would fail."""
+    dropped = []
+    monkeypatch.setattr(tools, "reset_client", lambda: dropped.append(True))
+    fake(status_error=RuntimeError("UNAVAILABLE"))
+    tools.health()
+    assert dropped == [True]
 
 
 # --- JSON model entry point -------------------------------------------
