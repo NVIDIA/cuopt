@@ -25,6 +25,7 @@ jobs:
       - conda-cpp-tests
       - java-build
       - java-static-build
+      - java-static-test
       - java-static-gather
       - conda-python-build
       - conda-python-tests
@@ -524,6 +525,28 @@ jobs:
       script: "ci/build_java_static.sh"
       artifact-name: "cuopt_java_${{ matrix.ARCH }}_cu${{ matrix.CUDA_MAJOR }}"
       file_to_upload: "java/cuopt/classifier-jars/"
+
+  # Runs the full Java suite against each classifier JAR on a GPU, with no libcuopt installed,
+  # so a JAR that loads but computes wrong answers fails here rather than at a user.
+  java-static-test:
+    needs: [java-static-build, java-static-build-matrix]
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    secrets: inherit # zizmor: ignore[secrets-inherit]
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.java-static-build-matrix.outputs.matrix) }}
+    with:
+      build_type: pull-request
+      node_type: "gpu-l4-latest-1"
+      arch: ${{ matrix.ARCH }}
+      container_image: "rapidsai/ci-conda:26.10-latest"
+      script: "ci/test_java_static.sh"
 
   java-static-gather:
     needs: [java-static-build]

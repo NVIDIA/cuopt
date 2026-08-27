@@ -49,6 +49,9 @@ SPDX-License-Identifier: Apache-2.0
     <!-- Directory whose tree is copied into the JAR, carrying the native library for the
          classifier being built. Points at an empty placeholder unless overridden. -->
     <cuopt.native.resources>${project.basedir}/src/main/no-native</cuopt.native.resources>
+    <!-- PackagedJarOriginCheck only means anything when a packaged JAR is on the classpath, so
+         it is excluded here and re-enabled by the packaged-jar-tests profile. -->
+    <cuopt.surefire.excludes>**/PackagedJarOriginCheck.java</cuopt.surefire.excludes>
   </properties>
 
   <dependencies>
@@ -67,6 +70,16 @@ SPDX-License-Identifier: Apache-2.0
       </resource>
     </resources>
     <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.5.2</version>
+        <configuration>
+          <excludes>
+            <exclude>${cuopt.surefire.excludes}</exclude>
+          </excludes>
+        </configuration>
+      </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-jar-plugin</artifactId>
@@ -168,4 +181,47 @@ SPDX-License-Identifier: Apache-2.0
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!--
+      Runs the same tests against an already-packaged classifier JAR rather than the classes
+      built from source. Activate with -Ppackaged-jar-tests -Dcuopt.jar.path=<classifier.jar>.
+
+      Main compilation is skipped so the JAR is the only thing providing the classes and the
+      native libraries; PackagedJarOriginCheck then asserts that is really where they came from.
+    -->
+    <profile>
+      <id>packaged-jar-tests</id>
+      <properties>
+        <maven.main.skip>true</maven.main.skip>
+        <cuopt.surefire.excludes>**/NothingIsExcludedHere.java</cuopt.surefire.excludes>
+      </properties>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <version>3.5.2</version>
+            <configuration>
+              <!-- PackagedJarOriginCheck matches none of surefire's default name patterns, so
+                   it has to be named explicitly alongside them. -->
+              <includes>
+                <include>**/*Test.java</include>
+                <include>**/PackagedJarOriginCheck.java</include>
+              </includes>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+      <dependencies>
+        <dependency>
+          <groupId>com.nvidia.cuopt</groupId>
+          <artifactId>cuopt-packaged</artifactId>
+          <version>${project.version}</version>
+          <scope>system</scope>
+          <systemPath>${cuopt.jar.path}</systemPath>
+        </dependency>
+      </dependencies>
+    </profile>
+  </profiles>
 </project>

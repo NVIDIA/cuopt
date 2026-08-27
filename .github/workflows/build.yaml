@@ -102,6 +102,31 @@ jobs:
 
   # Combines every classifier into one Maven-repository-layout artifact, which is the form a
   # publishing workflow consumes. See rapidsai/build-infra#379.
+  # Runs the full Java suite against each classifier JAR on a GPU, with no libcuopt installed,
+  # so a JAR that loads but computes wrong answers fails here rather than at a user.
+  java-static-test:
+    needs: [java-static-build, java-static-build-matrix]
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    secrets: inherit # zizmor: ignore[secrets-inherit]
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.java-static-build-matrix.outputs.matrix) }}
+    with:
+      build_type: ${{ inputs.build_type || 'branch' }}
+      branch: ${{ inputs.branch }}
+      date: ${{ inputs.date }}
+      sha: ${{ inputs.sha }}
+      node_type: "gpu-l4-latest-1"
+      arch: ${{ matrix.ARCH }}
+      container_image: "rapidsai/ci-conda:26.10-latest"
+      script: "ci/test_java_static.sh"
+
   java-static-gather:
     needs: [java-static-build]
     runs-on: linux-amd64-cpu4

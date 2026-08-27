@@ -39,3 +39,17 @@ cuopt_java_native_resource_dir() {
       ;;
   esac
 }
+
+# Finds the classifier JAR inside a downloaded build artifact, ignoring the sources and javadoc
+# JARs that sit beside it.
+cuopt_java_resolve_artifact_jar() {
+  local artifact_dir="${1:?missing artifact directory}"
+  local jar
+  jar="$(find "${artifact_dir}" -name 'cuopt-*.jar' \
+    ! -name '*-sources.jar' ! -name '*-javadoc.jar' -print -quit)"
+  if [[ -z "${jar}" ]]; then
+    echo "no classifier JAR found under ${artifact_dir}" >&2
+    return 1
+  fi
+  printf '%s\n' "${jar}"
+}
