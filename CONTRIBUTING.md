@@ -157,7 +157,7 @@ cd $CUOPT_HOME
 
 Please install conda if you don't have it already. You can install [miniforge](https://conda-forge.org/download/) or [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install#linux)
 
-**Note:** We recommend using [mamba](https://mamba.readthedocs.io/en/latest/installation/mamba-installation.html) as the package manager for the conda environment. Mamba is faster and more efficient than conda. It's already included if you installed miniforge above; if you installed miniconda instead, it doesn't come bundled — follow the mamba link to install it into your base environment. The commands below use `mamba`; if you don't have it installed, replace `mamba` with `conda`. `conda activate` is used for activation since it works regardless of mamba version or whether `mamba init` has been run — `mamba activate` is also fine if your setup already supports it.
+**Note:** We recommend using [mamba](https://mamba.readthedocs.io/en/latest/installation/mamba-installation.html) as the package manager for the conda environment. Mamba is faster and more efficient than conda. It's already included if you installed miniforge above; if you installed miniconda instead, it doesn't come bundled — follow the mamba link to install it into your base environment. The commands below use `mamba`; if you don't have it installed, replace `mamba` with `conda`.
 
 ```bash
 # create the conda environment (assuming in base `cuopt` directory)
@@ -165,7 +165,7 @@ Please install conda if you don't have it already. You can install [miniforge](h
 # use `channel_priority: flexible` instead
 mamba env create -p ./.cuopt_env --file conda/environments/all_cuda-133_arch-$(uname -m).yaml
 # activate the environment
-conda activate ./.cuopt_env
+mamba activate ./.cuopt_env   # or: conda activate ./.cuopt_env (works even without `mamba init`)
 ```
 
 - **Note**: the conda environment files are updated frequently, so the
