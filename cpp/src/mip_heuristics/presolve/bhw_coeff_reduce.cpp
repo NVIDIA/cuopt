@@ -18,43 +18,18 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
-#include <numeric>
 #include <utility>
 #include <vector>
 
-// Gordon H. Bradley, Peter L. Hammer, Laurence Wolsey (1974) Coefficient reduction for inequalities
-// in 0-1 variables. Mathematical Programming 7:263-282.
-//
-// Over binaries many inequalities share the same 0/1 feasible set. Theorem 2.5 characterizes that
-// set of "equivalent" inequalities by a system over the ceilings and roofs of the row. The test
-// here is the same characterization taken over the plain maximal feasible and minimal infeasible
-// points, which are supersets of BHW's ceilings and roofs because we skip their ordering condition.
-// That costs nothing: with all coefficients positive the activity is monotone, so the maximum of
-// w.x over the feasible points is attained at a maximal one and the minimum over the infeasible
-// points at a minimal one.
-//
-// BHW's minimization is not implemented. Section 5 obtains the minimum equivalent inequality by LP
-// over the polytope. We instead search weight vectors by increasing max|w| up to a cap, which is
-// minimal by construction below the cap, and fall back to two heuristic candidates above it. That
-// search is affordable at every width we enumerate only because conditions N1 and N3 restrict
-// candidates to non-negative non-increasing sequences: at most sum_{m=1..6} C(11+m, m) = 18563
-// vectors for a 12-entry row. Lemma 3.6 supplies the lower bound that seeds and prunes the search.
-//
-// TODO: extend the fallback path to the row generation of Section 6, which reaches rows the two
-// heuristics below leave at a larger magnitude than necessary. The separation oracle in step 3 is a
-// 0-1 knapsack, max w.x subject to a.x <= b, which solve_knapsack_problem in cuts/cuts.hpp already
-// solves by DP. Boyd (1993) Generating Fenchel Cutting Planes for Knapsack Polyhedra, SIAM J.
-// Optim. 3(4):734-750, treats the same separation problem as cut generation.
+// Bradley, Hammer and Wolsey (1974), "Coefficient reduction for inequalities in 0-1 variables."
+// Theorem 2.5 separates maximal feasible from minimal infeasible points. Positive normalized
+// coefficients make activity monotone, so these supersets of BHW's ceilings and roofs suffice.
+// Search non-negative, non-increasing weights by increasing max|w|; Lemma 3.6 bounds and prunes it.
 
 namespace cuopt::mathematical_optimization::mip {
 
-namespace {
-
-// One row in BHW's normalized frame: condition N1 (every coefficient positive, negatives
-// complemented by x_i = 1 - y_i) and condition N3 (coefficients sorted descending). N1 is what
-// makes the row activity monotone in x, and it also makes the weights of any equivalent inequality
-// non-negative, since a variable that tightens the row must tighten every inequality with the same
-// feasible set. Both normalizations are undone before any reduction is returned.
+// N1 complements negative coefficients; N3 sorts them descending. N1 makes activity monotone and
+// the weights of equivalent inequalities non-negative.
 struct norm_row_t {
   int k = 0;
   std::array<int64_t, BHW_MAX_LEN> coef{};  // descending, all > 0
@@ -73,7 +48,7 @@ struct partition_t {
   int lemma36_bound = 0;
 };
 
-int64_t weight_activity(const int64_t* w, uint32_t mask)
+static int64_t weight_activity(const int64_t* w, uint32_t mask)
 {
   int64_t sum = 0;
   while (mask != 0u) {
@@ -84,7 +59,7 @@ int64_t weight_activity(const int64_t* w, uint32_t mask)
 }
 
 template <typename f_t>
-bool integerization_preserves_binary_feasible_set(
+static bool integerization_preserves_binary_feasible_set(
   const f_t* coefficients,
   int len,
   f_t side,
@@ -94,7 +69,6 @@ bool integerization_preserves_binary_feasible_set(
 {
   cuopt_assert(len >= 2 && len <= BHW_MAX_LEN, "row length outside the enumerable range");
   const uint32_t n_pat = 1u << len;
-  // software implemented, but addition is very cheap
   std::vector<_Float128> original_activity(n_pat, 0.0L);
   std::vector<int64_t> integral_activity(n_pat, 0);
   for (uint32_t m = 1; m < n_pat; ++m) {
@@ -113,9 +87,8 @@ bool integerization_preserves_binary_feasible_set(
   return true;
 }
 
-// Splits {0,1}^k and collects the maximal feasible and minimal infeasible points. Returns false for
-// a degenerate row (all points feasible or all infeasible), which is left to other presolvers.
-bool build_partition(const norm_row_t& row, partition_t& out)
+// Collects maximal feasible and minimal infeasible points; rejects degenerate partitions.
+static bool build_partition(const norm_row_t& row, partition_t& out)
 {
   const int k          = row.k;
   const uint32_t n_pat = 1u << k;
@@ -168,11 +141,9 @@ bool build_partition(const norm_row_t& row, partition_t& out)
   return true;
 }
 
-// BHW Theorem 2.5: (w, t) is equivalent to the row iff every maximal feasible point M satisfies
-// sum_{i in M} w_i <= t and every minimal infeasible point satisfies sum_{i in .} w_i >= t + 1.
-// Taking t as the feasible-side maximum makes the first block hold by construction, leaving hi <
-// lo; integer weights make "> t" and ">= t+1" the same statement.
-bool accepts(const partition_t& part, const int64_t* w, int64_t& bound)
+// BHW Theorem 2.5: integer w is equivalent iff its maximum over maximal feasible points is below
+// its minimum over minimal infeasible points.
+static bool accepts(const partition_t& part, const int64_t* w, int64_t& bound)
 {
   int64_t hi = std::numeric_limits<int64_t>::min();
   for (uint32_t m : part.maximal_feasible)
@@ -184,14 +155,9 @@ bool accepts(const partition_t& part, const int64_t* w, int64_t& bound)
   return hi < lo;
 }
 
-// The rewritten row must not enlarge this row's LP relaxation: every x in [0,1]^k with w.x <= t has
-// to satisfy a.x <= rhs. With a > 0 and w >= 0 after N1 that is a fractional knapsack, max a.x
-// subject to w.x <= t, solved by taking the zero-weight entries for free and then filling capacity
-// in decreasing a_i/w_i order. Greedy leaves at most one fractional entry, so the comparison closes
-// exactly in rationals and no tolerance is needed. The 0-1 knapsack DP in cuts/cuts.hpp cannot be
-// substituted here: its optimum is a lower bound on the continuous one, which would let a weakening
-// row through.
-bool lp_no_weakening(const norm_row_t& row, const int64_t* w, int64_t t)
+// Maximizing a.x over [0,1]^k with w.x <= t is a fractional knapsack. Greedy leaves at most one
+// fractional entry, allowing the containment check to close exactly in integer arithmetic.
+static bool lp_no_weakening(const norm_row_t& row, const int64_t* w, int64_t t)
 {
   cuopt_assert(t >= 0, "acceptance implies the origin is feasible, so the bound is non-negative");
 
@@ -228,9 +194,9 @@ bool lp_no_weakening(const norm_row_t& row, const int64_t* w, int64_t t)
          (__int128)row.rhs * w[fractional];
 }
 
-// Debug companion to accepts(): checks the 0/1 partition over every point rather than the extremal
-// ones the search relies on.
-[[maybe_unused]] bool verify_equivalent(const norm_row_t& row, const int64_t* w, int64_t t)
+[[maybe_unused]] static bool verify_equivalent(const norm_row_t& row,
+                                               const int64_t* w,
+                                               int64_t t)
 {
   const uint32_t n_pat = 1u << row.k;
   for (uint32_t m = 0; m < n_pat; ++m) {
@@ -257,11 +223,8 @@ struct search_state_t {
   bool found         = false;
 };
 
-// Enumerates the non-increasing weight vectors reachable from the prefix fixed so far. N1 makes the
-// weights non-negative and N3 makes them non-increasing, so a candidate is just a non-increasing
-// sequence bounded by w[0]; Lemma 3.6's strict steps both shrink the branching factor and bound how
-// low a position may go while still leaving room for the steps beneath it.
-void search_positions(search_state_t& st, int pos)
+// Enumerates non-negative, non-increasing weights; Lemma 3.6 bounds each suffix.
+static void search_positions(search_state_t& st, int pos)
 {
   const int k = st.row->k;
   if (pos == k) {
@@ -275,8 +238,7 @@ void search_positions(search_state_t& st, int pos)
       nonzeros += st.w[i] != 0 ? 1 : 0;
       sum += st.w[i];
     }
-    // Same max|w| by construction at this depth, so prefer dropping variables, then smaller
-    // weights.
+    // At fixed max|w|, prefer fewer nonzeros, then smaller sum.
     if (st.found &&
         (nonzeros > st.best_nonzeros || (nonzeros == st.best_nonzeros && sum >= st.best_sum)))
       return;
@@ -296,21 +258,16 @@ void search_positions(search_state_t& st, int pos)
   }
 }
 
-// Fallback for the rows whose smallest equivalent magnitude exceeds BHW_EXACT_MAX_WEIGHT, where the
-// exhaustive search gives up: w = round(a / min a) and the all-ones clause form, both put through
-// the same acceptance and LP-strength gates as a searched vector. N3 already sorted a, so both
-// candidates are non-increasing.
-bool heuristic_reduce(const norm_row_t& row,
-                      const partition_t& part,
-                      std::vector<int64_t>& weights,
-                      int64_t& bound)
+// Above the exact-search cap, try round(a/min(a)) and the all-ones row through the same gates.
+static bool heuristic_reduce(const norm_row_t& row,
+                             const partition_t& part,
+                             std::vector<int64_t>& weights,
+                             int64_t& bound)
 {
   const int k         = row.k;
   const int64_t a_min = row.coef[k - 1];
   cuopt_assert(a_min > 0, "N1 leaves every coefficient positive");
 
-  // Only a strict gain is worth installing: smaller magnitude, or the same magnitude with a
-  // variable dropped.
   int64_t best_max  = row.coef[0];
   int best_nonzeros = k;
   bool found        = false;
@@ -342,13 +299,12 @@ bool heuristic_reduce(const norm_row_t& row,
   return found;
 }
 
-// Reduce one normalized shape. The caller undoes N1/N3 on the result.
-bool reduce_shape(const norm_row_t& row, std::vector<int64_t>& weights, int64_t& bound)
+static bool reduce_shape(const norm_row_t& row, std::vector<int64_t>& weights, int64_t& bound)
 {
   partition_t part;
   if (!build_partition(row, part)) return false;
 
-  const int64_t current = row.coef[0];  // N3 puts the largest coefficient first
+  const int64_t current = row.coef[0];
   cuopt_assert(current >= 2, "rows already at magnitude one are rejected before normalization");
   // Lemma 3.6 bounds max|w| from below over every equivalent inequality, so this row is provably
   // irreducible in magnitude and not worth searching.
@@ -371,8 +327,6 @@ bool reduce_shape(const norm_row_t& row, std::vector<int64_t>& weights, int64_t&
   return heuristic_reduce(row, part, weights, bound);
 }
 
-}  // namespace
-
 template <typename f_t>
 bhw_row_rewrite_t bhw_reduce_row(
   const f_t* coefficients, int len, f_t side, int direction, bhw_shape_cache_t* cache)
@@ -383,7 +337,6 @@ bhw_row_rewrite_t bhw_reduce_row(
   if (len < 2 || len > BHW_MAX_LEN) return rewrite;
   if (!scaling_bound_finite(side)) return rewrite;
 
-  // Integerize so the point partition is exact, then orient the row to  a.x <= b.
   const double scale = row_int_scale<f_t>(
     coefficients, len, side, std::numeric_limits<f_t>::infinity(), BHW_MAX_LEN, BHW_INT_SCALE_MAX);
   if (scale == 0.0) return rewrite;
@@ -395,8 +348,7 @@ bhw_row_rewrite_t bhw_reduce_row(
     if (integral[j] == 0) return rewrite;
     largest = std::max(largest, std::abs(integral[j]));
   }
-  // A row already at +/-1 has no magnitude to give back; rejecting it here is what keeps screening
-  // cheap on the rows that dominate a model.
+  // can't coefficient-reduce a unit-magnitude row any further
   if (largest <= 1) return rewrite;
 
   norm_row_t norm_row;
@@ -440,7 +392,7 @@ bhw_row_rewrite_t bhw_reduce_row(
   }
   if (!result->accepted) return rewrite;
 
-  // Rows sharing an integerized cache key can have different original floating-point partitions.
+  // check the feasible set remains unchanged under floating point math
   if (!integerization_preserves_binary_feasible_set(
         coefficients, len, side, direction, integral, integral_side))
     return rewrite;
@@ -479,10 +431,6 @@ bhw_row_rewrite_t bhw_reduce_row(
   return rewrite;
 }
 
-namespace {
-
-// Coefficient-shrink figures behind the DEBUG line. Both the accumulation and the summary compile
-// away below DEBUG, so a release build carries neither the per-row vector nor the selection.
 struct bhw_stats_t {
 #if (CUOPT_LOG_ACTIVE_LEVEL <= RAPIDS_LOGGER_LOG_LEVEL_DEBUG)
   int64_t coefficients_reduced = 0;
@@ -507,7 +455,6 @@ struct bhw_stats_t {
     cuopt_assert(n_rows_rewritten > 0, "a changed coefficient implies an accepted row");
     const double mean =
       std::accumulate(row_shrinks.begin(), row_shrinks.end(), 0.0) / n_rows_rewritten;
-    // One row collapsing to magnitude 1 dominates the mean, so report the median next to it.
     const auto middle = row_shrinks.begin() + n_rows_rewritten / 2;
     std::nth_element(row_shrinks.begin(), middle, row_shrinks.end());
     double median = *middle;
@@ -529,8 +476,6 @@ struct bhw_stats_t {
   void report() {}
 #endif
 };
-
-}  // namespace
 
 template <typename f_t>
 papilo::PresolveStatus BHWCoeffReduce<f_t>::execute(const papilo::Problem<f_t>& problem,
@@ -554,13 +499,9 @@ papilo::PresolveStatus BHWCoeffReduce<f_t>::execute(const papilo::Problem<f_t>& 
   papilo::PresolveStatus status = papilo::PresolveStatus::kUnchanged;
   bhw_stats_t stats;
 
-  // Every eligible row is screened, not only problemUpdate.getChangedActivities(): that worklist is
-  // seeded in full once and afterwards fed only by activity changes, so a row whose side changes is
-  // never revisited. Rescreening is cheap because the shape cache absorbs the repetition and the
-  // reduction is idempotent.
+  // getChangedActivities() omits side-only changes, so screen every row. cache hits amortize
   for (int row = 0; row < num_rows; ++row) {
     if (reductions.size() >= presolve_options.max_reduction_seq) break;
-    // Screening one row is cheap next to the interrupt check.
     if (papilo::PresolveMethod<f_t>::is_interrupted(
           timer, presolve_options.tlim, presolve_options.early_exit_callback))
       break;
@@ -599,11 +540,6 @@ papilo::PresolveStatus BHWCoeffReduce<f_t>::execute(const papilo::Problem<f_t>& 
                  "an accepted rewrite keeps at least one nonzero weight");
     stats.rewrote_row(rewrite.max_coef_before, rewrite.max_coef_after);
 
-    // Same shape as papilo's own sparsifier, SimplifyInequalities: lock the row, then the entries,
-    // then the side. Dropping an entry needs no column lock: ProblemUpdate marks the column
-    // modified and derives the resulting singleton rows and empty columns itself. The zero has to
-    // be exact: SparseStorage::changeRowInplace compacts an entry out on newval == 0, not on
-    // num.isZero.
     papilo::TransactionGuard<f_t> guard{reductions};
     reductions.lockRow(row);
     [[maybe_unused]] int emitted = 0;
@@ -624,8 +560,6 @@ papilo::PresolveStatus BHWCoeffReduce<f_t>::execute(const papilo::Problem<f_t>& 
         ++emitted;
       }
     }
-    // Reporting kReduced for a transaction that changes nothing would have papilo re-derive the
-    // same rewrite every round.
     cuopt_assert(emitted > 0, "accepted rewrite emitted no reduction");
     status = papilo::PresolveStatus::kReduced;
   }

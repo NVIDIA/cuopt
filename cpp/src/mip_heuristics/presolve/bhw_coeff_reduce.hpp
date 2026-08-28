@@ -26,56 +26,36 @@
 
 namespace cuopt::mathematical_optimization::mip {
 
-// Widest row we enumerate: building the point partition walks 2^BHW_MAX_LEN patterns, so this caps
-// the cost of screening one row. Wider rows are left alone; nearly every row that integerizes
-// exactly is narrower than this.
+// Building the point partition visits at most 2^BHW_MAX_LEN patterns per row.
 static constexpr int BHW_MAX_LEN = 12;
 // Largest max|w| the exhaustive search considers before falling back to the heuristic candidates.
-// Reductions needing a larger magnitude are rare enough not to pay for the extra search depth.
 static constexpr int64_t BHW_EXACT_MAX_WEIGHT = 6;
-// Largest per-row rational multiplier / denominator used to integerize a row (passed to
-// row_int_scale as its maxdnom/maxfinal caps).
-static constexpr int64_t BHW_INT_SCALE_MAX = 1000000;  // 1e6
+// Passed to row_int_scale as its maxdnom and maxfinal caps.
+static constexpr int64_t BHW_INT_SCALE_MAX = 1000000;
 
-// Outcome for one canonical row shape, in BHW's normalized frame (coefficients complemented to be
-// positive and sorted descending). Rejections are cached too, since re-deriving them is the bulk of
-// the work on instances whose rows repeat.
 struct bhw_shape_result_t {
   std::vector<int64_t> weights;
   int64_t bound = 0;
   bool accepted = false;
 };
 
-// Keyed by the normalized coefficients followed by the normalized right-hand side. The reduction is
-// a pure function of that key, so entries stay valid across presolve rounds and problems.
 using bhw_shape_cache_t = std::map<std::vector<int64_t>, bhw_shape_result_t>;
 
 struct bhw_row_rewrite_t {
-  std::vector<int64_t> coefficients;  // one per input entry, in input order; 0 drops that entry
-  int64_t side = 0;                   // replaces the row's finite side
-  // Largest |coefficient| before and after reduction, both in the integerized frame. Comparable
-  // only there: the row is scaled on the way in, so the input coefficients sit in a different
-  // frame.
+  std::vector<int64_t> coefficients;  // 0 drops the entry
+  int64_t side = 0;
   int64_t max_coef_before = 0;
   int64_t max_coef_after  = 0;
   bool accepted           = false;
 };
 
-// Rewrite one one-sided all-binary row with smaller integer coefficients spanning the same 0/1
-// feasible set. direction is +1 for "coefficients . x <= side" and -1 for ">= side"; side is the
-// finite side of the row. Rejects the row (accepted = false) unless it integerizes exactly to
-// nonzero coefficients, admits a strictly smaller equivalent form, and that form does not enlarge
-// the row's LP relaxation. cache may be null to skip memoization.
-//
-// The caller checks that every entry is a binary integer variable and that exactly one side of the
-// row is finite. Exposed for testing: BHWCoeffReduce::execute only screens rows and emits the
-// result, so this covers the whole reduction without any papilo types.
+// Rewrites a one-sided all-binary row with smaller integer coefficients and the same 0/1 feasible
+// set. direction is +1 for <= and -1 for >=. The caller guarantees nonfixed
+// binary variables and exactly one finite side.
 template <typename f_t>
 bhw_row_rewrite_t bhw_reduce_row(
   const f_t* coefficients, int len, f_t side, int direction, bhw_shape_cache_t* cache);
 
-// Bradley-Hammer-Wolsey coefficient reduction: replace an all-binary row by an equivalent one with
-// smaller integer coefficients. See bhw_coeff_reduce.cpp for the lineage.
 template <typename f_t>
 class BHWCoeffReduce : public papilo::PresolveMethod<f_t> {
  public:
@@ -94,7 +74,6 @@ class BHWCoeffReduce : public papilo::PresolveMethod<f_t> {
                                  int& reason_of_infeasibility) override;
 
  private:
-  // Only touched from execute, which papilo runs one task at a time per presolver object.
   bhw_shape_cache_t shape_cache_;
 };
 

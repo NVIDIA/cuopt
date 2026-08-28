@@ -32,8 +32,7 @@ bhw_row_rewrite_t reduce(const std::vector<double>& coefficients,
     coefficients.data(), (int)coefficients.size(), side, direction, cache);
 }
 
-// The whole point of the pass: the rewritten row must accept exactly the same 0/1 points as the
-// original. Checked over every point, independently of the extremal-point test the search uses.
+// Full 0/1 check independent of the production extremal-point test.
 bool same_feasible_set(const std::vector<double>& coefficients,
                        double side,
                        int direction,
@@ -59,17 +58,12 @@ bool same_feasible_set(const std::vector<double>& coefficients,
 
 }  // namespace
 
-// Bradley, Hammer and Wolsey (1974) open with this row and reduce it to 4,4,2,2,1,1,1,0 <= 5. That
-// rewrite enlarges the LP relaxation (it admits a fractional point of activity 91.75 against a
-// right-hand side of 80), so the LP-strength check rejects it and no smaller equivalent form
-// survives.
+// BHW's opening example has an equivalent reduction that weakens the LP relaxation.
 TEST(bhw_coeff_reduce, rejects_a_rewrite_that_weakens_the_relaxation)
 {
   EXPECT_FALSE(reduce({65, 64, 41, 22, 13, 12, 8, 2}, 80).accepted);
 }
 
-// The shape that motivated the pass: a 9/10 coefficient against thirds, with a fractional
-// right-hand side. Integerizing and reducing lands it in int8 range.
 TEST(bhw_coeff_reduce, rational_row_integerizes_and_reduces)
 {
   const std::vector<double> row{0.9, 1.0 / 3, 1.0 / 3, 1.0 / 3};
@@ -91,7 +85,6 @@ TEST(bhw_coeff_reduce, rejects_approximate_integerization_that_changes_the_feasi
   EXPECT_FALSE(reduce(row, 11000.0 - perturbation).accepted);
 }
 
-// The >= orientation is normalized by negation, so the same row negated must come back negated.
 TEST(bhw_coeff_reduce, greater_equal_row_keeps_its_orientation)
 {
   const std::vector<double> row{-0.9, -1.0 / 3, -1.0 / 3, -1.0 / 3};
@@ -104,16 +97,15 @@ TEST(bhw_coeff_reduce, greater_equal_row_keeps_its_orientation)
 
 TEST(bhw_coeff_reduce, rejects_rows_with_nothing_to_give_back)
 {
-  // Already at unit magnitude.
+  // Unit magnitude.
   EXPECT_FALSE(reduce({1, 1, 1, 1}, 2).accepted);
-  // Does not integerize within the rational cap.
+  // Scaling cap.
   EXPECT_FALSE(reduce({M_PI, 1, 1}, 2).accepted);
-  // Outside the enumerable width.
+  // Unsupported width.
   EXPECT_FALSE(reduce({5}, 2).accepted);
   EXPECT_FALSE(reduce(std::vector<double>(BHW_MAX_LEN + 1, 3.0), 5).accepted);
-  // Every point feasible, so there is nothing to separate.
+  // Degenerate partition.
   EXPECT_FALSE(reduce({3, 2, 2}, 100).accepted);
-  // No point feasible.
   EXPECT_FALSE(reduce({3, 2, 2}, -1).accepted);
 }
 
@@ -140,8 +132,6 @@ TEST(bhw_coeff_reduce, memoized_result_matches_the_uncached_one)
   }
 }
 
-// The invariant that matters, over mixed signs, both orientations and rational coefficients: an
-// accepted rewrite never changes which 0/1 points satisfy the row.
 TEST(bhw_coeff_reduce, accepted_rewrites_preserve_the_feasible_set)
 {
   std::mt19937_64 rng(20260805);
