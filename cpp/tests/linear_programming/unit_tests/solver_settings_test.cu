@@ -406,8 +406,10 @@ TEST(SolverSettingsWrapperTest, MipCallbackRegistrationAndTolerances)
   // get_tolerances() default-constructs a tolerances_t; verify it round-trips through
   // the wrapper -> mip_solver_settings_t split introduced by the host/device separation.
   auto tolerances = settings.get_mip_settings().get_tolerances();
-  EXPECT_DOUBLE_EQ(tolerances.absolute_tolerance,
-                   mip_solver_settings_t<int, double>::tolerances_t{}.absolute_tolerance);
+  // To avoid the "," inside the macro being interpreted as an extra parameter
+  using tolerances_t          = mip_solver_settings_t<int, double>::tolerances_t;
+  double default_absolute_tol = tolerances_t{}.absolute_tolerance;
+  EXPECT_DOUBLE_EQ(tolerances.absolute_tolerance, default_absolute_tol);
 }
 
 // solver_settings_gpu.cu explicitly instantiates these members for both <int, float> and
