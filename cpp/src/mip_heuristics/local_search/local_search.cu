@@ -64,7 +64,7 @@ void local_search_t<i_t, f_t>::start_cpufj_scratch_threads(population_t<i_t, f_t
   solution.clamp_within_bounds();
   i_t counter = 0;
   for (auto& cpu_fj : scratch_cpu_fj) {
-    if (counter > 0) solution.assign_random_within_bounds(static_cast<int64_t>(rng()), 0.4);
+    if (counter > 0) solution.assign_random_within_bounds(rng(), 0.4);
     cpu_fj = fj.create_cpu_climber(solution,
                                    default_weights,
                                    default_weights,
@@ -116,7 +116,7 @@ void local_search_t<i_t, f_t>::start_cpufj_lptopt_scratch_threads(
   solution_t<i_t, f_t> solution_lp(*context.problem_ptr);
   solution_lp.copy_new_assignment(
     host_copy(lp_optimal_solution, context.problem_ptr->handle_ptr->get_stream()));
-  solution_lp.round_random_nearest(500, static_cast<int64_t>(rng()));
+  solution_lp.round_random_nearest(500, rng());
   scratch_cpu_fj_on_lp_opt             = fj.create_cpu_climber(solution_lp,
                                                    default_weights,
                                                    default_weights,
@@ -503,7 +503,7 @@ bool local_search_t<i_t, f_t>::check_fj_on_lp_optimal(solution_t<i_t, f_t>& solu
   if (perturb) {
     CUOPT_LOG_DEBUG("Perturbating solution on initial fj on optimal run!");
     f_t perturbation_ratio = 0.2;
-    solution.assign_random_within_bounds(static_cast<int64_t>(rng()), perturbation_ratio);
+    solution.assign_random_within_bounds(rng(), perturbation_ratio);
   }
   cuopt_func_call(solution.test_variable_bounds(false));
   f_t lp_run_time_after_feasible = std::min(1., timer.remaining_time());
@@ -592,7 +592,7 @@ bool local_search_t<i_t, f_t>::run_staged_fp(solution_t<i_t, f_t>& solution,
         if (is_feasible) { break; }
         if (timer.check_time_limit()) {
           fp.revert_relaxation(solution);
-          solution.round_nearest(static_cast<int64_t>(rng()));
+          solution.round_nearest(rng());
           CUOPT_LOG_DEBUG("Time limit reached during binary stage!");
           return false;
         }
@@ -619,7 +619,7 @@ bool local_search_t<i_t, f_t>::run_staged_fp(solution_t<i_t, f_t>& solution,
         if (is_feasible) { return true; }
         if (timer.check_time_limit()) {
           CUOPT_LOG_DEBUG("FP time limit reached during integer stage!");
-          solution.round_nearest(static_cast<int64_t>(rng()));
+          solution.round_nearest(rng());
           return false;
         }
         is_feasible = fp.restart_fp(solution);

@@ -783,7 +783,7 @@ bool lb_constraint_prop_t<i_t, f_t>::find_integer(
 
   if (max_timer.check_time_limit()) {
     CUOPT_LOG_DEBUG("Time limit is reached before bounds prop rounding!");
-    orig_sol.round_nearest(this->rng.next_i64());
+    orig_sol.round_nearest(this->rng.next_u64());
     cuopt_func_call(orig_sol.test_variable_bounds());
     return orig_sol.compute_feasibility();
   }
@@ -936,7 +936,7 @@ bool lb_constraint_prop_t<i_t, f_t>::find_integer(
                   lb_bounds_update.infeas_constraints_count);
 
   expand_device_copy(orig_sol.assignment, assignment, orig_sol.handle_ptr->get_stream());
-  orig_sol.round_nearest(this->rng.next_i64());
+  orig_sol.round_nearest(this->rng.next_u64());
   cuopt_assert(orig_sol.test_number_all_integer(), "All integers must be rounded");
   cuopt_func_call(orig_sol.test_variable_bounds());
 

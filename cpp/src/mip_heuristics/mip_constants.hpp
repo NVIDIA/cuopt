@@ -78,9 +78,10 @@ enum class mip_rng_component_id_t : uint64_t {
 // requested_seed >= 0 both resolve to the identical value, which is what deterministic mode
 // requires; when requested_seed < 0 each call draws independently, which is fine since no
 // reproducibility is promised in that case.
-inline int64_t mip_resolve_base_seed(int64_t requested_seed)
+inline uint64_t mip_resolve_base_seed(int64_t requested_seed)
 {
-  return requested_seed >= 0 ? requested_seed : static_cast<int64_t>(std::random_device{}());
+  if (requested_seed >= 0) { return requested_seed; }
+  return std::random_device{}();
 }
 
 // Derives a well-mixed, reproducible 64-bit seed from the solve's base seed plus a fixed logical
@@ -92,7 +93,7 @@ inline uint64_t mip_derive_seed(uint64_t base_seed,
                                 mip_rng_component_id_t component_id,
                                 uint64_t index = 0)
 {
-  splitmix64_t seed_gen(base_seed + static_cast<uint64_t>(component_id) + index);
+  splitmix64_t seed_gen(base_seed + static_cast<uint64_t>(component_id), index);
   return seed_gen.next_u64();
 }
 
@@ -106,7 +107,7 @@ inline uint64_t mip_derive_stream(uint64_t base_seed,
                                   mip_rng_component_id_t component_id,
                                   uint64_t index = 0)
 {
-  splitmix64_t seed_gen(base_seed + static_cast<uint64_t>(component_id) + index);
+  splitmix64_t seed_gen(base_seed + static_cast<uint64_t>(component_id), index);
   return seed_gen.generate_stream();
 }
 

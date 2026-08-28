@@ -114,7 +114,7 @@ class fp_recombiner_t : public recombiner_t<i_t, f_t> {
     }
     // unfix the assignment on given result no matter if it is feasible
     offspring.unfix_variables(fixed_assignment, variable_map);
-    if (!run_fp) { offspring.round_nearest(this->rng.next_i64()); }
+    if (!run_fp) { offspring.round_nearest(this->rng.next_u64()); }
     cuopt_assert(offspring.test_number_all_integer(), "All must be integers after offspring");
     offspring.compute_feasibility();
     bool same_as_parents = this->check_if_offspring_is_same_as_parents(offspring, a, b);

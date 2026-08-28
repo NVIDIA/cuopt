@@ -229,7 +229,7 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_standalone(
   problem_t<i_t, f_t>& problem,
   solution_t<i_t, f_t>& solution,
   std::atomic<bool>& preemption_flag,
-  int64_t seed,
+  uint64_t seed,
   fj_settings_t settings = fj_settings_t{});
 
 }  // namespace cuopt::mathematical_optimization::mip

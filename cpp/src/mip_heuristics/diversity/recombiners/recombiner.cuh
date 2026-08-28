@@ -16,7 +16,7 @@
 #include <mip_heuristics/utils.cuh>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/device_utils.cuh>
-#include <utilities/pcgenerator.hpp>
+#include <utilities/splitmix64.hpp>
 
 #include <thrust/random.h>
 #include <thrust/set_operations.h>
@@ -223,7 +223,7 @@ class recombiner_t {
   }
 
   mip_solver_context_t<i_t, f_t>& context;
-  cuopt::pcgenerator_t rng;
+  splitmix64_t rng;
   rmm::device_uvector<i_t> remaining_indices;
   rmm::device_scalar<i_t> n_remaining;
   static std::vector<recombiner_enum_t> enabled_recombiners;

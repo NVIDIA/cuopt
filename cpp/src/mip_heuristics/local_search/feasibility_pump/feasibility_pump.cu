@@ -273,7 +273,7 @@ template <typename i_t, typename f_t>
 void feasibility_pump_t<i_t, f_t>::perturbate(solution_t<i_t, f_t>& solution)
 {
   constexpr f_t change_ratio = 0.1;
-  solution.assign_random_within_bounds(static_cast<int64_t>(rng()), change_ratio, true);
+  solution.assign_random_within_bounds(rng(), change_ratio, true);
 }
 
 template <typename i_t, typename f_t>
@@ -472,7 +472,7 @@ bool feasibility_pump_t<i_t, f_t>::run_single_fp_descent(solution_t<i_t, f_t>& s
 {
   raft::common::nvtx::range fun_scope("run_single_fp_descent");
   // start by doing nearest rounding
-  solution.round_nearest(static_cast<int64_t>(rng()));
+  solution.round_nearest(rng());
   raft::copy(last_rounding.data(),
              solution.assignment.data(),
              solution.assignment.size(),

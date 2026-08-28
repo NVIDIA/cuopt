@@ -866,7 +866,7 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
   multi_probe.resize(*sol.problem_ptr);
   if (max_timer.check_time_limit()) {
     CUOPT_LOG_DEBUG("Time limit is reached before bounds prop rounding!");
-    sol.round_nearest(this->rng.next_i64());
+    sol.round_nearest(this->rng.next_u64());
     expand_device_copy(orig_sol.assignment, sol.assignment, sol.handle_ptr->get_stream());
     cuopt_func_call(orig_sol.test_variable_bounds());
     return orig_sol.compute_feasibility();
@@ -885,7 +885,7 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
       thrust::for_each(sol.handle_ptr->get_thrust_policy(),
                        unset_integer_vars.begin(),
                        unset_integer_vars.begin() + n_to_round,
-                       [sol = sol.view(), seed = this->rng.next_i64()] __device__(i_t var_idx) {
+                       [sol = sol.view(), seed = this->rng.next_u64()] __device__(i_t var_idx) {
                          raft::random::PCGenerator rng(seed, var_idx, 0);
                          auto var_bnd = sol.problem.variable_bounds[var_idx];
                          sol.assignment[var_idx] =
@@ -939,7 +939,7 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
     if (max_timer.check_time_limit()) {
       CUOPT_LOG_DEBUG("Second time limit is reached returning nearest rounding!");
       collapse_crossing_bounds(*sol.problem_ptr, *orig_sol.problem_ptr, sol.handle_ptr);
-      sol.round_nearest(this->rng.next_i64());
+      sol.round_nearest(this->rng.next_u64());
       timeout_happened = true;
       break;
     }

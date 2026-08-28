@@ -1131,7 +1131,7 @@ i_t fj_t<i_t, f_t>::solve(solution_t<i_t, f_t>& solution)
 
     // if time limit exceeded: round all remaining fractionals if any by nearest rounding.
     if (climbers[0]->fractional_variables.set_size.value(handle_ptr->get_stream()) > 0) {
-      solution.round_nearest(rng.next_i64());
+      solution.round_nearest(rng.next_u64());
     }
   }
 

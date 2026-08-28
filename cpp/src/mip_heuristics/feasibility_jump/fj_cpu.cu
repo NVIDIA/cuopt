@@ -2073,7 +2073,7 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_standalone(
   problem_t<i_t, f_t>& problem,
   solution_t<i_t, f_t>& solution,
   std::atomic<bool>& preemption_flag,
-  int64_t seed,
+  uint64_t seed,
   fj_settings_t settings)
 {
   raft::common::nvtx::range scope("init_fj_cpu_standalone");
@@ -2166,7 +2166,7 @@ template std::unique_ptr<fj_cpu_climber_t<int, float>> init_fj_cpu_standalone(
   problem_t<int, float>& problem,
   solution_t<int, float>& solution,
   std::atomic<bool>& preemption_flag,
-  int64_t seed,
+  uint64_t seed,
   fj_settings_t settings);
 template void finalize_fj_cpu_host_initialization(
   fj_cpu_climber_t<int, float>& fj_cpu,
@@ -2187,7 +2187,7 @@ template std::unique_ptr<fj_cpu_climber_t<int, double>> init_fj_cpu_standalone(
   problem_t<int, double>& problem,
   solution_t<int, double>& solution,
   std::atomic<bool>& preemption_flag,
-  int64_t seed,
+  uint64_t seed,
   fj_settings_t settings);
 template void finalize_fj_cpu_host_initialization(
   fj_cpu_climber_t<int, double>& fj_cpu,

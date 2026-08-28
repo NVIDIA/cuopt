@@ -225,7 +225,7 @@ void solution_t<i_t, f_t>::copy_new_assignment(const rmm::device_uvector<f_t>& d
 }
 
 template <typename i_t, typename f_t>
-void solution_t<i_t, f_t>::assign_random_within_bounds(int64_t seed,
+void solution_t<i_t, f_t>::assign_random_within_bounds(uint64_t seed,
                                                        f_t ratio_of_vars_to_random_assign,
                                                        bool only_integers)
 {
@@ -367,7 +367,7 @@ void solution_t<i_t, f_t>::compute_infeasibility()
 }
 
 template <typename i_t, typename f_t>
-bool solution_t<i_t, f_t>::round_nearest(int64_t seed)
+bool solution_t<i_t, f_t>::round_nearest(uint64_t seed)
 {
   clamp_within_bounds();
   invoke_round_nearest(*this, seed);
@@ -377,7 +377,7 @@ bool solution_t<i_t, f_t>::round_nearest(int64_t seed)
 }
 
 template <typename i_t, typename f_t>
-bool solution_t<i_t, f_t>::round_random_nearest(i_t n_target_random_rounds, int64_t seed)
+bool solution_t<i_t, f_t>::round_random_nearest(i_t n_target_random_rounds, uint64_t seed)
 {
   clamp_within_bounds();
   invoke_random_round_nearest(*this, n_target_random_rounds, seed);

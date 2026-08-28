@@ -157,7 +157,7 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
       offspring
         .clamp_within_bounds();  // Scaling might bring some very slight variable bound violations
     } else {
-      offspring.round_nearest(this->rng.next_i64());
+      offspring.round_nearest(this->rng.next_u64());
     }
     cuopt_func_call(offspring.test_variable_bounds());
     cuopt_assert(offspring.test_number_all_integer(), "All must be integers after offspring");

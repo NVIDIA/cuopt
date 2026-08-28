@@ -445,7 +445,7 @@ template <typename i_t, typename f_t>
 void diversity_manager_t<i_t, f_t>::run_fj_alone(solution_t<i_t, f_t>& solution)
 {
   CUOPT_LOG_INFO("Running FJ alone!");
-  solution.round_nearest(static_cast<int64_t>(rng()));
+  solution.round_nearest(rng());
   ls.fj.settings.mode                   = fj_mode_t::EXIT_NON_IMPROVING;
   ls.fj.settings.n_of_minimums_for_exit = 20000 * 1000;
   ls.fj.settings.update_weights         = true;
@@ -699,7 +699,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   if (ls.lp_optimal_exists) {
     solution_t<i_t, f_t> lp_rounded_sol(*problem_ptr);
     lp_rounded_sol.copy_new_assignment(lp_optimal_solution);
-    lp_rounded_sol.round_nearest(static_cast<int64_t>(rng()));
+    lp_rounded_sol.round_nearest(rng());
     lp_rounded_sol.compute_feasibility();
     population.add_solution(std::move(lp_rounded_sol));
     ls.start_cpufj_lptopt_scratch_threads(population);

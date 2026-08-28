@@ -16,7 +16,7 @@ early_cpufj_t<i_t, f_t>::early_cpufj_t(
   const optimization_problem_t<i_t, f_t>& op_problem,
   const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances,
   early_incumbent_callback_t<f_t> incumbent_callback,
-  int64_t seed)
+  uint64_t seed)
   : early_heuristic_t<i_t, f_t, early_cpufj_t<i_t, f_t>>(
       op_problem, tolerances, std::move(incumbent_callback)),
     seed_(seed)

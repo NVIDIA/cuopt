@@ -65,7 +65,7 @@ struct mip_solver_context_t {
   // specific one (>= 0), otherwise a seed drawn once at solve start. Every worker/component
   // derives its own independent RNG stream from this plus a fixed logical identity (never a
   // runtime thread id, since OMP tasks can migrate between OS threads).
-  const int64_t base_seed;
+  const uint64_t base_seed;
   solver_stats_t<i_t, f_t> stats;
   // Work limit context for tracking work units in deterministic mode (shared across all timers in
   // GPU heuristic loop)

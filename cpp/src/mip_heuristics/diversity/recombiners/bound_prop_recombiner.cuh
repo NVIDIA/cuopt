@@ -66,7 +66,7 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
        offspring_view,
        int_tol,
        probing_values = probing_values.data(),
-       seed           = this->rng.next_i64()] __device__(i_t idx) {
+       seed           = this->rng.next_u64()] __device__(i_t idx) {
         f_t guiding_val = guiding_view.assignment[idx];
         f_t other_val   = other_view.assignment[idx];
         cuopt_assert(guiding_view.problem.check_variable_within_bounds(idx, guiding_val), "");
