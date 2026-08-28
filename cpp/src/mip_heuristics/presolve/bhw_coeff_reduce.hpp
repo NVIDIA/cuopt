@@ -65,7 +65,7 @@ class BHWCoeffReduce : public papilo::PresolveMethod<f_t> {
     this->setType(papilo::PresolverType::kIntegralCols);
     this->setTiming(papilo::PresolverTiming::kMedium);
     // can interfere with some papilo reductions by causing them to miss their trigger condition
-    this->setDelayed(true); 
+    this->setDelayed(true);
   }
 
   papilo::PresolveStatus execute(const papilo::Problem<f_t>& problem,
