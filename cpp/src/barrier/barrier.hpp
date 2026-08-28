@@ -43,17 +43,18 @@ class barrier_solver_t {
                    const simplex::simplex_solver_settings_t<i_t, f_t>& settings);
   simplex::lp_status_t solve(f_t start_time,
                              simplex::lp_solution_t<i_t, f_t>& solution,
-                             cuopt::cython::barrier_cache_t* session = nullptr);
-  // Continue path: cached iteration_data_t already has the updated linear objective.
-  // Rebind settings, compute a new initial point, run IPM. Same status/solution contract as solve().
-  simplex::lp_status_t barrier_solve_advanced(f_t start_time,
-                                              simplex::lp_solution_t<i_t, f_t>& solution,
-                                              cuopt::cython::barrier_cache_t* session);
+                             cuopt::cython::barrier_cache_t* cache = nullptr);
+  // Cache reuse: cached iteration_data_t already has the updated linear objective.
+  // Prepare the workspace, compute a new initial point, run IPM. Same status/solution contract as
+  // solve().
+  simplex::lp_status_t barrier_advanced_solve(f_t start_time,
+                                        simplex::lp_solution_t<i_t, f_t>& solution,
+                                        cuopt::cython::barrier_cache_t* cache);
 
  private:
   simplex::lp_status_t run_ipm(f_t start_time,
                                simplex::lp_solution_t<i_t, f_t>& solution,
-                               cuopt::cython::barrier_cache_t* session,
+                               cuopt::cython::barrier_cache_t* cache,
                                std::unique_ptr<iteration_data_t<i_t, f_t>>& owned_data);
   void my_pop_range(bool debug) const;
   void create_Q(const simplex::lp_problem_t<i_t, f_t>& lp, csc_matrix_t<i_t, f_t>& Q);
@@ -81,6 +82,13 @@ class barrier_solver_t {
   void compute_primal_dual_objective(iteration_data_t<i_t, f_t>& data,
                                      f_t& primal_objective,
                                      f_t& dual_objective);
+  void compute_residual_norms_mu_and_objective(iteration_data_t<i_t, f_t>& data,
+                                               f_t& primal_residual_norm,
+                                               f_t& dual_residual_norm,
+                                               f_t& complementarity_residual_norm,
+                                               f_t& mu,
+                                               f_t& primal_objective,
+                                               f_t& dual_objective);
 
   // To be able to directly pass lambdas to transform functions
  public:

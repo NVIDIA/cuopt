@@ -17,12 +17,6 @@
 namespace cuopt::mathematical_optimization::barrier {
 template <typename i_t, typename f_t>
 class iteration_data_t;
-template <typename i_t, typename f_t>
-struct barrier_symbolic_cache_t;
-
-template <typename i_t, typename f_t>
-void barrier_store_symbolic_cache_from_iteration_data(iteration_data_t<i_t, f_t>& data,
-                                                      barrier_symbolic_cache_t<i_t, f_t>& cache);
 
 void destroy_iteration_data(iteration_data_t<int, double>* data);
 
@@ -34,15 +28,14 @@ void apply_barrier_linear_objective(iteration_data_t<int, double>& data,
 namespace cuopt {
 namespace CUOPT_EXPORT cython {
 
-struct barrier_front_end_cache_t;
+struct barrier_transform_t;
 
 /**
- * @brief Lean GPU solve session: owns RAFT handle + stream, optional barrier symbolic cache,
- * and optional barrier iteration_data_t (GPU IPM workspace) after an Optimal solve.
+ * @brief GPU solve cache owned by DataModel when sequence_solve is on.
  *
- * Created on first solve when sequence_solve; reused on subsequent solves with the same capsule.
- * Per-solve convert/presolve/scaling remain stack-local until the continue path (D); A keeps
- * iteration_data_t, B keeps front-end maps + c_dirty.
+ * After an Optimal full solve, holds iteration_data_t and the user↔barrier transform.
+ * update_q crushes the new linear objective and sets c_dirty so the next Solve
+ * reuses that workspace (skip convert/presolve/scaling).
  */
 class barrier_cache_t {
  public:
@@ -56,16 +49,8 @@ class barrier_cache_t {
   [[nodiscard]] raft::handle_t const* handle_ptr() const;
   [[nodiscard]] rmm::cuda_stream_view stream_view() const;
 
-  /**
-   * @brief Returns cached symbolic state when valid and @p handle matches the stored handle.
-   */
-  [[nodiscard]] mathematical_optimization::barrier::barrier_symbolic_cache_t<int, double>*
-  symbolic_cache_for_reuse(raft::handle_t const* handle);
-
-  void clear_symbolic_cache();
-
-  void store_symbolic_cache(
-    mathematical_optimization::barrier::iteration_data_t<int, double>& data);
+  /** Drop cached iteration workspace and transform (handle/stream stay). */
+  void clear();
 
   /**
    * @brief Take ownership of barrier iteration workspace. @p data may be null (clears).
@@ -78,22 +63,15 @@ class barrier_cache_t {
    */
   mathematical_optimization::barrier::iteration_data_t<int, double>* release_iteration_data();
 
-  [[nodiscard]] mathematical_optimization::barrier::iteration_data_t<int, double>*
-  iteration_data();
-
-  void clear_iteration_data();
-
-  void store_front_end_cache(std::unique_ptr<barrier_front_end_cache_t> cache);
-  [[nodiscard]] barrier_front_end_cache_t* front_end_cache();
-  [[nodiscard]] barrier_front_end_cache_t const* front_end_cache() const;
-  void clear_front_end_cache();
+  void store_transform(std::unique_ptr<barrier_transform_t> transform);
+  [[nodiscard]] barrier_transform_t* transform();
+  [[nodiscard]] barrier_transform_t const* transform() const;
   void set_c_dirty(bool dirty);
   [[nodiscard]] bool c_dirty() const;
-  [[nodiscard]] bool has_front_end_cache() const;
 
   /**
    * Crush user-space linear objective into cached iteration_data_t.c / d_c_ and set c_dirty.
-   * Requires a stored front-end cache and iteration_data from an Optimal solve.
+   * Requires a stored transform and iteration_data from an Optimal solve.
    */
   void update_linear_objective(double const* c, int n);
 

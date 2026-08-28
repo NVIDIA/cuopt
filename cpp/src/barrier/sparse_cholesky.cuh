@@ -499,7 +499,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
         return -1;
       }
       f_t reordering_time = toc(start_symbolic);
-      settings_->log.printf("Reordering time             : %.2fs\n", reordering_time);
+      settings_->log.printf("Reordering time             : %.3fs\n", reordering_time);
       start_symbolic_factor = tic();
 
       status = cudssExecute(
@@ -517,7 +517,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     }
     RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
     f_t symbolic_factorization_time = toc(start_symbolic_factor);
-    settings_->log.printf("Symbolic factorization time : %.2fs\n", symbolic_factorization_time);
+    settings_->log.printf("Symbolic factorization time : %.3fs\n", symbolic_factorization_time);
     int64_t lu_nz       = 0;
     size_t size_written = 0;
     CUDSS_CALL_AND_CHECK(
@@ -540,7 +540,8 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
 
     if (!symbolic_done_ || !A_created) {
       settings_->log.printf(
-        "Error: cuDSS factorize(device_csr) called before analyze (symbolic_done=%d A_created=%d)\n",
+        "Error: cuDSS factorize(device_csr) called before analyze (symbolic_done=%d "
+        "A_created=%d)\n",
         static_cast<int>(symbolic_done_),
         static_cast<int>(A_created));
       return -1;
@@ -606,7 +607,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     }
 
     if (first_factor) {
-      settings_->log.debug("Factorization time          : %.2fs\n", numeric_time);
+      settings_->log.debug("Factorization time          : %.3fs\n", numeric_time);
       first_factor = false;
     }
     if (status != CUDSS_STATUS_SUCCESS) {
@@ -730,7 +731,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
 
     f_t symbolic_time = toc(start_symbolic);
     f_t analysis_time = toc(start_analysis);
-    settings_->log.printf("Symbolic factorization time : %.2fs\n", symbolic_time);
+    settings_->log.printf("Symbolic factorization time : %.3fs\n", symbolic_time);
     if (settings_->concurrent_halt != nullptr && *settings_->concurrent_halt == 1) {
       RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
       handle_ptr_->get_stream().synchronize();
@@ -800,7 +801,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     }
 
     if (first_factor) {
-      settings_->log.debug("Factorization time          : %.2fs\n", numeric_time);
+      settings_->log.debug("Factorization time          : %.3fs\n", numeric_time);
       first_factor = false;
     }
     if (status != CUDSS_STATUS_SUCCESS) {
@@ -868,10 +869,10 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     raft::copy(x_host.data(), x.data(), n, stream);
     cudaStreamSynchronize(stream);
     settings_->log.printf("RHS norm %.16e, hash: %zu, Solution norm %.16e, hash: %zu\n",
-                         vector_norm2<i_t, f_t>(b_host),
-                         compute_hash(b_host),
-                         vector_norm2<i_t, f_t>(x_host),
-                         compute_hash(x_host));
+                          vector_norm2<i_t, f_t>(b_host),
+                          compute_hash(b_host),
+                          vector_norm2<i_t, f_t>(x_host),
+                          compute_hash(x_host));
 #endif
 
     return 0;

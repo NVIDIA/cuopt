@@ -8,10 +8,8 @@
 #include <cuopt/error.hpp>
 #include <cuopt/mathematical_optimization/utilities/barrier_cache.hpp>
 
-#include <barrier/barrier_symbolic_cache.hpp>
-#include <pdlp/utilities/barrier_front_end_cache.hpp>
+#include <pdlp/utilities/barrier_transform.hpp>
 
-#include <optional>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -33,10 +31,9 @@ struct barrier_cache_t::impl {
 
   std::unique_ptr<rmm::cuda_stream> stream;
   std::unique_ptr<raft::handle_t> handle;
-  std::optional<mathematical_optimization::barrier::barrier_symbolic_cache_t<int, double>>
-    symbolic_cache;
   barrier_iteration_data_ptr iteration_data;
-  std::unique_ptr<barrier_front_end_cache_t> front_end;
+  std::unique_ptr<barrier_transform_t> transform;
+  bool c_dirty{false};
 };
 
 barrier_cache_t::barrier_cache_t(std::unique_ptr<rmm::cuda_stream> stream,
@@ -73,31 +70,11 @@ rmm::cuda_stream_view barrier_cache_t::stream_view() const
   return impl_->stream->view();
 }
 
-mathematical_optimization::barrier::barrier_symbolic_cache_t<int, double>*
-barrier_cache_t::symbolic_cache_for_reuse(raft::handle_t const* handle)
+void barrier_cache_t::clear()
 {
-  if (handle == nullptr || !impl_->symbolic_cache.has_value() || !impl_->symbolic_cache->valid ||
-      impl_->symbolic_cache->handle_ptr != handle) {
-    return nullptr;
-  }
-  return &(*impl_->symbolic_cache);
-}
-
-void barrier_cache_t::clear_symbolic_cache()
-{
-  impl_->symbolic_cache.reset();
-  clear_iteration_data();
-  clear_front_end_cache();
-}
-
-void barrier_cache_t::store_symbolic_cache(
-  mathematical_optimization::barrier::iteration_data_t<int, double>& data)
-{
-  if (!impl_->symbolic_cache.has_value()) {
-    impl_->symbolic_cache.emplace(impl_->handle->get_stream());
-  }
-  mathematical_optimization::barrier::barrier_store_symbolic_cache_from_iteration_data(
-    data, *impl_->symbolic_cache);
+  impl_->iteration_data.reset();
+  impl_->transform.reset();
+  impl_->c_dirty = false;
 }
 
 void barrier_cache_t::store_iteration_data(barrier_iteration_data_t* data)
@@ -110,56 +87,39 @@ barrier_iteration_data_t* barrier_cache_t::release_iteration_data()
   return impl_->iteration_data.release();
 }
 
-barrier_iteration_data_t* barrier_cache_t::iteration_data()
+void barrier_cache_t::store_transform(std::unique_ptr<barrier_transform_t> transform)
 {
-  return impl_->iteration_data.get();
+  impl_->transform = std::move(transform);
 }
 
-void barrier_cache_t::clear_iteration_data() { impl_->iteration_data.reset(); }
+barrier_transform_t* barrier_cache_t::transform() { return impl_->transform.get(); }
 
-void barrier_cache_t::store_front_end_cache(std::unique_ptr<barrier_front_end_cache_t> cache)
-{
-  impl_->front_end = std::move(cache);
-}
+barrier_transform_t const* barrier_cache_t::transform() const { return impl_->transform.get(); }
 
-barrier_front_end_cache_t* barrier_cache_t::front_end_cache() { return impl_->front_end.get(); }
-
-barrier_front_end_cache_t const* barrier_cache_t::front_end_cache() const
-{
-  return impl_->front_end.get();
-}
-
-void barrier_cache_t::clear_front_end_cache() { impl_->front_end.reset(); }
-
-void barrier_cache_t::set_c_dirty(bool dirty)
-{
-  if (impl_->front_end) { impl_->front_end->c_dirty = dirty; }
-}
+void barrier_cache_t::set_c_dirty(bool dirty) { impl_->c_dirty = dirty; }
 
 bool barrier_cache_t::c_dirty() const
 {
-  return impl_->front_end != nullptr && impl_->front_end->c_dirty;
+  return impl_->c_dirty && impl_->transform != nullptr && impl_->iteration_data.get() != nullptr;
 }
-
-bool barrier_cache_t::has_front_end_cache() const { return impl_->front_end != nullptr; }
 
 void barrier_cache_t::update_linear_objective(double const* c, int n)
 {
-  cuopt_expects(impl_->front_end != nullptr,
+  cuopt_expects(impl_->transform != nullptr,
                 error_type_t::ValidationError,
-                "update_q: no front-end cache; Solve with sequence_solve first.");
+                "update_q: no barrier transform; Solve with sequence_solve first.");
   cuopt_expects(impl_->iteration_data.get() != nullptr,
                 error_type_t::ValidationError,
                 "update_q: no cached iteration_data; Solve a QP to Optimal first.");
   std::vector<double> crushed;
   try {
-    crushed = crush_user_linear_objective(*impl_->front_end, c, n);
+    crushed = crush_user_linear_objective(*impl_->transform, c, n);
   } catch (std::invalid_argument const& e) {
     cuopt_expects(false, error_type_t::ValidationError, "%s", e.what());
   }
-  if (impl_->front_end->linear_obj_shift.size() == crushed.size()) {
+  if (impl_->transform->linear_obj_shift.size() == crushed.size()) {
     for (std::size_t j = 0; j < crushed.size(); ++j) {
-      crushed[j] += impl_->front_end->linear_obj_shift[j];
+      crushed[j] += impl_->transform->linear_obj_shift[j];
     }
   }
   try {
@@ -168,7 +128,7 @@ void barrier_cache_t::update_linear_objective(double const* c, int n)
   } catch (std::invalid_argument const& e) {
     cuopt_expects(false, error_type_t::ValidationError, "%s", e.what());
   }
-  impl_->front_end->c_dirty = true;
+  impl_->c_dirty = true;
 }
 
 }  // namespace cuopt::cython

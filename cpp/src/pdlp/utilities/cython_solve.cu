@@ -20,7 +20,6 @@
 #include <cuopt/mathematical_optimization/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/utilities/cython_solve.hpp>
 #include <cuopt/mathematical_optimization/utilities/barrier_cache.hpp>
-#include <cuopt/mathematical_optimization/utilities/solver_cache_profiler.hpp>
 
 #include <mip_heuristics/logger.hpp>
 #include <utilities/copy_helpers.hpp>
@@ -40,19 +39,6 @@
 
 namespace cuopt {
 namespace cython {
-
-namespace {
-
-bool uses_barrier_session_path(
-  cuopt::mathematical_optimization::solver_settings_t<int, double>& solver_settings,
-  cuopt::mathematical_optimization::io::data_model_view_t<int, double> const& data_model)
-{
-  if (data_model.has_quadratic_objective() || data_model.has_quadratic_constraints()) { return true; }
-  return solver_settings.get_pdlp_settings().method ==
-         cuopt::mathematical_optimization::method_t::Barrier;
-}
-
-}  // namespace
 
 /**
  * @brief Wrapper for linear_programming to expose the API to cython
@@ -116,12 +102,9 @@ std::unique_ptr<solver_ret_t> call_solve(
   cuopt::mathematical_optimization::solver_settings_t<int, double>* solver_settings,
   unsigned int flags,
   bool is_batch_mode,
-  barrier_cache_t* session_in)
+  barrier_cache_t* cache_in)
 {
   raft::common::nvtx::range fun_scope("Call Solve");
-
-  namespace cache_profile = cuopt::linear_programming::cache_profile;
-  if (cache_profile::enabled()) { cache_profile::reset(); }
 
   cuopt_expects(data_model != nullptr,
                 error_type_t::ValidationError,
@@ -137,13 +120,15 @@ std::unique_ptr<solver_ret_t> call_solve(
 
   auto& pdlp_settings = solver_settings->get_pdlp_settings();
   const bool sequence_solve = pdlp_settings.sequence_solve;
-  const bool barrier_path    = uses_barrier_session_path(*solver_settings, *data_model);
-  const bool want_session    = (session_in != nullptr || sequence_solve) && barrier_path &&
+  const bool barrier_path =
+    data_model->has_quadratic_objective() || data_model->has_quadratic_constraints() ||
+    pdlp_settings.method == cuopt::mathematical_optimization::method_t::Barrier;
+  const bool want_cache    = (cache_in != nullptr || sequence_solve) && barrier_path &&
                             memory_backend == cuopt::mathematical_optimization::memory_backend_t::GPU &&
                             !is_batch_mode;
 
-  std::unique_ptr<barrier_cache_t> owned_session;
-  barrier_cache_t* active_session = session_in;
+  std::unique_ptr<barrier_cache_t> owned_cache;
+  barrier_cache_t* active_cache = cache_in;
   pdlp_settings.barrier_cache     = nullptr;
 
   rmm::cuda_stream ephemeral_stream(static_cast<rmm::cuda_stream::flags>(flags));
@@ -152,26 +137,13 @@ std::unique_ptr<solver_ret_t> call_solve(
 
   // Create problem instance and CUDA resources based on memory backend
   if (memory_backend == cuopt::mathematical_optimization::memory_backend_t::GPU) {
-    if (want_session) {
-      if (active_session == nullptr) {
-        const auto handle_start = std::chrono::steady_clock::now();
-        owned_session           = barrier_cache_t::create(flags);
-        active_session          = owned_session.get();
-        if (cache_profile::enabled()) {
-          const double elapsed =
-            std::chrono::duration<double>(std::chrono::steady_clock::now() - handle_start).count();
-          cache_profile::add(cache_profile::cache_id::C01, elapsed);
-        }
+    if (want_cache) {
+      if (active_cache == nullptr) {
+        owned_cache  = barrier_cache_t::create(flags);
+        active_cache = owned_cache.get();
       }
-      solve_handle                   = active_session->handle_ptr();
-      pdlp_settings.barrier_cache = active_session;
-    } else {
-      const auto handle_start = std::chrono::steady_clock::now();
-      if (cache_profile::enabled()) {
-        const double elapsed =
-          std::chrono::duration<double>(std::chrono::steady_clock::now() - handle_start).count();
-        cache_profile::add(cache_profile::cache_id::C01, elapsed);
-      }
+      solve_handle                = active_cache->handle_ptr();
+      pdlp_settings.barrier_cache = active_cache;
     }
 
     auto problem = cuopt::mathematical_optimization::optimization_problem_t<int, double>(solve_handle);
@@ -205,7 +177,7 @@ std::unique_ptr<solver_ret_t> call_solve(
       gpu_sols.last_restart_duality_gap_primal_solution_->set_stream(rmm::cuda_stream_per_thread);
       gpu_sols.last_restart_duality_gap_dual_solution_->set_stream(rmm::cuda_stream_per_thread);
 
-      if (owned_session) { response.lp_ret.barrier_cache = std::move(owned_session); }
+      if (owned_cache) { response.lp_ret.barrier_cache = std::move(owned_cache); }
 
     } else {
       // MIP solve
@@ -264,8 +236,6 @@ std::unique_ptr<solver_ret_t> call_solve(
       response.problem_type = mathematical_optimization::problem_category_t::MIP;
     }
   }
-
-  if (cache_profile::enabled()) { cache_profile::log_summary(); }
 
   pdlp_settings.barrier_cache = nullptr;
 

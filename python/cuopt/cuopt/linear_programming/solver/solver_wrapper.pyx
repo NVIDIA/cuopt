@@ -480,7 +480,7 @@ def prepare_solver_settings(SolverSettings settings, data_model=None, mip=False)
 def Solve(py_data_model_obj, SolverSettings settings, mip=False):
 
     cdef DataModel data_model_obj = <DataModel>py_data_model_obj
-    cdef barrier_cache_t* session_in = NULL
+    cdef barrier_cache_t* cache_in = NULL
     cdef solver_ret_t* sol_ret
 
     if settings.sequence_solve and data_model_obj.barrier_cache_capsule is not None:
@@ -489,7 +489,7 @@ def Solve(py_data_model_obj, SolverSettings settings, mip=False):
             b"cuopt.barrier_cache",
         ):
             raise ValueError("Invalid barrier cache stored on DataModel.")
-        session_in = <barrier_cache_t*>PyCapsule_GetPointer(
+        cache_in = <barrier_cache_t*>PyCapsule_GetPointer(
             data_model_obj.barrier_cache_capsule,
             b"cuopt.barrier_cache",
         )
@@ -510,7 +510,7 @@ def Solve(py_data_model_obj, SolverSettings settings, mip=False):
             settings.c_solver_settings.get(),
             cudaStreamNonBlocking,
             False,
-            session_in,
+            cache_in,
         ))
 
     sol_ret = sol_ret_ptr.get()

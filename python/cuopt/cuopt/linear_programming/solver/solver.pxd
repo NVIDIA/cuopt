@@ -151,7 +151,7 @@ cdef extern from "cuopt/mathematical_optimization/utilities/cython_solve.hpp" na
         solver_settings_t[int, double]* solver_settings,
         unsigned int flags,
         bool is_batch_mode,
-        barrier_cache_t* session_in,
+        barrier_cache_t* cache_in,
     ) except + nogil
 
     cdef pair[vector[unique_ptr[solver_ret_t]], double] call_batch_solve( # noqa

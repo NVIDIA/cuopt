@@ -35,7 +35,8 @@
 #include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/solve.hpp>
-#include <cuopt/mathematical_optimization/utilities/solver_cache_profiler.hpp>
+#include <cuopt/mathematical_optimization/utilities/barrier_cache.hpp>
+#include <pdlp/utilities/barrier_transform.hpp>
 
 #include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
 #include <utilities/copy_helpers.hpp>
@@ -77,45 +78,26 @@ namespace cuopt::mathematical_optimization {
 namespace {
 
 template <typename i_t, typename f_t>
-uint64_t fnv1a64_mix(uint64_t hash, uint64_t value)
+simplex::user_problem_t<i_t, f_t> user_problem_from_transform(
+  raft::handle_t const* handle_ptr,
+  optimization_problem_t<i_t, f_t>& model,
+  cuopt::cython::barrier_transform_t const& xf)
 {
-  constexpr uint64_t kFnvPrime  = 1099511628211ULL;
-  constexpr uint64_t kFnvOffset = 14695981039346656037ULL;
-  if (hash == 0) { hash = kFnvOffset; }
-  for (int shift = 0; shift < 64; shift += 8) {
-    hash ^= (value >> shift) & 0xFFULL;
-    hash *= kFnvPrime;
-  }
-  return hash;
-}
-
-template <typename i_t, typename f_t>
-uint64_t compute_problem_fingerprint(const optimization_problem_t<i_t, f_t>& op)
-{
-  uint64_t hash = fnv1a64_mix<i_t, f_t>(0, static_cast<uint64_t>(op.get_n_variables()));
-  hash          = fnv1a64_mix<i_t, f_t>(hash, static_cast<uint64_t>(op.get_n_constraints()));
-  hash          = fnv1a64_mix<i_t, f_t>(hash, static_cast<uint64_t>(op.get_nnz()));
-
-  const auto offsets = op.get_constraint_matrix_offsets_host();
-  for (i_t off : offsets) {
-    hash = fnv1a64_mix<i_t, f_t>(hash, static_cast<uint64_t>(off));
-  }
-  const auto indices = op.get_constraint_matrix_indices_host();
-  for (i_t idx : indices) {
-    hash = fnv1a64_mix<i_t, f_t>(hash, static_cast<uint64_t>(idx));
-  }
-
-  if (op.has_quadratic_objective()) {
-    const auto q_offsets = op.get_quadratic_objective_offsets();
-    for (i_t off : q_offsets) {
-      hash = fnv1a64_mix<i_t, f_t>(hash, static_cast<uint64_t>(off));
-    }
-    const auto q_indices = op.get_quadratic_objective_indices();
-    for (i_t idx : q_indices) {
-      hash = fnv1a64_mix<i_t, f_t>(hash, static_cast<uint64_t>(idx));
-    }
-  }
-  return hash;
+  simplex::user_problem_t<i_t, f_t> user_problem(handle_ptr);
+  user_problem.num_rows  = xf.user_num_rows;
+  user_problem.num_cols  = xf.user_num_cols;
+  user_problem.objective = model.get_objective_coefficients_host();
+  user_problem.row_sense = xf.row_sense;
+  user_problem.rhs.assign(static_cast<std::size_t>(xf.user_num_rows), f_t(0));
+  user_problem.obj_scale    = static_cast<f_t>(xf.obj_scale);
+  user_problem.obj_constant = static_cast<f_t>(xf.obj_constant);
+  // Nonempty Q so the cache-reuse path accepts this as a QP (it rejects empty Q).
+  user_problem.Q_values.assign(1, f_t(1));
+  user_problem.cone_var_start               = xf.cone_var_start;
+  user_problem.second_order_cone_dims       = xf.second_order_cone_dims;
+  user_problem.original_num_cols            = xf.expanded_original_num_cols;
+  user_problem.original_col_to_expanded_col = xf.original_col_to_expanded_col;
+  return user_problem;
 }
 
 }  // namespace
@@ -541,7 +523,7 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   const timer_t& timer,
   const raft::handle_t* handle_ptr,
-  cuopt::cython::barrier_cache_t* session = nullptr)
+  cuopt::cython::barrier_cache_t* cache = nullptr)
 {
   f_t norm_user_objective = vector_norm2<i_t, f_t>(user_problem.objective);
   f_t norm_rhs            = vector_norm2<i_t, f_t>(user_problem.rhs);
@@ -578,7 +560,7 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
 
   simplex::lp_solution_t<i_t, f_t> solution(user_problem.num_rows, user_problem.num_cols);
   auto status = simplex::solve_linear_program_with_barrier<i_t, f_t>(
-    user_problem, barrier_settings, timer.get_tic_start(), solution, session, handle_ptr);
+    user_problem, barrier_settings, timer.get_tic_start(), solution, cache, handle_ptr);
 
   if (status == simplex::lp_status_t::OPTIMAL) {
     barrier::project_barrier_solution_to_model_variables(user_problem, solution);
@@ -603,13 +585,13 @@ optimization_problem_solution_t<i_t, f_t> run_barrier(
   mip::problem_t<i_t, f_t>& problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   const timer_t& timer,
-  cuopt::cython::barrier_cache_t* session = nullptr)
+  cuopt::cython::barrier_cache_t* cache = nullptr)
 {
   // Convert data structures to dual simplex format and back
   simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
     cuopt_problem_to_user_problem<i_t, f_t>(problem.handle_ptr, problem, false);
   auto sol_dual_simplex =
-    run_barrier(dual_simplex_problem, settings, timer, problem.handle_ptr, session);
+    run_barrier(dual_simplex_problem, settings, timer, problem.handle_ptr, cache);
   return convert_dual_simplex_sol(problem,
                                   std::get<0>(sol_dual_simplex),
                                   std::get<1>(sol_dual_simplex),
@@ -1885,14 +1867,22 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
     print_version_info();
 
     // Init libraries before to not include it in solve time
-    {
-      CUOPT_CACHE_PROFILE_SCOPE(cuopt::linear_programming::cache_profile::cache_id::C02);
-      init_handler(op_problem.get_handle_ptr());
-    }
+    init_handler(op_problem.get_handle_ptr());
 
     auto qcqp_timer = cuopt::timer_t(settings.time_limit);
 
-    if (problem_checking) {
+    auto* cache = settings.barrier_cache;
+    auto const* xf = (cache != nullptr && cache->c_dirty()) ? cache->transform() : nullptr;
+    const bool reuse_from_cache =
+      settings.user_problem_file.empty() && xf != nullptr && xf->barrier_lp != nullptr &&
+      settings.barrier_presolve_bound_free_variables == 0 &&
+      op_problem.has_quadratic_objective() && !op_problem.has_quadratic_constraints() &&
+      xf->second_order_cone_dims.empty() &&
+      static_cast<int>(xf->row_sense.size()) == xf->user_num_rows &&
+      op_problem.get_n_variables() == xf->user_num_cols &&
+      op_problem.get_n_constraints() == xf->user_num_rows;
+
+    if (problem_checking && !reuse_from_cache) {
       problem_checking_t<i_t, f_t>::check_problem_representation(op_problem);
       if (problem_checking_t<i_t, f_t>::has_crossing_bounds(op_problem)) {
         return optimization_problem_solution_t<i_t, f_t>(
@@ -1920,19 +1910,20 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
       CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());
       op_problem.write_to_mps(settings.user_problem_file);
     }
-    {
-      CUOPT_CACHE_PROFILE_SCOPE(cuopt::linear_programming::cache_profile::cache_id::C03);
-      [[maybe_unused]] const uint64_t fingerprint = compute_problem_fingerprint(op_problem);
+    simplex::user_problem_t<i_t, f_t> dual_simplex_problem(op_problem.get_handle_ptr());
+    if (reuse_from_cache) {
+      dual_simplex_problem = user_problem_from_transform(
+        op_problem.get_handle_ptr(), op_problem, *settings.barrier_cache->transform());
+    } else {
+      dual_simplex_problem = cuopt_optimization_problem_to_user_problem<i_t, f_t>(
+        op_problem.get_handle_ptr(), op_problem);
     }
-    // Convert data structures to dual simplex format and back
-    simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
-      cuopt_optimization_problem_to_user_problem<i_t, f_t>(op_problem.get_handle_ptr(), op_problem);
     auto sol_dual_simplex = run_barrier(dual_simplex_problem,
                                         settings,
                                         qcqp_timer,
                                         op_problem.get_handle_ptr(),
                                         settings.barrier_cache);
-    auto solution = convert_dual_simplex_sol(op_problem,
+    auto solution         = convert_dual_simplex_sol(op_problem,
                                              std::get<0>(sol_dual_simplex),
                                              std::get<1>(sol_dual_simplex),
                                              std::get<2>(sol_dual_simplex),
@@ -2053,10 +2044,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
 
     // Init libraries before to not include it in solve time
     // This needs to be called before pdlp is initialized
-    {
-      CUOPT_CACHE_PROFILE_SCOPE(cuopt::linear_programming::cache_profile::cache_id::C02);
-      init_handler(op_problem.get_handle_ptr());
-    }
+    init_handler(op_problem.get_handle_ptr());
 
     raft::common::nvtx::range fun_scope("Running solver");
 

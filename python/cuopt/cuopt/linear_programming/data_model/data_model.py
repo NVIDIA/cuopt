@@ -231,17 +231,18 @@ class DataModel(data_model_wrapper.DataModel):
     @catch_cuopt_exception
     def update_q(self, c):
         """
-        Update the linear objective coefficients (c) for a session re-solve.
+        Update the linear objective coefficients (c) for a sequence re-solve.
 
-        Writes user-space ``c`` onto this DataModel. If a Barrier session is
+        Writes user-space ``c`` onto this DataModel. If a barrier cache is
         present, also maps ``c`` into the cached barrier workspace and marks
         it dirty (quadratic ``Q``, ``A``, and bounds must stay unchanged).
+        Cache reuse is QP-only: quadratic constraints take a full solve.
 
         Parameters
         ----------
         c : array-like of float64
             Linear objective coefficients, length equal to the number of
-            variables on the first session solve.
+            variables on the first ``sequence_solve``.
         """
         super().update_q(c)
 

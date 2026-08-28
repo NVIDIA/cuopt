@@ -78,11 +78,11 @@ cdef class DataModel:
         self.quadratic_constraints = []
 
     def has_barrier_cache(self):
-        """Return whether this data model owns a reusable solver session."""
+        """Return whether this data model owns a reusable solver cache."""
         return self.barrier_cache_capsule is not None
 
     def clear_barrier_cache(self):
-        """Release this data model's reusable solver session and GPU cache."""
+        """Release this data model's reusable barrier cache."""
         self.barrier_cache_capsule = None
 
     def clear_quadratic_constraints(self):
@@ -179,12 +179,12 @@ cdef class DataModel:
         """Update linear objective coefficients (user-space ``c``).
 
         Always writes the DataModel objective. If this model owns a solver
-        session from a prior Barrier solve, also crushes ``c`` into the cached
-        ``iteration_data_t`` and sets ``c_dirty`` so a later continue path can
-        skip convert/presolve. Session crush runs first so a length error
+        cache from a prior Barrier solve, also crushes ``c`` into the cached
+        ``iteration_data_t`` and sets ``c_dirty`` so a later reuse can
+        skip convert/presolve. Crush runs first so a length error
         leaves the DataModel coefficients unchanged.
         """
-        cdef barrier_cache_t* session
+        cdef barrier_cache_t* cache
         cdef double[::1] c_view
         new_c = type_cast(c, np.float64, "c")
         if self.barrier_cache_capsule is not None:
@@ -192,15 +192,15 @@ cdef class DataModel:
                 self.barrier_cache_capsule, b"cuopt.barrier_cache"
             ):
                 raise ValueError("Invalid barrier cache stored on DataModel.")
-            session = <barrier_cache_t*>PyCapsule_GetPointer(
+            cache = <barrier_cache_t*>PyCapsule_GetPointer(
                 self.barrier_cache_capsule,
                 b"cuopt.barrier_cache",
             )
             c_view = np.ascontiguousarray(new_c, dtype=np.float64)
             if c_view.shape[0] == 0:
-                session.update_linear_objective(NULL, 0)
+                cache.update_linear_objective(NULL, 0)
             else:
-                session.update_linear_objective(&c_view[0], <int>c_view.shape[0])
+                cache.update_linear_objective(&c_view[0], <int>c_view.shape[0])
         self.c = new_c
 
     def set_objective_scaling_factor(self, objective_scaling_factor):
