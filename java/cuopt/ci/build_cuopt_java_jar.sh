@@ -13,6 +13,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=java/cuopt/ci/argparse.sh
 source "${SCRIPT_DIR}/argparse.sh"
+# shellcheck source=java/cuopt/scripts/maven.sh
+source "${SCRIPT_DIR}/../scripts/maven.sh"
+cuopt_maven_args
 MODULE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # shellcheck source=java/cuopt/ci/java_classifier.sh
 source "${SCRIPT_DIR}/java_classifier.sh"
@@ -94,15 +97,20 @@ for companion in librmm.so librapids_logger.so libtbb.so.12 libnccl.so.2 libcuds
 done
 
 mkdir -p "${OUTPUT_DIR}/${CLASSIFIER}"
-mvn -f "${MODULE_DIR}/pom.xml" -B \
+cuopt_mvn -f "${MODULE_DIR}/pom.xml" -B \
   -DskipTests \
   -Dcuopt.jar.classifier="${CLASSIFIER}" \
   -Dcuopt.native.resources="${STAGING}" \
   package
 
-VERSION="$(mvn -f "${MODULE_DIR}/pom.xml" -B -q \
-  -Dexec.executable=echo -Dexec.args='${project.version}' \
-  --non-recursive exec:exec 2>/dev/null | tail -1)"
+# Read straight from the POM rather than asking Maven: this needs no network, and
+# ci/release/update-version.sh keeps the marker in step with the version.
+VERSION="$(sed -n 's/.*VERSION_UPDATE_MARKER_START--><version>\([^<]*\)<\/version>.*/\1/p' \
+  "${MODULE_DIR}/pom.xml")"
+if [[ -z "${VERSION}" ]]; then
+  echo "could not read the version from ${MODULE_DIR}/pom.xml" >&2
+  exit 1
+fi
 
 # Each classifier directory carries everything Maven Central needs for the artifact, so the
 # gather step can work from the classifier directories alone.

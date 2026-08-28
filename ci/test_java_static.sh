@@ -20,6 +20,9 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=java/cuopt/ci/java_classifier.sh
 . "${REPO_ROOT}/java/cuopt/ci/java_classifier.sh"
+# shellcheck source=java/cuopt/scripts/maven.sh
+. "${REPO_ROOT}/java/cuopt/scripts/maven.sh"
+cuopt_maven_args
 
 if [[ -e /opt/conda/etc/profile.d/conda.sh ]]; then
   . /opt/conda/etc/profile.d/conda.sh
@@ -69,7 +72,7 @@ rapids-print-env
 nvidia-smi
 
 rapids-logger "Running the suite against the packaged JAR"
-mvn -B -f "${REPO_ROOT}/java/cuopt/pom.xml" test \
+cuopt_mvn -B -f "${REPO_ROOT}/java/cuopt/pom.xml" test \
   -Ppackaged-jar-tests \
   "-Dcuopt.jar.path=${CUOPT_JAVA_JAR}"
 
