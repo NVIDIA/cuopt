@@ -1,0 +1,16 @@
+diff --git a/src/core/Presolver.c b/src/core/Presolver.c
+index c0bdc9e..426008e 100644
+--- a/src/core/Presolver.c
++++ b/src/core/Presolver.c
+@@ -720,7 +720,10 @@ PresolveStatus run_presolver(Presolver *presolver)
+     if (status != UNCHANGED)
+     {
+         // problem detected to be infeasible or unbounded
+-        print_infeas_or_unbnd_message(status);
++        if (stgs->verbose)
++        {
++            print_infeas_or_unbnd_message(status);
++        }
+         return status;
+     }
+ 
