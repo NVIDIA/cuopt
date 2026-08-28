@@ -2839,3 +2839,43 @@ TEST(MapperRoundtrip, QuadraticConstraintsRowTypeLenient)
       << "Mismatch at index " << i;
   }
 }
+
+// =============================================================================
+// solve_mip_remote() semi-continuous callback disabling
+// =============================================================================
+//
+// solve_mip_remote() drops user-provided incumbent get/set callbacks when the model
+// has semi-continuous variables, since the remote server does not support that
+// combination. should_disable_semi_continuous_callbacks() is the pure predicate behind
+// that decision, exposed via grpc_client.hpp so it can be tested without a live
+// gRPC connection.
+
+TEST(SolveMipRemoteCallbacks, NoSemiContinuousNoCallbacksKeepsDisabled)
+{
+  std::vector<var_t> var_types = {var_t::CONTINUOUS, var_t::INTEGER};
+  EXPECT_FALSE(should_disable_semi_continuous_callbacks(var_types, /*has_callbacks=*/false));
+}
+
+TEST(SolveMipRemoteCallbacks, NoSemiContinuousWithCallbacksKeepsEnabled)
+{
+  std::vector<var_t> var_types = {var_t::CONTINUOUS, var_t::INTEGER};
+  EXPECT_FALSE(should_disable_semi_continuous_callbacks(var_types, /*has_callbacks=*/true));
+}
+
+TEST(SolveMipRemoteCallbacks, SemiContinuousWithoutCallbacksStaysDisabled)
+{
+  std::vector<var_t> var_types = {var_t::CONTINUOUS, var_t::SEMI_CONTINUOUS};
+  EXPECT_FALSE(should_disable_semi_continuous_callbacks(var_types, /*has_callbacks=*/false));
+}
+
+TEST(SolveMipRemoteCallbacks, SemiContinuousWithCallbacksGetsDisabled)
+{
+  std::vector<var_t> var_types = {var_t::CONTINUOUS, var_t::SEMI_CONTINUOUS, var_t::INTEGER};
+  EXPECT_TRUE(should_disable_semi_continuous_callbacks(var_types, /*has_callbacks=*/true));
+}
+
+TEST(SolveMipRemoteCallbacks, EmptyVariableListKeepsCallbacksEnabled)
+{
+  std::vector<var_t> var_types = {};
+  EXPECT_FALSE(should_disable_semi_continuous_callbacks(var_types, /*has_callbacks=*/true));
+}
