@@ -12,6 +12,7 @@
 #include <linear_algebra/sparse_matrix.hpp>
 
 #include <utilities/copy_helpers.hpp>
+#include <utilities/device_scalar_init.hpp>
 #include <utilities/macros.cuh>
 
 #include <cuopt/error.hpp>
@@ -171,9 +172,9 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
     A_T_data_(0, handle_ptr->get_stream()),
     spmv_buffer_(0, handle_ptr->get_stream()),
     spmv_buffer_transpose_(0, handle_ptr->get_stream()),
-    d_one_(f_t(1), handle_ptr->get_stream()),
-    d_minus_one_(f_t(-1), handle_ptr->get_stream()),
-    d_zero_(f_t(0), handle_ptr->get_stream())
+    d_one_(one_v<f_t>, handle_ptr->get_stream()),
+    d_minus_one_(neg_one_v<f_t>, handle_ptr->get_stream()),
+    d_zero_(zero_v<f_t>, handle_ptr->get_stream())
 {
   RAFT_CUBLAS_TRY(raft::linalg::detail::cublassetpointermode(
     handle_ptr->get_cublas_handle(), CUBLAS_POINTER_MODE_DEVICE, handle_ptr->get_stream()));

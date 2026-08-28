@@ -11,6 +11,7 @@
 #include <pdlp/pdlp_constants.hpp>
 #include <pdlp/restart_strategy/weighted_average_solution.hpp>
 #include <pdlp/utils.cuh>
+#include <utilities/device_scalar_init.hpp>
 
 #include <raft/linalg/binary_op.cuh>
 #include <raft/linalg/divide.cuh>
@@ -27,8 +28,8 @@ weighted_average_solution_t<i_t, f_t>::weighted_average_solution_t(raft::handle_
     dual_size_h_(dual_size),
     sum_primal_solutions_{static_cast<size_t>(primal_size_h_), stream_view_},
     sum_dual_solutions_{static_cast<size_t>(dual_size_h_), stream_view_},
-    sum_primal_solution_weights_{0.0, stream_view_},
-    sum_dual_solution_weights_{0.0, stream_view_},
+    sum_primal_solution_weights_{zero_v<f_t>, stream_view_},
+    sum_dual_solution_weights_{zero_v<f_t>, stream_view_},
     iterations_since_last_restart_{0},
     graph(stream_view_, is_batch_mode)
 {

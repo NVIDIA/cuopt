@@ -572,6 +572,10 @@ pdlp_settings:
       field_num: 31
       type: bool
       optional: true
+  - barrier_adaptive_regularization:
+      field_num: 34
+      type: int32
+      optional: true
   - barrier_step_scale:
       # Step scale used by the barrier method primal/dual updates. Local-solve
       # binding restricts the range to [0.5, 0.9999] with default 0.9; see

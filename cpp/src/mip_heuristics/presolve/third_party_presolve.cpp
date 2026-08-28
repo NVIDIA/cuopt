@@ -42,6 +42,7 @@
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/presolve/bhw_coeff_reduce.hpp>
 #include <mip_heuristics/presolve/gf2_presolve.hpp>
+#include <mip_heuristics/presolve/single_lock_dual_aggregation.hpp>
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
 #include <utilities/logger.hpp>
 #include <utilities/macros.cuh>
@@ -709,6 +710,7 @@ void set_presolve_methods(
     maybe_add(uptr(new papilo::SimpleSubstitution<f_t>()));
     maybe_add(uptr(new papilo::Sparsify<f_t>()));
     maybe_add(uptr(new papilo::Substitution<f_t>()));
+    maybe_add(uptr(new cuopt::mathematical_optimization::mip::SingleLockDualAggregation<f_t>()));
   } else {
     CUOPT_LOG_INFO("Disabling the presolver methods that do not support dual postsolve");
   }
