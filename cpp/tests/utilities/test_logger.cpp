@@ -248,4 +248,43 @@ TEST(logger, component_logger_truncates_shared_file)
   std::remove(path.c_str());
 }
 
+#ifdef CUOPT_HAS_ROUTING
+// mathopt and routing are compiled into the same shared library (`cuopt` in
+// cpp/CMakeLists.txt) until libcuopt splits into separate component libraries
+// (#1622), so their "component" loggers are the same hidden instance today, not two
+// independent ones. This pins down that current behavior: whichever component
+// configures first wins the shared logger, and the second component's file is left
+// alone rather than corrupted or silently truncated out from under a concurrent
+// writer. If this starts failing, it means the split landed and mathopt/routing now
+// have independent loggers -- update this test (and its neighbor above) to assert
+// each file is truncated independently instead.
+TEST(logger, mathopt_and_routing_share_one_instance_pre_split)
+{
+  const auto mathopt_path = temp_log_path("mathopt");
+  const auto routing_path = temp_log_path("routing");
+  {
+    std::ofstream seed{mathopt_path};
+    seed << "STALE_MATHOPT\n";
+  }
+  {
+    std::ofstream seed{routing_path};
+    seed << "STALE_ROUTING\n";
+  }
+
+  {
+    cuopt::init_component_logger_t mathopt_log{mathopt_path, false, cuopt::log_target_t::mathopt};
+    EXPECT_EQ(read_file(mathopt_path).find("STALE_MATHOPT"), std::string::npos)
+      << "mathopt configure did not clear its file";
+
+    cuopt::init_component_logger_t routing_log{routing_path, false, cuopt::log_target_t::routing};
+    EXPECT_NE(read_file(routing_path).find("STALE_ROUTING"), std::string::npos)
+      << "routing's file was truncated -- mathopt and routing no longer share one "
+         "logger instance, see the comment above this test";
+  }
+
+  std::remove(mathopt_path.c_str());
+  std::remove(routing_path.c_str());
+}
+#endif
+
 }  // namespace cuopt::test
