@@ -34,6 +34,7 @@
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
+#include <mip_heuristics/root_heuristics.hpp>
 
 #include <omp.h>
 
@@ -41,6 +42,7 @@
 #include <functional>
 #include <future>
 #include <limits>
+#include <list>
 #include <memory>
 #include <vector>
 
@@ -56,7 +58,7 @@ enum class mip_status_t {
   NUMERICAL       = 6,  // The solver encountered a numerical error
   UNSET           = 7,  // The status is not set
   WORK_LIMIT      = 8,  // The solver reached a deterministic work limit
-  SUBMIP_HALT     = 9   // Halt the solver
+  HALT            = 9   // Halt the solver
 };
 
 inline std::string mip_status_to_string(mip_status_t status)
@@ -71,7 +73,7 @@ inline std::string mip_status_to_string(mip_status_t status)
     case mip_status_t::NUMERICAL: return "NUMERICAL";
     case mip_status_t::UNSET: return "UNSET";
     case mip_status_t::WORK_LIMIT: return "WORK_LIMIT";
-    case mip_status_t::SUBMIP_HALT: return "SUBMIP_HALT";
+    case mip_status_t::HALT: return "HALT";
   }
   return "UNKNOWN";
 }
@@ -426,8 +428,9 @@ class branch_and_bound_t {
   diving_worker_pool_t<i_t, f_t> diving_worker_pool_;
 
   // Worker pool dedicated to recursive RINS
-  diving_worker_pool_t<i_t, f_t> rins_worker_pool_;
+  diving_worker_pool_t<i_t, f_t> submip_worker_pool_;
   submip_stats_t rins_stats_;
+  submip_stats_t rens_stats_;
 
   // Global status of the solver.
   omp_atomic_t<mip_status_t> solver_status_;
@@ -453,13 +456,15 @@ class branch_and_bound_t {
               i_t node_int_infeas,
               double work_time = -1);
 
-  enum class cut_pass_action_t { CONTINUE, BREAK, RETURN };
-  struct cut_pass_result_t {
-    cut_pass_action_t action{cut_pass_action_t::CONTINUE};
-    mip_status_t status{mip_status_t::UNSET};
-  };
+  bool received_halt_signal()
+  {
+    return settings_.concurrent_halt ? settings_.concurrent_halt->load(std::memory_order_acquire)
+                                     : false;
+  }
 
-  cut_pass_result_t do_cut_pass(i_t cut_pass,
+  enum class cut_pass_action_t { CONTINUE, BREAK, RETURN };
+
+  cut_pass_action_t do_cut_pass(i_t cut_pass,
                                 simplex::mip_solution_t<i_t, f_t>& solution,
                                 i_t& num_fractional,
                                 std::vector<i_t>& fractional,
@@ -583,25 +588,33 @@ class branch_and_bound_t {
   void dive_with(diving_worker_t<i_t, f_t>* worker, i_t backtrack_limit);
 
   // Launch a new RINS worker
-  bool launch_rins_worker(const std::vector<f_t>& sol);
-  void set_solution_from_submip(const std::vector<f_t>& solution,
+  bool launch_submip_worker(const std::vector<f_t>& sol);
+  void set_solution_from_submip(const simplex::lp_problem_t<i_t, f_t>& lp,
+                                const std::vector<f_t>& solution,
                                 const third_party_presolve_t<i_t, f_t>& presolver,
+                                submip_stats_t& submip_stats,
                                 f_t fixrate,
-                                f_t obj);
+                                std::string_view log_prefix);
 
-  // Solve the RINS sub-MIP
+  // Solve the RINS sub-MIP.
   void solve_submip(diving_worker_t<i_t, f_t>* worker,
                     const std::vector<f_t>& current_incumbent,
-                    i_t num_var_fixed,
-                    i_t num_integers,
-                    i_t submip_level,
-                    std::string_view log_prefix);
+                    const std::vector<simplex::variable_type_t>& var_types,
+                    submip_stats_t& submip_stats,
+                    f_t fixrate,
+                    i_t simplex_iter_used,
+                    simplex::simplex_solver_settings_t<i_t, f_t> submip_settings);
 
-  // Creates and solves the RINS sub-MIP
-  void rins(diving_worker_t<i_t, f_t>* rins_worker, const std::vector<f_t>& node_solution);
+  // Creates and solves the RINS/RENS sub-MIP.
+  void recursive_submip(diving_worker_t<i_t, f_t>* worker,
+                        const std::vector<f_t>& current_incumbent,
+                        const std::vector<simplex::variable_type_t>& var_types,
+                        simplex::simplex_solver_settings_t<i_t, f_t> submip_settings);
 
-  // Get the simplex settings for solving the LP of a single node
-  simplex::simplex_solver_settings_t<i_t, f_t> get_node_lp_settings();
+  void launch_root_heuristics(const simplex::lp_problem_t<i_t, f_t>& lp,
+                              const std::vector<f_t>& sol,
+                              i_t cut_pass,
+                              root_heuristics_t<i_t, f_t>& root_heuristics);
 
   // Solve the LP relaxation of a leaf node
   simplex::dual_status_t solve_node_lp(mip_node_t<i_t, f_t>* node_ptr,

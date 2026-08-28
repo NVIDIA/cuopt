@@ -97,6 +97,15 @@ bool validate_barrier_cone_layout(const lp_problem_t<i_t, f_t>& problem,
   return true;
 }
 
+// -1 automatic: enable for cones, disable otherwise; 0 off; 1 on
+template <typename i_t, typename f_t>
+bool should_use_adaptive_regularization(const simplex_solver_settings_t<i_t, f_t>& settings,
+                                        bool has_cones)
+{
+  return settings.barrier_adaptive_regularization > 0 ||
+         (settings.barrier_adaptive_regularization < 0 && has_cones);
+}
+
 template <typename f_t>
 [[maybe_unused]] static void pairwise_multiply(
   f_t* a, f_t* b, f_t* out, int size, rmm::cuda_stream_view stream)
@@ -479,14 +488,11 @@ class iteration_data_t {
       f_t estimated_nz_AAT = 0.0;
 
       const bool has_soc = has_cones();
-
-      if (has_soc) {
-        primal_perturb = 1e-8;
-        dual_perturb   = 1e-8;
-      } else {
-        primal_perturb = 1e-6;
-        dual_perturb   = 0;
-      }
+      // Apply the adaptive-regularization policy before form_augmented / initial
+      // factorization so an explicit enable/disable is honored from the start.
+      const bool adaptive_reg = should_use_adaptive_regularization(settings, has_soc);
+      primal_perturb          = has_soc ? 1e-8 : 1e-6;
+      dual_perturb            = adaptive_reg ? 1e-8 : 0;
 
       if (has_soc) {
         // SOCP always use the augmented KKT; skip dense-column / ADAT heuristics.
@@ -1374,6 +1380,7 @@ class iteration_data_t {
     dense_vector_t<i_t, f_t> dual_res = z_tilde;
     dual_res.axpy(-1.0, lp.objective, 1.0);
     cusparse_view.transpose_spmv(1.0, solution.y, 1.0, dual_res);
+    if (Q.n > 0) { matrix_vector_multiply(Q, -1.0, x, 1.0, dual_res); }
     f_t dual_residual_norm = vector_norm_inf<i_t, f_t>(dual_res, stream_view_);
 #ifdef PRINT_INFO
     settings_.log.printf("Solution Dual residual: %e\n", dual_residual_norm);
@@ -1713,6 +1720,26 @@ class iteration_data_t {
 
     // y = alpha * A * w + beta * v = alpha * A * Dinv * A^T * y + beta * v
     cusparse_view.spmv(alpha, cusparse_u, beta, cusparse_v);
+  }
+
+  // v = alpha * A * Dinv * A^T * y + beta * v. Simple interface (plain device vectors,
+  // no pre-built cusparse descriptors) so it can be used as the `a_multiply` callback of
+  // the generic iterative-refinement operator for the ADAT (non-augmented) solve path.
+  void gpu_adat_multiply_simple(f_t alpha,
+                                const rmm::device_uvector<f_t>& y,
+                                f_t beta,
+                                rmm::device_uvector<f_t>& v)
+  {
+    const i_t n = A.n;
+    rmm::device_uvector<f_t> u(n, stream_view_);
+    cusparse_view_.transpose_spmv(1.0, y, 0.0, u);
+    cub::DeviceTransform::Transform(cuda::std::make_tuple(u.data(), d_inv_diag.data()),
+                                    u.data(),
+                                    u.size(),
+                                    cuda::std::multiplies<>{},
+                                    stream_view_.value());
+    RAFT_CHECK_CUDA(stream_view_);
+    cusparse_view_.spmv(alpha, u, beta, v);
   }
 
   // v = alpha * A * Dinv * A^T * y + beta * v
@@ -2893,7 +2920,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
 
       // Adaptive regularization: increase/decrease based on IR quality.
       // Only adapt on calls where we actually (re)factorized — the affine step.
-      if (did_factorize && data.has_cones()) {
+      if (did_factorize && should_use_adaptive_regularization(settings, data.has_cones())) {
         constexpr f_t min_perturb = 1e-8;
         constexpr f_t max_perturb = 1e-1;
         if (solve_err > 1e-2) {
@@ -2946,6 +2973,37 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       if (solve_status < 0) {
         settings.log.printf("Linear solve failed\n");
         return -1;
+      }
+
+      // Iterative refinement on the ADAT (Schur-complement) system using GMRES.
+      // The direct Cholesky solve can degrade in accuracy on ill-conditioned D near
+      // convergence, as the diagonal D can span many orders of magnitude with small
+      // barrier parameter. In this case, we launch a GMRES-based iterative refinement
+      // loop for added robustness in the Schur-complement (ADAT) approach.
+      // GMRES can handle large, potentially ill-conditioned systems better than simple Richardson
+      // or classical iterative refinement, at the potential cost of higher computational work and
+      // memory. This is only used on the pure Schur-complement (n_dense_columns == 0).
+      if (settings.barrier_iterative_refinement && data.n_dense_columns == 0) {
+        struct adat_op_t {
+          adat_op_t(iteration_data_t<i_t, f_t>& data) : data_(data) {}
+          iteration_data_t<i_t, f_t>& data_;
+          void a_multiply(f_t alpha,
+                          const rmm::device_uvector<f_t>& x,
+                          f_t beta,
+                          rmm::device_uvector<f_t>& y) const
+          {
+            data_.gpu_adat_multiply_simple(alpha, x, beta, y);
+          }
+          void solve(rmm::device_uvector<f_t>& b, rmm::device_uvector<f_t>& x) const
+          {
+            data_.gpu_solve_adat(b, x);
+          }
+        } adat_op(data);
+        const f_t adat_solve_err =
+          iterative_refinement<i_t, f_t, adat_op_t>(adat_op, data.d_h_, data.d_dy_);
+        if (adat_solve_err > 1e-1) {
+          settings.log.printf("||ADAT*dy - h|| %e after IR\n", adat_solve_err);
+        }
       }
     }  // Close NVTX range
 
@@ -4104,9 +4162,20 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
     data.cusparse_y_residual_    = data.cusparse_view_.create_vector(data.d_y_residual_);
     data.restrict_u_.resize(num_upper_bounds);
 
+    settings.log.printf("Elapsed time                : %.2fs\n", toc(start_time));
+
     if (toc(start_time) > settings.time_limit) {
       settings.log.printf("Barrier time limit exceeded\n");
       return lp_status_t::TIME_LIMIT;
+    }
+
+    // Handle automatic adaptive regularization (-1: auto, 0: off, 1: on).
+    // Policy is already applied to data.dual_perturb during construction
+    // (before form_augmented / initial_point).
+    const bool adaptive_regularization =
+      should_use_adaptive_regularization(settings, data.has_cones());
+    if (settings.barrier_adaptive_regularization == -1 && adaptive_regularization) {
+      settings.log.printf("Adaptive regularization enabled\n");
     }
 
     i_t initial_status = initial_point(data);
@@ -4122,6 +4191,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
       settings.log.printf("Unable to compute initial point\n");
       return lp_status_t::NUMERICAL_ISSUES;
     }
+
     // Upload initial point to device and compute initial residuals/norms on GPU
     data.d_complementarity_wv_residual_.resize(data.n_upper_bounds, stream_view_);
     data.d_complementarity_wv_rhs_.resize(data.n_upper_bounds, stream_view_);
@@ -4217,7 +4287,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
     const i_t iteration_limit = settings.iteration_limit;
 
     // Adaptive regularization for the augmented system.
-    f_t dual_perturb   = data.has_cones() ? 1e-8 : 0;
+    f_t dual_perturb   = adaptive_regularization ? 1e-8 : 0;
     f_t primal_perturb = data.has_cones() ? 1e-8 : 1e-6;
 
     while (iter < iteration_limit) {
@@ -4479,7 +4549,10 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
   } catch (const raft::cuda_error& e) {
     settings.log.printf("Error in barrier_solver_t: %s\n", e.what());
     return lp_status_t::NUMERICAL_ISSUES;
-  } catch (const rmm::out_of_memory& e) {
+  } catch (const std::bad_alloc& e) {
+    // Covers rmm::out_of_memory and any other allocation failure. The barrier sizes its normal
+    // equations from the problem, so a shape it cannot hold is a property of the input rather
+    // than a defect, and the solvers running concurrently with it are unaffected.
     settings.log.printf("Out of memory in barrier_solver_t: %s\n", e.what());
     return lp_status_t::NUMERICAL_ISSUES;
   }

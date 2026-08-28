@@ -17,11 +17,13 @@ permissions: {}
 jobs:
   pr-builder:
     needs:
+      - build-details
       - compute-matrix-filters
       - changed-files
       - checks
       - conda-cpp-build
       - conda-cpp-tests
+      - java-build
       - conda-python-build
       - conda-python-tests
       - docs-build
@@ -33,19 +35,21 @@ jobs:
       - wheel-tests-cuopt-server
       - wheel-build-cuopt-sh-client
       - test-self-hosted-server
-      - pr-test-summary
     permissions:
       contents: read
     uses: rapidsai/shared-workflows/.github/workflows/pr-builder.yaml@main
     if: always()
     with:
       needs: ${{ toJSON(needs) }}
+  build-details:
+    uses: rapidsai/shared-workflows/.github/workflows/compute-build-details.yaml@main
   compute-matrix-filters:
     permissions:
       contents: read
     runs-on: ubuntu-latest
     outputs:
       libcuopt_filter: ${{ steps.set-filters.outputs.libcuopt_filter }}
+      cuopt_filter: ${{ steps.set-filters.outputs.cuopt_filter }}
       cuopt_server_filter: ${{ steps.set-filters.outputs.cuopt_server_filter }}
       cuopt_server_test_filter: ${{ steps.set-filters.outputs.cuopt_server_test_filter }}
       cuopt_sh_client_filter: ${{ steps.set-filters.outputs.cuopt_sh_client_filter }}
@@ -54,6 +58,7 @@ jobs:
         id: set-filters
         run: |
           echo "libcuopt_filter=group_by([.ARCH, (.CUDA_VER|split(\".\")|map(tonumber)|.[0])]) | map(max_by(.PY_VER|split(\".\")|map(tonumber)))" >> $GITHUB_OUTPUT
+          echo "cuopt_filter=group_by({CUDA_VER, ARCH}) | map(min_by(.PY_VER | split(\".\") | map(tonumber)))" >> $GITHUB_OUTPUT
           echo "cuopt_server_filter=map(select(.ARCH == \"amd64\")) | group_by(.CUDA_VER|split(\".\")|map(tonumber)|.[0]) | map(max_by([(.PY_VER|split(\".\")|map(tonumber)), (.CUDA_VER|split(\".\")|map(tonumber))]))" >> $GITHUB_OUTPUT
           echo "cuopt_server_test_filter=map(select(.ARCH == \"amd64\")) | group_by(.CUDA_VER | split(\".\") | map(tonumber) | .[0]) | map(max_by([(.PY_VER | split(\".\") | map(tonumber)), (.CUDA_VER | split(\".\") | map(tonumber))]))" >> $GITHUB_OUTPUT
           echo "cuopt_sh_client_filter=[map(select(.ARCH == \"amd64\")) | min_by((.PY_VER | split(\".\") | map(tonumber)), (.CUDA_VER | split(\".\") | map(-tonumber)))]" >> $GITHUB_OUTPUT
@@ -90,6 +95,7 @@ jobs:
           - '!.github/workflows/cloud_ci.yaml'
           - '!.github/workflows/inactivity_reminder.yaml'
           - '!.github/workflows/issue_automation.yaml'
+          - '!.github/workflows/kitmaker_portal.yaml'
           - '!.github/workflows/nightly.yaml'
           - '!.github/workflows/request-nvskills-ci.yml'
           - '!.github/workflows/test.yaml'
@@ -106,12 +112,15 @@ jobs:
           - '!README.md'
           - '!SECURITY.md'
           - '!ci/build_wheel*.sh'
+          - '!ci/build_java.sh'
           - '!ci/check_style.sh'
           - '!ci/docker/**'
           - '!ci/release/**'
           - '!ci/run_*.pytests.sh'
           - '!ci/run_ctests.sh'
+          - '!ci/run-vale.sh'
           - '!ci/test_cpp*.sh'
+          - '!ci/test_java.sh'
           - '!ci/test_notebooks.sh'
           - '!ci/test_python.sh'
           - '!ci/test_self_hosted_service.sh'
@@ -119,6 +128,7 @@ jobs:
           - '!ci/thirdparty-testing/**'
           - '!container-builder/**'
           - '!helmchart/**'
+          - '!java/**'
           - '!ngc/**'
           - '!sonar-project.properties'
           - '!sonarqube/**'
@@ -150,6 +160,7 @@ jobs:
           - '!.github/workflows/cloud_ci.yaml'
           - '!.github/workflows/inactivity_reminder.yaml'
           - '!.github/workflows/issue_automation.yaml'
+          - '!.github/workflows/kitmaker_portal.yaml'
           - '!.github/workflows/nightly.yaml'
           - '!.github/workflows/request-nvskills-ci.yml'
           - '!.github/workflows/test.yaml'
@@ -166,12 +177,15 @@ jobs:
           - '!SECURITY.md'
           - '!agents/**'
           - '!ci/build_docs.sh'
+          - '!ci/build_java.sh'
           - '!ci/build_python.sh'
           - '!ci/build_wheel*.sh'
           - '!ci/check_style.sh'
           - '!ci/docker/**'
           - '!ci/release/**'
+          - '!ci/run-vale.sh'
           - '!ci/test_python.sh'
+          - '!ci/test_java.sh'
           - '!ci/test_self_hosted_service.sh'
           - '!ci/test_wheel*.sh'
           - '!ci/thirdparty-testing/**'
@@ -182,6 +196,7 @@ jobs:
           - '!gemini-extension.json'
           - '!helmchart/**'
           - '!img/**'
+          - '!java/**'
           - '!ngc/**'
           - '!notebooks/**'
           - '!python/**'
@@ -195,6 +210,14 @@ jobs:
           - '!sonarqube/**'
           - '!ucf/**'
           - '!utilities/**'
+        test_java:
+          - 'java/**'
+          - 'ci/build_java.sh'
+          - 'ci/test_java.sh'
+          - 'dependencies.yaml'
+          - '.github/workflows/pr.yaml'
+          - '.github/workflows/build.yaml'
+          - '.github/workflows/test.yaml'
         test_python_conda:
           - '**'
           - '!**/*.md'
@@ -221,6 +244,7 @@ jobs:
           - '!.github/workflows/cloud_ci.yaml'
           - '!.github/workflows/inactivity_reminder.yaml'
           - '!.github/workflows/issue_automation.yaml'
+          - '!.github/workflows/kitmaker_portal.yaml'
           - '!.github/workflows/nightly.yaml'
           - '!.github/workflows/request-nvskills-ci.yml'
           - '!.github/workflows/test.yaml'
@@ -237,11 +261,14 @@ jobs:
           - '!SECURITY.md'
           - '!agents/**'
           - '!ci/build_docs.sh'
+          - '!ci/build_java.sh'
           - '!ci/build_wheel*.sh'
           - '!ci/check_style.sh'
           - '!ci/docker/**'
           - '!ci/release/**'
+          - '!ci/run-vale.sh'
           - '!ci/test_self_hosted_service.sh'
+          - '!ci/test_java.sh'
           - '!ci/test_wheel*.sh'
           - '!ci/thirdparty-testing/**'
           - '!ci/utils/sync_skills_version.sh'
@@ -251,6 +278,7 @@ jobs:
           - '!gemini-extension.json'
           - '!helmchart/**'
           - '!img/**'
+          - '!java/**'
           - '!ngc/**'
           - '!notebooks/**'
           - '!skills/**/SKILL.md'
@@ -289,6 +317,7 @@ jobs:
           - '!.github/workflows/cloud_ci.yaml'
           - '!.github/workflows/inactivity_reminder.yaml'
           - '!.github/workflows/issue_automation.yaml'
+          - '!.github/workflows/kitmaker_portal.yaml'
           - '!.github/workflows/nightly.yaml'
           - '!.github/workflows/request-nvskills-ci.yml'
           - '!.github/workflows/test.yaml'
@@ -307,11 +336,14 @@ jobs:
           - '!ci/build_cpp.sh'
           - '!ci/build_docs.sh'
           - '!ci/build_python.sh'
+          - '!ci/build_java.sh'
           - '!ci/check_style.sh'
           - '!ci/docker/**'
           - '!ci/release/**'
           - '!ci/run_ctests.sh'
+          - '!ci/run-vale.sh'
           - '!ci/test_python.sh'
+          - '!ci/test_java.sh'
           - '!ci/thirdparty-testing/**'
           - '!ci/utils/sync_skills_version.sh'
           - '!ci/utils/validate_skills.sh'
@@ -320,6 +352,7 @@ jobs:
           - '!gemini-extension.json'
           - '!helmchart/**'
           - '!img/**'
+          - '!java/**'
           - '!ngc/**'
           - '!notebooks/**'
           - '!skills/**/SKILL.md'
@@ -338,11 +371,13 @@ jobs:
     uses: rapidsai/shared-workflows/.github/workflows/checks.yaml@main
     with:
       enable_check_generated_files: false
+      ignored_pr_jobs: "pr-test-summary"
   conda-cpp-build:
-    needs: [checks, compute-matrix-filters, changed-files]
-    # Consumed by conda-cpp-tests, conda-python-build, and (transitively) docs-build.
+    needs: [build-details, checks, compute-matrix-filters, changed-files]
+    # Consumed by C++, Java, Python, and docs jobs.
     if: >-
       fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp ||
+      fromJSON(needs.changed-files.outputs.changed_file_groups).test_java ||
       fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_conda ||
       fromJSON(needs.changed-files.outputs.changed_file_groups).build_docs
     permissions:
@@ -355,6 +390,7 @@ jobs:
     uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-build.yaml@main
     with:
       build_type: pull-request
+      build-datetime: ${{ needs.build-details.outputs.build-datetime }}
       script: ci/build_cpp.sh
   conda-cpp-tests:
     needs: [conda-cpp-build, changed-files]
@@ -388,10 +424,8 @@ jobs:
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
     with:
       build_type: pull-request
-      # Non-blocking while the multi-GPU test suite is maturing.
-      continue-on-error: true
   conda-python-build:
-    needs: [conda-cpp-build, changed-files]
+    needs: [build-details, conda-cpp-build, changed-files]
     # Consumed by conda-python-tests and docs-build.
     if: >-
       fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_conda ||
@@ -406,7 +440,10 @@ jobs:
     uses: rapidsai/shared-workflows/.github/workflows/conda-python-build.yaml@main
     with:
       build_type: pull-request
+      build-datetime: ${{ needs.build-details.outputs.build-datetime }}
       script: ci/build_python.sh
+      # Build a conda package for each CUDA x ARCH x minimum supported Python version
+      matrix_filter: group_by({CUDA_VER, ARCH}) | map(min_by(.PY_VER | split(".") | map(tonumber)))
   conda-python-tests:
     needs: [conda-python-build, changed-files]
     permissions:
@@ -440,8 +477,29 @@ jobs:
       artifact-name: "cuopt_docs"
       container_image: "rapidsai/ci-conda:26.10-latest"
       script: "ci/build_docs.sh"
+  java-build:
+    needs: [conda-cpp-build, changed-files]
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    secrets: inherit # zizmor: ignore[secrets-inherit]
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
+    if: >-
+      fromJSON(needs.changed-files.outputs.changed_file_groups).test_java ||
+      fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
+    with:
+      build_type: pull-request
+      node_type: "gpu-l4-latest-1"
+      arch: "amd64"
+      container_image: "rapidsai/ci-conda:26.10-latest"
+      script: "ci/test_java.sh"
+      artifact-name: "cuopt-java"
+      file_to_upload: "java/cuopt/target/"
   wheel-build-libcuopt:
-    needs: [compute-matrix-filters, changed-files]
+    needs: [build-details, compute-matrix-filters, changed-files]
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
     permissions:
       actions: read
@@ -457,9 +515,10 @@ jobs:
       package-type: cpp
       package-name: libcuopt
       build_type: pull-request
+      build-datetime: ${{ needs.build-details.outputs.build-datetime }}
       script: ci/build_wheel_libcuopt.sh
   wheel-build-cuopt:
-    needs: [wheel-build-libcuopt, compute-matrix-filters, changed-files]
+    needs: [build-details, wheel-build-libcuopt, compute-matrix-filters, changed-files]
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
     permissions:
       actions: read
@@ -471,9 +530,12 @@ jobs:
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
       build_type: pull-request
+      build-datetime: ${{ needs.build-details.outputs.build-datetime }}
       script: ci/build_wheel_cuopt.sh
       package-name: cuopt
       package-type: python
+      # Build a wheel for each CUDA x ARCH x minimum supported Python version
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.cuopt_filter }}
   wheel-tests-cuopt:
     needs: [wheel-build-cuopt, wheel-build-cuopt-sh-client, changed-files]
     permissions:
@@ -495,7 +557,7 @@ jobs:
       script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
       script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
   wheel-build-cuopt-server:
-    needs: [checks, compute-matrix-filters, changed-files]
+    needs: [build-details, checks, compute-matrix-filters, changed-files]
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
     permissions:
       actions: read
@@ -507,6 +569,7 @@ jobs:
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
       build_type: pull-request
+      build-datetime: ${{ needs.build-details.outputs.build-datetime }}
       script: ci/build_wheel_cuopt_server.sh
       package-name: cuopt_server
       package-type: python
@@ -514,7 +577,7 @@ jobs:
       # Only need 1 package per CUDA major version. This selects "ARCH=amd64 + the latest supported Python, 1 job per major CUDA version".
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.cuopt_server_filter }}
   wheel-build-cuopt-sh-client:
-    needs: [compute-matrix-filters, changed-files]
+    needs: [build-details, compute-matrix-filters, changed-files]
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
     permissions:
       actions: read
@@ -526,6 +589,7 @@ jobs:
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
       build_type: pull-request
+      build-datetime: ${{ needs.build-details.outputs.build-datetime }}
       script: ci/build_wheel_cuopt_sh_client.sh
       package-name: cuopt_sh_client
       package-type: python
@@ -569,6 +633,7 @@ jobs:
       build_type: pull-request
       script: ci/test_self_hosted_service.sh
   pr-test-summary:
+    name: "PR test summary (non-blocking)"
     needs:
       - conda-cpp-tests
       - conda-python-tests
@@ -576,7 +641,6 @@ jobs:
       - wheel-tests-cuopt-server
       - test-self-hosted-server
     if: always()
-    continue-on-error: true
     runs-on: ubuntu-latest
     permissions:
       actions: read

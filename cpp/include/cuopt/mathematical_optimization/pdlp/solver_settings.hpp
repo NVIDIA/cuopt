@@ -302,6 +302,7 @@ class pdlp_solver_settings_t {
   i_t primal_pricing{0};
   i_t barrier_dual_initial_point{-1};
   i_t postsolve_info{-1};
+  i_t barrier_presolve_bound_free_variables{-1};  // -1 automatic, 0 disabled, 1 enabled
   // Ruiz equilibration for QCQP (barrier) scaling: -1 automatic (row/column
   // imbalance heuristic), 0 disabled, 1 enabled. Distinct from PDLP's own Ruiz
   // scaling in pdlp_hyper_params_t.
@@ -309,6 +310,7 @@ class pdlp_solver_settings_t {
   bool eliminate_dense_columns{true};
   pdlp_precision_t pdlp_precision{pdlp_precision_t::DefaultPrecision};
   bool barrier_iterative_refinement{true};
+  i_t barrier_adaptive_regularization{-1};  // -1 automatic, 0 disabled, 1 enabled
   i_t barrier_soc_threshold{100};
   f_t barrier_step_scale{0.9};
   bool save_best_primal_so_far{false};
