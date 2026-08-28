@@ -7,11 +7,7 @@
 
 #include <utilities/logger.hpp>
 
-/*
- * The logger itself is header-only and hidden, so it is private to each component library.
- * This translation unit is compiled into cuopt_mathopt only, which is what makes the
- * functions below reach mathopt's instance and no other.
- */
+// Compiled into cuopt_mathopt only, so this reaches mathopt's hidden logger instance.
 namespace cuopt::mathematical_optimization {
 
 std::shared_ptr<void> configure_logging(const std::string& log_file,

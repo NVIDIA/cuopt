@@ -16,8 +16,7 @@ template <typename i_t, typename f_t>
 assignment_t<i_t> solve(data_model_view_t<i_t, f_t> const& data_model,
                         solver_settings_t<i_t, f_t> const& settings)
 {
-  // Routing's logger is private to cuopt_routing and starts out sinking into a buffer, so
-  // without this the CUOPT_LOG_ERROR calls below are recorded and never emitted anywhere.
+  // Without this, CUOPT_LOG_ERROR below sinks into the buffer and is never emitted.
   init_logger_t log("", settings.get_error_logging_mode());
 
   try {

@@ -648,10 +648,9 @@ target_compile_definitions(cuopt_objs
   PUBLIC CUSPARSE_ENABLE_EXPERIMENTAL_API
 )
 
-# Lets callers reach routing's logger through init_component_logger_t. Routing is optional,
-# so the entry point it declares is only linkable when routing was actually built. This is
-# also set on cuopt and cuopt_static: $<TARGET_OBJECTS:...> does not carry INTERFACE
-# properties, and consumers such as cuopt_cli and the tests link those, not cuopt_objs.
+# Lets callers reach routing's logger through init_component_logger_t. Also set below on
+# cuopt and cuopt_static: $<TARGET_OBJECTS:...> does not carry INTERFACE properties, and
+# consumers such as cuopt_cli and the tests link those, not cuopt_objs.
 if(NOT SKIP_ROUTING_BUILD)
   target_compile_definitions(cuopt_objs PUBLIC CUOPT_HAS_ROUTING)
 endif()

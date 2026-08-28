@@ -25,16 +25,11 @@
 #include <vector>
 
 /*
- * The logger and its buffer are defined inline and with hidden visibility, so each library
- * that links this header owns its own. cuOpt ships as separate solver libraries and
- * rapids_logger provides the logger type rather than a shared instance, so there is no
- * single place to host one without a library existing purely to hold it. Each solver
- * configures its own logging through its own settings.
- *
- * Hidden visibility is what does the separating, and it is not optional. The static local
- * of an inline function is emitted as an STB_GNU_UNIQUE symbol, which glibc merges across
- * the whole process regardless of RTLD_LOCAL, so a header-only logger with default
- * visibility would still be one shared instance. Do not mark this namespace CUOPT_EXPORT.
+ * Defined inline with hidden visibility so each library that links this header owns its own
+ * logger instance. This is not optional: an inline function's static local is emitted as an
+ * STB_GNU_UNIQUE symbol, which glibc merges process-wide regardless of RTLD_LOCAL, so default
+ * visibility would collapse every library back into one shared logger. Do not mark this
+ * namespace CUOPT_EXPORT.
  *
  * Callers outside the libraries cannot reach a hidden logger, so each component exports a
  * configure entry point instead -- see log_target_t and init_component_logger_t below.
@@ -87,39 +82,20 @@ inline log_buffer& global_log_buffer()
   return buffer;
 }
 
-// Callback function for the buffer sink
 inline void buffer_log_callback(int lvl, const char* msg)
 {
-  // store level with message; actual filtering happens at logger time
   global_log_buffer().log(static_cast<rapids_logger::level_enum>(lvl), msg);
 }
 
-/**
- * @brief Returns the default sink, used until something configures the logger.
- *
- * Messages go into an in-memory buffer rather than to a stream, and are replayed once a
- * configuration arrives. Anything logged before that, and never followed by a configure,
- * is dropped.
- *
- * @return sink_ptr The sink to use
- */
+// Buffers messages in memory until something configures the logger; anything logged before
+// that, and never followed by a configure, is dropped.
 inline rapids_logger::sink_ptr default_sink()
 {
   return std::make_shared<rapids_logger::callback_sink_mt>(buffer_log_callback);
 }
 
-/**
- * @brief Returns the default log pattern for the global logger.
- *
- * @return std::string The default log pattern.
- */
 inline std::string default_pattern() { return "[%Y-%m-%d %H:%M:%S:%f] [%n] [%-6l] %v"; }
 
-/**
- * @brief Returns the default log level for the global logger.
- *
- * @return rapids_logger::level_enum The default log level.
- */
 inline rapids_logger::level_enum default_level()
 {
 #if CUOPT_LOG_ACTIVE_LEVEL == RAPIDS_LOGGER_LOG_LEVEL_TRACE
@@ -170,28 +146,20 @@ inline void reset_default_logger()
   default_logger().flush_on(rapids_logger::level_enum::debug);
 }
 
-/**
- * @brief Point this image's logger at the given sinks and flush anything buffered so far.
- *
- * @param log_file       File to log to, or empty for none.
- * @param log_to_console Whether to also log to stdout.
- * @param truncate       Whether opening @p log_file clears it. Pass false when another
- *                       image is already logging to the same path and has truncated it.
- */
+// Points this image's logger at the given sinks and flushes anything buffered so far.
+// `truncate` clears log_file up front instead of letting the sink truncate it: several
+// loggers in one process can share a path, and a truncating sink writes from offset 0,
+// silently overwriting whatever another one has already appended. Pass false when another
+// image is already logging to the same path and has truncated it.
 inline void apply_logger_config(const std::string& log_file, bool log_to_console, bool truncate)
 {
   cuopt::default_logger().sinks().clear();
 
-  // re-initialize sinks
   if (log_to_console) {
     cuopt::default_logger().sinks().push_back(
       std::make_shared<rapids_logger::ostream_sink_mt>(std::cout));
   }
   if (!log_file.empty()) {
-    // Clear the file up front rather than letting the sink truncate. Several loggers in one
-    // process can share a path -- the CLI has its own and the solver library has another --
-    // and a truncating sink writes from offset 0, silently overwriting whatever the other
-    // one has already appended. Opening every sink in append mode keeps them interleaving.
     if (truncate) { std::ofstream(log_file, std::ios::trunc); }
     cuopt::default_logger().sinks().push_back(
       std::make_shared<rapids_logger::basic_file_sink_mt>(log_file, /*truncate=*/false));
@@ -204,22 +172,16 @@ inline void apply_logger_config(const std::string& log_file, bool log_to_console
   cuopt::default_logger().set_pattern(cuopt::default_pattern());
 #endif
 
-  // Extract messages from the global buffer and log to the default logger
   auto buffered_messages = global_log_buffer().drain_all();
   for (const auto& entry : buffered_messages) {
     cuopt::default_logger().log(entry.level, entry.msg.c_str());
   }
 }
 
-/**
- * @brief Ref-counted initializer for the logger of the image that constructs it.
- *
- * Library code uses this directly: constructed inside cuopt_routing it configures routing's
- * logger, inside cuopt_mathopt it configures mathopt's. Callers outside the libraries get
- * their own logger this way and should use init_component_logger_t to reach a library's.
- */
+// Ref-counted initializer for the logger of the image that constructs it. Library code uses
+// this directly (routing configures routing's logger, mathopt configures mathopt's); callers
+// outside the libraries should use init_component_logger_t to reach a library's instead.
 class init_logger_t {
-  // Using shared_ptr for ref-counting
   std::shared_ptr<void> guard_;
 
  public:
@@ -236,15 +198,10 @@ inline uint64_t& active_config_generation()
   return generation;
 }
 
-/**
- * @brief Guard whose destruction resets the logger, if its configuration is still current.
- *
- * The generation check is not optional. A guard's refcount reaching zero makes
- * g_active_guard expire *before* this destructor runs, so another thread can see no live
- * configuration, apply its own, and install a new guard in that window. Without the check
- * this destructor would then reset the logger and wipe the configuration that thread had
- * just installed.
- */
+// Guard whose destruction resets the logger, if its configuration is still current. The
+// generation check matters: a guard's refcount reaching zero expires g_active_guard *before*
+// this destructor runs, so another thread can install a new configuration in that window, and
+// without the check this destructor would reset the logger out from under it.
 struct logger_config_guard {
   explicit logger_config_guard(uint64_t generation) : generation_(generation) {}
 
@@ -262,32 +219,25 @@ struct logger_config_guard {
 // Weak reference to detect if any init_logger_t instance is still alive
 inline std::weak_ptr<logger_config_guard> g_active_guard;
 
-/**
- * @brief Apply a configuration and return a handle that keeps it alive.
- *
- * This is the single lifetime mechanism for the logger of this image. Both init_logger_t and
- * the exported per-component configure_logging go through it, so a caller inside the library
- * and a caller outside it share one refcount: whoever asks first configures, later callers
- * get a handle to the same configuration, and the logger is reset when the last handle is
- * dropped. That is what stops the solver reconfiguring mid-run and re-truncating a log file
- * the caller had already written to.
- */
+// Applies a configuration and returns a handle that keeps it alive. Single lifetime mechanism
+// for this image's logger: init_logger_t and the exported per-component configure_logging both
+// go through it, so a caller inside the library and one outside share one refcount, and the
+// logger resets only when the last handle drops -- which is what stops the solver
+// reconfiguring mid-run and re-truncating a log file the caller had already written to.
 inline std::shared_ptr<void> make_logger_config(const std::string& log_file,
                                                 bool log_to_console,
                                                 bool truncate)
 {
   std::lock_guard<std::mutex> lock(g_guard_mutex);
 
-  // Reuse the configuration already in place rather than replacing it. Reconfiguring here
-  // would also re-truncate the log file.
+  // Reuse the configuration already in place; reconfiguring here would re-truncate the file.
   if (auto existing = g_active_guard.lock()) { return existing; }
 
   try {
     apply_logger_config(log_file, log_to_console, truncate);
   } catch (...) {
-    // apply_logger_config clears the sinks before installing the new ones, so a throw part
-    // way through would otherwise leave the logger with none at all and silently drop every
-    // later message.
+    // Sinks are cleared before new ones install, so a throw here would otherwise leave the
+    // logger with none at all.
     reset_default_logger();
     throw;
   }
@@ -312,11 +262,8 @@ enum class log_target_t {
 
 }  // namespace cuopt
 
-/*
- * Exported per-component entry points. Each is defined in exactly one component library and
- * configures that library's own hidden logger. They are the only logging symbols that cross
- * a library boundary.
- */
+// Exported per-component entry points. Each is defined in exactly one component library, and
+// configures that library's own hidden logger -- the only logging symbols crossing a boundary.
 namespace cuopt::mathematical_optimization {
 CUOPT_EXPORT std::shared_ptr<void> configure_logging(const std::string& log_file,
                                                      bool log_to_console,
@@ -333,21 +280,13 @@ CUOPT_EXPORT std::shared_ptr<void> configure_logging(const std::string& log_file
 
 namespace cuopt {
 
-/**
- * @brief Configures a component library's logger from outside that library.
- *
- * `init_logger_t` configures the logger of whichever image constructs it, which is what
- * library code wants but not what an external caller wants: the CLI, the tests and the
- * Python bindings each hold their own logger and need to reach into the solver's. This
- * dispatches to the component's exported entry point instead.
- *
- * Defaults to mathopt because every external caller today is LP or MILP; routing is opted
- * into explicitly.
- */
+// Configures a component library's logger from outside that library. The CLI, tests and
+// Python bindings each hold their own logger and need to reach into the solver's; this
+// dispatches to the component's exported entry point instead of init_logger_t. Defaults to
+// mathopt because every external caller today is LP or MILP; routing is opted in explicitly.
 class init_component_logger_t {
-  // The handle keeps the component's configuration alive; dropping it resets that
-  // component's logger. Same refcount init_logger_t uses, so a caller here and library code
-  // inside the component cannot tear down each other's configuration.
+  // Same refcount init_logger_t uses, so a caller here and library code inside the component
+  // cannot tear down each other's configuration.
   std::shared_ptr<void> handle_;
 
  public:

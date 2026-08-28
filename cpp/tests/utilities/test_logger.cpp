@@ -19,18 +19,11 @@
 #include <vector>
 
 /*
- * The logger is hidden, so this test executable has its own instance, separate from the one
- * inside libcuopt. That means CUOPT_LOG_* here reaches *this* image's logger, and only the
- * entry points that operate on this image can be observed from here:
- *
- *   - init_logger_t and make_logger_config configure this image's logger, so their behaviour
- *     is testable directly. They are the code the exported per-component configure_logging
- *     entry points run, just reached without crossing a library boundary.
- *   - init_component_logger_t reaches into libcuopt's logger, which only emits during a
- *     solve. Its effect on a shared file is observable here; its messages are not.
- *
- * The separation itself is checked outside this test, by ci/check_symbols.sh: libcuopt must
- * export the component configure_logging entry points and none of the logger state.
+ * The logger is hidden, so this test binary has its own instance, separate from libcuopt's.
+ * CUOPT_LOG_* here reaches this image's logger: init_logger_t/make_logger_config are testable
+ * directly, while init_component_logger_t reaches into libcuopt's (its effect on a shared file
+ * is observable here, its messages are not). The hiding itself is checked by
+ * ci/check_symbols.sh, not here.
  */
 namespace cuopt::test {
 
@@ -47,10 +40,8 @@ std::string temp_log_path(const std::string& tag)
   return "cuopt_logger_test_" + tag + "_" + std::to_string(unique_id()) + ".log";
 }
 
-// A path that cannot be opened as a log file for any user. Pointing at a missing directory
-// is not enough: the sink creates missing parents, so it only fails for a user who cannot
-// write to the parent, and CI runs as root. Nesting under a regular file fails with ENOTDIR
-// regardless of privileges.
+// Nesting under a regular file fails to open with ENOTDIR for any user, including CI's root --
+// unlike a missing directory, which the sink creates.
 std::string unopenable_path_under(const std::string& blocker_file)
 {
   std::ofstream blocker{blocker_file};
@@ -208,13 +199,10 @@ TEST(logger, failed_init_logger_restores_a_sink)
   std::remove(blocker.c_str());
 }
 
-// Exercises concurrent configure / release / emit. This is a smoke test, not a regression
-// test: the race it relates to -- a guard whose refcount hit zero resetting the logger after
-// a newer configuration was installed -- needs the count to reach zero exactly while another
-// thread is inside make_logger_config, and under contention g_active_guard.lock() nearly
-// always succeeds instead. Disabling the generation check in logger_config_guard does not
-// make this fail. It is kept because it does cover concurrent use of the shared path, and is
-// where a sanitizer would surface the unsynchronized sink mutation.
+// Smoke test for concurrent configure/release/emit, not a regression test -- the race it
+// relates to needs the refcount to hit zero at an exact moment that contention makes unlikely
+// to hit here. Kept because it exercises the shared path and is where a sanitizer would catch
+// unsynchronized sink mutation.
 TEST(logger, concurrent_configure_and_emit)
 {
   const auto path = temp_log_path("concurrent");

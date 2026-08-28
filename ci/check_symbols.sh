@@ -100,11 +100,9 @@ for sym in "${required_symbols[@]}"; do
     fi
 done
 
-# The logger keeps one instance per component library, which only works while its state stays
-# hidden. Nothing fails to build or test if that state becomes visible -- the instances just
-# silently merge back into one via STB_GNU_UNIQUE, which glibc unifies process-wide even under
-# RTLD_LOCAL. Assert the state is absent from the dynamic symbol table so that regression is
-# loud. Only the per-component configure_logging entry points may cross the boundary.
+# The logger keeps one instance per component library only while its state stays hidden --
+# nothing fails to build or test if it becomes visible, since glibc silently merges it back
+# into one via STB_GNU_UNIQUE. Assert it's absent from the dynamic symbol table.
 logger_state_symbols=(
     "cuopt::default_logger()"
     "cuopt::global_log_buffer()"

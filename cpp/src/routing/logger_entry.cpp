@@ -7,11 +7,7 @@
 
 #include <utilities/logger.hpp>
 
-/*
- * The logger itself is header-only and hidden, so it is private to each component library.
- * This translation unit is compiled into cuopt_routing only, which is what makes the
- * functions below reach routing's instance and no other.
- */
+// Compiled into cuopt_routing only, so this reaches routing's hidden logger instance.
 namespace cuopt::routing {
 
 std::shared_ptr<void> configure_logging(const std::string& log_file,
