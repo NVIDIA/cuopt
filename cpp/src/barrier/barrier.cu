@@ -280,10 +280,10 @@ class barrier_reduce_helper_t {
   }
 
   // Raw device slots for the caller's own cublasdot() calls.
-  f_t* cx_slot() { return d_results_.data() + kCx; }
-  f_t* by_slot() { return d_results_.data() + kBy; }
-  f_t* uv_slot() { return d_results_.data() + kUv; }
-  f_t* xqx_slot() { return d_results_.data() + kXQx; }
+  f_t* cTx_slot() { return d_results_.data() + kCTx; }
+  f_t* bTy_slot() { return d_results_.data() + kBTy; }
+  f_t* uTv_slot() { return d_results_.data() + kUTv; }
+  f_t* xTQx_slot() { return d_results_.data() + kXTQx; }
 
   // Single batched device-to-host copy + the one stream synchronize needed before any accessor
   // below can be read.
@@ -305,10 +305,10 @@ class barrier_reduce_helper_t {
     return result;
   }
   f_t mu(f_t mu_denom) const { return (h_results_[kMuXzSum] + h_results_[kMuWvSum]) / mu_denom; }
-  f_t cx() const { return h_results_[kCx]; }
-  f_t by() const { return h_results_[kBy]; }
-  f_t uv() const { return h_results_[kUv]; }
-  f_t xqx() const { return h_results_[kXQx]; }
+  f_t cTx() const { return h_results_[kCTx]; }
+  f_t bTy() const { return h_results_[kBTy]; }
+  f_t uTv() const { return h_results_[kUTv]; }
+  f_t xTQx() const { return h_results_[kXTQx]; }
 
  private:
   enum Slot : i_t {
@@ -320,10 +320,10 @@ class barrier_reduce_helper_t {
     kComplCone,
     kMuXzSum,
     kMuWvSum,
-    kCx,
-    kBy,
-    kUv,
-    kXQx,
+    kCTx,
+    kBTy,
+    kUTv,
+    kXTQx,
     kCount
   };
 
@@ -3971,7 +3971,7 @@ void barrier_solver_t<i_t, f_t>::compute_residual_norms_mu_and_objective(
                                                   1,
                                                   data.d_x_.data(),
                                                   1,
-                                                  rh.cx_slot(),
+                                                  rh.cTx_slot(),
                                                   stream_view_));
   RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
                                                   data.d_b_.size(),
@@ -3979,7 +3979,7 @@ void barrier_solver_t<i_t, f_t>::compute_residual_norms_mu_and_objective(
                                                   1,
                                                   data.d_y_.data(),
                                                   1,
-                                                  rh.by_slot(),
+                                                  rh.bTy_slot(),
                                                   stream_view_));
   RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
                                                   data.d_restrict_u_.size(),
@@ -3987,7 +3987,7 @@ void barrier_solver_t<i_t, f_t>::compute_residual_norms_mu_and_objective(
                                                   1,
                                                   data.d_v_.data(),
                                                   1,
-                                                  rh.uv_slot(),
+                                                  rh.uTv_slot(),
                                                   stream_view_));
   if (data.Q.n > 0) {
     auto cusparse_d_x = data.cusparse_view_.create_vector(data.d_x_);
@@ -3999,7 +3999,7 @@ void barrier_solver_t<i_t, f_t>::compute_residual_norms_mu_and_objective(
                                                     1,
                                                     data.d_x_.data(),
                                                     1,
-                                                    rh.xqx_slot(),
+                                                    rh.xTQx_slot(),
                                                     stream_view_));
   }
 
@@ -4012,9 +4012,9 @@ void barrier_solver_t<i_t, f_t>::compute_residual_norms_mu_and_objective(
   const f_t mu_denom = data.complementarity_degree(data.x.size(), data.n_upper_bounds);
   mu                 = rh.mu(mu_denom);
 
-  const f_t quad_objective = (data.Q.n > 0) ? 0.5 * rh.xqx() : f_t(0);
-  primal_objective         = rh.cx() + quad_objective;
-  dual_objective           = rh.by() - rh.uv() - quad_objective;
+  const f_t quad_objective = (data.Q.n > 0) ? 0.5 * rh.xTQx() : f_t(0);
+  primal_objective         = rh.cTx() + quad_objective;
+  dual_objective           = rh.bTy() - rh.uTv() - quad_objective;
 
 #ifdef CHECK_OBJECTIVE_GAP
   rmm::device_scalar<f_t> d_xz(stream_view_);
