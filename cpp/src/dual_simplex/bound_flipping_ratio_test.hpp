@@ -88,7 +88,7 @@ class bound_flipping_ratio_test_t {
                   f_t& max_val);
   void determine_flips(f_t step_length,
                        i_t entering_index,
-                       std::vector<i_t>& flip_indices) const;
+                       std::vector<i_t>& flip_indices);
   const std::vector<f_t>& lower_;
   const std::vector<f_t>& upper_;
   const std::vector<uint8_t>& bounded_variables_;

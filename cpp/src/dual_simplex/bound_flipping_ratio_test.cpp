@@ -49,8 +49,7 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_breakpoints(std::vector<i_t>&
         idx++;
       }
     }
-    work_estimate_ += 5 * nz;
-    work_estimate_ += 5 * idx;
+    work_estimate_ += 5 * nz + 5 * idx;
     pivot_tol /= 10;
   }
   return idx;
@@ -99,8 +98,9 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::single_pass(i_t start,
 }
 
 template <typename i_t, typename f_t>
-void bound_flipping_ratio_test_t<i_t, f_t>::determine_flips(
-  f_t step_length, i_t entering_index, std::vector<i_t>& flip_indices) const
+void bound_flipping_ratio_test_t<i_t, f_t>::determine_flips(f_t step_length,
+                                                            i_t entering_index,
+                                                            std::vector<i_t>& flip_indices)
 {
   // The piecewise-linear model below assumes that a variable flips bounds as soon as
   // its reduced cost crosses zero. In practice, small changes between iterations can
@@ -121,6 +121,7 @@ void bound_flipping_ratio_test_t<i_t, f_t>::determine_flips(
       flip_indices.push_back(j);
     }
   }
+  work_estimate_ += 5 * delta_z_indices_.size() + flip_indices.size();
 }
 
 template <typename i_t, typename f_t>
@@ -150,6 +151,7 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
     if (harris_ratios[k] == 0.0) num_harris_zero_++;
     if (ratios[k] == 0.0) num_exact_zero_++;
   }
+  work_estimate_ += 2 * num_breakpoints;
   if constexpr (verbose) { settings_.log.printf("Initial breakpoints %d\n", num_breakpoints); }
   if (num_breakpoints == 0) {
     nonbasic_entering = -1;
@@ -298,8 +300,7 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
         }
       }
     }
-    work_estimate_ += 3 * (num_breakpoints - scan_start);
-    work_estimate_ += 8 * (num_candidates - scan_start);
+    work_estimate_ += 2 * (num_breakpoints - scan_start) + 10 * (num_candidates - scan_start);
     scan_start = num_candidates;
     coarse_threshold *= 10.0;
   }
@@ -319,8 +320,8 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
     work_estimate_ += 5 * num_candidates;
 
     // Remove candidates that are greater than the maximum step length
-    work_estimate_ += 2 * candidates.size();
-    for (i_t h = static_cast<i_t>(candidates.size()) - 1; h >= 0; h--) {
+    const i_t candidates_before_removal = candidates.size();
+    for (i_t h = candidates_before_removal - 1; h >= 0; h--) {
       const i_t k = candidates[h];
       const f_t ratio = ratios[k];
       if (ratio > max_step_length) {
@@ -329,6 +330,7 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
         candidates.pop_back();
       }
     }
+    work_estimate_ += 2 * candidates_before_removal + 2 * (candidates_before_removal - candidates.size());
     num_candidates = candidates.size();
   }
 
@@ -349,7 +351,6 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
     f_t next_threshold = inf;
     i_t write          = scan_start;
 
-    work_estimate_ += 7 * (num_candidates - scan_start);
     for (i_t h = scan_start; h < num_candidates; h++) {
       const i_t k     = candidates[h];
       const f_t ratio = ratios[k];
@@ -370,7 +371,7 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
         next_threshold         = std::min(next_threshold, harris_ratio);
       }
     }
-
+    work_estimate_ += 3 * (num_candidates - scan_start) + 9 * (write - scan_start);
 
     bucket_start[++num_buckets] = write;
     if (write == scan_start) break;  // No progress — prevent infinite loop
@@ -415,10 +416,9 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
         entering_k = k;
       }
     }
-    work_estimate_ += 4 * (bucket_start[b + 1] - bucket_start[b]);
+    work_estimate_ += 2 + 5 * (b_end - b_start);
     if (entering_k >= 0) break;
   }
-  work_estimate_ += 2 * num_buckets;
 
   // Step = entering variable's breakpoint ratio
   num_buckets_used_ = num_buckets;
@@ -440,10 +440,11 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
 
   // Record which bucket was selected
   used_fallback_ = false;
+  i_t pos = -1;
   for (i_t b = 0; b < num_buckets; b++) {
     if (entering_k >= 0) {
       // Find which bucket entering_k is in based on its position in candidates
-      i_t pos = -1;
+      pos = -1;
       for (i_t h = 0; h < num_candidates; h++) {
         if (candidates[h] == entering_k) { pos = h; break; }
       }
@@ -453,6 +454,7 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
       }
     }
   }
+  work_estimate_ += (bucket_selected_ + 1) * (pos + 3);
   step_length_result_ = step_length;
   determine_flips(step_length, entering_index, flip_indices);
 
