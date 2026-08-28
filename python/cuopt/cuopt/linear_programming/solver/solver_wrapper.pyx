@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 
@@ -251,7 +251,7 @@ cdef set_solver_setting(
             )
 
 cdef object _compute_slack_csr(const double[::1] rhs,
-                               const char[::1] sense,
+                               const signed char[::1] sense,
                                const double[::1] values,
                                const int[::1] indices,
                                const int[::1] indptr,
@@ -260,11 +260,15 @@ cdef object _compute_slack_csr(const double[::1] rhs,
     Classical LP slack/surplus (+ EQ residual).
 
     LE ('L'): rhs - lhs; GE ('G'): lhs - rhs; EQ ('E'): rhs - lhs.
+
+    ``sense`` is signed char, not plain char: NumPy exposes an ``S1`` array as
+    format ``1s``, which Cython matches against signed char. Plain char is
+    unsigned on aarch64, so the buffer would be rejected there.
     """
     cdef Py_ssize_t m = indptr.shape[0] - 1
     cdef Py_ssize_t i, k, start, end
     cdef double lhs
-    cdef char s
+    cdef signed char s
     cdef double[::1] out = np.empty(m, dtype=np.float64)
 
     with nogil:
