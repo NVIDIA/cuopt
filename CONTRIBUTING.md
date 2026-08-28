@@ -157,14 +157,14 @@ cd $CUOPT_HOME
 
 Please install conda if you don't have it already. You can install [miniforge](https://conda-forge.org/download/) or [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install#linux)
 
-**Note:** We recommend using [mamba](https://mamba.readthedocs.io/en/latest/installation/mamba-installation.html) as the package manager for the conda environment. Mamba is faster and more efficient than conda. And it's the default package manager for miniforge. If you are using mamba just replace `conda` with `mamba` in the following commands.
+**Note:** We recommend using [mamba](https://mamba.readthedocs.io/en/latest/installation/mamba-installation.html) as the package manager for the conda environment. Mamba is faster and more efficient than conda, and it's the default package manager for miniforge. The commands below use `mamba`; if you don't have it installed, replace `mamba` with `conda`.
 
 ```bash
 # create the conda environment (assuming in base `cuopt` directory)
 # note: cuOpt currently doesn't support `channel_priority: strict`;
 # use `channel_priority: flexible` instead
-conda env create -p ./.cuopt_env --file conda/environments/all_cuda-133_arch-$(uname -m).yaml
-# activate the environment
+mamba env create -p ./.cuopt_env --file conda/environments/all_cuda-133_arch-$(uname -m).yaml
+# activate the environment (mamba does not implement 'activate'; use conda for this step)
 conda activate ./.cuopt_env
 ```
 
