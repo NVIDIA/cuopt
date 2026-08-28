@@ -157,7 +157,7 @@ cd $CUOPT_HOME
 
 Please install conda if you don't have it already. You can install [miniforge](https://conda-forge.org/download/) or [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install#linux)
 
-**Note:** We recommend using [mamba](https://mamba.readthedocs.io/en/latest/installation/mamba-installation.html) as the package manager for the conda environment. Mamba is faster and more efficient than conda, and it's the default package manager for miniforge. The commands below use `mamba`; if you don't have it installed, replace `mamba` with `conda`.
+**Note:** We recommend using [mamba](https://mamba.readthedocs.io/en/latest/installation/mamba-installation.html) as the package manager for the conda environment. Mamba is faster and more efficient than conda. It's already included if you installed miniforge above; if you installed miniconda instead, it doesn't come bundled — follow the mamba link to install it into your base environment. The commands below use `mamba`; if you don't have it installed, replace `mamba` with `conda`. Either way, `conda` itself is still required — `mamba` doesn't implement environment activation, so `conda activate` is always used for that step.
 
 ```bash
 # create the conda environment (assuming in base `cuopt` directory)
