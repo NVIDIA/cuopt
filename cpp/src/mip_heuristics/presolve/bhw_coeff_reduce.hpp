@@ -43,7 +43,7 @@ using bhw_shape_cache_t = std::map<std::vector<int64_t>, bhw_shape_result_t>;
 
 struct bhw_row_rewrite_t {
   std::vector<int64_t> coefficients;  // 0 drops the entry
-  int64_t side = 0;
+  int64_t side            = 0;
   int64_t max_coef_before = 0;
   int64_t max_coef_after  = 0;
   bool accepted           = false;

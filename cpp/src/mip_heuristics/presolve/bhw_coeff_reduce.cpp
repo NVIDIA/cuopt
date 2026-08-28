@@ -79,8 +79,8 @@ static bool integerization_preserves_binary_feasible_set(
   }
 
   for (uint32_t m = 0; m < n_pat; ++m) {
-    const bool original_feasible = direction == 1 ? original_activity[m] <= side
-                                                  : original_activity[m] >= side;
+    const bool original_feasible =
+      direction == 1 ? original_activity[m] <= side : original_activity[m] >= side;
     const bool integral_feasible = integral_activity[m] <= integral_side;
     if (original_feasible != integral_feasible) return false;
   }
@@ -194,9 +194,7 @@ static bool lp_no_weakening(const norm_row_t& row, const int64_t* w, int64_t t)
          (__int128)row.rhs * w[fractional];
 }
 
-[[maybe_unused]] static bool verify_equivalent(const norm_row_t& row,
-                                               const int64_t* w,
-                                               int64_t t)
+[[maybe_unused]] static bool verify_equivalent(const norm_row_t& row, const int64_t* w, int64_t t)
 {
   const uint32_t n_pat = 1u << row.k;
   for (uint32_t m = 0; m < n_pat; ++m) {
@@ -352,9 +350,9 @@ bhw_row_rewrite_t bhw_reduce_row(
   if (largest <= 1) return rewrite;
 
   norm_row_t norm_row;
-  norm_row.k                 = len;
+  norm_row.k                  = len;
   const int64_t integral_side = std::llround((double)side * scale) * direction;
-  norm_row.rhs               = integral_side;
+  norm_row.rhs                = integral_side;
   std::array<int, BHW_MAX_LEN> order{};
   for (int j = 0; j < len; ++j) {
     order[j] = j;

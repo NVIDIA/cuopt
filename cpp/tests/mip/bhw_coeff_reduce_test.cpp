@@ -76,8 +76,8 @@ TEST(bhw_coeff_reduce, rational_row_integerizes_and_reduces)
 
 TEST(bhw_coeff_reduce, rejects_approximate_integerization_that_changes_the_feasible_set)
 {
-  constexpr int num_variables       = 12;
-  constexpr double perturbation     = 9.9e-7;
+  constexpr int num_variables        = 12;
+  constexpr double perturbation      = 9.9e-7;
   constexpr double small_coefficient = 1000.0;
   std::vector<double> row(num_variables, small_coefficient + perturbation);
   row[0] = 12000.0;
