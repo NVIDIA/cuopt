@@ -1273,12 +1273,12 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
         divisors[r] = a_rj;
         new_rows++;
       } else if (sets[r] < new_set_0) {
-        const i_t old_set = sets[r];
-        bool matched      = false;
+        const i_t old_set        = sets[r];
+        bool matched             = false;
         const auto set_positions = positions_by_set.find(old_set);
         if (set_positions != positions_by_set.end()) {
-          auto q_position = std::upper_bound(
-            set_positions->second.begin(), set_positions->second.end(), p);
+          auto q_position =
+            std::upper_bound(set_positions->second.begin(), set_positions->second.end(), p);
           for (; q_position != set_positions->second.end(); ++q_position) {
             const i_t q    = *q_position;
             const i_t i    = cut_storage_csc.i[q];
@@ -1286,8 +1286,7 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
             if (sets[i] != old_set) { continue; }
             const f_t f_i = divisors[i];
             const f_t val = (a_rj / f_r) * (f_i / a_ij);
-            if (val >= 1.0 - duplicate_tolerance &&
-                val <= 1.0 + duplicate_tolerance) {
+            if (val >= 1.0 - duplicate_tolerance && val <= 1.0 + duplicate_tolerance) {
               sets[r] = new_set;
               sets[i] = new_set;
               matched = true;
@@ -1312,6 +1311,8 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
     }
   }
 
+  // The cuts are stored in the form: sum_j d_ij x_j >= rhs_i.
+  // We now look for cuts that are duplicates of each other and remove them.
   std::unordered_map<i_t, std::vector<i_t>> rows_by_set;
   rows_by_set.reserve(m);
   for (i_t r = 0; r < m; r++) {
@@ -1322,6 +1323,8 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
   for (i_t r = 0; r < m; r++) {
     const i_t set_r = sets[r];
     if (set_r <= 0 || set_r >= sentinel || cuts_to_remove[r] != 0) { continue; }
+    // This cut has a duplicate. The set members are in row order, preserving the legacy
+    // strongest-cut selection order without scanning unrelated rows.
     const auto& members = rows_by_set.at(set_r);
     auto member         = std::upper_bound(members.begin(), members.end(), r);
     for (; member != members.end(); ++member) {
@@ -1331,16 +1334,25 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
       const f_t theta_r = rhs_storage_[r] / f_r;
       const f_t theta_i = rhs_storage_[i] / f_i;
       if (f_r > 0.0 && f_i > 0.0) {
+        // We have sum_j d_rj / f_r x_j >= rhs_r / f_r = theta_r
+        //    and  sum_j d_ij / f_i x_j >= rhs_i / f_i = theta_i.
         if (theta_r <= theta_i) {
-          cuts_to_remove[r] = 1;
+          // Cut i is either the same or stronger than cut r.
+          cuts_to_remove[r] = 1;  // Remove row r.
         } else {
-          cuts_to_remove[i] = 1;
+          // theta_r > theta_i, so cut r is strictly stronger than cut i.
+          cuts_to_remove[i] = 1;  // Remove row i.
         }
       } else if (f_r < 0.0 && f_i < 0.0) {
+        // Dividing by a negative divisor reverses the inequality:
+        // sum_j d_rj / f_r x_j <= rhs_r / f_r = theta_r
+        //    and  sum_j d_ij / f_i x_j <= rhs_i / f_i = theta_i.
         if (theta_r >= theta_i) {
-          cuts_to_remove[r] = 1;
+          // Cut i is either the same or stronger than cut r.
+          cuts_to_remove[r] = 1;  // Remove row r.
         } else {
-          cuts_to_remove[i] = 1;
+          // theta_r < theta_i, so cut r is strictly stronger than cut i.
+          cuts_to_remove[i] = 1;  // Remove row i.
         }
       }
     }
