@@ -38,6 +38,19 @@ rapids_logger::logger& default_logger();
  */
 void reset_default_logger();
 
+using log_console_callback_t = void (*)(int level, const char* message);
+
+/**
+ * @brief Overrides the sink used for console logging (settings.log_to_console == true).
+ *
+ * Passing nullptr (the default) restores writing to std::cout. Intended for language bindings
+ * whose host runtime cannot safely receive a raw write to the native stdout stream -- see the
+ * definition site in logger.cpp for why that matters.
+ *
+ * @param callback The callback to invoke for each logged line, or nullptr to restore std::cout.
+ */
+void set_console_log_callback(log_console_callback_t callback);
+
 // Ref-counted logger initializer
 class init_logger_t {
   // Using shared_ptr for ref-counting
