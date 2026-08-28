@@ -23,6 +23,7 @@ class splitmix64_t {
   splitmix64_t(uint64_t seed = default_seed, uint64_t stream = default_stream)
     : state_(seed), stream_(stream)
   {
+    next_state();
   }
 
   /// Creates a new instance of the SplitMix64 generator
