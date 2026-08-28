@@ -165,7 +165,7 @@ Please install conda if you don't have it already. You can install [miniforge](h
 # use `channel_priority: flexible` instead
 mamba env create -p ./.cuopt_env --file conda/environments/all_cuda-133_arch-$(uname -m).yaml
 # activate the environment
-mamba activate ./.cuopt_env   # or: conda activate ./.cuopt_env (works even without `mamba init`)
+mamba activate ./.cuopt_env   # or: conda activate ./.cuopt_env
 ```
 
 - **Note**: the conda environment files are updated frequently, so the
