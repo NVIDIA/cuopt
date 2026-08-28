@@ -278,11 +278,37 @@ class barrier_reduce_helper_t {
     sum_async(kMuWvSum, d_wv.data(), d_wv.size(), stream_view);
   }
 
-  // Raw device slots for the caller's own cublasdot() calls.
-  f_t* cTx_slot() { return d_results_.data() + kCTx; }
-  f_t* bTy_slot() { return d_results_.data() + kBTy; }
-  f_t* uTv_slot() { return d_results_.data() + kUTv; }
-  f_t* xTQx_slot() { return d_results_.data() + kXTQx; }
+  void cTx_async(const rmm::device_uvector<f_t>& d_c,
+                 const rmm::device_uvector<f_t>& d_x,
+                 cublasHandle_t cublas_handle,
+                 rmm::cuda_stream_view stream_view)
+  {
+    dot_async(kCTx, d_c, d_x, cublas_handle, stream_view);
+  }
+
+  void bTy_async(const rmm::device_uvector<f_t>& d_b,
+                 const rmm::device_uvector<f_t>& d_y,
+                 cublasHandle_t cublas_handle,
+                 rmm::cuda_stream_view stream_view)
+  {
+    dot_async(kBTy, d_b, d_y, cublas_handle, stream_view);
+  }
+
+  void uTv_async(const rmm::device_uvector<f_t>& d_u,
+                 const rmm::device_uvector<f_t>& d_v,
+                 cublasHandle_t cublas_handle,
+                 rmm::cuda_stream_view stream_view)
+  {
+    dot_async(kUTv, d_u, d_v, cublas_handle, stream_view);
+  }
+
+  void xTQx_async(const rmm::device_uvector<f_t>& d_Qx,
+                  const rmm::device_uvector<f_t>& d_x,
+                  cublasHandle_t cublas_handle,
+                  rmm::cuda_stream_view stream_view)
+  {
+    dot_async(kXTQx, d_Qx, d_x, cublas_handle, stream_view);
+  }
 
   // Single batched device-to-host copy + the one stream synchronize needed before any accessor
   // below can be read.
@@ -356,6 +382,16 @@ class barrier_reduce_helper_t {
     cub::DeviceReduce::Sum(nullptr, temp_storage_bytes, in, out, size, stream_view);
     d_temp_storage_.resize(temp_storage_bytes, stream_view);
     cub::DeviceReduce::Sum(d_temp_storage_.data(), temp_storage_bytes, in, out, size, stream_view);
+  }
+
+  void dot_async(Slot slot,
+                 const rmm::device_uvector<f_t>& a,
+                 const rmm::device_uvector<f_t>& b,
+                 cublasHandle_t cublas_handle,
+                 rmm::cuda_stream_view stream_view)
+  {
+    RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(
+      cublas_handle, a.size(), a.data(), 1, b.data(), 1, d_results_.data() + slot, stream_view));
   }
 
   rmm::device_uvector<f_t> d_results_;
@@ -3960,42 +3996,15 @@ void barrier_solver_t<i_t, f_t>::compute_residual_norms_mu_and_objective(
   rh.mu_terms_async(
     data.d_complementarity_xz_residual_, data.d_complementarity_wv_residual_, stream_view_);
 
-  RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
-                                                  data.d_c_.size(),
-                                                  data.d_c_.data(),
-                                                  1,
-                                                  data.d_x_.data(),
-                                                  1,
-                                                  rh.cTx_slot(),
-                                                  stream_view_));
-  RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
-                                                  data.d_b_.size(),
-                                                  data.d_b_.data(),
-                                                  1,
-                                                  data.d_y_.data(),
-                                                  1,
-                                                  rh.bTy_slot(),
-                                                  stream_view_));
-  RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
-                                                  data.d_restrict_u_.size(),
-                                                  data.d_restrict_u_.data(),
-                                                  1,
-                                                  data.d_v_.data(),
-                                                  1,
-                                                  rh.uTv_slot(),
-                                                  stream_view_));
+  cublasHandle_t cublas_handle = lp.handle_ptr->get_cublas_handle();
+  rh.cTx_async(data.d_c_, data.d_x_, cublas_handle, stream_view_);
+  rh.bTy_async(data.d_b_, data.d_y_, cublas_handle, stream_view_);
+  rh.uTv_async(data.d_restrict_u_, data.d_v_, cublas_handle, stream_view_);
   if (data.Q.n > 0) {
     auto cusparse_d_x = data.cusparse_view_.create_vector(data.d_x_);
     auto cusparse_Qx  = data.cusparse_view_.create_vector(data.d_Qx_);
     data.cusparse_Q_view_.spmv(1.0, cusparse_d_x, 0.0, cusparse_Qx);
-    RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
-                                                    data.d_Qx_.size(),
-                                                    data.d_Qx_.data(),
-                                                    1,
-                                                    data.d_x_.data(),
-                                                    1,
-                                                    rh.xTQx_slot(),
-                                                    stream_view_));
+    rh.xTQx_async(data.d_Qx_, data.d_x_, cublas_handle, stream_view_);
   }
 
   rh.sync(stream_view_);
