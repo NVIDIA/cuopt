@@ -28,6 +28,13 @@ source rapids-configure-sccache
 source rapids-datetime-string
 source rapids-init-pip
 
+# Wheel builds happen in a fresh checkout path on every run, which breaks sccache's default
+# direct-mode cache key (it includes the literal compiler invocation, e.g. include paths).
+# Preprocessor-cache mode keys on the preprocessed source instead, so it survives that. Same
+# pattern as cudf's and rmm's wheel builds.
+export SCCACHE_S3_PREPROCESSOR_CACHE_KEY_PREFIX="${package_name}-${RAPIDS_CONDA_ARCH}-cuda${RAPIDS_CUDA_VERSION%%.*}-wheel-preprocessor-cache"
+export SCCACHE_S3_USE_PREPROCESSOR_CACHE_MODE=true
+
 # Update the version to accomodate nightly and release changes for the wheel name
 RAPIDS_VERSION_SUFFIX=".post${RAPIDS_DATETIME_STRING}" \
   rapids-generate-version > ./VERSION
