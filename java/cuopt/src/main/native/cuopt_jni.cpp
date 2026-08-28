@@ -379,8 +379,8 @@ void mip_set_solution_callback(cuopt_float_t* solution,
   if (detach) { g_jvm->DetachCurrentThread(); }
 }
 
-jclass g_log_sink_class          = nullptr;
-jmethodID g_log_sink_method      = nullptr;
+jclass g_log_sink_class     = nullptr;
+jmethodID g_log_sink_method = nullptr;
 std::once_flag g_log_sink_once;
 
 // cuopt::log_console_callback_t: forwards a console log line to NativeLogSink.onLogLine, so it
