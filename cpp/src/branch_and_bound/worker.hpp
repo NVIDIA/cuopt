@@ -253,8 +253,6 @@ class diving_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
   // The best-first worker that is associated with this diving worker. Used for controlling the
   // number of active diving workers.
   bfs_worker_t<i_t, f_t>* bfs_worker{nullptr};
-
-  std::atomic<int> halt = false;
 };
 
 struct submip_stats_t {
