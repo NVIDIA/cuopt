@@ -30,9 +30,7 @@ cuopt_mvn() {
   log="$(mktemp)"
 
   while true; do
-    # The pipeline is the condition of this if, not a bare statement, so its failure does not
-    # trigger the caller's 'set -e' before the retry logic below gets to see it. tee would
-    # otherwise report its own exit status rather than Maven's, hence PIPESTATUS.
+    # Guarded by if so a failure doesn't trigger the caller's set -e before we see PIPESTATUS.
     if mvn "${CUOPT_MVN_ARGS[@]}" "$@" 2>&1 | tee "${log}"; then
       status=0
     else
