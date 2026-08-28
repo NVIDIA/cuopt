@@ -267,7 +267,6 @@ class barrier_reduce_helper_t {
   void cone_complementarity_residual_async(raft::device_span<f_t> cone_dot,
                                            rmm::cuda_stream_view stream_view)
   {
-    has_soc_ = true;
     max_async(kComplCone, cone_dot.data(), cone_dot.size(), stream_view);
   }
 
@@ -293,18 +292,15 @@ class barrier_reduce_helper_t {
     stream_view.synchronize();
   }
 
-  f_t primal_residual_norm() const
-  {
-    return std::max(h_results_[kPrimalResidual], h_results_[kBoundResidual]);
-  }
+  // Raw reduced values; the caller combines these into residual norms, mu, and objectives.
+  f_t primal_residual() const { return h_results_[kPrimalResidual]; }
+  f_t bound_residual() const { return h_results_[kBoundResidual]; }
   f_t dual_residual_norm() const { return h_results_[kDualResidual]; }
-  f_t complementarity_residual_norm() const
-  {
-    f_t result = std::max(h_results_[kComplXzLinear], h_results_[kComplWv]);
-    if (has_soc_) { result = std::max(result, h_results_[kComplCone]); }
-    return result;
-  }
-  f_t mu(f_t mu_denom) const { return (h_results_[kMuXzSum] + h_results_[kMuWvSum]) / mu_denom; }
+  f_t complementarity_xz_linear() const { return h_results_[kComplXzLinear]; }
+  f_t complementarity_wv() const { return h_results_[kComplWv]; }
+  f_t complementarity_cone() const { return h_results_[kComplCone]; }
+  f_t mu_xz_sum() const { return h_results_[kMuXzSum]; }
+  f_t mu_wv_sum() const { return h_results_[kMuWvSum]; }
   f_t cTx() const { return h_results_[kCTx]; }
   f_t bTy() const { return h_results_[kBTy]; }
   f_t uTv() const { return h_results_[kUTv]; }
@@ -365,7 +361,6 @@ class barrier_reduce_helper_t {
   rmm::device_uvector<f_t> d_results_;
   pinned_dense_vector_t<i_t, f_t> h_results_;
   rmm::device_buffer d_temp_storage_;
-  bool has_soc_ = false;
 };
 
 template <typename i_t, typename f_t>
@@ -4005,12 +4000,17 @@ void barrier_solver_t<i_t, f_t>::compute_residual_norms_mu_and_objective(
 
   rh.sync(stream_view_);
 
-  primal_residual_norm          = rh.primal_residual_norm();
-  dual_residual_norm            = rh.dual_residual_norm();
-  complementarity_residual_norm = rh.complementarity_residual_norm();
+  primal_residual_norm = std::max(rh.primal_residual(), rh.bound_residual());
+  dual_residual_norm   = rh.dual_residual_norm();
+
+  complementarity_residual_norm = std::max(rh.complementarity_xz_linear(), rh.complementarity_wv());
+  if (has_soc) {
+    complementarity_residual_norm =
+      std::max(complementarity_residual_norm, rh.complementarity_cone());
+  }
 
   const f_t mu_denom = data.complementarity_degree(data.x.size(), data.n_upper_bounds);
-  mu                 = rh.mu(mu_denom);
+  mu                 = (rh.mu_xz_sum() + rh.mu_wv_sum()) / mu_denom;
 
   const f_t quad_objective = (data.Q.n > 0) ? 0.5 * rh.xTQx() : f_t(0);
   primal_objective         = rh.cTx() + quad_objective;
