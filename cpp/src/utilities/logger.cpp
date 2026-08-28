@@ -55,6 +55,25 @@ log_buffer& global_log_buffer()
   return buffer;
 }
 
+// Overrides the sink used when log_to_console is true. Null (the default) keeps writing to
+// std::cout; set by language bindings whose host runtime cannot safely receive writes to the
+// native stdout stream -- for example Java, where a raw write there bypasses System.out and can
+// corrupt tools that intercept it, such as Maven Surefire's forked-process protocol.
+static std::mutex g_console_callback_mutex;
+static log_console_callback_t g_console_callback = nullptr;
+
+void set_console_log_callback(log_console_callback_t callback)
+{
+  std::lock_guard<std::mutex> lock(g_console_callback_mutex);
+  g_console_callback = callback;
+}
+
+static log_console_callback_t console_log_callback()
+{
+  std::lock_guard<std::mutex> lock(g_console_callback_mutex);
+  return g_console_callback;
+}
+
 // Callback function for the buffer sink
 static void buffer_log_callback(int lvl, const char* msg)
 {
@@ -161,8 +180,13 @@ init_logger_t::init_logger_t(std::string log_file, bool log_to_console)
 
   // re-initialize sinks
   if (log_to_console) {
-    cuopt::default_logger().sinks().push_back(
-      std::make_shared<rapids_logger::ostream_sink_mt>(std::cout));
+    if (auto callback = console_log_callback(); callback != nullptr) {
+      cuopt::default_logger().sinks().push_back(
+        std::make_shared<rapids_logger::callback_sink_mt>(callback));
+    } else {
+      cuopt::default_logger().sinks().push_back(
+        std::make_shared<rapids_logger::ostream_sink_mt>(std::cout));
+    }
   }
   if (!log_file.empty()) {
     cuopt::default_logger().sinks().push_back(
