@@ -822,14 +822,10 @@ dependencies:
           - *msgpack_numpy
           - myst-parser
           - numpydoc
-          - pyrsistent
           - breathe
           - sphinx
           - sphinx-copybutton
           - sphinx-markdown-tables
-          - sphinx_rtd_theme
-          - sphinxcontrib-openapi
-          - sphinxcontrib-websupport
           - sphinx-design
           - pip:
               - swagger-plugin-for-sphinx
@@ -847,12 +843,9 @@ dependencies:
           - *msgpack_numpy
           - *msgpack_python
           - *numpy
-          - pip:
-              - &veroviz veroviz
       - output_types: [requirements]
         packages:
           - *numpy
-          - *veroviz
   py_version:
     specific:
       - output_types: conda

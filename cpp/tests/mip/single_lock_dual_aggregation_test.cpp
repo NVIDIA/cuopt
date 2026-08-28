@@ -66,13 +66,50 @@ struct papilo_harness_t {
     const auto& txns = reductions.getTransactions();
     const auto& reds = reductions.getReductions();
     for (const auto& t : txns) {
-      if (t.end - t.start != 2) continue;
-      const auto& r0 = reds[t.start];
-      const auto& r1 = reds[t.start + 1];
+      const int payload_start = t.start + t.nlocks;
+      if (t.end - payload_start != 2) continue;
+      const auto& r0 = reds[payload_start];
+      const auto& r1 = reds[payload_start + 1];
       if (r0.row == papilo::ColReduction::REPLACE && r0.col == col1 &&
           std::abs(r0.newval - factor) < 1e-9 && r1.col == col2 &&
           std::abs(r1.newval - offset) < 1e-9)
         return true;
+    }
+    return false;
+  }
+
+  bool replacement_locks_dependencies(int col1,
+                                      int col2,
+                                      int row,
+                                      const std::unordered_set<int>& bound_cols) const
+  {
+    const auto& txns = reductions.getTransactions();
+    const auto& reds = reductions.getReductions();
+    for (const auto& t : txns) {
+      const int payload_start = t.start + t.nlocks;
+      if (t.end - payload_start != 2) continue;
+      const auto& replacement = reds[payload_start];
+      const auto& master      = reds[payload_start + 1];
+      if (replacement.row != papilo::ColReduction::REPLACE || replacement.col != col1 ||
+          master.col != col2)
+        continue;
+
+      bool col1_locked = false;
+      bool col2_locked = false;
+      bool row_locked  = false;
+      std::unordered_set<int> locked_bound_cols;
+      for (int i = t.start; i < payload_start; ++i) {
+        const auto& lock = reds[i];
+        if (lock.row == papilo::ColReduction::LOCKED) {
+          col1_locked |= lock.col == col1;
+          col2_locked |= lock.col == col2;
+        } else if (lock.row == papilo::ColReduction::BOUNDS_LOCKED) {
+          locked_bound_cols.insert(lock.col);
+        } else if (lock.row == row && lock.col == papilo::RowReduction::LOCKED) {
+          row_locked = true;
+        }
+      }
+      return col1_locked && col2_locked && row_locked && locked_bound_cols == bound_cols;
     }
     return false;
   }
@@ -141,6 +178,7 @@ TEST(SingleLockDualAggregation, DirectSubstitution)
 
   EXPECT_EQ(status, papilo::PresolveStatus::kReduced);
   EXPECT_TRUE(h.has_replace(0, 1, 1.0, 0.0));  // x = y
+  EXPECT_TRUE(h.replacement_locks_dependencies(0, 1, 0, {0, 1}));
 }
 
 // Direct master has no negative binary coeff, so direct probe fails.
@@ -408,6 +446,29 @@ TEST(SingleLockDualAggregation, ZeroObjectiveNeedsFullDualreds)
   }
 }
 
+TEST(SingleLockDualAggregation, PreventsSubstitutionChains)
+{
+  auto problem = build_problem(2,
+                               3,
+                               {{0, 0, 3.0}, {0, 1, -3.0}, {1, 0, -4.0}, {1, 1, 4.0}, {1, 2, -5.0}},
+                               {-1.0, -1.0, 0.0},
+                               {0.0, 0.0, 0.0},
+                               {1.0, 1.0, 1.0},
+                               {true, true, true},
+                               {0.0, 0.0},
+                               {1.0, -1.0},
+                               {true, true},
+                               {false, false});
+
+  SingleLockDualAggregation<double> presolver;
+  papilo_harness_t h;
+  auto status = h.run(problem, presolver);
+
+  EXPECT_EQ(status, papilo::PresolveStatus::kReduced);
+  EXPECT_TRUE(h.has_replace(0, 1, 1.0, 0.0));
+  EXPECT_FALSE(h.has_replace(1, 2, 1.0, 0.0));
+}
+
 third_party_presolve_device_result_t<int, double> static run_presolve(
   std::string_view lp_text, std::unordered_set<std::string> allowlist)
 {
@@ -418,6 +479,26 @@ third_party_presolve_device_result_t<int, double> static run_presolve(
   presolver->set_reduction_allowlist(std::move(allowlist));
   return presolver->apply_presolve_from_op_problem(
     op_problem, problem_category_t::MIP, presolver_t::Papilo, false, 1e-6, 1e-12, 20, 1);
+}
+
+TEST(SingleLockDualAggregation, AppliesOnlyDisjointSubstitutions)
+{
+  auto result = run_presolve(R"LP(
+Minimize
+  obj: - x - y
+Subject To
+  r0: 3 x - 3 y <= 1
+  r1: -4 x + 4 y - 5 z <= -1
+Binaries
+  x
+  y
+  z
+End
+)LP",
+                             {"single_lock_dual_aggregation"});
+
+  EXPECT_TRUE(result.status == third_party_presolve_status_t::REDUCED ||
+              result.status == third_party_presolve_status_t::OPTIMAL);
 }
 
 }  // namespace cuopt::mathematical_optimization::mip::test
