@@ -15,6 +15,7 @@ import urllib.request
 _TEST_PREFIXES = (
     "conda-cpp-tests",
     "conda-python-tests",
+    "java-build",
     "wheel-tests-cuopt",
     "wheel-tests-cuopt-server",
     "test-self-hosted-server",
