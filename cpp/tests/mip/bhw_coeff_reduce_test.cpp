@@ -80,6 +80,17 @@ TEST(bhw_coeff_reduce, rational_row_integerizes_and_reduces)
   EXPECT_TRUE(same_feasible_set(row, 2.0 / 3, 1, reduced));
 }
 
+TEST(bhw_coeff_reduce, rejects_approximate_integerization_that_changes_the_feasible_set)
+{
+  constexpr int num_variables       = 12;
+  constexpr double perturbation     = 9.9e-7;
+  constexpr double small_coefficient = 1000.0;
+  std::vector<double> row(num_variables, small_coefficient + perturbation);
+  row[0] = 12000.0;
+
+  EXPECT_FALSE(reduce(row, 11000.0 - perturbation).accepted);
+}
+
 // The >= orientation is normalized by negation, so the same row negated must come back negated.
 TEST(bhw_coeff_reduce, greater_equal_row_keeps_its_orientation)
 {

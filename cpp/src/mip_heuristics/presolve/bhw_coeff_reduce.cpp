@@ -50,9 +50,6 @@ namespace cuopt::mathematical_optimization::mip {
 
 namespace {
 
-// Rows between two interrupt checks in execute; screening one row is cheap next to the check.
-constexpr int BHW_INTERRUPT_CHECK_STRIDE = 256;
-
 // One row in BHW's normalized frame: condition N1 (every coefficient positive, negatives
 // complemented by x_i = 1 - y_i) and condition N3 (coefficients sorted descending). N1 is what
 // makes the row activity monotone in x, and it also makes the weights of any equivalent inequality
@@ -84,6 +81,36 @@ int64_t weight_activity(const int64_t* w, uint32_t mask)
     mask &= mask - 1u;
   }
   return sum;
+}
+
+template <typename f_t>
+bool integerization_preserves_binary_feasible_set(
+  const f_t* coefficients,
+  int len,
+  f_t side,
+  int direction,
+  const std::array<int64_t, BHW_MAX_LEN>& integral,
+  int64_t integral_side)
+{
+  cuopt_assert(len >= 2 && len <= BHW_MAX_LEN, "row length outside the enumerable range");
+  const uint32_t n_pat = 1u << len;
+  // software implemented, but addition is very cheap
+  std::vector<_Float128> original_activity(n_pat, 0.0L);
+  std::vector<int64_t> integral_activity(n_pat, 0);
+  for (uint32_t m = 1; m < n_pat; ++m) {
+    const uint32_t previous = m & (m - 1u);
+    const int j             = std::countr_zero(m);
+    original_activity[m]    = original_activity[previous] + coefficients[j];
+    integral_activity[m]    = integral_activity[previous] + integral[j];
+  }
+
+  for (uint32_t m = 0; m < n_pat; ++m) {
+    const bool original_feasible = direction == 1 ? original_activity[m] <= side
+                                                  : original_activity[m] >= side;
+    const bool integral_feasible = integral_activity[m] <= integral_side;
+    if (original_feasible != integral_feasible) return false;
+  }
+  return true;
 }
 
 // Splits {0,1}^k and collects the maximal feasible and minimal infeasible points. Returns false for
@@ -373,8 +400,9 @@ bhw_row_rewrite_t bhw_reduce_row(
   if (largest <= 1) return rewrite;
 
   norm_row_t norm_row;
-  norm_row.k   = len;
-  norm_row.rhs = std::llround((double)side * scale) * direction;
+  norm_row.k                 = len;
+  const int64_t integral_side = std::llround((double)side * scale) * direction;
+  norm_row.rhs               = integral_side;
   std::array<int, BHW_MAX_LEN> order{};
   for (int j = 0; j < len; ++j) {
     order[j] = j;
@@ -411,6 +439,11 @@ bhw_row_rewrite_t bhw_reduce_row(
     result            = &computed;
   }
   if (!result->accepted) return rewrite;
+
+  // Rows sharing an integerized cache key can have different original floating-point partitions.
+  if (!integerization_preserves_binary_feasible_set(
+        coefficients, len, side, direction, integral, integral_side))
+    return rewrite;
 
   cuopt_assert((int)result->weights.size() == len, "cached shape has the wrong length");
   cuopt_assert(*std::min_element(result->weights.begin(), result->weights.end()) >= 0,
@@ -527,8 +560,8 @@ papilo::PresolveStatus BHWCoeffReduce<f_t>::execute(const papilo::Problem<f_t>& 
   // reduction is idempotent.
   for (int row = 0; row < num_rows; ++row) {
     if (reductions.size() >= presolve_options.max_reduction_seq) break;
-    if (row % BHW_INTERRUPT_CHECK_STRIDE == 0 &&
-        papilo::PresolveMethod<f_t>::is_interrupted(
+    // Screening one row is cheap next to the interrupt check.
+    if (papilo::PresolveMethod<f_t>::is_interrupted(
           timer, presolve_options.tlim, presolve_options.early_exit_callback))
       break;
 
