@@ -3354,6 +3354,16 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
                                    basis_update,
                                    num_fractional,
                                    fractional);
+  if (received_halt_signal()) {
+    solver_status_ = mip_status_t::HALT;
+    set_final_solution(solution, root_objective_);
+    return cut_pass_action_t::RETURN;
+  }
+  if (toc(exploration_stats_.start_time) >= settings_.time_limit) {
+    solver_status_ = mip_status_t::TIME_LIMIT;
+    set_final_solution(solution, root_objective_);
+    return cut_pass_action_t::RETURN;
+  }
 
   // Score the cuts
   f_t score_start_time = tic();
@@ -4032,11 +4042,11 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(
                                                             nonbasic_list,
                                                             vstatus);
     if (refactor_status == CONCURRENT_HALT_RETURN || refactor_status == TIME_LIMIT_RETURN) {
-      // TODO: On failure vstatus, basic_list, and nonbasic_list are in a bad state.
-      // We should save copies before the failure and restore them after the failure.
       return;
     }
     if (refactor_status != 0) {
+      // TODO: On failure vstatus, basic_list, and nonbasic_list are in a bad state.
+      // We should save copies before the failure and restore them after the failure.
       settings_.log.printf(
         "Failed to refactor basis after dual degenerate feasibility pump. "
         "%d deficient columns.\n",
@@ -4790,8 +4800,8 @@ void branch_and_bound_t<i_t, f_t>::pivot_to_improve_reduced_cost_strengthening(
   f_t work_estimate = 0;
   const f_t threshold = 100.0 * settings_.integer_tol;
   const f_t tol       = 1e-2;
-  const f_t pivot_tol = settings_.pivot_tol;
-  const f_t dual_tol  = settings_.dual_tol / 10;
+  const f_t zero_tol   = settings_.zero_tol;
+  const f_t harris_tol = settings_.dual_tol / 10;
 
   i_t num_bounds_added = 0;
   for (i_t j : degenerate_integer_list) {
@@ -4840,12 +4850,12 @@ void branch_and_bound_t<i_t, f_t>::pivot_to_improve_reduced_cost_strengthening(
       for (i_t jj : delta_z_indices) {
         if (vstatus[jj] == variable_status_t::NONBASIC_FIXED) { continue; }
         const f_t dz = scale * delta_z[jj];
-        if (vstatus[jj] == variable_status_t::NONBASIC_LOWER && dz < -pivot_tol) {
-          const f_t ratio = std::max((-dual_tol - soln.z[jj]) / dz, 0.0);
+        if (vstatus[jj] == variable_status_t::NONBASIC_LOWER && dz < -zero_tol) {
+          const f_t ratio = std::max((-harris_tol - soln.z[jj]) / dz, 0.0);
           if (ratio < alpha) { alpha = ratio; }
         }
-        if (vstatus[jj] == variable_status_t::NONBASIC_UPPER && dz > pivot_tol) {
-          const f_t ratio = std::max((dual_tol - soln.z[jj]) / dz, 0.0);
+        if (vstatus[jj] == variable_status_t::NONBASIC_UPPER && dz > zero_tol) {
+          const f_t ratio = std::max((harris_tol - soln.z[jj]) / dz, 0.0);
           if (ratio < alpha) { alpha = ratio; }
         }
       }
@@ -4855,24 +4865,48 @@ void branch_and_bound_t<i_t, f_t>::pivot_to_improve_reduced_cost_strengthening(
       // For NONBASIC_LOWER: z_new[jj] >= -dual_tol
       // For NONBASIC_UPPER: z_new[jj] <= dual_tol
       {
-        f_t max_dual_infeas = 0.0;
-        i_t num_dual_infeas = 0;
-        i_t worst_j = -1;
+        f_t max_initial_dual_infeas = 0.0;
+        f_t max_dual_infeas         = 0.0;
+        f_t worst_old_z             = 0.0;
+        f_t worst_delta_z           = 0.0;
+        f_t worst_step              = 0.0;
+        f_t worst_new_z             = 0.0;
+        i_t num_initial_dual_infeas = 0;
+        i_t num_dual_infeas         = 0;
+        i_t worst_j                 = -1;
         for (i_t jj : delta_z_indices) {
           if (vstatus[jj] == variable_status_t::NONBASIC_FIXED) { continue; }
-          const f_t new_zj = soln.z[jj] + alpha * scale * delta_z[jj];
+          const f_t old_zj = soln.z[jj];
+          const f_t step   = alpha * scale * delta_z[jj];
+          const f_t new_zj = old_zj + step;
+          const bool initially_infeasible =
+            (vstatus[jj] == variable_status_t::NONBASIC_LOWER &&
+             old_zj < -settings_.dual_tol) ||
+            (vstatus[jj] == variable_status_t::NONBASIC_UPPER && old_zj > settings_.dual_tol);
+          if (initially_infeasible) {
+            num_initial_dual_infeas++;
+            max_initial_dual_infeas = std::max(max_initial_dual_infeas, std::abs(old_zj));
+          }
           if (vstatus[jj] == variable_status_t::NONBASIC_LOWER && new_zj < -settings_.dual_tol) {
             num_dual_infeas++;
             if (std::abs(new_zj) > max_dual_infeas) {
               max_dual_infeas = std::abs(new_zj);
-              worst_j = jj;
+              worst_j         = jj;
+              worst_old_z     = old_zj;
+              worst_delta_z   = scale * delta_z[jj];
+              worst_step      = step;
+              worst_new_z     = new_zj;
             }
           }
           if (vstatus[jj] == variable_status_t::NONBASIC_UPPER && new_zj > settings_.dual_tol) {
             num_dual_infeas++;
             if (std::abs(new_zj) > max_dual_infeas) {
               max_dual_infeas = std::abs(new_zj);
-              worst_j = jj;
+              worst_j         = jj;
+              worst_old_z     = old_zj;
+              worst_delta_z   = scale * delta_z[jj];
+              worst_step      = step;
+              worst_new_z     = new_zj;
             }
           }
         }
@@ -4881,9 +4915,24 @@ void branch_and_bound_t<i_t, f_t>::pivot_to_improve_reduced_cost_strengthening(
         if (num_dual_infeas > 0) {
           settings_.log.printf(
             "WARNING pivot_to_improve_rc: dual infeasibility after step! "
-            "var=%d alpha=%.6e scale=%.0f num_infeas=%d max_infeas=%.6e worst_j=%d "
+            "var=%d alpha=%.6e scale=%.0f initial_num_infeas=%d "
+            "initial_max_infeas=%.6e num_infeas=%d max_infeas=%.6e worst_j=%d "
+            "worst_status=%d old_z=%.16e delta_z=%.16e step=%.16e new_z=%.16e "
             "new_rc_leaving=%.6e\n",
-            j, alpha, scale, num_dual_infeas, max_dual_infeas, worst_j, new_zj_leaving);
+            j,
+            alpha,
+            scale,
+            num_initial_dual_infeas,
+            max_initial_dual_infeas,
+            num_dual_infeas,
+            max_dual_infeas,
+            worst_j,
+            static_cast<int>(vstatus[worst_j]),
+            worst_old_z,
+            worst_delta_z,
+            worst_step,
+            worst_new_z,
+            new_zj_leaving);
         }
       }
 
@@ -5203,6 +5252,16 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                    basis_update,
                                    num_fractional,
                                    fractional);
+  if (received_halt_signal()) {
+    solver_status_ = mip_status_t::HALT;
+    set_final_solution(solution, root_objective_);
+    return solver_status_;
+  }
+  if (toc(exploration_stats_.start_time) >= settings_.time_limit) {
+    solver_status_ = mip_status_t::TIME_LIMIT;
+    set_final_solution(solution, root_objective_);
+    return solver_status_;
+  }
 
   if (num_fractional != 0 && settings_.max_cut_passes > 0) { print_table_header(); }
 
