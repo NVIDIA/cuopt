@@ -43,11 +43,6 @@ namespace cuopt::mathematical_optimization {
 void grpc_test_inject_mock_stub(class grpc_client_t& client, std::shared_ptr<void> stub);
 void grpc_test_mark_as_connected(class grpc_client_t& client);
 
-// Implemented in solve_remote.cpp; declared here so unit tests can exercise the
-// semi-continuous callback-disabling predicate without a live gRPC connection.
-bool should_disable_semi_continuous_callbacks(const std::vector<var_t>& var_types,
-                                              bool has_callbacks);
-
 /**
  * @brief Configuration options for the gRPC client
  *

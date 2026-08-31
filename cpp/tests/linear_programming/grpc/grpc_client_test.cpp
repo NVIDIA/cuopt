@@ -30,6 +30,7 @@
 #include "grpc_settings_mapper.hpp"
 #include "grpc_solution_mapper.hpp"
 #include "server/grpc_field_element_size.hpp"
+#include "solve_remote_impl.hpp"
 
 #include <cuopt_remote.pb.h>
 #include <cuopt_remote_service.grpc.pb.h>
@@ -2846,36 +2847,36 @@ TEST(MapperRoundtrip, QuadraticConstraintsRowTypeLenient)
 //
 // solve_mip_remote() drops user-provided incumbent get/set callbacks when the model
 // has semi-continuous variables, since the remote server does not support that
-// combination. should_disable_semi_continuous_callbacks() is the pure predicate behind
+// combination. should_disable_unsupported() is the pure predicate behind
 // that decision, exposed via grpc_client.hpp so it can be tested without a live
 // gRPC connection.
 
 TEST(SolveMipRemoteCallbacks, NoSemiContinuousNoCallbacksKeepsDisabled)
 {
   std::vector<var_t> var_types = {var_t::CONTINUOUS, var_t::INTEGER};
-  EXPECT_FALSE(should_disable_semi_continuous_callbacks(var_types, /*has_callbacks=*/false));
+  EXPECT_FALSE(should_disable_unsupported(var_types, /*has_callbacks=*/false));
 }
 
 TEST(SolveMipRemoteCallbacks, NoSemiContinuousWithCallbacksKeepsEnabled)
 {
   std::vector<var_t> var_types = {var_t::CONTINUOUS, var_t::INTEGER};
-  EXPECT_FALSE(should_disable_semi_continuous_callbacks(var_types, /*has_callbacks=*/true));
+  EXPECT_FALSE(should_disable_unsupported(var_types, /*has_callbacks=*/true));
 }
 
 TEST(SolveMipRemoteCallbacks, SemiContinuousWithoutCallbacksStaysDisabled)
 {
   std::vector<var_t> var_types = {var_t::CONTINUOUS, var_t::SEMI_CONTINUOUS};
-  EXPECT_FALSE(should_disable_semi_continuous_callbacks(var_types, /*has_callbacks=*/false));
+  EXPECT_FALSE(should_disable_unsupported(var_types, /*has_callbacks=*/false));
 }
 
 TEST(SolveMipRemoteCallbacks, SemiContinuousWithCallbacksGetsDisabled)
 {
   std::vector<var_t> var_types = {var_t::CONTINUOUS, var_t::SEMI_CONTINUOUS, var_t::INTEGER};
-  EXPECT_TRUE(should_disable_semi_continuous_callbacks(var_types, /*has_callbacks=*/true));
+  EXPECT_TRUE(should_disable_unsupported(var_types, /*has_callbacks=*/true));
 }
 
 TEST(SolveMipRemoteCallbacks, EmptyVariableListKeepsCallbacksEnabled)
 {
   std::vector<var_t> var_types = {};
-  EXPECT_FALSE(should_disable_semi_continuous_callbacks(var_types, /*has_callbacks=*/true));
+  EXPECT_FALSE(should_disable_unsupported(var_types, /*has_callbacks=*/true));
 }

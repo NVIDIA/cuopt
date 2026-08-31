@@ -13,6 +13,7 @@
 #include <cuopt/mathematical_optimization/solve.hpp>
 #include <utilities/logger.hpp>
 #include "grpc_client.hpp"
+#include "solve_remote_impl.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -29,11 +30,8 @@ namespace cuopt::mathematical_optimization {
 // GPU init, and result pipe transfer.
 constexpr int kTimeoutBufferSeconds = 120;
 
-// Pulled out of solve_mip_remote() so it can be unit-tested without a live gRPC
-// connection: semi-continuous models are not supported together with remote MIP
-// get/set callbacks, so callbacks are dropped rather than sent to the server.
-bool should_disable_semi_continuous_callbacks(const std::vector<var_t>& var_types,
-                                              bool has_callbacks)
+// See solve_remote_impl.hpp for the contract.
+bool should_disable_unsupported(const std::vector<var_t>& var_types, bool has_callbacks)
 {
   const bool has_sc_variables =
     std::count(var_types.begin(), var_types.end(), var_t::SEMI_CONTINUOUS) > 0;
@@ -161,7 +159,7 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip_remote(
   // Check if user has set incumbent callbacks
   auto mip_callbacks   = settings.get_mip_callbacks();
   const auto var_types = cpu_problem.get_variable_types_host();
-  if (should_disable_semi_continuous_callbacks(var_types, !mip_callbacks.empty())) {
+  if (should_disable_unsupported(var_types, !mip_callbacks.empty())) {
     CUOPT_LOG_WARN(
       "Disabling remote MIP get/set callbacks: semi-continuous models are not "
       "supported with callbacks");
