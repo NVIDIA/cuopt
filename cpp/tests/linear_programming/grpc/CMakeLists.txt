@@ -44,15 +44,8 @@ if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
   target_link_options(GRPC_CLIENT_TEST PRIVATE -Wl,--enable-new-dtags)
 endif()
 
-add_test(NAME GRPC_CLIENT_TEST COMMAND GRPC_CLIENT_TEST)
+rapids_test_add(NAME GRPC_CLIENT_TEST COMMAND GRPC_CLIENT_TEST GPUS 1 INSTALL_COMPONENT_SET testing)
 set_tests_properties(GRPC_CLIENT_TEST PROPERTIES LABELS "numopt")
-
-install(
-    TARGETS GRPC_CLIENT_TEST
-    COMPONENT testing
-    DESTINATION bin/gtests/libcuopt
-    EXCLUDE_FROM_ALL
-)
 
 # ##################################################################################################
 # - gRPC Pipe Serialization Unit Tests -------------------------------------------------------------
@@ -86,15 +79,8 @@ if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
   target_link_options(GRPC_PIPE_SERIALIZATION_TEST PRIVATE -Wl,--enable-new-dtags)
 endif()
 
-add_test(NAME GRPC_PIPE_SERIALIZATION_TEST COMMAND GRPC_PIPE_SERIALIZATION_TEST)
+rapids_test_add(NAME GRPC_PIPE_SERIALIZATION_TEST COMMAND GRPC_PIPE_SERIALIZATION_TEST GPUS 1 INSTALL_COMPONENT_SET testing)
 set_tests_properties(GRPC_PIPE_SERIALIZATION_TEST PROPERTIES LABELS "numopt")
-
-install(
-    TARGETS GRPC_PIPE_SERIALIZATION_TEST
-    COMPONENT testing
-    DESTINATION bin/gtests/libcuopt
-    EXCLUDE_FROM_ALL
-)
 
 # ##################################################################################################
 # - gRPC Integration Tests -------------------------------------------------------------------------
@@ -133,17 +119,13 @@ endif()
 # Integration tests need the server binary to be built first
 add_dependencies(GRPC_INTEGRATION_TEST cuopt_grpc_server)
 
-add_test(
+rapids_test_add(
     NAME GRPC_INTEGRATION_TEST
     COMMAND ${CMAKE_COMMAND} -E env
         "CUOPT_GRPC_SERVER_PATH=$<TARGET_FILE:cuopt_grpc_server>"
         $<TARGET_FILE:GRPC_INTEGRATION_TEST>
+    GPUS 1
+    INSTALL_TARGET GRPC_INTEGRATION_TEST
+    INSTALL_COMPONENT_SET testing
 )
 set_tests_properties(GRPC_INTEGRATION_TEST PROPERTIES LABELS "numopt")
-
-install(
-    TARGETS GRPC_INTEGRATION_TEST
-    COMPONENT testing
-    DESTINATION bin/gtests/libcuopt
-    EXCLUDE_FROM_ALL
-)

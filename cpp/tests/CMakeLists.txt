@@ -3,6 +3,11 @@
 # SPDX-License-Identifier: Apache-2.0
 # cmake-format: on
 
+enable_testing()
+
+include(rapids-test)
+rapids_test_init()
+
 if(BUILD_TESTS)
   add_library(cuopttestutils STATIC
       routing/utilities/check_constraints.cu
@@ -106,16 +111,12 @@ function(ConfigureTest CMAKE_TEST_NAME)
     if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
       target_link_options(${CMAKE_TEST_NAME} PRIVATE -Wl,--enable-new-dtags)
     endif()
-    add_test(NAME ${CMAKE_TEST_NAME} COMMAND ${CMAKE_TEST_NAME})
+
+    rapids_test_add(NAME ${CMAKE_TEST_NAME} COMMAND ${CMAKE_TEST_NAME} GPUS 1 INSTALL_COMPONENT_SET testing)
+
     if(CT_LABELS)
         set_tests_properties(${CMAKE_TEST_NAME} PROPERTIES LABELS "${CT_LABELS}")
     endif()
-    install(
-        TARGETS ${CMAKE_TEST_NAME}
-        COMPONENT testing
-        DESTINATION bin/gtests/libcuopt
-        EXCLUDE_FROM_ALL
-    )
 endfunction()
 
 
@@ -143,5 +144,5 @@ if(BUILD_TESTS)
   add_subdirectory(qp)
   add_subdirectory(utilities)
 
-  enable_testing()
+  rapids_test_install_relocatable(INSTALL_COMPONENT_SET testing DESTINATION bin/gtests/libcuopt)
 endif()

@@ -221,14 +221,18 @@ set +e  # Disable exit on error for the entire script
 
 for index in ${!DESTDIRS[*]}; do
     tfname=$(basename "${URLS[$index]}")
+    archive="tmp/${tfname}"
 
-    if file --mime-type "tmp/${tfname}" | grep -q gzip$; then
-        tar xvzf tmp/"${tfname}" -C "${DESTDIRS[$index]}" || true
-    elif file --mime-type "tmp/${tfname}" | grep -q zip$; then
-        unzip tmp/"${tfname}" -d "${DESTDIRS[$index]}" || true
-    else
-        tar xvf tmp/"${tfname}" -C "${DESTDIRS[$index]}" || true
+    if [ ! -f "${archive}" ]; then
+        echo "Missing download: ${archive}"
+        exit 1
     fi
+
+    case "${tfname}" in
+        *.tar.gz|*.tgz) tar xvzf "${archive}" -C "${DESTDIRS[$index]}" || true ;;
+        *.zip) unzip "${archive}" -d "${DESTDIRS[$index]}" || true ;;
+        *) tar xvf "${archive}" -C "${DESTDIRS[$index]}" || true ;;
+    esac
 
     if ls "${DESTDIRS[$index]}"/*.gz >/dev/null 2>&1; then
         gzip -d "${DESTDIRS[$index]}"/* || true

@@ -284,11 +284,13 @@ FetchContent_Declare(
 )
 
 find_package(TBB REQUIRED)
-set(BUILD_TESTING OFF CACHE BOOL "Disable test build for papilo")
+set(CUOPT_BUILD_TESTING ${BUILD_TESTING})
+set(BUILD_TESTING OFF)
 set(PAPILO_NO_BINARIES ON)
 option(LUSOL "Disable LUSOL" OFF)
 
 FetchContent_MakeAvailable(papilo)
+set(BUILD_TESTING ${CUOPT_BUILD_TESTING})
 
 # PSLP - Lightweight C presolver for linear programs
 # https://github.com/dance858/PSLP
@@ -777,6 +779,7 @@ target_link_libraries(cuopt_objs
 # - generate tests --------------------------------------------------------------------------------
 if (BUILD_TESTS)
     include(CTest)
+    list(APPEND CMAKE_CTEST_ARGUMENTS "--output-on-failure")
     add_library(cuopt_static STATIC $<TARGET_OBJECTS:cuopt_objs>)
     target_link_libraries(cuopt_static
             PUBLIC
@@ -1055,6 +1058,7 @@ if (BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
             cuopt
             OpenMP::OpenMP_CXX
             PRIVATE
+            argparse::argparse
     )
     if (NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
         target_link_options(solve_MIP PRIVATE -Wl,--enable-new-dtags)
@@ -1085,6 +1089,7 @@ if (BUILD_LP_BENCHMARKS)
             cuopt
             OpenMP::OpenMP_CXX
             PRIVATE
+            argparse::argparse
     )
     if (NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
         target_link_options(solve_LP PRIVATE -Wl,--enable-new-dtags)

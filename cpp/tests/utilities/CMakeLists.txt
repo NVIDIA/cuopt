@@ -5,3 +5,4 @@
 
 # Add CLI end-to-end test
 ConfigureTest(CLI_TEST test_cli.cpp LABELS numopt)
+set_tests_properties(CLI_TEST PROPERTIES ENVIRONMENT "PATH=$<TARGET_FILE_DIR:cuopt_cli>:$ENV{PATH}")

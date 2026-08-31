@@ -83,6 +83,7 @@ TEST(docs, user_problem_file)
   auto problem = create_doc_example_problem();
 
   const auto user_problem_path = std::filesystem::temp_directory_path() / "user_problem.mps";
+  std::filesystem::remove(user_problem_path);
   EXPECT_FALSE(std::filesystem::exists(user_problem_path));
 
   settings.time_limit        = test_time_limit;
@@ -101,7 +102,8 @@ TEST(docs, user_problem_file)
   EXPECT_EQ(problem2.get_nnz(), problem.get_nnz());
 
   const auto user_problem_path2 = std::filesystem::temp_directory_path() / "user_problem2.mps";
-  settings.user_problem_file    = user_problem_path2;
+  std::filesystem::remove(user_problem_path2);
+  settings.user_problem_file           = user_problem_path2;
   mip_solution_t<int, double> solution = solve_mip(&handle_, problem2, settings);
   EXPECT_EQ(solution.get_termination_status(), mip_termination_status_t::Optimal);
 
