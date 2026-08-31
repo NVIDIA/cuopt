@@ -14,6 +14,26 @@
 namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
+pdlp_solver_settings_t<i_t, f_t> make_mip_root_lp_settings(
+  const mip_solver_settings_t<i_t, f_t>& mip_settings)
+{
+  pdlp_solver_settings_t<i_t, f_t> settings{};
+  settings.tolerances.absolute_dual_tolerance   = mip_settings.tolerances.absolute_tolerance;
+  settings.tolerances.relative_dual_tolerance   = mip_settings.tolerances.relative_tolerance;
+  settings.tolerances.absolute_primal_tolerance = mip_settings.tolerances.absolute_tolerance;
+  settings.tolerances.relative_primal_tolerance = mip_settings.tolerances.relative_tolerance;
+  settings.first_primal_feasible                = false;
+  settings.method                               = mip_settings.method;
+  settings.inside_mip                           = true;
+  settings.pdlp_solver_mode                     = pdlp_solver_mode_t::Stable2;
+  settings.num_gpus                             = mip_settings.num_gpus;
+  settings.presolver                            = presolver_t::None;
+  settings.per_constraint_residual              = true;
+  set_pdlp_solver_mode(settings);
+  return settings;
+}
+
+template <typename i_t, typename f_t>
 concurrent_root_solution_t<i_t, f_t> solve_concurrent_root_relaxation(
   problem_t<i_t, f_t>* problem,
   const pdlp_solver_settings_t<i_t, f_t>& settings,
@@ -26,7 +46,7 @@ concurrent_root_solution_t<i_t, f_t> solve_concurrent_root_relaxation(
   root_settings.concurrent_halt = concurrent_halt;
 
   timer_t root_timer(time_limit);
-  auto lp_result = solve_lp_with_method<i_t, f_t>(*problem, root_settings, root_timer);
+  auto lp_result    = solve_lp_with_method<i_t, f_t>(*problem, root_settings, root_timer);
   const auto status = lp_result.get_termination_status();
   result.usable =
     status != pdlp_termination_status_t::NumericalError &&
@@ -54,6 +74,9 @@ concurrent_root_solution_t<i_t, f_t> solve_concurrent_root_relaxation(
   result.method     = lp_result.get_additional_termination_information().solved_by;
   return result;
 }
+
+template pdlp_solver_settings_t<int, double> make_mip_root_lp_settings(
+  const mip_solver_settings_t<int, double>&);
 
 template concurrent_root_solution_t<int, double> solve_concurrent_root_relaxation(
   problem_t<int, double>*, const pdlp_solver_settings_t<int, double>&, double, std::atomic<int>*);

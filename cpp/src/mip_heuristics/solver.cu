@@ -15,6 +15,7 @@
 #include <pdlp/solve.cuh>
 
 #include <branch_and_bound/branch_and_bound.hpp>
+#include <branch_and_bound/concurrent_root_solver.hpp>
 #include <branch_and_bound/symmetry.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/solve.hpp>
@@ -442,23 +443,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 
     // Set the primal heuristics -> branch and bound callback
     if (context.settings.determinism_mode == CUOPT_MODE_OPPORTUNISTIC) {
-      pdlp_solver_settings_t<i_t, f_t> concurrent_root_settings{};
-      concurrent_root_settings.tolerances.absolute_dual_tolerance =
-        context.settings.tolerances.absolute_tolerance;
-      concurrent_root_settings.tolerances.relative_dual_tolerance =
-        context.settings.tolerances.relative_tolerance;
-      concurrent_root_settings.tolerances.absolute_primal_tolerance =
-        context.settings.tolerances.absolute_tolerance;
-      concurrent_root_settings.tolerances.relative_primal_tolerance =
-        context.settings.tolerances.relative_tolerance;
-      concurrent_root_settings.first_primal_feasible   = false;
-      concurrent_root_settings.method                  = context.settings.method;
-      concurrent_root_settings.inside_mip              = true;
-      concurrent_root_settings.pdlp_solver_mode        = pdlp_solver_mode_t::Stable2;
-      concurrent_root_settings.num_gpus                = context.settings.num_gpus;
-      concurrent_root_settings.presolver               = presolver_t::None;
-      concurrent_root_settings.per_constraint_residual = true;
-      set_pdlp_solver_mode(concurrent_root_settings);
+      auto concurrent_root_settings = make_mip_root_lp_settings<i_t, f_t>(context.settings);
       branch_and_bound->configure_concurrent_lp_root_solve(
         context.problem_ptr,
         concurrent_root_settings,

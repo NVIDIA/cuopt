@@ -4,6 +4,7 @@
  */
 #pragma once
 
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 
 #include <atomic>
@@ -26,6 +27,13 @@ struct concurrent_root_solution_t {
   i_t iterations{0};
   method_t method{method_t::Unset};
 };
+
+// Shared PDLP/barrier settings for the MIP root LP. Callers that own the
+// solve (B&B or the heuristics-only fallback) still apply time_limit and
+// concurrent_halt for their own halt/timer.
+template <typename i_t, typename f_t>
+pdlp_solver_settings_t<i_t, f_t> make_mip_root_lp_settings(
+  const mip_solver_settings_t<i_t, f_t>& mip_settings);
 
 template <typename i_t, typename f_t>
 concurrent_root_solution_t<i_t, f_t> solve_concurrent_root_relaxation(
