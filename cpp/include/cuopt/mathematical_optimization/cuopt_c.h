@@ -839,8 +839,9 @@ cuopt_int_t cuOptGetFloatParameter(cuOptSolverSettings settings,
  * @param message  Null-terminated log line without trailing newline.
  * @param user_data Opaque pointer passed to cuOptSetLogCallback.
  *
- * @note The callback is invoked from the solver thread. Do not call back into
- *  cuOpt from inside the callback.
+ * @note Invoked from the calling thread for a local solve, and from an internal
+ *  log-streaming thread when the solve runs on a remote server. Do not call back
+ *  into cuOpt from inside the callback.
  * @warning Log message formatting is not part of the stable API and may change
  *  between releases. The callback is intended for display purposes (GUI integration,
  *  log forwarding, stdout capture) — do not parse message content for programmatic

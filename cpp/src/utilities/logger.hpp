@@ -42,6 +42,19 @@ void reset_default_logger();
 // Carries no severity by design: a level would become a de-facto public API.
 using log_callback_with_data_t = void (*)(const char* message, void* user_data);
 
+struct log_callback_registration_t {
+  log_callback_with_data_t callback = nullptr;
+  void* user_data                   = nullptr;
+};
+
+/**
+ * @brief The calling thread's current registration, if any.
+ *
+ * For forwarding log lines produced on a thread that carries no registration of
+ * its own, such as the remote-solve log-streaming thread.
+ */
+log_callback_registration_t current_log_callback();
+
 /**
  * @brief Registers a log callback for the calling thread, for its own lifetime.
  *

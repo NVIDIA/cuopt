@@ -86,13 +86,18 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp_remote(
   }
   bool want_console = settings.log_to_console;
   bool want_file    = log_file_stream && log_file_stream->is_open();
+  // Captured here, not read inside the lambda: the streaming thread carries no
+  // registration of its own.
+  auto user_cb = cuopt::current_log_callback();
 
-  if (want_console || want_file) {
-    config.stream_logs  = true;
-    config.log_callback = [want_console, want_file, &log_file_stream](const std::string& line) {
-      if (want_console) { std::cout << line << std::endl; }
-      if (want_file) { *log_file_stream << line << std::endl; }
-    };
+  if (want_console || want_file || user_cb.callback) {
+    config.stream_logs = true;
+    config.log_callback =
+      [want_console, want_file, &log_file_stream, user_cb](const std::string& line) {
+        if (want_console) { std::cout << line << std::endl; }
+        if (want_file) { *log_file_stream << line << std::endl; }
+        if (user_cb.callback) { user_cb.callback(line.c_str(), user_cb.user_data); }
+      };
   }
 
   // Create client and connect
@@ -139,13 +144,16 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip_remote(
   }
   bool want_console = settings.log_to_console;
   bool want_file    = log_file_stream && log_file_stream->is_open();
+  auto user_cb      = cuopt::current_log_callback();
 
-  if (want_console || want_file) {
-    config.stream_logs  = true;
-    config.log_callback = [want_console, want_file, &log_file_stream](const std::string& line) {
-      if (want_console) { std::cout << line << std::endl; }
-      if (want_file) { *log_file_stream << line << std::endl; }
-    };
+  if (want_console || want_file || user_cb.callback) {
+    config.stream_logs = true;
+    config.log_callback =
+      [want_console, want_file, &log_file_stream, user_cb](const std::string& line) {
+        if (want_console) { std::cout << line << std::endl; }
+        if (want_file) { *log_file_stream << line << std::endl; }
+        if (user_cb.callback) { user_cb.callback(line.c_str(), user_cb.user_data); }
+      };
   }
 
   // Check if user has set incumbent callbacks

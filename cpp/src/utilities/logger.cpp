@@ -204,6 +204,11 @@ static void user_log_bridge(int lvl, const char* msg)
   if (cb.callback) { cb.callback(msg, cb.user_data); }
 }
 
+log_callback_registration_t current_log_callback()
+{
+  return {t_log_callback.callback, t_log_callback.user_data};
+}
+
 scoped_log_callback_t::scoped_log_callback_t(log_callback_with_data_t cb, void* user_data)
   : prev_callback_(t_log_callback.callback), prev_user_data_(t_log_callback.user_data)
 {
