@@ -12,6 +12,7 @@ set(MIP_LP_NECESSARY_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/solver_solution.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/local_search/rounding/simple_rounding.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/presolve/third_party_presolve.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/presolve/single_lock_dual_aggregation.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/presolve/gf2_presolve.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/solution/solution.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/presolve/conflict_graph/clique_table.cu
@@ -33,6 +34,7 @@ set(MIP_NON_LP_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/local_search/rounding/simple_rounding.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/local_search/feasibility_pump/feasibility_pump.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/local_search/line_segment_search/line_segment_search.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/presolve/block_bve.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/presolve/bounds_presolve.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/presolve/bounds_update_data.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/presolve/semi_continuous.cu

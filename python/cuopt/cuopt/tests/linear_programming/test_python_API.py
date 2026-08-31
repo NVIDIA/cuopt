@@ -109,7 +109,7 @@ def test_model():
     assert csr.column_indices == expected_column_indices
     assert csr.values == expected_values
 
-    expected_slack = [-6, 0]
+    expected_slack = [6, 0]
     expected_var_values = [36, 41]
 
     for i, var in enumerate(prob.getVariables()):
@@ -153,11 +153,18 @@ def test_model():
 def test_constraint_duplicate_terms_slack():
     """Merged coeffs in vindex_coeff_dict must not be double-counted in slack."""
     prob = Problem()
-    x = prob.addVariable()
+    x = prob.addVariable(lb=0.0, ub=10.0, obj=0.0)
     c = prob.addConstraint(5 * x + 7 * x <= 18)
     assert c.getCoefficient(x) == 12
-    x.Value = 1.0
-    assert c.compute_slack() == pytest.approx(6.0)
+    # Feasible point with slack 6 under classical LE slack: rhs - A@x.
+    settings = SolverSettings()
+    settings.set_parameter("time_limit", 10)
+    # Fix x=1 via bounds so populate_solution computes a known slack.
+    x.LB = 1.0
+    x.UB = 1.0
+    prob.setObjective(0 * x, sense=MINIMIZE)
+    prob.solve(settings)
+    assert c.Slack == pytest.approx(6.0)
 
 
 def test_semi_continuous_variable():

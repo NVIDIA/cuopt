@@ -114,6 +114,7 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
       branch_and_bound_settings.zero_half_cuts                           = 0;
       branch_and_bound_settings.inside_submip                            = 1;
       branch_and_bound_settings.submip_settings.rins                     = 0;
+      branch_and_bound_settings.submip_settings.rens                     = 0;
       branch_and_bound_settings.strong_branching_simplex_iteration_limit = 200;
       branch_and_bound_settings.solution_callback = [this](std::vector<f_t>& solution,
                                                            f_t objective) {

@@ -915,7 +915,10 @@ void convergence_information_t<i_t, f_t>::compute_dual_residual(
     stream_view_);
 
   if (hyper_params_.use_reflected_primal_dual) {
-    cub::DeviceTransform::Transform(cuda::std::make_tuple(tmp_primal.data(), dual_slack.data()),
+    cuopt_assert(reduced_cost_.size() == dual_slack.size(),
+                 "reduced_cost_ size must be equal to dual_slack size");
+    raft::copy(reduced_cost_.data(), dual_slack.data(), reduced_cost_.size(), stream_view_);
+    cub::DeviceTransform::Transform(cuda::std::make_tuple(tmp_primal.data(), reduced_cost_.data()),
                                     dual_residual_.data(),
                                     dual_residual_.size(),
                                     cuda::std::minus<>{},

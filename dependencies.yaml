@@ -45,6 +45,19 @@ files:
       - test_cpp
       - test_cpp_cuopt
       - depends_on_libcuopt
+  java:
+    output: none
+    includes:
+      - build_common
+      - cuda
+      - cuda_version
+      - depends_on_libcuopt
+      # The JNI layer compiles against libcuopt's public headers, which include
+      # raft, rmm and rapids_logger headers transitively.
+      - depends_on_libraft_headers
+      - depends_on_librmm
+      - depends_on_rapids_logger
+      - java
   test_python:
     output: none
     includes:
@@ -277,6 +290,12 @@ dependencies:
           - libprotobuf
           - libabseil
           - re2
+  java:
+    common:
+      - output_types: conda
+        packages:
+          - maven
+          - openjdk=11.*
   test_cpp:
     common:
       - output_types: [conda]
@@ -803,14 +822,10 @@ dependencies:
           - *msgpack_numpy
           - myst-parser
           - numpydoc
-          - pyrsistent
           - breathe
           - sphinx
           - sphinx-copybutton
           - sphinx-markdown-tables
-          - sphinx_rtd_theme
-          - sphinxcontrib-openapi
-          - sphinxcontrib-websupport
           - sphinx-design
           - pip:
               - swagger-plugin-for-sphinx
@@ -828,12 +843,9 @@ dependencies:
           - *msgpack_numpy
           - *msgpack_python
           - *numpy
-          - pip:
-              - &veroviz veroviz
       - output_types: [requirements]
         packages:
           - *numpy
-          - *veroviz
   py_version:
     specific:
       - output_types: conda
