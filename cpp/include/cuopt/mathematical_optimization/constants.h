@@ -158,6 +158,9 @@
 /* @brief QCQP (barrier) scaling hyper-parameters */
 #define CUOPT_QCQP_HYPER_RUIZ_EQUILIBRATION "qcqp_hyper_ruiz_equilibration"
 
+/* @brief Barrier initial point safeguard */
+#define CUOPT_BARRIER_INITIAL_POINT_SAFEGUARD "barrier_initial_point_safeguard"
+
 /* @brief MIP determinism mode constants */
 #define CUOPT_MODE_OPPORTUNISTIC 0
 #define CUOPT_MODE_DETERMINISTIC 1
@@ -210,6 +213,11 @@
 #define CUOPT_METHOD_DUAL_SIMPLEX 2
 #define CUOPT_METHOD_BARRIER      3
 #define CUOPT_METHOD_UNSET        4
+
+#define CUOPT_BARRIER_DUAL_INITIAL_POINT_AUTOMATIC             -1
+#define CUOPT_BARRIER_DUAL_INITIAL_POINT_LUSTIG_MARSTEN_SHANNO 0
+#define CUOPT_BARRIER_DUAL_INITIAL_POINT_LEAST_SQUARES         1
+#define CUOPT_BARRIER_DUAL_INITIAL_POINT_SEDUMI_MU             2
 
 /* @brief PDLP precision mode constants */
 #define CUOPT_PDLP_DEFAULT_PRECISION -1
