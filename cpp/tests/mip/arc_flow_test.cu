@@ -57,8 +57,8 @@ struct arc_t {
   double cost;
 };
 
-constexpr int n_labels = 3;
-constexpr int n_paths  = 2;
+constexpr int n_labels              = 3;
+constexpr int n_paths               = 2;
 constexpr double expected_objective = 6.0;
 constexpr std::array<int, n_labels> label_demand{2, 1, 1};
 constexpr int demanded_arcs = label_demand[0] + label_demand[1] + label_demand[2];
@@ -86,14 +86,13 @@ built_model_t build_arc_flow(const build_options_t& opts = {})
     double cost = arc.cost + opts.cost_intercept;
     if (arc.label == opts.negative_cost_label) { cost = -arc.cost; }
     if (arc.label == opts.perturbed_cost_label && arc.from == t1) { cost += 1.0; }
-    const double ub = opts.large_finite_capacities ? std::numeric_limits<double>::max()
-                                                   : label_demand[arc.label];
+    const double ub =
+      opts.large_finite_capacities ? std::numeric_limits<double>::max() : label_demand[arc.label];
     columns.push_back(
       column_t{{{arc.from, 1.0}, {arc.to, -1.0}, {n_states + arc.label, 1.0}}, cost, ub});
   }
   if (!opts.row_slack_terminators) {
-    const double ub =
-      opts.large_finite_capacities ? std::numeric_limits<double>::max() : 1.0;
+    const double ub = opts.large_finite_capacities ? std::numeric_limits<double>::max() : 1.0;
     for (const state_t state : terminator_states) {
       columns.push_back(column_t{{{state, 1.0}}, 0.0, ub});
     }
@@ -208,13 +207,12 @@ run_outcome_t run_heuristic(const built_model_t& model, input_options_t options 
 {
   const raft::handle_t handle{};
   optimization_problem_t<int, double> problem(&handle);
-  problem.set_csr_constraint_matrix(
-    model.values.data(),
-    model.values.size(),
-    model.indices.data(),
-    model.indices.size(),
-    model.offsets.data(),
-    model.offsets.size());
+  problem.set_csr_constraint_matrix(model.values.data(),
+                                    model.values.size(),
+                                    model.indices.data(),
+                                    model.indices.size(),
+                                    model.offsets.data(),
+                                    model.offsets.size());
   problem.set_objective_coefficients(model.obj.data(), model.obj.size());
   if (options.set_lower_bounds) {
     problem.set_variable_lower_bounds(model.var_lb.data(), model.var_lb.size());
@@ -290,15 +288,14 @@ TEST(arc_flow, uses_solver_integrality_tolerance_for_scaled_demand)
   constexpr int large_demand = 19998;
   constexpr double row_scale = 0.1;
   const double scaled_demand = (large_demand + normalized_offset) * row_scale;
-  model.row_lb[cover_row]     = scaled_demand;
+  model.row_lb[cover_row]    = scaled_demand;
   for (int k = model.offsets[cover_row]; k < model.offsets[cover_row + 1]; ++k) {
     model.values[k] = row_scale;
   }
   std::fill(model.var_ub.begin(), model.var_ub.end(), large_demand);
 
   const double normalized_demand = scaled_demand / row_scale;
-  const double integrality_error =
-    std::abs(normalized_demand - std::round(normalized_demand));
+  const double integrality_error = std::abs(normalized_demand - std::round(normalized_demand));
   EXPECT_GT(integrality_error, tolerances.absolute_tolerance);
   EXPECT_LE(integrality_error, tolerances.integrality_tolerance);
 

@@ -27,10 +27,10 @@ namespace cuopt::mathematical_optimization::mip {
 
 namespace {
 
-constexpr int arcflow_paths_supported = 2;
-constexpr int arcflow_max_tokens      = 20000;
-constexpr int arcflow_max_col_entries = 3;
-constexpr size_t arcflow_history_bytes_max = size_t{32} << 20;
+constexpr int arcflow_paths_supported        = 2;
+constexpr int arcflow_max_tokens             = 20000;
+constexpr int arcflow_max_col_entries        = 3;
+constexpr size_t arcflow_history_bytes_max   = size_t{32} << 20;
 constexpr size_t arcflow_candidate_bytes_max = size_t{32} << 20;
 
 enum class row_role_t : uint8_t { flow, cover };
@@ -228,8 +228,8 @@ double supply_orientation(const std::vector<row_info_t>& rows,
                           double& total)
 {
   const double absolute_tolerance = tolerances.absolute_tolerance;
-  double positive = 0.0;
-  double negative = 0.0;
+  double positive                 = 0.0;
+  double negative                 = 0.0;
   for (const auto& info : rows) {
     if (info.role != row_role_t::flow) { continue; }
     if (info.lo > absolute_tolerance) { positive += info.lo; }
@@ -377,11 +377,10 @@ bool build_structure(const host_problem_t<i_t, f_t>& h,
       // already absorbs paths through row slack would need the two capacities apportioned, which
       // no model in this family does, so reject rather than guess.
       if (model.terminator_col[tail] >= 0 || model.terminator_capacity[tail] > 0) { return false; }
-      model.terminator_col[tail]      = j;
-      model.terminator_cost[tail]     = h.obj[j];
+      model.terminator_col[tail]  = j;
+      model.terminator_cost[tail] = h.obj[j];
       model.terminator_capacity[tail] =
-        std::min((double)arcflow_paths_supported,
-                 std::floor(ub + tolerances.absolute_tolerance));
+        std::min((double)arcflow_paths_supported, std::floor(ub + tolerances.absolute_tolerance));
     } else {
       return false;
     }
@@ -476,8 +475,7 @@ bool derive_potential(arc_flow_model_t& model,
           }
         }
       }
-      if (is_known(model.slope[l]) &&
-          std::abs(model.slope[l]) > tolerances.absolute_tolerance) {
+      if (is_known(model.slope[l]) && std::abs(model.slope[l]) > tolerances.absolute_tolerance) {
         for (int k = begin; k < end; ++k) {
           const int from = model.arcs[k].from;
           if (is_known(model.phi[from])) { continue; }
@@ -603,12 +601,10 @@ std::vector<int> token_order(const arc_flow_model_t& model,
   });
   std::vector<int> ratio_class(model.n_labels, 0);
   for (size_t position = 1; position < ordered.size(); ++position) {
-    const int previous = ordered[position - 1];
-    const int current  = ordered[position];
-    const _Float128 lhs =
-      (_Float128)model.slope[previous] * (_Float128)model.displacement[current];
-    const _Float128 rhs =
-      (_Float128)model.slope[current] * (_Float128)model.displacement[previous];
+    const int previous  = ordered[position - 1];
+    const int current   = ordered[position];
+    const _Float128 lhs = (_Float128)model.slope[previous] * (_Float128)model.displacement[current];
+    const _Float128 rhs = (_Float128)model.slope[current] * (_Float128)model.displacement[previous];
     const _Float128 difference = lhs > rhs ? lhs - rhs : rhs - lhs;
     const bool tied            = difference <= (_Float128)tolerances.absolute_tolerance;
     ratio_class[current]       = ratio_class[previous] + (tied ? 0 : 1);
@@ -685,14 +681,11 @@ std::optional<arc_flow_result_t> run_dp(const arc_flow_model_t& model,
     size_t candidate_count       = 0;
     for (const auto& entry : current) {
       for (int k = 0; k < arcflow_paths_supported; ++k) {
-        const int node = entry.node[k];
-        const auto begin =
-          std::lower_bound(arc_begin, arc_end, node, [](const arc_t& a, int v) {
-            return a.from < v;
-          });
-        const auto end = std::upper_bound(begin, arc_end, node, [](int v, const arc_t& a) {
-          return v < a.from;
-        });
+        const int node   = entry.node[k];
+        const auto begin = std::lower_bound(
+          arc_begin, arc_end, node, [](const arc_t& a, int v) { return a.from < v; });
+        const auto end =
+          std::upper_bound(begin, arc_end, node, [](int v, const arc_t& a) { return v < a.from; });
         const size_t added = end - begin;
         if (added > candidate_limit - candidate_count) { return std::nullopt; }
         candidate_count += added;
@@ -704,12 +697,11 @@ std::optional<arc_flow_result_t> run_dp(const arc_flow_model_t& model,
     for (int i = 0; i < (int)current.size(); ++i) {
       const frontier_t& entry = current[i];
       for (int k = 0; k < arcflow_paths_supported; ++k) {
-        const int node = entry.node[k];
+        const int node   = entry.node[k];
         const auto begin = std::lower_bound(
           arc_begin, arc_end, node, [](const arc_t& a, int v) { return a.from < v; });
-        const auto end = std::upper_bound(begin, arc_end, node, [](int v, const arc_t& a) {
-          return v < a.from;
-        });
+        const auto end =
+          std::upper_bound(begin, arc_end, node, [](int v, const arc_t& a) { return v < a.from; });
         for (auto it = begin; it != end; ++it) {
           candidate_t candidate;
           candidate.front         = entry;
@@ -827,9 +819,9 @@ template <typename i_t, typename f_t>
 arc_flow_t<i_t, f_t>::~arc_flow_t() = default;
 
 template <typename i_t, typename f_t>
-bool arc_flow_t<i_t, f_t>::recognize(const optimization_problem_t<i_t, f_t>& op_problem,
-                                     const typename mip_solver_settings_t<i_t, f_t>::tolerances_t&
-                                       tolerances)
+bool arc_flow_t<i_t, f_t>::recognize(
+  const optimization_problem_t<i_t, f_t>& op_problem,
+  const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances)
 {
   const i_t n_variables   = op_problem.get_n_variables();
   const i_t n_constraints = op_problem.get_n_constraints();
@@ -873,9 +865,9 @@ bool arc_flow_t<i_t, f_t>::recognize(const optimization_problem_t<i_t, f_t>& op_
 }
 
 template <typename i_t, typename f_t>
-bool arc_flow_t<i_t, f_t>::recognize(const problem_t<i_t, f_t>& problem,
-                                     const typename mip_solver_settings_t<i_t, f_t>::tolerances_t&
-                                       tolerances)
+bool arc_flow_t<i_t, f_t>::recognize(
+  const problem_t<i_t, f_t>& problem,
+  const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances)
 {
   const i_t n_variables   = problem.n_variables;
   const i_t n_constraints = problem.n_constraints;
@@ -947,8 +939,7 @@ bool arc_flow_t<i_t, f_t>::solve(
     CUOPT_LOG_DEBUG("[ArcFlow] no complete path set found in the ordered family");
     return false;
   }
-  CUOPT_LOG_DEBUG(
-    "[ArcFlow] search %s", result->exact ? "exact" : "beamed by the history budget");
+  CUOPT_LOG_DEBUG("[ArcFlow] search %s", result->exact ? "exact" : "beamed by the history budget");
 
   assignment.assign((size_t)h.n_variables, f_t{0});
   for (int col : result->columns) {

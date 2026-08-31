@@ -37,8 +37,7 @@ static bool validate(problem_t<i_t, f_t>& problem,
 
 template <typename i_t, typename f_t, typename model_t>
 static std::unique_ptr<structural_heuristic_t<i_t, f_t>> make_structural_heuristic(
-  const model_t& model,
-  const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances)
+  const model_t& model, const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances)
 {
   auto heuristic = std::make_unique<arc_flow_t<i_t, f_t>>();
   if (!heuristic->recognize(model, tolerances)) { return nullptr; }
@@ -54,8 +53,8 @@ std::unique_ptr<early_structural_t<i_t, f_t>> early_structural_t<i_t, f_t>::crea
   if (omp_get_num_threads() < CUOPT_MIP_EARLY_STRUCTURAL_REQUIRED_THREAD_COUNT) { return nullptr; }
   auto active = make_structural_heuristic<i_t, f_t>(op_problem, tolerances);
   if (!active) { return nullptr; }
-  return std::unique_ptr<early_structural_t>(
-    new early_structural_t(op_problem, tolerances, std::move(incumbent_callback), std::move(active)));
+  return std::unique_ptr<early_structural_t>(new early_structural_t(
+    op_problem, tolerances, std::move(incumbent_callback), std::move(active)));
 }
 
 template <typename i_t, typename f_t>

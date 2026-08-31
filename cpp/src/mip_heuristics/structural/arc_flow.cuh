@@ -26,10 +26,9 @@ class arc_flow_t : public structural_heuristic_t<i_t, f_t> {
   bool recognize(const problem_t<i_t, f_t>& problem,
                  const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances) override;
 
-  bool solve(
-    const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances,
-    std::atomic<bool>& preemption,
-    std::vector<f_t>& assignment) override;
+  bool solve(const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances,
+             std::atomic<bool>& preemption,
+             std::vector<f_t>& assignment) override;
 
  private:
   struct host_state_t;

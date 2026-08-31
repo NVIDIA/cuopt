@@ -32,10 +32,9 @@ class structural_heuristic_t {
     return false;
   }
 
-  virtual bool solve(
-    const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances,
-    std::atomic<bool>& preemption,
-    std::vector<f_t>& assignment) = 0;
+  virtual bool solve(const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances,
+                     std::atomic<bool>& preemption,
+                     std::vector<f_t>& assignment) = 0;
 };
 
 template <typename i_t, typename f_t>

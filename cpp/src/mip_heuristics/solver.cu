@@ -231,9 +231,10 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   if (context.early_structural_ptr) {
     context.early_structural_ptr->stop();
     if (context.early_structural_ptr->solution_found()) {
-      CUOPT_LOG_DEBUG("Early structural heuristic found incumbent with user-space objective %g "
-                      "during presolve",
-                      context.early_structural_ptr->get_best_user_objective());
+      CUOPT_LOG_DEBUG(
+        "Early structural heuristic found incumbent with user-space objective %g "
+        "during presolve",
+        context.early_structural_ptr->get_best_user_objective());
     }
   }
 
@@ -499,8 +500,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
       context.settings.get_tolerances(),
       context.preempt_heuristic_solver_,
       [&dm](const std::vector<f_t>& assignment, f_t objective) {
-        dm.population.add_external_solution(
-          assignment, objective, solution_origin_t::EXTERNAL);
+        dm.population.add_external_solution(assignment, objective, solution_origin_t::EXTERNAL);
       });
     if (!root_structural->recognized()) { root_structural.reset(); }
   }
