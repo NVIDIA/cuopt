@@ -7,9 +7,8 @@
 
 #pragma once
 
-#include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
-
-#include <vector>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
 
 namespace cuopt::mathematical_optimization {
 
@@ -17,17 +16,21 @@ namespace cuopt::mathematical_optimization {
  * @brief Whether a feature combination the remote server cannot honour must be dropped.
  *
  * Some client-side requests cannot be forwarded to cuopt_grpc_server. Rather than failing
- * the solve, solve_mip_remote() drops the unsupported part and warns. This predicate is the
- * decision, kept separate from the RPC plumbing so it is unit-testable without a live
- * connection.
+ * the solve, solve_mip_remote() drops the unsupported part and warns. This predicate is that
+ * decision, kept out of the RPC plumbing so it is unit-testable without a live connection.
+ *
+ * Takes the problem and settings themselves rather than pre-extracted fields, so new rules
+ * can consult anything either object exposes without changing this signature or adding
+ * branches at the call site.
  *
  * Currently one rule: MIP get/set callbacks are not supported for semi-continuous models.
- * Additional rules belong here as further arguments rather than as new call-site branches.
  *
- * @param var_types     Problem variable types (host).
- * @param has_callbacks Whether the caller registered MIP incumbent callbacks.
- * @return true when the callbacks must be dropped before submitting.
+ * @param problem  The problem being submitted.
+ * @param settings The MIP settings the caller configured.
+ * @return true when the unsupported request (today, the callbacks) must be dropped.
  */
-bool should_disable_unsupported(const std::vector<var_t>& var_types, bool has_callbacks);
+template <typename i_t, typename f_t>
+bool should_disable_unsupported(const cpu_optimization_problem_t<i_t, f_t>& problem,
+                                const mip_solver_settings_t<i_t, f_t>& settings);
 
 }  // namespace cuopt::mathematical_optimization

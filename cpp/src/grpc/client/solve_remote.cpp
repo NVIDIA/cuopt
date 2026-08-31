@@ -31,12 +31,19 @@ namespace cuopt::mathematical_optimization {
 constexpr int kTimeoutBufferSeconds = 120;
 
 // See solve_remote_impl.hpp for the contract.
-bool should_disable_unsupported(const std::vector<var_t>& var_types, bool has_callbacks)
+template <typename i_t, typename f_t>
+bool should_disable_unsupported(const cpu_optimization_problem_t<i_t, f_t>& problem,
+                                const mip_solver_settings_t<i_t, f_t>& settings)
 {
-  const bool has_sc_variables =
-    std::count(var_types.begin(), var_types.end(), var_t::SEMI_CONTINUOUS) > 0;
-  return has_sc_variables && has_callbacks;
+  if (settings.get_mip_callbacks().empty()) { return false; }
+  const auto var_types = problem.get_variable_types_host();
+  return std::count(var_types.begin(), var_types.end(), var_t::SEMI_CONTINUOUS) > 0;
 }
+
+// Instantiated explicitly: the definition lives here, so the unit test's translation unit
+// cannot generate it from the declaration alone.
+template CUOPT_EXPORT bool should_disable_unsupported(
+  const cpu_optimization_problem_t<int, double>&, const mip_solver_settings_t<int, double>&);
 
 // ============================================================================
 // Helper function to get gRPC server address from environment variables
@@ -157,9 +164,8 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip_remote(
   }
 
   // Check if user has set incumbent callbacks
-  auto mip_callbacks   = settings.get_mip_callbacks();
-  const auto var_types = cpu_problem.get_variable_types_host();
-  if (should_disable_unsupported(var_types, !mip_callbacks.empty())) {
+  auto mip_callbacks = settings.get_mip_callbacks();
+  if (should_disable_unsupported(cpu_problem, settings)) {
     CUOPT_LOG_WARN(
       "Disabling remote MIP get/set callbacks: semi-continuous models are not "
       "supported with callbacks");
