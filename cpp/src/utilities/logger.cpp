@@ -8,9 +8,6 @@
 #include <utilities/logger.hpp>
 #include <utilities/version_info.hpp>
 
-#include <cstdio>
-#include <thread>
-
 namespace cuopt {
 
 struct buffered_entry {
@@ -69,23 +66,11 @@ void set_console_log_callback(log_console_callback_t callback)
 {
   std::lock_guard<std::mutex> lock(g_console_callback_mutex);
   g_console_callback = callback;
-  fprintf(stderr,
-          "[cuopt-logger-debug] set_console_log_callback: &g_console_callback=%p callback=%p "
-          "(thread=%zu)\n",
-          static_cast<void*>(&g_console_callback),
-          reinterpret_cast<void*>(callback),
-          std::hash<std::thread::id>{}(std::this_thread::get_id()));
 }
 
 static log_console_callback_t console_log_callback()
 {
   std::lock_guard<std::mutex> lock(g_console_callback_mutex);
-  fprintf(stderr,
-          "[cuopt-logger-debug] console_log_callback(getter): &g_console_callback=%p value=%p "
-          "(thread=%zu)\n",
-          static_cast<void*>(&g_console_callback),
-          reinterpret_cast<void*>(g_console_callback),
-          std::hash<std::thread::id>{}(std::this_thread::get_id()));
   return g_console_callback;
 }
 
@@ -183,18 +168,10 @@ static std::mutex g_guard_mutex;
 init_logger_t::init_logger_t(std::string log_file, bool log_to_console)
 {
   std::lock_guard<std::mutex> lock(g_guard_mutex);
-  fprintf(stderr,
-          "[cuopt-logger-debug] init_logger_t: constructing (thread=%zu, log_to_console=%d)\n",
-          std::hash<std::thread::id>{}(std::this_thread::get_id()),
-          log_to_console);
 
   auto existing_guard = g_active_guard.lock();
   if (existing_guard) {
     // Reuse existing configuration, just hold a reference to keep it alive
-    fprintf(stderr,
-            "[cuopt-logger-debug] init_logger_t: reusing existing guard, sinks NOT "
-            "reconfigured (callback registered=%d)\n",
-            console_log_callback() != nullptr);
     guard_ = existing_guard;
     return;
   }
@@ -204,13 +181,9 @@ init_logger_t::init_logger_t(std::string log_file, bool log_to_console)
   // re-initialize sinks
   if (log_to_console) {
     if (auto callback = console_log_callback(); callback != nullptr) {
-      fprintf(stderr, "[cuopt-logger-debug] init_logger_t: installing callback_sink_mt\n");
       cuopt::default_logger().sinks().push_back(
         std::make_shared<rapids_logger::callback_sink_mt>(callback));
     } else {
-      fprintf(stderr,
-              "[cuopt-logger-debug] init_logger_t: no callback registered yet, installing raw "
-              "std::cout ostream_sink_mt\n");
       cuopt::default_logger().sinks().push_back(
         std::make_shared<rapids_logger::ostream_sink_mt>(std::cout));
     }
