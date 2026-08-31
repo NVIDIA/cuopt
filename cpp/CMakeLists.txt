@@ -294,20 +294,18 @@ FetchContent_MakeAvailable(papilo)
 # PSLP - Lightweight C presolver for linear programs
 # https://github.com/dance858/PSLP
 #
-# v0.0.11 ignores its own verbose=false setting for one message: run_presolver() prints
-# "PSLP declares problem as infeasible[.| or unbounded.]" unconditionally, unlike every other
-# console message in that function, which are all gated on verbose. cuOpt sets verbose = false
-# (see third_party_presolve.cpp) precisely so PSLP stays silent, so this writes unexpectedly
-# straight to the process's native stdout -- observed corrupting Maven Surefire's forked-JVM
-# protocol in the Java bindings, which also uses stdout as its own channel. Patched upstream at
-# https://github.com/dance858/PSLP/pull/55; drop this patch once a release containing it is
-# available and this GIT_TAG is bumped past it.
+# Pinned past v0.0.11 to a commit rather than a tag: it carries the fix for
+# https://github.com/dance858/PSLP/pull/55 (run_presolver() printed its infeasible/unbounded
+# message straight to stdout even with verbose = false, unlike every other console message in
+# that function -- cuOpt sets verbose = false specifically to keep PSLP silent, and the stray
+# write corrupted Maven Surefire's forked-JVM protocol in the Java bindings, which also uses
+# stdout as its own channel). Move this to a released tag once dance858/PSLP cuts one that
+# includes it.
 FetchContent_Declare(
         pslp
         GIT_REPOSITORY "https://github.com/dance858/PSLP.git"
-        GIT_TAG "v0.0.11"
+        GIT_TAG "12d37dd9ab5ee848b3ec5da17f4cf8e805d58cd6"
         GIT_PROGRESS TRUE
-        PATCH_COMMAND sh -c "git apply --check '${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/pslp/respect_verbose_for_infeasible_message.patch' 2>/dev/null && git apply '${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/pslp/respect_verbose_for_infeasible_message.patch'; true"
         EXCLUDE_FROM_ALL
         SYSTEM
 )
