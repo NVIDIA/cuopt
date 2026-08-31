@@ -22,6 +22,11 @@
 
 #include <cuda/std/span>
 
+
+namespace cuopt::cython {
+class lp_solve_session_t;
+}
+
 namespace cuopt {
 namespace CUOPT_EXPORT mathematical_optimization {
 
@@ -362,6 +367,10 @@ class pdlp_solver_settings_t {
   // Used to force batch PDLP to solve a subbatch of the problems at a time
   // The 0 default value will make the solver use its heuristic to determine the subbatch size
   i_t fixed_batch_size{0};
+  /** When true, first GPU barrier/QCQP solve returns an ``lp_solve_session_t`` capsule. */
+  bool session_enabled{false};
+  /** Non-owning session pointer set by ``call_solve`` for barrier symbolic reuse. */
+  cuopt::cython::lp_solve_session_t* lp_solve_session{nullptr};
 
  private:
   /** Initial primal solution */

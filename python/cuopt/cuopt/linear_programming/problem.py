@@ -1459,6 +1459,7 @@ class Problem:
 
         self.model = None
         self.solved = False
+        self._session = None
         self.rhs = None
         self.row_sense = None
         self.constraint_csr_matrix = None
@@ -1651,6 +1652,7 @@ class Problem:
         self.constraint_csr_matrix = None
         self.objective_qmatrix = None
         self.warmstart_data = None
+        self._session = None
         self.solved = False
 
     def addVariable(
@@ -2200,10 +2202,19 @@ class Problem:
             linear_row += 1
         self.solved = True
 
-    def solve(self, settings=solver_settings.SolverSettings()):
+    def solve(self, settings=solver_settings.SolverSettings(), session=None):
         """
         Optimizes the LP or MIP problem with the added variables,
         constraints and objective.
+
+        Parameters
+        ----------
+        settings : SolverSettings
+            Solver configuration.
+        session : PyCapsule, optional
+            Reuse ``cuopt.lp_solve_session`` from a prior solve. When omitted and
+            ``settings.session_enabled`` is true, the problem keeps the session from
+            the last solve until the structure changes.
 
         Examples
         --------
@@ -2218,8 +2229,9 @@ class Problem:
         """
         if self.model is None:
             self._to_data_model()
-        # Call Solver
-        solution = solver.Solve(self.model, settings)
-        # Post Solve
+        active_session = session if session is not None else self._session
+        solution = solver.Solve(self.model, settings, session=active_session)
+        if getattr(settings, "session_enabled", False) and solution.lp_solve_session is not None:
+            self._session = solution.lp_solve_session
         self.populate_solution(solution)
         return solution

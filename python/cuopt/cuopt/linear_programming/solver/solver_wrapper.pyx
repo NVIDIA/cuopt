@@ -15,7 +15,7 @@ from dateutil.relativedelta import relativedelta
 
 from cuopt.utilities import type_cast
 
-from libc.stdint cimport uintptr_t
+from libc.stdint cimport uintptr_t, uint32_t
 from libc.stdlib cimport free, malloc
 from libc.string cimport memcpy, strcpy, strlen
 from libcpp cimport bool
@@ -24,6 +24,13 @@ from libcpp.pair cimport pair
 from libcpp.string cimport string
 from libcpp.utility cimport move
 from libcpp.vector cimport vector
+
+from cpython.pycapsule cimport (
+    PyCapsule_Destructor,
+    PyCapsule_GetPointer,
+    PyCapsule_IsValid,
+    PyCapsule_New,
+)
 
 from rmm.pylibrmm.device_buffer cimport DeviceBuffer
 
@@ -40,6 +47,7 @@ from cuopt.linear_programming.solver.solver cimport (
     linear_programming_ret_t,
     lp_cpu_solutions_t,
     lp_gpu_solutions_t,
+    lp_solve_session_t,
     mip_ret_t,
     mip_termination_status_t,
     pdlp_solver_mode_t,
@@ -74,6 +82,25 @@ import pyarrow as pa
 
 cdef extern from "cuopt/mathematical_optimization/utilities/internals.hpp" namespace "cuopt::internals": # noqa
     cdef cppclass base_solution_callback_t
+
+
+cdef extern from *:
+    """
+    #include <cuopt/mathematical_optimization/utilities/lp_solve_session.hpp>
+
+    static void cuopt_lp_solve_session_capsule_dtor(PyObject *cap) noexcept
+    {
+      void *p = PyCapsule_GetPointer(cap, "cuopt.lp_solve_session");
+      if (p != nullptr) {
+        delete reinterpret_cast<cuopt::cython::lp_solve_session_t *>(p);
+      }
+    }
+    """
+    void cuopt_lp_solve_session_capsule_dtor(object cap) noexcept
+
+
+cdef extern from "driver_types.h":
+    cdef uint32_t cudaStreamNonBlocking
 
 
 class MILPTerminationStatus(IntEnum):
@@ -267,6 +294,7 @@ cdef create_solution_with_names(unique_ptr[solver_ret_t] sol_ret_ptr,
     cdef linear_programming_ret_t* lp_ptr
     cdef lp_gpu_solutions_t* gpu_sols
     cdef lp_cpu_solutions_t* cpu_sols
+    cdef object lp_solve_session_capsule = None
 
     if sol_ret.problem_type == ProblemCategory.MIP or sol_ret.problem_type == ProblemCategory.IP: # noqa
         mip_ptr = &sol_ret.mip_ret
@@ -299,6 +327,13 @@ cdef create_solution_with_names(unique_ptr[solver_ret_t] sol_ret_ptr,
 
     else:
         lp_ptr = &sol_ret.lp_ret
+
+        if lp_ptr.lp_solve_session.get() != NULL:
+            lp_solve_session_capsule = PyCapsule_New(
+                <void*>lp_ptr.lp_solve_session.release(),
+                b"cuopt.lp_solve_session",
+                <PyCapsule_Destructor>cuopt_lp_solve_session_capsule_dtor,
+            )
 
         # Extract solution vectors — branch only for the buffer type
         if lp_ptr.is_gpu():
@@ -417,6 +452,7 @@ cdef create_solution_with_names(unique_ptr[solver_ret_t] sol_ret_ptr,
                 lp_ptr.gap_,
                 lp_ptr.nb_iterations_,
                 lp_ptr.solved_by_,
+                lp_solve_session=lp_solve_session_capsule,
             )
         else:
             return Solution(
@@ -438,7 +474,6 @@ cdef create_solution_with_names(unique_ptr[solver_ret_t] sol_ret_ptr,
                 solved_by=lp_ptr.solved_by_,
             )
 
-
 cdef object build_solution_from_unique_ptr(
         unique_ptr[solver_ret_t] sol_ret_ptr,
         object variable_names):
@@ -450,9 +485,18 @@ def prepare_solver_settings(SolverSettings settings, data_model=None, mip=False)
     set_solver_setting(settings, data_model, mip)
 
 
-def Solve(py_data_model_obj, SolverSettings settings, mip=False):
-
+def Solve(py_data_model_obj, SolverSettings settings, mip=False, session=None):
     cdef DataModel data_model_obj = <DataModel>py_data_model_obj
+    cdef lp_solve_session_t* session_in = NULL
+
+    if session is not None:
+        if not PyCapsule_IsValid(session, b"cuopt.lp_solve_session"):
+            raise ValueError(
+                "Expected PyCapsule named 'cuopt.lp_solve_session' for session."
+            )
+        session_in = <lp_solve_session_t*>PyCapsule_GetPointer(
+            session, b"cuopt.lp_solve_session"
+        )
 
     data_model_obj.variable_types = type_cast(
         data_model_obj.variable_types, "S1", "variable_types"
@@ -468,6 +512,9 @@ def Solve(py_data_model_obj, SolverSettings settings, mip=False):
         sol_ret_ptr = move(call_solve(
             data_model_obj.c_data_model_view.get(),
             settings.c_solver_settings.get(),
+            cudaStreamNonBlocking,
+            False,
+            session_in,
         ))
     return create_solution(move(sol_ret_ptr), data_model_obj)
 

@@ -18,6 +18,11 @@
 #include <rmm/device_uvector.hpp>
 
 #include <utility>
+
+namespace cuopt::cython {
+class lp_solve_session_t;
+}  // namespace cuopt::cython
+
 namespace cuopt::mathematical_optimization::barrier {
 
 /** Validates SOC layout on an simplex::lp_problem_t before barrier presolve/solve. */
@@ -34,7 +39,7 @@ class barrier_solver_t {
   barrier_solver_t(const simplex::lp_problem_t<i_t, f_t>& lp,
                    const simplex::presolve_info_t<i_t, f_t>& presolve,
                    const simplex::simplex_solver_settings_t<i_t, f_t>& settings);
-  simplex::lp_status_t solve(f_t start_time, simplex::lp_solution_t<i_t, f_t>& solution);
+  simplex::lp_status_t solve(f_t start_time, simplex::lp_solution_t<i_t, f_t>& solution, cuopt::cython::lp_solve_session_t* session = nullptr);
 
  private:
   void my_pop_range(bool debug) const;

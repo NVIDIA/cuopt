@@ -117,6 +117,7 @@ cdef class SolverSettings:
         self.settings_dict = {}
         self.pdlp_warm_start_data = None
         self.mip_callbacks = []
+        self.session_enabled = False
 
     def to_base_type(self, value):
         """Convert a string to a base type.
@@ -458,6 +459,16 @@ cdef class SolverSettings:
                 warm_start_data.sum_solution_weight,
                 warm_start_data.iterations_since_last_restart # noqa
             )
+
+        c_solver_settings.get_pdlp_settings().session_enabled = self.session_enabled
+
+    def set_session_enabled(self, enabled):
+        """Enable GPU barrier session persistence for repeated solves with the same sparsity."""
+        self.session_enabled = True if enabled else False
+
+    def get_session_enabled(self):
+        """Return whether GPU barrier session persistence is enabled."""
+        return self.session_enabled
 
     def dump_parameters_to_file(self, path, hyperparameters_only=True):
         """Apply ``settings_dict`` / warm start to C++, then dump parameters to *path*.
