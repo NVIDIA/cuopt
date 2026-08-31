@@ -24,6 +24,8 @@ class worker_pool_t {
             const std::vector<simplex::variable_type_t>& var_type,
             mip_symmetry_t<i_t, f_t>* symmetry,
             const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+            const std::vector<f_t>& root_solution,
+            const std::vector<f_t>& root_edge_norm,
             const uint64_t rng_offset = 0)
   {
     assert(!is_initialized_);
@@ -33,8 +35,8 @@ class worker_pool_t {
     num_idle_workers_ = num_workers;
     idle_workers_.clear_resize(num_workers);
     for (i_t i = 0; i < num_workers; ++i) {
-      workers_[i] =
-        std::make_unique<WorkerType>(i, original_lp, Arow, var_type, settings, rng_offset);
+      workers_[i] = std::make_unique<WorkerType>(
+        i, original_lp, Arow, var_type, settings, root_solution, root_edge_norm, rng_offset);
       idle_workers_.push_back(i);
       // Propagate the (possibly null) symmetry pointer; workers lazily build
       // their orbital_fixing/lexical_reduction state via ensure_orbital_fixing().
@@ -61,14 +63,17 @@ class worker_pool_t {
 
   void return_worker_to_pool(WorkerType* worker)
   {
-    std::lock_guard lock(mutex_);
     assert(worker != nullptr);
+    worker->set_inactive();
+    assert(!worker->is_active.load());
+
+    if (!is_initialized_) return;
+
+    std::lock_guard lock(mutex_);
     assert(workers_[worker->worker_id].get() == worker);
     assert(static_cast<size_t>(num_idle_workers_.load()) == idle_workers_.size());
     assert(idle_workers_.size() <= workers_.size());
 
-    worker->set_inactive();
-    assert(!worker->is_active.load());
     idle_workers_.push_back(worker->worker_id);
     num_idle_workers_++;
   }

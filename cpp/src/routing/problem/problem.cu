@@ -11,7 +11,7 @@
 
 #include <utilities/vector_helpers.cuh>
 
-#include <utilities/seed_generator.cuh>
+#include <routing/utilities/seed_generator.cuh>
 namespace cuopt {
 namespace routing {
 namespace detail {
@@ -77,8 +77,14 @@ problem_t<i_t, f_t>::problem_t(const data_model_view_t<i_t, f_t>& data_model_vie
     initialize_incompatible<i_t, f_t, request_t::VRP>(problem_ref);
   }
 
-  seed_generator::set_seed(
-    order_info.get_num_requests(), order_info.get_num_orders(), order_info.get_num_orders());
+  // A user-supplied seed wins; otherwise derive one from the problem so that a given
+  // problem still reproduces run to run, which is the historical behaviour.
+  if (solver_settings_ptr != nullptr && solver_settings_ptr->get_seed() >= 0) {
+    seed_gen.set_seed(solver_settings_ptr->get_seed());
+  } else {
+    seed_gen.set_seed(
+      order_info.get_num_requests(), order_info.get_num_orders(), order_info.get_num_orders());
+  }
 }
 
 template <typename i_t, typename f_t>
