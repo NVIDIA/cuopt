@@ -1419,76 +1419,97 @@ void finalize_fj_cpu_host_initialization(
 }
 
 template <typename i_t, typename f_t>
-std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_from_host_model(
-  fj_cpu_host_model_t<i_t, f_t> model,
+static std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_from_host_lp(
+  const lp_problem_t<i_t, f_t>& problem,
+  const std::vector<variable_type_t>& variable_types,
   const std::vector<f_t>& seed_assignment,
-  const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances,
+  const simplex_solver_settings_t<i_t, f_t>& settings,
   std::atomic<bool>& preemption_flag,
-  fj_settings_t settings)
+  int64_t seed)
 {
   using f_t2 = typename type_2<f_t>::type;
 
-  const i_t n_variables   = model.n_variables;
-  const i_t n_constraints = model.n_constraints;
-  const i_t nnz           = static_cast<i_t>(model.variables.size());
-  cuopt_assert(static_cast<i_t>(model.offsets.size()) == n_constraints + 1, "offset size mismatch");
-  cuopt_assert(model.coefficients.size() == model.variables.size(), "csr size mismatch");
-  cuopt_assert(static_cast<i_t>(model.var_types.size()) == n_variables,
+  cuopt_assert(variable_types.size() >= static_cast<size_t>(problem.num_cols),
                "variable type size mismatch");
-  cuopt_assert(static_cast<i_t>(model.objective.size()) == n_variables, "objective size mismatch");
-  cuopt_assert(static_cast<i_t>(model.var_lb.size()) == n_variables &&
-                 static_cast<i_t>(model.var_ub.size()) == n_variables,
-               "variable bound size mismatch");
-  cuopt_assert(static_cast<i_t>(model.row_lb.size()) == n_constraints &&
-                 static_cast<i_t>(model.row_ub.size()) == n_constraints,
-               "row bound size mismatch");
 
+  typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances{};
+  tolerances.absolute_tolerance    = settings.primal_tol;
+  tolerances.relative_tolerance    = settings.zero_tol;
+  tolerances.integrality_tolerance = settings.integer_tol;
+  tolerances.absolute_mip_gap      = settings.absolute_mip_gap_tol;
+  tolerances.relative_mip_gap      = settings.relative_mip_gap_tol;
+
+  const i_t n_variables   = problem.num_cols;
+  const i_t n_constraints = problem.num_rows;
+
+  csr_matrix_t<i_t, f_t> csr_A(problem.num_rows, problem.num_cols, problem.A.nnz());
+  problem.A.to_compressed_row(csr_A);
+  std::vector<f_t> coefficients            = csr_A.x;
+  std::vector<i_t> variables               = csr_A.j;
+  std::vector<i_t> offsets                 = csr_A.row_start;
+  std::vector<f_t> constraint_lower_bounds = problem.rhs;
+  std::vector<f_t> constraint_upper_bounds = problem.rhs;
   std::vector<f_t2> variable_bounds(n_variables);
+  std::vector<var_t> cpufj_variable_types(n_variables);
   std::vector<i_t> is_binary_variable(n_variables, 0);
   i_t n_integer_vars = 0;
+
   for (i_t j = 0; j < n_variables; ++j) {
-    variable_bounds[j] = f_t2{model.var_lb[j], model.var_ub[j]};
-    if (model.var_types[j] != var_t::INTEGER) { continue; }
-    ++n_integer_vars;
-    const bool is_binary =
-      integer_equal<f_t>(model.var_lb[j], f_t{0}, tolerances.integrality_tolerance) &&
-      integer_equal<f_t>(model.var_ub[j], f_t{1}, tolerances.integrality_tolerance);
+    variable_bounds[j]  = f_t2{problem.lower[j], problem.upper[j]};
+    const auto var_type = variable_types[j];
+    cpufj_variable_types[j] =
+      var_type == variable_type_t::CONTINUOUS ? var_t::CONTINUOUS : var_t::INTEGER;
+
+    const bool is_integer = cpufj_variable_types[j] == var_t::INTEGER;
+    const bool is_binary  = is_integer &&
+                           integer_equal<f_t>(problem.lower[j], f_t{0}, settings.integer_tol) &&
+                           integer_equal<f_t>(problem.upper[j], f_t{1}, settings.integer_tol);
+    if (is_integer) { ++n_integer_vars; }
     if (is_binary) { is_binary_variable[j] = 1; }
   }
+
+  const i_t nnz = static_cast<i_t>(variables.size());
+  csc_matrix_t<i_t, f_t> reverse_csc(n_constraints, n_variables, nnz);
+  csr_A.to_compressed_col(reverse_csc);
+  std::vector<f_t> reverse_coefficients = std::move(reverse_csc.x);
+  std::vector<i_t> reverse_constraints  = std::move(reverse_csc.i);
+  std::vector<i_t> reverse_offsets      = std::move(reverse_csc.col_start);
 
   std::vector<f_t> projected_seed(n_variables, f_t{0});
   for (i_t j = 0; j < n_variables; ++j) {
     f_t value = j < static_cast<i_t>(seed_assignment.size()) ? seed_assignment[j] : f_t{0};
-    value     = std::clamp(value, model.var_lb[j], model.var_ub[j]);
-    if (model.var_types[j] != var_t::CONTINUOUS) {
-      value = std::clamp(std::round(value), model.var_lb[j], model.var_ub[j]);
+    value     = std::clamp(value, problem.lower[j], problem.upper[j]);
+    if (variable_types[j] != variable_type_t::CONTINUOUS) {
+      value = std::clamp(std::round(value), problem.lower[j], problem.upper[j]);
     }
     projected_seed[j] = value;
   }
 
-  csr_matrix_t<i_t, f_t> csr_A(n_constraints, n_variables, nnz);
-  csr_A.x         = std::move(model.coefficients);
-  csr_A.j         = std::move(model.variables);
-  csr_A.row_start = std::move(model.offsets);
-  csc_matrix_t<i_t, f_t> reverse_csc(n_constraints, n_variables, nnz);
-  csr_A.to_compressed_col(reverse_csc);
+  fj_settings_t fj_settings;
+  fj_settings.mode                   = fj_mode_t::EXIT_NON_IMPROVING;
+  fj_settings.n_of_minimums_for_exit = std::numeric_limits<int>::max();
+  fj_settings.time_limit             = std::numeric_limits<f_t>::infinity();
+  fj_settings.iteration_limit        = std::numeric_limits<int>::max();
+  fj_settings.update_weights         = true;
+  fj_settings.feasibility_run        = false;
+  fj_settings.seed                   = seed >= 0 ? seed : cuopt::seed_generator::get_seed();
 
   auto fj_cpu      = std::make_unique<fj_cpu_climber_t<i_t, f_t>>(preemption_flag);
   fj_cpu->view     = typename fj_t<i_t, f_t>::climber_data_t::view_t{};
   fj_cpu->pb_ptr   = nullptr;
-  fj_cpu->settings = settings;
+  fj_cpu->settings = fj_settings;
 
-  fj_cpu->h_reverse_coefficients = std::move(reverse_csc.x);
-  fj_cpu->h_reverse_constraints  = std::move(reverse_csc.i);
-  fj_cpu->h_reverse_offsets      = std::move(reverse_csc.col_start);
-  fj_cpu->h_coefficients         = std::move(csr_A.x);
-  fj_cpu->h_offsets              = std::move(csr_A.row_start);
-  fj_cpu->h_variables            = std::move(csr_A.j);
-  fj_cpu->h_obj_coeffs           = std::move(model.objective);
+  fj_cpu->h_reverse_coefficients = std::move(reverse_coefficients);
+  fj_cpu->h_reverse_constraints  = std::move(reverse_constraints);
+  fj_cpu->h_reverse_offsets      = std::move(reverse_offsets);
+  fj_cpu->h_coefficients         = std::move(coefficients);
+  fj_cpu->h_offsets              = std::move(offsets);
+  fj_cpu->h_variables            = std::move(variables);
+  fj_cpu->h_obj_coeffs           = problem.objective;
   fj_cpu->h_var_bounds           = std::move(variable_bounds);
-  fj_cpu->h_cstr_lb              = std::move(model.row_lb);
-  fj_cpu->h_cstr_ub              = std::move(model.row_ub);
-  fj_cpu->h_var_types            = std::move(model.var_types);
+  fj_cpu->h_cstr_lb              = std::move(constraint_lower_bounds);
+  fj_cpu->h_cstr_ub              = std::move(constraint_upper_bounds);
+  fj_cpu->h_var_types            = std::move(cpufj_variable_types);
   fj_cpu->h_is_binary_variable   = std::move(is_binary_variable);
 
   fj_cpu->h_cstr_left_weights.resize(n_constraints, 1.0);
@@ -1508,59 +1529,6 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_from_host_model(
   finalize_fj_cpu_host_initialization(
     *fj_cpu, n_variables, n_constraints, n_integer_vars, nnz, tolerances);
   return fj_cpu;
-}
-
-template <typename i_t, typename f_t>
-static std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_from_host_lp(
-  const lp_problem_t<i_t, f_t>& problem,
-  const std::vector<variable_type_t>& variable_types,
-  const std::vector<f_t>& seed_assignment,
-  const simplex_solver_settings_t<i_t, f_t>& settings,
-  std::atomic<bool>& preemption_flag,
-  int64_t seed)
-{
-  cuopt_assert(variable_types.size() >= static_cast<size_t>(problem.num_cols),
-               "variable type size mismatch");
-
-  typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances{};
-  tolerances.absolute_tolerance    = settings.primal_tol;
-  tolerances.relative_tolerance    = settings.zero_tol;
-  tolerances.integrality_tolerance = settings.integer_tol;
-  tolerances.absolute_mip_gap      = settings.absolute_mip_gap_tol;
-  tolerances.relative_mip_gap      = settings.relative_mip_gap_tol;
-
-  fj_cpu_host_model_t<i_t, f_t> model;
-  model.n_variables   = problem.num_cols;
-  model.n_constraints = problem.num_rows;
-
-  csr_matrix_t<i_t, f_t> csr_A(problem.num_rows, problem.num_cols, problem.A.nnz());
-  problem.A.to_compressed_row(csr_A);
-  model.coefficients = std::move(csr_A.x);
-  model.variables    = std::move(csr_A.j);
-  model.offsets      = std::move(csr_A.row_start);
-  // Standard form: every row is an equality.
-  model.row_lb    = problem.rhs;
-  model.row_ub    = problem.rhs;
-  model.var_lb    = problem.lower;
-  model.var_ub    = problem.upper;
-  model.objective = problem.objective;
-  model.var_types.resize(model.n_variables);
-  for (i_t j = 0; j < model.n_variables; ++j) {
-    model.var_types[j] =
-      variable_types[j] == variable_type_t::CONTINUOUS ? var_t::CONTINUOUS : var_t::INTEGER;
-  }
-
-  fj_settings_t fj_settings;
-  fj_settings.mode                   = fj_mode_t::EXIT_NON_IMPROVING;
-  fj_settings.n_of_minimums_for_exit = std::numeric_limits<int>::max();
-  fj_settings.time_limit             = std::numeric_limits<f_t>::infinity();
-  fj_settings.iteration_limit        = std::numeric_limits<int>::max();
-  fj_settings.update_weights         = true;
-  fj_settings.feasibility_run        = false;
-  fj_settings.seed                   = seed >= 0 ? seed : cuopt::seed_generator::get_seed();
-
-  return init_fj_cpu_from_host_model<i_t, f_t>(
-    std::move(model), seed_assignment, tolerances, preemption_flag, fj_settings);
 }
 
 template <typename i_t, typename f_t>
@@ -1885,12 +1853,6 @@ template std::unique_ptr<fj_cpu_climber_t<int, float>> init_fj_cpu_standalone(
   solution_t<int, float>& solution,
   std::atomic<bool>& preemption_flag,
   fj_settings_t settings);
-template std::unique_ptr<fj_cpu_climber_t<int, float>> init_fj_cpu_from_host_model(
-  fj_cpu_host_model_t<int, float> model,
-  const std::vector<float>& seed_assignment,
-  const typename mip_solver_settings_t<int, float>::tolerances_t& tolerances,
-  std::atomic<bool>& preemption_flag,
-  fj_settings_t settings);
 template void finalize_fj_cpu_host_initialization(
   fj_cpu_climber_t<int, float>& fj_cpu,
   int n_variables,
@@ -1909,12 +1871,6 @@ template void cpufj_solve(fj_cpu_climber_t<int, double>* fj_cpu,
 template std::unique_ptr<fj_cpu_climber_t<int, double>> init_fj_cpu_standalone(
   problem_t<int, double>& problem,
   solution_t<int, double>& solution,
-  std::atomic<bool>& preemption_flag,
-  fj_settings_t settings);
-template std::unique_ptr<fj_cpu_climber_t<int, double>> init_fj_cpu_from_host_model(
-  fj_cpu_host_model_t<int, double> model,
-  const std::vector<double>& seed_assignment,
-  const typename mip_solver_settings_t<int, double>::tolerances_t& tolerances,
   std::atomic<bool>& preemption_flag,
   fj_settings_t settings);
 template void finalize_fj_cpu_host_initialization(

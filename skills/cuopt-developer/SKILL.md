@@ -170,6 +170,7 @@ cuopt/
 ### CUDA/GPU Hygiene
 - Keep operations stream-ordered
 - Follow existing RAFT/RMM patterns
+- `rmm::device_uvector` tests emptiness with `is_empty()`; it has no `empty()` member.
 - No raw `new`/`delete` - use RMM allocators
 
 ## Build & Test

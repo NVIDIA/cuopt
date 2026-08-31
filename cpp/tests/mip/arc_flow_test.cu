@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cmath>
 #include <limits>
 #include <numeric>
 #include <utility>
@@ -24,9 +25,6 @@ namespace cuopt::mathematical_optimization::test {
 
 namespace {
 
-// Enhanced arc-flow model of two identical parallel machines minimizing weighted completion time.
-// A job arc advances one machine's clock from state q to q + p, costs w * q, and covers one unit
-// of its job type's demand; a loss arc pads the tail of a machine's horizon.
 struct job_type_t {
   int p;
   int w;
@@ -43,23 +41,16 @@ struct built_model_t {
   std::vector<double> var_lb;
   std::vector<double> var_ub;
   std::vector<var_t> var_types;
-  int n_rows{0};
-  int n_cols{0};
   int horizon{0};
-  int loss_first{0};
-  int job_arcs{0};     // arcs surviving the reduction
-  int used_states{0};  // states surviving the reduction
+  int job_arcs{0};
+  int used_states{0};
 };
 
 struct build_options_t {
-  // Encode path termination as slack in the conservation row instead of an explicit loss arc,
-  // which is what Papilo's singleton column substitution produces.
   bool row_slack_terminators{false};
   bool permute{false};
-  double flow_row_factor{1.0};  // scale the second flow row and its bounds
-  // Break the affine cost model by moving one of this type's interior arcs off its own line.  Named
-  // by type rather than by column because which arcs survive the reduction is not obvious outside
-  // the builder.
+  double flow_row_factor{1.0};
+  double cost_intercept{0.0};
   int perturbed_cost_type{-1};
 };
 
@@ -85,9 +76,6 @@ int eaf_loss_first(const std::vector<job_type_t>& jobs)
   return eaf_horizon(jobs) - p_max;
 }
 
-// Types in Smith order: decreasing weight over processing time, ties by index so the reduction is
-// deterministic.  An optimal schedule runs each machine's jobs in this order, so a path through the
-// graph visits types in this order and no other sequence needs representing.
 std::vector<int> smith_order(const std::vector<job_type_t>& jobs)
 {
   std::vector<int> order(jobs.size());
@@ -101,20 +89,12 @@ std::vector<int> smith_order(const std::vector<job_type_t>& jobs)
   return order;
 }
 
-// The reduced graph Kramer, Dell'Amico and Iori build rather than the straight one.  A type may
-// only leave a state that a canonical path reaches, meaning one composed of types no later in Smith
-// order, which drops both arcs and whole states.  Straight arc flow gives every type an arc at
-// every feasible start, so the load table alone determines reachability and a search that ignored
-// the graph would still pass; here it cannot.
 struct reduced_graph_t {
-  std::vector<std::pair<int, int>> arcs;  // (type, start state)
-  std::vector<int> states;                // used states, ascending
-  std::vector<int> row_of_state;          // state -> row, or -1 when the reduction dropped it
+  std::vector<std::pair<int, int>> arcs;
+  std::vector<int> states;
+  std::vector<int> row_of_state;
 };
 
-// A machine may be loaded to exactly the horizon, so the states run to it inclusive.  Stopping one
-// short silently drops the schedules that fill a machine, which are optimal often enough that the
-// graph would no longer contain the optimum for the reference to be compared against.
 reduced_graph_t reduce_eaf(const std::vector<job_type_t>& jobs, int horizon, int loss_first)
 {
   const int last = horizon;
@@ -124,7 +104,6 @@ reduced_graph_t reduce_eaf(const std::vector<job_type_t>& jobs, int horizon, int
   reduced_graph_t graph;
   for (const int type : smith_order(jobs)) {
     const int p = jobs[type].p;
-    // Copies of this type may precede an arc of it, so its own chains extend reachability first.
     const std::vector<char> before = reachable;
     for (int q = 0; q <= last; ++q) {
       if (!before[q]) { continue; }
@@ -173,7 +152,6 @@ built_model_t build_eaf(const std::vector<job_type_t>& jobs, const build_options
     return row;
   };
 
-  // Columns: every surviving job arc, then the loss arcs when they are represented explicitly.
   struct column_t {
     std::vector<std::pair<int, double>> entries;
     double cost;
@@ -185,7 +163,7 @@ built_model_t build_eaf(const std::vector<job_type_t>& jobs, const build_options
     column_t col;
     col.entries = {
       {row_of(start), 1.0}, {row_of(start + jobs[type].p), -1.0}, {n_states + type, 1.0}};
-    col.cost = (double)jobs[type].w * start;
+    col.cost = (double)jobs[type].w * start + opts.cost_intercept;
     col.ub   = jobs[type].d;
     col.type = type;
     columns.push_back(std::move(col));
@@ -216,8 +194,6 @@ built_model_t build_eaf(const std::vector<job_type_t>& jobs, const build_options
     for (int c = 0; c < (int)columns.size(); ++c) {
       if (columns[c].type == opts.perturbed_cost_type) { of_type.push_back(c); }
     }
-    // The slope is fitted from the label's extreme arcs, so only an interior arc is off the fitted
-    // line and reachable solely by the residual check over every arc.
     EXPECT_GE(of_type.size(), 3u) << "an interior arc needs a type with at least three of them";
     columns[of_type[of_type.size() / 2]].cost += 1.0;
   }
@@ -235,10 +211,7 @@ built_model_t build_eaf(const std::vector<job_type_t>& jobs, const build_options
   }
 
   built_model_t model;
-  model.n_rows      = n_rows;
-  model.n_cols      = n_cols;
   model.horizon     = horizon;
-  model.loss_first  = loss_first;
   model.job_arcs    = graph.arcs.size();
   model.used_states = n_states;
   model.obj.assign(n_cols, 0.0);
@@ -284,13 +257,11 @@ built_model_t build_eaf(const std::vector<job_type_t>& jobs, const build_options
   return model;
 }
 
-// Optimal schedule by exhaustive assignment.  Smith's rule makes weighted shortest processing
-// time optimal per machine, so sequencing each machine that way gives the true optimum.
 double brute_force_optimum(const std::vector<job_type_t>& jobs)
 {
   const int horizon    = eaf_horizon(jobs);
   const int loss_first = eaf_loss_first(jobs);
-  std::vector<std::pair<int, int>> expanded;  // (p, w)
+  std::vector<std::pair<int, int>> expanded;
   for (const auto& job : jobs) {
     for (int i = 0; i < job.d; ++i) {
       expanded.emplace_back(job.p, job.w);
@@ -331,27 +302,52 @@ struct run_outcome_t {
   std::vector<double> assignment;
 };
 
-run_outcome_t run_heuristic(const built_model_t& model)
+struct input_options_t {
+  bool set_lower_bounds{true};
+  bool set_upper_bounds{true};
+};
+
+void expect_feasible(const built_model_t& model, const std::vector<double>& assignment)
+{
+  ASSERT_EQ(assignment.size(), model.obj.size());
+  for (size_t j = 0; j < assignment.size(); ++j) {
+    EXPECT_GE(assignment[j], model.var_lb[j]);
+    EXPECT_LE(assignment[j], model.var_ub[j]);
+    if (model.var_types[j] == var_t::INTEGER) {
+      EXPECT_DOUBLE_EQ(assignment[j], std::round(assignment[j]));
+    }
+  }
+  for (size_t r = 0; r < model.row_lb.size(); ++r) {
+    double activity = 0.0;
+    for (int k = model.offsets[r]; k < model.offsets[r + 1]; ++k) {
+      activity += model.values[k] * assignment[model.indices[k]];
+    }
+    EXPECT_GE(activity, model.row_lb[r]);
+    EXPECT_LE(activity, model.row_ub[r]);
+  }
+}
+
+run_outcome_t run_heuristic(const built_model_t& model, input_options_t options = {})
 {
   const raft::handle_t handle{};
   optimization_problem_t<int, double> problem(&handle);
-  auto values  = model.values;
-  auto indices = model.indices;
-  auto offsets = model.offsets;
-  auto obj     = model.obj;
-  auto var_lb  = model.var_lb;
-  auto var_ub  = model.var_ub;
-  auto types   = model.var_types;
-  auto row_lb  = model.row_lb;
-  auto row_ub  = model.row_ub;
   problem.set_csr_constraint_matrix(
-    values.data(), values.size(), indices.data(), indices.size(), offsets.data(), offsets.size());
-  problem.set_objective_coefficients(obj.data(), obj.size());
-  problem.set_variable_lower_bounds(var_lb.data(), var_lb.size());
-  problem.set_variable_upper_bounds(var_ub.data(), var_ub.size());
-  problem.set_variable_types(types.data(), types.size());
-  problem.set_constraint_lower_bounds(row_lb.data(), row_lb.size());
-  problem.set_constraint_upper_bounds(row_ub.data(), row_ub.size());
+    model.values.data(),
+    model.values.size(),
+    model.indices.data(),
+    model.indices.size(),
+    model.offsets.data(),
+    model.offsets.size());
+  problem.set_objective_coefficients(model.obj.data(), model.obj.size());
+  if (options.set_lower_bounds) {
+    problem.set_variable_lower_bounds(model.var_lb.data(), model.var_lb.size());
+  }
+  if (options.set_upper_bounds) {
+    problem.set_variable_upper_bounds(model.var_ub.data(), model.var_ub.size());
+  }
+  problem.set_variable_types(model.var_types.data(), model.var_types.size());
+  problem.set_constraint_lower_bounds(model.row_lb.data(), model.row_lb.size());
+  problem.set_constraint_upper_bounds(model.row_ub.data(), model.row_ub.size());
 
   mip_solver_settings_t<int, double> settings;
   run_outcome_t outcome;
@@ -360,13 +356,11 @@ run_outcome_t run_heuristic(const built_model_t& model)
   if (!outcome.prescreened) { return outcome; }
 
   std::atomic<bool> preemption{false};
-  const auto status =
-    heuristic.solve(settings.get_tolerances(), preemption, 0.0, outcome.assignment);
+  const auto status = heuristic.solve(settings.get_tolerances(), preemption, outcome.assignment);
   outcome.found = status == mip::structural_outcome_t::constructed;
   outcome.exact = heuristic.search_was_exact();
-  // The dispatcher would take this from the solver-space problem; the models here are minimize
-  // with no offset, so the two agree.
   if (outcome.found) {
+    expect_feasible(model, outcome.assignment);
     outcome.objective = 0.0;
     for (size_t j = 0; j < outcome.assignment.size(); ++j) {
       outcome.objective += model.obj[j] * outcome.assignment[j];
@@ -381,16 +375,12 @@ const std::vector<job_type_t>& small_instance()
   return jobs;
 }
 
-// Processing times that do not tile the horizon, so the reduction leaves gaps: states 1, 3, 8 and
-// 13 are unreachable by any canonical path and are absent from the model entirely.
 const std::vector<job_type_t>& gapped_instance()
 {
   static const std::vector<job_type_t> jobs = {{2, 9, 2}, {5, 4, 2}, {7, 3, 1}};
   return jobs;
 }
 
-// The heaviest type leads the Smith order and fills six of nine units, so the reduction leaves it a
-// single arc out of the source and its cost slope has no second point to be fitted from.
 const std::vector<job_type_t>& single_arc_label_instance()
 {
   static const std::vector<job_type_t> jobs = {{2, 1, 1}, {5, 1, 1}, {6, 4, 1}};
@@ -406,14 +396,9 @@ TEST(arc_flow, matches_brute_force_optimum)
   ASSERT_TRUE(outcome.prescreened);
   ASSERT_TRUE(outcome.found);
   EXPECT_DOUBLE_EQ(outcome.objective, brute_force_optimum(small_instance()));
-  // A search this small is nowhere near the history budget, so beaming it would mean the budget
-  // is being converted into a width up front instead of charged as it accumulates.
   EXPECT_TRUE(outcome.exact);
 }
 
-// The reduction is what separates the enhanced graph from the straight one, so the fixture has to
-// exercise it: a graph with an arc at every feasible start makes reachability a function of the
-// load alone, and a search that never consulted the arc set would pass anyway.
 TEST(arc_flow, reduced_graph_omits_states_and_arcs)
 {
   const auto model = build_eaf(gapped_instance(), {});
@@ -425,8 +410,6 @@ TEST(arc_flow, reduced_graph_omits_states_and_arcs)
   EXPECT_LT(model.used_states, model.horizon + 1) << "the reduction dropped no state";
 }
 
-// Normal patterns keep at least one optimal schedule, so the reduced graph must still reach the
-// optimum the reference finds by exhaustive assignment.
 TEST(arc_flow, matches_brute_force_optimum_on_reduced_graph)
 {
   const auto outcome = run_heuristic(build_eaf(gapped_instance(), {}));
@@ -435,9 +418,6 @@ TEST(arc_flow, matches_brute_force_optimum_on_reduced_graph)
   EXPECT_DOUBLE_EQ(outcome.objective, brute_force_optimum(gapped_instance()));
 }
 
-// A label with one arc is ordered by where that arc can go rather than by its ratio, which is a
-// position the model determines but not the Smith one.  The point stays usable; what must not
-// happen is the pass reporting it as the optimum of an order it did not actually search.
 TEST(arc_flow, single_arc_label_is_ordered_but_not_exact)
 {
   const auto outcome = run_heuristic(build_eaf(single_arc_label_instance(), {}));
@@ -447,8 +427,6 @@ TEST(arc_flow, single_arc_label_is_ordered_but_not_exact)
   EXPECT_DOUBLE_EQ(outcome.objective, brute_force_optimum(single_arc_label_instance()));
 }
 
-// The detector reads only permutation invariant data, so reordering rows and columns must not
-// change what it finds.  This is the property that keeps it from leaning on model index order.
 TEST(arc_flow, invariant_under_row_and_column_permutation)
 {
   build_options_t permuted;
@@ -460,8 +438,6 @@ TEST(arc_flow, invariant_under_row_and_column_permutation)
   EXPECT_DOUBLE_EQ(plain.objective, shuffled.objective);
 }
 
-// Papilo substitutes a bounded singleton column out of its equality and leaves the row as an
-// inequality, so a loss arc reaches the second early heuristic slot as conservation row slack.
 TEST(arc_flow, accepts_row_slack_terminators)
 {
   build_options_t slack;
@@ -472,8 +448,6 @@ TEST(arc_flow, accepts_row_slack_terminators)
   EXPECT_DOUBLE_EQ(outcome.objective, brute_force_optimum(small_instance()));
 }
 
-// MIP scaling applies power of two row factors before this heuristic runs, so the unit incidence
-// pattern is only recoverable after normalizing each row by its coefficient magnitude.
 TEST(arc_flow, tolerates_row_scaling)
 {
   build_options_t scaled;
@@ -486,17 +460,12 @@ TEST(arc_flow, tolerates_row_scaling)
 
 TEST(arc_flow, rejects_non_affine_costs)
 {
-  // The slope is fitted from the label's extreme arcs, so moving one arc off the line is only
-  // caught by the residual check that revisits every arc.
   build_options_t perturbed;
   perturbed.perturbed_cost_type = 1;
   const auto outcome            = run_heuristic(build_eaf(small_instance(), perturbed));
   EXPECT_FALSE(outcome.found);
 }
 
-// The construction consumes exactly the demanded units, so it cannot discover that oversatisfying
-// a covering row pays.  A negative cost slope is where that would happen, and the detector has to
-// refuse the model rather than return a point it has no argument for.
 TEST(arc_flow, rejects_negative_cost_slope)
 {
   const std::vector<job_type_t> jobs = {{1, 3, 2}, {2, -1, 1}, {3, 2, 1}};
@@ -507,8 +476,6 @@ TEST(arc_flow, rejects_negative_cost_slope)
 TEST(arc_flow, rejects_model_without_unit_incidence)
 {
   built_model_t knapsack;
-  knapsack.n_rows    = 1;
-  knapsack.n_cols    = 2;
   knapsack.values    = {2.0, 3.0};
   knapsack.indices   = {0, 1};
   knapsack.offsets   = {0, 2};
@@ -521,6 +488,42 @@ TEST(arc_flow, rejects_model_without_unit_incidence)
   const auto outcome = run_heuristic(knapsack);
   EXPECT_FALSE(outcome.prescreened);
   EXPECT_FALSE(outcome.found);
+}
+
+TEST(arc_flow, accepts_implicit_zero_lower_bounds)
+{
+  input_options_t options;
+  options.set_lower_bounds = false;
+  const auto outcome       = run_heuristic(build_eaf(small_instance(), {}), options);
+  ASSERT_TRUE(outcome.prescreened);
+  ASSERT_TRUE(outcome.found);
+}
+
+TEST(arc_flow, rejects_implicit_infinite_upper_bounds)
+{
+  input_options_t options;
+  options.set_upper_bounds = false;
+  const auto outcome       = run_heuristic(build_eaf(small_instance(), {}), options);
+  EXPECT_FALSE(outcome.prescreened);
+  EXPECT_FALSE(outcome.found);
+}
+
+TEST(arc_flow, accepts_large_finite_capacities)
+{
+  auto model = build_eaf(small_instance(), {});
+  std::fill(model.var_ub.begin(), model.var_ub.end(), std::numeric_limits<double>::max());
+  const auto outcome = run_heuristic(model);
+  ASSERT_TRUE(outcome.prescreened);
+  ASSERT_TRUE(outcome.found);
+}
+
+TEST(arc_flow, accepts_affine_cost_intercept)
+{
+  build_options_t options;
+  options.cost_intercept = 7.0;
+  const auto outcome     = run_heuristic(build_eaf(small_instance(), options));
+  ASSERT_TRUE(outcome.prescreened);
+  ASSERT_TRUE(outcome.found);
 }
 
 TEST(arc_flow, is_reproducible)

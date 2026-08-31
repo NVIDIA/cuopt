@@ -31,9 +31,6 @@
 #include <raft/core/cusparse_macros.hpp>
 
 #include <cmath>
-#include <cstdlib>
-#include <filesystem>
-#include <fstream>
 #include <future>
 #include <memory>
 #include <thread>
@@ -234,8 +231,8 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   if (context.early_structural_ptr) {
     context.early_structural_ptr->stop();
     if (context.early_structural_ptr->solution_found()) {
-      CUOPT_LOG_DEBUG("Early %s found incumbent with user-space objective %g during presolve",
-                      context.early_structural_ptr->recognized_name(),
+      CUOPT_LOG_DEBUG("Early structural heuristic found incumbent with user-space objective %g "
+                      "during presolve",
                       context.early_structural_ptr->get_best_user_objective());
     }
   }
@@ -493,33 +490,18 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     }
   }
 
-  // Runs alongside the root relaxation and the cut loop, on the thread slots B&B's worker pools
-  // only claim once the cut loop ends.  Recognition is the gate: on a model with no structure to
-  // exploit this costs one host scan and nothing is launched.
-  const i_t root_structural_lanes =
-    context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC
-      ? 0
-      : std::max(num_threads - CUOPT_MIP_ROOT_STRUCTURAL_RESERVED_THREADS, 0);
-  // The generators detect_symmetry already produced above, as plain column permutations: a
-  // structural heuristic recovers its own object from the model and only needs to know which
-  // columns are interchangeable, not how that was established.
-  std::vector<std::vector<i_t>> column_symmetry;
-  if (context.symmetry != nullptr) {
-    const auto& generators = context.symmetry->generators;
-    column_symmetry.reserve(generators.num_generators());
-    for (size_t index = 0; index < generators.num_generators(); ++index) {
-      column_symmetry.push_back(
-        generators.get_generator(static_cast<i_t>(index)).dense_permutation());
-    }
-  }
   std::unique_ptr<mip::root_structural_t<i_t, f_t>> root_structural;
-  if (root_structural_lanes > 0 && !context.settings.heuristics_only) {
+  if (num_threads >= CUOPT_MIP_ROOT_STRUCTURAL_REQUIRED_THREAD_COUNT &&
+      context.settings.determinism_mode != CUOPT_MODE_DETERMINISTIC &&
+      !context.settings.heuristics_only) {
     root_structural = std::make_unique<mip::root_structural_t<i_t, f_t>>(
       *context.problem_ptr,
       context.settings.get_tolerances(),
       context.preempt_heuristic_solver_,
-      column_symmetry.empty() ? nullptr : &column_symmetry,
-      root_structural_lanes);
+      [&dm](const std::vector<f_t>& assignment, f_t objective) {
+        dm.population.add_external_solution(
+          assignment, objective, solution_origin_t::EXTERNAL);
+      });
     if (!root_structural->recognized()) { root_structural.reset(); }
   }
 

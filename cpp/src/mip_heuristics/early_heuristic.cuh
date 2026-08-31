@@ -29,40 +29,16 @@ using early_incumbent_callback_t = std::function<void(
 
 // CRTP base for early heuristics that run on the original (or papilo-presolved) problem
 // during presolve to find incumbents as early as possible.
-// Derived classes implement start() and stop(), and must call initialize_problem() before
-// starting, since everything below problem_ptr_ depends on it.
+// Derived classes implement start() and stop().
 template <typename i_t, typename f_t, typename Derived>
 class early_heuristic_t {
  public:
-  explicit early_heuristic_t(early_incumbent_callback_t<f_t> incumbent_callback)
+  early_heuristic_t(const optimization_problem_t<i_t, f_t>& op_problem,
+                    const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances,
+                    early_incumbent_callback_t<f_t> incumbent_callback)
     : incumbent_callback_(std::move(incumbent_callback))
   {
     RAFT_CUDA_TRY(cudaGetDevice(&device_id_));
-  }
-
-  bool solution_found() const { return solution_found_; }
-  f_t get_best_objective() const { return best_objective_; }
-  // Return the best objective converted to user-space (sense-aware, offset-aware).
-  f_t get_best_user_objective() const
-  {
-    cuopt_assert(problem_ptr_ != nullptr, "initialize_problem was not called");
-    return problem_ptr_->get_user_obj_from_solver_obj(best_objective_);
-  }
-  // Set the incumbent threshold.  `obj` must be in THIS heuristic's solver-space
-  // (i.e. the space of problem_ptr_).  Callers that hold a value from a different
-  // problem representation (e.g., the original pre-presolve problem) must convert
-  // it first, otherwise try_update_best will reject valid solutions.
-  void set_best_objective(f_t obj) { best_objective_ = obj; }
-  const std::vector<f_t>& get_best_assignment() const { return best_assignment_; }
-
- protected:
-  ~early_heuristic_t() = default;
-
-  // Must run on the thread owning op_problem's handle, and before start().
-  void initialize_problem(const optimization_problem_t<i_t, f_t>& op_problem,
-                          const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances)
-  {
-    cuopt_assert(problem_ptr_ == nullptr, "initialize_problem called twice");
 
     // Build and preprocess on the original handle, then copy onto our own handle
     // so the derived solver can run on a dedicated stream (prevents graph capture conflicts).
@@ -79,14 +55,29 @@ class early_heuristic_t {
     solution_ptr_->clamp_within_bounds();
   }
 
+  bool solution_found() const { return solution_found_; }
+  f_t get_best_objective() const { return best_objective_; }
+  // Return the best objective converted to user-space (sense-aware, offset-aware).
+  f_t get_best_user_objective() const
+  {
+    return problem_ptr_->get_user_obj_from_solver_obj(best_objective_);
+  }
+  // Set the incumbent threshold.  `obj` must be in THIS heuristic's solver-space
+  // (i.e. the space of problem_ptr_).  Callers that hold a value from a different
+  // problem representation (e.g., the original pre-presolve problem) must convert
+  // it first, otherwise try_update_best will reject valid solutions.
+  void set_best_objective(f_t obj) { best_objective_ = obj; }
+  const std::vector<f_t>& get_best_assignment() const { return best_assignment_; }
+
+ protected:
+  ~early_heuristic_t() = default;
+
   // NOT thread-safe. solver_obj is in solver-space (always minimization).
   // Uses a private CUDA stream to avoid racing with the FJ solver's stream.
-  // `name` attributes the incumbent to a sub-heuristic; null attributes it to the pass itself.
   void try_update_best(f_t solver_obj,
                        const std::vector<f_t>& assignment,
-                       const char* name = nullptr)
+                       const char* heuristic_name = Derived::name())
   {
-    cuopt_assert(problem_ptr_ != nullptr, "initialize_problem was not called");
     if (solver_obj >= best_objective_) { return; }
     best_objective_ = solver_obj;
 
@@ -103,7 +94,7 @@ class early_heuristic_t {
     // Log and callback are deferred to the shared incumbent_callback_ which enforces
     // global monotonicity across all early heuristic instances.
     if (incumbent_callback_) {
-      incumbent_callback_(solver_obj, user_obj, user_assignment, name ? name : Derived::name());
+      incumbent_callback_(solver_obj, user_obj, user_assignment, heuristic_name);
     }
   }
 

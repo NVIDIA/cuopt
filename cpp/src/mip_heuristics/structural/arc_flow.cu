@@ -26,15 +26,11 @@ namespace cuopt::mathematical_optimization::mip {
 
 namespace {
 
-// Number of source-to-sink paths the frontier dynamic program enumerates.  The state is a
-// canonical tuple of this many frontier nodes, so the reachable state count grows roughly as the
-// node count raised to one less than this.
 constexpr int arcflow_paths_supported = 2;
-// Upper bound on the expanded covering demand, which is the number of dynamic program levels.
 constexpr int arcflow_max_tokens      = 20000;
 constexpr int arcflow_max_col_entries = 3;
-// Ceiling on the reconstruction history.  Reaching it forces a beam and gives up exactness.
 constexpr size_t arcflow_history_bytes_max = size_t{32} << 20;
+constexpr size_t arcflow_candidate_bytes_max = size_t{32} << 20;
 
 // Structural inference reads objective coefficients and matrix entries at f_t precision, so the
 // residual a genuine arc-flow model leaves behind is bounded by that precision and not by double.
@@ -60,36 +56,30 @@ struct arc_t {
   double cost{0.0};
 };
 
-// Everything the construction needs, derived without reading any row, column or name order.
 struct arc_flow_model_t {
   int n_nodes{0};
   int n_labels{0};
   arcflow_tol_t tol;
 
-  std::vector<double> phi;           // potential per node
-  std::vector<int> path_start;       // one entry per path, expanded by supply multiplicity
-  std::vector<int64_t> demand;       // per label
-  std::vector<double> displacement;  // per label
-  std::vector<double> slope;         // per label, NaN when the cost slope is unidentifiable
-  std::vector<int> arc_offset;       // per label, CSR into arcs
-  std::vector<arc_t> arcs;           // grouped by label, ascending by tail within a label
+  std::vector<double> phi;
+  std::vector<int> path_start;
+  std::vector<int64_t> demand;
+  std::vector<double> displacement;
+  std::vector<double> slope;
+  std::vector<int> arc_offset;
+  std::vector<arc_t> arcs;
 
-  // A path may end at a node either through an explicit unlabelled arc or through slack in the
-  // node's conservation row.  A negative terminator_col marks the row-slack encoding, which sets
-  // no variable.
+  // A negative terminator_col denotes conservation-row slack.
   std::vector<int> terminator_col;
   std::vector<double> terminator_cost;
   std::vector<int64_t> terminator_capacity;
 };
 
-// Live state of the search.  Kept for the current level only.
 struct frontier_t {
   std::array<int, arcflow_paths_supported> node{};
   double cost{0.0};
 };
 
-// Retained for every level so the winning path can be walked back.  Deliberately narrow: this is
-// what the memory budget is spent on.
 struct parent_t {
   int prev{-1};
   int arc{-1};
@@ -101,11 +91,8 @@ struct candidate_t {
 };
 
 struct arc_flow_result_t {
-  std::vector<int> columns;  // selected columns, repeated for multiplicity
-  double cost{0.0};
-  bool exact{true};     // false once the history budget forced a beam
-  size_t peak_raw{0};   // widest level before merging equal states
-  size_t peak_kept{0};  // widest level actually retained
+  std::vector<int> columns;
+  bool exact{true};
 };
 
 bool close_to(double a, double b, double scale, const arcflow_tol_t& tol)
@@ -120,10 +107,19 @@ bool is_integral(double v, const arcflow_tol_t& tol)
 
 bool is_known(double v) { return !std::isnan(v); }
 
-// ---------------------------------------------------------------------------------------------
-// Host mirror of the problem.  The reverse (column major) matrix is the natural view here: the
-// detector always asks which rows a column touches, never the other way round.
-// ---------------------------------------------------------------------------------------------
+struct arcflow_profile_t {
+  arcflow_profile_t(int64_t n_variables = 0, int64_t n_constraints = 0)
+    : col_entries(n_variables, 0),
+      row_min_mag(n_constraints, std::numeric_limits<double>::infinity()),
+      row_max_mag(n_constraints, 0.0)
+  {
+  }
+
+  std::vector<int64_t> col_entries;
+  std::vector<double> row_min_mag;
+  std::vector<double> row_max_mag;
+};
+
 template <typename i_t, typename f_t>
 struct host_problem_t {
   i_t n_variables{0};
@@ -140,9 +136,6 @@ struct host_problem_t {
   std::vector<var_t> var_types;
 };
 
-// Recognition is three gates in ascending cost, so a model that cannot match is turned away before
-// its matrix is read.  Together they are the whole of recognition: the detector proper runs later,
-// in solve().  Both problem sources drive the same gates, which is what keeps them agreeing.
 bool arcflow_accepts_shape(int64_t n_variables, int64_t n_constraints, int64_t nnz)
 {
   if (n_variables <= 0 || n_constraints <= 0) { return false; }
@@ -169,21 +162,6 @@ bool arcflow_accepts_bounds(const std::vector<f_t>& row_lb, const std::vector<f_
   }
   return n_flow_candidates > 0 && n_cover_candidates > 0;
 }
-
-// The only matrix facts recognition needs.  Derived from whichever layout the caller already holds,
-// which is what keeps the transpose off the declining path.
-struct arcflow_profile_t {
-  arcflow_profile_t(int64_t n_variables, int64_t n_constraints)
-    : col_entries(n_variables, 0),
-      row_min_mag(n_constraints, std::numeric_limits<double>::infinity()),
-      row_max_mag(n_constraints, 0.0)
-  {
-  }
-
-  std::vector<int64_t> col_entries;
-  std::vector<double> row_min_mag;
-  std::vector<double> row_max_mag;
-};
 
 template <typename i_t, typename f_t>
 arcflow_profile_t profile_from_csr(i_t n_variables,
@@ -227,8 +205,6 @@ arcflow_profile_t profile_from_csc(i_t n_variables,
   return p;
 }
 
-// The column entry cap, one shared coefficient magnitude per row, and an integral covering demand
-// within the level budget.
 template <typename f_t>
 bool arcflow_accepts_profile(const arcflow_profile_t& p,
                              const std::vector<f_t>& row_lb,
@@ -280,43 +256,25 @@ void transpose_into_csc(const std::vector<f_t>& csr_values,
   }
 }
 
-// ---------------------------------------------------------------------------------------------
-// Row classification
-// ---------------------------------------------------------------------------------------------
-
 struct row_info_t {
   row_role_t role{row_role_t::cover};
-  double scale{1.0};  // common magnitude of the row coefficients
-  double lo{0.0};     // bounds divided by scale, later reoriented
+  double scale{1.0};
+  double lo{0.0};
   double hi{0.0};
 };
 
-// A row is usable only if all its coefficients share one magnitude,
-// The role is seeded from the bounds and verified afterwards against the column patterns: a flow
-// row is two sided, a covering row is bounded from below only.  Presolve can turn a flow equality
-// into a range row, so the seed must not test for equality.  A covering row that acquired a finite
-// upper bound is consequently misread as a flow row and rejected downstream; that is a known limit.
 template <typename i_t, typename f_t>
-bool classify_rows(const host_problem_t<i_t, f_t>& h, std::vector<row_info_t>& rows)
+bool classify_rows(const host_problem_t<i_t, f_t>& h,
+                   const arcflow_profile_t& profile,
+                   std::vector<row_info_t>& rows)
 {
+  cuopt_assert((i_t)profile.row_min_mag.size() == h.n_constraints, "Size mismatch");
+  cuopt_assert((i_t)profile.row_max_mag.size() == h.n_constraints, "Size mismatch");
   rows.assign(h.n_constraints, row_info_t{});
-  std::vector<double> min_mag(h.n_constraints, std::numeric_limits<double>::infinity());
-  std::vector<double> max_mag(h.n_constraints, 0.0);
-
-  for (size_t k = 0; k < h.csc_rows.size(); ++k) {
-    const int r      = h.csc_rows[k];
-    const double mag = std::abs((double)h.csc_values[k]);
-    if (mag <= h.tol.abs) { return false; }
-    min_mag[r] = std::min(min_mag[r], mag);
-    max_mag[r] = std::max(max_mag[r], mag);
-  }
 
   for (int r = 0; r < h.n_constraints; ++r) {
-    if (max_mag[r] == 0.0) { return false; }
-    if (!close_to(min_mag[r], max_mag[r], max_mag[r], h.tol)) { return false; }
-
     row_info_t info;
-    info.scale        = max_mag[r];
+    info.scale        = profile.row_max_mag[r];
     const double lo   = h.row_lb[r] / info.scale;
     const double hi   = h.row_ub[r] / info.scale;
     const bool lo_fin = std::isfinite(lo);
@@ -364,12 +322,6 @@ double supply_orientation(const std::vector<row_info_t>& rows,
   return 0.0;
 }
 
-// ---------------------------------------------------------------------------------------------
-// Structure extraction
-// ---------------------------------------------------------------------------------------------
-
-// Walks the columns once and fills the arc set, the covering demands, the path starts and the
-// per-node termination capacity.  Rejects anything that does not match the labelled arc pattern.
 // A column carrying a single flow incidence is accepted only when that incidence is the arc's
 // tail: sources are read from the right-hand side, so the mirror encoding of an explicit
 // injection arc is out of scope here.
@@ -383,7 +335,7 @@ bool build_structure(const host_problem_t<i_t, f_t>& h,
   double supply_total = 0.0;
   const double sign   = supply_orientation(rows, h.tol, supply_total);
   if (sign == 0.0 || !is_integral(supply_total, h.tol)) { return false; }
-  if ((int)std::round(supply_total) != arcflow_paths_supported) { return false; }
+  if (std::round(supply_total) != arcflow_paths_supported) { return false; }
 
   // Reorient so a normalized coefficient of +1 always means "the arc leaves this node".
   if (sign < 0.0) {
@@ -420,9 +372,7 @@ bool build_structure(const host_problem_t<i_t, f_t>& h,
   }
   if (total_demand <= 0 || total_demand > arcflow_max_tokens) { return false; }
 
-  // Node roles from the oriented conservation bounds.  A source emits a fixed number of paths; a
-  // node whose lower bound allows negative net outflow absorbs them, which is the presolved
-  // encoding of a loss arc.
+  // Negative net outflow encodes path termination after singleton-column substitution.
   for (int r = 0; r < h.n_constraints; ++r) {
     const int v = node_of_row[r];
     if (v < 0) { continue; }
@@ -435,7 +385,8 @@ bool build_structure(const host_problem_t<i_t, f_t>& h,
     } else if (std::abs(info.hi) <= h.tol.abs) {
       if (info.lo < -h.tol.abs) {
         if (!is_integral(info.lo, h.tol)) { return false; }
-        model.terminator_capacity[v] = std::round(-info.lo);
+        model.terminator_capacity[v] =
+          std::min((double)arcflow_paths_supported, std::round(-info.lo));
       }
     } else {
       return false;
@@ -492,7 +443,8 @@ bool build_structure(const host_problem_t<i_t, f_t>& h,
       if (model.terminator_col[tail] >= 0 || model.terminator_capacity[tail] > 0) { return false; }
       model.terminator_col[tail]      = j;
       model.terminator_cost[tail]     = h.obj[j];
-      model.terminator_capacity[tail] = std::floor(ub + h.tol.abs);
+      model.terminator_capacity[tail] =
+        std::min((double)arcflow_paths_supported, std::floor(ub + h.tol.abs));
     } else {
       return false;
     }
@@ -517,10 +469,6 @@ bool build_structure(const host_problem_t<i_t, f_t>& h,
                "arc CSR offsets must cover every arc");
   return true;
 }
-
-// ---------------------------------------------------------------------------------------------
-// Potential and cost model
-// ---------------------------------------------------------------------------------------------
 
 // The potential is recovered from the objective rather than from any index: within a label the
 // cost is affine in the potential of the arc's tail, so one label with enough distinct costs fixes
@@ -559,10 +507,7 @@ bool derive_potential(arc_flow_model_t& model, const std::atomic<bool>& preempti
     model.phi[model.arcs[k].from] = model.arcs[k].cost;
   }
 
-  // Every round that changes anything resolves at least one potential, slope or displacement, so
-  // this many rounds is an upper bound on the productive ones and the loop always reaches a true
-  // fixpoint.  The bound exists to keep a malformed model from spinning, not to cap propagation
-  // depth: a chain of labels longer than any fixed constant still resolves.
+  // Each productive round resolves at least one potential, slope, or displacement.
   const long max_rounds = 2L * n_labels + model.n_nodes + 2L;
   long rounds           = 0;
   for (; rounds < max_rounds; ++rounds) {
@@ -601,7 +546,6 @@ bool derive_potential(arc_flow_model_t& model, const std::atomic<bool>& preempti
         }
       }
 
-      // Close the potential through the arcs themselves once the displacement is pinned down.
       if (!is_known(model.displacement[l])) {
         for (int k = begin; k < end; ++k) {
           const double from = model.phi[model.arcs[k].from];
@@ -692,19 +636,7 @@ bool derive_potential(arc_flow_model_t& model, const std::atomic<bool>& preempti
   return true;
 }
 
-// ---------------------------------------------------------------------------------------------
-// Token order
-// ---------------------------------------------------------------------------------------------
-
-// Weighted shortest processing time: labels by decreasing cost slope over displacement, compared
-// by cross multiplication so the ordering never turns on the rounding of a division.  Both
-// quantities come from the arc set, so the order is invariant under any permutation of the model,
-// and the affine freedom left in the potential scales every ratio by the same positive factor.
-//
-// A slope needs two arcs at distinct potentials to fit, so a label that has only one, or whose arcs
-// all share a tail, has no identified ratio.  Its position is still determined, by reachability
-// rather than by cost, and `ordering_exact` reports whether any label was placed that way: the
-// ordered family searched is then not the Smith-ordered one and the result is heuristic.
+// Weighted shortest processing time orders labels by decreasing slope over displacement.
 std::vector<int> token_order(const arc_flow_model_t& model, bool& ordering_exact)
 {
   std::vector<double> lowest_phi(model.n_labels, 0.0);
@@ -732,11 +664,7 @@ std::vector<int> token_order(const arc_flow_model_t& model, bool& ordering_exact
     return (long double)model.slope[a] * (long double)model.displacement[b];
   };
 
-  // Comparing ratios within a tolerance is not an ordering: approximate equality is not transitive,
-  // so three ratios pairwise within one step but further apart end to end make the comparator
-  // cyclic, and std::sort on a cyclic comparator is undefined behaviour rather than a bad order.
-  // The tolerance is applied once, to cut the ratios into classes, and everything the sort sees
-  // afterwards is compared exactly.
+  // Approximate equality is not transitive. Tolerance forms ratio classes before the final sort.
   std::sort(ordered.begin(), ordered.end(), [&](int a, int b) {
     const long double lhs = cross(a, b);
     const long double rhs = cross(b, a);
@@ -772,10 +700,7 @@ std::vector<int> token_order(const arc_flow_model_t& model, bool& ordering_exact
     tokens.insert(tokens.end(), (size_t)model.demand[l], l);
   }
 
-  // A label whose slope could not be fitted has too few arcs to place by weighted shortest
-  // processing time, but its arcs still say where it can go: a frontier can only reach potential
-  // x once the tokens consumed so far displace at least x.  Insert it at the first such position
-  // rather than assuming an unfittable label belongs at the front.
+  // Labels without fitted slopes are placed at their first reachable potential.
   ordering_exact = unidentified.empty();
   std::sort(unidentified.begin(), unidentified.end(), [&](int a, int b) {
     if (lowest_phi[a] != lowest_phi[b]) { return lowest_phi[a] < lowest_phi[b]; }
@@ -793,10 +718,6 @@ std::vector<int> token_order(const arc_flow_model_t& model, bool& ordering_exact
   return tokens;
 }
 
-// ---------------------------------------------------------------------------------------------
-// Frontier dynamic program
-// ---------------------------------------------------------------------------------------------
-
 bool state_less(const frontier_t& a, const frontier_t& b)
 {
   return std::lexicographical_compare(a.node.begin(), a.node.end(), b.node.begin(), b.node.end());
@@ -813,9 +734,7 @@ std::optional<arc_flow_result_t> run_dp(const arc_flow_model_t& model,
 
   arc_flow_result_t result;
 
-  // Only the reconstruction history is retained across levels, so the budget is charged against
-  // what is actually kept as it accumulates.  Deriving a fixed width from the budget up front
-  // would have to assume the peak width at every level, which beams searches that fit easily.
+  // The reconstruction budget is charged against retained states at each level.
   size_t retained_bytes = 0;
 
   std::vector<std::vector<parent_t>> history;
@@ -837,15 +756,36 @@ std::optional<arc_flow_result_t> run_dp(const arc_flow_model_t& model,
     const auto arc_begin = model.arcs.begin() + model.arc_offset[label];
     const auto arc_end   = model.arcs.begin() + model.arc_offset[label + 1];
 
+    const size_t candidate_limit = arcflow_candidate_bytes_max / sizeof(candidate_t);
+    size_t candidate_count       = 0;
+    for (const auto& entry : current) {
+      for (int k = 0; k < arcflow_paths_supported; ++k) {
+        const int node = entry.node[k];
+        const auto begin =
+          std::lower_bound(arc_begin, arc_end, node, [](const arc_t& a, int v) {
+            return a.from < v;
+          });
+        const auto end = std::upper_bound(begin, arc_end, node, [](int v, const arc_t& a) {
+          return v < a.from;
+        });
+        const size_t added = end - begin;
+        if (added > candidate_limit - candidate_count) { return std::nullopt; }
+        candidate_count += added;
+      }
+    }
+
     candidates.clear();
-    candidates.reserve(current.size() * arcflow_paths_supported);
+    candidates.reserve(candidate_count);
     for (int i = 0; i < (int)current.size(); ++i) {
       const frontier_t& entry = current[i];
       for (int k = 0; k < arcflow_paths_supported; ++k) {
         const int node = entry.node[k];
-        auto it        = std::lower_bound(
+        const auto begin = std::lower_bound(
           arc_begin, arc_end, node, [](const arc_t& a, int v) { return a.from < v; });
-        for (; it != arc_end && it->from == node; ++it) {
+        const auto end = std::upper_bound(begin, arc_end, node, [](int v, const arc_t& a) {
+          return v < a.from;
+        });
+        for (auto it = begin; it != end; ++it) {
           candidate_t candidate;
           candidate.front         = entry;
           candidate.front.node[k] = it->to;
@@ -857,10 +797,8 @@ std::optional<arc_flow_result_t> run_dp(const arc_flow_model_t& model,
       }
     }
     if (candidates.empty()) { return std::nullopt; }
-    result.peak_raw = std::max(result.peak_raw, candidates.size());
 
-    // A total order over the whole record keeps the surviving representative of a state
-    // independent of the enumeration order, so the result is reproducible run to run.
+    // A total order makes representative selection independent of enumeration order.
     std::sort(candidates.begin(), candidates.end(), [](const candidate_t& a, const candidate_t& b) {
       if (!state_equal(a.front, b.front)) { return state_less(a.front, b.front); }
       if (a.front.cost != b.front.cost) { return a.front.cost < b.front.cost; }
@@ -900,12 +838,10 @@ std::optional<arc_flow_result_t> run_dp(const arc_flow_model_t& model,
       parents.push_back(candidate.parent);
     }
     retained_bytes += parents.size() * sizeof(parent_t);
-    result.peak_kept = std::max(result.peak_kept, next.size());
     history.push_back(std::move(parents));
     current.swap(next);
   }
 
-  // Close every frontier, respecting how many paths a node may absorb.
   int best_index    = -1;
   double best_total = std::numeric_limits<double>::infinity();
   for (int i = 0; i < (int)current.size(); ++i) {
@@ -931,7 +867,6 @@ std::optional<arc_flow_result_t> run_dp(const arc_flow_model_t& model,
   }
   if (best_index < 0) { return std::nullopt; }
 
-  result.cost = best_total;
   for (int k = 0; k < arcflow_paths_supported; ++k) {
     const int col = model.terminator_col[current[best_index].node[k]];
     if (col >= 0) { result.columns.push_back(col); }
@@ -949,13 +884,10 @@ std::optional<arc_flow_result_t> run_dp(const arc_flow_model_t& model,
 
 }  // namespace
 
-// ---------------------------------------------------------------------------------------------
-// Public surface
-// ---------------------------------------------------------------------------------------------
-
 template <typename i_t, typename f_t>
 struct arc_flow_t<i_t, f_t>::host_state_t {
   host_problem_t<i_t, f_t> h;
+  arcflow_profile_t profile;
 };
 
 template <typename i_t, typename f_t>
@@ -964,10 +896,6 @@ arc_flow_t<i_t, f_t>::arc_flow_t() = default;
 template <typename i_t, typename f_t>
 arc_flow_t<i_t, f_t>::~arc_flow_t() = default;
 
-// A model that passes keeps its host mirror, which is what solve() then reads.  Each gate fetches
-// only what it reads, and the transpose is built once the model is accepted: a declining model pays
-// for the row bounds and one pass over the matrix, nothing more.  Each fetch is issued as a batch
-// and waited on once.
 template <typename i_t, typename f_t>
 bool arc_flow_t<i_t, f_t>::recognize(const optimization_problem_t<i_t, f_t>& op_problem,
                                      const typename mip_solver_settings_t<i_t, f_t>::tolerances_t&)
@@ -1004,7 +932,7 @@ bool arc_flow_t<i_t, f_t>::recognize(const optimization_problem_t<i_t, f_t>& op_
   stream.synchronize();
 
   const arcflow_tol_t tol = structural_tolerance<f_t>();
-  const auto profile      = profile_from_csr(n_variables, n_constraints, values, indices, offsets);
+  auto profile            = profile_from_csr(n_variables, n_constraints, values, indices, offsets);
   if (!arcflow_accepts_profile(profile, row_lb, row_ub, tol)) { return false; }
 
   const auto& d_obj       = op_problem.get_objective_coefficients();
@@ -1012,9 +940,9 @@ bool arc_flow_t<i_t, f_t>::recognize(const optimization_problem_t<i_t, f_t>& op_
   const auto& d_var_ub    = op_problem.get_variable_upper_bounds();
   const auto& d_var_types = op_problem.get_variable_types();
   cuopt_assert((i_t)d_obj.size() == n_variables, "Size mismatch");
-  cuopt_assert((i_t)d_var_lb.size() == n_variables, "Size mismatch");
-  cuopt_assert((i_t)d_var_ub.size() == n_variables, "Size mismatch");
   cuopt_assert((i_t)d_var_types.size() == n_variables, "Size mismatch");
+  if (!d_var_lb.is_empty() && (i_t)d_var_lb.size() != n_variables) { return false; }
+  if ((i_t)d_var_ub.size() != n_variables) { return false; }
 
   auto state             = std::make_unique<host_state_t>();
   state->h.n_variables   = n_variables;
@@ -1023,22 +951,23 @@ bool arc_flow_t<i_t, f_t>::recognize(const optimization_problem_t<i_t, f_t>& op_
   state->h.row_lb        = std::move(row_lb);
   state->h.row_ub        = std::move(row_ub);
   state->h.obj.resize(d_obj.size());
-  state->h.var_lb.resize(d_var_lb.size());
+  state->h.var_lb.assign(n_variables, f_t{0});
   state->h.var_ub.resize(d_var_ub.size());
   state->h.var_types.resize(d_var_types.size());
   raft::copy(state->h.obj.data(), d_obj.data(), state->h.obj.size(), stream);
-  raft::copy(state->h.var_lb.data(), d_var_lb.data(), state->h.var_lb.size(), stream);
+  if (!d_var_lb.is_empty()) {
+    raft::copy(state->h.var_lb.data(), d_var_lb.data(), state->h.var_lb.size(), stream);
+  }
   raft::copy(state->h.var_ub.data(), d_var_ub.data(), state->h.var_ub.size(), stream);
   raft::copy(state->h.var_types.data(), d_var_types.data(), state->h.var_types.size(), stream);
   stream.synchronize();
   transpose_into_csc<i_t, f_t>(values, indices, offsets, state->h);
+  state->profile = std::move(profile);
 
   state_ = std::move(state);
   return true;
 }
 
-// The root position hands over the fully reduced problem, which already carries the column major
-// view this detector wants, so the gates read it directly and no transpose is needed at all.
 template <typename i_t, typename f_t>
 bool arc_flow_t<i_t, f_t>::recognize(const problem_t<i_t, f_t>& problem,
                                      const typename mip_solver_settings_t<i_t, f_t>::tolerances_t&)
@@ -1069,7 +998,7 @@ bool arc_flow_t<i_t, f_t>::recognize(const problem_t<i_t, f_t>& problem,
   cuopt_assert(csc_values.size() == csc_rows.size(), "Size mismatch");
 
   const arcflow_tol_t tol = structural_tolerance<f_t>();
-  const auto profile =
+  auto profile =
     profile_from_csc(n_variables, n_constraints, csc_values, csc_rows, csc_offsets);
   if (!arcflow_accepts_profile(profile, row_lb, row_ub, tol)) { return false; }
 
@@ -1094,6 +1023,7 @@ bool arc_flow_t<i_t, f_t>::recognize(const problem_t<i_t, f_t>& problem,
   stream.synchronize();
   std::tie(state->h.var_lb, state->h.var_ub) =
     cuopt::extract_host_bounds<f_t>(problem.variable_bounds, problem.handle_ptr);
+  state->profile = std::move(profile);
 
   state_ = std::move(state);
   return true;
@@ -1103,14 +1033,13 @@ template <typename i_t, typename f_t>
 structural_outcome_t arc_flow_t<i_t, f_t>::solve(
   const typename mip_solver_settings_t<i_t, f_t>::tolerances_t&,
   std::atomic<bool>& preemption,
-  double,
   std::vector<f_t>& assignment)
 {
   cuopt_assert(state_ != nullptr, "solve called without a successful recognize");
   const auto& h = state_->h;
 
   std::vector<row_info_t> rows;
-  if (!classify_rows(h, rows)) {
+  if (!classify_rows(h, state_->profile, rows)) {
     CUOPT_LOG_DEBUG("[ArcFlow] rejected: rows are not unit incidence after normalization");
     return structural_outcome_t::declined;
   }
@@ -1142,14 +1071,10 @@ structural_outcome_t arc_flow_t<i_t, f_t>::solve(
     CUOPT_LOG_DEBUG("[ArcFlow] no complete path set found in the ordered family");
     return structural_outcome_t::declined;
   }
-  // Exact means exact for what was searched: the dynamic program is optimal over the token order it
-  // was given, so an order that was not fully identified makes the result heuristic however
-  // complete the search of it was.
+  // Unidentified token order makes an otherwise complete search heuristic.
   search_was_exact_ = result->exact && ordering_exact;
-  CUOPT_LOG_DEBUG("[ArcFlow] search %s, peak width %zu raw and %zu retained",
-                  result->exact ? "exact" : "beamed by the history budget",
-                  result->peak_raw,
-                  result->peak_kept);
+  CUOPT_LOG_DEBUG(
+    "[ArcFlow] search %s", result->exact ? "exact" : "beamed by the history budget");
 
   assignment.assign((size_t)h.n_variables, f_t{0});
   for (int col : result->columns) {

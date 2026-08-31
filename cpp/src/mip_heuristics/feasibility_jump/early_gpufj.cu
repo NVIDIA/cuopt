@@ -22,9 +22,9 @@ template <typename i_t, typename f_t>
 early_gpufj_t<i_t, f_t>::early_gpufj_t(const optimization_problem_t<i_t, f_t>& op_problem,
                                        const mip_solver_settings_t<i_t, f_t>& settings,
                                        early_incumbent_callback_t<f_t> incumbent_callback)
-  : early_heuristic_t<i_t, f_t, early_gpufj_t<i_t, f_t>>(std::move(incumbent_callback))
+  : early_heuristic_t<i_t, f_t, early_gpufj_t<i_t, f_t>>(
+      op_problem, settings.get_tolerances(), std::move(incumbent_callback))
 {
-  this->initialize_problem(op_problem, settings.get_tolerances());
   context_ptr_ = std::make_unique<mip_solver_context_t<i_t, f_t>>(
     &this->handle_, this->problem_ptr_.get(), settings);
 }

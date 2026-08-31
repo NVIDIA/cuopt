@@ -320,14 +320,16 @@ mip_solution_t<i_t, f_t> run_mip_solver(
       solver.context.early_cpufj_ptr = early_cpufj.get();
       CUOPT_LOG_DEBUG("Started early CPUFJ on papilo-presolved problem during cuOpt presolve");
 
-      early_structural = std::make_unique<mip::early_structural_t<i_t, f_t>>(
+      early_structural = mip::early_structural_t<i_t, f_t>::create(
         *problem.original_problem_ptr, settings.get_tolerances(), incumbent_callback);
-      if (std::isfinite(initial_upper_bound)) {
-        early_structural->set_best_objective(
-          problem.get_solver_obj_from_user_obj(initial_upper_bound));
+      if (early_structural) {
+        if (std::isfinite(initial_upper_bound)) {
+          early_structural->set_best_objective(
+            problem.get_solver_obj_from_user_obj(initial_upper_bound));
+        }
+        early_structural->start();
+        solver.context.early_structural_ptr = early_structural.get();
       }
-      early_structural->start();
-      solver.context.early_structural_ptr = early_structural.get();
     }
 
     auto presolved_sol            = solver.run_solver();
@@ -583,9 +585,9 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
         std::make_unique<mip::early_gpufj_t<i_t, f_t>>(op_problem, settings, early_fj_callback);
       early_gpufj->start();
       CUOPT_LOG_DEBUG("Started early GPUFJ during presolve");
-      early_structural = std::make_unique<mip::early_structural_t<i_t, f_t>>(
+      early_structural = mip::early_structural_t<i_t, f_t>::create(
         op_problem, settings.get_tolerances(), early_fj_callback);
-      early_structural->start();
+      if (early_structural) { early_structural->start(); }
     }
 
     auto constexpr const dual_postsolve = false;
@@ -683,8 +685,8 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
     if (early_structural) {
       early_structural->stop();
       if (early_structural->solution_found()) {
-        CUOPT_LOG_DEBUG("Early %s (original) found incumbent with objective %.6e during presolve",
-                        early_structural->recognized_name(),
+        CUOPT_LOG_DEBUG("Early structural heuristic (original) found incumbent with objective %.6e "
+                        "during presolve",
                         early_structural->get_best_objective());
       }
       early_structural.reset();
