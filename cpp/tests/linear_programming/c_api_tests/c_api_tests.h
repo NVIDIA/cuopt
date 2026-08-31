@@ -82,6 +82,7 @@ cuopt_int_t test_pdlp_precision_mixed(const char* filename,
 
 /* CPU-only execution tests (require env vars CUDA_VISIBLE_DEVICES="" and CUOPT_REMOTE_HOST) */
 cuopt_int_t test_cpu_only_execution(const char* filename);
+cuopt_int_t test_log_callback_remote(const char* filename);
 cuopt_int_t test_cpu_only_mip_execution(const char* filename);
 
 /* CPU-host read/create C API (require CUDA_VISIBLE_DEVICES="", no remote, no solve) */

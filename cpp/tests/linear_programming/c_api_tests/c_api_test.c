@@ -2847,6 +2847,59 @@ DONE:
  * This simulates a CPU host without GPU access.
  * Note: Environment variables must be set before calling this function.
  */
+/* Remote solve must deliver the *server's* log to the user callback, not just
+   the client-side lines. Requires CUOPT_REMOTE_HOST/PORT set by the caller. */
+typedef struct {
+  int calls;
+  int saw_solver_line;
+} remote_log_ctx_t;
+
+static void remote_log_callback(const char* message, void* user_data)
+{
+  remote_log_ctx_t* ctx = (remote_log_ctx_t*)user_data;
+  ctx->calls++;
+  /* Emitted by the solver itself, so in remote mode it can only have come from
+     the server. Client-side lines alone would not contain it. */
+  if (message && strstr(message, "Status:") != NULL) { ctx->saw_solver_line = 1; }
+}
+
+cuopt_int_t test_log_callback_remote(const char* filename)
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuOptSolverSettings settings     = NULL;
+  cuOptSolution solution           = NULL;
+  remote_log_ctx_t ctx             = {0, 0};
+  cuopt_int_t status;
+
+  status = cuOptReadProblem(filename, &problem);
+  if (status != CUOPT_SUCCESS) goto DONE;
+
+  status = cuOptCreateSolverSettings(&settings);
+  if (status != CUOPT_SUCCESS) goto DONE;
+
+  status = cuOptSetLogCallback(settings, remote_log_callback, &ctx);
+  if (status != CUOPT_SUCCESS) goto DONE;
+
+  status = cuOptSolve(problem, settings, &solution);
+  if (status != CUOPT_SUCCESS) goto DONE;
+
+  if (ctx.calls < 1) {
+    printf("Expected remote solve to deliver log lines; got %d calls\n", ctx.calls);
+    status = CUOPT_INVALID_ARGUMENT;
+    goto DONE;
+  }
+  if (!ctx.saw_solver_line) {
+    printf("Remote solve delivered %d lines but none from the server's solver log\n", ctx.calls);
+    status = CUOPT_INVALID_ARGUMENT;
+  }
+
+DONE:
+  if (solution) cuOptDestroySolution(&solution);
+  if (settings) cuOptDestroySolverSettings(&settings);
+  if (problem) cuOptDestroyProblem(&problem);
+  return status;
+}
+
 cuopt_int_t test_cpu_only_execution(const char* filename)
 {
   cuOptOptimizationProblem problem = NULL;

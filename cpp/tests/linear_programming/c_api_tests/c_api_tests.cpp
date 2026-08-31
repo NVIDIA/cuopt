@@ -790,6 +790,13 @@ TEST_F(CpuOnlyWithServerTest, lp_solve)
   EXPECT_EQ(test_cpu_only_execution(lp_file.c_str()), CUOPT_SUCCESS);
 }
 
+TEST_F(CpuOnlyWithServerTest, log_callback_remote)
+{
+  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
+  std::string lp_file = rapidsDatasetRootDir + "/linear_programming/afiro_original.mps";
+  EXPECT_EQ(test_log_callback_remote(lp_file.c_str()), CUOPT_SUCCESS);
+}
+
 TEST_F(CpuOnlyWithServerTest, mip_solve)
 {
   const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
