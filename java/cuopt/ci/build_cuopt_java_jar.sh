@@ -85,7 +85,10 @@ echo "  native library -> ${RESOURCE_DIR}/libcuopt_jni.so"
 
 # rmm and rapids_logger define the exception types cuOpt throws and have no static build, so
 # they ship beside the JNI library, which finds them through its $ORIGIN RPATH.
-for companion in librmm.so librapids_logger.so libtbb.so.12 libnccl.so.2 libcudss.so.0; do
+# libcudss_mtlayer_gomp.so.0 is cuDSS's OpenMP threading backend: cudssSetThreadingLayer
+# dlopen()s it at runtime. Without it that call fails and cuDSS writes the failure straight to
+# the process's native stdout, corrupting Maven Surefire's forked-JVM protocol.
+for companion in librmm.so librapids_logger.so libtbb.so.12 libnccl.so.2 libcudss.so.0 libcudss_mtlayer_gomp.so.0; do
   companion_path="${CUOPT_PREFIX:-}/lib/${companion}"
   if [[ ! -f "${companion_path}" ]]; then
     echo "ERROR: ${companion} not found at ${companion_path}; set CUOPT_PREFIX" >&2

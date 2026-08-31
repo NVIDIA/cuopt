@@ -72,8 +72,22 @@ rapids-print-env
 nvidia-smi
 
 rapids-logger "Running the suite against the packaged JAR"
-cuopt_mvn -B -f "${REPO_ROOT}/java/cuopt/pom.xml" test \
+if ! cuopt_mvn -B -f "${REPO_ROOT}/java/cuopt/pom.xml" test \
   -Ppackaged-jar-tests \
-  "-Dcuopt.jar.path=${CUOPT_JAVA_JAR}"
+  "-Dcuopt.jar.path=${CUOPT_JAVA_JAR}"; then
+  # Surefire's forked-JVM crash diagnostics (e.g. a raw native write to stdout corrupting its
+  # fork-communication channel) land in target/surefire-reports/*.dumpstream and any
+  # hs_err_pid*.log a real JVM crash leaves behind. Neither is printed to the console or
+  # uploaded as an artifact by this job, so a failure here is otherwise a dead end without
+  # reproducing it locally. Print them inline instead.
+  rapids-logger "Test failure -- dumping Surefire fork-crash diagnostics"
+  find "${REPO_ROOT}/java/cuopt/target/surefire-reports" -type f \
+    \( -name '*.dumpstream' -o -name 'hs_err_pid*.log' \) -print0 2>/dev/null |
+    while IFS= read -r -d '' f; do
+      echo "----- ${f} -----"
+      cat "${f}"
+    done
+  exit 1
+fi
 
 rapids-logger "Classifier JAR verified end to end"

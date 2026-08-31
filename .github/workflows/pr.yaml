@@ -548,6 +548,12 @@ jobs:
       arch: ${{ matrix.ARCH }}
       container_image: "rapidsai/ci-conda:26.10-latest"
       script: "ci/test_java_static.sh"
+      # Surefire fork-crash diagnostics (dumpstream/hs_err files) are also printed inline by
+      # the script on failure, but keep the raw reports downloadable too -- the JVM sometimes
+      # crashes without a clean dumpstream, and per-matrix-entry artifacts survive independently
+      # of how much of the console log GitHub keeps.
+      artifact-name: "cuopt_java_static_test_${{ matrix.ARCH }}_cu${{ matrix.CUDA_MAJOR }}"
+      file_to_upload: "java/cuopt/target/surefire-reports/"
 
   java-static-gather:
     needs: [java-static-build]

@@ -24,8 +24,15 @@ import java.nio.file.StandardCopyOption;
 final class NativeLibraryLoader {
   private static final String LIBRARY_NAME = "cuopt_jni";
 
-  /** rmm, rapids_logger and TBB have no static build, so they travel beside the JNI library. */
-  private static final String[] COMPANION_LIBRARIES = {"librmm.so", "librapids_logger.so", "libtbb.so.12", "libnccl.so.2", "libcudss.so.0"};
+  /**
+   * rmm, rapids_logger and TBB have no static build, so they travel beside the JNI library.
+   * libcudss_mtlayer_gomp.so.0 is cuDSS's OpenMP threading backend, which cudssSetThreadingLayer
+   * dlopen()s at runtime rather than linking directly; without it that call fails and cuDSS
+   * writes the failure straight to the process's native stdout, corrupting Maven Surefire's
+   * forked-JVM protocol exactly like the raw writes NativeLogSink was built to intercept -- but
+   * from a source outside cuopt's own logger entirely, so no logging fix here can catch it.
+   */
+  private static final String[] COMPANION_LIBRARIES = {"librmm.so", "librapids_logger.so", "libtbb.so.12", "libnccl.so.2", "libcudss.so.0", "libcudss_mtlayer_gomp.so.0"};
 
   private NativeLibraryLoader() {}
 
