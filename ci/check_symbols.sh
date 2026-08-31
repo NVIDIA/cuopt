@@ -100,9 +100,8 @@ for sym in "${required_symbols[@]}"; do
     fi
 done
 
-# The logger keeps one instance per component library only while its state stays hidden --
-# nothing fails to build or test if it becomes visible, since glibc silently merges it back
-# into one via STB_GNU_UNIQUE. Assert it's absent from the dynamic symbol table.
+# Each component library keeps its own logger only while this state stays hidden; exporting it
+# silently merges them back into one. Nothing else catches that.
 logger_state_symbols=(
     "cuopt::default_logger()"
     "cuopt::global_log_buffer()"
@@ -115,9 +114,8 @@ for sym in "${logger_state_symbols[@]}"; do
     echo "Checking that logger state '${sym}' is NOT exported..."
     if grep -qF "${sym}" <<< "${demangled_dyn_syms}"; then
         echo "ERROR: Logger state '${sym}' is exported from ${LIBRARY}."
-        echo "ERROR: Per-component loggers silently collapse into one shared instance when this"
-        echo "ERROR: state is visible. Check that cpp/src/utilities/logger.hpp's namespace is not"
-        echo "ERROR: marked CUOPT_EXPORT and that hidden visibility is still set on the target."
+        echo "ERROR: Per-component loggers collapse into one. Check that logger.hpp's namespace"
+        echo "ERROR: is not marked CUOPT_EXPORT and hidden visibility is still set on the target."
         failed=1
     fi
 done
