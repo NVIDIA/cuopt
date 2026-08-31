@@ -570,7 +570,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     pdlp_settings.time_limit              = lp_time_limit;
     pdlp_settings.first_primal_feasible   = false;
     pdlp_settings.concurrent_halt         = &global_concurrent_halt;
-    pdlp_settings.method                  = method_t::Concurrent;
+    pdlp_settings.method                  = context.settings.method;
     pdlp_settings.inside_mip              = true;
     pdlp_settings.pdlp_solver_mode        = pdlp_solver_mode_t::Stable2;
     pdlp_settings.num_gpus                = context.settings.num_gpus;
