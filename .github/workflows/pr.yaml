@@ -23,6 +23,7 @@ jobs:
       - checks
       - conda-cpp-build
       - conda-cpp-tests
+      - java-build
       - conda-python-build
       - conda-python-tests
       - docs-build
@@ -111,6 +112,7 @@ jobs:
           - '!README.md'
           - '!SECURITY.md'
           - '!ci/build_wheel*.sh'
+          - '!ci/build_java.sh'
           - '!ci/check_style.sh'
           - '!ci/docker/**'
           - '!ci/release/**'
@@ -118,6 +120,7 @@ jobs:
           - '!ci/run_ctests.sh'
           - '!ci/run-vale.sh'
           - '!ci/test_cpp*.sh'
+          - '!ci/test_java.sh'
           - '!ci/test_notebooks.sh'
           - '!ci/test_python.sh'
           - '!ci/test_self_hosted_service.sh'
@@ -125,6 +128,7 @@ jobs:
           - '!ci/thirdparty-testing/**'
           - '!container-builder/**'
           - '!helmchart/**'
+          - '!java/**'
           - '!ngc/**'
           - '!sonar-project.properties'
           - '!sonarqube/**'
@@ -173,6 +177,7 @@ jobs:
           - '!SECURITY.md'
           - '!agents/**'
           - '!ci/build_docs.sh'
+          - '!ci/build_java.sh'
           - '!ci/build_python.sh'
           - '!ci/build_wheel*.sh'
           - '!ci/check_style.sh'
@@ -180,6 +185,7 @@ jobs:
           - '!ci/release/**'
           - '!ci/run-vale.sh'
           - '!ci/test_python.sh'
+          - '!ci/test_java.sh'
           - '!ci/test_self_hosted_service.sh'
           - '!ci/test_wheel*.sh'
           - '!ci/thirdparty-testing/**'
@@ -190,6 +196,7 @@ jobs:
           - '!gemini-extension.json'
           - '!helmchart/**'
           - '!img/**'
+          - '!java/**'
           - '!ngc/**'
           - '!notebooks/**'
           - '!python/**'
@@ -203,6 +210,14 @@ jobs:
           - '!sonarqube/**'
           - '!ucf/**'
           - '!utilities/**'
+        test_java:
+          - 'java/**'
+          - 'ci/build_java.sh'
+          - 'ci/test_java.sh'
+          - 'dependencies.yaml'
+          - '.github/workflows/pr.yaml'
+          - '.github/workflows/build.yaml'
+          - '.github/workflows/test.yaml'
         test_python_conda:
           - '**'
           - '!**/*.md'
@@ -246,12 +261,14 @@ jobs:
           - '!SECURITY.md'
           - '!agents/**'
           - '!ci/build_docs.sh'
+          - '!ci/build_java.sh'
           - '!ci/build_wheel*.sh'
           - '!ci/check_style.sh'
           - '!ci/docker/**'
           - '!ci/release/**'
           - '!ci/run-vale.sh'
           - '!ci/test_self_hosted_service.sh'
+          - '!ci/test_java.sh'
           - '!ci/test_wheel*.sh'
           - '!ci/thirdparty-testing/**'
           - '!ci/utils/sync_skills_version.sh'
@@ -261,6 +278,7 @@ jobs:
           - '!gemini-extension.json'
           - '!helmchart/**'
           - '!img/**'
+          - '!java/**'
           - '!ngc/**'
           - '!notebooks/**'
           - '!skills/**/SKILL.md'
@@ -318,12 +336,14 @@ jobs:
           - '!ci/build_cpp.sh'
           - '!ci/build_docs.sh'
           - '!ci/build_python.sh'
+          - '!ci/build_java.sh'
           - '!ci/check_style.sh'
           - '!ci/docker/**'
           - '!ci/release/**'
           - '!ci/run_ctests.sh'
           - '!ci/run-vale.sh'
           - '!ci/test_python.sh'
+          - '!ci/test_java.sh'
           - '!ci/thirdparty-testing/**'
           - '!ci/utils/sync_skills_version.sh'
           - '!ci/utils/validate_skills.sh'
@@ -332,6 +352,7 @@ jobs:
           - '!gemini-extension.json'
           - '!helmchart/**'
           - '!img/**'
+          - '!java/**'
           - '!ngc/**'
           - '!notebooks/**'
           - '!skills/**/SKILL.md'
@@ -353,9 +374,10 @@ jobs:
       ignored_pr_jobs: "pr-test-summary"
   conda-cpp-build:
     needs: [build-details, checks, compute-matrix-filters, changed-files]
-    # Consumed by conda-cpp-tests, conda-python-build, and (transitively) docs-build.
+    # Consumed by C++, Java, Python, and docs jobs.
     if: >-
       fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp ||
+      fromJSON(needs.changed-files.outputs.changed_file_groups).test_java ||
       fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_conda ||
       fromJSON(needs.changed-files.outputs.changed_file_groups).build_docs
     permissions:
@@ -455,6 +477,27 @@ jobs:
       artifact-name: "cuopt_docs"
       container_image: "rapidsai/ci-conda:26.10-latest"
       script: "ci/build_docs.sh"
+  java-build:
+    needs: [conda-cpp-build, changed-files]
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    secrets: inherit # zizmor: ignore[secrets-inherit]
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
+    if: >-
+      fromJSON(needs.changed-files.outputs.changed_file_groups).test_java ||
+      fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
+    with:
+      build_type: pull-request
+      node_type: "gpu-l4-latest-1"
+      arch: "amd64"
+      container_image: "rapidsai/ci-conda:26.10-latest"
+      script: "ci/test_java.sh"
+      artifact-name: "cuopt-java"
+      file_to_upload: "java/cuopt/target/"
   wheel-build-libcuopt:
     needs: [build-details, compute-matrix-filters, changed-files]
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels

@@ -519,8 +519,12 @@ class iteration_data_t {
       // Apply the adaptive-regularization policy before form_augmented / initial
       // factorization so an explicit enable/disable is honored from the start.
       const bool adaptive_reg = should_use_adaptive_regularization(settings, has_soc);
-      primal_perturb          = has_soc ? 1e-8 : 1e-6;
-      dual_perturb            = adaptive_reg ? 1e-8 : 0;
+      primal_perturb          = (settings.barrier_primal_regularization >= 0)
+                                  ? settings.barrier_primal_regularization
+                                  : (has_soc ? 1e-8 : 1e-6);
+      dual_perturb            = (settings.barrier_dual_regularization >= 0)
+                                  ? settings.barrier_dual_regularization
+                                  : (adaptive_reg ? 1e-8 : 0);
 
       if (has_soc) {
         // SOCP always use the augmented KKT; skip dense-column / ADAT heuristics.
@@ -4334,8 +4338,12 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
     const i_t iteration_limit = settings.iteration_limit;
 
     // Adaptive regularization for the augmented system.
-    f_t dual_perturb   = adaptive_regularization ? 1e-8 : 0;
-    f_t primal_perturb = data.has_cones() ? 1e-8 : 1e-6;
+    f_t dual_perturb   = (settings.barrier_dual_regularization >= 0)
+                           ? settings.barrier_dual_regularization
+                           : (adaptive_regularization ? 1e-8 : 0);
+    f_t primal_perturb = (settings.barrier_primal_regularization >= 0)
+                           ? settings.barrier_primal_regularization
+                           : (data.has_cones() ? 1e-8 : 1e-6);
 
     while (iter < iteration_limit) {
       raft::common::nvtx::range fun_scope("Barrier: iteration");
