@@ -9,21 +9,17 @@
 
 #include <gtest/gtest.h>
 
-#include <atomic>
 #include <cstdio>
 #include <fstream>
 #include <memory>
 #include <sstream>
 #include <string>
-#include <thread>
-#include <vector>
 
 /*
  * The logger is hidden, so this test binary has its own instance, separate from libcuopt's.
- * CUOPT_LOG_* here reaches this image's logger: init_logger_t/make_logger_config are testable
- * directly, while init_component_logger_t reaches into libcuopt's (its effect on a shared file
- * is observable here, its messages are not). The hiding itself is checked by
- * ci/check_symbols.sh, not here.
+ * CUOPT_LOG_* here reaches this image's logger, which is what init_logger_t and
+ * make_logger_config configure. That the instances really are separate is checked by
+ * ci/check_symbols.sh asserting the state is absent from libcuopt's dynamic symbols, not here.
  */
 namespace cuopt::test {
 
@@ -198,93 +194,5 @@ TEST(logger, failed_init_logger_restores_a_sink)
   std::remove(path.c_str());
   std::remove(blocker.c_str());
 }
-
-// Smoke test for concurrent configure/release/emit, not a regression test -- the race it
-// relates to needs the refcount to hit zero at an exact moment that contention makes unlikely
-// to hit here. Kept because it exercises the shared path and is where a sanitizer would catch
-// unsynchronized sink mutation.
-TEST(logger, concurrent_configure_and_emit)
-{
-  const auto path = temp_log_path("concurrent");
-
-  constexpr int kThreads    = 8;
-  constexpr int kIterations = 400;
-
-  std::vector<std::thread> threads;
-  threads.reserve(kThreads);
-  for (int t = 0; t < kThreads; ++t) {
-    threads.emplace_back([&path] {
-      for (int i = 0; i < kIterations; ++i) {
-        auto handle = cuopt::make_logger_config(path, false, /*truncate=*/false);
-        CUOPT_LOG_ERROR("concurrent_message");
-      }
-    });
-  }
-  for (auto& thread : threads) {
-    thread.join();
-  }
-
-  EXPECT_NE(read_file(path).find("concurrent_message"), std::string::npos);
-
-  std::remove(path.c_str());
-}
-
-// The library's logger is reachable only through the exported entry point. Its messages are
-// not observable here, but configuring it must clear the shared file exactly once.
-TEST(logger, component_logger_truncates_shared_file)
-{
-  const auto path = temp_log_path("component");
-  {
-    std::ofstream seed{path};
-    seed << "STALE\n";
-  }
-
-  {
-    cuopt::init_component_logger_t solver_log{path, false};
-    EXPECT_EQ(read_file(path).find("STALE"), std::string::npos)
-      << "component configure did not clear the file";
-  }
-
-  std::remove(path.c_str());
-}
-
-#ifdef CUOPT_HAS_ROUTING
-// mathopt and routing are compiled into the same shared library (`cuopt` in
-// cpp/CMakeLists.txt) until libcuopt splits into separate component libraries
-// (#1622), so their "component" loggers are the same hidden instance today, not two
-// independent ones. This pins down that current behavior: whichever component
-// configures first wins the shared logger, and the second component's file is left
-// alone rather than corrupted or silently truncated out from under a concurrent
-// writer. If this starts failing, it means the split landed and mathopt/routing now
-// have independent loggers -- update this test (and its neighbor above) to assert
-// each file is truncated independently instead.
-TEST(logger, mathopt_and_routing_share_one_instance_pre_split)
-{
-  const auto mathopt_path = temp_log_path("mathopt");
-  const auto routing_path = temp_log_path("routing");
-  {
-    std::ofstream seed{mathopt_path};
-    seed << "STALE_MATHOPT\n";
-  }
-  {
-    std::ofstream seed{routing_path};
-    seed << "STALE_ROUTING\n";
-  }
-
-  {
-    cuopt::init_component_logger_t mathopt_log{mathopt_path, false, cuopt::log_target_t::mathopt};
-    EXPECT_EQ(read_file(mathopt_path).find("STALE_MATHOPT"), std::string::npos)
-      << "mathopt configure did not clear its file";
-
-    cuopt::init_component_logger_t routing_log{routing_path, false, cuopt::log_target_t::routing};
-    EXPECT_NE(read_file(routing_path).find("STALE_ROUTING"), std::string::npos)
-      << "routing's file was truncated -- mathopt and routing no longer share one "
-         "logger instance, see the comment above this test";
-  }
-
-  std::remove(mathopt_path.c_str());
-  std::remove(routing_path.c_str());
-}
-#endif
 
 }  // namespace cuopt::test

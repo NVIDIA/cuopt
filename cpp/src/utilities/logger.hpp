@@ -31,8 +31,12 @@
  * visibility would collapse every library back into one shared logger. Do not mark this
  * namespace CUOPT_EXPORT.
  *
- * Callers outside the libraries cannot reach a hidden logger, so each component exports a
- * configure entry point instead -- see log_target_t and init_component_logger_t below.
+ * Each solver already builds an init_logger_t from its own settings on entry, so passing a
+ * log file through settings configures that library's logger. An executable linking cuopt
+ * has a separate logger for its own messages, and when both write the same file the solver
+ * would truncate it mid-solve and discard what the executable had already written. The one
+ * exported entry point below lets the executable establish the configuration first, so the
+ * solver's own initializer reuses it instead of replacing it.
  */
 namespace cuopt {
 
@@ -178,9 +182,9 @@ inline void apply_logger_config(const std::string& log_file, bool log_to_console
   }
 }
 
-// Ref-counted initializer for the logger of the image that constructs it. Library code uses
-// this directly (routing configures routing's logger, mathopt configures mathopt's); callers
-// outside the libraries should use init_component_logger_t to reach a library's instead.
+// Ref-counted initializer for the logger of the image that constructs it: constructed inside
+// cuopt_routing it configures routing's logger, inside cuopt_mathopt it configures mathopt's,
+// and in an executable it configures that executable's own.
 class init_logger_t {
   std::shared_ptr<void> guard_;
 
@@ -190,40 +194,18 @@ class init_logger_t {
 
 inline std::mutex g_guard_mutex;
 
-// Bumped for every configuration applied. A guard resets the logger only if its own
-// configuration is still the current one.
-inline uint64_t& active_config_generation()
-{
-  static uint64_t generation = 0;
-  return generation;
-}
-
-// Guard whose destruction resets the logger, if its configuration is still current. The
-// generation check matters: a guard's refcount reaching zero expires g_active_guard *before*
-// this destructor runs, so another thread can install a new configuration in that window, and
-// without the check this destructor would reset the logger out from under it.
+// Guard object whose destructor resets the logger
 struct logger_config_guard {
-  explicit logger_config_guard(uint64_t generation) : generation_(generation) {}
-
-  ~logger_config_guard()
-  {
-    std::lock_guard<std::mutex> lock(g_guard_mutex);
-    if (active_config_generation() != generation_) { return; }
-    cuopt::reset_default_logger();
-  }
-
- private:
-  uint64_t generation_;
+  ~logger_config_guard() { cuopt::reset_default_logger(); }
 };
 
 // Weak reference to detect if any init_logger_t instance is still alive
 inline std::weak_ptr<logger_config_guard> g_active_guard;
 
-// Applies a configuration and returns a handle that keeps it alive. Single lifetime mechanism
-// for this image's logger: init_logger_t and the exported per-component configure_logging both
-// go through it, so a caller inside the library and one outside share one refcount, and the
-// logger resets only when the last handle drops -- which is what stops the solver
-// reconfiguring mid-run and re-truncating a log file the caller had already written to.
+// Applies a configuration and returns a handle that keeps it alive. The logger resets only
+// when the last handle drops, so nested initializers share one configuration -- which is what
+// stops an inner solver reconfiguring mid-run and re-truncating a log file the outer caller
+// had already written to.
 inline std::shared_ptr<void> make_logger_config(const std::string& log_file,
                                                 bool log_to_console,
                                                 bool truncate)
@@ -242,7 +224,7 @@ inline std::shared_ptr<void> make_logger_config(const std::string& log_file,
     throw;
   }
 
-  auto guard     = std::make_shared<logger_config_guard>(++active_config_generation());
+  auto guard     = std::make_shared<logger_config_guard>();
   g_active_guard = guard;
   return guard;
 }
@@ -252,74 +234,16 @@ inline init_logger_t::init_logger_t(std::string log_file, bool log_to_console, b
 {
 }
 
-/**
- * @brief Which component library's logger to configure.
- */
-enum class log_target_t {
-  mathopt,  ///< LP / MILP / QP, in cuopt_mathopt
-  routing   ///< VRP, in cuopt_routing
-};
-
 }  // namespace cuopt
 
-// Exported per-component entry points. Each is defined in exactly one component library, and
-// configures that library's own hidden logger -- the only logging symbols crossing a boundary.
+// Configures cuopt_mathopt's logger. The only logging symbol that crosses a library boundary,
+// and it exists for one caller: an executable that writes the same log file as the solver and
+// must configure it before the solver's own initializer would truncate it.
 namespace cuopt::mathematical_optimization {
 CUOPT_EXPORT std::shared_ptr<void> configure_logging(const std::string& log_file,
                                                      bool log_to_console,
                                                      bool truncate);
 }  // namespace cuopt::mathematical_optimization
-
-#ifdef CUOPT_HAS_ROUTING
-namespace cuopt::routing {
-CUOPT_EXPORT std::shared_ptr<void> configure_logging(const std::string& log_file,
-                                                     bool log_to_console,
-                                                     bool truncate);
-}  // namespace cuopt::routing
-#endif
-
-namespace cuopt {
-
-// Configures a component library's logger from outside that library. The CLI, tests and
-// Python bindings each hold their own logger and need to reach into the solver's; this
-// dispatches to the component's exported entry point instead of init_logger_t. Defaults to
-// mathopt because every external caller today is LP or MILP; routing is opted in explicitly.
-class init_component_logger_t {
-  // Same refcount init_logger_t uses, so a caller here and library code inside the component
-  // cannot tear down each other's configuration.
-  std::shared_ptr<void> handle_;
-
- public:
-  explicit init_component_logger_t(const std::string& log_file,
-                                   bool log_to_console,
-                                   log_target_t target = log_target_t::mathopt,
-                                   bool truncate       = true)
-  {
-    switch (target) {
-      case log_target_t::routing:
-#ifdef CUOPT_HAS_ROUTING
-        handle_ = cuopt::routing::configure_logging(log_file, log_to_console, truncate);
-#else
-        // Silently doing nothing here would look like a working logger that drops every
-        // message, and the cause -- a SKIP_ROUTING_BUILD mismatch -- would be invisible.
-        throw std::runtime_error(
-          "cuOpt was built with SKIP_ROUTING_BUILD, so routing's logger does not exist and "
-          "log_target_t::routing cannot be configured.");
-#endif
-        break;
-      case log_target_t::mathopt:
-      default:
-        handle_ =
-          cuopt::mathematical_optimization::configure_logging(log_file, log_to_console, truncate);
-        break;
-    }
-  }
-
-  init_component_logger_t(const init_component_logger_t&)            = delete;
-  init_component_logger_t& operator=(const init_component_logger_t&) = delete;
-};
-
-}  // namespace cuopt
 
 namespace cuopt::detail {
 

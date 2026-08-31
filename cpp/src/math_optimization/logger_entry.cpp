@@ -7,7 +7,6 @@
 
 #include <utilities/logger.hpp>
 
-// Compiled into cuopt_mathopt only, so this reaches mathopt's hidden logger instance.
 namespace cuopt::mathematical_optimization {
 
 std::shared_ptr<void> configure_logging(const std::string& log_file,
