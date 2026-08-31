@@ -4019,16 +4019,20 @@ lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
   f_t& primal_residual_norm,
   f_t& dual_residual_norm,
   f_t& complementarity_residual_norm,
+  f_t& objective_gap,
   f_t& relative_primal_residual,
   f_t& relative_dual_residual,
   f_t& relative_complementarity_residual,
+  f_t& relative_objective_gap,
   lp_solution_t<i_t, f_t>& solution)
 {
   raft::common::nvtx::range fun_scope("Barrier: check_for_suboptimal_solution");
+  bool small_gap = (!data.has_cones() && data.Q.n == 0) ||
+                   relative_objective_gap < settings.barrier_relaxed_relative_objective_gap_tol;
   if (relative_primal_residual < settings.barrier_relaxed_feasibility_tol &&
       relative_dual_residual < settings.barrier_relaxed_optimality_tol &&
       relative_complementarity_residual < settings.barrier_relaxed_complementarity_tol &&
-      primal_objective == primal_objective) {
+      small_gap && primal_objective == primal_objective) {
     raft::copy(data.x.data(), data.d_x_.data(), data.d_x_.size(), stream_view_);
     raft::copy(data.y.data(), data.d_y_.data(), data.d_y_.size(), stream_view_);
     raft::copy(data.z.data(), data.d_z_.data(), data.d_z_.size(), stream_view_);
@@ -4053,12 +4057,16 @@ lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
     settings.log.printf("Complementarity gap  (abs/rel): %8.2e/%8.2e\n",
                         complementarity_residual_norm,
                         relative_complementarity_residual);
+    settings.log.printf(
+      "Objective gap        (abs/rel): %8.2e/%8.2e\n", objective_gap, relative_objective_gap);
     settings.log.printf("\n");
     return lp_status_t::OPTIMAL;  // TODO: Barrier should probably have a separate suboptimal
                                   // status
   }
 
   f_t primal_objective_save = data.c.inner_product(data.x_save);
+  f_t dual_objective_save =
+    data.b.inner_product(data.y_save) - data.restrict_u_.inner_product(data.v_save);
   if (data.Q.n > 0) {
     dense_vector_t<i_t, f_t> Qx_save(data.Q.n);
     dense_vector_t<i_t, f_t> x_save_host(data.Q.n);
@@ -4066,11 +4074,22 @@ lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
     matrix_vector_multiply(data.Q, 1.0, x_save_host, 0.0, Qx_save);
     f_t quad_objective = 0.5 * x_save_host.inner_product(Qx_save);
     primal_objective_save += quad_objective;
+    dual_objective_save -= quad_objective;
   }
+
+  f_t objective_gap_save         = std::abs(primal_objective_save - dual_objective_save);
+  f_t user_primal_objective_save = compute_user_objective(lp, primal_objective_save);
+  f_t relative_objective_gap_save =
+    objective_gap_save /
+    (1.0 + std::min(std::abs(user_primal_objective_save), std::abs(primal_objective_save)));
+  bool small_gap_save =
+    (!data.has_cones() && data.Q.n == 0) ||
+    relative_objective_gap_save < settings.barrier_relaxed_relative_objective_gap_tol;
 
   if (data.relative_primal_residual_save < settings.barrier_relaxed_feasibility_tol &&
       data.relative_dual_residual_save < settings.barrier_relaxed_optimality_tol &&
-      data.relative_complementarity_residual_save < settings.barrier_relaxed_complementarity_tol) {
+      data.relative_complementarity_residual_save < settings.barrier_relaxed_complementarity_tol &&
+      small_gap_save) {
     settings.log.printf("Restoring previous solution\n");
     data.restore_saved_iterate();
     data.to_solution(lp,
@@ -4093,14 +4112,19 @@ lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
     settings.log.printf("Complementarity gap  (abs/rel): %8.2e/%8.2e\n",
                         data.complementarity_residual_norm_save,
                         data.relative_complementarity_residual_save);
+    settings.log.printf("Objective gap        (abs/rel): %8.2e/%8.2e\n",
+                        objective_gap_save,
+                        relative_objective_gap_save);
     settings.log.printf("\n");
     return lp_status_t::OPTIMAL;  // TODO: Barrier should probably have a separate suboptimal
                                   // status
   } else {
-    settings.log.printf("Primal residual %.2e dual residual %.2e complementarity residual %.2e\n",
-                        relative_primal_residual,
-                        relative_dual_residual,
-                        relative_complementarity_residual);
+    settings.log.printf(
+      "Primal residual %.2e dual residual %.2e complementarity residual %.2e objective gap %.2e\n",
+      relative_primal_residual,
+      relative_dual_residual,
+      relative_complementarity_residual,
+      relative_objective_gap);
   }
   settings.log.printf("Search direction computation failed\n");
   return lp_status_t::NUMERICAL_ISSUES;
@@ -4240,14 +4264,14 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
       matrix_vector_multiply(data.Q, 1.0, data.x, 0.0, Qx);
       quad_objective = 0.5 * data.x.inner_product(Qx);
     }
-    f_t primal_objective = data.c.inner_product(data.x) + quad_objective;
+    f_t primal_objective      = data.c.inner_product(data.x) + quad_objective;
+    f_t user_primal_objective = compute_user_objective(lp, primal_objective);
 
     f_t relative_primal_residual = primal_residual_norm / (1.0 + norm_b);
     f_t relative_dual_residual   = dual_residual_norm / (1.0 + norm_c);
     f_t relative_complementarity_residual =
       complementarity_residual_norm /
-      (1.0 + std::min(std::abs(compute_user_objective(lp, primal_objective)),
-                      std::abs(primal_objective)));
+      (1.0 + std::min(std::abs(user_primal_objective), std::abs(primal_objective)));
 
     dense_vector_t<i_t, f_t> upper(lp.upper);
     data.gather_upper_bounds(upper, data.restrict_u_);
@@ -4256,11 +4280,11 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
       data.d_restrict_u_.data(), data.restrict_u_.data(), data.restrict_u_.size(), stream_view_);
     f_t dual_objective =
       data.b.inner_product(data.y) - data.restrict_u_.inner_product(data.v) - quad_objective;
+    f_t user_dual_objective = compute_user_objective(lp, dual_objective);
 
-    f_t objective_gap_abs = std::abs(primal_objective - dual_objective);
-    f_t objective_gap_rel =
-      objective_gap_abs /
-      std::max(f_t(1), std::min(std::abs(primal_objective), std::abs(dual_objective)));
+    f_t objective_gap, relative_objective_gap;
+    compute_objective_gap(
+      lp, primal_objective, dual_objective, objective_gap, relative_objective_gap);
 
     data.w_save = data.w;
     data.x_save = data.x;
@@ -4277,16 +4301,19 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
     float64_t elapsed_time = toc(start_time);
     settings.log.printf("%3d   %+.12e %+.12e %.2e %.2e %.2e %.1f\n",
                         iter,
-                        compute_user_objective(lp, primal_objective),
-                        compute_user_objective(lp, dual_objective),
+                        user_primal_objective,
+                        user_dual_objective,
                         relative_primal_residual,
                         relative_dual_residual,
                         relative_complementarity_residual,
                         elapsed_time);
 
-    bool converged = primal_residual_norm < settings.barrier_relative_feasibility_tol &&
-                     dual_residual_norm < settings.barrier_relative_optimality_tol &&
-                     complementarity_residual_norm < settings.barrier_relative_complementarity_tol;
+    bool small_gap = (!data.has_cones() && data.Q.n == 0) ||
+                     relative_objective_gap < settings.barrier_relaxed_relative_objective_gap_tol;
+    bool converged =
+      primal_residual_norm < settings.barrier_relative_feasibility_tol &&
+      dual_residual_norm < settings.barrier_relative_optimality_tol &&
+      complementarity_residual_norm < settings.barrier_relative_complementarity_tol && small_gap;
 
     const i_t iteration_limit = settings.iteration_limit;
 
@@ -4335,9 +4362,11 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
                                              primal_residual_norm,
                                              dual_residual_norm,
                                              complementarity_residual_norm,
+                                             objective_gap,
                                              relative_primal_residual,
                                              relative_dual_residual,
                                              relative_complementarity_residual,
+                                             relative_objective_gap,
                                              solution);
       }
       if (toc(start_time) > settings.time_limit) {
@@ -4375,9 +4404,11 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
                                              primal_residual_norm,
                                              dual_residual_norm,
                                              complementarity_residual_norm,
+                                             objective_gap,
                                              relative_primal_residual,
                                              relative_dual_residual,
                                              relative_complementarity_residual,
+                                             relative_objective_gap,
                                              solution);
       }
       data.has_factorization = false;
@@ -4404,17 +4435,15 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
 
       compute_primal_dual_objective(data, primal_objective, dual_objective);
 
-      relative_primal_residual = primal_residual_norm / (1.0 + norm_b);
-      relative_dual_residual   = dual_residual_norm / (1.0 + norm_c);
+      f_t user_primal_objective = compute_user_objective(lp, primal_objective);
+      relative_primal_residual  = primal_residual_norm / (1.0 + norm_b);
+      relative_dual_residual    = dual_residual_norm / (1.0 + norm_c);
       relative_complementarity_residual =
         complementarity_residual_norm /
-        (1.0 + std::min(std::abs(compute_user_objective(lp, primal_objective)),
-                        std::abs(primal_objective)));
+        (1.0 + std::min(std::abs(user_primal_objective), std::abs(primal_objective)));
 
-      objective_gap_abs = std::abs(primal_objective - dual_objective);
-      objective_gap_rel =
-        objective_gap_abs /
-        std::max(f_t(1), std::min(std::abs(primal_objective), std::abs(dual_objective)));
+      compute_objective_gap(
+        lp, primal_objective, dual_objective, objective_gap, relative_objective_gap);
 
       if (relative_primal_residual < settings.barrier_relaxed_feasibility_tol &&
           relative_dual_residual < settings.barrier_relaxed_optimality_tol &&
@@ -4462,9 +4491,11 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
                                              primal_residual_norm,
                                              dual_residual_norm,
                                              complementarity_residual_norm,
+                                             objective_gap,
                                              relative_primal_residual,
                                              relative_dual_residual,
                                              relative_complementarity_residual,
+                                             relative_objective_gap,
                                              solution);
       }
 
@@ -4482,7 +4513,8 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
       bool small_gap =
         relative_complementarity_residual < settings.barrier_relative_complementarity_tol;
       bool small_objective_gap =
-        !data.has_cones() || objective_gap_rel < settings.barrier_relaxed_complementarity_tol;
+        (!data.has_cones() && data.Q.n == 0) ||
+        relative_objective_gap < settings.barrier_relative_objective_gap_tol;
 
       converged = primal_feasible && dual_feasible && small_gap && small_objective_gap;
 
@@ -4500,6 +4532,8 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
         settings.log.printf("Complementarity gap  (abs/rel): %8.2e/%8.2e\n",
                             complementarity_residual_norm,
                             relative_complementarity_residual);
+        settings.log.printf(
+          "Objective gap        (abs/rel): %8.2e/%8.2e\n", objective_gap, relative_objective_gap);
         settings.log.printf("\n");
         raft::copy(data.x.data(), data.d_x_.data(), data.d_x_.size(), stream_view_);
         raft::copy(data.y.data(), data.d_y_.data(), data.d_y_.size(), stream_view_);
@@ -4534,9 +4568,11 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
                                                primal_residual_norm,
                                                dual_residual_norm,
                                                complementarity_residual_norm,
+                                               objective_gap,
                                                relative_primal_residual,
                                                relative_dual_residual,
                                                relative_complementarity_residual,
+                                               relative_objective_gap,
                                                solution);
         }
       }

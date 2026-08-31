@@ -48,9 +48,11 @@ struct simplex_solver_settings_t {
       barrier_relative_feasibility_tol(1e-8),
       barrier_relative_optimality_tol(1e-8),
       barrier_relative_complementarity_tol(1e-8),
+      barrier_relative_objective_gap_tol(1e-6),
       barrier_relaxed_feasibility_tol(1e-4),
       barrier_relaxed_optimality_tol(1e-4),
       barrier_relaxed_complementarity_tol(1e-4),
+      barrier_relaxed_relative_objective_gap_tol(1e-4),
       cut_off(std::numeric_limits<f_t>::infinity()),
       steepest_edge_ratio(0.5),
       steepest_edge_primal_tol(1e-9),
@@ -144,9 +146,12 @@ struct simplex_solver_settings_t {
   f_t barrier_relative_optimality_tol;   // Relative optimality tolerance for barrier method
   f_t
     barrier_relative_complementarity_tol;   // Relative complementarity tolerance for barrier method
+  f_t barrier_relative_objective_gap_tol;   // Relative objective gap tolerance for barrier method
   f_t barrier_relaxed_feasibility_tol;      // Relative feasibility tolerance for barrier method
   f_t barrier_relaxed_optimality_tol;       // Relative optimality tolerance for barrier method
   f_t barrier_relaxed_complementarity_tol;  // Relative complementarity tolerance for barrier method
+  f_t barrier_relaxed_relative_objective_gap_tol;  // Relative objective gap tolerance for barrier
+                                                   // method
   f_t cut_off;  // If the dual objective is greater than the cutoff we stop
   f_t
     steepest_edge_ratio;  // the ratio of computed steepest edge mismatch from updated steepest edge
