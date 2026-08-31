@@ -15,6 +15,7 @@
 
 #include <mip_heuristics/mip_constants.hpp>
 
+#include <utilities/device_scalar_init.hpp>
 #include <utilities/unique_pinned_ptr.hpp>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
@@ -56,8 +57,8 @@ adaptive_step_size_strategy_t<i_t, f_t>::adaptive_step_size_strategy_t(
     interaction_{climber_strategies.size(), stream_view_},
     norm_squared_delta_primal_{climber_strategies.size(), stream_view_},
     norm_squared_delta_dual_{climber_strategies.size(), stream_view_},
-    reusable_device_scalar_value_1_{f_t(1.0), stream_view_},
-    reusable_device_scalar_value_0_{f_t(0.0), stream_view_},
+    reusable_device_scalar_value_1_{one_v<f_t>, stream_view_},
+    reusable_device_scalar_value_0_{zero_v<f_t>, stream_view_},
     dot_product_storage(0, stream_view_),
     graph(stream_view_, is_legacy_batch_mode),
     climber_strategies_(climber_strategies),
