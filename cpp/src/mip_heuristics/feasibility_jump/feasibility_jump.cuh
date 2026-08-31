@@ -17,6 +17,7 @@
 #include <mip_heuristics/solver.cuh>
 #include <mip_heuristics/utils.cuh>
 
+#include <utilities/device_scalar_init.hpp>
 #include <utilities/event_handler.cuh>
 #include <utilities/manual_cuda_graph.cuh>
 
@@ -74,6 +75,10 @@ struct fj_hyper_parameters_t {
 
   double small_move_tabu_threshold = 1e-6;
   int small_move_tabu_tenure       = 4;
+
+  int two_opt_max_rows     = 4;
+  int two_opt_max_row_vars = 256;
+  int two_opt_max_pairs    = 256;
 
   // load-balancing related settings
   int old_codepath_total_var_to_relvar_ratio_threshold = 200;
@@ -199,6 +204,9 @@ template <typename i_t, typename f_t>
 struct fj_cpu_climber_t;
 
 template <typename i_t, typename f_t>
+class probing_cache_t;
+
+template <typename i_t, typename f_t>
 class fj_t {
  public:
   using move_score_t      = fj_staged_score_t;
@@ -215,6 +223,7 @@ class fj_t {
     const std::vector<f_t>& right_weights,
     f_t objective_weight,
     std::atomic<bool>& preemption_flag,
+    const probing_cache_t<i_t, f_t>* probing_cache,
     fj_settings_t settings = fj_settings_t{},
     bool randomize_params  = false);
   i_t alloc_max_climbers(i_t desired_climbers);
@@ -367,21 +376,20 @@ class fj_t {
 
     climber_data_t(fj_t& in_fj)
       : fj(in_fj),
-        selected_var(std::numeric_limits<i_t>::max(), fj.handle_ptr->get_stream()),
-        violation_score(0, fj.handle_ptr->get_stream()),
-        weighted_violation_score(0, fj.handle_ptr->get_stream()),
-        constraints_changed_count(0, fj.handle_ptr->get_stream()),
-        local_minimums_reached(0, fj.handle_ptr->get_stream()),
-        iterations(0, fj.handle_ptr->get_stream()),
-        best_excess(-std::numeric_limits<f_t>::infinity(), fj.handle_ptr->get_stream()),
-        best_objective(+std::numeric_limits<f_t>::infinity(), fj.handle_ptr->get_stream()),
-        saved_solution_objective(+std::numeric_limits<f_t>::infinity(),
-                                 fj.handle_ptr->get_stream()),
-        incumbent_quality(+std::numeric_limits<f_t>::infinity(), fj.handle_ptr->get_stream()),
-        incumbent_objective(0.0, fj.handle_ptr->get_stream()),
-        iterations_until_feasible_counter(0, fj.handle_ptr->get_stream()),
-        full_refresh_iteration(0, fj.handle_ptr->get_stream()),
-        best_jump_idx(cub::KeyValuePair<i_t, f_t>{}, fj.handle_ptr->get_stream()),
+        selected_var(max_v<i_t>, fj.handle_ptr->get_stream()),
+        violation_score(zero_v<f_t>, fj.handle_ptr->get_stream()),
+        weighted_violation_score(zero_v<f_t>, fj.handle_ptr->get_stream()),
+        constraints_changed_count(zero_v<i_t>, fj.handle_ptr->get_stream()),
+        local_minimums_reached(zero_v<i_t>, fj.handle_ptr->get_stream()),
+        iterations(zero_v<i_t>, fj.handle_ptr->get_stream()),
+        best_excess(neg_inf_v<f_t>, fj.handle_ptr->get_stream()),
+        best_objective(inf_v<f_t>, fj.handle_ptr->get_stream()),
+        saved_solution_objective(inf_v<f_t>, fj.handle_ptr->get_stream()),
+        incumbent_quality(inf_v<f_t>, fj.handle_ptr->get_stream()),
+        incumbent_objective(zero_v<f_t>, fj.handle_ptr->get_stream()),
+        iterations_until_feasible_counter(zero_v<i_t>, fj.handle_ptr->get_stream()),
+        full_refresh_iteration(zero_v<i_t>, fj.handle_ptr->get_stream()),
+        best_jump_idx(zero_v<cub::KeyValuePair<i_t, f_t>>, fj.handle_ptr->get_stream()),
         violated_constraints(fj.pb_ptr->n_constraints, fj.handle_ptr->get_stream()),
         candidate_variables(fj.pb_ptr->n_variables, fj.handle_ptr->get_stream()),
         iteration_related_variables(fj.pb_ptr->n_variables, fj.handle_ptr->get_stream()),
@@ -406,20 +414,20 @@ class fj_t {
         jump_candidate_count(fj.pb_ptr->n_variables, fj.handle_ptr->get_stream()),
         jump_locks(fj.pb_ptr->n_variables, fj.handle_ptr->get_stream()),
         fractional_variables(fj.pb_ptr->n_variables, fj.handle_ptr->get_stream()),
-        small_move_tabu(0, fj.handle_ptr->get_stream()),
-        handle_fractionals_only(false, fj.handle_ptr->get_stream()),
-        saved_best_fractional_count(0, fj.handle_ptr->get_stream()),
+        small_move_tabu(zero_v<i_t>, fj.handle_ptr->get_stream()),
+        handle_fractionals_only(false_v, fj.handle_ptr->get_stream()),
+        saved_best_fractional_count(zero_v<i_t>, fj.handle_ptr->get_stream()),
         candidate_arrived_workids(fj.pb_ptr->coefficients.size(), fj.handle_ptr->get_stream()),
         grid_score_buf(0, fj.handle_ptr->get_stream()),
         grid_var_buf(0, fj.handle_ptr->get_stream()),
         grid_delta_buf(0, fj.handle_ptr->get_stream()),
-        last_minimum_iteration(0, fj.handle_ptr->get_stream()),
-        last_improving_minimum(0, fj.handle_ptr->get_stream()),
-        last_iter_candidates(0, fj.handle_ptr->get_stream()),
-        relvar_count_last_update(0, fj.handle_ptr->get_stream()),
-        load_balancing_skip(0, fj.handle_ptr->get_stream()),
-        break_condition(0, fj.handle_ptr->get_stream()),
-        temp_break_condition(0, fj.handle_ptr->get_stream()),
+        last_minimum_iteration(zero_v<i_t>, fj.handle_ptr->get_stream()),
+        last_improving_minimum(zero_v<i_t>, fj.handle_ptr->get_stream()),
+        last_iter_candidates(zero_v<i_t>, fj.handle_ptr->get_stream()),
+        relvar_count_last_update(zero_v<i_t>, fj.handle_ptr->get_stream()),
+        load_balancing_skip(zero_v<i_t>, fj.handle_ptr->get_stream()),
+        break_condition(zero_v<i_t>, fj.handle_ptr->get_stream()),
+        temp_break_condition(zero_v<i_t>, fj.handle_ptr->get_stream()),
         cub_storage_bytes(0, fj.handle_ptr->get_stream()),
         dot_product_buffer(fj.pb_ptr->n_variables, fj.handle_ptr->get_stream())
     {

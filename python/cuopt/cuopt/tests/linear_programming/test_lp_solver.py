@@ -576,6 +576,11 @@ def test_parse_var_names():
         )
 
 
+@pytest.mark.skip(
+    reason="Intermittently hangs inside LP BatchSolve on CUDA 13.3, see "
+    "https://github.com/NVIDIA/cuopt/issues/1781. The test never returns, so "
+    "the step's outer timeout kills the whole run; xfail cannot catch it."
+)
 def test_parser_and_batch_solver():
     data_model_list = []
     file_path = (

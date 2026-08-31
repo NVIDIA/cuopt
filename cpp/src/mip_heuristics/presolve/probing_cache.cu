@@ -162,9 +162,14 @@ void inline insert_current_probing_to_cache(i_t var_idx,
                                             const std::vector<f_t>& modified_lb,
                                             const std::vector<f_t>& modified_ub,
                                             const std::vector<i_t>& h_integer_indices,
+                                            const std::vector<i_t>& original_ids,
                                             std::atomic<size_t>& n_implied_singletons)
 {
   f_t int_tol = bound_presolve.context.settings.tolerances.integrality_tolerance;
+
+  cuopt_assert(var_idx >= 0 && var_idx < (i_t)original_ids.size(),
+               "probe var out of original_ids range");
+  const i_t var_original = original_ids[var_idx];
 
   cache_entry_t<i_t, f_t> cache_item;
   cache_item.val_interval = probe_val;
@@ -180,18 +185,21 @@ void inline insert_current_probing_to_cache(i_t var_idx,
                    "Lower bound must be greater than or equal to original lower bound");
       cuopt_assert(modified_ub[impacted_var_idx] <= get_upper(original_var_bounds),
                    "Upper bound must be less than or equal to original upper bound");
+      cuopt_assert(impacted_var_idx >= 0 && impacted_var_idx < (i_t)original_ids.size(),
+                   "impacted var out of original_ids range");
       cached_bound_t<f_t> new_bound{modified_lb[impacted_var_idx], modified_ub[impacted_var_idx]};
-      cache_item.var_to_cached_bound_map.insert({impacted_var_idx, new_bound});
+      // Map keys are original-frame ids (same frame as reverse_original_ids / bve_build_impl_adj).
+      cache_item.var_to_cached_bound_map.insert({original_ids[impacted_var_idx], new_bound});
     }
   }
   {
     std::lock_guard<std::mutex> lock(bound_presolve.probing_cache.probing_cache_mutex);
-    if (!bound_presolve.probing_cache.probing_cache.count(var_idx) > 0) {
+    if (!bound_presolve.probing_cache.probing_cache.count(var_original) > 0) {
       std::array<cache_entry_t<i_t, f_t>, 2> entries_per_var;
       entries_per_var[0] = cache_item;
-      bound_presolve.probing_cache.probing_cache.insert({var_idx, entries_per_var});
+      bound_presolve.probing_cache.probing_cache.insert({var_original, entries_per_var});
     } else {
-      bound_presolve.probing_cache.probing_cache[var_idx][1] = cache_item;
+      bound_presolve.probing_cache.probing_cache[var_original][1] = cache_item;
     }
   }
 }
@@ -497,6 +505,7 @@ void compute_cache_for_var(i_t var_idx,
                                       h_improved_lower_bounds,
                                       h_improved_upper_bounds,
                                       h_integer_indices,
+                                      problem.original_ids,
                                       n_of_implied_singletons);
     }
   }
@@ -704,36 +713,69 @@ void apply_substitution_queue_to_problem(
   std::vector<f_t> offset_values;
   std::vector<f_t> coefficient_values;
 
-  // Get variable_mapping to convert current indices to original indices
+  // Get variable_mapping to convert current indices to post-Papilo frame
   auto h_variable_mapping =
     host_copy(problem.presolve_data.variable_mapping, problem.handle_ptr->get_stream());
   problem.handle_ptr->sync_stream();
 
+  // Staged rather than appended directly: all_substitutions is a hash map, so its iteration order
+  // is not reproducible, and the log's order has to be. merge_substitutions has already flattened
+  // chains and dropped bidirectional edges, so no record here depends on another and sorting by
+  // substituted_var only has to be a fixed order, not a particular one.
+  std::vector<postsolve_reconstruction_t<i_t, f_t>> staged_reconstructions;
+  staged_reconstructions.reserve(all_substitutions.size());
   for (const auto& [substituting_var, substitutions] : all_substitutions) {
     for (const auto& [substituted_var, substitution] : substitutions) {
       CUOPT_LOG_TRACE("Applying substitution: %d -> %d",
                       substitution.substituting_var,
                       substitution.substituted_var);
+      cuopt_assert(substitution.substituted_var >= 0 &&
+                     substitution.substituted_var < (i_t)h_variable_mapping.size(),
+                   "substituted_var out of variable_mapping range");
+      cuopt_assert(substitution.substituting_var >= 0 &&
+                     substitution.substituting_var < (i_t)h_variable_mapping.size(),
+                   "substituting_var out of variable_mapping range");
       var_indices.push_back(substitution.substituted_var);
       substituting_var_indices.push_back(substitution.substituting_var);
       offset_values.push_back(substitution.offset);
       coefficient_values.push_back(substitution.coefficient);
 
-      // Store substitution for post-processing (convert to original variable IDs)
-      substitution_t<i_t, f_t> sub;
-      sub.timestamp        = substitution.timestamp;
-      sub.substituted_var  = h_variable_mapping[substitution.substituted_var];
-      sub.substituting_var = h_variable_mapping[substitution.substituting_var];
-      sub.offset           = substitution.offset;
-      sub.coefficient      = substitution.coefficient;
-      problem.presolve_data.variable_substitutions.push_back(sub);
-      CUOPT_LOG_TRACE("Stored substitution for post-processing: x[%d] = %f + %f * x[%d]",
-                      sub.substituted_var,
-                      sub.offset,
-                      sub.coefficient,
-                      sub.substituting_var);
+      postsolve_reconstruction_t<i_t, f_t> reconstruction;
+      reconstruction.kind                 = reconstruction_kind_t::AffineSub;
+      reconstruction.sub                  = substitution;
+      reconstruction.sub.substituted_var  = h_variable_mapping[substitution.substituted_var];
+      reconstruction.sub.substituting_var = h_variable_mapping[substitution.substituting_var];
+      staged_reconstructions.push_back(std::move(reconstruction));
+      CUOPT_LOG_TRACE("Stored AffineSub for post-processing: x[%d] = %f + %f * x[%d]",
+                      staged_reconstructions.back().sub.substituted_var,
+                      staged_reconstructions.back().sub.offset,
+                      staged_reconstructions.back().sub.coefficient,
+                      staged_reconstructions.back().sub.substituting_var);
     }
   }
+  // check are_exclusive to avoid emitting a nonsensical substitution with the variable on both
+  // sides
+  std::unordered_set<i_t> substituting_vars(substituting_var_indices.begin(),
+                                            substituting_var_indices.end());
+  for (i_t substituted_var : var_indices) {
+    if (substituting_vars.count(substituted_var) == 0) { continue; }
+    CUOPT_LOG_WARN(
+      "Skipping %zu probing substitutions: variable %d is both substituted and substituting",
+      var_indices.size(),
+      substituted_var);
+    return;
+  }
+
+  std::sort(staged_reconstructions.begin(),
+            staged_reconstructions.end(),
+            [](const postsolve_reconstruction_t<i_t, f_t>& a,
+               const postsolve_reconstruction_t<i_t, f_t>& b) {
+              return a.sub.substituted_var < b.sub.substituted_var;
+            });
+  auto& reconstructions = problem.presolve_data.postsolve_reconstructions;
+  reconstructions.insert(reconstructions.end(),
+                         std::make_move_iterator(staged_reconstructions.begin()),
+                         std::make_move_iterator(staged_reconstructions.end()));
 
   if (!var_indices.empty()) {
     problem.substitute_variables(
@@ -853,6 +895,11 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
                            size_t step_size_hint)
 {
   raft::common::nvtx::range fun_scope("compute_probing_cache");
+
+  cuopt_assert(bound_presolve.probing_cache.probing_cache.empty(),
+               "probing cache is built once per solve");
+  cuopt_assert(problem.original_ids.size() == (size_t)problem.n_variables,
+               "probing cache needs id maps that match the current column set");
   // we dont want to compute the probing cache for all variables for time and computation resources
   auto priority_indices = compute_priority_indices_by_implied_integers(problem);
   CUOPT_LOG_DEBUG("Computing probing cache");
@@ -995,6 +1042,56 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   // restore the settings
   bound_presolve.settings = {};
   return problem_is_infeasible.load();
+}
+
+// incorporate implications discovered by block-BVE
+template <typename i_t, typename f_t>
+void probing_cache_t<i_t, f_t>::merge_forcings(const std::vector<probe_forcing_t<i_t>>& forcings,
+                                               std::vector<std::pair<i_t, bool>>& fixings)
+{
+  i_t n_added        = 0;
+  i_t n_tightened    = 0;
+  i_t n_contradicted = 0;
+  for (const auto& forcing : forcings) {
+    cuopt_assert(forcing.var != forcing.forced_var, "self-forcing is not a projection finding");
+    auto entry_it = probing_cache.find(forcing.var);
+    if (entry_it == probing_cache.end()) { continue; }
+    const f_t probed_val = forcing.value ? f_t(1) : f_t(0);
+    const f_t forced_val = forcing.forced_value ? f_t(1) : f_t(0);
+    for (cache_entry_t<i_t, f_t>& entry : entry_it->second) {
+      if (entry.var_to_cached_bound_map.empty()) { continue; }
+      if (entry.val_interval.interval_type != interval_type_t::EQUALS) { continue; }
+      cuopt_assert(entry.val_interval.val == f_t(0) || entry.val_interval.val == f_t(1), "");
+      if (entry.val_interval.val != probed_val) { continue; }
+      auto [bound_it, inserted] = entry.var_to_cached_bound_map.insert(
+        {forcing.forced_var, cached_bound_t<f_t>{forced_val, forced_val}});
+      if (inserted) {
+        ++n_added;
+        continue;
+      }
+      cached_bound_t<f_t>& bound = bound_it->second;
+      cuopt_assert(bound.lb >= f_t(0) && bound.ub <= f_t(1), "");
+      const f_t lb = std::max(bound.lb, forced_val);
+      const f_t ub = std::min(bound.ub, forced_val);
+      // Both the cached bound and the projection are valid and share the antecedent var == probed
+      // value, so an empty intersection proves only that the antecedent cannot hold. The slot is
+      // dead from here on, hence no tightening; the opposite value is the sound conclusion.
+      if (lb > ub) {
+        fixings.emplace_back(forcing.var, !forcing.value);
+        ++n_contradicted;
+        continue;
+      }
+      n_tightened += (lb != bound.lb || ub != bound.ub);
+      bound.lb = lb;
+      bound.ub = ub;
+    }
+  }
+  CUOPT_LOG_DEBUG(
+    "BVE forcings %zu: added %d and tightened %d probing cache bounds, %d contradicted a probe",
+    forcings.size(),
+    n_added,
+    n_tightened,
+    n_contradicted);
 }
 
 #define INSTANTIATE(F_TYPE)                                                                        \
