@@ -379,7 +379,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
 
     CUDA_CALL_AND_CHECK_EXIT(cudaStreamSynchronize(stream), "cudaStreamSynchronize");
 #if CUDART_VERSION >= 13000
-    if (settings_.concurrent_halt != nullptr && settings_->num_gpus == 1) {
+    if (settings_->concurrent_halt != nullptr && settings_->num_gpus == 1) {
       auto cuStreamDestroy_func = cuopt::get_driver_entry_point("cuStreamDestroy");
       CU_CHECK(reinterpret_cast<decltype(::cuStreamDestroy)*>(cuStreamDestroy_func)(stream),
                reinterpret_cast<decltype(::cuGetErrorString)*>(cuGetErrorString_func));
