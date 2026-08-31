@@ -97,7 +97,7 @@ bool validate_barrier_cone_layout(const lp_problem_t<i_t, f_t>& problem,
   return true;
 }
 
-// Push entries into interior of nonnegative orthant and SOC.
+// Push entries into interior of nonnegative orthant and second-order cone.
 template <typename i_t, typename f_t>
 static void ensure_initial_point_interior(dense_vector_t<i_t, f_t>& values,
                                           f_t epsilon_adjust,
@@ -111,9 +111,9 @@ static void ensure_initial_point_interior(dense_vector_t<i_t, f_t>& values,
   values.ensure_positive(epsilon_adjust, linear_only_mask);
 
   // Cone shift
-  i_t off = 0;
+  i_t offset = 0;
   for (i_t q_k : cone_dims) {
-    const i_t base = linear_end + off;
+    const i_t base = linear_end + offset;
     f_t tail_sq    = 0.0;
     for (i_t j = 1; j < q_k; ++j) {
       const f_t t = values[base + j];
@@ -121,7 +121,7 @@ static void ensure_initial_point_interior(dense_vector_t<i_t, f_t>& values,
     }
     const f_t tail_norm = std::sqrt(tail_sq);
     if (values[base] <= tail_norm + epsilon_adjust) { values[base] = tail_norm + epsilon_adjust; }
-    off += q_k;
+    offset += q_k;
   }
 }
 
@@ -2240,21 +2240,21 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
       }
     }
 
-    // SOC blocks: x = z = mu * e, with e = (sqrt(2), 0, ..., 0)
+    // Second-order cone blocks: x = z = mu * e, with e = (sqrt(2), 0, ..., 0)
     if (data.has_cones()) {
-      const i_t cs    = data.cone_start();
-      const f_t x_soc = mu * sqrt2;
-      const f_t z_soc = mu * sqrt2;
-      i_t off         = 0;
+      const i_t cone_start = data.cone_start();
+      const f_t x_soc      = mu * sqrt2;
+      const f_t z_soc      = mu * sqrt2;
+      i_t offset           = 0;
       for (size_t k = 0; k < lp.second_order_cone_dims.size(); k++) {
-        i_t q_k          = lp.second_order_cone_dims[k];
-        data.x[cs + off] = x_soc;
-        data.z[cs + off] = z_soc;
+        i_t q_k                     = lp.second_order_cone_dims[k];
+        data.x[cone_start + offset] = x_soc;
+        data.z[cone_start + offset] = z_soc;
         for (i_t j = 1; j < q_k; ++j) {
-          data.x[cs + off + j] = 0.0;
-          data.z[cs + off + j] = 0.0;
+          data.x[cone_start + offset + j] = 0.0;
+          data.z[cone_start + offset + j] = 0.0;
         }
-        off += q_k;
+        offset += q_k;
       }
     }
 
@@ -2401,14 +2401,9 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   }
 
   const f_t epsilon_adjust = settings.barrier_initial_point_safeguard;
-  // Push entries into interior of nonnegative orthant and SOC.
+  // Push entries into interior of nonnegative orthant and second-order cone.
   const bool has_soc   = data.has_cones();
   const i_t linear_end = has_soc ? data.cone_start() : lp.num_cols;
-  auto ensure_interior = [&](dense_vector_t<i_t, f_t>& values,
-                             const std::vector<i_t>& linear_mask) {
-    ensure_initial_point_interior(
-      values, epsilon_adjust, linear_mask, linear_end, lp.second_order_cone_dims);
-  };
 
   if (init_strategy == barrier_dual_initial_point_t::Automatic ||
       init_strategy == barrier_dual_initial_point_t::LustigMarstenShanno) {
@@ -2529,8 +2524,10 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
       nonnegative_variables[j] = 0;
     }
   }
-  ensure_interior(data.z, nonnegative_z);
-  ensure_interior(data.x, nonnegative_variables);
+  ensure_initial_point_interior(
+    data.z, epsilon_adjust, nonnegative_z, linear_end, lp.second_order_cone_dims);
+  ensure_initial_point_interior(
+    data.x, epsilon_adjust, nonnegative_variables, linear_end, lp.second_order_cone_dims);
   // Direct free variables: reduced cost z = 0 (no complementarity condition).
   if (has_direct_free_linear) {
     for (i_t j : presolve_info.direct_free_variables) {
@@ -3593,12 +3590,12 @@ void barrier_solver_t<i_t, f_t>::compute_target_mu(
   f_t step_dual_aff   = std::min(dual_v, dual_z);
 
   if (has_soc) {
-    i_t cs = data.cone_start();
-    i_t mc = data.cone_entry_count();
+    i_t cone_start = data.cone_start();
+    i_t mc         = data.cone_entry_count();
     const f_t cone_combined =
       compute_cone_step_length(data.cones(),
-                               raft::device_span<const f_t>(data.d_dx_.data() + cs, mc),
-                               raft::device_span<const f_t>(data.d_dz_.data() + cs, mc),
+                               raft::device_span<const f_t>(data.d_dx_.data() + cone_start, mc),
+                               raft::device_span<const f_t>(data.d_dz_.data() + cone_start, mc),
                                f_t(1),
                                stream_view_);
     step_primal_aff = std::min(step_primal_aff, cone_combined);
@@ -3802,12 +3799,12 @@ void barrier_solver_t<i_t, f_t>::compute_primal_dual_step_length(iteration_data_
   max_step_dual   = std::min(dual_v, dual_z);
 
   if (has_soc) {
-    i_t cs = data.cone_start();
-    i_t mc = data.cone_entry_count();
+    i_t cone_start = data.cone_start();
+    i_t mc         = data.cone_entry_count();
     const f_t cone_combined =
       compute_cone_step_length(data.cones(),
-                               raft::device_span<const f_t>(data.d_dx_.data() + cs, mc),
-                               raft::device_span<const f_t>(data.d_dz_.data() + cs, mc),
+                               raft::device_span<const f_t>(data.d_dx_.data() + cone_start, mc),
+                               raft::device_span<const f_t>(data.d_dz_.data() + cone_start, mc),
                                f_t(1),
                                stream_view_);
     max_step_primal = std::min(max_step_primal, cone_combined);
