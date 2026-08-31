@@ -4,7 +4,9 @@
  */
 
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
+#include <thread>
 #include <exception>
 #include <initializer_list>
 #include <memory>
@@ -388,19 +390,43 @@ std::once_flag g_log_sink_once;
 // register_console_log_sink for why that distinction matters.
 void console_log_callback(int /* level */, const char* message)
 {
-  if (g_log_sink_class == nullptr || g_log_sink_method == nullptr) { return; }
+  fprintf(stderr,
+          "[cuopt-jni-debug] console_log_callback: entered (thread=%zu, g_log_sink_class=%p, "
+          "g_log_sink_method=%p)\n",
+          std::hash<std::thread::id>{}(std::this_thread::get_id()),
+          static_cast<void*>(g_log_sink_class),
+          static_cast<void*>(g_log_sink_method));
+  if (g_log_sink_class == nullptr || g_log_sink_method == nullptr) {
+    fprintf(stderr,
+            "[cuopt-jni-debug] console_log_callback: invoked but sink not registered, message=%s",
+            message);
+    return;
+  }
 
   bool detach = false;
   JNIEnv* env = get_callback_env(detach);
-  if (env == nullptr) { return; }
+  if (env == nullptr) {
+    fprintf(stderr,
+            "[cuopt-jni-debug] console_log_callback: get_callback_env returned nullptr "
+            "(thread=%zu)\n",
+            std::hash<std::thread::id>{}(std::this_thread::get_id()));
+    return;
+  }
 
   jstring line = env->NewStringUTF(message);
   if (line != nullptr) {
     env->CallStaticVoidMethod(g_log_sink_class, g_log_sink_method, line);
     // A logging call is not the place to raise a Java exception; drop it rather than leave it
     // pending for whatever JNI call happens to run next on this thread.
-    if (env->ExceptionCheck() == JNI_TRUE) { env->ExceptionClear(); }
+    if (env->ExceptionCheck() == JNI_TRUE) {
+      fprintf(stderr,
+              "[cuopt-jni-debug] console_log_callback: CallStaticVoidMethod raised a pending "
+              "exception, clearing it\n");
+      env->ExceptionClear();
+    }
     env->DeleteLocalRef(line);
+  } else {
+    fprintf(stderr, "[cuopt-jni-debug] console_log_callback: NewStringUTF returned null\n");
   }
 
   if (detach) { g_jvm->DetachCurrentThread(); }
@@ -412,13 +438,19 @@ void console_log_callback(int /* level */, const char* message)
 void register_console_log_sink(JNIEnv* env)
 {
   std::call_once(g_log_sink_once, [env]() {
+    fprintf(stderr, "[cuopt-jni-debug] register_console_log_sink: entering call_once\n");
     jclass local_cls = env->FindClass("com/nvidia/cuopt/mathematicaloptimization/NativeLogSink");
     if (local_cls == nullptr) {
+      fprintf(stderr,
+              "[cuopt-jni-debug] register_console_log_sink: FindClass(NativeLogSink) failed\n");
       env->ExceptionClear();
       return;
     }
     jmethodID method = env->GetStaticMethodID(local_cls, "onLogLine", "(Ljava/lang/String;)V");
     if (method == nullptr) {
+      fprintf(stderr,
+              "[cuopt-jni-debug] register_console_log_sink: GetStaticMethodID(onLogLine) "
+              "failed\n");
       env->ExceptionClear();
       env->DeleteLocalRef(local_cls);
       return;
@@ -427,6 +459,8 @@ void register_console_log_sink(JNIEnv* env)
     g_log_sink_method = method;
     env->DeleteLocalRef(local_cls);
     cuopt::set_console_log_callback(&console_log_callback);
+    fprintf(stderr,
+            "[cuopt-jni-debug] register_console_log_sink: callback registered successfully\n");
   });
 }
 
