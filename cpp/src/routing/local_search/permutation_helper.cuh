@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include <utilities/seed_generator.cuh>
+#include <routing/utilities/seed_generator.cuh>
 #include "../node/node.cuh"
 #include "../route/route.cuh"
 #include "../routing_helpers.cuh"

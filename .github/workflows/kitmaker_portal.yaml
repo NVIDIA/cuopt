@@ -1,0 +1,254 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: Kitmaker Portal (via Charon Ferry)
+
+on:
+  workflow_call:
+    inputs:
+      release_tag:
+        description: "release_tag: git tag whose GitHub Release assets should be published to Kitmaker."
+        type: string
+      project_name:
+        description: "project_name: Kitmaker project name. Must exactly match the wheel/component name."
+        type: string
+      project_id:
+        description: "project_id: numeric Kitmaker project ID (from GET /api/v0/projects)."
+        type: string
+      wheel_asset_pattern:
+        description: |
+          wheel_asset_pattern: extended regex (matched with jq's 'test()') selecting this
+          project's wheel/sdist asset names out of the GitHub Release, e.g. '^libcuopt-'.
+        type: string
+      pic:
+        description: "pic: 'person in charge' email required by the Kitmaker release API. Defaults to secrets.KITMAKER_PORTAL_ACC_OWNER_EMAIL."
+        type: string
+      upload:
+        description: |
+          upload: forwarded to the Kitmaker release API. 'false' (default) runs validation
+          checks only, with no real publish. Must be explicitly set to 'true' to actually
+          publish wheels.
+        type: boolean
+        default: false
+    secrets:
+      KITMAKER_PORTAL_AUTHORIZATION:
+        description: Bearer token (bare, no 'Bearer ' prefix) for the Kitmaker Portal API.
+        required: true
+      KITMAKER_PORTAL_ACC_OWNER_EMAIL:
+        description: Fallback for the 'pic' input. Required if 'pic' isn't passed.
+        required: false
+      CUOPT_SLACK_BOT_TOKEN:
+        description: Slack bot token for the on-failure notification. Optional; skipped if unset.
+        required: false
+      CUOPT_SLACK_CHANNEL_ID:
+        description: Slack channel ID for the on-failure notification. Optional; skipped if unset.
+        required: false
+      CUOPT_SLACK_MENTION_ID:
+        description: Slack user or subteam ID to mention on failure. Optional.
+        required: false
+    outputs:
+      status_id:
+        description: Kitmaker Portal status UUID created by this release.
+        value: ${{ jobs.release.outputs.status_id }}
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "release_tag: git tag whose GitHub Release assets should be published to Kitmaker."
+        type: string
+      project_name:
+        description: "project_name: Kitmaker project name. Must exactly match the registered project."
+        type: string
+      project_id:
+        description: "project_id: numeric Kitmaker project ID (from GET /api/v0/projects)."
+        type: string
+      wheel_asset_pattern:
+        description: |
+          wheel_asset_pattern: extended regex (matched with jq's 'test()') selecting this
+          project's wheel/sdist asset names out of the GitHub Release, e.g. '^libcuopt-'.
+        type: string
+      pic:
+        description: "pic: 'person in charge' email required by the Kitmaker release API. Defaults to secrets.KITMAKER_PORTAL_ACC_OWNER_EMAIL."
+        type: string
+      upload:
+        description: |
+          upload: forwarded to the Kitmaker release API. 'false' (default) runs validation
+          checks only, with no real publish.
+        type: boolean
+        default: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      status_id: ${{ steps.kitmaker-release.outputs.status_id }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      PROJECT_NAME: ${{ inputs.project_name }}
+      PROJECT_ID: ${{ inputs.project_id }}
+      ASSET_PATTERN: ${{ inputs.wheel_asset_pattern }}
+      PIC: ${{ inputs.pic || secrets.KITMAKER_PORTAL_ACC_OWNER_EMAIL }}
+    steps:
+      - name: Validate inputs
+        run: |
+          [[ -n "$RELEASE_TAG" ]] || { echo "::error::'release_tag' is required"; exit 1; }
+          [[ -n "$PROJECT_NAME" ]] || { echo "::error::'project_name' is required"; exit 1; }
+          [[ -n "$PROJECT_ID" ]] || { echo "::error::'project_id' is required"; exit 1; }
+          [[ -n "$ASSET_PATTERN" ]] || { echo "::error::'wheel_asset_pattern' is required"; exit 1; }
+          [[ -n "$PIC" ]] || { echo "::error::'pic' input or secrets.KITMAKER_PORTAL_ACC_OWNER_EMAIL must be set"; exit 1; }
+
+      - name: Collect wheel asset URLs from the GitHub Release
+        id: assets
+        env:
+          UPLOAD: ${{ inputs.upload }}
+        run: |
+          assets_json=$(gh release view "$RELEASE_TAG" --repo "${{ github.repository }}" --json assets)
+          urls_json=$(echo "$assets_json" | jq -c --arg pattern "$ASSET_PATTERN" \
+            '[.assets[] | select(.name | test($pattern)) | .url]')
+
+          if [[ "$(echo "$urls_json" | jq 'length')" -eq 0 ]]; then
+            echo "::error::No assets on release '$RELEASE_TAG' matched pattern '$ASSET_PATTERN'"
+            exit 1
+          fi
+
+          echo "upload=$UPLOAD (false = validate only, no real publish; true = publishes for real)"
+
+          payload=$(echo "$urls_json" | jq -c --arg pic "$PIC" --argjson upload "$UPLOAD" '
+            map({pic: $pic, job_type: "wheel-release-job", url: ., upload: $upload})
+          ')
+          echo "payload=$payload" >> "$GITHUB_OUTPUT"
+
+      - name: Install Teleport
+        uses: teleport-actions/setup@b638ff596557cc3959eb6b5287d5e58e0c8ac6a6 # v1.1.1
+        with:
+          version: auto
+          proxy: nv-stg-ps.teleport.sh:443
+
+      - name: Start staging Ferry tunnel
+        uses: teleport-actions/application-tunnel@bb7a8fbfb67b85d26013554f10d71dd032c1c764 # v1.0.1
+        with:
+          proxy: nv-stg-ps.teleport.sh:443
+          token: charon-gha-runners
+          app: charon
+          listen: tcp://127.0.0.1:8888
+
+      - name: Mint Ferry identity token
+        id: ferry-token
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            const token = await core.getIDToken('charon.nvidia.com');
+            core.setSecret(token);
+            core.setOutput('token', token);
+
+      - name: Request Kitmaker Portal release
+        id: kitmaker-release
+        env:
+          FERRY_TOKEN: ${{ steps.ferry-token.outputs.token }}
+          PORTAL_AUTHORIZATION: ${{ secrets.KITMAKER_PORTAL_AUTHORIZATION }}
+          PAYLOAD: ${{ steps.assets.outputs.payload }}
+        run: |
+          body=$(jq -n --arg project_name "$PROJECT_NAME" --argjson payload "$PAYLOAD" \
+            '{project_name: $project_name, payload: $payload}')
+
+          http_response=$(curl -sS --retry 3 --retry-delay 5 --connect-timeout 10 --max-time 60 -w '\n%{http_code}' \
+            -H "X-Charon-GHA-Token: $FERRY_TOKEN" \
+            -H "Authorization: Bearer $PORTAL_AUTHORIZATION" \
+            -H "Content-Type: application/json" \
+            -d "$body" \
+            "http://127.0.0.1:8888/kitmaker-portal/api/v0/projects/${PROJECT_ID}/releases")
+
+          http_code=$(echo "$http_response" | tail -n1)
+          response=$(echo "$http_response" | sed '$d')
+
+          echo "HTTP $http_code"
+          echo "$response"
+
+          if [[ "$http_code" != "202" ]]; then
+            exit 1
+          fi
+
+          status_id=$(echo "$response" | jq -e -r '.release_uuid | strings | select(length > 0)') || {
+            echo "::error::Response missing a non-empty 'release_uuid'"
+            exit 1
+          }
+          echo "status_id=$status_id" >> "$GITHUB_OUTPUT"
+
+      - name: Poll Kitmaker Portal status
+        env:
+          PORTAL_AUTHORIZATION: ${{ secrets.KITMAKER_PORTAL_AUTHORIZATION }}
+          STATUS_ID: ${{ steps.kitmaker-release.outputs.status_id }}
+        run: |
+          for _ in $(seq 1 60); do
+            # Re-mint on every iteration: the poll loop can run up to 30 minutes and the
+            # GitHub OIDC token minted once at job start can expire before a large wheel
+            # (e.g. libcuopt) finishes processing on Kitmaker's side.
+            FERRY_TOKEN=$(curl -sS --retry 3 --retry-delay 5 --connect-timeout 10 --max-time 30 \
+              -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+              "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=charon.nvidia.com" | jq -r '.value')
+
+            http_response=$(curl -sS --retry 3 --retry-delay 5 --connect-timeout 10 --max-time 60 -w '\n%{http_code}' \
+              -H "X-Charon-GHA-Token: $FERRY_TOKEN" \
+              -H "Authorization: Bearer $PORTAL_AUTHORIZATION" \
+              "http://127.0.0.1:8888/kitmaker-portal/api/v0/status/$STATUS_ID")
+            http_code=$(echo "$http_response" | tail -n1)
+            response=$(echo "$http_response" | sed '$d')
+
+            if [[ "$http_code" != "200" ]]; then
+              echo "HTTP $http_code"
+              echo "$response"
+              exit 1
+            fi
+
+            status=$(echo "$response" | jq -e -r '.status | strings | select(length > 0)') || {
+              echo "::error::Response missing a non-empty 'status'"
+              echo "$response"
+              exit 1
+            }
+            echo "Kitmaker Portal release status: $status"
+            case "$status" in
+              completed)
+                exit 0
+                ;;
+              failed)
+                echo "$response"
+                exit 1
+                ;;
+              *) ;;  # still in progress, keep polling
+            esac
+            sleep 30
+          done
+          echo "Timed out waiting for Kitmaker Portal release to complete"
+          exit 1
+
+      - name: Notify Slack on failure
+        if: failure()
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.CUOPT_SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ secrets.CUOPT_SLACK_CHANNEL_ID }}
+          SLACK_MENTION_ID: ${{ secrets.CUOPT_SLACK_MENTION_ID }}
+          PROJECT_NAME: ${{ inputs.project_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [[ -z "$SLACK_BOT_TOKEN" || -z "$SLACK_CHANNEL_ID" ]]; then
+            echo "SLACK_BOT_TOKEN or SLACK_CHANNEL_ID not set, skipping notification."
+            exit 0
+          fi
+
+          mention=""
+          if [[ "$SLACK_MENTION_ID" == S* ]]; then
+            mention="<!subteam^${SLACK_MENTION_ID}> "
+          elif [[ -n "$SLACK_MENTION_ID" ]]; then
+            mention="<@${SLACK_MENTION_ID}> "
+          fi
+          text="${mention}Kitmaker Portal release failed for project '${PROJECT_NAME}': ${RUN_URL}"
+
+          curl -sS --max-time 30 -X POST \
+            -H "Authorization: Bearer ${SLACK_BOT_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "$(jq -n --arg channel "$SLACK_CHANNEL_ID" --arg text "$text" '{channel: $channel, text: $text}')" \
+            "https://slack.com/api/chat.postMessage"

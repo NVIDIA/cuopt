@@ -7,6 +7,7 @@ package cuopt.remote;
 
 // Import the existing message definitions
 import "cuopt_remote.proto";
+import "cuopt_routing.proto";
 
 // =============================================================================
 // gRPC Service Definition
@@ -17,10 +18,11 @@ service CuOptRemoteService {
   // Async Job Management
   // -------------------------
 
-  // Submit a new LP or MIP solve job (returns immediately with job_id).
+  // Submit a new LP, MIP, or VRP solve job (returns immediately with job_id).
   // Used for problems whose serialized SubmitJobRequest fits within the
   // gRPC max message size (256 MiB default, configurable per-side).
   // Larger problems use the chunked upload path below; see ArrayChunk.
+  // VRP is unary-only in this POC (no chunked VRP upload yet).
   rpc SubmitJob(SubmitJobRequest) returns (SubmitJobResponse);
 
   // -------------------------
@@ -98,6 +100,7 @@ message SubmitJobRequest {
   oneof job_data {
     SolveLPRequest lp_request = 1;
     SolveMIPRequest mip_request = 2;
+    SolveVRPRequest vrp_request = 3;
   }
 }
 

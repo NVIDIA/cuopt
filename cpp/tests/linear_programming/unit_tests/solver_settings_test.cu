@@ -73,6 +73,12 @@ TEST(SolverSettingsTest, TestSetGet)
   EXPECT_EQ(solver_settings.postsolve_info, -1);
   solver_settings.postsolve_info = 1;
   EXPECT_EQ(solver_settings.postsolve_info, 1);
+
+  EXPECT_EQ(solver_settings.barrier_presolve_bound_free_variables, -1);
+  solver_settings.barrier_presolve_bound_free_variables = 0;
+  EXPECT_EQ(solver_settings.barrier_presolve_bound_free_variables, 0);
+  solver_settings.barrier_presolve_bound_free_variables = 1;
+  EXPECT_EQ(solver_settings.barrier_presolve_bound_free_variables, 1);
 }
 
 TEST(SolverSettingsTest, warm_start_smaller_vector)

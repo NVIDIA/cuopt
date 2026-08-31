@@ -10,6 +10,7 @@
 
 #include <mip_heuristics/mip_constants.hpp>
 #include <utilities/copy_helpers.hpp>
+#include <utilities/device_scalar_init.hpp>
 #include <utilities/seed_generator.cuh>
 
 #include <thrust/copy.h>
@@ -42,7 +43,7 @@ bool check_brute_force_rounding(solution_t<i_t, f_t>& solution)
     rmm::device_uvector<i_t> var_map(n_integers_to_round, solution.handle_ptr->get_stream());
     rmm::device_uvector<f_t> constraint_buf(n_configs * solution.problem_ptr->n_constraints,
                                             solution.handle_ptr->get_stream());
-    rmm::device_scalar<i_t> best_config(-1, solution.handle_ptr->get_stream());
+    rmm::device_scalar<i_t> best_config(neg_one_v<i_t>, solution.handle_ptr->get_stream());
     thrust::copy_if(
       solution.handle_ptr->get_thrust_policy(),
       solution.problem_ptr->integer_indices.begin(),
@@ -80,7 +81,7 @@ bool invoke_simple_rounding(solution_t<i_t, f_t>& solution)
   solution_t<i_t, f_t> sol_copy(*solution.problem_ptr);
   sol_copy.copy_from(solution);
 
-  rmm::device_scalar<bool> successful(true, solution.handle_ptr->get_stream());
+  rmm::device_scalar<bool> successful(true_v, solution.handle_ptr->get_stream());
   i_t TPB = 128;
   simple_rounding_kernel<i_t, f_t>
     <<<2048, TPB, 0, solution.handle_ptr->get_stream()>>>(solution.view(), successful.data());
@@ -125,7 +126,7 @@ void invoke_random_round_nearest(solution_t<i_t, f_t>& solution, i_t n_target_ra
   CUOPT_LOG_TRACE("before random roundin n_integers %d total n_integers %d",
                   n_integers,
                   solution.problem_ptr->n_integer_vars);
-  rmm::device_scalar<i_t> n_randomly_rounded(0, solution.handle_ptr->get_stream());
+  rmm::device_scalar<i_t> n_randomly_rounded(zero_v<i_t>, solution.handle_ptr->get_stream());
   random_nearest_rounding_kernel<i_t, f_t><<<n_blocks, TPB, 0, solution.handle_ptr->get_stream()>>>(
     solution.view(), cuopt::seed_generator::get_seed(), n_randomly_rounded.data());
   i_t h_n_random_rounds = n_randomly_rounded.value(solution.handle_ptr->get_stream());

@@ -14,6 +14,7 @@
 #include <mip_heuristics/diversity/population.cuh>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/utils.cuh>
+#include <utilities/device_scalar_init.hpp>
 #include <utilities/seed_generator.cuh>
 #include <utilities/timer.hpp>
 
@@ -52,8 +53,8 @@ fj_t<i_t, f_t>::fj_t(mip_solver_context_t<i_t, f_t>& context_, fj_settings_t in_
     cstr_right_weights(pb_ptr->n_constraints, pb_ptr->handle_ptr->get_stream()),
     cstr_left_weights(pb_ptr->n_constraints, pb_ptr->handle_ptr->get_stream()),
     weight_update_increment(1.0),
-    objective_weight(0.0, pb_ptr->handle_ptr->get_stream()),
-    max_cstr_weight(0, pb_ptr->handle_ptr->get_stream()),
+    objective_weight(zero_v<f_t>, pb_ptr->handle_ptr->get_stream()),
+    max_cstr_weight(zero_v<f_t>, pb_ptr->handle_ptr->get_stream()),
     climber_views(0, pb_ptr->handle_ptr->get_stream()),
     objective_vars(0, pb_ptr->handle_ptr->get_stream()),
     constraint_lower_bounds_csr(pb_ptr->coefficients.size(), pb_ptr->handle_ptr->get_stream()),
@@ -1036,9 +1037,20 @@ void fj_t<i_t, f_t>::resize_vectors(const raft::handle_t* handle_ptr)
   climbers[0]->grid_delta_buf.resize(update_weights_launch_dims.first.x, handle_ptr->get_stream());
 
   // FJ related vars
-  cstr_weights.resize(pb_ptr->n_constraints, handle_ptr->get_stream());
-  cstr_right_weights.resize(pb_ptr->n_constraints, handle_ptr->get_stream());
-  cstr_left_weights.resize(pb_ptr->n_constraints, handle_ptr->get_stream());
+  // the problem can gain constraints between two runs (e.g. the objective cutting plane added by
+  // the feasibility pump), and resize leaves the new elements uninitialized: give them the default
+  // weight
+  auto resize_weights = [&](rmm::device_uvector<f_t>& weights) {
+    const auto old_size = weights.size();
+    weights.resize(pb_ptr->n_constraints, handle_ptr->get_stream());
+    if (old_size < weights.size()) {
+      thrust::uninitialized_fill(
+        handle_ptr->get_thrust_policy(), weights.begin() + old_size, weights.end(), 1.);
+    }
+  };
+  resize_weights(cstr_weights);
+  resize_weights(cstr_right_weights);
+  resize_weights(cstr_left_weights);
   constraint_lower_bounds_csr.resize(pb_ptr->coefficients.size(), handle_ptr->get_stream());
   constraint_upper_bounds_csr.resize(pb_ptr->coefficients.size(), handle_ptr->get_stream());
   cstr_coeff_reciprocal.resize(pb_ptr->coefficients.size(), handle_ptr->get_stream());

@@ -23,6 +23,7 @@
 #include "distributed_pdlp/multi_gpu_engine.hpp"
 
 #include <utilities/copy_helpers.hpp>
+#include <utilities/device_scalar_init.hpp>
 #include <utilities/macros.cuh>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
@@ -265,8 +266,8 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(mip::problem_t<i_t, f_t>& op_problem,
                                   climber_strategies_},
     initial_primal_{0, stream_view_},
     initial_dual_{0, stream_view_},
-    reusable_device_scalar_value_1_{f_t(1.0), stream_view_},
-    reusable_device_scalar_value_0_{f_t(0.0), stream_view_},
+    reusable_device_scalar_value_1_{one_v<f_t>, stream_view_},
+    reusable_device_scalar_value_0_{zero_v<f_t>, stream_view_},
     batch_solution_to_return_{pdlp_termination_status_t::TimeLimit, stream_view_},
     best_primal_solution_so_far{pdlp_termination_status_t::TimeLimit, stream_view_},
     inside_mip_{false}
@@ -3311,7 +3312,7 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
 
   if (!settings_.hyper_params.initial_step_size_max_singular_value) {
     // set stepsize relative to maximum absolute value of A
-    rmm::device_scalar<f_t> abs_max_element{0.0, stream_view_};
+    rmm::device_scalar<f_t> abs_max_element{zero_v<f_t>, stream_view_};
     void* d_temp_storage      = NULL;
     size_t temp_storage_bytes = 0;
 
@@ -3354,8 +3355,8 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
     rmm::device_scalar<f_t> norm_q(stream_view_);
     rmm::device_scalar<f_t> sigma_max_sq(stream_view_);
     rmm::device_scalar<f_t> residual_norm(stream_view_);
-    rmm::device_scalar<f_t> reusable_device_scalar_value_1_(1, stream_view_);
-    rmm::device_scalar<f_t> reusable_device_scalar_value_0_(0, stream_view_);
+    rmm::device_scalar<f_t> reusable_device_scalar_value_1_(one_v<f_t>, stream_view_);
+    rmm::device_scalar<f_t> reusable_device_scalar_value_0_(zero_v<f_t>, stream_view_);
 
     cusparseDnVecDescr_t vecZ, vecQ, vecATQ;
     RAFT_CUSPARSE_TRY(
@@ -3496,13 +3497,13 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_primal_weight()
   // Here we use the combined bounds of the op_problem_scaled which may or may not be scaled yet
   // based on pdlp config
   pdlp::combine_constraint_bounds<i_t, f_t>(op_problem_scaled_, op_problem_scaled_.combined_bounds);
-  rmm::device_scalar<f_t> c_vec_norm{0.0, stream_view_};
+  rmm::device_scalar<f_t> c_vec_norm{zero_v<f_t>, stream_view_};
   pdlp::my_l2_weighted_norm<i_t, f_t>(op_problem_scaled_.objective_coefficients,
                                       settings_.hyper_params.initial_primal_weight_c_scaling,
                                       c_vec_norm,
                                       stream_view_);
 
-  rmm::device_scalar<f_t> b_vec_norm{0.0, stream_view_};
+  rmm::device_scalar<f_t> b_vec_norm{zero_v<f_t>, stream_view_};
   if (settings_.hyper_params.initial_primal_weight_combined_bounds) {
     // => same as sqrt(dot(b,b))
     pdlp::my_l2_weighted_norm<i_t, f_t>(op_problem_scaled_.combined_bounds,

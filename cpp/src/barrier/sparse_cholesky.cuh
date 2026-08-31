@@ -512,7 +512,6 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
     f_t symbolic_factorization_time = toc(start_symbolic_factor);
     settings_.log.printf("Symbolic factorization time : %.2fs\n", symbolic_factorization_time);
-    settings_.log.printf("Total symbolic time         : %.2fs\n", toc(start_symbolic));
     int64_t lu_nz       = 0;
     size_t size_written = 0;
     CUDSS_CALL_AND_CHECK(
