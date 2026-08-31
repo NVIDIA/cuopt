@@ -277,22 +277,30 @@ TEST(arc_flow, handles_maximization_in_both_recognizers)
   EXPECT_DOUBLE_EQ(internal_problem.objective, -expected_objective);
 }
 
-TEST(arc_flow, recognizes_large_scaled_demand_with_relative_tolerance)
+TEST(arc_flow, uses_solver_integrality_tolerance_for_scaled_demand)
 {
-  auto model                         = build_arc_flow();
-  constexpr int cover_row            = n_states;
-  constexpr int large_demand         = 19998;
-  constexpr double row_scale         = 0.1;
-  constexpr double normalized_offset = 1e-5;
-  const double scaled_demand         = (large_demand + normalized_offset) * row_scale;
-  model.row_lb[cover_row]             = scaled_demand;
+  constexpr double test_integrality_tolerance = 1e-4;
+  mip_solver_settings_t<int, double> settings;
+  auto tolerances                  = settings.get_tolerances();
+  tolerances.integrality_tolerance = test_integrality_tolerance;
+  const double normalized_offset   = tolerances.integrality_tolerance / 2.0;
+
+  auto model                 = build_arc_flow();
+  constexpr int cover_row    = n_states;
+  constexpr int large_demand = 19998;
+  constexpr double row_scale = 0.1;
+  const double scaled_demand = (large_demand + normalized_offset) * row_scale;
+  model.row_lb[cover_row]     = scaled_demand;
   for (int k = model.offsets[cover_row]; k < model.offsets[cover_row + 1]; ++k) {
     model.values[k] = row_scale;
   }
   std::fill(model.var_ub.begin(), model.var_ub.end(), large_demand);
 
   const double normalized_demand = scaled_demand / row_scale;
-  EXPECT_GT(std::abs(normalized_demand - std::round(normalized_demand)), 1e-9);
+  const double integrality_error =
+    std::abs(normalized_demand - std::round(normalized_demand));
+  EXPECT_GT(integrality_error, tolerances.absolute_tolerance);
+  EXPECT_LE(integrality_error, tolerances.integrality_tolerance);
 
   const raft::handle_t handle{};
   optimization_problem_t<int, double> problem(&handle);
@@ -309,9 +317,8 @@ TEST(arc_flow, recognizes_large_scaled_demand_with_relative_tolerance)
   problem.set_constraint_lower_bounds(model.row_lb.data(), model.row_lb.size());
   problem.set_constraint_upper_bounds(model.row_ub.data(), model.row_ub.size());
 
-  mip_solver_settings_t<int, double> settings;
   mip::arc_flow_t<int, double> heuristic;
-  EXPECT_TRUE(heuristic.recognize(problem, settings.get_tolerances()));
+  EXPECT_TRUE(heuristic.recognize(problem, tolerances));
 }
 
 TEST(arc_flow, single_arc_label_is_ordered_but_not_exact)
