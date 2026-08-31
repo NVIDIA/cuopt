@@ -284,7 +284,6 @@ mip_solution_t<i_t, f_t> run_mip_solver(
                          f_t user_obj,
                          const std::vector<f_t>& assignment,
                          const char* heuristic_name) {
-          // Both producers are built on *problem.original_problem_ptr; solver_obj shares one space.
           std::lock_guard<std::mutex> lock(papilo_callback_mutex);
           if (solver_obj >= papilo_best_solver_obj) { return; }
           papilo_best_solver_obj = solver_obj;
@@ -685,9 +684,10 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
     if (early_structural) {
       early_structural->stop();
       if (early_structural->solution_found()) {
-        CUOPT_LOG_DEBUG("Early structural heuristic (original) found incumbent with objective %.6e "
-                        "during presolve",
-                        early_structural->get_best_objective());
+        CUOPT_LOG_DEBUG(
+          "Early structural heuristic (original) found incumbent with objective %.6e "
+          "during presolve",
+          early_structural->get_best_objective());
       }
       early_structural.reset();
     }

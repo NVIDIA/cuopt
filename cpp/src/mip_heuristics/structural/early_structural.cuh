@@ -10,13 +10,10 @@
 #include <mip_heuristics/early_heuristic.cuh>
 
 #include <atomic>
-#include <cstdint>
 #include <functional>
 #include <memory>
 
 namespace cuopt::mathematical_optimization::mip {
-
-enum class structural_outcome_t : uint8_t { declined, constructed };
 
 template <typename i_t, typename f_t>
 class structural_heuristic_t {
@@ -35,7 +32,7 @@ class structural_heuristic_t {
     return false;
   }
 
-  virtual structural_outcome_t solve(
+  virtual bool solve(
     const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances,
     std::atomic<bool>& preemption,
     std::vector<f_t>& assignment) = 0;
@@ -92,7 +89,9 @@ class root_structural_t {
   void run();
 
  private:
-  problem_t<i_t, f_t>& problem_;
+  int device_id_{0};
+  raft::handle_t handle_;
+  std::unique_ptr<problem_t<i_t, f_t>> problem_;
   typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances_;
   std::atomic<bool>& preemption_;
   structural_incumbent_callback_t<f_t> incumbent_callback_;

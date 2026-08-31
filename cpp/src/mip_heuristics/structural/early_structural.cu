@@ -11,69 +11,38 @@
 #include <mip_heuristics/structural/arc_flow.cuh>
 #include <mip_heuristics/utils.cuh>
 
-#include <utilities/copy_helpers.hpp>
 #include <utilities/macros.cuh>
 
 #include <omp.h>
 
-#include <cmath>
 #include <vector>
 
 namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
-static bool validate(const problem_t<i_t, f_t>& problem,
+static bool validate(problem_t<i_t, f_t>& problem,
                      const std::vector<f_t>& assignment,
                      f_t& objective)
 {
-  auto stream = problem.handle_ptr->get_stream();
-
-  const auto csr_values  = cuopt::host_copy(problem.coefficients, stream);
-  const auto csr_cols    = cuopt::host_copy(problem.variables, stream);
-  const auto csr_offsets = cuopt::host_copy(problem.offsets, stream);
-  const auto row_lb      = cuopt::host_copy(problem.constraint_lower_bounds, stream);
-  const auto row_ub      = cuopt::host_copy(problem.constraint_upper_bounds, stream);
-  const auto obj         = cuopt::host_copy(problem.objective_coefficients, stream);
-  const auto var_types   = cuopt::host_copy(problem.variable_types, stream);
-  const auto [var_lb, var_ub] =
-    cuopt::extract_host_bounds<f_t>(problem.variable_bounds, problem.handle_ptr);
-
   if ((i_t)assignment.size() != problem.n_variables) { return false; }
-
-  const double integrality = problem.tolerances.integrality_tolerance;
-
-  double obj_value = 0.0;
-  for (i_t j = 0; j < problem.n_variables; ++j) {
-    const double x = assignment[j];
-    if (!std::isfinite(x)) { return false; }
-    if (var_types[j] == var_t::INTEGER && std::abs(x - std::round(x)) > integrality) {
-      return false;
-    }
-    if (x < (double)var_lb[j] - integrality || x > (double)var_ub[j] + integrality) {
-      return false;
-    }
-    obj_value += obj[j] * x;
+  solution_t<i_t, f_t> solution(problem);
+  solution.copy_new_assignment(assignment);
+  if (has_variable_bounds_violation(problem.handle_ptr, solution.assignment, &problem) ||
+      !solution.compute_feasibility()) {
+    return false;
   }
-  if (!std::isfinite(obj_value)) { return false; }
-
-  for (i_t r = 0; r < problem.n_constraints; ++r) {
-    double activity = 0.0;
-    for (i_t k = csr_offsets[r]; k < csr_offsets[r + 1]; ++k) {
-      activity += (double)csr_values[k] * (double)assignment[csr_cols[k]];
-    }
-    if (!std::isfinite(activity)) { return false; }
-    const double lo    = row_lb[r];
-    const double hi    = row_ub[r];
-    const double slack = get_cstr_tolerance<i_t, double>(lo,
-                                                         hi,
-                                                         problem.tolerances.absolute_tolerance,
-                                                         problem.tolerances.relative_tolerance);
-    if (std::isfinite(lo) && activity < lo - slack) { return false; }
-    if (std::isfinite(hi) && activity > hi + slack) { return false; }
-  }
-
-  objective = obj_value;
+  objective = solution.get_objective();
   return true;
+}
+
+template <typename i_t, typename f_t, typename model_t>
+static std::unique_ptr<structural_heuristic_t<i_t, f_t>> make_structural_heuristic(
+  const model_t& model,
+  const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances)
+{
+  auto heuristic = std::make_unique<arc_flow_t<i_t, f_t>>();
+  if (!heuristic->recognize(model, tolerances)) { return nullptr; }
+  return heuristic;
 }
 
 template <typename i_t, typename f_t>
@@ -83,8 +52,8 @@ std::unique_ptr<early_structural_t<i_t, f_t>> early_structural_t<i_t, f_t>::crea
   early_incumbent_callback_t<f_t> incumbent_callback)
 {
   if (omp_get_num_threads() < CUOPT_MIP_EARLY_STRUCTURAL_REQUIRED_THREAD_COUNT) { return nullptr; }
-  auto active = std::make_unique<arc_flow_t<i_t, f_t>>();
-  if (!active->recognize(op_problem, tolerances)) { return nullptr; }
+  auto active = make_structural_heuristic<i_t, f_t>(op_problem, tolerances);
+  if (!active) { return nullptr; }
   return std::unique_ptr<early_structural_t>(
     new early_structural_t(op_problem, tolerances, std::move(incumbent_callback), std::move(active)));
 }
@@ -164,8 +133,7 @@ void early_structural_t<i_t, f_t>::run()
   cuopt_assert(active_ != nullptr, "task launched without a recognized structure");
 
   std::vector<f_t> assignment;
-  const structural_outcome_t outcome = active_->solve(tolerances_, preemption_flag_, assignment);
-  if (outcome != structural_outcome_t::constructed) {
+  if (!active_->solve(tolerances_, preemption_flag_, assignment)) {
     CUOPT_LOG_DEBUG("[Early Structural] %s constructed nothing", active_->name());
     return;
   }
@@ -193,14 +161,16 @@ root_structural_t<i_t, f_t>::root_structural_t(
   const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances,
   std::atomic<bool>& preemption,
   structural_incumbent_callback_t<f_t> incumbent_callback)
-  : problem_(problem),
-    tolerances_(tolerances),
+  : tolerances_(tolerances),
     preemption_(preemption),
     incumbent_callback_(std::move(incumbent_callback))
 {
-  auto arc_flow = std::make_unique<arc_flow_t<i_t, f_t>>();
-  if (arc_flow->recognize(problem, tolerances)) { active_ = std::move(arc_flow); }
-  if (active_) { CUOPT_LOG_DEBUG("[Root Structural] %s recognized the model", active_->name()); }
+  RAFT_CUDA_TRY(cudaGetDevice(&device_id_));
+  active_ = make_structural_heuristic<i_t, f_t>(problem, tolerances);
+  if (!active_) { return; }
+  problem.handle_ptr->sync_stream();
+  problem_ = std::make_unique<problem_t<i_t, f_t>>(problem, &handle_);
+  CUOPT_LOG_DEBUG("[Root Structural] %s recognized the model", active_->name());
 }
 
 template <typename i_t, typename f_t>
@@ -210,18 +180,19 @@ template <typename i_t, typename f_t>
 void root_structural_t<i_t, f_t>::run()
 {
   if (!active_) { return; }
+  cuopt_assert(problem_ != nullptr, "missing structural problem");
   cuopt_assert(incumbent_callback_ != nullptr, "missing incumbent callback");
 
   std::vector<f_t> assignment;
-  const structural_outcome_t outcome = active_->solve(tolerances_, preemption_, assignment);
-  if (outcome != structural_outcome_t::constructed) {
+  if (!active_->solve(tolerances_, preemption_, assignment)) {
     CUOPT_LOG_DEBUG("[Root Structural] %s constructed nothing", active_->name());
     return;
   }
   if (preemption_.load()) { return; }
 
+  RAFT_CUDA_TRY(cudaSetDevice(device_id_));
   f_t objective{0};
-  if (!validate(problem_, assignment, objective)) {
+  if (!validate(*problem_, assignment, objective)) {
     CUOPT_LOG_DEBUG("[Root Structural] %s constructed a point that failed validation, discarding",
                     active_->name());
     return;
@@ -231,7 +202,7 @@ void root_structural_t<i_t, f_t>::run()
   incumbent_callback_(assignment, objective);
   CUOPT_LOG_DEBUG("[Root Structural] %s queued objective %+.6e",
                   active_->name(),
-                  (double)problem_.get_user_obj_from_solver_obj(objective));
+                  (double)problem_->get_user_obj_from_solver_obj(objective));
 }
 
 #if MIP_INSTANTIATE_FLOAT

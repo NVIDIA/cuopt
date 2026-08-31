@@ -102,7 +102,7 @@ bool close_to(double a, double b, double scale, const arcflow_tol_t& tol)
 
 bool is_integral(double v, const arcflow_tol_t& tol)
 {
-  return std::abs(v - std::round(v)) <= tol.abs;
+  return std::abs(v - std::round(v)) <= tol.abs + tol.rel * std::abs(v);
 }
 
 bool is_known(double v) { return !std::isnan(v); }
@@ -610,9 +610,7 @@ bool derive_potential(arc_flow_model_t& model, const std::atomic<bool>& preempti
     if (p <= tol.abs) { return false; }
   }
 
-  // The construction consumes exactly the demanded number of tokens per label, so it never
-  // oversatisfies a covering row.  That is only cost preserving when covering more cannot pay,
-  // and the weighted completion time argument behind the token order needs the same condition.
+  // Smith ordering assumes nonnegative job weights.
   for (double w : model.slope) {
     if (is_known(w) && w < -tol.abs) { return false; }
   }
@@ -637,7 +635,7 @@ bool derive_potential(arc_flow_model_t& model, const std::atomic<bool>& preempti
 }
 
 // Weighted shortest processing time orders labels by decreasing slope over displacement.
-std::vector<int> token_order(const arc_flow_model_t& model, bool& ordering_exact)
+std::vector<int> token_order(const arc_flow_model_t& model, bool& all_slopes_identified)
 {
   std::vector<double> lowest_phi(model.n_labels, 0.0);
   for (int l = 0; l < model.n_labels; ++l) {
@@ -661,25 +659,28 @@ std::vector<int> token_order(const arc_flow_model_t& model, bool& ordering_exact
 
   const arcflow_tol_t tol = model.tol;
   const auto cross        = [&](int a, int b) {
-    return (long double)model.slope[a] * (long double)model.displacement[b];
+    return (_Float128)model.slope[a] * (_Float128)model.displacement[b];
   };
 
   // Approximate equality is not transitive. Tolerance forms ratio classes before the final sort.
   std::sort(ordered.begin(), ordered.end(), [&](int a, int b) {
-    const long double lhs = cross(a, b);
-    const long double rhs = cross(b, a);
+    const _Float128 lhs = cross(a, b);
+    const _Float128 rhs = cross(b, a);
     if (lhs != rhs) { return lhs > rhs; }
     return a < b;
   });
   std::vector<int> ratio_class(model.n_labels, 0);
   for (size_t position = 1; position < ordered.size(); ++position) {
-    const int previous      = ordered[position - 1];
-    const int current       = ordered[position];
-    const long double lhs   = cross(previous, current);
-    const long double rhs   = cross(current, previous);
-    const long double scale = std::max(std::abs(lhs), std::abs(rhs));
-    const bool tied         = std::abs(lhs - rhs) <= tol.abs + tol.rel * (double)scale;
-    ratio_class[current]    = ratio_class[previous] + (tied ? 0 : 1);
+    const int previous             = ordered[position - 1];
+    const int current              = ordered[position];
+    const _Float128 lhs            = cross(previous, current);
+    const _Float128 rhs            = cross(current, previous);
+    const _Float128 lhs_magnitude  = lhs < 0 ? -lhs : lhs;
+    const _Float128 rhs_magnitude  = rhs < 0 ? -rhs : rhs;
+    const _Float128 scale          = std::max(lhs_magnitude, rhs_magnitude);
+    const _Float128 difference     = lhs > rhs ? lhs - rhs : rhs - lhs;
+    const bool tied                = difference <= (_Float128)tol.abs + (_Float128)tol.rel * scale;
+    ratio_class[current]           = ratio_class[previous] + (tied ? 0 : 1);
   }
   std::sort(ordered.begin(), ordered.end(), [&](int a, int b) {
     if (ratio_class[a] != ratio_class[b]) { return ratio_class[a] < ratio_class[b]; }
@@ -701,7 +702,7 @@ std::vector<int> token_order(const arc_flow_model_t& model, bool& ordering_exact
   }
 
   // Labels without fitted slopes are placed at their first reachable potential.
-  ordering_exact = unidentified.empty();
+  all_slopes_identified = unidentified.empty();
   std::sort(unidentified.begin(), unidentified.end(), [&](int a, int b) {
     if (lowest_phi[a] != lowest_phi[b]) { return lowest_phi[a] < lowest_phi[b]; }
     return a < b;
@@ -886,6 +887,11 @@ std::optional<arc_flow_result_t> run_dp(const arc_flow_model_t& model,
 
 template <typename i_t, typename f_t>
 struct arc_flow_t<i_t, f_t>::host_state_t {
+  host_state_t(host_problem_t<i_t, f_t>&& problem, arcflow_profile_t&& profile)
+    : h(std::move(problem)), profile(std::move(profile))
+  {
+  }
+
   host_problem_t<i_t, f_t> h;
   arcflow_profile_t profile;
 };
@@ -905,66 +911,52 @@ bool arc_flow_t<i_t, f_t>::recognize(const optimization_problem_t<i_t, f_t>& op_
   if (!arcflow_accepts_shape(n_variables, n_constraints, op_problem.get_nnz())) { return false; }
   if (op_problem.get_n_integers() != n_variables) { return false; }
 
-  auto stream          = op_problem.get_handle_ptr()->get_stream();
-  const auto& d_row_lb = op_problem.get_constraint_lower_bounds();
-  const auto& d_row_ub = op_problem.get_constraint_upper_bounds();
+  auto stream              = op_problem.get_handle_ptr()->get_stream();
+  const auto& d_row_lb     = op_problem.get_constraint_lower_bounds();
+  const auto& d_row_ub     = op_problem.get_constraint_upper_bounds();
+  const auto& d_values     = op_problem.get_constraint_matrix_values();
+  const auto& d_indices    = op_problem.get_constraint_matrix_indices();
+  const auto& d_offsets    = op_problem.get_constraint_matrix_offsets();
+  const auto& d_obj        = op_problem.get_objective_coefficients();
+  const auto& d_var_lb     = op_problem.get_variable_lower_bounds();
+  const auto& d_var_ub     = op_problem.get_variable_upper_bounds();
+  const auto& d_var_types  = op_problem.get_variable_types();
   if ((i_t)d_row_lb.size() != n_constraints || (i_t)d_row_ub.size() != n_constraints) {
     return false;
   }
-  std::vector<f_t> row_lb(n_constraints);
-  std::vector<f_t> row_ub(n_constraints);
-  raft::copy(row_lb.data(), d_row_lb.data(), row_lb.size(), stream);
-  raft::copy(row_ub.data(), d_row_ub.data(), row_ub.size(), stream);
-  stream.synchronize();
-  if (!arcflow_accepts_bounds(row_lb, row_ub)) { return false; }
-
-  const auto& d_values  = op_problem.get_constraint_matrix_values();
-  const auto& d_indices = op_problem.get_constraint_matrix_indices();
-  const auto& d_offsets = op_problem.get_constraint_matrix_offsets();
   if ((i_t)d_offsets.size() != n_constraints + 1) { return false; }
   if (d_values.size() != d_indices.size()) { return false; }
-  std::vector<f_t> values(d_values.size());
-  std::vector<i_t> indices(d_indices.size());
-  std::vector<i_t> offsets(d_offsets.size());
-  raft::copy(values.data(), d_values.data(), values.size(), stream);
-  raft::copy(indices.data(), d_indices.data(), indices.size(), stream);
-  raft::copy(offsets.data(), d_offsets.data(), offsets.size(), stream);
-  stream.synchronize();
-
-  const arcflow_tol_t tol = structural_tolerance<f_t>();
-  auto profile            = profile_from_csr(n_variables, n_constraints, values, indices, offsets);
-  if (!arcflow_accepts_profile(profile, row_lb, row_ub, tol)) { return false; }
-
-  const auto& d_obj       = op_problem.get_objective_coefficients();
-  const auto& d_var_lb    = op_problem.get_variable_lower_bounds();
-  const auto& d_var_ub    = op_problem.get_variable_upper_bounds();
-  const auto& d_var_types = op_problem.get_variable_types();
   cuopt_assert((i_t)d_obj.size() == n_variables, "Size mismatch");
   cuopt_assert((i_t)d_var_types.size() == n_variables, "Size mismatch");
   if (!d_var_lb.is_empty() && (i_t)d_var_lb.size() != n_variables) { return false; }
   if ((i_t)d_var_ub.size() != n_variables) { return false; }
 
-  auto state             = std::make_unique<host_state_t>();
-  state->h.n_variables   = n_variables;
-  state->h.n_constraints = n_constraints;
-  state->h.tol           = tol;
-  state->h.row_lb        = std::move(row_lb);
-  state->h.row_ub        = std::move(row_ub);
-  state->h.obj.resize(d_obj.size());
-  state->h.var_lb.assign(n_variables, f_t{0});
-  state->h.var_ub.resize(d_var_ub.size());
-  state->h.var_types.resize(d_var_types.size());
-  raft::copy(state->h.obj.data(), d_obj.data(), state->h.obj.size(), stream);
-  if (!d_var_lb.is_empty()) {
-    raft::copy(state->h.var_lb.data(), d_var_lb.data(), state->h.var_lb.size(), stream);
-  }
-  raft::copy(state->h.var_ub.data(), d_var_ub.data(), state->h.var_ub.size(), stream);
-  raft::copy(state->h.var_types.data(), d_var_types.data(), state->h.var_types.size(), stream);
-  stream.synchronize();
-  transpose_into_csc<i_t, f_t>(values, indices, offsets, state->h);
-  state->profile = std::move(profile);
+  host_problem_t<i_t, f_t> h;
+  h.n_variables   = n_variables;
+  h.n_constraints = n_constraints;
+  h.tol           = structural_tolerance<f_t>();
+  h.row_lb        = cuopt::host_copy(d_row_lb, stream);
+  h.row_ub        = cuopt::host_copy(d_row_ub, stream);
+  if (!arcflow_accepts_bounds(h.row_lb, h.row_ub)) { return false; }
 
-  state_ = std::move(state);
+  const auto values  = cuopt::host_copy(d_values, stream);
+  const auto indices = cuopt::host_copy(d_indices, stream);
+  const auto offsets = cuopt::host_copy(d_offsets, stream);
+  auto profile = profile_from_csr(n_variables, n_constraints, values, indices, offsets);
+  if (!arcflow_accepts_profile(profile, h.row_lb, h.row_ub, h.tol)) { return false; }
+
+  h.obj = cuopt::host_copy(d_obj, stream);
+  if (op_problem.get_sense()) {
+    for (auto& coefficient : h.obj) {
+      coefficient = -coefficient;
+    }
+  }
+  h.var_lb.assign(n_variables, f_t{0});
+  if (!d_var_lb.is_empty()) { h.var_lb = cuopt::host_copy(d_var_lb, stream); }
+  h.var_ub    = cuopt::host_copy(d_var_ub, stream);
+  h.var_types = cuopt::host_copy(d_var_types, stream);
+  transpose_into_csc<i_t, f_t>(values, indices, offsets, h);
+  state_ = std::make_unique<host_state_t>(std::move(h), std::move(profile));
   return true;
 }
 
@@ -980,57 +972,37 @@ bool arc_flow_t<i_t, f_t>::recognize(const problem_t<i_t, f_t>& problem,
   auto stream = problem.handle_ptr->get_stream();
   cuopt_assert((i_t)problem.constraint_lower_bounds.size() == n_constraints, "Size mismatch");
   cuopt_assert((i_t)problem.constraint_upper_bounds.size() == n_constraints, "Size mismatch");
-  std::vector<f_t> row_lb(n_constraints);
-  std::vector<f_t> row_ub(n_constraints);
-  raft::copy(row_lb.data(), problem.constraint_lower_bounds.data(), row_lb.size(), stream);
-  raft::copy(row_ub.data(), problem.constraint_upper_bounds.data(), row_ub.size(), stream);
-  stream.synchronize();
-  if (!arcflow_accepts_bounds(row_lb, row_ub)) { return false; }
-
-  std::vector<f_t> csc_values(problem.reverse_coefficients.size());
-  std::vector<i_t> csc_rows(problem.reverse_constraints.size());
-  std::vector<i_t> csc_offsets(problem.reverse_offsets.size());
-  raft::copy(csc_values.data(), problem.reverse_coefficients.data(), csc_values.size(), stream);
-  raft::copy(csc_rows.data(), problem.reverse_constraints.data(), csc_rows.size(), stream);
-  raft::copy(csc_offsets.data(), problem.reverse_offsets.data(), csc_offsets.size(), stream);
-  stream.synchronize();
-  cuopt_assert((i_t)csc_offsets.size() == n_variables + 1, "Size mismatch");
-  cuopt_assert(csc_values.size() == csc_rows.size(), "Size mismatch");
-
-  const arcflow_tol_t tol = structural_tolerance<f_t>();
-  auto profile =
-    profile_from_csc(n_variables, n_constraints, csc_values, csc_rows, csc_offsets);
-  if (!arcflow_accepts_profile(profile, row_lb, row_ub, tol)) { return false; }
-
+  cuopt_assert((i_t)problem.reverse_offsets.size() == n_variables + 1, "Size mismatch");
+  cuopt_assert(problem.reverse_coefficients.size() == problem.reverse_constraints.size(),
+               "Size mismatch");
   cuopt_assert((i_t)problem.objective_coefficients.size() == n_variables, "Size mismatch");
   cuopt_assert((i_t)problem.variable_types.size() == n_variables, "Size mismatch");
 
-  auto state             = std::make_unique<host_state_t>();
-  state->h.n_variables   = n_variables;
-  state->h.n_constraints = n_constraints;
-  state->h.tol           = tol;
-  state->h.csc_values    = std::move(csc_values);
-  state->h.csc_rows      = std::move(csc_rows);
-  state->h.csc_offsets   = std::move(csc_offsets);
-  state->h.row_lb        = std::move(row_lb);
-  state->h.row_ub        = std::move(row_ub);
-  state->h.obj.resize(problem.objective_coefficients.size());
-  state->h.var_types.resize(problem.variable_types.size());
-  raft::copy(
-    state->h.obj.data(), problem.objective_coefficients.data(), state->h.obj.size(), stream);
-  raft::copy(
-    state->h.var_types.data(), problem.variable_types.data(), state->h.var_types.size(), stream);
-  stream.synchronize();
-  std::tie(state->h.var_lb, state->h.var_ub) =
-    cuopt::extract_host_bounds<f_t>(problem.variable_bounds, problem.handle_ptr);
-  state->profile = std::move(profile);
+  host_problem_t<i_t, f_t> h;
+  h.n_variables   = n_variables;
+  h.n_constraints = n_constraints;
+  h.tol           = structural_tolerance<f_t>();
+  h.csc_values    = cuopt::host_copy(problem.reverse_coefficients, stream);
+  h.csc_rows      = cuopt::host_copy(problem.reverse_constraints, stream);
+  h.csc_offsets   = cuopt::host_copy(problem.reverse_offsets, stream);
+  h.row_lb        = cuopt::host_copy(problem.constraint_lower_bounds, stream);
+  h.row_ub        = cuopt::host_copy(problem.constraint_upper_bounds, stream);
+  if (!arcflow_accepts_bounds(h.row_lb, h.row_ub)) { return false; }
 
-  state_ = std::move(state);
+  auto profile =
+    profile_from_csc(n_variables, n_constraints, h.csc_values, h.csc_rows, h.csc_offsets);
+  if (!arcflow_accepts_profile(profile, h.row_lb, h.row_ub, h.tol)) { return false; }
+
+  h.obj       = cuopt::host_copy(problem.objective_coefficients, stream);
+  h.var_types = cuopt::host_copy(problem.variable_types, stream);
+  std::tie(h.var_lb, h.var_ub) =
+    cuopt::extract_host_bounds<f_t>(problem.variable_bounds, problem.handle_ptr);
+  state_ = std::make_unique<host_state_t>(std::move(h), std::move(profile));
   return true;
 }
 
 template <typename i_t, typename f_t>
-structural_outcome_t arc_flow_t<i_t, f_t>::solve(
+bool arc_flow_t<i_t, f_t>::solve(
   const typename mip_solver_settings_t<i_t, f_t>::tolerances_t&,
   std::atomic<bool>& preemption,
   std::vector<f_t>& assignment)
@@ -1041,38 +1013,36 @@ structural_outcome_t arc_flow_t<i_t, f_t>::solve(
   std::vector<row_info_t> rows;
   if (!classify_rows(h, state_->profile, rows)) {
     CUOPT_LOG_DEBUG("[ArcFlow] rejected: rows are not unit incidence after normalization");
-    return structural_outcome_t::declined;
+    return false;
   }
 
   arc_flow_model_t model;
   if (!build_structure(h, rows, model)) {
     CUOPT_LOG_DEBUG("[ArcFlow] rejected: columns do not match the labelled arc pattern");
-    return structural_outcome_t::declined;
+    return false;
   }
-  if (preemption.load()) { return structural_outcome_t::declined; }
+  if (preemption.load()) { return false; }
 
   if (!derive_potential(model, preemption)) {
     CUOPT_LOG_DEBUG("[ArcFlow] rejected: no consistent potential and affine cost model");
-    return structural_outcome_t::declined;
+    return false;
   }
-  if (preemption.load()) { return structural_outcome_t::declined; }
+  if (preemption.load()) { return false; }
 
-  bool ordering_exact = true;
-  const auto tokens   = token_order(model, ordering_exact);
+  bool all_slopes_identified = true;
+  const auto tokens          = token_order(model, all_slopes_identified);
   CUOPT_LOG_DEBUG("[ArcFlow] detected %d nodes, %d labels, %d paths, %zu tokens, ordering %s",
                   model.n_nodes,
                   model.n_labels,
                   arcflow_paths_supported,
                   tokens.size(),
-                  ordering_exact ? "identified" : "partly by reachability");
+                  all_slopes_identified ? "identified" : "partly by reachability");
 
   const auto result = run_dp(model, tokens, preemption);
   if (!result.has_value()) {
     CUOPT_LOG_DEBUG("[ArcFlow] no complete path set found in the ordered family");
-    return structural_outcome_t::declined;
+    return false;
   }
-  // Unidentified token order makes an otherwise complete search heuristic.
-  search_was_exact_ = result->exact && ordering_exact;
   CUOPT_LOG_DEBUG(
     "[ArcFlow] search %s", result->exact ? "exact" : "beamed by the history budget");
 
@@ -1080,7 +1050,7 @@ structural_outcome_t arc_flow_t<i_t, f_t>::solve(
   for (int col : result->columns) {
     assignment[col] += f_t{1};
   }
-  return structural_outcome_t::constructed;
+  return true;
 }
 
 #if MIP_INSTANTIATE_FLOAT

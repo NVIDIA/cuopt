@@ -526,6 +526,13 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     sol                           = dm.run_solver();
   }  // implicit barrier for all tasks created in B&B and heuristics
 
+  dm.population.add_external_solutions_to_population();
+  if (dm.population.is_feasible() &&
+      (!sol.get_feasible() ||
+       dm.population.best_feasible().get_objective() < sol.get_objective())) {
+    sol = solution_t<i_t, f_t>(dm.population.best_feasible());
+  }
+
   if (!context.settings.heuristics_only && branch_and_bound->has_solver_space_incumbent()) {
     solution_t<i_t, f_t> branch_and_bound_sol(*context.problem_ptr);
     branch_and_bound_sol.copy_new_assignment(branch_and_bound_solution.x);
