@@ -115,6 +115,69 @@ def test_populate_breaks():
     assert s["uniform_breaks"] == 1
 
 
+def test_populate_initial_solution_node_type_names():
+    dm = routing.DataModel(3, 1, 2)
+    dm.add_cost_matrix(np.eye(3, dtype=np.float32))
+    dm.add_initial_solutions(
+        np.array([0, 0, 0, 0], np.int32),
+        np.array([0, 0, 1, 0], np.int32),
+        np.array(["Depot", "Pickup", "Delivery", "Depot"]),
+        np.array([0, 4], np.int32),
+    )
+    assert problem_summary(dm)["initial_solutions_routes"] == 4
+
+
+def test_routing_node_types_accepts_string_and_integer_arrays():
+    from cuopt.grpc.client import grpc_client as grpc_native
+
+    names = ["Depot", "Pickup", "Delivery", "Break"]
+    expected = np.array([0, 1, 2, 3], dtype=np.int32)
+    assert np.array_equal(grpc_native._routing_node_types(names), expected)
+    assert np.array_equal(
+        grpc_native._routing_node_types(np.array(names, dtype=object)),
+        expected,
+    )
+    assert np.array_equal(
+        grpc_native._routing_node_types(np.array(names)), expected
+    )
+    assert np.array_equal(
+        grpc_native._routing_node_types(
+            np.array([b"Depot", b"Pickup", b"Delivery", b"Break"])
+        ),
+        expected,
+    )
+    assert np.array_equal(grpc_native._routing_node_types(expected), expected)
+    assert np.array_equal(
+        grpc_native._routing_node_types(expected.astype(np.uint8)),
+        expected.astype(np.uint8),
+    )
+    assert np.array_equal(
+        grpc_native._routing_node_types(np.array([0, 1, 2, 3], dtype=object)),
+        np.array([0, 1, 2, 3], dtype=object),
+    )
+    string_dtype = getattr(np.dtypes, "StringDType", None)
+    if string_dtype is not None:
+        assert np.array_equal(
+            grpc_native._routing_node_types(
+                np.array(names, dtype=string_dtype())
+            ),
+            expected,
+        )
+
+
+def test_routing_settings_object_exposes_values_the_client_forwards():
+    # RoutingClient copies these through get_time_limit / get_verbose_mode /
+    # get_error_logging_mode. The dict branch of _apply_routing_settings reads
+    # the same fields as time_limit, verbose_mode (or verbose), and error_logging.
+    settings = routing.SolverSettings()
+    settings.set_time_limit(3.5)
+    settings.set_verbose_mode(True)
+    settings.set_error_logging_mode(False)
+    assert settings.get_time_limit() == 3.5
+    assert settings.get_verbose_mode() is True
+    assert settings.get_error_logging_mode() is False
+
+
 def test_populate_handles_pandas_host_inputs():
     """Pandas (host) inputs map identically to numpy.
 

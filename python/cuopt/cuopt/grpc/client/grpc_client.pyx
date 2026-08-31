@@ -731,6 +731,52 @@ def _to_host(x):
     return np.asarray(x)
 
 
+_NODE_TYPE_NAMES = {
+    "Depot": 0,
+    "Pickup": 1,
+    "Delivery": 2,
+    "Break": 3,
+}
+
+
+def _is_node_type_name_array(values):
+    """True when values are node-type names rather than wire integers.
+
+    Integer and unsigned arrays (including uint8, the local DataModel storage
+    type) pass through. Name arrays are Unicode (U), byte strings (S), NumPy 2
+    variable-width strings (T), or object arrays of str/bytes. Object arrays of
+    ints must not take the name path.
+    """
+    kind = values.dtype.kind
+    if kind in "UST":
+        return True
+    if kind != "O" or values.size == 0:
+        return False
+    # Types are a 1-D sequence. Flatten only for a stray column (n, 1).
+    sample = values[0] if values.ndim == 1 else values.reshape(-1)[0]
+    return isinstance(sample, (str, bytes, np.str_, np.bytes_))
+
+
+def _node_type_name(value):
+    if isinstance(value, bytes):
+        return value.decode("utf-8")
+    return value
+
+
+def _routing_node_types(values):
+    """Normalize routing node names or enum values to wire integers."""
+    values = np.asarray(_to_host(values))
+    if not _is_node_type_name_array(values):
+        return values
+    try:
+        return np.asarray(
+            [_NODE_TYPE_NAMES[_node_type_name(value)] for value in values.ravel()],
+            dtype=np.int32,
+        )
+    except KeyError as error:
+        raise ValueError(f"unknown routing node type {error.args[0]!r}") from error
+
+
 # --- numpy -> std::vector fillers ------------------------------------------
 
 cdef void _fill_i32(vector[int32_t]& v, arr) except *:
@@ -868,7 +914,9 @@ cdef void _populate(cpu_routing_problem_t& p, data_model) except *:
         elif name == "add_initial_solutions":
             _fill_i32(p.initial_solutions.vehicle_ids, args[0])
             _fill_i32(p.initial_solutions.routes, args[1])
-            _fill_i32(p.initial_solutions.types, args[2])
+            _fill_i32(
+                p.initial_solutions.types, _routing_node_types(args[2])
+            )
             _fill_i32(p.initial_solutions.sol_offsets, args[3])
         elif name == "set_min_vehicles":
             p.min_vehicles = <int32_t>int(args[0])
@@ -965,6 +1013,42 @@ cdef _solution_to_py(cpu_routing_solution_t s):
     }
 
 
+# dump_best_results is intentionally not forwarded. The proto and C++ mapper
+# already carry dump_best_results_path, but that writes a debug file on the
+# gRPC server host rather than returning data to the client. Wire it up later
+# if a remote-debug use case appears.
+cdef void _apply_routing_settings(
+    routing_solver_settings_t[int, float]& s, settings
+) except *:
+    if settings is None:
+        return
+    if isinstance(settings, dict):
+        tl = settings.get("time_limit")
+        if tl is not None:
+            s.set_time_limit(<float>float(tl))
+        verbose = settings.get("verbose_mode", settings.get("verbose"))
+        if verbose is not None:
+            s.set_verbose_mode(<bint>bool(verbose))
+        error_logging = settings.get("error_logging")
+        if error_logging is not None:
+            s.set_error_logging_mode(<bint>bool(error_logging))
+        return
+
+    get_time_limit = getattr(settings, "get_time_limit", None)
+    if get_time_limit is not None:
+        tl = get_time_limit()
+        if tl is not None:
+            s.set_time_limit(<float>float(tl))
+    get_verbose_mode = getattr(settings, "get_verbose_mode", None)
+    if get_verbose_mode is not None:
+        s.set_verbose_mode(<bint>bool(get_verbose_mode()))
+    get_error_logging_mode = getattr(
+        settings, "get_error_logging_mode", None
+    )
+    if get_error_logging_mode is not None:
+        s.set_error_logging_mode(<bint>bool(get_error_logging_mode()))
+
+
 cdef class RoutingClient:
     """Client for solving VRP problems on a remote cuOpt gRPC server."""
 
@@ -996,18 +1080,7 @@ cdef class RoutingClient:
             )
 
     cdef _apply_settings(self, routing_solver_settings_t[int, float]& s, settings):
-        if settings is None:
-            return
-        if isinstance(settings, dict):
-            tl = settings.get("time_limit")
-            if tl is not None:
-                s.set_time_limit(<float>float(tl))
-            return
-        get_time_limit = getattr(settings, "get_time_limit", None)
-        if get_time_limit is not None:
-            tl = get_time_limit()
-            if tl is not None:
-                s.set_time_limit(<float>float(tl))
+        _apply_routing_settings(s, settings)
 
     def submit(self, data_model, settings=None):
         """Serialize and submit a VRP problem; return its ``job_id``."""
