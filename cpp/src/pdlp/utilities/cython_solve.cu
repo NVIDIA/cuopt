@@ -131,12 +131,15 @@ std::unique_ptr<solver_ret_t> call_solve(
   barrier_cache_t* active_cache = cache_in;
   pdlp_settings.barrier_cache     = nullptr;
 
-  rmm::cuda_stream ephemeral_stream(static_cast<rmm::cuda_stream::flags>(flags));
-  raft::handle_t ephemeral_handle(ephemeral_stream);
-  raft::handle_t* solve_handle = &ephemeral_handle;
-
-  // Create problem instance and CUDA resources based on memory backend
+  // Create problem instance and CUDA resources based on memory backend.
+  // Do not construct rmm::cuda_stream until we know we are on GPU: CPU-only /
+  // remote-gRPC hosts have no device (CUDA_VISIBLE_DEVICES="") and stream
+  // construction would throw cudaErrorNoDevice.
   if (memory_backend == cuopt::mathematical_optimization::memory_backend_t::GPU) {
+    rmm::cuda_stream ephemeral_stream(static_cast<rmm::cuda_stream::flags>(flags));
+    raft::handle_t ephemeral_handle(ephemeral_stream);
+    raft::handle_t* solve_handle = &ephemeral_handle;
+
     if (want_cache) {
       if (active_cache == nullptr) {
         owned_cache  = barrier_cache_t::create(flags);
