@@ -5,3 +5,6 @@
 
 # Add CLI end-to-end test
 ConfigureTest(CLI_TEST test_cli.cpp LABELS numopt)
+
+# Logger boundary: per-library instances, shared log file, truncate semantics
+ConfigureTest(LOGGER_TEST test_logger.cpp LABELS numopt)
