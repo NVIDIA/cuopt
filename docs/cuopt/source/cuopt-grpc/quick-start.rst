@@ -22,10 +22,12 @@ directly (see :doc:`api`).
 
 .. note::
 
-   **Problem types:** **LP**, **MIP**, and **QP** are supported today.
-   **Routing** (VRP, TSP, PDP) over gRPC is **not** available; for remote
-   routing, use the HTTP/JSON :doc:`REST self-hosted server <../cuopt-server/index>`.
-   This guide is **not** the REST server.
+   **Problem types:** **LP**, **MIP**, and **QP** support remote execution
+   (this guide) and gRPC clients. **Routing** (VRP, TSP, PDP) supports the
+   explicit :doc:`VRP gRPC client <routing>` only -- there is no remote
+   execution path for routing yet. The HTTP/JSON
+   :doc:`REST self-hosted server <../cuopt-server/index>` is also available
+   for remote routing. This guide is **not** the REST server.
 
 How Remote Execution Works
 ==========================
