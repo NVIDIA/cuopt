@@ -100,6 +100,26 @@ for sym in "${required_symbols[@]}"; do
     fi
 done
 
+# Each component library keeps its own logger only while this state stays hidden; exporting it
+# silently merges them back into one. Nothing else catches that.
+logger_state_symbols=(
+    "cuopt::default_logger()"
+    "cuopt::global_log_buffer()"
+    "cuopt::reset_default_logger()"
+)
+
+demangled_dyn_syms="$(readelf --dyn-syms --wide "${LIBRARY}" | awk '$7 != "UND" { print $8 }' | c++filt)"
+
+for sym in "${logger_state_symbols[@]}"; do
+    echo "Checking that logger state '${sym}' is NOT exported..."
+    if grep -qF "${sym}" <<< "${demangled_dyn_syms}"; then
+        echo "ERROR: Logger state '${sym}' is exported from ${LIBRARY}."
+        echo "ERROR: Per-component loggers collapse into one. Check that logger.hpp's namespace"
+        echo "ERROR: is not marked CUOPT_EXPORT and hidden visibility is still set on the target."
+        failed=1
+    fi
+done
+
 if [[ "${failed}" -ne 0 ]]; then
     exit 1
 fi
