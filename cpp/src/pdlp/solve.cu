@@ -81,7 +81,7 @@ template <typename i_t, typename f_t>
 simplex::user_problem_t<i_t, f_t> user_problem_from_transform(
   raft::handle_t const* handle_ptr,
   optimization_problem_t<i_t, f_t>& model,
-  cuopt::cython::barrier_transform_t const& xf)
+  cuopt::mathematical_optimization::barrier_transform_t const& xf)
 {
   simplex::user_problem_t<i_t, f_t> user_problem(handle_ptr);
   user_problem.num_rows  = xf.user_num_rows;
@@ -523,7 +523,7 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   const timer_t& timer,
   const raft::handle_t* handle_ptr,
-  cuopt::cython::barrier_cache_t* cache = nullptr)
+  cuopt::mathematical_optimization::barrier_cache_t* cache = nullptr)
 {
   f_t norm_user_objective = vector_norm2<i_t, f_t>(user_problem.objective);
   f_t norm_rhs            = vector_norm2<i_t, f_t>(user_problem.rhs);
@@ -589,7 +589,7 @@ optimization_problem_solution_t<i_t, f_t> run_barrier(
   mip::problem_t<i_t, f_t>& problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   const timer_t& timer,
-  cuopt::cython::barrier_cache_t* cache = nullptr)
+  cuopt::mathematical_optimization::barrier_cache_t* cache = nullptr)
 {
   // Convert data structures to dual simplex format and back
   simplex::user_problem_t<i_t, f_t> dual_simplex_problem =

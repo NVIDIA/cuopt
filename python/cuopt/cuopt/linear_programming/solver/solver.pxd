@@ -8,6 +8,7 @@
 # cython: language_level = 3
 
 from libcpp cimport bool
+from libcpp.memory cimport unique_ptr
 from libcpp.pair cimport pair
 from libcpp.string cimport string
 from libcpp.vector cimport vector
@@ -93,7 +94,7 @@ cdef extern from "cuopt/mathematical_optimization/utilities/cython_types.hpp" na
         vector[double] last_restart_duality_gap_primal_solution_
         vector[double] last_restart_duality_gap_dual_solution_
 
-cdef extern from "cuopt/mathematical_optimization/utilities/barrier_cache.hpp" namespace "cuopt::cython": # noqa
+cdef extern from "cuopt/mathematical_optimization/utilities/barrier_cache.hpp" namespace "cuopt::mathematical_optimization": # noqa
     cdef cppclass barrier_cache_t:
         pass
 

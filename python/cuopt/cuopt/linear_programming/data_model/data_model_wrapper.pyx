@@ -25,7 +25,7 @@ cdef extern from "Python.h":
     bint PyCapsule_IsValid(object cap, const char* name)
     void* PyCapsule_GetPointer(object cap, const char* name)
 
-cdef extern from "cuopt/mathematical_optimization/utilities/barrier_cache.hpp" namespace "cuopt::cython":  # noqa
+cdef extern from "cuopt/mathematical_optimization/utilities/barrier_cache.hpp" namespace "cuopt::mathematical_optimization":  # noqa
     cdef cppclass barrier_cache_t:
         void update_linear_objective(const double* c, int n) except +
 
@@ -167,8 +167,8 @@ cdef class DataModel:
     def set_objective_coefficients(self, c):
         self.c = type_cast(c, np.float64, "c")
 
-    def update_q(self, c):
-        """Update linear objective coefficients (user-space ``c``).
+    def update_linear_objective(self, c):
+        """Update linear objective coefficients (``c`` on this DataModel).
 
         Always writes the DataModel objective. If this model owns a solver
         cache from a prior Barrier solve, also crushes ``c`` into the cached

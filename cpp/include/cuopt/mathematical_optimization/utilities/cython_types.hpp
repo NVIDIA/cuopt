@@ -88,7 +88,7 @@ struct linear_programming_ret_t {
   mathematical_optimization::method_t solved_by_{};
 
   /** GPU barrier cache (stream + handle + iteration workspace); moved to Python capsule when set. */
-  std::unique_ptr<barrier_cache_t> barrier_cache;
+  std::unique_ptr<mathematical_optimization::barrier_cache_t> barrier_cache;
 
   bool is_gpu() const { return std::holds_alternative<gpu_solutions_t>(solutions_); }
 };

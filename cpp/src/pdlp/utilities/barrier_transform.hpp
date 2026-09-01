@@ -13,13 +13,13 @@
 #include <stdexcept>
 #include <vector>
 
-namespace cuopt::cython {
+namespace cuopt::mathematical_optimization {
 
 /**
- * User ↔ barrier transform retained on barrier_cache_t after Optimal:
+ * User-to-barrier transform retained on barrier_cache_t after Optimal:
  * convert / presolve / scaling, plus the scaled LP.
- * Enough to crush a new user-space linear objective into barrier space and to
- * uncrush a solution without rerunning those algorithms.
+ * Enough to crush a new linear objective from the original problem into barrier
+ * coordinates and to uncrush a solution without rerunning those algorithms.
  */
 struct barrier_transform_t {
   int user_num_cols{0};
@@ -39,7 +39,7 @@ struct barrier_transform_t {
   cuopt::mathematical_optimization::simplex::presolve_info_t<int, double> presolve_info;
   std::vector<double> column_scales;
   std::vector<double> row_scales;
-  // Barrier linear objective minus crush(user c) from the first solve (Q·ℓ shift, etc.).
+  // Barrier linear objective minus crush(user c) from the first solve (Q*ell shift, etc.).
   std::vector<double> linear_obj_shift;
   std::unique_ptr<cuopt::mathematical_optimization::simplex::lp_problem_t<int, double>> barrier_lp;
 };
@@ -50,13 +50,13 @@ inline std::vector<double> crush_user_linear_objective(barrier_transform_t const
 {
   if (c == nullptr || n != xf.user_num_cols) {
     throw std::invalid_argument(
-      "update_q: linear objective length must match the cached user column count.");
+      "update_linear_objective: linear objective length must match the cached user column count.");
   }
   if (xf.original_num_cols < xf.user_num_cols) {
-    throw std::invalid_argument("update_q: cached original column count is smaller than user n.");
+    throw std::invalid_argument("update_linear_objective: cached original column count is smaller than user n.");
   }
   if (xf.barrier_lp == nullptr) {
-    throw std::invalid_argument("update_q: cached barrier LP is missing.");
+    throw std::invalid_argument("update_linear_objective: cached barrier LP is missing.");
   }
 
   std::vector<double> orig(static_cast<std::size_t>(xf.original_num_cols), 0.0);
@@ -80,7 +80,7 @@ inline std::vector<double> crush_user_linear_objective(barrier_transform_t const
   auto const& pairs = xf.presolve_info.free_variable_pairs;
   if (!pairs.empty()) {
     if (pairs.size() % 2 != 0) {
-      throw std::invalid_argument("update_q: free_variable_pairs size is not even.");
+      throw std::invalid_argument("update_linear_objective: free_variable_pairs size is not even.");
     }
     std::size_t extra = pairs.size() / 2;
     presolved.resize(presolved.size() + extra);
@@ -94,7 +94,7 @@ inline std::vector<double> crush_user_linear_objective(barrier_transform_t const
   if (static_cast<int>(presolved.size()) != xf.barrier_lp->num_cols ||
       xf.column_scales.size() != presolved.size()) {
     throw std::invalid_argument(
-      "update_q: crushed objective size does not match barrier columns / column_scales.");
+      "update_linear_objective: crushed objective size does not match barrier columns / column_scales.");
   }
   for (std::size_t j = 0; j < presolved.size(); ++j) {
     presolved[j] /= xf.column_scales[j];
@@ -102,4 +102,4 @@ inline std::vector<double> crush_user_linear_objective(barrier_transform_t const
   return presolved;
 }
 
-}  // namespace cuopt::cython
+}  // namespace cuopt::mathematical_optimization

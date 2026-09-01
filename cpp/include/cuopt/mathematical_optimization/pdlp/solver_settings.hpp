@@ -23,12 +23,10 @@
 #include <cuda/std/span>
 
 
-namespace cuopt::cython {
-class barrier_cache_t;
-}
-
 namespace cuopt {
 namespace CUOPT_EXPORT mathematical_optimization {
+
+class barrier_cache_t;
 
 // Forward declare solver_settings_t for friend class
 template <typename i_t, typename f_t>
@@ -373,7 +371,7 @@ class pdlp_solver_settings_t {
   /** When true, first GPU barrier/QCQP solve returns a ``barrier_cache_t`` capsule. */
   bool sequence_solve{false};
   /** Non-owning cache pointer set by ``call_solve`` for barrier symbolic reuse. */
-  cuopt::cython::barrier_cache_t* barrier_cache{nullptr};
+  barrier_cache_t* barrier_cache{nullptr};
 
  private:
   /** Initial primal solution */

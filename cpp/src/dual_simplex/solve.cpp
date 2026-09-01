@@ -416,7 +416,7 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
                                               const simplex_solver_settings_t<i_t, f_t>& settings,
                                               f_t start_time,
                                               lp_solution_t<i_t, f_t>& solution,
-                                              cuopt::cython::barrier_cache_t* cache,
+                                              cuopt::mathematical_optimization::barrier_cache_t* cache,
                                               const raft::handle_t* handle_ptr)
 {
   lp_status_t status                                   = lp_status_t::UNSET;
@@ -464,9 +464,7 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
   // Convert the user problem to a linear program with only equality constraints
   std::vector<i_t> new_slacks;
   dualize_info_t<i_t, f_t> dualize_info;
-  {
-    convert_user_problem(user_problem, barrier_settings, original_lp, new_slacks, dualize_info);
-  }
+  convert_user_problem(user_problem, barrier_settings, original_lp, new_slacks, dualize_info);
   if (!barrier::validate_barrier_cone_layout(original_lp, barrier_settings)) {
     return lp_status_t::NUMERICAL_ISSUES;
   }
@@ -476,10 +474,7 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
   // Presolve the linear program
   presolve_info_t<i_t, f_t> presolve_info;
   lp_problem_t<i_t, f_t> presolved_lp(handle_ptr, 1, 1, 1);
-  i_t ok;
-  {
-    ok = presolve(original_lp, barrier_settings, presolved_lp, presolve_info);
-  }
+  i_t ok = presolve(original_lp, barrier_settings, presolved_lp, presolve_info);
   if (ok == CONCURRENT_HALT_RETURN) { return lp_status_t::CONCURRENT_LIMIT; }
   if (ok == TIME_LIMIT_RETURN) { return lp_status_t::TIME_LIMIT; }
   if (ok == -1) { return lp_status_t::INFEASIBLE; }
@@ -491,9 +486,7 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
                                     presolved_lp.A.col_start[presolved_lp.num_cols]);
   std::vector<f_t> column_scales;
   std::vector<f_t> row_scales;
-  {
-    scaling(presolved_lp, barrier_settings, barrier_lp, column_scales, row_scales);
-  }
+  scaling(presolved_lp, barrier_settings, barrier_lp, column_scales, row_scales);
 
   // Solve using barrier
   lp_solution_t<i_t, f_t> barrier_solution(barrier_lp.num_rows, barrier_lp.num_cols);
@@ -503,7 +496,7 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
 
   if (cache != nullptr) {
     if (barrier_status == lp_status_t::OPTIMAL) {
-      auto xf               = std::make_unique<cuopt::cython::barrier_transform_t>();
+      auto xf               = std::make_unique<cuopt::mathematical_optimization::barrier_transform_t>();
       xf->user_num_cols     = user_problem.num_cols;
       xf->user_num_rows     = user_problem.num_rows;
       xf->original_num_cols = original_lp.num_cols;
@@ -521,7 +514,7 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
       xf->barrier_lp = std::make_unique<lp_problem_t<i_t, f_t>>(barrier_lp);
       {
         try {
-          auto crushed = cuopt::cython::crush_user_linear_objective(
+          auto crushed = cuopt::mathematical_optimization::crush_user_linear_objective(
             *xf, user_problem.objective.data(), user_problem.num_cols);
           xf->linear_obj_shift.resize(static_cast<std::size_t>(barrier_lp.num_cols), 0.0);
           if (static_cast<int>(crushed.size()) == barrier_lp.num_cols) {
@@ -834,7 +827,7 @@ template <typename i_t, typename f_t>
 lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& user_problem,
                                               const simplex_solver_settings_t<i_t, f_t>& settings,
                                               lp_solution_t<i_t, f_t>& solution,
-                                              cuopt::cython::barrier_cache_t* cache)
+                                              cuopt::mathematical_optimization::barrier_cache_t* cache)
 {
   f_t start_time = tic();
   return solve_linear_program_with_barrier(
@@ -846,7 +839,7 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
                                               const simplex_solver_settings_t<i_t, f_t>& settings,
                                               f_t start_time,
                                               lp_solution_t<i_t, f_t>& solution,
-                                              cuopt::cython::barrier_cache_t* cache)
+                                              cuopt::mathematical_optimization::barrier_cache_t* cache)
 {
   return solve_linear_program_with_barrier(
     user_problem, settings, start_time, solution, cache, user_problem.handle_ptr);
@@ -994,21 +987,21 @@ template lp_status_t solve_linear_program_with_barrier(
   const user_problem_t<int, double>& user_problem,
   const simplex_solver_settings_t<int, double>& settings,
   lp_solution_t<int, double>& solution,
-  cuopt::cython::barrier_cache_t* cache);
+  cuopt::mathematical_optimization::barrier_cache_t* cache);
 
 template lp_status_t solve_linear_program_with_barrier(
   const user_problem_t<int, double>& user_problem,
   const simplex_solver_settings_t<int, double>& settings,
   double start_time,
   lp_solution_t<int, double>& solution,
-  cuopt::cython::barrier_cache_t* cache);
+  cuopt::mathematical_optimization::barrier_cache_t* cache);
 
 template lp_status_t solve_linear_program_with_barrier(
   const user_problem_t<int, double>& user_problem,
   const simplex_solver_settings_t<int, double>& settings,
   double start_time,
   lp_solution_t<int, double>& solution,
-  cuopt::cython::barrier_cache_t* cache,
+  cuopt::mathematical_optimization::barrier_cache_t* cache,
   const raft::handle_t* handle_ptr);
 
 template lp_status_t solve_linear_program(const user_problem_t<int, double>& user_problem,

@@ -56,7 +56,7 @@ std::unique_ptr<solver_ret_t> call_solve(
   mathematical_optimization::solver_settings_t<int, double>*,
   unsigned int flags = cudaStreamNonBlocking,
   bool is_batch_mode = false,
-  barrier_cache_t* cache_in = nullptr);
+  mathematical_optimization::barrier_cache_t* cache_in = nullptr);
 
 std::pair<std::vector<std::unique_ptr<solver_ret_t>>, double> solve_batch_remote(
   std::vector<cuopt::mathematical_optimization::io::data_model_view_t<int, double>*>,

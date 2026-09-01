@@ -486,7 +486,6 @@ class iteration_data_t {
       device_Q_csc_(lp.handle_ptr->get_stream()),
       device_AT_csc_(lp.handle_ptr->get_stream()),
       d_original_A_values(0, lp.handle_ptr->get_stream()),
-      device_A_x_values(0, lp.handle_ptr->get_stream()),
       d_inv_diag_prime(0, lp.handle_ptr->get_stream()),
       d_flag_buffer(0, lp.handle_ptr->get_stream()),
       d_num_flag(lp.handle_ptr->get_stream()),
@@ -850,9 +849,6 @@ class iteration_data_t {
                  handle_ptr->get_stream());
       // For efficient scaling of AD col we form the col index array
       device_AD.form_col_index(handle_ptr->get_stream());
-      device_A_x_values.resize(device_AD.x.size(), handle_ptr->get_stream());
-      raft::copy(
-        device_A_x_values.data(), device_AD.x.data(), device_AD.x.size(), handle_ptr->get_stream());
       device_AD.to_compressed_row(device_A, handle_ptr->get_stream());
       RAFT_CHECK_CUDA(handle_ptr->get_stream());
     }
@@ -906,14 +902,14 @@ class iteration_data_t {
     {
       raft::common::nvtx::range fun_scope("Barrier: reset diagonal scaling");
       const bool has_Q = Q.n > 0;
-
-      if (has_cones()) {
-        primal_perturb = 1e-8;
-        dual_perturb   = 1e-8;
-      } else {
-        primal_perturb = 1e-6;
-        dual_perturb   = 0;
-      }
+      const bool has_soc = has_cones();
+      const bool adaptive_reg = should_use_adaptive_regularization(settings, has_soc);
+      primal_perturb          = (settings.barrier_primal_regularization >= 0)
+                                  ? settings.barrier_primal_regularization
+                                  : (has_soc ? 1e-8 : 1e-6);
+      dual_perturb            = (settings.barrier_dual_regularization >= 0)
+                                  ? settings.barrier_dual_regularization
+                                  : (adaptive_reg ? 1e-8 : 0);
 
       diag.set_scalar(1.0);
       for (i_t k = 0; k < n_upper_bounds; k++) {
@@ -1008,7 +1004,7 @@ class iteration_data_t {
   {
     const bool has_soc = has_cones();
     f_t degree = static_cast<f_t>(num_primal_variables) + static_cast<f_t>(num_upper_bounds);
-    // Direct QP free variables (linear only): no x·z complementarity in the barrier degree.
+    // Direct QP free variables (linear only): no x*z complementarity in the barrier degree.
     degree -= static_cast<f_t>(n_direct_free_linear);
     if (has_soc) {
       degree -= static_cast<f_t>(cone_entry_count());
@@ -1094,7 +1090,7 @@ class iteration_data_t {
 
       // Refactor: update linear primal diagonals (j < cone_start() for SOCP) with
       // -q_diag - d_j - dual_perturb. Cone Hessian block is overwritten by scatter when has_soc.
-      // Direct-free linear vars: d_j = 0 here and D·x = 0 in augmented_multiply so the Q/D part
+      // Direct-free linear vars: d_j = 0 here and D*x = 0 in augmented_multiply so the Q/D part
       // of the diagonal matches the matvec (-q_diag); dual_perturb remains factorization-only.
       thrust::for_each_n(rmm::exec_policy(handle_ptr->get_stream()),
                          thrust::make_counting_iterator<i_t>(0),
@@ -2228,7 +2224,6 @@ class iteration_data_t {
   device_csr_matrix_t<i_t, f_t> device_ADAT;
   device_csr_matrix_t<i_t, f_t> device_A;
   device_csc_matrix_t<i_t, f_t> device_AD;
-  rmm::device_uvector<f_t> device_A_x_values;
   // For GPU Form ADAT
   rmm::device_uvector<f_t> d_inv_diag_prime;
   rmm::device_buffer d_flag_buffer;
@@ -2259,7 +2254,6 @@ class iteration_data_t {
   device_csr_matrix_t<i_t, f_t>& a_mat() { return device_A; }
   device_csc_matrix_t<i_t, f_t>& ad_mat() { return device_AD; }
   rmm::device_uvector<f_t>& original_a_values() { return d_original_A_values; }
-  rmm::device_uvector<f_t>& a_x_values() { return device_A_x_values; }
   cusparse_info_t<i_t, f_t>& spgemm_info()
   {
     cuopt_assert(cusparse_info_ != nullptr, "spgemm_info: cusparse workspace unset");
@@ -2679,7 +2673,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   if (init_strategy == barrier_dual_initial_point_t::Automatic ||
       init_strategy == barrier_dual_initial_point_t::LustigMarstenShanno) {
     // Use the dual starting point suggested by the paper
-    // On Implementing Mehrotra’s Predictor–Corrector Interior-Point Method for Linear Programming
+    // On Implementing Mehrotra's Predictor-Corrector Interior-Point Method for Linear Programming
     // Irvin J. Lustig, Roy E. Marsten, and David F. Shanno
     // SIAM Journal on Optimization 1992 2:3, 435-449
     // y = 0
@@ -3197,7 +3191,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       }
 
       // Adaptive regularization: increase/decrease based on IR quality.
-      // Only adapt on calls where we actually (re)factorized — the affine step.
+      // Only adapt on calls where we actually (re)factorized -- the affine step.
       if (did_factorize && should_use_adaptive_regularization(settings, data.has_cones())) {
         constexpr f_t min_perturb = 1e-8;
         constexpr f_t max_perturb = 1e-1;
@@ -4361,7 +4355,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
 
 template <typename i_t, typename f_t>
 lp_status_t barrier_solver_t<i_t, f_t>::barrier_advanced_solve(
-  f_t start_time, lp_solution_t<i_t, f_t>& solution, cuopt::cython::barrier_cache_t* cache)
+  f_t start_time, lp_solution_t<i_t, f_t>& solution, cuopt::mathematical_optimization::barrier_cache_t* cache)
 {
   settings.log.printf("Barrier solver started at %.3f seconds\n", toc(start_time));
   try {
@@ -4431,7 +4425,7 @@ template <typename i_t, typename f_t>
 lp_status_t barrier_solver_t<i_t, f_t>::run_ipm(
   f_t start_time,
   lp_solution_t<i_t, f_t>& solution,
-  cuopt::cython::barrier_cache_t* cache,
+  cuopt::mathematical_optimization::barrier_cache_t* cache,
   std::unique_ptr<iteration_data_t<i_t, f_t>>& owned_data)
 {
   auto finish_cache = [&](lp_status_t status) -> lp_status_t {
@@ -4835,7 +4829,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::run_ipm(
 template <typename i_t, typename f_t>
 lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
                                               lp_solution_t<i_t, f_t>& solution,
-                                              cuopt::cython::barrier_cache_t* cache)
+                                              cuopt::mathematical_optimization::barrier_cache_t* cache)
 {
   settings.log.printf("Barrier solver started at %.3f seconds\n", toc(start_time));
   try {
@@ -4921,7 +4915,7 @@ void apply_barrier_linear_objective(iteration_data_t<int, double>& data,
   if (barrier_c == nullptr || static_cast<int>(data.c.size()) != n ||
       static_cast<int>(data.d_c_.size()) != n) {
     throw std::invalid_argument(
-      "update_q: barrier linear objective size does not match cached iteration_data_t.");
+      "update_linear_objective: barrier linear objective size does not match cached iteration_data_t.");
   }
   std::copy(barrier_c, barrier_c + n, data.c.data());
   raft::copy(

@@ -26,15 +26,15 @@ void apply_barrier_linear_objective(iteration_data_t<int, double>& data,
 }  // namespace cuopt::mathematical_optimization::barrier
 
 namespace cuopt {
-namespace CUOPT_EXPORT cython {
+namespace CUOPT_EXPORT mathematical_optimization {
 
 struct barrier_transform_t;
 
 /**
  * @brief GPU solve cache owned by DataModel when sequence_solve is on.
  *
- * After an Optimal full solve, holds iteration_data_t and the user↔barrier transform.
- * update_q crushes the new linear objective and sets c_dirty so the next Solve
+ * After an Optimal full solve, holds iteration_data_t and the user-barrier transform.
+ * update_linear_objective crushes the new linear objective and sets c_dirty so the next Solve
  * reuses that workspace (skip convert/presolve/scaling).
  */
 class barrier_cache_t {
@@ -54,13 +54,12 @@ class barrier_cache_t {
   /**
    * @brief Take ownership of barrier iteration workspace. @p data may be null (clears).
    */
-  void store_iteration_data(
-    mathematical_optimization::barrier::iteration_data_t<int, double>* data);
+  void store_iteration_data(barrier::iteration_data_t<int, double>* data);
 
   /**
    * @brief Release ownership of cached iteration workspace; caller must delete or wrap it.
    */
-  mathematical_optimization::barrier::iteration_data_t<int, double>* release_iteration_data();
+  barrier::iteration_data_t<int, double>* release_iteration_data();
 
   void store_transform(std::unique_ptr<barrier_transform_t> transform);
   [[nodiscard]] barrier_transform_t* transform();
@@ -69,7 +68,7 @@ class barrier_cache_t {
   [[nodiscard]] bool c_dirty() const;
 
   /**
-   * Crush user-space linear objective into cached iteration_data_t.c / d_c_ and set c_dirty.
+   * Crush the input linear objective into cached iteration_data_t.c / d_c_ and set c_dirty.
    * Requires a stored transform and iteration_data from an Optimal solve.
    */
   void update_linear_objective(double const* c, int n);
@@ -82,5 +81,5 @@ class barrier_cache_t {
   std::unique_ptr<impl> impl_;
 };
 
-}  // namespace CUOPT_EXPORT cython
+}  // namespace CUOPT_EXPORT mathematical_optimization
 }  // namespace cuopt

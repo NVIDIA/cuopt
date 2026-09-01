@@ -14,10 +14,9 @@
 #include <utility>
 #include <vector>
 
-namespace cuopt::cython {
+namespace cuopt::mathematical_optimization {
 
-using barrier_iteration_data_t =
-  mathematical_optimization::barrier::iteration_data_t<int, double>;
+using barrier_iteration_data_t = barrier::iteration_data_t<int, double>;
 using barrier_iteration_data_ptr =
   std::unique_ptr<barrier_iteration_data_t, void (*)(barrier_iteration_data_t*)>;
 
@@ -25,7 +24,7 @@ struct barrier_cache_t::impl {
   impl(std::unique_ptr<rmm::cuda_stream> stream_in, std::unique_ptr<raft::handle_t> handle_in)
     : stream(std::move(stream_in)),
       handle(std::move(handle_in)),
-      iteration_data(nullptr, &mathematical_optimization::barrier::destroy_iteration_data)
+      iteration_data(nullptr, &barrier::destroy_iteration_data)
   {
   }
 
@@ -102,10 +101,10 @@ void barrier_cache_t::update_linear_objective(double const* c, int n)
 {
   cuopt_expects(impl_->transform != nullptr,
                 error_type_t::ValidationError,
-                "update_q: no barrier transform; Solve with sequence_solve first.");
+                "update_linear_objective: no barrier transform; Solve with sequence_solve first.");
   cuopt_expects(impl_->iteration_data.get() != nullptr,
                 error_type_t::ValidationError,
-                "update_q: no cached iteration_data; Solve a QP to Optimal first.");
+                "update_linear_objective: no cached iteration_data; Solve a QP to Optimal first.");
   std::vector<double> crushed;
   try {
     crushed = crush_user_linear_objective(*impl_->transform, c, n);
@@ -118,7 +117,7 @@ void barrier_cache_t::update_linear_objective(double const* c, int n)
     }
   }
   try {
-    mathematical_optimization::barrier::apply_barrier_linear_objective(
+    barrier::apply_barrier_linear_objective(
       *impl_->iteration_data, crushed.data(), static_cast<int>(crushed.size()));
   } catch (std::invalid_argument const& e) {
     cuopt_expects(false, error_type_t::ValidationError, "%s", e.what());
@@ -126,4 +125,4 @@ void barrier_cache_t::update_linear_objective(double const* c, int n)
   impl_->c_dirty = true;
 }
 
-}  // namespace cuopt::cython
+}  // namespace cuopt::mathematical_optimization
