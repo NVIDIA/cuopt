@@ -8,6 +8,8 @@
 
 #include <linear_algebra/dense_vector.hpp>
 
+#include <cuopt/mathematical_optimization/constants.h>
+#include <cuopt/mathematical_optimization/utilities/internals.hpp>
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/solution.hpp>

@@ -97,6 +97,34 @@ bool validate_barrier_cone_layout(const lp_problem_t<i_t, f_t>& problem,
   return true;
 }
 
+// Push entries into interior of nonnegative orthant and second-order cone.
+template <typename i_t, typename f_t>
+static void ensure_initial_point_interior(dense_vector_t<i_t, f_t>& values,
+                                          f_t epsilon_adjust,
+                                          const std::vector<i_t>& linear_mask,
+                                          i_t linear_end,
+                                          const std::vector<i_t>& cone_dims)
+{
+  // Linear shift
+  std::vector<i_t> linear_only_mask(values.size(), 0);
+  std::copy(linear_mask.begin(), linear_mask.begin() + linear_end, linear_only_mask.begin());
+  values.ensure_positive(epsilon_adjust, linear_only_mask);
+
+  // Cone shift
+  i_t offset = 0;
+  for (i_t q_k : cone_dims) {
+    const i_t base = linear_end + offset;
+    f_t tail_sq    = 0.0;
+    for (i_t j = 1; j < q_k; ++j) {
+      const f_t t = values[base + j];
+      tail_sq += t * t;
+    }
+    const f_t tail_norm = std::sqrt(tail_sq);
+    if (values[base] <= tail_norm + epsilon_adjust) { values[base] = tail_norm + epsilon_adjust; }
+    offset += q_k;
+  }
+}
+
 // -1 automatic: enable for cones, disable otherwise; 0 off; 1 on
 template <typename i_t, typename f_t>
 bool should_use_adaptive_regularization(const simplex_solver_settings_t<i_t, f_t>& settings,
@@ -491,8 +519,12 @@ class iteration_data_t {
       // Apply the adaptive-regularization policy before form_augmented / initial
       // factorization so an explicit enable/disable is honored from the start.
       const bool adaptive_reg = should_use_adaptive_regularization(settings, has_soc);
-      primal_perturb          = has_soc ? 1e-8 : 1e-6;
-      dual_perturb            = adaptive_reg ? 1e-8 : 0;
+      primal_perturb          = (settings.barrier_primal_regularization >= 0)
+                                  ? settings.barrier_primal_regularization
+                                  : (has_soc ? 1e-8 : 1e-6);
+      dual_perturb            = (settings.barrier_dual_regularization >= 0)
+                                  ? settings.barrier_dual_regularization
+                                  : (adaptive_reg ? 1e-8 : 0);
 
       if (has_soc) {
         // SOCP always use the augmented KKT; skip dense-column / ADAT heuristics.
@@ -2182,41 +2214,54 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   const bool use_augmented          = data.use_augmented;
   const bool has_direct_free_linear = data.n_direct_free_linear > 0;
 
-  // SOCP: data-dependent initial point following SeDuMi (Sturm, 1999).
-  //   mu = sqrt((1 + ||b||_inf) * (1 + ||c||_inf))
-  //   primal and dual: x = mu * e_K,  z = mu * e_K
+  const barrier_dual_initial_point_t input_strategy = settings.barrier_dual_initial_point;
+
+  const barrier_dual_initial_point_t init_strategy =
+    (data.has_cones() && input_strategy == barrier_dual_initial_point_t::Automatic)
+      ? barrier_dual_initial_point_t::SedumiMu
+      : input_strategy;
+
+  // SedumiMu: Sturm/SeDuMi-style mu-based primal+dual initial point.
+  //   mu = sqrt((1 + ||b||_inf) * (1 + ||c||_inf)); x = z = mu * e_K.
   // where e_K is the identity of the symmetric cone:
   //   LP block: e = 1,  SOC block: e = (sqrt(2), 0, ..., 0)
-  if (data.has_cones()) {
-    const i_t cs     = data.cone_start();
-    const f_t norm_b = vector_norm_inf<i_t, f_t>(lp.rhs);
-    const f_t norm_c = vector_norm_inf<i_t, f_t>(lp.objective);
-    const f_t mu     = std::sqrt((1.0 + norm_b) * (1.0 + norm_c));
-    const f_t sqrt2  = std::sqrt(2.0);
-    const f_t x_soc  = mu * sqrt2;
-    const f_t z_soc  = mu * sqrt2;
-    // Linear orthant
-    for (i_t j = 0; j < cs; ++j) {
+  // Full primal+dual point; no factorization/solve (main loop factorizes later).
+  if (init_strategy == barrier_dual_initial_point_t::SedumiMu) {
+    const f_t norm_b     = vector_norm_inf<i_t, f_t>(lp.rhs);
+    const f_t norm_c     = vector_norm_inf<i_t, f_t>(lp.objective);
+    const f_t mu         = std::sqrt((1.0 + norm_b) * (1.0 + norm_c));
+    const f_t sqrt2      = std::sqrt(2.0);
+    const i_t linear_end = data.linear_xz_size(lp.num_cols);
+
+    // Linear orthant: x = z = mu * e, with e = 1
+    for (i_t j = 0; j < linear_end; ++j) {
       data.x[j] = mu;
       data.z[j] = mu;
     }
     if (has_direct_free_linear) {
       for (i_t j : presolve_info.direct_free_variables) {
-        if (j < cs) { data.z[j] = 0.0; }
+        if (j < linear_end) { data.z[j] = 0.0; }
       }
     }
-    // SOC blocks
-    i_t off = 0;
-    for (size_t k = 0; k < lp.second_order_cone_dims.size(); k++) {
-      i_t q_k          = lp.second_order_cone_dims[k];
-      data.x[cs + off] = x_soc;
-      data.z[cs + off] = z_soc;
-      for (i_t j = 1; j < q_k; ++j) {
-        data.x[cs + off + j] = 0.0;
-        data.z[cs + off + j] = 0.0;
+
+    // Second-order cone blocks: x = z = mu * e, with e = (sqrt(2), 0, ..., 0)
+    if (data.has_cones()) {
+      const i_t cone_start = data.cone_start();
+      const f_t x_soc      = mu * sqrt2;
+      const f_t z_soc      = mu * sqrt2;
+      i_t offset           = 0;
+      for (size_t k = 0; k < lp.second_order_cone_dims.size(); k++) {
+        i_t q_k                     = lp.second_order_cone_dims[k];
+        data.x[cone_start + offset] = x_soc;
+        data.z[cone_start + offset] = z_soc;
+        for (i_t j = 1; j < q_k; ++j) {
+          data.x[cone_start + offset + j] = 0.0;
+          data.z[cone_start + offset + j] = 0.0;
+        }
+        offset += q_k;
       }
-      off += q_k;
     }
+
     data.y.set_scalar(0.0);
     if (data.n_upper_bounds > 0) {
       data.w.set_scalar(mu);
@@ -2359,9 +2404,13 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
 #endif
   }
 
-  float64_t epsilon_adjust = 10.0;
+  const f_t epsilon_adjust = settings.barrier_initial_point_safeguard;
+  // Push entries into interior of nonnegative orthant and second-order cone.
+  const bool has_soc   = data.has_cones();
+  const i_t linear_end = has_soc ? data.cone_start() : lp.num_cols;
 
-  if (settings.barrier_dual_initial_point == -1 || settings.barrier_dual_initial_point == 0) {
+  if (init_strategy == barrier_dual_initial_point_t::Automatic ||
+      init_strategy == barrier_dual_initial_point_t::LustigMarstenShanno) {
     // Use the dual starting point suggested by the paper
     // On Implementing Mehrotra’s Predictor–Corrector Interior-Point Method for Linear Programming
     // Irvin J. Lustig, Roy E. Marsten, and David F. Shanno
@@ -2430,7 +2479,6 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     data.v.multiply_scalar(-1.0);
 
     data.v.ensure_positive(epsilon_adjust);
-    data.z.ensure_positive(epsilon_adjust, nonnegative_z);
   } else {
     // First compute rhs = A*Dinv*c
     dense_vector_t<i_t, f_t> rhs(lp.num_rows);
@@ -2454,7 +2502,6 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     data.gather_upper_bounds(data.z, data.v);
     data.v.multiply_scalar(-1.0);
     data.v.ensure_positive(epsilon_adjust);
-    data.z.ensure_positive(epsilon_adjust, nonnegative_z);
   }
 
   // Verify A'*y + z - E*v  - Q*x = c
@@ -2472,6 +2519,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   settings.log.printf("||A^T y + z - E*v - Q*x - c ||: %e\n",
                       vector_norm2<i_t, f_t>(init_dual_residual));
 #endif
+
   // Make sure (w, x, v, z) > 0. Skip free variables being handled directly.
   data.w.ensure_positive(epsilon_adjust);
   std::vector<i_t> nonnegative_variables(data.x.size(), 1);
@@ -2480,7 +2528,10 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
       nonnegative_variables[j] = 0;
     }
   }
-  data.x.ensure_positive(epsilon_adjust, nonnegative_variables);
+  ensure_initial_point_interior(
+    data.z, epsilon_adjust, nonnegative_z, linear_end, lp.second_order_cone_dims);
+  ensure_initial_point_interior(
+    data.x, epsilon_adjust, nonnegative_variables, linear_end, lp.second_order_cone_dims);
   // Direct free variables: reduced cost z = 0 (no complementarity condition).
   if (has_direct_free_linear) {
     for (i_t j : presolve_info.direct_free_variables) {
@@ -3543,12 +3594,12 @@ void barrier_solver_t<i_t, f_t>::compute_target_mu(
   f_t step_dual_aff   = std::min(dual_v, dual_z);
 
   if (has_soc) {
-    i_t cs = data.cone_start();
-    i_t mc = data.cone_entry_count();
+    i_t cone_start = data.cone_start();
+    i_t mc         = data.cone_entry_count();
     const f_t cone_combined =
       compute_cone_step_length(data.cones(),
-                               raft::device_span<const f_t>(data.d_dx_.data() + cs, mc),
-                               raft::device_span<const f_t>(data.d_dz_.data() + cs, mc),
+                               raft::device_span<const f_t>(data.d_dx_.data() + cone_start, mc),
+                               raft::device_span<const f_t>(data.d_dz_.data() + cone_start, mc),
                                f_t(1),
                                stream_view_);
     step_primal_aff = std::min(step_primal_aff, cone_combined);
@@ -3752,12 +3803,12 @@ void barrier_solver_t<i_t, f_t>::compute_primal_dual_step_length(iteration_data_
   max_step_dual   = std::min(dual_v, dual_z);
 
   if (has_soc) {
-    i_t cs = data.cone_start();
-    i_t mc = data.cone_entry_count();
+    i_t cone_start = data.cone_start();
+    i_t mc         = data.cone_entry_count();
     const f_t cone_combined =
       compute_cone_step_length(data.cones(),
-                               raft::device_span<const f_t>(data.d_dx_.data() + cs, mc),
-                               raft::device_span<const f_t>(data.d_dz_.data() + cs, mc),
+                               raft::device_span<const f_t>(data.d_dx_.data() + cone_start, mc),
+                               raft::device_span<const f_t>(data.d_dz_.data() + cone_start, mc),
                                f_t(1),
                                stream_view_);
     max_step_primal = std::min(max_step_primal, cone_combined);
@@ -4287,8 +4338,12 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
     const i_t iteration_limit = settings.iteration_limit;
 
     // Adaptive regularization for the augmented system.
-    f_t dual_perturb   = adaptive_regularization ? 1e-8 : 0;
-    f_t primal_perturb = data.has_cones() ? 1e-8 : 1e-6;
+    f_t dual_perturb   = (settings.barrier_dual_regularization >= 0)
+                           ? settings.barrier_dual_regularization
+                           : (adaptive_regularization ? 1e-8 : 0);
+    f_t primal_perturb = (settings.barrier_primal_regularization >= 0)
+                           ? settings.barrier_primal_regularization
+                           : (data.has_cones() ? 1e-8 : 1e-6);
 
     while (iter < iteration_limit) {
       raft::common::nvtx::range fun_scope("Barrier: iteration");

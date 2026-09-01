@@ -16,6 +16,7 @@
 #include <cuopt/mathematical_optimization/mip/heuristics_hyper_params.hpp>
 #include <cuopt/mathematical_optimization/mip/submip_hyper_params.hpp>
 #include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/utilities/internals.hpp>
 
 #include <raft/core/device_span.hpp>
@@ -143,7 +144,8 @@ class mip_solver_settings_t {
     0};  // 0 = DS only, 1 = cooperative DS + PDLP, 2 = batch PDLP only
   i_t strong_branching_simplex_iteration_limit = -1;
   i_t num_gpus                                 = 1;
-  bool log_to_console                          = true;
+  method_t method{method_t::Concurrent};
+  bool log_to_console = true;
 
   std::string log_file;
   std::string sol_file;

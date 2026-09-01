@@ -856,8 +856,6 @@ endif ()
 # - link libraries --------------------------------------------------------------------------------
 
 set(CUOPT_PRIVATE_CUDA_LIBS
-        CUDA::curand
-        CUDA::cusolver
         TBB::tbb
         OpenMP::OpenMP_CXX)
 
