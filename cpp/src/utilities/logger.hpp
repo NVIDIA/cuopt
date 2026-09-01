@@ -111,6 +111,34 @@ class scoped_log_callback_t {
 
 // Ref-counted logger initializer
 
+using log_console_callback_t = void (*)(int level, const char* message);
+
+inline std::mutex g_console_callback_mutex;
+inline log_console_callback_t g_console_callback = nullptr;
+
+/**
+ * @brief Overrides the sink used for console logging (settings.log_to_console == true).
+ *
+ * Passing nullptr (the default) restores writing to std::cout. Intended for language bindings
+ * whose host runtime cannot safely receive a raw write to the native stdout stream.
+ *
+ * Per-image state, like the logger itself -- reach a specific component library's copy through
+ * its exported `set_console_log_callback`, the same way `configure_logging` reaches its logger.
+ *
+ * @param callback The callback to invoke for each logged line, or nullptr to restore std::cout.
+ */
+inline void set_console_log_callback(log_console_callback_t callback)
+{
+  std::lock_guard<std::mutex> lock(g_console_callback_mutex);
+  g_console_callback = callback;
+}
+
+inline log_console_callback_t console_log_callback()
+{
+  std::lock_guard<std::mutex> lock(g_console_callback_mutex);
+  return g_console_callback;
+}
+
 // Buffer to store log messages
 class log_buffer {
  public:
@@ -236,8 +264,13 @@ inline void apply_logger_config(const std::string& log_file, bool log_to_console
   cuopt::default_logger().sinks().clear();
 
   if (log_to_console) {
-    cuopt::default_logger().sinks().push_back(
-      std::make_shared<rapids_logger::ostream_sink_mt>(std::cout));
+    if (auto callback = console_log_callback(); callback != nullptr) {
+      cuopt::default_logger().sinks().push_back(
+        std::make_shared<rapids_logger::callback_sink_mt>(callback));
+    } else {
+      cuopt::default_logger().sinks().push_back(
+        std::make_shared<rapids_logger::ostream_sink_mt>(std::cout));
+    }
   }
   if (!log_file.empty()) {
     if (truncate) { std::ofstream(log_file, std::ios::trunc); }
@@ -318,13 +351,16 @@ inline init_logger_t::init_logger_t(std::string log_file, bool log_to_console, b
 
 }  // namespace cuopt
 
-// Configures cuopt_mathopt's logger. The only logging symbol that crosses a library boundary,
-// and it exists for one caller: an executable that writes the same log file as the solver and
-// must configure it before the solver's own initializer would truncate it.
+// Configures cuopt_mathopt's logger. The only logging symbols that cross a library boundary.
+// configure_logging exists for one caller: an executable that writes the same log file as the
+// solver and must configure it before the solver's own initializer would truncate it.
+// set_console_log_callback exists for another: a language binding, such as Java, whose host
+// runtime cannot safely receive a raw write to the native stdout stream.
 namespace cuopt::mathematical_optimization {
 CUOPT_EXPORT std::shared_ptr<void> configure_logging(const std::string& log_file,
                                                      bool log_to_console,
                                                      bool truncate);
+CUOPT_EXPORT void set_console_log_callback(log_console_callback_t callback);
 }  // namespace cuopt::mathematical_optimization
 
 namespace cuopt::detail {
