@@ -30,32 +30,6 @@ A running ``cuopt_grpc_server`` on a GPU host (see :doc:`quick-start`):
 Connect and Solve
 ==================
 
-.. code-block:: python
-
-   import numpy as np
-   from cuopt import routing
-   from cuopt.grpc.routing import RoutingClient
-
-   dm = routing.DataModel(5, 2)
-   cost_matrix = np.array(
-       [
-           [0, 1, 2, 2, 1],
-           [1, 0, 1, 2, 2],
-           [2, 1, 0, 1, 2],
-           [2, 2, 1, 0, 1],
-           [1, 2, 2, 1, 0],
-       ],
-       dtype=np.float32,
-   )
-   dm.add_cost_matrix(cost_matrix)
-
-   client = RoutingClient("localhost:5001")
-   solution = client.solve(dm, {"time_limit": 5.0})
-
-   print(solution["status_message"])
-   print(solution["total_objective_value"])
-   print(solution["route"])
-
 ``RoutingClient.submit()`` accepts a :class:`cuopt.routing.DataModel` built
 the same way as for a local :func:`cuopt.routing.Solve`. ``solve()`` submits,
 waits, and deletes the job's server-side state when done (pass
