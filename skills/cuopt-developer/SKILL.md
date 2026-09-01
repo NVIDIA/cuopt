@@ -167,6 +167,18 @@ cuopt/
 - Never suggest `--no-verify` or skipping checks
 - All PRs must pass CI
 
+### Never Hand-Edit Generated Files
+Edit the source, run the generator, commit both. A generated file usually says so in its first line or two — check before editing anything unfamiliar.
+
+| Generated | Source | Regenerate with |
+|-----------|--------|-----------------|
+| `cpp/src/grpc/codegen/generated/` | `cpp/src/grpc/codegen/field_registry.yaml` | `./build.sh codegen` |
+| `conda/environments/*.yaml`, `pyproject.toml` | `dependencies.yaml` | `pre-commit run --all-files` |
+| `docs/cuopt/source/versions1.json` | `ci/utils/update_doc_versions.py` | `pre-commit run --all-files` |
+| `version:` in `skills/*/SKILL.md`, plugin/marketplace JSONs | `VERSION` | `pre-commit run --all-files` |
+
+Only the gRPC codegen needs an explicit command — the rest are pre-commit hooks that fix the file for you, so a `git commit` that trips one just needs the regenerated file staged and re-committed. **The gRPC codegen never runs on its own**, so a missed `./build.sh codegen` surfaces only as a CI failure in `ci/verify_grpc_codegen.sh`. See [gRPC wire fields](#grpc-wire-fields-and-codegen).
+
 ### CUDA/GPU Hygiene
 - Keep operations stream-ordered
 - Follow existing RAFT/RMM patterns
@@ -261,6 +273,8 @@ For build/test pitfalls (Cython rebuild, OOM, CUDA driver mismatch, missing `nvc
 | Conda environments | `conda/environments/` |
 | Test data | `datasets/` |
 | CI scripts | `ci/` |
+| gRPC field registry | `cpp/src/grpc/codegen/field_registry.yaml` |
+| gRPC generated output | `cpp/src/grpc/codegen/generated/` (never hand-edit) |
 
 ## Canonical Documentation
 
@@ -271,6 +285,14 @@ For build/test pitfalls (Cython rebuild, OOM, CUDA driver mismatch, missing `nvc
 - **Python binding architecture**: [references/python_bindings.md](references/python_bindings.md)
 
 _Shell-execution, install, conda-env, and sudo policies are covered by [Refusal Rules — Read First](#refusal-rules--read-first) at the top of this skill._
+
+## gRPC wire fields and codegen
+
+When adding or changing anything that crosses the cuOpt gRPC wire — a problem field, a solution field, or a solver setting — read:
+
+- **`references/grpc_codegen.md`** — the `field_registry.yaml` → `./build.sh codegen` → commit-`generated/` workflow, the `optional` / `sentinel` presence traps, field-number permanence, and why the C++ member initializer (not the docs) is ground truth for a setting's default.
+
+Read it **before** editing `field_registry.yaml` or any file under `cpp/src/grpc/codegen/generated/`. Codegen never runs as part of a normal build, so a skipped regeneration surfaces only as a CI failure.
 
 ## VRP dimension internals (routing engine)
 
