@@ -35,12 +35,8 @@ def main():
     data_model.add_cost_matrix(build_cost_matrix(COORDS))
     data_model.set_order_locations(cudf.Series([1, 2], dtype=np.int32))
 
-    data_model.add_distance_break(
-        vehicle_ids=0,
-        max_range=75.0,
-        duration=10,
-        locations=cudf.Series([3], dtype=np.int32),
-        min_range=25.0,
+    data_model.add_vehicle_distance_break(
+        0, 25.0, 75.0, 10, cudf.Series([3], dtype=np.int32)
     )
     data_model.set_objective_function(
         cudf.Series(

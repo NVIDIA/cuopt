@@ -10,7 +10,6 @@ import jsonref
 from pydantic import BaseModel, Extra, Field, RootModel, root_validator
 
 from ..._version import __version_major_minor__
-from .validation_fleet_data import MAX_DISTANCE_BREAK_CYCLES
 
 
 class LocationTypeEnum(str, Enum):
@@ -133,59 +132,43 @@ class VehicleBreak(StrictModel):
 
 
 class VehicleDistanceBreak(StrictModel):
-    """Per-vehicle distance-based break schedule."""
-
     vehicle_id: int = Field(
         ...,
         description=(
-            "dtype: int32, 0 <= vehicle_id < n_vehicles."
+            "dtype: int32, vehicle_id >= 0."
             " \n\n "
-            "Vehicle id as an integer denoting the vehicle index this"
-            " distance break schedule applies to."
+            "Vehicle id as an integer denoting the vehicle index for which the break is added"  # noqa
         ),
     )
-    max_range: float = Field(
+    distance_min: float = Field(
         ...,
         description=(
-            "dtype: float32, max_range > 0."
+            "dtype: float32, distance_min >= 0."
             " \n\n "
-            "Cycle length used to derive the cumulative hard deadline"
-            " (k + 1) * max_range for each break."
+            "Soft lower bound on cumulative route distance at this break"
+        ),
+    )
+    distance_max: float = Field(
+        ...,
+        description=(
+            "dtype: float32, distance_max > distance_min."
+            " \n\n "
+            "Latest cumulative route distance by which the vehicle must take"
+            " the break"
         ),
     )
     duration: int = Field(
         ...,
         description=(
-            "dtype: int32, duration >= 0."
-            " \n\n "
-            "Service time spent at the break location."
+            "dtype: int32, duration >= 0. \n\n Duration of the break time"
         ),
     )
     locations: Optional[List[int]] = Field(
-        default=None,
+        ...,
         description=(
             "dtype: int32, location_id >= 0."
             " \n\n "
-            "Location ids eligible for the break. If omitted, any location"
-            " can be used."
-        ),
-    )
-    min_range: Optional[float] = Field(
-        default=0.0,
-        description=(
-            "dtype: float32, 0 <= min_range < max_range."
-            " \n\n "
-            "Soft lower bound on cumulative distance into each cycle. The"
-            " maximum shortfall per route contributes to distance_break_cost."
-            " Defaults to 0."
-        ),
-    )
-    n_cycles: Optional[int] = Field(
-        default=1,
-        description=(
-            f"dtype: int32, 0 < n_cycles <= {MAX_DISTANCE_BREAK_CYCLES}."
-            " \n\n "
-            "Number of cycles per route. Defaults to 1."
+            "Location ids where this break can be taken."
         ),
     )
 
@@ -441,22 +424,32 @@ class FleetData(StrictModel):
             [
                 {
                     "vehicle_id": 0,
-                    "max_range": 100.0,
+                    "distance_min": 0.0,
+                    "distance_max": 100.0,
                     "duration": 15,
                     "locations": [3, 4],
-                    "min_range": 0.0,
-                    "n_cycles": 1,
+                },
+                {
+                    "vehicle_id": 1,
+                    "distance_min": 50.0,
+                    "distance_max": 80.0,
+                    "duration": 10,
+                    "locations": [2],
+                },
+                {
+                    "vehicle_id": 1,
+                    "distance_min": 150.0,
+                    "distance_max": 200.0,
+                    "duration": 10,
                 },
             ]
         ],
         description=(
-            "Per-vehicle distance-based breaks. Each entry adds"
-            " n_cycles cycles of length max_range; one mandatory"
-            " break is inserted per cycle no later than the hard"
-            " cumulative-distance limit (k+1) * max_range for"
-            " k = 0, ..., n_cycles - 1. The value k * max_range +"
-            " min_range is a soft target and uses distance_break_cost with a"
-            " default weight of 1."
+            "A list of vehicle distance breaks where a vehicle can take a"
+            " break between distance_min and distance_max for specified"
+            " duration in the specified locations. By default any location"
+            " can be used. Add multiple entries for the same vehicle to"
+            " require additional stops."
         ),
     )
     vehicle_types: Optional[List[int]] = Field(

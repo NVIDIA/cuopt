@@ -363,8 +363,8 @@ TEST(distance_breaks, default_case)
   auto v_cost_matrix = copy_array_to_device(cost_matrix_3x3, stream);
   cuopt::routing::data_model_view_t<int, float> data_model(&handle, 3, 2);
   data_model.add_cost_matrix(v_cost_matrix.data());
-  data_model.add_distance_break(0, 0.f, 2.f, 1, nullptr, 0);
-  data_model.add_distance_break(1, 0.f, 2.f, 1, nullptr, 0);
+  data_model.add_vehicle_distance_break(0, 0.f, 2.f, 1, nullptr, 0);
+  data_model.add_vehicle_distance_break(1, 0.f, 2.f, 1, nullptr, 0);
   data_model.set_min_vehicles(2);
 
   auto routing_solution = cuopt::routing::solve(data_model);
@@ -405,7 +405,7 @@ TEST(distance_breaks, default_objective_weight)
     cuopt::routing::data_model_view_t<int, float> data_model(&handle, 3, 1, 1);
     data_model.add_cost_matrix(v_cost_matrix.data());
     data_model.set_order_locations(v_order_locations.data());
-    data_model.add_distance_break(0, 10.f, 100.f, 0, v_break_locations.data(), 1);
+    data_model.add_vehicle_distance_break(0, 10.f, 100.f, 0, v_break_locations.data(), 1);
 
     if (mode != objective_mode::DEFAULTS) {
       data_model.set_objective_function(v_objectives.data(), v_weights.data(), weights.size());
@@ -447,9 +447,9 @@ TEST(distance_breaks, with_break_locations)
   cuopt::routing::data_model_view_t<int, float> data_model(&handle, 5, 2, 2);
   data_model.add_cost_matrix(v_cost_matrix.data());
   data_model.set_order_locations(v_order_locations.data());
-  data_model.add_distance_break(
+  data_model.add_vehicle_distance_break(
     0, 0.f, 2.f, 1, v_break_locations.data(), (int)v_break_locations.size());
-  data_model.add_distance_break(
+  data_model.add_vehicle_distance_break(
     1, 0.f, 2.f, 1, v_break_locations.data(), (int)v_break_locations.size());
   data_model.set_min_vehicles(2);
 
@@ -471,7 +471,7 @@ TEST(distance_breaks, with_break_locations)
   }
 }
 
-// Stacking add_distance_break calls produces one break per cycle per vehicle.
+// Stacking add_vehicle_distance_break calls produces one break per cycle per vehicle.
 TEST(distance_breaks, multi_cycle)
 {
   raft::handle_t handle;
@@ -488,8 +488,8 @@ TEST(distance_breaks, multi_cycle)
   data_model.set_order_locations(v_order_locations.data());
 
   for (int vid = 0; vid < 2; ++vid) {
-    data_model.add_distance_break(vid, 0.f, 2.f, 1, nullptr, 0);
-    data_model.add_distance_break(vid, 2.f, 4.f, 1, nullptr, 0);
+    data_model.add_vehicle_distance_break(vid, 0.f, 2.f, 1, nullptr, 0);
+    data_model.add_vehicle_distance_break(vid, 2.f, 4.f, 1, nullptr, 0);
   }
   data_model.set_min_vehicles(2);
 
@@ -538,7 +538,7 @@ TEST(distance_breaks, break_distance_window_enforced)
   cuopt::routing::data_model_view_t<int, float> data_model(&handle, 3, 1, 1);
   data_model.add_cost_matrix(v_cost_matrix.data());
   data_model.set_order_locations(v_order_locations.data());
-  data_model.add_distance_break(0, 0.f, 60.f, 0, v_break_locations.data(), 1);
+  data_model.add_vehicle_distance_break(0, 0.f, 60.f, 0, v_break_locations.data(), 1);
 
   auto settings = cuopt::routing::solver_settings_t<int, float>{};
   settings.set_time_limit(10);
@@ -593,7 +593,7 @@ TEST(distance_breaks, early_arrival_objective)
   cuopt::routing::data_model_view_t<int, float> data_model(&handle, 4, 1, 2);
   data_model.add_cost_matrix(v_cost_matrix.data());
   data_model.set_order_locations(v_order_locations.data());
-  data_model.add_distance_break(0, 40.f, 200.f, 0, v_break_locations.data(), 1);
+  data_model.add_vehicle_distance_break(0, 40.f, 200.f, 0, v_break_locations.data(), 1);
   data_model.set_objective_function(
     v_objectives.data(), v_objective_weights.data(), v_objective_weights.size());
 
@@ -632,7 +632,7 @@ TEST(distance_breaks, mixed_fleet)
   auto v_cost_matrix = copy_array_to_device(cost_matrix_3x3, stream);
   cuopt::routing::data_model_view_t<int, float> data_model(&handle, 3, 2);
   data_model.add_cost_matrix(v_cost_matrix.data());
-  data_model.add_distance_break(0, 0.f, 2.f, 1, nullptr, 0);
+  data_model.add_vehicle_distance_break(0, 0.f, 2.f, 1, nullptr, 0);
   data_model.set_min_vehicles(2);
 
   auto settings = cuopt::routing::solver_settings_t<int, float>{};

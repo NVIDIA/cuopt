@@ -705,7 +705,7 @@ HANDLED_SETTERS = frozenset({
     "add_order_precedence",
     "add_break_dimension",
     "add_vehicle_break",
-    "add_distance_break",
+    "add_vehicle_distance_break",
     "set_objective_function",
     "add_initial_solutions",
     "set_min_vehicles",
@@ -865,7 +865,7 @@ cdef void _populate(cpu_routing_problem_t& p, data_model) except *:
             if len(args) > 4 and args[4] is not None:
                 _fill_i32(vb.locations, args[4])
             p.vehicle_breaks[vid].push_back(vb)
-        elif name == "add_distance_break":
+        elif name == "add_vehicle_distance_break":
             vid = <int32_t>int(args[0])
             vdb = cpu_vehicle_distance_break_t()
             vdb.distance_min = <float>float(args[1])

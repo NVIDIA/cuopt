@@ -625,17 +625,10 @@ class OptimizationDataModel:
                 self.fleet_data["vehicle_distance_breaks"] = [
                     {
                         "vehicle_id": data.vehicle_id,
-                        "max_range": data.max_range,
+                        "distance_min": data.distance_min,
+                        "distance_max": data.distance_max,
                         "duration": data.duration,
                         "locations": data.locations,
-                        "min_range": (
-                            data.min_range
-                            if data.min_range is not None
-                            else 0.0
-                        ),
-                        "n_cycles": (
-                            data.n_cycles if data.n_cycles is not None else 1
-                        ),
                     }
                     for data in vehicle_distance_breaks
                 ]
@@ -807,17 +800,10 @@ class OptimizationDataModel:
                 self.fleet_data["vehicle_distance_breaks"] = [
                     {
                         "vehicle_id": data.vehicle_id,
-                        "max_range": data.max_range,
+                        "distance_min": data.distance_min,
+                        "distance_max": data.distance_max,
                         "duration": data.duration,
                         "locations": data.locations,
-                        "min_range": (
-                            data.min_range
-                            if data.min_range is not None
-                            else 0.0
-                        ),
-                        "n_cycles": (
-                            data.n_cycles if data.n_cycles is not None else 1
-                        ),
                     }
                     for data in vehicle_distance_breaks
                 ]

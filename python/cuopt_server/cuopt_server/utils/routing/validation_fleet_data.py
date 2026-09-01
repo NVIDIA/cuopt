@@ -2,12 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
-# Upper bound on distance-break cycles per entry. n_cycles is a multiplier that
-# expands one request entry into N break stops on the backend, so an unbounded
-# value is an amplification vector even when the request payload is small.
-MAX_DISTANCE_BREAK_CYCLES = 1000
-
-
 def test_time_window(time_windows, tw_type):
     # All time windows earliest times must be less than latest times
     for time_window in time_windows:
@@ -196,38 +190,26 @@ def validate_fleet_data(
                     "vehicle_distance_breaks: vehicle_id must be within"
                     " [0, n_vehicles)",
                 )
-            if entry.max_range <= 0:
+            if entry.distance_min < 0:
                 return (
                     False,
-                    "vehicle_distance_breaks: max_range must be > 0",
+                    "vehicle_distance_breaks: distance_min must be >= 0",
+                )
+            if entry.distance_max <= 0:
+                return (
+                    False,
+                    "vehicle_distance_breaks: distance_max must be > 0",
                 )
             if entry.duration < 0:
                 return (
                     False,
                     "vehicle_distance_breaks: duration must be >= 0",
                 )
-            min_range = entry.min_range if entry.min_range is not None else 0.0
-            if min_range < 0:
+            if entry.distance_min >= entry.distance_max:
                 return (
                     False,
-                    "vehicle_distance_breaks: min_range must be >= 0",
-                )
-            if min_range >= entry.max_range:
-                return (
-                    False,
-                    "vehicle_distance_breaks: min_range must be < max_range",
-                )
-            n_cycles = entry.n_cycles if entry.n_cycles is not None else 1
-            if n_cycles <= 0:
-                return (
-                    False,
-                    "vehicle_distance_breaks: n_cycles must be > 0",
-                )
-            if n_cycles > MAX_DISTANCE_BREAK_CYCLES:
-                return (
-                    False,
-                    "vehicle_distance_breaks: n_cycles must be <= "
-                    f"{MAX_DISTANCE_BREAK_CYCLES}",
+                    "vehicle_distance_breaks: distance_min must be <"
+                    " distance_max",
                 )
             if entry.locations is not None:
                 if any(loc < 0 for loc in entry.locations):

@@ -262,7 +262,7 @@ cpu_routing_problem_t::to_device(raft::handle_t* handle) const
       auto d_locs            = copy_vector(brk.locations, stream);
       int32_t n_locs         = d_locs ? static_cast<int32_t>(d_locs->size()) : 0;
       int32_t const* loc_ptr = d_locs ? d_locs->data() : nullptr;
-      view.add_distance_break(
+      view.add_vehicle_distance_break(
         vehicle_id, brk.distance_min, brk.distance_max, brk.duration, loc_ptr, n_locs, false);
       if (d_locs) { data->vehicle_break_locations.push_back(std::move(d_locs)); }
     }

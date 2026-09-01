@@ -100,11 +100,11 @@ cdef extern from "cuopt/routing/solve.hpp" namespace "cuopt::routing":
             const i_t *break_locations,
             const int n_break_locations
         ) except +
-        void add_distance_break(
+        void add_vehicle_distance_break(
             const int vehicle_id,
             const float distance_min,
             const float distance_max,
-            const int charge_duration,
+            const int duration,
             const i_t *break_locations,
             const int n_break_locations
         ) except +

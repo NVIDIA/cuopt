@@ -883,11 +883,10 @@ def test_distance_break_cost_default_and_disabled(objectives, expected_cost):
     distance_breaks = [
         {
             "vehicle_id": 0,
-            "max_range": 100.0,
+            "distance_min": 10.0,
+            "distance_max": 100.0,
             "duration": 0,
             "locations": [2],
-            "min_range": 10.0,
-            "n_cycles": 1,
         }
     ]
 

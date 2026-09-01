@@ -239,13 +239,12 @@ def create_data_model(
                     )
             else:
                 break_locations = None
-            data_model.add_distance_break(
-                vehicle_ids=data["vehicle_id"],
-                max_range=data["max_range"],
-                duration=data["duration"],
-                locations=break_locations,
-                min_range=data["min_range"],
-                n_cycles=data["n_cycles"],
+            data_model.add_vehicle_distance_break(
+                data["vehicle_id"],
+                data["distance_min"],
+                data["distance_max"],
+                data["duration"],
+                break_locations,
             )
 
     if optimization_data.fleet_data["vehicle_order_match"] is not None:

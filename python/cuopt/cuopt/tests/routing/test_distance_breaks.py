@@ -4,6 +4,7 @@
 import pytest
 
 import cudf
+import numpy as np
 
 from cuopt import routing
 
@@ -34,9 +35,9 @@ def _small_data_model(n_vehicles=3):
 
 
 def test_distance_break_api_single_cycle_defaults():
-    """Single cycle with min_range=0: distance window is [0, max_range]."""
+    """Single cycle with distance_min=0: distance window is [0, distance_max]."""
     d = _small_data_model()
-    d.add_distance_break(0, max_range=100.0, duration=15)
+    d.add_vehicle_distance_break(0, 0.0, 100.0, 15)
 
     breaks = d.get_non_uniform_breaks()
     assert 0 in breaks
@@ -47,23 +48,19 @@ def test_distance_break_api_single_cycle_defaults():
 
 
 def test_distance_break_api_int_vehicle_id():
-    """An int vehicle_id is equivalent to a single-element list."""
-    d_int = _small_data_model()
-    d_int.add_distance_break(0, max_range=100.0, duration=15)
-
-    d_list = _small_data_model()
-    d_list.add_distance_break([0], max_range=100.0, duration=15)
-
-    b_int = d_int.get_non_uniform_breaks()
-    b_list = d_list.get_non_uniform_breaks()
-    assert b_int[0][0]["distance_min"] == b_list[0][0]["distance_min"]
-    assert b_int[0][0]["distance_max"] == b_list[0][0]["distance_max"]
-
-
-def test_distance_break_api_min_range():
-    """min_range sets the first cycle's soft cumulative-distance target."""
+    """NumPy integer scalars are accepted as vehicle_id."""
     d = _small_data_model()
-    d.add_distance_break(0, max_range=100.0, duration=10, min_range=30.0)
+    d.add_vehicle_distance_break(np.int32(0), 0.0, 100.0, 15)
+
+    breaks = d.get_non_uniform_breaks()
+    assert 0 in breaks
+    assert breaks[0][0]["distance_max"] == 100.0
+
+
+def test_distance_break_api_distance_min():
+    """distance_min sets the first cycle's soft cumulative-distance target."""
+    d = _small_data_model()
+    d.add_vehicle_distance_break(0, 30.0, 100.0, 10)
 
     breaks = d.get_non_uniform_breaks()
     assert breaks[0][0]["distance_min"] == 30.0
@@ -71,33 +68,27 @@ def test_distance_break_api_min_range():
 
 
 def test_distance_break_api_multi_cycle():
-    """n_cycles creates successive soft-target/hard-deadline pairs."""
-    max_range = 100.0
-    min_range = 20.0
-    n_cycles = 3
+    """Successive calls add successive soft-target/hard-deadline pairs."""
+    windows = [(20.0, 100.0), (120.0, 200.0), (220.0, 300.0)]
 
     d = _small_data_model()
-    d.add_distance_break(
-        0,
-        max_range=max_range,
-        duration=15,
-        min_range=min_range,
-        n_cycles=n_cycles,
-    )
+    for distance_min, distance_max in windows:
+        d.add_vehicle_distance_break(0, distance_min, distance_max, 15)
 
     breaks = d.get_non_uniform_breaks()
-    assert len(breaks[0]) == n_cycles
-    for k in range(n_cycles):
-        assert breaks[0][k]["distance_min"] == k * max_range + min_range
-        assert breaks[0][k]["distance_max"] == (k + 1) * max_range
+    assert len(breaks[0]) == len(windows)
+    for k, (distance_min, distance_max) in enumerate(windows):
+        assert breaks[0][k]["distance_min"] == distance_min
+        assert breaks[0][k]["distance_max"] == distance_max
 
 
 def test_distance_break_api_multiple_vehicles():
-    """A list of vehicle_ids applies breaks to every vehicle in the list."""
+    """Each vehicle is configured with its own add_vehicle_distance_break call."""
     d = _small_data_model(n_vehicles=4)
     vehicle_ids = [0, 1, 2]
 
-    d.add_distance_break(vehicle_ids, max_range=100.0, duration=15)
+    for vid in vehicle_ids:
+        d.add_vehicle_distance_break(vid, 0.0, 100.0, 15)
 
     breaks = d.get_non_uniform_breaks()
     for vid in vehicle_ids:
@@ -112,7 +103,7 @@ def test_distance_break_api_locations_stored():
     d = _small_data_model()
     break_locs = cudf.Series([1, 2, 3], dtype="int32")
 
-    d.add_distance_break(0, max_range=100.0, duration=15, locations=break_locs)
+    d.add_vehicle_distance_break(0, 0.0, 100.0, 15, break_locs)
 
     breaks = d.get_non_uniform_breaks()
     stored_locs = breaks[0][0]["locations"].to_arrow().to_pylist()
@@ -120,10 +111,10 @@ def test_distance_break_api_locations_stored():
 
 
 def test_distance_break_api_stacked_calls():
-    """Two separate add_distance_break calls on the same vehicle accumulate breaks."""
+    """Two separate add_vehicle_distance_break calls on the same vehicle accumulate breaks."""
     d = _small_data_model()
-    d.add_distance_break(0, max_range=100.0, duration=15)
-    d.add_distance_break(0, max_range=100.0, duration=15)
+    d.add_vehicle_distance_break(0, 0.0, 100.0, 15)
+    d.add_vehicle_distance_break(0, 0.0, 100.0, 15)
 
     breaks = d.get_non_uniform_breaks()
     assert len(breaks[0]) == 2
@@ -144,73 +135,48 @@ def model():
 def test_distance_break_invalid_vehicle_id(model, vid):
     """Out-of-range vehicle id raises ValueError."""
     with pytest.raises(ValueError, match="vehicle id"):
-        model.add_distance_break(vid, max_range=100.0, duration=15)
+        model.add_vehicle_distance_break(vid, 0.0, 100.0, 15)
 
 
-@pytest.mark.parametrize("max_range", [0, -1, -100.0])
-def test_max_range_must_be_positive(model, max_range):
-    """max_range must be strictly positive."""
-    with pytest.raises(ValueError, match="max range"):
-        model.add_distance_break(0, max_range=max_range, duration=10)
+@pytest.mark.parametrize("distance_max", [0, -1, -100.0])
+def test_distance_max_must_be_positive(model, distance_max):
+    """distance_max must be strictly positive."""
+    with pytest.raises(ValueError, match="distance max"):
+        model.add_vehicle_distance_break(0, 0.0, distance_max, 10)
 
 
-def test_negative_min_range_rejected(model):
-    """min_range must be non-negative."""
-    with pytest.raises(ValueError, match="min range"):
-        model.add_distance_break(
-            0, max_range=100.0, duration=10, min_range=-1.0
-        )
+def test_negative_distance_min_rejected(model):
+    """distance_min must be non-negative."""
+    with pytest.raises(ValueError, match="distance min"):
+        model.add_vehicle_distance_break(0, -1.0, 100.0, 10)
 
 
 @pytest.mark.parametrize(
-    "min_range, max_range",
+    "distance_min, distance_max",
     [
         (100.0, 100.0),
         (150.0, 100.0),
     ],
 )
-def test_min_range_must_be_less_than_max_range(model, min_range, max_range):
-    """min_range >= max_range raises ValueError."""
-    with pytest.raises(ValueError, match="min_range must be smaller"):
-        model.add_distance_break(
-            0, max_range=max_range, duration=10, min_range=min_range
-        )
+def test_distance_min_must_be_less_than_distance_max(
+    model, distance_min, distance_max
+):
+    """distance_min >= distance_max raises ValueError."""
+    with pytest.raises(ValueError, match="distance_min must be smaller"):
+        model.add_vehicle_distance_break(0, distance_min, distance_max, 10)
 
 
 def test_negative_duration_rejected(model):
     """Duration must be non-negative."""
     with pytest.raises(ValueError, match="duration"):
-        model.add_distance_break(0, max_range=100.0, duration=-1)
-
-
-@pytest.mark.parametrize("n_cycles", [0, -1, -5])
-def test_invalid_n_cycles_non_positive(model, n_cycles):
-    """n_cycles <= 0 raises ValueError."""
-    with pytest.raises(ValueError, match="n_cycles"):
-        model.add_distance_break(
-            0, max_range=100.0, duration=10, n_cycles=n_cycles
-        )
-
-
-@pytest.mark.parametrize("n_cycles", [1.5, "3", True])
-def test_invalid_n_cycles_wrong_type(model, n_cycles):
-    """Non-integer n_cycles raises ValueError."""
-    with pytest.raises(ValueError, match="n_cycles"):
-        model.add_distance_break(
-            0, max_range=100.0, duration=10, n_cycles=n_cycles
-        )
+        model.add_vehicle_distance_break(0, 0.0, 100.0, -1)
 
 
 def test_locations_out_of_range(model):
     """Break location indices must be within [0, num_locations)."""
     bad_locs = cudf.Series([999], dtype="int32")
     with pytest.raises(ValueError, match="break locations"):
-        model.add_distance_break(
-            0,
-            max_range=100.0,
-            duration=10,
-            locations=bad_locs,
-        )
+        model.add_vehicle_distance_break(0, 0.0, 100.0, 10, bad_locs)
 
 
 # ---------------------------------------------------------------------------
@@ -239,8 +205,8 @@ def test_solve_basic_break_assigned():
     """Each vehicle with a distance break receives exactly one break in the solution."""
     dm = routing.DataModel(3, 2)
     dm.add_cost_matrix(cudf.DataFrame(_COST_3X3, dtype="float32"))
-    dm.add_distance_break(0, max_range=2.0, duration=1)
-    dm.add_distance_break(1, max_range=2.0, duration=1)
+    dm.add_vehicle_distance_break(0, 0.0, 2.0, 1)
+    dm.add_vehicle_distance_break(1, 0.0, 2.0, 1)
     dm.set_min_vehicles(2)
 
     sol = _solve(dm)
@@ -265,12 +231,8 @@ def test_default_distance_break_cost_weight(objective_mode):
     dm = routing.DataModel(3, 1, 1)
     dm.add_cost_matrix(cudf.DataFrame(_COST_3X3, dtype="float32"))
     dm.set_order_locations(cudf.Series([1], dtype="int32"))
-    dm.add_distance_break(
-        0,
-        max_range=100.0,
-        duration=0,
-        locations=cudf.Series([2], dtype="int32"),
-        min_range=10.0,
+    dm.add_vehicle_distance_break(
+        0, 10.0, 100.0, 0, cudf.Series([2], dtype="int32")
     )
     if objective_mode != "defaults":
         objectives = [routing.Objective.COST]
@@ -305,18 +267,8 @@ def test_solve_break_at_break_location():
     dm = routing.DataModel(5, 2, 2)
     dm.add_cost_matrix(cudf.DataFrame(_COST_5X5, dtype="float32"))
     dm.set_order_locations(order_locations)
-    dm.add_distance_break(
-        0,
-        max_range=2.0,
-        duration=1,
-        locations=locations,
-    )
-    dm.add_distance_break(
-        1,
-        max_range=2.0,
-        duration=1,
-        locations=locations,
-    )
+    dm.add_vehicle_distance_break(0, 0.0, 2.0, 1, locations)
+    dm.add_vehicle_distance_break(1, 0.0, 2.0, 1, locations)
     dm.set_min_vehicles(2)
 
     sol = _solve(dm)
@@ -342,8 +294,8 @@ def test_solve_multi_cycle_break_count():
     dm.add_cost_matrix(cudf.DataFrame(_COST_5X5, dtype="float32"))
     dm.set_order_locations(order_locations)
     for vid in [0, 1]:
-        dm.add_distance_break(vid, max_range=2.0, duration=1)
-        dm.add_distance_break(vid, max_range=4.0, duration=1, min_range=2.0)
+        dm.add_vehicle_distance_break(vid, 0.0, 2.0, 1)
+        dm.add_vehicle_distance_break(vid, 2.0, 4.0, 1)
     dm.set_min_vehicles(2)
 
     sol = _solve(dm)
@@ -376,12 +328,7 @@ def test_solve_break_distance_window_enforced():
     dm = routing.DataModel(3, 1, 1)
     dm.add_cost_matrix(cudf.DataFrame(cost_asym, dtype="float32"))
     dm.set_order_locations(order_locations)
-    dm.add_distance_break(
-        0,
-        max_range=60.0,
-        duration=0,
-        locations=locations,
-    )
+    dm.add_vehicle_distance_break(0, 0.0, 60.0, 0, locations)
 
     sol = _solve(dm)
     assert sol.get_status() == 0
@@ -405,7 +352,7 @@ def test_solve_break_distance_window_enforced():
 
 
 def test_solve_full_feature_api():
-    """Exercises every add_distance_break parameter at non-default values.
+    """Exercises every add_vehicle_distance_break parameter at non-default values.
 
     Two cycle targets of 10 and 30, with hard limits of 20 and 40 and a high
     early-break penalty, make the solver prefer distinct break locations for
@@ -415,23 +362,17 @@ def test_solve_full_feature_api():
     cost = [[0 if i == j else 10 for j in range(5)] for i in range(5)]
     order_locations = cudf.Series([1, 2], dtype="int32")
     locations = cudf.Series([3, 4], dtype="int32")
-
-    max_range = 20.0
-    min_range = 10.0
-    n_cycles = 2
+    cycle_windows = [(10.0, 20.0), (30.0, 40.0)]
     duration = 1
 
     dm = routing.DataModel(5, 2, 2)
     dm.add_cost_matrix(cudf.DataFrame(cost, dtype="float32"))
     dm.set_order_locations(order_locations)
-    dm.add_distance_break(
-        vehicle_ids=[0, 1],
-        max_range=max_range,
-        duration=duration,
-        locations=locations,
-        min_range=min_range,
-        n_cycles=n_cycles,
-    )
+    for vid in (0, 1):
+        for distance_min, distance_max in cycle_windows:
+            dm.add_vehicle_distance_break(
+                vid, distance_min, distance_max, duration, locations
+            )
     dm.set_objective_function(
         cudf.Series(
             [routing.Objective.COST, routing.Objective.DISTANCE_BREAK_COST]
@@ -447,10 +388,6 @@ def test_solve_full_feature_api():
     cost_flat = [c for row in cost for c in row]
     break_loc_set = {int(s) for s in locations.to_arrow().to_pylist()}
 
-    cycle_windows = [
-        (k * max_range + min_range, (k + 1) * max_range)
-        for k in range(n_cycles)
-    ]
     breaks_per_vehicle: dict[int, list[float]] = {}
     cumulative_per_vehicle: dict[int, float] = {}
     prev_loc_per_vehicle: dict[int, int] = {}
@@ -479,8 +416,9 @@ def test_solve_full_feature_api():
         f"expected breaks on vehicles {{0, 1}}, got {set(breaks_per_vehicle)}"
     )
     for vid, break_distances in breaks_per_vehicle.items():
-        assert len(break_distances) == n_cycles, (
-            f"vehicle {vid} has {len(break_distances)} breaks, expected {n_cycles}"
+        assert len(break_distances) == len(cycle_windows), (
+            f"vehicle {vid} has {len(break_distances)} breaks, "
+            f"expected {len(cycle_windows)}"
         )
         for k, d in enumerate(break_distances):
             lo, hi = cycle_windows[k]
@@ -494,7 +432,7 @@ def test_solve_mixed_fleet_break_assignment():
     """Only the vehicle with a distance break configured receives break nodes."""
     dm = routing.DataModel(3, 2)
     dm.add_cost_matrix(cudf.DataFrame(_COST_3X3, dtype="float32"))
-    dm.add_distance_break(0, max_range=2.0, duration=1)
+    dm.add_vehicle_distance_break(0, 0.0, 2.0, 1)
     dm.set_min_vehicles(2)
 
     sol = _solve(dm)

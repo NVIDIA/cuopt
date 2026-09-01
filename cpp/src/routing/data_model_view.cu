@@ -211,13 +211,13 @@ void data_model_view_t<i_t, f_t>::add_vehicle_break(i_t vehicle_id,
 }
 
 template <typename i_t, typename f_t>
-void data_model_view_t<i_t, f_t>::add_distance_break(i_t vehicle_id,
-                                                     f_t distance_min,
-                                                     f_t distance_max,
-                                                     i_t duration,
-                                                     i_t const* break_locations,
-                                                     i_t num_break_locations,
-                                                     bool validate_input)
+void data_model_view_t<i_t, f_t>::add_vehicle_distance_break(i_t vehicle_id,
+                                                             f_t distance_min,
+                                                             f_t distance_max,
+                                                             i_t break_duration,
+                                                             i_t const* break_locations,
+                                                             i_t num_break_locations,
+                                                             bool validate_input)
 {
   cuopt_expects(0 <= vehicle_id && vehicle_id < fleet_size_,
                 error_type_t::ValidationError,
@@ -227,7 +227,8 @@ void data_model_view_t<i_t, f_t>::add_distance_break(i_t vehicle_id,
   cuopt_expects(distance_max > distance_min,
                 error_type_t::ValidationError,
                 "distance break distance_max must be greater than distance_min!");
-  cuopt_expects(duration >= 0, error_type_t::ValidationError, "duration must be non-negative!");
+  cuopt_expects(
+    break_duration >= 0, error_type_t::ValidationError, "break_duration must be non-negative!");
 
   if (validate_input) {
     validate_break_locations(break_locations, num_break_locations, num_locations_, handle_ptr_);
@@ -236,7 +237,7 @@ void data_model_view_t<i_t, f_t>::add_distance_break(i_t vehicle_id,
   vehicle_breaks_[vehicle_id].push_back(detail::vehicle_break_t<i_t, f_t>(
     distance_min,
     distance_max,
-    duration,
+    break_duration,
     raft::device_span<const i_t>(break_locations, num_break_locations)));
 }
 

@@ -1,8 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-from typing import Optional, Sequence, Union
-
 import numpy as np
 
 import cudf
@@ -418,103 +416,67 @@ class DataModel(_DeferredDataModel):
         )
 
     @catch_cuopt_exception
-    def add_distance_break(
-        self,
-        vehicle_ids: Union[int, Sequence[int]],
-        max_range: float,
-        duration: int,
-        locations: Optional[cudf.Series] = None,
-        min_range: float = 0.0,
-        n_cycles: Optional[int] = None,
-    ) -> None:
+    def add_vehicle_distance_break(
+        self, vehicle_id, distance_min, distance_max, duration, locations=None
+    ):
         """
-        Add distance-based breaks for a set of vehicles.
+        Specify a distance-based break for a given vehicle. Use this api the
+        same way as :meth:`add_vehicle_break`: call it once per break, and
+        call it again for additional breaks on the same vehicle.
 
-        Each call adds ``n_cycles`` consecutive cycles. One mandatory break is
-        inserted per cycle no later than the hard cumulative-distance limit
-        ``(k + 1) * max_range`` for ``k = 0, ..., n_cycles - 1``. The value
-        ``k * max_range + min_range`` is the soft target for that cycle.
+        The solver inserts one mandatory stop no later than the hard
+        cumulative-distance limit ``distance_max``. ``distance_min`` is the
+        soft target for that stop. Arriving before ``distance_min``
+        contributes to ``Objective.DISTANCE_BREAK_COST``. Its default weight
+        is ``1.0``; use :meth:`set_objective_function` to tune it or
+        explicitly set it to ``0.0`` to disable the early-break penalty.
 
-        The upper endpoint is a hard feasibility constraint. Keeping the lower
-        endpoint soft lets local search consider early break placements while
-        improving the incumbent and exploring diverse routes. Arriving before
-        ``min_range`` contributes to ``Objective.DISTANCE_BREAK_COST``, which
-        guides the search toward the target. Its value is the maximum shortfall
-        on each route, summed across routes. Its default weight is ``1.0``;
-        use :meth:`set_objective_function` to tune it or explicitly set it to
-        ``0.0`` to disable the early-break penalty.
+        ``distance_min`` and ``distance_max`` are expressed in the same units
+        as the primary cost matrix.
 
-        ``max_range`` and ``min_range`` are expressed in the same units as the
-        primary cost matrix. The method mutates the data model in place.
+        Note: This function cannot be used in conjunction with
+        add_break_dimension
 
         Parameters
         ----------
-        vehicle_ids : int or sequence of int
-            Vehicle IDs to apply the distance break schedule to.
-        max_range : float
-            Length of each cycle. Must be strictly positive and strictly
-            greater than ``min_range``.
-        duration : int
-            Service time at the break location. Must be non-negative.
-        locations : cudf.Series dtype int32, optional
-            Location IDs eligible for the break. Defaults to all locations.
-        min_range : float, optional
-            Soft lower bound on cumulative distance in each cycle. The maximum
-            shortfall per route contributes to ``Objective.DISTANCE_BREAK_COST``.
-            Must be non-negative and strictly less than ``max_range``.
-            Defaults to ``0.0``.
-        n_cycles : int, optional
-            Number of cycles per route. Must be a positive integer.
-            Defaults to ``1``.
+        vehicle_id: integer
+            Vehicle Id for which the break is being specified
+        distance_min:  float
+            Soft lower bound on cumulative distance at the break
+        distance_max:    float
+            Latest cumulative distance by which the vehicle must take the
+            break. Must be strictly greater than ``distance_min``.
+        duration:  integer
+            Time spent at the break location
+        locations: cudf.Series dtype - int32
+            List of locations where this break can be taken. By default
+            any location can be used
 
-        Returns
-        -------
-        None
-
-        Raises
-        ------
-        ValueError
-            If ``max_range`` is not positive, ``min_range`` is negative,
-            ``min_range >= max_range``, ``duration`` is negative,
-            ``n_cycles`` is not a positive integer, or any value in
-            ``vehicle_ids`` / ``locations`` is out of range.
+        Examples
+        --------
+        >>> from cuopt import routing
+        >>> vehicle_num = 2
+        >>> d = routing.DataModel(nodes, vehicle_num)
+        >>> d.add_vehicle_distance_break(0, 120, 150, 10, cudf.Series([3, 6]))
+        >>> d.add_vehicle_distance_break(0, 270, 300, 10, cudf.Series([3, 6]))
+        >>> d.add_vehicle_distance_break(1, 0, 200, 10)
         """
         if locations is None:
-            locations = cudf.Series(dtype="int32")
-        if isinstance(vehicle_ids, (int, np.integer)):
-            vehicle_ids = [int(vehicle_ids)]
-
-        if n_cycles is not None:
-            if (
-                isinstance(n_cycles, bool)
-                or not isinstance(n_cycles, (int, np.integer))
-                or n_cycles <= 0
-            ):
-                raise ValueError("n_cycles must be a positive integer")
-        else:
-            n_cycles = 1
-
-        validate_positive(max_range, "max range")
-        validate_non_negative(min_range, "min range")
+            locations = cudf.Series()
+        validate_range(vehicle_id, "vehicle id", 0, self.get_fleet_size() - 1)
+        validate_non_negative(distance_min, "distance min")
+        validate_positive(distance_max, "distance max")
         validate_non_negative(duration, "duration")
-        if min_range >= max_range:
-            raise ValueError("min_range must be smaller than max_range")
+        if distance_min >= distance_max:
+            raise ValueError("distance_min must be smaller than distance_max")
         if len(locations) > 0:
             validate_range(
-                locations,
-                "break locations",
-                0,
-                self.get_num_locations() - 1,
+                locations, "break locations", 0, self.get_num_locations() - 1
             )
 
-        for vid in vehicle_ids:
-            validate_range(vid, "vehicle id", 0, self.get_fleet_size() - 1)
-            for k in range(n_cycles):
-                d_min = k * max_range + min_range
-                d_max = (k + 1) * max_range
-                super().add_distance_break(
-                    vid, d_min, d_max, duration, locations
-                )
+        super().add_vehicle_distance_break(
+            vehicle_id, distance_min, distance_max, duration, locations
+        )
 
     @catch_cuopt_exception
     def set_objective_function(self, objectives, objective_weights):

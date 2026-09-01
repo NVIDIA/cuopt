@@ -115,20 +115,26 @@ def test_populate_breaks():
     assert s["uniform_breaks"] == 1
 
 
+def test_populate_vehicle_breaks():
+    dm = routing.DataModel(5, 2)
+    cost = np.ones((5, 5), dtype=np.float32)
+    np.fill_diagonal(cost, 0)
+    dm.add_cost_matrix(cost)
+    dm.add_vehicle_break(0, 10, 20, 5, np.array([1, 2], np.int32))
+    dm.add_vehicle_break(1, 30, 40, 4)
+    s = problem_summary(dm)
+    assert s["vehicle_breaks"] == 2
+
+
 def test_populate_distance_breaks():
     dm = routing.DataModel(5, 2)
     cost = np.ones((5, 5), dtype=np.float32)
     np.fill_diagonal(cost, 0)
     dm.add_cost_matrix(cost)
-    dm.add_distance_break(
-        0,
-        max_range=10.0,
-        duration=3,
-        locations=np.array([1, 2], np.int32),
-        min_range=2.0,
-        n_cycles=2,
+    dm.add_vehicle_distance_break(
+        0, 2.0, 10.0, 3, np.array([1, 2], np.int32)
     )
-    dm.add_distance_break(1, max_range=20.0, duration=4)
+    dm.add_vehicle_distance_break(1, 0.0, 20.0, 4)
     s = problem_summary(dm)
     assert s["vehicle_distance_breaks"] == 2
 

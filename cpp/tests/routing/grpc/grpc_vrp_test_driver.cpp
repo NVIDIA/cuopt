@@ -143,6 +143,36 @@ cuopt::routing::cpu_routing_problem_t load_cuopt_json(std::string const& path)
     p.order_service_times[-1] = std::move(times);
   }
 
+  if (fleet.contains("vehicle_breaks") && !fleet["vehicle_breaks"].is_null()) {
+    for (auto const& entry : fleet.at("vehicle_breaks")) {
+      cuopt::routing::cpu_vehicle_break_t brk;
+      brk.earliest = entry.at("earliest").get<int32_t>();
+      brk.latest   = entry.at("latest").get<int32_t>();
+      brk.duration = entry.at("duration").get<int32_t>();
+      if (entry.contains("locations") && !entry["locations"].is_null()) {
+        for (auto const& loc : entry.at("locations")) {
+          brk.locations.push_back(loc.get<int32_t>());
+        }
+      }
+      p.vehicle_breaks[entry.at("vehicle_id").get<int32_t>()].push_back(std::move(brk));
+    }
+  }
+
+  if (fleet.contains("vehicle_distance_breaks") && !fleet["vehicle_distance_breaks"].is_null()) {
+    for (auto const& entry : fleet.at("vehicle_distance_breaks")) {
+      cuopt::routing::cpu_vehicle_distance_break_t brk;
+      brk.distance_min = entry.at("distance_min").get<float>();
+      brk.distance_max = entry.at("distance_max").get<float>();
+      brk.duration     = entry.at("duration").get<int32_t>();
+      if (entry.contains("locations") && !entry["locations"].is_null()) {
+        for (auto const& loc : entry.at("locations")) {
+          brk.locations.push_back(loc.get<int32_t>());
+        }
+      }
+      p.vehicle_distance_breaks[entry.at("vehicle_id").get<int32_t>()].push_back(std::move(brk));
+    }
+  }
+
   return p;
 }
 
@@ -212,7 +242,9 @@ int main(int argc, char** argv)
               << " vehicles, "
               << (problem.num_orders < 0 ? problem.num_locations : problem.num_orders)
               << " orders, " << problem.capacity_dimensions.size() << " capacity dims, "
-              << problem.cost_matrices.size() << " cost matrices\n";
+              << problem.cost_matrices.size() << " cost matrices, "
+              << problem.vehicle_breaks.size() << " vehicles with time breaks, "
+              << problem.vehicle_distance_breaks.size() << " vehicles with distance breaks\n";
 
     cuopt::remote::SubmitJobRequest submit_req;
     auto* vrp = submit_req.mutable_vrp_request();

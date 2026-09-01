@@ -1052,7 +1052,7 @@ class routing_test_t : public base_test_t<i_t, f_t> {
     data_model.set_order_service_times(this->service_time_d.data());
 
     for (i_t vid = 0; vid < start_vehicle; ++vid) {
-      data_model.add_distance_break(vid, min_range, max_range, duration, nullptr, 0);
+      data_model.add_vehicle_distance_break(vid, min_range, max_range, duration, nullptr, 0);
     }
 
     cuopt::routing::solver_settings_t<i_t, f_t> settings;

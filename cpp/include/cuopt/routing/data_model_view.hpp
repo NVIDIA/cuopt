@@ -180,20 +180,20 @@ class data_model_view_t {
    *                           the break.
    * @param distance_max       Latest cumulative route distance by which the
    *                           vehicle must have stopped.
-   * @param duration           Service time at the break location (same unit
+   * @param break_duration     Service time at the break location (same unit
    *                           as other service times in the model).
    * @param break_locations    Device pointer to eligible break location IDs.
    *                           Pass nullptr to allow any location.
    * @param num_break_locations Number of entries in break_locations.
    * @param validate_input     Run input validation. Defaults to true.
    */
-  void add_distance_break(i_t vehicle_id,
-                          f_t distance_min,
-                          f_t distance_max,
-                          i_t duration,
-                          i_t const* break_locations,
-                          i_t num_break_locations,
-                          bool validate_input = true);
+  void add_vehicle_distance_break(i_t vehicle_id,
+                                  f_t distance_min,
+                                  f_t distance_max,
+                                  i_t break_duration,
+                                  i_t const* break_locations,
+                                  i_t num_break_locations,
+                                  bool validate_input = true);
 
   /**
    * @brief During improvement phase the solver only optimizes for the cost.
