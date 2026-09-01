@@ -292,18 +292,10 @@ FetchContent_MakeAvailable(papilo)
 
 # PSLP - Lightweight C presolver for linear programs
 # https://github.com/dance858/PSLP
-#
-# Pinned past v0.0.11 to a commit rather than a tag: it carries the fix for
-# https://github.com/dance858/PSLP/pull/55 (run_presolver() printed its infeasible/unbounded
-# message straight to stdout even with verbose = false, unlike every other console message in
-# that function -- cuOpt sets verbose = false specifically to keep PSLP silent, and the stray
-# write corrupted Maven Surefire's forked-JVM protocol in the Java bindings, which also uses
-# stdout as its own channel). Move this to a released tag once dance858/PSLP cuts one that
-# includes it.
 FetchContent_Declare(
         pslp
         GIT_REPOSITORY "https://github.com/dance858/PSLP.git"
-        GIT_TAG "12d37dd9ab5ee848b3ec5da17f4cf8e805d58cd6"
+        GIT_TAG "v0.0.11"
         GIT_PROGRESS TRUE
         EXCLUDE_FROM_ALL
         SYSTEM
