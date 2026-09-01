@@ -88,7 +88,11 @@ echo "  native library -> ${RESOURCE_DIR}/libcuopt_jni.so"
 # libcudss_mtlayer_gomp.so.0 is cuDSS's OpenMP threading backend: cudssSetThreadingLayer
 # dlopen()s it at runtime. Without it that call fails and cuDSS writes the failure straight to
 # the process's native stdout, corrupting Maven Surefire's forked-JVM protocol.
-for companion in librmm.so librapids_logger.so libtbb.so.12 libnccl.so.2 libcudss.so.0 libcudss_mtlayer_gomp.so.0; do
+# libgomp.so.1, libstdc++.so.6 and libgcc_s.so.1 are the build host's GCC runtime libraries; a
+# consumer's own system copies can be too old (e.g. Rocky Linux 8's defaults only go up to
+# OMP_3.1, GLIBCXX_3.4.29 and GCC_7.0.0 respectively, older than what this build links against),
+# so they travel alongside rather than being assumed present.
+for companion in librmm.so librapids_logger.so libtbb.so.12 libnccl.so.2 libcudss.so.0 libcudss_mtlayer_gomp.so.0 libgomp.so.1 "libstdc++.so.6" libgcc_s.so.1; do
   companion_path="${CUOPT_PREFIX:-}/lib/${companion}"
   if [[ ! -f "${companion_path}" ]]; then
     echo "ERROR: ${companion} not found at ${companion_path}; set CUOPT_PREFIX" >&2

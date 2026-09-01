@@ -120,7 +120,9 @@ jobs:
       sha: ${{ inputs.sha }}
       node_type: "gpu-l4-latest-1"
       arch: ${{ matrix.ARCH }}
-      container_image: "rapidsai/ci-conda:26.10-latest"
+      # A plain CUDA-devel + dnf environment rather than rapidsai/ci-conda: see the matching
+      # comment in pr.yaml.
+      container_image: "rapidsai/ci-wheel:26.10-cuda${{ matrix.CUDA_VER }}-${{ matrix.LINUX_VER }}-py${{ matrix.PY_VER }}"
       script: "ci/test_java_static.sh"
 
   # Combines every classifier into one Maven-repository-layout artifact, which is the form a

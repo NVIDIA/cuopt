@@ -24,10 +24,6 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 . "${REPO_ROOT}/java/cuopt/scripts/maven.sh"
 cuopt_maven_args
 
-if [[ -e /opt/conda/etc/profile.d/conda.sh ]]; then
-  . /opt/conda/etc/profile.d/conda.sh
-fi
-
 if [[ -z "${CUOPT_JAVA_JAR:-}" ]]; then
   case "$(arch)" in
     x86_64) JOB_ARCH=amd64 ;;
@@ -41,34 +37,29 @@ if [[ -z "${CUOPT_JAVA_JAR:-}" ]]; then
 fi
 rapids-logger "Testing $(basename "${CUOPT_JAVA_JAR}")"
 
-# A JDK, Maven and the CUDA runtime only. Installing libcuopt would defeat the test, since the
-# JAR is supposed to carry its own copy.
-rapids-logger "Creating a consumer-like environment"
-ENV_YAML_DIR=$(mktemp -d)
-cat > "${ENV_YAML_DIR}/env.yaml" << EOF
-name: java_static_test
-channels:
-  - conda-forge
-dependencies:
-  - openjdk=11.*
-  - maven
-  - cuda-version=${RAPIDS_CUDA_VERSION%.*}
-  - libcublas
-  - libcusparse
-EOF
-rapids-mamba-retry env create --yes -f "${ENV_YAML_DIR}/env.yaml" -n java_static_test
+# A JDK and Maven only -- no conda, no cuOpt package. The container image (rapidsai/ci-wheel)
+# already ships the CUDA runtime (libcublas/libcusparse) that the JAR dynamically links against;
+# installing libcuopt itself would defeat the test, since the JAR is supposed to carry its own
+# copy of everything else it needs. See #1817 and the java-static-classifiers PR discussion for
+# why this moved off a fresh `conda create`: that env-solve was slow and consistently synced up
+# concurrent matrix jobs' cold Maven Central resolution, which is what triggered repeated 429s.
+rapids-logger "Installing a JDK (dnf's own maven package is too old; see MAVEN_VERSION below)"
+MAVEN_VERSION="3.9.9"
+dnf install -y java-11-openjdk-devel
+export JAVA_HOME=/usr/lib/jvm/java-11-openjdk
+MAVEN_HOME="$(mktemp -d)"
+curl -fsSL "https://archive.apache.org/dist/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz" \
+  | tar xz -C "${MAVEN_HOME}" --strip-components=1
+export PATH="${MAVEN_HOME}/bin:${JAVA_HOME}/bin:${PATH}"
 
-set +u
-conda activate java_static_test
-set -u
-
-if [[ -e "${CONDA_PREFIX}/lib/libcuopt.so" ]]; then
+if command -v ldconfig >/dev/null 2>&1 && ldconfig -p | grep -q libcuopt.so; then
   echo "ERROR: libcuopt.so is present in the test environment, so passing here would not show" >&2
   echo "       that the JAR is self-contained." >&2
   exit 1
 fi
 
-rapids-print-env
+java -version
+mvn -version
 nvidia-smi
 
 rapids-logger "Running the suite against the packaged JAR"

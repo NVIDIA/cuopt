@@ -31,8 +31,13 @@ final class NativeLibraryLoader {
    * writes the failure straight to the process's native stdout, corrupting Maven Surefire's
    * forked-JVM protocol exactly like the raw writes NativeLogSink was built to intercept -- but
    * from a source outside cuopt's own logger entirely, so no logging fix here can catch it.
+   * libgomp.so.1, libstdc++.so.6 and libgcc_s.so.1 travel too: this library is built against the
+   * build host's GCC runtime libraries, which can require symbol versions (e.g. OMP_5.0.1,
+   * GLIBCXX_3.4.30, GCC_14.0.0) newer than a consumer's own system copies ship -- observed with
+   * Rocky Linux 8's defaults, which only go up to OMP_3.1, GLIBCXX_3.4.29 and GCC_7.0.0
+   * respectively.
    */
-  private static final String[] COMPANION_LIBRARIES = {"librmm.so", "librapids_logger.so", "libtbb.so.12", "libnccl.so.2", "libcudss.so.0", "libcudss_mtlayer_gomp.so.0"};
+  private static final String[] COMPANION_LIBRARIES = {"librmm.so", "librapids_logger.so", "libtbb.so.12", "libnccl.so.2", "libcudss.so.0", "libcudss_mtlayer_gomp.so.0", "libgomp.so.1", "libstdc++.so.6", "libgcc_s.so.1"};
 
   private NativeLibraryLoader() {}
 
