@@ -944,6 +944,18 @@ void branch_and_bound_t<i_t, f_t>::add_feasible_solution(const lp_problem_t<i_t,
                                                          i_t leaf_depth,
                                                          search_strategy_t thread_type)
 {
+  // The root diving uses a frozen problem for the cut pass that it was
+  // launched from. Later cut passes may modify the problem, causing a dimension mismatch
+  // when the root diving find a feasible solution.
+  mutex_original_lp_.lock();
+  std::vector<f_t> sol;
+  if (leaf_solution.size() != original_lp_.num_cols) {
+    std::vector<f_t> uncrushed_incumbent;
+    uncrush_primal_solution(original_problem_, lp, leaf_solution, uncrushed_incumbent);
+    crush_primal_solution(original_problem_, original_lp_, uncrushed_incumbent, new_slacks_, sol);
+  }
+  mutex_original_lp_.unlock();
+
   bool send_solution = false;
   settings_.log.debug("%c found a feasible solution with obj=%.10e.\n",
                       feasible_solution_symbol(thread_type, settings_.diving_settings.show_type),
@@ -951,7 +963,7 @@ void branch_and_bound_t<i_t, f_t>::add_feasible_solution(const lp_problem_t<i_t,
 
   mutex_upper_.lock();
   if (!incumbent_.has_incumbent || leaf_objective < incumbent_.objective) {
-    incumbent_.set_incumbent_solution(leaf_objective, leaf_solution);
+    incumbent_.set_incumbent_solution(leaf_objective, sol.empty() ? leaf_solution : sol);
     upper_bound_ = std::min(upper_bound_.load(), leaf_objective);
 
     char symbol = feasible_solution_symbol(thread_type, settings_.diving_settings.show_type);
@@ -3051,6 +3063,7 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
       mutex_upper_.lock();
       worker->current_incumbent = incumbent_.x;
       mutex_upper_.unlock();
+      assert(worker->current_incumbent.size() == worker->leaf_problem.num_cols);
     }
 
     simplex_solver_settings_t<i_t, f_t> submip_settings = settings_;
@@ -3115,6 +3128,7 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
         mutex_upper_.lock();
         worker->current_incumbent = incumbent_.x;
         mutex_upper_.unlock();
+        assert(worker->current_incumbent.size() == worker->leaf_problem.num_cols);
       }
 
       ++current_heuristic->active_workers_;
