@@ -24,10 +24,10 @@ Add TLS or tuning variables from :doc:`advanced` if your deployment uses them.
 
 .. note::
 
-   Routing has no remote-execution path over gRPC -- use the explicit
-   :ref:`VRP gRPC client <cuopt-grpc-examples-routing>` below, or the
-   HTTP/JSON :doc:`REST self-hosted server <../cuopt-server/index>` and
-   :doc:`Examples <../cuopt-server/examples/index>`.
+   Routing does not read ``CUOPT_REMOTE_HOST``/``CUOPT_REMOTE_PORT`` --
+   use the explicit :ref:`VRP gRPC client <cuopt-grpc-examples-routing>`
+   below, or the HTTP/JSON :doc:`REST self-hosted server <../cuopt-server/index>`
+   and :doc:`Examples <../cuopt-server/examples/index>`.
 
 Where to Find Examples
 ======================
