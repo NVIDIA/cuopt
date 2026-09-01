@@ -31,7 +31,7 @@
   pb_settings->set_augmented(settings.augmented);
   pb_settings->set_dualize(settings.dualize);
   pb_settings->set_ordering(settings.ordering);
-  pb_settings->set_barrier_dual_initial_point(settings.barrier_dual_initial_point);
+  pb_settings->set_barrier_dual_initial_point(static_cast<int32_t>(settings.barrier_dual_initial_point));
   pb_settings->set_eliminate_dense_columns(settings.eliminate_dense_columns);
   pb_settings->set_barrier_iterative_refinement(settings.barrier_iterative_refinement);
   pb_settings->set_barrier_adaptive_regularization(settings.barrier_adaptive_regularization);

@@ -510,6 +510,7 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   barrier_settings.postsolve_info             = settings.postsolve_info;
   barrier_settings.barrier_presolve_bound_free_variables =
     settings.barrier_presolve_bound_free_variables;
+  barrier_settings.barrier_initial_point_safeguard = settings.barrier_initial_point_safeguard;
   barrier_settings.barrier                         = true;
   barrier_settings.barrier_presolve                = true;
   barrier_settings.crossover                       = settings.crossover;
