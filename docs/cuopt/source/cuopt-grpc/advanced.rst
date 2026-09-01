@@ -127,12 +127,14 @@ to that client. A **custom** gRPC client must configure the channel itself
 Python Async gRPC Client (``cuopt.grpc``)
 -----------------------------------------
 
-``Client(host, port, tls=...)`` takes the server address in code. It does
-**not** read ``CUOPT_REMOTE_HOST`` or ``CUOPT_REMOTE_PORT``.
+``Client(host, port, tls=...)`` (LP/MIP/QP) and ``RoutingClient(host, port,
+tls=...)`` (VRP, :doc:`routing`) take the server address in code. Neither
+reads ``CUOPT_REMOTE_HOST`` or ``CUOPT_REMOTE_PORT``.
 
-When ``tls`` is omitted (``None``), the client honors the same ``CUOPT_TLS_*``
-variables as remote execution. Pass ``tls=False`` for plain TCP, or
-``tls=TlsConfig(...)`` for explicit PEM paths (see :doc:`python-async-client`).
+When ``tls`` is omitted (``None``), both clients honor the same
+``CUOPT_TLS_*`` variables as remote execution. Pass ``tls=False`` for plain
+TCP, or ``tls=TlsConfig(...)`` for explicit PEM paths (see
+:doc:`python-async-client`).
 
 .. list-table::
    :header-rows: 1
@@ -163,8 +165,11 @@ variables as remote execution. Pass ``tls=False`` for plain TCP, or
      - ``0``
      - Non-zero: extra gRPC client logging
 
-``CUOPT_CHUNK_SIZE`` and ``CUOPT_MAX_MESSAGE_BYTES`` also apply to this client
-when set (same defaults as the integrated remote client).
+``CUOPT_MAX_MESSAGE_BYTES`` also applies to both clients when set (same
+default as the integrated remote client) -- it raises the gRPC channel's
+max message size regardless of chunking support. ``CUOPT_CHUNK_SIZE`` only
+has an effect for ``Client``; ``RoutingClient`` has no chunking to size (see
+:doc:`routing`'s Limitations).
 
 Usage
 =====

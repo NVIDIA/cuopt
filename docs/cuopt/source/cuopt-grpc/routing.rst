@@ -30,9 +30,9 @@ A running ``cuopt_grpc_server`` on a GPU host (see :doc:`quick-start`):
 Connect and Solve
 ==================
 
-``RoutingClient(target)`` takes a single ``"host:port"`` string, unlike the
-LP/MIP client's ``Client(host, port)`` two-argument form -- ``target``
-defaults to ``"localhost:50051"`` if omitted.
+``RoutingClient(host, port, *, tls=None)`` takes the same arguments as the
+LP/MIP client's ``Client(host, port, tls=...)``; see :doc:`python-async-client`
+for the ``tls`` options.
 
 ``RoutingClient.submit()`` accepts a :class:`cuopt.routing.DataModel` built
 the same way as for a local :func:`cuopt.routing.Solve`. ``solve()`` submits,
@@ -105,13 +105,10 @@ Limitations and Roadmap
   <https://github.com/NVIDIA/cuopt/issues/1633>`_.
 * **Settings surface** — only ``time_limit`` is forwarded today. Tracked in
   `#1632 <https://github.com/NVIDIA/cuopt/issues/1632>`_.
-* **TLS** — ``RoutingClient`` honors ``CUOPT_TLS_*`` environment variables
-  the same way the LP/MIP client's default ``tls=None`` does, but has no
-  ``tls`` constructor argument to disable that or pass an explicit
-  :class:`~cuopt.grpc.linear_programming.TlsConfig` the way
-  ``Client(host, port, tls=...)`` does; see :doc:`advanced` for the
-  environment variables. Tracked in `#1632
-  <https://github.com/NVIDIA/cuopt/issues/1632>`_.
+* **No 2 GiB chunking** — VRP is unary-only; a cost/transit matrix or
+  ``RoutingSolution`` that exceeds the gRPC max message size cannot be sent
+  or retrieved (the LP/MIP client chunks automatically). Tracked in `#1629
+  <https://github.com/NVIDIA/cuopt/issues/1629>`_.
 * **No log or incumbent streaming** — unlike the LP/MIP client, there is no
   ``start_log_stream``/``start_incumbent_stream`` equivalent yet. Tracked in
   `#1630 <https://github.com/NVIDIA/cuopt/issues/1630>`_.
