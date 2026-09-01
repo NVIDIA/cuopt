@@ -486,9 +486,8 @@ jobs:
       artifact-name: "cuopt_docs"
       container_image: "rapidsai/ci-conda:26.10-latest"
       script: "ci/build_docs.sh"
-  # Exploratory (#1817): one self-contained classifier JAR per CUDA major and architecture,
-  # gathered into a single Maven-repository artifact. Compiles libcuopt from source, so it does
-  # not need conda-cpp-build.
+  # Compiles libcuopt from source (one self-contained classifier JAR per CUDA major and
+  # architecture), so this does not need conda-cpp-build. See #1817.
   java-static-build-matrix:
     needs: changed-files
     permissions:

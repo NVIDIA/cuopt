@@ -64,8 +64,6 @@ jobs:
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
       script: ci/build_cpp.sh
-  # Exploratory (#1817): one self-contained classifier JAR per CUDA major and architecture,
-  # gathered into a single Maven-repository artifact for publishing.
   java-static-build-matrix:
     permissions:
       contents: read
@@ -100,8 +98,6 @@ jobs:
       artifact-name: "cuopt_java_${{ matrix.ARCH }}_cu${{ matrix.CUDA_MAJOR }}"
       file_to_upload: "java/cuopt/classifier-jars/"
 
-  # Combines every classifier into one Maven-repository-layout artifact, which is the form a
-  # publishing workflow consumes. See rapidsai/build-infra#379.
   # Runs the full Java suite against each classifier JAR on a GPU, with no libcuopt installed,
   # so a JAR that loads but computes wrong answers fails here rather than at a user.
   java-static-test:
@@ -127,6 +123,8 @@ jobs:
       container_image: "rapidsai/ci-conda:26.10-latest"
       script: "ci/test_java_static.sh"
 
+  # Combines every classifier into one Maven-repository-layout artifact, which is the form a
+  # publishing workflow consumes. See rapidsai/build-infra#379.
   java-static-gather:
     needs: [java-static-build]
     runs-on: linux-amd64-cpu4
