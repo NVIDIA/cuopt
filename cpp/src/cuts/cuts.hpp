@@ -314,6 +314,7 @@ class compressed_set_groups_t {
   template <typename get_set_id_t>
   void build(i_t first, i_t last, i_t set_id_limit, get_set_id_t get_set_id)
   {
+    first_entry_ = first;
     for (const i_t set_id : active_set_ids_) {
       bucket_by_set_[set_id] = -1;
     }
@@ -340,34 +341,39 @@ class compressed_set_groups_t {
     set_starts_[0] = 0;
     std::inclusive_scan(set_counts_.begin(), set_counts_.end(), set_starts_.begin() + 1);
     entries_.resize(set_starts_.back());
+    position_by_entry_.resize(last - first);
     next_entry_in_set_ = set_starts_;
     for (i_t entry = first; entry < last; entry++) {
       const i_t set_id = get_set_id(entry);
       if (set_id > 0 && set_id < set_id_limit) {
-        const i_t bucket                     = bucket_by_set_[set_id];
-        entries_[next_entry_in_set_[bucket]] = entry;
-        next_entry_in_set_[bucket]++;
+        const i_t bucket                  = bucket_by_set_[set_id];
+        const i_t position                = next_entry_in_set_[bucket]++;
+        entries_[position]                = entry;
+        position_by_entry_[entry - first] = position;
       }
     }
   }
 
-  std::span<const i_t> entries_in_set(i_t set_id) const
+  // Entry order within a set matches input order, so position + 1 is its first later entry.
+  std::span<const i_t> entries_after(i_t set_id, i_t entry) const
   {
     if (set_id <= 0 || set_id >= static_cast<i_t>(bucket_by_set_.size())) { return {}; }
     const i_t bucket = bucket_by_set_[set_id];
     if (bucket < 0) { return {}; }
-    const i_t begin = set_starts_[bucket];
-    const i_t end   = set_starts_[bucket + 1];
-    return {entries_.data() + begin, static_cast<std::size_t>(end - begin)};
+    const i_t position = position_by_entry_[entry - first_entry_];
+    const i_t end      = set_starts_[bucket + 1];
+    return {entries_.data() + position + 1, static_cast<std::size_t>(end - position - 1)};
   }
 
  private:
+  i_t first_entry_{0};
   std::vector<i_t> bucket_by_set_;
   std::vector<i_t> active_set_ids_;
   std::vector<i_t> set_counts_;
   std::vector<i_t> set_starts_;
   std::vector<i_t> next_entry_in_set_;
   std::vector<i_t> entries_;
+  std::vector<i_t> position_by_entry_;
 };
 
 template <typename i_t, typename f_t>

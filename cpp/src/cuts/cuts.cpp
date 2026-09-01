@@ -1270,12 +1270,9 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
         divisors[r] = a_rj;
         new_rows++;
       } else if (sets[r] < new_set_0) {
-        const i_t old_set      = sets[r];
-        bool matched           = false;
-        const auto set_entries = set_groups.entries_in_set(old_set);
-        auto q_position        = std::upper_bound(set_entries.begin(), set_entries.end(), p);
-        for (; q_position != set_entries.end(); ++q_position) {
-          const i_t q    = *q_position;
+        const i_t old_set = sets[r];
+        bool matched      = false;
+        for (const i_t q : set_groups.entries_after(old_set, p)) {
           const i_t i    = cut_storage_csc.i[q];
           const f_t a_ij = cut_storage_csc.x[q];
           if (sets[i] != old_set) { continue; }
@@ -1315,10 +1312,7 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
     if (set_r <= 0 || set_r >= sentinel || cuts_to_remove[r] != 0) { continue; }
     // This cut has a duplicate. The set members are in row order, preserving the legacy
     // strongest-cut selection order without scanning unrelated rows.
-    const auto set_entries = set_groups.entries_in_set(set_r);
-    auto member            = std::upper_bound(set_entries.begin(), set_entries.end(), r);
-    for (; member != set_entries.end(); ++member) {
-      const i_t i       = *member;
+    for (const i_t i : set_groups.entries_after(set_r, r)) {
       const f_t f_r     = divisors[r];
       const f_t f_i     = divisors[i];
       const f_t theta_r = rhs_storage_[r] / f_r;
