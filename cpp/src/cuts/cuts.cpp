@@ -1265,7 +1265,7 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
       const f_t a_rj = cut_storage_csc.x[p];
       const f_t f_r  = divisors[r];
       if (sets[r] == 0) {
-        r0          = r;
+        r0          = r;  // To enable us to find this new set later.
         sets[r]     = new_set_0;
         divisors[r] = a_rj;
         new_rows++;
