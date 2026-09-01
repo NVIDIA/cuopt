@@ -427,7 +427,7 @@ void register_console_log_sink(JNIEnv* env)
     g_log_sink_class  = static_cast<jclass>(env->NewGlobalRef(local_cls));
     g_log_sink_method = method;
     env->DeleteLocalRef(local_cls);
-    cuopt::set_console_log_callback(&console_log_callback);
+    cuopt::mathematical_optimization::set_console_log_callback(&console_log_callback);
   });
 }
 

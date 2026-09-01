@@ -29,8 +29,7 @@ void capturing_callback(int /* level */, const char* message)
 
 // Covers the console-sink override added for language bindings (Java in particular) whose host
 // runtime cannot safely receive a raw write to the native stdout stream -- see
-// cuopt::set_console_log_callback and its call site in logger.cpp for the corrupted-Surefire-
-// channel motivation.
+// cuopt::set_console_log_callback in logger.hpp.
 class console_log_callback_test : public ::testing::Test {
  protected:
   void TearDown() override
