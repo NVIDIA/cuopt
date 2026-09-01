@@ -79,14 +79,14 @@ diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t
                             context.problem_ptr->handle_ptr),
     sub_mip_recombiner(
       context, population, context.problem_ptr->n_variables, context.problem_ptr->handle_ptr),
-    rng(mip_derive_seed(context.base_seed, mip_rng_component_id_t::diversity_manager, 0)),
+    rng(derive_seed(context.base_seed, rng_id_t::diversity_manager, 0)),
     stats(context.stats),
     mab_recombiner(0,
-                   mip_derive_seed(context.base_seed, mip_rng_component_id_t::diversity_manager, 1),
+                   derive_seed(context.base_seed, rng_id_t::diversity_manager, 1),
                    recombiner_alpha,
                    "recombiner"),
     mab_ls(mab_ls_config_t<i_t, f_t>::n_of_arms,
-           mip_derive_seed(context.base_seed, mip_rng_component_id_t::diversity_manager, 2),
+           derive_seed(context.base_seed, rng_id_t::diversity_manager, 2),
            ls_alpha,
            "ls"),
     ls_hash_map(*context.problem_ptr)

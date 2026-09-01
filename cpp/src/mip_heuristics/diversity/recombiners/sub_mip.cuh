@@ -25,8 +25,7 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
                        population_t<i_t, f_t>& population,
                        i_t n_vars,
                        const raft::handle_t* handle_ptr)
-    : recombiner_t<i_t, f_t>(
-        context, n_vars, handle_ptr, mip_rng_component_id_t::recombiner_sub_mip),
+    : recombiner_t<i_t, f_t>(context, n_vars, handle_ptr, rng_id_t::recombiner_sub_mip),
       vars_to_fix(n_vars, handle_ptr->get_stream()),
       context(context),
       population(population)

@@ -67,10 +67,10 @@ class recombiner_t {
   recombiner_t(mip_solver_context_t<i_t, f_t>& context_,
                i_t n_integer_vars,
                const raft::handle_t* handle_ptr,
-               mip_rng_component_id_t component_id)
+               rng_id_t component_id)
     : context(context_),
-      rng(mip_derive_seed(context.base_seed, component_id),
-          mip_derive_stream(context.base_seed, component_id)),
+      rng(derive_seed(context.base_seed, component_id),
+          derive_stream(context.base_seed, component_id)),
       remaining_indices(n_integer_vars, handle_ptr->get_stream()),
       n_remaining(handle_ptr->get_stream())
   {

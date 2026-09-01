@@ -50,7 +50,7 @@ feasibility_pump_t<i_t, f_t>::feasibility_pump_t(
     orig_variable_types(context.problem_ptr->n_variables,
                         context.problem_ptr->handle_ptr->get_stream()),
     lp_optimal_solution(lp_optimal_solution_),
-    rng(mip_derive_seed(context.base_seed, mip_rng_component_id_t::feasibility_pump)),
+    rng(derive_seed(context.base_seed, rng_id_t::feasibility_pump)),
     timer(20.)
 {
 }

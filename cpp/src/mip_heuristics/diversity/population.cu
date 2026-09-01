@@ -41,7 +41,7 @@ population_t<i_t, f_t>::population_t(std::string const& name_,
     max_solutions(max_solutions_),
     infeasibility_importance(infeasibility_weight_),
     weights(0, context.problem_ptr->handle_ptr),
-    rng(mip_derive_seed(context.base_seed, mip_rng_component_id_t::population)),
+    rng(derive_seed(context.base_seed, rng_id_t::population)),
     early_exit_primal_generation(false),
     population_hash_map(*problem_ptr),
     timer(0)

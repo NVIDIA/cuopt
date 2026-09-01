@@ -25,8 +25,7 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
                           i_t n_vars,
                           constraint_prop_t<i_t, f_t>& constraint_prop_,
                           const raft::handle_t* handle_ptr)
-    : recombiner_t<i_t, f_t>(
-        context, n_vars, handle_ptr, mip_rng_component_id_t::recombiner_bound_prop),
+    : recombiner_t<i_t, f_t>(context, n_vars, handle_ptr, rng_id_t::recombiner_bound_prop),
       constraint_prop(constraint_prop_),
       vars_to_fix(n_vars, handle_ptr->get_stream())
   {

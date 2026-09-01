@@ -21,9 +21,8 @@ class splitmix64_t {
   /// @param[in]    seed    generator seed
   /// @param[in]    stream    generator increment
   splitmix64_t(uint64_t seed = default_seed, uint64_t stream = default_stream)
-    : state_(seed), stream_(stream)
   {
-    next_state();
+    set_seed(seed, stream);
   }
 
   /// Creates a new instance of the SplitMix64 generator
@@ -39,10 +38,11 @@ class splitmix64_t {
   ///
   /// @param[in]    seed    generator seed (optional)
   /// @param[in]    stream    generator increment (optional)
-  constexpr void seed(uint64_t seed = default_seed, uint64_t stream = default_stream)
+  constexpr void set_seed(uint64_t seed = default_seed, uint64_t stream = default_stream)
   {
     state_  = seed;
     stream_ = stream;
+    next_state();
   }
 
   /// @returns the next uniformly distributed 32-bit unsigned integer.

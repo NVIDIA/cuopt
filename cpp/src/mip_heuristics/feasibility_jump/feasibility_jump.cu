@@ -44,9 +44,9 @@ static constexpr int iterations_per_graph = 50;
 template <typename i_t, typename f_t>
 fj_t<i_t, f_t>::fj_t(mip_solver_context_t<i_t, f_t>& context_,
                      fj_settings_t in_settings,
-                     mip_rng_component_id_t seed_component_id)
-  : rng(mip_derive_seed(context_.base_seed, seed_component_id),
-        mip_derive_stream(context_.base_seed, seed_component_id)),
+                     rng_id_t seed_component_id)
+  : rng(derive_seed(context_.base_seed, seed_component_id),
+        derive_stream(context_.base_seed, seed_component_id)),
     context(context_),
     pb_ptr(context.problem_ptr),
     handle_ptr(const_cast<raft::handle_t*>(pb_ptr->handle_ptr)),

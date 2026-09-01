@@ -23,8 +23,7 @@ class line_segment_recombiner_t : public recombiner_t<i_t, f_t> {
                             i_t n_vars,
                             line_segment_search_t<i_t, f_t>& line_segment_search_,
                             const raft::handle_t* handle_ptr)
-    : recombiner_t<i_t, f_t>(
-        context, n_vars, handle_ptr, mip_rng_component_id_t::recombiner_line_segment),
+    : recombiner_t<i_t, f_t>(context, n_vars, handle_ptr, rng_id_t::recombiner_line_segment),
       line_segment_search(line_segment_search_)
   {
   }

@@ -34,7 +34,7 @@ constraint_prop_t<i_t, f_t>::constraint_prop_t(mip_solver_context_t<i_t, f_t>& c
     multi_probe(context),
     bounds_repair(*context.problem_ptr,
                   bounds_update,
-                  mip_derive_seed(context.base_seed, mip_rng_component_id_t::constraint_prop, 1)),
+                  derive_seed(context.base_seed, rng_id_t::constraint_prop, 1)),
     conditional_bounds_update(*context.problem_ptr),
     set_vars(context.problem_ptr->n_variables, context.problem_ptr->handle_ptr->get_stream()),
     unset_vars(context.problem_ptr->n_variables, context.problem_ptr->handle_ptr->get_stream()),
@@ -42,8 +42,8 @@ constraint_prop_t<i_t, f_t>::constraint_prop_t(mip_solver_context_t<i_t, f_t>& c
     ub_restore(context.problem_ptr->n_variables, context.problem_ptr->handle_ptr->get_stream()),
     assignment_restore(context.problem_ptr->n_variables,
                        context.problem_ptr->handle_ptr->get_stream()),
-    rng(mip_derive_seed(context.base_seed, mip_rng_component_id_t::constraint_prop, 0),
-        mip_derive_stream(context.base_seed, mip_rng_component_id_t::constraint_prop, 0),
+    rng(derive_seed(context.base_seed, rng_id_t::constraint_prop, 0),
+        derive_stream(context.base_seed, rng_id_t::constraint_prop, 0),
         0)
 {
 }
