@@ -106,7 +106,7 @@ class adaptive_step_size_strategy_t {
   const bool batch_mode_;
 
   raft::handle_t const* handle_ptr_{nullptr};
-  rmm::cuda_stream_view stream_view_;
+  cuda::stream_ref stream_view_;
 
   i_t primal_size_;
   i_t dual_size_;

@@ -40,7 +40,7 @@ class tsp_route_t {
 
   tsp_route_t& operator=(tsp_route_t&& tsp_route) = default;
 
-  void resize(i_t max_nodes_per_route, rmm::cuda_stream_view stream)
+  void resize(i_t max_nodes_per_route, cuda::stream_ref stream)
   {
     pred.resize(max_nodes_per_route, stream);
     succ.resize(max_nodes_per_route, stream);

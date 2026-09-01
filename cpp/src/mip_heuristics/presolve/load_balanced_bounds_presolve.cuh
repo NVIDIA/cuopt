@@ -54,9 +54,9 @@ class managed_stream_pool {
    *
    * This function is thread safe with respect to other calls to the same function.
    *
-   * @return rmm::cuda_stream_view
+   * @return cuda::stream_ref
    */
-  rmm::cuda_stream_view get_stream() const noexcept
+  cuda::stream_ref get_stream() const noexcept
   {
     int stream_id = (next_stream++) % streams_.size();
     end_unsycned  = std::max(stream_id, end_unsycned);

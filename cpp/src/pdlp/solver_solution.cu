@@ -25,7 +25,7 @@ namespace cuopt::mathematical_optimization {
 
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
-  pdlp_termination_status_t termination_status, rmm::cuda_stream_view stream_view)
+  pdlp_termination_status_t termination_status, cuda::stream_ref stream_view)
   : primal_solution_{0, stream_view},
     dual_solution_{0, stream_view},
     reduced_cost_{0, stream_view},
@@ -38,7 +38,7 @@ optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
 
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
-  cuopt::logic_error error_status_, rmm::cuda_stream_view stream_view)
+  cuopt::logic_error error_status_, cuda::stream_ref stream_view)
   : primal_solution_{0, stream_view},
     dual_solution_{0, stream_view},
     reduced_cost_{0, stream_view},
@@ -210,7 +210,7 @@ void optimization_problem_solution_t<i_t, f_t>::write_additional_termination_sta
 
 template <typename i_t, typename f_t>
 void optimization_problem_solution_t<i_t, f_t>::write_to_file(std::string_view filename,
-                                                              rmm::cuda_stream_view stream_view,
+                                                              cuda::stream_ref stream_view,
                                                               bool generate_variable_values)
 {
   raft::common::nvtx::range fun_scope("write final solution to file");
@@ -430,7 +430,7 @@ optimization_problem_solution_t<i_t, f_t>::get_pdlp_warm_start_data()
 
 template <typename i_t, typename f_t>
 void optimization_problem_solution_t<i_t, f_t>::write_to_sol_file(
-  std::string_view filename, rmm::cuda_stream_view stream_view) const
+  std::string_view filename, cuda::stream_ref stream_view) const
 {
   cuopt_expects(termination_stats_.size() == 1,
                 error_type_t::ValidationError,

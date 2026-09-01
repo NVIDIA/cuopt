@@ -52,8 +52,8 @@ class mip_solution_t : public base_solution_t {
 
   mip_solution_t(mip_termination_status_t termination_status,
                  solver_stats_t<i_t, f_t> stats,
-                 rmm::cuda_stream_view stream_view);
-  mip_solution_t(const cuopt::logic_error& error_status, rmm::cuda_stream_view stream_view);
+                 cuda::stream_ref stream_view);
+  mip_solution_t(const cuopt::logic_error& error_status, cuda::stream_ref stream_view);
 
   bool is_mip() const override { return true; }
   const rmm::device_uvector<f_t>& get_solution() const;
@@ -76,7 +76,7 @@ class mip_solution_t : public base_solution_t {
   i_t get_num_simplex_iterations() const;
   const std::vector<std::string>& get_variable_names() const;
   const std::vector<rmm::device_uvector<f_t>>& get_solution_pool() const;
-  void write_to_sol_file(std::string_view filename, rmm::cuda_stream_view stream_view) const;
+  void write_to_sol_file(std::string_view filename, cuda::stream_ref stream_view) const;
   void log_detailed_summary() const;
   void log_summary() const;
 

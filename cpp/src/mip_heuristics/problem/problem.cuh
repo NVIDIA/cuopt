@@ -102,7 +102,7 @@ class problem_t {
   bool pre_process_assignment(rmm::device_uvector<f_t>& assignment);
   void post_process_assignment(rmm::device_uvector<f_t>& current_assignment,
                                bool resize_to_original_problem,
-                               rmm::cuda_stream_view stream);
+                               cuda::stream_ref stream);
   void post_process_assignment(rmm::device_uvector<f_t>& current_assignment,
                                bool resize_to_original_problem = true)
   {

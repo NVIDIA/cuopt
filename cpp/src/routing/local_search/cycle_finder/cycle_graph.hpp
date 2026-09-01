@@ -29,7 +29,7 @@ constexpr int max_graph_nodes_per_row = 1024;
 
 template <typename i_t, typename f_t>
 struct graph_t {
-  graph_t(i_t size, rmm::cuda_stream_view stream)
+  graph_t(i_t size, cuda::stream_ref stream)
     : row_sizes(size, stream),
       route_ids(size, stream),
       // allocate with the max size
@@ -45,7 +45,7 @@ struct graph_t {
     std::vector<double> weights;
   };
 
-  host_t to_host(rmm::cuda_stream_view stream)
+  host_t to_host(cuda::stream_ref stream)
   {
     host_t h;
     h.row_sizes = host_copy(row_sizes, stream);

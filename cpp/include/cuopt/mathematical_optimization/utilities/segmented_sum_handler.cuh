@@ -13,7 +13,7 @@ namespace cuopt {
 
 template <typename i_t, typename f_t>
 struct segmented_sum_handler_t {
-  segmented_sum_handler_t(rmm::cuda_stream_view stream_view) : stream_view_(stream_view) {}
+  segmented_sum_handler_t(cuda::stream_ref stream_view) : stream_view_(stream_view) {}
 
   template <typename InputIteratorT, typename OutputIteratorT>
   void segmented_sum_helper(InputIteratorT input,
@@ -68,7 +68,7 @@ struct segmented_sum_handler_t {
 
   size_t byte_needed_;
   rmm::device_buffer segmented_sum_storage_;
-  rmm::cuda_stream_view stream_view_;
+  cuda::stream_ref stream_view_;
 };
 
 }  // namespace cuopt

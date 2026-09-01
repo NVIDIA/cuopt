@@ -46,7 +46,7 @@ class prize_route_t {
 
   prize_route_t& operator=(prize_route_t&& prize_route) = default;
 
-  void resize(i_t max_nodes_per_route, rmm::cuda_stream_view stream)
+  void resize(i_t max_nodes_per_route, cuda::stream_ref stream)
   {
     prize.resize(max_nodes_per_route, stream);
     prize_forward.resize(max_nodes_per_route, stream);

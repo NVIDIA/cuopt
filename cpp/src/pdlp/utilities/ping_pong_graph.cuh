@@ -26,7 +26,7 @@ namespace cuopt::mathematical_optimization::pdlp {
 template <typename i_t>
 class ping_pong_graph_t {
  public:
-  ping_pong_graph_t(rmm::cuda_stream_view stream_view, bool is_legacy_batch_mode = false);
+  ping_pong_graph_t(cuda::stream_ref stream_view, bool is_legacy_batch_mode = false);
   ~ping_pong_graph_t() = default;
 
   // Non-copyable because the underlying manual_cuda_graph_t owns a
@@ -64,7 +64,7 @@ class ping_pong_graph_t {
  private:
   manual_cuda_graph_t even_graph_;
   manual_cuda_graph_t odd_graph_;
-  rmm::cuda_stream_view stream_view_;
+  cuda::stream_ref stream_view_;
   bool is_legacy_batch_mode_{false};
 };
 

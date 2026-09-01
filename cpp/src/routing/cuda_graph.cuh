@@ -18,7 +18,7 @@ namespace detail {
 
 // This is not a thread-safe class, be careful on multi-threading
 struct cuda_graph_t {
-  void start_capture(rmm::cuda_stream_view stream)
+  void start_capture(cuda::stream_ref stream)
   {
     // Use ThreadLocal mode to allow multi-threaded batch execution
     // Global mode blocks other streams from performing operations during capture
@@ -26,7 +26,7 @@ struct cuda_graph_t {
     capture_started = true;
   }
 
-  void end_capture(rmm::cuda_stream_view stream)
+  void end_capture(cuda::stream_ref stream)
   {
     cuopt_assert(capture_started, "start_capture was not called before end_capture!");
     cuopt_expects(capture_started, error_type_t::RuntimeError, "A runtime error occurred!");
@@ -52,7 +52,7 @@ struct cuda_graph_t {
     cudaGraphDestroy(graph);
   }
 
-  void launch_graph(rmm::cuda_stream_view stream) { cudaGraphLaunch(instance, stream.get()); }
+  void launch_graph(cuda::stream_ref stream) { cudaGraphLaunch(instance, stream.get()); }
 
   bool graph_created   = false;
   bool capture_started = false;

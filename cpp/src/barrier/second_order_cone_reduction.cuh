@@ -83,7 +83,7 @@ struct segmented_sum_t {
 
  private:
   template <typename value_t>
-  void prepare_workspace_for_type(rmm::cuda_stream_view stream)
+  void prepare_workspace_for_type(cuda::stream_ref stream)
   {
     auto input  = thrust::make_constant_iterator(value_t{});
     auto output = thrust::make_discard_iterator();
@@ -106,14 +106,14 @@ struct segmented_sum_t {
 
  public:
   template <typename value_t, typename... rest_t>
-  void prepare_workspace(rmm::cuda_stream_view stream)
+  void prepare_workspace(cuda::stream_ref stream)
   {
     prepare_workspace_for_type<value_t>(stream);
     (prepare_workspace_for_type<rest_t>(stream), ...);
   }
 
   template <typename value_t, typename InputIt, typename OutputIt, int warps_per_cta = 8>
-  void operator()(InputIt input, OutputIt output, value_t init, rmm::cuda_stream_view stream)
+  void operator()(InputIt input, OutputIt output, value_t init, cuda::stream_ref stream)
   {
     if (!small_cone_ids.is_empty()) {
       // Each warp reduces one small cone. `warps_per_cta` only controls how
@@ -153,14 +153,14 @@ struct segmented_sum_t {
   }
 
   template <std::floating_point f_t, typename InputIt>
-  void operator()(InputIt input, raft::device_span<f_t> output, rmm::cuda_stream_view stream)
+  void operator()(InputIt input, raft::device_span<f_t> output, cuda::stream_ref stream)
   {
     operator()(input, output.data(), f_t{0}, stream);
   }
 
   segmented_sum_t(std::span<const i_t> cone_dimensions_host,
                   raft::device_span<const std::size_t> cone_offsets_in,
-                  rmm::cuda_stream_view stream)
+                  cuda::stream_ref stream)
     : cone_offsets(cone_offsets_in),
       small_cone_ids(0, stream),
       medium_cone_ids(0, stream),

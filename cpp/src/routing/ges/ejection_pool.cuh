@@ -41,7 +41,7 @@ __global__ static void device_random_shuffle(elemt_t* data, int size, int64_t se
  */
 template <class elemt_t, int max_stack_size = std::numeric_limits<int>::max()>
 struct ejection_pool_t {
-  ejection_pool_t(int max_ejection_pool_size, rmm::cuda_stream_view stream)
+  ejection_pool_t(int max_ejection_pool_size, cuda::stream_ref stream)
     : stack_(max_ejection_pool_size, stream), index_(-1), stream_(stream)
   {
   }
@@ -154,7 +154,7 @@ struct ejection_pool_t {
 
   rmm::device_uvector<elemt_t> stack_;
   int index_;
-  rmm::cuda_stream_view stream_;
+  cuda::stream_ref stream_;
   std::uniform_int_distribution<int> dist{0, std::numeric_limits<int>::max()};
   std::mt19937 gen{66742};
 };

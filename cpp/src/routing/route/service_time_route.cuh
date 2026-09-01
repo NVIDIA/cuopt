@@ -42,7 +42,7 @@ class service_time_route_t {
 
   service_time_route_t& operator=(service_time_route_t&& service_time_route) = default;
 
-  void resize(i_t max_nodes_per_route, rmm::cuda_stream_view stream)
+  void resize(i_t max_nodes_per_route, cuda::stream_ref stream)
   {
     service_time_forward.resize(max_nodes_per_route, stream);
     service_time_backward.resize(max_nodes_per_route, stream);

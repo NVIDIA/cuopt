@@ -16,7 +16,7 @@ namespace cuopt::mathematical_optimization {
 // Helper to copy device_uvector to std::vector (D2H)
 template <typename T>
 std::vector<T> device_to_host_vector(const rmm::device_uvector<T>& device_vec,
-                                     rmm::cuda_stream_view stream)
+                                     cuda::stream_ref stream)
 {
   if (device_vec.size() == 0) return std::vector<T>();
 
@@ -29,7 +29,7 @@ std::vector<T> device_to_host_vector(const rmm::device_uvector<T>& device_vec,
 // Helper to copy std::vector to device_uvector (H2D)
 template <typename T>
 rmm::device_uvector<T> host_to_device_vector(const std::vector<T>& host_vec,
-                                             rmm::cuda_stream_view stream)
+                                             cuda::stream_ref stream)
 {
   if (host_vec.empty()) return rmm::device_uvector<T>(0, stream);
 
@@ -42,7 +42,7 @@ rmm::device_uvector<T> host_to_device_vector(const std::vector<T>& host_vec,
 // Convert GPU → CPU warmstart (D2H copy)
 template <typename i_t, typename f_t>
 cpu_pdlp_warm_start_data_t<i_t, f_t> convert_to_cpu_warmstart(
-  const pdlp_warm_start_data_t<i_t, f_t>& gpu_data, rmm::cuda_stream_view stream)
+  const pdlp_warm_start_data_t<i_t, f_t>& gpu_data, cuda::stream_ref stream)
 {
   cpu_pdlp_warm_start_data_t<i_t, f_t> cpu_data;
 
@@ -77,7 +77,7 @@ cpu_pdlp_warm_start_data_t<i_t, f_t> convert_to_cpu_warmstart(
 // Convert CPU → GPU warmstart (H2D copy)
 template <typename i_t, typename f_t>
 pdlp_warm_start_data_t<i_t, f_t> convert_to_gpu_warmstart(
-  const cpu_pdlp_warm_start_data_t<i_t, f_t>& cpu_data, rmm::cuda_stream_view stream)
+  const cpu_pdlp_warm_start_data_t<i_t, f_t>& cpu_data, cuda::stream_ref stream)
 {
   pdlp_warm_start_data_t<i_t, f_t> gpu_data;
 
@@ -111,17 +111,17 @@ pdlp_warm_start_data_t<i_t, f_t> convert_to_gpu_warmstart(
 
 #if MIP_INSTANTIATE_DOUBLE
 template CUOPT_EXPORT cpu_pdlp_warm_start_data_t<int, double> convert_to_cpu_warmstart(
-  const pdlp_warm_start_data_t<int, double>&, rmm::cuda_stream_view);
+  const pdlp_warm_start_data_t<int, double>&, cuda::stream_ref);
 template CUOPT_EXPORT pdlp_warm_start_data_t<int, double> convert_to_gpu_warmstart(
-  const cpu_pdlp_warm_start_data_t<int, double>&, rmm::cuda_stream_view);
+  const cpu_pdlp_warm_start_data_t<int, double>&, cuda::stream_ref);
 #endif
 
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 template CUOPT_EXPORT cpu_pdlp_warm_start_data_t<int, float> convert_to_cpu_warmstart(
-  const pdlp_warm_start_data_t<int, float>&, rmm::cuda_stream_view);
+  const pdlp_warm_start_data_t<int, float>&, cuda::stream_ref);
 
 template CUOPT_EXPORT pdlp_warm_start_data_t<int, float> convert_to_gpu_warmstart(
-  const cpu_pdlp_warm_start_data_t<int, float>&, rmm::cuda_stream_view);
+  const cpu_pdlp_warm_start_data_t<int, float>&, cuda::stream_ref);
 #endif
 
 }  // namespace cuopt::mathematical_optimization

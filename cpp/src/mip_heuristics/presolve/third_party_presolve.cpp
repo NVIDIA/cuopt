@@ -1207,7 +1207,7 @@ void third_party_presolve_t<i_t, f_t>::undo_from_device(rmm::device_uvector<f_t>
                                                         problem_category_t category,
                                                         bool status_to_skip,
                                                         bool dual_postsolve,
-                                                        rmm::cuda_stream_view stream_view)
+                                                        cuda::stream_ref stream_view)
 {
   std::vector<f_t> h_primal(primal_solution.size());
   std::vector<f_t> h_dual(dual_solution.size());

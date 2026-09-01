@@ -536,18 +536,18 @@ struct multi_gpu_engine_t {
   std::vector<std::unique_ptr<cuopt::event_handler_t>> sync_shard_ready_events_;
 
   // Forks master stream to shards, so that the captured graph can see the work on the shards
-  void graph_capture_fork_to_shards(rmm::cuda_stream_view master_stream);
+  void graph_capture_fork_to_shards(cuda::stream_ref master_stream);
 
   // Joins shards back to master stream for correct graph capture
-  void graph_capture_join_from_shards(rmm::cuda_stream_view master_stream);
+  void graph_capture_join_from_shards(cuda::stream_ref master_stream);
 
   // Functionnaly same as graph_capture_fork_to_shards but on a different event to avoid race
   // conditions Can be used as a way to sync shards with master stream
-  void sync_await_master(rmm::cuda_stream_view master_stream);
+  void sync_await_master(cuda::stream_ref master_stream);
 
   // Same as sync_await_master
   // Can be used as a way to sync master stream with shards
-  void sync_await_shards(rmm::cuda_stream_view master_stream);
+  void sync_await_shards(cuda::stream_ref master_stream);
 };
 
 }  // namespace cuopt::mathematical_optimization::pdlp

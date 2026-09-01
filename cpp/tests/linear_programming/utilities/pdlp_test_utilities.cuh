@@ -53,7 +53,7 @@ static cuopt::mathematical_optimization::optimization_problem_solution_t<i_t, f_
 template <typename f_t>
 static void assign_device_uvector_from_host(rmm::device_uvector<f_t>& target,
                                             const std::vector<f_t>& src,
-                                            rmm::cuda_stream_view stream)
+                                            cuda::stream_ref stream)
 {
   target.resize(src.size(), stream);
   raft::copy(target.data(), src.data(), src.size(), stream);

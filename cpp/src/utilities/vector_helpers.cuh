@@ -39,7 +39,7 @@ __global__ void sequence_with_multiplier_kernel(T* data_ptr, int mult, size_t si
 }
 
 template <typename T>
-void async_fill(rmm::device_uvector<T>& vec, T item, rmm::cuda_stream_view stream)
+void async_fill(rmm::device_uvector<T>& vec, T item, cuda::stream_ref stream)
 {
   constexpr size_t TPB = 256;
   size_t n_blocks      = (vec.size() + TPB - 1) / TPB;
@@ -47,7 +47,7 @@ void async_fill(rmm::device_uvector<T>& vec, T item, rmm::cuda_stream_view strea
 }
 
 template <typename T>
-void async_fill(T* vec, T item, size_t size, rmm::cuda_stream_view stream)
+void async_fill(T* vec, T item, size_t size, cuda::stream_ref stream)
 {
   constexpr size_t TPB = 256;
   size_t n_blocks      = (size + TPB - 1) / TPB;
@@ -55,7 +55,7 @@ void async_fill(T* vec, T item, size_t size, rmm::cuda_stream_view stream)
 }
 
 template <typename T>
-void async_sequence(rmm::device_uvector<T>& vec, rmm::cuda_stream_view stream)
+void async_sequence(rmm::device_uvector<T>& vec, cuda::stream_ref stream)
 {
   constexpr size_t TPB = 256;
   size_t n_blocks      = (vec.size() + TPB - 1) / TPB;
@@ -63,9 +63,7 @@ void async_sequence(rmm::device_uvector<T>& vec, rmm::cuda_stream_view stream)
 }
 
 template <typename T>
-void async_sequence_with_multiplier(rmm::device_uvector<T>& vec,
-                                    int mult,
-                                    rmm::cuda_stream_view stream)
+void async_sequence_with_multiplier(rmm::device_uvector<T>& vec, int mult, cuda::stream_ref stream)
 {
   constexpr size_t TPB = 256;
   size_t n_blocks      = (vec.size() + TPB - 1) / TPB;

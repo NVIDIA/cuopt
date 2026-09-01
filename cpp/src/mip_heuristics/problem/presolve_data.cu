@@ -150,7 +150,7 @@ void presolve_data_t<i_t, f_t>::post_process_assignment(
   problem_t<i_t, f_t>& problem,
   rmm::device_uvector<f_t>& current_assignment,
   bool resize_to_original_problem,
-  rmm::cuda_stream_view stream)
+  cuda::stream_ref stream)
 {
   raft::common::nvtx::range fun_scope("post_process_assignment");
   cuopt_assert(current_assignment.size() == variable_mapping.size(), "size mismatch");

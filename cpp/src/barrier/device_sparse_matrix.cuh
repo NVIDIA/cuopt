@@ -34,13 +34,12 @@ struct sum_reduce_helper_t {
   rmm::device_scalar<f_t> out;
   size_t buffer_size;
 
-  sum_reduce_helper_t(rmm::cuda_stream_view stream_view)
-    : buffer_data(0, stream_view), out(stream_view)
+  sum_reduce_helper_t(cuda::stream_ref stream_view) : buffer_data(0, stream_view), out(stream_view)
   {
   }
 
   template <typename InputIteratorT, typename i_t>
-  f_t sum(InputIteratorT input, i_t size, rmm::cuda_stream_view stream_view)
+  f_t sum(InputIteratorT input, i_t size, cuda::stream_ref stream_view)
   {
     buffer_size = 0;
     cub::DeviceReduce::Sum(nullptr, buffer_size, input, out.data(), size, stream_view.get());
@@ -57,7 +56,7 @@ struct transform_reduce_helper_t {
   rmm::device_scalar<f_t> out;
   size_t buffer_size;
 
-  transform_reduce_helper_t(rmm::cuda_stream_view stream_view)
+  transform_reduce_helper_t(cuda::stream_ref stream_view)
     : buffer_data(0, stream_view), out(stream_view)
   {
   }
@@ -68,7 +67,7 @@ struct transform_reduce_helper_t {
                        TransformOpT transform_op,
                        f_t init,
                        i_t size,
-                       rmm::cuda_stream_view stream_view)
+                       cuda::stream_ref stream_view)
   {
     cub::DeviceReduce::TransformReduce(nullptr,
                                        buffer_size,
@@ -116,7 +115,7 @@ struct transform_reduce_pair_helper_t {
   rmm::device_scalar<f2_t<f_t>> out;
   size_t buffer_size;
 
-  transform_reduce_pair_helper_t(rmm::cuda_stream_view stream_view)
+  transform_reduce_pair_helper_t(cuda::stream_ref stream_view)
     : buffer_data(0, stream_view), out(stream_view)
   {
   }
@@ -128,7 +127,7 @@ struct transform_reduce_pair_helper_t {
                              TransformOpT transform_op,
                              f2_t<f_t> init,
                              i_t size,
-                             rmm::cuda_stream_view stream_view)
+                             cuda::stream_ref stream_view)
   {
     f2_min_t<f_t> reduce_op{};
     cub::DeviceReduce::TransformReduce(nullptr,
@@ -167,12 +166,12 @@ struct csc_view_t {
 template <typename i_t, typename f_t>
 class device_csc_matrix_t {
  public:
-  device_csc_matrix_t(rmm::cuda_stream_view stream)
+  device_csc_matrix_t(cuda::stream_ref stream)
     : col_start(0, stream), i(0, stream), x(0, stream), col_index(0, stream)
   {
   }
 
-  device_csc_matrix_t(i_t rows, i_t cols, i_t nz, rmm::cuda_stream_view stream)
+  device_csc_matrix_t(i_t rows, i_t cols, i_t nz, cuda::stream_ref stream)
     : m(rows),
       n(cols),
       nz_max(nz),
@@ -194,7 +193,7 @@ class device_csc_matrix_t {
   {
   }
 
-  device_csc_matrix_t(const csc_matrix_t<i_t, f_t>& A, rmm::cuda_stream_view stream)
+  device_csc_matrix_t(const csc_matrix_t<i_t, f_t>& A, cuda::stream_ref stream)
     : m(A.m),
       n(A.n),
       nz_max(A.col_start[A.n]),
@@ -208,7 +207,7 @@ class device_csc_matrix_t {
     x         = cuopt::device_copy(A.x, stream);
   }
 
-  void resize_to_nnz(i_t nnz, rmm::cuda_stream_view stream)
+  void resize_to_nnz(i_t nnz, cuda::stream_ref stream)
   {
     col_start.resize(n + 1, stream);
     i.resize(nnz, stream);
@@ -216,7 +215,7 @@ class device_csc_matrix_t {
     nz_max = nnz;
   }
 
-  csc_matrix_t<i_t, f_t> to_host(rmm::cuda_stream_view stream)
+  csc_matrix_t<i_t, f_t> to_host(cuda::stream_ref stream)
   {
     csc_matrix_t<i_t, f_t> A(m, n, nz_max);
     A.col_start = cuopt::host_copy(col_start, stream);
@@ -225,7 +224,7 @@ class device_csc_matrix_t {
     return A;
   }
 
-  void copy(const csc_matrix_t<i_t, f_t>& A, rmm::cuda_stream_view stream)
+  void copy(const csc_matrix_t<i_t, f_t>& A, cuda::stream_ref stream)
   {
     m      = A.m;
     n      = A.n;
@@ -239,7 +238,7 @@ class device_csc_matrix_t {
   }
 
   /** Reset to an empty (all-zero col_start, no nonzeros) matrix of the given shape. */
-  void reset_empty(i_t rows, i_t cols, rmm::cuda_stream_view stream)
+  void reset_empty(i_t rows, i_t cols, cuda::stream_ref stream)
   {
     m      = rows;
     n      = cols;
@@ -250,9 +249,9 @@ class device_csc_matrix_t {
 
   /** Same semantics as csc_matrix_t::to_compressed_row, entirely on
    * device. */
-  void to_compressed_row(device_csr_matrix_t<i_t, f_t>& Arow, rmm::cuda_stream_view stream) const;
+  void to_compressed_row(device_csr_matrix_t<i_t, f_t>& Arow, cuda::stream_ref stream) const;
 
-  void form_col_index(rmm::cuda_stream_view stream)
+  void form_col_index(cuda::stream_ref stream)
   {
     col_index.resize(x.size(), stream);
     RAFT_CUDA_TRY(
@@ -313,12 +312,9 @@ class device_csc_matrix_t {
 template <typename i_t, typename f_t>
 class device_csr_matrix_t {
  public:
-  device_csr_matrix_t(rmm::cuda_stream_view stream)
-    : row_start(0, stream), j(0, stream), x(0, stream)
-  {
-  }
+  device_csr_matrix_t(cuda::stream_ref stream) : row_start(0, stream), j(0, stream), x(0, stream) {}
 
-  device_csr_matrix_t(i_t rows, i_t cols, i_t nz, rmm::cuda_stream_view stream)
+  device_csr_matrix_t(i_t rows, i_t cols, i_t nz, cuda::stream_ref stream)
     : m(rows),
       n(cols),
       nz_max(nz),
@@ -338,7 +334,7 @@ class device_csr_matrix_t {
   {
   }
 
-  device_csr_matrix_t(const csr_matrix_t<i_t, f_t>& A, rmm::cuda_stream_view stream)
+  device_csr_matrix_t(const csr_matrix_t<i_t, f_t>& A, cuda::stream_ref stream)
     : m(A.m),
       n(A.n),
       nz_max(A.row_start[A.m]),
@@ -351,7 +347,7 @@ class device_csr_matrix_t {
     x         = cuopt::device_copy(A.x, stream);
   }
 
-  void resize_to_nnz(i_t nnz, rmm::cuda_stream_view stream)
+  void resize_to_nnz(i_t nnz, cuda::stream_ref stream)
   {
     row_start.resize(m + 1, stream);
     j.resize(nnz, stream);
@@ -359,7 +355,7 @@ class device_csr_matrix_t {
     nz_max = nnz;
   }
 
-  csr_matrix_t<i_t, f_t> to_host(rmm::cuda_stream_view stream)
+  csr_matrix_t<i_t, f_t> to_host(cuda::stream_ref stream)
   {
     csr_matrix_t<i_t, f_t> A(m, n, nz_max);
     A.row_start = cuopt::host_copy(row_start, stream);
@@ -368,7 +364,7 @@ class device_csr_matrix_t {
     return A;
   }
 
-  void copy(csr_matrix_t<i_t, f_t>& A, rmm::cuda_stream_view stream)
+  void copy(csr_matrix_t<i_t, f_t>& A, cuda::stream_ref stream)
   {
     m      = A.m;
     n      = A.n;
@@ -394,7 +390,7 @@ class device_csr_matrix_t {
 
 template <typename i_t, typename f_t>
 void device_csc_matrix_t<i_t, f_t>::to_compressed_row(device_csr_matrix_t<i_t, f_t>& Arow,
-                                                      rmm::cuda_stream_view stream) const
+                                                      cuda::stream_ref stream) const
 {
   static_assert(std::is_signed_v<i_t>);
 

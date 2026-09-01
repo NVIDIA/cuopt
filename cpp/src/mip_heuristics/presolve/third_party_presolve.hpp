@@ -130,7 +130,7 @@ class third_party_presolve_t {
                         problem_category_t category,
                         bool status_to_skip,
                         bool dual_postsolve,
-                        rmm::cuda_stream_view stream_view);
+                        cuda::stream_ref stream_view);
 
   // Host-only postsolve. Resizes the vectors to original-problem dimensions.
   void undo(std::vector<f_t>& primal_solution,

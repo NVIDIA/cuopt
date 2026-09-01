@@ -114,12 +114,12 @@ struct pdlp_warm_start_data_t;
 // Convert GPU → CPU warmstart (D2H copy)
 template <typename i_t, typename f_t>
 cpu_pdlp_warm_start_data_t<i_t, f_t> convert_to_cpu_warmstart(
-  const pdlp_warm_start_data_t<i_t, f_t>& gpu_data, rmm::cuda_stream_view stream);
+  const pdlp_warm_start_data_t<i_t, f_t>& gpu_data, cuda::stream_ref stream);
 
 // Convert CPU → GPU warmstart (H2D copy)
 template <typename i_t, typename f_t>
 pdlp_warm_start_data_t<i_t, f_t> convert_to_gpu_warmstart(
-  const cpu_pdlp_warm_start_data_t<i_t, f_t>& cpu_data, rmm::cuda_stream_view stream);
+  const cpu_pdlp_warm_start_data_t<i_t, f_t>& cpu_data, cuda::stream_ref stream);
 
 }  // namespace CUOPT_EXPORT mathematical_optimization
 }  // namespace cuopt

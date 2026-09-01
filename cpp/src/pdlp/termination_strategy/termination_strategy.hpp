@@ -214,7 +214,7 @@ class pdlp_termination_strategy_t {
   void check_termination_criteria();
 
   raft::handle_t const* handle_ptr_{nullptr};
-  rmm::cuda_stream_view stream_view_;
+  cuda::stream_ref stream_view_;
 
   mip::problem_t<i_t, f_t>* problem_ptr;
 

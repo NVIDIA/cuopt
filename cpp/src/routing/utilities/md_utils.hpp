@@ -95,8 +95,8 @@ struct h_mdarray_t {
 
 template <typename f_t, size_t NCON_DIMS = 4>
 struct d_mdarray_t {
-  d_mdarray_t(rmm::cuda_stream_view stream_) : buffer(0, stream_), stream(stream_) {}
-  d_mdarray_t(std::vector<size_t> const& extent_, rmm::cuda_stream_view stream_)
+  d_mdarray_t(cuda::stream_ref stream_) : buffer(0, stream_), stream(stream_) {}
+  d_mdarray_t(std::vector<size_t> const& extent_, cuda::stream_ref stream_)
     : buffer(0, stream_), stream(stream_)
   {
     cuopt_assert(extent_.size() == NCON_DIMS, "Wrong dimensions");
@@ -138,7 +138,7 @@ struct d_mdarray_t {
 
   size_t extent[NCON_DIMS];
   rmm::device_uvector<f_t> buffer;
-  rmm::cuda_stream_view stream;
+  cuda::stream_ref stream;
 };
 
 namespace detail {
@@ -196,7 +196,7 @@ template <typename f_t>
 auto create_device_mdarray(size_t nlocations,
                            uint8_t n_vehicle_types,
                            uint8_t n_matrix_types,
-                           rmm::cuda_stream_view stream)
+                           cuda::stream_ref stream)
 {
   std::vector<size_t> full_matrix_extent{n_vehicle_types, n_matrix_types, nlocations, nlocations};
   d_mdarray_t<f_t> matrices{full_matrix_extent, stream};
@@ -204,7 +204,7 @@ auto create_device_mdarray(size_t nlocations,
 }
 
 inline auto get_unique_vehicle_types(const raft::device_span<uint8_t const>& vehicle_types,
-                                     rmm::cuda_stream_view stream)
+                                     cuda::stream_ref stream)
 {
   auto h_vehicle_types = cuopt::host_copy(vehicle_types, stream);
 

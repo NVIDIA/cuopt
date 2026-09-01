@@ -60,7 +60,7 @@ struct path_t {
     reset(handle_ptr_->get_stream());
   }
 
-  void reset(rmm::cuda_stream_view stream)
+  void reset(cuda::stream_ref stream)
   {
     n_cycles.set_value_to_zero_async(stream);
     all_found.set_value_to_zero_async(stream);
@@ -112,7 +112,7 @@ struct path_t {
 
 template <typename i_t, typename f_t, size_t max_routes>
 struct cycle_candidates_t {
-  cycle_candidates_t(size_t size_, int n_paths_, rmm::cuda_stream_view stream)
+  cycle_candidates_t(size_t size_, int n_paths_, cuda::stream_ref stream)
     : keys(size_ * n_paths_, stream),
       costs(size_ * n_paths_, stream),
       level_vec(size_ * n_paths_, stream),

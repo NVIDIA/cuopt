@@ -88,7 +88,7 @@ pdlp_warm_start_data_t<i_t, f_t>::pdlp_warm_start_data_t()
 
 template <typename i_t, typename f_t>
 pdlp_warm_start_data_t<i_t, f_t>::pdlp_warm_start_data_t(
-  const pdlp_warm_start_data_view_t<i_t, f_t>& other, rmm::cuda_stream_view stream_view)
+  const pdlp_warm_start_data_view_t<i_t, f_t>& other, cuda::stream_ref stream_view)
   : current_primal_solution_(other.current_primal_solution_.size(), stream_view),
     current_dual_solution_(other.current_dual_solution_.size(), stream_view),
     initial_primal_average_(other.initial_primal_average_.size(), stream_view),

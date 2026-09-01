@@ -122,7 +122,7 @@ fj_t<i_t, f_t>::~fj_t()
 }
 
 template <typename i_t, typename f_t>
-void fj_t<i_t, f_t>::reset_weights(const rmm::cuda_stream_view& climber_stream, f_t weight)
+void fj_t<i_t, f_t>::reset_weights(const cuda::stream_ref& climber_stream, f_t weight)
 {
   // unless reset explicitly, the values are kept across runs and across climbers
   max_cstr_weight.set_value_async(weight, climber_stream);
@@ -280,7 +280,7 @@ void fj_t<i_t, f_t>::copy_weights(const weight_t<i_t, f_t>& weights,
 }
 
 template <typename i_t, typename f_t>
-void fj_t<i_t, f_t>::climber_data_t::clear_sets(const rmm::cuda_stream_view& stream)
+void fj_t<i_t, f_t>::climber_data_t::clear_sets(const cuda::stream_ref& stream)
 {
   violated_constraints.clear(stream);
   candidate_variables.clear(stream);
@@ -289,7 +289,7 @@ void fj_t<i_t, f_t>::climber_data_t::clear_sets(const rmm::cuda_stream_view& str
 }
 
 template <typename i_t, typename f_t>
-void fj_t<i_t, f_t>::device_init(const rmm::cuda_stream_view& stream)
+void fj_t<i_t, f_t>::device_init(const cuda::stream_ref& stream)
 {
   thrust::for_each(rmm::exec_policy(stream),
                    thrust::counting_iterator<i_t>(0),
@@ -317,7 +317,7 @@ void fj_t<i_t, f_t>::climber_init(i_t climber_idx)
 }
 
 template <typename i_t, typename f_t>
-void fj_t<i_t, f_t>::climber_init(i_t climber_idx, const rmm::cuda_stream_view& climber_stream)
+void fj_t<i_t, f_t>::climber_init(i_t climber_idx, const cuda::stream_ref& climber_stream)
 {
   raft::common::nvtx::range scope("climber_init");
 
@@ -603,8 +603,7 @@ void fj_t<i_t, f_t>::run_step_device(i_t climber_idx, bool use_graph)
 
 // TODO: switch to conditional graph nodes once we switch to CTK >= 12.4
 template <typename i_t, typename f_t>
-void fj_t<i_t, f_t>::load_balancing_score_update(const rmm::cuda_stream_view& stream,
-                                                 i_t climber_idx)
+void fj_t<i_t, f_t>::load_balancing_score_update(const cuda::stream_ref& stream, i_t climber_idx)
 {
   auto [grid_load_balancing_prepare, blocks_load_balancing_prepare] =
     load_balancing_prepare_launch_dims;
@@ -660,7 +659,7 @@ void fj_t<i_t, f_t>::load_balancing_score_update(const rmm::cuda_stream_view& st
 }
 
 template <typename i_t, typename f_t>
-void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream,
+void fj_t<i_t, f_t>::run_step_device(const cuda::stream_ref& climber_stream,
                                      i_t climber_idx,
                                      bool use_graph)
 {
@@ -811,7 +810,7 @@ void fj_t<i_t, f_t>::round_remaining_fractionals(solution_t<i_t, f_t>& solution,
 }
 
 template <typename i_t, typename f_t>
-void fj_t<i_t, f_t>::refresh_lhs_and_violation(const rmm::cuda_stream_view& stream, i_t climber_idx)
+void fj_t<i_t, f_t>::refresh_lhs_and_violation(const cuda::stream_ref& stream, i_t climber_idx)
 {
   auto& data = *climbers[climber_idx];
   auto v     = data.view();

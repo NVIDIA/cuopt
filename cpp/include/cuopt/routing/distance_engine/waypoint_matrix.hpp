@@ -168,7 +168,7 @@ class waypoint_matrix_t {
                               f_t const* weights,
                               f_t& out_cost);
   raft::handle_t const* handle_ptr_{nullptr};
-  rmm::cuda_stream_view stream_view_{};
+  cuda::stream_ref stream_view_{};
   i_t const* offsets_;
   i_t n_vertices_;
   i_t const* indices_;

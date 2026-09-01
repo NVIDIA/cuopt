@@ -350,7 +350,7 @@ class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t>
    * @tparam other_f_t  Target floating-point type (e.g. float when this is double)
    */
   template <typename other_f_t>
-  optimization_problem_t<i_t, other_f_t> convert_to_other_prec(rmm::cuda_stream_view stream) const;
+  optimization_problem_t<i_t, other_f_t> convert_to_other_prec(cuda::stream_ref stream) const;
 
   /**
    * @brief Returns nullptr since this is already a GPU problem.
@@ -388,7 +388,7 @@ class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t>
 
  private:
   raft::handle_t const* handle_ptr_{nullptr};
-  rmm::cuda_stream_view stream_view_;
+  cuda::stream_ref stream_view_;
 
   problem_category_t problem_category_ = problem_category_t::LP;
   bool maximize_{false};

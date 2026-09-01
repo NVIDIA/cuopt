@@ -59,7 +59,7 @@ struct vehicle_assignment_t {
     gl_lock.set_value_to_zero_async(sol_handle_->get_stream());
   }
 
-  void resize(i_t n_routes, i_t n_buckets, rmm::cuda_stream_view stream_view)
+  void resize(i_t n_routes, i_t n_buckets, cuda::stream_ref stream_view)
   {
     k_regrets   = std::min(n_buckets, k_max_regrets);
     auto k_iter = k_regrets - 1;

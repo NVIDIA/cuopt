@@ -90,7 +90,7 @@ load_balanced_bounds_presolve_t<i_t, f_t>::~load_balanced_bounds_presolve_t()
 }
 
 template <typename i_t>
-std::pair<bool, i_t> sub_warp_meta(rmm::cuda_stream_view stream,
+std::pair<bool, i_t> sub_warp_meta(cuda::stream_ref stream,
                                    rmm::device_uvector<i_t>& d_warp_offsets,
                                    rmm::device_uvector<i_t>& d_warp_id_offsets,
                                    const std::vector<i_t>& bin_offsets,

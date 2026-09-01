@@ -119,7 +119,7 @@ __host__ __device__ inline typename scalar_type<f_t2>::type& get_upper(f_t2& val
  * @return auto
  */
 template <typename T>
-auto host_copy(T const* device_ptr, size_t size, rmm::cuda_stream_view stream_view)
+auto host_copy(T const* device_ptr, size_t size, cuda::stream_ref stream_view)
 {
   if (!device_ptr) return std::vector<T>{};
   std::vector<T> host_vec(size);
@@ -137,7 +137,7 @@ auto host_copy(T const* device_ptr, size_t size, rmm::cuda_stream_view stream_vi
  * @param[in] stream_view
  * @return auto
  */
-inline auto host_copy(bool const* device_ptr, size_t size, rmm::cuda_stream_view stream_view)
+inline auto host_copy(bool const* device_ptr, size_t size, cuda::stream_ref stream_view)
 {
   if (!device_ptr) { return std::vector<bool>(0); }
   rmm::device_uvector<int> d_int_vec(size, stream_view);
@@ -163,7 +163,7 @@ inline auto host_copy(bool const* device_ptr, size_t size, rmm::cuda_stream_view
  * @return auto
  */
 template <typename T, typename Allocator>
-auto host_copy(rmm::device_uvector<T> const& device_vec, rmm::cuda_stream_view stream_view)
+auto host_copy(rmm::device_uvector<T> const& device_vec, cuda::stream_ref stream_view)
 {
   std::vector<T, Allocator> host_vec(device_vec.size());
   raft::copy(host_vec.data(), device_vec.data(), device_vec.size(), stream_view);
@@ -180,7 +180,7 @@ auto host_copy(rmm::device_uvector<T> const& device_vec, rmm::cuda_stream_view s
  * @return auto
  */
 template <typename T>
-auto host_copy(raft::device_span<T> const& device_vec, rmm::cuda_stream_view stream_view)
+auto host_copy(raft::device_span<T> const& device_vec, cuda::stream_ref stream_view)
 {
   return host_copy(device_vec.data(), device_vec.size(), stream_view);
 }
@@ -194,7 +194,7 @@ auto host_copy(raft::device_span<T> const& device_vec, rmm::cuda_stream_view str
  * @return auto
  */
 template <typename T>
-auto host_copy(rmm::device_uvector<T> const& device_vec, rmm::cuda_stream_view stream_view)
+auto host_copy(rmm::device_uvector<T> const& device_vec, cuda::stream_ref stream_view)
 {
   return host_copy(device_vec.data(), device_vec.size(), stream_view);
 }
@@ -209,7 +209,7 @@ auto host_copy(rmm::device_uvector<T> const& device_vec, rmm::cuda_stream_view s
  */
 template <typename T>
 inline rmm::device_uvector<T> device_copy(rmm::device_uvector<T> const& device_vec,
-                                          rmm::cuda_stream_view stream_view)
+                                          cuda::stream_ref stream_view)
 {
   rmm::device_uvector<T> device_vec_copy(device_vec.size(), stream_view);
   raft::copy(device_vec_copy.data(), device_vec.data(), device_vec.size(), stream_view);
@@ -227,7 +227,7 @@ inline rmm::device_uvector<T> device_copy(rmm::device_uvector<T> const& device_v
 template <typename T>
 inline void device_copy(rmm::device_uvector<T>& device_vec,
                         std::vector<T> const& host_vec,
-                        rmm::cuda_stream_view stream_view)
+                        cuda::stream_ref stream_view)
 {
   device_vec.resize(host_vec.size(), stream_view);
   raft::copy(device_vec.data(), host_vec.data(), host_vec.size(), stream_view);
@@ -242,8 +242,7 @@ inline void device_copy(rmm::device_uvector<T>& device_vec,
  * @return device_vec
  */
 template <typename T, typename Allocator>
-inline auto device_copy(std::vector<T, Allocator> const& host_vec,
-                        rmm::cuda_stream_view stream_view)
+inline auto device_copy(std::vector<T, Allocator> const& host_vec, cuda::stream_ref stream_view)
 {
   rmm::device_uvector<T> device_vec(host_vec.size(), stream_view);
   raft::copy(device_vec.data(), host_vec.data(), host_vec.size(), stream_view);
@@ -257,7 +256,7 @@ inline auto device_copy(std::vector<T, Allocator> const& host_vec,
  * @param[in] stream_view
  * @return device_vec
  */
-inline auto device_copy(std::vector<bool> const& host_vec, rmm::cuda_stream_view stream_view)
+inline auto device_copy(std::vector<bool> const& host_vec, cuda::stream_ref stream_view)
 {
   std::vector<uint8_t> host_vec_int(host_vec.size());
   for (size_t i = 0; i < host_vec.size(); ++i) {
@@ -340,7 +339,7 @@ raft::device_span<const T> make_span(rmm::device_uvector<T> const& container)
 template <typename T>
 inline void expand_device_copy(rmm::device_uvector<T>& device_vec,
                                std::vector<T> const& host_vec,
-                               rmm::cuda_stream_view stream_view)
+                               cuda::stream_ref stream_view)
 {
   if (host_vec.size() > device_vec.size()) { device_vec.resize(host_vec.size(), stream_view); }
   raft::copy(device_vec.data(), host_vec.data(), host_vec.size(), stream_view);
@@ -349,7 +348,7 @@ inline void expand_device_copy(rmm::device_uvector<T>& device_vec,
 template <typename T>
 inline void expand_device_copy(rmm::device_uvector<T>& dst_vec,
                                rmm::device_uvector<T> const& src_vec,
-                               rmm::cuda_stream_view stream_view)
+                               cuda::stream_ref stream_view)
 {
   if (src_vec.size() > dst_vec.size()) { dst_vec.resize(src_vec.size(), stream_view); }
   raft::copy(dst_vec.data(), src_vec.data(), src_vec.size(), stream_view);

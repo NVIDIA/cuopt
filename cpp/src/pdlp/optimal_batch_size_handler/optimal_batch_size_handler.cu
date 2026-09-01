@@ -169,7 +169,7 @@ static double evaluate_node(cusparse_sp_mat_descr_view A,
 {
   cuopt_assert(current_batch_size > 0, "Current batch size must be greater than 0");
 
-  rmm::cuda_stream_view stream_view = handle_ptr->get_stream();
+  cuda::stream_ref stream_view = handle_ptr->get_stream();
   SpMM_benchmarks_context_t<i_t, f_t> spmm_benchmarks_context(
     A, A_T, primal_size, dual_size, current_batch_size, handle_ptr);
 
@@ -219,7 +219,7 @@ int optimal_batch_size_handler(const optimization_problem_t<i_t, f_t>& op_proble
     std::pow(2, std::floor(std::log2(std::min(initial_batch_size, max_batch_size))));
   int optimal_batch_size = current_batch_size;
   double best_ratio;
-  rmm::cuda_stream_view stream_view = op_problem.get_handle_ptr()->get_stream();
+  cuda::stream_ref stream_view = op_problem.get_handle_ptr()->get_stream();
 
   mip::problem_t<i_t, f_t> problem(op_problem);
 

@@ -57,7 +57,7 @@ namespace cuopt::mathematical_optimization {
 template <typename i_t, typename f_t>
 optimization_problem_t<i_t, f_t>::optimization_problem_t(raft::handle_t const* handle_ptr)
   : handle_ptr_(handle_ptr),
-    stream_view_(handle_ptr != nullptr ? handle_ptr->get_stream() : rmm::cuda_stream_view{}),
+    stream_view_(handle_ptr != nullptr ? handle_ptr->get_stream() : cuda::stream_ref{}),
     A_(0, stream_view_),
     A_indices_(0, stream_view_),
     A_offsets_(0, stream_view_),
@@ -1023,7 +1023,7 @@ static bool csr_matrices_equivalent_with_permutation(const rmm::device_uvector<i
                                                      const rmm::device_uvector<i_t>& d_row_perm_inv,
                                                      const rmm::device_uvector<i_t>& d_col_perm_inv,
                                                      i_t n_cols,
-                                                     rmm::cuda_stream_view stream)
+                                                     cuda::stream_ref stream)
 {
   const i_t nnz = static_cast<i_t>(this_values.size());
   if (nnz != static_cast<i_t>(other_values.size())) { return false; }
@@ -1538,7 +1538,7 @@ struct cast_op {
 };
 
 template <typename From, typename To>
-rmm::device_uvector<To> gpu_cast(const rmm::device_uvector<From>& src, rmm::cuda_stream_view stream)
+rmm::device_uvector<To> gpu_cast(const rmm::device_uvector<From>& src, cuda::stream_ref stream)
 {
   rmm::device_uvector<To> dst(src.size(), stream);
   if (src.size() > 0) {
@@ -1549,14 +1549,14 @@ rmm::device_uvector<To> gpu_cast(const rmm::device_uvector<From>& src, rmm::cuda
 }
 
 template rmm::device_uvector<float> gpu_cast<double, float>(const rmm::device_uvector<double>&,
-                                                            rmm::cuda_stream_view);
+                                                            cuda::stream_ref);
 template rmm::device_uvector<double> gpu_cast<float, double>(const rmm::device_uvector<float>&,
-                                                             rmm::cuda_stream_view);
+                                                             cuda::stream_ref);
 
 template <typename i_t, typename f_t>
 template <typename other_f_t>
 optimization_problem_t<i_t, other_f_t> optimization_problem_t<i_t, f_t>::convert_to_other_prec(
-  rmm::cuda_stream_view stream) const
+  cuda::stream_ref stream) const
 {
   optimization_problem_t<i_t, other_f_t> other(handle_ptr_);
 
@@ -1641,8 +1641,7 @@ template class CUOPT_EXPORT optimization_problem_t<int32_t, double>;
 
 #if PDLP_INSTANTIATE_FLOAT || MIP_INSTANTIATE_FLOAT
 template CUOPT_EXPORT optimization_problem_t<int32_t, float>
-  optimization_problem_t<int32_t, double>::convert_to_other_prec<float>(
-    rmm::cuda_stream_view) const;
+  optimization_problem_t<int32_t, double>::convert_to_other_prec<float>(cuda::stream_ref) const;
 #endif
 
 }  // namespace cuopt::mathematical_optimization

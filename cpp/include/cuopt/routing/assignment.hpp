@@ -54,14 +54,14 @@ class assignment_t {
    * @param status Solution status.
    * @param stream_view Non-owning stream_view object.
    */
-  assignment_t(solution_status_t status, rmm::cuda_stream_view stream_view);
+  assignment_t(solution_status_t status, cuda::stream_ref stream_view);
   /**
    * @brief Constructor.
    *
    * @param error_status Error status.
    * @param stream_view Non-owning stream_view object.
    */
-  assignment_t(cuopt::logic_error error_status, rmm::cuda_stream_view stream_view);
+  assignment_t(cuopt::logic_error error_status, cuda::stream_ref stream_view);
   /**
    * @brief Constructor.
    *
@@ -200,7 +200,7 @@ class assignment_t {
    * @param filename Name of the output file
    * @param stream_view Non-owning stream view object
    */
-  void to_csv(std::string_view filename, rmm::cuda_stream_view stream_view);
+  void to_csv(std::string_view filename, cuda::stream_ref stream_view);
 
   /**
    * @brief Returns the final status as a human readable string

@@ -20,7 +20,7 @@ namespace detail {
 template <typename i_t>
 class route_node_map_t {
  public:
-  route_node_map_t(const int num_orders, rmm::cuda_stream_view stream)
+  route_node_map_t(const int num_orders, cuda::stream_ref stream)
     : route_id_per_node(num_orders, stream), intra_route_idx_per_node(num_orders, stream)
   {
     thrust::fill(rmm::exec_policy(stream), route_id_per_node.begin(), route_id_per_node.end(), -1);
@@ -30,13 +30,13 @@ class route_node_map_t {
                  -1);
   }
 
-  route_node_map_t(const route_node_map_t& other, rmm::cuda_stream_view stream)
+  route_node_map_t(const route_node_map_t& other, cuda::stream_ref stream)
     : route_id_per_node(other.route_id_per_node, stream),
       intra_route_idx_per_node(other.intra_route_idx_per_node, stream)
   {
   }
 
-  void copy_from(const route_node_map_t& other, rmm::cuda_stream_view stream)
+  void copy_from(const route_node_map_t& other, cuda::stream_ref stream)
   {
     raft::copy(intra_route_idx_per_node.data(),
                other.intra_route_idx_per_node.data(),

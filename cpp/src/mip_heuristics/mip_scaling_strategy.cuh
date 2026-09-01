@@ -26,7 +26,7 @@ class mip_scaling_strategy_t {
 
  private:
   raft::handle_t const* handle_ptr_{nullptr};
-  rmm::cuda_stream_view stream_view_;
+  cuda::stream_ref stream_view_;
   optimization_problem_type_t& op_problem_scaled_;
 };
 

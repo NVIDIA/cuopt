@@ -122,7 +122,7 @@ bool set_shmem_for_kernel_get_best_insertion_ejection_solution(size_t dynamic_sh
 
 template <int BLOCK_SIZE, typename i_t, typename f_t, request_t REQUEST>
 void launch_kernel_get_best_insertion_ejection_solution(
-  dim3 grid, dim3 blocks, size_t shmem_bytes, void** kernel_args, rmm::cuda_stream_view stream)
+  dim3 grid, dim3 blocks, size_t shmem_bytes, void** kernel_args, cuda::stream_ref stream)
 {
   RAFT_CUDA_TRY(cudaLaunchKernel(
     (void*)kernel_get_best_insertion_ejection_solution<BLOCK_SIZE, i_t, f_t, REQUEST>,
@@ -141,7 +141,7 @@ void launch_kernel_get_best_insertion_ejection_solution(
     size_t dynamic_shmem_size);                                                               \
   template void                                                                               \
   launch_kernel_get_best_insertion_ejection_solution<BLOCK_SIZE, int, float, request_t::REQ>( \
-    dim3 grid, dim3 blocks, size_t shmem_bytes, void** kernel_args, rmm::cuda_stream_view stream);
+    dim3 grid, dim3 blocks, size_t shmem_bytes, void** kernel_args, cuda::stream_ref stream);
 
 CUOPT_INSTANTIATE_GET_BEST_INSERTION_EJECTION(32, PDP)
 CUOPT_INSTANTIATE_GET_BEST_INSERTION_EJECTION(64, PDP)

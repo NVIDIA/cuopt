@@ -105,7 +105,7 @@ class optimization_problem_solution_t : public base_solution_t {
    * @param[in] stream_view An rmm view to a stream. All computations will go through this stream
    */
   optimization_problem_solution_t(pdlp_termination_status_t termination_status_,
-                                  rmm::cuda_stream_view stream_view);
+                                  cuda::stream_ref stream_view);
 
   /**
    * @brief Construct an optimization problem solution that serves as PDLP solver output
@@ -115,8 +115,7 @@ class optimization_problem_solution_t : public base_solution_t {
    * 'Optimal', 'PrimalInfeasible', 'DualInfeasible', 'TimeLimit'
    * @param[in] stream_view An rmm view to a stream. All computations will go through this stream
    */
-  optimization_problem_solution_t(cuopt::logic_error error_status_,
-                                  rmm::cuda_stream_view stream_view);
+  optimization_problem_solution_t(cuopt::logic_error error_status_, cuda::stream_ref stream_view);
   /**
    * @brief Construct an optimization problem solution that serves as PDLP solver output
    *
@@ -271,7 +270,7 @@ class optimization_problem_solution_t : public base_solution_t {
    * @param stream_view Non-owning stream view object
    */
   void write_to_file(std::string_view filename,
-                     rmm::cuda_stream_view stream_view,
+                     cuda::stream_ref stream_view,
                      bool generate_variable_values = true);
 
   /**
@@ -281,7 +280,7 @@ class optimization_problem_solution_t : public base_solution_t {
    * @param filename Name of the output file
    * @param stream_view Non-owning stream view object
    */
-  void write_to_sol_file(std::string_view filename, rmm::cuda_stream_view stream_view) const;
+  void write_to_sol_file(std::string_view filename, cuda::stream_ref stream_view) const;
 
   /**
    * @brief Copy solution from another solution object

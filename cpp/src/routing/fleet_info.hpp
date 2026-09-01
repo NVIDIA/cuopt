@@ -55,7 +55,7 @@ class fleet_info_t {
 
   constexpr bool is_homogenous() const { return is_homogenous_; }
 
-  void resize(i_t size, rmm::cuda_stream_view stream)
+  void resize(i_t size, cuda::stream_ref stream)
   {
     v_earliest_time_.resize(size, stream);
     v_latest_time_.resize(size, stream);
@@ -70,7 +70,7 @@ class fleet_info_t {
     v_buckets_.resize(size, stream);
   }
 
-  auto to_host(rmm::cuda_stream_view stream)
+  auto to_host(cuda::stream_ref stream)
   {
     host_t h;
     h.break_offset            = host_copy(v_break_offset_, stream);
@@ -237,7 +237,7 @@ class fleet_info_t {
 
   constexpr raft::device_span<i_t const> get_break_vector(i_t truck_id,
                                                           const rmm::device_uvector<i_t>& vec,
-                                                          rmm::cuda_stream_view stream) const
+                                                          cuda::stream_ref stream) const
   {
     if (!vec.is_empty()) {
       i_t offset    = v_break_offset_.element(truck_id, stream);
@@ -248,8 +248,7 @@ class fleet_info_t {
     }
   }
 
-  constexpr VehicleInfo<f_t> get_vehicle_info(const i_t vehicle_id,
-                                              rmm::cuda_stream_view stream) const
+  constexpr VehicleInfo<f_t> get_vehicle_info(const i_t vehicle_id, cuda::stream_ref stream) const
   {
     return v_vehicle_infos_.element(vehicle_id, stream);
   }

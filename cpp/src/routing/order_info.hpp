@@ -43,7 +43,7 @@ class order_info_t {
     return is_pdp() ? get_num_depot_excluded_orders() / 2 : get_num_depot_excluded_orders();
   }
 
-  void resize(i_t size, bool is_pickup, rmm::cuda_stream_view stream)
+  void resize(i_t size, bool is_pickup, cuda::stream_ref stream)
   {
     v_demand_.resize(size, stream);
     v_earliest_time_.resize(size, stream);
@@ -57,7 +57,7 @@ class order_info_t {
 
   bool is_pdp() const { return !v_pair_indices_.is_empty(); }
 
-  auto to_host(rmm::cuda_stream_view stream)
+  auto to_host(cuda::stream_ref stream)
   {
     host_t h;
     h.earliest_time   = cuopt::host_copy(v_earliest_time_, stream);

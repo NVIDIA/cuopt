@@ -190,7 +190,7 @@ class convergence_information_t {
 
   raft::handle_t const* handle_ptr_{nullptr};
 
-  rmm::cuda_stream_view stream_view_;
+  cuda::stream_ref stream_view_;
 
   i_t primal_size_h_;
   i_t dual_size_h_;

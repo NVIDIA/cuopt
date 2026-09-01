@@ -68,7 +68,7 @@ class manual_cuda_graph_t {
   ~manual_cuda_graph_t() { destroy(); }
 
   template <typename F>
-  void run(rmm::cuda_stream_view stream, F&& work)
+  void run(cuda::stream_ref stream, F&& work)
   {
     if (instance_ != nullptr) {
       RAFT_CUDA_TRY(cudaGraphLaunch(instance_, stream.get()));

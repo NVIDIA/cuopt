@@ -642,7 +642,7 @@ struct len_from_offset {
 // Ideally this should be precomputed and stored in the problem, but that also means we need to
 // update it every time the problem is modified, so we will compute it here for now
 template <typename i_t>
-i_t get_max_row_size(rmm::device_uvector<i_t>& offsets, rmm::cuda_stream_view stream_view)
+i_t get_max_row_size(rmm::device_uvector<i_t>& offsets, cuda::stream_ref stream_view)
 {
   auto begin = thrust::make_zip_iterator(thrust::make_tuple(offsets.begin(), offsets.begin() + 1));
   auto end   = thrust::make_zip_iterator(thrust::make_tuple(offsets.end() - 1, offsets.end()));

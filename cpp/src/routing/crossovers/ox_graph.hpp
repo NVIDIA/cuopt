@@ -13,7 +13,7 @@ namespace detail {
 
 template <typename i_t, typename f_t>
 struct ox_graph_t {
-  ox_graph_t(i_t n_buckets_, i_t size, i_t max_nodes_per_row, rmm::cuda_stream_view stream)
+  ox_graph_t(i_t n_buckets_, i_t size, i_t max_nodes_per_row, cuda::stream_ref stream)
     : row_sizes(n_buckets_ * size, stream),
       route_ids(n_buckets_ * size, stream),
       // allocate with the max size
@@ -39,7 +39,7 @@ struct ox_graph_t {
     std::vector<int> buckets;
   };
 
-  host_t to_host(rmm::cuda_stream_view stream)
+  host_t to_host(cuda::stream_ref stream)
   {
     host_t h;
     h.row_sizes = host_copy(row_sizes, stream);
@@ -50,7 +50,7 @@ struct ox_graph_t {
     return h;
   }
 
-  void resize(i_t n_buckets_, i_t size, i_t max_nodes_per_row, rmm::cuda_stream_view stream)
+  void resize(i_t n_buckets_, i_t size, i_t max_nodes_per_row, cuda::stream_ref stream)
   {
     n_buckets = n_buckets_;
     row_sizes.resize(n_buckets * size, stream);

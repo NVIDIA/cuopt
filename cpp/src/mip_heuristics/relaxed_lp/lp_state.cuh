@@ -19,7 +19,7 @@ class problem_t;
 template <typename i_t, typename f_t>
 class lp_state_t {
  public:
-  lp_state_t(problem_t<i_t, f_t>& problem, rmm::cuda_stream_view stream)
+  lp_state_t(problem_t<i_t, f_t>& problem, cuda::stream_ref stream)
     : prev_primal(problem.n_variables, stream), prev_dual(problem.n_constraints, stream)
   {
     thrust::fill(
@@ -47,7 +47,7 @@ class lp_state_t {
   lp_state_t(lp_state_t<i_t, f_t>&& other) noexcept            = default;
   lp_state_t& operator=(lp_state_t<i_t, f_t>&& other) noexcept = default;
 
-  void resize(problem_t<i_t, f_t>& problem, rmm::cuda_stream_view stream)
+  void resize(problem_t<i_t, f_t>& problem, cuda::stream_ref stream)
   {
     prev_primal.resize(problem.n_variables, stream);
     prev_dual.resize(problem.n_constraints, stream);

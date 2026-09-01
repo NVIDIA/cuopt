@@ -96,10 +96,7 @@ struct cone_scratch_t {
   // TODO: Consider moving this out to the barrier layer when we wire it in
   rmm::device_uvector<f_t> temp_cone;  // [n_cone_entries]
 
-  cone_scratch_t(i_t n_cones_in,
-                 size_t n_cone_entries_in,
-                 size_t n_large,
-                 rmm::cuda_stream_view stream)
+  cone_scratch_t(i_t n_cones_in, size_t n_cone_entries_in, size_t n_large, cuda::stream_ref stream)
     : n_cones(n_cones_in),
       n_cone_entries(n_cone_entries_in),
       slots(0, stream),
@@ -193,7 +190,7 @@ struct cone_data_t {
   cone_data_t(std::span<const i_t> cone_dimensions_host,
               raft::device_span<f_t> x_in,
               raft::device_span<f_t> z_in,
-              rmm::cuda_stream_view stream,
+              cuda::stream_ref stream,
               i_t soc_threshold_in = 100)
     : n_cones(cone_dimensions_host.size()),
       n_cone_entries(
@@ -446,7 +443,7 @@ __global__ void __launch_bounds__(soc_block_size)
  *   1: ||z_tail||^2 -> z_scale
  */
 template <std::integral i_t, std::floating_point f_t>
-void launch_nt_scaling(cone_data_t<i_t, f_t>& cones, rmm::cuda_stream_view stream)
+void launch_nt_scaling(cone_data_t<i_t, f_t>& cones, cuda::stream_ref stream)
 {
   auto x_scale = cones.scratch.template get_slot<0>();
   auto z_scale = cones.scratch.template get_slot<1>();
@@ -597,7 +594,7 @@ __global__ void update_scaling_sparse_kernel(raft::device_span<const f_t> w,
  * iteration. Call after `launch_nt_scaling` has updated w and eta.
  */
 template <std::integral i_t, std::floating_point f_t>
-void launch_update_scaling_sparse(cone_data_t<i_t, f_t>& cones, rmm::cuda_stream_view stream)
+void launch_update_scaling_sparse(cone_data_t<i_t, f_t>& cones, cuda::stream_ref stream)
 {
   if (!cones.has_sparse_cones()) { return; }
 
@@ -832,7 +829,7 @@ template <std::integral i_t, std::floating_point f_t>
 void apply_w_inv(raft::device_span<const f_t> v,
                  raft::device_span<f_t> out,
                  cone_data_t<i_t, f_t>& cones,
-                 rmm::cuda_stream_view stream)
+                 cuda::stream_ref stream)
 {
   auto w                = cuopt::make_span(cones.w);
   auto eta              = cuopt::make_span(cones.eta);
@@ -868,7 +865,7 @@ template <std::integral i_t, std::floating_point f_t>
 void apply_w(raft::device_span<const f_t> v,
              raft::device_span<f_t> out,
              cone_data_t<i_t, f_t>& cones,
-             rmm::cuda_stream_view stream)
+             cuda::stream_ref stream)
 {
   auto w                = cuopt::make_span(cones.w);
   auto eta              = cuopt::make_span(cones.eta);
@@ -901,7 +898,7 @@ template <std::integral i_t, std::floating_point f_t>
 void apply_hessian(raft::device_span<const f_t> v,
                    raft::device_span<f_t> out,
                    cone_data_t<i_t, f_t>& cones,
-                   rmm::cuda_stream_view stream,
+                   cuda::stream_ref stream,
                    f_t output_scale                  = 1,
                    raft::device_span<const f_t> bias = {},
                    f_t bias_scale                    = 0,
@@ -947,7 +944,7 @@ void recover_cone_dz_from_target(raft::device_span<const f_t> dx,
                                  cone_data_t<i_t, f_t>& cones,
                                  raft::device_span<const f_t> cone_target,
                                  raft::device_span<f_t> dz,
-                                 rmm::cuda_stream_view stream)
+                                 cuda::stream_ref stream)
 {
   apply_hessian<i_t, f_t>(dx, dz, cones, stream, -1, cone_target, 1);
 }
@@ -960,7 +957,7 @@ template <std::integral i_t, std::floating_point f_t>
 void launch_dense_hessian_matvec(raft::device_span<const f_t> x,
                                  cone_data_t<i_t, f_t>& cones,
                                  raft::device_span<f_t> out,
-                                 rmm::cuda_stream_view stream)
+                                 cuda::stream_ref stream)
 {
   auto out_input = raft::device_span<const f_t>(out.data(), out.size());
   apply_hessian<i_t, f_t>(x, out, cones, stream, 1, out_input, 1, true);
@@ -1052,7 +1049,7 @@ void scatter_sparse_hessian_into_augmented(cone_data_t<i_t, f_t>& cones,
                                            const rmm::device_uvector<i_t>& exp_v_row,
                                            const rmm::device_uvector<i_t>& exp_u_row,
                                            const rmm::device_uvector<i_t>& sparse_expansion_D,
-                                           rmm::cuda_stream_view stream,
+                                           cuda::stream_ref stream,
                                            f_t dual_perturb)
 {
   if (!cones.has_sparse_cones()) { return; }
@@ -1169,7 +1166,7 @@ void launch_sparse_augmented_matvec(raft::device_span<const f_t> x,
                                     i_t cone_var_start,
                                     i_t n_primal,
                                     i_t m_constraints,
-                                    rmm::cuda_stream_view stream)
+                                    cuda::stream_ref stream)
 {
   if (!cones.has_sparse_cones()) { return; }
 
@@ -1249,7 +1246,7 @@ void scatter_dense_hessian_into_augmented(const cone_data_t<i_t, f_t>& cones,
                                           const rmm::device_uvector<f_t>& q_values,
                                           const rmm::device_uvector<size_t>& dense_block_offsets,
                                           const rmm::device_uvector<i_t>& dense_cone_ids,
-                                          rmm::cuda_stream_view stream,
+                                          cuda::stream_ref stream,
                                           f_t dual_perturb_value)
 {
   const size_t count = csr_indices.size();
@@ -1458,7 +1455,7 @@ void launch_cone_step_length(segmented_sum_t<i_t>& partitions,
                              raft::device_span<f_t> alpha,
                              raft::device_span<step_tail_sums_t<f_t>> large_sums,
                              f_t alpha_max,
-                             rmm::cuda_stream_view stream)
+                             cuda::stream_ref stream)
 {
   constexpr int warps_per_cta = 8;
   if (!partitions.small_cone_ids.is_empty()) {
@@ -1539,7 +1536,7 @@ f_t compute_cone_step_length(cone_data_t<i_t, f_t>& cones,
                              raft::device_span<const f_t> dx,
                              raft::device_span<const f_t> dz,
                              f_t alpha_max,
-                             rmm::cuda_stream_view stream)
+                             cuda::stream_ref stream)
 {
   auto alpha_primal = cuopt::make_span(cones.scratch.step_alpha_primal);
   auto alpha_dual   = cuopt::make_span(cones.scratch.step_alpha_dual);
@@ -1582,7 +1579,7 @@ void compute_combined_cone_rhs_term(raft::device_span<const f_t> dx_aff,
                                     cone_data_t<i_t, f_t>& cones,
                                     f_t sigma_mu,
                                     raft::device_span<f_t> out,
-                                    rmm::cuda_stream_view stream)
+                                    cuda::stream_ref stream)
 {
   auto cone_offsets     = cuopt::make_span(cones.cone_offsets);
   auto element_cone_ids = cuopt::make_span(cones.element_cone_ids);

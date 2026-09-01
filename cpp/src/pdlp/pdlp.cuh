@@ -176,7 +176,7 @@ class pdlp_solver_t {
   bool batch_mode_{false};
 
   raft::handle_t const* handle_ptr_;
-  rmm::cuda_stream_view stream_view_;
+  cuda::stream_ref stream_view_;
   // Intentionnaly take a copy to avoid an unintentional modification in the calling context
   const pdlp_solver_settings_t<i_t, f_t> settings_;
   mip::shared_strong_branching_context_view_t<i_t, f_t> sb_view_{settings_.shared_sb_solved};

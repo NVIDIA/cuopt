@@ -24,6 +24,7 @@
 #endif
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
+#include <cuda/stream>
 #include <raft/core/device_span.hpp>
 #include <raft/core/nvtx.hpp>
 #include <raft/linalg/binary_op.cuh>
@@ -981,7 +982,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
   // Small copy helper to use in both single-GPU and distributed paths.
   auto commit_potential_next_as_last_restart = [](pdlp_restart_strategy_t<i_t, f_t>& rest,
                                                   pdhg_solver_t<i_t, f_t>& solver,
-                                                  rmm::cuda_stream_view stream) {
+                                                  cuda::stream_ref stream) {
     raft::copy(rest.last_restart_duality_gap_.primal_solution_.data(),
                solver.get_potential_next_primal_solution().data(),
                rest.last_restart_duality_gap_.primal_solution_.size(),

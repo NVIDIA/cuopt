@@ -58,7 +58,7 @@ struct device_map_t {
   {
   }
 
-  void clear(rmm::cuda_stream_view stream);
+  void clear(cuda::stream_ref stream);
 
   uint32_t get_max_size() const
   {
@@ -66,7 +66,7 @@ struct device_map_t {
     return adj_max_size;
   }
 
-  size_t get_size(int level, rmm::cuda_stream_view stream) const
+  size_t get_size(int level, cuda::stream_ref stream) const
   {
     return std::min(get_max_size(), occupied.element(level, stream));
   }

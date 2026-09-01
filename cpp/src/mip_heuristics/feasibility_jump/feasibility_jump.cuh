@@ -232,23 +232,21 @@ class fj_t {
     bool randomize_params  = false);
   i_t alloc_max_climbers(i_t desired_climbers);
   void resize_vectors(const raft::handle_t* handle_ptr);
-  void device_init(const rmm::cuda_stream_view& stream);
+  void device_init(const cuda::stream_ref& stream);
   void climber_init(i_t climber_idx);
-  void climber_init(i_t climber_idx, const rmm::cuda_stream_view& stream);
+  void climber_init(i_t climber_idx, const cuda::stream_ref& stream);
   void set_fj_settings(fj_settings_t settings_);
-  void reset_weights(const rmm::cuda_stream_view& stream, f_t weight = 10.);
+  void reset_weights(const cuda::stream_ref& stream, f_t weight = 10.);
   void randomize_weights(const raft::handle_t* handle_ptr);
   void copy_weights(const weight_t<i_t, f_t>& weights,
                     const raft::handle_t* handle_ptr,
                     std::optional<i_t> new_size = std::nullopt);
   i_t host_loop(solution_t<i_t, f_t>& solution, i_t climber_idx = 0);
   void run_step_device(i_t climber_idx = 0, bool use_graph = true);
-  void run_step_device(const rmm::cuda_stream_view& stream,
-                       i_t climber_idx = 0,
-                       bool use_graph  = true);
-  void refresh_lhs_and_violation(const rmm::cuda_stream_view& stream, i_t climber_idx = 0);
+  void run_step_device(const cuda::stream_ref& stream, i_t climber_idx = 0, bool use_graph = true);
+  void refresh_lhs_and_violation(const cuda::stream_ref& stream, i_t climber_idx = 0);
   // load balancing
-  void load_balancing_score_update(const rmm::cuda_stream_view& stream, i_t climber_idx = 0);
+  void load_balancing_score_update(const cuda::stream_ref& stream, i_t climber_idx = 0);
   // executed after a roudning FJ run if any fractionals remain to eliminate them
   void round_remaining_fractionals(solution_t<i_t, f_t>& solution, i_t climber_idx = 0);
 
@@ -642,7 +640,7 @@ class fj_t {
     };
 
     view_t view();
-    void clear_sets(const rmm::cuda_stream_view& stream);
+    void clear_sets(const cuda::stream_ref& stream);
   };
   void populate_climber_views();
 

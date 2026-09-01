@@ -53,7 +53,7 @@ struct postsolve_reconstruction_t {
 template <typename i_t, typename f_t>
 class presolve_data_t {
  public:
-  presolve_data_t(const optimization_problem_t<i_t, f_t>& problem, rmm::cuda_stream_view stream)
+  presolve_data_t(const optimization_problem_t<i_t, f_t>& problem, cuda::stream_ref stream)
     : variable_offsets(problem.get_n_variables(), 0),
       additional_var_used(problem.get_n_variables(), false),
       additional_var_id_per_var(problem.get_n_variables(), -1),
@@ -65,7 +65,7 @@ class presolve_data_t {
   {
   }
 
-  presolve_data_t(const presolve_data_t& other, rmm::cuda_stream_view stream)
+  presolve_data_t(const presolve_data_t& other, cuda::stream_ref stream)
     : variable_offsets(other.variable_offsets),
       additional_var_used(other.additional_var_used),
       additional_var_id_per_var(other.additional_var_id_per_var),
@@ -106,7 +106,7 @@ class presolve_data_t {
   void post_process_assignment(problem_t<i_t, f_t>& problem,
                                rmm::device_uvector<f_t>& current_assignment,
                                bool resize_to_original_problem,
-                               rmm::cuda_stream_view stream);
+                               cuda::stream_ref stream);
   void post_process_assignment(problem_t<i_t, f_t>& problem,
                                rmm::device_uvector<f_t>& current_assignment,
                                bool resize_to_original_problem = true)

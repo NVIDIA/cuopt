@@ -23,7 +23,7 @@ namespace detail {
 
 template <typename i_t, typename f_t>
 struct ret_cycles_t {
-  ret_cycles_t(size_t max_size, rmm::cuda_stream_view stream_view)
+  ret_cycles_t(size_t max_size, cuda::stream_ref stream_view)
     : paths(max_size, stream_view),
       offsets(max_size, stream_view),
       n_cycles_(zero_v<i_t>, stream_view),
@@ -46,7 +46,7 @@ struct ret_cycles_t {
     i_t n_cycles;
   };
 
-  host_t to_host(rmm::cuda_stream_view stream)
+  host_t to_host(cuda::stream_ref stream)
   {
     host_t h;
     h.paths    = host_copy(paths, stream);

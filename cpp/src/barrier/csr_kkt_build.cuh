@@ -27,7 +27,7 @@ constexpr int augmented_csr_block_size = 256;
 // Cone -> augmented-KKT-CSR assembly data.
 template <std::integral i_t, std::floating_point f_t>
 struct cone_kkt_data_t {
-  explicit cone_kkt_data_t(rmm::cuda_stream_view stream)
+  explicit cone_kkt_data_t(cuda::stream_ref stream)
     : sparse_ids_by_cone(0, stream),
       dense_ids_by_cone(0, stream),
       dense_cone_entry_rank(0, stream),
@@ -509,7 +509,7 @@ __global__ void fill_augmented_csr_row_kernel(i_t factorization_size,
 template <std::integral i_t, std::floating_point f_t>
 void build_augmented_csr_metadata(const cone_data_t<i_t, f_t>& cones,
                                   cone_kkt_data_t<i_t, f_t>& metadata,
-                                  rmm::cuda_stream_view stream)
+                                  cuda::stream_ref stream)
 {
   raft::common::nvtx::range scope("Barrier: augmented: device CSR metadata");
   const i_t n_cones  = cones.n_cones;
@@ -638,7 +638,7 @@ i_t build_augmented_csr_on_device(i_t n,
                                   cone_kkt_data_t<i_t, f_t>& cone_data,
                                   rmm::device_uvector<i_t>& augmented_diagonal_indices,
                                   device_csr_matrix_t<i_t, f_t>& device_augmented,
-                                  rmm::cuda_stream_view stream)
+                                  cuda::stream_ref stream)
 {
   const i_t factorization_size       = n + m + p;
   const csc_view_t<i_t, f_t> A_view  = A.view();

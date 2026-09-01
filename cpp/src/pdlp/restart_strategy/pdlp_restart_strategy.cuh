@@ -306,7 +306,7 @@ class pdlp_restart_strategy_t {
                                  rmm::device_uvector<f_t>& dual_step_size);
 
   raft::handle_t const* handle_ptr_{nullptr};
-  rmm::cuda_stream_view stream_view_;
+  cuda::stream_ref stream_view_;
 
  public:
   const bool batch_mode_{false};

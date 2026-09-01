@@ -44,7 +44,7 @@ class pool_allocator_t {
  public:
   pool_allocator_t(const Problem& problem_,
                    i_t n_solutions_,
-                   rmm::cuda_stream_view stream_,
+                   cuda::stream_ref stream_,
                    i_t desired_n_routes = -1)
     : problem(problem_), stream(stream_)
   {
@@ -73,7 +73,7 @@ class pool_allocator_t {
   void sync_all_streams() const { stream.sync(); }
 
   // problem description
-  rmm::cuda_stream_view stream;
+  cuda::stream_ref stream;
   const Problem& problem;
   std::vector<std::unique_ptr<solution_handle_t<i_t, f_t>>> sol_handles;
   // keep a thread safe pool of local search and ges objects that can be reused

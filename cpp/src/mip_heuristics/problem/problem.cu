@@ -2168,7 +2168,7 @@ bool problem_t<i_t, f_t>::pre_process_assignment(rmm::device_uvector<f_t>& assig
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::post_process_assignment(rmm::device_uvector<f_t>& current_assignment,
                                                   bool resize_to_original_problem,
-                                                  rmm::cuda_stream_view stream)
+                                                  cuda::stream_ref stream)
 {
   presolve_data.post_process_assignment(
     *this, current_assignment, resize_to_original_problem, stream);

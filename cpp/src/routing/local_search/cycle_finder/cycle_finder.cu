@@ -138,7 +138,7 @@ bool ExactCycleFinder<i_t, f_t, max_routes>::call_find(graph_t<i_t, f_t>& graph,
 }
 
 template <typename map_key_t, typename value_t>
-void detail::device_map_t<map_key_t, value_t>::clear(rmm::cuda_stream_view stream)
+void detail::device_map_t<map_key_t, value_t>::clear(cuda::stream_ref stream)
 {
   auto max_vals  = max_level * max_available;
   auto n_threads = 256;
@@ -149,7 +149,7 @@ void detail::device_map_t<map_key_t, value_t>::clear(rmm::cuda_stream_view strea
 
 template <size_t max_routes>
 bool test_empty(typename detail::device_map_t<key_t<max_routes>, double>::view_t const map_view,
-                rmm::cuda_stream_view stream)
+                cuda::stream_ref stream)
 {
   auto max_vals  = map_view.max_available;
   auto n_threads = 256;

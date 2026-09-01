@@ -81,7 +81,7 @@ class saddle_point_state_t {
    *
    * @throws cuopt::logic_error if the solutions are not of the same size
    */
-  void copy(saddle_point_state_t<i_t, f_t>& other, rmm::cuda_stream_view stream);
+  void copy(saddle_point_state_t<i_t, f_t>& other, cuda::stream_ref stream);
 
   i_t get_primal_size() const;
   i_t get_dual_size() const;

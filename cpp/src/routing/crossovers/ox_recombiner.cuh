@@ -94,7 +94,7 @@ struct OX {
   ox_graph_t<int, float> d_graph;
   ox_graph_t<int, float> transpose_graph;
 
-  explicit OX(size_t nodes_number, const costs& weight, rmm::cuda_stream_view stream_view)
+  explicit OX(size_t nodes_number, const costs& weight, cuda::stream_ref stream_view)
     : mt(rd()),
       problem_size(nodes_number),
       graph(problem_size),
@@ -518,7 +518,7 @@ struct OX {
     }
   }
 
-  void test_transpose_graph(rmm::cuda_stream_view stream)
+  void test_transpose_graph(cuda::stream_ref stream)
   {
     std::vector<std::vector<std::tuple<int, double, int>>> h_transpose_graph(offspring.size());
     for (size_t i = 0; i < h_transpose_graph.size(); ++i) {
@@ -846,7 +846,7 @@ struct OX {
   }
 
   void adj_to_host(std::vector<std::vector<std::tuple<int, double, int>>>& h_graph,
-                   rmm::cuda_stream_view stream)
+                   cuda::stream_ref stream)
   {
     auto tmp_graph = d_graph.to_host(stream);
     for (int veh = 0; veh < n_buckets; ++veh) {

@@ -136,7 +136,7 @@ bool should_use_adaptive_regularization(const simplex_solver_settings_t<i_t, f_t
 
 template <typename f_t>
 [[maybe_unused]] static void pairwise_multiply(
-  f_t* a, f_t* b, f_t* out, int size, rmm::cuda_stream_view stream)
+  f_t* a, f_t* b, f_t* out, int size, cuda::stream_ref stream)
 {
   cub::DeviceTransform::Transform(
     cuda::std::make_tuple(a, b), out, size, cuda::std::multiplies<>{}, stream.get());
@@ -145,7 +145,7 @@ template <typename f_t>
 // out[i] = is_direct_free_linear[i] ? 0 : a[i] * b[i]
 template <typename f_t>
 [[maybe_unused]] static void pairwise_multiply_skip_direct_free_linear(
-  f_t* a, f_t* b, int* is_direct_free_linear, f_t* out, int size, rmm::cuda_stream_view stream)
+  f_t* a, f_t* b, int* is_direct_free_linear, f_t* out, int size, cuda::stream_ref stream)
 {
   cub::DeviceTransform::Transform(
     cuda::std::make_tuple(a, b, is_direct_free_linear),
@@ -157,7 +157,7 @@ template <typename f_t>
 
 template <typename f_t>
 [[maybe_unused]] static void axpy(
-  f_t alpha, f_t* x, f_t beta, f_t* y, f_t* out, int size, rmm::cuda_stream_view stream)
+  f_t alpha, f_t* x, f_t beta, f_t* y, f_t* out, int size, cuda::stream_ref stream)
 {
   cub::DeviceTransform::Transform(
     cuda::std::make_tuple(x, y),
@@ -180,7 +180,7 @@ static f2_t<f_t> max_nonnegative_step_length_pair_in_range(
   i_t len,
   const rmm::device_uvector<i_t>& is_direct_free_linear,
   bool apply_direct_free_mask,
-  rmm::cuda_stream_view stream)
+  cuda::stream_ref stream)
 {
   if (len <= 0) { return f2_t<f_t>{f_t(1), f_t(1)}; }
 
@@ -211,7 +211,7 @@ static void recover_linear_orthant_dz(raft::device_span<const f_t> target,
                                       raft::device_span<const f_t> x,
                                       raft::device_span<f_t> dz,
                                       raft::device_span<const i_t> is_direct_free_linear,
-                                      rmm::cuda_stream_view stream)
+                                      cuda::stream_ref stream)
 {
   if (dz.empty()) return;
 
@@ -231,7 +231,7 @@ static void recover_linear_orthant_dz(raft::device_span<const f_t> target,
 template <typename f_t>
 static void negate_complementarity_rhs(raft::device_span<f_t> out,
                                        raft::device_span<const f_t> residual,
-                                       rmm::cuda_stream_view stream)
+                                       cuda::stream_ref stream)
 {
   if (out.empty()) return;
   cub::DeviceTransform::Transform(
@@ -244,7 +244,7 @@ static void fill_linear_cc_rhs(raft::device_span<f_t> out,
                                raft::device_span<const f_t> dz_aff,
                                f_t new_mu,
                                raft::device_span<const i_t> is_direct_free_linear,
-                               rmm::cuda_stream_view stream)
+                               cuda::stream_ref stream)
 {
   if (out.empty()) return;
   cub::DeviceTransform::Transform(
@@ -2294,7 +2294,7 @@ class iteration_data_t {
   bool cone_combined_step_;
   f_t cone_sigma_mu_;
 
-  rmm::cuda_stream_view stream_view_;
+  cuda::stream_ref stream_view_;
 
   const simplex_solver_settings_t<i_t, f_t>& settings_;
 };
@@ -3618,7 +3618,7 @@ void fill_linear_complementarity_target(iteration_data_t<i_t, f_t>& data,
                                         raft::device_span<f_t> target,
                                         raft::device_span<const f_t> xz_rhs,
                                         raft::device_span<const f_t> x,
-                                        rmm::cuda_stream_view stream)
+                                        cuda::stream_ref stream)
 {
   if (target.empty()) return;
   cub::DeviceTransform::Transform(
@@ -3637,7 +3637,7 @@ template <typename i_t, typename f_t>
 void fill_affine_cone_complementarity_target(iteration_data_t<i_t, f_t>& data,
                                              i_t cone_var_start,
                                              i_t m_c,
-                                             rmm::cuda_stream_view stream)
+                                             cuda::stream_ref stream)
 {
   if (m_c == 0) return;
   auto& cones = data.cones();
@@ -3656,7 +3656,7 @@ void fill_corrector_cone_complementarity_target(iteration_data_t<i_t, f_t>& data
                                                 i_t cone_var_start,
                                                 i_t m_c,
                                                 f_t sigma_mu,
-                                                rmm::cuda_stream_view stream)
+                                                cuda::stream_ref stream)
 {
   if (m_c == 0) return;
   auto& cones = data.cones();
