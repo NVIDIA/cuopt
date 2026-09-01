@@ -97,6 +97,34 @@ bool validate_barrier_cone_layout(const lp_problem_t<i_t, f_t>& problem,
   return true;
 }
 
+// Push entries into interior of nonnegative orthant and second-order cone.
+template <typename i_t, typename f_t>
+static void ensure_initial_point_interior(dense_vector_t<i_t, f_t>& values,
+                                          f_t epsilon_adjust,
+                                          const std::vector<i_t>& linear_mask,
+                                          i_t linear_end,
+                                          const std::vector<i_t>& cone_dims)
+{
+  // Linear shift
+  std::vector<i_t> linear_only_mask(values.size(), 0);
+  std::copy(linear_mask.begin(), linear_mask.begin() + linear_end, linear_only_mask.begin());
+  values.ensure_positive(epsilon_adjust, linear_only_mask);
+
+  // Cone shift
+  i_t offset = 0;
+  for (i_t q_k : cone_dims) {
+    const i_t base = linear_end + offset;
+    f_t tail_sq    = 0.0;
+    for (i_t j = 1; j < q_k; ++j) {
+      const f_t t = values[base + j];
+      tail_sq += t * t;
+    }
+    const f_t tail_norm = std::sqrt(tail_sq);
+    if (values[base] <= tail_norm + epsilon_adjust) { values[base] = tail_norm + epsilon_adjust; }
+    offset += q_k;
+  }
+}
+
 // -1 automatic: enable for cones, disable otherwise; 0 off; 1 on
 template <typename i_t, typename f_t>
 bool should_use_adaptive_regularization(const simplex_solver_settings_t<i_t, f_t>& settings,
@@ -230,6 +258,175 @@ static void fill_linear_cc_rhs(raft::device_span<f_t> out,
   RAFT_CHECK_CUDA(stream);
 }
 
+// Batches the independent GPU reductions/dot-products needed by
+// compute_residual_norms_mu_and_objective (primal/dual/complementarity residual norms, mu, and
+// primal/dual objectives) into one on-device results buffer and one host readback + stream sync.
+template <typename i_t, typename f_t>
+class barrier_reduce_helper_t {
+ public:
+  explicit barrier_reduce_helper_t(rmm::cuda_stream_view stream_view)
+    : d_results_(kCount, stream_view), h_results_(kCount), d_temp_storage_(0, stream_view)
+  {
+  }
+
+  void primal_residual_norm_async(const rmm::device_uvector<f_t>& d_primal_residual,
+                                  const rmm::device_uvector<f_t>& d_bound_residual,
+                                  rmm::cuda_stream_view stream_view)
+  {
+    norm_inf_async(
+      kPrimalResidual, d_primal_residual.data(), d_primal_residual.size(), stream_view);
+    norm_inf_async(kBoundResidual, d_bound_residual.data(), d_bound_residual.size(), stream_view);
+  }
+
+  void dual_residual_norm_async(const rmm::device_uvector<f_t>& d_dual_residual,
+                                rmm::cuda_stream_view stream_view)
+  {
+    norm_inf_async(kDualResidual, d_dual_residual.data(), d_dual_residual.size(), stream_view);
+  }
+
+  void complementarity_residual_norm_async(raft::device_span<const f_t> linear_xz,
+                                           const rmm::device_uvector<f_t>& d_wv,
+                                           rmm::cuda_stream_view stream_view)
+  {
+    norm_inf_async(kComplXzLinear, linear_xz.data(), linear_xz.size(), stream_view);
+    norm_inf_async(kComplWv, d_wv.data(), d_wv.size(), stream_view);
+  }
+
+  void cone_complementarity_residual_async(raft::device_span<f_t> cone_dot,
+                                           rmm::cuda_stream_view stream_view)
+  {
+    max_async(kComplCone, cone_dot.data(), cone_dot.size(), stream_view);
+  }
+
+  void mu_terms_async(const rmm::device_uvector<f_t>& d_xz,
+                      const rmm::device_uvector<f_t>& d_wv,
+                      rmm::cuda_stream_view stream_view)
+  {
+    sum_async(kMuXzSum, d_xz.data(), d_xz.size(), stream_view);
+    sum_async(kMuWvSum, d_wv.data(), d_wv.size(), stream_view);
+  }
+
+  void cTx_async(const rmm::device_uvector<f_t>& d_c,
+                 const rmm::device_uvector<f_t>& d_x,
+                 cublasHandle_t cublas_handle,
+                 rmm::cuda_stream_view stream_view)
+  {
+    dot_async(kCTx, d_c, d_x, cublas_handle, stream_view);
+  }
+
+  void bTy_async(const rmm::device_uvector<f_t>& d_b,
+                 const rmm::device_uvector<f_t>& d_y,
+                 cublasHandle_t cublas_handle,
+                 rmm::cuda_stream_view stream_view)
+  {
+    dot_async(kBTy, d_b, d_y, cublas_handle, stream_view);
+  }
+
+  void uTv_async(const rmm::device_uvector<f_t>& d_u,
+                 const rmm::device_uvector<f_t>& d_v,
+                 cublasHandle_t cublas_handle,
+                 rmm::cuda_stream_view stream_view)
+  {
+    dot_async(kUTv, d_u, d_v, cublas_handle, stream_view);
+  }
+
+  void xTQx_async(const rmm::device_uvector<f_t>& d_Qx,
+                  const rmm::device_uvector<f_t>& d_x,
+                  cublasHandle_t cublas_handle,
+                  rmm::cuda_stream_view stream_view)
+  {
+    dot_async(kXTQx, d_Qx, d_x, cublas_handle, stream_view);
+  }
+
+  // Single batched device-to-host copy + the one stream synchronize needed before any accessor
+  // below can be read.
+  void sync(rmm::cuda_stream_view stream_view)
+  {
+    raft::copy(h_results_.data(), d_results_.data(), static_cast<i_t>(kCount), stream_view);
+    stream_view.synchronize();
+  }
+
+  // Raw reduced values; the caller combines these into residual norms, mu, and objectives.
+  f_t primal_residual() const { return h_results_[kPrimalResidual]; }
+  f_t bound_residual() const { return h_results_[kBoundResidual]; }
+  f_t dual_residual_norm() const { return h_results_[kDualResidual]; }
+  f_t complementarity_xz_linear() const { return h_results_[kComplXzLinear]; }
+  f_t complementarity_wv() const { return h_results_[kComplWv]; }
+  f_t complementarity_cone() const { return h_results_[kComplCone]; }
+  f_t mu_xz_sum() const { return h_results_[kMuXzSum]; }
+  f_t mu_wv_sum() const { return h_results_[kMuWvSum]; }
+  f_t cTx() const { return h_results_[kCTx]; }
+  f_t bTy() const { return h_results_[kBTy]; }
+  f_t uTv() const { return h_results_[kUTv]; }
+  f_t xTQx() const { return h_results_[kXTQx]; }
+
+ private:
+  enum Slot : i_t {
+    kPrimalResidual = 0,
+    kBoundResidual,
+    kDualResidual,
+    kComplXzLinear,
+    kComplWv,
+    kComplCone,
+    kMuXzSum,
+    kMuWvSum,
+    kCTx,
+    kBTy,
+    kUTv,
+    kXTQx,
+    kCount
+  };
+
+  template <typename ReduceOpT>
+  void reduce_async(
+    Slot slot, const f_t* in, i_t size, ReduceOpT op, f_t init, rmm::cuda_stream_view stream_view)
+  {
+    f_t* out = d_results_.data() + slot;
+    if (size == 0) {
+      RAFT_CUDA_TRY(cudaMemsetAsync(out, 0, sizeof(f_t), stream_view.value()));
+      return;
+    }
+    size_t temp_storage_bytes = 0;
+    cub::DeviceReduce::Reduce(nullptr, temp_storage_bytes, in, out, size, op, init, stream_view);
+    d_temp_storage_.resize(temp_storage_bytes, stream_view);
+    cub::DeviceReduce::Reduce(
+      d_temp_storage_.data(), temp_storage_bytes, in, out, size, op, init, stream_view);
+  }
+
+  void norm_inf_async(Slot slot, const f_t* in, i_t size, rmm::cuda_stream_view stream_view)
+  {
+    reduce_async(slot, in, size, norm_inf_max{}, f_t(0), stream_view);
+  }
+
+  void max_async(Slot slot, const f_t* in, i_t size, rmm::cuda_stream_view stream_view)
+  {
+    reduce_async(slot, in, size, thrust::maximum<f_t>{}, f_t(0), stream_view);
+  }
+
+  void sum_async(Slot slot, const f_t* in, i_t size, rmm::cuda_stream_view stream_view)
+  {
+    f_t* out                  = d_results_.data() + slot;
+    size_t temp_storage_bytes = 0;
+    cub::DeviceReduce::Sum(nullptr, temp_storage_bytes, in, out, size, stream_view);
+    d_temp_storage_.resize(temp_storage_bytes, stream_view);
+    cub::DeviceReduce::Sum(d_temp_storage_.data(), temp_storage_bytes, in, out, size, stream_view);
+  }
+
+  void dot_async(Slot slot,
+                 const rmm::device_uvector<f_t>& a,
+                 const rmm::device_uvector<f_t>& b,
+                 cublasHandle_t cublas_handle,
+                 rmm::cuda_stream_view stream_view)
+  {
+    RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(
+      cublas_handle, a.size(), a.data(), 1, b.data(), 1, d_results_.data() + slot, stream_view));
+  }
+
+  rmm::device_uvector<f_t> d_results_;
+  pinned_dense_vector_t<i_t, f_t> h_results_;
+  rmm::device_buffer d_temp_storage_;
+};
+
 template <typename i_t, typename f_t>
 class iteration_data_t {
  public:
@@ -356,6 +553,7 @@ class iteration_data_t {
       transform_reduce_helper_(lp.handle_ptr->get_stream()),
       transform_reduce_pair_helper_(lp.handle_ptr->get_stream()),
       sum_reduce_helper_(lp.handle_ptr->get_stream()),
+      reduce_helper_(lp.handle_ptr->get_stream()),
       indefinite_Q(false),
       Q_diagonal(false),
       symbolic_status(0),
@@ -491,8 +689,12 @@ class iteration_data_t {
       // Apply the adaptive-regularization policy before form_augmented / initial
       // factorization so an explicit enable/disable is honored from the start.
       const bool adaptive_reg = should_use_adaptive_regularization(settings, has_soc);
-      primal_perturb          = has_soc ? 1e-8 : 1e-6;
-      dual_perturb            = adaptive_reg ? 1e-8 : 0;
+      primal_perturb          = (settings.barrier_primal_regularization >= 0)
+                                  ? settings.barrier_primal_regularization
+                                  : (has_soc ? 1e-8 : 1e-6);
+      dual_perturb            = (settings.barrier_dual_regularization >= 0)
+                                  ? settings.barrier_dual_regularization
+                                  : (adaptive_reg ? 1e-8 : 0);
 
       if (has_soc) {
         // SOCP always use the augmented KKT; skip dense-column / ADAT heuristics.
@@ -2079,6 +2281,8 @@ class iteration_data_t {
   transform_reduce_pair_helper_t<f_t> transform_reduce_pair_helper_;
   sum_reduce_helper_t<f_t> sum_reduce_helper_;
 
+  barrier_reduce_helper_t<i_t, f_t> reduce_helper_;
+
   bool cone_combined_step_;
   f_t cone_sigma_mu_;
 
@@ -2182,41 +2386,54 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   const bool use_augmented          = data.use_augmented;
   const bool has_direct_free_linear = data.n_direct_free_linear > 0;
 
-  // SOCP: data-dependent initial point following SeDuMi (Sturm, 1999).
-  //   mu = sqrt((1 + ||b||_inf) * (1 + ||c||_inf))
-  //   primal and dual: x = mu * e_K,  z = mu * e_K
+  const barrier_dual_initial_point_t input_strategy = settings.barrier_dual_initial_point;
+
+  const barrier_dual_initial_point_t init_strategy =
+    (data.has_cones() && input_strategy == barrier_dual_initial_point_t::Automatic)
+      ? barrier_dual_initial_point_t::SedumiMu
+      : input_strategy;
+
+  // SedumiMu: Sturm/SeDuMi-style mu-based primal+dual initial point.
+  //   mu = sqrt((1 + ||b||_inf) * (1 + ||c||_inf)); x = z = mu * e_K.
   // where e_K is the identity of the symmetric cone:
   //   LP block: e = 1,  SOC block: e = (sqrt(2), 0, ..., 0)
-  if (data.has_cones()) {
-    const i_t cs     = data.cone_start();
-    const f_t norm_b = vector_norm_inf<i_t, f_t>(lp.rhs);
-    const f_t norm_c = vector_norm_inf<i_t, f_t>(lp.objective);
-    const f_t mu     = std::sqrt((1.0 + norm_b) * (1.0 + norm_c));
-    const f_t sqrt2  = std::sqrt(2.0);
-    const f_t x_soc  = mu * sqrt2;
-    const f_t z_soc  = mu * sqrt2;
-    // Linear orthant
-    for (i_t j = 0; j < cs; ++j) {
+  // Full primal+dual point; no factorization/solve (main loop factorizes later).
+  if (init_strategy == barrier_dual_initial_point_t::SedumiMu) {
+    const f_t norm_b     = vector_norm_inf<i_t, f_t>(lp.rhs);
+    const f_t norm_c     = vector_norm_inf<i_t, f_t>(lp.objective);
+    const f_t mu         = std::sqrt((1.0 + norm_b) * (1.0 + norm_c));
+    const f_t sqrt2      = std::sqrt(2.0);
+    const i_t linear_end = data.linear_xz_size(lp.num_cols);
+
+    // Linear orthant: x = z = mu * e, with e = 1
+    for (i_t j = 0; j < linear_end; ++j) {
       data.x[j] = mu;
       data.z[j] = mu;
     }
     if (has_direct_free_linear) {
       for (i_t j : presolve_info.direct_free_variables) {
-        if (j < cs) { data.z[j] = 0.0; }
+        if (j < linear_end) { data.z[j] = 0.0; }
       }
     }
-    // SOC blocks
-    i_t off = 0;
-    for (size_t k = 0; k < lp.second_order_cone_dims.size(); k++) {
-      i_t q_k          = lp.second_order_cone_dims[k];
-      data.x[cs + off] = x_soc;
-      data.z[cs + off] = z_soc;
-      for (i_t j = 1; j < q_k; ++j) {
-        data.x[cs + off + j] = 0.0;
-        data.z[cs + off + j] = 0.0;
+
+    // Second-order cone blocks: x = z = mu * e, with e = (sqrt(2), 0, ..., 0)
+    if (data.has_cones()) {
+      const i_t cone_start = data.cone_start();
+      const f_t x_soc      = mu * sqrt2;
+      const f_t z_soc      = mu * sqrt2;
+      i_t offset           = 0;
+      for (size_t k = 0; k < lp.second_order_cone_dims.size(); k++) {
+        i_t q_k                     = lp.second_order_cone_dims[k];
+        data.x[cone_start + offset] = x_soc;
+        data.z[cone_start + offset] = z_soc;
+        for (i_t j = 1; j < q_k; ++j) {
+          data.x[cone_start + offset + j] = 0.0;
+          data.z[cone_start + offset + j] = 0.0;
+        }
+        offset += q_k;
       }
-      off += q_k;
     }
+
     data.y.set_scalar(0.0);
     if (data.n_upper_bounds > 0) {
       data.w.set_scalar(mu);
@@ -2359,9 +2576,13 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
 #endif
   }
 
-  float64_t epsilon_adjust = 10.0;
+  const f_t epsilon_adjust = settings.barrier_initial_point_safeguard;
+  // Push entries into interior of nonnegative orthant and second-order cone.
+  const bool has_soc   = data.has_cones();
+  const i_t linear_end = has_soc ? data.cone_start() : lp.num_cols;
 
-  if (settings.barrier_dual_initial_point == -1 || settings.barrier_dual_initial_point == 0) {
+  if (init_strategy == barrier_dual_initial_point_t::Automatic ||
+      init_strategy == barrier_dual_initial_point_t::LustigMarstenShanno) {
     // Use the dual starting point suggested by the paper
     // On Implementing Mehrotra’s Predictor–Corrector Interior-Point Method for Linear Programming
     // Irvin J. Lustig, Roy E. Marsten, and David F. Shanno
@@ -2430,7 +2651,6 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     data.v.multiply_scalar(-1.0);
 
     data.v.ensure_positive(epsilon_adjust);
-    data.z.ensure_positive(epsilon_adjust, nonnegative_z);
   } else {
     // First compute rhs = A*Dinv*c
     dense_vector_t<i_t, f_t> rhs(lp.num_rows);
@@ -2454,7 +2674,6 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     data.gather_upper_bounds(data.z, data.v);
     data.v.multiply_scalar(-1.0);
     data.v.ensure_positive(epsilon_adjust);
-    data.z.ensure_positive(epsilon_adjust, nonnegative_z);
   }
 
   // Verify A'*y + z - E*v  - Q*x = c
@@ -2472,6 +2691,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   settings.log.printf("||A^T y + z - E*v - Q*x - c ||: %e\n",
                       vector_norm2<i_t, f_t>(init_dual_residual));
 #endif
+
   // Make sure (w, x, v, z) > 0. Skip free variables being handled directly.
   data.w.ensure_positive(epsilon_adjust);
   std::vector<i_t> nonnegative_variables(data.x.size(), 1);
@@ -2480,7 +2700,10 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
       nonnegative_variables[j] = 0;
     }
   }
-  data.x.ensure_positive(epsilon_adjust, nonnegative_variables);
+  ensure_initial_point_interior(
+    data.z, epsilon_adjust, nonnegative_z, linear_end, lp.second_order_cone_dims);
+  ensure_initial_point_interior(
+    data.x, epsilon_adjust, nonnegative_variables, linear_end, lp.second_order_cone_dims);
   // Direct free variables: reduced cost z = 0 (no complementarity condition).
   if (has_direct_free_linear) {
     for (i_t j : presolve_info.direct_free_variables) {
@@ -2568,46 +2791,6 @@ void barrier_solver_t<i_t, f_t>::gpu_compute_residuals(const rmm::device_uvector
                                   cuda::std::multiplies<>{},
                                   stream_view_.value());
   RAFT_CHECK_CUDA(stream_view_);
-}
-
-template <typename i_t, typename f_t>
-void barrier_solver_t<i_t, f_t>::gpu_compute_residual_norms(const rmm::device_uvector<f_t>& d_w,
-                                                            const rmm::device_uvector<f_t>& d_x,
-                                                            const rmm::device_uvector<f_t>& d_y,
-                                                            const rmm::device_uvector<f_t>& d_v,
-                                                            const rmm::device_uvector<f_t>& d_z,
-                                                            iteration_data_t<i_t, f_t>& data,
-                                                            f_t& primal_residual_norm,
-                                                            f_t& dual_residual_norm,
-                                                            f_t& complementarity_residual_norm)
-{
-  raft::common::nvtx::range fun_scope("Barrier: GPU compute_residual_norms");
-
-  gpu_compute_residuals(d_w, d_x, d_y, d_v, d_z, data);
-  primal_residual_norm =
-    std::max(device_vector_norm_inf<i_t, f_t>(data.d_primal_residual_, stream_view_),
-             device_vector_norm_inf<i_t, f_t>(data.d_bound_residual_, stream_view_));
-  dual_residual_norm       = device_vector_norm_inf<i_t, f_t>(data.d_dual_residual_, stream_view_);
-  const bool has_soc       = data.has_cones();
-  const i_t linear_xz_size = data.linear_xz_size(data.d_complementarity_xz_residual_.size());
-  auto linear_xz_span =
-    raft::device_span<const f_t>(data.d_complementarity_xz_residual_.data(), linear_xz_size);
-  complementarity_residual_norm =
-    std::max(device_vector_norm_inf<i_t, f_t>(linear_xz_span, stream_view_),
-             device_vector_norm_inf<i_t, f_t>(data.d_complementarity_wv_residual_, stream_view_));
-  if (has_soc) {
-    f_t cone_complementarity_norm   = f_t(0);
-    raft::device_span<f_t> cone_dot = data.cones().scratch.template get_slot<0>();
-    data.cones().segmented_sum(
-      data.d_complementarity_xz_residual_.data() + data.cone_start(), cone_dot, stream_view_);
-    cone_complementarity_norm = thrust::reduce(rmm::exec_policy(stream_view_),
-                                               cone_dot.begin(),
-                                               cone_dot.end(),
-                                               f_t(0),
-                                               thrust::maximum<f_t>());
-    complementarity_residual_norm =
-      std::max(complementarity_residual_norm, cone_complementarity_norm);
-  }
 }
 
 template <typename i_t, typename f_t>
@@ -3543,12 +3726,12 @@ void barrier_solver_t<i_t, f_t>::compute_target_mu(
   f_t step_dual_aff   = std::min(dual_v, dual_z);
 
   if (has_soc) {
-    i_t cs = data.cone_start();
-    i_t mc = data.cone_entry_count();
+    i_t cone_start = data.cone_start();
+    i_t mc         = data.cone_entry_count();
     const f_t cone_combined =
       compute_cone_step_length(data.cones(),
-                               raft::device_span<const f_t>(data.d_dx_.data() + cs, mc),
-                               raft::device_span<const f_t>(data.d_dz_.data() + cs, mc),
+                               raft::device_span<const f_t>(data.d_dx_.data() + cone_start, mc),
+                               raft::device_span<const f_t>(data.d_dz_.data() + cone_start, mc),
                                f_t(1),
                                stream_view_);
     step_primal_aff = std::min(step_primal_aff, cone_combined);
@@ -3752,12 +3935,12 @@ void barrier_solver_t<i_t, f_t>::compute_primal_dual_step_length(iteration_data_
   max_step_dual   = std::min(dual_v, dual_z);
 
   if (has_soc) {
-    i_t cs = data.cone_start();
-    i_t mc = data.cone_entry_count();
+    i_t cone_start = data.cone_start();
+    i_t mc         = data.cone_entry_count();
     const f_t cone_combined =
       compute_cone_step_length(data.cones(),
-                               raft::device_span<const f_t>(data.d_dx_.data() + cs, mc),
-                               raft::device_span<const f_t>(data.d_dz_.data() + cs, mc),
+                               raft::device_span<const f_t>(data.d_dx_.data() + cone_start, mc),
+                               raft::device_span<const f_t>(data.d_dz_.data() + cone_start, mc),
                                f_t(1),
                                stream_view_);
     max_step_primal = std::min(max_step_primal, cone_combined);
@@ -3828,91 +4011,70 @@ void barrier_solver_t<i_t, f_t>::compute_next_iterate(iteration_data_t<i_t, f_t>
 }
 
 template <typename i_t, typename f_t>
-void barrier_solver_t<i_t, f_t>::compute_residual_norms(iteration_data_t<i_t, f_t>& data,
-                                                        f_t& primal_residual_norm,
-                                                        f_t& dual_residual_norm,
-                                                        f_t& complementarity_residual_norm)
+void barrier_solver_t<i_t, f_t>::compute_residual_norms_mu_and_objective(
+  iteration_data_t<i_t, f_t>& data,
+  f_t& primal_residual_norm,
+  f_t& dual_residual_norm,
+  f_t& complementarity_residual_norm,
+  f_t& mu,
+  f_t& primal_objective,
+  f_t& dual_objective)
 {
-  raft::common::nvtx::range fun_scope("Barrier: compute_residual_norms");
-  gpu_compute_residual_norms(data.d_w_,
-                             data.d_x_,
-                             data.d_y_,
-                             data.d_v_,
-                             data.d_z_,
-                             data,
-                             primal_residual_norm,
-                             dual_residual_norm,
-                             complementarity_residual_norm);
-}
+  raft::common::nvtx::range fun_scope("Barrier: compute_residual_norms_mu_and_objective");
 
-template <typename i_t, typename f_t>
-void barrier_solver_t<i_t, f_t>::compute_mu(iteration_data_t<i_t, f_t>& data, f_t& mu)
-{
-  raft::common::nvtx::range fun_scope("Barrier: compute_mu");
+  gpu_compute_residuals(data.d_w_, data.d_x_, data.d_y_, data.d_v_, data.d_z_, data);
 
-  const f_t mu_denom = data.complementarity_degree(data.x.size(), data.n_upper_bounds);
-  mu                 = (data.sum_reduce_helper_.sum(data.d_complementarity_xz_residual_.begin(),
-                                    data.d_complementarity_xz_residual_.size(),
-                                    stream_view_) +
-        data.sum_reduce_helper_.sum(data.d_complementarity_wv_residual_.begin(),
-                                    data.d_complementarity_wv_residual_.size(),
-                                    stream_view_)) /
-       mu_denom;
-}
+  auto& rh = data.reduce_helper_;
 
-template <typename i_t, typename f_t>
-void barrier_solver_t<i_t, f_t>::compute_primal_dual_objective(iteration_data_t<i_t, f_t>& data,
-                                                               f_t& primal_objective,
-                                                               f_t& dual_objective)
-{
-  raft::common::nvtx::range fun_scope("Barrier: compute_primal_dual_objective");
-  rmm::device_scalar<f_t> d_cx(stream_view_);
-  rmm::device_scalar<f_t> d_by(stream_view_);
-  rmm::device_scalar<f_t> d_uv(stream_view_);
+  const bool has_soc       = data.has_cones();
+  const i_t linear_xz_size = data.linear_xz_size(data.d_complementarity_xz_residual_.size());
+  auto linear_xz_span =
+    raft::device_span<const f_t>(data.d_complementarity_xz_residual_.data(), linear_xz_size);
 
-  RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
-                                                  data.d_c_.size(),
-                                                  data.d_c_.data(),
-                                                  1,
-                                                  data.d_x_.data(),
-                                                  1,
-                                                  d_cx.data(),
-                                                  stream_view_));
-  RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
-                                                  data.d_b_.size(),
-                                                  data.d_b_.data(),
-                                                  1,
-                                                  data.d_y_.data(),
-                                                  1,
-                                                  d_by.data(),
-                                                  stream_view_));
-  RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
-                                                  data.d_restrict_u_.size(),
-                                                  data.d_restrict_u_.data(),
-                                                  1,
-                                                  data.d_v_.data(),
-                                                  1,
-                                                  d_uv.data(),
-                                                  stream_view_));
-  f_t quad_objective = 0.0;
+  // All *_async calls below must stay on stream_view_: correctness relies on strict
+  // single-stream FIFO ordering, so that the single rh.sync() at the bottom is enough for every
+  // result to be ready on the host.
+  rh.primal_residual_norm_async(data.d_primal_residual_, data.d_bound_residual_, stream_view_);
+  rh.dual_residual_norm_async(data.d_dual_residual_, stream_view_);
+  rh.complementarity_residual_norm_async(
+    linear_xz_span, data.d_complementarity_wv_residual_, stream_view_);
+  if (has_soc) {
+    raft::device_span<f_t> cone_dot = data.cones().scratch.template get_slot<0>();
+    data.cones().segmented_sum(
+      data.d_complementarity_xz_residual_.data() + data.cone_start(), cone_dot, stream_view_);
+    rh.cone_complementarity_residual_async(cone_dot, stream_view_);
+  }
+  rh.mu_terms_async(
+    data.d_complementarity_xz_residual_, data.d_complementarity_wv_residual_, stream_view_);
+
+  cublasHandle_t cublas_handle = lp.handle_ptr->get_cublas_handle();
+  rh.cTx_async(data.d_c_, data.d_x_, cublas_handle, stream_view_);
+  rh.bTy_async(data.d_b_, data.d_y_, cublas_handle, stream_view_);
+  rh.uTv_async(data.d_restrict_u_, data.d_v_, cublas_handle, stream_view_);
   if (data.Q.n > 0) {
     auto cusparse_d_x = data.cusparse_view_.create_vector(data.d_x_);
     auto cusparse_Qx  = data.cusparse_view_.create_vector(data.d_Qx_);
     data.cusparse_Q_view_.spmv(1.0, cusparse_d_x, 0.0, cusparse_Qx);
-    rmm::device_scalar<f_t> d_xQx(stream_view_);
-    RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
-                                                    data.d_Qx_.size(),
-                                                    data.d_Qx_.data(),
-                                                    1,
-                                                    data.d_x_.data(),
-                                                    1,
-                                                    d_xQx.data(),
-                                                    stream_view_));
-    quad_objective = 0.5 * d_xQx.value(stream_view_);
+    rh.xTQx_async(data.d_Qx_, data.d_x_, cublas_handle, stream_view_);
   }
 
-  primal_objective = d_cx.value(stream_view_) + quad_objective;
-  dual_objective   = d_by.value(stream_view_) - d_uv.value(stream_view_) - quad_objective;
+  rh.sync(stream_view_);
+
+  primal_residual_norm = std::max(rh.primal_residual(), rh.bound_residual());
+  dual_residual_norm   = rh.dual_residual_norm();
+
+  complementarity_residual_norm = std::max(rh.complementarity_xz_linear(), rh.complementarity_wv());
+  if (has_soc) {
+    complementarity_residual_norm =
+      std::max(complementarity_residual_norm, rh.complementarity_cone());
+  }
+
+  const f_t mu_denom = data.complementarity_degree(data.x.size(), data.n_upper_bounds);
+  mu                 = (rh.mu_xz_sum() + rh.mu_wv_sum()) / mu_denom;
+
+  const f_t quad_objective = (data.Q.n > 0) ? 0.5 * rh.xTQx() : f_t(0);
+  primal_objective         = rh.cTx() + quad_objective;
+  dual_objective           = rh.bTy() - rh.uTv() - quad_objective;
 
 #ifdef CHECK_OBJECTIVE_GAP
   rmm::device_scalar<f_t> d_xz(stream_view_);
@@ -4214,29 +4376,25 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
     raft::copy(data.d_upper_.data(), lp.upper.data(), lp.upper.size(), stream_view_);
     data.d_bound_residual_.resize(data.n_upper_bounds, stream_view_);
 
-    f_t primal_residual_norm, dual_residual_norm, complementarity_residual_norm;
-    gpu_compute_residual_norms(data.d_w_,
-                               data.d_x_,
-                               data.d_y_,
-                               data.d_v_,
-                               data.d_z_,
-                               data,
-                               primal_residual_norm,
-                               dual_residual_norm,
-                               complementarity_residual_norm);
-    f_t mu;
-    compute_mu(data, mu);
-
     f_t norm_b = vector_norm_inf<i_t, f_t>(data.b, stream_view_);
     f_t norm_c = vector_norm_inf<i_t, f_t>(data.c, stream_view_);
 
-    f_t quad_objective = 0.0;
-    if (data.Q.n > 0) {
-      dense_vector_t<i_t, f_t> Qx(data.Q.n);
-      matrix_vector_multiply(data.Q, 1.0, data.x, 0.0, Qx);
-      quad_objective = 0.5 * data.x.inner_product(Qx);
-    }
-    f_t primal_objective = data.c.inner_product(data.x) + quad_objective;
+    dense_vector_t<i_t, f_t> upper(lp.upper);
+    data.gather_upper_bounds(upper, data.restrict_u_);
+    data.d_restrict_u_.resize(data.restrict_u_.size(), stream_view_);
+    raft::copy(
+      data.d_restrict_u_.data(), data.restrict_u_.data(), data.restrict_u_.size(), stream_view_);
+
+    f_t primal_residual_norm, dual_residual_norm, complementarity_residual_norm;
+    f_t mu;
+    f_t primal_objective, dual_objective;
+    compute_residual_norms_mu_and_objective(data,
+                                            primal_residual_norm,
+                                            dual_residual_norm,
+                                            complementarity_residual_norm,
+                                            mu,
+                                            primal_objective,
+                                            dual_objective);
 
     f_t relative_primal_residual = primal_residual_norm / (1.0 + norm_b);
     f_t relative_dual_residual   = dual_residual_norm / (1.0 + norm_c);
@@ -4244,14 +4402,6 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
       complementarity_residual_norm /
       (1.0 + std::min(std::abs(compute_user_objective(lp, primal_objective)),
                       std::abs(primal_objective)));
-
-    dense_vector_t<i_t, f_t> upper(lp.upper);
-    data.gather_upper_bounds(upper, data.restrict_u_);
-    data.d_restrict_u_.resize(data.restrict_u_.size(), stream_view_);
-    raft::copy(
-      data.d_restrict_u_.data(), data.restrict_u_.data(), data.restrict_u_.size(), stream_view_);
-    f_t dual_objective =
-      data.b.inner_product(data.y) - data.restrict_u_.inner_product(data.v) - quad_objective;
 
     f_t objective_gap_abs = std::abs(primal_objective - dual_objective);
     f_t objective_gap_rel =
@@ -4287,8 +4437,12 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
     const i_t iteration_limit = settings.iteration_limit;
 
     // Adaptive regularization for the augmented system.
-    f_t dual_perturb   = adaptive_regularization ? 1e-8 : 0;
-    f_t primal_perturb = data.has_cones() ? 1e-8 : 1e-6;
+    f_t dual_perturb   = (settings.barrier_dual_regularization >= 0)
+                           ? settings.barrier_dual_regularization
+                           : (adaptive_regularization ? 1e-8 : 0);
+    f_t primal_perturb = (settings.barrier_primal_regularization >= 0)
+                           ? settings.barrier_primal_regularization
+                           : (data.has_cones() ? 1e-8 : 1e-6);
 
     while (iter < iteration_limit) {
       raft::common::nvtx::range fun_scope("Barrier: iteration");
@@ -4389,12 +4543,13 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
 
       compute_next_iterate(data, settings.barrier_step_scale, step_primal, step_dual);
 
-      compute_residual_norms(
-        data, primal_residual_norm, dual_residual_norm, complementarity_residual_norm);
-
-      compute_mu(data, mu);
-
-      compute_primal_dual_objective(data, primal_objective, dual_objective);
+      compute_residual_norms_mu_and_objective(data,
+                                              primal_residual_norm,
+                                              dual_residual_norm,
+                                              complementarity_residual_norm,
+                                              mu,
+                                              primal_objective,
+                                              dual_objective);
 
       relative_primal_residual = primal_residual_norm / (1.0 + norm_b);
       relative_dual_residual   = dual_residual_norm / (1.0 + norm_c);

@@ -294,17 +294,25 @@ class pdlp_solver_settings_t {
   i_t augmented{-1};
   i_t dualize{-1};
   i_t ordering{-1};
-  i_t barrier_dual_initial_point{-1};
+  barrier_dual_initial_point_t barrier_dual_initial_point{barrier_dual_initial_point_t::Automatic};
   i_t postsolve_info{-1};
   i_t barrier_presolve_bound_free_variables{-1};  // -1 automatic, 0 disabled, 1 enabled
   // Ruiz equilibration for QCQP (barrier) scaling: -1 automatic (row/column
   // imbalance heuristic), 0 disabled, 1 enabled. Distinct from PDLP's own Ruiz
   // scaling in pdlp_hyper_params_t.
   i_t qcqp_ruiz_equilibration{-1};
+  // Margin used to push the barrier method's initial iterate into the interior of the
+  // nonnegative orthant / SOC (values are shifted to be at least this far from the boundary).
+  f_t barrier_initial_point_safeguard{10.0};
   bool eliminate_dense_columns{true};
   pdlp_precision_t pdlp_precision{pdlp_precision_t::DefaultPrecision};
   bool barrier_iterative_refinement{true};
   i_t barrier_adaptive_regularization{-1};  // -1 automatic, 0 disabled, 1 enabled
+  // Initial regularization for the barrier method's augmented KKT system, applied to the first
+  // factorization only (adaptive regularization, if enabled, still scales it up/down on later
+  // iterations). -1 automatic (uses the built-in heuristic), else the literal starting value.
+  f_t barrier_primal_regularization{-1.0};
+  f_t barrier_dual_regularization{-1.0};
   i_t barrier_soc_threshold{100};
   f_t barrier_step_scale{0.9};
   bool save_best_primal_so_far{false};

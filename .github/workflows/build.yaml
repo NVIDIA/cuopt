@@ -64,6 +64,27 @@ jobs:
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
       script: ci/build_cpp.sh
+  java-build:
+    needs: cpp-build
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    secrets: inherit # zizmor: ignore[secrets-inherit]
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
+    with:
+      build_type: ${{ inputs.build_type || 'branch' }}
+      branch: ${{ inputs.branch }}
+      date: ${{ inputs.date }}
+      sha: ${{ inputs.sha }}
+      node_type: "cpu4"
+      arch: "amd64"
+      container_image: "rapidsai/ci-conda:26.10-latest"
+      script: "ci/build_java.sh"
+      artifact-name: "cuopt-java"
+      file_to_upload: "java/cuopt/target/"
   python-build:
     needs: [build-details, cpp-build]
     permissions:
@@ -469,6 +490,7 @@ jobs:
     # so 'test.yaml' can be triggered without waiting for those.
     needs:
       - upload-conda
+      - java-build
       - wheel-publish-cuopt
       - wheel-publish-cuopt-server
       - wheel-publish-cuopt-sh-client
