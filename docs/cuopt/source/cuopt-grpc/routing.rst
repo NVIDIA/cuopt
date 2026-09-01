@@ -30,6 +30,10 @@ A running ``cuopt_grpc_server`` on a GPU host (see :doc:`quick-start`):
 Connect and Solve
 ==================
 
+``RoutingClient(target)`` takes a single ``"host:port"`` string, unlike the
+LP/MIP client's ``Client(host, port)`` two-argument form -- ``target``
+defaults to ``"localhost:50051"`` if omitted.
+
 ``RoutingClient.submit()`` accepts a :class:`cuopt.routing.DataModel` built
 the same way as for a local :func:`cuopt.routing.Solve`. ``solve()`` submits,
 waits, and deletes the job's server-side state when done (pass
@@ -60,7 +64,9 @@ Settings
 Today only ``time_limit`` is forwarded to the remote solve; other
 ``SolverSettings`` options (``verbose``, ``error_logging``,
 ``dump_best_results_path``/``interval``) are not yet mapped over gRPC (see
-:ref:`Limitations and Roadmap <cuopt-grpc-routing-limitations>`).
+:ref:`Limitations and Roadmap <cuopt-grpc-routing-limitations>`). A ``dict``
+key other than ``time_limit`` is silently ignored rather than raising an
+error.
 
 Solution Fields
 ================
@@ -99,6 +105,13 @@ Limitations and Roadmap
   <https://github.com/NVIDIA/cuopt/issues/1633>`_.
 * **Settings surface** — only ``time_limit`` is forwarded today. Tracked in
   `#1632 <https://github.com/NVIDIA/cuopt/issues/1632>`_.
+* **TLS** — ``RoutingClient`` honors ``CUOPT_TLS_*`` environment variables
+  the same way the LP/MIP client's default ``tls=None`` does, but has no
+  ``tls`` constructor argument to disable that or pass an explicit
+  :class:`~cuopt.grpc.linear_programming.TlsConfig` the way
+  ``Client(host, port, tls=...)`` does; see :doc:`advanced` for the
+  environment variables. Tracked in `#1632
+  <https://github.com/NVIDIA/cuopt/issues/1632>`_.
 * **No log or incumbent streaming** — unlike the LP/MIP client, there is no
   ``start_log_stream``/``start_incumbent_stream`` equivalent yet. Tracked in
   `#1630 <https://github.com/NVIDIA/cuopt/issues/1630>`_.
