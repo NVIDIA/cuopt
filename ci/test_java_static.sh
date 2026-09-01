@@ -58,6 +58,29 @@ if command -v ldconfig >/dev/null 2>&1 && ldconfig -p | grep -q libcuopt.so; the
   exit 1
 fi
 
+# The JAR dynamically links against the image's own CUDA runtime (libcublas/libcusparse), on
+# the assumption that the right /usr/local/cuda*/targets/*/lib is already on the dynamic
+# linker's search path via ldconfig. Observed missing on at least one arm64 runner
+# (UnsatisfiedLinkError: libcublas.so.13) despite being present and ldconfig-registered in the
+# published image itself, so don't rely on that implicit setup -- find and export the path
+# explicitly instead. arm64 images ship both a targets/aarch64-linux and a targets/sbsa-linux
+# directory; only the latter actually has the libraries, so match on libcublas.so being present
+# rather than just the first target directory found (aarch64-linux sorts first and is empty).
+CUDA_LIB_DIR=""
+for candidate in /usr/local/cuda*/targets/*/lib; do
+  if [[ -e "${candidate}/libcublas.so" ]]; then
+    CUDA_LIB_DIR="${candidate}"
+    break
+  fi
+done 2>/dev/null || true
+if [[ -n "${CUDA_LIB_DIR}" ]]; then
+  rapids-logger "Adding ${CUDA_LIB_DIR} to LD_LIBRARY_PATH"
+  export LD_LIBRARY_PATH="${CUDA_LIB_DIR}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+else
+  echo "WARNING: no CUDA targets lib dir with libcublas.so found; relying on the image's own" >&2
+  echo "         search path" >&2
+fi
+
 java -version
 mvn -version
 nvidia-smi
