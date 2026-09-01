@@ -1,0 +1,30 @@
+portfolio resolve: n=5000 k=50 K=20  CUDA_VISIBLE_DEVICES=1
+Comparing ADAT (CUOPT_AUGMENTED=0) vs forced augmented (=1); totals only. IR=0 bound_free_vars=0. Session warm solves use update_q (continue).
+
+--- ADAT / default: baseline ---
+--- ADAT / default: session ---
+  ADAT       / default  baseline_warm_total=  92.9  session_warm_total=  66.5  save= +26.5 (28.5%)  continue=19/19  hash_reuse=0/19  obj_match=YES
+combined solver log: /home/nfs/iroy/cuopt_solver_persistence/benchmark_review/native_api_test/scripts/../results/ADAT_default_all_solver.log
+--- ADAT / tuned: baseline ---
+--- ADAT / tuned: session ---
+  ADAT       / tuned    baseline_warm_total=  73.0  session_warm_total=  46.4  save= +26.6 (36.5%)  continue=19/19  hash_reuse=0/19  obj_match=YES
+combined solver log: /home/nfs/iroy/cuopt_solver_persistence/benchmark_review/native_api_test/scripts/../results/ADAT_tuned_all_solver.log
+--- augmented / default: baseline ---
+--- augmented / default: session ---
+  augmented  / default  baseline_warm_total= 106.2  session_warm_total=  36.9  save= +69.3 (65.2%)  continue=19/19  hash_reuse=0/19  obj_match=YES
+combined solver log: /home/nfs/iroy/cuopt_solver_persistence/benchmark_review/native_api_test/scripts/../results/augmented_default_all_solver.log
+--- augmented / tuned: baseline ---
+--- augmented / tuned: session ---
+  augmented  / tuned    baseline_warm_total=  95.6  session_warm_total=  26.7  save= +68.9 (72.1%)  continue=19/19  hash_reuse=0/19  obj_match=YES
+combined solver log: /home/nfs/iroy/cuopt_solver_persistence/benchmark_review/native_api_test/scripts/../results/augmented_tuned_all_solver.log
+
+=== ADAT vs forced augmented (solver total, warm mean, ms) ===
+path       config     baseline    session       save   save%
+------------------------------------------------------------
+ADAT       default        92.9       66.5      +26.5   28.5%
+ADAT       tuned          73.0       46.4      +26.6   36.5%
+augmented  default       106.2       36.9      +69.3   65.2%
+augmented  tuned          95.6       26.7      +68.9   72.1%
+
+wrote /home/nfs/iroy/cuopt_solver_persistence/benchmark_review/native_api_test/scripts/../results/resolve_adat_vs_aug_total.json
+solver logs: /home/nfs/iroy/cuopt_solver_persistence/benchmark_review/native_api_test/scripts/../results/resolve_adat_vs_aug_logs

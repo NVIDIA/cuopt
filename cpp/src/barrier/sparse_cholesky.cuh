@@ -148,7 +148,6 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       A_created(false),
       settings_(&settings),
       symbolic_done_(false),
-      numeric_factor_valid_(false),
       stream(handle_ptr->get_stream())
   {
     int major, minor, patch;
@@ -530,8 +529,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
     handle_ptr_->get_stream().synchronize();
 
-    symbolic_done_        = true;
-    numeric_factor_valid_ = false;
+    symbolic_done_ = true;
     return 0;
   }
   i_t factorize(device_csr_matrix_t<i_t, f_t>& Arow) override
@@ -888,8 +886,6 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     settings_ = &settings;
   }
 
-  void invalidate_numeric_factor() override { numeric_factor_valid_ = false; }
-
   /// Re-point cuDSS CSR wrapper at current device buffers after in-place value refresh.
   void rebind_csr_matrix(device_csr_matrix_t<i_t, f_t>& Arow) override
   {
@@ -936,8 +932,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       A_created = false;
       return;
     }
-    A_created             = true;
-    numeric_factor_valid_ = false;
+    A_created = true;
   }
 
  private:
@@ -964,7 +959,6 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
   f_t* b_values_d;
 
   bool symbolic_done_;
-  bool numeric_factor_valid_;
   const simplex::simplex_solver_settings_t<i_t, f_t>* settings_;
 
   CUgreenCtx barrier_green_ctx;

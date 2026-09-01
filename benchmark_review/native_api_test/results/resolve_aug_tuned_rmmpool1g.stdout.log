@@ -1,0 +1,15 @@
+portfolio resolve: n=5000 k=50 K=20  CUDA_VISIBLE_DEVICES=1  allocator=RMM pool 1 GiB (cudaMalloc)
+Comparing ADAT (CUOPT_AUGMENTED=0) vs forced augmented (=1); totals only. IR=0 bound_free_vars=0. Session warm solves use update_q (continue).
+
+--- augmented / tuned: baseline ---
+--- augmented / tuned: session ---
+  augmented  / tuned    baseline_warm_total= 104.6  session_warm_total=  27.1  save= +77.6 (74.1%)  continue=19/19  hash_reuse=0/19  obj_match=YES
+combined solver log: /home/nfs/iroy/cuopt_solver_persistence/benchmark_review/native_api_test/scripts/../results/augmented_tuned_all_solver.log
+
+=== ADAT vs forced augmented (solver total, warm mean, ms) ===
+path       config     baseline    session       save   save%
+------------------------------------------------------------
+augmented  tuned         104.6       27.1      +77.6   74.1%
+
+wrote /home/nfs/iroy/cuopt_solver_persistence/benchmark_review/native_api_test/scripts/../results/resolve_adat_vs_aug_total_rmmpool1g.json
+solver logs: /home/nfs/iroy/cuopt_solver_persistence/benchmark_review/native_api_test/scripts/../results/resolve_aug_tuned_rmmpool1g_logs

@@ -65,11 +65,6 @@ raft::handle_t const* barrier_cache_t::handle_ptr() const
   return impl_->handle.get();
 }
 
-rmm::cuda_stream_view barrier_cache_t::stream_view() const
-{
-  return impl_->stream->view();
-}
-
 void barrier_cache_t::clear()
 {
   impl_->iteration_data.reset();

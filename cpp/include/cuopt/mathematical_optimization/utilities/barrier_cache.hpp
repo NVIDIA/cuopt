@@ -47,7 +47,6 @@ class barrier_cache_t {
 
   [[nodiscard]] raft::handle_t* handle_ptr();
   [[nodiscard]] raft::handle_t const* handle_ptr() const;
-  [[nodiscard]] rmm::cuda_stream_view stream_view() const;
 
   /** Drop cached iteration workspace and transform (handle/stream stay). */
   void clear();

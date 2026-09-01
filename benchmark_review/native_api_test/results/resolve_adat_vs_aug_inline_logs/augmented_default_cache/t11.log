@@ -1,0 +1,54 @@
+Setting parameter method to 3
+Setting parameter augmented to 1
+Setting parameter crossover to false
+Setting parameter barrier_iterative_refinement to false
+Setting parameter barrier_presolve_bound_free_variables to 0
+Setting parameter absolute_dual_tolerance to 1.000000e-08
+Setting parameter relative_dual_tolerance to 1.000000e-08
+Setting parameter absolute_primal_tolerance to 1.000000e-08
+Setting parameter relative_primal_tolerance to 1.000000e-08
+Setting parameter absolute_gap_tolerance to 1.000000e-08
+Setting parameter relative_gap_tolerance to 1.000000e-08
+cuOpt version: 26.10.0, git hash: e2572f7a, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads (physical/logical): 96/96, RAM (available/total): 455.17 / 503.74 GiB
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: dd410df4-1b94-4b36-660f-4890710aed4c
+Problem has a quadratic objective. Solving with barrier.
+Barrier: continue from cache (skip convert/presolve/scaling)
+Barrier solver started at 0.000 seconds
+Barrier solver: 51 constraints, 5050 variables, 255050 nonzeros
+Quadratic objective matrix  : 5050 nonzeros
+Barrier setup complete at 0.001 seconds
+Elapsed time                : 0.001s
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -4.993409486180e-02 -6.264039249878e+04 2.48e-08 5.04e-05 1.19e+01 0.003
+  1   -4.994009596672e-02 -6.275632814039e+03 2.49e-08 5.05e-06 1.19e+00 0.005
+  2   -4.999988508625e-02 -6.391417762915e+02 4.82e-09 5.14e-07 1.21e-01 0.007
+  3   -5.057668755703e-02 -7.533647625302e+01 1.10e-09 6.06e-08 1.43e-02 0.009
+  4   -5.518392373898e-02 -1.268402566101e+01 1.28e-08 1.01e-08 2.39e-03 0.010
+  5   -4.802254555549e-02 -9.950406387791e+00 8.63e-08 6.75e-09 1.85e-03 0.012
+  6   -5.389165205287e-02 -2.431219446926e+00 3.69e-08 1.69e-09 4.40e-04 0.013
+  7   -5.733802978505e-02 -1.819258494741e+00 2.17e-08 1.93e-09 3.06e-04 0.015
+  8   -6.522090802244e-02 -5.827148769987e-01 4.10e-08 7.14e-10 8.96e-05 0.017
+  9   -7.619597235080e-02 -2.228472817070e-01 4.38e-09 3.48e-10 1.01e-04 0.018
+ 10   -8.691374409959e-02 -1.337864714044e-01 1.08e-08 1.60e-10 2.36e-05 0.020
+ 11   -9.373591094088e-02 -1.107381558480e-01 4.04e-09 1.63e-10 2.78e-05 0.021
+ 12   -9.705591788064e-02 -1.029810960817e-01 1.49e-09 1.19e-10 1.25e-05 0.023
+ 13   -9.859249267396e-02 -1.003463250215e-01 6.18e-10 5.95e-11 4.29e-06 0.025
+ 14   -9.913315883570e-02 -9.946111764642e-02 1.82e-10 2.91e-11 8.51e-07 0.026
+ 15   -9.924126762272e-02 -9.928978159866e-02 5.13e-11 8.92e-12 1.19e-07 0.028
+ 16   -9.925745063715e-02 -9.926515605947e-02 1.74e-11 3.02e-12 1.74e-08 0.030
+ 17   -9.926023284021e-02 -9.926109642393e-02 6.94e-12 1.21e-12 1.94e-09 0.031
+
+
+Optimal solution found in 17 iterations and 0.031s
+Objective -9.92602328e-02
+Primal infeasibility (abs/rel): 1.39e-11/6.94e-12
+Dual infeasibility   (abs/rel): 1.33e-12/1.21e-12
+Complementarity gap  (abs/rel): 2.14e-09/1.94e-09
+
+
+Barrier finished in 0.03 seconds

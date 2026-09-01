@@ -77,14 +77,6 @@ cdef class DataModel:
         self.row_names = np.array([])
         self.quadratic_constraints = []
 
-    def has_barrier_cache(self):
-        """Return whether this data model owns a reusable solver cache."""
-        return self.barrier_cache_capsule is not None
-
-    def clear_barrier_cache(self):
-        """Release this data model's reusable barrier cache."""
-        self.barrier_cache_capsule = None
-
     def clear_quadratic_constraints(self):
         self.quadratic_constraints = []
 

@@ -1,0 +1,30 @@
+portfolio resolve: n=5000 k=50 K=20  CUDA_VISIBLE_DEVICES=1  allocator=cudaMalloc (no pool)
+Comparing ADAT (CUOPT_AUGMENTED=0) vs forced augmented (=1); totals only. IR=0 bound_free_vars=0. Session warm solves use update_q (continue).
+
+--- ADAT / default: baseline ---
+--- ADAT / default: session ---
+  ADAT       / default  baseline_warm_total=2090.2  session_warm_total=2264.6  save=-174.4 (-8.3%)  continue=19/19  hash_reuse=0/19  obj_match=YES
+combined solver log: /home/nfs/iroy/cuopt_solver_persistence/benchmark_review/native_api_test/scripts/../results/ADAT_default_all_solver.log
+--- ADAT / tuned: baseline ---
+--- ADAT / tuned: session ---
+  ADAT       / tuned    baseline_warm_total=1663.6  session_warm_total=1488.8  save=+174.7 (10.5%)  continue=19/19  hash_reuse=0/19  obj_match=YES
+combined solver log: /home/nfs/iroy/cuopt_solver_persistence/benchmark_review/native_api_test/scripts/../results/ADAT_tuned_all_solver.log
+--- augmented / default: baseline ---
+--- augmented / default: session ---
+  augmented  / default  baseline_warm_total= 935.3  session_warm_total= 720.5  save=+214.7 (23.0%)  continue=19/19  hash_reuse=0/19  obj_match=YES
+combined solver log: /home/nfs/iroy/cuopt_solver_persistence/benchmark_review/native_api_test/scripts/../results/augmented_default_all_solver.log
+--- augmented / tuned: baseline ---
+--- augmented / tuned: session ---
+  augmented  / tuned    baseline_warm_total= 665.9  session_warm_total= 482.6  save=+183.3 (27.5%)  continue=19/19  hash_reuse=0/19  obj_match=YES
+combined solver log: /home/nfs/iroy/cuopt_solver_persistence/benchmark_review/native_api_test/scripts/../results/augmented_tuned_all_solver.log
+
+=== ADAT vs forced augmented (solver total, warm mean, ms) ===
+path       config     baseline    session       save   save%
+------------------------------------------------------------
+ADAT       default      2090.2     2264.6     -174.4   -8.3%
+ADAT       tuned        1663.6     1488.8     +174.7   10.5%
+augmented  default       935.3      720.5     +214.7   23.0%
+augmented  tuned         665.9      482.6     +183.3   27.5%
+
+wrote /home/nfs/iroy/cuopt_solver_persistence/benchmark_review/native_api_test/scripts/../results/resolve_adat_vs_aug_total_nopool.json
+solver logs: /home/nfs/iroy/cuopt_solver_persistence/benchmark_review/native_api_test/results/resolve_adat_vs_aug_cleanup_logs

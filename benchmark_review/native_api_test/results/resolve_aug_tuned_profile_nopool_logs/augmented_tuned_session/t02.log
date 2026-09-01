@@ -1,0 +1,97 @@
+=== Solver phase profile (ms) ===
+Phase profile: P01 convert user problem 0.000
+Phase profile: P02 presolve 0.000
+Phase profile: P03 scaling 0.000
+Phase profile: P04 barrier workspace setup 1.336
+Phase profile: P05 initial point + residuals 2.204
+Phase profile: P06 IPM iterations 22.702
+Phase profile: P07 store front-end cache 0.000
+Phase profile: P08 unscale/uncrush 0.041
+Phase profile: TOTAL measured 26.283
+=== Solver cache setup detail (ms; nested within phases) ===
+Cache detail: C01 raft handle+stream 0.000
+Cache detail: C02 cuBLAS/cuSparse warmup 0.007
+Cache detail: C03 problem fingerprint 0.241
+Cache detail: C04 augmented vs ADAT choice 0.000
+Cache detail: C05 KKT sparsity pattern 0.000
+Cache detail: C06 Cholesky setup incl symbolic 0.000
+Cache detail: C07 cuDSS symbolic factorization 0.000
+Cache detail: C08 dense-column/SOC layout 0.000
+Cache detail: C09 device buffer allocation 0.000
+Cache detail: D01 cuDSS numeric factorization 7.934
+Cache detail: D02 cuDSS linear solves 5.198
+=== End solver phase profile ===
+Setting parameter method to 3
+Setting parameter augmented to 1
+Setting parameter crossover to false
+Setting parameter barrier_iterative_refinement to false
+Setting parameter barrier_presolve_bound_free_variables to 0
+Setting parameter absolute_dual_tolerance to 1.000000e-08
+Setting parameter relative_dual_tolerance to 1.000000e-08
+Setting parameter absolute_primal_tolerance to 1.000000e-08
+Setting parameter relative_primal_tolerance to 1.000000e-08
+Setting parameter absolute_gap_tolerance to 1.000000e-08
+Setting parameter relative_gap_tolerance to 1.000000e-08
+Setting parameter barrier_dual_initial_point to 1
+Setting parameter barrier_step_scale to 9.900000e-01
+cuOpt version: 26.10.0, git hash: ab26076f, host arch: x86_64, device archs: 80-real
+CPU: AMD EPYC 7642 48-Core Processor, threads (physical/logical): 96/96, RAM (available/total): 479.72 / 503.74 GiB
+CUDA 12.9, device: NVIDIA A100 80GB PCIe (ID 0), VRAM: 79.44 GiB
+CUDA device UUID: dd410df4-1b94-4b36-660f-4890710aed4c
+Problem has a quadratic objective. Solving with barrier.
+Barrier: continue from session (skip convert/presolve/scaling)
+Barrier solver started at 0.003 seconds
+Barrier solver: 51 constraints, 5050 variables, 255050 nonzeros
+Quadratic objective matrix  : 5050 nonzeros
+Barrier setup complete at 0.004 seconds
+Elapsed time                : 0.004s
+
+
+                  Objective                         Infeasibility        Time
+Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed
+  0   -4.992020597783e-02 -2.507057529202e+03 2.48e-08 1.02e-01 4.77e-01 0.006
+  1   -5.008414149751e-02 -3.777122761865e+01 3.46e-09 1.53e-03 7.17e-03 0.008
+  2   -6.114533033599e-02 -7.964520488595e-01 9.47e-08 1.53e-05 1.25e-04 0.010
+  3   -6.755367555271e-02 -2.199653174305e-01 4.78e-08 3.14e-06 2.58e-05 0.012
+  4   -7.349610023976e-02 -2.067958735032e-01 2.26e-08 1.88e-06 4.61e-04 0.014
+  5   -8.986124575393e-02 -1.200342955139e-01 1.11e-08 2.78e-07 1.18e-04 0.016
+  6   -9.321100613129e-02 -1.109021754577e-01 4.46e-09 1.03e-07 5.90e-05 0.017
+  7   -9.786903594615e-02 -1.018208022282e-01 1.54e-09 2.04e-08 1.37e-05 0.019
+  8   -9.895292725192e-02 -9.977718254381e-02 3.81e-10 2.91e-09 2.10e-06 0.021
+  9   -9.925029597632e-02 -9.932259392243e-02 7.45e-11 1.72e-10 1.55e-07 0.023
+ 10   -9.928050721097e-02 -9.928234617345e-02 1.62e-11 4.19e-12 2.27e-08 0.025
+ 11   -9.928127702409e-02 -9.928132044002e-02 6.35e-12 1.10e-12 2.60e-09 0.027
+
+
+Optimal solution found in 11 iterations and 0.027s
+Objective -9.92812770e-02
+Primal infeasibility (abs/rel): 1.27e-11/6.35e-12
+Dual infeasibility   (abs/rel): 1.22e-12/1.10e-12
+Complementarity gap  (abs/rel): 2.86e-09/2.60e-09
+
+
+Barrier: stored augmented symbolic cache hash=0xb4e7e36698e5eb2e
+Barrier finished in 0.03 seconds
+=== Solver phase profile (ms) ===
+Phase profile: P01 convert user problem 0.000
+Phase profile: P02 presolve 0.000
+Phase profile: P03 scaling 0.000
+Phase profile: P04 barrier workspace setup 1.314
+Phase profile: P05 initial point + residuals 2.191
+Phase profile: P06 IPM iterations 22.324
+Phase profile: P07 store front-end cache 0.000
+Phase profile: P08 unscale/uncrush 0.040
+Phase profile: TOTAL measured 25.870
+=== Solver cache setup detail (ms; nested within phases) ===
+Cache detail: C01 raft handle+stream 0.000
+Cache detail: C02 cuBLAS/cuSparse warmup 0.007
+Cache detail: C03 problem fingerprint 0.230
+Cache detail: C04 augmented vs ADAT choice 0.000
+Cache detail: C05 KKT sparsity pattern 0.000
+Cache detail: C06 Cholesky setup incl symbolic 0.000
+Cache detail: C07 cuDSS symbolic factorization 0.000
+Cache detail: C08 dense-column/SOC layout 0.000
+Cache detail: C09 device buffer allocation 0.000
+Cache detail: D01 cuDSS numeric factorization 7.910
+Cache detail: D02 cuDSS linear solves 5.195
+=== End solver phase profile ===
