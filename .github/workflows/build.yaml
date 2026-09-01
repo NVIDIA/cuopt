@@ -94,6 +94,11 @@ jobs:
       node_type: "cpu16"
       arch: ${{ matrix.ARCH }}
       container_image: "rapidsai/ci-conda:26.10-latest"
+      # custom-job.yaml has no per-matrix env passthrough, so RAPIDS_CUDA_VERSION otherwise stays
+      # at whatever this image's default is for every matrix entry: ci/build_java_static.sh reads
+      # it to pick the conda CUDA toolkit, so without this override every "cuN" classifier JAR
+      # would actually be built against the same CUDA version and just mislabeled.
+      container-options: "-e _NOOP -e RAPIDS_CUDA_VERSION=${{ matrix.CUDA_VER }}"
       script: "ci/build_java_static.sh"
       artifact-name: "cuopt_java_${{ matrix.ARCH }}_cu${{ matrix.CUDA_MAJOR }}"
       file_to_upload: "java/cuopt/classifier-jars/"
