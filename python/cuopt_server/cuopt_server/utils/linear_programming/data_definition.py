@@ -501,7 +501,8 @@ class SolverConfig(BaseModel):
         description="Set the type of dual initial point to use for the barrier"
         "solver. -1 for automatic, 0 to use Lustig, Marsten, and Shanno"
         "initial point, 1 to use initial point from a dual least squares"
-        "problem",
+        "problem, 2 to use Sturm/SeDuMi mu-based primal+dual"
+        "point",
     )
     eliminate_dense_columns: Optional[bool] = Field(
         default=True,

@@ -30,6 +30,7 @@
 #include "grpc_settings_mapper.hpp"
 #include "grpc_solution_mapper.hpp"
 #include "server/grpc_field_element_size.hpp"
+#include "solve_remote_impl.hpp"
 
 #include <cuopt_remote.pb.h>
 #include <cuopt_remote_service.grpc.pb.h>
@@ -2224,24 +2225,25 @@ TEST(MapperRoundtrip, PDLPSettingsAllFields)
   orig.tolerances.absolute_primal_tolerance   = 5e-7;
   orig.tolerances.relative_primal_tolerance   = 6e-7;
 
-  orig.time_limit                   = 99.5;
-  orig.iteration_limit              = 10000;
-  orig.log_to_console               = false;
-  orig.detect_infeasibility         = true;
-  orig.strict_infeasibility         = true;
-  orig.pdlp_solver_mode             = pdlp_solver_mode_t::Fast1;
-  orig.method                       = method_t::Barrier;
-  orig.presolver                    = presolver_t::Default;
-  orig.dual_postsolve               = true;
-  orig.crossover                    = true;
-  orig.num_gpus                     = 4;
-  orig.per_constraint_residual      = true;
-  orig.cudss_deterministic          = true;
-  orig.folding                      = 1;
-  orig.augmented                    = 1;
-  orig.dualize                      = 1;
-  orig.ordering                     = 2;
-  orig.barrier_dual_initial_point   = 1;
+  orig.time_limit              = 99.5;
+  orig.iteration_limit         = 10000;
+  orig.log_to_console          = false;
+  orig.detect_infeasibility    = true;
+  orig.strict_infeasibility    = true;
+  orig.pdlp_solver_mode        = pdlp_solver_mode_t::Fast1;
+  orig.method                  = method_t::Barrier;
+  orig.presolver               = presolver_t::Default;
+  orig.dual_postsolve          = true;
+  orig.crossover               = true;
+  orig.num_gpus                = 4;
+  orig.per_constraint_residual = true;
+  orig.cudss_deterministic     = true;
+  orig.folding                 = 1;
+  orig.augmented               = 1;
+  orig.dualize                 = 1;
+  orig.ordering                = 2;
+  orig.barrier_dual_initial_point =
+    cuopt::mathematical_optimization::barrier_dual_initial_point_t::LustigMarstenShanno;
   orig.eliminate_dense_columns      = true;
   orig.barrier_iterative_refinement = false;  // not the default true, to detect overwrite-on-decode
   orig.barrier_step_scale           = 0.75;   // not the default 0.9
@@ -2282,7 +2284,8 @@ TEST(MapperRoundtrip, PDLPSettingsAllFields)
   EXPECT_EQ(restored.augmented, 1);
   EXPECT_EQ(restored.dualize, 1);
   EXPECT_EQ(restored.ordering, 2);
-  EXPECT_EQ(restored.barrier_dual_initial_point, 1);
+  EXPECT_EQ(restored.barrier_dual_initial_point,
+            cuopt::mathematical_optimization::barrier_dual_initial_point_t::LustigMarstenShanno);
   EXPECT_EQ(restored.eliminate_dense_columns, true);
   EXPECT_EQ(restored.barrier_iterative_refinement, false);
   EXPECT_DOUBLE_EQ(restored.barrier_step_scale, 0.75);
@@ -2838,4 +2841,73 @@ TEST(MapperRoundtrip, QuadraticConstraintsRowTypeLenient)
               static_cast<int>(static_cast<unsigned char>(row_types[i])))
       << "Mismatch at index " << i;
   }
+}
+
+// =============================================================================
+// solve_mip_remote() unsupported-feature disabling
+// =============================================================================
+//
+// solve_mip_remote() drops user-provided incumbent get/set callbacks when the model has
+// semi-continuous variables, since the remote server does not support that combination.
+// should_disable_unsupported() is the predicate behind that decision, declared in
+// solve_remote_impl.hpp so it can be tested without a live gRPC connection.
+
+namespace {
+
+// Minimal concrete callback: the predicate only asks whether any callback is registered.
+class test_get_callback_t : public cuopt::internals::get_solution_callback_t {
+ public:
+  void get_solution(void*, void*, void*, void*) override {}
+};
+
+cpu_optimization_problem_t<int, double> make_problem(const std::vector<var_t>& var_types)
+{
+  cpu_optimization_problem_t<int, double> problem;
+  if (!var_types.empty()) {
+    problem.set_variable_types(var_types.data(), static_cast<int>(var_types.size()));
+  }
+  return problem;
+}
+
+}  // namespace
+
+TEST(SolveMipRemoteCallbacks, NoSemiContinuousNoCallbacksKeepsDisabled)
+{
+  auto problem = make_problem({var_t::CONTINUOUS, var_t::INTEGER});
+  mip_solver_settings_t<int, double> settings;
+  EXPECT_FALSE(should_disable_unsupported(problem, settings));
+}
+
+TEST(SolveMipRemoteCallbacks, NoSemiContinuousWithCallbacksKeepsEnabled)
+{
+  auto problem = make_problem({var_t::CONTINUOUS, var_t::INTEGER});
+  mip_solver_settings_t<int, double> settings;
+  test_get_callback_t callback;
+  settings.set_mip_callback(&callback, nullptr);
+  EXPECT_FALSE(should_disable_unsupported(problem, settings));
+}
+
+TEST(SolveMipRemoteCallbacks, SemiContinuousWithoutCallbacksStaysDisabled)
+{
+  auto problem = make_problem({var_t::CONTINUOUS, var_t::SEMI_CONTINUOUS});
+  mip_solver_settings_t<int, double> settings;
+  EXPECT_FALSE(should_disable_unsupported(problem, settings));
+}
+
+TEST(SolveMipRemoteCallbacks, SemiContinuousWithCallbacksGetsDisabled)
+{
+  auto problem = make_problem({var_t::CONTINUOUS, var_t::SEMI_CONTINUOUS, var_t::INTEGER});
+  mip_solver_settings_t<int, double> settings;
+  test_get_callback_t callback;
+  settings.set_mip_callback(&callback, nullptr);
+  EXPECT_TRUE(should_disable_unsupported(problem, settings));
+}
+
+TEST(SolveMipRemoteCallbacks, EmptyVariableListKeepsCallbacksEnabled)
+{
+  auto problem = make_problem({});
+  mip_solver_settings_t<int, double> settings;
+  test_get_callback_t callback;
+  settings.set_mip_callback(&callback, nullptr);
+  EXPECT_FALSE(should_disable_unsupported(problem, settings));
 }
