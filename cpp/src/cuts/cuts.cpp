@@ -1272,6 +1272,7 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
       } else if (sets[r] < new_set_0) {
         const i_t old_set = sets[r];
         bool matched      = false;
+        // Loop over all indices a_ij with i > r where i is in the same set as r.
         for (const i_t q : set_groups.entries_after(old_set, p)) {
           const i_t i    = cut_storage_csc.i[q];
           const f_t a_ij = cut_storage_csc.x[q];
