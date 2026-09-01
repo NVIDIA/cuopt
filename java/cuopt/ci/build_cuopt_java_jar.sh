@@ -104,7 +104,11 @@ for companion in librmm.so librapids_logger.so libtbb.so.12 libnccl.so.2 libcuds
 done
 
 mkdir -p "${OUTPUT_DIR}/${CLASSIFIER}"
+# -Pattach-source-javadoc: this publishes to a Maven repository, which requires sources and
+# javadoc jars. Most mvn invocations (test, verify) don't activate it, since they don't
+# package anything -- see the profile's own comment in pom.xml for why that distinction exists.
 cuopt_mvn -f "${MODULE_DIR}/pom.xml" -B \
+  -Pattach-source-javadoc \
   -DskipTests \
   -Dcuopt.jar.classifier="${CLASSIFIER}" \
   -Dcuopt.native.resources="${STAGING}" \
