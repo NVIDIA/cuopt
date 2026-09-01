@@ -1243,11 +1243,12 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
   // by J. A. Tomlin and J.S. Welch
   // Operations Research Letters Volume 5, Number 1, June 1986.
   //
-  // Preserve the legacy partition refinement and row-ordered deletion semantics, but index
-  // entries by their current set. This avoids scanning unrelated later entries without changing
-  // the first matching partner or the resulting removal mask.
+  // Preserve the legacy partition refinement and row-ordered deletion semantics, but group
+  // entries by their current set in compressed storage. This avoids scanning unrelated later
+  // entries without changing the first matching partner or the resulting removal mask.
   i_t new_set                        = 1;
   i_t remaining_potential_duplicates = m;
+  compressed_set_groups_t<i_t> set_groups;
   for (i_t j = 0; j < n; j++) {
     i_t r0        = -1;
     i_t new_rows  = 0;
@@ -1256,12 +1257,8 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
     const i_t col_start = cut_storage_csc.col_start[j];
     const i_t col_end   = cut_storage_csc.col_start[j + 1];
 
-    std::unordered_map<i_t, std::vector<i_t>> positions_by_set;
-    positions_by_set.reserve(col_end - col_start);
-    for (i_t p = col_start; p < col_end; p++) {
-      const i_t set = sets[cut_storage_csc.i[p]];
-      if (set > 0 && set < new_set_0) { positions_by_set[set].push_back(p); }
-    }
+    set_groups.build(
+      col_start, col_end, new_set_0, [&](i_t p) { return sets[cut_storage_csc.i[p]]; });
 
     for (i_t p = col_start; p < col_end; p++) {
       const i_t r    = cut_storage_csc.i[p];
@@ -1273,25 +1270,22 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
         divisors[r] = a_rj;
         new_rows++;
       } else if (sets[r] < new_set_0) {
-        const i_t old_set        = sets[r];
-        bool matched             = false;
-        const auto set_positions = positions_by_set.find(old_set);
-        if (set_positions != positions_by_set.end()) {
-          auto q_position =
-            std::upper_bound(set_positions->second.begin(), set_positions->second.end(), p);
-          for (; q_position != set_positions->second.end(); ++q_position) {
-            const i_t q    = *q_position;
-            const i_t i    = cut_storage_csc.i[q];
-            const f_t a_ij = cut_storage_csc.x[q];
-            if (sets[i] != old_set) { continue; }
-            const f_t f_i = divisors[i];
-            const f_t val = (a_rj / f_r) * (f_i / a_ij);
-            if (val >= 1.0 - duplicate_tolerance && val <= 1.0 + duplicate_tolerance) {
-              sets[r] = new_set;
-              sets[i] = new_set;
-              matched = true;
-              break;
-            }
+        const i_t old_set      = sets[r];
+        bool matched           = false;
+        const auto set_entries = set_groups.entries_in_set(old_set);
+        auto q_position        = std::upper_bound(set_entries.begin(), set_entries.end(), p);
+        for (; q_position != set_entries.end(); ++q_position) {
+          const i_t q    = *q_position;
+          const i_t i    = cut_storage_csc.i[q];
+          const f_t a_ij = cut_storage_csc.x[q];
+          if (sets[i] != old_set) { continue; }
+          const f_t f_i = divisors[i];
+          const f_t val = (a_rj / f_r) * (f_i / a_ij);
+          if (val >= 1.0 - duplicate_tolerance && val <= 1.0 + duplicate_tolerance) {
+            sets[r] = new_set;
+            sets[i] = new_set;
+            matched = true;
+            break;
           }
         }
         if (matched) {
@@ -1313,11 +1307,7 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
 
   // The cuts are stored in the form: sum_j d_ij x_j >= rhs_i.
   // We now look for cuts that are duplicates of each other and remove them.
-  std::unordered_map<i_t, std::vector<i_t>> rows_by_set;
-  rows_by_set.reserve(m);
-  for (i_t r = 0; r < m; r++) {
-    if (sets[r] > 0 && sets[r] < sentinel) { rows_by_set[sets[r]].push_back(r); }
-  }
+  set_groups.build(0, m, new_set, [&](i_t r) { return sets[r]; });
 
   std::vector<i_t> cuts_to_remove(m, 0);
   for (i_t r = 0; r < m; r++) {
@@ -1325,9 +1315,9 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
     if (set_r <= 0 || set_r >= sentinel || cuts_to_remove[r] != 0) { continue; }
     // This cut has a duplicate. The set members are in row order, preserving the legacy
     // strongest-cut selection order without scanning unrelated rows.
-    const auto& members = rows_by_set.at(set_r);
-    auto member         = std::upper_bound(members.begin(), members.end(), r);
-    for (; member != members.end(); ++member) {
+    const auto set_entries = set_groups.entries_in_set(set_r);
+    auto member            = std::upper_bound(set_entries.begin(), set_entries.end(), r);
+    for (; member != set_entries.end(); ++member) {
       const i_t i       = *member;
       const f_t f_r     = divisors[r];
       const f_t f_i     = divisors[i];
