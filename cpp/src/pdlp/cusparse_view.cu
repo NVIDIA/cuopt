@@ -185,8 +185,6 @@ using cusparseSpMVOp_sig = cusparse_sig<cusparseHandle_t,
                                         cusparseDnVecDescr_t,
                                         cusparseDnVecDescr_t>;
 
-namespace {
-
 cusparseStatus_t cusparse_spmvop_buffer_size(cusparseHandle_t handle,
                                              cusparseOperation_t opA,
                                              cusparseSpMatDescr_t matA,
@@ -217,8 +215,6 @@ cusparseStatus_t cusparse_spmvop_create_descr(cusparseHandle_t handle,
   return (*fn)(
     handle, descr, opA, matA, vecX, vecY, vecZ, computeType, CUSPARSE_SPMVOP_ALG_DEFAULT, buffer);
 }
-
-}  // namespace
 
 void cusparse_spmvop_descr_deleter_t::operator()(cusparseSpMVOpDescr_t descr) const noexcept
 {
