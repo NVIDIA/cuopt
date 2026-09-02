@@ -45,6 +45,16 @@ waits, and deletes the job's server-side state when done (pass
    :language: python
    :linenos:
 
+Illustrative output (exact status text, vehicle count, objective, and route
+order depend on the solver run and are not guaranteed to match):
+
+.. code-block:: text
+
+   Status:     Success
+   Vehicles:   1
+   Objective:  5.0
+   Route:      [0 1 2 3 4 0]
+
 Job Lifecycle
 =============
 
