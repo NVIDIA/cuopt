@@ -165,6 +165,7 @@ outputs:
       - package_contents:
           files:
             - lib/libcuopt.so
+            - lib/libcuopt_client.so
             - bin/cuopt_cli
             - bin/cuopt_grpc_server
     about:

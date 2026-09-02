@@ -8,6 +8,10 @@ set(UTIL_SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/utilities/seed_generator.cu
                    ${CMAKE_CURRENT_SOURCE_DIR}/utilities/timestamp_utils.cpp
                    ${CMAKE_CURRENT_SOURCE_DIR}/utilities/work_unit_scheduler.cpp)
 
+# No sources here: <utilities/logger.hpp> became header-only in #1778 (each component
+# library gets its own hidden logger), so cuopt_client needs no translation unit for it.
+set(UTIL_CLIENT_SRC_FILES)
+
 add_subdirectory(linear_algebra)
 add_subdirectory(pdlp)
 add_subdirectory(math_optimization)
@@ -25,4 +29,5 @@ add_subdirectory(branch_and_bound)
 add_subdirectory(cuts)
 
 set(CUOPT_SRC_FILES ${CUOPT_SRC_FILES} ${UTIL_SRC_FILES} PARENT_SCOPE)
+set(CUOPT_CLIENT_SRC_FILES ${CUOPT_CLIENT_SRC_FILES} ${UTIL_CLIENT_SRC_FILES} PARENT_SCOPE)
 set(MPS_FAST_SRC_FILES ${MPS_FAST_SRC_FILES} PARENT_SCOPE)

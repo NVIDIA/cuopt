@@ -9,7 +9,6 @@ set(MIP_LP_NECESSARY_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/problem/problem.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/problem/presolve_data.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solver_settings.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/solver_settings.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/solver_solution.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/local_search/rounding/simple_rounding.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/presolve/third_party_presolve.cpp
@@ -57,5 +56,13 @@ else()
   set(MIP_SRC_FILES ${MIP_LP_NECESSARY_FILES} ${MIP_NON_LP_FILES})
 endif()
 
+# Host-only members of mip_solver_settings_t (callbacks, tolerances). The gRPC client
+# needs them, so they build into cuopt_client; add_initial_solution stays in the .cu.
+set(MIP_CLIENT_SRC_FILES
+  ${CMAKE_CURRENT_SOURCE_DIR}/solver_settings.cpp
+)
+
 set(CUOPT_SRC_FILES ${CUOPT_SRC_FILES}
   ${MIP_SRC_FILES} PARENT_SCOPE)
+set(CUOPT_CLIENT_SRC_FILES ${CUOPT_CLIENT_SRC_FILES}
+  ${MIP_CLIENT_SRC_FILES} PARENT_SCOPE)
