@@ -10,14 +10,17 @@ The **CuOptRemoteService** gRPC API is defined in Protocol Buffers under the ``c
 
 * ``cpp/src/grpc/cuopt_remote_service.proto`` — service and job/chunk/log RPCs
 * ``cpp/src/grpc/cuopt_remote.proto`` — LP/MIP problem, settings, and result messages
+* ``cpp/src/grpc/routing/cuopt_routing.proto`` — VRP request messages
+* ``cpp/src/grpc/routing/cuopt_routing_solution.proto`` — VRP result messages
 
 Most users do **not** call these RPCs directly:
 
 * **Remote execution** — Python, C (``cuOptSolve``), and ``cuopt_cli`` forward
-  solves when ``CUOPT_REMOTE_HOST`` and ``CUOPT_REMOTE_PORT`` are set
-  (:doc:`quick-start`, :doc:`advanced`).
-* **Python async gRPC client** — ``cuopt.grpc.linear_programming.Client``
-  (:doc:`python-async-client`).
+  LP/MIP/QP solves when ``CUOPT_REMOTE_HOST`` and ``CUOPT_REMOTE_PORT`` are
+  set (:doc:`quick-start`, :doc:`advanced`).
+* **Python async gRPC client** — ``cuopt.grpc.linear_programming.Client`` for
+  LP/MIP/QP (:doc:`python-async-client`), ``cuopt.grpc.routing.RoutingClient``
+  for VRP (:doc:`routing`).
 
 **Custom** clients call ``CuOptRemoteService`` over gRPC using these definitions.
 This page summarizes the service for custom integrators and debugging.
@@ -35,7 +38,8 @@ Asynchronous Jobs
    * - RPC
      - Purpose
    * - ``SubmitJob``
-     - Submit an LP or MIP job in one message (within gRPC message size limits).
+     - Submit an LP, MIP, or VRP job in one message (within gRPC message size
+       limits; VRP is unary-only today, see :doc:`routing`).
    * - ``CheckStatus``
      - Poll job status by ``job_id``.
    * - ``GetResult``

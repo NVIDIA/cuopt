@@ -34,7 +34,7 @@ cost_matrix = np.array(
 )
 dm.add_cost_matrix(cost_matrix)
 
-client = RoutingClient("localhost", 5001)
+client = RoutingClient("localhost", 5001)  # tls=None uses CUOPT_TLS_* if set
 solution = client.solve(dm, {"time_limit": 5.0})
 
 print("Status:    ", solution["status_message"])
