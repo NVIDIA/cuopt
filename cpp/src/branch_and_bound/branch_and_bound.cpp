@@ -3118,16 +3118,17 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
           cut_settings.clique_cuts    = 0;
           cut_settings.zero_half_cuts = 0;
         }
-        cut_generation_t<i_t, f_t> relaxation_cut_generation(
-          cut_pool,
-          original_lp_,
-          cut_settings,
-          Arow_,
-          new_slacks_,
-          var_types_,
-          original_problem_,
-          probing_implied_bound_,
-          clique_table_ready ? clique_table_ : nullptr);
+        std::shared_ptr<mip::clique_table_t<i_t, f_t>> relaxation_clique_table =
+          clique_table_ready ? clique_table_ : nullptr;
+        cut_generation_t<i_t, f_t> relaxation_cut_generation(cut_pool,
+                                                             original_lp_,
+                                                             cut_settings,
+                                                             Arow_,
+                                                             new_slacks_,
+                                                             var_types_,
+                                                             original_problem_,
+                                                             probing_implied_bound_,
+                                                             relaxation_clique_table);
         const bool feasible =
           relaxation_cut_generation.generate_cuts(original_lp_,
                                                   cut_settings,
@@ -3823,9 +3824,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                             var_types_,
                                             original_problem_,
                                             probing_implied_bound_,
-                                            nullptr,
-                                            clique_signal,
-                                            std::ref(clique_table_));
+                                            clique_table_,
+                                            clique_signal);
 
   std::vector<f_t> saved_solution;
 #ifdef CHECK_CUTS_AGAINST_SAVED_SOLUTION

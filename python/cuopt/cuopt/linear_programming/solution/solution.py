@@ -74,6 +74,10 @@ class Solution:
         Note: Applicable to only LP
         The reduced cost.
         It contains the dual multipliers for the linear constraints.
+    slack : numpy.array
+        Slack/surplus per linear constraint in CSR row order:
+        ``rhs - lhs`` for ``<=``, ``lhs - rhs`` for ``>=``. Equality rows
+        store the residual ``rhs - lhs``. None when it was not computed.
     termination_status: Integer
         Termination status value.
     primal_residual: Float64
@@ -168,10 +172,12 @@ class Solution:
         max_variable_bound_violation=0.0,
         num_nodes=0,
         num_simplex_iterations=0,
+        slack=None,
     ):
         self.problem_category = problem_category
         self.primal_solution = primal_solution
         self.dual_solution = dual_solution
+        self.slack = slack
         if problem_category == ProblemCategory.LP:
             self.pdlp_warm_start_data = PDLPWarmStartData(
                 current_primal_solution,
@@ -261,6 +267,22 @@ class Solution:
         """
         self.raise_if_milp_solution("get_dual_solution")
         return self.dual_solution
+
+    def get_slack(self):
+        """
+        Returns the constraint slack/surplus as numpy.array with float64 type.
+
+        For each linear constraint with ``lhs = A_i @ primal``:
+
+        * ``<=``: ``rhs - lhs`` (slack; non-negative if feasible)
+        * ``>=``: ``lhs - rhs`` (surplus; non-negative if feasible)
+        * ``==``: ``rhs - lhs`` (residual; near zero if feasible)
+
+        Quadratic constraints are not included. Returns None when the values
+        could not be computed, for example when the solver returned no primal
+        solution.
+        """
+        return self.slack
 
     def get_primal_objective(self):
         """

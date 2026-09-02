@@ -3325,8 +3325,6 @@ void cut_generation_t<i_t, f_t>::prepare_fractional_sub_conflict_graph(
     signal_extend_->store(true, std::memory_order_release);
 #pragma omp taskwait depend(in : *signal_extend_)
   }
-  if (clique_table_source_.has_value()) { clique_table_ = clique_table_source_->get(); }
-
   if (clique_table_ == nullptr) { return; }
   const bool has_probing_conflicts =
     !probing_implied_bound_.zero_variables.empty() || !probing_implied_bound_.one_variables.empty();
@@ -5166,8 +5164,7 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::cut_generation_heurist
   const std::atomic<int>* concurrent_halt)
 {
   const auto halted = [concurrent_halt]() {
-    return concurrent_halt != nullptr &&
-           concurrent_halt->load(std::memory_order_acquire) != 0;
+    return concurrent_halt != nullptr && concurrent_halt->load(std::memory_order_acquire) != 0;
   };
 
   std::vector<f_t> deltas_to_try;

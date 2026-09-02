@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 
@@ -292,6 +292,9 @@ cdef class DataModel:
         return self.problem_name
 
     def set_data_model_view(self):
+        # Rebind from scratch so optional fields that were previously set but
+        # are now empty (e.g. Q after QP -> LP) do not stick in the C++ view.
+        self.c_data_model_view.reset(new data_model_view_t[int, double]())
         cdef data_model_view_t[int, double]* c_data_model_view = (
             self.c_data_model_view.get()
         )
