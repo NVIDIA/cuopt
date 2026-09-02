@@ -949,7 +949,7 @@ i_t fj_t<i_t, f_t>::host_loop(solution_t<i_t, f_t>& solution, i_t climber_idx)
       }
     }
   }
-#if CUOPT_LOG_ACTIVE_LEVEL == CUOPT_LOG_LEVEL_TRACE
+#if CUOPT_LOG_ACTIVE_LEVEL == RAPIDS_LOGGER_LOG_LEVEL_TRACE
   auto h_sol = cuopt::host_copy(solution.assignment, climber_stream);
   static std::set<std::vector<f_t>> solutions_set;
   bool same_sol = solutions_set.count(h_sol) > 0;

@@ -21,11 +21,13 @@
 #define PDLP_INSTANTIATE_FLOAT 1
 
 /* @brief Minimimum number of threads to enable each part of the MIP Solver */
-#define CUOPT_MIP_FJ_REQUIRED_THREAD_COUNT          8
-#define CUOPT_MIP_EARLY_GPUFJ_REQUIRED_THREAD_COUNT 3
-#define CUOPT_MIP_EARLY_CPUFJ_REQUIRED_THREAD_COUNT 2
-#define CUOPT_MIP_BATCH_PDLP_REQUIRED_THREAD_COUNT  3
-#define CUOPT_MIP_CLIQUE_CUTS_REQUIRED_THREAD_COUNT 3
+#define CUOPT_MIP_FJ_REQUIRED_THREAD_COUNT               8
+#define CUOPT_MIP_EARLY_GPUFJ_REQUIRED_THREAD_COUNT      3
+#define CUOPT_MIP_EARLY_CPUFJ_REQUIRED_THREAD_COUNT      2
+#define CUOPT_MIP_EARLY_STRUCTURAL_REQUIRED_THREAD_COUNT 2
+#define CUOPT_MIP_ROOT_STRUCTURAL_REQUIRED_THREAD_COUNT  3
+#define CUOPT_MIP_BATCH_PDLP_REQUIRED_THREAD_COUNT       3
+#define CUOPT_MIP_CLIQUE_CUTS_REQUIRED_THREAD_COUNT      3
 
 // MIP-only gate: skip the concurrent barrier when fewer threads are available than this
 // (1 PDLP + 1 dual simplex + 1 barrier). Stand-alone LP always runs all three.

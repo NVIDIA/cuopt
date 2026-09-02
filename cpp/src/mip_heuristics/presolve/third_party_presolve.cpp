@@ -40,6 +40,7 @@
 #include <cuopt/mathematical_optimization/solve.hpp>
 #include <dual_simplex/presolve.hpp>
 #include <mip_heuristics/mip_constants.hpp>
+#include <mip_heuristics/presolve/bhw_coeff_reduce.hpp>
 #include <mip_heuristics/presolve/gf2_presolve.hpp>
 #include <mip_heuristics/presolve/single_lock_dual_aggregation.hpp>
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
@@ -678,6 +679,7 @@ void set_presolve_methods(
   if (category == problem_category_t::MIP) {
     // cuOpt custom GF2 presolver
     maybe_add(uptr(new cuopt::mathematical_optimization::mip::GF2Presolve<f_t>()));
+    maybe_add(uptr(new cuopt::mathematical_optimization::mip::BHWCoeffReduce<f_t>()));
   }
   // fast presolvers
   maybe_add(uptr(new papilo::SingletonCols<f_t>()));

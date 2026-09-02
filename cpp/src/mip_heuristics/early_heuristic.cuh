@@ -74,7 +74,9 @@ class early_heuristic_t {
 
   // NOT thread-safe. solver_obj is in solver-space (always minimization).
   // Uses a private CUDA stream to avoid racing with the FJ solver's stream.
-  void try_update_best(f_t solver_obj, const std::vector<f_t>& assignment)
+  void try_update_best(f_t solver_obj,
+                       const std::vector<f_t>& assignment,
+                       const char* heuristic_name = Derived::name())
   {
     if (solver_obj >= best_objective_) { return; }
     best_objective_ = solver_obj;
@@ -92,7 +94,7 @@ class early_heuristic_t {
     // Log and callback are deferred to the shared incumbent_callback_ which enforces
     // global monotonicity across all early heuristic instances.
     if (incumbent_callback_) {
-      incumbent_callback_(solver_obj, user_obj, user_assignment, Derived::name());
+      incumbent_callback_(solver_obj, user_obj, user_assignment, heuristic_name);
     }
   }
 
