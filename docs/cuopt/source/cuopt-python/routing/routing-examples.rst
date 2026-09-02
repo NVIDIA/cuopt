@@ -76,17 +76,6 @@ distance-based break for a given vehicle the same way
 break: ``(vehicle_id, distance_min, distance_max, duration, locations)``.
 Call again with later windows to require additional stops.
 
-``distance_max`` is a hard feasibility constraint. ``distance_min`` is a
-soft target. ``Objective.DISTANCE_BREAK_COST`` guides the search toward
-that target and sums the maximum lower-bound shortfall on each route. A
-break after ``distance_max`` makes the route infeasible. The objective's
-default weight is ``1.0``; configure another positive weight to change the
-tradeoff, or explicitly set it to ``0.0`` to disable the early-break penalty.
-
-The example below sets up one vehicle, two customers, and a single break
-location. With ``distance_max=75``, the solver must insert one break within
-the first 75 km of the route.
-
 :download:`distance_break_example.py <examples/distance_break_example.py>`
 
 .. literalinclude:: examples/distance_break_example.py

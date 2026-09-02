@@ -4,6 +4,13 @@
 # Distance break example: a vehicle must take a mandatory break at a
 # break location before its cumulative route distance exceeds 75 km.
 
+# distance_max is a hard feasibility constraint, while distance_min is a soft
+# target. routing.Objective.DISTANCE_BREAK_COST guides the search toward that
+# target and sums the maximum lower-bound shortfall on each route. A break
+# after distance_max makes the route infeasible. The objective's default weight
+# is 1.0; configure another positive weight to change the tradeoff, or set it
+# to 0.0 to disable the early-break penalty.
+
 import cudf
 import numpy as np
 
