@@ -937,8 +937,12 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsesetpointermode(
     handle_ptr_->get_cusparse_handle(), CUSPARSE_POINTER_MODE_DEVICE, handle_ptr->get_stream()));
 
-  // All descriptors are reinstantiated below from the saved data pointers (a copy of the
-  // cusparseSpMatDescr_t handles segfaults under CUDA 12.4+).
+  // Need to reinstanciate the cuSparse views
+  // Copying them from the existing cuSparse view is a bad practice and creates segfault post
+  // CUDA 12.4 Using the saved pointer of the existing cusparse view to make sure we capture the
+  // correct pointer
+  // See comment in the PDHG cusparse_view_t ctor: bind the descriptor nnz to
+  // the actual value-buffer length so A and A_T stay symmetric and shard-safe.
   A = make_csr<i_t, f_t>(op_problem.n_constraints,
                          op_problem.n_variables,
                          static_cast<int64_t>(A_.size()),
