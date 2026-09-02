@@ -19,6 +19,7 @@
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
 #include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/solver.cuh>
+#include <mip_heuristics/structural/early_structural.cuh>
 #include <mip_heuristics/utils.cuh>
 
 #include <pdlp/pdlp.cuh>
@@ -65,6 +66,7 @@
 #include <omp.h>
 
 #include <cmath>
+#include <mutex>
 #include <sstream>
 
 namespace cuopt::mathematical_optimization {
@@ -249,7 +251,13 @@ mip_solution_t<i_t, f_t> run_mip_solver(
     // optimization_problem_t). Its solver-space differs from both the first-pass FJ (original
     // problem) and B&B (post-trivial- presolve), so initial_upper_bound (user-space) is converted
     // via problem.get_solver_obj_from_user_obj.
+
+    // Must outlive early_cpufj/early_structural below, whose destructors join the tasks.
+    std::mutex papilo_callback_mutex;
+    f_t papilo_best_solver_obj = std::numeric_limits<f_t>::infinity();
+
     std::unique_ptr<mip::early_cpufj_t<i_t, f_t>> early_cpufj;
+    std::unique_ptr<mip::early_structural_t<i_t, f_t>> early_structural;
     bool run_early_cpufj = problem.has_papilo_presolve_data() &&
                            settings.determinism_mode != CUOPT_MODE_DETERMINISTIC &&
                            problem.original_problem_ptr->get_n_integers() > 0;
@@ -268,13 +276,21 @@ mip_solution_t<i_t, f_t> run_mip_solver(
          semi_continuous_original_num_variables =
            mip_solver_settings_accessor<i_t, f_t>::get_semi_continuous_original_num_variables(
              settings),
-         ctx_ptr = &solver.context,
+         ctx_ptr                  = &solver.context,
+         papilo_num_original_vars = problem.get_papilo_original_num_variables(),
+         &papilo_callback_mutex,
+         &papilo_best_solver_obj,
          early_fj_start](f_t solver_obj,
                          f_t user_obj,
                          const std::vector<f_t>& assignment,
                          const char* heuristic_name) {
+          std::lock_guard<std::mutex> lock(papilo_callback_mutex);
+          if (solver_obj >= papilo_best_solver_obj) { return; }
+          papilo_best_solver_obj = solver_obj;
+
           std::vector<f_t> user_assignment;
           presolver_ptr->uncrush_primal_solution(assignment, user_assignment);
+          cuopt_assert(user_assignment.size() == (size_t)papilo_num_original_vars, "Size mismatch");
           ctx_ptr->initial_incumbent_assignment = user_assignment;
           ctx_ptr->initial_upper_bound          = user_obj;
           double elapsed =
@@ -302,6 +318,17 @@ mip_solution_t<i_t, f_t> run_mip_solver(
       early_cpufj->start();
       solver.context.early_cpufj_ptr = early_cpufj.get();
       CUOPT_LOG_DEBUG("Started early CPUFJ on papilo-presolved problem during cuOpt presolve");
+
+      early_structural = mip::early_structural_t<i_t, f_t>::create(
+        *problem.original_problem_ptr, settings.get_tolerances(), incumbent_callback);
+      if (early_structural) {
+        if (std::isfinite(initial_upper_bound)) {
+          early_structural->set_best_objective(
+            problem.get_solver_obj_from_user_obj(initial_upper_bound));
+        }
+        early_structural->start();
+        solver.context.early_structural_ptr = early_structural.get();
+      }
     }
 
     auto presolved_sol            = solver.run_solver();
@@ -498,6 +525,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
 
     std::unique_ptr<mip::early_cpufj_t<i_t, f_t>> early_cpufj;
     std::unique_ptr<mip::early_gpufj_t<i_t, f_t>> early_gpufj;
+    std::unique_ptr<mip::early_structural_t<i_t, f_t>> early_structural;
 
     bool run_early_fj = run_presolve && settings.determinism_mode != CUOPT_MODE_DETERMINISTIC &&
                         op_problem.get_n_integers() > 0 && op_problem.get_n_constraints() > 0;
@@ -556,6 +584,9 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
         std::make_unique<mip::early_gpufj_t<i_t, f_t>>(op_problem, settings, early_fj_callback);
       early_gpufj->start();
       CUOPT_LOG_DEBUG("Started early GPUFJ during presolve");
+      early_structural = mip::early_structural_t<i_t, f_t>::create(
+        op_problem, settings.get_tolerances(), early_fj_callback);
+      if (early_structural) { early_structural->start(); }
     }
 
     auto constexpr const dual_postsolve = false;
@@ -648,6 +679,17 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
           early_cpufj->get_best_objective());
       }
       early_cpufj.reset();
+    }
+
+    if (early_structural) {
+      early_structural->stop();
+      if (early_structural->solution_found()) {
+        CUOPT_LOG_DEBUG(
+          "Early structural heuristic (original) found incumbent with objective %.6e "
+          "during presolve",
+          early_structural->get_best_objective());
+      }
+      early_structural.reset();
     }
 
     // Add early-heuristic incumbents (original-space) to initial_solutions.

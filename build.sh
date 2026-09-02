@@ -505,7 +505,10 @@ if hasArg java; then
         bash "${REPODIR}"/java/cuopt/scripts/build_native.sh
         source "${REPODIR}"/java/cuopt/scripts/maven.sh
         cuopt_maven_args
-        cuopt_mvn -f "${REPODIR}"/java/cuopt/pom.xml clean package \
+        # cd into java/cuopt so Maven's directory-search picks up java/cuopt/.mvn/maven.config --
+        # it walks up from the current working directory, not from -f's directory.
+        cd "${REPODIR}"/java/cuopt
+        cuopt_mvn -f pom.xml clean package \
             -DskipTests \
             -Dcuopt.native.dir="${CUOPT_JAVA_NATIVE_BUILD_DIR}"
     fi
