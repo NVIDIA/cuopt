@@ -19,6 +19,7 @@
 #include <cuopt/mathematical_optimization/io/parser.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
 #include <pdlp/cuopt_c_internal.hpp>
+#include <utilities/logger.hpp>
 
 #include <jni.h>
 
@@ -378,6 +379,58 @@ void mip_set_solution_callback(cuopt_float_t* solution,
   if (detach) { g_jvm->DetachCurrentThread(); }
 }
 
+jclass g_log_sink_class     = nullptr;
+jmethodID g_log_sink_method = nullptr;
+std::once_flag g_log_sink_once;
+
+// cuopt::log_console_callback_t: forwards a console log line to NativeLogSink.onLogLine, so it
+// is written through System.out instead of directly to the native stdout stream. See
+// register_console_log_sink for why that distinction matters.
+void console_log_callback(int /* level */, const char* message)
+{
+  if (g_log_sink_class == nullptr || g_log_sink_method == nullptr) { return; }
+
+  bool detach = false;
+  JNIEnv* env = get_callback_env(detach);
+  if (env == nullptr) { return; }
+
+  jstring line = env->NewStringUTF(message);
+  if (line != nullptr) {
+    env->CallStaticVoidMethod(g_log_sink_class, g_log_sink_method, line);
+    env->DeleteLocalRef(line);
+  }
+  // A logging call is not the place to raise a Java exception; drop it rather than leave it
+  // pending for whatever JNI call happens to run next on this thread. Covers both
+  // CallStaticVoidMethod above and NewStringUTF's OutOfMemoryError when line is null.
+  if (env->ExceptionCheck() == JNI_TRUE) { env->ExceptionClear(); }
+
+  if (detach) { g_jvm->DetachCurrentThread(); }
+}
+
+// Registers console_log_callback with the native logger, once. Done lazily on first use (rather
+// than in JNI_OnLoad) because FindClass needs the caller's classloader, which JNI_OnLoad does not
+// reliably have.
+void register_console_log_sink(JNIEnv* env)
+{
+  std::call_once(g_log_sink_once, [env]() {
+    jclass local_cls = env->FindClass("com/nvidia/cuopt/mathematicaloptimization/NativeLogSink");
+    if (local_cls == nullptr) {
+      env->ExceptionClear();
+      return;
+    }
+    jmethodID method = env->GetStaticMethodID(local_cls, "onLogLine", "(Ljava/lang/String;)V");
+    if (method == nullptr) {
+      env->ExceptionClear();
+      env->DeleteLocalRef(local_cls);
+      return;
+    }
+    g_log_sink_class  = static_cast<jclass>(env->NewGlobalRef(local_cls));
+    g_log_sink_method = method;
+    env->DeleteLocalRef(local_cls);
+    cuopt::mathematical_optimization::set_console_log_callback(&console_log_callback);
+  });
+}
+
 }  // namespace
 
 extern "C" jint JNI_OnLoad(JavaVM* vm, void*)
@@ -421,6 +474,7 @@ Java_com_nvidia_cuopt_mathematicaloptimization_NativeCuOpt_readProblemWithFormat
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_nvidia_cuopt_mathematicaloptimization_NativeCuOpt_createSolverSettings(JNIEnv* env, jclass)
 {
+  register_console_log_sink(env);
   cuOptSolverSettings settings = nullptr;
   if (!check_status(env, cuOptCreateSolverSettings(&settings), "cuOptCreateSolverSettings")) {
     return 0;
