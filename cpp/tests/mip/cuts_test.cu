@@ -1912,6 +1912,8 @@ TEST(cuts, flow_cover_generates_valid_single_node_flow_cut)
                                                       test_problem.var_types,
                                                       test_problem.Arow,
                                                       test_problem.new_slacks);
+  generator.preprocess_cut_pass(
+    test_problem.lp, test_problem.settings, variable_bounds, test_problem.var_types, xstar);
   ASSERT_GT(generator.num_constraints(), 0);
 
   int generated_cuts = 0;
