@@ -1748,6 +1748,7 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
         i_t num_fractional =
           fractional_variables(settings_, worker->leaf_solution.x, var_types_, fractional);
         pivot_out_integer_variables(worker->leaf_problem,
+                                    lp_settings,
                                     worker->basic_list,
                                     worker->nonbasic_list,
                                     worker->leaf_vstatus,
@@ -3337,23 +3338,26 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
   num_fractional = fractional_variables(settings_, root_relax_soln_.x, var_types_, fractional);
 
   f_t pivot_out_integer_variables_start_time = tic();
-  i_t num_integer_increased = pivot_out_integer_variables(original_lp_,
-                              basic_list,
-                              nonbasic_list,
-                              root_vstatus_,
-                              root_relax_soln_,
-                              basis_update,
-                              num_fractional,
-                              fractional);
+  i_t num_integer_increased                  = pivot_out_integer_variables(original_lp_,
+                                                          settings_,
+                                                          basic_list,
+                                                          nonbasic_list,
+                                                          root_vstatus_,
+                                                          root_relax_soln_,
+                                                          basis_update,
+                                                          num_fractional,
+                                                          fractional);
   settings_.log.printf("Pivoted out %d integer variables in %e seconds\n", num_integer_increased, toc(pivot_out_integer_variables_start_time));
-  dual_degenerate_feasibility_pump(original_lp_,
-                                   basic_list,
-                                   nonbasic_list,
-                                   root_vstatus_,
-                                   root_relax_soln_,
-                                   basis_update,
-                                   num_fractional,
-                                   fractional);
+  if (settings_.dual_degenerate_feasibility_pump != 0) {
+    dual_degenerate_feasibility_pump(original_lp_,
+                                     basic_list,
+                                     nonbasic_list,
+                                     root_vstatus_,
+                                     root_relax_soln_,
+                                     basis_update,
+                                     num_fractional,
+                                     fractional);
+  }
   if (received_halt_signal()) {
     solver_status_ = mip_status_t::HALT;
     set_final_solution(solution, root_objective_);
@@ -4210,8 +4214,9 @@ i_t branch_and_bound_t<i_t, f_t>::apply_delta_x_for_integer_pivot(
 }
 
 template <typename i_t, typename f_t>
-void branch_and_bound_t<i_t, f_t>::fast_slack_integer_pivot(
+void branch_and_bound_t<i_t, f_t>::fast_slack_integer_pivots(
   const simplex::lp_problem_t<i_t, f_t>& lp,
+  const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
   const std::vector<i_t>& fractional,
   const std::vector<i_t>& row_to_slack,
   const simplex::lp_solution_t<i_t, f_t>& solution,
@@ -4254,8 +4259,8 @@ void branch_and_bound_t<i_t, f_t>::fast_slack_integer_pivot(
     }
   }
 
-  if (fast_candidates.size() > 0) {
-    settings_.log.printf("Found %ld fast candidates for pivot out integer variables\n",
+  if (fast_candidates.size() > 0 && settings_.inside_mip < 2) {
+    settings.log.printf("Found %ld fast candidates for pivot out integer variables\n",
                          fast_candidates.size());
   }
 
@@ -4377,22 +4382,26 @@ void branch_and_bound_t<i_t, f_t>::fast_slack_integer_pivot(
                                     work_estimate);
     // apply_delta_x_for_integer_pivot only mutates vstatus when the pivot actually fires,
     // so entering_index transitioning to BASIC is a reliable success signal.
-    if (!error) {
-      settings_.log.printf(
+    if (!error && settings.inside_mip < 2) {
+      settings.log.printf(
         "Fast candidate pivot succeeded: j=%d entering slack=%d row=%d\n", j, entering_index, row);
     }
 
-    if (toc(last_log) > 1.0) {
-      settings_.log.printf("Fast candidates %d/%d processed in %.2f seconds\n", k + 1, num_candidates, toc(loop_start));
+    if (settings.inside_mip < 2 && toc(last_log) > 1.0) {
+      settings.log.printf("Fast candidates %d/%d processed in %.2f seconds\n", k + 1, num_candidates, toc(loop_start));
       last_log = tic();
     }
   }
-  settings_.log.printf("Fast candidates: %d/%d processed in %.2f seconds\n", num_candidates, num_candidates, toc(loop_start));
+  if (settings.inside_mip < 2)
+  {
+    settings.log.printf("Fast candidates: %d/%d processed in %.2f seconds\n", num_candidates, num_candidates, toc(loop_start));
+  }
 }
 
 template <typename i_t, typename f_t>
 i_t branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
   const simplex::lp_problem_t<i_t, f_t>& lp,
+  const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
   std::vector<i_t>& basic_list,
   std::vector<i_t>& nonbasic_list,
   std::vector<simplex::variable_status_t>& vstatus,
@@ -4446,34 +4455,40 @@ i_t branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
     }
   }
   const f_t degeneracy_fraction = static_cast<f_t>(num_degenerate) / lp.num_rows;
-  settings_.log.printf(
-    "Primal degeneracy: %d/%d basic variables are degenerate (%.1f%%), "
-    "continuous=%d, integer=%d\n",
-    num_degenerate, lp.num_rows,
-    100.0 * degeneracy_fraction,
-    num_degenerate_continuous, num_degenerate_integer);
+  if (settings.inside_mip < 2 && settings.inside_submip == 0) {
+    settings.log.printf(
+      "Primal degeneracy: %d/%d basic variables are degenerate (%.1f%%), "
+      "continuous=%d, integer=%d\n",
+      num_degenerate,
+      lp.num_rows,
+      100.0 * degeneracy_fraction,
+      num_degenerate_continuous,
+      num_degenerate_integer);
+  }
 
   // Skip pivot_out entirely if primal degeneracy is too high — the ratio test
   // will almost always be won by a degenerate variable, making pivots hopeless.
   if (degeneracy_fraction > 0.5) {
-    settings_.log.printf("Skipping pivot_out_integer_variables: degeneracy %.1f%% > 50%%\n",
-                         100.0 * degeneracy_fraction);
+    if (settings.inside_mip < 2) {
+      settings.log.printf("Skipping pivot_out_integer_variables: degeneracy %.1f%% > 50%%\n",
+                           100.0 * degeneracy_fraction);
+    }
     return 0;
   }
 
   std::vector<i_t> nonbasic_index;
-  fast_slack_integer_pivot(lp,
-                           fractional,
-                           row_to_slack,
-                           solution,
-                           basic_list_copy,
-                           nonbasic_list_copy,
-                           nonbasic_index,
-                           vstatus_copy,
-                           soln_copy,
-                           basis_update_copy,
-                           work_estimate);
-
+  fast_slack_integer_pivots(lp,
+                            settings,
+                            fractional,
+                            row_to_slack,
+                            solution,
+                            basic_list_copy,
+                            nonbasic_list_copy,
+                            nonbasic_index,
+                            vstatus_copy,
+                            soln_copy,
+                            basis_update_copy,
+                            work_estimate);
 
   std::vector<i_t> work_list = fractional;
   std::vector<i_t> to_basic_position(lp.num_cols, -1);
@@ -4682,13 +4697,21 @@ i_t branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
     }
 
     if (toc(worklist_last_log) > 1.0) {
-      settings_.log.printf(
-        "Worklist progress: %d/%d processed, %d pivots, %d ratio_fail (unb=%d cont=%d nfint=%d), %d net_inc_fail, %d no_cand, %.2f seconds\n",
-        worklist_total_processed, static_cast<i_t>(fractional.size()),
-        worklist_pivots_succeeded, worklist_ratio_test_fail,
-        worklist_unbounded, worklist_continuous_won, worklist_nonfrac_int_won,
-        worklist_net_increase_fail,
-        worklist_no_candidates, toc(worklist_loop_start));
+      if (settings.inside_mip < 2) {
+        settings.log.printf(
+          "Worklist progress: %d/%d processed, %d pivots, %d ratio_fail (unb=%d cont=%d nfint=%d), "
+          "%d net_inc_fail, %d no_cand, %.2f seconds\n",
+          worklist_total_processed,
+          static_cast<i_t>(fractional.size()),
+          worklist_pivots_succeeded,
+          worklist_ratio_test_fail,
+          worklist_unbounded,
+          worklist_continuous_won,
+          worklist_nonfrac_int_won,
+          worklist_net_increase_fail,
+          worklist_no_candidates,
+          toc(worklist_loop_start));
+      }
       worklist_last_log = tic();
     }
   }
@@ -4706,25 +4729,39 @@ i_t branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
       else { entering_tried_multiple++; }
     }
   }
-  settings_.log.printf(
-    "Worklist entering stats: unique=%d, tried_once=%d, tried_multiple=%d, "
-    "max_count=%d, total_ftran=%d, duplication_ratio=%.1fx\n",
-    unique_entering, entering_tried_once, entering_tried_multiple,
-    max_entering_count, worklist_ftran_done,
-    worklist_ftran_done / std::max(1.0, static_cast<double>(unique_entering)));
+  if (settings.inside_mip < 2) {
+    settings.log.printf(
+      "Worklist entering stats: unique=%d, tried_once=%d, tried_multiple=%d, "
+      "max_count=%d, total_ftran=%d, duplication_ratio=%.1fx\n",
+      unique_entering,
+      entering_tried_once,
+      entering_tried_multiple,
+      max_entering_count,
+      worklist_ftran_done,
+      worklist_ftran_done / std::max(1.0, static_cast<double>(unique_entering)));
 
-  settings_.log.printf(
-    "Worklist stats: processed=%d skipped=%d btran=%d ftran=%d pivots=%d readded=%d "
-    "btran_time=%.2f dot_time=%.2f ftran_time=%.2f zero_rc_vars=%d "
-    "no_candidates=%d ratio_test_fail=%d (unbounded=%d continuous_won=%d nonfrac_int_won=%d) "
-    "net_increase_fail=%d\n",
-    worklist_total_processed, worklist_skipped, worklist_btran_done, worklist_ftran_done,
-    worklist_pivots_succeeded, worklist_readded,
-    worklist_btran_time, worklist_dot_time, worklist_ftran_time,
-    num_zero_reduced_costs_vars,
-    worklist_no_candidates, worklist_ratio_test_fail,
-    worklist_unbounded, worklist_continuous_won, worklist_nonfrac_int_won,
-    worklist_net_increase_fail);
+    settings.log.printf(
+      "Worklist stats: processed=%d skipped=%d btran=%d ftran=%d pivots=%d readded=%d "
+      "btran_time=%.2f dot_time=%.2f ftran_time=%.2f zero_rc_vars=%d "
+      "no_candidates=%d ratio_test_fail=%d (unbounded=%d continuous_won=%d nonfrac_int_won=%d) "
+      "net_increase_fail=%d\n",
+      worklist_total_processed,
+      worklist_skipped,
+      worklist_btran_done,
+      worklist_ftran_done,
+      worklist_pivots_succeeded,
+      worklist_readded,
+      worklist_btran_time,
+      worklist_dot_time,
+      worklist_ftran_time,
+      num_zero_reduced_costs_vars,
+      worklist_no_candidates,
+      worklist_ratio_test_fail,
+      worklist_unbounded,
+      worklist_continuous_won,
+      worklist_nonfrac_int_won,
+      worklist_net_increase_fail);
+  }
 
   std::vector<i_t> new_fractional;
   const i_t num_new_fractional =
@@ -4733,7 +4770,7 @@ i_t branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
     i_t num_integer_increased = start_num_fractional - num_new_fractional;
     integer_pivots_.fetch_add(num_integer_increased, std::memory_order_release);
 #if 0
-    settings_.log.printf("Pivoted out %d integer variables: %d -> %d in %.2f\n",
+    settings.log.printf("Pivoted out %d integer variables: %d -> %d in %.2f\n",
                          num_integer_increased,
                          start_num_fractional,
                          num_new_fractional,
@@ -5235,6 +5272,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   f_t pivot_out_integer_variables_start_time = tic();
   i_t num_integer_increased = pivot_out_integer_variables(original_lp_,
+                              settings_,
                               basic_list,
                               nonbasic_list,
                               root_vstatus_,
@@ -5244,14 +5282,17 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                               fractional);
   settings_.log.printf("Pivoted out %d integer variables in %e seconds\n", num_integer_increased, toc(pivot_out_integer_variables_start_time));
 
-  dual_degenerate_feasibility_pump(original_lp_,
-                                   basic_list,
-                                   nonbasic_list,
-                                   root_vstatus_,
-                                   root_relax_soln_,
-                                   basis_update,
-                                   num_fractional,
-                                   fractional);
+  if (settings_.dual_degenerate_feasibility_pump != 0) {
+    dual_degenerate_feasibility_pump(original_lp_,
+                                     basic_list,
+                                     nonbasic_list,
+                                     root_vstatus_,
+                                     root_relax_soln_,
+                                     basis_update,
+                                     num_fractional,
+                                     fractional);
+  }
+
   if (received_halt_signal()) {
     solver_status_ = mip_status_t::HALT;
     set_final_solution(solution, root_objective_);

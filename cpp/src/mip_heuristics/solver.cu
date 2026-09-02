@@ -388,6 +388,10 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
       context.settings.reduced_cost_strengthening == -1
         ? 2
         : context.settings.reduced_cost_strengthening;
+    branch_and_bound_settings.dual_degenerate_feasibility_pump =
+      context.settings.dual_degenerate_feasibility_pump == -1
+        ? 1
+        : context.settings.dual_degenerate_feasibility_pump;
     branch_and_bound_settings.symmetry = context.settings.symmetry;
 
     branch_and_bound_settings.diving_settings = context.settings.diving_params;

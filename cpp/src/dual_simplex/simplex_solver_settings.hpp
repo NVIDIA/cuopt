@@ -103,6 +103,7 @@ struct simplex_solver_settings_t {
       strong_chvatal_gomory_cuts(-1),
       symmetry(-1),
       reduced_cost_strengthening(-1),
+      dual_degenerate_feasibility_pump(1),
       cut_change_threshold(1e-3),
       cut_min_orthogonality(0.5),
       mip_batch_pdlp_strong_branching(0),
@@ -208,7 +209,8 @@ struct simplex_solver_settings_t {
                                    // cuts
   i_t symmetry;  // -1 automatic, 0 to disable, >0 to enable different symmetry methods
   i_t reduced_cost_strengthening;  // -1 automatic, 0 to disable, >0 to enable reduced cost
-                                   // strengthening
+                                    // strengthening
+  i_t dual_degenerate_feasibility_pump;  // 0 to disable, 1 to enable
   f_t cut_change_threshold;        // threshold for cut change
   f_t cut_min_orthogonality;       // minimum orthogonality for cuts
   i_t

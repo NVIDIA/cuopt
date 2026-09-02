@@ -505,19 +505,21 @@ class branch_and_bound_t {
                                  std::vector<i_t>& zero_reduced_costs_vars,
                                  std::vector<i_t>& zero_reduced_costs_vars_nonbasic_index);
 
-  void fast_slack_integer_pivot(const simplex::lp_problem_t<i_t, f_t>& lp,
-                                const std::vector<i_t>& fractional,
-                                const std::vector<i_t>& row_to_slack,
-                                const simplex::lp_solution_t<i_t, f_t>& solution,
-                                std::vector<i_t>& basic_list,
-                                std::vector<i_t>& nonbasic_list,
-                                std::vector<i_t>& nonbasic_index,
-                                std::vector<simplex::variable_status_t>& vstatus,
-                                simplex::lp_solution_t<i_t, f_t>& soln,
-                                simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
-                                f_t& work_estimate);
+  void fast_slack_integer_pivots(const simplex::lp_problem_t<i_t, f_t>& lp,
+                                 const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+                                 const std::vector<i_t>& fractional,
+                                 const std::vector<i_t>& row_to_slack,
+                                 const simplex::lp_solution_t<i_t, f_t>& solution,
+                                 std::vector<i_t>& basic_list,
+                                 std::vector<i_t>& nonbasic_list,
+                                 std::vector<i_t>& nonbasic_index,
+                                 std::vector<simplex::variable_status_t>& vstatus,
+                                 simplex::lp_solution_t<i_t, f_t>& soln,
+                                 simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
+                                 f_t& work_estimate);
 
   i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
+                                  const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
                                   std::vector<i_t>& basic_list,
                                   std::vector<i_t>& nonbasic_list,
                                   std::vector<simplex::variable_status_t>& vstatus,
