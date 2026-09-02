@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cuda/stream>
 #include <routing/routing_details.hpp>
 #include <routing/utilities/md_utils.hpp>
 #include "fleet_order_constraints.hpp"

@@ -12,6 +12,7 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/cuda_helpers.cuh>
 
+#include <cuda/stream>
 #include <rmm/device_uvector.hpp>
 #include <rmm/exec_policy.hpp>
 

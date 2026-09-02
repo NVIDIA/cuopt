@@ -13,7 +13,7 @@
 #include <routing/utilities/seed_generator.cuh>
 #include <utilities/cuda_helpers.cuh>
 
-#include <rmm/cuda_stream_view.hpp>
+#include <cuda/stream>
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 

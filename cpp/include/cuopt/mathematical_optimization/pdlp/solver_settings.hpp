@@ -8,7 +8,6 @@
 #pragma once
 
 #include <cuopt/mathematical_optimization/constants.h>
-
 #include <cuda/stream>
 #include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/cpu_pdlp_warm_start_data.hpp>

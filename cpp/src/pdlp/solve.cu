@@ -49,7 +49,6 @@
 #include <pdlp/utilities/problem_checking.cuh>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
-
 #include <cuda/stream>
 #include <raft/core/cusparse_macros.hpp>
 #include <raft/core/device_setter.hpp>

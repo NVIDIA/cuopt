@@ -7,8 +7,8 @@
 #pragma once
 
 #include <cuda_runtime.h>
+#include <cuda/stream>
 #include <raft/util/cuda_utils.cuh>
-#include <rmm/cuda_stream_view.hpp>
 
 namespace cuopt {
 

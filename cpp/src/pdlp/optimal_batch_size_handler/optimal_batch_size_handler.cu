@@ -12,6 +12,7 @@
 #include <utilities/device_scalar_init.hpp>
 #include <utilities/event_handler.cuh>
 
+#include <cuda/stream>
 #include <raft/core/cusparse_macros.hpp>
 
 #include <mip_heuristics/mip_constants.hpp>

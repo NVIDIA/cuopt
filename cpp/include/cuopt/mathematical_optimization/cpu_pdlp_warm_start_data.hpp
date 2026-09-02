@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cuda/stream>
 #include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/pdlp/pdlp_warm_start_data.hpp>
 

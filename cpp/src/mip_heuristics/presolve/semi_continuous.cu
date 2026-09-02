@@ -20,6 +20,7 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/logger.hpp>
 
+#include <cuda/stream>
 #include <raft/util/cudart_utils.hpp>
 
 #include <algorithm>

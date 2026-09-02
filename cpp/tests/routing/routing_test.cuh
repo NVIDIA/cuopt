@@ -21,6 +21,7 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/high_res_timer.hpp>
 
+#include <cuda/stream>
 #include <raft/core/error.hpp>
 #include <raft/core/handle.hpp>
 

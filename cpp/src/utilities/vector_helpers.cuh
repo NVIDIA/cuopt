@@ -8,6 +8,7 @@
 #pragma once
 
 #include <thrust/extrema.h>
+#include <cuda/stream>
 #include <raft/core/device_span.hpp>
 #include <raft/core/handle.hpp>
 #include <rmm/device_uvector.hpp>

@@ -8,6 +8,7 @@
 
 #include <cuopt/error.hpp>
 
+#include <cuda/stream>
 #include <raft/core/device_setter.hpp>
 
 #include <nccl.h>

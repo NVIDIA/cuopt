@@ -9,6 +9,7 @@
 
 #include <utilities/copy_helpers.hpp>
 
+#include <cuda/stream>
 #include <rmm/device_uvector.hpp>
 
 #include <stdexcept>

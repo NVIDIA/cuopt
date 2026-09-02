@@ -11,6 +11,7 @@
 #include "../node/mismatch_node.cuh"
 #include "../solution/solution_handle.cuh"
 
+#include <cuda/stream>
 #include <raft/core/handle.hpp>
 
 #include <rmm/device_uvector.hpp>

@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include <cuda/stream>
+
 namespace cuopt {
 namespace routing {
 namespace detail {

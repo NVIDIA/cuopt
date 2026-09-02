@@ -15,6 +15,7 @@
 #include <utilities/logger.hpp>
 #include <utilities/macros.cuh>
 
+#include <cuda/stream>
 #include <raft/core/nvtx.hpp>
 #include <raft/util/cudart_utils.hpp>
 

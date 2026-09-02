@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include <barrier/second_order_cone_kernels.cuh>
+#include <cuda/stream>
 
 #include <cuda/stream>
 

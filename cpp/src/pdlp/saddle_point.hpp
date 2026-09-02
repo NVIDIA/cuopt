@@ -9,9 +9,9 @@
 
 #include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 
+#include <cuda/stream>
 #include <raft/core/handle.hpp>
 
-#include <rmm/cuda_stream_view.hpp>
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 

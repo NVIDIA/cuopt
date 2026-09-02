@@ -7,6 +7,7 @@
 
 #include "cycle_finder_kernels.cuh"
 
+#include <cuda/stream>
 #include <raft/core/nvtx.hpp>
 
 #include <thrust/iterator/constant_iterator.h>

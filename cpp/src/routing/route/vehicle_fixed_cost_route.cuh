@@ -12,6 +12,7 @@
 #include "../solution/solution_handle.cuh"
 #include "routing/routing_helpers.cuh"
 
+#include <cuda/stream>
 #include <raft/core/handle.hpp>
 
 #include <thrust/tuple.h>

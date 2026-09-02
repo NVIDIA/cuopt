@@ -11,6 +11,7 @@
 #include <math_optimization/types.hpp>
 
 #include <cub/cub.cuh>
+#include <cuda/stream>
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_vector.hpp>
 #include <utilities/copy_helpers.hpp>

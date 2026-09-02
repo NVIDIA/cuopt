@@ -19,9 +19,9 @@
 
 #include <utilities/unique_pinned_ptr.hpp>
 
+#include <cuda/stream>
 #include <raft/core/handle.hpp>
 
-#include <rmm/cuda_stream_view.hpp>
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 

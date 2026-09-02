@@ -48,6 +48,7 @@
 #include <utilities/macros.cuh>
 #include <utilities/timer.hpp>
 
+#include <cuda/stream>
 #include <raft/core/nvtx.hpp>
 
 #include <algorithm>

@@ -17,6 +17,7 @@
 #include <linear_algebra/sparse_matrix.hpp>
 #include <math_optimization/tic_toc.hpp>
 
+#include <cuda/stream>
 #include <rmm/device_uvector.hpp>
 
 #include <utility>

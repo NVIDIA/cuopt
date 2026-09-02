@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cuda/stream>
 #include "utils.cuh"
 
 #include <cuopt/mathematical_optimization/mip/solver_settings.hpp>

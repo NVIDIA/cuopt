@@ -5,6 +5,7 @@
  */
 /* clang-format on */
 
+#include <cuda/stream>
 #include <cuopt/error.hpp>
 
 #include <pdlp/restart_strategy/pdlp_restart_strategy.cuh>

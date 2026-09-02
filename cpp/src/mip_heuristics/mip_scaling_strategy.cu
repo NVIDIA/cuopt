@@ -10,6 +10,7 @@
 #include <pdlp/utils.cuh>
 #include <utilities/logger.hpp>
 
+#include <cuda/stream>
 #include <raft/util/cudart_utils.hpp>
 
 #include <cub/cub.cuh>

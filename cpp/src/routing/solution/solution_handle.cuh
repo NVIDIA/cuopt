@@ -7,8 +7,8 @@
 
 #pragma once
 
+#include <cuda/stream>
 #include <raft/util/cudart_utils.hpp>
-#include <rmm/cuda_stream_view.hpp>
 #include <rmm/exec_policy.hpp>
 
 #include <mutex>

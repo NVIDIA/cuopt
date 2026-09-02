@@ -9,6 +9,7 @@
 
 #include <thrust/pair.h>
 #include <thrust/tuple.h>
+#include <cuda/stream>
 #include <raft/core/device_span.hpp>
 #include <raft/util/cuda_utils.cuh>
 #include <rmm/device_uvector.hpp>

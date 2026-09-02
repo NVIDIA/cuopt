@@ -7,10 +7,9 @@
 
 #pragma once
 
+#include <cuda/stream>
 #include <pdlp/pdlp_constants.hpp>
 #include <utilities/manual_cuda_graph.cuh>
-
-#include <rmm/cuda_stream_view.hpp>
 
 #include <utility>
 

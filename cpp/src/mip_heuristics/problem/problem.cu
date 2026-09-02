@@ -40,6 +40,7 @@
 #include <thrust/transform_reduce.h>
 #include <thrust/tuple.h>
 #include <cuda/std/functional>
+#include <cuda/stream>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/logger.hpp>

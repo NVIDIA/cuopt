@@ -5,6 +5,7 @@
  */
 /* clang-format on */
 
+#include <cuda/stream>
 #include <cuopt/export.hpp>
 #include <cuopt/routing/assignment.hpp>
 #include <raft/util/cudart_utils.hpp>

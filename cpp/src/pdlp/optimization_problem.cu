@@ -21,6 +21,7 @@
 #include <utilities/logger.hpp>
 #include <utilities/sparse_matrix_helpers.hpp>
 
+#include <cuda/stream>
 #include <raft/core/copy.hpp>
 #include <raft/core/cuda_support.hpp>
 #include <raft/core/device_mdspan.hpp>
@@ -29,7 +30,6 @@
 #include <raft/util/cuda_utils.cuh>
 #include <raft/util/cudart_utils.hpp>
 
-#include <rmm/cuda_stream_view.hpp>
 #include <rmm/device_uvector.hpp>
 #include <rmm/exec_policy.hpp>
 

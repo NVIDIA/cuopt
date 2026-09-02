@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cuda/stream>
 #include <raft/core/device_span.hpp>
 #include <routing/routing_details.hpp>
 #include <routing/structures.hpp>

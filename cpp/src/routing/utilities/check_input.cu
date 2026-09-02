@@ -8,6 +8,7 @@
 #include <cuopt/error.hpp>
 #include <routing/utilities/check_input.hpp>
 
+#include <cuda/stream>
 #include <raft/core/device_mdarray.hpp>
 #include <raft/linalg/transpose.cuh>
 #include <raft/util/cudart_utils.hpp>

@@ -16,6 +16,7 @@
 #include <cuda_runtime.h>
 #include <utilities/driver_helpers.cuh>
 
+#include <cuda/stream>
 #include <raft/core/nvtx.hpp>
 
 #include "cudss.h"

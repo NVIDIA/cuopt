@@ -10,6 +10,7 @@
 #include <thrust/inner_product.h>
 #include <thrust/logical.h>
 #include <thrust/transform_reduce.h>
+#include <cuda/stream>
 #include <cuopt/error.hpp>
 #include <pdlp/utils.cuh>
 #include <raft/random/rng_device.cuh>

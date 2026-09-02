@@ -27,6 +27,7 @@
 #include <utilities/macros.cuh>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
+#include <cuda/stream>
 #include <raft/core/cusparse_macros.hpp>
 #include <raft/core/nvtx.hpp>
 #include <raft/linalg/eltwise.cuh>

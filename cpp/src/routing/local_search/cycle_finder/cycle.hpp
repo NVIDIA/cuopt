@@ -12,8 +12,8 @@
 #include <utilities/vector_helpers.cuh>
 #include "../../solution/solution_handle.cuh"
 
+#include <cuda/stream>
 #include <raft/core/device_span.hpp>
-#include <rmm/cuda_stream_view.hpp>
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 

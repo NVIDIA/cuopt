@@ -14,8 +14,8 @@
 
 #include "../../solution/solution_handle.cuh"
 
+#include <cuda/stream>
 #include <raft/util/cudart_utils.hpp>
-#include <rmm/cuda_stream_view.hpp>
 
 namespace cuopt {
 namespace routing {

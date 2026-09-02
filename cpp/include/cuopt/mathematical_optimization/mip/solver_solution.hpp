@@ -13,7 +13,7 @@
 #include <cuopt/mathematical_optimization/mip/solver_stats.hpp>
 #include <cuopt/mathematical_optimization/utilities/internals.hpp>
 
-#include <rmm/cuda_stream_view.hpp>
+#include <cuda/stream>
 #include <rmm/device_uvector.hpp>
 
 #include <raft/core/handle.hpp>

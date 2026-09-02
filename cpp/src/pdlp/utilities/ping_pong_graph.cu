@@ -5,6 +5,7 @@
  */
 /* clang-format on */
 
+#include <cuda/stream>
 #include <pdlp/utilities/ping_pong_graph.cuh>
 
 namespace cuopt::mathematical_optimization::pdlp {

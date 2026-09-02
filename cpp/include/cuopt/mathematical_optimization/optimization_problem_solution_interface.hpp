@@ -13,7 +13,6 @@
 #include <cuopt/mathematical_optimization/pdlp/pdlp_warm_start_data.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>  // For pdlp_termination_status_t
 
-#include <rmm/cuda_stream_view.hpp>
 #include <rmm/device_uvector.hpp>
 
 #include <cuopt/mathematical_optimization/utilities/cython_types.hpp>

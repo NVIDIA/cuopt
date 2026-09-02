@@ -27,6 +27,7 @@
 #include <utilities/copy_helpers.hpp>
 
 #include <gtest/gtest.h>
+#include <cuda/stream>
 
 #include <cuda/stream>
 

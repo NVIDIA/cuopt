@@ -10,6 +10,7 @@
 #include <mip_heuristics/mip_constants.hpp>
 #include <utilities/logger.hpp>
 
+#include <cuda/stream>
 #include <limits>
 #include <math_optimization/solution_writer.hpp>
 #include <raft/core/nvtx.hpp>

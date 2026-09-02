@@ -15,13 +15,13 @@
 #include <random>
 #include <vector>
 
+#include <cuda/stream>
 #include <raft/core/device_span.hpp>
 #include <raft/linalg/binary_op.cuh>
 #include <raft/linalg/detail/cublas_wrappers.hpp>
 #include <raft/linalg/norm.cuh>
 #include <raft/util/cuda_utils.cuh>
 
-#include <rmm/cuda_stream_view.hpp>
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 

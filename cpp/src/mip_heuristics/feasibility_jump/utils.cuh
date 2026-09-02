@@ -11,6 +11,7 @@
 
 #include <thrust/pair.h>
 #include <cuda/atomic>
+#include <cuda/stream>
 #include <raft/core/device_span.hpp>
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>

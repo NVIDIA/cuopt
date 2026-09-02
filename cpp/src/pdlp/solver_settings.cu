@@ -13,6 +13,7 @@
 #include <mip_heuristics/mip_constants.hpp>
 #include <utilities/logger.hpp>
 
+#include <cuda/stream>
 #include <raft/util/cudart_utils.hpp>
 
 #include <thrust/scatter.h>

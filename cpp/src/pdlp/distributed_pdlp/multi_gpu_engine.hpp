@@ -15,6 +15,7 @@
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
+#include <cuda/stream>
 #include <raft/core/cusparse_macros.hpp>
 #include <raft/core/device_mdspan.hpp>
 #include <raft/core/device_setter.hpp>

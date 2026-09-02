@@ -10,6 +10,7 @@
 #include <cuopt/routing/data_model_view.hpp>
 #include <utilities/copy_helpers.hpp>
 
+#include <cuda/stream>
 #include <raft/core/span.hpp>
 
 #include <thrust/fill.h>

@@ -20,6 +20,7 @@
 #include <utilities/device_utils.cuh>
 
 #include <cub/cub.cuh>
+#include <cuda/stream>
 #include <raft/core/nvtx.hpp>
 #include "load_balanced_bounds_presolve.cuh"
 #include "load_balanced_bounds_presolve_helpers.cuh"

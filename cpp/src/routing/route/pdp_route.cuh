@@ -12,6 +12,7 @@
 #include "../solution/solution_handle.cuh"
 #include "tsp_route.cuh"
 
+#include <cuda/stream>
 #include <raft/core/handle.hpp>
 #include <raft/core/nvtx.hpp>
 

@@ -26,6 +26,7 @@
 #include <utilities/macros.cuh>
 
 #include <branch_and_bound/constants.hpp>
+#include <cuda/stream>
 #include <memory>
 #include <raft/core/nvtx.hpp>
 #include <raft/random/rng_device.cuh>

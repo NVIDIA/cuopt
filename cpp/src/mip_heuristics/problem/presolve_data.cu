@@ -17,6 +17,7 @@
 
 #include <mip_heuristics/utils.cuh>
 
+#include <cuda/stream>
 #include <raft/core/nvtx.hpp>
 
 #include <thrust/gather.h>

@@ -17,6 +17,7 @@
 #include <utilities/device_scalar_init.hpp>
 #include <utilities/timer.hpp>
 
+#include <cuda/stream>
 #include <raft/linalg/eltwise.cuh>
 #include <raft/linalg/reduce.cuh>
 #include <raft/random/rng.cuh>

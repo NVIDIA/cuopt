@@ -12,6 +12,7 @@
 #include <mip_heuristics/logger.cuh>
 #include <utilities/device_utils.cuh>
 
+#include <cuda/stream>
 #include <raft/random/rng.cuh>
 
 #include <cub/cub.cuh>

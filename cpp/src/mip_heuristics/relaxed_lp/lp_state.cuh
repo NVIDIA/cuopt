@@ -8,6 +8,7 @@
 #pragma once
 
 #include <thrust/fill.h>
+#include <cuda/stream>
 #include <raft/util/cudart_utils.hpp>
 #include <rmm/device_uvector.hpp>
 

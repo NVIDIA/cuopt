@@ -12,6 +12,7 @@
 #include <utilities/vector_helpers.cuh>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
+#include <cuda/stream>
 #include <raft/core/cusparse_macros.hpp>
 #include <raft/sparse/linalg/transpose.cuh>
 #include "cusparse.h"

@@ -27,6 +27,7 @@
 
 #include <utilities/timer.hpp>
 
+#include <cuda/stream>
 #include <raft/core/handle.hpp>
 
 #include <rmm/device_scalar.hpp>

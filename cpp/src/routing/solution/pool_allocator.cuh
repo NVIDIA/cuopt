@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cuda/stream>
 #include "solution.cuh"
 
 #include "../ges/guided_ejection_search.cuh"

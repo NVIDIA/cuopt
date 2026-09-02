@@ -12,7 +12,6 @@
 #include <mip_heuristics/mip_constants.hpp>
 
 #include <cuda/stream>
-
 #include <rmm/device_uvector.hpp>
 
 #include <raft/util/cudart_utils.hpp>

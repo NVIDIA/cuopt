@@ -11,6 +11,7 @@
 
 #include <thrust/sequence.h>
 #include <thrust/uninitialized_fill.h>
+#include <cuda/stream>
 #include <rmm/device_uvector.hpp>
 
 namespace cuopt {

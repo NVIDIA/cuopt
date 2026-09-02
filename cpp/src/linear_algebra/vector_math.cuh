@@ -9,6 +9,7 @@
 
 #include <cub/cub.cuh>
 
+#include <cuda/stream>
 #include <raft/core/copy.hpp>
 #include <raft/core/device_span.hpp>
 #include <raft/core/host_span.hpp>

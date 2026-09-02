@@ -9,6 +9,7 @@
 
 #include <cuopt/export.hpp>
 
+#include <cuda/stream>
 #include <rmm/device_uvector.hpp>
 
 #include <span>

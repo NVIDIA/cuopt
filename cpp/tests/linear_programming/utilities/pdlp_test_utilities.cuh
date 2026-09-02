@@ -6,6 +6,7 @@
 /* clang-format on */
 #pragma once
 
+#include <cuda/stream>
 #include <cuopt/mathematical_optimization/optimization_problem.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>

@@ -14,6 +14,7 @@
 #include <cub/device/device_reduce.cuh>
 #include <cub/warp/warp_reduce.cuh>
 
+#include <cuda/stream>
 #include <rmm/device_buffer.hpp>
 #include <rmm/device_uvector.hpp>
 

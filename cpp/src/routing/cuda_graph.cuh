@@ -5,10 +5,9 @@
  */
 /* clang-format on */
 
+#include <cuda/stream>
 #include <cuopt/error.hpp>
 #include <utilities/macros.cuh>
-
-#include <rmm/cuda_stream_view.hpp>
 
 #pragma once
 

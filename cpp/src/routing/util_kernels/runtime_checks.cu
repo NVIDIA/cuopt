@@ -5,6 +5,7 @@
  */
 /* clang-format on */
 
+#include <cuda/stream>
 #include <utilities/vector_helpers.cuh>
 #include "../solution/solution.cuh"
 

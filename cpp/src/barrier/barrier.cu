@@ -29,6 +29,7 @@
 
 #include <linear_algebra/vector_math.cuh>
 
+#include <cuda/stream>
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 

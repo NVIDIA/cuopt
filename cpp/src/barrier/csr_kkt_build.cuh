@@ -9,6 +9,7 @@
 #include <barrier/device_sparse_matrix.cuh>
 #include <barrier/second_order_cone_kernels.cuh>
 
+#include <cuda/stream>
 #include <raft/core/nvtx.hpp>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/cuda_helpers.cuh>

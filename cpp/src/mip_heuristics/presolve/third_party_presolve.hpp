@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cuda/stream>
 #include <memory>
 #include <optional>
 #include <string>

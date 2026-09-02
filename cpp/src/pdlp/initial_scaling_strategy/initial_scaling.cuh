@@ -13,9 +13,9 @@
 
 #include <mip_heuristics/solution/solution.cuh>
 
+#include <cuda/stream>
 #include <raft/core/handle.hpp>
 
-#include <rmm/cuda_stream_view.hpp>
 #include <rmm/device_uvector.hpp>
 
 #include <limits>

@@ -20,7 +20,6 @@
 #include <cuopt/mathematical_optimization/utilities/internals.hpp>
 
 #include <cuda/stream>
-
 #include <raft/core/device_span.hpp>
 #include <rmm/device_uvector.hpp>
 

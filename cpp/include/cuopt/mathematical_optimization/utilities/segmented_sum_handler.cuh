@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <cuda/stream>
 #include <rmm/device_uvector.hpp>
 
 #include <cub/cub.cuh>

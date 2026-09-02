@@ -9,9 +9,8 @@
 
 #include <cuopt/mathematical_optimization/optimization_problem.hpp>
 
+#include <cuda/stream>
 #include <raft/core/handle.hpp>
-
-#include <rmm/cuda_stream_view.hpp>
 
 namespace cuopt::mathematical_optimization::mip {
 

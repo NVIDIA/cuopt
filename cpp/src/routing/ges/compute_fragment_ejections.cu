@@ -5,6 +5,7 @@
  */
 /* clang-format on */
 
+#include <cuda/stream>
 #include <utilities/cuda_helpers.cuh>
 #include "../solution/solution.cuh"
 #include "compute_delivery_insertions.cuh"

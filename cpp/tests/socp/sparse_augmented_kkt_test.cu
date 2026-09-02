@@ -8,6 +8,7 @@
 #include <barrier/csr_kkt_build.cuh>
 #include <barrier/device_sparse_matrix.cuh>
 #include <barrier/second_order_cone_kernels.cuh>
+#include <cuda/stream>
 
 #include <cuda/stream>
 

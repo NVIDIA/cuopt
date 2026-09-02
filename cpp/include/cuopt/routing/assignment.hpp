@@ -7,11 +7,11 @@
 
 #pragma once
 
+#include <cuda/stream>
 #include <cuopt/error.hpp>
 #include <cuopt/export.hpp>
 #include <cuopt/routing/routing_structures.hpp>
 #include <fstream>
-#include <rmm/cuda_stream_view.hpp>
 #include <rmm/device_uvector.hpp>
 #include <string_view>
 #include <vector>

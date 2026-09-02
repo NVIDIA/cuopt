@@ -13,6 +13,7 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/vector_helpers.cuh>
 
+#include <cuda/stream>
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 

@@ -16,10 +16,7 @@
 #include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
 
 #include <cuda/stream>
-
 #include <raft/core/handle.hpp>
-
-#include <rmm/cuda_stream_view.hpp>
 
 #include <memory>
 

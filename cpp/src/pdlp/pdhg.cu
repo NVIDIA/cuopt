@@ -13,6 +13,7 @@
 #include <pdlp/utilities/ping_pong_graph.cuh>
 #include <pdlp/utils.cuh>
 
+#include <cuda/stream>
 #include <raft/core/device_span.hpp>
 
 #include <mip_heuristics/mip_constants.hpp>

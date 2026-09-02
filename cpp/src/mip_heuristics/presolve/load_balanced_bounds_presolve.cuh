@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cuda/stream>
 #include "probing_cache.cuh"
 
 #include <mip_heuristics/problem/load_balanced_problem.cuh>

@@ -10,9 +10,9 @@
 #include <utilities/logger.hpp>
 #include <utilities/macros.cuh>
 
+#include <cuda/stream>
 #include <raft/core/error.hpp>
 #include <raft/util/cudart_utils.hpp>
-#include <rmm/cuda_stream_view.hpp>
 
 #include <cuda_runtime.h>
 
