@@ -5,10 +5,12 @@
 
 list(PREPEND
   MATH_OPT_SRC_FILES
-  ${CMAKE_CURRENT_SOURCE_DIR}/solver_settings.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/solver_settings.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/solver_settings_gpu.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solution_reader.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solution_writer.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/tic_toc.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/logger_entry.cpp
   )
 
 set(CUOPT_SRC_FILES ${CUOPT_SRC_FILES}

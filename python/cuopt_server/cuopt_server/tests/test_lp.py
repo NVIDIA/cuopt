@@ -180,7 +180,7 @@ def test_barrier_solver_options(
     - cudss_deterministic: True for deterministic, False for
       nondeterministic
     - barrier_dual_initial_point: (-1) automatic, (0) Lustig-Marsten-Shanno,
-      (1) dual least squares
+      (1) dual least squares, (2) Sturm/SeDuMi mu-based primal+dual
     """
     data = get_std_data_for_lp()
 

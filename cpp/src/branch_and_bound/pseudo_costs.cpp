@@ -1374,6 +1374,69 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
 }
 
 template <typename i_t, typename f_t>
+void pseudo_costs_t<i_t, f_t>::initialize_with_estimate(
+  const lp_problem_t<i_t, f_t>& lp,
+  const std::vector<simplex::variable_status_t>& vstatus,
+  const std::vector<i_t>& fractional,
+  const lp_solution_t<i_t, f_t>& lp_solution,
+  const std::vector<i_t>& basic_list,
+  const std::vector<i_t>& nonbasic_list,
+  basis_update_mpf_t<i_t, f_t>& basis_factors)
+{
+  i_t m = lp.num_rows;
+  i_t n = lp.num_cols;
+
+  std::vector<f_t> delta_z(n, 0);
+  std::vector<i_t> workspace(n, 0);
+
+  f_t work_estimate = 0;
+
+  std::vector<i_t> basic_map(n, -1);
+  for (i_t i = 0; i < m; i++) {
+    basic_map[basic_list[i]] = i;
+  }
+
+  // compute_initial_nonbasic_end permutes columns in place; copy so pc.Arow is unchanged
+  csr_matrix_t<i_t, f_t> local_Arow = Arow;
+
+  std::vector<i_t> nonbasic_end(m);
+  compute_initial_nonbasic_end(basic_map, local_Arow, nonbasic_end);
+
+  for (i_t k = 0; k < fractional.size(); k++) {
+    const i_t j = fractional[k];
+    assert(j >= 0);
+
+    if (pseudo_cost_num_up[j] == 0 || pseudo_cost_num_down[j] == 0) {
+      objective_change_estimate_t<f_t> estimate =
+        single_pivot_objective_change_estimate(lp,
+                                               settings,
+                                               local_Arow,
+                                               vstatus,
+                                               j,
+                                               basic_map[j],
+                                               lp_solution,
+                                               basic_list,
+                                               nonbasic_list,
+                                               nonbasic_end,
+                                               basis_factors,
+                                               workspace,
+                                               delta_z,
+                                               work_estimate);
+
+      if (pseudo_cost_num_down[j] == 0) {
+        pseudo_cost_sum_down[j] += estimate.down_obj_change;
+        ++pseudo_cost_num_down[j];
+      }
+
+      if (pseudo_cost_num_up[j] == 0) {
+        pseudo_cost_sum_up[j] += estimate.up_obj_change;
+        ++pseudo_cost_num_up[j];
+      }
+    }
+  }
+}
+
+template <typename i_t, typename f_t>
 inline f_t pseudo_costs_t<i_t, f_t>::compute_pseudocost_average_down()
 {
   i_t num_initialized = 0;

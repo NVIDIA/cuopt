@@ -43,7 +43,8 @@ class solution_t {
   // returns the host assignment as a vector
   std::vector<f_t> get_host_assignment();
   // assigns random within bounds
-  void assign_random_within_bounds(f_t ratio_of_vars_to_random_assign = 1.0,
+  void assign_random_within_bounds(uint64_t seed,
+                                   f_t ratio_of_vars_to_random_assign = 1.0,
                                    bool only_integers                 = false);
   // sets given pairs of var/value to the assignment
   void set_vars_to_values(const std::vector<thrust::pair<i_t, f_t>>& var_val_pairs);
@@ -51,9 +52,9 @@ class solution_t {
   void copy_new_assignment(const std::vector<f_t>& h_assignment);
   void copy_new_assignment(const rmm::device_uvector<f_t>& d_assignment);
   // rounds integer variables to the nearest integer val, returns whether the rounding is feasible
-  bool round_nearest();
+  bool round_nearest(uint64_t seed);
   // rounds integers to random if fractionality is between 0.25 and 0.75. otherwise, to nearest
-  bool round_random_nearest(i_t n_target_random_rounds);
+  bool round_random_nearest(i_t n_target_random_rounds, uint64_t seed);
   bool round_simple();
   // makes the approximate integer values up to INTEGRALITY TOLERANCE whole integers
   void correct_integer_precision();

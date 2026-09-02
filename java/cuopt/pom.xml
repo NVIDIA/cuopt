@@ -45,6 +45,63 @@ SPDX-License-Identifier: Apache-2.0
     <junit.jupiter.version>5.11.4</junit.jupiter.version>
   </properties>
 
+  <!--
+    Maven Central rate-limits NVIDIA-managed GitHub Actions runners: they egress through a small,
+    shared NAT'd IP range, so every RAPIDS repo's Java CI shares the same budget against Central
+    (see rapidsai/build-infra#370). Prefer the Google Cloud read-only mirror of Central, the same
+    one Apache ORC/Lucene/Spark use, and fall back to Central for anything not mirrored. Matches
+    the fix applied in rapidsai/kvikio#992.
+  -->
+  <repositories>
+    <repository>
+      <id>gcs-maven-central-mirror</id>
+      <name>GCS Maven Central mirror</name>
+      <url>https://maven-central.storage-download.googleapis.com/maven2/</url>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+    </repository>
+    <repository>
+      <id>central</id>
+      <name>Maven Central</name>
+      <url>https://repo.maven.apache.org/maven2</url>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+    </repository>
+  </repositories>
+
+  <pluginRepositories>
+    <pluginRepository>
+      <id>gcs-maven-central-mirror</id>
+      <name>GCS Maven Central mirror</name>
+      <url>https://maven-central.storage-download.googleapis.com/maven2/</url>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+    </pluginRepository>
+    <pluginRepository>
+      <id>central</id>
+      <name>Maven Plugin Repository</name>
+      <url>https://repo.maven.apache.org/maven2</url>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+    </pluginRepository>
+  </pluginRepositories>
+
   <dependencies>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
@@ -109,38 +166,6 @@ SPDX-License-Identifier: Apache-2.0
           </execution>
         </executions>
       </plugin>
-      <!-- Sources and javadoc jars are required by any Maven repository we would publish to. -->
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-source-plugin</artifactId>
-        <version>3.3.1</version>
-        <executions>
-          <execution>
-            <id>attach-sources</id>
-            <goals>
-              <goal>jar-no-fork</goal>
-            </goals>
-          </execution>
-        </executions>
-      </plugin>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-javadoc-plugin</artifactId>
-        <version>3.11.2</version>
-        <configuration>
-          <!-- The bindings are documented against the C API rather than in javadoc comments;
-               missing tags should not fail the build. -->
-          <doclint>none</doclint>
-        </configuration>
-        <executions>
-          <execution>
-            <id>attach-javadocs</id>
-            <goals>
-              <goal>jar</goal>
-            </goals>
-          </execution>
-        </executions>
-      </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
@@ -154,4 +179,54 @@ SPDX-License-Identifier: Apache-2.0
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!--
+      Sources and javadoc jars are required by any Maven repository we would publish to, but
+      not by anything else. Attaching them unconditionally meant every `mvn test`/`verify`
+      invocation (which never packages anything) still had to resolve maven-source-plugin and
+      maven-javadoc-plugin from Maven Central, on every CI run, for no reason. That repeated,
+      unnecessary resolution repeatedly hit Maven Central 429 rate limits. Activate explicitly
+      with -Pattach-source-javadoc when actually packaging for publishing; mvn test/verify
+      should not activate it.
+    -->
+    <profile>
+      <id>attach-source-javadoc</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-source-plugin</artifactId>
+            <version>3.3.1</version>
+            <executions>
+              <execution>
+                <id>attach-sources</id>
+                <goals>
+                  <goal>jar-no-fork</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-javadoc-plugin</artifactId>
+            <version>3.11.2</version>
+            <configuration>
+              <!-- The bindings are documented against the C API rather than in javadoc comments;
+                   missing tags should not fail the build. -->
+              <doclint>none</doclint>
+            </configuration>
+            <executions>
+              <execution>
+                <id>attach-javadocs</id>
+                <goals>
+                  <goal>jar</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

@@ -292,10 +292,13 @@ FetchContent_MakeAvailable(papilo)
 
 # PSLP - Lightweight C presolver for linear programs
 # https://github.com/dance858/PSLP
+#
+# Pinned past v0.0.11 to a commit rather than a tag: fixes a stray infeasible-message printf
+# that ignored verbose=false (dance858/PSLP#55). Move to a released tag once one includes it.
 FetchContent_Declare(
         pslp
         GIT_REPOSITORY "https://github.com/dance858/PSLP.git"
-        GIT_TAG "v0.0.11"
+        GIT_TAG "12d37dd9ab5ee848b3ec5da17f4cf8e805d58cd6"
         GIT_PROGRESS TRUE
         EXCLUDE_FROM_ALL
         SYSTEM
@@ -720,8 +723,6 @@ endif ()
 # - link libraries --------------------------------------------------------------------------------
 
 set(CUOPT_PRIVATE_CUDA_LIBS
-        CUDA::curand
-        CUDA::cusolver
         TBB::tbb
         OpenMP::OpenMP_CXX)
 

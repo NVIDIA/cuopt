@@ -14,7 +14,6 @@
 #include <mip_heuristics/mip_constants.hpp>
 #include <pdlp/utils.cuh>
 #include <utilities/copy_helpers.hpp>
-#include <utilities/seed_generator.cuh>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 
@@ -226,10 +225,11 @@ void solution_t<i_t, f_t>::copy_new_assignment(const rmm::device_uvector<f_t>& d
 }
 
 template <typename i_t, typename f_t>
-void solution_t<i_t, f_t>::assign_random_within_bounds(f_t ratio_of_vars_to_random_assign,
+void solution_t<i_t, f_t>::assign_random_within_bounds(uint64_t seed,
+                                                       f_t ratio_of_vars_to_random_assign,
                                                        bool only_integers)
 {
-  std::mt19937 rng(cuopt::seed_generator::get_seed());
+  std::mt19937 rng(seed);
   auto stream                   = handle_ptr->get_stream();
   std::vector<f_t> h_assignment = host_copy(assignment, stream);
   std::uniform_real_distribution<f_t> unif_prob(0, 1);
@@ -367,20 +367,20 @@ void solution_t<i_t, f_t>::compute_infeasibility()
 }
 
 template <typename i_t, typename f_t>
-bool solution_t<i_t, f_t>::round_nearest()
+bool solution_t<i_t, f_t>::round_nearest(uint64_t seed)
 {
   clamp_within_bounds();
-  invoke_round_nearest(*this);
+  invoke_round_nearest(*this, seed);
   cuopt_assert(compute_max_variable_violation() == 0., "Variables are not within bounds");
   cuopt_assert(test_number_all_integer(), "Not all variables are integers");
   return compute_feasibility();
 }
 
 template <typename i_t, typename f_t>
-bool solution_t<i_t, f_t>::round_random_nearest(i_t n_target_random_rounds)
+bool solution_t<i_t, f_t>::round_random_nearest(i_t n_target_random_rounds, uint64_t seed)
 {
   clamp_within_bounds();
-  invoke_random_round_nearest(*this, n_target_random_rounds);
+  invoke_random_round_nearest(*this, n_target_random_rounds, seed);
   cuopt_assert(compute_max_variable_violation() == 0., "Variables are not within bounds");
   cuopt_assert(test_number_all_integer(), "Not all variables are integers");
   return compute_feasibility();

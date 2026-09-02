@@ -2383,5 +2383,11 @@ TEST_F(ChunkValidationTests, AcceptsValidChunk)
 int main(int argc, char** argv)
 {
   ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
+  const int rc = RUN_ALL_TESTS();
+  // Skip C++ static / atexit destructors. gRPC / Abseil / protobuf can
+  // intermittently double-free during process-exit teardown after a fully
+  // green run (CI sees SIGABRT / "double free or corruption (fasttop)" after
+  // "[  PASSED  ]"). Shared ServerProcess instances are already stopped in
+  // each suite's TearDownTestSuite, so skipping global dtors is safe here.
+  std::_Exit(rc);
 }

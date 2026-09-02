@@ -9,6 +9,7 @@
 
 #include <cuopt/mathematical_optimization/mip/diving_hyper_params.hpp>
 #include <cuopt/mathematical_optimization/mip/submip_hyper_params.hpp>
+#include <cuopt/mathematical_optimization/utilities/internals.hpp>
 
 #include <dual_simplex/logger.hpp>
 #include <math_optimization/types.hpp>
@@ -71,6 +72,8 @@ struct simplex_solver_settings_t {
       eliminate_dense_columns(true),
       barrier_iterative_refinement(true),
       barrier_adaptive_regularization(-1),
+      barrier_primal_regularization(-1.0),
+      barrier_dual_regularization(-1.0),
       barrier_step_scale(0.9),
       barrier_soc_threshold(100),
       num_gpus(1),
@@ -81,10 +84,11 @@ struct simplex_solver_settings_t {
       initial_perturbation(-1),
       remove_perturbation(-1),
       primal_pricing(0),
-      barrier_dual_initial_point(-1),
+      barrier_dual_initial_point(barrier_dual_initial_point_t::Automatic),
       postsolve_info(-1),
       barrier_presolve_bound_free_variables(-1),
       qcqp_ruiz_equilibration(-1),
+      barrier_initial_point_safeguard(10.0),
       check_Q(false),
       crossover(false),
       unscaled_max_abs_obj_coeff(-1.0),
@@ -173,8 +177,17 @@ struct simplex_solver_settings_t {
   bool eliminate_dense_columns;         // true to eliminate dense columns from A*D*A^T
   bool barrier_iterative_refinement;    // true to use iterative refinement for barrier method
   int barrier_adaptive_regularization;  // -1 automatic, 0 disabled, 1 enabled
-  f_t barrier_step_scale;               // step scale for barrier method
-  i_t barrier_soc_threshold;            // SOC dimension above which rank-2 sparse scaling is used
+  f_t barrier_primal_regularization;    // -1 automatic (has_soc ? 1e-8 : 1e-6), else user-specified
+                                        // initial primal regularization (augmented system's (2,2)
+                                        // block) for the first barrier factorization. Adaptive
+                                        // regularization (if enabled) still scales it up/down from
+                                        // this starting point on later iters.
+  f_t barrier_dual_regularization;  // -1 automatic (adaptive_reg ? 1e-8 : 0), else user-specified
+                                    // initial dual regularization (augmented system's (1,1) block
+                                    // diagonal) for the first barrier factorization. Same adaptive
+                                    // caveat as above.
+  f_t barrier_step_scale;           // step scale for barrier method
+  i_t barrier_soc_threshold;        // SOC dimension above which rank-2 sparse scaling is used
   int num_gpus;   // Number of GPUs to use (maximum of 2 gpus are supported at the moment)
   i_t folding;    // -1 automatic, 0 don't fold, 1 fold
   i_t augmented;  // -1 automatic, 0 to solve with ADAT, 1 to solve with augmented system
@@ -183,11 +196,14 @@ struct simplex_solver_settings_t {
   i_t initial_perturbation;        // -1 automatic, 0 to not perturb, 1 to perturb
   i_t remove_perturbation;         // -1 automatic, 0 disabled, 1 enabled
   i_t primal_pricing;              // 0 Dantzig (default), 1 Devex
-  i_t barrier_dual_initial_point;  // -1 automatic, 0 to use Lustig, Marsten, and Shanno initial
-                                   // point, 1 to use initial point form dual least squares problem
-  i_t postsolve_info;              // -1 automatic (disabled), 0 disabled, 1 enabled
+  barrier_dual_initial_point_t
+    barrier_dual_initial_point;               // -1 automatic, 0 Lustig-Marsten-Shanno,
+                                              // 1 dual least squares, 2 SeDuMi mu-based
+  i_t postsolve_info;                         // -1 automatic (disabled), 0 disabled, 1 enabled
   i_t barrier_presolve_bound_free_variables;  // -1 automatic, 0 disabled, 1 enabled
-  i_t qcqp_ruiz_equilibration;     // -1 automatic (imbalance heuristic), 0 disabled, 1 enabled
+  i_t qcqp_ruiz_equilibration;          // -1 automatic (imbalance heuristic), 0 disabled, 1 enabled
+  f_t barrier_initial_point_safeguard;  // margin pushing the barrier initial iterate into
+  // the interior of the nonnegative orthant / SOC
   bool check_Q;                    // true to check if Q is positive semidefinite
   bool crossover;                  // true to do crossover, false to not
   f_t unscaled_max_abs_obj_coeff;  // max |c_j| before scaling (-1 = not set, compute from lp)

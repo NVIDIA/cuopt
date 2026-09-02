@@ -11,9 +11,9 @@
 
 #include <mip_heuristics/local_search/feasibility_pump/feasibility_pump.cuh>
 #include <mip_heuristics/local_search/rounding/constraint_prop.cuh>
+#include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/relaxed_lp/relaxed_lp.cuh>
 #include <mip_heuristics/solution/solution.cuh>
-#include <utilities/seed_generator.cuh>
 
 #include <thrust/partition.h>
 
@@ -29,7 +29,7 @@ class fp_recombiner_t : public recombiner_t<i_t, f_t> {
                   line_segment_search_t<i_t, f_t>& line_segment_search,
                   rmm::device_uvector<f_t>& lp_optimal_solution,
                   const raft::handle_t* handle_ptr)
-    : recombiner_t<i_t, f_t>(context, n_vars, handle_ptr),
+    : recombiner_t<i_t, f_t>(context, n_vars, handle_ptr, rng_id_t::recombiner_fp),
       vars_to_fix(n_vars, handle_ptr->get_stream()),
       fp(context, fj, constraint_prop, line_segment_search, lp_optimal_solution)
   {
@@ -53,7 +53,7 @@ class fp_recombiner_t : public recombiner_t<i_t, f_t> {
     i_t n_vars_from_other = n_different_vars;
     if (n_vars_from_other > (i_t)fp_recombiner_config_t::max_n_of_vars_from_other) {
       n_vars_from_other = fp_recombiner_config_t::max_n_of_vars_from_other;
-      thrust::default_random_engine g{(unsigned int)cuopt::seed_generator::get_seed()};
+      thrust::default_random_engine g{this->rng.next_u32()};
       thrust::shuffle(a.handle_ptr->get_thrust_policy(),
                       this->remaining_indices.data(),
                       this->remaining_indices.data() + n_different_vars,
@@ -114,7 +114,7 @@ class fp_recombiner_t : public recombiner_t<i_t, f_t> {
     }
     // unfix the assignment on given result no matter if it is feasible
     offspring.unfix_variables(fixed_assignment, variable_map);
-    if (!run_fp) { offspring.round_nearest(); }
+    if (!run_fp) { offspring.round_nearest(this->rng.next_u64()); }
     cuopt_assert(offspring.test_number_all_integer(), "All must be integers after offspring");
     offspring.compute_feasibility();
     bool same_as_parents = this->check_if_offspring_is_same_as_parents(offspring, a, b);
