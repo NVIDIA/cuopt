@@ -47,7 +47,7 @@ class barrier_solver_t {
                              simplex::lp_solution_t<i_t, f_t>& solution,
                              cuopt::mathematical_optimization::barrier_cache_t* cache = nullptr);
   // Cache reuse: cached iteration_data_t already has the updated linear objective.
-  // Prepare the workspace, compute a new initial point, run IPM. Same status/solution contract as
+  // Reset iterate state, compute a new initial point, run IPM. Same status/solution contract as
   // solve().
   simplex::lp_status_t barrier_advanced_solve(f_t start_time,
                                         simplex::lp_solution_t<i_t, f_t>& solution,

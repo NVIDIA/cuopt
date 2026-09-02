@@ -36,7 +36,7 @@
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/solve.hpp>
 #include <cuopt/mathematical_optimization/utilities/barrier_cache.hpp>
-#include <pdlp/utilities/barrier_transform.hpp>
+#include <barrier/barrier_transform.hpp>
 
 #include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
 #include <utilities/copy_helpers.hpp>

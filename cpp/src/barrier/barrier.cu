@@ -869,7 +869,7 @@ class iteration_data_t {
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
 
       chol = std::make_shared<sparse_cholesky_cudss_t<i_t, f_t>>(
-        handle_ptr, settings, factorization_size);
+        handle_ptr, settings_, factorization_size);
       chol->set_positive_definite(false);
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
       symbolic_status = 0;
@@ -891,13 +891,10 @@ class iteration_data_t {
   // Mehrotra-start with the new c. A and Q are unchanged; the previous solve
   // left D and the KKT values at its last iterate. Reuse is QP-only (no cones),
   // so form_*(false) updates values in the existing CSR; no symbolic rebuild.
-  bool prepare_for_reuse(const simplex_solver_settings_t<i_t, f_t>& settings)
+  bool reset_iterate_state(const simplex_solver_settings_t<i_t, f_t>& settings)
   {
     if (chol == nullptr || symbolic_status != 0) { return false; }
-    settings_         = settings;
-    if (chol != nullptr) {
-      static_cast<sparse_cholesky_base_t<i_t, f_t>*>(chol.get())->rebind_settings(settings_);
-    }
+    settings_ = settings;
 
     {
       raft::common::nvtx::range fun_scope("Barrier: reset diagonal scaling");
@@ -938,12 +935,7 @@ class iteration_data_t {
     }
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return false; }
 
-    reset_for_new_solve();
-    return true;
-  }
-
-  void reset_for_new_solve()
-  {
+    // Drop the last iterate's numeric factor and residual history; keep symbolic analysis.
     has_factorization                      = false;
     has_solve_info                         = false;
     relative_primal_residual_save          = inf;
@@ -954,6 +946,7 @@ class iteration_data_t {
     complementarity_residual_norm_save     = inf;
     if (chol != nullptr) { chol->invalidate_numeric_factor(); }
     handle_ptr->sync_stream();
+    return true;
   }
 
   bool has_cones() const { return cones_.has_value(); }
@@ -4381,7 +4374,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::barrier_advanced_solve(
       return lp_status_t::NUMERICAL_ISSUES;
     }
     try {
-      if (!owned_data->prepare_for_reuse(settings)) {
+      if (!owned_data->reset_iterate_state(settings)) {
         owned_data.reset();
         if (cache != nullptr) { cache->clear(); }
         settings.log.printf(
@@ -4397,18 +4390,19 @@ lp_status_t barrier_solver_t<i_t, f_t>::barrier_advanced_solve(
     }
 
     iteration_data_t<i_t, f_t>& data = *owned_data;
-    auto fail_reuse = [&](lp_status_t status) {
-      if (cache != nullptr) { cache->clear(); }
-      return status;
-    };
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       settings.log.printf("Barrier solver halted\n");
-      return fail_reuse(lp_status_t::CONCURRENT_LIMIT);
+      if (cache != nullptr) { cache->clear(); }
+      return lp_status_t::CONCURRENT_LIMIT;
     }
-    if (data.indefinite_Q) { return fail_reuse(lp_status_t::NUMERICAL_ISSUES); }
+    if (data.indefinite_Q) {
+      if (cache != nullptr) { cache->clear(); }
+      return lp_status_t::NUMERICAL_ISSUES;
+    }
     if (data.symbolic_status != 0) {
       settings.log.printf("Error in symbolic analysis\n");
-      return fail_reuse(lp_status_t::NUMERICAL_ISSUES);
+      if (cache != nullptr) { cache->clear(); }
+      return lp_status_t::NUMERICAL_ISSUES;
     }
     settings.log.printf("Barrier setup complete at %.3f seconds\n", toc(start_time));
     return run_ipm(start_time, solution, cache, owned_data);
@@ -4421,6 +4415,22 @@ lp_status_t barrier_solver_t<i_t, f_t>::barrier_advanced_solve(
   }
 }
 
+// Optimal: persist iteration_data_t on the cache. Otherwise drop it.
+template <typename i_t, typename f_t>
+lp_status_t store_or_clear_cache(cuopt::mathematical_optimization::barrier_cache_t* cache,
+                                 std::unique_ptr<iteration_data_t<i_t, f_t>>& owned_data,
+                                 lp_status_t status)
+{
+  if (cache != nullptr && owned_data) {
+    if (status == lp_status_t::OPTIMAL) {
+      cache->store_iteration_data(owned_data.release());
+    } else {
+      cache->clear();
+    }
+  }
+  return status;
+}
+
 template <typename i_t, typename f_t>
 lp_status_t barrier_solver_t<i_t, f_t>::run_ipm(
   f_t start_time,
@@ -4428,16 +4438,6 @@ lp_status_t barrier_solver_t<i_t, f_t>::run_ipm(
   cuopt::mathematical_optimization::barrier_cache_t* cache,
   std::unique_ptr<iteration_data_t<i_t, f_t>>& owned_data)
 {
-  auto finish_cache = [&](lp_status_t status) -> lp_status_t {
-    if (cache != nullptr && owned_data) {
-      if (status == lp_status_t::OPTIMAL) {
-        cache->store_iteration_data(owned_data.release());
-      } else {
-        cache->clear();
-      }
-    }
-    return status;
-  };
   iteration_data_t<i_t, f_t>& data = *owned_data;
   {
     data.cusparse_dual_residual_ = data.cusparse_view_.create_vector(data.d_dual_residual_);
@@ -4454,7 +4454,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::run_ipm(
 
   if (toc(start_time) > settings.time_limit) {
     settings.log.printf("Barrier time limit exceeded\n");
-    return finish_cache(lp_status_t::TIME_LIMIT);
+    return store_or_clear_cache(cache, owned_data, lp_status_t::TIME_LIMIT);
   }
 
   // Handle automatic adaptive regularization (-1: auto, 0: off, 1: on).
@@ -4469,15 +4469,15 @@ lp_status_t barrier_solver_t<i_t, f_t>::run_ipm(
   i_t initial_status = initial_point(data);
   if (toc(start_time) > settings.time_limit) {
     settings.log.printf("Barrier time limit exceeded\n");
-    return finish_cache(lp_status_t::TIME_LIMIT);
+    return store_or_clear_cache(cache, owned_data, lp_status_t::TIME_LIMIT);
   }
   if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
     settings.log.printf("Barrier solver halted\n");
-    return finish_cache(lp_status_t::CONCURRENT_LIMIT);
+    return store_or_clear_cache(cache, owned_data, lp_status_t::CONCURRENT_LIMIT);
   }
   if (initial_status != 0) {
     settings.log.printf("Unable to compute initial point\n");
-    return finish_cache(lp_status_t::NUMERICAL_ISSUES);
+    return store_or_clear_cache(cache, owned_data, lp_status_t::NUMERICAL_ISSUES);
   }
   // Upload initial point to device and compute initial residuals/norms on GPU
   data.d_complementarity_wv_residual_.resize(data.n_upper_bounds, stream_view_);
@@ -4572,11 +4572,11 @@ lp_status_t barrier_solver_t<i_t, f_t>::run_ipm(
 
     if (toc(start_time) > settings.time_limit) {
       settings.log.printf("Barrier time limit exceeded\n");
-      return finish_cache(lp_status_t::TIME_LIMIT);
+      return store_or_clear_cache(cache, owned_data, lp_status_t::TIME_LIMIT);
     }
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       settings.log.printf("Barrier solver halted\n");
-      return finish_cache(lp_status_t::CONCURRENT_LIMIT);
+      return store_or_clear_cache(cache, owned_data, lp_status_t::CONCURRENT_LIMIT);
     }
 
     // Compute the affine step. This is the call that (re)factorizes the
@@ -4593,11 +4593,11 @@ lp_status_t barrier_solver_t<i_t, f_t>::run_ipm(
     }
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       settings.log.printf("Barrier solver halted\n");
-      return finish_cache(lp_status_t::CONCURRENT_LIMIT);
+      return store_or_clear_cache(cache, owned_data, lp_status_t::CONCURRENT_LIMIT);
     }
 
     if (status < 0) {
-      return finish_cache(check_for_suboptimal_solution(data,
+      return store_or_clear_cache(cache, owned_data, check_for_suboptimal_solution(data,
                                                           start_time,
                                                           iter,
                                                           primal_objective,
@@ -4611,11 +4611,11 @@ lp_status_t barrier_solver_t<i_t, f_t>::run_ipm(
     }
     if (toc(start_time) > settings.time_limit) {
       settings.log.printf("Barrier time limit exceeded\n");
-      return finish_cache(lp_status_t::TIME_LIMIT);
+      return store_or_clear_cache(cache, owned_data, lp_status_t::TIME_LIMIT);
     }
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       settings.log.printf("Barrier solver halted\n");
-      return finish_cache(lp_status_t::CONCURRENT_LIMIT);
+      return store_or_clear_cache(cache, owned_data, lp_status_t::CONCURRENT_LIMIT);
     }
 
     f_t mu_aff, sigma, new_mu;
@@ -4634,10 +4634,10 @@ lp_status_t barrier_solver_t<i_t, f_t>::run_ipm(
     }
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       settings.log.printf("Barrier solver halted\n");
-      return finish_cache(lp_status_t::CONCURRENT_LIMIT);
+      return store_or_clear_cache(cache, owned_data, lp_status_t::CONCURRENT_LIMIT);
     }
     if (status < 0) {
-      return finish_cache(check_for_suboptimal_solution(data,
+      return store_or_clear_cache(cache, owned_data, check_for_suboptimal_solution(data,
                                                           start_time,
                                                           iter,
                                                           primal_objective,
@@ -4653,11 +4653,11 @@ lp_status_t barrier_solver_t<i_t, f_t>::run_ipm(
     data.has_solve_info    = false;
     if (toc(start_time) > settings.time_limit) {
       settings.log.printf("Barrier time limit exceeded\n");
-      return finish_cache(lp_status_t::TIME_LIMIT);
+      return store_or_clear_cache(cache, owned_data, lp_status_t::TIME_LIMIT);
     }
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       settings.log.printf("Barrier solver halted\n");
-      return finish_cache(lp_status_t::CONCURRENT_LIMIT);
+      return store_or_clear_cache(cache, owned_data, lp_status_t::CONCURRENT_LIMIT);
     }
 
     compute_final_direction(data);
@@ -4725,7 +4725,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::run_ipm(
 
     if (primal_objective != primal_objective || dual_objective != dual_objective) {
       settings.log.printf("Numerical error in objective\n");
-      return finish_cache(check_for_suboptimal_solution(data,
+      return store_or_clear_cache(cache, owned_data, check_for_suboptimal_solution(data,
                                                           start_time,
                                                           iter,
                                                           primal_objective,
@@ -4783,7 +4783,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::run_ipm(
                        primal_residual_norm,
                        data.cusparse_view_,
                        solution);
-      return finish_cache(lp_status_t::OPTIMAL);
+      return store_or_clear_cache(cache, owned_data, lp_status_t::OPTIMAL);
     }
 
     // Check if the solution is getting worse
@@ -4797,7 +4797,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::run_ipm(
           data.relative_dual_residual_save < settings.barrier_relaxed_optimality_tol &&
           data.relative_complementarity_residual_save <
             settings.barrier_relaxed_complementarity_tol) {
-        return finish_cache(check_for_suboptimal_solution(data,
+        return store_or_clear_cache(cache, owned_data, check_for_suboptimal_solution(data,
                                                             start_time,
                                                             iter,
                                                             primal_objective,
@@ -4823,7 +4823,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::run_ipm(
                    primal_residual_norm,
                    data.cusparse_view_,
                    solution);
-  return finish_cache(lp_status_t::ITERATION_LIMIT);
+  return store_or_clear_cache(cache, owned_data, lp_status_t::ITERATION_LIMIT);
 }
 
 template <typename i_t, typename f_t>

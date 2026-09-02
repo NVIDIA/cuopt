@@ -27,7 +27,7 @@
 #include <math_optimization/types.hpp>
 
 #include <cuopt/mathematical_optimization/utilities/barrier_cache.hpp>
-#include <pdlp/utilities/barrier_transform.hpp>
+#include <barrier/barrier_transform.hpp>
 
 #include <raft/core/nvtx.hpp>
 

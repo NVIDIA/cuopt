@@ -8,7 +8,7 @@
 #include <cuopt/error.hpp>
 #include <cuopt/mathematical_optimization/utilities/barrier_cache.hpp>
 
-#include <pdlp/utilities/barrier_transform.hpp>
+#include <barrier/barrier_transform.hpp>
 
 #include <stdexcept>
 #include <utility>
