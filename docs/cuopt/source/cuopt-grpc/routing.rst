@@ -100,7 +100,7 @@ local :class:`cuopt.routing.Assignment`, read directly off the wire:
    * - ``route``, ``truck_id``, ``locations``, ``node_types``, ``arrival_stamp``
      - Per-stop route arrays, one entry per stop across all vehicles.
    * - ``unserviced_nodes``
-     - Orders that could not be served.
+     - Orders that cannot be served.
    * - ``accepted``
      - Orders accepted, for prize-collection problems.
 
