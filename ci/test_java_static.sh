@@ -48,8 +48,14 @@ MAVEN_VERSION="3.9.9"
 dnf install -y java-11-openjdk-devel
 export JAVA_HOME=/usr/lib/jvm/java-11-openjdk
 MAVEN_HOME="$(mktemp -d)"
-curl -fsSL "https://archive.apache.org/dist/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz" \
-  | tar xz -C "${MAVEN_HOME}" --strip-components=1
+MAVEN_TARBALL="$(mktemp)"
+MAVEN_TARBALL_URL="https://archive.apache.org/dist/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz"
+curl -fsSL "${MAVEN_TARBALL_URL}" -o "${MAVEN_TARBALL}"
+# archive.apache.org is plain HTTPS-authenticated hosting, not a signed package index, so verify
+# the download against Apache's published SHA-512 rather than trusting transport security alone.
+echo "$(curl -fsSL "${MAVEN_TARBALL_URL}.sha512")  ${MAVEN_TARBALL}" | sha512sum --check --status
+tar xz -C "${MAVEN_HOME}" --strip-components=1 -f "${MAVEN_TARBALL}"
+rm -f "${MAVEN_TARBALL}"
 export PATH="${MAVEN_HOME}/bin:${JAVA_HOME}/bin:${PATH}"
 
 if command -v ldconfig >/dev/null 2>&1 && ldconfig -p | grep -q libcuopt.so; then

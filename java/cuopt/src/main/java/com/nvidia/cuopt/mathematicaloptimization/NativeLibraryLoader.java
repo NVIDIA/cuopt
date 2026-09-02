@@ -9,8 +9,13 @@ import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.net.URL;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
 
 /**
  * Locates and loads {@code libcuopt_jni}, in three steps.
@@ -101,11 +106,7 @@ final class NativeLibraryLoader {
     }
 
     try {
-      Path directory =
-          Path.of(
-              System.getProperty("java.io.tmpdir"),
-              "cuopt-native-" + System.getProperty("user.name", "shared"));
-      Files.createDirectories(directory);
+      Path directory = privateExtractionDirectory();
 
       for (String companion : COMPANION_LIBRARIES) {
         extractResource(resourcePath(osArch, companion), directory, companion);
@@ -120,10 +121,12 @@ final class NativeLibraryLoader {
    * Copies one packaged file into {@code directory} and returns it, or null when the JAR does not
    * contain it.
    *
-   * <p>A file already there with the expected size is reused rather than rewritten, because the JNI
-   * library is hundreds of megabytes and re-extracting it on every JVM start would dominate
-   * startup. It is written to a sibling and moved into place, so an interrupted run cannot leave a
-   * truncated library behind for the next one to load.
+   * <p>A file already there whose digest matches the packaged resource is reused rather than
+   * rewritten, because the JNI library is hundreds of megabytes and re-extracting it on every JVM
+   * start would dominate startup. Comparing digests rather than just size means a file another
+   * process happened to leave at the same size cannot be mistaken for the real library. It is
+   * written to a sibling and moved into place, so an interrupted run cannot leave a truncated
+   * library behind for the next one to load.
    */
   private static Path extractResource(String resource, Path directory, String fileName)
       throws IOException {
@@ -132,8 +135,11 @@ final class NativeLibraryLoader {
       return null;
     }
     Path target = directory.resolve(fileName);
-    long expectedSize = url.openConnection().getContentLengthLong();
-    if (expectedSize >= 0 && Files.isRegularFile(target) && Files.size(target) == expectedSize) {
+    byte[] expectedDigest;
+    try (InputStream in = url.openStream()) {
+      expectedDigest = digest(in);
+    }
+    if (Files.isRegularFile(target) && Arrays.equals(expectedDigest, digest(target))) {
       return target;
     }
     Path staging = Files.createTempFile(directory, fileName + ".", ".part");
@@ -144,5 +150,73 @@ final class NativeLibraryLoader {
       Files.deleteIfExists(staging);
     }
     return target;
+  }
+
+  private static byte[] digest(Path path) throws IOException {
+    try (InputStream in = Files.newInputStream(path)) {
+      return digest(in);
+    }
+  }
+
+  private static byte[] digest(InputStream in) throws IOException {
+    MessageDigest sha256;
+    try {
+      sha256 = MessageDigest.getInstance("SHA-256");
+    } catch (NoSuchAlgorithmException e) {
+      // Mandatory per the Java platform spec; every conforming JVM provides it.
+      throw new IllegalStateException("SHA-256 unavailable", e);
+    }
+    byte[] buffer = new byte[1 << 16];
+    int n;
+    while ((n = in.read(buffer)) != -1) {
+      sha256.update(buffer, 0, n);
+    }
+    return sha256.digest();
+  }
+
+  /**
+   * A directory private to the current OS user, reused across JVM runs so the (potentially
+   * hundreds-of-megabytes) native libraries are extracted once rather than on every start.
+   *
+   * <p>{@code java.io.tmpdir} is typically world-writable, so a fixed, predictable path under it
+   * is only safe to reuse if it is verified private on every use: otherwise another local user
+   * could pre-create it -- as a symlink elsewhere, or simply owned by them -- ahead of this
+   * process and have {@link #extractResource} write into a location of their choosing before this
+   * process ever runs, or read files this process wrote expecting them to be private. Refuse to
+   * proceed rather than silently extracting into an untrusted directory.
+   */
+  private static Path privateExtractionDirectory() throws IOException {
+    Path directory =
+        Path.of(
+            System.getProperty("java.io.tmpdir"),
+            "cuopt-native-" + System.getProperty("user.name", "shared"));
+
+    if (!Files.exists(directory, LinkOption.NOFOLLOW_LINKS)) {
+      Files.createDirectories(directory);
+      try {
+        Files.setPosixFilePermissions(directory, PosixFilePermissions.fromString("rwx------"));
+      } catch (UnsupportedOperationException e) {
+        // Non-POSIX filesystem (e.g. Windows), which has no equivalent world-writable-tmpdir
+        // risk to guard against here.
+      }
+      return directory;
+    }
+
+    if (Files.isSymbolicLink(directory)) {
+      throw new IOException(directory + " is a symlink; refusing to extract native libraries "
+          + "through it");
+    }
+    try {
+      String owner = Files.getOwner(directory).getName();
+      String currentUser = System.getProperty("user.name");
+      if (currentUser != null && !currentUser.equals(owner)) {
+        throw new IOException(
+            directory + " is owned by '" + owner + "', not the current user; refusing to "
+                + "extract native libraries into it");
+      }
+    } catch (UnsupportedOperationException e) {
+      // Non-POSIX filesystem; ownership isn't a meaningful concept to check here.
+    }
+    return directory;
   }
 }

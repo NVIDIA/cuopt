@@ -83,11 +83,18 @@ soname_stem() { sed -E 's/\.so\.[0-9.]+$/.so/' <<< "$1"; }
 allowed_external=("${ALLOWED_CUDA_LIBRARIES[@]}" "${ALLOWED_SYSTEM_LIBRARIES[@]}")
 unsatisfied=()
 
+if ! command -v readelf >/dev/null 2>&1; then
+  echo "ERROR: readelf not found; cannot verify native dependencies" >&2
+  exit 1
+fi
+
 echo
 echo "Checking DT_NEEDED of every packaged library"
+needed_seen=0
 for lib in "${NATIVE_DIR}"/*.so*; do
   while read -r needed; do
     [[ -z "${needed}" ]] && continue
+    needed_seen=$((needed_seen + 1))
     # Packaged beside it, so the $ORIGIN RPATH resolves it.
     if [[ -e "${NATIVE_DIR}/${needed}" ]]; then
       continue
@@ -105,6 +112,14 @@ for lib in "${NATIVE_DIR}"/*.so*; do
     fi
   done < <(readelf -d "${lib}" 2>/dev/null | sed -n 's/.*NEEDED.*\[\(.*\)\]/\1/p')
 done
+
+# readelf failing silently (missing tool, corrupt ELF, empty NATIVE_DIR) would otherwise leave
+# unsatisfied empty and this script would report a false "self-contained" pass -- exactly the
+# kind of gap this script exists to catch, so treat it as a hard failure instead.
+if [[ "${needed_seen}" -eq 0 ]]; then
+  echo "ERROR: no DT_NEEDED entries were read from any packaged library" >&2
+  exit 1
+fi
 
 if [[ ${#unsatisfied[@]} -gt 0 ]]; then
   echo >&2

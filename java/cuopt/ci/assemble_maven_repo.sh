@@ -66,7 +66,8 @@ fi
 
 # The version is read from a JAR name rather than the POM, so the layout can only ever describe
 # artifacts that are actually present.
-first_jar="$(find "${JARS_DIR}" -name "${ARTIFACT_ID}-*.jar" -print -quit)"
+first_jar="$(find "${JARS_DIR}" -name "${ARTIFACT_ID}-*-*.jar" \
+  ! -name '*-sources.jar' ! -name '*-javadoc.jar' -print -quit)"
 if [[ -z "${first_jar}" ]]; then
   echo "no ${ARTIFACT_ID}-*.jar found under ${JARS_DIR}" >&2
   exit 1
