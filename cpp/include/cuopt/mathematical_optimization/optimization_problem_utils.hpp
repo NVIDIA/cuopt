@@ -138,6 +138,54 @@ void populate_from_mps_data_model(optimization_problem_interface_t<i_t, f_t>* pr
 }
 
 /**
+ * @brief Move warm-start data into the form a GPU solve needs (H2D / view->device_uvector).
+ *
+ * Declared here, defined in libcuopt (optimization_problem.cu): it touches device memory,
+ * so keeping it out-of-line is what lets CUDA-free consumers of this header link without
+ * a CUDA runtime. Only call it with a real handle.
+ */
+template <typename i_t, typename f_t>
+void apply_warmstart_gpu_target(solver_settings_t<i_t, f_t>* solver_settings,
+                                const raft::handle_t* handle);
+
+/**
+ * @brief Move warm-start data into the form a CPU / remote solve needs, including a
+ * device-to-host copy when the warm start is device-resident.
+ *
+ * Declared here, defined in libcuopt (optimization_problem.cu). This is the null-handle
+ * path for a normal (non host-only) caller: it has a device, so its settings may hold
+ * device_uvector-backed warm start that must be brought to host before a remote solve.
+ */
+template <typename i_t, typename f_t>
+void apply_warmstart_cpu_target_with_device(solver_settings_t<i_t, f_t>* solver_settings);
+
+/**
+ * @brief Move warm-start data into the form a CPU / remote solve needs, host paths only.
+ *
+ * Handles the two cases reachable without a device: warm start already in host form
+ * (nothing to do), and a warm-start view over host spans (copy it).
+ *
+ * Deliberately does NOT handle device-resident warm start -- that needs a D2H copy and
+ * therefore CUDA. Callers that might be holding device data must use
+ * apply_warmstart_cpu_target_with_device() instead; only a kHostOnly caller, which by
+ * construction has no device to have populated it, may use this one.
+ */
+template <typename i_t, typename f_t>
+void apply_warmstart_cpu_target(solver_settings_t<i_t, f_t>* solver_settings)
+{
+  auto& pdlp = solver_settings->get_pdlp_settings();
+
+  if (pdlp.get_cpu_pdlp_warm_start_data().is_populated()) { return; }
+
+  // Warmstart view (host spans from Cython) -> CPU backend: copy directly, no CUDA needed.
+  if (solver_settings->get_pdlp_warm_start_data_view()
+        .last_restart_duality_gap_dual_solution_.size() > 0) {
+    pdlp.get_cpu_pdlp_warm_start_data() =
+      cpu_pdlp_warm_start_data_t<i_t, f_t>(solver_settings->get_pdlp_warm_start_data_view());
+  }
+}
+
+/**
  * @brief Transfer parsed MPS/QPS storage into a CPU-backed problem without copying payload arrays.
  *
  * For GPU-backed problems this falls back to populate_from_mps_data_model (copy/H2D path), waits
@@ -176,7 +224,7 @@ void adopt_from_mps_data_model(optimization_problem_interface_t<i_t, f_t>* probl
  * @param[in] solver_settings Optional solver settings (for warmstart data, GPU only)
  * @param[in] handle Optional RAFT handle (for warmstart data, GPU only)
  */
-template <typename i_t, typename f_t>
+template <typename i_t, typename f_t, bool kHostOnly = false>
 void populate_from_data_model_view(
   optimization_problem_interface_t<i_t, f_t>* problem,
   cuopt::mathematical_optimization::io::data_model_view_t<i_t, f_t>* data_model,
@@ -209,57 +257,28 @@ void populate_from_data_model_view(
   problem->set_objective_scaling_factor(data_model->get_objective_scaling_factor());
   problem->set_objective_offset(data_model->get_objective_offset());
 
-  // Handle warmstart data with GPU↔CPU conversion if needed
+  // Handle warmstart data with GPU<->CPU conversion if needed.
+  //
+  // Split into two helpers deliberately. The GPU direction is only reachable when
+  // handle != nullptr, but a single inlined if/else instantiated BOTH directions into
+  // every TU that includes this header -- which dragged convert_to_gpu_warmstart,
+  // pdlp_warm_start_data_t(view, stream) and friends into the CUDA-free gRPC client.
+  // apply_warmstart_gpu_target() is declared here and defined in libcuopt, so only
+  // callers that actually pass a handle reference it.
+  //
+  // kHostOnly is a compile-time opt-out, not just a runtime one: `if constexpr` means a
+  // host-only caller never *instantiates* the GPU branch, so it emits no reference to
+  // apply_warmstart_gpu_target and needs no CUDA runtime to link.
   if (solver_settings != nullptr) {
-    bool target_is_gpu = (handle != nullptr);
-
-    // Check which warmstart type is populated
-    // Note: Python sets the VIEW (spans), so check both view and data for GPU warmstart
-    // CPU warmstart is set directly in the data structure
-    bool has_gpu_warmstart_view = (solver_settings->get_pdlp_warm_start_data_view()
-                                     .last_restart_duality_gap_dual_solution_.size() > 0);
-    bool has_gpu_warmstart_data =
-      solver_settings->get_pdlp_settings().get_pdlp_warm_start_data().is_populated();
-    bool has_cpu_warmstart =
-      solver_settings->get_pdlp_settings().get_cpu_pdlp_warm_start_data().is_populated();
-
-    bool has_gpu_warmstart = has_gpu_warmstart_view || has_gpu_warmstart_data;
-
-    if (has_gpu_warmstart || has_cpu_warmstart) {
-      if (target_is_gpu) {
-        // Target is GPU backend
-        if (has_gpu_warmstart_view) {
-          // GPU warmstart from Python → GPU backend: copy view (spans) to data (device_uvectors)
-          // Python sets the view (spans over cuDF), but solver needs device_uvectors
-          pdlp_warm_start_data_t<i_t, f_t> pdlp_warm_start_data(
-            solver_settings->get_pdlp_warm_start_data_view(), handle->get_stream());
-          solver_settings->get_pdlp_settings().set_pdlp_warm_start_data(pdlp_warm_start_data);
-        } else if (has_gpu_warmstart_data) {
-          // GPU warmstart from C++ API → GPU backend: data already set, nothing to do
-          // The device_uvectors are already populated in the settings
-        } else {
-          // CPU warmstart → GPU backend: convert H2D
-          pdlp_warm_start_data_t<i_t, f_t> gpu_warmstart = convert_to_gpu_warmstart(
-            solver_settings->get_pdlp_settings().get_cpu_pdlp_warm_start_data(),
-            handle->get_stream());
-          solver_settings->get_pdlp_settings().set_pdlp_warm_start_data(gpu_warmstart);
-        }
+    if constexpr (kHostOnly) {
+      apply_warmstart_cpu_target(solver_settings);
+    } else {
+      if (handle != nullptr) {
+        apply_warmstart_gpu_target(solver_settings, handle);
       } else {
-        // Target is CPU backend (remote execution)
-        if (has_cpu_warmstart) {
-          // CPU warmstart → CPU backend: data already in correct form, nothing to do
-        } else if (has_gpu_warmstart_view) {
-          // Warmstart view (host spans from Cython) → CPU backend: copy directly, no CUDA needed
-          solver_settings->get_pdlp_settings().get_cpu_pdlp_warm_start_data() =
-            cpu_pdlp_warm_start_data_t<i_t, f_t>(solver_settings->get_pdlp_warm_start_data_view());
-        } else {
-          // GPU warmstart data (device_uvectors) → CPU backend: convert D2H
-          auto& gpu_ws = solver_settings->get_pdlp_settings().get_pdlp_warm_start_data();
-          cpu_pdlp_warm_start_data_t<i_t, f_t> cpu_warmstart =
-            convert_to_cpu_warmstart(gpu_ws, gpu_ws.current_primal_solution_.stream());
-          solver_settings->get_pdlp_settings().get_cpu_pdlp_warm_start_data() =
-            std::move(cpu_warmstart);
-        }
+        // No handle, but this caller has a device: the warm start may be device-resident,
+        // so it needs the variant that can copy it back to host.
+        apply_warmstart_cpu_target_with_device(solver_settings);
       }
     }
   }

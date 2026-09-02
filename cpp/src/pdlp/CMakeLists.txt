@@ -6,6 +6,7 @@
 # Core LP files always included
 set(LP_CORE_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/solver_settings.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/solver_settings_accessors.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/optimization_problem.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/cpu_optimization_problem.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/cpu_optimization_problem_to_gpu.cpp
