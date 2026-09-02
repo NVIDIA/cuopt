@@ -54,6 +54,63 @@ SPDX-License-Identifier: Apache-2.0
     <cuopt.surefire.excludes>**/PackagedJarOriginCheck.java</cuopt.surefire.excludes>
   </properties>
 
+  <!--
+    Maven Central rate-limits NVIDIA-managed GitHub Actions runners: they egress through a small,
+    shared NAT'd IP range, so every RAPIDS repo's Java CI shares the same budget against Central
+    (see rapidsai/build-infra#370). Prefer the Google Cloud read-only mirror of Central, the same
+    one Apache ORC/Lucene/Spark use, and fall back to Central for anything not mirrored. Matches
+    the fix applied in rapidsai/kvikio#992.
+  -->
+  <repositories>
+    <repository>
+      <id>gcs-maven-central-mirror</id>
+      <name>GCS Maven Central mirror</name>
+      <url>https://maven-central.storage-download.googleapis.com/maven2/</url>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+    </repository>
+    <repository>
+      <id>central</id>
+      <name>Maven Central</name>
+      <url>https://repo.maven.apache.org/maven2</url>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+    </repository>
+  </repositories>
+
+  <pluginRepositories>
+    <pluginRepository>
+      <id>gcs-maven-central-mirror</id>
+      <name>GCS Maven Central mirror</name>
+      <url>https://maven-central.storage-download.googleapis.com/maven2/</url>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+    </pluginRepository>
+    <pluginRepository>
+      <id>central</id>
+      <name>Maven Plugin Repository</name>
+      <url>https://repo.maven.apache.org/maven2</url>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+    </pluginRepository>
+  </pluginRepositories>
+
   <dependencies>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
