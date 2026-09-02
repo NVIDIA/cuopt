@@ -7,21 +7,16 @@
 
 // CPU -> GPU conversion for cpu_optimization_problem_t.
 //
-// Split out of cpu_optimization_problem.cpp so that the rest of that class -- which is
-// pure host code -- can be compiled into the CUDA-free cuopt_client library. This is the
-// only member that constructs an optimization_problem_t, so it is the only one that needs
-// <optimization_problem.hpp> and a raft handle. It stays in cuopt_objs (libcuopt).
-//
-// The explicit instantiations at the bottom are required: this is a free function, so no
-// `template class` anywhere emits it.
+// Split out of cpu_optimization_problem.cpp: this is the only part of that class needing
+// <optimization_problem.hpp> and a raft handle, so keeping it here leaves the rest as pure
+// host code.
 
 #include <cuopt/error.hpp>
 #include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem.hpp>
 
-// Required: the explicit instantiations below are guarded on MIP_INSTANTIATE_*.
-// Without this header those macros are undefined and this TU emits no symbols.
+// Required: without it MIP_INSTANTIATE_* are undefined and this TU emits no symbols.
 #include <mip_heuristics/mip_constants.hpp>
 
 #include <memory>
@@ -30,15 +25,10 @@
 
 namespace cuopt::mathematical_optimization {
 
-// Free function (was a virtual member; see optimization_problem_interface.hpp).
-// Dispatches on the concrete type: a GPU problem is already what the caller wants, so it
-// yields nullptr, matching the previous optimization_problem_t override.
-//
-// Unrecognised implementations are rejected rather than yielding nullptr. As a pure virtual
-// this was enforced at compile time -- every implementer had to provide an override. A free
-// function cannot enforce that, and returning nullptr would be actively unsafe: the
-// documented fallback static_casts the original reference to optimization_problem_t&, which
-// is undefined behaviour for any other type.
+// Dispatches on the concrete type; a GPU-backed problem yields nullptr, matching the
+// previous override. Unrecognised implementations throw rather than returning nullptr:
+// the documented fallback static_casts the reference to optimization_problem_t&, which
+// would be undefined behaviour for any other type.
 template <typename i_t, typename f_t>
 std::unique_ptr<optimization_problem_t<i_t, f_t>> to_optimization_problem(
   optimization_problem_interface_t<i_t, f_t>& problem, raft::handle_t const* handle_ptr)
