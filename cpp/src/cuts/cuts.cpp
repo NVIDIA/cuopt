@@ -1308,6 +1308,7 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
   set_groups.build(0, m, new_set, [&](i_t r) { return sets[r]; });
 
   std::vector<i_t> cuts_to_remove(m, 0);
+  i_t num_cuts_to_remove = 0;
   for (i_t r = 0; r < m; r++) {
     const i_t set_r = sets[r];
     if (set_r <= 0 || set_r >= sentinel || cuts_to_remove[r] != 0) { continue; }
@@ -1323,9 +1324,11 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
         //    and  sum_j d_ij / f_i x_j >= rhs_i / f_i = theta_i.
         if (theta_r <= theta_i) {
           // Cut i is either the same or stronger than cut r.
+          if (cuts_to_remove[r] == 0) { num_cuts_to_remove++; }
           cuts_to_remove[r] = 1;  // Remove row r.
         } else {
           // theta_r > theta_i, so cut r is strictly stronger than cut i.
+          if (cuts_to_remove[i] == 0) { num_cuts_to_remove++; }
           cuts_to_remove[i] = 1;  // Remove row i.
         }
       } else if (f_r < 0.0 && f_i < 0.0) {
@@ -1334,17 +1337,17 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
         //    and  sum_j d_ij / f_i x_j <= rhs_i / f_i = theta_i.
         if (theta_r >= theta_i) {
           // Cut i is either the same or stronger than cut r.
+          if (cuts_to_remove[r] == 0) { num_cuts_to_remove++; }
           cuts_to_remove[r] = 1;  // Remove row r.
         } else {
           // theta_r < theta_i, so cut r is strictly stronger than cut i.
+          if (cuts_to_remove[i] == 0) { num_cuts_to_remove++; }
           cuts_to_remove[i] = 1;  // Remove row i.
         }
       }
     }
   }
 
-  const i_t num_cuts_to_remove =
-    std::accumulate(cuts_to_remove.begin(), cuts_to_remove.end(), i_t{0});
   if (num_cuts_to_remove > 0) {
     settings_.log.debug("Removing %d duplicate cuts\n", num_cuts_to_remove);
     csr_matrix_t<i_t, f_t> new_cut_storage(0, 0, 0);
