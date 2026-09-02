@@ -13,9 +13,6 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermissions;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.Arrays;
 
 /**
  * Locates and loads {@code libcuopt_jni}, in three steps.
@@ -121,12 +118,14 @@ final class NativeLibraryLoader {
    * Copies one packaged file into {@code directory} and returns it, or null when the JAR does not
    * contain it.
    *
-   * <p>A file already there whose digest matches the packaged resource is reused rather than
-   * rewritten, because the JNI library is hundreds of megabytes and re-extracting it on every JVM
-   * start would dominate startup. Comparing digests rather than just size means a file another
-   * process happened to leave at the same size cannot be mistaken for the real library. It is
-   * written to a sibling and moved into place, so an interrupted run cannot leave a truncated
-   * library behind for the next one to load.
+   * <p>A file already there with the expected size is reused rather than rewritten, because the
+   * JNI library is hundreds of megabytes and re-extracting it on every JVM start would dominate
+   * startup. This is only safe because {@link #privateExtractionDirectory} guarantees {@code
+   * directory} is private to the current OS user: relying on size alone in a directory anyone
+   * could write to would let another user's same-size file pass as the real library.
+   *
+   * <p>It is written to a sibling and moved into place, so an interrupted run cannot leave a
+   * truncated library behind for the next one to load.
    */
   private static Path extractResource(String resource, Path directory, String fileName)
       throws IOException {
@@ -135,11 +134,8 @@ final class NativeLibraryLoader {
       return null;
     }
     Path target = directory.resolve(fileName);
-    byte[] expectedDigest;
-    try (InputStream in = url.openStream()) {
-      expectedDigest = digest(in);
-    }
-    if (Files.isRegularFile(target) && Arrays.equals(expectedDigest, digest(target))) {
+    long expectedSize = url.openConnection().getContentLengthLong();
+    if (expectedSize >= 0 && Files.isRegularFile(target) && Files.size(target) == expectedSize) {
       return target;
     }
     Path staging = Files.createTempFile(directory, fileName + ".", ".part");
@@ -150,28 +146,6 @@ final class NativeLibraryLoader {
       Files.deleteIfExists(staging);
     }
     return target;
-  }
-
-  private static byte[] digest(Path path) throws IOException {
-    try (InputStream in = Files.newInputStream(path)) {
-      return digest(in);
-    }
-  }
-
-  private static byte[] digest(InputStream in) throws IOException {
-    MessageDigest sha256;
-    try {
-      sha256 = MessageDigest.getInstance("SHA-256");
-    } catch (NoSuchAlgorithmException e) {
-      // Mandatory per the Java platform spec; every conforming JVM provides it.
-      throw new IllegalStateException("SHA-256 unavailable", e);
-    }
-    byte[] buffer = new byte[1 << 16];
-    int n;
-    while ((n = in.read(buffer)) != -1) {
-      sha256.update(buffer, 0, n);
-    }
-    return sha256.digest();
   }
 
   /**
