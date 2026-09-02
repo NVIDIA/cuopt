@@ -397,11 +397,12 @@ void console_log_callback(int /* level */, const char* message)
   jstring line = env->NewStringUTF(message);
   if (line != nullptr) {
     env->CallStaticVoidMethod(g_log_sink_class, g_log_sink_method, line);
-    // A logging call is not the place to raise a Java exception; drop it rather than leave it
-    // pending for whatever JNI call happens to run next on this thread.
-    if (env->ExceptionCheck() == JNI_TRUE) { env->ExceptionClear(); }
     env->DeleteLocalRef(line);
   }
+  // A logging call is not the place to raise a Java exception; drop it rather than leave it
+  // pending for whatever JNI call happens to run next on this thread. Covers both
+  // CallStaticVoidMethod above and NewStringUTF's OutOfMemoryError when line is null.
+  if (env->ExceptionCheck() == JNI_TRUE) { env->ExceptionClear(); }
 
   if (detach) { g_jvm->DetachCurrentThread(); }
 }
@@ -426,7 +427,7 @@ void register_console_log_sink(JNIEnv* env)
     g_log_sink_class  = static_cast<jclass>(env->NewGlobalRef(local_cls));
     g_log_sink_method = method;
     env->DeleteLocalRef(local_cls);
-    cuopt::set_console_log_callback(&console_log_callback);
+    cuopt::mathematical_optimization::set_console_log_callback(&console_log_callback);
   });
 }
 

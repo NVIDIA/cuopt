@@ -16,4 +16,9 @@ std::shared_ptr<void> configure_logging(const std::string& log_file,
   return cuopt::make_logger_config(log_file, log_to_console, truncate);
 }
 
+void set_console_log_callback(cuopt::log_console_callback_t callback)
+{
+  cuopt::set_console_log_callback(callback);
+}
+
 }  // namespace cuopt::mathematical_optimization
