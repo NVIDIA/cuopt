@@ -30,7 +30,7 @@ struct double_to_float_functor {
 
 namespace cuopt::mathematical_optimization::pdlp {
 
-// All inline factories and aliases for SpMat/DnVec/DnMat live in the header.
+// All factories and aliases for SpMat/DnVec/DnMat live in the header.
 // Deleter operator() bodies for SpMVOpDescr/SpMVOpPlan are defined further down
 // because they need dlsym-resolved cuSPARSE symbols.
 

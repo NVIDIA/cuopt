@@ -75,7 +75,7 @@ using cusparse_dn_mat_descr_view = cusparseDnMatDescr_t;
 // Factory functions replacing the old `wrapper.create(...)` two-phase init.
 
 template <typename i_t, typename f_t>
-inline cusparse_sp_mat_uptr make_csr(
+cusparse_sp_mat_uptr make_csr(
   int64_t m, int64_t n, int64_t nnz, i_t* offsets, i_t* indices, f_t* values)
 {
   cusparseSpMatDescr_t descr{nullptr};
@@ -85,7 +85,7 @@ inline cusparse_sp_mat_uptr make_csr(
 }
 
 template <typename f_t>
-inline cusparse_dn_vec_uptr make_dnvec(int64_t size, f_t* values)
+cusparse_dn_vec_uptr make_dnvec(int64_t size, f_t* values)
 {
   cusparseDnVecDescr_t descr{nullptr};
   RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(&descr, size, values));
@@ -93,7 +93,7 @@ inline cusparse_dn_vec_uptr make_dnvec(int64_t size, f_t* values)
 }
 
 template <typename f_t>
-inline cusparse_dn_mat_uptr make_dnmat(
+cusparse_dn_mat_uptr make_dnmat(
   int64_t row, int64_t col, int64_t ld, f_t* values, cusparseOrder_t order)
 {
   cusparseDnMatDescr_t descr{nullptr};
