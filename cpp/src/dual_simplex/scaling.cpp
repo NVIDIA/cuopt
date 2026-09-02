@@ -253,6 +253,39 @@ i_t scaling(const lp_problem_t<i_t, f_t>& unscaled,
     return 0;
   }
 
+  // MIP performs integer-aware row scaling before presolve, while QP and SOCP
+  // use the Ruiz path above. Apply this simpler equilibration only to LPs.
+  const bool use_lp_row_scaling = !settings.inside_mip && unscaled.second_order_cone_dims.empty() &&
+                                  unscaled.Q.n == 0;
+  if (use_lp_row_scaling) {
+    csr_matrix_t<i_t, f_t> Arow(0, 0, 0);
+    scaled.A.to_compressed_row(Arow);
+    std::vector<f_t> row_norm(m, 1.0);
+    f_t max_row_norm = 0.0;
+    f_t min_row_norm = inf;
+    for (i_t i = 0; i < m; ++i) {
+      for (i_t p = Arow.row_start[i]; p < Arow.row_start[i + 1]; ++p) {
+        row_norm[i] = std::max(row_norm[i], std::abs(Arow.x[p]));
+      }
+      max_row_norm = std::max(max_row_norm, row_norm[i]);
+      min_row_norm = std::min(min_row_norm, row_norm[i]);
+    }
+    if (min_row_norm > 0.0 && max_row_norm / min_row_norm > 10.0) {
+      settings.log.printf("Applying row scaling. Maximum row norm %e, minimum row norm %e\n",
+                          max_row_norm,
+                          min_row_norm);
+      for (i_t j = 0; j < n; ++j) {
+        for (i_t p = scaled.A.col_start[j]; p < scaled.A.col_start[j + 1]; ++p) {
+          scaled.A.x[p] /= row_norm[scaled.A.i[p]];
+        }
+      }
+      for (i_t i = 0; i < m; ++i) {
+        scaled.rhs[i] /= row_norm[i];
+        row_scaling[i] = row_norm[i];
+      }
+    }
+  }
+
   column_scaling.resize(n);
   f_t max = 0;
   f_t min = std::numeric_limits<f_t>::max();

@@ -455,9 +455,9 @@ template <typename i_t, typename f_t>
 void initial_perturbation(const lp_problem_t<i_t, f_t>& lp,
                           const simplex_solver_settings_t<i_t, f_t>& settings,
                           const std::vector<variable_status_t>& vstatus,
+                          bool strongly_degenerate,
                           std::vector<f_t>& objective)
 {
-  const i_t m           = lp.num_rows;
   const i_t n           = lp.num_cols;
   f_t max_abs_obj_coeff = 0.0;
   for (i_t j = 0; j < n; ++j) {
@@ -484,7 +484,11 @@ void initial_perturbation(const lp_problem_t<i_t, f_t>& lp,
     max_abs_obj_coeff = std::min(max_abs_obj_coeff, f_t(1.0));
   }
 
-  const f_t perturbation_base = 5e-7 * max_abs_obj_coeff;
+  // Sub-tolerance perturbations are less disruptive on ordinary problems, but
+  // are too small to separate reduced costs when a substantial part of the
+  // nonbasic set is dual degenerate. Use a stronger, still temporary shift in
+  // that case. The original costs are restored before declaring optimality.
+  const f_t perturbation_base = (strongly_degenerate ? 1e-5 : 5e-7) * max_abs_obj_coeff;
 
   settings.log.printf("Perturbation debug: max_abs_obj_coeff=%e (dampened), perturbation_base=%e, n=%d, num_boxed=%d\n",
                       max_abs_obj_coeff, perturbation_base, n, num_boxed);
@@ -3104,7 +3108,8 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
     settings.log.printf("Near-optimal check: num_primal_infeas=%d, max_primal_infeas=%.2e, near_optimal=%d, apply_perturbation=%d\n",
                         num_primal_infeas, max_primal_infeas, near_optimal, apply_perturbation);
     if (apply_perturbation) {
-      phase2::initial_perturbation(lp, settings, vstatus, objective);
+      const bool strongly_degenerate = num_degen > n / 20;
+      phase2::initial_perturbation(lp, settings, vstatus, strongly_degenerate, objective);
       // Recompute y, z with perturbed objective
       for (i_t k = 0; k < m; ++k) {
         c_basic[k] = objective[basic_list[k]];
