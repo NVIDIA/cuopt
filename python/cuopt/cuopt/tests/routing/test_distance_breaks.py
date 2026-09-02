@@ -48,7 +48,7 @@ def test_distance_break_api_single_cycle_defaults():
 
 
 def test_distance_break_api_int_vehicle_id():
-    """NumPy integer scalars are accepted as vehicle_id."""
+    """Numpy integer scalars are accepted as vehicle_id."""
     d = _small_data_model()
     d.add_vehicle_distance_break(np.int32(0), 0.0, 100.0, 15)
 

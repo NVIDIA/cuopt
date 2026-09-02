@@ -7,8 +7,8 @@
 
 #include "routing/grpc_routing_problem_mapper.hpp"
 
-#include <cuopt/routing/cpu_routing_problem.hpp>
 #include <cuopt_routing.pb.h>
+#include <cuopt/routing/cpu_routing_problem.hpp>
 
 #include <gtest/gtest.h>
 

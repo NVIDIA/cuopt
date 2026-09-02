@@ -131,9 +131,7 @@ def test_populate_distance_breaks():
     cost = np.ones((5, 5), dtype=np.float32)
     np.fill_diagonal(cost, 0)
     dm.add_cost_matrix(cost)
-    dm.add_vehicle_distance_break(
-        0, 2.0, 10.0, 3, np.array([1, 2], np.int32)
-    )
+    dm.add_vehicle_distance_break(0, 2.0, 10.0, 3, np.array([1, 2], np.int32))
     dm.add_vehicle_distance_break(1, 0.0, 20.0, 4)
     s = problem_summary(dm)
     assert s["vehicle_distance_breaks"] == 2

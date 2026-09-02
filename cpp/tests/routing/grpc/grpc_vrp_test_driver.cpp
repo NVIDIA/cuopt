@@ -242,9 +242,9 @@ int main(int argc, char** argv)
               << " vehicles, "
               << (problem.num_orders < 0 ? problem.num_locations : problem.num_orders)
               << " orders, " << problem.capacity_dimensions.size() << " capacity dims, "
-              << problem.cost_matrices.size() << " cost matrices, "
-              << problem.vehicle_breaks.size() << " vehicles with time breaks, "
-              << problem.vehicle_distance_breaks.size() << " vehicles with distance breaks\n";
+              << problem.cost_matrices.size() << " cost matrices, " << problem.vehicle_breaks.size()
+              << " vehicles with time breaks, " << problem.vehicle_distance_breaks.size()
+              << " vehicles with distance breaks\n";
 
     cuopt::remote::SubmitJobRequest submit_req;
     auto* vrp = submit_req.mutable_vrp_request();
