@@ -4876,6 +4876,8 @@ void branch_and_bound_t<i_t, f_t>::pivot_to_improve_reduced_cost_strengthening(
 
     const f_t lower_j = lp.lower[j];
     const f_t upper_j = lp.upper[j];
+    const bool at_lower = soln.x[j] - lower_j <= settings_.primal_tol;
+    const bool at_upper = upper_j - soln.x[j] <= settings_.primal_tol;
 
     // Try both dual rays. scale == +1 uses the computed delta_z (direction -1);
     // scale == -1 uses -delta_z (direction +1). Either or both may yield an RCS bound.
@@ -4984,7 +4986,7 @@ void branch_and_bound_t<i_t, f_t>::pivot_to_improve_reduced_cost_strengthening(
       // This means l_j + (incumbent_objective - relaxation_objective) / reduced_costs[j] <=
       // u_tilde_j Or equivalently, incumbent_objective <= relaxation_objective +
       // reduced_costs[j] * (u_tilde_j - l_j) when reduced_costs[j] > 0
-      if (lower_j > -inf && new_reduced_cost > threshold) {
+      if (at_lower && lower_j > -inf && new_reduced_cost > threshold) {
         const f_t u_tilde_j = var_types_[j] == variable_type_t::INTEGER
                                 ? upper_j - tol
                                 : std::max(upper_j - 1.0, lower_j);
@@ -5007,7 +5009,7 @@ void branch_and_bound_t<i_t, f_t>::pivot_to_improve_reduced_cost_strengthening(
       // u_j + (incumbent_objective - relaxation_objective) / reduced_costs[j] >= l_tilde_j Or
       // equivalently, incumbent_objective <=  relaxation_objective + reduced_costs[j] *
       // (l_tilde_j - u_j) when reduced_costs[j] < 0
-      if (upper_j < inf && new_reduced_cost < -threshold) {
+      if (at_upper && upper_j < inf && new_reduced_cost < -threshold) {
         const f_t l_tilde_j = var_types_[j] == variable_type_t::INTEGER
                                 ? lower_j + tol
                                 : std::min(lower_j + 1.0, upper_j);
