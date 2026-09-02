@@ -37,6 +37,10 @@ smoke_one() {
   log="$(mktemp)"
   cid=""
 
+  smoke_fail() {
+    printf 'FAIL  %s\n' "$*" >&2
+  }
+
   cleanup() {
     if [[ -n "${cid}" ]]; then
       docker rm -f "${cid}" >/dev/null 2>&1 || true
@@ -48,7 +52,10 @@ smoke_one() {
   info "Starting ${label} server from ${IMAGE}"
   # Do not use --rm: a fast crash (e.g. missing libnccl.so.2) would delete the
   # container before we can collect logs.
-  cid="$(docker run -d --name "${name}" "${GPU_ARGS[@]}" "$@" "${IMAGE}")"
+  if ! cid="$(docker run -d --name "${name}" "${GPU_ARGS[@]}" "$@" "${IMAGE}")"; then
+    smoke_fail "${label}: docker run failed"
+    return 1
+  fi
 
   for ((i = 1; i <= TIMEOUT_SECS; i++)); do
     docker logs "${cid}" >"${log}" 2>&1 || true
@@ -56,7 +63,8 @@ smoke_one() {
     if grep -qiE 'error while loading shared libraries|libnccl\.so|FATAL FIPS SELFTEST|OpenSSL internal error' "${log}"; then
       echo "----- ${label} logs -----"
       cat "${log}"
-      fail "${label}: loader/crypto failure while starting"
+      smoke_fail "${label}: loader/crypto failure while starting"
+      return 1
     fi
 
     if grep -qE "${expect_re}" "${log}"; then
@@ -68,7 +76,8 @@ smoke_one() {
     if ! docker inspect -f '{{.State.Running}}' "${cid}" 2>/dev/null | grep -qx true; then
       echo "----- ${label} logs -----"
       cat "${log}"
-      fail "${label}: container exited before becoming ready"
+      smoke_fail "${label}: container exited before becoming ready"
+      return 1
     fi
 
     sleep 1
@@ -76,7 +85,8 @@ smoke_one() {
 
   echo "----- ${label} logs -----"
   cat "${log}"
-  fail "${label}: timed out after ${TIMEOUT_SECS}s waiting for /${expect_re}/"
+  smoke_fail "${label}: timed out after ${TIMEOUT_SECS}s waiting for /${expect_re}/"
+  return 1
 }
 
 info "Pulling ${IMAGE}"
