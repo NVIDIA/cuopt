@@ -152,9 +152,10 @@ bool arcflow_accepts_bounds(const std::vector<f_t>& row_lb, const std::vector<f_
 // The row loop needs every magnitude in the row, so the acceptance pass cannot merge into the
 // nonzero pass that builds the profile.
 template <typename i_t, typename f_t>
-bool arcflow_accepts_profile(const host_problem_t<i_t, f_t>& h,
-                             const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances,
-                             arcflow_profile_t<i_t, f_t>& p)
+bool arcflow_accepts_profile(
+  const host_problem_t<i_t, f_t>& h,
+  const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances,
+  arcflow_profile_t<i_t, f_t>& p)
 {
   p = arcflow_profile_t<i_t, f_t>(h.n_variables, h.n_constraints);
   for (i_t r = 0; r < h.n_constraints; ++r) {
@@ -333,8 +334,7 @@ bool build_structure(const host_problem_t<i_t, f_t>& h,
     } else if (std::abs(info.hi) <= tolerances.absolute_tolerance) {
       if (info.lo < -tolerances.absolute_tolerance) {
         if (!is_integer<f_t>(info.lo, tolerances.integrality_tolerance)) { return false; }
-        model.terminator_capacity[v] =
-          std::min((f_t)arcflow_paths_supported, std::round(-info.lo));
+        model.terminator_capacity[v] = std::min((f_t)arcflow_paths_supported, std::round(-info.lo));
       }
     } else {
       return false;
@@ -401,13 +401,12 @@ bool build_structure(const host_problem_t<i_t, f_t>& h,
 
   if (model.arcs.empty()) { return false; }
 
-  std::stable_sort(model.arcs.begin(),
-                   model.arcs.end(),
-                   [](const arc_t<i_t, f_t>& a, const arc_t<i_t, f_t>& b) {
-                     if (a.label != b.label) { return a.label < b.label; }
-                     if (a.from != b.from) { return a.from < b.from; }
-                     return a.cost < b.cost;
-                   });
+  std::stable_sort(
+    model.arcs.begin(), model.arcs.end(), [](const arc_t<i_t, f_t>& a, const arc_t<i_t, f_t>& b) {
+      if (a.label != b.label) { return a.label < b.label; }
+      if (a.from != b.from) { return a.from < b.from; }
+      return a.cost < b.cost;
+    });
   model.arc_offset.assign(model.n_labels + 1, 0);
   for (const auto& arc : model.arcs) {
     model.arc_offset[arc.label + 1]++;
@@ -583,9 +582,10 @@ bool derive_potential(arc_flow_model_t<i_t, f_t>& model,
 
 // Weighted shortest processing time orders labels by decreasing slope over displacement.
 template <typename i_t, typename f_t>
-std::vector<i_t> token_order(const arc_flow_model_t<i_t, f_t>& model,
-                             const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances,
-                             bool& all_slopes_identified)
+std::vector<i_t> token_order(
+  const arc_flow_model_t<i_t, f_t>& model,
+  const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances,
+  bool& all_slopes_identified)
 {
   std::vector<f_t> lowest_phi(model.n_labels, 0);
   for (i_t l = 0; l < model.n_labels; ++l) {
