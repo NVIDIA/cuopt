@@ -983,13 +983,26 @@ cdef class RoutingClient:
 
     cdef unique_ptr[grpc_python_client_t] _client
 
-    def __cinit__(self, str target="localhost:50051"):
-        host, _, port = target.rpartition(":")
-        if not host:
-            host, port = target, "50051"
+    def __cinit__(self, str host, int port, *, tls=None):
+        """
+        Connect to ``cuopt_grpc_server`` at ``host:port``.
+
+        ``tls`` controls transport security, same as :class:`Client`:
+
+        * ``None`` (default) — read ``CUOPT_TLS_*`` from the environment.
+        * ``False`` — plain TCP; ignore ``CUOPT_TLS_*``.
+        * :class:`TlsConfig` — explicit TLS/mTLS; omit ``root_certs`` to use the
+          system/default CA trust store.
+        """
+        if tls is not None and tls is not False and not isinstance(tls, TlsConfig):
+            raise TypeError("tls must be None, False, or TlsConfig")
+
+        cdef grpc_python_client_connect_options_t options
         cdef string host_cpp = host.encode("utf-8")
         cdef string err
-        self._client.reset(new grpc_python_client_t(host_cpp, int(port)))
+
+        options = _connect_options_from_tls(tls)
+        self._client.reset(new grpc_python_client_t(host_cpp, port, options))
         if not self._client.get().connect(err):
             raise RoutingSolveError(
                 "failed to connect: " + err.decode("utf-8")

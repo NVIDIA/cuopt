@@ -45,6 +45,72 @@ struct buffered_entry {
   std::string msg;
 };
 
+// C-compatible log callback type. Matches cuOptLogCallback in cuopt_c.h.
+// Carries no severity by design: a level would become a de-facto public API.
+using log_callback_with_data_t = void (*)(const char* message, void* user_data);
+
+struct log_callback_registration_t {
+  log_callback_with_data_t callback = nullptr;
+  void* user_data                   = nullptr;
+};
+
+/**
+ * @brief The calling thread's current registration, if any.
+ *
+ * For forwarding log lines produced on a thread that carries no registration of
+ * its own, such as the remote-solve log-streaming thread.
+ */
+namespace detail {
+struct thread_log_callback_t {
+  log_callback_with_data_t callback = nullptr;
+  void* user_data                   = nullptr;
+};
+
+// Per-thread, and inline because the logger is header-only since #1778. Note the
+// consequence of hidden visibility: each component library gets its own copy, so a
+// callback registered through one library is not seen by another. That is intended --
+// registration is scoped to the solve that installed it, and every solver constructs its
+// own init_logger_t on entry.
+inline thread_local thread_log_callback_t t_log_callback;
+}  // namespace detail
+
+inline log_callback_registration_t current_log_callback()
+{
+  return {detail::t_log_callback.callback, detail::t_log_callback.user_data};
+}
+
+/**
+ * @brief Registers a log callback for the calling thread, for its own lifetime.
+ *
+ * Registration is per-thread so concurrent solves cannot capture each other's
+ * callback. Log lines emitted on other threads are not delivered.
+ */
+class scoped_log_callback_t {
+ public:
+  scoped_log_callback_t(log_callback_with_data_t cb, void* user_data)
+    : prev_callback_(detail::t_log_callback.callback),
+      prev_user_data_(detail::t_log_callback.user_data)
+  {
+    detail::t_log_callback.callback  = cb;
+    detail::t_log_callback.user_data = user_data;
+  }
+
+  ~scoped_log_callback_t()
+  {
+    detail::t_log_callback.callback  = prev_callback_;
+    detail::t_log_callback.user_data = prev_user_data_;
+  }
+
+  scoped_log_callback_t(const scoped_log_callback_t&)            = delete;
+  scoped_log_callback_t& operator=(const scoped_log_callback_t&) = delete;
+
+ private:
+  log_callback_with_data_t prev_callback_;
+  void* prev_user_data_;
+};
+
+// Ref-counted logger initializer
+
 using log_console_callback_t = void (*)(int level, const char* message);
 
 inline std::mutex g_console_callback_mutex;
@@ -121,6 +187,16 @@ inline void buffer_log_callback(int lvl, const char* msg)
 
 // Buffers messages in memory until something configures the logger; anything logged before
 // that, and never followed by a configure, is dropped.
+// Forwards a log line to the calling thread's registered user callback, if any.
+// Standard solver output only: debug/trace are internal diagnostics and must not reach
+// user code even in a lower-level build.
+inline void user_log_bridge(int lvl, const char* msg)
+{
+  if (lvl < static_cast<int>(rapids_logger::level_enum::info)) { return; }
+  const auto& cb = detail::t_log_callback;
+  if (cb.callback != nullptr && msg != nullptr) { cb.callback(msg, cb.user_data); }
+}
+
 inline rapids_logger::sink_ptr default_sink()
 {
   return std::make_shared<rapids_logger::callback_sink_mt>(buffer_log_callback);
@@ -202,6 +278,12 @@ inline void apply_logger_config(const std::string& log_file, bool log_to_console
       std::make_shared<rapids_logger::basic_file_sink_mt>(log_file, /*truncate=*/false));
     cuopt::default_logger().flush_on(rapids_logger::level_enum::debug);
   }
+
+  // apply_logger_config() clears every sink above, so the user-callback bridge has to be
+  // re-attached here; otherwise a callback registered via cuOptSetLogCallback stops
+  // receiving lines as soon as a solver configures logging.
+  cuopt::default_logger().sinks().push_back(
+    std::make_shared<rapids_logger::callback_sink_mt>(user_log_bridge));
 
 #if CUOPT_LOG_ACTIVE_LEVEL >= RAPIDS_LOGGER_LOG_LEVEL_INFO
   cuopt::default_logger().set_pattern("%v");

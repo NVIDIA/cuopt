@@ -15,6 +15,7 @@ set(LP_CORE_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/pdhg.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solver_solution.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solution_conversion.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/solution_conversion_cpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/saddle_point.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/cusparse_view.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/pdlp_warm_start_data.cu
