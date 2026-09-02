@@ -8,10 +8,9 @@ set(UTIL_SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/utilities/seed_generator.cu
                    ${CMAKE_CURRENT_SOURCE_DIR}/utilities/timestamp_utils.cpp
                    ${CMAKE_CURRENT_SOURCE_DIR}/utilities/work_unit_scheduler.cpp)
 
-# logger.cpp backs <utilities/logger.hpp>, which both the parsers and the gRPC
-# sources include, so it belongs to the CPU library. Without this, cuopt_client would
-# have an undefined reference to the logger.
-set(UTIL_CLIENT_SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/utilities/logger.cpp)
+# No sources here: <utilities/logger.hpp> became header-only in #1778 (each component
+# library gets its own hidden logger), so cuopt_client needs no translation unit for it.
+set(UTIL_CLIENT_SRC_FILES)
 
 add_subdirectory(linear_algebra)
 add_subdirectory(pdlp)
