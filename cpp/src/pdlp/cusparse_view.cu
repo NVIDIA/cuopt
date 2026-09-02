@@ -966,16 +966,13 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   primal_gradient = make_dnvec<f_t>(op_problem.n_variables, _primal_gradient);
   dual_gradient   = make_dnvec<f_t>(op_problem.n_constraints, _dual_gradient);
 
-  // Recover the underlying pdhg-owned scratch buffers from the existing view's descriptors so
-  // the new descriptors point at the same memory without plumbing the rmm::device_uvector refs
-  // through pdlp_restart_strategy_t.
-  void* tmp_primal_data{nullptr};
-  void* tmp_dual_data{nullptr};
-  RAFT_CUSPARSE_TRY(
-    cusparseDnVecGetValues(existing_cusparse_view.tmp_primal.get(), &tmp_primal_data));
-  RAFT_CUSPARSE_TRY(cusparseDnVecGetValues(existing_cusparse_view.tmp_dual.get(), &tmp_dual_data));
-  tmp_primal = make_dnvec<f_t>(op_problem.n_variables, static_cast<f_t*>(tmp_primal_data));
-  tmp_dual   = make_dnvec<f_t>(op_problem.n_constraints, static_cast<f_t*>(tmp_dual_data));
+  // tmp_primal/tmp_dual alias pdhg-owned scratch, so re-wrap the existing view's buffers instead
+  // of allocating
+  void* scratch{nullptr};
+  RAFT_CUSPARSE_TRY(cusparseDnVecGetValues(existing_cusparse_view.tmp_primal.get(), &scratch));
+  tmp_primal = make_dnvec<f_t>(op_problem.n_variables, static_cast<f_t*>(scratch));
+  RAFT_CUSPARSE_TRY(cusparseDnVecGetValues(existing_cusparse_view.tmp_dual.get(), &scratch));
+  tmp_dual = make_dnvec<f_t>(op_problem.n_constraints, static_cast<f_t*>(scratch));
 
   const rmm::device_scalar<f_t> alpha{one_v<f_t>, handle_ptr->get_stream()};
   const rmm::device_scalar<f_t> beta{one_v<f_t>, handle_ptr->get_stream()};
