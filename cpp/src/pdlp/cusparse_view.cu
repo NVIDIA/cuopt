@@ -896,11 +896,8 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
 #endif
 }
 
-// Constructor used 3 times in restart strategy for the duality gaps (trust region restart).
-// All cuSPARSE descriptors are recreated (no borrowing) to avoid the post-CUDA-12.4 segfault
-// observed when copying cusparseSpMatDescr_t handles. tmp_primal/tmp_dual underlying buffer
-// pointers are recovered from existing_cusparse_view via cusparseDnVecGetValues; the buffers
-// themselves are owned by the parent pdhg_solver_t and outlive every cusparse_view_t.
+// Constructor used 3 times in restart strategy for the duality gaps
+// Used in trust region restart
 template <typename i_t, typename f_t>
 cusparse_view_t<i_t, f_t>::cusparse_view_t(
   raft::handle_t const* handle_ptr,
