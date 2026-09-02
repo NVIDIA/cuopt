@@ -5,7 +5,9 @@
 
 #pragma once
 
+#include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/utilities/cython_solve.hpp>
+#include <cuopt/routing/cpu_routing_problem.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -22,7 +24,13 @@ class data_model_view_t;
 }  // namespace io
 }  // namespace cuopt::mathematical_optimization
 
-namespace cuopt::cython {
+namespace cuopt::routing {
+template <typename i_t, typename f_t>
+class solver_settings_t;
+}  // namespace cuopt::routing
+
+namespace cuopt {
+namespace CUOPT_EXPORT cython {
 
 /** Mirrors cuopt::mathematical_optimization::job_status_t for the Python bindings. */
 enum class grpc_job_status_t : int {
@@ -54,6 +62,13 @@ struct grpc_result_outcome_t {
   bool success   = false;
   std::string error_message;
   std::unique_ptr<solver_ret_t> solution;
+};
+
+struct grpc_vrp_result_outcome_t {
+  bool not_ready = false;
+  bool success   = false;
+  std::string error_message;
+  cuopt::routing::cpu_routing_solution_t solution;
 };
 
 struct grpc_logs_result_t {
@@ -132,9 +147,21 @@ class grpc_python_client_t {
   bool delete_job(const std::string& job_id, std::string& error_out);
 
   /**
-   * @param is_mip When true, fetch a MIP result; otherwise LP.
+   * Fetch the solution for a completed job. LP vs MIP is determined from the
+   * server response via grpc_client_t::get_result().
    */
-  grpc_result_outcome_t result(const std::string& job_id, bool is_mip);
+  grpc_result_outcome_t result(const std::string& job_id);
+
+  /**
+   * @brief Submit a VRP problem (unary only). Reuse status/wait/delete/result_vrp.
+   */
+  grpc_submit_result_t submit_vrp(cuopt::routing::cpu_routing_problem_t* problem,
+                                  cuopt::routing::solver_settings_t<int, float>* settings);
+
+  /**
+   * @brief Fetch and parse a completed VRP job's routing solution.
+   */
+  grpc_vrp_result_outcome_t result_vrp(const std::string& job_id);
 
   /**
    * @brief Block until the job completes, collecting all solver log lines.
@@ -166,4 +193,5 @@ class grpc_python_client_t {
   std::unique_ptr<impl_t> impl_;
 };
 
-}  // namespace cuopt::cython
+}  // namespace CUOPT_EXPORT cython
+}  // namespace cuopt

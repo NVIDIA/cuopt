@@ -190,10 +190,42 @@ class ServerProcess {
 
   int port() const { return port_; }
 
+  pid_t pid() const { return pid_; }
+
   bool is_running() const
   {
     if (pid_ <= 0) return false;
     return kill(pid_, 0) == 0;
+  }
+
+  // Wait until the server parent has exited and been reaped. Unlike is_running(),
+  // this treats a zombie as exited (kill(pid,0) is true for zombies).
+  // Returns true once the parent has exited. If leftover workers are still
+  // alive (e.g. GPU D-state), lifecycle state is preserved so TearDown's
+  // stop() can finish draining the process group.
+  bool wait_exited(std::chrono::milliseconds timeout)
+  {
+    if (pid_ <= 0) return true;
+
+    auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (true) {
+      int status = 0;
+      pid_t ret  = waitpid(pid_, &status, WNOHANG);
+      if (ret == pid_ || (ret < 0 && errno == ECHILD)) {
+        auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+          deadline - std::chrono::steady_clock::now());
+        if (remaining > std::chrono::milliseconds(2000)) {
+          remaining = std::chrono::milliseconds(2000);
+        }
+        if (remaining.count() < 0) { remaining = std::chrono::milliseconds(0); }
+        if (reap_group(remaining)) { clear_lifecycle_state(); }
+        // Parent is gone either way; leave pid_/pgid_ intact if the group is
+        // not fully drained so TearDown can still signal it.
+        return true;
+      }
+      if (std::chrono::steady_clock::now() >= deadline) { return false; }
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
   }
 
   std::string log_path() const
@@ -1125,6 +1157,127 @@ TEST_F(DefaultServerTests, CancelRunningJob)
   client->delete_job(job_id);
 }
 
+// -- Delete should cancel queued / running jobs --
+
+TEST_F(DefaultServerTests, DeleteQueuedJobPreventsRun)
+{
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
+  auto problem         = load_problem_from_file(mps_path);
+
+  mip_solver_settings_t<int32_t, double> settings;
+  settings.time_limit = 120.0;
+
+  // Occupy the single worker with a long solve.
+  auto running = client->submit_mip(problem, settings);
+  ASSERT_TRUE(running.success);
+  std::this_thread::sleep_for(std::chrono::seconds(2));
+
+  auto queued = client->submit_mip(problem, settings);
+  ASSERT_TRUE(queued.success);
+
+  auto queued_status = client->check_status(queued.job_id);
+  ASSERT_TRUE(queued_status.success);
+  EXPECT_EQ(queued_status.status, job_status_t::QUEUED)
+    << "Second job should still be queued behind the running solve";
+
+  EXPECT_TRUE(client->delete_job(queued.job_id));
+
+  auto after_delete = client->check_status(queued.job_id);
+  EXPECT_EQ(after_delete.status, job_status_t::NOT_FOUND);
+
+  // Prove the worker is still usable and was not consumed by the deleted job:
+  // free it (cancel the long solve) and require a probe job to run to
+  // completion. If the deleted job were still occupying the queue/worker, the
+  // single worker could not pick up and finish the probe. With one worker we
+  // cannot observe the ghost's status once its tracker entry is gone, so we
+  // assert the worker stays functional instead.
+  client->cancel_job(running.job_id);
+
+  mip_solver_settings_t<int32_t, double> probe_settings;
+  probe_settings.time_limit = 10.0;
+  auto probe                = client->submit_mip(problem, probe_settings);
+  ASSERT_TRUE(probe.success);
+
+  wait_for_job_done(client.get(), probe.job_id, 60);
+  auto probe_status = client->check_status(probe.job_id);
+  EXPECT_EQ(probe_status.status, job_status_t::COMPLETED)
+    << "Worker should be free to process a new job after the queued job was deleted";
+
+  client->delete_job(probe.job_id);
+  client->delete_job(running.job_id);
+}
+
+TEST_F(DefaultServerTests, DeleteRunningJobCancelsWorker)
+{
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
+  auto problem         = load_problem_from_file(mps_path);
+
+  mip_solver_settings_t<int32_t, double> settings;
+  settings.time_limit = 120.0;
+
+  auto submit_result = client->submit_mip(problem, settings);
+  ASSERT_TRUE(submit_result.success);
+  std::string job_id = submit_result.job_id;
+
+  // Wait until the worker has claimed the job.
+  bool processing = false;
+  for (int i = 0; i < 40; ++i) {
+    auto status = client->check_status(job_id);
+    if (status.status == job_status_t::PROCESSING) {
+      processing = true;
+      break;
+    }
+    if (status.status == job_status_t::COMPLETED || status.status == job_status_t::FAILED ||
+        status.status == job_status_t::CANCELLED) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  }
+  ASSERT_TRUE(processing) << "Job never reached PROCESSING before delete";
+
+  // Measure only the delete latency: killing the worker must return promptly,
+  // not block until the 120s solve finishes.
+  auto delete_start = std::chrono::steady_clock::now();
+  EXPECT_TRUE(client->delete_job(job_id));
+  auto delete_elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+    std::chrono::steady_clock::now() - delete_start);
+  EXPECT_LT(delete_elapsed.count(), 15) << "Delete of a running job should return promptly";
+
+  auto after_delete = client->check_status(job_id);
+  EXPECT_EQ(after_delete.status, job_status_t::NOT_FOUND);
+
+  // Prove the killed worker was actually replaced: a probe job must be picked
+  // up (reach PROCESSING) and run to completion within a bounded interval.
+  mip_solver_settings_t<int32_t, double> probe_settings;
+  probe_settings.time_limit = 10.0;
+  auto probe                = client->submit_mip(problem, probe_settings);
+  ASSERT_TRUE(probe.success);
+
+  bool probe_started = false;
+  for (int i = 0; i < 120; ++i) {  // up to ~30s for the replacement worker
+    auto status = client->check_status(probe.job_id);
+    if (status.status == job_status_t::PROCESSING || status.status == job_status_t::COMPLETED) {
+      probe_started = true;
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  }
+  EXPECT_TRUE(probe_started) << "Replacement worker never picked up the probe job";
+
+  wait_for_job_done(client.get(), probe.job_id, 60);
+  auto probe_status = client->check_status(probe.job_id);
+  EXPECT_EQ(probe_status.status, job_status_t::COMPLETED)
+    << "Replacement worker should process a new job to completion";
+
+  client->delete_job(probe.job_id);
+}
+
 // =============================================================================
 // Chunked Upload Tests (--max-message-mb 256)
 // =============================================================================
@@ -1695,6 +1848,53 @@ TEST_F(ErrorRecoveryTests, ClientHandlesServerCrashDuringSolve)
   EXPECT_FALSE(status_result.error_message.empty());
 }
 
+TEST_F(ErrorRecoveryTests, SigintDuringRunningJobShutsDownPromptly)
+{
+  ASSERT_TRUE(start_server());
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
+  auto problem         = load_problem_from_file(mps_path);
+
+  mip_solver_settings_t<int32_t, double> settings;
+  settings.time_limit = 120.0;
+
+  auto submit_result = client->submit_mip(problem, settings);
+  ASSERT_TRUE(submit_result.success);
+  std::string job_id = submit_result.job_id;
+
+  // Wait until a worker has claimed the job so SIGINT interrupts an active solve.
+  bool processing = false;
+  for (int i = 0; i < 40; ++i) {
+    auto status = client->check_status(job_id);
+    if (status.status == job_status_t::PROCESSING) {
+      processing = true;
+      break;
+    }
+    if (status.status == job_status_t::COMPLETED || status.status == job_status_t::FAILED ||
+        status.status == job_status_t::CANCELLED) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  }
+  ASSERT_TRUE(processing) << "Job never reached PROCESSING before SIGINT";
+  ASSERT_TRUE(server_.is_running());
+
+  auto start = std::chrono::steady_clock::now();
+  ASSERT_EQ(kill(server_.pid(), SIGINT), 0);
+
+  // Server must exit well before the solve time_limit; previously Ctrl-C could
+  // hang until the mid-solve worker finished. Use waitpid-based polling so a
+  // zombie parent is not mistaken for a still-running process.
+  ASSERT_TRUE(server_.wait_exited(std::chrono::seconds(15)))
+    << "Server did not shut down promptly after SIGINT during a running job";
+
+  auto elapsed =
+    std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - start);
+  EXPECT_LT(elapsed.count(), 15);
+}
+
 TEST_F(ErrorRecoveryTests, ClientTimeoutConfiguration)
 {
   ASSERT_TRUE(start_server());
@@ -2183,5 +2383,11 @@ TEST_F(ChunkValidationTests, AcceptsValidChunk)
 int main(int argc, char** argv)
 {
   ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
+  const int rc = RUN_ALL_TESTS();
+  // Skip C++ static / atexit destructors. gRPC / Abseil / protobuf can
+  // intermittently double-free during process-exit teardown after a fully
+  // green run (CI sees SIGABRT / "double free or corruption (fasttop)" after
+  // "[  PASSED  ]"). Shared ServerProcess instances are already stopped in
+  // each suite's TearDownTestSuite, so skipping global dtors is safe here.
+  std::_Exit(rc);
 }

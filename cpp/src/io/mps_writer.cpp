@@ -5,6 +5,7 @@
  */
 /* clang-format on */
 
+#include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/io/mps_writer.hpp>
 
 #include <cuopt/mathematical_optimization/io/data_model_view.hpp>
@@ -228,8 +229,8 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
   // save coefficients with full precision
   mps_file << std::setprecision(std::numeric_limits<f_t>::max_digits10);
 
-  // NAME section
-  mps_file << "NAME          " << problem_.get_problem_name() << "\n";
+  const std::string& pname = problem_.get_problem_name();
+  mps_file << "NAME          " << (pname.empty() ? "cuopt" : pname) << "\n";
 
   if (problem_.get_sense()) { mps_file << "OBJSENSE\n MAXIMIZE\n"; }
 
@@ -530,7 +531,7 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
   mps_file.close();
 }
 
-template class mps_writer_t<int, float>;
-template class mps_writer_t<int, double>;
+template class CUOPT_EXPORT mps_writer_t<int, float>;
+template class CUOPT_EXPORT mps_writer_t<int, double>;
 
 }  // namespace cuopt::mathematical_optimization::io

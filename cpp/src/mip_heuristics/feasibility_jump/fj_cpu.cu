@@ -15,6 +15,8 @@
 #include "fj_cpu.cuh"
 #include "fj_cpu_worker.cuh"
 
+#include <mip_heuristics/presolve/probing_cache.cuh>
+
 #include <utilities/seed_generator.cuh>
 
 #include <raft/core/nvtx.hpp>
@@ -132,7 +134,6 @@ thrust::tuple<f_t, f_t, f_t, f_t> get_mtm_for_constraint(
 
 template <typename i_t, typename f_t>
 std::pair<f_t, f_t> feas_score_constraint(const typename fj_t<i_t, f_t>::climber_data_t::view_t& fj,
-                                          i_t var_idx,
                                           f_t delta,
                                           i_t cstr_idx,
                                           f_t cstr_coeff,
@@ -205,7 +206,7 @@ std::pair<f_t, f_t> feas_score_constraint(const typename fj_t<i_t, f_t>::climber
       base_feas += (i_t)(cstr_weight * fj.settings->parameters.excess_improvement_weight);
     }
     // simple worsening
-    else if (!old_sat && !new_sat && old_lhs <= new_lhs) {
+    else if (!old_sat && !new_sat && old_lhs < new_lhs) {
       cuopt_assert(old_viol && new_viol, "");
       base_feas -= (i_t)(cstr_weight * fj.settings->parameters.excess_improvement_weight);
     }
@@ -613,7 +614,6 @@ static inline std::pair<fj_staged_score_t, f_t> compute_score(fj_cpu_climber_t<i
 
     auto [cstr_base_feas, cstr_bonus_robust] =
       feas_score_constraint<i_t, f_t>(fj_cpu.view,
-                                      var_idx,
                                       delta,
                                       cstr_idx,
                                       cstr_coeff,
@@ -647,6 +647,269 @@ static inline std::pair<fj_staged_score_t, f_t> compute_score(fj_cpu_climber_t<i
   score.base  = round(base_obj + base_feas_sum);
   score.bonus = round(bonus_breakthrough + bonus_robust_sum);
   return std::make_pair(score, base_feas_sum);
+}
+
+struct two_opt_move_t {
+  fj_move_t first{-1, 0};
+  fj_move_t second{-1, 0};
+  fj_staged_score_t score{fj_staged_score_t::invalid()};
+  int age{std::numeric_limits<int>::max()};
+
+  bool operator>(const two_opt_move_t& other) const
+  {
+    if (score != other.score) return score > other.score;
+    if (age != other.age) return age < other.age;
+    if (first.var_idx != other.first.var_idx) return first.var_idx < other.first.var_idx;
+    return second.var_idx < other.second.var_idx;
+  }
+};
+
+// returns the combined score of a joint 2opt move
+template <typename i_t, typename f_t>
+static fj_staged_score_t two_opt_compute_pair_score(
+  fj_cpu_climber_t<i_t, f_t>& fj_cpu, i_t first, f_t first_delta, i_t second, f_t second_delta)
+{
+  auto& row_deltas = fj_cpu.two_opt_row_deltas;
+  row_deltas.clear();
+  const fj_move_t endpoints[2] = {{first, first_delta}, {second, second_delta}};
+  for (const auto& [var_idx, delta] : endpoints) {
+    const auto [offset_begin, offset_end] = reverse_range_for_var<i_t, f_t>(fj_cpu, var_idx);
+    fj_cpu.nnz_processed_window += offset_end - offset_begin;
+    for (i_t i = offset_begin; i < offset_end; ++i) {
+      const i_t cstr_idx = fj_cpu.h_reverse_constraints[i];
+      const f_t coeff    = fj_cpu.h_reverse_coefficients[i];
+      row_deltas.emplace_back(cstr_idx, coeff * delta);
+    }
+  }
+  // Brings the entries of a shared row next to each other
+  std::sort(row_deltas.begin(), row_deltas.end());
+
+  f_t base_feas_sum    = 0;
+  f_t bonus_robust_sum = 0;
+  for (size_t pos = 0; pos < row_deltas.size();) {
+    const i_t cstr_idx = row_deltas[pos].first;
+    f_t lhs_delta      = 0;
+    do {
+      lhs_delta += row_deltas[pos++].second;
+    } while (pos < row_deltas.size() && row_deltas[pos].first == cstr_idx);
+
+    // The coefficients are already folded into lhs_delta, hence the unit coefficient
+    auto [cstr_base_feas, cstr_bonus_robust] =
+      feas_score_constraint<i_t, f_t>(fj_cpu.view,
+                                      lhs_delta,
+                                      cstr_idx,
+                                      1,
+                                      fj_cpu.h_cstr_lb[cstr_idx],
+                                      fj_cpu.h_cstr_ub[cstr_idx],
+                                      fj_cpu.h_lhs[cstr_idx],
+                                      fj_cpu.h_cstr_left_weights[cstr_idx],
+                                      fj_cpu.h_cstr_right_weights[cstr_idx]);
+    base_feas_sum += cstr_base_feas;
+    bonus_robust_sum += cstr_bonus_robust;
+  }
+
+  const f_t obj_diff =
+    fj_cpu.h_obj_coeffs[first] * first_delta + fj_cpu.h_obj_coeffs[second] * second_delta;
+  f_t base_obj = 0;
+  if (obj_diff < 0)
+    base_obj = fj_cpu.h_objective_weight;
+  else if (obj_diff > 0)
+    base_obj = -fj_cpu.h_objective_weight;
+
+  f_t bonus_breakthrough = 0;
+  bool old_obj_better    = fj_cpu.h_incumbent_objective < fj_cpu.h_best_objective;
+  bool new_obj_better    = fj_cpu.h_incumbent_objective + obj_diff < fj_cpu.h_best_objective;
+  if (!old_obj_better && new_obj_better)
+    bonus_breakthrough += fj_cpu.h_objective_weight;
+  else if (old_obj_better && !new_obj_better)
+    bonus_breakthrough -= fj_cpu.h_objective_weight;
+
+  fj_staged_score_t score;
+  score.base  = round(base_obj + base_feas_sum);
+  score.bonus = round(bonus_breakthrough + bonus_robust_sum);
+  return score;
+}
+
+template <typename i_t, typename f_t>
+static void two_opt_add_partner(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
+                                i_t first,
+                                i_t var_idx,
+                                f_t target)
+{
+  if (var_idx == first) return;
+  const f_t val = fj_cpu.h_assignment[var_idx].get();
+  // A partner between two integers has no opposite value to swap to
+  if (!fj_cpu.view.pb.is_integer(val)) return;
+  const f_t delta = target - val;
+  // Already at the value we would move it to, so there is no compound move to make
+  if (fabs(delta) < 0.5) return;
+  if (!check_variable_within_bounds<i_t, f_t>(fj_cpu, var_idx, target)) return;
+  if (tabu_check<i_t, f_t>(fj_cpu, var_idx, delta, true)) return;
+  fj_cpu.two_opt_partners.emplace_back(var_idx, delta);
+}
+
+/**
+ * @brief Fill fj_cpu.two_opt_partners with candidates to flip together with `first`.
+ *
+ * Preferred source is the probing cache: it recorded, for each probed variable and value, the
+ * bounds propagation implies on every other variable. An implied bound pinning a binary to a value
+ * names both the partner and the value it has to take once `first` moves, so a pair moving in the
+ * same direction is reached as naturally as a swap. The
+ * variables sharing a row with it are used as fallback.
+ */
+template <typename i_t, typename f_t>
+static void two_opt_collect_partners(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
+                                     i_t first,
+                                     f_t first_delta,
+                                     size_t max_partners)
+{
+  auto& partners        = fj_cpu.two_opt_partners;
+  const i_t n_variables = fj_cpu.view.pb.n_variables;
+  partners.clear();
+  cuopt_assert(fj_cpu.h_is_binary_variable[first], "2-opt is only defined for binaries");
+  cuopt_assert(
+    fj_cpu.probing_cache == nullptr || fj_cpu.h_original_ids.size() == (size_t)n_variables,
+    "original id map does not cover every variable");
+  cuopt_assert(fj_cpu.probing_cache == nullptr ||
+                 fj_cpu.h_reverse_original_ids.size() >= fj_cpu.h_original_ids.size(),
+               "reverse original id map smaller than the problem");
+
+  if (fj_cpu.probing_cache != nullptr) {
+    const auto& cache       = fj_cpu.probing_cache->probing_cache;
+    const auto cached_probe = cache.find(fj_cpu.h_original_ids[first]);
+    if (cached_probe != cache.end()) {
+      const f_t new_val = fj_cpu.h_assignment[first].get() + first_delta;
+      i_t hit_interval  = -1;
+      i_t unused_hit    = -1;
+      for (i_t interval = 0; interval < 2; ++interval) {
+        const auto& entry = cached_probe->second[interval];
+        if (entry.var_to_cached_bound_map.empty()) { continue; }
+        entry.val_interval.fill_cache_hits(interval, new_val, new_val, hit_interval, unused_hit);
+      }
+      if (hit_interval != -1) {
+        const auto& implications = cached_probe->second[hit_interval].var_to_cached_bound_map;
+        for (const auto& [probed_id, implied] : implications) {
+          if (partners.size() >= max_partners) break;
+          const i_t var_idx = fj_cpu.h_reverse_original_ids[probed_id];
+          // -1 means presolve removed the variable after the probe recorded it
+          if (var_idx < 0) { continue; }
+          cuopt_assert(var_idx < n_variables, "implied variable out of range");
+          if (!fj_cpu.h_is_binary_variable[var_idx]) { continue; }
+          if (!fj_cpu.view.pb.integer_equal(implied.lb, implied.ub)) { continue; }
+          two_opt_add_partner<i_t, f_t>(fj_cpu, first, var_idx, round(implied.lb));
+        }
+      }
+    }
+  }
+
+  const auto& related         = fj_cpu.h_related_variables;
+  const auto& related_offsets = fj_cpu.h_related_variables_offsets;
+  if (related_offsets.size() != (size_t)n_variables + 1) return;
+  const f_t swap_target   = fj_cpu.h_assignment[first].get();
+  const i_t related_begin = related_offsets[first];
+  const i_t related_end   = related_offsets[first + 1];
+  for (i_t i = related_begin; i < related_end && partners.size() < max_partners; ++i) {
+    const i_t var_idx = related[i];
+    if (fj_cpu.h_is_binary_variable[var_idx]) {
+      two_opt_add_partner<i_t, f_t>(fj_cpu, first, var_idx, swap_target);
+    }
+  }
+}
+
+// Look for binary 2opt moves at a local minimum. by definition no 1opt move can improve, but
+// combined moves may especially in the case of set partitioning constraints / cliques. Use
+// information from the probing cache to find potential good 2opt moves.
+template <typename i_t, typename f_t>
+static two_opt_move_t find_two_opt_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
+{
+  CPUFJ_NVTX_RANGE("CPUFJ::find_two_opt_move");
+  constexpr size_t max_obj_starts       = 64;
+  constexpr size_t max_partners_per_var = 16;
+
+  const auto& params           = fj_cpu.settings.parameters;
+  const size_t max_target_rows = params.two_opt_max_rows;
+  const size_t max_first_vars  = params.two_opt_max_row_vars;
+  const size_t max_pairs       = params.two_opt_max_pairs;
+
+  two_opt_move_t best;
+
+  const bool partner_source_exists =
+    (fj_cpu.probing_cache != nullptr && !fj_cpu.probing_cache->probing_cache.empty()) ||
+    (int64_t)fj_cpu.h_related_variables_offsets.size() == fj_cpu.view.pb.n_variables + 1;
+
+  if (fj_cpu.n_binary_vars == 0 || !partner_source_exists) return best;
+
+  auto& first_vars = fj_cpu.two_opt_first_vars;
+  first_vars.clear();
+
+  // target binvars in violated constraints for flips
+  if (!fj_cpu.violated_constraints.empty()) {
+    cuopt_assert(fj_cpu.h_binrow_offsets.size() == fj_cpu.view.pb.n_constraints + 1,
+                 "binary row table missing");
+    auto& target_cstrs = fj_cpu.two_opt_target_cstrs;
+    target_cstrs.clear();
+    std::sample(fj_cpu.violated_constraints.begin(),
+                fj_cpu.violated_constraints.end(),
+                std::back_inserter(target_cstrs),
+                max_target_rows,
+                fj_cpu.rng);
+    for (i_t cstr_idx : target_cstrs) {
+      const i_t bin_begin = fj_cpu.h_binrow_offsets[cstr_idx];
+      const i_t bin_end   = fj_cpu.h_binrow_offsets[cstr_idx + 1];
+      for (i_t i = bin_begin; i < bin_end && first_vars.size() < max_first_vars; ++i) {
+        first_vars.push_back(fj_cpu.h_binrow_vars[i].get());
+      }
+    }
+  } else {
+    // target objective-bearing binary vars in satisfied constraints
+    std::sample(fj_cpu.h_objective_vars.underlying().begin(),
+                fj_cpu.h_objective_vars.underlying().end(),
+                std::back_inserter(first_vars),
+                max_obj_starts,
+                fj_cpu.rng);
+    first_vars.erase(std::remove_if(first_vars.begin(),
+                                    first_vars.end(),
+                                    [&](i_t var_idx) {
+                                      if (!fj_cpu.h_is_binary_variable[var_idx]) return true;
+                                      const f_t delta =
+                                        round(1 - 2 * fj_cpu.h_assignment[var_idx].get());
+                                      return fj_cpu.h_obj_coeffs[var_idx] * delta >= 0;
+                                    }),
+                     first_vars.end());
+  }
+  std::shuffle(first_vars.begin(), first_vars.end(), fj_cpu.rng);
+
+  const i_t nnz_at_entry = fj_cpu.nnz_processed_window;
+  size_t pairs_scored    = 0;
+  // find a (first, second) pair for the 2opt
+  for (i_t first : first_vars) {
+    if (pairs_scored >= max_pairs) break;
+    if (fj_cpu.nnz_processed_window - nnz_at_entry > fj_cpu.nnz_samples) break;
+    const f_t first_val = fj_cpu.h_assignment[first].get();
+    if (!fj_cpu.view.pb.is_integer(first_val)) continue;
+    const f_t first_delta = round(1 - 2 * first_val);
+    if (tabu_check<i_t, f_t>(fj_cpu, first, first_delta, true)) continue;
+    if (!check_variable_within_bounds<i_t, f_t>(fj_cpu, first, first_val + first_delta)) continue;
+    const i_t first_touch = std::max(fj_cpu.h_tabu_lastinc[first], fj_cpu.h_tabu_lastdec[first]);
+
+    // look for potential other binary vars to flip alongside the first var
+    two_opt_collect_partners(fj_cpu, first, first_delta, max_partners_per_var);
+    for (const auto& [second, second_delta] : fj_cpu.two_opt_partners) {
+      const i_t second_touch =
+        std::max(fj_cpu.h_tabu_lastinc[second], fj_cpu.h_tabu_lastdec[second]);
+      two_opt_move_t cand;
+      cand.first  = {first, first_delta};
+      cand.second = {second, second_delta};
+      cand.score  = two_opt_compute_pair_score(fj_cpu, first, first_delta, second, second_delta);
+      cand.age    = std::max(first_touch, second_touch);
+      if (cand > best) { best = cand; }
+      ++pairs_scored;
+
+      if (pairs_scored >= max_pairs) return best;
+      if (fj_cpu.nnz_processed_window - nnz_at_entry > fj_cpu.nnz_samples) return best;
+    }
+  }
+  return best;
 }
 
 template <typename i_t, typename f_t>
@@ -749,7 +1012,7 @@ static void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
   delta   = new_val - old_val;
   cuopt_assert(isfinite(new_val), "assignment is not finite");
   cuopt_assert(isfinite(delta), "applied delta is not finite");
-  cuopt_assert((check_variable_within_bounds<i_t, f_t>(fj_cpu, var_idx, new_val)),
+  cuopt_assert(check_variable_within_bounds<i_t, f_t>(fj_cpu, var_idx, new_val),
                "assignment not within bounds");
 
   // Update the LHSs of all involved constraints.
@@ -954,7 +1217,7 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
         }
       }
       if (!isfinite(new_val)) continue;
-      cuopt_assert((check_variable_within_bounds<i_t, f_t>(fj_cpu, var_idx, new_val)),
+      cuopt_assert(check_variable_within_bounds<i_t, f_t>(fj_cpu, var_idx, new_val),
                    "new_val is not within bounds");
       delta = new_val - val;
       // more permissive tabu in the case of local minima
@@ -1001,7 +1264,7 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
 
       auto [score, infeasibility] = compute_score<i_t, f_t>(fj_cpu, var_idx, delta);
 
-      cuopt_assert((check_variable_within_bounds<i_t, f_t>(fj_cpu, var_idx, new_val)), "");
+      cuopt_assert(check_variable_within_bounds<i_t, f_t>(fj_cpu, var_idx, new_val), "");
       cuopt_assert(isfinite(delta), "");
 
       if (fj_cpu.view.move_numerically_stable(
@@ -1030,7 +1293,7 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move_viol(
               fj_cpu.violated_constraints.end(),
               std::back_inserter(sampled_cstrs),
               sample_size,
-              std::mt19937(fj_cpu.settings.seed + fj_cpu.iterations));
+              fj_cpu.rng);
 
   return find_mtm_move<i_t, f_t, MTMMoveType::FJ_MTM_VIOLATED>(fj_cpu, sampled_cstrs, localmin);
 }
@@ -1048,7 +1311,7 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move_sat(
               fj_cpu.satisfied_constraints.end(),
               std::back_inserter(sampled_cstrs),
               sample_size,
-              std::mt19937(fj_cpu.settings.seed + fj_cpu.iterations));
+              fj_cpu.rng);
 
   return find_mtm_move<i_t, f_t, MTMMoveType::FJ_MTM_SATISFIED>(fj_cpu, sampled_cstrs);
 }
@@ -1216,7 +1479,7 @@ static void perturb(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
               fj_cpu.h_objective_vars.end(),
               std::back_inserter(sampled_vars),
               2,
-              std::mt19937(fj_cpu.settings.seed + fj_cpu.iterations));
+              fj_cpu.rng);
   raft::random::PCGenerator rng(fj_cpu.settings.seed + fj_cpu.iterations, 0, 0);
 
   for (auto var_idx : sampled_vars) {
@@ -1230,7 +1493,7 @@ static void perturb(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
       val = std::min(std::max(val, lb), ub);
     }
 
-    cuopt_assert((check_variable_within_bounds<i_t, f_t>(fj_cpu, var_idx, val)),
+    cuopt_assert(check_variable_within_bounds<i_t, f_t>(fj_cpu, var_idx, val),
                  "value is out of bounds");
     fj_cpu.h_assignment[var_idx] = val;
   }
@@ -1243,7 +1506,8 @@ static void init_fj_cpu(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
                         solution_t<i_t, f_t>& solution,
                         const std::vector<f_t>& left_weights,
                         const std::vector<f_t>& right_weights,
-                        f_t objective_weight)
+                        f_t objective_weight,
+                        const probing_cache_t<i_t, f_t>* probing_cache)
 {
   auto& problem   = *solution.problem_ptr;
   auto handle_ptr = solution.handle_ptr;
@@ -1272,6 +1536,13 @@ static void init_fj_cpu(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
   fj_cpu.h_is_binary_variable =
     cuopt::host_copy(problem.is_binary_variable, handle_ptr->get_stream());
   fj_cpu.h_binary_indices = cuopt::host_copy(problem.binary_indices, handle_ptr->get_stream());
+  fj_cpu.h_related_variables =
+    cuopt::host_copy(problem.related_variables, handle_ptr->get_stream());
+  fj_cpu.h_related_variables_offsets =
+    cuopt::host_copy(problem.related_variables_offsets, handle_ptr->get_stream());
+  fj_cpu.probing_cache          = probing_cache;
+  fj_cpu.h_original_ids         = problem.original_ids;
+  fj_cpu.h_reverse_original_ids = problem.reverse_original_ids;
 
   fj_cpu.h_cstr_left_weights  = left_weights;
   fj_cpu.h_cstr_right_weights = right_weights;
@@ -1407,6 +1678,19 @@ void finalize_fj_cpu_host_initialization(
                        fj_cpu.h_cstr_ub[fj_cpu.h_reverse_constraints[i]]);
     }
   }
+
+  // precompute the binvars-pre-row tables for 2opt
+  fj_cpu.h_binrow_offsets.resize(n_constraints + 1);
+  fj_cpu.h_binrow_vars.clear();
+  for (i_t cstr_idx = 0; cstr_idx < n_constraints; ++cstr_idx) {
+    fj_cpu.h_binrow_offsets[cstr_idx] = fj_cpu.h_binrow_vars.size();
+    auto [offset_begin, offset_end]   = range_for_constraint<i_t, f_t>(fj_cpu, cstr_idx);
+    for (i_t i = offset_begin; i < offset_end; ++i) {
+      const i_t var_idx = fj_cpu.h_variables[i];
+      if (fj_cpu.h_is_binary_variable[var_idx]) { fj_cpu.h_binrow_vars.push_back(var_idx); }
+    }
+  }
+  fj_cpu.h_binrow_offsets[n_constraints] = fj_cpu.h_binrow_vars.size();
 
   fj_cpu.flip_move_computed.resize(n_variables, false);
   fj_cpu.var_bitmap.resize(n_variables, false);
@@ -1584,6 +1868,7 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_t<i_t, f_t>::create_cpu_climber(
   const std::vector<f_t>& right_weights,
   f_t objective_weight,
   std::atomic<bool>& preemption_flag,
+  const probing_cache_t<i_t, f_t>* probing_cache,
   fj_settings_t settings,
   bool randomize_params)
 {
@@ -1592,7 +1877,7 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_t<i_t, f_t>::create_cpu_climber(
   auto fj_cpu = std::make_unique<fj_cpu_climber_t<i_t, f_t>>(preemption_flag);
 
   // Initialize fj_cpu with all the data
-  init_fj_cpu(*fj_cpu, solution, left_weights, right_weights, objective_weight);
+  init_fj_cpu(*fj_cpu, solution, left_weights, right_weights, objective_weight, probing_cache);
   fj_cpu->settings = settings;
   if (randomize_params) {
     auto rng                 = std::mt19937(cuopt::seed_generator::get_seed());
@@ -1612,6 +1897,8 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
   auto loop_start = std::chrono::high_resolution_clock::now();
   auto time_limit = std::chrono::milliseconds(static_cast<i_t>(std::floor(in_time_limit * 1000.0)));
   auto loop_time_start = std::chrono::high_resolution_clock::now();
+
+  fj_cpu->rng.seed(fj_cpu->settings.seed);
 
   // Initialize feature tracking
   fj_cpu->last_feature_log_time = loop_start;
@@ -1691,11 +1978,20 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
         for (size_t i = 0; i < fj_cpu->cached_mtm_moves.size(); i++)
           fj_cpu->cached_mtm_moves[i].first = 0;
       }
-      thrust::tie(move, score) =
-        find_mtm_move_viol(*fj_cpu, 1, true);  // pick a single random violated constraint
-      i_t var_idx = move.var_idx >= 0 ? move.var_idx : 0;
-      f_t delta   = move.var_idx >= 0 ? move.value : 0;
-      apply_move(*fj_cpu, var_idx, delta, true);
+
+      two_opt_move_t two_opt_move;
+      if (!should_perturb) two_opt_move = find_two_opt_move(*fj_cpu);
+      if (two_opt_move.score > fj_staged_score_t::zero()) {
+        apply_move(*fj_cpu, two_opt_move.first.var_idx, two_opt_move.first.value, true);
+        apply_move(*fj_cpu, two_opt_move.second.var_idx, two_opt_move.second.value, true);
+        fj_cpu->n_mtm_viol_moves_window += 2;
+      } else {
+        thrust::tie(move, score) =
+          find_mtm_move_viol(*fj_cpu, 1, true);  // pick a single random violated constraint
+        i_t var_idx = move.var_idx >= 0 ? move.var_idx : 0;
+        f_t delta   = move.var_idx >= 0 ? move.value : 0;
+        apply_move(*fj_cpu, var_idx, delta, true);
+      }
       ++local_mins;
       ++fj_cpu->n_local_minima_window;
     }
@@ -1784,7 +2080,9 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_standalone(
   auto fj_cpu = std::make_unique<fj_cpu_climber_t<i_t, f_t>>(preemption_flag);
 
   std::vector<f_t> default_weights(problem.n_constraints, 1.0);
-  init_fj_cpu(*fj_cpu, solution, default_weights, default_weights, 0.0);
+  // Early CPUFJ runs while presolve is still probing, so there are no implications to hand it
+  const probing_cache_t<i_t, f_t>* no_implications = nullptr;
+  init_fj_cpu(*fj_cpu, solution, default_weights, default_weights, 0.0, no_implications);
   fj_cpu->settings      = settings;
   fj_cpu->settings.seed = cuopt::seed_generator::get_seed();
 
@@ -1811,35 +2109,50 @@ void fj_cpu_worker_t<i_t, f_t>::create_worker(
   fj_cpu.reset(new_climber.release());
   fj_cpu->log_prefix           = std::move(log_prefix);
   fj_cpu->improvement_callback = improvement_callback;
+  fj_cpu->halted               = false;
+  preemption_flag              = false;
+  is_initialized               = true;
 }
 
 template <typename i_t, typename f_t>
 void fj_cpu_worker_t<i_t, f_t>::run_async(f_t time_limit, double work_unit_limit)
 {
-  if (!fj_cpu) return;
+  if (!is_initialized) return;
 
-#pragma omp task shared(fj_cpu) firstprivate(time_limit, work_unit_limit) \
-  priority(CUOPT_DEFAULT_TASK_PRIORITY) default(none) depend(out : *fj_cpu)
-  cpufj_solve(fj_cpu.get(), time_limit, work_unit_limit);
+  auto& fj_ptr = fj_cpu;
+#pragma omp task shared(fj_cpu, is_initialized, fj_ptr) firstprivate(time_limit, work_unit_limit) \
+  priority(CUOPT_DEFAULT_TASK_PRIORITY) default(none) depend(out : fj_ptr)
+  {
+    if (is_initialized) { cpufj_solve(fj_cpu.get(), time_limit, work_unit_limit); }
+  }
 }
 
 template <typename i_t, typename f_t>
 void fj_cpu_worker_t<i_t, f_t>::run_sync(f_t time_limit, double work_unit_limit)
 {
-  if (!fj_cpu) return;
+  if (!is_initialized) return;
   cpufj_solve(fj_cpu.get(), time_limit, work_unit_limit);
+  is_initialized = false;
   fj_cpu.reset();
 }
 
 template <typename i_t, typename f_t>
 void fj_cpu_worker_t<i_t, f_t>::stop()
 {
-  if (!fj_cpu) return;
+  if (!is_initialized) return;
 
-  fj_cpu->preemption_flag = true;
-  fj_cpu->halted          = true;
-#pragma omp taskwait depend(in : *fj_cpu)
+  preemption_flag = true;
+
+  auto& fj_ptr = fj_cpu;
+#pragma omp taskwait depend(in : fj_ptr)
+  is_initialized = false;
   fj_cpu.reset();
+}
+
+template <typename i_t, typename f_t>
+void fj_cpu_worker_t<i_t, f_t>::send_stop_signal()
+{
+  preemption_flag = true;
 }
 
 #if MIP_INSTANTIATE_FLOAT

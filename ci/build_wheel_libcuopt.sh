@@ -102,7 +102,8 @@ EXCLUDE_ARGS=(
   --exclude "libcurand.so.*"
   --exclude "libcusolver.so.*"
   --exclude "libcusparse.so.*"
-  --exclude "libnvJitLink*"
+  --exclude "libnccl.so.*"
+  --exclude "libnvJitLink.so*"
   --exclude "librapids_logger.so"
   --exclude "librmm.so"
   # OpenSSL 3 is intentionally NOT bundled. Resolving libssl.so.3 / libcrypto.so.3

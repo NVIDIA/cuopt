@@ -32,7 +32,7 @@ Linear Programming
    - 10M rows/constraints 10M columns/variables and 2B non-zeros in the constraint matrix
    - 74.5M rows/constraints 74.5M columns/variables and 1.49B non-zeros in the constraint matrix
 
-Mixed Integer Linear Programming
+Mixed Integer Programming
 ================================
 
 -  Number of non-zeros/coefficient matrix size supported

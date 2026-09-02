@@ -45,6 +45,8 @@ concurrency:
 permissions: {}
 
 jobs:
+  build-details:
+    uses: rapidsai/shared-workflows/.github/workflows/compute-build-details.yaml@main
   cpp-build:
     permissions:
       actions: read
@@ -52,16 +54,39 @@ jobs:
       id-token: write
       packages: read
       pull-requests: read
+    needs: [build-details]
     secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-build.yaml@main
+    with:
+      build_type: ${{ inputs.build_type || 'branch' }}
+      build-datetime: ${{ needs.build-details.outputs.build-datetime }}
+      branch: ${{ inputs.branch }}
+      date: ${{ inputs.date }}
+      sha: ${{ inputs.sha }}
+      script: ci/build_cpp.sh
+  java-build:
+    needs: cpp-build
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    secrets: inherit # zizmor: ignore[secrets-inherit]
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
-      script: ci/build_cpp.sh
+      node_type: "cpu4"
+      arch: "amd64"
+      container_image: "rapidsai/ci-conda:26.10-latest"
+      script: "ci/build_java.sh"
+      artifact-name: "cuopt-java"
+      file_to_upload: "java/cuopt/target/"
   python-build:
-    needs: [cpp-build]
+    needs: [build-details, cpp-build]
     permissions:
       actions: read
       contents: read
@@ -72,10 +97,13 @@ jobs:
     uses: rapidsai/shared-workflows/.github/workflows/conda-python-build.yaml@main
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
+      build-datetime: ${{ needs.build-details.outputs.build-datetime }}
       branch: ${{ inputs.branch }}
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
       script: ci/build_python.sh
+      # Build a conda package for each CUDA x ARCH x minimum supported Python version
+      matrix_filter: group_by({CUDA_VER, ARCH}) | map(min_by(.PY_VER | split(".") | map(tonumber)))
   upload-conda:
     needs: [cpp-build, python-build]
     permissions:
@@ -100,10 +128,12 @@ jobs:
       id-token: write
       packages: read
       pull-requests: read
+    needs: [build-details]
     secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
+      build-datetime: ${{ needs.build-details.outputs.build-datetime }}
       branch: ${{ inputs.branch }}
       sha: ${{ inputs.sha }}
       date: ${{ inputs.date }}
@@ -132,7 +162,7 @@ jobs:
       package-type: cpp
       publish-wheel-search-key: cuopt_wheel_cpp_libcuopt
   wheel-build-cuopt:
-    needs: [wheel-build-libcuopt]
+    needs: [build-details, wheel-build-libcuopt]
     permissions:
       actions: read
       contents: read
@@ -143,12 +173,15 @@ jobs:
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
+      build-datetime: ${{ needs.build-details.outputs.build-datetime }}
       branch: ${{ inputs.branch }}
       sha: ${{ inputs.sha }}
       date: ${{ inputs.date }}
       script: ci/build_wheel_cuopt.sh
       package-name: cuopt
       package-type: python
+      # Build a wheel for each CUDA x ARCH x minimum supported Python version
+      matrix_filter: group_by({CUDA_VER, ARCH}) | map(min_by(.PY_VER | split(".") | map(tonumber)))
   wheel-publish-cuopt:
     needs: wheel-build-cuopt
     permissions:
@@ -176,10 +209,12 @@ jobs:
       id-token: write
       packages: read
       pull-requests: read
+    needs: [build-details]
     secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
+      build-datetime: ${{ needs.build-details.outputs.build-datetime }}
       branch: ${{ inputs.branch }}
       sha: ${{ inputs.sha }}
       date: ${{ inputs.date }}
@@ -228,7 +263,7 @@ jobs:
       arch: "amd64"
       file_to_upload: "docs/cuopt/build/html/"
       artifact-name: "cuopt_docs"
-      container_image: "rapidsai/ci-conda:26.08-latest"
+      container_image: "rapidsai/ci-conda:26.10-latest"
       script: "ci/build_docs.sh"
   wheel-build-cuopt-sh-client:
     permissions:
@@ -237,10 +272,12 @@ jobs:
       id-token: write
       packages: read
       pull-requests: read
+    needs: [build-details]
     secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
+      build-datetime: ${{ needs.build-details.outputs.build-datetime }}
       branch: ${{ inputs.branch }}
       sha: ${{ inputs.sha }}
       date: ${{ inputs.date }}
@@ -271,11 +308,189 @@ jobs:
       package-name: cuopt_sh_client
       package-type: python
       publish-wheel-search-key: cuopt_wheel_python_cuopt-sh-client
+  release-github:
+    # Attaches the built wheels to a GitHub Release on the version tag, so Kitmaker
+    # can pull them from a public Release URL (Kitmaker itself never reaches inside NVIDIA).
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - wheel-publish-libcuopt
+      - wheel-publish-cuopt
+      - wheel-publish-cuopt-server
+      - wheel-publish-cuopt-sh-client
+    permissions:
+      contents: write
+    runs-on: linux-amd64-cpu4
+    outputs:
+      release-tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - name: Download built wheels
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: "cuopt_wheel_*"
+          path: dist
+          merge-multiple: true
+      - name: Create GitHub Release and upload wheels
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          mapfile -t wheels < <(find dist -name '*.whl')
+          if [[ ${#wheels[@]} -eq 0 ]]; then
+            echo "::error::No wheel files found in dist/ -- refusing to create an asset-free release"
+            exit 1
+          fi
+          gh release create "$tag" \
+            --repo "${{ github.repository }}" \
+            --title "$tag" \
+            --generate-notes \
+            "${wheels[@]}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+  # Each job below calls the Kitmaker Portal release API (via Charon Ferry) to publish
+  # one package's wheels from the GitHub Release above to pypi.org / pypi.nvidia.com.
+  # Kitmaker projects are 1:1 with wheel/component name x CUDA major version (except
+  # cuopt-sh-client, a pure package with no CUDA suffix), mirroring wheel-publish-* above.
+  kitmaker-portal-release-libcuopt-cu12:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: release-github
+    permissions:
+      id-token: write
+      contents: read
+    secrets:
+      KITMAKER_PORTAL_AUTHORIZATION: ${{ secrets.KITMAKER_PORTAL_AUTHORIZATION }}
+      KITMAKER_PORTAL_ACC_OWNER_EMAIL: ${{ secrets.KITMAKER_PORTAL_ACC_OWNER_EMAIL }}
+      CUOPT_SLACK_BOT_TOKEN: ${{ secrets.CUOPT_SLACK_BOT_TOKEN }}
+      CUOPT_SLACK_CHANNEL_ID: ${{ secrets.CUOPT_SLACK_CHANNEL_ID }}
+      CUOPT_SLACK_MENTION_ID: ${{ secrets.CUOPT_SLACK_MENTION_ID }}
+    uses: ./.github/workflows/kitmaker_portal.yaml
+    with:
+      release_tag: ${{ needs.release-github.outputs.release-tag }}
+      project_name: libcuopt-cu12
+      project_id: ${{ vars.KITMAKER_PROJECT_ID_LIBCUOPT_CU12 }}
+      wheel_asset_pattern: "^libcuopt_cu12-"
+      upload: false  # Staged rollout: flip to true once the team signs off on going live
+  kitmaker-portal-release-libcuopt-cu13:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: release-github
+    permissions:
+      id-token: write
+      contents: read
+    secrets:
+      KITMAKER_PORTAL_AUTHORIZATION: ${{ secrets.KITMAKER_PORTAL_AUTHORIZATION }}
+      KITMAKER_PORTAL_ACC_OWNER_EMAIL: ${{ secrets.KITMAKER_PORTAL_ACC_OWNER_EMAIL }}
+      CUOPT_SLACK_BOT_TOKEN: ${{ secrets.CUOPT_SLACK_BOT_TOKEN }}
+      CUOPT_SLACK_CHANNEL_ID: ${{ secrets.CUOPT_SLACK_CHANNEL_ID }}
+      CUOPT_SLACK_MENTION_ID: ${{ secrets.CUOPT_SLACK_MENTION_ID }}
+    uses: ./.github/workflows/kitmaker_portal.yaml
+    with:
+      release_tag: ${{ needs.release-github.outputs.release-tag }}
+      project_name: libcuopt-cu13
+      project_id: ${{ vars.KITMAKER_PROJECT_ID_LIBCUOPT_CU13 }}
+      wheel_asset_pattern: "^libcuopt_cu13-"
+      upload: false  # Staged rollout: flip to true once the team signs off on going live
+  kitmaker-portal-release-cuopt-cu12:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: release-github
+    permissions:
+      id-token: write
+      contents: read
+    secrets:
+      KITMAKER_PORTAL_AUTHORIZATION: ${{ secrets.KITMAKER_PORTAL_AUTHORIZATION }}
+      KITMAKER_PORTAL_ACC_OWNER_EMAIL: ${{ secrets.KITMAKER_PORTAL_ACC_OWNER_EMAIL }}
+      CUOPT_SLACK_BOT_TOKEN: ${{ secrets.CUOPT_SLACK_BOT_TOKEN }}
+      CUOPT_SLACK_CHANNEL_ID: ${{ secrets.CUOPT_SLACK_CHANNEL_ID }}
+      CUOPT_SLACK_MENTION_ID: ${{ secrets.CUOPT_SLACK_MENTION_ID }}
+    uses: ./.github/workflows/kitmaker_portal.yaml
+    with:
+      release_tag: ${{ needs.release-github.outputs.release-tag }}
+      project_name: cuopt-cu12
+      project_id: ${{ vars.KITMAKER_PROJECT_ID_CUOPT_CU12 }}
+      wheel_asset_pattern: "^cuopt_cu12-"
+      upload: false  # Staged rollout: flip to true once the team signs off on going live
+  kitmaker-portal-release-cuopt-cu13:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: release-github
+    permissions:
+      id-token: write
+      contents: read
+    secrets:
+      KITMAKER_PORTAL_AUTHORIZATION: ${{ secrets.KITMAKER_PORTAL_AUTHORIZATION }}
+      KITMAKER_PORTAL_ACC_OWNER_EMAIL: ${{ secrets.KITMAKER_PORTAL_ACC_OWNER_EMAIL }}
+      CUOPT_SLACK_BOT_TOKEN: ${{ secrets.CUOPT_SLACK_BOT_TOKEN }}
+      CUOPT_SLACK_CHANNEL_ID: ${{ secrets.CUOPT_SLACK_CHANNEL_ID }}
+      CUOPT_SLACK_MENTION_ID: ${{ secrets.CUOPT_SLACK_MENTION_ID }}
+    uses: ./.github/workflows/kitmaker_portal.yaml
+    with:
+      release_tag: ${{ needs.release-github.outputs.release-tag }}
+      project_name: cuopt-cu13
+      project_id: ${{ vars.KITMAKER_PROJECT_ID_CUOPT_CU13 }}
+      wheel_asset_pattern: "^cuopt_cu13-"
+      upload: false  # Staged rollout: flip to true once the team signs off on going live
+  kitmaker-portal-release-cuopt-server-cu12:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: release-github
+    permissions:
+      id-token: write
+      contents: read
+    secrets:
+      KITMAKER_PORTAL_AUTHORIZATION: ${{ secrets.KITMAKER_PORTAL_AUTHORIZATION }}
+      KITMAKER_PORTAL_ACC_OWNER_EMAIL: ${{ secrets.KITMAKER_PORTAL_ACC_OWNER_EMAIL }}
+      CUOPT_SLACK_BOT_TOKEN: ${{ secrets.CUOPT_SLACK_BOT_TOKEN }}
+      CUOPT_SLACK_CHANNEL_ID: ${{ secrets.CUOPT_SLACK_CHANNEL_ID }}
+      CUOPT_SLACK_MENTION_ID: ${{ secrets.CUOPT_SLACK_MENTION_ID }}
+    uses: ./.github/workflows/kitmaker_portal.yaml
+    with:
+      release_tag: ${{ needs.release-github.outputs.release-tag }}
+      project_name: cuopt-server-cu12
+      project_id: ${{ vars.KITMAKER_PROJECT_ID_CUOPT_SERVER_CU12 }}
+      wheel_asset_pattern: "^cuopt_server_cu12-"
+      upload: false  # Staged rollout: flip to true once the team signs off on going live
+  kitmaker-portal-release-cuopt-server-cu13:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: release-github
+    permissions:
+      id-token: write
+      contents: read
+    secrets:
+      KITMAKER_PORTAL_AUTHORIZATION: ${{ secrets.KITMAKER_PORTAL_AUTHORIZATION }}
+      KITMAKER_PORTAL_ACC_OWNER_EMAIL: ${{ secrets.KITMAKER_PORTAL_ACC_OWNER_EMAIL }}
+      CUOPT_SLACK_BOT_TOKEN: ${{ secrets.CUOPT_SLACK_BOT_TOKEN }}
+      CUOPT_SLACK_CHANNEL_ID: ${{ secrets.CUOPT_SLACK_CHANNEL_ID }}
+      CUOPT_SLACK_MENTION_ID: ${{ secrets.CUOPT_SLACK_MENTION_ID }}
+    uses: ./.github/workflows/kitmaker_portal.yaml
+    with:
+      release_tag: ${{ needs.release-github.outputs.release-tag }}
+      project_name: cuopt-server-cu13
+      project_id: ${{ vars.KITMAKER_PROJECT_ID_CUOPT_SERVER_CU13 }}
+      wheel_asset_pattern: "^cuopt_server_cu13-"
+      upload: false  # Staged rollout: flip to true once the team signs off on going live
+  kitmaker-portal-release-cuopt-sh-client:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: release-github
+    permissions:
+      id-token: write
+      contents: read
+    secrets:
+      KITMAKER_PORTAL_AUTHORIZATION: ${{ secrets.KITMAKER_PORTAL_AUTHORIZATION }}
+      KITMAKER_PORTAL_ACC_OWNER_EMAIL: ${{ secrets.KITMAKER_PORTAL_ACC_OWNER_EMAIL }}
+      CUOPT_SLACK_BOT_TOKEN: ${{ secrets.CUOPT_SLACK_BOT_TOKEN }}
+      CUOPT_SLACK_CHANNEL_ID: ${{ secrets.CUOPT_SLACK_CHANNEL_ID }}
+      CUOPT_SLACK_MENTION_ID: ${{ secrets.CUOPT_SLACK_MENTION_ID }}
+    uses: ./.github/workflows/kitmaker_portal.yaml
+    with:
+      release_tag: ${{ needs.release-github.outputs.release-tag }}
+      project_name: cuopt-sh-client
+      project_id: ${{ vars.KITMAKER_PROJECT_ID_CUOPT_SH_CLIENT }}
+      wheel_asset_pattern: "^cuopt_sh_client-"
+      upload: false  # Staged rollout: flip to true once the team signs off on going live
+
   tests:
     # Docker image build / tests aren't necessary for the 'test.yaml' workflow,
     # so 'test.yaml' can be triggered without waiting for those.
     needs:
       - upload-conda
+      - java-build
       - wheel-publish-cuopt
       - wheel-publish-cuopt-server
       - wheel-publish-cuopt-sh-client
@@ -337,6 +552,7 @@ jobs:
 
   build-images:
     needs:
+      - build-details
       - wheel-publish-cuopt
       - wheel-publish-cuopt-server
       - wheel-publish-cuopt-sh-client
@@ -353,3 +569,4 @@ jobs:
       sha: ${{ inputs.sha }}
       date: ${{ inputs.date }}
       build_type: ${{ inputs.build_type || 'branch' }}
+      build-datetime: ${{ needs.build-details.outputs.build-datetime }}

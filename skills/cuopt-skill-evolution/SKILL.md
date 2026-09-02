@@ -1,6 +1,6 @@
 ---
 name: cuopt-skill-evolution
-version: "26.08.00"
+version: "26.10.00"
 description: After solving a non-trivial problem, detect generalizable learnings and propose skill updates. Always active — applies to every interaction.
 license: Apache-2.0
 metadata:
@@ -144,7 +144,7 @@ When skill evolution creates an entirely new skill directory, add `origin: cuopt
 ```yaml
 ---
 name: new-skill-name
-version: "26.08.00"
+version: "26.10.00"
 description: ...
 origin: cuopt-skill-evolution
 ---

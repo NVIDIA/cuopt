@@ -515,6 +515,24 @@ End
   expect_adopt_matches_populate(model);
 }
 
+TEST_F(SolutionInterfaceTest, gpu_adopt_consumes_mps_data_model)
+{
+  auto model               = io::read_mps<int, double>(lp_file_);
+  const auto n_variables   = model.get_n_variables();
+  const auto n_constraints = model.get_n_constraints();
+  const auto nnz           = model.get_nnz();
+
+  raft::handle_t handle;
+  optimization_problem_t<int, double> problem(&handle);
+  adopt_from_mps_data_model(&problem, std::move(model));
+
+  EXPECT_EQ(model.get_n_variables(), 0);
+  EXPECT_EQ(model.get_n_constraints(), 0);
+  EXPECT_EQ(problem.get_n_variables(), n_variables);
+  EXPECT_EQ(problem.get_n_constraints(), n_constraints);
+  EXPECT_EQ(problem.get_nnz(), nnz);
+}
+
 // =============================================================================
 // Solution conversion tests (hand-constructed, known values)
 // =============================================================================
@@ -530,11 +548,83 @@ TEST_F(SolutionInterfaceTest, lp_solution_to_python_ret)
 
 TEST_F(SolutionInterfaceTest, cpu_lp_solution_to_python_ret)
 {
+  // Exercises cpu_lp_solution_t::to_cpu_linear_programming_ret_t(), moved into
+  // pdlp/solution_conversion_cpu.cpp -- assert every field it populates when there
+  // is no warm-start data.
   auto cpu_sol    = make_cpu_lp_solution(/*with_warmstart=*/false);
   auto python_ret = cpu_sol->to_python_lp_ret();
 
   EXPECT_FALSE(python_ret.is_gpu());
+  ASSERT_TRUE(std::holds_alternative<cuopt::cython::linear_programming_ret_t::cpu_solutions_t>(
+    python_ret.solutions_));
+  const auto& cpu =
+    std::get<cuopt::cython::linear_programming_ret_t::cpu_solutions_t>(python_ret.solutions_);
+  EXPECT_EQ(cpu.primal_solution_, (std::vector<double>{1.0, 2.0, 3.0}));
+  EXPECT_EQ(cpu.dual_solution_, (std::vector<double>{0.5, 0.6}));
+  EXPECT_EQ(cpu.reduced_cost_, (std::vector<double>{0.1, 0.2, 0.3}));
+  // No warm-start data was set, so the warm-start buffers must stay empty and the
+  // warm-start scalars must stay at their default-constructed values.
+  EXPECT_TRUE(cpu.current_primal_solution_.empty());
+  EXPECT_TRUE(cpu.current_dual_solution_.empty());
+  EXPECT_TRUE(cpu.initial_primal_average_.empty());
+  EXPECT_TRUE(cpu.initial_dual_average_.empty());
+  EXPECT_TRUE(cpu.current_ATY_.empty());
+  EXPECT_TRUE(cpu.sum_primal_solutions_.empty());
+  EXPECT_TRUE(cpu.sum_dual_solutions_.empty());
+  EXPECT_TRUE(cpu.last_restart_duality_gap_primal_solution_.empty());
+  EXPECT_TRUE(cpu.last_restart_duality_gap_dual_solution_.empty());
+  EXPECT_DOUBLE_EQ(python_ret.initial_primal_weight_, 0.0);
+  EXPECT_DOUBLE_EQ(python_ret.initial_step_size_, 0.0);
+  EXPECT_EQ(python_ret.total_pdlp_iterations_, 0);
+  EXPECT_EQ(python_ret.total_pdhg_iterations_, 0);
+  EXPECT_DOUBLE_EQ(python_ret.last_candidate_kkt_score_, 0.0);
+  EXPECT_DOUBLE_EQ(python_ret.last_restart_kkt_score_, 0.0);
+  EXPECT_DOUBLE_EQ(python_ret.sum_solution_weight_, 0.0);
+  EXPECT_EQ(python_ret.iterations_since_last_restart_, 0);
+
+  EXPECT_EQ(python_ret.termination_status_, pdlp_termination_status_t::Optimal);
+  EXPECT_EQ(python_ret.error_status_, error_type_t::Success);
+  EXPECT_NEAR(python_ret.l2_primal_residual_, 1e-8, 1e-15);
+  EXPECT_NEAR(python_ret.l2_dual_residual_, 2e-8, 1e-15);
   EXPECT_NEAR(python_ret.primal_objective_, -42.0, 1e-9);
+  EXPECT_NEAR(python_ret.dual_objective_, -42.5, 1e-9);
+  EXPECT_NEAR(python_ret.gap_, 0.5, 1e-9);
+  EXPECT_EQ(python_ret.nb_iterations_, 100);
+  EXPECT_NEAR(python_ret.solve_time_, 1.23, 1e-9);
+  EXPECT_EQ(python_ret.solved_by_, method_t::PDLP);
+}
+
+TEST_F(SolutionInterfaceTest, cpu_lp_solution_to_python_ret_with_warmstart)
+{
+  // Same conversion, exercising the branch that copies pdlp_warm_start_data_ into the
+  // cpu_solutions_t buffers and the warm-start scalars -- the part of
+  // to_cpu_linear_programming_ret_t() the previous test cannot reach.
+  auto cpu_sol    = make_cpu_lp_solution(/*with_warmstart=*/true);
+  auto python_ret = cpu_sol->to_python_lp_ret();
+
+  EXPECT_FALSE(python_ret.is_gpu());
+  const auto& cpu =
+    std::get<cuopt::cython::linear_programming_ret_t::cpu_solutions_t>(python_ret.solutions_);
+  EXPECT_EQ(cpu.current_primal_solution_, (std::vector<double>(kNVars, 0.1)));
+  EXPECT_EQ(cpu.current_dual_solution_, (std::vector<double>(kNCons, 0.2)));
+  EXPECT_EQ(cpu.initial_primal_average_, (std::vector<double>(kNVars, 0.3)));
+  EXPECT_EQ(cpu.initial_dual_average_, (std::vector<double>(kNCons, 0.4)));
+  EXPECT_EQ(cpu.current_ATY_, (std::vector<double>(kNVars, 0.5)));
+  EXPECT_EQ(cpu.sum_primal_solutions_, (std::vector<double>(kNVars, 0.6)));
+  EXPECT_EQ(cpu.sum_dual_solutions_, (std::vector<double>(kNCons, 0.7)));
+  EXPECT_EQ(cpu.last_restart_duality_gap_primal_solution_, (std::vector<double>(kNVars, 0.8)));
+  EXPECT_EQ(cpu.last_restart_duality_gap_dual_solution_, (std::vector<double>(kNCons, 0.9)));
+
+  EXPECT_DOUBLE_EQ(python_ret.initial_primal_weight_, 1.0);
+  EXPECT_DOUBLE_EQ(python_ret.initial_step_size_, 0.01);
+  EXPECT_EQ(python_ret.total_pdlp_iterations_, 100);
+  EXPECT_EQ(python_ret.total_pdhg_iterations_, 200);
+  EXPECT_NEAR(python_ret.last_candidate_kkt_score_, 1e-4, 1e-12);
+  EXPECT_NEAR(python_ret.last_restart_kkt_score_, 1e-5, 1e-12);
+  EXPECT_DOUBLE_EQ(python_ret.sum_solution_weight_, 50.0);
+  EXPECT_EQ(python_ret.iterations_since_last_restart_, 10);
+
+  EXPECT_EQ(python_ret.termination_status_, pdlp_termination_status_t::IterationLimit);
 }
 
 TEST_F(SolutionInterfaceTest, mip_solution_to_python_ret)
@@ -548,11 +638,28 @@ TEST_F(SolutionInterfaceTest, mip_solution_to_python_ret)
 
 TEST_F(SolutionInterfaceTest, cpu_mip_solution_to_python_ret)
 {
+  // Exercises cpu_mip_solution_t::to_cpu_mip_ret_t(), moved into
+  // pdlp/solution_conversion_cpu.cpp -- assert every field it populates.
   auto cpu_sol    = make_cpu_mip_solution();
   auto python_ret = cpu_sol->to_python_mip_ret();
 
   EXPECT_FALSE(python_ret.is_gpu());
+  ASSERT_TRUE(std::holds_alternative<cuopt::cython::cpu_buffer>(python_ret.solution_));
+  EXPECT_EQ(std::get<cuopt::cython::cpu_buffer>(python_ret.solution_),
+            (std::vector<double>{1.0, 0.0, 1.0}));
+
+  EXPECT_EQ(python_ret.termination_status_, mip_termination_status_t::Optimal);
+  EXPECT_EQ(python_ret.error_status_, error_type_t::Success);
   EXPECT_NEAR(python_ret.objective_, -99.0, 1e-9);
+  EXPECT_DOUBLE_EQ(python_ret.mip_gap_, 0.0);
+  EXPECT_NEAR(python_ret.solution_bound_, -99.0, 1e-9);
+  EXPECT_NEAR(python_ret.total_solve_time_, 2.34, 1e-9);
+  EXPECT_NEAR(python_ret.presolve_time_, 0.1, 1e-9);
+  EXPECT_DOUBLE_EQ(python_ret.max_constraint_violation_, 0.0);
+  EXPECT_DOUBLE_EQ(python_ret.max_int_violation_, 0.0);
+  EXPECT_DOUBLE_EQ(python_ret.max_variable_bound_violation_, 0.0);
+  EXPECT_EQ(python_ret.nodes_, 42);
+  EXPECT_EQ(python_ret.simplex_iterations_, 500);
 }
 
 // =============================================================================

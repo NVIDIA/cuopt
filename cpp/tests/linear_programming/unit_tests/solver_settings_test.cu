@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/solver_settings.hpp>
 
 #include <utilities/copy_helpers.hpp>
 #include <utilities/error.hpp>
@@ -69,6 +70,16 @@ TEST(SolverSettingsTest, TestSetGet)
   EXPECT_FALSE(solver_settings.first_primal_feasible);
   solver_settings.first_primal_feasible = true;
   EXPECT_TRUE(solver_settings.first_primal_feasible);
+
+  EXPECT_EQ(solver_settings.postsolve_info, -1);
+  solver_settings.postsolve_info = 1;
+  EXPECT_EQ(solver_settings.postsolve_info, 1);
+
+  EXPECT_EQ(solver_settings.barrier_presolve_bound_free_variables, -1);
+  solver_settings.barrier_presolve_bound_free_variables = 0;
+  EXPECT_EQ(solver_settings.barrier_presolve_bound_free_variables, 0);
+  solver_settings.barrier_presolve_bound_free_variables = 1;
+  EXPECT_EQ(solver_settings.barrier_presolve_bound_free_variables, 1);
 }
 
 TEST(SolverSettingsTest, warm_start_smaller_vector)
@@ -270,6 +281,135 @@ TEST(SolverSettingsTest, warm_start_bigger_vector)
   EXPECT_EQ(h_initial_dual_average, dual_expected);
   EXPECT_EQ(h_sum_dual_solutions, dual_expected);
   EXPECT_EQ(h_last_restart_duality_gap_dual_solution, dual_expected);
+}
+
+// =============================================================================
+// solver_settings_t<i_t, f_t> (the CUDA-free wrapper split across
+// math_optimization/solver_settings.cpp and solver_settings_gpu.cu)
+// =============================================================================
+//
+// These exercise every member that solver_settings_gpu.cu explicitly instantiates.
+// A member with a missing explicit instantiation compiles and links this test binary
+// fine (cuopt_static resolves it internally), but disappears from libcuopt.so's
+// exported symbols -- the failure mode described in the PR that introduced this split.
+// See ci/checks or `nm -D --defined-only libcuopt.so` for the linkage-level check.
+
+TEST(SolverSettingsWrapperTest, InitialPdlpPrimalAndDualSolution)
+{
+  const raft::handle_t handle_{};
+  auto stream = handle_.get_stream();
+
+  cuopt::mathematical_optimization::solver_settings_t<int, double> settings{};
+
+  std::vector<double> primal = {1.0, 2.0, 3.0};
+  std::vector<double> dual   = {4.0, 5.0};
+
+  rmm::device_uvector<double> d_primal = cuopt::device_copy(primal, stream);
+  rmm::device_uvector<double> d_dual   = cuopt::device_copy(dual, stream);
+
+  settings.set_initial_pdlp_primal_solution(
+    d_primal.data(), static_cast<int>(primal.size()), stream);
+  settings.set_initial_pdlp_dual_solution(d_dual.data(), static_cast<int>(dual.size()), stream);
+
+  EXPECT_EQ(cuopt::host_copy(settings.get_initial_pdlp_primal_solution(), stream), primal);
+  EXPECT_EQ(cuopt::host_copy(settings.get_initial_pdlp_dual_solution(), stream), dual);
+}
+
+TEST(SolverSettingsWrapperTest, AddInitialMipSolution)
+{
+  const raft::handle_t handle_{};
+  auto stream = handle_.get_stream();
+
+  cuopt::mathematical_optimization::solver_settings_t<int, double> settings{};
+
+  std::vector<double> initial_solution   = {1.0, 0.0, 1.0};
+  rmm::device_uvector<double> d_solution = cuopt::device_copy(initial_solution, stream);
+
+  settings.add_initial_mip_solution(
+    d_solution.data(), static_cast<int>(initial_solution.size()), stream);
+
+  ASSERT_EQ(settings.get_mip_settings().initial_solutions.size(), 1u);
+  EXPECT_EQ(cuopt::host_copy(*settings.get_mip_settings().initial_solutions[0], stream),
+            initial_solution);
+}
+
+TEST(SolverSettingsWrapperTest, SetPdlpWarmStartDataRawPointers)
+{
+  cuopt::mathematical_optimization::solver_settings_t<int, double> settings{};
+
+  std::vector<double> current_primal_solution             = {0.1, 0.2, 0.3};
+  std::vector<double> current_dual_solution               = {0.4, 0.5};
+  std::vector<double> initial_primal_average              = {0.6, 0.7, 0.8};
+  std::vector<double> initial_dual_average                = {0.9, 1.0};
+  std::vector<double> current_ATY                         = {1.1, 1.2, 1.3};
+  std::vector<double> sum_primal_solutions                = {1.4, 1.5, 1.6};
+  std::vector<double> sum_dual_solutions                  = {1.7, 1.8};
+  std::vector<double> last_restart_duality_gap_primal_sol = {1.9, 2.0, 2.1};
+  std::vector<double> last_restart_duality_gap_dual_sol   = {2.2, 2.3};
+
+  settings.set_pdlp_warm_start_data(
+    current_primal_solution.data(),
+    current_dual_solution.data(),
+    initial_primal_average.data(),
+    initial_dual_average.data(),
+    current_ATY.data(),
+    sum_primal_solutions.data(),
+    sum_dual_solutions.data(),
+    last_restart_duality_gap_primal_sol.data(),
+    last_restart_duality_gap_dual_sol.data(),
+    /*primal_size=*/static_cast<int>(current_primal_solution.size()),
+    /*dual_size=*/static_cast<int>(current_dual_solution.size()),
+    /*initial_primal_weight=*/1.5,
+    /*initial_step_size=*/0.01,
+    /*total_pdlp_iterations=*/10,
+    /*total_pdhg_iterations=*/20,
+    /*last_candidate_kkt_score=*/1e-3,
+    /*last_restart_kkt_score=*/1e-4,
+    /*sum_solution_weight=*/5.0,
+    /*iterations_since_last_restart=*/7);
+
+  const auto& view = settings.get_pdlp_warm_start_data_view();
+
+  auto as_vector = [](auto span) { return std::vector<double>(span.begin(), span.end()); };
+  EXPECT_EQ(as_vector(view.current_primal_solution_), current_primal_solution);
+  EXPECT_EQ(as_vector(view.current_dual_solution_), current_dual_solution);
+  EXPECT_EQ(as_vector(view.initial_primal_average_), initial_primal_average);
+  EXPECT_EQ(as_vector(view.initial_dual_average_), initial_dual_average);
+  EXPECT_EQ(as_vector(view.current_ATY_), current_ATY);
+  EXPECT_EQ(as_vector(view.sum_primal_solutions_), sum_primal_solutions);
+  EXPECT_EQ(as_vector(view.sum_dual_solutions_), sum_dual_solutions);
+  EXPECT_EQ(as_vector(view.last_restart_duality_gap_primal_solution_),
+            last_restart_duality_gap_primal_sol);
+  EXPECT_EQ(as_vector(view.last_restart_duality_gap_dual_solution_),
+            last_restart_duality_gap_dual_sol);
+
+  EXPECT_DOUBLE_EQ(view.initial_primal_weight_, 1.5);
+  EXPECT_DOUBLE_EQ(view.initial_step_size_, 0.01);
+  EXPECT_EQ(view.total_pdlp_iterations_, 10);
+  EXPECT_EQ(view.total_pdhg_iterations_, 20);
+  EXPECT_DOUBLE_EQ(view.last_candidate_kkt_score_, 1e-3);
+  EXPECT_DOUBLE_EQ(view.last_restart_kkt_score_, 1e-4);
+  EXPECT_DOUBLE_EQ(view.sum_solution_weight_, 5.0);
+  EXPECT_EQ(view.iterations_since_last_restart_, 7);
+}
+
+TEST(SolverSettingsWrapperTest, MipCallbackRegistrationAndTolerances)
+{
+  cuopt::mathematical_optimization::solver_settings_t<int, double> settings{};
+
+  EXPECT_TRUE(settings.get_mip_callbacks().empty());
+
+  internals::get_solution_callback_t* null_callback = nullptr;
+  settings.set_mip_callback(null_callback, nullptr);
+  EXPECT_TRUE(settings.get_mip_callbacks().empty()) << "A null callback must not be registered";
+
+  // get_tolerances() default-constructs a tolerances_t; verify it round-trips through
+  // the wrapper -> mip_solver_settings_t split introduced by the host/device separation.
+  auto tolerances = settings.get_mip_settings().get_tolerances();
+  // To avoid the "," inside the macro being interpreted as an extra parameter
+  using tolerances_t          = mip_solver_settings_t<int, double>::tolerances_t;
+  double default_absolute_tol = tolerances_t{}.absolute_tolerance;
+  EXPECT_DOUBLE_EQ(tolerances.absolute_tolerance, default_absolute_tol);
 }
 
 }  // namespace cuopt::mathematical_optimization

@@ -23,6 +23,8 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
       problem_category = cuopt::remote::LP;
     } else if (request->has_mip_request()) {
       problem_category = cuopt::remote::MIP;
+    } else if (request->has_vrp_request()) {
+      problem_category = cuopt::remote::VRP;
     } else {
       return Status(StatusCode::INVALID_ARGUMENT, "No problem data provided");
     }
@@ -41,9 +43,11 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
 
     auto job_data = serialize_submit_request_to_pipe(*request);
     if (config.verbose) {
-      SERVER_LOG_DEBUG("[gRPC] SubmitJob: UNARY %s, pipe payload=%zu bytes",
-                       problem_category == cuopt::remote::LP ? "LP" : "MIP",
-                       job_data.size());
+      const char* type_str = problem_category == cuopt::remote::LP
+                               ? "LP"
+                               : (problem_category == cuopt::remote::MIP ? "MIP" : "VRP");
+      SERVER_LOG_DEBUG(
+        "[gRPC] SubmitJob: UNARY %s, pipe payload=%zu bytes", type_str, job_data.size());
     }
 
     auto [ok, job_id] = submit_job_async(std::move(job_data), problem_category);
@@ -53,9 +57,10 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     response->set_message("Job submitted successfully");
 
     if (config.verbose) {
-      SERVER_LOG_DEBUG("[gRPC] Job submitted: %s (type=%s)",
-                       job_id.c_str(),
-                       problem_category == cuopt::remote::LP ? "LP" : "MIP");
+      const char* type_str = problem_category == cuopt::remote::LP
+                               ? "LP"
+                               : (problem_category == cuopt::remote::MIP ? "MIP" : "VRP");
+      SERVER_LOG_DEBUG("[gRPC] Job submitted: %s (type=%s)", job_id.c_str(), type_str);
     }
 
     return Status::OK;
@@ -357,7 +362,9 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
 
     // Build the full protobuf solution from the raw arrays that were read
     // back from the worker pipe by the result retrieval thread.
-    if (it->second.problem_category == cuopt::remote::MIP) {
+    if (it->second.problem_category == cuopt::remote::VRP || it->second.result_header.is_vrp()) {
+      *response->mutable_routing_solution() = it->second.result_header.routing_solution();
+    } else if (it->second.problem_category == cuopt::remote::MIP) {
       cuopt::remote::MIPSolution mip_solution;
       cuopt::mathematical_optimization::build_mip_solution_proto<int, double>(
         it->second.result_header, it->second.result_arrays, &mip_solution);
@@ -527,27 +534,21 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
                       const cuopt::remote::DeleteRequest* request,
                       cuopt::remote::DeleteResponse* response) override
   {
+    (void)context;
     std::string job_id = request->job_id();
 
-    size_t erased = 0;
-    {
-      std::lock_guard<std::mutex> lock(tracker_mutex);
-      erased = job_tracker.erase(job_id);
-    }
-
-    if (erased == 0) {
+    std::string message;
+    if (!delete_job(job_id, message)) {
       response->set_status(cuopt::remote::ERROR_NOT_FOUND);
-      response->set_message("Job not found: " + job_id);
+      response->set_message(message);
       if (config.verbose) {
         SERVER_LOG_DEBUG("[gRPC] DeleteResult job not found: %s", job_id.c_str());
       }
       return Status::OK;
     }
 
-    delete_log_file(job_id);
-
     response->set_status(cuopt::remote::SUCCESS);
-    response->set_message("Result deleted");
+    response->set_message(message);
 
     if (config.verbose) { SERVER_LOG_DEBUG("[gRPC] Result deleted for job: %s", job_id.c_str()); }
 

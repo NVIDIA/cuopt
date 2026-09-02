@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include <cuopt/error.hpp>
+#include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/solve_remote.hpp>
 
 #include <linear_algebra/sort_csr.cuh>
@@ -13,6 +14,7 @@
 #include <mip_heuristics/feasibility_jump/early_gpufj.cuh>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/mip_scaling_strategy.cuh>
+#include <mip_heuristics/presolve/presolve_budget_policy.hpp>
 #include <mip_heuristics/presolve/semi_continuous.cuh>
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
 #include <mip_heuristics/presolve/trivial_presolve.cuh>
@@ -196,7 +198,7 @@ mip_solution_t<i_t, f_t> run_mip_solver(
     scaled_problem.preprocess_problem();
     scaled_problem.related_vars_time_limit = settings.heuristic_params.related_vars_time_limit;
     const i_t n_vars_before                = scaled_problem.n_variables;
-    mip::trivial_presolve(scaled_problem);
+    mip::trivial_presolve(scaled_problem, /*remap_cache_ids=*/true);
 
 #ifdef DETECT_SYMMETRY_BEFORE_PRESOLVE
     // Trivial presolve may remove unused variables and renumber the remaining ones.
@@ -448,7 +450,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
     }
     double presolve_time = 0.0;
     std::unique_ptr<mip::third_party_presolve_t<i_t, f_t>> presolver;
-    std::optional<mip::third_party_presolve_result_t<i_t, f_t>> presolve_result_opt;
+    std::optional<mip::third_party_presolve_device_result_t<i_t, f_t>> presolve_result_opt;
     mip::problem_t<i_t, f_t> problem(
       op_problem, settings.get_tolerances(), settings.determinism_mode == CUOPT_MODE_DETERMINISTIC);
 
@@ -559,23 +561,27 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
     auto constexpr const dual_postsolve = false;
     if (run_presolve) {
       sort_csr(op_problem);
-      // allocate not more than 10% of the time limit to presolve.
-      // Note that this is not the presolve time, but the time limit for presolve.
-      const auto& hp = settings.heuristic_params;
-      double presolve_time_limit =
-        std::min(hp.presolve_time_ratio * time_limit, hp.presolve_max_time);
-      if (settings.determinism_mode == CUOPT_MODE_DETERMINISTIC) {
-        presolve_time_limit = std::numeric_limits<double>::infinity();
-      }
+      const auto& hp             = settings.heuristic_params;
+      const auto papilo_features = mip::papilo_presolve_features(op_problem);
+      const auto papilo_budget   = mip::evaluate_presolve_budget(hp, papilo_features);
+      mip::log_presolve_budget("PAPILO", papilo_features, papilo_budget);
+
+      const double presolve_time_limit = settings.determinism_mode == CUOPT_MODE_DETERMINISTIC
+                                           ? std::numeric_limits<double>::infinity()
+                                           : timer.remaining_time();
+
       presolver   = std::make_unique<mip::third_party_presolve_t<i_t, f_t>>();
-      auto result = presolver->apply(op_problem,
-                                     cuopt::mathematical_optimization::problem_category_t::MIP,
-                                     settings.presolver,
-                                     dual_postsolve,
-                                     settings.tolerances.absolute_tolerance,
-                                     settings.tolerances.relative_tolerance,
-                                     presolve_time_limit,
-                                     settings.num_cpu_threads);
+      auto result = presolver->apply_presolve_from_op_problem(
+        op_problem,
+        cuopt::mathematical_optimization::problem_category_t::MIP,
+        settings.presolver,
+        dual_postsolve,
+        settings.tolerances.absolute_tolerance,
+        settings.tolerances.relative_tolerance,
+        presolve_time_limit,
+        settings.num_cpu_threads,
+        papilo_budget.papilo_max_rounds,
+        papilo_budget.papilo_max_badgesize);
 
       if (result.status == mip::third_party_presolve_status_t::INFEASIBLE) {
         return mip_solution_t<i_t, f_t>(mip_termination_status_t::Infeasible,
@@ -605,6 +611,19 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
         CUOPT_LOG_INFO("%d implied integers", presolve_result_opt->implied_integer_indices.size());
       }
       CUOPT_LOG_INFO("Papilo presolve time: %.2f", presolve_time);
+      // What the round cap actually bought, logged here rather than inferred from the probing stage
+      // so it is still recorded when the run never gets that far.
+      CUOPT_LOG_DEBUG(
+        "PRESOLVE_PAPILO_REDUCED nvars=%d ncons=%d nnz=%d nint=%d nbin=%d from_nvars=%.0f "
+        "from_ncons=%.0f from_nnz=%.0f",
+        problem.n_variables,
+        problem.n_constraints,
+        problem.nnz,
+        problem.n_integer_vars,
+        problem.n_binary_vars,
+        papilo_features.n_vars,
+        papilo_features.n_cons,
+        papilo_features.nnz);
 
       if (result.status == mip::third_party_presolve_status_t::OPTIMAL) {
         CUOPT_LOG_INFO("Optimal solution found during presolve.");
@@ -671,13 +690,13 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
         cuopt::device_copy(sol.get_solution(), op_problem.get_handle_ptr()->get_stream());
       rmm::device_uvector<f_t> dual_solution(0, op_problem.get_handle_ptr()->get_stream());
       rmm::device_uvector<f_t> reduced_costs(0, op_problem.get_handle_ptr()->get_stream());
-      presolver->undo(primal_solution,
-                      dual_solution,
-                      reduced_costs,
-                      cuopt::mathematical_optimization::problem_category_t::MIP,
-                      status_to_skip,
-                      dual_postsolve,
-                      op_problem.get_handle_ptr()->get_stream());
+      presolver->undo_from_device(primal_solution,
+                                  dual_solution,
+                                  reduced_costs,
+                                  cuopt::mathematical_optimization::problem_category_t::MIP,
+                                  status_to_skip,
+                                  dual_postsolve,
+                                  op_problem.get_handle_ptr()->get_stream());
       if (!status_to_skip) {
         thrust::fill(rmm::exec_policy(op_problem.get_handle_ptr()->get_stream()),
                      dual_solution.data(),
@@ -834,7 +853,11 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     {
       try {
         sol = solve_mip_helper<i_t, f_t>(op_problem, settings_const);
+      } catch (const std::exception& e) {
+        CUOPT_LOG_ERROR("Exception in MIP OpenMP region: %s", e.what());
+        exception = std::current_exception();
       } catch (...) {
+        CUOPT_LOG_ERROR("Unknown exception in MIP OpenMP region");
         // We cannot throw inside an OpenMP parallel region. So we need to catch and then
         // re-throw later.
         exception = std::current_exception();
@@ -945,19 +968,19 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip(
 }
 
 #define INSTANTIATE(F_TYPE)                                                                    \
-  template mip_solution_t<int, F_TYPE> solve_mip(                                              \
+  template CUOPT_EXPORT mip_solution_t<int, F_TYPE> solve_mip(                                 \
     optimization_problem_t<int, F_TYPE>& op_problem,                                           \
     mip_solver_settings_t<int, F_TYPE> const& settings);                                       \
                                                                                                \
-  template mip_solution_t<int, F_TYPE> solve_mip(                                              \
+  template CUOPT_EXPORT mip_solution_t<int, F_TYPE> solve_mip(                                 \
     raft::handle_t const* handle_ptr,                                                          \
     const cuopt::mathematical_optimization::io::mps_data_model_t<int, F_TYPE>& mps_data_model, \
     mip_solver_settings_t<int, F_TYPE> const& settings);                                       \
                                                                                                \
-  template std::unique_ptr<mip_solution_interface_t<int, F_TYPE>> solve_mip(                   \
+  template CUOPT_EXPORT std::unique_ptr<mip_solution_interface_t<int, F_TYPE>> solve_mip(      \
     cpu_optimization_problem_t<int, F_TYPE>&, mip_solver_settings_t<int, F_TYPE> const&);      \
                                                                                                \
-  template std::unique_ptr<mip_solution_interface_t<int, F_TYPE>> solve_mip(                   \
+  template CUOPT_EXPORT std::unique_ptr<mip_solution_interface_t<int, F_TYPE>> solve_mip(      \
     optimization_problem_interface_t<int, F_TYPE>*, mip_solver_settings_t<int, F_TYPE> const&);
 
 #if MIP_INSTANTIATE_FLOAT

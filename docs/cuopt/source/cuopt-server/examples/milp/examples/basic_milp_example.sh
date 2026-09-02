@@ -1,11 +1,11 @@
 #!/bin/bash
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
-# Basic MILP CLI Example
+# Basic MIP CLI Example
 #
 # This example demonstrates how to use the cuopt_sh CLI tool to solve
-# a simple MILP (Mixed Integer Linear Programming) problem.
+# a simple MIP (Mixed Integer Programming) problem.
 #
 # The main difference from LP is the variable_types field specifying
 # integer variables.
@@ -19,7 +19,7 @@
 export ip="localhost"
 export port=5000
 
-# Create MILP data file
+# Create MIP data file
 echo '{
     "csr_constraint_matrix": {
         "offsets": [0, 2, 4],
@@ -48,7 +48,7 @@ echo '{
  }' > data.json
 
 # Invoke the CLI
-# -t LP: Problem type (same for MILP)
+# -t LP: Problem type (same for MIP)
 # -i: IP address
 # -p: Port
 # -sl: Show logs

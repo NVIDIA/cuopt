@@ -20,83 +20,92 @@
 #define CUOPT_INSTANTIATE_INT64  0
 
 /* @brief LP/MIP parameter string constants */
-#define CUOPT_ABSOLUTE_DUAL_TOLERANCE              "absolute_dual_tolerance"
-#define CUOPT_RELATIVE_DUAL_TOLERANCE              "relative_dual_tolerance"
-#define CUOPT_ABSOLUTE_PRIMAL_TOLERANCE            "absolute_primal_tolerance"
-#define CUOPT_RELATIVE_PRIMAL_TOLERANCE            "relative_primal_tolerance"
-#define CUOPT_ABSOLUTE_GAP_TOLERANCE               "absolute_gap_tolerance"
-#define CUOPT_RELATIVE_GAP_TOLERANCE               "relative_gap_tolerance"
-#define CUOPT_INFEASIBILITY_DETECTION              "infeasibility_detection"
-#define CUOPT_STRICT_INFEASIBILITY                 "strict_infeasibility"
-#define CUOPT_PRIMAL_INFEASIBLE_TOLERANCE          "primal_infeasible_tolerance"
-#define CUOPT_DUAL_INFEASIBLE_TOLERANCE            "dual_infeasible_tolerance"
-#define CUOPT_ITERATION_LIMIT                      "iteration_limit"
-#define CUOPT_TIME_LIMIT                           "time_limit"
-#define CUOPT_WORK_LIMIT                           "work_limit"
-#define CUOPT_NODE_LIMIT                           "node_limit"
-#define CUOPT_PDLP_SOLVER_MODE                     "pdlp_solver_mode"
-#define CUOPT_METHOD                               "method"
-#define CUOPT_PER_CONSTRAINT_RESIDUAL              "per_constraint_residual"
-#define CUOPT_SAVE_BEST_PRIMAL_SO_FAR              "save_best_primal_so_far"
-#define CUOPT_FIRST_PRIMAL_FEASIBLE                "first_primal_feasible"
-#define CUOPT_LOG_FILE                             "log_file"
-#define CUOPT_LOG_TO_CONSOLE                       "log_to_console"
-#define CUOPT_CROSSOVER                            "crossover"
-#define CUOPT_FOLDING                              "folding"
-#define CUOPT_AUGMENTED                            "augmented"
-#define CUOPT_DUALIZE                              "dualize"
-#define CUOPT_ORDERING                             "ordering"
-#define CUOPT_BARRIER_DUAL_INITIAL_POINT           "barrier_dual_initial_point"
-#define CUOPT_BARRIER_ITERATIVE_REFINEMENT         "barrier_iterative_refinement"
-#define CUOPT_BARRIER_STEP_SCALE                   "barrier_step_scale"
-#define CUOPT_ELIMINATE_DENSE_COLUMNS              "eliminate_dense_columns"
-#define CUOPT_CUDSS_DETERMINISTIC                  "cudss_deterministic"
-#define CUOPT_PRESOLVE                             "presolve"
-#define CUOPT_MIP_PROBING                          "mip_probing"
-#define CUOPT_DUAL_POSTSOLVE                       "dual_postsolve"
-#define CUOPT_MIP_DETERMINISM_MODE                 "mip_determinism_mode"
-#define CUOPT_MIP_ABSOLUTE_TOLERANCE               "mip_absolute_tolerance"
-#define CUOPT_MIP_RELATIVE_TOLERANCE               "mip_relative_tolerance"
-#define CUOPT_MIP_INTEGRALITY_TOLERANCE            "mip_integrality_tolerance"
-#define CUOPT_MIP_ABSOLUTE_GAP                     "mip_absolute_gap"
-#define CUOPT_MIP_RELATIVE_GAP                     "mip_relative_gap"
-#define CUOPT_MIP_HEURISTICS_ONLY                  "mip_heuristics_only"
-#define CUOPT_MIP_SCALING                          "mip_scaling"
-#define CUOPT_MIP_PRESOLVE                         "mip_presolve"
-#define CUOPT_MIP_SYMMETRY                         "mip_symmetry"
-#define CUOPT_MIP_RELIABILITY_BRANCHING            "mip_reliability_branching"
-#define CUOPT_MIP_CUT_PASSES                       "mip_cut_passes"
-#define CUOPT_MIP_MIXED_INTEGER_ROUNDING_CUTS      "mip_mixed_integer_rounding_cuts"
-#define CUOPT_MIP_MIXED_INTEGER_GOMORY_CUTS        "mip_mixed_integer_gomory_cuts"
-#define CUOPT_MIP_KNAPSACK_CUTS                    "mip_knapsack_cuts"
-#define CUOPT_MIP_FLOW_COVER_CUTS                  "mip_flow_cover_cuts"
-#define CUOPT_MIP_IMPLIED_BOUND_CUTS               "mip_implied_bound_cuts"
-#define CUOPT_MIP_CLIQUE_CUTS                      "mip_clique_cuts"
-#define CUOPT_MIP_ZERO_HALF_CUTS                   "mip_zero_half_cuts"
-#define CUOPT_MIP_STRONG_CHVATAL_GOMORY_CUTS       "mip_strong_chvatal_gomory_cuts"
-#define CUOPT_MIP_REDUCED_COST_STRENGTHENING       "mip_reduced_cost_strengthening"
-#define CUOPT_MIP_RINS                             "mip_rins"
-#define CUOPT_MIP_OBJECTIVE_STEP                   "mip_objective_step"
-#define CUOPT_MIP_CUT_CHANGE_THRESHOLD             "mip_cut_change_threshold"
-#define CUOPT_MIP_CUT_MIN_ORTHOGONALITY            "mip_cut_min_orthogonality"
-#define CUOPT_MIP_BATCH_PDLP_STRONG_BRANCHING      "mip_batch_pdlp_strong_branching"
-#define CUOPT_MIP_BATCH_PDLP_RELIABILITY_BRANCHING "mip_batch_pdlp_reliability_branching"
+#define CUOPT_ABSOLUTE_DUAL_TOLERANCE               "absolute_dual_tolerance"
+#define CUOPT_RELATIVE_DUAL_TOLERANCE               "relative_dual_tolerance"
+#define CUOPT_ABSOLUTE_PRIMAL_TOLERANCE             "absolute_primal_tolerance"
+#define CUOPT_RELATIVE_PRIMAL_TOLERANCE             "relative_primal_tolerance"
+#define CUOPT_ABSOLUTE_GAP_TOLERANCE                "absolute_gap_tolerance"
+#define CUOPT_RELATIVE_GAP_TOLERANCE                "relative_gap_tolerance"
+#define CUOPT_INFEASIBILITY_DETECTION               "infeasibility_detection"
+#define CUOPT_STRICT_INFEASIBILITY                  "strict_infeasibility"
+#define CUOPT_PRIMAL_INFEASIBLE_TOLERANCE           "primal_infeasible_tolerance"
+#define CUOPT_DUAL_INFEASIBLE_TOLERANCE             "dual_infeasible_tolerance"
+#define CUOPT_ITERATION_LIMIT                       "iteration_limit"
+#define CUOPT_TIME_LIMIT                            "time_limit"
+#define CUOPT_WORK_LIMIT                            "work_limit"
+#define CUOPT_NODE_LIMIT                            "node_limit"
+#define CUOPT_PDLP_SOLVER_MODE                      "pdlp_solver_mode"
+#define CUOPT_METHOD                                "method"
+#define CUOPT_PER_CONSTRAINT_RESIDUAL               "per_constraint_residual"
+#define CUOPT_SAVE_BEST_PRIMAL_SO_FAR               "save_best_primal_so_far"
+#define CUOPT_FIRST_PRIMAL_FEASIBLE                 "first_primal_feasible"
+#define CUOPT_LOG_FILE                              "log_file"
+#define CUOPT_LOG_TO_CONSOLE                        "log_to_console"
+#define CUOPT_CROSSOVER                             "crossover"
+#define CUOPT_FOLDING                               "folding"
+#define CUOPT_AUGMENTED                             "augmented"
+#define CUOPT_DUALIZE                               "dualize"
+#define CUOPT_ORDERING                              "ordering"
+#define CUOPT_BARRIER_DUAL_INITIAL_POINT            "barrier_dual_initial_point"
+#define CUOPT_POSTSOLVE_INFO                        "postsolve_info"
+#define CUOPT_BARRIER_PRESOLVE_BOUND_FREE_VARIABLES "barrier_presolve_bound_free_variables"
+#define CUOPT_BARRIER_ITERATIVE_REFINEMENT          "barrier_iterative_refinement"
+#define CUOPT_BARRIER_ADAPTIVE_REGULARIZATION       "barrier_adaptive_regularization"
+#define CUOPT_BARRIER_PRIMAL_REGULARIZATION         "barrier_primal_regularization"
+#define CUOPT_BARRIER_DUAL_REGULARIZATION           "barrier_dual_regularization"
+#define CUOPT_BARRIER_STEP_SCALE                    "barrier_step_scale"
+#define CUOPT_ELIMINATE_DENSE_COLUMNS               "eliminate_dense_columns"
+#define CUOPT_CUDSS_DETERMINISTIC                   "cudss_deterministic"
+#define CUOPT_PRESOLVE                              "presolve"
+#define CUOPT_MIP_PROBING                           "mip_probing"
+#define CUOPT_DUAL_POSTSOLVE                        "dual_postsolve"
+#define CUOPT_MIP_DETERMINISM_MODE                  "mip_determinism_mode"
+#define CUOPT_MIP_ABSOLUTE_TOLERANCE                "mip_absolute_tolerance"
+#define CUOPT_MIP_RELATIVE_TOLERANCE                "mip_relative_tolerance"
+#define CUOPT_MIP_INTEGRALITY_TOLERANCE             "mip_integrality_tolerance"
+#define CUOPT_MIP_ABSOLUTE_GAP                      "mip_absolute_gap"
+#define CUOPT_MIP_RELATIVE_GAP                      "mip_relative_gap"
+#define CUOPT_MIP_HEURISTICS_ONLY                   "mip_heuristics_only"
+#define CUOPT_MIP_SCALING                           "mip_scaling"
+#define CUOPT_MIP_PRESOLVE                          "mip_presolve"
+#define CUOPT_MIP_SYMMETRY                          "mip_symmetry"
+#define CUOPT_MIP_RELIABILITY_BRANCHING             "mip_reliability_branching"
+#define CUOPT_MIP_CUT_PASSES                        "mip_cut_passes"
+#define CUOPT_MIP_MIXED_INTEGER_ROUNDING_CUTS       "mip_mixed_integer_rounding_cuts"
+#define CUOPT_MIP_MIXED_INTEGER_GOMORY_CUTS         "mip_mixed_integer_gomory_cuts"
+#define CUOPT_MIP_KNAPSACK_CUTS                     "mip_knapsack_cuts"
+#define CUOPT_MIP_FLOW_COVER_CUTS                   "mip_flow_cover_cuts"
+#define CUOPT_MIP_IMPLIED_BOUND_CUTS                "mip_implied_bound_cuts"
+#define CUOPT_MIP_CLIQUE_CUTS                       "mip_clique_cuts"
+#define CUOPT_MIP_ZERO_HALF_CUTS                    "mip_zero_half_cuts"
+#define CUOPT_MIP_STRONG_CHVATAL_GOMORY_CUTS        "mip_strong_chvatal_gomory_cuts"
+#define CUOPT_MIP_REDUCED_COST_STRENGTHENING        "mip_reduced_cost_strengthening"
+#define CUOPT_MIP_RINS                              "mip_rins"
+#define CUOPT_MIP_RENS                              "mip_rens"
+#define CUOPT_MIP_OBJECTIVE_STEP                    "mip_objective_step"
+#define CUOPT_MIP_CUT_CHANGE_THRESHOLD              "mip_cut_change_threshold"
+#define CUOPT_MIP_CUT_MIN_ORTHOGONALITY             "mip_cut_min_orthogonality"
+#define CUOPT_MIP_BATCH_PDLP_STRONG_BRANCHING       "mip_batch_pdlp_strong_branching"
+#define CUOPT_MIP_BATCH_PDLP_RELIABILITY_BRANCHING  "mip_batch_pdlp_reliability_branching"
 #define CUOPT_MIP_STRONG_BRANCHING_SIMPLEX_ITERATION_LIMIT \
   "mip_strong_branching_simplex_iteration_limit"
 
-#define CUOPT_SOLUTION_FILE            "solution_file"
-#define CUOPT_NUM_CPU_THREADS          "num_cpu_threads"
-#define CUOPT_NUM_GPUS                 "num_gpus"
-#define CUOPT_USER_PROBLEM_FILE        "user_problem_file"
-#define CUOPT_PRESOLVE_FILE            "presolve_file"
-#define CUOPT_RANDOM_SEED              "random_seed"
-#define CUOPT_PDLP_PRECISION           "pdlp_precision"
-#define CUOPT_MIP_SEMICONTINUOUS_BIG_M "mip_semi_continuous_big_m"
+#define CUOPT_SOLUTION_FILE                "solution_file"
+#define CUOPT_NUM_CPU_THREADS              "num_cpu_threads"
+#define CUOPT_NUM_GPUS                     "num_gpus"
+#define CUOPT_DISTRIBUTED_PDLP_PARTITIONER "distributed_pdlp_partitioner"
+#define CUOPT_USE_DISTRIBUTED_PDLP         "use_distributed_pdlp"
+#define CUOPT_USER_PROBLEM_FILE            "user_problem_file"
+#define CUOPT_PRESOLVE_FILE                "presolve_file"
+#define CUOPT_RANDOM_SEED                  "random_seed"
+#define CUOPT_PDLP_PRECISION               "pdlp_precision"
+#define CUOPT_MIP_SEMICONTINUOUS_BIG_M     "mip_semi_continuous_big_m"
 
 #define CUOPT_MIP_HYPER_HEURISTIC_POPULATION_SIZE     "mip_hyper_heuristic_population_size"
 #define CUOPT_MIP_HYPER_HEURISTIC_NUM_CPUFJ_THREADS   "mip_hyper_heuristic_num_cpufj_threads"
-#define CUOPT_MIP_HYPER_HEURISTIC_PRESOLVE_TIME_RATIO "mip_hyper_heuristic_presolve_time_ratio"
-#define CUOPT_MIP_HYPER_HEURISTIC_PRESOLVE_MAX_TIME   "mip_hyper_heuristic_presolve_max_time"
+#define CUOPT_MIP_HYPER_HEURISTIC_PRESOLVE_MAX_ROUNDS "mip_hyper_heuristic_presolve_max_rounds"
+#define CUOPT_MIP_HYPER_HEURISTIC_PAPILO_PROBING_MAX_BADGESIZE \
+  "mip_hyper_heuristic_papilo_probing_max_badgesize"
 #define CUOPT_MIP_HYPER_HEURISTIC_ROOT_LP_TIME_RATIO  "mip_hyper_heuristic_root_lp_time_ratio"
 #define CUOPT_MIP_HYPER_HEURISTIC_ROOT_LP_MAX_TIME    "mip_hyper_heuristic_root_lp_max_time"
 #define CUOPT_MIP_HYPER_HEURISTIC_RINS_TIME_LIMIT     "mip_hyper_heuristic_rins_time_limit"
@@ -132,14 +141,25 @@
 #define CUOPT_MIP_HYPER_DIVING_SHOW_TYPE "mip_hyper_diving_show_type"
 
 /* @brief Recursive sub-MIP (RINS) hyper-parameters */
-#define CUOPT_MIP_HYPER_SUBMIP_BASE_TARGET_FIXRATE   "mip_hyper_submip_base_target_fixrate"
-#define CUOPT_MIP_HYPER_SUBMIP_MIN_FIXRATE           "mip_hyper_submip_min_fixrate"
-#define CUOPT_MIP_HYPER_SUBMIP_MIN_FIXRATE_CAP       "mip_hyper_submip_min_fixrate_cap"
-#define CUOPT_MIP_HYPER_SUBMIP_TARGET_MIP_GAP        "mip_hyper_submip_target_mip_gap"
-#define CUOPT_MIP_HYPER_SUBMIP_NODE_LIMIT_BASE       "mip_hyper_submip_node_limit_base"
-#define CUOPT_MIP_HYPER_SUBMIP_MAX_LEVEL             "mip_hyper_submip_max_level"
-#define CUOPT_MIP_HYPER_SUBMIP_ITERATION_LIMIT_RATIO "mip_hyper_submip_iteration_limit_ratio"
-#define CUOPT_MIP_HYPER_SUBMIP_ENABLE_CPUFJ          "mip_hyper_submip_enable_cpufj"
+#define CUOPT_MIP_HYPER_SUBMIP_BASE_TARGET_FIXRATE    "mip_hyper_submip_base_target_fixrate"
+#define CUOPT_MIP_HYPER_SUBMIP_MIN_FIXRATE            "mip_hyper_submip_min_fixrate"
+#define CUOPT_MIP_HYPER_SUBMIP_MIN_FIXRATE_CAP        "mip_hyper_submip_min_fixrate_cap"
+#define CUOPT_MIP_HYPER_SUBMIP_TARGET_MIP_GAP         "mip_hyper_submip_target_mip_gap"
+#define CUOPT_MIP_HYPER_SUBMIP_NODE_LIMIT_OFFSET      "mip_hyper_submip_node_limit_offset"
+#define CUOPT_MIP_HYPER_SUBMIP_ITERATION_LIMIT_OFFSET "mip_hyper_submip_iteration_limit_offset"
+#define CUOPT_MIP_HYPER_SUBMIP_MAX_LEVEL              "mip_hyper_submip_max_level"
+#define CUOPT_MIP_HYPER_SUBMIP_ITERATION_LIMIT_RATIO  "mip_hyper_submip_iteration_limit_ratio"
+#define CUOPT_MIP_HYPER_SUBMIP_ROUND_CLOSE_RATIO      "mip_hyper_submip_round_close_ratio"
+#define CUOPT_MIP_HYPER_SUBMIP_ENABLE_CPUFJ           "mip_hyper_submip_enable_cpufj"
+
+/* @brief Block bounded-variable-elimination step of cuOpt's internal MIP presolve */
+#define CUOPT_MIP_HYPER_BLOCK_BVE "mip_hyper_block_bve"
+
+/* @brief QCQP (barrier) scaling hyper-parameters */
+#define CUOPT_QCQP_HYPER_RUIZ_EQUILIBRATION "qcqp_hyper_ruiz_equilibration"
+
+/* @brief Barrier initial point safeguard */
+#define CUOPT_BARRIER_INITIAL_POINT_SAFEGUARD "barrier_initial_point_safeguard"
 
 /* @brief MIP determinism mode constants */
 #define CUOPT_MODE_OPPORTUNISTIC 0
@@ -194,6 +214,11 @@
 #define CUOPT_METHOD_BARRIER      3
 #define CUOPT_METHOD_UNSET        4
 
+#define CUOPT_BARRIER_DUAL_INITIAL_POINT_AUTOMATIC             -1
+#define CUOPT_BARRIER_DUAL_INITIAL_POINT_LUSTIG_MARSTEN_SHANNO 0
+#define CUOPT_BARRIER_DUAL_INITIAL_POINT_LEAST_SQUARES         1
+#define CUOPT_BARRIER_DUAL_INITIAL_POINT_SEDUMI_MU             2
+
 /* @brief PDLP precision mode constants */
 #define CUOPT_PDLP_DEFAULT_PRECISION -1
 #define CUOPT_PDLP_SINGLE_PRECISION  0
@@ -217,6 +242,14 @@
 #define CUOPT_PRESOLVE_PAPILO  1
 #define CUOPT_PRESOLVE_PSLP    2
 
+/* @brief distributed_pdlp_partitioner values.
+ * Auto: pick automatically (RoundRobin on 1 GPU, KaMinPar otherwise).
+ * KaMinPar: multi-threaded KaMinPar graph partitioner.
+ * RoundRobin: round-robin assignment, no graph. */
+#define CUOPT_DISTRIBUTED_PDLP_PARTITIONER_AUTO        0
+#define CUOPT_DISTRIBUTED_PDLP_PARTITIONER_KAMINPAR    1
+#define CUOPT_DISTRIBUTED_PDLP_PARTITIONER_ROUND_ROBIN 2
+
 /* @brief MIP scaling mode constants */
 #define CUOPT_MIP_SCALING_OFF          0
 #define CUOPT_MIP_SCALING_ON           1
@@ -224,5 +257,59 @@
 
 #define CUOPT_BARRIER_ITERATIVE_REFINEMENT_OFF 0
 #define CUOPT_BARRIER_ITERATIVE_REFINEMENT_ON  1
+
+/* @brief Scalar problem attribute selectors
+ * Passed as cuopt_int_t; the valid set depends on the accessor's value type. */
+#define CUOPT_ATTR_NUM_VARIABLES             0
+#define CUOPT_ATTR_NUM_CONSTRAINTS           1
+#define CUOPT_ATTR_NUM_NONZEROS              2
+#define CUOPT_ATTR_NUM_INTEGERS              3
+#define CUOPT_ATTR_OBJECTIVE_SENSE           4
+#define CUOPT_ATTR_OBJECTIVE_OFFSET          5
+#define CUOPT_ATTR_OBJECTIVE_SCALING_FACTOR  6
+#define CUOPT_ATTR_PROBLEM_CATEGORY          7
+#define CUOPT_ATTR_IS_MIP                    8
+#define CUOPT_ATTR_HAS_QUADRATIC_OBJECTIVE   9
+#define CUOPT_ATTR_HAS_QUADRATIC_CONSTRAINTS 10
+#define CUOPT_ATTR_NUM_LINEAR_CONSTRAINTS    11
+#define CUOPT_ATTR_NUM_QUADRATIC_CONSTRAINTS 12
+
+/* @brief Numeric/char array problem attribute selectors
+ * (see cuOptGetProblem{Float,Char}ArrayAttribute; sized by num_variables / num_constraints).
+ * Passed as cuopt_int_t. Numbered in a separate range from the scalar selectors for safety.
+ */
+#define CUOPT_ARRAY_ATTR_OBJECTIVE_COEFFICIENTS  100
+#define CUOPT_ARRAY_ATTR_VARIABLE_LOWER_BOUNDS   101
+#define CUOPT_ARRAY_ATTR_VARIABLE_UPPER_BOUNDS   102
+#define CUOPT_ARRAY_ATTR_CONSTRAINT_LOWER_BOUNDS 103
+#define CUOPT_ARRAY_ATTR_CONSTRAINT_UPPER_BOUNDS 104
+#define CUOPT_ARRAY_ATTR_CONSTRAINT_RHS          105
+#define CUOPT_ARRAY_ATTR_CONSTRAINT_SENSE        106
+#define CUOPT_ARRAY_ATTR_VARIABLE_TYPES          107
+
+/* @brief String-array problem attribute selectors (see cuOptGetProblemStringArrayAttribute).
+ * Passed as cuopt_int_t; numbered in a separate range from the scalar and array selectors. */
+#define CUOPT_STRING_ARRAY_VARIABLE_NAMES 200
+#define CUOPT_STRING_ARRAY_ROW_NAMES      201
+
+/* @brief Scalar solution attribute selectors
+ * (see cuOptGetSolution{Int,Float}Attribute). Passed as cuopt_int_t; numbered in a separate
+ * range from the problem selectors.
+ *
+ * Which of these a solution carries depends on the class of problem that produced it; the
+ * accessors return CUOPT_INVALID_ARGUMENT for one that does not apply. Use CUOPT_ATTR_IS_MIP on
+ * the originating problem to determine the class.
+ */
+#define CUOPT_SOLUTION_ATTR_LP_PRIMAL_RESIDUAL               300
+#define CUOPT_SOLUTION_ATTR_LP_DUAL_RESIDUAL                 301
+#define CUOPT_SOLUTION_ATTR_LP_GAP                           302
+#define CUOPT_SOLUTION_ATTR_LP_NUM_ITERATIONS                303
+#define CUOPT_SOLUTION_ATTR_LP_SOLVED_BY                     304
+#define CUOPT_SOLUTION_ATTR_MIP_PRESOLVE_TIME                305
+#define CUOPT_SOLUTION_ATTR_MIP_NUM_NODES                    306
+#define CUOPT_SOLUTION_ATTR_MIP_NUM_SIMPLEX_ITERATIONS       307
+#define CUOPT_SOLUTION_ATTR_MIP_MAX_CONSTRAINT_VIOLATION     308
+#define CUOPT_SOLUTION_ATTR_MIP_MAX_INT_VIOLATION            309
+#define CUOPT_SOLUTION_ATTR_MIP_MAX_VARIABLE_BOUND_VIOLATION 310
 
 #endif  // CUOPT_CONSTANTS_H

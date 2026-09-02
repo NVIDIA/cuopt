@@ -60,6 +60,17 @@ repos:
     hooks:
       - id: shellcheck
         args: ["--severity=warning"]
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.38.0
+    hooks:
+      - id: yamllint
+        additional_dependencies: [pyyaml]
+        exclude: |
+          (?x)^(
+            [.]clang-format$|
+            conda/environments/.*|
+            ^helmchart/cuopt-server/templates
+          )
   - repo: https://github.com/rapidsai/pre-commit-hooks
     rev: v1.6.0
     hooks:
@@ -124,6 +135,17 @@ repos:
         language: system
         pass_filenames: false
         files: ^(VERSION|\.claude-plugin/marketplace\.json|\.cursor-plugin/plugin\.json|gemini-extension\.json)$
+      - id: vale
+        name: Vale docs prose lint
+        entry: ci/run-vale.sh
+        verbose: true
+        language: system
+        # 'pass_filenames: false' prevents pre-commit from invoking 'vale' once per file,
+        # (instead passes all files at once to 1 invocation)
+        pass_filenames: false
+        args: [--output=line, --minAlertLevel=warning, docs/cuopt/source]
+        # needs to be kept in sync with vale.ini
+        files: ^docs/cuopt/source/.*\.(rst|md)$
       - id: validate-skills
         name: Validate agent skills
         entry: ci/utils/validate_skills.sh
@@ -133,4 +155,4 @@ repos:
 
 
 default_language_version:
-      python: python3
+  python: python3

@@ -33,7 +33,7 @@ namespace cuopt::mathematical_optimization::test {
 
 inline auto make_async() { return rmm::mr::cuda_async_memory_resource(); }
 
-void init_handler(const raft::handle_t* handle_ptr)
+static void init_handler(const raft::handle_t* handle_ptr)
 {
   // Init cuBlas / cuSparse context here to avoid having it during solving time
   RAFT_CUBLAS_TRY(raft::linalg::detail::cublassetpointermode(

@@ -2,6 +2,37 @@
 
 Read this for anything related to committing, pushing, opening PRs, or making structural changes to cuOpt (adding a solver parameter, dependency, server endpoint, or CUDA kernel).
 
+---
+
+## GitHub Etiquette — Non-Negotiable Rules
+
+### Never Push to Protected Branches
+
+**Never push commits directly to `main` or any `release/YY.MM` branch.**
+
+```bash
+# WRONG
+git push origin main
+git push origin release/26.06
+
+# RIGHT — push to a feature branch, then open a PR
+git push origin fix/my-change
+```
+
+These branches have required status checks, DCO enforcement, and review gates. A direct push bypasses all of them — even when it technically succeeds via bypass.
+
+**Before every `git push`, confirm the target ref is a feature branch.**
+
+For the fork workflow, draft-PR rule, choosing the right base branch, and pre-commit/DCO requirements, see the sections below.
+
+### Exception: Skills PRs Must Use an Upstream Branch (Not a Fork)
+
+NVSkills CI validation requires the PR to originate from a branch **in `NVIDIA/cuopt`**, not a fork. For changes under `skills/`, push to a feature branch on the upstream repo (not your personal fork) and open a PR from there.
+
+After opening the PR, a maintainer must comment `/nvskills-ci` to trigger NVSkills CI validation. The bot pushes a signature commit (`Attach NVSkills validation signatures`) that must remain in the PR — do not squash or rebase it away. Re-comment `/nvskills-ci` after any further pushes to re-sign.
+
+---
+
 ## Before You Commit
 
 ### 1. Install Pre-commit Hooks
@@ -61,6 +92,16 @@ Skip how-it-works walkthroughs, file-by-file tables, exhaustive test-plan checkl
 
 For extra context (a design decision, unusual constraint, follow-up), one or two sentences with a link to an issue or doc beats expanding the body.
 
+### Addressing PR Reviews
+
+Collect all open comments before touching any file — fixes are easier to batch and nothing gets missed.
+
+For each comment, decide whether it needs a **code change**, a **reply**, or **both**:
+
+- **Reply to explicit questions in the thread**, even when the code change makes the answer obvious. A reviewer who asked a question wants confirmation that their concern was understood, not just acted on. Post a short comment explaining the reasoning before or alongside the commit.
+- **Some comments need only a reply** — if the existing code is already correct, explain why rather than making an unnecessary change.
+- **After fixing, confirm in the thread** that you addressed it and, if the fix was non-trivial, note where to look.
+
 ### Writing scripts and CI workflows
 
 Follow YAGNI strictly here — flags, fallbacks, env-var overrides, and config knobs without a concrete failure mode they prevent should be dropped. This applies to scripts and CI workflows specifically, not the codebase as a whole.
@@ -68,6 +109,7 @@ Follow YAGNI strictly here — flags, fallbacks, env-var overrides, and config k
 A few non-YAGNI points worth keeping in mind:
 
 - Prefer extending an existing script over adding a new one.
+- For build/CI conventions shared across RAPIDS (wheel packaging, artifact naming, matrix filters), read the reference implementation in `rapidsai/rmm` or `NVIDIA/cudf` on `main` before writing anything. cuOpt's `ci/` scripts and shared-workflow inputs are near-copies of theirs, and gha-tools expects exact conventions — an equivalent-but-different local invention silently breaks the download side, which looks for the name the build side wrote.
 - Validate inputs at the top, before any expensive work.
 - One shell command per line over chained `&&`; no comments that restate the next line.
 - Keep informational CI jobs (reporting, dashboards, comment posting) out of any required-checks list.

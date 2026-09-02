@@ -18,10 +18,11 @@ dependencies:
 - cuda-nvtx-dev
 - cuda-sanitizer-api
 - cuda-version=12.9
-- cudf==26.8.*,>=0.0.0a0
+- cudf==26.10.*,>=0.0.0a0
 - cupy>=14.0.1,!=14.1.0
 - cxx-compiler
-- cython>=3.0.3
+- cython>=3.2.2,<3.3.0a0
+- docutils>=0.21
 - doxygen=1.9.1
 - fastapi
 - gcc_linux-aarch64=14.*
@@ -30,18 +31,17 @@ dependencies:
 - libabseil
 - libboost-devel
 - libcudss-dev >=0.7,<0.8
-- libcurand-dev
-- libcusolver-dev
 - libcusparse-dev
 - libgrpc >=1.78.0,<1.80.0a0
 - libnvjitlink-dev
 - libprotobuf
-- libraft-headers==26.8.*,>=0.0.0a0
-- librmm==26.8.*,>=0.0.0a0
+- libraft-headers==26.10.*,>=0.0.0a0
+- librmm==26.10.*,>=0.0.0a0
 - make
 - msgpack-numpy==0.4.8
 - msgpack-python==1.2.1
 - myst-parser
+- nccl >=2.19
 - ninja
 - notebook
 - numba-cuda>=0.22.1
@@ -54,8 +54,7 @@ dependencies:
 - pip
 - pre-commit
 - psutil>=6.0.0
-- pylibraft==26.8.*,>=0.0.0a0
-- pyrsistent
+- pylibraft==26.10.*,>=0.0.0a0
 - pytest-cov
 - pytest-rerunfailures
 - pytest-xdist
@@ -63,10 +62,10 @@ dependencies:
 - python>=3.11,<3.15
 - pyyaml>=6.0.0
 - rapids-build-backend>=0.4.0,<0.5.0
-- rapids-logger==0.2.*,>=0.0.0a0
+- rapids-logger==0.3.*
 - re2
 - requests
-- rmm==26.8.*,>=0.0.0a0
+- rmm==26.10.*,>=0.0.0a0
 - ruamel.yaml>=0.18
 - scikit-build-core>=0.11.0
 - scipy>=1.14.1
@@ -74,15 +73,12 @@ dependencies:
 - sphinx-copybutton
 - sphinx-design
 - sphinx-markdown-tables
-- sphinx_rtd_theme
-- sphinxcontrib-openapi
-- sphinxcontrib-websupport
 - sysroot_linux-aarch64==2.28
 - tbb-devel
 - uvicorn==0.34.*
+- vale=3.17.0
 - zlib
 - pip:
   - nvidia-sphinx-theme
   - swagger-plugin-for-sphinx
-  - veroviz
 name: all_cuda-129_arch-aarch64

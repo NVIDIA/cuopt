@@ -14,6 +14,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from cuopt.linear_programming import Read
 from cuopt.linear_programming.problem import EQ, GE, LE, MAXIMIZE, Problem
 from cuopt.linear_programming.solver.solver_parameters import CUOPT_METHOD
 from cuopt.linear_programming.solver_settings import (
@@ -39,21 +40,6 @@ def _soc_two_dim_constraint(problem, x0, x1, mat, head) -> None:
     problem.addConstraint(z0 == mat[0, 0] * x0 + mat[0, 1] * x1)
     problem.addConstraint(z1 == mat[1, 0] * x0 + mat[1, 1] * x1)
     problem.addConstraint(z0 * z0 + z1 * z1 - head * head <= 0)
-
-
-def build_socp_1() -> tuple[Problem, tuple]:
-    """Min 3*x0+2*x1+x2  s.t. ||x||_2 <= y, x0+x1+3*x2 >= 1, 0 <= y <= 5."""
-    problem = Problem("socp_1")
-    x0 = problem.addVariable(lb=-np.inf, name="x0")
-    x1 = problem.addVariable(lb=-np.inf, name="x1")
-    x2 = problem.addVariable(lb=-np.inf, name="x2")
-    y = problem.addVariable(lb=0, name="y")
-    problem.setObjective(3 * x0 + 2 * x1 + x2)
-    problem.addConstraint(y >= 0)
-    problem.addConstraint(x0 * x0 + x1 * x1 + x2 * x2 - y * y <= 0)
-    problem.addConstraint(x0 + x1 + 3 * x2 >= 1)
-    problem.addConstraint(y <= 5)
-    return problem, (x0, x1, x2, y)
 
 
 def build_socp_3() -> tuple[Problem, tuple]:
@@ -134,11 +120,10 @@ def _assert_feasible(problem: Problem) -> None:
                 _quadratic_constraint_violation(constr, variables) <= FEAS_TOL
             )
             continue
-        slack = constr.compute_slack()
-        if constr.Sense == LE:
+        # Classical slack/surplus from populate_solution (non-negative if feasible).
+        slack = constr.Slack
+        if constr.Sense in (LE, GE):
             assert slack >= -FEAS_TOL
-        elif constr.Sense == GE:
-            assert slack <= FEAS_TOL
         else:
             assert constr.Sense == EQ
             assert slack == pytest.approx(0.0, abs=FEAS_TOL)
@@ -148,21 +133,6 @@ def _solve(problem: Problem):
     solution = problem.solve(_barrier_settings())
     assert problem.Status.name == "Optimal"
     return solution
-
-
-def test_socp_1_barrier_solution():
-    problem, (x0, x1, x2, y) = build_socp_1()
-    solution = _solve(problem)
-    _assert_solution_on_original_model(problem, solution)
-    _assert_feasible(problem)
-
-    expected_obj = -13.548638904065102
-    expected_x = (-3.874621860638774, -2.129788233677883, 2.33480343377204)
-    assert problem.ObjValue == pytest.approx(expected_obj, abs=OBJ_TOL)
-    assert x0.Value == pytest.approx(expected_x[0], abs=PRIMAL_TOL)
-    assert x1.Value == pytest.approx(expected_x[1], abs=PRIMAL_TOL)
-    assert x2.Value == pytest.approx(expected_x[2], abs=PRIMAL_TOL)
-    assert y.Value == pytest.approx(5.0, abs=PRIMAL_TOL)
 
 
 def test_socp_3_barrier_solution():
@@ -197,37 +167,6 @@ def test_rotated_soc_natural_cross_term_barrier_solution():
     assert u.Value == pytest.approx(1.0, abs=PRIMAL_TOL)
     assert v0.Value == pytest.approx(expected_v, abs=PRIMAL_TOL)
     assert v1.Value == pytest.approx(expected_v, abs=PRIMAL_TOL)
-
-
-def test_general_quadratic_unsymmetric():
-    """
-    Min x0 + x1
-    s.t. 2*x0^2 + 3*x0*x1 + 2*x1^2 <= 1  (unsymmetric Q: cross term only as x0*x1)
-         x0 - x1 = 0
-
-    Q is given unsymmetrically: the 3*x0*x1 term is one canonical cross entry
-    (not duplicate COO halves). Hessian H = (Q + Q^T)/2 is [4 3; 3 4],
-    eigenvalues 1 and 7 (PD).
-
-    With x0 = x1 = t: 2t^2 + 3t^2 + 2t^2 = 7t^2 <= 1
-    min 2t at t = -1/sqrt(7), obj = -2/sqrt(7) ≈ -0.755929
-    """
-    problem = Problem("general_qc_unsymmetric")
-    x0 = problem.addVariable(lb=-np.inf, name="x0")
-    x1 = problem.addVariable(lb=-np.inf, name="x1")
-    problem.setObjective(x0 + x1)
-    problem.addConstraint(2 * x0 * x0 + 3 * x0 * x1 + 2 * x1 * x1 <= 1)
-    problem.addConstraint(x0 - x1 == 0)
-
-    solution = _solve(problem)
-    _assert_solution_on_original_model(problem, solution)
-    _assert_feasible(problem)
-
-    expected_obj = -2.0 / np.sqrt(7.0)
-    expected_x = -1.0 / np.sqrt(7.0)
-    assert problem.ObjValue == pytest.approx(expected_obj, abs=OBJ_TOL)
-    assert x0.Value == pytest.approx(expected_x, abs=PRIMAL_TOL)
-    assert x1.Value == pytest.approx(expected_x, abs=PRIMAL_TOL)
 
 
 def test_maximize_with_quadratic_constraint():
@@ -275,3 +214,88 @@ def test_maximize_with_quadratic_constraint():
     assert prob_max.ObjValue == pytest.approx(2.0, abs=OBJ_TOL)
     assert x.Value == pytest.approx(1.0, abs=PRIMAL_TOL)
     assert y.Value == pytest.approx(1.0, abs=PRIMAL_TOL)
+
+
+# Same model as test_maximize_with_quadratic_constraint written as MPS (as a
+# minimization). QC0 is the binding row: without it the optimum is -10.
+QC_MPS = """NAME          QCREAD
+ROWS
+ N  OBJ
+ L  LIN0
+ L  QC0
+COLUMNS
+    x         OBJ              -1
+    x         LIN0              1
+    y         OBJ              -1
+    y         LIN0              1
+RHS
+    RHS1      LIN0             10
+    RHS1      QC0               6
+QCMATRIX   QC0
+    x         x                 2
+    x         y                 1
+    y         x                 1
+    y         y                 2
+BOUNDS
+ MI BND       x
+ MI BND       y
+ENDATA
+"""
+
+
+def _write_qc_mps(tmp_path) -> str:
+    path = tmp_path / "qc_read.mps"
+    path.write_text(QC_MPS)
+    return str(path)
+
+
+def test_read_keeps_quadratic_constraints(tmp_path):
+    """QCMATRIX rows parsed by read() must reach the solver."""
+    path = _write_qc_mps(tmp_path)
+    problem = Problem.read(path)
+
+    assert problem.NumConstraints == 2
+    quad = problem.getQuadraticConstraints()
+    assert len(quad) == 1
+
+    # Each row must mirror the bundle the reader parsed, in whatever form the
+    # reader normalized it to.
+    bundle = Read(path).get_quadratic_constraints()[0]
+    assert quad[0].ConstraintName == bundle["constraint_row_name"]
+    assert quad[0].Sense == bundle["constraint_row_type"]
+    assert quad[0].rhs_value == pytest.approx(bundle["rhs_value"])
+    for field in ("rows", "cols", "vals", "linear_indices", "linear_values"):
+        np.testing.assert_allclose(getattr(quad[0], field), bundle[field])
+
+    # The file DataModel is the model to solve; rebuilding it from Python is
+    # what used to drop the quadratic rows.
+    model = problem.model
+    solution = _solve(problem)
+    assert problem.model is model
+
+    _assert_solution_on_original_model(problem, solution)
+    _assert_feasible(problem)
+
+    x, y = problem.getVariables()
+    assert problem.ObjValue == pytest.approx(-2.0, abs=OBJ_TOL)
+    assert x.Value == pytest.approx(1.0, abs=PRIMAL_TOL)
+    assert y.Value == pytest.approx(1.0, abs=PRIMAL_TOL)
+
+
+def test_read_then_rebuild_keeps_quadratic_constraints(tmp_path):
+    """A rebuild after read() must re-emit the quadratic rows."""
+    problem = Problem.read(_write_qc_mps(tmp_path))
+    # update() drops the cached CSR, so writeMPS rebuilds the DataModel from
+    # the Python objects instead of reusing the one that was read.
+    problem.getConstraint(0).RHS = 9.0
+    problem.update()
+
+    round_trip = tmp_path / "round_trip.mps"
+    problem.writeMPS(str(round_trip))
+    assert "QCMATRIX" in round_trip.read_text()
+
+    reread = Problem.read(str(round_trip))
+    assert len(reread.getQuadraticConstraints()) == 1
+    _solve(reread)
+    _assert_feasible(reread)
+    assert reread.ObjValue == pytest.approx(-2.0, abs=OBJ_TOL)

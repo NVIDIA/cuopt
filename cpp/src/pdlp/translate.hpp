@@ -18,6 +18,8 @@
 
 #include <utilities/copy_helpers.hpp>
 
+#include <raft/core/nvtx.hpp>
+
 #include <limits>
 #include <tuple>
 #include <utility>
@@ -110,7 +112,7 @@ static simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
 
 template <typename i_t, typename f_t>
 static simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
-  raft::handle_t const* handle_ptr, mip::problem_t<i_t, f_t>& model)
+  raft::handle_t const* handle_ptr, mip::problem_t<i_t, f_t>& model, bool copy_names = true)
 {
   simplex::user_problem_t<i_t, f_t> user_problem(handle_ptr);
 
@@ -163,7 +165,7 @@ static simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
   std::tie(user_problem.lower, user_problem.upper) =
     extract_host_bounds<f_t>(model.variable_bounds, handle_ptr);
   user_problem.problem_name = model.original_problem_ptr->get_problem_name();
-  if (model.row_names.size() > 0) {
+  if (copy_names && model.row_names.size() > 0) {
     user_problem.row_names.resize(m);
     for (int i = 0; i < m; ++i) {
       if (i < (int)model.row_names.size()) {
@@ -173,7 +175,7 @@ static simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
       }
     }
   }
-  if (model.var_names.size() > 0) {
+  if (copy_names && model.var_names.size() > 0) {
     user_problem.col_names.resize(n);
     for (int j = 0; j < n; ++j) {
       if (j < (int)model.var_names.size()) {
@@ -213,6 +215,7 @@ template <typename i_t, typename f_t>
 static simplex::user_problem_t<i_t, f_t> cuopt_optimization_problem_to_user_problem(
   raft::handle_t const* handle_ptr, optimization_problem_t<i_t, f_t>& model)
 {
+  raft::common::nvtx::range fun_scope("QCQP: cuopt_optimization_problem_to_user_problem");
   simplex::user_problem_t<i_t, f_t> user_problem(handle_ptr);
 
   i_t const m  = model.get_n_constraints();
@@ -222,16 +225,6 @@ static simplex::user_problem_t<i_t, f_t> cuopt_optimization_problem_to_user_prob
   user_problem.num_rows  = m;
   user_problem.num_cols  = n;
   user_problem.objective = model.get_objective_coefficients_host();
-
-  // For maximization, negate the objective so the barrier (which always minimizes)
-  // finds the maximizer.  obj_scale = -1 ensures the reported objective is correct.
-  // Note: get_sense() returns true when the problem is a maximization problem.
-  const bool maximize = model.get_sense();
-  if (maximize) {
-    for (f_t& c : user_problem.objective) {
-      c = -c;
-    }
-  }
 
   csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
   csr_A.x         = model.get_constraint_matrix_values_host();
@@ -303,6 +296,8 @@ static simplex::user_problem_t<i_t, f_t> cuopt_optimization_problem_to_user_prob
     }
   }
 
+  // Note: get_sense() returns true when the problem is a maximization problem.
+  const bool maximize       = model.get_sense();
   user_problem.obj_constant = model.get_objective_offset();
   user_problem.obj_scale =
     maximize ? -model.get_objective_scaling_factor() : model.get_objective_scaling_factor();
@@ -320,6 +315,18 @@ static simplex::user_problem_t<i_t, f_t> cuopt_optimization_problem_to_user_prob
   user_problem.Q_offsets = model.get_quadratic_objective_offsets();
   user_problem.Q_indices = model.get_quadratic_objective_indices();
   user_problem.Q_values  = model.get_quadratic_objective_values();
+
+  // For maximization, negate the objective so the barrier (which always minimizes)
+  // finds the maximizer.  obj_scale = -1 ensures the reported objective is correct.
+  if (maximize) {
+    for (f_t& c : user_problem.objective) {
+      c *= -1;
+    }
+    for (f_t& q : user_problem.Q_values) {
+      q *= -1;
+    }
+    user_problem.obj_constant = -user_problem.obj_constant;
+  }
 
   if (model.has_quadratic_constraints()) {
     barrier::convert_quadratic_constraints_to_second_order_cones<i_t, f_t>(

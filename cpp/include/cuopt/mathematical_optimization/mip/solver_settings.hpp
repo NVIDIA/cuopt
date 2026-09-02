@@ -11,10 +11,12 @@
 #include <vector>
 
 #include <cuopt/mathematical_optimization/constants.h>
+#include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/mip/diving_hyper_params.hpp>
 #include <cuopt/mathematical_optimization/mip/heuristics_hyper_params.hpp>
 #include <cuopt/mathematical_optimization/mip/submip_hyper_params.hpp>
 #include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/utilities/internals.hpp>
 
 #include <raft/core/device_span.hpp>
@@ -22,7 +24,8 @@
 
 #include <vector>
 
-namespace cuopt::mathematical_optimization {
+namespace cuopt {
+namespace CUOPT_EXPORT mathematical_optimization {
 
 struct benchmark_info_t {
   double last_improvement_of_best_feasible    = 0;
@@ -141,7 +144,8 @@ class mip_solver_settings_t {
     0};  // 0 = DS only, 1 = cooperative DS + PDLP, 2 = batch PDLP only
   i_t strong_branching_simplex_iteration_limit = -1;
   i_t num_gpus                                 = 1;
-  bool log_to_console                          = true;
+  method_t method{method_t::Concurrent};
+  bool log_to_console = true;
 
   std::string log_file;
   std::string sol_file;
@@ -160,6 +164,15 @@ class mip_solver_settings_t {
    * When this is `false`, probing is skipped even if presolve is otherwise on.
    */
   bool probing{true};
+  /**
+   * @brief Enable the block bounded-variable-elimination step of cuOpt's MIP presolve.
+   *
+   * Runs after trivial_presolve and eliminates blocks of functionally-determined binary auxiliary
+   * variables discovered via the probing-cache implication closure, re-encoding each block's
+   * projected relation as certified prime-implicate clauses. Requires the probing-cache step; a
+   * no-op when no certified reduction exists.
+   */
+  bool block_bve{true};
   /**
    * @brief Determinism mode for MIP solver.
    *
@@ -231,4 +244,5 @@ struct mip_solver_settings_accessor {
   }
 };
 
-}  // namespace cuopt::mathematical_optimization
+}  // namespace CUOPT_EXPORT mathematical_optimization
+}  // namespace cuopt

@@ -999,7 +999,8 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     if (problem.lower[j] == -inf && problem.upper[j] == inf) { free_variables++; }
   }
 
-  if (settings.barrier_presolve && free_variables > 0) {
+  if (settings.barrier_presolve && settings.barrier_presolve_bound_free_variables != 0 &&
+      free_variables > 0) {
     // Try to remove free variables
     std::vector<i_t> constraints_to_check;
     std::vector<i_t> current_free_variables;
@@ -1779,7 +1780,10 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
     }
     matrix_transpose_vector_multiply(
       presolve_info.folding_info.A_tilde, 1.0, ytilde, 1.0, dual_residual);
-    settings.log.printf("Unfolded dual residual = %e\n", vector_norm_inf<i_t, f_t>(dual_residual));
+    if (settings.postsolve_info == 1) {
+      settings.log.printf("Unfolded dual residual = %e\n",
+                          vector_norm_inf<i_t, f_t>(dual_residual));
+    }
 
     // Now we need to map the solution back to the original problem
     // minimize c^T x
@@ -1799,7 +1803,9 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
 
   const i_t num_free_variables = free_variable_pairs.size() / 2;
   if (num_free_variables > 0) {
-    settings.log.printf("Post-solve: Handling free variables %d\n", num_free_variables);
+    if (settings.postsolve_info == 1) {
+      settings.log.printf("Post-solve: Handling free variables %d\n", num_free_variables);
+    }
     // We added free variables so we need to map the crushed solution back to the original variables
     for (i_t k = 0; k < 2 * num_free_variables; k += 2) {
       const i_t u = free_variable_pairs[k];
@@ -1811,8 +1817,10 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
   }
 
   if (presolve_info.removed_variables.size() > 0) {
-    settings.log.printf("Post-solve: Handling removed variables %d\n",
-                        presolve_info.removed_variables.size());
+    if (settings.postsolve_info == 1) {
+      settings.log.printf("Post-solve: Handling removed variables %d\n",
+                          presolve_info.removed_variables.size());
+    }
     // We removed some variables, so we need to map the crushed solution back to the original
     // variables
     const i_t n = presolve_info.removed_variables.size() + presolve_info.remaining_variables.size();
@@ -1839,8 +1847,10 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
   }
 
   if (presolve_info.removed_constraints.size() > 0) {
-    settings.log.printf("Post-solve: Handling removed constraints %d\n",
-                        presolve_info.removed_constraints.size());
+    if (settings.postsolve_info == 1) {
+      settings.log.printf("Post-solve: Handling removed constraints %d\n",
+                          presolve_info.removed_constraints.size());
+    }
     // We removed some constraints, so we need to map the crushed solution back to the original
     // constraints
     const i_t m =
@@ -1868,7 +1878,9 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
       if (presolve_info.removed_lower_bounds[j] != 0.0) { num_lower_bounds++; }
       input_x[j] += presolve_info.removed_lower_bounds[j];
     }
-    settings.log.printf("Post-solve: Handling removed lower bounds %d\n", num_lower_bounds);
+    if (settings.postsolve_info == 1) {
+      settings.log.printf("Post-solve: Handling removed lower bounds %d\n", num_lower_bounds);
+    }
   }
 
   if (presolve_info.negated_variables.size() > 0) {
@@ -1894,7 +1906,9 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
   // z_bar_{j_f} = 0.
   if (!presolve_info.bounded_free_variables.empty()) {
     const i_t num_bfv = static_cast<i_t>(presolve_info.bounded_free_variables.size());
-    settings.log.printf("Post-solve: Correcting duals for %d bounded free variables\n", num_bfv);
+    if (settings.postsolve_info == 1) {
+      settings.log.printf("Post-solve: Correcting duals for %d bounded free variables\n", num_bfv);
+    }
     const csc_matrix_t<i_t, f_t>& A = original_problem.A;
 
     // Traverse in reverse order, to ensure that all z_j = 0 after the correction

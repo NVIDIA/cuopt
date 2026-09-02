@@ -1,5 +1,5 @@
-// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights
-// reserved. SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 #include "file_reader.hpp"
 #include "mps_section_scanner.hpp"
@@ -452,9 +452,12 @@ struct lz4_pipeline_t {
     : input(input_),
       window_count(cuda::ceil_div(input.compressed_size_, window_bytes)),
       windows(window_count),
-      window_state_(std::make_unique<window_state_t[]>(window_count)),
+      window_state_(std::make_unique<window_state_t[]>(
+        window_count)),  // NOSONAR(S836): window_count is declared before window_state_ in this
+                         // struct
       io_threads(std::min(lz4_input_max_io_threads, window_count)),
-      window_done(window_count, 0)
+      window_done(window_count,
+                  0)  // NOSONAR(S836): window_count is declared before window_done in this struct
   {
     for (std::size_t i = 0; i < window_count; ++i) {
       std::size_t offset     = i * window_bytes;

@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include <cuopt/error.hpp>
+#include <utilities/device_scalar_init.hpp>
 #include <utilities/macros.cuh>
 
 #include <mip_heuristics/mip_constants.hpp>
@@ -324,14 +325,14 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   // setup cusparse view
   A = make_csr<i_t, f_t>(op_problem_scaled.n_constraints,
                          op_problem_scaled.n_variables,
-                         op_problem_scaled.nnz,
+                         static_cast<int64_t>(A_.size()),
                          const_cast<i_t*>(op_problem_scaled.offsets.data()),
                          const_cast<i_t*>(op_problem_scaled.variables.data()),
                          const_cast<f_t*>(op_problem_scaled.coefficients.data()));
 
   A_T = make_csr<i_t, f_t>(op_problem_scaled.n_variables,
                            op_problem_scaled.n_constraints,
-                           op_problem_scaled.nnz,
+                           static_cast<int64_t>(A_T_.size()),
                            const_cast<i_t*>(A_T_offsets_.data()),
                            const_cast<i_t*>(A_T_indices_.data()),
                            const_cast<f_t*>(A_T_.data()));
@@ -367,7 +368,9 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                                       op_problem_scaled.n_variables,
                                       current_saddle_point_state.get_next_AtY().data(),
                                       CUSPARSE_ORDER_COL);
-    cuopt_assert(_reflected_primal_solution.size() > 0, "Reflected primal solution empty");
+    cuopt_assert(_reflected_primal_solution.size() >=
+                   static_cast<size_t>(op_problem_scaled.n_variables) * climber_strategies.size(),
+                 "Reflected primal solution undersized");
     batch_reflected_primal_solutions = make_dnmat<f_t>(op_problem_scaled.n_variables,
                                                        climber_strategies.size(),
                                                        climber_strategies.size(),
@@ -420,13 +423,15 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   tmp_primal = make_dnvec<f_t>(op_problem_scaled.n_variables, _tmp_primal.data());
   tmp_dual   = make_dnvec<f_t>(op_problem_scaled.n_constraints, _tmp_dual.data());
   if (hyper_params.use_reflected_primal_dual) {
-    cuopt_assert(_reflected_primal_solution.size() > 0, "Reflected primal solution empty");
+    cuopt_assert(
+      _reflected_primal_solution.size() >= static_cast<size_t>(op_problem_scaled.n_variables),
+      "Reflected primal solution undersized");
     reflected_primal_solution =
       make_dnvec<f_t>(op_problem_scaled.n_variables, _reflected_primal_solution.data());
   }
 
-  const rmm::device_scalar<f_t> alpha{1, handle_ptr->get_stream()};
-  const rmm::device_scalar<f_t> beta{0, handle_ptr->get_stream()};
+  const rmm::device_scalar<f_t> alpha{one_v<f_t>, handle_ptr->get_stream()};
+  const rmm::device_scalar<f_t> beta{zero_v<f_t>, handle_ptr->get_stream()};
   size_t buffer_size_non_transpose = 0;
   RAFT_CUSPARSE_TRY(
     raft::sparse::detail::cusparsespmv_buffersize(handle_ptr_->get_cusparse_handle(),
@@ -626,8 +631,8 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                                         const_cast<i_t*>(A_T_indices_.data()),
                                         A_T_float_.data());
 
-      const rmm::device_scalar<double> alpha_d{1.0, handle_ptr->get_stream()};
-      const rmm::device_scalar<double> beta_d{0.0, handle_ptr->get_stream()};
+      const rmm::device_scalar<double> alpha_d{one_v<double>, handle_ptr->get_stream()};
+      const rmm::device_scalar<double> beta_d{zero_v<double>, handle_ptr->get_stream()};
 
       size_t buffer_size_non_transpose_mixed =
         mixed_precision_spmv_buffersize(handle_ptr_->get_cusparse_handle(),
@@ -731,14 +736,14 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   // setup cusparse view
   A = make_csr<i_t, f_t>(op_problem.n_constraints,
                          op_problem.n_variables,
-                         op_problem.nnz,
+                         static_cast<int64_t>(A_.size()),
                          const_cast<i_t*>(op_problem.offsets.data()),
                          const_cast<i_t*>(op_problem.variables.data()),
                          const_cast<f_t*>(op_problem.coefficients.data()));
 
   A_T = make_csr<i_t, f_t>(op_problem.n_variables,
                            op_problem.n_constraints,
-                           op_problem.nnz,
+                           static_cast<int64_t>(A_T_.size()),
                            const_cast<i_t*>(A_T_offsets_.data()),
                            const_cast<i_t*>(A_T_indices_.data()),
                            const_cast<f_t*>(A_T_.data()));
@@ -782,8 +787,8 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                                         CUSPARSE_ORDER_COL);
   }
 
-  const rmm::device_scalar<f_t> alpha{1, handle_ptr->get_stream()};
-  const rmm::device_scalar<f_t> beta{1, handle_ptr->get_stream()};
+  const rmm::device_scalar<f_t> alpha{one_v<f_t>, handle_ptr->get_stream()};
+  const rmm::device_scalar<f_t> beta{one_v<f_t>, handle_ptr->get_stream()};
   size_t buffer_size_non_transpose = 0;
   RAFT_CUSPARSE_TRY(
     raft::sparse::detail::cusparsespmv_buffersize(handle_ptr_->get_cusparse_handle(),
@@ -943,14 +948,14 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   // cusparseSpMatDescr_t handles segfaults under CUDA 12.4+).
   A = make_csr<i_t, f_t>(op_problem.n_constraints,
                          op_problem.n_variables,
-                         op_problem.nnz,
+                         static_cast<int64_t>(A_.size()),
                          const_cast<i_t*>(A_offsets_.data()),
                          const_cast<i_t*>(A_indices_.data()),
                          const_cast<f_t*>(A_.data()));
 
   A_T = make_csr<i_t, f_t>(op_problem.n_variables,
                            op_problem.n_constraints,
-                           op_problem.nnz,
+                           static_cast<int64_t>(existing_cusparse_view.A_T_.size()),
                            const_cast<i_t*>(existing_cusparse_view.A_T_offsets_.data()),
                            const_cast<i_t*>(existing_cusparse_view.A_T_indices_.data()),
                            const_cast<f_t*>(existing_cusparse_view.A_T_.data()));
@@ -975,8 +980,8 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   tmp_primal = make_dnvec<f_t>(op_problem.n_variables, static_cast<f_t*>(tmp_primal_data));
   tmp_dual   = make_dnvec<f_t>(op_problem.n_constraints, static_cast<f_t*>(tmp_dual_data));
 
-  const rmm::device_scalar<f_t> alpha{1, handle_ptr->get_stream()};
-  const rmm::device_scalar<f_t> beta{1, handle_ptr->get_stream()};
+  const rmm::device_scalar<f_t> alpha{one_v<f_t>, handle_ptr->get_stream()};
+  const rmm::device_scalar<f_t> beta{one_v<f_t>, handle_ptr->get_stream()};
   size_t buffer_size_non_transpose = 0;
   RAFT_CUSPARSE_TRY(
     raft::sparse::detail::cusparsespmv_buffersize(handle_ptr_->get_cusparse_handle(),

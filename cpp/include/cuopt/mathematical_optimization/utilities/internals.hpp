@@ -18,7 +18,7 @@ namespace internals {
 
 class Callback {
  public:
-  virtual ~Callback() {}
+  virtual ~Callback() = default;
 };
 
 enum class base_solution_callback_type { GET_SOLUTION, SET_SOLUTION };
@@ -140,6 +140,21 @@ enum presolver_t : int {
   None    = CUOPT_PRESOLVE_OFF,
   Papilo  = CUOPT_PRESOLVE_PAPILO,
   PSLP    = CUOPT_PRESOLVE_PSLP
+};
+
+/**
+ * @brief Barrier primal-dual initial-point strategy.
+ *
+ * Automatic: use Lustig-Marsten-Shanno for LP/QP; Sturm/SeDuMi mu-based point for conic problems.
+ * LustigMarstenShanno: Mehrotra-style dual start (Lustig, Marsten, Shanno, SIAM J. Optim. 1992).
+ * DualLeastSquares: solve augmented or ADAT dual least-squares system.
+ * SedumiMu: Sturm/SeDuMi mu-based primal+dual point (no factorization).
+ */
+enum barrier_dual_initial_point_t : int {
+  Automatic           = CUOPT_BARRIER_DUAL_INITIAL_POINT_AUTOMATIC,
+  LustigMarstenShanno = CUOPT_BARRIER_DUAL_INITIAL_POINT_LUSTIG_MARSTEN_SHANNO,
+  DualLeastSquares    = CUOPT_BARRIER_DUAL_INITIAL_POINT_LEAST_SQUARES,
+  SedumiMu            = CUOPT_BARRIER_DUAL_INITIAL_POINT_SEDUMI_MU
 };
 
 }  // namespace mathematical_optimization

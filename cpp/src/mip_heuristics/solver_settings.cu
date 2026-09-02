@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include <cuopt/error.hpp>
+#include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <raft/util/cudart_utils.hpp>
@@ -23,36 +24,13 @@ void mip_solver_settings_t<i_t, f_t>::add_initial_solution(const f_t* initial_so
   raft::copy(initial_solutions.back()->data(), initial_solution, size, stream);
 }
 
-template <typename i_t, typename f_t>
-void mip_solver_settings_t<i_t, f_t>::set_mip_callback(
-  internals::base_solution_callback_t* callback, void* user_data)
-{
-  if (callback == nullptr) { return; }
-  callback->set_user_data(user_data);
-  mip_callbacks_.push_back(callback);
-}
-
-template <typename i_t, typename f_t>
-const std::vector<internals::base_solution_callback_t*>
-mip_solver_settings_t<i_t, f_t>::get_mip_callbacks() const
-{
-  return mip_callbacks_;
-}
-
-template <typename i_t, typename f_t>
-typename mip_solver_settings_t<i_t, f_t>::tolerances_t
-mip_solver_settings_t<i_t, f_t>::get_tolerances() const noexcept
-{
-  return tolerances;
-}
-
 // Explicit template instantiations for common types
 #if MIP_INSTANTIATE_FLOAT
-template class mip_solver_settings_t<int, float>;
+template class CUOPT_EXPORT mip_solver_settings_t<int, float>;
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
-template class mip_solver_settings_t<int, double>;
+template class CUOPT_EXPORT mip_solver_settings_t<int, double>;
 #endif
 
 }  // namespace cuopt::mathematical_optimization

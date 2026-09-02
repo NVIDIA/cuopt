@@ -1,19 +1,20 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 
 #pragma once
 
+#include <cuopt/export.hpp>
 #include <cuopt/routing/routing_structures.hpp>
 #include <fstream>
 #include <limits>
 #include <ostream>
 
 namespace cuopt {
-namespace routing {
+namespace CUOPT_EXPORT routing {
 
 template <typename i_t, typename f_t>
 class solver_settings_t {
@@ -64,10 +65,25 @@ class solver_settings_t {
   void dump_best_results(const std::string& file_path, i_t interval);
 
   /**
+   * @brief Set the random seed used by the routing solver.
+   *
+   * Controls the initial seed for random number generation. Use -1 to derive the seed
+   * from the problem, which is the default and reproduces a given problem run to run.
+   *
+   * @param[in] seed The seed, or -1 to derive it from the problem
+   */
+  void set_seed(i_t seed);
+
+  /**
    * @brief Return set solving time
    * @return Solving time set in seconds
    */
   f_t get_time_limit() const noexcept;
+
+  /**
+   * @brief Return the random seed, or -1 if it is derived from the problem
+   */
+  i_t get_seed() const noexcept;
 
   /**
    * @brief Return true if verbose mode is enabled
@@ -92,7 +108,8 @@ class solver_settings_t {
   i_t dump_interval_{std::numeric_limits<i_t>::max()};
   bool dump_best_results_{false};
   std::string best_result_file_name_;
+  i_t seed_{-1};
 };
 
-}  // namespace routing
+}  // namespace CUOPT_EXPORT routing
 }  // namespace cuopt

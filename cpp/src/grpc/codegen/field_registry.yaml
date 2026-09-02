@@ -109,6 +109,15 @@
 # Proto value names: proto_prefix + UPPER_SNAKE(CppName), or just CppName if
 # no prefix.
 #
+
+# Extra `import "...";` lines emitted at the top of the generated
+# cuopt_remote_data.proto — needed when a field references a message defined in
+# a hand-authored proto (e.g. ChunkedResultHeader.routing_solution : RoutingSolution).
+proto_imports:
+  - cuopt_routing_solution.proto
+
+# yamllint disable rule:indentation
+
 enums:
   pdlp_termination_status:
     domain: solution
@@ -165,9 +174,17 @@ enums:
 
   problem_category:
     domain: problem
+    # Transport-only wire enum. Deliberately generates NO C++ <-> proto converter
+    # (proto_enum_only): the job's category is assigned directly from the request
+    # oneof in the service (has_lp_request / has_mip_request / has_vrp_request), so
+    # no enum conversion — and no problem-representation decision — lives in the
+    # grpc codegen. VRP sits at 1000 to leave the low numbers for future math-opt
+    # categories (QP, SOCP, ...).
+    proto_enum_only: true
     values:
-    - LP
-    - MIP
+    - LP: 0
+    - MIP: 1
+    - VRP: 1000
 
   # ResultFieldId is auto-derived from solution/warm-start array_id fields.
   # Aliases here preserve backward compatibility with upstream's abbreviated
@@ -402,6 +419,16 @@ chunked_result_header:
       type: ResultArrayDescriptor
       field_num: 50
       repeated: true
+  # VRP result routing carried in the header. Set directly by the worker
+  # (set_is_vrp / set_routing_solution), so these only emit into the proto --
+  # no LP/MIP conversion code is generated for them.
+  scalars:
+    - is_vrp:
+        field_num: 4000
+        type: bool
+    - routing_solution:
+        field_num: 4001
+        type: RoutingSolution   # structured; from cuopt_routing_solution.proto (see proto_imports)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PDLP Solver Settings
@@ -531,6 +558,7 @@ pdlp_settings:
   - barrier_dual_initial_point:
       field_num: 26
       type: int32
+      from_proto_cast: "barrier_dual_initial_point_t"
       optional: true
   - eliminate_dense_columns:
       field_num: 27
@@ -545,12 +573,20 @@ pdlp_settings:
       field_num: 31
       type: bool
       optional: true
+  - barrier_adaptive_regularization:
+      field_num: 34
+      type: int32
+      optional: true
   - barrier_step_scale:
       # Step scale used by the barrier method primal/dual updates. Local-solve
       # binding restricts the range to [0.5, 0.9999] with default 0.9; see
       # solver_settings.cu. No post-decode clamp is applied here for
       # consistency with the other f_t scalars (tolerances, time_limit, ...).
       field_num: 32
+      optional: true
+  - postsolve_info:
+      field_num: 33
+      type: int32
       optional: true
   - save_best_primal_so_far:
       field_num: 28
@@ -748,12 +784,9 @@ mip_settings:
         field_num: 36
         type: int32
         optional: true
-    - presolve_time_ratio:
-        field_num: 37
-        optional: true
-    - presolve_max_time:
-        field_num: 38
-        optional: true
+    # 37 and 38 held presolve_time_ratio and presolve_max_time, removed when
+    # presolve stopped taking a wall budget. Do not reuse: an older client
+    # still sends them on those numbers.
     - root_lp_time_ratio:
         field_num: 39
         optional: true
@@ -798,6 +831,14 @@ mip_settings:
     - related_vars_time_limit:
         field_num: 51
         optional: true
+    - presolve_max_rounds:
+        field_num: 53
+        type: int32
+        optional: true
+    - papilo_probing_max_badgesize:
+        field_num: 54
+        type: int32
+        optional: true
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Optimization Problem (cpu_optimization_problem_t)
@@ -819,6 +860,10 @@ optimization_problem:
       getter: get_sense()
   - objective_scaling_factor:
       field_num: 4
+      # C++ defaults to 1 while an absent proto3 scalar reads as 0. Track
+      # presence so external clients may omit the field without changing the
+      # objective to an unsupported zero scaling factor.
+      optional: true
   - objective_offset:
       field_num: 5
 

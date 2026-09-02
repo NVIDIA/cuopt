@@ -109,7 +109,7 @@ lp::optimization_problem_t<i_t, f_t> create_problem(raft::handle_t const* h, i_t
   auto offsets = rand_vec<i_t, i_t>(n_cnst + 1, average_vars_per_cnst, average_vars_per_cnst * 5);
   thrust::exclusive_scan(thrust::host, offsets.begin(), offsets.end(), offsets.begin());
 
-  i_t nnz = offsets.back() + 1;
+  i_t nnz = offsets.back();
 
   // a_values - non-zero coefficients
   auto coeff = rand_vec<i_t, f_t>(nnz, 0.2, 10.0);

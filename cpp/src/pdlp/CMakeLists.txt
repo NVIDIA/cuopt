@@ -15,6 +15,7 @@ set(LP_CORE_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/pdhg.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solver_solution.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solution_conversion.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/solution_conversion_cpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/saddle_point.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/cusparse_view.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/pdlp_warm_start_data.cu
@@ -29,6 +30,11 @@ set(LP_CORE_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/termination_strategy/convergence_information.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/optimal_batch_size_handler/optimal_batch_size_handler.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/utilities/ping_pong_graph.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/distributed_pdlp/shard.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/distributed_pdlp/multi_gpu_engine.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/distributed_pdlp/distributed_algorithms.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/distributed_pdlp/distributed_utils.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/distributed_pdlp/partitioner.cpp
 )
 
 # C and Python adapter files

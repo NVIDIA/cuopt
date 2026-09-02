@@ -1,7 +1,7 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 """
-Aborting a Running MILP Job Example
+Aborting a Running MIP Job Example
 
 This example demonstrates how to abort a running or queued job on the cuOpt server.
 This is useful when:
@@ -51,7 +51,7 @@ if __name__ == "__main__":
     # Example usage - in practice, you would get the UUID from a previous job submission
     print("This is a template example.")
     print("To use this:")
-    print("1. Submit a MILP job and get its UUID")
+    print("1. Submit a MIP job and get its UUID")
     print("2. Replace '<UUID_THAT_WE_GOT>' in this file with that UUID")
     print("3. Run this script to abort the job")
 
