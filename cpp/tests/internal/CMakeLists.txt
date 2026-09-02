@@ -28,6 +28,7 @@ ConfigureTest(NUMOPT_INTERNAL_TEST
     ${CUOPT_TEST_DIR}/mip/empty_fixed_problems_test.cu
     ${CUOPT_TEST_DIR}/mip/presolve_test.cu
     ${CUOPT_TEST_DIR}/mip/block_bve_test.cu
+    ${CUOPT_TEST_DIR}/mip/bhw_coeff_reduce_test.cpp
     ${CUOPT_TEST_DIR}/mip/gf2_presolve_test.cpp
     ${CUOPT_TEST_DIR}/mip/arc_flow_test.cu
     ${CUOPT_TEST_DIR}/mip/single_lock_dual_aggregation_test.cpp
