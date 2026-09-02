@@ -1257,8 +1257,7 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
     const i_t col_start = cut_storage_csc.col_start[j];
     const i_t col_end   = cut_storage_csc.col_start[j + 1];
 
-    set_groups.build(
-      col_start, col_end, new_set_0, [&](i_t p) { return sets[cut_storage_csc.i[p]]; });
+    set_groups.build_with_entry_indices(col_start, col_end, new_set_0, cut_storage_csc.i, sets);
 
     for (i_t p = col_start; p < col_end; p++) {
       const i_t r    = cut_storage_csc.i[p];
@@ -1305,7 +1304,7 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
 
   // The cuts are stored in the form: sum_j d_ij x_j >= rhs_i.
   // We now look for cuts that are duplicates of each other and remove them.
-  set_groups.build(0, m, new_set, [&](i_t r) { return sets[r]; });
+  set_groups.build(0, m, new_set, sets);
 
   std::vector<i_t> cuts_to_remove(m, 0);
   i_t num_cuts_to_remove = 0;

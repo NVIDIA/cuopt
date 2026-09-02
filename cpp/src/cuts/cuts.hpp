@@ -311,8 +311,38 @@ template <typename i_t>
 class compressed_set_groups_t {
  public:
   // Groups entries in [first, last) whose set ids are in [1, set_id_limit).
-  template <typename get_set_id_t>
-  void build(i_t first, i_t last, i_t set_id_limit, get_set_id_t get_set_id)
+  void build(i_t first, i_t last, i_t set_id_limit, const std::vector<i_t>& set_ids)
+  {
+    build_impl<false>(first, last, set_id_limit, set_ids, nullptr);
+  }
+
+  void build_with_entry_indices(i_t first,
+                                i_t last,
+                                i_t set_id_limit,
+                                const std::vector<i_t>& entry_indices,
+                                const std::vector<i_t>& set_ids)
+  {
+    build_impl<true>(first, last, set_id_limit, set_ids, &entry_indices);
+  }
+
+  // Entry order within a set matches input order, so position + 1 is its first later entry.
+  std::span<const i_t> entries_after(i_t set_id, i_t entry) const
+  {
+    if (set_id <= 0 || set_id >= static_cast<i_t>(bucket_by_set_.size())) { return {}; }
+    const i_t bucket = bucket_by_set_[set_id];
+    if (bucket < 0) { return {}; }
+    const i_t position = position_by_entry_[entry - first_entry_];
+    const i_t end      = set_starts_[bucket + 1];
+    return {entries_.data() + position + 1, static_cast<std::size_t>(end - position - 1)};
+  }
+
+ private:
+  template <bool use_entry_indices>
+  void build_impl(i_t first,
+                  i_t last,
+                  i_t set_id_limit,
+                  const std::vector<i_t>& set_ids,
+                  const std::vector<i_t>* entry_indices)
   {
     first_entry_ = first;
     for (const i_t set_id : active_set_ids_) {
@@ -325,7 +355,12 @@ class compressed_set_groups_t {
     }
 
     for (i_t entry = first; entry < last; entry++) {
-      const i_t set_id = get_set_id(entry);
+      i_t set_id;
+      if constexpr (use_entry_indices) {
+        set_id = set_ids[(*entry_indices)[entry]];
+      } else {
+        set_id = set_ids[entry];
+      }
       if (set_id > 0 && set_id < set_id_limit) {
         i_t& bucket = bucket_by_set_[set_id];
         if (bucket < 0) {
@@ -344,7 +379,12 @@ class compressed_set_groups_t {
     position_by_entry_.resize(last - first);
     next_entry_in_set_ = set_starts_;
     for (i_t entry = first; entry < last; entry++) {
-      const i_t set_id = get_set_id(entry);
+      i_t set_id;
+      if constexpr (use_entry_indices) {
+        set_id = set_ids[(*entry_indices)[entry]];
+      } else {
+        set_id = set_ids[entry];
+      }
       if (set_id > 0 && set_id < set_id_limit) {
         const i_t bucket                  = bucket_by_set_[set_id];
         const i_t position                = next_entry_in_set_[bucket]++;
@@ -354,18 +394,6 @@ class compressed_set_groups_t {
     }
   }
 
-  // Entry order within a set matches input order, so position + 1 is its first later entry.
-  std::span<const i_t> entries_after(i_t set_id, i_t entry) const
-  {
-    if (set_id <= 0 || set_id >= static_cast<i_t>(bucket_by_set_.size())) { return {}; }
-    const i_t bucket = bucket_by_set_[set_id];
-    if (bucket < 0) { return {}; }
-    const i_t position = position_by_entry_[entry - first_entry_];
-    const i_t end      = set_starts_[bucket + 1];
-    return {entries_.data() + position + 1, static_cast<std::size_t>(end - position - 1)};
-  }
-
- private:
   i_t first_entry_{0};
   std::vector<i_t> bucket_by_set_;
   std::vector<i_t> active_set_ids_;
