@@ -74,8 +74,7 @@ class barrier_cache_t {
   void update_linear_objective(double const* c, int n);
 
  private:
-  barrier_cache_t(std::unique_ptr<rmm::cuda_stream> stream,
-                     std::unique_ptr<raft::handle_t> handle);
+  barrier_cache_t(std::unique_ptr<rmm::cuda_stream> stream, std::unique_ptr<raft::handle_t> handle);
 
   struct impl;
   std::unique_ptr<impl> impl_;

@@ -53,7 +53,8 @@ inline std::vector<double> crush_user_linear_objective(barrier_transform_t const
       "update_linear_objective: linear objective length must match the cached user column count.");
   }
   if (xf.original_num_cols < xf.user_num_cols) {
-    throw std::invalid_argument("update_linear_objective: cached original column count is smaller than user n.");
+    throw std::invalid_argument(
+      "update_linear_objective: cached original column count is smaller than user n.");
   }
   if (xf.barrier_lp == nullptr) {
     throw std::invalid_argument("update_linear_objective: cached barrier LP is missing.");
@@ -94,7 +95,8 @@ inline std::vector<double> crush_user_linear_objective(barrier_transform_t const
   if (static_cast<int>(presolved.size()) != xf.barrier_lp->num_cols ||
       xf.column_scales.size() != presolved.size()) {
     throw std::invalid_argument(
-      "update_linear_objective: crushed objective size does not match barrier columns / column_scales.");
+      "update_linear_objective: crushed objective size does not match barrier columns / "
+      "column_scales.");
   }
   for (std::size_t j = 0; j < presolved.size(); ++j) {
     presolved[j] /= xf.column_scales[j];

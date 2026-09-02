@@ -36,7 +36,7 @@ struct barrier_cache_t::impl {
 };
 
 barrier_cache_t::barrier_cache_t(std::unique_ptr<rmm::cuda_stream> stream,
-                                       std::unique_ptr<raft::handle_t> handle)
+                                 std::unique_ptr<raft::handle_t> handle)
   : impl_(std::make_unique<impl>(std::move(stream), std::move(handle)))
 {
 }
@@ -48,21 +48,16 @@ barrier_cache_t& barrier_cache_t::operator=(barrier_cache_t&&) noexcept = defaul
 
 std::unique_ptr<barrier_cache_t> barrier_cache_t::create(unsigned stream_flags)
 {
-  auto stream = std::make_unique<rmm::cuda_stream>(static_cast<rmm::cuda_stream::flags>(stream_flags));
+  auto stream =
+    std::make_unique<rmm::cuda_stream>(static_cast<rmm::cuda_stream::flags>(stream_flags));
   auto handle = std::make_unique<raft::handle_t>(*stream);
   return std::unique_ptr<barrier_cache_t>(
     new barrier_cache_t(std::move(stream), std::move(handle)));
 }
 
-raft::handle_t* barrier_cache_t::handle_ptr()
-{
-  return impl_->handle.get();
-}
+raft::handle_t* barrier_cache_t::handle_ptr() { return impl_->handle.get(); }
 
-raft::handle_t const* barrier_cache_t::handle_ptr() const
-{
-  return impl_->handle.get();
-}
+raft::handle_t const* barrier_cache_t::handle_ptr() const { return impl_->handle.get(); }
 
 void barrier_cache_t::clear()
 {

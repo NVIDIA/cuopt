@@ -868,7 +868,7 @@ class iteration_data_t {
       }
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
 
-      chol = std::make_shared<sparse_cholesky_cudss_t<i_t, f_t>>(
+      chol = std::make_unique<sparse_cholesky_cudss_t<i_t, f_t>>(
         handle_ptr, settings_, factorization_size);
       chol->set_positive_definite(false);
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
@@ -876,18 +876,15 @@ class iteration_data_t {
       {
         raft::common::nvtx::range analyze_scope("Barrier: LP Data: symbolic analysis");
         if (use_augmented) {
-          symbolic_status = chol->analyze(aug_mat());
+          symbolic_status = chol->analyze(device_augmented);
         } else {
-          symbolic_status = chol->analyze(adat_mat());
+          symbolic_status = chol->analyze(device_ADAT);
         }
       }
     }
   }
 
-  device_csr_matrix_t<i_t, f_t>& augmented_system() { return aug_mat(); }
-  const device_csr_matrix_t<i_t, f_t>& augmented_system() const { return aug_mat(); }
-
-  // Attach this solve's settings and rewind iterate-dependent state so IPM can
+  // Attach this solve's settings and rewind iterate-dependent state so barrier can
   // Mehrotra-start with the new c. A and Q are unchanged; the previous solve
   // left D and the KKT values at its last iterate. Reuse is QP-only (no cones),
   // so form_*(false) updates values in the existing CSR; no symbolic rebuild.
@@ -898,8 +895,8 @@ class iteration_data_t {
 
     {
       raft::common::nvtx::range fun_scope("Barrier: reset diagonal scaling");
-      const bool has_Q = Q.n > 0;
-      const bool has_soc = has_cones();
+      const bool has_Q        = Q.n > 0;
+      const bool has_soc      = has_cones();
       const bool adaptive_reg = should_use_adaptive_regularization(settings, has_soc);
       primal_perturb          = (settings.barrier_primal_regularization >= 0)
                                   ? settings.barrier_primal_regularization
@@ -931,7 +928,7 @@ class iteration_data_t {
     } else {
       form_adat(false);
       handle_ptr->sync_stream();
-      if (chol != nullptr) { chol->rebind_csr_matrix(adat_mat()); }
+      if (chol != nullptr) { chol->rebind_csr_matrix(device_ADAT); }
     }
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return false; }
 
@@ -1088,7 +1085,7 @@ class iteration_data_t {
       thrust::for_each_n(rmm::exec_policy(handle_ptr->get_stream()),
                          thrust::make_counting_iterator<i_t>(0),
                          linear_n,
-                         [span_x             = cuopt::make_span(aug_mat().x),
+                         [span_x             = cuopt::make_span(device_augmented.x),
                           span_diag_indices  = cuopt::make_span(d_augmented_diagonal_indices_),
                           span_q_diag        = cuopt::make_span(d_Q_diag_),
                           span_diag          = cuopt::make_span(d_diag_),
@@ -1102,7 +1099,7 @@ class iteration_data_t {
       thrust::for_each_n(rmm::exec_policy(handle_ptr->get_stream()),
                          thrust::make_counting_iterator<i_t>(n),
                          i_t(m),
-                         [span_x               = cuopt::make_span(aug_mat().x),
+                         [span_x               = cuopt::make_span(device_augmented.x),
                           span_diag_indices    = cuopt::make_span(d_augmented_diagonal_indices_),
                           primal_perturb_value = primal_perturb] __device__(i_t j) {
                            span_x[span_diag_indices[j]] = primal_perturb_value;
@@ -1150,9 +1147,9 @@ class iteration_data_t {
 
     {
       raft::common::nvtx::range scope("Barrier: Form ADAT: restore A");
-      raft::copy(ad_mat().x.data(),
-                 original_a_values().data(),
-                 original_a_values().size(),
+      raft::copy(device_AD.x.data(),
+                 d_original_A_values.data(),
+                 d_original_A_values.size(),
                  handle_ptr->get_stream());
     }
     {
@@ -1184,10 +1181,10 @@ class iteration_data_t {
       raft::common::nvtx::range scope("Barrier: Form ADAT: scale AD");
       thrust::for_each_n(rmm::exec_policy(stream_view_),
                          thrust::make_counting_iterator<i_t>(0),
-                         i_t(ad_mat().x.size()),
-                         [span_x       = cuopt::make_span(ad_mat().x),
+                         i_t(device_AD.x.size()),
+                         [span_x       = cuopt::make_span(device_AD.x),
                           span_scale   = cuopt::make_span(d_inv_diag_prime),
-                          span_col_ind = cuopt::make_span(ad_mat().col_index)] __device__(i_t i) {
+                          span_col_ind = cuopt::make_span(device_AD.col_index)] __device__(i_t i) {
                            span_x[i] *= span_scale[span_col_ind[i]];
                          });
       RAFT_CHECK_CUDA(stream_view_);
@@ -1200,7 +1197,7 @@ class iteration_data_t {
           cusparse_info_ = std::make_unique<cusparse_info_t<i_t, f_t>>(handle_ptr);
         }
         initialize_cusparse_data<i_t, f_t>(
-          handle_ptr, a_mat(), ad_mat(), adat_mat(), spgemm_info());
+          handle_ptr, device_A, device_AD, device_ADAT, spgemm_info());
       } catch (const raft::cuda_error& e) {
         settings_.log.printf("Error in initialize_cusparse_data: %s\n", e.what());
         return;
@@ -1210,11 +1207,11 @@ class iteration_data_t {
 
     {
       raft::common::nvtx::range scope("Barrier: Form ADAT: ADAT multiply");
-      multiply_kernels<i_t, f_t>(handle_ptr, a_mat(), ad_mat(), adat_mat(), spgemm_info());
+      multiply_kernels<i_t, f_t>(handle_ptr, device_A, device_AD, device_ADAT, spgemm_info());
       handle_ptr->sync_stream();
     }
 
-    auto adat_nnz       = adat_mat().row_start.element(adat_mat().m, handle_ptr->get_stream());
+    auto adat_nnz       = device_ADAT.row_start.element(device_ADAT.m, handle_ptr->get_stream());
     float64_t adat_time = toc(start_form_adat);
 
     if (num_factorizations == 0) {
@@ -1224,7 +1221,7 @@ class iteration_data_t {
       settings_.log.printf(
         "ADAT density                : %.2f\n",
         static_cast<float64_t>(adat_nnz) /
-          (static_cast<float64_t>(adat_mat().m) * static_cast<float64_t>(adat_mat().m)));
+          (static_cast<float64_t>(device_ADAT.m) * static_cast<float64_t>(device_ADAT.m)));
     }
   }
 
@@ -2240,13 +2237,6 @@ class iteration_data_t {
   bool Q_diagonal;
   rmm::device_uvector<i_t> d_augmented_diagonal_indices_;
 
-  device_csr_matrix_t<i_t, f_t>& aug_mat() { return device_augmented; }
-  const device_csr_matrix_t<i_t, f_t>& aug_mat() const { return device_augmented; }
-  device_csr_matrix_t<i_t, f_t>& adat_mat() { return device_ADAT; }
-  const device_csr_matrix_t<i_t, f_t>& adat_mat() const { return device_ADAT; }
-  device_csr_matrix_t<i_t, f_t>& a_mat() { return device_A; }
-  device_csc_matrix_t<i_t, f_t>& ad_mat() { return device_AD; }
-  rmm::device_uvector<f_t>& original_a_values() { return d_original_A_values; }
   cusparse_info_t<i_t, f_t>& spgemm_info()
   {
     cuopt_assert(cusparse_info_ != nullptr, "spgemm_info: cusparse workspace unset");
@@ -2270,7 +2260,7 @@ class iteration_data_t {
   f_t dual_perturb{1e-8};
   f_t primal_perturb{1e-8};
 
-  std::shared_ptr<sparse_cholesky_base_t<i_t, f_t>> chol;
+  std::unique_ptr<sparse_cholesky_base_t<i_t, f_t>> chol;
 
   bool has_factorization;
   bool has_solve_info;
@@ -2530,13 +2520,13 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   // Perform a numerical factorization
   i_t status;
   if (use_augmented) {
-    status = data.chol->factorize(data.aug_mat());
+    status = data.chol->factorize(data.device_augmented);
 
 #ifdef CHOLESKY_DEBUG_CHECK
     cholesky_debug_check(data, lp, use_augmented);
 #endif
   } else {
-    status = data.chol->factorize(data.adat_mat());
+    status = data.chol->factorize(data.device_ADAT);
   }
   if (status == CONCURRENT_HALT_RETURN) { return CONCURRENT_HALT_RETURN; }
   if (status != 0) {
@@ -3063,7 +3053,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       }
       {
         raft::common::nvtx::range fun_scope("Barrier: factorize");
-        status = data.chol->factorize(data.aug_mat());
+        status = data.chol->factorize(data.device_augmented);
       }
 
 #ifdef CHOLESKY_DEBUG_CHECK
@@ -3083,7 +3073,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       }
       {
         raft::common::nvtx::range fun_scope("Barrier: factorize");
-        status = data.chol->factorize(data.adat_mat());
+        status = data.chol->factorize(data.device_ADAT);
       }
     }
     data.has_factorization = true;
@@ -4348,7 +4338,9 @@ lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
 
 template <typename i_t, typename f_t>
 lp_status_t barrier_solver_t<i_t, f_t>::barrier_advanced_solve(
-  f_t start_time, lp_solution_t<i_t, f_t>& solution, cuopt::mathematical_optimization::barrier_cache_t* cache)
+  f_t start_time,
+  lp_solution_t<i_t, f_t>& solution,
+  cuopt::mathematical_optimization::barrier_cache_t* cache)
 {
   settings.log.printf("Barrier solver started at %.3f seconds\n", toc(start_time));
   try {
@@ -4597,17 +4589,19 @@ lp_status_t barrier_solver_t<i_t, f_t>::run_ipm(
     }
 
     if (status < 0) {
-      return store_or_clear_cache(cache, owned_data, check_for_suboptimal_solution(data,
-                                                          start_time,
-                                                          iter,
-                                                          primal_objective,
-                                                          primal_residual_norm,
-                                                          dual_residual_norm,
-                                                          complementarity_residual_norm,
-                                                          relative_primal_residual,
-                                                          relative_dual_residual,
-                                                          relative_complementarity_residual,
-                                                          solution));
+      return store_or_clear_cache(cache,
+                                  owned_data,
+                                  check_for_suboptimal_solution(data,
+                                                                start_time,
+                                                                iter,
+                                                                primal_objective,
+                                                                primal_residual_norm,
+                                                                dual_residual_norm,
+                                                                complementarity_residual_norm,
+                                                                relative_primal_residual,
+                                                                relative_dual_residual,
+                                                                relative_complementarity_residual,
+                                                                solution));
     }
     if (toc(start_time) > settings.time_limit) {
       settings.log.printf("Barrier time limit exceeded\n");
@@ -4637,17 +4631,19 @@ lp_status_t barrier_solver_t<i_t, f_t>::run_ipm(
       return store_or_clear_cache(cache, owned_data, lp_status_t::CONCURRENT_LIMIT);
     }
     if (status < 0) {
-      return store_or_clear_cache(cache, owned_data, check_for_suboptimal_solution(data,
-                                                          start_time,
-                                                          iter,
-                                                          primal_objective,
-                                                          primal_residual_norm,
-                                                          dual_residual_norm,
-                                                          complementarity_residual_norm,
-                                                          relative_primal_residual,
-                                                          relative_dual_residual,
-                                                          relative_complementarity_residual,
-                                                          solution));
+      return store_or_clear_cache(cache,
+                                  owned_data,
+                                  check_for_suboptimal_solution(data,
+                                                                start_time,
+                                                                iter,
+                                                                primal_objective,
+                                                                primal_residual_norm,
+                                                                dual_residual_norm,
+                                                                complementarity_residual_norm,
+                                                                relative_primal_residual,
+                                                                relative_dual_residual,
+                                                                relative_complementarity_residual,
+                                                                solution));
     }
     data.has_factorization = false;
     data.has_solve_info    = false;
@@ -4725,17 +4721,19 @@ lp_status_t barrier_solver_t<i_t, f_t>::run_ipm(
 
     if (primal_objective != primal_objective || dual_objective != dual_objective) {
       settings.log.printf("Numerical error in objective\n");
-      return store_or_clear_cache(cache, owned_data, check_for_suboptimal_solution(data,
-                                                          start_time,
-                                                          iter,
-                                                          primal_objective,
-                                                          primal_residual_norm,
-                                                          dual_residual_norm,
-                                                          complementarity_residual_norm,
-                                                          relative_primal_residual,
-                                                          relative_dual_residual,
-                                                          relative_complementarity_residual,
-                                                          solution));
+      return store_or_clear_cache(cache,
+                                  owned_data,
+                                  check_for_suboptimal_solution(data,
+                                                                start_time,
+                                                                iter,
+                                                                primal_objective,
+                                                                primal_residual_norm,
+                                                                dual_residual_norm,
+                                                                complementarity_residual_norm,
+                                                                relative_primal_residual,
+                                                                relative_dual_residual,
+                                                                relative_complementarity_residual,
+                                                                solution));
     }
 
     settings.log.printf("%3d   %+.12e %+.12e %.2e %.2e %.2e %.3f\n",
@@ -4797,17 +4795,19 @@ lp_status_t barrier_solver_t<i_t, f_t>::run_ipm(
           data.relative_dual_residual_save < settings.barrier_relaxed_optimality_tol &&
           data.relative_complementarity_residual_save <
             settings.barrier_relaxed_complementarity_tol) {
-        return store_or_clear_cache(cache, owned_data, check_for_suboptimal_solution(data,
-                                                            start_time,
-                                                            iter,
-                                                            primal_objective,
-                                                            primal_residual_norm,
-                                                            dual_residual_norm,
-                                                            complementarity_residual_norm,
-                                                            relative_primal_residual,
-                                                            relative_dual_residual,
-                                                            relative_complementarity_residual,
-                                                            solution));
+        return store_or_clear_cache(cache,
+                                    owned_data,
+                                    check_for_suboptimal_solution(data,
+                                                                  start_time,
+                                                                  iter,
+                                                                  primal_objective,
+                                                                  primal_residual_norm,
+                                                                  dual_residual_norm,
+                                                                  complementarity_residual_norm,
+                                                                  relative_primal_residual,
+                                                                  relative_dual_residual,
+                                                                  relative_complementarity_residual,
+                                                                  solution));
       }
     }
   }
@@ -4827,9 +4827,10 @@ lp_status_t barrier_solver_t<i_t, f_t>::run_ipm(
 }
 
 template <typename i_t, typename f_t>
-lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
-                                              lp_solution_t<i_t, f_t>& solution,
-                                              cuopt::mathematical_optimization::barrier_cache_t* cache)
+lp_status_t barrier_solver_t<i_t, f_t>::solve(
+  f_t start_time,
+  lp_solution_t<i_t, f_t>& solution,
+  cuopt::mathematical_optimization::barrier_cache_t* cache)
 {
   settings.log.printf("Barrier solver started at %.3f seconds\n", toc(start_time));
   try {
@@ -4915,7 +4916,8 @@ void apply_barrier_linear_objective(iteration_data_t<int, double>& data,
   if (barrier_c == nullptr || static_cast<int>(data.c.size()) != n ||
       static_cast<int>(data.d_c_.size()) != n) {
     throw std::invalid_argument(
-      "update_linear_objective: barrier linear objective size does not match cached iteration_data_t.");
+      "update_linear_objective: barrier linear objective size does not match cached "
+      "iteration_data_t.");
   }
   std::copy(barrier_c, barrier_c + n, data.c.data());
   raft::copy(

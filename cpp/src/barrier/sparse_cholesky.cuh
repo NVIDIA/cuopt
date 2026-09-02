@@ -866,10 +866,10 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     raft::copy(x_host.data(), x.data(), n, stream);
     cudaStreamSynchronize(stream);
     settings_.log.printf("RHS norm %.16e, hash: %zu, Solution norm %.16e, hash: %zu\n",
-                          vector_norm2<i_t, f_t>(b_host),
-                          compute_hash(b_host),
-                          vector_norm2<i_t, f_t>(x_host),
-                          compute_hash(x_host));
+                         vector_norm2<i_t, f_t>(b_host),
+                         compute_hash(b_host),
+                         vector_norm2<i_t, f_t>(x_host),
+                         compute_hash(x_host));
 #endif
 
     return 0;

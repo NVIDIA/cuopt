@@ -179,8 +179,8 @@ class device_csc_matrix_t {
   {
   }
 
-  device_csc_matrix_t(device_csc_matrix_t&&)            = default;
-  device_csc_matrix_t& operator=(device_csc_matrix_t&&) = default;
+  device_csc_matrix_t(device_csc_matrix_t&&)                 = default;
+  device_csc_matrix_t& operator=(device_csc_matrix_t&&)      = default;
   device_csc_matrix_t& operator=(const device_csc_matrix_t&) = delete;
 
   device_csc_matrix_t(const csc_matrix_t<i_t, f_t>& A, rmm::cuda_stream_view stream)
@@ -322,8 +322,8 @@ class device_csr_matrix_t {
   {
   }
 
-  device_csr_matrix_t(device_csr_matrix_t&&)            = default;
-  device_csr_matrix_t& operator=(device_csr_matrix_t&&) = default;
+  device_csr_matrix_t(device_csr_matrix_t&&)                 = default;
+  device_csr_matrix_t& operator=(device_csr_matrix_t&&)      = default;
   device_csr_matrix_t& operator=(const device_csr_matrix_t&) = delete;
 
   device_csr_matrix_t(const csr_matrix_t<i_t, f_t>& A, rmm::cuda_stream_view stream)
