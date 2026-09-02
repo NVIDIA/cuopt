@@ -45,34 +45,6 @@ struct buffered_entry {
   std::string msg;
 };
 
-using log_console_callback_t = void (*)(int level, const char* message);
-
-inline std::mutex g_console_callback_mutex;
-inline log_console_callback_t g_console_callback = nullptr;
-
-/**
- * @brief Overrides the sink used for console logging (settings.log_to_console == true).
- *
- * Passing nullptr (the default) restores writing to std::cout. Intended for language bindings
- * whose host runtime cannot safely receive a raw write to the native stdout stream.
- *
- * Per-image state, like the logger itself -- reach a specific component library's copy through
- * its exported `set_console_log_callback`, the same way `configure_logging` reaches its logger.
- *
- * @param callback The callback to invoke for each logged line, or nullptr to restore std::cout.
- */
-inline void set_console_log_callback(log_console_callback_t callback)
-{
-  std::lock_guard<std::mutex> lock(g_console_callback_mutex);
-  g_console_callback = callback;
-}
-
-inline log_console_callback_t console_log_callback()
-{
-  std::lock_guard<std::mutex> lock(g_console_callback_mutex);
-  return g_console_callback;
-}
-
 // Buffer to store log messages
 class log_buffer {
  public:
