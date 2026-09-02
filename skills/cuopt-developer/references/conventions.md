@@ -192,8 +192,8 @@ int* data = new int[100];
 rmm::device_uvector<int> data(100, stream);
 ```
 
-- All operations should accept `cuda_stream_view`
-- Views (`*_view` suffix) are non-owning
+- All operations should accept `cuda::stream_ref`
+- Stream references are non-owning
 
 Read existing code in `cpp/src/` for real examples of RMM allocation, stream-ordering, RAFT utilities, and kernel launch patterns.
 

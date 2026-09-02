@@ -51,7 +51,7 @@ class managed_stream_pool {
   managed_stream_pool& operator=(managed_stream_pool const&) = delete;
 
   /**
-   * @brief Get a `cuda_stream_view` of a stream in the pool.
+   * @brief Get a `cuda::stream_ref` of a stream in the pool.
    *
    * This function is thread safe with respect to other calls to the same function.
    *
