@@ -4,6 +4,7 @@
 # cmake-format: on
 
 ConfigureTest(LP_UNIT_TEST
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/lp_solution_test.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/solver_settings_test.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/solution_interface_test.cu
     LABELS numopt)

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 
@@ -6,6 +6,9 @@
 # distutils: language = c++
 # cython: embedsignature = True
 # cython: language_level = 3
+# cython: boundscheck=False
+# cython: wraparound=False
+# cython: cdivision=True
 
 from pylibraft.common.handle cimport *
 
@@ -247,17 +250,84 @@ cdef set_solver_setting(
                 data_model_obj.get_initial_dual_solution().shape[0]
             )
 
+cdef object _compute_slack_csr(const double[::1] rhs,
+                               const signed char[::1] sense,
+                               const double[::1] values,
+                               const int[::1] indices,
+                               const int[::1] indptr,
+                               const double[::1] primal_solution):
+    """
+    Classical LP slack/surplus (+ EQ residual).
+
+    LE ('L'): rhs - lhs; GE ('G'): lhs - rhs; EQ ('E'): rhs - lhs.
+
+    ``sense`` is signed char, not plain char: NumPy exposes an ``S1`` array as
+    format ``1s``, which Cython matches against signed char. Plain char is
+    unsigned on aarch64, so the buffer would be rejected there.
+    """
+    cdef Py_ssize_t m = indptr.shape[0] - 1
+    cdef Py_ssize_t i, k, start, end
+    cdef double lhs
+    cdef signed char s
+    cdef double[::1] out = np.empty(m, dtype=np.float64)
+
+    with nogil:
+        for i in range(m):
+            start = indptr[i]
+            end = indptr[i + 1]
+            lhs = 0.0
+            for k in range(start, end):
+                lhs = lhs + values[k] * primal_solution[indices[k]]
+            s = sense[i]
+            if s == b'G':
+                out[i] = lhs - rhs[i]
+            elif s == b'L':
+                out[i] = rhs[i] - lhs
+            else:
+                out[i] = rhs[i] - lhs
+
+    return np.asarray(out)
+
+
+cdef object _slack_from_data_model(object data_model_obj,
+                                   object primal_solution):
+    """Classical LE/GE slack/surplus (EQ residual) from the solved DataModel."""
+    # gRPC result path has no DataModel; empty primal means no usable solution.
+    if data_model_obj is None or primal_solution is None:
+        return None
+    if len(primal_solution) == 0:
+        return None
+
+    cdef DataModel dm = <DataModel>data_model_obj
+    offsets = dm.get_constraint_matrix_offsets()
+    if len(offsets) == 0:
+        return np.empty(0, dtype=np.float64)
+
+    return _compute_slack_csr(
+        np.ascontiguousarray(dm.get_constraint_bounds(), dtype=np.float64),
+        np.ascontiguousarray(dm.get_row_types(), dtype="S1"),
+        np.ascontiguousarray(dm.get_constraint_matrix_values(), dtype=np.float64),
+        np.ascontiguousarray(dm.get_constraint_matrix_indices(), dtype=np.int32),
+        np.ascontiguousarray(offsets, dtype=np.int32),
+        np.ascontiguousarray(primal_solution, dtype=np.float64),
+    )
+
+
 cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
                      DataModel data_model_obj,
                      is_batch=False):
     return create_solution_with_names(
-        move(sol_ret_ptr), data_model_obj.get_variable_names(), is_batch
+        move(sol_ret_ptr),
+        data_model_obj.get_variable_names(),
+        is_batch,
+        data_model_obj,
     )
 
 
 cdef create_solution_with_names(unique_ptr[solver_ret_t] sol_ret_ptr,
                                 object variable_names,
-                                bint is_batch=False):
+                                bint is_batch=False,
+                                object data_model_obj=None):
 
     from cuopt.linear_programming.solution.solution import Solution
 
@@ -294,7 +364,8 @@ cdef create_solution_with_names(unique_ptr[solver_ret_t] sol_ret_ptr,
             max_int_violation=mip_ptr.max_int_violation_,
             max_constraint_violation=mip_ptr.max_constraint_violation_,
             num_nodes=mip_ptr.nodes_,
-            num_simplex_iterations=mip_ptr.simplex_iterations_
+            num_simplex_iterations=mip_ptr.simplex_iterations_,
+            slack=_slack_from_data_model(data_model_obj, solution),
         )
 
     else:
@@ -417,6 +488,7 @@ cdef create_solution_with_names(unique_ptr[solver_ret_t] sol_ret_ptr,
                 lp_ptr.gap_,
                 lp_ptr.nb_iterations_,
                 lp_ptr.solved_by_,
+                slack=_slack_from_data_model(data_model_obj, primal_solution),
             )
         else:
             return Solution(
@@ -436,6 +508,7 @@ cdef create_solution_with_names(unique_ptr[solver_ret_t] sol_ret_ptr,
                 gap=lp_ptr.gap_,
                 nb_iterations=lp_ptr.nb_iterations_,
                 solved_by=lp_ptr.solved_by_,
+                slack=_slack_from_data_model(data_model_obj, primal_solution),
             )
 
 

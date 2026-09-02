@@ -30,6 +30,9 @@ cuopt_int_t test_infeasible_problem();
 cuopt_int_t test_bad_parameter_name();
 cuopt_int_t test_mip_get_callbacks_only();
 cuopt_int_t test_mip_get_set_callbacks();
+cuopt_int_t test_log_callback();
+cuopt_int_t test_log_callback_cleared();
+cuopt_int_t test_log_callback_not_leaked_across_solves();
 cuopt_int_t test_ranged_problem(cuopt_int_t* termination_status_ptr, cuopt_float_t* objective_ptr);
 cuopt_int_t test_semi_continuous_problem(cuopt_int_t* termination_status_ptr,
                                          cuopt_float_t* objective_ptr,
@@ -67,6 +70,7 @@ cuopt_int_t test_deterministic_bb(const char* filename,
 /* Tests for solution interface polymorphism (use inline problems, no file I/O) */
 cuopt_int_t test_lp_solution_mip_methods();
 cuopt_int_t test_mip_solution_lp_methods();
+cuopt_int_t test_qcqp_solution_dual_methods();
 
 cuopt_int_t test_pdlp_precision_single(const char* filename,
                                        cuopt_int_t* termination_status_ptr,
@@ -78,6 +82,7 @@ cuopt_int_t test_pdlp_precision_mixed(const char* filename,
 
 /* CPU-only execution tests (require env vars CUDA_VISIBLE_DEVICES="" and CUOPT_REMOTE_HOST) */
 cuopt_int_t test_cpu_only_execution(const char* filename);
+cuopt_int_t test_log_callback_remote(const char* filename);
 cuopt_int_t test_cpu_only_mip_execution(const char* filename);
 
 /* CPU-host read/create C API (require CUDA_VISIBLE_DEVICES="", no remote, no solve) */
