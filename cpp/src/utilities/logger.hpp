@@ -241,6 +241,27 @@ inline rapids_logger::logger& default_logger()
   return logger_;
 }
 
+using log_console_callback_t = void (*)(int level, const char* message);
+
+/**
+ * @brief Overrides the sink used for console logging (log_to_console == true).
+ *
+ * Passing nullptr (the default) restores writing to std::cout. Intended for language bindings
+ * whose host runtime cannot safely receive a raw write to the native stdout stream -- see
+ * apply_logger_config below for why that matters.
+ *
+ * Deliberately an ordinary exported function with its state defined in a .cpp, not one of the
+ * per-library inline definitions above: a consumer overriding console output wants every
+ * cuopt_mathopt caller in the process routed through it, which requires exactly the single
+ * shared instance the rest of this header avoids for default_logger() et al.
+ */
+CUOPT_EXPORT void set_console_log_callback(log_console_callback_t callback);
+
+// Declared here so apply_logger_config (inline, below) can call it regardless of which
+// library/executable instantiates that inline definition; defined alongside
+// set_console_log_callback so both resolve to the same translation unit's static state.
+CUOPT_EXPORT log_console_callback_t console_log_callback();
+
 inline void reset_default_logger()
 {
   default_logger().sinks().clear();

@@ -4,16 +4,9 @@
  */
 package com.nvidia.cuopt.mathematicaloptimization;
 
-import java.nio.file.Path;
-
 final class NativeCuOpt {
   static {
-    String nativeDir = System.getProperty("cuopt.native.dir");
-    if (nativeDir == null || nativeDir.isBlank()) {
-      System.loadLibrary("cuopt_jni");
-    } else {
-      System.load(Path.of(nativeDir, System.mapLibraryName("cuopt_jni")).toAbsolutePath().toString());
-    }
+    NativeLibraryLoader.load();
   }
 
   private NativeCuOpt() {}

@@ -43,6 +43,15 @@ SPDX-License-Identifier: Apache-2.0
     <maven.compiler.release>11</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <junit.jupiter.version>5.11.4</junit.jupiter.version>
+    <!-- Set by ci/build_cuopt_java_jar.sh when packaging a classifier JAR. Empty by default,
+         which produces the plain JAR the source build and the test suite use. -->
+    <cuopt.jar.classifier></cuopt.jar.classifier>
+    <!-- Directory whose tree is copied into the JAR, carrying the native library for the
+         classifier being built. Points at an empty placeholder unless overridden. -->
+    <cuopt.native.resources>${project.basedir}/src/main/no-native</cuopt.native.resources>
+    <!-- PackagedJarOriginCheck only means anything when a packaged JAR is on the classpath, so
+         it is excluded here and re-enabled by the packaged-jar-tests profile. -->
+    <cuopt.surefire.excludes>**/PackagedJarOriginCheck.java</cuopt.surefire.excludes>
   </properties>
 
   <!--
@@ -112,11 +121,19 @@ SPDX-License-Identifier: Apache-2.0
   </dependencies>
 
   <build>
+    <resources>
+      <resource>
+        <directory>${cuopt.native.resources}</directory>
+      </resource>
+    </resources>
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-jar-plugin</artifactId>
         <version>3.4.2</version>
+        <configuration>
+          <classifier>${cuopt.jar.classifier}</classifier>
+        </configuration>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -175,6 +192,9 @@ SPDX-License-Identifier: Apache-2.0
           <systemPropertyVariables>
             <cuopt.native.dir>${cuopt.native.dir}</cuopt.native.dir>
           </systemPropertyVariables>
+          <excludes>
+            <exclude>${cuopt.surefire.excludes}</exclude>
+          </excludes>
         </configuration>
       </plugin>
     </plugins>
@@ -187,8 +207,8 @@ SPDX-License-Identifier: Apache-2.0
       invocation (which never packages anything) still had to resolve maven-source-plugin and
       maven-javadoc-plugin from Maven Central, on every CI run, for no reason. That repeated,
       unnecessary resolution repeatedly hit Maven Central 429 rate limits. Activate explicitly
-      with -Pattach-source-javadoc when actually packaging for publishing; mvn test/verify
-      should not activate it.
+      with -Pattach-source-javadoc when actually packaging a classifier JAR for publishing (see
+      ci/build_cuopt_java_jar.sh); mvn test/verify should not activate it.
     -->
     <profile>
       <id>attach-source-javadoc</id>
@@ -227,6 +247,46 @@ SPDX-License-Identifier: Apache-2.0
           </plugin>
         </plugins>
       </build>
+    </profile>
+    <!--
+      Runs the same tests against an already-packaged classifier JAR rather than the classes
+      built from source. Activate with -Ppackaged-jar-tests -Dcuopt.jar.path=<classifier.jar>.
+
+      Main compilation is skipped so the JAR is the only thing providing the classes and the
+      native libraries; PackagedJarOriginCheck then asserts that is really where they came from.
+    -->
+    <profile>
+      <id>packaged-jar-tests</id>
+      <properties>
+        <maven.main.skip>true</maven.main.skip>
+        <cuopt.surefire.excludes>**/NothingIsExcludedHere.java</cuopt.surefire.excludes>
+      </properties>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <version>3.5.2</version>
+            <configuration>
+              <!-- PackagedJarOriginCheck matches none of surefire's default name patterns, so
+                   it has to be named explicitly alongside them. -->
+              <includes>
+                <include>**/*Test.java</include>
+                <include>**/PackagedJarOriginCheck.java</include>
+              </includes>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+      <dependencies>
+        <dependency>
+          <groupId>com.nvidia.cuopt</groupId>
+          <artifactId>cuopt-packaged</artifactId>
+          <version>${project.version}</version>
+          <scope>system</scope>
+          <systemPath>${cuopt.jar.path}</systemPath>
+        </dependency>
+      </dependencies>
     </profile>
   </profiles>
 </project>
