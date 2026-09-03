@@ -16,9 +16,11 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <functional>
 #include <future>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -321,6 +323,8 @@ class cut_pool_t {
   // We expect that the cut is violated by the current relaxation xstar.
   void add_cut(cut_type_t cut_type, const inequality_t<i_t, f_t>& cut);
 
+  i_t count_violated_cuts(const std::vector<f_t>& x_relax);
+
   void score_cuts(std::vector<f_t>& x_relax);
 
   // We return the cuts in the form best_cuts*x <= best_rhs
@@ -329,6 +333,8 @@ class cut_pool_t {
                     std::vector<cut_type_t>& best_cut_types);
 
   void age_cuts();
+
+  void clear();
 
   void drop_cuts();
 
@@ -677,19 +683,20 @@ class cut_generation_t {
   {
   }
 
-  bool generate_cuts(const simplex::lp_problem_t<i_t, f_t>& lp,
-                     const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
-                     csr_matrix_t<i_t, f_t>& Arow,
-                     const std::vector<i_t>& new_slacks,
-                     const std::vector<simplex::variable_type_t>& var_types,
-                     simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
-                     const std::vector<f_t>& xstar,
-                     const std::vector<f_t>& ystar,
-                     const std::vector<f_t>& zstar,
-                     const std::vector<i_t>& basic_list,
-                     const std::vector<i_t>& nonbasic_list,
-                     variable_bounds_t<i_t, f_t>& variable_bounds,
-                     f_t start_time);
+  bool generate_cuts(
+    const simplex::lp_problem_t<i_t, f_t>& lp,
+    const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+    csr_matrix_t<i_t, f_t>& Arow,
+    const std::vector<i_t>& new_slacks,
+    const std::vector<simplex::variable_type_t>& var_types,
+    std::optional<std::reference_wrapper<simplex::basis_update_mpf_t<i_t, f_t>>> basis_update,
+    const std::vector<f_t>& xstar,
+    const std::vector<f_t>& ystar,
+    const std::vector<f_t>& zstar,
+    std::optional<std::reference_wrapper<const std::vector<i_t>>> basic_list,
+    std::optional<std::reference_wrapper<const std::vector<i_t>>> nonbasic_list,
+    variable_bounds_t<i_t, f_t>& variable_bounds,
+    f_t start_time);
 
  private:
   // Generate all mixed integer gomory cuts
@@ -1021,7 +1028,8 @@ class complemented_mixed_integer_rounding_cut_t {
                                 const std::vector<simplex::variable_type_t>& var_types,
                                 const std::vector<f_t>& transformed_xstar,
                                 inequality_t<i_t, f_t>& transformed_cut,
-                                f_t& work_estimate);
+                                f_t& work_estimate,
+                                const std::atomic<int>* concurrent_halt = nullptr);
 
   bool scale_uncomplement_and_generate_cut(const std::vector<simplex::variable_type_t>& var_types,
                                            const std::vector<f_t>& transformed_xstar,
