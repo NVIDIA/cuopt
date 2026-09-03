@@ -674,7 +674,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
       early_gpufj.reset();  // Free GPU memory
     }
 
-    if (early_cpufj && run_presolve && presolve_result_opt.has_value()) {
+    if (early_cpufj) {
       early_cpufj->stop();
       if (early_cpufj->solution_found()) {
         CUOPT_LOG_DEBUG(
