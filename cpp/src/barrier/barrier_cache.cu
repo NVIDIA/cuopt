@@ -30,8 +30,9 @@ struct barrier_cache_t::impl {
 
   std::unique_ptr<rmm::cuda_stream> stream;
   std::unique_ptr<raft::handle_t> handle;
-  barrier_iteration_data_ptr iteration_data;
+  // Destroy iteration_data before transform: it may const-ref A/Q stored on the transform.
   std::unique_ptr<barrier_transform_t> transform;
+  barrier_iteration_data_ptr iteration_data;
   bool c_dirty{false};
 };
 
@@ -111,12 +112,16 @@ void barrier_cache_t::update_linear_objective(double const* c, int n)
       crushed[j] += impl_->transform->linear_obj_shift[j];
     }
   }
-  try {
-    barrier::apply_barrier_linear_objective(
-      *impl_->iteration_data, crushed.data(), static_cast<int>(crushed.size()));
-  } catch (std::invalid_argument const& e) {
-    cuopt_expects(false, error_type_t::ValidationError, "%s", e.what());
-  }
+  // The next solve builds its solver from barrier_lp, so keep its objective and the cached
+  // iteration workspace on the same c.
+  auto& barrier_objective = impl_->transform->barrier_lp->objective;
+  cuopt_expects(barrier_objective.size() == crushed.size(),
+                error_type_t::ValidationError,
+                "update_linear_objective: crushed objective size does not match the cached "
+                "barrier LP.");
+  barrier_objective = crushed;
+  barrier::apply_barrier_linear_objective(
+    *impl_->iteration_data, crushed.data(), static_cast<int>(crushed.size()));
   impl_->c_dirty = true;
 }
 

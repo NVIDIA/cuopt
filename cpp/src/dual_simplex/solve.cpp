@@ -437,7 +437,7 @@ lp_status_t solve_linear_program_with_barrier(
     barrier::barrier_solver_t<i_t, f_t> barrier_solver(
       *xf->barrier_lp, xf->presolve_info, barrier_settings);
     lp_status_t barrier_status =
-      barrier_solver.barrier_advanced_solve(start_time, barrier_solution, cache);
+      barrier_solver.solve_with_cache(start_time, barrier_solution, cache);
     if (barrier_status == lp_status_t::OPTIMAL) {
       unscale_uncrush_barrier_to_user(user_problem,
                                       cache->handle_ptr(),
@@ -489,44 +489,51 @@ lp_status_t solve_linear_program_with_barrier(
   // Solve using barrier
   lp_solution_t<i_t, f_t> barrier_solution(barrier_lp.num_rows, barrier_lp.num_cols);
 
-  barrier::barrier_solver_t<i_t, f_t> barrier_solver(barrier_lp, presolve_info, barrier_settings);
+  lp_problem_t<i_t, f_t> const* solver_lp = &barrier_lp;
+  if (cache != nullptr) {
+    cache->clear();
+    auto xf                            = std::make_unique<cuopt::mathematical_optimization::barrier_transform_t>();
+    xf->user_num_cols                  = user_problem.num_cols;
+    xf->user_num_rows                  = user_problem.num_rows;
+    xf->original_num_cols              = original_lp.num_cols;
+    xf->original_num_rows              = original_lp.num_rows;
+    xf->obj_scale                      = user_problem.obj_scale;
+    xf->obj_constant                   = user_problem.obj_constant;
+    xf->row_sense                      = user_problem.row_sense;
+    xf->cone_var_start                 = user_problem.cone_var_start;
+    xf->second_order_cone_dims         = user_problem.second_order_cone_dims;
+    xf->expanded_original_num_cols     = user_problem.original_num_cols;
+    xf->original_col_to_expanded_col   = user_problem.original_col_to_expanded_col;
+    xf->presolve_info                  = presolve_info;
+    xf->column_scales                  = column_scales;
+    xf->row_scales                     = row_scales;
+    xf->barrier_lp                     = std::make_unique<lp_problem_t<i_t, f_t>>(barrier_lp);
+    solver_lp                          = xf->barrier_lp.get();
+    cache->store_transform(std::move(xf));
+  }
+
+  barrier::barrier_solver_t<i_t, f_t> barrier_solver(*solver_lp, presolve_info, barrier_settings);
   lp_status_t barrier_status = barrier_solver.solve(start_time, barrier_solution, cache);
 
   if (cache != nullptr) {
     if (barrier_status == lp_status_t::OPTIMAL) {
-      auto xf           = std::make_unique<cuopt::mathematical_optimization::barrier_transform_t>();
-      xf->user_num_cols = user_problem.num_cols;
-      xf->user_num_rows = user_problem.num_rows;
-      xf->original_num_cols            = original_lp.num_cols;
-      xf->original_num_rows            = original_lp.num_rows;
-      xf->obj_scale                    = user_problem.obj_scale;
-      xf->obj_constant                 = user_problem.obj_constant;
-      xf->row_sense                    = user_problem.row_sense;
-      xf->cone_var_start               = user_problem.cone_var_start;
-      xf->second_order_cone_dims       = user_problem.second_order_cone_dims;
-      xf->expanded_original_num_cols   = user_problem.original_num_cols;
-      xf->original_col_to_expanded_col = user_problem.original_col_to_expanded_col;
-      xf->presolve_info                = presolve_info;
-      xf->column_scales                = column_scales;
-      xf->row_scales                   = row_scales;
-      xf->barrier_lp                   = std::make_unique<lp_problem_t<i_t, f_t>>(barrier_lp);
+      auto* xf = cache->transform();
       {
         try {
           auto crushed = cuopt::mathematical_optimization::crush_user_linear_objective(
             *xf, user_problem.objective.data(), user_problem.num_cols);
-          xf->linear_obj_shift.resize(static_cast<std::size_t>(barrier_lp.num_cols), 0.0);
-          if (static_cast<int>(crushed.size()) == barrier_lp.num_cols) {
-            for (int j = 0; j < barrier_lp.num_cols; ++j) {
+          xf->linear_obj_shift.resize(static_cast<std::size_t>(solver_lp->num_cols), 0.0);
+          if (static_cast<int>(crushed.size()) == solver_lp->num_cols) {
+            for (int j = 0; j < solver_lp->num_cols; ++j) {
               xf->linear_obj_shift[static_cast<std::size_t>(j)] =
-                barrier_lp.objective[static_cast<std::size_t>(j)] -
+                solver_lp->objective[static_cast<std::size_t>(j)] -
                 crushed[static_cast<std::size_t>(j)];
             }
           }
         } catch (std::exception const&) {
-          xf->linear_obj_shift.assign(static_cast<std::size_t>(barrier_lp.num_cols), 0.0);
+          xf->linear_obj_shift.assign(static_cast<std::size_t>(solver_lp->num_cols), 0.0);
         }
       }
-      cache->store_transform(std::move(xf));
     } else {
       cache->clear();
     }
