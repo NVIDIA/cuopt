@@ -14,12 +14,11 @@
 #include <thrust/tuple.h>
 #include <mip_heuristics/logger.cuh>
 #include <mip_heuristics/mip_constants.hpp>
-#include <utilities/seed_generator.cuh>
 
 namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
-lb_bounds_repair_t<i_t, f_t>::lb_bounds_repair_t(const raft::handle_t* handle_ptr)
+lb_bounds_repair_t<i_t, f_t>::lb_bounds_repair_t(const raft::handle_t* handle_ptr, uint64_t seed)
   : candidates(handle_ptr),
     best_bounds(handle_ptr),
     cstr_violations_up(0, handle_ptr->get_stream()),
@@ -27,7 +26,7 @@ lb_bounds_repair_t<i_t, f_t>::lb_bounds_repair_t(const raft::handle_t* handle_pt
     violated_constraints(0, handle_ptr->get_stream()),
     violated_cstr_map(0, handle_ptr->get_stream()),
     total_vio(handle_ptr->get_stream()),
-    gen(cuopt::seed_generator::get_seed()),
+    gen(seed),
     cycle_vector(MAX_CYCLE_SEQUENCE, -1)
 {
 }

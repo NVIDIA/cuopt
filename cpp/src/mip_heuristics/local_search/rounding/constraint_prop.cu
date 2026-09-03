@@ -9,7 +9,6 @@
 #include <mip_heuristics/relaxed_lp/relaxed_lp.cuh>
 #include <mip_heuristics/utils.cuh>
 #include <utilities/copy_helpers.hpp>
-#include <utilities/seed_generator.cuh>
 #include "constraint_prop.cuh"
 #include "simple_rounding.cuh"
 
@@ -33,7 +32,9 @@ constraint_prop_t<i_t, f_t>::constraint_prop_t(mip_solver_context_t<i_t, f_t>& c
     temp_sol(*context.problem_ptr),
     bounds_update(context),
     multi_probe(context),
-    bounds_repair(*context.problem_ptr, bounds_update),
+    bounds_repair(*context.problem_ptr,
+                  bounds_update,
+                  derive_seed(context.base_seed, rng_id_t::constraint_prop, 1)),
     conditional_bounds_update(*context.problem_ptr),
     set_vars(context.problem_ptr->n_variables, context.problem_ptr->handle_ptr->get_stream()),
     unset_vars(context.problem_ptr->n_variables, context.problem_ptr->handle_ptr->get_stream()),
@@ -41,7 +42,9 @@ constraint_prop_t<i_t, f_t>::constraint_prop_t(mip_solver_context_t<i_t, f_t>& c
     ub_restore(context.problem_ptr->n_variables, context.problem_ptr->handle_ptr->get_stream()),
     assignment_restore(context.problem_ptr->n_variables,
                        context.problem_ptr->handle_ptr->get_stream()),
-    rng(cuopt::seed_generator::get_seed(), 0, 0)
+    rng(derive_seed(context.base_seed, rng_id_t::constraint_prop, 0),
+        derive_stream(context.base_seed, rng_id_t::constraint_prop, 0),
+        0)
 {
 }
 
@@ -604,7 +607,7 @@ thrust::pair<f_t, f_t> constraint_prop_t<i_t, f_t>::generate_double_probing_pair
   if (probing_config.has_value()) {
     // for now get the first one
     auto [from_first, from_second] = probing_config.value().get().probing_values[unset_var_idx];
-    std::mt19937 rng(cuopt::seed_generator::get_seed());
+    std::mt19937 rng(this->rng.next_i64());
     std::uniform_real_distribution<float> dist(0.0f, 1.0f);
     f_t random_value  = dist(rng);
     f_t average_value = (from_first + from_second) / 2;
@@ -848,7 +851,7 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
 {
   using crit_t             = termination_criterion_t;
   auto& unset_integer_vars = unset_vars;
-  std::mt19937 rng(cuopt::seed_generator::get_seed());
+  std::mt19937 rng(this->rng.next_i64());
   lb_restore.resize(sol.problem_ptr->n_variables, sol.handle_ptr->get_stream());
   ub_restore.resize(sol.problem_ptr->n_variables, sol.handle_ptr->get_stream());
   assignment_restore.resize(sol.problem_ptr->n_variables, sol.handle_ptr->get_stream());
@@ -863,7 +866,7 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
   multi_probe.resize(*sol.problem_ptr);
   if (max_timer.check_time_limit()) {
     CUOPT_LOG_DEBUG("Time limit is reached before bounds prop rounding!");
-    sol.round_nearest();
+    sol.round_nearest(this->rng.next_u64());
     expand_device_copy(orig_sol.assignment, sol.assignment, sol.handle_ptr->get_stream());
     cuopt_func_call(orig_sol.test_variable_bounds());
     return orig_sol.compute_feasibility();
@@ -879,19 +882,19 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
     // round first unset_integer_vars.size() - 50, leave last 50 to be rounded by the algo
     i_t n_to_round = std::max(unset_integer_vars.size() - 50, 0lu);
     if (n_to_round > 0) {
-      thrust::for_each(
-        sol.handle_ptr->get_thrust_policy(),
-        unset_integer_vars.begin(),
-        unset_integer_vars.begin() + n_to_round,
-        [sol = sol.view(), seed = cuopt::seed_generator::get_seed()] __device__(i_t var_idx) {
-          raft::random::PCGenerator rng(seed, var_idx, 0);
-          auto var_bnd            = sol.problem.variable_bounds[var_idx];
-          sol.assignment[var_idx] = round_nearest(sol.assignment[var_idx],
-                                                  get_lower(var_bnd),
-                                                  get_upper(var_bnd),
-                                                  sol.problem.tolerances.integrality_tolerance,
-                                                  rng);
-        });
+      thrust::for_each(sol.handle_ptr->get_thrust_policy(),
+                       unset_integer_vars.begin(),
+                       unset_integer_vars.begin() + n_to_round,
+                       [sol = sol.view(), seed = this->rng.next_u64()] __device__(i_t var_idx) {
+                         raft::random::PCGenerator rng(seed, var_idx, 0);
+                         auto var_bnd = sol.problem.variable_bounds[var_idx];
+                         sol.assignment[var_idx] =
+                           round_nearest(sol.assignment[var_idx],
+                                         get_lower(var_bnd),
+                                         get_upper(var_bnd),
+                                         sol.problem.tolerances.integrality_tolerance,
+                                         rng);
+                       });
       find_unset_integer_vars(sol, unset_integer_vars);
     }
     set_bounds_on_fixed_vars(sol);
@@ -936,7 +939,7 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
     if (max_timer.check_time_limit()) {
       CUOPT_LOG_DEBUG("Second time limit is reached returning nearest rounding!");
       collapse_crossing_bounds(*sol.problem_ptr, *orig_sol.problem_ptr, sol.handle_ptr);
-      sol.round_nearest();
+      sol.round_nearest(this->rng.next_u64());
       timeout_happened = true;
       break;
     }
