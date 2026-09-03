@@ -19,12 +19,14 @@
 #include <future>
 #include <memory>
 #include <numeric>
+#include <span>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 
 namespace cuopt::mathematical_optimization::mip {
@@ -302,6 +304,105 @@ std::vector<std::vector<int>> find_mod2_row_combinations_for_test(
   int max_combinations,
   double max_work_estimate,
   double* work_estimate);
+
+// Groups integer entries by sparse set id using prefix offsets and one flat member array.
+// Repeated builds reuse the allocated storage. Entry order within each set is preserved.
+template <typename i_t>
+class compressed_set_groups_t {
+ public:
+  // Groups entries in [first, last) whose set ids are in [1, set_id_limit).
+  void build(i_t first, i_t last, i_t set_id_limit, const std::vector<i_t>& set_ids)
+  {
+    build_impl<false>(first, last, set_id_limit, set_ids, nullptr);
+  }
+
+  void build_with_entry_indices(i_t first,
+                                i_t last,
+                                i_t set_id_limit,
+                                const std::vector<i_t>& entry_indices,
+                                const std::vector<i_t>& set_ids)
+  {
+    build_impl<true>(first, last, set_id_limit, set_ids, &entry_indices);
+  }
+
+  // Entry order within a set matches input order, so position + 1 is its first later entry.
+  std::span<const i_t> entries_after(i_t set_id, i_t entry) const
+  {
+    if (set_id <= 0 || set_id >= static_cast<i_t>(bucket_by_set_.size())) { return {}; }
+    const i_t bucket = bucket_by_set_[set_id];
+    if (bucket < 0) { return {}; }
+    const i_t position = position_by_entry_[entry - first_entry_];
+    const i_t end      = set_starts_[bucket + 1];
+    return {entries_.data() + position + 1, static_cast<std::size_t>(end - position - 1)};
+  }
+
+ private:
+  template <bool use_entry_indices>
+  void build_impl(i_t first,
+                  i_t last,
+                  i_t set_id_limit,
+                  const std::vector<i_t>& set_ids,
+                  const std::vector<i_t>* entry_indices)
+  {
+    first_entry_ = first;
+    for (const i_t set_id : active_set_ids_) {
+      bucket_by_set_[set_id] = -1;
+    }
+    active_set_ids_.clear();
+    set_counts_.clear();
+    if (bucket_by_set_.size() < static_cast<std::size_t>(set_id_limit)) {
+      bucket_by_set_.resize(set_id_limit, -1);
+    }
+
+    for (i_t entry = first; entry < last; entry++) {
+      i_t set_id;
+      if constexpr (use_entry_indices) {
+        set_id = set_ids[(*entry_indices)[entry]];
+      } else {
+        set_id = set_ids[entry];
+      }
+      if (set_id > 0 && set_id < set_id_limit) {
+        i_t& bucket = bucket_by_set_[set_id];
+        if (bucket < 0) {
+          bucket = static_cast<i_t>(active_set_ids_.size());
+          active_set_ids_.push_back(set_id);
+          set_counts_.push_back(0);
+        }
+        set_counts_[bucket]++;
+      }
+    }
+
+    set_starts_.resize(set_counts_.size() + 1);
+    set_starts_[0] = 0;
+    std::inclusive_scan(set_counts_.begin(), set_counts_.end(), set_starts_.begin() + 1);
+    entries_.resize(set_starts_.back());
+    position_by_entry_.resize(last - first);
+    next_entry_in_set_ = set_starts_;
+    for (i_t entry = first; entry < last; entry++) {
+      i_t set_id;
+      if constexpr (use_entry_indices) {
+        set_id = set_ids[(*entry_indices)[entry]];
+      } else {
+        set_id = set_ids[entry];
+      }
+      if (set_id > 0 && set_id < set_id_limit) {
+        const i_t bucket                  = bucket_by_set_[set_id];
+        const i_t position                = next_entry_in_set_[bucket]++;
+        entries_[position]                = entry;
+        position_by_entry_[entry - first] = position;
+      }
+    }
+  }
+
+  i_t first_entry_{0};
+  std::vector<i_t> bucket_by_set_;
+  std::vector<i_t> active_set_ids_;
+  std::vector<i_t> set_counts_;
+  std::vector<i_t> set_starts_;
+  std::vector<i_t> next_entry_in_set_;
+  std::vector<i_t> entries_;
+  std::vector<i_t> position_by_entry_;
+};
 
 template <typename i_t, typename f_t>
 class cut_pool_t {
