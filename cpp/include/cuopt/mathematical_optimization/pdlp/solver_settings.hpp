@@ -22,7 +22,6 @@
 
 #include <cuda/std/span>
 
-
 namespace cuopt {
 namespace CUOPT_EXPORT mathematical_optimization {
 

@@ -43,7 +43,8 @@ struct barrier_transform_t {
   // Barrier linear objective minus crush(user c) from the first solve (Q*ell shift, etc.).
   std::vector<double> linear_obj_shift;
   std::unique_ptr<cuopt::mathematical_optimization::simplex::lp_problem_t<int, double>> barrier_lp;
-  // CSC Q with slack columns, as consumed by iteration_data_t. Not the same object as barrier_lp->Q.
+  // CSC Q with slack columns, as consumed by iteration_data_t. Not the same object as
+  // barrier_lp->Q.
   std::unique_ptr<csc_matrix_t<int, double>> barrier_Q;
 };
 

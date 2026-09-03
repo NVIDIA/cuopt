@@ -26,6 +26,7 @@
 #include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/solver.cuh>
 
+#include <barrier/barrier_transform.hpp>
 #include <cuopt/mathematical_optimization/backend_selection.hpp>
 #include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
 #include <cuopt/mathematical_optimization/cpu_optimization_problem_solution.hpp>
@@ -36,7 +37,6 @@
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/solve.hpp>
 #include <cuopt/mathematical_optimization/utilities/barrier_cache.hpp>
-#include <barrier/barrier_transform.hpp>
 
 #include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
 #include <utilities/copy_helpers.hpp>
@@ -1878,13 +1878,12 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
 
     auto qcqp_timer = cuopt::timer_t(settings.time_limit);
 
-    auto* cache = settings.barrier_cache;
+    auto* cache    = settings.barrier_cache;
     auto const* xf = (cache != nullptr && cache->c_dirty()) ? cache->transform() : nullptr;
     const bool reuse_from_cache =
       settings.user_problem_file.empty() && xf != nullptr && xf->barrier_lp != nullptr &&
-      settings.barrier_presolve_bound_free_variables == 0 &&
-      op_problem.has_quadratic_objective() && !op_problem.has_quadratic_constraints() &&
-      xf->second_order_cone_dims.empty() &&
+      settings.barrier_presolve_bound_free_variables == 0 && op_problem.has_quadratic_objective() &&
+      !op_problem.has_quadratic_constraints() && xf->second_order_cone_dims.empty() &&
       static_cast<int>(xf->row_sense.size()) == xf->user_num_rows &&
       op_problem.get_n_variables() == xf->user_num_cols &&
       op_problem.get_n_constraints() == xf->user_num_rows;

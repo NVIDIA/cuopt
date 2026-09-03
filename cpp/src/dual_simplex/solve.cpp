@@ -492,23 +492,23 @@ lp_status_t solve_linear_program_with_barrier(
   lp_problem_t<i_t, f_t> const* solver_lp = &barrier_lp;
   if (cache != nullptr) {
     cache->clear();
-    auto xf                            = std::make_unique<cuopt::mathematical_optimization::barrier_transform_t>();
-    xf->user_num_cols                  = user_problem.num_cols;
-    xf->user_num_rows                  = user_problem.num_rows;
-    xf->original_num_cols              = original_lp.num_cols;
-    xf->original_num_rows              = original_lp.num_rows;
-    xf->obj_scale                      = user_problem.obj_scale;
-    xf->obj_constant                   = user_problem.obj_constant;
-    xf->row_sense                      = user_problem.row_sense;
-    xf->cone_var_start                 = user_problem.cone_var_start;
-    xf->second_order_cone_dims         = user_problem.second_order_cone_dims;
-    xf->expanded_original_num_cols     = user_problem.original_num_cols;
-    xf->original_col_to_expanded_col   = user_problem.original_col_to_expanded_col;
-    xf->presolve_info                  = presolve_info;
-    xf->column_scales                  = column_scales;
-    xf->row_scales                     = row_scales;
-    xf->barrier_lp                     = std::make_unique<lp_problem_t<i_t, f_t>>(barrier_lp);
-    solver_lp                          = xf->barrier_lp.get();
+    auto xf           = std::make_unique<cuopt::mathematical_optimization::barrier_transform_t>();
+    xf->user_num_cols = user_problem.num_cols;
+    xf->user_num_rows = user_problem.num_rows;
+    xf->original_num_cols            = original_lp.num_cols;
+    xf->original_num_rows            = original_lp.num_rows;
+    xf->obj_scale                    = user_problem.obj_scale;
+    xf->obj_constant                 = user_problem.obj_constant;
+    xf->row_sense                    = user_problem.row_sense;
+    xf->cone_var_start               = user_problem.cone_var_start;
+    xf->second_order_cone_dims       = user_problem.second_order_cone_dims;
+    xf->expanded_original_num_cols   = user_problem.original_num_cols;
+    xf->original_col_to_expanded_col = user_problem.original_col_to_expanded_col;
+    xf->presolve_info                = presolve_info;
+    xf->column_scales                = column_scales;
+    xf->row_scales                   = row_scales;
+    xf->barrier_lp                   = std::make_unique<lp_problem_t<i_t, f_t>>(barrier_lp);
+    solver_lp                        = xf->barrier_lp.get();
     cache->store_transform(std::move(xf));
   }
 

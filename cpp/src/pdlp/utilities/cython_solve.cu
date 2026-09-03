@@ -18,8 +18,8 @@
 #include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
 #include <cuopt/mathematical_optimization/solve.hpp>
 #include <cuopt/mathematical_optimization/solver_settings.hpp>
-#include <cuopt/mathematical_optimization/utilities/cython_solve.hpp>
 #include <cuopt/mathematical_optimization/utilities/barrier_cache.hpp>
+#include <cuopt/mathematical_optimization/utilities/cython_solve.hpp>
 
 #include <mip_heuristics/logger.hpp>
 #include <utilities/copy_helpers.hpp>
@@ -108,9 +108,8 @@ std::unique_ptr<solver_ret_t> call_solve(
 {
   raft::common::nvtx::range fun_scope("Call Solve");
 
-  cuopt_expects(data_model != nullptr,
-                error_type_t::ValidationError,
-                "call_solve: data_model is null.");
+  cuopt_expects(
+    data_model != nullptr, error_type_t::ValidationError, "call_solve: data_model is null.");
   cuopt_expects(solver_settings != nullptr,
                 error_type_t::ValidationError,
                 "call_solve: solver_settings is null.");
@@ -120,18 +119,18 @@ std::unique_ptr<solver_ret_t> call_solve(
 
   solver_ret_t response;
 
-  auto& pdlp_settings = solver_settings->get_pdlp_settings();
+  auto& pdlp_settings       = solver_settings->get_pdlp_settings();
   const bool sequence_solve = pdlp_settings.sequence_solve;
   const bool barrier_path =
     data_model->has_quadratic_objective() || data_model->has_quadratic_constraints() ||
     pdlp_settings.method == cuopt::mathematical_optimization::method_t::Barrier;
-  const bool want_cache    = (cache_in != nullptr || sequence_solve) && barrier_path &&
-                            memory_backend == cuopt::mathematical_optimization::memory_backend_t::GPU &&
-                            !is_batch_mode;
+  const bool want_cache =
+    (cache_in != nullptr || sequence_solve) && barrier_path &&
+    memory_backend == cuopt::mathematical_optimization::memory_backend_t::GPU && !is_batch_mode;
 
   std::unique_ptr<barrier_cache_t> owned_cache;
   barrier_cache_t* active_cache = cache_in;
-  pdlp_settings.barrier_cache     = nullptr;
+  pdlp_settings.barrier_cache   = nullptr;
 
   // Create problem instance and CUDA resources based on memory backend.
   // Do not construct rmm::cuda_stream until we know we are on GPU: CPU-only /
@@ -151,7 +150,8 @@ std::unique_ptr<solver_ret_t> call_solve(
       pdlp_settings.barrier_cache = active_cache;
     }
 
-    auto problem = cuopt::mathematical_optimization::optimization_problem_t<int, double>(solve_handle);
+    auto problem =
+      cuopt::mathematical_optimization::optimization_problem_t<int, double>(solve_handle);
     cuopt::mathematical_optimization::populate_from_data_model_view(
       &problem, data_model, solver_settings, solve_handle);
 
@@ -332,7 +332,8 @@ std::pair<std::vector<std::unique_ptr<solver_ret_t>>, double> call_batch_solve(
 
 #pragma omp parallel for num_threads(max_thread)
   for (std::size_t i = 0; i < size; ++i)
-    list[i] = call_solve(data_models[i], solver_settings, cudaStreamNonBlocking, is_batch_mode, nullptr);
+    list[i] =
+      call_solve(data_models[i], solver_settings, cudaStreamNonBlocking, is_batch_mode, nullptr);
 
   auto end      = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start_solver);
