@@ -10,7 +10,9 @@
 #include <cuopt/error.hpp>
 #include <utilities/macros.cuh>
 
+#include <cstdlib>
 #include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 
