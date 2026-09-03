@@ -15,6 +15,7 @@
 #include <pdlp/solve.cuh>
 
 #include <branch_and_bound/branch_and_bound.hpp>
+#include <branch_and_bound/concurrent_root_solver.hpp>
 #include <branch_and_bound/symmetry.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/solve.hpp>
@@ -453,7 +454,20 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 
     // Set the primal heuristics -> branch and bound callback
     if (context.settings.determinism_mode == CUOPT_MODE_OPPORTUNISTIC) {
-      branch_and_bound->set_concurrent_lp_root_solve(true);
+      auto concurrent_root_settings = make_mip_root_lp_settings<i_t, f_t>(context.settings);
+      branch_and_bound->configure_concurrent_lp_root_solve(
+        context.problem_ptr,
+        concurrent_root_settings,
+        context.settings.heuristic_params.root_lp_max_time,
+        context.settings.heuristic_params.root_lp_time_ratio);
+
+      branch_and_bound->set_root_lp_solution_callback(
+        std::bind(&diversity_manager_t<i_t, f_t>::set_root_lp_solution,
+                  &dm,
+                  std::placeholders::_1,
+                  std::placeholders::_2,
+                  std::placeholders::_3,
+                  std::placeholders::_4));
 
       context.problem_ptr->branch_and_bound_callback =
         std::bind(&mip::branch_and_bound_t<i_t, f_t>::set_solution_from_heuristics,
@@ -471,17 +485,6 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 
     context.work_unit_scheduler_.register_context(branch_and_bound->get_work_unit_context());
     // context.work_unit_scheduler_.verbose = true;
-
-    context.problem_ptr->set_root_relaxation_solution_callback =
-      std::bind(&mip::branch_and_bound_t<i_t, f_t>::set_root_relaxation_solution,
-                branch_and_bound.get(),
-                std::placeholders::_1,
-                std::placeholders::_2,
-                std::placeholders::_3,
-                std::placeholders::_4,
-                std::placeholders::_5,
-                std::placeholders::_6,
-                std::placeholders::_7);
 
     if (timer_.check_time_limit()) {
       CUOPT_LOG_INFO("Time limit reached during B&B setup");

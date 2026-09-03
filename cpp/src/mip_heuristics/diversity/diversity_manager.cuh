@@ -71,6 +71,12 @@ class diversity_manager_t {
   void set_simplex_solution(const std::vector<f_t>& solution,
                             const std::vector<f_t>& dual_solution,
                             f_t objective);
+  // Returns whether a usable LP relaxation was consumed.
+  bool consume_staged_root_lp_solution();
+  void set_root_lp_solution(const std::vector<f_t>& solution,
+                            const std::vector<f_t>& dual_solution,
+                            f_t user_objective,
+                            bool optimal);
   mip_solver_context_t<i_t, f_t>& context;
   mip::branch_and_bound_t<i_t, f_t>* branch_and_bound_ptr;
   problem_t<i_t, f_t>* problem_ptr;
@@ -82,6 +88,12 @@ class diversity_manager_t {
   std::vector<f_t> staged_simplex_solution;
   std::vector<f_t> staged_simplex_dual_solution;
   f_t staged_simplex_objective{std::numeric_limits<f_t>::infinity()};
+  // Concurrent GPU root LP handed over by branch and bound before crossover runs.
+  std::atomic<bool> root_lp_solution_exists{false};
+  std::vector<f_t> staged_root_lp_solution;
+  std::vector<f_t> staged_root_lp_dual_solution;
+  f_t staged_root_lp_objective{std::numeric_limits<f_t>::infinity()};
+  bool staged_root_lp_optimal{false};
   local_search_t<i_t, f_t> ls;
   cuopt::timer_t timer;
   bound_prop_recombiner_t<i_t, f_t> bound_prop_recombiner;

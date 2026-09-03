@@ -84,6 +84,9 @@ template <typename i_t, typename f_t>
 struct mip_symmetry_t;
 
 template <typename i_t, typename f_t>
+class problem_t;
+
+template <typename i_t, typename f_t>
 struct nondeterministic_policy_t;
 template <typename i_t, typename f_t, typename WorkerT>
 struct deterministic_policy_base_t;
@@ -146,7 +149,32 @@ class branch_and_bound_t {
     user_bound_callback_ = std::move(callback);
   }
 
+  // Hand the concurrent GPU root LP (PDLP/barrier) to the primal heuristics as soon as it
+  // finishes. The heuristics must not have to wait for crossover or dual simplex to complete
+  // the root, since on hard instances neither finishes within the time limit.
+  // Arguments are primal, dual, the user-space objective, and whether the LP proved optimality.
+  void set_root_lp_solution_callback(
+    std::function<void(const std::vector<f_t>&, const std::vector<f_t>&, f_t, bool)> callback)
+  {
+    root_lp_solution_callback_ = std::move(callback);
+  }
+
   void set_concurrent_lp_root_solve(bool enable) { enable_concurrent_lp_root_solve_ = enable; }
+  void configure_concurrent_lp_root_solve(problem_t<i_t, f_t>* problem,
+                                          const pdlp_solver_settings_t<i_t, f_t>& settings,
+                                          f_t max_time,
+                                          f_t time_ratio)
+  {
+    concurrent_root_problem_         = problem;
+    concurrent_root_settings_        = std::make_unique<pdlp_solver_settings_t<i_t, f_t>>(settings);
+    concurrent_root_max_time_        = max_time;
+    concurrent_root_time_ratio_      = time_ratio;
+    enable_concurrent_lp_root_solve_ = true;
+  }
+  void notify_concurrent_root_problem_ready()
+  {
+    concurrent_root_problem_ready_.store(true, std::memory_order_release);
+  }
 
   // Seed the global upper bound from an external source (e.g., early FJ during presolve).
   // `bound` must be in B&B's internal objective space.
@@ -251,6 +279,12 @@ class branch_and_bound_t {
   omp_atomic_t<f_t> root_lp_current_lower_bound_;
   omp_atomic_t<bool> solving_root_relaxation_{false};
   bool enable_concurrent_lp_root_solve_{false};
+  problem_t<i_t, f_t>* concurrent_root_problem_{nullptr};
+  std::unique_ptr<pdlp_solver_settings_t<i_t, f_t>> concurrent_root_settings_;
+  f_t concurrent_root_max_time_{0};
+  f_t concurrent_root_time_ratio_{0};
+  std::atomic<bool> concurrent_root_problem_ready_{false};
+  std::atomic<int> gpu_root_concurrent_halt_{0};
   std::atomic<int> root_concurrent_halt_{0};
   std::atomic<int> node_concurrent_halt_{0};
   bool is_root_solution_set{false};
@@ -287,6 +321,8 @@ class branch_and_bound_t {
   // corresponding subtree.
   omp_atomic_t<f_t> lower_bound_numerical_;
   std::function<void(f_t)> user_bound_callback_;
+  std::function<void(const std::vector<f_t>&, const std::vector<f_t>&, f_t, bool)>
+    root_lp_solution_callback_;
 
   void print_table_header();
   void report_heuristic(f_t obj, heuristics_origin_t origin);
