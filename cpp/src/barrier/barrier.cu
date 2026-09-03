@@ -995,7 +995,7 @@ class iteration_data_t {
   {
     const bool has_soc = has_cones();
     f_t degree = static_cast<f_t>(num_primal_variables) + static_cast<f_t>(num_upper_bounds);
-    // Direct QP free variables (linear only): no x*z complementarity in the barrier degree.
+    // Direct QP free variables (linear only): no x·z complementarity in the barrier degree.
     degree -= static_cast<f_t>(n_direct_free_linear);
     if (has_soc) {
       degree -= static_cast<f_t>(cone_entry_count());
@@ -1081,7 +1081,7 @@ class iteration_data_t {
 
       // Refactor: update linear primal diagonals (j < cone_start() for SOCP) with
       // -q_diag - d_j - dual_perturb. Cone Hessian block is overwritten by scatter when has_soc.
-      // Direct-free linear vars: d_j = 0 here and D*x = 0 in augmented_multiply so the Q/D part
+      // Direct-free linear vars: d_j = 0 here and D·x = 0 in augmented_multiply so the Q/D part
       // of the diagonal matches the matvec (-q_diag); dual_perturb remains factorization-only.
       thrust::for_each_n(rmm::exec_policy(handle_ptr->get_stream()),
                          thrust::make_counting_iterator<i_t>(0),
@@ -2657,7 +2657,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   if (init_strategy == barrier_dual_initial_point_t::Automatic ||
       init_strategy == barrier_dual_initial_point_t::LustigMarstenShanno) {
     // Use the dual starting point suggested by the paper
-    // On Implementing Mehrotra's Predictor-Corrector Interior-Point Method for Linear Programming
+    // On Implementing Mehrotra’s Predictor–Corrector Interior-Point Method for Linear Programming
     // Irvin J. Lustig, Roy E. Marsten, and David F. Shanno
     // SIAM Journal on Optimization 1992 2:3, 435-449
     // y = 0
@@ -3175,7 +3175,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       }
 
       // Adaptive regularization: increase/decrease based on IR quality.
-      // Only adapt on calls where we actually (re)factorized -- the affine step.
+      // Only adapt on calls where we actually (re)factorized — the affine step.
       if (did_factorize && should_use_adaptive_regularization(settings, data.has_cones())) {
         constexpr f_t min_perturb = 1e-8;
         constexpr f_t max_perturb = 1e-1;
@@ -4830,11 +4830,13 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(
                           static_cast<int>(lp.second_order_cone_dims.size()));
     }
 
+    // Compute the number of free variables
     i_t num_free_variables = presolve_info.free_variable_pairs.size() / 2;
     if (num_free_variables > 0) {
       settings.log.printf("Free variables              : %d\n", num_free_variables);
     }
 
+    // Compute the number of upper bounds
     i_t num_upper_bounds = 0;
     for (i_t j = 0; j < n; j++) {
       if (lp.upper[j] < inf) { num_upper_bounds++; }
@@ -4877,6 +4879,9 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(
     settings.log.printf("Error in barrier_solver_t: %s\n", e.what());
     return lp_status_t::NUMERICAL_ISSUES;
   } catch (const std::bad_alloc& e) {
+    // Covers rmm::out_of_memory and any other allocation failure. The barrier sizes its normal
+    // equations from the problem, so a shape it cannot hold is a property of the input rather
+    // than a defect, and the solvers running concurrently with it are unaffected.
     settings.log.printf("Out of memory in barrier_solver_t: %s\n", e.what());
     return lp_status_t::NUMERICAL_ISSUES;
   }
