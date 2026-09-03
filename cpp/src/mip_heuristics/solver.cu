@@ -404,7 +404,8 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
         ? 1
         : context.settings.dual_degenerate_feasibility_pump;
     branch_and_bound_settings.primal_degenerate_pivots =
-      context.settings.primal_degenerate_pivots == -1 ? 1 : context.settings.primal_degenerate_pivots;
+      context.settings.primal_degenerate_pivots == -1 ? 1
+                                                      : context.settings.primal_degenerate_pivots;
     branch_and_bound_settings.dual_degenerate_pivots =
       context.settings.dual_degenerate_pivots == -1 ? 1 : context.settings.dual_degenerate_pivots;
     branch_and_bound_settings.symmetry = context.settings.symmetry;

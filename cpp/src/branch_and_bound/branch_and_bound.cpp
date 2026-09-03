@@ -3466,7 +3466,7 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
   num_fractional = fractional_variables(settings_, root_relax_soln_.x, var_types_, fractional);
 
   f_t pivot_out_integer_variables_start_time = tic();
-  i_t num_integer_increased = 0;
+  i_t num_integer_increased                  = 0;
   if (settings_.dual_degenerate_pivots != 0) {
     num_integer_increased = pivot_out_integer_variables(original_lp_,
                                                         settings_,
@@ -5468,7 +5468,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                        upper_bound_.load());
 
   f_t pivot_out_integer_variables_start_time = tic();
-  i_t num_integer_increased = 0;
+  i_t num_integer_increased                  = 0;
   if (settings_.dual_degenerate_pivots != 0) {
     num_integer_increased = pivot_out_integer_variables(original_lp_,
                                                         settings_,
