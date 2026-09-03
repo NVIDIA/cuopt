@@ -1083,6 +1083,69 @@ class iteration_data_t {
     }
   }
 
+  // One-time, one-directional fallback from the ADAT (normal-equations) formulation to
+  // the augmented KKT formulation, triggered reactively when the ADAT solve's GMRES-IR
+  // residual indicates the normal equations have become too ill-conditioned to trust
+  // (see the call site in gpu_compute_search_direction). A static, pre-iteration check
+  // cannot catch this: the barrier diagonal D is uniform at iteration 0 and only develops
+  // the huge dynamic range that breaks ADAT progressively, over many iterations, as
+  // variables converge to their bounds.
+  //
+  // Mirrors exactly what construction does when a solve starts out augmented from the
+  // start: allocate the augmented-specific buffers, upload device CSC copies of A/A^T/Q,
+  // build the augmented CSR structure (form_augmented(true)), and run cuDSS's symbolic
+  // analysis (chol->analyze) against a freshly constructed handle. All of that is
+  // necessary here, not optional: the per-iteration path used every other call
+  // (form_augmented() with first_call=false, chol->factorize()) only *updates values* at
+  // sparse positions a prior first_call=true established, and only *numerically*
+  // factorizes a pattern a prior analyze() already built the elimination tree/workspace
+  // for -- calling it against a never-analyzed chol and a never-built device_augmented
+  // corrupts memory instead of erroring cleanly (this was the actual bug behind an
+  // earlier cudaErrorIllegalAddress crash here; a full cudaDeviceSynchronize() before
+  // tearing down the old chol did not fix it, because the missing analyze/build was the
+  // real cause, not a stream race).
+  void switch_to_augmented()
+  {
+    raft::common::nvtx::range fun_scope("Barrier: switch to augmented");
+    const i_t n = A.n;
+    const i_t m = A.m;
+
+    use_augmented   = true;
+    n_dense_columns = 0;
+
+    const i_t augmented_size = augmented_system_size(n, m);
+    d_augmented_rhs_.resize(augmented_size, stream_view_);
+    d_augmented_soln_.resize(augmented_size, stream_view_);
+    d_aug_x1_.resize(n, stream_view_);
+    d_aug_x2_.resize(m, stream_view_);
+    d_aug_y1_.resize(n, stream_view_);
+    d_aug_y2_.resize(m, stream_view_);
+    d_aug_y_exp_.resize(augmented_expansion_count(), stream_view_);
+    d_aug_y_exp_orig_.resize(augmented_expansion_count(), stream_view_);
+
+    device_A_csc_.copy(A, handle_ptr->get_stream());
+    device_AT_csc_.copy(AT, handle_ptr->get_stream());
+    if (Q.n > 0 && Q.col_start[Q.n] > 0) {
+      device_Q_csc_.copy(Q, handle_ptr->get_stream());
+    } else {
+      device_Q_csc_.reset_empty(A.n, A.n, handle_ptr->get_stream());
+    }
+
+    // Free the ADAT factorization's cuDSS handle/workspace before allocating the
+    // augmented one, so the two never coexist and inflate peak GPU memory.
+    chol.reset();
+    chol =
+      std::make_unique<sparse_cholesky_cudss_t<i_t, f_t>>(handle_ptr, settings_, augmented_size);
+    chol->set_positive_definite(false);
+
+    // Build the augmented CSR structure and run symbolic analysis against the fresh
+    // chol -- exactly the construction-time sequence for a solve that starts augmented.
+    form_augmented(true);
+    chol->analyze(device_augmented);
+
+    has_factorization = false;
+  }
+
   void form_adat(bool first_call = false)
   {
     handle_ptr->sync_stream();
@@ -3196,6 +3259,37 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
           iterative_refinement<i_t, f_t, adat_op_t>(adat_op, data.d_h_, data.d_dy_);
         if (adat_solve_err > 1e-1) {
           settings.log.printf("||ADAT*dy - h|| %e after IR\n", adat_solve_err);
+        }
+
+        // Reactive fallback: even GMRES-IR on top of the direct Cholesky solve cannot
+        // fix a Newton direction once the normal-equations system itself has become
+        // this ill-conditioned. Rather than let the barrier loop keep grinding on
+        // ADAT solves that are only getting worse (see the diagonal-ratio growth this
+        // is a proxy for), give up on ADAT for the rest of this solve and switch to
+        // the augmented KKT formulation, which factors A directly and never forms
+        // A*D^{-1}*A^T. This one call's (dx, dy) is still whatever the degraded ADAT
+        // solve produced -- switching only takes effect starting the next call -- but
+        // that is a single degraded step against 900s of a solve that would otherwise
+        // never recover.
+        //
+        // Relative to ||h||, not absolute: some problems (e.g. QPLIB_9002) start from a
+        // badly-scaled initial point with ||h|| ~1e18 that self-corrects within the first
+        // couple of iterations on plain ADAT. An absolute threshold misfires there --
+        // adat_solve_err ~3000 against ||h|| ~1e18 is a relative residual of ~1e-15,
+        // excellent, not a sign of real trouble -- triggering a needless (and, for that
+        // problem, harmful) switch before the normal self-correction gets a chance.
+        const f_t h_norm             = device_vector_norm_inf<i_t, f_t>(data.d_h_, stream_view_);
+        const f_t adat_solve_err_rel = adat_solve_err / std::max(f_t(1.0), h_norm);
+        constexpr f_t adat_switch_threshold_rel = 1e-2;
+        if (adat_solve_err_rel > adat_switch_threshold_rel) {
+          settings.log.printf(
+            "Relative ADAT solve error %e (abs %e, ||h||=%e) exceeds %e; switching to "
+            "augmented KKT for the remainder of the solve\n",
+            adat_solve_err_rel,
+            adat_solve_err,
+            h_norm,
+            adat_switch_threshold_rel);
+          data.switch_to_augmented();
         }
       }
     }  // Close NVTX range
