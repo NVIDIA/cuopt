@@ -443,6 +443,19 @@ void disable_all_cuts(mip_solver_settings_t<int, double>& settings)
   settings.strong_chvatal_gomory_cuts = 0;
 }
 
+void disable_non_knapsack_cuts(mip_solver_settings_t<int, double>& settings)
+{
+  settings.max_cut_passes             = 10;
+  settings.knapsack_cuts              = 1;
+  settings.clique_cuts                = 0;
+  settings.zero_half_cuts             = 0;
+  settings.mixed_integer_gomory_cuts  = 0;
+  settings.mir_cuts                   = 0;
+  settings.strong_chvatal_gomory_cuts = 0;
+  settings.flow_cover_cuts            = 0;
+  settings.implied_bound_cuts         = 0;
+}
+
 bool cut_is_invalid_for_incumbent(const std::vector<int>& cut_vars,
                                   const std::vector<double>& incumbent,
                                   double tol)
@@ -933,6 +946,62 @@ TEST(cuts, test_cuts_2)
   EXPECT_NEAR(-126, obj_val, 1e-3);
 
   EXPECT_EQ(solution.get_num_nodes(), 0);
+}
+
+io::mps_data_model_t<int, double> create_knapsack_cover_floor_problem()
+{
+  // The odd cycle over z1, z2, z3 makes z = (0.5, 0.5, 0.5), w = 0 the unique LP optimum, which
+  // puts y at 0.412078. Integrality moves the optimum to w = 1 with y = 0 and objective 3.
+  //
+  // The capacity coefficients are load bearing: scaling that row to integers multiplies by 100,
+  // and 135.45 and 135.42 do not land on integers when scaled, which is what the knapsack
+  // separator needs them to do.
+  return cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: 2 y + z1 + z2 + z3 + 3 w
+Subject To
+  capacity: -450 y + 135.45 z1 + 135.42 z2 + 100 z3 <= 0
+  tri12: z1 + z2 + w >= 1
+  tri13: z1 + z3 + w >= 1
+  tri23: z2 + z3 + w >= 1
+Binaries
+  y
+  z1
+  z2
+  z3
+  w
+End
+)LP");
+}
+
+TEST(cuts, knapsack_cover_floor_regression)
+{
+  const raft::handle_t handle_{};
+  auto problem = create_knapsack_cover_floor_problem();
+
+  mip_solver_settings_t<int, double> settings;
+  settings.time_limit = 10.;
+  disable_non_knapsack_cuts(settings);
+  settings.presolver = presolver_t::None;
+
+  mip_solution_t<int, double> solution = solve_mip(&handle_, problem, settings);
+  EXPECT_EQ(solution.get_termination_status(), mip_termination_status_t::Optimal);
+  EXPECT_NEAR(3.0, solution.get_objective_value(), 1e-6);
+}
+
+TEST(cuts, knapsack_cover_floor_regression_reference)
+{
+  const raft::handle_t handle_{};
+  auto problem = create_knapsack_cover_floor_problem();
+
+  mip_solver_settings_t<int, double> settings;
+  settings.time_limit = 10.;
+  disable_all_cuts(settings);
+  settings.presolver = presolver_t::None;
+
+  mip_solution_t<int, double> solution = solve_mip(&handle_, problem, settings);
+  EXPECT_EQ(solution.get_termination_status(), mip_termination_status_t::Optimal);
+  EXPECT_NEAR(3.0, solution.get_objective_value(), 1e-6);
 }
 
 TEST(cuts, test_duplicate_cuts_detection)

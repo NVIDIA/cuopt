@@ -2407,6 +2407,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
   f_t objective_constant = 0.0;
   std::vector<i_t> fixed_variables;
   std::vector<f_t> fixed_values;
+  std::vector<f_t> fixed_weights;
   const f_t x_tol = 1e-5;
   for (i_t k = 0; k < knapsack_inequality.size(); k++) {
     const i_t j = knapsack_inequality.index(k);
@@ -2418,6 +2419,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
         // if xstar_j is close to 0, then we can fix z to zero
         fixed_variables.push_back(j);
         fixed_values.push_back(0.0);
+        fixed_weights.push_back(knapsack_inequality.vector.x[k]);
         seperation_rhs -= knapsack_inequality.vector.x[k];
         // No need to adjust the objective constant
         continue;
@@ -2426,6 +2428,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
         // if xstar_j is close to 1, then we can fix z to 1
         fixed_variables.push_back(j);
         fixed_values.push_back(1.0);
+        fixed_weights.push_back(knapsack_inequality.vector.x[k]);
         // Note seperation rhs is unchanged
         objective_constant += vj;
         continue;
@@ -2467,12 +2470,28 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
     return -1;
   }
 
-  i_t cover_size = 0;
+  i_t cover_size   = 0;
+  f_t cover_weight = 0.0;
   for (i_t k = 0; k < solution.size(); k++) {
-    if (solution[k] == 0.0) { cover_size++; }
+    if (solution[k] == 0.0) {
+      cover_size++;
+      cover_weight += weights[k];
+    }
   }
   for (i_t k = 0; k < fixed_values.size(); k++) {
-    if (fixed_values[k] == 1.0) { cover_size++; }
+    if (fixed_values[k] == 1.0) {
+      cover_size++;
+      cover_weight += fixed_weights[k];
+    }
+  }
+
+  // sum_{j in C} a_j > beta is what makes sum_{j in C} x_j <= |C| - 1 valid. The coefficients are
+  // integral here, so demand a full unit rather than letting rounding in the sums decide.
+  const bool is_cover = cover_weight >= knapsack_inequality.rhs + 1.0 - tol;
+  cuopt_assert(is_cover, "knapsack separation produced a set that is not a cover");
+  if (!is_cover) {
+    restore_complemented(complemented_variables);
+    return -1;
   }
 
   cut.reserve(cover_size);
@@ -2642,6 +2661,9 @@ void knapsack_generation_t<i_t, f_t>::minimal_cover_and_partition(
       continue;
     }
   }
+
+  cuopt_assert(cover_sum >= beta + 1.0 - 1e-6,
+               "minimal cover reduction dropped an item the cover needed");
 
   // Go through and correct cover_indicies and cover_coefficients
   for (i_t k = 0; k < cover_coefficients.size();) {
@@ -2962,8 +2984,7 @@ f_t knapsack_generation_t<i_t, f_t>::solve_knapsack_problem(const std::vector<f_
     }
   }
 
-  i_t sum_value     = std::accumulate(scaled_values.begin(), scaled_values.end(), 0);
-  const i_t INT_INF = std::numeric_limits<i_t>::max() / 2;
+  i_t sum_value = std::accumulate(scaled_values.begin(), scaled_values.end(), 0);
   if (verbose) { settings_.log.printf("sum value %d\n", sum_value); }
   const i_t max_size = 10000;
   if (sum_value <= 0.0 || sum_value >= max_size) {
@@ -2976,10 +2997,12 @@ f_t knapsack_generation_t<i_t, f_t>::solve_knapsack_problem(const std::vector<f_
 
   solution.assign(n, 0.0);
 
-  // dp(j, v) = minimum weight using first j items to get value v
-  dense_matrix_t<i_t, i_t> dp(n + 1, sum_value + 1, INT_INF);
+  // dp(j, v) = minimum weight using first j items to get value v.
+  // The weights are carried at full precision: rounding one down would let the DP return a set
+  // that violates the capacity, and the caller reads the complement of that set as a cover.
+  dense_matrix_t<i_t, f_t> dp(n + 1, sum_value + 1, inf);
   dense_matrix_t<i_t, uint8_t> take(n + 1, sum_value + 1, 0);
-  dp(0, 0) = 0;
+  dp(0, 0) = 0.0;
 
   // 4. Dynamic programming
   for (i_t j = 1; j <= n; ++j) {
@@ -2989,8 +3012,7 @@ f_t knapsack_generation_t<i_t, f_t>::solve_knapsack_problem(const std::vector<f_
 
       // Take item j-1 if possible
       if (v >= scaled_values[j - 1]) {
-        i_t candidate =
-          dp(j - 1, v - scaled_values[j - 1]) + static_cast<i_t>(std::floor(weights[j - 1]));
+        f_t candidate = dp(j - 1, v - scaled_values[j - 1]) + weights[j - 1];
         if (candidate < dp(j, v)) {
           dp(j, v)   = candidate;
           take(j, v) = 1;
@@ -3015,6 +3037,15 @@ f_t knapsack_generation_t<i_t, f_t>::solve_knapsack_problem(const std::vector<f_
       solution[j - 1] = 0.0;
     }
   }
+
+#ifdef ASSERT_MODE
+  f_t selected_weight = 0.0;
+  for (i_t j = 0; j < n; ++j) {
+    selected_weight += solution[j] * weights[j];
+  }
+  cuopt_assert(selected_weight <= rhs + settings_.primal_tol,
+               "knapsack dynamic program returned a solution over capacity");
+#endif
 
   objective = best_value * scale;
   return objective;
@@ -4666,6 +4697,17 @@ bool rational_coefficients(const std::vector<variable_type_t>& var_types,
   if (std::abs(scalar) > 1000) { return false; }
 
   rational_inequality.scale(scalar);
+
+  // The scaled product can land an ulp off the integer it represents. Callers rely on the
+  // integer-variable coefficients being exact integers: the knapsack cover test
+  // sum_C a_j > beta is only equivalent to sum_C a_j >= beta + 1 for integral a_j.
+  constexpr f_t integral_tol = 1e-6;
+  for (i_t k : indices) {
+    const f_t scaled  = rational_inequality.vector.x[k];
+    const f_t rounded = std::round(scaled);
+    if (std::abs(scaled - rounded) > integral_tol) { return false; }
+    rational_inequality.vector.x[k] = rounded;
+  }
 
   return true;
 }
