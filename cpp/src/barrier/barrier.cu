@@ -1888,13 +1888,13 @@ class iteration_data_t {
   // v = alpha * A * Dinv * A^T * y + beta * v
   void gpu_adat_multiply(f_t alpha,
                          const rmm::device_uvector<f_t>& y,
-                         pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> const& cusparse_y,
+                         pdlp::cusparse_dn_vec_descr_view cusparse_y,
 
                          f_t beta,
                          rmm::device_uvector<f_t>& v,
-                         pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> const& cusparse_v,
+                         pdlp::cusparse_dn_vec_descr_view cusparse_v,
                          rmm::device_uvector<f_t>& u,
-                         pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> const& cusparse_u,
+                         pdlp::cusparse_dn_vec_descr_view cusparse_u,
                          cusparse_view_t<i_t, f_t>& cusparse_view,
                          const rmm::device_uvector<f_t>& d_inv_diag) const
   {
@@ -2196,20 +2196,20 @@ class iteration_data_t {
 
   cusparse_info_t<i_t, f_t> cusparse_info;
   cusparse_view_t<i_t, f_t> cusparse_view_;
-  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_tmp4_;
-  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_h_;
-  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_residual_;
-  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dy_;
-  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_residual_5_;
-  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_residual_6_;
-  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_;
-  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_residual_3_;
-  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_residual_4_;
-  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_r1_;
-  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dual_residual_;
-  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_y_residual_;
+  pdlp::cusparse_dn_vec_uptr cusparse_tmp4_;
+  pdlp::cusparse_dn_vec_uptr cusparse_h_;
+  pdlp::cusparse_dn_vec_uptr cusparse_dx_residual_;
+  pdlp::cusparse_dn_vec_uptr cusparse_dy_;
+  pdlp::cusparse_dn_vec_uptr cusparse_dx_residual_5_;
+  pdlp::cusparse_dn_vec_uptr cusparse_dx_residual_6_;
+  pdlp::cusparse_dn_vec_uptr cusparse_dx_;
+  pdlp::cusparse_dn_vec_uptr cusparse_dx_residual_3_;
+  pdlp::cusparse_dn_vec_uptr cusparse_dx_residual_4_;
+  pdlp::cusparse_dn_vec_uptr cusparse_r1_;
+  pdlp::cusparse_dn_vec_uptr cusparse_dual_residual_;
+  pdlp::cusparse_dn_vec_uptr cusparse_y_residual_;
   // GPU ADAT multiply
-  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_u_;
+  pdlp::cusparse_dn_vec_uptr cusparse_u_;
 
   // Device vectors
 
@@ -2736,7 +2736,7 @@ void barrier_solver_t<i_t, f_t>::gpu_compute_residuals(const rmm::device_uvector
 
   auto cusparse_d_x          = data.cusparse_view_.create_vector(d_x);
   auto descr_primal_residual = data.cusparse_view_.create_vector(data.d_primal_residual_);
-  data.cusparse_view_.spmv(-1.0, cusparse_d_x, 1.0, descr_primal_residual);
+  data.cusparse_view_.spmv(-1.0, cusparse_d_x.get(), 1.0, descr_primal_residual.get());
 
   // Compute bound_residual = E'*u - w - E'*x
   if (data.n_upper_bounds > 0) {
@@ -2760,10 +2760,12 @@ void barrier_solver_t<i_t, f_t>::gpu_compute_residuals(const rmm::device_uvector
                                   stream_view_.value());
   RAFT_CHECK_CUDA(stream_view_);
   auto descr_dual_residual = data.cusparse_view_.create_vector(data.d_dual_residual_);
-  if (data.Q.n > 0) { data.cusparse_Q_view_.spmv(1.0, cusparse_d_x, 1.0, descr_dual_residual); }
+  if (data.Q.n > 0) {
+    data.cusparse_Q_view_.spmv(1.0, cusparse_d_x.get(), 1.0, descr_dual_residual.get());
+  }
   // Compute dual_residual = c - A'*y - z + E*v
   auto cusparse_d_y = data.cusparse_view_.create_vector(d_y);
-  data.cusparse_view_.transpose_spmv(-1.0, cusparse_d_y, 1.0, descr_dual_residual);
+  data.cusparse_view_.transpose_spmv(-1.0, cusparse_d_y.get(), 1.0, descr_dual_residual.get());
 
   if (data.n_upper_bounds > 0) {
     cub::DeviceTransform::Transform(
@@ -3144,7 +3146,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
         [] HD(f_t inv_diag, f_t tmp3) { return inv_diag * tmp3; },
         stream_view_.value());
       RAFT_CHECK_CUDA(stream_view_);
-      data.cusparse_view_.spmv(1, data.cusparse_tmp4_, 1, data.cusparse_h_);
+      data.cusparse_view_.spmv(1, data.cusparse_tmp4_.get(), 1, data.cusparse_h_.get());
     }
 
     {
@@ -3201,12 +3203,12 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
 
       data.gpu_adat_multiply(1.0,
                              data.d_dy_,
-                             cusparse_dy_,
+                             cusparse_dy_.get(),
                              -1.0,
                              data.d_y_residual_,
-                             data.cusparse_y_residual_,
+                             data.cusparse_y_residual_.get(),
                              data.d_u_,
-                             data.cusparse_u_,
+                             data.cusparse_u_.get(),
                              data.cusparse_view_,
                              data.d_inv_diag);
 
@@ -3230,7 +3232,8 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       data.cusparse_dy_ = data.cusparse_view_.create_vector(data.d_dy_);
 
       // r1 <- A'*dy - r1
-      data.cusparse_view_.transpose_spmv(1.0, data.cusparse_dy_, -1.0, data.cusparse_r1_);
+      data.cusparse_view_.transpose_spmv(
+        1.0, data.cusparse_dy_.get(), -1.0, data.cusparse_r1_.get());
 
       cub::DeviceTransform::Transform(
         cuda::std::make_tuple(data.d_inv_diag.data(), data.d_r1_.data(), data.d_diag_.data()),
@@ -3243,7 +3246,8 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
         stream_view_.value());
       RAFT_CHECK_CUDA(stream_view_);
 
-      data.cusparse_view_.transpose_spmv(-1.0, data.cusparse_dy_, 1.0, data.cusparse_dx_residual_);
+      data.cusparse_view_.transpose_spmv(
+        -1.0, data.cusparse_dy_.get(), 1.0, data.cusparse_dx_residual_.get());
       cub::DeviceTransform::Transform(
         cuda::std::make_tuple(data.d_dx_residual_.data(), data.d_r1_prime_.data()),
         data.d_dx_residual_.data(),
@@ -3303,8 +3307,9 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       data.cusparse_dx_            = data.cusparse_view_.create_vector(data.d_dx_);
 
       data.cusparse_view_.spmv(
-        1.0, data.cusparse_dx_residual_5_, 0.0, data.cusparse_dx_residual_6_);
-      data.cusparse_view_.spmv(-1.0, data.cusparse_dx_, 1.0, data.cusparse_dx_residual_6_);
+        1.0, data.cusparse_dx_residual_5_.get(), 0.0, data.cusparse_dx_residual_6_.get());
+      data.cusparse_view_.spmv(
+        -1.0, data.cusparse_dx_.get(), 1.0, data.cusparse_dx_residual_6_.get());
 
       const f_t dx_residual_6_norm =
         device_vector_norm_inf<i_t, f_t>(d_dx_residual_6, stream_view_);
@@ -3334,8 +3339,9 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       data.cusparse_dx_            = data.cusparse_view_.create_vector(data.d_dx_);
 
       data.cusparse_view_.spmv(
-        1.0, data.cusparse_dx_residual_3_, 0.0, data.cusparse_dx_residual_4_);
-      data.cusparse_view_.spmv(1.0, data.cusparse_dx_, 1.0, data.cusparse_dx_residual_4_);
+        1.0, data.cusparse_dx_residual_3_.get(), 0.0, data.cusparse_dx_residual_4_.get());
+      data.cusparse_view_.spmv(
+        1.0, data.cusparse_dx_.get(), 1.0, data.cusparse_dx_residual_4_.get());
     }
 
 #if CHECK_FORM_ADAT
@@ -3372,12 +3378,12 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       // matrix_vector_multiply(data.ADAT, 1.0, dy, -1.0, dx_residual_7);
       data.gpu_adat_multiply(1.0,
                              data.d_dy_,
-                             cusparse_dy_,
+                             cusparse_dy_.get(),
                              -1.0,
                              d_dx_residual_7,
-                             cusparse_dx_residual_7,
+                             cusparse_dx_residual_7.get(),
                              data.d_u_,
-                             data.cusparse_u_,
+                             data.cusparse_u_.get(),
                              data.cusparse_view_,
                              data.d_inv_diag);
 
@@ -3515,7 +3521,8 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
                     data.d_dual_residual_.begin());
 
     // dual_residual <- A' * dy - E * dv
-    data.cusparse_view_.transpose_spmv(1.0, data.cusparse_dy_, -1.0, data.cusparse_dual_residual_);
+    data.cusparse_view_.transpose_spmv(
+      1.0, data.cusparse_dy_.get(), -1.0, data.cusparse_dual_residual_.get());
 
     // dual_residual <- A' * dy - E * dv + dz - dual_rhs
     cub::DeviceTransform::Transform(
@@ -4054,7 +4061,7 @@ void barrier_solver_t<i_t, f_t>::compute_residual_norms_mu_and_objective(
   if (data.Q.n > 0) {
     auto cusparse_d_x = data.cusparse_view_.create_vector(data.d_x_);
     auto cusparse_Qx  = data.cusparse_view_.create_vector(data.d_Qx_);
-    data.cusparse_Q_view_.spmv(1.0, cusparse_d_x, 0.0, cusparse_Qx);
+    data.cusparse_Q_view_.spmv(1.0, cusparse_d_x.get(), 0.0, cusparse_Qx.get());
     rh.xTQx_async(data.d_Qx_, data.d_x_, cublas_handle, stream_view_);
   }
 

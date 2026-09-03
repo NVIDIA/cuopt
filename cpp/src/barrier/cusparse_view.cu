@@ -200,59 +200,27 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
   A_T_indices_ = device_copy(A.i, handle_ptr->get_stream());
   A_T_data_    = device_copy(A.x, handle_ptr->get_stream());
 
-  cusparseCreateCsr(&A_,
-                    rows_,
-                    cols,
-                    nnz,
-                    A_offsets_.data(),
-                    A_indices_.data(),
-                    A_data_.data(),
-                    CUSPARSE_INDEX_32I,
-                    CUSPARSE_INDEX_32I,
-                    CUSPARSE_INDEX_BASE_ZERO,
-                    CUDA_R_64F);
+  A_ = pdlp::make_csr<i_t, f_t>(
+    rows_, cols, nnz, A_offsets_.data(), A_indices_.data(), A_data_.data());
+  A_T_ = pdlp::make_csr<i_t, f_t>(
+    cols, rows_, nnz, A_T_offsets_.data(), A_T_indices_.data(), A_T_data_.data());
 
-  cusparseCreateCsr(&A_T_,
-                    cols,
-                    rows_,
-                    nnz,
-                    A_T_offsets_.data(),
-                    A_T_indices_.data(),
-                    A_T_data_.data(),
-                    CUSPARSE_INDEX_32I,
-                    CUSPARSE_INDEX_32I,
-                    CUSPARSE_INDEX_BASE_ZERO,
-                    CUDA_R_64F);
-
-  // Tmp just to init the buffer size and preprocess
-  cusparseDnVecDescr_t x;
-  cusparseDnVecDescr_t y;
+  // Temporary vectors used to initialize the SpMV buffers and preprocessing data.
   rmm::device_uvector<f_t> d_x(cols, handle_ptr_->get_stream());
   rmm::device_uvector<f_t> d_y(rows_, handle_ptr_->get_stream());
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(&x, d_x.size(), d_x.data()));
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(&y, d_y.size(), d_y.data()));
+  auto x = pdlp::make_dnvec<f_t>(d_x.size(), d_x.data());
+  auto y = pdlp::make_dnvec<f_t>(d_y.size(), d_y.data());
 
-  init_spmv_buffer_and_preprocess(A_, x, y, spmv_buffer_, rows_);
-  init_spmv_buffer_and_preprocess(A_T_, y, x, spmv_buffer_transpose_, A_T_offsets_.size() - 1);
-
-  RAFT_CUSPARSE_TRY(cusparseDestroyDnVec(x));
-  RAFT_CUSPARSE_TRY(cusparseDestroyDnVec(y));
+  init_spmv_buffer_and_preprocess(A_.get(), x.get(), y.get(), spmv_buffer_, rows_);
+  init_spmv_buffer_and_preprocess(
+    A_T_.get(), y.get(), x.get(), spmv_buffer_transpose_, A_T_offsets_.size() - 1);
 }
 
 template <typename i_t, typename f_t>
-cusparse_view_t<i_t, f_t>::~cusparse_view_t()
-{
-  CUOPT_CUSPARSE_TRY_NO_THROW(cusparseDestroySpMat(A_));
-  if (A_T_ != nullptr) { CUOPT_CUSPARSE_TRY_NO_THROW(cusparseDestroySpMat(A_T_)); }
-}
-
-template <typename i_t, typename f_t>
-pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_view_t<i_t, f_t>::create_vector(
+pdlp::cusparse_dn_vec_uptr cusparse_view_t<i_t, f_t>::create_vector(
   rmm::device_uvector<f_t> const& vec)
 {
-  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> descr;
-  descr.create(vec.size(), const_cast<f_t*>(vec.data()));
-  return descr;
+  return pdlp::make_dnvec<f_t>(vec.size(), const_cast<f_t*>(vec.data()));
 }
 
 template <typename i_t, typename f_t>
@@ -274,16 +242,16 @@ void cusparse_view_t<i_t, f_t>::spmv(f_t alpha,
                                      f_t beta,
                                      rmm::device_uvector<f_t>& y)
 {
-  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> x_cusparse = create_vector(x);
-  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> y_cusparse = create_vector(y);
-  spmv(alpha, x_cusparse, beta, y_cusparse);
+  pdlp::cusparse_dn_vec_uptr x_cusparse = create_vector(x);
+  pdlp::cusparse_dn_vec_uptr y_cusparse = create_vector(y);
+  spmv(alpha, x_cusparse.get(), beta, y_cusparse.get());
 }
 
 template <typename i_t, typename f_t>
 void cusparse_view_t<i_t, f_t>::spmv(f_t alpha,
-                                     pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> const& x,
+                                     pdlp::cusparse_dn_vec_descr_view x,
                                      f_t beta,
-                                     pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> const& y)
+                                     pdlp::cusparse_dn_vec_descr_view y)
 {
   // Would be simpler if we could pass host data direclty but other cusparse calls with the same
   // handler depend on device data
@@ -298,7 +266,7 @@ void cusparse_view_t<i_t, f_t>::spmv(f_t alpha,
   raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
                                      CUSPARSE_OPERATION_NON_TRANSPOSE,
                                      (alpha == 1) ? d_one_.data() : d_minus_one_.data(),
-                                     A_,
+                                     A_.get(),
                                      x,
                                      d_beta->data(),
                                      y,
@@ -328,16 +296,16 @@ void cusparse_view_t<i_t, f_t>::transpose_spmv(f_t alpha,
                                                rmm::device_uvector<f_t>& y)
 {
   cuopt_assert(A_T_ != nullptr, "transpose_spmv requires an A^T descriptor");
-  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> x_cusparse = create_vector(x);
-  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> y_cusparse = create_vector(y);
-  transpose_spmv(alpha, x_cusparse, beta, y_cusparse);
+  pdlp::cusparse_dn_vec_uptr x_cusparse = create_vector(x);
+  pdlp::cusparse_dn_vec_uptr y_cusparse = create_vector(y);
+  transpose_spmv(alpha, x_cusparse.get(), beta, y_cusparse.get());
 }
 
 template <typename i_t, typename f_t>
 void cusparse_view_t<i_t, f_t>::transpose_spmv(f_t alpha,
-                                               pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> const& x,
+                                               pdlp::cusparse_dn_vec_descr_view x,
                                                f_t beta,
-                                               pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> const& y)
+                                               pdlp::cusparse_dn_vec_descr_view y)
 {
   cuopt_assert(A_T_ != nullptr, "transpose_spmv requires an A^T descriptor");
   // Would be simpler if we could pass host data direct;y but other cusparse calls with the same
@@ -353,7 +321,7 @@ void cusparse_view_t<i_t, f_t>::transpose_spmv(f_t alpha,
   raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
                                      CUSPARSE_OPERATION_NON_TRANSPOSE,
                                      (alpha == 1) ? d_one_.data() : d_minus_one_.data(),
-                                     A_T_,
+                                     A_T_.get(),
                                      x,
                                      d_beta->data(),
                                      y,
