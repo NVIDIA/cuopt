@@ -1895,7 +1895,9 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
 {
   i_t local_mins  = 0;
   auto loop_start = std::chrono::high_resolution_clock::now();
-  auto time_limit = std::chrono::milliseconds(static_cast<i_t>(std::floor(in_time_limit * 1000.0)));
+  auto time_limit = (in_time_limit < std::numeric_limits<f_t>::infinity())
+                        ? std::chrono::milliseconds(static_cast<i_t>(std::floor(in_time_limit * 1000.0)))
+                        : std::chrono::milliseconds::max();
   auto loop_time_start = std::chrono::high_resolution_clock::now();
 
   fj_cpu->rng.seed(fj_cpu->settings.seed);
