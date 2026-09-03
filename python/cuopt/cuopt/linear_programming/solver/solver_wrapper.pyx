@@ -18,7 +18,7 @@ from dateutil.relativedelta import relativedelta
 
 from cuopt.utilities import type_cast
 
-from libc.stdint cimport uintptr_t
+from libc.stdint cimport uintptr_t, uint32_t
 from libc.stdlib cimport free, malloc
 from libc.string cimport memcpy, strcpy, strlen
 from libcpp cimport bool
@@ -27,6 +27,13 @@ from libcpp.pair cimport pair
 from libcpp.string cimport string
 from libcpp.utility cimport move
 from libcpp.vector cimport vector
+
+from cpython.pycapsule cimport (
+    PyCapsule_Destructor,
+    PyCapsule_GetPointer,
+    PyCapsule_IsValid,
+    PyCapsule_New,
+)
 
 from rmm.pylibrmm.device_buffer cimport DeviceBuffer
 
@@ -43,6 +50,7 @@ from cuopt.linear_programming.solver.solver cimport (
     linear_programming_ret_t,
     lp_cpu_solutions_t,
     lp_gpu_solutions_t,
+    barrier_cache_t,
     mip_ret_t,
     mip_termination_status_t,
     pdlp_solver_mode_t,
@@ -77,6 +85,25 @@ import pyarrow as pa
 
 cdef extern from "cuopt/mathematical_optimization/utilities/internals.hpp" namespace "cuopt::internals": # noqa
     cdef cppclass base_solution_callback_t
+
+
+cdef extern from *:
+    """
+    #include <cuopt/mathematical_optimization/utilities/barrier_cache.hpp>
+
+    static void cuopt_barrier_cache_capsule_dtor(PyObject *cap) noexcept
+    {
+      void *p = PyCapsule_GetPointer(cap, "cuopt.barrier_cache");
+      if (p != nullptr) {
+        delete reinterpret_cast<cuopt::mathematical_optimization::barrier_cache_t *>(p);
+      }
+    }
+    """
+    void cuopt_barrier_cache_capsule_dtor(object cap) noexcept
+
+
+cdef extern from "driver_types.h":
+    cdef uint32_t cudaStreamNonBlocking
 
 
 class MILPTerminationStatus(IntEnum):
@@ -526,6 +553,19 @@ def prepare_solver_settings(SolverSettings settings, data_model=None, mip=False)
 def Solve(py_data_model_obj, SolverSettings settings, mip=False):
 
     cdef DataModel data_model_obj = <DataModel>py_data_model_obj
+    cdef barrier_cache_t* cache_in = NULL
+    cdef solver_ret_t* sol_ret
+
+    if settings.sequence_solve and data_model_obj.barrier_cache_capsule is not None:
+        if not PyCapsule_IsValid(
+            data_model_obj.barrier_cache_capsule,
+            b"cuopt.barrier_cache",
+        ):
+            raise ValueError("Invalid barrier cache stored on DataModel.")
+        cache_in = <barrier_cache_t*>PyCapsule_GetPointer(
+            data_model_obj.barrier_cache_capsule,
+            b"cuopt.barrier_cache",
+        )
 
     data_model_obj.variable_types = type_cast(
         data_model_obj.variable_types, "S1", "variable_types"
@@ -541,7 +581,22 @@ def Solve(py_data_model_obj, SolverSettings settings, mip=False):
         sol_ret_ptr = move(call_solve(
             data_model_obj.c_data_model_view.get(),
             settings.c_solver_settings.get(),
+            cudaStreamNonBlocking,
+            False,
+            cache_in,
         ))
+
+    sol_ret = sol_ret_ptr.get()
+    if (
+        sol_ret.problem_type == ProblemCategory.LP
+        and sol_ret.lp_ret.barrier_cache.get() != NULL
+    ):
+        data_model_obj.barrier_cache_capsule = PyCapsule_New(
+            <void*>sol_ret.lp_ret.barrier_cache.release(),
+            b"cuopt.barrier_cache",
+            <PyCapsule_Destructor>cuopt_barrier_cache_capsule_dtor,
+        )
+
     return create_solution(move(sol_ret_ptr), data_model_obj)
 
 

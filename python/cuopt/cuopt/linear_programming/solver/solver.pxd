@@ -8,6 +8,7 @@
 # cython: language_level = 3
 
 from libcpp cimport bool
+from libcpp.memory cimport unique_ptr
 from libcpp.pair cimport pair
 from libcpp.string cimport string
 from libcpp.vector cimport vector
@@ -93,6 +94,10 @@ cdef extern from "cuopt/mathematical_optimization/utilities/cython_types.hpp" na
         vector[double] last_restart_duality_gap_primal_solution_
         vector[double] last_restart_duality_gap_dual_solution_
 
+cdef extern from "cuopt/mathematical_optimization/utilities/barrier_cache.hpp" namespace "cuopt::mathematical_optimization": # noqa
+    cdef cppclass barrier_cache_t:
+        pass
+
 cdef extern from "cuopt/mathematical_optimization/utilities/cython_solve.hpp" namespace "cuopt::cython": # noqa
     # Unified LP solution struct — solutions_ variant accessed via helpers
     cdef cppclass linear_programming_ret_t:
@@ -117,6 +122,7 @@ cdef extern from "cuopt/mathematical_optimization/utilities/cython_solve.hpp" na
         int nb_iterations_
         double solve_time_
         method_t solved_by_
+        unique_ptr[barrier_cache_t] barrier_cache
         bool is_gpu()
 
     # Unified MIP solution struct — solution_ variant accessed via helpers
@@ -144,6 +150,9 @@ cdef extern from "cuopt/mathematical_optimization/utilities/cython_solve.hpp" na
     cdef unique_ptr[solver_ret_t] call_solve(
         data_model_view_t[int, double]* data_model,
         solver_settings_t[int, double]* solver_settings,
+        unsigned int flags,
+        bool is_batch_mode,
+        barrier_cache_t* cache_in,
     ) except + nogil
 
     cdef pair[vector[unique_ptr[solver_ret_t]], double] call_batch_solve( # noqa

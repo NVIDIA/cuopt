@@ -15,6 +15,10 @@ from libcpp.vector cimport vector
 cdef extern from "cuopt/mathematical_optimization/utilities/internals.hpp" namespace "cuopt::internals": # noqa
     cdef cppclass base_solution_callback_t
 
+cdef extern from "cuopt/mathematical_optimization/utilities/barrier_cache.hpp" namespace "cuopt::mathematical_optimization": # noqa
+    cdef cppclass barrier_cache_t:
+        pass
+
 cdef extern from "cuopt/mathematical_optimization/pdlp/solver_settings.hpp" namespace "cuopt::mathematical_optimization": # noqa
     ctypedef enum pdlp_solver_mode_t "cuopt::mathematical_optimization::pdlp_solver_mode_t": # noqa
         Stable1 "cuopt::mathematical_optimization::pdlp_solver_mode_t::Stable1" # noqa
@@ -29,6 +33,10 @@ cdef extern from "cuopt/mathematical_optimization/pdlp/solver_settings.hpp" name
         DualSimplex "cuopt::mathematical_optimization::method_t::DualSimplex" # noqa
         Barrier "cuopt::mathematical_optimization::method_t::Barrier" # noqa
         Unset "cuopt::mathematical_optimization::method_t::Unset" # noqa
+
+    cdef cppclass pdlp_solver_settings_t[i_t, f_t]:
+        bool sequence_solve
+        barrier_cache_t* barrier_cache
 
 cdef extern from "cuopt/mathematical_optimization/solver_settings.hpp" namespace "cuopt::mathematical_optimization": # noqa
 
@@ -90,9 +98,12 @@ cdef extern from "cuopt/mathematical_optimization/solver_settings.hpp" namespace
 
         void load_parameters_from_file(const string& path) except +
 
+        pdlp_solver_settings_t[i_t, f_t]& get_pdlp_settings()
+
 
 cdef class SolverSettings:
     cdef unique_ptr[solver_settings_t[int, double]] c_solver_settings
     cdef public dict settings_dict
     cdef public object pdlp_warm_start_data
     cdef public list mip_callbacks
+    cdef public bint sequence_solve
