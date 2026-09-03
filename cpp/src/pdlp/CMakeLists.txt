@@ -8,6 +8,7 @@ set(LP_CORE_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/solver_settings.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/optimization_problem.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/cpu_optimization_problem.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/cpu_optimization_problem_to_gpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/backend_selection.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/utilities/problem_checking.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solve.cu
