@@ -514,8 +514,8 @@ void compute_cache_for_var(i_t var_idx,
     // TODO do the check in parallel
     for (size_t i = 0; i < h_improved_lower_bounds_0.size(); i++) {
       if (i == (size_t)var_idx) { continue; }
-      f_t lower_bound = min(h_improved_lower_bounds_0[i], h_improved_lower_bounds_1[i]);
-      f_t upper_bound = max(h_improved_upper_bounds_0[i], h_improved_upper_bounds_1[i]);
+      f_t lower_bound = std::min(h_improved_lower_bounds_0[i], h_improved_lower_bounds_1[i]);
+      f_t upper_bound = std::max(h_improved_upper_bounds_0[i], h_improved_upper_bounds_1[i]);
       cuopt_assert(h_var_bounds[i].x <= lower_bound, "lower bound violation");
       cuopt_assert(h_var_bounds[i].y >= upper_bound, "upper bound violation");
       // check why we might have invalid lower and upper bound here
@@ -568,9 +568,9 @@ void apply_modification_queue_to_problem(
       if (var_bounds_modifications.count(var_idx) == 0) {
         var_bounds_modifications[var_idx] = std::make_pair(lb, ub);
       } else {
-        var_bounds_modifications[var_idx].first = max(var_bounds_modifications[var_idx].first, lb);
+        var_bounds_modifications[var_idx].first = std::max(var_bounds_modifications[var_idx].first, lb);
         var_bounds_modifications[var_idx].second =
-          min(var_bounds_modifications[var_idx].second, ub);
+          std::min(var_bounds_modifications[var_idx].second, ub);
       }
     }
   }
@@ -943,7 +943,7 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   double work_used                  = 0.0;
   // Work is only folded in at the step barrier, so the step size is also the granularity at which
   // the budget can be enforced: too large and a single step runs effectively unbudgeted.
-  const size_t step_size = min(step_size_hint, priority_indices.size());
+  const size_t step_size = std::min(step_size_hint, priority_indices.size());
 
   // The pool buffers above were allocated on the main stream.
   // Each OMP thread below uses its own stream, so we must ensure all allocations
@@ -1010,7 +1010,7 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
                problem.handle_ptr->get_stream());
     problem.handle_ptr->sync_stream();
     if (n_of_implied_singletons - last_it_implied_singletons <
-        (size_t)std::max(2, (min(100, problem.n_variables / 50)))) {
+        (size_t)std::max(2, (std::min(100, problem.n_variables / 50)))) {
       early_exit = true;
     }
     last_it_implied_singletons = n_of_implied_singletons;
