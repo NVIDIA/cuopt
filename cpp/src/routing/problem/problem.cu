@@ -253,6 +253,14 @@ void problem_t<i_t, f_t>::populate_dimensions_info()
   if (auto vehicle_max_costs = data_view_ptr->get_vehicle_max_costs(); !vehicle_max_costs.empty()) {
     cost_dim_info.has_max_constraint = true;
   }
+  if (special_nodes.has_distance_break) {
+    cost_dim_info.has_distance_window = true;
+    if (!specified_weights.count(objective_t::DISTANCE_BREAK_COST)) {
+      dimensions_info.enable_objective(objective_t::DISTANCE_BREAK_COST, 1.0);
+    }
+    cost_dim_info.has_distance_break_cost =
+      dimensions_info.has_objective(objective_t::DISTANCE_BREAK_COST);
+  }
 
   // TIME dimensions info
   // check vehicle max times exists
@@ -519,6 +527,10 @@ NodeInfo<> problem_t<i_t, f_t>::get_brother_node_info(const NodeInfo<>& node) co
     brother_id, brother_location, node.is_pickup() ? node_type_t::DELIVERY : node_type_t::PICKUP);
 }
 
+/**
+ * @brief Builds the device-side break-node tables (locations, time and distance windows,
+ *        per-vehicle offsets) from the user-facing vehicle break specification.
+ */
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::populate_special_nodes()
 {
@@ -536,6 +548,7 @@ void problem_t<i_t, f_t>::populate_special_nodes()
 
   std::vector<NodeInfo<>> node_infos_h;
   std::vector<i_t> node_earliest_h, node_latest_h;
+  std::vector<float> node_distance_min_h, node_distance_max_h;
   std::vector<i_t> break_loc_to_idx_h;
 
   if (!uniform_breaks.empty()) {
@@ -632,8 +645,12 @@ void problem_t<i_t, f_t>::populate_special_nodes()
     node_infos_h.reserve(2 * n_vehicles);
     node_earliest_h.reserve(2 * n_vehicles);
     node_latest_h.reserve(2 * n_vehicles);
+    node_distance_min_h.reserve(2 * n_vehicles);
+    node_distance_max_h.reserve(2 * n_vehicles);
 
     break_nodes_offset_h.push_back(0);
+
+    bool any_distance_break = false;
 
     std::vector<int> all_locations(data_view_ptr->get_num_locations());
     std::iota(all_locations.begin(), all_locations.end(), 0);
@@ -643,27 +660,38 @@ void problem_t<i_t, f_t>::populate_special_nodes()
         break_offset_h[v + 1]     = break_offset_h[v] + this_vehicle_breaks.size();
         n_max_break_dims          = std::max((i_t)this_vehicle_breaks.size(), n_max_break_dims);
         // FIXME:: sort the breaks based on TW ??
+        // Track the latest time-window endpoint of the most recent prior time-based break so
+        // distance breaks interleaved with time breaks don't bypass the overlap validation.
+        std::optional<i_t> previous_time_break_latest;
         for (auto& vehicle_break : this_vehicle_breaks) {
           i_t dim = break_duration_h[v].size();
           break_duration_h[v].push_back(vehicle_break.duration_);
           break_earliest_h[v].push_back(vehicle_break.earliest_);
           break_latest_h[v].push_back(vehicle_break.latest_);
 
-          bool expected =
-            (break_earliest_h[v][dim] + break_duration_h[v][dim] <= vehicle_latest_h[v]) &&
-            (vehicle_earliest_h[v] <= break_latest_h[v][dim]);
-          cuopt_expects(expected,
-                        error_type_t::ValidationError,
-                        "break times should be within the range of vehicle time windows!");
+          if (!vehicle_break.is_distance_based_) {
+            bool expected =
+              (break_earliest_h[v][dim] + break_duration_h[v][dim] <= vehicle_latest_h[v]) &&
+              (vehicle_earliest_h[v] <= break_latest_h[v][dim]);
+            cuopt_expects(expected,
+                          error_type_t::ValidationError,
+                          "break times should be within the range of vehicle time windows!");
 
-          expected = break_latest_h[v][dim] >= break_earliest_h[v][dim];
-          cuopt_expects(expected,
-                        error_type_t::ValidationError,
-                        "break latest should be higher than the break earliest!");
-          if (dim > 0) {
-            expected = break_earliest_h[v][dim] >= break_latest_h[v][dim - 1];
-            cuopt_expects(
-              expected, error_type_t::ValidationError, "breaks should not be overlapping!");
+            expected = break_latest_h[v][dim] >= break_earliest_h[v][dim];
+            cuopt_expects(expected,
+                          error_type_t::ValidationError,
+                          "break latest should be higher than the break earliest!");
+            if (previous_time_break_latest.has_value()) {
+              expected = break_earliest_h[v][dim] >= previous_time_break_latest.value();
+              cuopt_expects(
+                expected, error_type_t::ValidationError, "breaks should not be overlapping!");
+            }
+            previous_time_break_latest = break_latest_h[v][dim];
+          } else {
+            cuopt_expects(vehicle_break.distance_max_ > vehicle_break.distance_min_,
+                          error_type_t::ValidationError,
+                          "distance break distance_max must be greater than distance_min!");
+            any_distance_break = true;
           }
 
           auto this_break_locations =
@@ -678,6 +706,8 @@ void problem_t<i_t, f_t>::populate_special_nodes()
             node_infos_h.push_back(NodeInfo<>{node_id, loc, node_type_t::BREAK});
             node_earliest_h.push_back(break_earliest_h[v][dim]);
             node_latest_h.push_back(break_latest_h[v][dim]);
+            node_distance_min_h.push_back(vehicle_break.distance_min_);
+            node_distance_max_h.push_back(vehicle_break.distance_max_);
           }
 
           break_nodes_offset_h.push_back(offset);
@@ -686,6 +716,7 @@ void problem_t<i_t, f_t>::populate_special_nodes()
         break_offset_h[v + 1] = break_offset_h[v];
       }
     }
+    special_nodes.has_distance_break = any_distance_break;
   }
 
   fleet_info.v_break_offset_ = cuopt::device_copy(break_offset_h, handle_ptr->get_stream());
@@ -716,9 +747,13 @@ void problem_t<i_t, f_t>::populate_special_nodes()
   special_nodes.num_breaks_offset = cuopt::device_copy(break_offset_h, handle_ptr->get_stream());
   special_nodes.break_nodes_offset =
     cuopt::device_copy(break_nodes_offset_h, handle_ptr->get_stream());
-  special_nodes.node_infos       = cuopt::device_copy(node_infos_h, handle_ptr->get_stream());
-  special_nodes.earliest_time    = cuopt::device_copy(node_earliest_h, handle_ptr->get_stream());
-  special_nodes.latest_time      = cuopt::device_copy(node_latest_h, handle_ptr->get_stream());
+  special_nodes.node_infos    = cuopt::device_copy(node_infos_h, handle_ptr->get_stream());
+  special_nodes.earliest_time = cuopt::device_copy(node_earliest_h, handle_ptr->get_stream());
+  special_nodes.latest_time   = cuopt::device_copy(node_latest_h, handle_ptr->get_stream());
+  if (special_nodes.has_distance_break) {
+    special_nodes.distance_min = cuopt::device_copy(node_distance_min_h, handle_ptr->get_stream());
+    special_nodes.distance_max = cuopt::device_copy(node_distance_max_h, handle_ptr->get_stream());
+  }
   special_nodes.break_loc_to_idx = cuopt::device_copy(break_loc_to_idx_h, handle_ptr->get_stream());
   RAFT_CHECK_CUDA(handle_ptr->get_stream());
 }

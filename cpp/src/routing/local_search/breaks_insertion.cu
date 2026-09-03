@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -15,6 +15,11 @@ namespace cuopt {
 namespace routing {
 namespace detail {
 
+/**
+ * @brief Looks for a cost-reducing relocation of an existing break node within its route by
+ *        evaluating every alternative position and break-location choice for the same break
+ *        dimension. One block per (route, break_dimension) pair.
+ */
 template <typename i_t, typename f_t, request_t REQUEST>
 __global__ void find_break_insertions_kernel(
   typename solution_t<i_t, f_t, REQUEST>::view_t solution,

@@ -27,6 +27,7 @@ from cuopt.grpc.client.grpc_client cimport (
     cpu_routing_solution_t,
     cpu_uniform_break_t,
     cpu_vehicle_break_t,
+    cpu_vehicle_distance_break_t,
     grpc_incumbents_result_t,
     grpc_job_status_t,
     grpc_logs_result_t,
@@ -704,6 +705,7 @@ HANDLED_SETTERS = frozenset({
     "add_order_precedence",
     "add_break_dimension",
     "add_vehicle_break",
+    "add_vehicle_distance_break",
     "set_objective_function",
     "add_initial_solutions",
     "set_min_vehicles",
@@ -802,6 +804,7 @@ cdef void _populate(cpu_routing_problem_t& p, data_model) except *:
     cdef cpu_capacity_dimension_t cap
     cdef cpu_uniform_break_t ub
     cdef cpu_vehicle_break_t vb
+    cdef cpu_vehicle_distance_break_t vdb
     cdef int32_t vid
 
     for name, args, _ in data_model._calls:
@@ -862,6 +865,15 @@ cdef void _populate(cpu_routing_problem_t& p, data_model) except *:
             if len(args) > 4 and args[4] is not None:
                 _fill_i32(vb.locations, args[4])
             p.vehicle_breaks[vid].push_back(vb)
+        elif name == "add_vehicle_distance_break":
+            vid = <int32_t>int(args[0])
+            vdb = cpu_vehicle_distance_break_t()
+            vdb.distance_min = <float>float(args[1])
+            vdb.distance_max = <float>float(args[2])
+            vdb.duration = <int32_t>int(args[3])
+            if len(args) > 4 and args[4] is not None:
+                _fill_i32(vdb.locations, args[4])
+            p.vehicle_distance_breaks[vid].push_back(vdb)
         elif name == "set_objective_function":
             _fill_i32(p.objectives, args[0])
             _fill_f32(p.objective_weights, args[1])
@@ -933,6 +945,7 @@ def problem_summary(data_model):
         "break_locations": p.break_locations.size(),
         "uniform_breaks": p.uniform_breaks.size(),
         "vehicle_breaks": p.vehicle_breaks.size(),
+        "vehicle_distance_breaks": p.vehicle_distance_breaks.size(),
         "vehicle_order_match": p.vehicle_order_match.size(),
         "order_vehicle_match": p.order_vehicle_match.size(),
         "order_precedence": p.order_precedence.size(),

@@ -139,7 +139,7 @@ def test_range():
         dm.set_order_locations(order_locations)
     assert (
         str(exc_info.value)
-        == "All values in order locations must be less than or equal to 3"
+        == "All values in order locations must be less than or equal to 2"
     )
 
 

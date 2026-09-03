@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 
@@ -181,7 +181,14 @@ class Objective(IntEnum):
 
     PRIZE               - Models with respect to prizes collected by the
                           serviced orders
-    VEHICLE_FIXED_COST                - Models cost per vehicle. Enabled when set_vehicle_fixed_costs is used.
+    VEHICLE_FIXED_COST  - Models cost per vehicle. Enabled when
+                          set_vehicle_fixed_costs is used.
+
+    DISTANCE_BREAK_COST - Models each route's maximum distance shortfall below
+                          the soft lower bounds of distance-based breaks. The
+                          solution value sums those route maxima. Its default
+                          weight is 1.0 when distance breaks are configured;
+                          an explicit zero disables it.
     """
 
     COST = objective_t.COST
@@ -190,6 +197,7 @@ class Objective(IntEnum):
     VARIANCE_ROUTE_SERVICE_TIME = objective_t.VARIANCE_ROUTE_SERVICE_TIME
     PRIZE = objective_t.PRIZE
     VEHICLE_FIXED_COST = objective_t.VEHICLE_FIXED_COST
+    DISTANCE_BREAK_COST = objective_t.DISTANCE_BREAK_COST
 
 
 class NodeType(IntEnum):
@@ -511,31 +519,56 @@ cdef class DataModel:
     def add_vehicle_break(
         self, vehicle_id, earliest, latest, duration, locations
     ):
-        dim = 0
-        if vehicle_id in self.non_uniform_breaks:
-            dim = len(self.non_uniform_breaks[vehicle_id])
+        breaks = self.non_uniform_breaks.setdefault(vehicle_id, {})
+        dim = len(breaks)
 
-        if dim == 0:
-            self.non_uniform_breaks[vehicle_id] = {}
+        casted_locations = type_cast(
+            locations, np.int32, "breaklocations"
+        )
 
-        self.non_uniform_breaks[vehicle_id][dim] = {
+        breaks[dim] = {
             "earliest": earliest,
             "latest": latest,
             "duration": duration,
-            "locations": type_cast(
-                locations, np.int32, "breaklocations"
-            )
+            "locations": casted_locations,
         }
 
-        current_breaks = self.non_uniform_breaks[vehicle_id][dim]["locations"]
-
         cdef uintptr_t c_locations_ptr = (
-            current_breaks.__cuda_array_interface__['data'][0]
+            casted_locations.__cuda_array_interface__['data'][0]
         )
 
         self.c_data_model_view.get().add_vehicle_break(
             vehicle_id, earliest, latest, duration,
             <const int *> c_locations_ptr, len(locations))
+
+    def add_vehicle_distance_break(
+        self, vehicle_id, distance_min, distance_max, duration, locations
+    ):
+        breaks = self.non_uniform_breaks.setdefault(vehicle_id, {})
+        dim = len(breaks)
+
+        casted_locations = type_cast(
+            locations, np.int32, "breaklocations"
+        )
+
+        breaks[dim] = {
+            "distance_min": distance_min,
+            "distance_max": distance_max,
+            "duration": duration,
+            "locations": casted_locations,
+        }
+
+        cdef uintptr_t c_locations_ptr = (
+            casted_locations.__cuda_array_interface__['data'][0]
+        )
+
+        self.c_data_model_view.get().add_vehicle_distance_break(
+            vehicle_id,
+            <float> distance_min,
+            <float> distance_max,
+            duration,
+            <const int *> c_locations_ptr,
+            len(locations))
 
     def add_capacity_dimension(self, name, demand, capacity):
         self.demand_name.append(name)

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import time
@@ -226,6 +226,27 @@ def create_data_model(
                 cudf.Series(data["locations"]),
             )
 
+    if optimization_data.fleet_data["vehicle_distance_breaks"] is not None:
+        for data in optimization_data.fleet_data["vehicle_distance_breaks"]:
+            if data["locations"] is not None:
+                if len(optimization_data.locations) > 0:
+                    break_locations = locations.loc[data["locations"]].astype(
+                        "int32"
+                    )
+                else:
+                    break_locations = cudf.Series(
+                        data["locations"], dtype="int32"
+                    )
+            else:
+                break_locations = None
+            data_model.add_vehicle_distance_break(
+                data["vehicle_id"],
+                data["distance_min"],
+                data["distance_max"],
+                data["duration"],
+                break_locations,
+            )
+
     if optimization_data.fleet_data["vehicle_order_match"] is not None:
         for data in optimization_data.fleet_data["vehicle_order_match"]:
             data_model.add_vehicle_order_match(
@@ -400,6 +421,14 @@ def prep_optimization_data(optimization_data):
                     "vehicle_break_locations"
                 ].to_numpy(),
             )
+        if optimization_data.fleet_data["vehicle_distance_breaks"] is not None:
+            for d in optimization_data.fleet_data["vehicle_distance_breaks"]:
+                break_locs = d.get("locations")
+                if break_locs is not None and len(break_locs) > 0:
+                    optimization_data.locations = np.append(
+                        optimization_data.locations,
+                        np.asarray(break_locs),
+                    )
         optimization_data.locations = np.unique(optimization_data.locations)
 
         for v_type, graph in optimization_data.waypoint_graph.items():

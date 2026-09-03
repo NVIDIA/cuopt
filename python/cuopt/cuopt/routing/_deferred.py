@@ -51,6 +51,7 @@ _SETTERS = (
     "add_order_vehicle_match",
     "add_transit_time_matrix",
     "add_vehicle_break",
+    "add_vehicle_distance_break",
     "add_vehicle_order_match",
     "set_break_locations",
     "set_drop_return_trips",
