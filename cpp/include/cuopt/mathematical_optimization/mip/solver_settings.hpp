@@ -136,6 +136,8 @@ class mip_solver_settings_t {
   i_t strong_chvatal_gomory_cuts       = -1;
   i_t reduced_cost_strengthening       = -1;
   i_t dual_degenerate_feasibility_pump = -1;  // -1 = automatic (on), 0 = off, 1 = on
+  i_t primal_degenerate_pivots         = -1;  // -1 = automatic (on), 0 = off, 1 = on
+  i_t dual_degenerate_pivots           = -1;  // -1 = automatic (on), 0 = off, 1 = on
   i_t objective_step                   = 1;   // 0 = disable objective step tightening, 1 = enable
   f_t cut_change_threshold             = -1.0;
   f_t cut_min_orthogonality            = 0.5;

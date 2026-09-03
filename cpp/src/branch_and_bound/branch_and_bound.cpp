@@ -1785,15 +1785,17 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
         std::vector<i_t> fractional;
         i_t num_fractional =
           fractional_variables(settings_, worker->leaf_solution.x, var_types_, fractional);
-        pivot_out_integer_variables(worker->leaf_problem,
-                                    lp_settings,
-                                    worker->basic_list,
-                                    worker->nonbasic_list,
-                                    worker->leaf_vstatus,
-                                    worker->leaf_solution,
-                                    worker->basis_factors,
-                                    num_fractional,
-                                    fractional);
+        if (settings_.dual_degenerate_pivots != 0) {
+          pivot_out_integer_variables(worker->leaf_problem,
+                                      lp_settings,
+                                      worker->basic_list,
+                                      worker->nonbasic_list,
+                                      worker->leaf_vstatus,
+                                      worker->leaf_solution,
+                                      worker->basis_factors,
+                                      num_fractional,
+                                      fractional);
+        }
       }
     }
   }
@@ -3464,15 +3466,18 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
   num_fractional = fractional_variables(settings_, root_relax_soln_.x, var_types_, fractional);
 
   f_t pivot_out_integer_variables_start_time = tic();
-  i_t num_integer_increased                  = pivot_out_integer_variables(original_lp_,
-                                                          settings_,
-                                                          basic_list,
-                                                          nonbasic_list,
-                                                          root_vstatus_,
-                                                          root_relax_soln_,
-                                                          basis_update,
-                                                          num_fractional,
-                                                          fractional);
+  i_t num_integer_increased = 0;
+  if (settings_.dual_degenerate_pivots != 0) {
+    num_integer_increased = pivot_out_integer_variables(original_lp_,
+                                                        settings_,
+                                                        basic_list,
+                                                        nonbasic_list,
+                                                        root_vstatus_,
+                                                        root_relax_soln_,
+                                                        basis_update,
+                                                        num_fractional,
+                                                        fractional);
+  }
   settings_.log.printf("Pivoted out %d integer variables in %e seconds\n",
                        num_integer_increased,
                        toc(pivot_out_integer_variables_start_time));
@@ -3701,16 +3706,18 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
     settings_.log.printf("New reduced cost objective %e (current %e)\n",
                          reduced_cost_bounds.get_max_objective(),
                          upper_bound_.load());
-    pivot_to_improve_reduced_cost_strengthening(original_lp_,
-                                                basic_list,
-                                                nonbasic_list,
-                                                root_vstatus_,
-                                                root_relax_soln_,
-                                                basis_update,
-                                                num_fractional,
-                                                fractional,
-                                                root_objective_,
-                                                reduced_cost_bounds);
+    if (settings_.primal_degenerate_pivots != 0) {
+      pivot_to_improve_reduced_cost_strengthening(original_lp_,
+                                                  basic_list,
+                                                  nonbasic_list,
+                                                  root_vstatus_,
+                                                  root_relax_soln_,
+                                                  basis_update,
+                                                  num_fractional,
+                                                  fractional,
+                                                  root_objective_,
+                                                  reduced_cost_bounds);
+    }
     settings_.log.printf("After pivoting: new reduced cost objective %e (current %e)\n",
                          reduced_cost_bounds.get_max_objective(),
                          upper_bound_.load());
@@ -5444,30 +5451,35 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   settings_.log.printf("New reduced cost objective %e (current %e)\n",
                        reduced_cost_bounds.get_max_objective(),
                        upper_bound_.load());
-  pivot_to_improve_reduced_cost_strengthening(original_lp_,
-                                              basic_list,
-                                              nonbasic_list,
-                                              root_vstatus_,
-                                              root_relax_soln_,
-                                              basis_update,
-                                              num_fractional,
-                                              fractional,
-                                              root_objective_,
-                                              reduced_cost_bounds);
+  if (settings_.primal_degenerate_pivots != 0) {
+    pivot_to_improve_reduced_cost_strengthening(original_lp_,
+                                                basic_list,
+                                                nonbasic_list,
+                                                root_vstatus_,
+                                                root_relax_soln_,
+                                                basis_update,
+                                                num_fractional,
+                                                fractional,
+                                                root_objective_,
+                                                reduced_cost_bounds);
+  }
   settings_.log.printf("After pivoting: new reduced cost objective %e (current %e)\n",
                        reduced_cost_bounds.get_max_objective(),
                        upper_bound_.load());
 
   f_t pivot_out_integer_variables_start_time = tic();
-  i_t num_integer_increased                  = pivot_out_integer_variables(original_lp_,
-                                                          settings_,
-                                                          basic_list,
-                                                          nonbasic_list,
-                                                          root_vstatus_,
-                                                          root_relax_soln_,
-                                                          basis_update,
-                                                          num_fractional,
-                                                          fractional);
+  i_t num_integer_increased = 0;
+  if (settings_.dual_degenerate_pivots != 0) {
+    num_integer_increased = pivot_out_integer_variables(original_lp_,
+                                                        settings_,
+                                                        basic_list,
+                                                        nonbasic_list,
+                                                        root_vstatus_,
+                                                        root_relax_soln_,
+                                                        basis_update,
+                                                        num_fractional,
+                                                        fractional);
+  }
   settings_.log.printf("Pivoted out %d integer variables in %e seconds\n",
                        num_integer_increased,
                        toc(pivot_out_integer_variables_start_time));
