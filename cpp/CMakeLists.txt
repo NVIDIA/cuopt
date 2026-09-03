@@ -270,14 +270,8 @@ endif ()
 
 FetchContent_Declare(
         papilo
-        GIT_REPOSITORY "https://github.com/akifcorduk/papilo.git"
-        # We would want to get the main branch. However, the main branch
-        # does not have some of the presolvers and settings that we need
-        # Mainly, probing and clique merging.
-        # This is the reason we are using the development branch
-        # from Oct 12, 2025. Once these changes are merged into the main branch,
-        #we can switch to the main branch.
-        GIT_TAG "55d5edece584885061639ecf3a6eb8a4629be9f2"
+        GIT_REPOSITORY "https://github.com/scipopt/papilo.git"
+        GIT_TAG "3a0d1d30a0a580530b37495b0ebb5926cf6e8a2c"
         GIT_PROGRESS TRUE
         EXCLUDE_FROM_ALL
         SYSTEM
