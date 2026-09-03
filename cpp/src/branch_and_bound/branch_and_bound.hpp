@@ -96,12 +96,10 @@ struct deterministic_diving_policy_t;
 template <typename f_t>
 struct objective_bound_pair_t {
   objective_bound_pair_t()
-    : objective(std::numeric_limits<f_t>::quiet_NaN()),
-      bound(std::numeric_limits<f_t>::quiet_NaN())
+    : objective(std::numeric_limits<f_t>::quiet_NaN()), bound(std::numeric_limits<f_t>::quiet_NaN())
   {
   }
-  objective_bound_pair_t(f_t objective_in, f_t bound_in)
-    : objective(objective_in), bound(bound_in)
+  objective_bound_pair_t(f_t objective_in, f_t bound_in) : objective(objective_in), bound(bound_in)
   {
   }
   bool is_valid() { return objective == objective && bound == bound; }
@@ -113,7 +111,9 @@ template <typename i_t, typename f_t>
 class reduced_cost_bounds_t {
  public:
   reduced_cost_bounds_t(i_t original_cols)
-    : max_objective_(-std::numeric_limits<f_t>::infinity()), lower_bounds_(original_cols), upper_bounds_(original_cols)
+    : max_objective_(-std::numeric_limits<f_t>::infinity()),
+      lower_bounds_(original_cols),
+      upper_bounds_(original_cols)
   {
   }
 
@@ -122,22 +122,16 @@ class reduced_cost_bounds_t {
     if (col < static_cast<i_t>(lower_bounds_.size())) {
       if (!lower_bounds_[col].is_valid()) {
         lower_bounds_[col] = objective_bound_pair_t<f_t>(objective, bound);
-        if (objective > max_objective_) {
-          max_objective_ = objective;
-        }
+        if (objective > max_objective_) { max_objective_ = objective; }
         return 1;
       } else {
         if (bound > lower_bounds_[col].bound) {
           lower_bounds_[col] = objective_bound_pair_t<f_t>(objective, bound);
-          if (objective > max_objective_) {
-            max_objective_ = objective;
-          }
+          if (objective > max_objective_) { max_objective_ = objective; }
           return 2;
         } else if (bound == lower_bounds_[col].bound && objective > lower_bounds_[col].objective) {
           lower_bounds_[col].objective = objective;
-          if (objective > max_objective_) {
-            max_objective_ = objective;
-          }
+          if (objective > max_objective_) { max_objective_ = objective; }
           return 1;
         } else {
           return -2;
@@ -153,22 +147,16 @@ class reduced_cost_bounds_t {
     if (col < static_cast<i_t>(upper_bounds_.size())) {
       if (!upper_bounds_[col].is_valid()) {
         upper_bounds_[col] = objective_bound_pair_t<f_t>(objective, bound);
-        if (objective > max_objective_) {
-          max_objective_ = objective;
-        }
+        if (objective > max_objective_) { max_objective_ = objective; }
         return 1;
       } else {
         if (bound < upper_bounds_[col].bound) {
           upper_bounds_[col] = objective_bound_pair_t<f_t>(objective, bound);
-          if (objective > max_objective_) {
-            max_objective_ = objective;
-          }
+          if (objective > max_objective_) { max_objective_ = objective; }
           return 2;
         } else if (bound == upper_bounds_[col].bound && objective > upper_bounds_[col].objective) {
           upper_bounds_[col].objective = objective;
-          if (objective > max_objective_) {
-            max_objective_ = objective;
-          }
+          if (objective > max_objective_) { max_objective_ = objective; }
           return 1;
         } else {
           return -2;
@@ -184,17 +172,19 @@ class reduced_cost_bounds_t {
                                        std::vector<f_t>& lower_bounds,
                                        std::vector<f_t>& upper_bounds)
   {
-    const i_t n        = static_cast<i_t>(lower_bounds_.size());
-    f_t max_objective = -std::numeric_limits<f_t>::infinity();
+    const i_t n                = static_cast<i_t>(lower_bounds_.size());
+    f_t max_objective          = -std::numeric_limits<f_t>::infinity();
     i_t integer_bounds_updated = 0;
     for (i_t j = 0; j < n; ++j) {
       if (lower_bounds_[j].is_valid()) {
         if (incumbent_objective <= lower_bounds_[j].objective &&
             lower_bounds_[j].bound > lower_bounds[j]) {
-          //printf("RCF Variable %d (%d): lower %e -> %e\n", j, static_cast<int>(var_types[j]), lower_bounds[j], lower_bounds_[j].bound);
+          // printf("RCF Variable %d (%d): lower %e -> %e\n", j, static_cast<int>(var_types[j]),
+          // lower_bounds[j], lower_bounds_[j].bound);
           lower_bounds[j] = lower_bounds_[j].bound;
           if (var_types[j] == simplex::variable_type_t::INTEGER) { integer_bounds_updated++; }
-          lower_bounds_[j].bound = lower_bounds_[j].objective = std::numeric_limits<f_t>::quiet_NaN();
+          lower_bounds_[j].bound = lower_bounds_[j].objective =
+            std::numeric_limits<f_t>::quiet_NaN();
         }
         if (lower_bounds_[j].objective > max_objective) {
           max_objective = lower_bounds_[j].objective;
@@ -203,10 +193,12 @@ class reduced_cost_bounds_t {
       if (upper_bounds_[j].is_valid()) {
         if (incumbent_objective <= upper_bounds_[j].objective &&
             upper_bounds_[j].bound < upper_bounds[j]) {
-          //printf("RCF Variable %d (%d): upper %e -> %e\n", j, static_cast<int>(var_types[j]), upper_bounds[j], upper_bounds_[j].bound);
+          // printf("RCF Variable %d (%d): upper %e -> %e\n", j, static_cast<int>(var_types[j]),
+          // upper_bounds[j], upper_bounds_[j].bound);
           upper_bounds[j] = upper_bounds_[j].bound;
           if (var_types[j] == simplex::variable_type_t::INTEGER) { integer_bounds_updated++; }
-          upper_bounds_[j].bound = upper_bounds_[j].objective = std::numeric_limits<f_t>::quiet_NaN();
+          upper_bounds_[j].bound = upper_bounds_[j].objective =
+            std::numeric_limits<f_t>::quiet_NaN();
         }
         if (upper_bounds_[j].objective > max_objective) {
           max_objective = upper_bounds_[j].objective;
@@ -525,18 +517,18 @@ class branch_and_bound_t {
                                   std::vector<i_t>& fractional);
 
   i_t apply_delta_x_for_integer_pivot(const simplex::lp_problem_t<i_t, f_t>& lp,
-                                       std::vector<i_t>& basic_list,
-                                       std::vector<i_t>& nonbasic_list,
-                                       std::vector<i_t>& nonbasic_index,
-                                       std::vector<simplex::variable_status_t>& vstatus,
-                                       i_t entering_index,
-                                       i_t nonbasic_entering,
-                                       i_t direction,
-                                       std::vector<f_t>& delta_x,
-                                       const sparse_vector_t<i_t, f_t>& utilde_sparse,
-                                       simplex::lp_solution_t<i_t, f_t>& solution,
-                                       simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
-                                       f_t& work_estimate);
+                                      std::vector<i_t>& basic_list,
+                                      std::vector<i_t>& nonbasic_list,
+                                      std::vector<i_t>& nonbasic_index,
+                                      std::vector<simplex::variable_status_t>& vstatus,
+                                      i_t entering_index,
+                                      i_t nonbasic_entering,
+                                      i_t direction,
+                                      std::vector<f_t>& delta_x,
+                                      const sparse_vector_t<i_t, f_t>& utilde_sparse,
+                                      simplex::lp_solution_t<i_t, f_t>& solution,
+                                      simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
+                                      f_t& work_estimate);
 
   void dual_degenerate_feasibility_pump(const simplex::lp_problem_t<i_t, f_t>& lp,
                                         std::vector<i_t>& basic_list,

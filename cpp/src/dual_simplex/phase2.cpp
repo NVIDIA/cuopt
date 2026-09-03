@@ -465,20 +465,14 @@ void initial_perturbation(const lp_problem_t<i_t, f_t>& lp,
   }
 
   // Dampen large costs
-  if (max_abs_obj_coeff > 100.0) {
-    max_abs_obj_coeff = std::sqrt(std::sqrt(max_abs_obj_coeff));
-  }
+  if (max_abs_obj_coeff > 100.0) { max_abs_obj_coeff = std::sqrt(std::sqrt(max_abs_obj_coeff)); }
   // Ensure a minimum perturbation even for tiny-cost problems
-  if (max_abs_obj_coeff < 1.0) {
-    max_abs_obj_coeff = 1.0;
-  }
+  if (max_abs_obj_coeff < 1.0) { max_abs_obj_coeff = 1.0; }
 
   // If few boxed variables, cap max_abs_obj_coeff at 1.0
   i_t num_boxed = 0;
   for (i_t j = 0; j < n; ++j) {
-    if (lp.lower[j] > -inf && lp.upper[j] < inf && lp.lower[j] != lp.upper[j]) {
-      num_boxed++;
-    }
+    if (lp.lower[j] > -inf && lp.upper[j] < inf && lp.lower[j] != lp.upper[j]) { num_boxed++; }
   }
   if (static_cast<f_t>(num_boxed) / n < 0.01) {
     max_abs_obj_coeff = std::min(max_abs_obj_coeff, f_t(1.0));
@@ -490,8 +484,13 @@ void initial_perturbation(const lp_problem_t<i_t, f_t>& lp,
   // that case. The original costs are restored before declaring optimality.
   const f_t perturbation_base = (strongly_degenerate ? 1e-5 : 5e-7) * max_abs_obj_coeff;
 
-  settings.log.printf("Perturbation debug: max_abs_obj_coeff=%e (dampened), perturbation_base=%e, n=%d, num_boxed=%d\n",
-                      max_abs_obj_coeff, perturbation_base, n, num_boxed);
+  settings.log.printf(
+    "Perturbation debug: max_abs_obj_coeff=%e (dampened), perturbation_base=%e, n=%d, "
+    "num_boxed=%d\n",
+    max_abs_obj_coeff,
+    perturbation_base,
+    n,
+    num_boxed);
 
   objective.resize(n);
   f_t sum_perturb = 0.0;
@@ -504,19 +503,17 @@ void initial_perturbation(const lp_problem_t<i_t, f_t>& lp,
     const f_t lower = lp.lower[j];
     const f_t upper = lp.upper[j];
     // Skip truly fixed variables and free variables
-    if (lower == upper || (lower == -inf && upper == inf)) {
-      continue;
-    }
+    if (lower == upper || (lower == -inf && upper == inf)) { continue; }
 
-    const f_t rand_val = random.random();
+    const f_t rand_val    = random.random();
     const f_t cost_factor = std::min(std::abs(obj) + 1.0, max_abs_obj_coeff + 1.0);
-    const f_t perturb  = (1.0 + rand_val) * cost_factor * perturbation_base;
+    const f_t perturb     = (1.0 + rand_val) * cost_factor * perturbation_base;
 
     if (vstatus[j] == variable_status_t::BASIC) {
       // Skip basic variables
       continue;
     } else if (vstatus[j] == variable_status_t::NONBASIC_LOWER ||
-        vstatus[j] == variable_status_t::NONBASIC_FIXED) {
+               vstatus[j] == variable_status_t::NONBASIC_FIXED) {
       // NONBASIC_FIXED from phase 1 for boxed variables — treat as at lower bound
       objective[j] = obj + perturb;
       sum_perturb += perturb;
@@ -1236,14 +1233,14 @@ i_t phase2_ratio_test(const lp_problem_t<i_t, f_t>& lp,
 
 template <typename i_t, typename f_t>
 i_t flip_bounds(const lp_problem_t<i_t, f_t>& lp,
-                 const std::vector<uint8_t>& bounded_variables,
-                 const std::vector<i_t>& flip_indices,
-                 std::vector<variable_status_t>& vstatus,
+                const std::vector<uint8_t>& bounded_variables,
+                const std::vector<i_t>& flip_indices,
+                std::vector<variable_status_t>& vstatus,
                 std::vector<f_t>& delta_x,
                 std::vector<i_t>& mark,
-                 std::vector<f_t>& atilde,
-                 std::vector<i_t>& atilde_index,
-                 f_t& work_estimate)
+                std::vector<f_t>& atilde,
+                std::vector<i_t>& atilde_index,
+                f_t& work_estimate)
 {
   i_t num_flipped = 0;
   for (const i_t j : flip_indices) {
@@ -1571,8 +1568,8 @@ void remove_leaving_perturbation(const lp_problem_t<i_t, f_t>& lp,
   const f_t perturb = objective[leaving_index] - lp.objective[leaving_index];
   if (perturb == 0.0) return;
 
-  const f_t lower = lp.lower[leaving_index];
-  const f_t upper = lp.upper[leaving_index];
+  const f_t lower  = lp.lower[leaving_index];
+  const f_t upper  = lp.upper[leaving_index];
   const bool boxed = (lower > -inf && upper < inf);
 
   if (boxed) {
@@ -1582,7 +1579,7 @@ void remove_leaving_perturbation(const lp_problem_t<i_t, f_t>& lp,
     const f_t new_z = z[leaving_index] - perturb;
     if (direction == 1 && new_z < -settings.tight_tol) { return; }
     if (direction == -1 && new_z > settings.tight_tol) { return; }
-    z[leaving_index] = new_z;
+    z[leaving_index]         = new_z;
     objective[leaving_index] = lp.objective[leaving_index];
   } else {
     z[leaving_index] -= perturb;
@@ -1592,12 +1589,12 @@ void remove_leaving_perturbation(const lp_problem_t<i_t, f_t>& lp,
     if (upper == inf && lower > -inf && z[leaving_index] < -settings.tight_tol) {
       // At lower bound, needs z >= 0
       const f_t correction = -z[leaving_index];
-      z[leaving_index] = 0.0;
+      z[leaving_index]     = 0.0;
       objective[leaving_index] += correction;
     } else if (lower == -inf && upper < inf && z[leaving_index] > settings.tight_tol) {
       // At upper bound, needs z <= 0
       const f_t correction = z[leaving_index];
-      z[leaving_index] = 0.0;
+      z[leaving_index]     = 0.0;
       objective[leaving_index] -= correction;
     }
   }
@@ -2271,20 +2268,20 @@ void bound_info(const lp_problem_t<i_t, f_t>& lp,
 
 template <typename i_t, typename f_t>
 i_t set_primal_variables_on_bounds(const lp_problem_t<i_t, f_t>& lp,
-                                    const simplex_solver_settings_t<i_t, f_t>& settings,
-                                    const std::vector<f_t>& z,
-                                    std::vector<variable_status_t>& vstatus,
-                                    std::vector<f_t>& x,
-                                    i_t degen_type = 0)
+                                   const simplex_solver_settings_t<i_t, f_t>& settings,
+                                   const std::vector<f_t>& z,
+                                   std::vector<variable_status_t>& vstatus,
+                                   std::vector<f_t>& x,
+                                   i_t degen_type = 0)
 {
   PHASE2_NVTX_RANGE("DualSimplex::set_primal_variables_on_bounds");
-  const i_t n = lp.num_cols;
-  f_t tol     = 1e-10;
+  const i_t n            = lp.num_cols;
+  f_t tol                = 1e-10;
   i_t num_fixed_to_lower = 0;
   i_t num_fixed_to_upper = 0;
   i_t num_lower_to_upper = 0;
   i_t num_upper_to_lower = 0;
-  i_t num_set_fixed = 0;
+  i_t num_set_fixed      = 0;
   for (i_t j = 0; j < n; ++j) {
     // We set z_j = 0 for basic variables
     // But we explicitally skip setting basic variables here
@@ -2315,8 +2312,8 @@ i_t set_primal_variables_on_bounds(const lp_problem_t<i_t, f_t>& lp,
         if (degen_type == 1) {
           // Column-sum heuristic
           const i_t col_start = lp.A.col_start[j];
-          const i_t col_end = lp.A.col_start[j + 1];
-          f_t col_sum = 0.0;
+          const i_t col_end   = lp.A.col_start[j + 1];
+          f_t col_sum         = 0.0;
           for (i_t k = col_start; k < col_end; k++) {
             col_sum += lp.A.x[k];
           }
@@ -2347,8 +2344,8 @@ i_t set_primal_variables_on_bounds(const lp_problem_t<i_t, f_t>& lp,
         if (degen_type == 1) {
           // Column-sum heuristic
           const i_t col_start = lp.A.col_start[j];
-          const i_t col_end = lp.A.col_start[j + 1];
-          f_t col_sum = 0.0;
+          const i_t col_end   = lp.A.col_start[j + 1];
+          f_t col_sum         = 0.0;
           for (i_t k = col_start; k < col_end; k++) {
             col_sum += lp.A.x[k];
           }
@@ -2408,17 +2405,34 @@ i_t set_primal_variables_on_bounds(const lp_problem_t<i_t, f_t>& lp,
     }
     // Track changes
     if (old_vstatus != vstatus[j]) {
-      if (old_vstatus == variable_status_t::NONBASIC_FIXED && vstatus[j] == variable_status_t::NONBASIC_LOWER) num_fixed_to_lower++;
-      else if (old_vstatus == variable_status_t::NONBASIC_FIXED && vstatus[j] == variable_status_t::NONBASIC_UPPER) num_fixed_to_upper++;
-      else if (old_vstatus == variable_status_t::NONBASIC_LOWER && vstatus[j] == variable_status_t::NONBASIC_UPPER) num_lower_to_upper++;
-      else if (old_vstatus == variable_status_t::NONBASIC_UPPER && vstatus[j] == variable_status_t::NONBASIC_LOWER) num_upper_to_lower++;
-      else if (vstatus[j] == variable_status_t::NONBASIC_FIXED) num_set_fixed++;
+      if (old_vstatus == variable_status_t::NONBASIC_FIXED &&
+          vstatus[j] == variable_status_t::NONBASIC_LOWER)
+        num_fixed_to_lower++;
+      else if (old_vstatus == variable_status_t::NONBASIC_FIXED &&
+               vstatus[j] == variable_status_t::NONBASIC_UPPER)
+        num_fixed_to_upper++;
+      else if (old_vstatus == variable_status_t::NONBASIC_LOWER &&
+               vstatus[j] == variable_status_t::NONBASIC_UPPER)
+        num_lower_to_upper++;
+      else if (old_vstatus == variable_status_t::NONBASIC_UPPER &&
+               vstatus[j] == variable_status_t::NONBASIC_LOWER)
+        num_upper_to_lower++;
+      else if (vstatus[j] == variable_status_t::NONBASIC_FIXED)
+        num_set_fixed++;
     }
   }
-  i_t total_changes = num_fixed_to_lower + num_fixed_to_upper + num_lower_to_upper + num_upper_to_lower + num_set_fixed;
+  i_t total_changes = num_fixed_to_lower + num_fixed_to_upper + num_lower_to_upper +
+                      num_upper_to_lower + num_set_fixed;
   if (total_changes > 0) {
-    settings.log.printf("set_primal_variables_on_bounds: %d changes (fixed->lower=%d, fixed->upper=%d, lower->upper=%d, upper->lower=%d, ->fixed=%d)\n",
-                        total_changes, num_fixed_to_lower, num_fixed_to_upper, num_lower_to_upper, num_upper_to_lower, num_set_fixed);
+    settings.log.printf(
+      "set_primal_variables_on_bounds: %d changes (fixed->lower=%d, fixed->upper=%d, "
+      "lower->upper=%d, upper->lower=%d, ->fixed=%d)\n",
+      total_changes,
+      num_fixed_to_lower,
+      num_fixed_to_upper,
+      num_lower_to_upper,
+      num_upper_to_lower,
+      num_set_fixed);
   }
   return total_changes;
 }
@@ -2472,8 +2486,8 @@ i_t attempt_to_remove_perturbations(const lp_problem_t<i_t, f_t>& lp,
                                     f_t& primal_infeasibility_squared,
                                     f_t& work_estimate)
 {
-  const i_t m = lp.num_rows;
-  const i_t n = lp.num_cols;
+  const i_t m         = lp.num_rows;
+  const i_t n         = lp.num_cols;
   const i_t n_minus_m = n - m;
 
   // Check if there's any perturbation
@@ -2481,7 +2495,7 @@ i_t attempt_to_remove_perturbations(const lp_problem_t<i_t, f_t>& lp,
   if (perturbation <= 1e-6) return 0;  // OPTIMAL
 
   // Count perturbations on basic vs nonbasic variables
-  i_t num_basic_perturbed = 0;
+  i_t num_basic_perturbed          = 0;
   i_t num_nonbasic_boxed_perturbed = 0;
   i_t num_nonbasic_other_perturbed = 0;
   for (i_t k = 0; k < m; ++k) {
@@ -2506,55 +2520,60 @@ i_t attempt_to_remove_perturbations(const lp_problem_t<i_t, f_t>& lp,
     // y is unaffected; z[j] - perturb gives exact unperturbed reduced cost.
     i_t num_flipped = 0;
     for (i_t k = 0; k < n_minus_m; ++k) {
-      const i_t j = nonbasic_list[k];
+      const i_t j       = nonbasic_list[k];
       const f_t perturb = objective[j] - lp.objective[j];
       if (perturb == 0.0) continue;
       const f_t new_z = z[j] - perturb;
       if (vstatus[j] == variable_status_t::NONBASIC_LOWER && new_z < -settings.dual_tol) {
-        vstatus[j] = variable_status_t::NONBASIC_UPPER;
-        z[j] = new_z;
+        vstatus[j]   = variable_status_t::NONBASIC_UPPER;
+        z[j]         = new_z;
         objective[j] = lp.objective[j];
         num_flipped++;
       } else if (vstatus[j] == variable_status_t::NONBASIC_UPPER && new_z > settings.dual_tol) {
-        vstatus[j] = variable_status_t::NONBASIC_LOWER;
-        z[j] = new_z;
+        vstatus[j]   = variable_status_t::NONBASIC_LOWER;
+        z[j]         = new_z;
         objective[j] = lp.objective[j];
         num_flipped++;
       } else {
-        z[j] = new_z;
+        z[j]         = new_z;
         objective[j] = lp.objective[j];
       }
     }
     work_estimate += 5 * n_minus_m;
 
     // Recompute x_B with flipped statuses
-    compute_primal_solution_from_basis(lp, ft, basic_list, nonbasic_list, vstatus, x, xB_workspace, work_estimate);
+    compute_primal_solution_from_basis(
+      lp, ft, basic_list, nonbasic_list, vstatus, x, xB_workspace, work_estimate);
     work_estimate += 2 * n;
-    primal_infeasibility_squared =
-      compute_initial_primal_infeasibilities(lp, settings, basic_list, x,
-                                             squared_infeasibilities, infeasibility_indices,
-                                             primal_infeasibility);
+    primal_infeasibility_squared = compute_initial_primal_infeasibilities(lp,
+                                                                          settings,
+                                                                          basic_list,
+                                                                          x,
+                                                                          squared_infeasibilities,
+                                                                          infeasibility_indices,
+                                                                          primal_infeasibility);
     work_estimate += 4 * m + 2 * n;
 
     if (primal_infeasibility <= settings.primal_tol) return 0;  // OPTIMAL
-    settings.log.printf("Removed perturbation. Continuing dual simplex (primal_inf=%.2e)\n", primal_infeasibility);
+    settings.log.printf("Removed perturbation. Continuing dual simplex (primal_inf=%.2e)\n",
+                        primal_infeasibility);
     return 1;  // CONTINUE_DUAL
   }
 
   // Perturbation on basic (or one-sided nonbasic) variables: need to recompute (y, z).
   std::vector<f_t> unperturbed_y(m);
   std::vector<f_t> unperturbed_z(n);
-  compute_dual_solution_from_basis(lp, ft, basic_list, nonbasic_list,
-                                   unperturbed_y, unperturbed_z, work_estimate);
+  compute_dual_solution_from_basis(
+    lp, ft, basic_list, nonbasic_list, unperturbed_y, unperturbed_z, work_estimate);
 
   // Check if removal is clean (no dual infeasibility)
-  const f_t dual_infeas = dual_infeasibility(lp, settings, vstatus, unperturbed_z,
-                                              settings.tight_tol, settings.dual_tol);
+  const f_t dual_infeas =
+    dual_infeasibility(lp, settings, vstatus, unperturbed_z, settings.tight_tol, settings.dual_tol);
   work_estimate += 3 * n;
   if (dual_infeas <= settings.dual_tol) {
     settings.log.printf("Removed perturbation of %.2e.\n", perturbation);
-    z = unperturbed_z;
-    y = unperturbed_y;
+    z         = unperturbed_z;
+    y         = unperturbed_y;
     objective = lp.objective;
     work_estimate += 3 * n + 2 * m;
     return 0;  // OPTIMAL
@@ -2562,13 +2581,13 @@ i_t attempt_to_remove_perturbations(const lp_problem_t<i_t, f_t>& lp,
 
   // Flip boxed nonbasics that are dual infeasible, and check for one-sided infeasibility
   std::vector<variable_status_t> new_vstatus = vstatus;
-  i_t num_flipped = 0;
-  f_t residual_dual_infeas = 0.0;
+  i_t num_flipped                            = 0;
+  f_t residual_dual_infeas                   = 0.0;
   for (i_t k = 0; k < n_minus_m; ++k) {
-    const i_t j = nonbasic_list[k];
-    const f_t zj = unperturbed_z[j];
-    const f_t lower = lp.lower[j];
-    const f_t upper = lp.upper[j];
+    const i_t j      = nonbasic_list[k];
+    const f_t zj     = unperturbed_z[j];
+    const f_t lower  = lp.lower[j];
+    const f_t upper  = lp.upper[j];
     const bool boxed = (lower > -inf && upper < inf && lower != upper);
 
     if (new_vstatus[j] == variable_status_t::NONBASIC_LOWER && zj < -settings.dual_tol) {
@@ -2592,28 +2611,35 @@ i_t attempt_to_remove_perturbations(const lp_problem_t<i_t, f_t>& lp,
   if (residual_dual_infeas > settings.dual_tol) {
     // One-sided infeasibility remains — can't continue with dual simplex.
     // new_vstatus is discarded; vstatus unchanged.
-    settings.log.printf("Perturbation removal: %d flips, residual_dual_infeas=%.2e (PRIMAL_CLEANUP)\n",
-                        num_flipped, residual_dual_infeas);
+    settings.log.printf(
+      "Perturbation removal: %d flips, residual_dual_infeas=%.2e (PRIMAL_CLEANUP)\n",
+      num_flipped,
+      residual_dual_infeas);
     return 2;  // PRIMAL_CLEANUP
   }
 
   // All infeasibility was on boxed variables — accept unperturbed solution
-  vstatus = new_vstatus;
-  z = unperturbed_z;
-  y = unperturbed_y;
+  vstatus   = new_vstatus;
+  z         = unperturbed_z;
+  y         = unperturbed_y;
   objective = lp.objective;
   work_estimate += 3 * n + 2 * m;
 
   // Recompute x_B with flipped statuses
-  compute_primal_solution_from_basis(lp, ft, basic_list, nonbasic_list, vstatus, x, xB_workspace, work_estimate);
+  compute_primal_solution_from_basis(
+    lp, ft, basic_list, nonbasic_list, vstatus, x, xB_workspace, work_estimate);
   work_estimate += 2 * n;
-  primal_infeasibility_squared =
-    compute_initial_primal_infeasibilities(lp, settings, basic_list, x,
-                                          squared_infeasibilities, infeasibility_indices,
-                                          primal_infeasibility);
+  primal_infeasibility_squared = compute_initial_primal_infeasibilities(lp,
+                                                                        settings,
+                                                                        basic_list,
+                                                                        x,
+                                                                        squared_infeasibilities,
+                                                                        infeasibility_indices,
+                                                                        primal_infeasibility);
   work_estimate += 4 * m + 2 * n;
 
-  settings.log.printf("Perturbation removal: %d flips, primal_inf=%.2e\n", num_flipped, primal_infeasibility);
+  settings.log.printf(
+    "Perturbation removal: %d flips, primal_inf=%.2e\n", num_flipped, primal_infeasibility);
   if (primal_infeasibility <= settings.primal_tol) return 0;  // OPTIMAL
   settings.log.printf("Continuing dual after flip (primal_inf=%.2e)\n", primal_infeasibility);
   return 1;  // CONTINUE_DUAL
@@ -2644,22 +2670,18 @@ void prepare_optimality(i_t info,
   const i_t m = lp.num_rows;
   const i_t n = lp.num_cols;
 
-  sol.objective         = compute_objective(lp, sol.x);
-  sol.user_objective    = compute_user_objective(lp, sol.objective);
+  sol.objective          = compute_objective(lp, sol.x);
+  sol.user_objective     = compute_user_objective(lp, sol.objective);
   const f_t perturbation = amount_of_perturbation(lp, objective);
 
-  sol.l2_primal_residual  = l2_primal_residual(lp, sol);
-  sol.l2_dual_residual    = l2_dual_residual(lp, sol);
-  const f_t dual_infeas   = dual_infeasibility(lp, settings, vstatus, z, 0.0, 0.0);
+  sol.l2_primal_residual = l2_primal_residual(lp, sol);
+  sol.l2_dual_residual   = l2_dual_residual(lp, sol);
+  const f_t dual_infeas  = dual_infeasibility(lp, settings, vstatus, z, 0.0, 0.0);
   // Compute max primal infeasibility for reporting
   f_t primal_infeas = 0.0;
   for (i_t j = 0; j < n; ++j) {
-    if (x[j] < lp.lower[j]) {
-      primal_infeas = std::max(primal_infeas, lp.lower[j] - x[j]);
-    }
-    if (x[j] > lp.upper[j]) {
-      primal_infeas = std::max(primal_infeas, x[j] - lp.upper[j]);
-    }
+    if (x[j] < lp.lower[j]) { primal_infeas = std::max(primal_infeas, lp.lower[j] - x[j]); }
+    if (x[j] > lp.upper[j]) { primal_infeas = std::max(primal_infeas, x[j] - lp.upper[j]); }
   }
   if (phase == 1 && iter > 0) {
     settings.log.printf("Dual phase I complete. Iterations %d. Time %.2f\n", iter, toc(start_time));
@@ -2834,18 +2856,18 @@ class phase2_timers_t {
   f_t bfrt_select_time{0.0};
   // BFRT diagnostic counters
   i_t bfrt_calls{0};
-  i_t bfrt_zero_steps{0};          // step_length == 0
-  i_t bfrt_single_pass_only{0};    // no bound flips (single_pass decided)
-  i_t bfrt_bucket_used{0};         // bucket sort was used
-  i_t bfrt_not_last_bucket{0};     // selected from a bucket other than the last
-  i_t bfrt_fallback{0};            // fell back to single_pass result after bucket sort
-  i_t bfrt_zero_step_num_buckets_sum{0};  // sum of num_buckets on zero-step iters
-  i_t bfrt_zero_step_bucket0_sum{0};      // sum of bucket0 size on zero-step iters
-  i_t bfrt_zero_step_num_breakpoints_sum{0}; // sum of num_breakpoints on zero-step iters
-  i_t bfrt_zero_step_harris_zero_sum{0};  // sum of harris_ratios==0 on zero-step iters
-  i_t bfrt_zero_step_exact_zero_sum{0};   // sum of exact ratios==0 on zero-step iters
-  i_t bfrt_selected_slope_breaker{0};     // times we selected the slope breaker
-  i_t bfrt_not_slope_breaker{0};          // times we selected something else
+  i_t bfrt_zero_steps{0};                     // step_length == 0
+  i_t bfrt_single_pass_only{0};               // no bound flips (single_pass decided)
+  i_t bfrt_bucket_used{0};                    // bucket sort was used
+  i_t bfrt_not_last_bucket{0};                // selected from a bucket other than the last
+  i_t bfrt_fallback{0};                       // fell back to single_pass result after bucket sort
+  i_t bfrt_zero_step_num_buckets_sum{0};      // sum of num_buckets on zero-step iters
+  i_t bfrt_zero_step_bucket0_sum{0};          // sum of bucket0 size on zero-step iters
+  i_t bfrt_zero_step_num_breakpoints_sum{0};  // sum of num_breakpoints on zero-step iters
+  i_t bfrt_zero_step_harris_zero_sum{0};      // sum of harris_ratios==0 on zero-step iters
+  i_t bfrt_zero_step_exact_zero_sum{0};       // sum of exact ratios==0 on zero-step iters
+  i_t bfrt_selected_slope_breaker{0};         // times we selected the slope breaker
+  i_t bfrt_not_slope_breaker{0};              // times we selected something else
   work_timer_t<f_t> pricing_time;
   work_timer_t<f_t> btran_time;
   work_timer_t<f_t> ftran_time;
@@ -3027,7 +3049,8 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
         }
       }
     }
-    settings.log.printf("NONBASIC_FIXED boxed: %d, degenerate (|z_j| < dual_tol): %d\n", num_fixed, num_degen);
+    settings.log.printf(
+      "NONBASIC_FIXED boxed: %d, degenerate (|z_j| < dual_tol): %d\n", num_fixed, num_degen);
   }
 
   // Try 3 strategies for degenerate bound assignment, pick best
@@ -3037,23 +3060,33 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
   std::vector<variable_status_t> best_vstatus;
   std::vector<f_t> best_x;
   const char* degen_names[] = {"default", "column-sum", "abs-bound"};
-  const i_t degen_types[] = {0, 1, 3};
+  const i_t degen_types[]   = {0, 1, 3};
   f_t all_sum_infeas[3];
   i_t all_num_infeas[3];
 
   for (i_t di = 0; di < 3; di++) {
-    const i_t dt = degen_types[di];
+    const i_t dt                               = degen_types[di];
     std::vector<variable_status_t> try_vstatus = vstatus;
-    std::vector<f_t> try_x = x;
+    std::vector<f_t> try_x                     = x;
     phase2::set_primal_variables_on_bounds(lp, settings, z, try_vstatus, try_x, dt);
-    phase2::compute_primal_variables(ft, lp.rhs, lp.A, basic_list, nonbasic_list,
-                                     settings.tight_tol, try_x, xB_workspace, phase2_work_estimate);
+    phase2::compute_primal_variables(ft,
+                                     lp.rhs,
+                                     lp.A,
+                                     basic_list,
+                                     nonbasic_list,
+                                     settings.tight_tol,
+                                     try_x,
+                                     xB_workspace,
+                                     phase2_work_estimate);
     f_t sum_infeas = 0.0;
     i_t num_infeas = 0;
     for (i_t k = 0; k < m; ++k) {
       const i_t j = basic_list[k];
-      f_t infeas = std::max(lp.lower[j] - try_x[j], try_x[j] - lp.upper[j]);
-      if (infeas > 0.0) { sum_infeas += infeas; num_infeas++; }
+      f_t infeas  = std::max(lp.lower[j] - try_x[j], try_x[j] - lp.upper[j]);
+      if (infeas > 0.0) {
+        sum_infeas += infeas;
+        num_infeas++;
+      }
     }
     all_sum_infeas[di] = sum_infeas;
     all_num_infeas[di] = num_infeas;
@@ -3062,16 +3095,16 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
       best_sum_infeas = sum_infeas;
       best_num_infeas = num_infeas;
       best_degen_type = 0;
-      best_vstatus = try_vstatus;
-      best_x = try_x;
+      best_vstatus    = try_vstatus;
+      best_x          = try_x;
     } else {
       // Only pick alternative if BOTH fewer infeasibilities AND lower sum
       if (num_infeas <= best_num_infeas && sum_infeas < best_sum_infeas) {
         best_sum_infeas = sum_infeas;
         best_num_infeas = num_infeas;
         best_degen_type = di;
-        best_vstatus = try_vstatus;
-        best_x = try_x;
+        best_vstatus    = try_vstatus;
+        best_x          = try_x;
       }
     }
     if (phase == 1 || num_degen == 0) {
@@ -3083,12 +3116,16 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
     }
   }
   vstatus = best_vstatus;
-  x = best_x;
-  settings.log.printf("Bound assignment: default(%d/%.2e) colsum(%d/%.2e) abs-bound(%d/%.2e) -> %s\n",
-                      all_num_infeas[0], all_sum_infeas[0],
-                      all_num_infeas[1], all_sum_infeas[1],
-                      all_num_infeas[2], all_sum_infeas[2],
-                      degen_names[best_degen_type]);
+  x       = best_x;
+  settings.log.printf(
+    "Bound assignment: default(%d/%.2e) colsum(%d/%.2e) abs-bound(%d/%.2e) -> %s\n",
+    all_num_infeas[0],
+    all_sum_infeas[0],
+    all_num_infeas[1],
+    all_sum_infeas[1],
+    all_num_infeas[2],
+    all_sum_infeas[2],
+    degen_names[best_degen_type]);
   phase2_work_estimate += 15 * (n - m);
 
   // Near-optimality check: decide whether to apply initial perturbation
@@ -3097,16 +3134,21 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
     f_t max_primal_infeas = 0.0;
     for (i_t k = 0; k < m; ++k) {
       const i_t j = basic_list[k];
-      f_t infeas = std::max(lp.lower[j] - x[j], x[j] - lp.upper[j]);
+      f_t infeas  = std::max(lp.lower[j] - x[j], x[j] - lp.upper[j]);
       if (infeas > settings.primal_tol) {
         num_primal_infeas++;
         max_primal_infeas = std::max(max_primal_infeas, infeas);
       }
     }
-    bool near_optimal = (num_primal_infeas < 1000 && max_primal_infeas < 1e-3);
+    bool near_optimal       = (num_primal_infeas < 1000 && max_primal_infeas < 1e-3);
     bool apply_perturbation = (settings.initial_perturbation == 1) || !near_optimal;
-    settings.log.printf("Near-optimal check: num_primal_infeas=%d, max_primal_infeas=%.2e, near_optimal=%d, apply_perturbation=%d\n",
-                        num_primal_infeas, max_primal_infeas, near_optimal, apply_perturbation);
+    settings.log.printf(
+      "Near-optimal check: num_primal_infeas=%d, max_primal_infeas=%.2e, near_optimal=%d, "
+      "apply_perturbation=%d\n",
+      num_primal_infeas,
+      max_primal_infeas,
+      near_optimal,
+      apply_perturbation);
     if (apply_perturbation) {
       const bool strongly_degenerate = num_degen > n / 20;
       phase2::initial_perturbation(lp, settings, vstatus, strongly_degenerate, objective);
@@ -3122,8 +3164,15 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
       i_t num_bound_changes2 = phase2::set_primal_variables_on_bounds(lp, settings, z, vstatus, x);
       phase2_work_estimate += 5 * (n - m);
       if (num_bound_changes2 > 0) {
-        phase2::compute_primal_variables(ft, lp.rhs, lp.A, basic_list, nonbasic_list,
-                                         settings.tight_tol, x, xB_workspace, phase2_work_estimate);
+        phase2::compute_primal_variables(ft,
+                                         lp.rhs,
+                                         lp.A,
+                                         basic_list,
+                                         nonbasic_list,
+                                         settings.tight_tol,
+                                         x,
+                                         xB_workspace,
+                                         phase2_work_estimate);
       }
     }
   }
@@ -3452,10 +3501,22 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
 
       // Before declaring optimal, attempt to remove perturbation.
       if (phase == 2) {
-        i_t removal_status = phase2::attempt_to_remove_perturbations(
-          lp, settings, ft, basic_list, nonbasic_list, vstatus, objective,
-          z, y, x, xB_workspace, squared_infeasibilities, infeasibility_indices,
-          primal_infeasibility, primal_infeasibility_squared, phase2_work_estimate);
+        i_t removal_status = phase2::attempt_to_remove_perturbations(lp,
+                                                                     settings,
+                                                                     ft,
+                                                                     basic_list,
+                                                                     nonbasic_list,
+                                                                     vstatus,
+                                                                     objective,
+                                                                     z,
+                                                                     y,
+                                                                     x,
+                                                                     xB_workspace,
+                                                                     squared_infeasibilities,
+                                                                     infeasibility_indices,
+                                                                     primal_infeasibility,
+                                                                     primal_infeasibility_squared,
+                                                                     phase2_work_estimate);
         if (removal_status == 1) {  // CONTINUE_DUAL
           obj = phase2::compute_perturbed_objective(objective, x);
           phase2_work_estimate += 2 * n;
@@ -3466,19 +3527,19 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
           settings.log.printf("Failed to remove perturbation of %.2e.\n", perturbation);
           settings.log.printf("Num updates: %d\n", ft.num_updates());
           settings.log.printf("Iterations: %d\n", iter);
-          i_t dual_iter = iter;
+          i_t dual_iter                 = iter;
           primal_status_t primal_status = primal_phase2_with_advanced_basis(2,
-                                                                             start_time,
-                                                                             lp,
-                                                                             settings,
-                                                                             vstatus,
-                                                                             ft,
-                                                                             basic_list,
-                                                                             nonbasic_list,
-                                                                             sol,
-                                                                             iter,
-                                                                             phase2_work_estimate,
-                                                                             false);
+                                                                            start_time,
+                                                                            lp,
+                                                                            settings,
+                                                                            vstatus,
+                                                                            ft,
+                                                                            basic_list,
+                                                                            nonbasic_list,
+                                                                            sol,
+                                                                            iter,
+                                                                            phase2_work_estimate,
+                                                                            false);
           if (primal_status == primal_status_t::OPTIMAL) {
             settings.log.printf("Primal cleanup successful. Iterations %d\n", iter - dual_iter);
             objective = lp.objective;
@@ -3486,9 +3547,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
             settings.log.printf("Primal cleanup failed.\n");
             const f_t dual_infeas = phase2::dual_infeasibility(
               lp, settings, vstatus, sol.z, settings.tight_tol, settings.dual_tol);
-            if (dual_infeas > 10.0 * settings.dual_tol) {
-              return dual_status_t::NUMERICAL;
-            }
+            if (dual_infeas > 10.0 * settings.dual_tol) { return dual_status_t::NUMERICAL; }
           }
         }
         // removal_status == 0 (OPTIMAL) or primal cleanup done: fall through to prepare_optimality
@@ -3510,8 +3569,8 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
                                  iter,
                                  x,
                                  y,
-                                  z,
-                                  sol);
+                                 z,
+                                 sol);
       status = dual_status_t::OPTIMAL;
       break;
     }
@@ -3649,8 +3708,8 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
                                                    delta_z,
                                                    delta_z_indices,
                                                    nonbasic_mark);
-        entering_index = bfrt.compute_step_length(
-          step_length, nonbasic_entering_index, flip_indices);
+        entering_index =
+          bfrt.compute_step_length(step_length, nonbasic_entering_index, flip_indices);
         phase2_work_estimate += bfrt.work_estimate();
         if (entering_index == RATIO_TEST_NUMERICAL_ISSUES) {
           settings.log.printf("Numerical issues encountered in ratio test.\n");
@@ -3701,10 +3760,22 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
       phase2_work_estimate += 2 * n;
 
       if (perturbation > 0.0 && phase == 2) {
-        i_t removal_status = phase2::attempt_to_remove_perturbations(
-          lp, settings, ft, basic_list, nonbasic_list, vstatus, objective,
-          z, y, x, xB_workspace, squared_infeasibilities, infeasibility_indices,
-          primal_infeasibility, primal_infeasibility_squared, phase2_work_estimate);
+        i_t removal_status = phase2::attempt_to_remove_perturbations(lp,
+                                                                     settings,
+                                                                     ft,
+                                                                     basic_list,
+                                                                     nonbasic_list,
+                                                                     vstatus,
+                                                                     objective,
+                                                                     z,
+                                                                     y,
+                                                                     x,
+                                                                     xB_workspace,
+                                                                     squared_infeasibilities,
+                                                                     infeasibility_indices,
+                                                                     primal_infeasibility,
+                                                                     primal_infeasibility_squared,
+                                                                     phase2_work_estimate);
         if (removal_status == 0) {  // OPTIMAL
           obj = phase2::compute_perturbed_objective(objective, x);
           phase2_work_estimate += 2 * n;
@@ -3833,7 +3904,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
                                                                    atilde,
                                                                    atilde_index,
                                                                    phase2_work_estimate)
-                                               : 0;
+                                             : 0;
 
     timers.flip_time += timers.stop_timer(phase2_work_estimate + ft.work_estimate());
     total_bound_flips += num_flipped;
@@ -4004,7 +4075,8 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
     phase2::check_primal_infeasibilities(
       lp, settings, basic_list, x, squared_infeasibilities, infeasibility_indices);
 #endif
-    timers.update_infeasibility_time += timers.stop_timer(phase2_work_estimate + ft.work_estimate());
+    timers.update_infeasibility_time +=
+      timers.stop_timer(phase2_work_estimate + ft.work_estimate());
 
     // Clear delta_x
     phase2::clear_delta_x(
@@ -4015,9 +4087,16 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
       phase2::remove_leaving_perturbation(lp, settings, leaving_index, direction, z, objective);
     }
     f_t sum_perturb = 0.0;
-    phase2::compute_perturbation(
-      lp, settings, delta_z_indices, vstatus, z, objective, sum_perturb,
-      entering_index, step_length, phase2_work_estimate);
+    phase2::compute_perturbation(lp,
+                                 settings,
+                                 delta_z_indices,
+                                 vstatus,
+                                 z,
+                                 objective,
+                                 sum_perturb,
+                                 entering_index,
+                                 step_length,
+                                 phase2_work_estimate);
     timers.perturb_time += timers.stop_timer(phase2_work_estimate + ft.work_estimate());
 
     // Update basis information
@@ -4165,8 +4244,8 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
     if ((iter % FEATURE_LOG_INTERVAL) == 0 && work_unit_context) {
       [[maybe_unused]] i_t iters_elapsed = iter - last_feature_log_iter;
 
-      work_unit_context->record_work_sync_on_horizon(
-        (phase2_work_estimate - last_work_reported) / 1e8);
+      work_unit_context->record_work_sync_on_horizon((phase2_work_estimate - last_work_reported) /
+                                                     1e8);
       last_work_reported = phase2_work_estimate;
 
       last_feature_log_iter = iter;
@@ -4199,13 +4278,18 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
       return dual_status_t::WORK_LIMIT;
     }
 
-    if (now > settings.time_limit) { status = dual_status_t::TIME_LIMIT; break; }
+    if (now > settings.time_limit) {
+      status = dual_status_t::TIME_LIMIT;
+      break;
+    }
 
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       return dual_status_t::CONCURRENT_LIMIT;
     }
   }
-  if (status != dual_status_t::TIME_LIMIT && iter >= iter_limit) { status = dual_status_t::ITERATION_LIMIT; }
+  if (status != dual_status_t::TIME_LIMIT && iter >= iter_limit) {
+    status = dual_status_t::ITERATION_LIMIT;
+  }
 
   // Flush any remaining work from the basis update into the total work estimate
   phase2_work_estimate += ft.work_estimate();
@@ -4216,7 +4300,9 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
     i_t num_iters = iter - start_iter;
     if (num_iters > 0) {
       settings.log.printf("Bound flips: total=%d, avg=%.1f, max=%d\n",
-                          total_bound_flips, 1.0 * total_bound_flips / num_iters, max_bound_flips);
+                          total_bound_flips,
+                          1.0 * total_bound_flips / num_iters,
+                          max_bound_flips);
     }
     constexpr bool print_stats = false;
     if constexpr (print_stats) {

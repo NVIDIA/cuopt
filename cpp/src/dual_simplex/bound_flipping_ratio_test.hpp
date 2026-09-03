@@ -53,9 +53,7 @@ class bound_flipping_ratio_test_t {
   {
   }
 
-  i_t compute_step_length(f_t& step_length,
-                          i_t& nonbasic_entering,
-                          std::vector<i_t>& flip_indices);
+  i_t compute_step_length(f_t& step_length, i_t& nonbasic_entering, std::vector<i_t>& flip_indices);
   f_t work_estimate() const { return work_estimate_; }
 
   // Timing fields (filled by compute_step_length)
@@ -66,18 +64,22 @@ class bound_flipping_ratio_test_t {
   f_t time_pivot_selection_{0.0};
 
   // Diagnostic fields
-  i_t num_buckets_used_{0};       // number of buckets in bucket sort
-  i_t bucket_selected_{-1};       // which bucket the entering variable came from (-1 = single_pass/fallback)
-  f_t step_length_result_{0.0};   // the step length chosen
-  bool used_fallback_{false};     // true if we fell back to single_pass result
-  i_t bucket0_size_{0};           // size of first bucket (candidates with ratio <= min_harris)
-  i_t num_breakpoints_{0};        // total breakpoints computed
-  bool selected_is_slope_breaker_{false}; // true if we selected the variable that made slope go negative
-  i_t num_harris_zero_{0};        // number of harris_ratios that are exactly 0
-  i_t num_exact_zero_{0};         // number of exact ratios that are exactly 0
+  i_t num_buckets_used_{0};  // number of buckets in bucket sort
+  i_t bucket_selected_{
+    -1};  // which bucket the entering variable came from (-1 = single_pass/fallback)
+  f_t step_length_result_{0.0};  // the step length chosen
+  bool used_fallback_{false};    // true if we fell back to single_pass result
+  i_t bucket0_size_{0};          // size of first bucket (candidates with ratio <= min_harris)
+  i_t num_breakpoints_{0};       // total breakpoints computed
+  bool selected_is_slope_breaker_{
+    false};                 // true if we selected the variable that made slope go negative
+  i_t num_harris_zero_{0};  // number of harris_ratios that are exactly 0
+  i_t num_exact_zero_{0};   // number of exact ratios that are exactly 0
 
  private:
-  i_t compute_breakpoints(std::vector<i_t>& indices, std::vector<f_t>& ratios, std::vector<f_t>& harris_ratios);
+  i_t compute_breakpoints(std::vector<i_t>& indices,
+                          std::vector<f_t>& ratios,
+                          std::vector<f_t>& harris_ratios);
   i_t single_pass(i_t start,
                   i_t end,
                   const std::vector<i_t>& indices,
@@ -86,9 +88,7 @@ class bound_flipping_ratio_test_t {
                   i_t& nonbasic_entering,
                   i_t& entering_index,
                   f_t& max_val);
-  void determine_flips(f_t step_length,
-                       i_t entering_index,
-                       std::vector<i_t>& flip_indices);
+  void determine_flips(f_t step_length, i_t entering_index, std::vector<i_t>& flip_indices);
   const std::vector<f_t>& lower_;
   const std::vector<f_t>& upper_;
   const std::vector<uint8_t>& bounded_variables_;

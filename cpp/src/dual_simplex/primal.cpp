@@ -575,10 +575,10 @@ i_t primal_ratio_test(const lp_problem_t<i_t, f_t>& lp,
                       i_t direction,
                       f_t& work_estimate)
 {
-  const i_t m             = lp.num_rows;
-  basic_leaving           = -1;
-  i_t leaving_index       = -1;
-  constexpr f_t pivot_tol = 1e-8;
+  const i_t m              = lp.num_rows;
+  basic_leaving            = -1;
+  i_t leaving_index        = -1;
+  constexpr f_t pivot_tol  = 1e-8;
   constexpr f_t harris_tol = 1e-8;
 
   // Harris ratio test: two passes.
@@ -963,9 +963,7 @@ primal_status_t primal_phase2_with_advanced_basis(
   work_estimate += basis_update.work_estimate();
   basis_update.clear_work_estimate();
 
-  if (work_estimate > settings.work_limit) {
-    return primal_status_t::WORK_LIMIT;
-  }
+  if (work_estimate > settings.work_limit) { return primal_status_t::WORK_LIMIT; }
 
   primal_timers_t<i_t, f_t> timers(false);
 
@@ -1328,8 +1326,8 @@ primal_status_t primal_phase2_with_advanced_basis(
           // After compute_delta_z and update_z, delta_z[j] still holds the raw
           // pivot row entries (update_z multiplies by dual_step_length into z, not delta_z)
           for (i_t k = 0; k < n - m; ++k) {
-            const i_t j        = nonbasic_list[k];
-            const f_t a_j      = delta_z[j];
+            const i_t j         = nonbasic_list[k];
+            const f_t a_j       = delta_z[j];
             const f_t candidate = (a_j * a_j / pivot_sq) * w_enter;
             if (candidate > devex_weight[j]) { devex_weight[j] = candidate; }
           }

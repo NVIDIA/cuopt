@@ -463,7 +463,6 @@ void branch_and_bound_t<i_t, f_t>::report(const lp_problem_t<i_t, f_t>& lp,
   settings_.log.printf("%s\n", log_line.c_str());
 }
 
-
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::update_reduced_cost_bounds(
   f_t relaxation_objective,
@@ -484,8 +483,9 @@ void branch_and_bound_t<i_t, f_t>::update_reduced_cost_bounds(
       // Let u_tilde_j = u_j - epsilon, so that floor(u_tilde_j) = u_j - 1
       // We want to solve for want the incumbent objective needs to be to make
       // x_j <= u_tilde_j
-      // This means l_j + (incumbent_objective - relaxation_objective) / reduced_costs[j] <= u_tilde_j
-      // Or equivalently, incumbent_objective <= relaxation_objective + reduced_costs[j] * (u_tilde_j - l_j) when reduced_costs[j] > 0
+      // This means l_j + (incumbent_objective - relaxation_objective) / reduced_costs[j] <=
+      // u_tilde_j Or equivalently, incumbent_objective <= relaxation_objective + reduced_costs[j] *
+      // (u_tilde_j - l_j) when reduced_costs[j] > 0
       if (lower_j > -inf && reduced_costs[j] > 0) {
         const f_t u_tilde_j = var_types_[j] == variable_type_t::INTEGER
                                 ? upper_j - tol
@@ -495,18 +495,20 @@ void branch_and_bound_t<i_t, f_t>::update_reduced_cost_bounds(
         const f_t diff        = u_tilde_j - lower_j;
         const f_t objective_j = relaxation_objective + diff * reduced_costs[j];
         if (((var_types_[j] == variable_type_t::INTEGER && bound_j == upper_j - 1.0) ||
-            var_types_[j] != variable_type_t::INTEGER) && std::isfinite(objective_j) && std::isfinite(bound_j)) {
+             var_types_[j] != variable_type_t::INTEGER) &&
+            std::isfinite(objective_j) && std::isfinite(bound_j)) {
           i_t info = reduced_cost_bounds.add_upper_bound(j, objective_j, bound_j);
-          //settings_.log.printf("Added objective bound pair (%e, %e) for variable %d upper bound. Info %d\n", objective_j, bound_j, j, info);
+          // settings_.log.printf("Added objective bound pair (%e, %e) for variable %d upper bound.
+          // Info %d\n", objective_j, bound_j, j, info);
         }
       }
 
-      // x_j >= u_j + (incumbent_objective - relaxation_objective) / reduced_costs[j] when reduced_costs[j] < 0
-      // Let l_tilde_j = l_j + epsilon, so that ceil(l_tilde_j) = l_j + 1
-      // We want to solve for want the incumbent objective needs to be to make
-      // x_j >= l_tilde_j
-      // This means u_j + (incumbent_objective - relaxation_objective) / reduced_costs[j] >= l_tilde_j
-      // Or equivalently, incumbent_objective <=  relaxation_objective + reduced_costs[j] * (l_tilde_j - u_j) when reduced_costs[j] < 0
+      // x_j >= u_j + (incumbent_objective - relaxation_objective) / reduced_costs[j] when
+      // reduced_costs[j] < 0 Let l_tilde_j = l_j + epsilon, so that ceil(l_tilde_j) = l_j + 1 We
+      // want to solve for want the incumbent objective needs to be to make x_j >= l_tilde_j This
+      // means u_j + (incumbent_objective - relaxation_objective) / reduced_costs[j] >= l_tilde_j Or
+      // equivalently, incumbent_objective <=  relaxation_objective + reduced_costs[j] * (l_tilde_j
+      // - u_j) when reduced_costs[j] < 0
       if (upper_j < inf && reduced_costs[j] < 0) {
         const f_t l_tilde_j = var_types_[j] == variable_type_t::INTEGER
                                 ? lower_j + tol
@@ -516,15 +518,16 @@ void branch_and_bound_t<i_t, f_t>::update_reduced_cost_bounds(
         const f_t diff        = l_tilde_j - upper_j;
         const f_t objective_j = relaxation_objective + diff * reduced_costs[j];
         if (((var_types_[j] == variable_type_t::INTEGER && bound_j == lower_j + 1.0) ||
-            var_types_[j] != variable_type_t::INTEGER) && std::isfinite(objective_j) && std::isfinite(bound_j)) {
+             var_types_[j] != variable_type_t::INTEGER) &&
+            std::isfinite(objective_j) && std::isfinite(bound_j)) {
           i_t info = reduced_cost_bounds.add_lower_bound(j, objective_j, bound_j);
-          //settings_.log.printf("Added objective bound pair (%e, %e) for variable %d lower bound. Info %d\n", objective_j, bound_j, j, info);
+          // settings_.log.printf("Added objective bound pair (%e, %e) for variable %d lower bound.
+          // Info %d\n", objective_j, bound_j, j, info);
         }
       }
     }
   }
 }
-
 
 template <typename i_t, typename f_t>
 i_t branch_and_bound_t<i_t, f_t>::find_reduced_cost_fixings(f_t upper_bound,
@@ -3470,7 +3473,9 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
                                                           basis_update,
                                                           num_fractional,
                                                           fractional);
-  settings_.log.printf("Pivoted out %d integer variables in %e seconds\n", num_integer_increased, toc(pivot_out_integer_variables_start_time));
+  settings_.log.printf("Pivoted out %d integer variables in %e seconds\n",
+                       num_integer_increased,
+                       toc(pivot_out_integer_variables_start_time));
   if (settings_.dual_degenerate_feasibility_pump != 0) {
     dual_degenerate_feasibility_pump(original_lp_,
                                      basic_list,
@@ -3560,11 +3565,11 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
 
   if (settings_.reduced_cost_strengthening >= 1 && upper_bound_.load() < last_upper_bound) {
     mutex_upper_.lock();
-    last_upper_bound = upper_bound_.load();
+    last_upper_bound              = upper_bound_.load();
     std::vector<f_t> lower_bounds = original_lp_.lower;
     std::vector<f_t> upper_bounds = original_lp_.upper;
-    f_t previous_max_objective = reduced_cost_bounds.get_max_objective();
-    i_t new_bounds = reduced_cost_bounds.update_bounds_from_new_incumbent(
+    f_t previous_max_objective    = reduced_cost_bounds.get_max_objective();
+    i_t new_bounds                = reduced_cost_bounds.update_bounds_from_new_incumbent(
       upper_bound_.load(), var_types_, lower_bounds, upper_bounds);
     mutex_upper_.unlock();
     mutex_original_lp_.lock();
@@ -3573,7 +3578,12 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
     mutex_original_lp_.unlock();
     if (1 || new_bounds > 0) {
       settings_.log.printf(
-        "Updated %d integer bounds using reduced cost strengthening from new incumbent. Max objective %e Current objective %e Previous max objective %e\n", new_bounds, reduced_cost_bounds.get_max_objective(), upper_bound_.load(), previous_max_objective);
+        "Updated %d integer bounds using reduced cost strengthening from new incumbent. Max "
+        "objective %e Current objective %e Previous max objective %e\n",
+        new_bounds,
+        reduced_cost_bounds.get_max_objective(),
+        upper_bound_.load(),
+        previous_max_objective);
     }
   }
 
@@ -3686,8 +3696,11 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
   root_objective_ = compute_objective(original_lp_, root_relax_soln_.x);
 
   if (settings_.reduced_cost_strengthening >= 1) {
-    update_reduced_cost_bounds(root_objective_, root_relax_soln_.z, root_vstatus_, reduced_cost_bounds);
-    settings_.log.printf("New reduced cost objective %e (current %e)\n", reduced_cost_bounds.get_max_objective(), upper_bound_.load());
+    update_reduced_cost_bounds(
+      root_objective_, root_relax_soln_.z, root_vstatus_, reduced_cost_bounds);
+    settings_.log.printf("New reduced cost objective %e (current %e)\n",
+                         reduced_cost_bounds.get_max_objective(),
+                         upper_bound_.load());
     pivot_to_improve_reduced_cost_strengthening(original_lp_,
                                                 basic_list,
                                                 nonbasic_list,
@@ -3695,8 +3708,12 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
                                                 root_relax_soln_,
                                                 basis_update,
                                                 num_fractional,
-                                                fractional, root_objective_, reduced_cost_bounds);
-    settings_.log.printf("After pivoting: new reduced cost objective %e (current %e)\n", reduced_cost_bounds.get_max_objective(), upper_bound_.load());
+                                                fractional,
+                                                root_objective_,
+                                                reduced_cost_bounds);
+    settings_.log.printf("After pivoting: new reduced cost objective %e (current %e)\n",
+                         reduced_cost_bounds.get_max_objective(),
+                         upper_bound_.load());
   }
 
   // Refresh fractional info after re-solving with cuts; the pre-cut count is stale.
@@ -3963,15 +3980,15 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(
     reduced_basis_update.b_transpose_solve(c_basic_pump, y_pump);
 
     // Check if any nonbasic has a violated reduced cost
-    i_t num_violated = 0;
-    f_t max_violation = 0.0;
+    i_t num_violated                = 0;
+    f_t max_violation               = 0.0;
     const i_t num_nonbasics_reduced = reduced_nonbasic_list.size();
     for (i_t k = 0; k < num_nonbasics_reduced; k++) {
       const i_t j = reduced_nonbasic_list[k];
       // z[j] = c[j] - y^T * A(:,j)
-      f_t zj = lp_reduced.objective[j];
+      f_t zj              = lp_reduced.objective[j];
       const i_t col_start = A_reduced.col_start[j];
-      const i_t col_end = A_reduced.col_start[j + 1];
+      const i_t col_end   = A_reduced.col_start[j + 1];
       for (i_t p = col_start; p < col_end; p++) {
         zj -= y_pump[A_reduced.i[p]] * A_reduced.x[p];
       }
@@ -4020,13 +4037,17 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(
     f_t pump_call_start_time                            = tic();
     simplex_solver_settings_t<i_t, f_t> primal_settings = settings_;
     primal_settings.log.log                             = false;
-    primal_settings.time_limit = settings_.time_limit;
-    primal_settings.work_limit = root_relax_work_estimate_ / 10;
+    primal_settings.time_limit                          = settings_.time_limit;
+    primal_settings.work_limit                          = root_relax_work_estimate_ / 10;
     settings_.log.printf(
       "Degenerate feasibility pump: calling primal simplex with %d rows, %d cols, %d nnz, "
       "%d basis updates, work_limit %.2e, primal_work_estimate %.2e\n",
-      m, n, A_reduced.col_start[n], reduced_basis_update.num_updates(),
-      primal_settings.work_limit, primal_work_estimate);
+      m,
+      n,
+      A_reduced.col_start[n],
+      reduced_basis_update.num_updates(),
+      primal_settings.work_limit,
+      primal_work_estimate);
     simplex::primal_status_t lp_status =
       simplex::primal_phase2_with_advanced_basis(2,
                                                  exploration_stats_.start_time,
@@ -4039,13 +4060,15 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(
                                                  reduced_solution,
                                                  iter,
                                                  primal_work_estimate);
-    f_t pump_call_time = toc(pump_call_start_time);
-    f_t pump_call_work = primal_work_estimate - primal_work_before;
+    f_t pump_call_time  = toc(pump_call_start_time);
+    f_t pump_call_work  = primal_work_estimate - primal_work_before;
     i_t pump_call_iters = iter - iter_before;
     settings_.log.printf(
       "Degenerate feasibility pump: primal simplex returned status %d, %d iters, "
       "work %.2e (%.2e/iter), time %.2f (%.2e work/s)\n",
-      static_cast<int>(lp_status), pump_call_iters, pump_call_work,
+      static_cast<int>(lp_status),
+      pump_call_iters,
+      pump_call_work,
       pump_call_iters > 0 ? pump_call_work / pump_call_iters : 0.0,
       pump_call_time,
       pump_call_time > 0 ? pump_call_work / pump_call_time : 0.0);
@@ -4384,7 +4407,7 @@ void branch_and_bound_t<i_t, f_t>::fast_slack_integer_pivots(
 
   if (fast_candidates.size() > 0 && settings_.inside_mip < 2) {
     settings.log.printf("Found %ld fast candidates for pivot out integer variables\n",
-                         fast_candidates.size());
+                        fast_candidates.size());
   }
 
   // Build a reverse index nonbasic_index[v] = position of v in nonbasic_list, or -1 if not
@@ -4398,8 +4421,8 @@ void branch_and_bound_t<i_t, f_t>::fast_slack_integer_pivots(
   }
 
   const i_t num_candidates = fast_candidates.size();
-  f_t last_log = tic();
-  f_t loop_start = tic();
+  f_t last_log             = tic();
+  f_t loop_start           = tic();
   for (i_t k = 0; k < num_candidates; k++) {
     const i_t j              = fast_candidates[k];
     const i_t row            = fast_rows[k];
@@ -4491,18 +4514,18 @@ void branch_and_bound_t<i_t, f_t>::fast_slack_integer_pivots(
     utilde_sparse.from_dense(utilde_dense);
 
     i_t error = apply_delta_x_for_integer_pivot(lp,
-                                    basic_list,
-                                    nonbasic_list,
-                                    nonbasic_index,
-                                    vstatus,
-                                    entering_index,
-                                    nonbasic_entering,
-                                    direction,
-                                    delta_x,
-                                    utilde_sparse,
-                                    soln,
-                                    basis_update,
-                                    work_estimate);
+                                                basic_list,
+                                                nonbasic_list,
+                                                nonbasic_index,
+                                                vstatus,
+                                                entering_index,
+                                                nonbasic_entering,
+                                                direction,
+                                                delta_x,
+                                                utilde_sparse,
+                                                soln,
+                                                basis_update,
+                                                work_estimate);
     // apply_delta_x_for_integer_pivot only mutates vstatus when the pivot actually fires,
     // so entering_index transitioning to BASIC is a reliable success signal.
     if (!error && settings.inside_mip < 2) {
@@ -4511,13 +4534,18 @@ void branch_and_bound_t<i_t, f_t>::fast_slack_integer_pivots(
     }
 
     if (settings.inside_mip < 2 && toc(last_log) > 1.0) {
-      settings.log.printf("Fast candidates %d/%d processed in %.2f seconds\n", k + 1, num_candidates, toc(loop_start));
+      settings.log.printf("Fast candidates %d/%d processed in %.2f seconds\n",
+                          k + 1,
+                          num_candidates,
+                          toc(loop_start));
       last_log = tic();
     }
   }
-  if (settings.inside_mip < 2)
-  {
-    settings.log.printf("Fast candidates: %d/%d processed in %.2f seconds\n", num_candidates, num_candidates, toc(loop_start));
+  if (settings.inside_mip < 2) {
+    settings.log.printf("Fast candidates: %d/%d processed in %.2f seconds\n",
+                        num_candidates,
+                        num_candidates,
+                        toc(loop_start));
   }
 }
 
@@ -4561,11 +4589,11 @@ i_t branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
   f_t work_estimate = 0.0;
 
   // Count primal degenerate basic variables
-  i_t num_degenerate = 0;
+  i_t num_degenerate            = 0;
   i_t num_degenerate_continuous = 0;
-  i_t num_degenerate_integer = 0;
+  i_t num_degenerate_integer    = 0;
   for (i_t k = 0; k < lp.num_rows; k++) {
-    const i_t j = basic_list_copy[k];
+    const i_t j              = basic_list_copy[k];
     const f_t slack_to_lower = soln_copy.x[j] - lp.lower[j];
     const f_t slack_to_upper = lp.upper[j] - soln_copy.x[j];
     if (slack_to_lower <= settings_.primal_tol || slack_to_upper <= settings_.primal_tol) {
@@ -4594,7 +4622,7 @@ i_t branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
   if (degeneracy_fraction > 0.5) {
     if (settings.inside_mip < 2) {
       settings.log.printf("Skipping pivot_out_integer_variables: degeneracy %.1f%% > 50%%\n",
-                           100.0 * degeneracy_fraction);
+                          100.0 * degeneracy_fraction);
     }
     return 0;
   }
@@ -4631,24 +4659,24 @@ i_t branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
   // Track which entering variables are actually tried (to detect duplication)
   std::vector<i_t> entering_tried_count(lp.num_cols, 0);
 
-  i_t worklist_total_processed = 0;
-  i_t worklist_skipped = 0;
-  i_t worklist_btran_done = 0;
-  i_t worklist_ftran_done = 0;
-  i_t worklist_pivots_succeeded = 0;
-  i_t worklist_readded = 0;
-  f_t worklist_btran_time = 0.0;
-  f_t worklist_dot_time = 0.0;
-  f_t worklist_ftran_time = 0.0;
-  i_t worklist_no_candidates = 0;       // target had no nonzero dot_q
-  i_t worklist_ratio_test_fail = 0;     // ratio test didn't pick a fractional integer (error -1)
-  i_t worklist_net_increase_fail = 0;   // pivot would net-increase fractionals (error -2)
-  i_t worklist_unbounded = 0;           // entering hit its own bound or unbounded (error -4)
-  i_t worklist_continuous_won = 0;      // continuous variable won ratio test (error -5)
-  i_t worklist_nonfrac_int_won = 0;     // non-fractional integer won ratio test (error -6)
+  i_t worklist_total_processed   = 0;
+  i_t worklist_skipped           = 0;
+  i_t worklist_btran_done        = 0;
+  i_t worklist_ftran_done        = 0;
+  i_t worklist_pivots_succeeded  = 0;
+  i_t worklist_readded           = 0;
+  f_t worklist_btran_time        = 0.0;
+  f_t worklist_dot_time          = 0.0;
+  f_t worklist_ftran_time        = 0.0;
+  i_t worklist_no_candidates     = 0;  // target had no nonzero dot_q
+  i_t worklist_ratio_test_fail   = 0;  // ratio test didn't pick a fractional integer (error -1)
+  i_t worklist_net_increase_fail = 0;  // pivot would net-increase fractionals (error -2)
+  i_t worklist_unbounded         = 0;  // entering hit its own bound or unbounded (error -4)
+  i_t worklist_continuous_won    = 0;  // continuous variable won ratio test (error -5)
+  i_t worklist_nonfrac_int_won   = 0;  // non-fractional integer won ratio test (error -6)
 
   f_t worklist_loop_start = tic();
-  f_t worklist_last_log = tic();
+  f_t worklist_last_log   = tic();
 
   while (!work_list.empty()) {
     const i_t j = work_list.back();
@@ -4657,9 +4685,18 @@ i_t branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
     worklist_total_processed++;
 
     // Skip if j is no longer basic and fractional (may have been fixed by a prior pivot)
-    if (p < 0) { worklist_skipped++; continue; }
-    if (vstatus_copy[j] != variable_status_t::BASIC) { worklist_skipped++; continue; }
-    if (!is_fractional(soln_copy.x[j], var_types_[j], settings_.integer_tol)) { worklist_skipped++; continue; }
+    if (p < 0) {
+      worklist_skipped++;
+      continue;
+    }
+    if (vstatus_copy[j] != variable_status_t::BASIC) {
+      worklist_skipped++;
+      continue;
+    }
+    if (!is_fractional(soln_copy.x[j], var_types_[j], settings_.integer_tol)) {
+      worklist_skipped++;
+      continue;
+    }
 
     // We want to pivot variable j out of the basis.
     // We solve B^T * delta_y = e_p, where p is the position of j in the basis.
@@ -4707,9 +4744,9 @@ i_t branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
     // Small nnz means the FTRAN result is likely sparse, so fewer competing
     // basic variables will have nonzero delta_xB components to block the target.
     // Skip entering variables that have already been tried (and failed) by prior targets.
-    f_t values[3] = {0.0, 0.0, 0.0};
+    f_t values[3]  = {0.0, 0.0, 0.0};
     i_t indices[3] = {-1, -1, -1};
-    f_t dot_start = tic();
+    f_t dot_start  = tic();
     for (i_t q : zero_reduced_costs_vars) {
       if (var_types_[q] == variable_type_t::INTEGER) { continue; }
       if (nonbasic_index[q] < 0) { continue; }
@@ -4718,7 +4755,7 @@ i_t branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
       const i_t col_start = lp.A.col_start[q];
       const i_t col_end   = lp.A.col_start[q + 1];
       const i_t col_nnz   = col_end - col_start;
-      f_t dot_q = 0.0;
+      f_t dot_q           = 0.0;
       for (i_t pp = col_start; pp < col_end; pp++) {
         dot_q += delta_y_dense[lp.A.i[pp]] * lp.A.x[pp];
       }
@@ -4727,14 +4764,20 @@ i_t branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
       const f_t merit = abs_dot_q / static_cast<f_t>(col_nnz);
 
       if (merit > values[0]) {
-        indices[2] = indices[1]; values[2] = values[1];
-        indices[1] = indices[0]; values[1] = values[0];
-        indices[0] = q;          values[0] = merit;
+        indices[2] = indices[1];
+        values[2]  = values[1];
+        indices[1] = indices[0];
+        values[1]  = values[0];
+        indices[0] = q;
+        values[0]  = merit;
       } else if (merit > values[1]) {
-        indices[2] = indices[1]; values[2] = values[1];
-        indices[1] = q;          values[1] = merit;
+        indices[2] = indices[1];
+        values[2]  = values[1];
+        indices[1] = q;
+        values[1]  = merit;
       } else if (merit > values[2]) {
-        indices[2] = q;          values[2] = merit;
+        indices[2] = q;
+        values[2]  = merit;
       }
     }
     worklist_dot_time += toc(dot_start);
@@ -4745,7 +4788,7 @@ i_t branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
     for (i_t h = 0; h < 3; h++) {
       if (indices[h] == -1) break;
 
-      const i_t q = indices[h];
+      const i_t q                 = indices[h];
       const i_t entering_index    = q;
       const i_t nonbasic_entering = nonbasic_index[q];
       if (nonbasic_entering < 0) { continue; }
@@ -4775,39 +4818,48 @@ i_t branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
       delta_x[q] = direction;
 
       i_t error = apply_delta_x_for_integer_pivot(lp,
-        basic_list_copy,
-        nonbasic_list_copy,
-        nonbasic_index,
-        vstatus_copy,
-        entering_index,
-        nonbasic_entering,
-        direction,
-        delta_x,
-        utilde_sparse,
-        soln_copy,
-        basis_update_copy,
-        work_estimate);
+                                                  basic_list_copy,
+                                                  nonbasic_list_copy,
+                                                  nonbasic_index,
+                                                  vstatus_copy,
+                                                  entering_index,
+                                                  nonbasic_entering,
+                                                  direction,
+                                                  delta_x,
+                                                  utilde_sparse,
+                                                  soln_copy,
+                                                  basis_update_copy,
+                                                  work_estimate);
 
       if (error == -2) { worklist_net_increase_fail++; }
-      if (error == -4) { worklist_unbounded++; worklist_ratio_test_fail++; }
-      if (error == -5) { worklist_continuous_won++; worklist_ratio_test_fail++; }
-      if (error == -6) { worklist_nonfrac_int_won++; worklist_ratio_test_fail++; }
+      if (error == -4) {
+        worklist_unbounded++;
+        worklist_ratio_test_fail++;
+      }
+      if (error == -5) {
+        worklist_continuous_won++;
+        worklist_ratio_test_fail++;
+      }
+      if (error == -6) {
+        worklist_nonfrac_int_won++;
+        worklist_ratio_test_fail++;
+      }
 
       if (!error) {
         worklist_pivots_succeeded++;
         // Update to_basic_position for the variables that changed status
         // entering_index is now basic, leaving_index is now nonbasic
         // Find the leaving variable: it's the one that took entering_index's slot in nonbasic_list
-        const i_t leaving_index = nonbasic_list_copy[nonbasic_entering];
+        const i_t leaving_index           = nonbasic_list_copy[nonbasic_entering];
         to_basic_position[entering_index] = to_basic_position[leaving_index];
-        to_basic_position[leaving_index] = -1;
+        to_basic_position[leaving_index]  = -1;
 
         // We did a successful pivot; add fractional variables whose values changed to work list
         for (i_t k : fractional) {
           if (vstatus_copy[k] != variable_status_t::BASIC) { continue; }
           if (std::abs(delta_x[k]) > settings_.zero_tol) {
-            //work_list.push_back(k);
-            //worklist_readded++;
+            // work_list.push_back(k);
+            // worklist_readded++;
           }
         }
         break;
@@ -4840,16 +4892,19 @@ i_t branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
   }
 
   // Count unique entering variables and duplication
-  i_t unique_entering = 0;
-  i_t max_entering_count = 0;
-  i_t entering_tried_once = 0;
+  i_t unique_entering         = 0;
+  i_t max_entering_count      = 0;
+  i_t entering_tried_once     = 0;
   i_t entering_tried_multiple = 0;
   for (i_t q = 0; q < lp.num_cols; q++) {
     if (entering_tried_count[q] > 0) {
       unique_entering++;
       max_entering_count = std::max(max_entering_count, entering_tried_count[q]);
-      if (entering_tried_count[q] == 1) { entering_tried_once++; }
-      else { entering_tried_multiple++; }
+      if (entering_tried_count[q] == 1) {
+        entering_tried_once++;
+      } else {
+        entering_tried_multiple++;
+      }
     }
   }
   if (settings.inside_mip < 2) {
@@ -4957,9 +5012,9 @@ void branch_and_bound_t<i_t, f_t>::pivot_to_improve_reduced_cost_strengthening(
   std::vector<i_t> delta_z_indices;
   delta_z_indices.reserve(lp.num_cols);
 
-  f_t work_estimate = 0;
-  const f_t threshold = 100.0 * settings_.integer_tol;
-  const f_t tol       = 1e-2;
+  f_t work_estimate    = 0;
+  const f_t threshold  = 100.0 * settings_.integer_tol;
+  const f_t tol        = 1e-2;
   const f_t zero_tol   = settings_.zero_tol;
   const f_t harris_tol = settings_.dual_tol / 10;
 
@@ -4997,8 +5052,8 @@ void branch_and_bound_t<i_t, f_t>::pivot_to_improve_reduced_cost_strengthening(
                                          delta_z,
                                          work_estimate);
 
-    const f_t lower_j = lp.lower[j];
-    const f_t upper_j = lp.upper[j];
+    const f_t lower_j   = lp.lower[j];
+    const f_t upper_j   = lp.upper[j];
     const bool at_lower = soln.x[j] - lower_j <= settings_.primal_tol;
     const bool at_upper = upper_j - soln.x[j] <= settings_.primal_tol;
 
@@ -5042,8 +5097,7 @@ void branch_and_bound_t<i_t, f_t>::pivot_to_improve_reduced_cost_strengthening(
           const f_t step   = alpha * scale * delta_z[jj];
           const f_t new_zj = old_zj + step;
           const bool initially_infeasible =
-            (vstatus[jj] == variable_status_t::NONBASIC_LOWER &&
-             old_zj < -settings_.dual_tol) ||
+            (vstatus[jj] == variable_status_t::NONBASIC_LOWER && old_zj < -settings_.dual_tol) ||
             (vstatus[jj] == variable_status_t::NONBASIC_UPPER && old_zj > settings_.dual_tol);
           if (initially_infeasible) {
             num_initial_dual_infeas++;
@@ -5122,14 +5176,15 @@ void branch_and_bound_t<i_t, f_t>::pivot_to_improve_reduced_cost_strengthening(
             std::isfinite(objective_j) && std::isfinite(bound_j)) {
           i_t info = reduced_cost_bounds.add_upper_bound(j, objective_j, bound_j);
           if (info > 0) { num_bounds_added++; }
-          //settings_.log.printf("Added objective bound pair (%e, %e) for variable %d upper bound. Info %d\n", objective_j, bound_j, j, info);
+          // settings_.log.printf("Added objective bound pair (%e, %e) for variable %d upper bound.
+          // Info %d\n", objective_j, bound_j, j, info);
         }
       }
 
       // x_j >= u_j + (incumbent_objective - relaxation_objective) / reduced_costs[j] when
-      // reduced_costs[j] < 0 Let l_tilde_j = l_j + epsilon, so that ceil(l_tilde_j) = l_j + 1 We want
-      // to solve for want the incumbent objective needs to be to make x_j >= l_tilde_j This means
-      // u_j + (incumbent_objective - relaxation_objective) / reduced_costs[j] >= l_tilde_j Or
+      // reduced_costs[j] < 0 Let l_tilde_j = l_j + epsilon, so that ceil(l_tilde_j) = l_j + 1 We
+      // want to solve for want the incumbent objective needs to be to make x_j >= l_tilde_j This
+      // means u_j + (incumbent_objective - relaxation_objective) / reduced_costs[j] >= l_tilde_j Or
       // equivalently, incumbent_objective <=  relaxation_objective + reduced_costs[j] *
       // (l_tilde_j - u_j) when reduced_costs[j] < 0
       if (at_upper && upper_j < inf && new_reduced_cost < -threshold) {
@@ -5145,7 +5200,8 @@ void branch_and_bound_t<i_t, f_t>::pivot_to_improve_reduced_cost_strengthening(
             std::isfinite(objective_j) && std::isfinite(bound_j)) {
           i_t info = reduced_cost_bounds.add_lower_bound(j, objective_j, bound_j);
           if (info > 0) { num_bounds_added++; }
-          //settings_.log.printf("Added objective bound pair (%e, %e) for variable %d lower bound. Info %d\n", objective_j, bound_j, j, info);
+          // settings_.log.printf("Added objective bound pair (%e, %e) for variable %d lower bound.
+          // Info %d\n", objective_j, bound_j, j, info);
         }
       }
     }
@@ -5247,7 +5303,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   lp_status_t root_status  = lp_status_t::UNSET;
   solving_root_relaxation_ = true;
 
-  f_t root_relax_start_time    = tic();
+  f_t root_relax_start_time = tic();
   root_relax_work_estimate_ = 0.0;
   if (!enable_concurrent_lp_root_solve()) {
     // RINS/SUBMIP path
@@ -5383,8 +5439,11 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   lower_bound_numerical_ = inf;
 
   reduced_cost_bounds_t<i_t, f_t> reduced_cost_bounds(original_lp_.num_cols);
-  update_reduced_cost_bounds(root_objective_, root_relax_soln_.z, root_vstatus_, reduced_cost_bounds);
-  settings_.log.printf("New reduced cost objective %e (current %e)\n", reduced_cost_bounds.get_max_objective(), upper_bound_.load());
+  update_reduced_cost_bounds(
+    root_objective_, root_relax_soln_.z, root_vstatus_, reduced_cost_bounds);
+  settings_.log.printf("New reduced cost objective %e (current %e)\n",
+                       reduced_cost_bounds.get_max_objective(),
+                       upper_bound_.load());
   pivot_to_improve_reduced_cost_strengthening(original_lp_,
                                               basic_list,
                                               nonbasic_list,
@@ -5393,20 +5452,25 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                               basis_update,
                                               num_fractional,
                                               fractional,
-                                              root_objective_, reduced_cost_bounds);
-  settings_.log.printf("After pivoting: new reduced cost objective %e (current %e)\n", reduced_cost_bounds.get_max_objective(), upper_bound_.load());
+                                              root_objective_,
+                                              reduced_cost_bounds);
+  settings_.log.printf("After pivoting: new reduced cost objective %e (current %e)\n",
+                       reduced_cost_bounds.get_max_objective(),
+                       upper_bound_.load());
 
   f_t pivot_out_integer_variables_start_time = tic();
-  i_t num_integer_increased = pivot_out_integer_variables(original_lp_,
-                              settings_,
-                              basic_list,
-                              nonbasic_list,
-                              root_vstatus_,
-                              root_relax_soln_,
-                              basis_update,
-                              num_fractional,
-                              fractional);
-  settings_.log.printf("Pivoted out %d integer variables in %e seconds\n", num_integer_increased, toc(pivot_out_integer_variables_start_time));
+  i_t num_integer_increased                  = pivot_out_integer_variables(original_lp_,
+                                                          settings_,
+                                                          basic_list,
+                                                          nonbasic_list,
+                                                          root_vstatus_,
+                                                          root_relax_soln_,
+                                                          basis_update,
+                                                          num_fractional,
+                                                          fractional);
+  settings_.log.printf("Pivoted out %d integer variables in %e seconds\n",
+                       num_integer_increased,
+                       toc(pivot_out_integer_variables_start_time));
 
   if (settings_.dual_degenerate_feasibility_pump != 0) {
     dual_degenerate_feasibility_pump(original_lp_,
@@ -5606,10 +5670,16 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   if (settings_.reduced_cost_strengthening >= 2 && upper_bound_.load() < last_upper_bound) {
     std::vector<f_t> lower_bounds = original_lp_.lower;
     std::vector<f_t> upper_bounds = original_lp_.upper;
-    f_t previous_max_objective = reduced_cost_bounds.get_max_objective();
-    i_t num_changed = reduced_cost_bounds.update_bounds_from_new_incumbent(
+    f_t previous_max_objective    = reduced_cost_bounds.get_max_objective();
+    i_t num_changed               = reduced_cost_bounds.update_bounds_from_new_incumbent(
       upper_bound_.load(), var_types_, lower_bounds, upper_bounds);
-    settings_.log.printf("Updated %d integer bounds using reduced cost strengthening from new incumbent. Max objective %e Current objective %e Previous max objective %e\n", num_changed, reduced_cost_bounds.get_max_objective(), upper_bound_.load(), previous_max_objective);
+    settings_.log.printf(
+      "Updated %d integer bounds using reduced cost strengthening from new incumbent. Max "
+      "objective %e Current objective %e Previous max objective %e\n",
+      num_changed,
+      reduced_cost_bounds.get_max_objective(),
+      upper_bound_.load(),
+      previous_max_objective);
     mutex_original_lp_.lock();
     original_lp_.lower = lower_bounds;
     original_lp_.upper = upper_bounds;

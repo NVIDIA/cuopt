@@ -255,8 +255,8 @@ i_t scaling(const lp_problem_t<i_t, f_t>& unscaled,
 
   // MIP performs integer-aware row scaling before presolve, while QP and SOCP
   // use the Ruiz path above. Apply this simpler equilibration only to LPs.
-  const bool use_lp_row_scaling = !settings.inside_mip && unscaled.second_order_cone_dims.empty() &&
-                                  unscaled.Q.n == 0;
+  const bool use_lp_row_scaling =
+    !settings.inside_mip && unscaled.second_order_cone_dims.empty() && unscaled.Q.n == 0;
   if (use_lp_row_scaling) {
     csr_matrix_t<i_t, f_t> Arow(0, 0, 0);
     scaled.A.to_compressed_row(Arow);

@@ -193,9 +193,9 @@ struct simplex_solver_settings_t {
   i_t augmented;  // -1 automatic, 0 to solve with ADAT, 1 to solve with augmented system
   i_t dualize;    // -1 automatic, 0 to not dualize, 1 to dualize
   i_t ordering;   // -1 automatic, 0 to use nested dissection, 1 to use AMD
-  i_t initial_perturbation;        // -1 automatic, 0 to not perturb, 1 to perturb
-  i_t remove_perturbation;         // -1 automatic, 0 disabled, 1 enabled
-  i_t primal_pricing;              // 0 Dantzig (default), 1 Devex
+  i_t initial_perturbation;  // -1 automatic, 0 to not perturb, 1 to perturb
+  i_t remove_perturbation;   // -1 automatic, 0 disabled, 1 enabled
+  i_t primal_pricing;        // 0 Dantzig (default), 1 Devex
   barrier_dual_initial_point_t
     barrier_dual_initial_point;               // -1 automatic, 0 Lustig-Marsten-Shanno,
                                               // 1 dual least squares, 2 SeDuMi mu-based
@@ -224,11 +224,11 @@ struct simplex_solver_settings_t {
   i_t strong_chvatal_gomory_cuts;  // -1 automatic, 0 to disable, >0 to enable strong Chvatal Gomory
                                    // cuts
   i_t symmetry;  // -1 automatic, 0 to disable, >0 to enable different symmetry methods
-  i_t reduced_cost_strengthening;  // -1 automatic, 0 to disable, >0 to enable reduced cost
-                                    // strengthening
+  i_t reduced_cost_strengthening;        // -1 automatic, 0 to disable, >0 to enable reduced cost
+                                         // strengthening
   i_t dual_degenerate_feasibility_pump;  // 0 to disable, 1 to enable
-  f_t cut_change_threshold;        // threshold for cut change
-  f_t cut_min_orthogonality;       // minimum orthogonality for cuts
+  f_t cut_change_threshold;              // threshold for cut change
+  f_t cut_min_orthogonality;             // minimum orthogonality for cuts
   i_t
     mip_batch_pdlp_strong_branching;  // 0 = DS only, 1 = cooperative DS + PDLP, 2 = batch PDLP only
   i_t mip_batch_pdlp_reliability_branching;  // 0 = DS only, 1 = cooperative DS + PDLP, 2 = batch
