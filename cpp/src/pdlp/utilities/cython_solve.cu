@@ -30,10 +30,9 @@
 
 #include <rmm/device_buffer.hpp>
 
+#include <chrono>
 #include <utility>
 #include <vector>
-
-#include <chrono>
 
 #include <unistd.h>
 

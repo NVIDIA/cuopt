@@ -64,7 +64,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdint>
 #include <exception>
 #include <optional>
 #include <set>

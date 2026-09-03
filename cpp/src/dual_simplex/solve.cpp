@@ -33,9 +33,9 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <exception>
 #include <memory>
 #include <queue>
-#include <stdexcept>
 #include <string>
 
 namespace cuopt::mathematical_optimization::simplex {
@@ -90,10 +90,6 @@ void unscale_uncrush_barrier_to_user(const user_problem_t<i_t, f_t>& user_proble
   solution.l2_dual_residual   = barrier_solution.l2_dual_residual;
   solution.iterations         = barrier_solution.iterations;
 }
-
-}  // namespace
-
-namespace {
 
 template <typename i_t, typename f_t>
 void write_matlab(const std::string& filename, const simplex::lp_problem_t<i_t, f_t>& lp)
@@ -472,7 +468,7 @@ lp_status_t solve_linear_program_with_barrier(
   // Presolve the linear program
   presolve_info_t<i_t, f_t> presolve_info;
   lp_problem_t<i_t, f_t> presolved_lp(handle_ptr, 1, 1, 1);
-  i_t ok = presolve(original_lp, barrier_settings, presolved_lp, presolve_info);
+  const i_t ok = presolve(original_lp, barrier_settings, presolved_lp, presolve_info);
   if (ok == CONCURRENT_HALT_RETURN) { return lp_status_t::CONCURRENT_LIMIT; }
   if (ok == TIME_LIMIT_RETURN) { return lp_status_t::TIME_LIMIT; }
   if (ok == -1) { return lp_status_t::INFEASIBLE; }
@@ -518,21 +514,19 @@ lp_status_t solve_linear_program_with_barrier(
   if (cache != nullptr) {
     if (barrier_status == lp_status_t::OPTIMAL) {
       auto* xf = cache->transform();
-      {
-        try {
-          auto crushed = cuopt::mathematical_optimization::crush_user_linear_objective(
-            *xf, user_problem.objective.data(), user_problem.num_cols);
-          xf->linear_obj_shift.resize(static_cast<std::size_t>(solver_lp->num_cols), 0.0);
-          if (static_cast<int>(crushed.size()) == solver_lp->num_cols) {
-            for (int j = 0; j < solver_lp->num_cols; ++j) {
-              xf->linear_obj_shift[static_cast<std::size_t>(j)] =
-                solver_lp->objective[static_cast<std::size_t>(j)] -
-                crushed[static_cast<std::size_t>(j)];
-            }
+      try {
+        auto crushed = cuopt::mathematical_optimization::crush_user_linear_objective(
+          *xf, user_problem.objective.data(), user_problem.num_cols);
+        xf->linear_obj_shift.resize(static_cast<std::size_t>(solver_lp->num_cols), 0.0);
+        if (static_cast<int>(crushed.size()) == solver_lp->num_cols) {
+          for (int j = 0; j < solver_lp->num_cols; ++j) {
+            xf->linear_obj_shift[static_cast<std::size_t>(j)] =
+              solver_lp->objective[static_cast<std::size_t>(j)] -
+              crushed[static_cast<std::size_t>(j)];
           }
-        } catch (std::exception const&) {
-          xf->linear_obj_shift.assign(static_cast<std::size_t>(solver_lp->num_cols), 0.0);
         }
+      } catch (std::exception const&) {
+        xf->linear_obj_shift.assign(static_cast<std::size_t>(solver_lp->num_cols), 0.0);
       }
     } else {
       cache->clear();

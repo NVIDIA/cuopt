@@ -369,7 +369,7 @@ class pdlp_solver_settings_t {
   i_t fixed_batch_size{0};
   /** When true, first GPU barrier/QCQP solve returns a ``barrier_cache_t`` capsule. */
   bool sequence_solve{false};
-  /** Non-owning cache pointer set by ``call_solve`` for barrier symbolic reuse. */
+  /** Non-owning cache pointer set by ``call_solve`` for barrier cache reuse. */
   barrier_cache_t* barrier_cache{nullptr};
 
  private:

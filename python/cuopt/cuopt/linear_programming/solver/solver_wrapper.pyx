@@ -368,7 +368,7 @@ cdef create_solution_with_names(unique_ptr[solver_ret_t] sol_ret_ptr,
     if sol_ret.problem_type == ProblemCategory.MIP or sol_ret.problem_type == ProblemCategory.IP: # noqa
         mip_ptr = &sol_ret.mip_ret
 
-        # Extract solution vector -- branch only for the buffer type
+        # Extract solution vector — branch only for the buffer type
         if mip_ptr.is_gpu():
             solution_buf = DeviceBuffer.c_from_unique_ptr(move(get_gpu_mip_solution(mip_ptr[0]))) # noqa
             solution = series_from_buf(solution_buf, pa.float64()).to_numpy()
@@ -398,7 +398,7 @@ cdef create_solution_with_names(unique_ptr[solver_ret_t] sol_ret_ptr,
     else:
         lp_ptr = &sol_ret.lp_ret
 
-        # Extract solution vectors -- branch only for the buffer type
+        # Extract solution vectors — branch only for the buffer type
         if lp_ptr.is_gpu():
             gpu_sols = &get_gpu_lp_solutions(lp_ptr[0])
 
@@ -479,7 +479,7 @@ cdef create_solution_with_names(unique_ptr[solver_ret_t] sol_ret_ptr,
                     last_restart_primal = None
                     last_restart_dual = None
 
-        # Shared scalar access -- written once regardless of GPU/CPU backend
+        # Shared scalar access — written once regardless of GPU/CPU backend
         if not is_batch:
             return Solution(
                 ProblemCategory(sol_ret.problem_type),

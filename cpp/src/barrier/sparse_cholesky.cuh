@@ -33,7 +33,6 @@ class sparse_cholesky_base_t {
   virtual i_t solve(const dense_vector_t<i_t, f_t>& b, dense_vector_t<i_t, f_t>& x) = 0;
   virtual i_t solve(rmm::device_uvector<f_t>& b, rmm::device_uvector<f_t>& x)       = 0;
   virtual void set_positive_definite(bool positive_definite)                        = 0;
-  virtual void invalidate_numeric_factor() {}
   virtual void rebind_csr_matrix(device_csr_matrix_t<i_t, f_t>& Arow) {}
 };
 
@@ -161,7 +160,6 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     if (CUDART_VERSION >= 13000 && settings_.concurrent_halt != nullptr &&
         settings_.num_gpus == 1) {
       cuGetErrorString_func = cuopt::get_driver_entry_point("cuGetErrorString");
-
       // 1. Set up the GPU resources
       CUdevResource initial_device_GPU_resources = {};
       auto cuDeviceGetDevResource_func = cuopt::get_driver_entry_point("cuDeviceGetDevResource");
@@ -497,7 +495,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
         return -1;
       }
       f_t reordering_time = toc(start_symbolic);
-      settings_.log.printf("Reordering time             : %.3fs\n", reordering_time);
+      settings_.log.printf("Reordering time             : %.2fs\n", reordering_time);
       start_symbolic_factor = tic();
 
       status = cudssExecute(
@@ -515,7 +513,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     }
     RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
     f_t symbolic_factorization_time = toc(start_symbolic_factor);
-    settings_.log.printf("Symbolic factorization time : %.3fs\n", symbolic_factorization_time);
+    settings_.log.printf("Symbolic factorization time : %.2fs\n", symbolic_factorization_time);
     int64_t lu_nz       = 0;
     size_t size_written = 0;
     CUDSS_CALL_AND_CHECK(
@@ -604,7 +602,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     }
 
     if (first_factor) {
-      settings_.log.debug("Factorization time          : %.3fs\n", numeric_time);
+      settings_.log.debug("Factorization time          : %.2fs\n", numeric_time);
       first_factor = false;
     }
     if (status != CUDSS_STATUS_SUCCESS) {
@@ -728,7 +726,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
 
     f_t symbolic_time = toc(start_symbolic);
     f_t analysis_time = toc(start_analysis);
-    settings_.log.printf("Symbolic factorization time : %.3fs\n", symbolic_time);
+    settings_.log.printf("Symbolic factorization time : %.2fs\n", symbolic_time);
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
       RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
       handle_ptr_->get_stream().synchronize();
@@ -798,7 +796,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     }
 
     if (first_factor) {
-      settings_.log.debug("Factorization time          : %.3fs\n", numeric_time);
+      settings_.log.debug("Factorization time          : %.2fs\n", numeric_time);
       first_factor = false;
     }
     if (status != CUDSS_STATUS_SUCCESS) {
@@ -954,7 +952,6 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
 
   bool symbolic_done_;
   const simplex::simplex_solver_settings_t<i_t, f_t>& settings_;
-
   CUgreenCtx barrier_green_ctx;
   CUstream stream;
   void* cuGetErrorString_func;
