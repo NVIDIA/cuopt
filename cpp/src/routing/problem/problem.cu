@@ -200,8 +200,10 @@ std::vector<i_t> problem_t<i_t, f_t>::get_preferred_order_of_vehicles() const
     for (int d = 0; d < n_capacity_dims; ++d) {
       // Note that the demand would be zero for PDP use case, so the num vehicles needed is
       // exactly 1. So we purely make the decision based on vehicle cost for PDP
-      size_t tmp                      = ceil(demands[d] / curr_vehicle_info.capacities[d]);
-      num_vehicles_needed_from_bucket = std::max(num_vehicles_needed_from_bucket, tmp);
+      if (curr_vehicle_info.capacities[d] > 0) {
+        size_t tmp                      = ceil(demands[d] / curr_vehicle_info.capacities[d]);
+        num_vehicles_needed_from_bucket = std::max(num_vehicles_needed_from_bucket, tmp);
+      }
     }
 
     double cost_of_vehicle = 0.;
