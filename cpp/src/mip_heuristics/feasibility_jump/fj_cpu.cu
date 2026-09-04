@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
+ 
+#include <cuopt/error.hpp>
 
 #include <mip_heuristics/mip_constants.hpp>
 
@@ -1893,11 +1895,21 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_t<i_t, f_t>::create_cpu_climber(
 template <typename i_t, typename f_t>
 void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double work_unit_limit)
 {
+  cuopt_expects(
+    !std::isnan(in_time_limit), error_type_t::ValidationError, "time_limit cannot be NaN");
+  cuopt_expects(in_time_limit >= static_cast<f_t>(0),
+                error_type_t::ValidationError,
+                "time_limit cannot be negative");
+
   i_t local_mins  = 0;
   auto loop_start = std::chrono::high_resolution_clock::now();
-  auto time_limit = (in_time_limit < std::numeric_limits<f_t>::infinity())
-                        ? std::chrono::milliseconds(static_cast<i_t>(std::floor(in_time_limit * 1000.0)))
-                        : std::chrono::milliseconds::max();
+  using ms_rep    = std::chrono::milliseconds::rep;
+  constexpr double max_seconds =
+    static_cast<double>(std::chrono::milliseconds::max().count() / 1000 - 1000);
+  auto time_limit =
+    (!std::isfinite(in_time_limit) || in_time_limit >= max_seconds)
+      ? std::chrono::milliseconds::max()
+      : std::chrono::milliseconds(static_cast<ms_rep>(std::floor(in_time_limit * 1000.0)));
   auto loop_time_start = std::chrono::high_resolution_clock::now();
 
   fj_cpu->rng.seed(fj_cpu->settings.seed);
@@ -1908,10 +1920,10 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
   fj_cpu->iterations_since_best = 0;
 
   while (!fj_cpu->halted && !fj_cpu->preemption_flag.load()) {
-    // Check if 5 seconds have passed
-    auto now = std::chrono::high_resolution_clock::now();
-    if (in_time_limit < std::numeric_limits<f_t>::infinity() &&
-        now - loop_time_start > time_limit) {
+    // Check if time limit has passed
+    auto now     = std::chrono::high_resolution_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - loop_time_start);
+    if (std::isfinite(in_time_limit) && elapsed > time_limit) {
       CUOPT_LOG_TRACE("%sTime limit of %.4f seconds reached, breaking loop at iteration %d",
                       fj_cpu->log_prefix.c_str(),
                       time_limit.count() / 1000.f,
