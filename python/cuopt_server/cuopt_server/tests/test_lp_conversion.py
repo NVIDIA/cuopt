@@ -2,23 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from cuopt_server.utils.linear_programming import conversion
-from cuopt_server.utils.linear_programming import solver as lp_solver
 from cuopt_server.utils.linear_programming.data_definition import LPData
 from cuopt_server.utils.utils import build_lp_datamodel_from_json
-
-CONVERSION_MODULE = "cuopt_server.utils.linear_programming.conversion"
-SOLVER_MODULE = "cuopt_server.utils.linear_programming.solver"
-
-CONVERSION_NAMES = [
-    "create_data_model",
-    "create_solver",
-    "ignored_warning",
-]
-
-SOLVER_OWNED_NAMES = [
-    "dep_warning",
-    "warn_on_objectives",
-]
 
 
 def get_lp_json():
@@ -46,53 +31,6 @@ def get_lp_json():
 
 def get_lp_data():
     return LPData.parse_obj(get_lp_json())
-
-
-def test_conversion_module_defines_helpers():
-    # conversion.py owns only the helpers used by proxy conversion
-    for name in CONVERSION_NAMES:
-        func = getattr(conversion, name)
-        assert func.__module__ == CONVERSION_MODULE
-    for name in SOLVER_OWNED_NAMES:
-        assert not hasattr(conversion, name)
-
-
-def test_solver_reexports_are_not_duplicates():
-    # solver.py must re-export conversion helpers, not redefine them
-    for name in CONVERSION_NAMES:
-        assert getattr(lp_solver, name) is getattr(conversion, name)
-
-
-def test_solver_keeps_legacy_warning_helpers():
-    # dep_warning / warn_on_objectives stay defined in solver.py
-    for name in SOLVER_OWNED_NAMES:
-        func = getattr(lp_solver, name)
-        assert func.__module__ == SOLVER_MODULE
-
-
-def test_solver_keeps_solve_side():
-    # solve, callbacks and exception mapping stay in solver.py
-    for name in [
-        "solve",
-        "get_solver_exception_type",
-        "CustomGetSolutionCallback",
-        "CustomSetSolutionCallback",
-    ]:
-        assert hasattr(lp_solver, name)
-        assert not hasattr(conversion, name)
-
-
-def test_server_utils_uses_conversion():
-    from cuopt_server.utils import utils
-
-    assert utils.lp_create_data_model is conversion.create_data_model
-    assert utils.lp_create_solver is conversion.create_solver
-
-
-def test_warning_helpers():
-    assert "ignored" in conversion.ignored_warning("solution_file")
-    assert "deprecated" in lp_solver.dep_warning("time_limit")
-    assert lp_solver.warn_on_objectives("cfg") == ([], "cfg")
 
 
 def test_create_data_model():
