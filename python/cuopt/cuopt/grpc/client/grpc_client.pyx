@@ -93,6 +93,38 @@ class JobNotReadyError(GrpcError):
     pass
 
 
+# Matches the previous C++ wait() poll cadence. Keep this in Python
+# (time.sleep) so the GIL is released between short status RPCs.
+_WAIT_POLL_INTERVAL_S = 1.0
+
+
+def _wait_poll_loop(
+    get_status,
+    job_id,
+    timeout_seconds,
+    error_cls,
+    poll_interval_s=_WAIT_POLL_INTERVAL_S,
+):
+    """Poll ``get_status(job_id)`` until the job is terminal or the timeout.
+
+    The loop and ``time.sleep`` run in Python so the GIL is released between
+    short status RPCs. Concurrent incumbent/log stream threads can therefore
+    run during ``Client.wait``. ``timeout_seconds <= 0`` waits indefinitely.
+    """
+    if timeout_seconds < 0:
+        raise error_cls("timeout_seconds must be non-negative")
+    deadline = (
+        time.monotonic() + timeout_seconds if timeout_seconds > 0 else None
+    )
+    while True:
+        status = get_status(job_id)
+        if status not in (JobStatus.QUEUED, JobStatus.PROCESSING):
+            return status
+        if deadline is not None and time.monotonic() >= deadline:
+            raise error_cls("Timeout waiting for job completion")
+        time.sleep(poll_interval_s)
+
+
 cdef int _invoke_log_callback(
     const char* line,
     size_t line_len,
@@ -320,14 +352,17 @@ cdef class Client:
         becomes ``0`` and waits indefinitely). Positive timeouts poll about
         once per second and raise :class:`GrpcError` if the deadline expires
         (they do not return a non-terminal :class:`JobStatus`).
+
+        The wait loop runs in Python and only calls :meth:`status` for each
+        poll, so the GIL is released between checks. Concurrent
+        :meth:`start_incumbent_stream` and
+        :meth:`start_log_stream` threads can therefore make progress during
+        the wait.
         """
-        cdef int timeout_seconds = 0 if timeout is None else int(timeout)
-        cdef grpc_status_result_t wait_result = self._client.get().wait(
-            job_id.encode("utf-8"), timeout_seconds
+        timeout_seconds = 0 if timeout is None else int(timeout)
+        return _wait_poll_loop(
+            self.status, job_id, timeout_seconds, GrpcError
         )
-        if not wait_result.success:
-            raise GrpcError(wait_result.error_message.decode("utf-8"))
-        return JobStatus(<int>wait_result.status)
 
     def cancel(self, str job_id):
         """
@@ -1095,18 +1130,26 @@ cdef class RoutingClient:
             raise RoutingSolveError(sub.error_message.decode("utf-8"))
         return sub.job_id.decode("utf-8")
 
+    def _status(self, str job_id):
+        cdef grpc_status_result_t st = self._client.get().status(
+            job_id.encode("utf-8")
+        )
+        if not st.success:
+            raise RoutingSolveError(st.error_message.decode("utf-8"))
+        return JobStatus(<int>st.status)
+
     def wait(self, str job_id, int timeout=0):
         """Block until the job finishes; return the terminal status int.
 
         Raises ``RoutingSolveError`` if the wait itself fails (e.g. transport
         error or unknown job), mirroring the LP/MILP client.
+
+        Polls job status from Python so the GIL is released between short
+        status RPCs. ``timeout <= 0`` waits indefinitely.
         """
-        cdef grpc_status_result_t st = self._client.get().wait(
-            job_id.encode("utf-8"), timeout
+        return _wait_poll_loop(
+            self._status, job_id, timeout, RoutingSolveError
         )
-        if not st.success:
-            raise RoutingSolveError(st.error_message.decode("utf-8"))
-        return <int>st.status
 
     def result(self, str job_id):
         """Fetch and parse the routing solution for a completed job.

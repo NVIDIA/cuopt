@@ -134,6 +134,7 @@ Import path: ``cuopt.grpc.routing``.
 .. autoclass:: cuopt.grpc.routing.RoutingClient
    :members:
    :undoc-members:
+   :exclude-members: _status
 
 .. autoexception:: cuopt.grpc.routing.RoutingSolveError
    :members:
