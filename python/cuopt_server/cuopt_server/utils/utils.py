@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import json
@@ -10,13 +10,13 @@ from cuopt_server.utils.linear_programming.solver import (
     create_data_model as lp_create_data_model,
     create_solver as lp_create_solver,
 )
-from cuopt_server.utils.routing.data_definition import OptimizedRoutingData
-from cuopt_server.utils.routing.solver import (
+from cuopt_server.utils.routing.conversion import (
     create_data_model as routing_create_data_model,
     create_solver as routing_create_solver,
+    populate_optimization_data,
     prep_optimization_data as routing_prep_optimization_data,
 )
-from cuopt_server.utils.solver import populate_optimization_data
+from cuopt_server.utils.routing.data_definition import OptimizedRoutingData
 
 
 def build_routing_datamodel_from_json(data):
