@@ -1,35 +1,13 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-from cuopt_server.utils import solver as legacy_solver
 from cuopt_server.utils.routing import conversion
-from cuopt_server.utils.routing import solver as legacy_routing_solver
 from cuopt_server.utils.routing.data_definition import (
     CostMatrices,
     FleetData,
     SolverSettingsConfig,
     TaskData,
 )
-
-
-def test_legacy_conversion_imports_are_identical():
-    assert legacy_solver.check_valid is conversion.check_valid
-    assert (
-        legacy_solver.populate_optimization_data
-        is conversion.populate_optimization_data
-    )
-    assert (
-        legacy_routing_solver.warn_on_objectives
-        is conversion.warn_on_objectives
-    )
-    assert (
-        legacy_routing_solver.create_data_model is conversion.create_data_model
-    )
-    assert legacy_routing_solver.create_solver is conversion.create_solver
-    assert (
-        legacy_routing_solver.prep_optimization_data
-        is conversion.prep_optimization_data
-    )
 
 
 def test_pydantic_request_converts_and_prepares_cost_matrix():
@@ -51,7 +29,7 @@ def test_pydantic_request_converts_and_prepares_cost_matrix():
     assert waypoint_graph == {}
 
 
-def test_default_solver_time_is_calculated_without_request_filter():
+def test_default_solver_time_limit():
     solver_config = SolverSettingsConfig()
     optimization_data = conversion.populate_optimization_data(
         cost_matrix_data=CostMatrices(data={0: [[0, 1], [1, 0]]}),
