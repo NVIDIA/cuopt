@@ -73,6 +73,7 @@ lp_status_t solve_linear_program_advanced(const lp_problem_t<i_t, f_t>& original
                                           lp_solution_t<i_t, f_t>& original_solution,
                                           std::vector<variable_status_t>& vstatus,
                                           std::vector<f_t>& edge_norms,
+                                          f_t& work_estimate,
                                           work_limit_context_t* work_unit_context = nullptr);
 
 // Solve the LP using dual simplex and keep the `basis_update_mpf_t`
@@ -88,6 +89,7 @@ lp_status_t solve_linear_program_with_advanced_basis(
   std::vector<i_t>& nonbasic_list,
   std::vector<variable_status_t>& vstatus,
   std::vector<f_t>& edge_norms,
+  f_t& work_estimate,
   work_limit_context_t* work_unit_context = nullptr);
 
 template <typename i_t, typename f_t>
@@ -101,6 +103,11 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
                                               f_t start_time,
                                               lp_solution_t<i_t, f_t>& solution);
 
+template <typename i_t, typename f_t>
+lp_status_t solve_linear_program_with_primal(const user_problem_t<i_t, f_t>& user_problem,
+                                             const simplex_solver_settings_t<i_t, f_t>& settings,
+                                             f_t start_time,
+                                             lp_solution_t<i_t, f_t>& solution);
 template <typename i_t, typename f_t>
 lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& user_problem,
                                               const simplex_solver_settings_t<i_t, f_t>& settings,

@@ -209,7 +209,8 @@ class trailing_matrix_t {
         const f_t max_in_col = max_in_column_[j];
         const i_t c_start    = col_start_[j];
         const i_t c_end      = col_end_[j];
-        for (i_t p = c_start; p < c_end; p++) {
+        i_t p;
+        for (p = c_start; p < c_end; p++) {
           const i_t i    = c_i_[p];
           const f_t val  = c_x_[p];
           const i_t rdeg = row_counts_.get_count(i);
@@ -224,7 +225,7 @@ class trailing_matrix_t {
             if (markowitz <= markowitz_lower_bound) { break; }
           }
         }
-        work_estimate_ += 3 * (c_end - c_start);
+        work_estimate_ += 3 * (p - c_start);
         nsearch++;
         if (markowitz <= markowitz_lower_bound) { break; }
       }
@@ -241,19 +242,21 @@ class trailing_matrix_t {
         assert(rdeg == nz);
         const i_t r_start = row_start_[i];
         const i_t r_end   = row_end_[i];
-        for (i_t p = r_start; p < r_end; p++) {
+        i_t p;
+        for (p = r_start; p < r_end; p++) {
           const i_t j = r_j_[p];
           // Look up the value from the column copy of j
           f_t val           = 0;
           const i_t c_start = col_start_[j];
           const i_t c_end   = col_end_[j];
-          for (i_t q = c_start; q < c_end; q++) {
+          i_t q;
+          for (q = c_start; q < c_end; q++) {
             if (c_i_[q] == i) {
               val = c_x_[q];
               break;
             }
           }
-          work_estimate_ += 2 * (c_end - c_start);
+          work_estimate_ += 2 * (q - c_start);
           const f_t max_in_col = max_in_column_[j];
           const i_t cdeg       = col_counts_.get_count(j);
           assert(cdeg >= 0);
@@ -267,7 +270,7 @@ class trailing_matrix_t {
             if (markowitz <= markowitz_lower_bound) { break; }
           }
         }
-        work_estimate_ += 5 * (r_end - r_start);
+        work_estimate_ += 5 * (p - r_start);
         nsearch++;
         if (markowitz <= markowitz_lower_bound) { break; }
       }
@@ -334,7 +337,7 @@ class trailing_matrix_t {
           }
         }
       }
-      work_estimate_ += 2 * (c_end - c_start) + 6 * (pivot_col_count - n_fillin);
+      work_estimate_ += 2 * (c_end - c_start) + 5 * (pivot_col_count - n_fillin);
 
       // Step 2b: Remove cancellations (entries that became zero).
       if (n_cancel > 0) {
@@ -1285,12 +1288,14 @@ class symmetric_trailing_matrix_t {
       const i_t j = r_j_[rp];
       // Look up A(pivot_p, j) from column j
       f_t val = 0;
-      for (i_t q = col_start_[j]; q < col_end_[j]; q++) {
+      i_t q;
+      for (q = col_start_[j]; q < col_end_[j]; q++) {
         if (c_i_[q] == pivot_p) {
           val = c_x_[q];
           break;
         }
       }
+      work_estimate_ += 2 * (q - col_start_[j]);
       const f_t lj       = val / pivot_val;
       pivot_col_val_[j]  = lj;
       pivot_col_mark_[j] = 1;

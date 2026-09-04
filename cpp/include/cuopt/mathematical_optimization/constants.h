@@ -57,6 +57,9 @@
 #define CUOPT_ELIMINATE_DENSE_COLUMNS               "eliminate_dense_columns"
 #define CUOPT_CUDSS_DETERMINISTIC                   "cudss_deterministic"
 #define CUOPT_PRESOLVE                              "presolve"
+#define CUOPT_INITIAL_PERTURBATION                  "initial_perturbation"
+#define CUOPT_REMOVE_PERTURBATION                   "remove_perturbation"
+#define CUOPT_PRIMAL_PRICING                        "primal_pricing"
 #define CUOPT_MIP_PROBING                           "mip_probing"
 #define CUOPT_DUAL_POSTSOLVE                        "dual_postsolve"
 #define CUOPT_MIP_DETERMINISM_MODE                  "mip_determinism_mode"
@@ -80,6 +83,9 @@
 #define CUOPT_MIP_ZERO_HALF_CUTS                    "mip_zero_half_cuts"
 #define CUOPT_MIP_STRONG_CHVATAL_GOMORY_CUTS        "mip_strong_chvatal_gomory_cuts"
 #define CUOPT_MIP_REDUCED_COST_STRENGTHENING        "mip_reduced_cost_strengthening"
+#define CUOPT_MIP_DUAL_DEGENERATE_FEASIBILITY_PUMP  "mip_dual_degenerate_feasibility_pump"
+#define CUOPT_MIP_PRIMAL_DEGENERATE_PIVOTS          "mip_primal_degenerate_pivots"
+#define CUOPT_MIP_DUAL_DEGENERATE_PIVOTS            "mip_dual_degenerate_pivots"
 #define CUOPT_MIP_RINS                              "mip_rins"
 #define CUOPT_MIP_RENS                              "mip_rens"
 #define CUOPT_MIP_OBJECTIVE_STEP                    "mip_objective_step"
@@ -211,7 +217,8 @@
 #define CUOPT_METHOD_PDLP         1
 #define CUOPT_METHOD_DUAL_SIMPLEX 2
 #define CUOPT_METHOD_BARRIER      3
-#define CUOPT_METHOD_UNSET        4
+#define CUOPT_METHOD_PRIMAL       4
+#define CUOPT_METHOD_UNSET        5
 
 #define CUOPT_BARRIER_DUAL_INITIAL_POINT_AUTOMATIC             -1
 #define CUOPT_BARRIER_DUAL_INITIAL_POINT_LUSTIG_MARSTEN_SHANNO 0

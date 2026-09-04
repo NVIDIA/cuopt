@@ -370,6 +370,7 @@ void strong_branch_helper(i_t start,
       i_t iter                               = 0;
       std::vector<variable_status_t> vstatus = root_vstatus;
       std::vector<f_t> child_edge_norms      = edge_norms;
+      f_t child_work_estimate                = 0.0;
       dual_status_t status                   = simplex::dual_phase2(2,
                                                   0,
                                                   lp_start_time,
@@ -378,6 +379,7 @@ void strong_branch_helper(i_t start,
                                                   vstatus,
                                                   solution,
                                                   iter,
+                                                  child_work_estimate,
                                                   child_edge_norms);
 
       f_t obj = std::numeric_limits<f_t>::quiet_NaN();
@@ -506,7 +508,8 @@ std::pair<f_t, dual_status_t> trial_branching(const lp_problem_t<i_t, f_t>& orig
   // Only refactor the basis if we encounter numerical issues.
   child_basis_factors.set_refactor_frequency(iter_limit);
 
-  dual_status_t status = simplex::dual_phase2_with_advanced_basis(2,
+  f_t child_work_estimate = 0.0;
+  dual_status_t status    = simplex::dual_phase2_with_advanced_basis(2,
                                                                   0,
                                                                   initialize_basis,
                                                                   start_time,
@@ -518,6 +521,7 @@ std::pair<f_t, dual_status_t> trial_branching(const lp_problem_t<i_t, f_t>& orig
                                                                   child_nonbasic_list,
                                                                   solution,
                                                                   iter,
+                                                                  child_work_estimate,
                                                                   child_edge_norms);
 
   settings.log.debug("Trial branching on variable %d. Lo: %e Up: %e. Iter %d. Status %s. Obj %e\n",
