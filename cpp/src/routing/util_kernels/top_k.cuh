@@ -108,8 +108,10 @@ DI int top_k_indices_per_row(i_t row_id,
   // If the column index matches the row id then the element we are dealing with
   // lies on the diagonal of the matrix. We want these costs to be double max()
   if constexpr (write_diagonal) {
-    if (threadIdx.x == ((row_id - col_offset) / items_per_thread)) {
-      sort_cost[(row_id - col_offset) % items_per_thread] = get_default<output_t>();
+    if (row_id >= col_offset) {
+      if (threadIdx.x == ((row_id - col_offset) / items_per_thread)) {
+        sort_cost[(row_id - col_offset) % items_per_thread] = get_default<output_t>();
+      }
     }
   }
   // Populate column ids based on thread id
@@ -146,8 +148,10 @@ DI int top_k_indices_per_row(i_t row_id,
     // If the column index matches the row id then the element we are dealing with
     // lies on the diagonal of the matrix. We want these costs to be double max()
     if constexpr (write_diagonal) {
-      if (threadIdx.x == ((row_id - col_offset) / loads_per_thread)) {
-        load_cost[(row_id - col_offset) % loads_per_thread] = get_default<output_t>();
+      if (row_id >= col_offset) {
+        if (threadIdx.x == ((row_id - col_offset) / loads_per_thread)) {
+          load_cost[(row_id - col_offset) % loads_per_thread] = get_default<output_t>();
+        }
       }
     }
     __syncthreads();
