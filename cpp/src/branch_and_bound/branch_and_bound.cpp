@@ -1788,6 +1788,7 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
         if (settings_.dual_degenerate_pivots != 0) {
           pivot_out_integer_variables(worker->leaf_problem,
                                       lp_settings,
+                                      worker->new_slacks,
                                       worker->basic_list,
                                       worker->nonbasic_list,
                                       worker->leaf_vstatus,
@@ -3117,7 +3118,7 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
   // Using shared_ptr here, so the lifetime of the object is tied to the related task. This allows
   // the solver to send the stop signal and immediately continue the execution.
   auto current_heuristic = root_heuristics.create_new_cut_pass_heuristic(
-    Arow_, var_types_, lp_solution.x, edge_norms_, settings_);
+    Arow_, var_types_, lp_solution.x, edge_norms_, new_slacks_, settings_);
   auto worker_count = root_heuristics.worker_count_;
 
   current_heuristic->initialize_pseudocost(
@@ -3470,6 +3471,7 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
   if (settings_.dual_degenerate_pivots != 0) {
     num_integer_increased = pivot_out_integer_variables(original_lp_,
                                                         settings_,
+                                                        new_slacks_,
                                                         basic_list,
                                                         nonbasic_list,
                                                         root_vstatus_,
@@ -4560,6 +4562,7 @@ template <typename i_t, typename f_t>
 i_t branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
   const simplex::lp_problem_t<i_t, f_t>& lp,
   const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+  const std::vector<i_t>& new_slacks,
   std::vector<i_t>& basic_list,
   std::vector<i_t>& nonbasic_list,
   std::vector<simplex::variable_status_t>& vstatus,
@@ -4587,7 +4590,7 @@ i_t branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
   const i_t num_zero_reduced_costs_vars = zero_reduced_costs_vars.size();
 
   std::vector<i_t> row_to_slack(lp.num_rows, -1);
-  for (i_t j : new_slacks_) {
+  for (i_t j : new_slacks) {
     if (lp.lower[j] != 0 || lp.upper[j] != inf) { continue; }
     const i_t p             = lp.A.col_start[j];
     row_to_slack[lp.A.i[p]] = j;
@@ -5472,6 +5475,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   if (settings_.dual_degenerate_pivots != 0) {
     num_integer_increased = pivot_out_integer_variables(original_lp_,
                                                         settings_,
+                                                        new_slacks_,
                                                         basic_list,
                                                         nonbasic_list,
                                                         root_vstatus_,
@@ -5788,19 +5792,21 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                             var_types_,
                             symmetry_,
                             settings_,
-                            pc_,
-                            root_relax_soln_.x,
-                            edge_norms_);
+                             pc_,
+                             root_relax_soln_.x,
+                             edge_norms_,
+                             new_slacks_);
       submip_worker_pool_.init(num_submip_workers,
                                original_lp_,
                                Arow_,
                                var_types_,
                                symmetry_,
                                settings_,
-                               pc_,
-                               root_relax_soln_.x,
-                               edge_norms_,
-                               num_bfs_workers);
+                                pc_,
+                                root_relax_soln_.x,
+                                edge_norms_,
+                                new_slacks_,
+                                num_bfs_workers);
 
       if (num_diving_workers > 0) {
         diving_worker_pool_.init(num_diving_workers,
@@ -5812,6 +5818,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                  pc_,
                                  root_relax_soln_.x,
                                  edge_norms_,
+                                 new_slacks_,
                                  num_bfs_workers + num_submip_workers);
       }
 
@@ -6011,9 +6018,10 @@ void branch_and_bound_t<i_t, f_t>::run_deterministic_coordinator(const csr_matri
                                                                 Arow,
                                                                 var_types_,
                                                                 settings_,
-                                                                pc_,
-                                                                root_relax_soln_.x,
-                                                                edge_norms_);
+                                                                 pc_,
+                                                                 root_relax_soln_.x,
+                                                                 edge_norms_,
+                                                                 new_slacks_);
 
   if (num_diving_workers > 0) {
     // Extract diving types from search_strategies (skip BEST_FIRST at index 0)
@@ -6030,7 +6038,8 @@ void branch_and_bound_t<i_t, f_t>::run_deterministic_coordinator(const csr_matri
                                                                        settings_,
                                                                        pc_,
                                                                        root_relax_soln_.x,
-                                                                       edge_norms_);
+                                                                       edge_norms_,
+                                                                       new_slacks_);
     }
   }
 
