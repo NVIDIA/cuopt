@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -24,7 +24,7 @@ struct VehicleInfo {
   {
     return drop_return_trip == rhs.drop_return_trip && skip_first_trip == rhs.skip_first_trip &&
            type == rhs.type && order_service_times == rhs.order_service_times &&
-           order_match == rhs.order_match && capacities == rhs.capacities &&
+           order_costs == rhs.order_costs && capacities == rhs.capacities &&
            break_durations == rhs.break_durations && break_earliest == rhs.break_earliest &&
            break_latest == rhs.break_latest && earliest == rhs.earliest && latest == rhs.latest &&
            start == rhs.start && end == rhs.end && max_cost == rhs.max_cost &&
@@ -51,7 +51,7 @@ struct VehicleInfo {
   uint8_t type{0};
   mdarray_view_t<f_t> matrices{};
   raft::span<int const, is_device> order_service_times{};
-  raft::span<bool const, is_device> order_match{};
+  raft::span<double const, is_device> order_costs{};
   cuopt::strided_span<cap_i_t const> capacities{};
   raft::span<int const, is_device> break_durations{};
   raft::span<int const, is_device> break_earliest{};

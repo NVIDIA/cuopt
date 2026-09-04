@@ -29,6 +29,7 @@ enum class objective_t {
   VARIANCE_ROUTE_SERVICE_TIME,  // Variance in route service times
   PRIZE,                        // Sum of prizes of all orders that are served
   VEHICLE_FIXED_COST,           // Used when fixed vehicle cost are enabled
+  VEHICLE_ORDER_COST,           // Sum of vehicle-order assignment costs (mismatch dimension)
   SIZE  // Helper enum to keep track of number of supported objective functions
 };
 

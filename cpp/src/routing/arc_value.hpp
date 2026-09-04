@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -112,7 +112,9 @@ static constexpr double get_arc_of_dimension(const NodeInfo<i_t>& l1,
   } else if constexpr (dim == dim_t::SERVICE_TIME) {
     return l1.is_depot() ? 0. : vehicle_info.order_service_times[l1.node()];
   } else if constexpr (dim == dim_t::MISMATCH) {
-    return !l1.is_service_node() ? 0. : (double)(1 - vehicle_info.order_match[l1.node()]);
+    return (!l1.is_service_node() || vehicle_info.order_costs.empty())
+             ? 0.
+             : vehicle_info.order_costs[l1.node()];
   } else if constexpr (dim == dim_t::BREAK) {
     return l1.is_break();
   } else {

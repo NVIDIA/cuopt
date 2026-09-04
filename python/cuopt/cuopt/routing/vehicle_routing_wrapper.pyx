@@ -181,7 +181,10 @@ class Objective(IntEnum):
 
     PRIZE               - Models with respect to prizes collected by the
                           serviced orders
-    VEHICLE_FIXED_COST                - Models cost per vehicle. Enabled when set_vehicle_fixed_costs is used.
+    VEHICLE_FIXED_COST  - Models cost per vehicle. Enabled when set_vehicle_fixed_costs is used.
+    VEHICLE_ORDER_COST  - Sum of vehicle-order assignment costs. Used to steer
+                          tool-to-lot assignments in lot scheduling. Enabled
+                          when set_vehicle_order_cost is used.
     """
 
     COST = objective_t.COST
@@ -190,6 +193,7 @@ class Objective(IntEnum):
     VARIANCE_ROUTE_SERVICE_TIME = objective_t.VARIANCE_ROUTE_SERVICE_TIME
     PRIZE = objective_t.PRIZE
     VEHICLE_FIXED_COST = objective_t.VEHICLE_FIXED_COST
+    VEHICLE_ORDER_COST = objective_t.VEHICLE_ORDER_COST
 
 
 class NodeType(IntEnum):

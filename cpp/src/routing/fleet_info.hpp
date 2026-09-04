@@ -128,7 +128,7 @@ class fleet_info_t {
       info.fixed_cost          = fixed_costs[vehicle_id];
       info.matrices            = matrices.view();
       info.order_service_times = fleet_order_constraints.get_order_service_times(vehicle_id);
-      info.order_match         = fleet_order_constraints.get_order_match(vehicle_id);
+      info.order_costs         = fleet_order_constraints.get_order_costs(vehicle_id);
 
       size_t stride = num_vehicles;
       i_t n_cap_dim = capacities.size() / num_vehicles;
@@ -275,7 +275,7 @@ class fleet_info_t {
     info.fixed_cost          = v_fixed_costs_.element(vehicle_id, handle_ptr_->get_stream());
     info.matrices            = matrices_.view();
     info.order_service_times = fleet_order_constraints_.get_order_service_times(vehicle_id);
-    info.order_match         = fleet_order_constraints_.get_order_match(vehicle_id);
+    info.order_costs         = fleet_order_constraints_.get_order_costs(vehicle_id);
 
     size_t stride = num_vehicles;
     i_t n_cap_dim = v_capacities_.size() / num_vehicles;

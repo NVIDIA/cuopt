@@ -288,6 +288,26 @@ class data_model_view_t {
                                bool validate_input = true);
 
   /**
+   * @brief Set the cost of assigning a specific vehicle to each order.
+   *        costs[order_id] = cost of vehicle vehicle_id serving order order_id.
+   *        A cost of 0 means a free assignment; a finite cost > 0 will be minimized
+   *        as the VEHICLE_ORDER_COST objective. If add_vehicle_order_match has already
+   *        marked a (vehicle, order) pair as infeasible, specifying a finite cost for
+   *        that pair is an error.
+   *
+   * @param vehicle_id  vehicle id for which costs are specified
+   * @param costs       device memory pointer to n_orders double values
+   * @param n_orders    number of orders (must match the problem size)
+   */
+  void set_vehicle_order_cost(const i_t vehicle_id, double const* costs, const i_t n_orders);
+
+  /**
+   * @brief Get the vehicle order cost map
+   */
+  const std::unordered_map<i_t, raft::device_span<double const>>& get_vehicle_order_cost()
+    const noexcept;
+
+  /**
    * @brief In fully heterogenous fleet mode, vehicle can take different amount
    * of times to complete a task based on their profile and the order being
    * served. Here we enable that ability to the user by setting for each vehicle
@@ -647,6 +667,7 @@ class data_model_view_t {
   bool const* skip_first_trip_{nullptr};
   std::unordered_map<i_t, raft::device_span<i_t const>> vehicle_order_match_;
   std::unordered_map<i_t, raft::device_span<i_t const>> order_vehicle_match_;
+  std::unordered_map<i_t, raft::device_span<double const>> vehicle_order_cost_;
   std::unordered_map<i_t, raft::device_span<i_t const>> order_service_times_;
   objective_t const* objective_{};
   f_t const* objective_weights_{};
