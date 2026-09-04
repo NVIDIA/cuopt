@@ -53,6 +53,9 @@ struct pdlp_hyper_params_t {
   double restart_k_d                                              = 0.0;
   double restart_i_smooth                                         = 0.3;
   bool use_conditional_major                                      = true;
+  // Iteration stride between full termination/convergence evaluations in the
+  // sub-1000-iteration regime; larger regimes scale it by x10 (see conditional_major).
+  int conditional_major_step = 10;
 };
 
 // TODO most likely we want to get rid of pdlp_solver_mode and just have prebuilt

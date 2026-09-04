@@ -1486,8 +1486,9 @@ void pdhg_solver_t<i_t, f_t>::take_step(rmm::device_uvector<f_t>& primal_step_si
       primal_step_size,
       dual_step_size,
       bound_rescaling,
-      is_major_iteration ||
-        ((total_pdlp_iterations + 2) % conditional_major<i_t>(total_pdlp_iterations + 2)) == 0);
+      is_major_iteration || ((total_pdlp_iterations + 2) %
+                             conditional_major<i_t>(total_pdlp_iterations + 2,
+                                                    hyper_params_.conditional_major_step)) == 0);
   }
   total_pdhg_iterations_ += 1;
 }
