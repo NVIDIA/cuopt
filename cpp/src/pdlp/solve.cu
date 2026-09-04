@@ -1525,6 +1525,9 @@ void run_dual_simplex_thread(
     run_dual_simplex(problem, settings, timer));
 }
 
+/**
+ * @brief Solve an LP problem using concurrent solvers (PDLP, dual simplex, barrier).
+ */
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> run_concurrent(
   mip::problem_t<i_t, f_t>& problem,
@@ -1703,10 +1706,14 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   f_t end_time = timer.elapsed_time();
   CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "Concurrent time: %.3fs", end_time);
 
-  const auto dual_simplex_status = !settings.inside_mip ? std::get<1>(*sol_dual_simplex_ptr)
-                                                        : simplex::lp_status_t::CONCURRENT_LIMIT;
+  const auto dual_simplex_status =
+    (!settings.inside_mip && sol_dual_simplex_ptr != nullptr)
+      ? std::get<1>(*sol_dual_simplex_ptr)
+      : simplex::lp_status_t::CONCURRENT_LIMIT;
   const auto barrier_status =
-    enable_barrier ? std::get<1>(*sol_barrier_ptr) : simplex::lp_status_t::CONCURRENT_LIMIT;
+    (enable_barrier && sol_barrier_ptr != nullptr)
+      ? std::get<1>(*sol_barrier_ptr)
+      : simplex::lp_status_t::CONCURRENT_LIMIT;
   const bool dual_simplex_solved = dual_simplex_status == simplex::lp_status_t::OPTIMAL ||
                                    dual_simplex_status == simplex::lp_status_t::INFEASIBLE ||
                                    dual_simplex_status == simplex::lp_status_t::UNBOUNDED;
@@ -1781,7 +1788,8 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
     CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "Solved with PDLP");
     return sol_pdlp;
   } else if (!settings.inside_mip &&
-             sol_pdlp.get_termination_status() == pdlp_termination_status_t::ConcurrentLimit) {
+             sol_pdlp.get_termination_status() == pdlp_termination_status_t::ConcurrentLimit &&
+             sol_dual_simplex_ptr != nullptr) {
     sol_barrier_ptr.reset();
     auto& dual_simplex_solution = std::get<0>(*sol_dual_simplex_ptr);
     auto sol_dual_simplex       = convert_dual_simplex_sol(problem,
