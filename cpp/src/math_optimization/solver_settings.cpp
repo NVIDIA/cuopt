@@ -5,7 +5,6 @@
  */
 /* clang-format on */
 
-#include <cuda/stream>
 #include <cuopt/error.hpp>
 #include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/solver_settings.hpp>

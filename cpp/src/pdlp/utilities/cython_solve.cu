@@ -23,6 +23,7 @@
 #include <utilities/logger.hpp>
 
 #include <cuda/stream>
+
 #include <raft/core/handle.hpp>
 #include <raft/core/nvtx.hpp>
 
