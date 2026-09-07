@@ -1923,7 +1923,7 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
     // Check if time limit has passed
     auto now     = std::chrono::high_resolution_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - loop_time_start);
-    if (std::isfinite(in_time_limit) && elapsed > time_limit) {
+    if (std::isfinite(in_time_limit) && elapsed >= time_limit) {
       CUOPT_LOG_TRACE("%sTime limit of %.4f seconds reached, breaking loop at iteration %d",
                       fj_cpu->log_prefix.c_str(),
                       time_limit.count() / 1000.f,
