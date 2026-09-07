@@ -1020,10 +1020,8 @@ TEST_P(papilo_problem, round_trip)
 }
 
 // Exercises the MIP presolve path: presolver_t::apply -> third_party_presolve_t::apply
-// reduces a user_problem_t in place via PaPILO. ex9 is fully solved by presolve (it collapses
-// to a 0x0 problem), so this also checks the OPTIMAL status and that postsolve maps the empty
-// reduced solution back to a full-dimension, objective-81 assignment.
-TEST(submip_presolve, ex9_fully_reduced)
+// reduces a user_problem_t in place via PaPILO.
+TEST(submip_presolve, ex9_reduced_to_residual_row)
 {
   const raft::handle_t handle_{};
 
@@ -1044,17 +1042,43 @@ TEST(submip_presolve, ex9_fully_reduced)
   mip::third_party_presolve_t<int, double> presolver;
   auto status = presolver.apply_to_subproblem(user_problem, settings, 120, 8);
 
-  // PaPILO solves ex9 entirely during presolve -> empty reduced problem.
-  EXPECT_EQ(status, mip::third_party_presolve_status_t::OPTIMAL);
-  EXPECT_EQ(user_problem.num_rows, 0);
-  EXPECT_EQ(user_problem.num_cols, 0);
-  EXPECT_EQ(user_problem.A.nnz(), 0);
+  ASSERT_EQ(status, mip::third_party_presolve_status_t::REDUCED);
+  ASSERT_EQ(user_problem.num_rows, 1);
+  ASSERT_EQ(user_problem.num_cols, 4);
+  ASSERT_EQ(user_problem.A.nnz(), 4);
 
-  // Postsolve reconstructs the full original assignment from the (empty) reduced solution.
-  std::vector<double> reduced_solution;  // no reduced columns remain
+  // The residual is `x0 + x1 + x2 + x3 == 1` over four binaries of unit cost, with the remaining
+  // 80 of the optimum already banked in obj_constant.
+  EXPECT_DOUBLE_EQ(user_problem.obj_constant, 80.0);
+  EXPECT_EQ(user_problem.row_sense[0], 'E');
+  EXPECT_DOUBLE_EQ(user_problem.rhs[0], 1.0);
+  for (int j = 0; j < user_problem.num_cols; ++j) {
+    EXPECT_DOUBLE_EQ(user_problem.objective[j], 1.0) << "column " << j;
+    EXPECT_DOUBLE_EQ(user_problem.lower[j], 0.0) << "column " << j;
+    EXPECT_DOUBLE_EQ(user_problem.upper[j], 1.0) << "column " << j;
+    ASSERT_EQ(user_problem.A.col_start[j + 1] - user_problem.A.col_start[j], 1) << "column " << j;
+    EXPECT_EQ(user_problem.A.i[user_problem.A.col_start[j]], 0) << "column " << j;
+    EXPECT_DOUBLE_EQ(user_problem.A.x[user_problem.A.col_start[j]], 1.0) << "column " << j;
+  }
+
+  // One column per surviving reduced column, each pointing at a distinct original column.
+  const auto& reduced_to_original = presolver.get_reduced_to_original_map();
+  ASSERT_EQ(reduced_to_original.size(), user_problem.num_cols);
+  for (int j = 0; j < user_problem.num_cols; ++j) {
+    EXPECT_GE(reduced_to_original[j], 0) << "column " << j;
+    EXPECT_LT(reduced_to_original[j], orig_cols) << "column " << j;
+  }
+
+  // Satisfying the residual row completes the optimum: postsolve reconstructs the full original
+  // assignment, keeping the reduced values in place and filling in everything presolve removed.
+  std::vector<double> reduced_solution(user_problem.num_cols, 0.0);
+  reduced_solution[0] = 1.0;
   std::vector<double> full_solution;
   presolver.uncrush_primal_solution(reduced_solution, full_solution);
   ASSERT_EQ(static_cast<int>(full_solution.size()), orig_cols);
+  for (int j = 0; j < user_problem.num_cols; ++j) {
+    EXPECT_DOUBLE_EQ(full_solution[reduced_to_original[j]], reduced_solution[j]) << "column " << j;
+  }
 
   double objective = 0.0;
   for (int j = 0; j < orig_cols; ++j) {
