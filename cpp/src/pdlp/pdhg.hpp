@@ -79,6 +79,14 @@ class pdhg_solver_t {
                  bool last_restart_was_average,
                  i_t total_pdlp_iterations,
                  bool is_major_iteration);
+  void take_reflected_step(rmm::device_uvector<f_t>& primal_step_size,
+                           rmm::device_uvector<f_t>& dual_step_size,
+                           const rmm::device_uvector<f_t>& bound_rescaling,
+                           rmm::device_uvector<f_t>& initial_primal,
+                           rmm::device_uvector<f_t>& initial_dual,
+                           i_t iterations_since_last_restart,
+                           i_t total_pdlp_iterations,
+                           bool is_major_iteration);
   void update_solution(cusparse_view_t<i_t, f_t>& current_op_problem_evaluation_cusparse_view_);
   void refine_initial_primal_projection(const rmm::device_uvector<f_t>& bound_rescaling);
 
@@ -99,12 +107,22 @@ class pdhg_solver_t {
   void spmv_At_into(cusparseDnVecDescr_t in_desc, cusparseDnVecDescr_t out_desc);
   void spmv_A_into(cusparseDnVecDescr_t in_desc, cusparseDnVecDescr_t out_desc);
 
+  // The Halpern update is folded into the reflected projections only when they are the last
+  // kernels to touch the iterate. Batch mode and per-climber bound overrides both re-project a
+  // subset of variables afterwards from the pre-update iterate, so those keep applying Halpern as
+  // a separate pass over the whole vector.
+  bool halpern_update_is_fused() const { return !batch_mode_}
+
   // Pure cub-transform extractions. Allows for clearer containment of the calls and ensures
   // the single-GPU vs distributed-GPU uses the same calls
-  void primal_reflected_major_projection_transform(rmm::device_uvector<f_t>& primal_step_size);
-  void dual_reflected_major_projection_transform(rmm::device_uvector<f_t>& dual_step_size);
-  void primal_reflected_projection_transform(rmm::device_uvector<f_t>& primal_step_size);
-  void dual_reflected_projection_transform(rmm::device_uvector<f_t>& dual_step_size);
+  void primal_reflected_major_projection_transform(rmm::device_uvector<f_t>& primal_step_size,
+                                                   rmm::device_uvector<f_t>& initial_primal);
+  void dual_reflected_major_projection_transform(rmm::device_uvector<f_t>& dual_step_size,
+                                                 rmm::device_uvector<f_t>& initial_dual);
+  void primal_reflected_projection_transform(rmm::device_uvector<f_t>& primal_step_size,
+                                             rmm::device_uvector<f_t>& initial_primal);
+  void dual_reflected_projection_transform(rmm::device_uvector<f_t>& dual_step_size,
+                                           rmm::device_uvector<f_t>& initial_dual);
 
   // Master PDLP wires the engine pointer here after the engine is built. Only
   // the master's pdhg_solver_ holds a non-null engine; shards leave it null and
@@ -131,6 +149,9 @@ class pdhg_solver_t {
     rmm::device_uvector<f_t>& primal_step_size,
     rmm::device_uvector<f_t>& dual_step_size,
     const rmm::device_uvector<f_t>& bound_rescaling,  // Only used in batch mode
+    rmm::device_uvector<f_t>& initial_primal,
+    rmm::device_uvector<f_t>& initial_dual,
+    i_t iterations_since_last_restart,
     bool should_major);
 
   void compute_primal_projection_with_gradient(rmm::device_uvector<f_t>& primal_step_size);
@@ -180,6 +201,9 @@ class pdhg_solver_t {
   // Needed for faster graph launch
   // Passing the host value each time would require updating the graph each time
   rmm::device_scalar<i_t> d_total_pdhg_iterations_;
+  // Updated before graph launch; projection kernels capture this stable pointer and
+  // dereference the current weight at execution time.
+  rmm::device_scalar<f_t> d_halpern_weight_;
 
   const std::vector<pdlp_climber_strategy_t>& climber_strategies_;
   const pdlp::pdlp_hyper_params_t& hyper_params_;

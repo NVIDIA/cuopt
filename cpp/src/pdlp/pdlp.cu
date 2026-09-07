@@ -1460,8 +1460,9 @@ static void compute_stats(const rmm::device_uvector<f_t>& vec,
                           f_t& avg)
 {
   auto abs_op      = [] __host__ __device__(f_t x) { return abs(x); };
-  auto min_nonzero = [] __host__ __device__(f_t x)
-    -> f_t { return x == 0 ? std::numeric_limits<f_t>::max() : abs(x); };
+  auto min_nonzero = [] __host__ __device__(f_t x) -> f_t {
+    return x == 0 ? std::numeric_limits<f_t>::max() : abs(x);
+  };
 
   cuopt_assert(vec.size() > 0, "Vector must not be empty");
 
@@ -2171,22 +2172,27 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
 }
 
-// delta = reflected - current, for both primal and dual, written into the
-// saddle-point delta buffers. Shared by the single-GPU and per-shard
-// (distributed) paths so the two only differ by which pdhg/stream they pass.
+// delta = reflected - T(z). When Halpern is fused, current has already been overwritten, so T(z)
+// lives in potential_next_*. Otherwise current is still z_k (batch). Shared by the
+// single-GPU and per-shard (distributed) paths so the two only differ by which pdhg/stream they
+// pass.
 template <typename i_t, typename f_t>
 static void compute_primal_dual_deltas(pdhg_solver_t<i_t, f_t>& pdhg, rmm::cuda_stream_view stream)
 {
+  auto& baseline_primal = pdhg.halpern_update_is_fused() ? pdhg.get_potential_next_primal_solution()
+                                                         : pdhg.get_primal_solution();
+  auto& baseline_dual   = pdhg.halpern_update_is_fused() ? pdhg.get_potential_next_dual_solution()
+                                                         : pdhg.get_dual_solution();
   cub::DeviceTransform::Transform(
-    cuda::std::make_tuple(pdhg.get_reflected_primal().data(), pdhg.get_primal_solution().data()),
+    cuda::std::make_tuple(pdhg.get_reflected_primal().data(), baseline_primal.data()),
     pdhg.get_saddle_point_state().get_delta_primal().data(),
-    pdhg.get_primal_solution().size(),
+    baseline_primal.size(),
     cuda::std::minus<f_t>{},
     stream);
   cub::DeviceTransform::Transform(
-    cuda::std::make_tuple(pdhg.get_reflected_dual().data(), pdhg.get_dual_solution().data()),
+    cuda::std::make_tuple(pdhg.get_reflected_dual().data(), baseline_dual.data()),
     pdhg.get_saddle_point_state().get_delta_dual().data(),
-    pdhg.get_dual_solution().size(),
+    baseline_dual.size(),
     cuda::std::minus<f_t>{},
     stream);
 }
@@ -2234,7 +2240,7 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
                  "delta_dual_ size mismatch");
   }
 
-  // Computing the deltas (delta = reflected - current)
+  // Computing the deltas (delta = reflected - the PDHG projection)
   // TODO batch mdoe: this only works if everyone restarts
   if (is_distributed_master()) {
     multi_gpu_engine->for_each_shard([](auto& shard) {
@@ -3047,23 +3053,20 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
       }
     }
 
+    const bool takes_major_step =
+      (total_pdlp_iterations_ + 1) % settings_.hyper_params.major_iteration == 0;
+    const bool restarted_this_iteration = std::any_of(
+      has_restarted.begin(), has_restarted.end(), [](int restarted) { return restarted == 1; });
 #ifdef CUPDLP_DEBUG_MODE
-    printf("Is Major %d\n",
-           (total_pdlp_iterations_ + 1) % settings_.hyper_params.major_iteration == 0);
+    printf("Is Major %d\n", takes_major_step);
 #endif
-    take_step(total_pdlp_iterations_,
-              (total_pdlp_iterations_ + 1) % settings_.hyper_params.major_iteration == 0);
+    take_step(total_pdlp_iterations_, takes_major_step);
 
     if (settings_.hyper_params.use_reflected_primal_dual) {
       if (settings_.hyper_params.use_fixed_point_error &&
-          ((total_pdlp_iterations_ + 1) % settings_.hyper_params.major_iteration == 0 ||
-           std::any_of(has_restarted.begin(), has_restarted.end(), [](int restarted) {
-             return restarted == 1;
-           }))) {
+          (takes_major_step || restarted_this_iteration)) {
         // TODO later batch mode: remove this once if you have per climber restart
-        if (std::any_of(has_restarted.begin(), has_restarted.end(), [](int restarted) {
-              return restarted == 1;
-            }))
+        if (restarted_this_iteration)
           cuopt_assert(std::all_of(has_restarted.begin(),
                                    has_restarted.end(),
                                    [](int restarted) { return restarted == 1; }),
@@ -3089,7 +3092,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
           transpose_problem_fields(/*to_row=*/true);
         }
       }
-      halpern_update();
+      if (!pdhg_solver_.halpern_update_is_fused()) { halpern_update(); }
     }
 
     ++total_pdlp_iterations_;
@@ -3150,14 +3153,25 @@ void pdlp_solver_t<i_t, f_t>::take_adaptive_step(i_t total_pdlp_iterations, bool
 template <typename i_t, typename f_t>
 void pdlp_solver_t<i_t, f_t>::take_constant_step(bool is_major_iteration)
 {
-  pdhg_solver_.take_step(
-    primal_step_size_,
-    dual_step_size_,
-    initial_scaling_strategy_.get_bound_rescaling_vector(),  // Only used in batch mode
-    0,
-    false,
-    total_pdlp_iterations_,
-    is_major_iteration);
+  if (settings_.hyper_params.use_reflected_primal_dual) {
+    pdhg_solver_.take_reflected_step(
+      primal_step_size_,
+      dual_step_size_,
+      initial_scaling_strategy_.get_bound_rescaling_vector(),  // Only used in batch mode
+      restart_strategy_.last_restart_duality_gap_.primal_solution_,
+      restart_strategy_.last_restart_duality_gap_.dual_solution_,
+      restart_strategy_.weighted_average_solution_.get_iterations_since_last_restart(),
+      total_pdlp_iterations_,
+      is_major_iteration);
+  } else {
+    pdhg_solver_.take_step(primal_step_size_,
+                           dual_step_size_,
+                           initial_scaling_strategy_.get_bound_rescaling_vector(),
+                           0,
+                           false,
+                           total_pdlp_iterations_,
+                           is_major_iteration);
+  }
 }
 
 template <typename i_t, typename f_t>
