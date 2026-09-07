@@ -21,6 +21,14 @@ from libcpp.string cimport string
 from libcpp.utility cimport move
 from libcpp.vector cimport vector
 
+cdef extern from "Python.h":
+    bint PyCapsule_IsValid(object cap, const char* name)
+    void* PyCapsule_GetPointer(object cap, const char* name)
+
+cdef extern from "cuopt/mathematical_optimization/utilities/barrier_cache.hpp" namespace "cuopt::mathematical_optimization":  # noqa
+    cdef cppclass barrier_cache_t:
+        void update_linear_objective(const double* c, int n) except +
+
 
 def type_cast(np_obj, np_type, name):
     if not isinstance(np_obj, np.ndarray):
@@ -41,6 +49,7 @@ cdef class DataModel:
 
     def __init__(self):
         self.c_data_model_view.reset(new data_model_view_t[int, double]())
+        self.barrier_cache_capsule = None
 
         self.maximize = False
         self.A_values = np.array([])
@@ -157,6 +166,34 @@ cdef class DataModel:
 
     def set_objective_coefficients(self, c):
         self.c = type_cast(c, np.float64, "c")
+
+    def update_linear_objective(self, c):
+        """Update linear objective coefficients (``c`` on this DataModel).
+
+        Always writes the DataModel objective. If this model owns a solver
+        cache from a prior Barrier solve, also crushes ``c`` into the cached
+        ``iteration_data_t`` and sets ``c_dirty`` so a later reuse can
+        skip convert/presolve. Crush runs first so a length error
+        leaves the DataModel coefficients unchanged.
+        """
+        cdef barrier_cache_t* cache
+        cdef double[::1] c_view
+        new_c = type_cast(c, np.float64, "c")
+        if self.barrier_cache_capsule is not None:
+            if not PyCapsule_IsValid(
+                self.barrier_cache_capsule, b"cuopt.barrier_cache"
+            ):
+                raise ValueError("Invalid barrier cache stored on DataModel.")
+            cache = <barrier_cache_t*>PyCapsule_GetPointer(
+                self.barrier_cache_capsule,
+                b"cuopt.barrier_cache",
+            )
+            c_view = np.ascontiguousarray(new_c, dtype=np.float64)
+            if c_view.shape[0] == 0:
+                cache.update_linear_objective(NULL, 0)
+            else:
+                cache.update_linear_objective(&c_view[0], <int>c_view.shape[0])
+        self.c = new_c
 
     def set_objective_scaling_factor(self, objective_scaling_factor):
         self.objective_scaling_factor = objective_scaling_factor

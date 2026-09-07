@@ -29,6 +29,12 @@
 
 #include <linear_algebra/vector_math.cuh>
 
+#include <cuopt/error.hpp>
+#include <cuopt/mathematical_optimization/utilities/barrier_cache.hpp>
+
+#include <barrier/barrier_transform.hpp>
+
+#include <rmm/device_buffer.hpp>
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 
@@ -469,7 +475,7 @@ class iteration_data_t {
       Q(Qin),
       cusparse_Q_view_(lp.handle_ptr, Q),
       cusparse_view_(lp.handle_ptr, lp.A),
-      cusparse_info(lp.handle_ptr),
+      cusparse_info_(nullptr),
       device_AD(lp.num_cols, lp.num_rows, 0, lp.handle_ptr->get_stream()),
       device_A(lp.num_cols, lp.num_rows, 0, lp.handle_ptr->get_stream()),
       device_ADAT(lp.num_rows, lp.num_rows, 0, lp.handle_ptr->get_stream()),
@@ -479,7 +485,6 @@ class iteration_data_t {
       device_Q_csc_(lp.handle_ptr->get_stream()),
       device_AT_csc_(lp.handle_ptr->get_stream()),
       d_original_A_values(0, lp.handle_ptr->get_stream()),
-      device_A_x_values(0, lp.handle_ptr->get_stream()),
       d_inv_diag_prime(0, lp.handle_ptr->get_stream()),
       d_flag_buffer(0, lp.handle_ptr->get_stream()),
       d_num_flag(lp.handle_ptr->get_stream()),
@@ -843,9 +848,6 @@ class iteration_data_t {
                  handle_ptr->get_stream());
       // For efficient scaling of AD col we form the col index array
       device_AD.form_col_index(handle_ptr->get_stream());
-      device_A_x_values.resize(device_AD.x.size(), handle_ptr->get_stream());
-      raft::copy(
-        device_A_x_values.data(), device_AD.x.data(), device_AD.x.size(), handle_ptr->get_stream());
       device_AD.to_compressed_row(device_A, handle_ptr->get_stream());
       RAFT_CHECK_CUDA(handle_ptr->get_stream());
     }
@@ -856,7 +858,7 @@ class iteration_data_t {
       i_t factorization_size =
         use_augmented ? augmented_system_size(lp.num_cols, lp.num_rows) : lp.num_rows;
       chol = std::make_unique<sparse_cholesky_cudss_t<i_t, f_t>>(
-        handle_ptr, settings, factorization_size);
+        handle_ptr, settings_, factorization_size);
       chol->set_positive_definite(false);
     }
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
@@ -881,6 +883,67 @@ class iteration_data_t {
         symbolic_status = chol->analyze(device_ADAT);
       }
     }
+  }
+
+  // Attach this solve's settings and rewind iterate-dependent state so barrier can
+  // Mehrotra-start with the new c. A and Q are unchanged; the previous solve
+  // left D and the KKT values at its last iterate. Reuse is QP-only (no cones),
+  // so form_*(false) updates values in the existing CSR; no symbolic rebuild.
+  bool reset_iterate_state(const simplex_solver_settings_t<i_t, f_t>& settings)
+  {
+    if (chol == nullptr || symbolic_status != 0) { return false; }
+    settings_ = settings;
+
+    {
+      raft::common::nvtx::range fun_scope("Barrier: reset diagonal scaling");
+      const bool has_Q        = Q.n > 0;
+      const bool has_soc      = has_cones();
+      const bool adaptive_reg = should_use_adaptive_regularization(settings, has_soc);
+      primal_perturb          = (settings.barrier_primal_regularization >= 0)
+                                  ? settings.barrier_primal_regularization
+                                  : (has_soc ? 1e-8 : 1e-6);
+      dual_perturb            = (settings.barrier_dual_regularization >= 0)
+                                  ? settings.barrier_dual_regularization
+                                  : (adaptive_reg ? 1e-8 : 0);
+
+      diag.set_scalar(1.0);
+      for (i_t k = 0; k < n_upper_bounds; k++) {
+        diag[upper_bounds[k]] = 2.0;
+      }
+      if (has_Q && !use_augmented) {
+        for (i_t j = 0; j < Q.n; j++) {
+          diag[j] += Qdiag[j];
+        }
+      }
+
+      inv_diag.set_scalar(1.0);
+      if (n_upper_bounds > 0 || (has_Q && !use_augmented)) { diag.inverse(inv_diag); }
+      raft::copy(d_diag_.data(), diag.data(), diag.size(), stream_view_);
+      raft::copy(d_inv_diag.data(), inv_diag.data(), inv_diag.size(), stream_view_);
+      inv_sqrt_diag.set_scalar(1.0);
+      if (n_upper_bounds > 0 || (has_Q && !use_augmented)) { inv_diag.sqrt(inv_sqrt_diag); }
+    }
+
+    if (use_augmented) {
+      form_augmented(false);
+    } else {
+      form_adat(false);
+      handle_ptr->sync_stream();
+      chol->rebind_csr_matrix(device_ADAT);
+    }
+    if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return false; }
+
+    // Drop the last iterate's numeric factor and residual history; keep symbolic analysis.
+    has_factorization                      = false;
+    has_solve_info                         = false;
+    relative_primal_residual_save          = inf;
+    relative_dual_residual_save            = inf;
+    relative_complementarity_residual_save = inf;
+    primal_residual_norm_save              = inf;
+    dual_residual_norm_save                = inf;
+    complementarity_residual_norm_save     = inf;
+    handle_ptr->sync_stream();
+    return true;
   }
 
   bool has_cones() const { return cones_.has_value(); }
@@ -1130,8 +1193,11 @@ class iteration_data_t {
     if (first_call) {
       raft::common::nvtx::range scope("Barrier: Form ADAT: cusparse init");
       try {
+        if (!cusparse_info_) {
+          cusparse_info_ = std::make_unique<cusparse_info_t<i_t, f_t>>(handle_ptr);
+        }
         initialize_cusparse_data<i_t, f_t>(
-          handle_ptr, device_A, device_AD, device_ADAT, cusparse_info);
+          handle_ptr, device_A, device_AD, device_ADAT, spgemm_info());
       } catch (const raft::cuda_error& e) {
         settings_.log.printf("Error in initialize_cusparse_data: %s\n", e.what());
         return;
@@ -1141,7 +1207,7 @@ class iteration_data_t {
 
     {
       raft::common::nvtx::range scope("Barrier: Form ADAT: ADAT multiply");
-      multiply_kernels<i_t, f_t>(handle_ptr, device_A, device_AD, device_ADAT, cusparse_info);
+      multiply_kernels<i_t, f_t>(handle_ptr, device_A, device_AD, device_ADAT, spgemm_info());
       handle_ptr->sync_stream();
     }
 
@@ -2148,7 +2214,6 @@ class iteration_data_t {
   device_csr_matrix_t<i_t, f_t> device_ADAT;
   device_csr_matrix_t<i_t, f_t> device_A;
   device_csc_matrix_t<i_t, f_t> device_AD;
-  rmm::device_uvector<f_t> device_A_x_values;
   // For GPU Form ADAT
   rmm::device_uvector<f_t> d_inv_diag_prime;
   rmm::device_buffer d_flag_buffer;
@@ -2171,6 +2236,13 @@ class iteration_data_t {
   std::vector<f_t> Qdiag;
   bool Q_diagonal;
   rmm::device_uvector<i_t> d_augmented_diagonal_indices_;
+
+  cusparse_info_t<i_t, f_t>& spgemm_info()
+  {
+    cuopt_assert(cusparse_info_ != nullptr, "spgemm_info: cusparse workspace unset");
+    return *cusparse_info_;
+  }
+
   cone_kkt_data_t<i_t, f_t> cone_kkt_data_;
   bool indefinite_Q;
   cusparse_view_t<i_t, f_t> cusparse_Q_view_;
@@ -2194,7 +2266,7 @@ class iteration_data_t {
   bool has_solve_info;
   i_t num_factorizations;
 
-  cusparse_info_t<i_t, f_t> cusparse_info;
+  std::unique_ptr<cusparse_info_t<i_t, f_t>> cusparse_info_;
   cusparse_view_t<i_t, f_t> cusparse_view_;
   pdlp::cusparse_dn_vec_uptr cusparse_tmp4_;
   pdlp::cusparse_dn_vec_uptr cusparse_h_;
@@ -2288,7 +2360,7 @@ class iteration_data_t {
 
   rmm::cuda_stream_view stream_view_;
 
-  const simplex_solver_settings_t<i_t, f_t>& settings_;
+  simplex_solver_settings_t<i_t, f_t> settings_;
 };
 
 // Move the Cholesky debug logic to a reusable function.
@@ -4272,56 +4344,11 @@ lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
 }
 
 template <typename i_t, typename f_t>
-lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t, f_t>& solution)
+lp_status_t barrier_solver_t<i_t, f_t>::barrier_advanced_solve(f_t start_time,
+                                                               lp_solution_t<i_t, f_t>& solution,
+                                                               iteration_data_t<i_t, f_t>& data)
 {
-  settings.log.printf("Barrier solver started at %.2f seconds\n", toc(start_time));
-  try {
-    raft::common::nvtx::range fun_scope("Barrier: solve");
-
-    i_t n = lp.num_cols;
-    i_t m = lp.num_rows;
-
-    solution.resize(m, n);
-    settings.log.printf(
-      "Barrier solver: %d constraints, %d variables, %ld nonzeros\n", m, n, lp.A.col_start[n]);
-
-    settings.log.printf("\n");
-
-    if (lp.Q.n > 0) {
-      settings.log.printf("Quadratic objective matrix  : %d nonzeros\n", lp.Q.row_start[lp.Q.n]);
-    }
-    if (lp.second_order_cone_dims.size() > 0) {
-      settings.log.printf("Second-order cones          : %d\n",
-                          static_cast<int>(lp.second_order_cone_dims.size()));
-    }
-
-    // Compute the number of free variables
-    i_t num_free_variables = presolve_info.free_variable_pairs.size() / 2;
-    if (num_free_variables > 0) {
-      settings.log.printf("Free variables              : %d\n", num_free_variables);
-    }
-
-    // Compute the number of upper bounds
-    i_t num_upper_bounds = 0;
-    for (i_t j = 0; j < n; j++) {
-      if (lp.upper[j] < inf) { num_upper_bounds++; }
-    }
-
-    csc_matrix_t<i_t, f_t> Q(lp.num_cols, 0, 0);
-    if (lp.Q.n > 0) { create_Q(lp, Q); }
-
-    iteration_data_t<i_t, f_t> data(
-      lp, num_upper_bounds, presolve_info.direct_free_variables, Q, settings);
-    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-      settings.log.printf("Barrier solver halted\n");
-      return lp_status_t::CONCURRENT_LIMIT;
-    }
-    if (data.indefinite_Q) { return lp_status_t::NUMERICAL_ISSUES; }
-    if (data.symbolic_status != 0) {
-      settings.log.printf("Error in symbolic analysis\n");
-      return lp_status_t::NUMERICAL_ISSUES;
-    }
-
+  {
     data.cusparse_dual_residual_ = data.cusparse_view_.create_vector(data.d_dual_residual_);
     data.cusparse_r1_            = data.cusparse_view_.create_vector(data.d_r1_);
     data.cusparse_tmp4_          = data.cusparse_view_.create_vector(data.d_tmp4_);
@@ -4329,7 +4356,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
     data.cusparse_dx_residual_   = data.cusparse_view_.create_vector(data.d_dx_residual_);
     data.cusparse_u_             = data.cusparse_view_.create_vector(data.d_u_);
     data.cusparse_y_residual_    = data.cusparse_view_.create_vector(data.d_y_residual_);
-    data.restrict_u_.resize(num_upper_bounds);
+    data.restrict_u_.resize(data.n_upper_bounds);
 
     settings.log.printf("Elapsed time                : %.2fs\n", toc(start_time));
 
@@ -4360,7 +4387,6 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
       settings.log.printf("Unable to compute initial point\n");
       return lp_status_t::NUMERICAL_ISSUES;
     }
-
     // Upload initial point to device and compute initial residuals/norms on GPU
     data.d_complementarity_wv_residual_.resize(data.n_upper_bounds, stream_view_);
     data.d_complementarity_wv_rhs_.resize(data.n_upper_bounds, stream_view_);
@@ -4708,6 +4734,153 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
                      data.cusparse_view_,
                      solution);
     return lp_status_t::ITERATION_LIMIT;
+  }
+}
+
+template <typename i_t, typename f_t>
+lp_status_t barrier_solver_t<i_t, f_t>::solve_with_cache(
+  f_t start_time,
+  lp_solution_t<i_t, f_t>& solution,
+  cuopt::mathematical_optimization::barrier_cache_t* cache)
+{
+  settings.log.printf("Barrier solver started at %.2f seconds\n", toc(start_time));
+  try {
+    raft::common::nvtx::range fun_scope("Barrier: solve_with_cache");
+
+    i_t n = lp.num_cols;
+    i_t m = lp.num_rows;
+    solution.resize(m, n);
+    settings.log.printf(
+      "Barrier solver: %d constraints, %d variables, %ld nonzeros\n", m, n, lp.A.col_start[n]);
+    if (lp.Q.n > 0) {
+      settings.log.printf("Quadratic objective matrix  : %d nonzeros\n", lp.Q.row_start[lp.Q.n]);
+    }
+
+    std::unique_ptr<iteration_data_t<i_t, f_t>> owned_data;
+    if (cache != nullptr) {
+      if (auto* cached = cache->release_iteration_data()) { owned_data.reset(cached); }
+    }
+    if (!owned_data) {
+      if (cache != nullptr) { cache->clear(); }
+      settings.log.printf(
+        "Barrier: cache reuse failed; cached iteration_data is missing or invalid\n");
+      return lp_status_t::NUMERICAL_ISSUES;
+    }
+    try {
+      if (!owned_data->reset_iterate_state(settings)) {
+        owned_data.reset();
+        if (cache != nullptr) { cache->clear(); }
+        settings.log.printf(
+          "Barrier: cache reuse failed; cached iteration_data is missing or invalid\n");
+        return lp_status_t::NUMERICAL_ISSUES;
+      }
+    } catch (const raft::cuda_error&) {
+      owned_data.reset();
+      if (cache != nullptr) { cache->clear(); }
+      settings.log.printf(
+        "Barrier: cache reuse failed; cached iteration_data is missing or invalid\n");
+      return lp_status_t::NUMERICAL_ISSUES;
+    }
+
+    iteration_data_t<i_t, f_t>& data = *owned_data;
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+      settings.log.printf("Barrier solver halted\n");
+      if (cache != nullptr) { cache->clear(); }
+      return lp_status_t::CONCURRENT_LIMIT;
+    }
+    if (data.indefinite_Q) {
+      if (cache != nullptr) { cache->clear(); }
+      return lp_status_t::NUMERICAL_ISSUES;
+    }
+    if (data.symbolic_status != 0) {
+      settings.log.printf("Error in symbolic analysis\n");
+      if (cache != nullptr) { cache->clear(); }
+      return lp_status_t::NUMERICAL_ISSUES;
+    }
+    settings.log.printf("Barrier setup complete at %.2f seconds\n", toc(start_time));
+    lp_status_t status = barrier_advanced_solve(start_time, solution, *owned_data);
+    return store_or_clear_cache(cache, owned_data, status);
+  } catch (const raft::cuda_error& e) {
+    settings.log.printf("Error in barrier_solver_t: %s\n", e.what());
+    return lp_status_t::NUMERICAL_ISSUES;
+  } catch (const std::bad_alloc& e) {
+    settings.log.printf("Out of memory in barrier_solver_t: %s\n", e.what());
+    return lp_status_t::NUMERICAL_ISSUES;
+  }
+}
+
+template <typename i_t, typename f_t>
+lp_status_t barrier_solver_t<i_t, f_t>::solve(
+  f_t start_time,
+  lp_solution_t<i_t, f_t>& solution,
+  cuopt::mathematical_optimization::barrier_cache_t* cache)
+{
+  settings.log.printf("Barrier solver started at %.2f seconds\n", toc(start_time));
+  try {
+    raft::common::nvtx::range fun_scope("Barrier: solve");
+
+    i_t n = lp.num_cols;
+    i_t m = lp.num_rows;
+
+    solution.resize(m, n);
+    settings.log.printf(
+      "Barrier solver: %d constraints, %d variables, %ld nonzeros\n", m, n, lp.A.col_start[n]);
+
+    settings.log.printf("\n");
+
+    if (lp.Q.n > 0) {
+      settings.log.printf("Quadratic objective matrix  : %d nonzeros\n", lp.Q.row_start[lp.Q.n]);
+    }
+    if (lp.second_order_cone_dims.size() > 0) {
+      settings.log.printf("Second-order cones          : %d\n",
+                          static_cast<int>(lp.second_order_cone_dims.size()));
+    }
+
+    // Compute the number of free variables
+    i_t num_free_variables = presolve_info.free_variable_pairs.size() / 2;
+    if (num_free_variables > 0) {
+      settings.log.printf("Free variables              : %d\n", num_free_variables);
+    }
+
+    // Compute the number of upper bounds
+    i_t num_upper_bounds = 0;
+    for (i_t j = 0; j < n; j++) {
+      if (lp.upper[j] < inf) { num_upper_bounds++; }
+    }
+
+    std::unique_ptr<iteration_data_t<i_t, f_t>> owned_data;
+    if (cache != nullptr) { cache->store_iteration_data(nullptr); }
+
+    csc_matrix_t<i_t, f_t> local_Q(lp.num_cols, 0, 0);
+    csc_matrix_t<i_t, f_t>* Qin = &local_Q;
+    if (cache != nullptr && cache->transform() != nullptr) {
+      auto* xf      = cache->transform();
+      xf->barrier_Q = std::make_unique<csc_matrix_t<i_t, f_t>>(lp.num_cols, 0, 0);
+      Qin           = xf->barrier_Q.get();
+    }
+    if (lp.Q.n > 0) { create_Q(lp, *Qin); }
+    owned_data = std::make_unique<iteration_data_t<i_t, f_t>>(
+      lp, num_upper_bounds, presolve_info.direct_free_variables, *Qin, settings);
+    iteration_data_t<i_t, f_t>& data = *owned_data;
+
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+      settings.log.printf("Barrier solver halted\n");
+      if (cache != nullptr) { cache->clear(); }
+      return lp_status_t::CONCURRENT_LIMIT;
+    }
+    if (data.indefinite_Q) {
+      if (cache != nullptr) { cache->clear(); }
+      return lp_status_t::NUMERICAL_ISSUES;
+    }
+    if (data.symbolic_status != 0) {
+      settings.log.printf("Error in symbolic analysis\n");
+      if (cache != nullptr) { cache->clear(); }
+      return lp_status_t::NUMERICAL_ISSUES;
+    }
+
+    settings.log.printf("Barrier setup complete at %.2f seconds\n", toc(start_time));
+    lp_status_t status = barrier_advanced_solve(start_time, solution, *owned_data);
+    return store_or_clear_cache(cache, owned_data, status);
   } catch (const raft::cuda_error& e) {
     settings.log.printf("Error in barrier_solver_t: %s\n", e.what());
     return lp_status_t::NUMERICAL_ISSUES;
@@ -4718,6 +4891,38 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
     settings.log.printf("Out of memory in barrier_solver_t: %s\n", e.what());
     return lp_status_t::NUMERICAL_ISSUES;
   }
+}
+
+// Optimal: persist iteration_data_t on the cache. Otherwise drop it.
+template <typename i_t, typename f_t>
+lp_status_t store_or_clear_cache(cuopt::mathematical_optimization::barrier_cache_t* cache,
+                                 std::unique_ptr<iteration_data_t<i_t, f_t>>& owned_data,
+                                 lp_status_t status)
+{
+  if (cache != nullptr && owned_data) {
+    if (status == lp_status_t::OPTIMAL) {
+      cache->store_iteration_data(owned_data.release());
+    } else {
+      cache->clear();
+    }
+  }
+  return status;
+}
+
+void destroy_iteration_data(iteration_data_t<int, double>* data) { delete data; }
+
+void apply_barrier_linear_objective(iteration_data_t<int, double>& data,
+                                    double const* barrier_c,
+                                    int n)
+{
+  cuopt_expects(barrier_c != nullptr && static_cast<int>(data.c.size()) == n &&
+                  static_cast<int>(data.d_c_.size()) == n,
+                error_type_t::ValidationError,
+                "update_linear_objective: barrier linear objective size does not match cached "
+                "iteration_data_t.");
+  std::copy(barrier_c, barrier_c + n, data.c.data());
+  raft::copy(
+    data.d_c_.data(), data.c.data(), static_cast<std::size_t>(n), data.handle_ptr->get_stream());
 }
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE

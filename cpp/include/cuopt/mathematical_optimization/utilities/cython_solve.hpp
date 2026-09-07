@@ -8,12 +8,11 @@
 #pragma once
 
 #include <cuopt/export.hpp>
+#include <cuopt/mathematical_optimization/io/data_model_view.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_solution_interface.hpp>
 #include <cuopt/mathematical_optimization/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/utilities/cython_types.hpp>
-
-#include <cuopt/mathematical_optimization/io/data_model_view.hpp>
 #include <memory>
 #include <raft/core/handle.hpp>
 #include <string>
@@ -55,8 +54,9 @@ mathematical_optimization::mip_solution_interface_t<int, double>* call_solve_mip
 std::unique_ptr<solver_ret_t> call_solve(
   cuopt::mathematical_optimization::io::data_model_view_t<int, double>*,
   mathematical_optimization::solver_settings_t<int, double>*,
-  unsigned int flags = cudaStreamNonBlocking,
-  bool is_batch_mode = false);
+  unsigned int flags                                   = cudaStreamNonBlocking,
+  bool is_batch_mode                                   = false,
+  mathematical_optimization::barrier_cache_t* cache_in = nullptr);
 
 std::pair<std::vector<std::unique_ptr<solver_ret_t>>, double> solve_batch_remote(
   std::vector<cuopt::mathematical_optimization::io::data_model_view_t<int, double>*>,

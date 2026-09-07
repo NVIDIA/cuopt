@@ -10,6 +10,7 @@
 #include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/mip/solver_solution.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
+#include <cuopt/mathematical_optimization/utilities/barrier_cache.hpp>
 #include <cuopt/mathematical_optimization/utilities/internals.hpp>
 
 #include <rmm/device_buffer.hpp>
@@ -85,6 +86,10 @@ struct linear_programming_ret_t {
   int nb_iterations_{};
   double solve_time_{};
   mathematical_optimization::method_t solved_by_{};
+
+  /** GPU barrier cache (stream + handle + iteration workspace); moved to Python capsule when set.
+   */
+  std::unique_ptr<mathematical_optimization::barrier_cache_t> barrier_cache;
 
   bool is_gpu() const { return std::holds_alternative<gpu_solutions_t>(solutions_); }
 };
