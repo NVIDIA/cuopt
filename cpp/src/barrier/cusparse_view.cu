@@ -115,14 +115,15 @@ void my_cusparsespmv_preprocess(cusparseHandle_t handle,
 }
 #endif
 
-static cusparseSpMVAlg_t get_spmv_alg([[maybe_unused]] int num_rows, bool deterministic)
+static cusparseSpMVAlg_t get_spmv_alg(int num_rows, int num_cols)
 {
-  // ALG2 is reported to have a bug in cuSPARSE < 13.0 where beta=1 accumulate mode ignores the
-  // existing y values.
+  // ALG2 provides deterministic (bit-wise) results but older ALG2 has a bug with matrices that have
+  // a single row or column, so fall back to ALG1 for those on cuSPARSE < 13.0.0.
   constexpr int cusparse_version =
     CUSPARSE_VER_MAJOR * 1000 + CUSPARSE_VER_MINOR * 100 + CUSPARSE_VER_PATCH;
-  if (deterministic) { return CUSPARSE_SPMV_CSR_ALG2; }
-  if (cusparse_version < 13000) { return CUSPARSE_SPMV_CSR_ALG1; }
+  if ((num_rows <= 1 || num_cols <= 1) && cusparse_version < 13000) {
+    return CUSPARSE_SPMV_CSR_ALG1;
+  }
   return CUSPARSE_SPMV_CSR_ALG2;
 }
 
@@ -131,9 +132,10 @@ void cusparse_view_t<i_t, f_t>::init_spmv_buffer_and_preprocess(cusparseSpMatDes
                                                                 cusparseDnVecDescr_t x,
                                                                 cusparseDnVecDescr_t y,
                                                                 rmm::device_buffer& buffer,
-                                                                i_t rows)
+                                                                i_t rows,
+                                                                i_t cols)
 {
-  const auto spmv_alg     = get_spmv_alg(rows, deterministic_);
+  const auto spmv_alg     = get_spmv_alg(rows, cols);
   size_t buffer_size_spmv = 0;
   RAFT_CUSPARSE_TRY(
     raft::sparse::detail::cusparsespmv_buffersize(handle_ptr_->get_cusparse_handle(),
@@ -162,8 +164,7 @@ void cusparse_view_t<i_t, f_t>::init_spmv_buffer_and_preprocess(cusparseSpMatDes
 
 template <typename i_t, typename f_t>
 cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
-                                           const csc_matrix_t<i_t, f_t>& A,
-                                           bool deterministic)
+                                           const csc_matrix_t<i_t, f_t>& A)
   : handle_ptr_(handle_ptr),
     A_offsets_(0, handle_ptr->get_stream()),
     A_indices_(0, handle_ptr->get_stream()),
@@ -175,8 +176,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
     spmv_buffer_transpose_(0, handle_ptr->get_stream()),
     d_one_(one_v<f_t>, handle_ptr->get_stream()),
     d_minus_one_(neg_one_v<f_t>, handle_ptr->get_stream()),
-    d_zero_(zero_v<f_t>, handle_ptr->get_stream()),
-    deterministic_(deterministic)
+    d_zero_(zero_v<f_t>, handle_ptr->get_stream())
 {
   RAFT_CUBLAS_TRY(raft::linalg::detail::cublassetpointermode(
     handle_ptr->get_cublas_handle(), CUBLAS_POINTER_MODE_DEVICE, handle_ptr->get_stream()));
@@ -188,7 +188,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
   csr_matrix_t<i_t, f_t> A_csr(A.m, A.n, 1);
   A.to_compressed_row(A_csr);
   rows_                           = A_csr.m;
-  i_t cols                        = A_csr.n;
+  cols_                           = A_csr.n;
   i_t nnz                         = A_csr.x.size();
   const std::vector<i_t>& offsets = A_csr.row_start;
   const std::vector<i_t>& indices = A_csr.j;
@@ -204,7 +204,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
 
   cusparseCreateCsr(&A_,
                     rows_,
-                    cols,
+                    cols_,
                     nnz,
                     A_offsets_.data(),
                     A_indices_.data(),
@@ -215,7 +215,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
                     CUDA_R_64F);
 
   cusparseCreateCsr(&A_T_,
-                    cols,
+                    cols_,
                     rows_,
                     nnz,
                     A_T_offsets_.data(),
@@ -229,13 +229,13 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
   // Tmp just to init the buffer size and preprocess
   cusparseDnVecDescr_t x;
   cusparseDnVecDescr_t y;
-  rmm::device_uvector<f_t> d_x(cols, handle_ptr_->get_stream());
+  rmm::device_uvector<f_t> d_x(cols_, handle_ptr_->get_stream());
   rmm::device_uvector<f_t> d_y(rows_, handle_ptr_->get_stream());
   RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(&x, d_x.size(), d_x.data()));
   RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(&y, d_y.size(), d_y.data()));
 
-  init_spmv_buffer_and_preprocess(A_, x, y, spmv_buffer_, rows_);
-  init_spmv_buffer_and_preprocess(A_T_, y, x, spmv_buffer_transpose_, A_T_offsets_.size() - 1);
+  init_spmv_buffer_and_preprocess(A_, x, y, spmv_buffer_, rows_, cols_);
+  init_spmv_buffer_and_preprocess(A_T_, y, x, spmv_buffer_transpose_, cols_, rows_);
 
   RAFT_CUSPARSE_TRY(cusparseDestroyDnVec(x));
   RAFT_CUSPARSE_TRY(cusparseDestroyDnVec(y));
@@ -304,7 +304,7 @@ void cusparse_view_t<i_t, f_t>::spmv(f_t alpha,
                                      x,
                                      d_beta->data(),
                                      y,
-                                     get_spmv_alg(rows_, deterministic_),
+                                     get_spmv_alg(rows_, cols_),
                                      (f_t*)spmv_buffer_.data(),
                                      handle_ptr_->get_stream());
 }
@@ -359,7 +359,7 @@ void cusparse_view_t<i_t, f_t>::transpose_spmv(f_t alpha,
                                      x,
                                      d_beta->data(),
                                      y,
-                                     get_spmv_alg(A_T_offsets_.size() - 1, deterministic_),
+                                     get_spmv_alg(cols_, rows_),
                                      (f_t*)spmv_buffer_transpose_.data(),
                                      handle_ptr_->get_stream());
 }

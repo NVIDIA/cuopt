@@ -28,9 +28,7 @@ class cusparse_view_t {
  public:
   // Copy CSC -> owned CSR + CSC-transpose, with preprocess. Supports forward and transpose SpMV.
   // TMP matrix data should already be on the GPU and in CSR not CSC
-  cusparse_view_t(raft::handle_t const* handle_ptr,
-                  const csc_matrix_t<i_t, f_t>& A,
-                  bool deterministic = false);
+  cusparse_view_t(raft::handle_t const* handle_ptr, const csc_matrix_t<i_t, f_t>& A);
   ~cusparse_view_t();
 
   pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> create_vector(rmm::device_uvector<f_t> const& vec);
@@ -66,7 +64,8 @@ class cusparse_view_t {
                                        cusparseDnVecDescr_t x,
                                        cusparseDnVecDescr_t y,
                                        rmm::device_buffer& buffer,
-                                       i_t rows);
+                                       i_t rows,
+                                       i_t cols);
 
   rmm::device_uvector<i_t> A_offsets_;
   rmm::device_uvector<i_t> A_indices_;
@@ -82,6 +81,6 @@ class cusparse_view_t {
   rmm::device_scalar<f_t> d_minus_one_;
   rmm::device_scalar<f_t> d_zero_;
   i_t rows_{0};
-  bool deterministic_{false};
+  i_t cols_{0};
 };
 }  // namespace cuopt::mathematical_optimization::barrier
