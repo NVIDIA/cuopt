@@ -11,6 +11,7 @@
 #include <thrust/logical.h>
 #include <thrust/transform_reduce.h>
 #include <cuopt/error.hpp>
+#include <mip_heuristics/utils.hpp>
 #include <pdlp/utils.cuh>
 #include <raft/random/rng_device.cuh>
 #include <random>
@@ -18,6 +19,8 @@
 #include <utilities/hashing.hpp>
 
 #include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
+
+#include <cmath>
 
 #pragma once
 

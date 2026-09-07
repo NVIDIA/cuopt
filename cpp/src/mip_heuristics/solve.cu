@@ -234,7 +234,11 @@ mip_solution_t<i_t, f_t> run_mip_solver(
     // It will be converted to the target solver-space at each consumption point.
     solver.context.initial_upper_bound          = initial_upper_bound;
     solver.context.initial_incumbent_assignment = initial_incumbent_assignment;
-    solver.context.symmetry                     = std::move(symmetry);
+    if (std::isfinite(initial_upper_bound)) {
+      solver.context.solution_publication.set_published_floor(
+        solver.context.problem_ptr->get_solver_obj_from_user_obj(initial_upper_bound));
+    }
+    solver.context.symmetry = std::move(symmetry);
     if (timer.check_time_limit()) {
       CUOPT_LOG_INFO("Time limit reached before main solve");
       mip::solution_t<i_t, f_t> sol(problem);

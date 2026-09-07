@@ -825,14 +825,20 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
 }
 
 template <typename i_t, typename f_t>
-void problem_t<i_t, f_t>::recompute_auxilliary_data(bool check_representation)
+void problem_t<i_t, f_t>::recompute_auxilliary_data(bool check_representation,
+                                                    bool compute_related_vars)
 {
   raft::common::nvtx::range fun_scope("recompute_auxilliary_data");
   compute_n_integer_vars();
   compute_binary_var_table();
   compute_vars_with_objective_coeffs();
   // TODO: speedup compute related variables
-  compute_related_variables(related_vars_time_limit);
+  if (compute_related_vars) {
+    compute_related_variables(related_vars_time_limit);
+  } else {
+    related_variables.resize(0, handle_ptr->get_stream());
+    related_variables_offsets.resize(0, handle_ptr->get_stream());
+  }
   if (check_representation) cuopt_func_call(check_problem_representation(true));
 }
 
@@ -1300,6 +1306,7 @@ void problem_t<i_t, f_t>::recompute_objective_integrality()
       presolve_data.objective_scaling_factor /= scaling_factor;
       presolve_data.objective_offset *= scaling_factor;
       objective_is_integral = true;
+      compute_vars_with_objective_coeffs();
     }
   }
 }
@@ -1812,7 +1819,7 @@ void problem_t<i_t, f_t>::remove_given_variables(problem_t<i_t, f_t>& original_p
   compute_auxiliary_data();
   pdlp::combine_constraint_bounds<i_t, f_t>(*this, combined_bounds);
   handle_ptr->sync_stream();
-  recompute_auxilliary_data();
+  recompute_auxilliary_data(/*check_representation=*/true, /*compute_related_vars=*/false);
   cuopt_func_call(check_problem_representation(true));
 }
 
@@ -2193,9 +2200,10 @@ void problem_t<i_t, f_t>::set_papilo_presolve_data(
 }
 
 template <typename i_t, typename f_t>
-void problem_t<i_t, f_t>::papilo_uncrush_assignment(rmm::device_uvector<f_t>& assignment) const
+void problem_t<i_t, f_t>::papilo_uncrush_assignment(rmm::device_uvector<f_t>& assignment,
+                                                    rmm::cuda_stream_view stream) const
 {
-  presolve_data.papilo_uncrush_assignment(const_cast<problem_t&>(*this), assignment);
+  presolve_data.papilo_uncrush_assignment(assignment, stream);
 }
 
 template <typename i_t, typename f_t>

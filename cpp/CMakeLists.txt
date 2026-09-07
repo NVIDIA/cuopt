@@ -304,6 +304,25 @@ set(BUILD_SHARED_LIBS OFF)
 FetchContent_MakeAvailable(pslp)
 set(BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS_SAVED})
 
+FetchContent_Declare(
+        highway
+        GIT_REPOSITORY "https://github.com/google/highway.git"
+        GIT_TAG "1.4.0"
+        GIT_PROGRESS TRUE
+        EXCLUDE_FROM_ALL
+        SYSTEM
+)
+
+set(HWY_ENABLE_CONTRIB OFF CACHE BOOL "" FORCE)
+set(HWY_ENABLE_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(HWY_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
+set(HWY_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+
+set(BUILD_SHARED_LIBS_SAVED ${BUILD_SHARED_LIBS})
+set(BUILD_SHARED_LIBS OFF)
+FetchContent_MakeAvailable(highway)
+set(BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS_SAVED})
+
 
 # dejavu - header-only graph automorphism library for MIP symmetry detection
 # https://github.com/markusa4/dejavu (header-only, skip its CMakeLists.txt)
@@ -663,6 +682,7 @@ target_include_directories(cuopt_objs PRIVATE
 target_include_directories(cuopt_objs SYSTEM PRIVATE
   "${pslp_SOURCE_DIR}/include"
   "${dejavu_SOURCE_DIR}"
+  "${highway_SOURCE_DIR}"
 )
 
 target_include_directories(cuopt_objs
@@ -687,6 +707,9 @@ target_include_directories(cuopt_objs
 # Link PSLP by file to avoid export dependency tracking
 target_link_libraries(cuopt_objs PRIVATE $<TARGET_FILE:PSLP>)
 add_dependencies(cuopt_objs PSLP)
+
+target_link_libraries(cuopt_objs PRIVATE $<TARGET_FILE:hwy>)
+add_dependencies(cuopt_objs hwy)
 
 # Link KaMinPar by file to avoid export dependency tracking (mirrors PSLP above).
 # KaMinPar is a from-source static library fully embedded into libcuopt.so; it is never
@@ -808,6 +831,8 @@ if (BUILD_TESTS)
     )
     target_link_libraries(cuopt_static PRIVATE $<TARGET_FILE:PSLP>)
     add_dependencies(cuopt_static PSLP)
+    target_link_libraries(cuopt_static PRIVATE $<TARGET_FILE:hwy>)
+    add_dependencies(cuopt_static hwy)
     target_link_libraries(cuopt_static PRIVATE $<TARGET_FILE:KaMinPar::KaMinPar>)
     if (TARGET KaMinPar)
         add_dependencies(cuopt_static KaMinPar)
@@ -852,6 +877,8 @@ target_link_libraries(cuopt
 )
 target_link_libraries(cuopt PRIVATE $<TARGET_FILE:PSLP>)
 add_dependencies(cuopt PSLP)
+target_link_libraries(cuopt PRIVATE $<TARGET_FILE:hwy>)
+add_dependencies(cuopt hwy)
 target_link_libraries(cuopt PRIVATE $<TARGET_FILE:KaMinPar::KaMinPar>)
 if (TARGET KaMinPar)
         add_dependencies(cuopt KaMinPar)
