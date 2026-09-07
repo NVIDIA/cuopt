@@ -308,8 +308,6 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   mip::mip_status_t branch_and_bound_status = mip::mip_status_t::UNSET;
   user_problem_t<i_t, f_t> branch_and_bound_problem(context.problem_ptr->handle_ptr);
   context.problem_ptr->recompute_objective_integrality();
-  // Re-derived here because the call above is the last thing that moves the solver space, and the
-  // floor set before presolve is expressed in the space that preceded it.
   if (std::isfinite(context.initial_upper_bound)) {
     context.solution_publication.set_published_floor(
       context.problem_ptr->get_solver_obj_from_user_obj(context.initial_upper_bound));

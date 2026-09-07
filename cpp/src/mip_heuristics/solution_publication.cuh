@@ -32,9 +32,6 @@
 namespace cuopt::mathematical_optimization::mip {
 
 // Single point at which MIP incumbents are reported to the user get-solution callbacks.
-// The heuristic thread (through the population) and the branch-and-bound thread both publish
-// here, so the guard on the last published objective is shared and every incumbent is reported
-// once, at the moment it is found rather than when the heuristic thread next drains its queue.
 template <typename i_t, typename f_t>
 class solution_publication_t {
  public:
@@ -48,8 +45,6 @@ class solution_publication_t {
     }
   }
 
-  // Whether any get-solution callback is registered. Callers can use this to skip assembling
-  // the host assignment that publish_if_better would otherwise discard.
   bool enabled() const { return handle_ != nullptr; }
 
   void set_published_floor(f_t solver_objective)
@@ -58,11 +53,8 @@ class solution_publication_t {
     best_published_objective_ = solver_objective;
   }
 
-  // `assignment` and `solver_objective` are in problem_ptr's solver space, which is always
-  // oriented as a minimization. Returns whether the incumbent was published.
-  //
-  // Post-processing runs on a private stream, so this is safe to call from the branch-and-bound
-  // thread while the heuristic thread owns problem_ptr->handle_ptr's stream.
+  // `assignment` and `solver_objective` are in problem_ptr's solver space.
+  // Returns whether the incumbent was published.
   bool publish_if_better(problem_t<i_t, f_t>* problem_ptr,
                          const std::vector<f_t>& assignment,
                          f_t solver_objective)
@@ -103,7 +95,7 @@ class solution_publication_t {
           callback->get_type() != internals::base_solution_callback_type::GET_SOLUTION) {
         continue;
       }
-      // Each callback gets its own copies: the interface hands out mutable pointers.
+      // Each callback gets its own copies.
       std::vector<f_t> callback_assignment(user_assignment);
       std::vector<f_t> callback_objective(1, user_objective);
       std::vector<f_t> callback_bound(1, user_bound);
@@ -142,8 +134,7 @@ class solution_publication_t {
     auto stream = handle_->get_stream();
     rmm::device_uvector<f_t> d_assignment(assignment.size(), stream);
     raft::copy(d_assignment.data(), assignment.data(), assignment.size(), stream);
-    // post_process_assignment writes through problem_ptr->presolve_data.fixed_var_assignment,
-    // which both publishing threads share: the caller's lock is what keeps them apart.
+
     problem_ptr->post_process_assignment(d_assignment, true, stream);
     if (problem_ptr->has_papilo_presolve_data()) {
       problem_ptr->papilo_uncrush_assignment(d_assignment, stream);

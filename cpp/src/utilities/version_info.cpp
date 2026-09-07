@@ -26,8 +26,6 @@
 
 namespace cuopt {
 
-// Reads up to buf_size-1 bytes, NUL-terminates, strips trailing whitespace/NULs.
-// Returns bytes kept (excluding the terminator), or -1 on failure.
 static ssize_t read_file_buf(const char* path, char* buf, size_t buf_size)
 {
   if (buf_size == 0) return -1;
@@ -110,7 +108,7 @@ static void mark_cpus_from_list(const char* list, char visited[CPU_SETSIZE])
   }
 }
 
-// CPUs this process may run on (respects Slurm/cgroup cpusets, taskset, etc.).
+// CPUs this process may run on (respects slurm/cgroup cpusets, taskset, etc)
 static int get_allowed_cpus(int* cpus, int max_cpus)
 {
   cpu_set_t set;
@@ -215,6 +213,7 @@ static const char* get_simd_target()
 {
   const int64_t target = hwy::DispatchedTarget();
   switch (target) {
+    // AVX-512 is a much more commonly understood name than AVX3 or AVX10.2 
     case HWY_AVX3:
     case HWY_AVX3_DL:
     case HWY_AVX3_ZEN4:

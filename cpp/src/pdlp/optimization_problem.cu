@@ -305,20 +305,18 @@ void optimization_problem_t<i_t, f_t>::set_variable_types(const var_t* variable_
       }
     }
   } else {
-    auto is_discrete = [] __host__ __device__(var_t val) {
-      return val == var_t::INTEGER || val == var_t::SEMI_CONTINUOUS;
-    };
-    auto is_semi_continuous = [] __host__ __device__(var_t val) {
-      return val == var_t::SEMI_CONTINUOUS;
-    };
     n_discrete                    = thrust::count_if(handle_ptr_->get_thrust_policy(),
                                   variable_types_.begin(),
                                   variable_types_.end(),
-                                  is_discrete);
+                                  [] __host__ __device__(var_t val) {
+                                    return val == var_t::INTEGER || val == var_t::SEMI_CONTINUOUS;
+                                  });
     has_semi_continuous_variables = thrust::count_if(handle_ptr_->get_thrust_policy(),
                                                      variable_types_.begin(),
                                                      variable_types_.end(),
-                                                     is_semi_continuous) > 0;
+                                      [] __host__ __device__(var_t val) {
+                                      return val == var_t::SEMI_CONTINUOUS;
+                                    }) > 0;
   }
   has_semi_continuous_variables_ = has_semi_continuous_variables;
   if (n_discrete == size) {
