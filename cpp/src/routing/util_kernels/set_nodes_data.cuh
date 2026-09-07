@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -54,8 +54,8 @@ __device__ void set_route_data(typename problem_t<i_t, f_t>::view_t const& probl
                        route.template get_dim<dim_t::TIME>().excess_backward[0]) < 0.0001,
                    "Backward forward mismatch!");
     }
-    route.template get_dim<dim_t::DIST>().distance_backward[n_nodes_route] = 0.f;
-    route.template get_dim<dim_t::DIST>().distance_forward[0]              = 0.f;
+    route.template get_dim<dim_t::COST>().cost_backward[n_nodes_route] = 0.f;
+    route.template get_dim<dim_t::COST>().cost_forward[0]              = 0.f;
     if (problem.dimensions_info.has_dimension(dim_t::CAP)) {
       route.template get_dim<dim_t::CAP>().max_to_node[0]           = 0;
       route.template get_dim<dim_t::CAP>().gathered[0]              = 0;

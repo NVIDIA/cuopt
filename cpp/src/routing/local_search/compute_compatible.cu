@@ -455,7 +455,7 @@ void local_search_t<i_t, f_t, REQUEST>::calculate_route_compatibility(
   RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
 }
 
-// sort the viable matrix according to the distance after the insertion
+// sort the viable matrix according to the cost after the insertion
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::sort_viable_matrix(rmm::device_uvector<i_t>& viable_from_matrix,
                                              rmm::device_uvector<i_t>& viable_to_matrix)
@@ -477,7 +477,7 @@ void problem_t<i_t, f_t>::sort_viable_matrix(rmm::device_uvector<i_t>& viable_fr
                       i_t segment = idx / l_n_requests;
                       return segment;
                     });
-  // sort according to distance
+  // sort according to cost
   thrust::stable_sort(
     handle_ptr->get_thrust_policy(),
     thrust::make_zip_iterator(viable_from_matrix.begin(), segments.begin()),
@@ -489,19 +489,19 @@ void problem_t<i_t, f_t>::sort_viable_matrix(rmm::device_uvector<i_t>& viable_fr
       i_t from_node_2 = thrust::get<1>(second);
       if (to_node_1 == -1) return false;
       if (to_node_2 == -1) return true;
-      auto dist_between_1 = get_distance(
+      auto cost_between_1 = get_arc_cost(
         NodeInfo<i_t>(
           from_node_1, order_info_view.get_order_location(from_node_1), node_type_t::PICKUP),
         NodeInfo<i_t>(
           to_node_1, order_info_view.get_order_location(to_node_1), node_type_t::PICKUP),
         l_vehicle_info);
-      auto dist_between_2 = get_distance(
+      auto cost_between_2 = get_arc_cost(
         NodeInfo<i_t>(
           from_node_2, order_info_view.get_order_location(from_node_2), node_type_t::PICKUP),
         NodeInfo<i_t>(
           to_node_2, order_info_view.get_order_location(to_node_2), node_type_t::PICKUP),
         l_vehicle_info);
-      return dist_between_1 < dist_between_2;
+      return cost_between_1 < cost_between_2;
     });
   // sort the segments
   thrust::stable_sort(handle_ptr->get_thrust_policy(),
@@ -521,7 +521,7 @@ void problem_t<i_t, f_t>::sort_viable_matrix(rmm::device_uvector<i_t>& viable_fr
                       i_t segment = idx / l_n_requests;
                       return segment;
                     });
-  // sort according to distance
+  // sort according to cost
   thrust::stable_sort(
     handle_ptr->get_thrust_policy(),
     thrust::make_zip_iterator(viable_to_matrix.begin(), segments.begin()),
@@ -533,19 +533,19 @@ void problem_t<i_t, f_t>::sort_viable_matrix(rmm::device_uvector<i_t>& viable_fr
       i_t to_node_2   = thrust::get<1>(second);
       if (from_node_1 == -1) return false;
       if (from_node_2 == -1) return true;
-      auto dist_between_1 = get_distance(
+      auto cost_between_1 = get_arc_cost(
         NodeInfo<i_t>(
           from_node_1, order_info_view.get_order_location(from_node_1), node_type_t::PICKUP),
         NodeInfo<i_t>(
           to_node_1, order_info_view.get_order_location(to_node_1), node_type_t::PICKUP),
         l_vehicle_info);
-      auto dist_between_2 = get_distance(
+      auto cost_between_2 = get_arc_cost(
         NodeInfo<i_t>(
           from_node_2, order_info_view.get_order_location(from_node_2), node_type_t::PICKUP),
         NodeInfo<i_t>(
           to_node_2, order_info_view.get_order_location(to_node_2), node_type_t::PICKUP),
         l_vehicle_info);
-      return dist_between_1 < dist_between_2;
+      return cost_between_1 < cost_between_2;
     });
   // sort the segments again to get back the segmented sorted
   thrust::stable_sort(handle_ptr->get_thrust_policy(),

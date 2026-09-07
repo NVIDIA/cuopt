@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -15,8 +15,8 @@
 #define DEPO 0
 
 // Array indexes for evaluation of distinct features
-// distance
-constexpr int DIST = 0;
+// cost
+constexpr int COST = 0;
 // time
 constexpr int TIME = 1;
 // pdp capacity ( positive/negative supply )

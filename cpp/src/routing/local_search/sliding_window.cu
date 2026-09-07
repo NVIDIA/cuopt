@@ -428,7 +428,7 @@ __device__ void try_permutations_cvrp(
   f_t fragment_dist   = 0.;
   f_t fragment_demand = nodes[0].capacity_dim.demand[0];
   for (int i = 1; i < window_size; ++i) {
-    fragment_dist += get_arc_of_dimension<i_t, f_t, dim_t::DIST, true>(
+    fragment_dist += get_arc_of_dimension<i_t, f_t, dim_t::COST, true>(
       nodes[i - 1].request.info, nodes[i].request.info, s_route.vehicle_info());
     fragment_demand += nodes[i].capacity_dim.demand[0];
   }

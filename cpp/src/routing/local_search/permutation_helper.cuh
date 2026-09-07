@@ -242,10 +242,10 @@ DI bool forward_fragment_update_cvrp(const node_t<i_t, f_t, REQUEST>& curr_node,
 {
   cuopt_assert(fragment_size != 0, "Fragment size cannot be zero!");
 
-  f_t arc_value = get_arc_of_dimension<i_t, f_t, dim_t::DIST, true>(
+  f_t arc_value = get_arc_of_dimension<i_t, f_t, dim_t::COST, true>(
     curr_node.request.info, fragment[0].request.info, s_route.vehicle_info());
-  fragment[fragment_size - 1].distance_dim.distance_forward =
-    curr_node.distance_dim.distance_forward + arc_value + fragment_dist;
+  fragment[fragment_size - 1].cost_dim.cost_forward =
+    curr_node.cost_dim.cost_forward + arc_value + fragment_dist;
   fragment[fragment_size - 1].capacity_dim.gathered[0] =
     curr_node.capacity_dim.gathered[0] + fragment_demand;
   fragment[fragment_size - 1].capacity_dim.max_to_node[0] =
@@ -295,10 +295,9 @@ DI bool backward_fragment_update_cvrp(const node_t<i_t, f_t, REQUEST>& curr_node
                                       const infeasible_cost_t& weights,
                                       double excess_limit)
 {
-  f_t arc_value = get_arc_of_dimension<i_t, f_t, dim_t::DIST, true>(
+  f_t arc_value = get_arc_of_dimension<i_t, f_t, dim_t::COST, true>(
     fragment[fragment_size - 1].request.info, curr_node.request.info, s_route.vehicle_info());
-  fragment[0].distance_dim.distance_backward =
-    curr_node.distance_dim.distance_backward + arc_value + fragment_dist;
+  fragment[0].cost_dim.cost_backward = curr_node.cost_dim.cost_backward + arc_value + fragment_dist;
 
   fragment[0].capacity_dim.max_after[0] = curr_node.capacity_dim.max_after[0] + fragment_demand;
 
