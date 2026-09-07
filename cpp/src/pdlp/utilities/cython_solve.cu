@@ -22,6 +22,8 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/logger.hpp>
 
+#include <cuda/stream>
+
 #include <raft/core/handle.hpp>
 #include <raft/core/nvtx.hpp>
 
@@ -129,18 +131,20 @@ std::unique_ptr<solver_ret_t> call_solve(
       // all returned device_buffers with a long-lived stream for safe deallocation later.
       auto& gpu_sols =
         std::get<linear_programming_ret_t::gpu_solutions_t>(response.lp_ret.solutions_);
-      gpu_sols.primal_solution_->set_stream(rmm::cuda_stream_per_thread);
-      gpu_sols.dual_solution_->set_stream(rmm::cuda_stream_per_thread);
-      gpu_sols.reduced_cost_->set_stream(rmm::cuda_stream_per_thread);
-      gpu_sols.current_primal_solution_->set_stream(rmm::cuda_stream_per_thread);
-      gpu_sols.current_dual_solution_->set_stream(rmm::cuda_stream_per_thread);
-      gpu_sols.initial_primal_average_->set_stream(rmm::cuda_stream_per_thread);
-      gpu_sols.initial_dual_average_->set_stream(rmm::cuda_stream_per_thread);
-      gpu_sols.current_ATY_->set_stream(rmm::cuda_stream_per_thread);
-      gpu_sols.sum_primal_solutions_->set_stream(rmm::cuda_stream_per_thread);
-      gpu_sols.sum_dual_solutions_->set_stream(rmm::cuda_stream_per_thread);
-      gpu_sols.last_restart_duality_gap_primal_solution_->set_stream(rmm::cuda_stream_per_thread);
-      gpu_sols.last_restart_duality_gap_dual_solution_->set_stream(rmm::cuda_stream_per_thread);
+      gpu_sols.primal_solution_->set_stream(cuda::stream_ref{cudaStreamPerThread});
+      gpu_sols.dual_solution_->set_stream(cuda::stream_ref{cudaStreamPerThread});
+      gpu_sols.reduced_cost_->set_stream(cuda::stream_ref{cudaStreamPerThread});
+      gpu_sols.current_primal_solution_->set_stream(cuda::stream_ref{cudaStreamPerThread});
+      gpu_sols.current_dual_solution_->set_stream(cuda::stream_ref{cudaStreamPerThread});
+      gpu_sols.initial_primal_average_->set_stream(cuda::stream_ref{cudaStreamPerThread});
+      gpu_sols.initial_dual_average_->set_stream(cuda::stream_ref{cudaStreamPerThread});
+      gpu_sols.current_ATY_->set_stream(cuda::stream_ref{cudaStreamPerThread});
+      gpu_sols.sum_primal_solutions_->set_stream(cuda::stream_ref{cudaStreamPerThread});
+      gpu_sols.sum_dual_solutions_->set_stream(cuda::stream_ref{cudaStreamPerThread});
+      gpu_sols.last_restart_duality_gap_primal_solution_->set_stream(
+        cuda::stream_ref{cudaStreamPerThread});
+      gpu_sols.last_restart_duality_gap_dual_solution_->set_stream(
+        cuda::stream_ref{cudaStreamPerThread});
 
     } else {
       // MIP solve
@@ -153,7 +157,7 @@ std::unique_ptr<solver_ret_t> call_solve(
 
       // Same stream reassociation as the LP path above.
       auto& gpu_sol = std::get<gpu_buffer>(response.mip_ret.solution_);
-      gpu_sol->set_stream(rmm::cuda_stream_per_thread);
+      gpu_sol->set_stream(cuda::stream_ref{cudaStreamPerThread});
     }
 
     // Reset warmstart data streams in solver_settings (skip in batch mode to avoid data race
@@ -161,17 +165,17 @@ std::unique_ptr<solver_ret_t> call_solve(
     if (!is_batch_mode) {
       auto& warmstart_data = solver_settings->get_pdlp_settings().get_pdlp_warm_start_data();
       if (warmstart_data.current_primal_solution_.size() > 0) {
-        warmstart_data.current_primal_solution_.set_stream(rmm::cuda_stream_per_thread);
-        warmstart_data.current_dual_solution_.set_stream(rmm::cuda_stream_per_thread);
-        warmstart_data.initial_primal_average_.set_stream(rmm::cuda_stream_per_thread);
-        warmstart_data.initial_dual_average_.set_stream(rmm::cuda_stream_per_thread);
-        warmstart_data.current_ATY_.set_stream(rmm::cuda_stream_per_thread);
-        warmstart_data.sum_primal_solutions_.set_stream(rmm::cuda_stream_per_thread);
-        warmstart_data.sum_dual_solutions_.set_stream(rmm::cuda_stream_per_thread);
+        warmstart_data.current_primal_solution_.set_stream(cuda::stream_ref{cudaStreamPerThread});
+        warmstart_data.current_dual_solution_.set_stream(cuda::stream_ref{cudaStreamPerThread});
+        warmstart_data.initial_primal_average_.set_stream(cuda::stream_ref{cudaStreamPerThread});
+        warmstart_data.initial_dual_average_.set_stream(cuda::stream_ref{cudaStreamPerThread});
+        warmstart_data.current_ATY_.set_stream(cuda::stream_ref{cudaStreamPerThread});
+        warmstart_data.sum_primal_solutions_.set_stream(cuda::stream_ref{cudaStreamPerThread});
+        warmstart_data.sum_dual_solutions_.set_stream(cuda::stream_ref{cudaStreamPerThread});
         warmstart_data.last_restart_duality_gap_primal_solution_.set_stream(
-          rmm::cuda_stream_per_thread);
+          cuda::stream_ref{cudaStreamPerThread});
         warmstart_data.last_restart_duality_gap_dual_solution_.set_stream(
-          rmm::cuda_stream_per_thread);
+          cuda::stream_ref{cudaStreamPerThread});
       }
     }
 

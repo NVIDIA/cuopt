@@ -91,7 +91,7 @@ void sort_subsections(raft::device_span<i_t> vars,
                                       n_subsections,
                                       offsets.data(),
                                       offsets.data() + 1,
-                                      handle_ptr->get_stream());
+                                      handle_ptr->get_stream().get());
 
   // Allocate temporary storage
   d_temp_storage.resize(temp_storage_bytes, handle_ptr->get_stream());
@@ -107,7 +107,7 @@ void sort_subsections(raft::device_span<i_t> vars,
                                       n_subsections,
                                       offsets.data(),
                                       offsets.data() + 1,
-                                      handle_ptr->get_stream());
+                                      handle_ptr->get_stream().get());
   handle_ptr->sync_stream();
 }
 
@@ -179,7 +179,7 @@ void constraint_prop_t<i_t, f_t>::sort_by_implied_slack_consumption(solution_t<i
   auto max_activity   = selected_update ? make_span(multi_probe.upd_1.max_activity)
                                         : make_span(multi_probe.upd_0.max_activity);
   compute_implied_slack_consumption_per_var<i_t, f_t>
-    <<<vars.size(), block_dim, 0, sol.handle_ptr->get_stream()>>>(
+    <<<vars.size(), block_dim, 0, sol.handle_ptr->get_stream().get()>>>(
       sol.problem_ptr->view(),
       vars,
       min_activity,

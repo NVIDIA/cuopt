@@ -455,7 +455,7 @@ void fj_t<i_t, f_t>::climber_init(i_t climber_idx, const rmm::cuda_stream_view& 
     f_t excess = climber->violation_score.value(climber_stream);
     climber->best_excess.set_value_async(excess, climber_stream);
   }
-  climber_stream.synchronize();
+  climber_stream.sync();
 
   climber->break_condition.set_value_to_zero_async(climber_stream);
   climber->temp_break_condition.set_value_to_zero_async(climber_stream);
@@ -471,9 +471,9 @@ void fj_t<i_t, f_t>::climber_init(i_t climber_idx, const rmm::cuda_stream_view& 
   climber->iterations_until_feasible_counter.set_value_to_zero_async(climber_stream);
   climber->small_move_tabu.set_value_to_zero_async(climber_stream);
 
-  climber_stream.synchronize();
+  climber_stream.sync();
 
-  climber_stream.synchronize();
+  climber_stream.sync();
 
   view = climber->view();
 
@@ -499,7 +499,7 @@ void fj_t<i_t, f_t>::climber_init(i_t climber_idx, const rmm::cuda_stream_view& 
                                   row_size_it_bin,
                                   row_size_bin_prefix_sum.data(),
                                   pb_ptr->binary_indices.size(),
-                                  climber_stream);
+                                  climber_stream.get());
     if (i == 0 && temp_storage_bytes > climber->cub_storage_bytes.size())
       climber->cub_storage_bytes.resize(temp_storage_bytes, climber_stream);
   }
@@ -510,7 +510,7 @@ void fj_t<i_t, f_t>::climber_init(i_t climber_idx, const rmm::cuda_stream_view& 
                                   row_size_it_nonbin,
                                   row_size_nonbin_prefix_sum.data(),
                                   pb_ptr->nonbinary_indices.size(),
-                                  climber_stream);
+                                  climber_stream.get());
     if (i == 0 && temp_storage_bytes > climber->cub_storage_bytes.size())
       climber->cub_storage_bytes.resize(temp_storage_bytes, climber_stream);
   }
@@ -533,7 +533,7 @@ void fj_t<i_t, f_t>::climber_init(i_t climber_idx, const rmm::cuda_stream_view& 
                                       pb_ptr->n_variables,
                                       pb_ptr->related_variables_offsets.begin(),
                                       pb_ptr->related_variables_offsets.begin() + 1,
-                                      climber_stream);
+                                      climber_stream.get());
       if (i == 0 && temp_storage_bytes > climber->cub_storage_bytes.size())
         climber->cub_storage_bytes.resize(temp_storage_bytes, climber_stream);
     }
@@ -723,7 +723,7 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
                                data.candidate_variables.contents.data(),
                                data.candidate_variables.set_size.data(),
                                pb_ptr->n_variables,
-                               climber_stream);
+                               climber_stream.get());
     if (compaction_temp_storage_bytes > data.cub_storage_bytes.size()) {
       data.cub_storage_bytes.resize(compaction_temp_storage_bytes, climber_stream);
     }
@@ -771,7 +771,7 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
                                  data.candidate_variables.contents.data(),
                                  data.candidate_variables.set_size.data(),
                                  pb_ptr->n_variables,
-                                 climber_stream);
+                                 climber_stream.get());
 
       launch_select_variable_kernel<i_t, f_t>(dim3(1), dim3(256), kernel_args, climber_stream);
 
@@ -804,7 +804,7 @@ void fj_t<i_t, f_t>::round_remaining_fractionals(solution_t<i_t, f_t>& solution,
   data.handle_fractionals_only.set_value_async(handle_fractionals_only, climber_stream);
   data.break_condition.set_value_to_zero_async(climber_stream);
   data.temp_break_condition.set_value_to_zero_async(climber_stream);
-  climber_stream.synchronize();
+  climber_stream.sync();
 
   //  Run the fractional move selection and assignment update kernels until all have been rounded
   host_loop(solution, climber_idx);
@@ -909,7 +909,7 @@ i_t fj_t<i_t, f_t>::host_loop(solution_t<i_t, f_t>& solution, i_t climber_idx)
                  data.best_assignment.data(),
                  data.best_assignment.size(),
                  climber_stream);
-      climber_stream.synchronize();
+      climber_stream.sync();
       // this solution cost computation with the changing(or not changing) weights is needed to
       // decide whether we reset the best objective on the FIRST_FEASIBLE mode. once we get rid of
       // FIRST_FEASIBLE mode, we can remove the following too.
@@ -927,7 +927,7 @@ i_t fj_t<i_t, f_t>::host_loop(solution_t<i_t, f_t>& solution, i_t climber_idx)
                      solution.assignment.data(),
                      solution.assignment.size(),
                      climber_stream);
-          climber_stream.synchronize();
+          climber_stream.sync();
           improvement_callback(user_obj, h_assignment);
         }
       }
@@ -1110,11 +1110,11 @@ i_t fj_t<i_t, f_t>::solve(solution_t<i_t, f_t>& solution)
   }
 
   climber_init(0);
-  RAFT_CHECK_CUDA(handle_ptr->get_stream());
+  RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
   handle_ptr->sync_stream();
 
   i_t iterations = host_loop(solution);
-  RAFT_CHECK_CUDA(handle_ptr->get_stream());
+  RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
   handle_ptr->sync_stream();
 
   f_t effort_rate = (f_t)iterations / timer.elapsed_time();

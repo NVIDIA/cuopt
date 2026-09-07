@@ -185,7 +185,7 @@ void multi_gpu_engine_t<i_t, f_t>::halo_exchange_bufs_impl(
                               nccl_data_type<f_t>(),
                               peer,
                               s.comm.get(),
-                              s.stream.view().value()));
+                              s.stream.view().get()));
     }
   });
   for_each_shard([&](auto& s, int r) {
@@ -199,7 +199,7 @@ void multi_gpu_engine_t<i_t, f_t>::halo_exchange_bufs_impl(
                               nccl_data_type<f_t>(),
                               peer,
                               s.comm.get(),
-                              s.stream.view().value()));
+                              s.stream.view().get()));
     }
   });
   CUOPT_NCCL_TRY(ncclGroupEnd());
@@ -317,7 +317,7 @@ void multi_gpu_engine_t<i_t, f_t>::allreduce_sum_inplace_bufs(
                                  nccl_data_type<f_t>(),
                                  ncclSum,
                                  s.comm.get(),
-                                 s.stream.view().value()));
+                                 s.stream.view().get()));
   });
   CUOPT_NCCL_TRY(ncclGroupEnd());
 }
@@ -363,7 +363,7 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_dot_bufs(
                                                     b_bufs[r].data(),
                                                     1,
                                                     out_scalars[r].data_handle(),
-                                                    s.stream.view().value()));
+                                                    s.stream.view().get()));
   });
 
   allreduce_sum_inplace_bufs(out_scalars);
@@ -394,7 +394,7 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_l2_norm_bufs(
       out_scalars[r].data_handle(),
       1,
       [] __device__(f_t x) { return cuda::std::sqrt(x); },
-      s.stream.view().value());
+      s.stream.view().get());
   });
 }
 

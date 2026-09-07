@@ -49,6 +49,8 @@
 #include <pdlp/utilities/problem_checking.cuh>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
+
+#include <cuda/stream>
 #include <raft/core/cusparse_macros.hpp>
 #include <raft/core/device_setter.hpp>
 #include <raft/core/handle.hpp>
@@ -81,9 +83,10 @@ static void init_handler(const raft::handle_t* handle_ptr)
 {
   // Init cuBlas / cuSparse context here to avoid having it during solving time
   RAFT_CUBLAS_TRY(raft::linalg::detail::cublassetpointermode(
-    handle_ptr->get_cublas_handle(), CUBLAS_POINTER_MODE_DEVICE, handle_ptr->get_stream()));
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsesetpointermode(
-    handle_ptr->get_cusparse_handle(), CUSPARSE_POINTER_MODE_DEVICE, handle_ptr->get_stream()));
+    handle_ptr->get_cublas_handle(), CUBLAS_POINTER_MODE_DEVICE, handle_ptr->get_stream().get()));
+  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsesetpointermode(handle_ptr->get_cusparse_handle(),
+                                                                 CUSPARSE_POINTER_MODE_DEVICE,
+                                                                 handle_ptr->get_stream().get()));
 }
 
 // Corresponds to the first good general settings we found
@@ -343,7 +346,7 @@ void adjust_dual_solution_and_reduced_cost(rmm::device_uvector<f_t>& dual_soluti
     dual_solution.data(),
     dual_solution.size(),
     [] HD(f_t dual) { return -dual; },
-    stream_view);
+    stream_view.get());
 
   // z <- -z
   cub::DeviceTransform::Transform(
@@ -351,7 +354,7 @@ void adjust_dual_solution_and_reduced_cost(rmm::device_uvector<f_t>& dual_soluti
     reduced_cost.data(),
     reduced_cost.size(),
     [] HD(f_t reduced_cost) { return -reduced_cost; },
-    stream_view);
+    stream_view.get());
 }
 
 template <typename i_t, typename f_t>
@@ -1607,7 +1610,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
         {
           try {
             auto call_barrier_thread = [&]() {
-              rmm::cuda_stream_view barrier_stream = rmm::cuda_stream_per_thread;
+              rmm::cuda_stream_view barrier_stream = cuda::stream_ref{cudaStreamPerThread};
               barrier_handle_ptr = std::make_unique<raft::handle_t>(barrier_stream);
               run_barrier_thread<i_t, f_t>(dual_simplex_problem,
                                            settings_pdlp,
@@ -2358,7 +2361,7 @@ cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> op_problem_to_m
   raft::copy(h_constr_lb.data(), d_constr_lb.data(), d_constr_lb.size(), stream);
   raft::copy(h_constr_ub.data(), d_constr_ub.data(), d_constr_ub.size(), stream);
   raft::copy(h_var_types_enum.data(), d_var_types.data(), d_var_types.size(), stream);
-  stream.synchronize();
+  stream.sync();
 
   if (!h_offsets.empty()) {
     mps.set_csr_constraint_matrix(
@@ -2696,7 +2699,7 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
     *gpu_problem, settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
 
   // Ensure all GPU work from the solve is complete before D2H copies in to_cpu_solution(),
-  // which uses rmm::cuda_stream_per_thread (a different stream than the solver used).
+  // which uses the per-thread default stream (a different stream than the solver used).
   stream.synchronize();
 
   // Convert GPU solution back to CPU

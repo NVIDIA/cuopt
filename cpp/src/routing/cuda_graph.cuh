@@ -22,7 +22,7 @@ struct cuda_graph_t {
   {
     // Use ThreadLocal mode to allow multi-threaded batch execution
     // Global mode blocks other streams from performing operations during capture
-    cudaStreamBeginCapture(stream, cudaStreamCaptureModeThreadLocal);
+    cudaStreamBeginCapture(stream.get(), cudaStreamCaptureModeThreadLocal);
     capture_started = true;
   }
 
@@ -30,7 +30,7 @@ struct cuda_graph_t {
   {
     cuopt_assert(capture_started, "start_capture was not called before end_capture!");
     cuopt_expects(capture_started, error_type_t::RuntimeError, "A runtime error occurred!");
-    cudaStreamEndCapture(stream, &graph);
+    cudaStreamEndCapture(stream.get(), &graph);
     capture_started = false;
     if (graph_created) {
       // If the graph fails to update, errorNode will be set to the
@@ -52,7 +52,7 @@ struct cuda_graph_t {
     cudaGraphDestroy(graph);
   }
 
-  void launch_graph(rmm::cuda_stream_view stream) { cudaGraphLaunch(instance, stream); }
+  void launch_graph(rmm::cuda_stream_view stream) { cudaGraphLaunch(instance, stream.get()); }
 
   bool graph_created   = false;
   bool capture_started = false;

@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -227,10 +227,10 @@ void solution_t<i_t, f_t, REQUEST>::set_initial_nodes(const rmm::device_uvector<
                -1);
   constexpr i_t TPB = 32;
   i_t n_blocks      = (desired_n_routes + TPB - 1) / TPB;
-  set_initial_nodes_kernel<i_t, f_t, REQUEST>
-    <<<n_blocks, TPB, 0, sol_handle->get_stream()>>>(view(), problem_ptr->view(), d_indices.data());
+  set_initial_nodes_kernel<i_t, f_t, REQUEST><<<n_blocks, TPB, 0, sol_handle->get_stream().get()>>>(
+    view(), problem_ptr->view(), d_indices.data());
 
-  sol_handle->get_stream().synchronize();
+  sol_handle->get_stream().sync();
 }
 
 template <typename i_t, typename f_t, request_t REQUEST>
@@ -239,7 +239,7 @@ void solution_t<i_t, f_t, REQUEST>::set_nodes_data_of_solution()
   constexpr i_t TPB = 32;
   i_t n_blocks      = n_routes;
   set_nodes_data_of_solution_kernel<i_t, f_t, REQUEST>
-    <<<n_blocks, TPB, 0, sol_handle->get_stream()>>>(view(), problem_ptr->view());
+    <<<n_blocks, TPB, 0, sol_handle->get_stream().get()>>>(view(), problem_ptr->view());
 }
 
 template <typename i_t, typename f_t, request_t REQUEST>
@@ -247,7 +247,7 @@ void solution_t<i_t, f_t, REQUEST>::set_nodes_data_of_route(i_t route_id)
 {
   constexpr i_t TPB = 32;
   set_nodes_data_of_route_kernel<i_t, f_t, REQUEST>
-    <<<1, TPB, 0, sol_handle->get_stream()>>>(view(), problem_ptr->view(), route_id);
+    <<<1, TPB, 0, sol_handle->get_stream().get()>>>(view(), problem_ptr->view(), route_id);
 }
 
 template <typename i_t, typename f_t, request_t REQUEST>
@@ -257,7 +257,7 @@ void solution_t<i_t, f_t, REQUEST>::set_nodes_data_of_new_routes(i_t added_route
   constexpr i_t TPB     = 32;
   i_t starting_route_id = prev_route_size;
   set_nodes_data_of_new_routes_kernel<i_t, f_t, REQUEST>
-    <<<added_routes, TPB, 0, sol_handle->get_stream()>>>(
+    <<<added_routes, TPB, 0, sol_handle->get_stream().get()>>>(
       view(), problem_ptr->view(), starting_route_id);
 }
 

@@ -37,7 +37,7 @@ void sort_csr(optimization_problem_t<i_t, f_t>& op_problem)
                                       num_segments,
                                       op_problem.get_constraint_matrix_offsets().data(),
                                       op_problem.get_constraint_matrix_offsets().data() + 1,
-                                      stream_view);
+                                      stream_view.get());
   d_tmp_storage_bytes.resize(tmp_storage_bytes, stream_view);
   cub::DeviceSegmentedSort::SortPairs(d_tmp_storage_bytes.data(),
                                       tmp_storage_bytes,
@@ -49,9 +49,9 @@ void sort_csr(optimization_problem_t<i_t, f_t>& op_problem)
                                       num_segments,
                                       op_problem.get_constraint_matrix_offsets().data(),
                                       op_problem.get_constraint_matrix_offsets().data() + 1,
-                                      stream_view);
-  RAFT_CHECK_CUDA(stream_view);
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view));
+                                      stream_view.get());
+  RAFT_CHECK_CUDA(stream_view.get());
+  stream_view.sync();
 }
 
 }  // namespace mathematical_optimization

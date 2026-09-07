@@ -33,19 +33,19 @@ weighted_average_solution_t<i_t, f_t>::weighted_average_solution_t(raft::handle_
     iterations_since_last_restart_{0},
     graph(stream_view_, is_batch_mode)
 {
-  RAFT_CUDA_TRY(
-    cudaMemsetAsync(sum_primal_solutions_.data(), 0.0, sizeof(f_t) * primal_size_h_, stream_view_));
-  RAFT_CUDA_TRY(
-    cudaMemsetAsync(sum_dual_solutions_.data(), 0.0, sizeof(f_t) * dual_size_h_, stream_view_));
+  RAFT_CUDA_TRY(cudaMemsetAsync(
+    sum_primal_solutions_.data(), 0.0, sizeof(f_t) * primal_size_h_, stream_view_.get()));
+  RAFT_CUDA_TRY(cudaMemsetAsync(
+    sum_dual_solutions_.data(), 0.0, sizeof(f_t) * dual_size_h_, stream_view_.get()));
 }
 
 template <typename i_t, typename f_t>
 void weighted_average_solution_t<i_t, f_t>::reset_weighted_average_solution()
 {
-  RAFT_CUDA_TRY(
-    cudaMemsetAsync(sum_primal_solutions_.data(), 0.0, sizeof(f_t) * primal_size_h_, stream_view_));
-  RAFT_CUDA_TRY(
-    cudaMemsetAsync(sum_dual_solutions_.data(), 0.0, sizeof(f_t) * dual_size_h_, stream_view_));
+  RAFT_CUDA_TRY(cudaMemsetAsync(
+    sum_primal_solutions_.data(), 0.0, sizeof(f_t) * primal_size_h_, stream_view_.get()));
+  RAFT_CUDA_TRY(cudaMemsetAsync(
+    sum_dual_solutions_.data(), 0.0, sizeof(f_t) * dual_size_h_, stream_view_.get()));
   sum_primal_solution_weights_.set_value_to_zero_async(stream_view_);
   sum_dual_solution_weights_.set_value_to_zero_async(stream_view_);
   iterations_since_last_restart_ = 0;
@@ -78,20 +78,20 @@ void weighted_average_solution_t<i_t, f_t>::add_current_solution_to_weighted_ave
       sum_primal_solutions_.data(),
       primal_size_h_,
       a_add_scalar_times_b<f_t>(weight.data()),
-      stream_view_.value());
+      stream_view_.get());
 
     cub::DeviceTransform::Transform(
       cuda::std::make_tuple(sum_dual_solutions_.data(), dual_solution),
       sum_dual_solutions_.data(),
       dual_size_h_,
       a_add_scalar_times_b<f_t>(weight.data()),
-      stream_view_.value());
+      stream_view_.get());
 
     // update weight sums and count (add weight and +1 respectively)
-    add_weight_sums<<<1, 1, 0, stream_view_>>>(weight.data(),
-                                               weight.data(),
-                                               sum_primal_solution_weights_.data(),
-                                               sum_dual_solution_weights_.data());
+    add_weight_sums<<<1, 1, 0, stream_view_.get()>>>(weight.data(),
+                                                     weight.data(),
+                                                     sum_primal_solution_weights_.data(),
+                                                     sum_dual_solution_weights_.data());
   });
 
   iterations_since_last_restart_ += 1;
@@ -103,10 +103,10 @@ void weighted_average_solution_t<i_t, f_t>::compute_averages(rmm::device_uvector
 {
   // no iterations have added to the sum, so avg is all zero vector
   if (!iterations_since_last_restart_) {
+    RAFT_CUDA_TRY(cudaMemsetAsync(
+      avg_primal.data(), f_t(0.0), sizeof(f_t) * primal_size_h_, stream_view_.get()));
     RAFT_CUDA_TRY(
-      cudaMemsetAsync(avg_primal.data(), f_t(0.0), sizeof(f_t) * primal_size_h_, stream_view_));
-    RAFT_CUDA_TRY(
-      cudaMemsetAsync(avg_dual.data(), f_t(0.0), sizeof(f_t) * dual_size_h_, stream_view_));
+      cudaMemsetAsync(avg_dual.data(), f_t(0.0), sizeof(f_t) * dual_size_h_, stream_view_.get()));
     return;
   }
 
@@ -114,19 +114,19 @@ void weighted_average_solution_t<i_t, f_t>::compute_averages(rmm::device_uvector
   f_t sum_primal_solution_weights_h = sum_primal_solution_weights_.value(stream_view_);
   f_t sum_dual_solution_weights_h   = sum_dual_solution_weights_.value(stream_view_);
 
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+  stream_view_.sync();
 
   // compute sum_primal_solutions/primal_size
   raft::linalg::divideScalar(avg_primal.data(),
                              sum_primal_solutions_.data(),
                              sum_primal_solution_weights_h,
                              primal_size_h_,
-                             stream_view_);
+                             stream_view_.get());
   raft::linalg::divideScalar(avg_dual.data(),
                              sum_dual_solutions_.data(),
                              sum_dual_solution_weights_h,
                              dual_size_h_,
-                             stream_view_);
+                             stream_view_.get());
 }
 
 template <typename i_t, typename f_t>

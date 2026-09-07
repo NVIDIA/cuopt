@@ -144,7 +144,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       positive_definite(true),
       A_created(false),
       settings_(settings),
-      stream(handle_ptr->get_stream())
+      stream(handle_ptr->get_stream().get())
   {
     int major, minor, patch;
     cudssGetProperty(MAJOR_VERSION, &major);
@@ -221,7 +221,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       // 4. Create the green context and stream for that green
       // context CUstream barrier_green_ctx_stream;
       i_t stream_priority;
-      cudaStream_t cuda_stream    = handle_ptr_->get_stream();
+      cudaStream_t cuda_stream    = handle_ptr_->get_stream().get();
       cudaError_t priority_result = cudaStreamGetPriority(cuda_stream, &stream_priority);
       RAFT_CUDA_TRY(priority_result);
       auto cuGreenCtxCreate_func = cuopt::get_driver_entry_point("cuGreenCtxCreate");
@@ -347,7 +347,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       status,
       "cudssMatrixCreateDn for x");
 #endif
-    handle_ptr_->get_stream().synchronize();
+    handle_ptr_->get_stream().sync();
   }
 
   ~sparse_cholesky_cudss_t() override
@@ -381,7 +381,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       CU_CHECK(
         reinterpret_cast<decltype(::cuGreenCtxDestroy)*>(cuGreenCtxDestroy_func)(barrier_green_ctx),
         reinterpret_cast<decltype(::cuGetErrorString)*>(cuGetErrorString_func));
-      handle_ptr_->get_stream().synchronize();
+      handle_ptr_->get_stream().sync();
     }
 #endif
   }
@@ -522,7 +522,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     // TODO: Is there any way to get nonzeros in the factors?
     // TODO: Is there any way to get flops for the factorization?
     RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
-    handle_ptr_->get_stream().synchronize();
+    handle_ptr_->get_stream().sync();
 
     return 0;
   }
@@ -582,7 +582,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       status,
       "cudssDataGet for info");
 
-    handle_ptr_->get_stream().synchronize();
+    handle_ptr_->get_stream().sync();
     RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
     if (info != 0) {
       settings_.log.printf("Factorization failed info %d\n", info);
@@ -717,7 +717,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     settings_.log.printf("Symbolic factorization time : %.2fs\n", symbolic_time);
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
       RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
-      handle_ptr_->get_stream().synchronize();
+      handle_ptr_->get_stream().sync();
       return CONCURRENT_HALT_RETURN;
     }
     int64_t lu_nz       = 0;
@@ -728,7 +728,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       "cudssDataGet for LU_NNZ");
     settings_.log.printf("Symbolic nonzeros in factor : %.2e\n", static_cast<f_t>(lu_nz) / 2.0);
     RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
-    handle_ptr_->get_stream().synchronize();
+    handle_ptr_->get_stream().sync();
     // TODO: Is there any way to get nonzeros in the factors?
     // TODO: Is there any way to get flops for the factorization?
 
@@ -753,7 +753,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       "cudaMemcpy for csr_values");
 
     CUDA_CALL_AND_CHECK(cudaStreamSynchronize(stream), "cudaStreamSynchronize");
-    handle_ptr_->get_stream().synchronize();
+    handle_ptr_->get_stream().sync();
 
     CUDSS_CALL_AND_CHECK(
       cudssMatrixSetValues(A, csr_values_d), status, "cudssMatrixSetValues for A");
@@ -777,7 +777,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       status,
       "cudssDataGet for info");
     RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
-    handle_ptr_->get_stream().synchronize();
+    handle_ptr_->get_stream().sync();
     if (info != 0) {
       settings_.log.printf("Factorization failed info %d\n", info);
       return -1;
@@ -798,13 +798,13 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
   {
     auto d_b = cuopt::device_copy(b, handle_ptr_->get_stream());
     auto d_x = cuopt::device_copy(x, handle_ptr_->get_stream());
-    handle_ptr_->get_stream().synchronize();
+    handle_ptr_->get_stream().sync();
 
     i_t out = solve(d_b, d_x);
 
     raft::copy(x.data(), d_x.data(), d_x.size(), handle_ptr_->get_stream());
     // Sync so that data is on the host
-    handle_ptr_->get_stream().synchronize();
+    handle_ptr_->get_stream().sync();
 
     for (i_t i = 0; i < n; i++) {
       if (x[i] != x[i]) { return -1; }
@@ -815,7 +815,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
 
   i_t solve(rmm::device_uvector<f_t>& b, rmm::device_uvector<f_t>& x) override
   {
-    handle_ptr_->get_stream().synchronize();
+    handle_ptr_->get_stream().sync();
     if (static_cast<i_t>(b.size()) != n) {
       settings_.log.printf("Error: b.size() %d != n %d\n", b.size(), n);
       return -1;
@@ -843,7 +843,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     }
 
     CUDA_CALL_AND_CHECK(cudaStreamSynchronize(stream), "cudaStreamSynchronize");
-    handle_ptr_->get_stream().synchronize();
+    handle_ptr_->get_stream().sync();
 
 #ifdef PRINT_RHS_AND_SOLUTION_HASH
     dense_vector_t<i_t, f_t> b_host(n);

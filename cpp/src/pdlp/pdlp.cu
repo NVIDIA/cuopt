@@ -592,7 +592,7 @@ void pdlp_solver_t<i_t, f_t>::set_initial_primal_solution(
                                   initial_primal_.data(),
                                   initial_primal_.size(),
                                   cuda::std::identity{},
-                                  stream_view_);
+                                  stream_view_.get());
 }
 
 template <typename i_t, typename f_t>
@@ -606,7 +606,7 @@ void pdlp_solver_t<i_t, f_t>::set_initial_dual_solution(
                                   initial_dual_.data(),
                                   initial_dual_.size(),
                                   cuda::std::identity{},
-                                  stream_view_);
+                                  stream_view_.get());
 }
 
 static bool time_limit_reached(const timer_t& timer) { return timer.check_time_limit(); }
@@ -945,7 +945,7 @@ template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::finalize_batch_return()
 {
   current_termination_strategy_.fill_gpu_terms_stats(total_pdlp_iterations_);
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+  stream_view_.sync();
   current_termination_strategy_.convert_gpu_terms_stats_to_host(
     batch_solution_to_return_.get_additional_termination_informations());
   return optimization_problem_solution_t<i_t, f_t>{
@@ -1086,7 +1086,7 @@ pdlp_solver_t<i_t, f_t>::check_batch_termination(const timer_t& timer)
         sb_view_.mark_solved(climber_strategies_[i].original_index);
       }
     }
-    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+    stream_view_.sync();
     return current_termination_strategy_.fill_return_problem_solution(
       internal_solver_iterations_,
       pdhg_solver_,
@@ -1484,11 +1484,11 @@ static void compute_stats(const rmm::device_uvector<f_t>& vec,
                                           n,
                                           cuda::minimum<>{},
                                           std::numeric_limits<f_t>::max(),
-                                          stream));
+                                          stream.get()));
   RAFT_CUDA_TRY(cub::DeviceReduce::Reduce(
-    d_temp, bytes_2, abs_iter, d_largest.data(), n, cuda::maximum<>{}, f_t(0), stream));
+    d_temp, bytes_2, abs_iter, d_largest.data(), n, cuda::maximum<>{}, f_t(0), stream.get()));
   RAFT_CUDA_TRY(cub::DeviceReduce::Reduce(
-    d_temp, bytes_3, abs_iter, d_sum.data(), n, cuda::std::plus<>{}, f_t(0), stream));
+    d_temp, bytes_3, abs_iter, d_sum.data(), n, cuda::std::plus<>{}, f_t(0), stream.get()));
 
   size_t max_bytes = std::max({bytes_1, bytes_2, bytes_3});
   rmm::device_buffer temp_buf(max_bytes, stream);
@@ -1500,11 +1500,23 @@ static void compute_stats(const rmm::device_uvector<f_t>& vec,
                                           n,
                                           cuda::minimum<>{},
                                           std::numeric_limits<f_t>::max(),
-                                          stream));
-  RAFT_CUDA_TRY(cub::DeviceReduce::Reduce(
-    temp_buf.data(), bytes_2, abs_iter, d_largest.data(), n, cuda::maximum<>{}, f_t(0), stream));
-  RAFT_CUDA_TRY(cub::DeviceReduce::Reduce(
-    temp_buf.data(), bytes_3, abs_iter, d_sum.data(), n, cuda::std::plus<>{}, f_t(0), stream));
+                                          stream.get()));
+  RAFT_CUDA_TRY(cub::DeviceReduce::Reduce(temp_buf.data(),
+                                          bytes_2,
+                                          abs_iter,
+                                          d_largest.data(),
+                                          n,
+                                          cuda::maximum<>{},
+                                          f_t(0),
+                                          stream.get()));
+  RAFT_CUDA_TRY(cub::DeviceReduce::Reduce(temp_buf.data(),
+                                          bytes_3,
+                                          abs_iter,
+                                          d_sum.data(),
+                                          n,
+                                          cuda::std::plus<>{},
+                                          f_t(0),
+                                          stream.get()));
 
   smallest = d_smallest.value(stream);
   largest  = d_largest.value(stream);
@@ -1628,7 +1640,7 @@ void pdlp_solver_t<i_t, f_t>::update_primal_dual_solutions(
       RAFT_CUDA_TRY(cudaMemsetAsync(saddle.get_current_AtY().data(),
                                     f_t(0.0),
                                     sizeof(f_t) * saddle.get_current_AtY().size(),
-                                    stream_view_));
+                                    stream_view_.get()));
 
       // Scale if should compute initial step size after scaling
       if (!settings_.hyper_params.compute_initial_step_size_before_scaling) {
@@ -1797,13 +1809,13 @@ void pdlp_solver_t<i_t, f_t>::swap_context(
   const auto [grid_size, block_size] =
     kernel_config_from_batch_size(static_cast<i_t>(swap_pairs.size()));
   pdlp_swap_device_vectors_kernel<i_t, f_t>
-    <<<grid_size, block_size, 0, stream_view_>>>(thrust::raw_pointer_cast(swap_pairs.data()),
-                                                 static_cast<i_t>(swap_pairs.size()),
-                                                 make_span(primal_weight_),
-                                                 make_span(best_primal_weight_),
-                                                 make_span(step_size_),
-                                                 make_span(primal_step_size_),
-                                                 make_span(dual_step_size_));
+    <<<grid_size, block_size, 0, stream_view_.get()>>>(thrust::raw_pointer_cast(swap_pairs.data()),
+                                                       static_cast<i_t>(swap_pairs.size()),
+                                                       make_span(primal_weight_),
+                                                       make_span(best_primal_weight_),
+                                                       make_span(step_size_),
+                                                       make_span(primal_step_size_),
+                                                       make_span(dual_step_size_));
   RAFT_CUDA_TRY(cudaPeekAtLastError());
   // Swap unscaled problem's per-climber fields (COL-major blocks)
   if (problem_ptr->objective_coefficients.size() > static_cast<size_t>(primal_size_h_)) {
@@ -1862,7 +1874,7 @@ void pdlp_solver_t<i_t, f_t>::swap_all_context(
     host_vector_swap(climber_strategies_, pair.left, pair.right);
   }
 
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+  stream_view_.sync();
 }
 
 template <typename i_t, typename f_t>
@@ -1881,7 +1893,7 @@ void pdlp_solver_t<i_t, f_t>::resize_all_context(i_t new_size)
   // Resize PDLP own context
   resize_context(new_size);
 
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+  stream_view_.sync();
 }
 
 template <typename i_t, typename f_t>
@@ -2025,7 +2037,7 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
       pdhg_cusparse_view.batch_current_AtYs.get(),
       (deterministic_batch_pdlp) ? CUSPARSE_SPMM_CSR_ALG3 : CUSPARSE_SPMM_CSR_ALG2,
       &new_buf_size,
-      stream_view_));
+      stream_view_.get()));
     pdhg_cusparse_view.buffer_transpose_batch_row_row_.resize(new_buf_size, stream_view_);
 
     // PDHG row-row: A * batch_reflected_primal_solutions -> batch_dual_gradients
@@ -2040,7 +2052,7 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
       pdhg_cusparse_view.batch_dual_gradients.get(),
       (deterministic_batch_pdlp) ? CUSPARSE_SPMM_CSR_ALG3 : CUSPARSE_SPMM_CSR_ALG2,
       &new_buf_size,
-      stream_view_));
+      stream_view_.get()));
     pdhg_cusparse_view.buffer_non_transpose_batch_row_row_.resize(new_buf_size, stream_view_);
 
     // Adaptive step size: A_T * batch_potential_next_dual_solution -> batch_next_AtYs
@@ -2055,7 +2067,7 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
       pdhg_cusparse_view.batch_next_AtYs.get(),
       CUSPARSE_SPMM_CSR_ALG3,
       &new_buf_size,
-      stream_view_));
+      stream_view_.get()));
     pdhg_cusparse_view.buffer_transpose_batch.resize(new_buf_size, stream_view_);
 
     // Convergence info: A_T * batch_dual_solutions -> batch_tmp_primals
@@ -2070,7 +2082,7 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
       current_op_problem_evaluation_cusparse_view_.batch_tmp_primals.get(),
       CUSPARSE_SPMM_CSR_ALG3,
       &new_buf_size,
-      stream_view_));
+      stream_view_.get()));
     current_op_problem_evaluation_cusparse_view_.buffer_transpose_batch.resize(new_buf_size,
                                                                                stream_view_);
 
@@ -2086,7 +2098,7 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
       current_op_problem_evaluation_cusparse_view_.batch_tmp_duals.get(),
       CUSPARSE_SPMM_CSR_ALG3,
       &new_buf_size,
-      stream_view_));
+      stream_view_.get()));
     current_op_problem_evaluation_cusparse_view_.buffer_non_transpose_batch.resize(new_buf_size,
                                                                                    stream_view_);
   }
@@ -2106,7 +2118,7 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
     pdhg_cusparse_view.batch_current_AtYs.get(),
     (deterministic_batch_pdlp) ? CUSPARSE_SPMM_CSR_ALG3 : CUSPARSE_SPMM_CSR_ALG2,
     pdhg_cusparse_view.buffer_transpose_batch_row_row_.data(),
-    stream_view_);
+    stream_view_.get());
   my_cusparsespmm_preprocess(
     handle_ptr_->get_cusparse_handle(),
     CUSPARSE_OPERATION_NON_TRANSPOSE,
@@ -2118,7 +2130,7 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
     pdhg_cusparse_view.batch_dual_gradients.get(),
     (deterministic_batch_pdlp) ? CUSPARSE_SPMM_CSR_ALG3 : CUSPARSE_SPMM_CSR_ALG2,
     pdhg_cusparse_view.buffer_non_transpose_batch_row_row_.data(),
-    stream_view_);
+    stream_view_.get());
 
   // Adaptive step size strategy SpMM preprocess
   my_cusparsespmm_preprocess(handle_ptr_->get_cusparse_handle(),
@@ -2131,7 +2143,7 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
                              pdhg_cusparse_view.batch_next_AtYs.get(),
                              CUSPARSE_SPMM_CSR_ALG3,
                              (f_t*)pdhg_cusparse_view.buffer_transpose_batch.data(),
-                             stream_view_);
+                             stream_view_.get());
 
   // Convergence information SpMM preprocess
   my_cusparsespmm_preprocess(
@@ -2145,7 +2157,7 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
     current_op_problem_evaluation_cusparse_view_.batch_tmp_primals.get(),
     CUSPARSE_SPMM_CSR_ALG3,
     (f_t*)current_op_problem_evaluation_cusparse_view_.buffer_transpose_batch.data(),
-    stream_view_);
+    stream_view_.get());
 
   my_cusparsespmm_preprocess(
     handle_ptr_->get_cusparse_handle(),
@@ -2158,7 +2170,7 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
     current_op_problem_evaluation_cusparse_view_.batch_tmp_duals.get(),
     CUSPARSE_SPMM_CSR_ALG3,
     (f_t*)current_op_problem_evaluation_cusparse_view_.buffer_non_transpose_batch.data(),
-    stream_view_);
+    stream_view_.get());
 #endif
 
   // Set PDHG graphs to uninitialized so that next call can start a new graph.
@@ -2168,7 +2180,7 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
   // graph_all_non_major (reflected non-major).
   pdhg_solver_.get_graph_all() = ping_pong_graph_t<i_t>(stream_view_, true);
 
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+  stream_view_.sync();
 }
 
 // delta = reflected - current, for both primal and dual, written into the
@@ -2182,13 +2194,13 @@ static void compute_primal_dual_deltas(pdhg_solver_t<i_t, f_t>& pdhg, rmm::cuda_
     pdhg.get_saddle_point_state().get_delta_primal().data(),
     pdhg.get_primal_solution().size(),
     cuda::std::minus<f_t>{},
-    stream);
+    stream.get());
   cub::DeviceTransform::Transform(
     cuda::std::make_tuple(pdhg.get_reflected_dual().data(), pdhg.get_dual_solution().data()),
     pdhg.get_saddle_point_state().get_delta_dual().data(),
     pdhg.get_dual_solution().size(),
     cuda::std::minus<f_t>{},
-    stream);
+    stream.get());
 }
 
 template <typename i_t, typename f_t>
@@ -2285,7 +2297,7 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
   } else {
     // Sync to make sure all previous cuSparse operations are finished before setting the
     // potential_next_dual_solution
-    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+    stream_view_.sync();
 
     // Make potential_next_dual_solution point towards reflected dual solution to reuse the code
     RAFT_CUSPARSE_TRY(cusparseDnVecSetValues(cusparse_view.potential_next_dual_solution.get(),
@@ -2302,7 +2314,7 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
 
   if (batch_mode_) {
     const auto [grid_size, block_size] = kernel_config_from_batch_size(climber_strategies_.size());
-    kernel_compute_fixed_error<f_t><<<grid_size, block_size, 0, stream_view_>>>(
+    kernel_compute_fixed_error<f_t><<<grid_size, block_size, 0, stream_view_.get()>>>(
       make_span(step_size_strategy_.get_norm_squared_delta_primal()),
       make_span(step_size_strategy_.get_norm_squared_delta_dual()),
       make_span(primal_weight_),
@@ -2310,7 +2322,7 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
       make_span(step_size_strategy_.get_interaction()),
       make_span(restart_strategy_.fixed_point_error_));
     RAFT_CUDA_TRY(cudaStreamSynchronize(
-      stream_view_));  // To make sure all the data is written from device to host
+      stream_view_.get()));  // To make sure all the data is written from device to host
     RAFT_CUDA_TRY(cudaPeekAtLastError());
 
 #ifdef CUPDLP_DEBUG_MODE
@@ -2327,7 +2339,7 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
 
   // Sync to make sure all previous cuSparse operations are finished before setting the
   // potential_next_dual_solution
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+  stream_view_.sync();
 
   // Put back, already done in multi-gpu side
   if (!is_distributed_master()) {
@@ -2388,10 +2400,10 @@ void pdlp_solver_t<i_t, f_t>::transpose_problem_fields(bool to_row)
                                  transposed.data(),
                                  *output_ld));
     raft::copy(field.data(), transposed.data(), field.size(), stream_view_);
-    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+    stream_view_.sync();
   };
 
-  RAFT_CUBLAS_TRY(cublasSetStream(handle_ptr_->get_cublas_handle(), stream_view_));
+  RAFT_CUBLAS_TRY(cublasSetStream(handle_ptr_->get_cublas_handle(), stream_view_.get()));
   // We need to swap the scaled version because they can be dynamically resized and swapped.
   transpose_field(op_problem_scaled_.objective_coefficients, primal_size_h_);
   transpose_field(op_problem_scaled_.constraint_lower_bounds, dual_size_h_);
@@ -2413,7 +2425,7 @@ void pdlp_solver_t<i_t, f_t>::transpose_primal_dual_to_row(
   rmm::device_uvector<f_t> dual_slack_transposed(
     is_dual_slack_empty ? 0 : primal_size_h_ * climber_strategies_.size(), stream_view_);
 
-  RAFT_CUBLAS_TRY(cublasSetStream(handle_ptr_->get_cublas_handle(), stream_view_));
+  RAFT_CUBLAS_TRY(cublasSetStream(handle_ptr_->get_cublas_handle(), stream_view_.get()));
   CUBLAS_CHECK(cublasGeam<f_t>(handle_ptr_->get_cublas_handle(),
                                CUBLAS_OP_T,
                                CUBLAS_OP_N,
@@ -2476,7 +2488,7 @@ void pdlp_solver_t<i_t, f_t>::transpose_primal_dual_to_row(
              dual_size_h_ * climber_strategies_.size(),
              stream_view_);
 
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+  stream_view_.sync();
 }
 
 template <typename i_t, typename f_t>
@@ -2492,7 +2504,7 @@ void pdlp_solver_t<i_t, f_t>::transpose_primal_dual_back_to_col(
   rmm::device_uvector<f_t> dual_slack_transposed(
     is_dual_slack_empty ? 0 : primal_size_h_ * climber_strategies_.size(), stream_view_);
 
-  RAFT_CUBLAS_TRY(cublasSetStream(handle_ptr_->get_cublas_handle(), stream_view_));
+  RAFT_CUBLAS_TRY(cublasSetStream(handle_ptr_->get_cublas_handle(), stream_view_.get()));
   CUBLAS_CHECK(cublasGeam<f_t>(handle_ptr_->get_cublas_handle(),
                                CUBLAS_OP_T,
                                CUBLAS_OP_N,
@@ -2556,7 +2568,7 @@ void pdlp_solver_t<i_t, f_t>::transpose_primal_dual_back_to_col(
              dual_size_h_ * climber_strategies_.size(),
              stream_view_);
 
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+  stream_view_.sync();
 }
 
 template <typename i_t, typename f_t>
@@ -2747,7 +2759,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
           pdhg_solver_.get_primal_solution().data(),
           pdhg_solver_.get_primal_solution().size(),
           clamp<f_t, f_t2>(),
-          stream_view_.value());
+          stream_view_.get());
       } else {
         cub::DeviceTransform::Transform(
           cuda::std::make_tuple(pdhg_solver_.get_primal_solution().data(),
@@ -2755,7 +2767,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
           pdhg_solver_.get_primal_solution().data(),
           pdhg_solver_.get_primal_solution().size(),
           clamp<f_t, f_t2>(),
-          stream_view_.value());
+          stream_view_.get());
       }
 
       pdhg_solver_.refine_initial_primal_projection(
@@ -2771,7 +2783,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
           unscaled_primal_avg_solution_.data(),
           primal_size_h_,
           clamp<f_t, f_t2>(),
-          stream_view_.value());
+          stream_view_.get());
       }
     }
 
@@ -3191,7 +3203,7 @@ void pdlp_solver_t<i_t, f_t>::halpern_update()
                             (f_t(1.0) - reflection_coefficient) * current_primal;
       return weight * reflected + (f_t(1.0) - weight) * initial_primal;
     },
-    stream_view_.value());
+    stream_view_.get());
 
 #ifdef CUPDLP_DEBUG_MODE
   print("pdhg_solver_.get_reflected_dual()", pdhg_solver_.get_reflected_dual());
@@ -3215,7 +3227,7 @@ void pdlp_solver_t<i_t, f_t>::halpern_update()
                             (f_t(1.0) - reflection_coefficient) * current_dual;
       return weight * reflected + (f_t(1.0) - weight) * initial_dual;
     },
-    stream_view_.value());
+    stream_view_.get());
 
 #ifdef CUPDLP_DEBUG_MODE
   print("halpen_update current primal",
@@ -3325,7 +3337,7 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
                               op_problem_scaled_.nnz,
                               red_op,
                               0.0,
-                              stream_view_);
+                              stream_view_.get());
     // Allocate temporary storage
     rmm::device_buffer cub_tmp{temp_storage_bytes, stream_view_};
     // Run max-reduction
@@ -3336,12 +3348,12 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
                               op_problem_scaled_.nnz,
                               red_op,
                               0.0,
-                              stream_view_);
+                              stream_view_.get());
     raft::linalg::eltwiseDivideCheckZero(
-      step_size_.data(), step_size_.data(), abs_max_element.data(), 1, stream_view_);
+      step_size_.data(), step_size_.data(), abs_max_element.data(), 1, stream_view_.get());
 
     // Sync since we are using local variable
-    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+    stream_view_.sync();
   } else {
     i_t m = op_problem_scaled_.n_constraints;
     i_t n = op_problem_scaled_.n_variables;
@@ -3384,7 +3396,7 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
                                       d_q.data(),
                                       d_q.size(),
                                       divide_by_device_scalar_t<f_t>{norm_q.data()},
-                                      stream_view_.value());
+                                      stream_view_.get());
 
       // A_t_q = A_t @ d_q
       RAFT_CUSPARSE_TRY(
@@ -3397,7 +3409,7 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
                                            vecATQ,
                                            CUSPARSE_SPMV_CSR_ALG2,
                                            (f_t*)cusparse_view_.buffer_transpose.data(),
-                                           stream_view_.value()));
+                                           stream_view_.get()));
 
       // z = A @ A_t_q
       RAFT_CUSPARSE_TRY(
@@ -3410,7 +3422,7 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
                                            vecZ,
                                            CUSPARSE_SPMV_CSR_ALG2,
                                            (f_t*)cusparse_view_.buffer_non_transpose.data(),
-                                           stream_view_.value()));
+                                           stream_view_.get()));
       // sigma_max_sq = dot(q, z)
       RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(handle_ptr_->get_cublas_handle(),
                                                       m,
@@ -3419,14 +3431,14 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
                                                       d_z.data(),
                                                       primal_stride,
                                                       sigma_max_sq.data(),
-                                                      stream_view_.value()));
+                                                      stream_view_.get()));
 
       // d_q := -sigma_max_sq * d_q + d_z
       cub::DeviceTransform::Transform(cuda::std::make_tuple(d_q.data(), d_z.data()),
                                       d_q.data(),
                                       d_q.size(),
                                       residual_fma_neg_scalar_t<f_t>{sigma_max_sq.data()},
-                                      stream_view_.value());
+                                      stream_view_.get());
 
       my_l2_norm<i_t, f_t>(d_q, residual_norm, handle_ptr_);
 
@@ -3441,7 +3453,7 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
       handle_ptr_->get_thrust_policy(), step_size_.begin(), step_size_.end(), step_size);
 
     // Sync since we are using local variable
-    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+    stream_view_.sync();
     RAFT_CUSPARSE_TRY(cusparseDestroyDnVec(vecZ));
     RAFT_CUSPARSE_TRY(cusparseDestroyDnVec(vecQ));
     RAFT_CUSPARSE_TRY(cusparseDestroyDnVec(vecATQ));
@@ -3536,16 +3548,16 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_primal_weight()
 
   const auto [grid_size, block_size] = kernel_config_from_batch_size(climber_strategies_.size());
   compute_weights_initial_primal_weight_from_squared_norms<i_t, f_t>
-    <<<grid_size, block_size, 0, stream_view_>>>(b_vec_norm.data(),
-                                                 c_vec_norm.data(),
-                                                 make_span(primal_weight_),
-                                                 make_span(best_primal_weight_),
-                                                 climber_strategies_.size(),
-                                                 settings_.hyper_params);
+    <<<grid_size, block_size, 0, stream_view_.get()>>>(b_vec_norm.data(),
+                                                       c_vec_norm.data(),
+                                                       make_span(primal_weight_),
+                                                       make_span(best_primal_weight_),
+                                                       climber_strategies_.size(),
+                                                       settings_.hyper_params);
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 
   // Sync since we are using local variable
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+  stream_view_.sync();
 }
 
 template <typename i_t, typename f_t>

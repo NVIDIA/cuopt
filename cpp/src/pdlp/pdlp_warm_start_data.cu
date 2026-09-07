@@ -11,6 +11,8 @@
 
 #include <mip_heuristics/mip_constants.hpp>
 
+#include <cuda/stream>
+
 #include <rmm/device_uvector.hpp>
 
 #include <raft/util/cudart_utils.hpp>
@@ -64,16 +66,23 @@ pdlp_warm_start_data_t<i_t, f_t>::pdlp_warm_start_data_t(
 
 template <typename i_t, typename f_t>
 pdlp_warm_start_data_t<i_t, f_t>::pdlp_warm_start_data_t()
-  : current_primal_solution_{rmm::device_uvector<f_t>(0, rmm::cuda_stream_default)},
-    current_dual_solution_{rmm::device_uvector<f_t>(0, rmm::cuda_stream_default)},
-    initial_primal_average_{rmm::device_uvector<f_t>(0, rmm::cuda_stream_default)},
-    initial_dual_average_{rmm::device_uvector<f_t>(0, rmm::cuda_stream_default)},
-    current_ATY_{rmm::device_uvector<f_t>(0, rmm::cuda_stream_default)},
-    sum_primal_solutions_{rmm::device_uvector<f_t>(0, rmm::cuda_stream_default)},
-    sum_dual_solutions_{rmm::device_uvector<f_t>(0, rmm::cuda_stream_default)},
+  : current_primal_solution_{rmm::device_uvector<f_t>(
+      0, cuda::stream_ref{cudaStream_t{cudaStreamDefault}})},
+    current_dual_solution_{
+      rmm::device_uvector<f_t>(0, cuda::stream_ref{cudaStream_t{cudaStreamDefault}})},
+    initial_primal_average_{
+      rmm::device_uvector<f_t>(0, cuda::stream_ref{cudaStream_t{cudaStreamDefault}})},
+    initial_dual_average_{
+      rmm::device_uvector<f_t>(0, cuda::stream_ref{cudaStream_t{cudaStreamDefault}})},
+    current_ATY_{rmm::device_uvector<f_t>(0, cuda::stream_ref{cudaStream_t{cudaStreamDefault}})},
+    sum_primal_solutions_{
+      rmm::device_uvector<f_t>(0, cuda::stream_ref{cudaStream_t{cudaStreamDefault}})},
+    sum_dual_solutions_{
+      rmm::device_uvector<f_t>(0, cuda::stream_ref{cudaStream_t{cudaStreamDefault}})},
     last_restart_duality_gap_primal_solution_{
-      rmm::device_uvector<f_t>(0, rmm::cuda_stream_default)},
-    last_restart_duality_gap_dual_solution_{rmm::device_uvector<f_t>(0, rmm::cuda_stream_default)}
+      rmm::device_uvector<f_t>(0, cuda::stream_ref{cudaStream_t{cudaStreamDefault}})},
+    last_restart_duality_gap_dual_solution_{
+      rmm::device_uvector<f_t>(0, cuda::stream_ref{cudaStream_t{cudaStreamDefault}})}
 {
 }
 

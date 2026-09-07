@@ -380,8 +380,8 @@ i_t extract_non_overlapping_moves(solution_t<i_t, f_t, REQUEST>& sol,
   i_t TPB                  = 128;
   i_t n_blocks_for_compact = (sol.n_routes * sol.n_routes + TPB - 1) / TPB;
   compact_best_route_pair_moves<i_t, f_t, REQUEST>
-    <<<n_blocks_for_compact, TPB, 0, sol.sol_handle->get_stream()>>>(sol.view(),
-                                                                     move_candidates.view());
+    <<<n_blocks_for_compact, TPB, 0, sol.sol_handle->get_stream().get()>>>(sol.view(),
+                                                                           move_candidates.view());
   i_t n_best_route_pair_moves =
     move_candidates.vrp_move_candidates.n_best_route_pair_moves.value(sol.sol_handle->get_stream());
   n_best_route_pair_moves = std::min(n_best_route_pair_moves, max_n_best_route_pair_moves);
@@ -393,7 +393,7 @@ i_t extract_non_overlapping_moves(solution_t<i_t, f_t, REQUEST>& sol,
                "Not enough shared memory on device for extract_non_overlapping_moves_kernel!");
   cuopt_expects(is_set, error_type_t::OutOfMemoryError, "Not enough shared memory on device");
   extract_non_overlapping_moves_kernel<i_t, f_t, REQUEST>
-    <<<1, TPB, sh_size, sol.sol_handle->get_stream()>>>(
+    <<<1, TPB, sh_size, sol.sol_handle->get_stream().get()>>>(
       sol.view(), move_candidates.view(), sol.problem_ptr->seed_gen.get_seed());
   return move_candidates.vrp_move_candidates.n_of_selected_moves.value(
     sol.sol_handle->get_stream());
@@ -407,7 +407,7 @@ void find_max_added_size(solution_t<i_t, f_t, REQUEST>& sol,
   i_t TPB      = 32;
   i_t n_blocks = n_moves_found;
   find_max_added_size_kernel<i_t, f_t, REQUEST>
-    <<<n_blocks, TPB, 0, sol.sol_handle->get_stream()>>>(sol.view(), move_candidates.view());
+    <<<n_blocks, TPB, 0, sol.sol_handle->get_stream().get()>>>(sol.view(), move_candidates.view());
 }
 
 template <typename i_t, typename f_t, request_t REQUEST>
@@ -454,7 +454,7 @@ bool execute_vrp_moves(solution_t<i_t, f_t, REQUEST>& sol,
                               dimBlock,
                               kernelArgs,
                               sh_size,
-                              sol.sol_handle->get_stream());
+                              sol.sol_handle->get_stream().get());
   sol.compute_route_id_per_node();
   sol.compute_cost();
   // move_candidates.vrp_execute_graph.end_capture(sol.sol_handle->get_stream());

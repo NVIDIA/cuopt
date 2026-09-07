@@ -300,7 +300,7 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value_squared(i_t n_g
                                       q[r].data(),
                                       n_owned,
                                       divide_by_device_scalar_t<f_t>{norm_q[r].data()},
-                                      s.stream.view().value());
+                                      s.stream.view().get());
     });
 
     // atq = A^T q  (fused halo-refresh of q + per-shard local SpMV).
@@ -320,7 +320,7 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value_squared(i_t n_g
                                       q[r].data(),
                                       n_owned,
                                       residual_fma_neg_scalar_t<f_t>{sigma_sq[r].data()},
-                                      s.stream.view().value());
+                                      s.stream.view().get());
     });
 
     // Convergence check via global residual norm.

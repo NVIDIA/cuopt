@@ -77,7 +77,7 @@ void solution_t<i_t, f_t>::test_feasibility(bool check_integer)
   cuopt_assert(compute_feasibility(), "Solution is not feasible!");
   test_variable_bounds(check_integer);
   handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(handle_ptr->get_stream());
+  RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
 }
 
 // test feasibility on
@@ -86,8 +86,8 @@ void solution_t<i_t, f_t>::test_absolute_feasibility()
 {
   i_t TPB      = 64;
   i_t n_blocks = (problem_ptr->n_constraints + TPB - 1) / TPB;
-  test_feasibility_kernel<i_t, f_t><<<n_blocks, TPB, 0, handle_ptr->get_stream()>>>(view());
-  RAFT_CHECK_CUDA(handle_ptr->get_stream());
+  test_feasibility_kernel<i_t, f_t><<<n_blocks, TPB, 0, handle_ptr->get_stream().get()>>>(view());
+  RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
 }
 
 template <typename i_t, typename f_t>
@@ -96,8 +96,8 @@ void solution_t<i_t, f_t>::test_variable_bounds(bool check_integer, i_t* is_feas
   i_t TPB      = 64;
   i_t n_blocks = (problem_ptr->n_variables + TPB - 1) / TPB;
   test_variable_bounds_kernel<i_t, f_t>
-    <<<n_blocks, TPB, 0, handle_ptr->get_stream()>>>(view(), check_integer, is_feasible);
-  RAFT_CHECK_CUDA(handle_ptr->get_stream());
+    <<<n_blocks, TPB, 0, handle_ptr->get_stream().get()>>>(view(), check_integer, is_feasible);
+  RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
 }
 
 }  // namespace cuopt::mathematical_optimization::mip

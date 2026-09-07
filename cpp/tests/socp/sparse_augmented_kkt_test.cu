@@ -9,6 +9,8 @@
 #include <barrier/device_sparse_matrix.cuh>
 #include <barrier/second_order_cone_kernels.cuh>
 
+#include <cuda/stream>
+
 #include <utilities/copy_helpers.hpp>
 
 #include <gtest/gtest.h>
@@ -49,7 +51,7 @@ std::vector<double> expected_Hs_diag(const cone_data_t<int, double>& cones,
 
 TEST(sparse_augmented_kkt, cone_counts_and_expansion_size)
 {
-  auto stream = rmm::cuda_stream_default;
+  auto stream = cuda::stream_ref{cudaStream_t{cudaStreamDefault}};
 
   std::vector<int> cone_dimensions{3, 6, 5};
   rmm::device_uvector<double> x(14, stream);
@@ -66,7 +68,7 @@ TEST(sparse_augmented_kkt, cone_counts_and_expansion_size)
 
 TEST(sparse_augmented_kkt, scatter_sparse_hessian_into_augmented)
 {
-  auto stream = rmm::cuda_stream_default;
+  auto stream = cuda::stream_ref{cudaStream_t{cudaStreamDefault}};
 
   // Two sparse cones so the fused entry-parallel kernel has more than one sparse-cone
   // boundary to get right.
@@ -177,7 +179,7 @@ TEST(sparse_augmented_kkt, scatter_sparse_hessian_into_augmented)
 
 TEST(sparse_augmented_kkt, sparse_augmented_matvec)
 {
-  auto stream = rmm::cuda_stream_default;
+  auto stream = cuda::stream_ref{cudaStream_t{cudaStreamDefault}};
 
   std::vector<int> cone_dimensions{6};
   rmm::device_uvector<double> x(6, stream);
@@ -256,7 +258,7 @@ TEST(sparse_augmented_kkt, sparse_augmented_matvec)
 
 TEST(sparse_augmented_kkt, update_scaling_sparse_dim_1000)
 {
-  auto stream = rmm::cuda_stream_default;
+  auto stream = cuda::stream_ref{cudaStream_t{cudaStreamDefault}};
 
   std::vector<int> cone_dimensions{1000};
   rmm::device_uvector<double> x(1000, stream);
@@ -350,7 +352,7 @@ TEST(sparse_augmented_kkt, update_scaling_sparse_dim_1000)
 
 TEST(sparse_augmented_kkt, gpu_augmented_csr_metadata_matches_host)
 {
-  auto stream = rmm::cuda_stream_default;
+  auto stream = cuda::stream_ref{cudaStream_t{cudaStreamDefault}};
 
   std::vector<int> cone_dimensions{3, 6, 5};
   rmm::device_uvector<double> x(14, stream);
@@ -411,7 +413,7 @@ TEST(sparse_augmented_kkt, augmented_csr_indices_mixed_dense_sparse_qp)
   // and the right-hand side b are irrelevant and left unset.
   using i_t   = int;
   using f_t   = double;
-  auto stream = rmm::cuda_stream_default;
+  auto stream = cuda::stream_ref{cudaStream_t{cudaStreamDefault}};
 
   // Layout: 1 linear var, dense Q^3 cone (cols [1,4)), sparse Q^4 cone (cols
   // [4,8)), 2 constraints. Factorization size = n + m + p = 8 + 2 + 2 = 12.

@@ -140,7 +140,7 @@ struct multi_gpu_engine_t {
                   "distributed_transform_bufs: in_tuples / outs / sizes must "
                   "all have size == shards.size()");
     for_each_shard([&](auto& s, int r) {
-      cub::DeviceTransform::Transform(in_tuples[r], outs[r], sizes[r], op, s.stream.view());
+      cub::DeviceTransform::Transform(in_tuples[r], outs[r], sizes[r], op, s.stream.view().get());
     });
   }
 

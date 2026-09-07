@@ -261,7 +261,7 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::execute_best_insertion_ejectio
   for (; bit_cast<unsigned long long int, found_sol_t>(feasible_candidates_data_.front_element(
            solution_ptr->sol_handle->get_stream())) == unset_val &&
          !time_stop_condition_reached() && fragment_size + fragment_step <= max_fragment_size;) {
-    RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream());
+    RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream().get());
     // Increment here and not in for loop to not have it incremented if conditions are not met
     fragment_size += fragment_step;
     shared_for_delete_array =
@@ -294,7 +294,7 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::execute_best_insertion_ejectio
         args,
         solution_ptr->sol_handle->get_stream());
     }
-    RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream());
+    RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream().get());
   }
 
   // Didn't manage to insert even with deleting
@@ -308,13 +308,13 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::execute_best_insertion_ejectio
     <<<1,
        1024,
        shared_for_delete_array + shared_for_tmp_route,
-       solution_ptr->sol_handle->get_stream()>>>(solution_ptr->view(),
-                                                 d_request,
-                                                 (uint64_t*)feasible_candidates_data_.data(),
-                                                 EP.view(),
-                                                 fragment_step,
-                                                 fragment_size);
-  RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream());
+       solution_ptr->sol_handle->get_stream().get()>>>(solution_ptr->view(),
+                                                       d_request,
+                                                       (uint64_t*)feasible_candidates_data_.data(),
+                                                       EP.view(),
+                                                       fragment_step,
+                                                       fragment_size);
+  RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream().get());
   // Update EP index, route_id contains the amount we deleted
   found_sol_t selected_move =
     feasible_candidates_data_.element(0, solution_ptr->sol_handle->get_stream());
@@ -345,7 +345,7 @@ found_sol_t select_random_initialized(rmm::device_uvector<found_sol_t>& feasible
                      }
                      if (!updated) { *output_ptr = data; }
                    });
-  RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream());
+  RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream().get());
   return random_selected_candidate.value(solution_ptr->sol_handle->get_stream());
 }
 
@@ -365,9 +365,9 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::perform_insertion(
   }
 
   execute_feasible_insert<i_t, f_t, REQUEST>
-    <<<1, 1024, shared_for_tmp_route, solution_ptr->sol_handle->get_stream()>>>(
+    <<<1, 1024, shared_for_tmp_route, solution_ptr->sol_handle->get_stream().get()>>>(
       solution_ptr->view(), request, selected_candidate);
-  RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream());
+  RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream().get());
   return true;
 }
 
@@ -398,7 +398,7 @@ i_t guided_ejection_search_t<i_t, f_t, REQUEST>::find_single_insertion(
     <<<grid_size,
        threads_per_block,
        shared_for_tmp_route,
-       solution_ptr->sol_handle->get_stream()>>>(
+       solution_ptr->sol_handle->get_stream().get()>>>(
       solution_ptr->view(),
       request,
       feasible_move_t(cuopt::make_span(feasible_candidates_data_),
@@ -408,7 +408,7 @@ i_t guided_ejection_search_t<i_t, f_t, REQUEST>::find_single_insertion(
                       solution_ptr->get_n_routes()),
       solution_ptr->problem_ptr->seed_gen.get_seed());
 
-  RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream());
+  RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream().get());
 
   return feasible_candidates_size_.value(solution_ptr->sol_handle->get_stream());
 }

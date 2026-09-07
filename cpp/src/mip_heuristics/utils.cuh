@@ -34,7 +34,7 @@ template <typename i_t>
 inline uint32_t compute_hash(raft::device_span<i_t> values, rmm::cuda_stream_view stream)
 {
   auto h_contents = cuopt::host_copy(values, stream);
-  RAFT_CHECK_CUDA(stream);
+  RAFT_CHECK_CUDA(stream.get());
   return cuopt::compute_hash(h_contents);
 }
 
@@ -42,7 +42,7 @@ template <typename i_t>
 inline uint32_t compute_hash(const rmm::device_uvector<i_t>& values, rmm::cuda_stream_view stream)
 {
   auto h_contents = cuopt::host_copy(values, stream);
-  RAFT_CHECK_CUDA(stream);
+  RAFT_CHECK_CUDA(stream.get());
   return cuopt::compute_hash(h_contents);
 }
 
@@ -333,7 +333,7 @@ static __global__ void run_lambda_kernel(F f)
 template <typename Func>
 static void inline run_device_lambda(const rmm::cuda_stream_view& stream, Func f)
 {
-  run_lambda_kernel<<<1, 1, 0, stream.value()>>>(f);
+  run_lambda_kernel<<<1, 1, 0, stream.get()>>>(f);
 }
 
 template <typename f_t>
