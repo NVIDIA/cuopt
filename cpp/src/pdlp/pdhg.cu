@@ -103,7 +103,7 @@ pdhg_solver_t<i_t, f_t>::pdhg_solver_t(
     graph_all{stream_view_, is_legacy_batch_mode || batch_mode_},
     graph_prim_proj_gradient_dual{stream_view_, is_legacy_batch_mode},
     d_total_pdhg_iterations_{zero_v<i_t>, stream_view_},
-    d_halpern_weight_{f_t(0.5), stream_view_},
+    d_halpern_weight_{half_v<f_t>, stream_view_},
     climber_strategies_(climber_strategies),
     hyper_params_(hyper_params),
     new_bounds_climber_id_{new_bounds.size(), stream_view_},
