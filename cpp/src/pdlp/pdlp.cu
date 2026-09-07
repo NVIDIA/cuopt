@@ -2172,10 +2172,9 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
 }
 
-// delta = reflected - T(z). When Halpern is fused, current has already been overwritten, so T(z)
-// lives in potential_next_*. Otherwise current is still z_k (batch). Shared by the
-// single-GPU and per-shard (distributed) paths so the two only differ by which pdhg/stream they
-// pass.
+// delta = reflected - T(z). Halpern is fused into the projections, so current has already been
+// overwritten and T(z) lives in potential_next_*. Shared by the single-GPU and per-shard
+// (distributed) paths so the two only differ by which pdhg/stream they pass.
 template <typename i_t, typename f_t>
 static void compute_primal_dual_deltas(pdhg_solver_t<i_t, f_t>& pdhg, rmm::cuda_stream_view stream)
 {
@@ -3079,6 +3078,11 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
             pdhg_solver_.get_saddle_point_state().get_current_AtY());
           transpose_primal_dual_back_to_col(
             pdhg_solver_.get_primal_solution(), pdhg_solver_.get_dual_solution(), dummy);
+          // compute_primal_dual_deltas subtracts potential_next_* from reflected_*, so it has to
+          // be in the same layout as the rest of the operands here.
+          transpose_primal_dual_back_to_col(pdhg_solver_.get_potential_next_primal_solution(),
+                                            pdhg_solver_.get_potential_next_dual_solution(),
+                                            dummy);
           transpose_problem_fields(/*to_row=*/false);
         }
         compute_fixed_error(has_restarted);  // May set has_restarted to false
@@ -3089,6 +3093,9 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
                                        pdhg_solver_.get_saddle_point_state().get_current_AtY());
           transpose_primal_dual_to_row(
             pdhg_solver_.get_primal_solution(), pdhg_solver_.get_dual_solution(), dummy);
+          transpose_primal_dual_to_row(pdhg_solver_.get_potential_next_primal_solution(),
+                                       pdhg_solver_.get_potential_next_dual_solution(),
+                                       dummy);
           transpose_problem_fields(/*to_row=*/true);
         }
       }

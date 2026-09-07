@@ -107,11 +107,9 @@ class pdhg_solver_t {
   void spmv_At_into(cusparseDnVecDescr_t in_desc, cusparseDnVecDescr_t out_desc);
   void spmv_A_into(cusparseDnVecDescr_t in_desc, cusparseDnVecDescr_t out_desc);
 
-  // The Halpern update is folded into the reflected projections only when they are the last
-  // kernels to touch the iterate. Batch mode and per-climber bound overrides both re-project a
-  // subset of variables afterwards from the pre-update iterate, so those keep applying Halpern as
-  // a separate pass over the whole vector.
-  bool halpern_update_is_fused() const { return !batch_mode_ && new_bounds_idx_.size() == 0; }
+  // The Halpern update is folded into the reflected projections (including the batch kernels
+  // and the new_bounds re-projection). A separate whole-vector Halpern pass is not used.
+  bool halpern_update_is_fused() const { return true; }
 
   // Pure cub-transform extractions. Allows for clearer containment of the calls and ensures
   // the single-GPU vs distributed-GPU uses the same calls
@@ -156,6 +154,11 @@ class pdhg_solver_t {
 
   void compute_primal_projection_with_gradient(rmm::device_uvector<f_t>& primal_step_size);
   void compute_primal_projection(rmm::device_uvector<f_t>& primal_step_size);
+
+  // The reflected projections fold the Halpern update in, overwriting the iterate they read.
+  // The new_bounds re-projection that follows still needs that pre-Halpern iterate, so save it
+  // for those entries before the projection runs.
+  void save_new_bounds_primal();
 
   bool batch_mode_{false};
   raft::handle_t const* handle_ptr_{nullptr};
@@ -211,6 +214,9 @@ class pdhg_solver_t {
   rmm::device_uvector<i_t> new_bounds_idx_;
   rmm::device_uvector<f_t> new_bounds_lower_;
   rmm::device_uvector<f_t> new_bounds_upper_;
+  // z at the new_bounds entries, saved before the projection overwrites the iterate with the
+  // Halpern update. One entry per new_bounds entry, in the same order.
+  rmm::device_uvector<f_t> new_bounds_primal_;
   cuda::fast_mod_div<size_t> batch_size_divisor_;
 
   // Non-owning. Set on the master pdhg_solver_ in distributed mode; null
