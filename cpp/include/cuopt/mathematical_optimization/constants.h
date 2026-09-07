@@ -133,7 +133,6 @@
 #define CUOPT_MIP_HYPER_DIVING_FARKAS        "mip_hyper_diving_farkas"
 #define CUOPT_MIP_HYPER_DIVING_VECTOR_LENGTH "mip_hyper_diving_vector_length"
 /* @brief Diving heuristic limits */
-#define CUOPT_MIP_HYPER_DIVING_MIN_NODE_DEPTH         "mip_hyper_diving_min_node_depth"
 #define CUOPT_MIP_HYPER_DIVING_NODE_LIMIT             "mip_hyper_diving_node_limit"
 #define CUOPT_MIP_HYPER_DIVING_ITERATION_LIMIT_FACTOR "mip_hyper_diving_iteration_limit_factor"
 #define CUOPT_MIP_HYPER_DIVING_BACKTRACK_LIMIT        "mip_hyper_diving_backtrack_limit"
