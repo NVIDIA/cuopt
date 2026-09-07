@@ -373,7 +373,7 @@ template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t> solve_mip_helper(
   optimization_problem_t<i_t, f_t>& op_problem,
   mip_solver_settings_t<i_t, f_t> const& settings_const,
-  const std::shared_ptr<mip::early_cpufj_t<i_t, f_t>>& pre_solve_probe)
+  const std::shared_ptr<mip::early_cpufj_t<i_t, f_t>>& pre_solve_heuristics)
 {
   try {
     mip_solver_settings_t<i_t, f_t> settings(settings_const);
@@ -407,7 +407,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
 
     print_version_info();
 
-    if (pre_solve_probe) { pre_solve_probe->stop(); }
+    if (pre_solve_heuristics) { pre_solve_heuristics->stop(); }
 
     raft::common::nvtx::range fun_scope("Running solver");
     auto timer = timer_t(time_limit);
@@ -532,14 +532,10 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
     std::vector<f_t> early_best_user_assignment;
     std::mutex early_callback_mutex;
 
-    // The probe published its incumbent already; adopt it as the early-heuristic best so the
-    // heuristics started below do not republish worse points, and so it reaches the initial
-    // bound and the end-of-solve fallback. Its solver space is op_problem's, matching
-    // early_best_objective.
-    if (pre_solve_probe && pre_solve_probe->solution_found()) {
-      early_best_user_obj        = pre_solve_probe->get_best_user_objective();
-      early_best_user_assignment = pre_solve_probe->get_best_assignment();
-      early_best_objective.store(pre_solve_probe->get_best_objective());
+    if (pre_solve_heuristics && pre_solve_heuristics->solution_found()) {
+      early_best_user_obj        = pre_solve_heuristics->get_best_user_objective();
+      early_best_user_assignment = pre_solve_heuristics->get_best_assignment();
+      early_best_objective.store(pre_solve_heuristics->get_best_objective());
     }
 
     std::unique_ptr<mip::early_cpufj_t<i_t, f_t>> early_cpufj;
@@ -900,7 +896,8 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
       op_problem.get_handle_ptr()->get_stream()};
   }
 
-  std::shared_ptr<mip::early_cpufj_t<i_t, f_t>> pre_solve_probe;
+  // Run a very short burst of CPUFJ during the few dozen of milliseconds at solver init for very small instances
+  std::shared_ptr<mip::early_cpufj_t<i_t, f_t>> pre_solve_heuristics;
   // Semi-continuous variables are only reformulated once solve_mip_helper is under way, so the
   // probe would search a relaxation that admits 0 < x < L and report it as an incumbent.
   if (settings_const.determinism_mode != CUOPT_MODE_DETERMINISTIC &&
@@ -912,7 +909,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     for (auto callback : settings_const.get_mip_callbacks()) {
       callback->template setup<f_t>(op_problem.get_n_variables());
     }
-    pre_solve_probe = std::make_shared<mip::early_cpufj_t<i_t, f_t>>(
+    pre_solve_heuristics = std::make_shared<mip::early_cpufj_t<i_t, f_t>>(
       op_problem,
       settings_const.get_tolerances(),
       [mip_callbacks = settings_const.get_mip_callbacks(),
@@ -928,10 +925,10 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
           std::chrono::duration<double>(std::chrono::steady_clock::now() - probe_start).count());
       },
       mip::derive_seed(settings_const.seed, mip::rng_id_t::early_cpufj));
-    pre_solve_probe->start();
+    pre_solve_heuristics->start();
   }
-  cuopt::scope_guard release_probe([&pre_solve_probe] {
-    if (pre_solve_probe) { pre_solve_probe->stop(); }
+  cuopt::scope_guard release_probe([&pre_solve_heuristics] {
+    if (pre_solve_heuristics) { pre_solve_heuristics->stop(); }
   });
 
   mip_solution_t<i_t, f_t> sol(mip_termination_status_t::NoTermination,
@@ -946,12 +943,12 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
 
   // Creates the OpenMP thread pool. It will be shared across the entire MIP solver.
 #pragma omp parallel num_threads(num_threads) default(none) \
-  shared(sol, op_problem, settings_const, exception, pre_solve_probe)
+  shared(sol, op_problem, settings_const, exception, pre_solve_heuristics)
   {
 #pragma omp masked
     {
       try {
-        sol = solve_mip_helper<i_t, f_t>(op_problem, settings_const, pre_solve_probe);
+        sol = solve_mip_helper<i_t, f_t>(op_problem, settings_const, pre_solve_heuristics);
       } catch (const std::exception& e) {
         CUOPT_LOG_ERROR("Exception in MIP OpenMP region: %s", e.what());
         exception = std::current_exception();
