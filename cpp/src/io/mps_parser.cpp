@@ -156,6 +156,103 @@ void triples_to_csr_flat(const coo_entries_t<i_t, f_t>& entries,
   out_offsets = std::move(scratch.row_off);
 }
 
+// One stable counting pass of an LSD radix sort: reorders `src` by `key[entry]`, which must lie
+// in [0, buckets). O(nnz + buckets). Stability is load-bearing -- successive passes rely on it to
+// build a lexicographic order, and it keeps entries that later merge in the caller's input order.
+template <typename i_t>
+void counting_sort_pass(const std::vector<i_t>& key,
+                        size_t buckets,
+                        std::vector<i_t>& src,
+                        std::vector<i_t>& dst,
+                        std::vector<i_t>& count)
+{
+  const size_t nnz = src.size();
+  count.assign(buckets + 1, 0);
+  for (size_t t = 0; t < nnz; ++t) {
+    count[key[src[t]] + 1]++;
+  }
+  for (size_t b = 0; b < buckets; ++b) {
+    count[b + 1] += count[b];
+  }
+  for (size_t t = 0; t < nnz; ++t) {
+    dst[count[key[src[t]]]++] = src[t];
+  }
+  src.swap(dst);
+}
+
+// Smallest b such that 2^b >= v, clamped to at least 1.
+inline size_t log2_ceil(size_t v)
+{
+  if (v <= 1) { return 1; }
+  size_t bits = 0;
+  for (size_t x = v - 1; x != 0; x >>= 1) {
+    ++bits;
+  }
+  return bits;
+}
+
+// Reduce every entry to its canonical upper-triangle coordinates -- row = min(r,c), col = max(r,c)
+// -- as dense ranks in [0, buckets); returns the bucket count. Everything downstream is then sized
+// by the constraint's own index count rather than by the problem dimension. `sorted_values` maps a
+// rank back to the variable index.
+template <typename i_t>
+size_t compress_canonical_pairs(const std::vector<i_t>& rows,
+                                const std::vector<i_t>& cols,
+                                std::vector<i_t>& row_rank,
+                                std::vector<i_t>& col_rank,
+                                std::vector<i_t>& sorted_values)
+{
+  const size_t nnz = rows.size();
+  row_rank.resize(nnz);
+  col_rank.resize(nnz);
+
+  i_t min_index = rows[0];
+  i_t max_index = rows[0];
+  for (size_t k = 0; k < nnz; ++k) {
+    min_index = std::min({min_index, rows[k], cols[k]});
+    max_index = std::max({max_index, rows[k], cols[k]});
+  }
+  const size_t range = static_cast<size_t>(max_index - min_index) + 1;
+
+  // Both branches produce the same ranks; pick the cheaper by counting array elements written.
+  // Direct writes two ranks per entry and touches the rank table twice, since `resize` zero-fills
+  // it before the loop overwrites: ~2*nnz + 2*range. Ranking sorts the 2*nnz indices and then
+  // binary-searches each: ~2*nnz*log2(2*nnz). This also bounds direct's memory, whose buffers are
+  // range-sized, since accepting it implies range = O(nnz log nnz).
+  const size_t direct_cost  = 2 * nnz + 2 * range;
+  const size_t ranking_cost = 2 * nnz * log2_ceil(2 * nnz);
+  if (direct_cost <= ranking_cost) {
+    // Compact range: shift by the minimum, no ranking step. Dense blocks take this path.
+    for (size_t k = 0; k < nnz; ++k) {
+      row_rank[k] = std::min(rows[k], cols[k]) - min_index;
+      col_rank[k] = std::max(rows[k], cols[k]) - min_index;
+    }
+    sorted_values.resize(range);
+    for (size_t t = 0; t < range; ++t) {
+      sorted_values[t] = min_index + static_cast<i_t>(t);
+    }
+    return range;
+  }
+
+  // Scattered range: rank the indices that actually occur via sort + unique, then map each index
+  // to its rank by binary search.
+  sorted_values.clear();
+  sorted_values.reserve(2 * nnz);
+  sorted_values.insert(sorted_values.end(), rows.begin(), rows.end());
+  sorted_values.insert(sorted_values.end(), cols.begin(), cols.end());
+  std::sort(sorted_values.begin(), sorted_values.end());
+  sorted_values.erase(std::unique(sorted_values.begin(), sorted_values.end()), sorted_values.end());
+  const auto rank_of = [&](i_t value) {
+    return static_cast<i_t>(std::lower_bound(sorted_values.begin(), sorted_values.end(), value) -
+                            sorted_values.begin());
+  };
+  for (size_t k = 0; k < nnz; ++k) {
+    row_rank[k] = rank_of(std::min(rows[k], cols[k]));
+    col_rank[k] = rank_of(std::max(rows[k], cols[k]));
+  }
+  return sorted_values.size();
+}
+
 }  // namespace
 
 namespace cuopt::mathematical_optimization::io {
@@ -183,150 +280,137 @@ void check_symmetric_offdiagonal_pairs(const std::vector<i_t>& rows,
                                        const std::vector<i_t>& cols,
                                        const std::vector<f_t>& vals)
 {
-  const size_t n = vals.size();
-  mps_parser_expects(rows.size() == n && cols.size() == n,
+  const size_t nnz = vals.size();
+  mps_parser_expects(rows.size() == nnz && cols.size() == nnz,
                      error_type_t::ValidationError,
                      "COO rows/cols/vals length mismatch");
-  if (n == 0) { return; }
+  if (nnz == 0) { return; }
 
-  // Build two index permutations of the COO entries: one ordered by (row, col)
-  // and one by (col, row). The transpose of the k-th (row, col)-ordered entry is
-  // the k-th (col, row)-ordered entry, so walking both in lockstep proves the
-  // entry set equals its transpose (i.e. Q is symmetric) in O(n log n).
-  // Diagonal entries are their own transpose and validate trivially.
-  std::vector<size_t> row_major(n);
-  std::vector<size_t> col_major(n);
-  for (size_t t = 0; t < n; ++t) {
-    row_major[t] = t;
-    col_major[t] = t;
-  }
-  std::sort(row_major.begin(), row_major.end(), [&](size_t a, size_t b) {
-    return rows[a] != rows[b] ? rows[a] < rows[b] : cols[a] < cols[b];
-  });
-  std::sort(col_major.begin(), col_major.end(), [&](size_t a, size_t b) {
-    return cols[a] != cols[b] ? cols[a] < cols[b] : rows[a] < rows[b];
-  });
+  // Grouping by canonical pair puts the two orientations of an off-diagonal pair adjacent, so one
+  // walk over the runs proves the entry set equals its transpose (i.e. Q is symmetric). A valid
+  // run is a single diagonal entry, or exactly (i,j) and (j,i); anything else is a duplicate or a
+  // missing transpose partner.
+  std::vector<i_t> row_rank;
+  std::vector<i_t> col_rank;
+  std::vector<i_t> sorted_values;
+  const size_t buckets = compress_canonical_pairs(rows, cols, row_rank, col_rank, sorted_values);
 
-  // Reject duplicate (row, col) entries; duplicates are adjacent in row-major order.
-  for (size_t k = 1; k < n; ++k) {
-    const size_t prev = row_major[k - 1];
-    const size_t cur  = row_major[k];
-    mps_parser_expects(rows[prev] != rows[cur] || cols[prev] != cols[cur],
-                       error_type_t::ValidationError,
-                       "QCMATRIX duplicate entry (%d,%d)",
-                       rows[cur],
-                       cols[cur]);
+  // Least-significant key first: the stable row pass preserves the column pass, giving (row, col).
+  std::vector<i_t> order(nnz);
+  std::vector<i_t> scratch(nnz);
+  std::vector<i_t> count;
+  for (size_t t = 0; t < nnz; ++t) {
+    order[t] = static_cast<i_t>(t);
   }
+  counting_sort_pass(col_rank, buckets, order, scratch, count);
+  counting_sort_pass(row_rank, buckets, order, scratch, count);
 
   const f_t eps = std::numeric_limits<f_t>::epsilon();
-  for (size_t k = 0; k < n; ++k) {
-    const size_t a = row_major[k];  // entry (r, c)
-    const size_t b = col_major[k];  // its required transpose partner (c, r)
-    mps_parser_expects(rows[a] == cols[b] && cols[a] == rows[b],
-                       error_type_t::ValidationError,
-                       "QCMATRIX off-diagonal (%d,%d) requires a matching (%d,%d) entry",
-                       rows[a],
-                       cols[a],
-                       cols[a],
-                       rows[a]);
-    mps_parser_expects(
-      std::abs(vals[a] - vals[b]) <= eps,
-      error_type_t::ValidationError,
-      "QCMATRIX symmetric off-diagonals (%d,%d) and (%d,%d) must match; got %.17g and %.17g",
-      rows[a],
-      cols[a],
-      cols[a],
-      rows[a],
-      vals[a],
-      vals[b]);
+  for (size_t k = 0; k < nnz;) {
+    const size_t a = order[k];
+    const i_t row  = row_rank[a];
+    const i_t col  = col_rank[a];
+    size_t e       = k + 1;
+    while (e < nnz && row_rank[order[e]] == row && col_rank[order[e]] == col) {
+      ++e;
+    }
+
+    if (row == col) {
+      // A diagonal entry is its own transpose; any repeat of it is a duplicate.
+      mps_parser_expects(e - k == 1,
+                         error_type_t::ValidationError,
+                         "QCMATRIX duplicate entry (%d,%d)",
+                         rows[a],
+                         cols[a]);
+    } else {
+      mps_parser_expects(e - k >= 2,
+                         error_type_t::ValidationError,
+                         "QCMATRIX off-diagonal (%d,%d) requires a matching (%d,%d) entry",
+                         rows[a],
+                         cols[a],
+                         cols[a],
+                         rows[a]);
+      const size_t b = order[k + 1];
+      // A well-formed run holds one entry per orientation, so the two rows must differ.
+      mps_parser_expects(e - k == 2 && rows[a] != rows[b],
+                         error_type_t::ValidationError,
+                         "QCMATRIX duplicate entry (%d,%d)",
+                         rows[b],
+                         cols[b]);
+      mps_parser_expects(
+        std::abs(vals[a] - vals[b]) <= eps,
+        error_type_t::ValidationError,
+        "QCMATRIX symmetric off-diagonals (%d,%d) and (%d,%d) must match; got %.17g and %.17g",
+        rows[a],
+        cols[a],
+        cols[a],
+        rows[a],
+        vals[a],
+        vals[b]);
+    }
+    k = e;
   }
 }
 
 template <typename i_t, typename f_t>
 void canonicalize_coo_matrix(std::vector<i_t>& rows, std::vector<i_t>& cols, std::vector<f_t>& vals)
 {
-  const size_t n = vals.size();
-  mps_parser_expects(rows.size() == n && cols.size() == n,
+  const size_t nnz = vals.size();
+  mps_parser_expects(rows.size() == nnz && cols.size() == nnz,
                      error_type_t::ValidationError,
                      "COO rows/cols/vals length mismatch");
-  if (n == 0) {
+  if (nnz == 0) {
     rows.clear();
     cols.clear();
     vals.clear();
     return;
   }
 
-  // Canonical coordinates place each entry in the upper triangle:
-  // row = min(r, c), col = max(r, c).
-  i_t min_idx = std::min(rows[0], cols[0]);
-  i_t max_row = 0;
-  i_t max_col = 0;
-  for (size_t k = 0; k < n; ++k) {
-    const i_t r = std::min(rows[k], cols[k]);
-    const i_t c = std::max(rows[k], cols[k]);
-    min_idx     = std::min(min_idx, r);
-    max_row     = std::max(max_row, r);
-    max_col     = std::max(max_col, c);
-  }
+  // Both orientations of an off-diagonal pair share a canonical key, as do exact duplicates, so
+  // ordering by it makes every group that must merge contiguous.
+  std::vector<i_t> row_rank;
+  std::vector<i_t> col_rank;
+  std::vector<i_t> sorted_values;
+  const size_t buckets = compress_canonical_pairs(rows, cols, row_rank, col_rank, sorted_values);
 
-  // Bucket entry indices by canonical row via a stable counting sort.
-  std::vector<i_t> offsets(static_cast<size_t>(max_row - min_idx) + 2, 0);
-  for (size_t k = 0; k < n; ++k) {
-    offsets[std::min(rows[k], cols[k]) - min_idx + 1]++;
+  // Least-significant key first: the stable row pass preserves the column pass, giving (row, col).
+  std::vector<i_t> order(nnz);
+  std::vector<i_t> scratch(nnz);
+  std::vector<i_t> count;
+  for (size_t t = 0; t < nnz; ++t) {
+    order[t] = static_cast<i_t>(t);
   }
-  for (i_t r = 0; r <= max_row - min_idx; ++r) {
-    offsets[r + 1] += offsets[r];
-  }
-  std::vector<i_t> perm(n);
-  std::vector<i_t> cursor(offsets.begin(), offsets.end() - 1);
-  for (size_t k = 0; k < n; ++k) {
-    const i_t r     = std::min(rows[k], cols[k]) - min_idx;
-    perm[cursor[r]] = static_cast<i_t>(k);
-    cursor[r]++;
-  }
+  counting_sort_pass(col_rank, buckets, order, scratch, count);
+  counting_sort_pass(row_rank, buckets, order, scratch, count);
 
-  // Merge duplicate (row, col) entries within each canonical row using a marker array
-  // (marker[c] holds 1 + the output position of column c in the current row), then sort
-  // each row's entries by column.
-  struct entry_t {
-    i_t row;
-    i_t col;
-    f_t val;
-  };
-  std::vector<entry_t> entries;
-  entries.reserve(n);
-  std::vector<i_t> marker(static_cast<size_t>(max_col - min_idx) + 1, 0);
-  for (i_t r = 0; r <= max_row - min_idx; ++r) {
-    const i_t row_start = static_cast<i_t>(entries.size());
-    for (i_t p = offsets[r]; p < offsets[r + 1]; ++p) {
-      const i_t k   = perm[p];
-      const i_t row = std::min(rows[k], cols[k]);
-      const i_t col = std::max(rows[k], cols[k]);
-      const i_t c   = col - min_idx;
-      if (marker[c] <= row_start) {
-        entries.push_back(entry_t{row, col, vals[k]});
-        marker[c] = static_cast<i_t>(entries.size());
-      } else {
-        entries[marker[c] - 1].val += vals[k];
-      }
-    }
-    std::sort(entries.begin() + row_start,
-              entries.end(),
-              [](const entry_t& lhs, const entry_t& rhs) { return lhs.col < rhs.col; });
-  }
-
-  // Emit canonical COO, dropping entries whose coefficients cancelled to ~0.
+  // Entries sharing a canonical key are now adjacent, so one walk sums each run (x^T Q x
+  // semantics), maps ranks back to variable indices, and drops coefficients that cancel to ~0.
   const f_t eps = std::numeric_limits<f_t>::epsilon();
-  rows.clear();
-  cols.clear();
-  vals.clear();
-  for (const entry_t& e : entries) {
-    if (std::abs(e.val) > eps) {
-      rows.push_back(e.row);
-      cols.push_back(e.col);
-      vals.push_back(e.val);
+  std::vector<i_t> out_rows;
+  std::vector<i_t> out_cols;
+  std::vector<f_t> out_vals;
+  out_rows.reserve(nnz);
+  out_cols.reserve(nnz);
+  out_vals.reserve(nnz);
+  for (size_t k = 0; k < nnz;) {
+    const i_t row = row_rank[order[k]];
+    const i_t col = col_rank[order[k]];
+    f_t sum       = vals[order[k]];
+    size_t e      = k + 1;
+    for (; e < nnz && row_rank[order[e]] == row && col_rank[order[e]] == col; ++e) {
+      sum += vals[order[e]];
     }
+    if (std::abs(sum) > eps) {
+      out_rows.push_back(sorted_values[row]);
+      out_cols.push_back(sorted_values[col]);
+      out_vals.push_back(sum);
+    }
+    k = e;
   }
+
+  rows = std::move(out_rows);
+  cols = std::move(out_cols);
+  vals = std::move(out_vals);
 }
 
 BoundType convert(std::string_view str)
