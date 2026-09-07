@@ -279,7 +279,7 @@ inline std::vector<i_t> compute_prioritized_integer_indices(
   CUOPT_LOG_INFO("prioritized integer_indices n_integer_vars %d", problem.pb->n_integer_vars);
   // compute the min var slack
   compute_min_slack_per_var<i_t, f_t>
-    <<<problem.pb->n_integer_vars, 128, 0, problem.handle_ptr->get_stream()>>>(
+    <<<problem.pb->n_integer_vars, 128, 0, problem.handle_ptr->get_stream().get()>>>(
       problem.pb->view(),
       make_span_2(bound_presolve.cnst_slack),
       make_span(min_slack_per_var),

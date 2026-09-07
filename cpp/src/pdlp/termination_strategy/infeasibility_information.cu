@@ -104,11 +104,11 @@ infeasibility_information_t<i_t, f_t>::infeasibility_information_t(
     RAFT_CUDA_TRY(cudaMemsetAsync(homogenous_primal_residual_.data(),
                                   0.0,
                                   sizeof(f_t) * homogenous_primal_residual_.size(),
-                                  stream_view_));
+                                  stream_view_.get()));
     RAFT_CUDA_TRY(cudaMemsetAsync(homogenous_dual_residual_.data(),
                                   0.0,
                                   sizeof(f_t) * homogenous_dual_residual_.size(),
-                                  stream_view_));
+                                  stream_view_.get()));
 
     // variable bounds in the homogenous primal are 0.0 if the original bound was finite, and
     // otherwise it is -inf for lower bounds and inf for upper bounds
@@ -116,12 +116,12 @@ infeasibility_information_t<i_t, f_t>::infeasibility_information_t(
                           problem_ptr->constraint_lower_bounds.data(),
                           dual_size_h_,
                           zero_if_is_finite<f_t>(),
-                          stream_view_);
+                          stream_view_.get());
     raft::linalg::unaryOp(homogenous_dual_upper_bounds_.data(),
                           problem_ptr->constraint_upper_bounds.data(),
                           dual_size_h_,
                           zero_if_is_finite<f_t>(),
-                          stream_view_);
+                          stream_view_.get());
 
     void* d_temp_storage        = NULL;
     size_t temp_storage_bytes_1 = 0;
@@ -130,7 +130,7 @@ infeasibility_information_t<i_t, f_t>::infeasibility_information_t(
                            bound_value_.begin(),
                            dual_ray_linear_objective_.data(),
                            dual_size_h_,
-                           stream_view_);
+                           stream_view_.get());
 
     size_t temp_storage_bytes_2 = 0;
     cub::DeviceReduce::Sum(d_temp_storage,
@@ -138,7 +138,7 @@ infeasibility_information_t<i_t, f_t>::infeasibility_information_t(
                            bound_value_.begin(),
                            reduced_cost_dual_objective_.data(),
                            primal_size_h_,
-                           stream_view_);
+                           stream_view_.get());
 
     size_of_buffer_       = std::max({temp_storage_bytes_1, temp_storage_bytes_2});
     this->rmm_tmp_buffer_ = rmm::device_buffer{size_of_buffer_, stream_view_};
@@ -146,20 +146,20 @@ infeasibility_information_t<i_t, f_t>::infeasibility_information_t(
     RAFT_CUDA_TRY(cudaMemsetAsync(dual_ray_linear_objective_.data(),
                                   0,
                                   sizeof(f_t) * dual_ray_linear_objective_.size(),
-                                  stream_view_));
+                                  stream_view_.get()));
     RAFT_CUDA_TRY(cudaMemsetAsync(max_dual_ray_infeasibility_.data(),
                                   0,
                                   sizeof(f_t) * max_dual_ray_infeasibility_.size(),
-                                  stream_view_));
+                                  stream_view_.get()));
 
     RAFT_CUDA_TRY(cudaMemsetAsync(primal_ray_linear_objective_.data(),
                                   0,
                                   sizeof(f_t) * primal_ray_linear_objective_.size(),
-                                  stream_view_));
+                                  stream_view_.get()));
     RAFT_CUDA_TRY(cudaMemsetAsync(max_primal_ray_infeasibility_.data(),
                                   0,
                                   sizeof(f_t) * max_primal_ray_infeasibility_.size(),
-                                  stream_view_));
+                                  stream_view_.get()));
   }
 }
 
@@ -263,7 +263,7 @@ void infeasibility_information_t<i_t, f_t>::compute_infeasibility_information(
         if (isfinite(upper)) primal_to_return = cuda::std::min(primal_to_return, f_t(0.0));
         return primal_to_return;
       },
-      stream_view_);
+      stream_view_.get());
 
     // Inf norm of primal ray
     segmented_sum_handler_.segmented_reduce_helper(primal_ray.data(),
@@ -285,7 +285,7 @@ void infeasibility_information_t<i_t, f_t>::compute_infeasibility_information(
         if (!isfinite(upper)) dual_to_return = cuda::std::max(dual_to_return, f_t(0.0));
         return dual_to_return;
       },
-      stream_view_);
+      stream_view_.get());
 
 #ifdef CUPDLP_DEBUG_MODE
     print("delta_primal_solution after", primal_ray);
@@ -308,7 +308,7 @@ void infeasibility_information_t<i_t, f_t>::compute_infeasibility_information(
         if (primal_ray_inf_norm_value > f_t(0.0))
           primal_ray_data[id] = primal_ray_data[id] / primal_ray_inf_norm_value;
       },
-      stream_view_);
+      stream_view_.get());
 #ifdef CUPDLP_DEBUG_MODE
     print("delta_primal_solution after scale", primal_ray);
     print("delta_dual_solution after scale", dual_ray);
@@ -327,7 +327,7 @@ void infeasibility_information_t<i_t, f_t>::compute_infeasibility_information(
       scaled_cusparse_view_.batch_tmp_duals.get(),
       CUSPARSE_SPMM_CSR_ALG3,
       (f_t*)scaled_cusparse_view_.buffer_non_transpose_batch.data(),
-      stream_view_));
+      stream_view_.get()));
     RAFT_CUSPARSE_TRY(
       raft::sparse::detail::cusparsespmm(handle_ptr_->get_cusparse_handle(),
                                          CUSPARSE_OPERATION_NON_TRANSPOSE,
@@ -339,7 +339,7 @@ void infeasibility_information_t<i_t, f_t>::compute_infeasibility_information(
                                          scaled_cusparse_view_.batch_tmp_primals.get(),
                                          CUSPARSE_SPMM_CSR_ALG3,
                                          (f_t*)scaled_cusparse_view_.buffer_transpose_batch.data(),
-                                         stream_view_));
+                                         stream_view_.get()));
 
 #ifdef CUPDLP_DEBUG_MODE
     print("primal_product", current_pdhg_solver.get_dual_tmp_resource());
@@ -375,7 +375,7 @@ void infeasibility_information_t<i_t, f_t>::compute_infeasibility_information(
         return cuda::std::max(dual, f_t(0.0)) * finite_or_zero(lower) +
                cuda::std::min(dual, f_t(0.0)) * finite_or_zero(upper);
       },
-      stream_view_);
+      stream_view_.get());
 
 #ifdef CUPDLP_DEBUG_MODE
     print("primal_slack", primal_slack_);
@@ -393,7 +393,7 @@ void infeasibility_information_t<i_t, f_t>::compute_infeasibility_information(
         return cuda::std::max(-dual, f_t(0.0)) * finite_or_zero(lower) +
                cuda::std::min(-dual, f_t(0.0)) * finite_or_zero(upper);
       },
-      stream_view_);
+      stream_view_.get());
 
 #ifdef CUPDLP_DEBUG_MODE
     print("dual_slack", dual_slack_);
@@ -426,7 +426,7 @@ void infeasibility_information_t<i_t, f_t>::compute_infeasibility_information(
                 cuda::std::max(primal, f_t(0.0)) * isfinite(upper)) *
                scale;
       },
-      stream_view_);
+      stream_view_.get());
 
 #ifdef CUPDLP_DEBUG_MODE
     print("primal_slack", primal_slack_);
@@ -447,7 +447,7 @@ void infeasibility_information_t<i_t, f_t>::compute_infeasibility_information(
                 cuda::std::min(-dual, f_t(0.0)) * !isfinite(upper)) *
                scale;
       },
-      stream_view_);
+      stream_view_.get());
 #ifdef CUPDLP_DEBUG_MODE
     print("dual_slack", dual_slack_);
 #endif
@@ -493,7 +493,7 @@ void infeasibility_information_t<i_t, f_t>::compute_infeasibility_information(
         else
           return {f_t(0.0), f_t(0.0)};
       },
-      stream_view_);
+      stream_view_.get());
 
 #ifdef CUPDLP_DEBUG_MODE
     printf("max_dual_ray_infeasibility=%lf\n",
@@ -507,12 +507,12 @@ void infeasibility_information_t<i_t, f_t>::compute_infeasibility_information(
                                          reusable_device_scalar_value_1_.data(),
                                          primal_ray_inf_norm_.data(),
                                          1,
-                                         stream_view_);
+                                         stream_view_.get());
     raft::linalg::eltwiseMultiply(neg_primal_ray_inf_norm_inverse_.data(),
                                   primal_ray_inf_norm_inverse_.data(),
                                   reusable_device_scalar_value_neg_1_.data(),
                                   1,
-                                  stream_view_);
+                                  stream_view_.get());
 
     compute_homogenous_primal_residual(op_problem_cusparse_view_,
                                        current_pdhg_solver.get_dual_tmp_resource());
@@ -531,14 +531,14 @@ void infeasibility_information_t<i_t, f_t>::compute_infeasibility_information(
     my_inf_norm(dual_ray, dual_ray_inf_norm_, handle_ptr_);
     my_inf_norm(reduced_cost_, reduced_cost_inf_norm_, handle_ptr_);
 
-    compute_remaining_stats_kernel<i_t, f_t><<<1, 1, 0, stream_view_>>>(this->view());
+    compute_remaining_stats_kernel<i_t, f_t><<<1, 1, 0, stream_view_.get()>>>(this->view());
     RAFT_CUDA_TRY(cudaPeekAtLastError());
 
     // reset for next round
     RAFT_CUDA_TRY(cudaMemsetAsync(homogenous_primal_residual_.data(),
                                   0.0,
                                   sizeof(f_t) * homogenous_primal_residual_.size(),
-                                  stream_view_));
+                                  stream_view_.get()));
     RAFT_CUDA_TRY(cudaMemsetAsync(
       homogenous_dual_residual_.data(), 0.0, sizeof(f_t) * homogenous_dual_residual_.size()));
   }
@@ -558,7 +558,7 @@ void infeasibility_information_t<i_t, f_t>::compute_homogenous_primal_residual(
                                        cusparse_view.tmp_dual.get(),
                                        CUSPARSE_SPMV_CSR_ALG2,
                                        (f_t*)cusparse_view.buffer_non_transpose.data(),
-                                       stream_view_));
+                                       stream_view_.get()));
 
   raft::linalg::ternaryOp(homogenous_primal_residual_.data(),
                           tmp_dual.data(),
@@ -566,7 +566,7 @@ void infeasibility_information_t<i_t, f_t>::compute_homogenous_primal_residual(
                           homogenous_dual_upper_bounds_.data(),
                           dual_size_h_,
                           violation<f_t>(),
-                          stream_view_);
+                          stream_view_.get());
 }
 
 template <typename i_t, typename f_t>
@@ -599,14 +599,14 @@ void infeasibility_information_t<i_t, f_t>::compute_homogenous_primal_objective(
                                                   problem_ptr->objective_coefficients.data(),
                                                   primal_stride,
                                                   primal_ray_linear_objective_.data(),
-                                                  stream_view_));
+                                                  stream_view_.get()));
 
   // just to scale from the primal ray scaling
   raft::linalg::eltwiseMultiply(primal_ray_linear_objective_.data(),
                                 primal_ray_linear_objective_.data(),
                                 primal_ray_inf_norm_inverse_.data(),
                                 1,
-                                stream_view_);
+                                stream_view_.get());
 }
 
 template <typename i_t, typename f_t>
@@ -628,7 +628,7 @@ void infeasibility_information_t<i_t, f_t>::compute_homogenous_dual_residual(
                                                        cusparse_view.tmp_primal.get(),
                                                        CUSPARSE_SPMV_CSR_ALG2,
                                                        (f_t*)cusparse_view.buffer_transpose.data(),
-                                                       stream_view_));
+                                                       stream_view_.get()));
 
   compute_reduced_cost_from_primal_gradient(tmp_primal,
                                             primal_ray);  // primal gradient is now in temp
@@ -637,7 +637,7 @@ void infeasibility_information_t<i_t, f_t>::compute_homogenous_dual_residual(
                            tmp_primal.data(),  // primal_gradient
                            reduced_cost_.data(),
                            primal_size_h_,
-                           stream_view_);
+                           stream_view_.get());
 }
 
 template <typename i_t, typename f_t>
@@ -650,14 +650,14 @@ void infeasibility_information_t<i_t, f_t>::compute_homogenous_dual_objective(
                           problem_ptr->constraint_upper_bounds.data(),
                           dual_size_h_,
                           constraint_bound_value_reduced_cost_product<f_t>(),
-                          stream_view_);
+                          stream_view_.get());
 
   cub::DeviceReduce::Sum(rmm_tmp_buffer_.data(),
                          size_of_buffer_,
                          bound_value_.begin(),
                          dual_ray_linear_objective_.data(),
                          dual_size_h_,
-                         stream_view_);
+                         stream_view_.get());
 
 #ifdef PDLP_DEBUG_MODE
   std::cout << "-compute_homogenous_dual_objective:\n"
@@ -671,7 +671,7 @@ void infeasibility_information_t<i_t, f_t>::compute_homogenous_dual_objective(
                            dual_ray_linear_objective_.data(),
                            reduced_cost_dual_objective_.data(),
                            1,
-                           stream_view_);
+                           stream_view_.get());
 #ifdef PDLP_DEBUG_MODE
   std::cout << "  reduced_cost_dual_objective_=" << reduced_cost_dual_objective_.value(stream_view_)
             << std::endl;
@@ -690,7 +690,7 @@ void infeasibility_information_t<i_t, f_t>::compute_reduced_cost_from_primal_gra
     bound_value_.data(),
     primal_size_h_,
     bound_value_gradient<f_t, f_t2>(),
-    stream_view_.value());
+    stream_view_.get());
 
   if (hyper_params_.handle_some_primal_gradients_on_finite_bounds_as_residuals) {
     raft::linalg::ternaryOp(reduced_cost_.data(),
@@ -699,14 +699,14 @@ void infeasibility_information_t<i_t, f_t>::compute_reduced_cost_from_primal_gra
                             primal_gradient.data(),
                             primal_size_h_,
                             copy_gradient_if_should_be_reduced_cost<f_t>(),
-                            stream_view_);
+                            stream_view_.get());
   } else {
     raft::linalg::binaryOp(reduced_cost_.data(),
                            bound_value_.data(),
                            primal_gradient.data(),
                            primal_size_h_,
                            copy_gradient_if_finite_bounds<f_t>(),
-                           stream_view_);
+                           stream_view_.get());
   }
 }
 
@@ -722,7 +722,7 @@ void infeasibility_information_t<i_t, f_t>::compute_reduced_costs_dual_objective
     bound_value_.data(),
     primal_size_h_,
     bound_value_reduced_cost_product<f_t, f_t2>(),
-    stream_view_);
+    stream_view_.get());
 
   // sum over bound_value*reduced_cost
   cub::DeviceReduce::Sum(rmm_tmp_buffer_.data(),
@@ -730,7 +730,7 @@ void infeasibility_information_t<i_t, f_t>::compute_reduced_costs_dual_objective
                          bound_value_.begin(),
                          reduced_cost_dual_objective_.data(),
                          primal_size_h_,
-                         stream_view_);
+                         stream_view_.get());
 }
 
 template <typename i_t, typename f_t>

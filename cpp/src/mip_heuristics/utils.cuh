@@ -10,6 +10,7 @@
 #include <thrust/inner_product.h>
 #include <thrust/logical.h>
 #include <thrust/transform_reduce.h>
+#include <cuda/stream>
 #include <cuopt/error.hpp>
 #include <pdlp/utils.cuh>
 #include <raft/random/rng_device.cuh>
@@ -31,18 +32,18 @@ constexpr int default_int_lower     = std::numeric_limits<int>::min();
 constexpr double zero_bound         = 0.;
 
 template <typename i_t>
-inline uint32_t compute_hash(raft::device_span<i_t> values, rmm::cuda_stream_view stream)
+inline uint32_t compute_hash(raft::device_span<i_t> values, cuda::stream_ref stream)
 {
   auto h_contents = cuopt::host_copy(values, stream);
-  RAFT_CHECK_CUDA(stream);
+  RAFT_CHECK_CUDA(stream.get());
   return cuopt::compute_hash(h_contents);
 }
 
 template <typename i_t>
-inline uint32_t compute_hash(const rmm::device_uvector<i_t>& values, rmm::cuda_stream_view stream)
+inline uint32_t compute_hash(const rmm::device_uvector<i_t>& values, cuda::stream_ref stream)
 {
   auto h_contents = cuopt::host_copy(values, stream);
-  RAFT_CHECK_CUDA(stream);
+  RAFT_CHECK_CUDA(stream.get());
   return cuopt::compute_hash(h_contents);
 }
 
@@ -261,7 +262,7 @@ f_t compute_objective_from_vec(const rmm::device_uvector<f_t>& assignment,
 template <typename i_t, typename f_t>
 f_t compute_objective_from_vec(const rmm::device_uvector<f_t>& assignment,
                                const rmm::device_uvector<f_t>& objective_coefficients,
-                               rmm::cuda_stream_view stream)
+                               cuda::stream_ref stream)
 {
   cuopt_assert(assignment.size() == objective_coefficients.size(), "Size mismatch!");
   f_t computed_obj = thrust::inner_product(rmm::exec_policy(stream),
@@ -331,9 +332,9 @@ static __global__ void run_lambda_kernel(F f)
 // run a printf statement from the device side, useful for debugging without having to deal with
 // explicit memcpys
 template <typename Func>
-static void inline run_device_lambda(const rmm::cuda_stream_view& stream, Func f)
+static void inline run_device_lambda(const cuda::stream_ref& stream, Func f)
 {
-  run_lambda_kernel<<<1, 1, 0, stream.value()>>>(f);
+  run_lambda_kernel<<<1, 1, 0, stream.get()>>>(f);
 }
 
 template <typename f_t>

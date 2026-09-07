@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -8,6 +8,7 @@
 #pragma once
 
 #include <thrust/extrema.h>
+#include <cuda/stream>
 #include <raft/core/device_span.hpp>
 #include <raft/core/handle.hpp>
 #include <rmm/device_uvector.hpp>
@@ -39,37 +40,35 @@ __global__ void sequence_with_multiplier_kernel(T* data_ptr, int mult, size_t si
 }
 
 template <typename T>
-void async_fill(rmm::device_uvector<T>& vec, T item, rmm::cuda_stream_view stream)
+void async_fill(rmm::device_uvector<T>& vec, T item, cuda::stream_ref stream)
 {
   constexpr size_t TPB = 256;
   size_t n_blocks      = (vec.size() + TPB - 1) / TPB;
-  fill_kernel<<<n_blocks, TPB, 0, stream>>>(vec.data(), item, vec.size());
+  fill_kernel<<<n_blocks, TPB, 0, stream.get()>>>(vec.data(), item, vec.size());
 }
 
 template <typename T>
-void async_fill(T* vec, T item, size_t size, rmm::cuda_stream_view stream)
+void async_fill(T* vec, T item, size_t size, cuda::stream_ref stream)
 {
   constexpr size_t TPB = 256;
   size_t n_blocks      = (size + TPB - 1) / TPB;
-  fill_kernel<<<n_blocks, TPB, 0, stream>>>(vec, item, size);
+  fill_kernel<<<n_blocks, TPB, 0, stream.get()>>>(vec, item, size);
 }
 
 template <typename T>
-void async_sequence(rmm::device_uvector<T>& vec, rmm::cuda_stream_view stream)
+void async_sequence(rmm::device_uvector<T>& vec, cuda::stream_ref stream)
 {
   constexpr size_t TPB = 256;
   size_t n_blocks      = (vec.size() + TPB - 1) / TPB;
-  sequence_kernel<<<n_blocks, TPB, 0, stream>>>(vec.data(), vec.size());
+  sequence_kernel<<<n_blocks, TPB, 0, stream.get()>>>(vec.data(), vec.size());
 }
 
 template <typename T>
-void async_sequence_with_multiplier(rmm::device_uvector<T>& vec,
-                                    int mult,
-                                    rmm::cuda_stream_view stream)
+void async_sequence_with_multiplier(rmm::device_uvector<T>& vec, int mult, cuda::stream_ref stream)
 {
   constexpr size_t TPB = 256;
   size_t n_blocks      = (vec.size() + TPB - 1) / TPB;
-  sequence_with_multiplier_kernel<<<n_blocks, TPB, 0, stream>>>(vec.data(), mult, vec.size());
+  sequence_with_multiplier_kernel<<<n_blocks, TPB, 0, stream.get()>>>(vec.data(), mult, vec.size());
 }
 
 template <typename T>

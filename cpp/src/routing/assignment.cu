@@ -5,6 +5,7 @@
  */
 /* clang-format on */
 
+#include <cuda/stream>
 #include <cuopt/export.hpp>
 #include <cuopt/routing/assignment.hpp>
 #include <raft/util/cudart_utils.hpp>
@@ -21,7 +22,7 @@ const std::string solution_string_t::empty = "cuOpt solver did not run.";
 const std::string solution_string_t::error = "An error occured while running the cuOpt solver.";
 
 template <typename i_t>
-assignment_t<i_t>::assignment_t(solution_status_t status, rmm::cuda_stream_view stream_view)
+assignment_t<i_t>::assignment_t(solution_status_t status, cuda::stream_ref stream_view)
   : status_(status),
     route_(0, stream_view),
     arrival_stamp_(0, stream_view),
@@ -36,7 +37,7 @@ assignment_t<i_t>::assignment_t(solution_status_t status, rmm::cuda_stream_view 
 }
 
 template <typename i_t>
-assignment_t<i_t>::assignment_t(cuopt::logic_error error_status, rmm::cuda_stream_view stream_view)
+assignment_t<i_t>::assignment_t(cuopt::logic_error error_status, cuda::stream_ref stream_view)
   : status_(solution_status_t::ERROR),
     route_(0, stream_view),
     arrival_stamp_(0, stream_view),
@@ -188,7 +189,7 @@ const rmm::device_uvector<i_t>& assignment_t<i_t>::get_accepted() const noexcept
 }
 
 template <typename i_t>
-void assignment_t<i_t>::to_csv(std::string_view filename, rmm::cuda_stream_view stream_view)
+void assignment_t<i_t>::to_csv(std::string_view filename, cuda::stream_ref stream_view)
 {
   std::vector<i_t> route;
   std::vector<double> arrival_stamp;
@@ -196,10 +197,9 @@ void assignment_t<i_t>::to_csv(std::string_view filename, rmm::cuda_stream_view 
   route.resize(route_.size());
   arrival_stamp.resize(arrival_stamp_.size());
   truck_id.resize(truck_id_.size());
-  raft::copy(route.data(), route_.data(), route_.size(), stream_view.value());
-  raft::copy(
-    arrival_stamp.data(), arrival_stamp_.data(), arrival_stamp_.size(), stream_view.value());
-  raft::copy(truck_id.data(), truck_id_.data(), truck_id_.size(), stream_view.value());
+  raft::copy(route.data(), route_.data(), route_.size(), stream_view.get());
+  raft::copy(arrival_stamp.data(), arrival_stamp_.data(), arrival_stamp_.size(), stream_view.get());
+  raft::copy(truck_id.data(), truck_id_.data(), truck_id_.size(), stream_view.get());
   std::ofstream myfile(filename.data());
   std::cout << "truck_id,\troute,\tarrival_time\n";
   for (size_t i = 0; i < route.size(); i++)

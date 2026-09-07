@@ -11,6 +11,7 @@
 #include "../node/tasks_node.cuh"
 #include "../solution/solution_handle.cuh"
 
+#include <cuda/stream>
 #include <raft/core/handle.hpp>
 
 #include <rmm/device_uvector.hpp>
@@ -40,7 +41,7 @@ class tasks_route_t {
 
   tasks_route_t& operator=(tasks_route_t&& tasks_route) = default;
 
-  void resize(i_t max_nodes_per_route, rmm::cuda_stream_view stream)
+  void resize(i_t max_nodes_per_route, cuda::stream_ref stream)
   {
     tasks_forward.resize(max_nodes_per_route, stream);
     tasks_backward.resize(max_nodes_per_route, stream);

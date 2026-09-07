@@ -10,6 +10,7 @@
 #include <mip_heuristics/mip_constants.hpp>
 #include <utilities/logger.hpp>
 
+#include <cuda/stream>
 #include <limits>
 #include <math_optimization/solution_writer.hpp>
 #include <raft/core/nvtx.hpp>
@@ -46,7 +47,7 @@ mip_solution_t<i_t, f_t>::mip_solution_t(rmm::device_uvector<f_t> solution,
 template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t>::mip_solution_t(mip_termination_status_t termination_status,
                                          solver_stats_t<i_t, f_t> stats,
-                                         rmm::cuda_stream_view stream_view)
+                                         cuda::stream_ref stream_view)
   : solution_(0, stream_view),
     objective_(0),
     mip_gap_(0),
@@ -61,7 +62,7 @@ mip_solution_t<i_t, f_t>::mip_solution_t(mip_termination_status_t termination_st
 
 template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t>::mip_solution_t(const cuopt::logic_error& error_status,
-                                         rmm::cuda_stream_view stream_view)
+                                         cuda::stream_ref stream_view)
   : solution_(0, stream_view),
     objective_(0),
     mip_gap_(0),
@@ -202,7 +203,7 @@ const std::vector<rmm::device_uvector<f_t>>& mip_solution_t<i_t, f_t>::get_solut
 
 template <typename i_t, typename f_t>
 void mip_solution_t<i_t, f_t>::write_to_sol_file(std::string_view filename,
-                                                 rmm::cuda_stream_view stream_view) const
+                                                 cuda::stream_ref stream_view) const
 {
   std::string status = get_termination_status_string();
   // Override for no termination
@@ -215,8 +216,8 @@ void mip_solution_t<i_t, f_t>::write_to_sol_file(std::string_view filename,
   auto& var_names     = get_variable_names();
   std::vector<f_t> solution;
   solution.resize(solution_.size());
-  raft::copy(solution.data(), solution_.data(), solution_.size(), stream_view.value());
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view.value()));
+  raft::copy(solution.data(), solution_.data(), solution_.size(), stream_view.get());
+  stream_view.sync();
 
   solution_writer_t::write_solution_to_sol_file(
     std::string(filename), status, objective_value, var_names, solution);

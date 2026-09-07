@@ -9,6 +9,7 @@
 
 #include <cub/cub.cuh>
 
+#include <cuda/stream>
 #include <raft/core/copy.hpp>
 #include <raft/core/device_span.hpp>
 #include <raft/core/host_span.hpp>
@@ -37,7 +38,7 @@ struct norm_inf_max {
 };
 
 template <typename i_t, typename f_t, typename InputIteratorT>
-f_t device_custom_vector_norm_inf(InputIteratorT in, i_t size, rmm::cuda_stream_view stream_view)
+f_t device_custom_vector_norm_inf(InputIteratorT in, i_t size, cuda::stream_ref stream_view)
 {
   if (size == 0) { return 0; }
   // FIXME: Tmp storage stored in vector_math class.
@@ -53,7 +54,7 @@ f_t device_custom_vector_norm_inf(InputIteratorT in, i_t size, rmm::cuda_stream_
                             size,
                             custom_op,
                             init,
-                            stream_view);
+                            stream_view.get());
 
   d_temp_storage.resize(temp_storage_bytes, stream_view);
 
@@ -64,18 +65,18 @@ f_t device_custom_vector_norm_inf(InputIteratorT in, i_t size, rmm::cuda_stream_
                             size,
                             custom_op,
                             init,
-                            stream_view);
+                            stream_view.get());
   return d_out.value(stream_view);
 }
 
 template <typename i_t, typename f_t>
-f_t device_vector_norm_inf(const rmm::device_uvector<f_t>& in, rmm::cuda_stream_view stream_view)
+f_t device_vector_norm_inf(const rmm::device_uvector<f_t>& in, cuda::stream_ref stream_view)
 {
   return device_custom_vector_norm_inf<i_t, f_t>(in.data(), in.size(), stream_view);
 }
 
 template <typename i_t, typename f_t>
-f_t device_vector_norm_inf(raft::device_span<const f_t> in, rmm::cuda_stream_view stream_view)
+f_t device_vector_norm_inf(raft::device_span<const f_t> in, cuda::stream_ref stream_view)
 {
   return device_custom_vector_norm_inf<i_t, f_t>(in.data(), in.size(), stream_view);
 }
@@ -83,14 +84,14 @@ f_t device_vector_norm_inf(raft::device_span<const f_t> in, rmm::cuda_stream_vie
 // TMP we should just have a CPU and GPU version to do the comparison
 // Should never have to norm inf a CPU vector if we are using the GPU
 template <typename i_t, typename f_t, typename Allocator>
-f_t vector_norm_inf(const std::vector<f_t, Allocator>& x, rmm::cuda_stream_view stream_view)
+f_t vector_norm_inf(const std::vector<f_t, Allocator>& x, cuda::stream_ref stream_view)
 {
   const auto d_x = device_copy(x, stream_view);
   return device_vector_norm_inf<i_t, f_t>(d_x, stream_view);
 }
 
 template <typename i_t, typename f_t>
-f_t vector_norm_inf(raft::host_span<const f_t> x, rmm::cuda_stream_view stream_view)
+f_t vector_norm_inf(raft::host_span<const f_t> x, cuda::stream_ref stream_view)
 {
   rmm::device_uvector<f_t> d_x(x.size(), stream_view);
   raft::copy(d_x.data(), x.data(), x.size(), stream_view);
@@ -109,7 +110,7 @@ f_t vector_norm_inf(const rmm::device_uvector<f_t>& x)
     [] __host__ __device__(f_t val) { return abs(val); },
     static_cast<f_t>(0),
     thrust::maximum<f_t>{});
-  RAFT_CHECK_CUDA(x.stream());
+  RAFT_CHECK_CUDA(x.stream().get());
   return max_abs;
 }
 
@@ -125,7 +126,7 @@ f_t vector_norm2(const rmm::device_uvector<f_t>& x)
     [] __host__ __device__(f_t val) { return val * val; },
     f_t(0),
     thrust::plus<f_t>{});
-  RAFT_CHECK_CUDA(x.stream());
+  RAFT_CHECK_CUDA(x.stream().get());
   return std::sqrt(sum_of_squares);
 }
 

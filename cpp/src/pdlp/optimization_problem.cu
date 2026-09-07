@@ -21,6 +21,7 @@
 #include <utilities/logger.hpp>
 #include <utilities/sparse_matrix_helpers.hpp>
 
+#include <cuda/stream>
 #include <raft/core/copy.hpp>
 #include <raft/core/cuda_support.hpp>
 #include <raft/core/device_mdspan.hpp>
@@ -29,7 +30,6 @@
 #include <raft/util/cuda_utils.cuh>
 #include <raft/util/cudart_utils.hpp>
 
-#include <rmm/cuda_stream_view.hpp>
 #include <rmm/device_uvector.hpp>
 #include <rmm/exec_policy.hpp>
 
@@ -57,7 +57,7 @@ namespace cuopt::mathematical_optimization {
 template <typename i_t, typename f_t>
 optimization_problem_t<i_t, f_t>::optimization_problem_t(raft::handle_t const* handle_ptr)
   : handle_ptr_(handle_ptr),
-    stream_view_(handle_ptr != nullptr ? handle_ptr->get_stream() : rmm::cuda_stream_view{}),
+    stream_view_(handle_ptr != nullptr ? handle_ptr->get_stream() : cuda::stream_ref{}),
     A_(0, stream_view_),
     A_indices_(0, stream_view_),
     A_offsets_(0, stream_view_),
@@ -1023,7 +1023,7 @@ static bool csr_matrices_equivalent_with_permutation(const rmm::device_uvector<i
                                                      const rmm::device_uvector<i_t>& d_row_perm_inv,
                                                      const rmm::device_uvector<i_t>& d_col_perm_inv,
                                                      i_t n_cols,
-                                                     rmm::cuda_stream_view stream)
+                                                     cuda::stream_ref stream)
 {
   const i_t nnz = static_cast<i_t>(this_values.size());
   if (nnz != static_cast<i_t>(other_values.size())) { return false; }
@@ -1538,25 +1538,25 @@ struct cast_op {
 };
 
 template <typename From, typename To>
-rmm::device_uvector<To> gpu_cast(const rmm::device_uvector<From>& src, rmm::cuda_stream_view stream)
+rmm::device_uvector<To> gpu_cast(const rmm::device_uvector<From>& src, cuda::stream_ref stream)
 {
   rmm::device_uvector<To> dst(src.size(), stream);
   if (src.size() > 0) {
     RAFT_CUDA_TRY(cub::DeviceTransform::Transform(
-      src.data(), dst.data(), src.size(), cast_op<From, To>{}, stream.value()));
+      src.data(), dst.data(), src.size(), cast_op<From, To>{}, stream.get()));
   }
   return dst;
 }
 
 template rmm::device_uvector<float> gpu_cast<double, float>(const rmm::device_uvector<double>&,
-                                                            rmm::cuda_stream_view);
+                                                            cuda::stream_ref);
 template rmm::device_uvector<double> gpu_cast<float, double>(const rmm::device_uvector<float>&,
-                                                             rmm::cuda_stream_view);
+                                                             cuda::stream_ref);
 
 template <typename i_t, typename f_t>
 template <typename other_f_t>
 optimization_problem_t<i_t, other_f_t> optimization_problem_t<i_t, f_t>::convert_to_other_prec(
-  rmm::cuda_stream_view stream) const
+  cuda::stream_ref stream) const
 {
   optimization_problem_t<i_t, other_f_t> other(handle_ptr_);
 
@@ -1577,43 +1577,43 @@ optimization_problem_t<i_t, other_f_t> optimization_problem_t<i_t, f_t>::convert
                                     static_cast<i_t>(A_indices_.size()),
                                     A_offsets_.data(),
                                     static_cast<i_t>(A_offsets_.size()));
-    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+    stream_view_.sync();
   }
 
   if (c_.size() > 0) {
     auto other_c = gpu_cast<f_t, other_f_t>(c_, stream);
     other.set_objective_coefficients(other_c.data(), static_cast<i_t>(other_c.size()));
-    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+    stream_view_.sync();
   }
 
   if (b_.size() > 0) {
     auto other_b = gpu_cast<f_t, other_f_t>(b_, stream);
     other.set_constraint_bounds(other_b.data(), static_cast<i_t>(other_b.size()));
-    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+    stream_view_.sync();
   }
 
   if (constraint_lower_bounds_.size() > 0) {
     auto other_clb = gpu_cast<f_t, other_f_t>(constraint_lower_bounds_, stream);
     other.set_constraint_lower_bounds(other_clb.data(), static_cast<i_t>(other_clb.size()));
-    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+    stream_view_.sync();
   }
 
   if (constraint_upper_bounds_.size() > 0) {
     auto other_cub = gpu_cast<f_t, other_f_t>(constraint_upper_bounds_, stream);
     other.set_constraint_upper_bounds(other_cub.data(), static_cast<i_t>(other_cub.size()));
-    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+    stream_view_.sync();
   }
 
   if (variable_lower_bounds_.size() > 0) {
     auto other_vlb = gpu_cast<f_t, other_f_t>(variable_lower_bounds_, stream);
     other.set_variable_lower_bounds(other_vlb.data(), static_cast<i_t>(other_vlb.size()));
-    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+    stream_view_.sync();
   }
 
   if (variable_upper_bounds_.size() > 0) {
     auto other_vub = gpu_cast<f_t, other_f_t>(variable_upper_bounds_, stream);
     other.set_variable_upper_bounds(other_vub.data(), static_cast<i_t>(other_vub.size()));
-    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+    stream_view_.sync();
   }
 
   if (variable_types_.size() > 0) {
@@ -1641,8 +1641,7 @@ template class CUOPT_EXPORT optimization_problem_t<int32_t, double>;
 
 #if PDLP_INSTANTIATE_FLOAT || MIP_INSTANTIATE_FLOAT
 template CUOPT_EXPORT optimization_problem_t<int32_t, float>
-  optimization_problem_t<int32_t, double>::convert_to_other_prec<float>(
-    rmm::cuda_stream_view) const;
+  optimization_problem_t<int32_t, double>::convert_to_other_prec<float>(cuda::stream_ref) const;
 #endif
 
 }  // namespace cuopt::mathematical_optimization

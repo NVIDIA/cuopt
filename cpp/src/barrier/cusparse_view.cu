@@ -145,7 +145,7 @@ void cusparse_view_t<i_t, f_t>::init_spmv_buffer_and_preprocess(cusparseSpMatDes
                                                   y,
                                                   spmv_alg,
                                                   &buffer_size_spmv,
-                                                  handle_ptr_->get_stream()));
+                                                  handle_ptr_->get_stream().get()));
   buffer.resize(buffer_size_spmv, handle_ptr_->get_stream());
 
   my_cusparsespmv_preprocess(handle_ptr_->get_cusparse_handle(),
@@ -157,7 +157,7 @@ void cusparse_view_t<i_t, f_t>::init_spmv_buffer_and_preprocess(cusparseSpMatDes
                              y,
                              spmv_alg,
                              buffer.data(),
-                             handle_ptr_->get_stream());
+                             handle_ptr_->get_stream().get());
 }
 
 template <typename i_t, typename f_t>
@@ -177,9 +177,10 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
     d_zero_(zero_v<f_t>, handle_ptr->get_stream())
 {
   RAFT_CUBLAS_TRY(raft::linalg::detail::cublassetpointermode(
-    handle_ptr->get_cublas_handle(), CUBLAS_POINTER_MODE_DEVICE, handle_ptr->get_stream()));
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsesetpointermode(
-    handle_ptr->get_cusparse_handle(), CUSPARSE_POINTER_MODE_DEVICE, handle_ptr->get_stream()));
+    handle_ptr->get_cublas_handle(), CUBLAS_POINTER_MODE_DEVICE, handle_ptr->get_stream().get()));
+  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsesetpointermode(handle_ptr->get_cusparse_handle(),
+                                                                 CUSPARSE_POINTER_MODE_DEVICE,
+                                                                 handle_ptr->get_stream().get()));
   // TMP matrix data should already be on the GPU
   constexpr bool debug = false;
   if (debug) { printf("A hash: %zu\n", A.hash()); }
@@ -272,7 +273,7 @@ void cusparse_view_t<i_t, f_t>::spmv(f_t alpha,
                                      y,
                                      get_spmv_alg(rows_),
                                      (f_t*)spmv_buffer_.data(),
-                                     handle_ptr_->get_stream());
+                                     handle_ptr_->get_stream().get());
 }
 
 template <typename i_t, typename f_t>
@@ -327,7 +328,7 @@ void cusparse_view_t<i_t, f_t>::transpose_spmv(f_t alpha,
                                      y,
                                      get_spmv_alg(A_T_offsets_.size() - 1),
                                      (f_t*)spmv_buffer_transpose_.data(),
-                                     handle_ptr_->get_stream());
+                                     handle_ptr_->get_stream().get());
 }
 
 template class cusparse_view_t<int, double>;

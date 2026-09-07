@@ -21,6 +21,7 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/high_res_timer.hpp>
 
+#include <cuda/stream>
 #include <raft/core/error.hpp>
 #include <raft/core/handle.hpp>
 
@@ -689,7 +690,7 @@ class base_test_t {
   }
 
   raft::handle_t handle_;
-  rmm::cuda_stream_view stream_view_;
+  cuda::stream_ref stream_view_;
   HighResTimer hr_timer_;
 
   bool multi_capacity_{false};

@@ -19,9 +19,9 @@
 
 #include <utilities/unique_pinned_ptr.hpp>
 
+#include <cuda/stream>
 #include <raft/core/handle.hpp>
 
-#include <rmm/cuda_stream_view.hpp>
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 
@@ -214,7 +214,7 @@ class pdlp_termination_strategy_t {
   void check_termination_criteria();
 
   raft::handle_t const* handle_ptr_{nullptr};
-  rmm::cuda_stream_view stream_view_;
+  cuda::stream_ref stream_view_;
 
   mip::problem_t<i_t, f_t>* problem_ptr;
 

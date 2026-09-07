@@ -1,14 +1,14 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 #pragma once
 
 #include <cuda_runtime.h>
+#include <cuda/stream>
 #include <raft/util/cuda_utils.cuh>
-#include <rmm/cuda_stream_view.hpp>
 
 namespace cuopt {
 
@@ -21,19 +21,19 @@ class event_handler_t {
   event_handler_t(const event_handler_t&)            = delete;
   event_handler_t& operator=(const event_handler_t&) = delete;
 
-  void record(rmm::cuda_stream_view stream_view)
+  void record(cuda::stream_ref stream_view)
   {
-    RAFT_CUDA_TRY(cudaEventRecord(event_, stream_view));
+    RAFT_CUDA_TRY(cudaEventRecord(event_, stream_view.get()));
   }
 
-  void record_with_flags(rmm::cuda_stream_view stream_view, int flags)
+  void record_with_flags(cuda::stream_ref stream_view, int flags)
   {
-    RAFT_CUDA_TRY(cudaEventRecordWithFlags(event_, stream_view, flags));
+    RAFT_CUDA_TRY(cudaEventRecordWithFlags(event_, stream_view.get(), flags));
   }
 
-  void stream_wait(rmm::cuda_stream_view stream_view)
+  void stream_wait(cuda::stream_ref stream_view)
   {
-    RAFT_CUDA_TRY(cudaStreamWaitEvent(stream_view, event_));
+    RAFT_CUDA_TRY(cudaStreamWaitEvent(stream_view.get(), event_));
   }
 
   float elapsed_time_since_ms(const event_handler_t& start)

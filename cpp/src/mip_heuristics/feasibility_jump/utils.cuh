@@ -11,6 +11,7 @@
 
 #include <thrust/pair.h>
 #include <cuda/atomic>
+#include <cuda/stream>
 #include <raft/core/device_span.hpp>
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
@@ -36,23 +37,23 @@ template <typename word_t = uint32_t>
 struct bitmap_t {
   static constexpr int bits_per_word = sizeof(word_t) * CHAR_BIT;
 
-  bitmap_t(size_t size, const rmm::cuda_stream_view& stream)
+  bitmap_t(size_t size, const cuda::stream_ref& stream)
     : validity_bitmap(size > 0 ? (size - 1) / bits_per_word + 1 : 0, stream)
   {
     clear(stream);
   }
 
-  void clear(const rmm::cuda_stream_view& stream)
+  void clear(const cuda::stream_ref& stream)
   {
     cudaMemsetAsync(
-      validity_bitmap.data(), 0, sizeof(word_t) * validity_bitmap.size(), stream.value());
+      validity_bitmap.data(), 0, sizeof(word_t) * validity_bitmap.size(), stream.get());
   }
   void clear(const raft::handle_t* handle_ptr)
   {
     thrust::uninitialized_fill(
       handle_ptr->get_thrust_policy(), validity_bitmap.begin(), validity_bitmap.end(), 0);
   }
-  void resize(size_t size, const rmm::cuda_stream_view& stream)
+  void resize(size_t size, const cuda::stream_ref& stream)
   {
     validity_bitmap.resize(size > 0 ? (size - 1) / bits_per_word + 1 : 0, stream);
   }
@@ -100,7 +101,7 @@ struct bitmap_t {
 
 template <typename i_t, typename f_t>
 struct contiguous_set_t {
-  contiguous_set_t(i_t max_size, const rmm::cuda_stream_view& stream)
+  contiguous_set_t(i_t max_size, const cuda::stream_ref& stream)
     : set_size(zero_v<i_t>, stream),
       lock(zero_v<i_t>, stream),
       contents(max_size, stream),
@@ -110,12 +111,12 @@ struct contiguous_set_t {
     clear(stream);
   }
 
-  void clear(const rmm::cuda_stream_view& stream)
+  void clear(const cuda::stream_ref& stream)
   {
     set_size.set_value_to_zero_async(stream);
     // can't use thrust::fill, needs a memset node in order to be recorded in CUDA graphs
     // works bcs (uint8_t)-1 == 0xFF => (repeated 4 times) 0xFFFFFFFF == (uint32_t)-1
-    cudaMemsetAsync(index_map.data(), -1, sizeof(i_t) * index_map.size(), stream.value());
+    cudaMemsetAsync(index_map.data(), -1, sizeof(i_t) * index_map.size(), stream.get());
     validity_bitmap.clear(stream);
   }
 
@@ -127,7 +128,7 @@ struct contiguous_set_t {
     set_size.set_value_to_zero_async(handle_ptr->get_stream());
   }
 
-  void resize(size_t size, const rmm::cuda_stream_view& stream)
+  void resize(size_t size, const cuda::stream_ref& stream)
   {
     contents.resize(size, stream);
     index_map.resize(size, stream);

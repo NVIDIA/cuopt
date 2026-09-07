@@ -270,10 +270,10 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::guided_ejection_search_loop(i_
     }
 
     // Increase penalty counter for this request
-    incr_p_scores<i_t><<<1, 1, 0, solution_ptr->sol_handle->get_stream()>>>(
+    incr_p_scores<i_t><<<1, 1, 0, solution_ptr->sol_handle->get_stream().get()>>>(
       request, p_scores_.data(), depot_included);
 
-    RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream());
+    RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream().get());
     bool move_executed = config.frag_eject_first
                            ? execute_best_insertion_ejection_solution(request, counter)
                            : run_lexicographic_search(request);
@@ -306,7 +306,7 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::guided_ejection_search_loop(i_
         return false;
       }
 
-      RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream());
+      RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream().get());
       // reinsert the request and increase the ejection failure counter
       EP.push_back_last();
       consecutive_ejection_failure++;
@@ -522,9 +522,9 @@ void guided_ejection_search_t<i_t, f_t, REQUEST>::route_minimizer_loop()
     std::tie(vehicle_id, random_route_id) = next_route_id();
     if (random_route_id < 0) { break; }
     // Save solution state before ges loop in case of route restoration
-    stream.synchronize();
+    stream.sync();
     ges_loop_save_state.copy_device_solution(*solution_ptr);
-    stream.synchronize();
+    stream.sync();
     solution_ptr->remove_routes(EP, std::vector<i_t>{random_route_id});
 
     // Routes can be empty when number of vehicles is more than number of requests
@@ -532,9 +532,9 @@ void guided_ejection_search_t<i_t, f_t, REQUEST>::route_minimizer_loop()
 
     // If ges loop left early, restore state
     if (!guided_ejection_search_loop(counter, true)) {
-      stream.synchronize();
+      stream.sync();
       solution_ptr->copy_device_solution(ges_loop_save_state);
-      stream.synchronize();
+      stream.sync();
     }
     solution_ptr->global_runtime_checks(true, true, "route_minimizer_loop");
   }
