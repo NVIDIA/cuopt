@@ -111,7 +111,7 @@ class pdhg_solver_t {
   // kernels to touch the iterate. Batch mode and per-climber bound overrides both re-project a
   // subset of variables afterwards from the pre-update iterate, so those keep applying Halpern as
   // a separate pass over the whole vector.
-  bool halpern_update_is_fused() const { return !batch_mode_; }
+  bool halpern_update_is_fused() const { return !batch_mode_ && new_bounds_idx_.size() == 0; }
 
   // Pure cub-transform extractions. Allows for clearer containment of the calls and ensures
   // the single-GPU vs distributed-GPU uses the same calls
