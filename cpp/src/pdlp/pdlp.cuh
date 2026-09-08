@@ -222,7 +222,6 @@ class pdlp_solver_t {
 
   // Inner solver
   pdlp::pdhg_solver_t<i_t, f_t> pdhg_solver_;
-  void halpern_update();
 
   // This solver is the distributed-PDLP master orchestrator iff it owns the
   // multi-GPU engine. Shards (sub-solvers) leave the optional empty -> false.
