@@ -896,6 +896,14 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
       op_problem.get_handle_ptr()->get_stream()};
   }
 
+  // catch problem representation troubles early
+  try {
+    problem_checking_t<i_t, f_t>::check_problem_representation(op_problem);
+  } catch (const cuopt::logic_error& e) {
+    CUOPT_LOG_ERROR("Error in solve_mip: %s", e.what());
+    return mip_solution_t<i_t, f_t>{e, op_problem.get_handle_ptr()->get_stream()};
+  }
+
   // Run a very short burst of CPUFJ during the few dozen of milliseconds at solver init for very
   // small instances
   std::shared_ptr<mip::early_cpufj_t<i_t, f_t>> pre_solve_heuristics;
