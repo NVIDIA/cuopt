@@ -14,6 +14,10 @@ on:
         type: string
       build_type:
         type: string
+      build-datetime:
+        type: string
+        required: true
+        description: 'Build datetime from compute-build-details, matching the published wheels'
       arch:
         type: string
         default: '["amd64", "arm64"]'
@@ -83,17 +87,22 @@ jobs:
 
       - name: Compute cuopt version
         id: compute-cuopt-ver
+        env:
+          BUILD_DATETIME: ${{ inputs.build-datetime }}
         run: |
-          ver=$(rapids-generate-version)
+          # .post<datetime> matches the suffix ci/build_wheel.sh gave the published wheels.
+          # The value comes from the same compute-build-details job that stamped them, so the
+          # pin resolves to this run's build. It is a no-op on release builds.
+          ver=$(RAPIDS_VERSION_SUFFIX=".post${BUILD_DATETIME}" rapids-generate-version)
           # Remove starting 0s from version 25.08.0a18 -> 25.8.0a18
           CUOPT_VER=$(echo "$ver" | sed -E 's/\.0+([0-9])/\.\1/g')
-          echo "CUOPT_VER=$CUOPT_VER" >> $GITHUB_OUTPUT
+          echo "CUOPT_VER=$CUOPT_VER" >> "$GITHUB_OUTPUT"
           if rapids-is-release-build; then
             IMAGE_TAG_PREFIX="$CUOPT_VER"
           else
             IMAGE_TAG_PREFIX=$(echo "$CUOPT_VER" | sed -E 's/([0-9]+\.[0-9]+\.[0-9]+)a.*/\1a/')
           fi
-          echo "IMAGE_TAG_PREFIX=$IMAGE_TAG_PREFIX" >> $GITHUB_OUTPUT
+          echo "IMAGE_TAG_PREFIX=$IMAGE_TAG_PREFIX" >> "$GITHUB_OUTPUT"
 
   build-images:
     name: Build images

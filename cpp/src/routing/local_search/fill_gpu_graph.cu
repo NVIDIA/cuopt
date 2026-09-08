@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -8,7 +8,7 @@
 #include "../solution/solution.cuh"
 #include "local_search.cuh"
 
-#include <utilities/seed_generator.cuh>
+#include <routing/utilities/seed_generator.cuh>
 #include "../util_kernels/top_k.cuh"
 #include "cycle_finder/cycle_graph.hpp"
 #include "routing/utilities/cuopt_utils.cuh"
@@ -158,13 +158,13 @@ void local_search_t<i_t, f_t, REQUEST>::fill_gpu_graph(solution_t<i_t, f_t, REQU
   solution.sol_handle->sync_stream();
   const auto stream                   = solution.sol_handle->get_stream();
   move_candidates.graph.special_index = solution.get_num_orders() + solution.n_routes;
-  fill_intra_candidates<i_t, f_t, REQUEST><<<solution.n_routes, TPB, 0, stream>>>(
-    solution.view(), move_candidates.view(), seed_generator::get_seed());
+  fill_intra_candidates<i_t, f_t, REQUEST><<<solution.n_routes, TPB, 0, stream.get()>>>(
+    solution.view(), move_candidates.view(), solution.problem_ptr->seed_gen.get_seed());
   // +1 for special node
   i_t n_blocks = solution.get_num_requests() + 1;
   fill_graph_kernel<i_t, f_t, REQUEST, TPB>
-    <<<n_blocks, TPB, 0, stream>>>(solution.view(), move_candidates.view());
-  stream.synchronize();
+    <<<n_blocks, TPB, 0, stream.get()>>>(solution.view(), move_candidates.view());
+  stream.sync();
 }
 template void local_search_t<int, float, request_t::PDP>::fill_gpu_graph(
   solution_t<int, float, request_t::PDP>&);

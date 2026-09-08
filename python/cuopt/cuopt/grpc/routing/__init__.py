@@ -12,7 +12,7 @@ Build a :class:`cuopt.routing.DataModel` and solve it on a remote
     dm = routing.DataModel(n_locations, n_fleet)
     dm.add_cost_matrix(cost)
     ...
-    client = RoutingClient("gpu-host:50051")
+    client = RoutingClient("gpu-host", 50051)
     solution = client.solve(dm)
 """
 

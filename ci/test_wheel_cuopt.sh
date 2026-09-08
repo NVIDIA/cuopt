@@ -70,13 +70,19 @@ FAILED_STEPS=()
 trap "EXITCODE=1" ERR
 set +e
 
+# shellcheck source=ci/utils/crash_helpers.sh
+source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/utils/crash_helpers.sh"
+
+
 # Run CLI tests
-timeout 10m bash ./python/libcuopt/libcuopt/tests/test_cli.sh || FAILED_STEPS+=("cuopt_cli")
+run_step_with_timeout "cuopt_cli" 10m "" \
+  bash ./python/libcuopt/libcuopt/tests/test_cli.sh
 
 # Run Python tests
-timeout 30m ./ci/run_cuopt_pytests.sh \
+run_step_with_timeout "pytest cuopt (wheel)" 45m "${RAPIDS_TESTS_DIR}/junit-wheel-cuopt.xml" \
+  ./ci/run_cuopt_pytests.sh \
   --junitxml="${RAPIDS_TESTS_DIR}/junit-wheel-cuopt.xml" \
-  --verbose --capture=no || FAILED_STEPS+=("pytest cuopt (wheel)")
+  --verbose --capture=no
 
 # run thirdparty integration tests for only nightly builds
 if [[ "${RAPIDS_BUILD_TYPE}" == "nightly" ]]; then

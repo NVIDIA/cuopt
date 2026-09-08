@@ -2324,7 +2324,8 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
   const std::vector<variable_type_t>& var_types,
   const std::vector<f_t>& xstar,
   i_t knapsack_row,
-  inequality_t<i_t, f_t>& cut)
+  inequality_t<i_t, f_t>& cut,
+  f_t start_time)
 {
   const bool verbose = false;
   // Get the row associated with the knapsack constraint
@@ -2499,7 +2500,8 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
 
   // Lift the cut
   inequality_t<i_t, f_t> lifted_cut(lp.num_cols);
-  lift_knapsack_cut(knapsack_inequality, minimal_cover_cut, c1_partition, c2_partition, lifted_cut);
+  lift_knapsack_cut(
+    knapsack_inequality, minimal_cover_cut, c1_partition, c2_partition, lifted_cut, start_time);
   lifted_cut.negate();
 
   // The cut is now in the form:
@@ -2679,7 +2681,8 @@ void knapsack_generation_t<i_t, f_t>::lift_knapsack_cut(
   const inequality_t<i_t, f_t>& base_cut,
   const std::vector<i_t>& c1_partition,
   const std::vector<i_t>& c2_partition,
-  inequality_t<i_t, f_t>& lifted_cut)
+  inequality_t<i_t, f_t>& lifted_cut,
+  f_t start_time)
 {
   // The base cut is in the form: sum_{j in cover} x_j <= |cover| - 1
 
@@ -2795,14 +2798,15 @@ void knapsack_generation_t<i_t, f_t>::lift_knapsack_cut(
   best_score_last_permutation(remaining_coefficients, permutation);
 
   while (permutation.size() > 0) {
+    if (toc(start_time) >= settings_.time_limit) { break; }
     const i_t h   = permutation.back();
     const i_t k   = remaining_variables[h];
     const f_t a_k = remaining_coefficients[h];
 
     f_t capacity = knapsack_inequality.rhs - a_k;
 
-    f_t objective =
-      exact_knapsack_problem_integer_values_fraction_values(values, weights, capacity, solution);
+    f_t objective = exact_knapsack_problem_integer_values_fraction_values(
+      values, weights, capacity, solution, start_time);
     if (std::isnan(objective)) {
       settings_.log.debug("lifting knapsack problem failed\n");
       break;
@@ -3021,8 +3025,10 @@ f_t knapsack_generation_t<i_t, f_t>::exact_knapsack_problem_integer_values_fract
   const std::vector<i_t>& values,
   const std::vector<f_t>& weights,
   f_t rhs,
-  std::vector<f_t>& solution)
+  std::vector<f_t>& solution,
+  f_t start_time)
 {
+  if (toc(start_time) >= settings_.time_limit) { return std::numeric_limits<f_t>::quiet_NaN(); }
   // Solve the knapsack problem
   // maximize sum_{j=0}^n values[j] * solution[j]
   // subject to sum_{j=0}^n weights[j] * solution[j] <= rhs
@@ -3050,6 +3056,7 @@ f_t knapsack_generation_t<i_t, f_t>::exact_knapsack_problem_integer_values_fract
 
   // 4. Dynamic programming
   for (i_t j = 1; j <= n; ++j) {
+    if (toc(start_time) >= settings_.time_limit) { return std::numeric_limits<f_t>::quiet_NaN(); }
     for (i_t v = 0; v <= sum_value; ++v) {
       // Do not take item i-1
       dp(j, v) = dp(j - 1, v);
@@ -3095,19 +3102,27 @@ void cut_generation_t<i_t, f_t>::generate_implied_bound_cuts(
 {
   if (probing_implied_bound_.zero_offsets.empty()) { return; }
 
-  const f_t tol      = 1e-4;
-  i_t num_cuts       = 0;
-  const i_t pib_cols = static_cast<i_t>(probing_implied_bound_.zero_offsets.size()) - 1;
-  const i_t n_cols   = std::min(lp.num_cols, pib_cols);
+  const f_t tol                    = 1e-4;
+  i_t num_cuts                     = 0;
+  const i_t pib_cols               = probing_implied_bound_.zero_offsets.size() - 1;
+  const i_t n_cols                 = std::min(lp.num_cols, pib_cols);
+  f_t work_estimate                = 0.0;
+  const f_t max_work_estimate      = 1e8;
+  constexpr f_t implication_work   = 16.0;
+  constexpr f_t generated_cut_work = 16.0;
 
   for (i_t j = 0; j < n_cols; j++) {
+    if (work_estimate > max_work_estimate || toc(start_time) >= settings.time_limit) { return; }
     if (var_types[j] == variable_type_t::CONTINUOUS) { continue; }
     const f_t xstar_j = xstar[j];
 
     // x_j = 0 implications
     const i_t zero_begin = probing_implied_bound_.zero_offsets[j];
     const i_t zero_end   = probing_implied_bound_.zero_offsets[j + 1];
+    const i_t one_begin  = probing_implied_bound_.one_offsets[j];
+    const i_t one_end    = probing_implied_bound_.one_offsets[j + 1];
     for (i_t p = zero_begin; p < zero_end; p++) {
+      work_estimate += implication_work;
       const i_t i = probing_implied_bound_.zero_variables[p];
       if (i == j) { continue; }
       const f_t l_i = lp.lower[i];
@@ -3127,6 +3142,7 @@ void cut_generation_t<i_t, f_t>::generate_implied_bound_cuts(
           cut.push_back(j, coeff_j);
           cut.rhs = -b_ub;
           cut_pool_.add_cut(cut_type_t::IMPLIED_BOUND, cut);
+          work_estimate += generated_cut_work;
           num_cuts++;
         }
       }
@@ -3145,15 +3161,16 @@ void cut_generation_t<i_t, f_t>::generate_implied_bound_cuts(
           cut.push_back(j, coeff_j);
           cut.rhs = b_lb;
           cut_pool_.add_cut(cut_type_t::IMPLIED_BOUND, cut);
+          work_estimate += generated_cut_work;
           num_cuts++;
         }
       }
     }
+    if (work_estimate > max_work_estimate || toc(start_time) >= settings.time_limit) { return; }
 
     // x_j = 1 implications
-    const i_t one_begin = probing_implied_bound_.one_offsets[j];
-    const i_t one_end   = probing_implied_bound_.one_offsets[j + 1];
     for (i_t p = one_begin; p < one_end; p++) {
+      work_estimate += implication_work;
       const i_t i = probing_implied_bound_.one_variables[p];
       if (i == j) { continue; }
       const f_t l_i = lp.lower[i];
@@ -3173,6 +3190,7 @@ void cut_generation_t<i_t, f_t>::generate_implied_bound_cuts(
           cut.push_back(j, coeff_j);
           cut.rhs = -u_i;
           cut_pool_.add_cut(cut_type_t::IMPLIED_BOUND, cut);
+          work_estimate += generated_cut_work;
           num_cuts++;
         }
       }
@@ -3190,10 +3208,12 @@ void cut_generation_t<i_t, f_t>::generate_implied_bound_cuts(
           cut.push_back(j, coeff_j);
           cut.rhs = rhs_val;
           cut_pool_.add_cut(cut_type_t::IMPLIED_BOUND, cut);
+          work_estimate += generated_cut_work;
           num_cuts++;
         }
       }
     }
+    if (work_estimate > max_work_estimate || toc(start_time) >= settings.time_limit) { return; }
   }
 
   if (num_cuts > 0) {
@@ -3604,7 +3624,8 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
     if (toc(start_time) >= settings.time_limit) { return true; }
     ZERO_HALF_DEBUG("generate_cuts: about to call generate_zero_half_cuts");
     f_t cut_start_time = tic();
-    bool feasible      = generate_zero_half_cuts(lp, settings, var_types, xstar, zstar, start_time);
+    bool feasible      = generate_zero_half_cuts(
+      lp, settings, Arow, new_slacks, var_types, xstar, zstar, variable_bounds, start_time);
     ZERO_HALF_DEBUG("generate_cuts: returned from generate_zero_half_cuts feasible=%d",
                     static_cast<int>(feasible));
     if (!feasible) {
@@ -3637,7 +3658,7 @@ void cut_generation_t<i_t, f_t>::generate_knapsack_cuts(
       if (toc(start_time) >= settings.time_limit) { return; }
       inequality_t<i_t, f_t> cut(lp.num_cols);
       i_t knapsack_status = knapsack_generation_.generate_knapsack_cut(
-        lp, settings, Arow, new_slacks, var_types, xstar, knapsack_row, cut);
+        lp, settings, Arow, new_slacks, var_types, xstar, knapsack_row, cut, start_time);
       if (knapsack_status == 0) { cut_pool_.add_cut(cut_type_t::KNAPSACK, cut); }
     }
   }
@@ -3855,9 +3876,12 @@ template <typename i_t, typename f_t>
 bool cut_generation_t<i_t, f_t>::generate_zero_half_cuts(
   const lp_problem_t<i_t, f_t>& lp,
   const simplex_solver_settings_t<i_t, f_t>& settings,
+  csr_matrix_t<i_t, f_t>& Arow,
+  const std::vector<i_t>& new_slacks,
   const std::vector<variable_type_t>& var_types,
   const std::vector<f_t>& xstar,
   const std::vector<f_t>& reduced_costs,
+  variable_bounds_t<i_t, f_t>& variable_bounds,
   f_t start_time)
 {
   if (settings.zero_half_cuts == 0) { return true; }
@@ -3882,12 +3906,25 @@ bool cut_generation_t<i_t, f_t>::generate_zero_half_cuts(
     static_cast<int>(sub_cg_.ready),
     sub_cg_.vertices.size());
 
+  f_t mod2_work_estimate    = 0.0;
+  const bool mod2_completed = generate_mod2_zero_half_cuts(cut_pool_,
+                                                           lp,
+                                                           settings,
+                                                           Arow,
+                                                           new_slacks,
+                                                           var_types,
+                                                           xstar,
+                                                           variable_bounds,
+                                                           start_time,
+                                                           mod2_work_estimate);
+  if (!mod2_completed) { return true; }
+
   // The fractional conflict-graph subgraph is built once per cut pass in
-  // prepare_fractional_sub_conflict_graph() (called from generate_cuts) and shared with
-  // the clique-cut separator. Skip if the build was unable to produce a
-  // useable sub-CG (clique table missing/empty, work/time budget hit, etc.).
+  // prepare_fractional_sub_conflict_graph() and remains a complementary
+  // odd-cycle / odd-wheel separator. If no conflict graph is available, the
+  // general row-parity cuts above are still retained.
   if (!sub_cg_.ready) {
-    ZERO_HALF_DEBUG("sub_cg_ not ready, skipping");
+    ZERO_HALF_DEBUG("sub_cg_ not ready, skipping odd-cycle path");
     return true;
   }
   if (sub_cg_.empty_subgraph()) {
@@ -3905,8 +3942,8 @@ bool cut_generation_t<i_t, f_t>::generate_zero_half_cuts(
   cuopt_assert(user_problem_.var_types.size() == static_cast<size_t>(num_vars),
                "Zero-half user problem var_types size mismatch");
 
-  const f_t min_violation = std::max(settings.primal_tol, static_cast<f_t>(1e-6));
-  const f_t bound_tol     = settings.primal_tol;
+  constexpr f_t min_violation = (f_t)1e-6;
+  const f_t bound_tol         = settings.primal_tol;
   // shortest path of length >= 0.5 - min_violation cannot yield a violated cut
   const f_t cutoff            = static_cast<f_t>(0.5) - min_violation;
   f_t work_estimate           = 0.0;
@@ -4070,21 +4107,22 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
   // at the beginning of each iteration of the for loop below
   std::vector<i_t> aggregated_rows;
   std::vector<i_t> aggregated_mark(lp.num_rows, 0);
+  const i_t max_cuts = std::min(lp.num_rows, 100000);
 
   // Transform the relaxation solution
   std::vector<f_t> transformed_xstar;
   complemented_mir.bound_substitution(lp, variable_bounds, var_types, xstar, transformed_xstar);
 
-  const i_t max_cuts = std::min(lp.num_rows, 100000);
   f_t work_estimate  = 0.0;
-  i_t num_cuts       = 0;
-  while (num_cuts < max_cuts && !score_queue.empty()) {
+  i_t cuts_processed = 0;
+  while (cuts_processed < max_cuts && !score_queue.empty()) {
     if (toc(start_time) >= settings.time_limit) { break; }
     // Get the row with the highest score from the queue
     auto [max_score, i] = score_queue.top();
     score_queue.pop();
     // skip stale score entries
     if (max_score != scores[i]) { continue; }
+    ++cuts_processed;
 
     // Add the current row to the aggregated set
     aggregated_mark[i] = 1;
@@ -5304,7 +5342,8 @@ void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::bound_substitution(
   const variable_bounds_t<i_t, f_t>& variable_bounds,
   const std::vector<variable_type_t>& var_types,
   const std::vector<f_t>& xstar,
-  std::vector<f_t>& transformed_xstar)
+  std::vector<f_t>& transformed_xstar,
+  bool prefer_variable_bound_on_tie)
 {
   transformed_xstar.resize(lp.num_cols);
   // Perform bound substitution for continuous variables
@@ -5368,8 +5407,12 @@ void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::bound_substitution(
       bound_changed_[j]     = 0;
       continue;
     }
-    if (has_finite_lower_bound &&
-        (!has_finite_upper_bound || (xstar_j - lb_star_[j] <= ub_star_[j] - xstar_j))) {
+    const f_t lower_distance = xstar_j - lb_star_[j];
+    const f_t upper_distance = ub_star_[j] - xstar_j;
+    const bool prefer_upper_variable_bound =
+      prefer_variable_bound_on_tie && ub_variable_[j] >= 0 && lower_distance == upper_distance;
+    if (has_finite_lower_bound && (!has_finite_upper_bound || (lower_distance <= upper_distance &&
+                                                               !prefer_upper_variable_bound))) {
       // Use the lower bound
       // lb_star_j <= x_j <= ub_star_j
       // v_j = x_j - lb_star_j,
@@ -5693,7 +5736,10 @@ f_t complemented_mixed_integer_rounding_cut_t<i_t, f_t>::compute_violation(
 
 template <typename i_t, typename f_t>
 void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::substitute_slacks(
-  const lp_problem_t<i_t, f_t>& lp, csr_matrix_t<i_t, f_t>& Arow, inequality_t<i_t, f_t>& cut)
+  const lp_problem_t<i_t, f_t>& lp,
+  csr_matrix_t<i_t, f_t>& Arow,
+  inequality_t<i_t, f_t>& cut,
+  f_t* work_estimate)
 {
   // Remove slacks from the cut
   // So that the cut is only over the original variables
@@ -5701,6 +5747,7 @@ void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::substitute_slacks(
   i_t cut_nz       = 0;
   std::vector<i_t> cut_indices;
   cut_indices.reserve(cut.size());
+  if (work_estimate != nullptr) { *work_estimate += cut.size(); }
 
   for (i_t k = 0; k < cut.size(); k++) {
     const i_t j  = cut.index(k);
@@ -5743,6 +5790,7 @@ void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::substitute_slacks(
       cut.rhs -= cj * lp.rhs[i] / alpha;
       const i_t row_start = Arow.row_start[i];
       const i_t row_end   = Arow.row_start[i + 1];
+      if (work_estimate != nullptr) { *work_estimate += row_end - row_start; }
       for (i_t q = row_start; q < row_end; q++) {
         const i_t h = Arow.j[q];
         if (h != j) {
@@ -5764,6 +5812,9 @@ void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::substitute_slacks(
 
   if (found_slack) {
     scratch_pad_.get_pad(cut.vector.i, cut.vector.x);
+    if (work_estimate != nullptr) {
+      *work_estimate += 2 * cut.size() + cut.size() * std::log2((f_t)cut.size() + (f_t)1.0);
+    }
     // Sort the cut
     cut.sort();
   }

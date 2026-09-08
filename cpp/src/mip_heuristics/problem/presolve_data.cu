@@ -101,6 +101,47 @@ bool presolve_data_t<i_t, f_t>::pre_process_assignment(problem_t<i_t, f_t>& prob
   return true;
 }
 
+template <typename i_t, typename f_t>
+static uint32_t boundary_pattern(const bve_reconstruction_t<i_t>& bve,
+                                 const std::vector<f_t>& assignment)
+{
+  cuopt_assert(bve.witness.size() == (size_t{1} << bve.boundary.size()),
+               "block witness size mismatch");
+  uint32_t pattern = 0;
+  for (size_t j = 0; j < bve.boundary.size(); ++j) {
+    cuopt_assert(bve.boundary[j] < (i_t)assignment.size(), "block boundary out of bounds");
+    const int bit = (assignment[bve.boundary[j]] > 0.5) ? 1 : 0;
+    pattern |= (uint32_t)bit << j;
+  }
+  return pattern;
+}
+
+template <typename i_t, typename f_t>
+static void reconstruct_bve_block(const bve_reconstruction_t<i_t>& bve,
+                                  std::vector<f_t>& assignment)
+{
+  const uint32_t witness = bve.witness[boundary_pattern<i_t, f_t>(bve, assignment)];
+  for (size_t k = 0; k < bve.interior.size(); ++k) {
+    cuopt_assert(bve.interior[k] < (i_t)assignment.size(), "block interior out of bounds");
+    assignment[bve.interior[k]] = (witness >> k) & 1u;
+  }
+}
+
+template <typename i_t, typename f_t>
+static void reconstruct_affine_sub(const substitution_t<i_t, f_t>& sub,
+                                   std::vector<f_t>& assignment)
+{
+  cuopt_assert(sub.substituted_var < (i_t)assignment.size(), "substituted_var out of bounds");
+  cuopt_assert(sub.substituting_var < (i_t)assignment.size(), "substituting_var out of bounds");
+  assignment[sub.substituted_var] = sub.offset + sub.coefficient * assignment[sub.substituting_var];
+  CUOPT_LOG_DEBUG("Post-process substitution: x[%d] = %f + %f * x[%d] = %f",
+                  sub.substituted_var,
+                  sub.offset,
+                  sub.coefficient,
+                  sub.substituting_var,
+                  assignment[sub.substituted_var]);
+}
+
 // this function is used to post process the assignment
 // it removes the additional variable for free variables
 // and expands the assignment to the original variable dimension
@@ -135,19 +176,12 @@ void presolve_data_t<i_t, f_t>::post_process_assignment(
     }
   }
 
-  // Apply variable substitutions from probing: x_substituted = offset + coefficient *
-  // x_substituting
-  for (const auto& sub : variable_substitutions) {
-    cuopt_assert(sub.substituted_var < (i_t)h_assignment.size(), "substituted_var out of bounds");
-    cuopt_assert(sub.substituting_var < (i_t)h_assignment.size(), "substituting_var out of bounds");
-    h_assignment[sub.substituted_var] =
-      sub.offset + sub.coefficient * h_assignment[sub.substituting_var];
-    CUOPT_LOG_DEBUG("Post-process substitution: x[%d] = %f + %f * x[%d] = %f",
-                    sub.substituted_var,
-                    sub.offset,
-                    sub.coefficient,
-                    sub.substituting_var,
-                    h_assignment[sub.substituted_var]);
+  // Reverse-append undo of the unified GPU-presolve reconstruction log
+  for (auto it = postsolve_reconstructions.rbegin(); it != postsolve_reconstructions.rend(); ++it) {
+    switch (it->kind) {
+      case reconstruction_kind_t::BlockBve: reconstruct_bve_block(it->bve, h_assignment); break;
+      case reconstruction_kind_t::AffineSub: reconstruct_affine_sub(it->sub, h_assignment); break;
+    }
   }
 
   // this separate resizing is needed because of the callback

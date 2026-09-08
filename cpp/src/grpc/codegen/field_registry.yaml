@@ -558,6 +558,7 @@ pdlp_settings:
   - barrier_dual_initial_point:
       field_num: 26
       type: int32
+      from_proto_cast: "barrier_dual_initial_point_t"
       optional: true
   - eliminate_dense_columns:
       field_num: 27
@@ -571,6 +572,10 @@ pdlp_settings:
       # would silently overwrite the C++ default.
       field_num: 31
       type: bool
+      optional: true
+  - barrier_adaptive_regularization:
+      field_num: 34
+      type: int32
       optional: true
   - barrier_step_scale:
       # Step scale used by the barrier method primal/dual updates. Local-solve

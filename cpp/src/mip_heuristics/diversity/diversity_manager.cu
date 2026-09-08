@@ -11,6 +11,7 @@
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
 
+#include <mip_heuristics/presolve/block_bve.cuh>
 #include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
 #include <mip_heuristics/presolve/probing_cache.cuh>
 #include <mip_heuristics/presolve/trivial_presolve.cuh>
@@ -18,6 +19,7 @@
 
 #include <pdlp/solve.cuh>
 
+#include <utilities/copy_helpers.hpp>
 #include <utilities/scope_guard.hpp>
 
 #include <chrono>
@@ -77,10 +79,16 @@ diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t
                             context.problem_ptr->handle_ptr),
     sub_mip_recombiner(
       context, population, context.problem_ptr->n_variables, context.problem_ptr->handle_ptr),
-    rng(cuopt::seed_generator::get_seed()),
+    rng(derive_seed(context.base_seed, rng_id_t::diversity_manager, 0)),
     stats(context.stats),
-    mab_recombiner(0, cuopt::seed_generator::get_seed(), recombiner_alpha, "recombiner"),
-    mab_ls(mab_ls_config_t<i_t, f_t>::n_of_arms, cuopt::seed_generator::get_seed(), ls_alpha, "ls"),
+    mab_recombiner(0,
+                   derive_seed(context.base_seed, rng_id_t::diversity_manager, 1),
+                   recombiner_alpha,
+                   "recombiner"),
+    mab_ls(mab_ls_config_t<i_t, f_t>::n_of_arms,
+           derive_seed(context.base_seed, rng_id_t::diversity_manager, 2),
+           ls_alpha,
+           "ls"),
     ls_hash_map(*context.problem_ptr)
 {
   int max_config             = -1;
@@ -210,7 +218,7 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
         *problem_ptr->original_problem_ptr, h_original, h_crushed);
       init_sol_assignment = cuopt::device_copy(h_crushed, sol.handle_ptr->get_stream());
 
-#if CUOPT_LOG_ACTIVE_LEVEL <= CUOPT_LOG_LEVEL_DEBUG
+#if CUOPT_LOG_ACTIVE_LEVEL <= RAPIDS_LOGGER_LOG_LEVEL_DEBUG
       const auto& reduced_problem       = *problem_ptr->original_problem_ptr;
       const std::vector<f_t> h_red_obj  = reduced_problem.get_objective_coefficients_host();
       const std::vector<f_t>& h_ori_obj = presolver_ptr->get_original_objective_coefficients();
@@ -307,7 +315,10 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
     CUOPT_LOG_INFO("Probing-cache step disabled via %s=false", CUOPT_MIP_PROBING);
     run_probing_cache = false;
   }
-  if (run_probing_cache) {
+  const bool remap_cache_ids           = true;
+  problem_ptr->related_vars_time_limit = context.settings.heuristic_params.related_vars_time_limit;
+
+  if (run_probing_cache && !global_timer.check_time_limit() && !presolve_timer.check_time_limit()) {
     log_presolve_budget("PROBING", probing_features, probing_budget);
     f_t time_for_probing_cache = std::min(time_limit, (f_t)global_timer.remaining_time());
     timer_t probing_timer{time_for_probing_cache};
@@ -324,9 +335,17 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
       std::chrono::duration<double>(std::chrono::steady_clock::now() - probing_t0).count());
     if (problem_is_infeasible) { return false; }
   }
-  const bool remap_cache_ids           = true;
-  problem_ptr->related_vars_time_limit = context.settings.heuristic_params.related_vars_time_limit;
+
   if (!global_timer.check_time_limit()) { trivial_presolve(*problem_ptr, remap_cache_ids); }
+
+  if (context.settings.block_bve && run_probing_cache) {
+    timer_t bve_deadline(std::min(global_timer.remaining_time(), presolve_timer.remaining_time()));
+    if (!block_bve_phase(ls.constraint_prop.bounds_update, *problem_ptr, bve_deadline)) {
+      stats.presolve_time = timer.elapsed_time();
+      return false;
+    }
+  }
+
   if (!problem_ptr->empty && !check_bounds_sanity(*problem_ptr)) { return false; }
   // if (!presolve_timer.check_time_limit() && !context.settings.heuristics_only &&
   //     !problem_ptr->empty) {
@@ -426,7 +445,7 @@ template <typename i_t, typename f_t>
 void diversity_manager_t<i_t, f_t>::run_fj_alone(solution_t<i_t, f_t>& solution)
 {
   CUOPT_LOG_INFO("Running FJ alone!");
-  solution.round_nearest();
+  solution.round_nearest(rng());
   ls.fj.settings.mode                   = fj_mode_t::EXIT_NON_IMPROVING;
   ls.fj.settings.n_of_minimums_for_exit = 20000 * 1000;
   ls.fj.settings.update_weights         = true;
@@ -557,7 +576,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     pdlp_settings.time_limit              = lp_time_limit;
     pdlp_settings.first_primal_feasible   = false;
     pdlp_settings.concurrent_halt         = &global_concurrent_halt;
-    pdlp_settings.method                  = method_t::Concurrent;
+    pdlp_settings.method                  = context.settings.method;
     pdlp_settings.inside_mip              = true;
     pdlp_settings.pdlp_solver_mode        = pdlp_solver_mode_t::Stable2;
     pdlp_settings.num_gpus                = context.settings.num_gpus;
@@ -680,7 +699,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   if (ls.lp_optimal_exists) {
     solution_t<i_t, f_t> lp_rounded_sol(*problem_ptr);
     lp_rounded_sol.copy_new_assignment(lp_optimal_solution);
-    lp_rounded_sol.round_nearest();
+    lp_rounded_sol.round_nearest(rng());
     lp_rounded_sol.compute_feasibility();
     population.add_solution(std::move(lp_rounded_sol));
     ls.start_cpufj_lptopt_scratch_threads(population);

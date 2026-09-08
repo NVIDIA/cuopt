@@ -197,6 +197,7 @@ message PDLPSolverSettings {
   optional bool barrier_iterative_refinement = 31;
   optional double barrier_step_scale = 32;
   optional int32 postsolve_info = 33;
+  optional int32 barrier_adaptive_regularization = 34;
   PDLPWarmStartData warm_start_data = 50;
 }
 

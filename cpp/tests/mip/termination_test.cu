@@ -118,6 +118,13 @@ TEST(termination_status, gf2_presolve_infeasible)
   EXPECT_EQ(termination_status, mip_termination_status_t::Infeasible);
 }
 
+TEST(termination_status, slda_presolve_optimal)
+{
+  auto [termination_status, obj_val, lb] = test_mps_file("mip/neos-787933.mps", 30, false);
+  EXPECT_EQ(termination_status, mip_termination_status_t::Optimal);
+  EXPECT_NEAR(obj_val, 30.0, 1e-6);
+}
+
 TEST(termination_status, bb_infeasible_test)
 {
   // First, check that presolve doesn't reduce the problem to infeasibility

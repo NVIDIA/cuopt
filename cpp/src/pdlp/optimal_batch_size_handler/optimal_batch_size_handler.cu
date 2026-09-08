@@ -9,6 +9,7 @@
 #include <pdlp/optimal_batch_size_handler/optimal_batch_size_handler.hpp>
 #include <pdlp/pdlp_constants.hpp>
 
+#include <utilities/device_scalar_init.hpp>
 #include <utilities/event_handler.cuh>
 
 #include <raft/core/cusparse_macros.hpp>
@@ -19,8 +20,8 @@ namespace cuopt::mathematical_optimization::pdlp {
 
 template <typename i_t, typename f_t>
 struct SpMM_benchmarks_context_t {
-  SpMM_benchmarks_context_t(cusparse_sp_mat_descr_wrapper_t<i_t, f_t>& A,
-                            cusparse_sp_mat_descr_wrapper_t<i_t, f_t>& A_T,
+  SpMM_benchmarks_context_t(cusparse_sp_mat_descr_view A,
+                            cusparse_sp_mat_descr_view A_T,
                             int primal_size,
                             int dual_size,
                             size_t current_batch_size,
@@ -29,8 +30,8 @@ struct SpMM_benchmarks_context_t {
       y(static_cast<size_t>(dual_size) * current_batch_size, handle_ptr->get_stream()),
       buffer_non_transpose_batch(0, handle_ptr->get_stream()),
       buffer_transpose_batch(0, handle_ptr->get_stream()),
-      alpha(1, handle_ptr->get_stream()),
-      beta(0, handle_ptr->get_stream()),
+      alpha(one_v<f_t>, handle_ptr->get_stream()),
+      beta(zero_v<f_t>, handle_ptr->get_stream()),
       A(A),
       A_T(A_T),
       handle_ptr(handle_ptr)
@@ -45,8 +46,8 @@ struct SpMM_benchmarks_context_t {
     int col_dual  = current_batch_size;
     int ld_dual   = current_batch_size;
 
-    x_descr.create(rows_primal, col_primal, ld_primal, x.data(), CUSPARSE_ORDER_ROW);
-    y_descr.create(rows_dual, col_dual, ld_dual, y.data(), CUSPARSE_ORDER_ROW);
+    x_descr = make_dnmat<f_t>(rows_primal, col_primal, ld_primal, x.data(), CUSPARSE_ORDER_ROW);
+    y_descr = make_dnmat<f_t>(rows_dual, col_dual, ld_dual, y.data(), CUSPARSE_ORDER_ROW);
 
     // Init buffers for SpMMs
     size_t buffer_size_non_transpose_batch = 0;
@@ -56,12 +57,12 @@ struct SpMM_benchmarks_context_t {
       CUSPARSE_OPERATION_NON_TRANSPOSE,
       alpha.data(),
       A,
-      x_descr,
+      x_descr.get(),
       beta.data(),
-      y_descr,
+      y_descr.get(),
       (deterministic_batch_pdlp) ? CUSPARSE_SPMM_CSR_ALG3 : CUSPARSE_SPMM_CSR_ALG2,
       &buffer_size_non_transpose_batch,
-      stream_view));
+      stream_view.get()));
 
     size_t buffer_size_transpose_batch = 0;
     RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmm_bufferSize(
@@ -70,12 +71,12 @@ struct SpMM_benchmarks_context_t {
       CUSPARSE_OPERATION_NON_TRANSPOSE,
       alpha.data(),
       A_T,
-      y_descr,
+      y_descr.get(),
       beta.data(),
-      x_descr,
+      x_descr.get(),
       (deterministic_batch_pdlp) ? CUSPARSE_SPMM_CSR_ALG3 : CUSPARSE_SPMM_CSR_ALG2,
       &buffer_size_transpose_batch,
-      stream_view));
+      stream_view.get()));
 
     buffer_transpose_batch     = rmm::device_buffer(buffer_size_transpose_batch, stream_view);
     buffer_non_transpose_batch = rmm::device_buffer(buffer_size_non_transpose_batch, stream_view);
@@ -88,12 +89,12 @@ struct SpMM_benchmarks_context_t {
       CUSPARSE_OPERATION_NON_TRANSPOSE,
       alpha.data(),
       A_T,
-      y_descr,
+      y_descr.get(),
       beta.data(),
-      x_descr,
+      x_descr.get(),
       (deterministic_batch_pdlp) ? CUSPARSE_SPMM_CSR_ALG3 : CUSPARSE_SPMM_CSR_ALG2,
       buffer_transpose_batch.data(),
-      stream_view);
+      stream_view.get());
 
     my_cusparsespmm_preprocess<f_t>(
       handle_ptr->get_cusparse_handle(),
@@ -101,12 +102,12 @@ struct SpMM_benchmarks_context_t {
       CUSPARSE_OPERATION_NON_TRANSPOSE,
       alpha.data(),
       A,
-      x_descr,
+      x_descr.get(),
       beta.data(),
-      y_descr,
+      y_descr.get(),
       (deterministic_batch_pdlp) ? CUSPARSE_SPMM_CSR_ALG3 : CUSPARSE_SPMM_CSR_ALG2,
       buffer_non_transpose_batch.data(),
-      stream_view);
+      stream_view.get());
 #endif
 
     // First empty run for warm up
@@ -123,12 +124,12 @@ struct SpMM_benchmarks_context_t {
       CUSPARSE_OPERATION_NON_TRANSPOSE,
       alpha.data(),
       A,
-      x_descr,
+      x_descr.get(),
       beta.data(),
-      y_descr,
+      y_descr.get(),
       (deterministic_batch_pdlp) ? CUSPARSE_SPMM_CSR_ALG3 : CUSPARSE_SPMM_CSR_ALG2,
       (f_t*)buffer_non_transpose_batch.data(),
-      stream_view));
+      stream_view.get()));
 
     RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmm(
       handle_ptr->get_cusparse_handle(),
@@ -136,30 +137,30 @@ struct SpMM_benchmarks_context_t {
       CUSPARSE_OPERATION_NON_TRANSPOSE,
       alpha.data(),
       A_T,
-      y_descr,
+      y_descr.get(),
       beta.data(),
-      x_descr,
+      x_descr.get(),
       (deterministic_batch_pdlp) ? CUSPARSE_SPMM_CSR_ALG3 : CUSPARSE_SPMM_CSR_ALG2,
       (f_t*)buffer_transpose_batch.data(),
-      stream_view));
+      stream_view.get()));
   }
 
-  cusparse_dn_mat_descr_wrapper_t<f_t> x_descr;
-  cusparse_dn_mat_descr_wrapper_t<f_t> y_descr;
+  cusparse_dn_mat_uptr x_descr;
+  cusparse_dn_mat_uptr y_descr;
   rmm::device_uvector<f_t> x;
   rmm::device_uvector<f_t> y;
   rmm::device_buffer buffer_non_transpose_batch;
   rmm::device_buffer buffer_transpose_batch;
   rmm::device_scalar<f_t> alpha;
   rmm::device_scalar<f_t> beta;
-  cusparse_sp_mat_descr_wrapper_t<i_t, f_t>& A;
-  cusparse_sp_mat_descr_wrapper_t<i_t, f_t>& A_T;
+  cusparse_sp_mat_descr_view A;
+  cusparse_sp_mat_descr_view A_T;
   raft::handle_t const* handle_ptr;
 };
 
 template <typename i_t, typename f_t>
-static double evaluate_node(cusparse_sp_mat_descr_wrapper_t<i_t, f_t>& A,
-                            cusparse_sp_mat_descr_wrapper_t<i_t, f_t>& A_T,
+static double evaluate_node(cusparse_sp_mat_descr_view A,
+                            cusparse_sp_mat_descr_view A_T,
                             i_t primal_size,
                             i_t dual_size,
                             int current_batch_size,
@@ -223,44 +224,50 @@ int optimal_batch_size_handler(const optimization_problem_t<i_t, f_t>& op_proble
   mip::problem_t<i_t, f_t> problem(op_problem);
 
   // Init cuSparse views
-  cusparse_sp_mat_descr_wrapper_t<i_t, f_t> A;
-  cusparse_sp_mat_descr_wrapper_t<i_t, f_t> A_T;
-  i_t primal_size = problem.n_variables;
-  i_t dual_size   = problem.n_constraints;
-
-  A.create(problem.n_constraints,
-           problem.n_variables,
-           problem.nnz,
-           problem.offsets.data(),
-           problem.variables.data(),
-           problem.coefficients.data());
-
-  A_T.create(problem.n_variables,
-             problem.n_constraints,
-             problem.nnz,
-             problem.reverse_offsets.data(),
-             problem.reverse_constraints.data(),
-             problem.reverse_coefficients.data());
+  cusparse_sp_mat_uptr A   = make_csr<i_t, f_t>(problem.n_constraints,
+                                              problem.n_variables,
+                                              problem.nnz,
+                                              problem.offsets.data(),
+                                              problem.variables.data(),
+                                              problem.coefficients.data());
+  cusparse_sp_mat_uptr A_T = make_csr<i_t, f_t>(problem.n_variables,
+                                                problem.n_constraints,
+                                                problem.nnz,
+                                                problem.reverse_offsets.data(),
+                                                problem.reverse_constraints.data(),
+                                                problem.reverse_coefficients.data());
+  i_t primal_size          = problem.n_variables;
+  i_t dual_size            = problem.n_constraints;
 
   // Sync before starting anything to make sure everything is done
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view));
+  stream_view.sync();
 
   // Evaluate current, left and right nodes to pick a direction
 
   const int left_node  = std::max(1, current_batch_size / 2);
   const int right_node = std::min(current_batch_size * 2, max_batch_size);
-  double current_ratio = evaluate_node<i_t, f_t>(A,
-                                                 A_T,
+  double current_ratio = evaluate_node<i_t, f_t>(A.get(),
+                                                 A_T.get(),
                                                  primal_size,
                                                  dual_size,
                                                  current_batch_size,
                                                  benchmark_runs,
                                                  op_problem.get_handle_ptr());
-  double left_ratio    = evaluate_node<i_t, f_t>(
-    A, A_T, primal_size, dual_size, left_node, benchmark_runs, op_problem.get_handle_ptr());
-  double right_ratio = evaluate_node<i_t, f_t>(
-    A, A_T, primal_size, dual_size, right_node, benchmark_runs, op_problem.get_handle_ptr());
-  int current_step = 1;
+  double left_ratio    = evaluate_node<i_t, f_t>(A.get(),
+                                              A_T.get(),
+                                              primal_size,
+                                              dual_size,
+                                              left_node,
+                                              benchmark_runs,
+                                              op_problem.get_handle_ptr());
+  double right_ratio   = evaluate_node<i_t, f_t>(A.get(),
+                                               A_T.get(),
+                                               primal_size,
+                                               dual_size,
+                                               right_node,
+                                               benchmark_runs,
+                                               op_problem.get_handle_ptr());
+  int current_step     = 1;
 
 #ifdef BATCH_VERBOSE_MODE
   std::cout << "Starting batch size: " << current_batch_size << " and ratio: " << current_ratio
@@ -289,8 +296,8 @@ int optimal_batch_size_handler(const optimization_problem_t<i_t, f_t>& op_proble
 #ifdef BATCH_VERBOSE_MODE
       std::cout << "Evaluating left node: " << current_batch_size << std::endl;
 #endif
-      left_ratio = evaluate_node<i_t, f_t>(A,
-                                           A_T,
+      left_ratio = evaluate_node<i_t, f_t>(A.get(),
+                                           A_T.get(),
                                            primal_size,
                                            dual_size,
                                            current_batch_size,
@@ -324,8 +331,13 @@ int optimal_batch_size_handler(const optimization_problem_t<i_t, f_t>& op_proble
 #ifdef BATCH_VERBOSE_MODE
     std::cout << "Testing one last time between the two at node: " << middle_node << std::endl;
 #endif
-    double middle_ratio = evaluate_node<i_t, f_t>(
-      A, A_T, primal_size, dual_size, middle_node, benchmark_runs, op_problem.get_handle_ptr());
+    double middle_ratio = evaluate_node<i_t, f_t>(A.get(),
+                                                  A_T.get(),
+                                                  primal_size,
+                                                  dual_size,
+                                                  middle_node,
+                                                  benchmark_runs,
+                                                  op_problem.get_handle_ptr());
 #ifdef BATCH_VERBOSE_MODE
     std::cout << "Middle node ratio: " << middle_ratio << std::endl;
 #endif
@@ -367,8 +379,8 @@ int optimal_batch_size_handler(const optimization_problem_t<i_t, f_t>& op_proble
 #ifdef BATCH_VERBOSE_MODE
       std::cout << "Evaluating right node: " << current_batch_size << std::endl;
 #endif
-      right_ratio = evaluate_node<i_t, f_t>(A,
-                                            A_T,
+      right_ratio = evaluate_node<i_t, f_t>(A.get(),
+                                            A_T.get(),
                                             primal_size,
                                             dual_size,
                                             current_batch_size,
@@ -403,8 +415,13 @@ int optimal_batch_size_handler(const optimization_problem_t<i_t, f_t>& op_proble
 #ifdef BATCH_VERBOSE_MODE
     std::cout << "Testing one last time between the two at node: " << middle_node << std::endl;
 #endif
-    double middle_ratio = evaluate_node<i_t, f_t>(
-      A, A_T, primal_size, dual_size, middle_node, benchmark_runs, op_problem.get_handle_ptr());
+    double middle_ratio = evaluate_node<i_t, f_t>(A.get(),
+                                                  A_T.get(),
+                                                  primal_size,
+                                                  dual_size,
+                                                  middle_node,
+                                                  benchmark_runs,
+                                                  op_problem.get_handle_ptr());
 #ifdef BATCH_VERBOSE_MODE
     std::cout << "Middle node ratio: " << middle_ratio << std::endl;
 #endif

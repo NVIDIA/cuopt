@@ -72,7 +72,7 @@ class capacity_route_t {
                                         std::min(old_stride, new_stride) * sizeof(i_t),
                                         n_dims,
                                         cudaMemcpyDeviceToDevice,
-                                        stream.value()));
+                                        stream.get()));
       }
       vec = std::move(new_vec);
     };

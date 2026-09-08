@@ -10,8 +10,6 @@
 
 #include <utilities/copy_helpers.hpp>
 
-#include <rmm/cuda_stream_view.hpp>
-
 #include <gtest/gtest.h>
 
 #include <algorithm>

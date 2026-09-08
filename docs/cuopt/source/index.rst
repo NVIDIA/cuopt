@@ -42,6 +42,16 @@ Python (cuopt)
 
    Python Overview <cuopt-python/index.rst>
 
+==========================
+Java (cuopt)
+==========================
+.. toctree::
+   :maxdepth: 4
+   :caption: Java API
+   :name: Java API
+
+   Java Overview <cuopt-java/index.rst>
+
 ====================================
 gRPC Remote Execution
 ====================================
