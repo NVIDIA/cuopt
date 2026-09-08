@@ -89,6 +89,8 @@ void problem_t<i_t, f_t>::op_problem_cstr_body(const optimization_problem_t<i_t,
 
   // Check before any modifications
   cuopt_func_call(check_problem_representation(false, false));
+  cuopt_assert(problem_.get_objective_scaling_factor() > 0,
+               "objective_scaling_factor is a magnitude; sense encodes min/max");
   // If maximization problem, convert the problem
   if (maximize) convert_to_maximization_problem(*this);
   if (is_mip) {

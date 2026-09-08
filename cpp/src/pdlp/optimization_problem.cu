@@ -305,6 +305,8 @@ void optimization_problem_t<i_t, f_t>::set_variable_types(const var_t* variable_
       }
     }
   } else {
+    assert(handle_ptr_ != nullptr);
+
     n_discrete                    = thrust::count_if(handle_ptr_->get_thrust_policy(),
                                   variable_types_.begin(),
                                   variable_types_.end(),
@@ -314,9 +316,9 @@ void optimization_problem_t<i_t, f_t>::set_variable_types(const var_t* variable_
     has_semi_continuous_variables = thrust::count_if(handle_ptr_->get_thrust_policy(),
                                                      variable_types_.begin(),
                                                      variable_types_.end(),
-                                      [] __host__ __device__(var_t val) {
-                                      return val == var_t::SEMI_CONTINUOUS;
-                                    }) > 0;
+                                                     [] __host__ __device__(var_t val) {
+                                                       return val == var_t::SEMI_CONTINUOUS;
+                                                     }) > 0;
   }
   has_semi_continuous_variables_ = has_semi_continuous_variables;
   if (n_discrete == size) {

@@ -213,7 +213,7 @@ static const char* get_simd_target()
 {
   const int64_t target = hwy::DispatchedTarget();
   switch (target) {
-    // AVX-512 is a much more commonly understood name than AVX3 or AVX10.2 
+    // AVX-512 is a much more commonly understood name than AVX3 or AVX10.2
     case HWY_AVX3:
     case HWY_AVX3_DL:
     case HWY_AVX3_ZEN4:

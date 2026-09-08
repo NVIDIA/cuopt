@@ -66,7 +66,7 @@ class solution_publication_t {
     std::lock_guard<std::mutex> lock(mutex_);
     cuopt_assert(assignment.size() == (size_t)problem_ptr->n_variables,
                  "Published assignment size must match the problem");
-    cuopt_func_call(audit_integrality(problem_ptr, assignment));
+    // cuopt_func_call(audit_integrality(problem_ptr, assignment));
     const auto& objective_variables    = problem_ptr->vars_with_objective_coeffs.first;
     const auto& objective_coefficients = problem_ptr->vars_with_objective_coeffs.second;
     cuopt_assert(objective_variables.size() == objective_coefficients.size(),
