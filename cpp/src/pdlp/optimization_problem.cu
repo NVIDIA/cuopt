@@ -639,14 +639,6 @@ raft::handle_t const* optimization_problem_t<i_t, f_t>::get_handle_ptr() const n
 // Conversion
 // ==============================================================================
 
-template <typename i_t, typename f_t>
-std::unique_ptr<optimization_problem_t<i_t, f_t>>
-optimization_problem_t<i_t, f_t>::to_optimization_problem(raft::handle_t const* /*handle_ptr*/)
-{
-  // Already a GPU problem, return nullptr
-  return nullptr;
-}
-
 // ==============================================================================
 // Host Getters (copy from GPU to CPU)
 // ==============================================================================
