@@ -39,7 +39,7 @@ void transform_absolute(rmm::device_uvector<T>& v, rmm::cuda_stream_view stream_
     rmm::exec_policy(stream_view), v.begin(), v.end(), v.begin(), [] __device__(T x) -> T {
       return x < 0 ? -x : x;
     });
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view.value()));
+  stream_view.sync();
 }
 
 /**
@@ -70,7 +70,7 @@ bool check_pickup_tw(const i_t* pickup_indices,
     zip_iterator,
     zip_iterator + n_requests,
     [] __device__(const auto& x) -> bool { return thrust::get<0>(x) > thrust::get<1>(x); });
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view.value()));
+  stream_view.sync();
   return !violates_sanity;
 }
 
@@ -98,7 +98,7 @@ bool check_pickup_demands(const i_t* pickup_indices,
     zip_iterator,
     zip_iterator + n_requests,
     [] __device__(const auto& x) -> bool { return thrust::get<0>(x) != -thrust::get<1>(x); });
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view.value()));
+  stream_view.sync();
   return !violates_sanity;
 }
 
@@ -117,7 +117,7 @@ bool check_pdp_values(const i_t* pickup_indices,
     zip_iterator,
     zip_iterator + n_requests,
     [] __device__(const auto& x) -> bool { return thrust::get<0>(x) != thrust::get<1>(x); });
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view.value()));
+  stream_view.sync();
   return !violates_sanity;
 }
 
@@ -138,8 +138,8 @@ bool is_symmetric_matrix(f_t const* matrix, i_t width, raft::handle_t const* han
                                transposed_matrix.data_handle(),
                                width,
                                width,
-                               handle_ptr->get_stream());
-  RAFT_CUDA_TRY(cudaStreamSynchronize(handle_ptr->get_stream()));
+                               handle_ptr->get_stream().get());
+  handle_ptr->get_stream().sync();
 
   return thrust::equal(handle_ptr->get_thrust_policy(),
                        matrix,
@@ -163,8 +163,8 @@ bool check_min_latest_with_depot(rmm::device_uvector<i_t>& v_latest_time,
   i_t min_latest;
   i_t* min_latest_ptr = thrust::min_element(
     rmm::exec_policy(stream_view), v_latest_time.begin() + 1, v_latest_time.end());
-  raft::copy(&min_latest, min_latest_ptr, 1, stream_view.value());
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view.value()));
+  raft::copy(&min_latest, min_latest_ptr, 1, stream_view.get());
+  stream_view.sync();
 
   return min_latest >= depot_earliest;
 }
@@ -183,8 +183,8 @@ bool check_max_earliest_with_depot(rmm::device_uvector<i_t>& v_earliest_time,
   i_t max_earliest;
   i_t* max_earliest_ptr = thrust::max_element(
     rmm::exec_policy(stream_view), v_earliest_time.begin() + 1, v_earliest_time.end());
-  raft::copy(&max_earliest, max_earliest_ptr, 1, stream_view.value());
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view.value()));
+  raft::copy(&max_earliest, max_earliest_ptr, 1, stream_view.get());
+  stream_view.sync();
 
   return max_earliest <= depot_latest;
 }
@@ -225,9 +225,9 @@ bool check_min_max_values(const T* ptr,
   T min, max;
   thrust::pair<const T*, const T*> pair =
     thrust::minmax_element(rmm::exec_policy(stream_view), ptr, ptr + size);
-  raft::copy(&min, pair.first, 1, stream_view.value());
-  raft::copy(&max, pair.second, 1, stream_view.value());
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view.value()));
+  raft::copy(&min, pair.first, 1, stream_view.get());
+  raft::copy(&max, pair.second, 1, stream_view.get());
+  stream_view.sync();
   return (min >= static_cast<T>(min_value)) && (max <= static_cast<T>(max_value));
 }
 
@@ -262,7 +262,7 @@ void check_guess(i_t const* guess_id,
                     d_int_drop_return_trip.data(),
                     id);
   raft::update_host(
-    h_drop_return_trip.data(), d_int_drop_return_trip.data(), fleet_size, stream_view.value());
+    h_drop_return_trip.data(), d_int_drop_return_trip.data(), fleet_size, stream_view.get());
 
   thrust::transform(rmm::exec_policy(stream_view),
                     skip_first_trip,
@@ -270,7 +270,7 @@ void check_guess(i_t const* guess_id,
                     d_int_skip_first_trip.data(),
                     id);
   raft::update_host(
-    h_skip_first_trip.data(), d_int_skip_first_trip.data(), fleet_size, stream_view.value());
+    h_skip_first_trip.data(), d_int_skip_first_trip.data(), fleet_size, stream_view.get());
 
   raft::update_host(h_guess_id.data(), guess_id, size, stream_view);
   raft::update_host(h_truck_id.data(), truck_id, size, stream_view);
