@@ -1135,8 +1135,6 @@ struct primal_reflected_projection_bulk_op {
                                             get_lower(bounds) * bound_scale);
     const f_t reflected    = f_t(2.0) * next_clamped - primal_val;
 
-    // T(z) is deliberately not stored: potential_next_primal_solution_ holds the last major
-    // step's T(z), which the convergence check two iterations later still reads.
     reflected_primal[idx] = reflected;
     primal_solution[idx]  = halpern_blend(
       reflected, primal_val, initial_primal[idx], *halpern_weight, reflection_coefficient);
@@ -1296,7 +1294,6 @@ struct refine_primal_projection_bulk_op {
     // z, saved before the projection folded the Halpern update into current_primal.
     f_t x = saved_primal[entry_idx];
 
-    // As in the non-major projection, T(z) is deliberately not stored.
     reflected_primal[global_idx] =
       primal_reflected_projection_batch<f_t>{}(x, objective_coeff, y_aty, {l, u}, tau);
     current_primal[global_idx] = halpern_blend(reflected_primal[global_idx],
