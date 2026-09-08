@@ -13,12 +13,13 @@ from cuopt_server.utils.routing.conversion import (
     create_solver as routing_create_solver,
     populate_optimization_data,
     prep_optimization_data as routing_prep_optimization_data,
-)  
+)
 from cuopt_server.utils.linear_programming.data_definition import LPData
 from cuopt_server.utils.linear_programming.data_transformation import (
     transform_lp_data,
 )
 from cuopt_server.utils.routing.data_definition import OptimizedRoutingData
+
 
 def build_routing_datamodel_from_json(data):
     """
