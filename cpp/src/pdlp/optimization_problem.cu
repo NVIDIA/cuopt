@@ -1699,7 +1699,12 @@ void apply_warmstart_cpu_target_with_device(solver_settings_t<i_t, f_t>* solver_
   }
 }
 
-#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
+// MIP_INSTANTIATE_FLOAT, not the wider MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT used
+// elsewhere: both helpers call solver_settings_t<i_t, f_t>::get_pdlp_settings() and
+// ::get_pdlp_warm_start_data_view(), which math_optimization/solver_settings.cpp only
+// instantiates under MIP_INSTANTIATE_FLOAT. Widening the guard here without widening it
+// there leaves libcuopt.so with undefined references to those accessors.
+#if MIP_INSTANTIATE_FLOAT
 template CUOPT_EXPORT void apply_warmstart_gpu_target(solver_settings_t<int, float>*,
                                                       const raft::handle_t*);
 template CUOPT_EXPORT void apply_warmstart_cpu_target_with_device(solver_settings_t<int, float>*);
