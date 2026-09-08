@@ -15,7 +15,7 @@ cuopt_java_setup_home() {
   fi
 
   if [[ ! -x "${JAVA_HOME:-}/bin/${required_binary}" ]]; then
-    echo "JAVA_HOME must point to a JDK containing bin/${required_binary} (Java 11 is required)." >&2
+    echo "JAVA_HOME must point to a JDK containing bin/${required_binary} (Java 17 is required)." >&2
     exit 1
   fi
 }
