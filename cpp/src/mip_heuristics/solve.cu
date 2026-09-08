@@ -904,6 +904,13 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     return mip_solution_t<i_t, f_t>{e, op_problem.get_handle_ptr()->get_stream()};
   }
 
+  // Check for crossing bounds before the pre_solve_heuristics try to build a problem_t
+  if (problem_checking_t<i_t, f_t>::has_crossing_bounds(op_problem)) {
+    return mip_solution_t<i_t, f_t>(mip_termination_status_t::Infeasible,
+                                    solver_stats_t<i_t, f_t>{},
+                                    op_problem.get_handle_ptr()->get_stream());
+  }
+
   // Run a very short burst of CPUFJ during the few dozen of milliseconds at solver init for very
   // small instances
   std::shared_ptr<mip::early_cpufj_t<i_t, f_t>> pre_solve_heuristics;
