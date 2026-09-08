@@ -85,7 +85,7 @@ void spgemm_cusparse([[maybe_unused]] rmm::device_uvector<i_t>& offsetsA,
   auto stream = offsetsA.stream();
   cusparseHandle_t handle;
   cusparseCreate(&handle);
-  cusparseSetStream(handle, stream);
+  cusparseSetStream(handle, stream.get());
 
   int m    = offsetsA.size() - 1;
   int n    = offsetsB.size() - 1;
@@ -215,7 +215,7 @@ void spgemm_cusparse([[maybe_unused]] rmm::device_uvector<i_t>& offsetsA,
 
   check_cusparse_status(cusparseSpGEMM_copy(
     handle, opA, opB, &alpha, matA, matB, &beta, matC, computeType, alg, spgemmDesc));
-  stream.synchronize();
+  stream.sync();
 
   cusparseSpGEMM_destroyDescr(spgemmDesc);
   cusparseDestroySpMat(matA);
@@ -677,7 +677,7 @@ void conditional_bound_strengthening_t<i_t, f_t>::solve(problem_t<i_t, f_t>& pro
   update_constraint_bounds_kernel<i_t, f_t, TPB><<<n_blocks, TPB, sh_size>>>(
     problem.view(), cuopt::make_span(constraint_pairs), cuopt::make_span(locks_per_constraint));
 
-  RAFT_CHECK_CUDA(problem.handle_ptr->get_stream());
+  RAFT_CHECK_CUDA(problem.handle_ptr->get_stream().get());
   problem.handle_ptr->sync_stream();
 
 #ifdef DEBUG_COND_BOUNDS_PROP

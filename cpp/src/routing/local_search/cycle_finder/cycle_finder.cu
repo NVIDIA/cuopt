@@ -33,12 +33,14 @@ bool ExactCycleFinder<i_t, f_t, max_routes>::call_init(graph_t<i_t, f_t>& graph)
   bool is_set     = set_shmem_of_kernel(init_kernel<i_t, f_t, max_routes>, sh_size);
   if (!is_set) { return false; }
 
-  init_kernel<i_t, f_t, max_routes><<<n_blocks, n_threads, sh_size, handle_ptr->get_stream()>>>(
-    graph.view(), d_valid_paths.subspan(level));
-  RAFT_CHECK_CUDA(handle_ptr->get_stream());
+  init_kernel<i_t, f_t, max_routes>
+    <<<n_blocks, n_threads, sh_size, handle_ptr->get_stream().get()>>>(
+      graph.view(), d_valid_paths.subspan(level));
+  RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
   // we have a safe-guard in the kernel for the global array stores
   // do the safe guard here for the occupied size
-  clamp_occupied<max_routes><<<1, 1, 0, handle_ptr->get_stream()>>>(d_valid_paths.subspan(level));
+  clamp_occupied<max_routes>
+    <<<1, 1, 0, handle_ptr->get_stream().get()>>>(d_valid_paths.subspan(level));
   return true;
 }
 
@@ -79,7 +81,7 @@ void ExactCycleFinder<i_t, f_t, max_routes>::sort_cycle_costs_by_key(int n_items
                                   n_items,
                                   begin_bit,
                                   end_bit,
-                                  handle_ptr->get_stream());
+                                  handle_ptr->get_stream().get());
 
   // Allocate temporary storage
   if (d_cub_storage_bytes.size() < temp_storage_bytes) {
@@ -95,7 +97,7 @@ void ExactCycleFinder<i_t, f_t, max_routes>::sort_cycle_costs_by_key(int n_items
                                   n_items,
                                   begin_bit,
                                   end_bit,
-                                  handle_ptr->get_stream());
+                                  handle_ptr->get_stream().get());
 }
 
 template <typename i_t, typename f_t, size_t max_routes>
@@ -112,7 +114,7 @@ bool ExactCycleFinder<i_t, f_t, max_routes>::call_find(graph_t<i_t, f_t>& graph,
   if (last_level) {
     if (!set_shmem_of_kernel(find_kernel<i_t, f_t, max_routes, true>, sh_size)) { return false; }
     find_kernel<i_t, f_t, max_routes, true>
-      <<<n_blocks, n_threads, sh_size, handle_ptr->get_stream()>>>(
+      <<<n_blocks, n_threads, sh_size, handle_ptr->get_stream().get()>>>(
         level,
         graph.view(),
         d_valid_paths.subspan(level - 1),
@@ -122,7 +124,7 @@ bool ExactCycleFinder<i_t, f_t, max_routes>::call_find(graph_t<i_t, f_t>& graph,
   } else {
     if (!set_shmem_of_kernel(find_kernel<i_t, f_t, max_routes, false>, sh_size)) { return false; }
     find_kernel<i_t, f_t, max_routes, false>
-      <<<n_blocks, n_threads, sh_size, handle_ptr->get_stream()>>>(
+      <<<n_blocks, n_threads, sh_size, handle_ptr->get_stream().get()>>>(
         level,
         graph.view(),
         d_valid_paths.subspan(level - 1),
@@ -131,7 +133,7 @@ bool ExactCycleFinder<i_t, f_t, max_routes>::call_find(graph_t<i_t, f_t>& graph,
         depot_included);
   }
 
-  RAFT_CHECK_CUDA(handle_ptr->get_stream());
+  RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
   return true;
 }
 
@@ -141,8 +143,8 @@ void detail::device_map_t<map_key_t, value_t>::clear(rmm::cuda_stream_view strea
   auto max_vals  = max_level * max_available;
   auto n_threads = 256;
   auto n_blocks  = std::min((max_vals + n_threads - 1) / n_threads, max_blocks);
-  clear_map<map_key_t, value_t><<<n_blocks, n_threads, 0, stream>>>(this->view());
-  RAFT_CHECK_CUDA(stream);
+  clear_map<map_key_t, value_t><<<n_blocks, n_threads, 0, stream.get()>>>(this->view());
+  RAFT_CHECK_CUDA(stream.get());
 }
 
 template <size_t max_routes>
@@ -152,8 +154,8 @@ bool test_empty(typename detail::device_map_t<key_t<max_routes>, double>::view_t
   auto max_vals  = map_view.max_available;
   auto n_threads = 256;
   auto n_blocks  = (max_vals + n_threads - 1) / n_threads;
-  test_empty<key_t<max_routes>, double><<<n_blocks, n_threads, 0, stream>>>(map_view);
-  RAFT_CHECK_CUDA(stream);
+  test_empty<key_t<max_routes>, double><<<n_blocks, n_threads, 0, stream.get()>>>(map_view);
+  RAFT_CHECK_CUDA(stream.get());
   return true;
 }
 
@@ -187,25 +189,25 @@ void ExactCycleFinder<i_t, f_t, max_routes>::get_cycle(graph_t<i_t, f_t>& graph,
   cuopt_func_call(d_ret.total_cycle_cost = 0.);
   for (i_t cycle_id = 0; cycle_id < n_cycles; ++cycle_id) {
     init_cycle<i_t, f_t, max_routes>
-      <<<1, 1, 0, handle_ptr->get_stream()>>>(d_ret.view(), best_cycles.subspan(cycle_id));
-    RAFT_CHECK_CUDA(handle_ptr->get_stream());
+      <<<1, 1, 0, handle_ptr->get_stream().get()>>>(d_ret.view(), best_cycles.subspan(cycle_id));
+    RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
     i_t level = level_vec[cycle_id];
 
     for (int i = level; i > 0; --i) {
       extend_cycle<i_t, f_t, max_routes>
-        <<<n_blocks, n_threads, 0, handle_ptr->get_stream()>>>(graph.view(),
-                                                               d_valid_paths.subspan(i),
-                                                               best_cycles.subspan(cycle_id),
-                                                               d_ret.view(),
-                                                               i,
-                                                               (level + 1) - i);
-      RAFT_CHECK_CUDA(handle_ptr->get_stream());
+        <<<n_blocks, n_threads, 0, handle_ptr->get_stream().get()>>>(graph.view(),
+                                                                     d_valid_paths.subspan(i),
+                                                                     best_cycles.subspan(cycle_id),
+                                                                     d_ret.view(),
+                                                                     i,
+                                                                     (level + 1) - i);
+      RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
     }
-    close_cycle<i_t, f_t, max_routes><<<1, 1, 0, handle_ptr->get_stream()>>>(
+    close_cycle<i_t, f_t, max_routes><<<1, 1, 0, handle_ptr->get_stream().get()>>>(
       d_ret.view(), best_cycles.subspan(cycle_id), level + 1);
     cuopt_func_call(d_ret.total_cycle_cost +=
                     best_cycles.cost_ptr.element(cycle_id, handle_ptr->get_stream()));
-    RAFT_CHECK_CUDA(handle_ptr->get_stream());
+    RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
   }
 }
 
@@ -300,7 +302,7 @@ void ExactCycleFinder<i_t, f_t, max_routes>::sort_occupied(int level,
     curr_map.occupied_indices.data(),
     curr_level_occupied,
     [] __device__(int2 a, int2 b) -> bool { return a.y < b.y; },
-    handle_ptr->get_stream());
+    handle_ptr->get_stream().get());
   // Allocate temporary storage
   if (d_cub_storage_bytes.size() < temp_storage_bytes) {
     d_cub_storage_bytes.resize(temp_storage_bytes, handle_ptr->get_stream());
@@ -312,7 +314,7 @@ void ExactCycleFinder<i_t, f_t, max_routes>::sort_occupied(int level,
     curr_map.occupied_indices.data(),
     curr_level_occupied,
     [] __device__(int2 a, int2 b) -> bool { return a.y < b.y; },
-    handle_ptr->get_stream());
+    handle_ptr->get_stream().get());
 
   // do an exclusive scan for the offsets of heads, this will be used in kernels
   temp_storage_bytes = 0;
@@ -321,7 +323,7 @@ void ExactCycleFinder<i_t, f_t, max_routes>::sort_occupied(int level,
                                 curr_map.size_per_head.data(),
                                 curr_map.size_per_head.data(),
                                 graph.get_num_vertices() + 1,
-                                handle_ptr->get_stream());
+                                handle_ptr->get_stream().get());
   // Allocate temporary storage
   if (d_cub_storage_bytes.size() < temp_storage_bytes) {
     d_cub_storage_bytes.resize(temp_storage_bytes, handle_ptr->get_stream());
@@ -332,7 +334,7 @@ void ExactCycleFinder<i_t, f_t, max_routes>::sort_occupied(int level,
                                 curr_map.size_per_head.data(),
                                 curr_map.size_per_head.data(),
                                 graph.get_num_vertices() + 1,
-                                handle_ptr->get_stream());
+                                handle_ptr->get_stream().get());
 }
 
 template <typename i_t, typename f_t, size_t max_routes>
@@ -349,11 +351,11 @@ void ExactCycleFinder<i_t, f_t, max_routes>::find_best_cycles(
   sort_cycle_costs_by_key(cycle_candidates.size * cycle_candidates.n_paths);
   // record best cycles
   record_best_cycles<i_t, f_t, max_routes>
-    <<<1, 1, 0, handle_ptr->get_stream()>>>(cycle_candidates.size * cycle_candidates.n_paths,
-                                            graph.view(),
-                                            cycle_candidates.view(),
-                                            best_cycles.view(),
-                                            sorted_key_indices.data());
+    <<<1, 1, 0, handle_ptr->get_stream().get()>>>(cycle_candidates.size * cycle_candidates.n_paths,
+                                                  graph.view(),
+                                                  cycle_candidates.view(),
+                                                  best_cycles.view(),
+                                                  sorted_key_indices.data());
   get_cycle(graph, ret);
   cuopt_assert(check_cycle(graph, ret), "Recomputed cost mismatch");
 }

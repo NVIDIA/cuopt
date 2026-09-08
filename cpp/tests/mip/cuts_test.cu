@@ -13,6 +13,7 @@
 #include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
 #include <cuopt/mathematical_optimization/solve.hpp>
 #include <cuts/cuts.hpp>
+#include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
 #include <mip_heuristics/problem/problem.cuh>
 #include <utilities/common_utils.hpp>
@@ -1183,6 +1184,29 @@ TEST(cuts, clique_phase4_tree_depth_limit_smoke)
     EXPECT_NEAR(
       root_only_solution.get_objective_value(), deeper_solution.get_objective_value(), 1e-6);
   }
+}
+
+TEST(cuts, async_clique_table_closes_triangle_root_gap)
+{
+  const raft::handle_t handle{};
+  auto problem = create_pairwise_triangle_set_packing_problem();
+
+  mip_solver_settings_t<int, double> settings;
+  settings.time_limit      = 10.0;
+  settings.presolver       = presolver_t::None;
+  settings.node_limit      = 0;
+  settings.num_cpu_threads = CUOPT_MIP_CLIQUE_CUTS_REQUIRED_THREAD_COUNT;
+  disable_non_clique_cuts(settings);
+
+  benchmark_info_t benchmark_info;
+  settings.benchmark_info_ptr = &benchmark_info;
+  auto solution               = solve_mip(&handle, problem, settings);
+
+  EXPECT_NE(solution.get_termination_status(), mip_termination_status_t::Infeasible);
+  ASSERT_FALSE(std::isnan(benchmark_info.root_lp_no_cuts));
+  ASSERT_FALSE(std::isnan(benchmark_info.root_lp_with_cuts));
+  EXPECT_NEAR(benchmark_info.root_lp_no_cuts, -1.5, kCliqueTestTol);
+  EXPECT_NEAR(benchmark_info.root_lp_with_cuts, -1.0, kCliqueTestTol);
 }
 
 TEST(cuts, clique_phase5_ignores_non_binary_variables)

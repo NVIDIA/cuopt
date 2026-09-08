@@ -166,6 +166,14 @@ int run_single_file(std::string file_path,
     }
   }
 
+  // This benchmark and the solver library have separate loggers, both writing settings.log_file.
+  // Configure the solver's first so its own initializer reuses that configuration rather than
+  // truncating the file mid-solve; this image's logger then appends to it. Without one, this
+  // image's own messages would sit unflushed in the buffer sink.
+  auto solver_log = cuopt::mathematical_optimization::configure_logging(
+    settings.log_file, log_to_console, /*truncate=*/true);
+  cuopt::init_logger_t bench_log(settings.log_file, log_to_console, /*truncate=*/false);
+
   constexpr bool input_mps_strict = false;
   cuopt::mathematical_optimization::io::mps_data_model_t<int, double> mps_data_model;
   bool parsing_failed = false;

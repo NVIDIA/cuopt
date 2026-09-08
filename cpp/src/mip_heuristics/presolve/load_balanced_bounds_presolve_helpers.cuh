@@ -151,7 +151,7 @@ void calc_activity_heavy_cnst(managed_stream_pool& streams,
 {
   if (num_blocks_heavy_cnst != 0) {
     auto heavy_cnst_stream = streams.get_stream();
-    RAFT_CHECK_CUDA(heavy_cnst_stream);
+    RAFT_CHECK_CUDA(heavy_cnst_stream.get());
     // TODO : Check heavy_cnst_block_segments size for profiling
     if (!dry_run) {
       auto heavy_cnst_beg_id = get_id_offset(cnst_bin_offsets, heavy_degree_cutoff);
@@ -163,18 +163,18 @@ void calc_activity_heavy_cnst(managed_stream_pool& streams,
           heavy_degree_cutoff,
           view,
           tmp_cnst_act);
-      RAFT_CHECK_CUDA(heavy_cnst_stream);
+      RAFT_CHECK_CUDA(heavy_cnst_stream.get());
       auto num_heavy_cnst = cnst_bin_offsets.back() - heavy_cnst_beg_id;
       if (erase_inf_cnst) {
         finalize_calc_act_kernel<true, i_t, f_t, f_t2>
           <<<num_heavy_cnst, 32, 0, heavy_cnst_stream>>>(
             heavy_cnst_beg_id, make_span(heavy_cnst_block_segments), tmp_cnst_act, view);
-        RAFT_CHECK_CUDA(heavy_cnst_stream);
+        RAFT_CHECK_CUDA(heavy_cnst_stream.get());
       } else {
         finalize_calc_act_kernel<false, i_t, f_t, f_t2>
           <<<num_heavy_cnst, 32, 0, heavy_cnst_stream>>>(
             heavy_cnst_beg_id, make_span(heavy_cnst_block_segments), tmp_cnst_act, view);
-        RAFT_CHECK_CUDA(heavy_cnst_stream);
+        RAFT_CHECK_CUDA(heavy_cnst_stream.get());
       }
     }
   }
@@ -200,11 +200,11 @@ void calc_activity_per_block(managed_stream_pool& streams,
       if (erase_inf_cnst) {
         lb_calc_act_block_kernel<true, i_t, f_t, f_t2, block_dim>
           <<<block_count, block_dim, 0, block_stream>>>(cnst_id_beg, view);
-        RAFT_CHECK_CUDA(block_stream);
+        RAFT_CHECK_CUDA(block_stream.get());
       } else {
         lb_calc_act_block_kernel<false, i_t, f_t, f_t2, block_dim>
           <<<block_count, block_dim, 0, block_stream>>>(cnst_id_beg, view);
-        RAFT_CHECK_CUDA(block_stream);
+        RAFT_CHECK_CUDA(block_stream.get());
       }
     }
   }
@@ -261,11 +261,11 @@ void calc_activity_sub_warp(managed_stream_pool& streams,
       if (erase_inf_cnst) {
         lb_calc_act_sub_warp_kernel<true, i_t, f_t, f_t2, block_dim, threads_per_constraint>
           <<<block_count, block_dim, 0, sub_warp_thread>>>(cnst_id_beg, cnst_id_end, view);
-        RAFT_CHECK_CUDA(sub_warp_thread);
+        RAFT_CHECK_CUDA(sub_warp_thread.get());
       } else {
         lb_calc_act_sub_warp_kernel<false, i_t, f_t, f_t2, block_dim, threads_per_constraint>
           <<<block_count, block_dim, 0, sub_warp_thread>>>(cnst_id_beg, cnst_id_end, view);
-        RAFT_CHECK_CUDA(sub_warp_thread);
+        RAFT_CHECK_CUDA(sub_warp_thread.get());
       }
     }
   }
@@ -306,12 +306,12 @@ void calc_activity_sub_warp(managed_stream_pool& streams,
         lb_calc_act_sub_warp_kernel<true, i_t, f_t, f_t2, block_dim>
           <<<block_count, block_dim, 0, sub_warp_stream>>>(
             view, make_span(warp_cnst_offsets), make_span(warp_cnst_id_offsets));
-        RAFT_CHECK_CUDA(sub_warp_stream);
+        RAFT_CHECK_CUDA(sub_warp_stream.get());
       } else {
         lb_calc_act_sub_warp_kernel<false, i_t, f_t, f_t2, block_dim>
           <<<block_count, block_dim, 0, sub_warp_stream>>>(
             view, make_span(warp_cnst_offsets), make_span(warp_cnst_id_offsets));
-        RAFT_CHECK_CUDA(sub_warp_stream);
+        RAFT_CHECK_CUDA(sub_warp_stream.get());
       }
     }
   }

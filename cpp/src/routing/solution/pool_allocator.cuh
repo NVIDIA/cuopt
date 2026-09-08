@@ -70,7 +70,7 @@ class pool_allocator_t {
     }
   }
 
-  void sync_all_streams() const { stream.synchronize(); }
+  void sync_all_streams() const { stream.sync(); }
 
   // problem description
   rmm::cuda_stream_view stream;

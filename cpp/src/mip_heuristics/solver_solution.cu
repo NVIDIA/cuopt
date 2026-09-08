@@ -215,8 +215,8 @@ void mip_solution_t<i_t, f_t>::write_to_sol_file(std::string_view filename,
   auto& var_names     = get_variable_names();
   std::vector<f_t> solution;
   solution.resize(solution_.size());
-  raft::copy(solution.data(), solution_.data(), solution_.size(), stream_view.value());
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view.value()));
+  raft::copy(solution.data(), solution_.data(), solution_.size(), stream_view.get());
+  stream_view.sync();
 
   solution_writer_t::write_solution_to_sol_file(
     std::string(filename), status, objective_value, var_names, solution);

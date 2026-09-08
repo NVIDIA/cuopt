@@ -22,7 +22,7 @@ std::vector<T> device_to_host_vector(const rmm::device_uvector<T>& device_vec,
 
   std::vector<T> host_vec(device_vec.size());
   raft::copy(host_vec.data(), device_vec.data(), device_vec.size(), stream);
-  stream.synchronize();
+  stream.sync();
   return host_vec;
 }
 
@@ -35,7 +35,7 @@ rmm::device_uvector<T> host_to_device_vector(const std::vector<T>& host_vec,
 
   rmm::device_uvector<T> device_vec(host_vec.size(), stream);
   raft::copy(device_vec.data(), host_vec.data(), host_vec.size(), stream);
-  stream.synchronize();
+  stream.sync();
   return device_vec;
 }
 

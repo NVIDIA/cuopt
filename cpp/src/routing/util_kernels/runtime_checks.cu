@@ -255,12 +255,12 @@ bool global_runtime_checks_(solution_t<i_t, f_t, REQUEST>& solution,
 
   solution.run_coherence_check();
   async_fill(solution.runtime_check_histo, 0, solution.sol_handle->get_stream());
-  fill_histo<i_t, f_t, REQUEST><<<solution.get_n_routes(), 1, 0, stream>>>(
+  fill_histo<i_t, f_t, REQUEST><<<solution.get_n_routes(), 1, 0, stream.get()>>>(
     solution.view(), solution.runtime_check_histo.data());
 
   const bool depot_included = solution.problem_ptr->order_info.depot_included_;
   check_histogram<i_t, f_t, REQUEST>
-    <<<(solution.get_num_depot_excluded_orders() + 32 - 1) / 32, 32, 0, stream>>>(
+    <<<(solution.get_num_depot_excluded_orders() + 32 - 1) / 32, 32, 0, stream.get()>>>(
       solution.runtime_check_histo.data(),
       solution.get_num_orders(),
       all_nodes_should_be_served,
@@ -268,7 +268,7 @@ bool global_runtime_checks_(solution_t<i_t, f_t, REQUEST>& solution,
 
   if (solution.problem_ptr->get_max_break_dimensions() > 0) {
     auto sh_size = solution.problem_ptr->get_max_break_dimensions() * sizeof(i_t);
-    check_breaks<i_t, f_t, REQUEST><<<solution.get_n_routes(), 32, sh_size, stream>>>(
+    check_breaks<i_t, f_t, REQUEST><<<solution.get_n_routes(), 32, sh_size, stream.get()>>>(
       solution.view(), all_nodes_should_be_served);
   }
 
@@ -304,14 +304,14 @@ template <typename i_t, typename f_t, request_t REQUEST>
 void solution_t<i_t, f_t, REQUEST>::run_feasibility_check()
 {
   cuopt_func_call((feasibility_check<i_t, f_t, REQUEST>
-                   <<<get_n_routes(), 1, 0, sol_handle->get_stream()>>>(view())));
+                   <<<get_n_routes(), 1, 0, sol_handle->get_stream().get()>>>(view())));
 }
 
 template <typename i_t, typename f_t, request_t REQUEST>
 void solution_t<i_t, f_t, REQUEST>::run_coherence_check()
 {
   cuopt_func_call((node_global_coherence_check<i_t, f_t, REQUEST>
-                   <<<get_n_routes(), 1, 0, sol_handle->get_stream()>>>(view())));
+                   <<<get_n_routes(), 1, 0, sol_handle->get_stream().get()>>>(view())));
 }
 
 template void solution_t<int, float, request_t::PDP>::global_runtime_checks(

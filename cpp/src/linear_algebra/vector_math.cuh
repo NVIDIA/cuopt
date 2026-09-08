@@ -53,7 +53,7 @@ f_t device_custom_vector_norm_inf(InputIteratorT in, i_t size, rmm::cuda_stream_
                             size,
                             custom_op,
                             init,
-                            stream_view);
+                            stream_view.get());
 
   d_temp_storage.resize(temp_storage_bytes, stream_view);
 
@@ -64,7 +64,7 @@ f_t device_custom_vector_norm_inf(InputIteratorT in, i_t size, rmm::cuda_stream_
                             size,
                             custom_op,
                             init,
-                            stream_view);
+                            stream_view.get());
   return d_out.value(stream_view);
 }
 
@@ -109,7 +109,7 @@ f_t vector_norm_inf(const rmm::device_uvector<f_t>& x)
     [] __host__ __device__(f_t val) { return abs(val); },
     static_cast<f_t>(0),
     thrust::maximum<f_t>{});
-  RAFT_CHECK_CUDA(x.stream());
+  RAFT_CHECK_CUDA(x.stream().get());
   return max_abs;
 }
 
@@ -125,7 +125,7 @@ f_t vector_norm2(const rmm::device_uvector<f_t>& x)
     [] __host__ __device__(f_t val) { return val * val; },
     f_t(0),
     thrust::plus<f_t>{});
-  RAFT_CHECK_CUDA(x.stream());
+  RAFT_CHECK_CUDA(x.stream().get());
   return std::sqrt(sum_of_squares);
 }
 

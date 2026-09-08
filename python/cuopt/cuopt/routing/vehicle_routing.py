@@ -1511,6 +1511,16 @@ class SolverSettings(vehicle_routing_wrapper.SolverSettings):
         return super().get_time_limit()
 
     @catch_cuopt_exception
+    def get_verbose_mode(self):
+        """Return whether verbose solver output is enabled."""
+        return super().get_verbose_mode()
+
+    @catch_cuopt_exception
+    def get_error_logging_mode(self):
+        """Return whether constraint error logging is enabled."""
+        return super().get_error_logging_mode()
+
+    @catch_cuopt_exception
     def get_best_results_file_path(self):
         """
         Returns file path where result will be stored,

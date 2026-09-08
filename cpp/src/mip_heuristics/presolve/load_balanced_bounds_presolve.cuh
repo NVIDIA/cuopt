@@ -75,7 +75,7 @@ class managed_stream_pool {
   void wait_issued_on_event(cudaEvent_t e)
   {
     for (int i = 0; i < end_unsycned + 1; ++i) {
-      cudaStreamWaitEvent(streams_[i].view(), e, 0);
+      cudaStreamWaitEvent(streams_[i].view().get(), e, 0);
     }
   }
 
@@ -94,7 +94,7 @@ class managed_stream_pool {
       cudaEventCreate(&e);
     }
     for (int i = 0; i < end_unsycned + 1; ++i) {
-      cudaEventRecord(events[i], streams_[i].view());
+      cudaEventRecord(events[i], streams_[i].view().get());
     }
     return events;
   }
@@ -103,7 +103,7 @@ class managed_stream_pool {
   {
     for (int i = 0; i < end_unsycned + 1; ++i) {
       streams_[i].synchronize();
-      RAFT_CHECK_CUDA(streams_[i].value());
+      RAFT_CHECK_CUDA(streams_[i].view().get());
     }
     end_unsycned = -1;
     next_stream  = 0;

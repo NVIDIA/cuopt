@@ -8,7 +8,6 @@
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/relaxed_lp/relaxed_lp.cuh>
 #include <utilities/copy_helpers.hpp>
-#include <utilities/seed_generator.cuh>
 #include "lb_constraint_prop.cuh"
 #include "simple_rounding.cuh"
 
@@ -25,7 +24,9 @@ lb_constraint_prop_t<i_t, f_t>::lb_constraint_prop_t(mip_solver_context_t<i_t, f
   : context(context_),
     temp_problem(*context.problem_ptr),
     bounds_update(temp_problem, context),
-    bounds_repair(context.problem_ptr->handle_ptr),
+    bounds_repair(
+      context.problem_ptr->handle_ptr,
+      mip_derive_seed(context.base_seed, mip_rng_component_id_t::lb_constraint_prop, 1)),
     unset_vars(context.problem_ptr->n_variables, context.problem_ptr->handle_ptr->get_stream()),
     temp_assignment(context.problem_ptr->n_variables,
                     context.problem_ptr->handle_ptr->get_stream()),
@@ -33,7 +34,9 @@ lb_constraint_prop_t<i_t, f_t>::lb_constraint_prop_t(mip_solver_context_t<i_t, f
                    context.problem_ptr->handle_ptr->get_stream()),
     assignment_restore(context.problem_ptr->n_variables,
                        context.problem_ptr->handle_ptr->get_stream()),
-    rng(cuopt::seed_generator::get_seed(), 0, 0)
+    rng(mip_derive_seed(context.base_seed, mip_rng_component_id_t::lb_constraint_prop, 0),
+        mip_derive_stream(context.base_seed, mip_rng_component_id_t::lb_constraint_prop, 0),
+        0)
 {
 }
 
@@ -369,7 +372,7 @@ void lb_constraint_prop_t<i_t, f_t>::sort_by_implied_slack_consumption(
   const i_t block_dim = 128;
   lb_bounds_update.calculate_constraint_slack(original_problem.handle_ptr);
   compute_implied_slack_consumption_per_var<i_t, f_t, f_t2>
-    <<<vars.size(), block_dim, 0, original_problem.handle_ptr->get_stream()>>>(
+    <<<vars.size(), block_dim, 0, original_problem.handle_ptr->get_stream().get()>>>(
       original_problem.view(),
       vars,
       make_span_2(lb_bounds_update.cnst_slack),
@@ -582,7 +585,7 @@ void sort_subsections(raft::device_span<i_t> vars,
                                       n_subsections,
                                       offsets.data(),
                                       offsets.data() + 1,
-                                      handle_ptr->get_stream());
+                                      handle_ptr->get_stream().get());
 
   // Allocate temporary storage
   d_temp_storage.resize(temp_storage_bytes, handle_ptr->get_stream());
@@ -598,7 +601,7 @@ void sort_subsections(raft::device_span<i_t> vars,
                                       n_subsections,
                                       offsets.data(),
                                       offsets.data() + 1,
-                                      handle_ptr->get_stream());
+                                      handle_ptr->get_stream().get());
   handle_ptr->sync_stream();
 }
 
@@ -757,7 +760,7 @@ bool lb_constraint_prop_t<i_t, f_t>::find_integer(
   timer_t& timer,
   std::optional<std::vector<thrust::pair<f_t, f_t>>> probing_candidates)
 {
-  RAFT_CHECK_CUDA(problem.handle_ptr->get_stream());
+  RAFT_CHECK_CUDA(problem.handle_ptr->get_stream().get());
   if (orig_sol.problem_ptr->n_integer_vars == 0) {
     cuopt_func_call(orig_sol.test_variable_bounds());
     return orig_sol.compute_feasibility();
@@ -765,7 +768,7 @@ bool lb_constraint_prop_t<i_t, f_t>::find_integer(
 
   using crit_t             = termination_criterion_t;
   auto& unset_integer_vars = unset_vars;
-  std::mt19937 rng(cuopt::seed_generator::get_seed());
+  std::mt19937 rng(this->rng.next_i64());
 
   bounds_restore.resize(2 * orig_sol.problem_ptr->n_variables, orig_sol.handle_ptr->get_stream());
   assignment_restore.resize(orig_sol.problem_ptr->n_variables, orig_sol.handle_ptr->get_stream());
@@ -776,11 +779,11 @@ bool lb_constraint_prop_t<i_t, f_t>::find_integer(
 
   lb_bounds_update.settings.time_limit      = max_timer.remaining_time();
   lb_bounds_update.settings.iteration_limit = 20;
-  RAFT_CHECK_CUDA(problem.handle_ptr->get_stream());
+  RAFT_CHECK_CUDA(problem.handle_ptr->get_stream().get());
 
   if (max_timer.check_time_limit()) {
     CUOPT_LOG_DEBUG("Time limit is reached before bounds prop rounding!");
-    orig_sol.round_nearest();
+    orig_sol.round_nearest(this->rng.next_u64());
     cuopt_func_call(orig_sol.test_variable_bounds());
     return orig_sol.compute_feasibility();
   }
@@ -790,7 +793,7 @@ bool lb_constraint_prop_t<i_t, f_t>::find_integer(
              orig_sol.problem_ptr->n_integer_vars,
              orig_sol.handle_ptr->get_stream());
   CUOPT_LOG_DEBUG("LB Bounds propagation rounding: unset vars %lu", unset_integer_vars.size());
-  RAFT_CHECK_CUDA(problem.handle_ptr->get_stream());
+  RAFT_CHECK_CUDA(problem.handle_ptr->get_stream().get());
 
   // this is needed for the sort inside of the loop
   // infeasible cnst_slack invalid
@@ -933,7 +936,7 @@ bool lb_constraint_prop_t<i_t, f_t>::find_integer(
                   lb_bounds_update.infeas_constraints_count);
 
   expand_device_copy(orig_sol.assignment, assignment, orig_sol.handle_ptr->get_stream());
-  orig_sol.round_nearest();
+  orig_sol.round_nearest(this->rng.next_u64());
   cuopt_assert(orig_sol.test_number_all_integer(), "All integers must be rounded");
   cuopt_func_call(orig_sol.test_variable_bounds());
 
