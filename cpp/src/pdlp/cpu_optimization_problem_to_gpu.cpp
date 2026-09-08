@@ -47,7 +47,7 @@ std::unique_ptr<optimization_problem_t<i_t, f_t>> to_optimization_problem(
 
   if (handle_ptr == nullptr) {
     throw std::runtime_error(
-      "cpu_optimization_problem_t::to_optimization_problem(): "
+      "to_optimization_problem(): "
       "handle_ptr is null. A RAFT handle with CUDA resources is required to convert "
       "a CPU-backed problem to a GPU-backed optimization_problem_t.");
   }
