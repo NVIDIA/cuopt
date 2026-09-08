@@ -138,18 +138,18 @@ void populate_from_mps_data_model(optimization_problem_interface_t<i_t, f_t>* pr
 }
 
 /**
- * @brief Move warm-start data into the form a GPU solve needs (H2D / view->device_uvector).
+ * @brief Copy warm-start data into the form a GPU solve needs (H2D / view->device_uvector).
  *
  * Declared here, defined in libcuopt (optimization_problem.cu): it touches device memory,
  * so keeping it out-of-line is what lets CUDA-free consumers of this header link without
  * a CUDA runtime. Only call it with a real handle.
  */
 template <typename i_t, typename f_t>
-void apply_warmstart_gpu_target(solver_settings_t<i_t, f_t>* solver_settings,
-                                const raft::handle_t* handle);
+void copy_warmstart_data_to_device(solver_settings_t<i_t, f_t>& solver_settings,
+                                   const raft::handle_t* handle);
 
 /**
- * @brief Move warm-start data into the form a CPU / remote solve needs, including a
+ * @brief Copy warm-start data into the form a CPU / remote solve needs, including a
  * device-to-host copy when the warm start is device-resident.
  *
  * Declared here, defined in libcuopt (optimization_problem.cu). This is the null-handle
@@ -157,31 +157,31 @@ void apply_warmstart_gpu_target(solver_settings_t<i_t, f_t>* solver_settings,
  * device_uvector-backed warm start that must be brought to host before a remote solve.
  */
 template <typename i_t, typename f_t>
-void apply_warmstart_cpu_target_with_device(solver_settings_t<i_t, f_t>* solver_settings);
+void copy_warmstart_data_to_host(solver_settings_t<i_t, f_t>& solver_settings);
 
 /**
- * @brief Move warm-start data into the form a CPU / remote solve needs, host paths only.
+ * @brief Copy a host-span warm-start view into the form a CPU / remote solve needs.
  *
  * Handles the two cases reachable without a device: warm start already in host form
  * (nothing to do), and a warm-start view over host spans (copy it).
  *
  * Deliberately does NOT handle device-resident warm start -- that needs a D2H copy and
  * therefore CUDA. Callers that might be holding device data must use
- * apply_warmstart_cpu_target_with_device() instead; only a kHostOnly caller, which by
- * construction has no device to have populated it, may use this one.
+ * copy_warmstart_data_to_host() instead; only a kHostOnly caller, which by construction
+ * has no device to have populated it, may use this one.
  */
 template <typename i_t, typename f_t>
-void apply_warmstart_cpu_target(solver_settings_t<i_t, f_t>* solver_settings)
+void copy_warmstart_view_to_host(solver_settings_t<i_t, f_t>& solver_settings)
 {
-  auto& pdlp = solver_settings->get_pdlp_settings();
+  auto& pdlp = solver_settings.get_pdlp_settings();
 
   if (pdlp.get_cpu_pdlp_warm_start_data().is_populated()) { return; }
 
   // Warmstart view (host spans from Cython) -> CPU backend: copy directly, no CUDA needed.
-  if (solver_settings->get_pdlp_warm_start_data_view()
+  if (solver_settings.get_pdlp_warm_start_data_view()
         .last_restart_duality_gap_dual_solution_.size() > 0) {
     pdlp.get_cpu_pdlp_warm_start_data() =
-      cpu_pdlp_warm_start_data_t<i_t, f_t>(solver_settings->get_pdlp_warm_start_data_view());
+      cpu_pdlp_warm_start_data_t<i_t, f_t>(solver_settings.get_pdlp_warm_start_data_view());
   }
 }
 
@@ -261,14 +261,14 @@ void populate_from_data_model_view(
   // helper, so it emits no reference to it and needs no CUDA runtime to link.
   if (solver_settings != nullptr) {
     if constexpr (kHostOnly) {
-      apply_warmstart_cpu_target(solver_settings);
+      copy_warmstart_view_to_host(*solver_settings);
     } else {
       if (handle != nullptr) {
-        apply_warmstart_gpu_target(solver_settings, handle);
+        copy_warmstart_data_to_device(*solver_settings, handle);
       } else {
         // No handle, but this caller has a device: the warm start may be device-resident,
         // so it needs the variant that can copy it back to host.
-        apply_warmstart_cpu_target_with_device(solver_settings);
+        copy_warmstart_data_to_host(*solver_settings);
       }
     }
   }
