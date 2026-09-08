@@ -75,18 +75,12 @@ class pdhg_solver_t {
   void take_step(rmm::device_uvector<f_t>& primal_step_size,
                  rmm::device_uvector<f_t>& dual_step_size,
                  const rmm::device_uvector<f_t>& bound_rescaling,  // Only used in batch mode
+                 rmm::device_uvector<f_t>& initial_primal,         // Only used if reflected
+                 rmm::device_uvector<f_t>& initial_dual,           // Only used if reflected
                  i_t iterations_since_last_restart,
                  bool last_restart_was_average,
                  i_t total_pdlp_iterations,
                  bool is_major_iteration);
-  void take_reflected_step(rmm::device_uvector<f_t>& primal_step_size,
-                           rmm::device_uvector<f_t>& dual_step_size,
-                           const rmm::device_uvector<f_t>& bound_rescaling,
-                           rmm::device_uvector<f_t>& initial_primal,
-                           rmm::device_uvector<f_t>& initial_dual,
-                           i_t iterations_since_last_restart,
-                           i_t total_pdlp_iterations,
-                           bool is_major_iteration);
   void update_solution(cusparse_view_t<i_t, f_t>& current_op_problem_evaluation_cusparse_view_);
   void refine_initial_primal_projection(const rmm::device_uvector<f_t>& bound_rescaling);
 

@@ -1662,6 +1662,8 @@ template <typename i_t, typename f_t>
 void pdhg_solver_t<i_t, f_t>::take_step(rmm::device_uvector<f_t>& primal_step_size,
                                         rmm::device_uvector<f_t>& dual_step_size,
                                         const rmm::device_uvector<f_t>& bound_rescaling,
+                                        rmm::device_uvector<f_t>& initial_primal,
+                                        rmm::device_uvector<f_t>& initial_dual,
                                         i_t iterations_since_last_restart,
                                         bool last_restart_was_average,
                                         i_t total_pdlp_iterations,
@@ -1671,40 +1673,26 @@ void pdhg_solver_t<i_t, f_t>::take_step(rmm::device_uvector<f_t>& primal_step_si
   std::cout << "Take Step:" << std::endl;
 #endif
 
-  cuopt_assert(!hyper_params_.use_reflected_primal_dual,
-               "Reflected PDLP must use take_reflected_step");
-  cuopt_expects(!batch_mode_,
-                error_type_t::ValidationError,
-                "Batch mode not supported for non reflected primal dual");
-  compute_next_primal_dual_solution(primal_step_size,
-                                    iterations_since_last_restart,
-                                    last_restart_was_average,
-                                    dual_step_size,
-                                    total_pdlp_iterations);
-  total_pdhg_iterations_ += 1;
-}
-
-template <typename i_t, typename f_t>
-void pdhg_solver_t<i_t, f_t>::take_reflected_step(rmm::device_uvector<f_t>& primal_step_size,
-                                                  rmm::device_uvector<f_t>& dual_step_size,
-                                                  const rmm::device_uvector<f_t>& bound_rescaling,
-                                                  rmm::device_uvector<f_t>& initial_primal,
-                                                  rmm::device_uvector<f_t>& initial_dual,
-                                                  i_t iterations_since_last_restart,
-                                                  i_t total_pdlp_iterations,
-                                                  bool is_major_iteration)
-{
-  cuopt_assert(hyper_params_.use_reflected_primal_dual,
-               "take_reflected_step requires reflected PDLP");
-  compute_next_primal_dual_solution_reflected(
-    primal_step_size,
-    dual_step_size,
-    bound_rescaling,
-    initial_primal,
-    initial_dual,
-    iterations_since_last_restart,
-    is_major_iteration ||
-      ((total_pdlp_iterations + 2) % conditional_major<i_t>(total_pdlp_iterations + 2)) == 0);
+  if (!hyper_params_.use_reflected_primal_dual) {
+    cuopt_expects(!batch_mode_,
+                  error_type_t::ValidationError,
+                  "Batch mode not supported for non reflected primal dual");
+    compute_next_primal_dual_solution(primal_step_size,
+                                      iterations_since_last_restart,
+                                      last_restart_was_average,
+                                      dual_step_size,
+                                      total_pdlp_iterations);
+  } else {
+    compute_next_primal_dual_solution_reflected(
+      primal_step_size,
+      dual_step_size,
+      bound_rescaling,
+      initial_primal,
+      initial_dual,
+      iterations_since_last_restart,
+      is_major_iteration ||
+        ((total_pdlp_iterations + 2) % conditional_major<i_t>(total_pdlp_iterations + 2)) == 0);
+  }
   total_pdhg_iterations_ += 1;
 }
 

@@ -3131,6 +3131,8 @@ void pdlp_solver_t<i_t, f_t>::take_adaptive_step(i_t total_pdlp_iterations, bool
       primal_step_size_,
       dual_step_size_,
       initial_scaling_strategy_.get_bound_rescaling_vector(),  // Only used in batch mode
+      restart_strategy_.last_restart_duality_gap_.primal_solution_,
+      restart_strategy_.last_restart_duality_gap_.dual_solution_,
       restart_strategy_.get_iterations_since_last_restart(),
       restart_strategy_.get_last_restart_was_average(),
       total_pdlp_iterations,
@@ -3156,25 +3158,18 @@ void pdlp_solver_t<i_t, f_t>::take_adaptive_step(i_t total_pdlp_iterations, bool
 template <typename i_t, typename f_t>
 void pdlp_solver_t<i_t, f_t>::take_constant_step(bool is_major_iteration)
 {
-  if (settings_.hyper_params.use_reflected_primal_dual) {
-    pdhg_solver_.take_reflected_step(
-      primal_step_size_,
-      dual_step_size_,
-      initial_scaling_strategy_.get_bound_rescaling_vector(),  // Only used in batch mode
-      restart_strategy_.last_restart_duality_gap_.primal_solution_,
-      restart_strategy_.last_restart_duality_gap_.dual_solution_,
-      restart_strategy_.weighted_average_solution_.get_iterations_since_last_restart(),
-      total_pdlp_iterations_,
-      is_major_iteration);
-  } else {
-    pdhg_solver_.take_step(primal_step_size_,
-                           dual_step_size_,
-                           initial_scaling_strategy_.get_bound_rescaling_vector(),
-                           0,
-                           false,
-                           total_pdlp_iterations_,
-                           is_major_iteration);
-  }
+  pdhg_solver_.take_step(
+    primal_step_size_,
+    dual_step_size_,
+    initial_scaling_strategy_.get_bound_rescaling_vector(),  // Only used in batch mode
+    restart_strategy_.last_restart_duality_gap_.primal_solution_,
+    restart_strategy_.last_restart_duality_gap_.dual_solution_,
+    settings_.hyper_params.use_reflected_primal_dual
+      ? restart_strategy_.weighted_average_solution_.get_iterations_since_last_restart()
+      : 0,
+    false,
+    total_pdlp_iterations_,
+    is_major_iteration);
 }
 
 template <typename i_t, typename f_t>
