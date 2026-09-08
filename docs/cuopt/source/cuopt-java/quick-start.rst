@@ -11,7 +11,7 @@ Requirements
 
 The Java module requires:
 
-* Java 11 or newer, with ``JAVA_HOME`` pointing to a JDK;
+* Java 17 or newer, with ``JAVA_HOME`` pointing to a JDK;
 * a C++20 compiler;
 * an existing cuOpt installation containing ``libcuopt.so``; and
 * a CUDA-enabled runtime for solving problems.
@@ -24,7 +24,7 @@ the JNI library. The standalone native build links to
 .. code-block:: bash
 
    cd /path/to/cuopt/java/cuopt
-   export JAVA_HOME=/path/to/jdk-11
+   export JAVA_HOME=/path/to/jdk-17
    export CUOPT_PREFIX=/path/to/cuopt/conda/environment
    bash scripts/build_native.sh
 
@@ -45,7 +45,7 @@ at the directory containing the built native library:
 .. code-block:: bash
 
    cd java/cuopt
-   export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+   export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
    export CUOPT_PREFIX=/path/to/cuopt/conda/environment
    export LD_LIBRARY_PATH=$CUOPT_PREFIX/targets/x86_64-linux/lib:$CUOPT_PREFIX/lib:build/native
    mvn test -Dcuopt.native.dir=build/native
@@ -55,7 +55,7 @@ The helper script combines the native build and Maven test steps:
 .. code-block:: bash
 
    cd /path/to/cuopt/java/cuopt
-   export JAVA_HOME=/path/to/jdk-11
+   export JAVA_HOME=/path/to/jdk-17
    export CUOPT_PREFIX=/path/to/cuopt/conda/environment
    bash scripts/test.sh
 
