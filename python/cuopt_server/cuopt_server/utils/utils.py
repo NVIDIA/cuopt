@@ -7,7 +7,7 @@ import os
 from cuopt_server.utils.linear_programming.conversion import (
     create_data_model as lp_create_data_model,
     create_solver as lp_create_solver,
-)  
+)
 from cuopt_server.utils.linear_programming.data_definition import LPData
 from cuopt_server.utils.linear_programming.data_transformation import (
     transform_lp_data,
