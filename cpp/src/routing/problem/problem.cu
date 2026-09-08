@@ -720,7 +720,7 @@ void problem_t<i_t, f_t>::populate_special_nodes()
   special_nodes.earliest_time    = cuopt::device_copy(node_earliest_h, handle_ptr->get_stream());
   special_nodes.latest_time      = cuopt::device_copy(node_latest_h, handle_ptr->get_stream());
   special_nodes.break_loc_to_idx = cuopt::device_copy(break_loc_to_idx_h, handle_ptr->get_stream());
-  RAFT_CHECK_CUDA(handle_ptr->get_stream());
+  RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
 }
 
 template <typename i_t, typename f_t>

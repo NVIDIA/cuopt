@@ -87,7 +87,7 @@ std::unique_ptr<rmm::device_uvector<bool>> copy_u8_as_bool(std::vector<uint8_t> 
   // as_bool is a local temporary and the H2D copy above is async; drain the
   // stream before it goes out of scope so the copy does not read freed host
   // memory.
-  stream.synchronize();
+  stream.sync();
   return d;
 }
 
@@ -302,7 +302,7 @@ cpu_routing_problem_t::to_device(raft::handle_t* handle) const
     data->init_types = copy_vector(types, stream);
     // types is a local temporary feeding an async H2D copy; drain before it
     // goes out of scope.
-    stream.synchronize();
+    stream.sync();
 
     int32_t n_nodes = static_cast<int32_t>(initial_solutions.routes.size());
     int32_t n_sols  = static_cast<int32_t>(initial_solutions.sol_offsets.size());

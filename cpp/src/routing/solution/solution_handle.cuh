@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -44,7 +44,7 @@ class solution_handle_t {
   rmm::exec_policy& get_thrust_policy() const noexcept { return *thrust_policy_; }
   rmm::cuda_stream_view get_stream() const noexcept { return stream_view_; }
   i_t get_device() const { return dev_id_; }
-  void sync_stream() const { stream_view_.synchronize(); };
+  void sync_stream() const { stream_view_.sync(); };
 
   const cudaDeviceProp& get_device_properties() const
   {

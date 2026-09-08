@@ -4,9 +4,7 @@
 import json
 import os
 
-from cuopt_server.utils.job_queue import SolverLPJob
-from cuopt_server.utils.linear_programming.data_definition import LPData
-from cuopt_server.utils.linear_programming.solver import (
+from cuopt_server.utils.linear_programming.conversion import (
     create_data_model as lp_create_data_model,
     create_solver as lp_create_solver,
 )
@@ -15,9 +13,12 @@ from cuopt_server.utils.routing.conversion import (
     create_solver as routing_create_solver,
     populate_optimization_data,
     prep_optimization_data as routing_prep_optimization_data,
+)  
+from cuopt_server.utils.linear_programming.data_definition import LPData
+from cuopt_server.utils.linear_programming.data_transformation import (
+    transform_lp_data,
 )
 from cuopt_server.utils.routing.data_definition import OptimizedRoutingData
-
 
 def build_routing_datamodel_from_json(data):
     """
@@ -74,12 +75,8 @@ def build_lp_datamodel_from_json(data):
             "requires json input"
         )
 
-    stub_id = 9999
-    stub_warnings = []
-    job = SolverLPJob(stub_id, data, None, stub_warnings)
     # transform data into digestible format
-    job._transform(job.LP_data)
-    data = job.get_data()
+    transform_lp_data(data)
 
     _, data_model = lp_create_data_model(data)
     _, solver_settings = lp_create_solver(data, None)

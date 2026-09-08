@@ -447,7 +447,7 @@ class fj_t {
                              dot_product_buffer.data(),
                              incumbent_objective.data(),
                              fj.pb_ptr->n_variables,
-                             fj.handle_ptr->get_stream());
+                             fj.handle_ptr->get_stream().get());
 
       // Allocate temporary storage
       cub_storage_bytes.resize(temp_storage_bytes, fj.handle_ptr->get_stream());
