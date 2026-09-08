@@ -14,7 +14,6 @@ from threading import Event, Lock
 
 import msgpack
 import msgpack_numpy
-import numpy
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 
