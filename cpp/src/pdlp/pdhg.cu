@@ -737,8 +737,8 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution(
 }
 
 template <typename f_t>
-HDI f_t halpern_blend(
-  f_t reflected, f_t current, f_t initial, f_t weight, f_t reflection_coefficient)
+HDI f_t
+halpern_blend(f_t reflected, f_t current, f_t initial, f_t weight, f_t reflection_coefficient)
 {
   const f_t relaxed =
     reflection_coefficient * reflected + (f_t(1.0) - reflection_coefficient) * current;
@@ -763,11 +763,12 @@ struct primal_reflected_major_projection {
     const f_t next         = current_primal - *scalar_ * (objective - Aty);
     const f_t next_clamped = raft::max<f_t>(raft::min<f_t>(next, bounds.y), bounds.x);
     const f_t reflected    = f_t(2.0) * next_clamped - current_primal;
-    return {next_clamped,
-            (next_clamped - next) / *scalar_,
-            reflected,
-            halpern_blend(
-              reflected, current_primal, initial_primal, *halpern_weight_, reflection_coefficient_)};
+    return {
+      next_clamped,
+      (next_clamped - next) / *scalar_,
+      reflected,
+      halpern_blend(
+        reflected, current_primal, initial_primal, *halpern_weight_, reflection_coefficient_)};
   }
   const f_t* scalar_;
   const f_t* halpern_weight_;
@@ -789,9 +790,8 @@ void pdhg_solver_t<i_t, f_t>::primal_reflected_major_projection_transform(
                               reflected_primal_.data(),
                               current_saddle_point_state_.get_primal_solution().data()),
     primal_size_h_,
-    primal_reflected_major_projection<f_t>(primal_step_size.data(),
-                                           d_halpern_weight_.data(),
-                                           hyper_params_.reflection_coefficient),
+    primal_reflected_major_projection<f_t>(
+      primal_step_size.data(), d_halpern_weight_.data(), hyper_params_.reflection_coefficient),
     stream_view_.value());
 }
 
@@ -829,9 +829,10 @@ struct primal_reflected_projection {
     const f_t next         = current_primal - *scalar_ * (objective - Aty);
     const f_t next_clamped = raft::max<f_t>(raft::min<f_t>(next, bounds.y), bounds.x);
     const f_t reflected    = f_t(2.0) * next_clamped - current_primal;
-    return {reflected,
-            halpern_blend(
-              reflected, current_primal, initial_primal, *halpern_weight_, reflection_coefficient_)};
+    return {
+      reflected,
+      halpern_blend(
+        reflected, current_primal, initial_primal, *halpern_weight_, reflection_coefficient_)};
   }
   const f_t* scalar_;
   const f_t* halpern_weight_;
@@ -851,9 +852,8 @@ void pdhg_solver_t<i_t, f_t>::primal_reflected_projection_transform(
     thrust::make_zip_iterator(reflected_primal_.data(),
                               current_saddle_point_state_.get_primal_solution().data()),
     primal_size_h_,
-    primal_reflected_projection<f_t>(primal_step_size.data(),
-                                     d_halpern_weight_.data(),
-                                     hyper_params_.reflection_coefficient),
+    primal_reflected_projection<f_t>(
+      primal_step_size.data(), d_halpern_weight_.data(), hyper_params_.reflection_coefficient),
     stream_view_.value());
 }
 
@@ -911,9 +911,8 @@ void pdhg_solver_t<i_t, f_t>::dual_reflected_major_projection_transform(
                               reflected_dual_.data(),
                               current_saddle_point_state_.get_dual_solution().data()),
     dual_size_h_,
-    dual_reflected_major_projection<f_t>(dual_step_size.data(),
-                                         d_halpern_weight_.data(),
-                                         hyper_params_.reflection_coefficient),
+    dual_reflected_major_projection<f_t>(
+      dual_step_size.data(), d_halpern_weight_.data(), hyper_params_.reflection_coefficient),
     stream_view_.value());
 }
 
@@ -971,9 +970,8 @@ void pdhg_solver_t<i_t, f_t>::dual_reflected_projection_transform(
     thrust::make_zip_iterator(reflected_dual_.data(),
                               current_saddle_point_state_.get_dual_solution().data()),
     dual_size_h_,
-    dual_reflected_projection<f_t>(dual_step_size.data(),
-                                   d_halpern_weight_.data(),
-                                   hyper_params_.reflection_coefficient),
+    dual_reflected_projection<f_t>(
+      dual_step_size.data(), d_halpern_weight_.data(), hyper_params_.reflection_coefficient),
     stream_view_.value());
 }
 
@@ -1038,8 +1036,8 @@ struct primal_reflected_major_projection_bulk_op {
     potential_next_primal[idx] = next_clamped;
     dual_slack[idx]            = (next_clamped - next) / step_size;
     reflected_primal[idx]      = reflected;
-    primal_solution[idx] =
-      halpern_blend(reflected, primal_val, initial_primal[idx], *halpern_weight, reflection_coefficient);
+    primal_solution[idx]       = halpern_blend(
+      reflected, primal_val, initial_primal[idx], *halpern_weight, reflection_coefficient);
 
     cuopt_assert(!isnan(reflected_primal[idx]),
                  "reflected_primal is NaN after primal_reflected_major_projection");
@@ -1086,8 +1084,8 @@ struct dual_reflected_major_projection_bulk_op {
 
     potential_next_dual[idx] = next_dual;
     reflected_dual[idx]      = reflected;
-    dual_solution[idx] =
-      halpern_blend(reflected, current_dual, initial_dual[idx], *halpern_weight, reflection_coefficient);
+    dual_solution[idx]       = halpern_blend(
+      reflected, current_dual, initial_dual[idx], *halpern_weight, reflection_coefficient);
 
     cuopt_assert(!isnan(reflected_dual[idx]),
                  "reflected_dual is NaN after dual_reflected_major_projection");
@@ -1131,12 +1129,11 @@ struct primal_reflected_projection_bulk_op {
 
     // Variables bounds are common accross all climbers but their scaling factor changes.
     // Instead of creating a matrix of variable bounds, we scale the bounds here.
-    const f_t bound_scale = bound_rescaling[batch_idx];
-    const f_t2 bounds     = variable_bounds[var_idx];
-    const f_t next_clamped =
-      cuda::std::max(cuda::std::min(next, get_upper(bounds) * bound_scale),
-                     get_lower(bounds) * bound_scale);
-    const f_t reflected = f_t(2.0) * next_clamped - primal_val;
+    const f_t bound_scale  = bound_rescaling[batch_idx];
+    const f_t2 bounds      = variable_bounds[var_idx];
+    const f_t next_clamped = cuda::std::max(cuda::std::min(next, get_upper(bounds) * bound_scale),
+                                            get_lower(bounds) * bound_scale);
+    const f_t reflected    = f_t(2.0) * next_clamped - primal_val;
 
     // T(z) is deliberately not stored: potential_next_primal_solution_ holds the last major
     // step's T(z), which the convergence check two iterations later still reads.
@@ -1188,8 +1185,8 @@ struct dual_reflected_projection_bulk_op {
     const f_t reflected = f_t(2.0) * next_dual - current_dual;
 
     reflected_dual[idx] = reflected;
-    dual_solution[idx] =
-      halpern_blend(reflected, current_dual, initial_dual[idx], *halpern_weight, reflection_coefficient);
+    dual_solution[idx]  = halpern_blend(
+      reflected, current_dual, initial_dual[idx], *halpern_weight, reflection_coefficient);
 
     cuopt_assert(!isnan(reflected_dual[idx]),
                  "reflected_dual is NaN after dual_reflected_projection");

@@ -1460,9 +1460,8 @@ static void compute_stats(const rmm::device_uvector<f_t>& vec,
                           f_t& avg)
 {
   auto abs_op      = [] __host__ __device__(f_t x) { return abs(x); };
-  auto min_nonzero = [] __host__ __device__(f_t x) -> f_t {
-    return x == 0 ? std::numeric_limits<f_t>::max() : abs(x);
-  };
+  auto min_nonzero = [] __host__ __device__(f_t x)
+    -> f_t { return x == 0 ? std::numeric_limits<f_t>::max() : abs(x); };
 
   cuopt_assert(vec.size() > 0, "Vector must not be empty");
 
