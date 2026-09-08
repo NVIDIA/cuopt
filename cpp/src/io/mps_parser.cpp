@@ -25,6 +25,7 @@
 #include <utility>
 
 namespace {
+using cuopt::mathematical_optimization::io::coo_canonicalization_scratch_t;
 using cuopt::mathematical_optimization::io::coo_entries_t;
 using cuopt::mathematical_optimization::io::error_type_t;
 using cuopt::mathematical_optimization::io::mps_parser_expects;
@@ -253,6 +254,27 @@ size_t compress_canonical_pairs(const std::vector<i_t>& rows,
   return sorted_values.size();
 }
 
+// Order the entries by canonical (row, col), leaving the result in `s.order` and the per-entry
+// ranks in `s.row_rank` / `s.col_rank`. Returns the bucket count. Least-significant key first: the
+// stable row pass preserves the column pass.
+template <typename i_t, typename f_t>
+size_t order_by_canonical_pair(const std::vector<i_t>& rows,
+                               const std::vector<i_t>& cols,
+                               coo_canonicalization_scratch_t<i_t, f_t>& s)
+{
+  const size_t nnz = rows.size();
+  const size_t buckets =
+    compress_canonical_pairs(rows, cols, s.row_rank, s.col_rank, s.sorted_values);
+  s.order.resize(nnz);
+  s.pass_scratch.resize(nnz);
+  for (size_t t = 0; t < nnz; ++t) {
+    s.order[t] = static_cast<i_t>(t);
+  }
+  counting_sort_pass(s.col_rank, buckets, s.order, s.pass_scratch, s.count);
+  counting_sort_pass(s.row_rank, buckets, s.order, s.pass_scratch, s.count);
+  return buckets;
+}
+
 }  // namespace
 
 namespace cuopt::mathematical_optimization::io {
@@ -278,7 +300,8 @@ std::string_view trim(std::string_view str)
 template <typename i_t, typename f_t>
 void check_symmetric_offdiagonal_pairs(const std::vector<i_t>& rows,
                                        const std::vector<i_t>& cols,
-                                       const std::vector<f_t>& vals)
+                                       const std::vector<f_t>& vals,
+                                       coo_canonicalization_scratch_t<i_t, f_t>& s)
 {
   const size_t nnz = vals.size();
   mps_parser_expects(rows.size() == nnz && cols.size() == nnz,
@@ -290,20 +313,10 @@ void check_symmetric_offdiagonal_pairs(const std::vector<i_t>& rows,
   // walk over the runs proves the entry set equals its transpose (i.e. Q is symmetric). A valid
   // run is a single diagonal entry, or exactly (i,j) and (j,i); anything else is a duplicate or a
   // missing transpose partner.
-  std::vector<i_t> row_rank;
-  std::vector<i_t> col_rank;
-  std::vector<i_t> sorted_values;
-  const size_t buckets = compress_canonical_pairs(rows, cols, row_rank, col_rank, sorted_values);
-
-  // Least-significant key first: the stable row pass preserves the column pass, giving (row, col).
-  std::vector<i_t> order(nnz);
-  std::vector<i_t> scratch(nnz);
-  std::vector<i_t> count;
-  for (size_t t = 0; t < nnz; ++t) {
-    order[t] = static_cast<i_t>(t);
-  }
-  counting_sort_pass(col_rank, buckets, order, scratch, count);
-  counting_sort_pass(row_rank, buckets, order, scratch, count);
+  order_by_canonical_pair(rows, cols, s);
+  const std::vector<i_t>& order    = s.order;
+  const std::vector<i_t>& row_rank = s.row_rank;
+  const std::vector<i_t>& col_rank = s.col_rank;
 
   const f_t eps = std::numeric_limits<f_t>::epsilon();
   for (size_t k = 0; k < nnz;) {
@@ -353,7 +366,10 @@ void check_symmetric_offdiagonal_pairs(const std::vector<i_t>& rows,
 }
 
 template <typename i_t, typename f_t>
-void canonicalize_coo_matrix(std::vector<i_t>& rows, std::vector<i_t>& cols, std::vector<f_t>& vals)
+void canonicalize_coo_matrix(std::vector<i_t>& rows,
+                             std::vector<i_t>& cols,
+                             std::vector<f_t>& vals,
+                             coo_canonicalization_scratch_t<i_t, f_t>& s)
 {
   const size_t nnz = vals.size();
   mps_parser_expects(rows.size() == nnz && cols.size() == nnz,
@@ -368,30 +384,21 @@ void canonicalize_coo_matrix(std::vector<i_t>& rows, std::vector<i_t>& cols, std
 
   // Both orientations of an off-diagonal pair share a canonical key, as do exact duplicates, so
   // ordering by it makes every group that must merge contiguous.
-  std::vector<i_t> row_rank;
-  std::vector<i_t> col_rank;
-  std::vector<i_t> sorted_values;
-  const size_t buckets = compress_canonical_pairs(rows, cols, row_rank, col_rank, sorted_values);
-
-  // Least-significant key first: the stable row pass preserves the column pass, giving (row, col).
-  std::vector<i_t> order(nnz);
-  std::vector<i_t> scratch(nnz);
-  std::vector<i_t> count;
-  for (size_t t = 0; t < nnz; ++t) {
-    order[t] = static_cast<i_t>(t);
-  }
-  counting_sort_pass(col_rank, buckets, order, scratch, count);
-  counting_sort_pass(row_rank, buckets, order, scratch, count);
+  order_by_canonical_pair(rows, cols, s);
+  const std::vector<i_t>& order         = s.order;
+  const std::vector<i_t>& row_rank      = s.row_rank;
+  const std::vector<i_t>& col_rank      = s.col_rank;
+  const std::vector<i_t>& sorted_values = s.sorted_values;
 
   // Entries sharing a canonical key are now adjacent, so one walk sums each run (x^T Q x
   // semantics), maps ranks back to variable indices, and drops coefficients that cancel to ~0.
   const f_t eps = std::numeric_limits<f_t>::epsilon();
-  std::vector<i_t> out_rows;
-  std::vector<i_t> out_cols;
-  std::vector<f_t> out_vals;
-  out_rows.reserve(nnz);
-  out_cols.reserve(nnz);
-  out_vals.reserve(nnz);
+  s.out_rows.clear();
+  s.out_cols.clear();
+  s.out_vals.clear();
+  s.out_rows.reserve(nnz);
+  s.out_cols.reserve(nnz);
+  s.out_vals.reserve(nnz);
   for (size_t k = 0; k < nnz;) {
     const i_t row = row_rank[order[k]];
     const i_t col = col_rank[order[k]];
@@ -401,16 +408,16 @@ void canonicalize_coo_matrix(std::vector<i_t>& rows, std::vector<i_t>& cols, std
       sum += vals[order[e]];
     }
     if (std::abs(sum) > eps) {
-      out_rows.push_back(sorted_values[row]);
-      out_cols.push_back(sorted_values[col]);
-      out_vals.push_back(sum);
+      s.out_rows.push_back(sorted_values[row]);
+      s.out_cols.push_back(sorted_values[col]);
+      s.out_vals.push_back(sum);
     }
     k = e;
   }
 
-  rows = std::move(out_rows);
-  cols = std::move(out_cols);
-  vals = std::move(out_vals);
+  rows.swap(s.out_rows);
+  cols.swap(s.out_cols);
+  vals.swap(s.out_vals);
 }
 
 BoundType convert(std::string_view str)
@@ -1497,8 +1504,10 @@ void mps_parser_t<i_t, f_t>::flush_qcmatrix_block()
                        "Duplicate QCMATRIX block for the same constraint row (index %d)",
                        static_cast<int>(qcmatrix_active_row_id_));
   }
-  check_symmetric_offdiagonal_pairs(
-    qcmatrix_current_entries_.rows, qcmatrix_current_entries_.cols, qcmatrix_current_entries_.vals);
+  check_symmetric_offdiagonal_pairs(qcmatrix_current_entries_.rows,
+                                    qcmatrix_current_entries_.cols,
+                                    qcmatrix_current_entries_.vals,
+                                    qcmatrix_scratch_);
   qcmatrix_raw_block_t block;
   block.constraint_row_id = qcmatrix_active_row_id_;
   block.entries           = std::move(qcmatrix_current_entries_);
@@ -1795,30 +1804,44 @@ template class mps_parser_t<int, float>;
 
 template class mps_parser_t<int, double>;
 
-template void check_symmetric_offdiagonal_pairs<int, float>(const std::vector<int>&,
-                                                            const std::vector<int>&,
-                                                            const std::vector<float>&);
-template void check_symmetric_offdiagonal_pairs<int, double>(const std::vector<int>&,
-                                                             const std::vector<int>&,
-                                                             const std::vector<double>&);
-template void check_symmetric_offdiagonal_pairs<int64_t, float>(const std::vector<int64_t>&,
-                                                                const std::vector<int64_t>&,
-                                                                const std::vector<float>&);
-template void check_symmetric_offdiagonal_pairs<int64_t, double>(const std::vector<int64_t>&,
-                                                                 const std::vector<int64_t>&,
-                                                                 const std::vector<double>&);
+template void check_symmetric_offdiagonal_pairs<int, float>(
+  const std::vector<int>&,
+  const std::vector<int>&,
+  const std::vector<float>&,
+  coo_canonicalization_scratch_t<int, float>&);
+template void check_symmetric_offdiagonal_pairs<int, double>(
+  const std::vector<int>&,
+  const std::vector<int>&,
+  const std::vector<double>&,
+  coo_canonicalization_scratch_t<int, double>&);
+template void check_symmetric_offdiagonal_pairs<int64_t, float>(
+  const std::vector<int64_t>&,
+  const std::vector<int64_t>&,
+  const std::vector<float>&,
+  coo_canonicalization_scratch_t<int64_t, float>&);
+template void check_symmetric_offdiagonal_pairs<int64_t, double>(
+  const std::vector<int64_t>&,
+  const std::vector<int64_t>&,
+  const std::vector<double>&,
+  coo_canonicalization_scratch_t<int64_t, double>&);
 
 template void canonicalize_coo_matrix<int, float>(std::vector<int>&,
                                                   std::vector<int>&,
-                                                  std::vector<float>&);
+                                                  std::vector<float>&,
+                                                  coo_canonicalization_scratch_t<int, float>&);
 template void canonicalize_coo_matrix<int, double>(std::vector<int>&,
                                                    std::vector<int>&,
-                                                   std::vector<double>&);
-template void canonicalize_coo_matrix<int64_t, float>(std::vector<int64_t>&,
-                                                      std::vector<int64_t>&,
-                                                      std::vector<float>&);
-template void canonicalize_coo_matrix<int64_t, double>(std::vector<int64_t>&,
-                                                       std::vector<int64_t>&,
-                                                       std::vector<double>&);
+                                                   std::vector<double>&,
+                                                   coo_canonicalization_scratch_t<int, double>&);
+template void canonicalize_coo_matrix<int64_t, float>(
+  std::vector<int64_t>&,
+  std::vector<int64_t>&,
+  std::vector<float>&,
+  coo_canonicalization_scratch_t<int64_t, float>&);
+template void canonicalize_coo_matrix<int64_t, double>(
+  std::vector<int64_t>&,
+  std::vector<int64_t>&,
+  std::vector<double>&,
+  coo_canonicalization_scratch_t<int64_t, double>&);
 
 }  // namespace cuopt::mathematical_optimization::io

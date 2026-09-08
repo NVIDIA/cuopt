@@ -194,7 +194,8 @@ void cpu_optimization_problem_t<i_t, f_t>::add_quadratic_constraint(
   qc.vals.assign(coeff.begin(), coeff.end());
   qc.linear_values.assign(linear_values.begin(), linear_values.end());
   qc.linear_indices.assign(linear_indices.begin(), linear_indices.end());
-  io::canonicalize_coo_matrix(qc.rows, qc.cols, qc.vals);
+  io::coo_canonicalization_scratch_t<i_t, f_t> scratch;
+  io::canonicalize_coo_matrix(qc.rows, qc.cols, qc.vals, scratch);
   quadratic_constraints_.push_back(std::move(qc));
 }
 

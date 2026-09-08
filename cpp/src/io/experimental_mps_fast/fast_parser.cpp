@@ -2745,6 +2745,7 @@ static void finalize_qcmatrix_constraints(parse_state_t<i_t, f_t>& state)
 
   // rebuild the A_ matrix. fairly ugly and brute force, could do better if we parsed the QCMATRIX
   // entries before building the CSR in COLUMNS but unclear if worth it
+  coo_canonicalization_scratch_t<i_t, f_t> qc_scratch;
   for (const auto& block : state.qcmatrix_blocks) {
     if (block.entries.empty()) { continue; }
 
@@ -2768,8 +2769,8 @@ static void finalize_qcmatrix_constraints(parse_state_t<i_t, f_t>& state)
       qc.cols.push_back(col);
       qc.vals.push_back(val);
     }
-    check_symmetric_offdiagonal_pairs(qc.rows, qc.cols, qc.vals);
-    canonicalize_coo_matrix(qc.rows, qc.cols, qc.vals);
+    check_symmetric_offdiagonal_pairs(qc.rows, qc.cols, qc.vals, qc_scratch);
+    canonicalize_coo_matrix(qc.rows, qc.cols, qc.vals, qc_scratch);
     state.problem.quadratic_constraints_.push_back(std::move(qc));
   }
 

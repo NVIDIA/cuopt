@@ -44,6 +44,26 @@ struct coo_entries_t {
 };
 
 /**
+ * @brief Reusable scratch for the two COO canonicalization entry points below.
+ *
+ * Declare one before a loop over quadratic constraints and pass it to every call, so that a model
+ * with many small constraints does not pay a fresh set of allocations per constraint. Buffers only
+ * grow; every one is fully overwritten before it is read.
+ */
+template <typename i_t, typename f_t>
+struct coo_canonicalization_scratch_t {
+  std::vector<i_t> row_rank{};       // canonical row of each entry, as a dense rank
+  std::vector<i_t> col_rank{};       // canonical column of each entry, as a dense rank
+  std::vector<i_t> sorted_values{};  // rank -> original variable index
+  std::vector<i_t> order{};          // entry order produced by the counting passes
+  std::vector<i_t> pass_scratch{};   // ping-pong buffer for the counting passes
+  std::vector<i_t> count{};          // bucket counters for the counting passes
+  std::vector<i_t> out_rows{};       // canonicalize_coo_matrix output staging
+  std::vector<i_t> out_cols{};
+  std::vector<f_t> out_vals{};
+};
+
+/**
  * @brief Validate MPS QCMATRIX COO entries before canonicalization.
  *
  * - Reject duplicate (row, col) indices.
@@ -52,7 +72,8 @@ struct coo_entries_t {
 template <typename i_t, typename f_t>
 void check_symmetric_offdiagonal_pairs(const std::vector<i_t>& rows,
                                        const std::vector<i_t>& cols,
-                                       const std::vector<f_t>& vals);
+                                       const std::vector<f_t>& vals,
+                                       coo_canonicalization_scratch_t<i_t, f_t>& scratch);
 
 /**
  * @brief Canonicalize a symmetric matrix in COO form to upper-triangular storage.
@@ -65,7 +86,8 @@ void check_symmetric_offdiagonal_pairs(const std::vector<i_t>& rows,
 template <typename i_t, typename f_t>
 void canonicalize_coo_matrix(std::vector<i_t>& rows,
                              std::vector<i_t>& cols,
-                             std::vector<f_t>& vals);
+                             std::vector<f_t>& vals,
+                             coo_canonicalization_scratch_t<i_t, f_t>& scratch);
 
 /**
  * @brief Different possible types of 'ROWS'
@@ -202,6 +224,8 @@ class mps_parser_t {
   /** Triples for the QCMATRIX block currently being read (-1 row id means none) */
   i_t qcmatrix_active_row_id_{-1};
   coo_entries_t<i_t, f_t> qcmatrix_current_entries_{};
+  /** Reused across QCMATRIX blocks by flush_qcmatrix_block(). */
+  coo_canonicalization_scratch_t<i_t, f_t> qcmatrix_scratch_{};
 
   std::unordered_set<std::string> encountered_sections{};
   std::unordered_map<std::string, i_t> row_names_map{};
