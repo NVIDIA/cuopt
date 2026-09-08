@@ -2177,18 +2177,18 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
 template <typename i_t, typename f_t>
 static void compute_primal_dual_deltas(pdhg_solver_t<i_t, f_t>& pdhg, rmm::cuda_stream_view stream)
 {
+  auto& baseline_primal = pdhg.get_potential_next_primal_solution();
+  auto& baseline_dual   = pdhg.get_potential_next_dual_solution();
   cub::DeviceTransform::Transform(
-    cuda::std::make_tuple(pdhg.get_reflected_primal().data(),
-                          pdhg.get_potential_next_primal_solution().data()),
+    cuda::std::make_tuple(pdhg.get_reflected_primal().data(), baseline_primal.data()),
     pdhg.get_saddle_point_state().get_delta_primal().data(),
-    pdhg.get_potential_next_primal_solution().size(),
+    baseline_primal.size(),
     cuda::std::minus<f_t>{},
     stream);
   cub::DeviceTransform::Transform(
-    cuda::std::make_tuple(pdhg.get_reflected_dual().data(),
-                          pdhg.get_potential_next_dual_solution().data()),
+    cuda::std::make_tuple(pdhg.get_reflected_dual().data(), baseline_dual.data()),
     pdhg.get_saddle_point_state().get_delta_dual().data(),
-    pdhg.get_potential_next_dual_solution().size(),
+    baseline_dual.size(),
     cuda::std::minus<f_t>{},
     stream);
 }
@@ -2236,7 +2236,7 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
                  "delta_dual_ size mismatch");
   }
 
-  // Computing the deltas (delta = reflected - the PDHG projection)
+  // Computing the deltas (delta = reflected - current)
   // TODO batch mdoe: this only works if everyone restarts
   if (is_distributed_master()) {
     multi_gpu_engine->for_each_shard([](auto& shard) {
