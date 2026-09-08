@@ -109,7 +109,8 @@ def _wait_poll_loop(
 
     The loop and ``time.sleep`` run in Python so the GIL is released between
     short status RPCs. Concurrent incumbent/log stream threads can therefore
-    run during ``Client.wait``. ``timeout_seconds <= 0`` waits indefinitely.
+    run during ``Client.wait``. ``timeout_seconds == 0`` waits indefinitely.
+    Negative values raise ``error_cls``.
     """
     if timeout_seconds < 0:
         raise error_cls("timeout_seconds must be non-negative")
@@ -120,9 +121,13 @@ def _wait_poll_loop(
         status = get_status(job_id)
         if status not in (JobStatus.QUEUED, JobStatus.PROCESSING):
             return status
-        if deadline is not None and time.monotonic() >= deadline:
+        if deadline is None:
+            time.sleep(poll_interval_s)
+            continue
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
             raise error_cls("Timeout waiting for job completion")
-        time.sleep(poll_interval_s)
+        time.sleep(min(poll_interval_s, remaining))
 
 
 cdef int _invoke_log_callback(
@@ -347,17 +352,20 @@ cdef class Client:
         Block until ``job_id`` reaches a terminal state and return its
         :class:`JobStatus`.
 
-        ``timeout`` is in whole seconds. ``None`` waits indefinitely.
-        Non-``None`` values are converted with ``int(timeout)`` (so ``0.5``
-        becomes ``0`` and waits indefinitely). Positive timeouts poll about
-        once per second and raise :class:`GrpcError` if the deadline expires
-        (they do not return a non-terminal :class:`JobStatus`).
+        ``timeout`` is in whole seconds. ``None`` or ``0`` waits indefinitely.
+        Negative values raise :class:`GrpcError`. Non-``None`` values are
+        converted with ``int(timeout)`` (so ``0.5`` becomes ``0`` and waits
+        indefinitely). Positive timeouts poll about once per second and raise
+        :class:`GrpcError` if the deadline expires (they do not return a
+        non-terminal :class:`JobStatus`).
 
         The wait loop runs in Python and only calls :meth:`status` for each
         poll, so the GIL is released between checks. Concurrent
         :meth:`start_incumbent_stream` and
         :meth:`start_log_stream` threads can therefore make progress during
-        the wait.
+        the wait. Each :meth:`status` call is a unary RPC with a separate
+        60-second hang deadline; a hung poll can therefore outlast a short
+        ``timeout``.
         """
         timeout_seconds = 0 if timeout is None else int(timeout)
         return _wait_poll_loop(
@@ -1145,7 +1153,9 @@ cdef class RoutingClient:
         error or unknown job), mirroring the LP/MILP client.
 
         Polls job status from Python so the GIL is released between short
-        status RPCs. ``timeout <= 0`` waits indefinitely.
+        status RPCs. ``timeout == 0`` waits indefinitely; negative values
+        raise :class:`RoutingSolveError`. Each status poll is a unary RPC
+        with a separate 60-second hang deadline.
         """
         return _wait_poll_loop(
             self._status, job_id, timeout, RoutingSolveError

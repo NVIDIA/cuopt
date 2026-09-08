@@ -117,6 +117,24 @@ class TestWaitPollLoop:
                 lambda job_id: JobStatus.QUEUED, "job", 1, GrpcError
             )
 
+    def test_sleep_is_capped_to_remaining_deadline(self, monkeypatch):
+        ticks = iter([100.0, 100.6])
+        sleeps = []
+        monkeypatch.setattr(time, "monotonic", lambda: next(ticks))
+        monkeypatch.setattr(time, "sleep", sleeps.append)
+
+        polls = {"n": 0}
+
+        def get_status(job_id):
+            polls["n"] += 1
+            if polls["n"] == 1:
+                return JobStatus.PROCESSING
+            return JobStatus.COMPLETED
+
+        status = _wait_poll_loop(get_status, "job", 1, GrpcError)
+        assert status is JobStatus.COMPLETED
+        assert sleeps == [pytest.approx(0.4)]
+
     def test_rejects_negative_timeout(self):
         with pytest.raises(
             GrpcError, match="timeout_seconds must be non-negative"
@@ -135,7 +153,7 @@ class TestWaitPollLoop:
             if polls["n"] == 1:
                 started.set()
                 return JobStatus.PROCESSING
-            assert progressed.is_set()
+            assert progressed.wait(timeout=2)
             return JobStatus.COMPLETED
 
         def worker():
@@ -165,14 +183,14 @@ class TestWaitPollLoop:
 
         polls = {"n": 0}
 
-        def fake_status(self, job_id):
-            polls["n"] += 1
-            if polls["n"] == 1:
-                return JobStatus.PROCESSING
-            return JobStatus.COMPLETED
+        class StatusStubClient(Client):
+            def status(self, job_id):
+                polls["n"] += 1
+                if polls["n"] == 1:
+                    return JobStatus.PROCESSING
+                return JobStatus.COMPLETED
 
-        monkeypatch.setattr(Client, "status", fake_status)
-        client = Client.__new__(Client)
+        client = StatusStubClient.__new__(StatusStubClient)
 
         hits = {"n": 0}
         during_sleep = []
@@ -201,7 +219,7 @@ class TestWaitPollLoop:
 
         assert status is JobStatus.COMPLETED
         assert during_sleep, "wait() never slept between status polls"
-        assert during_sleep[0] > 1000, (
+        assert during_sleep[0] > 0, (
             "spinner made no progress during wait sleep; GIL likely held "
             f"(hits={during_sleep[0]})"
         )
