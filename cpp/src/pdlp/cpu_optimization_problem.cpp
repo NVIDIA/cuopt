@@ -10,7 +10,6 @@
 #include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
 #include <cuopt/mathematical_optimization/csr_matrix_utils.hpp>
 #include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
-#include <cuopt/mathematical_optimization/optimization_problem.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
 #include <cuopt/mathematical_optimization/solve_remote.hpp>
 
@@ -632,100 +631,6 @@ template <typename i_t, typename f_t>
 std::vector<var_t> cpu_optimization_problem_t<i_t, f_t>::get_variable_types_host() const
 {
   return variable_types_;
-}
-
-// ==============================================================================
-// Conversion to optimization_problem_t
-// ==============================================================================
-
-template <typename i_t, typename f_t>
-std::unique_ptr<optimization_problem_t<i_t, f_t>>
-cpu_optimization_problem_t<i_t, f_t>::to_optimization_problem(raft::handle_t const* handle_ptr)
-{
-  if (handle_ptr == nullptr) {
-    throw std::runtime_error(
-      "cpu_optimization_problem_t::to_optimization_problem(): "
-      "handle_ptr is null. A RAFT handle with CUDA resources is required to convert "
-      "a CPU-backed problem to a GPU-backed optimization_problem_t.");
-  }
-
-  auto gpu_problem = std::make_unique<optimization_problem_t<i_t, f_t>>(handle_ptr);
-
-  // Set scalar values
-  gpu_problem->set_maximize(maximize_);
-  gpu_problem->set_objective_scaling_factor(objective_scaling_factor_);
-  gpu_problem->set_objective_offset(objective_offset_);
-  gpu_problem->set_problem_category(problem_category_);
-
-  // Set string values
-  if (!objective_name_.empty()) gpu_problem->set_objective_name(objective_name_);
-  if (!problem_name_.empty()) gpu_problem->set_problem_name(problem_name_);
-  if (!var_names_.empty()) gpu_problem->set_variable_names(var_names_);
-  if (!row_names_.empty()) gpu_problem->set_row_names(row_names_);
-
-  // Set CSR constraint matrix (data will be copied to GPU by optimization_problem_t setters)
-  // Use A_offsets_ presence as the guard: a valid CSR can have zero non-zeros but still
-  // needs row offsets to define the number of constraints.
-  if (!A_offsets_.empty()) {
-    gpu_problem->set_csr_constraint_matrix(A_.data(),
-                                           A_.size(),
-                                           A_indices_.data(),
-                                           A_indices_.size(),
-                                           A_offsets_.data(),
-                                           A_offsets_.size());
-  }
-
-  // Set constraint bounds
-  if (!b_.empty()) { gpu_problem->set_constraint_bounds(b_.data(), b_.size()); }
-
-  // Set objective coefficients
-  if (!c_.empty()) { gpu_problem->set_objective_coefficients(c_.data(), c_.size()); }
-
-  // Set quadratic objective if present (GPU setter symmetrizes once: H = Q + Q^T)
-  if (!Q_values_.empty()) {
-    gpu_problem->set_quadratic_objective_matrix(Q_values_.data(),
-                                                Q_values_.size(),
-                                                Q_indices_.data(),
-                                                Q_indices_.size(),
-                                                Q_offsets_.data(),
-                                                Q_offsets_.size());
-  }
-
-  if (!quadratic_constraints_.empty()) {
-    gpu_problem->set_quadratic_constraints(
-      std::vector<typename optimization_problem_interface_t<i_t, f_t>::quadratic_constraint_t>(
-        quadratic_constraints_));
-  }
-
-  // Set variable bounds
-  if (!variable_lower_bounds_.empty()) {
-    gpu_problem->set_variable_lower_bounds(variable_lower_bounds_.data(),
-                                           variable_lower_bounds_.size());
-  }
-  if (!variable_upper_bounds_.empty()) {
-    gpu_problem->set_variable_upper_bounds(variable_upper_bounds_.data(),
-                                           variable_upper_bounds_.size());
-  }
-
-  // Set variable types
-  if (!variable_types_.empty()) {
-    gpu_problem->set_variable_types(variable_types_.data(), variable_types_.size());
-  }
-
-  // Set constraint bounds
-  if (!constraint_lower_bounds_.empty()) {
-    gpu_problem->set_constraint_lower_bounds(constraint_lower_bounds_.data(),
-                                             constraint_lower_bounds_.size());
-  }
-  if (!constraint_upper_bounds_.empty()) {
-    gpu_problem->set_constraint_upper_bounds(constraint_upper_bounds_.data(),
-                                             constraint_upper_bounds_.size());
-  }
-
-  // Set row types
-  if (!row_types_.empty()) { gpu_problem->set_row_types(row_types_.data(), row_types_.size()); }
-
-  return gpu_problem;
 }
 
 // ==============================================================================
