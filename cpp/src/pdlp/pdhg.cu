@@ -1387,20 +1387,18 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
 
   using f_t2 = typename type_2<f_t>::type;
 
-  // The projections below apply the Halpern update in-kernel, and its weight changes every
+  // The projections apply the Halpern update in-kernel, and its weight changes every
   // iteration while those kernels live in a captured CUDA graph. Passing it as a device scalar
   // keeps the graph valid: capture records the pointer, each launch reads the value written here.
-  if (halpern_update_is_fused()) {
-    const f_t halpern_weight =
-      f_t(iterations_since_last_restart + 1) / f_t(iterations_since_last_restart + 2);
-    if (is_distributed_master()) {
-      mgpu_engine_->for_each_shard([halpern_weight](auto& shard) {
-        shard.sub_pdlp->pdhg_solver_.d_halpern_weight_.set_value_async(halpern_weight,
-                                                                       shard.stream.view());
-      });
-    } else {
-      d_halpern_weight_.set_value_async(halpern_weight, stream_view_);
-    }
+  const f_t halpern_weight =
+    f_t(iterations_since_last_restart + 1) / f_t(iterations_since_last_restart + 2);
+  if (is_distributed_master()) {
+    mgpu_engine_->for_each_shard([halpern_weight](auto& shard) {
+      shard.sub_pdlp->pdhg_solver_.d_halpern_weight_.set_value_async(halpern_weight,
+                                                                     shard.stream.view());
+    });
+  } else {
+    d_halpern_weight_.set_value_async(halpern_weight, stream_view_);
   }
 
   if (is_distributed_master()) { mgpu_engine_->sync_await_shards(stream_view_); }

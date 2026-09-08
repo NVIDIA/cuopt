@@ -2177,10 +2177,8 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
 template <typename i_t, typename f_t>
 static void compute_primal_dual_deltas(pdhg_solver_t<i_t, f_t>& pdhg, rmm::cuda_stream_view stream)
 {
-  auto& baseline_primal = pdhg.halpern_update_is_fused() ? pdhg.get_potential_next_primal_solution()
-                                                         : pdhg.get_primal_solution();
-  auto& baseline_dual   = pdhg.halpern_update_is_fused() ? pdhg.get_potential_next_dual_solution()
-                                                         : pdhg.get_dual_solution();
+  auto& baseline_primal = pdhg.get_potential_next_primal_solution();
+  auto& baseline_dual   = pdhg.get_potential_next_dual_solution();
   cub::DeviceTransform::Transform(
     cuda::std::make_tuple(pdhg.get_reflected_primal().data(), baseline_primal.data()),
     pdhg.get_saddle_point_state().get_delta_primal().data(),
@@ -3098,7 +3096,6 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
           transpose_problem_fields(/*to_row=*/true);
         }
       }
-      if (!pdhg_solver_.halpern_update_is_fused()) { halpern_update(); }
     }
 
     ++total_pdlp_iterations_;

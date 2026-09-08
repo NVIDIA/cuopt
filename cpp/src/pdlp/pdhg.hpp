@@ -107,10 +107,6 @@ class pdhg_solver_t {
   void spmv_At_into(cusparseDnVecDescr_t in_desc, cusparseDnVecDescr_t out_desc);
   void spmv_A_into(cusparseDnVecDescr_t in_desc, cusparseDnVecDescr_t out_desc);
 
-  // The Halpern update is folded into the reflected projections (including the batch kernels
-  // and the new_bounds re-projection). A separate whole-vector Halpern pass is not used.
-  bool halpern_update_is_fused() const { return true; }
-
   // Pure cub-transform extractions. Allows for clearer containment of the calls and ensures
   // the single-GPU vs distributed-GPU uses the same calls
   void primal_reflected_major_projection_transform(rmm::device_uvector<f_t>& primal_step_size,
