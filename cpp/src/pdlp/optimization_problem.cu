@@ -1699,7 +1699,7 @@ void apply_warmstart_cpu_target_with_device(solver_settings_t<i_t, f_t>* solver_
   }
 }
 
-#if MIP_INSTANTIATE_FLOAT
+#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 template CUOPT_EXPORT void apply_warmstart_gpu_target(solver_settings_t<int, float>*,
                                                       const raft::handle_t*);
 template CUOPT_EXPORT void apply_warmstart_cpu_target_with_device(solver_settings_t<int, float>*);
