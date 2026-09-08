@@ -2171,8 +2171,8 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
 }
 
-// delta = reflected - T(z). Halpern is fused into the projections, so current has already been
-// overwritten and T(z) lives in potential_next_*. Shared by the single-GPU and per-shard
+// delta = reflected - current, for both primal and dual, written into the
+// saddle-point delta buffers. Shared by the single-GPU and per-shard
 // (distributed) paths so the two only differ by which pdhg/stream they pass.
 template <typename i_t, typename f_t>
 static void compute_primal_dual_deltas(pdhg_solver_t<i_t, f_t>& pdhg, rmm::cuda_stream_view stream)
