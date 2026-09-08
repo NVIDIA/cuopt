@@ -1880,13 +1880,13 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_t<i_t, f_t>::create_cpu_climber(
   init_fj_cpu(*fj_cpu, solution, left_weights, right_weights, objective_weight, probing_cache);
   fj_cpu->settings = settings;
   if (randomize_params) {
-    auto rng                 = std::mt19937(cuopt::seed_generator::get_seed());
-    fj_cpu->mtm_viol_samples = std::uniform_int_distribution<i_t>(15, 50)(rng);
-    fj_cpu->mtm_sat_samples  = std::uniform_int_distribution<i_t>(10, 30)(rng);
-    fj_cpu->nnz_samples      = std::uniform_int_distribution<i_t>(2000, 15000)(rng);
-    fj_cpu->perturb_interval = std::uniform_int_distribution<i_t>(50, 500)(rng);
+    auto host_rng            = std::mt19937(rng.next_i64());
+    fj_cpu->mtm_viol_samples = std::uniform_int_distribution<i_t>(15, 50)(host_rng);
+    fj_cpu->mtm_sat_samples  = std::uniform_int_distribution<i_t>(10, 30)(host_rng);
+    fj_cpu->nnz_samples      = std::uniform_int_distribution<i_t>(2000, 15000)(host_rng);
+    fj_cpu->perturb_interval = std::uniform_int_distribution<i_t>(50, 500)(host_rng);
   }
-  fj_cpu->settings.seed = cuopt::seed_generator::get_seed();
+  fj_cpu->settings.seed = rng.next_i64();
   return fj_cpu;  // move
 }
 
@@ -2073,6 +2073,7 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_standalone(
   problem_t<i_t, f_t>& problem,
   solution_t<i_t, f_t>& solution,
   std::atomic<bool>& preemption_flag,
+  uint64_t seed,
   fj_settings_t settings)
 {
   raft::common::nvtx::range scope("init_fj_cpu_standalone");
@@ -2084,7 +2085,7 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_standalone(
   const probing_cache_t<i_t, f_t>* no_implications = nullptr;
   init_fj_cpu(*fj_cpu, solution, default_weights, default_weights, 0.0, no_implications);
   fj_cpu->settings      = settings;
-  fj_cpu->settings.seed = cuopt::seed_generator::get_seed();
+  fj_cpu->settings.seed = seed;
 
   return fj_cpu;
 }
@@ -2165,6 +2166,7 @@ template std::unique_ptr<fj_cpu_climber_t<int, float>> init_fj_cpu_standalone(
   problem_t<int, float>& problem,
   solution_t<int, float>& solution,
   std::atomic<bool>& preemption_flag,
+  uint64_t seed,
   fj_settings_t settings);
 template void finalize_fj_cpu_host_initialization(
   fj_cpu_climber_t<int, float>& fj_cpu,
@@ -2185,6 +2187,7 @@ template std::unique_ptr<fj_cpu_climber_t<int, double>> init_fj_cpu_standalone(
   problem_t<int, double>& problem,
   solution_t<int, double>& solution,
   std::atomic<bool>& preemption_flag,
+  uint64_t seed,
   fj_settings_t settings);
 template void finalize_fj_cpu_host_initialization(
   fj_cpu_climber_t<int, double>& fj_cpu,

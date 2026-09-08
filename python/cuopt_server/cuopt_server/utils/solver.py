@@ -11,7 +11,6 @@ from fastapi import HTTPException
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 
-import cuopt_server.utils.request_filter as request_filter
 import cuopt_server.utils.settings as settings
 from cuopt_server.utils.data_definition import (
     CostMatrices,
@@ -33,12 +32,10 @@ from cuopt_server.utils.job_queue import (
     SolverIntermediateResponse,
 )
 from cuopt_server.utils.logutil import set_ncaid, set_requestid, set_solverid
-
-
-# Return exception if validation fails
-def check_valid(is_valid):
-    if not is_valid[0]:
-        raise HTTPException(status_code=400, detail=f"{is_valid[1]}")
+from cuopt_server.utils.routing.conversion import (
+    check_valid as check_valid,
+    populate_optimization_data,
+)
 
 
 # Wrap the solver response in a dictionary with a "response"
@@ -128,145 +125,6 @@ def solve_LP_sync(
         solver_response, warnings, notes, reqId, total_solve_time
     )
     return full_response, etl_time, solve_time
-
-
-def populate_optimization_data(
-    cost_waypoint_graph_data: Optional[WaypointGraphData] = None,
-    travel_time_waypoint_graph_data: Optional[WaypointGraphData] = None,
-    cost_matrix_data: Optional[CostMatrices] = None,
-    travel_time_matrix_data: Optional[CostMatrices] = None,
-    fleet_data: Optional[FleetData] = None,
-    task_data: Optional[TaskData] = None,
-    # Use the update data structure for the sync endpoint because
-    # it makes the time_limit value Optional
-    initial_solution: Optional[List[InitialSolution]] = None,
-    solver_config: Optional[SolverSettingsConfig] = None,
-    warnings=[],
-):
-    from cuopt_server.utils.routing.optimization_data_model import (
-        OptimizationDataModel,
-    )
-    from cuopt_server.utils.routing.solver import warn_on_objectives
-
-    optimization_data = OptimizationDataModel()
-
-    if (
-        not cost_waypoint_graph_data
-        or not cost_waypoint_graph_data.waypoint_graph
-    ) and (not cost_matrix_data or not cost_matrix_data.data):
-        raise HTTPException(
-            status_code=400,
-            detail="cost_matrix/waypoint_graph needs to be provided to find any route",  # noqa
-        )
-
-    if (
-        cost_waypoint_graph_data and cost_waypoint_graph_data.waypoint_graph
-    ) and (cost_matrix_data and cost_matrix_data.data):
-        raise HTTPException(
-            status_code=400,
-            detail="only one of cost_matrix or waypoint_graph needs to be provided, not both",  # noqa
-        )
-
-    if (travel_time_matrix_data and travel_time_matrix_data.data) and (
-        travel_time_waypoint_graph_data
-        and travel_time_waypoint_graph_data.waypoint_graph
-    ):
-        raise HTTPException(
-            status_code=400,
-            detail="only one of travel_time_matrix_data or travel_time_waypoint_graph_data needs to be provided, not both",  # noqa
-        )
-
-    if cost_waypoint_graph_data and cost_waypoint_graph_data.waypoint_graph:
-        check_valid(
-            optimization_data.set_cost_waypoint_graph(
-                cost_waypoint_graph_data.waypoint_graph
-            )
-        )
-    elif cost_matrix_data and cost_matrix_data.data:
-        check_valid(optimization_data.set_cost_matrix(cost_matrix_data.data))
-
-    if (
-        travel_time_waypoint_graph_data
-        and travel_time_waypoint_graph_data.waypoint_graph
-    ):
-        check_valid(
-            optimization_data.set_travel_time_waypoint_graph(
-                travel_time_waypoint_graph_data.waypoint_graph
-            )
-        )
-    elif travel_time_matrix_data and travel_time_matrix_data.data:
-        check_valid(
-            optimization_data.set_travel_time_matrix(
-                travel_time_matrix_data.data
-            )
-        )
-
-    if fleet_data is not None:
-        check_valid(
-            optimization_data.set_fleet_data(
-                fleet_data.vehicle_ids,
-                fleet_data.vehicle_locations,
-                fleet_data.capacities,
-                fleet_data.vehicle_time_windows,
-                fleet_data.vehicle_breaks,
-                fleet_data.vehicle_break_time_windows,
-                fleet_data.vehicle_break_durations,
-                fleet_data.vehicle_break_locations,
-                fleet_data.vehicle_types,
-                fleet_data.vehicle_order_match,
-                fleet_data.skip_first_trips,
-                fleet_data.drop_return_trips,
-                fleet_data.min_vehicles,
-                fleet_data.vehicle_max_costs,
-                fleet_data.vehicle_max_times,
-                fleet_data.vehicle_fixed_costs,
-            )
-        )
-
-    if task_data is not None:
-        check_valid(
-            optimization_data.set_task_data(
-                task_data.task_ids,
-                task_data.task_locations,
-                task_data.demand,
-                task_data.pickup_and_delivery_pairs,
-                task_data.task_time_windows,
-                task_data.service_times,
-                task_data.prizes,
-                task_data.order_vehicle_match,
-            )
-        )
-
-    if initial_solution is not None:
-        check_valid(optimization_data.set_initial_solution(initial_solution))
-
-    if solver_config is not None:
-        if solver_config.time_limit is None:
-            num_tasks = len(task_data.task_locations)
-            solver_config.time_limit = request_filter.std_solver_time_calc(
-                num_tasks
-            )
-            logging.debug(
-                "Solver time limit not specified, "
-                f"setting to {solver_config.time_limit}"
-            )
-        else:
-            logging.debug(
-                f"Using specified solver time {solver_config.time_limit}"
-            )
-        owarn, solver_config = warn_on_objectives(solver_config)
-        warnings.extend(owarn)
-        check_valid(
-            optimization_data.set_solver_config(
-                solver_config.time_limit,
-                solver_config.objectives,
-                solver_config.config_file,
-                solver_config.verbose_mode,
-                solver_config.error_logging,
-            )
-        )
-
-    return optimization_data
 
 
 def solve_optimized_routes_sync(

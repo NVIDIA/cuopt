@@ -30,6 +30,7 @@ class mps_data_model_t;
 // Forward declarations
 template <typename i_t, typename f_t>
 class optimization_problem_t;
+
 template <typename i_t, typename f_t>
 class pdlp_solver_settings_t;
 template <typename i_t, typename f_t>
@@ -167,19 +168,6 @@ class cpu_optimization_problem_t : public optimization_problem_interface_t<i_t, 
   std::vector<var_t> get_variable_types_host() const override;
 
   /**
-   * @brief Convert this CPU optimization problem to an optimization_problem_t
-   *        by copying CPU data to GPU (requires GPU memory transfer).
-   *
-   * @param handle_ptr RAFT handle with CUDA resources for GPU memory allocation.
-   * @return unique_ptr to new optimization_problem_t with all data copied to GPU
-   * @throws std::runtime_error if handle_ptr is null
-   *
-   * Provided as the free function to_optimization_problem() in optimization_problem.hpp,
-   * not as a member: keeping it out of this class's vtable is what lets cuopt_client
-   * load without libcuopt.so.
-   */
-
-  /**
    * @brief Write the optimization problem to an MPS file.
    * @param[in] mps_file_path Path to the output MPS file
    */
@@ -209,9 +197,8 @@ class cpu_optimization_problem_t : public optimization_problem_interface_t<i_t, 
   void copy_variable_types_to_host(var_t* output, i_t size) const override;
 
  private:
-  // to_optimization_problem() reads this class's host-side storage directly. It is a free
-  // function rather than a member so that it stays out of this class's vtable -- see the
-  // note in optimization_problem_interface.hpp.
+  // Reads this class's host-side storage directly. Callers include optimization_problem.hpp,
+  // where it is declared; this friend declaration alone is not visible to ordinary lookup.
   template <typename I, typename F>
   friend std::unique_ptr<optimization_problem_t<I, F>> to_optimization_problem(
     optimization_problem_interface_t<I, F>&, raft::handle_t const*);
