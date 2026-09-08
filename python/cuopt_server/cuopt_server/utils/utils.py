@@ -4,14 +4,15 @@
 import json
 import os
 
+from cuopt_server.utils.linear_programming.conversion import (
+    create_data_model as lp_create_data_model,
+    create_solver as lp_create_solver,
+)
 from cuopt_server.utils.linear_programming.data_definition import LPData
 from cuopt_server.utils.linear_programming.data_transformation import (
     transform_lp_data,
 )
-from cuopt_server.utils.linear_programming.solver import (
-    create_data_model as lp_create_data_model,
-    create_solver as lp_create_solver,
-)
+
 from cuopt_server.utils.routing.data_definition import OptimizedRoutingData
 from cuopt_server.utils.routing.solver import (
     create_data_model as routing_create_data_model,
