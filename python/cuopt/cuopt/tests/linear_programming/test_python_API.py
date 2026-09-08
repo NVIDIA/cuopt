@@ -161,6 +161,7 @@ def test_constraint_duplicate_terms_slack():
 
 
 def test_variable_type_is_normalized():
+    """Every entry path stores a VType member and rejects other values."""
     prob = Problem()
     from_enum = prob.addVariable(vtype=INTEGER)
     from_str = prob.addVariable(vtype="I")
@@ -187,6 +188,7 @@ def test_variable_type_is_normalized():
 
 
 def test_variable_type_normalized_from_mps(tmp_path):
+    """MPS parsing yields VType members and keeps each column's own type."""
     prob = Problem("mip")
     x = prob.addVariable(lb=0.0, ub=10.0, vtype=INTEGER, name="x")
     y = prob.addVariable(lb=0.0, ub=10.0, name="y")
@@ -197,9 +199,14 @@ def test_variable_type_normalized_from_mps(tmp_path):
     prob.writeMPS(path)
 
     loaded = Problem.read(path)
-    types = [v.VariableType for v in loaded.getVariables()]
-    assert all(isinstance(t, VType) for t in types)
-    assert VType.INTEGER in types
+    # writeMPS emits integer columns inside INTORG/INTEND markers, so the
+    # column order is not preserved; key by name. `is` rather than `==`
+    # because VType subclasses str: "I" == VType.INTEGER.
+    types = {
+        v.getVariableName(): v.VariableType for v in loaded.getVariables()
+    }
+    assert types["x"] is VType.INTEGER
+    assert types["y"] is VType.CONTINUOUS
     assert loaded.IsMIP
 
 
