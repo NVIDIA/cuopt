@@ -3215,9 +3215,11 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       f_t y_residual_norm = device_vector_norm_inf<i_t, f_t>(data.d_y_residual_, stream_view_);
       max_residual        = std::max(max_residual, y_residual_norm);
       if (y_residual_norm > 1e-2) {
-        settings.log.debug("||ADAT*dy - h|| = %.2e || h || = %.2e\n",
-                           y_residual_norm,
-                           device_vector_norm_inf<i_t, f_t>(data.d_h_, stream_view_));
+        settings.log.printf(
+          "Residual norm (||ADAT*dy - h|| = %.2e) indicates a large factorization error "
+          "relative to || h || = %.2e\n",
+          y_residual_norm,
+          device_vector_norm_inf<i_t, f_t>(data.d_h_, stream_view_));
       }
       if (y_residual_norm > 1e4) { return -1; }
     }
