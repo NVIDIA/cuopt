@@ -2177,18 +2177,18 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
 template <typename i_t, typename f_t>
 static void compute_primal_dual_deltas(pdhg_solver_t<i_t, f_t>& pdhg, rmm::cuda_stream_view stream)
 {
-  auto& baseline_primal = pdhg.get_potential_next_primal_solution();
-  auto& baseline_dual   = pdhg.get_potential_next_dual_solution();
   cub::DeviceTransform::Transform(
-    cuda::std::make_tuple(pdhg.get_reflected_primal().data(), baseline_primal.data()),
+    cuda::std::make_tuple(pdhg.get_reflected_primal().data(),
+                          pdhg.get_potential_next_primal_solution().data()),
     pdhg.get_saddle_point_state().get_delta_primal().data(),
-    baseline_primal.size(),
+    pdhg.get_potential_next_primal_solution().size(),
     cuda::std::minus<f_t>{},
     stream);
   cub::DeviceTransform::Transform(
-    cuda::std::make_tuple(pdhg.get_reflected_dual().data(), baseline_dual.data()),
+    cuda::std::make_tuple(pdhg.get_reflected_dual().data(),
+                          pdhg.get_potential_next_dual_solution().data()),
     pdhg.get_saddle_point_state().get_delta_dual().data(),
-    baseline_dual.size(),
+    pdhg.get_potential_next_dual_solution().size(),
     cuda::std::minus<f_t>{},
     stream);
 }
