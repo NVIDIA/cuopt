@@ -59,7 +59,7 @@ class waypoint_matrix_waypoints_sequence_test_t
     std::vector<f_t> h_cost_matrix(this->target_locations.size() * this->target_locations.size());
 
     raft::copy(h_cost_matrix.data(), d_cost_matrix.data(), h_cost_matrix.size(), stream);
-    RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
+    stream.sync();
 
     for (size_t i = 0; i != h_cost_matrix.size(); ++i)
       EXPECT_EQ(h_cost_matrix[i], expected_cost_matrix[i]);
@@ -78,7 +78,7 @@ class waypoint_matrix_waypoints_sequence_test_t
                h_sequence_offsets.size(),
                stream);
     raft::copy(h_full_path.data(), (i_t*)d_full_path.get()->data(), h_full_path.size(), stream);
-    RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
+    stream.sync();
 
     for (size_t i = 0; i != h_sequence_offsets.size(); ++i)
       EXPECT_EQ(h_sequence_offsets[i], expected_sequence_offsets[i]);
@@ -154,7 +154,7 @@ class waypoint_matrix_shortest_path_cost_t
     std::vector<f_t> h_custom_matrix(this->target_locations.size() * this->target_locations.size());
 
     raft::copy(h_custom_matrix.data(), d_custom_matrix.data(), h_custom_matrix.size(), stream);
-    RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
+    stream.sync();
 
     for (size_t i = 0; i != h_custom_matrix.size(); ++i)
       EXPECT_EQ(h_custom_matrix[i], ref_custom_matrix[i]);
@@ -207,7 +207,7 @@ class waypoint_matrix_cost_matrix_test_t
     std::vector<f_t> h_cost_matrix(this->target_locations.size() * this->target_locations.size());
 
     raft::copy(h_cost_matrix.data(), d_cost_matrix.data(), h_cost_matrix.size(), stream);
-    RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
+    stream.sync();
 
     for (size_t i = 0; i != h_cost_matrix.size(); ++i)
       EXPECT_NEAR(h_cost_matrix[i], this->ref_cost_matrix[i], 0.001f);

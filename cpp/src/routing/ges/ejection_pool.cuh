@@ -63,7 +63,7 @@ struct ejection_pool_t {
     // replace with thrust shuffle
     // how to get sol_handle::get_thrust_policy?
     if (size() > 1)
-      device_random_shuffle<elemt_t><<<1, 1, 0, stream_>>>(stack_.data(), size(), seed);
+      device_random_shuffle<elemt_t><<<1, 1, 0, stream_.get()>>>(stack_.data(), size(), seed);
   }
 
   bool empty() const

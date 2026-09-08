@@ -372,7 +372,7 @@ void lb_constraint_prop_t<i_t, f_t>::sort_by_implied_slack_consumption(
   const i_t block_dim = 128;
   lb_bounds_update.calculate_constraint_slack(original_problem.handle_ptr);
   compute_implied_slack_consumption_per_var<i_t, f_t, f_t2>
-    <<<vars.size(), block_dim, 0, original_problem.handle_ptr->get_stream()>>>(
+    <<<vars.size(), block_dim, 0, original_problem.handle_ptr->get_stream().get()>>>(
       original_problem.view(),
       vars,
       make_span_2(lb_bounds_update.cnst_slack),
@@ -585,7 +585,7 @@ void sort_subsections(raft::device_span<i_t> vars,
                                       n_subsections,
                                       offsets.data(),
                                       offsets.data() + 1,
-                                      handle_ptr->get_stream());
+                                      handle_ptr->get_stream().get());
 
   // Allocate temporary storage
   d_temp_storage.resize(temp_storage_bytes, handle_ptr->get_stream());
@@ -601,7 +601,7 @@ void sort_subsections(raft::device_span<i_t> vars,
                                       n_subsections,
                                       offsets.data(),
                                       offsets.data() + 1,
-                                      handle_ptr->get_stream());
+                                      handle_ptr->get_stream().get());
   handle_ptr->sync_stream();
 }
 
@@ -760,7 +760,7 @@ bool lb_constraint_prop_t<i_t, f_t>::find_integer(
   timer_t& timer,
   std::optional<std::vector<thrust::pair<f_t, f_t>>> probing_candidates)
 {
-  RAFT_CHECK_CUDA(problem.handle_ptr->get_stream());
+  RAFT_CHECK_CUDA(problem.handle_ptr->get_stream().get());
   if (orig_sol.problem_ptr->n_integer_vars == 0) {
     cuopt_func_call(orig_sol.test_variable_bounds());
     return orig_sol.compute_feasibility();
@@ -779,7 +779,7 @@ bool lb_constraint_prop_t<i_t, f_t>::find_integer(
 
   lb_bounds_update.settings.time_limit      = max_timer.remaining_time();
   lb_bounds_update.settings.iteration_limit = 20;
-  RAFT_CHECK_CUDA(problem.handle_ptr->get_stream());
+  RAFT_CHECK_CUDA(problem.handle_ptr->get_stream().get());
 
   if (max_timer.check_time_limit()) {
     CUOPT_LOG_DEBUG("Time limit is reached before bounds prop rounding!");
@@ -793,7 +793,7 @@ bool lb_constraint_prop_t<i_t, f_t>::find_integer(
              orig_sol.problem_ptr->n_integer_vars,
              orig_sol.handle_ptr->get_stream());
   CUOPT_LOG_DEBUG("LB Bounds propagation rounding: unset vars %lu", unset_integer_vars.size());
-  RAFT_CHECK_CUDA(problem.handle_ptr->get_stream());
+  RAFT_CHECK_CUDA(problem.handle_ptr->get_stream().get());
 
   // this is needed for the sort inside of the loop
   // infeasible cnst_slack invalid

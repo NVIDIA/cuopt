@@ -130,7 +130,7 @@ void launch_kernel_get_best_insertion_ejection_solution(
     blocks,
     kernel_args,
     shmem_bytes,
-    stream));
+    stream.get()));
 }
 
 #define CUOPT_INSTANTIATE_GET_BEST_INSERTION_EJECTION(BLOCK_SIZE, REQ)                        \

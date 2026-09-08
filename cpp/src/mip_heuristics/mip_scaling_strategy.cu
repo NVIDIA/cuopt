@@ -165,7 +165,7 @@ void compute_row_inf_norm(
                                                    matrix_offsets.data() + 1,
                                                    max_op_t<f_t>{},
                                                    f_t(0),
-                                                   stream_view));
+                                                   stream_view.get()));
 }
 
 template <typename i_t, typename f_t>
@@ -203,7 +203,7 @@ void compute_row_integer_gcd(
                                                    matrix_offsets.data() + 1,
                                                    gcd_op_t{},
                                                    std::int64_t{0},
-                                                   stream_view));
+                                                   stream_view.get()));
 }
 
 template <typename i_t, typename f_t>
@@ -236,7 +236,7 @@ void compute_big_m_skip_rows(
                                                    matrix_offsets.data() + 1,
                                                    max_op_t<f_t>{},
                                                    f_t(0),
-                                                   stream_view));
+                                                   stream_view.get()));
   size_t min_bytes = temp_storage_bytes;
   RAFT_CUDA_TRY(cub::DeviceSegmentedReduce::Reduce(temp_storage.data(),
                                                    min_bytes,
@@ -247,7 +247,7 @@ void compute_big_m_skip_rows(
                                                    matrix_offsets.data() + 1,
                                                    min_op_t<f_t>{},
                                                    std::numeric_limits<f_t>::infinity(),
-                                                   stream_view));
+                                                   stream_view.get()));
   size_t count_bytes = temp_storage_bytes;
   RAFT_CUDA_TRY(cub::DeviceSegmentedReduce::Reduce(temp_storage.data(),
                                                    count_bytes,
@@ -258,7 +258,7 @@ void compute_big_m_skip_rows(
                                                    matrix_offsets.data() + 1,
                                                    thrust::plus<i_t>{},
                                                    i_t(0),
-                                                   stream_view));
+                                                   stream_view.get()));
 
   auto row_begin = thrust::make_zip_iterator(
     thrust::make_tuple(row_inf_norm.begin(), row_min_nonzero.begin(), row_nonzero_count.begin()));
@@ -435,7 +435,7 @@ size_t dry_run_cub(
                                                    matrix_offsets.data() + 1,
                                                    max_op_t<f_t>{},
                                                    f_t(0),
-                                                   stream_view));
+                                                   stream_view.get()));
   temp_storage_bytes = std::max(temp_storage_bytes, current_required_bytes);
 
   auto coeff_nonzero_min_iter =
@@ -449,7 +449,7 @@ size_t dry_run_cub(
                                                    matrix_offsets.data() + 1,
                                                    min_op_t<f_t>{},
                                                    std::numeric_limits<f_t>::infinity(),
-                                                   stream_view));
+                                                   stream_view.get()));
   temp_storage_bytes = std::max(temp_storage_bytes, current_required_bytes);
 
   auto coeff_nonzero_count_iter =
@@ -463,7 +463,7 @@ size_t dry_run_cub(
                                                    matrix_offsets.data() + 1,
                                                    thrust::plus<i_t>{},
                                                    i_t(0),
-                                                   stream_view));
+                                                   stream_view.get()));
   temp_storage_bytes = std::max(temp_storage_bytes, current_required_bytes);
 
   if (variable_types.size() == static_cast<size_t>(op_problem.get_n_variables())) {
@@ -482,7 +482,7 @@ size_t dry_run_cub(
                                                      matrix_offsets.data() + 1,
                                                      gcd_op_t{},
                                                      std::int64_t{0},
-                                                     stream_view));
+                                                     stream_view.get()));
     temp_storage_bytes = std::max(temp_storage_bytes, current_required_bytes);
   }
 
@@ -678,7 +678,7 @@ void mip_scaling_strategy_t<i_t, f_t>::scale_problem(bool do_objective_scaling)
                                   ref_log2_values.data() + median_idx,
                                   sizeof(double),
                                   cudaMemcpyDeviceToHost,
-                                  stream_view_));
+                                  stream_view_.get()));
     handle_ptr_->sync_stream();
     f_t target_norm = static_cast<f_t>(exp2(h_median_log2));
     cuopt_assert(std::isfinite(static_cast<double>(target_norm)), "target_norm must be finite");
