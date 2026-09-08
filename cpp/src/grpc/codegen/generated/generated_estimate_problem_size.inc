@@ -32,6 +32,8 @@
   est += cpu_problem.get_constraint_upper_bounds_host().size() * sizeof(double);  // double field, fixed64 (8B per value)
   est += cpu_problem.get_row_types_host().size();  // bytes field, length-delimited (payload only; framing in envelope)
   est += cpu_problem.get_variable_types_host().size() * 4;  // enum field, varint (4B per value, generous for short enums)
+  est += cpu_problem.get_initial_primal_solution_host().size() * sizeof(double);  // double field, fixed64 (8B per value)
+  est += cpu_problem.get_initial_dual_solution_host().size() * sizeof(double);  // double field, fixed64 (8B per value)
   est += cpu_problem.get_quadratic_objective_values_host().size() * sizeof(double);  // double field, fixed64 (8B per value)
   est += cpu_problem.get_quadratic_objective_indices_host().size() * 5;  // int32 field, varint (max 5B per value)
   est += cpu_problem.get_quadratic_objective_offsets_host().size() * 5;  // int32 field, varint (max 5B per value)

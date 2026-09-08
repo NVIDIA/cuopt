@@ -2799,6 +2799,58 @@ TEST(MapperRoundtrip, QuadraticConstraintsEmpty)
   EXPECT_FALSE(restored_chunked.has_quadratic_constraints());
 }
 
+TEST(MapperRoundtrip, ProblemInitialSolutionsUnaryAndChunked)
+{
+  cpu_optimization_problem_t<int32_t, double> orig;
+  seed_minimal_problem(orig);
+  std::vector<double> primal = {1.25, 2.5, 3.75};
+  std::vector<double> dual   = {9.0};
+  orig.set_initial_primal_solution(primal.data(), static_cast<int32_t>(primal.size()));
+  orig.set_initial_dual_solution(dual.data(), static_cast<int32_t>(dual.size()));
+
+  cuopt::remote::OptimizationProblem pb;
+  map_problem_to_proto(orig, &pb);
+  ASSERT_EQ(pb.initial_primal_solution_size(), 3);
+  EXPECT_DOUBLE_EQ(pb.initial_primal_solution(0), 1.25);
+  EXPECT_DOUBLE_EQ(pb.initial_primal_solution(1), 2.5);
+  EXPECT_DOUBLE_EQ(pb.initial_primal_solution(2), 3.75);
+  ASSERT_EQ(pb.initial_dual_solution_size(), 1);
+  EXPECT_DOUBLE_EQ(pb.initial_dual_solution(0), 9.0);
+
+  cpu_optimization_problem_t<int32_t, double> restored_unary;
+  map_proto_to_problem(pb, restored_unary);
+  EXPECT_EQ(restored_unary.get_initial_primal_solution_host(), primal);
+  EXPECT_EQ(restored_unary.get_initial_dual_solution_host(), dual);
+
+  pdlp_solver_settings_t<int32_t, double> settings;
+  cuopt::remote::ChunkedProblemHeader header;
+  populate_chunked_header_lp(orig, settings, &header);
+  auto requests = build_array_chunk_requests(orig, "upload-init-sol", /*chunk_size_bytes=*/1024);
+
+  std::map<int32_t, std::vector<uint8_t>> arrays;
+  std::map<container_array_key_t, std::vector<uint8_t>> container_arrays;
+  assemble_chunk_requests(requests, arrays, container_arrays);
+
+  cpu_optimization_problem_t<int32_t, double> restored_chunked;
+  map_chunked_arrays_to_problem(header, arrays, container_arrays, restored_chunked);
+  EXPECT_EQ(restored_chunked.get_initial_primal_solution_host(), primal);
+  EXPECT_EQ(restored_chunked.get_initial_dual_solution_host(), dual);
+}
+
+TEST(PopulateFromDataModelView, CopiesInitialSolutions)
+{
+  std::vector<double> primal = {1.5, 2.5};
+  std::vector<double> dual   = {0.25, 0.5, 0.75};
+  io::data_model_view_t<int32_t, double> data_model;
+  data_model.set_initial_primal_solution(primal.data(), static_cast<int32_t>(primal.size()));
+  data_model.set_initial_dual_solution(dual.data(), static_cast<int32_t>(dual.size()));
+
+  cpu_optimization_problem_t<int32_t, double> problem;
+  populate_from_data_model_view(&problem, &data_model);
+  EXPECT_EQ(problem.get_initial_primal_solution_host(), primal);
+  EXPECT_EQ(problem.get_initial_dual_solution_host(), dual);
+}
+
 TEST(MapperRoundtrip, QuadraticConstraintsRowTypeLenient)
 {
   // Verify that constraint_row_type survives any byte value through the

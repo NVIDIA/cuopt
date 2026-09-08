@@ -133,6 +133,16 @@
     cpu_problem.set_variable_types(variable_types.data(), static_cast<i_t>(variable_types.size()));
   }
 
+  auto initial_primal_solution = get_doubles(cuopt::remote::FIELD_INITIAL_PRIMAL_SOLUTION);
+  if (!initial_primal_solution.empty()) {
+    cpu_problem.set_initial_primal_solution(initial_primal_solution.data(), static_cast<i_t>(initial_primal_solution.size()));
+  }
+
+  auto initial_dual_solution = get_doubles(cuopt::remote::FIELD_INITIAL_DUAL_SOLUTION);
+  if (!initial_dual_solution.empty()) {
+    cpu_problem.set_initial_dual_solution(initial_dual_solution.data(), static_cast<i_t>(initial_dual_solution.size()));
+  }
+
 
   auto container_get_doubles = [&](int32_t _cfn, int32_t _ci, int32_t _fid) -> std::vector<f_t> {
     auto it = container_arrays.find(container_array_key_t{_cfn, _ci, _fid});

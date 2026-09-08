@@ -928,11 +928,9 @@ optimization_problem:
   - initial_primal_solution:
       field_num: 20
       array_id: 13
-      skip_conversion: true
   - initial_dual_solution:
       field_num: 21
       array_id: 14
-      skip_conversion: true
   - Q_values:
       field_num: 22
       array_id: 15

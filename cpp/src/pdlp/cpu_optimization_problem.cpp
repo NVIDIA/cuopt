@@ -277,6 +277,33 @@ void cpu_optimization_problem_t<i_t, f_t>::set_row_types(const char* row_types, 
 }
 
 template <typename i_t, typename f_t>
+void cpu_optimization_problem_t<i_t, f_t>::set_initial_primal_solution(
+  const f_t* initial_primal_solution, i_t size)
+{
+  if (size != 0) {
+    cuopt_expects(initial_primal_solution != nullptr,
+                  error_type_t::ValidationError,
+                  "initial_primal_solution cannot be null");
+  }
+  initial_primal_solution_.resize(size);
+  std::copy(
+    initial_primal_solution, initial_primal_solution + size, initial_primal_solution_.begin());
+}
+
+template <typename i_t, typename f_t>
+void cpu_optimization_problem_t<i_t, f_t>::set_initial_dual_solution(
+  const f_t* initial_dual_solution, i_t size)
+{
+  if (size != 0) {
+    cuopt_expects(initial_dual_solution != nullptr,
+                  error_type_t::ValidationError,
+                  "initial_dual_solution cannot be null");
+  }
+  initial_dual_solution_.resize(size);
+  std::copy(initial_dual_solution, initial_dual_solution + size, initial_dual_solution_.begin());
+}
+
+template <typename i_t, typename f_t>
 void cpu_optimization_problem_t<i_t, f_t>::set_objective_name(const std::string& objective_name)
 {
   objective_name_ = objective_name;
@@ -631,6 +658,18 @@ template <typename i_t, typename f_t>
 std::vector<var_t> cpu_optimization_problem_t<i_t, f_t>::get_variable_types_host() const
 {
   return variable_types_;
+}
+
+template <typename i_t, typename f_t>
+std::vector<f_t> cpu_optimization_problem_t<i_t, f_t>::get_initial_primal_solution_host() const
+{
+  return initial_primal_solution_;
+}
+
+template <typename i_t, typename f_t>
+std::vector<f_t> cpu_optimization_problem_t<i_t, f_t>::get_initial_dual_solution_host() const
+{
+  return initial_dual_solution_;
 }
 
 // ==============================================================================
@@ -1077,6 +1116,9 @@ void cpu_optimization_problem_t<i_t, f_t>::adopt_from_mps_data_model(
     variable_types_[i] = char_to_var_type(model.var_types_[i]);
   }
   problem_category_ = problem_category_from_variable_types(variable_types_);
+
+  initial_primal_solution_ = std::move(model.initial_primal_solution_);
+  initial_dual_solution_   = std::move(model.initial_dual_solution_);
 
   if (model.has_quadratic_constraints()) {
     move_quadratic_constraints_from_model(*this, model.quadratic_constraints_);
