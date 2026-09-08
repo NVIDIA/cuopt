@@ -296,8 +296,8 @@ void solution_t<i_t, f_t>::compute_constraints()
 
   i_t TPB = 64;
   compute_constraint_values<i_t, f_t>
-    <<<problem_ptr->n_constraints, TPB, 0, handle_ptr->get_stream()>>>(view());
-  RAFT_CHECK_CUDA(handle_ptr->get_stream());
+    <<<problem_ptr->n_constraints, TPB, 0, handle_ptr->get_stream().get()>>>(view());
+  RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
 }
 
 template <typename i_t, typename f_t>
@@ -313,11 +313,12 @@ f_t solution_t<i_t, f_t>::compute_l2_residual()
     upper_excess.data(),
     problem_ptr->n_constraints,
     [] __device__(f_t lower, f_t upper) -> f_t { return max(abs(lower), abs(upper)); },
-    handle_ptr->get_stream());
+    handle_ptr->get_stream().get());
   RAFT_CUBLAS_TRY(raft::linalg::detail::cublassetpointermode(
-    handle_ptr->get_cublas_handle(), CUBLAS_POINTER_MODE_DEVICE, handle_ptr->get_stream()));
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsesetpointermode(
-    handle_ptr->get_cusparse_handle(), CUSPARSE_POINTER_MODE_DEVICE, handle_ptr->get_stream()));
+    handle_ptr->get_cublas_handle(), CUBLAS_POINTER_MODE_DEVICE, handle_ptr->get_stream().get()));
+  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsesetpointermode(handle_ptr->get_cusparse_handle(),
+                                                                 CUSPARSE_POINTER_MODE_DEVICE,
+                                                                 handle_ptr->get_stream().get()));
   pdlp::my_l2_norm<i_t, f_t>(combined_excess, l2_residual, handle_ptr);
   return l2_residual.value(handle_ptr->get_stream());
 }

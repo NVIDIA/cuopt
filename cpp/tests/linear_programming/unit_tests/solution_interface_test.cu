@@ -28,6 +28,8 @@
 
 #include <gtest/gtest.h>
 
+#include <cuda/stream>
+
 #include <numeric>
 #include <stdexcept>
 
@@ -145,7 +147,7 @@ static std::unique_ptr<cpu_mip_solution_t<int, double>> make_cpu_mip_solution()
 // Build a gpu_lp_solution_t with known device data (no solver needed)
 static gpu_lp_solution_t<int, double> make_gpu_lp_solution()
 {
-  auto stream = rmm::cuda_stream_per_thread;
+  auto stream = cuda::stream_ref{cudaStreamPerThread};
 
   rmm::device_uvector<double> primal(kNVars, stream);
   rmm::device_uvector<double> dual(kNCons, stream);
@@ -180,7 +182,7 @@ static gpu_lp_solution_t<int, double> make_gpu_lp_solution()
 // Build a gpu_mip_solution_t with known device data (no solver needed)
 static gpu_mip_solution_t<int, double> make_gpu_mip_solution()
 {
-  auto stream = rmm::cuda_stream_per_thread;
+  auto stream = cuda::stream_ref{cudaStreamPerThread};
 
   rmm::device_uvector<double> sol(kNVars, stream);
   std::vector<double> h_sol = {1.0, 0.0, 1.0};
