@@ -829,6 +829,44 @@ cuopt_int_t cuOptGetFloatParameter(cuOptSolverSettings settings,
                                    cuopt_float_t* parameter_value);
 
 /**
+ * @brief Type of callback invoked once per standard solver log line.
+ *
+ * Receives the same lines the solver would print to the console — nothing more.
+ * Internal diagnostics (debug and trace messages) are never delivered, and no
+ * severity is reported: the callback exists to display or forward solver
+ * output, not to let callers classify or branch on it.
+ *
+ * @param message  Null-terminated log line without trailing newline.
+ * @param user_data Opaque pointer passed to cuOptSetLogCallback.
+ *
+ * @note Invoked from the calling thread for a local solve, and from an internal
+ *  log-streaming thread when the solve runs on a remote server. Do not call back
+ *  into cuOpt from inside the callback.
+ * @warning Log message formatting is not part of the stable API and may change
+ *  between releases. The callback is intended for display purposes (GUI integration,
+ *  log forwarding, stdout capture) — do not parse message content for programmatic
+ *  control flow.
+ */
+typedef void (*cuOptLogCallback)(const char* message, void* user_data);
+
+/**
+ * @brief Register a callback to receive solver log messages.
+ *
+ * The callback is invoked once per log line. It is called in addition to any
+ * file or console sink already enabled via ``log_to_console`` / ``log_file``
+ * parameters. Pass NULL to remove a previously registered callback.
+ *
+ * @param[in] settings  The solver settings object.
+ * @param[in] callback  Callback function, or NULL to clear.
+ * @param[in] user_data Opaque pointer forwarded to the callback unchanged.
+ *
+ * @return A status code indicating success or failure.
+ */
+cuopt_int_t cuOptSetLogCallback(cuOptSolverSettings settings,
+                                cuOptLogCallback callback,
+                                void* user_data);
+
+/**
  * @brief Type of callback for receiving incumbent MIP solutions with user context.
  *
  * @param[in] solution - Pointer to incumbent solution values.

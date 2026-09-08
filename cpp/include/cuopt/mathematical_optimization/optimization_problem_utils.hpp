@@ -257,18 +257,8 @@ void populate_from_data_model_view(
   problem->set_objective_scaling_factor(data_model->get_objective_scaling_factor());
   problem->set_objective_offset(data_model->get_objective_offset());
 
-  // Handle warmstart data with GPU<->CPU conversion if needed.
-  //
-  // Split into two helpers deliberately. The GPU direction is only reachable when
-  // handle != nullptr, but a single inlined if/else instantiated BOTH directions into
-  // every TU that includes this header -- which dragged convert_to_gpu_warmstart,
-  // pdlp_warm_start_data_t(view, stream) and friends into the CUDA-free gRPC client.
-  // apply_warmstart_gpu_target() is declared here and defined in libcuopt, so only
-  // callers that actually pass a handle reference it.
-  //
-  // kHostOnly is a compile-time opt-out, not just a runtime one: `if constexpr` means a
-  // host-only caller never *instantiates* the GPU branch, so it emits no reference to
-  // apply_warmstart_gpu_target and needs no CUDA runtime to link.
+  // `if constexpr`, not a runtime branch: a kHostOnly caller never *instantiates* the GPU
+  // helper, so it emits no reference to it and needs no CUDA runtime to link.
   if (solver_settings != nullptr) {
     if constexpr (kHostOnly) {
       apply_warmstart_cpu_target(solver_settings);

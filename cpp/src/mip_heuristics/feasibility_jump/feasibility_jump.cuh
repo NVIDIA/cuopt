@@ -12,6 +12,7 @@
 #include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
 #include <mip_heuristics/diversity/weights.cuh>
 #include <mip_heuristics/logger.cuh>
+#include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/problem/problem.cuh>
 #include <mip_heuristics/solution/solution.cuh>
 #include <mip_heuristics/solver.cuh>
@@ -20,6 +21,7 @@
 #include <utilities/device_scalar_init.hpp>
 #include <utilities/event_handler.cuh>
 #include <utilities/manual_cuda_graph.cuh>
+#include <utilities/pcgenerator.hpp>
 
 #include <functional>
 
@@ -213,7 +215,9 @@ class fj_t {
   using move_score_info_t = fj_move_score_info_base_t<f_t>;
   using move_candidate_t  = fj_move_candidate_t<f_t>;
 
-  fj_t(mip_solver_context_t<i_t, f_t>& context, fj_settings_t settings = fj_settings_t{});
+  fj_t(mip_solver_context_t<i_t, f_t>& context,
+       fj_settings_t settings     = fj_settings_t{},
+       rng_id_t seed_component_id = rng_id_t::local_search_cpu_fj);
   ~fj_t();
   void reset_cuda_graph();
   i_t solve(solution_t<i_t, f_t>& solution);
@@ -247,6 +251,11 @@ class fj_t {
   void load_balancing_score_update(const rmm::cuda_stream_view& stream, i_t climber_idx = 0);
   // executed after a roudning FJ run if any fractionals remain to eliminate them
   void round_remaining_fractionals(solution_t<i_t, f_t>& solution, i_t climber_idx = 0);
+
+  uint64_t next_seed() { return rng.next_u64(); }
+
+ private:
+  splitmix64_t rng;
 
  public:
   mip_solver_context_t<i_t, f_t>& context;

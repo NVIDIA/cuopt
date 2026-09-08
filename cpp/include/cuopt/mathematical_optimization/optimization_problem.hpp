@@ -352,9 +352,6 @@ class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t>
   template <typename other_f_t>
   optimization_problem_t<i_t, other_f_t> convert_to_other_prec(rmm::cuda_stream_view stream) const;
 
-  // to_optimization_problem() is a free function declared at the bottom of this header,
-  // not a virtual member -- see the note in optimization_problem_interface.hpp.
-
   // ============================================================================
   // C API support: Copy to host (polymorphic)
   // ============================================================================
@@ -430,7 +427,7 @@ class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t>
  * For cpu_optimization_problem_t: creates a new GPU problem, copies data, returns it.
  *
  * Usage pattern:
- *   auto temp = to_optimization_problem(problem_interface, &handle);
+ *   auto temp = to_optimization_problem(problem, &handle);
  *   optimization_problem_t& op = temp ? *temp : static_cast<optimization_problem_t&>(problem);
  *
  * A free function rather than a virtual member so that cpu_optimization_problem_t's vtable

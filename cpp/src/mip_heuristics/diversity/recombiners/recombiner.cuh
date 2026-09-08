@@ -10,12 +10,13 @@
 #include "recombiner_configs.hpp"
 #include "recombiner_stats.hpp"
 
+#include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/solution/solution.cuh>
 #include <mip_heuristics/solver.cuh>
 #include <mip_heuristics/utils.cuh>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/device_utils.cuh>
-#include <utilities/seed_generator.cuh>
+#include <utilities/splitmix64.hpp>
 
 #include <thrust/random.h>
 #include <thrust/set_operations.h>
@@ -65,8 +66,11 @@ class recombiner_t {
  public:
   recombiner_t(mip_solver_context_t<i_t, f_t>& context_,
                i_t n_integer_vars,
-               const raft::handle_t* handle_ptr)
+               const raft::handle_t* handle_ptr,
+               rng_id_t component_id)
     : context(context_),
+      rng(derive_seed(context.base_seed, component_id),
+          derive_stream(context.base_seed, component_id)),
       remaining_indices(n_integer_vars, handle_ptr->get_stream()),
       n_remaining(handle_ptr->get_stream())
   {
@@ -119,7 +123,7 @@ class recombiner_t {
                     objective_indices.size());
     if (objective_indices.size() > 0 &&
         objective_indices_in_subproblem.size() < 0.4 * remaining_variables) {
-      std::default_random_engine rng_host(cuopt::seed_generator::get_seed());
+      std::default_random_engine rng_host(rng.next_i64());
       std::vector<i_t> objective_indices_not_in_subproblem;
       std::set_difference(objective_indices.begin(),
                           objective_indices.end(),
@@ -219,6 +223,7 @@ class recombiner_t {
   }
 
   mip_solver_context_t<i_t, f_t>& context;
+  splitmix64_t rng;
   rmm::device_uvector<i_t> remaining_indices;
   rmm::device_scalar<i_t> n_remaining;
   static std::vector<recombiner_enum_t> enabled_recombiners;

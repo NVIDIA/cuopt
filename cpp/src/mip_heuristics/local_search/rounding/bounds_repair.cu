@@ -16,13 +16,13 @@
 #include <mip_heuristics/logger.cuh>
 #include <mip_heuristics/mip_constants.hpp>
 #include <utilities/copy_helpers.hpp>
-#include <utilities/seed_generator.cuh>
 
 namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 bounds_repair_t<i_t, f_t>::bounds_repair_t(const problem_t<i_t, f_t>& pb,
-                                           bound_presolve_t<i_t, f_t>& bound_presolve_)
+                                           bound_presolve_t<i_t, f_t>& bound_presolve_,
+                                           uint64_t seed)
   : bound_presolve(bound_presolve_),
     candidates(pb.handle_ptr),
     best_bounds(pb.handle_ptr),
@@ -31,7 +31,7 @@ bounds_repair_t<i_t, f_t>::bounds_repair_t(const problem_t<i_t, f_t>& pb,
     violated_constraints(0, pb.handle_ptr->get_stream()),
     violated_cstr_map(0, pb.handle_ptr->get_stream()),
     total_vio(pb.handle_ptr->get_stream()),
-    gen(cuopt::seed_generator::get_seed()),
+    gen(seed),
     cycle_vector(MAX_CYCLE_SEQUENCE, -1)
 {
 }
