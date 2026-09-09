@@ -69,6 +69,15 @@ from cuopt_server.utils.exceptions import (
     http_exception_handler,
     validation_exception_handler,
 )
+from cuopt_server.utils.http_codec import (
+    encode,
+    get_format,
+    mime_json,
+    mime_msgpack,
+    mime_pickle,
+    mime_wild,
+    mime_zlib,
+)
 from cuopt_server.utils.job_queue import (
     BaseResult,
     BinaryJobResult,
@@ -85,11 +94,6 @@ from cuopt_server.utils.job_queue import (
     get_incumbents_for_id,
     get_solution_for_id,
     get_warmstart_data_for_id,
-    mime_json,
-    mime_msgpack,
-    mime_pickle,
-    mime_wild,
-    mime_zlib,
     status_by_id,
     update_cache_entry,
 )
@@ -269,52 +273,6 @@ def wait_for_job(result, job, timeout=None):
 class SolverException(Exception):
     def __init__(self, response):
         self.response = response
-
-
-def encode(result, accept, job_result=False):
-    if accept not in [mime_json, mime_msgpack, mime_zlib] + mime_wild:
-        accept = mime_json
-
-    # This is an exception packaged up elsewhere
-    if isinstance(result, JSONResponse):
-        status_code = result.status_code
-        result = json.loads(result.body)
-        result["error_result"] = job_result
-        if accept == mime_json:
-            return JSONResponse(result, status_code)
-    else:
-        status_code = 200
-
-    # Expect a dictionary at this point
-    if accept == mime_json:
-        logging.debug("job_result returning json")
-        r = result
-    elif accept == mime_zlib:
-        logging.debug("job_result returning zlib")
-        d = bytes(json.dumps(result), encoding="utf-8")
-        r = Response(
-            content=zlib.compress(d, zlib.Z_BEST_SPEED),
-            media_type=mime_zlib,
-            status_code=status_code,
-        )
-    else:
-        logging.debug("job_result returning msgpack")
-        r = Response(
-            content=msgpack.dumps(result),
-            media_type=mime_msgpack,
-            status_code=status_code,
-        )
-    return r
-
-
-def get_format(mime_type):
-    f = {
-        mime_json: "json",
-        mime_zlib: "zlib",
-        mime_msgpack: "msgpack",
-        mime_pickle: "pickle",
-    }
-    return f[mime_type]
 
 
 @app.get(
