@@ -36,10 +36,20 @@ bash ci/utils/install_protobuf_grpc.sh
 # compiler's own newer one. Resolve a libgomp.so that actually exports the symbol we need,
 # the same way the (now-removed) LLVM libomp override resolved a concrete versioned ELF file
 # instead of trusting default discovery.
-LIBGOMP_LIBRARY="$(
+LIBGOMP_CANDIDATES="$(
     { ldconfig -p | awk '$1 ~ /^libgomp\.so(\.[0-9]+)*$/ { print $NF }'
       find /opt/rh /usr -name 'libgomp.so.1*' 2>/dev/null
-    } | sort -u | while read -r candidate; do
+    } | sort -u
+)"
+echo "libgomp candidates found:" >&2
+echo "${LIBGOMP_CANDIDATES}" >&2
+for candidate in ${LIBGOMP_CANDIDATES}; do
+    echo "--- nm -D ${candidate} | grep omp_fulfill_event ---" >&2
+    nm -D "${candidate}" 2>&1 | grep -i omp_fulfill_event >&2 || echo "(no match; nm exit $?)" >&2
+done
+
+LIBGOMP_LIBRARY="$(
+    for candidate in ${LIBGOMP_CANDIDATES}; do
         nm -D "${candidate}" 2>/dev/null | grep -qE ' T omp_fulfill_event(@|$)' && echo "${candidate}" && break
     done
 )" || true
