@@ -11,6 +11,7 @@
 #include "fj_cpu.cuh"
 
 #include <mip_heuristics/mip_constants.hpp>
+#include <mip_heuristics/utils.hpp>
 #include <utilities/integer_scaling.hpp>
 
 #include <thrust/execution_policy.h>
@@ -19,6 +20,7 @@
 #include <thrust/logical.h>
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -28,10 +30,6 @@
 namespace cuopt::mathematical_optimization::mip {
 
 constexpr int64_t fj_bin_scale_cap = std::numeric_limits<int16_t>::max();
-
-// prefetch distance
-// TODO: check if it actually matters at all for performance
-constexpr int32_t fj_bin_pf_dist = 8;
 
 template <typename i_t, typename f_t>
 static bool fj_bin_fixed_binary(const fj_cpu_climber_t<i_t, f_t>& c, int32_t v)
@@ -43,26 +41,27 @@ static bool fj_bin_fixed_binary(const fj_cpu_climber_t<i_t, f_t>& c, int32_t v)
   return lb == ub && (lb == 0.0 || lb == 1.0);
 }
 
-// Width-independent eligibility scan over the climber's host mirrors. Mutates nothing.
+// go over each row and var and check if they are eligible for the binary fastpath.
 template <typename i_t, typename f_t>
 fj_bin_scan_t fj_bin_scan(const fj_cpu_climber_t<i_t, f_t>& c, fj_bin_setup_times_t& times)
 {
   phase_timer_t timer(times.scan);
   fj_bin_scan_t out;
-  const int32_t n = c.problem->n_variables;
-  const int32_t m = c.problem->n_constraints;
-  if (n <= 0 || m <= 0) {
+  const int32_t n_cols = c.problem->n_variables;
+  const int32_t n_rows = c.problem->n_constraints;
+  if (n_cols <= 0 || n_rows <= 0) {
     out.reject = fj_binary_reject_t::empty_problem;
     return out;
   }
 
   const double tol               = c.problem->tolerances.integrality_tolerance;
   const auto& is_binary_variable = c.h_is_binary_variable;
-  cuopt_assert((int32_t)is_binary_variable.size() == n, "is_binary_variable size mismatch");
+  cuopt_assert((int32_t)is_binary_variable.size() == n_cols, "is_binary_variable size mismatch");
 
+  // special case equality rows that have a single continuous slack variable
   const uint8_t* ignore_var = c.has_bin_elimination ? c.bin_ignore_var.data() : nullptr;
   const uint8_t* ignore_row = c.has_bin_elimination ? c.bin_ignore_row.data() : nullptr;
-  for (int32_t v = 0; v < n; ++v) {
+  for (int32_t v = 0; v < n_cols; ++v) {
     if (ignore_var && ignore_var[v]) continue;
     // Populated at climber init with integer_equal on [0,1] bounds.
     if (!is_binary_variable[v] && !fj_bin_fixed_binary(c, v)) {
@@ -79,26 +78,13 @@ fj_bin_scan_t fj_bin_scan(const fj_cpu_climber_t<i_t, f_t>& c, fj_bin_setup_time
   const auto& cstr_lb             = c.problem->cstr_lb;
   const auto& cstr_ub             = c.problem->cstr_ub;
 
-  cuopt_assert(thrust::all_of(thrust::host,
-                              thrust::make_counting_iterator<int32_t>(0),
-                              thrust::make_counting_iterator<int32_t>(n),
-                              [&reverse_offsets, &reverse_constraints](int32_t v) {
-                                const auto first = reverse_constraints.begin() + reverse_offsets[v];
-                                const auto last =
-                                  reverse_constraints.begin() + reverse_offsets[v + 1];
-                                return std::adjacent_find(first, last) == last;
-                              }),
-               "duplicate variable in CSR row");
-
   double max_abs_coefficient = 0;
   std::vector<double> row_values;
-  for (int32_t r = 0; r < m; ++r) {
+  for (int32_t r = 0; r < n_rows; ++r) {
     if (ignore_row && ignore_row[r]) continue;
-    const double lb       = cstr_lb[r];
-    const double ub       = cstr_ub[r];
-    const bool lb_fin     = std::isfinite(lb);
-    const bool ub_fin     = std::isfinite(ub);
-    const double sides[2] = {lb, ub};
+    const bool lb_fin     = std::isfinite(cstr_lb[r]);
+    const bool ub_fin     = std::isfinite(cstr_ub[r]);
+    const double sides[2] = {cstr_lb[r], cstr_ub[r]};
     const bool finite[2]  = {lb_fin, ub_fin};
 
     bool integral = true;
@@ -109,6 +95,7 @@ fj_bin_scan_t fj_bin_scan(const fj_cpu_climber_t<i_t, f_t>& c, fj_bin_setup_time
       }
     }
 
+    // if some rows arent integral - see if they can be scaled to integral coefficients
     double row_s = 1.0;
     if (!integral) {
       row_values.clear();
@@ -124,10 +111,11 @@ fj_bin_scan_t fj_bin_scan(const fj_cpu_climber_t<i_t, f_t>& c, fj_bin_setup_time
         out.bad_row = r;
         return out;
       }
-      if (out.row_scale.empty()) out.row_scale.assign(m, 1.0);
+      if (out.row_scale.empty()) out.row_scale.assign(n_rows, 1.0);
       out.row_scale[r] = row_s;
     }
 
+    // compute min/max activities
     double row_abs_sum = 0;
     double row_lhs_min = 0;
     double row_lhs_max = 0;
@@ -145,28 +133,29 @@ fj_bin_scan_t fj_bin_scan(const fj_cpu_climber_t<i_t, f_t>& c, fj_bin_setup_time
       if (abs_a > max_abs_coefficient) max_abs_coefficient = abs_a;
     }
 
-    // A binary assignment can drive lhs to sum|coef|; keep that inside the int32 accumulator with
-    // room to spare. The int8-only reference engine never needed this bound.
-    if (row_abs_sum > (double)(INT32_MAX / 2)) {
+    if (!is_exactly_representable<int32_t>(row_lhs_min) ||
+        !is_exactly_representable<int32_t>(row_lhs_max)) {
       out.reject  = fj_binary_reject_t::lhs_headroom;
       out.bad_row = r;
       return out;
     }
 
+    // test each side of the row
     for (int s = 0; s < 2; ++s) {
       if (!finite[s]) continue;
       const double scaled_side   = row_s * sides[s];
       const double integral_side = is_integer(scaled_side, tol)
                                      ? std::round(scaled_side)
                                      : (s == 0 ? std::ceil(scaled_side) : std::floor(scaled_side));
-      if (!fj_bin_in_int32(integral_side)) {
+      if (!is_exactly_representable<int32_t>(integral_side)) {
         out.reject  = fj_binary_reject_t::row_bound_out_of_range;
         out.bad_row = r;
         return out;
       }
       const double min_slack = s == 0 ? row_lhs_min - integral_side : integral_side - row_lhs_max;
       const double max_slack = s == 0 ? row_lhs_max - integral_side : integral_side - row_lhs_min;
-      if (!fj_bin_in_int32(min_slack) || !fj_bin_in_int32(max_slack)) {
+      if (!is_exactly_representable<int32_t>(min_slack) ||
+          !is_exactly_representable<int32_t>(max_slack)) {
         out.reject  = fj_binary_reject_t::lhs_headroom;
         out.bad_row = r;
         return out;
@@ -181,9 +170,9 @@ fj_bin_scan_t fj_bin_scan(const fj_cpu_climber_t<i_t, f_t>& c, fj_bin_setup_time
     return out;
   }
 
-  if (max_abs_coefficient <= 127.0) {
+  if (max_abs_coefficient <= INT8_MAX) {
     out.coefficient_bits = 8;
-  } else if (max_abs_coefficient <= 32767.0) {
+  } else if (max_abs_coefficient <= INT16_MAX) {
     out.coefficient_bits = 16;
   } else {
     out.reject = fj_binary_reject_t::coefficient_out_of_range;
@@ -191,17 +180,16 @@ fj_bin_scan_t fj_bin_scan(const fj_cpu_climber_t<i_t, f_t>& c, fj_bin_setup_time
   return out;
 }
 
-// Build the narrowed, one-sided problem. Called only after fj_bin_scan cleared the instance, so a
-// failing check here is a self-consistency bug and refuses the fast path rather than truncating.
+// builds the problem in one-sided form with coef_t coefficients
 template <typename i_t, typename f_t, typename coef_t>
-bool fj_bin_narrow(const fj_cpu_climber_t<i_t, f_t>& c,
+void fj_bin_narrow(const fj_cpu_climber_t<i_t, f_t>& c,
                    const fj_bin_scan_t& scan,
                    fj_bin_problem_t<coef_t>& pb,
                    fj_bin_setup_times_t& times)
 {
   const int32_t n_split = scan.n_split_constraints;
-  const int32_t n       = c.problem->n_variables;
-  const int32_t m       = c.problem->n_constraints;
+  const int32_t n_cols  = c.problem->n_variables;
+  const int32_t n_rows  = c.problem->n_constraints;
   const double tol      = c.problem->tolerances.integrality_tolerance;
 
   const auto& offsets   = c.problem->offsets;
@@ -213,20 +201,18 @@ bool fj_bin_narrow(const fj_cpu_climber_t<i_t, f_t>& c,
   const auto& right_w   = c.h_cstr_right_weights;
   const auto& obj       = c.problem->h_obj_coeffs;
 
-  // Explicit stamps rather than scoped timers, so the three phases below can be delimited without
-  // re-nesting them. A failure inside one drops its sample, which only happens on the
-  // self-consistency paths that refuse the fast path outright.
+  // Explicit stamps rather than scoped timers, so narrow and transpose can be timed separately.
   const double narrow_started = tic();
 
   const uint8_t* ignore_var = c.has_bin_elimination ? c.bin_ignore_var.data() : nullptr;
 
-  pb.n_original = n;
-  pb.var_offset.assign(n, 0.0);
-  pb.orig_objective.assign(n, 0.0);
+  pb.n_original = n_cols;
+  pb.var_offset.assign(n_cols, 0.0);
+  pb.orig_objective.assign(n_cols, 0.0);
   pb.bit_owner.clear();
-  pb.bit_owner.reserve(n);
-  pb.original_to_bin_mapping.assign(n, -1);
-  for (int32_t v = 0; v < n; ++v) {
+  pb.bit_owner.reserve(n_cols);
+  pb.original_to_bin_mapping.assign(n_cols, -1);
+  for (int32_t v = 0; v < n_cols; ++v) {
     pb.orig_objective[v] = obj[v];
     if (ignore_var && ignore_var[v]) continue;
     if (!c.h_is_binary_variable[v] && fj_bin_fixed_binary(c, v)) {
@@ -251,25 +237,18 @@ bool fj_bin_narrow(const fj_cpu_climber_t<i_t, f_t>& c,
   std::vector<double> incoming_weight;
   incoming_weight.reserve(n_split);
 
-  // Each split row inherits the weight of the side it came from: left is the lower-bound side,
-  // right the upper.
-  //
-  // Both sides are stored as a'x <= b. The lower-bound side is negated on the way in, which costs
-  // nothing because each side already gets its own copy of the row, and it leaves the slack as
-  // bound - lhs everywhere -- so no per-row sign reaches the engine at all. Negation is safe on
-  // both fields: the scan admits |coef| up to 127 for int8 and 32767 for int16, and the bound is
-  // checked for int32 range after negating.
-  auto emit = [&](int32_t r, double side_bound, long side, double weight) -> bool {
+  // turn each two-sided row into a one-sided rows with narrowed integer coefficients
+  auto emit = [&](int32_t r, double side_bound, long side, double weight) {
     const double s  = scan.row_scale.empty() ? 1.0 : scan.row_scale[r];
     coef_t row_cmax = 1;
     long fixed_lhs  = 0;
     for (int32_t k = offsets[r]; k < offsets[r + 1]; ++k) {
       const double a = s * coeffs[k];
       const long ai  = side * std::lround(a);
-      if (!is_integer(a, tol) || ai < std::numeric_limits<coef_t>::min() ||
-          ai > std::numeric_limits<coef_t>::max()) {
-        return false;
-      }
+      cuopt_assert(is_integer(a, tol), "row scaling left a fractional coefficient");
+      cuopt_assert(ai >= std::numeric_limits<coef_t>::min() &&
+                     ai <= std::numeric_limits<coef_t>::max(),
+                   "scaled coefficient exceeds selected width");
       const int32_t v = variables[k];
       if (pb.original_to_bin_mapping[v] < 0) {
         cuopt_assert(!ignore_var || !ignore_var[v],
@@ -286,25 +265,27 @@ bool fj_bin_narrow(const fj_cpu_climber_t<i_t, f_t>& c,
     const long b =
       (is_integer(scaled_bound, tol) ? std::lround(scaled_bound) : (long)std::floor(scaled_bound)) -
       fixed_lhs;
-    if (!fj_bin_in_int32((double)b)) return false;
+    cuopt_assert(is_exactly_representable<int32_t>((double)b),
+                 "narrowed row bound is not an int32");
     pb.offsets.push_back((int32_t)pb.variables.size());
     pb.bound.push_back((int32_t)b);
     pb.cmax.push_back(row_cmax);
     incoming_weight.push_back(weight);
-    return true;
   };
 
+  // iterate over all rows and convert to one-sided form
   const uint8_t* ignored_row = c.has_bin_elimination ? c.bin_ignore_row.data() : nullptr;
-  for (int32_t r = 0; r < m; ++r) {
+  for (int32_t r = 0; r < n_rows; ++r) {
     if (ignored_row && ignored_row[r]) continue;
     const double lb = cstr_lb[r];
     const double ub = cstr_ub[r];
-    if (std::isfinite(lb) && !emit(r, lb, -1, left_w[r])) return false;
-    if (std::isfinite(ub) && !emit(r, ub, 1, right_w[r])) return false;
+    if (std::isfinite(lb)) emit(r, lb, -1, left_w[r]);
+    if (std::isfinite(ub)) emit(r, ub, 1, right_w[r]);
   }
-  if ((int32_t)pb.bound.size() != n_split) return false;
+  cuopt_assert((int32_t)pb.bound.size() == n_split, "one-sided row count mismatch");
   pb.nnz = (int32_t)pb.variables.size();
 
+  // a few sanity checks
   cuopt_assert((int32_t)pb.bit_owner.size() == pb.n_variables,
                "engine column count disagrees with the owner map");
   for (int32_t j = 0; j < pb.n_variables; ++j) {
@@ -316,22 +297,12 @@ bool fj_bin_narrow(const fj_cpu_climber_t<i_t, f_t>& c,
     cuopt_assert(pb.variables[k] >= 0 && pb.variables[k] < pb.n_variables,
                  "engine CSR holds a column outside engine space");
 
-  // One vector of padding past nnz, so the row kernel can load and store whole vectors at the last
-  // row without running off the end and can therefore mask its remainder rather than peeling it
-  // into a scalar tail. The padding is never read as data: every lane past a row's end is excluded
-  // from the gather, the scatter and the store by the row-length mask.
+  // usual padding to ensure SIMD loads/stores don't cause page faults
   pb.variables.resize(pb.nnz + fj_bin_simd_padding, 0);
   pb.coefficients.resize(pb.nnz + fj_bin_simd_padding, (coef_t)0);
 
   // Scale the incoming weights into the DDFW band by one global factor, so relative structure
-  // survives while every row clears the donation floor. Capped so the largest scaled weight stays
-  // clear of packed-score saturation; where the cap binds, the smallest rows sit below the floor.
-  // TODO: bound the scaled weights by derivation instead of leaving them open. The packed score
-  // holds while a variable's aggregate base stays under 2^16, and that aggregate is bounded by the
-  // sum of weights over the rows the variable appears in, so 2^16 / max_var_degree gives a per-row
-  // bound computable here from the transpose. Left uncapped for now, matching the reference
-  // engine, which shipped with its weight cap disabled and relied on the end-of-solve saturation
-  // report to say whether a bound was needed.
+  // survives while every row clears the donation floor.
   double w_min = std::numeric_limits<double>::infinity();
   for (double w : incoming_weight) {
     if (w > 0 && w < w_min) w_min = w;
@@ -348,9 +319,8 @@ bool fj_bin_narrow(const fj_cpu_climber_t<i_t, f_t>& c,
   }
   times.narrow += toc(narrow_started);
 
+  // compute the transpose now
   const double transpose_started = tic();
-  // Transpose, plus the reverse-nnz to CSR-nnz map the apply path uses to store the flipped
-  // variable's own score delta.
   pb.reverse_offsets.assign(n_engine + 1, 0);
   for (int32_t k = 0; k < pb.nnz; ++k)
     pb.reverse_offsets[pb.variables[k] + 1]++;
@@ -372,13 +342,9 @@ bool fj_bin_narrow(const fj_cpu_climber_t<i_t, f_t>& c,
       }
     }
   }
-  // Lookahead room for the row walk: a vector of overhang for the kernel's unit-stride loads, and
-  // the prefetch distance the scalar path uses. Reads land on row 0, harmlessly, and every lane
-  // past a variable's range is masked out of the gather, the scatter and the compress.
-  const int32_t rpad = fj_bin_pf_dist > fj_bin_simd_padding ? fj_bin_pf_dist : fj_bin_simd_padding;
-  pb.reverse_constraints.resize(pb.nnz + rpad, 0);
-  pb.reverse_coefficients.resize(pb.nnz + rpad, (coef_t)0);
-  pb.incident_row_cmax.resize(pb.nnz + rpad, (coef_t)1);
+  pb.reverse_constraints.resize(pb.nnz + fj_bin_simd_padding, 0);
+  pb.reverse_coefficients.resize(pb.nnz + fj_bin_simd_padding, (coef_t)0);
+  pb.incident_row_cmax.resize(pb.nnz + fj_bin_simd_padding, (coef_t)1);
 
   pb.objective.resize(n_engine);
   for (int32_t j = 0; j < n_engine; ++j) {
@@ -386,27 +352,15 @@ bool fj_bin_narrow(const fj_cpu_climber_t<i_t, f_t>& c,
     if (pb.objective[j] != 0.0) pb.objective_vars.push_back(j);
   }
   times.transpose += toc(transpose_started);
-
-  return true;
 }
 
-// Bit budget for one general integer's domain.
 constexpr int32_t fj_bin_encode_max_bits = 16;
-// Cap on the bit-variable count relative to the model's variable count, bounding the SIMD sweep.
 constexpr int64_t fj_bin_encode_max_growth = 6;
-
-// Bits needed to represent the integers 0..W inclusive.
-static inline int32_t fj_bin_encode_nbits(int64_t W)
-{
-  int32_t bits = 0;
-  while (((int64_t)1 << bits) - 1 < W)
-    ++bits;
-  return bits;
-}
 
 // Encodes an all-integer model with bounded general integers into bits: x in [L,U] becomes
 // x = L + sum_k w_k b_k over weights 1, 2, ..., 2^(nbits-2), R, with R closing the range at W =
 // U-L.
+// useful for mostly-binayr models with a few small-domain integers
 template <typename i_t, typename f_t, typename coef_t>
 bool fj_bin_encode(const fj_cpu_climber_t<i_t, f_t>& c,
                    fj_bin_problem_t<coef_t>& pb,
@@ -414,9 +368,9 @@ bool fj_bin_encode(const fj_cpu_climber_t<i_t, f_t>& c,
                    fj_bin_setup_times_t& times)
 {
   phase_timer_t timer(times.encode);
-  const int32_t n = c.problem->n_variables;
-  const int32_t m = c.problem->n_constraints;
-  if (n <= 0 || m <= 0) return false;
+  const int32_t n_cols = c.problem->n_variables;
+  const int32_t n_rows = c.problem->n_constraints;
+  if (n_cols <= 0 || n_rows <= 0) return false;
 
   const double tol = c.problem->tolerances.integrality_tolerance;
 
@@ -431,12 +385,13 @@ bool fj_bin_encode(const fj_cpu_climber_t<i_t, f_t>& c,
   const auto& right_w    = c.h_cstr_right_weights;
   const auto& obj        = c.problem->h_obj_coeffs;
 
-  std::vector<double> lower(n);
-  std::vector<double> upper(n);
-  std::vector<int32_t> nbits(n);
-  std::vector<int32_t> bit_start(n);
+  std::vector<double> lower(n_cols);
+  std::vector<double> upper(n_cols);
+  std::vector<int32_t> nbits(n_cols);
+  std::vector<int32_t> bit_start(n_cols);
   int64_t total_bits = 0;
-  for (int32_t v = 0; v < n; ++v) {
+  // count the total bits that'd be required to encode this model as pure-binary
+  for (int32_t v = 0; v < n_cols; ++v) {
     if (var_types[v] != var_t::INTEGER) return false;
     auto bounds    = var_bounds[v];
     const double x = (double)cuopt::get_lower(bounds);
@@ -448,24 +403,24 @@ bool fj_bin_encode(const fj_cpu_climber_t<i_t, f_t>& c,
     upper[v]        = std::round(y);
     const int64_t W = (int64_t)(upper[v] - lower[v]);
 
-    nbits[v] = fj_bin_encode_nbits(W);
+    nbits[v] = std::bit_width((uint64_t)W);
     if (nbits[v] > fj_bin_encode_max_bits) return false;
     bit_start[v] = (int32_t)total_bits;
     total_bits += nbits[v];
   }
   if (total_bits <= 0 || total_bits > (int64_t)INT32_MAX / 2) return false;
-  if (total_bits > fj_bin_encode_max_growth * (int64_t)n) return false;
+  if (total_bits > fj_bin_encode_max_growth * (int64_t)n_cols) return false;
 
   const int32_t n_bits = (int32_t)total_bits;
 
   pb.encoded    = true;
-  pb.n_original = n;
+  pb.n_original = n_cols;
   pb.var_offset = lower;
-  pb.orig_objective.assign(n, 0.0);
+  pb.orig_objective.assign(n_cols, 0.0);
   pb.bit_owner.assign(n_bits, 0);
-  pb.original_to_bin_mapping.assign(n, -1);
+  pb.original_to_bin_mapping.assign(n_cols, -1);
   pb.bit_weight.assign(n_bits, 0.0);
-  for (int32_t v = 0; v < n; ++v) {
+  for (int32_t v = 0; v < n_cols; ++v) {
     int64_t covered = 0;
     const int64_t W = (int64_t)(upper[v] - lower[v]);
     for (int32_t k = 0; k < nbits[v]; ++k) {
@@ -490,7 +445,7 @@ bool fj_bin_encode(const fj_cpu_climber_t<i_t, f_t>& c,
   std::vector<double> row_values;
   double max_abs_coefficient = 0;
 
-  // One side of one row, as a'b <= bound in bit space with sum(a_j L_j) folded into the bound.
+  // emit onesided a row
   auto emit = [&](int32_t r, double side_bound, long side, double weight) -> bool {
     double fixed = 0;
     for (int32_t k = offsets[r]; k < offsets[r + 1]; ++k)
@@ -537,9 +492,10 @@ bool fj_bin_encode(const fj_cpu_climber_t<i_t, f_t>& c,
     const double scaled_bound = (double)side * s * folded_bound;
     const double bound =
       is_integer(scaled_bound, tol) ? std::round(scaled_bound) : std::floor(scaled_bound);
-    if (!fj_bin_in_int32(bound)) return false;
+    if (!is_exactly_representable<int32_t>(bound)) return false;
     // A bit assignment can drive lhs anywhere in [-row_abs_sum, row_abs_sum].
-    if (!fj_bin_in_int32(bound - row_abs_sum) || !fj_bin_in_int32(bound + row_abs_sum))
+    if (!is_exactly_representable<int32_t>(bound - row_abs_sum) ||
+        !is_exactly_representable<int32_t>(bound + row_abs_sum))
       return false;
 
     pb.offsets.push_back((int32_t)pb.variables.size());
@@ -550,7 +506,7 @@ bool fj_bin_encode(const fj_cpu_climber_t<i_t, f_t>& c,
   };
 
   const uint8_t* ignored_row = c.has_bin_elimination ? c.bin_ignore_row.data() : nullptr;
-  for (int32_t r = 0; r < m; ++r) {
+  for (int32_t r = 0; r < n_rows; ++r) {
     if (ignored_row && ignored_row[r]) continue;
     const double lb = cstr_lb[r];
     const double ub = cstr_ub[r];
@@ -561,9 +517,9 @@ bool fj_bin_encode(const fj_cpu_climber_t<i_t, f_t>& c,
   if (pb.n_constraints <= 0) return false;
   pb.nnz = (int32_t)pb.variables.size();
 
-  if (max_abs_coefficient <= 127.0) {
+  if (max_abs_coefficient <= INT8_MAX) {
     coefficient_bits = 8;
-  } else if (max_abs_coefficient <= 32767.0) {
+  } else if (max_abs_coefficient <= INT16_MAX) {
     coefficient_bits = 16;
   } else {
     return false;
@@ -608,14 +564,13 @@ bool fj_bin_encode(const fj_cpu_climber_t<i_t, f_t>& c,
       }
     }
   }
-  const int32_t rpad = fj_bin_pf_dist > fj_bin_simd_padding ? fj_bin_pf_dist : fj_bin_simd_padding;
-  pb.reverse_constraints.resize(pb.nnz + rpad, 0);
-  pb.reverse_coefficients.resize(pb.nnz + rpad, (coef_t)0);
-  pb.incident_row_cmax.resize(pb.nnz + rpad, (coef_t)1);
+  pb.reverse_constraints.resize(pb.nnz + fj_bin_simd_padding, 0);
+  pb.reverse_coefficients.resize(pb.nnz + fj_bin_simd_padding, (coef_t)0);
+  pb.incident_row_cmax.resize(pb.nnz + fj_bin_simd_padding, (coef_t)1);
 
   pb.objective.assign(n_bits, 0.0);
   pb.objective_vars.clear();
-  for (int32_t v = 0; v < n; ++v) {
+  for (int32_t v = 0; v < n_cols; ++v) {
     pb.orig_objective[v] = obj[v];
     if (obj[v] == 0.0) continue;
     for (int32_t bk = 0; bk < nbits[v]; ++bk) {
@@ -630,9 +585,9 @@ bool fj_bin_encode(const fj_cpu_climber_t<i_t, f_t>& c,
 
 #if MIP_INSTANTIATE_FLOAT
 template fj_bin_scan_t fj_bin_scan(const fj_cpu_climber_t<int, float>&, fj_bin_setup_times_t&);
-template bool fj_bin_narrow(
+template void fj_bin_narrow(
   const fj_cpu_climber_t<int, float>&, const fj_bin_scan_t&, fj_bin_problem_t<int8_t>&, fj_bin_setup_times_t&);
-template bool fj_bin_narrow(const fj_cpu_climber_t<int, float>&,
+template void fj_bin_narrow(const fj_cpu_climber_t<int, float>&,
                             const fj_bin_scan_t&,
                             fj_bin_problem_t<int16_t>&,
                             fj_bin_setup_times_t&);
@@ -644,9 +599,9 @@ template bool fj_bin_encode(
 
 #if MIP_INSTANTIATE_DOUBLE
 template fj_bin_scan_t fj_bin_scan(const fj_cpu_climber_t<int, double>&, fj_bin_setup_times_t&);
-template bool fj_bin_narrow(
+template void fj_bin_narrow(
   const fj_cpu_climber_t<int, double>&, const fj_bin_scan_t&, fj_bin_problem_t<int8_t>&, fj_bin_setup_times_t&);
-template bool fj_bin_narrow(const fj_cpu_climber_t<int, double>&,
+template void fj_bin_narrow(const fj_cpu_climber_t<int, double>&,
                             const fj_bin_scan_t&,
                             fj_bin_problem_t<int16_t>&,
                             fj_bin_setup_times_t&);

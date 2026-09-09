@@ -12,6 +12,7 @@
 #include "fj_cpu.cuh"
 
 #include <mip_heuristics/mip_constants.hpp>
+#include <mip_heuristics/utils.hpp>
 
 #include <raft/random/rng_device.cuh>
 
@@ -37,7 +38,6 @@ const char* fj_binary_reject_name(fj_binary_reject_t reason)
     case fj_binary_reject_t::fractional_row_bound: return "fractional row bound";
     case fj_binary_reject_t::row_bound_out_of_range: return "row bound outside int32";
     case fj_binary_reject_t::lhs_headroom: return "row sum|coef| exceeds int32 headroom";
-    case fj_binary_reject_t::narrow_check_failed: return "narrowing check failed";
   }
   return "unknown";
 }
@@ -344,7 +344,8 @@ struct fj_bin_engine_t {
     const double mult =
       rel < fj_obj_mult_min ? fj_obj_mult_min : (rel > fj_obj_mult_max ? fj_obj_mult_max : rel);
     const double raw = objective_weight * mult;
-    cuopt_assert(fj_bin_in_int32(raw), "scaled objective weight out of int32 range");
+    cuopt_assert(is_exactly_representable<int32_t>(raw),
+                 "scaled objective weight is not an int32");
     const int32_t scaled = (int32_t)std::lround(raw);
     return (int64_t)(obj_diff < 0 ? scaled : -scaled) * fj_bin_score_k;
   }
@@ -436,13 +437,12 @@ struct fj_bin_engine_t {
       // vector loop costs more in the 85% case than it saves in the 0.02% one.
       const int32_t margin = (int32_t)rcmax_p[ii];
       if (!(old_slack < -margin && new_slack < -margin)) {
-        const int32_t kb = offsets_p[r], ke = offsets_p[r + 1];
+        const int32_t row_begin = offsets_p[r], row_end = offsets_p[r + 1];
         // TODO: check that this may not cause AVX512 powerdown overheads if the AVX2 row/AVX512 row
         // ratio is unbalanced
-        fj_bin_patch_row(
-          vars_p, coefs_p, kb, ke, var_score_p, nnz_delta_p, assign_p, weight, new_slack, var);
-        nnz_touched += ke - kb;
-        nnz_patched += ke - kb;
+        fj_bin_patch_row(vars_p, coefs_p, row_begin, row_end, var_score_p, nnz_delta_p, assign_p, weight, new_slack, var);
+        nnz_touched += row_end - row_begin;
+        nnz_patched += row_end - row_begin;
       }
 
       // The flipped variable's own score delta. Zero on the rows the walk absorbed -- deeply
@@ -463,6 +463,7 @@ struct fj_bin_engine_t {
     // flat. At a median degree of 13 and 7 respectively, one gather still beats that many dependent
     // scalar load-modify-stores, because it breaks the dependence chain through row_slack rather
     // than following it.
+    constexpr int32_t fj_bin_walk_tile = 256;
     int32_t tile_incidence[fj_bin_walk_tile];
     for (int32_t t0 = ob; t0 < oe; t0 += fj_bin_walk_tile) {
       const int32_t t1 = (t0 + fj_bin_walk_tile < oe) ? t0 + fj_bin_walk_tile : oe;
@@ -499,7 +500,7 @@ struct fj_bin_engine_t {
   {
     for (const auto& rec : climber.bin_eliminated_rows) {
       for (i_t var : rec.all) {
-        const auto bounds = climber.h_var_bounds[var].get();
+        const auto bounds = climber.h_var_bounds[var];
         values[var]       = isfinite(get_lower(bounds))
                               ? get_lower(bounds)
                               : (isfinite(get_upper(bounds)) ? get_upper(bounds) : f_t{0});
@@ -568,19 +569,19 @@ struct fj_bin_engine_t {
     row_weight[r] = new_weight;
     if (new_weight > max_weight) max_weight = new_weight;
     // The slack is unchanged here, and no variable is excluded, so skip_var matches no index.
-    const int32_t kb = pb.offsets[r], ke = pb.offsets[r + 1];
+    const int32_t row_begin = pb.offsets[r], row_end = pb.offsets[r + 1];
     fj_bin_patch_row(pb.variables.data(),
                      pb.coefficients.data(),
-                     kb,
-                     ke,
+                     row_begin,
+                     row_end,
                      var_score.data(),
                      nnz_score_delta.data(),
                      assign_i32.data(),
                      new_weight,
                      row_slack[r],
                      -1);
-    nnz_touched += ke - kb;
-    nnz_patched += ke - kb;
+    nnz_touched += row_end - row_begin;
+    nnz_patched += row_end - row_begin;
   }
 
   int32_t escalation_threshold() const { return fj_bin_ddfw_escalate_after; }
@@ -681,9 +682,10 @@ struct fj_bin_engine_t {
   // Global argmax over every variable, affordable because var_score is maintained live. While the
   // objective weight is zero the full score is exactly var_score; above zero the sweep runs over
   // var_score plus the cached objective base. Only the local-minimum path falls to the scalar loop.
-  std::pair<int32_t, int64_t> find_move_global(bool localmin)
+  std::pair<int32_t, int64_t> find_move_global()
   {
-    if (!localmin && objective_weight == 0) {
+    // fastpath if feasibility has never been achieved
+    if (objective_weight == 0) {
       // The sweep reads var_score alone; the handful of tabu variables are held at the invalid
       // sentinel across it rather than tested per variable.
       int32_t saved_var[fj_bin_tabu_t::ring_size];
@@ -698,11 +700,11 @@ struct fj_bin_engine_t {
       return {v, s};
     }
 
-    if (!localmin) {
+    // path once feasibility has been achieved once
+    {
       // The breakthrough bonus is deliberately absent from the ranking: it depends on
       // incumbent_objective, so no per-variable form of it survives a move, and it occupies the low
-      // field where it can only separate variables already tied on the base. The winner's score is
-      // then taken from full_score so the caller sees the true value.
+      // field where it can only separate variables already tied on the base.
       ensure_objective_base();
       int64_t* const comb_p = combined_score.data();
       fj_bin_add_scores(var_score.data(), obj_base_score.data(), pb.n_variables, comb_p);
@@ -718,17 +720,6 @@ struct fj_bin_engine_t {
       fj_bin_tabu_t::unblock_tabu(blocked, comb_p, saved_var, saved_score);
       if (v >= 0) s = full_score(v, (int8_t)(1 - 2 * assign[v]));
       return {v, s};
-    }
-
-    int32_t best_v = -1;
-    int64_t best_s = fj_bin_score_invalid;
-    for (int32_t v = 0; v < pb.n_variables; ++v) {
-      if (tabu_blocked(v, localmin)) continue;
-      const int64_t s = full_score(v, (int8_t)(1 - 2 * assign[v]));
-      if (s > best_s) {
-        best_s = s;
-        best_v = v;
-      }
     }
     return {best_v, best_s};
   }
@@ -972,14 +963,14 @@ struct fj_bin_engine_t {
                  "tabu tenure exceeds the tabu ring, live entries would be evicted");
     if (tabu_tenure_max > fj_bin_tabu_t::max_tenure) tabu_tenure_max = fj_bin_tabu_t::max_tenure;
 
-    const int32_t n = pb.n_variables, m = pb.n_constraints;
+    const int32_t n_cols = pb.n_variables, n_rows = pb.n_constraints;
     const auto& h_assign = climber.h_assignment;
-    assign.assign(n, 0);
+    assign.assign(n_cols, 0);
     if (pb.encoded) {
       // Descending weight, so the bit pattern reproduces the start value wherever it is
       // representable: with exact closure that is every integer of the domain.
       std::vector<std::vector<int32_t>> bits_of(pb.n_original);
-      for (int32_t b = 0; b < n; ++b)
+      for (int32_t b = 0; b < n_cols; ++b)
         bits_of[pb.bit_owner[b]].push_back(b);
       for (int32_t v = 0; v < pb.n_original; ++v) {
         long residual = std::lround((double)h_assign[v] - pb.var_offset[v]);
@@ -998,7 +989,7 @@ struct fj_bin_engine_t {
         cuopt_assert(residual == 0, "greedy bit encode left the start value unrepresented");
       }
     } else {
-      for (int32_t j = 0; j < n; ++j) {
+      for (int32_t j = 0; j < n_cols; ++j) {
         const double val = (double)h_assign[pb.bit_owner[j]];
         assign[j]        = (int8_t)(val >= 0.5 ? 1 : 0);
       }
@@ -1008,24 +999,24 @@ struct fj_bin_engine_t {
     shared_incumbent = climber.shared_incumbent;
     if (shared_incumbent) adopt_buffer.assign(pb.n_original, 0);
     reset_infeasible_stall();
-    assign_i32.assign(n, 0);
-    for (int32_t v = 0; v < n; ++v)
+    assign_i32.assign(n_cols, 0);
+    for (int32_t v = 0; v < n_cols; ++v)
       assign_i32[v] = assign[v];
 
     row_weight.assign(pb.initial_weight.begin(), pb.initial_weight.end());
-    row_slack.assign(m, 0);
+    row_slack.assign(n_rows, 0);
 
-    var_score.assign(n, 0);
+    var_score.assign(n_cols, 0);
     nnz_score_delta.assign(pb.nnz + fj_bin_simd_padding, 0);
     // Zeroed once: ensure_objective_base only ever rewrites the objective variables.
-    obj_base_score.assign(n, 0);
-    combined_score.assign(n, 0);
+    obj_base_score.assign(n_cols, 0);
+    combined_score.assign(n_cols, 0);
     obj_base_weight = -1;
-    tabu.resize(n);
-    is_violated.assign(m, 0);
-    vpos.assign(m, -1);
+    tabu.resize(n_cols);
+    is_violated.assign(n_rows, 0);
+    vpos.assign(n_rows, -1);
     violated_list.clear();
-    var_bitmap.assign(n, 0);
+    var_bitmap.assign(n_cols, 0);
 
     const int32_t seeded_weight = (int32_t)std::lround(climber.h_objective_weight);
     cuopt_assert(seeded_weight >= 0, "objective weight should be positive or zero");
@@ -1091,7 +1082,7 @@ struct fj_bin_engine_t {
           if (pair_score > 0) score = pair_score;
         }
       }
-      if (pair2.first < 0 && score <= 0) std::tie(move_var, score) = find_move_global(false);
+      if (pair2.first < 0 && score <= 0) std::tie(move_var, score) = find_move_global();
 
       bool perturb_now = false;
       if (violated_list.empty() && iters_since_best > perturb_interval) {
@@ -1220,12 +1211,7 @@ bool try_cpufj_binary_solve(fj_cpu_climber_t<i_t, f_t>& climber,
   }
 
   auto run = [&](auto& engine) -> bool {
-    if (!fj_bin_narrow(climber, scan, engine.pb, climber.bin_setup)) {
-      CUOPT_LOG_DEBUG("%sCPUFJ binary fast path declined: %s",
-                      climber.log_prefix.c_str(),
-                      fj_binary_reject_name(fj_binary_reject_t::narrow_check_failed));
-      return false;
-    }
+    fj_bin_narrow(climber, scan, engine.pb, climber.bin_setup);
     CUOPT_LOG_DEBUG(
       "%sCPUFJ binary fast path enabled: int%d coefficients, %d rows after one-sided split",
       climber.log_prefix.c_str(),
