@@ -41,6 +41,57 @@ static bool fj_bin_fixed_binary(const fj_cpu_climber_t<i_t, f_t>& c, int32_t v)
   return lb == ub && (lb == 0.0 || lb == 1.0);
 }
 
+static void initialize_row_weights(const std::vector<double>& incoming_weight,
+                                   std::vector<int32_t>& initial_weight)
+{
+  double w_min = std::numeric_limits<double>::infinity();
+  for (double w : incoming_weight) {
+    if (w > 0 && w < w_min) w_min = w;
+  }
+  double scale = 1.0;
+  if (std::isfinite(w_min) && w_min > 0) {
+    scale = (double)fj_bin_ddfw_init / w_min;
+    if (scale < 1.0) scale = 1.0;
+  }
+  initial_weight.clear();
+  initial_weight.reserve(incoming_weight.size());
+  for (double w : incoming_weight) {
+    int32_t scaled = w > 0 ? (int32_t)std::lround(w * scale) : fj_bin_ddfw_init;
+    if (scaled < 1) scaled = 1;
+    initial_weight.push_back(scaled);
+  }
+}
+
+template <typename coef_t>
+static void build_transpose(fj_bin_problem_t<coef_t>& pb)
+{
+  pb.reverse_offsets.assign(pb.n_variables + 1, 0);
+  for (int32_t k = 0; k < pb.nnz; ++k)
+    pb.reverse_offsets[pb.variables[k] + 1]++;
+  for (int32_t v = 0; v < pb.n_variables; ++v)
+    pb.reverse_offsets[v + 1] += pb.reverse_offsets[v];
+  pb.reverse_constraints.resize(pb.nnz);
+  pb.reverse_coefficients.resize(pb.nnz);
+  pb.reverse_to_csr.resize(pb.nnz);
+  pb.incident_row_cmax.resize(pb.nnz);
+  {
+    std::vector<int32_t> cursor(pb.reverse_offsets.begin(),
+                                pb.reverse_offsets.begin() + pb.n_variables);
+    for (int32_t r = 0; r < pb.n_constraints; ++r) {
+      for (int32_t k = pb.offsets[r]; k < pb.offsets[r + 1]; ++k) {
+        const int32_t slot            = cursor[pb.variables[k]]++;
+        pb.reverse_constraints[slot]  = r;
+        pb.reverse_coefficients[slot] = pb.coefficients[k];
+        pb.reverse_to_csr[slot]       = k;
+        pb.incident_row_cmax[slot]    = pb.cmax[r];
+      }
+    }
+  }
+  pb.reverse_constraints.resize(pb.nnz + fj_bin_simd_padding, 0);
+  pb.reverse_coefficients.resize(pb.nnz + fj_bin_simd_padding, (coef_t)0);
+  pb.incident_row_cmax.resize(pb.nnz + fj_bin_simd_padding, (coef_t)1);
+}
+
 // go over each row and var and check if they are eligible for the binary fastpath.
 template <typename i_t, typename f_t>
 fj_bin_scan_t fj_bin_scan(const fj_cpu_climber_t<i_t, f_t>& c, fj_bin_setup_times_t& times)
@@ -303,48 +354,12 @@ void fj_bin_narrow(const fj_cpu_climber_t<i_t, f_t>& c,
 
   // Scale the incoming weights into the DDFW band by one global factor, so relative structure
   // survives while every row clears the donation floor.
-  double w_min = std::numeric_limits<double>::infinity();
-  for (double w : incoming_weight) {
-    if (w > 0 && w < w_min) w_min = w;
-  }
-  double scale = 1.0;
-  if (std::isfinite(w_min) && w_min > 0) {
-    scale = (double)fj_bin_ddfw_init / w_min;
-    if (scale < 1.0) scale = 1.0;
-  }
-  for (double w : incoming_weight) {
-    int32_t scaled = w > 0 ? (int32_t)std::lround(w * scale) : fj_bin_ddfw_init;
-    if (scaled < 1) scaled = 1;
-    pb.initial_weight.push_back(scaled);
-  }
+  initialize_row_weights(incoming_weight, pb.initial_weight);
   times.narrow += toc(narrow_started);
 
   // compute the transpose now
   const double transpose_started = tic();
-  pb.reverse_offsets.assign(n_engine + 1, 0);
-  for (int32_t k = 0; k < pb.nnz; ++k)
-    pb.reverse_offsets[pb.variables[k] + 1]++;
-  for (int32_t v = 0; v < n_engine; ++v)
-    pb.reverse_offsets[v + 1] += pb.reverse_offsets[v];
-  pb.reverse_constraints.resize(pb.nnz);
-  pb.reverse_coefficients.resize(pb.nnz);
-  pb.reverse_to_csr.resize(pb.nnz);
-  pb.incident_row_cmax.resize(pb.nnz);
-  {
-    std::vector<int32_t> cursor(pb.reverse_offsets.begin(), pb.reverse_offsets.begin() + n_engine);
-    for (int32_t r = 0; r < n_split; ++r) {
-      for (int32_t k = pb.offsets[r]; k < pb.offsets[r + 1]; ++k) {
-        const int32_t slot            = cursor[pb.variables[k]]++;
-        pb.reverse_constraints[slot]  = r;
-        pb.reverse_coefficients[slot] = pb.coefficients[k];
-        pb.reverse_to_csr[slot]       = k;
-        pb.incident_row_cmax[slot]    = pb.cmax[r];
-      }
-    }
-  }
-  pb.reverse_constraints.resize(pb.nnz + fj_bin_simd_padding, 0);
-  pb.reverse_coefficients.resize(pb.nnz + fj_bin_simd_padding, (coef_t)0);
-  pb.incident_row_cmax.resize(pb.nnz + fj_bin_simd_padding, (coef_t)1);
+  build_transpose(pb);
 
   pb.objective.resize(n_engine);
   for (int32_t j = 0; j < n_engine; ++j) {
@@ -528,45 +543,8 @@ bool fj_bin_encode(const fj_cpu_climber_t<i_t, f_t>& c,
   pb.variables.resize(pb.nnz + fj_bin_simd_padding, 0);
   pb.coefficients.resize(pb.nnz + fj_bin_simd_padding, (coef_t)0);
 
-  double w_min = std::numeric_limits<double>::infinity();
-  for (double w : incoming_weight) {
-    if (w > 0 && w < w_min) w_min = w;
-  }
-  double scale = 1.0;
-  if (std::isfinite(w_min) && w_min > 0) {
-    scale = (double)fj_bin_ddfw_init / w_min;
-    if (scale < 1.0) scale = 1.0;
-  }
-  for (double w : incoming_weight) {
-    int32_t scaled = w > 0 ? (int32_t)std::lround(w * scale) : fj_bin_ddfw_init;
-    if (scaled < 1) scaled = 1;
-    pb.initial_weight.push_back(scaled);
-  }
-
-  pb.reverse_offsets.assign(n_bits + 1, 0);
-  for (int32_t k = 0; k < pb.nnz; ++k)
-    pb.reverse_offsets[pb.variables[k] + 1]++;
-  for (int32_t v = 0; v < n_bits; ++v)
-    pb.reverse_offsets[v + 1] += pb.reverse_offsets[v];
-  pb.reverse_constraints.resize(pb.nnz);
-  pb.reverse_coefficients.resize(pb.nnz);
-  pb.reverse_to_csr.resize(pb.nnz);
-  pb.incident_row_cmax.resize(pb.nnz);
-  {
-    std::vector<int32_t> cursor(pb.reverse_offsets.begin(), pb.reverse_offsets.begin() + n_bits);
-    for (int32_t r = 0; r < pb.n_constraints; ++r) {
-      for (int32_t k = pb.offsets[r]; k < pb.offsets[r + 1]; ++k) {
-        const int32_t slot            = cursor[pb.variables[k]]++;
-        pb.reverse_constraints[slot]  = r;
-        pb.reverse_coefficients[slot] = pb.coefficients[k];
-        pb.reverse_to_csr[slot]       = k;
-        pb.incident_row_cmax[slot]    = pb.cmax[r];
-      }
-    }
-  }
-  pb.reverse_constraints.resize(pb.nnz + fj_bin_simd_padding, 0);
-  pb.reverse_coefficients.resize(pb.nnz + fj_bin_simd_padding, (coef_t)0);
-  pb.incident_row_cmax.resize(pb.nnz + fj_bin_simd_padding, (coef_t)1);
+  initialize_row_weights(incoming_weight, pb.initial_weight);
+  build_transpose(pb);
 
   pb.objective.assign(n_bits, 0.0);
   pb.objective_vars.clear();
