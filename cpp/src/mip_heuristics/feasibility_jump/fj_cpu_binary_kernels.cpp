@@ -146,21 +146,21 @@ int32_t WalkRowsImpl(int32_t* HWY_RESTRICT row_slack,
 template <typename coef_t>
 void PatchRowScalar(const int32_t* HWY_RESTRICT variables,
                     const coef_t* HWY_RESTRICT coefficients,
-                    int32_t kb,
-                    int32_t ke,
+                    int32_t row_begin,
+                    int32_t row_end,
                     int64_t* HWY_RESTRICT var_score,
                     int64_t* HWY_RESTRICT nnz_score_delta,
                     const int32_t* HWY_RESTRICT assign_i32,
                     int32_t weight,
-                    int32_t os_new,
+                    int32_t current_slack,
                     int32_t skip_var)
 {
-  for (int32_t k = kb; k < ke; ++k) {
+  for (int32_t k = row_begin; k < row_end; ++k) {
     const int32_t v = variables[k];
     if (v == skip_var) continue;
     const int32_t flip = 1 - 2 * assign_i32[v];
-    const int32_t ns   = os_new - (int32_t)coefficients[k] * flip;
-    const int64_t nc   = fj_bin_packed_score_delta(os_new, ns, weight);
+    const int32_t ns   = current_slack - (int32_t)coefficients[k] * flip;
+    const int64_t nc   = fj_bin_packed_score_delta(current_slack, ns, weight);
     var_score[v] += nc - nnz_score_delta[k];
     nnz_score_delta[k] = nc;
   }
@@ -173,13 +173,13 @@ template <typename coef_t, class D>
 static HWY_INLINE void PatchRowBody(D d,
                                     const int32_t* HWY_RESTRICT variables,
                                     const coef_t* HWY_RESTRICT coefficients,
-                                    int32_t kb,
-                                    int32_t ke,
+                                    int32_t row_begin,
+                                    int32_t row_end,
                                     int64_t* HWY_RESTRICT var_score,
                                     int64_t* HWY_RESTRICT nnz_score_delta,
                                     const int32_t* HWY_RESTRICT assign_i32,
                                     int32_t weight,
-                                    int32_t os_new,
+                                    int32_t current_slack,
                                     int32_t skip_var)
 {
   const hn::Rebind<coef_t, D> dc;        // same lane count, narrower lanes
@@ -192,16 +192,16 @@ static HWY_INLINE void PatchRowBody(D d,
   // When the remainder is peeled, a row below one vector never reaches the body, so it skips the
   // ten broadcasts below as well.
   if constexpr (!k_mask_remainder) {
-    if ((size_t)(ke - kb) < N) {
+    if ((size_t)(row_end - row_begin) < N) {
       PatchRowScalar<coef_t>(variables,
                              coefficients,
-                             kb,
-                             ke,
+                             row_begin,
+                             row_end,
                              var_score,
                              nnz_score_delta,
                              assign_i32,
                              weight,
-                             os_new,
+                             current_slack,
                              skip_var);
       return;
     }
@@ -209,23 +209,23 @@ static HWY_INLINE void PatchRowBody(D d,
 
   const V vone = hn::Set(d, 1), vzero = hn::Zero(d);
   const V vskip = hn::Set(d, skip_var);
-  const V vos   = hn::Set(d, os_new);
+  const V vos   = hn::Set(d, current_slack);
   const V vw = hn::Set(d, weight), vw2 = hn::Set(d, weight / 2);
 
   // The row's own slack is uniform across lanes, so its flags are scalars. Broadcast negated to
   // match the new-state flags below, which come from VecFromMask and are 0 or -1.
-  const int32_t osat = os_new >= 0, ost = os_new > 0;
+  const int32_t osat = current_slack >= 0, ost = current_slack > 0;
   const V vneg_osat = hn::Set(d, -osat), vneg_ost = hn::Set(d, -ost);
   const V v_not_osat = hn::Set(d, 1 - osat);
 
   // The loads always run unmasked and read into the per-nnz padding; when the remainder is masked,
   // FirstN keeps the overhang out of the gather, the scatter and the store.
-  const int32_t vec_end = k_mask_remainder ? ke : ke - (int32_t)N + 1;
-  int32_t k             = kb;
+  const int32_t vec_end = k_mask_remainder ? row_end : row_end - (int32_t)N + 1;
+  int32_t k             = row_begin;
   for (; k < vec_end; k += (int32_t)N) {
     const V v   = hn::LoadU(d, variables + k);
     auto active = hn::Ne(v, vskip);
-    if constexpr (k_mask_remainder) { active = hn::And(active, hn::FirstN(d, (size_t)(ke - k))); }
+    if constexpr (k_mask_remainder) { active = hn::And(active, hn::FirstN(d, (size_t)(row_end - k))); }
 
     // Gathered in hardware even on Zen 4, unlike the score update below. Doing this one by lane
     // instead measured 8.2% slower: it must spill the index vector and reload it 4 bytes at a time,
@@ -274,7 +274,7 @@ static HWY_INLINE void PatchRowBody(D d,
     // The store mask is rebuilt at int64 width rather than narrowed from `active`: the same two
     // conditions, on the promoted indices. FirstN is applied on every target because where the
     // remainder is peeled the body never runs short, so it is all-true there anyway.
-    const size_t rem  = (size_t)(ke - k);
+    const size_t rem  = (size_t)(row_end - k);
     const VW v_lo     = hn::PromoteLowerTo(dw, v);
     const VW v_hi     = hn::PromoteUpperTo(dw, v);
     const VW vskip_w  = hn::Set(dw, skip_var);
@@ -295,7 +295,7 @@ static HWY_INLINE void PatchRowBody(D d,
     hn::Store(delta_hi, dw, dl + NW);
     // Bounded by the row, not the vector: the lanes past it hold padding, whose zero index would
     // otherwise be applied to variable 0.
-    const size_t lanes = HWY_MIN(N, (size_t)(ke - k));
+    const size_t lanes = HWY_MIN(N, (size_t)(row_end - k));
     for (size_t i = 0; i < lanes; ++i) {
       if (idx[i] != skip_var) var_score[idx[i]] += dl[i];
     }
@@ -313,12 +313,12 @@ static HWY_INLINE void PatchRowBody(D d,
     PatchRowScalar<coef_t>(variables,
                            coefficients,
                            k,
-                           ke,
+                           row_end,
                            var_score,
                            nnz_score_delta,
                            assign_i32,
                            weight,
-                           os_new,
+                           current_slack,
                            skip_var);
   }
 }
@@ -327,75 +327,75 @@ static HWY_INLINE void PatchRowBody(D d,
 template <typename coef_t>
 void PatchRowImpl(const int32_t* HWY_RESTRICT variables,
                   const coef_t* HWY_RESTRICT coefficients,
-                  int32_t kb,
-                  int32_t ke,
+                  int32_t row_begin,
+                  int32_t row_end,
                   int64_t* HWY_RESTRICT var_score,
                   int64_t* HWY_RESTRICT nnz_score_delta,
                   const int32_t* HWY_RESTRICT assign_i32,
                   int32_t weight,
-                  int32_t os_new,
+                  int32_t current_slack,
                   int32_t skip_var)
 {
   PatchRowBody<coef_t>(hn::ScalableTag<int32_t>(),
                        variables,
                        coefficients,
-                       kb,
-                       ke,
+                       row_begin,
+                       row_end,
                        var_score,
                        nnz_score_delta,
                        assign_i32,
                        weight,
-                       os_new,
+                       current_slack,
                        skip_var);
 }
 
 template <typename coef_t>
 void PatchRowNarrow8Impl(const int32_t* HWY_RESTRICT variables,
                          const coef_t* HWY_RESTRICT coefficients,
-                         int32_t kb,
-                         int32_t ke,
+                         int32_t row_begin,
+                         int32_t row_end,
                          int64_t* HWY_RESTRICT var_score,
                          int64_t* HWY_RESTRICT nnz_score_delta,
                          const int32_t* HWY_RESTRICT assign_i32,
                          int32_t weight,
-                         int32_t os_new,
+                         int32_t current_slack,
                          int32_t skip_var)
 {
   PatchRowBody<coef_t>(hn::CappedTagIfFixed<int32_t, 8>(),
                        variables,
                        coefficients,
-                       kb,
-                       ke,
+                       row_begin,
+                       row_end,
                        var_score,
                        nnz_score_delta,
                        assign_i32,
                        weight,
-                       os_new,
+                       current_slack,
                        skip_var);
 }
 
 template <typename coef_t>
 void PatchRowNarrow4Impl(const int32_t* HWY_RESTRICT variables,
                          const coef_t* HWY_RESTRICT coefficients,
-                         int32_t kb,
-                         int32_t ke,
+                         int32_t row_begin,
+                         int32_t row_end,
                          int64_t* HWY_RESTRICT var_score,
                          int64_t* HWY_RESTRICT nnz_score_delta,
                          const int32_t* HWY_RESTRICT assign_i32,
                          int32_t weight,
-                         int32_t os_new,
+                         int32_t current_slack,
                          int32_t skip_var)
 {
   PatchRowBody<coef_t>(hn::CappedTagIfFixed<int32_t, 4>(),
                        variables,
                        coefficients,
-                       kb,
-                       ke,
+                       row_begin,
+                       row_end,
                        var_score,
                        nnz_score_delta,
                        assign_i32,
                        weight,
-                       os_new,
+                       current_slack,
                        skip_var);
 }
 
@@ -423,48 +423,48 @@ constexpr int32_t k_narrow8_max = HWY_HAVE_SCALABLE ? 0 : (k_native_lanes > 8 ? 
 template <typename coef_t>
 void PatchRowDispatchImpl(const int32_t* HWY_RESTRICT variables,
                           const coef_t* HWY_RESTRICT coefficients,
-                          int32_t kb,
-                          int32_t ke,
+                          int32_t row_begin,
+                          int32_t row_end,
                           int64_t* HWY_RESTRICT var_score,
                           int64_t* HWY_RESTRICT nnz_score_delta,
                           const int32_t* HWY_RESTRICT assign_i32,
                           int32_t weight,
-                          int32_t os_new,
+                          int32_t current_slack,
                           int32_t skip_var)
 {
-  const int32_t row_len = ke - kb;
+  const int32_t row_len = row_end - row_begin;
   if (row_len <= k_narrow4_max) {
     PatchRowNarrow4Impl<coef_t>(variables,
                                 coefficients,
-                                kb,
-                                ke,
+                                row_begin,
+                                row_end,
                                 var_score,
                                 nnz_score_delta,
                                 assign_i32,
                                 weight,
-                                os_new,
+                                current_slack,
                                 skip_var);
   } else if (row_len <= k_narrow8_max) {
     PatchRowNarrow8Impl<coef_t>(variables,
                                 coefficients,
-                                kb,
-                                ke,
+                                row_begin,
+                                row_end,
                                 var_score,
                                 nnz_score_delta,
                                 assign_i32,
                                 weight,
-                                os_new,
+                                current_slack,
                                 skip_var);
   } else {
     PatchRowImpl<coef_t>(variables,
                          coefficients,
-                         kb,
-                         ke,
+                         row_begin,
+                         row_end,
                          var_score,
                          nnz_score_delta,
                          assign_i32,
                          weight,
-                         os_new,
+                         current_slack,
                          skip_var);
   }
 }
@@ -739,24 +739,24 @@ template int32_t fj_bin_walk_rows<int16_t>(
 template <typename coef_t>
 void fj_bin_patch_row(const int32_t* variables,
                       const coef_t* coefficients,
-                      int32_t kb,
-                      int32_t ke,
+                      int32_t row_begin,
+                      int32_t row_end,
                       int64_t* var_score,
                       int64_t* nnz_score_delta,
                       const int32_t* assign_i32,
                       int32_t weight,
-                      int32_t os_new,
+                      int32_t current_slack,
                       int32_t skip_var)
 {
   fj_bin_patch_fn(coef_t{})(variables,
                             coefficients,
-                            kb,
-                            ke,
+                            row_begin,
+                            row_end,
                             var_score,
                             nnz_score_delta,
                             assign_i32,
                             weight,
-                            os_new,
+                            current_slack,
                             skip_var);
 }
 
