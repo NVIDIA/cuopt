@@ -28,46 +28,18 @@ namespace HWY_NAMESPACE {
 
 namespace hn = hwy::HWY_NAMESPACE;
 
-// Whether the row remainder is masked into the vector body or peeled into a scalar tail. AVX-512
-// k-registers, SVE predicates and RVV masks make every operation maskable at no cost, so a row of
-// three nonzeros is one masked iteration; peeling it would send most of the work to the tail, since
-// row lengths are short and have nothing to do with the lane count. AVX2 and NEON have no mask
-// registers: the mask becomes a vector, gather and scatter are emulated, and the tail is cheaper.
-// Measured on AVX2, masking the remainder cost 6.8% on supportcase22 and 12.9% on bnatt400.
+// on ISAs with mask support these ops are really fast. However they need to be emulated on older ISAs
+// so avoid emitting them on these (e.g. pre AVX-512/AVX10.2 on x86)
 constexpr bool k_mask_remainder =
   (HWY_TARGET <= HWY_AVX3) || HWY_TARGET_IS_SVE || (HWY_TARGET == HWY_RVV);
 
-// Whether the row walk below is worth vectorizing on this target. It needs a real gather to read
-// the slacks and a real compress to emit the tail list; where either is emulated the emulation
-// costs more than the scalar loop it replaces, since 85% of visits do nothing but subtract and
-// compare. The scalar arm still returns the same list, so the caller needs no second code path --
-// it pays only one store per reported visit.
+// on arcs without gather/scatter this is too slow, fallback
 constexpr bool k_vector_walk =
   (HWY_TARGET <= HWY_AVX3) || HWY_TARGET_IS_SVE || (HWY_TARGET == HWY_RVV);
 
-// One tile of a flipped variable's incidence range, vectorized. The caller tiles the range and runs
-// each tile's tail before asking for the next; see fj_bin_walk_tile.
-//
-// Measured on supportcase22: 84.87% of row visits leave the row deeply satisfied on both sides of
-// the flip, and those visits do nothing but update the slack. The remaining 15.13% need the row's
-// weight, the flipped variable's own score delta, the violated-set transitions and usually a
-// patch -- all indirect, all awkward in a vector. So this kernel does only the uniform part and
-// hands back the indices of the visits that are not deep_sat, in increasing order, for the caller
-// to finish scalar.
-//
-// The layout this assumes is what makes it worth doing. Storing the row's signed slack rather than
-// its lhs collapses the update to
-//
-//   new_slack = old_slack - coef * delta
-//
-// so bound and lhs never appear, and the coefficient is the only per-incidence constant. It and
-// cmax are replicated per incidence, which makes them unit-stride loads. What remains irregular is
-// the slack itself: one gather and one scatter per vector, against four gathers and a scatter for a
-// literal SoA split of the row record.
-//
-// Trajectory is preserved exactly. The slack update is per row and order-independent; the caller's
-// tail visits its indices in the same order the scalar loop did; and a deep_sat row is never read
-// by the tail, so updating it early is not observable.
+// Updates slacks for rows incident to a flipped variable.
+// Returns incidences whose old and new slacks are not both deeply satisfied for specialized handling by the caller
+// We operate directly on row slacks to reduce arithmetic ops.
 template <typename coef_t>
 int32_t WalkRowsImpl(int32_t* HWY_RESTRICT row_slack,
                      const int32_t* HWY_RESTRICT incident_row,
@@ -108,6 +80,8 @@ int32_t WalkRowsImpl(int32_t* HWY_RESTRICT row_slack,
       const auto deep_sat = hn::And(hn::Gt(os, cmax), hn::Gt(ns, cmax));
       const auto to_tail  = hn::AndNot(deep_sat, active);
 
+      // Zen4's VSIB ops are unfortunately heavily microcoded and slower than just a scalar implementation
+      // which gets scheduled better
 #if HWY_TARGET == HWY_AVX3_ZEN4
       // Same Zen 4 microcode argument as the score scatter in PatchRowBody: VPSCATTERDD is 89 uops
       // at ~24 CPI, against two vector stores and N scalar stores here. Unlike that one this is a
@@ -129,8 +103,7 @@ int32_t WalkRowsImpl(int32_t* HWY_RESTRICT row_slack,
     return n_out;
   }
 
-  // Targets without a native gather or compress. Also the remainder is not reached here: the loop
-  // above runs to oe under FirstN, and this arm replaces it wholesale rather than tailing it.
+  // scalar version serves as the tail
   for (; ii < incidence_end; ++ii) {
     const int32_t row  = incident_row[ii];
     const int32_t os   = row_slack[row];
@@ -142,7 +115,6 @@ int32_t WalkRowsImpl(int32_t* HWY_RESTRICT row_slack,
   return n_out;
 }
 
-// Row remainder when it is peeled rather than masked, and the whole row on scalar targets.
 template <typename coef_t>
 void PatchRowScalar(const int32_t* HWY_RESTRICT variables,
                     const coef_t* HWY_RESTRICT coefficients,
@@ -166,9 +138,8 @@ void PatchRowScalar(const int32_t* HWY_RESTRICT variables,
   }
 }
 
-// Templated on the vector tag so one body serves both the native-width kernel and the narrow one.
-// Rows here average well under a native 512-bit vector, and a gather costs the same whether its
-// lanes are used or discarded, so short rows are cheaper through a narrower vector.
+// walk over a row after its slack has been updated
+// to refersh the scores of incident variables, and the per-nnz contributions
 template <typename coef_t, class D>
 static HWY_INLINE void PatchRowBody(D d,
                                     const int32_t* HWY_RESTRICT variables,
@@ -189,8 +160,8 @@ static HWY_INLINE void PatchRowBody(D d,
   const size_t N  = hn::Lanes(d);
   const size_t NW = hn::Lanes(dw);
 
-  // When the remainder is peeled, a row below one vector never reaches the body, so it skips the
-  // ten broadcasts below as well.
+  // just run the scalar version if this ISA doesn't have masked ops and the size is < the vector width
+  // avoids unnecessary setup
   if constexpr (!k_mask_remainder) {
     if ((size_t)(row_end - row_begin) < N) {
       PatchRowScalar<coef_t>(variables,
@@ -227,10 +198,8 @@ static HWY_INLINE void PatchRowBody(D d,
     auto active = hn::Ne(v, vskip);
     if constexpr (k_mask_remainder) { active = hn::And(active, hn::FirstN(d, (size_t)(row_end - k))); }
 
-    // Gathered in hardware even on Zen 4, unlike the score update below. Doing this one by lane
-    // instead measured 8.2% slower: it must spill the index vector and reload it 4 bytes at a time,
-    // which cannot store-to-load forward, and that cost 959 interlocks per iteration against 72.
-    // The score update escapes this because it already needs the spill for its read-modify-write.
+
+    // Native gather works best here, even on Zen4. Go figure (probably more favorable scheduling/ports for this codepath)
     const V a01  = hn::MaskedGatherIndex(active, d, assign_i32, v);
     const V flip = hn::Sub(vone, hn::ShiftLeft<1>(a01));
     const V coef = hn::PromoteTo(d, hn::LoadU(dc, coefficients + k));
@@ -254,12 +223,6 @@ static HWY_INLINE void PatchRowBody(D d,
     // vw * (nst - ost)
     const V bonus = hn::Mul(vw, hn::Sub(vneg_ost, nst_neg));
 
-    // The score is int64, so packing it costs two vectors where the fields took one. Both fields
-    // are per-row here and fit int32, so they are computed at full lane count above and widened
-    // only for the pack. Everything below stays in the vector: the pack, the old value, the
-    // difference and the store back. What reaches the scalar loop is one add per nonzero, which is
-    // what it was before the score widened -- that loop is 38% of all cycles, so work belongs
-    // anywhere but there.
     const VW base_lo  = hn::PromoteLowerTo(dw, base);
     const VW base_hi  = hn::PromoteUpperTo(dw, base);
     const VW bonus_lo = hn::PromoteLowerTo(dw, bonus);
@@ -271,9 +234,6 @@ static HWY_INLINE void PatchRowBody(D d,
     const VW delta_lo = hn::Sub(packed_lo, hn::LoadU(dw, nnz_score_delta + k));
     const VW delta_hi = hn::Sub(packed_hi, hn::LoadU(dw, nnz_score_delta + k + NW));
 
-    // The store mask is rebuilt at int64 width rather than narrowed from `active`: the same two
-    // conditions, on the promoted indices. FirstN is applied on every target because where the
-    // remainder is peeled the body never runs short, so it is all-true there anyway.
     const size_t rem  = (size_t)(row_end - k);
     const VW v_lo     = hn::PromoteLowerTo(dw, v);
     const VW v_hi     = hn::PromoteUpperTo(dw, v);
@@ -283,6 +243,8 @@ static HWY_INLINE void PatchRowBody(D d,
     hn::BlendedStore(packed_lo, act_lo, dw, nnz_score_delta + k);
     hn::BlendedStore(packed_hi, act_hi, dw, nnz_score_delta + k + NW);
 
+    // hardware gather/scatter pays off heavily on Sapphire Rapids+ only
+    // probably on Zen5 as well
 #if HWY_TARGET == HWY_AVX3_ZEN4 || HWY_TARGET == HWY_AVX2
     // zmm VSIB is microcode on Zen 4: VPGATHERDD ~76-80 uops / ~21 CPI and VPSCATTERDD 89 / 24,
     // against ~5 / ~10 and ~19 / ~11 on SPR-class Intel (Agner Fog, uops.info). So
@@ -309,6 +271,7 @@ static HWY_INLINE void PatchRowBody(D d,
 #endif
   }
 
+  // scalar tail
   if constexpr (!k_mask_remainder) {
     PatchRowScalar<coef_t>(variables,
                            coefficients,
@@ -323,7 +286,6 @@ static HWY_INLINE void PatchRowBody(D d,
   }
 }
 
-// Native width, and the 8-lane variant for rows that would leave most of a native vector idle.
 template <typename coef_t>
 void PatchRowImpl(const int32_t* HWY_RESTRICT variables,
                   const coef_t* HWY_RESTRICT coefficients,
@@ -399,21 +361,9 @@ void PatchRowNarrow4Impl(const int32_t* HWY_RESTRICT variables,
                        skip_var);
 }
 
-// Longest row worth sending to each narrower kernel, or 0 where that width is not worth having.
-// A gather costs the same whether its lanes carry data or are masked off, so a row that fills only
-// part of a native vector is cheaper through a narrower one; past the crossover the extra vector
-// and its extra full gather cost more than the wasted lanes. From the Zen 4 microcode ratio
-// (VPGATHERDD ~78 uops at 512 bits, 48 at 256, 24 at 128) the crossovers land at 4 and 8.
-//
-// A width is offered only when it is strictly narrower than the native vector, so no target ever
-// dispatches to a kernel identical to its own. Scalable targets opt out entirely: Highway notes
-// that clamping Lanes() on RVV/SVE can cost more than the capping saves, which is why
-// CappedTagIfFixed leaves them at native width above.
-//
-// These are per-target constants, so the width choice belongs here rather than at the call seam: a
-// caller outside this file can only reach them through a dispatch pointer, which turns two
-// immediates into two loads of runtime globals and puts an unpredictable branch directly in front
-// of the indirect jump that follows it. Measured on supportcase22, that seam cost 2.4%.
+// use lower-vector-width kernels for smaller rows if available on this target
+// (e.g. AVX2 instead of AVX512)
+// (works because AVX512 also brings masked ops and gather/scatter to 128/256bit vectors) 
 constexpr size_t k_native_lanes = HWY_MAX_LANES_D(hn::ScalableTag<int32_t>);
 constexpr int32_t k_narrow4_max = HWY_HAVE_SCALABLE ? 0 : (k_native_lanes > 4 ? 4 : 0);
 constexpr int32_t k_narrow8_max = HWY_HAVE_SCALABLE ? 0 : (k_native_lanes > 8 ? 8 : 0);
@@ -469,9 +419,10 @@ void PatchRowDispatchImpl(const int32_t* HWY_RESTRICT variables,
   }
 }
 
-// Tiled sweep carrying a running maximum. The index re-scan fires only on a tile that raises it,
-// and that tile is still cache-hot. The tabu window is uint16 against int32 scores, so the mask
-// crosses a 2:1 width boundary through PromoteMaskTo.
+// tiled two-pass argmax to first find a new max
+// and then a second pass if a new max was found to then fetch its index
+// works on the assu,ption the tile is L1 sized
+// and that few tiles contain a new max compared to the entire set
 void ArgmaxImpl(const int64_t* HWY_RESTRICT var_score,
                 int32_t n,
                 int32_t tile,
@@ -503,6 +454,7 @@ void ArgmaxImpl(const int64_t* HWY_RESTRICT var_score,
     const int64_t peak = hn::ReduceMax(d, tile_max);
     if (peak > bs) {
       const V vpeak = hn::Set(d, peak);
+      // second pass to find the index
       for (int32_t v = t0; v < t1; v += step) {
         const intptr_t lane = hn::FindFirstTrue(d, hn::Eq(hn::LoadU(d, var_score + v), vpeak));
         if (lane >= 0) {
@@ -514,6 +466,7 @@ void ArgmaxImpl(const int64_t* HWY_RESTRICT var_score,
     }
   }
 
+  // scalar tail
   for (int32_t v = nblk; v < n; ++v) {
     if (var_score[v] > bs) {
       bs = var_score[v];
@@ -525,9 +478,7 @@ void ArgmaxImpl(const int64_t* HWY_RESTRICT var_score,
   *best_score = bs;
 }
 
-// combined[v] = var_score[v] + obj_score[v] over all n variables. Materialized rather than fused
-// into the argmax because block_tabu writes sentinels into the result and restores them afterwards,
-// so the array has to outlive the scan. None of the three has SIMD padding, hence the scalar tail.
+// combined[v] = var_score[v] + obj_score[v] over all n variables.
 void AddScoresImpl(const int64_t* HWY_RESTRICT var_score,
                    const int64_t* HWY_RESTRICT obj_score,
                    int32_t n,
@@ -587,6 +538,8 @@ void ScoreRowsImpl(const int32_t* rows,
                             hn::IfThenElse(hn::Gt(old, vtol), weight, zero)));
   }
   T bs = hn::ReduceSum(d, base), rs = hn::ReduceSum(d, bonus);
+
+  // scalar tail
   for (; i < end; ++i) {
     const T a = coeff[i];
     if (a == 0) continue;
