@@ -449,7 +449,7 @@ bool solver_settings_t<i_t, f_t>::dump_parameters_to_file(const std::string& pat
 // so the whole class instantiation drags a CUDA dependency into this CUDA-free library and
 // leaves libcuopt_client.so with an undefined symbol. Members are therefore instantiated
 // individually below; libcuopt emits the constructors via its own `template class`
-// in solver_settings_gpu.cu.
+// in solver_settings.cu.
 
 #if MIP_INSTANTIATE_FLOAT
 template CUOPT_EXPORT void solver_settings_t<int, float>::set_parameter_from_string(

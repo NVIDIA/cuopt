@@ -107,11 +107,16 @@ void solver_settings_t<i_t, f_t>::add_initial_mip_solution(const f_t* solution,
   mip_settings.add_initial_solution(solution, size, stream);
 }
 
-// The constructor lives here, not in solver_settings.cpp, even though its body is pure
-// host code building the parameter tables. It default-constructs pdlp_settings, which holds
-// a pdlp_warm_start_data_t by value whose ctor is CUDA-side -- so defining it in the
-// CUDA-free library would leave libcuopt_client.so with an undefined symbol that only
-// surfaces at call time. Moving it here is what lets that library resolve standalone.
+// The constructor is here, not in solver_settings.cpp, and its body is a red herring: it
+// only builds parameter tables. What forces the placement is the member it default-
+// constructs. pdlp_solver_settings_t holds a pdlp_warm_start_data_t by value, and that
+// type's default ctor -- defined in pdlp/pdlp_warm_start_data.cu -- constructs nine
+// rmm::device_uvectors on cudaStreamDefault. Compiling this constructor into the CUDA-free
+// cuopt_client would therefore leave libcuopt_client.so with an undefined reference that
+// only surfaces at call time.
+//
+// Giving pdlp_warm_start_data_t a default ctor that does not touch device memory would let
+// this move to the host translation unit.
 template <typename i_t, typename f_t>
 solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings()
 {
