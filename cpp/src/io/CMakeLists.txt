@@ -23,10 +23,7 @@ set(PARSERS_SRC_FILES
   ${MPS_FAST_SRC_FILES}
 )
 
-# The parsers and the host-side problem representation are CUDA-free (the only
-# `cuda::` uses are host integer helpers from header-only libcu++), so they build
-# into the CPU-only cuopt_client library rather than into cuopt_objs. That is what
-# lets the Python data_model / solver_settings / io extension modules link a
-# library with no CUDA runtime dependency.
+# Parsers and the host-side problem representation are CUDA-free (the only `cuda::` uses
+# are host integer helpers from header-only libcu++), so they build into cuopt_client.
 set(CUOPT_CLIENT_SRC_FILES ${CUOPT_CLIENT_SRC_FILES} ${PARSERS_SRC_FILES} PARENT_SCOPE)
 set(MPS_FAST_SRC_FILES ${MPS_FAST_SRC_FILES} PARENT_SCOPE)

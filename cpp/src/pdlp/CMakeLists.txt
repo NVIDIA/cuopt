@@ -50,9 +50,8 @@ else()
   set(LP_SRC_FILES ${LP_CORE_FILES} ${LP_ADAPTER_FILES})
 endif()
 
-# Host-only LP sources that the gRPC client needs. These build into cuopt_client so the
-# client library resolves standalone, without libcuopt.so. Their GPU-facing members were
-# split into separate CUDA translation units above (e.g. cpu_optimization_problem_to_gpu.cpp).
+# Host-only LP sources the gRPC client needs, so cuopt_client resolves standalone. Their
+# GPU-facing members were split into the CUDA translation units above.
 set(LP_CLIENT_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/cpu_optimization_problem.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/solution_conversion_cpu.cpp

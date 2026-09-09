@@ -613,14 +613,9 @@ if (NOT SKIP_GRPC_BUILD)
         list(APPEND GRPC_INFRA_FILES ${GRPC_ROUTING_FILES})
     endif ()
 
-    # The protocol and the LP/MIP arm build into cuopt_client. The routing arm does NOT,
-    # despite also being free of raft/rmm/thrust: its mappers call routing::solver_settings_t
-    # and routing::assignment_t accessors that live in CUDA translation units inside libcuopt.
-    # Putting them in cuopt_client creates a cycle (libcuopt -> cuopt_client -> libcuopt) that
-    # ldd -r does not flag, because both libraries are loaded together -- it surfaces only when
-    # the call happens, as "undefined symbol: routing::solver_settings_t::get_time_limit".
-    # Moving the routing arm down needs those host-only accessors split out first, exactly as
-    # was done for the LP/MIP settings.
+    # The routing arm stays in libcuopt: its mappers call routing accessors that live in CUDA
+    # translation units, so moving it down would create a libcuopt -> cuopt_client -> libcuopt
+    # cycle. Those accessors need splitting out first, as was done for the LP/MIP settings.
     list(APPEND CUOPT_CLIENT_SRC_FILES ${GRPC_PROTO_GENERATED_FILES} ${GRPC_MATHOPT_FILES})
     if (CUOPT_ENABLE_GRPC_ROUTING)
         list(APPEND CUOPT_SRC_FILES ${GRPC_ROUTING_FILES})
@@ -647,33 +642,19 @@ endif (NOT SKIP_GRPC_BUILD)
 # ##################################################################################################
 # - cuopt_client - CPU-only support library ----------------------------------------------------------
 #
-# Holds the host-side problem representation (parsers, data_model_view, mps_data_model,
-# writers), the gRPC wire protocol (generated protos + mappers), and the gRPC client.
-# None of it touches CUDA, so this library links no CUDA runtime.
+# Host-side problem representation (parsers, data_model_view, mps_data_model, writers), the
+# gRPC wire protocol, and the gRPC client. None of it touches CUDA, so Python extension
+# modules that never call the GPU can link this instead of libcuopt.so.
 #
-# It exists so the Python extension modules that never call into the GPU -- data_model,
-# solver_settings, io, and the gRPC client -- can link something other than libcuopt.so,
-# which is what makes a GPU-free client install possible. libcuopt and cuopt_grpc_server
-# both link it, so there is exactly one implementation of the mappers, not a client fork.
-#
-# LANGUAGES is deliberately not CUDA here: adding a .cu file to CUOPT_CLIENT_SRC_FILES
-# should fail loudly rather than quietly reintroduce a CUDA dependency.
-# Built as an OBJECT library first, mirroring cuopt_objs/cuopt, so that cuopt_static (for
-# internal tests) can link the objects directly. The tests reach parser internals such as
-# the fast MPS parser's mps_phase_registry_t, which linking the shared library would not
-# give them. See the NOTE below for why this library's visibility differs from cuopt_objs.
+# LANGUAGES is deliberately not CUDA: adding a .cu file here should fail loudly rather than
+# quietly reintroduce a CUDA dependency. Built as an OBJECT library first, mirroring
+# cuopt_objs/cuopt, so cuopt_static can link the objects directly for tests that reach
+# parser internals the shared library does not export.
 add_library(cuopt_client_objs OBJECT ${CUOPT_CLIENT_SRC_FILES})
-# NOTE: default visibility, deliberately unlike cuopt_objs.
-#
-# cuopt_objs can hide everything not marked CUOPT_EXPORT because libcuopt has a curated
-# public C++ API. cuopt_client is different: it was carved out of the *internals*, so
-# libcuopt itself depends on ~214 of its symbols (the whole cpu_optimization_problem_t /
-# data_model_view_t / mps_data_model_t / grpc_client_t surface). Those are internal
-# cross-library references, not a public API, and hiding them makes libcuopt.so fail to
-# load with e.g. "undefined symbol: grpc_client_t::solve_mip".
-#
-# Curating them behind CUOPT_EXPORT would mean annotating essentially every host-side
-# method, so default visibility is the right trade here.
+# Default visibility, deliberately unlike cuopt_objs: this library was carved out of the
+# internals rather than designed as an export surface, so libcuopt resolves ~239 symbols
+# from it. Hiding them would mean annotating essentially every host-side method with
+# CUOPT_EXPORT.
 set_target_properties(cuopt_client_objs
         PROPERTIES POSITION_INDEPENDENT_CODE ON
         CXX_SCAN_FOR_MODULES OFF
