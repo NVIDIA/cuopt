@@ -40,7 +40,7 @@ LIBGOMP_LIBRARY="$(
     { ldconfig -p | awk '$1 ~ /^libgomp\.so(\.[0-9]+)*$/ { print $NF }'
       find /opt/rh /usr -name 'libgomp.so.1*' 2>/dev/null
     } | sort -u | while read -r candidate; do
-        nm -D "${candidate}" 2>/dev/null | grep -q ' T omp_fulfill_event$' && echo "${candidate}" && break
+        nm -D "${candidate}" 2>/dev/null | grep -qE ' T omp_fulfill_event(@|$)' && echo "${candidate}" && break
     done
 )" || true
 if [[ "${LIBGOMP_LIBRARY}" != /* || ! -f "${LIBGOMP_LIBRARY}" ]]; then
