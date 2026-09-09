@@ -611,11 +611,13 @@ class branch_and_bound_t {
                               root_heuristics_t<i_t, f_t>& root_heuristics);
 
   // Solve the LP relaxation of a leaf node
-  simplex::dual_status_t solve_node_lp(mip_node_t<i_t, f_t>* node_ptr,
-                                       branch_and_bound_worker_t<i_t, f_t>* worker,
-                                       branch_and_bound_stats_t<i_t, f_t>& stats,
-                                       simplex::logger_t& log,
-                                       int64_t iter_limit = std::numeric_limits<i_t>::max());
+  simplex::dual_status_t solve_node_lp(
+    mip_node_t<i_t, f_t>* node_ptr,
+    const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+    branch_and_bound_worker_t<i_t, f_t>* worker,
+    branch_and_bound_stats_t<i_t, f_t>& stats,
+    simplex::logger_t& log,
+    int64_t iter_limit = std::numeric_limits<i_t>::max());
 
   // Apply symmetry-based bound reductions (orbital fixing and, when
   // settings_.symmetry == 2, lexical reduction) to the current node.

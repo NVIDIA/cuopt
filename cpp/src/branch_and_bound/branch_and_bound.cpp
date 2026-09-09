@@ -1643,6 +1643,7 @@ bool branch_and_bound_t<i_t, f_t>::apply_symmetry_reductions(
 template <typename i_t, typename f_t>
 dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   mip_node_t<i_t, f_t>* node_ptr,
+  const simplex_solver_settings_t<i_t, f_t>& settings,
   branch_and_bound_worker_t<i_t, f_t>* worker,
   branch_and_bound_stats_t<i_t, f_t>& stats,
   logger_t& log,
@@ -1684,8 +1685,7 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   }
 #endif
 
-  simplex_solver_settings_t lp_settings = settings_;
-  lp_settings.concurrent_halt           = &node_concurrent_halt_;
+  simplex_solver_settings_t lp_settings = settings;
   lp_settings.set_log(false);
   f_t cutoff = upper_bound_.load();
   if (worker->leaf_problem.objective_step.has_step()) {
@@ -1925,7 +1925,10 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
       node_ptr->packed_vstatus, worker->leaf_problem.num_cols, worker->leaf_vstatus);
     assert(worker->leaf_vstatus.size() == worker->leaf_problem.num_cols);
 
-    dual_status_t lp_status = solve_node_lp(node_ptr, worker, exploration_stats_, settings_.log);
+    simplex_solver_settings_t lp_settings = settings_;
+    lp_settings.concurrent_halt           = &node_concurrent_halt_;
+    dual_status_t lp_status =
+      solve_node_lp(node_ptr, lp_settings, worker, exploration_stats_, settings_.log);
     ++exploration_stats_.nodes_since_last_log;
     ++exploration_stats_.nodes_explored;
     --exploration_stats_.nodes_unexplored;
@@ -2260,7 +2263,7 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker,
       node_ptr->packed_vstatus, worker->leaf_problem.num_cols, worker->leaf_vstatus);
     assert(worker->leaf_vstatus.size() == worker->leaf_problem.num_cols);
 
-    dual_status_t lp_status = solve_node_lp(node_ptr, worker, dive_stats, log, max_iter);
+    dual_status_t lp_status = solve_node_lp(node_ptr, settings, worker, dive_stats, log, max_iter);
     ++dive_stats.nodes_explored;
 
     if (lp_status == dual_status_t::TIME_LIMIT) {
@@ -2985,7 +2988,7 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(
       break;
     }
 
-    dual_status_t lp_status = solve_node_lp(&node, worker, stats, log, max_iter);
+    dual_status_t lp_status = solve_node_lp(&node, submip_settings, worker, stats, log, max_iter);
     if (lp_status != dual_status_t::OPTIMAL) {
       DEBUG_SUBMIP("{}Round {}: simplex returned {}",
                    submip_settings.log.log_prefix,
