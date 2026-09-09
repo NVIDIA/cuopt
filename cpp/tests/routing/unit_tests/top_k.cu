@@ -98,7 +98,7 @@ class top_cand_test_t : public routing_test_t<i_t, f_t>, public ::testing::TestW
 
     raft::copy(d_input_cost.data(), h_input_cost.data(), h_input_cost.size(), this->stream_view_);
 
-    this->stream_view_.synchronize();
+    this->stream_view_.sync();
     call_top_k(d_input_cost, d_output_cost, d_out_index);
 
     verify_top_k(h_input_cost, d_output_cost, d_out_index);
@@ -159,11 +159,12 @@ class top_cand_test_t : public routing_test_t<i_t, f_t>, public ::testing::TestW
                   rmm::device_uvector<i_t>& out_index)
   {
     constexpr int TPB = 128;
-    top_k_indices<TPB, i_t><<<width, TPB, 0, this->stream_view_>>>(width,
-                                                                   cuopt::make_span(input_cost),
-                                                                   cuopt::make_span(output_cost),
-                                                                   cuopt::make_span(out_index));
-    this->stream_view_.synchronize();
+    top_k_indices<TPB, i_t>
+      <<<width, TPB, 0, this->stream_view_.get()>>>(width,
+                                                    cuopt::make_span(input_cost),
+                                                    cuopt::make_span(output_cost),
+                                                    cuopt::make_span(out_index));
+    this->stream_view_.sync();
     RAFT_CUDA_TRY(cudaGetLastError());
   }
 
@@ -171,15 +172,15 @@ class top_cand_test_t : public routing_test_t<i_t, f_t>, public ::testing::TestW
                     rmm::device_uvector<double>& d_output_cost,
                     rmm::device_uvector<i_t>& d_out_index)
   {
-    this->stream_view_.synchronize();
+    this->stream_view_.sync();
     std::vector<double> h_output_cost(d_output_cost.size());
     raft::copy(
       h_output_cost.data(), d_output_cost.data(), d_output_cost.size(), this->stream_view_);
-    this->stream_view_.synchronize();
+    this->stream_view_.sync();
 
     std::vector<i_t> h_sorted_index(d_out_index.size());
     raft::copy(h_sorted_index.data(), d_out_index.data(), d_out_index.size(), this->stream_view_);
-    this->stream_view_.synchronize();
+    this->stream_view_.sync();
     std::vector<double> sorted_data(width);
     for (int i = 0; i < width; ++i) {
       // copy row i
@@ -234,11 +235,11 @@ class top_cand_test_t : public routing_test_t<i_t, f_t>, public ::testing::TestW
                                         num_segments,
                                         segment_marker.data(),
                                         segment_marker.data() + 1,
-                                        this->stream_view_);
+                                        this->stream_view_.get());
     rmm::device_uvector<std::byte> d_cub_storage_bytes(0, this->stream_view_);
     d_cub_storage_bytes.resize(tmp_storage_bytes, this->stream_view_);
     double elapsed_ms;
-    this->stream_view_.synchronize();
+    this->stream_view_.sync();
     {
       time_it t(&elapsed_ms);
       for (int i = 0; i < iter; ++i) {
@@ -252,9 +253,9 @@ class top_cand_test_t : public routing_test_t<i_t, f_t>, public ::testing::TestW
                                             num_segments,
                                             segment_marker.data(),
                                             segment_marker.data() + 1,
-                                            this->stream_view_);
+                                            this->stream_view_.get());
       }
-      this->stream_view_.synchronize();
+      this->stream_view_.sync();
     }
     return elapsed_ms;
   }
@@ -268,13 +269,13 @@ class top_cand_test_t : public routing_test_t<i_t, f_t>, public ::testing::TestW
     raft::copy(d_input_cost.data(), input_cost.data(), input_cost.size(), this->stream_view_);
 
     double elapsed_ms;
-    this->stream_view_.synchronize();
+    this->stream_view_.sync();
     {
       time_it t(&elapsed_ms);
       for (int i = 0; i < iter; ++i) {
         call_top_k(d_input_cost, d_output_cost, d_out_index);
       }
-      this->stream_view_.synchronize();
+      this->stream_view_.sync();
     }
     return elapsed_ms;
   }

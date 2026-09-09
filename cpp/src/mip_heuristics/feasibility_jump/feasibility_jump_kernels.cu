@@ -1442,7 +1442,7 @@ void launch_load_balancing_prepare_iteration(dim3 grid,
                                              rmm::cuda_stream_view stream)
 {
   RAFT_CUDA_TRY(cudaLaunchCooperativeKernel(
-    (void*)load_balancing_prepare_iteration<i_t, f_t>, grid, blocks, kernel_args, 0, stream));
+    (void*)load_balancing_prepare_iteration<i_t, f_t>, grid, blocks, kernel_args, 0, stream.get()));
 }
 
 template <typename i_t, typename f_t>
@@ -1460,7 +1460,7 @@ void launch_update_assignment_kernel(dim3 grid,
                                      rmm::cuda_stream_view stream)
 {
   RAFT_CUDA_TRY(cudaLaunchKernel(
-    (void*)update_assignment_kernel<i_t, f_t>, grid, blocks, kernel_args, 0, stream));
+    (void*)update_assignment_kernel<i_t, f_t>, grid, blocks, kernel_args, 0, stream.get()));
 }
 
 template <typename i_t, typename f_t, MTMMoveType move_type, bool is_binary_pb>
@@ -1539,7 +1539,7 @@ void launch_compute_mtm_moves_kernel(dim3 grid,
                                 blocks,
                                 kernel_args,
                                 0,
-                                stream));
+                                stream.get()));
 }
 
 template <typename i_t, typename f_t>
@@ -1549,7 +1549,7 @@ void launch_load_balancing_sanity_checks(dim3 grid,
                                          rmm::cuda_stream_view stream)
 {
   RAFT_CUDA_TRY(cudaLaunchCooperativeKernel(
-    (void*)load_balancing_sanity_checks<i_t, f_t>, grid, blocks, kernel_args, 0, stream));
+    (void*)load_balancing_sanity_checks<i_t, f_t>, grid, blocks, kernel_args, 0, stream.get()));
 }
 
 template <typename i_t, typename f_t>
@@ -1559,7 +1559,7 @@ void launch_handle_local_minimum_kernel(dim3 grid,
                                         rmm::cuda_stream_view stream)
 {
   RAFT_CUDA_TRY(cudaLaunchCooperativeKernel(
-    (void*)handle_local_minimum_kernel<i_t, f_t>, grid, blocks, kernel_args, 0, stream));
+    (void*)handle_local_minimum_kernel<i_t, f_t>, grid, blocks, kernel_args, 0, stream.get()));
 }
 
 template <typename i_t, typename f_t>
@@ -1576,8 +1576,12 @@ void launch_update_changed_constraints_kernel(dim3 grid,
                                               void** kernel_args,
                                               rmm::cuda_stream_view stream)
 {
-  RAFT_CUDA_TRY(cudaLaunchKernel(
-    (void*)update_changed_constraints_kernel<i_t, f_t>, grid, blocks, kernel_args, 0, stream));
+  RAFT_CUDA_TRY(cudaLaunchKernel((void*)update_changed_constraints_kernel<i_t, f_t>,
+                                 grid,
+                                 blocks,
+                                 kernel_args,
+                                 0,
+                                 stream.get()));
 }
 
 template <typename i_t, typename f_t>
@@ -1587,7 +1591,7 @@ void launch_update_lift_moves_kernel(dim3 grid,
                                      rmm::cuda_stream_view stream)
 {
   RAFT_CUDA_TRY(cudaLaunchKernel(
-    (void*)update_lift_moves_kernel<i_t, f_t>, grid, blocks, kernel_args, 0, stream));
+    (void*)update_lift_moves_kernel<i_t, f_t>, grid, blocks, kernel_args, 0, stream.get()));
 }
 
 template <typename i_t, typename f_t>
@@ -1597,7 +1601,7 @@ void launch_update_breakthrough_moves_kernel(dim3 grid,
                                              rmm::cuda_stream_view stream)
 {
   RAFT_CUDA_TRY(cudaLaunchKernel(
-    (void*)update_breakthrough_moves_kernel<i_t, f_t>, grid, blocks, kernel_args, 0, stream));
+    (void*)update_breakthrough_moves_kernel<i_t, f_t>, grid, blocks, kernel_args, 0, stream.get()));
 }
 
 template <typename i_t, typename f_t>
@@ -1607,7 +1611,7 @@ void launch_select_variable_kernel(dim3 grid,
                                    rmm::cuda_stream_view stream)
 {
   RAFT_CUDA_TRY(cudaLaunchKernel(
-    (void*)select_variable_kernel<i_t, f_t>, grid, blocks, kernel_args, 0, stream));
+    (void*)select_variable_kernel<i_t, f_t>, grid, blocks, kernel_args, 0, stream.get()));
 }
 
 template <typename i_t, typename f_t>
@@ -1617,7 +1621,7 @@ void launch_init_lhs_and_violation(dim3 grid,
                                    rmm::cuda_stream_view stream)
 {
   RAFT_CUDA_TRY(cudaLaunchKernel(
-    (void*)init_lhs_and_violation<i_t, f_t>, grid, blocks, kernel_args, 0, stream));
+    (void*)init_lhs_and_violation<i_t, f_t>, grid, blocks, kernel_args, 0, stream.get()));
 }
 
 template <typename i_t, typename f_t>
@@ -1627,7 +1631,7 @@ void launch_update_best_solution_kernel(dim3 grid,
                                         rmm::cuda_stream_view stream)
 {
   RAFT_CUDA_TRY(cudaLaunchKernel(
-    (void*)update_best_solution_kernel<i_t, f_t>, grid, blocks, kernel_args, 0, stream));
+    (void*)update_best_solution_kernel<i_t, f_t>, grid, blocks, kernel_args, 0, stream.get()));
 }
 
 template <typename i_t, typename f_t>
@@ -1636,8 +1640,12 @@ void launch_load_balancing_compute_workid_mappings(dim3 grid,
                                                    void** kernel_args,
                                                    rmm::cuda_stream_view stream)
 {
-  RAFT_CUDA_TRY(cudaLaunchKernel(
-    (void*)load_balancing_compute_workid_mappings<i_t, f_t>, grid, blocks, kernel_args, 0, stream));
+  RAFT_CUDA_TRY(cudaLaunchKernel((void*)load_balancing_compute_workid_mappings<i_t, f_t>,
+                                 grid,
+                                 blocks,
+                                 kernel_args,
+                                 0,
+                                 stream.get()));
 }
 
 template <typename i_t, typename f_t>
@@ -1646,8 +1654,12 @@ void launch_load_balancing_init_cstr_bounds_csr(dim3 grid,
                                                 void** kernel_args,
                                                 rmm::cuda_stream_view stream)
 {
-  RAFT_CUDA_TRY(cudaLaunchKernel(
-    (void*)load_balancing_init_cstr_bounds_csr<i_t, f_t>, grid, blocks, kernel_args, 0, stream));
+  RAFT_CUDA_TRY(cudaLaunchKernel((void*)load_balancing_init_cstr_bounds_csr<i_t, f_t>,
+                                 grid,
+                                 blocks,
+                                 kernel_args,
+                                 0,
+                                 stream.get()));
 }
 
 template <typename i_t, typename f_t>
@@ -1656,8 +1668,12 @@ void launch_load_balancing_compute_scores_binary(dim3 grid,
                                                  void** kernel_args,
                                                  rmm::cuda_stream_view stream)
 {
-  RAFT_CUDA_TRY(cudaLaunchKernel(
-    (void*)load_balancing_compute_scores_binary<i_t, f_t>, grid, blocks, kernel_args, 0, stream));
+  RAFT_CUDA_TRY(cudaLaunchKernel((void*)load_balancing_compute_scores_binary<i_t, f_t>,
+                                 grid,
+                                 blocks,
+                                 kernel_args,
+                                 0,
+                                 stream.get()));
 }
 
 template <typename i_t, typename f_t>
@@ -1666,8 +1682,12 @@ void launch_load_balancing_mtm_compute_candidates(dim3 grid,
                                                   void** kernel_args,
                                                   rmm::cuda_stream_view stream)
 {
-  RAFT_CUDA_TRY(cudaLaunchKernel(
-    (void*)load_balancing_mtm_compute_candidates<i_t, f_t>, grid, blocks, kernel_args, 0, stream));
+  RAFT_CUDA_TRY(cudaLaunchKernel((void*)load_balancing_mtm_compute_candidates<i_t, f_t>,
+                                 grid,
+                                 blocks,
+                                 kernel_args,
+                                 0,
+                                 stream.get()));
 }
 
 template <typename i_t, typename f_t>
@@ -1676,8 +1696,12 @@ void launch_load_balancing_mtm_compute_scores(dim3 grid,
                                               void** kernel_args,
                                               rmm::cuda_stream_view stream)
 {
-  RAFT_CUDA_TRY(cudaLaunchKernel(
-    (void*)load_balancing_mtm_compute_scores<i_t, f_t>, grid, blocks, kernel_args, 0, stream));
+  RAFT_CUDA_TRY(cudaLaunchKernel((void*)load_balancing_mtm_compute_scores<i_t, f_t>,
+                                 grid,
+                                 blocks,
+                                 kernel_args,
+                                 0,
+                                 stream.get()));
 }
 
 // to save from compilation time, separate those and instantiate separately rather being part of a
