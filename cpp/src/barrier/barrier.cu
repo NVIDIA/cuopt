@@ -3261,16 +3261,18 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
           settings.log.printf("||ADAT*dy - h|| %e after IR\n", adat_solve_err);
         }
 
-        // Reactive fallback: even GMRES-IR on top of the direct Cholesky solve cannot
-        // fix a Newton direction once the normal-equations system itself has become
-        // this ill-conditioned. Rather than let the barrier loop keep grinding on
-        // ADAT solves that are only getting worse (see the diagonal-ratio growth this
-        // is a proxy for), give up on ADAT for the rest of this solve and switch to
-        // the augmented KKT formulation, which factors A directly and never forms
-        // A*D^{-1}*A^T. This one call's (dx, dy) is still whatever the degraded ADAT
-        // solve produced -- switching only takes effect starting the next call -- but
-        // that is a single degraded step against 900s of a solve that would otherwise
-        // never recover.
+        // Reactive fallback (QP only): even GMRES-IR on top of the direct Cholesky
+        // solve cannot fix a Newton direction once the normal-equations system itself
+        // has become this ill-conditioned. Rather than let the barrier loop keep
+        // grinding on ADAT solves that are only getting worse (see the diagonal-ratio
+        // growth this is a proxy for), give up on ADAT for the rest of this solve and
+        // switch to the augmented KKT formulation, which factors A directly and never
+        // forms A*D^{-1}*A^T. LPs stay on ADAT: the ill-conditioning that motivates
+        // this switch is the huge dynamic range that Q induces in D, and flipping LPs
+        // to augmented has been a net regression. This one call's (dx, dy) is still
+        // whatever the degraded ADAT solve produced -- switching only takes effect
+        // starting the next call -- but that is a single degraded step against 900s of
+        // a solve that would otherwise never recover.
         //
         // Relative to ||h||, not absolute: some problems (e.g. QPLIB_9002) start from a
         // badly-scaled initial point with ||h|| ~1e18 that self-corrects within the first
@@ -3278,10 +3280,11 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
         // adat_solve_err ~3000 against ||h|| ~1e18 is a relative residual of ~1e-15,
         // excellent, not a sign of real trouble -- triggering a needless (and, for that
         // problem, harmful) switch before the normal self-correction gets a chance.
+        const bool has_Q             = data.Q.x.size() > 0;
         const f_t h_norm             = device_vector_norm_inf<i_t, f_t>(data.d_h_, stream_view_);
         const f_t adat_solve_err_rel = adat_solve_err / std::max(f_t(1.0), h_norm);
         constexpr f_t adat_switch_threshold_rel = 1e-2;
-        if (adat_solve_err_rel > adat_switch_threshold_rel) {
+        if (has_Q && adat_solve_err_rel > adat_switch_threshold_rel) {
           settings.log.printf(
             "Relative ADAT solve error %e (abs %e, ||h||=%e) exceeds %e; switching to "
             "augmented KKT for the remainder of the solve\n",
