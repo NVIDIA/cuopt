@@ -60,7 +60,6 @@ enum class fj_binary_reject_t : uint8_t {
   row_bound_out_of_range,
   lhs_headroom,
 };
-const char* fj_binary_reject_name(fj_binary_reject_t reason);
 
 // the binary engine handles a one-sided problem with integer coefficients
 template <typename coef_t>
