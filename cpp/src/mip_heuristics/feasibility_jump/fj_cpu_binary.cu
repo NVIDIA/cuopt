@@ -44,39 +44,26 @@ const char* fj_binary_reject_name(fj_binary_reject_t reason)
 
 // work unit proxy. will likely require a lot of tuning
 constexpr double fj_bin_bytes_per_nnz = 16.0;
-
-// DDFW and restart have no general-path equivalent, so their defaults live here until there is a
-// reason to promote them alongside the other FJ knobs.
+// restarts can help a lot on some smaller combinatorial instances
+// 5M leaves a huge margin
+constexpr int32_t fj_bin_restart_period     = 5000000;
+// DDFW weightin parameters
 constexpr int32_t fj_bin_ddfw_transfer      = 1;
 constexpr int32_t fj_bin_ddfw_donor_samples = 4;
-constexpr int32_t fj_bin_restart_period     = 5000000;
-
-// Escalation threshold and step, in infeasible local minima without a severity improvement.
 constexpr int32_t fj_bin_ddfw_escalate_after = 2000;
 constexpr int32_t fj_bin_ddfw_escalate_max   = 100;
 
-// The same, in feasible local minima without a best-objective improvement.
 constexpr int32_t fj_bin_obj_stall_after  = 50;
 constexpr int32_t fj_bin_obj_escalate_max = 10;
 
-// Candidate draws per 2-opt lift search.
 constexpr int32_t fj_bin_2opt_candidates = 64;
 
+// bounds for the components of the packed score
 constexpr int32_t fj_bin_base_limit  = 1 << 16;
 constexpr int32_t fj_bin_bonus_limit = 1 << 14;
 
-// Tile width of the argmax sweep, in variables: min(algorithm target, L1-residency cap).
-//
-// The target is about the shape of the sweep rather than cache capacity -- it sets how often the
-// running maximum is raised, which is what bounds the index re-scan -- and 256 is the measured
-// optimum. The cap is a residency guard, and it is the reason this is not simply a constant: the
-// re-scan pays off only because it revisits a tile that is still L1-hot, so the tile must not be
-// wide enough to spill. It bites only on a small L1, where an unguarded 256 would push the re-scan
-// out to L2 and cost more than the split saves.
-//
-// Bytes per variable is the score array alone. Tabu does not appear: the sweep reads var_score
-// only, with the handful of tabu variables held at the invalid sentinel across it, so flip_until is
-// never touched here.
+// tuned values for the argmax tile
+// tile size is set relative to L1$ if available
 constexpr int32_t fj_bin_argmax_tile_target = 256;
 constexpr int32_t fj_bin_argmax_tile_cap_k  = 4;
 
@@ -95,18 +82,12 @@ static int32_t fj_bin_argmax_tile()
   return t < 16 ? 16 : t;
 }
 
-// The integer engine. Feasibility is an exact compare against one bound per row, so there is no
-// tolerance arithmetic and no compensated summation anywhere below.
+// the binary-var integer-activities engine.
+// sidesteps a lot of the bookkeeping of the general engine by requiring every intermediate result to be integer
 template <typename i_t, typename f_t, typename coef_t>
 struct fj_bin_engine_t {
   fj_bin_problem_t<coef_t> pb;
-  // The only mutable per-row state besides the slack. Everything else the apply path once read
-  // per row now reaches it at unit stride: bound stayed in pb, where only the rebuild paths need
-  // it, and cmax went to pb.incident_row_cmax, replicated per incidence.
   std::vector<int32_t> row_weight;
-
-  // Per row, bound - lhs: negative exactly when the row is violated, and moved by a flip by exactly
-  // -reverse_coefficients. The only mutable state the vectorized walk gathers.
   std::vector<int32_t> row_slack;
 
   std::vector<int8_t> assign;
@@ -115,19 +96,22 @@ struct fj_bin_engine_t {
   // Staging for an adopted assignment, which arrives as f_t. Sized only when sharing is on.
   std::vector<f_t> adopt_buffer;
   std::vector<int8_t> seed_assign;  // restart target
-  std::vector<int32_t> assign_i32;  // gather mirror for the SIMD patch (Batch B)
+  std::vector<int32_t> assign_i32;  // gather mirror for the SIMD patch 
 
+  // lowest observed total violation
   int64_t best_infeasible_severity{std::numeric_limits<int64_t>::max()};
   int32_t iters_since_infeasible_improve{0};
 
-  std::vector<int64_t> var_score;        // live feasibility score of flipping each variable
-  std::vector<int64_t> nnz_score_delta;  // per CSR nnz: last score delta of variables[k] in its row
+  // feasibility component of the score of each var
+  std::vector<int64_t> var_score;
+  // cached per CSR nnz: last score contribution of variables[k] in its row
+  std::vector<int64_t> nnz_score_delta;
 
-  // Objective half of the move score, held live so a weighted global scan can stay vectorized.
-  // Its support is pb.objective_vars, so entries outside that set are zero for the whole solve.
+  // objective component of the scores
+  // inert when in the before-feasibility phase
   std::vector<int64_t> obj_base_score;
   std::vector<int64_t> combined_score;
-  // Objective weight obj_base_score was built for; -1 marks it stale.
+  // objective weight used for the stored objective components
   int32_t obj_base_weight{-1};
 
   fj_bin_tabu_t tabu;
@@ -135,45 +119,33 @@ struct fj_bin_engine_t {
   std::vector<uint8_t> is_violated;
   std::vector<int32_t> violated_list;
   std::vector<int32_t> vpos;
-  // Duplicate guard for find_move_in_rows, its only reader. Zero everywhere outside that function,
-  // which clears what it set before returning.
-  std::vector<char> var_bitmap;
+  std::vector<uint8_t> var_bitmap;
 
-  // One generator advanced across the whole search, rather than one re-seeded per call site per
-  // iteration. Re-seeding from `seed + iters` gave every call site in an iteration the identical
-  // stream, and a 624-word Mersenne state was being built and discarded on every move selection.
   raft::random::PCGenerator rng{0, 0, 0};
-  std::vector<int32_t>
-    sample_buf;  // move-selection row sample, reused to keep the loop allocation-free
+  // reusable buffer for the row sampling for moves
+  std::vector<int32_t> sample_buf;
 
   int32_t objective_weight{0};
   int32_t seed_objective_weight{0};
   // Feasible local minima since best_objective last moved, and the value it was last seen at.
   int32_t iterations_at_same_objective{0};
   double last_best_objective{std::numeric_limits<double>::infinity()};
-  // Mean absolute nonzero objective coefficient; the unit of the objective score term.
-  double obj_magnitude{1.0};
   double incumbent_objective{0};
-  // sum(obj_j * L_j), folded out of the encoded objective and carried here so both tracked
-  // objectives hold the model's own value. Zero on the all-binary path.
-  double objective_offset{0};
   double best_objective{std::numeric_limits<double>::infinity()};
+  double obj_magnitude{1.0};
+  double objective_offset{0};
   int32_t max_weight{1};
   bool feasible_found{false};
 
   int32_t iters{0};
-  // Iterations since best_objective last moved. Counts iterations, unlike
-  // iterations_at_same_objective, so it is comparable against perturb_interval.
+
   int32_t iters_since_best{0};
   int32_t last_restart_iter{0};
   int64_t nnz_touched{0};
 
-  // Denominator for the ops-per-nnz roofline: nonzeros the row kernel actually processes, and the
-  // rows walked to find them. Unlike nnz_touched these are not mixed with the full-matrix rebuilds.
   int64_t nnz_patched{0};
   int64_t rows_walked{0};
 
-  // Tile width for the argmax sweep, in variables. Set at init from fj_bin_argmax_tile().
   int32_t argmax_tile{fj_bin_argmax_tile_target};
 
   // Settings read at solve entry, where the climber carries populated values.
@@ -369,8 +341,8 @@ struct fj_bin_engine_t {
     return objective_base(v, (int8_t)(1 - 2 * assign[v]));
   }
 
-  // Only the objective variables are written: the rest of the array is zero from init onwards.
-  void ensure_objective_base()
+  // update objective contributions if the weight changed
+  void maybe_update_objective_component()
   {
     if (obj_base_weight == objective_weight) return;
     for (int32_t v : pb.objective_vars)
@@ -704,7 +676,7 @@ struct fj_bin_engine_t {
       // The breakthrough bonus is deliberately absent from the ranking: it depends on
       // incumbent_objective, so no per-variable form of it survives a move, and it occupies the low
       // field where it can only separate variables already tied on the base.
-      ensure_objective_base();
+      maybe_update_objective_component();
       int64_t* const comb_p = combined_score.data();
       fj_bin_add_scores(var_score.data(), obj_base_score.data(), pb.n_variables, comb_p);
 
@@ -1006,7 +978,7 @@ struct fj_bin_engine_t {
 
     var_score.assign(n_cols, 0);
     nnz_score_delta.assign(pb.nnz + fj_bin_simd_padding, 0);
-    // Zeroed once: ensure_objective_base only ever rewrites the objective variables.
+    // Zeroed once: maybe_update_objective_component only ever rewrites the objective variables.
     obj_base_score.assign(n_cols, 0);
     combined_score.assign(n_cols, 0);
     obj_base_weight = -1;
