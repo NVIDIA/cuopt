@@ -17,34 +17,24 @@ fi
 # Install Boost and TBB
 bash ci/utils/install_boost_tbb.sh
 
-# Install libuuid and LLVM's OpenMP runtime
+# Install libuuid (needed by cuopt_grpc_server)
 if command -v dnf &> /dev/null; then
-    # LLVM Toolset is distributed as a module on Rocky/RHEL 8.
-    dnf module install -y llvm-toolset
-    dnf install -y libuuid-devel libomp-devel
+    dnf install -y libuuid-devel
 elif command -v apt-get &> /dev/null; then
     apt-get update
-    apt-get install -y uuid-dev libomp-dev
+    apt-get install -y uuid-dev
 fi
 
 # Install Protobuf + gRPC (protoc + grpc_cpp_plugin)
 bash ci/utils/install_protobuf_grpc.sh
 
-# Compile with GCC, but use LLVM libomp as the OpenMP runtime bundled in the wheel. Resolve the
-# versioned ELF library rather than an unversioned linker script or compiler-toolset indirection.
-LIBOMP_LIBRARY="$(
-    ldconfig -p |
-        awk '$1 ~ /^libomp\.so(\.[0-9]+)*$/ && !library { library = $NF }
-             END { print library }'
-)"
-if [[ "${LIBOMP_LIBRARY}" != /* || ! -f "${LIBOMP_LIBRARY}" ]]; then
-    echo "Could not resolve the LLVM OpenMP runtime: '${LIBOMP_LIBRARY}'" >&2
-    exit 1
-fi
-
-echo "Using LLVM OpenMP runtime: ${LIBOMP_LIBRARY}"
-
-export SKBUILD_CMAKE_ARGS="-DOpenMP_gomp_LIBRARY:FILEPATH=${LIBOMP_LIBRARY}"
+# EXPERIMENT: use the toolset's GNU libgomp instead of bundling LLVM libomp, to test whether
+# the constraint that motivated the LLVM switch (an outdated system GCC/libgomp on the Rocky
+# Linux wheel build image) still holds now that the build already requires a GCC new enough
+# for C++20. Matching the system libgomp also matches what cuDSS's threading layer
+# (libcudss_mtlayer_gomp.so.0) loads at runtime, avoiding a dual-OpenMP-runtime conflict.
+# See https://github.com/NVIDIA/cuopt/issues/1219
+export SKBUILD_CMAKE_ARGS=""
 
 # OpenSSL 3 hints for libcuopt's own find_package(OpenSSL).
 #
@@ -114,6 +104,10 @@ EXCLUDE_ARGS=(
   # 22.04+, RHEL/Rocky 9+, manylinux_2_28+ with openssl3, Debian 12+).
   --exclude "libssl.so.3"
   --exclude "libcrypto.so.3"
+  # EXPERIMENT (#1219): don't bundle/hash-rename libgomp. Resolving it from the host at
+  # runtime instead keeps cuOpt on the same libgomp.so.1 instance that cuDSS's threading
+  # layer (libcudss_mtlayer_gomp.so.0) loads, instead of two independent OpenMP runtimes.
+  --exclude "libgomp.so.*"
 )
 
 ci/build_wheel.sh libcuopt ${package_dir}
