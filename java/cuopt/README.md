@@ -30,7 +30,7 @@ CUOPT_PREFIX=/path/to/cuopt/conda/environment bash scripts/test.sh
 ```
 
 `build_native.sh` builds `libcuopt_jni.so` in `build/native`. `test.sh` builds
-that library and runs the Maven tests. Java 11 or newer and a C++20 compiler
+that library and runs the Maven tests. Java 17 or newer and a C++20 compiler
 are required. Native solve tests require a CUDA driver and skip automatically
 when one is unavailable.
 

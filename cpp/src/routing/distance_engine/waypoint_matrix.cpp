@@ -248,7 +248,7 @@ void waypoint_matrix_t<i_t, f_t>::compute_cost_matrix(f_t* d_cost_matrix,
   std::vector<f_t> cost_matrix = mpsp(target_locations, n_target_locations);
 
   raft::copy(d_cost_matrix, cost_matrix.data(), cost_matrix.size(), stream_view_);
-  stream_view_.synchronize();
+  stream_view_.sync();
 }
 
 // Location values are greater or equal to n_target_locations
@@ -293,7 +293,7 @@ waypoint_matrix_t<i_t, f_t>::compute_waypoint_sequence(i_t const* target_locatio
 
   std::vector<i_t> h_locations(n_locations);
   raft::copy(h_locations.data(), locations, n_locations, stream_view_);
-  stream_view_.synchronize();
+  stream_view_.sync();
 
   // Locations validity checks
   check_locations(h_locations.data(), n_locations, n_target_locations);
@@ -321,7 +321,7 @@ waypoint_matrix_t<i_t, f_t>::compute_waypoint_sequence(i_t const* target_locatio
 
   raft::copy(paths_offsets_out.data(), paths_offsets.data(), paths_offsets.size(), stream_view_);
   raft::copy(paths_list_out.data(), paths_list.data(), paths_list.size(), stream_view_);
-  stream_view_.synchronize();
+  stream_view_.sync();
 
   return {std::make_unique<rmm::device_buffer>(paths_offsets_out.release()),
           std::make_unique<rmm::device_buffer>(paths_list_out.release())};
@@ -406,7 +406,7 @@ void waypoint_matrix_t<i_t, f_t>::compute_shortest_path_costs(f_t* d_custom_matr
 
   raft::copy(
     d_custom_matrix, shortest_path_matrix.data(), shortest_path_matrix.size(), stream_view_);
-  stream_view_.synchronize();
+  stream_view_.sync();
 }
 
 template class CUOPT_EXPORT waypoint_matrix_t<int, float>;

@@ -1,12 +1,10 @@
 # SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-import io
 import json
 import logging
 import multiprocessing
 import os
-import pickle
 import time
 import uuid
 import zlib
@@ -16,8 +14,6 @@ from threading import Event, Lock
 
 import msgpack
 import msgpack_numpy
-import numpy
-import numpy.core.multiarray
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 
@@ -37,12 +33,27 @@ from cuopt_server.utils.exceptions import (
     exception_handler,
     http_exception_handler,
 )
+
+# Re-exported so existing imports from this module keep working
+from cuopt_server.utils.http_codec import (  # noqa: F401
+    PickleForbidden,
+    SafeUnpickler,
+    cuopt_pickle_load,
+    cuopt_pickle_load_VRP,
+    deserialize,
+    encode_bytes,
+    get_format,
+    mime_json,
+    mime_msgpack,
+    mime_pickle,
+    mime_wild,
+    mime_zlib,
+)
+from cuopt_server.utils.linear_programming.data_transformation import (
+    transform_lp_data,
+)
 from cuopt_server.utils.logutil import message
 from cuopt_server.utils.routing.initial_solution import add_initial_sol
-
-
-class PickleForbidden(Exception):
-    pass
 
 
 msgpack_numpy.patch()
@@ -82,44 +93,6 @@ def get_solver_response(response):
     return response["solver_infeasible_response"]
 
 
-class SafeUnpickler(pickle.Unpickler):
-    def __init__(self, file, kind, allowed={}):
-        self.allowed = allowed
-        self.kind = kind
-        super().__init__(file)
-
-    def find_class(self, module, name):
-        if (
-            module not in self.allowed
-            or name not in self.allowed[module]["names"]
-        ):
-            raise PickleForbidden(
-                f"{module}.{name} is forbidden "
-                f"in a cuopt {self.kind}pickle file"
-            )
-        else:
-            return getattr(self.allowed[module]["mod"], name)
-
-
-# LP pickle allow is superset of VRP, so allow the kind
-# to be set to "" for messaging and this routine to be
-# used when we don't pre-know the problem type
-def cuopt_pickle_load(s, kind="LP "):
-    allowed_LP = {
-        "numpy.core.multiarray": {
-            "names": ["_reconstruct"],
-            "mod": numpy.core.multiarray,
-        },
-        "numpy": {"names": ["ndarray", "dtype"], "mod": numpy},
-    }
-
-    return SafeUnpickler(io.BytesIO(s), kind, allowed_LP).load()
-
-
-def cuopt_pickle_load_VRP(s):
-    return SafeUnpickler(io.BytesIO(s), "VRP ").load()
-
-
 all_jobs_marked_done = multiprocessing.Event()
 
 # storage for job results keyed by id
@@ -137,13 +110,6 @@ cache_list = {}
 # * setting/checking all_jobs_marked_done
 # * operations on cache_list
 results_lock = Lock()
-
-
-mime_json = "application/json"
-mime_msgpack = "application/vnd.msgpack"
-mime_zlib = "application/zlib"
-mime_pickle = "application/octet-stream"
-mime_wild = ["application/*", "*/*"]
 
 
 def add_cache_entry(id, content_type):
@@ -884,133 +850,7 @@ class SolverLPJob(SolverBaseJob):
         return self.LP_data
 
     def _transform(self, data):
-        np = numpy
-        tmap = {
-            "csr_constraint_matrix": {
-                "offsets": (True, np.int32),
-                "indices": (True, np.int32),
-                "values": (True, np.float64),
-            },
-            "constraint_bounds": {
-                "bounds": (True, np.float64),
-                "upper_bounds": (True, np.float64),
-                "lower_bounds": (True, np.float64),
-                "types": (True, "U1"),
-            },
-            "initial_solution": {
-                "primal": (True, np.float64),
-                "dual": (True, np.float64),
-            },
-            "objective_data": {
-                "coefficients": (True, np.float64),
-            },
-            "variable_bounds": {
-                "upper_bounds": (True, np.float64),
-                "lower_bounds": (True, np.float64),
-            },
-            "variable_types": (True, "U1"),
-        }
-
-        def modify(value, key, dtype=None, indent=""):
-            if isinstance(value, list):
-                if "inf" in value or "ninf" in value:
-                    value = [
-                        np.inf if x == "inf" else -np.inf if x == "ninf" else x
-                        for x in value
-                    ]
-                if dtype is None:
-                    return np.array(value)
-                return np.array(value, dtype)
-            return value
-
-        def apply(data, tmap, indent=""):
-            for key, value in data.items():
-                try:
-                    if isinstance(value, dict) and key in tmap:
-                        apply(value, tmap[key], indent + " ")
-                    elif key in tmap and tmap[key][0]:
-                        data[key] = modify(value, key, tmap[key][1], indent)
-                except Exception as e:
-                    logging.debug(e)
-                    logging.debug(
-                        f"{indent}exception key is {key} value is {value}"
-                    )
-                    raise
-
-        def apply_LPData(data):
-            data.csr_constraint_matrix.indices = modify(
-                data.csr_constraint_matrix.indices,
-                "csr_constraint_matrix.indices",
-                np.int32,
-            )
-            data.csr_constraint_matrix.offsets = modify(
-                data.csr_constraint_matrix.offsets,
-                "csr_constraint_matrix.offsets",
-                np.int32,
-            )
-            data.csr_constraint_matrix.values = modify(
-                data.csr_constraint_matrix.values,
-                "csr_constraint_matrix.values",
-                np.float64,
-            )
-
-            data.constraint_bounds.bounds = modify(
-                data.constraint_bounds.bounds,
-                "constraint_bounds.bounds",
-                np.float64,
-            )
-            data.constraint_bounds.upper_bounds = modify(
-                data.constraint_bounds.upper_bounds,
-                "constraint_bounds.upper_bounds",
-                np.float64,
-            )
-            data.constraint_bounds.lower_bounds = modify(
-                data.constraint_bounds.lower_bounds,
-                "constraint_bounds.lower_bounds",
-                np.float64,
-            )
-            data.constraint_bounds.types = modify(
-                data.constraint_bounds.types,
-                "constraint_bounds.types",
-            )
-
-            data.initial_solution.primal = modify(
-                data.initial_solution.primal,
-                "initial_solution.primal",
-                np.float64,
-            )
-
-            data.initial_solution.dual = modify(
-                data.initial_solution.dual, "initial_solution.dual", np.float64
-            )
-
-            data.objective_data.coefficients = modify(
-                data.objective_data.coefficients,
-                "objective_data.coefficients",
-                np.float64,
-            )
-
-            data.variable_bounds.upper_bounds = modify(
-                data.variable_bounds.upper_bounds,
-                "variable_bounds.upper_bounds",
-                np.float64,
-            )
-            data.variable_bounds.lower_bounds = modify(
-                data.variable_bounds.lower_bounds,
-                "variable_bounds.lower_bounds",
-                np.float64,
-            )
-            data.variable_types = modify(
-                data.variable_types,
-                "variable_types",
-            )
-
-        then = time.time()
-        if isinstance(data, LPData):
-            apply_LPData(data)
-        else:
-            apply(data, tmap)
-        logging.info(f"transform time {time.time() - then}")
+        transform_lp_data(data)
 
     def _load_data(self):
         if not self.transformed:
@@ -1040,28 +880,6 @@ class SolverLPJob(SolverBaseJob):
         )
         logging.debug(f"etl_time {etl}, solve_time {slv}")
         return ans, self.initial_etl_time + etl, slv
-
-
-def deserialize(ctype, buf):
-    try:
-        if ctype == mime_json:
-            logging.debug("decode as json")
-            data = json.loads(buf)
-        elif ctype == mime_zlib:
-            logging.debug("decode as zlib compressed json")
-            data = json.loads(zlib.decompress(buf))
-        elif ctype == mime_pickle:
-            logging.debug("decode as pickle")
-            data = cuopt_pickle_load(buf, kind="")
-        else:
-            logging.debug("decode as msgpack")
-            data = msgpack.loads(buf, strict_map_key=False)
-    except Exception as e:
-        raise HTTPException(
-            status_code=422,
-            detail="unable to load optimization data stream, %s" % (str(e)),
-        )
-    return data
 
 
 def wrapper_fields(data, do_raise=True):
@@ -1596,18 +1414,7 @@ class SolverBinaryResponse:
             # Write data to a byte array based on result mime type
             # Note that notes and warnings are serialized here before
             # they are popped, so the answer still has them
-            now = time.time()
-            if result_mime_type in [mime_json, mime_zlib]:
-                d = bytes(json.dumps(data), encoding="utf-8")
-                if result_mime_type == mime_zlib:
-                    now = time.time()
-                    d = zlib.compress(d, zlib.Z_BEST_SPEED)
-                    logging.debug(
-                        "Time for zlib compression of "
-                        f"result {time.time() - now}"
-                    )
-            else:
-                d = msgpack.dumps(data)
+            d = encode_bytes(data, result_mime_type)
             self.size = len(d)
             return d
 

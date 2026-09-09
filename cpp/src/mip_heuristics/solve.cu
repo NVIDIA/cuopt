@@ -29,7 +29,6 @@
 #include <pdlp/utils.cuh>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/logger.hpp>
-#include <utilities/seed_generator.cuh>
 #include <utilities/version_info.hpp>
 
 #include <cuopt/mathematical_optimization/backend_selection.hpp>
@@ -79,9 +78,10 @@ static void init_handler(const raft::handle_t* handle_ptr)
 {
   // Init cuBlas / cuSparse context here to avoid having it during solving time
   RAFT_CUBLAS_TRY(raft::linalg::detail::cublassetpointermode(
-    handle_ptr->get_cublas_handle(), CUBLAS_POINTER_MODE_DEVICE, handle_ptr->get_stream()));
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsesetpointermode(
-    handle_ptr->get_cusparse_handle(), CUSPARSE_POINTER_MODE_DEVICE, handle_ptr->get_stream()));
+    handle_ptr->get_cublas_handle(), CUBLAS_POINTER_MODE_DEVICE, handle_ptr->get_stream().get()));
+  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsesetpointermode(handle_ptr->get_cusparse_handle(),
+                                                                 CUSPARSE_POINTER_MODE_DEVICE,
+                                                                 handle_ptr->get_stream().get()));
 }
 
 template <typename f_t>
@@ -309,7 +309,10 @@ mip_solution_t<i_t, f_t> run_mip_solver(
                                     no_bound);
         };
       early_cpufj = std::make_unique<mip::early_cpufj_t<i_t, f_t>>(
-        *problem.original_problem_ptr, settings.get_tolerances(), incumbent_callback);
+        *problem.original_problem_ptr,
+        settings.get_tolerances(),
+        incumbent_callback,
+        mip::derive_seed(solver.context.base_seed, mip::rng_id_t::early_cpufj));
       // Convert initial_upper_bound from user-space to the CPUFJ's solver-space (papilo-presolved).
       // problem.get_solver_obj_from_user_obj uses the papilo offset/scale (matching the CPUFJ).
       if (std::isfinite(initial_upper_bound)) {
@@ -396,9 +399,6 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
     init_handler(op_problem.get_handle_ptr());
 
     print_version_info();
-
-    // Initialize seed generator if a specific seed is requested
-    if (settings.seed >= 0) { cuopt::seed_generator::set_seed(settings.seed); }
 
     raft::common::nvtx::range fun_scope("Running solver");
     auto timer = timer_t(time_limit);
@@ -574,8 +574,12 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
         };
 
       // Start early CPUFJ on original problem (will restart on presolved problem after Papilo)
-      early_cpufj = std::make_unique<mip::early_cpufj_t<i_t, f_t>>(
-        op_problem, settings.get_tolerances(), early_fj_callback);
+      const uint64_t early_fj_base_seed = mip::get_base_seed(settings.seed);
+      early_cpufj                       = std::make_unique<mip::early_cpufj_t<i_t, f_t>>(
+        op_problem,
+        settings.get_tolerances(),
+        early_fj_callback,
+        mip::derive_seed(early_fj_base_seed, mip::rng_id_t::early_cpufj));
       early_cpufj->start();
       CUOPT_LOG_DEBUG("Started early CPUFJ on original problem");
 
@@ -936,7 +940,7 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip(
   raft::handle_t handle(stream);
 
   // Convert CPU problem to GPU problem
-  auto gpu_problem = cpu_problem.to_optimization_problem(&handle);
+  auto gpu_problem = to_optimization_problem(cpu_problem, &handle);
 
   // Synchronize before solving to ensure conversion is complete
   stream.synchronize();
@@ -945,7 +949,7 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip(
   auto gpu_solution = solve_mip<i_t, f_t>(*gpu_problem, settings);
 
   // Ensure all GPU work from the solve is complete before D2H copies in to_cpu_solution(),
-  // which uses rmm::cuda_stream_per_thread (a different stream than the solver used).
+  // which uses the per-thread default stream (a different stream than the solver used).
   stream.synchronize();
 
   // Convert GPU solution back to CPU

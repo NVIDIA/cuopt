@@ -425,7 +425,7 @@ static SolveResult run_mip_solve(DeserializedJob& dj,
     }
 
     SERVER_LOG_INFO("[Worker] Converting CPU problem to GPU problem...");
-    auto gpu_problem = dj.problem.to_optimization_problem(&handle);
+    auto gpu_problem = to_optimization_problem(dj.problem, &handle);
 
     SERVER_LOG_INFO("[Worker] Calling solve_mip...");
     auto gpu_solution = cuopt::mathematical_optimization::solve_mip(*gpu_problem, dj.mip_settings);
@@ -486,7 +486,7 @@ static SolveResult run_lp_solve(DeserializedJob& dj,
     dj.lp_settings.log_to_console = config.log_to_console;
 
     SERVER_LOG_INFO("[Worker] Converting CPU problem to GPU problem...");
-    auto gpu_problem = dj.problem.to_optimization_problem(&handle);
+    auto gpu_problem = to_optimization_problem(dj.problem, &handle);
 
     SERVER_LOG_INFO("[Worker] Calling solve_lp...");
     auto gpu_solution = cuopt::mathematical_optimization::solve_lp(*gpu_problem, dj.lp_settings);

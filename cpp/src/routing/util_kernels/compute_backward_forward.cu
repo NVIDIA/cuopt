@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -46,7 +46,7 @@ void solution_t<i_t, f_t, REQUEST>::compute_backward_forward()
   constexpr i_t TPB = 32;
   if (n_routes) {
     compute_backward_forward_kernel<i_t, f_t, REQUEST>
-      <<<n_routes * 2, TPB, 0, sol_handle->get_stream()>>>(view().routes);
+      <<<n_routes * 2, TPB, 0, sol_handle->get_stream().get()>>>(view().routes);
     sol_handle->sync_stream();
   }
 }
@@ -58,7 +58,7 @@ void solution_t<i_t, f_t, REQUEST>::compute_actual_arrival_times()
   constexpr i_t TPB = 32;
   if (n_routes && problem_ptr->dimensions_info.has_dimension(dim_t::TIME))
     compute_actual_arrival_kernel<i_t, f_t, REQUEST>
-      <<<n_routes, TPB, 0, sol_handle->get_stream()>>>(view().routes);
+      <<<n_routes, TPB, 0, sol_handle->get_stream().get()>>>(view().routes);
 }
 
 template void solution_t<int, float, request_t::PDP>::compute_backward_forward();

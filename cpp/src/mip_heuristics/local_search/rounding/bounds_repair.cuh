@@ -16,6 +16,8 @@
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/tuple.h>
 
+#include <cstdint>
+
 namespace cuopt::mathematical_optimization::mip {
 
 // from the paper, probability of choosing random candidate= noise parameter
@@ -111,7 +113,9 @@ struct candidates_t {
 template <typename i_t, typename f_t>
 class bounds_repair_t {
  public:
-  bounds_repair_t(const problem_t<i_t, f_t>& p, bound_presolve_t<i_t, f_t>& bound_presolve);
+  bounds_repair_t(const problem_t<i_t, f_t>& p,
+                  bound_presolve_t<i_t, f_t>& bound_presolve,
+                  uint64_t seed);
   void resize(const problem_t<i_t, f_t>& problem);
   void reset();
   f_t get_ii_violation(problem_t<i_t, f_t>& problem);

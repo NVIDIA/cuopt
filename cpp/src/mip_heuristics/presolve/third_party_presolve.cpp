@@ -1215,7 +1215,7 @@ void third_party_presolve_t<i_t, f_t>::undo_from_device(rmm::device_uvector<f_t>
   raft::copy(h_primal.data(), primal_solution.data(), primal_solution.size(), stream_view);
   raft::copy(h_dual.data(), dual_solution.data(), dual_solution.size(), stream_view);
   raft::copy(h_rc.data(), reduced_costs.data(), reduced_costs.size(), stream_view);
-  stream_view.synchronize();
+  stream_view.sync();
 
   undo(h_primal, h_dual, h_rc, category, status_to_skip, dual_postsolve);
 
@@ -1225,7 +1225,7 @@ void third_party_presolve_t<i_t, f_t>::undo_from_device(rmm::device_uvector<f_t>
   raft::copy(primal_solution.data(), h_primal.data(), h_primal.size(), stream_view);
   raft::copy(dual_solution.data(), h_dual.data(), h_dual.size(), stream_view);
   raft::copy(reduced_costs.data(), h_rc.data(), h_rc.size(), stream_view);
-  stream_view.synchronize();
+  stream_view.sync();
 }
 
 template <typename i_t, typename f_t>

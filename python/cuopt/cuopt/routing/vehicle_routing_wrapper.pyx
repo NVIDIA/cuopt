@@ -821,6 +821,12 @@ cdef class SolverSettings:
     def get_time_limit(self):
         return self.c_solver_settings.get().get_time_limit()
 
+    def get_verbose_mode(self):
+        return self.c_solver_settings.get().get_verbose_mode()
+
+    def get_error_logging_mode(self):
+        return self.c_solver_settings.get().get_error_logging_mode()
+
     def get_best_results_file_path(self):
         return self.file_path
 

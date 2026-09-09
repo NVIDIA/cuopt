@@ -137,6 +137,8 @@ cdef extern from "cuopt/routing/solve.hpp" namespace "cuopt::routing":
         void dump_best_results(const string &file_path, i_t interval) except+
 
         f_t get_time_limit() except+
+        bool get_verbose_mode() except+
+        bool get_error_logging_mode() except+
 
 cdef extern from "cuopt/routing/cython/cython.hpp" namespace "cuopt::cython": # noqa
     cdef unique_ptr[vehicle_routing_ret_t] call_solve(
