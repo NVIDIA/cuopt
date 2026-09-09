@@ -22,7 +22,68 @@ configuration, or at load time in a downstream package.
 
 The layers below are the ones worth checking against when a change crosses them.
 
-## Layers
+## How the pieces fit at run time
+
+The two entry points that matter for deployment are the HTTP service and the gRPC server. Both run
+where the GPU is; both have a client that does not.
+
+```text
+  CLIENT MACHINE                          │  GPU HOST
+  no GPU, no CUDA runtime                 │
+                                          │
+  ┌────────────────────────────────────┐  │  ┌─────────────────────────────────┐
+  │ cuopt_sh_client                    │  │  │ cuopt_server                    │
+  │ python/cuopt_self_hosted           │──┼─►│ FastAPI + uvicorn               │
+  │                                    │  │  │                                 │
+  │ deps: requests, msgpack only       │  │  │ deps: cuopt, fastapi, uvicorn   │
+  └────────────────────────────────────┘  │  └────────────────┬────────────────┘
+                    HTTP  /cuopt/...      │                   │ imports
+                                          │                   ▼
+  ┌────────────────────────────────────┐  │  ┌─────────────────────────────────┐
+  │ any gRPC client                    │  │  │ cuopt  (python/cuopt)           │
+  │                                    │  │  │ Cython extension modules        │
+  │ CUOPT_REMOTE_HOST / _PORT          │  │  │                                 │
+  └────────────────────────────────────┘  │  │ deps: libcuopt, cudf, cupy,     │
+                    gRPC                  │  │       pylibraft, rmm            │
+                     │                    │  └────────────────┬────────────────┘
+                     │                    │                   │ links cuopt::cuopt
+                     │                    │                   ▼
+                     │                    │  ┌─────────────────────────────────┐
+                     └────────────────────┼─►│ cuopt_grpc_server ──► libcuopt  │
+                                          │  │ forks a worker process per solve│
+                                          │  └────────────────┬────────────────┘
+                                          │                   │ CUDA / rmm / raft
+                                          │                   ▼
+                                          │                  GPU
+```
+
+`cuopt_sh_client` is the existing proof that a CUDA-free client is useful: it depends on nothing
+but `requests` and `msgpack`, and reaches the solver over HTTP. The gRPC path has no equivalent
+today — its client is `cuopt.grpc.client`, a Cython module inside the `cuopt` package, so using it
+pulls the whole CUDA stack. Closing that gap is what `cuopt_client` and #1872 are for.
+
+`cuopt_cli` is a fourth entry point: a local executable linking `libcuopt` directly, no service
+involved.
+
+## What depends on what
+
+Edges, with the mechanism, since "depends" means four different things here:
+
+| Consumer | Provider | Mechanism |
+|---|---|---|
+| `cuopt_sh_client` | `cuopt_server` | HTTP, across hosts |
+| `cuopt.grpc.client` | `cuopt_grpc_server` | gRPC, across hosts |
+| `cuopt_server` | `cuopt` | Python import |
+| `cuopt` (wheel) | `libcuopt` (wheel), cudf, cupy, pylibraft, rmm | Python dependency |
+| `cuopt` extension modules | `cuopt::cuopt` | C++ link |
+| `cuopt_cli`, `cuopt_grpc_server` | `cuopt::cuopt` | C++ link |
+| `libcuopt` (wheel) | CUDA toolkit, librmm, cudss, nccl | Python dependency |
+
+The distinction matters: a Python-level dependency is what `pip install` resolves, and it applies
+regardless of what the extension module links. Relinking a module against a CUDA-free library does
+not remove `cudf` from the wheel's dependency list.
+
+## Build artifacts
 
 ```text
 ┌───────────────────────────────────────────────────────────────────────────┐
@@ -33,21 +94,6 @@ The layers below are the ones worth checking against when a change crosses them.
 └───────────────────────────────────────────────────────────────────────────┘
                                     ▲
                                     │ ships
-┌───────────────────────────────────────────────────────────────────────────┐
-│ Python                                                                    │
-│                                                                           │
-│   cuopt/                     Cython extension modules, one per subdir:    │
-│     linear_programming/        data_model, solver_settings, solver, io,   │
-│     grpc/client/               internals, grpc client                     │
-│     routing/  distance_engine/                                            │
-│                                                                           │
-│   cuopt_server/              FastAPI service      cuopt_self_hosted/ CLI  │
-│                                                                           │
-│   Every extension module links cuopt::cuopt, and the wheel declares       │
-│   cudf / cupy / pylibraft / rmm as Python-level dependencies.             │
-└───────────────────────────────────────────────────────────────────────────┘
-                                    ▲
-                                    │ links
 ┌───────────────────────────────────────────────────────────────────────────┐
 │ C++ artifacts                                                             │
 │                                                                           │
