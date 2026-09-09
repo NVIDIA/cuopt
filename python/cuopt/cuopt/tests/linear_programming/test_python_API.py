@@ -167,6 +167,52 @@ def test_constraint_duplicate_terms_slack():
     assert c.Slack == pytest.approx(6.0)
 
 
+def test_variable_type_is_normalized():
+    """Every entry path stores a VType member and rejects other values."""
+    prob = Problem()
+    from_enum = prob.addVariable(vtype=INTEGER)
+    from_str = prob.addVariable(vtype="I")
+    from_bytes = prob.addVariable(vtype=b"I")
+    default = prob.addVariable()
+
+    for var in (from_enum, from_str, from_bytes):
+        assert var.VariableType is VType.INTEGER
+    assert default.VariableType is VType.CONTINUOUS
+    assert prob.IsMIP
+
+    # Both the setter and direct assignment normalize.
+    from_str.setVariableType(b"S")
+    assert from_str.VariableType is VType.SEMI_CONTINUOUS
+    from_bytes.VariableType = "C"
+    assert from_bytes.VariableType is VType.CONTINUOUS
+
+    with pytest.raises(ValueError):
+        from_enum.setVariableType(7)
+
+
+def test_variable_type_normalized_from_mps(tmp_path):
+    """MPS parsing yields VType members and keeps each column's own type."""
+    prob = Problem("mip")
+    x = prob.addVariable(lb=0.0, ub=10.0, vtype=INTEGER, name="x")
+    y = prob.addVariable(lb=0.0, ub=10.0, name="y")
+    prob.addConstraint(x + y <= 5, name="c")
+    prob.setObjective(x + y, sense=MAXIMIZE)
+
+    path = str(tmp_path / "mip.mps")
+    prob.writeMPS(path)
+
+    loaded = Problem.read(path)
+    # writeMPS emits integer columns inside INTORG/INTEND markers, so the
+    # column order is not preserved; key by name. `is` rather than `==`
+    # because VType subclasses str: "I" == VType.INTEGER.
+    types = {
+        v.getVariableName(): v.VariableType for v in loaded.getVariables()
+    }
+    assert types["x"] is VType.INTEGER
+    assert types["y"] is VType.CONTINUOUS
+    assert loaded.IsMIP
+
+
 def test_semi_continuous_variable():
     prob = Problem("Semi-continuous")
     x = prob.addVariable(lb=5.0, ub=10.0, vtype=SEMI_CONTINUOUS, name="x")
