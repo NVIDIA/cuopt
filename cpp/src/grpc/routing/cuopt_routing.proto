@@ -1,0 +1,147 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package cuopt.remote;
+
+import "cuopt_remote.proto";  // RequestHeader, ProblemCategory
+
+// --- Sub-messages ---
+
+message CostMatrix {
+  uint32 vehicle_type = 1;
+  repeated float values = 2;  // row-major, n_locations x n_locations
+}
+
+message CapacityDimension {
+  string name = 1;
+  repeated int32 demand = 2;     // per-order
+  repeated int32 capacity = 3;   // per-vehicle
+}
+
+message VehicleBreak {
+  int32 earliest = 1;
+  int32 latest = 2;
+  int32 duration = 3;
+  repeated int32 locations = 4;
+}
+
+message PerVehicleBreaks {
+  int32 vehicle_id = 1;
+  repeated VehicleBreak breaks = 2;
+}
+
+message UniformBreakDimension {
+  repeated int32 earliest = 1;
+  repeated int32 latest = 2;
+  repeated int32 duration = 3;
+}
+
+message MatchEntry {
+  int32 id = 1;
+  repeated int32 matches = 2;
+}
+
+message PrecedenceEntry {
+  int32 order_id = 1;
+  repeated int32 preceding_orders = 2;
+}
+
+message ServiceTimeEntry {
+  int32 vehicle_id = 1;           // -1 for default
+  repeated int32 service_times = 2;
+}
+
+message RoutingObjectiveFunction {
+  repeated int32 objectives = 1;   // objective_t enum values
+  repeated float weights = 2;
+}
+
+message InitialSolution {
+  repeated int32 vehicle_ids = 1;
+  repeated int32 routes = 2;
+  repeated int32 types = 3;           // node_type_t values (0-3)
+  repeated int32 sol_offsets = 4;
+}
+
+// --- Main problem ---
+
+message RoutingProblem {
+  int32 num_locations = 1;
+  int32 fleet_size = 2;
+  int32 num_orders = 3;
+
+  repeated CostMatrix cost_matrices = 10;
+  repeated CostMatrix transit_time_matrices = 11;
+
+  // Vehicle arrays (size = fleet_size)
+  repeated int32 vehicle_start_locations = 20;
+  repeated int32 vehicle_return_locations = 21;
+  repeated int32 vehicle_tw_earliest = 22;
+  repeated int32 vehicle_tw_latest = 23;
+  repeated uint32 vehicle_types = 24;
+  repeated bool drop_return_trips = 25;
+  repeated bool skip_first_trips = 26;
+  repeated float vehicle_max_costs = 27;
+  repeated float vehicle_max_times = 28;
+  repeated float vehicle_fixed_costs = 29;
+
+  // Order arrays (size = num_orders)
+  repeated int32 order_locations = 30;
+  repeated int32 order_tw_earliest = 31;
+  repeated int32 order_tw_latest = 32;
+  repeated float order_prizes = 33;
+  repeated ServiceTimeEntry order_service_times = 34;
+
+  // PDP
+  repeated int32 pickup_indices = 40;
+  repeated int32 delivery_indices = 41;
+
+  // Capacity
+  repeated CapacityDimension capacity_dimensions = 50;
+
+  // Breaks
+  repeated int32 break_locations = 60;
+  repeated UniformBreakDimension uniform_breaks = 61;
+  repeated PerVehicleBreaks vehicle_breaks = 62;
+
+  // Matching
+  repeated MatchEntry vehicle_order_match = 70;
+  repeated MatchEntry order_vehicle_match = 71;
+
+  // Precedence
+  repeated PrecedenceEntry order_precedence = 80;
+
+  // Objective
+  RoutingObjectiveFunction objective = 90;
+  int32 min_vehicles = 91;
+
+  // Warm start
+  InitialSolution initial_solutions = 100;
+}
+
+// --- Settings ---
+
+message RoutingSolverSettings {
+  // Presence-tracked: an omitted time_limit lets the solver derive its default
+  // (num_orders / 5), while an explicit value — including 0 — is honored.
+  optional float time_limit = 1;
+  bool verbose = 2;
+  bool error_logging = 3;
+  string dump_best_results_path = 10;
+  int32 dump_best_results_interval = 11;
+}
+
+// --- Request ---
+
+message SolveVRPRequest {
+  RequestHeader header = 1;
+  RoutingProblem problem = 2;
+  RoutingSolverSettings settings = 3;
+}
+
+// --- Response ---
+// RoutingSolution / RoutingSolutionStatus live in cuopt_routing_solution.proto
+// (a leaf proto) so ResultResponse and ChunkedResultHeader can embed them
+// structurally without a circular import.

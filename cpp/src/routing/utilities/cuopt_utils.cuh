@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -10,7 +10,7 @@
 #include "routing/utilities/constants.hpp"
 
 #include <routing/structures.hpp>
-#include <utilities/seed_generator.cuh>
+#include <routing/utilities/seed_generator.cuh>
 
 #include <raft/random/rng_device.cuh>
 #include <raft/util/cuda_dev_essentials.cuh>

@@ -2,8 +2,8 @@
 *                  @nvidia/cuopt-infra-codeowners
 
 #cpp code owners
-cpp/               @nvidia/cuopt-engine-codeowners
-benchmarks/        @nvidia/cuopt-engine-codeowners
+cpp/               @nvidia/cuopt-solver-codeowners
+benchmarks/        @nvidia/cuopt-solver-codeowners
 
 #python code owners
 python/            @nvidia/cuopt-infra-codeowners

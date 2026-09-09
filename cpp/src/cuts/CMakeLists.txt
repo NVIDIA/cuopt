@@ -6,6 +6,7 @@
 set(CUTS_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/cuts.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/objective_step.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/zero_half_mod2.cpp
   )
 
 set(CUTS_SRC_FILES ${CUTS_SRC_FILES} PARENT_SCOPE)

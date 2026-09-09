@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -365,8 +365,8 @@ void solution_t<i_t, f_t, REQUEST>::eject_until_feasible(bool add_slack_to_sol)
   bool is_set    = set_shmem_of_kernel(eject_until_feasible_kernel<i_t, f_t, REQUEST>, sh_size);
   cuopt_assert(is_set, "Not enough shared memory on device for get_all_feasible_insertion!");
   cuopt_expects(is_set, error_type_t::OutOfMemoryError, "Not enough shared memory on device");
-  eject_until_feasible_kernel<i_t, f_t, REQUEST>
-    <<<n_routes, TPB, sh_size, stream>>>(view(), add_slack_to_sol, seed_generator::get_seed());
+  eject_until_feasible_kernel<i_t, f_t, REQUEST><<<n_routes, TPB, sh_size, stream.get()>>>(
+    view(), add_slack_to_sol, problem_ptr->seed_gen.get_seed());
   compute_cost();
   global_runtime_checks(false, true, "eject_until_feasible");
 }
@@ -381,11 +381,11 @@ void solution_t<i_t, f_t, REQUEST>::populate_ep_with_unserved(
   rmm::device_scalar<i_t> ep_index_out(EP.index_, stream);
   const i_t TPB = 256;
   populate_ep_with_unserved_kernel<i_t, f_t, REQUEST, TPB>
-    <<<1, TPB, 0, stream>>>(view(), EP.view(), ep_index_out.data());
+    <<<1, TPB, 0, stream.get()>>>(view(), EP.view(), ep_index_out.data());
   EP.index_ = ep_index_out.value(stream);
-  stream.synchronize();
+  stream.sync();
   if (EP.size() > 1) {
-    thrust::default_random_engine g(seed_generator::get_seed());
+    thrust::default_random_engine g(problem_ptr->seed_gen.get_seed());
     thrust::shuffle(
       sol_handle->get_thrust_policy(), EP.stack_.begin(), EP.stack_.begin() + EP.size(), g);
   }
@@ -404,11 +404,11 @@ void solution_t<i_t, f_t, REQUEST>::populate_ep_with_selected_unserved(
   auto unserviced_view =
     raft::device_span<i_t const>(unserviced_device.data(), unserviced_device.size());
 
-  populate_ep_with_selected_unserved_kernel<i_t, f_t, REQUEST><<<1, TPB, 0, stream>>>(
-    view(), unserviced_view, EP.view(), ep_index_out.data(), seed_generator::get_seed());
-  RAFT_CHECK_CUDA(stream);
+  populate_ep_with_selected_unserved_kernel<i_t, f_t, REQUEST><<<1, TPB, 0, stream.get()>>>(
+    view(), unserviced_view, EP.view(), ep_index_out.data(), problem_ptr->seed_gen.get_seed());
+  RAFT_CHECK_CUDA(stream.get());
   EP.index_ = ep_index_out.value(stream);
-  stream.synchronize();
+  stream.sync();
 }
 
 template void solution_t<int, float, request_t::PDP>::eject_until_feasible(bool);

@@ -16,6 +16,7 @@
 #include <rmm/device_uvector.hpp>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/cuda_helpers.cuh>
+#include <utilities/device_scalar_init.hpp>
 #include <utilities/device_utils.cuh>
 #include <utilities/macros.cuh>
 
@@ -44,7 +45,7 @@ struct bitmap_t {
   void clear(const rmm::cuda_stream_view& stream)
   {
     cudaMemsetAsync(
-      validity_bitmap.data(), 0, sizeof(word_t) * validity_bitmap.size(), stream.value());
+      validity_bitmap.data(), 0, sizeof(word_t) * validity_bitmap.size(), stream.get());
   }
   void clear(const raft::handle_t* handle_ptr)
   {
@@ -100,8 +101,8 @@ struct bitmap_t {
 template <typename i_t, typename f_t>
 struct contiguous_set_t {
   contiguous_set_t(i_t max_size, const rmm::cuda_stream_view& stream)
-    : set_size(0, stream),
-      lock(0, stream),
+    : set_size(zero_v<i_t>, stream),
+      lock(zero_v<i_t>, stream),
       contents(max_size, stream),
       index_map(max_size, stream),
       validity_bitmap(max_size, stream)
@@ -114,7 +115,7 @@ struct contiguous_set_t {
     set_size.set_value_to_zero_async(stream);
     // can't use thrust::fill, needs a memset node in order to be recorded in CUDA graphs
     // works bcs (uint8_t)-1 == 0xFF => (repeated 4 times) 0xFFFFFFFF == (uint32_t)-1
-    cudaMemsetAsync(index_map.data(), -1, sizeof(i_t) * index_map.size(), stream.value());
+    cudaMemsetAsync(index_map.data(), -1, sizeof(i_t) * index_map.size(), stream.get());
     validity_bitmap.clear(stream);
   }
 

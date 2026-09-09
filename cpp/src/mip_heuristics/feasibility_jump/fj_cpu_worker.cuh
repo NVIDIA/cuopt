@@ -10,6 +10,8 @@
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 
+#include <utilities/omp_helpers.hpp>
+
 #include <atomic>
 #include <functional>
 #include <limits>
@@ -28,6 +30,8 @@ struct fj_cpu_worker_t {
   struct fj_cpu_deleter_t {
     void operator()(fj_cpu_climber_t<i_t, f_t>* ptr) const;
   };
+
+  std::atomic<bool> is_initialized{false};
   std::atomic<bool> preemption_flag{false};
   std::unique_ptr<fj_cpu_climber_t<i_t, f_t>, fj_cpu_deleter_t> fj_cpu;
   std::function<void(f_t, const std::vector<f_t>&, double)> improvement_callback;
@@ -55,6 +59,8 @@ struct fj_cpu_worker_t {
                 double work_unit_limit = std::numeric_limits<double>::infinity());
 
   void stop();
+
+  void send_stop_signal();
 };
 
 }  // namespace cuopt::mathematical_optimization::mip

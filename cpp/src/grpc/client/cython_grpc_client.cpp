@@ -13,6 +13,7 @@
 #include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
 #include <cuopt/mathematical_optimization/solver_settings.hpp>
 
+#include "cython_grpc_client_impl.hpp"
 #include "grpc_client.hpp"
 
 #include <chrono>
@@ -48,23 +49,6 @@ grpc_status_result_t map_status_result(
   out.result_size_bytes = in.result_size_bytes;
   return out;
 }
-
-bool is_in_flight(grpc_job_status_t status)
-{
-  return status == grpc_job_status_t::QUEUED || status == grpc_job_status_t::PROCESSING;
-}
-
-}  // namespace
-
-struct grpc_python_client_t::impl_t {
-  cuopt::mathematical_optimization::grpc_client_t client;
-  explicit impl_t(cuopt::mathematical_optimization::grpc_client_config_t config)
-    : client(std::move(config))
-  {
-  }
-};
-
-namespace {
 
 cuopt::mathematical_optimization::grpc_client_config_t make_config(
   const std::string& host, int port, const grpc_python_client_connect_options_t& options)
@@ -125,7 +109,8 @@ grpc_submit_result_t grpc_python_client_t::submit(
   }
 
   cuopt::mathematical_optimization::cpu_optimization_problem_t<int, double> cpu_problem;
-  cuopt::mathematical_optimization::populate_from_data_model_view(
+  // kHostOnly=true: remote client, so the GPU warm-start path is unreachable here.
+  cuopt::mathematical_optimization::populate_from_data_model_view<int, double, true>(
     &cpu_problem, data_model, settings, nullptr);
 
   const bool is_mip =

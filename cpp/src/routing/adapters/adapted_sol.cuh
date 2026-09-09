@@ -351,7 +351,7 @@ struct adapted_sol_t {
       i_t id_to_remove = routes_to_remove[i] - i;
       remove_host_route(id_to_remove);
     }
-    RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
+    RAFT_CHECK_CUDA(sol.sol_handle->get_stream().get());
     populate_host_data(false, true);
     check_device_host_coherence();
   }

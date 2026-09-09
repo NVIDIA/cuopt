@@ -50,6 +50,8 @@
 #include <pdlp/utilities/problem_checking.cuh>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
+
+#include <cuda/stream>
 #include <raft/core/cusparse_macros.hpp>
 #include <raft/core/device_setter.hpp>
 #include <raft/core/handle.hpp>
@@ -82,9 +84,10 @@ static void init_handler(const raft::handle_t* handle_ptr)
 {
   // Init cuBlas / cuSparse context here to avoid having it during solving time
   RAFT_CUBLAS_TRY(raft::linalg::detail::cublassetpointermode(
-    handle_ptr->get_cublas_handle(), CUBLAS_POINTER_MODE_DEVICE, handle_ptr->get_stream()));
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsesetpointermode(
-    handle_ptr->get_cusparse_handle(), CUSPARSE_POINTER_MODE_DEVICE, handle_ptr->get_stream()));
+    handle_ptr->get_cublas_handle(), CUBLAS_POINTER_MODE_DEVICE, handle_ptr->get_stream().get()));
+  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsesetpointermode(handle_ptr->get_cusparse_handle(),
+                                                                 CUSPARSE_POINTER_MODE_DEVICE,
+                                                                 handle_ptr->get_stream().get()));
 }
 
 // Corresponds to the first good general settings we found
@@ -344,7 +347,7 @@ void adjust_dual_solution_and_reduced_cost(rmm::device_uvector<f_t>& dual_soluti
     dual_solution.data(),
     dual_solution.size(),
     [] HD(f_t dual) { return -dual; },
-    stream_view);
+    stream_view.get());
 
   // z <- -z
   cub::DeviceTransform::Transform(
@@ -352,7 +355,7 @@ void adjust_dual_solution_and_reduced_cost(rmm::device_uvector<f_t>& dual_soluti
     reduced_cost.data(),
     reduced_cost.size(),
     [] HD(f_t reduced_cost) { return -reduced_cost; },
-    stream_view);
+    stream_view.get());
 }
 
 template <typename i_t, typename f_t>
@@ -499,21 +502,27 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   f_t norm_rhs            = vector_norm2<i_t, f_t>(user_problem.rhs);
 
   simplex::simplex_solver_settings_t<i_t, f_t> barrier_settings;
-  barrier_settings.num_gpus                        = settings.num_gpus;
-  barrier_settings.time_limit                      = settings.time_limit;
-  barrier_settings.iteration_limit                 = settings.iteration_limit;
-  barrier_settings.concurrent_halt                 = settings.concurrent_halt;
-  barrier_settings.folding                         = settings.folding;
-  barrier_settings.augmented                       = settings.augmented;
-  barrier_settings.dualize                         = settings.dualize;
-  barrier_settings.ordering                        = settings.ordering;
-  barrier_settings.barrier_dual_initial_point      = settings.barrier_dual_initial_point;
-  barrier_settings.postsolve_info                  = settings.postsolve_info;
+  barrier_settings.num_gpus                   = settings.num_gpus;
+  barrier_settings.time_limit                 = settings.time_limit;
+  barrier_settings.iteration_limit            = settings.iteration_limit;
+  barrier_settings.concurrent_halt            = settings.concurrent_halt;
+  barrier_settings.folding                    = settings.folding;
+  barrier_settings.augmented                  = settings.augmented;
+  barrier_settings.dualize                    = settings.dualize;
+  barrier_settings.ordering                   = settings.ordering;
+  barrier_settings.barrier_dual_initial_point = settings.barrier_dual_initial_point;
+  barrier_settings.postsolve_info             = settings.postsolve_info;
+  barrier_settings.barrier_presolve_bound_free_variables =
+    settings.barrier_presolve_bound_free_variables;
+  barrier_settings.barrier_initial_point_safeguard = settings.barrier_initial_point_safeguard;
   barrier_settings.barrier                         = true;
   barrier_settings.barrier_presolve                = true;
   barrier_settings.crossover                       = settings.crossover;
   barrier_settings.eliminate_dense_columns         = settings.eliminate_dense_columns;
   barrier_settings.barrier_iterative_refinement    = settings.barrier_iterative_refinement;
+  barrier_settings.barrier_adaptive_regularization = settings.barrier_adaptive_regularization;
+  barrier_settings.barrier_primal_regularization   = settings.barrier_primal_regularization;
+  barrier_settings.barrier_dual_regularization     = settings.barrier_dual_regularization;
   barrier_settings.barrier_soc_threshold           = settings.barrier_soc_threshold;
   barrier_settings.barrier_step_scale              = settings.barrier_step_scale;
   barrier_settings.qcqp_ruiz_equilibration         = settings.qcqp_ruiz_equilibration;
@@ -689,27 +698,30 @@ static optimization_problem_solution_t<i_t, double> run_pdlp_solver_in_fp32(
     static_cast<float>(settings.tolerances.primal_infeasible_tolerance);
   fs.tolerances.dual_infeasible_tolerance =
     static_cast<float>(settings.tolerances.dual_infeasible_tolerance);
-  fs.detect_infeasibility         = settings.detect_infeasibility;
-  fs.strict_infeasibility         = settings.strict_infeasibility;
-  fs.iteration_limit              = settings.iteration_limit;
-  fs.time_limit                   = static_cast<float>(settings.time_limit);
-  fs.pdlp_solver_mode             = settings.pdlp_solver_mode;
-  fs.log_to_console               = settings.log_to_console;
-  fs.log_file                     = settings.log_file;
-  fs.per_constraint_residual      = settings.per_constraint_residual;
-  fs.save_best_primal_so_far      = settings.save_best_primal_so_far;
-  fs.first_primal_feasible        = settings.first_primal_feasible;
-  fs.all_primal_feasible          = settings.all_primal_feasible;
-  fs.eliminate_dense_columns      = settings.eliminate_dense_columns;
-  fs.barrier_iterative_refinement = settings.barrier_iterative_refinement;
-  fs.barrier_step_scale           = settings.barrier_step_scale;
-  fs.pdlp_precision               = pdlp_precision_t::DefaultPrecision;
-  fs.method                       = method_t::PDLP;
-  fs.inside_mip                   = settings.inside_mip;
-  fs.hyper_params                 = settings.hyper_params;
-  fs.presolver                    = settings.presolver;
-  fs.num_gpus                     = settings.num_gpus;
-  fs.concurrent_halt              = settings.concurrent_halt;
+  fs.detect_infeasibility            = settings.detect_infeasibility;
+  fs.strict_infeasibility            = settings.strict_infeasibility;
+  fs.iteration_limit                 = settings.iteration_limit;
+  fs.time_limit                      = static_cast<float>(settings.time_limit);
+  fs.pdlp_solver_mode                = settings.pdlp_solver_mode;
+  fs.log_to_console                  = settings.log_to_console;
+  fs.log_file                        = settings.log_file;
+  fs.per_constraint_residual         = settings.per_constraint_residual;
+  fs.save_best_primal_so_far         = settings.save_best_primal_so_far;
+  fs.first_primal_feasible           = settings.first_primal_feasible;
+  fs.all_primal_feasible             = settings.all_primal_feasible;
+  fs.eliminate_dense_columns         = settings.eliminate_dense_columns;
+  fs.barrier_iterative_refinement    = settings.barrier_iterative_refinement;
+  fs.barrier_adaptive_regularization = settings.barrier_adaptive_regularization;
+  fs.barrier_primal_regularization   = settings.barrier_primal_regularization;
+  fs.barrier_dual_regularization     = settings.barrier_dual_regularization;
+  fs.barrier_step_scale              = settings.barrier_step_scale;
+  fs.pdlp_precision                  = pdlp_precision_t::DefaultPrecision;
+  fs.method                          = method_t::PDLP;
+  fs.inside_mip                      = settings.inside_mip;
+  fs.hyper_params                    = settings.hyper_params;
+  fs.presolver                       = settings.presolver;
+  fs.num_gpus                        = settings.num_gpus;
+  fs.concurrent_halt                 = settings.concurrent_halt;
 
   pdlp::pdlp_solver_t<i_t, float> solver(float_problem, fs, is_batch_mode);
   if (settings.inside_mip) { solver.set_inside_mip(true); }
@@ -1599,7 +1611,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
         {
           try {
             auto call_barrier_thread = [&]() {
-              rmm::cuda_stream_view barrier_stream = rmm::cuda_stream_per_thread;
+              rmm::cuda_stream_view barrier_stream = cuda::stream_ref{cudaStreamPerThread};
               barrier_handle_ptr = std::make_unique<raft::handle_t>(barrier_stream);
               run_barrier_thread<i_t, f_t>(dual_simplex_problem,
                                            settings_pdlp,
@@ -1882,6 +1894,12 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
       CUOPT_LOG_INFO("Dual variables for problems with quadratic constraints not returned.");
       const f_t nan_val = std::numeric_limits<f_t>::quiet_NaN();
       auto stream       = op_problem.get_handle_ptr()->get_stream();
+      // solve_qcqp() reformulates quadratic constraints into second-order cones, which grows
+      // the internal row/column count beyond the documented num_constraints/num_variables.
+      // Resize back down to the documented lengths.
+      solution.get_dual_solution().resize(
+        op_problem.get_n_constraints() + op_problem.get_quadratic_constraints().size(), stream);
+      solution.get_reduced_cost().resize(op_problem.get_n_variables(), stream);
       thrust::fill(rmm::exec_policy(stream),
                    solution.get_dual_solution().begin(),
                    solution.get_dual_solution().end(),
@@ -2344,7 +2362,7 @@ cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> op_problem_to_m
   raft::copy(h_constr_lb.data(), d_constr_lb.data(), d_constr_lb.size(), stream);
   raft::copy(h_constr_ub.data(), d_constr_ub.data(), d_constr_ub.size(), stream);
   raft::copy(h_var_types_enum.data(), d_var_types.data(), d_var_types.size(), stream);
-  stream.synchronize();
+  stream.sync();
 
   if (!h_offsets.empty()) {
     mps.set_csr_constraint_matrix(
@@ -2672,7 +2690,7 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
   raft::handle_t handle(stream);
 
   // Convert CPU problem to GPU problem
-  auto gpu_problem = cpu_problem.to_optimization_problem(&handle);
+  auto gpu_problem = to_optimization_problem(cpu_problem, &handle);
 
   // Synchronize before solving to ensure conversion is complete
   stream.synchronize();
@@ -2682,7 +2700,7 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
     *gpu_problem, settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
 
   // Ensure all GPU work from the solve is complete before D2H copies in to_cpu_solution(),
-  // which uses rmm::cuda_stream_per_thread (a different stream than the solver used).
+  // which uses the per-thread default stream (a different stream than the solver used).
   stream.synchronize();
 
   // Convert GPU solution back to CPU

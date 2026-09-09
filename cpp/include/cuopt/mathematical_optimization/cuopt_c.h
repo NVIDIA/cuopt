@@ -829,6 +829,44 @@ cuopt_int_t cuOptGetFloatParameter(cuOptSolverSettings settings,
                                    cuopt_float_t* parameter_value);
 
 /**
+ * @brief Type of callback invoked once per standard solver log line.
+ *
+ * Receives the same lines the solver would print to the console — nothing more.
+ * Internal diagnostics (debug and trace messages) are never delivered, and no
+ * severity is reported: the callback exists to display or forward solver
+ * output, not to let callers classify or branch on it.
+ *
+ * @param message  Null-terminated log line without trailing newline.
+ * @param user_data Opaque pointer passed to cuOptSetLogCallback.
+ *
+ * @note Invoked from the calling thread for a local solve, and from an internal
+ *  log-streaming thread when the solve runs on a remote server. Do not call back
+ *  into cuOpt from inside the callback.
+ * @warning Log message formatting is not part of the stable API and may change
+ *  between releases. The callback is intended for display purposes (GUI integration,
+ *  log forwarding, stdout capture) — do not parse message content for programmatic
+ *  control flow.
+ */
+typedef void (*cuOptLogCallback)(const char* message, void* user_data);
+
+/**
+ * @brief Register a callback to receive solver log messages.
+ *
+ * The callback is invoked once per log line. It is called in addition to any
+ * file or console sink already enabled via ``log_to_console`` / ``log_file``
+ * parameters. Pass NULL to remove a previously registered callback.
+ *
+ * @param[in] settings  The solver settings object.
+ * @param[in] callback  Callback function, or NULL to clear.
+ * @param[in] user_data Opaque pointer forwarded to the callback unchanged.
+ *
+ * @return A status code indicating success or failure.
+ */
+cuopt_int_t cuOptSetLogCallback(cuOptSolverSettings settings,
+                                cuOptLogCallback callback,
+                                void* user_data);
+
+/**
  * @brief Type of callback for receiving incumbent MIP solutions with user context.
  *
  * @param[in] solution - Pointer to incumbent solution values.
@@ -1111,6 +1149,60 @@ cuopt_int_t cuOptGetDualObjectiveValue(cuOptSolution solution,
 cuopt_int_t cuOptGetReducedCosts(cuOptSolution solution, cuopt_float_t* reduced_cost_ptr);
 
 /* -------------------------------------------------------------------------- */
+/* Solution attributes                                                        */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * A solution attribute is a read-only value describing a completed solve, selected by one of the
+ * CUOPT_SOLUTION_ATTR_* integer constants in constants.h and passed as cuopt_int_t. The
+ * attributes available here are solver statistics: residuals, gap, iteration and node counts,
+ * presolve time, and violation magnitudes.
+ *
+ * Attributes are distinct from parameters. A parameter is an input, set on a cuOptSolverSettings
+ * before solving with cuOptSetParameter and read back with cuOptGetParameter. An attribute is an
+ * output, read from a solved cuOptSolution, or from a cuOptOptimizationProblem in the case of the
+ * problem attributes further below.
+ *
+ * Not every attribute applies to every solution: which statistics a solve produces depends on the
+ * class of problem it was given. An attribute that does not apply returns CUOPT_INVALID_ARGUMENT.
+ * Use CUOPT_ATTR_IS_MIP on the originating problem to determine the class.
+ */
+
+/** @brief Get a scalar integer solution attribute (a CUOPT_SOLUTION_ATTR_* with an integer
+ * value: iteration counts, node counts, or the method that solved the problem).
+ *
+ * @param[in] solution - The solution object.
+ *
+ * @param[in] attribute - The attribute selector.
+ *
+ * @param[out] value_out - A pointer to a cuopt_int_t that on output will contain the value.
+ *
+ * @return A status code indicating success or failure. Returns CUOPT_INVALID_ARGUMENT if the
+ *  selector is unknown, does not have an integer value, or does not apply to this solution's
+ *  problem class.
+ */
+cuopt_int_t cuOptGetSolutionIntAttribute(cuOptSolution solution,
+                                         cuopt_int_t attribute,
+                                         cuopt_int_t* value_out);
+
+/** @brief Get a scalar floating-point solution attribute (a CUOPT_SOLUTION_ATTR_* with a
+ * floating-point value: residuals, gap, presolve time, or violation magnitudes).
+ *
+ * @param[in] solution - The solution object.
+ *
+ * @param[in] attribute - The attribute selector.
+ *
+ * @param[out] value_out - A pointer to a cuopt_float_t that on output will contain the value.
+ *
+ * @return A status code indicating success or failure. Returns CUOPT_INVALID_ARGUMENT if the
+ *  selector is unknown, does not have a floating-point value, or does not apply to this
+ *  solution's problem class.
+ */
+cuopt_int_t cuOptGetSolutionFloatAttribute(cuOptSolution solution,
+                                           cuopt_int_t attribute,
+                                           cuopt_float_t* value_out);
+
+/* -------------------------------------------------------------------------- */
 /* Generic problem attributes                                                 */
 /* -------------------------------------------------------------------------- */
 
@@ -1120,11 +1212,12 @@ cuopt_int_t cuOptGetReducedCosts(cuOptSolution solution, cuopt_float_t* reduced_
  *
  * These accessors use copy-out semantics: the caller allocates the output buffer and cuOpt copies
  * values into it. Array attributes are sized by the problem dimensions: variable-indexed arrays
- * have num_variables entries and constraint-indexed arrays have num_constraints entries (see
- * cuOptGetProblemIntAttribute). The sole exception to copy-out is the
- * string-array getter, which fills a caller-provided array of pointers with borrowed pointers into
- * cuOpt-owned string storage; those pointers are valid until the problem is modified or destroyed
- * and must not be freed.
+ * have num_variables entries and constraint-indexed arrays (CUOPT_ARRAY_ATTR_CONSTRAINT_*) have
+ * one entry per LINEAR constraint only — i.e. CUOPT_ATTR_NUM_LINEAR_CONSTRAINTS.
+ * The sole exception to
+ * copy-out is the string-array getter, which fills a caller-provided array of pointers with
+ * borrowed pointers into cuOpt-owned string storage; those pointers are valid until the problem
+ * is modified or destroyed and must not be freed.
  *
  * The constraint matrix is retrieved via cuOptGetConstraintMatrix (CSR) /
  * cuOptGetConstraintMatrixCSC.

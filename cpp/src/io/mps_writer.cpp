@@ -229,8 +229,8 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
   // save coefficients with full precision
   mps_file << std::setprecision(std::numeric_limits<f_t>::max_digits10);
 
-  // NAME section
-  mps_file << "NAME          " << problem_.get_problem_name() << "\n";
+  const std::string& pname = problem_.get_problem_name();
+  mps_file << "NAME          " << (pname.empty() ? "cuopt" : pname) << "\n";
 
   if (problem_.get_sense()) { mps_file << "OBJSENSE\n MAXIMIZE\n"; }
 

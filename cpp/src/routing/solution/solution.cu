@@ -93,11 +93,10 @@ void solution_t<i_t, f_t, REQUEST>::add_route(route_t<i_t, f_t, REQUEST>&& route
   route.n_nodes.set_value_async(n_nodes, sol_handle->get_stream());
   route.route_id.set_value_async(route_id, sol_handle->get_stream());
   sol_handle->sync_stream();
-  i_t route_slot        = route_id_to_idx[route_id];
-  routes[route_slot]    = std::move(route);
-  const auto route_view = routes[route_slot].view();
+  i_t route_slot     = route_id_to_idx[route_id];
+  routes[route_slot] = std::move(route);
   cuopt_assert(route_id < (int)routes_view.size(), "route id should be in range");
-  routes_view.set_element_async(route_id, route_view, sol_handle->get_stream());
+  set_route_views(route_id, route_id + 1);
   if (max_nodes_per_route < get_route(route_id).max_nodes_per_route()) {
     resize_routes(raft::alignTo(get_route(route_id).max_nodes_per_route(), base_route_size));
   }
@@ -122,6 +121,14 @@ void solution_t<i_t, f_t, REQUEST>::add_routes(
   n_routes += added_routes;
 
   check_and_allocate_routes(n_routes);
+  // Host sources of the async copies below must stay valid and unmodified until the
+  // sync_stream() after this loop, so per-iteration locals cannot be used. vehicle_id and
+  // route are references into new_routes and already outlive this function; the scalars
+  // are staged here, reserved up front so no reallocation can invalidate a pending copy.
+  std::vector<i_t> h_n_nodes;
+  std::vector<i_t> h_route_ids;
+  h_n_nodes.reserve(new_routes.size());
+  h_route_ids.reserve(new_routes.size());
   for (const auto& [vehicle_id, route] : new_routes) {
     // depot for the beginning and the end
     i_t new_route_size = route.size() + 2;
@@ -131,26 +138,22 @@ void solution_t<i_t, f_t, REQUEST>::add_routes(
         std::max(max_nodes_per_route, raft::alignTo(new_route_size, base_route_size));
       resize_routes(new_route_size);
     }
-    std::vector<NodeInfo<i_t>> node_info_h;
-    for (size_t x = 0; x < route.size(); ++x) {
-      // Dummy, will be overriden in set_nodes_data_of_route
-      node_info_h.emplace_back(route[x]);
-    }
-    // skip depot
+    // Values are overridden in set_nodes_data_of_route; copy straight out of new_routes,
+    // which outlives this function, rather than through a temporary. Skip the depot.
     raft::copy(d_route.dimensions.requests.node_info.data() + 1,
-               node_info_h.data(),
-               node_info_h.size(),
+               route.data(),
+               route.size(),
                sol_handle->get_stream());
-    const i_t n_nodes = route.size() + 1;
+    const i_t& n_nodes = h_n_nodes.emplace_back(route.size() + 1);
     d_route.n_nodes.set_value_async(n_nodes, sol_handle->get_stream());
-    d_route.route_id.set_value_async(route_id, sol_handle->get_stream());
+    const i_t& stable_route_id = h_route_ids.emplace_back(route_id);
+    d_route.route_id.set_value_async(stable_route_id, sol_handle->get_stream());
     d_route.vehicle_id.set_value_async(vehicle_id, sol_handle->get_stream());
-    i_t route_slot        = route_id_to_idx[route_id];
-    const auto route_view = routes[route_slot].view();
     cuopt_assert(route_id < (int)routes_view.size(), "route id should be in range");
-    routes_view.set_element_async(route_id, route_view, sol_handle->get_stream());
     ++route_id;
   }
+  // Publish once, through the single path that owns the lifetime rule.
+  set_route_views(prev_route_size, n_routes);
   set_nodes_data_of_new_routes(added_routes, prev_route_size);
   sol_handle->sync_stream();
 }
@@ -168,8 +171,9 @@ void solution_t<i_t, f_t, REQUEST>::add_nodes_to_route(
   bool is_set    = set_shmem_of_kernel(insert_nodes_to_route_kernel<i_t, f_t, REQUEST>, sh_size);
   cuopt_expects(is_set, error_type_t::OutOfMemoryError, "Not enough shared memory on device");
   i_t TPB = 256;
-  insert_nodes_to_route_kernel<i_t, f_t, REQUEST><<<1, TPB, sh_size, sol_handle->get_stream()>>>(
-    view(), route_id, intra_idx, n_nodes_to_insert, temp_nodes.data());
+  insert_nodes_to_route_kernel<i_t, f_t, REQUEST>
+    <<<1, TPB, sh_size, sol_handle->get_stream().get()>>>(
+      view(), route_id, intra_idx, n_nodes_to_insert, temp_nodes.data());
   thrust::fill(sol_handle->get_thrust_policy(),
                routes_to_search.data() + route_id,
                routes_to_search.data() + route_id + 1,
@@ -190,7 +194,8 @@ void solution_t<i_t, f_t, REQUEST>::add_nodes_to_best(
     bool is_set    = set_shmem_of_kernel(insert_node_to_best_kernel<i_t, f_t, REQUEST>, sh_size);
     cuopt_expects(is_set, error_type_t::OutOfMemoryError, "Not enough shared memory on device");
     insert_node_to_best_kernel<i_t, f_t, REQUEST>
-      <<<1, TPB, sh_size, sol_handle->get_stream()>>>(view(), node, include_objective, weights);
+      <<<1, TPB, sh_size, sol_handle->get_stream().get()>>>(
+        view(), node, include_objective, weights);
     sol_handle->sync_stream();
   }
   this->global_runtime_checks(false, false, "add_nodes_to_best");
@@ -211,7 +216,7 @@ bool solution_t<i_t, f_t, REQUEST>::remove_nodes(const std::vector<NodeInfo<>>& 
   cuopt_assert(is_set, "Not enough shared memory on device for remove_nodes!");
   cuopt_expects(is_set, error_type_t::OutOfMemoryError, "Not enough shared memory on device");
   i_t TPB = 256;
-  remove_nodes_kernel<i_t, f_t, REQUEST><<<1, TPB, sh_size, sol_handle->get_stream()>>>(
+  remove_nodes_kernel<i_t, f_t, REQUEST><<<1, TPB, sh_size, sol_handle->get_stream().get()>>>(
     view(), n_nodes_to_eject, temp_nodes.data(), empty_route_produced.data());
   sol_handle->sync_stream();
   return !empty_route_produced.value(sol_handle->get_stream());
@@ -286,18 +291,32 @@ void solution_t<i_t, f_t, REQUEST>::set_routes_to_search()
 }
 
 template <typename i_t, typename f_t, request_t REQUEST>
-void solution_t<i_t, f_t, REQUEST>::set_route_views()
+void solution_t<i_t, f_t, REQUEST>::set_route_views(i_t start, i_t end)
 {
   raft::common::nvtx::range fun_scope("set_route_views");
   if (routes.size() > routes_view.size()) {
     // reserve with the max size
     routes_view.resize(routes.size(), sol_handle->get_stream());
   }
+  if (end < 0) { end = (i_t)routes.size(); }
+  cuopt_assert(start >= 0 && end <= (i_t)routes.size(), "route view range out of bounds");
+  if (end <= start) { return; }
 
-  for (size_t i = 0; i < routes.size(); ++i) {
-    const auto route_view = get_route(i).view();
-    routes_view.set_element_async(i, route_view, sol_handle->get_stream());
+  // Single point where route views are published to the device. The host source of an async
+  // copy must stay valid and unmodified until the stream is synchronized -- rmm's
+  // memcpy_async uses cudaMemcpySrcAccessOrderStream on CUDA 13, so the bytes are read when
+  // the copy runs, not when it is enqueued. Staging in a member buffer and synchronizing here
+  // keeps that rule in one place instead of at every call site.
+  h_routes_view.clear();
+  h_routes_view.reserve(end - start);
+  for (i_t i = start; i < end; ++i) {
+    h_routes_view.push_back(get_route(i).view());
   }
+  raft::copy(routes_view.data() + start,
+             h_routes_view.data(),
+             h_routes_view.size(),
+             sol_handle->get_stream());
+  sol_handle->sync_stream();
 }
 
 // init the rotues with the desired number of routes
@@ -306,7 +325,7 @@ void solution_t<i_t, f_t, REQUEST>::random_init_routes()
 {
   raft::common::nvtx::range fun_scope("random_init_routes");
   auto stream = sol_handle->get_stream();
-  stream.synchronize();
+  stream.sync();
   const i_t one = 1;
   d_sol_found.set_value_async(one, stream);
   std::vector<i_t> indices(get_num_requests());
@@ -326,7 +345,7 @@ void solution_t<i_t, f_t, REQUEST>::random_init_routes()
     }
   }
   set_initial_nodes(d_indices, n_routes);
-  stream.synchronize();
+  stream.sync();
 }
 
 template <typename i_t, typename f_t, request_t REQUEST>
@@ -374,14 +393,17 @@ void solution_t<i_t, f_t, REQUEST>::resize_routes(i_t new_size)
 {
   raft::common::nvtx::range fun_scope("resize_routes");
 
+  bool any_resized = false;
   for (i_t i = 0; i < n_routes; ++i) {
     auto& route_i = get_route(i);
     if (route_i.max_nodes_per_route() < new_size) {
       route_i.resize(new_size);
-      const auto route_view = get_route(i).view();
-      routes_view.set_element_async(i, route_view, sol_handle->get_stream());
+      any_resized = true;
     }
   }
+  // A resize reallocates the route buffers, so the device-side views are stale. Republish
+  // through set_route_views rather than copying each changed view from a local here.
+  if (any_resized) { set_route_views(); }
   max_nodes_per_route = std::max(max_nodes_per_route, new_size);
 }
 
@@ -512,10 +534,8 @@ void solution_t<i_t, f_t, REQUEST>::copy_device_solution(solution_t<i_t, f_t, RE
   if (!src_sol.n_routes) { return; }
   check_and_allocate_routes(src_sol.n_routes);
 
-  for (i_t i = n_routes; i < src_sol.n_routes; ++i) {
-    const auto route_view = get_route(i).view();
-    routes_view.set_element_async(i, route_view, sol_handle->get_stream());
-  }
+  // copy_routes below reads these entries, so they must be published before it launches.
+  set_route_views(n_routes, src_sol.n_routes);
 
   n_routes = src_sol.n_routes;
 
@@ -524,8 +544,8 @@ void solution_t<i_t, f_t, REQUEST>::copy_device_solution(solution_t<i_t, f_t, RE
   const i_t TPB       = 256;
   const auto n_blocks = n_routes;
   copy_routes<i_t, f_t, REQUEST>
-    <<<n_blocks, TPB, 0, sol_handle->get_stream()>>>(view(), src_sol.view());
-  RAFT_CHECK_CUDA(sol_handle->get_stream());
+    <<<n_blocks, TPB, 0, sol_handle->get_stream().get()>>>(view(), src_sol.view());
+  RAFT_CHECK_CUDA(sol_handle->get_stream().get());
 
   cuopt_assert(route_node_map.intra_route_idx_per_node.size() == (size_t)get_num_orders(),
                "Intra route size mismatch!");
@@ -551,7 +571,7 @@ void solution_t<i_t, f_t, REQUEST>::copy_device_solution(solution_t<i_t, f_t, RE
     n_infeasible_routes.data(), src_sol.n_infeasible_routes.data(), 1, sol_handle->get_stream());
   unset_routes_to_copy();
   sol_handle->sync_stream();
-  RAFT_CHECK_CUDA(sol_handle->get_stream());
+  RAFT_CHECK_CUDA(sol_handle->get_stream().get());
 }
 
 template <typename i_t, typename f_t, request_t REQUEST>
@@ -567,7 +587,8 @@ void solution_t<i_t, f_t, REQUEST>::compute_cost()
   objective_cost.set_value_async(zero_obj, sol_handle->get_stream());
   n_infeasible_routes.set_value_to_zero_async(sol_handle->get_stream());
   if (get_n_routes() < 1) return;
-  compute_cost_kernel<i_t, f_t, REQUEST><<<n_blocks, TPB, 0, sol_handle->get_stream()>>>(view());
+  compute_cost_kernel<i_t, f_t, REQUEST>
+    <<<n_blocks, TPB, 0, sol_handle->get_stream().get()>>>(view());
 }
 
 template <typename i_t, typename f_t, request_t REQUEST>
@@ -609,12 +630,12 @@ void solution_t<i_t, f_t, REQUEST>::shift_move_routes(
   if (n_blocks > 0) {
     // Decrement route_id_per_node for this route
     remap_route_nodes<i_t, f_t, REQUEST>
-      <<<n_blocks, threads_per_block, 0, sol_handle->get_stream()>>>(
+      <<<n_blocks, threads_per_block, 0, sol_handle->get_stream().get()>>>(
         routes_view.data(), route_node_map.view(), route_ids_device_copy.data(), route_ids.size());
-    RAFT_CHECK_CUDA(sol_handle->get_stream());
-    shift_routes_kernel<i_t, f_t, REQUEST><<<1, 1, 0, sol_handle->get_stream()>>>(
+    RAFT_CHECK_CUDA(sol_handle->get_stream().get());
+    shift_routes_kernel<i_t, f_t, REQUEST><<<1, 1, 0, sol_handle->get_stream().get()>>>(
       view(), route_ids_device_copy.data(), route_ids.size());
-    RAFT_CHECK_CUDA(sol_handle->get_stream());
+    RAFT_CHECK_CUDA(sol_handle->get_stream().get());
   }
   sol_handle->sync_stream();
   n_routes -= route_ids.size();
@@ -661,7 +682,7 @@ void solution_t<i_t, f_t, REQUEST>::remove_routes(
 
     cuopt_assert(ejection_pool.index_ >= 0, "Index should be at least 0");
     set_deleted_routes_kernel<i_t, f_t, REQUEST>
-      <<<routes_to_remove.size(), 1, 0, sol_handle->get_stream()>>>(
+      <<<routes_to_remove.size(), 1, 0, sol_handle->get_stream().get()>>>(
         view(),
         cuopt::make_span(routes_view),
         cuopt::make_span(temp_int_vector),
@@ -688,7 +709,7 @@ void solution_t<i_t, f_t, REQUEST>::remove_routes(const std::vector<i_t>& routes
                  "route to remove should be in range");
   }
   set_deleted_routes_kernel<i_t, f_t, REQUEST>
-    <<<routes_to_remove.size(), 1, 0, sol_handle->get_stream()>>>(
+    <<<routes_to_remove.size(), 1, 0, sol_handle->get_stream().get()>>>(
       view(), cuopt::make_span(routes_view), cuopt::make_span(temp_int_vector));
   shift_move_routes(routes_to_remove, temp_int_vector);
 }
@@ -714,7 +735,8 @@ i_t solution_t<i_t, f_t, REQUEST>::compute_max_active()
 {
   raft::common::nvtx::range fun_scope("compute_max_active");
   i_t TPB = 1024;
-  compute_max_active_kernel<i_t, f_t, REQUEST><<<1, TPB, 0, sol_handle->get_stream()>>>(view());
+  compute_max_active_kernel<i_t, f_t, REQUEST>
+    <<<1, TPB, 0, sol_handle->get_stream().get()>>>(view());
   max_active_nodes = max_active_nodes_for_all_routes.value(sol_handle->get_stream());
   return max_active_nodes;
 }
@@ -724,8 +746,8 @@ void solution_t<i_t, f_t, REQUEST>::compute_route_id_per_node()
 {
   raft::common::nvtx::range fun_scope("compute_route_id_per_node");
   i_t TPB = 256;
-  compute_route_id_kernel<i_t, f_t, REQUEST>
-    <<<n_routes, TPB, 0, sol_handle->get_stream()>>>(routes_view.data(), route_node_map.view());
+  compute_route_id_kernel<i_t, f_t, REQUEST><<<n_routes, TPB, 0, sol_handle->get_stream().get()>>>(
+    routes_view.data(), route_node_map.view());
   global_runtime_checks(false, false, "compute_route_id_per_node");
 }
 

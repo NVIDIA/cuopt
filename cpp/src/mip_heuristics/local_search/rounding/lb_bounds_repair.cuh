@@ -15,6 +15,8 @@
 #include <utilities/timer.hpp>
 #include "bounds_repair.cuh"
 
+#include <cstdint>
+
 namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
@@ -40,7 +42,7 @@ struct lb_bounds_t {
 template <typename i_t, typename f_t>
 class lb_bounds_repair_t {
  public:
-  lb_bounds_repair_t(const raft::handle_t* handle_ptr);
+  lb_bounds_repair_t(const raft::handle_t* handle_ptr, uint64_t seed);
   void resize(const load_balanced_problem_t<i_t, f_t>& problem);
   void reset();
   std::tuple<f_t, i_t> get_ii_violation(

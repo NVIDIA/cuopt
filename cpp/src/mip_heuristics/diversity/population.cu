@@ -14,7 +14,6 @@
 #include <mip_heuristics/utils.cuh>
 #include <pdlp/utils.cuh>
 #include <utilities/copy_helpers.hpp>
-#include <utilities/seed_generator.cuh>
 
 #include <mutex>
 
@@ -42,7 +41,7 @@ population_t<i_t, f_t>::population_t(std::string const& name_,
     max_solutions(max_solutions_),
     infeasibility_importance(infeasibility_weight_),
     weights(0, context.problem_ptr->handle_ptr),
-    rng(cuopt::seed_generator::get_seed()),
+    rng(derive_seed(context.base_seed, rng_id_t::population)),
     early_exit_primal_generation(false),
     population_hash_map(*problem_ptr),
     timer(0)
@@ -232,6 +231,12 @@ std::vector<solution_t<i_t, f_t>> population_t<i_t, f_t>::get_external_solutions
           problem_ptr->n_constraints,
           sol.compute_number_of_integers(),
           problem_ptr->n_integer_vars);
+      }
+      if (std::abs(sol.get_objective() - h_entry.objective) > OBJECTIVE_EPSILON) {
+        CUOPT_LOG_DEBUG(
+          "External solution objective mismatch: sol.get_objective() = %g, h_entry.objective = %g",
+          sol.get_objective(),
+          h_entry.objective);
       }
       sol.handle_ptr->sync_stream();
       return_vector.emplace_back(std::move(sol));

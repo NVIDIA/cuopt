@@ -216,6 +216,14 @@ class pseudo_costs_t {
   f_t compute_pseudocost_average_down();
   f_t compute_pseudocost_average_up();
 
+  void initialize_with_estimate(const simplex::lp_problem_t<i_t, f_t>& lp,
+                                const std::vector<simplex::variable_status_t>& vstatus,
+                                const std::vector<i_t>& fractional,
+                                const simplex::lp_solution_t<i_t, f_t>& lp_solution,
+                                const std::vector<i_t>& basic_list,
+                                const std::vector<i_t>& nonbasic_list,
+                                simplex::basis_update_mpf_t<i_t, f_t>& basis_factors);
+
   f_t obj_estimate(const std::vector<i_t>& fractional,
                    const std::vector<f_t>& solution,
                    f_t lower_bound);

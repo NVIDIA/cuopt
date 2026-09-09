@@ -1,0 +1,38 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package cuopt.remote;
+
+// VRP routing solution. Kept in its own leaf proto with NO imports so it can be
+// embedded structurally by both ResultResponse (cuopt_remote.proto) and the
+// generated ChunkedResultHeader (cuopt_remote_data.proto) without creating a
+// circular import — cuopt_routing.proto imports cuopt_remote.proto, so the
+// solution types cannot live there if the result messages are to reference them.
+
+enum RoutingSolutionStatus {
+  ROUTING_SUCCESS = 0;
+  ROUTING_INFEASIBLE = 1;
+  ROUTING_TIMEOUT = 2;
+  ROUTING_EMPTY = 3;
+  ROUTING_ERROR = 4;
+}
+
+message RoutingSolution {
+  repeated int32 route = 1;
+  repeated double arrival_stamp = 2;
+  repeated int32 truck_id = 3;
+  repeated int32 locations = 4;
+  repeated int32 node_types = 5;
+  repeated int32 unserviced_nodes = 6;
+  repeated int32 accepted = 7;
+
+  int32 vehicle_count = 10;
+  double total_objective_value = 11;
+  map<int32, double> objective_values = 12;
+
+  RoutingSolutionStatus status = 20;
+  string status_message = 21;
+  string error_message = 22;
+}

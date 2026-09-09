@@ -17,7 +17,7 @@ bash "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/utils/install_openssl3_runtim
 # Download the packages built in the previous step
 RAPIDS_PY_CUDA_SUFFIX="$(rapids-wheel-ctk-name-gen "${RAPIDS_CUDA_VERSION}")"
 LIBCUOPT_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_cpp libcuopt cuopt --cuda "$RAPIDS_CUDA_VERSION")")
-CUOPT_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_python cuopt cuopt --py "$RAPIDS_PY_VERSION" --cuda "$RAPIDS_CUDA_VERSION")")
+CUOPT_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_python cuopt cuopt --stable --cuda "$RAPIDS_CUDA_VERSION")")
 CUOPT_SH_CLIENT_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_python cuopt-sh-client cuopt --pure --arch any)")
 
 # update pip constraints.txt to ensure all future 'pip install' (including those in ci/thirdparty-testing)
@@ -30,6 +30,17 @@ EOF
 
 # generate constraints (possibly pinning to oldest support versions of dependencies)
 rapids-generate-pip-constraints test_python "${PIP_CONSTRAINT}"
+
+python -m venv libcuopt-env
+. libcuopt-env/bin/activate
+
+rapids-pip-retry install \
+    -v \
+    --prefer-binary \
+    --constraint "${PIP_CONSTRAINT}" \
+    "${LIBCUOPT_WHEELHOUSE}"/libcuopt*.whl
+python -c "import libcuopt; assert libcuopt.load_library() is not None"
+deactivate
 
 # notes:
 #
@@ -59,13 +70,19 @@ FAILED_STEPS=()
 trap "EXITCODE=1" ERR
 set +e
 
+# shellcheck source=ci/utils/crash_helpers.sh
+source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/utils/crash_helpers.sh"
+
+
 # Run CLI tests
-timeout 10m bash ./python/libcuopt/libcuopt/tests/test_cli.sh || FAILED_STEPS+=("cuopt_cli")
+run_step_with_timeout "cuopt_cli" 10m "" \
+  bash ./python/libcuopt/libcuopt/tests/test_cli.sh
 
 # Run Python tests
-timeout 30m ./ci/run_cuopt_pytests.sh \
+run_step_with_timeout "pytest cuopt (wheel)" 45m "${RAPIDS_TESTS_DIR}/junit-wheel-cuopt.xml" \
+  ./ci/run_cuopt_pytests.sh \
   --junitxml="${RAPIDS_TESTS_DIR}/junit-wheel-cuopt.xml" \
-  --verbose --capture=no || FAILED_STEPS+=("pytest cuopt (wheel)")
+  --verbose --capture=no
 
 # run thirdparty integration tests for only nightly builds
 if [[ "${RAPIDS_BUILD_TYPE}" == "nightly" ]]; then

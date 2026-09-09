@@ -53,12 +53,16 @@ FAILED_STEPS=()
 trap "EXITCODE=1" ERR
 set +e
 
+# shellcheck source=ci/utils/crash_helpers.sh
+source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/utils/crash_helpers.sh"
+
+
 # Run gtests from libcuopt-tests package
 # XML output and retry logic handled by run_ctests.sh
 export RAPIDS_TESTS_DIR
 
 rapids-logger "Run gtests"
-timeout 60m ./ci/run_ctests.sh || FAILED_STEPS+=("gtests (run_ctests.sh)")
+run_step_with_timeout "gtests (run_ctests.sh)" 60m "" ./ci/run_ctests.sh
 
 rapids-logger "Generate nightly test report"
 source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/utils/nightly_report_helper.sh"
