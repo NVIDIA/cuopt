@@ -27,7 +27,7 @@
 
 namespace cuopt::mathematical_optimization::mip {
 
-const char* fj_binary_reject_name(fj_binary_reject_t reason)
+static const char* fj_binary_reject_name(fj_binary_reject_t reason)
 {
   switch (reason) {
     case fj_binary_reject_t::none: return "none";
@@ -111,8 +111,6 @@ struct fj_bin_engine_t {
   // inert when in the before-feasibility phase
   std::vector<int64_t> obj_base_score;
   std::vector<int64_t> combined_score;
-  // objective weight used for the stored objective components
-  int32_t obj_base_weight{-1};
 
   fj_bin_tabu_t tabu;
 
@@ -161,61 +159,6 @@ struct fj_bin_engine_t {
   int32_t max_aggregate_bonus{0};
 
   int coefficient_bits() const { return 8 * (int)sizeof(coef_t); }
-
-  // Largest per-variable aggregate base and bonus under the final weights and assignment, in raw
-  // int32. The packed representation is only order-preserving while these stay inside their
-  // limits, and weights grow without a cap, so this is the reading that says whether the packing
-  // survived the run.
-  // Independent audit of the incumbent at end of solve. Recomputes every row's lhs and the
-  // objective from best_assign alone, trusting nothing the incremental path maintained: not the
-  // live lhs, not violated_list, not the running incumbent_objective. Accumulates in int64 so an
-  // int32 lhs overflow the eligibility scan was supposed to preclude would show up here rather than
-  // wrap silently. Runs once per solve, so its cost is not on any hot path.
-  void verify_incumbent(fj_cpu_climber_t<i_t, f_t>& climber) const
-  {
-    if (!feasible_found) return;
-
-    int32_t n_violated = 0;
-    int64_t worst      = 0;
-    bool lhs_overflow  = false;
-    for (int32_t r = 0; r < pb.n_constraints; ++r) {
-      int64_t lhs = 0;
-      for (int32_t k = pb.offsets[r]; k < pb.offsets[r + 1]; ++k) {
-        lhs += (int64_t)pb.coefficients[k] * (int64_t)best_assign[pb.variables[k]];
-      }
-      if (lhs < INT32_MIN || lhs > INT32_MAX) lhs_overflow = true;
-      const int64_t slack = (int64_t)pb.bound[r] - lhs;
-      if (slack < 0) {
-        ++n_violated;
-        if (-slack > worst) worst = -slack;
-      }
-    }
-
-    double objective = objective_offset;
-    for (int32_t v = 0; v < pb.n_variables; ++v)
-      objective += pb.objective[v] * (double)best_assign[v];
-    const double drift = std::fabs(objective - best_objective);
-
-    if (n_violated != 0 || lhs_overflow || drift > 1e-6) {
-      CUOPT_LOG_ERROR(
-        "%sCPUFJ[bin%d] incumbent audit FAILED: %d violated rows (worst %lld), lhs overflow %d, "
-        "objective recomputed %.17g vs tracked %.17g (drift %g)",
-        climber.log_prefix.c_str(),
-        coefficient_bits(),
-        n_violated,
-        (long long)worst,
-        (int)lhs_overflow,
-        objective,
-        best_objective,
-        drift);
-    } else {
-      CUOPT_LOG_DEBUG("%sCPUFJ[bin%d] incumbent audit ok: feasible, objective %.17g (drift %g)",
-                      climber.log_prefix.c_str(),
-                      coefficient_bits(),
-                      objective,
-                      drift);
-    }
-  }
 
   void compute_saturation()
   {
@@ -298,9 +241,6 @@ struct fj_bin_engine_t {
       incumbent_objective += pb.objective[v] * assign[v];
     nnz_touched += pb.nnz;
     rebuild_scores();
-    // Every caller of this reached it by replacing the assignment wholesale, so the cached
-    // per-variable flip directions no longer describe it.
-    obj_base_weight = -1;
   }
 
   // Base field of the objective term: the weight, signed by the direction of the gain and scaled by
@@ -341,13 +281,17 @@ struct fj_bin_engine_t {
     return objective_base(v, (int8_t)(1 - 2 * assign[v]));
   }
 
-  // update objective contributions if the weight changed
-  void maybe_update_objective_component()
+  void update_objective_component()
   {
-    if (obj_base_weight == objective_weight) return;
     for (int32_t v : pb.objective_vars)
       obj_base_score[v] = flip_objective_base(v);
-    obj_base_weight = objective_weight;
+  }
+
+  void set_objective_weight(int32_t new_weight)
+  {
+    cuopt_assert(new_weight >= 0, "objective weight must be nonnegative");
+    objective_weight = new_weight;
+    update_objective_component();
   }
 
   int64_t full_score(int32_t v, int8_t delta) const
@@ -371,78 +315,62 @@ struct fj_bin_engine_t {
     const int32_t ob = pb.reverse_offsets[var], oe = pb.reverse_offsets[var + 1];
     int64_t own_score = 0;
 
-    // The tail writes a score delta through int32_t* and calls out to the patch, either of which
-    // may alias a vector's internal pointer as far as the compiler can prove. Without these locals
-    // it reloads every base pointer below out of `this` on each visit.
-    int32_t* const weight_p        = row_weight.data();
-    int32_t* const slack_p         = row_slack.data();
-    const int32_t* const rcon_p    = pb.reverse_constraints.data();
-    const coef_t* const skv_p      = pb.reverse_coefficients.data();
-    const coef_t* const rcmax_p    = pb.incident_row_cmax.data();
-    const int32_t* const rcsr_p    = pb.reverse_to_csr.data();
-    const int32_t* const offsets_p = pb.offsets.data();
-    const int32_t* const vars_p    = pb.variables.data();
-    const coef_t* const coefs_p    = pb.coefficients.data();
-    int64_t* const var_score_p     = var_score.data();
-    int64_t* const nnz_delta_p     = nnz_score_delta.data();
-    const int32_t* const assign_p  = assign_i32.data();
-
-    // Everything a visit still needs once its slack has been advanced. Shared by the two arms below
-    // so the walk's shape is the only thing that differs between them.
-    auto finish = [&](int32_t ii) {
-      const int32_t r         = rcon_p[ii];
-      const int32_t weight    = weight_p[r];
-      const int32_t skv       = (int32_t)skv_p[ii];
-      const int32_t new_slack = slack_p[r];
-      const int32_t old_slack = new_slack + skv * delta;
-
-      // A row can only cross its boundary if the flip moves it by at least the distance to it, so
-      // every transition is inside this list and none was lost with the rows the walk absorbed.
-      if (new_slack < 0 && old_slack >= 0) {
-        set_violated(r);
-      } else if (new_slack >= 0 && old_slack < 0) {
-        set_satisfied(r);
-      }
-
-      // The mirror of the walk's deep_sat test. Kept here rather than there because it fires on
-      // 0.02% of visits and guards the widest rows in the matrix: measured, moving it into the
-      // vector loop costs more in the 85% case than it saves in the 0.02% one.
-      const int32_t margin = (int32_t)rcmax_p[ii];
-      if (!(old_slack < -margin && new_slack < -margin)) {
-        const int32_t row_begin = offsets_p[r], row_end = offsets_p[r + 1];
-        // TODO: check that this may not cause AVX512 powerdown overheads if the AVX2 row/AVX512 row
-        // ratio is unbalanced
-        fj_bin_patch_row(vars_p, coefs_p, row_begin, row_end, var_score_p, nnz_delta_p, assign_p, weight, new_slack, var);
-        nnz_touched += row_end - row_begin;
-        nnz_patched += row_end - row_begin;
-      }
-
-      // The flipped variable's own score delta. Zero on the rows the walk absorbed -- deeply
-      // satisfied both ways -- and already stored as zero there.
-      const int64_t pv = fj_bin_packed_score_delta(new_slack, new_slack - skv * new_flip, weight);
-      own_score += pv;
-      nnz_delta_p[rcsr_p[ii]] = pv;
-    };
-
-    // A tile at a time: the kernel advances every slack in the tile and reports back only the
-    // visits that left the row within reach of its boundary, which on supportcase22 is 15.1% of
-    // them. The buffer is a stack array rather than one sized to the widest reverse degree because
-    // the tail runs between tiles, which is also what keeps the patch calls out of the vector loop.
-    //
-    // Unconditional: a scalar arm for short ranges was tried and never won. Sweeping the degree
-    // below which apply_move walked the rows itself, bnatt400 degraded monotonically from 14.43M to
-    // 14.19M iterations/s as the threshold rose from 0 to 64, and crypt16 and supportcase22 were
-    // flat. At a median degree of 13 and 7 respectively, one gather still beats that many dependent
-    // scalar load-modify-stores, because it breaks the dependence chain through row_slack rather
-    // than following it.
+    // walk over rows in tiles, noting which rows require further processing
+    // they are handled afterwards
     constexpr int32_t fj_bin_walk_tile = 256;
     int32_t tile_incidence[fj_bin_walk_tile];
     for (int32_t t0 = ob; t0 < oe; t0 += fj_bin_walk_tile) {
       const int32_t t1 = (t0 + fj_bin_walk_tile < oe) ? t0 + fj_bin_walk_tile : oe;
-      const int32_t n_tail =
-        fj_bin_walk_rows(slack_p, rcon_p, skv_p, rcmax_p, t0, t1, delta, tile_incidence);
-      for (int32_t j = 0; j < n_tail; ++j)
-        finish(tile_incidence[j]);
+      const int32_t n_tail = fj_bin_walk_rows(row_slack.data(),
+                                              pb.reverse_constraints.data(),
+                                              pb.reverse_coefficients.data(),
+                                              pb.incident_row_cmax.data(),
+                                              t0,
+                                              t1,
+                                              delta,
+                                              tile_incidence);
+      // handle non-deeply-satisfied rows
+      for (int32_t j = 0; j < n_tail; ++j) {
+        const int32_t ii        = tile_incidence[j];
+        const int32_t r         = pb.reverse_constraints[ii];
+        const int32_t weight    = row_weight[r];
+        const int32_t skv       = (int32_t)pb.reverse_coefficients[ii];
+        const int32_t new_slack = row_slack[r];
+        const int32_t old_slack = new_slack + skv * delta;
+
+        // A row can only cross its boundary if the flip moves it by at least the distance to it, so
+        // every transition is inside this list and none was lost with the rows the walk absorbed.
+        if (new_slack < 0 && old_slack >= 0) {
+          set_violated(r);
+        } else if (new_slack >= 0 && old_slack < 0) {
+          set_satisfied(r);
+        }
+
+        // we're in the regime where single flips can affect feasibility. 
+        // patch the scores of all incident variables
+        const int32_t margin = (int32_t)pb.incident_row_cmax[ii];
+        if (!(old_slack < -margin && new_slack < -margin)) {
+          const int32_t row_begin = pb.offsets[r], row_end = pb.offsets[r + 1];
+          // TODO: check that this may not cause AVX512 powerdown overheads if the AVX2 row/AVX512 row
+          // ratio is unbalanced
+          fj_bin_patch_row(pb.variables.data(),
+                           pb.coefficients.data(),
+                           row_begin,
+                           row_end,
+                           var_score.data(),
+                           nnz_score_delta.data(),
+                           assign_i32.data(),
+                           weight,
+                           new_slack,
+                           var);
+          nnz_touched += row_end - row_begin;
+          nnz_patched += row_end - row_begin;
+        }
+
+        const int64_t pv = fj_bin_packed_score_delta(new_slack, new_slack - skv * new_flip, weight);
+        own_score += pv;
+        nnz_score_delta[pb.reverse_to_csr[ii]] = pv;
+      }
     }
     nnz_touched += oe - ob;
     rows_walked += oe - ob;
@@ -451,10 +379,9 @@ struct fj_bin_engine_t {
     assign_i32[var] = new_val;
     var_score[var]  = own_score;
     incumbent_objective += pb.objective[var] * delta;
-    // Only this variable's flip direction moved, so a live cache needs one entry rewritten.
-    if (obj_base_weight == objective_weight && pb.objective[var] != 0)
-      obj_base_score[var] = flip_objective_base(var);
+    if (pb.objective[var] != 0) obj_base_score[var] = flip_objective_base(var);
 
+    // a new best incumbent!
     if (violated_list.empty() && incumbent_objective < best_objective) {
       best_objective   = incumbent_objective;
       best_assign      = assign;
@@ -488,7 +415,6 @@ struct fj_bin_engine_t {
     }
   }
 
-  // Publish a new best into the climber, which owns the reporting contract.
   void report_incumbent(fj_cpu_climber_t<i_t, f_t>& climber)
   {
     auto& h_assign = climber.h_assignment;
@@ -523,14 +449,13 @@ struct fj_bin_engine_t {
     climber.feasible_found   = true;
     if (shared_incumbent)
       shared_incumbent->publish(reported, climber.get_user_objective(reported), h_best);
-    // Emitted once per improvement so the benchmark harness can reconstruct the
-    // incumbent trajectory exactly, rather than sampling it at log_interval.
+
     CUOPT_LOG_DEBUG("%sCPUFJ[bin%d] new incumbent: objective %.17g",
                     climber.log_prefix.c_str(),
                     coefficient_bits(),
                     reported);
     if (climber.improvement_callback) {
-      const double work_units = climber.work_units_elapsed.load(std::memory_order_acquire);
+      const double work_units = climber.work_units_elapsed;
       climber.improvement_callback(reported, h_best, work_units);
     }
   }
@@ -540,7 +465,7 @@ struct fj_bin_engine_t {
     if (new_weight == row_weight[r]) return;
     row_weight[r] = new_weight;
     if (new_weight > max_weight) max_weight = new_weight;
-    // The slack is unchanged here, and no variable is excluded, so skip_var matches no index.
+
     const int32_t row_begin = pb.offsets[r], row_end = pb.offsets[r + 1];
     fj_bin_patch_row(pb.variables.data(),
                      pb.coefficients.data(),
@@ -556,14 +481,12 @@ struct fj_bin_engine_t {
     nnz_patched += row_end - row_begin;
   }
 
-  int32_t escalation_threshold() const { return fj_bin_ddfw_escalate_after; }
-
   // DDFW: every violated row gains weight taken from a satisfied neighbour above the donation
   // floor, so total weight is roughly conserved and differentiation stays local to the hard region.
   // Unit transfers stop moving the landscape on a long stall, so the amount grows with the stall.
   int32_t ddfw_transfer() const
   {
-    const int32_t threshold = escalation_threshold();
+    const int32_t threshold = fj_bin_ddfw_escalate_after;
     if (iters_since_infeasible_improve <= threshold) return fj_bin_ddfw_transfer;
     const int32_t over  = iters_since_infeasible_improve - threshold;
     const int32_t steps = over / threshold + 1;
@@ -571,10 +494,10 @@ struct fj_bin_engine_t {
     return fj_bin_ddfw_transfer * scale;
   }
 
+  // perform DDFW weight updating
   void update_weights()
   {
     const int32_t transfer = ddfw_transfer();
-    // Donors must stay above the floor, or weights go negative and every base score inverts.
     const int32_t donor_floor = fj_bin_ddfw_init + transfer - 1;
 
     for (int32_t cf : violated_list) {
@@ -606,14 +529,12 @@ struct fj_bin_engine_t {
       } else {
         ++iterations_at_same_objective;
       }
-      objective_weight += objective_weight_increment();
+      set_objective_weight(objective_weight + objective_weight_increment());
     }
     track_infeasible_stall();
   }
 
-  // Stall-escalation for the objective weight, the feasible-region counterpart of ddfw_transfer:
-  // a lane that keeps reaching local minima without moving its best objective needs more
-  // objective pressure than one that is still improving.
+  // stall-escalation for the objective weight
   int32_t objective_weight_increment() const
   {
     if (iterations_at_same_objective <= fj_bin_obj_stall_after) return 1;
@@ -628,8 +549,7 @@ struct fj_bin_engine_t {
     iters_since_infeasible_improve = 0;
   }
 
-  // Length of the current stall, which is what ddfw_transfer escalates against: iterations since
-  // the violated set's total excess last improved.
+  // track the length of the current stall
   void track_infeasible_stall()
   {
     if (violated_list.empty()) {
@@ -653,7 +573,7 @@ struct fj_bin_engine_t {
 
   // Global argmax over every variable, affordable because var_score is maintained live. While the
   // objective weight is zero the full score is exactly var_score; above zero the sweep runs over
-  // var_score plus the cached objective base. Only the local-minimum path falls to the scalar loop.
+  // var_score plus the cached objective base.
   std::pair<int32_t, int64_t> find_move_global()
   {
     // fastpath if feasibility has never been achieved
@@ -676,7 +596,6 @@ struct fj_bin_engine_t {
       // The breakthrough bonus is deliberately absent from the ranking: it depends on
       // incumbent_objective, so no per-variable form of it survives a move, and it occupies the low
       // field where it can only separate variables already tied on the base.
-      maybe_update_objective_component();
       int64_t* const comb_p = combined_score.data();
       fj_bin_add_scores(var_score.data(), obj_base_score.data(), pb.n_variables, comb_p);
 
@@ -729,10 +648,6 @@ struct fj_bin_engine_t {
 
   std::pair<int32_t, int64_t> find_move_violated(int32_t sample_size, bool localmin)
   {
-    // Draw the rows directly instead of reservoir-sampling the violated list: `std::sample` is
-    // linear in the population, so it walked every violated row to keep a handful.
-    // `find_move_in_rows` deduplicates variables through `var_bitmap`, so sampling with
-    // replacement costs a bitmap sweep on a repeated row and no scoring.
     const int32_t n                     = (int32_t)violated_list.size();
     const std::vector<int32_t>* sampled = &violated_list;
     if (n > sample_size) {
@@ -781,6 +696,7 @@ struct fj_bin_engine_t {
     return true;
   }
 
+  // look for objective-improving 2opt flips on the current assignment
   std::pair<std::pair<int32_t, int32_t>, int64_t> find_lift_2opt_move()
   {
     cuopt_assert(violated_list.empty(), "lift moves require a feasible incumbent");
@@ -827,8 +743,6 @@ struct fj_bin_engine_t {
         if (tabu_blocked(var2, false)) continue;
         if (!paired_flip_keeps_feasible(var1, delta1, var2, delta2)) continue;
 
-        // Both lift operators rank on the objective gain in its own units: the packed score counts
-        // weights, and this engine requires an integral matrix but not integral objective terms.
         const double improvement = -combined;
         if (improvement > best_improvement) {
           best_improvement = improvement;
@@ -873,8 +787,7 @@ struct fj_bin_engine_t {
     if (feasible_found) {
       cuopt_assert((int32_t)best_assign.size() == pb.n_variables, "incumbent size mismatch");
       assign = best_assign;
-      // The shared buffer holds decoded integers, so the flat 0/1 read below only lines up when
-      // an engine variable is one unit bit of its owner.
+
       if (!pb.encoded && shared_incumbent &&
           shared_incumbent->adopt((f_t)best_objective, adopt_buffer)) {
         for (int32_t v = 0; v < pb.n_variables; ++v)
@@ -890,10 +803,10 @@ struct fj_bin_engine_t {
       assign_i32[v]   = assign[v];
     }
     recompute_slack();
+    update_objective_component();
   }
 
-  // Restart returns the assignment to the seed the climber was constructed with, leaving the
-  // recorded best and the global iteration counter intact.
+  // Restart returns the assignment to the seed the climber was constructed with
   void do_restart()
   {
     assign = seed_assign;
@@ -901,8 +814,8 @@ struct fj_bin_engine_t {
       assign_i32[v] = assign[v];
     for (int32_t r = 0; r < pb.n_constraints; ++r)
       row_weight[r] = pb.initial_weight[r];
-    max_weight       = fj_bin_ddfw_init;
-    objective_weight = seed_objective_weight;
+    max_weight = fj_bin_ddfw_init;
+    set_objective_weight(seed_objective_weight);
     reset_infeasible_stall();
     tabu.clear(iters);
     recompute_slack();
@@ -925,10 +838,6 @@ struct fj_bin_engine_t {
 
     if (tabu_tenure_max <= tabu_tenure_min) tabu_tenure_max = tabu_tenure_min + 1;
 
-    // The tabu ring is indexed by iteration modulo its size, so a slot is reused after ring_size
-    // iterations. A tenure that long would be overwritten while the variable is still tabu, and the
-    // argmax would stop excluding it. Clamped as well as asserted: release builds compile the
-    // assert out, and silently dropping tabu entries is worse than a shorter tenure.
     cuopt_assert(tabu_tenure_max <= fj_bin_tabu_t::max_tenure,
                  "tabu tenure exceeds the tabu ring, live entries would be evicted");
     if (tabu_tenure_max > fj_bin_tabu_t::max_tenure) tabu_tenure_max = fj_bin_tabu_t::max_tenure;
@@ -936,6 +845,7 @@ struct fj_bin_engine_t {
     const int32_t n_cols = pb.n_variables, n_rows = pb.n_constraints;
     const auto& h_assign = climber.h_assignment;
     assign.assign(n_cols, 0);
+    // we encoded integers as binary vars, crush the assignment
     if (pb.encoded) {
       // Descending weight, so the bit pattern reproduces the start value wherever it is
       // representable: with exact closure that is every integer of the domain.
@@ -978,10 +888,9 @@ struct fj_bin_engine_t {
 
     var_score.assign(n_cols, 0);
     nnz_score_delta.assign(pb.nnz + fj_bin_simd_padding, 0);
-    // Zeroed once: maybe_update_objective_component only ever rewrites the objective variables.
+ 
     obj_base_score.assign(n_cols, 0);
     combined_score.assign(n_cols, 0);
-    obj_base_weight = -1;
     tabu.resize(n_cols);
     is_violated.assign(n_rows, 0);
     vpos.assign(n_rows, -1);
@@ -1002,8 +911,8 @@ struct fj_bin_engine_t {
     for (int32_t v = 0; v < pb.n_original; ++v)
       objective_offset += pb.orig_objective[v] * pb.var_offset[v];
 
-    argmax_tile                  = fj_bin_argmax_tile();
-    objective_weight             = seeded_weight > 0 ? seeded_weight : 0;
+    argmax_tile = fj_bin_argmax_tile();
+    set_objective_weight(seeded_weight > 0 ? seeded_weight : 0);
     seed_objective_weight        = objective_weight;
     max_weight                   = fj_bin_ddfw_init;
     incumbent_objective          = 0;
@@ -1025,9 +934,8 @@ struct fj_bin_engine_t {
       best_assign    = assign;
       feasible_found = true;
       report_incumbent(climber);
-      objective_weight =
-        std::max(objective_weight, (int32_t)std::lround((double)climber.seed_objective_weight));
-      obj_base_weight = -1;
+      set_objective_weight(
+        std::max(objective_weight, (int32_t)std::lround((double)climber.seed_objective_weight)));
     }
 
     const auto loop_start = std::chrono::high_resolution_clock::now();
@@ -1043,6 +951,7 @@ struct fj_bin_engine_t {
       int32_t move_var                  = -1;
       int64_t score                     = fj_bin_score_invalid;
       std::pair<int32_t, int32_t> pair2 = {-1, -1};
+      // look for objective improving moves when feasible
       if (violated_list.empty()) {
         std::tie(move_var, score) = find_lift_move();
         // Pairs are only reachable once no single improving flip preserves feasibility.
@@ -1061,6 +970,7 @@ struct fj_bin_engine_t {
         iters_since_best = 0;
       }
 
+      // we found an objective-improving 2opt!
       if (pair2.first >= 0 && !perturb_now) {
         apply_move(pair2.first, (int8_t)(1 - 2 * assign[pair2.first]), climber);
         apply_move(pair2.second, (int8_t)(1 - 2 * assign[pair2.second]), climber);
@@ -1109,7 +1019,6 @@ struct fj_bin_engine_t {
     }
 
     compute_saturation();
-    verify_incumbent(climber);
     climber.iterations = (i_t)iters;
     CUOPT_LOG_DEBUG(
       "%sCPUFJ[bin%d] done: %d iterations, best %g, max weight %d, aggregate base %d/%d, bonus "
@@ -1136,19 +1045,12 @@ bool try_cpufj_binary_solve(fj_cpu_climber_t<i_t, f_t>& climber,
                             f_t time_limit,
                             double work_unit_limit)
 {
-  // Escape hatch for A/B against the general path on an instance the fast path would take. The two
-  // paths are meant to search identically, so any divergence is a bug in this one; setting this is
-  // how that gets bisected without editing the eligibility scan.
   static const bool disabled = std::getenv("CUOPT_NO_BINFJ") != nullptr;
   if (disabled || climber.low_latency) return false;
 
   const fj_bin_scan_t scan = fj_bin_scan(climber, climber.bin_setup);
   if (scan.reject != fj_binary_reject_t::none) {
-    // A non-binary variable is the one rejection the encoding can answer: the model may still be
-    // all-integer with finite domains. Every other reason fails the encoded model just the same.
     if (scan.reject == fj_binary_reject_t::non_binary_var && climber.use_integer_bit_encoding) {
-      // The width the encoded coefficients need is only known once they are built, so probe with
-      // int16 and rebuild on int8 for the narrower kernel when that is enough.
       fj_bin_engine_t<i_t, f_t, int16_t> probe;
       int bits = 0;
       if (fj_bin_encode(climber, probe.pb, bits, climber.bin_setup)) {

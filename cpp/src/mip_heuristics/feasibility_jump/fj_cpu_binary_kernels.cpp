@@ -74,9 +74,6 @@ int32_t WalkRowsImpl(int32_t* HWY_RESTRICT row_slack,
       // os - skv * vdelta
       const V ns = hn::NegMulAdd(skv, vdelta, os);
 
-      // Only the satisfied side. deep_viol is the caller's business: it fires on 0.02% of visits
-      // but guards the widest rows in the matrix, so it belongs where the row length is already
-      // known.
       const auto deep_sat = hn::And(hn::Gt(os, cmax), hn::Gt(ns, cmax));
       const auto to_tail  = hn::AndNot(deep_sat, active);
 
@@ -243,13 +240,11 @@ static HWY_INLINE void PatchRowBody(D d,
     hn::BlendedStore(packed_lo, act_lo, dw, nnz_score_delta + k);
     hn::BlendedStore(packed_hi, act_hi, dw, nnz_score_delta + k + NW);
 
-    // hardware gather/scatter pays off heavily on Sapphire Rapids+ only
+    // hardware gather/scatter pays off heavily only on Sapphire Rapids+
     // probably on Zen5 as well
 #if HWY_TARGET == HWY_AVX3_ZEN4 || HWY_TARGET == HWY_AVX2
     // zmm VSIB is microcode on Zen 4: VPGATHERDD ~76-80 uops / ~21 CPI and VPSCATTERDD 89 / 24,
-    // against ~5 / ~10 and ~19 / ~11 on SPR-class Intel (Agner Fog, uops.info). So
-    // read-modify-write by lane here; measured +5.8% over the arm below on an EPYC 9554
-    // (supportcase22, 16 climbers).
+    // against ~5 / ~10 and ~19 / ~11 on SPR-class Intel
     HWY_ALIGN int32_t idx[hn::MaxLanes(d)];
     HWY_ALIGN int64_t dl[hn::MaxLanes(d)];
     hn::Store(v, d, idx);
