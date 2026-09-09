@@ -2171,38 +2171,23 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
 }
 
-// Halpern is fused into the projection, so `current` is already the Halpern blend and the
-// pre-Halpern iterate z is gone. Only T(z) survives, in potential_next, and the reflection is
-// 2 T(z) - z, so reflected - T(z) = T(z) - z, half of the reflected - z that an unfused Halpern
-// would give here. The factor 2 keeps delta (and therefore fixed_point_error) on the same
-// absolute scale.
-template <typename f_t>
-struct reflected_delta_op {
-  HDI f_t operator()(f_t reflected, f_t potential_next) const
-  {
-    return f_t(2.0) * (reflected - potential_next);
-  }
-};
-
-// delta = 2 * (reflected - potential_next), for both primal and dual, written into the
+// delta = reflected - next, for both primal and dual, written into the
 // saddle-point delta buffers. Shared by the single-GPU and per-shard
 // (distributed) paths so the two only differ by which pdhg/stream they pass.
 template <typename i_t, typename f_t>
 static void compute_primal_dual_deltas(pdhg_solver_t<i_t, f_t>& pdhg, rmm::cuda_stream_view stream)
 {
   cub::DeviceTransform::Transform(
-    cuda::std::make_tuple(pdhg.get_reflected_primal().data(),
-                          pdhg.get_potential_next_primal_solution().data()),
+    cuda::std::make_tuple(pdhg.get_reflected_primal().data(), pdhg.get_potential_next_primal_solution().data()),
     pdhg.get_saddle_point_state().get_delta_primal().data(),
     pdhg.get_potential_next_primal_solution().size(),
-    reflected_delta_op<f_t>{},
+    cuda::std::minus<f_t>{},
     stream);
   cub::DeviceTransform::Transform(
-    cuda::std::make_tuple(pdhg.get_reflected_dual().data(),
-                          pdhg.get_potential_next_dual_solution().data()),
+    cuda::std::make_tuple(pdhg.get_reflected_dual().data(), pdhg.get_potential_next_dual_solution().data()),
     pdhg.get_saddle_point_state().get_delta_dual().data(),
     pdhg.get_potential_next_dual_solution().size(),
-    reflected_delta_op<f_t>{},
+    cuda::std::minus<f_t>{},
     stream);
 }
 
@@ -2249,7 +2234,7 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
                  "delta_dual_ size mismatch");
   }
 
-  // Computing the deltas (delta = 2 * (reflected - potential_next))
+  // Computing the deltas (delta = reflected - potential_next)
   // TODO batch mdoe: this only works if everyone restarts
   if (is_distributed_master()) {
     multi_gpu_engine->for_each_shard([](auto& shard) {
