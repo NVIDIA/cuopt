@@ -493,6 +493,7 @@ void AddScoresImpl(const int64_t* HWY_RESTRICT var_score,
     combined[v] = var_score[v] + obj_score[v];
 }
 
+// row scoring for the general engine
 template <typename T>
 void ScoreRowsImpl(const int32_t* rows,
                    const T* coeff,
@@ -590,10 +591,7 @@ HWY_AFTER_NAMESPACE();
 #if HWY_ONCE
 namespace cuopt::mathematical_optimization::mip {
 
-// One dispatch table per (coefficient width, vector width). HWY_EXPORT_T names the table
-// separately from the function, which lets the function be a template-id: only the table name goes
-// through token pasting, so no hand-written non-template wrapper is needed. The template argument
-// must stay comma-free, which is why the three tag-binding wrappers above take only coef_t.
+// highway dispatch table
 HWY_EXPORT_T(PatchRowI8, PatchRowDispatchImpl<int8_t>);
 HWY_EXPORT_T(PatchRowI16, PatchRowDispatchImpl<int16_t>);
 HWY_EXPORT_T(WalkRowsI8, WalkRowsImpl<int8_t>);
@@ -603,17 +601,7 @@ HWY_EXPORT(AddScoresImpl);
 HWY_EXPORT(ScoreRowsF32);
 HWY_EXPORT(ScoreRowsF64);
 
-// HWY_DYNAMIC_DISPATCH resolves the target on every call, and the hwy::GetChosenTarget() call it
-// expands to is a real out-of-line call: it clobbers the argument registers, so the compiler spills
-// all eleven parameters to the stack and reloads them around it. These run once per row per move,
-// so the pointers are resolved once instead.
-//
-// Entry 0 of a dispatch table is a trampoline that chooses the target and re-dispatches, and an
-// unchosen target makes GetIndex() return 0. Caching then would pin that extra indirection for the
-// process lifetime, so the target is chosen first. File scope rather than function scope keeps the
-// guard variable of a magic static out of the call: its cold path can call __cxa_guard_acquire, so
-// the compiler must preserve the arguments across it and cannot leave a bare tail jump. Nothing in
-// cuOpt reaches feasibility jump during static initialization.
+// resolve the highway target once instead of suffering indirection on every call
 static void fj_bin_choose_target()
 {
   if (!hwy::GetChosenTarget().IsInitialized()) {
@@ -633,14 +621,12 @@ using fj_bin_patch_fn_t = void (*)(const int32_t*,
                                    int32_t,
                                    int32_t);
 
-// The vector width is chosen inside the target (see PatchRowDispatchImpl), so the seam carries one
-// pointer per coefficient width and nothing else.
+// little operator, trick to get highway to resolve the target on global static initialization
 static const auto fj_bin_patch_i8 =
   (fj_bin_choose_target(), (fj_bin_patch_fn_t<int8_t>)HWY_DYNAMIC_POINTER_T(PatchRowI8));
 static const auto fj_bin_patch_i16 =
   (fj_bin_choose_target(), (fj_bin_patch_fn_t<int16_t>)HWY_DYNAMIC_POINTER_T(PatchRowI16));
 
-// Overloaded rather than specialized, matching fj_bin_walk_fn below.
 static fj_bin_patch_fn_t<int8_t> fj_bin_patch_fn(int8_t) { return fj_bin_patch_i8; }
 static fj_bin_patch_fn_t<int16_t> fj_bin_patch_fn(int16_t) { return fj_bin_patch_i16; }
 

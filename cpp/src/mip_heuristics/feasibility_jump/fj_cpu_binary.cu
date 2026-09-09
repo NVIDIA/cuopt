@@ -699,9 +699,8 @@ struct fj_bin_engine_t {
       fj_bin_tabu_t::unblock_tabu(blocked, var_score.data(), saved_var, saved_score);
       return {v, s};
     }
-
     // path once feasibility has been achieved once
-    {
+    else {
       // The breakthrough bonus is deliberately absent from the ranking: it depends on
       // incumbent_objective, so no per-variable form of it survives a move, and it occupies the low
       // field where it can only separate variables already tied on the base.
@@ -721,7 +720,6 @@ struct fj_bin_engine_t {
       if (v >= 0) s = full_score(v, (int8_t)(1 - 2 * assign[v]));
       return {v, s};
     }
-    return {best_v, best_s};
   }
 
   std::pair<int32_t, int64_t> find_move_in_rows(const std::vector<int32_t>& target_rows,
