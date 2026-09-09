@@ -10,6 +10,7 @@
 #include <math_optimization/tic_toc.hpp>
 
 #include <cstdint>
+#include <vector>
 
 // The fast path applies to instances whose variables are all binary and whose rows carry integer
 // coefficients within int8 or int16 range. On those it runs a SIMD integer engine: exact
@@ -65,6 +66,77 @@ enum class fj_binary_reject_t : uint8_t {
   narrow_check_failed,
 };
 const char* fj_binary_reject_name(fj_binary_reject_t reason);
+
+// Narrowed problem: one-sided rows, integer coefficients, CSR plus its transpose.
+template <typename coef_t>
+struct fj_bin_problem_t {
+  int32_t n_variables{0};
+  int32_t n_constraints{0};
+  int32_t nnz{0};
+
+  std::vector<int32_t> offsets;
+  std::vector<int32_t> variables;
+  std::vector<coef_t> coefficients;
+
+  std::vector<int32_t> reverse_offsets;
+  std::vector<int32_t> reverse_constraints;
+  std::vector<int32_t> reverse_to_csr;
+
+  // Per incidence, for the vectorized row walk: the coefficient and the row's cmax, both replicated
+  // in transpose order so the walk reads them at unit stride instead of gathering per row. Both are
+  // structural.
+  std::vector<coef_t> reverse_coefficients;
+  std::vector<coef_t> incident_row_cmax;
+
+  std::vector<int32_t> bound;
+  std::vector<coef_t> cmax;
+  std::vector<int32_t> initial_weight;
+
+  std::vector<double> objective;
+  std::vector<int32_t> objective_vars;
+
+  // Empty unless encoded, when every engine variable is one bit of a bounded general integer and
+  // original[j] = var_offset[j] + sum of bit_weight[b] * assign[b] over the bits b owned by j.
+  bool encoded{false};
+  int32_t n_original{0};
+  std::vector<double> var_offset;
+  std::vector<int32_t> bit_owner;
+  std::vector<int32_t> original_to_bin_mapping;
+  std::vector<double> bit_weight;
+  std::vector<double> orig_objective;
+};
+
+// Result of the width-independent eligibility scan.
+struct fj_bin_scan_t {
+  fj_binary_reject_t reject{fj_binary_reject_t::none};
+  int coefficient_bits{0};
+  int32_t n_split_constraints{0};
+  int32_t bad_row{-1};
+  int32_t bad_var{-1};
+  std::vector<double> row_scale;
+};
+
+constexpr int32_t fj_bin_ddfw_init = 10;  // initial weight, also the donation floor
+
+static inline bool fj_bin_in_int32(double v)
+{
+  return v >= (double)INT32_MIN && v <= (double)INT32_MAX;
+}
+
+template <typename i_t, typename f_t>
+fj_bin_scan_t fj_bin_scan(const fj_cpu_climber_t<i_t, f_t>& c, fj_bin_setup_times_t& times);
+
+template <typename i_t, typename f_t, typename coef_t>
+bool fj_bin_narrow(const fj_cpu_climber_t<i_t, f_t>& c,
+                   const fj_bin_scan_t& scan,
+                   fj_bin_problem_t<coef_t>& pb,
+                   fj_bin_setup_times_t& times);
+
+template <typename i_t, typename f_t, typename coef_t>
+bool fj_bin_encode(const fj_cpu_climber_t<i_t, f_t>& c,
+                   fj_bin_problem_t<coef_t>& pb,
+                   int& coefficient_bits,
+                   fj_bin_setup_times_t& times);
 
 // Returns true if the fast path ran (eligible and narrowed); false if declined, in which case the
 // caller should take the general path.
