@@ -28,13 +28,29 @@ fi
 # Install Protobuf + gRPC (protoc + grpc_cpp_plugin)
 bash ci/utils/install_protobuf_grpc.sh
 
-# EXPERIMENT: use the toolset's GNU libgomp instead of bundling LLVM libomp, to test whether
-# the constraint that motivated the LLVM switch (an outdated system GCC/libgomp on the Rocky
-# Linux wheel build image) still holds now that the build already requires a GCC new enough
-# for C++20. Matching the system libgomp also matches what cuDSS's threading layer
-# (libcudss_mtlayer_gomp.so.0) loads at runtime, avoiding a dual-OpenMP-runtime conflict.
-# See https://github.com/NVIDIA/cuopt/issues/1219
-export SKBUILD_CMAKE_ARGS=""
+# EXPERIMENT (#1219): use GNU libgomp instead of bundling LLVM libomp, to test whether the
+# constraint that motivated the LLVM switch in #1429 still holds. It doesn't fully: GNU
+# libgomp has implemented the OpenMP 5.0 detached-task runtime (omp_fulfill_event) that the
+# fast MPS parser needs since GCC 9, but the *default* '-lgomp' resolution on the Rocky Linux
+# 8 wheel build image picks up the base OS's pre-5.0 libgomp rather than the SCL gcc-toolset
+# compiler's own newer one. Resolve a libgomp.so that actually exports the symbol we need,
+# the same way the (now-removed) LLVM libomp override resolved a concrete versioned ELF file
+# instead of trusting default discovery.
+LIBGOMP_LIBRARY="$(
+    { ldconfig -p | awk '$1 ~ /^libgomp\.so(\.[0-9]+)*$/ { print $NF }'
+      find /opt/rh /usr -name 'libgomp.so.1*' 2>/dev/null
+    } | sort -u | while read -r candidate; do
+        nm -D "${candidate}" 2>/dev/null | grep -q ' T omp_fulfill_event$' && echo "${candidate}" && break
+    done
+)" || true
+if [[ "${LIBGOMP_LIBRARY}" != /* || ! -f "${LIBGOMP_LIBRARY}" ]]; then
+    echo "Could not resolve a GNU libgomp with OpenMP 5.0 detached-task support (omp_fulfill_event)" >&2
+    exit 1
+fi
+
+echo "Using GNU libgomp runtime: ${LIBGOMP_LIBRARY}"
+
+export SKBUILD_CMAKE_ARGS="-DOpenMP_gomp_LIBRARY:FILEPATH=${LIBGOMP_LIBRARY}"
 
 # OpenSSL 3 hints for libcuopt's own find_package(OpenSSL).
 #
