@@ -1,18 +1,15 @@
 # SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-import json
 import logging
 import multiprocessing
 import os
 import time
 import uuid
-import zlib
 from multiprocessing import shared_memory
 from multiprocessing.resource_tracker import unregister
 from threading import Event, Lock
 
-import msgpack
 import msgpack_numpy
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
@@ -51,6 +48,12 @@ from cuopt_server.utils.http_codec import (  # noqa: F401
 )
 from cuopt_server.utils.linear_programming.data_transformation import (
     transform_lp_data,
+)
+from cuopt_server.utils.local_files import (
+    file_result_message,
+    load_optimization_file,
+    result_meets_threshold,
+    write_result_file,
 )
 from cuopt_server.utils.logutil import message
 from cuopt_server.utils.routing.initial_solution import add_initial_sol
@@ -571,14 +574,7 @@ class BinaryJobResult(BaseResult):
         self.set_done()
 
     def get_file_result(self, result):
-        r = {"result_file": self.resultfile}
-        if self.warnings:
-            logging.debug("adding warnings to file result")
-            r["warnings"] = self.warnings
-        if self.notes:
-            logging.debug("adding notes to file result")
-            r["notes"] = self.notes
-        return r
+        return file_result_message(self.resultfile, self.warnings, self.notes)
 
     def set_result(self, result):
         # We expect normal cuOpt responses for a binary job to be
@@ -588,14 +584,13 @@ class BinaryJobResult(BaseResult):
         file_result = None
         if isinstance(result, str) or isinstance(result, bytes):
             try:
-                if (
-                    self.resultfile
-                    and self.resultdir
-                    and self.data_size >= self.maxresult * 1000
+                if result_meets_threshold(
+                    self.resultfile,
+                    self.resultdir,
+                    self.data_size,
+                    self.maxresult,
                 ):
                     # TODO: set a file extension based on rtype?
-                    op = os.path.join(self.resultdir, self.resultfile)
-                    logging.debug(f"Writing large result to disk {op}")
                     file_result = self.get_file_result(result)
 
                     s = None
@@ -610,10 +605,12 @@ class BinaryJobResult(BaseResult):
                     # Make sure to eliminate shm slice ref in buf
                     # and unlink in all cases
                     try:
-                        with open(op, "wb") as out:
-                            out.write(buf)
-                        if self.mode:
-                            os.chmod(op, self.mode)
+                        write_result_file(
+                            self.resultdir,
+                            self.resultfile,
+                            buf,
+                            self.mode,
+                        )
                     finally:
                         buf = None
                         if s:
@@ -1199,77 +1196,8 @@ class SolverBinaryJobPath(SolverBinaryJob):
             _ = cuoptDataInternal.parse_obj(data)
             self._read_wrapper_data(data)
 
-    def _try_extension(self, ext, raw_data):
-        if ext == "zlib":
-            data = json.loads(zlib.decompress(raw_data))
-            logging.debug("zlib data")
-        elif ext == "msgpack":
-            data = msgpack.loads(raw_data, strict_map_key=False)
-            logging.debug("msgpack serialized data")
-        elif ext == "json":
-            data = json.loads(raw_data)
-            logging.debug("uncompressed data")
-        elif ext == "pickle":
-            data = cuopt_pickle_load(raw_data, kind="")
-            self.warnings.append(
-                "Pickle data format is deprecated. "
-                "Use zlib, msgpack, or plain JSON"
-            )
-            logging.warning("pickle data is deprecated")
-            logging.debug("pickle data")
-        else:
-            raise ValueError(
-                f"File extension {ext} is unsupported. "
-                "Supported file extensions are "
-                ".json, .zlib, .msgpack, or .pickle"
-            )
-        return data
-
     def _resolve_job(self):
-        # read the data from the file
-        # if we have an extension, use it otherwise try everything
-        try:
-            ext = (
-                self.file_path.split(".")[-1] if "." in self.file_path else ""
-            )
-            read_begin = time.time()
-            with open(self.file_path, "rb") as f:
-                raw_data = f.read()
-                if ext:
-                    data = self._try_extension(ext, raw_data)
-                else:
-                    for e in ["msgpack", "json", "zlib", "pickle"]:
-                        try:
-                            data = self._try_extension(e, raw_data)
-                            break
-                        except PickleForbidden:
-                            # In this case we know it loaded as pickle but
-                            # it failed the class restrictions, no reason
-                            # to try anything else
-                            raise
-
-                        except Exception:
-                            pass
-                    else:
-                        raise HTTPException(
-                            status_code=422,
-                            detail="unable to read "
-                            "optimization data file, "
-                            "no file extension present and failed to load "
-                            "as any supported format",
-                        )
-                logging.debug(
-                    f"Total file load time {time.time() - read_begin}"
-                )
-
-        except HTTPException:
-            raise
-
-        except Exception as e:
-            raise HTTPException(
-                status_code=422,
-                detail="unable to read optimization data file, %s" % (str(e)),
-            )
+        data = load_optimization_file(self.file_path, self.warnings)
 
         initial_solutions = []
         for init_sol in self.init_sols:

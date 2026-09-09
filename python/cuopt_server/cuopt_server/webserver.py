@@ -78,6 +78,10 @@ from cuopt_server.utils.http_codec import (
     mime_wild,
     mime_zlib,
 )
+from cuopt_server.utils.local_files import (
+    get_output_name,
+    validate_file_path,
+)
 from cuopt_server.utils.job_queue import (
     BaseResult,
     BinaryJobResult,
@@ -175,71 +179,6 @@ def health():
             + msg
         )
         raise HTTPException(status_code=500, detail=f"{msg}")
-
-
-# Get name for file that stores the result of Solve
-def get_output_name(resultdir, CUOPT_DATA_FILE, CUOPT_RESULT_FILE):
-    # Reject paths that escape resultdir using canonicalized containment check.
-    if CUOPT_RESULT_FILE and resultdir:
-        root = os.path.realpath(resultdir)
-        candidate = os.path.realpath(os.path.join(root, CUOPT_RESULT_FILE))
-        if (
-            os.path.isabs(CUOPT_RESULT_FILE)
-            or os.path.commonpath([root, candidate]) != root
-        ):
-            CUOPT_RESULT_FILE = ""
-    if not resultdir:
-        res = ""
-    elif CUOPT_RESULT_FILE:
-        res = CUOPT_RESULT_FILE
-    elif CUOPT_DATA_FILE:
-        res = os.path.basename(CUOPT_DATA_FILE) + ".result"
-    else:
-        res = str(uuid.uuid4())
-    return res
-
-
-# Validate if given data file and file path exists
-def validate_file_path(cuopt_data_file):
-    ddir = settings.get_data_dir()
-    if not ddir:
-        logging.error("cuopt data directory not set!")
-        raise HTTPException(
-            status_code=400,
-            detail="cuopt data directory not set",
-        )
-
-    if os.path.isabs(cuopt_data_file):
-        raise HTTPException(
-            status_code=400,
-            detail="cuopt-data-file must be relative to CUOPT_DATA_DIR",
-        )
-
-    root = os.path.realpath(ddir)
-    file_path = os.path.realpath(os.path.join(root, cuopt_data_file))
-    if os.path.commonpath([root, file_path]) != root:
-        raise HTTPException(
-            status_code=400,
-            detail="cuopt-data-file must stay inside CUOPT_DATA_DIR",
-        )
-
-    if not os.path.exists(file_path):
-        logging.error("cuopt-data-file does not exist")
-        raise HTTPException(
-            status_code=400,
-            detail=f"specified data file does not exist: {cuopt_data_file}",
-        )
-
-    if not os.path.isfile(file_path):
-        logging.error("cuopt-data-file is not a regular file")
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"specified data file is not a regular file: {cuopt_data_file}"
-            ),
-        )
-
-    return file_path
 
 
 app_exit = None
