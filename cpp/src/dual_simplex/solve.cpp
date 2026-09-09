@@ -362,7 +362,7 @@ lp_status_t solve_linear_program_with_advanced_basis(
       primal_phase2(2, start_time, lp, settings, vstatus, solution, iter);
       // TODO: We need to update ft if the basis changed
     }
-    if (settings.inside_mip && settings.concurrent_halt != nullptr) {
+    if (settings.inside_mip == 1 && settings.concurrent_halt != nullptr) {
       settings.log.debug("Setting concurrent halt to 1 inside_mip\n");
       *settings.concurrent_halt = 1;
     }
