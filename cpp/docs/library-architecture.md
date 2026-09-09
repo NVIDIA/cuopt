@@ -28,33 +28,40 @@ The two entry points that matter for deployment are the HTTP service and the gRP
 where the GPU is; both have a client that does not.
 
 ```text
-  CLIENT MACHINE                          │  GPU HOST
-  no GPU, no CUDA runtime                 │
-                                          │
-  ┌────────────────────────────────────┐  │  ┌─────────────────────────────────┐
-  │ cuopt_sh_client                    │  │  │ cuopt_server                    │
-  │ python/cuopt_self_hosted           │──┼─►│ FastAPI + uvicorn               │
-  │                                    │  │  │                                 │
-  │ deps: requests, msgpack only       │  │  │ deps: cuopt, fastapi, uvicorn   │
-  └────────────────────────────────────┘  │  └────────────────┬────────────────┘
-                    HTTP  /cuopt/...      │                   │ imports
-                                          │                   ▼
-  ┌────────────────────────────────────┐  │  ┌─────────────────────────────────┐
-  │ any gRPC client                    │  │  │ cuopt  (python/cuopt)           │
-  │                                    │  │  │ Cython extension modules        │
-  │ CUOPT_REMOTE_HOST / _PORT          │  │  │                                 │
-  └────────────────────────────────────┘  │  │ deps: libcuopt, cudf, cupy,     │
-                    gRPC                  │  │       pylibraft, rmm            │
-                     │                    │  └────────────────┬────────────────┘
-                     │                    │                   │ links cuopt::cuopt
-                     │                    │                   ▼
-                     │                    │  ┌─────────────────────────────────┐
-                     └────────────────────┼─►│ cuopt_grpc_server ──► libcuopt  │
-                                          │  │ forks a worker process per solve│
-                                          │  └────────────────┬────────────────┘
-                                          │                   │ CUDA / rmm / raft
-                                          │                   ▼
-                                          │                  GPU
+  CLIENT MACHINE                 │  GPU HOST
+  no GPU, no CUDA runtime        │
+                                 │
+  ┌───────────────────────────┐  │  ┌──────────────────────┐
+  │ cuopt_sh_client           │──┼─►│ cuopt_server         │
+  │ python/cuopt_self_hosted  │  │  │ FastAPI + uvicorn    │
+  │ deps: requests, msgpack   │  │  └──────────┬───────────┘
+  └───────────────────────────┘  │             │ imports
+           HTTP  /cuopt/...      │             ▼
+                                 │  ┌──────────────────────┐
+                                 │  │ cuopt                │
+                                 │  │ python/cuopt         │──┐
+                                 │  │ Cython modules       │  │
+                                 │  │ deps: cudf, cupy,    │  │ links
+                                 │  │ pylibraft, rmm       │  │
+                                 │  └──────────────────────┘  │
+                                 │                            │
+  ┌───────────────────────────┐  │  ┌──────────────────────┐  │
+  │ any gRPC client           │──┼─►│ cuopt_grpc_server    │  │
+  │ CUOPT_REMOTE_HOST / _PORT │  │  │ forks one worker     │  │
+  └───────────────────────────┘  │  │ process per solve    │  │
+           gRPC                  │  └──────────┬───────────┘  │
+                                 │             │ links        │
+                                 │             ▼              │
+                                 │  ┌──────────────────────┐  │
+                                 │  │ libcuopt.so          │◄─┘
+                                 │  │ cuopt::cuopt         │
+                                 │  │                      │
+                                 │  │ also linked by       │
+                                 │  │ cuopt_cli            │
+                                 │  └──────────┬───────────┘
+                                 │             │ CUDA / rmm / raft
+                                 │             ▼
+                                 │            GPU
 ```
 
 `cuopt_sh_client` is the existing proof that a CUDA-free client is useful: it depends on nothing
