@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import json
+import os
 import pickle
 import stat
 
@@ -74,6 +75,62 @@ def test_validate_file_path_rejects_unset_data_dir():
 
     assert exc_info.value.status_code == 400
     assert "cuopt data directory not set" in exc_info.value.detail
+
+
+def test_validate_file_path_rejects_absolute_path(tmp_path):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    outside_file = tmp_path / "input.json"
+    outside_file.write_text("{}", encoding="utf-8")
+    settings.set_data_dir(str(data_dir))
+
+    with pytest.raises(HTTPException) as exc_info:
+        validate_file_path(str(outside_file))
+
+    assert exc_info.value.status_code == 400
+    assert "relative to CUOPT_DATA_DIR" in exc_info.value.detail
+
+
+def test_validate_file_path_rejects_parent_directory_escape(tmp_path):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    outside_file = tmp_path / "input.json"
+    outside_file.write_text("{}", encoding="utf-8")
+    settings.set_data_dir(str(data_dir))
+
+    with pytest.raises(HTTPException) as exc_info:
+        validate_file_path("../input.json")
+
+    assert exc_info.value.status_code == 400
+    assert "stay inside CUOPT_DATA_DIR" in exc_info.value.detail
+
+
+def test_validate_file_path_rejects_non_regular_file(tmp_path):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / "input").mkdir()
+    settings.set_data_dir(str(data_dir))
+
+    with pytest.raises(HTTPException) as exc_info:
+        validate_file_path("input")
+
+    assert exc_info.value.status_code == 400
+    assert "not a regular file" in exc_info.value.detail
+
+
+def test_validate_file_path_rejects_symlink_escape(tmp_path):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    outside_file = tmp_path / "input.json"
+    outside_file.write_text("{}", encoding="utf-8")
+    os.symlink(outside_file, data_dir / "linked-input.json")
+    settings.set_data_dir(str(data_dir))
+
+    with pytest.raises(HTTPException) as exc_info:
+        validate_file_path("linked-input.json")
+
+    assert exc_info.value.status_code == 400
+    assert "stay inside CUOPT_DATA_DIR" in exc_info.value.detail
 
 
 def test_result_meets_threshold():
