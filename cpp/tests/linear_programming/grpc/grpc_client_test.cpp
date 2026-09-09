@@ -24,6 +24,8 @@
 #include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
+#include <raft/util/cudart_utils.hpp>
+#include <rmm/device_uvector.hpp>
 #include "grpc_client.hpp"
 #include "grpc_problem_mapper.hpp"
 #include "grpc_service_mapper.hpp"
@@ -2623,6 +2625,23 @@ void seed_minimal_problem(cpu_optimization_problem_t<int32_t, double>& problem)
   problem.set_constraint_upper_bounds(b_ub.data(), 1);
 }
 
+std::vector<double> host_copy_device_uvector(const rmm::device_uvector<double>& device)
+{
+  std::vector<double> host(device.size());
+  if (!device.is_empty()) {
+    raft::copy(host.data(), device.data(), device.size(), device.stream());
+    device.stream().sync();
+  }
+  return host;
+}
+
+void expect_device_matches_host(const rmm::device_uvector<double>& device,
+                                const std::vector<double>& expected)
+{
+  ASSERT_EQ(device.size(), expected.size());
+  EXPECT_EQ(host_copy_device_uvector(device), expected);
+}
+
 }  // namespace
 
 TEST(MapperRoundtrip, QuadraticConstraintsUnaryPath)
@@ -2862,7 +2881,7 @@ TEST(ApplyInitialSolutions, CopiesPrimalToMipSettings)
   apply_initial_solutions_to_mip_settings(problem, settings);
   ASSERT_EQ(settings.initial_solutions.size(), 1);
   ASSERT_NE(settings.initial_solutions[0], nullptr);
-  EXPECT_EQ(settings.initial_solutions[0]->size(), primal.size());
+  expect_device_matches_host(*settings.initial_solutions[0], primal);
 }
 
 TEST(ApplyInitialSolutions, CopiesPrimalAndDualToPdlpSettings)
@@ -2878,8 +2897,49 @@ TEST(ApplyInitialSolutions, CopiesPrimalAndDualToPdlpSettings)
   apply_initial_solutions_to_pdlp_settings(problem, settings);
   ASSERT_TRUE(settings.has_initial_primal_solution());
   ASSERT_TRUE(settings.has_initial_dual_solution());
-  EXPECT_EQ(settings.get_initial_primal_solution().size(), primal.size());
-  EXPECT_EQ(settings.get_initial_dual_solution().size(), dual.size());
+  expect_device_matches_host(settings.get_initial_primal_solution(), primal);
+  expect_device_matches_host(settings.get_initial_dual_solution(), dual);
+}
+
+TEST(ApplyInitialSolutions, SkipsEmptyArrays)
+{
+  cpu_optimization_problem_t<int32_t, double> problem;
+  seed_minimal_problem(problem);
+
+  mip_solver_settings_t<int32_t, double> mip;
+  apply_initial_solutions_to_mip_settings(problem, mip);
+  EXPECT_TRUE(mip.initial_solutions.empty());
+
+  pdlp_solver_settings_t<int32_t, double> pdlp;
+  apply_initial_solutions_to_pdlp_settings(problem, pdlp);
+  EXPECT_FALSE(pdlp.has_initial_primal_solution());
+  EXPECT_FALSE(pdlp.has_initial_dual_solution());
+}
+
+TEST(ApplyInitialSolutions, CopiesMismatchedSizesWithoutChecking)
+{
+  // apply_* matches local solve: size is not checked here. seed_minimal_problem
+  // has 3 variables and 1 constraint; these arrays are deliberately the wrong
+  // length (including a singleton primal) and include a value outside bounds.
+  cpu_optimization_problem_t<int32_t, double> problem;
+  seed_minimal_problem(problem);
+  std::vector<double> primal = {99.0};
+  std::vector<double> dual   = {1.0, 2.0};
+  problem.set_initial_primal_solution(primal.data(), static_cast<int32_t>(primal.size()));
+  problem.set_initial_dual_solution(dual.data(), static_cast<int32_t>(dual.size()));
+
+  mip_solver_settings_t<int32_t, double> mip;
+  apply_initial_solutions_to_mip_settings(problem, mip);
+  ASSERT_EQ(mip.initial_solutions.size(), 1);
+  ASSERT_NE(mip.initial_solutions[0], nullptr);
+  expect_device_matches_host(*mip.initial_solutions[0], primal);
+
+  pdlp_solver_settings_t<int32_t, double> pdlp;
+  apply_initial_solutions_to_pdlp_settings(problem, pdlp);
+  ASSERT_TRUE(pdlp.has_initial_primal_solution());
+  ASSERT_TRUE(pdlp.has_initial_dual_solution());
+  expect_device_matches_host(pdlp.get_initial_primal_solution(), primal);
+  expect_device_matches_host(pdlp.get_initial_dual_solution(), dual);
 }
 
 TEST(MapperRoundtrip, QuadraticConstraintsRowTypeLenient)
