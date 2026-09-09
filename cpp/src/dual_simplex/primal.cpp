@@ -14,18 +14,128 @@
 #include <dual_simplex/solve.hpp>
 #include <math_optimization/tic_toc.hpp>
 
+#include <algorithm>
+
 namespace cuopt::mathematical_optimization::simplex {
+
+template <typename f_t>
+struct primal_work_timer_t {
+  primal_work_timer_t(f_t t) : time(t) {}
+  f_t time{0.0};
+  f_t work{0.0};
+};
+
+template <typename f_t>
+primal_work_timer_t<f_t>& operator+=(primal_work_timer_t<f_t>& lhs,
+                                     const primal_work_timer_t<f_t>& rhs)
+{
+  lhs.time += rhs.time;
+  lhs.work += rhs.work;
+  return lhs;
+}
+
+template <typename i_t, typename f_t>
+class primal_timers_t {
+ public:
+  primal_timers_t(bool should_time)
+    : record_time(should_time),
+      pricing_time(0),
+      ftran_time(0),
+      ratio_test_time(0),
+      btran_time(0),
+      delta_z_time(0),
+      update_duals_time(0),
+      lu_update_time(0),
+      lu_factorization_time(0),
+      update_x_time(0)
+  {
+  }
+
+  void start_timer(f_t work)
+  {
+    if (!record_time) { return; }
+    start_time_ = tic();
+    start_work_ = work;
+  }
+
+  primal_work_timer_t<f_t> stop_timer(f_t stop_work)
+  {
+    if (!record_time) { return primal_work_timer_t<f_t>(0.0); }
+    primal_work_timer_t<f_t> result(toc(start_time_));
+    result.work = stop_work - start_work_;
+    return result;
+  }
+
+  void print_one(const simplex_solver_settings_t<i_t, f_t>& settings,
+                 const char* name,
+                 const primal_work_timer_t<f_t>& t,
+                 f_t total_time,
+                 f_t total_work) const
+  {
+    const f_t work_per_sec = t.time > 0.0 ? t.work / t.time : f_t(0);
+    settings.log.printf("%-15s %.2fs %4.1f%% (%.2e work %4.1f%% %.2e/s)\n",
+                        name,
+                        t.time,
+                        total_time > 0.0 ? 100.0 * t.time / total_time : 0.0,
+                        t.work,
+                        total_work > 0.0 ? 100.0 * t.work / total_work : 0.0,
+                        work_per_sec);
+  }
+
+  void print_timers(const simplex_solver_settings_t<i_t, f_t>& settings) const
+  {
+    if (!record_time) { return; }
+    const f_t total_time = pricing_time.time + ftran_time.time + ratio_test_time.time +
+                           btran_time.time + delta_z_time.time + update_duals_time.time +
+                           lu_update_time.time + lu_factorization_time.time + update_x_time.time;
+    const f_t total_work = pricing_time.work + ftran_time.work + ratio_test_time.work +
+                           btran_time.work + delta_z_time.work + update_duals_time.work +
+                           lu_update_time.work + lu_factorization_time.work + update_x_time.work;
+    // clang-format off
+    print_one(settings, "Pricing time", pricing_time, total_time, total_work);
+    print_one(settings, "FTran time", ftran_time, total_time, total_work);
+    print_one(settings, "Ratio test", ratio_test_time, total_time, total_work);
+    print_one(settings, "BTran time", btran_time, total_time, total_work);
+    print_one(settings, "Delta_z time", delta_z_time, total_time, total_work);
+    print_one(settings, "Update duals", update_duals_time, total_time, total_work);
+    print_one(settings, "LU update time", lu_update_time, total_time, total_work);
+    print_one(settings, "LU factor time", lu_factorization_time, total_time, total_work);
+    print_one(settings, "Update x time", update_x_time, total_time, total_work);
+    settings.log.printf("Sum             %.2fs (%.2e work %.2e/s)\n",
+                        total_time,
+                        total_work,
+                        total_time > 0.0 ? total_work / total_time : f_t(0));
+    // clang-format on
+  }
+
+  primal_work_timer_t<f_t> pricing_time;
+  primal_work_timer_t<f_t> ftran_time;
+  primal_work_timer_t<f_t> ratio_test_time;
+  primal_work_timer_t<f_t> btran_time;
+  primal_work_timer_t<f_t> delta_z_time;
+  primal_work_timer_t<f_t> update_duals_time;
+  primal_work_timer_t<f_t> lu_update_time;
+  primal_work_timer_t<f_t> lu_factorization_time;
+  primal_work_timer_t<f_t> update_x_time;
+
+ private:
+  f_t start_time_;
+  f_t start_work_;
+  bool record_time;
+};
 
 namespace {
 
 template <typename i_t, typename f_t>
 void set_primal_variables_on_bounds(const lp_problem_t<i_t, f_t>& lp,
                                     const simplex_solver_settings_t<i_t, f_t>& settings,
-                                    const std::vector<f_t>& z,
                                     std::vector<variable_status_t>& vstatus,
-                                    std::vector<f_t>& x)
+                                    std::vector<f_t>& x,
+                                    f_t& work_estimate)
 {
-  const i_t n            = lp.num_cols;
+  const i_t m = lp.num_rows;
+  const i_t n = lp.num_cols;
+
   constexpr f_t diff_tol = 1e-6;
   for (i_t j = 0; j < n; ++j) {
     if (vstatus[j] == variable_status_t::BASIC) { continue; }
@@ -53,18 +163,20 @@ void set_primal_variables_on_bounds(const lp_problem_t<i_t, f_t>& lp,
       assert(1 == 0);
     }
   }
+  work_estimate += n + 3.0 * (n - m);
 }
 
 template <typename i_t, typename f_t>
 f_t dual_infeasibility(const lp_problem_t<i_t, f_t>& lp,
                        const std::vector<variable_status_t>& vstatus,
-                       const std::vector<f_t>& z)
+                       const std::vector<f_t>& z,
+                       f_t tight_tol,
+                       i_t& num_infeasible,
+                       f_t& work_estimate)
 {
   const i_t n             = lp.num_cols;
-  const i_t m             = lp.num_rows;
-  i_t num_infeasible      = 0;
+  num_infeasible          = 0;
   f_t sum_infeasible      = 0.0;
-  constexpr f_t tight_tol = 0;
   i_t lower_bound_inf     = 0;
   i_t upper_bound_inf     = 0;
   i_t free_inf            = 0;
@@ -102,6 +214,7 @@ f_t dual_infeasibility(const lp_problem_t<i_t, f_t>& lp,
       non_basic_upper_inf++;
     }
   }
+  work_estimate += 8 * n;
 
   return sum_infeasible;
 }
@@ -111,9 +224,11 @@ i_t phase2_pricing(const lp_problem_t<i_t, f_t>& lp,
                    const std::vector<f_t>& z,
                    const std::vector<i_t>& nonbasic_list,
                    const std::vector<variable_status_t>& vstatus,
+                   f_t dual_tol,
                    i_t& direction,
                    i_t& basic_entering,
-                   f_t& dual_inf)
+                   f_t& dual_inf,
+                   f_t& work_estimate)
 {
   const i_t m        = lp.num_rows;
   const i_t n        = lp.num_cols;
@@ -121,8 +236,7 @@ i_t phase2_pricing(const lp_problem_t<i_t, f_t>& lp,
   f_t max_infeas     = 0.0;
   dual_inf           = 0.0;
   for (i_t k = 0; k < n - m; ++k) {
-    const i_t j            = nonbasic_list[k];
-    constexpr f_t dual_tol = 1e-6;
+    const i_t j = nonbasic_list[k];
     if (vstatus[j] == variable_status_t::NONBASIC_FIXED) { continue; }
     if ((vstatus[j] == variable_status_t::NONBASIC_LOWER ||
          vstatus[j] == variable_status_t::NONBASIC_FREE) &&
@@ -148,69 +262,78 @@ i_t phase2_pricing(const lp_problem_t<i_t, f_t>& lp,
       }
     }
   }
+  work_estimate += 5 * (n - m);
   return entering_index;
 }
 
 template <typename i_t, typename f_t>
-i_t ratio_test(const lp_problem_t<i_t, f_t>& lp,
-               const std::vector<variable_status_t>& vstatus,
-               const std::vector<i_t>& basic_list,
-               std::vector<f_t>& x,
-               std::vector<f_t>& delta_x,
-               f_t& step_length,
-               i_t& basic_leaving)
+i_t devex_pricing(const lp_problem_t<i_t, f_t>& lp,
+                  const std::vector<f_t>& z,
+                  const std::vector<f_t>& devex_weight,
+                  const std::vector<i_t>& nonbasic_list,
+                  const std::vector<variable_status_t>& vstatus,
+                  f_t dual_tol,
+                  i_t& direction,
+                  i_t& basic_entering,
+                  f_t& dual_inf,
+                  f_t& work_estimate)
 {
-  const i_t m             = lp.num_rows;
-  const i_t n             = lp.num_cols;
-  basic_leaving           = -1;
-  i_t leaving_index       = -1;
-  f_t min_val             = inf;
-  constexpr f_t pivot_tol = 1e-8;
-  for (i_t k = 0; k < m; ++k) {
-    const i_t j = basic_list[k];
-    if (delta_x[j] == 0.0) { continue; }
-    if (lp.lower[j] > -inf && x[j] >= lp.lower[j] && delta_x[j] < -pivot_tol) {
-      // xj + step * delta_x[j] >= lp.lower[j]
-      // step * delta_x[j] >= lp.lower[j] - x[j]
-      // step <= (lp.lower[j] - x[j]) / delta_x[j], delta_x[j] < 0
-      const f_t neum = lp.lower[j] - x[j];
-      f_t ratio      = neum / delta_x[j];
-      if (ratio < min_val) {
-        min_val       = ratio;
-        basic_leaving = k;
-        leaving_index = j;
-      }
+  const i_t m        = lp.num_rows;
+  const i_t n        = lp.num_cols;
+  i_t entering_index = -1;
+  f_t max_score      = 0.0;
+  dual_inf           = 0.0;
+  for (i_t k = 0; k < n - m; ++k) {
+    const i_t j = nonbasic_list[k];
+    if (vstatus[j] == variable_status_t::NONBASIC_FIXED) { continue; }
+    f_t infeas = 0.0;
+    i_t dir    = 0;
+    if ((vstatus[j] == variable_status_t::NONBASIC_LOWER ||
+         vstatus[j] == variable_status_t::NONBASIC_FREE) &&
+        z[j] < -dual_tol) {
+      infeas = -z[j];
+      dir    = 1;
+    } else if ((vstatus[j] == variable_status_t::NONBASIC_UPPER ||
+                vstatus[j] == variable_status_t::NONBASIC_FREE) &&
+               z[j] > dual_tol) {
+      infeas = z[j];
+      dir    = -1;
     }
-    if (lp.upper[j] < inf && x[j] <= lp.upper[j] && delta_x[j] > pivot_tol) {
-      // xj + step * delta_x[j] <= lp.upper[j]
-      // step * delta_x[j] <= lp.upper[j] - x[j]
-      // step <= (lp.upper[j] - x[j]) / delta_x[j], delta_x[j] > 0
-      const f_t neum = lp.upper[j] - x[j];
-      f_t ratio      = neum / delta_x[j];
-      if (ratio < min_val) {
-        min_val       = ratio;
-        basic_leaving = k;
-        leaving_index = j;
+    if (infeas > 0.0) {
+      dual_inf += infeas;
+      const f_t score = (infeas * infeas) / devex_weight[j];
+      if (score > max_score) {
+        max_score      = score;
+        basic_entering = k;
+        entering_index = j;
+        direction      = dir;
       }
     }
   }
-  step_length = min_val;
-  return leaving_index;
+  work_estimate += 7 * (n - m);
+  return entering_index;
 }
 
 template <typename i_t, typename f_t>
 f_t primal_infeasibility(const lp_problem_t<i_t, f_t>& lp,
                          const simplex_solver_settings_t<i_t, f_t>& settings,
                          const std::vector<variable_status_t>& vstatus,
-                         const std::vector<f_t>& x)
+                         const std::vector<f_t>& x,
+                         i_t& num_infeasible,
+                         f_t& work_estimate)
 {
+  const i_t m    = lp.num_rows;
   const i_t n    = lp.num_cols;
   f_t primal_inf = 0;
+  num_infeasible = 0;
   for (i_t j = 0; j < n; ++j) {
-    if (x[j] < lp.lower[j]) {
+    // Nonbasics are pinned to a bound; only basics can be (legitimately) infeasible.
+    if (vstatus[j] != variable_status_t::BASIC) { continue; }
+    if (x[j] < lp.lower[j] - settings.primal_tol) {
       // x_j < l_j => -x_j > -l_j => -x_j + l_j > 0
       const f_t infeas = -x[j] + lp.lower[j];
       primal_inf += infeas;
+      num_infeasible++;
       if (infeas > 1e-6) {
         settings.log.debug("x %d infeas %e lo %e val %e up %e vstatus %hhd\n",
                            j,
@@ -221,10 +344,11 @@ f_t primal_infeasibility(const lp_problem_t<i_t, f_t>& lp,
                            vstatus[j]);
       }
     }
-    if (x[j] > lp.upper[j]) {
+    if (x[j] > lp.upper[j] + settings.primal_tol) {
       // x_j > u_j => x_j - u_j > 0
       const f_t infeas = x[j] - lp.upper[j];
       primal_inf += infeas;
+      num_infeasible++;
       if (infeas > 1e-6) {
         settings.log.debug("x %d infeas %e lo %e val %e up %e vstatus %hhd\n",
                            j,
@@ -236,15 +360,366 @@ f_t primal_infeasibility(const lp_problem_t<i_t, f_t>& lp,
       }
     }
   }
+  work_estimate += n + 4 * m;
   return primal_inf;
+}
+
+template <typename i_t, typename f_t>
+f_t primal_infeasibility(const lp_problem_t<i_t, f_t>& lp,
+                         const simplex_solver_settings_t<i_t, f_t>& settings,
+                         const std::vector<variable_status_t>& vstatus,
+                         const std::vector<f_t>& x,
+                         f_t& work_estimate)
+{
+  i_t num_infeasible = 0;
+  return primal_infeasibility(lp, settings, vstatus, x, num_infeasible, work_estimate);
+}
+
+// work estimate: n-m + 4 * m
+template <typename i_t, typename f_t>
+void compute_phase1_objective(const lp_problem_t<i_t, f_t>& lp,
+                              const simplex_solver_settings_t<i_t, f_t>& settings,
+                              const std::vector<variable_status_t>& vstatus,
+                              const std::vector<f_t>& x,
+                              std::vector<f_t>& objective,
+                              f_t& work_estimate)
+{
+  const i_t m = lp.num_rows;
+  const i_t n = lp.num_cols;
+  for (i_t j = 0; j < n; ++j) {
+    if (vstatus[j] != variable_status_t::BASIC) {
+      objective[j] = 0.0;
+    } else if (x[j] < lp.lower[j] - settings.primal_tol) {
+      objective[j] = -1.0;
+    } else if (x[j] > lp.upper[j] + settings.primal_tol) {
+      objective[j] = 1.0;
+    } else {
+      objective[j] = 0.0;
+    }
+  }
+  work_estimate += n - m + 4 * m;
+}
+
+template <typename i_t, typename f_t>
+void compute_delta_y(const basis_update_mpf_t<i_t, f_t>& basis_update,
+                     i_t basic_leaving,
+                     sparse_vector_t<i_t, f_t>& delta_y,
+                     sparse_vector_t<i_t, f_t>& etilde)
+{
+  const i_t m = delta_y.n;
+  sparse_vector_t<i_t, f_t> ei(m, 1);
+  ei.i[0] = basic_leaving;
+  ei.x[0] = 1.0;
+  delta_y.clear();
+  etilde.clear();
+  basis_update.b_transpose_solve(ei, delta_y, etilde);
+}
+
+template <typename i_t, typename f_t>
+void compute_delta_z(const csr_matrix_t<i_t, f_t>& Arow,
+                     const std::vector<variable_status_t>& vstatus,
+                     const sparse_vector_t<i_t, f_t>& delta_y,
+                     std::vector<f_t>& delta_z,
+                     f_t& work_estimate)
+{
+  // A^T delta_y + delta_z = 0
+  // delta_z = -A^T delta_y = - sum_i A(i, :) * delta_y_i
+  std::fill(delta_z.begin(), delta_z.end(), 0.0);
+  work_estimate += delta_z.size();
+  for (i_t k = 0; k < static_cast<i_t>(delta_y.i.size()); ++k) {
+    const i_t i         = delta_y.i[k];
+    const f_t delta_y_i = delta_y.x[k];
+    const i_t row_start = Arow.row_start[i];
+    const i_t row_end   = Arow.row_start[i + 1];
+    for (i_t p = row_start; p < row_end; ++p) {
+      const i_t j = Arow.j[p];
+      if (vstatus[j] != variable_status_t::BASIC) { delta_z[j] -= Arow.x[p] * delta_y_i; }
+    }
+    work_estimate += 5 * (row_end - row_start);
+  }
+  work_estimate += 4 * delta_y.i.size();
+}
+
+template <typename f_t>
+f_t compute_dual_step_length(f_t entering_reduced_cost, f_t pivot)
+{
+  assert(pivot != 0.0);
+  return entering_reduced_cost / pivot;
+}
+
+template <typename i_t, typename f_t>
+void update_y(f_t dual_step_length,
+              const sparse_vector_t<i_t, f_t>& delta_y,
+              std::vector<f_t>& y,
+              f_t& work_estimate)
+{
+  for (i_t k = 0; k < static_cast<i_t>(delta_y.i.size()); ++k) {
+    const i_t i = delta_y.i[k];
+    y[i] += dual_step_length * delta_y.x[k];
+  }
+  work_estimate += 3 * delta_y.i.size();
+}
+
+template <typename i_t, typename f_t>
+void update_z(f_t dual_step_length,
+              const std::vector<i_t>& nonbasic_list,
+              i_t entering_index,
+              const std::vector<f_t>& delta_z,
+              std::vector<f_t>& z,
+              f_t& work_estimate)
+{
+  for (i_t k = 0; k < static_cast<i_t>(nonbasic_list.size()); ++k) {
+    const i_t j = nonbasic_list[k];
+    z[j] += dual_step_length * delta_z[j];
+  }
+  work_estimate += 3 * nonbasic_list.size();
+  z[entering_index] = 0.0;
+}
+
+template <typename i_t, typename f_t>
+void compute_dual_variables(const lp_problem_t<i_t, f_t>& lp,
+                            const simplex_solver_settings_t<i_t, f_t>& settings,
+                            const std::vector<f_t>& objective,
+                            const std::vector<i_t>& basic_list,
+                            const std::vector<i_t>& nonbasic_list,
+                            basis_update_mpf_t<i_t, f_t>& ft,
+                            std::vector<f_t>& c_basic,
+                            std::vector<f_t>& y,
+                            std::vector<f_t>& z,
+                            f_t& work_estimate)
+{
+  const i_t m = lp.num_rows;
+  const i_t n = lp.num_cols;
+  // Solve for y such that B'*y = c_B
+  for (i_t k = 0; k < m; ++k) {
+    const i_t j = basic_list[k];
+    c_basic[k]  = objective[j];
+  }
+  work_estimate += 3 * m;
+  ft.b_transpose_solve(c_basic, y);
+  // zN = cN - N'*y
+  for (i_t k = 0; k < n - m; k++) {
+    const i_t j = nonbasic_list[k];
+    // z_j <- c_j
+    z[j] = objective[j];
+
+    // z_j <- z_j - A(:, j)'*y
+    const i_t col_start = lp.A.col_start[j];
+    const i_t col_end   = lp.A.col_start[j + 1];
+    f_t dot             = 0.0;
+    for (i_t p = col_start; p < col_end; ++p) {
+      dot += lp.A.x[p] * y[lp.A.i[p]];
+    }
+    work_estimate += 3.0 * (col_end - col_start);
+    z[j] -= dot;
+  }
+  work_estimate += 6 * (n - m);
+  // zB = 0
+  for (i_t k = 0; k < m; ++k) {
+    z[basic_list[k]] = 0.0;
+  }
+  work_estimate += 2 * m;
+}
+
+template <typename i_t, typename f_t>
+void compute_basic_primal_variables(const lp_problem_t<i_t, f_t>& lp,
+                                    const basis_update_mpf_t<i_t, f_t>& basis_update,
+                                    const std::vector<i_t>& basic_list,
+                                    const std::vector<i_t>& nonbasic_list,
+                                    std::vector<f_t>& x,
+                                    f_t& work_estimate)
+{
+  const i_t m          = lp.num_rows;
+  const i_t n          = lp.num_cols;
+  std::vector<f_t> rhs = lp.rhs;
+  for (i_t k = 0; k < n - m; ++k) {
+    const i_t j         = nonbasic_list[k];
+    const i_t col_start = lp.A.col_start[j];
+    const i_t col_end   = lp.A.col_start[j + 1];
+    const f_t xj        = x[j];
+    for (i_t p = col_start; p < col_end; ++p) {
+      rhs[lp.A.i[p]] -= xj * lp.A.x[p];
+    }
+    work_estimate += 3.0 * (col_end - col_start);
+  }
+  work_estimate += 4 * (n - m);
+  std::vector<f_t> xB(m);
+  work_estimate += m;
+  basis_update.b_solve(rhs, xB);
+  for (i_t k = 0; k < m; ++k) {
+    x[basic_list[k]] = xB[k];
+  }
+  work_estimate += 3 * m;
+}
+
+template <typename i_t, typename f_t>
+f_t primal_constraint_residual(const lp_problem_t<i_t, f_t>& lp, const std::vector<f_t>& x)
+{
+  std::vector<f_t> residual = lp.rhs;
+  matrix_vector_multiply(lp.A, 1.0, x, -1.0, residual);
+  return vector_norm_inf<i_t, f_t>(residual);
 }
 
 }  // namespace
 
-// Note this implementation of primal simplex is experimental
-// It is meant only to serve as a method to remove the perturbation to the objective
-// after dual simplex has found a primal feasible solution
-// The implementation currently cycles. So is not enabled at this time.
+template <typename i_t, typename f_t>
+i_t primal_ratio_test(const lp_problem_t<i_t, f_t>& lp,
+                      const simplex_solver_settings_t<i_t, f_t>& settings,
+                      const std::vector<variable_status_t>& vstatus,
+                      const std::vector<i_t>& basic_list,
+                      std::vector<f_t>& x,
+                      std::vector<f_t>& delta_x,
+                      f_t& step_length,
+                      i_t& basic_leaving,
+                      i_t entering_index,
+                      i_t direction,
+                      f_t& work_estimate)
+{
+  const i_t m              = lp.num_rows;
+  basic_leaving            = -1;
+  i_t leaving_index        = -1;
+  constexpr f_t pivot_tol  = 1e-8;
+  constexpr f_t harris_tol = 1e-8;
+
+  // Harris ratio test: two passes.
+  // Pass 1: find the maximum step length alpha_1 such that no variable
+  //         moves more than harris_tol past its bound.
+  // Pass 2: among all candidates with ratio <= alpha_1, pick the one
+  //         with the largest pivot (|delta_x[j]|).
+
+  f_t alpha_1 = inf;
+
+  // Entering variable can hit its opposite bound: limit step by that
+  if (direction > 0 && lp.upper[entering_index] < inf) {
+    const f_t limit = lp.upper[entering_index] - x[entering_index];
+    if (limit >= 0 && limit < alpha_1) { alpha_1 = limit; }
+  } else if (direction < 0 && lp.lower[entering_index] > -inf) {
+    const f_t limit = x[entering_index] - lp.lower[entering_index];
+    if (limit >= 0 && limit < alpha_1) { alpha_1 = limit; }
+  }
+
+  // Pass 1: compute alpha_1 (Harris step)
+  for (i_t k = 0; k < m; ++k) {
+    const i_t j = basic_list[k];
+    if (std::abs(delta_x[j]) <= pivot_tol) { continue; }
+
+    // Already below lower and moving back up: stop exactly at the bound.
+    // No harris tolerance here — these variables are already infeasible
+    // and must not overshoot their bound (needed for Phase I correctness).
+    if (x[j] < lp.lower[j] && delta_x[j] > pivot_tol && lp.lower[j] > -inf) {
+      const f_t ratio = (lp.lower[j] - x[j]) / delta_x[j];
+      if (ratio >= 0 && ratio < alpha_1) { alpha_1 = ratio; }
+    }
+    // Already above upper and moving back down: stop exactly at the bound.
+    if (x[j] > lp.upper[j] && delta_x[j] < -pivot_tol && lp.upper[j] < inf) {
+      const f_t ratio = (lp.upper[j] - x[j]) / delta_x[j];
+      if (ratio >= 0 && ratio < alpha_1) { alpha_1 = ratio; }
+    }
+
+    if (lp.lower[j] > -inf && delta_x[j] < -pivot_tol) {
+      // xj + step * delta_x[j] >= lp.lower[j] - harris_tol
+      f_t neum = lp.lower[j] - x[j] - harris_tol;
+      if (neum > 0 && neum <= settings.primal_tol) { neum = 0.0; }
+      f_t ratio = neum / delta_x[j];
+      if (ratio >= 0 && ratio < alpha_1) { alpha_1 = ratio; }
+    }
+    if (lp.upper[j] < inf && delta_x[j] > pivot_tol) {
+      // xj + step * delta_x[j] <= lp.upper[j] + harris_tol
+      f_t neum = lp.upper[j] - x[j] + harris_tol;
+      if (neum < 0 && -neum <= settings.primal_tol) { neum = 0.0; }
+      f_t ratio = neum / delta_x[j];
+      if (ratio >= 0 && ratio < alpha_1) { alpha_1 = ratio; }
+    }
+  }
+
+  // Pass 2: among candidates with exact ratio <= alpha_1, pick largest pivot
+  f_t best_pivot = 0.0;
+  step_length    = alpha_1;
+
+  // Check entering variable bound (no pivot selection needed — it's fixed at direction)
+  if (direction > 0 && lp.upper[entering_index] < inf) {
+    const f_t limit = lp.upper[entering_index] - x[entering_index];
+    if (limit >= 0 && limit <= alpha_1) {
+      // Entering hits its own bound — this is always pivot = 1.0 effectively
+      step_length   = limit;
+      leaving_index = -1;
+      basic_leaving = -1;
+      best_pivot    = inf;  // Always prefer this if it's within alpha_1
+    }
+  } else if (direction < 0 && lp.lower[entering_index] > -inf) {
+    const f_t limit = x[entering_index] - lp.lower[entering_index];
+    if (limit >= 0 && limit <= alpha_1) {
+      step_length   = limit;
+      leaving_index = -1;
+      basic_leaving = -1;
+      best_pivot    = inf;
+    }
+  }
+
+  for (i_t k = 0; k < m; ++k) {
+    const i_t j = basic_list[k];
+    if (std::abs(delta_x[j]) <= pivot_tol) { continue; }
+
+    const f_t abs_dx = std::abs(delta_x[j]);
+
+    // Already below lower and moving back up: stop when we reach the lower bound.
+    // Without this, phase I can take an unbounded step (false unbounded) or skip the
+    // breakpoint of the piecewise phase-I objective and stall still infeasible.
+    if (x[j] < lp.lower[j] && delta_x[j] > pivot_tol && lp.lower[j] > -inf) {
+      const f_t ratio = (lp.lower[j] - x[j]) / delta_x[j];
+      if (ratio >= 0 && ratio <= alpha_1 && abs_dx > best_pivot) {
+        best_pivot    = abs_dx;
+        step_length   = ratio;
+        basic_leaving = k;
+        leaving_index = j;
+      }
+    }
+    // Already above upper and moving back down
+    if (x[j] > lp.upper[j] && delta_x[j] < -pivot_tol && lp.upper[j] < inf) {
+      const f_t ratio = (lp.upper[j] - x[j]) / delta_x[j];
+      if (ratio >= 0 && ratio <= alpha_1 && abs_dx > best_pivot) {
+        best_pivot    = abs_dx;
+        step_length   = ratio;
+        basic_leaving = k;
+        leaving_index = j;
+      }
+    }
+
+    if (lp.lower[j] > -inf && delta_x[j] < -pivot_tol) {
+      // xj + step * delta_x[j] >= lp.lower[j]
+      // step <= (lp.lower[j] - x[j]) / delta_x[j], delta_x[j] < 0
+      f_t neum = lp.lower[j] - x[j];
+      // A basic sitting below its bound (within the primal tolerance) is on
+      // the bound numerically. Treat it as a zero-length block.
+      if (neum > 0 && neum <= settings.primal_tol) { neum = 0.0; }
+      f_t ratio = neum / delta_x[j];
+      if (ratio >= 0 && ratio <= alpha_1 && abs_dx > best_pivot) {
+        best_pivot    = abs_dx;
+        step_length   = ratio;
+        basic_leaving = k;
+        leaving_index = j;
+      }
+    }
+    if (lp.upper[j] < inf && delta_x[j] > pivot_tol) {
+      // xj + step * delta_x[j] <= lp.upper[j]
+      // step <= (lp.upper[j] - x[j]) / delta_x[j], delta_x[j] > 0
+      f_t neum = lp.upper[j] - x[j];
+      // Mirror of the lower bound case: slightly above the bound is on the bound.
+      if (neum < 0 && -neum <= settings.primal_tol) { neum = 0.0; }
+      f_t ratio = neum / delta_x[j];
+      if (ratio >= 0 && ratio <= alpha_1 && abs_dx > best_pivot) {
+        best_pivot    = abs_dx;
+        step_length   = ratio;
+        basic_leaving = k;
+        leaving_index = j;
+      }
+    }
+  }
+
+  work_estimate += 10 * m;
+  return leaving_index;
+}
+
 template <typename i_t, typename f_t>
 primal_status_t primal_phase2(i_t phase,
                               f_t start_time,
@@ -256,34 +731,14 @@ primal_status_t primal_phase2(i_t phase,
 {
   const i_t m = lp.num_rows;
   const i_t n = lp.num_cols;
-  assert(m <= n);
-  assert(vstatus.size() == n);
-  assert(lp.A.m == m);
-  assert(lp.A.n == n);
-  assert(lp.objective.size() == n);
-  assert(lp.lower.size() == n);
-  assert(lp.upper.size() == n);
-  assert(lp.rhs.size() == m);
+
   f_t work_estimate = 0;
   std::vector<i_t> basic_list(m);
   std::vector<i_t> nonbasic_list;
   std::vector<i_t> superbasic_list;
-  std::vector<i_t> bound_info(n - m);
-
-  std::vector<f_t>& x = sol.x;
-  std::vector<f_t>& y = sol.y;
-  std::vector<f_t>& z = sol.z;
-
-  std::vector<f_t> incoming_x                     = x;
-  std::vector<variable_status_t> incoming_vstatus = vstatus;
-
-  settings.log.printf("Primal Simplex Phase %d\n", phase);
-  settings.log.printf("Solving a problem with %d constraints %d variables %d nonzeros\n",
-                      lp.num_rows,
-                      lp.num_cols,
-                      lp.A.col_start[lp.num_cols]);
 
   get_basis_from_vstatus(m, vstatus, basic_list, nonbasic_list, superbasic_list);
+  work_estimate += 2 * n;
   assert(superbasic_list.size() == 0);
   assert(nonbasic_list.size() == n - m);
 
@@ -308,6 +763,7 @@ primal_status_t primal_phase2(i_t phase,
                              slacks_needed,
                              work_estimate);
   if (rank == CONCURRENT_HALT_RETURN) {
+    settings.log.printf("Concurrent halt in primal phase2\n");
     return primal_status_t::CONCURRENT_LIMIT;
   } else if (rank == TIME_LIMIT_RETURN) {
     return primal_status_t::TIME_LIMIT;
@@ -352,47 +808,64 @@ primal_status_t primal_phase2(i_t phase,
     }
   }
   reorder_basic_list(q, basic_list);
-  reorder_basic_list(q, basic_list);
-  basis_update_t ft(L, U, p);
+  basis_update_mpf_t<i_t, f_t> ft(L, U, p, settings.refactor_frequency);
 
-  std::vector<f_t> c_basic(m);
-  for (i_t k = 0; k < m; ++k) {
-    const i_t j = basic_list[k];
-    c_basic[k]  = lp.objective[j];
-  }
+  return primal_phase2_with_advanced_basis(phase,
+                                           start_time,
+                                           lp,
+                                           settings,
+                                           vstatus,
+                                           ft,
+                                           basic_list,
+                                           nonbasic_list,
+                                           sol,
+                                           iter,
+                                           work_estimate);
+}
+// Note this implementation of primal simplex is experimental
+// It is meant only to serve as a method to remove the perturbation to the objective
+// after dual simplex has found a primal feasible solution
+template <typename i_t, typename f_t>
+primal_status_t primal_phase2_with_advanced_basis(
+  i_t phase,
+  f_t start_time,
+  const lp_problem_t<i_t, f_t>& lp,
+  const simplex_solver_settings_t<i_t, f_t>& settings,
+  std::vector<variable_status_t>& vstatus,
+  basis_update_mpf_t<i_t, f_t>& basis_update,
+  std::vector<i_t>& basic_list,
+  std::vector<i_t>& nonbasic_list,
+  lp_solution_t<i_t, f_t>& sol,
+  i_t& iter,
+  f_t& work_estimate,
+  bool print_summary)
+{
+  const i_t m = lp.num_rows;
+  const i_t n = lp.num_cols;
+  assert(m <= n);
+  assert(vstatus.size() == n);
+  assert(lp.A.m == m);
+  assert(lp.A.n == n);
+  assert(lp.objective.size() == n);
+  assert(lp.lower.size() == n);
+  assert(lp.upper.size() == n);
+  assert(lp.rhs.size() == m);
 
-  // Solve B'*y = cB
-  ft.b_transpose_solve(c_basic, y);
-  settings.log.printf(
-    "|| y || %e || cB || %e\n", vector_norm_inf<i_t, f_t>(y), vector_norm_inf<i_t, f_t>(c_basic));
+  std::vector<f_t>& x = sol.x;
+  std::vector<f_t>& y = sol.y;
+  std::vector<f_t>& z = sol.z;
 
-  // zN = cN - N'*y
-  for (i_t k = 0; k < n - m; k++) {
-    const i_t j = nonbasic_list[k];
-    // z_j <- c_j
-    z[j] = lp.objective[j];
-
-    // z_j <- z_j - A(:, j)'*y
-    const i_t col_start = lp.A.col_start[j];
-    const i_t col_end   = lp.A.col_start[j + 1];
-    f_t dot             = 0.0;
-    for (i_t p = col_start; p < col_end; ++p) {
-      dot += lp.A.x[p] * y[lp.A.i[p]];
-    }
-    z[j] -= dot;
-  }
-  // zB = 0
-  for (i_t k = 0; k < m; ++k) {
-    z[basic_list[k]] = 0.0;
-  }
-  settings.log.printf("|| z || %e\n", vector_norm_inf<i_t, f_t>(z));
-
-  set_primal_variables_on_bounds(lp, settings, z, vstatus, x);
-
-  const f_t init_dual_inf = dual_infeasibility(lp, vstatus, z);
-  settings.log.printf("Initial dual infeasibility %e\n", init_dual_inf);
+  std::vector<f_t> incoming_x                     = x;
+  std::vector<variable_status_t> incoming_vstatus = vstatus;
+  work_estimate += 2.0 * n;
+  settings.log.printf("Primal Simplex\n");
+  settings.log.printf("Pricing: %s\n", settings.primal_pricing == 1 ? "Devex" : "Dantzig");
+  // Nonbasics must be on their bounds before forming B x_B = b - A_N x_N.
+  // Setting them after the solve leaves ||A*x - b|| large whenever x_N != 0.
+  set_primal_variables_on_bounds(lp, settings, vstatus, x, work_estimate);
 
   std::vector<f_t> rhs = lp.rhs;
+  work_estimate += m;
   // rhs = b - sum_{j : x_j = l_j} A(:, j) l(j) - sum_{j : x_j = u_j} A(:, j) *
   // u(j)
   for (i_t k = 0; k < n - m; ++k) {
@@ -403,149 +876,600 @@ primal_status_t primal_phase2(i_t phase,
     for (i_t p = col_start; p < col_end; ++p) {
       rhs[lp.A.i[p]] -= xj * lp.A.x[p];
     }
+    work_estimate += 3.0 * (col_end - col_start);
   }
+  work_estimate += 4 * (n - m);
 
   std::vector<f_t> xB(m);
-  ft.b_solve(rhs, xB);
+  work_estimate += m;
+
+  basis_update.b_solve(rhs, xB);
 
   for (i_t k = 0; k < m; ++k) {
     const i_t j = basic_list[k];
     x[j]        = xB[k];
   }
-  settings.log.printf("|| x || %e\n", vector_norm2<i_t, f_t>(x));
+  work_estimate += 3 * m;
+
+  constexpr bool print_norms = false;
+  if constexpr (print_norms) { settings.log.printf("|| x || %e\n", vector_norm2<i_t, f_t>(x)); }
 
   std::vector<f_t> residual = lp.rhs;
+  work_estimate += m;
   matrix_vector_multiply(lp.A, 1.0, x, -1.0, residual);
+  work_estimate += m + 2 * n + 4.0 * lp.A.col_start[lp.A.n];
   f_t primal_residual = vector_norm_inf<i_t, f_t>(residual);
-  if (primal_residual > 1e-6) { settings.log.printf("|| A*x - b || %e\n", primal_residual); }
-  f_t primal_inf = primal_infeasibility(lp, settings, vstatus, x);
-  settings.log.printf("Initial primal infeasibility %e\n", primal_inf);
+  work_estimate += m;
+  if (primal_residual > settings.primal_tol) {
+    settings.log.printf("|| A*x - b || %e\n", primal_residual);
+  }
 
-  const i_t iter_limit = iter + 1000;
-  std::vector<f_t> delta_y(m);
+  std::vector<f_t> objective = lp.objective;
+  work_estimate += 2 * n;
+  const f_t primal_tol = settings.primal_tol;
+  f_t primal_inf       = primal_infeasibility(lp, settings, vstatus, x, work_estimate);
+  if (primal_inf > primal_tol) {
+    // We are primal infeasible. Switch to phase 1
+    compute_phase1_objective(lp, settings, vstatus, x, objective, work_estimate);
+    settings.log.printf("Phase 1\n");
+    settings.log.printf("Initial primal infeasibility %e\n", primal_inf);
+    phase = 1;
+  } else {
+    settings.log.printf("Phase 2\n");
+    phase = 2;
+  }
+
+  std::vector<f_t> c_basic(m);
+  work_estimate += m;
+  compute_dual_variables(
+    lp, settings, objective, basic_list, nonbasic_list, basis_update, c_basic, y, z, work_estimate);
+  if constexpr (print_norms) { settings.log.printf("|| z || %e\n", vector_norm_inf<i_t, f_t>(z)); }
+
+  i_t num_dual_inf   = 0;
+  i_t num_primal_inf = 0;
+  const f_t init_dual_inf =
+    dual_infeasibility(lp, vstatus, z, settings.dual_tol, num_dual_inf, work_estimate);
+  if (num_dual_inf > 0) { settings.log.printf("Initial dual infeasibility %e\n", init_dual_inf); }
+
+  csr_matrix_t<i_t, f_t> Arow(m, n, lp.A.nnz());
+  work_estimate += n + 2 * lp.A.nnz();
+  lp.A.to_compressed_row(Arow);
+  work_estimate += m + 6 * lp.A.nnz();
+
+  const i_t iter_limit = settings.iteration_limit;
+  const i_t start_iter = iter;
+  sparse_vector_t<i_t, f_t> delta_y(m, 0);
+  sparse_vector_t<i_t, f_t> etilde(m, 0);
   std::vector<f_t> delta_z(n);
   std::vector<f_t> delta_x(n);
+  std::vector<f_t> devex_weight(n, 1.0);
+  i_t num_bad_devex_weight = 0;
+  work_estimate += 2 * m + 3 * n;
 
-  settings.log.printf("Iter Objective       Primal inf  Dual Inf.  Step  Entering  Leaving\n");
+  f_t dual_inf = init_dual_inf;
+  f_t obj      = compute_objective(lp, x);
+  work_estimate += 2 * n;
+  f_t pricing_dual_tol = settings.dual_tol;
+  primal_inf = primal_infeasibility(lp, settings, vstatus, x, num_primal_inf, work_estimate);
+  settings.log.printf(" Iter     Objective           Num Inf.  Sum Inf.       Time\n");
+  settings.log.printf("%5d %+.16e %7d %.8e %.2f\n",
+                      iter,
+                      compute_user_objective(lp, obj),
+                      phase == 1 ? num_primal_inf : num_dual_inf,
+                      phase == 1 ? primal_inf : dual_inf,
+                      toc(start_time));
+  bool switched_phase = false;
+
+  work_estimate += basis_update.work_estimate();
+  basis_update.clear_work_estimate();
+
+  if (work_estimate > settings.work_limit) { return primal_status_t::WORK_LIMIT; }
+
+  primal_timers_t<i_t, f_t> timers(false);
+
   while (iter < iter_limit) {
+    timers.start_timer(work_estimate + basis_update.work_estimate());
     i_t nonbasic_entering = -1;
-    f_t dual_inf;
     i_t direction;
-    i_t entering_index =
-      phase2_pricing(lp, z, nonbasic_list, vstatus, direction, nonbasic_entering, dual_inf);
+    i_t entering_index;
+    if (settings.primal_pricing == 1) {
+      entering_index = devex_pricing(lp,
+                                     z,
+                                     devex_weight,
+                                     nonbasic_list,
+                                     vstatus,
+                                     pricing_dual_tol,
+                                     direction,
+                                     nonbasic_entering,
+                                     dual_inf,
+                                     work_estimate);
+    } else {
+      entering_index = phase2_pricing(lp,
+                                      z,
+                                      nonbasic_list,
+                                      vstatus,
+                                      pricing_dual_tol,
+                                      direction,
+                                      nonbasic_entering,
+                                      dual_inf,
+                                      work_estimate);
+    }
+    timers.pricing_time += timers.stop_timer(work_estimate + basis_update.work_estimate());
     if (entering_index == -1) {
-      f_t obj        = compute_objective(lp, x);
-      f_t primal_inf = primal_infeasibility(lp, settings, vstatus, x);
-      settings.log.printf(
-        "Optimal solution found. Objective %e. Dual infeas %e. Primal "
-        "infeasibility %e. Iterations %d\n",
-        compute_user_objective(lp, obj),
-        dual_inf,
-        primal_inf,
-        iter);
-      return primal_status_t::OPTIMAL;
+      if (phase == 2) {
+        // Verify optimality with a consistent basic solution: refactor, put
+        // nonbasics exactly on their status bounds, rebuild x_B so Ax = b, and
+        // refresh duals. If that point is not primal/dual feasible, continue.
+        if (basis_update.num_updates() > 0) {
+          i_t rank = basis_update.refactor_basis(
+            lp.A, settings, lp.lower, lp.upper, start_time, basic_list, nonbasic_list, vstatus);
+          if (rank == CONCURRENT_HALT_RETURN) { return primal_status_t::CONCURRENT_LIMIT; }
+          if (rank == TIME_LIMIT_RETURN) { return primal_status_t::TIME_LIMIT; }
+          if (rank != 0) {
+            settings.log.printf("Failed to refactor basis at optimality check. Iteration %d\n",
+                                iter);
+            return primal_status_t::NUMERICAL;
+          }
+          work_estimate += basis_update.work_estimate();
+          basis_update.clear_work_estimate();
+        }
+        set_primal_variables_on_bounds(lp, settings, vstatus, x, work_estimate);
+        compute_basic_primal_variables(
+          lp, basis_update, basic_list, nonbasic_list, x, work_estimate);
+        compute_dual_variables(lp,
+                               settings,
+                               objective,
+                               basic_list,
+                               nonbasic_list,
+                               basis_update,
+                               c_basic,
+                               y,
+                               z,
+                               work_estimate);
+        primal_inf = primal_infeasibility(lp, settings, vstatus, x, num_primal_inf, work_estimate);
+        dual_inf =
+          dual_infeasibility(lp, vstatus, z, pricing_dual_tol, num_dual_inf, work_estimate);
+        if (primal_inf > primal_tol) {
+          compute_phase1_objective(lp, settings, vstatus, x, objective, work_estimate);
+          phase            = 1;
+          pricing_dual_tol = settings.dual_tol;
+          compute_dual_variables(lp,
+                                 settings,
+                                 objective,
+                                 basic_list,
+                                 nonbasic_list,
+                                 basis_update,
+                                 c_basic,
+                                 y,
+                                 z,
+                                 work_estimate);
+          settings.log.printf(
+            "Switching to Primal Simplex Phase 1 after near optimality. "
+            "Primal infeasibility %e\n",
+            primal_inf);
+          settings.log.printf(" Iter     Objective           Num Inf.  Sum Inf.       Time\n");
+          switched_phase = true;
+          continue;
+        }
+        if (num_dual_inf > 0) {
+          // The refreshed reduced costs contain a candidate visible at the active
+          // pricing tolerance.
+          continue;
+        }
+
+        i_t num_tight_dual_inf = 0;
+        const f_t tight_dual_inf =
+          dual_infeasibility(lp, vstatus, z, f_t(0.0), num_tight_dual_inf, work_estimate);
+        if (tight_dual_inf > settings.dual_tol) {
+          // No candidate is visible at the active pricing tolerance, but the
+          // zero-tolerance residual is still material. Try tighter pricing before
+          // accepting optimality. This is needed for problems such as cycle,
+          // where many small reduced-cost violations lead to improving pivots.
+          f_t retry_dual_tol = pricing_dual_tol;
+          f_t retry_dual_inf = 0.0;
+          i_t retry_entering = -1;
+          while (retry_entering == -1 && retry_dual_tol > f_t(1e-10)) {
+            retry_dual_tol *= f_t(0.1);
+            retry_entering = phase2_pricing(lp,
+                                            z,
+                                            nonbasic_list,
+                                            vstatus,
+                                            retry_dual_tol,
+                                            direction,
+                                            nonbasic_entering,
+                                            retry_dual_inf,
+                                            work_estimate);
+          }
+          if (retry_entering != -1) {
+            pricing_dual_tol = retry_dual_tol;
+            continue;
+          }
+        }
+        // Report the unfiltered residual at the accepted solution.
+        dual_inf     = tight_dual_inf;
+        num_dual_inf = num_tight_dual_inf;
+        obj          = compute_objective(lp, x);
+        work_estimate += 2 * n;
+        sol.objective      = obj;
+        sol.user_objective = compute_user_objective(lp, obj);
+        if (!settings.inside_mip && print_summary) {
+          settings.log.printf("\n");
+          settings.log.printf(
+            "Optimal solution found in %d iterations and %.2fs\n", iter, toc(start_time));
+          settings.log.printf("Objective %+.8e\n", sol.user_objective);
+          settings.log.printf("\n");
+          settings.log.printf("Primal infeasibility (abs): %.2e\n", primal_inf);
+          settings.log.printf("Dual infeasibility   (abs): %.2e\n", dual_inf);
+          settings.log.printf("Primal residual ||Ax-b||:   %.2e\n",
+                              primal_constraint_residual(lp, x));
+        }
+        timers.print_timers(settings);
+        return primal_status_t::OPTIMAL;
+      } else {
+        primal_inf = primal_infeasibility(lp, settings, vstatus, x, num_primal_inf, work_estimate);
+
+        if (primal_inf > primal_tol) {
+          // Incremental duals may be stale relative to the current phase-I
+          // objective. Refresh objective and duals, then retry pricing with
+          // successively tighter dual tolerances.
+          settings.log.printf("Refreshing phase-I objective and duals. Num updates %d. Iter %d\n",
+                              basis_update.num_updates(),
+                              iter);
+          compute_phase1_objective(lp, settings, vstatus, x, objective, work_estimate);
+          compute_dual_variables(lp,
+                                 settings,
+                                 objective,
+                                 basic_list,
+                                 nonbasic_list,
+                                 basis_update,
+                                 c_basic,
+                                 y,
+                                 z,
+                                 work_estimate);
+          f_t retry_dual_tol = pricing_dual_tol;
+          while (entering_index == -1 && retry_dual_tol > f_t(1e-10)) {
+            retry_dual_tol *= f_t(0.1);
+            settings.log.printf("Retrying phase-I pricing with dual_tol %e\n", retry_dual_tol);
+            entering_index = phase2_pricing(lp,
+                                            z,
+                                            nonbasic_list,
+                                            vstatus,
+                                            retry_dual_tol,
+                                            direction,
+                                            nonbasic_entering,
+                                            dual_inf,
+                                            work_estimate);
+          }
+          if (entering_index == -1) {
+            settings.log.printf(
+              "No entering variable found with large "
+              "infeasibility %e (%d).\n",
+              primal_inf,
+              num_primal_inf);
+            return primal_status_t::PRIMAL_INFEASIBLE;
+          }
+          pricing_dual_tol = retry_dual_tol;
+        } else {
+          // Restore the objective to the original objective
+          objective        = lp.objective;
+          phase            = 2;
+          pricing_dual_tol = settings.dual_tol;
+          settings.log.printf(
+            "Primal phase I complete. Iterations %d. Time %.2f\n", iter, toc(start_time));
+          settings.log.printf(" Iter     Objective           Num Inf.  Sum Inf.       Time\n");
+          compute_dual_variables(lp,
+                                 settings,
+                                 objective,
+                                 basic_list,
+                                 nonbasic_list,
+                                 basis_update,
+                                 c_basic,
+                                 y,
+                                 z,
+                                 work_estimate);
+          obj = compute_objective(lp, x);
+          work_estimate += 2 * n;
+          dual_inf =
+            dual_infeasibility(lp, vstatus, z, settings.dual_tol, num_dual_inf, work_estimate);
+          iter++;
+          // Print here: continue may hit dual-optimal Phase 2 and return before
+          // the end-of-loop log checks switched_phase.
+          settings.log.printf("%5d %+.16e %7d %.8e %.2f\n",
+                              iter,
+                              compute_user_objective(lp, obj),
+                              num_dual_inf,
+                              dual_inf,
+                              toc(start_time));
+          continue;
+        }
+      }
     }
 
+    sparse_vector_t<i_t, f_t> rhs_sparse(lp.A, entering_index);
+    work_estimate += 3 * rhs_sparse.i.size();
+    sparse_vector_t<i_t, f_t> scaled_delta_xB_sparse(m, 0);
+    sparse_vector_t<i_t, f_t> utilde_sparse(m, 0);
+    timers.start_timer(work_estimate + basis_update.work_estimate());
+    basis_update.b_solve(rhs_sparse, scaled_delta_xB_sparse, utilde_sparse);
     std::vector<f_t> scaled_delta_xB(m);
-    std::vector<f_t> rhs(m);
-    const i_t col_start = lp.A.col_start[entering_index];
-    const i_t col_end   = lp.A.col_start[entering_index + 1];
-    for (i_t p = col_start; p < col_end; ++p) {
-      rhs[lp.A.i[p]] = lp.A.x[p];
-    }
-    std::vector<f_t> utilde(m);
-    ft.b_solve(rhs, scaled_delta_xB, utilde);
+    scaled_delta_xB_sparse.to_dense(scaled_delta_xB);
+    work_estimate += m + scaled_delta_xB_sparse.i.size();
 
     for (i_t k = 0; k < m; ++k) {
       const i_t j = basic_list[k];
       delta_x[j]  = -direction * scaled_delta_xB[k];
     }
+    work_estimate += 3 * m;
     for (i_t k = 0; k < n - m; ++k) {
       const i_t j = nonbasic_list[k];
       delta_x[j]  = 0.0;
     }
+    work_estimate += 2 * (n - m);
     delta_x[entering_index] = direction;
+    timers.ftran_time += timers.stop_timer(work_estimate + basis_update.work_estimate());
 
-    std::vector<f_t> residual(m);
-    matrix_vector_multiply(lp.A, 1.0, delta_x, 1.0, residual);
+#ifdef CHECK_NULLSPACE
+    std::vector<f_t> residual(m, 0.0);
+    matrix_vector_multiply(lp.A, 1.0, delta_x, 0.0, residual);
     f_t primal_step_err = vector_norm_inf<i_t, f_t>(residual);
-    if (primal_step_err > 1e-3) { printf("|| A * dx || %e\n", primal_step_err); }
+    if (primal_step_err > 1e-3) {
+      settings.log.printf("|| A * dx || %e at iter %d (updates %d)\n",
+                          primal_step_err,
+                          iter,
+                          basis_update.num_updates());
+    }
+#endif
 
+    timers.start_timer(work_estimate + basis_update.work_estimate());
     i_t basic_leaving;
     f_t step_length;
-    i_t leaving_index = ratio_test(lp, vstatus, basic_list, x, delta_x, step_length, basic_leaving);
-    if (leaving_index == -1) {
+    i_t leaving_index = primal_ratio_test(lp,
+                                          settings,
+                                          vstatus,
+                                          basic_list,
+                                          x,
+                                          delta_x,
+                                          step_length,
+                                          basic_leaving,
+                                          entering_index,
+                                          direction,
+                                          work_estimate);
+    timers.ratio_test_time += timers.stop_timer(work_estimate + basis_update.work_estimate());
+    if (leaving_index == -1 && step_length >= inf) {
       settings.log.printf("No leaving variable. Primal unbounded?\n");
       return primal_status_t::PRIMAL_UNBOUNDED;
     }
-    assert(step_length >= 0.0);
 
-    // Update the primal variables
+    const bool basis_updated = (leaving_index != -1);
+    bool recompute_duals     = false;
+    timers.start_timer(work_estimate + basis_update.work_estimate());
     for (i_t j = 0; j < n; ++j) {
       x[j] += step_length * delta_x[j];
     }
+    work_estimate += 2 * n;
+    timers.update_x_time += timers.stop_timer(work_estimate + basis_update.work_estimate());
 
-    // Update the factorization
-    ft.update(utilde, basic_leaving);
-
-    // Update the basis
-    basic_list[basic_leaving]        = entering_index;
-    nonbasic_list[nonbasic_entering] = leaving_index;
-    vstatus[entering_index]          = variable_status_t::BASIC;
-    if (std::abs(lp.upper[leaving_index] - lp.lower[leaving_index]) < 1e-12) {
-      vstatus[leaving_index] = variable_status_t::NONBASIC_FIXED;
-    } else if (direction == 1) {
-      vstatus[leaving_index] = variable_status_t::NONBASIC_LOWER;
-    } else {
-      vstatus[leaving_index] = variable_status_t::NONBASIC_UPPER;
+#ifdef COMPUTE_RESIDUAL
+    f_t debug_primal_residual = primal_constraint_residual(lp, x);
+    if (debug_primal_residual > 1e-6) {
+      settings.log.printf("|| A * x - b || %e at iteration %d (updates %d)\n",
+                          debug_primal_residual,
+                          iter,
+                          basis_update.num_updates());
     }
+#endif
 
-    // Solve for y such that B'*y = c_B
-    for (i_t k = 0; k < m; ++k) {
-      const i_t j = basic_list[k];
-      c_basic[k]  = lp.objective[j];
-    }
-    ft.b_transpose_solve(y, c_basic);
-    // zN = cN - N'*y
-    for (i_t k = 0; k < n - m; k++) {
-      const i_t j = nonbasic_list[k];
-      // z_j <- c_j
-      z[j] = lp.objective[j];
+    if (basis_updated) {
+      assert(step_length >= 0.0);
 
-      // z_j <- z_j - A(:, j)'*y
-      const i_t col_start = lp.A.col_start[j];
-      const i_t col_end   = lp.A.col_start[j + 1];
-      f_t dot             = 0.0;
-      for (i_t p = col_start; p < col_end; ++p) {
-        dot += lp.A.x[p] * y[lp.A.i[p]];
+      bool should_refactor = basis_update.num_updates() > settings.refactor_frequency;
+      f_t dual_step_length = 0.0;
+      if (!should_refactor) {
+        timers.start_timer(work_estimate + basis_update.work_estimate());
+        compute_delta_y(basis_update, basic_leaving, delta_y, etilde);
+        timers.btran_time += timers.stop_timer(work_estimate + basis_update.work_estimate());
+        const f_t pivot  = scaled_delta_xB[basic_leaving];
+        dual_step_length = compute_dual_step_length(z[entering_index], pivot);
       }
-      z[j] -= dot;
-    }
-    // zB = 0
-    for (i_t k = 0; k < m; ++k) {
-      z[basic_list[k]] = 0.0;
+
+      basic_list[basic_leaving]        = entering_index;
+      nonbasic_list[nonbasic_entering] = leaving_index;
+      vstatus[entering_index]          = variable_status_t::BASIC;
+      // Place the leaver on its leaving bound. If that bound is far from the
+      // current value (typical after a zero-step leave of an already-infeasible
+      // basic), rebuild x_B after the factor matches the new basis so Ax = b;
+      // phase handling below may then (re)enter Phase I if basics are infeasible.
+      bool rebuild_x_after_bound_snap = false;
+      f_t leave_bound                 = 0.0;
+      if (std::abs(lp.upper[leaving_index] - lp.lower[leaving_index]) < 1e-12) {
+        vstatus[leaving_index] = variable_status_t::NONBASIC_FIXED;
+        leave_bound            = lp.lower[leaving_index];
+      } else {
+        // Classify by which bound was hit. Using sign(delta_x) is wrong when the
+        // variable approached the bound from the infeasible side (phase I).
+        const f_t x_leave       = x[leaving_index];
+        const f_t dist_to_lower = std::abs(x_leave - lp.lower[leaving_index]);
+        const f_t dist_to_upper = std::abs(x_leave - lp.upper[leaving_index]);
+        if (lp.lower[leaving_index] > -inf &&
+            (lp.upper[leaving_index] >= inf || dist_to_lower <= dist_to_upper)) {
+          vstatus[leaving_index] = variable_status_t::NONBASIC_LOWER;
+          leave_bound            = lp.lower[leaving_index];
+        } else {
+          vstatus[leaving_index] = variable_status_t::NONBASIC_UPPER;
+          leave_bound            = lp.upper[leaving_index];
+        }
+      }
+      if (std::abs(x[leaving_index] - leave_bound) > settings.primal_tol) {
+        rebuild_x_after_bound_snap = true;
+      }
+      x[leaving_index] = leave_bound;
+
+      if (!should_refactor) {
+        timers.start_timer(work_estimate + basis_update.work_estimate());
+        compute_delta_z(Arow, vstatus, delta_y, delta_z, work_estimate);
+        timers.delta_z_time += timers.stop_timer(work_estimate + basis_update.work_estimate());
+        timers.start_timer(work_estimate + basis_update.work_estimate());
+        update_y(dual_step_length, delta_y, y, work_estimate);
+        update_z(dual_step_length, nonbasic_list, entering_index, delta_z, z, work_estimate);
+        timers.update_duals_time += timers.stop_timer(work_estimate + basis_update.work_estimate());
+
+        // Devex weight update (only when using Devex pricing)
+        if (settings.primal_pricing == 1) {
+          const f_t pivot    = scaled_delta_xB[basic_leaving];
+          const f_t pivot_sq = pivot * pivot;
+          const f_t w_enter  = devex_weight[entering_index];
+          // Exact pivot weight for entering variable is 1/pivot_sq
+          // Check if stored weight was a bad approximation
+          const f_t exact_pivot_weight = 1.0 / pivot_sq;
+          if (w_enter > 3.0 * exact_pivot_weight) { num_bad_devex_weight++; }
+          // Update weights for all nonbasic columns using the pivot row (delta_z)
+          // After compute_delta_z and update_z, delta_z[j] still holds the raw
+          // pivot row entries (update_z multiplies by dual_step_length into z, not delta_z)
+          for (i_t k = 0; k < n - m; ++k) {
+            const i_t j         = nonbasic_list[k];
+            const f_t a_j       = delta_z[j];
+            const f_t candidate = (a_j * a_j / pivot_sq) * w_enter;
+            if (candidate > devex_weight[j]) { devex_weight[j] = candidate; }
+          }
+          // Weight for leaving variable (now nonbasic)
+          devex_weight[leaving_index] = std::max(1.0 / pivot_sq, f_t(1e-4));
+          // Weight for entering variable (now basic) — reset
+          devex_weight[entering_index] = 1.0;
+          work_estimate += 5 * (n - m);
+          // Reset framework if too many bad weights
+          if (num_bad_devex_weight > 3) {
+            std::fill(devex_weight.begin(), devex_weight.end(), f_t(1.0));
+            num_bad_devex_weight = 0;
+          }
+        }
+
+        timers.start_timer(work_estimate + basis_update.work_estimate());
+        should_refactor = basis_update.update(utilde_sparse, etilde, basic_leaving) == 1;
+        timers.lu_update_time += timers.stop_timer(work_estimate + basis_update.work_estimate());
+      }
+      if (should_refactor) {
+        timers.start_timer(work_estimate + basis_update.work_estimate());
+        i_t rank = basis_update.refactor_basis(
+          lp.A, settings, lp.lower, lp.upper, start_time, basic_list, nonbasic_list, vstatus);
+        if (rank == CONCURRENT_HALT_RETURN) { return primal_status_t::CONCURRENT_LIMIT; }
+        if (rank == TIME_LIMIT_RETURN) { return primal_status_t::TIME_LIMIT; }
+        if (rank != 0) {
+          settings.log.printf("Failed to refactor basis. Iteration %d\n", iter);
+          return primal_status_t::NUMERICAL;
+        }
+        work_estimate += basis_update.work_estimate();
+        basis_update.clear_work_estimate();
+        recompute_duals = true;
+        // Factor matches basic_list: rebuild x_B so Ax = b exactly.
+        set_primal_variables_on_bounds(lp, settings, vstatus, x, work_estimate);
+        compute_basic_primal_variables(
+          lp, basis_update, basic_list, nonbasic_list, x, work_estimate);
+        timers.lu_factorization_time +=
+          timers.stop_timer(work_estimate + basis_update.work_estimate());
+      } else if (rebuild_x_after_bound_snap) {
+        // FT update already matches the new basis; recompute x_B with the leaving variable
+        // snapped onto its bound.
+        compute_basic_primal_variables(
+          lp, basis_update, basic_list, nonbasic_list, x, work_estimate);
+      }
+    } else {
+      if (direction > 0) {
+        vstatus[entering_index] = variable_status_t::NONBASIC_UPPER;
+        x[entering_index]       = lp.upper[entering_index];
+      } else {
+        vstatus[entering_index] = variable_status_t::NONBASIC_LOWER;
+        x[entering_index]       = lp.lower[entering_index];
+      }
     }
 
-    const f_t obj        = compute_objective(lp, x);
-    const f_t primal_inf = primal_infeasibility(lp, settings, vstatus, x);
-    settings.log.printf("%3d %.10e %.2e %.2e %.2e %d %d\n",
-                        iter,
-                        compute_user_objective(lp, obj),
-                        primal_inf,
-                        dual_inf,
-                        step_length,
-                        entering_index,
-                        leaving_index);
+    primal_inf = primal_infeasibility(lp, settings, vstatus, x, num_primal_inf, work_estimate);
+    if (primal_inf > primal_tol) {
+      if (phase != 1) {
+        settings.log.printf(
+          "Switching to Primal Simplex Phase 1. Iteration %d. Primal infeasibility %e\n",
+          iter,
+          primal_inf);
+        settings.log.printf(" Iter     Objective           Num Inf.  Sum Inf.       Time\n");
+        switched_phase = true;
+      }
+      compute_phase1_objective(lp, settings, vstatus, x, objective, work_estimate);
+      phase           = 1;
+      recompute_duals = true;
+    } else if (phase == 1) {
+      objective        = lp.objective;
+      phase            = 2;
+      pricing_dual_tol = settings.dual_tol;
+      recompute_duals  = true;
+      settings.log.printf(
+        "Primal phase I complete. Iterations %d. Time %.2f\n", iter, toc(start_time));
+      settings.log.printf(" Iter     Objective           Num Inf.  Sum Inf.       Time\n");
+      switched_phase = true;
+    }
+
+    if (recompute_duals) {
+      compute_dual_variables(lp,
+                             settings,
+                             objective,
+                             basic_list,
+                             nonbasic_list,
+                             basis_update,
+                             c_basic,
+                             y,
+                             z,
+                             work_estimate);
+    }
+
+    obj = compute_objective(lp, x);
+    work_estimate += 2 * n;
+    dual_inf = dual_infeasibility(lp, vstatus, z, pricing_dual_tol, num_dual_inf, work_estimate);
 
     iter++;
+
+    f_t now = toc(start_time);
+    if ((iter - start_iter) < settings.first_iteration_log ||
+        (iter % settings.iteration_log_frequency) == 0 || switched_phase) {
+      const f_t user_obj = compute_user_objective(lp, obj);
+      settings.log.printf("%5d %+.16e %7d %.8e %.2f\n",
+                          iter,
+                          user_obj,
+                          phase == 1 ? num_primal_inf : num_dual_inf,
+                          phase == 1 ? primal_inf : dual_inf,
+                          now);
+      switched_phase = false;
+    }
+
+    work_estimate += basis_update.work_estimate();
+    basis_update.clear_work_estimate();
+
+    if (now > settings.time_limit) {
+      timers.print_timers(settings);
+      return primal_status_t::TIME_LIMIT;
+    }
+    if (work_estimate > settings.work_limit) {
+      timers.print_timers(settings);
+      return primal_status_t::WORK_LIMIT;
+    }
   }
 
-  if (iter == iter_limit) { return primal_status_t::ITERATION_LIMIT; }
+  timers.print_timers(settings);
+  if (iter >= iter_limit) { return primal_status_t::ITERATION_LIMIT; }
 
   return primal_status_t::NUMERICAL;
 }
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
+
+template int primal_ratio_test(const lp_problem_t<int, double>& lp,
+                               const simplex_solver_settings_t<int, double>& settings,
+                               const std::vector<variable_status_t>& vstatus,
+                               const std::vector<int>& basic_list,
+                               std::vector<double>& x,
+                               std::vector<double>& delta_x,
+                               double& step_length,
+                               int& basic_leaving,
+                               int entering_index,
+                               int direction,
+                               double& work_estimate);
 
 template primal_status_t primal_phase2<int, double>(
   int phase,
@@ -555,6 +1479,20 @@ template primal_status_t primal_phase2<int, double>(
   std::vector<variable_status_t>& vstatus,
   lp_solution_t<int, double>& sol,
   int& iter);
+
+template primal_status_t primal_phase2_with_advanced_basis<int, double>(
+  int phase,
+  double start_time,
+  const lp_problem_t<int, double>& lp,
+  const simplex_solver_settings_t<int, double>& settings,
+  std::vector<variable_status_t>& vstatus,
+  basis_update_mpf_t<int, double>& basis_update,
+  std::vector<int>& basic_list,
+  std::vector<int>& nonbasic_list,
+  lp_solution_t<int, double>& sol,
+  int& iter,
+  double& work_estimate,
+  bool print_summary);
 
 #endif
 

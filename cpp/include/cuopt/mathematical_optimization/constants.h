@@ -57,6 +57,9 @@
 #define CUOPT_ELIMINATE_DENSE_COLUMNS               "eliminate_dense_columns"
 #define CUOPT_CUDSS_DETERMINISTIC                   "cudss_deterministic"
 #define CUOPT_PRESOLVE                              "presolve"
+#define CUOPT_INITIAL_PERTURBATION                  "initial_perturbation"
+#define CUOPT_REMOVE_PERTURBATION                   "remove_perturbation"
+#define CUOPT_PRIMAL_PRICING                        "primal_pricing"
 #define CUOPT_MIP_PROBING                           "mip_probing"
 #define CUOPT_DUAL_POSTSOLVE                        "dual_postsolve"
 #define CUOPT_MIP_DETERMINISM_MODE                  "mip_determinism_mode"
@@ -211,7 +214,8 @@
 #define CUOPT_METHOD_PDLP         1
 #define CUOPT_METHOD_DUAL_SIMPLEX 2
 #define CUOPT_METHOD_BARRIER      3
-#define CUOPT_METHOD_UNSET        4
+#define CUOPT_METHOD_PRIMAL       4
+#define CUOPT_METHOD_UNSET        5
 
 #define CUOPT_BARRIER_DUAL_INITIAL_POINT_AUTOMATIC             -1
 #define CUOPT_BARRIER_DUAL_INITIAL_POINT_LUSTIG_MARSTEN_SHANNO 0
