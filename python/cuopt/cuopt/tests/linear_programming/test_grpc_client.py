@@ -197,12 +197,16 @@ class TestGrpcClient:
 
         client = Client("localhost", grpc_server)
         job_id = client.submit(problem, SolverSettings())
-        assert client.wait(job_id, timeout=120) == JobStatus.COMPLETED
+        try:
+            assert client.wait(job_id, timeout=120) == JobStatus.COMPLETED
 
-        solution = client.result(job_id, _MIP_NAMES)
-        assert solution is not None
-        assert solution.get_primal_objective() == pytest.approx(15.0, rel=1e-3)
-        client.delete(job_id)
+            solution = client.result(job_id, _MIP_NAMES)
+            assert solution is not None
+            assert solution.get_primal_objective() == pytest.approx(
+                15.0, rel=1e-3
+            )
+        finally:
+            client.delete(job_id)
 
     def test_lp_initial_solution_over_grpc(self, grpc_server):
         problem = _demo_lp_problem()

@@ -2851,6 +2851,37 @@ TEST(PopulateFromDataModelView, CopiesInitialSolutions)
   EXPECT_EQ(problem.get_initial_dual_solution_host(), dual);
 }
 
+TEST(ApplyInitialSolutions, CopiesPrimalToMipSettings)
+{
+  cpu_optimization_problem_t<int32_t, double> problem;
+  seed_minimal_problem(problem);
+  std::vector<double> primal = {1.25, 2.5, 3.75};
+  problem.set_initial_primal_solution(primal.data(), static_cast<int32_t>(primal.size()));
+
+  mip_solver_settings_t<int32_t, double> settings;
+  apply_initial_solutions_to_mip_settings(problem, settings);
+  ASSERT_EQ(settings.initial_solutions.size(), 1);
+  ASSERT_NE(settings.initial_solutions[0], nullptr);
+  EXPECT_EQ(settings.initial_solutions[0]->size(), primal.size());
+}
+
+TEST(ApplyInitialSolutions, CopiesPrimalAndDualToPdlpSettings)
+{
+  cpu_optimization_problem_t<int32_t, double> problem;
+  seed_minimal_problem(problem);
+  std::vector<double> primal = {1.25, 2.5, 3.75};
+  std::vector<double> dual   = {9.0};
+  problem.set_initial_primal_solution(primal.data(), static_cast<int32_t>(primal.size()));
+  problem.set_initial_dual_solution(dual.data(), static_cast<int32_t>(dual.size()));
+
+  pdlp_solver_settings_t<int32_t, double> settings;
+  apply_initial_solutions_to_pdlp_settings(problem, settings);
+  ASSERT_TRUE(settings.has_initial_primal_solution());
+  ASSERT_TRUE(settings.has_initial_dual_solution());
+  EXPECT_EQ(settings.get_initial_primal_solution().size(), primal.size());
+  EXPECT_EQ(settings.get_initial_dual_solution().size(), dual.size());
+}
+
 TEST(MapperRoundtrip, QuadraticConstraintsRowTypeLenient)
 {
   // Verify that constraint_row_type survives any byte value through the

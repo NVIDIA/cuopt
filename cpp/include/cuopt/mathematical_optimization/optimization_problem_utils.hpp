@@ -39,6 +39,12 @@ inline constexpr char var_type_to_char(var_t variable_type)
   return 'C';
 }
 
+/**
+ * @brief Copy optional initial primal/dual arrays onto a CPU problem.
+ *
+ * No-op when both spans are empty, or when @p problem is not a
+ * cpu_optimization_problem_t (GPU problems do not store these host arrays).
+ */
 template <typename i_t, typename f_t>
 void copy_initial_solutions_to_cpu_problem(optimization_problem_interface_t<i_t, f_t>* problem,
                                            std::span<const f_t> primal,
@@ -53,6 +59,12 @@ void copy_initial_solutions_to_cpu_problem(optimization_problem_interface_t<i_t,
   if (!dual.empty()) { cpu->set_initial_dual_solution(dual.data(), static_cast<i_t>(dual.size())); }
 }
 
+/**
+ * @brief If the CPU problem has an initial primal, copy it onto MIP settings.
+ *
+ * Same contract as local solve: empty means unset; size/finiteness are left to
+ * add_initial_solution / problem_checking_t.
+ */
 template <typename i_t, typename f_t>
 void apply_initial_solutions_to_mip_settings(const cpu_optimization_problem_t<i_t, f_t>& problem,
                                              mip_solver_settings_t<i_t, f_t>& settings)
@@ -63,6 +75,11 @@ void apply_initial_solutions_to_mip_settings(const cpu_optimization_problem_t<i_
   }
 }
 
+/**
+ * @brief If the CPU problem has initial primal/dual arrays, copy them onto PDLP settings.
+ *
+ * Each array is applied independently when non-empty, matching local Solve.
+ */
 template <typename i_t, typename f_t>
 void apply_initial_solutions_to_pdlp_settings(const cpu_optimization_problem_t<i_t, f_t>& problem,
                                               pdlp_solver_settings_t<i_t, f_t>& settings)
