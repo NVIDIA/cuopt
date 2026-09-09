@@ -59,7 +59,6 @@ def load_library():
     # order only needs to be valid, not exhaustive. routing and grpc are
     # optional (SKIP_ROUTING_BUILD, SKIP_GRPC_BUILD) and may be absent.
     components = [
-        ("libcuopt_base.so", True),
         ("libcuopt_routing.so", False),
         ("libcuopt_mathopt.so", True),
         ("libcuopt_grpc.so", False),

@@ -547,7 +547,6 @@ if (BUILD_TESTS)
 endif ()
 
 set(CUOPT_SRC_FILES)
-set(CUOPT_BASE_SRC_FILES)
 set(CUOPT_ROUTING_SRC_FILES)
 set(CUOPT_MATHOPT_SRC_FILES)
 set(MPS_FAST_SRC_FILES)
@@ -555,7 +554,7 @@ add_subdirectory(src)
 
 if (HOST_LINEINFO)
     set_source_files_properties(
-            ${CUOPT_BASE_SRC_FILES} ${CUOPT_ROUTING_SRC_FILES} ${CUOPT_MATHOPT_SRC_FILES}
+            ${CUOPT_ROUTING_SRC_FILES} ${CUOPT_MATHOPT_SRC_FILES}
             DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTIES COMPILE_OPTIONS "-g1")
 endif ()
 
@@ -573,7 +572,7 @@ endif ()
 # Uses APPEND to preserve any existing per-file options (e.g. -g1 from HOST_LINEINFO).
 if (DEFINE_ASSERT)
     set_property(
-            SOURCE ${CUOPT_BASE_SRC_FILES} ${CUOPT_ROUTING_SRC_FILES} ${CUOPT_MATHOPT_SRC_FILES}
+            SOURCE ${CUOPT_ROUTING_SRC_FILES} ${CUOPT_MATHOPT_SRC_FILES}
             DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             APPEND PROPERTY COMPILE_OPTIONS "-UNDEBUG")
 endif ()
@@ -702,34 +701,18 @@ set(CUOPT_PRIVATE_CUDA_LIBS
 
 get_filename_component(CUDSS_MT_LIB_FILE_NAME "${CUDSS_MT_LIB_FILE}" NAME)
 
-# cuopt_base: utilities + linear algebra (stateful shared infra — logger, work scheduler)
-add_library(cuopt_base SHARED ${CUOPT_BASE_SRC_FILES})
-cuopt_configure_component(cuopt_base)
-target_include_directories(cuopt_base PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/include")
-target_compile_definitions(cuopt_base PUBLIC
-        CUOPT_CUDA_ARCHITECTURES="${JOINED_CUDA_ARCHITECTURES}"
-        CUOPT_CPU_ARCHITECTURE="${CMAKE_SYSTEM_PROCESSOR}"
-)
-target_link_libraries(cuopt_base
-        PUBLIC
-        rmm::rmm
-        rapids_logger::rapids_logger
-        CCCL::CCCL
-        raft::raft
-        CUDA::cublas
-        CUDA::cusparse
-        PRIVATE
-        OpenMP::OpenMP_CXX
-        OpenMP::OpenMP_CUDA
-)
-add_library(cuopt::base ALIAS cuopt_base)
-
 # cuopt_routing: VRP / routing engine (omitted when SKIP_ROUTING_BUILD=ON)
 if(NOT SKIP_ROUTING_BUILD)
     add_library(cuopt_routing SHARED ${CUOPT_ROUTING_SRC_FILES})
     cuopt_configure_component(cuopt_routing)
     target_link_libraries(cuopt_routing
-            PUBLIC cuopt_base
+            PUBLIC
+            rmm::rmm
+            rapids_logger::rapids_logger
+            CCCL::CCCL
+            raft::raft
+            CUDA::cublas
+            CUDA::cusparse
             PRIVATE simde::simde OpenMP::OpenMP_CXX OpenMP::OpenMP_CUDA
     )
     add_library(cuopt::routing ALIAS cuopt_routing)
@@ -756,11 +739,19 @@ target_include_directories(cuopt_mathopt SYSTEM PRIVATE
 )
 target_compile_definitions(cuopt_mathopt
         PUBLIC CUSPARSE_ENABLE_EXPERIMENTAL_API
+        # utilities/version_info.cpp reports these; it builds here now that cuopt_base is gone.
+        CUOPT_CUDA_ARCHITECTURES="${JOINED_CUDA_ARCHITECTURES}"
+        CUOPT_CPU_ARCHITECTURE="${CMAKE_SYSTEM_PROCESSOR}"
         PRIVATE CUDSS_MT_LIB_FILE_NAME="${CUDSS_MT_LIB_FILE_NAME}"
 )
 target_link_libraries(cuopt_mathopt
         PUBLIC
-        cuopt_base
+        rmm::rmm
+        rapids_logger::rapids_logger
+        CCCL::CCCL
+        raft::raft
+        CUDA::cublas
+        CUDA::cusparse
         ${CUDSS_LIB_FILE}
         PRIVATE
         ${CUOPT_PRIVATE_CUDA_LIBS}
@@ -956,11 +947,10 @@ endif (BUILD_TESTS)
 # for consumers that linked the pre-split library. cuopt::cuopt is the CMake equivalent.
 # See cmake/libcuopt.so.in for why a real ELF cannot serve this purpose.
 
-set(CUOPT_LINKER_SCRIPT_INPUTS "libcuopt_base.so")
+set(CUOPT_LINKER_SCRIPT_INPUTS "libcuopt_mathopt.so")
 if(NOT SKIP_ROUTING_BUILD)
     string(APPEND CUOPT_LINKER_SCRIPT_INPUTS " libcuopt_routing.so")
 endif()
-string(APPEND CUOPT_LINKER_SCRIPT_INPUTS " libcuopt_mathopt.so")
 if(NOT SKIP_GRPC_BUILD)
     string(APPEND CUOPT_LINKER_SCRIPT_INPUTS " libcuopt_grpc.so")
 endif()
@@ -983,9 +973,9 @@ target_include_directories(cuopt
 )
 
 if(NOT SKIP_ROUTING_BUILD)
-    target_link_libraries(cuopt INTERFACE cuopt_base cuopt_routing cuopt_mathopt)
+    target_link_libraries(cuopt INTERFACE cuopt_routing cuopt_mathopt)
 else()
-    target_link_libraries(cuopt INTERFACE cuopt_base cuopt_mathopt)
+    target_link_libraries(cuopt INTERFACE cuopt_mathopt)
 endif()
 if(NOT SKIP_GRPC_BUILD)
     target_link_libraries(cuopt INTERFACE cuopt_grpc)
@@ -1002,7 +992,7 @@ if (WRITE_FATBIN)
   ]=])
     # Applies to the components that actually carry CUDA fatbins. Before the split this
     # was set on libcuopt.so, which held all the device code; it now holds none.
-    set(_CUOPT_FATBIN_TARGETS cuopt_base cuopt_mathopt)
+    set(_CUOPT_FATBIN_TARGETS cuopt_mathopt)
     if(NOT SKIP_ROUTING_BUILD)
         list(APPEND _CUOPT_FATBIN_TARGETS cuopt_routing)
     endif()
@@ -1032,7 +1022,7 @@ else ()
     set(_INCLUDE_DEST include/cuopt/)
 endif ()
 
-set(CUOPT_COMPONENT_TARGETS cuopt_base cuopt_mathopt)
+set(CUOPT_COMPONENT_TARGETS cuopt_mathopt)
 if(NOT SKIP_ROUTING_BUILD)
     list(APPEND CUOPT_COMPONENT_TARGETS cuopt_routing)
 endif()
@@ -1040,7 +1030,7 @@ if(NOT SKIP_GRPC_BUILD)
     list(APPEND CUOPT_COMPONENT_TARGETS cuopt_grpc)
 endif()
 
-# Export as cuopt::base / cuopt::routing / cuopt::mathopt / cuopt::grpc, matching the
+# Export as cuopt::routing / cuopt::mathopt / cuopt::grpc, matching the
 # build-tree aliases.
 set(CUOPT_COMPONENT_EXPORT_NAMES "")
 foreach(_component ${CUOPT_COMPONENT_TARGETS})
@@ -1086,7 +1076,7 @@ set(doc_string
 Provide targets for cuOpt.
 
 cuOpt library is a collection of GPU accelerated combinatorial optimization algorithms.
-Component targets: cuopt::base, cuopt::routing, cuopt::mathopt, cuopt::grpc (when gRPC is built)
+Component targets: cuopt::routing, cuopt::mathopt, cuopt::grpc (when gRPC is built)
 Umbrella target:   cuopt::cuopt (links all component libs — backward-compatible with -lcuopt)
 
 ]=])

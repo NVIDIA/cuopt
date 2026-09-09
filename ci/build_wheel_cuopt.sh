@@ -41,7 +41,6 @@ EXCLUDE_ARGS=(
   --exclude "libcusolver.so.*"
   --exclude "libcusparse.so.*"
   --exclude "libcuopt.so"
-  --exclude "libcuopt_base.so"
   --exclude "libcuopt_routing.so"
   --exclude "libcuopt_mathopt.so"
   --exclude "libcuopt_grpc.so"

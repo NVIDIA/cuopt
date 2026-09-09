@@ -24,16 +24,16 @@ add_subdirectory(barrier)
 add_subdirectory(branch_and_bound)
 add_subdirectory(cuts)
 
-# Aggregate per-domain source lists for the three component libraries
-set(CUOPT_BASE_SRC_FILES
-  ${UTIL_SRC_FILES}
-)
-
+# Aggregate per-domain source lists for the component libraries.
+# UTIL_SRC_FILES lives in cuopt_mathopt rather than a separate cuopt_base: mathopt is its
+# only consumer (routing, grpc and client reference none of its symbols), so a standalone
+# library would exist to serve one caller.
 set(CUOPT_ROUTING_SRC_FILES
   ${ROUTING_SRC_FILES}
 )
 
 set(CUOPT_MATHOPT_SRC_FILES
+  ${UTIL_SRC_FILES}
   ${LINEAR_ALGEBRA_SRC_FILES}
   ${LP_SRC_FILES}
   ${MATH_OPT_SRC_FILES}
@@ -45,11 +45,9 @@ set(CUOPT_MATHOPT_SRC_FILES
   ${CUTS_SRC_FILES}
 )
 
-set(CUOPT_BASE_SRC_FILES ${CUOPT_BASE_SRC_FILES} PARENT_SCOPE)
 set(CUOPT_ROUTING_SRC_FILES ${CUOPT_ROUTING_SRC_FILES} PARENT_SCOPE)
 set(CUOPT_MATHOPT_SRC_FILES ${CUOPT_MATHOPT_SRC_FILES} PARENT_SCOPE)
 set(CUOPT_SRC_FILES
-  ${CUOPT_BASE_SRC_FILES}
   ${CUOPT_ROUTING_SRC_FILES}
   ${CUOPT_MATHOPT_SRC_FILES}
   PARENT_SCOPE
