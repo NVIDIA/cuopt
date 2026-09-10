@@ -444,16 +444,16 @@ struct multi_gpu_engine_t {
   // (cstr axis, since the input is cstr-shaped), then dispatches each shard's
   // local spmv_At_into that reads from in_descs[r] and writes into out_descs[r].
   void distributed_spmv_At(std::vector<rmm::device_uvector<f_t>>& in_bufs,
-                           std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>>& in_descs,
-                           std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>>& out_descs);
+                           std::vector<cusparse_dn_vec_uptr>& in_descs,
+                           std::vector<cusparse_dn_vec_uptr>& out_descs);
 
   // Distributed A @ in on caller-owned scratch. Refreshes the halo of `in_bufs`
   // (var axis, since the input is var-shaped), then dispatches each shard's
   // local spmv_A_into. Caller owns / sizes the descriptor vectors as above
   // (in_descs to var_total, out_descs to cstr_total).
   void distributed_spmv_A(std::vector<rmm::device_uvector<f_t>>& in_bufs,
-                          std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>>& in_descs,
-                          std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>>& out_descs);
+                          std::vector<cusparse_dn_vec_uptr>& in_descs,
+                          std::vector<cusparse_dn_vec_uptr>& out_descs);
 
   // -------- High-level algorithms (defined in distributed_algorithms.cu) ---
   // Refreshes the halo copies of the cumulative variable + constraint scalings on

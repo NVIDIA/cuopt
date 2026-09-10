@@ -106,6 +106,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_BARRIER_PRIMAL_REGULARIZATION, &pdlp_settings.barrier_primal_regularization, f_t(-1.0), std::numeric_limits<f_t>::infinity(), f_t(-1.0), "initial primal regularization for the augmented system; -1 automatic"},
     {CUOPT_BARRIER_DUAL_REGULARIZATION, &pdlp_settings.barrier_dual_regularization, f_t(-1.0), std::numeric_limits<f_t>::infinity(), f_t(-1.0), "initial dual regularization for the augmented system; -1 automatic"},
     {CUOPT_BARRIER_STEP_SCALE, &pdlp_settings.barrier_step_scale, f_t(0.5), f_t(0.9999), f_t(0.9)},
+    {CUOPT_BARRIER_INITIAL_POINT_SAFEGUARD, &pdlp_settings.barrier_initial_point_safeguard, f_t(0.0), std::numeric_limits<f_t>::infinity(), f_t(10.0), "margin pushing the barrier initial iterate into the interior of the nonnegative orthant / SOC"},
     // MIP heuristic hyper-parameters (hidden from default --help: name contains "hyper_")
     {CUOPT_MIP_HYPER_HEURISTIC_ROOT_LP_TIME_RATIO, &mip_settings.heuristic_params.root_lp_time_ratio, f_t(0.0), f_t(1.0), f_t(0.1), "fraction of total time for root LP"},
     {CUOPT_MIP_HYPER_HEURISTIC_ROOT_LP_MAX_TIME, &mip_settings.heuristic_params.root_lp_max_time, f_t(0.0), std::numeric_limits<f_t>::infinity(), f_t(15.0), "hard cap on root LP seconds"},
@@ -140,7 +141,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_FOLDING, &pdlp_settings.folding, -1, 1, -1},
     {CUOPT_DUALIZE, &pdlp_settings.dualize, -1, 1, -1},
     {CUOPT_ORDERING, &pdlp_settings.ordering, -1, 1, -1},
-    {CUOPT_BARRIER_DUAL_INITIAL_POINT, &pdlp_settings.barrier_dual_initial_point, -1, 1, -1},
+    {CUOPT_BARRIER_DUAL_INITIAL_POINT, reinterpret_cast<int*>(&pdlp_settings.barrier_dual_initial_point), -1, 2, -1},
     {CUOPT_POSTSOLVE_INFO, &pdlp_settings.postsolve_info, -1, 1, -1},
     {CUOPT_MIP_CUT_PASSES, &mip_settings.max_cut_passes, -1, std::numeric_limits<i_t>::max(), 10},
     {CUOPT_MIP_MIXED_INTEGER_ROUNDING_CUTS, &mip_settings.mir_cuts, -1, 1, -1},
@@ -186,7 +187,6 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_HYPER_DIVING_COEFFICIENT, &mip_settings.diving_params.coefficient_diving, -1, 1, -1, "coefficient diving toggle: -1 automatic, 0 disabled, 1 enabled"},
     {CUOPT_MIP_HYPER_DIVING_FARKAS, &mip_settings.diving_params.farkas_diving, -1, 1, -1, "Farkas diving toggle: -1 automatic, 0 disabled, 1 enabled"},
     {CUOPT_MIP_HYPER_DIVING_VECTOR_LENGTH, &mip_settings.diving_params.vector_length_diving, -1, 1, -1, "vector-length diving toggle: -1 automatic, 0 disabled, 1 enabled"},
-    {CUOPT_MIP_HYPER_DIVING_MIN_NODE_DEPTH, &mip_settings.diving_params.min_node_depth, 0, std::numeric_limits<i_t>::max(), 10, "minimum depth at which to start diving"},
     {CUOPT_MIP_HYPER_DIVING_NODE_LIMIT, &mip_settings.diving_params.node_limit, 0, std::numeric_limits<i_t>::max(), 500, "maximum nodes explored per dive"},
     {CUOPT_MIP_HYPER_DIVING_BACKTRACK_LIMIT, &mip_settings.diving_params.backtrack_limit, 0, std::numeric_limits<int16_t>::max(), 5, "maximum backtracking allowed per dive"},
     // Recursive sub-MIP (RINS) hyper-parameters (hidden from default --help: name contains "hyper_")
@@ -414,86 +414,6 @@ std::string solver_settings_t<i_t, f_t>::get_parameter_as_string(const std::stri
     if (param.param_name == name) { return *param.value_ptr; }
   }
   throw std::invalid_argument("Parameter " + name + " not found");
-}
-
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_initial_pdlp_primal_solution(const f_t* solution,
-                                                                   i_t size,
-                                                                   rmm::cuda_stream_view stream)
-{
-  pdlp_settings.set_initial_primal_solution(solution, size, stream);
-}
-
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_initial_pdlp_dual_solution(const f_t* solution,
-                                                                 i_t size,
-                                                                 rmm::cuda_stream_view stream)
-{
-  pdlp_settings.set_initial_dual_solution(solution, size, stream);
-}
-
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_pdlp_warm_start_data(
-  const f_t* current_primal_solution,
-  const f_t* current_dual_solution,
-  const f_t* initial_primal_average,
-  const f_t* initial_dual_average,
-  const f_t* current_ATY,
-  const f_t* sum_primal_solutions,
-  const f_t* sum_dual_solutions,
-  const f_t* last_restart_duality_gap_primal_solution,
-  const f_t* last_restart_duality_gap_dual_solution,
-  i_t primal_size,
-  i_t dual_size,
-  f_t initial_primal_weight,
-  f_t initial_step_size,
-  i_t total_pdlp_iterations,
-  i_t total_pdhg_iterations,
-  f_t last_candidate_kkt_score,
-  f_t last_restart_kkt_score,
-  f_t sum_solution_weight,
-  i_t iterations_since_last_restart)
-{
-  pdlp_settings.set_pdlp_warm_start_data(current_primal_solution,
-                                         current_dual_solution,
-                                         initial_primal_average,
-                                         initial_dual_average,
-                                         current_ATY,
-                                         sum_primal_solutions,
-                                         sum_dual_solutions,
-                                         last_restart_duality_gap_primal_solution,
-                                         last_restart_duality_gap_dual_solution,
-                                         primal_size,
-                                         dual_size,
-                                         initial_primal_weight,
-                                         initial_step_size,
-                                         total_pdlp_iterations,
-                                         total_pdhg_iterations,
-                                         last_candidate_kkt_score,
-                                         last_restart_kkt_score,
-                                         sum_solution_weight,
-                                         iterations_since_last_restart);
-}
-
-template <typename i_t, typename f_t>
-const rmm::device_uvector<f_t>& solver_settings_t<i_t, f_t>::get_initial_pdlp_primal_solution()
-  const
-{
-  return pdlp_settings.get_initial_primal_solution();
-}
-
-template <typename i_t, typename f_t>
-const rmm::device_uvector<f_t>& solver_settings_t<i_t, f_t>::get_initial_pdlp_dual_solution() const
-{
-  return pdlp_settings.get_initial_dual_solution();
-}
-
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::add_initial_mip_solution(const f_t* solution,
-                                                           i_t size,
-                                                           rmm::cuda_stream_view stream)
-{
-  mip_settings.add_initial_solution(solution, size, stream);
 }
 
 template <typename i_t, typename f_t>

@@ -224,9 +224,9 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value_squared(i_t n_g
   std::vector<rmm::device_scalar<f_t>> norm_q;
   std::vector<rmm::device_scalar<f_t>> residual_norm;
 
-  std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>> q_dn(nb);
-  std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>> z_dn(nb);
-  std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>> atq_dn(nb);
+  std::vector<cusparse_dn_vec_uptr> q_dn(nb);
+  std::vector<cusparse_dn_vec_uptr> z_dn(nb);
+  std::vector<cusparse_dn_vec_uptr> atq_dn(nb);
 
   // Per-shard owned-slice spans consumed by the engine's *_bufs helpers.
   std::vector<raft::device_span<f_t>> q_owned, z_owned;
@@ -250,9 +250,9 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value_squared(i_t n_g
     sigma_sq.emplace_back(s.stream.view());
     norm_q.emplace_back(s.stream.view());
     residual_norm.emplace_back(s.stream.view());
-    q_dn[r].create(static_cast<int64_t>(cstr_total), q.back().data());
-    z_dn[r].create(static_cast<int64_t>(cstr_total), z.back().data());
-    atq_dn[r].create(static_cast<int64_t>(var_total), atq.back().data());
+    q_dn[r]   = make_dnvec<f_t>(static_cast<int64_t>(cstr_total), q.back().data());
+    z_dn[r]   = make_dnvec<f_t>(static_cast<int64_t>(cstr_total), z.back().data());
+    atq_dn[r] = make_dnvec<f_t>(static_cast<int64_t>(var_total), atq.back().data());
 
     q_owned.emplace_back(q.back().data(), static_cast<std::size_t>(n_owned));
     z_owned.emplace_back(z.back().data(), static_cast<std::size_t>(n_owned));

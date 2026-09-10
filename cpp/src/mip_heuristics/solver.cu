@@ -25,6 +25,7 @@
 
 #include <mip_heuristics/feasibility_jump/early_cpufj.cuh>
 #include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
+#include <mip_heuristics/structural/early_structural.cuh>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/cusparse_macros.hpp>
@@ -224,6 +225,16 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     if (context.early_cpufj_ptr->solution_found()) {
       CUOPT_LOG_DEBUG("Early CPUFJ found incumbent with user-space objective %g during presolve",
                       context.early_cpufj_ptr->get_best_user_objective());
+    }
+  }
+
+  if (context.early_structural_ptr) {
+    context.early_structural_ptr->stop();
+    if (context.early_structural_ptr->solution_found()) {
+      CUOPT_LOG_DEBUG(
+        "Early structural heuristic found incumbent with user-space objective %g "
+        "during presolve",
+        context.early_structural_ptr->get_best_user_objective());
     }
   }
 
@@ -480,6 +491,20 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     }
   }
 
+  std::unique_ptr<mip::root_structural_t<i_t, f_t>> root_structural;
+  if (num_threads >= CUOPT_MIP_ROOT_STRUCTURAL_REQUIRED_THREAD_COUNT &&
+      context.settings.determinism_mode != CUOPT_MODE_DETERMINISTIC &&
+      !context.settings.heuristics_only) {
+    root_structural = std::make_unique<mip::root_structural_t<i_t, f_t>>(
+      *context.problem_ptr,
+      context.settings.get_tolerances(),
+      context.preempt_heuristic_solver_,
+      [&dm](const std::vector<f_t>& assignment, f_t objective) {
+        dm.population.add_external_solution(assignment, objective, solution_origin_t::EXTERNAL);
+      });
+    if (!root_structural->recognized()) { root_structural.reset(); }
+  }
+
 #pragma omp taskgroup
   {
     if (!context.settings.heuristics_only) {
@@ -489,10 +514,24 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
       }
     }
 
+    if (root_structural) {
+#pragma omp task default(shared) priority(CUOPT_DEFAULT_TASK_PRIORITY)
+      {
+        root_structural->run();
+      }
+    }
+
     // Start the primal heuristics
     context.diversity_manager_ptr = &dm;
     sol                           = dm.run_solver();
   }  // implicit barrier for all tasks created in B&B and heuristics
+
+  dm.population.add_external_solutions_to_population();
+  if (dm.population.is_feasible() &&
+      (!sol.get_feasible() ||
+       dm.population.best_feasible().get_objective() < sol.get_objective())) {
+    sol = solution_t<i_t, f_t>(dm.population.best_feasible());
+  }
 
   if (!context.settings.heuristics_only && branch_and_bound->has_solver_space_incumbent()) {
     solution_t<i_t, f_t> branch_and_bound_sol(*context.problem_ptr);

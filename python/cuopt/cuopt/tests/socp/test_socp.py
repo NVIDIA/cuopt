@@ -14,6 +14,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from cuopt.linear_programming import Read
 from cuopt.linear_programming.problem import EQ, GE, LE, MAXIMIZE, Problem
 from cuopt.linear_programming.solver.solver_parameters import CUOPT_METHOD
 from cuopt.linear_programming.solver_settings import (
@@ -119,11 +120,10 @@ def _assert_feasible(problem: Problem) -> None:
                 _quadratic_constraint_violation(constr, variables) <= FEAS_TOL
             )
             continue
-        slack = constr.compute_slack()
-        if constr.Sense == LE:
+        # Classical slack/surplus from populate_solution (non-negative if feasible).
+        slack = constr.Slack
+        if constr.Sense in (LE, GE):
             assert slack >= -FEAS_TOL
-        elif constr.Sense == GE:
-            assert slack <= FEAS_TOL
         else:
             assert constr.Sense == EQ
             assert slack == pytest.approx(0.0, abs=FEAS_TOL)
@@ -214,3 +214,88 @@ def test_maximize_with_quadratic_constraint():
     assert prob_max.ObjValue == pytest.approx(2.0, abs=OBJ_TOL)
     assert x.Value == pytest.approx(1.0, abs=PRIMAL_TOL)
     assert y.Value == pytest.approx(1.0, abs=PRIMAL_TOL)
+
+
+# Same model as test_maximize_with_quadratic_constraint written as MPS (as a
+# minimization). QC0 is the binding row: without it the optimum is -10.
+QC_MPS = """NAME          QCREAD
+ROWS
+ N  OBJ
+ L  LIN0
+ L  QC0
+COLUMNS
+    x         OBJ              -1
+    x         LIN0              1
+    y         OBJ              -1
+    y         LIN0              1
+RHS
+    RHS1      LIN0             10
+    RHS1      QC0               6
+QCMATRIX   QC0
+    x         x                 2
+    x         y                 1
+    y         x                 1
+    y         y                 2
+BOUNDS
+ MI BND       x
+ MI BND       y
+ENDATA
+"""
+
+
+def _write_qc_mps(tmp_path) -> str:
+    path = tmp_path / "qc_read.mps"
+    path.write_text(QC_MPS)
+    return str(path)
+
+
+def test_read_keeps_quadratic_constraints(tmp_path):
+    """QCMATRIX rows parsed by read() must reach the solver."""
+    path = _write_qc_mps(tmp_path)
+    problem = Problem.read(path)
+
+    assert problem.NumConstraints == 2
+    quad = problem.getQuadraticConstraints()
+    assert len(quad) == 1
+
+    # Each row must mirror the bundle the reader parsed, in whatever form the
+    # reader normalized it to.
+    bundle = Read(path).get_quadratic_constraints()[0]
+    assert quad[0].ConstraintName == bundle["constraint_row_name"]
+    assert quad[0].Sense == bundle["constraint_row_type"]
+    assert quad[0].rhs_value == pytest.approx(bundle["rhs_value"])
+    for field in ("rows", "cols", "vals", "linear_indices", "linear_values"):
+        np.testing.assert_allclose(getattr(quad[0], field), bundle[field])
+
+    # The file DataModel is the model to solve; rebuilding it from Python is
+    # what used to drop the quadratic rows.
+    model = problem.model
+    solution = _solve(problem)
+    assert problem.model is model
+
+    _assert_solution_on_original_model(problem, solution)
+    _assert_feasible(problem)
+
+    x, y = problem.getVariables()
+    assert problem.ObjValue == pytest.approx(-2.0, abs=OBJ_TOL)
+    assert x.Value == pytest.approx(1.0, abs=PRIMAL_TOL)
+    assert y.Value == pytest.approx(1.0, abs=PRIMAL_TOL)
+
+
+def test_read_then_rebuild_keeps_quadratic_constraints(tmp_path):
+    """A rebuild after read() must re-emit the quadratic rows."""
+    problem = Problem.read(_write_qc_mps(tmp_path))
+    # update() drops the cached CSR, so writeMPS rebuilds the DataModel from
+    # the Python objects instead of reusing the one that was read.
+    problem.getConstraint(0).RHS = 9.0
+    problem.update()
+
+    round_trip = tmp_path / "round_trip.mps"
+    problem.writeMPS(str(round_trip))
+    assert "QCMATRIX" in round_trip.read_text()
+
+    reread = Problem.read(str(round_trip))
+    assert len(reread.getQuadraticConstraints()) == 1
+    _solve(reread)
+    _assert_feasible(reread)
+    assert reread.ObjValue == pytest.approx(-2.0, abs=OBJ_TOL)

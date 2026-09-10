@@ -8,6 +8,8 @@
 
 #include <linear_algebra/dense_vector.hpp>
 
+#include <cuopt/mathematical_optimization/constants.h>
+#include <cuopt/mathematical_optimization/utilities/internals.hpp>
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/solution.hpp>
@@ -40,29 +42,19 @@ class barrier_solver_t {
   void my_pop_range(bool debug) const;
   void create_Q(const simplex::lp_problem_t<i_t, f_t>& lp, csc_matrix_t<i_t, f_t>& Q);
   int initial_point(iteration_data_t<i_t, f_t>& data);
-  void compute_residual_norms(const dense_vector_t<i_t, f_t>& w,
-                              const dense_vector_t<i_t, f_t>& x,
-                              const dense_vector_t<i_t, f_t>& y,
-                              const dense_vector_t<i_t, f_t>& v,
-                              const dense_vector_t<i_t, f_t>& z,
-                              iteration_data_t<i_t, f_t>& data,
-                              f_t& primal_residual_norm,
-                              f_t& dual_residual_norm,
-                              f_t& complementarity_residual_norm);
 
   void compute_primal_dual_step_length(iteration_data_t<i_t, f_t>& data,
                                        f_t step_scale,
                                        f_t& step_primal,
                                        f_t& step_dual);
 
-  void compute_residual_norms(iteration_data_t<i_t, f_t>& data,
-                              f_t& primal_residual_norm,
-                              f_t& dual_residual_norm,
-                              f_t& complementarity_residual_norm);
-  void compute_mu(iteration_data_t<i_t, f_t>& data, f_t& mu);
-  void compute_primal_dual_objective(iteration_data_t<i_t, f_t>& data,
-                                     f_t& primal_objective,
-                                     f_t& dual_objective);
+  void compute_residual_norms_mu_and_objective(iteration_data_t<i_t, f_t>& data,
+                                               f_t& primal_residual_norm,
+                                               f_t& dual_residual_norm,
+                                               f_t& complementarity_residual_norm,
+                                               f_t& mu,
+                                               f_t& primal_objective,
+                                               f_t& dual_objective);
 
   // To be able to directly pass lambdas to transform functions
  public:
@@ -81,16 +73,6 @@ class barrier_solver_t {
                              rmm::device_uvector<f_t> const& d_v,
                              rmm::device_uvector<f_t> const& d_z,
                              iteration_data_t<i_t, f_t>& data);
-  void gpu_compute_residual_norms(const rmm::device_uvector<f_t>& d_w,
-                                  const rmm::device_uvector<f_t>& d_x,
-                                  const rmm::device_uvector<f_t>& d_y,
-                                  const rmm::device_uvector<f_t>& d_v,
-                                  const rmm::device_uvector<f_t>& d_z,
-                                  iteration_data_t<i_t, f_t>& data,
-                                  f_t& primal_residual_norm,
-                                  f_t& dual_residual_norm,
-                                  f_t& complementarity_residual_norm);
-
   std::pair<f_t, f_t> compute_nonnegative_step_length_pair(iteration_data_t<i_t, f_t>& data,
                                                            const rmm::device_uvector<f_t>& x1,
                                                            const rmm::device_uvector<f_t>& dx1,

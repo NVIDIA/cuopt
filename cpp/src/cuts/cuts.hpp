@@ -665,14 +665,14 @@ class cut_generation_t {
                    const std::vector<simplex::variable_type_t>& var_types,
                    const simplex::user_problem_t<i_t, f_t>& user_problem,
                    const probing_implied_bound_t<i_t, f_t>& probing_implied_bound,
-                   std::shared_ptr<mip::clique_table_t<i_t, f_t>> clique_table = nullptr,
-                   omp_atomic_t<bool>* signal_extend                           = nullptr)
+                   std::shared_ptr<mip::clique_table_t<i_t, f_t>>& clique_table,
+                   omp_atomic_t<bool>* signal_extend = nullptr)
     : cut_pool_(cut_pool),
       knapsack_generation_(lp, settings, Arow, new_slacks, var_types),
       flow_cover_generation_(lp, settings, Arow, new_slacks),
       user_problem_(user_problem),
       probing_implied_bound_(probing_implied_bound),
-      clique_table_(std::move(clique_table)),
+      clique_table_(clique_table),
       signal_extend_(signal_extend)
   {
   }
@@ -770,7 +770,9 @@ class cut_generation_t {
   flow_cover_generation_t<i_t, f_t> flow_cover_generation_;
   const simplex::user_problem_t<i_t, f_t>& user_problem_;
   const probing_implied_bound_t<i_t, f_t>& probing_implied_bound_;
-  std::shared_ptr<mip::clique_table_t<i_t, f_t>> clique_table_;
+  // The background clique-table task publishes into the branch-and-bound owner's shared pointer.
+  // Keep a live reference so the synchronized cut pass consumes the published table.
+  std::shared_ptr<mip::clique_table_t<i_t, f_t>>& clique_table_;
   omp_atomic_t<bool>* signal_extend_{nullptr};
   fractional_conflict_subgraph_t<i_t, f_t> sub_cg_;
 };
