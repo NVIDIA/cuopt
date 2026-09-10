@@ -157,28 +157,32 @@ void triples_to_csr_flat(const coo_entries_t<i_t, f_t>& entries,
   out_offsets = std::move(scratch.row_off);
 }
 
-// One stable counting pass of an LSD radix sort: reorders `src` by `key[entry]`, which must lie
-// in [0, buckets). O(nnz + buckets). Stability is load-bearing -- successive passes rely on it to
-// build a lexicographic order, and it keeps entries that later merge in the caller's input order.
+/**
+ * @brief One stable counting pass of an LSD radix sort: sorts the entry indices in `order` by
+ * `key[entry]`, which must lie in [0, key_range).
+ *
+ * @param scratch Ping-pong buffer, sized like `order`.
+ * @param count Per-key counters, resized internally.
+ */
 template <typename i_t>
 void counting_sort_pass(const std::vector<i_t>& key,
-                        size_t buckets,
-                        std::vector<i_t>& src,
-                        std::vector<i_t>& dst,
+                        size_t key_range,
+                        std::vector<i_t>& order,
+                        std::vector<i_t>& scratch,
                         std::vector<i_t>& count)
 {
-  const size_t nnz = src.size();
-  count.assign(buckets + 1, 0);
+  const size_t nnz = order.size();
+  count.assign(key_range + 1, 0);
   for (size_t t = 0; t < nnz; ++t) {
-    count[key[src[t]] + 1]++;
+    count[key[order[t]] + 1]++;
   }
-  for (size_t b = 0; b < buckets; ++b) {
-    count[b + 1] += count[b];
+  for (size_t v = 0; v < key_range; ++v) {
+    count[v + 1] += count[v];
   }
   for (size_t t = 0; t < nnz; ++t) {
-    dst[count[key[src[t]]]++] = src[t];
+    scratch[count[key[order[t]]]++] = order[t];
   }
-  src.swap(dst);
+  order.swap(scratch);
 }
 
 // Smallest b such that 2^b >= v, clamped to at least 1.
@@ -192,10 +196,14 @@ inline size_t log2_ceil(size_t v)
   return bits;
 }
 
-// Reduce every entry to its canonical upper-triangle coordinates -- row = min(r,c), col = max(r,c)
-// -- as dense ranks in [0, buckets); returns the bucket count. Everything downstream is then sized
-// by the constraint's own index count rather than by the problem dimension. `sorted_values` maps a
-// rank back to the variable index.
+/**
+ * @brief Maps each entry to its canonical upper-triangle coordinate -- row = min(r, c),
+ * col = max(r, c) -- with both endpoints replaced by an integer rank.
+ *
+ * @param sorted_values The inverse map, rank -> variable index.
+ * @return The number of ranks -- the whole index span (direct branch, so it can cover indices
+ * that never occur) or just the distinct indices present (ranking branch).
+ */
 template <typename i_t>
 size_t compress_canonical_pairs(const std::vector<i_t>& rows,
                                 const std::vector<i_t>& cols,
@@ -215,15 +223,13 @@ size_t compress_canonical_pairs(const std::vector<i_t>& rows,
   }
   const size_t range = static_cast<size_t>(max_index - min_index) + 1;
 
-  // Both branches produce the same ranks; pick the cheaper by counting array elements written.
-  // Direct writes two ranks per entry and touches the rank table twice, since `resize` zero-fills
-  // it before the loop overwrites: ~2*nnz + 2*range. Ranking sorts the 2*nnz indices and then
-  // binary-searches each: ~2*nnz*log2(2*nnz). This also bounds direct's memory, whose buffers are
-  // range-sized, since accepting it implies range = O(nnz log nnz).
+  // Both branches produce the same ranks; pick the cheaper. Direct costs ~2*nnz + 2*range (the
+  // rank table is zero-filled by `resize`, then overwritten), ranking ~2*nnz*log2(2*nnz). Choosing
+  // direct also bounds its range-sized buffers, since it implies range = O(nnz log nnz).
   const size_t direct_cost  = 2 * nnz + 2 * range;
   const size_t ranking_cost = 2 * nnz * log2_ceil(2 * nnz);
   if (direct_cost <= ranking_cost) {
-    // Compact range: shift by the minimum, no ranking step. Dense blocks take this path.
+    // Direct: shift by the minimum, no ranking step.
     for (size_t k = 0; k < nnz; ++k) {
       row_rank[k] = std::min(rows[k], cols[k]) - min_index;
       col_rank[k] = std::max(rows[k], cols[k]) - min_index;
@@ -235,8 +241,7 @@ size_t compress_canonical_pairs(const std::vector<i_t>& rows,
     return range;
   }
 
-  // Scattered range: rank the indices that actually occur via sort + unique, then map each index
-  // to its rank by binary search.
+  // Ranking: sort + unique the indices that occur, then map each to its rank by binary search.
   sorted_values.clear();
   sorted_values.reserve(2 * nnz);
   sorted_values.insert(sorted_values.end(), rows.begin(), rows.end());
@@ -254,25 +259,30 @@ size_t compress_canonical_pairs(const std::vector<i_t>& rows,
   return sorted_values.size();
 }
 
-// Order the entries by canonical (row, col), leaving the result in `s.order` and the per-entry
-// ranks in `s.row_rank` / `s.col_rank`. Returns the bucket count. Least-significant key first: the
-// stable row pass preserves the column pass.
+/**
+ * @brief Orders the entries by canonical (row, col), leaving the result in `s.order` and the
+ * per-entry ranks in `s.row_rank` / `s.col_rank`.
+ *
+ * Least-significant key first: the stable row pass preserves the column pass.
+ *
+ * @return The number of ranks, from `compress_canonical_pairs`.
+ */
 template <typename i_t, typename f_t>
 size_t order_by_canonical_pair(const std::vector<i_t>& rows,
                                const std::vector<i_t>& cols,
                                coo_canonicalization_scratch_t<i_t, f_t>& s)
 {
   const size_t nnz = rows.size();
-  const size_t buckets =
+  const size_t num_ranks =
     compress_canonical_pairs(rows, cols, s.row_rank, s.col_rank, s.sorted_values);
   s.order.resize(nnz);
   s.pass_scratch.resize(nnz);
   for (size_t t = 0; t < nnz; ++t) {
     s.order[t] = static_cast<i_t>(t);
   }
-  counting_sort_pass(s.col_rank, buckets, s.order, s.pass_scratch, s.count);
-  counting_sort_pass(s.row_rank, buckets, s.order, s.pass_scratch, s.count);
-  return buckets;
+  counting_sort_pass(s.col_rank, num_ranks, s.order, s.pass_scratch, s.count);
+  counting_sort_pass(s.row_rank, num_ranks, s.order, s.pass_scratch, s.count);
+  return num_ranks;
 }
 
 }  // namespace
