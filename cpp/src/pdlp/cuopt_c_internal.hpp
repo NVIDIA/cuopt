@@ -15,6 +15,8 @@
 #include <cuopt/mathematical_optimization/optimization_problem_solution_interface.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
 
+#include <cuda/stream>
+
 #include <raft/core/handle.hpp>
 
 #include <rmm/cuda_stream_view.hpp>
@@ -30,7 +32,7 @@ struct problem_and_stream_view_t {
     if (mem_backend == memory_backend_t::GPU) {
       // Use RAII locals so partial allocations are cleaned up if a later new throws
       std::unique_ptr<rmm::cuda_stream_view> sv(
-        new rmm::cuda_stream_view(rmm::cuda_stream_per_thread));
+        new rmm::cuda_stream_view(cuda::stream_ref{cudaStreamPerThread}));
       std::unique_ptr<raft::handle_t> h(new raft::handle_t(*sv));
       std::unique_ptr<optimization_problem_t<cuopt_int_t, cuopt_float_t>> gp(
         new optimization_problem_t<cuopt_int_t, cuopt_float_t>(h.get()));

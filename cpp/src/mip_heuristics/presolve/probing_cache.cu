@@ -337,7 +337,7 @@ inline std::vector<i_t> compute_prioritized_integer_indices(
   CUOPT_LOG_DEBUG("prioritized integer_indices n_integer_vars %d", problem.n_integer_vars);
   // compute the min var slack
   compute_min_slack_per_var<i_t, f_t>
-    <<<problem.n_integer_vars, 128, 0, problem.handle_ptr->get_stream()>>>(
+    <<<problem.n_integer_vars, 128, 0, problem.handle_ptr->get_stream().get()>>>(
       problem.view(),
       make_span(bound_presolve.upd.min_activity),
       make_span(bound_presolve.upd.max_activity),
@@ -804,7 +804,7 @@ std::vector<i_t> compute_priority_indices_by_implied_integers(problem_t<i_t, f_t
                                      problem.offsets.data() + 1,
                                      cuda::std::plus<>{},
                                      0,
-                                     problem.handle_ptr->get_stream());
+                                     problem.handle_ptr->get_stream().get());
 
   rmm::device_uvector<std::uint8_t> temp_storage(temp_storage_bytes,
                                                  problem.handle_ptr->get_stream());
@@ -820,7 +820,7 @@ std::vector<i_t> compute_priority_indices_by_implied_integers(problem_t<i_t, f_t
                                      problem.offsets.data() + 1,
                                      cuda::std::plus<>{},
                                      0,
-                                     problem.handle_ptr->get_stream());
+                                     problem.handle_ptr->get_stream().get());
   // keeps the count of number of other integers that this variables shares a constraint with
   rmm::device_uvector<i_t> count_per_variable(problem.n_variables,
                                               problem.handle_ptr->get_stream());
@@ -842,7 +842,7 @@ std::vector<i_t> compute_priority_indices_by_implied_integers(problem_t<i_t, f_t
                                      problem.reverse_offsets.data() + 1,
                                      cuda::std::plus<>{},
                                      0,
-                                     problem.handle_ptr->get_stream());
+                                     problem.handle_ptr->get_stream().get());
 
   temp_storage.resize(temp_storage_bytes, problem.handle_ptr->get_stream());
   d_temp_storage = thrust::raw_pointer_cast(temp_storage.data());
@@ -857,7 +857,7 @@ std::vector<i_t> compute_priority_indices_by_implied_integers(problem_t<i_t, f_t
                                      problem.reverse_offsets.data() + 1,
                                      cuda::std::plus<>{},
                                      0,
-                                     problem.handle_ptr->get_stream());
+                                     problem.handle_ptr->get_stream().get());
   thrust::for_each(problem.handle_ptr->get_thrust_policy(),
                    thrust::make_counting_iterator(0),
                    thrust::make_counting_iterator(problem.n_variables),
