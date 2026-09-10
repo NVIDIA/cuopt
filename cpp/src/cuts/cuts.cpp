@@ -1502,10 +1502,8 @@ static bool flow_cover_valid_endpoint_terms(f_t endpoint_term,
                                             bool in_n2,
                                             f_t bound_tol)
 {
-  return in_n2 ? endpoint_term <= bound_tol &&
-                   endpoint_term + binary_coefficient <= bound_tol
-               : endpoint_term >= -bound_tol &&
-                   endpoint_term + binary_coefficient >= -bound_tol;
+  return in_n2 ? endpoint_term <= bound_tol && endpoint_term + binary_coefficient <= bound_tol
+               : endpoint_term >= -bound_tol && endpoint_term + binary_coefficient >= -bound_tol;
 }
 
 // Per-arc feasibility tolerances shared by the arc-acceptance gate and the assertion in
@@ -1743,8 +1741,8 @@ void flow_cover_generation_t<i_t, f_t>::initialize_implied_bound_index(
     for (i_t p = offsets[j]; p < offsets[j + 1]; p++) {
       const i_t controller = variables[p];
       cuopt_assert(controller >= 0 && controller < (i_t)var_types.size(), "");
-      if (var_types[controller] != variable_type_t::INTEGER ||
-          !std::isfinite(weights[p]) || !std::isfinite(biases[p])) {
+      if (var_types[controller] != variable_type_t::INTEGER || !std::isfinite(weights[p]) ||
+          !std::isfinite(biases[p])) {
         continue;
       }
       source_bounds.emplace_back(controller, p);
@@ -1754,11 +1752,11 @@ void flow_cover_generation_t<i_t, f_t>::initialize_implied_bound_index(
     size_t first = 0;
     while (first < source_bounds.size()) {
       implied_bound_group_t group;
-      group.controller        = source_bounds[first].first;
-      group.first_bound       = index.bound_indices.size();
-      group.minimum_alpha     = biases[source_bounds[first].second];
-      group.maximum_alpha     = biases[source_bounds[first].second];
-      size_t last             = first;
+      group.controller    = source_bounds[first].first;
+      group.first_bound   = index.bound_indices.size();
+      group.minimum_alpha = biases[source_bounds[first].second];
+      group.maximum_alpha = biases[source_bounds[first].second];
+      size_t last         = first;
       while (last < source_bounds.size() && source_bounds[last].first == group.controller) {
         const i_t source_bound = source_bounds[last].second;
         index.bound_indices.push_back(source_bound);
@@ -1775,8 +1773,8 @@ void flow_cover_generation_t<i_t, f_t>::initialize_implied_bound_index(
   }
   index.y_group_offsets[number_of_variables] = index.groups.size();
   cuopt_assert(index.bound_indices.size() == index.active_bounds.size(), "");
-  index.source_column_count = number_of_variables;
-  index.source_bound_count  = variables.size();
+  index.source_column_count  = number_of_variables;
+  index.source_bound_count   = variables.size();
   index.topology_initialized = true;
 }
 
@@ -1793,22 +1791,21 @@ void flow_cover_generation_t<i_t, f_t>::preprocess_cut_pass(
   for (flow_cover_bound_side_t side :
        {flow_cover_bound_side_t::UPPER, flow_cover_bound_side_t::LOWER}) {
     const bool use_upper_bound = side == flow_cover_bound_side_t::UPPER;
-    const auto& offsets = use_upper_bound ? variable_bounds.upper_offsets
-                                          : variable_bounds.lower_offsets;
-    const auto& variables = use_upper_bound ? variable_bounds.upper_variables
-                                            : variable_bounds.lower_variables;
-    const auto& weights = use_upper_bound ? variable_bounds.upper_weights
-                                          : variable_bounds.lower_weights;
-    const auto& biases = use_upper_bound ? variable_bounds.upper_biases
-                                         : variable_bounds.lower_biases;
+    const auto& offsets =
+      use_upper_bound ? variable_bounds.upper_offsets : variable_bounds.lower_offsets;
+    const auto& variables =
+      use_upper_bound ? variable_bounds.upper_variables : variable_bounds.lower_variables;
+    const auto& weights =
+      use_upper_bound ? variable_bounds.upper_weights : variable_bounds.lower_weights;
+    const auto& biases =
+      use_upper_bound ? variable_bounds.upper_biases : variable_bounds.lower_biases;
     auto& preprocessed = use_upper_bound ? upper_implied_bounds : lower_implied_bounds;
     cuopt_assert(offsets.size() >= (size_t)(lp.num_cols + 1), "");
     cuopt_assert(variables.size() == weights.size(), "");
     cuopt_assert(variables.size() == biases.size(), "");
 
     if (!preprocessed.topology_initialized) {
-      initialize_implied_bound_index(
-        preprocessed, offsets, variables, weights, biases, var_types);
+      initialize_implied_bound_index(preprocessed, offsets, variables, weights, biases, var_types);
     } else {
       cuopt_assert((size_t)preprocessed.source_bound_count == variables.size(), "");
       cuopt_assert(offsets.size() >= (size_t)(preprocessed.source_column_count + 1), "");
@@ -1823,9 +1820,8 @@ void flow_cover_generation_t<i_t, f_t>::preprocess_cut_pass(
       cuopt_assert(group.controller >= 0 && group.controller < lp.num_cols, "");
       cuopt_assert(group.first_bound >= 0, "");
       cuopt_assert(group.number_of_bounds > 0, "");
-      cuopt_assert(group.first_bound + group.number_of_bounds <=
-                     (i_t)preprocessed.bound_indices.size(),
-                   "");
+      cuopt_assert(
+        group.first_bound + group.number_of_bounds <= (i_t)preprocessed.bound_indices.size(), "");
       for (i_t bound = group.first_bound; bound < group.first_bound + group.number_of_bounds;
            bound++) {
         const i_t source_bound = preprocessed.bound_indices[bound];
@@ -1934,24 +1930,22 @@ bool flow_cover_generation_t<i_t, f_t>::try_add_implied_bound_candidate(
   i_t bound,
   f_t binary_coefficient)
 {
-  const auto& preprocessed =
-    use_upper_bound ? upper_implied_bounds : lower_implied_bounds;
+  const auto& preprocessed = use_upper_bound ? upper_implied_bounds : lower_implied_bounds;
   cuopt_assert(bound >= 0 && bound < (i_t)preprocessed.bound_indices.size(), "");
   const i_t source_bound = preprocessed.bound_indices[bound];
   cuopt_assert(source_bound >= 0 && source_bound < preprocessed.source_bound_count, "");
   const auto& bound_variables = use_upper_bound ? context.variable_bounds.upper_variables
                                                 : context.variable_bounds.lower_variables;
-  const auto& bound_weights = use_upper_bound ? context.variable_bounds.upper_weights
-                                              : context.variable_bounds.lower_weights;
-  const auto& bound_biases = use_upper_bound ? context.variable_bounds.upper_biases
-                                             : context.variable_bounds.lower_biases;
+  const auto& bound_weights =
+    use_upper_bound ? context.variable_bounds.upper_weights : context.variable_bounds.lower_weights;
+  const auto& bound_biases =
+    use_upper_bound ? context.variable_bounds.upper_biases : context.variable_bounds.lower_biases;
 
-  const f_t endpoint =
-    use_upper_bound ? context.lp.lower[variable] : context.lp.upper[variable];
-  const bool in_n2         = use_upper_bound ? coefficient < 0.0 : coefficient > 0.0;
-  const i_t x_col          = bound_variables[source_bound];
-  const f_t gamma          = bound_weights[source_bound];
-  const f_t alpha          = bound_biases[source_bound];
+  const f_t endpoint = use_upper_bound ? context.lp.lower[variable] : context.lp.upper[variable];
+  const bool in_n2   = use_upper_bound ? coefficient < 0.0 : coefficient > 0.0;
+  const i_t x_col    = bound_variables[source_bound];
+  const f_t gamma    = bound_weights[source_bound];
+  const f_t alpha    = bound_biases[source_bound];
   cuopt_assert(flow_cover_is_zero_one_integer_variable(context, x_col), "");
   const f_t signed_capacity = coefficient * gamma + binary_coefficient;
   const f_t endpoint_term   = coefficient * (endpoint - alpha);
@@ -1973,7 +1967,7 @@ bool flow_cover_generation_t<i_t, f_t>::try_add_implied_bound_candidate(
   spec.b_shift              = coefficient * alpha;
   spec.active_bound         = preprocessed.active_bounds[bound];
   spec.absorbs_binary_coeff = std::abs(binary_coefficient) > static_cast<f_t>(1e-6);
-  const size_t size = candidates.size();
+  const size_t size         = candidates.size();
   flow_cover_try_add_candidate(context, spec, context.xstar[variable], candidates);
   return candidates.size() > size;
 }
@@ -2015,10 +2009,8 @@ bool flow_cover_generation_t<i_t, f_t>::build_single_node_flow_relaxation(
 
     auto& zero_candidate_cache = preprocessed.zero_candidate_cache;
     const zero_candidate_key_t zero_candidate_key{j, c};
-    auto cached_zero           = zero_candidate_cache.end();
-    if (!has_small_direct_coeff) {
-      cached_zero = zero_candidate_cache.find(zero_candidate_key);
-    }
+    auto cached_zero = zero_candidate_cache.end();
+    if (!has_small_direct_coeff) { cached_zero = zero_candidate_cache.find(zero_candidate_key); }
     if (has_small_direct_coeff || cached_zero == zero_candidate_cache.end()) {
       // Compute the best a=0 candidate when it is uncached or row-specific.
       i_t best_zero         = -1;
@@ -2039,7 +2031,7 @@ bool flow_cover_generation_t<i_t, f_t>::build_single_node_flow_relaxation(
           }
           scratch.candidates.pop_back();
           const i_t source_bound = preprocessed.bound_indices[bound];
-          const f_t distance = std::abs(preprocessed.active_bounds[bound] - context.xstar[j]);
+          const f_t distance     = std::abs(preprocessed.active_bounds[bound] - context.xstar[j]);
           if (best_zero < 0 || distance < best_distance ||
               (distance == best_distance && source_bound < best_source_bound)) {
             best_zero         = bound;
@@ -2048,9 +2040,7 @@ bool flow_cover_generation_t<i_t, f_t>::build_single_node_flow_relaxation(
           }
         }
       }
-      if (!has_small_direct_coeff) {
-        zero_candidate_cache.emplace(zero_candidate_key, best_zero);
-      }
+      if (!has_small_direct_coeff) { zero_candidate_cache.emplace(zero_candidate_key, best_zero); }
       if (best_zero >= 0) {
         const bool added =
           try_add_implied_bound_candidate(context, j, c, use_upper_bound, best_zero, 0.0);
@@ -2059,7 +2049,7 @@ bool flow_cover_generation_t<i_t, f_t>::build_single_node_flow_relaxation(
     } else {
       // Reuse the pass-wide a=0 candidate for this variable, side, and coefficient.
       if (cached_zero->second >= 0) {
-        const i_t bound  = cached_zero->second;
+        const i_t bound = cached_zero->second;
         const bool added =
           try_add_implied_bound_candidate(context, j, c, use_upper_bound, bound, 0.0);
         cuopt_assert(added, "");
@@ -2072,26 +2062,22 @@ bool flow_cover_generation_t<i_t, f_t>::build_single_node_flow_relaxation(
       const auto first = preprocessed.groups.begin() + first_group;
       const auto last  = preprocessed.groups.begin() + last_group;
       const auto group = std::lower_bound(
-        first,
-        last,
-        x_col,
-        [](const implied_bound_group_t& candidate, i_t controller) {
+        first, last, x_col, [](const implied_bound_group_t& candidate, i_t controller) {
           return candidate.controller < controller;
         });
       if (group == last || group->controller != x_col) { continue; }
       cuopt_assert(group->number_of_bounds > 0, "");
       cuopt_assert(group->minimum_alpha <= group->maximum_alpha, "");
       // Endpoint feasibility is monotone in alpha, so the side's extreme bounds the whole group.
-      const f_t endpoint     = use_upper_bound ? lower_j : upper_j;
-      const f_t alpha = use_upper_bound ? group->minimum_alpha : group->maximum_alpha;
+      const f_t endpoint      = use_upper_bound ? lower_j : upper_j;
+      const f_t alpha         = use_upper_bound ? group->minimum_alpha : group->maximum_alpha;
       const f_t endpoint_term = c * (endpoint - alpha);
       const bool in_n2        = use_upper_bound ? c < 0.0 : c > 0.0;
       if (!flow_cover_valid_endpoint_terms(
             endpoint_term, direct_coeff, in_n2, context.settings.primal_tol)) {
         continue;
       }
-      for (i_t bound = group->first_bound;
-           bound < group->first_bound + group->number_of_bounds;
+      for (i_t bound = group->first_bound; bound < group->first_bound + group->number_of_bounds;
            bound++) {
         try_add_implied_bound_candidate(context, j, c, use_upper_bound, bound, direct_coeff);
       }

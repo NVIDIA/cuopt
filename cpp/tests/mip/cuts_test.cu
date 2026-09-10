@@ -1916,8 +1916,7 @@ TEST(cuts, flow_cover_generates_valid_single_node_flow_cut)
   ASSERT_GT(generator.num_constraints(), 0);
 
   for (int pass = 0; pass < 2; pass++) {
-    generator.preprocess_cut_pass(
-      test_problem.lp, variable_bounds, test_problem.var_types, xstar);
+    generator.preprocess_cut_pass(test_problem.lp, variable_bounds, test_problem.var_types, xstar);
 
     int generated_cuts = 0;
     for (const auto& flow_cover_row : generator.get_constraints()) {
