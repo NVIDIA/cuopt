@@ -115,14 +115,14 @@ void multi_probe_t<i_t, f_t>::calculate_activity(problem_t<i_t, f_t>& pb,
     auto& upd                = skip_0 ? upd_1 : upd_0;
     constexpr auto n_threads = 256;
     calc_activity_kernel<i_t, f_t, n_threads>
-      <<<pb.n_constraints, n_threads, 0, handle_ptr->get_stream()>>>(pb.view(), upd.view());
+      <<<pb.n_constraints, n_threads, 0, handle_ptr->get_stream().get()>>>(pb.view(), upd.view());
   } else {
     constexpr auto n_threads = 256;
     calc_activity_kernel<i_t, f_t, n_threads>
-      <<<pb.n_constraints, n_threads, 0, handle_ptr->get_stream()>>>(
+      <<<pb.n_constraints, n_threads, 0, handle_ptr->get_stream().get()>>>(
         pb.view(), upd_0.view(), upd_1.view());
   }
-  RAFT_CHECK_CUDA(handle_ptr->get_stream());
+  RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
 }
 
 template <typename i_t, typename f_t>
@@ -150,16 +150,16 @@ bool multi_probe_t<i_t, f_t>::calculate_bounds_update(problem_t<i_t, f_t>& pb,
   } else if (skip_0) {
     upd_1.bounds_changed.set_value_async(zero, handle_ptr->get_stream());
     update_bounds_kernel<i_t, f_t, n_threads>
-      <<<pb.n_variables, n_threads, 0, handle_ptr->get_stream()>>>(pb.view(), upd_1.view());
-    RAFT_CHECK_CUDA(handle_ptr->get_stream());
+      <<<pb.n_variables, n_threads, 0, handle_ptr->get_stream().get()>>>(pb.view(), upd_1.view());
+    RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
     i_t h_bounds_changed_1 = upd_1.bounds_changed.value(handle_ptr->get_stream());
     CUOPT_LOG_TRACE("Bounds changed upd 1 %d", h_bounds_changed_1);
     skip_1 = (h_bounds_changed_1 == zero);
   } else if (skip_1) {
     upd_0.bounds_changed.set_value_async(zero, handle_ptr->get_stream());
     update_bounds_kernel<i_t, f_t, n_threads>
-      <<<pb.n_variables, n_threads, 0, handle_ptr->get_stream()>>>(pb.view(), upd_0.view());
-    RAFT_CHECK_CUDA(handle_ptr->get_stream());
+      <<<pb.n_variables, n_threads, 0, handle_ptr->get_stream().get()>>>(pb.view(), upd_0.view());
+    RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
     i_t h_bounds_changed_0 = upd_0.bounds_changed.value(handle_ptr->get_stream());
     CUOPT_LOG_TRACE("Bounds changed upd 0 %d", h_bounds_changed_0);
     skip_0 = (h_bounds_changed_0 == zero);
@@ -167,9 +167,9 @@ bool multi_probe_t<i_t, f_t>::calculate_bounds_update(problem_t<i_t, f_t>& pb,
     upd_0.bounds_changed.set_value_async(zero, handle_ptr->get_stream());
     upd_1.bounds_changed.set_value_async(zero, handle_ptr->get_stream());
     update_bounds_kernel<i_t, f_t, n_threads>
-      <<<pb.n_variables, n_threads, 0, handle_ptr->get_stream()>>>(
+      <<<pb.n_variables, n_threads, 0, handle_ptr->get_stream().get()>>>(
         pb.view(), upd_0.view(), upd_1.view());
-    RAFT_CHECK_CUDA(handle_ptr->get_stream());
+    RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
     i_t h_bounds_changed_0 = upd_0.bounds_changed.value(handle_ptr->get_stream());
     CUOPT_LOG_TRACE("Bounds changed upd 0 %d", h_bounds_changed_0);
     i_t h_bounds_changed_1 = upd_1.bounds_changed.value(handle_ptr->get_stream());
@@ -233,7 +233,7 @@ void multi_probe_t<i_t, f_t>::set_interval_bounds(
                    });
   init_changed_constraints = false;
   handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(handle_ptr->get_stream());
+  RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
 }
 
 template <typename i_t, typename f_t>
@@ -262,7 +262,7 @@ void multi_probe_t<i_t, f_t>::set_bounds(
                      upd_1_v.ub[thrust::get<0>(t)] = thrust::get<2>(t);
                    });
   handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(handle_ptr->get_stream());
+  RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
 }
 
 template <typename i_t, typename f_t>
@@ -465,7 +465,7 @@ void multi_probe_t<i_t, f_t>::constraint_stats(problem_t<i_t, f_t>& pb,
                    thrust::make_tuple<i_t, i_t, i_t, i_t>(0, 0, 0, 0),
                    tuple_plus_t<i_t>{});
 
-  RAFT_CHECK_CUDA(handle_ptr->get_stream());
+  RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
 
   if (redund_constraints_count_0 > 0) {
     CUOPT_LOG_TRACE("First probe: Redundant constraint count %d", redund_constraints_count_0);

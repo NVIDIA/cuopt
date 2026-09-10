@@ -126,7 +126,7 @@ void update_from_csr(problem_t<i_t, f_t>& pb, bool remap_cache_ids)
                          cnst.end(),
                          cnst.begin(),
                          thrust::maximum<i_t>{});
-  RAFT_CHECK_CUDA(handle_ptr->get_stream());
+  RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
 
   //  partition coo - fixed variables reside in second partition
   i_t nnz_edge_count = pb.coefficients.size();
@@ -139,7 +139,7 @@ void update_from_csr(problem_t<i_t, f_t>& pb, bool remap_cache_ids)
                                coo_begin + cnst.size(),
                                is_variable_free_t<f_t, f_t2>{pb.tolerances.integrality_tolerance,
                                                              make_span(pb.variable_bounds)});
-    RAFT_CHECK_CUDA(handle_ptr->get_stream());
+    RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
     nnz_edge_count = partition_iter - coo_begin;
   }
 
@@ -154,13 +154,13 @@ void update_from_csr(problem_t<i_t, f_t>& pb, bool remap_cache_ids)
                   thrust::make_constant_iterator<i_t>(1) + nnz_edge_count,
                   cnst.begin(),
                   cnst_map.begin());
-  RAFT_CHECK_CUDA(handle_ptr->get_stream());
+  RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
   thrust::scatter(handle_ptr->get_thrust_policy(),
                   thrust::make_constant_iterator<i_t>(1),
                   thrust::make_constant_iterator<i_t>(1) + nnz_edge_count,
                   pb.variables.begin(),
                   var_map.begin());
-  RAFT_CHECK_CUDA(handle_ptr->get_stream());
+  RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
 
   auto unused_var_count =
     thrust::count(handle_ptr->get_thrust_policy(), var_map.begin(), var_map.end(), 0);
@@ -197,7 +197,7 @@ void update_from_csr(problem_t<i_t, f_t>& pb, bool remap_cache_ids)
         pb.reverse_original_ids[pb.original_ids[i]] = i;
       }
     }
-    RAFT_CHECK_CUDA(handle_ptr->get_stream());
+    RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
   }
 
   if (nnz_edge_count != static_cast<i_t>(pb.coefficients.size())) {
@@ -218,7 +218,7 @@ void update_from_csr(problem_t<i_t, f_t>& pb, bool remap_cache_ids)
       thrust::make_transform_iterator(thrust::make_counting_iterator<i_t>(nnz_edge_count), mul),
       unused_coo_cnst.begin(),
       unused_coo_cnst_bound_updates.begin());
-    RAFT_CHECK_CUDA(handle_ptr->get_stream());
+    RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
     auto unused_coo_cnst_count = iter.first - unused_coo_cnst.begin();
     unused_coo_cnst.resize(unused_coo_cnst_count, handle_ptr->get_stream());
     unused_coo_cnst_bound_updates.resize(unused_coo_cnst_count, handle_ptr->get_stream());
@@ -231,7 +231,7 @@ void update_from_csr(problem_t<i_t, f_t>& pb, bool remap_cache_ids)
                                                           make_span(unused_coo_cnst_bound_updates),
                                                           make_span(pb.constraint_lower_bounds),
                                                           make_span(pb.constraint_upper_bounds)});
-    RAFT_CHECK_CUDA(handle_ptr->get_stream());
+    RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
   }
 
   //  update objective_offset
@@ -243,7 +243,7 @@ void update_from_csr(problem_t<i_t, f_t>& pb, bool remap_cache_ids)
       make_span(var_map), make_span(pb.objective_coefficients), make_span(pb.variable_bounds)},
     0.,
     thrust::plus<f_t>{});
-  RAFT_CHECK_CUDA(handle_ptr->get_stream());
+  RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
 
   //  create renumbering maps
   rmm::device_uvector<i_t> cnst_renum_ids(pb.n_constraints, handle_ptr->get_stream());

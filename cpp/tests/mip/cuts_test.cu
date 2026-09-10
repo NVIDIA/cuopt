@@ -982,6 +982,7 @@ TEST(cuts, test_duplicate_cuts_detection)
   cut_pool.add_cut(mip::cut_type_t::MIXED_INTEGER_GOMORY, cut8);
 
   cut_pool.check_for_duplicate_cuts();
+  EXPECT_EQ(cut_pool.pool_size(), 5);
 }
 
 TEST(cuts, clique_phase1_smoke_conflict_graph_edges)

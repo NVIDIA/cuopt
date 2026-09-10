@@ -87,3 +87,35 @@ jobs:
       - name: Test cuopt
         run: |
           bash ./ci/docker/test_image.sh
+
+  # Host-side startup smoke: exercises ENTRYPOINT/CMD (REST) and
+  # CUOPT_SERVER_TYPE=grpc. The jobs above run *inside* the image as a GHA
+  # container and never launch the servers, so they cannot catch packaging
+  # gaps such as UBI10's RHEL lib/lib64 NCCL path miss.
+  smoke:
+    name: smoke-images (${{ inputs.ARCH }}, cuda${{ needs.prepare.outputs.CUDA_SHORT }})
+    runs-on: "linux-${{ inputs.ARCH }}-gpu-a100-latest-1"
+    needs: prepare
+    steps:
+      - name: Checkout code repo
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.sha }}
+          persist-credentials: false
+      - name: Smoke Ubuntu image (REST + gRPC)
+        env:
+          IMAGE_TAG_PREFIX: ${{ inputs.IMAGE_TAG_PREFIX }}
+          CUDA_SHORT: ${{ needs.prepare.outputs.CUDA_SHORT }}
+          PYTHON_SHORT: ${{ needs.prepare.outputs.PYTHON_SHORT }}
+        run: |
+          bash ./ci/docker/smoke_image.sh \
+            "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}"
+      - name: Smoke UBI10 image (REST + gRPC)
+        if: ${{ startsWith(inputs.CUDA_VER, '13.') }}
+        env:
+          IMAGE_TAG_PREFIX: ${{ inputs.IMAGE_TAG_PREFIX }}
+          CUDA_SHORT: ${{ needs.prepare.outputs.CUDA_SHORT }}
+        run: |
+          bash ./ci/docker/smoke_image.sh \
+            "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10"

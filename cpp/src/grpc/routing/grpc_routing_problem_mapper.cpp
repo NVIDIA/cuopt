@@ -93,6 +93,18 @@ void map_proto_to_routing_problem(const cuopt::remote::RoutingProblem& pb,
     }
     p.vehicle_breaks[pvb.vehicle_id()] = std::move(breaks);
   }
+  for (auto const& pvb : pb.vehicle_distance_breaks()) {
+    std::vector<cuopt::routing::cpu_vehicle_distance_break_t> breaks;
+    for (auto const& b : pvb.breaks()) {
+      cuopt::routing::cpu_vehicle_distance_break_t out;
+      out.distance_min = b.distance_min();
+      out.distance_max = b.distance_max();
+      out.duration     = b.duration();
+      copy_repeated_to_vector(b.locations(), out.locations);
+      breaks.push_back(std::move(out));
+    }
+    p.vehicle_distance_breaks[pvb.vehicle_id()] = std::move(breaks);
+  }
 
   for (auto const& m : pb.vehicle_order_match()) {
     std::vector<int32_t> matches;
@@ -195,6 +207,17 @@ void map_routing_problem_to_proto(const cuopt::routing::cpu_routing_problem_t& p
       auto* brk = out->add_breaks();
       brk->set_earliest(b.earliest);
       brk->set_latest(b.latest);
+      brk->set_duration(b.duration);
+      copy_vector_to_repeated(b.locations, brk->mutable_locations());
+    }
+  }
+  for (auto const& [vehicle_id, breaks] : p.vehicle_distance_breaks) {
+    auto* out = pb->add_vehicle_distance_breaks();
+    out->set_vehicle_id(vehicle_id);
+    for (auto const& b : breaks) {
+      auto* brk = out->add_breaks();
+      brk->set_distance_min(b.distance_min);
+      brk->set_distance_max(b.distance_max);
       brk->set_duration(b.duration);
       copy_vector_to_repeated(b.locations, brk->mutable_locations());
     }
