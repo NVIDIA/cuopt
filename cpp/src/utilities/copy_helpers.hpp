@@ -124,7 +124,7 @@ auto host_copy(T const* device_ptr, size_t size, rmm::cuda_stream_view stream_vi
   if (!device_ptr) return std::vector<T>{};
   std::vector<T> host_vec(size);
   raft::copy(host_vec.data(), device_ptr, size, stream_view);
-  stream_view.synchronize();
+  stream_view.sync();
   return host_vec;
 }
 
@@ -150,7 +150,7 @@ inline auto host_copy(bool const* device_ptr, size_t size, rmm::cuda_stream_view
   for (size_t i = 0; i < h_int_vec.size(); ++i) {
     h_bool_vec[i] = static_cast<bool>(h_int_vec[i]);
   }
-  stream_view.synchronize();
+  stream_view.sync();
   return h_bool_vec;
 }
 
@@ -167,7 +167,7 @@ auto host_copy(rmm::device_uvector<T> const& device_vec, rmm::cuda_stream_view s
 {
   std::vector<T, Allocator> host_vec(device_vec.size());
   raft::copy(host_vec.data(), device_vec.data(), device_vec.size(), stream_view);
-  stream_view.synchronize();
+  stream_view.sync();
   return host_vec;
 }
 

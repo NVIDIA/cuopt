@@ -66,7 +66,8 @@ struct path_t {
     all_found.set_value_to_zero_async(stream);
     // device_bitset_t is all zeros when cleared; memset avoids a host-source copy, which
     // is not capturable into a CUDA graph on CUDA 13.
-    RAFT_CUDA_TRY(cudaMemsetAsync(all_mask.data(), 0, sizeof(device_bitset_t<max_routes>), stream));
+    RAFT_CUDA_TRY(
+      cudaMemsetAsync(all_mask.data(), 0, sizeof(device_bitset_t<max_routes>), stream.get()));
   }
 
   struct view_t {

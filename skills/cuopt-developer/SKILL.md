@@ -170,6 +170,7 @@ cuopt/
 ### CUDA/GPU Hygiene
 - Keep operations stream-ordered
 - Follow existing RAFT/RMM patterns
+- `rmm::device_uvector` tests emptiness with `is_empty()`; it has no `empty()` member.
 - No raw `new`/`delete` - use RMM allocators
 - Prefer modern CCCL bit/math helpers in kernels (`cuda::bitfield_extract`, `cuda::bitmask`, pow2 utilities) over hand-rolled `%`/`/` by runtime powers of two — see [references/conventions.md](references/conventions.md)
 
@@ -224,6 +225,8 @@ cuOpt uses Cython to bridge Python and C++. See [references/python_bindings.md](
 For pre-commit setup, DCO sign-off (`git commit -s`), the fork-based PR workflow, the draft-PR rule for agents, PR-description rules (keep it short — no "how it works" walkthroughs or file tables), script and CI/workflow authoring principles (extend existing files before adding new ones; no speculative flags, restated defaults, or silent fallbacks), and step-by-step common-task recipes (adding a solver parameter, dependency, server endpoint, or CUDA kernel), see [references/contributing.md](references/contributing.md).
 
 ## Coding Conventions
+
+Use `_Float128`, never `long double`, whenever extended precision arithmetic is required; `long double` is architecture-dependent and uses x87 on x86.
 
 For C++ naming (`snake_case`, `d_`/`h_` prefixes, `_t` suffix), file extensions (`.hpp`/`.cpp`/`.cu`/`.cuh` and which compiler each uses), include order, Python style, error handling (`CUOPT_EXPECTS`, `RAFT_CUDA_TRY`), memory management (RMM patterns, no raw `new`/`delete`), CCCL bit/math helpers in device code, test-impact rules, volatile-comment rules (hardware names and self-referential issue/PR numbers in comments or skip messages go stale; issue links to a separate tracking issue are fine), **no large local lambdas** (extract named helpers instead), and **coarse work-estimate / time-limit gating** (phase/outer-loop only; no fine inner-loop or double checks), see [references/conventions.md](references/conventions.md).
 

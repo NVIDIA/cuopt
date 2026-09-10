@@ -1,9 +1,9 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import logging
 
-from cuopt_server.utils.result_store import ResultStore
+from cuopt_server.utils.deprecated.result_store import ResultStore
 
 
 class MockStore(ResultStore):

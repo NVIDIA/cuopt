@@ -1,84 +1,122 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 
-#include <cuopt/error.hpp>
-#include <cuopt/export.hpp>
+// Device-facing members of solver_settings_t, split out of solver_settings.cu.
+//
+// Everything else in that class is host-only parameter handling, so the remainder now
+// builds as solver_settings.cpp into the CUDA-free cuopt_client library. Only these
+// members take an rmm::cuda_stream_view or hand back a device_uvector, so they are the
+// only ones that must stay in a CUDA TU inside libcuopt.
+//
+// solver_settings.cpp deliberately has no `template class` at all -- that would instantiate
+// the constructor, which needs CUDA (see the note there) -- so it cannot emit these members
+// either. The `template class` below covers the class as a whole for libcuopt; members
+// defined in the CUDA-free TU are instantiated individually there.
+
 #include <cuopt/mathematical_optimization/solver_settings.hpp>
+
+#include <rmm/cuda_stream_view.hpp>
+#include <rmm/device_uvector.hpp>
+
 #include <mip_heuristics/mip_constants.hpp>
-#include <utilities/logger.hpp>
 
-#include <algorithm>
-#include <cmath>
-#include <filesystem>
-#include <fstream>
-#include <sstream>
+namespace cuopt {
+namespace CUOPT_EXPORT mathematical_optimization {
 
-namespace cuopt::mathematical_optimization {
-
-namespace {
-
-bool string_to_int(const std::string& value, int& result)
+template <typename i_t, typename f_t>
+void solver_settings_t<i_t, f_t>::set_initial_pdlp_primal_solution(const f_t* solution,
+                                                                   i_t size,
+                                                                   rmm::cuda_stream_view stream)
 {
-  try {
-    size_t pos = 0;
-    result     = std::stoi(value, &pos);
-    return pos == value.size();
-  } catch (const std::exception&) {
-    return false;
-  }
+  pdlp_settings.set_initial_primal_solution(solution, size, stream);
 }
 
-template <typename f_t>
-bool string_to_float(const std::string& value, f_t& result)
+template <typename i_t, typename f_t>
+void solver_settings_t<i_t, f_t>::set_initial_pdlp_dual_solution(const f_t* solution,
+                                                                 i_t size,
+                                                                 rmm::cuda_stream_view stream)
 {
-  try {
-    size_t pos = 0;
-    if constexpr (std::is_same_v<f_t, float>) { result = std::stof(value, &pos); }
-    if constexpr (std::is_same_v<f_t, double>) { result = std::stod(value, &pos); }
-    if (std::isnan(result)) { return false; }
-    return pos == value.size();
-  } catch (const std::exception&) {
-    return false;
-  }
+  pdlp_settings.set_initial_dual_solution(solution, size, stream);
 }
 
-std::string quote_if_needed(const std::string& s)
+template <typename i_t, typename f_t>
+void solver_settings_t<i_t, f_t>::set_pdlp_warm_start_data(
+  const f_t* current_primal_solution,
+  const f_t* current_dual_solution,
+  const f_t* initial_primal_average,
+  const f_t* initial_dual_average,
+  const f_t* current_ATY,
+  const f_t* sum_primal_solutions,
+  const f_t* sum_dual_solutions,
+  const f_t* last_restart_duality_gap_primal_solution,
+  const f_t* last_restart_duality_gap_dual_solution,
+  i_t primal_size,
+  i_t dual_size,
+  f_t initial_primal_weight,
+  f_t initial_step_size,
+  i_t total_pdlp_iterations,
+  i_t total_pdhg_iterations,
+  f_t last_candidate_kkt_score,
+  f_t last_restart_kkt_score,
+  f_t sum_solution_weight,
+  i_t iterations_since_last_restart)
 {
-  bool needs_quoting = s.empty() || s.find(' ') != std::string::npos ||
-                       s.find('"') != std::string::npos || s.find('\t') != std::string::npos;
-  if (!needs_quoting) return s;
-  std::string out = "\"";
-  for (char c : s) {
-    if (c == '"')
-      out += "\\\"";
-    else
-      out += c;
-  }
-  out += '"';
-  return out;
+  pdlp_settings.set_pdlp_warm_start_data(current_primal_solution,
+                                         current_dual_solution,
+                                         initial_primal_average,
+                                         initial_dual_average,
+                                         current_ATY,
+                                         sum_primal_solutions,
+                                         sum_dual_solutions,
+                                         last_restart_duality_gap_primal_solution,
+                                         last_restart_duality_gap_dual_solution,
+                                         primal_size,
+                                         dual_size,
+                                         initial_primal_weight,
+                                         initial_step_size,
+                                         total_pdlp_iterations,
+                                         total_pdhg_iterations,
+                                         last_candidate_kkt_score,
+                                         last_restart_kkt_score,
+                                         sum_solution_weight,
+                                         iterations_since_last_restart);
 }
 
-bool string_to_bool(const std::string& value, bool& result)
+template <typename i_t, typename f_t>
+const rmm::device_uvector<f_t>& solver_settings_t<i_t, f_t>::get_initial_pdlp_primal_solution()
+  const
 {
-  if (value == "true" || value == "True" || value == "TRUE" || value == "1" || value == "t" ||
-      value == "T") {
-    result = true;
-    return true;
-  } else if (value == "false" || value == "False" || value == "FALSE" || value == "0" ||
-             value == "f" || value == "F") {
-    result = false;
-    return true;
-  } else {
-    return false;
-  }
+  return pdlp_settings.get_initial_primal_solution();
 }
 
-}  // namespace
+template <typename i_t, typename f_t>
+const rmm::device_uvector<f_t>& solver_settings_t<i_t, f_t>::get_initial_pdlp_dual_solution() const
+{
+  return pdlp_settings.get_initial_dual_solution();
+}
 
+template <typename i_t, typename f_t>
+void solver_settings_t<i_t, f_t>::add_initial_mip_solution(const f_t* solution,
+                                                           i_t size,
+                                                           rmm::cuda_stream_view stream)
+{
+  mip_settings.add_initial_solution(solution, size, stream);
+}
+
+// The constructor is here, not in solver_settings.cpp, and its body is a red herring: it
+// only builds parameter tables. What forces the placement is the member it default-
+// constructs. pdlp_solver_settings_t holds a pdlp_warm_start_data_t by value, and that
+// type's default ctor -- defined in pdlp/pdlp_warm_start_data.cu -- constructs nine
+// rmm::device_uvectors on cudaStreamDefault. Compiling this constructor into the CUDA-free
+// cuopt_client would therefore leave libcuopt_client.so with an undefined reference that
+// only surfaces at call time.
+//
+// Giving pdlp_warm_start_data_t a default ctor that does not touch device memory would let
+// this move to the host translation unit.
 template <typename i_t, typename f_t>
 solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings()
 {
@@ -187,7 +225,6 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_HYPER_DIVING_COEFFICIENT, &mip_settings.diving_params.coefficient_diving, -1, 1, -1, "coefficient diving toggle: -1 automatic, 0 disabled, 1 enabled"},
     {CUOPT_MIP_HYPER_DIVING_FARKAS, &mip_settings.diving_params.farkas_diving, -1, 1, -1, "Farkas diving toggle: -1 automatic, 0 disabled, 1 enabled"},
     {CUOPT_MIP_HYPER_DIVING_VECTOR_LENGTH, &mip_settings.diving_params.vector_length_diving, -1, 1, -1, "vector-length diving toggle: -1 automatic, 0 disabled, 1 enabled"},
-    {CUOPT_MIP_HYPER_DIVING_MIN_NODE_DEPTH, &mip_settings.diving_params.min_node_depth, 0, std::numeric_limits<i_t>::max(), 10, "minimum depth at which to start diving"},
     {CUOPT_MIP_HYPER_DIVING_NODE_LIMIT, &mip_settings.diving_params.node_limit, 0, std::numeric_limits<i_t>::max(), 500, "maximum nodes explored per dive"},
     {CUOPT_MIP_HYPER_DIVING_BACKTRACK_LIMIT, &mip_settings.diving_params.backtrack_limit, 0, std::numeric_limits<int16_t>::max(), 5, "maximum backtracking allowed per dive"},
     // Recursive sub-MIP (RINS) hyper-parameters (hidden from default --help: name contains "hyper_")
@@ -237,482 +274,17 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
   // clang-format on
 }
 
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_parameter_from_string(const std::string& name,
-                                                            const std::string& value)
-{
-  bool found  = false;
-  bool output = false;
-  for (auto& param : int_parameters) {
-    if (param.param_name == name) {
-      i_t value_int;
-      if (string_to_int(value, value_int)) {
-        if (value_int < param.min_value || value_int > param.max_value) {
-          throw std::invalid_argument("Parameter " + name + " value " + value + " out of range");
-        }
-        *param.value_ptr = value_int;
-        found            = true;
-        if (!output) {
-          CUOPT_LOG_INFO("Setting parameter %s to %d", name.c_str(), value_int);
-          output = true;
-        }
-      } else {
-        throw std::invalid_argument("Parameter " + name + " value " + value + " is not an integer");
-      }
-    }
-  }
-  for (auto& param : float_parameters) {
-    if (param.param_name == name) {
-      f_t value_float;
-      if (string_to_float<f_t>(value, value_float)) {
-        if (value_float < param.min_value || value_float > param.max_value) {
-          throw std::invalid_argument("Parameter " + name + " value " + value + " out of range");
-        }
-        *param.value_ptr = value_float;
-        found            = true;
-        if (!output) {
-          CUOPT_LOG_INFO("Setting parameter %s to %e", name.c_str(), value_float);
-          output = true;
-        }
-      } else {
-        throw std::invalid_argument("Parameter " + name + " value " + value + " is not a float");
-      }
-    }
-  }
-  for (auto& param : bool_parameters) {
-    if (param.param_name == name) {
-      bool value_bool;
-      if (string_to_bool(value, value_bool)) {
-        *param.value_ptr = value_bool;
-        found            = true;
-        if (!output) {
-          CUOPT_LOG_INFO("Setting parameter %s to %s", name.c_str(), value_bool ? "true" : "false");
-          output = true;
-        }
-      } else {
-        throw std::invalid_argument("Parameter " + name + " value " + value +
-                                    " must be true or false");
-      }
-    }
-  }
-
-  for (auto& param : string_parameters) {
-    if (param.param_name == name) {
-      *param.value_ptr = value;
-      if (!output) {
-        CUOPT_LOG_INFO("Setting parameter %s to %s", name.c_str(), value.c_str());
-        output = true;
-      }
-      found = true;
-    }
-  }
-  if (!found) { throw std::invalid_argument("Parameter " + name + " not found"); }
-}
-
-template <typename i_t, typename f_t>
-template <typename T>
-void solver_settings_t<i_t, f_t>::set_parameter(const std::string& name, T value)
-{
-  bool found  = false;
-  bool output = false;
-  if constexpr (std::is_same_v<T, i_t>) {
-    for (auto& param : int_parameters) {
-      if (param.param_name == name) {
-        if (value < param.min_value || value > param.max_value) {
-          throw std::invalid_argument("Parameter " + name + " out of range");
-        }
-        *param.value_ptr = value;
-        if (!output) {
-          CUOPT_LOG_INFO("Setting parameter %s to %d", name.c_str(), value);
-          output = true;
-        }
-        found = true;
-      }
-    }
-  }
-  if constexpr (std::is_same_v<T, f_t>) {
-    for (auto& param : float_parameters) {
-      if (param.param_name == name) {
-        if (value < param.min_value || value > param.max_value) {
-          throw std::invalid_argument("Parameter " + name + " out of range");
-        }
-        *param.value_ptr = value;
-        if (!output) {
-          CUOPT_LOG_INFO("Setting parameter %s to %e", name.c_str(), value);
-          output = true;
-        }
-        found = true;
-      }
-    }
-  }
-  if constexpr (std::is_same_v<T, bool>) {
-    for (auto& param : bool_parameters) {
-      if (param.param_name == name) {
-        *param.value_ptr = value;
-        if (!output) {
-          CUOPT_LOG_INFO("Setting parameter %s to %s", name.c_str(), value ? "true" : "false");
-          output = true;
-        }
-        found = true;
-      }
-    }
-  }
-  if constexpr (std::is_same_v<T, std::string>) {
-    for (auto& param : string_parameters) {
-      if (param.param_name == name) {
-        *param.value_ptr = value;
-        if (!output) {
-          CUOPT_LOG_INFO("Setting parameter %s to %s", name.c_str(), value.c_str());
-          output = true;
-        }
-        found = true;
-      }
-    }
-  }
-  if (!found) { throw std::invalid_argument("Parameter " + name + " not found"); }
-}
-
-template <typename i_t, typename f_t>
-template <typename T>
-T solver_settings_t<i_t, f_t>::get_parameter(const std::string& name) const
-{
-  if constexpr (std::is_same_v<T, i_t>) {
-    for (auto& param : int_parameters) {
-      if (param.param_name == name) { return *param.value_ptr; }
-    }
-  }
-  if constexpr (std::is_same_v<T, f_t>) {
-    for (auto& param : float_parameters) {
-      if (param.param_name == name) { return *param.value_ptr; }
-    }
-  }
-  if constexpr (std::is_same_v<T, bool>) {
-    for (auto& param : bool_parameters) {
-      if (param.param_name == name) { return *param.value_ptr; }
-    }
-  }
-  if constexpr (std::is_same_v<T, std::string>) {
-    for (auto& param : string_parameters) {
-      if (param.param_name == name) { return *param.value_ptr; }
-    }
-  }
-  throw std::invalid_argument("Parameter " + name + " not found");
-}
-
-template <typename i_t, typename f_t>
-std::string solver_settings_t<i_t, f_t>::get_parameter_as_string(const std::string& name) const
-{
-  for (auto& param : int_parameters) {
-    if (param.param_name == name) { return std::to_string(*param.value_ptr); }
-  }
-  for (auto& param : float_parameters) {
-    if (param.param_name == name) { return std::to_string(*param.value_ptr); }
-  }
-  for (auto& param : bool_parameters) {
-    if (param.param_name == name) { return *param.value_ptr ? "true" : "false"; }
-  }
-  for (auto& param : string_parameters) {
-    if (param.param_name == name) { return *param.value_ptr; }
-  }
-  throw std::invalid_argument("Parameter " + name + " not found");
-}
-
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_initial_pdlp_primal_solution(const f_t* solution,
-                                                                   i_t size,
-                                                                   rmm::cuda_stream_view stream)
-{
-  pdlp_settings.set_initial_primal_solution(solution, size, stream);
-}
-
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_initial_pdlp_dual_solution(const f_t* solution,
-                                                                 i_t size,
-                                                                 rmm::cuda_stream_view stream)
-{
-  pdlp_settings.set_initial_dual_solution(solution, size, stream);
-}
-
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_pdlp_warm_start_data(
-  const f_t* current_primal_solution,
-  const f_t* current_dual_solution,
-  const f_t* initial_primal_average,
-  const f_t* initial_dual_average,
-  const f_t* current_ATY,
-  const f_t* sum_primal_solutions,
-  const f_t* sum_dual_solutions,
-  const f_t* last_restart_duality_gap_primal_solution,
-  const f_t* last_restart_duality_gap_dual_solution,
-  i_t primal_size,
-  i_t dual_size,
-  f_t initial_primal_weight,
-  f_t initial_step_size,
-  i_t total_pdlp_iterations,
-  i_t total_pdhg_iterations,
-  f_t last_candidate_kkt_score,
-  f_t last_restart_kkt_score,
-  f_t sum_solution_weight,
-  i_t iterations_since_last_restart)
-{
-  pdlp_settings.set_pdlp_warm_start_data(current_primal_solution,
-                                         current_dual_solution,
-                                         initial_primal_average,
-                                         initial_dual_average,
-                                         current_ATY,
-                                         sum_primal_solutions,
-                                         sum_dual_solutions,
-                                         last_restart_duality_gap_primal_solution,
-                                         last_restart_duality_gap_dual_solution,
-                                         primal_size,
-                                         dual_size,
-                                         initial_primal_weight,
-                                         initial_step_size,
-                                         total_pdlp_iterations,
-                                         total_pdhg_iterations,
-                                         last_candidate_kkt_score,
-                                         last_restart_kkt_score,
-                                         sum_solution_weight,
-                                         iterations_since_last_restart);
-}
-
-template <typename i_t, typename f_t>
-const rmm::device_uvector<f_t>& solver_settings_t<i_t, f_t>::get_initial_pdlp_primal_solution()
-  const
-{
-  return pdlp_settings.get_initial_primal_solution();
-}
-
-template <typename i_t, typename f_t>
-const rmm::device_uvector<f_t>& solver_settings_t<i_t, f_t>::get_initial_pdlp_dual_solution() const
-{
-  return pdlp_settings.get_initial_dual_solution();
-}
-
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::add_initial_mip_solution(const f_t* solution,
-                                                           i_t size,
-                                                           rmm::cuda_stream_view stream)
-{
-  mip_settings.add_initial_solution(solution, size, stream);
-}
-
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_mip_callback(internals::base_solution_callback_t* callback,
-                                                   void* user_data)
-{
-  mip_settings.set_mip_callback(callback, user_data);
-}
-
-template <typename i_t, typename f_t>
-const std::vector<internals::base_solution_callback_t*>
-solver_settings_t<i_t, f_t>::get_mip_callbacks() const
-{
-  return mip_settings.get_mip_callbacks();
-}
-
-template <typename i_t, typename f_t>
-pdlp_solver_settings_t<i_t, f_t>& solver_settings_t<i_t, f_t>::get_pdlp_settings()
-{
-  return pdlp_settings;
-}
-
-template <typename i_t, typename f_t>
-mip_solver_settings_t<i_t, f_t>& solver_settings_t<i_t, f_t>::get_mip_settings()
-{
-  return mip_settings;
-}
-
-template <typename i_t, typename f_t>
-const pdlp_warm_start_data_view_t<i_t, f_t>&
-solver_settings_t<i_t, f_t>::get_pdlp_warm_start_data_view() const noexcept
-{
-  return pdlp_settings.get_pdlp_warm_start_data_view();
-}
-
-template <typename i_t, typename f_t>
-const std::vector<parameter_info_t<f_t>>& solver_settings_t<i_t, f_t>::get_float_parameters() const
-{
-  return float_parameters;
-}
-
-template <typename i_t, typename f_t>
-const std::vector<parameter_info_t<i_t>>& solver_settings_t<i_t, f_t>::get_int_parameters() const
-{
-  return int_parameters;
-}
-
-template <typename i_t, typename f_t>
-const std::vector<parameter_info_t<bool>>& solver_settings_t<i_t, f_t>::get_bool_parameters() const
-{
-  return bool_parameters;
-}
-
-template <typename i_t, typename f_t>
-const std::vector<parameter_info_t<std::string>>&
-solver_settings_t<i_t, f_t>::get_string_parameters() const
-{
-  return string_parameters;
-}
-
-template <typename i_t, typename f_t>
-const std::vector<std::string> solver_settings_t<i_t, f_t>::get_parameter_names() const
-{
-  std::vector<std::string> parameter_names;
-  for (auto& param : int_parameters) {
-    parameter_names.push_back(param.param_name);
-  }
-  for (auto& param : float_parameters) {
-    parameter_names.push_back(param.param_name);
-  }
-  for (auto& param : bool_parameters) {
-    parameter_names.push_back(param.param_name);
-  }
-  for (auto& param : string_parameters) {
-    parameter_names.push_back(param.param_name);
-  }
-  return parameter_names;
-}
-
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::load_parameters_from_file(const std::string& path)
-{
-  cuopt_expects(!std::filesystem::is_directory(path) && std::filesystem::exists(path),
-                error_type_t::ValidationError,
-                "Parameter config: not a valid file: %s",
-                path.c_str());
-  std::ifstream file(path);
-  cuopt_expects(file.is_open(),
-                error_type_t::ValidationError,
-                "Parameter config: cannot open: %s",
-                path.c_str());
-  std::string line;
-  while (std::getline(file, line)) {
-    auto first_non_ws = std::find_if_not(line.begin(), line.end(), ::isspace);
-    if (first_non_ws == line.end() || *first_non_ws == '#') continue;
-    line.erase(line.begin(), first_non_ws);
-
-    std::istringstream iss(line);
-    std::string key;
-    cuopt_expects(iss >> key >> std::ws && iss.get() == '=',
-                  error_type_t::ValidationError,
-                  "Parameter config: bad line: %s",
-                  line.c_str());
-    iss >> std::ws;
-    cuopt_expects(!iss.eof(),
-                  error_type_t::ValidationError,
-                  "Parameter config: missing value: %s",
-                  line.c_str());
-    std::string val;
-    if (iss.peek() == '"') {
-      iss.get();
-      val.clear();
-      char ch;
-      bool closed = false;
-      while (iss.get(ch)) {
-        if (ch == '\\' && iss.peek() == '"') {
-          iss.get(ch);
-          val += '"';
-        } else if (ch == '"') {
-          closed = true;
-          break;
-        } else {
-          val += ch;
-        }
-      }
-      cuopt_expects(closed,
-                    error_type_t::ValidationError,
-                    "Parameter config: unterminated quote: %s",
-                    line.c_str());
-    } else {
-      iss >> val;
-    }
-    std::string trailing;
-    cuopt_expects(!bool(iss >> trailing),
-                  error_type_t::ValidationError,
-                  "Parameter config: trailing junk: %s",
-                  line.c_str());
-    try {
-      set_parameter_from_string(key, val);
-    } catch (const std::invalid_argument& e) {
-      cuopt_expects(false, error_type_t::ValidationError, "Parameter config: %s", e.what());
-    }
-  }
-  CUOPT_LOG_INFO("Parameters loaded from: %s", path.c_str());
-}
-
-template <typename i_t, typename f_t>
-bool solver_settings_t<i_t, f_t>::dump_parameters_to_file(const std::string& path,
-                                                          bool hyperparameters_only) const
-{
-  std::ofstream file(path);
-  if (!file.is_open()) {
-    CUOPT_LOG_ERROR("Cannot open file for writing: %s", path.c_str());
-    return false;
-  }
-  file << "# cuOpt parameter configuration (auto-generated)\n";
-  file << "# Uncomment and change the values you wish to override.\n\n";
-  for (const auto& p : int_parameters) {
-    if (hyperparameters_only && p.param_name.find("hyper_") == std::string::npos) continue;
-    if (p.description && p.description[0] != '\0')
-      file << "# " << p.description << " (int, range: [" << p.min_value << ", " << p.max_value
-           << "])\n";
-    file << "# " << p.param_name << " = " << *p.value_ptr << "\n\n";
-  }
-  for (const auto& p : float_parameters) {
-    if (hyperparameters_only && p.param_name.find("hyper_") == std::string::npos) continue;
-    if (p.description && p.description[0] != '\0')
-      file << "# " << p.description << " (double, range: [" << p.min_value << ", " << p.max_value
-           << "])\n";
-    file << "# " << p.param_name << " = " << *p.value_ptr << "\n\n";
-  }
-  for (const auto& p : bool_parameters) {
-    if (hyperparameters_only && p.param_name.find("hyper_") == std::string::npos) continue;
-    if (p.description && p.description[0] != '\0') file << "# " << p.description << " (bool)\n";
-    file << "# " << p.param_name << " = " << (*p.value_ptr ? "true" : "false") << "\n\n";
-  }
-  for (const auto& p : string_parameters) {
-    if (hyperparameters_only && p.param_name.find("hyper_") == std::string::npos) continue;
-    if (p.description && p.description[0] != '\0') file << "# " << p.description << " (string)\n";
-    file << "# " << p.param_name << " = " << quote_if_needed(*p.value_ptr) << "\n\n";
-  }
-  return true;
-}
-
 #if MIP_INSTANTIATE_FLOAT
+// Emits the ctor/dtor/copy for the whole class; solver_settings.cpp deliberately does not,
+// because those need CUDA (see the note there).
 template class CUOPT_EXPORT solver_settings_t<int, float>;
-template CUOPT_EXPORT void solver_settings_t<int, float>::set_parameter(const std::string& name,
-                                                                        int value);
-template CUOPT_EXPORT void solver_settings_t<int, float>::set_parameter(const std::string& name,
-                                                                        float value);
-template CUOPT_EXPORT void solver_settings_t<int, float>::set_parameter(const std::string& name,
-                                                                        bool value);
-template CUOPT_EXPORT int solver_settings_t<int, float>::get_parameter(
-  const std::string& name) const;
-template CUOPT_EXPORT float solver_settings_t<int, float>::get_parameter(
-  const std::string& name) const;
-template CUOPT_EXPORT bool solver_settings_t<int, float>::get_parameter(
-  const std::string& name) const;
-template CUOPT_EXPORT std::string solver_settings_t<int, float>::get_parameter(
-  const std::string& name) const;
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
+// Emits the ctor/dtor/copy for the whole class; solver_settings.cpp deliberately does not,
+// because those need CUDA (see the note there).
 template class CUOPT_EXPORT solver_settings_t<int, double>;
-template CUOPT_EXPORT void solver_settings_t<int, double>::set_parameter(const std::string& name,
-                                                                         int value);
-template CUOPT_EXPORT void solver_settings_t<int, double>::set_parameter(const std::string& name,
-                                                                         double value);
-template CUOPT_EXPORT void solver_settings_t<int, double>::set_parameter(const std::string& name,
-                                                                         bool value);
-template CUOPT_EXPORT int solver_settings_t<int, double>::get_parameter(
-  const std::string& name) const;
-template CUOPT_EXPORT double solver_settings_t<int, double>::get_parameter(
-  const std::string& name) const;
-template CUOPT_EXPORT bool solver_settings_t<int, double>::get_parameter(
-  const std::string& name) const;
-template CUOPT_EXPORT std::string solver_settings_t<int, double>::get_parameter(
-  const std::string& name) const;
 #endif
 
-}  // namespace cuopt::mathematical_optimization
+}  // namespace CUOPT_EXPORT mathematical_optimization
+}  // namespace cuopt

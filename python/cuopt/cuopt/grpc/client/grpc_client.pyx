@@ -93,6 +93,43 @@ class JobNotReadyError(GrpcError):
     pass
 
 
+# Matches the previous C++ wait() poll cadence. Keep this in Python
+# (time.sleep) so the GIL is released between short status RPCs.
+_WAIT_POLL_INTERVAL_S = 1.0
+
+
+def _wait_poll_loop(
+    get_status,
+    job_id,
+    timeout_seconds,
+    error_cls,
+    poll_interval_s=_WAIT_POLL_INTERVAL_S,
+):
+    """Poll ``get_status(job_id)`` until the job is terminal or the timeout.
+
+    The loop and ``time.sleep`` run in Python so the GIL is released between
+    short status RPCs. Concurrent incumbent/log stream threads can therefore
+    run during ``Client.wait``. ``timeout_seconds == 0`` waits indefinitely.
+    Negative values raise ``error_cls``.
+    """
+    if timeout_seconds < 0:
+        raise error_cls("timeout_seconds must be non-negative")
+    deadline = (
+        time.monotonic() + timeout_seconds if timeout_seconds > 0 else None
+    )
+    while True:
+        status = get_status(job_id)
+        if status not in (JobStatus.QUEUED, JobStatus.PROCESSING):
+            return status
+        if deadline is None:
+            time.sleep(poll_interval_s)
+            continue
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise error_cls("Timeout waiting for job completion")
+        time.sleep(min(poll_interval_s, remaining))
+
+
 cdef int _invoke_log_callback(
     const char* line,
     size_t line_len,
@@ -315,19 +352,25 @@ cdef class Client:
         Block until ``job_id`` reaches a terminal state and return its
         :class:`JobStatus`.
 
-        ``timeout`` is in whole seconds. ``None`` waits indefinitely.
-        Non-``None`` values are converted with ``int(timeout)`` (so ``0.5``
-        becomes ``0`` and waits indefinitely). Positive timeouts poll about
-        once per second and raise :class:`GrpcError` if the deadline expires
-        (they do not return a non-terminal :class:`JobStatus`).
+        ``timeout`` is in whole seconds. ``None`` or ``0`` waits indefinitely.
+        Negative values raise :class:`GrpcError`. Non-``None`` values are
+        converted with ``int(timeout)`` (so ``0.5`` becomes ``0`` and waits
+        indefinitely). Positive timeouts poll about once per second and raise
+        :class:`GrpcError` if the deadline expires (they do not return a
+        non-terminal :class:`JobStatus`).
+
+        The wait loop runs in Python and only calls :meth:`status` for each
+        poll, so the GIL is released between checks. Concurrent
+        :meth:`start_incumbent_stream` and
+        :meth:`start_log_stream` threads can therefore make progress during
+        the wait. Each :meth:`status` call is a unary RPC with a separate
+        60-second hang deadline; a hung poll can therefore outlast a short
+        ``timeout``.
         """
-        cdef int timeout_seconds = 0 if timeout is None else int(timeout)
-        cdef grpc_status_result_t wait_result = self._client.get().wait(
-            job_id.encode("utf-8"), timeout_seconds
+        timeout_seconds = 0 if timeout is None else int(timeout)
+        return _wait_poll_loop(
+            self.status, job_id, timeout_seconds, GrpcError
         )
-        if not wait_result.success:
-            raise GrpcError(wait_result.error_message.decode("utf-8"))
-        return JobStatus(<int>wait_result.status)
 
     def cancel(self, str job_id):
         """
@@ -731,6 +774,52 @@ def _to_host(x):
     return np.asarray(x)
 
 
+_NODE_TYPE_NAMES = {
+    "Depot": 0,
+    "Pickup": 1,
+    "Delivery": 2,
+    "Break": 3,
+}
+
+
+def _is_node_type_name_array(values):
+    """True when values are node-type names rather than wire integers.
+
+    Integer and unsigned arrays (including uint8, the local DataModel storage
+    type) pass through. Name arrays are Unicode (U), byte strings (S), NumPy 2
+    variable-width strings (T), or object arrays of str/bytes. Object arrays of
+    ints must not take the name path.
+    """
+    kind = values.dtype.kind
+    if kind in "UST":
+        return True
+    if kind != "O" or values.size == 0:
+        return False
+    # Types are a 1-D sequence. Flatten only for a stray column (n, 1).
+    sample = values[0] if values.ndim == 1 else values.reshape(-1)[0]
+    return isinstance(sample, (str, bytes, np.str_, np.bytes_))
+
+
+def _node_type_name(value):
+    if isinstance(value, bytes):
+        return value.decode("utf-8")
+    return value
+
+
+def _routing_node_types(values):
+    """Normalize routing node names or enum values to wire integers."""
+    values = np.asarray(_to_host(values))
+    if not _is_node_type_name_array(values):
+        return values
+    try:
+        return np.asarray(
+            [_NODE_TYPE_NAMES[_node_type_name(value)] for value in values.ravel()],
+            dtype=np.int32,
+        )
+    except KeyError as error:
+        raise ValueError(f"unknown routing node type {error.args[0]!r}") from error
+
+
 # --- numpy -> std::vector fillers ------------------------------------------
 
 cdef void _fill_i32(vector[int32_t]& v, arr) except *:
@@ -868,7 +957,9 @@ cdef void _populate(cpu_routing_problem_t& p, data_model) except *:
         elif name == "add_initial_solutions":
             _fill_i32(p.initial_solutions.vehicle_ids, args[0])
             _fill_i32(p.initial_solutions.routes, args[1])
-            _fill_i32(p.initial_solutions.types, args[2])
+            _fill_i32(
+                p.initial_solutions.types, _routing_node_types(args[2])
+            )
             _fill_i32(p.initial_solutions.sol_offsets, args[3])
         elif name == "set_min_vehicles":
             p.min_vehicles = <int32_t>int(args[0])
@@ -965,36 +1056,74 @@ cdef _solution_to_py(cpu_routing_solution_t s):
     }
 
 
+# dump_best_results is intentionally not forwarded. The proto and C++ mapper
+# already carry dump_best_results_path, but that writes a debug file on the
+# gRPC server host rather than returning data to the client. Wire it up later
+# if a remote-debug use case appears.
+cdef void _apply_routing_settings(
+    routing_solver_settings_t[int, float]& s, settings
+) except *:
+    if settings is None:
+        return
+    if isinstance(settings, dict):
+        tl = settings.get("time_limit")
+        if tl is not None:
+            s.set_time_limit(<float>float(tl))
+        verbose = settings.get("verbose_mode", settings.get("verbose"))
+        if verbose is not None:
+            s.set_verbose_mode(<bint>bool(verbose))
+        error_logging = settings.get("error_logging")
+        if error_logging is not None:
+            s.set_error_logging_mode(<bint>bool(error_logging))
+        return
+
+    get_time_limit = getattr(settings, "get_time_limit", None)
+    if get_time_limit is not None:
+        tl = get_time_limit()
+        if tl is not None:
+            s.set_time_limit(<float>float(tl))
+    get_verbose_mode = getattr(settings, "get_verbose_mode", None)
+    if get_verbose_mode is not None:
+        s.set_verbose_mode(<bint>bool(get_verbose_mode()))
+    get_error_logging_mode = getattr(
+        settings, "get_error_logging_mode", None
+    )
+    if get_error_logging_mode is not None:
+        s.set_error_logging_mode(<bint>bool(get_error_logging_mode()))
+
+
 cdef class RoutingClient:
     """Client for solving VRP problems on a remote cuOpt gRPC server."""
 
     cdef unique_ptr[grpc_python_client_t] _client
 
-    def __cinit__(self, str target="localhost:50051"):
-        host, _, port = target.rpartition(":")
-        if not host:
-            host, port = target, "50051"
+    def __cinit__(self, str host, int port, *, tls=None):
+        """
+        Connect to ``cuopt_grpc_server`` at ``host:port``.
+
+        ``tls`` controls transport security, same as :class:`Client`:
+
+        * ``None`` (default) — read ``CUOPT_TLS_*`` from the environment.
+        * ``False`` — plain TCP; ignore ``CUOPT_TLS_*``.
+        * :class:`TlsConfig` — explicit TLS/mTLS; omit ``root_certs`` to use the
+          system/default CA trust store.
+        """
+        if tls is not None and tls is not False and not isinstance(tls, TlsConfig):
+            raise TypeError("tls must be None, False, or TlsConfig")
+
+        cdef grpc_python_client_connect_options_t options
         cdef string host_cpp = host.encode("utf-8")
         cdef string err
-        self._client.reset(new grpc_python_client_t(host_cpp, int(port)))
+
+        options = _connect_options_from_tls(tls)
+        self._client.reset(new grpc_python_client_t(host_cpp, port, options))
         if not self._client.get().connect(err):
             raise RoutingSolveError(
                 "failed to connect: " + err.decode("utf-8")
             )
 
     cdef _apply_settings(self, routing_solver_settings_t[int, float]& s, settings):
-        if settings is None:
-            return
-        if isinstance(settings, dict):
-            tl = settings.get("time_limit")
-            if tl is not None:
-                s.set_time_limit(<float>float(tl))
-            return
-        get_time_limit = getattr(settings, "get_time_limit", None)
-        if get_time_limit is not None:
-            tl = get_time_limit()
-            if tl is not None:
-                s.set_time_limit(<float>float(tl))
+        _apply_routing_settings(s, settings)
 
     def submit(self, data_model, settings=None):
         """Serialize and submit a VRP problem; return its ``job_id``."""
@@ -1009,18 +1138,28 @@ cdef class RoutingClient:
             raise RoutingSolveError(sub.error_message.decode("utf-8"))
         return sub.job_id.decode("utf-8")
 
+    def _status(self, str job_id):
+        cdef grpc_status_result_t st = self._client.get().status(
+            job_id.encode("utf-8")
+        )
+        if not st.success:
+            raise RoutingSolveError(st.error_message.decode("utf-8"))
+        return JobStatus(<int>st.status)
+
     def wait(self, str job_id, int timeout=0):
         """Block until the job finishes; return the terminal status int.
 
         Raises ``RoutingSolveError`` if the wait itself fails (e.g. transport
         error or unknown job), mirroring the LP/MILP client.
+
+        Polls job status from Python so the GIL is released between short
+        status RPCs. ``timeout == 0`` waits indefinitely; negative values
+        raise :class:`RoutingSolveError`. Each status poll is a unary RPC
+        with a separate 60-second hang deadline.
         """
-        cdef grpc_status_result_t st = self._client.get().wait(
-            job_id.encode("utf-8"), timeout
+        return _wait_poll_loop(
+            self._status, job_id, timeout, RoutingSolveError
         )
-        if not st.success:
-            raise RoutingSolveError(st.error_message.decode("utf-8"))
-        return <int>st.status
 
     def result(self, str job_id):
         """Fetch and parse the routing solution for a completed job.
