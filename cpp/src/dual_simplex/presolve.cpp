@@ -26,6 +26,75 @@ static i_t linear_variable_count(const lp_problem_t<i_t, f_t>& problem)
   return problem.second_order_cone_dims.empty() ? problem.num_cols : problem.cone_var_start;
 }
 
+template <typename f_t>
+static f_t quadratic_1d_obj(f_t x, f_t c, f_t q)
+{
+  return c * x + 0.5 * q * x * x;
+}
+
+// Minimizer of c*x + (1/2) q x^2 over [lower, upper]. False if unbounded.
+template <typename f_t>
+static bool unconstrained_1d_qp_minimizer(f_t c, f_t q, f_t lower, f_t upper, f_t& x)
+{
+  if (q > 0) {
+    x = std::min(upper, std::max(lower, -c / q));
+    return std::isfinite(x);
+  }
+  if (q < 0) {
+    if (lower <= -inf || upper >= inf) { return false; }
+    x = (quadratic_1d_obj(lower, c, q) <= quadratic_1d_obj(upper, c, q)) ? lower : upper;
+    return true;
+  }
+  if (c >= 0 && lower > -inf) {
+    x = lower;
+    return true;
+  }
+  if (c <= 0 && upper < inf) {
+    x = upper;
+    return true;
+  }
+  return false;
+}
+
+template <typename i_t, typename f_t>
+static void collect_diagonal_quadratic(const csr_matrix_t<i_t, f_t>& Q,
+                                       std::vector<f_t>& q_diag,
+                                       std::vector<bool>& q_coupled)
+{
+  const i_t n = static_cast<i_t>(q_diag.size());
+  for (i_t i = 0; i < Q.m; ++i) {
+    for (i_t p = Q.row_start[i]; p < Q.row_start[i + 1]; ++p) {
+      const i_t col = Q.j[p];
+      if (i == col) {
+        q_diag[i] += Q.x[p];
+      } else {
+        q_coupled[i] = true;
+        if (col >= 0 && col < n) { q_coupled[col] = true; }
+      }
+    }
+  }
+}
+
+// Drop marked variables from square Q (rows and matching column indices).
+template <typename i_t, typename f_t>
+static void remove_variables_from_Q(csr_matrix_t<i_t, f_t>& Q,
+                                    std::vector<i_t>& col_marker,
+                                    const std::vector<i_t>& col_old_to_new,
+                                    i_t new_cols)
+{
+  csr_matrix_t<i_t, f_t> Qout(0, 0, 0);
+  Q.remove_rows(col_marker, Qout);
+  const i_t nnz = Qout.row_start[Qout.m];
+  for (i_t p = 0; p < nnz; ++p) {
+    const i_t new_col = col_old_to_new[Qout.j[p]];
+    assert(new_col != -1);
+    Qout.j[p] = new_col;
+  }
+  Qout.n      = new_cols;
+  Qout.nz_max = nnz;
+  Q           = std::move(Qout);
+}
+
 template <typename i_t, typename f_t>
 i_t remove_empty_cols(lp_problem_t<i_t, f_t>& problem,
                       i_t& num_empty_cols,
@@ -33,44 +102,27 @@ i_t remove_empty_cols(lp_problem_t<i_t, f_t>& problem,
 {
   constexpr bool verbose = false;
   if (verbose) { printf("Removing %d empty columns\n", num_empty_cols); }
-  // We have a variable x_j that does not appear in any rows
-  // The cost function
-  // sum_{k != j} c_k * x_k + c_j * x_j
-  // becomes
-  // sum_{k != j} c_k * x_k + c_j * l_j if c_j > 0
-  // or
-  // sum_{k != j} c_k * x_k + c_j * u_j if c_j < 0
+  // Empty A columns: fix x_j by minimizing c_j x_j + (1/2) q_jj x_j^2.
+  // Off-diagonal Q entries couple the variable, so it is left in place.
   presolve_info.removed_variables.reserve(num_empty_cols);
   presolve_info.removed_values.reserve(num_empty_cols);
   presolve_info.removed_reduced_costs.reserve(num_empty_cols);
 
-  // Check to see if a variable participates in a quadratic objective
-  std::vector<bool> has_quadratic_term(problem.num_cols, false);
-  i_t linear_cols = linear_variable_count(problem);
-
-  if (problem.Q.n > 0) {
-    for (i_t j = 0; j < linear_cols; ++j) {
-      const i_t row_start = problem.Q.row_start[j];
-      const i_t row_end   = problem.Q.row_start[j + 1];
-      if (row_end - row_start == 0) { continue; }
-      // Q is symmetric, so its sufficient to check only the row size
-      has_quadratic_term[j] = true;
-    }
-  }
+  const i_t linear_cols = linear_variable_count(problem);
+  std::vector<f_t> q_diag(problem.num_cols, 0.0);
+  std::vector<bool> q_coupled(problem.num_cols, false);
+  if (problem.Q.n > 0) { collect_diagonal_quadratic(problem.Q, q_diag, q_coupled); }
 
   std::vector<i_t> col_marker(problem.num_cols);
   i_t new_cols = 0;
   for (i_t j = 0; j < problem.num_cols; ++j) {
     bool remove_var = false;
-    if (j < linear_cols && (problem.A.col_start[j + 1] - problem.A.col_start[j]) == 0) {
-      bool non_removable = has_quadratic_term[j];
-      if (problem.objective[j] >= 0 && problem.lower[j] > -inf && !non_removable) {
-        presolve_info.removed_values.push_back(problem.lower[j]);
-        problem.obj_constant += problem.objective[j] * problem.lower[j];
-        remove_var = true;
-      } else if (problem.objective[j] <= 0 && problem.upper[j] < inf && !non_removable) {
-        presolve_info.removed_values.push_back(problem.upper[j]);
-        problem.obj_constant += problem.objective[j] * problem.upper[j];
+    if (j < linear_cols && problem.A.col_length(j) == 0 && !q_coupled[j]) {
+      f_t x_fix;
+      if (unconstrained_1d_qp_minimizer(
+            problem.objective[j], q_diag[j], problem.lower[j], problem.upper[j], x_fix)) {
+        presolve_info.removed_values.push_back(x_fix);
+        problem.obj_constant += quadratic_1d_obj(x_fix, problem.objective[j], q_diag[j]);
         remove_var = true;
       }
     }
@@ -87,14 +139,13 @@ i_t remove_empty_cols(lp_problem_t<i_t, f_t>& problem,
   presolve_info.remaining_variables.reserve(new_cols);
 
   problem.A.remove_columns(col_marker);
-  // Clean up objective, lower, upper, and col_names
   assert(new_cols == problem.A.n);
   std::vector<f_t> objective(new_cols);
   std::vector<f_t> lower(new_cols, -INFINITY);
   std::vector<f_t> upper(new_cols, INFINITY);
 
   std::vector<i_t> col_old_to_new(problem.num_cols, -1);
-  int new_j = 0;
+  i_t new_j = 0;
   for (i_t j = 0; j < problem.num_cols; ++j) {
     if (!col_marker[j]) {
       objective[new_j] = problem.objective[j];
@@ -108,26 +159,7 @@ i_t remove_empty_cols(lp_problem_t<i_t, f_t>& problem,
     }
   }
   if (problem.Q.n > 0) {
-    // There would not have been any non zero entry corresponding to the removed variables in the Q
-    // matrix So we can just copy the row_start array and change the column indices to the new
-    // indices
-    for (i_t j = 0; j < problem.num_cols; ++j) {
-      i_t new_j = col_old_to_new[j];
-      assert(new_j <= j);
-      if (new_j != -1) { problem.Q.row_start[new_j] = problem.Q.row_start[j]; }
-    }
-    problem.Q.row_start[new_cols] = problem.Q.row_start[problem.num_cols];
-    problem.Q.row_start.resize(new_cols + 1);
-
-    i_t Q_nnz = problem.Q.j.size();
-    for (i_t jj = 0; jj < Q_nnz; ++jj) {
-      i_t old_col = problem.Q.j[jj];
-      i_t new_col = col_old_to_new[old_col];
-      assert(new_col != -1);
-      problem.Q.j[jj] = new_col;
-    }
-    problem.Q.m = new_cols;
-    problem.Q.n = new_cols;
+    remove_variables_from_Q(problem.Q, col_marker, col_old_to_new, new_cols);
     problem.Q.check_matrix("After removing empty columns");
   }
 
