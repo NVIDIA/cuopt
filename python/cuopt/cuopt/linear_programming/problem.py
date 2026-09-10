@@ -36,6 +36,25 @@ INTEGER = VType.INTEGER
 SEMI_CONTINUOUS = VType.SEMI_CONTINUOUS
 
 
+def _to_vtype(value: VType | str | bytes) -> VType:
+    """
+    Coerces a variable type to a :py:class:`VType` member.
+    Besides VType members, the single character codes are accepted as ``str``
+    or ``bytes``.
+    """
+    if isinstance(value, VType):
+        return value
+    try:
+        # UnicodeDecodeError and the enum lookup failure are both ValueError.
+        return VType(value.decode() if isinstance(value, bytes) else value)
+    except ValueError:
+        valid = ", ".join(repr(t.value) for t in VType)
+        raise ValueError(
+            f"Invalid variable type {value!r}. Expected a VType member or "
+            f"one of {valid}."
+        ) from None
+
+
 class CType(str, Enum):
     """
     The sense of a constraint is either LE, GE or EQ.
@@ -95,8 +114,9 @@ class Variable:
     ----------
     VariableName : str
         Name of the Variable.
-    VariableType : CONTINUOUS, INTEGER, or SEMI_CONTINUOUS
-        Variable type.
+    VariableType : VType
+        CONTINUOUS, INTEGER, or SEMI_CONTINUOUS. Assigning a ``str`` or
+        ``bytes`` character code converts it; anything else raises ValueError.
     LB : float
         Lower Bound of the Variable.
     UB : float
@@ -140,6 +160,20 @@ class Variable:
         self.VariableType = vtype
         self.VariableName = vname
         self.MIPStart = float("nan")
+
+    @property
+    def VariableType(self) -> VType:
+        """
+        Type of the variable.
+        """
+        return self._variable_type
+
+    @VariableType.setter
+    def VariableType(self, value: VType | str | bytes) -> None:
+        """
+        Sets the type of the variable, coercing character codes to VType.
+        """
+        self._variable_type = _to_vtype(value)
 
     def __setattr__(self, name, value):
         object.__setattr__(self, name, value)
@@ -202,16 +236,20 @@ class Variable:
         """
         return self.UB
 
-    def setVariableType(self, val):
+    def setVariableType(self, val: VType | str | bytes) -> None:
         """
-        Sets the variable type of the variable.
-        Variable types can be CONTINUOUS, INTEGER, or SEMI_CONTINUOUS.
+        Sets the variable type of the variable, equivalent to assigning
+        :py:attr:`VariableType`.
+        Variable types can be CONTINUOUS, INTEGER, or SEMI_CONTINUOUS, or the
+        equivalent character code as ``str`` or ``bytes``.
+        Raises ValueError for any other value.
         """
         self.VariableType = val
 
-    def getVariableType(self):
+    def getVariableType(self) -> VType:
         """
-        Returns the type of the variable.
+        Returns the type of the variable, equivalent to reading
+        :py:attr:`VariableType`.
         """
         return self.VariableType
 
@@ -2392,9 +2430,11 @@ class Problem:
 
     @property
     def IsMIP(self):
-        # Returns if the problem is a MIP problem.
+        """
+        Returns True if any variable is integer or semi-continuous.
+        """
         for var in self.vars:
-            if var.VariableType in ("I", "S", b"I", b"S"):
+            if var.VariableType in (INTEGER, SEMI_CONTINUOUS):
                 return True
         return False
 
