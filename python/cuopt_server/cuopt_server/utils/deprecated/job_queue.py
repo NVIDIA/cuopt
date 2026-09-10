@@ -14,8 +14,8 @@ import msgpack_numpy
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 
-import cuopt_server.utils.health_check as health_check
-import cuopt_server.utils.request_filter as request_filter
+import cuopt_server.utils.deprecated.health_check as health_check
+import cuopt_server.utils.deprecated.request_filter as request_filter
 from cuopt_server._version import __version__
 from cuopt_server.utils.data_definition import (
     LPData,
@@ -796,7 +796,9 @@ class SolverJob(SolverBaseJob):
         return 0
 
     def solve(self, intermediate_sender):
-        from cuopt_server.utils.solver import solve_optimized_routes_sync
+        from cuopt_server.utils.deprecated.solver import (
+            solve_optimized_routes_sync,
+        )
 
         self._load_data()
         ans, etl, slv = solve_optimized_routes_sync(
@@ -860,7 +862,7 @@ class SolverLPJob(SolverBaseJob):
         return 0  # len(self.LP_data["csr_constraint_matrix"].offsets)-1
 
     def solve(self, intermediate_sender):
-        from cuopt_server.utils.solver import solve_LP_sync
+        from cuopt_server.utils.deprecated.solver import solve_LP_sync
 
         self._load_data()
         ans, etl, slv = solve_LP_sync(

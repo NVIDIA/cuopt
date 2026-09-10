@@ -80,24 +80,6 @@ assignment_t<i_t>::assignment_t(i_t vehicle_count,
 }
 
 template <typename i_t>
-double assignment_t<i_t>::get_total_objective() const
-{
-  return total_objective_value_;
-}
-
-template <typename i_t>
-const std::map<objective_t, double>& assignment_t<i_t>::get_objectives() const noexcept
-{
-  return objective_values_;
-}
-
-template <typename i_t>
-i_t assignment_t<i_t>::get_vehicle_count() const
-{
-  return vehicle_count_;
-}
-
-template <typename i_t>
 double assignment_t<i_t>::get_runtime() const noexcept
 {
   return timer;
@@ -206,12 +188,6 @@ void assignment_t<i_t>::to_csv(std::string_view filename, rmm::cuda_stream_view 
 }
 
 template <typename i_t>
-std::string assignment_t<i_t>::get_status_string() const noexcept
-{
-  return solution_string_;
-}
-
-template <typename i_t>
 void assignment_t<i_t>::set_vehicle_count(i_t vehicle_count)
 {
   vehicle_count_ = vehicle_count;
@@ -221,18 +197,6 @@ template <typename i_t>
 void assignment_t<i_t>::set_status(solution_status_t status)
 {
   status_ = status;
-}
-
-template <typename i_t>
-solution_status_t assignment_t<i_t>::get_status() const
-{
-  return status_;
-}
-
-template <typename i_t>
-cuopt::logic_error assignment_t<i_t>::get_error_status() const noexcept
-{
-  return error_status_;
 }
 
 template <typename i_t>

@@ -634,8 +634,11 @@ if (NOT SKIP_GRPC_BUILD)
     # routing arm calls routing accessors that live in CUDA translation units, so it builds
     # into cuopt_grpc alongside the dispatcher instead.
     list(APPEND CUOPT_CLIENT_SRC_FILES ${GRPC_PROTO_GENERATED_FILES} ${GRPC_MATHOPT_FILES})
+    # The routing arm now builds into cuopt_client alongside the LP/MIP arm. Its mappers only
+    # touch routing::solver_settings_t and assignment_t accessors, which are host-only and
+    # build there too, so this no longer drags in the routing engine.
     if (CUOPT_ENABLE_GRPC_ROUTING)
-        list(APPEND GRPC_COMPONENT_FILES ${GRPC_ROUTING_FILES})
+        list(APPEND CUOPT_CLIENT_SRC_FILES ${GRPC_ROUTING_FILES})
     endif ()
 
 

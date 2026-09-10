@@ -46,10 +46,18 @@ set(ROUTING_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/fleet_order_info.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solve.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solver.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/solver_settings.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/cpu_routing_problem.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/utilities/check_input.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/utilities/cython.cu)
 
+# routing::solver_settings_t is entirely host code -- plain getters and setters over scalar
+# members. It builds into cuopt_client so the routing gRPC mappers, which only touch these
+# accessors, do not have to reach into the CUDA side of the routing engine.
+set(ROUTING_CLIENT_SRC_FILES
+  ${CMAKE_CURRENT_SOURCE_DIR}/solver_settings.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/assignment_accessors.cpp
+)
+
 set(ROUTING_SRC_FILES ${ROUTING_SRC_FILES} PARENT_SCOPE)
 set(CUOPT_SRC_FILES ${CUOPT_SRC_FILES} ${ROUTING_SRC_FILES} PARENT_SCOPE)
+set(CUOPT_CLIENT_SRC_FILES ${CUOPT_CLIENT_SRC_FILES} ${ROUTING_CLIENT_SRC_FILES} PARENT_SCOPE)

@@ -44,7 +44,7 @@ valid_data = {
         ],  # noqa
         "vehicle_break_durations": [[1, 1, 1, 1], [1, 1, 1, 1]],
         "vehicle_break_locations": [1, 2],
-        "vehicle_order_match": [{"vehicle_id": 0, "order_ids": [1]}],
+        "vehicle_order_match": [{"vehicle_id": 0, "order_ids": [0]}],
         "skip_first_trips": [False, False, True, True],
         "drop_return_trips": [True, False, True, False],
         "min_vehicles": 1,
