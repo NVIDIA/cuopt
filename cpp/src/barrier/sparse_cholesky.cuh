@@ -20,7 +20,34 @@
 
 #include "cudss.h"
 
+#include <dlfcn.h>
+#include <mutex>
+
 namespace cuopt::mathematical_optimization::barrier {
+
+namespace detail {
+
+// cuDSS dlopen()s its threading-layer plugin (CUDSS_MT_LIB_FILE_NAME) via
+// cudssSetThreadingLayer() below, and dlclose()s it again from cudssDestroy(). Unloading a
+// shared object that has spawned its own OpenMP worker threads is unsafe if any of those
+// threads are still parked or running inside it -- the code they're executing can be
+// unmapped out from under them -- and this is a real, reachable teardown race when the
+// barrier solver's cuDSS handle is destroyed while other threads are still active
+// (https://github.com/NVIDIA/cuopt/issues/1219). Opening the plugin ourselves once with
+// RTLD_NODELETE marks its mapping sticky for the life of the process: cuDSS's own
+// dlopen()/dlclose() pairs keep working normally, but the underlying mapping is never
+// actually unloaded, so the race can't manifest.
+inline void pin_cudss_threading_layer()
+{
+  static std::once_flag once;
+  std::call_once(once, []() {
+    if (CUDSS_MT_LIB_FILE_NAME != nullptr) {
+      dlopen(CUDSS_MT_LIB_FILE_NAME, RTLD_NOW | RTLD_NODELETE);
+    }
+  });
+}
+
+}  // namespace detail
 
 template <typename i_t, typename f_t>
 class sparse_cholesky_base_t {
@@ -146,6 +173,8 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       settings_(settings),
       stream(handle_ptr->get_stream().get())
   {
+    detail::pin_cudss_threading_layer();
+
     int major, minor, patch;
     cudssGetProperty(MAJOR_VERSION, &major);
     cudssGetProperty(MINOR_VERSION, &minor);
