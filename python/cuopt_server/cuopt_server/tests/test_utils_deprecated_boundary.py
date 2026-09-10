@@ -49,8 +49,10 @@ def _is_deprecated_import(name, file_path, utils_root):
         return True
     if not name.startswith("."):
         return False
-    rel = file_path.parent.relative_to(utils_root)
-    parts = list(rel.parts)
+    # Resolve relative to the cuopt_server package so imports that leave
+    # utils/ (e.g. from ..utils.deprecated) are still detected.
+    pkg_root = utils_root.parent
+    parts = list(file_path.parent.relative_to(pkg_root).parts)
     dots = len(name) - len(name.lstrip("."))
     remainder = name[dots:]
     up = dots - 1
@@ -60,7 +62,21 @@ def _is_deprecated_import(name, file_path, utils_root):
     target = list(base)
     if remainder:
         target.extend(p for p in remainder.split(".") if p)
-    return bool(target) and target[0] == "deprecated"
+    return (
+        len(target) >= 2 and target[0] == "utils" and target[1] == "deprecated"
+    )
+
+
+def test_relative_import_of_deprecated_is_detected():
+    utils_root = _utils_root()
+    in_utils = utils_root / "http_codec.py"
+    in_routing = utils_root / "routing" / "conversion.py"
+    assert _is_deprecated_import(".deprecated", in_utils, utils_root)
+    assert _is_deprecated_import("..utils.deprecated", in_utils, utils_root)
+    assert _is_deprecated_import(
+        "..deprecated.job_queue", in_routing, utils_root
+    )
+    assert not _is_deprecated_import("..logutil", in_utils, utils_root)
 
 
 def test_permanent_utils_do_not_import_deprecated():
@@ -76,7 +92,7 @@ def test_permanent_utils_do_not_import_deprecated():
 
 def test_importing_cuopt_server_does_not_load_legacy_service():
     env = os.environ.copy()
-    env["PYTHONPATH"] = str(_utils_root().parents[2]) + (
+    env["PYTHONPATH"] = str(_utils_root().parents[1]) + (
         os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else ""
     )
     probe = (
