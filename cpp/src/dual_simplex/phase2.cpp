@@ -2492,7 +2492,7 @@ i_t attempt_to_remove_perturbations(const lp_problem_t<i_t, f_t>& lp,
 
   // Check if there's any perturbation
   const f_t perturbation = amount_of_perturbation(lp, objective);
-  if (perturbation <= 1e-6) return 0;  // OPTIMAL
+  if (perturbation == 0.0) return 0;  // OPTIMAL
 
   // Count perturbations on basic vs nonbasic variables
   i_t num_basic_perturbed          = 0;
