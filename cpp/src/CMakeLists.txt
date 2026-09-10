@@ -8,6 +8,9 @@ set(UTIL_SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/utilities/seed_generator.cu
                    ${CMAKE_CURRENT_SOURCE_DIR}/utilities/timestamp_utils.cpp
                    ${CMAKE_CURRENT_SOURCE_DIR}/utilities/work_unit_scheduler.cpp)
 
+# No sources: <utilities/logger.hpp> became header-only in #1778.
+set(UTIL_CLIENT_SRC_FILES)
+
 add_subdirectory(linear_algebra)
 add_subdirectory(pdlp)
 add_subdirectory(math_optimization)
@@ -32,13 +35,14 @@ set(CUOPT_ROUTING_SRC_FILES
   ${ROUTING_SRC_FILES}
 )
 
+# PARSERS_SRC_FILES is deliberately absent here: the parsers are CUDA-free and build into
+# cuopt_client, which cuopt_mathopt links. Listing them in both would compile them twice.
 set(CUOPT_MATHOPT_SRC_FILES
   ${UTIL_SRC_FILES}
   ${LINEAR_ALGEBRA_SRC_FILES}
   ${LP_SRC_FILES}
   ${MATH_OPT_SRC_FILES}
   ${MIP_SRC_FILES}
-  ${PARSERS_SRC_FILES}
   ${DUAL_SIMPLEX_SRC_FILES}
   ${BARRIER_SRC_FILES}
   ${BRANCH_AND_BOUND_SRC_FILES}
@@ -47,6 +51,7 @@ set(CUOPT_MATHOPT_SRC_FILES
 
 set(CUOPT_ROUTING_SRC_FILES ${CUOPT_ROUTING_SRC_FILES} PARENT_SCOPE)
 set(CUOPT_MATHOPT_SRC_FILES ${CUOPT_MATHOPT_SRC_FILES} PARENT_SCOPE)
+set(CUOPT_CLIENT_SRC_FILES ${CUOPT_CLIENT_SRC_FILES} ${UTIL_CLIENT_SRC_FILES} PARENT_SCOPE)
 set(CUOPT_SRC_FILES
   ${CUOPT_ROUTING_SRC_FILES}
   ${CUOPT_MATHOPT_SRC_FILES}

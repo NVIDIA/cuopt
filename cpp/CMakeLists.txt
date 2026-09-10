@@ -549,12 +549,13 @@ endif ()
 set(CUOPT_SRC_FILES)
 set(CUOPT_ROUTING_SRC_FILES)
 set(CUOPT_MATHOPT_SRC_FILES)
+set(CUOPT_CLIENT_SRC_FILES)
 set(MPS_FAST_SRC_FILES)
 add_subdirectory(src)
 
 if (HOST_LINEINFO)
     set_source_files_properties(
-            ${CUOPT_ROUTING_SRC_FILES} ${CUOPT_MATHOPT_SRC_FILES}
+            ${CUOPT_ROUTING_SRC_FILES} ${CUOPT_MATHOPT_SRC_FILES} ${CUOPT_CLIENT_SRC_FILES}
             DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTIES COMPILE_OPTIONS "-g1")
 endif ()
 
@@ -568,11 +569,12 @@ endif ()
 # TODO: figure out a set of flags for ARM that fits the range of CPUs we wish to support (neoverse?)
 # NEON should be universal on aarch64 and enough for our purposes (parsing) though
 
-# Apply -UNDEBUG to solver source files (not gRPC infrastructure).
+# Apply -UNDEBUG to solver and parser source files (not gRPC infrastructure).
+# Must happen before gRPC files are appended to CUOPT_CLIENT_SRC_FILES.
 # Uses APPEND to preserve any existing per-file options (e.g. -g1 from HOST_LINEINFO).
 if (DEFINE_ASSERT)
     set_property(
-            SOURCE ${CUOPT_ROUTING_SRC_FILES} ${CUOPT_MATHOPT_SRC_FILES}
+            SOURCE ${CUOPT_ROUTING_SRC_FILES} ${CUOPT_MATHOPT_SRC_FILES} ${CUOPT_CLIENT_SRC_FILES}
             DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             APPEND PROPERTY COMPILE_OPTIONS "-UNDEBUG")
 endif ()
@@ -601,9 +603,15 @@ if (NOT SKIP_GRPC_BUILD)
             src/grpc/client/grpc_client_env.cpp
             src/grpc/client/cython_grpc_client.cpp
             src/grpc/client/solve_remote.cpp
-            src/grpc/client/grpc_registration.cpp
     )
 
+    # The registration shim spans two components by construction: its ELF constructor
+    # publishes solve_lp_remote / solve_mip_remote, which live in cuopt_client, into the
+    # registry in cuopt_mathopt. Putting it in cuopt_client would leave that library with an
+    # undefined register_remote_solvers and destroy its standalone property.
+    set(GRPC_COMPONENT_FILES
+            src/grpc/client/grpc_registration.cpp
+    )
     # Routing (VRP) arm: everything that depends on the routing engine. Kept as
     # its own list so a routing-only gRPC client can be split out of the
     # cuopt_grpc component without moving code around again.
@@ -615,11 +623,21 @@ if (NOT SKIP_GRPC_BUILD)
             src/grpc/routing/cython_grpc_client_vrp.cpp
     )
 
-    set(GRPC_INFRA_FILES ${GRPC_PROTO_GENERATED_FILES} ${GRPC_MATHOPT_FILES})
+    # GRPC_INFRA_FILES exists only to carry the -DNDEBUG property below; it is not a target
+    # source list.
+    set(GRPC_INFRA_FILES ${GRPC_PROTO_GENERATED_FILES} ${GRPC_MATHOPT_FILES} ${GRPC_COMPONENT_FILES})
     if (CUOPT_ENABLE_GRPC_ROUTING)
         list(APPEND GRPC_INFRA_FILES ${GRPC_ROUTING_FILES})
     endif ()
-    list(APPEND CUOPT_SRC_FILES ${GRPC_INFRA_FILES})
+
+    # The protocol and the LP/MIP arm are CUDA-free, so they build into cuopt_client. The
+    # routing arm calls routing accessors that live in CUDA translation units, so it builds
+    # into cuopt_grpc alongside the dispatcher instead.
+    list(APPEND CUOPT_CLIENT_SRC_FILES ${GRPC_PROTO_GENERATED_FILES} ${GRPC_MATHOPT_FILES})
+    if (CUOPT_ENABLE_GRPC_ROUTING)
+        list(APPEND GRPC_COMPONENT_FILES ${GRPC_ROUTING_FILES})
+    endif ()
+
 
     # Always keep NDEBUG defined for gRPC infrastructure files so that abseil
     # headers inline Mutex::Dtor() instead of emitting an external call.
@@ -633,9 +651,9 @@ if (NOT SKIP_GRPC_BUILD)
     set_property(SOURCE ${GRPC_PROTO_GENERATED_FILES} DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
             APPEND PROPERTY COMPILE_OPTIONS "$<$<COMPILE_LANGUAGE:CXX>:-fvisibility=default>")
 
-    # Include gRPC sources in CUOPT_SRC_FILES so cuopt_objs (and cuopt_static for tests)
-    # have solve_lp_remote / solve_mip_remote defined when CUOPT_ENABLE_GRPC is set.
-    list(APPEND CUOPT_SRC_FILES ${GRPC_INFRA_FILES})
+    # cuopt_static (for tests) needs the dispatcher; the components get their sources from
+    # CUOPT_CLIENT_SRC_FILES and GRPC_COMPONENT_FILES.
+    list(APPEND CUOPT_SRC_FILES ${GRPC_COMPONENT_FILES})
 endif (NOT SKIP_GRPC_BUILD)
 
 # ##################################################################################################
@@ -701,6 +719,112 @@ set(CUOPT_PRIVATE_CUDA_LIBS
 
 get_filename_component(CUDSS_MT_LIB_FILE_NAME "${CUDSS_MT_LIB_FILE}" NAME)
 
+# - cuopt_client - CPU-only support library ----------------------------------------------------------
+#
+# Host-side problem representation (parsers, data_model_view, mps_data_model, writers), the
+# gRPC wire protocol, and the gRPC client. None of it touches CUDA, so Python extension
+# modules that never call the GPU can link this instead of libcuopt.so.
+#
+# LANGUAGES is deliberately not CUDA: adding a .cu file here should fail loudly rather than
+# quietly reintroduce a CUDA dependency. Built as an OBJECT library first, mirroring
+# cuopt_objs/cuopt, so cuopt_static can link the objects directly for tests that reach
+# parser internals the shared library does not export.
+add_library(cuopt_client_objs OBJECT ${CUOPT_CLIENT_SRC_FILES})
+# Default visibility, deliberately unlike cuopt_objs: this library was carved out of the
+# internals rather than designed as an export surface, so libcuopt resolves ~239 symbols
+# from it. Hiding them would mean annotating essentially every host-side method with
+# CUOPT_EXPORT.
+set_target_properties(cuopt_client_objs
+        PROPERTIES POSITION_INDEPENDENT_CODE ON
+        CXX_SCAN_FOR_MODULES OFF
+)
+
+add_library(cuopt_client SHARED $<TARGET_OBJECTS:cuopt_client_objs>)
+add_library(cuopt::cuopt_client ALIAS cuopt_client)
+
+target_include_directories(cuopt_client
+        PUBLIC
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
+        INTERFACE
+        "$<INSTALL_INTERFACE:include>"
+)
+
+target_compile_definitions(cuopt_client
+        PUBLIC "CUOPT_LOG_ACTIVE_LEVEL=RAPIDS_LOGGER_LOG_LEVEL_${LIBCUOPT_LOGGING_LEVEL}"
+)
+
+set_target_properties(cuopt_client
+        PROPERTIES POSITION_INDEPENDENT_CODE ON
+        CXX_SCAN_FOR_MODULES OFF
+        BUILD_RPATH "\$ORIGIN"
+        INSTALL_RPATH "\$ORIGIN"
+        LINKER_LANGUAGE CXX
+)
+
+target_compile_definitions(cuopt_client_objs
+        PUBLIC "CUOPT_LOG_ACTIVE_LEVEL=RAPIDS_LOGGER_LOG_LEVEL_${LIBCUOPT_LOGGING_LEVEL}"
+)
+
+target_compile_options(cuopt_client_objs
+        PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
+)
+
+target_include_directories(cuopt_client_objs
+        PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/io"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc/client"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc/codegen/generated"
+        "${CMAKE_CURRENT_BINARY_DIR}"
+        "${CMAKE_CURRENT_BINARY_DIR}/include"
+        $<$<BOOL:${CUOPT_PARSER_WITH_BZIP2}>:${BZIP2_INCLUDE_DIRS}>
+        $<$<BOOL:${CUOPT_PARSER_WITH_ZLIB}>:${ZLIB_INCLUDE_DIRS}>
+        PUBLIC
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
+        INTERFACE
+        "$<INSTALL_INTERFACE:include>"
+)
+
+# CCCL is a compile-time (header-only) dependency here: the fast MPS parser uses
+# host helpers from <cuda/cmath> (ceil_div, round_up). It pulls in no CUDA runtime.
+# bzip2 / zlib / lz4 are dlopen'd at runtime by file_to_string.cpp, so they are
+# header-only here too and deliberately absent from the link line.
+# The OBJECT library needs these for their INTERFACE include dirs / defines at compile time.
+target_link_libraries(cuopt_client_objs
+        PUBLIC
+        rapids_logger::rapids_logger
+        CCCL::CCCL
+        # Header-only here, exactly like CCCL: the client sources transitively include
+        # <rmm/device_uvector.hpp> and <raft/core/device_span.hpp> via pdlp/solver_settings.hpp.
+        # No CUDA runtime is linked -- the device getters those headers declare only ever
+        # throw -- but without these the build relies on conda happening to put the headers on
+        # the default include path, and a CPM/fetched-rmm build fails to find them.
+        rmm::rmm
+        raft::raft
+        PRIVATE
+        simde::simde
+        OpenMP::OpenMP_CXX
+        $<$<BOOL:${CUOPT_ENABLE_GRPC}>:protobuf::libprotobuf>
+        $<$<BOOL:${CUOPT_ENABLE_GRPC}>:gRPC::grpc++>
+)
+
+target_link_libraries(cuopt_client
+        PUBLIC
+        rapids_logger::rapids_logger
+        CCCL::CCCL
+        PRIVATE
+        simde::simde
+        OpenMP::OpenMP_CXX
+        ${CMAKE_DL_LIBS}
+        $<$<BOOL:${CUOPT_ENABLE_GRPC}>:protobuf::libprotobuf>
+        $<$<BOOL:${CUOPT_ENABLE_GRPC}>:gRPC::grpc++>
+)
+
+
 # cuopt_routing: VRP / routing engine (omitted when SKIP_ROUTING_BUILD=ON)
 if(NOT SKIP_ROUTING_BUILD)
     add_library(cuopt_routing SHARED ${CUOPT_ROUTING_SRC_FILES})
@@ -746,6 +870,8 @@ target_compile_definitions(cuopt_mathopt
 )
 target_link_libraries(cuopt_mathopt
         PUBLIC
+        # The parsers and the host-side problem representation live in cuopt_client.
+        cuopt_client
         rmm::rmm
         rapids_logger::rapids_logger
         CCCL::CCCL
@@ -775,7 +901,7 @@ add_library(cuopt::mathopt ALIAS cuopt_mathopt)
 # Depends on cuopt_mathopt and cuopt_routing so it can reference both APIs without forcing
 # either component to take a gRPC dependency.
 if(NOT SKIP_GRPC_BUILD)
-    add_library(cuopt_grpc SHARED ${GRPC_INFRA_FILES})
+    add_library(cuopt_grpc SHARED ${GRPC_COMPONENT_FILES})
     cuopt_configure_component(cuopt_grpc)
     target_include_directories(cuopt_grpc PRIVATE
             "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc"
@@ -878,6 +1004,7 @@ target_include_directories(cuopt_objs PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/includ
 
 target_link_libraries(cuopt_objs
         PUBLIC
+        cuopt::cuopt_client
         CUDA::cublas
         CUDA::cusparse
         rmm::rmm
@@ -898,7 +1025,10 @@ target_link_libraries(cuopt_objs
 # - generate tests --------------------------------------------------------------------------------
 if (BUILD_TESTS)
     include(CTest)
-    add_library(cuopt_static STATIC $<TARGET_OBJECTS:cuopt_objs>)
+    # Embeds cuopt_client_objs directly rather than linking libcuopt_client.so: the internal
+    # test binaries reach parser internals that the shared library deliberately does not
+    # export. Do not also link cuopt::cuopt_client here -- that would duplicate every symbol.
+    add_library(cuopt_static STATIC $<TARGET_OBJECTS:cuopt_objs> $<TARGET_OBJECTS:cuopt_client_objs>)
     target_link_libraries(cuopt_static
             PUBLIC
             CUDA::cublas
@@ -973,9 +1103,9 @@ target_include_directories(cuopt
 )
 
 if(NOT SKIP_ROUTING_BUILD)
-    target_link_libraries(cuopt INTERFACE cuopt_routing cuopt_mathopt)
+    target_link_libraries(cuopt INTERFACE cuopt_routing cuopt_mathopt cuopt_client)
 else()
-    target_link_libraries(cuopt INTERFACE cuopt_mathopt)
+    target_link_libraries(cuopt INTERFACE cuopt_mathopt cuopt_client)
 endif()
 if(NOT SKIP_GRPC_BUILD)
     target_link_libraries(cuopt INTERFACE cuopt_grpc)
@@ -1022,7 +1152,7 @@ else ()
     set(_INCLUDE_DEST include/cuopt/)
 endif ()
 
-set(CUOPT_COMPONENT_TARGETS cuopt_mathopt)
+set(CUOPT_COMPONENT_TARGETS cuopt_mathopt cuopt_client)
 if(NOT SKIP_ROUTING_BUILD)
     list(APPEND CUOPT_COMPONENT_TARGETS cuopt_routing)
 endif()
@@ -1039,6 +1169,7 @@ foreach(_component ${CUOPT_COMPONENT_TARGETS})
     list(APPEND CUOPT_COMPONENT_EXPORT_NAMES ${_export_name})
 endforeach()
 
+# adds the .so files to the runtime deb package
 install(TARGETS ${CUOPT_COMPONENT_TARGETS}
         DESTINATION ${_LIB_DEST}
         COMPONENT runtime
