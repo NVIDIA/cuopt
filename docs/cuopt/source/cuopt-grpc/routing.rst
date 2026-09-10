@@ -59,7 +59,9 @@ Job Lifecycle
 =============
 
 * ``submit(data_model, settings=None)`` — serializes the problem and settings, returns a ``job_id``.
+* ``status(job_id)`` — returns the current status without blocking.
 * ``wait(job_id, timeout=0)`` — blocks until the job reaches a terminal state; returns the status.
+* ``cancel(job_id)`` — requests cancellation of a queued or running job.
 * ``result(job_id)`` — returns the solution dict, or ``None`` if the job has not finished.
 * ``delete(job_id)`` — releases the job's server-side result.
 * ``solve(data_model, settings=None, *, timeout=0, delete=True)`` — submit + wait + result, deleting the job afterward unless ``delete=False``.
@@ -134,7 +136,6 @@ Import path: ``cuopt.grpc.routing``.
 .. autoclass:: cuopt.grpc.routing.RoutingClient
    :members:
    :undoc-members:
-   :exclude-members: _status
 
 .. autoexception:: cuopt.grpc.routing.RoutingSolveError
    :members:

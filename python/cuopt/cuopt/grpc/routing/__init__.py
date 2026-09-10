@@ -16,6 +16,10 @@ Build a :class:`cuopt.routing.DataModel` and solve it on a remote
     solution = client.solve(dm)
 """
 
-from cuopt.grpc.routing.grpc_client import RoutingClient, RoutingSolveError
+from cuopt.grpc.routing.grpc_client import (
+    JobStatus,
+    RoutingClient,
+    RoutingSolveError,
+)
 
-__all__ = ["RoutingClient", "RoutingSolveError"]
+__all__ = ["JobStatus", "RoutingClient", "RoutingSolveError"]
