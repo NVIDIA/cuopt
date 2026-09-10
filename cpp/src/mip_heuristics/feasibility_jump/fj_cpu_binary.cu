@@ -249,6 +249,7 @@ struct fj_bin_engine_t {
   int64_t objective_base(int32_t v, int8_t delta) const
   {
     cuopt_assert(v >= 0 && v < pb.n_variables, "objective base on a column outside engine space");
+    if (objective_weight == 0) return 0;
     const double obj_diff = pb.objective[v] * delta;
     if (obj_diff == 0) return 0;
     cuopt_assert(obj_magnitude > 0, "objective magnitude unit must be positive");
@@ -315,27 +316,35 @@ struct fj_bin_engine_t {
     const int32_t ob = pb.reverse_offsets[var], oe = pb.reverse_offsets[var + 1];
     int64_t own_score = 0;
 
+    // the compiler otherwise greatly pessimizes optimization due to aliasing assumptions
+    int32_t* const __restrict__ row_weight_p        = row_weight.data();
+    int32_t* const __restrict__ row_slack_p         = row_slack.data();
+    const int32_t* const __restrict__ reverse_constraints_p    = pb.reverse_constraints.data();
+    const coef_t* const __restrict__ reverse_coefficients_p      = pb.reverse_coefficients.data();
+    const coef_t* const __restrict__ incident_row_cmax_p    = pb.incident_row_cmax.data();
+    const int32_t* const __restrict__ reverse_to_csr_p    = pb.reverse_to_csr.data();
+    const int32_t* const __restrict__ offsets_p = pb.offsets.data();
+    const int32_t* const __restrict__ variables_p    = pb.variables.data();
+    const coef_t* const __restrict__ coefficients_p    = pb.coefficients.data();
+    int64_t* const __restrict__ var_score_p     = var_score.data();
+    int64_t* const __restrict__ nnz_score_delta_p     = nnz_score_delta.data();
+    int32_t* const __restrict__ assign_i32_p        = assign_i32.data();
+
     // walk over rows in tiles, noting which rows require further processing
     // they are handled afterwards
     constexpr int32_t fj_bin_walk_tile = 256;
     int32_t tile_incidence[fj_bin_walk_tile];
     for (int32_t t0 = ob; t0 < oe; t0 += fj_bin_walk_tile) {
       const int32_t t1 = (t0 + fj_bin_walk_tile < oe) ? t0 + fj_bin_walk_tile : oe;
-      const int32_t n_tail = fj_bin_walk_rows(row_slack.data(),
-                                              pb.reverse_constraints.data(),
-                                              pb.reverse_coefficients.data(),
-                                              pb.incident_row_cmax.data(),
-                                              t0,
-                                              t1,
-                                              delta,
-                                              tile_incidence);
+      const int32_t n_tail =
+        fj_bin_walk_rows(row_slack_p, reverse_constraints_p, reverse_coefficients_p, incident_row_cmax_p, t0, t1, delta, tile_incidence);
       // handle non-deeply-satisfied rows
       for (int32_t j = 0; j < n_tail; ++j) {
         const int32_t ii        = tile_incidence[j];
-        const int32_t r         = pb.reverse_constraints[ii];
-        const int32_t weight    = row_weight[r];
-        const int32_t skv       = (int32_t)pb.reverse_coefficients[ii];
-        const int32_t new_slack = row_slack[r];
+        const int32_t r         = reverse_constraints_p[ii];
+        const int32_t weight    = row_weight_p[r];
+        const int32_t skv       = (int32_t)reverse_coefficients_p[ii];
+        const int32_t new_slack = row_slack_p[r];
         const int32_t old_slack = new_slack + skv * delta;
 
         // A row can only cross its boundary if the flip moves it by at least the distance to it, so
@@ -348,18 +357,18 @@ struct fj_bin_engine_t {
 
         // we're in the regime where single flips can affect feasibility. 
         // patch the scores of all incident variables
-        const int32_t margin = (int32_t)pb.incident_row_cmax[ii];
+        const int32_t margin = (int32_t)incident_row_cmax_p[ii];
         if (!(old_slack < -margin && new_slack < -margin)) {
-          const int32_t row_begin = pb.offsets[r], row_end = pb.offsets[r + 1];
+          const int32_t row_begin = offsets_p[r], row_end = offsets_p[r + 1];
           // TODO: check that this may not cause AVX512 powerdown overheads if the AVX2 row/AVX512 row
           // ratio is unbalanced
-          fj_bin_patch_row(pb.variables.data(),
-                           pb.coefficients.data(),
+          fj_bin_patch_row(variables_p,
+                           coefficients_p,
                            row_begin,
                            row_end,
-                           var_score.data(),
-                           nnz_score_delta.data(),
-                           assign_i32.data(),
+                           var_score_p,
+                           nnz_score_delta_p,
+                           assign_i32_p,
                            weight,
                            new_slack,
                            var);
@@ -369,15 +378,15 @@ struct fj_bin_engine_t {
 
         const int64_t pv = fj_bin_packed_score_delta(new_slack, new_slack - skv * new_flip, weight);
         own_score += pv;
-        nnz_score_delta[pb.reverse_to_csr[ii]] = pv;
+        nnz_score_delta_p[reverse_to_csr_p[ii]] = pv;
       }
     }
     nnz_touched += oe - ob;
     rows_walked += oe - ob;
 
     assign[var]     = new_val;
-    assign_i32[var] = new_val;
-    var_score[var]  = own_score;
+    assign_i32_p[var]   = new_val;
+    var_score_p[var] = own_score;
     incumbent_objective += pb.objective[var] * delta;
     if (pb.objective[var] != 0) obj_base_score[var] = flip_objective_base(var);
 
