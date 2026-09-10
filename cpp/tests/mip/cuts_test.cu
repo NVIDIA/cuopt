@@ -1913,30 +1913,33 @@ TEST(cuts, flow_cover_generates_valid_single_node_flow_cut)
                                                       test_problem.var_types,
                                                       test_problem.Arow,
                                                       test_problem.new_slacks);
-  generator.preprocess_cut_pass(
-    test_problem.lp, test_problem.settings, variable_bounds, test_problem.var_types, xstar);
   ASSERT_GT(generator.num_constraints(), 0);
 
-  int generated_cuts = 0;
-  for (const auto& flow_cover_row : generator.get_constraints()) {
-    mip::inequality_t<int, double> cut(test_problem.lp.num_cols);
-    const int status = generator.generate_cut(test_problem.lp,
-                                              test_problem.settings,
-                                              test_problem.Arow,
-                                              variable_bounds,
-                                              test_problem.var_types,
-                                              xstar,
-                                              flow_cover_row,
-                                              cut);
-    if (status != 0) { continue; }
+  for (int pass = 0; pass < 2; pass++) {
+    generator.preprocess_cut_pass(
+      test_problem.lp, variable_bounds, test_problem.var_types, xstar);
 
-    EXPECT_LT(cut.vector.dot(xstar), cut.rhs - 1e-6)
-      << "row=" << flow_cover_row.row << " reverse=" << flow_cover_row.reverse;
-    expect_single_node_flow_cut_valid_at_extreme_points(cut, test_problem.lp.num_cols);
-    generated_cuts++;
+    int generated_cuts = 0;
+    for (const auto& flow_cover_row : generator.get_constraints()) {
+      mip::inequality_t<int, double> cut(test_problem.lp.num_cols);
+      const int status = generator.generate_cut(test_problem.lp,
+                                                test_problem.settings,
+                                                test_problem.Arow,
+                                                variable_bounds,
+                                                test_problem.var_types,
+                                                xstar,
+                                                flow_cover_row,
+                                                cut);
+      if (status != 0) { continue; }
+
+      EXPECT_LT(cut.vector.dot(xstar), cut.rhs - 1e-6)
+        << "row=" << flow_cover_row.row << " reverse=" << flow_cover_row.reverse;
+      expect_single_node_flow_cut_valid_at_extreme_points(cut, test_problem.lp.num_cols);
+      generated_cuts++;
+    }
+
+    EXPECT_GT(generated_cuts, 0);
   }
-
-  EXPECT_GT(generated_cuts, 0);
 }
 
 }  // namespace cuopt::mathematical_optimization::test
