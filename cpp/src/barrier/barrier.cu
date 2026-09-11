@@ -487,7 +487,6 @@ class iteration_data_t {
       device_Q_csc_(lp.handle_ptr->get_stream()),
       device_AT_csc_(lp.handle_ptr->get_stream()),
       d_original_A_values(0, lp.handle_ptr->get_stream()),
-      device_A_x_values(0, lp.handle_ptr->get_stream()),
       d_inv_diag_prime(0, lp.handle_ptr->get_stream()),
       d_flag_buffer(0, lp.handle_ptr->get_stream()),
       d_num_flag(lp.handle_ptr->get_stream()),
@@ -796,36 +795,40 @@ class iteration_data_t {
 
     {
       raft::common::nvtx::range scope("Barrier: LP Data: AD matrix setup");
-      // Copy A into AD
-      AD = lp.A;
-      if (!use_augmented && n_dense_columns > 0) {
-        cols_to_remove.resize(lp.num_cols, 0);
-        for (i_t k : dense_columns_unordered) {
-          cols_to_remove[k] = 1;
-        }
-        d_cols_to_remove.resize(cols_to_remove.size(), stream_view_);
-        raft::copy(
-          d_cols_to_remove.data(), cols_to_remove.data(), cols_to_remove.size(), stream_view_);
-        dense_columns.clear();
-        dense_columns.reserve(n_dense_columns);
-        for (i_t j = 0; j < lp.num_cols; j++) {
-          if (cols_to_remove[j]) { dense_columns.push_back(j); }
-        }
-        AD.remove_columns(cols_to_remove);
+      if (use_augmented) {
+        // Only the augmented KKT reads A^T, and there is no dense-column removal on this path,
+        // so it is just lp.A transposed -- no AD copy needed.
+        lp.A.transpose(AT);
+      } else {
+        // Copy A into AD
+        AD = lp.A;
+        if (n_dense_columns > 0) {
+          cols_to_remove.resize(lp.num_cols, 0);
+          for (i_t k : dense_columns_unordered) {
+            cols_to_remove[k] = 1;
+          }
+          d_cols_to_remove.resize(cols_to_remove.size(), stream_view_);
+          raft::copy(
+            d_cols_to_remove.data(), cols_to_remove.data(), cols_to_remove.size(), stream_view_);
+          dense_columns.clear();
+          dense_columns.reserve(n_dense_columns);
+          for (i_t j = 0; j < lp.num_cols; j++) {
+            if (cols_to_remove[j]) { dense_columns.push_back(j); }
+          }
+          AD.remove_columns(cols_to_remove);
 
-        sparse_mark.resize(lp.num_cols, 1);
-        for (i_t k : dense_columns) {
-          sparse_mark[k] = 0;
-        }
+          sparse_mark.resize(lp.num_cols, 1);
+          for (i_t k : dense_columns) {
+            sparse_mark[k] = 0;
+          }
 
-        A_dense.resize(AD.m, n_dense_columns);
-        i_t k = 0;
-        for (i_t j : dense_columns) {
-          A_dense.from_sparse(lp.A, j, k++);
+          A_dense.resize(AD.m, n_dense_columns);
+          i_t k = 0;
+          for (i_t j : dense_columns) {
+            A_dense.from_sparse(lp.A, j, k++);
+          }
         }
       }
-
-      AD.transpose(AT);
     }
 
     if (use_augmented) {
@@ -851,9 +854,6 @@ class iteration_data_t {
                  handle_ptr->get_stream());
       // For efficient scaling of AD col we form the col index array
       device_AD.form_col_index(handle_ptr->get_stream());
-      device_A_x_values.resize(device_AD.x.size(), handle_ptr->get_stream());
-      raft::copy(
-        device_A_x_values.data(), device_AD.x.data(), device_AD.x.size(), handle_ptr->get_stream());
       device_AD.to_compressed_row(device_A, handle_ptr->get_stream());
       RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
     }
@@ -2156,7 +2156,6 @@ class iteration_data_t {
   device_csr_matrix_t<i_t, f_t> device_ADAT;
   device_csr_matrix_t<i_t, f_t> device_A;
   device_csc_matrix_t<i_t, f_t> device_AD;
-  rmm::device_uvector<f_t> device_A_x_values;
   // For GPU Form ADAT
   rmm::device_uvector<f_t> d_inv_diag_prime;
   rmm::device_buffer d_flag_buffer;
