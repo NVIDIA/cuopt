@@ -605,10 +605,6 @@ if (NOT SKIP_GRPC_BUILD)
             src/grpc/client/solve_remote.cpp
     )
 
-    # The registration shim builds into cuopt_mathopt, which owns the registry it fills.
-    # It cannot go into cuopt_client: that would leave libcuopt_client.so with an undefined
-    # register_remote_solvers and destroy its standalone property.
-    list(APPEND CUOPT_MATHOPT_SRC_FILES src/grpc/client/grpc_registration.cpp)
     # Routing (VRP) arm: everything that depends on the routing engine. Kept as
     # its own list so a routing-only gRPC client can be split out of the
     # routing arm without moving code around again.
@@ -622,8 +618,7 @@ if (NOT SKIP_GRPC_BUILD)
 
     # GRPC_INFRA_FILES exists only to carry the -DNDEBUG property below; it is not a target
     # source list.
-    set(GRPC_INFRA_FILES ${GRPC_PROTO_GENERATED_FILES} ${GRPC_MATHOPT_FILES}
-            src/grpc/client/grpc_registration.cpp)
+    set(GRPC_INFRA_FILES ${GRPC_PROTO_GENERATED_FILES} ${GRPC_MATHOPT_FILES})
     if (CUOPT_ENABLE_GRPC_ROUTING)
         list(APPEND GRPC_INFRA_FILES ${GRPC_ROUTING_FILES})
     endif ()
@@ -652,8 +647,6 @@ if (NOT SKIP_GRPC_BUILD)
     set_property(SOURCE ${GRPC_PROTO_GENERATED_FILES} DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
             APPEND PROPERTY COMPILE_OPTIONS "$<$<COMPILE_LANGUAGE:CXX>:-fvisibility=default>")
 
-    # cuopt_static (for tests) needs the registration shim too.
-    list(APPEND CUOPT_SRC_FILES src/grpc/client/grpc_registration.cpp)
 endif (NOT SKIP_GRPC_BUILD)
 
 # ##################################################################################################

@@ -5,7 +5,6 @@
 
 # Core LP files always included
 set(LP_CORE_FILES
-  ${CMAKE_CURRENT_SOURCE_DIR}/remote_solve_registry.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/solver_settings.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solver_settings_accessors.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/optimization_problem.cu
