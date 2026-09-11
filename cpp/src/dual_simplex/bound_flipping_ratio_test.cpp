@@ -342,6 +342,10 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
 
   // This is O(num_buckets * num_candidates)
   while (cumulative_slope >= 0.0 && scan_start < num_candidates && threshold <= max_step_length) {
+    if (toc(start_time_) > settings_.time_limit) { return RATIO_TEST_TIME_LIMIT; }
+    if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
+      return CONCURRENT_HALT_RETURN;
+    }
     f_t next_threshold = inf;
     i_t write          = scan_start;
 
