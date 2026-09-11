@@ -809,6 +809,16 @@ target_link_libraries(cuopt_client
         PUBLIC
         rapids_logger::rapids_logger
         CCCL::CCCL
+        # rmm is linked, not merely included. The client sources transitively include
+        # <rmm/device_uvector.hpp> via pdlp/solver_settings.hpp, and two symbols leak out
+        # of those headers rather than staying inline: cuda_stream_view's constructor and
+        # device_buffer's destructor. cuopt_client_objs already lists rmm::rmm, but an
+        # OBJECT library does not propagate its link interface to a target built from
+        # $<TARGET_OBJECTS:...>, so without this the shared library carries two undefined
+        # rmm symbols and no DT_NEEDED to resolve them. That resolved by accident while
+        # libcuopt.so was a real ELF linking rmm; once it became a linker script, loading
+        # the client directly -- which is what a Cython extension does -- failed.
+        rmm::rmm
         PRIVATE
         simde::simde
         OpenMP::OpenMP_CXX
