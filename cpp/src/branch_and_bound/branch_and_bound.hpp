@@ -175,7 +175,9 @@ class branch_and_bound_t {
     simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
     std::vector<i_t>& basic_list,
     std::vector<i_t>& nonbasic_list,
-    std::vector<f_t>& edge_norms);
+    std::vector<f_t>& edge_norms,
+    variable_bounds_t<i_t, f_t>& variable_bounds,
+    cut_pool_t<i_t, f_t>& cut_pool);
 
   i_t find_reduced_cost_fixings(f_t upper_bound,
                                 std::vector<f_t>& lower_bounds,
@@ -195,6 +197,7 @@ class branch_and_bound_t {
   const probing_implied_bound_t<i_t, f_t>& probing_implied_bound_;
   std::shared_ptr<mip::clique_table_t<i_t, f_t>> clique_table_;
   omp_atomic_t<bool> signal_extend_cliques_{false};
+  omp_atomic_t<bool> clique_table_complete_{false};
   mip_symmetry_t<i_t, f_t>* symmetry_;
 
   work_limit_context_t work_unit_context_{"B&B"};
@@ -305,6 +308,7 @@ class branch_and_bound_t {
   }
 
   enum class cut_pass_action_t { CONTINUE, BREAK, RETURN };
+  enum class cut_pass_mode_t { GENERATE_AND_APPLY, APPLY_EXISTING_POOL };
 
   cut_pass_action_t do_cut_pass(i_t cut_pass,
                                 simplex::mip_solution_t<i_t, f_t>& solution,
@@ -323,7 +327,8 @@ class branch_and_bound_t {
                                 f_t& last_objective,
                                 f_t root_relax_objective,
                                 i_t& cut_pool_size,
-                                const std::vector<f_t>& saved_solution);
+                                const std::vector<f_t>& saved_solution,
+                                cut_pass_mode_t mode = cut_pass_mode_t::GENERATE_AND_APPLY);
 
   // Set the solution when found at the root node
   void set_solution_at_root(simplex::mip_solution_t<i_t, f_t>& solution,
