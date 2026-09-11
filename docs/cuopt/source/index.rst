@@ -104,6 +104,16 @@ Resources
    transition.rst
    resources.rst
 
+========================================
+Developer Guide
+========================================
+.. toctree::
+   :maxdepth: 4
+   :caption: Developer Guide
+   :name: Developer Guide
+
+   Developer Guide Overview <developer-guide/index.rst>
+
 =============
 Licenses
 =============
