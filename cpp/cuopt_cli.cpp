@@ -205,8 +205,10 @@ int run_single_file(const std::string& file_path,
   try {
     if (cuopt::mathematical_optimization::is_remote_execution_enabled()) {
       // Remote execution: problem_interface holds a cpu_optimization_problem_t.
-      // Call solve_lp/mip_remote directly so libcuopt_grpc.so is a real DT_NEEDED
-      // dependency of this binary rather than an implicit runtime lookup.
+      // Call solve_lp/mip_remote directly rather than going through the registry that
+      // solve_lp/solve_mip use. Both entry points live in cuopt_client, which this binary
+      // already links, so the remote path resolves at link time instead of depending on
+      // ensure_remote_solvers_loaded() dlopening libcuopt_grpc.so at run time.
       auto* cpu_prob =
         dynamic_cast<cuopt::mathematical_optimization::cpu_optimization_problem_t<int, double>*>(
           problem_interface.get());
