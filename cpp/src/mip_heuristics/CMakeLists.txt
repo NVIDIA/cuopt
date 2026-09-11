@@ -14,6 +14,7 @@ set(MIP_LP_NECESSARY_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/presolve/third_party_presolve.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/presolve/single_lock_dual_aggregation.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/presolve/gf2_presolve.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/presolve/bhw_coeff_reduce.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/solution/solution.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/presolve/conflict_graph/clique_table.cu
 )
@@ -46,7 +47,9 @@ set(MIP_NON_LP_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/feasibility_jump_kernels.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/fj_cpu.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/early_cpufj.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/early_gpufj.cu)
+  ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/early_gpufj.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/structural/early_structural.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/structural/arc_flow.cu)
 
 # Choose which files to include based on build mode
 if(BUILD_LP_ONLY)
@@ -55,5 +58,13 @@ else()
   set(MIP_SRC_FILES ${MIP_LP_NECESSARY_FILES} ${MIP_NON_LP_FILES})
 endif()
 
+# Host-only members of mip_solver_settings_t (callbacks, tolerances). The gRPC client
+# needs them, so they build into cuopt_client; add_initial_solution stays in the .cu.
+set(MIP_CLIENT_SRC_FILES
+  ${CMAKE_CURRENT_SOURCE_DIR}/solver_settings.cpp
+)
+
 set(CUOPT_SRC_FILES ${CUOPT_SRC_FILES}
   ${MIP_SRC_FILES} PARENT_SCOPE)
+set(CUOPT_CLIENT_SRC_FILES ${CUOPT_CLIENT_SRC_FILES}
+  ${MIP_CLIENT_SRC_FILES} PARENT_SCOPE)

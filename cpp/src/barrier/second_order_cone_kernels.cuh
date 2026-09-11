@@ -475,15 +475,14 @@ void launch_nt_scaling(cone_data_t<i_t, f_t>& cones, rmm::cuda_stream_view strea
 
   const size_t cone_grid_dim =
     raft::ceildiv<size_t>(static_cast<size_t>(cones.n_cones), soc_block_size);
-  nt_finalize_scaling_scalars_kernel<i_t, f_t>
-    <<<cone_grid_dim, soc_block_size, 0, stream.value()>>>(
-      cones.x, cones.z, x_scale, z_scale, cuopt::make_span(cones.eta), cone_offsets, cones.n_cones);
+  nt_finalize_scaling_scalars_kernel<i_t, f_t><<<cone_grid_dim, soc_block_size, 0, stream.get()>>>(
+    cones.x, cones.z, x_scale, z_scale, cuopt::make_span(cones.eta), cone_offsets, cones.n_cones);
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 
   const size_t element_grid_dim = raft::ceildiv<size_t>(cones.n_cone_entries, soc_block_size);
 
   auto w = cuopt::make_span(cones.w);
-  nt_write_w_kernel<i_t, f_t><<<element_grid_dim, soc_block_size, 0, stream.value()>>>(
+  nt_write_w_kernel<i_t, f_t><<<element_grid_dim, soc_block_size, 0, stream.get()>>>(
     cones.x, cones.z, x_scale, z_scale, w, cone_offsets, element_cone_ids);
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 
@@ -495,24 +494,24 @@ void launch_nt_scaling(cone_data_t<i_t, f_t>& cones, rmm::cuda_stream_view strea
                                     });
   cones.segmented_sum(unnormalized_tail_sq_terms, w_scale, stream);
 
-  nt_finalize_w_scale_kernel<i_t, f_t><<<cone_grid_dim, soc_block_size, 0, stream.value()>>>(
+  nt_finalize_w_scale_kernel<i_t, f_t><<<cone_grid_dim, soc_block_size, 0, stream.get()>>>(
     w, w_scale, w_scale, cone_offsets, cones.n_cones);
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 
   nt_normalize_w_kernel<i_t, f_t>
-    <<<element_grid_dim, soc_block_size, 0, stream.value()>>>(w, w_scale, element_cone_ids);
+    <<<element_grid_dim, soc_block_size, 0, stream.get()>>>(w, w_scale, element_cone_ids);
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 
   // Persist lambda while w_scale still stores sqrt(det_J(w_tmp)).
   nt_write_lambda_kernel<i_t, f_t>
-    <<<element_grid_dim, soc_block_size, 0, stream.value()>>>(cones.x,
-                                                              cones.z,
-                                                              x_scale,
-                                                              z_scale,
-                                                              w_scale,
-                                                              cuopt::make_span(cones.lambda),
-                                                              cone_offsets,
-                                                              element_cone_ids);
+    <<<element_grid_dim, soc_block_size, 0, stream.get()>>>(cones.x,
+                                                            cones.z,
+                                                            x_scale,
+                                                            z_scale,
+                                                            w_scale,
+                                                            cuopt::make_span(cones.lambda),
+                                                            cone_offsets,
+                                                            element_cone_ids);
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 
   // w_scale is overwritten from here
@@ -524,7 +523,7 @@ void launch_nt_scaling(cone_data_t<i_t, f_t>& cones, rmm::cuda_stream_view strea
                                     });
   cones.segmented_sum(normalized_tail_terms, w_scale, stream);
 
-  nt_finalize_head_kernel<i_t, f_t><<<cone_grid_dim, soc_block_size, 0, stream.value()>>>(
+  nt_finalize_head_kernel<i_t, f_t><<<cone_grid_dim, soc_block_size, 0, stream.get()>>>(
     cuopt::make_span(cones.w), w_scale, cone_offsets, cones.n_cones);
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 }
@@ -604,16 +603,16 @@ void launch_update_scaling_sparse(cone_data_t<i_t, f_t>& cones, rmm::cuda_stream
 
   const i_t n_sparse = cones.n_sparse_cones;
   update_scaling_sparse_kernel<i_t, f_t>
-    <<<n_sparse, soc_block_size, 0, stream.value()>>>(cuopt::make_span(cones.w),
-                                                      cuopt::make_span(cones.eta),
-                                                      cuopt::make_span(cones.d),
-                                                      cuopt::make_span(cones.sparse_v),
-                                                      cuopt::make_span(cones.sparse_u),
-                                                      cuopt::make_span(cones.cone_offsets),
-                                                      cuopt::make_span(cones.sparse_cone_dims),
-                                                      cuopt::make_span(cones.sparse_cone_ids),
-                                                      cuopt::make_span(cones.sparse_entry_offsets),
-                                                      n_sparse);
+    <<<n_sparse, soc_block_size, 0, stream.get()>>>(cuopt::make_span(cones.w),
+                                                    cuopt::make_span(cones.eta),
+                                                    cuopt::make_span(cones.d),
+                                                    cuopt::make_span(cones.sparse_v),
+                                                    cuopt::make_span(cones.sparse_u),
+                                                    cuopt::make_span(cones.cone_offsets),
+                                                    cuopt::make_span(cones.sparse_cone_dims),
+                                                    cuopt::make_span(cones.sparse_cone_ids),
+                                                    cuopt::make_span(cones.sparse_entry_offsets),
+                                                    n_sparse);
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 }
 
@@ -850,7 +849,7 @@ void apply_w_inv(raft::device_span<const f_t> v,
   cones.segmented_sum(tail_terms, tail_dot, stream);
 
   const size_t grid_dim = raft::ceildiv<size_t>(out.size(), soc_block_size);
-  apply_w_inv_write_kernel<i_t, f_t><<<grid_dim, soc_block_size, 0, stream.value()>>>(
+  apply_w_inv_write_kernel<i_t, f_t><<<grid_dim, soc_block_size, 0, stream.get()>>>(
     v, out, w, eta, tail_dot, cone_offsets, element_cone_ids);
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 }
@@ -886,7 +885,7 @@ void apply_w(raft::device_span<const f_t> v,
   cones.segmented_sum(tail_terms, tail_dot, stream);
 
   const size_t grid_dim = raft::ceildiv<size_t>(out.size(), soc_block_size);
-  apply_w_write_kernel<i_t, f_t><<<grid_dim, soc_block_size, 0, stream.value()>>>(
+  apply_w_write_kernel<i_t, f_t><<<grid_dim, soc_block_size, 0, stream.get()>>>(
     v, out, w, eta, tail_dot, cone_offsets, element_cone_ids);
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 }
@@ -921,18 +920,18 @@ void apply_hessian(raft::device_span<const f_t> v,
 
   const size_t grid_dim = raft::ceildiv<size_t>(out.size(), soc_block_size);
   apply_hessian_kernel<i_t, f_t>
-    <<<grid_dim, soc_block_size, 0, stream.value()>>>(v,
-                                                      out,
-                                                      w,
-                                                      eta,
-                                                      wv_dot,
-                                                      cone_offsets,
-                                                      element_cone_ids,
-                                                      cuopt::make_span(cones.cone_is_sparse),
-                                                      dense_cones_only,
-                                                      bias,
-                                                      output_scale,
-                                                      bias_scale);
+    <<<grid_dim, soc_block_size, 0, stream.get()>>>(v,
+                                                    out,
+                                                    w,
+                                                    eta,
+                                                    wv_dot,
+                                                    cone_offsets,
+                                                    element_cone_ids,
+                                                    cuopt::make_span(cones.cone_is_sparse),
+                                                    dense_cones_only,
+                                                    bias,
+                                                    output_scale,
+                                                    bias_scale);
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 }
 
@@ -1062,24 +1061,23 @@ void scatter_sparse_hessian_into_augmented(cone_data_t<i_t, f_t>& cones,
   const size_t E          = cones.n_sparse_cone_entries;
   const size_t entry_grid = raft::ceildiv<size_t>(E, soc_block_size);
   scatter_sparse_hessian_into_augmented_kernel<i_t, f_t>
-    <<<entry_grid, soc_block_size, 0, stream.value()>>>(
-      cuopt::make_span(augmented_x),
-      cuopt::make_span(Hs_diag),
-      cuopt::make_span(cones.eta),
-      cuopt::make_span(cones.d),
-      cuopt::make_span(cones.sparse_cone_ids),
-      cuopt::make_span(cones.sparse_entry_offsets),
-      n_sparse,
-      cuopt::make_span(hessian_diag_csr_indices),
-      cuopt::make_span(q_values),
-      cuopt::make_span(cones.sparse_v),
-      cuopt::make_span(cones.sparse_u),
-      cuopt::make_span(exp_v_col),
-      cuopt::make_span(exp_u_col),
-      cuopt::make_span(exp_v_row),
-      cuopt::make_span(exp_u_row),
-      cuopt::make_span(sparse_expansion_D),
-      dual_perturb);
+    <<<entry_grid, soc_block_size, 0, stream.get()>>>(cuopt::make_span(augmented_x),
+                                                      cuopt::make_span(Hs_diag),
+                                                      cuopt::make_span(cones.eta),
+                                                      cuopt::make_span(cones.d),
+                                                      cuopt::make_span(cones.sparse_cone_ids),
+                                                      cuopt::make_span(cones.sparse_entry_offsets),
+                                                      n_sparse,
+                                                      cuopt::make_span(hessian_diag_csr_indices),
+                                                      cuopt::make_span(q_values),
+                                                      cuopt::make_span(cones.sparse_v),
+                                                      cuopt::make_span(cones.sparse_u),
+                                                      cuopt::make_span(exp_v_col),
+                                                      cuopt::make_span(exp_u_col),
+                                                      cuopt::make_span(exp_v_row),
+                                                      cuopt::make_span(exp_u_row),
+                                                      cuopt::make_span(sparse_expansion_D),
+                                                      dual_perturb);
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 }
 
@@ -1181,21 +1179,21 @@ void launch_sparse_augmented_matvec(raft::device_span<const f_t> x,
                "expansion output size mismatch");
 
   sparse_augmented_matvec_kernel<i_t, f_t>
-    <<<n_sparse, soc_block_size, 0, stream.value()>>>(x,
-                                                      r1,
-                                                      y_exp,
-                                                      Hs_diag,
-                                                      cuopt::make_span(cones.sparse_v),
-                                                      cuopt::make_span(cones.sparse_u),
-                                                      cuopt::make_span(cones.eta),
-                                                      cuopt::make_span(cones.sparse_cone_ids),
-                                                      cuopt::make_span(cones.sparse_cone_dims),
-                                                      cuopt::make_span(cones.sparse_entry_offsets),
-                                                      cuopt::make_span(cones.cone_offsets),
-                                                      cone_var_start,
-                                                      n_primal,
-                                                      m_constraints,
-                                                      n_sparse);
+    <<<n_sparse, soc_block_size, 0, stream.get()>>>(x,
+                                                    r1,
+                                                    y_exp,
+                                                    Hs_diag,
+                                                    cuopt::make_span(cones.sparse_v),
+                                                    cuopt::make_span(cones.sparse_u),
+                                                    cuopt::make_span(cones.eta),
+                                                    cuopt::make_span(cones.sparse_cone_ids),
+                                                    cuopt::make_span(cones.sparse_cone_dims),
+                                                    cuopt::make_span(cones.sparse_entry_offsets),
+                                                    cuopt::make_span(cones.cone_offsets),
+                                                    cone_var_start,
+                                                    n_primal,
+                                                    m_constraints,
+                                                    n_sparse);
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 }
 
@@ -1261,16 +1259,16 @@ void scatter_dense_hessian_into_augmented(const cone_data_t<i_t, f_t>& cones,
   const i_t n_dense = cones.n_dense_cones();
   const size_t grid = raft::ceildiv<size_t>(count, soc_block_size);
   scatter_dense_hessian_into_augmented_kernel<i_t, f_t>
-    <<<grid, soc_block_size, 0, stream.value()>>>(cuopt::make_span(augmented_x),
-                                                  cuopt::make_span(csr_indices),
-                                                  cuopt::make_span(q_values),
-                                                  cuopt::make_span(cones.w),
-                                                  cuopt::make_span(cones.eta),
-                                                  cuopt::make_span(cones.cone_offsets),
-                                                  cuopt::make_span(dense_block_offsets),
-                                                  cuopt::make_span(dense_cone_ids),
-                                                  n_dense,
-                                                  dual_perturb_value);
+    <<<grid, soc_block_size, 0, stream.get()>>>(cuopt::make_span(augmented_x),
+                                                cuopt::make_span(csr_indices),
+                                                cuopt::make_span(q_values),
+                                                cuopt::make_span(cones.w),
+                                                cuopt::make_span(cones.eta),
+                                                cuopt::make_span(cones.cone_offsets),
+                                                cuopt::make_span(dense_block_offsets),
+                                                cuopt::make_span(dense_cone_ids),
+                                                n_dense,
+                                                dual_perturb_value);
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 }
 
@@ -1467,7 +1465,7 @@ void launch_cone_step_length(segmented_sum_t<i_t>& partitions,
     const auto n_small = partitions.small_cone_ids.size();
     const auto grid    = (n_small + warps_per_cta - 1) / warps_per_cta;
     step_length_small_kernel<i_t, f_t, warps_per_cta>
-      <<<grid, warps_per_cta * raft::WarpSize, 0, stream.value()>>>(
+      <<<grid, warps_per_cta * raft::WarpSize, 0, stream.get()>>>(
         u,
         du,
         alpha,
@@ -1480,7 +1478,7 @@ void launch_cone_step_length(segmented_sum_t<i_t>& partitions,
   if (!partitions.medium_cone_ids.is_empty()) {
     constexpr int medium_block_dim = 256;
     step_length_medium_kernel<i_t, f_t, medium_block_dim>
-      <<<partitions.medium_cone_ids.size(), medium_block_dim, 0, stream.value()>>>(
+      <<<partitions.medium_cone_ids.size(), medium_block_dim, 0, stream.get()>>>(
         u,
         du,
         alpha,
@@ -1512,14 +1510,14 @@ void launch_cone_step_length(segmented_sum_t<i_t>& partitions,
                                            input,
                                            large_sums.data() + i,
                                            dim,
-                                           stream.value()));
+                                           stream.get()));
     }
 
     raft::device_span<const step_tail_sums_t<f_t>> large_sums_c(large_sums.data(),
                                                                 large_sums.size());
     constexpr int large_solve_block_dim = 256;
     const auto grid = raft::ceildiv<size_t>(n_large, static_cast<size_t>(large_solve_block_dim));
-    step_length_large_solve_kernel<i_t, f_t><<<grid, large_solve_block_dim, 0, stream.value()>>>(
+    step_length_large_solve_kernel<i_t, f_t><<<grid, large_solve_block_dim, 0, stream.get()>>>(
       u,
       du,
       alpha,
@@ -1608,16 +1606,15 @@ void compute_combined_cone_rhs_term(raft::device_span<const f_t> dx_aff,
   // Stage both head vectors first because every tail entry needs them.
   const size_t cone_grid_dim =
     raft::ceildiv<size_t>(static_cast<size_t>(cones.n_cones), soc_block_size);
-  gather_cone_heads_kernel<i_t, f_t><<<cone_grid_dim, soc_block_size, 0, stream.value()>>>(
+  gather_cone_heads_kernel<i_t, f_t><<<cone_grid_dim, soc_block_size, 0, stream.get()>>>(
     scaled_dx, slot_1, cone_offsets, cones.n_cones);
-  gather_cone_heads_kernel<i_t, f_t><<<cone_grid_dim, soc_block_size, 0, stream.value()>>>(
+  gather_cone_heads_kernel<i_t, f_t><<<cone_grid_dim, soc_block_size, 0, stream.get()>>>(
     scaled_dz, slot_2, cone_offsets, cones.n_cones);
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 
   const size_t element_grid_dim = raft::ceildiv<size_t>(cones.n_cone_entries, soc_block_size);
-  combined_cone_shift_write_kernel<i_t, f_t>
-    <<<element_grid_dim, soc_block_size, 0, stream.value()>>>(
-      out, scaled_dx, scaled_dz, slot_0, slot_1, slot_2, cone_offsets, element_cone_ids, sigma_mu);
+  combined_cone_shift_write_kernel<i_t, f_t><<<element_grid_dim, soc_block_size, 0, stream.get()>>>(
+    out, scaled_dx, scaled_dz, slot_0, slot_1, slot_2, cone_offsets, element_cone_ids, sigma_mu);
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 
   auto shift    = raft::device_span<const f_t>(out.data(), out.size());
@@ -1641,13 +1638,13 @@ void compute_combined_cone_rhs_term(raft::device_span<const f_t> dx_aff,
   cones.segmented_sum(lambda_tail_sq_terms, slot_1, stream);
 
   jordan_divide_by_lambda_scalar_kernel<i_t, f_t>
-    <<<cone_grid_dim, soc_block_size, 0, stream.value()>>>(
+    <<<cone_grid_dim, soc_block_size, 0, stream.get()>>>(
       shift, nt_point, slot_0, slot_1, slot_0, slot_1, cone_offsets, cones.n_cones);
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 
   // Note that we implicitly multiply by -1 here since we are writing -p.
   jordan_divide_by_lambda_write_kernel<i_t, f_t>
-    <<<element_grid_dim, soc_block_size, 0, stream.value()>>>(
+    <<<element_grid_dim, soc_block_size, 0, stream.get()>>>(
       shift, nt_point, slot_0, slot_1, cone_offsets, element_cone_ids, scratch_cone);
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 

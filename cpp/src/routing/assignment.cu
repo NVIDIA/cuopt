@@ -196,10 +196,9 @@ void assignment_t<i_t>::to_csv(std::string_view filename, rmm::cuda_stream_view 
   route.resize(route_.size());
   arrival_stamp.resize(arrival_stamp_.size());
   truck_id.resize(truck_id_.size());
-  raft::copy(route.data(), route_.data(), route_.size(), stream_view.value());
-  raft::copy(
-    arrival_stamp.data(), arrival_stamp_.data(), arrival_stamp_.size(), stream_view.value());
-  raft::copy(truck_id.data(), truck_id_.data(), truck_id_.size(), stream_view.value());
+  raft::copy(route.data(), route_.data(), route_.size(), stream_view.get());
+  raft::copy(arrival_stamp.data(), arrival_stamp_.data(), arrival_stamp_.size(), stream_view.get());
+  raft::copy(truck_id.data(), truck_id_.data(), truck_id_.size(), stream_view.get());
   std::ofstream myfile(filename.data());
   std::cout << "truck_id,\troute,\tarrival_time\n";
   for (size_t i = 0; i < route.size(); i++)

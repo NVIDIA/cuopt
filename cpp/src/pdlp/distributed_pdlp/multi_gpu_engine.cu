@@ -185,7 +185,7 @@ void multi_gpu_engine_t<i_t, f_t>::halo_exchange_bufs_impl(
                               nccl_data_type<f_t>(),
                               peer,
                               s.comm.get(),
-                              s.stream.view().value()));
+                              s.stream.view().get()));
     }
   });
   for_each_shard([&](auto& s, int r) {
@@ -199,7 +199,7 @@ void multi_gpu_engine_t<i_t, f_t>::halo_exchange_bufs_impl(
                               nccl_data_type<f_t>(),
                               peer,
                               s.comm.get(),
-                              s.stream.view().value()));
+                              s.stream.view().get()));
     }
   });
   CUOPT_NCCL_TRY(ncclGroupEnd());
@@ -317,7 +317,7 @@ void multi_gpu_engine_t<i_t, f_t>::allreduce_sum_inplace_bufs(
                                  nccl_data_type<f_t>(),
                                  ncclSum,
                                  s.comm.get(),
-                                 s.stream.view().value()));
+                                 s.stream.view().get()));
   });
   CUOPT_NCCL_TRY(ncclGroupEnd());
 }
@@ -363,7 +363,7 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_dot_bufs(
                                                     b_bufs[r].data(),
                                                     1,
                                                     out_scalars[r].data_handle(),
-                                                    s.stream.view().value()));
+                                                    s.stream.view().get()));
   });
 
   allreduce_sum_inplace_bufs(out_scalars);
@@ -394,7 +394,7 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_l2_norm_bufs(
       out_scalars[r].data_handle(),
       1,
       [] __device__(f_t x) { return cuda::std::sqrt(x); },
-      s.stream.view().value());
+      s.stream.view().get());
   });
 }
 
@@ -430,23 +430,25 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_l2_norm_to_master_buf(
 template <typename i_t, typename f_t>
 void multi_gpu_engine_t<i_t, f_t>::distributed_spmv_At(
   std::vector<rmm::device_uvector<f_t>>& in_bufs,
-  std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>>& in_descs,
-  std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>>& out_descs)
+  std::vector<cusparse_dn_vec_uptr>& in_descs,
+  std::vector<cusparse_dn_vec_uptr>& out_descs)
 {
   halo_exchange_cstr_bufs(in_bufs);
-  for_each_shard(
-    [&](auto& s, int r) { s.sub_pdlp->pdhg_solver_.spmv_At_into(in_descs[r], out_descs[r]); });
+  for_each_shard([&](auto& s, int r) {
+    s.sub_pdlp->pdhg_solver_.spmv_At_into(in_descs[r].get(), out_descs[r].get());
+  });
 }
 
 template <typename i_t, typename f_t>
 void multi_gpu_engine_t<i_t, f_t>::distributed_spmv_A(
   std::vector<rmm::device_uvector<f_t>>& in_bufs,
-  std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>>& in_descs,
-  std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>>& out_descs)
+  std::vector<cusparse_dn_vec_uptr>& in_descs,
+  std::vector<cusparse_dn_vec_uptr>& out_descs)
 {
   halo_exchange_var_bufs(in_bufs);
-  for_each_shard(
-    [&](auto& s, int r) { s.sub_pdlp->pdhg_solver_.spmv_A_into(in_descs[r], out_descs[r]); });
+  for_each_shard([&](auto& s, int r) {
+    s.sub_pdlp->pdhg_solver_.spmv_A_into(in_descs[r].get(), out_descs[r].get());
+  });
 }
 
 template struct multi_gpu_engine_t<int, double>;
