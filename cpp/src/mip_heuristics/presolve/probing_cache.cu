@@ -568,7 +568,8 @@ void apply_modification_queue_to_problem(
       if (var_bounds_modifications.count(var_idx) == 0) {
         var_bounds_modifications[var_idx] = std::make_pair(lb, ub);
       } else {
-        var_bounds_modifications[var_idx].first = std::max(var_bounds_modifications[var_idx].first, lb);
+        var_bounds_modifications[var_idx].first =
+          std::max(var_bounds_modifications[var_idx].first, lb);
         var_bounds_modifications[var_idx].second =
           std::min(var_bounds_modifications[var_idx].second, ub);
       }
