@@ -90,6 +90,28 @@ TEST(mip_solve, low_thread_count_test)
   test_variable_bounds(problem, solution.get_solution(), settings);
 }
 
+TEST(mip_solve, repeated_concurrent_initial_clique_generation)
+{
+  mip_solver_settings_t<int, double> settings;
+  settings.num_cpu_threads = 8;
+  settings.time_limit      = 30;
+  settings.work_limit      = 1;
+  settings.clique_cuts     = 1;
+  settings.zero_half_cuts  = 1;
+
+  const raft::handle_t handle_{};
+
+  auto path    = make_path_absolute("mip/gen-ip054.mps");
+  auto problem = cuopt::mathematical_optimization::io::read_mps<int, double>(path, false);
+  handle_.sync_stream();
+
+  constexpr int num_solves = 25;
+  for (int solve = 0; solve < num_solves; ++solve) {
+    auto solution = solve_mip(&handle_, problem, settings);
+    EXPECT_NE(solution.get_termination_status(), mip_termination_status_t::NoTermination);
+  }
+}
+
 // Verify --node-limit is respected: swath1 normally requires several thousand B&B
 // nodes to prove optimality, so capping at 1000 forces the solver to stop early with
 // a feasible (but not necessarily optimal) solution.
