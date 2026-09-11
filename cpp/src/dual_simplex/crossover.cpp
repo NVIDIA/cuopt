@@ -1428,7 +1428,7 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
     simplex_solver_settings_t<i_t, f_t> dual_settings = settings;
     dual_settings.iteration_limit                     = std::numeric_limits<i_t>::max();
     dual_status_t status                              = dual_phase2(
-      2, 0, start_time, lp, dual_settings, vstatus, solution, dual_iter, work_estimate, edge_norms);
+      2, 0, start_time, lp, dual_settings, vstatus, solution, dual_iter, edge_norms, work_estimate);
     if (toc(start_time) > settings.time_limit) {
       settings.log.printf("Time limit exceeded\n");
       return crossover_status_t::TIME_LIMIT;
@@ -1508,8 +1508,8 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
                                               phase1_vstatus,
                                               phase1_solution,
                                               iter,
-                                              phase1_work_estimate,
-                                              junk);
+                                              junk,
+                                              phase1_work_estimate);
     if (phase1_status == dual_status_t::NUMERICAL ||
         phase1_status == dual_status_t::DUAL_UNBOUNDED) {
       settings.log.printf("Failed in Phase 1\n");
@@ -1633,8 +1633,8 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
                              vstatus,
                              solution,
                              iter,
-                             phase2_work_estimate,
-                             edge_norms);
+                             edge_norms,
+                             phase2_work_estimate);
         if (toc(start_time) > settings.time_limit) {
           settings.log.printf("Time limit exceeded\n");
           return crossover_status_t::TIME_LIMIT;

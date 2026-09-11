@@ -60,8 +60,8 @@ dual_status_t dual_phase2(i_t phase,
                           std::vector<variable_status_t>& vstatus,
                           lp_solution_t<i_t, f_t>& sol,
                           i_t& iter,
-                          f_t& work_estimate,
                            std::vector<f_t>& steepest_edge_norms,
+                          f_t& work_estimate,
                            work_limit_context_t* work_unit_context = nullptr);
 
 template <typename i_t, typename f_t>
@@ -85,8 +85,8 @@ dual_status_t dual_phase2(i_t phase,
                      vstatus,
                      sol,
                      iter,
-                     work_estimate,
                      steepest_edge_norms,
+                     work_estimate,
                      work_unit_context);
 }
 
@@ -103,9 +103,9 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
                                               std::vector<i_t>& nonbasic_list,
                                               lp_solution_t<i_t, f_t>& sol,
                                               i_t& iter,
+                                              std::vector<f_t>& delta_y_steepest_edge,
                                               f_t& work_estimate,
-                                               std::vector<f_t>& delta_y_steepest_edge,
-                                               work_limit_context_t* work_unit_context = nullptr);
+                                              work_limit_context_t* work_unit_context = nullptr);
 
 template <typename i_t, typename f_t>
 dual_status_t dual_phase2_with_advanced_basis(i_t phase,
@@ -136,8 +136,8 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
                                          nonbasic_list,
                                          sol,
                                          iter,
-                                         work_estimate,
                                          delta_y_steepest_edge,
+                                         work_estimate,
                                          work_unit_context);
 }
 
