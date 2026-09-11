@@ -822,8 +822,8 @@ primal_status_t primal_phase2(i_t phase,
                                            iter,
                                            work_estimate);
 }
-// Note this implementation of primal simplex is experimental
-// It is meant only to serve as a method to remove the perturbation to the objective
+// Note this implementation of primal simplex is not well optimized
+// It is really meant as a method to remove the perturbation to the objective
 // after dual simplex has found a primal feasible solution
 template <typename i_t, typename f_t>
 primal_status_t primal_phase2_with_advanced_basis(
