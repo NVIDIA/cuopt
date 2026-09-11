@@ -91,7 +91,6 @@ struct simplex_solver_settings_t {
       barrier_initial_point_safeguard(10.0),
       check_Q(false),
       crossover(false),
-      unscaled_max_abs_obj_coeff(-1.0),
       refactor_frequency(100),
       iteration_log_frequency(1000),
       first_iteration_log(2),
@@ -208,7 +207,6 @@ struct simplex_solver_settings_t {
   // the interior of the nonnegative orthant / SOC
   bool check_Q;                    // true to check if Q is positive semidefinite
   bool crossover;                  // true to do crossover, false to not
-  f_t unscaled_max_abs_obj_coeff;  // max |c_j| before scaling (-1 = not set, compute from lp)
   i_t refactor_frequency;          // number of basis updates before refactorization
   i_t iteration_log_frequency;     // number of iterations between log updates
   i_t first_iteration_log;         // number of iterations to log at beginning of solve

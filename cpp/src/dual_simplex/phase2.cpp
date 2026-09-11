@@ -1633,7 +1633,7 @@ i_t compute_perturbation(const lp_problem_t<i_t, f_t>& lp,
       sum_perturb += violation;
     }
   }
-  // On degenerate steps, shift the entering variable's cost (like HiGHS)
+  // On degenerate steps, shift the entering variable's cost
   // This accumulates shifts that break degeneracy at the next refactorization
   if (entering_index >= 0 && step_length == 0.0) {
     assert(vstatus[entering_index] != variable_status_t::BASIC);
@@ -2325,7 +2325,7 @@ i_t set_primal_variables_on_bounds(const lp_problem_t<i_t, f_t>& lp,
             vstatus[j] = variable_status_t::NONBASIC_LOWER;
           }
         } else {
-          // degen_type == 3: abs_bound (prefer bound closer to zero, like HiGHS)
+          // degen_type == 3: abs_bound (prefer bound closer to zero)
           if (std::abs(lp.upper[j]) < std::abs(lp.lower[j])) {
             x[j]       = lp.upper[j];
             vstatus[j] = variable_status_t::NONBASIC_UPPER;
