@@ -4,8 +4,6 @@
 #include <cuopt/mathematical_optimization/remote_solve_registry.hpp>
 #include <utilities/logger.hpp>
 
-#include <dlfcn.h>
-
 namespace cuopt::mathematical_optimization {
 
 std::atomic<solve_lp_remote_fn_t> g_solve_lp_remote_fn{nullptr};
@@ -24,13 +22,13 @@ void register_remote_solvers(solve_lp_remote_fn_t lp_fn, solve_mip_remote_fn_t m
 
 void ensure_remote_solvers_loaded()
 {
-  if (g_remote_solvers_ready.load(std::memory_order_acquire)) { return; }
-  // The constructor in libcuopt_grpc.so calls register_remote_solvers(). dlopen is
-  // itself thread-safe and refcounted, so a concurrent second call is harmless.
-  if (dlopen("libcuopt_grpc.so", RTLD_NOW | RTLD_GLOBAL) == nullptr) {
-    const char* err = dlerror();
-    CUOPT_LOG_DEBUG("Could not load libcuopt_grpc.so: %s", err != nullptr ? err : "unknown error");
-  }
+  // Nothing to load. grpc_registration.cpp builds into this library, so its ELF
+  // constructor has already called register_remote_solvers() by the time any code here
+  // runs. The function stays because callers read better for it, and because a future
+  // arrangement that moves registration back out would need somewhere to hook.
+  //
+  // It previously dlopen'd libcuopt_grpc.so, which held the constructor as a separate
+  // component. That component was 18 KB exporting nothing, so it was folded in here.
 }
 
 }  // namespace cuopt::mathematical_optimization

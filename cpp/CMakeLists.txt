@@ -605,16 +605,13 @@ if (NOT SKIP_GRPC_BUILD)
             src/grpc/client/solve_remote.cpp
     )
 
-    # The registration shim spans two components by construction: its ELF constructor
-    # publishes solve_lp_remote / solve_mip_remote, which live in cuopt_client, into the
-    # registry in cuopt_mathopt. Putting it in cuopt_client would leave that library with an
-    # undefined register_remote_solvers and destroy its standalone property.
-    set(GRPC_COMPONENT_FILES
-            src/grpc/client/grpc_registration.cpp
-    )
+    # The registration shim builds into cuopt_mathopt, which owns the registry it fills.
+    # It cannot go into cuopt_client: that would leave libcuopt_client.so with an undefined
+    # register_remote_solvers and destroy its standalone property.
+    list(APPEND CUOPT_MATHOPT_SRC_FILES src/grpc/client/grpc_registration.cpp)
     # Routing (VRP) arm: everything that depends on the routing engine. Kept as
     # its own list so a routing-only gRPC client can be split out of the
-    # cuopt_grpc component without moving code around again.
+    # routing arm without moving code around again.
     set(GRPC_ROUTING_FILES
             src/grpc/routing/grpc_routing_problem_mapper.cpp
             src/grpc/routing/grpc_routing_settings_mapper.cpp
@@ -625,14 +622,15 @@ if (NOT SKIP_GRPC_BUILD)
 
     # GRPC_INFRA_FILES exists only to carry the -DNDEBUG property below; it is not a target
     # source list.
-    set(GRPC_INFRA_FILES ${GRPC_PROTO_GENERATED_FILES} ${GRPC_MATHOPT_FILES} ${GRPC_COMPONENT_FILES})
+    set(GRPC_INFRA_FILES ${GRPC_PROTO_GENERATED_FILES} ${GRPC_MATHOPT_FILES}
+            src/grpc/client/grpc_registration.cpp)
     if (CUOPT_ENABLE_GRPC_ROUTING)
         list(APPEND GRPC_INFRA_FILES ${GRPC_ROUTING_FILES})
     endif ()
 
     # The protocol and the LP/MIP arm are CUDA-free, so they build into cuopt_client. The
     # routing arm calls routing accessors that live in CUDA translation units, so it builds
-    # into cuopt_grpc alongside the dispatcher instead.
+    # into cuopt_client alongside the LP/MIP arm.
     list(APPEND CUOPT_CLIENT_SRC_FILES ${GRPC_PROTO_GENERATED_FILES} ${GRPC_MATHOPT_FILES})
     # The routing arm now builds into cuopt_client alongside the LP/MIP arm. Its mappers only
     # touch routing::solver_settings_t and assignment_t accessors, which are host-only and
@@ -654,9 +652,8 @@ if (NOT SKIP_GRPC_BUILD)
     set_property(SOURCE ${GRPC_PROTO_GENERATED_FILES} DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
             APPEND PROPERTY COMPILE_OPTIONS "$<$<COMPILE_LANGUAGE:CXX>:-fvisibility=default>")
 
-    # cuopt_static (for tests) needs the dispatcher; the components get their sources from
-    # CUOPT_CLIENT_SRC_FILES and GRPC_COMPONENT_FILES.
-    list(APPEND CUOPT_SRC_FILES ${GRPC_COMPONENT_FILES})
+    # cuopt_static (for tests) needs the registration shim too.
+    list(APPEND CUOPT_SRC_FILES src/grpc/client/grpc_registration.cpp)
 endif (NOT SKIP_GRPC_BUILD)
 
 # ##################################################################################################
@@ -834,6 +831,11 @@ if(NOT SKIP_ROUTING_BUILD)
     cuopt_configure_component(cuopt_routing)
     target_link_libraries(cuopt_routing
             PUBLIC
+            # The routing engine reads its own assignment_t and solver_settings_t accessors,
+            # and those are host-only so they build into cuopt_client. Without this the
+            # symbols resolve only because something else pulled cuopt_client in, which a
+            # routing-only install would not do.
+            cuopt_client
             rmm::rmm
             rapids_logger::rapids_logger
             CCCL::CCCL
@@ -899,26 +901,6 @@ if (TARGET KaMinPar)
     add_dependencies(cuopt_mathopt KaMinPar)
 endif ()
 add_library(cuopt::mathopt ALIAS cuopt_mathopt)
-
-# cuopt_grpc: gRPC bridge — proto mappers + Cython client (LP and routing over gRPC)
-# Depends on cuopt_mathopt and cuopt_routing so it can reference both APIs without forcing
-# either component to take a gRPC dependency.
-if(NOT SKIP_GRPC_BUILD)
-    add_library(cuopt_grpc SHARED ${GRPC_COMPONENT_FILES})
-    cuopt_configure_component(cuopt_grpc)
-    target_include_directories(cuopt_grpc PRIVATE
-            "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc"
-            "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc/client"
-            "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc/codegen/generated"
-            "${CMAKE_CURRENT_SOURCE_DIR}/src/io"
-    )
-    if(NOT SKIP_ROUTING_BUILD)
-        target_link_libraries(cuopt_grpc PUBLIC cuopt_mathopt cuopt_routing PRIVATE protobuf::libprotobuf gRPC::grpc++)
-    else()
-        target_link_libraries(cuopt_grpc PUBLIC cuopt_mathopt PRIVATE protobuf::libprotobuf gRPC::grpc++)
-    endif()
-    add_library(cuopt::grpc ALIAS cuopt_grpc)
-endif()
 
 # ##################################################################################################
 # - cuopt_objs: OBJECT library used by cuopt_static for internal test builds ---------------------
@@ -1085,7 +1067,6 @@ if(NOT SKIP_ROUTING_BUILD)
     string(APPEND CUOPT_LINKER_SCRIPT_INPUTS " libcuopt_routing.so")
 endif()
 if(NOT SKIP_GRPC_BUILD)
-    string(APPEND CUOPT_LINKER_SCRIPT_INPUTS " libcuopt_grpc.so")
 endif()
 
 set(CUOPT_LINKER_SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/libcuopt.so")
@@ -1109,9 +1090,6 @@ if(NOT SKIP_ROUTING_BUILD)
     target_link_libraries(cuopt INTERFACE cuopt_routing cuopt_mathopt cuopt_client)
 else()
     target_link_libraries(cuopt INTERFACE cuopt_mathopt cuopt_client)
-endif()
-if(NOT SKIP_GRPC_BUILD)
-    target_link_libraries(cuopt INTERFACE cuopt_grpc)
 endif()
 
 if (WRITE_FATBIN)
@@ -1159,11 +1137,8 @@ set(CUOPT_COMPONENT_TARGETS cuopt_mathopt cuopt_client)
 if(NOT SKIP_ROUTING_BUILD)
     list(APPEND CUOPT_COMPONENT_TARGETS cuopt_routing)
 endif()
-if(NOT SKIP_GRPC_BUILD)
-    list(APPEND CUOPT_COMPONENT_TARGETS cuopt_grpc)
-endif()
 
-# Export as cuopt::routing / cuopt::mathopt / cuopt::grpc, matching the
+# Export as cuopt::routing / cuopt::mathopt, matching the
 # build-tree aliases.
 set(CUOPT_COMPONENT_EXPORT_NAMES "")
 foreach(_component ${CUOPT_COMPONENT_TARGETS})
@@ -1210,7 +1185,7 @@ set(doc_string
 Provide targets for cuOpt.
 
 cuOpt library is a collection of GPU accelerated combinatorial optimization algorithms.
-Component targets: cuopt::routing, cuopt::mathopt, cuopt::grpc (when gRPC is built)
+Component targets: cuopt::routing, cuopt::mathopt
 Umbrella target:   cuopt::cuopt (links all component libs — backward-compatible with -lcuopt)
 
 ]=])
@@ -1289,7 +1264,6 @@ if (NOT BUILD_LP_ONLY)
     target_link_libraries(cuopt_cli
             PUBLIC
             cuopt
-            $<$<BOOL:${CUOPT_ENABLE_GRPC}>:cuopt_grpc>
             OpenMP::OpenMP_CXX
             ${CUDSS_LIBRARIES}
             TBB::tbb
@@ -1418,9 +1392,13 @@ if (NOT SKIP_GRPC_BUILD)
 
     find_library(UUID_LIBRARY uuid REQUIRED)
 
+    # Links both engines directly. It used to reach cuopt_routing transitively through
+    # cuopt_grpc; that component is gone, and the server is the one artifact that solves
+    # both VRP and LP/MIP, so the dependency is now explicit.
     target_link_libraries(cuopt_grpc_server
             PUBLIC
-            cuopt_grpc
+            cuopt_mathopt
+            $<$<NOT:$<BOOL:${SKIP_ROUTING_BUILD}>>:cuopt_routing>
             OpenMP::OpenMP_CXX
             PRIVATE
             protobuf::libprotobuf

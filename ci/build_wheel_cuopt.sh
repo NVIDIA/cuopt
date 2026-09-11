@@ -43,7 +43,6 @@ EXCLUDE_ARGS=(
   --exclude "libcuopt.so"
   --exclude "libcuopt_routing.so"
   --exclude "libcuopt_mathopt.so"
-  --exclude "libcuopt_grpc.so"
   --exclude "libcuopt_client.so"
   --exclude "libnvJitLink.so*"
   --exclude "librapids_logger.so"

@@ -61,7 +61,6 @@ def load_library():
     components = [
         ("libcuopt_routing.so", False),
         ("libcuopt_mathopt.so", True),
-        ("libcuopt_grpc.so", False),
     ]
     loaded = []
     for soname, required in components:

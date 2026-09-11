@@ -14,7 +14,7 @@
 #include <atomic>
 #include <memory>
 
-// Forward declarations — full types live in libcuopt_mathopt / libcuopt_grpc
+// Forward declarations — full types live in libcuopt_mathopt / libcuopt_client
 // headers.
 namespace cuopt::mathematical_optimization {
 
@@ -28,7 +28,7 @@ template <typename i_t, typename f_t>
 class mip_solver_settings_t;
 
 /**
- * @brief Remote LP solve entry point implemented by libcuopt_grpc.so.
+ * @brief Remote LP solve entry point implemented in libcuopt_client.so.
  *
  * The returned solution is owned by the caller. The callback must not propagate
  * exceptions across the component boundary. Only the `<int, double>`
@@ -38,7 +38,7 @@ using solve_lp_remote_fn_t = std::unique_ptr<lp_solution_interface_t<int, double
   cpu_optimization_problem_t<int, double> const&, pdlp_solver_settings_t<int, double> const&);
 
 /**
- * @brief Remote MIP solve entry point implemented by libcuopt_grpc.so.
+ * @brief Remote MIP solve entry point implemented in libcuopt_client.so.
  *
  * Same ownership and exception contract as @ref solve_lp_remote_fn_t.
  */
@@ -49,7 +49,7 @@ using solve_mip_remote_fn_t = std::unique_ptr<mip_solution_interface_t<int, doub
  * @brief Registry slots defined in libcuopt_mathopt.so
  * (remote_solve_registry.cpp).
  *
- * Null until libcuopt_grpc.so is loaded and calls register_remote_solvers(). Atomic
+ * Null until register_remote_solvers() runs from this library's ELF constructor. Atomic
  * because the registering ELF constructor runs on whichever thread triggers the lazy
  * dlopen while other threads may be reading the slots.
  */
@@ -66,12 +66,12 @@ extern std::atomic<bool> g_remote_solvers_ready;
 /**
  * @brief Wire up the real remote-solve implementations.
  *
- * Called by libcuopt_grpc.so's ELF constructor. Thread-safe.
+ * Called by grpc_registration.cpp's ELF constructor. Thread-safe.
  */
 CUOPT_EXPORT void register_remote_solvers(solve_lp_remote_fn_t lp_fn, solve_mip_remote_fn_t mip_fn);
 
 /**
- * @brief Load libcuopt_grpc.so on demand so its constructor populates the registry.
+ * @brief Retained hook; registration now happens in this library's own constructor.
  *
  * Idempotent and thread-safe; a failed load leaves the registry slots null so callers
  * can report the failure themselves.
