@@ -53,6 +53,10 @@ static bool unconstrained_1d_qp_minimizer(f_t c, f_t q, f_t lower, f_t upper, f_
     x = upper;
     return true;
   }
+  if (c == 0) {
+    x = 0;
+    return true;
+  }
   return false;
 }
 
@@ -113,31 +117,26 @@ i_t remove_empty_cols(lp_problem_t<i_t, f_t>& problem,
   std::vector<bool> q_coupled(problem.num_cols, false);
   if (problem.Q.n > 0) { collect_diagonal_quadratic(problem.Q, q_diag, q_coupled); }
 
-  std::vector<i_t> col_marker(problem.num_cols);
-  i_t new_cols = 0;
-  for (i_t j = 0; j < problem.num_cols; ++j) {
-    bool remove_var = false;
-    f_t removed_z   = problem.objective[j];
-    if (j < linear_cols && problem.A.col_length(j) == 0 && !q_coupled[j]) {
-      f_t x_fix;
-      if (unconstrained_1d_qp_minimizer(
-            problem.objective[j], q_diag[j], problem.lower[j], problem.upper[j], x_fix)) {
-        presolve_info.removed_values.push_back(x_fix);
-        // A e_j = 0 and Q diagonal, so stationarity gives z_j = c_j + q_jj * x_j
-        removed_z = problem.objective[j] + q_diag[j] * x_fix;
-        problem.obj_constant += quadratic_1d_obj(x_fix, problem.objective[j], q_diag[j]);
-        remove_var = true;
-      }
+  std::vector<i_t> col_marker(problem.num_cols, 0);
+  i_t new_cols = problem.num_cols;
+  for (i_t j = 0; j < linear_cols; ++j) {
+    if (problem.A.col_length(j) != 0 || q_coupled[j]) { continue; }
+    f_t x_fix;
+    if (!unconstrained_1d_qp_minimizer(
+          problem.objective[j], q_diag[j], problem.lower[j], problem.upper[j], x_fix)) {
+      // Convex q_jj > 0 should always have a finite minimizer; !isfinite is numerical.
+      // Otherwise this empty uncoupled column is unbounded below (dual infeasible).
+      if (q_diag[j] > 0) { continue; }
+      return UNBOUNDED_RETURN;
     }
-
-    if (remove_var) {
-      col_marker[j] = 1;
-      presolve_info.removed_variables.push_back(j);
-      presolve_info.removed_reduced_costs.push_back(removed_z);
-    } else {
-      col_marker[j] = 0;
-      new_cols++;
-    }
+    presolve_info.removed_values.push_back(x_fix);
+    // A e_j = 0 and Q diagonal, so stationarity gives z_j = c_j + q_jj * x_j
+    const f_t removed_z = problem.objective[j] + q_diag[j] * x_fix;
+    problem.obj_constant += quadratic_1d_obj(x_fix, problem.objective[j], q_diag[j]);
+    col_marker[j] = 1;
+    presolve_info.removed_variables.push_back(j);
+    presolve_info.removed_reduced_costs.push_back(removed_z);
+    new_cols--;
   }
   presolve_info.remaining_variables.reserve(new_cols);
 
@@ -1395,7 +1394,11 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
   }
   if (num_empty_cols > 0) {
     settings.log.printf("Presolve attempt to remove %d empty cols\n", num_empty_cols);
-    remove_empty_cols(problem, num_empty_cols, presolve_info);
+    const i_t empty_col_status = remove_empty_cols(problem, num_empty_cols, presolve_info);
+    if (empty_col_status == UNBOUNDED_RETURN) {
+      settings.log.printf("Found problem unbounded in presolve\n");
+      return UNBOUNDED_RETURN;
+    }
   }
 
   // Check for free variables (exclude cone variables — they are naturally unbounded)

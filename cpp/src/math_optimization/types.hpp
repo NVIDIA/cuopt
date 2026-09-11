@@ -25,5 +25,7 @@ constexpr float64_t inf = std::numeric_limits<float64_t>::infinity();
 #define TIME_LIMIT_RETURN -3
 // We return this constant to signal that a matrix is indefinite (has a negative pivot)
 #define INDEFINITE_MATRIX_RETURN -4
+// We return this constant to signal that the problem is unbounded below
+#define UNBOUNDED_RETURN -5
 
 }  // namespace cuopt::mathematical_optimization
