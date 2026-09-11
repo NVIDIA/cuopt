@@ -138,17 +138,7 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
   std::vector<f_t> ratios(nz);
   std::vector<f_t> harris_ratios(nz);
   work_estimate_ += 3 * nz;
-  double t0           = tic();
   i_t num_breakpoints = compute_breakpoints(indicies, ratios, harris_ratios);
-  time_compute_breakpoints_ += toc(t0);
-  num_breakpoints_ = num_breakpoints;
-  // Count zero ratios
-  num_harris_zero_ = 0;
-  num_exact_zero_  = 0;
-  for (i_t k = 0; k < num_breakpoints; k++) {
-    if (harris_ratios[k] == 0.0) num_harris_zero_++;
-    if (ratios[k] == 0.0) num_exact_zero_++;
-  }
   work_estimate_ += 2 * num_breakpoints;
   if constexpr (verbose) { settings_.log.printf("Initial breakpoints %d\n", num_breakpoints); }
   if (num_breakpoints == 0) {
@@ -161,7 +151,6 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
   i_t entering_index = RATIO_TEST_NO_ENTERING_VARIABLE;
   f_t max_step_length;
 
-  t0        = tic();
   i_t k_idx = single_pass(0,
                           num_breakpoints,
                           indicies,
@@ -170,7 +159,6 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
                           nonbasic_entering,
                           entering_index,
                           max_step_length);
-  time_single_pass_ += toc(t0);
   if (k_idx == RATIO_TEST_NUMERICAL_ISSUES) { return RATIO_TEST_NUMERICAL_ISSUES; }
   // The variable selected by single_pass is guaranteed to be in the first bucket: it
   // defines the minimum Harris ratio, and its exact ratio is no greater than its Harris
@@ -185,8 +173,6 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
         entering_index,
         std::abs(delta_z_[entering_index]));
     }
-    num_buckets_used_   = 0;
-    step_length_result_ = step_length;
     determine_flips(step_length, entering_index, flip_indices);
     return entering_index;
   }
@@ -296,7 +282,6 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
   i_t num_candidates = 0;
 
   // This is O( log10(max_step_length/min_step_length) * num_breakpoints)
-  t0 = tic();
   while (total_slope >= 0.0 && coarse_threshold <= max_step_length &&
          scan_start < num_breakpoints && !found_unbounded) {
     for (i_t h = scan_start; h < num_breakpoints; ++h) {
@@ -317,7 +302,6 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
     scan_start = num_candidates;
     coarse_threshold *= 10.0;
   }
-  time_coarse_filter_ += toc(t0);
 
   candidates.resize(num_candidates);
 
@@ -357,8 +341,6 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
   work_estimate_ += num_candidates + 1;
 
   // This is O(num_buckets * num_candidates)
-  i_t slope_breaker_k = -1;  // the candidate k that made slope go negative
-  t0                  = tic();
   while (cumulative_slope >= 0.0 && scan_start < num_candidates && threshold <= max_step_length) {
     f_t next_threshold = inf;
     i_t write          = scan_start;
@@ -371,7 +353,6 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
         const i_t j = nonbasic_list_[indicies[k]];
         if (bounded_variables_[j]) {
           cumulative_slope -= std::abs(delta_z_[j]) * (upper_[j] - lower_[j]);
-          if (cumulative_slope < 0.0 && slope_breaker_k < 0) { slope_breaker_k = k; }
         }
         std::swap(candidates[h], candidates[write]);
         write++;
@@ -390,8 +371,6 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
 
     if (cumulative_slope < 0.0) break;
   }
-  time_bucket_sort_ += toc(t0);
-  bucket0_size_ = (num_buckets > 0) ? bucket_start[1] : 0;
 
   // Compute the maximum pivot
   // This is O(num_candidates)
@@ -433,13 +412,8 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
   }
 
   // Step = entering variable's breakpoint ratio
-  num_buckets_used_ = num_buckets;
   if (entering_k < 0) {
     // Fallback to single_pass result
-    used_fallback_             = true;
-    bucket_selected_           = -1;
-    step_length_result_        = step_length;
-    selected_is_slope_breaker_ = false;
     determine_flips(step_length, entering_index, flip_indices);
     return entering_index;
   }
@@ -447,30 +421,6 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
   nonbasic_entering = indicies[entering_k];
   entering_index    = nonbasic_list_[nonbasic_entering];
 
-  // Record whether we selected the slope breaker
-  selected_is_slope_breaker_ = (entering_k == slope_breaker_k);
-
-  // Record which bucket was selected
-  used_fallback_ = false;
-  i_t pos        = -1;
-  for (i_t b = 0; b < num_buckets; b++) {
-    if (entering_k >= 0) {
-      // Find which bucket entering_k is in based on its position in candidates
-      pos = -1;
-      for (i_t h = 0; h < num_candidates; h++) {
-        if (candidates[h] == entering_k) {
-          pos = h;
-          break;
-        }
-      }
-      if (pos >= bucket_start[b] && pos < bucket_start[b + 1]) {
-        bucket_selected_ = b;
-        break;
-      }
-    }
-  }
-  work_estimate_ += (bucket_selected_ + 1) * (pos + 3);
-  step_length_result_ = step_length;
   determine_flips(step_length, entering_index, flip_indices);
 
   return entering_index;

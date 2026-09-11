@@ -56,26 +56,6 @@ class bound_flipping_ratio_test_t {
   i_t compute_step_length(f_t& step_length, i_t& nonbasic_entering, std::vector<i_t>& flip_indices);
   f_t work_estimate() const { return work_estimate_; }
 
-  // Timing fields (filled by compute_step_length)
-  f_t time_compute_breakpoints_{0.0};
-  f_t time_single_pass_{0.0};
-  f_t time_coarse_filter_{0.0};
-  f_t time_bucket_sort_{0.0};
-  f_t time_pivot_selection_{0.0};
-
-  // Diagnostic fields
-  i_t num_buckets_used_{0};  // number of buckets in bucket sort
-  i_t bucket_selected_{
-    -1};  // which bucket the entering variable came from (-1 = single_pass/fallback)
-  f_t step_length_result_{0.0};  // the step length chosen
-  bool used_fallback_{false};    // true if we fell back to single_pass result
-  i_t bucket0_size_{0};          // size of first bucket (candidates with ratio <= min_harris)
-  i_t num_breakpoints_{0};       // total breakpoints computed
-  bool selected_is_slope_breaker_{
-    false};                 // true if we selected the variable that made slope go negative
-  i_t num_harris_zero_{0};  // number of harris_ratios that are exactly 0
-  i_t num_exact_zero_{0};   // number of exact ratios that are exactly 0
-
  private:
   i_t compute_breakpoints(std::vector<i_t>& indices,
                           std::vector<f_t>& ratios,
