@@ -21,6 +21,8 @@ inline constexpr T one_v = T(1);
 template <typename T>
 inline constexpr T neg_one_v = T(-1);
 template <typename T>
+inline constexpr T half_v = T(0.5);
+template <typename T>
 inline constexpr T inf_v = std::numeric_limits<T>::infinity();
 template <typename T>
 inline constexpr T neg_inf_v = -std::numeric_limits<T>::infinity();

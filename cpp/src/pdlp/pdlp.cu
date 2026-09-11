@@ -2183,22 +2183,22 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
   stream_view_.sync();
 }
 
-// delta = reflected - current, for both primal and dual, written into the
+// delta = reflected - next, for both primal and dual, written into the
 // saddle-point delta buffers. Shared by the single-GPU and per-shard
 // (distributed) paths so the two only differ by which pdhg/stream they pass.
 template <typename i_t, typename f_t>
 static void compute_primal_dual_deltas(pdhg_solver_t<i_t, f_t>& pdhg, rmm::cuda_stream_view stream)
 {
   cub::DeviceTransform::Transform(
-    cuda::std::make_tuple(pdhg.get_reflected_primal().data(), pdhg.get_primal_solution().data()),
+    cuda::std::make_tuple(pdhg.get_reflected_primal().data(), pdhg.get_potential_next_primal_solution().data()),
     pdhg.get_saddle_point_state().get_delta_primal().data(),
-    pdhg.get_primal_solution().size(),
+    pdhg.get_potential_next_primal_solution().size(),
     cuda::std::minus<f_t>{},
     stream.get());
   cub::DeviceTransform::Transform(
-    cuda::std::make_tuple(pdhg.get_reflected_dual().data(), pdhg.get_dual_solution().data()),
+    cuda::std::make_tuple(pdhg.get_reflected_dual().data(), pdhg.get_potential_next_dual_solution().data()),
     pdhg.get_saddle_point_state().get_delta_dual().data(),
-    pdhg.get_dual_solution().size(),
+    pdhg.get_potential_next_dual_solution().size(),
     cuda::std::minus<f_t>{},
     stream.get());
 }
@@ -2246,7 +2246,7 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
                  "delta_dual_ size mismatch");
   }
 
-  // Computing the deltas (delta = reflected - current)
+  // Computing the deltas (delta = reflected - potential_next)
   // TODO batch mdoe: this only works if everyone restarts
   if (is_distributed_master()) {
     multi_gpu_engine->for_each_shard([](auto& shard) {
@@ -3059,23 +3059,20 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
       }
     }
 
+    const bool takes_major_step =
+      (total_pdlp_iterations_ + 1) % settings_.hyper_params.major_iteration == 0;
+    const bool restarted_this_iteration = std::any_of(
+      has_restarted.begin(), has_restarted.end(), [](int restarted) { return restarted == 1; });
 #ifdef CUPDLP_DEBUG_MODE
-    printf("Is Major %d\n",
-           (total_pdlp_iterations_ + 1) % settings_.hyper_params.major_iteration == 0);
+    printf("Is Major %d\n", takes_major_step);
 #endif
-    take_step(total_pdlp_iterations_,
-              (total_pdlp_iterations_ + 1) % settings_.hyper_params.major_iteration == 0);
+    take_step(total_pdlp_iterations_, takes_major_step);
 
     if (settings_.hyper_params.use_reflected_primal_dual) {
       if (settings_.hyper_params.use_fixed_point_error &&
-          ((total_pdlp_iterations_ + 1) % settings_.hyper_params.major_iteration == 0 ||
-           std::any_of(has_restarted.begin(), has_restarted.end(), [](int restarted) {
-             return restarted == 1;
-           }))) {
+          (takes_major_step || restarted_this_iteration)) {
         // TODO later batch mode: remove this once if you have per climber restart
-        if (std::any_of(has_restarted.begin(), has_restarted.end(), [](int restarted) {
-              return restarted == 1;
-            }))
+        if (restarted_this_iteration)
           cuopt_assert(std::all_of(has_restarted.begin(),
                                    has_restarted.end(),
                                    [](int restarted) { return restarted == 1; }),
@@ -3088,6 +3085,11 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
             pdhg_solver_.get_saddle_point_state().get_current_AtY());
           transpose_primal_dual_back_to_col(
             pdhg_solver_.get_primal_solution(), pdhg_solver_.get_dual_solution(), dummy);
+          // compute_primal_dual_deltas subtracts potential_next_* from reflected_*, so it has to
+          // be in the same layout as the rest of the operands here.
+          transpose_primal_dual_back_to_col(pdhg_solver_.get_potential_next_primal_solution(),
+                                            pdhg_solver_.get_potential_next_dual_solution(),
+                                            dummy);
           transpose_problem_fields(/*to_row=*/false);
         }
         compute_fixed_error(has_restarted);  // May set has_restarted to false
@@ -3098,10 +3100,12 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
                                        pdhg_solver_.get_saddle_point_state().get_current_AtY());
           transpose_primal_dual_to_row(
             pdhg_solver_.get_primal_solution(), pdhg_solver_.get_dual_solution(), dummy);
+          transpose_primal_dual_to_row(pdhg_solver_.get_potential_next_primal_solution(),
+                                       pdhg_solver_.get_potential_next_dual_solution(),
+                                       dummy);
           transpose_problem_fields(/*to_row=*/true);
         }
       }
-      halpern_update();
     }
 
     ++total_pdlp_iterations_;
@@ -3137,6 +3141,8 @@ void pdlp_solver_t<i_t, f_t>::take_adaptive_step(i_t total_pdlp_iterations, bool
       primal_step_size_,
       dual_step_size_,
       initial_scaling_strategy_.get_bound_rescaling_vector(),  // Only used in batch mode
+      restart_strategy_.last_restart_duality_gap_.primal_solution_,
+      restart_strategy_.last_restart_duality_gap_.dual_solution_,
       restart_strategy_.get_iterations_since_last_restart(),
       restart_strategy_.get_last_restart_was_average(),
       total_pdlp_iterations,
@@ -3166,74 +3172,14 @@ void pdlp_solver_t<i_t, f_t>::take_constant_step(bool is_major_iteration)
     primal_step_size_,
     dual_step_size_,
     initial_scaling_strategy_.get_bound_rescaling_vector(),  // Only used in batch mode
-    0,
+    restart_strategy_.last_restart_duality_gap_.primal_solution_,
+    restart_strategy_.last_restart_duality_gap_.dual_solution_,
+    settings_.hyper_params.use_reflected_primal_dual
+      ? restart_strategy_.weighted_average_solution_.get_iterations_since_last_restart()
+      : 0,
     false,
     total_pdlp_iterations_,
     is_major_iteration);
-}
-
-template <typename i_t, typename f_t>
-void pdlp_solver_t<i_t, f_t>::halpern_update()
-{
-  raft::common::nvtx::range fun_scope("halpern_update");
-
-  if (is_distributed_master()) {
-    multi_gpu_engine->for_each_shard([&](auto& shard) { shard.sub_pdlp->halpern_update(); });
-    return;
-  }
-  // TODO later batch mode: handle if element in the batch have different one if restart per climber
-  const f_t weight =
-    f_t(restart_strategy_.weighted_average_solution_.get_iterations_since_last_restart() + 1) /
-    f_t(restart_strategy_.weighted_average_solution_.get_iterations_since_last_restart() + 2);
-
-#ifdef CUPDLP_DEBUG_MODE
-  printf("halper_update weight %lf\n", weight);
-#endif
-
-  // Update primal
-  cub::DeviceTransform::Transform(
-    cuda::std::make_tuple(pdhg_solver_.get_reflected_primal().data(),
-                          pdhg_solver_.get_saddle_point_state().get_primal_solution().data(),
-                          restart_strategy_.last_restart_duality_gap_.primal_solution_.data()),
-    pdhg_solver_.get_saddle_point_state().get_primal_solution().data(),
-    pdhg_solver_.get_saddle_point_state().get_primal_solution().size(),
-    [weight, reflection_coefficient = settings_.hyper_params.reflection_coefficient] __device__(
-      f_t reflected_primal, f_t current_primal, f_t initial_primal) {
-      const f_t reflected = reflection_coefficient * reflected_primal +
-                            (f_t(1.0) - reflection_coefficient) * current_primal;
-      return weight * reflected + (f_t(1.0) - weight) * initial_primal;
-    },
-    stream_view_.get());
-
-#ifdef CUPDLP_DEBUG_MODE
-  print("pdhg_solver_.get_reflected_dual()", pdhg_solver_.get_reflected_dual());
-  print("pdhg_solver_.get_saddle_point_state().get_dual_solution()",
-        pdhg_solver_.get_saddle_point_state().get_dual_solution());
-  print("restart_strategy_.last_restart_duality_gap_.dual_solution_",
-        restart_strategy_.last_restart_duality_gap_.dual_solution_);
-
-#endif
-
-  // Update dual
-  cub::DeviceTransform::Transform(
-    cuda::std::make_tuple(pdhg_solver_.get_reflected_dual().data(),
-                          pdhg_solver_.get_saddle_point_state().get_dual_solution().data(),
-                          restart_strategy_.last_restart_duality_gap_.dual_solution_.data()),
-    pdhg_solver_.get_saddle_point_state().get_dual_solution().data(),
-    pdhg_solver_.get_saddle_point_state().get_dual_solution().size(),
-    [weight, reflection_coefficient = settings_.hyper_params.reflection_coefficient] __device__(
-      f_t reflected_dual, f_t current_dual, f_t initial_dual) {
-      const f_t reflected = reflection_coefficient * reflected_dual +
-                            (f_t(1.0) - reflection_coefficient) * current_dual;
-      return weight * reflected + (f_t(1.0) - weight) * initial_dual;
-    },
-    stream_view_.get());
-
-#ifdef CUPDLP_DEBUG_MODE
-  print("halpen_update current primal",
-        pdhg_solver_.get_saddle_point_state().get_primal_solution());
-  print("halpen_update current dual", pdhg_solver_.get_saddle_point_state().get_dual_solution());
-#endif
 }
 
 template <typename i_t, typename f_t>

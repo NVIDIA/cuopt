@@ -75,6 +75,8 @@ class pdhg_solver_t {
   void take_step(rmm::device_uvector<f_t>& primal_step_size,
                  rmm::device_uvector<f_t>& dual_step_size,
                  const rmm::device_uvector<f_t>& bound_rescaling,  // Only used in batch mode
+                 rmm::device_uvector<f_t>& initial_primal,         // Only used if reflected
+                 rmm::device_uvector<f_t>& initial_dual,           // Only used if reflected
                  i_t iterations_since_last_restart,
                  bool last_restart_was_average,
                  i_t total_pdlp_iterations,
@@ -101,10 +103,14 @@ class pdhg_solver_t {
 
   // Pure cub-transform extractions. Allows for clearer containment of the calls and ensures
   // the single-GPU vs distributed-GPU uses the same calls
-  void primal_reflected_major_projection_transform(rmm::device_uvector<f_t>& primal_step_size);
-  void dual_reflected_major_projection_transform(rmm::device_uvector<f_t>& dual_step_size);
-  void primal_reflected_projection_transform(rmm::device_uvector<f_t>& primal_step_size);
-  void dual_reflected_projection_transform(rmm::device_uvector<f_t>& dual_step_size);
+  void primal_reflected_major_projection_transform(rmm::device_uvector<f_t>& primal_step_size,
+                                                   rmm::device_uvector<f_t>& initial_primal);
+  void dual_reflected_major_projection_transform(rmm::device_uvector<f_t>& dual_step_size,
+                                                 rmm::device_uvector<f_t>& initial_dual);
+  void primal_reflected_projection_transform(rmm::device_uvector<f_t>& primal_step_size,
+                                             rmm::device_uvector<f_t>& initial_primal);
+  void dual_reflected_projection_transform(rmm::device_uvector<f_t>& dual_step_size,
+                                           rmm::device_uvector<f_t>& initial_dual);
 
   // Master PDLP wires the engine pointer here after the engine is built. Only
   // the master's pdhg_solver_ holds a non-null engine; shards leave it null and
@@ -131,10 +137,18 @@ class pdhg_solver_t {
     rmm::device_uvector<f_t>& primal_step_size,
     rmm::device_uvector<f_t>& dual_step_size,
     const rmm::device_uvector<f_t>& bound_rescaling,  // Only used in batch mode
+    rmm::device_uvector<f_t>& initial_primal,
+    rmm::device_uvector<f_t>& initial_dual,
+    i_t iterations_since_last_restart,
     bool should_major);
 
   void compute_primal_projection_with_gradient(rmm::device_uvector<f_t>& primal_step_size);
   void compute_primal_projection(rmm::device_uvector<f_t>& primal_step_size);
+
+  // The reflected projections fold the Halpern update in, overwriting the iterate they read.
+  // The new_bounds re-projection that follows still needs that pre-Halpern iterate, so save it
+  // for those entries before the projection runs.
+  void save_new_bounds_primal();
 
   bool batch_mode_{false};
   raft::handle_t const* handle_ptr_{nullptr};
@@ -180,6 +194,9 @@ class pdhg_solver_t {
   // Needed for faster graph launch
   // Passing the host value each time would require updating the graph each time
   rmm::device_scalar<i_t> d_total_pdhg_iterations_;
+  // Updated before graph launch; projection kernels capture this stable pointer and
+  // dereference the current weight at execution time.
+  rmm::device_scalar<f_t> d_halpern_weight_;
 
   const std::vector<pdlp_climber_strategy_t>& climber_strategies_;
   const pdlp::pdlp_hyper_params_t& hyper_params_;
@@ -187,6 +204,9 @@ class pdhg_solver_t {
   rmm::device_uvector<i_t> new_bounds_idx_;
   rmm::device_uvector<f_t> new_bounds_lower_;
   rmm::device_uvector<f_t> new_bounds_upper_;
+  // z at the new_bounds entries, saved before the projection overwrites the iterate with the
+  // Halpern update. One entry per new_bounds entry, in the same order.
+  rmm::device_uvector<f_t> new_bounds_primal_;
   cuda::fast_mod_div<size_t> batch_size_divisor_;
 
   // Non-owning. Set on the master pdhg_solver_ in distributed mode; null
