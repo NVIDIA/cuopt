@@ -142,6 +142,7 @@ i_t remove_empty_cols(lp_problem_t<i_t, f_t>& problem,
   presolve_info.remaining_variables.reserve(new_cols);
 
   problem.A.remove_columns(col_marker);
+  // Clean up objective, lower, upper, and col_names
   assert(new_cols == problem.A.n);
   std::vector<f_t> objective(new_cols);
   std::vector<f_t> lower(new_cols, -INFINITY);
