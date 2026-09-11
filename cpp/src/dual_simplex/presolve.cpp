@@ -53,10 +53,6 @@ static bool unconstrained_1d_qp_minimizer(f_t c, f_t q, f_t lower, f_t upper, f_
     x = upper;
     return true;
   }
-  if (c == 0) {
-    x = 0;
-    return true;
-  }
   return false;
 }
 
