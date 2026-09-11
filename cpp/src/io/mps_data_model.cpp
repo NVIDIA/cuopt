@@ -465,8 +465,6 @@ template <typename i_t, typename f_t>
 void canonicalize_quadratic_constraints(
   std::vector<typename mps_data_model_t<i_t, f_t>::quadratic_constraint_t>& constraints)
 {
-  // One scratch for the whole batch, so a model with many small quadratic constraints does not pay
-  // a fresh set of allocations per constraint.
   coo_canonicalization_scratch_t<i_t, f_t> scratch;
   for (auto& qc : constraints) {
     canonicalize_coo_matrix(qc.rows, qc.cols, qc.vals, scratch);

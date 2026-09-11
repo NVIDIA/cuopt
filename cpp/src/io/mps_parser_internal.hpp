@@ -56,7 +56,7 @@ struct coo_canonicalization_scratch_t {
   std::vector<i_t> col_rank{};       // canonical column of each entry, as a dense rank
   std::vector<i_t> sorted_values{};  // rank -> original variable index
   std::vector<i_t> order{};          // entry order produced by the counting passes
-  std::vector<i_t> pass_scratch{};   // ping-pong buffer for the counting passes
+  std::vector<i_t> pass_scratch{};   // second buffer the counting passes swap with order
   std::vector<i_t> count{};          // per-key counters for the counting passes
   std::vector<i_t> out_rows{};       // canonicalize_coo_matrix output staging
   std::vector<i_t> out_cols{};

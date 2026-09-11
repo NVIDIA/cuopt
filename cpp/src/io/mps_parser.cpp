@@ -161,7 +161,7 @@ void triples_to_csr_flat(const coo_entries_t<i_t, f_t>& entries,
  * @brief One stable counting pass of an LSD radix sort: sorts the entry indices in `order` by
  * `key[entry]`, which must lie in [0, key_range).
  *
- * @param scratch Ping-pong buffer, sized like `order`.
+ * @param scratch Second buffer, same size as `order`; the pass writes into it, then swaps.
  * @param count Per-key counters, resized internally.
  */
 template <typename i_t>
@@ -197,8 +197,8 @@ inline size_t log2_ceil(size_t v)
 }
 
 /**
- * @brief Maps each entry to its canonical upper-triangle coordinate -- row = min(r, c),
- * col = max(r, c) -- with both endpoints replaced by an integer rank.
+ * @brief Writes each entry's canonical upper-triangle coordinate into `row_rank` and `col_rank`:
+ * min(r, c) and max(r, c), each stored as an integer rank rather than a variable index.
  *
  * @param sorted_values The inverse map, rank -> variable index.
  * @return The number of ranks -- the whole index span (direct branch, so it can cover indices
