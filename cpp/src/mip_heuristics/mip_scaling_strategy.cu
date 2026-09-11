@@ -9,6 +9,7 @@
 #include <mip_heuristics/mip_scaling_strategy.cuh>
 #include <pdlp/utils.cuh>
 #include <utilities/logger.hpp>
+#include <utilities/reduce_ops.cuh>
 
 #include <raft/util/cudart_utils.hpp>
 
@@ -67,9 +68,13 @@ constexpr double big_m_abs_threshold   = 1.0e4;
 constexpr double big_m_ratio_threshold = 1.0e4;
 
 template <typename f_t>
-struct abs_value_transform_t {
-  __device__ f_t operator()(f_t value) const { return raft::abs(value); }
-};
+using abs_value_transform_t = cuopt::abs_value_transform_t<f_t>;
+
+template <typename item_t>
+using max_op_t = cuopt::max_op_t<item_t>;
+
+template <typename item_t>
+using min_op_t = cuopt::min_op_t<item_t>;
 
 template <typename f_t>
 struct nonzero_abs_or_inf_transform_t {
@@ -83,22 +88,6 @@ struct nonzero_abs_or_inf_transform_t {
 template <typename i_t, typename f_t>
 struct nonzero_count_transform_t {
   __device__ i_t operator()(f_t value) const { return raft::abs(value) > f_t(0) ? i_t(1) : i_t(0); }
-};
-
-template <typename item_t>
-struct max_op_t {
-  __host__ __device__ item_t operator()(const item_t& lhs, const item_t& rhs) const
-  {
-    return lhs > rhs ? lhs : rhs;
-  }
-};
-
-template <typename item_t>
-struct min_op_t {
-  __host__ __device__ item_t operator()(const item_t& lhs, const item_t& rhs) const
-  {
-    return lhs < rhs ? lhs : rhs;
-  }
 };
 
 struct gcd_op_t {
