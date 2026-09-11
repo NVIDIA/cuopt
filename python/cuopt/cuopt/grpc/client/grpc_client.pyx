@@ -1152,7 +1152,11 @@ cdef class RoutingClient:
         return sub.job_id.decode("utf-8")
 
     def status(self, str job_id):
-        """Return the current :class:`JobStatus` without blocking."""
+        """Return the current job status without blocking.
+
+        The value is a
+        :class:`~cuopt.grpc.linear_programming.JobStatus` member.
+        """
         cdef grpc_status_result_t st = self._client.get().status(
             job_id.encode("utf-8")
         )
