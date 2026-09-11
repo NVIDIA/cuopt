@@ -30,9 +30,12 @@ cuopt_mvn() {
   log="$(mktemp)"
 
   while true; do
-    # tee would otherwise report its own exit status rather than Maven's.
-    mvn "${CUOPT_MVN_ARGS[@]}" "$@" 2>&1 | tee "${log}"
-    status="${PIPESTATUS[0]}"
+    # Guarded by if so a failure doesn't trigger the caller's set -e before we see PIPESTATUS.
+    if mvn "${CUOPT_MVN_ARGS[@]}" "$@" 2>&1 | tee "${log}"; then
+      status=0
+    else
+      status="${PIPESTATUS[0]}"
+    fi
     if [[ "${status}" -eq 0 ]]; then
       rm -f "${log}"
       return 0

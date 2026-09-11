@@ -30,7 +30,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from pydantic import ValidationError
 
-import cuopt_server.utils.health_check as health_check
+import cuopt_server.utils.deprecated.health_check as health_check
 import cuopt_server.utils.settings as settings
 from cuopt_server._version import __version__
 from cuopt_server.utils.data_definition import (
@@ -69,7 +69,20 @@ from cuopt_server.utils.exceptions import (
     http_exception_handler,
     validation_exception_handler,
 )
-from cuopt_server.utils.job_queue import (
+from cuopt_server.utils.http_codec import (
+    encode,
+    get_format,
+    mime_json,
+    mime_msgpack,
+    mime_pickle,
+    mime_wild,
+    mime_zlib,
+)
+from cuopt_server.utils.local_files import (
+    get_output_name,
+    validate_file_path,
+)
+from cuopt_server.utils.deprecated.job_queue import (
     BaseResult,
     BinaryJobResult,
     NVCFJobResult,
@@ -85,11 +98,6 @@ from cuopt_server.utils.job_queue import (
     get_incumbents_for_id,
     get_solution_for_id,
     get_warmstart_data_for_id,
-    mime_json,
-    mime_msgpack,
-    mime_pickle,
-    mime_wild,
-    mime_zlib,
     status_by_id,
     update_cache_entry,
 )
@@ -173,71 +181,6 @@ def health():
         raise HTTPException(status_code=500, detail=f"{msg}")
 
 
-# Get name for file that stores the result of Solve
-def get_output_name(resultdir, CUOPT_DATA_FILE, CUOPT_RESULT_FILE):
-    # Reject paths that escape resultdir using canonicalized containment check.
-    if CUOPT_RESULT_FILE and resultdir:
-        root = os.path.realpath(resultdir)
-        candidate = os.path.realpath(os.path.join(root, CUOPT_RESULT_FILE))
-        if (
-            os.path.isabs(CUOPT_RESULT_FILE)
-            or os.path.commonpath([root, candidate]) != root
-        ):
-            CUOPT_RESULT_FILE = ""
-    if not resultdir:
-        res = ""
-    elif CUOPT_RESULT_FILE:
-        res = CUOPT_RESULT_FILE
-    elif CUOPT_DATA_FILE:
-        res = os.path.basename(CUOPT_DATA_FILE) + ".result"
-    else:
-        res = str(uuid.uuid4())
-    return res
-
-
-# Validate if given data file and file path exists
-def validate_file_path(cuopt_data_file):
-    ddir = settings.get_data_dir()
-    if not ddir:
-        logging.error("cuopt data directory not set!")
-        raise HTTPException(
-            status_code=400,
-            detail="cuopt data directory not set",
-        )
-
-    if os.path.isabs(cuopt_data_file):
-        raise HTTPException(
-            status_code=400,
-            detail="cuopt-data-file must be relative to CUOPT_DATA_DIR",
-        )
-
-    root = os.path.realpath(ddir)
-    file_path = os.path.realpath(os.path.join(root, cuopt_data_file))
-    if os.path.commonpath([root, file_path]) != root:
-        raise HTTPException(
-            status_code=400,
-            detail="cuopt-data-file must stay inside CUOPT_DATA_DIR",
-        )
-
-    if not os.path.exists(file_path):
-        logging.error("cuopt-data-file does not exist")
-        raise HTTPException(
-            status_code=400,
-            detail=f"specified data file does not exist: {cuopt_data_file}",
-        )
-
-    if not os.path.isfile(file_path):
-        logging.error("cuopt-data-file is not a regular file")
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"specified data file is not a regular file: {cuopt_data_file}"
-            ),
-        )
-
-    return file_path
-
-
 app_exit = None
 job_queue = None
 abort_queue = None
@@ -269,52 +212,6 @@ def wait_for_job(result, job, timeout=None):
 class SolverException(Exception):
     def __init__(self, response):
         self.response = response
-
-
-def encode(result, accept, job_result=False):
-    if accept not in [mime_json, mime_msgpack, mime_zlib] + mime_wild:
-        accept = mime_json
-
-    # This is an exception packaged up elsewhere
-    if isinstance(result, JSONResponse):
-        status_code = result.status_code
-        result = json.loads(result.body)
-        result["error_result"] = job_result
-        if accept == mime_json:
-            return JSONResponse(result, status_code)
-    else:
-        status_code = 200
-
-    # Expect a dictionary at this point
-    if accept == mime_json:
-        logging.debug("job_result returning json")
-        r = result
-    elif accept == mime_zlib:
-        logging.debug("job_result returning zlib")
-        d = bytes(json.dumps(result), encoding="utf-8")
-        r = Response(
-            content=zlib.compress(d, zlib.Z_BEST_SPEED),
-            media_type=mime_zlib,
-            status_code=status_code,
-        )
-    else:
-        logging.debug("job_result returning msgpack")
-        r = Response(
-            content=msgpack.dumps(result),
-            media_type=mime_msgpack,
-            status_code=status_code,
-        )
-    return r
-
-
-def get_format(mime_type):
-    f = {
-        mime_json: "json",
-        mime_zlib: "zlib",
-        mime_msgpack: "msgpack",
-        mime_pickle: "pickle",
-    }
-    return f[mime_type]
 
 
 @app.get(

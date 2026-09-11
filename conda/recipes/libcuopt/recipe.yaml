@@ -85,7 +85,6 @@ cache:
       - rapids-logger =0.3
       - cuda-nvtx-dev
       - libcudss-dev >=0.7,<0.8
-      - libcurand-dev
       - libcusparse-dev
       - libnvjitlink-dev
       - libboost-devel
@@ -115,6 +114,7 @@ outputs:
         ignore:
           # See https://github.com/rapidsai/build-planning/issues/160
           - lib/libcuopt.so
+          - lib/libcuopt_client.so
       string: cuda${{ cuda_major }}_${{ datetime_string }}_${{ head_rev }}
     requirements:
       build:
@@ -158,7 +158,6 @@ outputs:
           - cuda-nvtx
           - cuda-version
           - libcudss
-          - libcurand
           - libcusparse
           - librmm
           - libboost
@@ -167,6 +166,7 @@ outputs:
       - package_contents:
           files:
             - lib/libcuopt.so
+            - lib/libcuopt_client.so
             - bin/cuopt_cli
             - bin/cuopt_grpc_server
     about:
@@ -206,7 +206,6 @@ outputs:
         by_name:
           - cuda-nvtx
           - cuda-version
-          - libcurand
           - libcusparse
           - libcudss
           - librmm

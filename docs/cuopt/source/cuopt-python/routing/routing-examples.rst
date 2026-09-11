@@ -66,3 +66,30 @@ Sample output:
 - All problems in the batch use the **same** :class:`cuopt.routing.SolverSettings` (e.g., time limit, solver options).
 - Callbacks are not supported in batch mode.
 - For best practices when batching many instances, see the *Add best practices for batch solving* note in the release documentation.
+
+Distance-Based Breaks
+---------------------
+
+:meth:`cuopt.routing.DataModel.add_vehicle_distance_break` specifies a
+distance-based break for a given vehicle the same way
+:meth:`cuopt.routing.DataModel.add_vehicle_break` specifies a time-windowed
+break: ``(vehicle_id, distance_min, distance_max, duration, locations)``.
+Call again with later windows to require additional stops.
+
+:download:`distance_break_example.py <examples/distance_break_example.py>`
+
+.. literalinclude:: examples/distance_break_example.py
+   :language: python
+   :linenos:
+
+Sample output:
+
+.. code-block:: text
+
+   Weighted objective: 143.2
+
+     Depot       depot
+     Delivery    customer 1
+     Break       break
+     Delivery    customer 2
+     Depot       depot

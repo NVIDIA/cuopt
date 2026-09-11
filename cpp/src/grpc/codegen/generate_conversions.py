@@ -2209,6 +2209,12 @@ def _gen_proto_to_problem(registry, indent="  "):
         lines.append(f"{ind}if (pb_problem.{name}_size() > 0) {{")
         lines.append(f"{ind}  std::vector<{cpp_inner}> _entries;")
         lines.append(f"{ind}  _entries.reserve(pb_problem.{name}_size());")
+        if name == "quadratic_constraints":
+            # One scratch for the whole batch: canonicalization reuses its buffers instead of
+            # allocating a fresh set per constraint.
+            lines.append(
+                f"{ind}  io::coo_canonicalization_scratch_t<i_t, f_t> _qc_scratch;"
+            )
         lines.append(
             f"{ind}  for (const auto& pb_entry : pb_problem.{name}()) {{"
         )
@@ -2247,7 +2253,8 @@ def _gen_proto_to_problem(registry, indent="  "):
             lines.append(f"{ind}    }}")
         if name == "quadratic_constraints":
             lines.append(
-                f"{ind}    io::canonicalize_coo_matrix(_entry.rows, _entry.cols, _entry.vals);"
+                f"{ind}    io::canonicalize_coo_matrix(_entry.rows, _entry.cols, _entry.vals,"
+                f" _qc_scratch);"
             )
         lines.append(f"{ind}    _entries.push_back(std::move(_entry));")
         lines.append(f"{ind}  }}")
@@ -2793,6 +2800,12 @@ def _gen_chunked_arrays_to_problem(registry, indent="  "):
             lines.append(f"{ind}if (header.{name}_size() > 0) {{")
             lines.append(f"{ind}  std::vector<{cpp_inner}> _entries;")
             lines.append(f"{ind}  _entries.reserve(header.{name}_size());")
+            if name == "quadratic_constraints":
+                # One scratch for the whole batch: canonicalization reuses its buffers instead
+                # of allocating a fresh set per constraint.
+                lines.append(
+                    f"{ind}  io::coo_canonicalization_scratch_t<i_t, f_t> _qc_scratch;"
+                )
             lines.append(
                 f"{ind}  for (int32_t _ci = 0; _ci < header.{name}_size(); ++_ci) {{"
             )
@@ -2847,7 +2860,8 @@ def _gen_chunked_arrays_to_problem(registry, indent="  "):
                 lines.append(f"{ind}    }}")
             if name == "quadratic_constraints":
                 lines.append(
-                    f"{ind}    io::canonicalize_coo_matrix(_entry.rows, _entry.cols, _entry.vals);"
+                    f"{ind}    io::canonicalize_coo_matrix(_entry.rows, _entry.cols, _entry.vals,"
+                    f" _qc_scratch);"
                 )
             lines.append(f"{ind}    _entries.push_back(std::move(_entry));")
             lines.append(f"{ind}  }}")

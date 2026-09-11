@@ -60,6 +60,25 @@ There are two types of breaks,
 
 Only one of the type of breaks can be used at a time.
 
+Distance-Based Breaks
+---------------------
+
+``add_vehicle_distance_break`` specifies a distance-based break for a given
+vehicle the same way ``add_vehicle_break`` specifies a time-windowed break:
+call it once per break, and call it again for additional breaks on the same
+vehicle.
+
+The solver inserts one mandatory stop no later than the hard
+cumulative-distance limit ``distance_max``. ``distance_min`` is the soft
+target for that stop. ``DISTANCE_BREAK_COST`` guides the search toward the
+soft target. A break after ``distance_max`` makes the route infeasible. The
+objective value is the sum of the maximum lower-bound shortfall on each
+route. Add ``Objective.DISTANCE_BREAK_COST`` with a positive objective
+weight to penalize early breaks more strongly. Its default weight is
+``1.0``; explicitly set it to ``0.0`` to disable the early-break penalty.
+
+Pass ``locations`` to restrict the eligible break locations; if omitted, any
+location is eligible.
 
 Prize Collection
 ------------------------
