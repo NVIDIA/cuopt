@@ -3506,11 +3506,32 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
           if (primal_status == primal_status_t::OPTIMAL) {
             settings.log.printf("Primal cleanup successful. Iterations %d\n", iter - dual_iter);
             objective = lp.objective;
+          } else if (primal_status == primal_status_t::TIME_LIMIT) {
+            return dual_status_t::TIME_LIMIT;
+          } else if (primal_status == primal_status_t::CONCURRENT_LIMIT) {
+            return dual_status_t::CONCURRENT_LIMIT;
+          } else if (primal_status == primal_status_t::WORK_LIMIT) {
+            return dual_status_t::WORK_LIMIT;
+          } else if (primal_status == primal_status_t::ITERATION_LIMIT) {
+            return dual_status_t::ITERATION_LIMIT;
           } else {
             settings.log.printf("Primal cleanup failed.\n");
+            const f_t primal_infeas = phase2::primal_infeasibility(lp, settings, vstatus, sol.x);
             const f_t dual_infeas = phase2::dual_infeasibility(
               lp, settings, vstatus, sol.z, settings.tight_tol, settings.dual_tol);
-            if (dual_infeas > 10.0 * settings.dual_tol) { return dual_status_t::NUMERICAL; }
+            // Failed cleanup may leave duals from phase I or from the previous basis.
+            const f_t primal_residual = phase2::l2_primal_residual(lp, sol);
+            const f_t dual_residual   = phase2::l2_dual_residual(lp, sol);
+            phase2_work_estimate += 4.0 * lp.A.nnz() + 3 * m + 4 * n;
+            bool is_optimal = primal_infeas <= 10.0 * settings.primal_tol &&
+                              dual_infeas <= 10.0 * settings.dual_tol &&
+                              primal_residual <= settings.primal_tol &&
+                              dual_residual <= settings.dual_tol;
+            for (const i_t j : basic_list) {
+              is_optimal = is_optimal && std::abs(sol.z[j]) <= settings.dual_tol;
+            }
+            phase2_work_estimate += m;
+            if (!is_optimal) { return dual_status_t::NUMERICAL; }
           }
         }
         // removal_status == 0 (OPTIMAL) or primal cleanup done: fall through to prepare_optimality
