@@ -28,6 +28,8 @@
 
 #include <gtest/gtest.h>
 
+#include <cuda/stream>
+
 #include <numeric>
 #include <stdexcept>
 
@@ -145,7 +147,7 @@ static std::unique_ptr<cpu_mip_solution_t<int, double>> make_cpu_mip_solution()
 // Build a gpu_lp_solution_t with known device data (no solver needed)
 static gpu_lp_solution_t<int, double> make_gpu_lp_solution()
 {
-  auto stream = rmm::cuda_stream_per_thread;
+  auto stream = cuda::stream_ref{cudaStreamPerThread};
 
   rmm::device_uvector<double> primal(kNVars, stream);
   rmm::device_uvector<double> dual(kNCons, stream);
@@ -180,7 +182,7 @@ static gpu_lp_solution_t<int, double> make_gpu_lp_solution()
 // Build a gpu_mip_solution_t with known device data (no solver needed)
 static gpu_mip_solution_t<int, double> make_gpu_mip_solution()
 {
-  auto stream = rmm::cuda_stream_per_thread;
+  auto stream = cuda::stream_ref{cudaStreamPerThread};
 
   rmm::device_uvector<double> sol(kNVars, stream);
   std::vector<double> h_sol = {1.0, 0.0, 1.0};
@@ -305,7 +307,7 @@ TEST_F(SolutionInterfaceTest, gpu_problem_to_optimization_problem)
   EXPECT_EQ(problem->get_n_constraints(), kNCons);
 
   // GPU problem's to_optimization_problem() returns nullptr (already a GPU problem)
-  auto concrete = problem->to_optimization_problem(&handle);
+  auto concrete = to_optimization_problem(*problem, &handle);
   EXPECT_EQ(concrete, nullptr);
 
   // Verify the data is still accessible directly on the problem
@@ -340,7 +342,7 @@ TEST_F(SolutionInterfaceTest, cpu_problem_to_optimization_problem)
   EXPECT_EQ(problem->get_n_variables(), kNVars);
   EXPECT_EQ(problem->get_n_constraints(), kNCons);
 
-  auto concrete = problem->to_optimization_problem(&handle);
+  auto concrete = to_optimization_problem(*problem, &handle);
   ASSERT_NE(concrete, nullptr);
   EXPECT_EQ(concrete->get_n_variables(), kNVars);
   EXPECT_EQ(concrete->get_n_constraints(), kNCons);
