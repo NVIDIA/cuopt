@@ -8,7 +8,7 @@ import os
 import threading
 import time
 import uuid
-from typing import List, Optional
+from typing import Any, List, Optional
 
 import uvicorn
 from fastapi import FastAPI, Header, HTTPException, Path, Query, Request
@@ -88,6 +88,8 @@ app = FastAPI(
 _grpc_client = None
 _jobs = {}
 _jobs_lock = threading.Lock()
+_incumbent_locks = {}
+_max_request_size = 1024 * 1024 * 1024
 
 _ROUTING_KEYS = {
     "cost_matrix_data",
@@ -106,12 +108,14 @@ _NOT_IMPLEMENTED = (
 )
 
 
-def set_grpc_client(client):
+def set_grpc_client(client: Any) -> None:
+    """Set the gRPC client used by proxy endpoints."""
     global _grpc_client
     _grpc_client = client
 
 
-def get_grpc_client():
+def get_grpc_client() -> Any:
+    """Return the configured gRPC client or raise HTTP 503."""
     if _grpc_client is None:
         raise HTTPException(
             status_code=503, detail="gRPC client is not connected"
@@ -119,10 +123,20 @@ def get_grpc_client():
     return _grpc_client
 
 
-def reset_proxy_state():
+def set_max_request_size(size: int) -> None:
+    """Set the maximum accepted HTTP request-body size in bytes."""
+    if size < 0:
+        raise ValueError("max request size must be non-negative")
+    global _max_request_size
+    _max_request_size = size
+
+
+def reset_proxy_state() -> None:
+    """Clear process-local proxy state used by tests."""
     global _grpc_client
     with _jobs_lock:
         _jobs.clear()
+        _incumbent_locks.clear()
     _grpc_client = None
 
 
@@ -138,7 +152,17 @@ def _get_job(job_id):
 
 def _pop_job(job_id):
     with _jobs_lock:
+        _incumbent_locks.pop(job_id, None)
         return _jobs.pop(job_id, None)
+
+
+def _incumbent_lock(job_id):
+    with _jobs_lock:
+        lock = _incumbent_locks.get(job_id)
+        if lock is None:
+            lock = threading.Lock()
+            _incumbent_locks[job_id] = lock
+        return lock
 
 
 def _update_job(job_id, **fields):
@@ -206,6 +230,13 @@ def _map_status(grpc_status):
     return mapping.get(name, RequestStatusModel.aborted)
 
 
+def _is_mip(lp_data):
+    types = getattr(lp_data, "variable_types", None)
+    if types is None:
+        return False
+    return any(str(t).upper() in ("I", "B") for t in types)
+
+
 def _looks_like_routing(data):
     if not isinstance(data, dict):
         return False
@@ -226,6 +257,7 @@ def _prepare_lp(data, warnings):
         else:
             lp_data = data
             transform_lp_data(lp_data)
+        validate_LP_data(lp_data)
     except HTTPException:
         raise
     except Exception as e:
@@ -234,7 +266,6 @@ def _prepare_lp(data, warnings):
             detail="unable to validate optimization data stream, %s"
             % (str(e)),
         )
-    validate_LP_data(lp_data)
     dm_warnings, data_model = create_data_model(lp_data)
     warnings.extend(dm_warnings)
     sw_warnings, solver_settings = create_solver(lp_data, None)
@@ -313,7 +344,7 @@ def deletesolverlogs(
     except HTTPException as e:
         return encode(http_exception_handler(e), accept)
     except Exception as e:
-        return exception_handler(e)
+        return encode(exception_handler(e), accept)
 
 
 @app.get(
@@ -337,19 +368,23 @@ def getincumbent(
         status = client.status(id)
         if _is_status(status, "NOT_FOUND"):
             raise HTTPException(status_code=404, detail=f"id {id} not found")
-        from_index = 0 if meta is None else meta.get("incumbent_next_index", 0)
-        entries = client.incumbents(id, from_index=from_index)
-        result = [
-            {
-                "solution": e.get("assignment", []),
-                "cost": e.get("objective"),
-                "bound": None,
-            }
-            for e in entries
-        ]
-        if entries:
-            next_index = max(e["index"] for e in entries) + 1
-            _update_job(id, incumbent_next_index=next_index)
+        with _incumbent_lock(id):
+            meta = _get_job(id)
+            from_index = (
+                0 if meta is None else meta.get("incumbent_next_index", 0)
+            )
+            entries = client.incumbents(id, from_index=from_index)
+            result = [
+                {
+                    "solution": e.get("assignment", []),
+                    "cost": e.get("objective"),
+                    "bound": None,
+                }
+                for e in entries
+            ]
+            if entries:
+                next_index = max(e["index"] for e in entries) + 1
+                _update_job(id, incumbent_next_index=next_index)
         terminal = not _is_status(status, "QUEUED", "PROCESSING")
         if not result and terminal:
             result = [{"solution": [], "cost": None, "bound": None}]
@@ -377,8 +412,9 @@ def deletesolution(
     try:
         accept = _resolve_accept(accept)
         _require_uuid(id)
-        meta = _pop_job(id)
+        meta = _get_job(id)
         if meta is not None and meta.get("validation_only"):
+            _pop_job(id)
             return Response(status_code=200)
         client = get_grpc_client()
         try:
@@ -389,6 +425,7 @@ def deletesolution(
                     status_code=404, detail=f"id {id} not found"
                 )
             raise
+        _pop_job(id)
         return Response(status_code=200)
     except HTTPException as e:
         return encode(http_exception_handler(e), accept)
@@ -471,6 +508,11 @@ def getsolution(
             raise HTTPException(status_code=404, detail=f"id {id} not found")
         if _is_status(status, "QUEUED", "PROCESSING"):
             return encode({"reqId": id}, accept)
+        if _is_status(status, "FAILED", "CANCELLED"):
+            raise HTTPException(
+                status_code=409,
+                detail=f"job {id} {_status_name(status).lower()}",
+            )
         sol = client.result(
             id,
             variable_names=(
@@ -629,6 +671,18 @@ async def postrequest(
             _not_implemented("Query parameter incumbent_set_solutions")
 
         sz = int(sz)
+        if sz < 0:
+            raise HTTPException(
+                status_code=422, detail="Content-Length must be non-negative"
+            )
+        if sz > _max_request_size:
+            raise HTTPException(
+                status_code=413,
+                detail=(
+                    f"Content-Length exceeds maximum of "
+                    f"{_max_request_size} bytes"
+                ),
+            )
         if sz == 0 and not cuopt_data_file:
             raise HTTPException(
                 status_code=422, detail="Data length is zero and reqId not set"
@@ -688,10 +742,11 @@ async def postrequest(
             return encode({"reqId": job_id}, accept)
 
         client = get_grpc_client()
+        incumbents_enabled = bool(incumbent_solutions) and _is_mip(lp_data)
         job_id = client.submit(
             data_model,
             solver_settings,
-            enable_incumbents=bool(incumbent_solutions),
+            enable_incumbents=incumbents_enabled,
         )
         _store_job(
             job_id,
@@ -701,7 +756,7 @@ async def postrequest(
                 "variable_names": variable_names,
                 "result_file": result_file,
                 "solver_logs": bool(solver_logs),
-                "incumbents_enabled": bool(incumbent_solutions),
+                "incumbents_enabled": incumbents_enabled,
                 "incumbent_next_index": 0,
                 "validation_only": False,
             },

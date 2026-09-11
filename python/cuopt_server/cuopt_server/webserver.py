@@ -494,8 +494,17 @@ async def postsolution(
             buf = bytearray(sz)
             solution = buf
 
-        await get_data(buf, request)
+        try:
+            await get_data(buf, request)
+        except Exception:
+            if s:
+                buf.release()
+                s.close()
+                s.unlink()
+            r.unregister_result()
+            raise
         if s:
+            buf.release()
             s.close()
         if isinstance(solution, bytearray):
             solution = bytes(solution)
@@ -1041,8 +1050,19 @@ async def postrequest(
                 buf = bytearray(sz)
                 data_bytes = buf  # save this reference for later
 
-            await get_data(buf, request)
+            try:
+                await get_data(buf, request)
+            except Exception:
+                if s:
+                    buf.release()
+                    s.close()
+                    s.unlink()
+                if cache:
+                    delete_cache_entry(id)
+                r.unregister_result()
+                raise
             if s:
+                buf.release()
                 s.close()
             elif cache and data_bytes:
                 # If shared memory is not enabled, save the byte array

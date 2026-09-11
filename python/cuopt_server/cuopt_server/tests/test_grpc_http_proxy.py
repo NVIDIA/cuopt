@@ -13,6 +13,7 @@ from cuopt_server.proxy_webserver import (
     app,
     reset_proxy_state,
     set_grpc_client,
+    set_max_request_size,
 )
 from cuopt_server.utils.http_codec import mime_json, mime_msgpack, mime_zlib
 from cuopt_server.utils.http_envelope import make_response
@@ -134,7 +135,10 @@ class FakeClient:
         return self.jobs.get(job_id, FakeJobStatus.NOT_FOUND)
 
     def result(self, job_id, variable_names=None):
-        if self.jobs.get(job_id) != FakeJobStatus.COMPLETED:
+        status = self.jobs.get(job_id)
+        if status in (FakeJobStatus.FAILED, FakeJobStatus.CANCELLED):
+            raise RuntimeError(f"job {status.name.lower()}")
+        if status != FakeJobStatus.COMPLETED:
             return None
         return FakeSol()
 
@@ -160,6 +164,7 @@ def proxy(monkeypatch):
     import cuopt_server.proxy_webserver as pw
 
     reset_proxy_state()
+    set_max_request_size(1024 * 1024 * 1024)
     fake = FakeClient()
     set_grpc_client(fake)
     monkeypatch.setattr(
@@ -171,6 +176,7 @@ def proxy(monkeypatch):
     client = TestClient(app)
     yield client, fake
     reset_proxy_state()
+    set_max_request_size(1024 * 1024 * 1024)
 
 
 def test_parse_args_defaults():
@@ -197,6 +203,24 @@ def test_parse_args_overrides():
     assert args.port == 9000
     assert args.grpc_host == "gpu"
     assert args.grpc_port == 5002
+
+
+@pytest.mark.parametrize(
+    "variable, option",
+    [
+        ("CUOPT_SERVER_PORT", "--port"),
+        ("CUOPT_GRPC_PORT", "--grpc-port"),
+        ("CUOPT_MAX_RESULT", "--max-result"),
+        ("CUOPT_MAX_REQUEST_SIZE", "--max-request-size"),
+    ],
+)
+def test_parse_args_rejects_invalid_numeric_environment(
+    monkeypatch, variable, option, capsys
+):
+    monkeypatch.setenv(variable, "invalid")
+    with pytest.raises(SystemExit):
+        parse_args([])
+    assert option in capsys.readouterr().err
 
 
 def test_make_response_envelope():
@@ -265,9 +289,67 @@ def test_submit_status_result_delete(proxy):
     assert req_id in fake.deleted
 
 
+def test_delete_preserves_metadata_when_grpc_delete_fails(proxy, monkeypatch):
+    import cuopt_server.proxy_webserver as pw
+
+    client, fake = proxy
+    req_id = client.post(
+        "/cuopt/request",
+        headers={"CLIENT-VERSION": "custom"},
+        json=_lp(),
+    ).json()["reqId"]
+
+    def fail_delete(_):
+        raise RuntimeError("delete failed")
+
+    monkeypatch.setattr(fake, "delete", fail_delete)
+    assert client.delete(f"/cuopt/solution/{req_id}").status_code == 500
+    assert pw._get_job(req_id) is not None
+
+
+@pytest.mark.parametrize(
+    "mutate, status_code",
+    [
+        (lambda lp: lp.pop("csr_constraint_matrix"), 422),
+        (
+            lambda lp: lp["csr_constraint_matrix"].update(values=[1.0]),
+            400,
+        ),
+        (
+            lambda lp: lp["variable_bounds"].update(lower_bounds=[0.0]),
+            400,
+        ),
+    ],
+)
+def test_invalid_lp_payloads_are_rejected(proxy, mutate, status_code):
+    client, fake = proxy
+    lp = _lp()
+    mutate(lp)
+    res = client.post(
+        "/cuopt/request",
+        headers={"CLIENT-VERSION": "custom"},
+        json=lp,
+    )
+    assert res.status_code == status_code, res.text
+    assert fake.submitted == []
+
+
+def test_oversized_request_is_rejected_before_allocation(proxy):
+    client, fake = proxy
+    set_max_request_size(1)
+    res = client.post(
+        "/cuopt/request",
+        headers={"CLIENT-VERSION": "custom"},
+        json=_lp(),
+    )
+    assert res.status_code == 413
+    assert fake.submitted == []
+
+
 def test_incumbents_cursor_and_sentinel(proxy):
     client, fake = proxy
     lp = _lp()
+    lp["variable_types"] = ["I", "I"]
     res = client.post(
         "/cuopt/request",
         headers={"CLIENT-VERSION": "custom"},
@@ -474,3 +556,46 @@ def test_unknown_id_is_404(proxy):
 def test_invalid_id_is_400(proxy):
     client, _ = proxy
     assert client.get("/cuopt/request/not-a-uuid").status_code == 400
+
+
+@pytest.mark.parametrize("status", ["FAILED", "CANCELLED"])
+def test_failed_or_cancelled_solution_is_409(proxy, status):
+    client, fake = proxy
+    req_id = client.post(
+        "/cuopt/request",
+        headers={"CLIENT-VERSION": "custom"},
+        json=_lp(),
+    ).json()["reqId"]
+    fake.jobs[req_id] = getattr(FakeJobStatus, status)
+    res = client.get(f"/cuopt/solution/{req_id}")
+    assert res.status_code == 409, res.text
+    assert status.lower() in res.json()["error"]
+
+
+def test_lp_does_not_enable_incumbents(proxy):
+    client, fake = proxy
+    res = client.post(
+        "/cuopt/request",
+        headers={"CLIENT-VERSION": "custom"},
+        params={"incumbent_solutions": True},
+        json=_lp(),
+    )
+    assert res.status_code == 200
+    assert fake.submitted[0]["enable_incumbents"] is False
+
+
+def test_log_delete_error_is_encoded(proxy, monkeypatch):
+    import cuopt_server.proxy_webserver as pw
+
+    client, _ = proxy
+
+    def boom(id):
+        raise RuntimeError("log delete failed")
+
+    monkeypatch.setattr(pw, "_require_uuid", boom)
+    res = client.delete(
+        f"/cuopt/log/{uuid.uuid4()}",
+        headers={"Accept": mime_msgpack},
+    )
+    assert res.status_code == 500
+    assert res.headers["content-type"].startswith(mime_msgpack)

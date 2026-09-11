@@ -148,6 +148,35 @@ def test_get_data_streams_into_preallocated_buffer():
     assert bytes(buf) == b"abcdefg"
 
 
+@pytest.mark.parametrize(
+    "size, detail",
+    [
+        (6, "exceeds Content-Length"),
+        (8, "shorter than Content-Length"),
+    ],
+)
+def test_get_data_rejects_stream_length_mismatch(size, detail):
+    class FakeRequest:
+        async def stream(self):
+            for chunk in (b"abc", b"def", b"g"):
+                yield chunk
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(get_data(bytearray(size), FakeRequest()))
+    assert exc.value.status_code == 422
+    assert detail in exc.value.detail
+
+
+def test_get_data_propagates_stream_failure():
+    class FakeRequest:
+        async def stream(self):
+            yield b"abc"
+            raise ConnectionError("upload disconnected")
+
+    with pytest.raises(ConnectionError, match="upload disconnected"):
+        asyncio.run(get_data(bytearray(7), FakeRequest()))
+
+
 def test_pickle_forbidden_class():
     encoded = pickle.dumps({"obj": object()})
     with pytest.raises(PickleForbidden):

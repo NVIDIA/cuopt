@@ -11,6 +11,7 @@ import argparse
 import logging
 import os
 import sys
+from collections.abc import Sequence
 
 
 import cuopt_server.utils.settings as settings
@@ -21,7 +22,12 @@ log_fmt = "%(asctime)s.%(msecs)03d %(levelname)s %(message)s"
 date_fmt = "%Y-%m-%d %H:%M:%S"
 
 
-def parse_args(argv=None):
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    """Parse proxy options from ``argv`` with environment-backed defaults.
+
+    ``argparse`` reports invalid options and numeric environment values by
+    raising ``SystemExit``.
+    """
     ip = os.environ.get("CUOPT_SERVER_IP", "0.0.0.0")
     port = os.environ.get("CUOPT_SERVER_PORT", 8000)
     grpc_host = os.environ.get("CUOPT_GRPC_HOST", "127.0.0.1")
@@ -31,6 +37,9 @@ def parse_args(argv=None):
     datadir = os.environ.get("CUOPT_DATA_DIR", "")
     resultdir = os.environ.get("CUOPT_RESULT_DIR", "")
     maxresult = os.environ.get("CUOPT_MAX_RESULT", 250)
+    max_request_size = os.environ.get(
+        "CUOPT_MAX_REQUEST_SIZE", 1024 * 1024 * 1024
+    )
     resultmode = os.environ.get("CUOPT_RESULT_MODE", "644")
     ssl_certfile = os.environ.get("CUOPT_SSL_CERTFILE", "")
     ssl_keyfile = os.environ.get("CUOPT_SSL_KEYFILE", "")
@@ -62,7 +71,7 @@ def parse_args(argv=None):
         "--port",
         type=int,
         help="HTTP listen port (CUOPT_SERVER_PORT)",
-        default=int(port),
+        default=port,
     )
     parser.add_argument(
         "--grpc-host",
@@ -74,7 +83,7 @@ def parse_args(argv=None):
         "--grpc-port",
         type=int,
         help="cuopt_grpc_server port (CUOPT_GRPC_PORT)",
-        default=int(grpc_port),
+        default=grpc_port,
     )
     parser.add_argument(
         "-l",
@@ -110,7 +119,13 @@ def parse_args(argv=None):
         "--max-result",
         type=int,
         help="Result size threshold in KB (CUOPT_MAX_RESULT)",
-        default=int(maxresult),
+        default=maxresult,
+    )
+    parser.add_argument(
+        "--max-request-size",
+        type=int,
+        help="Maximum HTTP request body in bytes (CUOPT_MAX_REQUEST_SIZE)",
+        default=max_request_size,
     )
     parser.add_argument(
         "-mo",
@@ -136,7 +151,7 @@ def parse_args(argv=None):
     return args
 
 
-def _configure_logging(args):
+def _configure_logging(args: argparse.Namespace) -> None:
     message_init()
     handlers = []
     if args.log_file:
@@ -152,7 +167,8 @@ def _configure_logging(args):
     )
 
 
-def main(argv=None):
+def main(argv: Sequence[str] | None = None) -> None:
+    """Configure and run the HTTP proxy until the server exits."""
     args = parse_args(argv)
     _configure_logging(args)
     logging.info(f"cuOpt HTTP proxy {__version__}")
@@ -163,12 +179,17 @@ def main(argv=None):
 
     from cuopt.grpc.linear_programming import Client
 
-    from cuopt_server.proxy_webserver import run_server, set_grpc_client
+    from cuopt_server.proxy_webserver import (
+        run_server,
+        set_grpc_client,
+        set_max_request_size,
+    )
 
     logging.info(
         f"Connecting to cuopt_grpc_server at {args.grpc_host}:{args.grpc_port}"
     )
     set_grpc_client(Client(args.grpc_host, args.grpc_port))
+    set_max_request_size(args.max_request_size)
     run_server(
         args.ip,
         args.port,

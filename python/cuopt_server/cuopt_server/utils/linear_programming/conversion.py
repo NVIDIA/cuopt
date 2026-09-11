@@ -3,6 +3,7 @@
 
 import logging
 import os
+from typing import Any
 
 from cuopt import linear_programming
 from cuopt.linear_programming.solver.solver_parameters import solver_params
@@ -150,7 +151,13 @@ def _get_if_attribute_is_valid_else_none(attr):
         return None
 
 
-def extract_pdlpwarmstart_data(data):
+def extract_pdlpwarmstart_data(
+    data: Any | None,
+) -> dict[str, Any] | None:
+    """Convert PDLP warm-start data to the legacy HTTP dictionary shape.
+
+    Returns ``None`` when no warm-start data is available.
+    """
     if data is None:
         return None
     return {
@@ -178,11 +185,16 @@ def extract_pdlpwarmstart_data(data):
     }
 
 
-def solution_to_legacy_http(sol, include_warmstart=True):
+def solution_to_legacy_http(
+    sol: Any, include_warmstart: bool = True
+) -> dict[str, Any]:
     """Serialize a cuOpt LP/MILP Solution into the legacy HTTP shape.
 
     Returns ``{"status": <enum name>, "solution": {...}}``. When the
     termination status is not a solved/feasible case, ``solution`` is empty.
+    ``include_warmstart`` controls whether PDLP warm-start data is included.
+    Exceptions raised by solution accessors are propagated, except optional
+    attributes that report absence with ``AttributeError``.
     """
     solution = {}
     status = sol.get_termination_status()
