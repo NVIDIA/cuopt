@@ -484,7 +484,7 @@ void initial_perturbation(const lp_problem_t<i_t, f_t>& lp,
   // that case. The original costs are restored before declaring optimality.
   const f_t perturbation_base = (strongly_degenerate ? 1e-5 : 5e-7) * max_abs_obj_coeff;
 
-  settings.log.printf(
+  settings.log.debug(
     "Perturbation debug: max_abs_obj_coeff=%e (dampened), perturbation_base=%e, n=%d, "
     "num_boxed=%d\n",
     max_abs_obj_coeff,
@@ -2424,7 +2424,7 @@ i_t set_primal_variables_on_bounds(const lp_problem_t<i_t, f_t>& lp,
   i_t total_changes = num_fixed_to_lower + num_fixed_to_upper + num_lower_to_upper +
                       num_upper_to_lower + num_set_fixed;
   if (total_changes > 0) {
-    settings.log.printf(
+    settings.log.debug(
       "set_primal_variables_on_bounds: %d changes (fixed->lower=%d, fixed->upper=%d, "
       "lower->upper=%d, upper->lower=%d, ->fixed=%d)\n",
       total_changes,
@@ -2555,7 +2555,7 @@ i_t attempt_to_remove_perturbations(const lp_problem_t<i_t, f_t>& lp,
     work_estimate += 4 * m + 2 * n;
 
     if (primal_infeasibility <= settings.primal_tol) return 0;  // OPTIMAL
-    settings.log.printf("Removed perturbation. Continuing dual simplex (primal_inf=%.2e)\n",
+    settings.log.debug("Removed perturbation. Continuing dual simplex (primal_inf=%.2e)\n",
                         primal_infeasibility);
     return 1;  // CONTINUE_DUAL
   }
@@ -2611,7 +2611,7 @@ i_t attempt_to_remove_perturbations(const lp_problem_t<i_t, f_t>& lp,
   if (residual_dual_infeas > settings.dual_tol) {
     // One-sided infeasibility remains — can't continue with dual simplex.
     // new_vstatus is discarded; vstatus unchanged.
-    settings.log.printf(
+    settings.log.debug(
       "Perturbation removal: %d flips, residual_dual_infeas=%.2e (PRIMAL_CLEANUP)\n",
       num_flipped,
       residual_dual_infeas);
@@ -2638,10 +2638,10 @@ i_t attempt_to_remove_perturbations(const lp_problem_t<i_t, f_t>& lp,
                                                                         primal_infeasibility);
   work_estimate += 4 * m + 2 * n;
 
-  settings.log.printf(
+  settings.log.debug(
     "Perturbation removal: %d flips, primal_inf=%.2e\n", num_flipped, primal_infeasibility);
   if (primal_infeasibility <= settings.primal_tol) return 0;  // OPTIMAL
-  settings.log.printf("Continuing dual after flip (primal_inf=%.2e)\n", primal_infeasibility);
+  settings.log.debug("Continuing dual after flip (primal_inf=%.2e)\n", primal_infeasibility);
   return 1;  // CONTINUE_DUAL
 }
 
@@ -3014,7 +3014,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
         }
       }
     }
-    settings.log.printf(
+    settings.log.debug(
       "NONBASIC_FIXED boxed: %d, degenerate (|z_j| < dual_tol): %d\n", num_fixed, num_degen);
   }
 
@@ -3082,7 +3082,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
   }
   vstatus = best_vstatus;
   x       = best_x;
-  settings.log.printf(
+  settings.log.debug(
     "Bound assignment: default(%d/%.2e) colsum(%d/%.2e) abs-bound(%d/%.2e) -> %s\n",
     all_num_infeas[0],
     all_sum_infeas[0],
@@ -3107,7 +3107,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
     }
     bool near_optimal       = (num_primal_infeas < 1000 && max_primal_infeas < 1e-3);
     bool apply_perturbation = (settings.initial_perturbation == 1) || !near_optimal;
-    settings.log.printf(
+    settings.log.debug(
       "Near-optimal check: num_primal_infeas=%d, max_primal_infeas=%.2e, near_optimal=%d, "
       "apply_perturbation=%d\n",
       num_primal_infeas,
@@ -3281,10 +3281,8 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
   i_t sparse_delta_z        = 0;
   i_t dense_delta_z         = 0;
   i_t num_refactors         = 0;
-  i_t total_bound_flips     = 0;
-  i_t max_bound_flips       = 0;
   f_t delta_y_nz_percentage = 0.0;
-  phase2::phase2_timers_t<i_t, f_t> timers(true);
+  phase2::phase2_timers_t<i_t, f_t> timers(false);
 
   // Sparse vectors for main loop (declared outside loop for instrumentation)
   sparse_vector_t<i_t, f_t> delta_y_sparse(m, 0);
@@ -3489,7 +3487,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
         }
         if (removal_status == 2) {  // PRIMAL_CLEANUP
           const f_t perturbation = phase2::amount_of_perturbation(lp, objective);
-          settings.log.printf("Failed to remove perturbation of %.2e.\n", perturbation);
+          settings.log.printf("Failed to remove perturbation of %.2e. Using primal simplex for cleanup.\n", perturbation);
           settings.log.printf("Num updates: %d\n", ft.num_updates());
           settings.log.printf("Iterations: %d\n", iter);
           i_t dual_iter                 = iter;
@@ -3847,8 +3845,6 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
                                              : 0;
 
     timers.flip_time += timers.stop_timer(phase2_work_estimate + ft.work_estimate());
-    total_bound_flips += num_flipped;
-    if (num_flipped > max_bound_flips) max_bound_flips = num_flipped;
 
     delta_xB_0_sparse.clear();
     if (num_flipped > 0) {
@@ -4237,13 +4233,6 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
 
   if (phase == 2) {
     timers.print_timers(settings);
-    i_t num_iters = iter - start_iter;
-    if (num_iters > 0) {
-      settings.log.printf("Bound flips: total=%d, avg=%.1f, max=%d\n",
-                          total_bound_flips,
-                          1.0 * total_bound_flips / num_iters,
-                          max_bound_flips);
-    }
     constexpr bool print_stats = false;
     if constexpr (print_stats) {
       settings.log.printf("Sparse delta_z %8d %8.2f%\n",
