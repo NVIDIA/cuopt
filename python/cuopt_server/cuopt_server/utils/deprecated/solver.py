@@ -31,29 +31,12 @@ from cuopt_server.utils.deprecated.job_queue import (
     SolverBinaryResponse,
     SolverIntermediateResponse,
 )
+from cuopt_server.utils.http_envelope import make_response
 from cuopt_server.utils.logutil import set_ncaid, set_requestid, set_solverid
 from cuopt_server.utils.routing.conversion import (
     check_valid as check_valid,
     populate_optimization_data,
 )
-
-
-# Wrap the solver response in a dictionary with a "response"
-# field and add total_solve_time, request id, notes, and warnings to the
-# dictionary if those values are set.
-def make_response(
-    response, warnings=[], notes=[], reqId="", total_solve_time=0
-):
-    r = {"response": response}
-    if total_solve_time:
-        r["response"]["total_solve_time"] = total_solve_time
-    if reqId:
-        r["reqId"] = reqId
-    if warnings:
-        r["warnings"] = warnings
-    if notes:
-        r["notes"] = notes
-    return r
 
 
 # Validate LP data and call the LP solver
