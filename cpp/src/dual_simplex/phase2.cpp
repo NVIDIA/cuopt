@@ -2806,28 +2806,9 @@ class phase2_timers_t {
                            update_infeasibility_time.work;
     // clang-format off
     print_one(settings, "BFRT time", bfrt_time, total_time, total_work);
-    if (bfrt_time.time > 0.1) {
-      settings.log.printf("  BFRT breakpoints: %.2fs\n", bfrt_breakpoints_time);
-      settings.log.printf("  BFRT single_pass: %.2fs\n", bfrt_single_pass_time);
-      settings.log.printf("  BFRT coarse:      %.2fs\n", bfrt_coarse_time);
-      settings.log.printf("  BFRT bucket:      %.2fs\n", bfrt_bucket_time);
-      settings.log.printf("  BFRT select:      %.2fs\n", bfrt_select_time);
-    }
     if (bfrt_calls > 0) {
-      settings.log.printf("  BFRT calls: %d, zero_steps: %d (%.1f%%), single_pass_only: %d, bucket_used: %d, not_last_bucket: %d, fallback: %d\n",
-                          bfrt_calls, bfrt_zero_steps, 100.0 * bfrt_zero_steps / bfrt_calls,
-                          bfrt_single_pass_only, bfrt_bucket_used, bfrt_not_last_bucket, bfrt_fallback);
-      settings.log.printf("  BFRT slope_breaker: %d, not_slope_breaker: %d (%.1f%%)\n",
-                          bfrt_selected_slope_breaker, bfrt_not_slope_breaker,
-                          bfrt_bucket_used > 0 ? 100.0 * bfrt_not_slope_breaker / bfrt_bucket_used : 0.0);
-      if (bfrt_zero_steps > 0) {
-        settings.log.printf("  BFRT zero-step avg: num_buckets=%.1f, bucket0_size=%.1f, num_breakpoints=%.1f, harris_zero=%.1f, exact_zero=%.1f\n",
-                            1.0 * bfrt_zero_step_num_buckets_sum / bfrt_zero_steps,
-                            1.0 * bfrt_zero_step_bucket0_sum / bfrt_zero_steps,
-                            1.0 * bfrt_zero_step_num_breakpoints_sum / bfrt_zero_steps,
-                            1.0 * bfrt_zero_step_harris_zero_sum / bfrt_zero_steps,
-                            1.0 * bfrt_zero_step_exact_zero_sum / bfrt_zero_steps);
-      }
+      settings.log.printf("  BFRT calls: %d, zero_steps: %d (%.1f%%)\n",
+                          bfrt_calls, bfrt_zero_steps, 100.0 * bfrt_zero_steps / bfrt_calls);
     }
     print_one(settings, "Pricing time", pricing_time, total_time, total_work);
     print_one(settings, "BTran time", btran_time, total_time, total_work);
@@ -2849,25 +2830,9 @@ class phase2_timers_t {
     // clang-format on
   }
   work_timer_t<f_t> bfrt_time;
-  f_t bfrt_breakpoints_time{0.0};
-  f_t bfrt_single_pass_time{0.0};
-  f_t bfrt_coarse_time{0.0};
-  f_t bfrt_bucket_time{0.0};
-  f_t bfrt_select_time{0.0};
   // BFRT diagnostic counters
   i_t bfrt_calls{0};
   i_t bfrt_zero_steps{0};                     // step_length == 0
-  i_t bfrt_single_pass_only{0};               // no bound flips (single_pass decided)
-  i_t bfrt_bucket_used{0};                    // bucket sort was used
-  i_t bfrt_not_last_bucket{0};                // selected from a bucket other than the last
-  i_t bfrt_fallback{0};                       // fell back to single_pass result after bucket sort
-  i_t bfrt_zero_step_num_buckets_sum{0};      // sum of num_buckets on zero-step iters
-  i_t bfrt_zero_step_bucket0_sum{0};          // sum of bucket0 size on zero-step iters
-  i_t bfrt_zero_step_num_breakpoints_sum{0};  // sum of num_breakpoints on zero-step iters
-  i_t bfrt_zero_step_harris_zero_sum{0};      // sum of harris_ratios==0 on zero-step iters
-  i_t bfrt_zero_step_exact_zero_sum{0};       // sum of exact ratios==0 on zero-step iters
-  i_t bfrt_selected_slope_breaker{0};         // times we selected the slope breaker
-  i_t bfrt_not_slope_breaker{0};              // times we selected something else
   work_timer_t<f_t> pricing_time;
   work_timer_t<f_t> btran_time;
   work_timer_t<f_t> ftran_time;
@@ -3716,35 +3681,10 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
           return dual_status_t::NUMERICAL;
         }
         timers.bfrt_time += timers.stop_timer(phase2_work_estimate + ft.work_estimate());
-        timers.bfrt_breakpoints_time += bfrt.time_compute_breakpoints_;
-        timers.bfrt_single_pass_time += bfrt.time_single_pass_;
-        timers.bfrt_coarse_time += bfrt.time_coarse_filter_;
-        timers.bfrt_bucket_time += bfrt.time_bucket_sort_;
-        timers.bfrt_select_time += bfrt.time_pivot_selection_;
         // BFRT diagnostics
         timers.bfrt_calls++;
         if (step_length == 0.0) {
           timers.bfrt_zero_steps++;
-          timers.bfrt_zero_step_num_buckets_sum += bfrt.num_buckets_used_;
-          timers.bfrt_zero_step_bucket0_sum += bfrt.bucket0_size_;
-          timers.bfrt_zero_step_num_breakpoints_sum += bfrt.num_breakpoints_;
-          timers.bfrt_zero_step_harris_zero_sum += bfrt.num_harris_zero_;
-          timers.bfrt_zero_step_exact_zero_sum += bfrt.num_exact_zero_;
-        }
-        if (bfrt.num_buckets_used_ == 0) {
-          timers.bfrt_single_pass_only++;
-        } else {
-          timers.bfrt_bucket_used++;
-          if (bfrt.used_fallback_) {
-            timers.bfrt_fallback++;
-          } else if (bfrt.bucket_selected_ < bfrt.num_buckets_used_ - 1) {
-            timers.bfrt_not_last_bucket++;
-          }
-          if (bfrt.selected_is_slope_breaker_) {
-            timers.bfrt_selected_slope_breaker++;
-          } else {
-            timers.bfrt_not_slope_breaker++;
-          }
         }
       } else {
         entering_index = phase2::phase2_ratio_test(
