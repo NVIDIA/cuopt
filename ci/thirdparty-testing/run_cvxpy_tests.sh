@@ -21,11 +21,8 @@ fi
 git clone https://github.com/cvxpy/cvxpy.git
 pushd ./cvxpy || exit 1
 
-# cvxpy's native '_cvxcore' extension is compiled with the system g++ during
-# 'pip wheel' (plain setuptools Extension, not cmake/ninja/meson). Without it,
-# 'pip wheel' fails loudly (see #1747). Install it here so the build step
-# below actually produces a working extension instead of failing at import
-# time from a downstream, confusing spot.
+# cvxpy compiles its '_cvxcore' extension with g++ during 'pip wheel'; without
+# it the build fails loudly (see #1747).
 if ! command -v g++ >/dev/null 2>&1; then
     echo "g++ not found; attempting to install build-essential"
     if command -v apt-get >/dev/null 2>&1; then
@@ -44,13 +41,8 @@ pip wheel \
     -w dist \
     .
 
-# 'pip wheel' can report "Successfully built cvxpy" even when the native
-# '_cvxcore' extension failed to build or was silently skipped (e.g. cvxpy's
-# setup.py omits ext_modules entirely when the PYODIDE env var is set) --
-# there is no compile error in that case, just a wheel missing the .so.
-# Downstream that surfaces as a confusing
-# "ImportError: cannot import name '_cvxcore'" deep inside the test run, so
-# check for it explicitly and fail loudly right here instead.
+# Fail loudly here if the wheel is missing the compiled extension, rather
+# than downstream as a confusing test-time ImportError.
 cvxpy_wheel="$(echo ./dist/cvxpy*.whl)"
 if ! python -m zipfile -l "${cvxpy_wheel}" | grep -q 'cvxpy/cvxcore/python/_cvxcore.*\.so'; then
     echo "FATAL: built cvxpy wheel '${cvxpy_wheel}' does not contain a compiled"
@@ -72,6 +64,17 @@ python -m pip install \
 # ensure that environment is still consistent (i.e. cvxpy requirements do not conflict with cuopt's)
 pip check
 
+RAPIDS_TESTS_DIR="${RAPIDS_TESTS_DIR:-${PWD}/test-results}"
+mkdir -p "${RAPIDS_TESTS_DIR}"
+
+# Leave the clone: cwd is 'cvxpy/' containing a 'cvxpy/' package
+# subdirectory, and Python puts cwd first on sys.path, so importing 'cvxpy'
+# from here silently shadows the installed wheel with the uncompiled source
+# tree -- producing "ImportError: cannot import name '_cvxcore'" even on a
+# perfectly good build/install. This is the actual root cause of the
+# nightly failure fixed here.
+popd
+
 # Belt-and-braces: verify the installed cvxpy can actually load its native
 # backend before running any tests, so a broken extension fails here with a
 # clear message instead of as a wall of downstream test ImportErrors.
@@ -84,18 +87,18 @@ if ! python -c "from cvxpy.cvxcore.python.cppbackend import build_matrix" 2>"${c
 fi
 rm -f "${cvxcore_import_check_log}"
 
-RAPIDS_TESTS_DIR="${RAPIDS_TESTS_DIR:-${PWD}/test-results}"
-mkdir -p "${RAPIDS_TESTS_DIR}"
-
 echo "running 'cvxpy' tests"
 pytest_rc=0
+# --pyargs (module path, not a filesystem path) avoids pytest re-inserting
+# the clone root onto sys.path via its rootdir walk-up, which would
+# reintroduce the shadowing above even with cwd fixed.
 timeout 3m python -m pytest \
     --verbose \
     --capture=no \
     --error-for-skips \
     --junitxml="${RAPIDS_TESTS_DIR}/junit-thirdparty-cvxpy.xml" \
     -k "TestCUOPT" \
-    ./cvxpy/tests/test_conic_solvers.py || pytest_rc=$?
+    --pyargs cvxpy.tests.test_conic_solvers || pytest_rc=$?
 
 # pytest's normal exit codes are 0-5 (passed / failed / interrupted /
 # internal error / usage / no tests collected). Anything beyond that
