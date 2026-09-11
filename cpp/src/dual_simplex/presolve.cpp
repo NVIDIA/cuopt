@@ -124,10 +124,7 @@ i_t remove_empty_cols(lp_problem_t<i_t, f_t>& problem,
     f_t x_fix;
     if (!unconstrained_1d_qp_minimizer(
           problem.objective[j], q_diag[j], problem.lower[j], problem.upper[j], x_fix)) {
-      // Convex q_jj > 0 should always have a finite minimizer; !isfinite is numerical.
-      // Otherwise this empty uncoupled column is unbounded below (dual infeasible).
-      if (q_diag[j] > 0) { continue; }
-      return UNBOUNDED_RETURN;
+      continue;
     }
     presolve_info.removed_values.push_back(x_fix);
     // A e_j = 0 and Q diagonal, so stationarity gives z_j = c_j + q_jj * x_j
@@ -1394,11 +1391,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
   }
   if (num_empty_cols > 0) {
     settings.log.printf("Presolve attempt to remove %d empty cols\n", num_empty_cols);
-    const i_t empty_col_status = remove_empty_cols(problem, num_empty_cols, presolve_info);
-    if (empty_col_status == UNBOUNDED_RETURN) {
-      settings.log.printf("Found problem unbounded in presolve\n");
-      return UNBOUNDED_RETURN;
-    }
+    remove_empty_cols(problem, num_empty_cols, presolve_info);
   }
 
   // Check for free variables (exclude cone variables — they are naturally unbounded)
