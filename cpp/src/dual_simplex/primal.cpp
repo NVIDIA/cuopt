@@ -968,6 +968,13 @@ primal_status_t primal_phase2_with_advanced_basis(
   primal_timers_t<i_t, f_t> timers(false);
 
   while (iter < iter_limit) {
+    if (toc(start_time) > settings.time_limit) { return primal_status_t::TIME_LIMIT; }
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+      return primal_status_t::CONCURRENT_LIMIT;
+    }
+    if (work_estimate + basis_update.work_estimate() > settings.work_limit) {
+      return primal_status_t::WORK_LIMIT;
+    }
     timers.start_timer(work_estimate + basis_update.work_estimate());
     i_t nonbasic_entering = -1;
     i_t direction;
