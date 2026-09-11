@@ -549,6 +549,7 @@ void problem_t<i_t, f_t>::populate_special_nodes()
   std::vector<NodeInfo<>> node_infos_h;
   std::vector<i_t> node_earliest_h, node_latest_h;
   std::vector<float> node_distance_min_h, node_distance_max_h;
+  std::vector<uint8_t> node_is_distance_break_h;
   std::vector<i_t> break_loc_to_idx_h;
 
   if (!uniform_breaks.empty()) {
@@ -647,6 +648,7 @@ void problem_t<i_t, f_t>::populate_special_nodes()
     node_latest_h.reserve(2 * n_vehicles);
     node_distance_min_h.reserve(2 * n_vehicles);
     node_distance_max_h.reserve(2 * n_vehicles);
+    node_is_distance_break_h.reserve(2 * n_vehicles);
 
     break_nodes_offset_h.push_back(0);
 
@@ -708,6 +710,7 @@ void problem_t<i_t, f_t>::populate_special_nodes()
             node_latest_h.push_back(break_latest_h[v][dim]);
             node_distance_min_h.push_back(vehicle_break.distance_min_);
             node_distance_max_h.push_back(vehicle_break.distance_max_);
+            node_is_distance_break_h.push_back(vehicle_break.is_distance_based_);
           }
 
           break_nodes_offset_h.push_back(offset);
@@ -753,6 +756,8 @@ void problem_t<i_t, f_t>::populate_special_nodes()
   if (special_nodes.has_distance_break) {
     special_nodes.distance_min = cuopt::device_copy(node_distance_min_h, handle_ptr->get_stream());
     special_nodes.distance_max = cuopt::device_copy(node_distance_max_h, handle_ptr->get_stream());
+    special_nodes.is_distance_break =
+      cuopt::device_copy(node_is_distance_break_h, handle_ptr->get_stream());
   }
   special_nodes.break_loc_to_idx = cuopt::device_copy(break_loc_to_idx_h, handle_ptr->get_stream());
   RAFT_CHECK_CUDA(handle_ptr->get_stream().get());

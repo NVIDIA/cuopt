@@ -121,10 +121,11 @@ void adapted_generator_t<i_t, f_t, REQUEST>::generate_solution(
     sol.sol.eject_until_feasible();
     resource.ges.init_ejection_pool();
     resource.ges.fixed_route_loop();
-    if (dim_info.has_dimension(dim_t::BREAK)) { resource.ges.try_squeeze_breaks_feasible(); }
   }
 
   resource.ges.repair_empty_routes();
+  // Construction can eject breaks before reinserting requests into the routes.
+  if (dim_info.has_dimension(dim_t::BREAK)) { resource.ges.try_squeeze_breaks_feasible(); }
 
   sol.populate_host_data(true);
   cuopt_func_call(sol.check_device_host_coherence());

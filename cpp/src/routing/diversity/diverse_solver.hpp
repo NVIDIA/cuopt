@@ -861,6 +861,8 @@ struct solve {
             }
             next_injection = injection_it;
           }
+          // Loading an initial solution strips its break nodes.
+          if (p->has_vehicle_breaks()) { lm.squeeze_breaks(temp_pair.first, final_weights); }
         } else {
           auto time_limit = timer.clamp_remaining_time(sol_gen_time);
           g.generate_solution(

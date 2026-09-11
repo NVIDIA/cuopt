@@ -12,6 +12,8 @@
 #include <raft/core/span.hpp>
 #include <rmm/device_uvector.hpp>
 
+#include <cstdint>
+
 namespace cuopt {
 namespace routing {
 namespace detail {
@@ -30,6 +32,7 @@ class special_nodes_t {
       latest_time(0, handle_ptr->get_stream()),
       distance_min(0, handle_ptr->get_stream()),
       distance_max(0, handle_ptr->get_stream()),
+      is_distance_break(0, handle_ptr->get_stream()),
       break_loc_to_idx(0, handle_ptr->get_stream())
   {
   }
@@ -58,6 +61,8 @@ class special_nodes_t {
       if (!distance_min.empty()) {
         v.distance_min = raft::device_span<const float>(distance_min.data() + offset, sz);
         v.distance_max = raft::device_span<const float>(distance_max.data() + offset, sz);
+        v.is_distance_break =
+          raft::device_span<const uint8_t>(is_distance_break.data() + offset, sz);
       }
 
       return v;
@@ -79,6 +84,7 @@ class special_nodes_t {
     // populated only when distance-based breaks are present
     raft::device_span<const float> distance_min;
     raft::device_span<const float> distance_max;
+    raft::device_span<const uint8_t> is_distance_break;
     raft::device_span<const i_t> break_loc_to_idx;
   };
 
@@ -94,8 +100,9 @@ class special_nodes_t {
     v.earliest_time      = cuopt::make_span(earliest_time);
     v.latest_time        = cuopt::make_span(latest_time);
     if (!distance_min.is_empty()) {
-      v.distance_min = cuopt::make_span(distance_min);
-      v.distance_max = cuopt::make_span(distance_max);
+      v.distance_min      = cuopt::make_span(distance_min);
+      v.distance_max      = cuopt::make_span(distance_max);
+      v.is_distance_break = cuopt::make_span(is_distance_break);
     }
     v.break_loc_to_idx = cuopt::make_span(break_loc_to_idx);
 
@@ -121,6 +128,7 @@ class special_nodes_t {
   rmm::device_uvector<i_t> latest_time;
   rmm::device_uvector<float> distance_min;
   rmm::device_uvector<float> distance_max;
+  rmm::device_uvector<uint8_t> is_distance_break;
   rmm::device_uvector<i_t> break_loc_to_idx;
 };
 }  // namespace detail

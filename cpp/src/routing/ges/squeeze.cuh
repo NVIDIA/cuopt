@@ -402,14 +402,56 @@ __global__ void eject_inserted_requests(
   }
 }
 
+struct break_route_end_t {
+  double time;
+  double distance;
+};
+
+// Replay the earliest schedule without time warping: adding accumulated excess to the stored
+// departure time is not exact when a later wait absorbs an earlier time-window violation.
+template <typename i_t, typename f_t, request_t REQUEST>
+DI break_route_end_t get_break_route_end(const typename route_t<i_t, f_t, REQUEST>::view_t& route,
+                                         bool include_breaks)
+{
+  const auto vehicle  = route.vehicle_info();
+  const bool has_time = route.dimensions_info().has_dimension(dim_t::TIME);
+  auto prev           = route.get_node(0);
+  break_route_end_t end{has_time ? prev.time_dim.window_start : 0., 0.};
+  for (i_t idx = 1; idx <= route.get_num_nodes(); ++idx) {
+    auto next = route.get_node(idx);
+    if (!include_breaks && next.node_info().is_break()) { continue; }
+    end.distance += get_distance(prev.node_info(), next.node_info(), vehicle);
+    if (has_time) {
+      end.time = max(end.time + get_transit_time(prev.node_info(), next.node_info(), vehicle, true),
+                     next.time_dim.window_start);
+    }
+    prev = next;
+  }
+  return end;
+}
+
+template <typename i_t, typename f_t>
+DI bool is_break_required(const typename special_nodes_t<i_t>::view_t& break_nodes,
+                          const break_route_end_t& end,
+                          bool has_time)
+{
+  // A valid distance deadline can equal the unbounded sentinel used by time breaks.
+  if (!break_nodes.is_distance_break.empty() && break_nodes.is_distance_break[0]) {
+    return end.distance > break_nodes.distance_max[0];
+  }
+  // Without a modeled schedule, there is no completion time that justifies omitting a break.
+  return !has_time || end.time > break_nodes.latest_time[0];
+}
+
 /**
- * @brief Inserts each missing break dimension into routes that lack it, one break per outer
- *        iteration, picking the least-cost insertion position for each. One block per route.
+ * @brief Remove unnecessary breaks and insert missing breaks whose deadlines the route exceeds.
+ *        Revisit skipped dimensions after an insertion extends the route. One block per route.
  */
 template <typename i_t, typename f_t, request_t REQUEST>
 __global__ void squeeze_breaks_kernel(typename solution_t<i_t, f_t, REQUEST>::view_t solution,
                                       const bool include_objective,
-                                      infeasible_cost_t weights)
+                                      infeasible_cost_t weights,
+                                      const bool preserve_empty_breaks)
 {
   extern __shared__ i_t shmem[];
 
@@ -417,6 +459,7 @@ __global__ void squeeze_breaks_kernel(typename solution_t<i_t, f_t, REQUEST>::vi
 
   auto global_route      = solution.routes[route_id];
   const int n_break_dims = solution.problem.get_break_dimensions(global_route.get_vehicle_id());
+  if (n_break_dims == 0) { return; }
 
   typename route_t<i_t, f_t, REQUEST>::view_t sh_route;
   sh_route = route_t<i_t, f_t, REQUEST>::view_t::create_shared_route(
@@ -431,69 +474,106 @@ __global__ void squeeze_breaks_kernel(typename solution_t<i_t, f_t, REQUEST>::vi
   }
   __syncthreads();
 
-  for (i_t tid = threadIdx.x; tid < sh_route.get_num_nodes(); tid += blockDim.x) {
-    auto node = sh_route.get_node(tid);
-    if (node.node_info().is_break()) {
-      cuopt_assert(node.node_info().break_dim() >= 0 && node.node_info().break_dim() < n_break_dims,
-                   "Break dimension out of bounds");
-      break_dim_counters[node.node_info().break_dim()] = 1;
+  const bool has_time          = sh_route.dimensions_info().has_dimension(dim_t::TIME);
+  const bool has_requests      = sh_route.get_num_service_nodes() > 0;
+  const bool keep_empty_breaks = preserve_empty_breaks && !has_requests;
+  __shared__ break_route_end_t route_end;
+  __syncthreads();
+  if (threadIdx.x == 0) {
+    // Test existing breaks against the route without any breaks. Otherwise two optional
+    // detours can make each other appear required even though the work finishes before both.
+    const auto end_without_breaks = get_break_route_end<i_t, f_t, REQUEST>(sh_route, false);
+    for (i_t idx = sh_route.get_num_nodes() - 1; idx > 0; --idx) {
+      auto node = sh_route.get_node(idx);
+      if (!node.node_info().is_break()) { continue; }
+      const auto break_dim = node.node_info().break_dim();
+      cuopt_assert(break_dim >= 0 && break_dim < n_break_dims, "Break dimension out of bounds");
+      auto break_nodes =
+        solution.problem.special_nodes.subset(sh_route.get_vehicle_id(), break_dim);
+      if (keep_empty_breaks || (has_requests && is_break_required<i_t, f_t>(
+                                                  break_nodes, end_without_breaks, has_time))) {
+        // Preserve placements already improved by local search.
+        break_dim_counters[break_dim] = 1;
+      } else {
+        sh_route.eject_node(idx, solution.route_node_map, false);
+      }
     }
+    route_t<i_t, f_t, REQUEST>::view_t::compute_forward(sh_route);
+    route_t<i_t, f_t, REQUEST>::view_t::compute_backward(sh_route);
+    sh_route.compute_cost();
+    route_end = get_break_route_end<i_t, f_t, REQUEST>(sh_route, true);
   }
   __syncthreads();
 
-  for (int break_dim_idx = 0; break_dim_idx < n_break_dims; ++break_dim_idx) {
-    if (break_dim_counters[break_dim_idx] == 1) { continue; }
-    const auto old_objective_cost    = sh_route.get_objective_cost();
-    const auto old_infeasbility_cost = sh_route.get_infeasibility_cost();
-    auto break_nodes =
-      solution.problem.special_nodes.subset(sh_route.get_vehicle_id(), break_dim_idx);
-
-    i_t route_size                = sh_route.get_num_nodes();
-    i_t num_break_nodes           = break_nodes.size();
-    double thread_best_cost       = std::numeric_limits<double>::max();
-    i_t thread_best_idx           = -1;
-    i_t thread_best_break_node_id = -1;
-    for (int index = threadIdx.x; index < route_size * num_break_nodes; index += blockDim.x) {
-      i_t break_node_id = index / route_size;
-      i_t insertion_idx = index % route_size;
-
-      auto break_node = create_break_node<i_t, f_t, REQUEST>(
-        break_nodes, break_node_id, solution.problem.dimensions_info);
-
-      auto curr_node = sh_route.get_node(insertion_idx);
-      auto next_node = sh_route.get_node(insertion_idx + 1);
-
-      curr_node.calculate_forward_all(break_node, sh_route.vehicle_info());
-
-      double cost_difference = break_node.calculate_forward_all_and_delta(next_node,
-                                                                          sh_route.vehicle_info(),
-                                                                          include_objective,
-                                                                          weights,
-                                                                          old_objective_cost,
-                                                                          old_infeasbility_cost);
-      if (cost_difference < thread_best_cost) {
-        thread_best_cost          = cost_difference;
-        thread_best_idx           = insertion_idx;
-        thread_best_break_node_id = break_node_id;
+  // Each successful pass inserts at least one previously missing dimension, so at most
+  // n_break_dims passes are needed, including when dimensions are not in deadline order.
+  __shared__ bool inserted_break;
+  for (int pass = 0; (has_requests || keep_empty_breaks) && pass < n_break_dims; ++pass) {
+    if (threadIdx.x == 0) { inserted_break = false; }
+    __syncthreads();
+    for (int break_dim_idx = 0; break_dim_idx < n_break_dims; ++break_dim_idx) {
+      __syncthreads();
+      if (break_dim_counters[break_dim_idx] == 1) { continue; }
+      const auto old_objective_cost    = sh_route.get_objective_cost();
+      const auto old_infeasbility_cost = sh_route.get_infeasibility_cost();
+      auto break_nodes =
+        solution.problem.special_nodes.subset(sh_route.get_vehicle_id(), break_dim_idx);
+      if (!keep_empty_breaks && !is_break_required<i_t, f_t>(break_nodes, route_end, has_time)) {
+        continue;
       }
+
+      i_t route_size                = sh_route.get_num_nodes();
+      i_t num_break_nodes           = break_nodes.size();
+      double thread_best_cost       = std::numeric_limits<double>::max();
+      i_t thread_best_idx           = -1;
+      i_t thread_best_break_node_id = -1;
+      for (int index = threadIdx.x; index < route_size * num_break_nodes; index += blockDim.x) {
+        i_t break_node_id = index / route_size;
+        i_t insertion_idx = index % route_size;
+
+        auto break_node = create_break_node<i_t, f_t, REQUEST>(
+          break_nodes, break_node_id, solution.problem.dimensions_info);
+
+        auto curr_node = sh_route.get_node(insertion_idx);
+        auto next_node = sh_route.get_node(insertion_idx + 1);
+
+        curr_node.calculate_forward_all(break_node, sh_route.vehicle_info());
+
+        double cost_difference = break_node.calculate_forward_all_and_delta(next_node,
+                                                                            sh_route.vehicle_info(),
+                                                                            include_objective,
+                                                                            weights,
+                                                                            old_objective_cost,
+                                                                            old_infeasbility_cost);
+        if (cost_difference < thread_best_cost) {
+          thread_best_cost          = cost_difference;
+          thread_best_idx           = insertion_idx;
+          thread_best_break_node_id = break_node_id;
+        }
+      }
+
+      i_t t_id = threadIdx.x;
+      __shared__ i_t reduction_idx;
+      __shared__ double reduction_buf[2 * raft::WarpSize];
+      block_reduce_ranked(thread_best_cost, t_id, reduction_buf, &reduction_idx);
+
+      if (threadIdx.x == reduction_idx && thread_best_break_node_id >= 0 &&
+          reduction_buf[0] != std::numeric_limits<double>::max()) {
+        auto break_node = create_break_node<i_t, f_t, REQUEST>(
+          break_nodes, thread_best_break_node_id, solution.problem.dimensions_info);
+        // do not update the intra indices yet
+        sh_route.insert_node(thread_best_idx, break_node, solution.route_node_map, false);
+        route_t<i_t, f_t, REQUEST>::view_t::compute_forward(sh_route);
+        route_t<i_t, f_t, REQUEST>::view_t::compute_backward(sh_route);
+        sh_route.compute_cost();
+        route_end                         = get_break_route_end<i_t, f_t, REQUEST>(sh_route, true);
+        break_dim_counters[break_dim_idx] = 1;
+        inserted_break                    = true;
+      }
+
+      __syncthreads();
     }
-
-    i_t t_id = threadIdx.x;
-    __shared__ i_t reduction_idx;
-    __shared__ double reduction_buf[2 * raft::WarpSize];
-    block_reduce_ranked(thread_best_cost, t_id, reduction_buf, &reduction_idx);
-
-    if (threadIdx.x == reduction_idx && thread_best_break_node_id >= 0 &&
-        reduction_buf[0] != std::numeric_limits<double>::max()) {
-      auto break_node = create_break_node<i_t, f_t, REQUEST>(
-        break_nodes, thread_best_break_node_id, solution.problem.dimensions_info);
-      // do not update the intra indices yet
-      sh_route.insert_node(thread_best_idx, break_node, solution.route_node_map, false);
-      route_t<i_t, f_t, REQUEST>::view_t::compute_forward(sh_route);
-      route_t<i_t, f_t, REQUEST>::view_t::compute_backward(sh_route);
-      sh_route.compute_cost();
-    }
-
+    if (!inserted_break) { break; }
     __syncthreads();
   }
 

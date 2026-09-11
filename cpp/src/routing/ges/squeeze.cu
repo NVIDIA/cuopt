@@ -365,15 +365,18 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::try_squeeze_feasible(
 }
 
 template <typename i_t, typename f_t, request_t REQUEST>
-void guided_ejection_search_t<i_t, f_t, REQUEST>::squeeze_breaks()
+void normalize_solution_breaks(solution_t<i_t, f_t, REQUEST>& solution,
+                               infeasible_cost_t weights,
+                               bool preserve_empty_breaks)
 {
   raft::common::nvtx::range fun_scope("squeeze_breaks");
-  solution_ptr->global_runtime_checks(false, false, "squeeze_breaks_begin");
-  auto stream         = solution_ptr->sol_handle->get_stream();
-  size_t n_break_dims = solution_ptr->problem_ptr->get_max_break_dimensions();
-  size_t n_blocks     = solution_ptr->n_routes;
-  size_t sh_size      = solution_ptr->check_routes_can_insert_and_get_sh_size(n_break_dims) +
-                   sizeof(i_t) * n_break_dims;
+  solution.global_runtime_checks(false, false, "squeeze_breaks_begin");
+  auto stream         = solution.sol_handle->get_stream();
+  size_t n_break_dims = solution.problem_ptr->get_max_break_dimensions();
+  size_t n_blocks     = solution.n_routes;
+  if (n_break_dims == 0 || n_blocks == 0) { return; }
+  size_t sh_size =
+    solution.check_routes_can_insert_and_get_sh_size(n_break_dims) + sizeof(i_t) * n_break_dims;
   size_t TPB = 128;
 
   if (!set_shmem_of_kernel(squeeze_breaks_kernel<i_t, f_t, REQUEST>, sh_size)) {
@@ -382,11 +385,16 @@ void guided_ejection_search_t<i_t, f_t, REQUEST>::squeeze_breaks()
   }
 
   squeeze_breaks_kernel<i_t, f_t, REQUEST><<<n_blocks, TPB, sh_size, stream.get()>>>(
-    solution_ptr->view(), false, local_search_ptr_->move_candidates.weights);
-  RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream().get());
-  solution_ptr->compute_cost();
-  solution_ptr->global_runtime_checks(false, false, "squeeze_breaks_end");
-  return;
+    solution.view(), false, weights, preserve_empty_breaks);
+  RAFT_CHECK_CUDA(stream.get());
+  solution.compute_cost();
+  solution.global_runtime_checks(false, false, "squeeze_breaks_end");
+}
+
+template <typename i_t, typename f_t, request_t REQUEST>
+void guided_ejection_search_t<i_t, f_t, REQUEST>::squeeze_breaks()
+{
+  normalize_solution_breaks(*solution_ptr, local_search_ptr_->move_candidates.weights, false);
 }
 
 template <typename i_t, typename f_t, request_t REQUEST>
@@ -398,7 +406,9 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::try_squeeze_breaks_feasible()
   if (n_break_dims == 0) { return solution_ptr->is_feasible(); }
   auto stream = solution_ptr->sol_handle->get_stream();
 
-  squeeze_breaks();
+  // Empty routes still participate in construction. Their breaks constrain future greedy
+  // insertions, preventing requests from repeatedly returning to an incompatible vehicle.
+  normalize_solution_breaks(*solution_ptr, local_search_ptr_->move_candidates.weights, true);
 
   if (solution_ptr->is_feasible()) { return true; }
 
@@ -414,6 +424,8 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::try_squeeze_breaks_feasible()
 
   local_search_ptr_->set_active_weights(local_search_ptr_->move_candidates.weights,
                                         original_incl_objective);
+  // Repair can move requests across routes and change which break deadlines are reached.
+  normalize_solution_breaks(*solution_ptr, local_search_ptr_->move_candidates.weights, true);
   return solution_ptr->is_feasible();
 }
 
@@ -435,6 +447,8 @@ template int guided_ejection_search_t<int, float, request_t::PDP>::try_multiple_
 template int guided_ejection_search_t<int, float, request_t::VRP>::try_multiple_feasible_insertions(
   int, bool);
 
+template void guided_ejection_search_t<int, float, request_t::PDP>::squeeze_breaks();
+template void guided_ejection_search_t<int, float, request_t::VRP>::squeeze_breaks();
 template bool guided_ejection_search_t<int, float, request_t::PDP>::try_squeeze_breaks_feasible();
 template bool guided_ejection_search_t<int, float, request_t::VRP>::try_squeeze_breaks_feasible();
 }  // namespace detail
