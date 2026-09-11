@@ -2920,44 +2920,7 @@ class phase2_timers_t {
 }  // namespace phase2
 
 template <typename i_t, typename f_t>
-dual_status_t dual_phase2(i_t phase,
-                          i_t slack_basis,
-                          f_t start_time,
-                          const lp_problem_t<i_t, f_t>& lp,
-                          const simplex_solver_settings_t<i_t, f_t>& settings,
-                          std::vector<variable_status_t>& vstatus,
-                          lp_solution_t<i_t, f_t>& sol,
-                          i_t& iter,
-                          f_t& work_estimate,
-                          std::vector<f_t>& delta_y_steepest_edge,
-                          work_limit_context_t* work_unit_context)
-{
-  PHASE2_NVTX_RANGE("DualSimplex::phase2");
-  const i_t m = lp.num_rows;
-  const i_t n = lp.num_cols;
-  std::vector<i_t> basic_list(m);
-  std::vector<i_t> nonbasic_list;
-  basis_update_mpf_t<i_t, f_t> ft(m, settings.refactor_frequency);
-  const bool initialize_basis = true;
-  return dual_phase2_with_advanced_basis(phase,
-                                         slack_basis,
-                                         initialize_basis,
-                                         start_time,
-                                         lp,
-                                         settings,
-                                         vstatus,
-                                         ft,
-                                         basic_list,
-                                         nonbasic_list,
-                                         sol,
-                                         iter,
-                                         work_estimate,
-                                         delta_y_steepest_edge,
-                                         work_unit_context);
-}
-
-template <typename i_t, typename f_t>
-dual_status_t dual_phase2_with_advanced_basis(i_t phase,
+static dual_status_t dual_phase2_with_advanced_basis(i_t phase,
                                               i_t slack_basis,
                                               bool initialize_basis,
                                               f_t start_time,
@@ -2969,8 +2932,9 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
                                               std::vector<i_t>& nonbasic_list,
                                               lp_solution_t<i_t, f_t>& sol,
                                               i_t& iter,
-                                              f_t& phase2_work_estimate,
                                               std::vector<f_t>& delta_y_steepest_edge,
+                                              f_t& phase2_work_estimate,
+                                              f_t& last_work_reported,
                                               work_limit_context_t* work_unit_context)
 {
   PHASE2_NVTX_RANGE("DualSimplex::phase2_advanced");
@@ -3362,11 +3326,11 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
 
   phase2_work_estimate += ft.work_estimate();
   ft.clear_work_estimate();
-  f_t last_work_reported = 0.0;
   if (work_unit_context) {
-    work_unit_context->record_work_sync_on_horizon((phase2_work_estimate) / 1e8);
-    last_work_reported = phase2_work_estimate;
+    work_unit_context->record_work_sync_on_horizon((phase2_work_estimate - last_work_reported) /
+                                                   1e8);
   }
+  last_work_reported = phase2_work_estimate;
 
   if (phase == 2) {
     settings.log.printf("%5d %+.16e %7d %.8e %.2e %.2f\n",
@@ -4309,6 +4273,88 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
   return status;
 }
 
+template <typename i_t, typename f_t>
+dual_status_t dual_phase2_with_advanced_basis(
+  i_t phase,
+  i_t slack_basis,
+  bool initialize_basis,
+  f_t start_time,
+  const lp_problem_t<i_t, f_t>& lp,
+  const simplex_solver_settings_t<i_t, f_t>& settings,
+  std::vector<variable_status_t>& vstatus,
+  basis_update_mpf_t<i_t, f_t>& ft,
+  std::vector<i_t>& basic_list,
+  std::vector<i_t>& nonbasic_list,
+  lp_solution_t<i_t, f_t>& sol,
+  i_t& iter,
+  std::vector<f_t>& delta_y_steepest_edge,
+  f_t& phase2_work_estimate,
+  work_limit_context_t* work_unit_context)
+{
+  f_t last_work_reported = phase2_work_estimate;
+  const dual_status_t status = dual_phase2_with_advanced_basis(phase,
+                                                             slack_basis,
+                                                             initialize_basis,
+                                                             start_time,
+                                                             lp,
+                                                             settings,
+                                                             vstatus,
+                                                             ft,
+                                                             basic_list,
+                                                             nonbasic_list,
+                                                             sol,
+                                                             iter,
+                                                             delta_y_steepest_edge,
+                                                             phase2_work_estimate,
+                                                             last_work_reported,
+                                                             work_unit_context);
+
+  phase2_work_estimate += ft.work_estimate();
+  ft.clear_work_estimate();
+  if (work_unit_context && phase2_work_estimate > last_work_reported) {
+    work_unit_context->record_work_sync_on_horizon((phase2_work_estimate - last_work_reported) /
+                                                   1e8);
+  }
+  return status;
+}
+
+template <typename i_t, typename f_t>
+dual_status_t dual_phase2(i_t phase,
+                          i_t slack_basis,
+                          f_t start_time,
+                          const lp_problem_t<i_t, f_t>& lp,
+                          const simplex_solver_settings_t<i_t, f_t>& settings,
+                          std::vector<variable_status_t>& vstatus,
+                          lp_solution_t<i_t, f_t>& sol,
+                          i_t& iter,
+                          std::vector<f_t>& delta_y_steepest_edge,
+                          f_t& work_estimate,
+                          work_limit_context_t* work_unit_context)
+{
+  PHASE2_NVTX_RANGE("DualSimplex::phase2");
+  const i_t m = lp.num_rows;
+  const i_t n = lp.num_cols;
+  std::vector<i_t> basic_list(m);
+  std::vector<i_t> nonbasic_list;
+  basis_update_mpf_t<i_t, f_t> ft(m, settings.refactor_frequency);
+  const bool initialize_basis = true;
+  return dual_phase2_with_advanced_basis(phase,
+                                         slack_basis,
+                                         initialize_basis,
+                                         start_time,
+                                         lp,
+                                         settings,
+                                         vstatus,
+                                         ft,
+                                         basic_list,
+                                         nonbasic_list,
+                                         sol,
+                                         iter,
+                                         delta_y_steepest_edge,
+                                         work_estimate,
+                                         work_unit_context);
+}
+
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 
 template dual_status_t dual_phase2<int, double>(
@@ -4320,8 +4366,8 @@ template dual_status_t dual_phase2<int, double>(
   std::vector<variable_status_t>& vstatus,
   lp_solution_t<int, double>& sol,
   int& iter,
-  double& work_estimate,
   std::vector<double>& steepest_edge_norms,
+  double& work_estimate,
   work_limit_context_t* work_unit_context);
 
 template dual_status_t dual_phase2_with_advanced_basis<int, double>(
@@ -4337,8 +4383,8 @@ template dual_status_t dual_phase2_with_advanced_basis<int, double>(
   std::vector<int>& nonbasic_list,
   lp_solution_t<int, double>& sol,
   int& iter,
-  double& work_estimate,
   std::vector<double>& steepest_edge_norms,
+  double& work_estimate,
   work_limit_context_t* work_unit_context);
 
 template void compute_reduced_cost_update<int, double>(const lp_problem_t<int, double>& lp,

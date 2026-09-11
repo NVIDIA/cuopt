@@ -379,8 +379,8 @@ void strong_branch_helper(i_t start,
                                                   vstatus,
                                                   solution,
                                                   iter,
-                                                  child_work_estimate,
-                                                  child_edge_norms);
+                                                  child_edge_norms,
+                                                  child_work_estimate);
 
       f_t obj = std::numeric_limits<f_t>::quiet_NaN();
       if (status == dual_status_t::DUAL_UNBOUNDED) {
@@ -521,8 +521,8 @@ std::pair<f_t, dual_status_t> trial_branching(const lp_problem_t<i_t, f_t>& orig
                                                                   child_nonbasic_list,
                                                                   solution,
                                                                   iter,
-                                                                  child_work_estimate,
-                                                                  child_edge_norms);
+                                                                  child_edge_norms,
+                                                                  child_work_estimate);
 
   settings.log.debug("Trial branching on variable %d. Lo: %e Up: %e. Iter %d. Status %s. Obj %e\n",
                      branch_var,

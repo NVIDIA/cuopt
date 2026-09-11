@@ -267,8 +267,8 @@ lp_status_t solve_linear_program_with_advanced_basis(
                                 phase1_vstatus,
                                 phase1_solution,
                                 iter,
-                                work_estimate,
                                 edge_norms,
+                                work_estimate,
                                 work_unit_context);
   }
   if (phase1_status == dual_status_t::NUMERICAL) {
@@ -306,8 +306,8 @@ lp_status_t solve_linear_program_with_advanced_basis(
                                                            nonbasic_list,
                                                            solution,
                                                            iter,
-                                                           work_estimate,
                                                            edge_norms,
+                                                           work_estimate,
                                                            work_unit_context);
     if (status == dual_status_t::NUMERICAL) {
       // Became dual infeasible. Try phase 1 again
@@ -327,8 +327,8 @@ lp_status_t solve_linear_program_with_advanced_basis(
                                       nonbasic_list,
                                       phase1_solution,
                                       iter,
-                                      work_estimate,
                                       edge_norms,
+                                      work_estimate,
                                       work_unit_context);
       vstatus = phase1_vstatus;
       edge_norms.clear();
@@ -344,8 +344,8 @@ lp_status_t solve_linear_program_with_advanced_basis(
                                                nonbasic_list,
                                                solution,
                                                iter,
-                                               work_estimate,
                                                edge_norms,
+                                               work_estimate,
                                                work_unit_context);
     }
     if (settings.inside_mip == 1 && settings.concurrent_halt != nullptr) {

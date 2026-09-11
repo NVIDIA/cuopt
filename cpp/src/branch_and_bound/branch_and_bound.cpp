@@ -812,8 +812,8 @@ bool branch_and_bound_t<i_t, f_t>::repair_solution(const std::vector<f_t>& edge_
                                                  vstatus,
                                                  lp_solution,
                                                  iter,
-                                                 repair_work_estimate,
-                                                 leaf_edge_norms);
+                                                 leaf_edge_norms,
+                                                 repair_work_estimate);
   repaired_solution       = lp_solution.x;
 
   if (lp_status == dual_status_t::OPTIMAL) {
@@ -1758,8 +1758,8 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
                                                   worker->nonbasic_list,
                                                   worker->leaf_solution,
                                                   node_iter,
-                                                  node_work_estimate,
-                                                  worker->leaf_edge_norms);
+                                                  worker->leaf_edge_norms,
+                                                  node_work_estimate);
 
       if (lp_status == dual_status_t::NUMERICAL) {
         log.debug_format("Numerical issue node {}. Resolving from scratch.\n", node_ptr->node_id);
@@ -3651,8 +3651,8 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
                                                              nonbasic_list,
                                                              root_relax_soln_,
                                                              iter,
-                                                             cut_work_estimate,
-                                                             edge_norms_);
+                                                             edge_norms_,
+                                                             cut_work_estimate);
   exploration_stats_.total_simplex_iters += iter;
   f_t dual_phase2_time = toc(dual_phase2_start_time);
   if (dual_phase2_time > 1.0) {
@@ -6436,8 +6436,8 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node_deterministic(
                                                             worker.nonbasic_list,
                                                             worker.leaf_solution,
                                                             node_iter,
-                                                            dual_work_estimate,
                                                             leaf_edge_norms,
+                                                            dual_work_estimate,
                                                             &worker.work_context);
 
   if (lp_status == dual_status_t::NUMERICAL) {
@@ -7055,8 +7055,8 @@ void branch_and_bound_t<i_t, f_t>::deterministic_dive(
                                                               worker.nonbasic_list,
                                                               worker.leaf_solution,
                                                               node_iter,
-                                                              dual_work_estimate,
                                                               leaf_edge_norms,
+                                                              dual_work_estimate,
                                                               &worker.work_context);
 
     if (lp_status == dual_status_t::NUMERICAL) {
