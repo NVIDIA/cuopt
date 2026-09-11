@@ -117,11 +117,14 @@ i_t remove_empty_cols(lp_problem_t<i_t, f_t>& problem,
   i_t new_cols = 0;
   for (i_t j = 0; j < problem.num_cols; ++j) {
     bool remove_var = false;
+    f_t removed_z   = problem.objective[j];
     if (j < linear_cols && problem.A.col_length(j) == 0 && !q_coupled[j]) {
       f_t x_fix;
       if (unconstrained_1d_qp_minimizer(
             problem.objective[j], q_diag[j], problem.lower[j], problem.upper[j], x_fix)) {
         presolve_info.removed_values.push_back(x_fix);
+        // A e_j = 0 and Q diagonal, so stationarity gives z_j = c_j + q_jj * x_j
+        removed_z = problem.objective[j] + q_diag[j] * x_fix;
         problem.obj_constant += quadratic_1d_obj(x_fix, problem.objective[j], q_diag[j]);
         remove_var = true;
       }
@@ -130,7 +133,7 @@ i_t remove_empty_cols(lp_problem_t<i_t, f_t>& problem,
     if (remove_var) {
       col_marker[j] = 1;
       presolve_info.removed_variables.push_back(j);
-      presolve_info.removed_reduced_costs.push_back(problem.objective[j]);
+      presolve_info.removed_reduced_costs.push_back(removed_z);
     } else {
       col_marker[j] = 0;
       new_cols++;
