@@ -38,6 +38,30 @@
 # Attributes (all optional unless noted):
 #
 # Per-field:
+#   description        – human-readable meaning of the field. Emitted into
+#                          cuopt_mcp_schema.json as the JSON Schema
+#                          `description`, which is what an MCP client shows a
+#                          model deciding whether to set the field. Consumed
+#                          for settings sections only.
+#   default            – what the field does when omitted, written as a string
+#                          describing the C++ member initializer (e.g. "1e-4",
+#                          "-1 (automatic)"). Appended to the emitted
+#                          description as "Default: ...". Documentation only —
+#                          the generator neither derives nor validates it, and
+#                          it does not affect the wire format. Take the value
+#                          from the C++ struct, not from docs/: the two are
+#                          known to disagree.
+#   param_name         – the CUOPT_* string parameter this field corresponds
+#                          to, when it differs from the field name (the field
+#                          name is the *proto* name; MIP diverges heavily —
+#                          relative_mip_gap vs mip_relative_gap, mir_cuts vs
+#                          mip_mixed_integer_rounding_cuts). Emitted into the
+#                          MCP schema as "x-parameter-name". Set it explicitly
+#                          to `null` for a field with no CUOPT_* constant at
+#                          all: it stays on the wire but is dropped from the
+#                          MCP schema, since set_parameter would reject it.
+#                          python/cuopt_mcp/tests/test_parameter_names.py
+#                          asserts every advertised name exists in constants.h.
 #   type               – proto wire type (default: double for scalars, repeated double for arrays)
 #   field_num          – proto message field number (see "Field numbers" above)
 #   array_id           – enum value for ArrayFieldId or ResultFieldId
@@ -450,32 +474,74 @@ pdlp_settings:
     # Termination tolerances (nested: settings.tolerances.<field>)
   - tolerances:
     - absolute_gap_tolerance:
+        description: >-
+          Absolute term in PDLP's duality gap check:
+          duality_gap < absolute_gap_tolerance + relative_gap_tolerance *
+          (|primal_objective| + |dual_objective|).
+        default: "1e-4"
         field_num: 1
         optional: true
     - relative_gap_tolerance:
+        description: >-
+          Relative term in PDLP's duality gap check; multiplies
+          (|primal_objective| + |dual_objective|). Significant impact on
+          accuracy and runtime.
+        default: "1e-4"
         field_num: 2
         optional: true
     - primal_infeasible_tolerance:
+        description: >-
+          Tolerance used when PDLP declares the problem primal infeasible.
+          Only consulted when detect_infeasibility is enabled.
+        default: "1e-10"
         field_num: 3
         optional: true
     - dual_infeasible_tolerance:
+        description: >-
+          Tolerance used when PDLP declares the problem dual infeasible
+          (unbounded). Only consulted when detect_infeasibility is enabled.
+        default: "1e-10"
         field_num: 4
         optional: true
     - absolute_dual_tolerance:
+        description: >-
+          Absolute term in PDLP's dual feasibility check:
+          dual_feasibility < absolute_dual_tolerance + relative_dual_tolerance
+          * l2_norm(c).
+        default: "1e-4"
         field_num: 5
         optional: true
     - relative_dual_tolerance:
+        description: >-
+          Relative term in PDLP's dual feasibility check; multiplies the
+          objective vector L2 norm.
+        default: "1e-4"
         field_num: 6
         optional: true
     - absolute_primal_tolerance:
+        description: >-
+          Absolute term in PDLP's primal feasibility check:
+          primal_feasibility < absolute_primal_tolerance +
+          relative_primal_tolerance * l2_norm(b).
+        default: "1e-4"
         field_num: 7
         optional: true
     - relative_primal_tolerance:
+        description: >-
+          Relative term in PDLP's primal feasibility check; multiplies the
+          right-hand-side vector L2 norm.
+        default: "1e-4"
         field_num: 8
         optional: true
 
     # Limits
   - time_limit:
+      description: >-
+        Wall-clock limit in seconds after which the solver stops and returns
+        the current solution. Checked periodically rather than continuously,
+        so the solver may run slightly over. When set together with
+        iteration_limit, the first limit reached wins.
+      default: "no limit (infinity)"
       field_num: 9
       optional: true
   - iteration_limit:
@@ -484,6 +550,12 @@ pdlp_settings:
       # (max() <=> -1, preserving 26.04 compatibility) and `optional` adds the
       # missing piece — an omitted field would otherwise decode to the wire
       # zero (0), which is `>= 0` and would overwrite the C++ default with 0.
+      description: >-
+        Iteration limit after which the solver stops and returns the current
+        solution. Checked periodically, so the solver may run a few extra
+        iterations. When set together with time_limit, the first limit reached
+        wins.
+      default: "no limit (INT_MAX)"
       field_num: 10
       type: int64
       sentinel: max_as_negative_1
@@ -491,13 +563,28 @@ pdlp_settings:
 
     # Solver configuration
   - log_to_console:
+      description: >-
+        Whether the solver writes log output to the console. Logs may still be
+        written to a file when this is false.
+      default: "true"
       field_num: 11
       type: bool
       optional: true
   - detect_infeasibility:
+      param_name: infeasibility_detection
+      description: >-
+        Whether PDLP attempts to detect infeasibility. Detection is not always
+        accurate — some problems reported infeasible converge under a different
+        tolerance — and costs roughly 3-7% runtime and 10-20% memory. Dual
+        simplex always detects infeasibility regardless of this setting.
+      default: "false"
       field_num: 12
       type: bool
   - strict_infeasibility:
+      description: >-
+        When true, PDLP stops if either the current or the average solution is
+        detected infeasible. When false, both must be detected infeasible.
+      default: "false"
       field_num: 13
       type: bool
   - pdlp_solver_mode:
@@ -506,13 +593,32 @@ pdlp_settings:
       # omitted field would silently apply `Stable1` instead of the cuOpt
       # default. Declared `optional` so the mapper preserves the C++
       # default via `has_pdlp_solver_mode()`.
+      description: >-
+        Mode under which PDLP operates; changes how the problem is internally
+        optimized and can drastically change solve time. Stable3 is the best
+        overall mode from cuOpt experiments; Methodical1 takes slower but fewer
+        steps at 1.3-1.7x the memory; Fast1 is fastest but converges less
+        often. There is no way to know upfront which mode suits a given
+        problem — testing is encouraged.
+      default: "Stable3"
       field_num: 14
       type: pdlp_solver_mode
       optional: true
   - method:
+      description: >-
+        Method used to solve the LP. Concurrent runs PDLP, dual simplex and
+        barrier in parallel. Default accuracy differs per method: PDLP 1e-4
+        relative, barrier 1e-8 relative, dual simplex 1e-6 absolute.
+      default: "Concurrent"
       field_num: 15
       type: lp_method
   - presolver:
+      param_name: presolve
+      description: >-
+        Which presolver performs presolve reductions: 0 disables presolve,
+        1 selects Papilo, 2 selects PSLP. By default LP uses PSLP and MIP uses
+        Papilo.
+      default: "Default (PSLP for LP, Papilo for MIP)"
       field_num: 16
       type: int32
       from_proto_cast: "presolver_t"
@@ -522,45 +628,100 @@ pdlp_settings:
       # omits this field gets the solver default rather than the proto3 zero
       # (`false`). See also the matching `optional` markers on
       # `barrier_iterative_refinement` (pdlp) and `probing` (mip).
+      description: >-
+        Whether dual postsolve runs when the Papilo presolver is used on an LP.
+        Disabling it can improve solve time at the cost of losing access to the
+        dual solution. Not relevant for MIP.
+      default: "true"
       field_num: 17
       type: bool
       optional: true
   - crossover:
+      description: >-
+        Whether PDLP or barrier crosses over to a basic solution after reaching
+        optimality. PDLP and barrier solutions need not lie at a vertex;
+        crossover yields a basic solution with n - m variables on their bounds.
+        Significant impact on accuracy and runtime.
+      default: "false"
       field_num: 18
       type: bool
   - num_gpus:
+      description: >-
+        Number of GPUs used for the solve. Relevant to LP in concurrent mode
+        (up to 2 GPUs), where PDLP and barrier run on separate GPUs rather than
+        sharing one. For distributed PDLP, -1 selects all visible devices.
+      default: "1"
       field_num: 19
       type: int32
       optional: true
 
   - per_constraint_residual:
+      description: >-
+        Whether PDLP computes primal and dual residuals per constraint instead
+        of globally.
+      default: "false"
       field_num: 20
       type: bool
   - cudss_deterministic:
+      description: >-
+        Whether cuDSS runs in deterministic mode. Deterministic mode makes
+        results reproducible across runs but may be slower.
+      default: "false"
       field_num: 21
       type: bool
   - folding:
+      description: >-
+        Barrier: whether to fold the LP, reducing problem size by exploiting
+        symmetry. -1 automatic, 0 disabled, 1 forced.
+      default: "-1 (automatic)"
       field_num: 22
       type: int32
       optional: true
   - augmented:
+      description: >-
+        Barrier: which linear system to solve at each iteration. -1 automatic,
+        0 the ADAT system (normal equations), 1 the augmented system. The
+        augmented system can be more stable, ADAT is often faster.
+      default: "-1 (automatic)"
       field_num: 23
       type: int32
       optional: true
   - dualize:
+      description: >-
+        Barrier: whether presolve dualizes the LP, which can help problems with
+        inequality constraints that have more constraints than variables.
+        -1 automatic, 0 disabled, 1 forced.
+      default: "-1 (automatic)"
       field_num: 24
       type: int32
       optional: true
   - ordering:
+      description: >-
+        Barrier: ordering algorithm cuDSS uses for sparse factorizations, which
+        can significantly affect runtime. -1 automatic, 0 cuDSS default
+        ordering, 1 AMD (approximate minimum degree).
+      default: "-1 (automatic)"
       field_num: 25
       type: int32
       optional: true
   - barrier_dual_initial_point:
+      description: >-
+        Barrier: how the dual initial point is computed, which affects the
+        iteration count. -1 automatic, 0 the Lustig-Marsten-Shanno heuristic,
+        1 a least-squares problem minimizing the norms of the dual variables
+        and reduced costs subject to the dual equality constraints.
+      default: "-1 (automatic)"
       field_num: 26
       type: int32
       from_proto_cast: "barrier_dual_initial_point_t"
       optional: true
   - eliminate_dense_columns:
+      description: >-
+        Barrier: whether dense columns are eliminated from the constraint
+        matrix before solving, reducing factorization fill-in at the cost of
+        extra solves per iteration. Only has an effect when the ADAT (normal
+        equation) system is solved.
+      default: "true"
       field_num: 27
       type: bool
       optional: true
@@ -570,6 +731,10 @@ pdlp_settings:
       # proto3 `optional` so that a client which omits this field preserves
       # the solver default; without `optional`, the proto3 wire zero (`false`)
       # would silently overwrite the C++ default.
+      description: >-
+        Barrier: whether iterative refinement runs after each barrier solve to
+        improve solution accuracy (see cpp/src/barrier/barrier.cu).
+      default: "true"
       field_num: 31
       type: bool
       optional: true
@@ -582,19 +747,49 @@ pdlp_settings:
       # binding restricts the range to [0.5, 0.9999] with default 0.9; see
       # solver_settings.cu. No post-decode clamp is applied here for
       # consistency with the other f_t scalars (tolerances, time_limit, ...).
+      description: >-
+        Barrier: scaling factor applied to the primal/dual step size. Must be
+        strictly less than 1 — 0.9 is conservative, 0.999 aggressive. The
+        local-solve binding restricts the range to [0.5, 0.9999]; this field is
+        not clamped after decoding, for consistency with the other float
+        scalars.
+      default: "0.9"
       field_num: 32
       optional: true
   - postsolve_info:
+      # No user-facing documentation exists for this field yet (it is absent
+      # from docs/cuopt/source/convex-settings.rst); only the C++ default is
+      # recorded here. Add a `description:` once the behavior is documented.
+      default: "-1"
       field_num: 33
       type: int32
       optional: true
   - save_best_primal_so_far:
+      description: >-
+        Whether PDLP keeps the best primal solution seen so far. When enabled,
+        a primal feasible iterate always beats an infeasible one; among
+        feasible iterates the best primal objective wins; among infeasible
+        ones the lowest primal residual wins, breaking ties on objective.
+      default: "false"
       field_num: 28
       type: bool
   - first_primal_feasible:
+      description: >-
+        Whether the solver stops as soon as a primal feasible iterate is found,
+        without waiting for optimality or dual feasibility. Composable with
+        per_constraint_residual.
+      default: "false"
       field_num: 29
       type: bool
   - pdlp_precision:
+      description: >-
+        Precision mode for the PDLP solver. DefaultPrecision uses the problem's
+        native precision; SinglePrecision runs PDHG in FP32 (half the memory,
+        roughly 2x faster iterations, possibly more of them); DoublePrecision
+        forces FP64; MixedPrecision stores the constraint matrix in FP32 for
+        faster SpMV while keeping vectors and compute in FP64 (convergence
+        checks still use the FP64 matrix, so memory is not reduced).
+      default: "DefaultPrecision"
       field_num: 30
       type: int32
       from_proto_cast: "pdlp_precision_t"
@@ -610,72 +805,148 @@ mip_settings:
   fields:
     # Limits
   - time_limit:
+      description: >-
+        Wall-clock limit in seconds after which the solver stops and returns
+        the best solution found so far. When set together with node_limit or
+        work_limit, the first limit reached wins.
+      default: "no limit (infinity)"
       field_num: 1
       optional: true
 
     # Tolerances (nested: settings.tolerances.<field>)
   - tolerances:
     - relative_mip_gap:
+        param_name: mip_relative_gap
+        description: >-
+          Relative gap at which the solve terminates:
+          abs(best_objective - dual_bound) / abs(best_objective). The gap is
+          zero when both are zero, and infinite when only the best objective
+          is zero.
+        default: "1e-4"
         field_num: 2
         optional: true
     - absolute_mip_gap:
+        param_name: mip_absolute_gap
+        description: >-
+          Absolute gap at which the solve terminates: best_objective -
+          dual_bound when minimizing, dual_bound - best_objective when
+          maximizing.
+        default: "1e-10"
         field_num: 3
         optional: true
     - integrality_tolerance:
+        param_name: mip_integrality_tolerance
+        description: >-
+          How close to an integer a variable must be to count as integral.
+        default: "1e-5"
         field_num: 4
         optional: true
     - absolute_tolerance:
+        param_name: mip_absolute_tolerance
+        description: MIP absolute tolerance.
+        default: "1e-6"
         field_num: 5
         optional: true
     - relative_tolerance:
+        param_name: mip_relative_tolerance
+        description: MIP relative tolerance.
+        default: "1e-12"
         field_num: 6
         optional: true
     - presolve_absolute_tolerance:
+        # Not settable through cuOpt's string parameter API (no CUOPT_*
+        # constant in constants.h), so it is omitted from the MCP schema.
+        param_name: null
+        # No user-facing documentation exists for this field yet (it is absent
+        # from docs/cuopt/source/mip-settings.rst); only the C++ default is
+        # recorded here. Add a `description:` once the behavior is documented.
+        default: "1e-6"
         field_num: 7
         optional: true
 
     # Solver configuration
   - log_to_console:
+      description: >-
+        Whether the solver writes log output to the console. Logs may still be
+        written to a file when this is false.
+      default: "true"
       field_num: 8
       type: bool
       optional: true
   - heuristics_only:
+      param_name: mip_heuristics_only
+      description: >-
+        When true only the GPU heuristics run, improving the primal bound
+        alone. When false both GPU and CPU are used and the dual bound is
+        improved on the CPU.
+      default: "false"
       field_num: 9
       type: bool
   - num_cpu_threads:
+      description: >-
+        Number of CPU threads used by the MIP solver. Lower values cap cuOpt's
+        CPU footprint; higher values speed up the CPU-parallel parts. -1
+        derives the count from the number of CPU cores.
+      default: "-1 (automatic)"
       field_num: 10
       type: int32
       optional: true
   - num_gpus:
+      description: Number of GPUs used for the solve.
+      default: "1"
       field_num: 11
       type: int32
       optional: true
   - presolver:
+      param_name: presolve
+      description: >-
+        Which presolver performs presolve reductions: 0 disables presolve,
+        1 selects Papilo, 2 selects PSLP. MIP uses Papilo by default.
+      default: "Default (Papilo for MIP)"
       field_num: 12
       type: int32
       from_proto_cast: "presolver_t"
       optional: true
   - mip_scaling:
+      description: >-
+        Whether scaling is applied to the MIP problem. 0 off, 1 on, 2 applied
+        but not to the objective.
+      default: "2 (no objective scaling)"
       field_num: 13
       type: int32
       optional: true
   - symmetry:
+      param_name: mip_symmetry
       # Symmetry-detection level (dejavu). Valid: -1 (default), 0 (off),
       # 1 (orbital fixing), 2 (orbital fixing + lexical reduction). The
       # mapper clamps out-of-range values to -1 to match the local-solve
       # range check in cpp/src/math_optimization/solver_settings.cu.
+      description: >-
+        Symmetry detection and handling. -1 automatic, 0 disabled, 1 orbital
+        fixing, 2 orbital fixing plus lexical reduction.
+      default: "-1 (automatic)"
       field_num: 33
       type: int32
       optional: true
 
     # Additional limits
   - work_limit:
+      description: >-
+        Limit in work units — a machine-independent measure of solver effort —
+        after which the solver stops and returns the current solution. When set
+        together with time_limit or node_limit, the first limit reached wins.
+      default: "no limit (infinity)"
       field_num: 14
       optional: true
   - node_limit:
       # C++ default `max()`. See iteration_limit for the rationale on
       # composing `sentinel` with `optional` (sentinel for the explicit
       # wire-encoded "default" value, optional for the omitted-field case).
+      description: >-
+        Maximum number of branch-and-bound nodes explored before the solver
+        stops and returns the best feasible solution found, if any. When set
+        together with time_limit, the first limit reached wins.
+      default: "no limit (INT_MAX)"
       field_num: 15
       type: int32
       sentinel: max_as_negative_1
@@ -683,80 +954,181 @@ mip_settings:
 
     # Branching
   - reliability_branching:
+      param_name: mip_reliability_branching
+      description: >-
+        Reliability branching mode. -1 automatic (the solver picks whether to
+        use it and with what factor), 0 disabled, k > 0 enables it and treats a
+        variable as reliable once it has been branched on k times.
+      default: "-1 (automatic)"
       field_num: 16
       type: int32
       optional: true
   - mip_batch_pdlp_strong_branching:
+      description: >-
+        Whether strong branching at the root evaluates candidates with a single
+        batched PDLP solve instead of solving them in parallel with dual
+        simplex, which can cut strong-branching time when dual simplex
+        struggles. 0 disabled, 1 enabled.
+      default: "0 (disabled)"
       field_num: 17
       type: int32
   - mip_batch_pdlp_reliability_branching:
+      description: >-
+        Whether reliability-branching candidates are evaluated simultaneously
+        with a single batched PDLP solve. 0 disabled, 1 enabled.
+      default: "0 (disabled)"
       field_num: 32
       type: int32
   - strong_branching_simplex_iteration_limit:
+      param_name: mip_strong_branching_simplex_iteration_limit
+      description: >-
+        Maximum simplex iterations per candidate during strong branching.
+        Lowering it speeds up strong branching at the cost of less accurate
+        candidate evaluations.
+      default: "-1 (automatic)"
       field_num: 30
       type: int32
       optional: true
 
     # Cut configuration
+    # The individual cut-family toggles (mir_cuts, mixed_integer_gomory_cuts,
+    # knapsack_cuts, clique_cuts, zero_half_cuts, implied_bound_cuts,
+    # strong_chvatal_gomory_cuts) share the same tri-state contract:
+    # -1 automatic, 0 disabled, 1 enabled.
   - max_cut_passes:
+      param_name: mip_cut_passes
+      description: >-
+        Maximum number of cut passes to run. 0 disables cuts entirely; larger
+        values perform more passes.
+      default: "10"
       field_num: 18
       type: int32
       optional: true
   - mir_cuts:
+      param_name: mip_mixed_integer_rounding_cuts
+      description: >-
+        Whether mixed-integer rounding cuts are used. -1 automatic (the solver
+        decides from problem characteristics), 0 disabled, 1 enabled.
+      default: "-1 (automatic)"
       field_num: 19
       type: int32
       optional: true
   - mixed_integer_gomory_cuts:
+      param_name: mip_mixed_integer_gomory_cuts
+      description: >-
+        Whether mixed-integer Gomory cuts are used. -1 automatic, 0 disabled,
+        1 enabled.
+      default: "-1 (automatic)"
       field_num: 20
       type: int32
       optional: true
   - knapsack_cuts:
+      param_name: mip_knapsack_cuts
+      description: >-
+        Whether knapsack cuts are used. -1 automatic, 0 disabled, 1 enabled.
+      default: "-1 (automatic)"
       field_num: 21
       type: int32
       optional: true
   - clique_cuts:
+      param_name: mip_clique_cuts
+      description: >-
+        Whether clique cuts are used. -1 automatic, 0 disabled, 1 enabled.
+      default: "-1 (automatic)"
       field_num: 22
       type: int32
       optional: true
   - zero_half_cuts:
+      param_name: mip_zero_half_cuts
+      description: >-
+        Whether zero-half cuts are used. -1 automatic, 0 disabled, 1 enabled.
+      default: "-1 (automatic)"
       field_num: 52
       type: int32
       optional: true
   - implied_bound_cuts:
+      param_name: mip_implied_bound_cuts
+      description: >-
+        Whether implied bound cuts are used. -1 automatic, 0 disabled,
+        1 enabled.
+      default: "-1 (automatic)"
       field_num: 31
       type: int32
       optional: true
   - strong_chvatal_gomory_cuts:
+      param_name: mip_strong_chvatal_gomory_cuts
+      description: >-
+        Whether strong Chvatal-Gomory cuts are used. -1 automatic, 0 disabled,
+        1 enabled.
+      default: "-1 (automatic)"
       field_num: 23
       type: int32
       optional: true
   - reduced_cost_strengthening:
+      param_name: mip_reduced_cost_strengthening
+      description: >-
+        Whether integer feasible solutions are used to strengthen integer
+        variable bounds. -1 automatic, 0 disabled, 1 during the root cut
+        passes, 2 during the root cut passes and after strong branching.
+      default: "-1 (automatic)"
       field_num: 24
       type: int32
       optional: true
   - cut_change_threshold:
+      param_name: mip_cut_change_threshold
+      description: >-
+        Required improvement in the dual bound per cut pass. Larger values
+        demand significant improvement each pass; -1 lets cut passes continue
+        even without improvement.
+      default: "-1 (no threshold)"
       field_num: 25
       optional: true
   - cut_min_orthogonality:
+      param_name: mip_cut_min_orthogonality
+      description: >-
+        Minimum orthogonality a cut needs to be added to the LP relaxation.
+        Values near 1 require cuts to be nearly orthogonal to each other;
+        values near 0 admit more cuts.
+      default: "0.5"
       field_num: 26
       optional: true
 
     # Determinism and reproducibility
   - determinism_mode:
+      param_name: mip_determinism_mode
+      description: >-
+        0 opportunistic — results may vary between runs due to parallelism.
+        1 deterministic — improves reproducibility across runs with the same
+        thread count. Deterministic mode is experimental and does not yet
+        guarantee fully deterministic results in every scenario.
+      default: "0 (opportunistic)"
       field_num: 27
       type: int32
   - seed:
+      param_name: random_seed
+      description: >-
+        Random seed. A fixed seed gives reproducible results when running in
+        deterministic mode.
+      default: "-1 (chosen automatically)"
       field_num: 28
       type: int32
       optional: true
 
     # Presolve sub-steps
   - probing:
+      param_name: mip_probing
       # C++ default is `true`; declared as proto3 `optional` so that a client
       # which omits this field preserves the solver default. Without
       # `optional`, the proto3 wire zero (`false`) would silently overwrite
       # the C++ default. See also `dual_postsolve` and
       # `barrier_iterative_refinement` in pdlp_settings.
+      description: >-
+        Whether the probing-cache step of MIP presolve runs. Probing evaluates
+        variable fixings to discover implications later used by branch-and-bound
+        and the rounding heuristics. Only meaningful when presolve is otherwise
+        enabled — presolver=0 disables the whole pipeline. Probing is also
+        skipped in deterministic mode and on LP-only solves.
+      default: "true"
       field_num: 29
       type: bool
       optional: true
@@ -766,6 +1138,15 @@ mip_settings:
     # cannot derive a finite UB. Local-solve binding restricts the range to
     # [1.0, +inf] with default 1e10; see solver_settings.cu.
   - semi_continuous_big_m:
+      param_name: mip_semi_continuous_big_m
+      description: >-
+        Big-M coefficient used when linearizing semi-continuous variable
+        constraints (such a variable is either zero or lies in
+        [lower_bound, upper_bound]). Should be at least as large as the upper
+        bound of any semi-continuous variable in the problem. Serves as the
+        fallback upper bound when bounds-strengthening cannot derive a finite
+        one. The local-solve binding restricts the range to [1.0, +inf].
+      default: "1e10"
       field_num: 34
       optional: true
 
@@ -775,12 +1156,21 @@ mip_settings:
     # All fields carry non-zero defaults on the C++ side, so they are declared
     # `optional` in the proto: a client that omits any of them gets the C++
     # default rather than the proto3 wire zero (0).
+    # These are internal tuning knobs with no user-facing documentation page;
+    # the descriptions below are taken from the declaring comments in
+    # heuristics_hyper_params.hpp rather than from docs/.
   - heuristic_params:
     - population_size:
+        param_name: mip_hyper_heuristic_population_size
+        description: Maximum number of solutions held in the solution pool.
+        default: "32"
         field_num: 35
         type: int32
         optional: true
     - num_cpufj_threads:
+        param_name: mip_hyper_heuristic_num_cpufj_threads
+        description: Number of parallel CPU Feasibility Jump climbers.
+        default: "8"
         field_num: 36
         type: int32
         optional: true
@@ -788,54 +1178,111 @@ mip_settings:
     # presolve stopped taking a wall budget. Do not reuse: an older client
     # still sends them on those numbers.
     - root_lp_time_ratio:
+        param_name: mip_hyper_heuristic_root_lp_time_ratio
+        description: Fraction of the total time budget given to the root LP.
+        default: "0.1"
         field_num: 39
         optional: true
     - root_lp_max_time:
+        param_name: mip_hyper_heuristic_root_lp_max_time
+        description: Hard cap in seconds on the root LP solve.
+        default: "15.0"
         field_num: 40
         optional: true
     - rins_time_limit:
+        param_name: mip_hyper_heuristic_rins_time_limit
+        description: Per-call time budget in seconds for the RINS sub-MIP.
+        default: "3.0"
         field_num: 41
         optional: true
     - rins_max_time_limit:
+        param_name: mip_hyper_heuristic_rins_max_time_limit
+        description: >-
+          Ceiling in seconds on the adaptive RINS time budget.
+        default: "20.0"
         field_num: 42
         optional: true
     - rins_fix_rate:
+        param_name: mip_hyper_heuristic_rins_fix_rate
+        description: Fraction of variables RINS fixes before solving the sub-MIP.
+        default: "0.5"
         field_num: 43
         optional: true
     - stagnation_trigger:
+        param_name: mip_hyper_heuristic_stagnation_trigger
+        description: >-
+          Number of Feasibility Pump loops without improvement before
+          recombination is triggered.
+        default: "3"
         field_num: 44
         type: int32
         optional: true
     - max_iterations_without_improvement:
+        param_name: mip_hyper_heuristic_max_iterations_without_improvement
+        description: Depth of the diversity step taken after stagnation.
+        default: "8"
         field_num: 45
         type: int32
         optional: true
     - initial_infeasibility_weight:
+        param_name: mip_hyper_heuristic_initial_infeasibility_weight
+        description: Seed value for the constraint violation penalty.
+        default: "1000.0"
         field_num: 46
         optional: true
     - n_of_minimums_for_exit:
+        param_name: mip_hyper_heuristic_n_of_minimums_for_exit
+        description: >-
+          Number of local minima after which the Feasibility Jump baseline
+          exits.
+        default: "7000"
         field_num: 47
         type: int32
         optional: true
     - enabled_recombiners:
+        param_name: mip_hyper_heuristic_enabled_recombiners
+        description: >-
+          Bitmask of enabled recombiners: 1 bound propagation, 2 feasibility
+          pump, 4 local search, 8 sub-MIP.
+        default: "15 (all enabled)"
         field_num: 48
         type: int32
         optional: true
     - cycle_detection_length:
+        param_name: mip_hyper_heuristic_cycle_detection_length
+        description: >-
+          Size of the ring buffer used to detect Feasibility Pump assignment
+          cycles.
+        default: "30"
         field_num: 49
         type: int32
         optional: true
     - relaxed_lp_time_limit:
+        param_name: mip_hyper_heuristic_relaxed_lp_time_limit
+        description: >-
+          Base time cap in seconds for relaxed LP solves inside the heuristics.
+        default: "1.0"
         field_num: 50
         optional: true
     - related_vars_time_limit:
+        param_name: mip_hyper_heuristic_related_vars_time_limit
+        description: >-
+          Time in seconds allowed for building the related-variable structure.
+        default: "30.0"
         field_num: 51
         optional: true
     - presolve_max_rounds:
+        param_name: mip_hyper_heuristic_presolve_max_rounds
+        description: >-
+          Cap on Papilo presolve rounds. A value <= 0 removes the cap entirely.
+        default: "-1 (no override)"
         field_num: 53
         type: int32
         optional: true
     - papilo_probing_max_badgesize:
+        param_name: mip_hyper_heuristic_papilo_probing_max_badgesize
+        description: Ceiling on Papilo's probing.minbadgesize.
+        default: "-1 (no override)"
         field_num: 54
         type: int32
         optional: true
