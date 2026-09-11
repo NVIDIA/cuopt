@@ -25,6 +25,7 @@
 #include <utility>
 
 namespace {
+using cuopt::mathematical_optimization::io::coo_canonicalization_scratch_t;
 using cuopt::mathematical_optimization::io::coo_entries_t;
 using cuopt::mathematical_optimization::io::error_type_t;
 using cuopt::mathematical_optimization::io::mps_parser_expects;
@@ -156,6 +157,134 @@ void triples_to_csr_flat(const coo_entries_t<i_t, f_t>& entries,
   out_offsets = std::move(scratch.row_off);
 }
 
+/**
+ * @brief One stable counting pass of an LSD radix sort: sorts the entry indices in `order` by
+ * `key[entry]`, which must lie in [0, key_range).
+ *
+ * @param scratch Second buffer, same size as `order`; the pass writes into it, then swaps.
+ * @param count Per-key counters, resized internally.
+ */
+template <typename i_t>
+void counting_sort_pass(const std::vector<i_t>& key,
+                        size_t key_range,
+                        std::vector<i_t>& order,
+                        std::vector<i_t>& scratch,
+                        std::vector<i_t>& count)
+{
+  const size_t nnz = order.size();
+  count.assign(key_range + 1, 0);
+  for (size_t t = 0; t < nnz; ++t) {
+    count[key[order[t]] + 1]++;
+  }
+  for (size_t v = 0; v < key_range; ++v) {
+    count[v + 1] += count[v];
+  }
+  for (size_t t = 0; t < nnz; ++t) {
+    scratch[count[key[order[t]]]++] = order[t];
+  }
+  order.swap(scratch);
+}
+
+// Smallest b such that 2^b >= v, clamped to at least 1.
+inline size_t log2_ceil(size_t v)
+{
+  if (v <= 1) { return 1; }
+  size_t bits = 0;
+  for (size_t x = v - 1; x != 0; x >>= 1) {
+    ++bits;
+  }
+  return bits;
+}
+
+/**
+ * @brief Writes each entry's canonical upper-triangle coordinate into `row_rank` and `col_rank`:
+ * min(r, c) and max(r, c), each stored as an integer rank rather than a variable index.
+ *
+ * @param sorted_values The inverse map, rank -> variable index.
+ * @return The number of ranks -- the whole index span (direct branch, so it can cover indices
+ * that never occur) or just the distinct indices present (ranking branch).
+ */
+template <typename i_t>
+size_t compress_canonical_pairs(const std::vector<i_t>& rows,
+                                const std::vector<i_t>& cols,
+                                std::vector<i_t>& row_rank,
+                                std::vector<i_t>& col_rank,
+                                std::vector<i_t>& sorted_values)
+{
+  const size_t nnz = rows.size();
+  row_rank.resize(nnz);
+  col_rank.resize(nnz);
+
+  i_t min_index = rows[0];
+  i_t max_index = rows[0];
+  for (size_t k = 0; k < nnz; ++k) {
+    min_index = std::min({min_index, rows[k], cols[k]});
+    max_index = std::max({max_index, rows[k], cols[k]});
+  }
+  const size_t range = static_cast<size_t>(max_index - min_index) + 1;
+
+  // Both branches produce the same ranks; pick the cheaper. Direct costs ~2*nnz + 2*range (the
+  // rank table is zero-filled by `resize`, then overwritten), ranking ~2*nnz*log2(2*nnz). Choosing
+  // direct also bounds its range-sized buffers, since it implies range = O(nnz log nnz).
+  const size_t direct_cost  = 2 * nnz + 2 * range;
+  const size_t ranking_cost = 2 * nnz * log2_ceil(2 * nnz);
+  if (direct_cost <= ranking_cost) {
+    // Direct: shift by the minimum, no ranking step.
+    for (size_t k = 0; k < nnz; ++k) {
+      row_rank[k] = std::min(rows[k], cols[k]) - min_index;
+      col_rank[k] = std::max(rows[k], cols[k]) - min_index;
+    }
+    sorted_values.resize(range);
+    for (size_t t = 0; t < range; ++t) {
+      sorted_values[t] = min_index + static_cast<i_t>(t);
+    }
+    return range;
+  }
+
+  // Ranking: sort + unique the indices that occur, then map each to its rank by binary search.
+  sorted_values.clear();
+  sorted_values.reserve(2 * nnz);
+  sorted_values.insert(sorted_values.end(), rows.begin(), rows.end());
+  sorted_values.insert(sorted_values.end(), cols.begin(), cols.end());
+  std::sort(sorted_values.begin(), sorted_values.end());
+  sorted_values.erase(std::unique(sorted_values.begin(), sorted_values.end()), sorted_values.end());
+  const auto rank_of = [&](i_t value) {
+    return static_cast<i_t>(std::lower_bound(sorted_values.begin(), sorted_values.end(), value) -
+                            sorted_values.begin());
+  };
+  for (size_t k = 0; k < nnz; ++k) {
+    row_rank[k] = rank_of(std::min(rows[k], cols[k]));
+    col_rank[k] = rank_of(std::max(rows[k], cols[k]));
+  }
+  return sorted_values.size();
+}
+
+/**
+ * @brief Orders the entries by canonical (row, col), leaving the result in `s.order` and the
+ * per-entry ranks in `s.row_rank` / `s.col_rank`.
+ *
+ * Least-significant key first: the stable row pass preserves the column pass.
+ *
+ * @return The number of ranks, from `compress_canonical_pairs`.
+ */
+template <typename i_t, typename f_t>
+size_t order_by_canonical_pair(const std::vector<i_t>& rows,
+                               const std::vector<i_t>& cols,
+                               coo_canonicalization_scratch_t<i_t, f_t>& s)
+{
+  const size_t nnz = rows.size();
+  const size_t num_ranks =
+    compress_canonical_pairs(rows, cols, s.row_rank, s.col_rank, s.sorted_values);
+  s.order.resize(nnz);
+  s.pass_scratch.resize(nnz);
+  for (size_t t = 0; t < nnz; ++t) {
+    s.order[t] = static_cast<i_t>(t);
+  }
+  counting_sort_pass(s.col_rank, num_ranks, s.order, s.pass_scratch, s.count);
+  counting_sort_pass(s.row_rank, num_ranks, s.order, s.pass_scratch, s.count);
+  return num_ranks;
+}
+
 }  // namespace
 
 namespace cuopt::mathematical_optimization::io {
@@ -181,152 +310,124 @@ std::string_view trim(std::string_view str)
 template <typename i_t, typename f_t>
 void check_symmetric_offdiagonal_pairs(const std::vector<i_t>& rows,
                                        const std::vector<i_t>& cols,
-                                       const std::vector<f_t>& vals)
+                                       const std::vector<f_t>& vals,
+                                       coo_canonicalization_scratch_t<i_t, f_t>& s)
 {
-  const size_t n = vals.size();
-  mps_parser_expects(rows.size() == n && cols.size() == n,
+  const size_t nnz = vals.size();
+  mps_parser_expects(rows.size() == nnz && cols.size() == nnz,
                      error_type_t::ValidationError,
                      "COO rows/cols/vals length mismatch");
-  if (n == 0) { return; }
+  if (nnz == 0) { return; }
 
-  // Build two index permutations of the COO entries: one ordered by (row, col)
-  // and one by (col, row). The transpose of the k-th (row, col)-ordered entry is
-  // the k-th (col, row)-ordered entry, so walking both in lockstep proves the
-  // entry set equals its transpose (i.e. Q is symmetric) in O(n log n).
-  // Diagonal entries are their own transpose and validate trivially.
-  std::vector<size_t> row_major(n);
-  std::vector<size_t> col_major(n);
-  for (size_t t = 0; t < n; ++t) {
-    row_major[t] = t;
-    col_major[t] = t;
-  }
-  std::sort(row_major.begin(), row_major.end(), [&](size_t a, size_t b) {
-    return rows[a] != rows[b] ? rows[a] < rows[b] : cols[a] < cols[b];
-  });
-  std::sort(col_major.begin(), col_major.end(), [&](size_t a, size_t b) {
-    return cols[a] != cols[b] ? cols[a] < cols[b] : rows[a] < rows[b];
-  });
-
-  // Reject duplicate (row, col) entries; duplicates are adjacent in row-major order.
-  for (size_t k = 1; k < n; ++k) {
-    const size_t prev = row_major[k - 1];
-    const size_t cur  = row_major[k];
-    mps_parser_expects(rows[prev] != rows[cur] || cols[prev] != cols[cur],
-                       error_type_t::ValidationError,
-                       "QCMATRIX duplicate entry (%d,%d)",
-                       rows[cur],
-                       cols[cur]);
-  }
+  // Grouping by canonical pair puts the two orientations of an off-diagonal pair adjacent, so one
+  // walk over the runs proves the entry set equals its transpose (i.e. Q is symmetric). A valid
+  // run is a single diagonal entry, or exactly (i,j) and (j,i); anything else is a duplicate or a
+  // missing transpose partner.
+  order_by_canonical_pair(rows, cols, s);
+  const std::vector<i_t>& order    = s.order;
+  const std::vector<i_t>& row_rank = s.row_rank;
+  const std::vector<i_t>& col_rank = s.col_rank;
 
   const f_t eps = std::numeric_limits<f_t>::epsilon();
-  for (size_t k = 0; k < n; ++k) {
-    const size_t a = row_major[k];  // entry (r, c)
-    const size_t b = col_major[k];  // its required transpose partner (c, r)
-    mps_parser_expects(rows[a] == cols[b] && cols[a] == rows[b],
-                       error_type_t::ValidationError,
-                       "QCMATRIX off-diagonal (%d,%d) requires a matching (%d,%d) entry",
-                       rows[a],
-                       cols[a],
-                       cols[a],
-                       rows[a]);
-    mps_parser_expects(
-      std::abs(vals[a] - vals[b]) <= eps,
-      error_type_t::ValidationError,
-      "QCMATRIX symmetric off-diagonals (%d,%d) and (%d,%d) must match; got %.17g and %.17g",
-      rows[a],
-      cols[a],
-      cols[a],
-      rows[a],
-      vals[a],
-      vals[b]);
+  for (size_t k = 0; k < nnz;) {
+    const size_t a = order[k];
+    const i_t row  = row_rank[a];
+    const i_t col  = col_rank[a];
+    size_t e       = k + 1;
+    while (e < nnz && row_rank[order[e]] == row && col_rank[order[e]] == col) {
+      ++e;
+    }
+
+    if (row == col) {
+      // A diagonal entry is its own transpose; any repeat of it is a duplicate.
+      mps_parser_expects(e - k == 1,
+                         error_type_t::ValidationError,
+                         "QCMATRIX duplicate entry (%d,%d)",
+                         rows[a],
+                         cols[a]);
+    } else {
+      mps_parser_expects(e - k >= 2,
+                         error_type_t::ValidationError,
+                         "QCMATRIX off-diagonal (%d,%d) requires a matching (%d,%d) entry",
+                         rows[a],
+                         cols[a],
+                         cols[a],
+                         rows[a]);
+      const size_t b = order[k + 1];
+      // A well-formed run holds one entry per orientation, so the two rows must differ.
+      mps_parser_expects(e - k == 2 && rows[a] != rows[b],
+                         error_type_t::ValidationError,
+                         "QCMATRIX duplicate entry (%d,%d)",
+                         rows[b],
+                         cols[b]);
+      mps_parser_expects(
+        std::abs(vals[a] - vals[b]) <= eps,
+        error_type_t::ValidationError,
+        "QCMATRIX symmetric off-diagonals (%d,%d) and (%d,%d) must match; got %.17g and %.17g",
+        rows[a],
+        cols[a],
+        cols[a],
+        rows[a],
+        vals[a],
+        vals[b]);
+    }
+    k = e;
   }
 }
 
 template <typename i_t, typename f_t>
-void canonicalize_coo_matrix(std::vector<i_t>& rows, std::vector<i_t>& cols, std::vector<f_t>& vals)
+void canonicalize_coo_matrix(std::vector<i_t>& rows,
+                             std::vector<i_t>& cols,
+                             std::vector<f_t>& vals,
+                             coo_canonicalization_scratch_t<i_t, f_t>& s)
 {
-  const size_t n = vals.size();
-  mps_parser_expects(rows.size() == n && cols.size() == n,
+  const size_t nnz = vals.size();
+  mps_parser_expects(rows.size() == nnz && cols.size() == nnz,
                      error_type_t::ValidationError,
                      "COO rows/cols/vals length mismatch");
-  if (n == 0) {
+  if (nnz == 0) {
     rows.clear();
     cols.clear();
     vals.clear();
     return;
   }
 
-  // Canonical coordinates place each entry in the upper triangle:
-  // row = min(r, c), col = max(r, c).
-  i_t min_idx = std::min(rows[0], cols[0]);
-  i_t max_row = 0;
-  i_t max_col = 0;
-  for (size_t k = 0; k < n; ++k) {
-    const i_t r = std::min(rows[k], cols[k]);
-    const i_t c = std::max(rows[k], cols[k]);
-    min_idx     = std::min(min_idx, r);
-    max_row     = std::max(max_row, r);
-    max_col     = std::max(max_col, c);
-  }
+  // Both orientations of an off-diagonal pair share a canonical key, as do exact duplicates, so
+  // ordering by it makes every group that must merge contiguous.
+  order_by_canonical_pair(rows, cols, s);
+  const std::vector<i_t>& order         = s.order;
+  const std::vector<i_t>& row_rank      = s.row_rank;
+  const std::vector<i_t>& col_rank      = s.col_rank;
+  const std::vector<i_t>& sorted_values = s.sorted_values;
 
-  // Bucket entry indices by canonical row via a stable counting sort.
-  std::vector<i_t> offsets(static_cast<size_t>(max_row - min_idx) + 2, 0);
-  for (size_t k = 0; k < n; ++k) {
-    offsets[std::min(rows[k], cols[k]) - min_idx + 1]++;
-  }
-  for (i_t r = 0; r <= max_row - min_idx; ++r) {
-    offsets[r + 1] += offsets[r];
-  }
-  std::vector<i_t> perm(n);
-  std::vector<i_t> cursor(offsets.begin(), offsets.end() - 1);
-  for (size_t k = 0; k < n; ++k) {
-    const i_t r     = std::min(rows[k], cols[k]) - min_idx;
-    perm[cursor[r]] = static_cast<i_t>(k);
-    cursor[r]++;
-  }
-
-  // Merge duplicate (row, col) entries within each canonical row using a marker array
-  // (marker[c] holds 1 + the output position of column c in the current row), then sort
-  // each row's entries by column.
-  struct entry_t {
-    i_t row;
-    i_t col;
-    f_t val;
-  };
-  std::vector<entry_t> entries;
-  entries.reserve(n);
-  std::vector<i_t> marker(static_cast<size_t>(max_col - min_idx) + 1, 0);
-  for (i_t r = 0; r <= max_row - min_idx; ++r) {
-    const i_t row_start = static_cast<i_t>(entries.size());
-    for (i_t p = offsets[r]; p < offsets[r + 1]; ++p) {
-      const i_t k   = perm[p];
-      const i_t row = std::min(rows[k], cols[k]);
-      const i_t col = std::max(rows[k], cols[k]);
-      const i_t c   = col - min_idx;
-      if (marker[c] <= row_start) {
-        entries.push_back(entry_t{row, col, vals[k]});
-        marker[c] = static_cast<i_t>(entries.size());
-      } else {
-        entries[marker[c] - 1].val += vals[k];
-      }
-    }
-    std::sort(entries.begin() + row_start,
-              entries.end(),
-              [](const entry_t& lhs, const entry_t& rhs) { return lhs.col < rhs.col; });
-  }
-
-  // Emit canonical COO, dropping entries whose coefficients cancelled to ~0.
+  // Entries sharing a canonical key are now adjacent, so one walk sums each run (x^T Q x
+  // semantics), maps ranks back to variable indices, and drops coefficients that cancel to ~0.
   const f_t eps = std::numeric_limits<f_t>::epsilon();
-  rows.clear();
-  cols.clear();
-  vals.clear();
-  for (const entry_t& e : entries) {
-    if (std::abs(e.val) > eps) {
-      rows.push_back(e.row);
-      cols.push_back(e.col);
-      vals.push_back(e.val);
+  s.out_rows.clear();
+  s.out_cols.clear();
+  s.out_vals.clear();
+  s.out_rows.reserve(nnz);
+  s.out_cols.reserve(nnz);
+  s.out_vals.reserve(nnz);
+  for (size_t k = 0; k < nnz;) {
+    const i_t row = row_rank[order[k]];
+    const i_t col = col_rank[order[k]];
+    f_t sum       = vals[order[k]];
+    size_t e      = k + 1;
+    for (; e < nnz && row_rank[order[e]] == row && col_rank[order[e]] == col; ++e) {
+      sum += vals[order[e]];
     }
+    if (std::abs(sum) > eps) {
+      s.out_rows.push_back(sorted_values[row]);
+      s.out_cols.push_back(sorted_values[col]);
+      s.out_vals.push_back(sum);
+    }
+    k = e;
   }
+
+  rows.swap(s.out_rows);
+  cols.swap(s.out_cols);
+  vals.swap(s.out_vals);
 }
 
 BoundType convert(std::string_view str)
@@ -1413,8 +1514,10 @@ void mps_parser_t<i_t, f_t>::flush_qcmatrix_block()
                        "Duplicate QCMATRIX block for the same constraint row (index %d)",
                        static_cast<int>(qcmatrix_active_row_id_));
   }
-  check_symmetric_offdiagonal_pairs(
-    qcmatrix_current_entries_.rows, qcmatrix_current_entries_.cols, qcmatrix_current_entries_.vals);
+  check_symmetric_offdiagonal_pairs(qcmatrix_current_entries_.rows,
+                                    qcmatrix_current_entries_.cols,
+                                    qcmatrix_current_entries_.vals,
+                                    qcmatrix_scratch_);
   qcmatrix_raw_block_t block;
   block.constraint_row_id = qcmatrix_active_row_id_;
   block.entries           = std::move(qcmatrix_current_entries_);
@@ -1711,30 +1814,44 @@ template class mps_parser_t<int, float>;
 
 template class mps_parser_t<int, double>;
 
-template void check_symmetric_offdiagonal_pairs<int, float>(const std::vector<int>&,
-                                                            const std::vector<int>&,
-                                                            const std::vector<float>&);
-template void check_symmetric_offdiagonal_pairs<int, double>(const std::vector<int>&,
-                                                             const std::vector<int>&,
-                                                             const std::vector<double>&);
-template void check_symmetric_offdiagonal_pairs<int64_t, float>(const std::vector<int64_t>&,
-                                                                const std::vector<int64_t>&,
-                                                                const std::vector<float>&);
-template void check_symmetric_offdiagonal_pairs<int64_t, double>(const std::vector<int64_t>&,
-                                                                 const std::vector<int64_t>&,
-                                                                 const std::vector<double>&);
+template void check_symmetric_offdiagonal_pairs<int, float>(
+  const std::vector<int>&,
+  const std::vector<int>&,
+  const std::vector<float>&,
+  coo_canonicalization_scratch_t<int, float>&);
+template void check_symmetric_offdiagonal_pairs<int, double>(
+  const std::vector<int>&,
+  const std::vector<int>&,
+  const std::vector<double>&,
+  coo_canonicalization_scratch_t<int, double>&);
+template void check_symmetric_offdiagonal_pairs<int64_t, float>(
+  const std::vector<int64_t>&,
+  const std::vector<int64_t>&,
+  const std::vector<float>&,
+  coo_canonicalization_scratch_t<int64_t, float>&);
+template void check_symmetric_offdiagonal_pairs<int64_t, double>(
+  const std::vector<int64_t>&,
+  const std::vector<int64_t>&,
+  const std::vector<double>&,
+  coo_canonicalization_scratch_t<int64_t, double>&);
 
 template void canonicalize_coo_matrix<int, float>(std::vector<int>&,
                                                   std::vector<int>&,
-                                                  std::vector<float>&);
+                                                  std::vector<float>&,
+                                                  coo_canonicalization_scratch_t<int, float>&);
 template void canonicalize_coo_matrix<int, double>(std::vector<int>&,
                                                    std::vector<int>&,
-                                                   std::vector<double>&);
-template void canonicalize_coo_matrix<int64_t, float>(std::vector<int64_t>&,
-                                                      std::vector<int64_t>&,
-                                                      std::vector<float>&);
-template void canonicalize_coo_matrix<int64_t, double>(std::vector<int64_t>&,
-                                                       std::vector<int64_t>&,
-                                                       std::vector<double>&);
+                                                   std::vector<double>&,
+                                                   coo_canonicalization_scratch_t<int, double>&);
+template void canonicalize_coo_matrix<int64_t, float>(
+  std::vector<int64_t>&,
+  std::vector<int64_t>&,
+  std::vector<float>&,
+  coo_canonicalization_scratch_t<int64_t, float>&);
+template void canonicalize_coo_matrix<int64_t, double>(
+  std::vector<int64_t>&,
+  std::vector<int64_t>&,
+  std::vector<double>&,
+  coo_canonicalization_scratch_t<int64_t, double>&);
 
 }  // namespace cuopt::mathematical_optimization::io
