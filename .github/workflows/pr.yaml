@@ -24,6 +24,10 @@ jobs:
       - conda-cpp-build
       - conda-cpp-tests
       - java-build
+      - java-static-build-matrix
+      - java-static-build
+      - java-static-test
+      - java-static-gather
       - conda-python-build
       - conda-python-tests
       - docs-build
@@ -113,6 +117,7 @@ jobs:
           - '!SECURITY.md'
           - '!ci/build_wheel*.sh'
           - '!ci/build_java.sh'
+          - '!ci/build_java_static.sh'
           - '!ci/check_style.sh'
           - '!ci/docker/**'
           - '!ci/release/**'
@@ -178,6 +183,7 @@ jobs:
           - '!agents/**'
           - '!ci/build_docs.sh'
           - '!ci/build_java.sh'
+          - '!ci/build_java_static.sh'
           - '!ci/build_python.sh'
           - '!ci/build_wheel*.sh'
           - '!ci/check_style.sh'
@@ -213,6 +219,7 @@ jobs:
         test_java:
           - 'java/**'
           - 'ci/build_java.sh'
+          - 'ci/build_java_static.sh'
           - 'ci/test_java.sh'
           - 'dependencies.yaml'
           - '.github/workflows/pr.yaml'
@@ -262,6 +269,7 @@ jobs:
           - '!agents/**'
           - '!ci/build_docs.sh'
           - '!ci/build_java.sh'
+          - '!ci/build_java_static.sh'
           - '!ci/build_wheel*.sh'
           - '!ci/check_style.sh'
           - '!ci/docker/**'
@@ -337,6 +345,7 @@ jobs:
           - '!ci/build_docs.sh'
           - '!ci/build_python.sh'
           - '!ci/build_java.sh'
+          - '!ci/build_java_static.sh'
           - '!ci/check_style.sh'
           - '!ci/docker/**'
           - '!ci/release/**'
@@ -477,6 +486,112 @@ jobs:
       artifact-name: "cuopt_docs"
       container_image: "rapidsai/ci-conda:26.10-latest"
       script: "ci/build_docs.sh"
+  # Compiles libcuopt from source (one self-contained classifier JAR per CUDA major and
+  # architecture), so this does not need conda-cpp-build. See #1817.
+  java-static-build-matrix:
+    needs: changed-files
+    permissions:
+      contents: read
+    uses: rapidsai/shared-workflows/.github/workflows/compute-matrix.yaml@main
+    if: >-
+      fromJSON(needs.changed-files.outputs.changed_file_groups).test_java ||
+      fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
+    with:
+      build_type: pull-request
+      matrix_name: conda-cpp-build
+      matrix_filter: 'map(. + {CUDA_MAJOR: (.CUDA_VER | split(".") | .[0])}) | unique_by([.ARCH, .CUDA_MAJOR])'
+
+  java-static-build:
+    needs: [java-static-build-matrix, changed-files]
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    secrets: inherit # zizmor: ignore[secrets-inherit]
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.java-static-build-matrix.outputs.matrix) }}
+    if: >-
+      fromJSON(needs.changed-files.outputs.changed_file_groups).test_java ||
+      fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
+    with:
+      build_type: pull-request
+      node_type: "cpu16"
+      arch: ${{ matrix.ARCH }}
+      # Must be CUDA-version-pinned, not the bare "26.10-latest" tag: custom-job.yaml has no
+      # per-matrix env passthrough, so an untagged image would leave RAPIDS_CUDA_VERSION at
+      # that image's single baked-in default for every matrix entry.
+      # ci/build_java_static.sh reads it to pick the conda CUDA toolkit, so every "cuN" classifier
+      # JAR would actually be built against the same CUDA version and just mislabeled. Matches
+      # the pattern conda-cpp-build.yaml itself uses for this image family.
+      container_image: "rapidsai/ci-conda:26.10-cuda${{ matrix.CUDA_VER }}-${{ matrix.LINUX_VER }}-py${{ matrix.PY_VER }}"
+      script: "ci/build_java_static.sh"
+      artifact-name: "cuopt_java_${{ matrix.ARCH }}_cu${{ matrix.CUDA_MAJOR }}"
+      file_to_upload: "java/cuopt/classifier-jars/"
+
+  # Runs the full Java suite against each classifier JAR on a GPU, with no libcuopt installed,
+  # so a JAR that loads but computes wrong answers fails here rather than at a user.
+  java-static-test:
+    needs: [java-static-build, java-static-build-matrix]
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    secrets: inherit # zizmor: ignore[secrets-inherit]
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.java-static-build-matrix.outputs.matrix) }}
+    with:
+      build_type: pull-request
+      node_type: "gpu-l4-latest-1"
+      arch: ${{ matrix.ARCH }}
+      # A plain CUDA-devel + dnf environment rather than rapidsai/ci-conda: the packaged JAR
+      # only needs a JDK, Maven and the CUDA runtime (libcublas/libcusparse, already in this
+      # image) to test, and a fresh `conda create` every run was slow enough that concurrent
+      # matrix jobs' cold Maven Central resolution reliably lined up and triggered 429s.
+      container_image: "rapidsai/ci-wheel:26.10-cuda${{ matrix.CUDA_VER }}-${{ matrix.LINUX_VER }}-py${{ matrix.PY_VER }}"
+      script: "ci/test_java_static.sh"
+      # Surefire fork-crash diagnostics (dumpstream/hs_err files) are also printed inline by
+      # the script on failure, but keep the raw reports downloadable too -- the JVM sometimes
+      # crashes without a clean dumpstream, and per-matrix-entry artifacts survive independently
+      # of how much of the console log GitHub keeps.
+      artifact-name: "cuopt_java_static_test_${{ matrix.ARCH }}_cu${{ matrix.CUDA_MAJOR }}"
+      file_to_upload: "java/cuopt/target/surefire-reports/"
+
+  java-static-gather:
+    needs: [java-static-build]
+    runs-on: linux-amd64-cpu4
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code repo
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Download per-classifier JAR artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: cuopt_java_*
+          path: ${{ runner.temp }}/jars
+          merge-multiple: true
+      - name: Assemble Maven repository layout
+        run: |
+          ./java/cuopt/ci/assemble_maven_repo.sh \
+            --jars-dir "${RUNNER_TEMP}/jars" \
+            --output-dir "${RUNNER_TEMP}/maven-repo"
+      - name: Upload combined Maven repository artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cuopt_java_maven_repo
+          path: ${{ runner.temp }}/maven-repo
+          if-no-files-found: error
+
   java-build:
     needs: [conda-cpp-build, changed-files]
     permissions:
