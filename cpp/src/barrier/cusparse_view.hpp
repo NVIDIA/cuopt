@@ -63,7 +63,8 @@ class cusparse_view_t {
                                        cusparseDnVecDescr_t x,
                                        cusparseDnVecDescr_t y,
                                        rmm::device_buffer& buffer,
-                                       i_t rows);
+                                       i_t rows,
+                                       i_t cols);
 
   rmm::device_uvector<i_t> A_offsets_;
   rmm::device_uvector<i_t> A_indices_;
@@ -79,5 +80,6 @@ class cusparse_view_t {
   rmm::device_scalar<f_t> d_minus_one_;
   rmm::device_scalar<f_t> d_zero_;
   i_t rows_{0};
+  i_t cols_{0};
 };
 }  // namespace cuopt::mathematical_optimization::barrier
