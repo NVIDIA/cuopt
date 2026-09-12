@@ -83,7 +83,7 @@ struct simplex_solver_settings_t {
       ordering(-1),
       initial_perturbation(-1),
       remove_perturbation(-1),
-      primal_pricing(0),
+      primal_pricing(1),
       barrier_dual_initial_point(barrier_dual_initial_point_t::Automatic),
       postsolve_info(-1),
       barrier_presolve_bound_free_variables(-1),
