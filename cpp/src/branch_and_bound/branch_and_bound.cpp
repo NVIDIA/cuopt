@@ -5032,6 +5032,9 @@ void branch_and_bound_t<i_t, f_t>::pivot_to_improve_reduced_cost_strengthening(
   const f_t relaxation_objective,
   reduced_cost_bounds_t<i_t, f_t>& reduced_cost_bounds)
 {
+  const double strengthening_start = tic();
+  double btran_time                = 0.0;
+  double reduced_cost_update_time  = 0.0;
   // Count primal degenerate basic variables
   i_t num_degenerate            = 0;
   i_t num_degenerate_continuous = 0;
@@ -5055,10 +5058,17 @@ void branch_and_bound_t<i_t, f_t>::pivot_to_improve_reduced_cost_strengthening(
 
   if (num_degenerate_integer == 0) return;
 
+  settings_.log.printf("RCS timing start: candidates=%d elapsed=%.6f\n",
+                       num_degenerate_integer,
+                       toc(exploration_stats_.start_time));
   std::vector<i_t> variable_to_basic_position(lp.num_cols, -1);
   for (i_t k = 0; k < lp.num_rows; k++) {
     variable_to_basic_position[basic_list[k]] = k;
   }
+  // The basis stays fixed across candidates; preserve Arow_'s ordering for cut generation.
+  csr_matrix_t<i_t, f_t> local_Arow = Arow_;
+  std::vector<i_t> nonbasic_end(lp.num_rows);
+  simplex::compute_initial_nonbasic_end(variable_to_basic_position, local_Arow, nonbasic_end);
   std::vector<f_t> delta_y(lp.num_rows, 0);
   std::vector<f_t> delta_z(lp.num_cols, 0);
   std::vector<i_t> delta_z_mark(lp.num_cols, 0);
@@ -5090,20 +5100,43 @@ void branch_and_bound_t<i_t, f_t>::pivot_to_improve_reduced_cost_strengthening(
     ep.x[0] = 1.0;
     sparse_vector_t<i_t, f_t> delta_y_sparse;
     sparse_vector_t<i_t, f_t> UTsol_sparse;
+    const double btran_start = tic();
     basis_update.b_transpose_solve(ep, delta_y_sparse, UTsol_sparse);
+    btran_time += toc(btran_start);
 
     // delta_zN = -N^T * delta_y, delta_z[leaving] = -1
-    delta_y_sparse.to_dense(delta_y);
-    simplex::compute_reduced_cost_update(lp,
-                                         basic_list,
-                                         nonbasic_list,
-                                         delta_y,
-                                         leaving_index,
-                                         /*direction=*/-1,
-                                         delta_z_mark,
-                                         delta_z_indices,
-                                         delta_z,
-                                         work_estimate);
+    const double reduced_cost_update_start = tic();
+    i_t delta_y_nz0                        = 0;
+    for (const f_t value : delta_y_sparse.x) {
+      if (std::abs(value) > 1e-12) { delta_y_nz0++; }
+    }
+    work_estimate += delta_y_sparse.i.size();
+    const f_t delta_y_nz_percentage = delta_y_nz0 / static_cast<f_t>(lp.num_rows) * 100.0;
+    if (delta_y_nz_percentage <= 30.0) {
+      simplex::compute_delta_z(local_Arow,
+                               delta_y_sparse,
+                               leaving_index,
+                               /*direction=*/-1,
+                               nonbasic_end,
+                               delta_z_mark,
+                               delta_z_indices,
+                               delta_z,
+                               work_estimate);
+    } else {
+      delta_y_sparse.to_dense(delta_y);
+      work_estimate += delta_y.size();
+      simplex::compute_reduced_cost_update(lp,
+                                           basic_list,
+                                           nonbasic_list,
+                                           delta_y,
+                                           leaving_index,
+                                           /*direction=*/-1,
+                                           delta_z_mark,
+                                           delta_z_indices,
+                                           delta_z,
+                                           work_estimate);
+    }
+    reduced_cost_update_time += toc(reduced_cost_update_start);
 
     const f_t lower_j   = lp.lower[j];
     const f_t upper_j   = lp.upper[j];
@@ -5271,6 +5304,15 @@ void branch_and_bound_t<i_t, f_t>::pivot_to_improve_reduced_cost_strengthening(
     }
   }
   settings_.log.printf("Added %d bounds for reduced cost strengthening\n", num_bounds_added);
+  settings_.log.printf(
+    "RCS timing end: candidates=%d bounds=%d total=%.6f btran=%.6f reduced_cost_update=%.6f "
+    "elapsed=%.6f\n",
+    num_degenerate_integer,
+    num_bounds_added,
+    toc(strengthening_start),
+    btran_time,
+    reduced_cost_update_time,
+    toc(exploration_stats_.start_time));
 }
 
 template <typename i_t, typename f_t>
