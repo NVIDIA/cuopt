@@ -137,7 +137,7 @@ void mab_t::add_mab_reward(int option_id,
                            double offspring_quality,
                            Func work_normalized_reward)
 {
-  double epsilon                      = max(1e-6, 1e-4 * fabs(best_feasible_quality));
+  double epsilon                      = std::max(1e-6, 1e-4 * fabs(best_feasible_quality));
   bool is_better_than_best_feasible   = offspring_quality + epsilon < best_feasible_quality;
   bool is_better_than_best_of_parents = offspring_quality + epsilon < best_of_parents_quality;
   if (option_id >= 0 && option_id < static_cast<int>(mab_arm_stats_.size())) {

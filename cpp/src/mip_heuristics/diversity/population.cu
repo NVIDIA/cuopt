@@ -213,7 +213,7 @@ std::vector<solution_t<i_t, f_t>> population_t<i_t, f_t>::get_external_solutions
         new_best_feasible_objective = h_entry.objective;
       }
 
-      longest_wait_time = max(longest_wait_time, h_entry.timer.elapsed_time());
+      longest_wait_time = std::max(longest_wait_time, h_entry.timer.elapsed_time());
       solution_t<i_t, f_t> sol(*problem_ptr);
       sol.copy_new_assignment(h_entry.solution);
       sol.compute_feasibility();
@@ -412,7 +412,7 @@ void population_t<i_t, f_t>::adjust_weights_according_to_best_feasible()
                     best().get_objective());
     cuopt_assert(weighted_violation_of_best > 1e-10, "Weighted violation of best is not positive");
     // fixme
-    weighted_violation_of_best = max(weighted_violation_of_best, 1e-10);
+    weighted_violation_of_best = std::max(weighted_violation_of_best, 1e-10);
     f_t quality_difference     = best_feasible().get_quality(weights) - best().get_quality(weights);
     CUOPT_LOG_DEBUG("quality_difference %f best_feasible_quality %f best_quality %f",
                     quality_difference,
@@ -423,7 +423,7 @@ void population_t<i_t, f_t>::adjust_weights_according_to_best_feasible()
     f_t increase_ratio =
       (quality_difference * infeasibility_balance_ratio) / weighted_violation_of_best;
     infeasibility_importance *= (1 + increase_ratio);
-    infeasibility_importance = min(max_infeasibility_weight, infeasibility_importance);
+    infeasibility_importance = std::min(max_infeasibility_weight, infeasibility_importance);
     normalize_weights();
     update_qualities();
     cuopt_assert(test_invariant(), "Population invariant doesn't hold");

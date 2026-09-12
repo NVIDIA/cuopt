@@ -1283,7 +1283,6 @@ template <typename i_t, typename f_t>
 __global__ void handle_local_minimum_kernel(typename fj_t<i_t, f_t>::climber_data_t::view_t fj)
 {
   raft::random::PCGenerator rng(fj.settings->seed + *fj.iterations, 0, 0);
-  __shared__ typename fj_t<i_t, f_t>::move_score_t shmem[2 * raft::WarpSize];
   if (*fj.break_condition) return;
 
   // did we reach a local minimum?

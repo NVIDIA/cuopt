@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -10,7 +10,9 @@
 #include <cuopt/error.hpp>
 #include <utilities/macros.cuh>
 
+#include <cstdlib>
 #include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 
