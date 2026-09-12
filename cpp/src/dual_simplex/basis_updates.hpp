@@ -429,6 +429,8 @@ class basis_update_mpf_t {
   i_t scatter_into_workspace(const sparse_vector_t<i_t, f_t>& in) const;
   void gather_into_sparse_vector(i_t nz, sparse_vector_t<i_t, f_t>& out) const;
   i_t nonzeros(const std::vector<f_t>& x) const;
+  f_t compensated_dot_product(i_t col, const std::vector<f_t>& x) const;
+  f_t compensated_dot_product(i_t col, const std::vector<i_t>& mark, const std::vector<f_t>& x) const;
   f_t dot_product(i_t col, const std::vector<f_t>& x) const;
   f_t dot_product(i_t col, const std::vector<i_t>& mark, const std::vector<f_t>& x) const;
   void add_sparse_column(const csc_matrix_t<i_t, f_t>& S,
