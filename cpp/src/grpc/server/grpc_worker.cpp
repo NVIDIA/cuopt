@@ -19,6 +19,7 @@
 #include <cuopt/routing/solver_settings.hpp>
 #endif
 
+#include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
 #include <rmm/mr/cuda_memory_resource.hpp>
 #include <rmm/mr/pool_memory_resource.hpp>
 
@@ -27,6 +28,8 @@
 #include <limits>
 #include <memory>
 
+using cuopt::mathematical_optimization::apply_initial_solutions_to_mip_settings;
+using cuopt::mathematical_optimization::apply_initial_solutions_to_pdlp_settings;
 using cuopt::mathematical_optimization::map_proto_to_mip_settings;
 using cuopt::mathematical_optimization::map_proto_to_pdlp_settings;
 using cuopt::mathematical_optimization::map_proto_to_problem;
@@ -408,6 +411,7 @@ static SolveResult run_mip_solve(DeserializedJob& dj,
   try {
     dj.mip_settings.log_file       = log_file;
     dj.mip_settings.log_to_console = config.log_to_console;
+    apply_initial_solutions_to_mip_settings(dj.problem, dj.mip_settings);
 
     // Create a per-solve incumbent callback wired to this worker's
     // incumbent pipe.  Destroyed automatically when sr is returned.
@@ -484,6 +488,7 @@ static SolveResult run_lp_solve(DeserializedJob& dj,
   try {
     dj.lp_settings.log_file       = log_file;
     dj.lp_settings.log_to_console = config.log_to_console;
+    apply_initial_solutions_to_pdlp_settings(dj.problem, dj.lp_settings);
 
     SERVER_LOG_INFO("[Worker] Converting CPU problem to GPU problem...");
     auto gpu_problem = to_optimization_problem(dj.problem, &handle);

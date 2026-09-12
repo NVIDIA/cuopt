@@ -84,6 +84,26 @@ class cpu_optimization_problem_t : public optimization_problem_interface_t<i_t, 
   void set_problem_name(const std::string& problem_name) override;
   void set_variable_names(const std::vector<std::string>& variable_names) override;
   void set_row_names(const std::vector<std::string>& row_names) override;
+  /**
+   * @brief Copy an initial primal solution into host storage.
+   *
+   * Optional. Size and finiteness are not checked here; the solver validates
+   * those when the start is applied, matching local solve.
+   *
+   * @param[in] initial_primal_solution Host pointer; must be non-null when size != 0.
+   * @param[in] size Number of values to copy.
+   */
+  void set_initial_primal_solution(const f_t* initial_primal_solution, i_t size);
+  /**
+   * @brief Copy an initial dual solution into host storage.
+   *
+   * Optional. Size and finiteness are not checked here; the solver validates
+   * those when the start is applied, matching local solve.
+   *
+   * @param[in] initial_dual_solution Host pointer; must be non-null when size != 0.
+   * @param[in] size Number of values to copy.
+   */
+  void set_initial_dual_solution(const f_t* initial_dual_solution, i_t size);
 
   /**
    * @brief Transfer parsed MPS/QPS storage into this CPU problem without copying array/string data.
@@ -166,6 +186,14 @@ class cpu_optimization_problem_t : public optimization_problem_interface_t<i_t, 
   std::vector<f_t> get_constraint_upper_bounds_host() const override;
   std::vector<char> get_row_types_host() const override;
   std::vector<var_t> get_variable_types_host() const override;
+  /**
+   * @brief Return a copy of the stored initial primal solution (empty if unset).
+   */
+  std::vector<f_t> get_initial_primal_solution_host() const;
+  /**
+   * @brief Return a copy of the stored initial dual solution (empty if unset).
+   */
+  std::vector<f_t> get_initial_dual_solution_host() const;
 
   /**
    * @brief Write the optimization problem to an MPS file.
@@ -229,6 +257,8 @@ class cpu_optimization_problem_t : public optimization_problem_interface_t<i_t, 
   std::vector<f_t> constraint_upper_bounds_;
   std::vector<char> row_types_;
   std::vector<var_t> variable_types_;
+  std::vector<f_t> initial_primal_solution_;
+  std::vector<f_t> initial_dual_solution_;
 
   std::string objective_name_;
   std::string problem_name_;

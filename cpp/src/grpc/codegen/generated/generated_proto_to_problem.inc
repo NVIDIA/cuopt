@@ -74,6 +74,14 @@
     }
     cpu_problem.set_variable_types(variable_types.data(), static_cast<i_t>(variable_types.size()));
   }
+  {
+    std::vector<f_t> initial_primal_solution(pb_problem.initial_primal_solution().begin(), pb_problem.initial_primal_solution().end());
+    cpu_problem.set_initial_primal_solution(initial_primal_solution.data(), static_cast<i_t>(initial_primal_solution.size()));
+  }
+  {
+    std::vector<f_t> initial_dual_solution(pb_problem.initial_dual_solution().begin(), pb_problem.initial_dual_solution().end());
+    cpu_problem.set_initial_dual_solution(initial_dual_solution.data(), static_cast<i_t>(initial_dual_solution.size()));
+  }
 
   if (pb_problem.quadratic_constraints_size() > 0) {
     std::vector<typename cpu_optimization_problem_t<i_t, f_t>::quadratic_constraint_t> _entries;

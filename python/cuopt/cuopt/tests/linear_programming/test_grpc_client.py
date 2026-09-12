@@ -335,6 +335,47 @@ class TestGrpcClient:
         assert solution.get_primal_objective() == pytest.approx(15.0, rel=1e-3)
         client.delete(job_id)
 
+    def test_mip_start_over_grpc(self, grpc_server):
+        problem = Problem("grpc_mip_start")
+        x = problem.addVariable(lb=0, ub=10, vtype=INTEGER, name="x")
+        y = problem.addVariable(lb=0, ub=10, vtype=INTEGER, name="y")
+        problem.addConstraint(x + y <= 10, name="c1")
+        problem.addConstraint(x - y >= 0, name="c2")
+        problem.setObjective(x + 2 * y, sense=MAXIMIZE)
+        x.setMIPStart(5)
+        y.MIPStart = 5.0
+
+        client = Client("localhost", grpc_server)
+        job_id = client.submit(problem, SolverSettings())
+        try:
+            assert client.wait(job_id, timeout=120) == JobStatus.COMPLETED
+
+            solution = client.result(job_id, _MIP_NAMES)
+            assert solution is not None
+            assert solution.get_primal_objective() == pytest.approx(
+                15.0, rel=1e-3
+            )
+        finally:
+            client.delete(job_id)
+
+    def test_lp_initial_solution_over_grpc(self, grpc_server):
+        problem = _demo_lp_problem()
+        problem._to_data_model()
+        problem.model.set_initial_primal_solution([0.0, 0.0])
+        problem.model.set_initial_dual_solution([0.0, 0.0])
+
+        client = Client("localhost", grpc_server)
+        job_id = client.submit(problem, SolverSettings())
+        try:
+            assert client.wait(job_id, timeout=120) == JobStatus.COMPLETED
+            solution = client.result(job_id, _DEMO_LP_NAMES)
+            assert solution is not None
+            assert solution.get_primal_objective() == pytest.approx(
+                0.36, rel=1e-3
+            )
+        finally:
+            client.delete(job_id)
+
     def test_invalid_job_id(self, grpc_server):
         client = Client("localhost", grpc_server)
         assert (

@@ -45,6 +45,14 @@
     for (const auto& v : _variable_types) pb_problem->add_variable_types(to_proto_variable_type(v));
   }
   {
+    auto _initial_primal_solution = cpu_problem.get_initial_primal_solution_host();
+    for (const auto& v : _initial_primal_solution) pb_problem->add_initial_primal_solution(static_cast<double>(v));
+  }
+  {
+    auto _initial_dual_solution = cpu_problem.get_initial_dual_solution_host();
+    for (const auto& v : _initial_dual_solution) pb_problem->add_initial_dual_solution(static_cast<double>(v));
+  }
+  {
     auto _A_values = cpu_problem.get_constraint_matrix_values_host();
     for (const auto& v : _A_values) pb_problem->add_a_values(static_cast<double>(v));
   }
