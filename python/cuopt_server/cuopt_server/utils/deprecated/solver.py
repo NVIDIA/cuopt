@@ -26,7 +26,7 @@ from cuopt_server.utils.exceptions import (
     http_exception_handler,
     validation_exception_handler,
 )
-from cuopt_server.utils.job_queue import (
+from cuopt_server.utils.deprecated.job_queue import (
     CudaUnhealthy,
     SolverBinaryResponse,
     SolverIntermediateResponse,
@@ -70,7 +70,9 @@ def solve_LP_sync(
     from cuopt_server.utils.linear_programming.data_validation import (
         validate_LP_data,
     )
-    from cuopt_server.utils.linear_programming.solver import solve as LP_solve
+    from cuopt_server.utils.deprecated.linear_programming.solver import (
+        solve as LP_solve,
+    )
 
     begin_time = time.time()
 
@@ -140,7 +142,9 @@ def solve_optimized_routes_sync(
     warnings=[],
     reqId="",
 ):
-    from cuopt_server.utils.routing.solver import solve as routing_solve
+    from cuopt_server.utils.deprecated.routing.solver import (
+        solve as routing_solve,
+    )
 
     begin_time = time.time()
 
