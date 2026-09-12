@@ -30,7 +30,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from pydantic import ValidationError
 
-import cuopt_server.utils.health_check as health_check
+import cuopt_server.utils.deprecated.health_check as health_check
 import cuopt_server.utils.settings as settings
 from cuopt_server._version import __version__
 from cuopt_server.utils.data_definition import (
@@ -82,7 +82,7 @@ from cuopt_server.utils.local_files import (
     get_output_name,
     validate_file_path,
 )
-from cuopt_server.utils.job_queue import (
+from cuopt_server.utils.deprecated.job_queue import (
     BaseResult,
     BinaryJobResult,
     NVCFJobResult,

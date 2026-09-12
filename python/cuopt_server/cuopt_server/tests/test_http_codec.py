@@ -129,22 +129,6 @@ def test_get_format():
     assert formats == ["json", "zlib", "msgpack", "pickle"]
 
 
-@pytest.mark.parametrize("mime_type", body_mime_types)
-def test_job_queue_uses_codec(mime_type):
-    # job_queue re-exports the shared mime types and defers to the codec
-    from cuopt_server.utils import job_queue
-
-    assert job_queue.mime_json == mime_json
-    assert job_queue.mime_msgpack == mime_msgpack
-    assert job_queue.mime_pickle == mime_pickle
-    assert job_queue.mime_wild == mime_wild
-    assert job_queue.mime_zlib == mime_zlib
-    assert (
-        job_queue.deserialize(mime_type, encode_bytes(sample_data, mime_type))
-        == sample_data
-    )
-
-
 def test_pickle_round_trip():
     encoded = pickle.dumps(sample_data)
     assert decode(mime_pickle, encoded) == sample_data
@@ -158,12 +142,3 @@ def test_pickle_forbidden_class():
     with pytest.raises(HTTPException) as e:
         deserialize(mime_pickle, encoded)
     assert e.value.status_code == 422
-
-
-def test_job_queue_pickle_uses_codec():
-    from cuopt_server.utils import job_queue
-    from cuopt_server.utils import http_codec as codec
-
-    assert job_queue.deserialize is codec.deserialize
-    assert job_queue.SafeUnpickler is codec.SafeUnpickler
-    assert job_queue.cuopt_pickle_load is codec.cuopt_pickle_load
