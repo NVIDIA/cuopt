@@ -1151,7 +1151,26 @@ cdef class RoutingClient:
             raise RoutingSolveError(sub.error_message.decode("utf-8"))
         return sub.job_id.decode("utf-8")
 
-    def _status(self, str job_id):
+    def status(self, str job_id) -> JobStatus:
+        """Return the current job status without blocking.
+
+        Parameters
+        ----------
+        job_id : str
+            Id returned by :meth:`submit`.
+
+        Returns
+        -------
+        JobStatus
+            A :class:`~cuopt.grpc.linear_programming.JobStatus` member
+            (``QUEUED``, ``PROCESSING``, ``COMPLETED``, ``FAILED``,
+            ``CANCELLED``, or ``NOT_FOUND``).
+
+        Raises
+        ------
+        RoutingSolveError
+            If the status RPC itself fails (transport error).
+        """
         cdef grpc_status_result_t st = self._client.get().status(
             job_id.encode("utf-8")
         )
@@ -1171,8 +1190,33 @@ cdef class RoutingClient:
         with a separate 60-second hang deadline.
         """
         return _wait_poll_loop(
-            self._status, job_id, timeout, RoutingSolveError
+            self.status, job_id, timeout, RoutingSolveError
         )
+
+    def cancel(self, str job_id) -> None:
+        """Request cancellation of a queued or running job.
+
+        The job moves to
+        :attr:`~cuopt.grpc.linear_programming.JobStatus.CANCELLED`. Call
+        :meth:`delete` to release its server-side state.
+
+        Parameters
+        ----------
+        job_id : str
+            Id returned by :meth:`submit`.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        RoutingSolveError
+            If the cancel RPC fails, including when ``job_id`` is unknown.
+        """
+        cdef string err
+        if not self._client.get().cancel(job_id.encode("utf-8"), err):
+            raise RoutingSolveError(err.decode("utf-8"))
 
     def result(self, str job_id):
         """Fetch and parse the routing solution for a completed job.

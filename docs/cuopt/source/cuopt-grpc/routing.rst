@@ -59,13 +59,28 @@ Job Lifecycle
 =============
 
 * ``submit(data_model, settings=None)`` — serializes the problem and settings, returns a ``job_id``.
-* ``wait(job_id, timeout=0)`` — blocks until the job reaches a terminal state; returns the status.
+* ``status(job_id)`` — non-blocking; returns a
+  :class:`~cuopt.grpc.linear_programming.JobStatus`. Raises
+  ``RoutingSolveError`` if the status RPC fails.
+* ``wait(job_id, timeout=0)`` — blocks until the job is not in-flight
+  (``COMPLETED``, ``FAILED``, ``CANCELLED``, or ``NOT_FOUND``) and
+  returns that status. Raises ``RoutingSolveError`` only if the status
+  RPC fails, ``timeout`` is negative, or a positive timeout expires.
+* ``cancel(job_id)`` — returns ``None``. Requests cancellation of a queued or
+  running job; the job becomes ``CANCELLED``. Raises ``RoutingSolveError`` if
+  the RPC fails (including an unknown ``job_id``). Call ``delete`` to release
+  server-side state.
 * ``result(job_id)`` — returns the solution dict, or ``None`` if the job has not finished.
 * ``delete(job_id)`` — releases the job's server-side result.
 * ``solve(data_model, settings=None, *, timeout=0, delete=True)`` — submit + wait + result, deleting the job afterward unless ``delete=False``.
 
-A failed or non-completed job raises ``RoutingSolveError`` from ``submit``,
-``wait``, or ``solve``.
+``submit`` and ``solve`` raise ``RoutingSolveError`` when the job does not
+complete. ``status`` and ``cancel`` raise ``RoutingSolveError`` on RPC
+failure; ``cancel`` also raises for an unknown ``job_id``.
+
+In-flight statuses are ``QUEUED`` and ``PROCESSING``. Terminal (or otherwise
+not in-flight) values are ``COMPLETED``, ``FAILED``, ``CANCELLED``, and
+``NOT_FOUND``.
 
 Settings
 ========
@@ -134,7 +149,16 @@ Import path: ``cuopt.grpc.routing``.
 .. autoclass:: cuopt.grpc.routing.RoutingClient
    :members:
    :undoc-members:
-   :exclude-members: _status
+
+.. Same class as :class:`cuopt.grpc.linear_programming.JobStatus`, re-exported
+   for routing.
+
+.. autoclass:: cuopt.grpc.routing.JobStatus
+   :no-index:
+   :members:
+   :undoc-members:
+   :member-order: bysource
+   :exclude-members: __new__, __init__, _generate_next_value_, as_integer_ratio, bit_count, bit_length, conjugate, denominator, from_bytes, imag, is_integer, numerator, real, to_bytes
 
 .. autoexception:: cuopt.grpc.routing.RoutingSolveError
    :members:

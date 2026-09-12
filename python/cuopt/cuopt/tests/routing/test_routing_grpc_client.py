@@ -65,7 +65,36 @@ def test_submit_wait_result_lifecycle():
     client = _client()
     job_id = client.submit(_small_vrp(), {"time_limit": 1.0})
     assert job_id
-    client.wait(job_id, timeout=30)
+    assert client.status(job_id) in (
+        grpc_routing.JobStatus.QUEUED,
+        grpc_routing.JobStatus.PROCESSING,
+        grpc_routing.JobStatus.COMPLETED,
+    )
+    assert client.wait(job_id, timeout=30) == grpc_routing.JobStatus.COMPLETED
     solution = client.result(job_id)
     assert "route" in solution
     client.delete(job_id)
+
+
+def test_cancel_job():
+    client = _client()
+    job_id = client.submit(_small_vrp(), {"time_limit": 10.0})
+    status = client.status(job_id)
+    if status not in (
+        grpc_routing.JobStatus.QUEUED,
+        grpc_routing.JobStatus.PROCESSING,
+    ):
+        client.delete(job_id)
+        pytest.skip("Job completed before cancellation could be observed")
+
+    client.cancel(job_id)
+    assert client.wait(job_id, timeout=30) == grpc_routing.JobStatus.CANCELLED
+    client.delete(job_id)
+
+
+def test_invalid_job_id():
+    client = _client()
+    missing = "00000000-0000-0000-0000-000000000000"
+    assert client.status(missing) == grpc_routing.JobStatus.NOT_FOUND
+    with pytest.raises(grpc_routing.RoutingSolveError):
+        client.cancel(missing)
