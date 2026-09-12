@@ -3322,8 +3322,6 @@ static dual_status_t dual_phase2_with_advanced_basis(i_t phase,
   sparse_vector_t<i_t, f_t> v_sparse(m, 0);       // For steepest edge norms
   sparse_vector_t<i_t, f_t> atilde_sparse(m, 0);  // For flip adjustments
 
-  // Track iteration interval start time for runtime measurement
-  [[maybe_unused]] f_t interval_start_time = toc(start_time);
   i_t last_feature_log_iter                = iter;
 
   phase2_work_estimate += ft.work_estimate();
