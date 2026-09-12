@@ -5795,21 +5795,21 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                             var_types_,
                             symmetry_,
                             settings_,
-                             pc_,
-                             root_relax_soln_.x,
-                             edge_norms_,
-                             new_slacks_);
+                            pc_,
+                            root_relax_soln_.x,
+                            edge_norms_,
+                            new_slacks_);
       submip_worker_pool_.init(num_submip_workers,
                                original_lp_,
                                Arow_,
                                var_types_,
                                symmetry_,
                                settings_,
-                                pc_,
-                                root_relax_soln_.x,
-                                edge_norms_,
-                                new_slacks_,
-                                num_bfs_workers);
+                               pc_,
+                               root_relax_soln_.x,
+                               edge_norms_,
+                               new_slacks_,
+                               num_bfs_workers);
 
       if (num_diving_workers > 0) {
         diving_worker_pool_.init(num_diving_workers,
@@ -6021,10 +6021,10 @@ void branch_and_bound_t<i_t, f_t>::run_deterministic_coordinator(const csr_matri
                                                                 Arow,
                                                                 var_types_,
                                                                 settings_,
-                                                                 pc_,
-                                                                 root_relax_soln_.x,
-                                                                 edge_norms_,
-                                                                 new_slacks_);
+                                                                pc_,
+                                                                root_relax_soln_.x,
+                                                                edge_norms_,
+                                                                new_slacks_);
 
   if (num_diving_workers > 0) {
     // Extract diving types from search_strategies (skip BEST_FIRST at index 0)

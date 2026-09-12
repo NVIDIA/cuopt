@@ -89,11 +89,11 @@ class deterministic_worker_base_t : public branch_and_bound_worker_t<i_t, f_t> {
                               const csr_matrix_t<i_t, f_t>& Arow,
                               const std::vector<simplex::variable_type_t>& var_types,
                               const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
-                               pseudo_costs_t<i_t, f_t>& pc,
-                               const std::vector<f_t>& root_solution,
-                               const std::vector<f_t>& root_edge_norm,
-                               const std::vector<i_t>& new_slacks,
-                               const std::string& context_name)
+                              pseudo_costs_t<i_t, f_t>& pc,
+                              const std::vector<f_t>& root_solution,
+                              const std::vector<f_t>& root_edge_norm,
+                              const std::vector<i_t>& new_slacks,
+                              const std::string& context_name)
     : base_t(
         id, original_lp, Arow, var_types, settings, pc, root_solution, root_edge_norm, new_slacks),
       work_context(context_name),
@@ -146,20 +146,20 @@ class deterministic_bfs_worker_t
                                       const csr_matrix_t<i_t, f_t>& Arow,
                                       const std::vector<simplex::variable_type_t>& var_types,
                                       const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
-                                       pseudo_costs_t<i_t, f_t>& pc,
-                                       const std::vector<f_t>& root_solution,
-                                       const std::vector<f_t>& root_edge_norm,
-                                       const std::vector<i_t>& new_slacks)
+                                      pseudo_costs_t<i_t, f_t>& pc,
+                                      const std::vector<f_t>& root_solution,
+                                      const std::vector<f_t>& root_edge_norm,
+                                      const std::vector<i_t>& new_slacks)
     : base_t(id,
              original_lp,
              Arow,
              var_types,
              settings,
-              pc,
-              root_solution,
-              root_edge_norm,
-              new_slacks,
-              "BB_Worker_" + std::to_string(id))
+             pc,
+             root_solution,
+             root_edge_norm,
+             new_slacks,
+             "BB_Worker_" + std::to_string(id))
   {
   }
 
@@ -324,11 +324,11 @@ class deterministic_diving_worker_t
              Arow,
              var_types,
              settings,
-              pc,
-              root_solution,
-              root_edge_norm,
-              new_slacks,
-              "Diving_Worker_" + std::to_string(id)),
+             pc,
+             root_solution,
+             root_edge_norm,
+             new_slacks,
+             "Diving_Worker_" + std::to_string(id)),
       diving_type(type)
   {
     dive_lower = original_lp.lower;
@@ -482,17 +482,16 @@ class deterministic_diving_worker_pool_t
     this->workers_.reserve(num_workers);
     for (int i = 0; i < num_workers; ++i) {
       search_strategy_t type = diving_types[i % diving_types.size()];
-      this->workers_.emplace_back(
-        i,
-        type,
-        original_lp,
-        Arow,
-        var_types,
-        settings,
-        pc,
-        root_solution,
-        root_edge_norm,
-        new_slacks);
+      this->workers_.emplace_back(i,
+                                  type,
+                                  original_lp,
+                                  Arow,
+                                  var_types,
+                                  settings,
+                                  pc,
+                                  root_solution,
+                                  root_edge_norm,
+                                  new_slacks);
     }
   }
 
