@@ -1607,6 +1607,41 @@ static void set_host_data_view(
     raft::device_span<i_t>(fj_cpu.h_reverse_offsets.data(), fj_cpu.h_reverse_offsets.size());
   fj_cpu.view.pb.objective_coefficients =
     raft::device_span<f_t>(fj_cpu.h_obj_coeffs.data(), fj_cpu.h_obj_coeffs.size());
+
+  // Spans over the arrays wired above, so the model reads the same memory under one name. A
+  // host-LP climber carries no presolve scaling, which is what the identity default stands for.
+  auto model       = std::make_shared<fj_cpu_problem_t<i_t, f_t>>();
+  model->offsets   = raft::device_span<i_t>(fj_cpu.h_offsets.data(), fj_cpu.h_offsets.size());
+  model->variables = raft::device_span<i_t>(fj_cpu.h_variables.data(), fj_cpu.h_variables.size());
+  model->coefficients =
+    raft::device_span<f_t>(fj_cpu.h_coefficients.data(), fj_cpu.h_coefficients.size());
+  model->reverse_offsets =
+    raft::device_span<i_t>(fj_cpu.h_reverse_offsets.data(), fj_cpu.h_reverse_offsets.size());
+  model->reverse_constraints = raft::device_span<i_t>(fj_cpu.h_reverse_constraints.data(),
+                                                      fj_cpu.h_reverse_constraints.size());
+  model->cstr_lb = raft::device_span<f_t>(fj_cpu.h_cstr_lb.data(), fj_cpu.h_cstr_lb.size());
+  model->cstr_ub = raft::device_span<f_t>(fj_cpu.h_cstr_ub.data(), fj_cpu.h_cstr_ub.size());
+  model->h_obj_coeffs =
+    raft::device_span<f_t>(fj_cpu.h_obj_coeffs.data(), fj_cpu.h_obj_coeffs.size());
+  model->h_var_types =
+    raft::device_span<var_t>(fj_cpu.h_var_types.data(), fj_cpu.h_var_types.size());
+  model->h_original_ids =
+    raft::device_span<i_t>(fj_cpu.h_original_ids.data(), fj_cpu.h_original_ids.size());
+  model->h_reverse_original_ids = raft::device_span<i_t>(fj_cpu.h_reverse_original_ids.data(),
+                                                         fj_cpu.h_reverse_original_ids.size());
+  model->h_related_variables =
+    raft::device_span<i_t>(fj_cpu.h_related_variables.data(), fj_cpu.h_related_variables.size());
+  model->h_related_variables_offsets = raft::device_span<i_t>(
+    fj_cpu.h_related_variables_offsets.data(), fj_cpu.h_related_variables_offsets.size());
+  model->n_variables   = n_variables;
+  model->n_constraints = n_constraints;
+  model->tolerances    = tolerances;
+  model->probing_cache = fj_cpu.probing_cache;
+  if (fj_cpu.pb_ptr != nullptr) {
+    model->objective_scaling_factor = fj_cpu.pb_ptr->presolve_data.objective_scaling_factor;
+    model->objective_offset         = fj_cpu.pb_ptr->presolve_data.objective_offset;
+  }
+  fj_cpu.problem = std::move(model);
 }
 
 template <typename i_t, typename f_t>
@@ -1893,6 +1928,11 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_t<i_t, f_t>::create_cpu_climber(
 template <typename i_t, typename f_t>
 void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double work_unit_limit)
 {
+  // A model whose columns are all binary and whose rows carry int8/int16 coefficients is searched
+  // by the specialized engine instead. It reports through the same callbacks and declines rather
+  // than approximating, so the general path below still covers everything else.
+  if (try_cpufj_binary_solve(*fj_cpu, in_time_limit, work_unit_limit)) return;
+
   i_t local_mins  = 0;
   auto loop_start = std::chrono::high_resolution_clock::now();
   auto time_limit = std::chrono::milliseconds(static_cast<i_t>(std::floor(in_time_limit * 1000.0)));
