@@ -33,6 +33,7 @@ from pydantic import ValidationError
 import cuopt_server.utils.deprecated.health_check as health_check
 import cuopt_server.utils.settings as settings
 from cuopt_server._version import __version__
+from cuopt_server.utils.client_version import check_client_version
 from cuopt_server.utils.data_definition import (
     DeleteRequestModel,
     DeleteResponse,
@@ -71,6 +72,7 @@ from cuopt_server.utils.exceptions import (
 )
 from cuopt_server.utils.http_codec import (
     encode,
+    get_data,
     get_format,
     mime_json,
     mime_msgpack,
@@ -92,7 +94,6 @@ from cuopt_server.utils.deprecated.job_queue import (
     abort_all,
     abort_by_id,
     add_cache_entry,
-    check_client_version,
     delete_cache_entry,
     get_cache_content_type,
     get_incumbents_for_id,
@@ -1131,16 +1132,6 @@ async def postrequest(
 
     except Exception as e:
         return encode(exception_handler(e), accept)
-
-
-async def get_data(buf, request):
-    pos = 0
-    try:
-        async for chunk in request.stream():
-            buf[pos : pos + len(chunk)] = chunk
-            pos = pos + len(chunk)
-    except Exception:
-        print("exception in get_data")
 
 
 async def get_body(request: Request):

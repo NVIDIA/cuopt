@@ -113,6 +113,23 @@ def deserialize(ctype, buf):
     return data
 
 
+async def get_data(buf, request):
+    """Stream the request body into a pre-sized buffer.
+
+    Callers allocate ``buf`` from ``Content-Length`` (a ``bytearray`` or a
+    shared-memory view) so Starlette does not assemble a second copy via
+    ``request.body()``. Pydantic validation happens later, after
+    :func:`deserialize`.
+    """
+    pos = 0
+    try:
+        async for chunk in request.stream():
+            buf[pos : pos + len(chunk)] = chunk
+            pos = pos + len(chunk)
+    except Exception:
+        logging.debug("exception in get_data", exc_info=True)
+
+
 def encode_bytes(data, mime_type):
     # Write data to a byte array based on mime type
     if mime_type in [mime_json, mime_zlib]:

@@ -6,6 +6,10 @@ import os
 
 from cuopt import linear_programming
 from cuopt.linear_programming.solver.solver_parameters import solver_params
+from cuopt.linear_programming.solver.solver_wrapper import (
+    LPTerminationStatus,
+    MILPTerminationStatus,
+)
 
 
 def ignored_warning(field):
@@ -137,3 +141,104 @@ def create_solver(LP_data, warmstart_data):
             warnings.append(ignored_warning("solution_file"))
 
     return warnings, solver_settings
+
+
+def _get_if_attribute_is_valid_else_none(attr):
+    try:
+        return attr()
+    except AttributeError:
+        return None
+
+
+def extract_pdlpwarmstart_data(data):
+    if data is None:
+        return None
+    return {
+        "current_primal_solution": data.current_primal_solution,
+        "current_dual_solution": data.current_dual_solution,
+        "initial_primal_average": data.initial_primal_average,
+        "initial_dual_average": data.initial_dual_average,
+        "current_ATY": data.current_ATY,
+        "sum_primal_solutions": data.sum_primal_solutions,
+        "sum_dual_solutions": data.sum_dual_solutions,
+        "last_restart_duality_gap_primal_solution": (
+            data.last_restart_duality_gap_primal_solution
+        ),
+        "last_restart_duality_gap_dual_solution": (
+            data.last_restart_duality_gap_dual_solution
+        ),
+        "initial_primal_weight": data.initial_primal_weight,
+        "initial_step_size": data.initial_step_size,
+        "total_pdlp_iterations": data.total_pdlp_iterations,
+        "total_pdhg_iterations": data.total_pdhg_iterations,
+        "last_candidate_kkt_score": data.last_candidate_kkt_score,
+        "last_restart_kkt_score": data.last_restart_kkt_score,
+        "sum_solution_weight": data.sum_solution_weight,
+        "iterations_since_last_restart": data.iterations_since_last_restart,
+    }
+
+
+def solution_to_legacy_http(sol, include_warmstart=True):
+    """Serialize a cuOpt LP/MILP Solution into the legacy HTTP shape.
+
+    Returns ``{"status": <enum name>, "solution": {...}}``. When the
+    termination status is not a solved/feasible case, ``solution`` is empty.
+    """
+    solution = {}
+    status = sol.get_termination_status()
+    if status in (
+        LPTerminationStatus.Optimal,
+        LPTerminationStatus.IterationLimit,
+        LPTerminationStatus.TimeLimit,
+        MILPTerminationStatus.Optimal,
+        MILPTerminationStatus.FeasibleFound,
+    ):
+        primal_solution = _get_if_attribute_is_valid_else_none(
+            sol.get_primal_solution
+        )
+        primal_solution = (
+            primal_solution
+            if primal_solution is None
+            else primal_solution.tolist()
+        )
+        dual_solution = _get_if_attribute_is_valid_else_none(
+            sol.get_dual_solution
+        )
+        dual_solution = (
+            dual_solution if dual_solution is None else dual_solution.tolist()
+        )
+        lp_stats = _get_if_attribute_is_valid_else_none(sol.get_lp_stats)
+        reduced_cost = _get_if_attribute_is_valid_else_none(
+            sol.get_reduced_cost
+        )
+        reduced_cost = (
+            reduced_cost if reduced_cost is None else reduced_cost.tolist()
+        )
+        milp_stats = _get_if_attribute_is_valid_else_none(sol.get_milp_stats)
+        pdlpwarmstart_data = _get_if_attribute_is_valid_else_none(
+            sol.get_pdlp_warm_start_data
+        )
+        solution["problem_category"] = sol.get_problem_category().name
+        solution["primal_solution"] = primal_solution
+        solution["dual_solution"] = dual_solution
+        solution["primal_objective"] = _get_if_attribute_is_valid_else_none(
+            sol.get_primal_objective
+        )
+        solution["dual_objective"] = _get_if_attribute_is_valid_else_none(
+            sol.get_dual_objective
+        )
+        solution["solver_time"] = sol.get_solve_time()
+        solution["solved_by"] = sol.get_solved_by().name
+        solution["vars"] = sol.get_vars()
+        solution["lp_statistics"] = {} if lp_stats is None else lp_stats
+        solution["reduced_cost"] = reduced_cost
+        if include_warmstart:
+            solution["pdlpwarmstart_data"] = extract_pdlpwarmstart_data(
+                pdlpwarmstart_data
+            )
+        solution["milp_statistics"] = {} if milp_stats is None else milp_stats
+
+    return {
+        "status": status.name,
+        "solution": solution,
+    }

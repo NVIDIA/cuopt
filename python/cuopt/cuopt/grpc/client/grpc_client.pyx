@@ -305,7 +305,7 @@ cdef class Client:
         """Create a sibling connection with the same host/port/TLS settings."""
         return Client(self._host, self._port, tls=self._tls)
 
-    def submit(self, problem, SolverSettings settings not None):
+    def submit(self, problem, SolverSettings settings not None, enable_incumbents=None):
         """
         Submit a problem for solving and return its ``job_id``.
 
@@ -313,10 +313,16 @@ cdef class Client:
         :class:`~cuopt.linear_programming.data_model.DataModel`. The job runs
         asynchronously; use :meth:`wait` or :meth:`status` to track it and
         :meth:`result` to fetch the solution. Always :meth:`delete` when done.
+
+        ``enable_incumbents`` defaults to ``None``, which enables MIP incumbent
+        collection when ``settings`` already has MIP callbacks. Pass ``True``
+        or ``False`` to override (used by the HTTP proxy, which has no local
+        callback objects).
         """
         cdef DataModel data_model
         cdef grpc_submit_result_t submit_result
         cdef bint mip
+        cdef bint enable_incumbents_flag = False
 
         data_model = self._as_data_model(problem)
         data_model.variable_types = type_cast(
@@ -325,13 +331,14 @@ cdef class Client:
         mip = _is_mip(data_model.get_variable_types())
         prepare_solver_settings(settings, data_model, mip)
         data_model.set_data_model_view()
-        cdef bint enable_incumbents = False
-        if mip and settings.get_mip_callbacks():
-            enable_incumbents = True
+        if enable_incumbents is None:
+            enable_incumbents_flag = bool(mip and settings.get_mip_callbacks())
+        else:
+            enable_incumbents_flag = bool(enable_incumbents)
         submit_result = self._client.get().submit(
             data_model.c_data_model_view.get(),
             settings.c_solver_settings.get(),
-            enable_incumbents,
+            enable_incumbents_flag,
         )
         if not submit_result.success:
             raise GrpcError(submit_result.error_message.decode("utf-8"))

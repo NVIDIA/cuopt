@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import asyncio
 import json
 import pickle
 import zlib
@@ -17,6 +18,7 @@ from cuopt_server.utils.http_codec import (
     deserialize,
     encode,
     encode_bytes,
+    get_data,
     get_format,
     mime_json,
     mime_msgpack,
@@ -133,6 +135,17 @@ def test_pickle_round_trip():
     encoded = pickle.dumps(sample_data)
     assert decode(mime_pickle, encoded) == sample_data
     assert deserialize(mime_pickle, encoded) == sample_data
+
+
+def test_get_data_streams_into_preallocated_buffer():
+    class FakeRequest:
+        async def stream(self):
+            for chunk in (b"abc", b"def", b"g"):
+                yield chunk
+
+    buf = bytearray(7)
+    asyncio.run(get_data(buf, FakeRequest()))
+    assert bytes(buf) == b"abcdefg"
 
 
 def test_pickle_forbidden_class():
