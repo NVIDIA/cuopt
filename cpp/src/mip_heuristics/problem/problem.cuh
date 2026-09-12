@@ -81,7 +81,8 @@ class problem_t {
   i_t get_n_binary_variables();
   void check_problem_representation(bool check_transposed       = false,
                                     bool check_mip_related_data = true);
-  void recompute_auxilliary_data(bool check_representation = true);
+  void recompute_auxilliary_data(bool check_representation = true,
+                                 bool compute_related_vars = true);
   void compute_auxiliary_data();
   void compute_n_integer_vars();
   void compute_binary_var_table();
@@ -119,7 +120,12 @@ class problem_t {
   {
     return presolve_data.get_papilo_original_num_variables();
   }
-  void papilo_uncrush_assignment(rmm::device_uvector<f_t>& assignment) const;
+  void papilo_uncrush_assignment(rmm::device_uvector<f_t>& assignment,
+                                 rmm::cuda_stream_view stream) const;
+  void papilo_uncrush_assignment(rmm::device_uvector<f_t>& assignment) const
+  {
+    papilo_uncrush_assignment(assignment, handle_ptr->get_stream());
+  }
   void compute_transpose_of_problem();
   f_t get_user_obj_from_solver_obj(f_t solver_obj) const;
   f_t get_solver_obj_from_user_obj(f_t user_obj) const;
