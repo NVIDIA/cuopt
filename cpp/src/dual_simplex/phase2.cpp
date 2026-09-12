@@ -2556,7 +2556,7 @@ i_t attempt_to_remove_perturbations(const lp_problem_t<i_t, f_t>& lp,
 
     if (primal_infeasibility <= settings.primal_tol) return 0;  // OPTIMAL
     settings.log.debug("Removed perturbation. Continuing dual simplex (primal_inf=%.2e)\n",
-                        primal_infeasibility);
+                       primal_infeasibility);
     return 1;  // CONTINUE_DUAL
   }
 
@@ -2647,35 +2647,35 @@ i_t attempt_to_remove_perturbations(const lp_problem_t<i_t, f_t>& lp,
 
 template <typename i_t, typename f_t>
 dual_status_t run_primal_cleanup(const lp_problem_t<i_t, f_t>& lp,
-                                const simplex_solver_settings_t<i_t, f_t>& settings,
-                                f_t start_time,
-                                basis_update_mpf_t<i_t, f_t>& ft,
-                                std::vector<i_t>& basic_list,
-                                std::vector<i_t>& nonbasic_list,
-                                std::vector<variable_status_t>& vstatus,
-                                std::vector<f_t>& objective,
-                                lp_solution_t<i_t, f_t>& sol,
-                                i_t& iter,
-                                f_t& work_estimate)
+                                 const simplex_solver_settings_t<i_t, f_t>& settings,
+                                 f_t start_time,
+                                 basis_update_mpf_t<i_t, f_t>& ft,
+                                 std::vector<i_t>& basic_list,
+                                 std::vector<i_t>& nonbasic_list,
+                                 std::vector<variable_status_t>& vstatus,
+                                 std::vector<f_t>& objective,
+                                 lp_solution_t<i_t, f_t>& sol,
+                                 i_t& iter,
+                                 f_t& work_estimate)
 {
   const f_t perturbation = amount_of_perturbation(lp, objective);
-  settings.log.printf(
-    "Failed to remove perturbation of %.2e. Using primal simplex for cleanup.\n", perturbation);
+  settings.log.printf("Failed to remove perturbation of %.2e. Using primal simplex for cleanup.\n",
+                      perturbation);
   settings.log.printf("Num updates: %d\n", ft.num_updates());
   settings.log.printf("Iterations: %d\n", iter);
-  const i_t dual_iter = iter;
+  const i_t dual_iter                 = iter;
   const primal_status_t primal_status = primal_phase2_with_advanced_basis(2,
-                                                                        start_time,
-                                                                        lp,
-                                                                        settings,
-                                                                        vstatus,
-                                                                        ft,
-                                                                        basic_list,
-                                                                        nonbasic_list,
-                                                                        sol,
-                                                                        iter,
-                                                                        work_estimate,
-                                                                        false);
+                                                                          start_time,
+                                                                          lp,
+                                                                          settings,
+                                                                          vstatus,
+                                                                          ft,
+                                                                          basic_list,
+                                                                          nonbasic_list,
+                                                                          sol,
+                                                                          iter,
+                                                                          work_estimate,
+                                                                          false);
   if (primal_status == primal_status_t::OPTIMAL) {
     settings.log.printf("Primal cleanup successful. Iterations %d\n", iter - dual_iter);
     objective = lp.objective;
@@ -2690,16 +2690,15 @@ dual_status_t run_primal_cleanup(const lp_problem_t<i_t, f_t>& lp,
   } else {
     settings.log.printf("Primal cleanup failed.\n");
     const f_t primal_infeas = primal_infeasibility(lp, settings, vstatus, sol.x);
-    const f_t dual_infeas = dual_infeasibility(
-      lp, settings, vstatus, sol.z, settings.tight_tol, settings.dual_tol);
+    const f_t dual_infeas =
+      dual_infeasibility(lp, settings, vstatus, sol.z, settings.tight_tol, settings.dual_tol);
     // Failed cleanup may leave duals from phase I or from the previous basis.
     const f_t primal_residual = l2_primal_residual(lp, sol);
     const f_t dual_residual   = l2_dual_residual(lp, sol);
     work_estimate += 4.0 * lp.A.nnz() + 3 * lp.num_rows + 4 * lp.num_cols;
     bool is_optimal = primal_infeas <= 10.0 * settings.primal_tol &&
                       dual_infeas <= 10.0 * settings.dual_tol &&
-                      primal_residual <= settings.primal_tol &&
-                      dual_residual <= settings.dual_tol;
+                      primal_residual <= settings.primal_tol && dual_residual <= settings.dual_tol;
     for (const i_t j : basic_list) {
       is_optimal = is_optimal && std::abs(sol.z[j]) <= settings.dual_tol;
     }
@@ -2896,7 +2895,7 @@ class phase2_timers_t {
   work_timer_t<f_t> bfrt_time;
   // BFRT diagnostic counters
   i_t bfrt_calls{0};
-  i_t bfrt_zero_steps{0};                     // step_length == 0
+  i_t bfrt_zero_steps{0};  // step_length == 0
   work_timer_t<f_t> pricing_time;
   work_timer_t<f_t> btran_time;
   work_timer_t<f_t> ftran_time;
@@ -2920,22 +2919,23 @@ class phase2_timers_t {
 }  // namespace phase2
 
 template <typename i_t, typename f_t>
-static dual_status_t dual_phase2_with_advanced_basis(i_t phase,
-                                              i_t slack_basis,
-                                              bool initialize_basis,
-                                              f_t start_time,
-                                              const lp_problem_t<i_t, f_t>& lp,
-                                              const simplex_solver_settings_t<i_t, f_t>& settings,
-                                              std::vector<variable_status_t>& vstatus,
-                                              basis_update_mpf_t<i_t, f_t>& ft,
-                                              std::vector<i_t>& basic_list,
-                                              std::vector<i_t>& nonbasic_list,
-                                              lp_solution_t<i_t, f_t>& sol,
-                                              i_t& iter,
-                                              std::vector<f_t>& delta_y_steepest_edge,
-                                              f_t& phase2_work_estimate,
-                                              f_t& last_work_reported,
-                                              work_limit_context_t* work_unit_context)
+static dual_status_t dual_phase2_with_advanced_basis(
+  i_t phase,
+  i_t slack_basis,
+  bool initialize_basis,
+  f_t start_time,
+  const lp_problem_t<i_t, f_t>& lp,
+  const simplex_solver_settings_t<i_t, f_t>& settings,
+  std::vector<variable_status_t>& vstatus,
+  basis_update_mpf_t<i_t, f_t>& ft,
+  std::vector<i_t>& basic_list,
+  std::vector<i_t>& nonbasic_list,
+  lp_solution_t<i_t, f_t>& sol,
+  i_t& iter,
+  std::vector<f_t>& delta_y_steepest_edge,
+  f_t& phase2_work_estimate,
+  f_t& last_work_reported,
+  work_limit_context_t* work_unit_context)
 {
   PHASE2_NVTX_RANGE("DualSimplex::phase2_advanced");
   const i_t m = lp.num_rows;
@@ -3322,7 +3322,7 @@ static dual_status_t dual_phase2_with_advanced_basis(i_t phase,
   sparse_vector_t<i_t, f_t> v_sparse(m, 0);       // For steepest edge norms
   sparse_vector_t<i_t, f_t> atilde_sparse(m, 0);  // For flip adjustments
 
-  i_t last_feature_log_iter                = iter;
+  i_t last_feature_log_iter = iter;
 
   phase2_work_estimate += ft.work_estimate();
   ft.clear_work_estimate();
@@ -3513,16 +3513,16 @@ static dual_status_t dual_phase2_with_advanced_basis(i_t phase,
         }
         if (removal_status == 2) {  // PRIMAL_CLEANUP
           const dual_status_t cleanup_status = phase2::run_primal_cleanup(lp,
-                                                               settings,
-                                                               start_time,
-                                                               ft,
-                                                               basic_list,
-                                                               nonbasic_list,
-                                                               vstatus,
-                                                               objective,
-                                                               sol,
-                                                               iter,
-                                                               phase2_work_estimate);
+                                                                          settings,
+                                                                          start_time,
+                                                                          ft,
+                                                                          basic_list,
+                                                                          nonbasic_list,
+                                                                          vstatus,
+                                                                          objective,
+                                                                          sol,
+                                                                          iter,
+                                                                          phase2_work_estimate);
           if (cleanup_status != dual_status_t::OPTIMAL) { return cleanup_status; }
         }
         // removal_status == 0 (OPTIMAL) or primal cleanup done: fall through to prepare_optimality
@@ -3693,9 +3693,7 @@ static dual_status_t dual_phase2_with_advanced_basis(i_t phase,
         timers.bfrt_time += timers.stop_timer(phase2_work_estimate + ft.work_estimate());
         // BFRT diagnostics
         timers.bfrt_calls++;
-        if (step_length == 0.0) {
-          timers.bfrt_zero_steps++;
-        }
+        if (step_length == 0.0) { timers.bfrt_zero_steps++; }
       } else {
         entering_index = phase2::phase2_ratio_test(
           lp, settings, vstatus, nonbasic_list, z, delta_z, step_length, nonbasic_entering_index);
@@ -3728,16 +3726,16 @@ static dual_status_t dual_phase2_with_advanced_basis(i_t phase,
                                                                      phase2_work_estimate);
         if (removal_status == 2) {  // PRIMAL_CLEANUP
           const dual_status_t cleanup_status = phase2::run_primal_cleanup(lp,
-                                                               settings,
-                                                               start_time,
-                                                               ft,
-                                                               basic_list,
-                                                               nonbasic_list,
-                                                               vstatus,
-                                                               objective,
-                                                               sol,
-                                                               iter,
-                                                               phase2_work_estimate);
+                                                                          settings,
+                                                                          start_time,
+                                                                          ft,
+                                                                          basic_list,
+                                                                          nonbasic_list,
+                                                                          vstatus,
+                                                                          objective,
+                                                                          sol,
+                                                                          iter,
+                                                                          phase2_work_estimate);
           if (cleanup_status != dual_status_t::OPTIMAL) { return cleanup_status; }
           objective = lp.objective;
         }
@@ -4274,40 +4272,39 @@ static dual_status_t dual_phase2_with_advanced_basis(i_t phase,
 }
 
 template <typename i_t, typename f_t>
-dual_status_t dual_phase2_with_advanced_basis(
-  i_t phase,
-  i_t slack_basis,
-  bool initialize_basis,
-  f_t start_time,
-  const lp_problem_t<i_t, f_t>& lp,
-  const simplex_solver_settings_t<i_t, f_t>& settings,
-  std::vector<variable_status_t>& vstatus,
-  basis_update_mpf_t<i_t, f_t>& ft,
-  std::vector<i_t>& basic_list,
-  std::vector<i_t>& nonbasic_list,
-  lp_solution_t<i_t, f_t>& sol,
-  i_t& iter,
-  std::vector<f_t>& delta_y_steepest_edge,
-  f_t& phase2_work_estimate,
-  work_limit_context_t* work_unit_context)
+dual_status_t dual_phase2_with_advanced_basis(i_t phase,
+                                              i_t slack_basis,
+                                              bool initialize_basis,
+                                              f_t start_time,
+                                              const lp_problem_t<i_t, f_t>& lp,
+                                              const simplex_solver_settings_t<i_t, f_t>& settings,
+                                              std::vector<variable_status_t>& vstatus,
+                                              basis_update_mpf_t<i_t, f_t>& ft,
+                                              std::vector<i_t>& basic_list,
+                                              std::vector<i_t>& nonbasic_list,
+                                              lp_solution_t<i_t, f_t>& sol,
+                                              i_t& iter,
+                                              std::vector<f_t>& delta_y_steepest_edge,
+                                              f_t& phase2_work_estimate,
+                                              work_limit_context_t* work_unit_context)
 {
-  f_t last_work_reported = phase2_work_estimate;
+  f_t last_work_reported     = phase2_work_estimate;
   const dual_status_t status = dual_phase2_with_advanced_basis(phase,
-                                                             slack_basis,
-                                                             initialize_basis,
-                                                             start_time,
-                                                             lp,
-                                                             settings,
-                                                             vstatus,
-                                                             ft,
-                                                             basic_list,
-                                                             nonbasic_list,
-                                                             sol,
-                                                             iter,
-                                                             delta_y_steepest_edge,
-                                                             phase2_work_estimate,
-                                                             last_work_reported,
-                                                             work_unit_context);
+                                                               slack_basis,
+                                                               initialize_basis,
+                                                               start_time,
+                                                               lp,
+                                                               settings,
+                                                               vstatus,
+                                                               ft,
+                                                               basic_list,
+                                                               nonbasic_list,
+                                                               sol,
+                                                               iter,
+                                                               delta_y_steepest_edge,
+                                                               phase2_work_estimate,
+                                                               last_work_reported,
+                                                               work_unit_context);
 
   phase2_work_estimate += ft.work_estimate();
   ft.clear_work_estimate();
