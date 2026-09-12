@@ -353,6 +353,14 @@ class basis_update_mpf_t {
   // Solve for x such that U'*x = y
   i_t u_transpose_solve(sparse_vector_t<i_t, f_t>& rhs) const;
 
+  // Compute y = U*x. In the MPF factorization the rank-1 update factors are absorbed into L, so
+  // U is unchanged from the initial factorization (U == U0), and U*x is just a sparse matvec
+  // against U0.
+  void u_multiply(const std::vector<f_t>& x, std::vector<f_t>& y) const;
+
+  // Sparse-in/sparse-out overload of u_multiply.
+  void u_multiply(const sparse_vector_t<i_t, f_t>& x, sparse_vector_t<i_t, f_t>& y) const;
+
   // Replace the column B(:, leaving_index) with the vector abar. Pass in utilde such that L*utilde
   // = abar
   i_t update(const std::vector<f_t>& utilde, const std::vector<f_t>& etilde, i_t leaving_index);

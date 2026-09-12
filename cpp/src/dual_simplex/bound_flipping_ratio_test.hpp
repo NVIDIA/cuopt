@@ -53,35 +53,22 @@ class bound_flipping_ratio_test_t {
   {
   }
 
-  i_t compute_step_length(f_t& step_length, i_t& nonbasic_entering);
+  i_t compute_step_length(f_t& step_length, i_t& nonbasic_entering, std::vector<i_t>& flip_indices);
   f_t work_estimate() const { return work_estimate_; }
 
  private:
-  i_t compute_breakpoints(std::vector<i_t>& indices, std::vector<f_t>& ratios);
+  i_t compute_breakpoints(std::vector<i_t>& indices,
+                          std::vector<f_t>& ratios,
+                          std::vector<f_t>& harris_ratios);
   i_t single_pass(i_t start,
                   i_t end,
                   const std::vector<i_t>& indices,
                   const std::vector<f_t>& ratios,
-                  f_t& slope,
                   f_t& step_length,
                   i_t& nonbasic_entering,
-                  i_t& enetering_index);
-  void heap_passes(const std::vector<i_t>& current_indicies,
-                   const std::vector<f_t>& current_ratios,
-                   i_t num_breakpoints,
-                   f_t& slope,
-                   f_t& step_lenght,
-                   i_t& nonbasic_entering,
-                   i_t& entering_index);
-
-  void bucket_pass(const std::vector<i_t>& current_indicies,
-                   const std::vector<f_t>& current_ratios,
-                   i_t num_breakpoints,
-                   f_t& slope,
-                   f_t& step_length,
-                   i_t& nonbasic_entering,
-                   i_t& entering_index);
-
+                  i_t& entering_index,
+                  f_t& max_val);
+  void determine_flips(f_t step_length, i_t entering_index, std::vector<i_t>& flip_indices);
   const std::vector<f_t>& lower_;
   const std::vector<f_t>& upper_;
   const std::vector<uint8_t>& bounded_variables_;
@@ -100,7 +87,7 @@ class bound_flipping_ratio_test_t {
   i_t n_;
   i_t m_;
 
-  f_t work_estimate_;
+  f_t work_estimate_{0.0};
 };
 
 }  // namespace cuopt::mathematical_optimization::simplex
