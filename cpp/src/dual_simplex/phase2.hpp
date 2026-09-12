@@ -53,16 +53,16 @@ static std::string dual_status_to_string(dual_status_t status)
 
 template <typename i_t, typename f_t>
 dual_status_t dual_phase2(i_t phase,
-                           i_t slack_basis,
-                           f_t start_time,
+                          i_t slack_basis,
+                          f_t start_time,
                           const lp_problem_t<i_t, f_t>& lp,
                           const simplex_solver_settings_t<i_t, f_t>& settings,
                           std::vector<variable_status_t>& vstatus,
                           lp_solution_t<i_t, f_t>& sol,
                           i_t& iter,
-                           std::vector<f_t>& steepest_edge_norms,
+                          std::vector<f_t>& steepest_edge_norms,
                           f_t& work_estimate,
-                           work_limit_context_t* work_unit_context = nullptr);
+                          work_limit_context_t* work_unit_context = nullptr);
 
 template <typename i_t, typename f_t>
 dual_status_t dual_phase2(i_t phase,

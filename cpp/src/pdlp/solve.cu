@@ -1890,10 +1890,11 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_with_method(
     }
   } else {
     // Float precision only supports PDLP without presolve/crossover
-    cuopt_expects(settings.method == method_t::PDLP,
-                  error_type_t::ValidationError,
-                  "Float precision only supports PDLP method. Dual Simplex, Primal Simplex, Barrier, and "
-                  "Concurrent require double precision.");
+    cuopt_expects(
+      settings.method == method_t::PDLP,
+      error_type_t::ValidationError,
+      "Float precision only supports PDLP method. Dual Simplex, Primal Simplex, Barrier, and "
+      "Concurrent require double precision.");
     return run_pdlp(problem, settings, timer, is_batch_mode);
   }
 }
