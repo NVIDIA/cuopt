@@ -1,11 +1,13 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 
 #pragma once
+
+#include <cuopt/export.hpp>
 
 #include <string>
 
@@ -34,7 +36,7 @@ double getCurrentTimestamp();
  *
  * @param label The label to print with the timestamp
  */
-void printTimestamp(const std::string& label);
+CUOPT_EXPORT void printTimestamp(const std::string& label);
 
 }  // namespace utilities
 }  // namespace cuopt

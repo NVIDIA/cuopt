@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,7 +22,7 @@ CC = gcc
 
 # Compiler flags
 CFLAGS = -I$(INCLUDE_PATH) -Wall -Wextra
-LDFLAGS = -L$(LIBCUOPT_LIBRARY_PATH) -lcuopt -Wl,-rpath,$(LIBCUOPT_LIBRARY_PATH)
+LDFLAGS = -L$(LIBCUOPT_LIBRARY_PATH) -lcuopt -lcuopt_mathopt -Wl,--allow-shlib-undefined -Wl,-rpath,$(LIBCUOPT_LIBRARY_PATH)
 
 # Automatically discover all C source files in current directory
 SOURCES = $(wildcard *.c)

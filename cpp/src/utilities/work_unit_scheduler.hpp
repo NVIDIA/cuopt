@@ -4,6 +4,8 @@
  */
 #pragma once
 
+#include <cuopt/export.hpp>
+
 #include <utilities/omp_helpers.hpp>
 
 #include <functional>
@@ -13,7 +15,7 @@ namespace cuopt {
 
 struct work_limit_context_t;
 
-class work_unit_scheduler_t {
+class CUOPT_EXPORT work_unit_scheduler_t {
  public:
   explicit work_unit_scheduler_t(double sync_interval = 5.0);
 

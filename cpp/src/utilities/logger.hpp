@@ -66,12 +66,20 @@ struct thread_log_callback_t {
   void* user_data                   = nullptr;
 };
 
-// Per-thread, and inline because the logger is header-only since #1778. Note the
-// consequence of hidden visibility: each component library gets its own copy, so a
-// callback registered through one library is not seen by another. That is intended --
-// registration is scoped to the solve that installed it, and every solver constructs its
-// own init_logger_t on entry.
-inline thread_local thread_log_callback_t t_log_callback;
+// Per-thread, and inline because the logger is header-only since #1778.
+//
+// CUOPT_EXPORT is load-bearing, not decoration. The components are built with hidden
+// visibility, so without it each one gets its own copy of this thread_local and a callback
+// registered through one library is invisible to another. That is not a theoretical
+// concern: cuOptSetLogCallback lives in cuopt_c.cpp, which builds into cuopt_mathopt,
+// while the remote-solve log forwarding reads it from solve_remote.cpp in cuopt_client.
+// With separate copies the remote path saw no callback and silently delivered no log
+// lines (#1878). Default visibility lets the dynamic linker collapse the copies into one.
+//
+// Registration remains scoped per thread, which is the property that keeps concurrent
+// solves from capturing each other's callback. Sharing across libraries does not weaken
+// it -- a thread still sees only what it registered.
+inline thread_local CUOPT_EXPORT thread_log_callback_t t_log_callback;
 }  // namespace detail
 
 inline log_callback_registration_t current_log_callback()

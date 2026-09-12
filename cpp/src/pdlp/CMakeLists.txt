@@ -50,6 +50,8 @@ else()
   set(LP_SRC_FILES ${LP_CORE_FILES} ${LP_ADAPTER_FILES})
 endif()
 
+set(LP_SRC_FILES ${LP_SRC_FILES} PARENT_SCOPE)
+
 # Host-only LP sources the gRPC client needs, so cuopt_client resolves standalone. Their
 # GPU-facing members were split into the CUDA translation units above.
 set(LP_CLIENT_FILES

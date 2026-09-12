@@ -13,6 +13,7 @@
 #include <cuopt/mathematical_optimization/optimization_problem.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
 #include <cuopt/mathematical_optimization/solve.hpp>
+#include <cuopt/mathematical_optimization/solve_remote.hpp>
 #include <utilities/logger.hpp>
 #include <utilities/timer.hpp>
 
@@ -202,7 +203,24 @@ int run_single_file(const std::string& file_path,
   }
 
   try {
-    if (is_mip) {
+    if (cuopt::mathematical_optimization::is_remote_execution_enabled()) {
+      // Remote execution: problem_interface holds a cpu_optimization_problem_t.
+      // solve_lp/mip_remote live in cuopt_client, which this binary already links.
+      auto* cpu_prob =
+        dynamic_cast<cuopt::mathematical_optimization::cpu_optimization_problem_t<int, double>*>(
+          problem_interface.get());
+      if (cpu_prob == nullptr) {
+        CUOPT_LOG_ERROR("Remote execution requires the CPU memory backend.");
+        return -1;
+      }
+      if (is_mip) {
+        auto& mip_settings = settings.get_mip_settings();
+        auto solution = cuopt::mathematical_optimization::solve_mip_remote(*cpu_prob, mip_settings);
+      } else {
+        auto& lp_settings = settings.get_pdlp_settings();
+        auto solution = cuopt::mathematical_optimization::solve_lp_remote(*cpu_prob, lp_settings);
+      }
+    } else if (is_mip) {
       auto& mip_settings = settings.get_mip_settings();
       auto solution =
         cuopt::mathematical_optimization::solve_mip(problem_interface.get(), mip_settings);

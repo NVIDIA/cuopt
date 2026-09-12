@@ -6,7 +6,9 @@
 /* clang-format on */
 #pragma once
 
+#include <cuopt/export.hpp>
+
 namespace cuopt {
 // Prints devices [0, num_devices). Defaults to the first visible device.
-void print_version_info(int num_devices = 1);
+CUOPT_EXPORT void print_version_info(int num_devices = 1);
 }  // namespace cuopt

@@ -12,6 +12,8 @@ list(PREPEND
   ${CMAKE_CURRENT_SOURCE_DIR}/logger_entry.cpp
   )
 
+set(MATH_OPT_SRC_FILES ${MATH_OPT_SRC_FILES} PARENT_SCOPE)
+
 # solver_settings_t is host-only apart from the device members in solver_settings.cu,
 # so the bulk of it builds into cuopt_client. The gRPC client takes a solver_settings_t
 # in its public API, so this is required for the client library to resolve standalone.

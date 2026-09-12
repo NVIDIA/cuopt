@@ -803,6 +803,71 @@ TEST_F(DefaultServerTests, SolveMIPBlocking)
 
 // -- Explicit Async LP Flow (submit/poll/get/delete) --
 
+// VRP over gRPC, in the same shape as the LP and MIP cases above: submit a problem,
+// poll to completion, fetch the solution and check it. This is the only routing case in
+// this suite, and it is the end-to-end exercise of the routing mappers -- the problem and
+// settings on the way in, the solution on the way back.
+//
+// Keep it here with the other solve tests rather than further down. The fixture shares one
+// server across the suite, and the cancel and delete tests below kill workers; a job
+// submitted after them can sit in QUEUED forever (#1716). This test is about the routing
+// mappers, not about recovering from a killed worker, so it should not run in their wake.
+TEST_F(DefaultServerTests, SolveVRP)
+{
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  // Four locations on a line, depot at 0, one vehicle. Any correct solver serves all
+  // three orders, so the assertions do not depend on a particular route ordering.
+  constexpr int32_t kLocations = 4;
+  cuopt::routing::cpu_routing_problem_t problem;
+  problem.num_locations = kLocations;
+  problem.fleet_size    = 1;
+  problem.num_orders    = kLocations;
+
+  cuopt::routing::cpu_cost_matrix_t cost;
+  cost.vehicle_type = 0;
+  cost.matrix.resize(static_cast<size_t>(kLocations) * kLocations);
+  for (int32_t i = 0; i < kLocations; ++i) {
+    for (int32_t j = 0; j < kLocations; ++j) {
+      cost.matrix[static_cast<size_t>(i) * kLocations + j] = static_cast<float>(std::abs(i - j));
+    }
+  }
+  problem.cost_matrices.push_back(std::move(cost));
+  problem.vehicle_start_locations.assign(problem.fleet_size, 0);
+  problem.vehicle_return_locations.assign(problem.fleet_size, 0);
+
+  cuopt::routing::solver_settings_t<int, float> settings;
+  settings.set_time_limit(10.0f);
+
+  auto submit_result = client->submit_vrp(problem, settings);
+  ASSERT_TRUE(submit_result.success) << submit_result.error_message;
+  EXPECT_FALSE(submit_result.job_id.empty());
+
+  job_status_t final_status = job_status_t::QUEUED;
+  for (int i = 0; i < 60; ++i) {
+    auto status = client->check_status(submit_result.job_id);
+    ASSERT_TRUE(status.success) << status.error_message;
+    final_status = status.status;
+    if (final_status == job_status_t::COMPLETED || final_status == job_status_t::FAILED) break;
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+  }
+  ASSERT_EQ(final_status, job_status_t::COMPLETED)
+    << "Status: " << job_status_to_string(final_status);
+
+  auto result = client->get_vrp_result(submit_result.job_id);
+  ASSERT_TRUE(result.success) << result.error_message;
+
+  const auto& solution = result.solution;
+  EXPECT_EQ(solution.status, 0) << solution.status_message;
+  EXPECT_GT(solution.vehicle_count, 0);
+  EXPECT_GT(solution.total_objective_value, 0.0);
+  EXPECT_FALSE(solution.route.empty());
+  EXPECT_EQ(solution.route.size(), solution.truck_id.size());
+  EXPECT_TRUE(solution.unserviced_nodes.empty())
+    << solution.unserviced_nodes.size() << " orders left unserved";
+}
+
 TEST_F(DefaultServerTests, ExplicitAsyncLPFlow)
 {
   auto client = create_client();
@@ -1160,66 +1225,6 @@ TEST_F(DefaultServerTests, CancelRunningJob)
 }
 
 // -- Delete should cancel queued / running jobs --
-
-// VRP over gRPC, in the same shape as the LP and MIP cases above: submit a problem,
-// poll to completion, fetch the solution and check it. This is the only routing case in
-// this suite, and it is the end-to-end exercise of the routing mappers -- the problem and
-// settings on the way in, the solution on the way back.
-TEST_F(DefaultServerTests, SolveVRP)
-{
-  auto client = create_client();
-  ASSERT_NE(client, nullptr);
-
-  // Four locations on a line, depot at 0, one vehicle. Any correct solver serves all
-  // three orders, so the assertions do not depend on a particular route ordering.
-  constexpr int32_t kLocations = 4;
-  cuopt::routing::cpu_routing_problem_t problem;
-  problem.num_locations = kLocations;
-  problem.fleet_size    = 1;
-  problem.num_orders    = kLocations;
-
-  cuopt::routing::cpu_cost_matrix_t cost;
-  cost.vehicle_type = 0;
-  cost.matrix.resize(static_cast<size_t>(kLocations) * kLocations);
-  for (int32_t i = 0; i < kLocations; ++i) {
-    for (int32_t j = 0; j < kLocations; ++j) {
-      cost.matrix[static_cast<size_t>(i) * kLocations + j] = static_cast<float>(std::abs(i - j));
-    }
-  }
-  problem.cost_matrices.push_back(std::move(cost));
-  problem.vehicle_start_locations.assign(problem.fleet_size, 0);
-  problem.vehicle_return_locations.assign(problem.fleet_size, 0);
-
-  cuopt::routing::solver_settings_t<int, float> settings;
-  settings.set_time_limit(10.0f);
-
-  auto submit_result = client->submit_vrp(problem, settings);
-  ASSERT_TRUE(submit_result.success) << submit_result.error_message;
-  EXPECT_FALSE(submit_result.job_id.empty());
-
-  job_status_t final_status = job_status_t::QUEUED;
-  for (int i = 0; i < 60; ++i) {
-    auto status = client->check_status(submit_result.job_id);
-    ASSERT_TRUE(status.success) << status.error_message;
-    final_status = status.status;
-    if (final_status == job_status_t::COMPLETED || final_status == job_status_t::FAILED) break;
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
-  }
-  ASSERT_EQ(final_status, job_status_t::COMPLETED)
-    << "Status: " << job_status_to_string(final_status);
-
-  auto result = client->get_vrp_result(submit_result.job_id);
-  ASSERT_TRUE(result.success) << result.error_message;
-
-  const auto& solution = result.solution;
-  EXPECT_EQ(solution.status, 0) << solution.status_message;
-  EXPECT_GT(solution.vehicle_count, 0);
-  EXPECT_GT(solution.total_objective_value, 0.0);
-  EXPECT_FALSE(solution.route.empty());
-  EXPECT_EQ(solution.route.size(), solution.truck_id.size());
-  EXPECT_TRUE(solution.unserviced_nodes.empty())
-    << solution.unserviced_nodes.size() << " orders left unserved";
-}
 
 TEST_F(DefaultServerTests, DeleteQueuedJobPreventsRun)
 {
