@@ -891,6 +891,7 @@ template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::set_solution_at_root(mip_solution_t<i_t, f_t>& solution,
                                                         const cut_info_t<i_t, f_t>& cut_info)
 {
+  request_stop();
   mutex_upper_.lock();
   incumbent_.set_incumbent_solution(root_objective_, root_relax_soln_.x);
   upper_bound_ = root_objective_;
@@ -920,6 +921,7 @@ template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t, f_t>& solution,
                                                       f_t lower_bound)
 {
+  request_stop();
   if (solver_status_ == mip_status_t::HALT) { settings_.log.debug("Stopping the solver...\n"); }
 
   if (solver_status_ == mip_status_t::NUMERICAL) {
@@ -2069,6 +2071,40 @@ void branch_and_bound_t<i_t, f_t>::work_stealing(bfs_worker_t<i_t, f_t>* worker)
 }
 
 template <typename i_t, typename f_t>
+void branch_and_bound_t<i_t, f_t>::request_stop()
+{
+  // Protect child lifetimes and acquire locks only from parent to child.
+  std::lock_guard<std::mutex> lock(children_mutex_);
+  node_concurrent_halt_.store(1, std::memory_order_release);
+  for (branch_and_bound_t* child : active_children_) {
+    child->request_stop();
+  }
+}
+
+template <typename i_t, typename f_t>
+branch_and_bound_t<i_t, f_t>::submip_registration_t::submip_registration_t(
+  branch_and_bound_t& parent, branch_and_bound_t& child)
+  : parent(parent), child(child)
+{
+  std::lock_guard<std::mutex> lock(parent.children_mutex_);
+  parent.active_children_.push_back(&child);
+  if (parent.node_concurrent_halt_.load(std::memory_order_acquire) ||
+      parent.received_halt_signal()) {
+    child.request_stop();
+  }
+}
+
+template <typename i_t, typename f_t>
+branch_and_bound_t<i_t, f_t>::submip_registration_t::~submip_registration_t()
+{
+  std::lock_guard<std::mutex> lock(parent.children_mutex_);
+  const typename std::vector<branch_and_bound_t*>::iterator position =
+    std::find(parent.active_children_.begin(), parent.active_children_.end(), &child);
+  assert(position != parent.active_children_.end());
+  parent.active_children_.erase(position);
+}
+
+template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>* worker)
 {
   f_t lower_bound = get_lower_bound();
@@ -2183,9 +2219,7 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
     }
   }
 
-  if (solver_status_ == mip_status_t::TIME_LIMIT || solver_status_ == mip_status_t::OPTIMAL) {
-    node_concurrent_halt_ = 1;
-  }
+  if (solver_status_ != mip_status_t::UNSET) { request_stop(); }
 
   // If the worker has still nodes in the queue (this can happen if it was stopped due to
   // time limit, small gap or other reason), then do not add back to the pool to avoid
@@ -2199,6 +2233,7 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
   if (exploration_stats_.nodes_unexplored == 0 &&
       bfs_worker_pool_.num_idle() == bfs_worker_pool_.size()) {
     is_running_ = false;
+    request_stop();
   }
 }
 
@@ -2372,6 +2407,10 @@ bool branch_and_bound_t<i_t, f_t>::launch_diving_worker(bfs_worker_t<i_t, f_t>* 
 template <typename i_t, typename f_t>
 bool branch_and_bound_t<i_t, f_t>::launch_submip_worker(const std::vector<f_t>& sol)
 {
+  if (solver_status_ != mip_status_t::UNSET || node_concurrent_halt_.load() ||
+      received_halt_signal()) {
+    return false;
+  }
   if (settings_.submip_settings.rins == 0 && settings_.submip_settings.rens == 0) return false;
   if (settings_.submip_settings.rens == 0 && !incumbent_.has_incumbent) return false;
   if (submip_worker_pool_.num_idle() == 0) return false;
@@ -2528,6 +2567,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
 
   probing_implied_bound_t<i_t, f_t> empty_probing(submip_problem.num_cols);
   branch_and_bound_t submip_bnb(submip_problem, submip_settings, tic(), empty_probing);
+  submip_registration_t registration(*this, submip_bnb);
   mip_solution_t<i_t, f_t> submip_solution(submip_problem.num_cols);
 
   std::vector<f_t> presolved_incumbent;
@@ -5246,6 +5286,10 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   root_lp_current_lower_bound_        = -inf;
   exploration_stats_.nodes_unexplored = 0;
   exploration_stats_.nodes_explored   = 0;
+  if (node_concurrent_halt_.load() || received_halt_signal()) {
+    solver_status_ = mip_status_t::HALT;
+    return solver_status_;
+  }
   original_lp_.A.to_compressed_row(Arow_);
 
   settings_.log.debug("Reduced cost strengthening enabled: %d\n",
@@ -5615,6 +5659,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     mutex_upper_.unlock();
 
     if (cut_pass_action == cut_pass_action_t::RETURN) {
+      request_stop();
       if (settings_.benchmark_info_ptr != nullptr) {
         settings_.benchmark_info_ptr->cut_generation_time_sec = toc(cut_generation_start_time);
       }
@@ -5770,7 +5815,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   }
 
   settings_.log.printf("Exploring the B&B tree using %d threads\n\n", settings_.num_threads);
-  node_concurrent_halt_ = 0;
+  // Do not clear a stop request delivered by an ancestor before tree startup.
 
   exploration_stats_.nodes_explored       = 0;
   exploration_stats_.nodes_unexplored     = 2;

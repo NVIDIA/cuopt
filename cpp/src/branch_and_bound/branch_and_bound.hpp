@@ -44,6 +44,7 @@
 #include <limits>
 #include <list>
 #include <memory>
+#include <mutex>
 #include <vector>
 
 namespace cuopt::mathematical_optimization::mip {
@@ -398,6 +399,20 @@ class branch_and_bound_t {
   bool enable_concurrent_lp_root_solve_{false};
   std::atomic<int> root_concurrent_halt_{0};
   std::atomic<int> node_concurrent_halt_{0};
+  std::mutex children_mutex_;
+  std::vector<branch_and_bound_t*> active_children_;
+
+  void request_stop();
+
+  // Declared after the child solver, so unregistration precedes child destruction.
+  struct submip_registration_t {
+    branch_and_bound_t& parent;
+    branch_and_bound_t& child;
+    submip_registration_t(branch_and_bound_t& parent, branch_and_bound_t& child);
+    ~submip_registration_t();
+    submip_registration_t(const submip_registration_t&)            = delete;
+    submip_registration_t& operator=(const submip_registration_t&) = delete;
+  };
   bool is_root_solution_set{false};
   bool has_initial_pseudocost_{false};
 
