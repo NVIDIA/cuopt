@@ -442,7 +442,8 @@ class iteration_data_t {
                    i_t num_upper_bounds,
                    const std::vector<i_t>& direct_free_variables,
                    const csc_matrix_t<i_t, f_t>& Qin,
-                   const simplex_solver_settings_t<i_t, f_t>& settings)
+                   const simplex_solver_settings_t<i_t, f_t>& settings,
+                  f_t start_time)
     : upper_bounds(num_upper_bounds),
       c(lp.objective),
       b(lp.rhs),
@@ -880,6 +881,7 @@ class iteration_data_t {
         }
         if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
         symbolic_status = chol->analyze(device_augmented);
+        settings.log.printf("Elapsed time for augmented  : %.3f seconds\n", toc(start_time));
       } else {
         {
           raft::common::nvtx::range form_scope("Barrier: LP Data: form ADAT");
@@ -887,8 +889,10 @@ class iteration_data_t {
         }
         if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
         symbolic_status = chol->analyze(device_ADAT);
+        settings.log.printf("Elapsed time for ADAT        : %.3f seconds\n", toc(start_time));
       }
     }
+    settings.log.printf("Elapsed time           : %.3f seconds\n", toc(start_time));
   }
 
   bool has_cones() const { return cones_.has_value(); }
@@ -4283,7 +4287,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
 template <typename i_t, typename f_t>
 lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t, f_t>& solution)
 {
-  settings.log.printf("Barrier solver started at %.2f seconds\n", toc(start_time));
+  settings.log.printf("Barrier solver started at %.3f seconds\n", toc(start_time));
   try {
     raft::common::nvtx::range fun_scope("Barrier: solve");
 
@@ -4320,7 +4324,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
     if (lp.Q.n > 0) { create_Q(lp, Q); }
 
     iteration_data_t<i_t, f_t> data(
-      lp, num_upper_bounds, presolve_info.direct_free_variables, Q, settings);
+      lp, num_upper_bounds, presolve_info.direct_free_variables, Q, settings, start_time);
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       settings.log.printf("Barrier solver halted\n");
       return lp_status_t::CONCURRENT_LIMIT;
@@ -4340,7 +4344,6 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
     data.cusparse_y_residual_    = data.cusparse_view_.create_vector(data.d_y_residual_);
     data.restrict_u_.resize(num_upper_bounds);
 
-    settings.log.printf("Elapsed time                : %.2fs\n", toc(start_time));
 
     if (toc(start_time) > settings.time_limit) {
       settings.log.printf("Barrier time limit exceeded\n");
@@ -4420,9 +4423,15 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
                       std::abs(primal_objective)));
 
     f_t objective_gap_abs = std::abs(primal_objective - dual_objective);
-    f_t objective_gap_rel =
+    f_t presolved_gap_rel =
       objective_gap_abs /
       std::max(f_t(1), std::min(std::abs(primal_objective), std::abs(dual_objective)));
+    f_t user_primal_obj = compute_user_objective(lp, primal_objective);
+    f_t user_dual_obj   = compute_user_objective(lp, dual_objective);
+    f_t user_gap_abs    = std::abs(user_primal_obj - user_dual_obj);
+    f_t user_gap_rel    = user_gap_abs /
+      std::max(f_t(1), std::min(std::abs(user_primal_obj), std::abs(user_dual_obj)));
+    f_t objective_gap_rel = std::max(user_gap_rel, presolved_gap_rel);
 
     data.w_save = data.w;
     data.x_save = data.x;
@@ -4437,7 +4446,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
     settings.log.printf(
       "Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed\n");
     float64_t elapsed_time = toc(start_time);
-    settings.log.printf("%3d   %+.12e %+.12e %.2e %.2e %.2e %.1f\n",
+    settings.log.printf("%3d   %+.12e %+.12e %.2e %.2e %.2e %.3f\n",
                         iter,
                         compute_user_objective(lp, primal_objective),
                         compute_user_objective(lp, dual_objective),
@@ -4575,9 +4584,15 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
                         std::abs(primal_objective)));
 
       objective_gap_abs = std::abs(primal_objective - dual_objective);
-      objective_gap_rel =
+      presolved_gap_rel =
         objective_gap_abs /
         std::max(f_t(1), std::min(std::abs(primal_objective), std::abs(dual_objective)));
+      user_primal_obj = compute_user_objective(lp, primal_objective);
+      user_dual_obj   = compute_user_objective(lp, dual_objective);
+      user_gap_abs    = std::abs(user_primal_obj - user_dual_obj);
+      user_gap_rel    = user_gap_abs /
+        std::max(f_t(1), std::min(std::abs(user_primal_obj), std::abs(user_dual_obj)));
+      objective_gap_rel = std::max(user_gap_rel, presolved_gap_rel);
 
       if (relative_primal_residual < settings.barrier_relaxed_feasibility_tol &&
           relative_dual_residual < settings.barrier_relaxed_optimality_tol &&
@@ -4631,7 +4646,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
                                              solution);
       }
 
-      settings.log.printf("%3d   %+.12e %+.12e %.2e %.2e %.2e %.1f\n",
+      settings.log.printf("%3d   %+.12e %+.12e %.2e %.2e %.2e %.3f\n",
                           iter,
                           compute_user_objective(lp, primal_objective),
                           compute_user_objective(lp, dual_objective),
@@ -4644,8 +4659,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
       bool dual_feasible   = relative_dual_residual < settings.barrier_relative_optimality_tol;
       bool small_gap =
         relative_complementarity_residual < settings.barrier_relative_complementarity_tol;
-      bool small_objective_gap =
-        !data.has_cones() || objective_gap_rel < settings.barrier_relaxed_complementarity_tol;
+      bool small_objective_gap = objective_gap_rel < settings.barrier_relaxed_complementarity_tol;
 
       converged = primal_feasible && dual_feasible && small_gap && small_objective_gap;
 
