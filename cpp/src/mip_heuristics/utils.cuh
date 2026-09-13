@@ -332,7 +332,7 @@ static __global__ void run_lambda_kernel(F f)
 // run a printf statement from the device side, useful for debugging without having to deal with
 // explicit memcpys
 template <typename Func>
-static void inline run_device_lambda(const cuda::stream_ref& stream, Func f)
+static void inline run_device_lambda(cuda::stream_ref stream, Func f)
 {
   run_lambda_kernel<<<1, 1, 0, stream.get()>>>(f);
 }
