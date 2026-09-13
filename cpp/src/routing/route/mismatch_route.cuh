@@ -11,6 +11,7 @@
 #include "../node/mismatch_node.cuh"
 #include "../solution/solution_handle.cuh"
 
+#include <cuda/stream>
 #include <raft/core/handle.hpp>
 
 #include <rmm/device_uvector.hpp>
@@ -42,7 +43,7 @@ class mismatch_route_t {
 
   mismatch_route_t& operator=(mismatch_route_t&& mismatch_route) = default;
 
-  void resize(i_t max_nodes_per_route, rmm::cuda_stream_view stream)
+  void resize(i_t max_nodes_per_route, cuda::stream_ref stream)
   {
     mismatch_forward.resize(max_nodes_per_route, stream);
     mismatch_backward.resize(max_nodes_per_route, stream);

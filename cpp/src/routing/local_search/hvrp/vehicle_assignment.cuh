@@ -1,12 +1,13 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 
 #pragma once
 
+#include <cuda/stream>
 #include "../../solution/solution.cuh"
 #include "../move_candidates/move_candidates.cuh"
 
@@ -59,7 +60,7 @@ struct vehicle_assignment_t {
     gl_lock.set_value_to_zero_async(sol_handle_->get_stream());
   }
 
-  void resize(i_t n_routes, i_t n_buckets, rmm::cuda_stream_view stream_view)
+  void resize(i_t n_routes, i_t n_buckets, cuda::stream_ref stream_view)
   {
     k_regrets   = std::min(n_buckets, k_max_regrets);
     auto k_iter = k_regrets - 1;

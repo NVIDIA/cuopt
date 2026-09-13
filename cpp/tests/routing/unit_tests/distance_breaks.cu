@@ -15,6 +15,7 @@
 
 #include <gtest/gtest.h>
 #include <array>
+#include <cuda/stream>
 #include <limits>
 #include <unordered_map>
 #include <vector>
@@ -30,7 +31,7 @@ using distance_route        = detail::distance_route_t<int, float>;
 constexpr auto DISTANCE_INF = detail::DISTANCE_WINDOW_INFINITY;
 
 template <typename T, size_t N>
-auto copy_array_to_device(std::array<T, N> const& values, rmm::cuda_stream_view stream)
+auto copy_array_to_device(std::array<T, N> const& values, cuda::stream_ref stream)
 {
   rmm::device_uvector<T> result(values.size(), stream);
   raft::copy(result.data(), values.data(), values.size(), stream);
@@ -280,7 +281,7 @@ TEST(distance_route, distance_break_cost_requires_distance_window)
   ASSERT_TRUE(route.distance_break_cost_forward.empty());
   EXPECT_EQ(distance_route::get_shared_size(1, route.dim_info), 2 * sizeof(double));
 
-  compute_distance_route_cost<<<1, 1, 0, stream>>>(route, result.data());
+  compute_distance_route_cost<<<1, 1, 0, stream.get()>>>(route, result.data());
   RAFT_CUDA_TRY(cudaGetLastError());
 
   auto host_result = cuopt::host_copy(result, stream);

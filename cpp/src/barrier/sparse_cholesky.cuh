@@ -16,6 +16,7 @@
 #include <cuda_runtime.h>
 #include <utilities/driver_helpers.cuh>
 
+#include <cuda/stream>
 #include <raft/core/nvtx.hpp>
 
 #include "cudss.h"
@@ -893,7 +894,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
   bool positive_definite;
   cudaError_t cuda_error;
   cudssStatus_t status;
-  // rmm::cuda_stream_view stream;
+  // cuda::stream_ref stream;
   cudssHandle_t handle;
   cudssDeviceMemHandler_t mem_handler;
   cudssConfig_t solverConfig;

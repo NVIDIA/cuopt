@@ -10,6 +10,7 @@
 #include <cuopt/routing/data_model_view.hpp>
 #include <utilities/copy_helpers.hpp>
 
+#include <cuda/stream>
 #include <raft/core/span.hpp>
 
 #include <thrust/fill.h>
@@ -67,7 +68,7 @@ struct fleet_order_constraints_t {
     i_t n_vehicles;
   };
 
-  host_t to_host(rmm::cuda_stream_view stream)
+  host_t to_host(cuda::stream_ref stream)
   {
     host_t h;
     h.order_service_times = host_copy(order_service_times, stream);

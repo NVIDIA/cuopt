@@ -5,6 +5,7 @@
  */
 /* clang-format on */
 
+#include <cuda/stream>
 #include <utilities/vector_helpers.cuh>
 #include "../solution/solution.cuh"
 
@@ -246,7 +247,7 @@ __global__ void check_breaks(typename solution_t<i_t, f_t, REQUEST>::view_t solu
 
 template <typename i_t, typename f_t, request_t REQUEST>
 bool global_runtime_checks_(solution_t<i_t, f_t, REQUEST>& solution,
-                            rmm::cuda_stream_view stream,
+                            cuda::stream_ref stream,
                             bool all_nodes_should_be_served,
                             bool check_feasible)
 {
