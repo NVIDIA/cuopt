@@ -26,6 +26,7 @@
 #include <utilities/macros.cuh>
 
 #include <branch_and_bound/constants.hpp>
+#include <cuda/stream>
 #include <memory>
 #include <raft/core/nvtx.hpp>
 #include <raft/random/rng_device.cuh>
@@ -102,7 +103,7 @@ class problem_t {
   bool pre_process_assignment(rmm::device_uvector<f_t>& assignment);
   void post_process_assignment(rmm::device_uvector<f_t>& current_assignment,
                                bool resize_to_original_problem,
-                               rmm::cuda_stream_view stream);
+                               cuda::stream_ref stream);
   void post_process_assignment(rmm::device_uvector<f_t>& current_assignment,
                                bool resize_to_original_problem = true)
   {

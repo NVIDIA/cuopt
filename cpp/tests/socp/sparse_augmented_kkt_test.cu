@@ -25,8 +25,7 @@ namespace cuopt::mathematical_optimization::barrier::test {
 namespace {
 
 // Packed Hs_diag reference: eta^2 on every entry, head scaled by rank-2 corner d.
-std::vector<double> expected_Hs_diag(const cone_data_t<int, double>& cones,
-                                     rmm::cuda_stream_view stream)
+std::vector<double> expected_Hs_diag(const cone_data_t<int, double>& cones, cuda::stream_ref stream)
 {
   const int E                    = static_cast<int>(cones.n_sparse_cone_entries);
   auto d_host                    = cuopt::host_copy(cones.d, stream);
