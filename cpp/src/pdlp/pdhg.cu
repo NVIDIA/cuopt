@@ -13,6 +13,7 @@
 #include <pdlp/utilities/ping_pong_graph.cuh>
 #include <pdlp/utils.cuh>
 
+#include <cuda/stream>
 #include <raft/core/device_span.hpp>
 
 #include <mip_heuristics/mip_constants.hpp>
@@ -172,7 +173,7 @@ new_bounds_groups_t<i_t, f_t> copy_new_bounds_to_groups(
   const rmm::device_uvector<f_t>& new_bounds_lower,
   const rmm::device_uvector<f_t>& new_bounds_upper,
   i_t batch_size,
-  rmm::cuda_stream_view stream_view)
+  cuda::stream_ref stream_view)
 {
   cuopt_assert(new_bounds_climber_id.size() == new_bounds_idx.size(),
                "New bounds climber id and index sizes must match");
@@ -210,7 +211,7 @@ void copy_groups_to_new_bounds(const new_bounds_groups_t<i_t, f_t>& groups,
                                rmm::device_uvector<i_t>& new_bounds_idx,
                                rmm::device_uvector<f_t>& new_bounds_lower,
                                rmm::device_uvector<f_t>& new_bounds_upper,
-                               rmm::cuda_stream_view stream_view)
+                               cuda::stream_ref stream_view)
 {
   size_t n_entries = 0;
   for (i_t c = 0; c < group_count; ++c) {
