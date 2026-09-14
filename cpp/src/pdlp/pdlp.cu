@@ -27,6 +27,7 @@
 #include <utilities/macros.cuh>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
+#include <cuda/stream>
 #include <raft/core/cusparse_macros.hpp>
 #include <raft/core/nvtx.hpp>
 #include <raft/linalg/eltwise.cuh>
@@ -2187,7 +2188,7 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
 // saddle-point delta buffers. Shared by the single-GPU and per-shard
 // (distributed) paths so the two only differ by which pdhg/stream they pass.
 template <typename i_t, typename f_t>
-static void compute_primal_dual_deltas(pdhg_solver_t<i_t, f_t>& pdhg, rmm::cuda_stream_view stream)
+static void compute_primal_dual_deltas(pdhg_solver_t<i_t, f_t>& pdhg, cuda::stream_ref stream)
 {
   cub::DeviceTransform::Transform(
     cuda::std::make_tuple(pdhg.get_reflected_primal().data(), pdhg.get_primal_solution().data()),
