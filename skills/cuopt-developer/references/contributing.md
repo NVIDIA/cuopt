@@ -49,6 +49,8 @@ If a hook fails, the commit is blocked — fix the issues and commit again. To c
 
 Group related changes into logical commits rather than committing all files at once. Each commit should represent one coherent change (e.g., separate the C++ change from the Python binding update from the test addition). This makes `git log` and `git bisect` useful for debugging later.
 
+Keep the message itself high-level: a subject line plus, if needed, a short *why*. Leave out call-site tallies, verification narration ("checked run X, these are the only N errors"), and notes about fixing your own tooling failures (formatting, pre-commit) along the way — the diff already shows what changed, so restating it is noise, not information. If that reasoning is worth keeping for later, put it in a PR review comment, not the commit.
+
 ### 3. Sign Your Commits (DCO Required)
 
 ```bash
@@ -80,19 +82,27 @@ git push fork my-feature-branch
 
 This applies to both human contributors and AI agents. Agents must never push to the upstream repo directly — provide the push command for the user to review and execute from their fork.
 
-### Pull Requests Created by Agents
+## Pull Request Lifecycle
+
+### Creating
 
 When an AI agent creates a pull request, it **must be a draft PR** (`gh pr create --draft`). This gives the developer time to review and iterate on the changes before any reviewers get pinged. The developer marks it as ready for review when satisfied.
 
-### PR Descriptions
-
-Keep summaries short — a paragraph or 3–5 bullets stating *what* and *why*. Skim recent merges on the target branch to calibrate.
+Keep the initial title and description short — a paragraph or 3–5 bullets stating *what* and *why*. Skim recent merges on the target branch to calibrate.
 
 Skip how-it-works walkthroughs, file-by-file tables, exhaustive test-plan checklists, prose restatements of the diff, and screenshots of output the reviewer can reproduce locally. Reviewers read the code; long structured summaries signal LLM-generated and erode trust.
 
 For extra context (a design decision, unusual constraint, follow-up), one or two sentences with a link to an issue or doc beats expanding the body.
 
-### Addressing PR Reviews
+### Maintaining
+
+Treat the title and description as living documents, not a one-time draft: re-read and update them after every round of commits or review feedback, not just once before marking ready for review. Edit in place rather than appending — a description that accretes a new paragraph per iteration is exactly the failure mode this section exists to prevent.
+
+This isn't just courtesy to the current reviewer — cuOpt squash-merges PRs, so the title and description become the permanent commit message on `main`. Whatever is stale or noisy at merge time is what `git log` shows forever.
+
+Describe only the code as it stands now, not the path taken to get there — drop mentions of earlier attempts, self-corrections, or fixes to your own pre-commit/CI failures along the way. Once the PR is up to date, those iterations are noise to a reviewer evaluating the current diff. If you need to preserve that reasoning for your own resumption later, put it in a PR comment or session memory, not the pinned description.
+
+### Addressing Reviews
 
 Collect all open comments before touching any file — fixes are easier to batch and nothing gets missed.
 
