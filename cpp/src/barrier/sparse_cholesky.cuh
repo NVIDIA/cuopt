@@ -22,30 +22,28 @@
 #include "cudss.h"
 
 #include <dlfcn.h>
-#include <mutex>
 
 namespace cuopt::mathematical_optimization::barrier {
 
 namespace detail {
 
-// cuDSS dlopen()s its threading-layer plugin (CUDSS_MT_LIB_FILE_NAME) via
-// cudssSetThreadingLayer() below, and dlclose()s it again from cudssDestroy(). Unloading a
-// shared object that has spawned its own OpenMP worker threads is unsafe if any of those
-// threads are still parked or running inside it -- the code they're executing can be
-// unmapped out from under them -- and this is a real, reachable teardown race when the
-// barrier solver's cuDSS handle is destroyed while other threads are still active
-// (https://github.com/NVIDIA/cuopt/issues/1219). Opening the plugin ourselves once with
-// RTLD_NODELETE marks its mapping sticky for the life of the process: cuDSS's own
-// dlopen()/dlclose() pairs keep working normally, but the underlying mapping is never
-// actually unloaded, so the race can't manifest.
-inline void pin_cudss_threading_layer()
+// cuDSS dlopen()s the threading-layer plugin passed to cudssSetThreadingLayer() below, and
+// dlclose()s it again from cudssDestroy(). Unloading a shared object that has spawned its own
+// OpenMP worker threads is unsafe if any of those threads are still parked or running inside
+// it -- the code they're executing can be unmapped out from under them -- and this is a real,
+// reachable teardown race when the barrier solver's cuDSS handle is destroyed while other
+// threads are still active (https://github.com/NVIDIA/cuopt/issues/1219). Opening the plugin
+// ourselves first with RTLD_NODELETE marks its mapping sticky for the life of the process:
+// cuDSS's own dlopen()/dlclose() pairs keep working normally, but the underlying mapping is
+// never actually unloaded, so the race can't manifest.
+//
+// Must be called with the exact path cudssSetThreadingLayer() will use -- CUDSS_THREADING_LIB
+// can override the compile-time default per deployment, so a fixed compile-time path isn't
+// enough to pin the file actually loaded. dlopen() on an already-mapped library is cheap (a
+// refcount bump), so no caching is needed even though this runs on every construction.
+inline void pin_cudss_threading_layer(const char* lib_file)
 {
-  static std::once_flag once;
-  std::call_once(once, []() {
-    if (CUDSS_MT_LIB_FILE_NAME != nullptr) {
-      dlopen(CUDSS_MT_LIB_FILE_NAME, RTLD_NOW | RTLD_NODELETE);
-    }
-  });
+  if (lib_file != nullptr) { dlopen(lib_file, RTLD_NOW | RTLD_NODELETE); }
 }
 
 }  // namespace detail
@@ -174,8 +172,6 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       settings_(settings),
       stream(handle_ptr->get_stream().get())
   {
-    detail::pin_cudss_threading_layer();
-
     int major, minor, patch;
     cudssGetProperty(MAJOR_VERSION, &major);
     cudssGetProperty(MINOR_VERSION, &minor);
@@ -288,6 +284,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     }
 
     if (cudss_mt_lib_file != nullptr) {
+      detail::pin_cudss_threading_layer(cudss_mt_lib_file);
       settings.log.printf("cuDSS Threading layer       : %s\n", cudss_mt_lib_file);
       CUDSS_CALL_AND_CHECK_EXIT(
         cudssSetThreadingLayer(handle, cudss_mt_lib_file), status, "cudssSetThreadingLayer");
