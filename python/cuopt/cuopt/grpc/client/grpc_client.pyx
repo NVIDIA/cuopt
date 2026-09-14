@@ -27,6 +27,7 @@ from cuopt.grpc.client.grpc_client cimport (
     cpu_routing_solution_t,
     cpu_uniform_break_t,
     cpu_vehicle_break_t,
+    cpu_vehicle_distance_break_t,
     grpc_incumbents_result_t,
     grpc_job_status_t,
     grpc_logs_result_t,
@@ -91,6 +92,43 @@ class GrpcError(RuntimeError):
 
 class JobNotReadyError(GrpcError):
     pass
+
+
+# Matches the previous C++ wait() poll cadence. Keep this in Python
+# (time.sleep) so the GIL is released between short status RPCs.
+_WAIT_POLL_INTERVAL_S = 1.0
+
+
+def _wait_poll_loop(
+    get_status,
+    job_id,
+    timeout_seconds,
+    error_cls,
+    poll_interval_s=_WAIT_POLL_INTERVAL_S,
+):
+    """Poll ``get_status(job_id)`` until the job is terminal or the timeout.
+
+    The loop and ``time.sleep`` run in Python so the GIL is released between
+    short status RPCs. Concurrent incumbent/log stream threads can therefore
+    run during ``Client.wait``. ``timeout_seconds == 0`` waits indefinitely.
+    Negative values raise ``error_cls``.
+    """
+    if timeout_seconds < 0:
+        raise error_cls("timeout_seconds must be non-negative")
+    deadline = (
+        time.monotonic() + timeout_seconds if timeout_seconds > 0 else None
+    )
+    while True:
+        status = get_status(job_id)
+        if status not in (JobStatus.QUEUED, JobStatus.PROCESSING):
+            return status
+        if deadline is None:
+            time.sleep(poll_interval_s)
+            continue
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise error_cls("Timeout waiting for job completion")
+        time.sleep(min(poll_interval_s, remaining))
 
 
 cdef int _invoke_log_callback(
@@ -315,19 +353,25 @@ cdef class Client:
         Block until ``job_id`` reaches a terminal state and return its
         :class:`JobStatus`.
 
-        ``timeout`` is in whole seconds. ``None`` waits indefinitely.
-        Non-``None`` values are converted with ``int(timeout)`` (so ``0.5``
-        becomes ``0`` and waits indefinitely). Positive timeouts poll about
-        once per second and raise :class:`GrpcError` if the deadline expires
-        (they do not return a non-terminal :class:`JobStatus`).
+        ``timeout`` is in whole seconds. ``None`` or ``0`` waits indefinitely.
+        Negative values raise :class:`GrpcError`. Non-``None`` values are
+        converted with ``int(timeout)`` (so ``0.5`` becomes ``0`` and waits
+        indefinitely). Positive timeouts poll about once per second and raise
+        :class:`GrpcError` if the deadline expires (they do not return a
+        non-terminal :class:`JobStatus`).
+
+        The wait loop runs in Python and only calls :meth:`status` for each
+        poll, so the GIL is released between checks. Concurrent
+        :meth:`start_incumbent_stream` and
+        :meth:`start_log_stream` threads can therefore make progress during
+        the wait. Each :meth:`status` call is a unary RPC with a separate
+        60-second hang deadline; a hung poll can therefore outlast a short
+        ``timeout``.
         """
-        cdef int timeout_seconds = 0 if timeout is None else int(timeout)
-        cdef grpc_status_result_t wait_result = self._client.get().wait(
-            job_id.encode("utf-8"), timeout_seconds
+        timeout_seconds = 0 if timeout is None else int(timeout)
+        return _wait_poll_loop(
+            self.status, job_id, timeout_seconds, GrpcError
         )
-        if not wait_result.success:
-            raise GrpcError(wait_result.error_message.decode("utf-8"))
-        return JobStatus(<int>wait_result.status)
 
     def cancel(self, str job_id):
         """
@@ -704,6 +748,7 @@ HANDLED_SETTERS = frozenset({
     "add_order_precedence",
     "add_break_dimension",
     "add_vehicle_break",
+    "add_vehicle_distance_break",
     "set_objective_function",
     "add_initial_solutions",
     "set_min_vehicles",
@@ -848,6 +893,7 @@ cdef void _populate(cpu_routing_problem_t& p, data_model) except *:
     cdef cpu_capacity_dimension_t cap
     cdef cpu_uniform_break_t ub
     cdef cpu_vehicle_break_t vb
+    cdef cpu_vehicle_distance_break_t vdb
     cdef int32_t vid
 
     for name, args, _ in data_model._calls:
@@ -908,6 +954,15 @@ cdef void _populate(cpu_routing_problem_t& p, data_model) except *:
             if len(args) > 4 and args[4] is not None:
                 _fill_i32(vb.locations, args[4])
             p.vehicle_breaks[vid].push_back(vb)
+        elif name == "add_vehicle_distance_break":
+            vid = <int32_t>int(args[0])
+            vdb = cpu_vehicle_distance_break_t()
+            vdb.distance_min = <float>float(args[1])
+            vdb.distance_max = <float>float(args[2])
+            vdb.duration = <int32_t>int(args[3])
+            if len(args) > 4 and args[4] is not None:
+                _fill_i32(vdb.locations, args[4])
+            p.vehicle_distance_breaks[vid].push_back(vdb)
         elif name == "set_objective_function":
             _fill_i32(p.objectives, args[0])
             _fill_f32(p.objective_weights, args[1])
@@ -981,6 +1036,7 @@ def problem_summary(data_model):
         "break_locations": p.break_locations.size(),
         "uniform_breaks": p.uniform_breaks.size(),
         "vehicle_breaks": p.vehicle_breaks.size(),
+        "vehicle_distance_breaks": p.vehicle_distance_breaks.size(),
         "vehicle_order_match": p.vehicle_order_match.size(),
         "order_vehicle_match": p.order_vehicle_match.size(),
         "order_precedence": p.order_precedence.size(),
@@ -1095,18 +1151,28 @@ cdef class RoutingClient:
             raise RoutingSolveError(sub.error_message.decode("utf-8"))
         return sub.job_id.decode("utf-8")
 
+    def _status(self, str job_id):
+        cdef grpc_status_result_t st = self._client.get().status(
+            job_id.encode("utf-8")
+        )
+        if not st.success:
+            raise RoutingSolveError(st.error_message.decode("utf-8"))
+        return JobStatus(<int>st.status)
+
     def wait(self, str job_id, int timeout=0):
         """Block until the job finishes; return the terminal status int.
 
         Raises ``RoutingSolveError`` if the wait itself fails (e.g. transport
         error or unknown job), mirroring the LP/MILP client.
+
+        Polls job status from Python so the GIL is released between short
+        status RPCs. ``timeout == 0`` waits indefinitely; negative values
+        raise :class:`RoutingSolveError`. Each status poll is a unary RPC
+        with a separate 60-second hang deadline.
         """
-        cdef grpc_status_result_t st = self._client.get().wait(
-            job_id.encode("utf-8"), timeout
+        return _wait_poll_loop(
+            self._status, job_id, timeout, RoutingSolveError
         )
-        if not st.success:
-            raise RoutingSolveError(st.error_message.decode("utf-8"))
-        return <int>st.status
 
     def result(self, str job_id):
         """Fetch and parse the routing solution for a completed job.

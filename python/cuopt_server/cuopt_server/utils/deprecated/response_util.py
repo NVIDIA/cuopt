@@ -1,9 +1,11 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 from typing import Dict
 
-from .routing.optimization_data_model import OptimizationDataModel
+from cuopt_server.utils.routing.optimization_data_model import (
+    OptimizationDataModel,
+)
 
 
 def get_full_response(

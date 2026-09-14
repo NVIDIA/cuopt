@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -182,8 +182,10 @@ using infeasible_cost_t = static_vec_t<dim_t>;
 using objective_cost_t  = static_vec_t<objective_t>;
 
 struct cost_dimension_info_t {
-  bool has_max_constraint = false;
-  HDI bool has_constraints() const { return has_max_constraint; }
+  bool has_max_constraint      = false;
+  bool has_distance_window     = false;
+  bool has_distance_break_cost = false;
+  HDI bool has_constraints() const { return has_max_constraint || has_distance_window; }
 };
 
 struct time_dimension_info_t {
