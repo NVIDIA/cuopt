@@ -106,6 +106,26 @@ bool should_use_adaptive_regularization(const simplex_solver_settings_t<i_t, f_t
          (settings.barrier_adaptive_regularization < 0 && has_cones);
 }
 
+// Scalar quality score for an iterate: how far the worst of the relaxed criteria is from
+// being met. A value <= 1 means every relaxed criterion is satisfied.
+//
+// This exists so that the saved iterate is chosen by overall quality rather than by requiring
+// every residual to improve at once. Near convergence the residuals routinely trade against
+// each other -- the primal residual keeps falling while the dual residual drifts up -- and a
+// conjunctive rule locks onto whichever iterate first minimized one component, discarding
+// later iterates that are better overall.
+template <typename i_t, typename f_t>
+f_t iterate_merit(const simplex_solver_settings_t<i_t, f_t>& settings,
+                  f_t relative_primal_residual,
+                  f_t relative_dual_residual,
+                  f_t relative_complementarity_residual)
+{
+  return std::max(relative_primal_residual / settings.barrier_relaxed_feasibility_tol,
+                  std::max(relative_dual_residual / settings.barrier_relaxed_optimality_tol,
+                           relative_complementarity_residual /
+                             settings.barrier_relaxed_complementarity_tol));
+}
+
 template <typename f_t>
 [[maybe_unused]] static void pairwise_multiply(
   f_t* a, f_t* b, f_t* out, int size, rmm::cuda_stream_view stream)
@@ -257,6 +277,8 @@ class iteration_data_t {
       primal_residual_norm_save(inf),
       dual_residual_norm_save(inf),
       complementarity_residual_norm_save(inf),
+      primal_objective_save(inf),
+      iterate_merit_save(inf),
       diag(lp.num_cols),
       inv_diag(lp.num_cols),
       inv_sqrt_diag(lp.num_cols),
@@ -1927,6 +1949,13 @@ class iteration_data_t {
   f_t primal_residual_norm_save;
   f_t dual_residual_norm_save;
   f_t complementarity_residual_norm_save;
+  // Objective of the saved iterate, recorded when it is saved so that it stays consistent with
+  // the residuals that qualified it.
+  f_t primal_objective_save;
+  // Merit of the saved iterate; see iterate_merit. inf until an iterate has been saved.
+  f_t iterate_merit_save;
+  // Iterations since iterate_merit_save last improved, for stall detection.
+  i_t iterations_since_merit_improvement = 0;
   // Launched once primal/dual/complementarity residuals all drop below the high-accuracy
   // threshold.
   bool use_high_accuracy_ir = false;
@@ -4026,7 +4055,14 @@ lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
   lp_solution_t<i_t, f_t>& solution)
 {
   raft::common::nvtx::range fun_scope("Barrier: check_for_suboptimal_solution");
-  if (relative_primal_residual < settings.barrier_relaxed_feasibility_tol &&
+  // Prefer the saved iterate when it scores better than the current one. This routine is reached
+  // once the iterates have started degrading, so the current point is often acceptable but worse
+  // than the best one seen. NaN residuals make the merit NaN, which fails this test and falls
+  // through to the saved iterate.
+  const f_t current_merit = iterate_merit(
+    settings, relative_primal_residual, relative_dual_residual, relative_complementarity_residual);
+  if (current_merit <= data.iterate_merit_save &&
+      relative_primal_residual < settings.barrier_relaxed_feasibility_tol &&
       relative_dual_residual < settings.barrier_relaxed_optimality_tol &&
       relative_complementarity_residual < settings.barrier_relaxed_complementarity_tol &&
       primal_objective == primal_objective) {
@@ -4059,15 +4095,10 @@ lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
                                   // status
   }
 
-  f_t primal_objective_save = data.c.inner_product(data.x_save);
-  if (data.Q.n > 0) {
-    dense_vector_t<i_t, f_t> Qx_save(data.Q.n);
-    dense_vector_t<i_t, f_t> x_save_host(data.Q.n);
-    std::copy(data.x_save.begin(), data.x_save.begin() + data.Q.n, x_save_host.begin());
-    matrix_vector_multiply(data.Q, 1.0, x_save_host, 0.0, Qx_save);
-    f_t quad_objective = 0.5 * x_save_host.inner_product(Qx_save);
-    primal_objective_save += quad_objective;
-  }
+  // The objective of the saved iterate is recorded when it is saved, so it is consistent with the
+  // residuals that qualified it. Recomputing it here from x_save would duplicate reductions
+  // already performed on the device.
+  const f_t primal_objective_save = data.primal_objective_save;
 
   if (data.relative_primal_residual_save < settings.barrier_relaxed_feasibility_tol &&
       data.relative_dual_residual_save < settings.barrier_relaxed_optimality_tol &&
@@ -4418,20 +4449,31 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
         data.use_high_accuracy_ir = true;
       }
 
+      // Scored every iteration, not just for candidates, so that both the best-iterate
+      // bookkeeping and the no-progress checks below see the same number.
+      const f_t current_merit = iterate_merit(settings,
+                                              relative_primal_residual,
+                                              relative_dual_residual,
+                                              relative_complementarity_residual);
+      bool merit_improved     = false;
+
       if (relative_primal_residual < settings.barrier_relaxed_feasibility_tol &&
           relative_dual_residual < settings.barrier_relaxed_optimality_tol &&
           relative_complementarity_residual < settings.barrier_relaxed_complementarity_tol) {
-        if (relative_primal_residual < data.relative_primal_residual_save &&
-            relative_dual_residual < data.relative_dual_residual_save &&
-            relative_complementarity_residual < data.relative_complementarity_residual_save &&
-            primal_objective == primal_objective && dual_objective == dual_objective) {
+        // Keep the iterate that scores best overall rather than requiring every residual to
+        // improve at once. Near convergence the residuals trade against each other, so a
+        // conjunctive rule keeps whichever iterate first minimized one component and rejects
+        // later iterates that are better on the others.
+        if (current_merit < data.iterate_merit_save && primal_objective == primal_objective &&
+            dual_objective == dual_objective) {
           settings.log.debug(
             "Saving solution at iter %d: feasibility %.2e, optimality %.2e, complementarity "
-            "%.2e\n",
+            "%.2e, merit %.2e\n",
             iter,
             relative_primal_residual,
             relative_dual_residual,
-            relative_complementarity_residual);
+            relative_complementarity_residual,
+            current_merit);
           raft::copy(data.w.data(), data.d_w_.data(), data.d_w_.size(), stream_view_);
           raft::copy(data.x.data(), data.d_x_.data(), data.d_x_.size(), stream_view_);
           raft::copy(data.y.data(), data.d_y_.data(), data.d_y_.size(), stream_view_);
@@ -4449,8 +4491,13 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
           data.primal_residual_norm_save              = primal_residual_norm;
           data.dual_residual_norm_save                = dual_residual_norm;
           data.complementarity_residual_norm_save     = complementarity_residual_norm;
+          data.primal_objective_save                  = primal_objective;
+          data.iterate_merit_save                     = current_merit;
+          merit_improved                              = true;
         }
       }
+      data.iterations_since_merit_improvement =
+        merit_improved ? 0 : data.iterations_since_merit_improvement + 1;
 
       iter++;
       elapsed_time = toc(start_time);
@@ -4518,8 +4565,44 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
         return lp_status_t::OPTIMAL;
       }
 
-      // Check if the solution is getting worse
-      if (data.Q.n > 0 &&
+      // No further progress is being made and a returnable iterate is already in hand. Two ways
+      // that shows up: the iterate turns around (merit jumps above the best seen), or it flattens
+      // out. The divergence check below only fires once a residual has degraded 100x, which on a
+      // stalled solve wastes most of the run -- the best iterate is typically found one iteration
+      // before the turnaround, then the solver grinds on for another 70+ iterations reaching the
+      // same answer.
+      if (data.iterate_merit_save <= f_t(1)) {
+        constexpr f_t merit_jump_factor      = 2.0;
+        constexpr i_t merit_stall_iterations = 25;
+        const bool turned_around = current_merit > merit_jump_factor * data.iterate_merit_save;
+        const bool stalled = data.iterations_since_merit_improvement >= merit_stall_iterations;
+        if (turned_around || stalled) {
+          settings.log.debug(
+            "Stopping at iter %d: %s (merit %.3e vs best %.3e, %d iters since improvement)\n",
+            iter,
+            turned_around ? "iterate turned around" : "no progress",
+            current_merit,
+            data.iterate_merit_save,
+            data.iterations_since_merit_improvement);
+          return check_for_suboptimal_solution(data,
+                                               start_time,
+                                               iter,
+                                               primal_objective,
+                                               primal_residual_norm,
+                                               dual_residual_norm,
+                                               complementarity_residual_norm,
+                                               relative_primal_residual,
+                                               relative_dual_residual,
+                                               relative_complementarity_residual,
+                                               solution);
+        }
+      }
+
+      // Check if the solution is getting worse. Cone problems need this as much as quadratic
+      // ones: on an ill-conditioned augmented system the dual residual can degrade by orders of
+      // magnitude over hundreds of iterations, and without this the solver only stops once the
+      // iteration limit is hit.
+      if ((data.Q.n > 0 || data.has_cones()) &&
           ((!primal_feasible &&
             relative_primal_residual > 100 * data.relative_primal_residual_save) ||
            (!dual_feasible && relative_dual_residual > 100 * data.relative_dual_residual_save) ||
