@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cuda/stream>
 #include <utilities/cuda_helpers.cuh>
 #include "../solution/solution.cuh"
 #include "found_solution.cuh"
@@ -40,7 +41,7 @@ bool set_shmem_for_kernel_get_best_insertion_ejection_solution(size_t dynamic_sh
 
 template <int BLOCK_SIZE, typename i_t, typename f_t, request_t REQUEST>
 void launch_kernel_get_best_insertion_ejection_solution(
-  dim3 grid, dim3 blocks, size_t shmem_bytes, void** kernel_args, rmm::cuda_stream_view stream);
+  dim3 grid, dim3 blocks, size_t shmem_bytes, void** kernel_args, cuda::stream_ref stream);
 
 template <int BLOCK_SIZE,
           typename i_t,

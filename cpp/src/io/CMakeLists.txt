@@ -23,5 +23,7 @@ set(PARSERS_SRC_FILES
   ${MPS_FAST_SRC_FILES}
 )
 
-set(CUOPT_SRC_FILES ${CUOPT_SRC_FILES} ${PARSERS_SRC_FILES} PARENT_SCOPE)
+# Parsers and the host-side problem representation are CUDA-free (the only `cuda::` uses
+# are host integer helpers from header-only libcu++), so they build into cuopt_client.
+set(CUOPT_CLIENT_SRC_FILES ${CUOPT_CLIENT_SRC_FILES} ${PARSERS_SRC_FILES} PARENT_SCOPE)
 set(MPS_FAST_SRC_FILES ${MPS_FAST_SRC_FILES} PARENT_SCOPE)

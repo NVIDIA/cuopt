@@ -35,7 +35,7 @@ constexpr void get_row_and_col_index(i_t& row, i_t& col, i_t flat_index, i_t nod
 }
 
 template <typename i_t, typename f_t>
-constexpr double lookup_dist(f_t const* table, i_t i, i_t j, size_t width)
+constexpr double lookup_matrix_value(f_t const* table, i_t i, i_t j, size_t width)
 {
   return table[i * width + j];
 }
@@ -55,7 +55,7 @@ static constexpr double get_arc_cost(const NodeInfo<i_t>& l1,
   if (vehicle_info.skip_first_trip && l1.node_type() == node_type_t::DEPOT) { return 0.f; }
   if (vehicle_info.drop_return_trip && l2.node_type() == node_type_t::DEPOT) { return 0.f; }
   auto matrix = vehicle_info.matrices.get_cost_matrix(vehicle_info.type);
-  return lookup_dist(matrix, l1.location(), l2.location(), vehicle_info.matrices.extent[3]);
+  return lookup_matrix_value(matrix, l1.location(), l2.location(), vehicle_info.matrices.extent[3]);
 }
 
 // All values pre-loaded overload
@@ -85,7 +85,7 @@ static constexpr double get_transit_time(const NodeInfo<i_t>& l1,
 
   auto matrix = vehicle_info.matrices.get_time_matrix(vehicle_info.type);
   transit_time +=
-    lookup_dist(matrix, l1.location(), l2.location(), vehicle_info.matrices.extent[3]);
+    lookup_matrix_value(matrix, l1.location(), l2.location(), vehicle_info.matrices.extent[3]);
 
   return transit_time;
 }

@@ -20,7 +20,7 @@ constexpr int max_n_neighbors = 96;
 #endif
 
 template <typename i_t, typename f_t, request_t REQUEST>
-__global__ void compute_reverse_distances(typename solution_t<i_t, f_t, REQUEST>::view_t solution)
+__global__ void compute_reverse_costs(typename solution_t<i_t, f_t, REQUEST>::view_t solution)
 {
   extern __shared__ double shmem[];
 
@@ -651,8 +651,8 @@ bool find_vrp_moves(solution_t<i_t, f_t, REQUEST>& sol,
   if (sol.n_routes < 2) { return false; }
 
   if (sol.problem_ptr->is_cvrp()) {
-    compute_reverse_distances<i_t, f_t, REQUEST>
-      <<<sol.get_n_routes(), 32, 0, sol.sol_handle->get_stream()>>>(sol.view());
+    compute_reverse_costs<i_t, f_t, REQUEST>
+      <<<sol.get_n_routes(), 32, 0, sol.sol_handle->get_stream().get()>>>(sol.view());
   }
   i_t TPB             = std::min(max_n_neighbors, sol.problem_ptr->get_num_orders());
   size_t size_of_frag = dimensions_route_t<i_t, f_t, REQUEST>::get_shared_size(
@@ -672,7 +672,7 @@ bool find_vrp_moves(solution_t<i_t, f_t, REQUEST>& sol,
   move_candidates.vrp_move_candidates.find_kernel_graph.start_capture(sol.sol_handle->get_stream());
   move_candidates.vrp_move_candidates.reset(sol.sol_handle);
   find_vrp_moves_kernel<i_t, f_t, REQUEST>
-    <<<n_blocks, TPB, sh_size, sol.sol_handle->get_stream()>>>(
+    <<<n_blocks, TPB, sh_size, sol.sol_handle->get_stream().get()>>>(
       sol.view(), move_candidates.view(), recycle);
   move_candidates.vrp_move_candidates.find_kernel_graph.end_capture(sol.sol_handle->get_stream());
   move_candidates.vrp_move_candidates.find_kernel_graph.launch_graph(sol.sol_handle->get_stream());

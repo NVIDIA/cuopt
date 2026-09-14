@@ -17,6 +17,7 @@
 #include <linear_algebra/sparse_matrix.hpp>
 #include <math_optimization/tic_toc.hpp>
 
+#include <cuda/stream>
 #include <rmm/device_uvector.hpp>
 
 #include <utility>
@@ -99,7 +100,7 @@ class barrier_solver_t {
   const simplex::lp_problem_t<i_t, f_t>& lp;
   const simplex::simplex_solver_settings_t<i_t, f_t>& settings;
   const simplex::presolve_info_t<i_t, f_t>& presolve_info;
-  rmm::cuda_stream_view stream_view_;
+  cuda::stream_ref stream_view_;
 };
 
 }  // namespace cuopt::mathematical_optimization::barrier

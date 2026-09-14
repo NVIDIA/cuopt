@@ -96,5 +96,9 @@ endif()
 message(STATUS "libcuopt: Final RPATH = ${rpaths}")
 
 set_property(TARGET cuopt PROPERTY INSTALL_RPATH ${rpaths} APPEND)
+# cuopt_client needs these too: it PUBLIC-links rapids_logger, which
+# build_wheel_libcuopt.sh excludes from vendoring, so the only way to find it is
+# $ORIGIN/../../rapids_logger/lib64 from this list.
+set_property(TARGET cuopt_client PROPERTY INSTALL_RPATH ${rpaths} APPEND)
 set_property(TARGET cuopt_cli PROPERTY INSTALL_RPATH ${rpaths} APPEND)
 set_property(TARGET cuopt_grpc_server PROPERTY INSTALL_RPATH ${rpaths} APPEND)

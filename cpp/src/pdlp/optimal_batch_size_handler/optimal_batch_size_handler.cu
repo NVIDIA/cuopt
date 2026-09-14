@@ -12,6 +12,7 @@
 #include <utilities/device_scalar_init.hpp>
 #include <utilities/event_handler.cuh>
 
+#include <cuda/stream>
 #include <raft/core/cusparse_macros.hpp>
 
 #include <mip_heuristics/mip_constants.hpp>
@@ -62,7 +63,7 @@ struct SpMM_benchmarks_context_t {
       y_descr.get(),
       (deterministic_batch_pdlp) ? CUSPARSE_SPMM_CSR_ALG3 : CUSPARSE_SPMM_CSR_ALG2,
       &buffer_size_non_transpose_batch,
-      stream_view));
+      stream_view.get()));
 
     size_t buffer_size_transpose_batch = 0;
     RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmm_bufferSize(
@@ -76,7 +77,7 @@ struct SpMM_benchmarks_context_t {
       x_descr.get(),
       (deterministic_batch_pdlp) ? CUSPARSE_SPMM_CSR_ALG3 : CUSPARSE_SPMM_CSR_ALG2,
       &buffer_size_transpose_batch,
-      stream_view));
+      stream_view.get()));
 
     buffer_transpose_batch     = rmm::device_buffer(buffer_size_transpose_batch, stream_view);
     buffer_non_transpose_batch = rmm::device_buffer(buffer_size_non_transpose_batch, stream_view);
@@ -94,7 +95,7 @@ struct SpMM_benchmarks_context_t {
       x_descr.get(),
       (deterministic_batch_pdlp) ? CUSPARSE_SPMM_CSR_ALG3 : CUSPARSE_SPMM_CSR_ALG2,
       buffer_transpose_batch.data(),
-      stream_view);
+      stream_view.get());
 
     my_cusparsespmm_preprocess<f_t>(
       handle_ptr->get_cusparse_handle(),
@@ -107,7 +108,7 @@ struct SpMM_benchmarks_context_t {
       y_descr.get(),
       (deterministic_batch_pdlp) ? CUSPARSE_SPMM_CSR_ALG3 : CUSPARSE_SPMM_CSR_ALG2,
       buffer_non_transpose_batch.data(),
-      stream_view);
+      stream_view.get());
 #endif
 
     // First empty run for warm up
@@ -129,7 +130,7 @@ struct SpMM_benchmarks_context_t {
       y_descr.get(),
       (deterministic_batch_pdlp) ? CUSPARSE_SPMM_CSR_ALG3 : CUSPARSE_SPMM_CSR_ALG2,
       (f_t*)buffer_non_transpose_batch.data(),
-      stream_view));
+      stream_view.get()));
 
     RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmm(
       handle_ptr->get_cusparse_handle(),
@@ -142,7 +143,7 @@ struct SpMM_benchmarks_context_t {
       x_descr.get(),
       (deterministic_batch_pdlp) ? CUSPARSE_SPMM_CSR_ALG3 : CUSPARSE_SPMM_CSR_ALG2,
       (f_t*)buffer_transpose_batch.data(),
-      stream_view));
+      stream_view.get()));
   }
 
   cusparse_dn_mat_uptr x_descr;
@@ -169,7 +170,7 @@ static double evaluate_node(cusparse_sp_mat_descr_view A,
 {
   cuopt_assert(current_batch_size > 0, "Current batch size must be greater than 0");
 
-  rmm::cuda_stream_view stream_view = handle_ptr->get_stream();
+  cuda::stream_ref stream_view = handle_ptr->get_stream();
   SpMM_benchmarks_context_t<i_t, f_t> spmm_benchmarks_context(
     A, A_T, primal_size, dual_size, current_batch_size, handle_ptr);
 
@@ -219,7 +220,7 @@ int optimal_batch_size_handler(const optimization_problem_t<i_t, f_t>& op_proble
     std::pow(2, std::floor(std::log2(std::min(initial_batch_size, max_batch_size))));
   int optimal_batch_size = current_batch_size;
   double best_ratio;
-  rmm::cuda_stream_view stream_view = op_problem.get_handle_ptr()->get_stream();
+  cuda::stream_ref stream_view = op_problem.get_handle_ptr()->get_stream();
 
   mip::problem_t<i_t, f_t> problem(op_problem);
 
@@ -240,7 +241,7 @@ int optimal_batch_size_handler(const optimization_problem_t<i_t, f_t>& op_proble
   i_t dual_size            = problem.n_constraints;
 
   // Sync before starting anything to make sure everything is done
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view));
+  stream_view.sync();
 
   // Evaluate current, left and right nodes to pick a direction
 

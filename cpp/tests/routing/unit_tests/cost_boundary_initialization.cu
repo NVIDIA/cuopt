@@ -90,7 +90,7 @@ void test_cost_boundaries_reset()
     ASSERT_DOUBLE_EQ(cost_backward[expected_n_nodes], backward_dirty);
   }
 
-  set_route_data_kernel<REQUEST><<<1, 32, 0, stream>>>(solution.view(), problem.view());
+  set_route_data_kernel<REQUEST><<<1, 32, 0, stream.get()>>>(solution.view(), problem.view());
   RAFT_CUDA_TRY(cudaPeekAtLastError());
   handle.sync_stream();
 

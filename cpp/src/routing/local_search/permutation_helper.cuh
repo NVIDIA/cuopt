@@ -235,7 +235,7 @@ DI bool forward_fragment_update_cvrp(const node_t<i_t, f_t, REQUEST>& curr_node,
                                      const typename route_t<i_t, f_t, REQUEST>::view_t& s_route,
                                      node_t<i_t, f_t, REQUEST>* fragment,
                                      i_t fragment_size,
-                                     f_t fragment_dist,
+                                     f_t fragment_cost,
                                      f_t fragment_demand,
                                      const infeasible_cost_t& weights,
                                      double excess_limit)
@@ -245,7 +245,7 @@ DI bool forward_fragment_update_cvrp(const node_t<i_t, f_t, REQUEST>& curr_node,
   f_t arc_value = get_arc_of_dimension<i_t, f_t, dim_t::COST, true>(
     curr_node.request.info, fragment[0].request.info, s_route.vehicle_info());
   fragment[fragment_size - 1].cost_dim.cost_forward =
-    curr_node.cost_dim.cost_forward + arc_value + fragment_dist;
+    curr_node.cost_dim.cost_forward + arc_value + fragment_cost;
   fragment[fragment_size - 1].capacity_dim.gathered[0] =
     curr_node.capacity_dim.gathered[0] + fragment_demand;
   fragment[fragment_size - 1].capacity_dim.max_to_node[0] =
@@ -290,14 +290,14 @@ DI bool backward_fragment_update_cvrp(const node_t<i_t, f_t, REQUEST>& curr_node
                                       const typename route_t<i_t, f_t, REQUEST>::view_t& s_route,
                                       node_t<i_t, f_t, REQUEST>* fragment,
                                       i_t fragment_size,
-                                      f_t fragment_dist,
+                                      f_t fragment_cost,
                                       f_t fragment_demand,
                                       const infeasible_cost_t& weights,
                                       double excess_limit)
 {
   f_t arc_value = get_arc_of_dimension<i_t, f_t, dim_t::COST, true>(
     fragment[fragment_size - 1].request.info, curr_node.request.info, s_route.vehicle_info());
-  fragment[0].cost_dim.cost_backward = curr_node.cost_dim.cost_backward + arc_value + fragment_dist;
+  fragment[0].cost_dim.cost_backward = curr_node.cost_dim.cost_backward + arc_value + fragment_cost;
 
   fragment[0].capacity_dim.max_after[0] = curr_node.capacity_dim.max_after[0] + fragment_demand;
 

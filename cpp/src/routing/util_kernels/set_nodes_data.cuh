@@ -54,8 +54,19 @@ __device__ void set_route_data(typename problem_t<i_t, f_t>::view_t const& probl
                        route.template get_dim<dim_t::TIME>().excess_backward[0]) < 0.0001,
                    "Backward forward mismatch!");
     }
-    route.template get_dim<dim_t::COST>().cost_backward[n_nodes_route] = 0.f;
-    route.template get_dim<dim_t::COST>().cost_forward[0]              = 0.f;
+    auto& cost_route                        = route.template get_dim<dim_t::COST>();
+    cost_route.cost_forward[0]              = 0.f;
+    cost_route.cost_backward[n_nodes_route] = 0.f;
+    if (cost_route.dim_info.has_distance_window) {
+      cost_route.distance_window_forward[0]              = 0.;
+      cost_route.distance_window_backward[n_nodes_route] = DISTANCE_WINDOW_INFINITY;
+      cost_route.excess_forward[0]                       = 0.;
+      cost_route.excess_backward[n_nodes_route]          = 0.;
+      if (cost_route.dim_info.has_distance_break_cost) {
+        cost_route.distance_window_backward_min[n_nodes_route] = 0.;
+        cost_route.distance_break_cost_forward[0]              = 0.;
+      }
+    }
     if (problem.dimensions_info.has_dimension(dim_t::CAP)) {
       route.template get_dim<dim_t::CAP>().max_to_node[0]           = 0;
       route.template get_dim<dim_t::CAP>().gathered[0]              = 0;

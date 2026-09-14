@@ -17,6 +17,7 @@
 #include <random>
 #include <vector>
 
+#include <cuda/stream>
 #include <rmm/device_uvector.hpp>
 
 #include <cub/cub.cuh>
@@ -63,7 +64,7 @@ struct OX {
   int optimal_routes_number;
   int n_buckets;
 
-  std::vector<std::pair<size_t, double>> distances;
+  std::vector<std::pair<size_t, double>> route_join_costs;
   std::unordered_set<int> helper;
   // TODO: use these for heterogenous/route cost/non fixed route
 
@@ -94,14 +95,14 @@ struct OX {
   ox_graph_t<int, float> d_graph;
   ox_graph_t<int, float> transpose_graph;
 
-  explicit OX(size_t nodes_number, const costs& weight, rmm::cuda_stream_view stream_view)
+  explicit OX(size_t nodes_number, const costs& weight, cuda::stream_ref stream_view)
     : mt(rd()),
       problem_size(nodes_number),
       graph(problem_size),
       path_cost(problem_size + 1),
       predcessor(problem_size + 1),
       predcessor_vehicle(problem_size + 1),
-      distances(128),
+      route_join_costs(128),
       d_path_cost(0, stream_view),
       d_predecessor(0, stream_view),
       d_predecessor_vehicle(0, stream_view),
@@ -267,27 +268,29 @@ struct OX {
   {
     auto const vehicle_buckets = S.problem->get_vehicle_buckets();
     for (size_t i = 1; i < routesS.size() - 1; i++) {
-      distances.clear();
+      route_join_costs.clear();
 
       for (size_t j = i; j < routesS.size(); j++) {
         auto vehicle_id = S.get_routes()[routesS[i - 1]].vehicle_id;
-        distances.emplace_back(
+        route_join_costs.emplace_back(
           j,
-          S.problem->distance_between(
+          S.problem->cost_between(
             S.get_routes()[routesS[i - 1]].end, S.get_routes()[routesS[j]].start, vehicle_id));
       }
       std::normal_distribution<double> d(0, 0.25);
       double ind   = d(mt);
-      size_t index = std::min<size_t>(distances.size() - 1, std::round(std::fabs(ind)));
+      size_t index = std::min<size_t>(route_join_costs.size() - 1, std::round(std::fabs(ind)));
 
-      std::partial_sort(distances.begin(),
-                        distances.begin() + index + 1,
-                        distances.end(),
+      std::partial_sort(route_join_costs.begin(),
+                        route_join_costs.begin() + index + 1,
+                        route_join_costs.end(),
                         [](std::pair<size_t, double>& a, std::pair<size_t, double>& b) {
                           return a.second < b.second;
                         });
 
-      if (distances[index].first != i) { std::swap(routesS[i], routesS[distances[index].first]); }
+      if (route_join_costs[index].first != i) {
+        std::swap(routesS[i], routesS[route_join_costs[index].first]);
+      }
     }
   }
 
@@ -518,7 +521,7 @@ struct OX {
     }
   }
 
-  void test_transpose_graph(rmm::cuda_stream_view stream)
+  void test_transpose_graph(cuda::stream_ref stream)
   {
     std::vector<std::vector<std::tuple<int, double, int>>> h_transpose_graph(offspring.size());
     for (size_t i = 0; i < h_transpose_graph.size(); ++i) {
@@ -592,7 +595,7 @@ struct OX {
                                         num_segments,
                                         row_offsets.data(),
                                         row_offsets.data() + 1,
-                                        stream_view);
+                                        stream_view.get());
     d_tmp_storage_bytes.resize(tmp_storage_bytes, stream_view);
     cub::DeviceSegmentedSort::SortPairs(d_tmp_storage_bytes.data(),
                                         tmp_storage_bytes,
@@ -604,8 +607,8 @@ struct OX {
                                         num_segments,
                                         row_offsets.data(),
                                         row_offsets.data() + 1,
-                                        stream_view);
-    RAFT_CHECK_CUDA(stream_view);
+                                        stream_view.get());
+    RAFT_CHECK_CUDA(stream_view.get());
 
     thrust::gather(policy, val_map.begin(), val_map.end(), graph.buckets.data(), gather_int.data());
     thrust::gather(
@@ -622,9 +625,9 @@ struct OX {
     auto const n_blocks      = n_buckets * d_graph.get_num_vertices();
 
     transpose_graph.reset(A.sol.sol_handle);
-    transpose_graph_kernel<int, float><<<n_blocks, TPB, 0, A.sol.sol_handle->get_stream()>>>(
+    transpose_graph_kernel<int, float><<<n_blocks, TPB, 0, A.sol.sol_handle->get_stream().get()>>>(
       d_graph.view(), transpose_graph.view(), max_route_len);
-    RAFT_CHECK_CUDA(A.sol.sol_handle->get_stream());
+    RAFT_CHECK_CUDA(A.sol.sol_handle->get_stream().get());
     sort_graph_edges<int, float>(A, transpose_graph);
   }
 
@@ -646,11 +649,11 @@ struct OX {
     async_fill(d_path_cost, std::numeric_limits<double>::max(), A.sol.sol_handle->get_stream());
     async_fill(d_predecessor, -1, A.sol.sol_handle->get_stream());
     async_fill(d_predecessor_vehicle, -1, A.sol.sol_handle->get_stream());
-    bellman_ford_init<int, double><<<1, 1, 0, A.sol.sol_handle->get_stream()>>>(
+    bellman_ford_init<int, double><<<1, 1, 0, A.sol.sol_handle->get_stream().get()>>>(
       raft::device_span<double>(d_path_cost.data(), d_path_cost.size()),
       raft::device_span<int>(d_predecessor.data(), d_predecessor.size()),
       raft::device_span<int>(d_predecessor_vehicle.data(), d_predecessor_vehicle.size()));
-    RAFT_CHECK_CUDA(A.sol.sol_handle->get_stream());
+    RAFT_CHECK_CUDA(A.sol.sol_handle->get_stream().get());
 
     constexpr auto const TPB     = 128;
     auto min_cost_of_last_column = std::numeric_limits<double>::max();
@@ -665,7 +668,7 @@ struct OX {
       // routes number exceeds num nodes. Stop the search here
       if (n_blocks == 0) { break; }
       bellman_ford_kernel<int, float, Solution::request_type>
-        <<<n_blocks, TPB, 0, A.sol.sol_handle->get_stream()>>>(
+        <<<n_blocks, TPB, 0, A.sol.sol_handle->get_stream().get()>>>(
           A.sol.view(),
           transpose_graph.view(),
           raft::device_span<double>(d_path_cost.data(), d_path_cost.size()),
@@ -675,7 +678,7 @@ struct OX {
           row_size,
           i,
           run_heuristic);
-      RAFT_CHECK_CUDA(A.sol.sol_handle->get_stream());
+      RAFT_CHECK_CUDA(A.sol.sol_handle->get_stream().get());
 
       if (optimal_routes_search) {
         raft::copy(&cost_of_last_column,
@@ -846,7 +849,7 @@ struct OX {
   }
 
   void adj_to_host(std::vector<std::vector<std::tuple<int, double, int>>>& h_graph,
-                   rmm::cuda_stream_view stream)
+                   cuda::stream_ref stream)
   {
     auto tmp_graph = d_graph.to_host(stream);
     for (int veh = 0; veh < n_buckets; ++veh) {
@@ -971,14 +974,14 @@ struct OX {
       return;
     }
     calculate_edge_costs_kernel<int, float, Solution::request_type>
-      <<<n_blocks, 128, shmem, A.sol.sol_handle->get_stream()>>>(
+      <<<n_blocks, 128, shmem, A.sol.sol_handle->get_stream().get()>>>(
         A.sol.view(),
         d_graph.view(),
         raft::device_span<int>(d_offspring.data(), d_offspring.size()),
         raft::device_span<int>(d_vehicle_id_per_bucket.data(), d_vehicle_id_per_bucket.size()),
         max_route_len,
         gpu_weight);
-    RAFT_CHECK_CUDA(A.sol.sol_handle->get_stream());
+    RAFT_CHECK_CUDA(A.sol.sol_handle->get_stream().get());
     A.sol.sol_handle->sync_stream();
 
     if (A.problem->data_view_ptr->get_vehicle_locations().first == nullptr) {

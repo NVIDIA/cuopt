@@ -1,30 +1,33 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-import time
-from typing import Optional
+import logging
+from typing import List, Optional
 
 import numpy as np
 from fastapi import HTTPException
 
 import cudf
 from cuopt import distance_engine, routing
-from cuopt.routing import ErrorStatus
-from cuopt.utilities import (
-    InputRuntimeError,
-    InputValidationError,
-    OutOfMemoryError,
-)
 
+from cuopt_server.utils.data_definition import (
+    CostMatrices,
+    FleetData,
+    InitialSolution,
+    SolverSettingsConfig,
+    TaskData,
+    WaypointGraphData,
+)
 from cuopt_server.utils.routing.initial_solution import parse_initial_sol
 from cuopt_server.utils.routing.optimization_data_model import (
     OptimizationDataModel,
-    objective_names,
 )
 
-dep_warning = (
-    "{field} is deprecated and will be removed in the next release. Ignored."
-)
+
+# Return exception if validation fails
+def check_valid(is_valid):
+    if not is_valid[0]:
+        raise HTTPException(status_code=400, detail=f"{is_valid[1]}")
 
 
 def warn_on_objectives(solver_config):
@@ -32,82 +35,142 @@ def warn_on_objectives(solver_config):
     return warnings, solver_config
 
 
-# Create routes as waypoint sequence from sequence of task locations
-def create_waypoint_sequence_routes(
-    optimization_data, solution_routes, waypoint_graph
+# Standard solve time for VRP
+def std_solver_time_calc(num_tasks):
+    return 10 + num_tasks / 6
+
+
+def populate_optimization_data(
+    cost_waypoint_graph_data: Optional[WaypointGraphData] = None,
+    travel_time_waypoint_graph_data: Optional[WaypointGraphData] = None,
+    cost_matrix_data: Optional[CostMatrices] = None,
+    travel_time_matrix_data: Optional[CostMatrices] = None,
+    fleet_data: Optional[FleetData] = None,
+    task_data: Optional[TaskData] = None,
+    # Use the update data structure for the sync endpoint because
+    # it makes the time_limit value Optional
+    initial_solution: Optional[List[InitialSolution]] = None,
+    solver_config: Optional[SolverSettingsConfig] = None,
+    warnings=[],
 ):
-    v_routes = {}
-    way_point_seq_df = {}
-    if optimization_data.fleet_data["vehicle_types"] is not None:
-        v_types = [
-            optimization_data.fleet_data["vehicle_types"].iloc[i]
-            for i in solution_routes["truck_id"].to_arrow().to_pylist()
-        ]
-    else:
-        v_types = [list(waypoint_graph.keys())[0]] * len(solution_routes)
+    optimization_data = OptimizationDataModel()
 
-    solution_routes["vehicle_types"] = v_types
-    for v_type in set(v_types):
-        v_routes[v_type] = solution_routes[
-            solution_routes["vehicle_types"] == v_type
-        ]
-        way_point_seq_df[v_type] = waypoint_graph[
-            v_type
-        ].compute_waypoint_sequence(
-            optimization_data.locations, v_routes[v_type]
+    if (
+        not cost_waypoint_graph_data
+        or not cost_waypoint_graph_data.waypoint_graph
+    ) and (not cost_matrix_data or not cost_matrix_data.data):
+        raise HTTPException(
+            status_code=400,
+            detail="cost_matrix/waypoint_graph needs to be provided to find any route",  # noqa
         )
 
-    routes = {}
-    for v_type, route in v_routes.items():
-        route = route.groupby("truck_id").agg(list).to_pandas().to_dict()
-        waypoint_sequence = way_point_seq_df[v_type][
-            "waypoint_sequence"
-        ].to_numpy()
-        waypoint_type = way_point_seq_df[v_type]["waypoint_type"].to_numpy()
-
-        routes.update(
-            {
-                str(
-                    optimization_data.fleet_data["vehicle_ids"].iloc[veh_id]
-                ): {
-                    "task_id": [
-                        route["type"][veh_id][idx]
-                        if route["type"][veh_id][idx] in ["Depot", "Break"]
-                        else str(
-                            optimization_data.task_data["task_ids"].iloc[
-                                route["route"][veh_id][idx]
-                            ]
-                        )
-                        for idx in range(len(route["route"][veh_id]))
-                    ],
-                    "arrival_stamp": route["arrival_stamp"][veh_id],
-                    "route": sum(
-                        [
-                            route["location"][veh_id][idx : idx + 1]
-                            if idx == 0 or offsets[idx] == offsets[idx - 1] + 1
-                            else waypoint_sequence[
-                                offsets[idx - 1] + 1 : offsets[idx]
-                            ].tolist()
-                            for idx in range(len(offsets))
-                        ],
-                        [],
-                    ),
-                    "type": sum(
-                        [
-                            route["type"][veh_id][idx : idx + 1]
-                            if idx == 0 or offsets[idx] == offsets[idx - 1] + 1
-                            else waypoint_type[
-                                offsets[idx - 1] + 1 : offsets[idx]
-                            ].tolist()
-                            for idx in range(len(offsets))
-                        ],
-                        [],
-                    ),
-                }
-                for veh_id, offsets in route["sequence_offset"].items()
-            }
+    if (
+        cost_waypoint_graph_data and cost_waypoint_graph_data.waypoint_graph
+    ) and (cost_matrix_data and cost_matrix_data.data):
+        raise HTTPException(
+            status_code=400,
+            detail="only one of cost_matrix or waypoint_graph needs to be provided, not both",  # noqa
         )
-    return routes
+
+    if (travel_time_matrix_data and travel_time_matrix_data.data) and (
+        travel_time_waypoint_graph_data
+        and travel_time_waypoint_graph_data.waypoint_graph
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="only one of travel_time_matrix_data or travel_time_waypoint_graph_data needs to be provided, not both",  # noqa
+        )
+
+    if cost_waypoint_graph_data and cost_waypoint_graph_data.waypoint_graph:
+        check_valid(
+            optimization_data.set_cost_waypoint_graph(
+                cost_waypoint_graph_data.waypoint_graph
+            )
+        )
+    elif cost_matrix_data and cost_matrix_data.data:
+        check_valid(optimization_data.set_cost_matrix(cost_matrix_data.data))
+
+    if (
+        travel_time_waypoint_graph_data
+        and travel_time_waypoint_graph_data.waypoint_graph
+    ):
+        check_valid(
+            optimization_data.set_travel_time_waypoint_graph(
+                travel_time_waypoint_graph_data.waypoint_graph
+            )
+        )
+    elif travel_time_matrix_data and travel_time_matrix_data.data:
+        check_valid(
+            optimization_data.set_travel_time_matrix(
+                travel_time_matrix_data.data
+            )
+        )
+
+    if fleet_data is not None:
+        check_valid(
+            optimization_data.set_fleet_data(
+                fleet_data.vehicle_ids,
+                fleet_data.vehicle_locations,
+                fleet_data.capacities,
+                fleet_data.vehicle_time_windows,
+                fleet_data.vehicle_breaks,
+                fleet_data.vehicle_break_time_windows,
+                fleet_data.vehicle_break_durations,
+                fleet_data.vehicle_break_locations,
+                fleet_data.vehicle_types,
+                fleet_data.vehicle_order_match,
+                fleet_data.skip_first_trips,
+                fleet_data.drop_return_trips,
+                fleet_data.min_vehicles,
+                fleet_data.vehicle_max_costs,
+                fleet_data.vehicle_max_times,
+                fleet_data.vehicle_fixed_costs,
+                vehicle_distance_breaks=fleet_data.vehicle_distance_breaks,
+            )
+        )
+
+    if task_data is not None:
+        check_valid(
+            optimization_data.set_task_data(
+                task_data.task_ids,
+                task_data.task_locations,
+                task_data.demand,
+                task_data.pickup_and_delivery_pairs,
+                task_data.task_time_windows,
+                task_data.service_times,
+                task_data.prizes,
+                task_data.order_vehicle_match,
+            )
+        )
+
+    if initial_solution is not None:
+        check_valid(optimization_data.set_initial_solution(initial_solution))
+
+    if solver_config is not None:
+        if solver_config.time_limit is None:
+            num_tasks = len(task_data.task_locations)
+            solver_config.time_limit = std_solver_time_calc(num_tasks)
+            logging.debug(
+                "Solver time limit not specified, "
+                f"setting to {solver_config.time_limit}"
+            )
+        else:
+            logging.debug(
+                f"Using specified solver time {solver_config.time_limit}"
+            )
+        owarn, solver_config = warn_on_objectives(solver_config)
+        warnings.extend(owarn)
+        check_valid(
+            optimization_data.set_solver_config(
+                solver_config.time_limit,
+                solver_config.objectives,
+                solver_config.config_file,
+                solver_config.verbose_mode,
+                solver_config.error_logging,
+            )
+        )
+
+    return optimization_data
 
 
 def create_data_model(
@@ -224,6 +287,27 @@ def create_data_model(
                 data["latest"],
                 data["duration"],
                 cudf.Series(data["locations"]),
+            )
+
+    if optimization_data.fleet_data["vehicle_distance_breaks"] is not None:
+        for data in optimization_data.fleet_data["vehicle_distance_breaks"]:
+            if data["locations"] is not None:
+                if len(optimization_data.locations) > 0:
+                    break_locations = locations.loc[data["locations"]].astype(
+                        "int32"
+                    )
+                else:
+                    break_locations = cudf.Series(
+                        data["locations"], dtype="int32"
+                    )
+            else:
+                break_locations = None
+            data_model.add_vehicle_distance_break(
+                data["vehicle_id"],
+                data["distance_min"],
+                data["distance_max"],
+                data["duration"],
+                break_locations,
             )
 
     if optimization_data.fleet_data["vehicle_order_match"] is not None:
@@ -400,6 +484,14 @@ def prep_optimization_data(optimization_data):
                     "vehicle_break_locations"
                 ].to_numpy(),
             )
+        if optimization_data.fleet_data["vehicle_distance_breaks"] is not None:
+            for d in optimization_data.fleet_data["vehicle_distance_breaks"]:
+                break_locs = d.get("locations")
+                if break_locs is not None and len(break_locs) > 0:
+                    optimization_data.locations = np.append(
+                        optimization_data.locations,
+                        np.asarray(break_locs),
+                    )
         optimization_data.locations = np.unique(optimization_data.locations)
 
         for v_type, graph in optimization_data.waypoint_graph.items():
@@ -437,135 +529,3 @@ def prep_optimization_data(optimization_data):
         travel_time_matrix,
         cost_waypoint_graph,
     )
-
-
-def get_solver_exception_type(status, message):
-    msg = f"error_status: {status}, msg: {message}"
-
-    if status == ErrorStatus.Success:
-        return None
-    elif status == ErrorStatus.ValidationError:
-        return InputValidationError(msg)
-    elif status == ErrorStatus.OutOfMemoryError:
-        return OutOfMemoryError(msg)
-    elif status == ErrorStatus.RuntimeError:
-        return InputRuntimeError(msg)
-    else:
-        return RuntimeError(msg)
-
-
-def solve(
-    optimization_data: OptimizationDataModel,
-):
-    notes = []
-    total_solve_time = 0
-    try:
-        (
-            optimization_data,
-            cost_matrix,
-            travel_time_matrix,
-            cost_waypoint_graph,
-        ) = prep_optimization_data(optimization_data)
-
-        warnings, data_model = create_data_model(
-            optimization_data,
-            cost_matrix=cost_matrix,
-            travel_time_matrix=travel_time_matrix,
-        )
-
-        cswarnings, solver_settings = create_solver(optimization_data)
-        warnings.extend(cswarnings)
-
-        solve_time_start = time.time()
-        sol = routing.Solve(data_model, solver_settings)
-        if sol is not None and sol.get_error_status() != ErrorStatus.Success:
-            raise get_solver_exception_type(
-                sol.get_error_status(), sol.get_error_message()
-            )
-
-        total_solve_time = time.time() - solve_time_start
-
-        valid_solve_status = [0, 1]
-
-        if sol.get_status() not in valid_solve_status:
-            raise HTTPException(
-                status_code=409,
-                detail=sol.get_message(),
-            )
-        else:
-            routes = sol.get_route()
-            accepted = sol.get_accepted_solutions().to_arrow().to_pylist()
-            dropped_tasks = {
-                "task_id": (
-                    optimization_data.task_data["task_ids"]
-                    .iloc[sol.get_infeasible_orders()]
-                    .to_arrow()
-                    .to_pylist()
-                ),
-                "task_index": sol.get_infeasible_orders()
-                .to_arrow()
-                .to_pylist(),
-            }
-
-            # Compute waypoint sequence df for each vehicle type
-            if len(optimization_data.waypoint_graph) != 0:
-                routes = create_waypoint_sequence_routes(
-                    optimization_data, routes, cost_waypoint_graph
-                )
-            else:
-                routes = (
-                    routes.groupby("truck_id").agg(list).to_pandas().to_dict()
-                )
-
-                routes = {
-                    str(
-                        optimization_data.fleet_data["vehicle_ids"].iloc[
-                            veh_id
-                        ]
-                    ): {
-                        "task_id": [
-                            routes["type"][veh_id][idx]
-                            if routes["type"][veh_id][idx]
-                            in ["Depot", "Break"]
-                            else str(
-                                optimization_data.task_data["task_ids"].iloc[
-                                    routes["route"][veh_id][idx]
-                                ]
-                            )
-                            for idx in range(len(routes["route"][veh_id]))
-                        ],
-                        "arrival_stamp": routes["arrival_stamp"][veh_id],
-                        "type": routes["type"][veh_id],
-                        "route": routes["location"][veh_id],
-                    }
-                    for veh_id in list(routes["route"].keys())
-                }
-
-            objective_values_temp = sol.get_objective_values()
-            objective_values = {
-                objective_names[obj]: float(val)
-                for obj, val in objective_values_temp.items()
-            }
-
-            initial_sol_map = ["not accepted", "accepted", "not evaluated"]
-
-            res = {
-                "status": sol.get_status(),
-                "num_vehicles": sol.get_vehicle_count(),
-                "solution_cost": sol.get_total_objective(),
-                "objective_values": objective_values,
-                "vehicle_data": routes,
-                "initial_solutions": [initial_sol_map[i] for i in accepted],
-                "dropped_tasks": dropped_tasks,
-            }
-            if res["status"] == 1:
-                notes.append(sol.get_message())
-
-        return notes, warnings, res, total_solve_time
-
-    except (InputValidationError, ValueError) as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except (InputRuntimeError, OutOfMemoryError) as e:
-        raise HTTPException(status_code=422, detail=str(e))
-    except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e))

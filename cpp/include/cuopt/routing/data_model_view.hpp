@@ -163,6 +163,39 @@ class data_model_view_t {
                          bool validate_input = true);
 
   /**
+   * @brief Add a distance-windowed break for a vehicle.
+   *
+   * The solver inserts one break stop per call no later than distance_max,
+   * measured as cumulative distance along the cost matrix. distance_max is a
+   * hard upper bound. distance_min is a soft target whose shortfall contributes to
+   * objective_t::DISTANCE_BREAK_COST when that objective has a positive
+   * weight. The objective value is the maximum lower-bound shortfall on each
+   * route, summed across routes. Its default weight is 1.0 when distance
+   * breaks are configured; explicitly set its weight to 0.0 to disable it.
+   * Call this function multiple times for the same vehicle to model successive
+   * distance cycles (e.g. first stop: [0, 150], second stop: [150, 300]).
+   *
+   * @param vehicle_id         Vehicle to apply the break to.
+   * @param distance_min       Soft lower bound on cumulative route distance at
+   *                           the break.
+   * @param distance_max       Latest cumulative route distance by which the
+   *                           vehicle must have stopped.
+   * @param break_duration     Service time at the break location (same unit
+   *                           as other service times in the model).
+   * @param break_locations    Device pointer to eligible break location IDs.
+   *                           Pass nullptr to allow any location.
+   * @param num_break_locations Number of entries in break_locations.
+   * @param validate_input     Run input validation. Defaults to true.
+   */
+  void add_vehicle_distance_break(i_t vehicle_id,
+                                  f_t distance_min,
+                                  f_t distance_max,
+                                  i_t break_duration,
+                                  i_t const* break_locations,
+                                  i_t num_break_locations,
+                                  bool validate_input = true);
+
+  /**
    * @brief During improvement phase the solver only optimizes for the cost.
    * This function is used to select the best solution accross all climbers
    * based on other criterias (see objective_t enum). The value for the VEHICLE
@@ -491,7 +524,7 @@ class data_model_view_t {
    */
   std::vector<detail::break_dimension_t<i_t, f_t>> const& get_uniform_breaks() const noexcept;
 
-  std::map<i_t, std::vector<detail::vehicle_break_t<i_t>>> const& get_non_uniform_breaks()
+  std::map<i_t, std::vector<detail::vehicle_break_t<i_t, f_t>>> const& get_non_uniform_breaks()
     const noexcept;
 
   /**
@@ -662,7 +695,7 @@ class data_model_view_t {
   raft::device_span<i_t const> initial_routes_{};
   raft::device_span<node_type_t const> initial_types_{};
   raft::device_span<i_t const> initial_sol_offsets_{};
-  std::map<i_t, std::vector<detail::vehicle_break_t<i_t>>> vehicle_breaks_{};
+  std::map<i_t, std::vector<detail::vehicle_break_t<i_t, f_t>>> vehicle_breaks_{};
 };
 }  // namespace CUOPT_EXPORT routing
 }  // namespace cuopt

@@ -14,13 +14,13 @@ namespace detail {
 template <typename i_t, typename f_t>
 class vehicle_fixed_cost_node_t {
  public:
-  /*! \brief { Calculate next node forward gathered distance data based on actual node} */
+  /*! \brief { Calculate next node forward vehicle fixed cost data based on actual node} */
   void HDI calculate_forward([[maybe_unused]] vehicle_fixed_cost_node_t& next,
                              [[maybe_unused]] f_t vehicle_fixed_cost_between) const noexcept
   {
   }
 
-  /*! \brief { Calculate prev node gathered distance backward data based on actual node} */
+  /*! \brief { Calculate prev node vehicle fixed cost backward data based on actual node} */
   void HDI calculate_backward([[maybe_unused]] vehicle_fixed_cost_node_t& prev,
                               [[maybe_unused]] f_t vehicle_fixed_cost_between) const noexcept
   {
@@ -44,7 +44,8 @@ class vehicle_fixed_cost_node_t {
   }
 
   /*! \brief  { Combine information from begining and ending fragments.}
-      \return { Distance excess of route represented by nodes prev and next }*/
+      \return { Vehicle
+   * fixed cost excess of route represented by nodes prev and next }*/
   static HDI double combine([[maybe_unused]] const vehicle_fixed_cost_node_t& prev,
                             [[maybe_unused]] const vehicle_fixed_cost_node_t& next,
                             [[maybe_unused]] const VehicleInfo<f_t>& vehicle_info,

@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cuda/stream>
 #include "probing_cache.cuh"
 
 #include <mip_heuristics/problem/load_balanced_problem.cuh>
@@ -50,13 +51,13 @@ class managed_stream_pool {
   managed_stream_pool& operator=(managed_stream_pool const&) = delete;
 
   /**
-   * @brief Get a `cuda_stream_view` of a stream in the pool.
+   * @brief Get a `cuda::stream_ref` of a stream in the pool.
    *
    * This function is thread safe with respect to other calls to the same function.
    *
-   * @return rmm::cuda_stream_view
+   * @return cuda::stream_ref
    */
-  rmm::cuda_stream_view get_stream() const noexcept
+  cuda::stream_ref get_stream() const noexcept
   {
     int stream_id = (next_stream++) % streams_.size();
     end_unsycned  = std::max(stream_id, end_unsycned);
@@ -75,7 +76,7 @@ class managed_stream_pool {
   void wait_issued_on_event(cudaEvent_t e)
   {
     for (int i = 0; i < end_unsycned + 1; ++i) {
-      cudaStreamWaitEvent(streams_[i].view(), e, 0);
+      cudaStreamWaitEvent(streams_[i].view().get(), e, 0);
     }
   }
 
@@ -94,7 +95,7 @@ class managed_stream_pool {
       cudaEventCreate(&e);
     }
     for (int i = 0; i < end_unsycned + 1; ++i) {
-      cudaEventRecord(events[i], streams_[i].view());
+      cudaEventRecord(events[i], streams_[i].view().get());
     }
     return events;
   }
@@ -103,7 +104,7 @@ class managed_stream_pool {
   {
     for (int i = 0; i < end_unsycned + 1; ++i) {
       streams_[i].synchronize();
-      RAFT_CHECK_CUDA(streams_[i].value());
+      RAFT_CHECK_CUDA(streams_[i].view().get());
     }
     end_unsycned = -1;
     next_stream  = 0;
