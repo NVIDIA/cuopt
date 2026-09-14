@@ -508,9 +508,11 @@ lp_status_t solve_linear_program_with_barrier(
     xf->column_scales                = column_scales;
     xf->row_scales                   = row_scales;
     xf->primal_tol                   = static_cast<double>(barrier_settings.primal_tol);
-    // Range rows get their RHS rewritten onto slack bounds and folding aggregates rows, so
-    // neither leaves the user RHS recoverable from barrier_lp->rhs.
-    xf->rhs_update_supported = new_slacks.empty() && !presolve_info.folding_info.is_folded;
+    // convert_range_rows zeroes rhs[i] and moves the bounds onto the slack, and folding
+    // aggregates rows, so neither leaves the user RHS recoverable from barrier_lp->rhs. The
+    // slacks and artificials added for plain inequality and equality rows leave rhs alone.
+    xf->rhs_update_supported =
+      user_problem.num_range_rows == 0 && !presolve_info.folding_info.is_folded;
     xf->barrier_lp           = std::make_unique<lp_problem_t<i_t, f_t>>(barrier_lp);
     solver_lp                = xf->barrier_lp.get();
     cache->store_transform(std::move(xf));

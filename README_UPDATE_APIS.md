@@ -66,14 +66,27 @@ Next `Solve` when `cache.dirty()`:
 | API | User data | Status |
 |-----|-----------|--------|
 | `update_linear_objective(c)` | Linear objective `c` | **Done** (shipped on cache-reuse branch) |
-| `update_rhs(b)` | Constraint RHS `b` | **Coded, not verified** (no build/bench yet) |
+| `update_rhs(b)` | Constraint RHS `b` | **Done** (verified against fresh full solves) |
 | `update_P(Q)` | Quadratic objective values, same nnz pattern | **Not started** |
 | `update_A(A)` | Constraint matrix values, same nnz pattern | **Not started** |
 | Pattern-changing `A` or `P` | New CSR structure | **Not started** (would need new symbolic / maybe hash) |
 
 Named `update_rhs` (not `update_b`) to match the C++ cache method.
 
-Also remaining for `update_rhs`: rebuild Python (`./build.sh cuopt --install`), a small QP sequence test, and decide whether the dummy `user_problem.rhs = 0` on reuse is fine (it is, because uncrush does not read `b` and IPM reads `iteration_data.b`).
+Verified on a QP with a `G` row (`min xᵀx` s.t. `x0 + x1 >= b`): two successive
+`update_rhs` re-solves hit the reuse path, skipped presolve / reordering / symbolic
+factorization, and matched a fresh full solve exactly. The dummy `user_problem.rhs = 0`
+on reuse is fine, because uncrush does not read `b` and IPM reads `iteration_data.b`.
+No permanent pytest coverage exists yet — the repo has no `sequence_solve` test at all,
+including for `update_linear_objective`.
+
+### Gotcha — the reuse gate needs `barrier_presolve_bound_free_variables = 0`
+
+`sequence_solve = True` alone is not enough. The gate in `dual_simplex/solve.cpp` requires
+`barrier_presolve_bound_free_variables == 0`, but the default is `-1` (automatic), so reuse
+silently never fires and every solve is a full solve with correct results. This applies to
+`update_linear_objective` too. Callers must
+`settings.set_parameter("barrier_presolve_bound_free_variables", 0)`.
 
 ### Known gap — plain setters do not invalidate the cache (future TODO)
 
