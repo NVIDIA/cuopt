@@ -2183,23 +2183,28 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
   stream_view_.sync();
 }
 
-// delta = reflected - next, for both primal and dual, written into the
-// saddle-point delta buffers. Shared by the single-GPU and per-shard
+// delta = reflected - z, for both primal and dual, written into the
+// saddle-point delta buffers. The projection folds the Halpern update into
+// get_primal/dual_solution(), so z is gone by the time this runs; recover it
+// from reflected = 2 T(z) - z, giving delta = 2 (reflected - T(z)) with T(z)
+// read from potential_next_*. Shared by the single-GPU and per-shard
 // (distributed) paths so the two only differ by which pdhg/stream they pass.
 template <typename i_t, typename f_t>
 static void compute_primal_dual_deltas(pdhg_solver_t<i_t, f_t>& pdhg, rmm::cuda_stream_view stream)
 {
   cub::DeviceTransform::Transform(
-    cuda::std::make_tuple(pdhg.get_reflected_primal().data(), pdhg.get_primal_solution().data()),
+    cuda::std::make_tuple(pdhg.get_reflected_primal().data(),
+                          pdhg.get_potential_next_primal_solution().data()),
     pdhg.get_saddle_point_state().get_delta_primal().data(),
     pdhg.get_primal_solution().size(),
-    cuda::std::minus<f_t>{},
+    [] __device__(f_t reflected, f_t next) { return f_t(2.0) * (reflected - next); },
     stream.get());
   cub::DeviceTransform::Transform(
-    cuda::std::make_tuple(pdhg.get_reflected_dual().data(), pdhg.get_dual_solution().data()),
+    cuda::std::make_tuple(pdhg.get_reflected_dual().data(),
+                          pdhg.get_potential_next_dual_solution().data()),
     pdhg.get_saddle_point_state().get_delta_dual().data(),
     pdhg.get_dual_solution().size(),
-    cuda::std::minus<f_t>{},
+    [] __device__(f_t reflected, f_t next) { return f_t(2.0) * (reflected - next); },
     stream.get());
 }
 
