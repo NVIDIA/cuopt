@@ -86,7 +86,9 @@ This applies to both human contributors and AI agents. Agents must never push to
 
 ### Creating
 
-When an AI agent creates a pull request, it **must be a draft PR** (`gh pr create --draft`). This gives the developer time to review and iterate on the changes before any reviewers get pinged. The developer marks it as ready for review when satisfied.
+When an AI agent creates a pull request, it **must be a draft PR** (`gh pr create --draft`). This gives the developer time to review and iterate on the changes before any reviewers get pinged. The developer marks it as ready for review when satisfied. Verify the PR actually landed as a draft afterward — `--draft` has silently not taken effect before.
+
+For changes under `skills/`, this is also when NVSkills CI validation starts: see the upstream-branch exception above for the `/nvskills-ci` comment and re-validation requirement on every later push.
 
 Keep the initial title and description short — a paragraph or 3–5 bullets stating *what* and *why*. Skim recent merges on the target branch to calibrate.
 
@@ -114,7 +116,7 @@ For each comment, decide whether it needs a **code change**, a **reply**, or **b
 
 ### Writing scripts and CI workflows
 
-Follow YAGNI strictly here — flags, fallbacks, env-var overrides, and config knobs without a concrete failure mode they prevent should be dropped. This applies to scripts and CI workflows specifically, not the codebase as a whole.
+Follow YAGNI strictly here — flags, restated defaults, fallbacks, env-var overrides, and config knobs without a concrete failure mode they prevent should be dropped. This applies to scripts and CI workflows specifically, not the codebase as a whole.
 
 A few non-YAGNI points worth keeping in mind:
 
