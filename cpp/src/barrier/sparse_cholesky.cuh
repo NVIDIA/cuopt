@@ -259,9 +259,23 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     }
 
     if (cudss_mt_lib_file != nullptr) {
-      settings.log.printf("cuDSS Threading layer       : %s\n", cudss_mt_lib_file);
-      CUDSS_CALL_AND_CHECK_EXIT(
-        cudssSetThreadingLayer(handle, cudss_mt_lib_file), status, "cudssSetThreadingLayer");
+      // A missing/misconfigured threading library shouldn't take the whole process down: fall
+      // back to single-threaded cuDSS and keep going. cudssSetThreadingLayer resolves
+      // cudss_mt_lib_file via the host's dynamic linker (its own RUNPATH, LD_LIBRARY_PATH, or
+      // ld.so.cache), which is outside our control in embedding applications -- see
+      // https://github.com/NVIDIA/cuopt/issues/1896.
+      cudssStatus_t threading_status = cudssSetThreadingLayer(handle, cudss_mt_lib_file);
+      if (threading_status == CUDSS_STATUS_SUCCESS) {
+        settings.log.printf("cuDSS Threading layer       : %s\n", cudss_mt_lib_file);
+      } else {
+        settings.log.printf(
+          "cuDSS Threading layer       : could not load '%s' (status = %d); falling back to "
+          "single-threaded cuDSS. Set the CUDSS_THREADING_LIB environment variable to an "
+          "absolute path, or ensure the host provides libgomp.so.1, to enable multi-threaded "
+          "cuDSS.\n",
+          cudss_mt_lib_file,
+          threading_status);
+      }
     }
 
     CUDSS_CALL_AND_CHECK_EXIT(cudssConfigCreate(&solverConfig), status, "cudssConfigCreate");

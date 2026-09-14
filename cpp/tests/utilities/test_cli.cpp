@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include <gtest/gtest.h>
+#include <sys/wait.h>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -91,6 +92,34 @@ class cli_test_t : public ::testing::Test {
     }
 
     pclose(pipe);
+    return result;
+  }
+
+  // Same as run_cli, but also reports the process exit code and allows setting an env var
+  // for the child process only (via a subshell-scoped 'VAR=value cmd' prefix).
+  std::string run_cli_with_exit_code(const std::vector<std::string>& args,
+                                     const std::string& env_prefix,
+                                     int& exit_code)
+  {
+    std::stringstream cmd;
+    if (!env_prefix.empty()) { cmd << env_prefix << " "; }
+    cmd << "cuopt_cli ";
+    for (const auto& arg : args) {
+      cmd << arg << " ";
+    }
+    cmd << "2>&1";
+
+    FILE* pipe = popen(cmd.str().c_str(), "r");
+    if (!pipe) { throw std::runtime_error("popen() failed!"); }
+
+    std::string result;
+    char buffer[128];
+    while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+      result += buffer;
+    }
+
+    int status = pclose(pipe);
+    exit_code  = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
     return result;
   }
 };
@@ -186,6 +215,32 @@ TEST_F(cli_test_t, partial_solution_file)
   std::string content((std::istreambuf_iterator<char>(sol)), std::istreambuf_iterator<char>());
   EXPECT_TRUE(content.find("Status:") != std::string::npos);
   EXPECT_TRUE(content.find("Objective value:") != std::string::npos);
+}
+
+// Regression test for https://github.com/NVIDIA/cuopt/issues/1896: a missing/misconfigured
+// cuDSS threading library used to abort the whole process (exit code 254) instead of falling
+// back to single-threaded cuDSS. Forcing CUDSS_THREADING_LIB to an invalid path reliably
+// reproduces the failure cudssSetThreadingLayer reports in that scenario.
+TEST_F(cli_test_t, cudss_threading_layer_fallback_does_not_crash)
+{
+  int exit_code = -1;
+  // Presolve alone fully solves the tiny sample problem, which would never reach the barrier
+  // method / cuDSS at all; disable it so --method 3 actually exercises cudssSetThreadingLayer.
+  auto output =
+    run_cli_with_exit_code({mps_file.string(), "--method", "3", "--presolve", "0"},
+                           "CUDSS_THREADING_LIB=/nonexistent/libcudss_mtlayer_gomp.so.0",
+                           exit_code);
+  std::cout << "Output: " << output << std::endl;
+
+  EXPECT_EQ(exit_code, 0);
+  EXPECT_TRUE(output.find("falling back to single-threaded cuDSS") != std::string::npos);
+  EXPECT_TRUE(output.find("FAILED: CUDSS call ended unsuccessfully") == std::string::npos);
+
+  auto expected_sol_file = test_dir / "test.sol";
+  EXPECT_TRUE(std::filesystem::exists(expected_sol_file));
+  std::ifstream sol(expected_sol_file);
+  std::string content((std::istreambuf_iterator<char>(sol)), std::istreambuf_iterator<char>());
+  EXPECT_TRUE(content.find("Status:") != std::string::npos);
 }
 
 int main(int argc, char** argv)
