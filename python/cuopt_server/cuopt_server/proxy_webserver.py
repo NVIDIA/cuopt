@@ -3,6 +3,7 @@
 
 """FastAPI app for the gRPC-backed HTTP proxy (LP/MILP, C10)."""
 
+import asyncio
 import logging
 import os
 import threading
@@ -271,6 +272,70 @@ def _prepare_lp(data, warnings):
     sw_warnings, solver_settings = create_solver(lp_data, None)
     warnings.extend(sw_warnings)
     return lp_data, data_model, solver_settings
+
+
+def _deserialize_convert_submit(
+    ctype,
+    buf,
+    file_path,
+    warnings,
+    validation_only,
+    incumbent_solutions,
+    solver_logs,
+    accept,
+    result_file,
+):
+    """CPU + blocking gRPC work for POST /cuopt/request (run off the event loop)."""
+    if file_path:
+        data = load_optimization_file(file_path, warnings)
+    else:
+        data = deserialize(ctype, buf)
+    lp_data, data_model, solver_settings = _prepare_lp(data, warnings)
+    variable_names = lp_data.variable_names
+    if validation_only:
+        job_id = str(uuid.uuid4())
+        envelope = make_response(
+            {"solver_response": {"status": 0, "solution": {}}},
+            warnings=warnings,
+            notes=["Input is valid"],
+            reqId=job_id,
+        )
+        _store_job(
+            job_id,
+            {
+                "accept": accept,
+                "warnings": warnings,
+                "variable_names": variable_names,
+                "result_file": result_file,
+                "solver_logs": False,
+                "incumbents_enabled": False,
+                "incumbent_next_index": 0,
+                "validation_only": True,
+                "validation_result": envelope,
+            },
+        )
+        return job_id
+    client = get_grpc_client()
+    incumbents_enabled = bool(incumbent_solutions) and _is_mip(lp_data)
+    job_id = client.submit(
+        data_model,
+        solver_settings,
+        enable_incumbents=incumbents_enabled,
+    )
+    _store_job(
+        job_id,
+        {
+            "accept": accept,
+            "warnings": warnings,
+            "variable_names": variable_names,
+            "result_file": result_file,
+            "solver_logs": bool(solver_logs),
+            "incumbents_enabled": incumbents_enabled,
+            "incumbent_next_index": 0,
+            "validation_only": False,
+        },
+    )
+    return job_id
 
 
 @app.get("/", responses=HealthResponse)
@@ -700,66 +765,28 @@ async def postrequest(
         if cuopt_data_file:
             file_path = validate_file_path(cuopt_data_file)
 
-        if file_path:
-            data = load_optimization_file(file_path, warnings)
-        else:
+        buf = None
+        if not file_path:
             now = time.time()
             buf = bytearray(sz)
             await get_data(buf, request)
             logging.debug(f"time to receive data {time.time() - now}")
-            data = deserialize(ctype, buf)
 
-        lp_data, data_model, solver_settings = _prepare_lp(data, warnings)
-        variable_names = lp_data.variable_names
         resultdir, _, _ = settings.get_result_dir()
         result_file = get_output_name(
             resultdir, cuopt_data_file, cuopt_result_file
         )
-
-        if validation_only:
-            job_id = str(uuid.uuid4())
-            notes = ["Input is valid"]
-            envelope = make_response(
-                {"solver_response": {"status": 0, "solution": {}}},
-                warnings=warnings,
-                notes=notes,
-                reqId=job_id,
-            )
-            _store_job(
-                job_id,
-                {
-                    "accept": accept,
-                    "warnings": warnings,
-                    "variable_names": variable_names,
-                    "result_file": result_file,
-                    "solver_logs": False,
-                    "incumbents_enabled": False,
-                    "incumbent_next_index": 0,
-                    "validation_only": True,
-                    "validation_result": envelope,
-                },
-            )
-            return encode({"reqId": job_id}, accept)
-
-        client = get_grpc_client()
-        incumbents_enabled = bool(incumbent_solutions) and _is_mip(lp_data)
-        job_id = client.submit(
-            data_model,
-            solver_settings,
-            enable_incumbents=incumbents_enabled,
-        )
-        _store_job(
-            job_id,
-            {
-                "accept": accept,
-                "warnings": warnings,
-                "variable_names": variable_names,
-                "result_file": result_file,
-                "solver_logs": bool(solver_logs),
-                "incumbents_enabled": incumbents_enabled,
-                "incumbent_next_index": 0,
-                "validation_only": False,
-            },
+        job_id = await asyncio.to_thread(
+            _deserialize_convert_submit,
+            ctype,
+            buf,
+            file_path,
+            warnings,
+            validation_only,
+            incumbent_solutions,
+            solver_logs,
+            accept,
+            result_file,
         )
         return encode({"reqId": job_id}, accept)
 
