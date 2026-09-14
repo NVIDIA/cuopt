@@ -3342,6 +3342,7 @@ static dual_status_t dual_phase2_with_advanced_basis(
                         toc(start_time));
   }
   i_t iterations_since_refactor = 0;
+  i_t last_cutoff_check         = -1;
 
   while (iter < iter_limit) {
     PHASE2_NVTX_RANGE("DualSimplex::phase2_main_loop");
@@ -4229,9 +4230,46 @@ static dual_status_t dual_phase2_with_advanced_basis(
       }
     }
 
-    if (obj >= settings.cut_off) {
-      settings.log.printf("Solve cutoff. Current objecive %e. Cutoff %e\n", obj, settings.cut_off);
-      return dual_status_t::CUTOFF;
+    if (obj >= settings.cut_off &&
+        (last_cutoff_check == -1 || iter - last_cutoff_check >= settings.cutoff_check_frequency)) {
+      last_cutoff_check       = iter;
+      const f_t unperturb_obj = compute_objective(lp, x);
+      if (unperturb_obj >= settings.cut_off) {
+        // Validate the cutoff using the original objective, not the perturbed costs.
+        std::vector<f_t> trial_y = y;
+        std::vector<f_t> trial_z = z;
+        if (phase2::amount_of_perturbation(lp, objective) != 0.0) {
+          phase2::compute_dual_solution_from_basis(
+            lp, ft, basic_list, nonbasic_list, trial_y, trial_z, phase2_work_estimate);
+        }
+        const f_t dual_infeas = phase2::dual_infeasibility(
+          lp, settings, vstatus, trial_z, settings.tight_tol, settings.dual_tol);
+        const bool dual_feasible = dual_infeas <= settings.dual_tol;
+
+        // Include residual reduced costs for basic variables in the dual bound.
+        std::vector<f_t> reduced_cost = lp.objective;
+        matrix_transpose_vector_multiply(lp.A, -1.0, trial_y, 1.0, reduced_cost);
+        f_t dual_objective = dot<i_t, f_t>(lp.rhs, trial_y);
+        for (i_t j = 0; j < n; j++) {
+          const bool missing_bound = (reduced_cost[j] > 0.0 && lp.lower[j] == -inf) ||
+                                     (reduced_cost[j] < 0.0 && lp.upper[j] == inf);
+          // Tolerate roundoff at infinite bounds only; this is an approximate certificate.
+          if (missing_bound && std::abs(reduced_cost[j]) <= settings.zero_tol) { continue; }
+          if (reduced_cost[j] > 0.0) {
+            dual_objective += reduced_cost[j] * lp.lower[j];
+          } else if (reduced_cost[j] < 0.0) {
+            dual_objective += reduced_cost[j] * lp.upper[j];
+          }
+        }
+        phase2_work_estimate += 3 * lp.A.col_start[n] + 12 * n + 2 * m;
+
+        if (dual_feasible && std::isfinite(dual_objective) && dual_objective >= settings.cut_off) {
+          z = trial_z;
+          y = trial_y;
+          return dual_status_t::CUTOFF;
+        }
+      }
+      phase2_work_estimate += 2 * n;
     }
 
     if (work_unit_context && work_unit_context->global_work_units_elapsed >= settings.work_limit) {
