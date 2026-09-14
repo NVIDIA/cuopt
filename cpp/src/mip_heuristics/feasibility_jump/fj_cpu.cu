@@ -1935,7 +1935,10 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
 
   i_t local_mins  = 0;
   auto loop_start = std::chrono::high_resolution_clock::now();
-  auto time_limit = std::chrono::milliseconds(static_cast<i_t>(std::floor(in_time_limit * 1000.0)));
+  const bool bounded_time = std::isfinite((double)in_time_limit);
+  const auto time_limit = bounded_time
+                            ? std::chrono::milliseconds((int64_t)std::floor(in_time_limit * 1000.0))
+                            : std::chrono::milliseconds::zero();
   auto loop_time_start = std::chrono::high_resolution_clock::now();
 
   fj_cpu->rng.seed(fj_cpu->settings.seed);
@@ -1948,8 +1951,7 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
   while (!fj_cpu->halted && !fj_cpu->preemption_flag.load()) {
     // Check if 5 seconds have passed
     auto now = std::chrono::high_resolution_clock::now();
-    if (in_time_limit < std::numeric_limits<f_t>::infinity() &&
-        now - loop_time_start > time_limit) {
+    if (bounded_time && now - loop_time_start > time_limit) {
       CUOPT_LOG_TRACE("%sTime limit of %.4f seconds reached, breaking loop at iteration %d",
                       fj_cpu->log_prefix.c_str(),
                       time_limit.count() / 1000.f,

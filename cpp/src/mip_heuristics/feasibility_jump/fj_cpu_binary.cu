@@ -948,8 +948,10 @@ struct fj_bin_engine_t {
     }
 
     const auto loop_start = std::chrono::high_resolution_clock::now();
-    const auto limit = std::chrono::milliseconds((int64_t)std::floor((double)time_limit * 1000.0));
     const bool bounded_time = std::isfinite((double)time_limit);
+    const auto limit = bounded_time
+                         ? std::chrono::milliseconds((int64_t)std::floor((double)time_limit * 1000.0))
+                         : std::chrono::milliseconds::zero();
 
     while (!climber.halted && !climber.preemption_flag.load()) {
       if (bounded_time && std::chrono::high_resolution_clock::now() - loop_start > limit) break;
