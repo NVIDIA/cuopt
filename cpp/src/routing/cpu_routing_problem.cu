@@ -9,6 +9,7 @@
 
 #include <utilities/copy_helpers.hpp>
 
+#include <cuda/stream>
 #include <rmm/device_uvector.hpp>
 
 #include <stdexcept>
@@ -72,14 +73,14 @@ namespace {
 
 template <typename T>
 std::unique_ptr<rmm::device_uvector<T>> copy_vector(std::vector<T> const& host,
-                                                    rmm::cuda_stream_view stream)
+                                                    cuda::stream_ref stream)
 {
   if (host.empty()) { return nullptr; }
   return std::make_unique<rmm::device_uvector<T>>(cuopt::device_copy(host, stream));
 }
 
 std::unique_ptr<rmm::device_uvector<bool>> copy_u8_as_bool(std::vector<uint8_t> const& host,
-                                                           rmm::cuda_stream_view stream)
+                                                           cuda::stream_ref stream)
 {
   if (host.empty()) { return nullptr; }
   std::vector<bool> as_bool(host.begin(), host.end());
@@ -253,6 +254,17 @@ cpu_routing_problem_t::to_device(raft::handle_t* handle) const
       int32_t const* loc_ptr = d_locs ? d_locs->data() : nullptr;
       view.add_vehicle_break(
         vehicle_id, brk.earliest, brk.latest, brk.duration, loc_ptr, n_locs, false);
+      if (d_locs) { data->vehicle_break_locations.push_back(std::move(d_locs)); }
+    }
+  }
+
+  for (auto const& [vehicle_id, breaks] : vehicle_distance_breaks) {
+    for (auto const& brk : breaks) {
+      auto d_locs            = copy_vector(brk.locations, stream);
+      int32_t n_locs         = d_locs ? static_cast<int32_t>(d_locs->size()) : 0;
+      int32_t const* loc_ptr = d_locs ? d_locs->data() : nullptr;
+      view.add_vehicle_distance_break(
+        vehicle_id, brk.distance_min, brk.distance_max, brk.duration, loc_ptr, n_locs, false);
       if (d_locs) { data->vehicle_break_locations.push_back(std::move(d_locs)); }
     }
   }

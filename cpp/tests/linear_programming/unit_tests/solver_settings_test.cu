@@ -285,10 +285,10 @@ TEST(SolverSettingsTest, warm_start_bigger_vector)
 
 // =============================================================================
 // solver_settings_t<i_t, f_t> (the CUDA-free wrapper split across
-// math_optimization/solver_settings.cpp and solver_settings_gpu.cu)
+// math_optimization/solver_settings.cpp and solver_settings.cu)
 // =============================================================================
 //
-// These exercise every member that solver_settings_gpu.cu explicitly instantiates.
+// These exercise every member that solver_settings.cu explicitly instantiates.
 // A member with a missing explicit instantiation compiles and links this test binary
 // fine (cuopt_static resolves it internally), but disappears from libcuopt.so's
 // exported symbols -- the failure mode described in the PR that introduced this split.
