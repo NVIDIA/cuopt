@@ -394,8 +394,18 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
   // Solve using barrier
   lp_solution_t<i_t, f_t> barrier_solution(barrier_lp.num_rows, barrier_lp.num_cols);
 
-  barrier::barrier_solver_t<i_t, f_t> barrier_solver(barrier_lp, presolve_info, barrier_settings);
-  lp_status_t barrier_status = barrier_solver.solve(start_time, barrier_solution);
+  lp_status_t barrier_status;
+  if (barrier_lp.num_cols == 0) {
+    // Presolve determined every variable, so there is no KKT system left for the barrier to form.
+    // What remains of the objective is the constant presolve folded the removed columns into, and
+    // postsolve reconstructs the variables from presolve_info.
+    barrier_settings.log.printf("Presolve solved the problem, skipping barrier\n");
+    barrier_solution.user_objective = compute_user_objective(barrier_lp, static_cast<f_t>(0.0));
+    barrier_status                  = lp_status_t::OPTIMAL;
+  } else {
+    barrier::barrier_solver_t<i_t, f_t> barrier_solver(barrier_lp, presolve_info, barrier_settings);
+    barrier_status = barrier_solver.solve(start_time, barrier_solution);
+  }
   if (barrier_status == lp_status_t::OPTIMAL) {
 #ifdef COMPUTE_SCALED_RESIDUALS
     std::vector<f_t> scaled_residual = barrier_lp.rhs;
