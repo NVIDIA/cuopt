@@ -1188,8 +1188,14 @@ set(doc_string
 Provide targets for cuOpt.
 
 cuOpt library is a collection of GPU accelerated combinatorial optimization algorithms.
-Component targets: cuopt::routing, cuopt::mathopt
-Umbrella target:   cuopt::cuopt (links all component libs — backward-compatible with -lcuopt)
+
+Prefer linking the component you use:
+  cuopt::mathopt   LP / MIP / QP / SOCP
+  cuopt::routing   VRP / TSP / PDP
+  cuopt::client    host-side problem representation and gRPC client (no CUDA)
+
+cuopt::cuopt links every component and exists for backward compatibility with -lcuopt.
+It pulls both solver engines whether or not you use them, so prefer a component target.
 
 ]=])
 
