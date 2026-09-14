@@ -71,10 +71,6 @@ struct branch_and_bound_solution_helper_t {
 
   void solution_callback(std::vector<f_t>& solution, f_t objective)
   {
-    if (dm->context.settings.determinism_mode == CUOPT_MODE_OPPORTUNISTIC) {
-      dm->context.solution_publication.publish_if_better(
-        dm->context.problem_ptr, solution, objective);
-    }
     dm->population.add_external_solution(solution, objective, solution_origin_t::BRANCH_AND_BOUND);
   }
 

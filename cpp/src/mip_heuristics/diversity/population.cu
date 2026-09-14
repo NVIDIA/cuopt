@@ -145,6 +145,7 @@ void population_t<i_t, f_t>::add_external_solution(const std::vector<f_t>& solut
                                                    f_t objective,
                                                    solution_origin_t origin)
 {
+  context.solution_publication.publish_if_better(problem_ptr, solution, objective);
   std::lock_guard<std::mutex> lock(solution_mutex);
 
   if (origin == solution_origin_t::CPUFJ) {

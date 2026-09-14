@@ -182,7 +182,7 @@ static bool verify_solution(
                                   << "\n";
       return false;
     }
-    const auto bound_limits = scaled_bound_limits(tolerances.absolute_tolerance,
+    const auto bound_limits            = scaled_bound_limits(tolerances.absolute_tolerance,
                                                   value,
                                                   variable_lower_bounds[variable],
                                                   variable_upper_bounds[variable]);
@@ -219,19 +219,18 @@ static bool verify_solution(
 
     // fp64 first. _Float128 is soft-float on x86-64; only rows whose rounding-error
     // interval meets a bound pay for it. Bound is (nnz+1)*eps*abs_sum.
-    const auto verdict = check_row(values.data(),
-                                   indices.data(),
-                                   (int64_t)offsets[row],
-                                   (int64_t)offsets[row + 1],
-                                   solution.data(),
-                                   lower_bound,
-                                   upper_bound,
-                                   [&](double positive_activity) {
-                                     return scaled_row_limits(tolerances.absolute_tolerance,
-                                                              positive_activity,
-                                                              lower_bound,
-                                                              upper_bound);
-                                   });
+    const auto verdict =
+      check_row(values.data(),
+                indices.data(),
+                (int64_t)offsets[row],
+                (int64_t)offsets[row + 1],
+                solution.data(),
+                lower_bound,
+                upper_bound,
+                [&](double positive_activity) {
+                  return scaled_row_limits(
+                    tolerances.absolute_tolerance, positive_activity, lower_bound, upper_bound);
+                });
     if (verdict.excess > 0.0) {
       std::osyncstream(std::cerr) << std::setprecision(17) << "Incumbent " << incumbent << " row "
                                   << row << " violates bounds: activity=" << verdict.activity
