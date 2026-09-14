@@ -1374,6 +1374,11 @@ void pdhg_solver_t<i_t, f_t>::save_new_bounds_primal()
 }
 
 template <typename i_t, typename f_t>
+struct halpern_weight_from_iteration {
+  __device__ __forceinline__ f_t operator()(i_t k) const { return f_t(k + 1) / f_t(k + 2); }
+};
+
+template <typename i_t, typename f_t>
 void pdhg_solver_t<i_t, f_t>::refresh_halpern_weight(const i_t* d_iterations_since_last_restart)
 {
   if (is_distributed_master()) {
@@ -1383,12 +1388,11 @@ void pdhg_solver_t<i_t, f_t>::refresh_halpern_weight(const i_t* d_iterations_sin
         sub_pdlp.get_restart_strategy().get_d_iterations_since_last_restart().data());
     });
   } else {
-    cub::DeviceTransform::Transform(
-      d_iterations_since_last_restart,
-      d_halpern_weight_.data(),
-      1,
-      [] __device__(i_t k) -> f_t { return f_t(k + 1) / f_t(k + 2); },
-      stream_view_.get());
+    cub::DeviceTransform::Transform(d_iterations_since_last_restart,
+                                    d_halpern_weight_.data(),
+                                    1,
+                                    halpern_weight_from_iteration<i_t, f_t>{},
+                                    stream_view_.get());
   }
 }
 
