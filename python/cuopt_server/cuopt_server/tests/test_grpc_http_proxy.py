@@ -2,11 +2,15 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import json
+import socket
+import threading
+import time
 import uuid
 from types import SimpleNamespace
 
 import pytest
-from fastapi.testclient import TestClient
+import requests
+import uvicorn
 
 from cuopt_server.cuopt_proxy import parse_args
 from cuopt_server.proxy_webserver import (
@@ -18,6 +22,17 @@ from cuopt_server.proxy_webserver import (
 from cuopt_server.utils.http_codec import mime_json, mime_msgpack, mime_zlib
 from cuopt_server.utils.http_envelope import make_response
 from cuopt_server.utils.linear_programming import conversion as lp_conversion
+
+
+class _Uvicorn(uvicorn.Server):
+    def install_signal_handlers(self):
+        pass
+
+
+def _free_port():
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
 
 
 def _lp():
@@ -159,8 +174,40 @@ class FakeClient:
         return [e for e in entries if e["index"] >= from_index]
 
 
+@pytest.fixture(scope="module")
+def proxy_server():
+    port = _free_port()
+    server = _Uvicorn(
+        uvicorn.Config(
+            app,
+            host="127.0.0.1",
+            port=port,
+            log_level="warning",
+            access_log=False,
+        )
+    )
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    url = f"http://127.0.0.1:{port}"
+    deadline = time.time() + 10
+    while time.time() < deadline:
+        try:
+            res = requests.get(url + "/cuopt/health", timeout=0.2)
+            if res.status_code == 200:
+                break
+        except requests.RequestException:
+            time.sleep(0.05)
+    else:
+        server.should_exit = True
+        thread.join(timeout=2)
+        raise RuntimeError("proxy test server failed to start")
+    yield url
+    server.should_exit = True
+    thread.join(timeout=5)
+
+
 @pytest.fixture
-def proxy(monkeypatch):
+def proxy(proxy_server, monkeypatch):
     import cuopt_server.proxy_webserver as pw
 
     reset_proxy_state()
@@ -173,8 +220,7 @@ def proxy(monkeypatch):
     monkeypatch.setattr(
         pw, "create_solver", lambda lp, w: ([], SimpleNamespace())
     )
-    client = TestClient(app)
-    yield client, fake
+    yield proxy_server, fake
     reset_proxy_state()
     set_max_request_size(1024 * 1024 * 1024)
 
@@ -248,9 +294,9 @@ def test_solution_to_legacy_http_strips_warmstart():
 
 
 def test_health(proxy):
-    client, _ = proxy
+    url, _ = proxy
     for path in ("/", "/cuopt/health", "/v2/health/ready", "/v2/health/live"):
-        res = client.get(path)
+        res = requests.get(url + path)
         assert res.status_code == 200, path
         body = res.json()
         assert body["status"] == "RUNNING"
@@ -258,10 +304,10 @@ def test_health(proxy):
 
 
 def test_submit_status_result_delete(proxy):
-    client, fake = proxy
+    url, fake = proxy
     lp = _lp()
-    res = client.post(
-        "/cuopt/request",
+    res = requests.post(
+        url + "/cuopt/request",
         headers={"CLIENT-VERSION": "custom", "Content-Type": mime_json},
         json=lp,
     )
@@ -270,11 +316,11 @@ def test_submit_status_result_delete(proxy):
     uuid.UUID(req_id)
     assert fake.submitted[0]["enable_incumbents"] is False
 
-    st = client.get(f"/cuopt/request/{req_id}")
+    st = requests.get(url + f"/cuopt/request/{req_id}")
     assert st.status_code == 200
     assert st.json() == "completed"
 
-    sol = client.get(f"/cuopt/solution/{req_id}")
+    sol = requests.get(url + f"/cuopt/solution/{req_id}")
     assert sol.status_code == 200
     body = sol.json()
     assert body["reqId"] == req_id
@@ -284,7 +330,7 @@ def test_submit_status_result_delete(proxy):
         not in body["response"]["solver_response"]["solution"]
     )
 
-    deleted = client.delete(f"/cuopt/solution/{req_id}")
+    deleted = requests.delete(url + f"/cuopt/solution/{req_id}")
     assert deleted.status_code == 200
     assert req_id in fake.deleted
 
@@ -292,9 +338,9 @@ def test_submit_status_result_delete(proxy):
 def test_delete_preserves_metadata_when_grpc_delete_fails(proxy, monkeypatch):
     import cuopt_server.proxy_webserver as pw
 
-    client, fake = proxy
-    req_id = client.post(
-        "/cuopt/request",
+    url, fake = proxy
+    req_id = requests.post(
+        url + "/cuopt/request",
         headers={"CLIENT-VERSION": "custom"},
         json=_lp(),
     ).json()["reqId"]
@@ -303,7 +349,9 @@ def test_delete_preserves_metadata_when_grpc_delete_fails(proxy, monkeypatch):
         raise RuntimeError("delete failed")
 
     monkeypatch.setattr(fake, "delete", fail_delete)
-    assert client.delete(f"/cuopt/solution/{req_id}").status_code == 500
+    assert (
+        requests.delete(url + f"/cuopt/solution/{req_id}").status_code == 500
+    )
     assert pw._get_job(req_id) is not None
 
 
@@ -322,11 +370,11 @@ def test_delete_preserves_metadata_when_grpc_delete_fails(proxy, monkeypatch):
     ],
 )
 def test_invalid_lp_payloads_are_rejected(proxy, mutate, status_code):
-    client, fake = proxy
+    url, fake = proxy
     lp = _lp()
     mutate(lp)
-    res = client.post(
-        "/cuopt/request",
+    res = requests.post(
+        url + "/cuopt/request",
         headers={"CLIENT-VERSION": "custom"},
         json=lp,
     )
@@ -335,10 +383,10 @@ def test_invalid_lp_payloads_are_rejected(proxy, mutate, status_code):
 
 
 def test_oversized_request_is_rejected_before_allocation(proxy):
-    client, fake = proxy
+    url, fake = proxy
     set_max_request_size(1)
-    res = client.post(
-        "/cuopt/request",
+    res = requests.post(
+        url + "/cuopt/request",
         headers={"CLIENT-VERSION": "custom"},
         json=_lp(),
     )
@@ -347,11 +395,11 @@ def test_oversized_request_is_rejected_before_allocation(proxy):
 
 
 def test_incumbents_cursor_and_sentinel(proxy):
-    client, fake = proxy
+    url, fake = proxy
     lp = _lp()
     lp["variable_types"] = ["I", "I"]
-    res = client.post(
-        "/cuopt/request",
+    res = requests.post(
+        url + "/cuopt/request",
         headers={"CLIENT-VERSION": "custom"},
         params={"incumbent_solutions": True},
         json=lp,
@@ -362,68 +410,68 @@ def test_incumbents_cursor_and_sentinel(proxy):
         {"index": 0, "objective": 2.0, "assignment": [1.0, 1.0]},
         {"index": 1, "objective": 1.0, "assignment": [0.0, 1.0]},
     ]
-    first = client.get(f"/cuopt/solution/{req_id}/incumbents")
+    first = requests.get(url + f"/cuopt/solution/{req_id}/incumbents")
     assert first.status_code == 200
     assert first.json() == [
         {"solution": [1.0, 1.0], "cost": 2.0, "bound": None},
         {"solution": [0.0, 1.0], "cost": 1.0, "bound": None},
     ]
-    second = client.get(f"/cuopt/solution/{req_id}/incumbents")
+    second = requests.get(url + f"/cuopt/solution/{req_id}/incumbents")
     assert second.json() == [{"solution": [], "cost": None, "bound": None}]
 
 
 def test_logs_and_log_delete_noop(proxy):
-    client, fake = proxy
+    url, fake = proxy
     lp = _lp()
-    res = client.post(
-        "/cuopt/request",
+    res = requests.post(
+        url + "/cuopt/request",
         headers={"CLIENT-VERSION": "custom"},
         params={"solver_logs": True},
         json=lp,
     )
     req_id = res.json()["reqId"]
-    logs = client.get(f"/cuopt/log/{req_id}")
+    logs = requests.get(url + f"/cuopt/log/{req_id}")
     assert logs.status_code == 200
     body = logs.json()
     assert body["log"] == ["line1", "line2"]
     assert body["nbytes"] > 0
-    assert client.delete(f"/cuopt/log/{req_id}").status_code == 200
+    assert requests.delete(url + f"/cuopt/log/{req_id}").status_code == 200
 
 
 def test_cancel_request(proxy):
-    client, fake = proxy
+    url, fake = proxy
     lp = _lp()
-    req_id = client.post(
-        "/cuopt/request",
+    req_id = requests.post(
+        url + "/cuopt/request",
         headers={"CLIENT-VERSION": "custom"},
         json=lp,
     ).json()["reqId"]
     fake.jobs[req_id] = FakeJobStatus.PROCESSING
-    res = client.delete(f"/cuopt/request/{req_id}")
+    res = requests.delete(url + f"/cuopt/request/{req_id}")
     assert res.status_code == 200
     assert res.json() == {"queued": 0, "running": 1, "cached": 0}
     assert req_id in fake.cancelled
 
 
 def test_cancel_completed_is_noop(proxy):
-    client, fake = proxy
+    url, fake = proxy
     lp = _lp()
-    req_id = client.post(
-        "/cuopt/request",
+    req_id = requests.post(
+        url + "/cuopt/request",
         headers={"CLIENT-VERSION": "custom"},
         json=lp,
     ).json()["reqId"]
-    res = client.delete(f"/cuopt/request/{req_id}")
+    res = requests.delete(url + f"/cuopt/request/{req_id}")
     assert res.status_code == 200
     assert res.json() == {"queued": 0, "running": 0, "cached": 0}
     assert req_id not in fake.cancelled
 
 
 def test_validation_only_skips_submit(proxy):
-    client, fake = proxy
+    url, fake = proxy
     lp = _lp()
-    res = client.post(
-        "/cuopt/request",
+    res = requests.post(
+        url + "/cuopt/request",
         headers={"CLIENT-VERSION": "custom"},
         params={"validation_only": True},
         json=lp,
@@ -431,9 +479,9 @@ def test_validation_only_skips_submit(proxy):
     assert res.status_code == 200
     req_id = res.json()["reqId"]
     assert fake.submitted == []
-    st = client.get(f"/cuopt/request/{req_id}")
+    st = requests.get(url + f"/cuopt/request/{req_id}")
     assert st.json() == "completed"
-    sol = client.get(f"/cuopt/solution/{req_id}").json()
+    sol = requests.get(url + f"/cuopt/solution/{req_id}").json()
     assert sol["notes"] == ["Input is valid"]
     assert sol["response"]["solver_response"]["status"] == 0
 
@@ -449,9 +497,9 @@ def test_validation_only_skips_submit(proxy):
     ],
 )
 def test_dropped_query_params_are_501(proxy, params, feature):
-    client, _ = proxy
-    res = client.post(
-        "/cuopt/request",
+    url, _ = proxy
+    res = requests.post(
+        url + "/cuopt/request",
         headers={"CLIENT-VERSION": "custom"},
         params=params,
         json=_lp(),
@@ -461,9 +509,9 @@ def test_dropped_query_params_are_501(proxy, params, feature):
 
 
 def test_batch_lp_is_501(proxy):
-    client, _ = proxy
-    res = client.post(
-        "/cuopt/request",
+    url, _ = proxy
+    res = requests.post(
+        url + "/cuopt/request",
         headers={"CLIENT-VERSION": "custom"},
         json=[_lp(), _lp()],
     )
@@ -472,9 +520,9 @@ def test_batch_lp_is_501(proxy):
 
 
 def test_vrp_body_is_501(proxy):
-    client, _ = proxy
-    res = client.post(
-        "/cuopt/request",
+    url, _ = proxy
+    res = requests.post(
+        url + "/cuopt/request",
         headers={"CLIENT-VERSION": "custom"},
         json={
             "cost_matrix_data": {"data": {"1": [[0, 1], [1, 0]]}},
@@ -486,17 +534,19 @@ def test_vrp_body_is_501(proxy):
 
 
 def test_post_solution_and_warmstart_and_sync_are_501(proxy):
-    client, _ = proxy
-    assert client.post("/cuopt/solution", json={}).status_code == 501
+    url, _ = proxy
+    assert requests.post(url + "/cuopt/solution", json={}).status_code == 501
     assert (
-        client.get(f"/cuopt/solution/{uuid.uuid4()}/warmstart").status_code
+        requests.get(
+            url + f"/cuopt/solution/{uuid.uuid4()}/warmstart"
+        ).status_code
         == 501
     )
-    assert client.post("/cuopt/cuopt", json={}).status_code == 501
-    assert client.delete("/cuopt/request/*").status_code == 501
+    assert requests.post(url + "/cuopt/cuopt", json={}).status_code == 501
+    assert requests.delete(url + "/cuopt/request/*").status_code == 501
     assert (
-        client.delete(
-            f"/cuopt/request/{uuid.uuid4()}", params={"running": True}
+        requests.delete(
+            url + f"/cuopt/request/{uuid.uuid4()}", params={"running": True}
         ).status_code
         == 501
     )
@@ -505,16 +555,16 @@ def test_post_solution_and_warmstart_and_sync_are_501(proxy):
 def test_msgpack_round_trip_headers(proxy):
     import msgpack
 
-    client, _ = proxy
+    url, _ = proxy
     payload = msgpack.dumps(_lp())
-    res = client.post(
-        "/cuopt/request",
+    res = requests.post(
+        url + "/cuopt/request",
         headers={
             "CLIENT-VERSION": "custom",
             "Content-Type": mime_msgpack,
             "Accept": mime_msgpack,
         },
-        content=payload,
+        data=payload,
     )
     assert res.status_code == 200
     assert res.headers["content-type"].startswith(mime_msgpack)
@@ -525,9 +575,9 @@ def test_msgpack_round_trip_headers(proxy):
 def test_zlib_accept(proxy):
     import zlib
 
-    client, fake = proxy
-    res = client.post(
-        "/cuopt/request",
+    url, fake = proxy
+    res = requests.post(
+        url + "/cuopt/request",
         headers={
             "CLIENT-VERSION": "custom",
             "Accept": mime_zlib,
@@ -537,8 +587,8 @@ def test_zlib_accept(proxy):
     assert res.status_code == 200
     body = json.loads(zlib.decompress(res.content))
     assert "reqId" in body
-    sol = client.get(
-        f"/cuopt/solution/{body['reqId']}",
+    sol = requests.get(
+        url + f"/cuopt/solution/{body['reqId']}",
         headers={"Accept": mime_zlib},
     )
     assert sol.status_code == 200
@@ -547,35 +597,35 @@ def test_zlib_accept(proxy):
 
 
 def test_unknown_id_is_404(proxy):
-    client, _ = proxy
+    url, _ = proxy
     missing = str(uuid.uuid4())
-    assert client.get(f"/cuopt/request/{missing}").status_code == 404
-    assert client.get(f"/cuopt/solution/{missing}").status_code == 404
+    assert requests.get(url + f"/cuopt/request/{missing}").status_code == 404
+    assert requests.get(url + f"/cuopt/solution/{missing}").status_code == 404
 
 
 def test_invalid_id_is_400(proxy):
-    client, _ = proxy
-    assert client.get("/cuopt/request/not-a-uuid").status_code == 400
+    url, _ = proxy
+    assert requests.get(url + "/cuopt/request/not-a-uuid").status_code == 400
 
 
 @pytest.mark.parametrize("status", ["FAILED", "CANCELLED"])
 def test_failed_or_cancelled_solution_is_409(proxy, status):
-    client, fake = proxy
-    req_id = client.post(
-        "/cuopt/request",
+    url, fake = proxy
+    req_id = requests.post(
+        url + "/cuopt/request",
         headers={"CLIENT-VERSION": "custom"},
         json=_lp(),
     ).json()["reqId"]
     fake.jobs[req_id] = getattr(FakeJobStatus, status)
-    res = client.get(f"/cuopt/solution/{req_id}")
+    res = requests.get(url + f"/cuopt/solution/{req_id}")
     assert res.status_code == 409, res.text
     assert status.lower() in res.json()["error"]
 
 
 def test_lp_does_not_enable_incumbents(proxy):
-    client, fake = proxy
-    res = client.post(
-        "/cuopt/request",
+    url, fake = proxy
+    res = requests.post(
+        url + "/cuopt/request",
         headers={"CLIENT-VERSION": "custom"},
         params={"incumbent_solutions": True},
         json=_lp(),
@@ -587,14 +637,14 @@ def test_lp_does_not_enable_incumbents(proxy):
 def test_log_delete_error_is_encoded(proxy, monkeypatch):
     import cuopt_server.proxy_webserver as pw
 
-    client, _ = proxy
+    url, _ = proxy
 
     def boom(id):
         raise RuntimeError("log delete failed")
 
     monkeypatch.setattr(pw, "_require_uuid", boom)
-    res = client.delete(
-        f"/cuopt/log/{uuid.uuid4()}",
+    res = requests.delete(
+        url + f"/cuopt/log/{uuid.uuid4()}",
         headers={"Accept": mime_msgpack},
     )
     assert res.status_code == 500
