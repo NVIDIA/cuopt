@@ -536,7 +536,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
     if (pre_solve_heuristics && pre_solve_heuristics->solution_found()) {
       early_best_user_obj        = pre_solve_heuristics->get_best_user_objective();
       early_best_user_assignment = pre_solve_heuristics->get_best_assignment();
-      early_best_objective.store(pre_solve_heuristics->get_best_objective());
+      early_best_objective.store(problem.get_solver_obj_from_user_obj(early_best_user_obj));
     }
 
     std::unique_ptr<mip::early_cpufj_t<i_t, f_t>> early_cpufj;

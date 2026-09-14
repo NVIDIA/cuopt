@@ -13,6 +13,7 @@
 
 #include <mip_heuristics/presolve/semi_continuous.cuh>
 #include <mip_heuristics/problem/problem.cuh>
+#include <mip_heuristics/solution/solution.cuh>
 #include <mip_heuristics/utils.cuh>
 
 #include <utilities/copy_helpers.hpp>
@@ -66,7 +67,6 @@ class solution_publication_t {
     std::lock_guard<std::mutex> lock(mutex_);
     cuopt_assert(assignment.size() == (size_t)problem_ptr->n_variables,
                  "Published assignment size must match the problem");
-    // cuopt_func_call(audit_integrality(problem_ptr, assignment));
     const auto& objective_variables    = problem_ptr->vars_with_objective_coeffs.first;
     const auto& objective_coefficients = problem_ptr->vars_with_objective_coeffs.second;
     cuopt_assert(objective_variables.size() == objective_coefficients.size(),
@@ -82,6 +82,7 @@ class solution_publication_t {
                  "published objective disagrees with the assignment it accompanies");
 
     if (!(solver_objective < best_published_objective_)) { return false; }
+    cuopt_func_call(audit_feasibility(device_id_, problem_ptr, assignment));
     best_published_objective_ = solver_objective;
 
     const auto user_assignment = build_user_assignment(problem_ptr, assignment);
@@ -109,19 +110,17 @@ class solution_publication_t {
   }
 
  private:
-  void audit_integrality(problem_t<i_t, f_t>* problem_ptr, const std::vector<f_t>& assignment)
+  static void audit_feasibility(int device_id,
+                                problem_t<i_t, f_t>* problem_ptr,
+                                const std::vector<f_t>& assignment)
   {
-    // The B&B thread may never have selected a device of its own.
-    RAFT_CUDA_TRY(cudaSetDevice(device_id_));
-    const auto integer_variables =
-      cuopt::host_copy(problem_ptr->integer_indices, handle_->get_stream());
-    for (i_t variable : integer_variables) {
-      const f_t value = assignment[variable];
-      if (value == std::round(value)) continue;
-      CUOPT_LOG_DEBUG(
-        "Publishing incumbent: integer variable %d holds %.17g", (int)variable, (double)value);
-      cuopt_assert(false, "published integer variable is not exactly integral");
-      return;
+    RAFT_CUDA_TRY(cudaSetDevice(device_id));
+    solution_t<i_t, f_t> solution(*problem_ptr);
+    solution.copy_new_assignment(assignment);
+    if (problem_ptr->n_variables > 0) {
+      solution.test_feasibility(true);
+    } else {
+      cuopt_assert(solution.compute_feasibility(), "Published assignment must be feasible");
     }
   }
 
