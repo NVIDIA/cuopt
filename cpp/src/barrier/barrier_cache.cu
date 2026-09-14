@@ -34,6 +34,8 @@ struct barrier_cache_t::impl {
   std::unique_ptr<barrier_transform_t> transform;
   barrier_iteration_data_ptr iteration_data;
   bool c_dirty{false};
+  bool b_dirty{false};
+  bool rhs_infeasible{false};
 };
 
 barrier_cache_t::barrier_cache_t(std::unique_ptr<rmm::cuda_stream> stream,
@@ -64,7 +66,9 @@ void barrier_cache_t::clear()
 {
   impl_->iteration_data.reset();
   impl_->transform.reset();
-  impl_->c_dirty = false;
+  impl_->c_dirty        = false;
+  impl_->b_dirty        = false;
+  impl_->rhs_infeasible = false;
 }
 
 void barrier_cache_t::store_iteration_data(barrier_iteration_data_t* data)
@@ -86,12 +90,20 @@ barrier_transform_t* barrier_cache_t::transform() { return impl_->transform.get(
 
 barrier_transform_t const* barrier_cache_t::transform() const { return impl_->transform.get(); }
 
-void barrier_cache_t::set_c_dirty(bool dirty) { impl_->c_dirty = dirty; }
-
-bool barrier_cache_t::c_dirty() const
+bool barrier_cache_t::dirty() const
 {
-  return impl_->c_dirty && impl_->transform != nullptr && impl_->iteration_data.get() != nullptr;
+  return (impl_->c_dirty || impl_->b_dirty) && impl_->transform != nullptr &&
+         impl_->iteration_data.get() != nullptr;
 }
+
+void barrier_cache_t::mark_clean()
+{
+  impl_->c_dirty        = false;
+  impl_->b_dirty        = false;
+  impl_->rhs_infeasible = false;
+}
+
+bool barrier_cache_t::rhs_infeasible() const { return impl_->rhs_infeasible; }
 
 void barrier_cache_t::update_linear_objective(double const* c, int n)
 {
@@ -123,6 +135,44 @@ void barrier_cache_t::update_linear_objective(double const* c, int n)
   barrier::apply_barrier_linear_objective(
     *impl_->iteration_data, crushed.data(), static_cast<int>(crushed.size()));
   impl_->c_dirty = true;
+}
+
+void barrier_cache_t::update_rhs(double const* b, int m)
+{
+  cuopt_expects(impl_->transform != nullptr,
+                error_type_t::ValidationError,
+                "update_rhs: no barrier transform; Solve with sequence_solve first.");
+  cuopt_expects(impl_->iteration_data.get() != nullptr,
+                error_type_t::ValidationError,
+                "update_rhs: no cached iteration_data; Solve a QP to Optimal first.");
+  std::vector<double> crushed;
+  try {
+    crushed = crush_user_rhs(*impl_->transform, b, m);
+  } catch (update_rhs_infeasible_error const&) {
+    // Keep the cache so a later feasible update_rhs can still reuse it; the next Solve
+    // reports INFEASIBLE without running IPM.
+    impl_->rhs_infeasible = true;
+    impl_->b_dirty        = true;
+    return;
+  } catch (std::invalid_argument const& e) {
+    cuopt_expects(false, error_type_t::ValidationError, "%s", e.what());
+  }
+  impl_->rhs_infeasible = false;
+  if (impl_->transform->rhs_shift.size() == crushed.size()) {
+    for (std::size_t i = 0; i < crushed.size(); ++i) {
+      crushed[i] += impl_->transform->rhs_shift[i];
+    }
+  }
+  // The next solve builds its solver from barrier_lp and takes its Mehrotra start from
+  // barrier_lp->rhs, so keep it and the cached iteration workspace on the same b.
+  auto& barrier_rhs = impl_->transform->barrier_lp->rhs;
+  cuopt_expects(barrier_rhs.size() == crushed.size(),
+                error_type_t::ValidationError,
+                "update_rhs: crushed RHS size does not match the cached barrier LP.");
+  barrier_rhs = crushed;
+  barrier::apply_barrier_rhs(
+    *impl_->iteration_data, crushed.data(), static_cast<int>(crushed.size()));
+  impl_->b_dirty = true;
 }
 
 }  // namespace cuopt::mathematical_optimization

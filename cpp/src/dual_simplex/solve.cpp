@@ -419,15 +419,19 @@ lp_status_t solve_linear_program_with_barrier(
   lp_status_t status                                   = lp_status_t::UNSET;
   simplex_solver_settings_t<i_t, f_t> barrier_settings = settings;
 
-  auto const* xf = (cache != nullptr && cache->c_dirty()) ? cache->transform() : nullptr;
-  const bool reuse_c_only =
+  auto const* xf = (cache != nullptr && cache->dirty()) ? cache->transform() : nullptr;
+  const bool reuse_cached_data =
     xf != nullptr && xf->barrier_lp != nullptr && !user_problem.Q_values.empty() &&
     user_problem.second_order_cone_dims.empty() && xf->second_order_cone_dims.empty() &&
     xf->barrier_lp->second_order_cone_dims.empty() &&
     settings.barrier_presolve_bound_free_variables == 0 &&
     user_problem.num_cols == xf->user_num_cols && user_problem.num_rows == xf->user_num_rows;
 
-  if (reuse_c_only) {
+  if (reuse_cached_data) {
+    if (cache->rhs_infeasible()) {
+      settings.log.printf("Barrier: update_rhs made an empty constraint row infeasible\n");
+      return lp_status_t::INFEASIBLE;
+    }
     settings.log.printf("Barrier: reusing cache (skip convert/presolve/scaling)\n");
     lp_solution_t<i_t, f_t> barrier_solution(xf->barrier_lp->num_rows, xf->barrier_lp->num_cols);
     barrier::barrier_solver_t<i_t, f_t> barrier_solver(
@@ -446,7 +450,7 @@ lp_status_t solve_linear_program_with_barrier(
                                       barrier_settings,
                                       barrier_solution,
                                       solution);
-      cache->set_c_dirty(false);
+      cache->mark_clean();
     } else {
       cache->clear();
     }
@@ -503,8 +507,12 @@ lp_status_t solve_linear_program_with_barrier(
     xf->presolve_info                = presolve_info;
     xf->column_scales                = column_scales;
     xf->row_scales                   = row_scales;
-    xf->barrier_lp                   = std::make_unique<lp_problem_t<i_t, f_t>>(barrier_lp);
-    solver_lp                        = xf->barrier_lp.get();
+    xf->primal_tol                   = static_cast<double>(barrier_settings.primal_tol);
+    // Range rows get their RHS rewritten onto slack bounds and folding aggregates rows, so
+    // neither leaves the user RHS recoverable from barrier_lp->rhs.
+    xf->rhs_update_supported = new_slacks.empty() && !presolve_info.folding_info.is_folded;
+    xf->barrier_lp           = std::make_unique<lp_problem_t<i_t, f_t>>(barrier_lp);
+    solver_lp                = xf->barrier_lp.get();
     cache->store_transform(std::move(xf));
   }
 
@@ -527,6 +535,23 @@ lp_status_t solve_linear_program_with_barrier(
         }
       } catch (std::exception const&) {
         xf->linear_obj_shift.assign(static_cast<std::size_t>(solver_lp->num_cols), 0.0);
+      }
+      if (xf->rhs_update_supported) {
+        try {
+          auto crushed = cuopt::mathematical_optimization::crush_user_rhs(
+            *xf, user_problem.rhs.data(), user_problem.num_rows);
+          xf->rhs_shift.resize(static_cast<std::size_t>(solver_lp->num_rows), 0.0);
+          if (static_cast<int>(crushed.size()) == solver_lp->num_rows) {
+            for (int i = 0; i < solver_lp->num_rows; ++i) {
+              xf->rhs_shift[static_cast<std::size_t>(i)] =
+                solver_lp->rhs[static_cast<std::size_t>(i)] - crushed[static_cast<std::size_t>(i)];
+            }
+          }
+        } catch (std::exception const&) {
+          // Cannot reproduce this solve's RHS from the maps, so refuse later updates.
+          xf->rhs_update_supported = false;
+          xf->rhs_shift.clear();
+        }
       }
     } else {
       cache->clear();

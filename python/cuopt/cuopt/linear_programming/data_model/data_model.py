@@ -247,6 +247,29 @@ class DataModel(data_model_wrapper.DataModel):
         super().update_linear_objective(c)
 
     @catch_cuopt_exception
+    def update_rhs(self, b):
+        """
+        Update the constraint right-hand sides (b) for a sequence re-solve.
+
+        Writes ``b`` onto this DataModel. If a barrier cache is present, also
+        maps ``b`` into the cached barrier workspace and marks it dirty
+        (quadratic ``Q``, ``A``, row senses, and bounds must stay unchanged).
+        Cache reuse is QP-only: quadratic constraints take a full solve.
+
+        Range rows and folding in the first solve are not supported and raise;
+        run a full solve for those models. Rows that presolve dropped as empty
+        are allowed: if the new ``b`` makes one infeasible, the next solve
+        reports infeasible without rerunning the interior point method.
+
+        Parameters
+        ----------
+        b : array-like of float64
+            Constraint right-hand sides, length equal to the number of
+            constraints on the first ``sequence_solve``.
+        """
+        super().update_rhs(b)
+
+    @catch_cuopt_exception
     def set_objective_scaling_factor(self, objective_scaling_factor):
         """
         Set the scaling factor of the objective function

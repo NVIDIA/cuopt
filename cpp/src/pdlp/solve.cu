@@ -1881,7 +1881,7 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
     auto qcqp_timer = cuopt::timer_t(settings.time_limit);
 
     auto* cache    = settings.barrier_cache;
-    auto const* xf = (cache != nullptr && cache->c_dirty()) ? cache->transform() : nullptr;
+    auto const* xf = (cache != nullptr && cache->dirty()) ? cache->transform() : nullptr;
     const bool reuse_from_cache =
       settings.user_problem_file.empty() && xf != nullptr && xf->barrier_lp != nullptr &&
       settings.barrier_presolve_bound_free_variables == 0 && op_problem.has_quadratic_objective() &&

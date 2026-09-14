@@ -23,6 +23,8 @@ void destroy_iteration_data(iteration_data_t<int, double>* data);
 void apply_barrier_linear_objective(iteration_data_t<int, double>& data,
                                     double const* barrier_c,
                                     int n);
+
+void apply_barrier_rhs(iteration_data_t<int, double>& data, double const* barrier_b, int m);
 }  // namespace cuopt::mathematical_optimization::barrier
 
 namespace cuopt {
@@ -34,8 +36,8 @@ struct barrier_transform_t;
  * @brief GPU solve cache owned by DataModel when sequence_solve is on.
  *
  * After an Optimal full solve, holds iteration_data_t and the user-barrier transform.
- * update_linear_objective crushes the new linear objective and sets c_dirty so the next Solve
- * reuses that workspace (skip convert/presolve/scaling).
+ * The update APIs crush new user data into that workspace and mark the cache dirty so the
+ * next Solve reuses it (skip convert/presolve/scaling).
  */
 class barrier_cache_t {
  public:
@@ -64,14 +66,24 @@ class barrier_cache_t {
   void store_transform(std::unique_ptr<barrier_transform_t> transform);
   [[nodiscard]] barrier_transform_t* transform();
   [[nodiscard]] barrier_transform_t const* transform() const;
-  void set_c_dirty(bool dirty);
-  [[nodiscard]] bool c_dirty() const;
+  /** True when an update API has staged new data that the next Solve should reuse. */
+  [[nodiscard]] bool dirty() const;
+  void mark_clean();
+
+  /** True when the last update_rhs made a row presolve dropped as empty infeasible. */
+  [[nodiscard]] bool rhs_infeasible() const;
 
   /**
-   * Crush the input linear objective into cached iteration_data_t.c / d_c_ and set c_dirty.
+   * Crush the input linear objective into cached iteration_data_t.c / d_c_ and mark dirty.
    * Requires a stored transform and iteration_data from an Optimal solve.
    */
   void update_linear_objective(double const* c, int n);
+
+  /**
+   * Crush the input constraint RHS into cached iteration_data_t.b / d_b_ and mark dirty.
+   * Requires a stored transform and iteration_data from an Optimal solve.
+   */
+  void update_rhs(double const* b, int m);
 
  private:
   barrier_cache_t(std::unique_ptr<rmm::cuda_stream> stream, std::unique_ptr<raft::handle_t> handle);
