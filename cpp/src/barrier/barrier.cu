@@ -894,7 +894,7 @@ class iteration_data_t {
   }
 
   // Attach this solve's settings and rewind iterate-dependent state so barrier can
-  // Mehrotra-start with the new c. A and Q are unchanged; the previous solve
+  // start with the new c. A and Q are unchanged; the previous solve
   // left D and the KKT values at its last iterate. Reuse is QP-only (no cones),
   // so form_*(false) updates values in the existing CSR; no symbolic rebuild.
   bool reset_iterate_state(const simplex_solver_settings_t<i_t, f_t>& settings)
@@ -936,8 +936,6 @@ class iteration_data_t {
       form_augmented(false);
     } else {
       form_adat(false);
-      handle_ptr->sync_stream();
-      chol->rebind_csr_matrix(device_ADAT);
     }
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return false; }
 
@@ -4357,6 +4355,17 @@ lp_status_t barrier_solver_t<i_t, f_t>::barrier_advanced_solve(f_t start_time,
                                                                lp_solution_t<i_t, f_t>& solution,
                                                                iteration_data_t<i_t, f_t>& data)
 {
+  if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+    settings.log.printf("Barrier solver halted\n");
+    return lp_status_t::CONCURRENT_LIMIT;
+  }
+  if (data.indefinite_Q) { return lp_status_t::NUMERICAL_ISSUES; }
+  if (data.symbolic_status != 0) {
+    settings.log.printf("Error in symbolic analysis\n");
+    return lp_status_t::NUMERICAL_ISSUES;
+  }
+  settings.log.printf("Barrier setup complete at %.2f seconds\n", toc(start_time));
+
   {
     data.cusparse_dual_residual_ = data.cusparse_view_.create_vector(data.d_dual_residual_);
     data.cusparse_r1_            = data.cusparse_view_.create_vector(data.d_r1_);
@@ -4767,7 +4776,8 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve_with_cache(
 
     std::unique_ptr<iteration_data_t<i_t, f_t>> owned_data;
     if (cache != nullptr) {
-      if (auto* cached = cache->release_iteration_data()) { owned_data.reset(cached); }
+      auto* cached = cache->release_iteration_data();
+      if (cached) { owned_data.reset(cached); }
     }
     if (!owned_data) {
       if (cache != nullptr) { cache->clear(); }
@@ -4791,22 +4801,6 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve_with_cache(
       return lp_status_t::NUMERICAL_ISSUES;
     }
 
-    iteration_data_t<i_t, f_t>& data = *owned_data;
-    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-      settings.log.printf("Barrier solver halted\n");
-      if (cache != nullptr) { cache->clear(); }
-      return lp_status_t::CONCURRENT_LIMIT;
-    }
-    if (data.indefinite_Q) {
-      if (cache != nullptr) { cache->clear(); }
-      return lp_status_t::NUMERICAL_ISSUES;
-    }
-    if (data.symbolic_status != 0) {
-      settings.log.printf("Error in symbolic analysis\n");
-      if (cache != nullptr) { cache->clear(); }
-      return lp_status_t::NUMERICAL_ISSUES;
-    }
-    settings.log.printf("Barrier setup complete at %.2f seconds\n", toc(start_time));
     lp_status_t status = barrier_advanced_solve(start_time, solution, *owned_data);
     return store_or_clear_cache(cache, owned_data, status);
   } catch (const raft::cuda_error& e) {
@@ -4870,24 +4864,6 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(
     if (lp.Q.n > 0) { create_Q(lp, *Qin); }
     owned_data = std::make_unique<iteration_data_t<i_t, f_t>>(
       lp, num_upper_bounds, presolve_info.direct_free_variables, *Qin, settings);
-    iteration_data_t<i_t, f_t>& data = *owned_data;
-
-    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-      settings.log.printf("Barrier solver halted\n");
-      if (cache != nullptr) { cache->clear(); }
-      return lp_status_t::CONCURRENT_LIMIT;
-    }
-    if (data.indefinite_Q) {
-      if (cache != nullptr) { cache->clear(); }
-      return lp_status_t::NUMERICAL_ISSUES;
-    }
-    if (data.symbolic_status != 0) {
-      settings.log.printf("Error in symbolic analysis\n");
-      if (cache != nullptr) { cache->clear(); }
-      return lp_status_t::NUMERICAL_ISSUES;
-    }
-
-    settings.log.printf("Barrier setup complete at %.2f seconds\n", toc(start_time));
     lp_status_t status = barrier_advanced_solve(start_time, solution, *owned_data);
     return store_or_clear_cache(cache, owned_data, status);
   } catch (const raft::cuda_error& e) {

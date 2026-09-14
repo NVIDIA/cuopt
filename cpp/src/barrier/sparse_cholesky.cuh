@@ -33,7 +33,6 @@ class sparse_cholesky_base_t {
   virtual i_t solve(const dense_vector_t<i_t, f_t>& b, dense_vector_t<i_t, f_t>& x) = 0;
   virtual i_t solve(rmm::device_uvector<f_t>& b, rmm::device_uvector<f_t>& x)       = 0;
   virtual void set_positive_definite(bool positive_definite)                        = 0;
-  virtual void rebind_csr_matrix(device_csr_matrix_t<i_t, f_t>& Arow) {}
 };
 
 #define CUDSS_EXAMPLE_FREE \
@@ -876,55 +875,6 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
   void set_positive_definite(bool positive_definite) override
   {
     this->positive_definite = positive_definite;
-  }
-
-  /// Re-point cuDSS CSR wrapper at current device buffers after in-place value refresh.
-  void rebind_csr_matrix(device_csr_matrix_t<i_t, f_t>& Arow) override
-  {
-    if (!symbolic_done_ || !A_created) { return; }
-    auto d_nnz = Arow.row_start.element(Arow.m, Arow.row_start.stream());
-    if (d_nnz != nnz) { return; }
-    status = cudssMatrixDestroy(A);
-    if (status != CUDSS_STATUS_SUCCESS) {
-      settings_.log.printf("cudssMatrixDestroy for A rebind failed: %d\n", status);
-      return;
-    }
-#if CUDSS_VERSION_MAJOR > 0 || (CUDSS_VERSION_MAJOR == 0 && CUDSS_VERSION_MINOR >= 8)
-    status = cudssMatrixCreateCsr(&A,
-                                  n,
-                                  n,
-                                  nnz,
-                                  Arow.row_start.data(),
-                                  nullptr,
-                                  Arow.j.data(),
-                                  Arow.x.data(),
-                                  CUDSS_R_32I,
-                                  CUDSS_R_32I,
-                                  CUDSS_R_64F,
-                                  positive_definite ? CUDSS_MTYPE_SPD : CUDSS_MTYPE_SYMMETRIC,
-                                  CUDSS_MVIEW_FULL,
-                                  CUDSS_BASE_ZERO);
-#else
-    status = cudssMatrixCreateCsr(&A,
-                                  n,
-                                  n,
-                                  nnz,
-                                  Arow.row_start.data(),
-                                  nullptr,
-                                  Arow.j.data(),
-                                  Arow.x.data(),
-                                  CUDA_R_32I,
-                                  CUDA_R_64F,
-                                  positive_definite ? CUDSS_MTYPE_SPD : CUDSS_MTYPE_SYMMETRIC,
-                                  CUDSS_MVIEW_FULL,
-                                  CUDSS_BASE_ZERO);
-#endif
-    if (status != CUDSS_STATUS_SUCCESS) {
-      settings_.log.printf("cudssMatrixCreateCsr rebind failed: %d\n", status);
-      A_created = false;
-      return;
-    }
-    A_created = true;
   }
 
  private:
