@@ -13,6 +13,7 @@ metadata:
     - deployment
 ---
 
+
 # cuOpt Server — Deploy and client (Python/curl)
 
 This skill covers **starting the server** and **client examples** (curl, Python). Server has no separate C API (clients can be any language).
