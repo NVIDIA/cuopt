@@ -1374,34 +1374,37 @@ void pdhg_solver_t<i_t, f_t>::save_new_bounds_primal()
 }
 
 template <typename i_t, typename f_t>
+void pdhg_solver_t<i_t, f_t>::refresh_halpern_weight(const i_t* d_iterations_since_last_restart)
+{
+  if (is_distributed_master()) {
+    mgpu_engine_->for_each_shard([](auto& shard) {
+      auto& sub_pdlp = *shard.sub_pdlp;
+      sub_pdlp.pdhg_solver_.refresh_halpern_weight(
+        sub_pdlp.get_restart_strategy().get_d_iterations_since_last_restart().data());
+    });
+  } else {
+    cub::DeviceTransform::Transform(
+      d_iterations_since_last_restart,
+      d_halpern_weight_.data(),
+      1,
+      [] __device__(i_t k) -> f_t { return f_t(k + 1) / f_t(k + 2); },
+      stream_view_.get());
+  }
+}
+
+template <typename i_t, typename f_t>
 void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
   rmm::device_uvector<f_t>& primal_step_size,
   rmm::device_uvector<f_t>& dual_step_size,
   const rmm::device_uvector<f_t>& bound_rescaling,
   rmm::device_uvector<f_t>& initial_primal,
   rmm::device_uvector<f_t>& initial_dual,
-  i_t iterations_since_last_restart,
+  const i_t* d_iterations_since_last_restart,
   bool should_major)
 {
   raft::common::nvtx::range fun_scope("compute_next_primal_dual_solution_reflected");
 
   using f_t2 = typename type_2<f_t>::type;
-
-  // The projections apply the Halpern update in-kernel, and its weight changes every
-  // iteration while those kernels live in a captured CUDA graph. Passing it as a device scalar
-  // keeps the graph valid: capture records the pointer, each launch reads the value written here.
-  const f_t halpern_weight =
-    f_t(iterations_since_last_restart + 1) / f_t(iterations_since_last_restart + 2);
-  if (is_distributed_master()) {
-    mgpu_engine_->for_each_shard([halpern_weight](auto& shard) {
-      shard.sub_pdlp->pdhg_solver_.d_halpern_weight_.set_value_async(halpern_weight,
-                                                                     shard.stream.view());
-    });
-  } else {
-    d_halpern_weight_.set_value_async(halpern_weight, stream_view_);
-  }
-
-  if (is_distributed_master()) { mgpu_engine_->sync_await_shards(stream_view_); }
 
   // Compute next primal solution reflected.
 
@@ -1409,6 +1412,8 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
     graph_all.run(should_major, [&]() {
       // Adds all the shards streams into the graph capture
       if (is_distributed_master()) { mgpu_engine_->graph_capture_fork_to_shards(stream_view_); }
+
+      refresh_halpern_weight(d_iterations_since_last_restart);
 
       compute_At_y();
 
@@ -1531,6 +1536,8 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
     graph_all.run(should_major, [&]() {
       // Same reason as above, adds all the shards streams into the graph capture
       if (is_distributed_master()) { mgpu_engine_->graph_capture_fork_to_shards(stream_view_); }
+
+      refresh_halpern_weight(d_iterations_since_last_restart);
 
       // Compute next primal
       compute_At_y();
@@ -1665,6 +1672,7 @@ void pdhg_solver_t<i_t, f_t>::take_step(rmm::device_uvector<f_t>& primal_step_si
                                         rmm::device_uvector<f_t>& initial_primal,
                                         rmm::device_uvector<f_t>& initial_dual,
                                         i_t iterations_since_last_restart,
+                                        const i_t* d_iterations_since_last_restart,
                                         bool last_restart_was_average,
                                         i_t total_pdlp_iterations,
                                         bool is_major_iteration)
@@ -1689,7 +1697,7 @@ void pdhg_solver_t<i_t, f_t>::take_step(rmm::device_uvector<f_t>& primal_step_si
       bound_rescaling,
       initial_primal,
       initial_dual,
-      iterations_since_last_restart,
+      d_iterations_since_last_restart,
       is_major_iteration ||
         ((total_pdlp_iterations + 2) % conditional_major<i_t>(total_pdlp_iterations + 2)) == 0);
   }

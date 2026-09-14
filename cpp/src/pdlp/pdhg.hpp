@@ -78,6 +78,7 @@ class pdhg_solver_t {
                  rmm::device_uvector<f_t>& initial_primal,         // Only used if reflected
                  rmm::device_uvector<f_t>& initial_dual,           // Only used if reflected
                  i_t iterations_since_last_restart,
+                 const i_t* d_iterations_since_last_restart,
                  bool last_restart_was_average,
                  i_t total_pdlp_iterations,
                  bool is_major_iteration);
@@ -139,8 +140,12 @@ class pdhg_solver_t {
     const rmm::device_uvector<f_t>& bound_rescaling,  // Only used in batch mode
     rmm::device_uvector<f_t>& initial_primal,
     rmm::device_uvector<f_t>& initial_dual,
-    i_t iterations_since_last_restart,
+    const i_t* d_iterations_since_last_restart,
     bool should_major);
+
+  // Fills d_halpern_weight_ from (k+1)/(k+2) on device. On the distributed
+  // master this dispatches to each shard; shards and single-GPU run the transform.
+  void refresh_halpern_weight(const i_t* d_iterations_since_last_restart);
 
   void compute_primal_projection_with_gradient(rmm::device_uvector<f_t>& primal_step_size);
   void compute_primal_projection(rmm::device_uvector<f_t>& primal_step_size);
@@ -194,8 +199,8 @@ class pdhg_solver_t {
   // Needed for faster graph launch
   // Passing the host value each time would require updating the graph each time
   rmm::device_scalar<i_t> d_total_pdhg_iterations_;
-  // Updated before graph launch; projection kernels capture this stable pointer and
-  // dereference the current weight at execution time.
+  // Filled on device from iterations_since_last_restart; projection kernels capture this
+  // stable pointer and dereference the current weight at execution time.
   rmm::device_scalar<f_t> d_halpern_weight_;
 
   const std::vector<pdlp_climber_strategy_t>& climber_strategies_;

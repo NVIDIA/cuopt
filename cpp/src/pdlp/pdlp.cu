@@ -352,8 +352,8 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(mip::problem_t<i_t, f_t>& op_problem,
       value, stream_view_);
     restart_strategy_.weighted_average_solution_.sum_dual_solution_weights_.set_value_async(
       value, stream_view_);
-    restart_strategy_.weighted_average_solution_.iterations_since_last_restart_ =
-      settings_.get_pdlp_warm_start_data().iterations_since_last_restart_;
+    restart_strategy_.weighted_average_solution_.set_iterations_since_last_restart(
+      settings_.get_pdlp_warm_start_data().iterations_since_last_restart_);
   }
   // Checks performed below are assert only
   best_primal_quality_so_far_.primal_objective = (op_problem_scaled_.maximize)
@@ -3144,6 +3144,7 @@ void pdlp_solver_t<i_t, f_t>::take_adaptive_step(i_t total_pdlp_iterations, bool
       restart_strategy_.last_restart_duality_gap_.primal_solution_,
       restart_strategy_.last_restart_duality_gap_.dual_solution_,
       restart_strategy_.get_iterations_since_last_restart(),
+      restart_strategy_.get_d_iterations_since_last_restart().data(),
       restart_strategy_.get_last_restart_was_average(),
       total_pdlp_iterations,
       is_major_iteration);
@@ -3177,6 +3178,7 @@ void pdlp_solver_t<i_t, f_t>::take_constant_step(bool is_major_iteration)
     settings_.hyper_params.use_reflected_primal_dual
       ? restart_strategy_.weighted_average_solution_.get_iterations_since_last_restart()
       : 0,
+    restart_strategy_.get_d_iterations_since_last_restart().data(),
     false,
     total_pdlp_iterations_,
     is_major_iteration);

@@ -127,6 +127,7 @@ class pdlp_restart_strategy_t {
                         const rmm::device_uvector<f_t>& primal_weight);
 
   void increment_iteration_since_last_restart();
+  void reset_iterations_since_last_restart();
 
   void update_distance(pdhg_solver_t<i_t, f_t>& pdhg_solver,
                        rmm::device_uvector<f_t>& primal_weight,
@@ -163,6 +164,7 @@ class pdlp_restart_strategy_t {
   view_t view();
 
   i_t get_iterations_since_last_restart() const;
+  rmm::device_scalar<i_t> const& get_d_iterations_since_last_restart() const;
 
   void set_last_restart_was_average(bool value);
   bool get_last_restart_was_average() const;
