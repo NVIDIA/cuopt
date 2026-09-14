@@ -33,6 +33,7 @@
 
 #include <utilities/copy_helpers.hpp>
 #include <utilities/error.hpp>
+#include <utilities/scope_guard.hpp>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/cusparse_macros.hpp>
@@ -56,9 +57,7 @@
 #include <utility>
 #include <vector>
 
-#ifdef _OPENMP
 #include <omp.h>
-#endif
 
 namespace cuopt::mathematical_optimization::test {
 
@@ -194,14 +193,12 @@ TEST(pdlp_class, concurrent_null_solver_ptrs_inside_mip)
   // inside_mip skips dual simplex. Setting threads to 1 ensures barrier is also disabled
   // (< CUOPT_CONCURRENT_LP_BARRIER_REQUIRED_THREAD_COUNT), leaving both sol_dual_simplex_ptr
   // and sol_barrier_ptr null.
-#ifdef _OPENMP
   const int prev_threads = omp_get_max_threads();
   omp_set_num_threads(1);
-#endif
+  const cuopt::scope_guard restore_threads{
+        [prev_threads] { omp_set_num_threads(prev_threads); }};
+  const int prev_threads = omp_get_max_threads();
   optimization_problem_solution_t<int, double> solution = solve_lp(&handle_, op_problem, settings);
-#ifdef _OPENMP
-  omp_set_num_threads(prev_threads);
-#endif
 
   EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERMINATION_STATUS_OPTIMAL);
 }
