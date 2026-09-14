@@ -448,11 +448,13 @@ class TestGrpcClient:
             def __init__(self):
                 super().__init__()
                 self.n = 0
+                self.gate = False
 
             def get_solution(
                 self, solution, solution_cost, solution_bound, user_data
             ):
-                self.n += 1
+                if self.gate:
+                    self.n += 1
 
         collector = CountIncumbents()
         settings = SolverSettings()
@@ -461,12 +463,15 @@ class TestGrpcClient:
 
         client = Client("localhost", grpc_server)
         job_id = client.submit(Read(_SWATH1_MPS), settings)
+        collector.gate = False
         client.start_incumbent_stream(
             job_id, settings=settings, poll_interval_ms=200
         )
         try:
+            collector.gate = True
             terminal = client.wait(job_id, timeout=30)
             n_during_wait = collector.n
+            collector.gate = False
             client.join_incumbent_stream(job_id)
         finally:
             client.delete(job_id)
