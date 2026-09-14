@@ -66,6 +66,11 @@ pip check
 
 RAPIDS_TESTS_DIR="${RAPIDS_TESTS_DIR:-${PWD}/test-results}"
 mkdir -p "${RAPIDS_TESTS_DIR}"
+# Canonicalize to an absolute path: if a caller exports RAPIDS_TESTS_DIR as a
+# relative path, it would resolve differently after the popd below (relative
+# to the clone we're leaving vs. relative to where we land), splitting the
+# junit output across two directories.
+RAPIDS_TESTS_DIR="$(cd -- "${RAPIDS_TESTS_DIR}" && pwd -P)"
 
 # Leave the clone: cwd is 'cvxpy/' containing a 'cvxpy/' package
 # subdirectory, and Python puts cwd first on sys.path, so importing 'cvxpy'
