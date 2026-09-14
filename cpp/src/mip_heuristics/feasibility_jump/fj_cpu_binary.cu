@@ -1093,6 +1093,7 @@ bool try_cpufj_binary_solve(fj_cpu_climber_t<i_t, f_t>& climber,
 
   auto run = [&](auto& engine) -> bool {
     fj_bin_narrow(climber, scan, engine.pb, climber.bin_setup);
+    if (engine.pb.n_variables == 0) return false;
     CUOPT_LOG_DEBUG(
       "%sCPUFJ binary fast path enabled: int%d coefficients, %d rows after one-sided split",
       climber.log_prefix.c_str(),
