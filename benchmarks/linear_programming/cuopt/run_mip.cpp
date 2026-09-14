@@ -7,7 +7,6 @@
 #include "initial_solution_reader.hpp"
 #include "mip_test_instances.hpp"
 #include "miplib2017_bks.hpp"
-#include "row_audit.hpp"
 
 #include <cuopt/mathematical_optimization/cuopt_c.h>
 #include <cstdio>
@@ -145,126 +144,6 @@ static void configure_c_api_settings(
     c_settings, CUOPT_MIP_HEURISTICS_ONLY, settings.heuristics_only ? "true" : "false");
   cuOptSetParameter(c_settings, CUOPT_LOG_TO_CONSOLE, settings.log_to_console ? "true" : "false");
   cuOptSetParameter(c_settings, CUOPT_LOG_FILE, settings.log_file.c_str());
-}
-
-static bool verify_solution(
-  const cuopt::mathematical_optimization::io::mps_data_model_t<int, double>& problem,
-  const std::vector<double>& solution,
-  double reported_objective,
-  const cuopt::mathematical_optimization::mip_solver_settings_t<int, double>::tolerances_t&
-    tolerances,
-  size_t incumbent)
-{
-  const auto& values                 = problem.get_constraint_matrix_values();
-  const auto& indices                = problem.get_constraint_matrix_indices();
-  const auto& offsets                = problem.get_constraint_matrix_offsets();
-  const auto& row_lower_bounds       = problem.get_constraint_lower_bounds();
-  const auto& row_upper_bounds       = problem.get_constraint_upper_bounds();
-  const auto& variable_lower_bounds  = problem.get_variable_lower_bounds();
-  const auto& variable_upper_bounds  = problem.get_variable_upper_bounds();
-  const auto& variable_types         = problem.get_variable_types();
-  const auto& objective_coefficients = problem.get_objective_coefficients();
-
-  if (variable_lower_bounds.size() != variable_types.size() ||
-      variable_upper_bounds.size() != variable_types.size() ||
-      objective_coefficients.size() != variable_types.size()) {
-    std::osyncstream(std::cerr) << "Incumbent " << incumbent
-                                << " cannot be checked against malformed variable data\n";
-    return false;
-  }
-  if (solution.size() != variable_types.size()) {
-    std::osyncstream(std::cerr) << "Incumbent " << incumbent << " has " << solution.size()
-                                << " variables; expected " << variable_types.size() << "\n";
-    return false;
-  }
-
-  _Float128 objective = 0;
-  for (size_t variable = 0; variable < solution.size(); ++variable) {
-    const double value = solution[variable];
-    if (!std::isfinite(value)) {
-      std::osyncstream(std::cerr) << std::setprecision(17) << "Incumbent " << incumbent
-                                  << " variable " << variable << " is not finite: " << value
-                                  << "\n";
-      return false;
-    }
-    const auto bound_limits = cuopt_bench::scaled_bound_limits(tolerances.absolute_tolerance,
-                                                               value,
-                                                               variable_lower_bounds[variable],
-                                                               variable_upper_bounds[variable]);
-    const double lower_bound_tolerance = variable_lower_bounds[variable] - bound_limits.first;
-    const double upper_bound_tolerance = bound_limits.second - variable_upper_bounds[variable];
-    if (value < bound_limits.first || value > bound_limits.second) {
-      std::osyncstream(std::cerr) << std::setprecision(17) << "Incumbent " << incumbent
-                                  << " variable " << variable << " violates bounds: value=" << value
-                                  << " lb=" << variable_lower_bounds[variable]
-                                  << " ub=" << variable_upper_bounds[variable]
-                                  << " lower_tolerance=" << lower_bound_tolerance
-                                  << " upper_tolerance=" << upper_bound_tolerance << "\n";
-      return false;
-    }
-    if (variable_types[variable] == 'I' && value != std::round(value)) {
-      std::osyncstream(std::cerr) << std::setprecision(17) << "Incumbent " << incumbent
-                                  << " variable " << variable
-                                  << " is not exactly integral: value=" << value
-                                  << " residual=" << std::abs(value - std::round(value)) << "\n";
-      return false;
-    }
-    objective += (_Float128)objective_coefficients[variable] * (_Float128)solution[variable];
-  }
-
-  if (row_upper_bounds.size() != row_lower_bounds.size() ||
-      offsets.size() != row_lower_bounds.size() + 1) {
-    std::osyncstream(std::cerr) << "Incumbent " << incumbent
-                                << " cannot be checked against malformed row data\n";
-    return false;
-  }
-  for (size_t row = 0; row < row_lower_bounds.size(); ++row) {
-    const double lower_bound = row_lower_bounds[row];
-    const double upper_bound = row_upper_bounds[row];
-
-    // fp64 first. _Float128 is soft-float on x86-64; only rows whose rounding-error
-    // interval meets a bound pay for it. Bound is (nnz+1)*eps*abs_sum.
-    const auto verdict = cuopt_bench::check_row(
-      values.data(),
-      indices.data(),
-      (int64_t)offsets[row],
-      (int64_t)offsets[row + 1],
-      solution.data(),
-      lower_bound,
-      upper_bound,
-      [&](double positive_activity) {
-        return cuopt_bench::scaled_row_limits(
-          tolerances.absolute_tolerance, positive_activity, lower_bound, upper_bound);
-      });
-    if (verdict.excess > 0.0) {
-      std::osyncstream(std::cerr) << std::setprecision(17) << "Incumbent " << incumbent << " row "
-                                  << row << " violates bounds: activity=" << verdict.activity
-                                  << " lb=" << lower_bound << " ub=" << upper_bound
-                                  << " lower_tolerance=" << (lower_bound - verdict.lower_limit)
-                                  << " upper_tolerance=" << (verdict.upper_limit - upper_bound)
-                                  << "\n";
-      return false;
-    }
-  }
-
-  const double recomputed_objective =
-    problem.get_objective_scaling_factor() * ((double)objective + problem.get_objective_offset());
-  const double objective_difference = std::abs(recomputed_objective - reported_objective);
-  const double objective_scale =
-    std::max(std::abs(recomputed_objective), std::abs(reported_objective));
-  const double relative_objective_tolerance = objective_scale * tolerances.relative_tolerance;
-  if (!std::isfinite(recomputed_objective) || !std::isfinite(reported_objective) ||
-      (objective_difference > tolerances.absolute_tolerance &&
-       objective_difference > relative_objective_tolerance)) {
-    std::osyncstream(std::cerr) << std::setprecision(17) << "Incumbent " << incumbent
-                                << " objective mismatch: reported=" << reported_objective
-                                << " recomputed=" << recomputed_objective
-                                << " difference=" << objective_difference
-                                << " absolute_tolerance=" << tolerances.absolute_tolerance
-                                << " relative_threshold=" << relative_objective_tolerance << "\n";
-    return false;
-  }
-  return true;
 }
 
 void read_single_solution_from_path(const std::string& path,
@@ -594,7 +473,7 @@ int run_single_file(std::string file_path,
   }
 
   std::stringstream ss;
-  int decimal_places = 2;
+  int decimal_places = 5;
   double mip_gap     = solution.get_mip_gap();
   int is_optimal     = solution.termination_status == CUOPT_TERMINATION_STATUS_OPTIMAL ? 1 : 0;
   ss << std::fixed << std::setprecision(decimal_places) << base_filename << "," << sol_found << ","
