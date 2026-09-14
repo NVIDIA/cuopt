@@ -25,6 +25,11 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+def _client():
+    host, _, port = (_SERVER or "").rpartition(":")
+    return grpc_routing.RoutingClient(host, int(port))
+
+
 def _small_vrp():
     dm = routing.DataModel(5, 2)
     cost = np.array(
@@ -46,7 +51,7 @@ def test_remote_solve_matches_local():
     settings.set_time_limit(2)
     local = routing.Solve(_small_vrp(), settings)
 
-    client = grpc_routing.RoutingClient(_SERVER)
+    client = _client()
     remote = client.solve(_small_vrp(), {"time_limit": 2.0})
 
     assert remote["status"] == 0, remote["status_message"]
@@ -57,7 +62,7 @@ def test_remote_solve_matches_local():
 
 
 def test_submit_wait_result_lifecycle():
-    client = grpc_routing.RoutingClient(_SERVER)
+    client = _client()
     job_id = client.submit(_small_vrp(), {"time_limit": 1.0})
     assert job_id
     client.wait(job_id, timeout=30)

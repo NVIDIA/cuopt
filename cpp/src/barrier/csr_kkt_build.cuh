@@ -9,6 +9,7 @@
 #include <barrier/device_sparse_matrix.cuh>
 #include <barrier/second_order_cone_kernels.cuh>
 
+#include <cuda/stream>
 #include <raft/core/nvtx.hpp>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/cuda_helpers.cuh>
@@ -27,7 +28,7 @@ constexpr int augmented_csr_block_size = 256;
 // Cone -> augmented-KKT-CSR assembly data.
 template <std::integral i_t, std::floating_point f_t>
 struct cone_kkt_data_t {
-  explicit cone_kkt_data_t(rmm::cuda_stream_view stream)
+  explicit cone_kkt_data_t(cuda::stream_ref stream)
     : sparse_ids_by_cone(0, stream),
       dense_ids_by_cone(0, stream),
       dense_cone_entry_rank(0, stream),
@@ -509,7 +510,7 @@ __global__ void fill_augmented_csr_row_kernel(i_t factorization_size,
 template <std::integral i_t, std::floating_point f_t>
 void build_augmented_csr_metadata(const cone_data_t<i_t, f_t>& cones,
                                   cone_kkt_data_t<i_t, f_t>& metadata,
-                                  rmm::cuda_stream_view stream)
+                                  cuda::stream_ref stream)
 {
   raft::common::nvtx::range scope("Barrier: augmented: device CSR metadata");
   const i_t n_cones  = cones.n_cones;
@@ -524,7 +525,7 @@ void build_augmented_csr_metadata(const cone_data_t<i_t, f_t>& cones,
                i_t(-1));
   if (n_sparse > 0) {
     const size_t grid = raft::ceildiv<size_t>(n_sparse, augmented_csr_block_size);
-    scatter_sparse_ids_by_cone_kernel<i_t><<<grid, augmented_csr_block_size, 0, stream.value()>>>(
+    scatter_sparse_ids_by_cone_kernel<i_t><<<grid, augmented_csr_block_size, 0, stream.get()>>>(
       cuopt::make_span(metadata.sparse_ids_by_cone),
       cuopt::make_span(cones.sparse_cone_ids),
       n_sparse);
@@ -548,14 +549,14 @@ void build_augmented_csr_metadata(const cone_data_t<i_t, f_t>& cones,
       rmm::exec_policy(stream), is_dense_cone.begin(), is_dense_cone.end(), dense_prefix.begin());
 
     const size_t grid = raft::ceildiv<size_t>(n_cones, augmented_csr_block_size);
-    build_dense_ids_by_cone_kernel<i_t><<<grid, augmented_csr_block_size, 0, stream.value()>>>(
+    build_dense_ids_by_cone_kernel<i_t><<<grid, augmented_csr_block_size, 0, stream.get()>>>(
       cuopt::make_span(metadata.dense_ids_by_cone),
       cuopt::make_span(cones.cone_is_sparse),
       cuopt::make_span(dense_prefix),
       n_cones);
     RAFT_CUDA_TRY(cudaPeekAtLastError());
 
-    compact_dense_cone_ids_kernel<i_t><<<grid, augmented_csr_block_size, 0, stream.value()>>>(
+    compact_dense_cone_ids_kernel<i_t><<<grid, augmented_csr_block_size, 0, stream.get()>>>(
       cuopt::make_span(metadata.dense_cone_ids),
       cuopt::make_span(dense_prefix),
       cuopt::make_span(cones.cone_is_sparse),
@@ -564,12 +565,11 @@ void build_augmented_csr_metadata(const cone_data_t<i_t, f_t>& cones,
 
     rmm::device_uvector<size_t> dense_block_sizes(n_dense, stream);
     const size_t dense_grid = raft::ceildiv<size_t>(n_dense, augmented_csr_block_size);
-    build_dense_block_sizes_kernel<i_t>
-      <<<dense_grid, augmented_csr_block_size, 0, stream.value()>>>(
-        cuopt::make_span(dense_block_sizes),
-        cuopt::make_span(metadata.dense_cone_ids),
-        cuopt::make_span(cones.cone_offsets),
-        n_dense);
+    build_dense_block_sizes_kernel<i_t><<<dense_grid, augmented_csr_block_size, 0, stream.get()>>>(
+      cuopt::make_span(dense_block_sizes),
+      cuopt::make_span(metadata.dense_cone_ids),
+      cuopt::make_span(cones.cone_offsets),
+      n_dense);
     RAFT_CUDA_TRY(cudaPeekAtLastError());
 
     thrust::exclusive_scan(rmm::exec_policy(stream),
@@ -612,7 +612,7 @@ void build_augmented_csr_metadata(const cone_data_t<i_t, f_t>& cones,
 
     const size_t entry_grid = raft::ceildiv<size_t>(m_c, augmented_csr_block_size);
     build_dense_cone_entry_rank_kernel<i_t>
-      <<<entry_grid, augmented_csr_block_size, 0, stream.value()>>>(
+      <<<entry_grid, augmented_csr_block_size, 0, stream.get()>>>(
         cuopt::make_span(metadata.dense_cone_entry_rank),
         cuopt::make_span(cones.element_cone_ids),
         cuopt::make_span(cones.cone_is_sparse),
@@ -639,7 +639,7 @@ i_t build_augmented_csr_on_device(i_t n,
                                   cone_kkt_data_t<i_t, f_t>& cone_data,
                                   rmm::device_uvector<i_t>& augmented_diagonal_indices,
                                   device_csr_matrix_t<i_t, f_t>& device_augmented,
-                                  rmm::cuda_stream_view stream)
+                                  cuda::stream_ref stream)
 {
   const i_t factorization_size       = n + m + p;
   const csc_view_t<i_t, f_t> A_view  = A.view();
@@ -650,7 +650,7 @@ i_t build_augmented_csr_on_device(i_t n,
   {
     raft::common::nvtx::range scope("Barrier: augmented: device CSR count");
     const size_t grid = raft::ceildiv<size_t>(factorization_size, augmented_csr_block_size);
-    count_augmented_row_nnz_kernel<i_t, f_t><<<grid, augmented_csr_block_size, 0, stream.value()>>>(
+    count_augmented_row_nnz_kernel<i_t, f_t><<<grid, augmented_csr_block_size, 0, stream.get()>>>(
       factorization_size,
       n,
       m,
@@ -715,7 +715,7 @@ i_t build_augmented_csr_on_device(i_t n,
     raft::common::nvtx::range scope("Barrier: augmented: device CSR fill");
     auto views        = make_cone_kkt_views(cone_data, augmented_diagonal_indices);
     const size_t grid = raft::ceildiv<size_t>(factorization_size, augmented_csr_block_size);
-    fill_augmented_csr_row_kernel<i_t, f_t><<<grid, augmented_csr_block_size, 0, stream.value()>>>(
+    fill_augmented_csr_row_kernel<i_t, f_t><<<grid, augmented_csr_block_size, 0, stream.get()>>>(
       factorization_size,
       n,
       m,

@@ -49,6 +49,7 @@
 #include <pdlp/utilities/problem_checking.cuh>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
+#include <cuda/stream>
 #include <raft/core/cusparse_macros.hpp>
 #include <raft/core/device_setter.hpp>
 #include <raft/core/handle.hpp>
@@ -74,16 +75,17 @@ namespace cuopt::mathematical_optimization {
 
 template <typename From, typename To>
 extern rmm::device_uvector<To> gpu_cast(const rmm::device_uvector<From>& src,
-                                        rmm::cuda_stream_view stream);
+                                        cuda::stream_ref stream);
 
 // This serves as both a warm up but also a mandatory initial call to setup cuSparse and cuBLAS
 static void init_handler(const raft::handle_t* handle_ptr)
 {
   // Init cuBlas / cuSparse context here to avoid having it during solving time
   RAFT_CUBLAS_TRY(raft::linalg::detail::cublassetpointermode(
-    handle_ptr->get_cublas_handle(), CUBLAS_POINTER_MODE_DEVICE, handle_ptr->get_stream()));
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsesetpointermode(
-    handle_ptr->get_cusparse_handle(), CUSPARSE_POINTER_MODE_DEVICE, handle_ptr->get_stream()));
+    handle_ptr->get_cublas_handle(), CUBLAS_POINTER_MODE_DEVICE, handle_ptr->get_stream().get()));
+  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsesetpointermode(handle_ptr->get_cusparse_handle(),
+                                                                 CUSPARSE_POINTER_MODE_DEVICE,
+                                                                 handle_ptr->get_stream().get()));
 }
 
 // Corresponds to the first good general settings we found
@@ -335,7 +337,7 @@ std::atomic<int> global_concurrent_halt{0};
 template <typename f_t>
 void adjust_dual_solution_and_reduced_cost(rmm::device_uvector<f_t>& dual_solution,
                                            rmm::device_uvector<f_t>& reduced_cost,
-                                           rmm::cuda_stream_view stream_view)
+                                           cuda::stream_ref stream_view)
 {
   // y <- -y
   cub::DeviceTransform::Transform(
@@ -343,7 +345,7 @@ void adjust_dual_solution_and_reduced_cost(rmm::device_uvector<f_t>& dual_soluti
     dual_solution.data(),
     dual_solution.size(),
     [] HD(f_t dual) { return -dual; },
-    stream_view);
+    stream_view.get());
 
   // z <- -z
   cub::DeviceTransform::Transform(
@@ -351,7 +353,7 @@ void adjust_dual_solution_and_reduced_cost(rmm::device_uvector<f_t>& dual_soluti
     reduced_cost.data(),
     reduced_cost.size(),
     [] HD(f_t reduced_cost) { return -reduced_cost; },
-    stream_view);
+    stream_view.get());
 }
 
 template <typename i_t, typename f_t>
@@ -512,12 +514,15 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
     settings.barrier_presolve_bound_free_variables;
   barrier_settings.barrier_presolve_remove_fixed_variables =
     settings.barrier_presolve_remove_fixed_variables;
+  barrier_settings.barrier_initial_point_safeguard = settings.barrier_initial_point_safeguard;
   barrier_settings.barrier                         = true;
   barrier_settings.barrier_presolve                = true;
   barrier_settings.crossover                       = settings.crossover;
   barrier_settings.eliminate_dense_columns         = settings.eliminate_dense_columns;
   barrier_settings.barrier_iterative_refinement    = settings.barrier_iterative_refinement;
   barrier_settings.barrier_adaptive_regularization = settings.barrier_adaptive_regularization;
+  barrier_settings.barrier_primal_regularization   = settings.barrier_primal_regularization;
+  barrier_settings.barrier_dual_regularization     = settings.barrier_dual_regularization;
   barrier_settings.barrier_soc_threshold           = settings.barrier_soc_threshold;
   barrier_settings.barrier_step_scale              = settings.barrier_step_scale;
   barrier_settings.qcqp_ruiz_equilibration         = settings.qcqp_ruiz_equilibration;
@@ -707,6 +712,8 @@ static optimization_problem_solution_t<i_t, double> run_pdlp_solver_in_fp32(
   fs.eliminate_dense_columns         = settings.eliminate_dense_columns;
   fs.barrier_iterative_refinement    = settings.barrier_iterative_refinement;
   fs.barrier_adaptive_regularization = settings.barrier_adaptive_regularization;
+  fs.barrier_primal_regularization   = settings.barrier_primal_regularization;
+  fs.barrier_dual_regularization     = settings.barrier_dual_regularization;
   fs.barrier_step_scale              = settings.barrier_step_scale;
   fs.pdlp_precision                  = pdlp_precision_t::DefaultPrecision;
   fs.method                          = method_t::PDLP;
@@ -1277,9 +1284,9 @@ template <typename i_t, typename f_t>
 static optimization_problem_solution_t<i_t, f_t> run_batch_pdlp_splitting(
   optimization_problem_t<i_t, f_t>& problem, pdlp_solver_settings_t<i_t, f_t> const& settings)
 {
-  rmm::cuda_stream_view stream = problem.get_handle_ptr()->get_stream();
-  const i_t n_vars             = problem.get_n_variables();
-  const i_t n_constraints      = problem.get_n_constraints();
+  cuda::stream_ref stream = problem.get_handle_ptr()->get_stream();
+  const i_t n_vars        = problem.get_n_variables();
+  const i_t n_constraints = problem.get_n_constraints();
 
   // Splitting path only supports un-expanded problems + per-climber variable-bound overrides.
   cuopt_expects(problem.get_objective_coefficients().size() == static_cast<size_t>(n_vars),
@@ -1604,8 +1611,8 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
         {
           try {
             auto call_barrier_thread = [&]() {
-              rmm::cuda_stream_view barrier_stream = rmm::cuda_stream_per_thread;
-              barrier_handle_ptr = std::make_unique<raft::handle_t>(barrier_stream);
+              cuda::stream_ref barrier_stream = cuda::stream_ref{cudaStreamPerThread};
+              barrier_handle_ptr              = std::make_unique<raft::handle_t>(barrier_stream);
               run_barrier_thread<i_t, f_t>(dual_simplex_problem,
                                            settings_pdlp,
                                            sol_barrier_ptr,
@@ -1926,7 +1933,7 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
 template <typename i_t, typename f_t>
 static std::optional<optimization_problem_solution_t<i_t, f_t>>
 terminal_solution_from_presolve_status(mip::third_party_presolve_status_t status,
-                                       rmm::cuda_stream_view stream)
+                                       cuda::stream_ref stream)
 {
   switch (status) {
     case mip::third_party_presolve_status_t::INFEASIBLE:
@@ -2355,7 +2362,7 @@ cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> op_problem_to_m
   raft::copy(h_constr_lb.data(), d_constr_lb.data(), d_constr_lb.size(), stream);
   raft::copy(h_constr_ub.data(), d_constr_ub.data(), d_constr_ub.size(), stream);
   raft::copy(h_var_types_enum.data(), d_var_types.data(), d_var_types.size(), stream);
-  stream.synchronize();
+  stream.sync();
 
   if (!h_offsets.empty()) {
     mps.set_csr_constraint_matrix(
@@ -2683,7 +2690,7 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
   raft::handle_t handle(stream);
 
   // Convert CPU problem to GPU problem
-  auto gpu_problem = cpu_problem.to_optimization_problem(&handle);
+  auto gpu_problem = to_optimization_problem(cpu_problem, &handle);
 
   // Synchronize before solving to ensure conversion is complete
   stream.synchronize();
@@ -2693,7 +2700,7 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
     *gpu_problem, settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
 
   // Ensure all GPU work from the solve is complete before D2H copies in to_cpu_solution(),
-  // which uses rmm::cuda_stream_per_thread (a different stream than the solver used).
+  // which uses the per-thread default stream (a different stream than the solver used).
   stream.synchronize();
 
   // Convert GPU solution back to CPU

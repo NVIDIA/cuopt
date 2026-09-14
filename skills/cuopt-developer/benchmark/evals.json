@@ -50,11 +50,11 @@
     "question": "I'm writing a new CUDA kernel in cpp/src for cuOpt. How should I allocate device buffers for it?",
     "expected_skill": "cuopt-developer",
     "expected_script": null,
-    "ground_truth": "The agent prescribes RMM (rmm::device_uvector or another RMM allocator) for all device-side allocations and explicitly forbids raw new/delete or cudaMalloc. It explains that operations should accept and use a cuda_stream_view so allocations and kernel launches are stream-ordered, points to existing kernels in cpp/src as reference for RMM allocation, RAFT utilities, and kernel launch patterns, and mentions RAFT_CUDA_TRY for CUDA error checking.",
+    "ground_truth": "The agent prescribes RMM (rmm::device_uvector or another RMM allocator) for all device-side allocations and explicitly forbids raw new/delete or cudaMalloc. It explains that operations should accept and use a cuda::stream_ref so allocations and kernel launches are stream-ordered, points to existing kernels in cpp/src as reference for RMM allocation, RAFT utilities, and kernel launch patterns, and mentions RAFT_CUDA_TRY for CUDA error checking.",
     "expected_behavior": [
       "Recommends rmm::device_uvector or another RMM allocator",
       "Explicitly says raw new/delete and cudaMalloc are not allowed",
-      "Mentions cuda_stream_view and stream-ordered operations",
+      "Mentions cuda::stream_ref and stream-ordered operations",
       "Points the user to existing code in cpp/src as reference for patterns",
       "Mentions RAFT utilities or RAFT_CUDA_TRY for CUDA error checking"
     ]
@@ -461,13 +461,13 @@
     "question": "Does cuOpt use RAFT or RMM? What conventions should I follow when writing GPU code in the codebase?",
     "expected_skill": "cuopt-developer",
     "expected_script": null,
-    "ground_truth": "cuOpt uses both. RMM provides device-memory allocators (rmm::device_uvector and similar); raw new/delete or cudaMalloc are not allowed. RAFT provides utilities including RAFT_CUDA_TRY for wrapping CUDA API calls so failures throw with context. Operations are stream-ordered via cuda_stream_view; views (the _view suffix) are non-owning. The agent points to existing code in cpp/src/ as reference for these patterns.",
+    "ground_truth": "cuOpt uses both. RMM provides device-memory allocators (rmm::device_uvector and similar); raw new/delete or cudaMalloc are not allowed. RAFT provides utilities including RAFT_CUDA_TRY for wrapping CUDA API calls so failures throw with context. Operations are stream-ordered via cuda::stream_ref, which is non-owning. The agent points to existing code in cpp/src/ as reference for these patterns.",
     "expected_behavior": [
       "States cuOpt uses both RAFT and RMM",
       "Mentions rmm::device_uvector (or RMM allocators) for device memory",
       "Mentions RAFT_CUDA_TRY for CUDA error wrapping",
-      "Mentions cuda_stream_view and stream-ordered operations",
-      "Mentions _view suffix means non-owning",
+      "Mentions cuda::stream_ref and stream-ordered operations",
+      "Mentions cuda::stream_ref is non-owning",
       "Points to existing cpp/src/ code as the reference for patterns"
     ]
   },

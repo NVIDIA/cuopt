@@ -23,7 +23,6 @@
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/cusparse_macros.hpp>
 #include <raft/linalg/binary_op.cuh>
-#include <utilities/seed_generator.cuh>
 
 #include <thrust/copy.h>
 #include <thrust/gather.h>
@@ -51,7 +50,7 @@ feasibility_pump_t<i_t, f_t>::feasibility_pump_t(
     orig_variable_types(context.problem_ptr->n_variables,
                         context.problem_ptr->handle_ptr->get_stream()),
     lp_optimal_solution(lp_optimal_solution_),
-    rng(cuopt::seed_generator::get_seed()),
+    rng(derive_seed(context.base_seed, rng_id_t::feasibility_pump)),
     timer(20.)
 {
 }
@@ -201,7 +200,7 @@ bool feasibility_pump_t<i_t, f_t>::linear_project_onto_polytope(solution_t<i_t, 
              obj_coefficients.data(),
              obj_coefficients.size(),
              solution.handle_ptr->get_stream());
-  RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
+  RAFT_CHECK_CUDA(solution.handle_ptr->get_stream().get());
   temp_p.presolve_data.objective_offset = obj_offset;
   // change the precision between 1. and 10-4 depending on the integer ratio
   // the lp tolerance can be pretty high
@@ -274,7 +273,7 @@ template <typename i_t, typename f_t>
 void feasibility_pump_t<i_t, f_t>::perturbate(solution_t<i_t, f_t>& solution)
 {
   constexpr f_t change_ratio = 0.1;
-  solution.assign_random_within_bounds(change_ratio, true);
+  solution.assign_random_within_bounds(rng(), change_ratio, true);
 }
 
 template <typename i_t, typename f_t>
@@ -448,7 +447,7 @@ void feasibility_pump_t<i_t, f_t>::relax_general_integers(solution_t<i_t, f_t>& 
       var_types[v_idx] = copy_type;
     });
   solution.handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
+  RAFT_CHECK_CUDA(solution.handle_ptr->get_stream().get());
   solution.problem_ptr->compute_n_integer_vars();
   solution.problem_ptr->compute_binary_var_table();
   CUOPT_LOG_DEBUG("Integers are relaxed n_int vars %d n_binary vars %d n_vars %d",
@@ -473,7 +472,7 @@ bool feasibility_pump_t<i_t, f_t>::run_single_fp_descent(solution_t<i_t, f_t>& s
 {
   raft::common::nvtx::range fun_scope("run_single_fp_descent");
   // start by doing nearest rounding
-  solution.round_nearest();
+  solution.round_nearest(rng());
   raft::copy(last_rounding.data(),
              solution.assignment.data(),
              solution.assignment.size(),

@@ -170,6 +170,7 @@ cuopt/
 ### CUDA/GPU Hygiene
 - Keep operations stream-ordered
 - Follow existing RAFT/RMM patterns
+- `rmm::device_uvector` tests emptiness with `is_empty()`; it has no `empty()` member.
 - No raw `new`/`delete` - use RMM allocators
 - Prefer modern CCCL bit/math helpers in kernels (`cuda::bitfield_extract`, `cuda::bitmask`, pow2 utilities) over hand-rolled `%`/`/` by runtime powers of two — see [references/conventions.md](references/conventions.md)
 
@@ -180,12 +181,12 @@ cuopt/
 Skipping any of these surfaces as confusing runtime errors later. Run them in order:
 
 1. **Check CUDA driver compatibility.** Run `nvidia-smi` and read the *CUDA Version* in the top-right corner — that's the maximum CUDA your driver supports. Pick a conda env file from `conda/environments/all_cuda-<ver>_arch-<arch>.yaml` whose CUDA major version is **≤** that. A mismatch builds successfully but fails at runtime inside RMM with `cudaMallocAsync not supported with this CUDA driver/runtime version` — verify this *before* the build, not after.
-2. **Create and activate the conda env** before *any* build, test, or `pre-commit` command — this is allowed and expected (see [Refusal Rules](#refusal-rules--read-first)). Use a **local prefix env** (`./.cuopt_env`) per [CONTRIBUTING.md](../../CONTRIBUTING.md), with the env file you picked in step 1 (swap `conda`→`mamba` if available):
+2. **Create and activate the conda env** before *any* build, test, or `pre-commit` command — this is allowed and expected (see [Refusal Rules](#refusal-rules--read-first)). Use a **local prefix env** (`./.cuopt_env`) per [CONTRIBUTING.md](../../CONTRIBUTING.md), with the env file you picked in step 1 (`mamba` is recommended and faster; swap in `conda` if `mamba` isn't available):
    ```bash
-   conda env create -p ./.cuopt_env --file conda/environments/all_cuda-<ver>_arch-$(uname -m).yaml
-   conda activate ./.cuopt_env
+   mamba env create -p ./.cuopt_env --file conda/environments/all_cuda-<ver>_arch-$(uname -m).yaml
+   mamba activate ./.cuopt_env   # or: conda activate ./.cuopt_env
    ```
-   Tests link against libraries compiled inside that env; a fresh shell without `conda activate ./.cuopt_env` hits cryptic linker errors.
+   Tests link against libraries compiled inside that env; a fresh shell without activating it hits cryptic linker errors.
 3. **Set `PARALLEL_LEVEL`** if RAM is constrained — see [references/build_and_test.md](references/build_and_test.md). The default `$(nproc)` can OOM mid-build because CUDA compilation needs ~4–8 GB per job.
 4. **For tests, fetch datasets first.** cuOpt tests need MPS files not in the repo — follow the dataset download steps in [CONTRIBUTING.md](../../CONTRIBUTING.md) ("Building for development" section) and export `RAPIDS_DATASET_ROOT_DIR`.
 
@@ -224,6 +225,8 @@ cuOpt uses Cython to bridge Python and C++. See [references/python_bindings.md](
 For pre-commit setup, DCO sign-off (`git commit -s`), the fork-based PR workflow, the draft-PR rule for agents, PR-description rules (keep it short — no "how it works" walkthroughs or file tables), script and CI/workflow authoring principles (extend existing files before adding new ones; no speculative flags, restated defaults, or silent fallbacks), and step-by-step common-task recipes (adding a solver parameter, dependency, server endpoint, or CUDA kernel), see [references/contributing.md](references/contributing.md).
 
 ## Coding Conventions
+
+Use `_Float128`, never `long double`, whenever extended precision arithmetic is required; `long double` is architecture-dependent and uses x87 on x86.
 
 For C++ naming (`snake_case`, `d_`/`h_` prefixes, `_t` suffix), file extensions (`.hpp`/`.cpp`/`.cu`/`.cuh` and which compiler each uses), include order, Python style, error handling (`CUOPT_EXPECTS`, `RAFT_CUDA_TRY`), memory management (RMM patterns, no raw `new`/`delete`), CCCL bit/math helpers in device code, test-impact rules, volatile-comment rules (hardware names and self-referential issue/PR numbers in comments or skip messages go stale; issue links to a separate tracking issue are fine), **no large local lambdas** (extract named helpers instead), and **coarse work-estimate / time-limit gating** (phase/outer-loop only; no fine inner-loop or double checks), see [references/conventions.md](references/conventions.md).
 
