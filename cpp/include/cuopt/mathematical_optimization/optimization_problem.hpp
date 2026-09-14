@@ -11,6 +11,7 @@
 #include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 #include <cuopt/mathematical_optimization/utilities/internals.hpp>
 
+#include <cuda/stream>
 #include <raft/core/device_span.hpp>
 #include <raft/core/handle.hpp>
 #include <rmm/device_uvector.hpp>
@@ -356,7 +357,7 @@ class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t>
    * @tparam other_f_t  Target floating-point type (e.g. float when this is double)
    */
   template <typename other_f_t>
-  optimization_problem_t<i_t, other_f_t> convert_to_other_prec(rmm::cuda_stream_view stream) const;
+  optimization_problem_t<i_t, other_f_t> convert_to_other_prec(cuda::stream_ref stream) const;
 
   // ============================================================================
   // C API support: Copy to host (polymorphic)
@@ -387,7 +388,7 @@ class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t>
 
  private:
   raft::handle_t const* handle_ptr_{nullptr};
-  rmm::cuda_stream_view stream_view_;
+  cuda::stream_ref stream_view_;
 
   problem_category_t problem_category_ = problem_category_t::LP;
   bool has_semi_continuous_variables_{false};
