@@ -251,11 +251,11 @@ i_t remove_fixed_variables(f_t fixed_tolerance,
     col_marker[j] = 1;
     num_removed++;
     for (i_t p = problem.A.col_start[j]; p < problem.A.col_start[j + 1]; ++p) {
-      const i_t i   = problem.A.i[p];
-      const f_t aij = problem.A.x[p];
-      const f_t val = -aij * problem.lower[j];
-      const f_t y   = val - kahan_compensation[i];
-      const f_t t   = problem.rhs[i] + y;
+      const i_t i           = problem.A.i[p];
+      const f_t aij         = problem.A.x[p];
+      const f_t val         = -aij * problem.lower[j];
+      const f_t y           = val - kahan_compensation[i];
+      const f_t t           = problem.rhs[i] + y;
       kahan_compensation[i] = (t - problem.rhs[i]) - y;
       problem.rhs[i]        = t;
     }

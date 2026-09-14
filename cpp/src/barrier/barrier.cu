@@ -120,10 +120,10 @@ f_t iterate_merit(const simplex_solver_settings_t<i_t, f_t>& settings,
                   f_t relative_dual_residual,
                   f_t relative_complementarity_residual)
 {
-  return std::max(relative_primal_residual / settings.barrier_relaxed_feasibility_tol,
-                  std::max(relative_dual_residual / settings.barrier_relaxed_optimality_tol,
-                           relative_complementarity_residual /
-                             settings.barrier_relaxed_complementarity_tol));
+  return std::max(
+    relative_primal_residual / settings.barrier_relaxed_feasibility_tol,
+    std::max(relative_dual_residual / settings.barrier_relaxed_optimality_tol,
+             relative_complementarity_residual / settings.barrier_relaxed_complementarity_tol));
 }
 
 template <typename f_t>
