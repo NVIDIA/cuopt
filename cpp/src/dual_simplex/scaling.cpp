@@ -134,10 +134,10 @@ i_t scaling(const lp_problem_t<i_t, f_t>& unscaled,
     // nonzero bound are left at scale 1.
     {
       std::vector<f_t> c0(n, 1.0);
-      const i_t cone_start0 =
-        unscaled.second_order_cone_dims.empty() ? n : unscaled.cone_var_start;
-      f_t geo_sum = 0.0;
-      i_t geo_count = 0;
+      std::vector<char> has_bound(n, 0);
+      const i_t cone_start0 = unscaled.second_order_cone_dims.empty() ? n : unscaled.cone_var_start;
+      f_t geo_sum           = 0.0;
+      i_t geo_count         = 0;
       for (i_t j = 0; j < cone_start0; ++j) {
         f_t lo = std::abs(scaled.lower[j]);
         f_t hi = std::abs(scaled.upper[j]);
@@ -153,7 +153,8 @@ i_t scaling(const lp_problem_t<i_t, f_t>& unscaled,
         } else {
           continue;  // free / one-sided-zero: leave at scale 1
         }
-        c0[j] = mag;
+        c0[j]        = mag;
+        has_bound[j] = 1;
         geo_sum += std::log(mag);
         geo_count++;
       }
@@ -162,7 +163,7 @@ i_t scaling(const lp_problem_t<i_t, f_t>& unscaled,
         // problem magnitude centered rather than uniformly shrinking it.
         const f_t geo_mean = std::exp(geo_sum / static_cast<f_t>(geo_count));
         for (i_t j = 0; j < cone_start0; ++j) {
-          c0[j] /= geo_mean;
+          if (has_bound[j]) c0[j] /= geo_mean;
         }
         // Apply x_j = c0[j] * x'_j : A(:,j) *= c0[j], obj[j] *= c0[j],
         // bounds /= c0[j], Q(i,j) *= c0[i]*c0[j], accumulate into col_scale.
