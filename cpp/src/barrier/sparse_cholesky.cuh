@@ -27,23 +27,16 @@ namespace cuopt::mathematical_optimization::barrier {
 
 namespace detail {
 
-// cuDSS dlopen()s the threading-layer plugin passed to cudssSetThreadingLayer() below, and
-// dlclose()s it again from cudssDestroy(). Unloading a shared object that has spawned its own
-// OpenMP worker threads is unsafe if any of those threads are still parked or running inside
-// it -- the code they're executing can be unmapped out from under them -- and this is a real,
-// reachable teardown race when the barrier solver's cuDSS handle is destroyed while other
-// threads are still active (https://github.com/NVIDIA/cuopt/issues/1219). Opening the plugin
-// ourselves first with RTLD_NODELETE marks its mapping sticky for the life of the process:
-// cuDSS's own dlopen()/dlclose() pairs keep working normally, but the underlying mapping is
-// never actually unloaded, so the race can't manifest.
-//
-// Must be called with the exact path cudssSetThreadingLayer() will use -- CUDSS_THREADING_LIB
-// can override the compile-time default per deployment, so a fixed compile-time path isn't
-// enough to pin the file actually loaded. dlopen() on an already-mapped library is cheap (a
-// refcount bump), so no caching is needed even though this runs on every construction.
+// Pin cuDSS's dlopen'd threading-layer plugin so cudssDestroy()'s later dlclose() can't unmap
+// it while its own OpenMP threads may still be running (#1219). Must be the exact path
+// cudssSetThreadingLayer() uses below, since CUDSS_THREADING_LIB can override the default.
+// Best-effort: a failure here isn't fatal (cuDSS may still resolve the plugin on its own), so
+// we only warn -- the caller decides how to treat a subsequent cudssSetThreadingLayer failure.
 inline void pin_cudss_threading_layer(const char* lib_file)
 {
-  if (lib_file != nullptr) { dlopen(lib_file, RTLD_NOW | RTLD_NODELETE); }
+  if (lib_file != nullptr && dlopen(lib_file, RTLD_NOW | RTLD_NODELETE) == nullptr) {
+    fprintf(stderr, "Warning: could not pin cuDSS threading layer '%s': %s\n", lib_file, dlerror());
+  }
 }
 
 }  // namespace detail
