@@ -45,8 +45,10 @@ rapids-logger "Testing $(basename "${CUOPT_JAVA_JAR}")"
 # concurrent matrix jobs' cold Maven Central resolution, which is what triggered repeated 429s.
 rapids-logger "Installing a JDK (dnf's own maven package is too old; see MAVEN_VERSION below)"
 MAVEN_VERSION="3.9.9"
-dnf install -y java-11-openjdk-devel
-export JAVA_HOME=/usr/lib/jvm/java-11-openjdk
+# Matches maven.compiler.release in java/cuopt/pom.xml (bumped to 17 in #1865); an older JDK
+# cannot target a newer --release version.
+dnf install -y java-17-openjdk-devel
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
 MAVEN_HOME="$(mktemp -d)"
 MAVEN_TARBALL="$(mktemp)"
 MAVEN_TARBALL_URL="https://archive.apache.org/dist/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz"
