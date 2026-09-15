@@ -1933,13 +1933,13 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
   // than approximating, so the general path below still covers everything else.
   if (try_cpufj_binary_solve(*fj_cpu, in_time_limit, work_unit_limit)) return;
 
-  i_t local_mins  = 0;
-  auto loop_start = std::chrono::high_resolution_clock::now();
+  i_t local_mins          = 0;
+  auto loop_start         = std::chrono::high_resolution_clock::now();
   const bool bounded_time = std::isfinite((double)in_time_limit);
-  const auto time_limit = bounded_time
-                            ? std::chrono::milliseconds((int64_t)std::floor(in_time_limit * 1000.0))
-                            : std::chrono::milliseconds::zero();
-  auto loop_time_start = std::chrono::high_resolution_clock::now();
+  const auto time_limit   = bounded_time
+                              ? std::chrono::milliseconds((int64_t)std::floor(in_time_limit * 1000.0))
+                              : std::chrono::milliseconds::zero();
+  auto loop_time_start    = std::chrono::high_resolution_clock::now();
 
   fj_cpu->rng.seed(fj_cpu->settings.seed);
 

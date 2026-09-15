@@ -297,9 +297,9 @@ void fj_bin_narrow(const fj_cpu_climber_t<i_t, f_t>& c,
       const double a = s * coeffs[k];
       const long ai  = side * std::lround(a);
       cuopt_assert(is_integer(a, tol), "row scaling left a fractional coefficient");
-      cuopt_assert(ai >= std::numeric_limits<coef_t>::min() &&
-                     ai <= std::numeric_limits<coef_t>::max(),
-                   "scaled coefficient exceeds selected width");
+      cuopt_assert(
+        ai >= std::numeric_limits<coef_t>::min() && ai <= std::numeric_limits<coef_t>::max(),
+        "scaled coefficient exceeds selected width");
       const int32_t v = variables[k];
       if (pb.original_to_bin_mapping[v] < 0) {
         cuopt_assert(!ignore_var || !ignore_var[v],
@@ -369,7 +369,7 @@ void fj_bin_narrow(const fj_cpu_climber_t<i_t, f_t>& c,
   times.transpose += toc(transpose_started);
 }
 
-constexpr int32_t fj_bin_encode_max_bits = 16;
+constexpr int32_t fj_bin_encode_max_bits   = 16;
 constexpr int64_t fj_bin_encode_max_growth = 6;
 
 // Encodes an all-integer model with bounded general integers into bits: x in [L,U] becomes
@@ -563,30 +563,42 @@ bool fj_bin_encode(const fj_cpu_climber_t<i_t, f_t>& c,
 
 #if MIP_INSTANTIATE_FLOAT
 template fj_bin_scan_t fj_bin_scan(const fj_cpu_climber_t<int, float>&, fj_bin_setup_times_t&);
-template void fj_bin_narrow(
-  const fj_cpu_climber_t<int, float>&, const fj_bin_scan_t&, fj_bin_problem_t<int8_t>&, fj_bin_setup_times_t&);
+template void fj_bin_narrow(const fj_cpu_climber_t<int, float>&,
+                            const fj_bin_scan_t&,
+                            fj_bin_problem_t<int8_t>&,
+                            fj_bin_setup_times_t&);
 template void fj_bin_narrow(const fj_cpu_climber_t<int, float>&,
                             const fj_bin_scan_t&,
                             fj_bin_problem_t<int16_t>&,
                             fj_bin_setup_times_t&);
-template bool fj_bin_encode(
-  const fj_cpu_climber_t<int, float>&, fj_bin_problem_t<int8_t>&, int&, fj_bin_setup_times_t&);
-template bool fj_bin_encode(
-  const fj_cpu_climber_t<int, float>&, fj_bin_problem_t<int16_t>&, int&, fj_bin_setup_times_t&);
+template bool fj_bin_encode(const fj_cpu_climber_t<int, float>&,
+                            fj_bin_problem_t<int8_t>&,
+                            int&,
+                            fj_bin_setup_times_t&);
+template bool fj_bin_encode(const fj_cpu_climber_t<int, float>&,
+                            fj_bin_problem_t<int16_t>&,
+                            int&,
+                            fj_bin_setup_times_t&);
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
 template fj_bin_scan_t fj_bin_scan(const fj_cpu_climber_t<int, double>&, fj_bin_setup_times_t&);
-template void fj_bin_narrow(
-  const fj_cpu_climber_t<int, double>&, const fj_bin_scan_t&, fj_bin_problem_t<int8_t>&, fj_bin_setup_times_t&);
+template void fj_bin_narrow(const fj_cpu_climber_t<int, double>&,
+                            const fj_bin_scan_t&,
+                            fj_bin_problem_t<int8_t>&,
+                            fj_bin_setup_times_t&);
 template void fj_bin_narrow(const fj_cpu_climber_t<int, double>&,
                             const fj_bin_scan_t&,
                             fj_bin_problem_t<int16_t>&,
                             fj_bin_setup_times_t&);
-template bool fj_bin_encode(
-  const fj_cpu_climber_t<int, double>&, fj_bin_problem_t<int8_t>&, int&, fj_bin_setup_times_t&);
-template bool fj_bin_encode(
-  const fj_cpu_climber_t<int, double>&, fj_bin_problem_t<int16_t>&, int&, fj_bin_setup_times_t&);
+template bool fj_bin_encode(const fj_cpu_climber_t<int, double>&,
+                            fj_bin_problem_t<int8_t>&,
+                            int&,
+                            fj_bin_setup_times_t&);
+template bool fj_bin_encode(const fj_cpu_climber_t<int, double>&,
+                            fj_bin_problem_t<int16_t>&,
+                            int&,
+                            fj_bin_setup_times_t&);
 #endif
 
 }  // namespace cuopt::mathematical_optimization::mip

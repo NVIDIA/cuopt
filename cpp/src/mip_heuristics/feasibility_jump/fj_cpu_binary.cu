@@ -46,10 +46,10 @@ static const char* fj_binary_reject_name(fj_binary_reject_t reason)
 constexpr double fj_bin_bytes_per_nnz = 16.0;
 // restarts can help a lot on some smaller combinatorial instances
 // 5M leaves a huge margin
-constexpr int32_t fj_bin_restart_period     = 5000000;
+constexpr int32_t fj_bin_restart_period = 5000000;
 // DDFW weightin parameters
-constexpr int32_t fj_bin_ddfw_transfer      = 1;
-constexpr int32_t fj_bin_ddfw_donor_samples = 4;
+constexpr int32_t fj_bin_ddfw_transfer       = 1;
+constexpr int32_t fj_bin_ddfw_donor_samples  = 4;
 constexpr int32_t fj_bin_ddfw_escalate_after = 2000;
 constexpr int32_t fj_bin_ddfw_escalate_max   = 100;
 
@@ -83,7 +83,8 @@ static int32_t fj_bin_argmax_tile()
 }
 
 // the binary-var integer-activities engine.
-// sidesteps a lot of the bookkeeping of the general engine by requiring every intermediate result to be integer
+// sidesteps a lot of the bookkeeping of the general engine by requiring every intermediate result
+// to be integer
 template <typename i_t, typename f_t, typename coef_t>
 struct fj_bin_engine_t {
   fj_bin_problem_t<coef_t> pb;
@@ -96,7 +97,7 @@ struct fj_bin_engine_t {
   // Staging for an adopted assignment, which arrives as f_t. Sized only when sharing is on.
   std::vector<f_t> adopt_buffer;
   std::vector<int8_t> seed_assign;  // restart target
-  std::vector<int32_t> assign_i32;  // gather mirror for the SIMD patch 
+  std::vector<int32_t> assign_i32;  // gather mirror for the SIMD patch
 
   // lowest observed total violation
   int64_t best_infeasible_severity{std::numeric_limits<int64_t>::max()};
@@ -257,8 +258,7 @@ struct fj_bin_engine_t {
     const double mult =
       rel < fj_obj_mult_min ? fj_obj_mult_min : (rel > fj_obj_mult_max ? fj_obj_mult_max : rel);
     const double raw = objective_weight * mult;
-    cuopt_assert(is_exactly_representable<int32_t>(raw),
-                 "scaled objective weight is not an int32");
+    cuopt_assert(is_exactly_representable<int32_t>(raw), "scaled objective weight is not an int32");
     const int32_t scaled = (int32_t)std::lround(raw);
     return (int64_t)(obj_diff < 0 ? scaled : -scaled) * fj_bin_score_k;
   }
@@ -317,27 +317,33 @@ struct fj_bin_engine_t {
     int64_t own_score = 0;
 
     // the compiler otherwise greatly pessimizes optimization due to aliasing assumptions
-    int32_t* const __restrict__ row_weight_p        = row_weight.data();
-    int32_t* const __restrict__ row_slack_p         = row_slack.data();
-    const int32_t* const __restrict__ reverse_constraints_p    = pb.reverse_constraints.data();
-    const coef_t* const __restrict__ reverse_coefficients_p      = pb.reverse_coefficients.data();
+    int32_t* const __restrict__ row_weight_p                = row_weight.data();
+    int32_t* const __restrict__ row_slack_p                 = row_slack.data();
+    const int32_t* const __restrict__ reverse_constraints_p = pb.reverse_constraints.data();
+    const coef_t* const __restrict__ reverse_coefficients_p = pb.reverse_coefficients.data();
     const coef_t* const __restrict__ incident_row_cmax_p    = pb.incident_row_cmax.data();
-    const int32_t* const __restrict__ reverse_to_csr_p    = pb.reverse_to_csr.data();
-    const int32_t* const __restrict__ offsets_p = pb.offsets.data();
-    const int32_t* const __restrict__ variables_p    = pb.variables.data();
-    const coef_t* const __restrict__ coefficients_p    = pb.coefficients.data();
-    int64_t* const __restrict__ var_score_p     = var_score.data();
-    int64_t* const __restrict__ nnz_score_delta_p     = nnz_score_delta.data();
-    int32_t* const __restrict__ assign_i32_p        = assign_i32.data();
+    const int32_t* const __restrict__ reverse_to_csr_p      = pb.reverse_to_csr.data();
+    const int32_t* const __restrict__ offsets_p             = pb.offsets.data();
+    const int32_t* const __restrict__ variables_p           = pb.variables.data();
+    const coef_t* const __restrict__ coefficients_p         = pb.coefficients.data();
+    int64_t* const __restrict__ var_score_p                 = var_score.data();
+    int64_t* const __restrict__ nnz_score_delta_p           = nnz_score_delta.data();
+    int32_t* const __restrict__ assign_i32_p                = assign_i32.data();
 
     // walk over rows in tiles, noting which rows require further processing
     // they are handled afterwards
     constexpr int32_t fj_bin_walk_tile = 256;
     int32_t tile_incidence[fj_bin_walk_tile];
     for (int32_t t0 = ob; t0 < oe; t0 += fj_bin_walk_tile) {
-      const int32_t t1 = (t0 + fj_bin_walk_tile < oe) ? t0 + fj_bin_walk_tile : oe;
-      const int32_t n_tail =
-        fj_bin_walk_rows(row_slack_p, reverse_constraints_p, reverse_coefficients_p, incident_row_cmax_p, t0, t1, delta, tile_incidence);
+      const int32_t t1     = (t0 + fj_bin_walk_tile < oe) ? t0 + fj_bin_walk_tile : oe;
+      const int32_t n_tail = fj_bin_walk_rows(row_slack_p,
+                                              reverse_constraints_p,
+                                              reverse_coefficients_p,
+                                              incident_row_cmax_p,
+                                              t0,
+                                              t1,
+                                              delta,
+                                              tile_incidence);
       // handle non-deeply-satisfied rows
       for (int32_t j = 0; j < n_tail; ++j) {
         const int32_t ii        = tile_incidence[j];
@@ -355,13 +361,13 @@ struct fj_bin_engine_t {
           set_satisfied(r);
         }
 
-        // we're in the regime where single flips can affect feasibility. 
+        // we're in the regime where single flips can affect feasibility.
         // patch the scores of all incident variables
         const int32_t margin = (int32_t)incident_row_cmax_p[ii];
         if (!(old_slack < -margin && new_slack < -margin)) {
           const int32_t row_begin = offsets_p[r], row_end = offsets_p[r + 1];
-          // TODO: check that this may not cause AVX512 powerdown overheads if the AVX2 row/AVX512 row
-          // ratio is unbalanced
+          // TODO: check that this may not cause AVX512 powerdown overheads if the AVX2 row/AVX512
+          // row ratio is unbalanced
           fj_bin_patch_row(variables_p,
                            coefficients_p,
                            row_begin,
@@ -384,9 +390,9 @@ struct fj_bin_engine_t {
     nnz_touched += oe - ob;
     rows_walked += oe - ob;
 
-    assign[var]     = new_val;
-    assign_i32_p[var]   = new_val;
-    var_score_p[var] = own_score;
+    assign[var]       = new_val;
+    assign_i32_p[var] = new_val;
+    var_score_p[var]  = own_score;
     incumbent_objective += pb.objective[var] * delta;
     if (pb.objective[var] != 0) obj_base_score[var] = flip_objective_base(var);
 
@@ -414,7 +420,8 @@ struct fj_bin_engine_t {
                               : (isfinite(get_upper(bounds)) ? get_upper(bounds) : f_t{0});
       }
       f_t lhs = 0;
-      for (i_t p = climber.problem->offsets[rec.row]; p < climber.problem->offsets[rec.row + 1]; ++p)
+      for (i_t p = climber.problem->offsets[rec.row]; p < climber.problem->offsets[rec.row + 1];
+           ++p)
         lhs += climber.problem->coefficients[p] * values[climber.problem->variables[p]];
       const f_t residual = rec.rhs - lhs;
       if (residual > 0 && !rec.positive.empty())
@@ -506,7 +513,7 @@ struct fj_bin_engine_t {
   // perform DDFW weight updating
   void update_weights()
   {
-    const int32_t transfer = ddfw_transfer();
+    const int32_t transfer    = ddfw_transfer();
     const int32_t donor_floor = fj_bin_ddfw_init + transfer - 1;
 
     for (int32_t cf : violated_list) {
@@ -897,7 +904,7 @@ struct fj_bin_engine_t {
 
     var_score.assign(n_cols, 0);
     nnz_score_delta.assign(pb.nnz + fj_bin_simd_padding, 0);
- 
+
     obj_base_score.assign(n_cols, 0);
     combined_score.assign(n_cols, 0);
     tabu.resize(n_cols);
@@ -947,11 +954,11 @@ struct fj_bin_engine_t {
         std::max(objective_weight, (int32_t)std::lround((double)climber.seed_objective_weight)));
     }
 
-    const auto loop_start = std::chrono::high_resolution_clock::now();
+    const auto loop_start   = std::chrono::high_resolution_clock::now();
     const bool bounded_time = std::isfinite((double)time_limit);
-    const auto limit = bounded_time
-                         ? std::chrono::milliseconds((int64_t)std::floor((double)time_limit * 1000.0))
-                         : std::chrono::milliseconds::zero();
+    const auto limit =
+      bounded_time ? std::chrono::milliseconds((int64_t)std::floor((double)time_limit * 1000.0))
+                   : std::chrono::milliseconds::zero();
 
     while (!climber.halted && !climber.preemption_flag.load()) {
       if (bounded_time && std::chrono::high_resolution_clock::now() - loop_start > limit) break;

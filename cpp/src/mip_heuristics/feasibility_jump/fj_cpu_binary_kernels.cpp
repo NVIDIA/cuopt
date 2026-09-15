@@ -28,8 +28,8 @@ namespace HWY_NAMESPACE {
 
 namespace hn = hwy::HWY_NAMESPACE;
 
-// on ISAs with mask support these ops are really fast. However they need to be emulated on older ISAs
-// so avoid emitting them on these (e.g. pre AVX-512/AVX10.2 on x86)
+// on ISAs with mask support these ops are really fast. However they need to be emulated on older
+// ISAs so avoid emitting them on these (e.g. pre AVX-512/AVX10.2 on x86)
 constexpr bool k_mask_remainder =
   (HWY_TARGET <= HWY_AVX3) || HWY_TARGET_IS_SVE || (HWY_TARGET == HWY_RVV);
 
@@ -38,8 +38,8 @@ constexpr bool k_vector_walk =
   (HWY_TARGET <= HWY_AVX3) || HWY_TARGET_IS_SVE || (HWY_TARGET == HWY_RVV);
 
 // Updates slacks for rows incident to a flipped variable.
-// Returns incidences whose old and new slacks are not both deeply satisfied for specialized handling by the caller
-// We operate directly on row slacks to reduce arithmetic ops.
+// Returns incidences whose old and new slacks are not both deeply satisfied for specialized
+// handling by the caller We operate directly on row slacks to reduce arithmetic ops.
 template <typename coef_t>
 int32_t WalkRowsImpl(int32_t* HWY_RESTRICT row_slack,
                      const int32_t* HWY_RESTRICT incident_row,
@@ -77,8 +77,8 @@ int32_t WalkRowsImpl(int32_t* HWY_RESTRICT row_slack,
       const auto deep_sat = hn::And(hn::Gt(os, cmax), hn::Gt(ns, cmax));
       const auto to_tail  = hn::AndNot(deep_sat, active);
 
-      // Zen4's VSIB ops are unfortunately heavily microcoded and slower than just a scalar implementation
-      // which gets scheduled better
+      // Zen4's VSIB ops are unfortunately heavily microcoded and slower than just a scalar
+      // implementation which gets scheduled better
 #if HWY_TARGET == HWY_AVX3_ZEN4
       // Same Zen 4 microcode argument as the score scatter in PatchRowBody: VPSCATTERDD is 89 uops
       // at ~24 CPI, against two vector stores and N scalar stores here. Unlike that one this is a
@@ -157,8 +157,8 @@ static HWY_INLINE void PatchRowBody(D d,
   const size_t N  = hn::Lanes(d);
   const size_t NW = hn::Lanes(dw);
 
-  // just run the scalar version if this ISA doesn't have masked ops and the size is < the vector width
-  // avoids unnecessary setup
+  // just run the scalar version if this ISA doesn't have masked ops and the size is < the vector
+  // width avoids unnecessary setup
   if constexpr (!k_mask_remainder) {
     if ((size_t)(row_end - row_begin) < N) {
       PatchRowScalar<coef_t>(variables,
@@ -193,10 +193,12 @@ static HWY_INLINE void PatchRowBody(D d,
   for (; k < vec_end; k += (int32_t)N) {
     const V v   = hn::LoadU(d, variables + k);
     auto active = hn::Ne(v, vskip);
-    if constexpr (k_mask_remainder) { active = hn::And(active, hn::FirstN(d, (size_t)(row_end - k))); }
+    if constexpr (k_mask_remainder) {
+      active = hn::And(active, hn::FirstN(d, (size_t)(row_end - k)));
+    }
 
-
-    // Native gather works best here, even on Zen4. Go figure (probably more favorable scheduling/ports for this codepath)
+    // Native gather works best here, even on Zen4. Go figure (probably more favorable
+    // scheduling/ports for this codepath)
     const V a01  = hn::MaskedGatherIndex(active, d, assign_i32, v);
     const V flip = hn::Sub(vone, hn::ShiftLeft<1>(a01));
     const V coef = hn::PromoteTo(d, hn::LoadU(dc, coefficients + k));
@@ -358,7 +360,7 @@ void PatchRowNarrow4Impl(const int32_t* HWY_RESTRICT variables,
 
 // use lower-vector-width kernels for smaller rows if available on this target
 // (e.g. AVX2 instead of AVX512)
-// (works because AVX512 also brings masked ops and gather/scatter to 128/256bit vectors) 
+// (works because AVX512 also brings masked ops and gather/scatter to 128/256bit vectors)
 constexpr size_t k_native_lanes = HWY_MAX_LANES_D(hn::ScalableTag<int32_t>);
 constexpr int32_t k_narrow4_max = HWY_HAVE_SCALABLE ? 0 : (k_native_lanes > 4 ? 4 : 0);
 constexpr int32_t k_narrow8_max = HWY_HAVE_SCALABLE ? 0 : (k_native_lanes > 8 ? 8 : 0);

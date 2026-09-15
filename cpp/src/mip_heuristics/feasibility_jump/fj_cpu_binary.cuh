@@ -79,8 +79,8 @@ struct fj_bin_problem_t {
   std::vector<coef_t> reverse_coefficients;
   std::vector<coef_t> incident_row_cmax;
 
-  std::vector<int32_t> bound; // the rhs bound
-  std::vector<coef_t> cmax; // max coefficient in row
+  std::vector<int32_t> bound;  // the rhs bound
+  std::vector<coef_t> cmax;    // max coefficient in row
   std::vector<int32_t> initial_weight;
 
   std::vector<double> objective;
@@ -176,11 +176,11 @@ void fj_bin_patch_row(const int32_t* variables,
                       int32_t current_slack,
                       int32_t skip_var);
 
-// cheap walk of the rows affected by a variable move. the goal is to perform the cheap slack update at once
-// and take note of rows which see a significant slack change to update the scores of variables on these rows
-// the rationale is: if a row is deeply satisfied/unsatisfied, a single move cannot affect its status
-// and the feasibility-driven scores don't need to be updated. 
-// For every incidence i in the range this applies
+// cheap walk of the rows affected by a variable move. the goal is to perform the cheap slack update
+// at once and take note of rows which see a significant slack change to update the scores of
+// variables on these rows the rationale is: if a row is deeply satisfied/unsatisfied, a single move
+// cannot affect its status and the feasibility-driven scores don't need to be updated. For every
+// incidence i in the range this applies
 //   row_slack[incident_row[i]] -= reverse_coefficients[i] * delta
 // then writes to out_incidence, in increasing order, the subset of i whose row is not deeply
 // satisfied on both sides of the flip and returns how many.
