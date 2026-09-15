@@ -33,6 +33,11 @@ class weighted_average_solution_t {
   void compute_averages(rmm::device_uvector<f_t>& avg_primal, rmm::device_uvector<f_t>& avg_dual);
 
   i_t get_iterations_since_last_restart() const;
+  rmm::device_scalar<i_t> const& get_d_iterations_since_last_restart() const;
+
+  void reset_iterations_since_last_restart();
+  void increase_iterations_since_last_restart();
+  void set_iterations_since_last_restart(i_t iterations);
 
  private:
   raft::handle_t const* handle_ptr_{nullptr};
@@ -48,6 +53,7 @@ class weighted_average_solution_t {
   rmm::device_scalar<f_t> sum_dual_solution_weights_;
 
   i_t iterations_since_last_restart_;
+  rmm::device_scalar<i_t> d_iterations_since_last_restart_;
 
   // Graph to capture the average computation
   ping_pong_graph_t<i_t> graph;
