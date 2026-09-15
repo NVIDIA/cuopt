@@ -1109,11 +1109,14 @@ endif (BUILD_TESTS)
 # for consumers that linked the pre-split library. cuopt::cuopt is the CMake equivalent.
 # See cmake/libcuopt.so.in for why a real ELF cannot serve this purpose.
 
-set(CUOPT_LINKER_SCRIPT_INPUTS "libcuopt_mathopt.so")
+# cuopt_client is named explicitly rather than left to arrive through the engines'
+# DT_NEEDED. That transitive resolution is exactly what --no-copy-dt-needed-entries
+# forbids, so without it a -lcuopt consumer calling anything the client owns -- the
+# parsers, the host problem representation, the gRPC client -- fails to link with
+# "DSO missing from command line".
+set(CUOPT_LINKER_SCRIPT_INPUTS "libcuopt_mathopt.so libcuopt_client.so")
 if(NOT SKIP_ROUTING_BUILD)
     string(APPEND CUOPT_LINKER_SCRIPT_INPUTS " libcuopt_routing.so")
-endif()
-if(NOT SKIP_GRPC_BUILD)
 endif()
 
 set(CUOPT_LINKER_SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/libcuopt.so")

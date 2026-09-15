@@ -213,6 +213,7 @@ int run_single_file(const std::string& file_path,
         CUOPT_LOG_ERROR("Remote execution requires the CPU memory backend.");
         return -1;
       }
+#ifdef CUOPT_ENABLE_GRPC
       if (is_mip) {
         auto& mip_settings = settings.get_mip_settings();
         auto solution = cuopt::mathematical_optimization::solve_mip_remote(*cpu_prob, mip_settings);
@@ -220,6 +221,13 @@ int run_single_file(const std::string& file_path,
         auto& lp_settings = settings.get_pdlp_settings();
         auto solution = cuopt::mathematical_optimization::solve_lp_remote(*cpu_prob, lp_settings);
       }
+#else
+      // solve_remote.cpp only builds when gRPC is enabled, so these entry points do not
+      // exist in a SKIP_GRPC_BUILD tree. cuopt_cli is still built there (it is gated on
+      // BUILD_LP_ONLY, not on gRPC), so without this the link fails.
+      CUOPT_LOG_ERROR("Remote execution requires cuOpt built with gRPC support.");
+      return -1;
+#endif
     } else if (is_mip) {
       auto& mip_settings = settings.get_mip_settings();
       auto solution =
