@@ -26,34 +26,17 @@ from cuopt_server.utils.exceptions import (
     http_exception_handler,
     validation_exception_handler,
 )
-from cuopt_server.utils.job_queue import (
+from cuopt_server.utils.deprecated.job_queue import (
     CudaUnhealthy,
     SolverBinaryResponse,
     SolverIntermediateResponse,
 )
+from cuopt_server.utils.http_envelope import make_response
 from cuopt_server.utils.logutil import set_ncaid, set_requestid, set_solverid
 from cuopt_server.utils.routing.conversion import (
     check_valid as check_valid,
     populate_optimization_data,
 )
-
-
-# Wrap the solver response in a dictionary with a "response"
-# field and add total_solve_time, request id, notes, and warnings to the
-# dictionary if those values are set.
-def make_response(
-    response, warnings=[], notes=[], reqId="", total_solve_time=0
-):
-    r = {"response": response}
-    if total_solve_time:
-        r["response"]["total_solve_time"] = total_solve_time
-    if reqId:
-        r["reqId"] = reqId
-    if warnings:
-        r["warnings"] = warnings
-    if notes:
-        r["notes"] = notes
-    return r
 
 
 # Validate LP data and call the LP solver
@@ -70,7 +53,9 @@ def solve_LP_sync(
     from cuopt_server.utils.linear_programming.data_validation import (
         validate_LP_data,
     )
-    from cuopt_server.utils.linear_programming.solver import solve as LP_solve
+    from cuopt_server.utils.deprecated.linear_programming.solver import (
+        solve as LP_solve,
+    )
 
     begin_time = time.time()
 
@@ -140,7 +125,9 @@ def solve_optimized_routes_sync(
     warnings=[],
     reqId="",
 ):
-    from cuopt_server.utils.routing.solver import solve as routing_solve
+    from cuopt_server.utils.deprecated.routing.solver import (
+        solve as routing_solve,
+    )
 
     begin_time = time.time()
 

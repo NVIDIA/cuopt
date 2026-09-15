@@ -14,9 +14,9 @@ import msgpack_numpy
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 
-import cuopt_server.utils.health_check as health_check
-import cuopt_server.utils.request_filter as request_filter
-from cuopt_server._version import __version__
+import cuopt_server.utils.deprecated.health_check as health_check
+import cuopt_server.utils.deprecated.request_filter as request_filter
+from cuopt_server.utils.client_version import check_client_version
 from cuopt_server.utils.data_definition import (
     LPData,
     LPTupleData,
@@ -60,34 +60,6 @@ from cuopt_server.utils.routing.initial_solution import add_initial_sol
 
 
 msgpack_numpy.patch()
-
-
-def check_client_version(client_vers):
-    logging.debug(f"client_vers is {client_vers} in check")
-    if os.environ.get("CUOPT_CHECK_CLIENT", True) in ["True", True]:
-        major, minor, *_ = __version__.split(".")
-        matches = False
-        if client_vers == "custom":
-            return []
-        cv = client_vers.split(".")
-        if len(cv) < 2:
-            logging.warning("Client version missing or bad format")
-            return [
-                f"Client version missing or not the current format. "
-                f"Please upgrade your cuOpt client to '{major}.{minor}', "
-                "or set the client version to 'custom' "
-                "if this is a custom client."
-            ]
-        else:
-            cmajor, cminor = cv[:2]
-            matches = (cmajor, cminor) == (major, minor)
-        if not matches:
-            logging.warning(f"Client version {cmajor}.{cminor} does not match")
-            return [
-                f"Client version is '{cmajor}.{cminor}' but server "
-                f"version is '{major}.{minor}'. Please use a matching client."
-            ]
-    return []
 
 
 def get_solver_response(response):
@@ -796,7 +768,9 @@ class SolverJob(SolverBaseJob):
         return 0
 
     def solve(self, intermediate_sender):
-        from cuopt_server.utils.solver import solve_optimized_routes_sync
+        from cuopt_server.utils.deprecated.solver import (
+            solve_optimized_routes_sync,
+        )
 
         self._load_data()
         ans, etl, slv = solve_optimized_routes_sync(
@@ -860,7 +834,7 @@ class SolverLPJob(SolverBaseJob):
         return 0  # len(self.LP_data["csr_constraint_matrix"].offsets)-1
 
     def solve(self, intermediate_sender):
-        from cuopt_server.utils.solver import solve_LP_sync
+        from cuopt_server.utils.deprecated.solver import solve_LP_sync
 
         self._load_data()
         ans, etl, slv = solve_LP_sync(

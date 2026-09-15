@@ -8,7 +8,6 @@
 #pragma once
 
 #include <cuopt/mathematical_optimization/constants.h>
-
 #include <cuda/stream>
 #include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/cpu_pdlp_warm_start_data.hpp>
@@ -153,7 +152,7 @@ class pdlp_solver_settings_t {
    */
   void set_initial_primal_solution(const f_t* initial_primal_solution,
                                    i_t size,
-                                   rmm::cuda_stream_view stream = cuda::stream_ref{
+                                   cuda::stream_ref stream = cuda::stream_ref{
                                      cudaStream_t{cudaStreamDefault}});
 
   /**
@@ -168,7 +167,7 @@ class pdlp_solver_settings_t {
    */
   void set_initial_dual_solution(const f_t* initial_dual_solution,
                                  i_t size,
-                                 rmm::cuda_stream_view stream = cuda::stream_ref{
+                                 cuda::stream_ref stream = cuda::stream_ref{
                                    cudaStream_t{cudaStreamDefault}});
 
   /** TODO batch mode: tmp

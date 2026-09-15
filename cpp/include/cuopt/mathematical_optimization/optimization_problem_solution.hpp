@@ -15,7 +15,6 @@
 #include <cuopt/mathematical_optimization/utilities/cython_types.hpp>
 
 #include <raft/core/copy.hpp>
-#include <rmm/cuda_stream_view.hpp>
 
 namespace cuopt {
 namespace CUOPT_EXPORT mathematical_optimization {

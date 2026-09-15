@@ -173,6 +173,7 @@
   if (header.quadratic_constraints_size() > 0) {
     std::vector<typename cpu_optimization_problem_t<i_t, f_t>::quadratic_constraint_t> _entries;
     _entries.reserve(header.quadratic_constraints_size());
+    io::coo_canonicalization_scratch_t<i_t, f_t> _qc_scratch;
     for (int32_t _ci = 0; _ci < header.quadratic_constraints_size(); ++_ci) {
       const auto& pb_entry = header.quadratic_constraints(_ci);
       typename cpu_optimization_problem_t<i_t, f_t>::quadratic_constraint_t _entry;
@@ -194,7 +195,7 @@
       if (_entry.cols.size() != _entry.vals.size()) {
         throw std::invalid_argument("set_quadratic_constraints: cols/vals size mismatch");
       }
-      io::canonicalize_coo_matrix(_entry.rows, _entry.cols, _entry.vals);
+      io::canonicalize_coo_matrix(_entry.rows, _entry.cols, _entry.vals, _qc_scratch);
       _entries.push_back(std::move(_entry));
     }
     cpu_problem.set_quadratic_constraints(std::move(_entries));
