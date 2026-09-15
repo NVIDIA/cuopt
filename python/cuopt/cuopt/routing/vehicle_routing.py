@@ -277,7 +277,7 @@ class DataModel(_DeferredDataModel):
         >>> data_model.set_break_locations(cudf.Series([1, 3]))
         """
         validate_range(
-            break_locations, "break_locations", 0, self.get_num_locations()
+            break_locations, "break_locations", 0, self.get_num_locations() - 1
         )
         super().set_break_locations(break_locations)
 
@@ -405,10 +405,10 @@ class DataModel(_DeferredDataModel):
         """
         if locations is None:
             locations = cudf.Series()
-        validate_range(vehicle_id, "vehicle id", 0, self.get_fleet_size())
+        validate_range(vehicle_id, "vehicle id", 0, self.get_fleet_size() - 1)
         if len(locations) > 0:
             validate_range(
-                locations, "break locations", 0, self.get_num_locations()
+                locations, "break locations", 0, self.get_num_locations() - 1
             )
 
         super().add_vehicle_break(
@@ -416,12 +416,78 @@ class DataModel(_DeferredDataModel):
         )
 
     @catch_cuopt_exception
+    def add_vehicle_distance_break(
+        self, vehicle_id, distance_min, distance_max, duration, locations=None
+    ):
+        """
+        Specify a distance-based break for a given vehicle. Use this api the
+        same way as :meth:`add_vehicle_break`: call it once per break, and
+        call it again for additional breaks on the same vehicle.
+
+        The solver inserts one mandatory stop no later than the hard
+        cumulative-distance limit ``distance_max``. ``distance_min`` is the
+        soft target for that stop. Arriving before ``distance_min``
+        contributes to ``Objective.DISTANCE_BREAK_COST``. Its default weight
+        is ``1.0``; use :meth:`set_objective_function` to tune it or
+        explicitly set it to ``0.0`` to disable the early-break penalty.
+
+        ``distance_min`` and ``distance_max`` are expressed in the same units
+        as the primary cost matrix.
+
+        Note: This function cannot be used in conjunction with
+        add_break_dimension
+
+        Parameters
+        ----------
+        vehicle_id: integer
+            Vehicle Id for which the break is being specified
+        distance_min:  float
+            Soft lower bound on cumulative distance at the break
+        distance_max:    float
+            Latest cumulative distance by which the vehicle must take the
+            break. Must be strictly greater than ``distance_min``.
+        duration:  integer
+            Time spent at the break location
+        locations: cudf.Series dtype - int32
+            List of locations where this break can be taken. By default
+            any location can be used
+
+        Examples
+        --------
+        >>> from cuopt import routing
+        >>> vehicle_num = 2
+        >>> d = routing.DataModel(nodes, vehicle_num)
+        >>> d.add_vehicle_distance_break(0, 120, 150, 10, cudf.Series([3, 6]))
+        >>> d.add_vehicle_distance_break(0, 270, 300, 10, cudf.Series([3, 6]))
+        >>> d.add_vehicle_distance_break(1, 0, 200, 10)
+        """
+        if locations is None:
+            locations = cudf.Series()
+        validate_range(vehicle_id, "vehicle id", 0, self.get_fleet_size() - 1)
+        validate_non_negative(distance_min, "distance min")
+        validate_positive(distance_max, "distance max")
+        validate_non_negative(duration, "duration")
+        if distance_min >= distance_max:
+            raise ValueError("distance_min must be smaller than distance_max")
+        if len(locations) > 0:
+            validate_range(
+                locations, "break locations", 0, self.get_num_locations() - 1
+            )
+
+        super().add_vehicle_distance_break(
+            vehicle_id, distance_min, distance_max, duration, locations
+        )
+
+    @catch_cuopt_exception
     def set_objective_function(self, objectives, objective_weights):
         """
         The objective function can be defined as a linear combination of
         the different objectives. Solver optimizes for vehicle
-        count first and then the total objective. The default value of
-        1 is used for COST objective weight and 0 for other objective weights
+        count first and then the total objective. ``COST`` defaults to weight
+        ``1.0``. ``PRIZE``, ``VEHICLE_FIXED_COST``, and
+        ``DISTANCE_BREAK_COST`` also default to ``1.0`` when their associated
+        model data is configured; explicitly pass ``0.0`` to disable them.
+        Other objective weights default to ``0.0``.
 
         Parameters
         ----------
@@ -491,7 +557,7 @@ class DataModel(_DeferredDataModel):
             "number of orders",
         )
         validate_range(
-            order_locations, "order locations", 0, self.get_num_locations()
+            order_locations, "order locations", 0, self.get_num_locations() - 1
         )
         super().set_order_locations(order_locations)
 
@@ -903,7 +969,7 @@ class DataModel(_DeferredDataModel):
         >>> d.add_vehicle_order_match(2, cudf.Series([3]))
         >>> cuopt_solution = routing.Solve(d)
         """
-        validate_range(orders, "orders served", 0, self.get_num_orders())
+        validate_range(orders, "orders served", 0, self.get_num_orders() - 1)
         validate_range(
             len(orders), "number of orders served", 0, self.get_num_orders()
         )
@@ -948,13 +1014,13 @@ class DataModel(_DeferredDataModel):
         >>> cuopt_solution = routing.Solve(d)
         """
         validate_range(
-            len(vehicles), "Number of vehicles", 0, self.get_fleet_size() + 1
+            len(vehicles), "Number of vehicles", 0, self.get_fleet_size()
         )
         validate_range(
             vehicles,
             "vehicles that can fulfill the order",
             0,
-            self.get_fleet_size(),
+            self.get_fleet_size() - 1,
         )
         super().add_order_vehicle_match(order_id, vehicles)
 

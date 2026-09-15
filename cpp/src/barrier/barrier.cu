@@ -29,6 +29,7 @@
 
 #include <linear_algebra/vector_math.cuh>
 
+#include <cuda/stream>
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 
@@ -136,7 +137,7 @@ bool should_use_adaptive_regularization(const simplex_solver_settings_t<i_t, f_t
 
 template <typename f_t>
 [[maybe_unused]] static void pairwise_multiply(
-  f_t* a, f_t* b, f_t* out, int size, rmm::cuda_stream_view stream)
+  f_t* a, f_t* b, f_t* out, int size, cuda::stream_ref stream)
 {
   cub::DeviceTransform::Transform(
     cuda::std::make_tuple(a, b), out, size, cuda::std::multiplies<>{}, stream.get());
@@ -145,7 +146,7 @@ template <typename f_t>
 // out[i] = is_direct_free_linear[i] ? 0 : a[i] * b[i]
 template <typename f_t>
 [[maybe_unused]] static void pairwise_multiply_skip_direct_free_linear(
-  f_t* a, f_t* b, int* is_direct_free_linear, f_t* out, int size, rmm::cuda_stream_view stream)
+  f_t* a, f_t* b, int* is_direct_free_linear, f_t* out, int size, cuda::stream_ref stream)
 {
   cub::DeviceTransform::Transform(
     cuda::std::make_tuple(a, b, is_direct_free_linear),
@@ -157,7 +158,7 @@ template <typename f_t>
 
 template <typename f_t>
 [[maybe_unused]] static void axpy(
-  f_t alpha, f_t* x, f_t beta, f_t* y, f_t* out, int size, rmm::cuda_stream_view stream)
+  f_t alpha, f_t* x, f_t beta, f_t* y, f_t* out, int size, cuda::stream_ref stream)
 {
   cub::DeviceTransform::Transform(
     cuda::std::make_tuple(x, y),
@@ -180,7 +181,7 @@ static f2_t<f_t> max_nonnegative_step_length_pair_in_range(
   i_t len,
   const rmm::device_uvector<i_t>& is_direct_free_linear,
   bool apply_direct_free_mask,
-  rmm::cuda_stream_view stream)
+  cuda::stream_ref stream)
 {
   if (len <= 0) { return f2_t<f_t>{f_t(1), f_t(1)}; }
 
@@ -211,7 +212,7 @@ static void recover_linear_orthant_dz(raft::device_span<const f_t> target,
                                       raft::device_span<const f_t> x,
                                       raft::device_span<f_t> dz,
                                       raft::device_span<const i_t> is_direct_free_linear,
-                                      rmm::cuda_stream_view stream)
+                                      cuda::stream_ref stream)
 {
   if (dz.empty()) return;
 
@@ -231,7 +232,7 @@ static void recover_linear_orthant_dz(raft::device_span<const f_t> target,
 template <typename f_t>
 static void negate_complementarity_rhs(raft::device_span<f_t> out,
                                        raft::device_span<const f_t> residual,
-                                       rmm::cuda_stream_view stream)
+                                       cuda::stream_ref stream)
 {
   if (out.empty()) return;
   cub::DeviceTransform::Transform(
@@ -244,7 +245,7 @@ static void fill_linear_cc_rhs(raft::device_span<f_t> out,
                                raft::device_span<const f_t> dz_aff,
                                f_t new_mu,
                                raft::device_span<const i_t> is_direct_free_linear,
-                               rmm::cuda_stream_view stream)
+                               cuda::stream_ref stream)
 {
   if (out.empty()) return;
   cub::DeviceTransform::Transform(
@@ -264,14 +265,14 @@ static void fill_linear_cc_rhs(raft::device_span<f_t> out,
 template <typename i_t, typename f_t>
 class barrier_reduce_helper_t {
  public:
-  explicit barrier_reduce_helper_t(rmm::cuda_stream_view stream_view)
+  explicit barrier_reduce_helper_t(cuda::stream_ref stream_view)
     : d_results_(kCount, stream_view), h_results_(kCount), d_temp_storage_(0, stream_view)
   {
   }
 
   void primal_residual_norm_async(const rmm::device_uvector<f_t>& d_primal_residual,
                                   const rmm::device_uvector<f_t>& d_bound_residual,
-                                  rmm::cuda_stream_view stream_view)
+                                  cuda::stream_ref stream_view)
   {
     norm_inf_async(
       kPrimalResidual, d_primal_residual.data(), d_primal_residual.size(), stream_view);
@@ -279,28 +280,28 @@ class barrier_reduce_helper_t {
   }
 
   void dual_residual_norm_async(const rmm::device_uvector<f_t>& d_dual_residual,
-                                rmm::cuda_stream_view stream_view)
+                                cuda::stream_ref stream_view)
   {
     norm_inf_async(kDualResidual, d_dual_residual.data(), d_dual_residual.size(), stream_view);
   }
 
   void complementarity_residual_norm_async(raft::device_span<const f_t> linear_xz,
                                            const rmm::device_uvector<f_t>& d_wv,
-                                           rmm::cuda_stream_view stream_view)
+                                           cuda::stream_ref stream_view)
   {
     norm_inf_async(kComplXzLinear, linear_xz.data(), linear_xz.size(), stream_view);
     norm_inf_async(kComplWv, d_wv.data(), d_wv.size(), stream_view);
   }
 
   void cone_complementarity_residual_async(raft::device_span<f_t> cone_dot,
-                                           rmm::cuda_stream_view stream_view)
+                                           cuda::stream_ref stream_view)
   {
     max_async(kComplCone, cone_dot.data(), cone_dot.size(), stream_view);
   }
 
   void mu_terms_async(const rmm::device_uvector<f_t>& d_xz,
                       const rmm::device_uvector<f_t>& d_wv,
-                      rmm::cuda_stream_view stream_view)
+                      cuda::stream_ref stream_view)
   {
     sum_async(kMuXzSum, d_xz.data(), d_xz.size(), stream_view);
     sum_async(kMuWvSum, d_wv.data(), d_wv.size(), stream_view);
@@ -309,7 +310,7 @@ class barrier_reduce_helper_t {
   void cTx_async(const rmm::device_uvector<f_t>& d_c,
                  const rmm::device_uvector<f_t>& d_x,
                  cublasHandle_t cublas_handle,
-                 rmm::cuda_stream_view stream_view)
+                 cuda::stream_ref stream_view)
   {
     dot_async(kCTx, d_c, d_x, cublas_handle, stream_view);
   }
@@ -317,7 +318,7 @@ class barrier_reduce_helper_t {
   void bTy_async(const rmm::device_uvector<f_t>& d_b,
                  const rmm::device_uvector<f_t>& d_y,
                  cublasHandle_t cublas_handle,
-                 rmm::cuda_stream_view stream_view)
+                 cuda::stream_ref stream_view)
   {
     dot_async(kBTy, d_b, d_y, cublas_handle, stream_view);
   }
@@ -325,7 +326,7 @@ class barrier_reduce_helper_t {
   void uTv_async(const rmm::device_uvector<f_t>& d_u,
                  const rmm::device_uvector<f_t>& d_v,
                  cublasHandle_t cublas_handle,
-                 rmm::cuda_stream_view stream_view)
+                 cuda::stream_ref stream_view)
   {
     dot_async(kUTv, d_u, d_v, cublas_handle, stream_view);
   }
@@ -333,14 +334,14 @@ class barrier_reduce_helper_t {
   void xTQx_async(const rmm::device_uvector<f_t>& d_Qx,
                   const rmm::device_uvector<f_t>& d_x,
                   cublasHandle_t cublas_handle,
-                  rmm::cuda_stream_view stream_view)
+                  cuda::stream_ref stream_view)
   {
     dot_async(kXTQx, d_Qx, d_x, cublas_handle, stream_view);
   }
 
   // Single batched device-to-host copy + the one stream synchronize needed before any accessor
   // below can be read.
-  void sync(rmm::cuda_stream_view stream_view)
+  void sync(cuda::stream_ref stream_view)
   {
     raft::copy(h_results_.data(), d_results_.data(), static_cast<i_t>(kCount), stream_view);
     stream_view.sync();
@@ -379,7 +380,7 @@ class barrier_reduce_helper_t {
 
   template <typename ReduceOpT>
   void reduce_async(
-    Slot slot, const f_t* in, i_t size, ReduceOpT op, f_t init, rmm::cuda_stream_view stream_view)
+    Slot slot, const f_t* in, i_t size, ReduceOpT op, f_t init, cuda::stream_ref stream_view)
   {
     f_t* out = d_results_.data() + slot;
     if (size == 0) {
@@ -394,17 +395,17 @@ class barrier_reduce_helper_t {
       d_temp_storage_.data(), temp_storage_bytes, in, out, size, op, init, stream_view.get());
   }
 
-  void norm_inf_async(Slot slot, const f_t* in, i_t size, rmm::cuda_stream_view stream_view)
+  void norm_inf_async(Slot slot, const f_t* in, i_t size, cuda::stream_ref stream_view)
   {
     reduce_async(slot, in, size, norm_inf_max{}, f_t(0), stream_view);
   }
 
-  void max_async(Slot slot, const f_t* in, i_t size, rmm::cuda_stream_view stream_view)
+  void max_async(Slot slot, const f_t* in, i_t size, cuda::stream_ref stream_view)
   {
     reduce_async(slot, in, size, thrust::maximum<f_t>{}, f_t(0), stream_view);
   }
 
-  void sum_async(Slot slot, const f_t* in, i_t size, rmm::cuda_stream_view stream_view)
+  void sum_async(Slot slot, const f_t* in, i_t size, cuda::stream_ref stream_view)
   {
     f_t* out                  = d_results_.data() + slot;
     size_t temp_storage_bytes = 0;
@@ -418,7 +419,7 @@ class barrier_reduce_helper_t {
                  const rmm::device_uvector<f_t>& a,
                  const rmm::device_uvector<f_t>& b,
                  cublasHandle_t cublas_handle,
-                 rmm::cuda_stream_view stream_view)
+                 cuda::stream_ref stream_view)
   {
     RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(cublas_handle,
                                                     a.size(),
@@ -2294,7 +2295,7 @@ class iteration_data_t {
   bool cone_combined_step_;
   f_t cone_sigma_mu_;
 
-  rmm::cuda_stream_view stream_view_;
+  cuda::stream_ref stream_view_;
 
   const simplex_solver_settings_t<i_t, f_t>& settings_;
 };
@@ -3618,7 +3619,7 @@ void fill_linear_complementarity_target(iteration_data_t<i_t, f_t>& data,
                                         raft::device_span<f_t> target,
                                         raft::device_span<const f_t> xz_rhs,
                                         raft::device_span<const f_t> x,
-                                        rmm::cuda_stream_view stream)
+                                        cuda::stream_ref stream)
 {
   if (target.empty()) return;
   cub::DeviceTransform::Transform(
@@ -3637,7 +3638,7 @@ template <typename i_t, typename f_t>
 void fill_affine_cone_complementarity_target(iteration_data_t<i_t, f_t>& data,
                                              i_t cone_var_start,
                                              i_t m_c,
-                                             rmm::cuda_stream_view stream)
+                                             cuda::stream_ref stream)
 {
   if (m_c == 0) return;
   auto& cones = data.cones();
@@ -3656,7 +3657,7 @@ void fill_corrector_cone_complementarity_target(iteration_data_t<i_t, f_t>& data
                                                 i_t cone_var_start,
                                                 i_t m_c,
                                                 f_t sigma_mu,
-                                                rmm::cuda_stream_view stream)
+                                                cuda::stream_ref stream)
 {
   if (m_c == 0) return;
   auto& cones = data.cones();

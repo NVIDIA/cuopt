@@ -30,9 +30,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from pydantic import ValidationError
 
-import cuopt_server.utils.health_check as health_check
+import cuopt_server.utils.deprecated.health_check as health_check
 import cuopt_server.utils.settings as settings
 from cuopt_server._version import __version__
+from cuopt_server.utils.client_version import check_client_version
 from cuopt_server.utils.data_definition import (
     DeleteRequestModel,
     DeleteResponse,
@@ -71,6 +72,7 @@ from cuopt_server.utils.exceptions import (
 )
 from cuopt_server.utils.http_codec import (
     encode,
+    get_data,
     get_format,
     mime_json,
     mime_msgpack,
@@ -78,7 +80,11 @@ from cuopt_server.utils.http_codec import (
     mime_wild,
     mime_zlib,
 )
-from cuopt_server.utils.job_queue import (
+from cuopt_server.utils.local_files import (
+    get_output_name,
+    validate_file_path,
+)
+from cuopt_server.utils.deprecated.job_queue import (
     BaseResult,
     BinaryJobResult,
     NVCFJobResult,
@@ -88,7 +94,6 @@ from cuopt_server.utils.job_queue import (
     abort_all,
     abort_by_id,
     add_cache_entry,
-    check_client_version,
     delete_cache_entry,
     get_cache_content_type,
     get_incumbents_for_id,
@@ -175,71 +180,6 @@ def health():
             + msg
         )
         raise HTTPException(status_code=500, detail=f"{msg}")
-
-
-# Get name for file that stores the result of Solve
-def get_output_name(resultdir, CUOPT_DATA_FILE, CUOPT_RESULT_FILE):
-    # Reject paths that escape resultdir using canonicalized containment check.
-    if CUOPT_RESULT_FILE and resultdir:
-        root = os.path.realpath(resultdir)
-        candidate = os.path.realpath(os.path.join(root, CUOPT_RESULT_FILE))
-        if (
-            os.path.isabs(CUOPT_RESULT_FILE)
-            or os.path.commonpath([root, candidate]) != root
-        ):
-            CUOPT_RESULT_FILE = ""
-    if not resultdir:
-        res = ""
-    elif CUOPT_RESULT_FILE:
-        res = CUOPT_RESULT_FILE
-    elif CUOPT_DATA_FILE:
-        res = os.path.basename(CUOPT_DATA_FILE) + ".result"
-    else:
-        res = str(uuid.uuid4())
-    return res
-
-
-# Validate if given data file and file path exists
-def validate_file_path(cuopt_data_file):
-    ddir = settings.get_data_dir()
-    if not ddir:
-        logging.error("cuopt data directory not set!")
-        raise HTTPException(
-            status_code=400,
-            detail="cuopt data directory not set",
-        )
-
-    if os.path.isabs(cuopt_data_file):
-        raise HTTPException(
-            status_code=400,
-            detail="cuopt-data-file must be relative to CUOPT_DATA_DIR",
-        )
-
-    root = os.path.realpath(ddir)
-    file_path = os.path.realpath(os.path.join(root, cuopt_data_file))
-    if os.path.commonpath([root, file_path]) != root:
-        raise HTTPException(
-            status_code=400,
-            detail="cuopt-data-file must stay inside CUOPT_DATA_DIR",
-        )
-
-    if not os.path.exists(file_path):
-        logging.error("cuopt-data-file does not exist")
-        raise HTTPException(
-            status_code=400,
-            detail=f"specified data file does not exist: {cuopt_data_file}",
-        )
-
-    if not os.path.isfile(file_path):
-        logging.error("cuopt-data-file is not a regular file")
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"specified data file is not a regular file: {cuopt_data_file}"
-            ),
-        )
-
-    return file_path
 
 
 app_exit = None
@@ -554,8 +494,17 @@ async def postsolution(
             buf = bytearray(sz)
             solution = buf
 
-        await get_data(buf, request)
+        try:
+            await get_data(buf, request)
+        except Exception:
+            if s:
+                buf.release()
+                s.close()
+                s.unlink()
+            r.unregister_result()
+            raise
         if s:
+            buf.release()
             s.close()
         if isinstance(solution, bytearray):
             solution = bytes(solution)
@@ -1101,8 +1050,19 @@ async def postrequest(
                 buf = bytearray(sz)
                 data_bytes = buf  # save this reference for later
 
-            await get_data(buf, request)
+            try:
+                await get_data(buf, request)
+            except Exception:
+                if s:
+                    buf.release()
+                    s.close()
+                    s.unlink()
+                if cache:
+                    delete_cache_entry(id)
+                r.unregister_result()
+                raise
             if s:
+                buf.release()
                 s.close()
             elif cache and data_bytes:
                 # If shared memory is not enabled, save the byte array
@@ -1192,16 +1152,6 @@ async def postrequest(
 
     except Exception as e:
         return encode(exception_handler(e), accept)
-
-
-async def get_data(buf, request):
-    pos = 0
-    try:
-        async for chunk in request.stream():
-            buf[pos : pos + len(chunk)] = chunk
-            pos = pos + len(chunk)
-    except Exception:
-        print("exception in get_data")
 
 
 async def get_body(request: Request):

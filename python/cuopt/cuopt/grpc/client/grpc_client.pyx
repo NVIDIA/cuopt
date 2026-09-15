@@ -27,6 +27,7 @@ from cuopt.grpc.client.grpc_client cimport (
     cpu_routing_solution_t,
     cpu_uniform_break_t,
     cpu_vehicle_break_t,
+    cpu_vehicle_distance_break_t,
     grpc_incumbents_result_t,
     grpc_job_status_t,
     grpc_logs_result_t,
@@ -304,7 +305,7 @@ cdef class Client:
         """Create a sibling connection with the same host/port/TLS settings."""
         return Client(self._host, self._port, tls=self._tls)
 
-    def submit(self, problem, SolverSettings settings not None):
+    def submit(self, problem, SolverSettings settings not None, enable_incumbents=None):
         """
         Submit a problem for solving and return its ``job_id``.
 
@@ -312,10 +313,16 @@ cdef class Client:
         :class:`~cuopt.linear_programming.data_model.DataModel`. The job runs
         asynchronously; use :meth:`wait` or :meth:`status` to track it and
         :meth:`result` to fetch the solution. Always :meth:`delete` when done.
+
+        ``enable_incumbents`` defaults to ``None``, which enables MIP incumbent
+        collection when ``settings`` already has MIP callbacks. Pass ``True``
+        or ``False`` to override (used by the HTTP proxy, which has no local
+        callback objects).
         """
         cdef DataModel data_model
         cdef grpc_submit_result_t submit_result
         cdef bint mip
+        cdef bint enable_incumbents_flag = False
 
         data_model = self._as_data_model(problem)
         data_model.variable_types = type_cast(
@@ -324,13 +331,14 @@ cdef class Client:
         mip = _is_mip(data_model.get_variable_types())
         prepare_solver_settings(settings, data_model, mip)
         data_model.set_data_model_view()
-        cdef bint enable_incumbents = False
-        if mip and settings.get_mip_callbacks():
-            enable_incumbents = True
+        if enable_incumbents is None:
+            enable_incumbents_flag = bool(mip and settings.get_mip_callbacks())
+        else:
+            enable_incumbents_flag = bool(enable_incumbents)
         submit_result = self._client.get().submit(
             data_model.c_data_model_view.get(),
             settings.c_solver_settings.get(),
-            enable_incumbents,
+            enable_incumbents_flag,
         )
         if not submit_result.success:
             raise GrpcError(submit_result.error_message.decode("utf-8"))
@@ -747,6 +755,7 @@ HANDLED_SETTERS = frozenset({
     "add_order_precedence",
     "add_break_dimension",
     "add_vehicle_break",
+    "add_vehicle_distance_break",
     "set_objective_function",
     "add_initial_solutions",
     "set_min_vehicles",
@@ -891,6 +900,7 @@ cdef void _populate(cpu_routing_problem_t& p, data_model) except *:
     cdef cpu_capacity_dimension_t cap
     cdef cpu_uniform_break_t ub
     cdef cpu_vehicle_break_t vb
+    cdef cpu_vehicle_distance_break_t vdb
     cdef int32_t vid
 
     for name, args, _ in data_model._calls:
@@ -951,6 +961,15 @@ cdef void _populate(cpu_routing_problem_t& p, data_model) except *:
             if len(args) > 4 and args[4] is not None:
                 _fill_i32(vb.locations, args[4])
             p.vehicle_breaks[vid].push_back(vb)
+        elif name == "add_vehicle_distance_break":
+            vid = <int32_t>int(args[0])
+            vdb = cpu_vehicle_distance_break_t()
+            vdb.distance_min = <float>float(args[1])
+            vdb.distance_max = <float>float(args[2])
+            vdb.duration = <int32_t>int(args[3])
+            if len(args) > 4 and args[4] is not None:
+                _fill_i32(vdb.locations, args[4])
+            p.vehicle_distance_breaks[vid].push_back(vdb)
         elif name == "set_objective_function":
             _fill_i32(p.objectives, args[0])
             _fill_f32(p.objective_weights, args[1])
@@ -1024,6 +1043,7 @@ def problem_summary(data_model):
         "break_locations": p.break_locations.size(),
         "uniform_breaks": p.uniform_breaks.size(),
         "vehicle_breaks": p.vehicle_breaks.size(),
+        "vehicle_distance_breaks": p.vehicle_distance_breaks.size(),
         "vehicle_order_match": p.vehicle_order_match.size(),
         "order_vehicle_match": p.order_vehicle_match.size(),
         "order_precedence": p.order_precedence.size(),
@@ -1138,7 +1158,26 @@ cdef class RoutingClient:
             raise RoutingSolveError(sub.error_message.decode("utf-8"))
         return sub.job_id.decode("utf-8")
 
-    def _status(self, str job_id):
+    def status(self, str job_id) -> JobStatus:
+        """Return the current job status without blocking.
+
+        Parameters
+        ----------
+        job_id : str
+            Id returned by :meth:`submit`.
+
+        Returns
+        -------
+        JobStatus
+            A :class:`~cuopt.grpc.linear_programming.JobStatus` member
+            (``QUEUED``, ``PROCESSING``, ``COMPLETED``, ``FAILED``,
+            ``CANCELLED``, or ``NOT_FOUND``).
+
+        Raises
+        ------
+        RoutingSolveError
+            If the status RPC itself fails (transport error).
+        """
         cdef grpc_status_result_t st = self._client.get().status(
             job_id.encode("utf-8")
         )
@@ -1158,8 +1197,33 @@ cdef class RoutingClient:
         with a separate 60-second hang deadline.
         """
         return _wait_poll_loop(
-            self._status, job_id, timeout, RoutingSolveError
+            self.status, job_id, timeout, RoutingSolveError
         )
+
+    def cancel(self, str job_id) -> None:
+        """Request cancellation of a queued or running job.
+
+        The job moves to
+        :attr:`~cuopt.grpc.linear_programming.JobStatus.CANCELLED`. Call
+        :meth:`delete` to release its server-side state.
+
+        Parameters
+        ----------
+        job_id : str
+            Id returned by :meth:`submit`.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        RoutingSolveError
+            If the cancel RPC fails, including when ``job_id`` is unknown.
+        """
+        cdef string err
+        if not self._client.get().cancel(job_id.encode("utf-8"), err):
+            raise RoutingSolveError(err.decode("utf-8"))
 
     def result(self, str job_id):
         """Fetch and parse the routing solution for a completed job.
