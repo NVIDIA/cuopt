@@ -8,9 +8,12 @@
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 #include "mip_utils.cuh"
 
+#include <cuopt/error.hpp>
 #include <cuopt/mathematical_optimization/io/parser.hpp>
 #include <cuopt/mathematical_optimization/solve.hpp>
+#include <mip_heuristics/feasibility_jump/fj_cpu.cuh>
 #include <mip_heuristics/mip_scaling_strategy.cuh>
+#include <mip_heuristics/solution/solution.cuh>
 #include <pdlp/utilities/problem_checking.cuh>
 #include <utilities/common_utils.hpp>
 #include <utilities/copy_helpers.hpp>
@@ -19,6 +22,8 @@
 #include <raft/core/handle.hpp>
 
 #include <gtest/gtest.h>
+
+#include <limits>
 
 namespace cuopt::mathematical_optimization::test {
 
@@ -336,6 +341,84 @@ TEST(ScalingIntegrity, NoObjectiveScalingPreservesIntegerCoefficients)
   }
   EXPECT_EQ(violations, 0) << violations
                            << " integer coefficients lost integrality after scaling (no-obj mode)";
+}
+
+TEST(CpuFeasibilityJump, TimeLimitCornerCases)
+{
+  raft::handle_t handle;
+  auto mps_problem = create_std_milp_problem(false);
+  auto op_problem  = mps_data_model_to_optimization_problem(&handle, mps_problem);
+  mip::problem_t<int, double> problem(op_problem);
+  problem.preprocess_problem();
+  mip::solution_t<int, double> solution(problem);
+  thrust::fill(
+    handle.get_thrust_policy(), solution.assignment.begin(), solution.assignment.end(), 0.0);
+  solution.clamp_within_bounds();
+
+  std::atomic<bool> preemption_flag{false};
+  mip::fj_settings_t fj_settings;
+  fj_settings.iteration_limit = 1;
+
+  auto make_climber = [&]() {
+    return mip::init_fj_cpu_standalone(problem, solution, preemption_flag, 42, fj_settings);
+  };
+
+  // Default positive-infinite limit
+  {
+    auto climber = make_climber();
+    EXPECT_NO_THROW(mip::cpufj_solve(climber.get()));
+  }
+
+  // Explicit positive-infinite limit
+  {
+    auto climber = make_climber();
+    EXPECT_NO_THROW(mip::cpufj_solve(climber.get(), std::numeric_limits<double>::infinity()));
+  }
+
+  // Normal finite limit
+  {
+    auto climber = make_climber();
+    EXPECT_NO_THROW(mip::cpufj_solve(climber.get(), 10.0));
+  }
+
+  // Oversized finite limit (must not overflow integer conversion)
+  {
+    auto climber = make_climber();
+    EXPECT_NO_THROW(mip::cpufj_solve(climber.get(), 1e12));
+  }
+
+  // Negative limit must throw ValidationError
+  {
+    auto climber = make_climber();
+    try {
+      mip::cpufj_solve(climber.get(), -1.0);
+      FAIL() << "expected cuopt::logic_error with ValidationError";
+    } catch (const cuopt::logic_error& e) {
+      EXPECT_EQ(e.get_error_type(), cuopt::error_type_t::ValidationError);
+    }
+  }
+
+  // Negative infinity must throw ValidationError
+  {
+    auto climber = make_climber();
+    try {
+      mip::cpufj_solve(climber.get(), -std::numeric_limits<double>::infinity());
+      FAIL() << "expected cuopt::logic_error with ValidationError";
+    } catch (const cuopt::logic_error& e) {
+      EXPECT_EQ(e.get_error_type(), cuopt::error_type_t::ValidationError);
+    }
+  }
+
+  // NaN limit must throw ValidationError
+  {
+    auto climber = make_climber();
+    try {
+      mip::cpufj_solve(climber.get(), std::numeric_limits<double>::quiet_NaN());
+      FAIL() << "expected cuopt::logic_error with ValidationError";
+    } catch (const cuopt::logic_error& e) {
+      EXPECT_EQ(e.get_error_type(), cuopt::error_type_t::ValidationError);
+    }
+  }
 }
 
 }  // namespace cuopt::mathematical_optimization::test
