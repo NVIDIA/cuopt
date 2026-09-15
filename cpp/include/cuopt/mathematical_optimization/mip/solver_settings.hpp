@@ -20,7 +20,6 @@
 #include <cuopt/mathematical_optimization/utilities/internals.hpp>
 
 #include <cuda/stream>
-
 #include <raft/core/device_span.hpp>
 #include <rmm/device_uvector.hpp>
 
@@ -92,7 +91,7 @@ class mip_solver_settings_t {
    */
   void add_initial_solution(const f_t* initial_solution,
                             i_t size,
-                            rmm::cuda_stream_view stream = cuda::stream_ref{
+                            cuda::stream_ref stream = cuda::stream_ref{
                               cudaStream_t{cudaStreamDefault}});
 
   /**

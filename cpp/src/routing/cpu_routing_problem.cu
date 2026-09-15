@@ -9,6 +9,7 @@
 
 #include <utilities/copy_helpers.hpp>
 
+#include <cuda/stream>
 #include <rmm/device_uvector.hpp>
 
 #include <stdexcept>
@@ -72,14 +73,14 @@ namespace {
 
 template <typename T>
 std::unique_ptr<rmm::device_uvector<T>> copy_vector(std::vector<T> const& host,
-                                                    rmm::cuda_stream_view stream)
+                                                    cuda::stream_ref stream)
 {
   if (host.empty()) { return nullptr; }
   return std::make_unique<rmm::device_uvector<T>>(cuopt::device_copy(host, stream));
 }
 
 std::unique_ptr<rmm::device_uvector<bool>> copy_u8_as_bool(std::vector<uint8_t> const& host,
-                                                           rmm::cuda_stream_view stream)
+                                                           cuda::stream_ref stream)
 {
   if (host.empty()) { return nullptr; }
   std::vector<bool> as_bool(host.begin(), host.end());
