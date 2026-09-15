@@ -110,12 +110,13 @@ class solution_publication_t {
   }
 
  private:
-  static void audit_feasibility(int device_id,
-                                problem_t<i_t, f_t>* problem_ptr,
-                                const std::vector<f_t>& assignment)
+  void audit_feasibility(int device_id,
+                         problem_t<i_t, f_t>* problem_ptr,
+                         const std::vector<f_t>& assignment)
   {
     RAFT_CUDA_TRY(cudaSetDevice(device_id));
-    solution_t<i_t, f_t> solution(*problem_ptr);
+    problem_t<i_t, f_t> audit_problem(*problem_ptr, handle_.get());
+    solution_t<i_t, f_t> solution(audit_problem);
     solution.copy_new_assignment(assignment);
     if (problem_ptr->n_variables > 0) {
       solution.test_feasibility(true);
