@@ -100,9 +100,11 @@ struct max_abs_value {
 };
 
 template <typename i_t>
-i_t conditional_major(uint64_t total_pdlp_iterations)
+i_t conditional_major(uint64_t total_pdlp_iterations, uint64_t base_step)
 {
-  uint64_t step                       = 10;
+  cuopt_assert(base_step > 0, "conditional_major step must be strictly positive");
+
+  uint64_t step                       = base_step;
   uint64_t threshold                  = 1000;
   [[maybe_unused]] uint64_t iteration = 0;
 
