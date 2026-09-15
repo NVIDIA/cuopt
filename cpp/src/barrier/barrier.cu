@@ -439,6 +439,35 @@ class barrier_reduce_helper_t {
 template <typename i_t, typename f_t>
 class iteration_data_t {
  public:
+  /** The device Q to factorize: adopted from the scaling when already there, uploaded otherwise. */
+  static device_csc_matrix_t<i_t, f_t> make_device_Q(const lp_problem_t<i_t, f_t>& lp,
+                                                     const csc_matrix_t<i_t, f_t>& Qin,
+                                                     cuda::stream_ref stream)
+  {
+    const bool has_entries = Qin.n > 0 && Qin.col_start[Qin.n] > 0;
+    if (lp.device_Q && has_entries) {
+      device_csc_matrix_t<i_t, f_t> dQ(std::move(*lp.device_Q));
+      // All that is missing is the slack padding create_Q applies on host, which only extends
+      // col_start with the final nz.
+      const i_t old_n = dQ.n;
+      cuopt_assert(old_n <= Qin.n, "device Q has more columns than the host Q");
+      dQ.m = dQ.n = Qin.n;
+      if (old_n < Qin.n) {
+        dQ.col_start.resize(Qin.n + 1, stream);
+        thrust::fill(rmm::exec_policy(stream),
+                     dQ.col_start.begin() + old_n + 1,
+                     dQ.col_start.end(),
+                     dQ.nz_max);
+      }
+      return dQ;
+    }
+    if (has_entries) { return device_csc_matrix_t<i_t, f_t>(Qin, stream); }
+    // Keep an empty but correctly shaped Q so device views are never zero-sized/uninitialized.
+    device_csc_matrix_t<i_t, f_t> empty(stream);
+    empty.reset_empty(lp.num_cols, lp.num_cols, stream);
+    return empty;
+  }
+
   iteration_data_t(const lp_problem_t<i_t, f_t>& lp,
                    i_t num_upper_bounds,
                    const std::vector<i_t>& direct_free_variables,
@@ -475,18 +504,23 @@ class iteration_data_t {
       Hchol(0, 0),
       A(lp.A),
       Q(Qin),
-      cusparse_Q_view_(lp.handle_ptr, Q),
       // Borrows device_A_csc_ / device_AT_csc_, both of which are declared before it and so are
       // already built. Note lp.A, not the member A, which is declared later and not yet live.
       cusparse_view_(lp.handle_ptr, device_A_csc_, device_AT_csc_),
+      // Q is stored fully symmetric, so CSC(Q) is CSR(Q) and both descriptors borrow the one
+      // device_Q_csc_, which is likewise declared earlier and so already built.
+      cusparse_Q_view_(lp.handle_ptr, device_Q_csc_, device_Q_csc_),
       cusparse_info(lp.handle_ptr),
       device_AD(lp.num_cols, lp.num_rows, 0, lp.handle_ptr->get_stream()),
       device_A(lp.num_cols, lp.num_rows, 0, lp.handle_ptr->get_stream()),
       device_ADAT(lp.num_rows, lp.num_rows, 0, lp.handle_ptr->get_stream()),
       device_augmented(
         lp.num_cols + lp.num_rows, lp.num_cols + lp.num_rows, 0, lp.handle_ptr->get_stream()),
-      device_A_csc_(lp.A, lp.handle_ptr->get_stream()),
-      device_Q_csc_(lp.handle_ptr->get_stream()),
+      // Take over the scaled A when the scaling already left it on device, so it is neither
+      // downloaded there nor uploaded again here.
+      device_A_csc_(lp.device_A ? std::move(*lp.device_A)
+                                : device_csc_matrix_t<i_t, f_t>(lp.A, lp.handle_ptr->get_stream())),
+      device_Q_csc_(make_device_Q(lp, Qin, lp.handle_ptr->get_stream())),
       device_AT_csc_(typename device_csc_matrix_t<i_t, f_t>::transposed_t{},
                      device_A_csc_,
                      lp.handle_ptr->get_stream()),
@@ -827,17 +861,6 @@ class iteration_data_t {
         for (i_t j : dense_columns) {
           A_dense.from_sparse(lp.A, j, k++);
         }
-      }
-    }
-
-    if (use_augmented) {
-      raft::common::nvtx::range scope("Barrier: augmented: device CSC upload");
-      // A and A^T are already on device from the initializer list; only Q is left.
-      if (Q.n > 0 && Q.col_start[Q.n] > 0) {
-        device_Q_csc_.copy(Q, handle_ptr->get_stream());
-      } else {
-        // Keep an empty but correctly shaped Q so device views are never zero-sized/uninitialized.
-        device_Q_csc_.reset_empty(A.n, A.n, handle_ptr->get_stream());
       }
     }
 

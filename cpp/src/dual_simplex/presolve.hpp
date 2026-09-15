@@ -16,9 +16,16 @@
 #include <fstream>
 #include <iomanip>
 #include <limits>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <vector>
+
+namespace cuopt::mathematical_optimization::barrier {
+// Only ever held by shared_ptr below, so the definition (which needs nvcc) stays out of here.
+template <typename i_t, typename f_t>
+class device_csc_matrix_t;
+}  // namespace cuopt::mathematical_optimization::barrier
 
 namespace cuopt::mathematical_optimization::simplex {
 
@@ -68,6 +75,14 @@ struct lp_problem_t {
   objective_step_t<f_t> objective_step;
   i_t cone_var_start{0};
   std::vector<i_t> second_order_cone_dims;
+
+  // Set by scaling_ruiz_gpu when it leaves the scaled A on device; `A` then keeps its sparsity
+  // pattern but has an empty `x`, and the barrier takes this over instead of uploading `A`.
+  std::shared_ptr<barrier::device_csc_matrix_t<i_t, f_t>> device_A;
+
+  // The scaled Q, still on device. Unlike `device_A` this is a pure duplicate of `Q`, which stays
+  // fully populated on host; the barrier takes it over only to skip re-uploading Q.
+  std::shared_ptr<barrier::device_csc_matrix_t<i_t, f_t>> device_Q;
 
   // Maximum and minimum value of the coefficients in the objective function. This is used
   // for determine the "objective dynamism" in Farkas diving.

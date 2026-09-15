@@ -194,6 +194,9 @@ class device_csc_matrix_t {
   {
   }
 
+  /** Move leaves the source empty; needed to hand a matrix over without a device-to-device copy. */
+  device_csc_matrix_t(device_csc_matrix_t&&) = default;
+
   device_csc_matrix_t(const csc_matrix_t<i_t, f_t>& A, cuda::stream_ref stream)
     : m(A.m),
       n(A.n),

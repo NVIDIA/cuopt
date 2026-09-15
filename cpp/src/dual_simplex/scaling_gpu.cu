@@ -401,9 +401,35 @@ i_t scaling_ruiz_gpu(const lp_problem_t<i_t, f_t>& unscaled,
                     d_row_scale.data(),
                     [] __device__(f_t v) { return f_t(1) / v; });
 
+  const f_t a_max = whole_array_abs_max<f_t>(dA.x.data(), dA.nz_max, stream);
+  const f_t a_min = whole_array_nonzero_abs_min<f_t>(dA.x.data(), dA.nz_max, stream);
+
   // --- Download scaled problem and scale vectors back to host ---
-  scaled.A         = dA.to_host(stream);
+  // SOCP goes straight to the barrier's augmented path, where no host code reads A's values, so
+  // A stays on device rather than being downloaded and immediately uploaded again. Ruiz rescales
+  // values but never changes the sparsity pattern, so scaled.A already carries the right
+  // col_start/i from the host copy above; only x differs, and clearing it keeps anyone from
+  // reading the stale unscaled values that would otherwise be left behind.
+  if (!unscaled.second_order_cone_dims.empty()) {
+    scaled.A.x.clear();
+    scaled.A.x.shrink_to_fit();
+    scaled.device_A = std::make_shared<device_csc_matrix_t<i_t, f_t>>(std::move(dA));
+  } else {
+    scaled.A = dA.to_host(stream);
+  }
   scaled.Q         = dQ.to_host(stream);
+  // Q stays on host as well, so this is purely so the barrier need not upload it again. Q is
+  // symmetric, so its CSR arrays are also its CSC arrays and the handover is a relabel.
+  if (dQ.nz_max > 0) {
+    auto device_Q       = std::make_shared<device_csc_matrix_t<i_t, f_t>>(stream);
+    device_Q->m         = dQ.m;
+    device_Q->n         = dQ.m;
+    device_Q->nz_max    = dQ.nz_max;
+    device_Q->col_start = std::move(dQ.row_start);
+    device_Q->i         = std::move(dQ.j);
+    device_Q->x         = std::move(dQ.x);
+    scaled.device_Q     = std::move(device_Q);
+  }
   scaled.rhs       = cuopt::host_copy(d_rhs, stream);
   scaled.objective = cuopt::host_copy(d_objective, stream);
   scaled.lower     = cuopt::host_copy(d_lower, stream);
@@ -411,15 +437,6 @@ i_t scaling_ruiz_gpu(const lp_problem_t<i_t, f_t>& unscaled,
   column_scaling   = cuopt::host_copy(d_col_scale, stream);
   row_scaling      = cuopt::host_copy(d_row_scale, stream);
 
-  f_t a_min = std::numeric_limits<f_t>::max();
-  f_t a_max = 0;
-  for (i_t p = 0; p < scaled.A.col_start[n]; ++p) {
-    f_t a = std::abs(scaled.A.x[p]);
-    if (a > 0) {
-      a_min = std::min(a_min, a);
-      a_max = std::max(a_max, a);
-    }
-  }
   settings.log.printf("Ruiz equilibration: coefficient range [%e, %e] [GPU]\n", a_min, a_max);
   return 0;
 }
