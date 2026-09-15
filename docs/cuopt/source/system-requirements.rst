@@ -34,6 +34,11 @@ Dependencies are installed automatically when using the pip and Conda installati
       - On RHEL/Rocky/Alma 8, install the ``openssl3`` package from EPEL (see :doc:`faq`)
       - On Ubuntu 20.04, install OpenSSL 3 from a PPA/backport or use the cuOpt container
 
+   * GNU OpenMP runtime (for multi-threaded cuDSS/barrier solves):
+      - ``libgomp.so.1`` must be present on the host for multi-threaded barrier-method solves
+      - Install via ``libgomp1`` (Debian/Ubuntu) or ``libgomp`` (RHEL/Rocky/Fedora)
+      - Missing this degrades to single-threaded solves with a warning, not a failure (see :doc:`faq`)
+
    * NVIDIA drivers:
       - 525.60.13+ (Linux)
       - 527.41+ (Windows)
