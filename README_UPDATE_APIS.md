@@ -55,7 +55,7 @@ Next `Solve` when `cache.dirty()`:
 
 1. Slim `user_problem_from_transform` (sizes + `c`; dummy `Q_values={1}`; **rhs left 0** — crush already wrote barrier `b`).
 2. Log `Barrier: reusing cache (skip convert/presolve/scaling)`. If `update_b` marked an empty row infeasible, return `INFEASIBLE` here and skip IPM.
-3. `barrier_advanced_solve` → `prepare_for_reuse` (reset `D`, `form_adat/aug(false)`, invalidate numeric factor, keep symbolic).
+3. `barrier_advanced_solve` → `reset_iterate_state` (reset `D`, `form_adat/aug(false)`, invalidate numeric factor, keep symbolic).
 4. `run_ipm` Mehrotra-starts with the updated vectors/matrices already in `iteration_data_t`.
 5. Unscale / uncrush with the **same** maps. Optimal → `mark_clean()`. Failure → `cache.clear()`.
 
@@ -65,7 +65,7 @@ Next `Solve` when `cache.dirty()`:
 
 | API | User data | Status |
 |-----|-----------|--------|
-| `update_linear_objective(c)` | Linear objective `c` | **Done** (shipped on cache-reuse branch) |
+| `update_linear_objective(c)` | Linear objective `c` | **Shipped, two known silent bugs** — see "Suggested order" item 2 |
 | `update_rhs(b)` | Constraint RHS `b` | **Done** (verified against fresh full solves) |
 | `update_P(Q)` | Quadratic objective values, same nnz pattern | **Not started** |
 | `update_A(A)` | Constraint matrix values, same nnz pattern | **Not started** |
@@ -80,16 +80,28 @@ on reuse is fine, because uncrush does not read `b` and IPM reads `iteration_dat
 Committed coverage lives in
 `python/cuopt/cuopt/tests/linear_programming/test_barrier_sequence_solve.py`. It compares
 every cached re-solve against a fresh full solve and asserts the reuse log line, so a test
-cannot pass while the gate rejects the model and falls back. `update_linear_objective` still
-has no test of its own.
+cannot pass while the gate rejects the model and falls back. `update_linear_objective` is
+only exercised there as a way to dirty the cache for the free-variable gate test; it still
+has no test of its own correctness, which is how both bugs above went unnoticed.
 
-### Gotcha — the reuse gate needs `barrier_presolve_bound_free_variables = 0`
+### Free-variable bounding and the reuse gate
 
-`sequence_solve = True` alone is not enough. The gate in `dual_simplex/solve.cpp` requires
-`barrier_presolve_bound_free_variables == 0`, but the default is `-1` (automatic), so reuse
-silently never fires and every solve is a full solve with correct results. This applies to
-`update_linear_objective` too. Callers must
-`settings.set_parameter("barrier_presolve_bound_free_variables", 0)`.
+Presolve can give free variables implied bounds derived from the rows, recording them in
+`presolve_info.bounded_free_variables`. That state is not something the reuse path can
+replay, so a cache built with it is not reusable.
+
+`sequence_solve = True` resolves the `-1` (automatic) default of
+`barrier_presolve_bound_free_variables` to `0` in `run_barrier`, so callers no longer have to
+set the parameter themselves — reuse fires out of the box. Passing an explicit `1` is
+honored, and those solves simply do not get reuse.
+
+The gate checks the cache as well as the setting. Keying on the setting alone was a bug: it
+read the value of the solve asking for reuse, not the one the cache was built with, so a
+first solve at `-1` that bounded a free variable could be picked up by a later solve passing
+`0`, and the IPM then failed to converge on the mismatched workspace.
+
+Cost: models with genuine free variables give up that presolve step on their first solve in
+exchange for reuse on every later one.
 
 ### Known gap — plain setters do not invalidate the cache (future TODO)
 
@@ -108,6 +120,13 @@ returns a confidently wrong answer rather than an error. Documented in each `upd
 docstring but not enforced. Options when we pick this up: clear the cache from those
 setters, raise from them while a cache is live, or extend the gate to compare `A`/`Q`/bounds
 content. This gets more important with every update API added.
+
+A content fingerprint is the cheapest version of the third option, and the pieces exist:
+`cpp/src/utilities/hashing.hpp` has FNV-1a `compute_hash`, and MIP already fingerprints a
+whole problem with it (`mip_heuristics/problem/problem.cu:2315`). Hash the user data at the
+cold solve, re-check on reuse, refuse on mismatch. Widen the hash or confirm with an exact
+compare before trusting it as a correctness gate — a collision here is a wrong answer, not a
+slow one.
 
 ---
 
@@ -221,31 +240,82 @@ Also assumed even when supported: same \(m\), same row senses, same `A` and vari
 
 ## `update_P` — quadratic values, same pattern (todo)
 
-### Maps to use
+**Where the difficulty actually is.** Not the GPU plumbing. `c` and `b` could freeze their
+shift vectors because neither changes them, so `linear_obj_shift` is simply *measured* once as
+`barrier_objective - crush(c)`. Q breaks that: the bound translation `x = x' + ℓ` puts `Qℓ`
+into the linear objective and `½ℓᵀQℓ` into `obj_constant`, so both are functions of Q and have
+to be **derived**, matching presolve's arithmetic (`presolve.cpp:1323-1342`) closely enough
+that a fresh solve agrees. Get it wrong and the failure is the quiet one: correct solution
+vector, wrong reported objective.
 
-Same **column** maps as `c`: `negated_variables`, `remaining_variables`, `free_variable_pairs`, `column_scales`.
+Both terms are *linear in Q's entries*, which is what makes a delta against the cached Q
+workable: `ΔQ̄ = crush_user_Q(new) − barrier_lp->Q.x` is positional once the pattern is
+pinned, and `ℓ` in crushed coordinates is `column_scales[j] * removed_lower_bounds[j]`.
 
-Scale: `Q_bar_ij = Q_user_ij / (col_scale_i * col_scale_j)` (and obj-scale if any), with sign flips on negated columns.
+### Stage 1 — pin the pattern
 
-Also recompute or refresh **`linear_obj_shift`** if convert used a bound shift (`½xᵀQx` produces a linear term in `c`).
+- [ ] Store the user Q CSR `offsets` / `indices` on `barrier_transform_t` at the cold solve.
+      Nothing records them today, so there is nothing to validate an update against.
+- [ ] Reject a caller whose pattern differs; same pattern also keeps `Q.is_diagonal()` stable,
+      so `use_augmented` cannot flip under us.
 
-### On `update_P`
+### Stage 2 — `crush_user_Q`
 
-1. Require same CSR pattern as t=0 (`indptr`/`indices`).
-2. Crush `Q.data` into `iteration_data.Q` / `Qdiag` / `d_Q_diag_` / `cusparse_Q_view_`.
-3. Mark dirty.
-4. Drop the dummy `Q_values = {1}` gate; reuse must know this is still a QP.
+Column maps only, but applied to **both** indices of each entry.
 
-**No sparsity hash** if pattern is unchanged.
+- [ ] Sign flip `Q_ij` iff exactly one of `i,j` is in `negated_variables`
+      (`presolve.cpp:1271-1285`).
+- [ ] Two-sided gather through `remaining_variables`.
+- [ ] Scale. Two paths exist and they are not the same formula: Ruiz does
+      `Q.x *= c[row]*c[col]` (`scaling.cpp:215`), standard does
+      `Q.x / (column_scaling[row]*column_scaling[col])` (`scaling.cpp:293`). Either record
+      which ran or store one effective factor. A diagonal entry scales by `col_scale_j²`.
+- [ ] Feed the CSR→CSC + slack-padding conversion `create_Q` does (`barrier.cu:2442`).
+- [ ] QP keeps free variables in the KKT via `direct_free_variables`, so no Q expansion.
 
-- ADAT: `Q` is diagonal → only `Qdiag` in `D`; `AAᵀ` pattern unchanged.
-- Augmented: off-diagonal `Q` lives in the KKT; same `Q` nnz → same symbolic.
+### Stage 3 — move the objective shift and constant (the hard part)
 
-Diagonal ↔ non-diagonal switches ADAT ↔ augmented: **full solve / new analyze**, not a hash.
+- [ ] Shift the barrier linear objective by `ΔQ̄ ℓ` and `obj_constant` by `½ ℓᵀ ΔQ̄ ℓ`. No ½ on
+      the first and a ½ on the second, both full-matrix sums, because Q is stored **full
+      symmetric** under a `½xᵀQx` objective: presolve's two half-updates
+      (`presolve.cpp:1333-1336`) sum by symmetry to `(Qℓ)_k`, its constant term
+      (`presolve.cpp:1339`) to `½ℓᵀQℓ`, and the reported objective uses `0.5 * xTQx`
+      (`barrier.cu:4162`).
+- [ ] Order must not matter: `update_P` and `update_linear_objective` both write the barrier
+      objective, so whatever each reads as its baseline has to survive the other.
+- [ ] This is also where `update_linear_objective`'s own `obj_constant` staleness has to be
+      fixed first — the same `ℓ` drives both, and Q's delta lands on top of it.
 
-### On next `Solve`
+### Stage 4 — push to buffers (cheap; free for diagonal Q)
 
-Skip convert/presolve/scaling. `prepare_for_reuse` already calls `form_*(false)` using `Qdiag` / `device_Q`. Symbolic stays. New Mehrotra start.
+- [ ] Write host `barrier_Q` and `barrier_lp->Q`.
+- [ ] Recompute `Qdiag` and `d_Q_diag_`. These are built **once** in the `iteration_data_t`
+      constructor (`barrier.cu:599-638`) and never refreshed; `reset_iterate_state` reads the
+      cached copy, so a new Q is invisible without this.
+- [ ] Re-run the PSD check. Diagonal Q is just `Qdiag[j] >= 0`; the general case has a TODO
+      where the check should be (`barrier.cu:631`). Decide the rejection path for an
+      indefinite update.
+- [ ] Diagonal Q stops here: `reset_iterate_state` already refolds `Qdiag` into `diag`.
+- [ ] Non-diagonal Q also needs `device_Q_csc_`, the `cusparse_Q_view_` device copy, and the
+      **off-diagonal Q entries inside `device_augmented.x`** — `form_augmented(false)` only
+      rewrites diagonals (`barrier.cu:1085-1103`), so those keep first-build values.
+
+### Gates
+
+- [ ] Refuse when `presolve_info.removed_variables` is non-empty: the empty-column rule fixes
+      a variable by minimizing `c_j x_j + ½ q_jj x_j²` (`presolve.cpp:105-132`), a decision
+      frozen against the old Q *values*.
+- [ ] Drop the dummy `Q_values = {1}` on the reuse path so the gate still sees a QP.
+
+### Tests
+
+Mirror `test_barrier_sequence_solve.py`: oracle against a fresh full solve, assert the reuse
+log line, and cover diagonal Q, non-diagonal Q, non-unit column scaling, and — the one that
+catches a botched stage 3 — **nonzero variable lower bounds**. Mutation-check each.
+
+### Naming
+
+The code symbol is `iteration_data_t::reset_iterate_state`, not `prepare_for_reuse`.
 
 ---
 
@@ -273,11 +343,38 @@ Skip convert/presolve/scaling. `form_adat/aug(false)` rebuilds numeric KKT value
 
 New `A` (or `Q`) nnz → new KKT sparsity → new `analyze`. Frozen t=0 presolve maps are likely invalid. Options: reject (full solve), or bring back sparsity hash only as “reuse analyze if KKT pattern matches a previous one.”
 
+### Rejected: rebuild A and reuse only the symbolic factorization
+
+Tempting, because redoing convert / presolve / scaling recomputes `rhs_shift`, the
+equilibration, and every presolve decision, which deletes the whole staleness bug class and
+the device-buffer surface at once — a pattern hash over the rebuilt `row_start` / `j` would
+then say whether `analyze` can be kept.
+
+Not worth it: symbolic is only ~10% of a solve on the ADAT path and ~20-30% on augmented, so
+this keeps roughly half the benefit of surgical reuse in exchange for a large restructuring.
+Revisit only if those fractions change.
+
+### Booby trap
+
+`form_adat(false)` restores `device_AD.x` from the `d_original_A_values` snapshot on **every**
+call (`barrier.cu:1156`). An `update_A` that misses that one buffer gets silently reverted on
+the next reuse and returns answers from the old `A` with no error anywhere.
+
 ---
 
 ## Suggested order
 
-1. Finish `update_b`: install, QP sequence test (`update_b` + `cache_reuse` log + obj check).
-2. `update_P` same pattern.
-3. `update_A` same pattern (watch all A buffers + `rhs_shift`).
-4. Pattern-changing `A`/`P` only if needed.
+1. ~~`update_rhs`~~ — done, with sequence_solve tests.
+2. Fix `update_linear_objective`, which has two known bugs of its own, both silent. The
+   translation `x = x' + ℓ` folds `Σ c_j ℓ_j` into `obj_constant`, so an objective update on a
+   model with nonzero lower bounds reports an objective short by `Σ (c_new − c_old)_j ℓ_j`
+   while returning the right solution vector. Separately, the max → min rewrite negates `c`
+   before the cache ever sees it, so crushing the user's own coefficients onto a maximize
+   model minimizes `+cᵀx` and terminates Optimal on the wrong answer.
+3. Close the setter-invalidation gap (content fingerprint). Smallest job left, and it removes
+   the sharpest edge: today a plain setter plus `Solve` returns a confidently wrong answer.
+4. `update_P` same pattern. Stage 3 (moving `Qℓ` and `½ℓᵀQℓ`) is the real work and builds on
+   item 2; the GPU side is nearly free for diagonal Q.
+5. `update_A` same pattern (watch all A buffers + `rhs_shift` + the `d_original_A_values`
+   trap).
+6. Pattern-changing `A`/`P` only if needed.
