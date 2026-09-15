@@ -244,8 +244,15 @@ jobs:
       package-name: cuopt_server
       package-type: python
       publish-wheel-search-key: cuopt_wheel_python_cuopt-server
+  docs-build-matrix:
+    permissions:
+      contents: read
+    uses: rapidsai/shared-workflows/.github/workflows/compute-matrix.yaml@main
+    with:
+      build_type: ${{ inputs.build_type || 'branch' }}
+      matrix_name: docs-build
   docs-build:
-    needs: [python-build]
+    needs: [docs-build-matrix, python-build]
     permissions:
       actions: read
       contents: read
@@ -253,17 +260,20 @@ jobs:
       packages: read
       pull-requests: read
     secrets: inherit # zizmor: ignore[secrets-inherit]
-    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@release/26.10
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.docs-build-matrix.outputs.matrix) }}
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
-      node_type: "gpu-l4-latest-1"
+      node_type: "gpu-${{ matrix.GPU }}-${{ matrix.DRIVER }}-1"
       sha: ${{ inputs.sha }}
       branch: ${{ inputs.branch }}
       date: ${{ inputs.date }}
-      arch: "amd64"
+      arch: "${{ matrix.ARCH }}"
       file_to_upload: "docs/cuopt/build/html/"
       artifact-name: "cuopt_docs"
-      container_image: "rapidsai/ci-conda:26.10-latest"
+      container_image: "rapidsai/ci-conda:26.10-cuda${{ matrix.CUDA_VER }}-${{ matrix.LINUX_VER }}-py${{ matrix.PY_VER }}"
       script: "ci/build_docs.sh"
   wheel-build-cuopt-sh-client:
     permissions:
