@@ -110,3 +110,17 @@ def test_importing_cuopt_server_does_not_load_legacy_service():
         timeout=30,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_proxy_modules_do_not_import_deprecated():
+    pkg_root = _utils_root().parent
+    violations = []
+    for rel in ("proxy_webserver.py", "cuopt_proxy.py"):
+        path = pkg_root / rel
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for name in _imported_names(tree):
+            if _is_deprecated_import(name, path, _utils_root()):
+                violations.append(f"{rel}: {name}")
+            if "utils.deprecated" in name:
+                violations.append(f"{rel}: {name}")
+    assert violations == []

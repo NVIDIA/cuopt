@@ -65,10 +65,17 @@ ARG PYTHON_SHORT_VER
 
 # Install gcc (needed to build psutils), pip-install cuopt, then remove gcc
 # — all in one layer so the build-only dep never persists in the final image.
+#
+# libgomp1 is a *runtime* dependency and is installed explicitly, in the same
+# command as gcc, so that `apt-get purge --autoremove gcc` keeps it: cuDSS's
+# threading layer (libcudss_mtlayer_gomp) dlopens libgomp.so.1, and without it
+# the MIP/LP solver process dies in cudssSetThreadingLayer (status 3) as soon as
+# barrier runs — see NVIDIA/cuopt#1670. Earlier images only had libgomp1 as a
+# side effect of gcc; the purge removed it.
 RUN \
     cuda_suffix=cu$(echo ${CUDA_VER} | cut -d'.' -f1) && \
     apt-get update \
-    && apt-get install -y --no-install-recommends gcc \
+    && apt-get install -y --no-install-recommends gcc libgomp1 \
     && python -m pip install \
       --extra-index-url https://pypi.nvidia.com \
       --extra-index-url https://pypi.anaconda.org/rapidsai-wheels-nightly/simple \

@@ -20,6 +20,7 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/logger.hpp>
 
+#include <cuda/stream>
 #include <raft/util/cudart_utils.hpp>
 
 #include <algorithm>
@@ -372,7 +373,7 @@ template <typename i_t, typename f_t>
 void expand_initial_solutions_for_semi_continuous(
   mip_solver_settings_t<i_t, f_t>& settings,
   const std::vector<i_t>& semi_continuous_binary_to_original_indices,
-  rmm::cuda_stream_view stream)
+  cuda::stream_ref stream)
 {
   if (semi_continuous_binary_to_original_indices.empty()) { return; }
 
@@ -399,7 +400,7 @@ template void append_semi_continuous_auxiliaries_to_assignment(
 template void strip_semi_continuous_auxiliaries_from_assignment(std::vector<float>&, int);
 template void expand_initial_solutions_for_semi_continuous(mip_solver_settings_t<int, float>&,
                                                            const std::vector<int>&,
-                                                           rmm::cuda_stream_view);
+                                                           cuda::stream_ref);
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
@@ -412,7 +413,7 @@ template void append_semi_continuous_auxiliaries_to_assignment(
 template void strip_semi_continuous_auxiliaries_from_assignment(std::vector<double>&, int);
 template void expand_initial_solutions_for_semi_continuous(mip_solver_settings_t<int, double>&,
                                                            const std::vector<int>&,
-                                                           rmm::cuda_stream_view);
+                                                           cuda::stream_ref);
 #endif
 
 }  // namespace cuopt::mathematical_optimization::mip
