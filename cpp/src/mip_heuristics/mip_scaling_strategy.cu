@@ -11,6 +11,7 @@
 #include <utilities/logger.hpp>
 #include <utilities/reduce_ops.cuh>
 
+#include <cuda/stream>
 #include <raft/util/cudart_utils.hpp>
 
 #include <cub/cub.cuh>
@@ -138,7 +139,7 @@ void compute_row_inf_norm(
   rmm::device_uvector<std::uint8_t>& temp_storage,
   size_t temp_storage_bytes,
   rmm::device_uvector<f_t>& row_inf_norm,
-  rmm::cuda_stream_view stream_view)
+  cuda::stream_ref stream_view)
 {
   const auto& matrix_values  = op_problem.get_constraint_matrix_values();
   const auto& matrix_offsets = op_problem.get_constraint_matrix_offsets();
@@ -163,7 +164,7 @@ void compute_row_integer_gcd(
   rmm::device_uvector<std::uint8_t>& temp_storage,
   size_t temp_storage_bytes,
   rmm::device_uvector<std::int64_t>& row_integer_gcd,
-  rmm::cuda_stream_view stream_view)
+  cuda::stream_ref stream_view)
 {
   const auto& matrix_values  = op_problem.get_constraint_matrix_values();
   const auto& matrix_indices = op_problem.get_constraint_matrix_indices();
@@ -346,7 +347,7 @@ rmm::device_uvector<std::int64_t> capture_pre_scaling_integer_gcd(
   const cuopt::mathematical_optimization::optimization_problem_t<i_t, f_t>& op_problem,
   rmm::device_uvector<std::uint8_t>& temp_storage,
   size_t temp_storage_bytes,
-  rmm::cuda_stream_view stream_view)
+  cuda::stream_ref stream_view)
 {
   const i_t n_rows = op_problem.get_n_constraints();
   rmm::device_uvector<std::int64_t> gcd(static_cast<size_t>(n_rows), stream_view);
@@ -360,7 +361,7 @@ void assert_integer_coefficient_integrality(
   rmm::device_uvector<std::uint8_t>& temp_storage,
   size_t temp_storage_bytes,
   const rmm::device_uvector<std::int64_t>& pre_scaling_gcd,
-  rmm::cuda_stream_view stream_view)
+  cuda::stream_ref stream_view)
 {
   const auto* handle_ptr = op_problem.get_handle_ptr();
   const i_t n_rows       = op_problem.get_n_constraints();
@@ -404,7 +405,7 @@ size_t dry_run_cub(
   rmm::device_uvector<f_t>& row_min_nonzero,
   rmm::device_uvector<i_t>& row_nonzero_count,
   rmm::device_uvector<std::int64_t>& row_integer_gcd,
-  rmm::cuda_stream_view stream_view)
+  cuda::stream_ref stream_view)
 {
   const auto& matrix_values     = op_problem.get_constraint_matrix_values();
   const auto& matrix_indices    = op_problem.get_constraint_matrix_indices();
