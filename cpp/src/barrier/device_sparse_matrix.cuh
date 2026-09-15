@@ -255,6 +255,16 @@ class device_csc_matrix_t {
   /** Same semantics as csc_matrix_t::transpose, entirely on device. */
   void transpose(device_csc_matrix_t<i_t, f_t>& AT, cuda::stream_ref stream) const;
 
+  /** Tag selecting the transpose constructor below. */
+  struct transposed_t {};
+
+  /** Construct as A^T, entirely on device. */
+  device_csc_matrix_t(transposed_t, const device_csc_matrix_t& A, cuda::stream_ref stream)
+    : col_start(0, stream), i(0, stream), x(0, stream), col_index(0, stream)
+  {
+    A.transpose(*this, stream);
+  }
+
   void form_col_index(cuda::stream_ref stream)
   {
     col_index.resize(x.size(), stream);

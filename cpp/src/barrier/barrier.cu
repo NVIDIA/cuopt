@@ -476,16 +476,20 @@ class iteration_data_t {
       A(lp.A),
       Q(Qin),
       cusparse_Q_view_(lp.handle_ptr, Q),
-      cusparse_view_(lp.handle_ptr, lp.A),
+      // Borrows device_A_csc_ / device_AT_csc_, both of which are declared before it and so are
+      // already built. Note lp.A, not the member A, which is declared later and not yet live.
+      cusparse_view_(lp.handle_ptr, device_A_csc_, device_AT_csc_),
       cusparse_info(lp.handle_ptr),
       device_AD(lp.num_cols, lp.num_rows, 0, lp.handle_ptr->get_stream()),
       device_A(lp.num_cols, lp.num_rows, 0, lp.handle_ptr->get_stream()),
       device_ADAT(lp.num_rows, lp.num_rows, 0, lp.handle_ptr->get_stream()),
       device_augmented(
         lp.num_cols + lp.num_rows, lp.num_cols + lp.num_rows, 0, lp.handle_ptr->get_stream()),
-      device_A_csc_(lp.handle_ptr->get_stream()),
+      device_A_csc_(lp.A, lp.handle_ptr->get_stream()),
       device_Q_csc_(lp.handle_ptr->get_stream()),
-      device_AT_csc_(lp.handle_ptr->get_stream()),
+      device_AT_csc_(typename device_csc_matrix_t<i_t, f_t>::transposed_t{},
+                     device_A_csc_,
+                     lp.handle_ptr->get_stream()),
       d_original_A_values(0, lp.handle_ptr->get_stream()),
       d_inv_diag_prime(0, lp.handle_ptr->get_stream()),
       d_flag_buffer(0, lp.handle_ptr->get_stream()),
@@ -828,8 +832,7 @@ class iteration_data_t {
 
     if (use_augmented) {
       raft::common::nvtx::range scope("Barrier: augmented: device CSC upload");
-      device_A_csc_.copy(A, handle_ptr->get_stream());
-      device_A_csc_.transpose(device_AT_csc_, handle_ptr->get_stream());
+      // A and A^T are already on device from the initializer list; only Q is left.
       if (Q.n > 0 && Q.col_start[Q.n] > 0) {
         device_Q_csc_.copy(Q, handle_ptr->get_stream());
       } else {
