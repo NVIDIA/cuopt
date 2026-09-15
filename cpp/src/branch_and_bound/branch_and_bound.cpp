@@ -1733,7 +1733,32 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
 
   while (stack.size() > 0 && is_running() && rel_gap > settings_.relative_mip_gap_tol &&
          abs_gap > settings_.absolute_mip_gap_tol) {
-    if (worker->worker_id == 0) { repair_heuristic_solutions(); }
+    if (worker->worker_id == 0) {
+      if (settings_.inside_submip && settings_.main_solver_ptr) {
+        // Stops the solver  when the lower bound in the sub-MIP solve is greater than the upper
+        // bound of the main solve (this can  happen if one of the worker in the main solve found a
+        // better incumbent during the  sub-MIP solve). The sub-MIP solve also stops if the status
+        // in the main solver changed (i.e., the gap in the main solve is sufficiently small, it
+        // reaches time/node/work limit, etc.)
+        f_t main_solver_cutoff = settings_.main_solver_ptr->get_user_upper_bound();
+        bool is_cutoff         = original_lp_.obj_scale > 0 ? user_lower > main_solver_cutoff
+                                                            : main_solver_cutoff > user_lower;
+        bool is_solver_running = settings_.main_solver_ptr->is_running();
+        bool stop              = is_cutoff || !is_solver_running;
+
+        if (stop) {
+          node_concurrent_halt_ = 1;
+          solver_status_        = mip_status_t::HALT;
+          settings_.log.debug_format(
+            "Received halt signal. Current best bound={:.6e}. Main solver cutoff={:.6e}\n",
+            user_lower,
+            main_solver_cutoff);
+          break;
+        }
+      }
+
+      repair_heuristic_solutions();
+    }
 
     if (worker->active_diving_workers < worker->max_diving_workers &&
         worker->node_queue.diving_queue_size() > 0) {
