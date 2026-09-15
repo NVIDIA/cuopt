@@ -2191,13 +2191,15 @@ template <typename i_t, typename f_t>
 static void compute_primal_dual_deltas(pdhg_solver_t<i_t, f_t>& pdhg, cuda::stream_ref stream)
 {
   cub::DeviceTransform::Transform(
-    cuda::std::make_tuple(pdhg.get_reflected_primal().data(), pdhg.get_potential_next_primal_solution().data()),
+    cuda::std::make_tuple(pdhg.get_reflected_primal().data(),
+                          pdhg.get_potential_next_primal_solution().data()),
     pdhg.get_saddle_point_state().get_delta_primal().data(),
     pdhg.get_potential_next_primal_solution().size(),
     cuda::std::minus<f_t>{},
     stream.get());
   cub::DeviceTransform::Transform(
-    cuda::std::make_tuple(pdhg.get_reflected_dual().data(), pdhg.get_potential_next_dual_solution().data()),
+    cuda::std::make_tuple(pdhg.get_reflected_dual().data(),
+                          pdhg.get_potential_next_dual_solution().data()),
     pdhg.get_saddle_point_state().get_delta_dual().data(),
     pdhg.get_potential_next_dual_solution().size(),
     cuda::std::minus<f_t>{},
