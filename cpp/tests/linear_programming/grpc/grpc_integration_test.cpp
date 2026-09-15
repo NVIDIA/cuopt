@@ -1201,11 +1201,8 @@ TEST_F(DefaultServerTests, DeleteQueuedJobPreventsRun)
   auto probe                = client->submit_mip(problem, probe_settings);
   ASSERT_TRUE(probe.success);
 
-  // 90s, not the file's usual 60s: this probe follows a worker respawn (the
-  // preceding cancel_job(running.job_id) SIGKILLs the worker), which pays for
-  // a fresh CUDA context init on top of the 10s solve. On slow/contended CI
-  // runners (this flaked specifically on earliest-driver/oldest-deps), that
-  // can push total latency past 60s despite nothing being stuck -- see #1814.
+  // 90s: this probe follows a worker respawn (SIGKILL above), which pays for a fresh CUDA
+  // context init on top of the solve -- can exceed 60s on contended CI runners (#1814).
   wait_for_job_done(client.get(), probe.job_id, 90);
   auto probe_status = client->check_status(probe.job_id);
   EXPECT_EQ(probe_status.status, job_status_t::COMPLETED)
@@ -1230,11 +1227,8 @@ TEST_F(DefaultServerTests, DeleteRunningJobCancelsWorker)
   ASSERT_TRUE(submit_result.success);
   std::string job_id = submit_result.job_id;
 
-  // Wait until the worker has claimed the job. 120 iterations (~30s), not
-  // this file's usual ~10s: DefaultServerTests shares one worker across the
-  // whole suite, and the preceding test can leave it mid-respawn (a fresh
-  // CUDA context init on top of whatever it was already doing), which is
-  // slow on contended/older-driver CI runners -- see #1814.
+  // Wait until the worker has claimed the job. ~30s, not the usual ~10s: the shared worker
+  // may still be mid-respawn from the previous test's SIGKILL (#1814).
   bool processing = false;
   for (int i = 0; i < 120; ++i) {
     auto status = client->check_status(job_id);
