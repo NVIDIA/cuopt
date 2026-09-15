@@ -1113,7 +1113,7 @@ rapids_export(BUILD cuopt
 # from build directory, run make docs_cuopt
 
 # doc targets for cuOpt
-find_package(Doxygen)
+find_package(Doxygen 1.18.0)
 
 if (Doxygen_FOUND)
     add_custom_command(OUTPUT CUOPT_DOXYGEN
