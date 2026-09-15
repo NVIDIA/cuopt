@@ -28,7 +28,6 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_METHOD,
     CUOPT_PDLP_SOLVER_MODE,
     CUOPT_PRESOLVE,
-    CUOPT_SEQUENCE_SOLVE,
 )
 from cuopt.linear_programming.solver_settings import (
     PDLPSolverMode,
@@ -39,13 +38,6 @@ RAPIDS_DATASET_ROOT_DIR = os.getenv("RAPIDS_DATASET_ROOT_DIR")
 if RAPIDS_DATASET_ROOT_DIR is None:
     RAPIDS_DATASET_ROOT_DIR = os.getcwd()
     RAPIDS_DATASET_ROOT_DIR = os.path.join(RAPIDS_DATASET_ROOT_DIR, "datasets")
-
-
-def test_sequence_solve_parameter():
-    settings = SolverSettings()
-    assert settings.get_parameter(CUOPT_SEQUENCE_SOLVE) is False
-    settings.set_parameter(CUOPT_SEQUENCE_SOLVE, True)
-    assert settings.get_parameter(CUOPT_SEQUENCE_SOLVE) is True
 
 
 def test_model():

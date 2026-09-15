@@ -207,7 +207,6 @@ These constants are used as parameter names in the :c:func:`cuOptSetParameter`, 
 .. doxygendefine:: CUOPT_BARRIER_ITERATIVE_REFINEMENT
 .. doxygendefine:: CUOPT_BARRIER_STEP_SCALE
 .. doxygendefine:: CUOPT_DUAL_POSTSOLVE
-.. doxygendefine:: CUOPT_SEQUENCE_SOLVE
 .. doxygendefine:: CUOPT_SOLUTION_FILE
 .. doxygendefine:: CUOPT_NUM_CPU_THREADS
 .. doxygendefine:: CUOPT_NUM_GPUS
