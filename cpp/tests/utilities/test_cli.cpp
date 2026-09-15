@@ -95,8 +95,7 @@ class cli_test_t : public ::testing::Test {
     return result;
   }
 
-  // Same as run_cli, but also reports the process exit code and allows setting an env var
-  // for the child process only (via a subshell-scoped 'VAR=value cmd' prefix).
+  // Same as run_cli, but also reports the exit code and sets an env var for the child only.
   std::string run_cli_with_exit_code(const std::vector<std::string>& args,
                                      const std::string& env_prefix,
                                      int& exit_code)
@@ -217,17 +216,25 @@ TEST_F(cli_test_t, partial_solution_file)
   EXPECT_TRUE(content.find("Objective value:") != std::string::npos);
 }
 
-// Regression test for https://github.com/NVIDIA/cuopt/issues/1896: a missing/misconfigured
-// cuDSS threading library used to abort the whole process (exit code 254) instead of falling
-// back to single-threaded cuDSS. Forcing CUDSS_THREADING_LIB to an invalid path reliably
-// reproduces the failure cudssSetThreadingLayer reports in that scenario.
+// Regression test for https://github.com/NVIDIA/cuopt/issues/1896: a bad threading library
+// used to abort the process instead of falling back to single-threaded cuDSS.
 TEST_F(cli_test_t, cudss_threading_layer_fallback_does_not_crash)
 {
+  // The CLI only writes a solution file when --solution-file is passed; remove the fixture
+  // test.sol so the test can't pass on stale content instead of a real write.
+  auto expected_sol_file = test_dir / "test.sol";
+  std::filesystem::remove(expected_sol_file);
+
   int exit_code = -1;
-  // Presolve alone fully solves the tiny sample problem, which would never reach the barrier
-  // method / cuDSS at all; disable it so --method 3 actually exercises cudssSetThreadingLayer.
+  // Disable presolve so --method 3 actually reaches cudssSetThreadingLayer.
   auto output =
-    run_cli_with_exit_code({mps_file.string(), "--method", "3", "--presolve", "0"},
+    run_cli_with_exit_code({mps_file.string(),
+                            "--method",
+                            "3",
+                            "--presolve",
+                            "0",
+                            "--solution-file",
+                            expected_sol_file.string()},
                            "CUDSS_THREADING_LIB=/nonexistent/libcudss_mtlayer_gomp.so.0",
                            exit_code);
   std::cout << "Output: " << output << std::endl;
@@ -236,11 +243,10 @@ TEST_F(cli_test_t, cudss_threading_layer_fallback_does_not_crash)
   EXPECT_TRUE(output.find("falling back to single-threaded cuDSS") != std::string::npos);
   EXPECT_TRUE(output.find("FAILED: CUDSS call ended unsuccessfully") == std::string::npos);
 
-  auto expected_sol_file = test_dir / "test.sol";
   EXPECT_TRUE(std::filesystem::exists(expected_sol_file));
   std::ifstream sol(expected_sol_file);
   std::string content((std::istreambuf_iterator<char>(sol)), std::istreambuf_iterator<char>());
-  EXPECT_TRUE(content.find("Status:") != std::string::npos);
+  EXPECT_TRUE(content.find("Status: Optimal") != std::string::npos);
 }
 
 int main(int argc, char** argv)
