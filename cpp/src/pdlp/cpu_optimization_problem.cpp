@@ -278,29 +278,16 @@ void cpu_optimization_problem_t<i_t, f_t>::set_row_types(const char* row_types, 
 
 template <typename i_t, typename f_t>
 void cpu_optimization_problem_t<i_t, f_t>::set_initial_primal_solution(
-  const f_t* initial_primal_solution, i_t size)
+  std::span<const f_t> initial_primal_solution)
 {
-  if (size != 0) {
-    cuopt_expects(initial_primal_solution != nullptr,
-                  error_type_t::ValidationError,
-                  "initial_primal_solution cannot be null");
-  }
-  initial_primal_solution_.resize(size);
-  std::copy(
-    initial_primal_solution, initial_primal_solution + size, initial_primal_solution_.begin());
+  initial_primal_solution_.assign(initial_primal_solution.begin(), initial_primal_solution.end());
 }
 
 template <typename i_t, typename f_t>
 void cpu_optimization_problem_t<i_t, f_t>::set_initial_dual_solution(
-  const f_t* initial_dual_solution, i_t size)
+  std::span<const f_t> initial_dual_solution)
 {
-  if (size != 0) {
-    cuopt_expects(initial_dual_solution != nullptr,
-                  error_type_t::ValidationError,
-                  "initial_dual_solution cannot be null");
-  }
-  initial_dual_solution_.resize(size);
-  std::copy(initial_dual_solution, initial_dual_solution + size, initial_dual_solution_.begin());
+  initial_dual_solution_.assign(initial_dual_solution.begin(), initial_dual_solution.end());
 }
 
 template <typename i_t, typename f_t>

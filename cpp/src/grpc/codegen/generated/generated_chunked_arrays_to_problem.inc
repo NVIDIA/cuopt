@@ -135,12 +135,12 @@
 
   auto initial_primal_solution = get_doubles(cuopt::remote::FIELD_INITIAL_PRIMAL_SOLUTION);
   if (!initial_primal_solution.empty()) {
-    cpu_problem.set_initial_primal_solution(initial_primal_solution.data(), static_cast<i_t>(initial_primal_solution.size()));
+    cpu_problem.set_initial_primal_solution(initial_primal_solution);
   }
 
   auto initial_dual_solution = get_doubles(cuopt::remote::FIELD_INITIAL_DUAL_SOLUTION);
   if (!initial_dual_solution.empty()) {
-    cpu_problem.set_initial_dual_solution(initial_dual_solution.data(), static_cast<i_t>(initial_dual_solution.size()));
+    cpu_problem.set_initial_dual_solution(initial_dual_solution);
   }
 
 

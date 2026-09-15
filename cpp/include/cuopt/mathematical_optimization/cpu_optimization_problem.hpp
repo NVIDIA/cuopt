@@ -90,20 +90,18 @@ class cpu_optimization_problem_t : public optimization_problem_interface_t<i_t, 
    * Optional. Size and finiteness are not checked here; the solver validates
    * those when the start is applied, matching local solve.
    *
-   * @param[in] initial_primal_solution Host pointer; must be non-null when size != 0.
-   * @param[in] size Number of values to copy.
+   * @param[in] initial_primal_solution Host values; copied. Empty clears the start.
    */
-  void set_initial_primal_solution(const f_t* initial_primal_solution, i_t size);
+  void set_initial_primal_solution(std::span<const f_t> initial_primal_solution);
   /**
    * @brief Copy an initial dual solution into host storage.
    *
    * Optional. Size and finiteness are not checked here; the solver validates
    * those when the start is applied, matching local solve.
    *
-   * @param[in] initial_dual_solution Host pointer; must be non-null when size != 0.
-   * @param[in] size Number of values to copy.
+   * @param[in] initial_dual_solution Host values; copied. Empty clears the start.
    */
-  void set_initial_dual_solution(const f_t* initial_dual_solution, i_t size);
+  void set_initial_dual_solution(std::span<const f_t> initial_dual_solution);
 
   /**
    * @brief Transfer parsed MPS/QPS storage into this CPU problem without copying array/string data.

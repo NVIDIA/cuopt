@@ -76,11 +76,11 @@
   }
   {
     std::vector<f_t> initial_primal_solution(pb_problem.initial_primal_solution().begin(), pb_problem.initial_primal_solution().end());
-    cpu_problem.set_initial_primal_solution(initial_primal_solution.data(), static_cast<i_t>(initial_primal_solution.size()));
+    cpu_problem.set_initial_primal_solution(initial_primal_solution);
   }
   {
     std::vector<f_t> initial_dual_solution(pb_problem.initial_dual_solution().begin(), pb_problem.initial_dual_solution().end());
-    cpu_problem.set_initial_dual_solution(initial_dual_solution.data(), static_cast<i_t>(initial_dual_solution.size()));
+    cpu_problem.set_initial_dual_solution(initial_dual_solution);
   }
 
   if (pb_problem.quadratic_constraints_size() > 0) {

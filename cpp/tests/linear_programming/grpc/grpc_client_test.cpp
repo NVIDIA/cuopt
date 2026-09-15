@@ -2824,8 +2824,8 @@ TEST(MapperRoundtrip, ProblemInitialSolutionsUnaryAndChunked)
   seed_minimal_problem(orig);
   std::vector<double> primal = {1.25, 2.5, 3.75};
   std::vector<double> dual   = {9.0};
-  orig.set_initial_primal_solution(primal.data(), static_cast<int32_t>(primal.size()));
-  orig.set_initial_dual_solution(dual.data(), static_cast<int32_t>(dual.size()));
+  orig.set_initial_primal_solution(primal);
+  orig.set_initial_dual_solution(dual);
 
   cuopt::remote::OptimizationProblem pb;
   map_problem_to_proto(orig, &pb);
@@ -2875,7 +2875,7 @@ TEST(ApplyInitialSolutions, CopiesPrimalToMipSettings)
   cpu_optimization_problem_t<int32_t, double> problem;
   seed_minimal_problem(problem);
   std::vector<double> primal = {1.25, 2.5, 3.75};
-  problem.set_initial_primal_solution(primal.data(), static_cast<int32_t>(primal.size()));
+  problem.set_initial_primal_solution(primal);
 
   mip_solver_settings_t<int32_t, double> settings;
   apply_initial_solutions_to_mip_settings(problem, settings);
@@ -2890,8 +2890,8 @@ TEST(ApplyInitialSolutions, CopiesPrimalAndDualToPdlpSettings)
   seed_minimal_problem(problem);
   std::vector<double> primal = {1.25, 2.5, 3.75};
   std::vector<double> dual   = {9.0};
-  problem.set_initial_primal_solution(primal.data(), static_cast<int32_t>(primal.size()));
-  problem.set_initial_dual_solution(dual.data(), static_cast<int32_t>(dual.size()));
+  problem.set_initial_primal_solution(primal);
+  problem.set_initial_dual_solution(dual);
 
   pdlp_solver_settings_t<int32_t, double> settings;
   apply_initial_solutions_to_pdlp_settings(problem, settings);
@@ -2925,8 +2925,8 @@ TEST(ApplyInitialSolutions, CopiesMismatchedSizesWithoutChecking)
   seed_minimal_problem(problem);
   std::vector<double> primal = {99.0};
   std::vector<double> dual   = {1.0, 2.0};
-  problem.set_initial_primal_solution(primal.data(), static_cast<int32_t>(primal.size()));
-  problem.set_initial_dual_solution(dual.data(), static_cast<int32_t>(dual.size()));
+  problem.set_initial_primal_solution(primal);
+  problem.set_initial_dual_solution(dual);
 
   mip_solver_settings_t<int32_t, double> mip;
   apply_initial_solutions_to_mip_settings(problem, mip);

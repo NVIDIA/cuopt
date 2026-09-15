@@ -51,12 +51,10 @@ void copy_initial_solutions_to_cpu_problem(optimization_problem_interface_t<i_t,
                                            std::span<const f_t> dual)
 {
   if (primal.empty() && dual.empty()) { return; }
-  auto* cpu = dynamic_cast<cpu_optimization_problem_t<i_t, f_t>*>(problem);
-  if (cpu == nullptr) { return; }
-  if (!primal.empty()) {
-    cpu->set_initial_primal_solution(primal.data(), static_cast<i_t>(primal.size()));
-  }
-  if (!dual.empty()) { cpu->set_initial_dual_solution(dual.data(), static_cast<i_t>(dual.size())); }
+  auto* cpu_problem = dynamic_cast<cpu_optimization_problem_t<i_t, f_t>*>(problem);
+  if (cpu_problem == nullptr) { return; }
+  if (!primal.empty()) { cpu_problem->set_initial_primal_solution(primal); }
+  if (!dual.empty()) { cpu_problem->set_initial_dual_solution(dual); }
 }
 
 /**
