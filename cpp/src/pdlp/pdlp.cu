@@ -3178,9 +3178,7 @@ void pdlp_solver_t<i_t, f_t>::take_constant_step(bool is_major_iteration)
     initial_scaling_strategy_.get_bound_rescaling_vector(),  // Only used in batch mode
     restart_strategy_.last_restart_duality_gap_.primal_solution_,
     restart_strategy_.last_restart_duality_gap_.dual_solution_,
-    settings_.hyper_params.use_reflected_primal_dual
-      ? restart_strategy_.weighted_average_solution_.get_iterations_since_last_restart()
-      : 0,
+    0,
     restart_strategy_.get_d_iterations_since_last_restart().data(),
     false,
     total_pdlp_iterations_,
