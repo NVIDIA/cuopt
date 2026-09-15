@@ -511,6 +511,24 @@ End
     }
   }
 
+  // Prove the shared worker is idle and warm before a timed test begins,
+  // instead of trusting whatever the previous test left behind. DefaultServerTests
+  // shares one worker across the whole suite, and a prior test's SIGKILL can leave it
+  // mid-respawn (paying for a fresh CUDA context init); untimed here, that debt can't
+  // leak into this test's own timing assertions -- see #1814.
+  void warm_up_worker(grpc_client_t* client)
+  {
+    mip_solver_settings_t<int32_t, double> warmup_settings;
+    warmup_settings.time_limit = 5.0;
+    auto warmup                = client->submit_mip(create_simple_mip(), warmup_settings);
+    ASSERT_TRUE(warmup.success);
+    wait_for_job_done(client, warmup.job_id, 90);
+    auto warmup_status = client->check_status(warmup.job_id);
+    ASSERT_EQ(warmup_status.status, job_status_t::COMPLETED)
+      << "Worker warm-up did not complete before starting the timed test";
+    client->delete_job(warmup.job_id);
+  }
+
   int port_ = 0;
 };
 
@@ -1225,6 +1243,7 @@ TEST_F(DefaultServerTests, DeleteQueuedJobPreventsRun)
 {
   auto client = create_client();
   ASSERT_NE(client, nullptr);
+  warm_up_worker(client.get());
 
   std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
   auto problem         = load_problem_from_file(mps_path);
@@ -1278,6 +1297,7 @@ TEST_F(DefaultServerTests, DeleteRunningJobCancelsWorker)
 {
   auto client = create_client();
   ASSERT_NE(client, nullptr);
+  warm_up_worker(client.get());
 
   std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
   auto problem         = load_problem_from_file(mps_path);
