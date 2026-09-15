@@ -822,8 +822,6 @@ struct primal_reflected_projection {
       reflection_coefficient_{reflection_coefficient}
   {
   }
-  // T(z) is deliberately not returned: potential_next_primal_solution_ holds the last major
-  // step's T(z), which the convergence check two iterations later still reads.
   HDI thrust::tuple<f_t, f_t> operator()(
     f_t current_primal, f_t initial_primal, f_t objective, f_t Aty, f_t2 bounds)
   {
