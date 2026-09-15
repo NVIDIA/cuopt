@@ -391,6 +391,20 @@ class device_csr_matrix_t {
     raft::copy(x.data(), A.x.data(), A.x.size(), stream);
   }
 
+  /** Copy from a device CSC matrix holding this matrix's transpose; the arrays are identical. */
+  void copy_transposed(const device_csc_matrix_t<i_t, f_t>& AT, cuda::stream_ref stream)
+  {
+    m      = AT.n;
+    n      = AT.m;
+    nz_max = AT.nz_max;
+    row_start.resize(AT.col_start.size(), stream);
+    raft::copy(row_start.data(), AT.col_start.data(), AT.col_start.size(), stream);
+    j.resize(AT.i.size(), stream);
+    raft::copy(j.data(), AT.i.data(), AT.i.size(), stream);
+    x.resize(AT.x.size(), stream);
+    raft::copy(x.data(), AT.x.data(), AT.x.size(), stream);
+  }
+
   i_t nz_max;                          // maximum number of entries
   i_t m;                               // number of rows
   i_t n;                               // number of columns

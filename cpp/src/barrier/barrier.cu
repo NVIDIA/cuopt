@@ -852,7 +852,12 @@ class iteration_data_t {
                  handle_ptr->get_stream());
       // For efficient scaling of AD col we form the col index array
       device_AD.form_col_index(handle_ptr->get_stream());
-      device_AD.to_compressed_row(device_A, handle_ptr->get_stream());
+      if (n_dense_columns > 0) {
+        device_AD.to_compressed_row(device_A, handle_ptr->get_stream());
+      } else {
+        // AD == A here, and device_AT_csc_ already holds CSR(A).
+        device_A.copy_transposed(device_AT_csc_, handle_ptr->get_stream());
+      }
       RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
     }
 
