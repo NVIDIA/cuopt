@@ -53,6 +53,14 @@
     }
   }
   {
+    auto _initial_primal_solution = problem.get_initial_primal_solution_host();
+    chunk_typed_array(requests, cuopt::remote::FIELD_INITIAL_PRIMAL_SOLUTION, _initial_primal_solution, upload_id, chunk_size_bytes);
+  }
+  {
+    auto _initial_dual_solution = problem.get_initial_dual_solution_host();
+    chunk_typed_array(requests, cuopt::remote::FIELD_INITIAL_DUAL_SOLUTION, _initial_dual_solution, upload_id, chunk_size_bytes);
+  }
+  {
     const auto& _A_values = problem.get_constraint_matrix_values_host();
     chunk_typed_array(requests, cuopt::remote::FIELD_A_VALUES, _A_values, upload_id, chunk_size_bytes);
   }
