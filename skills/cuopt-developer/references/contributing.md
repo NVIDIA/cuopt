@@ -49,7 +49,14 @@ If a hook fails, the commit is blocked — fix the issues and commit again. To c
 
 Group related changes into logical commits rather than committing all files at once. Each commit should represent one coherent change (e.g., separate the C++ change from the Python binding update from the test addition). This makes `git log` and `git bisect` useful for debugging later.
 
-Keep the message itself high-level: a subject line plus, if needed, a short *why*. Leave out call-site tallies, verification narration ("checked run X, these are the only N errors"), and notes about fixing your own tooling failures (formatting, pre-commit) along the way — the diff already shows what changed, so restating it is noise, not information. If that reasoning is worth keeping for later, put it in a PR review comment, not the commit.
+Keep the subject line high-level. When the change needs more than that to review — a non-obvious design decision, an unusual constraint, a performance result — add it as one or two short labeled lines instead of free-form prose:
+
+```
+Why: <the constraint or reasoning that isn't obvious from the diff>
+Perf: <numbers, when the change is performance-motivated>
+```
+
+The label keeps detail scoped to a fact a reviewer needs, not a paragraph. It still excludes call-site tallies, verification narration ("checked run X, these are the only N errors"), and notes about fixing your own tooling failures (formatting, pre-commit) — that's process, not a reason, and belongs in a PR comment if anywhere.
 
 ### 3. Sign Your Commits (DCO Required)
 
