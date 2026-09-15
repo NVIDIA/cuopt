@@ -54,7 +54,8 @@ class break_node_t {
   }
 
   /*! \brief  { Combine information from begining and ending fragments.}
-      \return { Distance excess of route represented by nodes prev and next }*/
+      \return { Break
+   * excess of route represented by nodes prev and next }*/
   static HDI double combine(const break_node_t& prev,
                             const break_node_t& next,
                             const VehicleInfo<f_t>& vehicle_info,
