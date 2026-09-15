@@ -160,9 +160,6 @@ class population_t {
 
   void diversity_step(i_t max_iterations_without_improvement);
 
-  void invoke_get_solution_callback(solution_t<i_t, f_t>& sol,
-                                    internals::get_solution_callback_t* callback);
-
   // does some consistency tests
   bool test_invariant();
 

@@ -109,7 +109,8 @@ grpc_submit_result_t grpc_python_client_t::submit(
   }
 
   cuopt::mathematical_optimization::cpu_optimization_problem_t<int, double> cpu_problem;
-  cuopt::mathematical_optimization::populate_from_data_model_view(
+  // kHostOnly=true: remote client, so the GPU warm-start path is unreachable here.
+  cuopt::mathematical_optimization::populate_from_data_model_view<int, double, true>(
     &cpu_problem, data_model, settings, nullptr);
 
   const bool is_mip =

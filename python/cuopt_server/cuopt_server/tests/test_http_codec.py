@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import asyncio
 import json
 import pickle
 import zlib
@@ -17,6 +18,7 @@ from cuopt_server.utils.http_codec import (
     deserialize,
     encode,
     encode_bytes,
+    get_data,
     get_format,
     mime_json,
     mime_msgpack,
@@ -129,26 +131,50 @@ def test_get_format():
     assert formats == ["json", "zlib", "msgpack", "pickle"]
 
 
-@pytest.mark.parametrize("mime_type", body_mime_types)
-def test_job_queue_uses_codec(mime_type):
-    # job_queue re-exports the shared mime types and defers to the codec
-    from cuopt_server.utils import job_queue
-
-    assert job_queue.mime_json == mime_json
-    assert job_queue.mime_msgpack == mime_msgpack
-    assert job_queue.mime_pickle == mime_pickle
-    assert job_queue.mime_wild == mime_wild
-    assert job_queue.mime_zlib == mime_zlib
-    assert (
-        job_queue.deserialize(mime_type, encode_bytes(sample_data, mime_type))
-        == sample_data
-    )
-
-
 def test_pickle_round_trip():
     encoded = pickle.dumps(sample_data)
     assert decode(mime_pickle, encoded) == sample_data
     assert deserialize(mime_pickle, encoded) == sample_data
+
+
+def test_get_data_streams_into_preallocated_buffer():
+    class FakeRequest:
+        async def stream(self):
+            for chunk in (b"abc", b"def", b"g"):
+                yield chunk
+
+    buf = bytearray(7)
+    asyncio.run(get_data(buf, FakeRequest()))
+    assert bytes(buf) == b"abcdefg"
+
+
+@pytest.mark.parametrize(
+    "size, detail",
+    [
+        (6, "exceeds Content-Length"),
+        (8, "shorter than Content-Length"),
+    ],
+)
+def test_get_data_rejects_stream_length_mismatch(size, detail):
+    class FakeRequest:
+        async def stream(self):
+            for chunk in (b"abc", b"def", b"g"):
+                yield chunk
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(get_data(bytearray(size), FakeRequest()))
+    assert exc.value.status_code == 422
+    assert detail in exc.value.detail
+
+
+def test_get_data_propagates_stream_failure():
+    class FakeRequest:
+        async def stream(self):
+            yield b"abc"
+            raise ConnectionError("upload disconnected")
+
+    with pytest.raises(ConnectionError, match="upload disconnected"):
+        asyncio.run(get_data(bytearray(7), FakeRequest()))
 
 
 def test_pickle_forbidden_class():
@@ -158,12 +184,3 @@ def test_pickle_forbidden_class():
     with pytest.raises(HTTPException) as e:
         deserialize(mime_pickle, encoded)
     assert e.value.status_code == 422
-
-
-def test_job_queue_pickle_uses_codec():
-    from cuopt_server.utils import job_queue
-    from cuopt_server.utils import http_codec as codec
-
-    assert job_queue.deserialize is codec.deserialize
-    assert job_queue.SafeUnpickler is codec.SafeUnpickler
-    assert job_queue.cuopt_pickle_load is codec.cuopt_pickle_load

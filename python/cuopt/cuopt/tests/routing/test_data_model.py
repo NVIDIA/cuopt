@@ -58,8 +58,10 @@ def test_objective_function():
     d = utils.create_data_model(filename, run_nodes=10)
 
     obj = routing.Objective
-    objectives = cudf.Series([obj.COST, obj.VARIANCE_ROUTE_SIZE])
-    objective_weights = cudf.Series([1, 10]).astype(np.float32)
+    objectives = cudf.Series(
+        [obj.COST, obj.VARIANCE_ROUTE_SIZE, obj.DISTANCE_BREAK_COST]
+    )
+    objective_weights = cudf.Series([1, 10, 2]).astype(np.float32)
     d.set_objective_function(objectives, objective_weights)
     ret_objectives, ret_objective_weights = d.get_objective_function()
 

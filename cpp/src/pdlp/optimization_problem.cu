@@ -21,6 +21,7 @@
 #include <utilities/logger.hpp>
 #include <utilities/sparse_matrix_helpers.hpp>
 
+#include <cuda/stream>
 #include <raft/core/copy.hpp>
 #include <raft/core/cuda_support.hpp>
 #include <raft/core/device_mdspan.hpp>
@@ -29,7 +30,6 @@
 #include <raft/util/cuda_utils.cuh>
 #include <raft/util/cudart_utils.hpp>
 
-#include <rmm/cuda_stream_view.hpp>
 #include <rmm/device_uvector.hpp>
 #include <rmm/exec_policy.hpp>
 
@@ -54,10 +54,13 @@
 
 namespace cuopt::mathematical_optimization {
 
+constexpr size_t host_variable_type_summary_limit = 50'000;
+
 template <typename i_t, typename f_t>
 optimization_problem_t<i_t, f_t>::optimization_problem_t(raft::handle_t const* handle_ptr)
   : handle_ptr_(handle_ptr),
-    stream_view_(handle_ptr != nullptr ? handle_ptr->get_stream() : rmm::cuda_stream_view{}),
+    stream_view_(handle_ptr != nullptr ? cuda::stream_ref{handle_ptr->get_stream()}
+                                       : cuda::stream_ref{}),
     A_(0, stream_view_),
     A_indices_(0, stream_view_),
     A_offsets_(0, stream_view_),
@@ -101,6 +104,7 @@ optimization_problem_t<i_t, f_t>::optimization_problem_t(
     objective_name_{other.get_objective_name()},
     problem_name_{other.get_problem_name()},
     problem_category_{other.get_problem_category()},
+    has_semi_continuous_variables_{other.has_semi_continuous_variables()},
     var_names_{other.get_variable_names()},
     row_names_{other.get_row_names()},
     quadratic_constraints_{other.get_quadratic_constraints()}
@@ -245,7 +249,8 @@ void optimization_problem_t<i_t, f_t>::add_quadratic_constraint(char constraint_
   qc.vals.assign(coeff.begin(), coeff.end());
   qc.linear_values.assign(linear_values.begin(), linear_values.end());
   qc.linear_indices.assign(linear_indices.begin(), linear_indices.end());
-  io::canonicalize_coo_matrix(qc.rows, qc.cols, qc.vals);
+  io::coo_canonicalization_scratch_t<i_t, f_t> scratch;
+  io::canonicalize_coo_matrix(qc.rows, qc.cols, qc.vals, scratch);
   quadratic_constraints_.push_back(std::move(qc));
 }
 
@@ -285,14 +290,39 @@ void optimization_problem_t<i_t, f_t>::set_variable_types(const var_t* variable_
   variable_types_.resize(size, stream_view_);
   raft::copy(variable_types_.data(), variable_types, size, stream_view_);
 
-  // Auto-detect problem category based on variable types.
+  // Auto-detect problem category and cache presence of SEMI_CONTINUOUS vars.
   // SEMI_CONTINUOUS vars will be reformulated into binary + continuous before solving,
   // so a problem with only SC vars is treated as MIP.
-  i_t n_discrete = thrust::count_if(
-    handle_ptr_->get_thrust_policy(),
-    variable_types_.begin(),
-    variable_types_.end(),
-    [] __device__(auto val) { return val == var_t::INTEGER || val == var_t::SEMI_CONTINUOUS; });
+  // Prefer host-side for small instances to reduce latency between launch and first-feasible.
+  i_t n_discrete                     = 0;
+  bool has_semi_continuous_variables = false;
+  if ((size_t)size < host_variable_type_summary_limit) {
+    const auto h_variable_types = cuopt::host_copy(variable_types_, stream_view_);
+    for (const var_t val : h_variable_types) {
+      if (val == var_t::SEMI_CONTINUOUS) {
+        has_semi_continuous_variables = true;
+        ++n_discrete;
+      } else if (val == var_t::INTEGER) {
+        ++n_discrete;
+      }
+    }
+  } else {
+    assert(handle_ptr_ != nullptr);
+
+    n_discrete                    = thrust::count_if(handle_ptr_->get_thrust_policy(),
+                                  variable_types_.begin(),
+                                  variable_types_.end(),
+                                  [] __host__ __device__(var_t val) {
+                                    return val == var_t::INTEGER || val == var_t::SEMI_CONTINUOUS;
+                                  });
+    has_semi_continuous_variables = thrust::count_if(handle_ptr_->get_thrust_policy(),
+                                                     variable_types_.begin(),
+                                                     variable_types_.end(),
+                                                     [] __host__ __device__(var_t val) {
+                                                       return val == var_t::SEMI_CONTINUOUS;
+                                                     }) > 0;
+  }
+  has_semi_continuous_variables_ = has_semi_continuous_variables;
   if (n_discrete == size) {
     problem_category_ = problem_category_t::IP;
   } else if (n_discrete > 0) {
@@ -578,6 +608,12 @@ template <typename i_t, typename f_t>
 problem_category_t optimization_problem_t<i_t, f_t>::get_problem_category() const
 {
   return problem_category_;
+}
+
+template <typename i_t, typename f_t>
+bool optimization_problem_t<i_t, f_t>::has_semi_continuous_variables() const noexcept
+{
+  return has_semi_continuous_variables_;
 }
 
 template <typename i_t, typename f_t>
@@ -1015,7 +1051,7 @@ static bool csr_matrices_equivalent_with_permutation(const rmm::device_uvector<i
                                                      const rmm::device_uvector<i_t>& d_row_perm_inv,
                                                      const rmm::device_uvector<i_t>& d_col_perm_inv,
                                                      i_t n_cols,
-                                                     rmm::cuda_stream_view stream)
+                                                     cuda::stream_ref stream)
 {
   const i_t nnz = static_cast<i_t>(this_values.size());
   if (nnz != static_cast<i_t>(other_values.size())) { return false; }
@@ -1530,7 +1566,7 @@ struct cast_op {
 };
 
 template <typename From, typename To>
-rmm::device_uvector<To> gpu_cast(const rmm::device_uvector<From>& src, rmm::cuda_stream_view stream)
+rmm::device_uvector<To> gpu_cast(const rmm::device_uvector<From>& src, cuda::stream_ref stream)
 {
   rmm::device_uvector<To> dst(src.size(), stream);
   if (src.size() > 0) {
@@ -1541,14 +1577,14 @@ rmm::device_uvector<To> gpu_cast(const rmm::device_uvector<From>& src, rmm::cuda
 }
 
 template rmm::device_uvector<float> gpu_cast<double, float>(const rmm::device_uvector<double>&,
-                                                            rmm::cuda_stream_view);
+                                                            cuda::stream_ref);
 template rmm::device_uvector<double> gpu_cast<float, double>(const rmm::device_uvector<float>&,
-                                                             rmm::cuda_stream_view);
+                                                             cuda::stream_ref);
 
 template <typename i_t, typename f_t>
 template <typename other_f_t>
 optimization_problem_t<i_t, other_f_t> optimization_problem_t<i_t, f_t>::convert_to_other_prec(
-  rmm::cuda_stream_view stream) const
+  cuda::stream_ref stream) const
 {
   optimization_problem_t<i_t, other_f_t> other(handle_ptr_);
 
@@ -1633,8 +1669,85 @@ template class CUOPT_EXPORT optimization_problem_t<int32_t, double>;
 
 #if PDLP_INSTANTIATE_FLOAT || MIP_INSTANTIATE_FLOAT
 template CUOPT_EXPORT optimization_problem_t<int32_t, float>
-  optimization_problem_t<int32_t, double>::convert_to_other_prec<float>(
-    rmm::cuda_stream_view) const;
+  optimization_problem_t<int32_t, double>::convert_to_other_prec<float>(cuda::stream_ref) const;
+#endif
+
+// GPU-target warm-start handling, declared in optimization_problem_utils.hpp.
+//
+// Defined here rather than inline in the header so that CUDA-free consumers of that
+// header (the gRPC client in cuopt_client) never instantiate the device conversions.
+template <typename i_t, typename f_t>
+void copy_warmstart_data_to_device(solver_settings_t<i_t, f_t>& solver_settings,
+                                   const raft::handle_t* handle)
+{
+  auto& pdlp = solver_settings.get_pdlp_settings();
+
+  const bool has_view        = (solver_settings.get_pdlp_warm_start_data_view()
+                           .last_restart_duality_gap_dual_solution_.size() > 0);
+  const bool has_device_data = pdlp.get_pdlp_warm_start_data().is_populated();
+  const bool has_host_data   = pdlp.get_cpu_pdlp_warm_start_data().is_populated();
+
+  if (!has_view && !has_device_data && !has_host_data) { return; }
+
+  if (has_view) {
+    // Warmstart from Python (spans over cuDF) -> solver needs device_uvectors.
+    pdlp_warm_start_data_t<i_t, f_t> warm_start(solver_settings.get_pdlp_warm_start_data_view(),
+                                                handle->get_stream());
+    pdlp.set_pdlp_warm_start_data(warm_start);
+  } else if (has_device_data) {
+    // Already device-resident from the C++ API: nothing to do.
+  } else {
+    // Host warmstart -> GPU backend: convert H2D.
+    pdlp_warm_start_data_t<i_t, f_t> warm_start =
+      convert_to_gpu_warmstart(pdlp.get_cpu_pdlp_warm_start_data(), handle->get_stream());
+    pdlp.set_pdlp_warm_start_data(warm_start);
+  }
+}
+
+// Null-handle CPU-target warm-start handling for callers that do have a device.
+//
+// Mirrors copy_warmstart_view_to_host() but adds the case that one cannot handle: warm
+// start already sitting in device_uvectors, which needs a D2H copy before a remote solve.
+// Dropping this silently loses a user's warm start on the
+// populate_from_data_model_view(..., handle=nullptr) path (see cython_solve.cu).
+template <typename i_t, typename f_t>
+void copy_warmstart_data_to_host(solver_settings_t<i_t, f_t>& solver_settings)
+{
+  auto& pdlp = solver_settings.get_pdlp_settings();
+
+  // Already in host form.
+  if (pdlp.get_cpu_pdlp_warm_start_data().is_populated()) { return; }
+
+  // Warm-start view (host spans from Cython) -> CPU backend: copy directly, no CUDA needed.
+  if (solver_settings.get_pdlp_warm_start_data_view()
+        .last_restart_duality_gap_dual_solution_.size() > 0) {
+    pdlp.get_cpu_pdlp_warm_start_data() =
+      cpu_pdlp_warm_start_data_t<i_t, f_t>(solver_settings.get_pdlp_warm_start_data_view());
+    return;
+  }
+
+  // Device-resident warm start -> CPU backend: convert D2H.
+  auto& gpu_ws = pdlp.get_pdlp_warm_start_data();
+  if (gpu_ws.is_populated()) {
+    pdlp.get_cpu_pdlp_warm_start_data() =
+      convert_to_cpu_warmstart(gpu_ws, gpu_ws.current_primal_solution_.stream());
+  }
+}
+
+// MIP_INSTANTIATE_FLOAT, not the wider MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT used
+// elsewhere: both helpers call solver_settings_t<i_t, f_t>::get_pdlp_settings() and
+// ::get_pdlp_warm_start_data_view(), which math_optimization/solver_settings.cpp only
+// instantiates under MIP_INSTANTIATE_FLOAT. Widening the guard here without widening it
+// there leaves libcuopt.so with undefined references to those accessors.
+#if MIP_INSTANTIATE_FLOAT
+template CUOPT_EXPORT void copy_warmstart_data_to_device(solver_settings_t<int, float>&,
+                                                         const raft::handle_t*);
+template CUOPT_EXPORT void copy_warmstart_data_to_host(solver_settings_t<int, float>&);
+#endif
+#if MIP_INSTANTIATE_DOUBLE
+template CUOPT_EXPORT void copy_warmstart_data_to_device(solver_settings_t<int, double>&,
+                                                         const raft::handle_t*);
+template CUOPT_EXPORT void copy_warmstart_data_to_host(solver_settings_t<int, double>&);
 #endif
 
 }  // namespace cuopt::mathematical_optimization
