@@ -518,6 +518,18 @@ optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
                                   method);
 }
 
+// -1 means "automatic", and for a sequence solve the automatic choice is 0. Bounding free
+// variables writes presolve state the reuse path cannot replay, so a cache built with it is
+// unusable; leaving the choice automatic strands every sequence solve on the full path. An
+// explicit 1 is honored and simply does not get reuse.
+template <typename i_t, typename f_t>
+i_t effective_bound_free_variables(pdlp_solver_settings_t<i_t, f_t> const& settings)
+{
+  return (settings.sequence_solve && settings.barrier_presolve_bound_free_variables < 0)
+           ? 0
+           : settings.barrier_presolve_bound_free_variables;
+}
+
 template <typename i_t, typename f_t>
 std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t> run_barrier(
   const simplex::user_problem_t<i_t, f_t>& user_problem,
@@ -541,7 +553,7 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   barrier_settings.barrier_dual_initial_point = settings.barrier_dual_initial_point;
   barrier_settings.postsolve_info             = settings.postsolve_info;
   barrier_settings.barrier_presolve_bound_free_variables =
-    settings.barrier_presolve_bound_free_variables;
+    effective_bound_free_variables(settings);
   barrier_settings.barrier_initial_point_safeguard = settings.barrier_initial_point_safeguard;
   barrier_settings.barrier                         = true;
   barrier_settings.barrier_presolve                = true;
@@ -1881,9 +1893,13 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
 
     auto* cache    = settings.barrier_cache;
     auto const* xf = (cache != nullptr && cache->dirty()) ? cache->transform() : nullptr;
+    // Must stay in lockstep with the reuse gate in solve_linear_program_with_barrier: this one
+    // also swaps in the slim user_problem_from_transform (rhs zeroed, dummy Q), so a gate that
+    // says reuse while the other says full solve runs presolve on a fabricated problem.
     const bool reuse_from_cache =
       settings.user_problem_file.empty() && xf != nullptr && xf->barrier_lp != nullptr &&
-      settings.barrier_presolve_bound_free_variables == 0 && op_problem.has_quadratic_objective() &&
+      effective_bound_free_variables(settings) == 0 &&
+      xf->presolve_info.bounded_free_variables.empty() && op_problem.has_quadratic_objective() &&
       !op_problem.has_quadratic_constraints() && xf->second_order_cone_dims.empty() &&
       static_cast<int>(xf->row_sense.size()) == xf->user_num_rows &&
       op_problem.get_n_variables() == xf->user_num_cols &&

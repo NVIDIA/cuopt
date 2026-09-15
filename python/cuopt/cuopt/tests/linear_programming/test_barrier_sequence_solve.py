@@ -31,14 +31,15 @@ IPM_LOG = "Optimal solution found"
 def _sequence_settings():
     settings = solver_settings.SolverSettings()
     settings.sequence_solve = True
-    # The reuse gate requires exactly 0. The default of -1 (automatic) leaves
-    # every solve on the full path, silently, with correct results.
-    settings.set_parameter("barrier_presolve_bound_free_variables", 0)
+    # barrier_presolve_bound_free_variables is deliberately left at its -1
+    # default: sequence_solve resolves automatic to 0 for us. Every test here
+    # asserts the reuse log line, so the whole file doubles as coverage of that.
     return settings
 
 
-def _build(values, indices, offsets, rhs, senses, lower, upper):
-    """A QP with objective x^T x, so the model is always barrier-eligible."""
+def _build(values, indices, offsets, rhs, senses, lower, upper,
+           objective=None):
+    """A QP with quadratic term x^T x, so the model is barrier-eligible."""
     n = len(lower)
     model = data_model.DataModel()
     model.set_csr_constraint_matrix(
@@ -48,7 +49,10 @@ def _build(values, indices, offsets, rhs, senses, lower, upper):
     )
     model.set_constraint_bounds(np.asarray(rhs, dtype=np.float64))
     model.set_row_types(senses)
-    model.set_objective_coefficients(np.zeros(n))
+    model.set_objective_coefficients(
+        np.zeros(n) if objective is None
+        else np.asarray(objective, dtype=np.float64)
+    )
     model.set_quadratic_objective_matrix(
         np.ones(n),
         np.arange(n, dtype=np.int32),
@@ -66,9 +70,9 @@ def _solve(model, settings, capfd):
     return solution, capfd.readouterr().out
 
 
-def _full_solve(model_args, rhs):
+def _full_solve(model_args, rhs, **overrides):
     """Oracle: a fresh model with default settings, no cache in play."""
-    args = dict(model_args, rhs=rhs)
+    args = dict(model_args, rhs=rhs, **overrides)
     return solver.Solve(_build(**args), solver_settings.SolverSettings())
 
 
@@ -200,6 +204,97 @@ def test_update_rhs_infeasible_empty_row_short_circuits(capfd):
     recovered, log = _solve(model, settings, capfd)
     assert REUSE_LOG in log, "cache was discarded by the infeasible update"
     _assert_matches_oracle(recovered, _full_solve(EMPTY_ROW, rhs))
+
+
+# x0 + x1 >= b with both variables lower bounded away from zero, so presolve
+# translates x = x' + l. That translation is what rhs_shift has to account
+# for, and it also folds sum_j c_j * l_j into obj_constant, which an RHS
+# update must leave alone.
+TRANSLATED = dict(
+    values=[1.0, 1.0],
+    indices=[0, 1],
+    offsets=[0, 2],
+    senses="G",
+    lower=[3.0, 4.0],
+    upper=[20.0, 20.0],
+)
+
+
+def test_update_rhs_leaves_objective_constant_alone(capfd):
+    """An RHS update must not disturb the objective constant.
+
+    obj_constant depends on c and on the translated lower bounds, not on b, so
+    the reused objective has to stay exact for a lower-bounded model.
+    """
+    settings = _sequence_settings()
+    model = _build(**dict(TRANSLATED, rhs=[12.0], objective=[2.0, 0.0]))
+
+    first, _ = _solve(model, settings, capfd)
+    assert first.get_termination_reason() == "Optimal"
+
+    rhs = [15.0]
+    model.update_rhs(np.asarray(rhs, dtype=np.float64))
+    reused, log = _solve(model, settings, capfd)
+    assert REUSE_LOG in log
+    _assert_matches_oracle(
+        reused, _full_solve(TRANSLATED, rhs, objective=[2.0, 0.0])
+    )
+
+
+# x1 is free, but the two rows imply bounds on it, so presolve's free-variable
+# bounding has something to do. That bounding leaves state in presolve_info the
+# reuse path cannot replay, so a cache built with it must not be reused even
+# though the later solve asks for 0 and would otherwise pass the gate.
+FREE_VARIABLE = dict(
+    values=[1.0, 1.0, 1.0, 1.0],
+    indices=[0, 1, 0, 1],
+    offsets=[0, 2, 4],
+    senses="GL",
+    lower=[0.0, -np.inf],
+    upper=[10.0, np.inf],
+)
+FREE_VARIABLE_RHS = [4.0, 8.0]
+
+
+@pytest.mark.parametrize(
+    "first_solve_bfv,expect_reuse",
+    [(None, True), (1, False)],
+    ids=["automatic_reuses", "explicit_bounding_refuses"],
+)
+def test_bounded_free_variables_block_reuse(
+    first_solve_bfv, expect_reuse, capfd
+):
+    """A cache is only reusable if its own presolve left free variables alone.
+
+    The two cases share a model, so the refusal in the second can only come
+    from the first solve having bounded a free variable. Without the pair, an
+    assertion that reuse did not happen would pass for any unrelated reason.
+    """
+    settings = _sequence_settings()
+    if first_solve_bfv is not None:
+        settings.set_parameter(
+            "barrier_presolve_bound_free_variables", first_solve_bfv
+        )
+    model = _build(
+        **dict(FREE_VARIABLE, rhs=FREE_VARIABLE_RHS, objective=[1.0, 0.0])
+    )
+    first, _ = _solve(model, settings, capfd)
+    assert first.get_termination_reason() == "Optimal"
+
+    new_objective = [3.0, -2.0]
+    model.update_linear_objective(np.asarray(new_objective, dtype=np.float64))
+    # Whatever the first solve asked for, this one asks for 0, which is what
+    # the gate used to key on all by itself.
+    settings.set_parameter("barrier_presolve_bound_free_variables", 0)
+    second, log = _solve(model, settings, capfd)
+    assert (REUSE_LOG in log) == expect_reuse
+
+    _assert_matches_oracle(
+        second,
+        _full_solve(
+            FREE_VARIABLE, FREE_VARIABLE_RHS, objective=new_objective
+        ),
+    )
 
 
 def test_update_rhs_rejects_wrong_length():

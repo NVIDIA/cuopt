@@ -425,6 +425,9 @@ lp_status_t solve_linear_program_with_barrier(
     user_problem.second_order_cone_dims.empty() && xf->second_order_cone_dims.empty() &&
     xf->barrier_lp->second_order_cone_dims.empty() &&
     settings.barrier_presolve_bound_free_variables == 0 &&
+    // The setting above is the one this solve runs with; a cache built by an earlier solve
+    // that did bound free variables carries presolve state the reuse path cannot replay.
+    xf->presolve_info.bounded_free_variables.empty() &&
     user_problem.num_cols == xf->user_num_cols && user_problem.num_rows == xf->user_num_rows;
 
   if (reuse_cached_data) {
