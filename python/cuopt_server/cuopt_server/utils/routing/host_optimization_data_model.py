@@ -29,7 +29,38 @@ from cuopt_server.utils.routing.validation_task_data import validate_task_data
 
 
 class HostOptimizationDataModel(OptimizationDataModel):
-    """OptimizationDataModel whose request data uses host containers."""
+    """OptimizationDataModel whose request data uses host containers.
+
+    Incremental ``update_*`` methods that wrap cudf on the parent are
+    unimplemented here. When the GPU model is deprecated, this class can
+    absorb ``OptimizationDataModel`` rather than keep a parallel type.
+    """
+
+    def update_cost_matrix(self, *args, **kwargs):
+        raise NotImplementedError(
+            "HostOptimizationDataModel.update_cost_matrix is unimplemented"
+        )
+
+    def update_travel_time_matrix(self, *args, **kwargs):
+        raise NotImplementedError(
+            "HostOptimizationDataModel.update_travel_time_matrix "
+            "is unimplemented"
+        )
+
+    def update_fleet_data(self, *args, **kwargs):
+        raise NotImplementedError(
+            "HostOptimizationDataModel.update_fleet_data is unimplemented"
+        )
+
+    def update_task_data(self, *args, **kwargs):
+        raise NotImplementedError(
+            "HostOptimizationDataModel.update_task_data is unimplemented"
+        )
+
+    def update_solver_config(self, *args, **kwargs):
+        raise NotImplementedError(
+            "HostOptimizationDataModel.update_solver_config is unimplemented"
+        )
 
     def set_cost_matrix(self, cost_matrix):
         is_valid = validate_cost_matrix(

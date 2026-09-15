@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import numpy as np
+import pytest
 
 from cuopt.grpc.routing.grpc_client import problem_summary
 
@@ -111,3 +112,20 @@ def test_build_routing_datamodel_from_json_accepts_dict():
     assert summary["num_orders"] == 1
     assert summary["cost_matrices"] == 1
     assert solver_settings.get_time_limit() == 1
+
+
+def test_host_optimization_model_updates_are_unimplemented():
+    from cuopt_server.utils.routing.host_optimization_data_model import (
+        HostOptimizationDataModel,
+    )
+
+    model = HostOptimizationDataModel()
+    for name in (
+        "update_cost_matrix",
+        "update_travel_time_matrix",
+        "update_fleet_data",
+        "update_task_data",
+        "update_solver_config",
+    ):
+        with pytest.raises(NotImplementedError):
+            getattr(model, name)()
