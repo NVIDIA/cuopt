@@ -485,7 +485,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
         cudssExecute(handle, CUDSS_PHASE_REORDERING, solverConfig, solverData, A, cudss_x, cudss_b);
       if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
         RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
-        handle_ptr_->get_stream().synchronize();
+        handle_ptr_->get_stream().sync();
         return CONCURRENT_HALT_RETURN;
       }
       if (status != CUDSS_STATUS_SUCCESS) {
@@ -503,7 +503,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
         handle, CUDSS_PHASE_SYMBOLIC_FACTORIZATION, solverConfig, solverData, A, cudss_x, cudss_b);
       if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
         RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
-        handle_ptr_->get_stream().synchronize();
+        handle_ptr_->get_stream().sync();
         return CONCURRENT_HALT_RETURN;
       }
       if (status != CUDSS_STATUS_SUCCESS) {
@@ -562,7 +562,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       handle, CUDSS_PHASE_FACTORIZATION, solverConfig, solverData, A, cudss_x, cudss_b);
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
       RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
-      handle_ptr_->get_stream().synchronize();
+      handle_ptr_->get_stream().sync();
       return CONCURRENT_HALT_RETURN;
     }
     if (status != CUDSS_STATUS_SUCCESS) {
@@ -580,7 +580,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     f_t numeric_time = toc(start_numeric);
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
       RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
-      handle_ptr_->get_stream().synchronize();
+      handle_ptr_->get_stream().sync();
       return CONCURRENT_HALT_RETURN;
     }
 
@@ -707,7 +707,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       cudssExecute(handle, CUDSS_PHASE_REORDERING, solverConfig, solverData, A, cudss_x, cudss_b);
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
       RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
-      handle_ptr_->get_stream().synchronize();
+      handle_ptr_->get_stream().sync();
       return CONCURRENT_HALT_RETURN;
     }
     if (status != CUDSS_STATUS_SUCCESS) {
@@ -784,7 +784,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     f_t numeric_time = toc(start_numeric);
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
       RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
-      handle_ptr_->get_stream().synchronize();
+      handle_ptr_->get_stream().sync();
       return CONCURRENT_HALT_RETURN;
     }
 
@@ -851,7 +851,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     status = cudssExecute(handle, CUDSS_PHASE_SOLVE, solverConfig, solverData, A, cudss_x, cudss_b);
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
       RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
-      handle_ptr_->get_stream().synchronize();
+      handle_ptr_->get_stream().sync();
       return CONCURRENT_HALT_RETURN;
     }
     if (status != CUDSS_STATUS_SUCCESS) {

@@ -171,7 +171,6 @@ template <typename i_t, typename f_t>
 void fill_data_model_matrices(data_model_view_t<i_t, f_t>& data_model, d_mdarray_t<f_t>& matrices)
 
 {
-  auto stream         = data_model.get_handle_ptr()->get_stream();
   i_t n_vehicle_types = matrices.extent[0];
   i_t n_matrix_types  = matrices.extent[1];
   for (auto vehicle_type = 0; vehicle_type < n_vehicle_types; ++vehicle_type) {

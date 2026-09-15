@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import asyncio
 import json
 import pickle
 import zlib
@@ -17,6 +18,7 @@ from cuopt_server.utils.http_codec import (
     deserialize,
     encode,
     encode_bytes,
+    get_data,
     get_format,
     mime_json,
     mime_msgpack,
@@ -133,6 +135,46 @@ def test_pickle_round_trip():
     encoded = pickle.dumps(sample_data)
     assert decode(mime_pickle, encoded) == sample_data
     assert deserialize(mime_pickle, encoded) == sample_data
+
+
+def test_get_data_streams_into_preallocated_buffer():
+    class FakeRequest:
+        async def stream(self):
+            for chunk in (b"abc", b"def", b"g"):
+                yield chunk
+
+    buf = bytearray(7)
+    asyncio.run(get_data(buf, FakeRequest()))
+    assert bytes(buf) == b"abcdefg"
+
+
+@pytest.mark.parametrize(
+    "size, detail",
+    [
+        (6, "exceeds Content-Length"),
+        (8, "shorter than Content-Length"),
+    ],
+)
+def test_get_data_rejects_stream_length_mismatch(size, detail):
+    class FakeRequest:
+        async def stream(self):
+            for chunk in (b"abc", b"def", b"g"):
+                yield chunk
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(get_data(bytearray(size), FakeRequest()))
+    assert exc.value.status_code == 422
+    assert detail in exc.value.detail
+
+
+def test_get_data_propagates_stream_failure():
+    class FakeRequest:
+        async def stream(self):
+            yield b"abc"
+            raise ConnectionError("upload disconnected")
+
+    with pytest.raises(ConnectionError, match="upload disconnected"):
+        asyncio.run(get_data(bytearray(7), FakeRequest()))
 
 
 def test_pickle_forbidden_class():
