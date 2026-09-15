@@ -64,6 +64,13 @@ template <typename i_t, typename f_t>
 f_t compute_user_objective(const lp_problem_t<i_t, f_t>& lp, f_t obj);
 
 template <typename i_t, typename f_t>
+void compute_objective_gap(const lp_problem_t<i_t, f_t>& problem,
+                           f_t primal_obj,
+                           f_t dual_obj,
+                           f_t& objective_gap,
+                           f_t& relative_objective_gap);
+
+template <typename i_t, typename f_t>
 f_t compute_presolved_objective(const lp_problem_t<i_t, f_t>& lp, f_t user_obj);
 
 template <typename i_t, typename f_t>
