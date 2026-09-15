@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <dual_simplex/basis_updates.hpp>
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/phase1.hpp>
 #include <dual_simplex/presolve.hpp>
@@ -18,14 +19,46 @@
 namespace cuopt::mathematical_optimization::simplex {
 
 enum class primal_status_t {
-  OPTIMAL          = 0,
-  PRIMAL_UNBOUNDED = 1,
-  NUMERICAL        = 2,
-  NOT_LOADED       = 3,
-  TIME_LIMIT       = 4,
-  ITERATION_LIMIT  = 5,
-  CONCURRENT_LIMIT = 6
+  OPTIMAL           = 0,
+  PRIMAL_UNBOUNDED  = 1,
+  PRIMAL_INFEASIBLE = 2,
+  NUMERICAL         = 3,
+  TIME_LIMIT        = 5,
+  ITERATION_LIMIT   = 6,
+  CONCURRENT_LIMIT  = 7,
+  WORK_LIMIT        = 8,
+  NOT_LOADED        = 9
 };
+
+template <typename i_t, typename f_t>
+i_t primal_ratio_test(const lp_problem_t<i_t, f_t>& lp,
+                      const simplex_solver_settings_t<i_t, f_t>& settings,
+                      const std::vector<variable_status_t>& vstatus,
+                      const std::vector<i_t>& basic_list,
+                      std::vector<f_t>& x,
+                      std::vector<f_t>& delta_x,
+                      f_t& step_length,
+                      i_t& basic_leaving,
+                      i_t entering_index,
+                      i_t direction,
+                      f_t& work_estimate);
+
+template <typename i_t, typename f_t>
+primal_status_t primal_phase2_with_advanced_basis(
+  i_t phase,
+  f_t start_time,
+  const lp_problem_t<i_t, f_t>& lp,
+  const simplex_solver_settings_t<i_t, f_t>& settings,
+  std::vector<variable_status_t>& vstatus,
+  basis_update_mpf_t<i_t, f_t>& basis_update,
+  std::vector<i_t>& basic_list,
+  std::vector<i_t>& nonbasic_list,
+  lp_solution_t<i_t, f_t>& sol,
+  i_t& iter,
+  f_t& work_estimate,
+  // Callers that print their own summary (dual simplex perturbation cleanup)
+  // suppress this one, so optimality is not reported twice.
+  bool print_summary = true);
 
 template <typename i_t, typename f_t>
 primal_status_t primal_phase2(i_t phase,
