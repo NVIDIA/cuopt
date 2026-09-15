@@ -3066,7 +3066,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
 #ifdef CUPDLP_DEBUG_MODE
     printf("Is Major %d\n", takes_major_step);
 #endif
-    take_step(total_pdlp_iterations_, takes_major_step);
+    take_step(total_pdlp_iterations_, takes_major_step || restarted_this_iteration);
 
     if (settings_.hyper_params.use_reflected_primal_dual) {
       if (settings_.hyper_params.use_fixed_point_error &&
