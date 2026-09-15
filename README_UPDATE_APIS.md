@@ -77,8 +77,11 @@ Verified on a QP with a `G` row (`min xᵀx` s.t. `x0 + x1 >= b`): two successiv
 `update_rhs` re-solves hit the reuse path, skipped presolve / reordering / symbolic
 factorization, and matched a fresh full solve exactly. The dummy `user_problem.rhs = 0`
 on reuse is fine, because uncrush does not read `b` and IPM reads `iteration_data.b`.
-No permanent pytest coverage exists yet — the repo has no `sequence_solve` test at all,
-including for `update_linear_objective`.
+Committed coverage lives in
+`python/cuopt/cuopt/tests/linear_programming/test_barrier_sequence_solve.py`. It compares
+every cached re-solve against a fresh full solve and asserts the reuse log line, so a test
+cannot pass while the gate rejects the model and falls back. `update_linear_objective` still
+has no test of its own.
 
 ### Gotcha — the reuse gate needs `barrier_presolve_bound_free_variables = 0`
 
