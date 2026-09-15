@@ -1409,6 +1409,8 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
 
   using f_t2 = typename type_2<f_t>::type;
 
+  if (is_distributed_master()) { mgpu_engine_->sync_await_shards(stream_view_); }
+  
   // Compute next primal solution reflected.
 
   if (should_major) {
