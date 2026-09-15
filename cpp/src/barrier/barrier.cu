@@ -466,7 +466,6 @@ class iteration_data_t {
       inv_diag(lp.num_cols),
       inv_sqrt_diag(lp.num_cols),
       AD(lp.num_cols, lp.num_rows, 0),
-      AT(lp.num_rows, lp.num_cols, 0),
       ADAT(lp.num_rows, lp.num_rows, 0),
       // augmented(lp.num_cols + lp.num_rows, lp.num_cols + lp.num_rows, 0),
       A_dense(lp.num_rows, 0),
@@ -793,40 +792,35 @@ class iteration_data_t {
 
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
 
-    {
+    // AD only feeds ADAT; the augmented path derives A^T on device instead.
+    if (!use_augmented) {
       raft::common::nvtx::range scope("Barrier: LP Data: AD matrix setup");
-      if (use_augmented) {
-        // Only the augmented KKT reads A^T, and there is no dense-column removal on this path,
-        // so it is just lp.A transposed -- no AD copy needed.
-        lp.A.transpose(AT);
-      } else {
-        // Copy A into AD
-        AD = lp.A;
-        if (n_dense_columns > 0) {
-          cols_to_remove.resize(lp.num_cols, 0);
-          for (i_t k : dense_columns_unordered) {
-            cols_to_remove[k] = 1;
-          }
-          d_cols_to_remove.resize(cols_to_remove.size(), stream_view_);
-          raft::copy(
-            d_cols_to_remove.data(), cols_to_remove.data(), cols_to_remove.size(), stream_view_);
-          dense_columns.clear();
-          dense_columns.reserve(n_dense_columns);
-          for (i_t j = 0; j < lp.num_cols; j++) {
-            if (cols_to_remove[j]) { dense_columns.push_back(j); }
-          }
-          AD.remove_columns(cols_to_remove);
+      // Copy A into AD
+      AD = lp.A;
+      if (n_dense_columns > 0) {
+        cols_to_remove.resize(lp.num_cols, 0);
+        for (i_t k : dense_columns_unordered) {
+          cols_to_remove[k] = 1;
+        }
+        d_cols_to_remove.resize(cols_to_remove.size(), stream_view_);
+        raft::copy(
+          d_cols_to_remove.data(), cols_to_remove.data(), cols_to_remove.size(), stream_view_);
+        dense_columns.clear();
+        dense_columns.reserve(n_dense_columns);
+        for (i_t j = 0; j < lp.num_cols; j++) {
+          if (cols_to_remove[j]) { dense_columns.push_back(j); }
+        }
+        AD.remove_columns(cols_to_remove);
 
-          sparse_mark.resize(lp.num_cols, 1);
-          for (i_t k : dense_columns) {
-            sparse_mark[k] = 0;
-          }
+        sparse_mark.resize(lp.num_cols, 1);
+        for (i_t k : dense_columns) {
+          sparse_mark[k] = 0;
+        }
 
-          A_dense.resize(AD.m, n_dense_columns);
-          i_t k = 0;
-          for (i_t j : dense_columns) {
-            A_dense.from_sparse(lp.A, j, k++);
-          }
+        A_dense.resize(AD.m, n_dense_columns);
+        i_t k = 0;
+        for (i_t j : dense_columns) {
+          A_dense.from_sparse(lp.A, j, k++);
         }
       }
     }
@@ -834,7 +828,7 @@ class iteration_data_t {
     if (use_augmented) {
       raft::common::nvtx::range scope("Barrier: augmented: device CSC upload");
       device_A_csc_.copy(A, handle_ptr->get_stream());
-      device_AT_csc_.copy(AT, handle_ptr->get_stream());
+      device_A_csc_.transpose(device_AT_csc_, handle_ptr->get_stream());
       if (Q.n > 0 && Q.col_start[Q.n] > 0) {
         device_Q_csc_.copy(Q, handle_ptr->get_stream());
       } else {
@@ -1004,7 +998,6 @@ class iteration_data_t {
                                       stream_view_);
 
       settings_.log.debug("augmented nz %d (gpu build)\n", total_nnz);
-      cuopt_assert(A.col_start[n] == AT.col_start[m], "A nz != AT nz");
       handle_ptr->sync_stream();
 
 #ifdef CHECK_SYMMETRY
@@ -2145,7 +2138,6 @@ class iteration_data_t {
   rmm::device_uvector<f_t> d_original_A_values;
 
   csc_matrix_t<i_t, f_t> AD;
-  csc_matrix_t<i_t, f_t> AT;
   csc_matrix_t<i_t, f_t> ADAT;
   // csc_matrix_t<i_t, f_t> augmented;
   device_csr_matrix_t<i_t, f_t> device_augmented;

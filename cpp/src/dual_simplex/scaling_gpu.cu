@@ -88,7 +88,8 @@ f_t whole_array_nonzero_abs_min(InputIt input, size_t n, rmm::cuda_stream_view s
     const f_t abs_value = raft::abs(value);
     return abs_value > f_t(0) ? abs_value : sentinel;
   });
-  return thrust::reduce(rmm::exec_policy(stream), nz_it, nz_it + n, sentinel, cuopt::min_op_t<f_t>{});
+  return thrust::reduce(
+    rmm::exec_policy(stream), nz_it, nz_it + n, sentinel, cuopt::min_op_t<f_t>{});
 }
 
 // max/min per-segment |value| via cub::DeviceSegmentedReduce over an arbitrary offsets
@@ -103,15 +104,29 @@ void segmented_abs_max(const f_t* values,
                        rmm::cuda_stream_view stream)
 {
   if (num_segments == 0) return;
-  auto abs_it = thrust::make_transform_iterator(values, cuopt::abs_value_transform_t<f_t>{});
+  auto abs_it  = thrust::make_transform_iterator(values, cuopt::abs_value_transform_t<f_t>{});
   size_t bytes = 0;
-  cub::DeviceSegmentedReduce::Reduce(
-    nullptr, bytes, abs_it, out, num_segments, begin_offsets, end_offsets,
-    cuopt::max_op_t<f_t>{}, f_t(0), stream);
+  cub::DeviceSegmentedReduce::Reduce(nullptr,
+                                     bytes,
+                                     abs_it,
+                                     out,
+                                     num_segments,
+                                     begin_offsets,
+                                     end_offsets,
+                                     cuopt::max_op_t<f_t>{},
+                                     f_t(0),
+                                     stream);
   temp_storage.resize(bytes, stream);
-  cub::DeviceSegmentedReduce::Reduce(
-    temp_storage.data(), bytes, abs_it, out, num_segments, begin_offsets, end_offsets,
-    cuopt::max_op_t<f_t>{}, f_t(0), stream);
+  cub::DeviceSegmentedReduce::Reduce(temp_storage.data(),
+                                     bytes,
+                                     abs_it,
+                                     out,
+                                     num_segments,
+                                     begin_offsets,
+                                     end_offsets,
+                                     cuopt::max_op_t<f_t>{},
+                                     f_t(0),
+                                     stream);
 }
 
 }  // namespace
@@ -123,9 +138,9 @@ i_t scaling_ruiz_gpu(const lp_problem_t<i_t, f_t>& unscaled,
                      std::vector<f_t>& column_scaling,
                      std::vector<f_t>& row_scaling)
 {
-  scaled  = unscaled;
-  i_t m   = scaled.num_rows;
-  i_t n   = scaled.num_cols;
+  scaled     = unscaled;
+  i_t m      = scaled.num_rows;
+  i_t n      = scaled.num_cols;
   bool has_q = unscaled.Q.n > 0;
 
   rmm::cuda_stream_view stream = unscaled.handle_ptr->get_stream();
@@ -143,15 +158,20 @@ i_t scaling_ruiz_gpu(const lp_problem_t<i_t, f_t>& unscaled,
   // below, where it is then converted in place into that iteration's row scale factors.
   rmm::device_uvector<f_t> r(0, stream);
   compute_row_inf_norms(dA, r, stream);
-  f_t max_row_norm = whole_array_abs_max<f_t>(r.data(), m, stream);
-  f_t min_row_norm = whole_array_nonzero_abs_min<f_t>(r.data(), m, stream);
+  f_t max_row_norm   = whole_array_abs_max<f_t>(r.data(), m, stream);
+  f_t min_row_norm   = whole_array_nonzero_abs_min<f_t>(r.data(), m, stream);
   f_t row_norm_ratio = (min_row_norm > 0) ? max_row_norm / min_row_norm : f_t(1.0);
 
   rmm::device_uvector<f_t> col_max_full(n, stream);
-  segmented_abs_max<i_t, f_t>(
-    dA.x.data(), dA.col_start.data(), dA.col_start.data() + 1, n, col_max_full.data(), scratch, stream);
-  f_t max_col_norm = whole_array_abs_max<f_t>(col_max_full.data(), n, stream);
-  f_t min_col_norm = whole_array_nonzero_abs_min<f_t>(col_max_full.data(), n, stream);
+  segmented_abs_max<i_t, f_t>(dA.x.data(),
+                              dA.col_start.data(),
+                              dA.col_start.data() + 1,
+                              n,
+                              col_max_full.data(),
+                              scratch,
+                              stream);
+  f_t max_col_norm   = whole_array_abs_max<f_t>(col_max_full.data(), n, stream);
+  f_t min_col_norm   = whole_array_nonzero_abs_min<f_t>(col_max_full.data(), n, stream);
   f_t col_norm_ratio = (min_col_norm > 0) ? max_col_norm / min_col_norm : f_t(1.0);
 
   f_t q_ratio = f_t(1.0);
@@ -172,7 +192,9 @@ i_t scaling_ruiz_gpu(const lp_problem_t<i_t, f_t>& unscaled,
       settings.log.printf(
         "Skipping Ruiz equilibration (row norm ratio %.1f, column norm ratio %.1f < 5e4, Q coeff "
         "ratio %.1f < 100)\n",
-        row_norm_ratio, col_norm_ratio, q_ratio);
+        row_norm_ratio,
+        col_norm_ratio,
+        q_ratio);
     }
     column_scaling.assign(n, 1.0);
     return 0;
@@ -181,7 +203,9 @@ i_t scaling_ruiz_gpu(const lp_problem_t<i_t, f_t>& unscaled,
     settings.log.printf(
       "Applying Ruiz equilibration (qcqp_hyper_ruiz_equilibration = 1, row norm ratio %.1f, "
       "column norm ratio %.1f, Q coeff ratio %.1f) [GPU]\n",
-      row_norm_ratio, col_norm_ratio, q_ratio);
+      row_norm_ratio,
+      col_norm_ratio,
+      q_ratio);
   }
 
   // --- Ruiz is actually going to run: upload the rest and build the index arrays. ---
@@ -196,8 +220,8 @@ i_t scaling_ruiz_gpu(const lp_problem_t<i_t, f_t>& unscaled,
   // Per-nonzero column ids for A, built once (sparsity pattern is fixed across iterations).
   dA.form_col_index(stream);  // dA.col_index[p] = column of nonzero p
 
-  const i_t cone_start   = unscaled.second_order_cone_dims.empty() ? n : unscaled.cone_var_start;
-  const i_t num_cones    = static_cast<i_t>(unscaled.second_order_cone_dims.size());
+  const i_t cone_start = unscaled.second_order_cone_dims.empty() ? n : unscaled.cone_var_start;
+  const i_t num_cones  = static_cast<i_t>(unscaled.second_order_cone_dims.size());
   // Column boundaries of each cone (in the global column index space) and, for every
   // cone column, which cone it belongs to -- both built once, used every iteration.
   std::vector<i_t> cone_col_offsets_host(num_cones + 1, cone_start);
@@ -227,67 +251,121 @@ i_t scaling_ruiz_gpu(const lp_problem_t<i_t, f_t>& unscaled,
     // On the first pass r still holds the row inf-norms computed for the skip heuristic
     // above, and A has not been touched since, so only recompute once A has been scaled.
     if (iter > 0) { compute_row_inf_norms(dA, r, stream); }
-    max_deviation =
-      std::max(max_deviation, whole_array_abs_max<f_t>(
-        thrust::make_transform_iterator(r.data(), [] __device__(f_t v) -> f_t { return v - f_t(1); }),
-        m, stream));
-    thrust::transform(rmm::exec_policy(stream), r.data(), r.data() + m, r.data(),
-                      [] __device__(f_t rm) { return rm > 0 ? f_t(1) / std::sqrt(rm) : f_t(1); });
+    max_deviation = std::max(
+      max_deviation,
+      whole_array_abs_max<f_t>(thrust::make_transform_iterator(
+                                 r.data(), [] __device__(f_t v) -> f_t { return v - f_t(1); }),
+                               m,
+                               stream));
+    thrust::transform(
+      rmm::exec_policy(stream), r.data(), r.data() + m, r.data(), [] __device__(f_t rm) {
+        return rm > 0 ? f_t(1) / std::sqrt(rm) : f_t(1);
+      });
 
-    thrust::for_each(rmm::exec_policy(stream), thrust::make_counting_iterator(i_t(0)),
-                     thrust::make_counting_iterator(dA.nz_max),
-                     [x = dA.x.data(), row = dA.i.data(), r = r.data()] __device__(i_t p) {
-                       x[p] *= r[row[p]];
-                     });
-    thrust::transform(rmm::exec_policy(stream), d_rhs.data(), d_rhs.data() + m, r.data(),
-                      d_rhs.data(), cuda::std::multiplies<f_t>{});
-    thrust::transform(rmm::exec_policy(stream), d_row_scale.data(), d_row_scale.data() + m,
-                      r.data(), d_row_scale.data(), cuda::std::multiplies<f_t>{});
+    thrust::for_each(
+      rmm::exec_policy(stream),
+      thrust::make_counting_iterator(i_t(0)),
+      thrust::make_counting_iterator(dA.nz_max),
+      [x = dA.x.data(), row = dA.i.data(), r = r.data()] __device__(i_t p) { x[p] *= r[row[p]]; });
+    thrust::transform(rmm::exec_policy(stream),
+                      d_rhs.data(),
+                      d_rhs.data() + m,
+                      r.data(),
+                      d_rhs.data(),
+                      cuda::std::multiplies<f_t>{});
+    thrust::transform(rmm::exec_policy(stream),
+                      d_row_scale.data(),
+                      d_row_scale.data() + m,
+                      r.data(),
+                      d_row_scale.data(),
+                      cuda::std::multiplies<f_t>{});
 
     // --- Column scaling: linear columns [0, cone_start) combine A and Q; cone columns
     // use one uniform scale per cone. ---
     if (cone_start > 0) {
-      segmented_abs_max<i_t, f_t>(dA.x.data(), dA.col_start.data(), dA.col_start.data() + 1,
-                                  cone_start, col_max_linear.data(), scratch, stream);
+      segmented_abs_max<i_t, f_t>(dA.x.data(),
+                                  dA.col_start.data(),
+                                  dA.col_start.data() + 1,
+                                  cone_start,
+                                  col_max_linear.data(),
+                                  scratch,
+                                  stream);
       if (has_q) {
-        segmented_abs_max<i_t, f_t>(dQ.x.data(), dQ.row_start.data(), dQ.row_start.data() + 1,
-                                    cone_start, qrow_max_linear.data(), scratch, stream);
-        thrust::transform(rmm::exec_policy(stream), col_max_linear.data(),
-                          col_max_linear.data() + cone_start, qrow_max_linear.data(),
-                          col_max_linear.data(), cuopt::max_op_t<f_t>{});
+        segmented_abs_max<i_t, f_t>(dQ.x.data(),
+                                    dQ.row_start.data(),
+                                    dQ.row_start.data() + 1,
+                                    cone_start,
+                                    qrow_max_linear.data(),
+                                    scratch,
+                                    stream);
+        thrust::transform(rmm::exec_policy(stream),
+                          col_max_linear.data(),
+                          col_max_linear.data() + cone_start,
+                          qrow_max_linear.data(),
+                          col_max_linear.data(),
+                          cuopt::max_op_t<f_t>{});
       }
-      max_deviation = std::max(max_deviation,
-        whole_array_abs_max<f_t>(thrust::make_transform_iterator(
-          col_max_linear.data(), [] __device__(f_t v) -> f_t { return v - f_t(1); }), cone_start, stream));
-      thrust::transform(rmm::exec_policy(stream), col_max_linear.data(),
-                        col_max_linear.data() + cone_start, c.data(),
+      max_deviation =
+        std::max(max_deviation,
+                 whole_array_abs_max<f_t>(
+                   thrust::make_transform_iterator(
+                     col_max_linear.data(), [] __device__(f_t v) -> f_t { return v - f_t(1); }),
+                   cone_start,
+                   stream));
+      thrust::transform(rmm::exec_policy(stream),
+                        col_max_linear.data(),
+                        col_max_linear.data() + cone_start,
+                        c.data(),
                         [] __device__(f_t cm) { return cm > 0 ? f_t(1) / std::sqrt(cm) : f_t(1); });
     }
     if (num_cones > 0) {
-      auto begin_it = thrust::make_permutation_iterator(dA.col_start.data(), d_cone_col_offsets.data());
-      auto end_it   = thrust::make_permutation_iterator(dA.col_start.data(), d_cone_col_offsets.data() + 1);
-      segmented_abs_max<i_t, f_t>(dA.x.data(), begin_it, end_it, num_cones, cone_max.data(), scratch, stream);
-      max_deviation = std::max(max_deviation,
-        whole_array_abs_max<f_t>(thrust::make_transform_iterator(
-          cone_max.data(), [] __device__(f_t v) -> f_t { return v - f_t(1); }), num_cones, stream));
-      thrust::transform(rmm::exec_policy(stream), cone_max.data(), cone_max.data() + num_cones,
+      auto begin_it =
+        thrust::make_permutation_iterator(dA.col_start.data(), d_cone_col_offsets.data());
+      auto end_it =
+        thrust::make_permutation_iterator(dA.col_start.data(), d_cone_col_offsets.data() + 1);
+      segmented_abs_max<i_t, f_t>(
+        dA.x.data(), begin_it, end_it, num_cones, cone_max.data(), scratch, stream);
+      max_deviation =
+        std::max(max_deviation,
+                 whole_array_abs_max<f_t>(
+                   thrust::make_transform_iterator(
+                     cone_max.data(), [] __device__(f_t v) -> f_t { return v - f_t(1); }),
+                   num_cones,
+                   stream));
+      thrust::transform(rmm::exec_policy(stream),
+                        cone_max.data(),
+                        cone_max.data() + num_cones,
                         cone_max.data(),
                         [] __device__(f_t cm) { return cm > 0 ? f_t(1) / std::sqrt(cm) : f_t(1); });
-      thrust::gather(rmm::exec_policy(stream), d_col_cone_id.data(),
-                     d_col_cone_id.data() + (n - cone_start), cone_max.data(), c.data() + cone_start);
+      thrust::gather(rmm::exec_policy(stream),
+                     d_col_cone_id.data(),
+                     d_col_cone_id.data() + (n - cone_start),
+                     cone_max.data(),
+                     c.data() + cone_start);
     }
 
-    thrust::for_each(rmm::exec_policy(stream), thrust::make_counting_iterator(i_t(0)),
+    thrust::for_each(rmm::exec_policy(stream),
+                     thrust::make_counting_iterator(i_t(0)),
                      thrust::make_counting_iterator(dA.nz_max),
                      [x = dA.x.data(), col = dA.col_index.data(), c = c.data()] __device__(i_t p) {
                        x[p] *= c[col[p]];
                      });
-    thrust::transform(rmm::exec_policy(stream), d_objective.data(), d_objective.data() + n,
-                      c.data(), d_objective.data(), cuda::std::multiplies<f_t>{});
-    thrust::transform(rmm::exec_policy(stream), d_col_scale.data(), d_col_scale.data() + n,
-                      c.data(), d_col_scale.data(), cuda::std::multiplies<f_t>{});
+    thrust::transform(rmm::exec_policy(stream),
+                      d_objective.data(),
+                      d_objective.data() + n,
+                      c.data(),
+                      d_objective.data(),
+                      cuda::std::multiplies<f_t>{});
+    thrust::transform(rmm::exec_policy(stream),
+                      d_col_scale.data(),
+                      d_col_scale.data() + n,
+                      c.data(),
+                      d_col_scale.data(),
+                      cuda::std::multiplies<f_t>{});
     thrust::for_each(
-      rmm::exec_policy(stream), thrust::make_counting_iterator(i_t(0)), thrust::make_counting_iterator(n),
+      rmm::exec_policy(stream),
+      thrust::make_counting_iterator(i_t(0)),
+      thrust::make_counting_iterator(n),
       [lower = d_lower.data(), upper = d_upper.data(), c = c.data()] __device__(i_t j) {
         if (lower[j] > f_t(-1e20)) lower[j] /= c[j];
         if (upper[j] < f_t(1e20)) upper[j] /= c[j];
@@ -296,28 +374,36 @@ i_t scaling_ruiz_gpu(const lp_problem_t<i_t, f_t>& unscaled,
       // Row-parallel so the row index comes from the iteration variable, as in scaling.cpp.
       // Deriving it per nonzero from row_start instead would mis-attribute every nonzero
       // after an empty row, and Q has an empty row for every variable with no quadratic term.
-      thrust::for_each(rmm::exec_policy(stream), thrust::make_counting_iterator(i_t(0)),
-                       thrust::make_counting_iterator(dQ.m),
-                       [x = dQ.x.data(), rs = dQ.row_start.data(), col = dQ.j.data(),
-                        c = c.data()] __device__(i_t i) {
-                         for (i_t p = rs[i]; p < rs[i + 1]; ++p) {
-                           x[p] *= c[i] * c[col[p]];
-                         }
-                       });
+      thrust::for_each(
+        rmm::exec_policy(stream),
+        thrust::make_counting_iterator(i_t(0)),
+        thrust::make_counting_iterator(dQ.m),
+        [x = dQ.x.data(), rs = dQ.row_start.data(), col = dQ.j.data(), c = c.data()] __device__(
+          i_t i) {
+          for (i_t p = rs[i]; p < rs[i + 1]; ++p) {
+            x[p] *= c[i] * c[col[p]];
+          }
+        });
     }
 
     if (max_deviation < 0.1) break;
   }
 
   // --- Finalize: invert accumulated reciprocal scales (mirrors scaling.cpp:226-235) ---
-  thrust::transform(rmm::exec_policy(stream), d_col_scale.data(), d_col_scale.data() + n,
-                    d_col_scale.data(), [] __device__(f_t v) { return f_t(1) / v; });
-  thrust::transform(rmm::exec_policy(stream), d_row_scale.data(), d_row_scale.data() + m,
-                    d_row_scale.data(), [] __device__(f_t v) { return f_t(1) / v; });
+  thrust::transform(rmm::exec_policy(stream),
+                    d_col_scale.data(),
+                    d_col_scale.data() + n,
+                    d_col_scale.data(),
+                    [] __device__(f_t v) { return f_t(1) / v; });
+  thrust::transform(rmm::exec_policy(stream),
+                    d_row_scale.data(),
+                    d_row_scale.data() + m,
+                    d_row_scale.data(),
+                    [] __device__(f_t v) { return f_t(1) / v; });
 
   // --- Download scaled problem and scale vectors back to host ---
-  scaled.A   = dA.to_host(stream);
-  scaled.Q   = dQ.to_host(stream);
+  scaled.A         = dA.to_host(stream);
+  scaled.Q         = dQ.to_host(stream);
   scaled.rhs       = cuopt::host_copy(d_rhs, stream);
   scaled.objective = cuopt::host_copy(d_objective, stream);
   scaled.lower     = cuopt::host_copy(d_lower, stream);
