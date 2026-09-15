@@ -24,6 +24,14 @@
 
 namespace cuopt::mathematical_optimization {
 struct benchmark_info_t;
+
+}
+
+namespace cuopt::mathematical_optimization::mip {
+
+template <typename i_t, typename f_t>
+class branch_and_bound_t;
+
 }
 
 namespace cuopt::mathematical_optimization::simplex {
@@ -127,6 +135,11 @@ struct simplex_solver_settings_t {
   void enable_log_to_file() { log.enable_log_to_file(); }
   void set_log_filename(const std::string& log_filename) { log.set_log_file(log_filename); }
   void close_log_file() { log.close_log_file(); }
+  bool received_halt_signal() const
+  {
+    return concurrent_halt && concurrent_halt->load(std::memory_order::acquire);
+  }
+
   i_t iteration_limit;
   i_t node_limit;
   f_t time_limit;
@@ -239,6 +252,10 @@ struct simplex_solver_settings_t {
   f_t bnb_steal_chance;
   i_t bnb_nodes_per_steal;
   i_t bnb_max_steal_attempts;
+
+  // Pointer to the main B&B solver. This is used within the sub-MIP to probe the status of the main
+  // solve.
+  mip::branch_and_bound_t<i_t, f_t>* main_solver_ptr = nullptr;
 
   // Settings for the reliability branching.
   // - -1: automatic

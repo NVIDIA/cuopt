@@ -105,11 +105,6 @@ class branch_and_bound_t {
   // Set an initial guess based on the user_problem. This should be called before solve.
   void set_initial_guess(const std::vector<f_t>& user_guess) { guess_ = user_guess; }
 
-  void set_submip_halt_callback(std::function<bool(f_t, f_t)> callback)
-  {
-    submip_halt_callback_ = std::move(callback);
-  }
-
   // Set the root solution found by PDLP
   void set_root_relaxation_solution(const std::vector<f_t>& primal,
                                     const std::vector<f_t>& dual,
@@ -156,7 +151,22 @@ class branch_and_bound_t {
                               const std::vector<i_t>& reduced_to_original);
 
   f_t get_upper_bound() const { return upper_bound_.load(); }
+
+  f_t get_user_upper_bound()
+  {
+    std::lock_guard lock(mutex_original_lp_);
+    return simplex::compute_user_objective(original_lp_, upper_bound_.load());
+  }
+
   bool has_solver_space_incumbent() const { return incumbent_.has_incumbent; }
+
+  bool is_running()
+  {
+    return solver_status_ == mip_status_t::UNSET && is_running_ &&
+           !settings_.received_halt_signal();
+  }
+
+  bool has_converged(const simplex::lp_problem_t<i_t, f_t>& lp);
 
   // Repair a low-quality solution from the heuristics.
   bool repair_solution(const std::vector<f_t>& leaf_edge_norms,
@@ -222,12 +232,6 @@ class branch_and_bound_t {
   // A finite value implies an incumbent exists somewhere (solver-space in incumbent_, or
   // original-space in the mip_solver_context_t), but does NOT imply incumbent_.has_incumbent.
   omp_atomic_t<f_t> upper_bound_;
-
-  // Callback for halting the solver. This passes the current upper and lower bound of the solver
-  // in user space. The main use of this callback is to stop the sub-MIP solve when
-  // the status of the main solve has changed (optimal, time/node/work limit, etc.) or
-  // the sub-MIP become suboptimal (lower bound is greater than the current incumbent)
-  std::function<bool(f_t, f_t)> submip_halt_callback_;
 
   // Solver-space incumbent tracked directly by B&B.
   simplex::mip_solution_t<i_t, f_t> incumbent_;
@@ -297,12 +301,6 @@ class branch_and_bound_t {
               i_t node_depth,
               i_t node_int_infeas,
               double work_time = -1);
-
-  bool received_halt_signal()
-  {
-    return settings_.concurrent_halt ? settings_.concurrent_halt->load(std::memory_order_acquire)
-                                     : false;
-  }
 
   enum class cut_pass_action_t { CONTINUE, BREAK, RETURN };
 

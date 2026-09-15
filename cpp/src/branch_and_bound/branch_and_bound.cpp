@@ -349,6 +349,17 @@ f_t branch_and_bound_t<i_t, f_t>::get_lower_bound()
 }
 
 template <typename i_t, typename f_t>
+bool branch_and_bound_t<i_t, f_t>::has_converged(const lp_problem_t<i_t, f_t>& lp)
+{
+  f_t lower_bound = get_lower_bound();
+  f_t user_obj    = compute_user_objective(lp, upper_bound_.load());
+  f_t user_lower  = compute_user_objective(lp, lower_bound);
+  f_t abs_gap     = compute_user_abs_gap(lp, upper_bound_.load(), lower_bound);
+  f_t rel_gap     = user_relative_gap(user_obj, user_lower);
+  return abs_gap <= settings_.absolute_mip_gap_tol || rel_gap <= settings_.relative_mip_gap_tol;
+}
+
+template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::set_initial_upper_bound(f_t bound)
 {
   upper_bound_ = bound;
@@ -1731,8 +1742,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
 
   bool can_launch_new_submip = true;
 
-  while (stack.size() > 0 && (solver_status_ == mip_status_t::UNSET && is_running_) &&
-         rel_gap > settings_.relative_mip_gap_tol && abs_gap > settings_.absolute_mip_gap_tol) {
+  while (stack.size() > 0 && is_running() && !has_converged(worker->leaf_problem)) {
     if (worker->worker_id == 0) { repair_heuristic_solutions(); }
 
     if (worker->active_diving_workers < worker->max_diving_workers &&
@@ -1788,7 +1798,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
       }
     }
 
-    if (received_halt_signal()) {
+    if (settings_.received_halt_signal()) {
       solver_status_        = mip_status_t::HALT;
       node_concurrent_halt_ = true;
       stack.push_front(node_ptr);
@@ -1966,11 +1976,6 @@ void branch_and_bound_t<i_t, f_t>::work_stealing(bfs_worker_t<i_t, f_t>* worker)
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>* worker)
 {
-  f_t lower_bound = get_lower_bound();
-  f_t user_obj    = compute_user_objective(worker->leaf_problem, upper_bound_.load());
-  f_t user_lower  = compute_user_objective(worker->leaf_problem, lower_bound);
-  f_t abs_gap     = compute_user_abs_gap(worker->leaf_problem, upper_bound_.load(), lower_bound);
-  f_t rel_gap     = user_relative_gap(user_obj, user_lower);
   f_t steal_chance =
     settings_.bnb_steal_chance >= 0 ? settings_.bnb_steal_chance : MIP_DEFAULT_STEAL_CHANCE;
   node_queue_t<i_t, f_t>& node_queue = worker->node_queue;
@@ -1996,34 +2001,32 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
   worker->calculate_max_diving_workers(bfs_worker_pool_.size(), diving_worker_pool_.size());
   worker->update_diving_heuristic_list(diving_settings);
 
-  while (solver_status_ == mip_status_t::UNSET && abs_gap > settings_.absolute_mip_gap_tol &&
-         rel_gap > settings_.relative_mip_gap_tol && node_queue.best_first_queue_size() > 0) {
-    if (submip_halt_callback_) {
-      // Stops the solver if the callback returns "true". This happens when the lower bound
-      // in the sub-MIP solve is greater than the upper bound of the main solve (this can
-      // happen if one of the worker in the main solve found a better incumbent during the
-      // sub-MIP solve). The sub-MIP solve also stops if the status in the main solver changed
-      // (i.e., the gap in the main solve is sufficiently small, it reaches time/node/work limit,
-      // etc.)
-      bool stop = submip_halt_callback_(user_obj, user_lower);
+  while (is_running() && node_queue.best_first_queue_size() > 0) {
+    if (settings_.inside_submip && settings_.main_solver_ptr) {
+      // Stops the solver  when the lower bound in the sub-MIP solve is greater than the upper bound
+      // of the main solve (this can  happen if one of the worker in the main solve found a better
+      // incumbent during the  sub-MIP solve). The sub-MIP solve also stops if the status in the
+      // main solver changed (i.e., the gap in the main solve is sufficiently small, it reaches
+      // time/node/work limit, etc.)
+      f_t main_solver_cutoff = settings_.main_solver_ptr->upper_bound_.load();
+      f_t user_lower         = compute_user_objective(worker->leaf_problem, get_lower_bound());
+      bool is_cutoff         = original_lp_.obj_scale > 0 ? user_lower > main_solver_cutoff
+                                                          : main_solver_cutoff > user_lower;
+      bool is_solver_running = settings_.main_solver_ptr->is_running();
+      bool stop              = is_cutoff || !is_solver_running;
+
       if (stop) {
         node_concurrent_halt_ = 1;
         solver_status_        = mip_status_t::HALT;
         settings_.log.debug_format(
-          "Received halt signal. Current best obj={:.6e} and best bound={:.6e}\n",
-          user_obj,
-          user_lower);
+          "Received halt signal. Current best bound={:.6e}. Main solver cutoff={:.6e}\n",
+          user_lower,
+          main_solver_cutoff);
         break;
       }
     }
 
-    if (received_halt_signal()) {
-      solver_status_        = mip_status_t::HALT;
-      node_concurrent_halt_ = true;
-      break;
-    }
-
-    if (received_halt_signal()) {
+    if (settings_.received_halt_signal()) {
       solver_status_        = mip_status_t::HALT;
       node_concurrent_halt_ = true;
       break;
@@ -2061,13 +2064,7 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
 
     plunge_with(worker, start_node);
 
-    lower_bound = get_lower_bound();
-    user_obj    = compute_user_objective(worker->leaf_problem, upper_bound_.load());
-    user_lower  = compute_user_objective(worker->leaf_problem, lower_bound);
-    abs_gap     = compute_user_abs_gap(worker->leaf_problem, upper_bound_.load(), lower_bound);
-    rel_gap     = user_relative_gap(user_obj, user_lower);
-
-    if (abs_gap <= settings_.absolute_mip_gap_tol || rel_gap <= settings_.relative_mip_gap_tol) {
+    if (has_converged(worker->leaf_problem)) {
       solver_status_ = mip_status_t::OPTIMAL;
       break;
     }
@@ -2127,9 +2124,8 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker,
   f_t rel_gap     = user_relative_gap(user_obj, user_lower);
   f_t abs_gap     = compute_user_abs_gap(worker->leaf_problem, upper_bound, lower_bound);
 
-  while (stack.size() > 0 && (solver_status_ == mip_status_t::UNSET && is_running_) &&
-         rel_gap > settings.relative_mip_gap_tol && abs_gap > settings.absolute_mip_gap_tol &&
-         !(settings.concurrent_halt && settings.concurrent_halt->load(std::memory_order_acquire))) {
+  while (stack.size() > 0 && is_running() && !has_converged(worker->leaf_problem) &&
+         !settings.received_halt_signal()) {
     mip_node_t<i_t, f_t>* node_ptr = stack.front();
     stack.pop_front();
 
@@ -2324,10 +2320,11 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   submip_settings.inside_submip                            = 1;
   submip_settings.strong_branching_simplex_iteration_limit = 50;
   submip_settings.inside_root_node                         = 0;
-  submip_settings.submip_settings.level                    = submip_level;
-  submip_settings.benchmark_info_ptr                       = nullptr;
-  submip_settings.log.log                                  = SUBMIP_VERBOSE;
-  std::string_view log_prefix                              = submip_settings.log.log_prefix;
+  submip_settings.main_solver_ptr = settings_.inside_submip ? settings_.main_solver_ptr : this;
+  submip_settings.submip_settings.level = submip_level;
+  submip_settings.benchmark_info_ptr    = nullptr;
+  submip_settings.log.log               = SUBMIP_VERBOSE;
+  std::string_view log_prefix           = submip_settings.log.log_prefix;
 
   bool max_recursion                   = submip_level > settings_.submip_settings.max_level;
   submip_settings.submip_settings.rins = settings_.submip_settings.rins != 0 && !max_recursion;
@@ -2446,20 +2443,6 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
 
   if (!is_root_heuristic)
     submip_bnb.set_initial_pseudocost(pc_, presolver.get_reduced_to_original_map());
-
-  if (submip_halt_callback_) {
-    // Copy the halt callback to the deeper level.
-    submip_bnb.set_submip_halt_callback(submip_halt_callback_);
-  } else {
-    // This should only be called by the main solver.
-    submip_bnb.set_submip_halt_callback([this](f_t, f_t submip_lower_bound) {
-      f_t user_upper = compute_user_objective(this->original_lp_, this->upper_bound_.load());
-      bool is_cutoff = original_lp_.obj_scale > 0 ? submip_lower_bound > user_upper
-                                                  : user_upper > submip_lower_bound;
-      bool is_solver_running = this->solver_status_ == mip_status_t::UNSET && this->is_running_;
-      return is_cutoff || !is_solver_running || this->received_halt_signal();
-    });
-  }
 
   fj_cpu_worker_t<i_t, f_t> submip_fj_cpu_worker;
 
@@ -2750,9 +2733,8 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(
 
   i_t round = 0;
 
-  while (solver_status_ == mip_status_t::UNSET && is_running_ &&
-         !(submip_settings.concurrent_halt &&
-           submip_settings.concurrent_halt->load(std::memory_order::acquire))) {
+  while (is_running() && !has_converged(worker->leaf_problem) &&
+         !submip_settings.received_halt_signal()) {
     f_t prev_fixrate         = fixrate;
     f_t distance             = 1.0 - (1.0 - prev_fixrate) * close_ratio;
     f_t round_target_fixrate = std::min(distance, max_fixrate) - prev_fixrate;
@@ -3178,7 +3160,7 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
   // Wait for the root relaxation solution to be sent by the diversity manager or dual simplex
   while (!root_crossover_solution_set_.load(std::memory_order_acquire) &&
          *get_root_concurrent_halt() == 0) {
-    if (received_halt_signal()) {
+    if (settings_.received_halt_signal()) {
       root_concurrent_halt_.store(true, std::memory_order_release);
 #pragma omp taskwait depend(in : root_status)
       return lp_status_t::CONCURRENT_LIMIT;
@@ -3992,7 +3974,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                pc_);
   }
 
-  if (received_halt_signal()) {
+  if (settings_.received_halt_signal()) {
     solver_status_ = mip_status_t::HALT;
     set_final_solution(solution, root_objective_);
     return solver_status_;

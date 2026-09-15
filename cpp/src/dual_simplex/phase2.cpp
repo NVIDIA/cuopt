@@ -5,6 +5,8 @@
  */
 /* clang-format on */
 
+#include <branch_and_bound/branch_and_bound.hpp>
+
 #include <dual_simplex/basis_solves.hpp>
 #include <dual_simplex/basis_updates.hpp>
 #include <dual_simplex/bound_flipping_ratio_test.hpp>
@@ -2829,6 +2831,11 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
 
   while (iter < iter_limit) {
     PHASE2_NVTX_RANGE("DualSimplex::phase2_main_loop");
+
+    if (settings.inside_submip && settings.main_solver_ptr &&
+        !settings.main_solver_ptr->is_running()) {
+      return dual_status_t::CONCURRENT_LIMIT;
+    }
 
     // Pricing
     i_t direction           = 0;
