@@ -58,6 +58,19 @@ files:
       - depends_on_librmm
       - depends_on_rapids_logger
       - java
+  java_static:
+    output: none
+    includes:
+      # libcuopt is compiled from source here rather than installed, so this needs the C++
+      # build dependencies (tbb-devel, nccl, zlib, bzip2) and not depends_on_libcuopt.
+      - build_common
+      - build_cpp
+      - cuda
+      - cuda_version
+      - depends_on_libraft_headers
+      - depends_on_librmm
+      - depends_on_rapids_logger
+      - java
   test_python:
     output: none
     includes:

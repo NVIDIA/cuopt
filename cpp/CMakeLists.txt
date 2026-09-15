@@ -53,6 +53,7 @@ option(BUILD_MIP_BENCHMARKS "Build MIP benchmarks" OFF)
 option(SKIP_C_PYTHON_ADAPTERS "Skip building C and Python adapter files (cython_solve.cu and cuopt_c.cpp)" OFF)
 option(SKIP_ROUTING_BUILD "Skip building routing components" OFF)
 option(SKIP_GRPC_BUILD "Skip building gRPC and protobuf components" OFF)
+option(CUOPT_BUILD_STATIC_LIB "Build libcuopt_static.a for embedding into a self-contained consumer" OFF)
 option(WRITE_FATBIN "Enable fatbin writing" ON)
 option(HOST_LINEINFO "Build with debug line information for host code" OFF)
 
@@ -919,10 +920,16 @@ if (BUILD_TESTS)
     include(CTest)
 endif ()
 
-if (BUILD_TESTS OR (BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY))
-    # Embeds cuopt_client_objs directly rather than linking libcuopt_client.so: the internal
-    # test binaries reach parser internals that the shared library deliberately does not
-    # export. Do not also link cuopt::cuopt_client here -- that would duplicate every symbol.
+# ##################################################################################################
+# - static library --------------------------------------------------------------------------------
+# Built for the internal tests, the MIP benchmarks, and for consumers that embed cuOpt into a
+# single self-contained shared object rather than linking the shared libcuopt (see the Java
+# classifier JARs).
+if (BUILD_TESTS OR (BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY) OR CUOPT_BUILD_STATIC_LIB)
+    # Embeds cuopt_client_objs directly rather than linking libcuopt_client.so: internal test
+    # binaries and the Java classifier JAR both reach parser/data-model internals that the
+    # shared library deliberately does not export. Do not also link cuopt::cuopt_client here --
+    # that would duplicate every symbol.
     add_library(cuopt_static STATIC $<TARGET_OBJECTS:cuopt_objs> $<TARGET_OBJECTS:cuopt_client_objs>)
     target_link_libraries(cuopt_static
             PUBLIC
