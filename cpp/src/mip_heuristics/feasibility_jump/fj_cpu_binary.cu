@@ -257,9 +257,11 @@ struct fj_bin_engine_t {
     const double rel = std::fabs(obj_diff) / obj_magnitude;
     const double mult =
       rel < fj_obj_mult_min ? fj_obj_mult_min : (rel > fj_obj_mult_max ? fj_obj_mult_max : rel);
-    const double raw = objective_weight * mult;
-    cuopt_assert(is_exactly_representable<int32_t>(raw), "scaled objective weight is not an int32");
-    const int32_t scaled = (int32_t)std::lround(raw);
+    const double raw     = objective_weight * mult;
+    const double rounded = std::round(raw);
+    cuopt_assert(is_exactly_representable<int32_t>(rounded),
+                 "scaled objective weight is not an int32");
+    const int32_t scaled = rounded;
     return (int64_t)(obj_diff < 0 ? scaled : -scaled) * fj_bin_score_k;
   }
 
