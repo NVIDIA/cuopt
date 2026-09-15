@@ -123,6 +123,52 @@ void bound_flipping_ratio_test_t<i_t, f_t>::determine_flips(f_t step_length,
 }
 
 template <typename i_t, typename f_t>
+i_t bound_flipping_ratio_test_t<i_t, f_t>::limit_last_bucket(std::vector<i_t>& candidates,
+                                                             i_t first,
+                                                             i_t end,
+                                                             const std::vector<i_t>& indices,
+                                                             const std::vector<f_t>& ratios,
+                                                             f_t slope)
+{
+  // Three-way weighted selection. Discarded lower partitions remain eligible;
+  // only the partition containing the slope crossing needs another scan.
+  while (first < end) {
+    if (toc(start_time_) > settings_.time_limit) return RATIO_TEST_TIME_LIMIT;
+    if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
+      return CONCURRENT_HALT_RETURN;
+    }
+    const f_t split = ratios[candidates[first + (end - first) / 2]];
+    i_t lower = first, scan = first, upper = end;
+    f_t lower_weight = 0.0, equal_weight = 0.0;
+    while (scan < upper) {
+      const i_t k = candidates[scan];
+      const i_t j = nonbasic_list_[indices[k]];
+      const f_t weight =
+        bounded_variables_[j] ? std::abs(delta_z_[j]) * (upper_[j] - lower_[j]) : inf;
+      if (ratios[k] < split) {
+        lower_weight += weight;
+        std::swap(candidates[lower++], candidates[scan++]);
+      } else if (ratios[k] > split) {
+        std::swap(candidates[scan], candidates[--upper]);
+      } else {
+        equal_weight += weight;
+        ++scan;
+      }
+    }
+    work_estimate_ += 12 * (end - first);
+    if (lower > first && lower_weight >= slope) {
+      end = lower;
+    } else if (lower_weight + equal_weight >= slope) {
+      return upper;  // Keep every candidate at the crossing breakpoint.
+    } else {
+      slope -= lower_weight + equal_weight;
+      first = upper;
+    }
+  }
+  return end;
+}
+
+template <typename i_t, typename f_t>
 i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
                                                                i_t& nonbasic_entering,
                                                                std::vector<i_t>& flip_indices)
@@ -336,8 +382,9 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
   f_t threshold   = minimum_harris_ratio;
   i_t num_buckets = 0;
   std::vector<i_t> bucket_start(num_candidates + 1, 0);
-  f_t cumulative_slope = slope;
-  scan_start           = 0;
+  f_t cumulative_slope  = slope;
+  f_t last_bucket_slope = slope;
+  scan_start            = 0;
   work_estimate_ += num_candidates + 1;
 
   // This is O(num_buckets * num_candidates)
@@ -348,6 +395,7 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
     }
     f_t next_threshold = inf;
     i_t write          = scan_start;
+    last_bucket_slope  = cumulative_slope;
 
     for (i_t h = scan_start; h < num_candidates; h++) {
       const i_t k     = candidates[h];
@@ -373,7 +421,15 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
     scan_start = write;
     threshold  = next_threshold;
 
-    if (cumulative_slope < 0.0) break;
+    if (cumulative_slope <= 0.0) break;
+  }
+
+  if (num_buckets > 0) {
+    const i_t end          = bucket_start[num_buckets];
+    const i_t retained_end = limit_last_bucket(
+      candidates, bucket_start[num_buckets - 1], end, indicies, ratios, last_bucket_slope);
+    if (retained_end < 0) return retained_end;
+    bucket_start[num_buckets] = retained_end;
   }
 
   // Compute the maximum pivot
