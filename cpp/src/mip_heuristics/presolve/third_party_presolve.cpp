@@ -382,15 +382,19 @@ void build_user_problem(papilo::Problem<f_t> const& papilo_problem,
   problem.upper.resize(reduced_cols);
   problem.var_types.resize(reduced_cols);
   for (i_t j = 0; j < reduced_cols; ++j) {
-    problem.lower[j]     = col_flags[j].test(papilo::ColFlag::kLbInf)
-                             ? -std::numeric_limits<f_t>::infinity()
-                             : col_lower[j];
-    problem.upper[j]     = col_flags[j].test(papilo::ColFlag::kUbInf)
-                             ? std::numeric_limits<f_t>::infinity()
-                             : col_upper[j];
-    problem.var_types[j] = col_flags[j].test(papilo::ColFlag::kIntegral)
-                             ? simplex::variable_type_t::INTEGER
-                             : simplex::variable_type_t::CONTINUOUS;
+    problem.lower[j] = col_flags[j].test(papilo::ColFlag::kLbInf)
+                         ? -std::numeric_limits<f_t>::infinity()
+                         : col_lower[j];
+    problem.upper[j] = col_flags[j].test(papilo::ColFlag::kUbInf)
+                         ? std::numeric_limits<f_t>::infinity()
+                         : col_upper[j];
+    if (!col_flags[j].test(papilo::ColFlag::kIntegral)) {
+      problem.var_types[j] = simplex::variable_type_t::CONTINUOUS;
+    } else if (problem.lower[j] >= 0 && problem.upper[j] <= 1) {
+      problem.var_types[j] = simplex::variable_type_t::BINARY;
+    } else {
+      problem.var_types[j] = simplex::variable_type_t::INTEGER;
+    }
   }
 
   // Row sense / rhs / ranges -- inverse of the derivation in build_papilo_problem_mip.
@@ -1197,6 +1201,22 @@ third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_to_subprob
       original_to_reduced_map_[original_idx] = i;
     }
   }
+
+  // Both endpoints are stored, and both are already in original (pre-presolve) column space --
+  // storeParallelCols pushes {origcol_mapping[col1], flags1, origcol_mapping[col2], flags2, -1}.
+  merged_original_columns_.clear();
+  const auto& postsolve = result.postsolve;
+  for (size_t k = 0; k < postsolve.types.size(); ++k) {
+    // ReductionType is declared at global scope by PaPILO, not inside namespace papilo.
+    if (postsolve.types[k] != ::ReductionType::kParallelCol) { continue; }
+    const auto begin = postsolve.start[k];
+    merged_original_columns_.push_back(postsolve.indices[begin]);
+    merged_original_columns_.push_back(postsolve.indices[begin + 2]);
+  }
+  std::sort(merged_original_columns_.begin(), merged_original_columns_.end());
+  merged_original_columns_.erase(
+    std::unique(merged_original_columns_.begin(), merged_original_columns_.end()),
+    merged_original_columns_.end());
 
   return status;
 }

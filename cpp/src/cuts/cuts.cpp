@@ -1491,7 +1491,8 @@ template <typename i_t, typename f_t>
 bool flow_cover_is_zero_one_integer_variable(const flow_cover_context_t<i_t, f_t>& context, i_t j)
 {
   const f_t bound_tol = context.settings.primal_tol;
-  return context.var_types[j] == variable_type_t::INTEGER &&
+  return (context.var_types[j] == variable_type_t::INTEGER ||
+          context.var_types[j] == variable_type_t::BINARY) &&
          std::abs(context.lp.lower[j]) <= bound_tol &&
          std::abs(context.lp.upper[j] - 1.0) <= bound_tol;
 }
@@ -1613,7 +1614,8 @@ knapsack_generation_t<i_t, f_t>::knapsack_generation_t(
         continue;
       }
       const f_t aj = inequality.coeff(p);
-      if (var_types[j] != variable_type_t::INTEGER || lp.lower[j] != 0.0 || lp.upper[j] != 1.0) {
+      if ((var_types[j] != variable_type_t::INTEGER && var_types[j] != variable_type_t::BINARY) ||
+          lp.lower[j] != 0.0 || lp.upper[j] != 1.0) {
         is_knapsack = false;
         break;
       }
@@ -4202,7 +4204,7 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
 
     for (i_t k = 0; k < inequality.size(); k++) {
       const i_t j = inequality.index(k);
-      if (var_types[j] == variable_type_t::INTEGER) {
+      if (var_types[j] == variable_type_t::INTEGER || var_types[j] == variable_type_t::BINARY) {
         if (transformed_xstar[j] > complemented_mir.new_upper(j) / 2.0) {
           settings.log.printf("!!!!!! j %d transformed x_j %e new_upper_j/2.0 %e\n",
                               j,
@@ -4390,7 +4392,9 @@ void cut_generation_t<i_t, f_t>::generate_gomory_cuts(
     if (toc(start_time) >= settings.time_limit) { break; }
     inequality_t<i_t, f_t> inequality(lp.num_cols);
     const i_t j = basic_list[i];
-    if (var_types[j] != variable_type_t::INTEGER) { continue; }
+    if (var_types[j] != variable_type_t::INTEGER && var_types[j] != variable_type_t::BINARY) {
+      continue;
+    }
     const f_t x_j = xstar[j];
     if (fractional_part(x_j) < 0.05 || fractional_part(x_j) > 0.95) { continue; }
 
@@ -4510,7 +4514,9 @@ i_t tableau_equality_t<i_t, f_t>::generate_base_equality(
 {
   // Let's look for Gomory cuts
   const i_t j = basic_list[i];
-  if (var_types[j] != variable_type_t::INTEGER) { return -1; }
+  if (var_types[j] != variable_type_t::INTEGER && var_types[j] != variable_type_t::BINARY) {
+    return -1;
+  }
   const f_t x_j = xstar[j];
   if (std::abs(x_j - std::round(x_j)) < settings.integer_tol) { return -1; }
 #ifdef PRINT_CUT_INFO
@@ -4657,7 +4663,7 @@ bool rational_coefficients(const std::vector<variable_type_t>& var_types,
   for (i_t k = 0; k < input_inequality.size(); k++) {
     const i_t j = rational_inequality.index(k);
     const f_t x = rational_inequality.coeff(k);
-    if (var_types[j] == variable_type_t::INTEGER) {
+    if (var_types[j] == variable_type_t::INTEGER || var_types[j] == variable_type_t::BINARY) {
       int64_t numerator, denominator;
       if (!rational_approximation(x, static_cast<int64_t>(1000), numerator, denominator)) {
         return false;
@@ -4749,7 +4755,9 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
     for (i_t p = row_start; p < row_end; p++) {
       const i_t j = Arow.j[p];
       if (j == slack_index) { continue; }
-      if (var_types[j] == variable_type_t::INTEGER) { num_integer_in_row[i]++; }
+      if (var_types[j] == variable_type_t::INTEGER || var_types[j] == variable_type_t::BINARY) {
+        num_integer_in_row[i]++;
+      }
       const f_t aj = Arow.x[p];
       const f_t uj = lp.upper[j];
       const f_t lj = lp.lower[j];
@@ -5086,7 +5094,7 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::cut_generation_heurist
   for (i_t k = 0; k < transformed_inequality.size(); k++) {
     const i_t j      = transformed_inequality.index(k);
     const f_t abs_aj = std::abs(transformed_inequality.coeff(k));
-    if (var_types[j] == variable_type_t::INTEGER) {
+    if (var_types[j] == variable_type_t::INTEGER || var_types[j] == variable_type_t::BINARY) {
       num_integers++;
       max_coeff                 = std::max(max_coeff, abs_aj);
       const f_t x_j             = transformed_xstar[j];
@@ -5110,7 +5118,8 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::cut_generation_heurist
   integer_indices.reserve(num_integers);
   for (i_t k = 0; k < transformed_inequality.size(); k++) {
     const i_t j = transformed_inequality.index(k);
-    if (var_types[j] == variable_type_t::INTEGER && new_upper(j) < inf) {
+    if ((var_types[j] == variable_type_t::INTEGER || var_types[j] == variable_type_t::BINARY) &&
+        new_upper(j) < inf) {
       const f_t x_j         = transformed_xstar[j];
       const f_t new_upper_j = new_upper(j);
       if (x_j > 1e-6 && new_upper_j < inf) {
@@ -5446,7 +5455,9 @@ void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::bound_substitution(
 
   // Perform bound substitution for the integer variables
   for (i_t j = 0; j < lp.num_cols; j++) {
-    if (var_types[j] != variable_type_t::INTEGER) { continue; }
+    if (var_types[j] != variable_type_t::INTEGER && var_types[j] != variable_type_t::BINARY) {
+      continue;
+    }
     const f_t uj      = lp.upper[j];
     const f_t lj      = lp.lower[j];
     const f_t xstar_j = xstar[j];
@@ -5575,7 +5586,9 @@ void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::transform_inequality(
   const i_t nz_after = inequality.size();
   for (i_t k = 0; k < nz_after; k++) {
     const i_t j = inequality.index(k);
-    if (var_type[j] != variable_type_t::INTEGER) { continue; }
+    if (var_type[j] != variable_type_t::INTEGER && var_type[j] != variable_type_t::BINARY) {
+      continue;
+    }
     const f_t aj = inequality.coeff(k);
     if (bound_changed_[j] == -1) {
       // v_j = x_j - l_j, v_j >= 0
@@ -5608,7 +5621,9 @@ void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::untransform_inequality
   const i_t nz = inequality.size();
   for (i_t k = 0; k < nz; k++) {
     const i_t j = inequality.index(k);
-    if (var_type[j] != variable_type_t::INTEGER) { continue; }
+    if (var_type[j] != variable_type_t::INTEGER && var_type[j] != variable_type_t::BINARY) {
+      continue;
+    }
     const f_t dj = inequality.coeff(k);
     if (bound_changed_[j] == -1) {
       // v_j = x_j - l_j, v_j >= 0
@@ -5715,7 +5730,7 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::
   for (i_t k = 0; k < inequality.size(); k++) {
     const i_t j = inequality.index(k);
     f_t aj      = inequality.coeff(k);
-    if (var_types[j] == variable_type_t::INTEGER) {
+    if (var_types[j] == variable_type_t::INTEGER || var_types[j] == variable_type_t::BINARY) {
       cut.vector.x[k] = f(aj, beta);
     } else {
       cut.vector.x[k] = h(aj);
@@ -5903,7 +5918,7 @@ strong_cg_cut_t<i_t, f_t>::strong_cg_cut_t(const lp_problem_t<i_t, f_t>& lp,
 {
   // Determine the substition for the integer variables
   for (i_t j = 0; j < lp.num_cols; j++) {
-    if (var_types[j] == variable_type_t::INTEGER) {
+    if (var_types[j] == variable_type_t::INTEGER || var_types[j] == variable_type_t::BINARY) {
       const f_t l_j = lp.lower[j];
       const f_t u_j = lp.upper[j];
       if (l_j != 0.0) {
@@ -6066,7 +6081,7 @@ i_t strong_cg_cut_t<i_t, f_t>::generate_strong_cg_cut_integer_only(
     for (i_t k = 0; k < inequality.size(); k++) {
       const i_t j   = inequality.index(k);
       const f_t a_j = inequality.coeff(k);
-      if (var_types[j] == variable_type_t::INTEGER) {
+      if (var_types[j] == variable_type_t::INTEGER || var_types[j] == variable_type_t::BINARY) {
         cut.push_back(j, std::floor(a_j));
       } else {
         return -1;
@@ -6112,7 +6127,7 @@ i_t strong_cg_cut_t<i_t, f_t>::generate_strong_cg_cut_helper(
     for (i_t q = 0; q < nz; q++) {
       const i_t j   = indicies[q];
       const f_t a_j = coefficients[q];
-      if (var_types[j] == variable_type_t::INTEGER) {
+      if (var_types[j] == variable_type_t::INTEGER || var_types[j] == variable_type_t::BINARY) {
         const f_t f_a_j = fractional_part(a_j);
         const f_t tol   = 1e-4;
         if (f_a_j <= f_a_0 + tol) {

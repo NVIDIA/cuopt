@@ -2298,9 +2298,13 @@ void problem_t<i_t, f_t>::get_host_user_problem(user_problem_t<i_t, f_t>& user_p
 
   auto model_variable_types = cuopt::host_copy(variable_types, stream);
   for (int j = 0; j < n; ++j) {
-    user_problem.var_types[j] = model_variable_types[j] == var_t::CONTINUOUS
-                                  ? variable_type_t::CONTINUOUS
-                                  : variable_type_t::INTEGER;
+    if (model_variable_types[j] == var_t::CONTINUOUS) {
+      user_problem.var_types[j] = variable_type_t::CONTINUOUS;
+    } else if (user_problem.lower[j] >= 0 && user_problem.upper[j] <= 1) {
+      user_problem.var_types[j] = variable_type_t::BINARY;
+    } else {
+      user_problem.var_types[j] = variable_type_t::INTEGER;
+    }
   }
 }
 

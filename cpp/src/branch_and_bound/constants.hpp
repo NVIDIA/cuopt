@@ -36,7 +36,8 @@ enum class search_strategy_t : int {
   FARKAS_DIVING        = 5,  // Farkas Diving (see [2])
   VECTOR_LENGTH_DIVING = 6,  // Vector Length Diving [1, Section 9.2.6]
   RINS                 = 7,  // RINS (see [3])
-  RENS                 = 8   // RENS (see [1, Section 9.1.1], [4])
+  RENS                 = 8,  // RENS (see [1, Section 9.1.1], [4])
+  CORE_LNS             = 9
 };
 
 enum class branch_direction_t { NONE = -1, DOWN = 0, UP = 1 };
@@ -53,6 +54,7 @@ inline const char* search_strategy_to_string(search_strategy_t search_strategy)
     case search_strategy_t::VECTOR_LENGTH_DIVING: return "VECTOR_LENGTH_DIVING";
     case search_strategy_t::RINS: return "RINS";
     case search_strategy_t::RENS: return "RENS";
+    case search_strategy_t::CORE_LNS: return "CORE_LNS";
   }
 
   return "UNKNOWN";

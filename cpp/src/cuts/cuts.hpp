@@ -110,6 +110,85 @@ struct probing_implied_bound_t {
   std::vector<f_t> one_upper_bound;
 };
 
+// Translate `parent`'s probing implications into the column space of a sub-problem.
+// An implication "x_j = 0 => y_i in [lb, ub]" proved globally for
+// the parent still holds on any restriction of it, so the translation only has to drop what no
+// longer has an image.
+//
+// `sub_to_parent[k]` is the parent column of sub column k, or -1 when nothing may be inherited
+// onto it.
+//
+// The antecedent x_j must be exactly binary in the sub-problem: generate_implied_bound_cuts only
+// skips continuous antecedents, it never re-checks the bounds, and the x_j = 1 family carries a
+// negative coefficient -- a general integer at x_j = 2 would yield an invalid cut. The implied
+// variable y_i may be continuous, so it is only required to have an image.
+template <typename i_t, typename f_t>
+void build_probing_implied_bounds_from_parent(const probing_implied_bound_t<i_t, f_t>& parent,
+                                              const std::vector<i_t>& sub_to_parent,
+                                              const simplex::user_problem_t<i_t, f_t>& sub_problem,
+                                              probing_implied_bound_t<i_t, f_t>& out)
+{
+  const i_t n_sub_cols = sub_problem.num_cols;
+  out                  = probing_implied_bound_t<i_t, f_t>(n_sub_cols);
+  if (parent.zero_offsets.empty()) { return; }
+
+  const i_t n_parent_cols = parent.zero_offsets.size() - 1;
+  std::vector<i_t> parent_to_sub(n_parent_cols, -1);
+  for (i_t k = 0; k < n_sub_cols; k++) {
+    const i_t p = sub_to_parent[k];
+    if (p < 0 || p >= n_parent_cols) { continue; }
+    parent_to_sub[p] = k;
+  }
+
+  // One pass per side, appending in sub-column order so the offsets come out as a prefix sum.
+  auto copy_side = [&](const std::vector<i_t>& parent_offsets,
+                       const std::vector<i_t>& parent_variables,
+                       const std::vector<f_t>& parent_lower,
+                       const std::vector<f_t>& parent_upper,
+                       std::vector<i_t>& out_offsets,
+                       std::vector<i_t>& out_variables,
+                       std::vector<f_t>& out_lower,
+                       std::vector<f_t>& out_upper) {
+    for (i_t k = 0; k < n_sub_cols; k++) {
+      const i_t slice_start = out_variables.size();
+      out_offsets[k]        = slice_start;
+      const i_t p           = sub_to_parent[k];
+      if (p < 0 || p >= n_parent_cols) { continue; }
+      const bool is_binary = sub_problem.var_types[k] != simplex::variable_type_t::CONTINUOUS &&
+                             sub_problem.lower[k] == 0.0 && sub_problem.upper[k] == 1.0;
+      if (!is_binary) { continue; }
+      for (i_t q = parent_offsets[p]; q < parent_offsets[p + 1]; q++) {
+        const i_t implied_parent = parent_variables[q];
+        if (implied_parent < 0 || implied_parent >= n_parent_cols) { continue; }
+        const i_t implied_sub = parent_to_sub[implied_parent];
+        if (implied_sub < 0) { continue; }
+        out_variables.push_back(implied_sub);
+        out_lower.push_back(parent_lower[q]);
+        out_upper.push_back(parent_upper[q]);
+      }
+    }
+    const i_t total_entries = out_variables.size();
+    out_offsets[n_sub_cols] = total_entries;
+  };
+
+  copy_side(parent.zero_offsets,
+            parent.zero_variables,
+            parent.zero_lower_bound,
+            parent.zero_upper_bound,
+            out.zero_offsets,
+            out.zero_variables,
+            out.zero_lower_bound,
+            out.zero_upper_bound);
+  copy_side(parent.one_offsets,
+            parent.one_variables,
+            parent.one_lower_bound,
+            parent.one_upper_bound,
+            out.one_offsets,
+            out.one_variables,
+            out.one_lower_bound,
+            out.one_upper_bound);
+}
+
 template <typename i_t, typename f_t>
 struct inequality_t {
   inequality_t() : vector(), rhs(0.0) {}

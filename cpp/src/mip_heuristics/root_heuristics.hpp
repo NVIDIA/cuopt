@@ -10,8 +10,12 @@
 #include <branch_and_bound/worker.hpp>
 #include <dual_simplex/user_problem.hpp>
 #include "feasibility_jump/fj_cpu_worker.cuh"
+#include "local_search/core_lns.hpp"
 
 namespace cuopt::mathematical_optimization::mip {
+
+template <typename i_t, typename f_t>
+class branch_and_bound_t;
 
 template <typename i_t, typename f_t>
 struct cut_pass_heuristics_t {
@@ -130,6 +134,42 @@ struct cut_pass_heuristics_t {
 
     return worker.get();
   }
+};
+
+template <typename i_t, typename f_t>
+struct root_structural_heuristics_t {
+  simplex::lp_problem_t<i_t, f_t> lp_;
+  csr_matrix_t<i_t, f_t> Arow_;
+  std::vector<simplex::variable_type_t> var_types_;
+  pseudo_costs_t<i_t, f_t> pc_;
+  std::vector<f_t> root_solution_;
+  std::vector<f_t> root_edge_norm_;
+
+  core_lns_t<i_t, f_t> core_lns_;
+
+  i_t num_threads = 0;
+
+  root_structural_heuristics_t(branch_and_bound_t<i_t, f_t>* branch_and_bound_ptr, i_t num_threads)
+    : lp_(branch_and_bound_ptr->original_lp_),
+      Arow_(branch_and_bound_ptr->Arow_),
+      var_types_(branch_and_bound_ptr->var_types_),
+      pc_(branch_and_bound_ptr->pc_),
+      core_lns_(branch_and_bound_ptr, num_threads)
+  {
+  }
+
+  void run_after_root_lp(const std::vector<f_t>& root_solution,
+                         const std::vector<f_t>& root_edge_norm)
+  {
+    root_solution_  = root_solution;
+    root_edge_norm_ = root_edge_norm;
+    if (core_lns_.recognize()) {
+      core_lns_.run(lp_, Arow_, var_types_, root_solution_, root_edge_norm_, pc_);
+      num_threads += core_lns_.num_threads_used();
+    }
+  }
+
+  void stop() { core_lns_.stop_and_sync(); }
 };
 
 /// \brief Object Representing the heuristics run on the root node.

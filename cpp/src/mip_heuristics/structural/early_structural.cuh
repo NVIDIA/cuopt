@@ -73,28 +73,4 @@ template <typename f_t>
 using structural_incumbent_callback_t =
   std::function<void(const std::vector<f_t>& assignment, f_t objective)>;
 
-template <typename i_t, typename f_t>
-class root_structural_t {
- public:
-  root_structural_t(problem_t<i_t, f_t>& problem,
-                    const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances,
-                    std::atomic<bool>& preemption,
-                    structural_incumbent_callback_t<f_t> incumbent_callback);
-
-  ~root_structural_t();
-
-  bool recognized() const { return active_ != nullptr; }
-
-  void run();
-
- private:
-  int device_id_{0};
-  raft::handle_t handle_;
-  std::unique_ptr<problem_t<i_t, f_t>> problem_;
-  typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances_;
-  std::atomic<bool>& preemption_;
-  structural_incumbent_callback_t<f_t> incumbent_callback_;
-  std::unique_ptr<structural_heuristic_t<i_t, f_t>> active_;
-};
-
 }  // namespace cuopt::mathematical_optimization::mip

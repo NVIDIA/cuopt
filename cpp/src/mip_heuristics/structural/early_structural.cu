@@ -154,56 +154,6 @@ void early_structural_t<i_t, f_t>::run()
   this->try_update_best(objective, assignment, active_->name());
 }
 
-template <typename i_t, typename f_t>
-root_structural_t<i_t, f_t>::root_structural_t(
-  problem_t<i_t, f_t>& problem,
-  const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances,
-  std::atomic<bool>& preemption,
-  structural_incumbent_callback_t<f_t> incumbent_callback)
-  : tolerances_(tolerances),
-    preemption_(preemption),
-    incumbent_callback_(std::move(incumbent_callback))
-{
-  RAFT_CUDA_TRY(cudaGetDevice(&device_id_));
-  active_ = make_structural_heuristic<i_t, f_t>(problem, tolerances);
-  if (!active_) { return; }
-  problem.handle_ptr->sync_stream();
-  problem_ = std::make_unique<problem_t<i_t, f_t>>(problem, &handle_);
-  CUOPT_LOG_DEBUG("[Root Structural] %s recognized the model", active_->name());
-}
-
-template <typename i_t, typename f_t>
-root_structural_t<i_t, f_t>::~root_structural_t() = default;
-
-template <typename i_t, typename f_t>
-void root_structural_t<i_t, f_t>::run()
-{
-  if (!active_) { return; }
-  cuopt_assert(problem_ != nullptr, "missing structural problem");
-  cuopt_assert(incumbent_callback_ != nullptr, "missing incumbent callback");
-
-  std::vector<f_t> assignment;
-  if (!active_->solve(tolerances_, preemption_, assignment)) {
-    CUOPT_LOG_DEBUG("[Root Structural] %s constructed nothing", active_->name());
-    return;
-  }
-  if (preemption_.load()) { return; }
-
-  RAFT_CUDA_TRY(cudaSetDevice(device_id_));
-  f_t objective{0};
-  if (!validate(*problem_, assignment, objective)) {
-    CUOPT_LOG_DEBUG("[Root Structural] %s constructed a point that failed validation, discarding",
-                    active_->name());
-    return;
-  }
-  if (preemption_.load()) { return; }
-
-  incumbent_callback_(assignment, objective);
-  CUOPT_LOG_DEBUG("[Root Structural] %s queued objective %+.6e",
-                  active_->name(),
-                  (double)problem_->get_user_obj_from_solver_obj(objective));
-}
-
 #if MIP_INSTANTIATE_FLOAT
 template class early_structural_t<int, float>;
 template class root_structural_t<int, float>;
@@ -211,7 +161,6 @@ template class root_structural_t<int, float>;
 
 #if MIP_INSTANTIATE_DOUBLE
 template class early_structural_t<int, double>;
-template class root_structural_t<int, double>;
 #endif
 
 }  // namespace cuopt::mathematical_optimization::mip

@@ -90,10 +90,16 @@ static simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
 
   auto variable_types = problem.get_variable_types_host();
   for (int j = 0; j < n; ++j) {
-    user_problem.var_types[j] =
-      variable_types[j] == var_t::CONTINUOUS
-        ? cuopt::mathematical_optimization::simplex::variable_type_t::CONTINUOUS
-        : cuopt::mathematical_optimization::simplex::variable_type_t::INTEGER;
+    if (variable_types[j] == var_t::CONTINUOUS) {
+      user_problem.var_types[j] =
+        cuopt::mathematical_optimization::simplex::variable_type_t::CONTINUOUS;
+    } else if (user_problem.lower[j] >= 0 && user_problem.upper[j] <= 1) {
+      user_problem.var_types[j] =
+        cuopt::mathematical_optimization::simplex::variable_type_t::BINARY;
+    } else {
+      user_problem.var_types[j] =
+        cuopt::mathematical_optimization::simplex::variable_type_t::INTEGER;
+    }
   }
 
   user_problem.Q_offsets = problem.get_quadratic_objective_offsets();
@@ -191,10 +197,16 @@ static simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
 
   auto model_variable_types = cuopt::host_copy(model.variable_types, handle_ptr->get_stream());
   for (int j = 0; j < n; ++j) {
-    user_problem.var_types[j] =
-      model_variable_types[j] == var_t::CONTINUOUS
-        ? cuopt::mathematical_optimization::simplex::variable_type_t::CONTINUOUS
-        : cuopt::mathematical_optimization::simplex::variable_type_t::INTEGER;
+    if (model_variable_types[j] == var_t::CONTINUOUS) {
+      user_problem.var_types[j] =
+        cuopt::mathematical_optimization::simplex::variable_type_t::CONTINUOUS;
+    } else if (user_problem.lower[j] >= 0 && user_problem.upper[j] <= 1) {
+      user_problem.var_types[j] =
+        cuopt::mathematical_optimization::simplex::variable_type_t::BINARY;
+    } else {
+      user_problem.var_types[j] =
+        cuopt::mathematical_optimization::simplex::variable_type_t::INTEGER;
+    }
   }
 
   user_problem.Q_offsets = model.Q_offsets;
@@ -305,11 +317,17 @@ static simplex::user_problem_t<i_t, f_t> cuopt_optimization_problem_to_user_prob
   user_problem.var_types.resize(n);
   auto model_variable_types = model.get_variable_types_host();
   for (i_t j = 0; j < n; ++j) {
-    user_problem.var_types[j] =
-      model_variable_types.empty() ||
-          model_variable_types[static_cast<std::size_t>(j)] == var_t::CONTINUOUS
-        ? cuopt::mathematical_optimization::simplex::variable_type_t::CONTINUOUS
-        : cuopt::mathematical_optimization::simplex::variable_type_t::INTEGER;
+    if (model_variable_types.empty() ||
+        model_variable_types[static_cast<std::size_t>(j)] == var_t::CONTINUOUS) {
+      user_problem.var_types[j] =
+        cuopt::mathematical_optimization::simplex::variable_type_t::CONTINUOUS;
+    } else if (user_problem.lower[j] >= 0 && user_problem.upper[j] <= 1) {
+      user_problem.var_types[j] =
+        cuopt::mathematical_optimization::simplex::variable_type_t::BINARY;
+    } else {
+      user_problem.var_types[j] =
+        cuopt::mathematical_optimization::simplex::variable_type_t::INTEGER;
+    }
   }
 
   user_problem.Q_offsets = model.get_quadratic_objective_offsets();

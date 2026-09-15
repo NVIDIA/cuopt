@@ -310,12 +310,15 @@ class diving_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
 };
 
 struct submip_stats_t {
+  omp_atomic_t<int> total_calls               = 0;
   omp_atomic_t<int> total_success             = 0;
   omp_atomic_t<double> success_fixrate_sum    = 0;
   omp_atomic_t<int> total_infeasible          = 0;
   omp_atomic_t<double> infeasible_fixrate_sum = 0;
-  omp_atomic_t<int> total_calls               = 0;
-  omp_atomic_t<int> total_empty               = 0;
+  omp_atomic_t<int> total_exhausted           = 0;
+  omp_atomic_t<double> exhausted_fixrate_sum  = 0;
+  omp_atomic_t<int> total_truncated           = 0;
+  omp_atomic_t<double> truncated_fixrate_sum  = 0;
 
   void save_success(double fixrate)
   {
@@ -329,9 +332,22 @@ struct submip_stats_t {
     infeasible_fixrate_sum += fixrate;
   }
 
-  void save_empty() { ++total_empty; }
+  void save_exhausted(double fixrate)
+  {
+    ++total_exhausted;
+    exhausted_fixrate_sum += fixrate;
+  }
+
+  void save_truncated(double fixrate)
+  {
+    ++total_truncated;
+    truncated_fixrate_sum += fixrate;
+  }
+
   double average_infeasible_fixrate() const { return infeasible_fixrate_sum / total_infeasible; }
   double average_success_fixrate() const { return success_fixrate_sum / total_success; }
+  double average_exhausted_fixrate() const { return exhausted_fixrate_sum / total_exhausted; }
+  double average_truncated_fixrate() const { return truncated_fixrate_sum / total_truncated; }
 };
 
 }  // namespace cuopt::mathematical_optimization::mip

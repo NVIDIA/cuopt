@@ -355,6 +355,8 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     branch_and_bound_settings.integer_tol = context.settings.tolerances.integrality_tolerance;
     branch_and_bound_settings.reliability_branching = solver_settings_.reliability_branching;
     branch_and_bound_settings.max_cut_passes        = context.settings.max_cut_passes;
+    branch_and_bound_settings.root_heuristics       = context.settings.root_heuristics;
+    branch_and_bound_settings.core_lns              = context.settings.core_lns;
     branch_and_bound_settings.mir_cuts              = context.settings.mir_cuts;
     branch_and_bound_settings.deterministic =
       context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC;
@@ -484,33 +486,12 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     }
   }
 
-  std::unique_ptr<mip::root_structural_t<i_t, f_t>> root_structural;
-  if (num_threads >= CUOPT_MIP_ROOT_STRUCTURAL_REQUIRED_THREAD_COUNT &&
-      context.settings.determinism_mode != CUOPT_MODE_DETERMINISTIC &&
-      !context.settings.heuristics_only) {
-    root_structural = std::make_unique<mip::root_structural_t<i_t, f_t>>(
-      *context.problem_ptr,
-      context.settings.get_tolerances(),
-      context.preempt_heuristic_solver_,
-      [&dm](const std::vector<f_t>& assignment, f_t objective) {
-        dm.population.add_external_solution(assignment, objective, solution_origin_t::EXTERNAL);
-      });
-    if (!root_structural->recognized()) { root_structural.reset(); }
-  }
-
 #pragma omp taskgroup
   {
     if (!context.settings.heuristics_only) {
 #pragma omp task default(shared) priority(CUOPT_CRITICAL_TASK_PRIORITY)
       {
         branch_and_bound_status = branch_and_bound->solve(branch_and_bound_solution);
-      }
-    }
-
-    if (root_structural) {
-#pragma omp task default(shared) priority(CUOPT_DEFAULT_TASK_PRIORITY)
-      {
-        root_structural->run();
       }
     }
 

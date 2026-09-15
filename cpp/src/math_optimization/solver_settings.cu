@@ -193,6 +193,8 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_REDUCED_COST_STRENGTHENING, &mip_settings.reduced_cost_strengthening, -1, std::numeric_limits<i_t>::max(), -1},
     {CUOPT_MIP_RINS, &mip_settings.submip_params.rins, -1, 1, -1},
     {CUOPT_MIP_RENS, &mip_settings.submip_params.rens, -1, 1, -1},
+    {CUOPT_MIP_ROOT_HEURISTICS, &mip_settings.root_heuristics, -1, 1, -1},
+    {CUOPT_MIP_CORE_LNS, &mip_settings.core_lns, -1, 1, 0},
     {CUOPT_MIP_OBJECTIVE_STEP, &mip_settings.objective_step, 0, 1, 1},
     {CUOPT_NUM_GPUS, &pdlp_settings.num_gpus, -1, 72, 1},
     {CUOPT_NUM_GPUS, &mip_settings.num_gpus, -1, 72, 1},

@@ -163,6 +163,11 @@ class third_party_presolve_t {
                                   const std::vector<i_t>& A_indices,
                                   const std::vector<i_t>& A_offsets) const;
   const std::vector<i_t>& get_reduced_to_original_map() const { return reduced_to_original_map_; }
+
+  // Columns a parallel-column merge touched. PaPILO replaces the pair by y = col2 + scale * col1
+  // while keeping col2's index, so anything derived from the *parent* model -- clique literals,
+  // probing implications -- is unsound on them and must not be inherited.
+  const std::vector<i_t>& get_merged_original_columns() const { return merged_original_columns_; }
   const std::vector<i_t>& get_original_to_reduced_map() const { return original_to_reduced_map_; }
 
   const std::vector<f_t>& get_original_objective_coefficients() const
@@ -214,6 +219,7 @@ class third_party_presolve_t {
 
   std::vector<i_t> reduced_to_original_map_{};
   std::vector<i_t> original_to_reduced_map_{};
+  std::vector<i_t> merged_original_columns_{};
 
   std::vector<f_t> original_objective_coefficients_{};
   f_t original_objective_offset_{0};

@@ -91,6 +91,8 @@ template <typename i_t, typename f_t>
 struct deterministic_bfs_policy_t;
 template <typename i_t, typename f_t>
 struct deterministic_diving_policy_t;
+template <typename i_t, typename f_t>
+class core_lns_t;
 
 template <typename i_t, typename f_t>
 class branch_and_bound_t {
@@ -188,6 +190,12 @@ class branch_and_bound_t {
 
   // Get producer sync for external heuristics (e.g., CPUFJ) to register
   producer_sync_t& get_producer_sync() { return producer_sync_; }
+
+  bool is_running() const
+  {
+    return solver_status_ == mip_status_t::UNSET && is_running_ &&
+           !settings_.received_halt_signal();
+  }
 
  private:
   const simplex::user_problem_t<i_t, f_t>& original_problem_;
@@ -298,12 +306,6 @@ class branch_and_bound_t {
               i_t node_int_infeas,
               double work_time = -1);
 
-  bool received_halt_signal()
-  {
-    return settings_.concurrent_halt ? settings_.concurrent_halt->load(std::memory_order_acquire)
-                                     : false;
-  }
-
   enum class cut_pass_action_t { CONTINUE, BREAK, RETURN };
 
   cut_pass_action_t do_cut_pass(i_t cut_pass,
@@ -372,6 +374,7 @@ class branch_and_bound_t {
 
   // Launch a new RINS worker
   bool launch_submip_worker(const std::vector<f_t>& sol);
+
   void set_solution_from_submip(const simplex::lp_problem_t<i_t, f_t>& lp,
                                 const std::vector<f_t>& solution,
                                 const third_party_presolve_t<i_t, f_t>& presolver,
@@ -435,6 +438,10 @@ class branch_and_bound_t {
     branch_and_bound_worker_t<i_t, f_t>* worker,
     simplex::dual_status_t lp_status,
     simplex::logger_t& log);
+
+  // Friend classes for accessing private methods in branch_and_bound
+  friend class root_structural_heuristics_t<i_t, f_t>;
+  friend class core_lns_t<i_t, f_t>;
 
   // ============================================================================
   // Deterministic BSP (Bulk Synchronous Parallel) methods for deterministic parallel B&B
