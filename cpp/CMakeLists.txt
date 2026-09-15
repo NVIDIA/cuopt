@@ -49,6 +49,7 @@ rapids_cmake_build_type(Release)
 option(CMAKE_CUDA_LINEINFO "Enable the -lineinfo option for nvcc useful for cuda-memcheck / profiler" ON)
 option(BUILD_TESTS "Configure CMake to build tests" ON)
 option(BUILD_LP_ONLY "Build only linear programming components, exclude routing and MIP-specific files" OFF)
+option(BUILD_MIP_BENCHMARKS "Build MIP benchmarks" OFF)
 option(SKIP_C_PYTHON_ADAPTERS "Skip building C and Python adapter files (cython_solve.cu and cuopt_c.cpp)" OFF)
 option(SKIP_ROUTING_BUILD "Skip building routing components" OFF)
 option(SKIP_GRPC_BUILD "Skip building gRPC and protobuf components" OFF)
@@ -302,6 +303,25 @@ FetchContent_Declare(
 set(BUILD_SHARED_LIBS_SAVED ${BUILD_SHARED_LIBS})
 set(BUILD_SHARED_LIBS OFF)
 FetchContent_MakeAvailable(pslp)
+set(BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS_SAVED})
+
+FetchContent_Declare(
+        highway
+        GIT_REPOSITORY "https://github.com/google/highway.git"
+        GIT_TAG "1.4.0"
+        GIT_PROGRESS TRUE
+        EXCLUDE_FROM_ALL
+        SYSTEM
+)
+
+set(HWY_ENABLE_CONTRIB OFF CACHE BOOL "" FORCE)
+set(HWY_ENABLE_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(HWY_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
+set(HWY_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+
+set(BUILD_SHARED_LIBS_SAVED ${BUILD_SHARED_LIBS})
+set(BUILD_SHARED_LIBS OFF)
+FetchContent_MakeAvailable(highway)
 set(BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS_SAVED})
 
 
@@ -868,6 +888,9 @@ target_include_directories(cuopt_mathopt PRIVATE
 target_include_directories(cuopt_mathopt SYSTEM PRIVATE
         "${pslp_SOURCE_DIR}/include"
         "${dejavu_SOURCE_DIR}"
+        # utilities/version_info.cpp includes highway, and utilities builds into this
+        # component since cuopt_base was removed.
+        "${highway_SOURCE_DIR}"
 )
 target_compile_definitions(cuopt_mathopt
         PUBLIC CUSPARSE_ENABLE_EXPERIMENTAL_API
@@ -896,6 +919,8 @@ target_link_libraries(cuopt_mathopt
 )
 target_link_libraries(cuopt_mathopt PRIVATE $<TARGET_FILE:PSLP>)
 add_dependencies(cuopt_mathopt PSLP)
+target_link_libraries(cuopt_mathopt PRIVATE $<TARGET_FILE:hwy>)
+add_dependencies(cuopt_mathopt hwy)
 target_include_directories(cuopt_mathopt SYSTEM PRIVATE
         $<TARGET_PROPERTY:KaMinPar::KaMinPar,INTERFACE_INCLUDE_DIRECTORIES>)
 target_compile_definitions(cuopt_mathopt PRIVATE TBB_PREVIEW_GLOBAL_CONTROL KAMINPAR_64BIT_EDGE_IDS)
@@ -939,6 +964,7 @@ target_include_directories(cuopt_objs PRIVATE
 target_include_directories(cuopt_objs SYSTEM PRIVATE
         "${pslp_SOURCE_DIR}/include"
         "${dejavu_SOURCE_DIR}"
+        "${highway_SOURCE_DIR}"
 )
 
 target_include_directories(cuopt_objs
@@ -964,6 +990,16 @@ target_include_directories(cuopt_objs
 target_link_libraries(cuopt_objs PRIVATE $<TARGET_FILE:PSLP>)
 add_dependencies(cuopt_objs PSLP)
 
+target_link_libraries(cuopt_objs PRIVATE $<TARGET_FILE:hwy>)
+add_dependencies(cuopt_objs hwy)
+
+# Link KaMinPar by file to avoid export dependency tracking (mirrors PSLP above).
+# KaMinPar is a from-source static library fully embedded into libcuopt.so; it is never
+# installed (INSTALL_KAMINPAR OFF) and consumers of cuopt::cuopt never use it, so it must
+# not leak into cuopt's exported link interface (otherwise rapids_export fails with
+# "target KaMinPar is not in any export set"). libKaMinPar.a is self-contained (the
+# kaminpar-common OBJECT lib is archived into it); we only need its public headers
+# (<kaminpar.h>, which pulls in stdlib + TBB) at compile time.
 target_include_directories(cuopt_objs SYSTEM PRIVATE
         $<TARGET_PROPERTY:KaMinPar::KaMinPar,INTERFACE_INCLUDE_DIRECTORIES>)
 # partitioner.cpp includes <kaminpar.h>. Because KaMinPar is linked by file, cuopt
@@ -1013,6 +1049,9 @@ target_link_libraries(cuopt_objs
 # - generate tests --------------------------------------------------------------------------------
 if (BUILD_TESTS)
     include(CTest)
+endif ()
+
+if (BUILD_TESTS OR (BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY))
     # Embeds cuopt_client_objs directly rather than linking libcuopt_client.so: the internal
     # test binaries reach parser internals that the shared library deliberately does not
     # export. Do not also link cuopt::cuopt_client here -- that would duplicate every symbol.
@@ -1052,10 +1091,15 @@ if (BUILD_TESTS)
     )
     target_link_libraries(cuopt_static PRIVATE $<TARGET_FILE:PSLP>)
     add_dependencies(cuopt_static PSLP)
+    target_link_libraries(cuopt_static PRIVATE $<TARGET_FILE:hwy>)
+    add_dependencies(cuopt_static hwy)
     target_link_libraries(cuopt_static PRIVATE $<TARGET_FILE:KaMinPar::KaMinPar>)
     if (TARGET KaMinPar)
         add_dependencies(cuopt_static KaMinPar)
     endif ()
+endif ()
+
+if (BUILD_TESTS)
     add_subdirectory(tests)
 endif (BUILD_TESTS)
 
@@ -1293,7 +1337,6 @@ if (NOT BUILD_LP_ONLY)
 endif ()
 
 
-option(BUILD_MIP_BENCHMARKS "Build MIP benchmarks" OFF)
 if (BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
     add_executable(solve_MIP ../benchmarks/linear_programming/cuopt/run_mip.cpp)
     target_include_directories(solve_MIP
