@@ -167,16 +167,15 @@ inline std::vector<double> crush_user_rhs(barrier_transform_t const& xf, double 
     }
   }
 
+  // An empty remaining_constraints means either presolve never ran its empty-row pass, so the
+  // rows are unchanged, or it dropped every row and the loop above already accepted them.
   std::vector<double> presolved;
   if (!xf.presolve_info.remaining_constraints.empty()) {
     presolved.resize(xf.presolve_info.remaining_constraints.size());
     for (std::size_t k = 0; k < xf.presolve_info.remaining_constraints.size(); ++k) {
       presolved[k] = original[static_cast<std::size_t>(xf.presolve_info.remaining_constraints[k])];
     }
-  } else if (!xf.presolve_info.removed_constraints.empty()) {
-    // Every row was dropped; the feasibility loop above already accepted them.
-    presolved.clear();
-  } else {
+  } else if (xf.presolve_info.removed_constraints.empty()) {
     presolved = std::move(original);
   }
 
