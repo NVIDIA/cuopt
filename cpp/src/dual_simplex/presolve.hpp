@@ -218,6 +218,11 @@ struct presolve_info_t {
 
   // Originally-free variables that received implied bounds, with the constraint used
   std::vector<bounded_free_var_t<i_t, f_t>> bounded_free_variables;
+
+  // Original indices of variables removed because their bounds were equal. Their reduced costs
+  // depend on the final duals, so postsolve recomputes them rather than reading
+  // removed_reduced_costs. Subset of removed_variables.
+  std::vector<i_t> fixed_variables;
 };
 
 template <typename i_t, typename f_t>
