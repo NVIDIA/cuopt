@@ -3709,8 +3709,12 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
       }
     }
 
+    // Use the pivotal BTRAN density already measured in this iteration. Always
+    // attempt the first cutoff; subsequent checks are spaced 1 to 100 iterations apart.
+    const i_t cutoff_check_frequency =
+      static_cast<i_t>(100.0 / std::clamp(delta_y_nz_percentage, f_t{1}, f_t{100}));
     if (obj >= settings.cut_off &&
-        (last_cutoff_check == -1 || iter - last_cutoff_check >= settings.cutoff_check_frequency)) {
+        (last_cutoff_check == -1 || iter - last_cutoff_check >= cutoff_check_frequency)) {
       last_cutoff_check       = iter;
       const f_t unperturb_obj = compute_objective(lp, x);
       if (unperturb_obj >= settings.cut_off) {
@@ -3721,10 +3725,6 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
           phase2::compute_dual_solution_from_basis(
             lp, ft, basic_list, nonbasic_list, trial_y, trial_z, phase2_work_estimate);
         }
-        const f_t dual_infeas = phase2::dual_infeasibility(
-          lp, settings, vstatus, trial_z, settings.tight_tol, settings.dual_tol);
-        const bool dual_feasible = dual_infeas <= settings.dual_tol;
-
         // Include residual reduced costs for basic variables in the dual bound.
         std::vector<f_t> reduced_cost = lp.objective;
         matrix_transpose_vector_multiply(lp.A, -1.0, trial_y, 1.0, reduced_cost);
@@ -3742,7 +3742,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
         }
         phase2_work_estimate += 3 * lp.A.col_start[n] + 12 * n + 2 * m;
 
-        if (dual_feasible && std::isfinite(dual_objective) && dual_objective >= settings.cut_off) {
+        if (std::isfinite(dual_objective) && dual_objective >= settings.cut_off) {
           z = trial_z;
           y = trial_y;
           return dual_status_t::CUTOFF;

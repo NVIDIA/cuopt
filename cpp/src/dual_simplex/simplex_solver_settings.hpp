@@ -91,7 +91,6 @@ struct simplex_solver_settings_t {
       refactor_frequency(100),
       iteration_log_frequency(1000),
       first_iteration_log(2),
-      cutoff_check_frequency(1000),
       num_threads(omp_get_max_threads() - 1),
       max_cut_passes(0),
       mir_cuts(-1),
@@ -202,7 +201,6 @@ struct simplex_solver_settings_t {
   i_t refactor_frequency;          // number of basis updates before refactorization
   i_t iteration_log_frequency;     // number of iterations between log updates
   i_t first_iteration_log;         // number of iterations to log at beginning of solve
-  i_t cutoff_check_frequency;      // number of iterations between cutoff checks
   i_t num_threads;                 // number of threads to use
   i_t random_seed;                 // random seed
   i_t max_cut_passes;              // number of cut passes to make
