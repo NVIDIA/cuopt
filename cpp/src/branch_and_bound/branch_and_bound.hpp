@@ -152,21 +152,18 @@ class branch_and_bound_t {
 
   f_t get_upper_bound() const { return upper_bound_.load(); }
 
-  f_t get_user_upper_bound()
+  f_t get_user_upper_bound() const
   {
-    std::lock_guard lock(mutex_original_lp_);
     return simplex::compute_user_objective(original_lp_, upper_bound_.load());
   }
 
   bool has_solver_space_incumbent() const { return incumbent_.has_incumbent; }
 
-  bool is_running()
+  bool is_running() const
   {
-    return solver_status_ == mip_status_t::UNSET && is_running_ &&
-           !settings_.received_halt_signal();
+    return solver_status_.load(std::memory_order::acquire) == mip_status_t::UNSET &&
+           is_running_.load(std::memory_order::acquire) && !settings_.received_halt_signal();
   }
-
-  bool has_converged(const simplex::lp_problem_t<i_t, f_t>& lp);
 
   // Repair a low-quality solution from the heuristics.
   bool repair_solution(const std::vector<f_t>& leaf_edge_norms,

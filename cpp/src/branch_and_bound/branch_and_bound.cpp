@@ -349,17 +349,6 @@ f_t branch_and_bound_t<i_t, f_t>::get_lower_bound()
 }
 
 template <typename i_t, typename f_t>
-bool branch_and_bound_t<i_t, f_t>::has_converged(const lp_problem_t<i_t, f_t>& lp)
-{
-  f_t lower_bound = get_lower_bound();
-  f_t user_obj    = compute_user_objective(lp, upper_bound_.load());
-  f_t user_lower  = compute_user_objective(lp, lower_bound);
-  f_t abs_gap     = compute_user_abs_gap(lp, upper_bound_.load(), lower_bound);
-  f_t rel_gap     = user_relative_gap(user_obj, user_lower);
-  return abs_gap <= settings_.absolute_mip_gap_tol || rel_gap <= settings_.relative_mip_gap_tol;
-}
-
-template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::set_initial_upper_bound(f_t bound)
 {
   upper_bound_ = bound;
@@ -1742,7 +1731,8 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
 
   bool can_launch_new_submip = true;
 
-  while (stack.size() > 0 && is_running() && !has_converged(worker->leaf_problem)) {
+  while (stack.size() > 0 && is_running() && rel_gap > settings_.relative_mip_gap_tol &&
+         abs_gap > settings_.absolute_mip_gap_tol) {
     if (worker->worker_id == 0) { repair_heuristic_solutions(); }
 
     if (worker->active_diving_workers < worker->max_diving_workers &&
@@ -1976,6 +1966,11 @@ void branch_and_bound_t<i_t, f_t>::work_stealing(bfs_worker_t<i_t, f_t>* worker)
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>* worker)
 {
+  f_t lower_bound = get_lower_bound();
+  f_t user_obj    = compute_user_objective(worker->leaf_problem, upper_bound_.load());
+  f_t user_lower  = compute_user_objective(worker->leaf_problem, lower_bound);
+  f_t abs_gap     = compute_user_abs_gap(worker->leaf_problem, upper_bound_.load(), lower_bound);
+  f_t rel_gap     = user_relative_gap(user_obj, user_lower);
   f_t steal_chance =
     settings_.bnb_steal_chance >= 0 ? settings_.bnb_steal_chance : MIP_DEFAULT_STEAL_CHANCE;
   node_queue_t<i_t, f_t>& node_queue = worker->node_queue;
@@ -2001,15 +1996,15 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
   worker->calculate_max_diving_workers(bfs_worker_pool_.size(), diving_worker_pool_.size());
   worker->update_diving_heuristic_list(diving_settings);
 
-  while (is_running() && node_queue.best_first_queue_size() > 0) {
+  while (is_running() && abs_gap > settings_.absolute_mip_gap_tol &&
+         rel_gap > settings_.relative_mip_gap_tol && node_queue.best_first_queue_size() > 0) {
     if (settings_.inside_submip && settings_.main_solver_ptr) {
       // Stops the solver  when the lower bound in the sub-MIP solve is greater than the upper bound
       // of the main solve (this can  happen if one of the worker in the main solve found a better
       // incumbent during the  sub-MIP solve). The sub-MIP solve also stops if the status in the
       // main solver changed (i.e., the gap in the main solve is sufficiently small, it reaches
       // time/node/work limit, etc.)
-      f_t main_solver_cutoff = settings_.main_solver_ptr->upper_bound_.load();
-      f_t user_lower         = compute_user_objective(worker->leaf_problem, get_lower_bound());
+      f_t main_solver_cutoff = settings_.main_solver_ptr->get_user_upper_bound();
       bool is_cutoff         = original_lp_.obj_scale > 0 ? user_lower > main_solver_cutoff
                                                           : main_solver_cutoff > user_lower;
       bool is_solver_running = settings_.main_solver_ptr->is_running();
@@ -2024,12 +2019,6 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
           main_solver_cutoff);
         break;
       }
-    }
-
-    if (settings_.received_halt_signal()) {
-      solver_status_        = mip_status_t::HALT;
-      node_concurrent_halt_ = true;
-      break;
     }
 
     // If the guided diving was disabled previously due to the lack of an incumbent solution,
@@ -2064,7 +2053,13 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
 
     plunge_with(worker, start_node);
 
-    if (has_converged(worker->leaf_problem)) {
+    lower_bound = get_lower_bound();
+    user_obj    = compute_user_objective(worker->leaf_problem, upper_bound_.load());
+    user_lower  = compute_user_objective(worker->leaf_problem, lower_bound);
+    abs_gap     = compute_user_abs_gap(worker->leaf_problem, upper_bound_.load(), lower_bound);
+    rel_gap     = user_relative_gap(user_obj, user_lower);
+
+    if (abs_gap <= settings_.absolute_mip_gap_tol || rel_gap <= settings_.relative_mip_gap_tol) {
       solver_status_ = mip_status_t::OPTIMAL;
       break;
     }
@@ -2073,6 +2068,11 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
     if (node_queue.best_first_queue_size() == 0 || worker->rng.next_double() < steal_chance) {
       work_stealing(worker);
     }
+  }
+
+  if (solver_status_ == mip_status_t::UNSET && settings_.received_halt_signal()) {
+    solver_status_        = mip_status_t::HALT;
+    node_concurrent_halt_ = true;
   }
 
   if (solver_status_ == mip_status_t::TIME_LIMIT || solver_status_ == mip_status_t::OPTIMAL) {
@@ -2124,8 +2124,8 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker,
   f_t rel_gap     = user_relative_gap(user_obj, user_lower);
   f_t abs_gap     = compute_user_abs_gap(worker->leaf_problem, upper_bound, lower_bound);
 
-  while (stack.size() > 0 && is_running() && !has_converged(worker->leaf_problem) &&
-         !settings.received_halt_signal()) {
+  while (stack.size() > 0 && is_running() && rel_gap > settings.relative_mip_gap_tol &&
+         abs_gap > settings.absolute_mip_gap_tol && !settings.received_halt_signal()) {
     mip_node_t<i_t, f_t>* node_ptr = stack.front();
     stack.pop_front();
 
@@ -2733,8 +2733,7 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(
 
   i_t round = 0;
 
-  while (is_running() && !has_converged(worker->leaf_problem) &&
-         !submip_settings.received_halt_signal()) {
+  while (is_running() && !submip_settings.received_halt_signal()) {
     f_t prev_fixrate         = fixrate;
     f_t distance             = 1.0 - (1.0 - prev_fixrate) * close_ratio;
     f_t round_target_fixrate = std::min(distance, max_fixrate) - prev_fixrate;
