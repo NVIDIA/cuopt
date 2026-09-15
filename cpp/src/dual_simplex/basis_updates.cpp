@@ -1205,7 +1205,7 @@ i_t basis_update_mpf_t<i_t, f_t>::append_cuts(const csr_matrix_t<i_t, f_t>& cuts
         const f_t mu    = mu_values_[k];
 
         // dot = u^T * b
-        f_t dot         = dot_product(u_col, xi_workspace_, x_workspace_);
+        f_t dot         = compensated_dot_product(u_col, xi_workspace_, x_workspace_);
         const f_t theta = dot / mu;
         if (std::abs(theta) > zero_tol) {
           add_sparse_column(S_, v_col, -theta, xi_workspace_, nz, x_workspace_);
@@ -1511,6 +1511,58 @@ f_t basis_update_mpf_t<i_t, f_t>::dot_product(i_t col,
   return dot;
 }
 
+// Dot2 (Ogita, Rump, Oishi, Algorithm 5.3) with TwoProductFMA.
+// Requires round-to-nearest arithmetic without reassociation.
+// dot = S(:, col)' * x
+template <typename i_t, typename f_t>
+f_t basis_update_mpf_t<i_t, f_t>::compensated_dot_product(i_t col, const std::vector<f_t>& x) const
+{
+  f_t sum             = 0.0;
+  f_t correction      = 0.0;
+  const i_t col_start = S_.col_start[col];
+  const i_t col_end   = S_.col_start[col + 1];
+  for (i_t p = col_start; p < col_end; ++p) {
+    const i_t i             = S_.i[p];
+    const f_t product       = S_.x[p] * x[i];
+    const f_t product_error = std::fma(S_.x[p], x[i], -product);
+    const f_t next          = sum + product;
+    const f_t z             = next - sum;
+    const f_t sum_error     = (sum - (next - z)) + (product - z);
+    correction += sum_error + product_error;
+    sum = next;
+  }
+  work_estimate_ += 3 * (col_end - col_start);
+  return sum + correction;
+}
+
+// dot = S(:, col)' * x
+template <typename i_t, typename f_t>
+f_t basis_update_mpf_t<i_t, f_t>::compensated_dot_product(i_t col,
+                                                          const std::vector<i_t>& mark,
+                                                          const std::vector<f_t>& x) const
+{
+  f_t sum             = 0.0;
+  f_t correction      = 0.0;
+  const i_t col_start = S_.col_start[col];
+  const i_t col_end   = S_.col_start[col + 1];
+  i_t nz_mark         = 0;
+  for (i_t p = col_start; p < col_end; ++p) {
+    const i_t i = S_.i[p];
+    if (mark[i]) {
+      const f_t product       = S_.x[p] * x[i];
+      const f_t product_error = std::fma(S_.x[p], x[i], -product);
+      const f_t next          = sum + product;
+      const f_t z             = next - sum;
+      const f_t sum_error     = (sum - (next - z)) + (product - z);
+      correction += sum_error + product_error;
+      sum = next;
+      nz_mark++;
+    }
+  }
+  work_estimate_ += 2 * nz_mark + (col_end - col_start);
+  return sum + correction;
+}
+
 // x <- x + theta * S(:, col)
 template <typename i_t, typename f_t>
 void basis_update_mpf_t<i_t, f_t>::add_sparse_column(const csc_matrix_t<i_t, f_t>& S,
@@ -1719,7 +1771,7 @@ i_t basis_update_mpf_t<i_t, f_t>::l_transpose_solve(std::vector<f_t>& rhs) const
     const f_t mu    = mu_values_[k];
 
     // dot = u^T * b
-    f_t dot         = dot_product(u_col, rhs);
+    f_t dot         = compensated_dot_product(u_col, rhs);
     const f_t theta = dot / mu;
 
     if (std::abs(theta) > zero_tol) { add_sparse_column(S_, v_col, -theta, rhs); }
@@ -1758,7 +1810,7 @@ i_t basis_update_mpf_t<i_t, f_t>::l_transpose_solve(sparse_vector_t<i_t, f_t>& r
     const f_t mu    = mu_values_[k];
 
     // dot = u^T * b
-    f_t dot = dot_product(u_col, xi_workspace_, x_workspace_);
+    f_t dot = compensated_dot_product(u_col, xi_workspace_, x_workspace_);
 
 #ifdef CHECK_MULTIPLY
     f_t dot_check = 0.0;
@@ -2044,7 +2096,7 @@ i_t basis_update_mpf_t<i_t, f_t>::l_solve(std::vector<f_t>& rhs) const
     const f_t mu    = mu_values_[k];
     const i_t u_col = 2 * k;
     const i_t v_col = 2 * k + 1;
-    f_t dot         = dot_product(v_col, rhs);
+    f_t dot         = compensated_dot_product(v_col, rhs);
     const f_t theta = dot / mu;
 
     if (std::abs(theta) > zero_tol) { add_sparse_column(S_, u_col, -theta, rhs); }
@@ -2091,7 +2143,7 @@ i_t basis_update_mpf_t<i_t, f_t>::l_solve(sparse_vector_t<i_t, f_t>& rhs) const
     const i_t v_col = 2 * k + 1;
 
     // dot = v^T * x
-    f_t dot = dot_product(v_col, xi_workspace_, x_workspace_);
+    f_t dot = compensated_dot_product(v_col, xi_workspace_, x_workspace_);
 
     const f_t theta = dot / mu;
     if (std::abs(theta) > zero_tol) {
