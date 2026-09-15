@@ -31,7 +31,7 @@ namespace CUOPT_EXPORT mathematical_optimization {
 struct barrier_transform_t;
 
 /**
- * @brief GPU solve cache owned by DataModel when sequence_solve is on.
+ * @brief GPU solve cache owned by DataModel when CUOPT_SEQUENCE_SOLVE is enabled.
  *
  * After an Optimal full solve, holds iteration_data_t and the user-barrier transform.
  * update_linear_objective crushes the new linear objective and sets c_dirty so the next Solve

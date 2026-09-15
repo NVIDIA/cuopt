@@ -97,7 +97,8 @@ void barrier_cache_t::update_linear_objective(double const* c, int n)
 {
   cuopt_expects(impl_->transform != nullptr,
                 error_type_t::ValidationError,
-                "update_linear_objective: no barrier transform; Solve with sequence_solve first.");
+                "update_linear_objective: no barrier transform; Solve with CUOPT_SEQUENCE_SOLVE "
+                "enabled first.");
   cuopt_expects(impl_->iteration_data.get() != nullptr,
                 error_type_t::ValidationError,
                 "update_linear_objective: no cached iteration_data; Solve a QP to Optimal first.");

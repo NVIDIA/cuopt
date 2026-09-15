@@ -87,10 +87,8 @@ cdef extern from "cuopt/mathematical_optimization/utilities/internals.hpp" names
     cdef cppclass base_solution_callback_t
 
 
-cdef extern from *:
+cdef extern from "cuopt/mathematical_optimization/utilities/barrier_cache.hpp":
     """
-    #include <cuopt/mathematical_optimization/utilities/barrier_cache.hpp>
-
     static void cuopt_barrier_cache_capsule_dtor(PyObject *cap) noexcept
     {
       void *p = PyCapsule_GetPointer(cap, "cuopt.barrier_cache");
@@ -556,7 +554,10 @@ def Solve(py_data_model_obj, SolverSettings settings, mip=False):
     cdef barrier_cache_t* cache_in = NULL
     cdef solver_ret_t* sol_ret
 
-    if settings.sequence_solve and data_model_obj.barrier_cache_capsule is not None:
+    if (
+        settings.get_parameter("sequence_solve")
+        and data_model_obj.barrier_cache_capsule is not None
+    ):
         if not PyCapsule_IsValid(
             data_model_obj.barrier_cache_capsule,
             b"cuopt.barrier_cache",

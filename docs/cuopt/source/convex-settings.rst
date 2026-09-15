@@ -217,6 +217,18 @@ Barrier Solver Settings
 
 The following settings control the behavior of the barrier (interior-point) method:
 
+Sequence Solve
+""""""""""""""
+
+``CUOPT_SEQUENCE_SOLVE`` controls whether a GPU barrier solve retains cache state for a later
+re-solve after updating the linear objective. The first Optimal QP solve stores the barrier
+workspace and transform on the problem. A subsequent solve can skip conversion, presolve, and
+scaling when the constraint matrix, quadratic objective, bounds, and problem dimensions are
+unchanged.
+
+.. note:: The default value is ``false``. Cache reuse is supported for QPs without quadratic
+   constraints.
+
 Folding
 """""""
 
