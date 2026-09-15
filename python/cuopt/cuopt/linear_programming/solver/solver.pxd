@@ -122,7 +122,7 @@ cdef extern from "cuopt/mathematical_optimization/utilities/cython_solve.hpp" na
         int nb_iterations_
         double solve_time_
         method_t solved_by_
-        unique_ptr[barrier_cache_t] barrier_cache
+        barrier_cache_t* barrier_cache
         bool is_gpu()
 
     # Unified MIP solution struct — solution_ variant accessed via helpers

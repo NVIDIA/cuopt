@@ -10,7 +10,6 @@
 #include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/mip/solver_solution.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
-#include <cuopt/mathematical_optimization/utilities/barrier_cache.hpp>
 #include <cuopt/mathematical_optimization/utilities/internals.hpp>
 
 #include <rmm/device_buffer.hpp>
@@ -21,6 +20,12 @@
 #include <vector>
 
 namespace cuopt {
+namespace CUOPT_EXPORT mathematical_optimization {
+// Forward declared, not included: these structs are also compiled into cuopt_client, which
+// is CPU-only and cannot link the GPU-side barrier_cache_t destructor.
+class barrier_cache_t;
+}  // namespace CUOPT_EXPORT mathematical_optimization
+
 namespace CUOPT_EXPORT cython {
 
 using gpu_buffer = std::unique_ptr<rmm::device_buffer>;
@@ -87,9 +92,10 @@ struct linear_programming_ret_t {
   double solve_time_{};
   mathematical_optimization::method_t solved_by_{};
 
-  /** GPU barrier cache (stream + handle + iteration workspace); moved to Python capsule when set.
+  /** GPU barrier cache (stream + handle + iteration workspace), non-owning. call_solve hands
+   * ownership to the caller, which wraps it in a Python capsule and deletes it there.
    */
-  std::unique_ptr<mathematical_optimization::barrier_cache_t> barrier_cache;
+  mathematical_optimization::barrier_cache_t* barrier_cache{nullptr};
 
   bool is_gpu() const { return std::holds_alternative<gpu_solutions_t>(solutions_); }
 };

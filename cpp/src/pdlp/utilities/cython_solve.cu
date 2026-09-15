@@ -185,8 +185,6 @@ std::unique_ptr<solver_ret_t> call_solve(
       gpu_sols.last_restart_duality_gap_dual_solution_->set_stream(
         cuda::stream_ref{cudaStreamPerThread});
 
-      if (owned_cache) { response.lp_ret.barrier_cache = std::move(owned_cache); }
-
     } else {
       // MIP solve
       auto mip_solution_ptr =
@@ -246,6 +244,12 @@ std::unique_ptr<solver_ret_t> call_solve(
   }
 
   pdlp_settings.barrier_cache = nullptr;
+
+  // Released only once the response is otherwise complete: linear_programming_ret_t holds the
+  // cache non-owning, so owned_cache must stay the owner until nothing else here can throw.
+  if (response.problem_type == mathematical_optimization::problem_category_t::LP) {
+    response.lp_ret.barrier_cache = owned_cache.release();
+  }
 
   return std::make_unique<solver_ret_t>(std::move(response));
 }

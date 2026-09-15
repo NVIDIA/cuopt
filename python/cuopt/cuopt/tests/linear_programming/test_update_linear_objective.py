@@ -76,4 +76,6 @@ def test_update_linear_objective_matches_full_solve(capfd):
     assert sol_reuse.get_primal_objective() == pytest.approx(
         sol_full.get_primal_objective(), abs=OBJ_TOL, rel=1e-8
     )
-    assert sol_reuse.get_primal_objective() == pytest.approx(-41.0, abs=OBJ_TOL)
+    assert sol_reuse.get_primal_objective() == pytest.approx(
+        -41.0, abs=OBJ_TOL
+    )

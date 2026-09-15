@@ -552,6 +552,7 @@ def Solve(py_data_model_obj, SolverSettings settings, mip=False):
 
     cdef DataModel data_model_obj = <DataModel>py_data_model_obj
     cdef barrier_cache_t* cache_in = NULL
+    cdef barrier_cache_t* cache_out = NULL
     cdef solver_ret_t* sol_ret
 
     if (
@@ -590,10 +591,12 @@ def Solve(py_data_model_obj, SolverSettings settings, mip=False):
     sol_ret = sol_ret_ptr.get()
     if (
         sol_ret.problem_type == ProblemCategory.LP
-        and sol_ret.lp_ret.barrier_cache.get() != NULL
+        and sol_ret.lp_ret.barrier_cache != NULL
     ):
+        cache_out = sol_ret.lp_ret.barrier_cache
+        sol_ret.lp_ret.barrier_cache = NULL
         data_model_obj.barrier_cache_capsule = PyCapsule_New(
-            <void*>sol_ret.lp_ret.barrier_cache.release(),
+            <void*>cache_out,
             b"cuopt.barrier_cache",
             <PyCapsule_Destructor>cuopt_barrier_cache_capsule_dtor,
         )
