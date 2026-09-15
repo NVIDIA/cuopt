@@ -9,7 +9,7 @@
 //
 // Everything else in that class is host-only parameter handling, so the remainder now
 // builds as solver_settings.cpp into the CUDA-free cuopt_client library. Only these
-// members take an rmm::cuda_stream_view or hand back a device_uvector, so they are the
+// members take a cuda::stream_ref or hand back a device_uvector, so they are the
 // only ones that must stay in a CUDA TU inside libcuopt.
 //
 // solver_settings.cpp deliberately has no `template class` at all -- that would instantiate
@@ -19,7 +19,7 @@
 
 #include <cuopt/mathematical_optimization/solver_settings.hpp>
 
-#include <rmm/cuda_stream_view.hpp>
+#include <cuda/stream>
 #include <rmm/device_uvector.hpp>
 
 #include <mip_heuristics/mip_constants.hpp>
@@ -30,7 +30,7 @@ namespace CUOPT_EXPORT mathematical_optimization {
 template <typename i_t, typename f_t>
 void solver_settings_t<i_t, f_t>::set_initial_pdlp_primal_solution(const f_t* solution,
                                                                    i_t size,
-                                                                   rmm::cuda_stream_view stream)
+                                                                   cuda::stream_ref stream)
 {
   pdlp_settings.set_initial_primal_solution(solution, size, stream);
 }
@@ -38,7 +38,7 @@ void solver_settings_t<i_t, f_t>::set_initial_pdlp_primal_solution(const f_t* so
 template <typename i_t, typename f_t>
 void solver_settings_t<i_t, f_t>::set_initial_pdlp_dual_solution(const f_t* solution,
                                                                  i_t size,
-                                                                 rmm::cuda_stream_view stream)
+                                                                 cuda::stream_ref stream)
 {
   pdlp_settings.set_initial_dual_solution(solution, size, stream);
 }
@@ -102,7 +102,7 @@ const rmm::device_uvector<f_t>& solver_settings_t<i_t, f_t>::get_initial_pdlp_du
 template <typename i_t, typename f_t>
 void solver_settings_t<i_t, f_t>::add_initial_mip_solution(const f_t* solution,
                                                            i_t size,
-                                                           rmm::cuda_stream_view stream)
+                                                           cuda::stream_ref stream)
 {
   mip_settings.add_initial_solution(solution, size, stream);
 }

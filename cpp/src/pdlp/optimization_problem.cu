@@ -21,6 +21,7 @@
 #include <utilities/logger.hpp>
 #include <utilities/sparse_matrix_helpers.hpp>
 
+#include <cuda/stream>
 #include <raft/core/copy.hpp>
 #include <raft/core/cuda_support.hpp>
 #include <raft/core/device_mdspan.hpp>
@@ -29,7 +30,6 @@
 #include <raft/util/cuda_utils.cuh>
 #include <raft/util/cudart_utils.hpp>
 
-#include <rmm/cuda_stream_view.hpp>
 #include <rmm/device_uvector.hpp>
 #include <rmm/exec_policy.hpp>
 
@@ -54,10 +54,13 @@
 
 namespace cuopt::mathematical_optimization {
 
+constexpr size_t host_variable_type_summary_limit = 50'000;
+
 template <typename i_t, typename f_t>
 optimization_problem_t<i_t, f_t>::optimization_problem_t(raft::handle_t const* handle_ptr)
   : handle_ptr_(handle_ptr),
-    stream_view_(handle_ptr != nullptr ? handle_ptr->get_stream() : rmm::cuda_stream_view{}),
+    stream_view_(handle_ptr != nullptr ? cuda::stream_ref{handle_ptr->get_stream()}
+                                       : cuda::stream_ref{}),
     A_(0, stream_view_),
     A_indices_(0, stream_view_),
     A_offsets_(0, stream_view_),
@@ -101,6 +104,7 @@ optimization_problem_t<i_t, f_t>::optimization_problem_t(
     objective_name_{other.get_objective_name()},
     problem_name_{other.get_problem_name()},
     problem_category_{other.get_problem_category()},
+    has_semi_continuous_variables_{other.has_semi_continuous_variables()},
     var_names_{other.get_variable_names()},
     row_names_{other.get_row_names()},
     quadratic_constraints_{other.get_quadratic_constraints()}
@@ -286,14 +290,39 @@ void optimization_problem_t<i_t, f_t>::set_variable_types(const var_t* variable_
   variable_types_.resize(size, stream_view_);
   raft::copy(variable_types_.data(), variable_types, size, stream_view_);
 
-  // Auto-detect problem category based on variable types.
+  // Auto-detect problem category and cache presence of SEMI_CONTINUOUS vars.
   // SEMI_CONTINUOUS vars will be reformulated into binary + continuous before solving,
   // so a problem with only SC vars is treated as MIP.
-  i_t n_discrete = thrust::count_if(
-    handle_ptr_->get_thrust_policy(),
-    variable_types_.begin(),
-    variable_types_.end(),
-    [] __device__(auto val) { return val == var_t::INTEGER || val == var_t::SEMI_CONTINUOUS; });
+  // Prefer host-side for small instances to reduce latency between launch and first-feasible.
+  i_t n_discrete                     = 0;
+  bool has_semi_continuous_variables = false;
+  if ((size_t)size < host_variable_type_summary_limit) {
+    const auto h_variable_types = cuopt::host_copy(variable_types_, stream_view_);
+    for (const var_t val : h_variable_types) {
+      if (val == var_t::SEMI_CONTINUOUS) {
+        has_semi_continuous_variables = true;
+        ++n_discrete;
+      } else if (val == var_t::INTEGER) {
+        ++n_discrete;
+      }
+    }
+  } else {
+    assert(handle_ptr_ != nullptr);
+
+    n_discrete                    = thrust::count_if(handle_ptr_->get_thrust_policy(),
+                                  variable_types_.begin(),
+                                  variable_types_.end(),
+                                  [] __host__ __device__(var_t val) {
+                                    return val == var_t::INTEGER || val == var_t::SEMI_CONTINUOUS;
+                                  });
+    has_semi_continuous_variables = thrust::count_if(handle_ptr_->get_thrust_policy(),
+                                                     variable_types_.begin(),
+                                                     variable_types_.end(),
+                                                     [] __host__ __device__(var_t val) {
+                                                       return val == var_t::SEMI_CONTINUOUS;
+                                                     }) > 0;
+  }
+  has_semi_continuous_variables_ = has_semi_continuous_variables;
   if (n_discrete == size) {
     problem_category_ = problem_category_t::IP;
   } else if (n_discrete > 0) {
@@ -579,6 +608,12 @@ template <typename i_t, typename f_t>
 problem_category_t optimization_problem_t<i_t, f_t>::get_problem_category() const
 {
   return problem_category_;
+}
+
+template <typename i_t, typename f_t>
+bool optimization_problem_t<i_t, f_t>::has_semi_continuous_variables() const noexcept
+{
+  return has_semi_continuous_variables_;
 }
 
 template <typename i_t, typename f_t>
@@ -1016,7 +1051,7 @@ static bool csr_matrices_equivalent_with_permutation(const rmm::device_uvector<i
                                                      const rmm::device_uvector<i_t>& d_row_perm_inv,
                                                      const rmm::device_uvector<i_t>& d_col_perm_inv,
                                                      i_t n_cols,
-                                                     rmm::cuda_stream_view stream)
+                                                     cuda::stream_ref stream)
 {
   const i_t nnz = static_cast<i_t>(this_values.size());
   if (nnz != static_cast<i_t>(other_values.size())) { return false; }
@@ -1531,7 +1566,7 @@ struct cast_op {
 };
 
 template <typename From, typename To>
-rmm::device_uvector<To> gpu_cast(const rmm::device_uvector<From>& src, rmm::cuda_stream_view stream)
+rmm::device_uvector<To> gpu_cast(const rmm::device_uvector<From>& src, cuda::stream_ref stream)
 {
   rmm::device_uvector<To> dst(src.size(), stream);
   if (src.size() > 0) {
@@ -1542,14 +1577,14 @@ rmm::device_uvector<To> gpu_cast(const rmm::device_uvector<From>& src, rmm::cuda
 }
 
 template rmm::device_uvector<float> gpu_cast<double, float>(const rmm::device_uvector<double>&,
-                                                            rmm::cuda_stream_view);
+                                                            cuda::stream_ref);
 template rmm::device_uvector<double> gpu_cast<float, double>(const rmm::device_uvector<float>&,
-                                                             rmm::cuda_stream_view);
+                                                             cuda::stream_ref);
 
 template <typename i_t, typename f_t>
 template <typename other_f_t>
 optimization_problem_t<i_t, other_f_t> optimization_problem_t<i_t, f_t>::convert_to_other_prec(
-  rmm::cuda_stream_view stream) const
+  cuda::stream_ref stream) const
 {
   optimization_problem_t<i_t, other_f_t> other(handle_ptr_);
 
@@ -1634,8 +1669,7 @@ template class CUOPT_EXPORT optimization_problem_t<int32_t, double>;
 
 #if PDLP_INSTANTIATE_FLOAT || MIP_INSTANTIATE_FLOAT
 template CUOPT_EXPORT optimization_problem_t<int32_t, float>
-  optimization_problem_t<int32_t, double>::convert_to_other_prec<float>(
-    rmm::cuda_stream_view) const;
+  optimization_problem_t<int32_t, double>::convert_to_other_prec<float>(cuda::stream_ref) const;
 #endif
 
 // GPU-target warm-start handling, declared in optimization_problem_utils.hpp.

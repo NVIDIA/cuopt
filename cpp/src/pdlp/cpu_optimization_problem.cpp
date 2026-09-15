@@ -44,6 +44,13 @@ problem_category_t problem_category_from_variable_types(const std::vector<var_t>
   return problem_category_t::LP;
 }
 
+bool has_semi_continuous_from_variable_types(const std::vector<var_t>& variable_types)
+{
+  return std::any_of(variable_types.begin(), variable_types.end(), [](var_t v) {
+    return v == var_t::SEMI_CONTINUOUS;
+  });
+}
+
 }  // namespace
 
 // ==============================================================================
@@ -232,7 +239,8 @@ void cpu_optimization_problem_t<i_t, f_t>::set_variable_types(const var_t* varia
   variable_types_.resize(size);
   std::copy(variable_types, variable_types + size, variable_types_.begin());
 
-  problem_category_ = problem_category_from_variable_types(variable_types_);
+  problem_category_              = problem_category_from_variable_types(variable_types_);
+  has_semi_continuous_variables_ = has_semi_continuous_from_variable_types(variable_types_);
 }
 
 template <typename i_t, typename f_t>
@@ -511,6 +519,12 @@ template <typename i_t, typename f_t>
 problem_category_t cpu_optimization_problem_t<i_t, f_t>::get_problem_category() const
 {
   return problem_category_;
+}
+
+template <typename i_t, typename f_t>
+bool cpu_optimization_problem_t<i_t, f_t>::has_semi_continuous_variables() const noexcept
+{
+  return has_semi_continuous_variables_;
 }
 
 template <typename i_t, typename f_t>
@@ -1077,7 +1091,8 @@ void cpu_optimization_problem_t<i_t, f_t>::adopt_from_mps_data_model(
   for (size_t i = 0; i < model.var_types_.size(); ++i) {
     variable_types_[i] = char_to_var_type(model.var_types_[i]);
   }
-  problem_category_ = problem_category_from_variable_types(variable_types_);
+  problem_category_              = problem_category_from_variable_types(variable_types_);
+  has_semi_continuous_variables_ = has_semi_continuous_from_variable_types(variable_types_);
 
   if (model.has_quadratic_constraints()) {
     move_quadratic_constraints_from_model(*this, model.quadratic_constraints_);
