@@ -217,7 +217,7 @@ Barrier Solver Settings
 
 The following settings control the behavior of the barrier (interior-point) method:
 
-.. note:: The barrier method uses cuDSS for sparse Cholesky factorization, which requires the host to provide ``libgomp.so.1`` (GNU OpenMP runtime) for multi-threaded execution. If missing, the solve falls back to single-threaded cuDSS instead of failing. ``CUDSS_THREADING_LIB`` can point cuDSS at a specific threading-layer library, but it must be built against the same OpenMP runtime cuOpt itself uses, or the two can conflict. See :doc:`system-requirements` and :doc:`faq`.
+.. note:: The barrier method uses cuDSS for sparse Cholesky factorization, whose threading layer must be built against the same GNU OpenMP runtime as cuOpt itself. pip installs bundle both, so this is handled automatically; conda and source builds need the host to provide ``libgomp.so.1``. If missing, or if a mismatched ``CUDSS_THREADING_LIB`` override is set, the solve falls back to single-threaded cuDSS instead of failing. See :doc:`system-requirements` and :doc:`faq`.
 
 Folding
 """""""
