@@ -49,7 +49,8 @@ if(CUOPT_STATIC_BUILD_DIR)
   file(GLOB CUOPT_STATIC_DEP_ARCHIVES
        "${CUOPT_STATIC_BUILD_DIR}/_deps/pslp-build/libPSLP.a"
        "${CUOPT_STATIC_BUILD_DIR}/_deps/kaminpar-build/kaminpar-shm/libKaMinPar.a"
-       "${CUOPT_STATIC_BUILD_DIR}/_deps/kaminpar-build/kaminpar-common/libKaMinParCommon.a")
+       "${CUOPT_STATIC_BUILD_DIR}/_deps/kaminpar-build/kaminpar-common/libKaMinParCommon.a"
+       "${CUOPT_STATIC_BUILD_DIR}/_deps/highway-build/libhwy.a")
 elseif(NOT CUOPT_LIBRARY)
   set(CUOPT_LIBRARY "${CUOPT_PREFIX}/lib/libcuopt.so")
 endif()
