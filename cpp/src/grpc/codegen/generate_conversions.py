@@ -380,7 +380,7 @@ def _json_schema_property(registry, f):
         prefix = edef.get("proto_prefix", "")
         named = {
             _proto_enum_value_name(cpp_name, prefix): num
-            for cpp_name, num in parse_enum_values(edef["values"])
+            for cpp_name, num, _attrs in parse_enum_values(edef["values"])
         }
         prop["type"] = "string"
         prop["enum"] = list(named)

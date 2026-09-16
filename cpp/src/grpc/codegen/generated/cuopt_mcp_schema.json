@@ -147,6 +147,9 @@
           "type": "boolean",
           "description": "Barrier: whether iterative refinement runs after each barrier solve to improve solution accuracy (see cpp/src/barrier/barrier.cu). Default: true."
         },
+        "barrier_adaptive_regularization": {
+          "type": "integer"
+        },
         "barrier_step_scale": {
           "type": "number",
           "description": "Barrier: scaling factor applied to the primal/dual step size. Must be strictly less than 1 \u2014 0.9 is conservative, 0.999 aggressive. The local-solve binding restricts the range to [0.5, 0.9999]; this field is not clamped after decoding, for consistency with the other float scalars. Default: 0.9."
@@ -196,12 +199,12 @@
         },
         "absolute_tolerance": {
           "type": "number",
-          "description": "MIP absolute tolerance. Default: 1e-6.",
+          "description": "Absolute term in the constraint-feasibility check: a constraint is feasible when its bound violation is less than absolute_tolerance + relative_tolerance * bound_magnitude. Distinct from absolute_mip_gap, which controls when the solve terminates, not what counts as feasible. Default: 1e-6.",
           "x-parameter-name": "mip_absolute_tolerance"
         },
         "relative_tolerance": {
           "type": "number",
-          "description": "MIP relative tolerance. Default: 1e-12.",
+          "description": "Relative term in the constraint-feasibility check; multiplies the constraint's bound magnitude. See absolute_tolerance. Default: 1e-12.",
           "x-parameter-name": "mip_relative_tolerance"
         },
         "log_to_console": {
