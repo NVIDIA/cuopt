@@ -12,6 +12,9 @@ add_subdirectory(grpc)
 
 add_subdirectory(routing)
 
+# No sources here -- every extension module is created in a subdirectory, and each links
+# the component it actually resolves symbols from. Anything added here would link the
+# cuopt umbrella and pull in both engines, so add it to the owning subdirectory instead.
 set(cython_sources)
 set(linked_libraries cuopt::cuopt)
 
