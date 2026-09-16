@@ -33,6 +33,7 @@
 
 #include <utilities/copy_helpers.hpp>
 #include <utilities/error.hpp>
+#include <utilities/scope_guard.hpp>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/cusparse_macros.hpp>
@@ -55,6 +56,8 @@
 #include <tuple>
 #include <utility>
 #include <vector>
+
+#include <omp.h>
 
 namespace cuopt::mathematical_optimization::test {
 
@@ -172,6 +175,55 @@ TEST(pdlp_class, concurrent_pdlp_exception_joins_worker_threads)
   EXPECT_EQ(error_status.get_error_type(), cuopt::error_type_t::ValidationError);
   EXPECT_THAT(error_status.what(),
               testing::HasSubstr("all_primal_feasible only applies in batch mode"));
+}
+
+TEST(pdlp_class, concurrent_null_solver_ptrs_inside_mip)
+{
+  const raft::handle_t handle_{};
+
+  auto path = make_path_absolute("linear_programming/afiro_original.mps");
+  cuopt::mathematical_optimization::io::mps_data_model_t<int, double> op_problem =
+    cuopt::mathematical_optimization::io::read_mps<int, double>(path, true);
+
+  auto settings       = pdlp_solver_settings_t<int, double>{};
+  settings.method     = cuopt::mathematical_optimization::method_t::Concurrent;
+  settings.presolver  = cuopt::mathematical_optimization::presolver_t::None;
+  settings.inside_mip = true;
+
+  // inside_mip skips dual simplex. Setting threads to 1 ensures barrier is also disabled
+  // (< CUOPT_CONCURRENT_LP_BARRIER_REQUIRED_THREAD_COUNT), leaving both sol_dual_simplex_ptr
+  // and sol_barrier_ptr null.
+  const int prev_threads = omp_get_max_threads();
+  omp_set_num_threads(1);
+  const cuopt::scope_guard restore_threads{[prev_threads] { omp_set_num_threads(prev_threads); }};
+  optimization_problem_solution_t<int, double> solution = solve_lp(&handle_, op_problem, settings);
+
+  EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERMINATION_STATUS_OPTIMAL);
+}
+
+TEST(pdlp_class, concurrent_null_dual_simplex_concurrent_limit)
+{
+  const raft::handle_t handle_{};
+
+  auto path = make_path_absolute("linear_programming/afiro_original.mps");
+  cuopt::mathematical_optimization::io::mps_data_model_t<int, double> op_problem =
+    cuopt::mathematical_optimization::io::read_mps<int, double>(path, true);
+
+  auto settings       = pdlp_solver_settings_t<int, double>{};
+  settings.method     = cuopt::mathematical_optimization::method_t::Concurrent;
+  settings.presolver  = cuopt::mathematical_optimization::presolver_t::None;
+  settings.inside_mip = true;
+
+  // With inside_mip = true, dual simplex is not started (sol_dual_simplex_ptr is null).
+  // Pre-setting concurrent_halt causes PDLP to immediately exit with ConcurrentLimit.
+  // The solver must return PDLP's result without attempting to dereference
+  // sol_dual_simplex_ptr.
+  std::atomic<int> halt{1};
+  settings.concurrent_halt = &halt;
+
+  optimization_problem_solution_t<int, double> solution = solve_lp(&handle_, op_problem, settings);
+  EXPECT_EQ(solution.get_termination_status(),
+            cuopt::mathematical_optimization::pdlp_termination_status_t::ConcurrentLimit);
 }
 
 TEST(pdlp_class, run_double_very_low_accuracy)
@@ -503,7 +555,7 @@ TEST(pdlp_class, initial_solution_test)
                                                                               solver_settings);
     auto pdlp_timer = timer_t(solver_settings.time_limit);
     solver.run_solver(pdlp_timer);
-    RAFT_CUDA_TRY(cudaStreamSynchronize(handle_.get_stream()));
+    handle_.get_stream().sync();
     EXPECT_NEAR(initial_step_size_afiro, solver.get_step_size_h(0), factor_tolerance);
     EXPECT_NEAR(initial_primal_weight_afiro, solver.get_primal_weight_h(0), factor_tolerance);
   }
@@ -518,7 +570,7 @@ TEST(pdlp_class, initial_solution_test)
     auto d_initial_primal = device_copy(initial_primal, handle_.get_stream());
     solver.set_initial_primal_solution(d_initial_primal);
     solver.run_solver(pdlp_timer);
-    RAFT_CUDA_TRY(cudaStreamSynchronize(handle_.get_stream()));
+    handle_.get_stream().sync();
     EXPECT_NEAR(initial_step_size_afiro, solver.get_step_size_h(0), factor_tolerance);
     EXPECT_NEAR(initial_primal_weight_afiro, solver.get_primal_weight_h(0), factor_tolerance);
   }
@@ -530,7 +582,7 @@ TEST(pdlp_class, initial_solution_test)
     auto d_initial_dual = device_copy(initial_dual, handle_.get_stream());
     solver.set_initial_dual_solution(d_initial_dual);
     solver.run_solver(pdlp_timer);
-    RAFT_CUDA_TRY(cudaStreamSynchronize(handle_.get_stream()));
+    handle_.get_stream().sync();
     EXPECT_NEAR(initial_step_size_afiro, solver.get_step_size_h(0), factor_tolerance);
     EXPECT_NEAR(initial_primal_weight_afiro, solver.get_primal_weight_h(0), factor_tolerance);
   }
@@ -545,7 +597,7 @@ TEST(pdlp_class, initial_solution_test)
     auto d_initial_dual = device_copy(initial_dual, handle_.get_stream());
     solver.set_initial_dual_solution(d_initial_dual);
     solver.run_solver(pdlp_timer);
-    RAFT_CUDA_TRY(cudaStreamSynchronize(handle_.get_stream()));
+    handle_.get_stream().sync();
     EXPECT_NEAR(initial_step_size_afiro, solver.get_step_size_h(0), factor_tolerance);
     EXPECT_NEAR(initial_primal_weight_afiro, solver.get_primal_weight_h(0), factor_tolerance);
   }
@@ -557,7 +609,7 @@ TEST(pdlp_class, initial_solution_test)
     auto pdlp_timer = timer_t(solver_settings.time_limit);
     solver_settings.hyper_params.update_step_size_on_initial_solution = true;
     solver.run_solver(pdlp_timer);
-    RAFT_CUDA_TRY(cudaStreamSynchronize(handle_.get_stream()));
+    handle_.get_stream().sync();
     EXPECT_NEAR(initial_step_size_afiro, solver.get_step_size_h(0), factor_tolerance);
     EXPECT_NEAR(initial_primal_weight_afiro, solver.get_primal_weight_h(0), factor_tolerance);
     solver_settings.hyper_params.update_step_size_on_initial_solution = false;
@@ -568,7 +620,7 @@ TEST(pdlp_class, initial_solution_test)
     auto pdlp_timer = timer_t(solver_settings.time_limit);
     solver_settings.hyper_params.update_primal_weight_on_initial_solution = true;
     solver.run_solver(pdlp_timer);
-    RAFT_CUDA_TRY(cudaStreamSynchronize(handle_.get_stream()));
+    handle_.get_stream().sync();
     EXPECT_NEAR(initial_step_size_afiro, solver.get_step_size_h(0), factor_tolerance);
     EXPECT_NEAR(initial_primal_weight_afiro, solver.get_primal_weight_h(0), factor_tolerance);
     solver_settings.hyper_params.update_primal_weight_on_initial_solution = false;
@@ -580,7 +632,7 @@ TEST(pdlp_class, initial_solution_test)
     solver_settings.hyper_params.update_primal_weight_on_initial_solution = true;
     solver_settings.hyper_params.update_step_size_on_initial_solution     = true;
     solver.run_solver(pdlp_timer);
-    RAFT_CUDA_TRY(cudaStreamSynchronize(handle_.get_stream()));
+    handle_.get_stream().sync();
     EXPECT_NEAR(initial_step_size_afiro, solver.get_step_size_h(0), factor_tolerance);
     EXPECT_NEAR(initial_primal_weight_afiro, solver.get_primal_weight_h(0), factor_tolerance);
     solver_settings.hyper_params.update_primal_weight_on_initial_solution = false;
@@ -598,7 +650,7 @@ TEST(pdlp_class, initial_solution_test)
     auto d_initial_primal = device_copy(initial_primal, handle_.get_stream());
     solver.set_initial_primal_solution(d_initial_primal);
     solver.run_solver(pdlp_timer);
-    RAFT_CUDA_TRY(cudaStreamSynchronize(handle_.get_stream()));
+    handle_.get_stream().sync();
     EXPECT_NEAR(initial_step_size_afiro, solver.get_step_size_h(0), factor_tolerance);
     EXPECT_NEAR(initial_primal_weight_afiro, solver.get_primal_weight_h(0), factor_tolerance);
     solver_settings.hyper_params.update_step_size_on_initial_solution = false;
@@ -612,7 +664,7 @@ TEST(pdlp_class, initial_solution_test)
     auto d_initial_dual = device_copy(initial_dual, handle_.get_stream());
     solver.set_initial_dual_solution(d_initial_dual);
     solver.run_solver(pdlp_timer);
-    RAFT_CUDA_TRY(cudaStreamSynchronize(handle_.get_stream()));
+    handle_.get_stream().sync();
     EXPECT_NEAR(initial_step_size_afiro, solver.get_step_size_h(0), factor_tolerance);
     EXPECT_NEAR(initial_primal_weight_afiro, solver.get_primal_weight_h(0), factor_tolerance);
     solver_settings.hyper_params.update_step_size_on_initial_solution = false;
@@ -799,7 +851,7 @@ TEST(pdlp_class, initial_primal_weight_step_size_test)
     solver.set_initial_primal_weight(test_initial_primal_weight);
     solver.set_initial_step_size(test_initial_step_size);
     solver.run_solver(pdlp_timer);
-    RAFT_CUDA_TRY(cudaStreamSynchronize(handle_.get_stream()));
+    handle_.get_stream().sync();
     EXPECT_EQ(test_initial_step_size, solver.get_step_size_h(0));
     EXPECT_EQ(test_initial_primal_weight, solver.get_primal_weight_h(0));
   }
@@ -834,7 +886,7 @@ TEST(pdlp_class, initial_primal_weight_step_size_test)
     solver2.set_initial_primal_solution(d_initial_primal);
     solver2.set_initial_dual_solution(d_initial_dual);
     solver2.run_solver(pdlp_timer);
-    RAFT_CUDA_TRY(cudaStreamSynchronize(handle_.get_stream()));
+    handle_.get_stream().sync();
     const double sovler2_step_size     = solver2.get_step_size_h(0);
     const double sovler2_primal_weight = solver2.get_primal_weight_h(0);
     EXPECT_NOT_NEAR(previous_step_size, sovler2_step_size, factor_tolerance);
@@ -851,7 +903,7 @@ TEST(pdlp_class, initial_primal_weight_step_size_test)
     solver3.set_initial_dual_solution(d_initial_dual);
     solver3.set_initial_dual_solution(d_initial_dual);
     solver3.run_solver(pdlp_timer);
-    RAFT_CUDA_TRY(cudaStreamSynchronize(handle_.get_stream()));
+    handle_.get_stream().sync();
     EXPECT_NOT_NEAR(sovler2_step_size, solver3.get_step_size_h(0), factor_tolerance);
     EXPECT_NEAR(sovler2_primal_weight, solver3.get_primal_weight_h(0), factor_tolerance);
   }

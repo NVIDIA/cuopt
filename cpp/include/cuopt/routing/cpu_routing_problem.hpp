@@ -48,6 +48,13 @@ struct cpu_vehicle_break_t {
   std::vector<int32_t> locations;
 };
 
+struct cpu_vehicle_distance_break_t {
+  float distance_min = 0.f;
+  float distance_max = 0.f;
+  int32_t duration   = 0;
+  std::vector<int32_t> locations;
+};
+
 struct cpu_uniform_break_t {
   std::vector<int32_t> earliest;
   std::vector<int32_t> latest;
@@ -96,6 +103,7 @@ class cpu_routing_problem_t {
   std::vector<int32_t> break_locations;
   std::vector<cpu_uniform_break_t> uniform_breaks;
   std::map<int32_t, std::vector<cpu_vehicle_break_t>> vehicle_breaks;
+  std::map<int32_t, std::vector<cpu_vehicle_distance_break_t>> vehicle_distance_breaks;
 
   std::map<int32_t, std::vector<int32_t>> vehicle_order_match;
   std::map<int32_t, std::vector<int32_t>> order_vehicle_match;

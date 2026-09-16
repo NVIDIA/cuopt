@@ -1,12 +1,13 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 
 #pragma once
 
+#include <cuda/stream>
 #include <raft/core/handle.hpp>
 
 #include <rmm/device_buffer.hpp>
@@ -168,7 +169,7 @@ class waypoint_matrix_t {
                               f_t const* weights,
                               f_t& out_cost);
   raft::handle_t const* handle_ptr_{nullptr};
-  rmm::cuda_stream_view stream_view_{};
+  cuda::stream_ref stream_view_{};
   i_t const* offsets_;
   i_t n_vertices_;
   i_t const* indices_;
