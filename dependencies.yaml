@@ -825,6 +825,7 @@ dependencies:
           - sphinx-copybutton
           - sphinx-markdown-tables
           - sphinx-design
+          - sphinx-llm>=1.1.0
           - pip:
               - swagger-plugin-for-sphinx
               - nvidia-sphinx-theme
