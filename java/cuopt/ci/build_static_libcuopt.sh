@@ -23,6 +23,11 @@ CUDA_ARCHS="${CUOPT_CMAKE_CUDA_ARCHITECTURES:-RAPIDS}"
 
 # Routing and gRPC are excluded here rather than in a Java-specific fork of the build, because
 # cpp/CMakeLists.txt already offers the switches.
+#
+# rmm and rapids_logger come from the prebuilt RAPIDS wheels setup_java_static_env.sh installs;
+# CUOPT_JAVA_STATIC_CMAKE_PREFIX_PATH (set there) points find_package() at their CMake config
+# files so CMake resolves those instead of falling through to CPM's source-fetch fallback. raft
+# has no such wheel, so it is still CPM-fetched from source regardless (see get_raft.cmake).
 cmake_args=(
   -S "${REPO_ROOT}/cpp"
   -B "${BUILD_DIR}"
@@ -33,6 +38,7 @@ cmake_args=(
   -DSKIP_ROUTING_BUILD=ON
   -DSKIP_GRPC_BUILD=ON
   -DCMAKE_CUDA_ARCHITECTURES="${CUDA_ARCHS}"
+  -DCMAKE_PREFIX_PATH="${CUOPT_JAVA_STATIC_CMAKE_PREFIX_PATH:-}"
 )
 
 echo "Configuring scoped static build in ${BUILD_DIR}"

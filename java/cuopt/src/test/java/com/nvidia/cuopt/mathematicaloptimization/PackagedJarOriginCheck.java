@@ -4,10 +4,13 @@
  */
 package com.nvidia.cuopt.mathematicaloptimization;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.net.URL;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -20,13 +23,21 @@ import org.junit.jupiter.api.Test;
  */
 final class PackagedJarOriginCheck {
   @Test
-  void classesComeFromAJarRatherThanADirectory() {
+  void classesComeFromTheSpecificPackagedJar() throws Exception {
+    Path expected = packagedJar();
     URL location = Problem.class.getProtectionDomain().getCodeSource().getLocation();
     assertNotNull(location, "no code source for Problem");
-    String path = location.getPath();
-    assertTrue(
-        path.endsWith(".jar"),
-        "expected Problem to be loaded from a packaged JAR, but it came from " + path);
+    Path actual = Paths.get(location.toURI()).toRealPath();
+    assertEquals(
+        expected,
+        actual,
+        "expected Problem to be loaded from " + expected + ", but it came from " + actual);
+  }
+
+  private static Path packagedJar() throws Exception {
+    String jarPath = System.getProperty("cuopt.jar.path");
+    assertNotNull(jarPath, "cuopt.jar.path was not forwarded to the test JVM");
+    return Paths.get(jarPath).toRealPath();
   }
 
   @Test

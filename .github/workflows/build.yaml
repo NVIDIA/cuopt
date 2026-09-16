@@ -93,43 +93,25 @@ jobs:
       sha: ${{ inputs.sha }}
       node_type: "cpu16"
       arch: ${{ matrix.ARCH }}
+      # ci-wheel (Rocky 8) rather than ci-conda: gcc-toolset-14 on Rocky 8 produces a libstdc++
+      # ABI requirement the RAPIDS-supported platforms can actually satisfy, unlike ci-conda's
+      # gcc_linux-64 conda package -- the same fix cuDF applied in rapidsai/cudf#23766 after
+      # hitting this in production (rapidsai/cudf#23753). See setup_java_static_env.sh.
+      #
       # Must be CUDA-version-pinned, not the bare "26.10-latest" tag: custom-job.yaml has no
       # per-matrix env passthrough, so an untagged image would leave RAPIDS_CUDA_VERSION at
       # that image's single baked-in default for every matrix entry.
-      # ci/build_java_static.sh reads it to pick the conda CUDA toolkit, so every "cuN" classifier
+      # ci/build_java_static.sh reads it to pick the CUDA toolkit, so every "cuN" classifier
       # JAR would actually be built against the same CUDA version and just mislabeled. Matches
-      # the pattern conda-cpp-build.yaml itself uses for this image family.
-      container_image: "rapidsai/ci-conda:26.10-cuda${{ matrix.CUDA_VER }}-${{ matrix.LINUX_VER }}-py${{ matrix.PY_VER }}"
+      # the pattern java-static-test (test.yaml) already uses for this image family.
+      container_image: "rapidsai/ci-wheel:26.10-cuda${{ matrix.CUDA_VER }}-${{ matrix.LINUX_VER }}-py${{ matrix.PY_VER }}"
       script: "ci/build_java_static.sh"
       artifact-name: "cuopt_java_${{ matrix.ARCH }}_cu${{ matrix.CUDA_MAJOR }}"
       file_to_upload: "java/cuopt/classifier-jars/"
 
-  # Runs the full Java suite against each classifier JAR on a GPU, with no libcuopt installed,
-  # so a JAR that loads but computes wrong answers fails here rather than at a user.
-  java-static-test:
-    needs: [java-static-build, java-static-build-matrix]
-    permissions:
-      actions: read
-      contents: read
-      id-token: write
-      packages: read
-      pull-requests: read
-    secrets: inherit # zizmor: ignore[secrets-inherit]
-    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.java-static-build-matrix.outputs.matrix) }}
-    with:
-      build_type: ${{ inputs.build_type || 'branch' }}
-      branch: ${{ inputs.branch }}
-      date: ${{ inputs.date }}
-      sha: ${{ inputs.sha }}
-      node_type: "gpu-l4-latest-1"
-      arch: ${{ matrix.ARCH }}
-      # A plain CUDA-devel + dnf environment rather than rapidsai/ci-conda: see the matching
-      # comment in pr.yaml.
-      container_image: "rapidsai/ci-wheel:26.10-cuda${{ matrix.CUDA_VER }}-${{ matrix.LINUX_VER }}-py${{ matrix.PY_VER }}"
-      script: "ci/test_java_static.sh"
+  # java-static-test runs against these classifiers from test.yaml instead of here, matching the
+  # general pattern of defining the (nightly) test job in test.yaml -- see the 'tests' job below,
+  # which needs java-static-build before dispatching test.yaml.
 
   # Combines every classifier into one Maven-repository-layout artifact, which is the form a
   # publishing workflow consumes. See rapidsai/build-infra#379.
@@ -589,6 +571,7 @@ jobs:
     needs:
       - upload-conda
       - java-build
+      - java-static-build
       - wheel-publish-cuopt
       - wheel-publish-cuopt-server
       - wheel-publish-cuopt-sh-client

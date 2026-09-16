@@ -83,24 +83,74 @@ cp "${NATIVE_LIB}" "${STAGING}/${RESOURCE_DIR}/libcuopt_jni.so"
 echo "Packaging classifier ${CLASSIFIER}"
 echo "  native library -> ${RESOURCE_DIR}/libcuopt_jni.so"
 
-# rmm and rapids_logger define the exception types cuOpt throws and have no static build, so
-# they ship beside the JNI library, which finds them through its $ORIGIN RPATH.
-# libcudss_mtlayer_gomp.so.0 is cuDSS's OpenMP threading backend: cudssSetThreadingLayer
-# dlopen()s it at runtime. Without it that call fails and cuDSS writes the failure straight to
-# the process's native stdout, corrupting Maven Surefire's forked-JVM protocol.
-# libgomp.so.1, libstdc++.so.6 and libgcc_s.so.1 are the build host's GCC runtime libraries; a
-# consumer's own system copies can be too old (e.g. Rocky Linux 8's defaults only go up to
-# OMP_3.1, GLIBCXX_3.4.29 and GCC_7.0.0 respectively, older than what this build links against),
-# so they travel alongside rather than being assumed present.
-for companion in librmm.so librapids_logger.so libtbb.so.12 libnccl.so.2 libcudss.so.0 libcudss_mtlayer_gomp.so.0 libgomp.so.1 "libstdc++.so.6" libgcc_s.so.1; do
-  companion_path="${CUOPT_PREFIX:-}/lib/${companion}"
-  if [[ ! -f "${companion_path}" ]]; then
-    echo "ERROR: ${companion} not found at ${companion_path}; set CUOPT_PREFIX" >&2
+# The companion set is read off the linked library's own DT_NEEDED entries rather than
+# hardcoded, because their exact SONAMEs are build-environment-dependent: e.g. conda-forge's
+# TBB is libtbb.so.12, but Rocky 8's dnf tbb-devel package is the much older libtbb.so.2 --
+# hardcoding either one breaks on the other environment. Reading DT_NEEDED means this always
+# matches whatever this particular library actually links against.
+#
+# Two categories are deliberately excluded from bundling:
+#   - the baseline libraries every Linux system with a working dynamic linker already has
+#     (libc, libm, the dynamic linker itself, etc.);
+#   - the CUDA math libraries (libcublas*, libcusparse*), which NativeLibraryLoader's
+#     preloadCudaLibraries() resolves from the CUDA toolkit layout at runtime instead (they are
+#     large, and assumed already present on any CUDA-capable system -- see its own comment).
+# Everything else DT_NEEDED names -- TBB (KaMinPar throws through it), NCCL (PDLP's distributed
+# path references it unconditionally), cuDSS (kept dynamic deliberately, matching
+# CMakeLists.txt's CUOPT_CUDSS_LIBRARY comment), rmm and rapids_logger (prebuilt RAPIDS wheels,
+# not a static build -- see CMakeLists.txt and setup_java_static_env.sh), and the build host's
+# own GCC runtime (libgomp, libstdc++, libgcc_s, whose consumer-side copies can be too old) --
+# travels beside the JNI library, which finds it all through its $ORIGIN RPATH.
+#
+# libcudss_mtlayer_gomp.so.0 is the one exception: cuDSS's OpenMP threading backend, which
+# cudssSetThreadingLayer dlopen()s at runtime rather than linking directly, so it never appears
+# in DT_NEEDED at all. Without it that call fails and cuDSS writes the failure straight to the
+# process's native stdout, corrupting Maven Surefire's forked-JVM protocol, so it is always
+# added explicitly.
+BASELINE_SYSTEM_LIBRARY_PATTERN='^(ld-linux|linux-vdso)|^lib(c|m|dl|rt|pthread|resolv|util)\.so'
+CUDA_RUNTIME_LIBRARY_PATTERN='^lib(cublas|cublasLt|cusparse|cusolver|nvJitLink)\.so'
+
+# Searched by filename rather than a single prefix, since the build environment may be a conda
+# environment (CUOPT_PREFIX/lib), a dnf/system install (e.g. /usr/lib64, cuDSS's own versioned
+# directory), or a pip-installed wheel's site-packages directory, depending on which of
+# ci/build_java_static.sh's paths produced this library.
+find_companion() {
+  local name="$1"
+  local found
+  local -a site_packages_dirs=()
+  if command -v python3 &> /dev/null; then
+    mapfile -t site_packages_dirs < <(python3 -c \
+      'import site; print("\n".join(site.getsitepackages()))' 2> /dev/null)
+  fi
+  found="$(find "${CUOPT_PREFIX:-}/lib" /usr/lib64 /usr/lib /usr/local/cuda*/lib64 \
+    "${site_packages_dirs[@]}" \
+    -maxdepth 4 -name "${name}" -print -quit 2>/dev/null)"
+  if [[ -z "${found}" ]]; then
+    echo "ERROR: ${name} not found under ${CUOPT_PREFIX:-<unset>}/lib, /usr/lib64, /usr/lib, /usr/local/cuda*/lib64, or the active Python's site-packages" >&2
     exit 1
   fi
-  # Dereference, since the conda entries are symlinks into a versioned file.
+  printf '%s\n' "${found}"
+}
+
+declare -a COMPANIONS=()
+while IFS= read -r needed; do
+  [[ -z "${needed}" ]] && continue
+  if [[ "${needed}" =~ ${BASELINE_SYSTEM_LIBRARY_PATTERN} || "${needed}" =~ ${CUDA_RUNTIME_LIBRARY_PATTERN} ]]; then
+    continue
+  fi
+  COMPANIONS+=("${needed}")
+done < <(readelf -d "${NATIVE_LIB}" 2>/dev/null \
+  | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p')
+COMPANIONS+=(libcudss_mtlayer_gomp.so.0)
+
+MANIFEST="${STAGING}/${RESOURCE_DIR}/companions.txt"
+: > "${MANIFEST}"
+for companion in "${COMPANIONS[@]}"; do
+  companion_path="$(find_companion "${companion}")"
+  # Dereference, since these are commonly symlinks into a versioned file.
   cp -L "${companion_path}" "${STAGING}/${RESOURCE_DIR}/${companion}"
-  echo "  companion      -> ${RESOURCE_DIR}/${companion}"
+  echo "${companion}" >> "${MANIFEST}"
+  echo "  companion      -> ${RESOURCE_DIR}/${companion} (from ${companion_path})"
 done
 
 mkdir -p "${OUTPUT_DIR}/${CLASSIFIER}"

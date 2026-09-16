@@ -4,15 +4,22 @@
  */
 package com.nvidia.cuopt.mathematicaloptimization;
 
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.UncheckedIOException;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Locates and loads {@code libcuopt_jni}, in three steps.
@@ -27,19 +34,25 @@ final class NativeLibraryLoader {
   private static final String LIBRARY_NAME = "cuopt_jni";
 
   /**
-   * rmm, rapids_logger and TBB have no static build, so they travel beside the JNI library.
-   * libcudss_mtlayer_gomp.so.0 is cuDSS's OpenMP threading backend, which cudssSetThreadingLayer
-   * dlopen()s at runtime rather than linking directly; without it that call fails and cuDSS
-   * writes the failure straight to the process's native stdout, corrupting Maven Surefire's
-   * forked-JVM protocol exactly like the raw writes NativeLogSink was built to intercept -- but
-   * from a source outside cuopt's own logger entirely, so no logging fix here can catch it.
-   * libgomp.so.1, libstdc++.so.6 and libgcc_s.so.1 travel too: this library is built against the
-   * build host's GCC runtime libraries, which can require symbol versions (e.g. OMP_5.0.1,
-   * GLIBCXX_3.4.30, GCC_14.0.0) newer than a consumer's own system copies ship -- observed with
-   * Rocky Linux 8's defaults, which only go up to OMP_3.1, GLIBCXX_3.4.29 and GCC_7.0.0
-   * respectively.
+   * The companion filename, one per line, is read from {@code companions.txt}, packaged
+   * alongside the JNI library by build_cuopt_java_jar.sh -- not hardcoded here -- because exact
+   * SONAMEs are build-environment-dependent: e.g. conda-forge's TBB is {@code libtbb.so.12}, but
+   * Rocky 8's dnf tbb-devel package is the much older {@code libtbb.so.2}. See that script's own
+   * comment for the full list of what travels this way and why (rmm, rapids_logger, TBB, NCCL,
+   * cuDSS, and the build host's GCC runtime), and for why {@code libcudss_mtlayer_gomp.so.0} is
+   * always included even though it is dlopen()'d rather than linked.
    */
-  private static final String[] COMPANION_LIBRARIES = {"librmm.so", "librapids_logger.so", "libtbb.so.12", "libnccl.so.2", "libcudss.so.0", "libcudss_mtlayer_gomp.so.0", "libgomp.so.1", "libstdc++.so.6", "libgcc_s.so.1"};
+  private static final String COMPANION_MANIFEST = "companions.txt";
+
+  /**
+   * The CUDA math libraries the JNI library links dynamically rather than statically (see
+   * java/cuopt/CMakeLists.txt) -- too large to embed, and expected to already be present on a
+   * system with a CUDA-capable driver. A correctly configured CUDA image registers these with
+   * the dynamic linker, so this is normally a no-op; see {@link #preloadCudaLibraries}.
+   */
+  private static final String[] CUDA_RUNTIME_LIBRARIES = {
+    "libcublas.so", "libcublasLt.so", "libcusparse.so", "libcusolver.so", "libnvJitLink.so"
+  };
 
   private NativeLibraryLoader() {}
 
@@ -53,11 +66,94 @@ final class NativeLibraryLoader {
 
     Path embedded = extractEmbeddedLibraries();
     if (embedded != null) {
+      preloadCudaLibraries();
       System.load(embedded.toString());
       return;
     }
 
     System.loadLibrary(LIBRARY_NAME);
+  }
+
+  /**
+   * Best-effort: if the CUDA math libraries the JNI library needs are not already resolvable
+   * through the dynamic linker's default search (RPATH, {@code LD_LIBRARY_PATH}, or the
+   * ldconfig cache), find and load them explicitly by path first.
+   *
+   * <p>This works because of how the dynamic linker resolves a shared object's own dependencies:
+   * once something with a given name is loaded anywhere in the process, a later library's
+   * reference to that same name is satisfied by the already-loaded copy rather than searched for
+   * again. It does not require {@code LD_LIBRARY_PATH} itself to change, which a running JVM
+   * cannot portably do for its own process.
+   *
+   * <p>A correctly configured CUDA image registers these with the dynamic linker already, so
+   * this is normally a no-op. It exists because that registration was observed missing on at
+   * least one CI runner's arm64 image despite the library being present on disk -- the same
+   * class of environment inconsistency a real consumer's image could hit too. Failures here are
+   * silent: if a library still cannot be found or loaded, the later {@code System.load} of the
+   * JNI library itself fails with a clearer {@code UnsatisfiedLinkError} naming exactly what is
+   * missing, which is more useful than a failure in this best-effort step.
+   */
+  private static void preloadCudaLibraries() {
+    for (String library : CUDA_RUNTIME_LIBRARIES) {
+      if (isAlreadyResolvable(library)) {
+        continue;
+      }
+      Path found = findCudaLibrary(library);
+      if (found != null) {
+        try {
+          System.load(found.toString());
+        } catch (UnsatisfiedLinkError e) {
+          // See the failure-handling note above.
+        }
+      }
+    }
+  }
+
+  private static boolean isAlreadyResolvable(String libraryFileName) {
+    String name = libraryFileName.startsWith("lib") ? libraryFileName.substring(3) : libraryFileName;
+    if (name.endsWith(".so")) {
+      name = name.substring(0, name.length() - 3);
+    }
+    try {
+      System.loadLibrary(name);
+      return true;
+    } catch (UnsatisfiedLinkError e) {
+      return false;
+    }
+  }
+
+  /**
+   * Searches the CUDA toolkit layout every RAPIDS/NVIDIA CUDA image uses --
+   * {@code /usr/local/cuda-<version>/targets/<arch>/lib} -- for {@code libraryFileName}, matching
+   * on the file actually being present rather than the first directory found: some images ship
+   * more than one targets directory, not all of them populated.
+   */
+  private static Path findCudaLibrary(String libraryFileName) {
+    Path cudaRoot = Paths.get("/usr/local");
+    if (!Files.isDirectory(cudaRoot)) {
+      return null;
+    }
+    try (DirectoryStream<Path> cudaDirs = Files.newDirectoryStream(cudaRoot, "cuda*")) {
+      for (Path cudaDir : cudaDirs) {
+        Path targetsDir = cudaDir.resolve("targets");
+        if (!Files.isDirectory(targetsDir)) {
+          continue;
+        }
+        try (DirectoryStream<Path> archDirs = Files.newDirectoryStream(targetsDir)) {
+          for (Path archDir : archDirs) {
+            Path candidate = archDir.resolve("lib").resolve(libraryFileName);
+            if (Files.isRegularFile(candidate)) {
+              return candidate;
+            }
+          }
+        } catch (IOException e) {
+          // Keep searching other cuda* directories.
+        }
+      }
+    } catch (IOException e) {
+      return null;
+    }
+    return null;
   }
 
   /**
@@ -105,12 +201,38 @@ final class NativeLibraryLoader {
     try {
       Path directory = privateExtractionDirectory();
 
-      for (String companion : COMPANION_LIBRARIES) {
+      for (String companion : readCompanionManifest(osArch)) {
         extractResource(resourcePath(osArch, companion), directory, companion);
       }
       return extractResource(resource, directory, fileName);
     } catch (IOException e) {
       throw new UncheckedIOException("failed to extract native libraries from the cuOpt JAR", e);
+    }
+  }
+
+  /**
+   * Reads the companion filenames packaged alongside the JNI library for this architecture. See
+   * {@link #COMPANION_MANIFEST} for why this list is not hardcoded. An older JAR built before
+   * this manifest existed would have none, so a missing manifest is treated as an empty list
+   * rather than an error.
+   */
+  private static List<String> readCompanionManifest(String osArch) throws IOException {
+    String resource = resourcePath(osArch, COMPANION_MANIFEST);
+    try (InputStream in = NativeLibraryLoader.class.getResourceAsStream(resource)) {
+      if (in == null) {
+        return List.of();
+      }
+      List<String> companions = new ArrayList<>();
+      try (BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
+        String line;
+        while ((line = reader.readLine()) != null) {
+          line = line.trim();
+          if (!line.isEmpty()) {
+            companions.add(line);
+          }
+        }
+      }
+      return companions;
     }
   }
 

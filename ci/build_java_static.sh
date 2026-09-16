@@ -8,33 +8,20 @@
 # Unlike ci/build_java.sh, which installs a prebuilt libcuopt and links it as a shared library,
 # this compiles libcuopt from source as a static archive and embeds it, so the JAR is the only
 # thing a consumer installs. See #1817.
+#
+# Runs in a RAPIDS ci-wheel container rather than ci-conda -- see setup_java_static_env.sh for
+# why -- so there is no conda environment here at all. rmm and rapids_logger come from prebuilt
+# RAPIDS wheels instead; raft has no such wheel, so it is still CPM-fetched from source by
+# cpp/CMakeLists.txt; TBB, cuDSS and NCCL come from dnf/the image itself.
 
 set -euo pipefail
 
-if [[ -e /opt/conda/etc/profile.d/conda.sh ]]; then
-  . /opt/conda/etc/profile.d/conda.sh
-fi
-
-rapids-logger "Configuring conda strict channel priority"
-conda config --set channel_priority strict
-
-rapids-logger "Generating Java static build dependencies"
-ENV_YAML_DIR=$(mktemp -d)
-rapids-dependency-file-generator \
-  --output conda \
-  --file-key java_static \
-  --matrix "cuda=${RAPIDS_CUDA_VERSION%.*};arch=$(arch)" | tee "${ENV_YAML_DIR}/env.yaml"
-
-rapids-mamba-retry env create --yes -f "${ENV_YAML_DIR}/env.yaml" -n java_static
-
-# Temporarily allow unbound variables for conda activation.
-set +u
-conda activate java_static
-set -u
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=java/cuopt/ci/setup_java_static_env.sh
+. "${REPO_ROOT}/java/cuopt/ci/setup_java_static_env.sh"
 
 rapids-print-env
 
-export CUOPT_PREFIX="${CONDA_PREFIX}"
 STATIC_BUILD_DIR="${PWD}/cpp/build-static"
 JNI_BUILD_DIR="${PWD}/java/cuopt/build/native-static"
 JAR_OUTPUT_DIR="${PWD}/java/cuopt/classifier-jars"
@@ -42,12 +29,25 @@ JAR_OUTPUT_DIR="${PWD}/java/cuopt/classifier-jars"
 rapids-logger "Building the scoped static libcuopt"
 BUILD_DIR="${STATIC_BUILD_DIR}" bash java/cuopt/ci/build_static_libcuopt.sh
 
+# rmm/rapids_logger headers come from the prebuilt wheels' own include directories (found via
+# CMAKE_PREFIX_PATH above); raft has no such wheel, so its headers land under the CPM build tree
+# instead. Find that one by the source-directory name CPM/FetchContent gives it (<name>-src)
+# rather than hardcoding a path that would break the moment a pinned tag/commit changes.
+EXTRA_INCLUDE_DIRS="${PWD}/cpp/include;${STATIC_BUILD_DIR}/include"
+for dep_include in \
+  "${STATIC_BUILD_DIR}/_deps/raft-src/cpp/include" \
+  "${STATIC_BUILD_DIR}/_deps/raft-build/include"; do
+  if [[ -d "${dep_include}" ]]; then
+    EXTRA_INCLUDE_DIRS="${EXTRA_INCLUDE_DIRS};${dep_include}"
+  fi
+done
+
 rapids-logger "Linking libcuopt into cuopt_jni"
 cmake -S java/cuopt -B "${JNI_BUILD_DIR}" -GNinja \
   -DCMAKE_BUILD_TYPE=Release \
-  -DCUOPT_PREFIX="${CUOPT_PREFIX}" \
   -DCUOPT_STATIC_BUILD_DIR="${STATIC_BUILD_DIR}" \
-  -DCUOPT_EXTRA_INCLUDE_DIRS="${PWD}/cpp/include;${STATIC_BUILD_DIR}/include"
+  -DCUOPT_EXTRA_INCLUDE_DIRS="${EXTRA_INCLUDE_DIRS}" \
+  -DCMAKE_PREFIX_PATH="${CUOPT_JAVA_STATIC_CMAKE_PREFIX_PATH:-}"
 cmake --build "${JNI_BUILD_DIR}" --parallel "${PARALLEL_LEVEL:-$(nproc)}"
 
 rapids-logger "Packaging the classifier JAR"

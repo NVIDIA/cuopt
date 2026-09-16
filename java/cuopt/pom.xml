@@ -274,6 +274,11 @@ SPDX-License-Identifier: Apache-2.0
                 <include>**/*Test.java</include>
                 <include>**/PackagedJarOriginCheck.java</include>
               </includes>
+              <systemPropertyVariables>
+                <!-- Forwarded so PackagedJarOriginCheck can assert classes actually loaded from
+                     this exact JAR, not merely from some JAR. -->
+                <cuopt.jar.path>${cuopt.jar.path}</cuopt.jar.path>
+              </systemPropertyVariables>
             </configuration>
           </plugin>
         </plugins>
