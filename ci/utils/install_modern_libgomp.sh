@@ -32,37 +32,41 @@ fi
 
 python3 -m pip install --quiet zstandard
 
-# Resolve the newest libgomp build for this subdir/floor from conda-forge's own package metadata
-# (not the download itself, so the sha256 check below is a real integrity check -- CWE-494).
-read -r pkg sha256 <<< "$(python3 - "${subdir}" "${min_major}" <<'PYEOF'
-import json
-import sys
-import urllib.request
-
-subdir, min_major = sys.argv[1], int(sys.argv[2])
-with urllib.request.urlopen("https://api.anaconda.org/package/conda-forge/libgomp", timeout=15) as resp:
-    data = json.load(resp)
-
-candidates = [
-    f for f in data["files"]
-    if f["attrs"].get("subdir") == subdir
-    and f["basename"].endswith(".conda")
-    and f["sha256"]
-    and int(f["version"].split(".")[0]) >= min_major
-]
-if not candidates:
-    sys.exit(f"No libgomp >={min_major} build found for {subdir}")
-
-best = max(candidates, key=lambda f: (tuple(map(int, f["version"].split("."))), f["attrs"]["timestamp"]))
-print(best["basename"], best["sha256"])
-PYEOF
-)"
-
-url="https://conda.anaconda.org/conda-forge/${pkg}"
-pkg_file="$(basename "${pkg}")"
-
 workdir="$(mktemp -d)"
 trap 'rm -rf "${workdir}"' EXIT
+
+# Resolve the newest libgomp build for this subdir/floor from conda-forge's own repodata --
+# same host we download the package from below (api.anaconda.org, a different host, failed TLS
+# verification in the Rocky 8 wheel-build image even though this one works fine).
+repodata_url="https://conda.anaconda.org/conda-forge/${subdir}/current_repodata.json"
+echo "Fetching ${repodata_url}"
+curl -fsSL -o "${workdir}/current_repodata.json" "${repodata_url}"
+
+if ! resolved="$(python3 - "${workdir}/current_repodata.json" "${min_major}" <<'PYEOF'
+import json
+import sys
+
+repodata_path, min_major = sys.argv[1], int(sys.argv[2])
+with open(repodata_path) as f:
+    data = json.load(f)
+
+candidates = [
+    (fn, v) for fn, v in data["packages.conda"].items()
+    if v["name"] == "libgomp" and int(v["version"].split(".")[0]) >= min_major
+]
+if not candidates:
+    sys.exit(f"No libgomp >={min_major} build found in {repodata_path}")
+
+fn, v = max(candidates, key=lambda c: (tuple(map(int, c[1]["version"].split("."))), c[1]["timestamp"]))
+print(fn, v["sha256"])
+PYEOF
+)"; then
+    echo "Failed to resolve a libgomp build from ${repodata_url}" >&2
+    exit 1
+fi
+read -r pkg_file sha256 <<< "${resolved}"
+
+url="https://conda.anaconda.org/conda-forge/${subdir}/${pkg_file}"
 
 echo "Fetching ${url}"
 curl -fsSL -o "${workdir}/${pkg_file}" "${url}"
