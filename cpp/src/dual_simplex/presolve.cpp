@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <unordered_map>
 
 namespace cuopt::mathematical_optimization::simplex {
 
@@ -93,6 +94,240 @@ static void remove_variables_from_Q(csr_matrix_t<i_t, f_t>& Q,
   Qout.n      = new_cols;
   Qout.nz_max = nnz;
   Q           = std::move(Qout);
+}
+
+// Eliminate zero-cost, Q-uncoupled free linear variables by sparse equality substitution.
+// This is especially useful for conic formulations containing chains of auxiliary free
+// variables: unlike regularizing those variables in the KKT system, substitution is exact.
+template <typename i_t, typename f_t>
+static void eliminate_free_variables(lp_problem_t<i_t, f_t>& problem,
+                                     presolve_info_t<i_t, f_t>& presolve_info)
+{
+  const i_t old_m       = problem.num_rows;
+  const i_t old_n       = problem.num_cols;
+  const i_t linear_cols = linear_variable_count(problem);
+  if (old_m == 0 || linear_cols == 0) { return; }
+
+  std::vector<char> q_present(old_n, 0);
+  if (problem.Q.n > 0) {
+    for (i_t row = 0; row < problem.Q.m; ++row) {
+      for (i_t p = problem.Q.row_start[row]; p < problem.Q.row_start[row + 1]; ++p) {
+        if (problem.Q.x[p] == 0) { continue; }
+        q_present[row]            = 1;
+        q_present[problem.Q.j[p]] = 1;
+      }
+    }
+  }
+
+  csr_matrix_t<i_t, f_t> Arow(0, 0, 0);
+  problem.A.to_compressed_row(Arow);
+  std::vector<std::unordered_map<i_t, f_t>> rows(old_m);
+  std::vector<std::vector<i_t>> col_rows(old_n);
+  for (i_t i = 0; i < old_m; ++i) {
+    auto& row = rows[i];
+    row.reserve(static_cast<size_t>(Arow.row_start[i + 1] - Arow.row_start[i]) * 2);
+    for (i_t p = Arow.row_start[i]; p < Arow.row_start[i + 1]; ++p) {
+      row[Arow.j[p]] = Arow.x[p];
+      col_rows[Arow.j[p]].push_back(i);
+    }
+  }
+
+  std::vector<char> active_row(old_m, 1);
+  std::vector<char> active_col(old_n, 1);
+  auto& eliminations = presolve_info.free_variable_eliminations;
+
+  // col_rows is append-only: fill re-adds a row that may already be listed, and eliminated
+  // rows are never unlisted. Compact it during the scan so the pass stays linear.
+  std::vector<i_t> row_stamp(old_m, -1);
+  i_t stamp = 0;
+  std::vector<i_t> incident;
+
+  // One pass in column order. Peeling a chain from one end keeps each pivot row sparse, so
+  // revisiting columns buys almost nothing and costs a requeue storm on models with
+  // hundreds of thousands of free columns.
+  for (i_t j = 0; j < linear_cols; ++j) {
+    if (!active_col[j] || problem.lower[j] != -inf || problem.upper[j] != inf ||
+        problem.objective[j] != 0 || q_present[j]) {
+      continue;
+    }
+
+    incident.clear();
+    auto& listed = col_rows[j];
+    size_t keep  = 0;
+    ++stamp;
+    for (size_t idx = 0; idx < listed.size(); ++idx) {
+      const i_t i = listed[idx];
+      if (row_stamp[i] == stamp) { continue; }
+      row_stamp[i] = stamp;
+      if (!active_row[i] || rows[i].find(j) == rows[i].end()) { continue; }
+      listed[keep++] = i;
+      incident.push_back(i);
+    }
+    listed.resize(keep);
+
+    free_variable_elimination_t<i_t, f_t> elimination;
+    elimination.variable = j;
+    if (incident.empty()) {
+      elimination.pivot_row         = -1;
+      elimination.pivot_coefficient = 1;
+      elimination.rhs               = 0;
+      eliminations.push_back(std::move(elimination));
+      active_col[j] = 0;
+      continue;
+    }
+
+    // A small pivot row limits fill. On a path this peels sparse boundary rows instead of
+    // repeatedly traversing the growing aggregate row.
+    i_t pivot = incident.front();
+    for (const i_t i : incident) {
+      if (rows[i].size() < rows[pivot].size() ||
+          (rows[i].size() == rows[pivot].size() &&
+           std::abs(rows[i].at(j)) > std::abs(rows[pivot].at(j)))) {
+        pivot = i;
+      }
+    }
+    const f_t pivot_coefficient = rows[pivot].at(j);
+    if (pivot_coefficient == 0) { continue; }
+
+    // Accept only if the substitution does not add nonzeros. Dropping the pivot row and the
+    // a_ij entries pays for the entries the pivot row scatters into the other incident rows.
+    // Integrator chains have a sparse pivot and degree 2, so they clear this easily; the
+    // dense equalities of a converted QCQP do not, and aggregating those is what densified A
+    // and stalled the barrier.
+    i_t added = 0;
+    for (const i_t i : incident) {
+      if (i == pivot) { continue; }
+      for (const auto& [col, value] : rows[pivot]) {
+        if (col == j) { continue; }
+        if (rows[i].find(col) == rows[i].end()) { ++added; }
+      }
+    }
+    const i_t removed =
+      static_cast<i_t>(rows[pivot].size()) + static_cast<i_t>(incident.size()) - 1;
+    if (added > removed) { continue; }
+
+    elimination.pivot_row         = pivot;
+    elimination.pivot_coefficient = pivot_coefficient;
+    elimination.rhs               = problem.rhs[pivot];
+    elimination.columns.reserve(rows[pivot].size() - 1);
+    elimination.coefficients.reserve(rows[pivot].size() - 1);
+    for (const auto& [col, value] : rows[pivot]) {
+      if (col == j) { continue; }
+      elimination.columns.push_back(col);
+      elimination.coefficients.push_back(value);
+    }
+
+    for (const i_t i : incident) {
+      if (i == pivot) { continue; }
+      auto j_it = rows[i].find(j);
+      if (j_it == rows[i].end()) { continue; }
+      const f_t factor = j_it->second / pivot_coefficient;
+      rows[i].erase(j_it);
+      for (size_t k = 0; k < elimination.columns.size(); ++k) {
+        const i_t col       = elimination.columns[k];
+        const f_t delta     = factor * elimination.coefficients[k];
+        auto col_it         = rows[i].find(col);
+        const f_t old_value = col_it == rows[i].end() ? f_t{0} : col_it->second;
+        const f_t new_value = old_value - delta;
+        const f_t drop_tol  = f_t{100} * std::numeric_limits<f_t>::epsilon() *
+                             std::max({f_t{1}, std::abs(old_value), std::abs(delta)});
+        if (std::abs(new_value) <= drop_tol) {
+          if (col_it != rows[i].end()) { rows[i].erase(col_it); }
+        } else {
+          if (col_it == rows[i].end()) { col_rows[col].push_back(i); }
+          rows[i][col] = new_value;
+        }
+      }
+      problem.rhs[i] -= factor * elimination.rhs;
+      elimination.affected_rows.push_back(i);
+      elimination.factors.push_back(factor);
+    }
+
+    active_row[pivot] = 0;
+    active_col[j]     = 0;
+    eliminations.push_back(std::move(elimination));
+  }
+
+  if (eliminations.empty()) { return; }
+
+  presolve_info.free_elimination_num_variables   = old_n;
+  presolve_info.free_elimination_num_constraints = old_m;
+  auto& remaining_cols = presolve_info.free_elimination_remaining_variables;
+  auto& remaining_rows = presolve_info.free_elimination_remaining_constraints;
+  remaining_cols.clear();
+  remaining_rows.clear();
+
+  std::vector<i_t> old_to_new_col(old_n, -1);
+  for (i_t j = 0; j < old_n; ++j) {
+    if (!active_col[j]) { continue; }
+    old_to_new_col[j] = static_cast<i_t>(remaining_cols.size());
+    remaining_cols.push_back(j);
+  }
+  for (i_t i = 0; i < old_m; ++i) {
+    if (active_row[i]) { remaining_rows.push_back(i); }
+  }
+
+  i_t new_n   = static_cast<i_t>(remaining_cols.size());
+  i_t new_m   = static_cast<i_t>(remaining_rows.size());
+  i_t new_nnz = 0;
+  for (const i_t i : remaining_rows) {
+    for (const auto& [j, value] : rows[i]) {
+      if (active_col[j] && value != 0) { ++new_nnz; }
+    }
+  }
+
+  csr_matrix_t<i_t, f_t> reduced_A(new_m, new_n, new_nnz);
+  std::vector<f_t> reduced_rhs(new_m);
+  i_t nz = 0;
+  for (i_t new_i = 0; new_i < new_m; ++new_i) {
+    const i_t old_i            = remaining_rows[new_i];
+    reduced_A.row_start[new_i] = nz;
+    std::vector<std::pair<i_t, f_t>> entries;
+    entries.reserve(rows[old_i].size());
+    for (const auto& [old_j, value] : rows[old_i]) {
+      if (active_col[old_j] && value != 0) { entries.emplace_back(old_to_new_col[old_j], value); }
+    }
+    std::sort(entries.begin(), entries.end());
+    for (const auto& [new_j, value] : entries) {
+      reduced_A.j[nz] = new_j;
+      reduced_A.x[nz] = value;
+      ++nz;
+    }
+    reduced_rhs[new_i] = problem.rhs[old_i];
+  }
+  reduced_A.row_start[new_m] = nz;
+
+  std::vector<f_t> objective(new_n);
+  std::vector<f_t> lower(new_n);
+  std::vector<f_t> upper(new_n);
+  for (i_t new_j = 0; new_j < new_n; ++new_j) {
+    const i_t old_j  = remaining_cols[new_j];
+    objective[new_j] = problem.objective[old_j];
+    lower[new_j]     = problem.lower[old_j];
+    upper[new_j]     = problem.upper[old_j];
+  }
+
+  std::vector<i_t> col_marker(old_n, 0);
+  for (i_t j = 0; j < old_n; ++j) {
+    if (!active_col[j]) { col_marker[j] = 1; }
+  }
+  if (problem.Q.n > 0) { remove_variables_from_Q(problem.Q, col_marker, old_to_new_col, new_n); }
+
+  reduced_A.to_compressed_col(problem.A);
+  problem.rhs            = std::move(reduced_rhs);
+  problem.objective      = std::move(objective);
+  problem.lower          = std::move(lower);
+  problem.upper          = std::move(upper);
+  problem.num_rows       = new_m;
+  problem.num_cols       = new_n;
+  problem.cone_var_start = old_to_new_col[problem.cone_var_start];
+
+  presolve_info.direct_free_variables.clear();
+  for (i_t new_j = 0; new_j < problem.cone_var_start; ++new_j) {
+    if (problem.lower[new_j] == -inf && problem.upper[new_j] == inf) {
+      presolve_info.direct_free_variables.push_back(new_j);
+    }
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -1497,6 +1732,21 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     }
     settings.log.printf("Dependent row check in %.2fs\n", toc(dependent_row_start));
   }
+
+  // LP already goes through PSLP; this substitution is for QP/SOCP only.
+  if (settings.barrier_presolve && (has_cones || problem.Q.n > 0)) {
+    const i_t old_free_count         = static_cast<i_t>(presolve_info.direct_free_variables.size());
+    const f_t free_elimination_start = tic();
+    eliminate_free_variables(problem, presolve_info);
+    const i_t eliminated =
+      old_free_count - static_cast<i_t>(presolve_info.direct_free_variables.size());
+    if (eliminated > 0) {
+      settings.log.printf("Eliminated %d free variables by equality substitution in %.2fs\n",
+                          eliminated,
+                          toc(free_elimination_start));
+    }
+  }
+
   assert(problem.num_rows == problem.A.m);
   assert(problem.num_cols == problem.A.n);
   if (settings.print_presolve_stats && problem.A.m < original.A.m) {
@@ -1769,6 +2019,57 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
   std::vector<f_t> input_y             = crushed_y;
   std::vector<f_t> input_z             = crushed_z;
   std::vector<i_t> free_variable_pairs = presolve_info.free_variable_pairs;
+
+  // Free-variable substitution is the last presolve transformation, so undo it first.
+  if (!presolve_info.free_variable_eliminations.empty()) {
+    if (settings.postsolve_info == 1) {
+      settings.log.printf("Post-solve: Reconstructing %d eliminated free variables\n",
+                          static_cast<int>(presolve_info.free_variable_eliminations.size()));
+    }
+    assert(static_cast<i_t>(input_x.size()) ==
+           static_cast<i_t>(presolve_info.free_elimination_remaining_variables.size()));
+    assert(static_cast<i_t>(input_y.size()) ==
+           static_cast<i_t>(presolve_info.free_elimination_remaining_constraints.size()));
+    std::vector<f_t> expanded_x(presolve_info.free_elimination_num_variables, 0);
+    std::vector<f_t> expanded_z(presolve_info.free_elimination_num_variables, 0);
+    for (i_t k = 0; k < static_cast<i_t>(presolve_info.free_elimination_remaining_variables.size());
+         ++k) {
+      const i_t j   = presolve_info.free_elimination_remaining_variables[k];
+      expanded_x[j] = input_x[k];
+      expanded_z[j] = input_z[k];
+    }
+    input_x = std::move(expanded_x);
+    input_z = std::move(expanded_z);
+
+    std::vector<f_t> expanded_y(presolve_info.free_elimination_num_constraints, 0);
+    for (i_t k = 0;
+         k < static_cast<i_t>(presolve_info.free_elimination_remaining_constraints.size());
+         ++k) {
+      expanded_y[presolve_info.free_elimination_remaining_constraints[k]] = input_y[k];
+    }
+    input_y = std::move(expanded_y);
+
+    for (auto it = presolve_info.free_variable_eliminations.rbegin();
+         it != presolve_info.free_variable_eliminations.rend();
+         ++it) {
+      const auto& elimination = *it;
+      f_t value               = elimination.rhs;
+      for (size_t k = 0; k < elimination.columns.size(); ++k) {
+        value -= elimination.coefficients[k] * input_x[elimination.columns[k]];
+      }
+      input_x[elimination.variable] = value / elimination.pivot_coefficient;
+      input_z[elimination.variable] = 0;
+
+      if (elimination.pivot_row >= 0) {
+        f_t pivot_dual = 0;
+        for (size_t k = 0; k < elimination.affected_rows.size(); ++k) {
+          pivot_dual -= elimination.factors[k] * input_y[elimination.affected_rows[k]];
+        }
+        input_y[elimination.pivot_row] = pivot_dual;
+      }
+    }
+  }
+
   if (presolve_info.folding_info.is_folded) {
     // We solved a foled problem in the form
     // minimize c_prime^T x_prime

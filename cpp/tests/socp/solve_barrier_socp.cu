@@ -13,6 +13,7 @@
 #include <dual_simplex/scaling.hpp>
 #include <dual_simplex/solve.hpp>
 #include <dual_simplex/user_problem.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/cusparse_macros.hpp>
@@ -31,6 +32,85 @@ static void init_handler(const raft::handle_t* handle_ptr)
   RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsesetpointermode(handle_ptr->get_cusparse_handle(),
                                                                  CUSPARSE_POINTER_MODE_DEVICE,
                                                                  handle_ptr->get_stream().get()));
+}
+
+static double inf_norm(const std::vector<double>& v)
+{
+  double nrm = 0.0;
+  for (double val : v) {
+    nrm = std::max(nrm, std::abs(val));
+  }
+  return nrm;
+}
+
+// Hub-and-spoke style chain: two free integrator variables plus a quadratic on w.
+//
+// minimize  0.5 w^2
+// s.t.      y1 + w     = 1
+//           -y1 + y2   = 0
+//           -y2 + w    = 1
+//            t  - w    = 0
+//           (t, u) in Q^2
+//
+// Unique primal: w = t = 1, y1 = y2 = u = 0.
+static user_problem_t<int, double> make_free_substitution_qp(raft::handle_t* handle)
+{
+  user_problem_t<int, double> user_problem(handle);
+
+  constexpr int m  = 4;
+  constexpr int n  = 5;
+  constexpr int nz = 8;
+
+  user_problem.num_rows = m;
+  user_problem.num_cols = n;
+  user_problem.objective.assign(n, 0.0);
+
+  user_problem.A.m      = m;
+  user_problem.A.n      = n;
+  user_problem.A.nz_max = nz;
+  user_problem.A.reallocate(nz);
+  // Columns: y1, y2, w, t, u
+  user_problem.A.col_start = {0, 2, 4, 7, 8, 8};
+  user_problem.A.i         = {0, 1, 1, 2, 0, 2, 3, 3};
+  user_problem.A.x         = {1.0, -1.0, 1.0, -1.0, 1.0, 1.0, -1.0, 1.0};
+
+  user_problem.rhs       = {1.0, 0.0, 1.0, 0.0};
+  user_problem.row_sense = {'E', 'E', 'E', 'E'};
+  // Keep y1, y2, and w free so bound strengthening cannot pin the integrator
+  // chain before substitution. w is skipped later because it appears in Q.
+  user_problem.lower = {-inf, -inf, -inf, 0.0, 0.0};
+  user_problem.upper.assign(n, inf);
+
+  user_problem.Q_offsets = {0, 0, 0, 1, 1, 1};
+  user_problem.Q_indices = {2};
+  user_problem.Q_values  = {1.0};
+
+  user_problem.num_range_rows         = 0;
+  user_problem.problem_name           = "free_substitution_qp";
+  user_problem.cone_var_start         = 3;
+  user_problem.second_order_cone_dims = {2};
+  user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
+  return user_problem;
+}
+
+static void stationarity_residual(const lp_problem_t<int, double>& lp,
+                                  const std::vector<double>& x,
+                                  const std::vector<double>& y,
+                                  const std::vector<double>& z,
+                                  std::vector<double>& residual)
+{
+  residual = z;
+  for (int j = 0; j < lp.num_cols; ++j) {
+    residual[j] -= lp.objective[j];
+  }
+  if (lp.Q.n > 0) {
+    for (int i = 0; i < lp.Q.m; ++i) {
+      for (int p = lp.Q.row_start[i]; p < lp.Q.row_start[i + 1]; ++p) {
+        residual[i] -= lp.Q.x[p] * x[lp.Q.j[p]];
+      }
+    }
+  }
+  matrix_transpose_vector_multiply(lp.A, 1.0, y, 1.0, residual);
 }
 
 TEST(barrier, cone_metadata_reindexed_when_slack_is_inserted_before_cones)
@@ -161,8 +241,9 @@ TEST(barrier, presolve_reindexes_cone_start_after_empty_column_removal)
 TEST(barrier, presolve_keeps_direct_free_variables_before_cones)
 {
   // Layout: [x0, x1 | cone x2, x3, x4] with x0, x1 free and a 3-dimensional SOC block.
-  // SOCP barrier presolve keeps direct free variables (no x = v - w split); cone_var_start
-  // and column count stay unchanged.
+  // Free linear columns are not split into v - w. Zero-cost free x0 is substituted from
+  // the singleton equality (the pivot may contain cone columns); the leftover free x1
+  // then has an empty column and is fixed at 0. The cone block stays trailing.
   raft::handle_t handle{};
   init_handler(&handle);
 
@@ -210,17 +291,21 @@ TEST(barrier, presolve_keeps_direct_free_variables_before_cones)
   lp_problem_t<int, double> presolved_lp(user_problem.handle_ptr, 1, 1, 1);
   ASSERT_EQ(presolve(original_lp, settings, presolved_lp, presolve_info), 0);
 
-  EXPECT_EQ(presolved_lp.num_cols, 5);
-  EXPECT_EQ(presolved_lp.cone_var_start, 2);
+  EXPECT_EQ(presolved_lp.num_rows, 0);
+  EXPECT_EQ(presolved_lp.num_cols, 3);
+  EXPECT_EQ(presolved_lp.cone_var_start, 0);
   EXPECT_EQ(presolved_lp.second_order_cone_dims, std::vector<int>({3}));
   EXPECT_TRUE(presolve_info.free_variable_pairs.empty());
-  ASSERT_EQ(presolve_info.direct_free_variables.size(), 2);
-  EXPECT_EQ(presolve_info.direct_free_variables[0], 0);
-  EXPECT_EQ(presolve_info.direct_free_variables[1], 1);
-  EXPECT_EQ(presolved_lp.lower[0], -inf);
-  EXPECT_EQ(presolved_lp.lower[1], -inf);
-  EXPECT_EQ(presolved_lp.upper[0], inf);
-  EXPECT_EQ(presolved_lp.upper[1], inf);
+  EXPECT_TRUE(presolve_info.direct_free_variables.empty());
+  ASSERT_EQ(presolve_info.free_variable_eliminations.size(), 2u);
+  EXPECT_EQ(presolve_info.free_variable_eliminations[0].variable, 0);
+  EXPECT_EQ(presolve_info.free_variable_eliminations[0].pivot_row, 0);
+  EXPECT_EQ(presolve_info.free_variable_eliminations[1].variable, 1);
+  EXPECT_EQ(presolve_info.free_variable_eliminations[1].pivot_row, -1);
+  ASSERT_EQ(presolve_info.free_elimination_remaining_variables.size(), 3u);
+  EXPECT_EQ(presolve_info.free_elimination_remaining_variables[0], 2);
+  EXPECT_EQ(presolve_info.free_elimination_remaining_variables[1], 3);
+  EXPECT_EQ(presolve_info.free_elimination_remaining_variables[2], 4);
 }
 
 TEST(barrier, rejects_middle_cone_input_before_barrier)
@@ -1018,6 +1103,97 @@ TEST(barrier, sparse_soc_expansion_solves_dim_500_cone)
   for (int j = 2; j < n; ++j) {
     EXPECT_NEAR(std::abs(solution.x[j]), 0.0, 1e-3) << "index " << j;
   }
+}
+
+TEST(barrier, free_variable_substitution_postsolve_kkt)
+{
+  raft::handle_t handle{};
+  init_handler(&handle);
+
+  user_problem_t<int, double> user_problem = make_free_substitution_qp(&handle);
+
+  simplex_solver_settings_t<int, double> settings;
+  settings.barrier          = true;
+  settings.barrier_presolve = true;
+  settings.dualize          = 0;
+  settings.scale_columns    = false;
+  settings.postsolve_info   = 1;
+
+  std::vector<int> new_slacks;
+  dualize_info_t<int, double> dualize_info;
+  lp_problem_t<int, double> original_lp(user_problem.handle_ptr, 1, 1, 1);
+  convert_user_problem(user_problem, settings, original_lp, new_slacks, dualize_info);
+
+  presolve_info_t<int, double> presolve_info;
+  lp_problem_t<int, double> presolved_lp(user_problem.handle_ptr, 1, 1, 1);
+  ASSERT_EQ(presolve(original_lp, settings, presolved_lp, presolve_info), 0);
+  ASSERT_EQ(presolve_info.free_variable_eliminations.size(), 2u);
+  ASSERT_EQ(presolved_lp.num_cols, original_lp.num_cols - 2);
+  ASSERT_EQ(presolved_lp.num_rows, original_lp.num_rows - 2);
+
+  // Known feasible point on the original problem, restricted to remaining columns.
+  const std::vector<double> original_x = {0.0, 0.0, 1.0, 1.0, 0.0};
+  std::vector<double> crushed_x(presolved_lp.num_cols);
+  for (int k = 0; k < presolved_lp.num_cols; ++k) {
+    crushed_x[k] = original_x[presolve_info.free_elimination_remaining_variables[k]];
+  }
+  std::vector<double> crushed_y(presolved_lp.num_rows, 0.25);
+  std::vector<double> crushed_z(presolved_lp.num_cols, 0.0);
+  std::vector<double> reduced_stationarity;
+  stationarity_residual(presolved_lp, crushed_x, crushed_y, crushed_z, reduced_stationarity);
+  for (int j = 0; j < presolved_lp.num_cols; ++j) {
+    crushed_z[j] -= reduced_stationarity[j];
+  }
+  stationarity_residual(presolved_lp, crushed_x, crushed_y, crushed_z, reduced_stationarity);
+  ASSERT_NEAR(inf_norm(reduced_stationarity), 0.0, 1e-12);
+
+  std::vector<double> uncrushed_x;
+  std::vector<double> uncrushed_y;
+  std::vector<double> uncrushed_z;
+  uncrush_solution(presolve_info,
+                   settings,
+                   original_lp,
+                   crushed_x,
+                   crushed_y,
+                   crushed_z,
+                   uncrushed_x,
+                   uncrushed_y,
+                   uncrushed_z);
+
+  ASSERT_EQ(uncrushed_x.size(), static_cast<size_t>(original_lp.num_cols));
+  EXPECT_NEAR(uncrushed_x[0], 0.0, 1e-12);
+  EXPECT_NEAR(uncrushed_x[1], 0.0, 1e-12);
+  EXPECT_NEAR(uncrushed_x[2], 1.0, 1e-12);
+  EXPECT_NEAR(uncrushed_x[3], 1.0, 1e-12);
+  EXPECT_NEAR(std::abs(uncrushed_z[0]), 0.0, 1e-12);
+  EXPECT_NEAR(std::abs(uncrushed_z[1]), 0.0, 1e-12);
+
+  std::vector<double> primal_residual = original_lp.rhs;
+  matrix_vector_multiply(original_lp.A, 1.0, uncrushed_x, -1.0, primal_residual);
+  EXPECT_NEAR(inf_norm(primal_residual), 0.0, 1e-12);
+
+  std::vector<double> dual_residual;
+  stationarity_residual(original_lp, uncrushed_x, uncrushed_y, uncrushed_z, dual_residual);
+  EXPECT_NEAR(inf_norm(dual_residual), 0.0, 1e-10);
+
+  lp_solution_t<int, double> solution(user_problem.num_rows, user_problem.num_cols);
+  auto status = solve_linear_program_with_barrier(user_problem, settings, solution);
+  EXPECT_EQ(status, lp_status_t::OPTIMAL);
+  EXPECT_NEAR(solution.objective, 0.5, 1e-4);
+  EXPECT_NEAR(solution.x[0], 0.0, 1e-4);
+  EXPECT_NEAR(solution.x[1], 0.0, 1e-4);
+  EXPECT_NEAR(solution.x[2], 1.0, 1e-4);
+  EXPECT_NEAR(solution.x[3], 1.0, 1e-4);
+  EXPECT_NEAR(std::abs(solution.z[0]), 0.0, 1e-4);
+  EXPECT_NEAR(std::abs(solution.z[1]), 0.0, 1e-4);
+
+  std::vector<double> solved_primal = original_lp.rhs;
+  matrix_vector_multiply(original_lp.A, 1.0, solution.x, -1.0, solved_primal);
+  EXPECT_NEAR(inf_norm(solved_primal), 0.0, 1e-5);
+
+  std::vector<double> solved_dual;
+  stationarity_residual(original_lp, solution.x, solution.y, solution.z, solved_dual);
+  EXPECT_NEAR(inf_norm(solved_dual), 0.0, 1e-5);
 }
 
 }  // namespace cuopt::mathematical_optimization::simplex::test
