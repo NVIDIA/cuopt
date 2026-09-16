@@ -35,8 +35,8 @@ Dependencies are installed automatically when using the pip and Conda installati
       - On Ubuntu 20.04, install OpenSSL 3 from a PPA/backport or use the cuOpt container
 
    * GNU OpenMP runtime (for multi-threaded cuDSS/barrier solves):
-      - pip installs bundle their own; no host ``libgomp`` needed
-      - conda and source builds need ``libgomp.so.1`` on the host -- install via ``libgomp1`` (Debian/Ubuntu) or ``libgomp`` (RHEL/Rocky/Fedora)
+      - pip installs bundle their own; conda installs pull in ``libgomp`` automatically as a package dependency -- neither needs a manual step
+      - source builds need ``libgomp.so.1`` on the host -- install via ``libgomp1`` (Debian/Ubuntu) or ``libgomp`` (RHEL/Rocky/Fedora)
       - Missing this degrades to single-threaded solves with a warning, not a failure (see :doc:`faq`)
 
    * NVIDIA drivers:

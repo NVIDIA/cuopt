@@ -31,7 +31,8 @@ bash ci/utils/install_protobuf_grpc.sh
 # Compile against a modern GNU libgomp from conda-forge instead of bundled LLVM libomp, to
 # unify cuOpt's OpenMP runtime with the one cuDSS's threading layer needs (#1219).
 MODERN_LIBGOMP_DIR="$(pwd)/modern_libgomp"
-bash ci/utils/install_modern_libgomp.sh "${MODERN_LIBGOMP_DIR}"
+python -m pip install --quiet zstandard
+python ci/utils/install_modern_libgomp.py "${MODERN_LIBGOMP_DIR}"
 
 # Also build our own cuDSS threading layer against this same libgomp (see cpp/CMakeLists.txt,
 # cpp/src/barrier/cudss_mtlayer_cuopt.cpp), instead of cuDSS's prebuilt one -- so both actually

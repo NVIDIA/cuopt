@@ -108,7 +108,9 @@ General FAQ
 
    **pip installs**: the wheel bundles its own GNU OpenMP runtime and a cuDSS threading layer built against it, so this shouldn't happen out of the box -- no host ``libgomp`` is required.
 
-   **conda and source builds**: cuDSS's threading layer loads ``libgomp.so.1`` from the host at runtime. If the host doesn't provide it, install your distribution's GNU OpenMP runtime package, typically ``libgomp1`` (Debian/Ubuntu) or ``libgomp`` (RHEL/Rocky/Fedora), then re-run the solve.
+   **conda installs**: ``libgomp`` is a runtime dependency of the ``libcuopt`` package, so ``conda install`` pulls it in automatically -- no manual step needed.
+
+   **source builds**: cuDSS's threading layer loads ``libgomp.so.1`` from the host at runtime. If the host doesn't provide it, install your distribution's GNU OpenMP runtime package, typically ``libgomp1`` (Debian/Ubuntu) or ``libgomp`` (RHEL/Rocky/Fedora), then re-run the solve.
 
    If you want cuDSS to use a specific threading-layer library, set the ``CUDSS_THREADING_LIB`` environment variable to its absolute path before running:
 
