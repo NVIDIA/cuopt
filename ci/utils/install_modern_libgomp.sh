@@ -13,53 +13,63 @@ dest_dir="${1:?Usage: install_modern_libgomp.sh <dest_dir>}"
 mkdir -p "${dest_dir}"
 
 case "$(arch)" in
-    x86_64)
-        subdir="linux-64"
-        build="he0feb66_4"
-        sha256="0fe5cb8e0752241ab55e11656ed1b9726248b522d23b929fe7c95b83eb55b9bb"
-        ;;
-    aarch64)
-        subdir="linux-aarch64"
-        build="h8acb6b2_4"
-        sha256="6d216e6dc9a158b920f6e0c1dfdd6d77575bf79420dadf85d64576298ecb4503"
-        ;;
+    x86_64) subdir="linux-64" ;;
+    aarch64) subdir="linux-aarch64" ;;
     *)
         echo "Unsupported architecture for modern libgomp fetch: $(arch)" >&2
         exit 1
         ;;
 esac
 
-# Pinned deliberately, not tracked to "latest" -- but must satisfy the floor declared in
-# dependencies.yaml (also used for conda/recipes/libcuopt/recipe.yaml), read from there so the
-# two can't drift.
-version="16.2.0"
+# The floor lives in dependencies.yaml (also used for conda/recipes/libcuopt/recipe.yaml), read
+# from there so it can't drift from the version resolved below.
 deps_yaml="$(dirname "${BASH_SOURCE[0]}")/../../dependencies.yaml"
 min_major="$(grep -oP '(?<=- libgomp >=)[0-9]+' "${deps_yaml}" | head -1)"
 if [[ -z "${min_major}" ]]; then
     echo "Could not find a 'libgomp >=N' floor in ${deps_yaml}" >&2
     exit 1
 fi
-version_major="${version%%.*}"
-if (( version_major < min_major )); then
-    echo "Pinned libgomp ${version} is below the required floor (>=${min_major})" >&2
-    exit 1
-fi
 
-pkg="libgomp-${version}-${build}.conda"
-url="https://conda.anaconda.org/conda-forge/${subdir}/${pkg}"
+python3 -m pip install --quiet zstandard
+
+# Resolve the newest libgomp build for this subdir/floor from conda-forge's own package metadata
+# (not the download itself, so the sha256 check below is a real integrity check -- CWE-494).
+read -r pkg sha256 <<< "$(python3 - "${subdir}" "${min_major}" <<'PYEOF'
+import json
+import sys
+import urllib.request
+
+subdir, min_major = sys.argv[1], int(sys.argv[2])
+with urllib.request.urlopen("https://api.anaconda.org/package/conda-forge/libgomp") as resp:
+    data = json.load(resp)
+
+candidates = [
+    f for f in data["files"]
+    if f["attrs"].get("subdir") == subdir
+    and f["basename"].endswith(".conda")
+    and f["sha256"]
+    and int(f["version"].split(".")[0]) >= min_major
+]
+if not candidates:
+    sys.exit(f"No libgomp >={min_major} build found for {subdir}")
+
+best = max(candidates, key=lambda f: (tuple(map(int, f["version"].split("."))), f["attrs"]["timestamp"]))
+print(best["basename"], best["sha256"])
+PYEOF
+)"
+
+url="https://conda.anaconda.org/conda-forge/${pkg}"
+pkg_file="$(basename "${pkg}")"
 
 workdir="$(mktemp -d)"
 trap 'rm -rf "${workdir}"' EXIT
 
 echo "Fetching ${url}"
-curl -fsSL -o "${workdir}/${pkg}" "${url}"
+curl -fsSL -o "${workdir}/${pkg_file}" "${url}"
 
-# sha256 is from conda-forge's own repodata.json, not just the download itself (CWE-494).
-echo "${sha256}  ${workdir}/${pkg}" | sha256sum -c -
+echo "${sha256}  ${workdir}/${pkg_file}" | sha256sum -c -
 
-python3 -m pip install --quiet zstandard
-
-python3 - "${workdir}/${pkg}" "${workdir}/extracted" <<'PYEOF'
+python3 - "${workdir}/${pkg_file}" "${workdir}/extracted" <<'PYEOF'
 import io
 import sys
 import tarfile
@@ -77,7 +87,7 @@ PYEOF
 
 libgomp_so="$(find "${workdir}/extracted" -name 'libgomp.so.1.0.0' | head -1)"
 if [[ ! -f "${libgomp_so}" ]]; then
-    echo "Could not find libgomp.so.1.0.0 in ${pkg}" >&2
+    echo "Could not find libgomp.so.1.0.0 in ${pkg_file}" >&2
     exit 1
 fi
 
@@ -90,4 +100,4 @@ fi
 cp "${libgomp_so}" "${dest_dir}/libgomp.so.1.0.0"
 ln -sf libgomp.so.1.0.0 "${dest_dir}/libgomp.so.1"
 
-echo "Modern libgomp ready at ${dest_dir}/libgomp.so.1.0.0"
+echo "Modern libgomp ready at ${dest_dir}/libgomp.so.1.0.0 (from ${pkg_file})"
