@@ -876,7 +876,7 @@ option(CUOPT_BUILD_CUSTOM_CUDSS_MTLAYER "Build a cuDSS threading layer linked ag
 if (CUOPT_BUILD_CUSTOM_CUDSS_MTLAYER)
     add_library(cudss_mtlayer_cuopt SHARED src/barrier/cudss_mtlayer_cuopt.cpp)
     target_include_directories(cudss_mtlayer_cuopt PRIVATE "${CUDSS_INCLUDE}")
-    target_link_libraries(cudss_mtlayer_cuopt PRIVATE OpenMP::OpenMP_CXX)
+    target_link_libraries(cudss_mtlayer_cuopt PRIVATE OpenMP::OpenMP_CXX CUDA::cudart)
     set_target_properties(cudss_mtlayer_cuopt
             PROPERTIES BUILD_RPATH "\$ORIGIN"
             INSTALL_RPATH "\$ORIGIN"
