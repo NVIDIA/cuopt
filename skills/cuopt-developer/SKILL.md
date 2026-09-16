@@ -172,7 +172,7 @@ Edit the source, run the generator, commit both. A generated file usually says s
 
 | Generated | Source | Regenerate with |
 |-----------|--------|-----------------|
-| `cpp/src/grpc/codegen/generated/` | `cpp/src/grpc/codegen/field_registry.yaml` | `./build.sh codegen` |
+| `cpp/src/grpc/codegen/generated/` | `cpp/src/grpc/codegen/field_registry.yaml`, `cpp/src/grpc/codegen/generate_conversions.py` | `./build.sh codegen` |
 | `conda/environments/*.yaml`, `pyproject.toml` | `dependencies.yaml` | `pre-commit run --all-files` |
 | `docs/cuopt/source/versions1.json` | `ci/utils/update_doc_versions.py` | `pre-commit run --all-files` |
 | `version:` in `skills/*/SKILL.md`, plugin/marketplace JSONs | `VERSION` | `pre-commit run --all-files` |
