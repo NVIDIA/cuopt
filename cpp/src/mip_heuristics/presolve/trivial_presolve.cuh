@@ -358,14 +358,17 @@ void test_reverse_matches(const problem_t<i_t, f_t>& pb)
 }
 
 template <typename i_t, typename f_t>
-void trivial_presolve(problem_t<i_t, f_t>& problem, bool remap_cache_ids = false)
+void trivial_presolve(problem_t<i_t, f_t>& problem,
+                      bool remap_cache_ids      = false,
+                      bool compute_related_vars = true)
 {
   cuopt_expects(problem.preprocess_called,
                 error_type_t::RuntimeError,
                 "preprocess_problem should be called before running the solver");
   update_from_csr(problem, remap_cache_ids);
   problem.recompute_auxilliary_data(
-    false);  // check problem representation later once cstr bounds are computed
+    false,
+    compute_related_vars);  // check problem representation later once cstr bounds are computed
   cuopt_func_call(test_reverse_matches(problem));
   pdlp::combine_constraint_bounds<i_t, f_t>(problem, problem.combined_bounds);
   // The problem has been solved by presolve. Mark its empty status as valid
