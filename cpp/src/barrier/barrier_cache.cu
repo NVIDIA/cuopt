@@ -104,8 +104,7 @@ void barrier_cache_t::update_linear_objective(double const* c, int n)
   cuopt_expects(impl_->iteration_data.get() != nullptr,
                 error_type_t::ValidationError,
                 "update_linear_objective: no cached iteration_data; Solve a QP to Optimal first.");
-  // The cold maximize path negated c before building the barrier workspace. Apply the same
-  // rewrite to raw user coefficients so the updated c remains in the cached workspace's sense.
+  // Cached Q and c are in minimization space.
   std::vector<double> user_objective;
   if (impl_->transform->maximize && c != nullptr && n > 0) {
     user_objective.assign(c, c + n);
@@ -120,19 +119,14 @@ void barrier_cache_t::update_linear_objective(double const* c, int n)
   } catch (std::invalid_argument const& e) {
     cuopt_expects(false, error_type_t::ValidationError, "%s", e.what());
   }
-  // Translating x = x' + ell folded sum_j c_j * ell_j into obj_constant, so a new c moves the
-  // reported objective even though it leaves the solution alone. crushed is still crush(user c)
-  // here, and objective - linear_obj_shift recovers the crushed c behind the current constant,
-  // so the difference of the two gives the increment. Needs the pre-shift crushed objective and
-  // the barrier objective from the previous solve, hence before either is overwritten below.
+  // x = x' + l folded c^T l into obj_constant. crushed is still crush(user c); previous
+  // crushed c is barrier objective minus linear_obj_shift. column_scales undo crush.
   auto const& linear_obj_shift = impl_->transform->linear_obj_shift;
   auto const& column_scales    = impl_->transform->column_scales;
   auto const& translated_lower = impl_->transform->presolve_info.removed_lower_bounds;
   auto& barrier_lp             = *impl_->transform->barrier_lp;
   if (!translated_lower.empty() && linear_obj_shift.size() == crushed.size() &&
       column_scales.size() == crushed.size() && barrier_lp.objective.size() == crushed.size()) {
-    // presolve records the translated bounds unscaled while a crushed objective has been divided
-    // by column_scales, so the scale goes back on here.
     double obj_constant_delta = 0.0;
     std::size_t const n_lower = std::min(translated_lower.size(), crushed.size());
     for (std::size_t j = 0; j < n_lower; ++j) {

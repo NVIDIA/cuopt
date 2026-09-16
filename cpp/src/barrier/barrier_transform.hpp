@@ -29,9 +29,7 @@ struct barrier_transform_t {
   int original_num_rows{0};
   double obj_scale{1.0};
   double obj_constant{0.0};
-  // Sense of the model used to build this cache. A maximize objective was negated before
-  // barrier conversion, so later user-space linear objectives need the same negation.
-  bool maximize{false};
+  bool maximize{false};  // first-solve sense; cached Q/c were negated if true
 
   // Enough of the user problem for reuse uncrush without rebuilding A.
   std::vector<char> row_sense;

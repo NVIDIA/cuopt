@@ -83,13 +83,7 @@ def test_update_linear_objective_matches_full_solve(capfd):
 
 
 def test_update_linear_objective_honors_maximize_and_translated_bounds(capfd):
-    # Sign-flipped twin of the minimization QP above, so the cached objective is
-    # the negated one:
-    #   max  -x1^2 - 4 x2^2 + c1 x1 + c2 x2
-    # The lower bounds are away from zero, so presolve translates x = x' + l and
-    # folds sum_j c_j * l_j into the objective constant. Both the negation and
-    # that constant have to follow a new c, or the solution stays right while
-    # the reported objective drifts.
+    # max -x1^2 - 4 x2^2 + c1 x1 + c2 x2,  3 <= x_i <= 10
     q_diagonal = (-1.0, -4.0)
     lower = (3.0, 4.0)
     dm = _qp((8.0, 16.0), maximize=True, q_diagonal=q_diagonal, lower=lower)
@@ -120,6 +114,4 @@ def test_update_linear_objective_honors_maximize_and_translated_bounds(capfd):
     assert sol_reuse.get_primal_objective() == pytest.approx(
         sol_full.get_primal_objective(), abs=OBJ_TOL, rel=1e-8
     )
-    assert sol_reuse.get_primal_objective() == pytest.approx(
-        25.0, abs=OBJ_TOL
-    )
+    assert sol_reuse.get_primal_objective() == pytest.approx(25.0, abs=OBJ_TOL)
