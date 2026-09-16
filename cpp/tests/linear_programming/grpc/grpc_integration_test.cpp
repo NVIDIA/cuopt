@@ -511,6 +511,28 @@ End
     }
   }
 
+  // Prove the shared worker is idle and warm before a timed test begins,
+  // instead of trusting whatever the previous test left behind. DefaultServerTests
+  // shares one worker across the whole suite, and a prior test's SIGKILL can leave it
+  // mid-respawn (paying for a fresh CUDA context init); untimed here, that debt can't
+  // leak into this test's own timing assertions -- see #1814.
+  // ASSERT_* inside this helper only returns from here, not from the calling
+  // TEST_F -- return the result so callers can ASSERT_TRUE it themselves and
+  // actually stop the test on a warm-up failure instead of continuing on a
+  // worker that was never confirmed ready.
+  bool warm_up_worker(grpc_client_t* client)
+  {
+    mip_solver_settings_t<int32_t, double> warmup_settings;
+    warmup_settings.time_limit = 5.0;
+    auto warmup                = client->submit_mip(create_simple_mip(), warmup_settings);
+    if (!warmup.success) { return false; }
+    wait_for_job_done(client, warmup.job_id, 90);
+    auto warmup_status = client->check_status(warmup.job_id);
+    bool completed     = warmup_status.status == job_status_t::COMPLETED;
+    bool deleted       = client->delete_job(warmup.job_id);
+    return completed && deleted;
+  }
+
   int port_ = 0;
 };
 
@@ -1225,6 +1247,7 @@ TEST_F(DefaultServerTests, DeleteQueuedJobPreventsRun)
 {
   auto client = create_client();
   ASSERT_NE(client, nullptr);
+  ASSERT_TRUE(warm_up_worker(client.get())) << "Worker warm-up failed";
 
   std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
   auto problem         = load_problem_from_file(mps_path);
@@ -1232,10 +1255,27 @@ TEST_F(DefaultServerTests, DeleteQueuedJobPreventsRun)
   mip_solver_settings_t<int32_t, double> settings;
   settings.time_limit = 120.0;
 
-  // Occupy the single worker with a long solve.
+  // Occupy the single worker with a long solve. Poll for PROCESSING rather than
+  // a fixed sleep: a plain delay doesn't guarantee the worker claimed this job
+  // before the next one is submitted, which would let the queued-status check
+  // below pass even if both jobs were merely queued behind each other.
   auto running = client->submit_mip(problem, settings);
   ASSERT_TRUE(running.success);
-  std::this_thread::sleep_for(std::chrono::seconds(2));
+  bool running_processing = false;
+  for (int i = 0; i < 40; ++i) {
+    auto status = client->check_status(running.job_id);
+    ASSERT_TRUE(status.success) << status.error_message;
+    if (status.status == job_status_t::PROCESSING) {
+      running_processing = true;
+      break;
+    }
+    if (status.status == job_status_t::COMPLETED || status.status == job_status_t::FAILED ||
+        status.status == job_status_t::CANCELLED) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  }
+  ASSERT_TRUE(running_processing) << "First job never reached PROCESSING";
 
   auto queued = client->submit_mip(problem, settings);
   ASSERT_TRUE(queued.success);
@@ -1263,7 +1303,9 @@ TEST_F(DefaultServerTests, DeleteQueuedJobPreventsRun)
   auto probe                = client->submit_mip(problem, probe_settings);
   ASSERT_TRUE(probe.success);
 
-  wait_for_job_done(client.get(), probe.job_id, 60);
+  // 90s: this probe follows a worker respawn (SIGKILL above), which pays for a fresh CUDA
+  // context init on top of the solve -- can exceed 60s on contended CI runners (#1814).
+  wait_for_job_done(client.get(), probe.job_id, 90);
   auto probe_status = client->check_status(probe.job_id);
   EXPECT_EQ(probe_status.status, job_status_t::COMPLETED)
     << "Worker should be free to process a new job after the queued job was deleted";
@@ -1276,6 +1318,7 @@ TEST_F(DefaultServerTests, DeleteRunningJobCancelsWorker)
 {
   auto client = create_client();
   ASSERT_NE(client, nullptr);
+  ASSERT_TRUE(warm_up_worker(client.get())) << "Worker warm-up failed";
 
   std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
   auto problem         = load_problem_from_file(mps_path);
@@ -1287,9 +1330,10 @@ TEST_F(DefaultServerTests, DeleteRunningJobCancelsWorker)
   ASSERT_TRUE(submit_result.success);
   std::string job_id = submit_result.job_id;
 
-  // Wait until the worker has claimed the job.
+  // Wait until the worker has claimed the job. ~30s, not the usual ~10s: the shared worker
+  // may still be mid-respawn from the previous test's SIGKILL (#1814).
   bool processing = false;
-  for (int i = 0; i < 40; ++i) {
+  for (int i = 0; i < 120; ++i) {
     auto status = client->check_status(job_id);
     if (status.status == job_status_t::PROCESSING) {
       processing = true;
