@@ -17,11 +17,13 @@ from cuopt_server.proxy_webserver import (
     app,
     reset_proxy_state,
     set_grpc_client,
+    set_grpc_routing_client,
     set_max_request_size,
 )
 from cuopt_server.utils.http_codec import mime_json, mime_msgpack, mime_zlib
 from cuopt_server.utils.http_envelope import make_response
 from cuopt_server.utils.linear_programming import conversion as lp_conversion
+from cuopt_server.utils.routing import conversion as routing_conversion
 
 
 class _Uvicorn(uvicorn.Server):
@@ -33,6 +35,35 @@ def _free_port():
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         return sock.getsockname()[1]
+
+
+def _vrp():
+    return {
+        "cost_matrix_data": {"data": {"0": [[0, 1], [1, 0]]}},
+        "task_data": {"task_locations": [1], "task_ids": ["A"]},
+        "fleet_data": {
+            "vehicle_locations": [[0, 0]],
+            "vehicle_ids": ["veh-1"],
+        },
+    }
+
+
+def _vrp_grpc_sol():
+    return {
+        "status": 0,
+        "status_message": "Success",
+        "error_message": "",
+        "vehicle_count": 1,
+        "total_objective_value": 1.0,
+        "objective_values": {0: 1.0},
+        "route": [0],
+        "truck_id": [0],
+        "locations": [1],
+        "node_types": [2],
+        "arrival_stamp": [1.5],
+        "unserviced_nodes": [],
+        "accepted": [1],
+    }
 
 
 def _lp():
@@ -155,6 +186,11 @@ class FakeClient:
             raise RuntimeError(f"job {status.name.lower()}")
         if status != FakeJobStatus.COMPLETED:
             return None
+        routing = getattr(self, "routing", None)
+        if routing is not None and job_id in routing.results:
+            raise RuntimeError(
+                "GetResult succeeded but no LP solution in response"
+            )
         return FakeSol()
 
     def cancel(self, job_id):
@@ -172,6 +208,45 @@ class FakeClient:
     def incumbents(self, job_id, from_index=0):
         entries = self._incumbents.get(job_id, [])
         return [e for e in entries if e["index"] >= from_index]
+
+
+class FakeRoutingClient:
+    def __init__(self, jobs=None):
+        self.jobs = jobs if jobs is not None else {}
+        self.submitted = []
+        self.cancelled = []
+        self.deleted = []
+        self.results = {}
+
+    def submit(self, data_model, settings=None):
+        job_id = str(uuid.uuid4())
+        self.jobs[job_id] = FakeJobStatus.COMPLETED
+        self.results[job_id] = _vrp_grpc_sol()
+        self.submitted.append(
+            {"id": job_id, "data_model": data_model, "settings": settings}
+        )
+        return job_id
+
+    def status(self, job_id):
+        return self.jobs.get(job_id, FakeJobStatus.NOT_FOUND)
+
+    def result(self, job_id):
+        status = self.jobs.get(job_id)
+        if status in (FakeJobStatus.FAILED, FakeJobStatus.CANCELLED):
+            raise RuntimeError(f"job {status.name.lower()}")
+        if status != FakeJobStatus.COMPLETED:
+            return None
+        return self.results.get(job_id, _vrp_grpc_sol())
+
+    def cancel(self, job_id):
+        self.cancelled.append(job_id)
+        if job_id in self.jobs:
+            self.jobs[job_id] = FakeJobStatus.CANCELLED
+
+    def delete(self, job_id):
+        self.deleted.append(job_id)
+        self.jobs.pop(job_id, None)
+        self.results.pop(job_id, None)
 
 
 @pytest.fixture(scope="module")
@@ -213,13 +288,22 @@ def proxy(proxy_server, monkeypatch):
     reset_proxy_state()
     set_max_request_size(1024 * 1024 * 1024)
     fake = FakeClient()
+    routing = FakeRoutingClient(jobs=fake.jobs)
+    fake.routing = routing
     set_grpc_client(fake)
+    set_grpc_routing_client(routing)
     monkeypatch.setattr(
         pw, "create_data_model", lambda lp: ([], SimpleNamespace())
     )
     monkeypatch.setattr(
         pw, "create_solver", lambda lp, w: ([], SimpleNamespace())
     )
+
+    def _fake_prepare_vrp(data, warnings, initial_envelopes=None):
+        routing.initial_envelopes = initial_envelopes
+        return SimpleNamespace(), SimpleNamespace(), ["veh-1"], ["A"]
+
+    monkeypatch.setattr(pw, "_prepare_vrp", _fake_prepare_vrp)
     yield proxy_server, fake
     reset_proxy_state()
     set_max_request_size(1024 * 1024 * 1024)
@@ -291,6 +375,20 @@ def test_solution_to_legacy_http_strips_warmstart():
         FakeSol(), include_warmstart=False
     )
     assert "pdlpwarmstart_data" not in stripped["solution"]
+
+
+def test_routing_solution_to_legacy_http_maps_ids():
+    inner = routing_conversion.solution_to_legacy_http(
+        _vrp_grpc_sol(),
+        vehicle_ids=["veh-1"],
+        task_ids=["A"],
+    )
+    assert inner["status"] == 0
+    assert inner["num_vehicles"] == 1
+    assert "veh-1" in inner["vehicle_data"]
+    assert inner["vehicle_data"]["veh-1"]["task_id"] == ["A"]
+    assert inner["vehicle_data"]["veh-1"]["route"] == [1]
+    assert inner["dropped_tasks"] == {"task_id": [], "task_index": []}
 
 
 def test_health(proxy):
@@ -519,18 +617,80 @@ def test_batch_lp_is_501(proxy):
     assert "Batch LP" in res.json()["error"]
 
 
-def test_vrp_body_is_501(proxy):
-    url, _ = proxy
+def test_vrp_submit_status_and_solution(proxy):
+    url, fake = proxy
     res = requests.post(
         url + "/cuopt/request",
         headers={"CLIENT-VERSION": "custom"},
-        json={
-            "cost_matrix_data": {"data": {"1": [[0, 1], [1, 0]]}},
-            "task_data": {"task_locations": [1, 1]},
-        },
+        json=_vrp(),
     )
-    assert res.status_code == 501
-    assert "routing" in res.json()["error"].lower()
+    assert res.status_code == 200, res.text
+    req_id = res.json()["reqId"]
+    assert fake.submitted == []
+    assert len(fake.routing.submitted) == 1
+    st = requests.get(url + f"/cuopt/request/{req_id}")
+    assert st.status_code == 200
+    assert st.json() == "completed"
+    sol = requests.get(url + f"/cuopt/solution/{req_id}")
+    assert sol.status_code == 200, sol.text
+    body = sol.json()["response"]["solver_response"]
+    assert body["status"] == 0
+    assert "veh-1" in body["vehicle_data"]
+    assert body["vehicle_data"]["veh-1"]["task_id"] == ["A"]
+
+
+def test_vrp_initial_id_from_prior_grpc_result(proxy):
+    url, fake = proxy
+    first = requests.post(
+        url + "/cuopt/request",
+        headers={"CLIENT-VERSION": "custom"},
+        json=_vrp(),
+    ).json()["reqId"]
+    res = requests.post(
+        url + "/cuopt/request",
+        headers={"CLIENT-VERSION": "custom"},
+        params={"initialId": first},
+        json=_vrp(),
+    )
+    assert res.status_code == 200, res.text
+    envelopes = fake.routing.initial_envelopes
+    assert envelopes is not None
+    assert len(envelopes) == 1
+    assert "vehicle_data" in envelopes[0]["response"]["solver_response"]
+
+
+def test_vrp_cancel_and_delete(proxy):
+    url, fake = proxy
+    req_id = requests.post(
+        url + "/cuopt/request",
+        headers={"CLIENT-VERSION": "custom"},
+        json=_vrp(),
+    ).json()["reqId"]
+    fake.routing.jobs[req_id] = FakeJobStatus.PROCESSING
+    res = requests.delete(url + f"/cuopt/request/{req_id}")
+    assert res.status_code == 200
+    assert req_id in fake.cancelled
+    fake.routing.jobs[req_id] = FakeJobStatus.COMPLETED
+    deleted = requests.delete(url + f"/cuopt/solution/{req_id}")
+    assert deleted.status_code == 200
+    assert req_id in fake.deleted
+    assert req_id not in fake.routing.deleted
+
+
+def test_vrp_solution_after_sidecar_lost(proxy):
+    import cuopt_server.proxy_webserver as pw
+
+    url, fake = proxy
+    req_id = requests.post(
+        url + "/cuopt/request",
+        headers={"CLIENT-VERSION": "custom"},
+        json=_vrp(),
+    ).json()["reqId"]
+    with pw._jobs_lock:
+        pw._jobs.pop(req_id, None)
+    sol = requests.get(url + f"/cuopt/solution/{req_id}")
+    assert sol.status_code == 200, sol.text
+    assert "vehicle_data" in sol.json()["response"]["solver_response"]
 
 
 def test_post_solution_and_warmstart_and_sync_are_501(proxy):
