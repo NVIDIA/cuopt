@@ -40,7 +40,7 @@ import sys
 import urllib.request
 
 subdir, min_major = sys.argv[1], int(sys.argv[2])
-with urllib.request.urlopen("https://api.anaconda.org/package/conda-forge/libgomp") as resp:
+with urllib.request.urlopen("https://api.anaconda.org/package/conda-forge/libgomp", timeout=15) as resp:
     data = json.load(resp)
 
 candidates = [
