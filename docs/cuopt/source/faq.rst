@@ -114,6 +114,8 @@ General FAQ
 
        export CUDSS_THREADING_LIB=/path/to/libcudss_mtlayer_gomp.so.0
 
+   .. warning:: Whatever threading-layer library you point cuDSS at must be built against the same OpenMP runtime cuOpt itself uses. Pointing cuDSS at a library linked against a *different* OpenMP runtime reintroduces the exact dual-runtime conflict described in `#1219 <https://github.com/NVIDIA/cuopt/issues/1219>`_, including possible crashes.
+
 .. dropdown:: Why am I getting "libcuopt.so: cannot open shared object file: No such file or directory" error?
 
    This error indicates that the cuOpt shared library is not found. Please check the following:
