@@ -32,6 +32,7 @@ dependencies:
 - libboost-devel
 - libcudss-dev >=0.7,<0.8
 - libcusparse-dev
+- libgomp >=9
 - libgrpc >=1.78.0,<1.80.0a0
 - libnvjitlink-dev
 - libprotobuf

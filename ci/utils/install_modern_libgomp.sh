@@ -6,6 +6,8 @@
 # unlike Rocky Linux 8's own) and leave it at <dest_dir>/libgomp.so.1.0.0 + libgomp.so.1
 # symlink. Fetched directly over HTTPS (.conda is just a zip) since this image has no
 # conda/mamba CLI. See https://github.com/NVIDIA/cuopt/issues/1219
+#
+# Version floor (>=9) matches libgomp pinned in dependencies.yaml / conda/recipes/libcuopt/recipe.yaml.
 
 set -euo pipefail
 
