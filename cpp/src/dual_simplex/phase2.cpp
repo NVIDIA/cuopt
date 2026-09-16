@@ -3720,10 +3720,13 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
       if (unperturb_obj >= settings.cut_off) {
         // Validate the cutoff using the original objective, not the perturbed costs.
         std::vector<f_t> trial_y = y;
-        std::vector<f_t> trial_z = z;
         if (phase2::amount_of_perturbation(lp, objective) != 0.0) {
-          phase2::compute_dual_solution_from_basis(
-            lp, ft, basic_list, nonbasic_list, trial_y, trial_z, phase2_work_estimate);
+          std::vector<f_t> original_basic_cost(m);
+          for (i_t k = 0; k < m; ++k) {
+            original_basic_cost[k] = lp.objective[basic_list[k]];
+          }
+          phase2_work_estimate += 5 * m;
+          ft.b_transpose_solve(original_basic_cost, trial_y);
         }
         // Include residual reduced costs for basic variables in the dual bound.
         std::vector<f_t> reduced_cost = lp.objective;
@@ -3743,7 +3746,11 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
         phase2_work_estimate += 3 * lp.A.col_start[n] + 12 * n + 2 * m;
 
         if (std::isfinite(dual_objective) && dual_objective >= settings.cut_off) {
-          z = trial_z;
+          // Preserve the basic reduced-cost convention only after evaluating the bound.
+          for (const i_t j : basic_list)
+            reduced_cost[j] = 0.0;
+          phase2_work_estimate += m;
+          z = std::move(reduced_cost);
           y = trial_y;
           return dual_status_t::CUTOFF;
         }
