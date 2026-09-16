@@ -31,12 +31,12 @@ from cuopt_server.utils.deprecated.job_queue import (
     SolverBinaryResponse,
     SolverIntermediateResponse,
 )
-from cuopt_server.utils.http_envelope import make_response
-from cuopt_server.utils.logutil import set_ncaid, set_requestid, set_solverid
-from cuopt_server.utils.routing.conversion import (
+from cuopt_server.utils.deprecated.routing.conversion import (
     check_valid as check_valid,
     populate_optimization_data,
 )
+from cuopt_server.utils.http_envelope import make_response
+from cuopt_server.utils.logutil import set_ncaid, set_requestid, set_solverid
 
 
 # Validate LP data and call the LP solver
