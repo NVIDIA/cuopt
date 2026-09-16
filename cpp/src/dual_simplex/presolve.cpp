@@ -282,14 +282,11 @@ static void eliminate_free_variables(lp_problem_t<i_t, f_t>& problem,
   for (i_t new_i = 0; new_i < new_m; ++new_i) {
     const i_t old_i            = remaining_rows[new_i];
     reduced_A.row_start[new_i] = nz;
-    std::vector<std::pair<i_t, f_t>> entries;
-    entries.reserve(rows[old_i].size());
+    // Column order within a row is irrelevant here: to_compressed_col below buckets the
+    // entries by column in linear time, so sorting each row would only add O(nnz log nnz).
     for (const auto& [old_j, value] : rows[old_i]) {
-      if (active_col[old_j] && value != 0) { entries.emplace_back(old_to_new_col[old_j], value); }
-    }
-    std::sort(entries.begin(), entries.end());
-    for (const auto& [new_j, value] : entries) {
-      reduced_A.j[nz] = new_j;
+      if (!active_col[old_j] || value == 0) { continue; }
+      reduced_A.j[nz] = old_to_new_col[old_j];
       reduced_A.x[nz] = value;
       ++nz;
     }
