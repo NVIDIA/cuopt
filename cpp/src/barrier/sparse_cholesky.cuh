@@ -145,6 +145,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       positive_definite(true),
       A_created(false),
       settings_(settings),
+      symbolic_done_(false),
       stream(handle_ptr->get_stream().get())
   {
     int major, minor, patch;
@@ -538,11 +539,21 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
     handle_ptr_->get_stream().sync();
 
+    symbolic_done_ = true;
     return 0;
   }
   i_t factorize(device_csr_matrix_t<i_t, f_t>& Arow) override
   {
     raft::common::nvtx::range fun_scope("Factorize: cuDSS");
+
+    if (!symbolic_done_ || !A_created) {
+      settings_.log.printf(
+        "Error: cuDSS factorize(device_csr) called before analyze (symbolic_done=%d "
+        "A_created=%d)\n",
+        static_cast<int>(symbolic_done_),
+        static_cast<int>(A_created));
+      return -1;
+    }
 
 // #define PRINT_MATRIX_NORM
 #ifdef PRINT_MATRIX_NORM
@@ -918,6 +929,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
   f_t* x_values_d;
   f_t* b_values_d;
 
+  bool symbolic_done_;
   const simplex::simplex_solver_settings_t<i_t, f_t>& settings_;
   CUgreenCtx barrier_green_ctx;
   CUstream stream;
