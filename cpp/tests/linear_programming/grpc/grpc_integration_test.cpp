@@ -1251,10 +1251,27 @@ TEST_F(DefaultServerTests, DeleteQueuedJobPreventsRun)
   mip_solver_settings_t<int32_t, double> settings;
   settings.time_limit = 120.0;
 
-  // Occupy the single worker with a long solve.
+  // Occupy the single worker with a long solve. Poll for PROCESSING rather than
+  // a fixed sleep: a plain delay doesn't guarantee the worker claimed this job
+  // before the next one is submitted, which would let the queued-status check
+  // below pass even if both jobs were merely queued behind each other.
   auto running = client->submit_mip(problem, settings);
   ASSERT_TRUE(running.success);
-  std::this_thread::sleep_for(std::chrono::seconds(2));
+  bool running_processing = false;
+  for (int i = 0; i < 40; ++i) {
+    auto status = client->check_status(running.job_id);
+    ASSERT_TRUE(status.success) << status.error_message;
+    if (status.status == job_status_t::PROCESSING) {
+      running_processing = true;
+      break;
+    }
+    if (status.status == job_status_t::COMPLETED || status.status == job_status_t::FAILED ||
+        status.status == job_status_t::CANCELLED) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  }
+  ASSERT_TRUE(running_processing) << "First job never reached PROCESSING";
 
   auto queued = client->submit_mip(problem, settings);
   ASSERT_TRUE(queued.success);
