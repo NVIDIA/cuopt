@@ -10,7 +10,7 @@ LIBRARY="${1}"
 
 # The forbidden-symbol checks apply to every cuOpt library. The required public API
 # check only applies to the component that provides the C API, so components that do
-# not (base, routing, grpc) pass --no-public-api-check.
+# not (routing, client) pass --no-public-api-check.
 CHECK_PUBLIC_API=1
 if [[ "${2:-}" == "--no-public-api-check" ]]; then
     CHECK_PUBLIC_API=0

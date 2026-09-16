@@ -750,6 +750,13 @@ add_library(cuopt_client_objs OBJECT ${CUOPT_CLIENT_SRC_FILES})
 set_target_properties(cuopt_client_objs
         PROPERTIES POSITION_INDEPENDENT_CODE ON
         CXX_SCAN_FOR_MODULES OFF
+        # Visibility is decided when the objects are compiled, so it has to be set here
+        # rather than on the cuopt_client library built from them. Without it the client
+        # exported cuopt::default_logger() and cuopt::global_log_buffer(), which collapses
+        # the per-component loggers into one -- the case ci/check_symbols.sh rejects.
+        CXX_VISIBILITY_PRESET hidden
+        CUDA_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN ON
 )
 
 add_library(cuopt_client SHARED $<TARGET_OBJECTS:cuopt_client_objs>)
@@ -1317,9 +1324,13 @@ if (NOT BUILD_LP_ONLY)
             "$<INSTALL_INTERFACE:include>"
     )
 
+    # The CLI solves LP/MIP and parses problems; it never calls the routing engine, so it
+    # names mathopt and client rather than the cuopt umbrella. Both are named explicitly
+    # because --no-copy-dt-needed-entries will not let it reach client through mathopt.
     target_link_libraries(cuopt_cli
             PUBLIC
-            cuopt
+            cuopt_mathopt
+            cuopt_client
             OpenMP::OpenMP_CXX
             ${CUDSS_LIBRARIES}
             TBB::tbb
@@ -1358,9 +1369,10 @@ if (BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
             PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
             "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
     )
+    # LP/MIP benchmark driver: mathopt only, no routing.
     target_link_libraries(solve_MIP
             PUBLIC
-            cuopt
+            cuopt_mathopt
             OpenMP::OpenMP_CXX
             PRIVATE
     )
@@ -1388,9 +1400,10 @@ if (BUILD_LP_BENCHMARKS)
             PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
             "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
     )
+    # LP/MIP benchmark driver: mathopt only, no routing.
     target_link_libraries(solve_LP
             PUBLIC
-            cuopt
+            cuopt_mathopt
             OpenMP::OpenMP_CXX
             PRIVATE
     )

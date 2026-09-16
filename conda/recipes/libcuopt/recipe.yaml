@@ -111,6 +111,7 @@ outputs:
           # Only cuopt_mathopt provides the C API.
           ./ci/check_symbols.sh cpp/build/libcuopt_mathopt.so
           ./ci/check_symbols.sh cpp/build/libcuopt_routing.so --no-public-api-check
+          ./ci/check_symbols.sh cpp/build/libcuopt_client.so --no-public-api-check
       dynamic_linking:
         overlinking_behavior: "error"
       prefix_detection:

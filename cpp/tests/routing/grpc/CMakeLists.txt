@@ -19,11 +19,11 @@ target_include_directories(GRPC_VRP_TEST_DRIVER
     "${CMAKE_BINARY_DIR}"
 )
 
-# Names both halves it actually uses: the routing engine for the solve, and cuopt_client
-# for the host-side problem representation and gRPC client.
+# The driver hands the problem to a server over gRPC and never calls the routing engine
+# in-process, so cuopt_client -- the host problem representation and gRPC client -- is the
+# whole of what it needs.
 target_link_libraries(GRPC_VRP_TEST_DRIVER
     PRIVATE
-    cuopt_routing
     cuopt_client
     gRPC::grpc++
     protobuf::libprotobuf
