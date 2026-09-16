@@ -29,10 +29,16 @@ case "$(arch)" in
         ;;
 esac
 
-# Pinned deliberately, not tracked to "latest". Must satisfy the >=9 floor in
-# dependencies.yaml / conda/recipes/libcuopt/recipe.yaml -- enforced below, not just commented.
+# Pinned deliberately, not tracked to "latest" -- but must satisfy the floor declared in
+# dependencies.yaml (also used for conda/recipes/libcuopt/recipe.yaml), read from there so the
+# two can't drift.
 version="16.2.0"
-min_major=9
+deps_yaml="$(dirname "${BASH_SOURCE[0]}")/../../dependencies.yaml"
+min_major="$(grep -oP '(?<=- libgomp >=)[0-9]+' "${deps_yaml}" | head -1)"
+if [[ -z "${min_major}" ]]; then
+    echo "Could not find a 'libgomp >=N' floor in ${deps_yaml}" >&2
+    exit 1
+fi
 version_major="${version%%.*}"
 if (( version_major < min_major )); then
     echo "Pinned libgomp ${version} is below the required floor (>=${min_major})" >&2
