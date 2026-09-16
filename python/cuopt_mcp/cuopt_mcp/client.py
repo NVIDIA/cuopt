@@ -10,10 +10,23 @@ stdio that cost would be paid on every session start, delaying the
 """
 
 import os
+import re
 import threading
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from cuopt.grpc.linear_programming import Client
 
 DEFAULT_HOST = "localhost"
 DEFAULT_PORT = 50051
+
+# Redacts absolute filesystem paths (2+ segments) out of backend error text.
+# The gRPC client only ever gets a plain message string -- no structured
+# status code survives the C++ -> Cython -> here hop -- so a caller-facing
+# parse/solve error and a server-internal one (e.g. "Failed to open log
+# file: <path>") can't be told apart by type. Redacting paths keeps the rest
+# of the message useful without leaking server-side directory layout.
+_PATH_RE = re.compile(r"(?<!\w)(/[\w.\-]+){2,}")
 
 _lock = threading.Lock()
 _client = None
@@ -46,12 +59,18 @@ def _tls_config():
     )
 
 
-def get_client():
+def get_client() -> "Client":
     """Return a process-wide gRPC client, connecting on first use.
 
     The channel is the only state this process holds; jobs themselves live
     in cuopt_grpc_server and are addressed by the ``job_id`` returned to the
     caller, so a restart loses nothing but the connection.
+
+    Returns
+    -------
+        The cached ``cuopt.grpc.linear_programming.Client``, creating it
+        against the current ``CUOPT_REMOTE_HOST``/``CUOPT_REMOTE_PORT`` /
+        TLS environment on first call.
     """
     global _client
     with _lock:
@@ -75,6 +94,22 @@ class CuOptMCPError(RuntimeError):
 
 
 def describe_connection_error(exc: Exception) -> CuOptMCPError:
+    """Convert a backend exception into a model-facing :class:`CuOptMCPError`.
+
+    Recognizes the unreachable-server case and names the host/port plus how
+    to fix it. Any other backend text is passed through with filesystem
+    paths redacted (see ``_PATH_RE``): the server's own error strings
+    sometimes embed its internal paths (e.g. a job's log file location),
+    which a remote MCP caller has no use for and shouldn't see.
+
+    Args:
+        exc: The exception raised by the gRPC client call.
+
+    Returns
+    -------
+        A :class:`CuOptMCPError` whose message is safe to return to the
+        MCP caller.
+    """
     host, port = endpoint()
     text = str(exc)
     if "UNAVAILABLE" in text or "failed to connect" in text.lower():
@@ -83,4 +118,4 @@ def describe_connection_error(exc: Exception) -> CuOptMCPError:
             f"`cuopt_grpc_server --port {port}`, or set CUOPT_REMOTE_HOST / "
             "CUOPT_REMOTE_PORT to point at a running server."
         )
-    return CuOptMCPError(text)
+    return CuOptMCPError(_PATH_RE.sub("[redacted path]", text))

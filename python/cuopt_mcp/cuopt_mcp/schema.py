@@ -31,6 +31,18 @@ _IN_TREE = (
 
 
 def schema_path() -> Path:
+    """Locate the generated ``cuopt_mcp_schema.json``.
+
+    Returns
+    -------
+        The packaged copy if this is an installed wheel, else the
+        in-tree codegen output directory.
+
+    Raises
+    ------
+        FileNotFoundError: Neither location has the file — usually means
+            ``./build.sh codegen`` hasn't been run in a source checkout.
+    """
     for candidate in (_PACKAGED, _IN_TREE):
         if candidate.is_file():
             return candidate
@@ -42,16 +54,48 @@ def schema_path() -> Path:
 
 @functools.lru_cache(maxsize=1)
 def load() -> dict:
-    """Return the full generated schema document."""
+    """Return the full generated schema document, reading it once per
+    process.
+
+    Returns
+    -------
+        The parsed ``cuopt_mcp_schema.json`` (``$schema``, ``$comment``,
+        and a ``settings`` dict keyed by ``pdlp_settings``/``mip_settings``).
+
+    Raises
+    ------
+        FileNotFoundError: See :func:`schema_path`.
+    """
     return json.loads(schema_path().read_text())
 
 
 def settings_schema(kind: str) -> dict:
-    """Return the JSON Schema for ``pdlp_settings`` or ``mip_settings``."""
+    """Return the JSON Schema object for one settings kind.
+
+    Args:
+        kind: "pdlp_settings" or "mip_settings".
+
+    Returns
+    -------
+        The ``{"title", "type", "properties", ...}`` schema for ``kind``.
+
+    Raises
+    ------
+        KeyError: ``kind`` isn't a key under ``settings`` in the schema.
+    """
     return load()["settings"][kind]
 
 
 def known_parameters(kind: str) -> set:
+    """Return the set of settable parameter names for one settings kind.
+
+    Args:
+        kind: "pdlp_settings" or "mip_settings".
+
+    Returns
+    -------
+        The property names from :func:`settings_schema`'s ``properties``.
+    """
     return set(settings_schema(kind)["properties"])
 
 
@@ -61,6 +105,16 @@ def validate_settings(kind: str, settings: dict) -> None:
     The schema declares ``additionalProperties: false``, so a typo like
     ``time_limt`` fails here with the near-miss named rather than being
     silently dropped by the solver.
+
+    Args:
+        kind: "pdlp_settings" or "mip_settings".
+        settings: The caller-supplied settings dict to check, or falsy to
+            skip validation entirely (nothing to check).
+
+    Raises
+    ------
+        ValueError: A key isn't a known parameter for ``kind``, or its
+            value doesn't match the parameter's declared type/enum.
     """
     if not settings:
         return
@@ -89,9 +143,13 @@ def validate_settings(kind: str, settings: dict) -> None:
                 raise ValueError(
                     f"{name} must be one of {prop['enum']}, got {value!r}"
                 )
-        elif expected == "integer" and not isinstance(value, int):
+        elif expected == "integer" and (
+            isinstance(value, bool) or not isinstance(value, int)
+        ):
             raise ValueError(f"{name} must be an integer, got {value!r}")
-        elif expected == "number" and not isinstance(value, (int, float)):
+        elif expected == "number" and (
+            isinstance(value, bool) or not isinstance(value, (int, float))
+        ):
             raise ValueError(f"{name} must be a number, got {value!r}")
         elif expected == "boolean" and not isinstance(value, bool):
             raise ValueError(f"{name} must be a boolean, got {value!r}")
