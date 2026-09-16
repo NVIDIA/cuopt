@@ -52,7 +52,14 @@ that bite:
   default differs from the proto3 zero value. Without it, a client that *omits*
   the field silently overwrites the solver default with `0` / `false` / the
   first enum value. `bool foo{true}` and enums whose C++ default is not the
-  first declared value both need this.
+  first declared value both need this. `./build.sh codegen` checks this for
+  every bool/enum/numeric settings field: a non-`optional` field whose
+  `default:` doesn't textually match the proto3 zero value fails generation.
+  It can only catch registry self-inconsistency, not a C++ default that
+  changed without a matching `default:` update — for that, run
+  `python cpp/src/grpc/codegen/lint_registry_defaults.py` by hand; it's a
+  best-effort, warn-only check (not part of CI) that diffs simple
+  single-line C++ initializers against the registry.
 - **`sentinel`** — maps a C++ sentinel (e.g. `numeric_limits<i_t>::max()`) to a
   reserved wire value (e.g. `-1`). Composes with `optional`: the sentinel covers
   the explicitly-sent case, `optional` covers the omitted case. `iteration_limit`

@@ -3268,6 +3268,43 @@ def _validate_registry_uniqueness(registry):
     # for enums whose proto3 zero (the first value listed in the registry)
     # does not coincide with the documented C++ default — e.g.
     # pdlp_solver_mode (proto-zero=Stable1, C++ default=Stable3).
+    #
+    # A field that omits `optional` is only correct if its declared
+    # `default:` is the proto3 zero value for its type -- otherwise an
+    # omitting client silently gets the zero value instead of the intended
+    # default. Checked here so that changing a default without adding
+    # `optional: true` fails CI instead of shipping a silent regression.
+    for msg, key in [
+        ("PDLPSolverSettings", "pdlp_settings"),
+        ("MIPSolverSettings", "mip_settings"),
+    ]:
+        section = registry.get(key) or {}
+        for f in parse_settings_fields(section.get("fields", [])):
+            if f.get("optional") or f.get("default") is None:
+                continue
+            ftype = f.get("type", "double")
+            default_norm = str(f["default"]).strip().lower()
+            edef = _lookup_enum(registry, ftype)
+            if edef is not None and "values" in edef:
+                zero_name, _, _ = parse_enum_entry(edef["values"][0])
+                mismatch = default_norm != zero_name.lower()
+                zero_desc = f"{zero_name!r} (first enum value)"
+            elif ftype == "bool":
+                mismatch = default_norm != "false"
+                zero_desc = "'false'"
+            elif ftype in ("int32", "int64", "double"):
+                m = re.match(r"-?\d+(\.\d+)?", default_norm)
+                mismatch = m is None or float(m.group()) != 0.0
+                zero_desc = "0"
+            else:
+                continue
+            if mismatch:
+                errors.append(
+                    f"{msg}.{f['member']}: not optional, but default "
+                    f"{f['default']!r} does not match the proto3 zero "
+                    f"value {zero_desc} -- add optional: true or fix "
+                    "default:"
+                )
 
     if errors:
         raise ValueError(
