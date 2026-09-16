@@ -204,6 +204,9 @@ class FakeClient:
     def status(self, job_id):
         return self.jobs.get(job_id, FakeJobStatus.NOT_FOUND)
 
+    def wait(self, job_id, timeout=None):
+        return self.jobs.get(job_id, FakeJobStatus.NOT_FOUND)
+
     def result(self, job_id, variable_names=None):
         status = self.jobs.get(job_id)
         if status in (FakeJobStatus.FAILED, FakeJobStatus.CANCELLED):
@@ -252,6 +255,9 @@ class FakeRoutingClient:
         return job_id
 
     def status(self, job_id):
+        return self.jobs.get(job_id, FakeJobStatus.NOT_FOUND)
+
+    def wait(self, job_id, timeout=0):
         return self.jobs.get(job_id, FakeJobStatus.NOT_FOUND)
 
     def result(self, job_id):
@@ -858,10 +864,131 @@ def test_vrp_solution_after_sidecar_lost(proxy):
     assert "vehicle_data" in sol.json()["response"]["solver_response"]
 
 
-def test_post_solution_and_sync_are_501(proxy):
+def test_sync_cuopt_lp(proxy):
+    url, fake = proxy
+    res = requests.post(
+        url + "/cuopt/cuopt",
+        json={
+            "action": "cuOpt_LP",
+            "data": _lp(),
+            "client_version": "custom",
+        },
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert "reqId" not in body
+    assert body["response"]["solver_response"]["status"] == "Optimal"
+    # the managed path is stateless: no job or result is left behind
+    job_id = fake.submitted[0]["id"]
+    assert job_id in fake.deleted
+    import cuopt_server.proxy_webserver as pw
+
+    with pw._jobs_lock:
+        assert job_id not in pw._jobs
+
+
+def test_sync_cuopt_vrp(proxy):
+    url, fake = proxy
+    res = requests.post(
+        url + "/cuopt/cuopt",
+        json={
+            "action": "cuOpt_OptimizedRouting",
+            "data": _vrp(),
+            "client_version": "custom",
+        },
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert "reqId" not in body
+    solver_response = body["response"]["solver_response"]
+    assert solver_response["vehicle_data"]["veh-1"]["task_id"] == ["A"]
+    assert fake.routing.submitted[0]["id"] in fake.deleted
+
+
+def test_sync_cuopt_validator_does_not_submit(proxy):
+    url, fake = proxy
+    res = requests.post(
+        url + "/cuopt/cuopt",
+        json={
+            "action": "cuOpt_LPValidator",
+            "data": _lp(),
+            "client_version": "custom",
+        },
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert "reqId" not in body
+    assert body["notes"] == ["Input is valid"]
+    assert fake.submitted == []
+
+
+def test_sync_cuopt_logs_nvcf_ids(proxy):
+    from cuopt_server.utils.logutil import get_ncaid, get_requestid
+
+    url, _ = proxy
+    seen = {}
+
+    def _capture(ctype, buf, accept):
+        seen["ncaid"] = get_ncaid()
+        seen["reqid"] = get_requestid()
+        return make_response({"solver_response": {"status": 0}})
+
+    import cuopt_server.proxy_webserver as pw
+
+    original = pw._submit_wait_solution
+    pw._submit_wait_solution = _capture
+    try:
+        res = requests.post(
+            url + "/cuopt/cuopt",
+            headers={"NVCF-NCAID": "nca-1", "NVCF-REQID": "req-1"},
+            json={"action": "cuOpt_LP", "data": _lp()},
+        )
+    finally:
+        pw._submit_wait_solution = original
+    assert res.status_code == 200, res.text
+    assert seen == {"ncaid": "nca-1", "reqid": "req-1"}
+
+
+def test_sync_cuopt_rejects_zlib_content_type(proxy):
+    import zlib
+
+    url, _ = proxy
+    payload = zlib.compress(
+        json.dumps({"action": "cuOpt_LP", "data": _lp()}).encode()
+    )
+    res = requests.post(
+        url + "/cuopt/cuopt",
+        headers={"Content-Type": mime_zlib},
+        data=payload,
+    )
+    assert res.status_code == 415, res.text
+
+
+def test_sync_cuopt_requires_wrapped_data(proxy):
+    url, _ = proxy
+    res = requests.post(url + "/cuopt/cuopt", json=_lp())
+    assert res.status_code == 422, res.text
+
+
+def test_sync_cuopt_rejects_null_data(proxy):
+    url, _ = proxy
+    res = requests.post(
+        url + "/cuopt/cuopt",
+        json={"action": "cuOpt_LP", "data": None},
+    )
+    assert res.status_code == 422, res.text
+    assert "NVCF assets" in res.json()["error"]
+
+
+def test_post_solution_and_warmstart_are_501(proxy):
     url, _ = proxy
     assert requests.post(url + "/cuopt/solution", json={}).status_code == 501
-    assert requests.post(url + "/cuopt/cuopt", json={}).status_code == 501
+    assert (
+        requests.get(
+            url + f"/cuopt/solution/{uuid.uuid4()}/warmstart"
+        ).status_code
+        == 501
+    )
     assert requests.delete(url + "/cuopt/request/*").status_code == 501
     assert (
         requests.delete(

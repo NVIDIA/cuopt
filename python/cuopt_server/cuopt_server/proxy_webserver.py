@@ -36,14 +36,19 @@ from cuopt_server.utils.data_definition import (
     IncumbentSolutionResponse,
     LogResponse,
     LogResponseModel,
+    ManagedRequestResponse,
     RequestResponse,
     RequestStatusModel,
     SolutionResponse,
     ValidationErrorResponse,
+    cuoptDataInternal,
+    cuoptdataschema,
     lp_example_data,
     lp_msgpack_example_data,
     lp_zlib_example_data,
     lpschema,
+    managed_lp_example_data,
+    managed_vrp_example_data,
 )
 from cuopt_server.utils.exceptions import (
     exception_handler,
@@ -87,6 +92,7 @@ from cuopt_server.utils.local_files import (
     validate_file_path,
     write_result_file,
 )
+from cuopt_server.utils.logutil import set_ncaid, set_requestid
 from cuopt_server.utils.routing.conversion import (
     create_data_model as create_routing_data_model,
     create_solver as create_routing_solver,
@@ -553,6 +559,29 @@ def _deserialize_convert_submit(
         data = load_optimization_file(file_path, warnings)
     else:
         data = deserialize(ctype, buf)
+    return _convert_and_submit(
+        data,
+        warnings,
+        validation_only,
+        incumbent_solutions,
+        solver_logs,
+        accept,
+        result_file,
+        initial_ids,
+    )
+
+
+def _convert_and_submit(
+    data,
+    warnings,
+    validation_only,
+    incumbent_solutions,
+    solver_logs,
+    accept,
+    result_file,
+    initial_ids,
+):
+    """Convert a decoded problem body and submit it over gRPC."""
     if _looks_like_routing(data):
         initials = _collect_vrp_initials(initial_ids)
         data_model, solver_settings, vehicle_ids, task_ids = _prepare_vrp(
@@ -904,6 +933,44 @@ def deleterequest(
         return encode(exception_handler(e), accept)
 
 
+def _result_envelope(job_id, meta, kind, req_id=""):
+    """Build the legacy solution envelope for a finished job.
+
+    Returns ``(None, [], [])`` when the result is not available yet.
+    """
+    result_kind, sol = _result_for_job(job_id, meta, kind)
+    if sol is None:
+        return None, [], []
+    notes = []
+    warnings = [] if meta is None else list(meta.get("warnings") or [])
+    solve_time = 0
+    if result_kind == "vrp":
+        inner = routing_solution_to_http(
+            sol,
+            vehicle_ids=None if meta is None else meta.get("vehicle_ids"),
+            task_ids=None if meta is None else meta.get("task_ids"),
+        )
+        if inner.get("status") == 1:
+            notes.append(sol.get("status_message") or "")
+        notes = [n for n in notes if n]
+    else:
+        inner = solution_to_http(sol, include_warmstart=False)
+        try:
+            notes.append(sol.get_termination_reason())
+        except Exception:
+            pass
+        if inner.get("solution"):
+            solve_time = inner["solution"].get("solver_time") or 0
+    envelope = make_response(
+        {"solver_response": inner},
+        warnings=warnings,
+        notes=notes,
+        reqId=req_id,
+        total_solve_time=solve_time,
+    )
+    return envelope, warnings, notes
+
+
 @app.get(
     "/cuopt/solution/{id}/warmstart",
     include_in_schema=False,
@@ -955,44 +1022,9 @@ def getsolution(
                 status_code=409,
                 detail=f"job {id} {_status_name(status).lower()}",
             )
-        result_kind, sol = _result_for_job(id, meta, kind)
-        if sol is None:
+        envelope, warnings, notes = _result_envelope(id, meta, kind, req_id=id)
+        if envelope is None:
             return encode({"reqId": id}, accept)
-        notes = []
-        warnings = [] if meta is None else list(meta.get("warnings") or [])
-        if result_kind == "vrp":
-            inner = routing_solution_to_http(
-                sol,
-                vehicle_ids=None if meta is None else meta.get("vehicle_ids"),
-                task_ids=None if meta is None else meta.get("task_ids"),
-            )
-            if inner.get("status") == 1:
-                notes.append(sol.get("status_message") or "")
-            solve_time = 0
-            envelope = make_response(
-                {"solver_response": inner},
-                warnings=warnings,
-                notes=[n for n in notes if n],
-                reqId=id,
-                total_solve_time=solve_time,
-            )
-        else:
-            _store_warmstart(id, _warmstart_dict_from_sol(sol))
-            inner = solution_to_http(sol, include_warmstart=False)
-            try:
-                notes.append(sol.get_termination_reason())
-            except Exception:
-                pass
-            solve_time = 0
-            if inner.get("solution"):
-                solve_time = inner["solution"].get("solver_time") or 0
-            envelope = make_response(
-                {"solver_response": inner},
-                warnings=warnings,
-                notes=notes,
-                reqId=id,
-                total_solve_time=solve_time,
-            )
         resultdir, maxresult, mode = settings.get_result_dir()
         result_file = "" if meta is None else meta.get("result_file") or ""
         if result_file and resultdir:
@@ -1039,11 +1071,163 @@ def getrequest(
         return encode(exception_handler(e), accept)
 
 
+def _submit_wait_solution(ctype, buf, accept):
+    """Submit, wait, and return a solution for POST /cuopt/cuopt.
+
+    The managed endpoint is stateless: the gRPC job and the proxy metadata
+    are released before returning, so there is nothing left to poll or
+    delete afterwards.
+    """
+    body = deserialize(ctype, buf)
+    try:
+        wrapper = cuoptDataInternal.parse_obj(body)
+    except (RequestValidationError, ValidationError):
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=422,
+            detail="unable to validate optimization data stream, %s" % str(e),
+        )
+
+    if wrapper.data is None:
+        # NVCF asset files are the only way legacy allowed a null body here
+        raise HTTPException(
+            status_code=422,
+            detail="data is required, NVCF assets are not supported",
+        )
+
+    warnings = check_client_version(wrapper.client_version or "")
+    validation_only = (wrapper.action or "").endswith("Validator")
+
+    job_id = _convert_and_submit(
+        wrapper.data,
+        warnings,
+        validation_only,
+        False,
+        False,
+        accept,
+        "",
+        None,
+    )
+    meta = _get_job(job_id)
+    if meta is not None and meta.get("validation_only"):
+        envelope = dict(meta["validation_result"])
+        envelope.pop("reqId", None)
+        _pop_job(job_id)
+        return envelope
+
+    kind = None if meta is None else meta.get("kind")
+    try:
+        get_grpc_client().wait(job_id)
+        status = get_grpc_client().status(job_id)
+        if not _is_status(status, "COMPLETED"):
+            raise HTTPException(
+                status_code=409,
+                detail=f"job {_status_name(status).lower()}",
+            )
+        envelope, _warnings, _notes = _result_envelope(job_id, meta, kind)
+        if envelope is None:
+            raise HTTPException(
+                status_code=500, detail="solver returned no solution"
+            )
+        return envelope
+    finally:
+        try:
+            get_grpc_client().delete(job_id)
+        except Exception:
+            logging.warning(f"could not delete job {job_id}", exc_info=True)
+        _pop_job(job_id)
+
+
 @app.post(
     "/cuopt/cuopt",
+    description=(
+        "Note: This is for the managed service, and users will never call "
+        "this API directly. Takes all the data and options at once, solves "
+        "any type of cuOpt problem and returns the result. If you are "
+        "self-hosting cuOpt, use /cuopt/request instead."
+    ),
+    include_in_schema=False,
+    summary="Managed Service Endpoint",
+    responses=ManagedRequestResponse,
+    openapi_extra={
+        "requestBody": {
+            "content": {
+                "application/json": {
+                    "schema": cuoptdataschema,
+                    "examples": {
+                        "VRP request": {"value": managed_vrp_example_data},
+                        "LP request": {"value": managed_lp_example_data},
+                    },
+                },
+            },
+            "required": True,
+        }
+    },
 )
-async def post_cuopt_sync():
-    _not_implemented("POST /cuopt/cuopt")
+async def cuopt(
+    request: Request,
+    accept: str = Header(default="application/json"),
+    content_type: str = Header(default="application/json"),
+    content_length: int = Header(default=0),
+    nvcf_ncaid: str = Header(default=""),
+    nvcf_reqid: str = Header(default=""),
+):
+    ctype = content_type
+    if accept in mime_wild:
+        accept = mime_json
+
+    try:
+        await asyncio.to_thread(_require_grpc_healthy)
+        set_ncaid(nvcf_ncaid)
+        set_requestid(nvcf_reqid)
+
+        # msgpack is allowed for local testing; NVCF itself only uses json
+        if ctype not in [mime_json, mime_msgpack]:
+            raise HTTPException(
+                status_code=415,
+                detail=f"Unsupported Content-Type value {ctype}, "
+                f"supported values are {[mime_json, mime_msgpack]}",
+            )
+        if accept not in [mime_json, mime_msgpack]:
+            raise HTTPException(
+                status_code=415,
+                detail=f"Unsupported Accept value {accept}, "
+                f"supported values are {[mime_json, mime_msgpack]}",
+            )
+
+        sz = int(content_length)
+        if sz < 0:
+            raise HTTPException(
+                status_code=422, detail="Content-Length must be non-negative"
+            )
+        if sz > _max_request_size:
+            raise HTTPException(
+                status_code=413,
+                detail=(
+                    f"Content-Length exceeds maximum of "
+                    f"{_max_request_size} bytes"
+                ),
+            )
+        if sz == 0:
+            raise HTTPException(status_code=422, detail="Data length is zero")
+
+        buf = bytearray(sz)
+        await get_data(buf, request)
+
+        envelope = await asyncio.to_thread(
+            _submit_wait_solution, ctype, buf, accept
+        )
+        return encode(envelope, accept, job_result=True)
+
+    except (RequestValidationError, ValidationError) as e:
+        return encode(validation_exception_handler(e), accept)
+
+    except HTTPException as e:
+        return encode(http_exception_handler(e), accept)
+
+    except Exception as e:
+        return encode(exception_handler(e), accept)
 
 
 @app.post(
