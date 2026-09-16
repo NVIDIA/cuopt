@@ -866,8 +866,26 @@ set(CUOPT_PRIVATE_CUDA_LIBS
 
 list(PREPEND CUOPT_PRIVATE_CUDA_LIBS CUDA::cublasLt)
 
-# Pass CUDSS_MT_LIB_FILE_NAME as a compile definition
-get_filename_component(CUDSS_MT_LIB_FILE_NAME "${CUDSS_MT_LIB_FILE}" NAME)
+# CUOPT_BUILD_CUSTOM_CUDSS_MTLAYER: build our own cuDSS threading-layer plugin against the same
+# libgomp cuopt_objs itself links against (cudss_mtlayer_cuopt.cpp), instead of using cuDSS's
+# prebuilt libcudss_mtlayer_gomp.so.0, which resolves libgomp.so.1 from the host and can end up
+# a different instance (#1219). Off by default (conda already shares one libgomp naturally);
+# enabled for wheel builds, see ci/build_wheel_libcuopt.sh.
+option(CUOPT_BUILD_CUSTOM_CUDSS_MTLAYER "Build a cuDSS threading layer linked against our own libgomp" OFF)
+
+if (CUOPT_BUILD_CUSTOM_CUDSS_MTLAYER)
+    add_library(cudss_mtlayer_cuopt SHARED src/barrier/cudss_mtlayer_cuopt.cpp)
+    target_include_directories(cudss_mtlayer_cuopt PRIVATE "${CUDSS_INCLUDE}")
+    target_link_libraries(cudss_mtlayer_cuopt PRIVATE OpenMP::OpenMP_CXX)
+    set_target_properties(cudss_mtlayer_cuopt
+            PROPERTIES BUILD_RPATH "\$ORIGIN"
+            INSTALL_RPATH "\$ORIGIN"
+    )
+    set(CUDSS_MT_LIB_FILE_NAME "libcudss_mtlayer_cuopt.so")
+else ()
+    get_filename_component(CUDSS_MT_LIB_FILE_NAME "${CUDSS_MT_LIB_FILE}" NAME)
+endif ()
+
 target_compile_definitions(cuopt_objs PRIVATE CUDSS_MT_LIB_FILE_NAME="${CUDSS_MT_LIB_FILE_NAME}")
 
 execute_process(
@@ -1069,6 +1087,13 @@ install(TARGETS cuopt cuopt_client
         DESTINATION ${_LIB_DEST}
         COMPONENT dev
 )
+
+if (CUOPT_BUILD_CUSTOM_CUDSS_MTLAYER)
+    install(TARGETS cudss_mtlayer_cuopt
+            DESTINATION ${_LIB_DEST}
+            COMPONENT runtime
+    )
+endif ()
 
 # adds the header files to the development deb package
 install(DIRECTORY include/cuopt/
