@@ -125,6 +125,12 @@ void convert_quadratic_constraints_to_second_order_cones(
   rotated_cones.reserve(qcs.size());
   std::vector<f_t> qc_soc_uniform_scale(qcs.size(), 1);
 
+  // General-path scratch, reused across quadratic constraints: sizing these per constraint costs
+  // O(n) each, which dominates conversion on models with many small quadratic constraints.
+  // global_to_local is left all -1 by each user; right_looking_ldlt fully reinitializes L_factor.
+  std::vector<i_t> global_to_local(n, -1);
+  csc_matrix_t<i_t, f_t> L_factor(0, 0, 0);
+
   for (size_t qc_i = 0; qc_i < qcs.size(); ++qc_i) {
     auto qc = qcs[qc_i];
     cuopt_expects(qc.constraint_row_type == 'L' || qc.constraint_row_type == 'G',
@@ -449,7 +455,6 @@ void convert_quadratic_constraints_to_second_order_cones(
       // Collect distinct variable indices and build local-to-global mapping
       std::vector<i_t> var_set;
       var_set.reserve(2 * q_nnz);
-      std::vector<i_t> global_to_local(n, -1);
       for (size_t t = 0; t < static_cast<size_t>(q_nnz); ++t) {
         const i_t r = qc.rows[t];
         const i_t c = qc.cols[t];
@@ -480,6 +485,12 @@ void convert_quadratic_constraints_to_second_order_cones(
         }
       }
 
+      // Last use of global_to_local: restore the touched entries so it stays all -1 for the
+      // next quadratic constraint.
+      for (const i_t global_var : var_set) {
+        global_to_local[global_var] = -1;
+      }
+
       // Gather nonzeros from dense accumulator into CSC (lower triangle, local indices)
       i_t h_nnz = 0;
       for (i_t j = 0; j < n_local; j++) {
@@ -508,7 +519,6 @@ void convert_quadratic_constraints_to_second_order_cones(
       // Step 2: Factorize H = P * L * D * L^T * P^T
       simplex::simplex_solver_settings_t<i_t, f_t> ldlt_settings;
       std::vector<i_t> ldlt_perm;
-      csc_matrix_t<i_t, f_t> L_factor(n, n, 1);
       std::vector<f_t> D_factor;
       f_t ldlt_work  = 0;
       f_t ldlt_start = tic();
