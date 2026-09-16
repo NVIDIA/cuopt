@@ -5,12 +5,17 @@ import logging
 import os
 from typing import Any
 
+import numpy as np
+
 from cuopt import linear_programming
+from cuopt.linear_programming.solution.solution import PDLPWarmStartData
 from cuopt.linear_programming.solver.solver_parameters import solver_params
 from cuopt.linear_programming.solver.solver_wrapper import (
     LPTerminationStatus,
     MILPTerminationStatus,
 )
+
+from cuopt_server.utils.linear_programming.data_definition import WarmStartData
 
 
 def ignored_warning(field):
@@ -133,7 +138,9 @@ def create_solver(LP_data, warmstart_data):
             solver_settings.set_parameter("iteration_limit", iteration_limit)
 
         if warmstart_data is not None:
-            solver_settings.set_pdlp_warm_start_data(warmstart_data)
+            solver_settings.set_pdlp_warm_start_data(
+                pdlp_from_http_warmstart(warmstart_data)
+            )
 
         if solver_config.user_problem_file != "":
             warnings.append(ignored_warning("user_problem_file"))
@@ -156,7 +163,8 @@ def extract_pdlpwarmstart_data(
 ) -> dict[str, Any] | None:
     """Convert PDLP warm-start data to the legacy HTTP dictionary shape.
 
-    Returns ``None`` when no warm-start data is available.
+    Returns ``None`` when no warm-start data is available. Array fields keep
+    the solver's float64 ndarrays; msgpack_numpy serializes them on the wire.
     """
     if data is None:
         return None
@@ -183,6 +191,40 @@ def extract_pdlpwarmstart_data(
         "sum_solution_weight": data.sum_solution_weight,
         "iterations_since_last_restart": data.iterations_since_last_restart,
     }
+
+
+def pdlp_from_http_warmstart(data: Any) -> PDLPWarmStartData:
+    """Build ``PDLPWarmStartData`` from the legacy HTTP warm-start shape.
+
+    Accepts an HTTP dict, ``WarmStartData``, or an object with the same
+    field names (including ``PDLPWarmStartData``). Array fields become
+    float64 ndarrays so SolverSettings and gRPC can use ``.shape``.
+    """
+    if isinstance(data, dict):
+        data = WarmStartData.parse_obj(data)
+
+    def arr(name):
+        return np.asarray(getattr(data, name), dtype=np.float64)
+
+    return PDLPWarmStartData(
+        arr("current_primal_solution"),
+        arr("current_dual_solution"),
+        arr("initial_primal_average"),
+        arr("initial_dual_average"),
+        arr("current_ATY"),
+        arr("sum_primal_solutions"),
+        arr("sum_dual_solutions"),
+        arr("last_restart_duality_gap_primal_solution"),
+        arr("last_restart_duality_gap_dual_solution"),
+        data.initial_primal_weight,
+        data.initial_step_size,
+        data.total_pdlp_iterations,
+        data.total_pdhg_iterations,
+        data.last_candidate_kkt_score,
+        data.last_restart_kkt_score,
+        data.sum_solution_weight,
+        data.iterations_since_last_restart,
+    )
 
 
 def solution_to_legacy_http(
