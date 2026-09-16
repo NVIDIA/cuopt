@@ -2,12 +2,10 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# Fetch a modern GNU libgomp from conda-forge (verified to support OpenMP 5.0 detached tasks,
-# unlike Rocky Linux 8's own) and leave it at <dest_dir>/libgomp.so.1.0.0 + libgomp.so.1
-# symlink. Fetched directly over HTTPS (.conda is just a zip) since this image has no
-# conda/mamba CLI. See https://github.com/NVIDIA/cuopt/issues/1219
-#
-# Version floor (>=9) matches libgomp pinned in dependencies.yaml / conda/recipes/libcuopt/recipe.yaml.
+# Fetch a modern GNU libgomp from conda-forge (Rocky Linux 8's own is too old for OpenMP 5.0
+# detached tasks) and leave it at <dest_dir>/libgomp.so.1.0.0 + libgomp.so.1 symlink. Fetched
+# directly over HTTPS (.conda is just a zip) since this image has no conda/mamba CLI.
+# See https://github.com/NVIDIA/cuopt/issues/1219
 
 set -euo pipefail
 
@@ -31,9 +29,16 @@ case "$(arch)" in
         ;;
 esac
 
-# Pinned for build reproducibility -- bump deliberately, not by tracking "latest". sha256 is
-# from conda-forge's own repodata.json, not just the download itself (CWE-494).
+# Pinned deliberately, not tracked to "latest". Must satisfy the >=9 floor in
+# dependencies.yaml / conda/recipes/libcuopt/recipe.yaml -- enforced below, not just commented.
 version="16.2.0"
+min_major=9
+version_major="${version%%.*}"
+if (( version_major < min_major )); then
+    echo "Pinned libgomp ${version} is below the required floor (>=${min_major})" >&2
+    exit 1
+fi
+
 pkg="libgomp-${version}-${build}.conda"
 url="https://conda.anaconda.org/conda-forge/${subdir}/${pkg}"
 
@@ -43,6 +48,7 @@ trap 'rm -rf "${workdir}"' EXIT
 echo "Fetching ${url}"
 curl -fsSL -o "${workdir}/${pkg}" "${url}"
 
+# sha256 is from conda-forge's own repodata.json, not just the download itself (CWE-494).
 echo "${sha256}  ${workdir}/${pkg}" | sha256sum -c -
 
 python3 -m pip install --quiet zstandard
@@ -69,8 +75,7 @@ if [[ ! -f "${libgomp_so}" ]]; then
     exit 1
 fi
 
-# The whole point of fetching from conda-forge instead of using Rocky Linux 8's own libgomp:
-# verify it actually supports what we need rather than trusting the download.
+# Verify it actually exports what we need rather than trusting the download/version alone.
 if ! nm -D "${libgomp_so}" 2>/dev/null | grep -qE ' T omp_fulfill_event(@|$)'; then
     echo "Fetched libgomp does not export omp_fulfill_event -- wrong package or bad extraction" >&2
     exit 1
