@@ -30,13 +30,17 @@ namespace detail {
 // Pin cuDSS's dlopen'd threading-layer plugin so cudssDestroy()'s later dlclose() can't unmap
 // it while its own OpenMP threads may still be running (#1219). Must be the exact path
 // cudssSetThreadingLayer() uses below, since CUDSS_THREADING_LIB can override the default.
-// Best-effort: a failure here isn't fatal (cuDSS may still resolve the plugin on its own), so
-// we only warn -- the caller decides how to treat a subsequent cudssSetThreadingLayer failure.
-inline void pin_cudss_threading_layer(const char* lib_file)
+// Returns whether the pin succeeded; the caller must not call cudssSetThreadingLayer on a
+// library it couldn't pin, since cuDSS may still load a same-named library through its own
+// resolution and leave it genuinely unpinned against the #1219 teardown race.
+inline bool pin_cudss_threading_layer(const char* lib_file)
 {
-  if (lib_file != nullptr && dlopen(lib_file, RTLD_NOW | RTLD_NODELETE) == nullptr) {
+  if (lib_file == nullptr) return false;
+  if (dlopen(lib_file, RTLD_NOW | RTLD_NODELETE) == nullptr) {
     fprintf(stderr, "Warning: could not pin cuDSS threading layer '%s': %s\n", lib_file, dlerror());
+    return false;
   }
+  return true;
 }
 
 }  // namespace detail
@@ -276,8 +280,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       cudss_mt_lib_file = CUDSS_MT_LIB_FILE_NAME;
     }
 
-    if (cudss_mt_lib_file != nullptr) {
-      detail::pin_cudss_threading_layer(cudss_mt_lib_file);
+    if (cudss_mt_lib_file != nullptr && detail::pin_cudss_threading_layer(cudss_mt_lib_file)) {
       settings.log.printf("cuDSS Threading layer       : %s\n", cudss_mt_lib_file);
       CUDSS_CALL_AND_CHECK_EXIT(
         cudssSetThreadingLayer(handle, cudss_mt_lib_file), status, "cudssSetThreadingLayer");

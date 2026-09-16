@@ -842,9 +842,11 @@ set(CUOPT_PRIVATE_CUDA_LIBS
 
 list(PREPEND CUOPT_PRIVATE_CUDA_LIBS CUDA::cublasLt)
 
-# Pass CUDSS_MT_LIB_FILE_NAME as a compile definition
-get_filename_component(CUDSS_MT_LIB_FILE_NAME "${CUDSS_MT_LIB_FILE}" NAME)
-target_compile_definitions(cuopt_objs PRIVATE CUDSS_MT_LIB_FILE_NAME="${CUDSS_MT_LIB_FILE_NAME}")
+# Pass the full CUDSS_MT_LIB_FILE path (not just its basename) as a compile definition, so the
+# runtime dlopen pin (sparse_cholesky.cuh) and cudssSetThreadingLayer() resolve the exact same
+# file CMake found, rather than relying on the loader's default search path at runtime to
+# happen to agree with how this was found at configure time.
+target_compile_definitions(cuopt_objs PRIVATE CUDSS_MT_LIB_FILE_NAME="${CUDSS_MT_LIB_FILE}")
 
 execute_process(
         COMMAND git rev-parse --short HEAD
