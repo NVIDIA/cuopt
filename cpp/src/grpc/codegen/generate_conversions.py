@@ -358,16 +358,15 @@ def _field_doc_comment(f, indent="  "):
     """
     description = f.get("description")
     default = f.get("default")
-    if not description and default is None:
-        return []
-    body = " ".join(str(description).split()) if description else ""
+    words = str(description).split() if description is not None else []
     if default is not None:
-        suffix = f"(default: {default})"
-        body = f"{body} {suffix}" if body else suffix
+        words += f"(default: {default})".split()
+    if not words:
+        return []
     prefix = f"{indent}// "
     width = max(_DOC_COMMENT_WIDTH - len(prefix), 20)
     lines, current = [], ""
-    for word in body.split():
+    for word in words:
         candidate = f"{current} {word}" if current else word
         if current and len(candidate) > width:
             lines.append(f"{prefix}{current}")
