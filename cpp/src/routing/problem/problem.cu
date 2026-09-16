@@ -197,7 +197,7 @@ std::vector<i_t> problem_t<i_t, f_t>::get_preferred_order_of_vehicles() const
     i_t vehicle_id                         = vehicle_buckets_h[bucket][0];
     auto curr_vehicle_info                 = fleet_info_h.get_vehicle_info(vehicle_id);
     size_t num_vehicles_needed_from_bucket = 1;
-    bool unfeasible = false;
+    bool unfeasible                        = false;
     for (int d = 0; d < n_capacity_dims; ++d) {
       // Note that the demand would be zero for PDP use case, so the num vehicles needed is
       // exactly 1. So we purely make the decision based on vehicle cost for PDP
