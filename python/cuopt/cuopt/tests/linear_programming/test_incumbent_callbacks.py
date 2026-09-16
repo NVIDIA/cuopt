@@ -110,17 +110,7 @@ def _run_incumbent_solver_callback(file_name, include_set_callback):
         )
 
 
-# Both tests below hit a native `assert()` in branch_and_bound.cpp's RINS/
-# guided-diving submip setup (`current_incumbent.size() == leaf_problem.num_cols`)
-# on a fraction of runs. It's a real, pre-existing race (not introduced by or
-# specific to this test) that aborts the whole process -- not a catchable
-# Python exception -- so xfail can't contain it; only skip (which never
-# executes the test body) prevents the crash. Re-enable once #1909 is fixed.
-_SKIP_REASON = (
-    "Intermittently aborts the process via a native assert in "
-    "branch_and_bound.cpp RINS/guided-diving submip setup -- see "
-    "https://github.com/NVIDIA/cuopt/issues/1909"
-)
+_SKIP_REASON = "https://github.com/NVIDIA/cuopt/issues/1909"
 
 
 @pytest.mark.skip(reason=_SKIP_REASON)
