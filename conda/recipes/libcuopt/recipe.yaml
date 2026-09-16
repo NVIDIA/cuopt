@@ -114,6 +114,7 @@ outputs:
         ignore:
           # See https://github.com/rapidsai/build-planning/issues/160
           - lib/libcuopt.so
+          - lib/libcuopt_client.so
       string: cuda${{ cuda_major }}_${{ datetime_string }}_${{ head_rev }}
     requirements:
       build:
@@ -165,6 +166,7 @@ outputs:
       - package_contents:
           files:
             - lib/libcuopt.so
+            - lib/libcuopt_client.so
             - bin/cuopt_cli
             - bin/cuopt_grpc_server
     about:
