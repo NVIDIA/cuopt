@@ -21,7 +21,6 @@ import subprocess
 import sys
 import tarfile
 import tempfile
-import urllib.request
 import zipfile
 from pathlib import Path
 
@@ -47,18 +46,31 @@ def min_libgomp_major():
     return int(match.group(1))
 
 
-def resolve_build(subdir, min_major):
+def curl(url, dest):
+    """Download url to dest via curl.
+
+    Not urllib: this pyenv-built Python's default SSL context fails
+    TLS verification against conda.anaconda.org in the Rocky 8
+    wheel-build image, even though curl (using the system's own
+    trust store) resolves the same URL fine there.
+    """
+    print(f"Fetching {url}")
+    subprocess.run(["curl", "-fsSL", "-o", str(dest), url], check=True)
+
+
+def resolve_build(subdir, min_major, workdir):
     """Find the newest libgomp build satisfying the floor.
 
     Reads conda-forge's own repodata -- the same host the package
-    itself is downloaded from below, since a different host
-    (api.anaconda.org) failed TLS verification in the Rocky 8
-    wheel-build image even though this one works fine.
+    itself is downloaded from below.
     """
-    url = f"https://conda.anaconda.org/conda-forge/{subdir}/current_repodata.json"
-    print(f"Fetching {url}")
-    with urllib.request.urlopen(url, timeout=60) as resp:
-        data = json.load(resp)
+    repodata_path = workdir / "current_repodata.json"
+    curl(
+        f"https://conda.anaconda.org/conda-forge/{subdir}/current_repodata.json",
+        repodata_path,
+    )
+    with open(repodata_path) as f:
+        data = json.load(f)
 
     candidates = [
         (fn, v)
@@ -85,9 +97,7 @@ def download(subdir, pkg_file, sha256, dest):
     Verifying against the digest from repodata (not just the
     download itself) is a real integrity check -- CWE-494.
     """
-    url = f"https://conda.anaconda.org/conda-forge/{subdir}/{pkg_file}"
-    print(f"Fetching {url}")
-    urllib.request.urlretrieve(url, dest)
+    curl(f"https://conda.anaconda.org/conda-forge/{subdir}/{pkg_file}", dest)
 
     digest = hashlib.sha256(dest.read_bytes()).hexdigest()
     if digest != sha256:
@@ -138,11 +148,12 @@ def main():
             f"Unsupported architecture for modern libgomp fetch: {machine}"
         )
 
-    min_major = min_libgomp_major()
-    pkg_file, sha256 = resolve_build(subdir, min_major)
-
     # Ephemeral CI container -- no need to clean this up ourselves.
     workdir = Path(tempfile.mkdtemp())
+
+    min_major = min_libgomp_major()
+    pkg_file, sha256 = resolve_build(subdir, min_major, workdir)
+
     pkg_path = workdir / pkg_file
     download(subdir, pkg_file, sha256, pkg_path)
 
