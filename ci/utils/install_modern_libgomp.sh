@@ -32,25 +32,15 @@ fi
 
 python3 -m pip install --quiet zstandard
 
-# Last known-good pin, used only if the dynamic lookup below fails (network hiccup, API schema
-# change, etc.) -- so a conda-forge API blip doesn't break the build with no way to recover.
-# Bump periodically; not required for correctness since the query below always prefers newer.
-declare -A FALLBACK_BUILD=([linux-64]="he0feb66_5" [linux-aarch64]="h8acb6b2_5")
-declare -A FALLBACK_SHA256=(
-    [linux-64]="224a5a09e258a1a257089a9af310e9336e1d36834959718a9fab8679742dd822"
-    [linux-aarch64]="4f50ea4061b3e7c59f98be9c7f0621bc086d392219f9e349f350b89274200d91"
-)
-fallback_version="16.2.0"
-
 # Resolve the newest libgomp build for this subdir/floor from conda-forge's own package metadata
 # (not the download itself, so the sha256 check below is a real integrity check -- CWE-494).
-if ! resolved="$(python3 - "${subdir}" "${min_major}" <<'PYEOF'
+read -r pkg sha256 <<< "$(python3 - "${subdir}" "${min_major}" <<'PYEOF'
 import json
 import sys
 import urllib.request
 
 subdir, min_major = sys.argv[1], int(sys.argv[2])
-with urllib.request.urlopen("https://api.anaconda.org/package/conda-forge/libgomp", timeout=15) as resp:
+with urllib.request.urlopen("https://api.anaconda.org/package/conda-forge/libgomp") as resp:
     data = json.load(resp)
 
 candidates = [
@@ -66,13 +56,7 @@ if not candidates:
 best = max(candidates, key=lambda f: (tuple(map(int, f["version"].split("."))), f["attrs"]["timestamp"]))
 print(best["basename"], best["sha256"])
 PYEOF
-)"; then
-    echo "WARNING: dynamic libgomp lookup failed; falling back to last known-good pin (${fallback_version})" >&2
-    pkg="${subdir}/libgomp-${fallback_version}-${FALLBACK_BUILD[${subdir}]}.conda"
-    sha256="${FALLBACK_SHA256[${subdir}]}"
-else
-    read -r pkg sha256 <<< "${resolved}"
-fi
+)"
 
 url="https://conda.anaconda.org/conda-forge/${pkg}"
 pkg_file="$(basename "${pkg}")"
