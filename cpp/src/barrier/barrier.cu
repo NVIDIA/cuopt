@@ -834,9 +834,14 @@ class iteration_data_t {
     // AD only feeds ADAT; the augmented path derives A^T on device instead.
     if (!use_augmented) {
       raft::common::nvtx::range scope("Barrier: LP Data: AD matrix setup");
-      // Copy A into AD
-      AD = lp.A;
-      if (n_dense_columns > 0) {
+      if (n_dense_columns == 0) {
+        // AD is A, which is already on device; only AD's dimensions are read on the host, so its
+        // entries are never materialised here.
+        AD.m = lp.A.m;
+        AD.n = lp.A.n;
+      } else {
+        // Copy A into AD
+        AD = lp.A;
         cols_to_remove.resize(lp.num_cols, 0);
         for (i_t k : dense_columns_unordered) {
           cols_to_remove[k] = 1;
@@ -867,20 +872,24 @@ class iteration_data_t {
     // device_AD / device_A / ADAT path is only used when forming ADAT (!use_augmented).
     if (!use_augmented) {
       raft::common::nvtx::range scope("Barrier: LP Data: device AD path");
-      device_AD.copy(AD, handle_ptr->get_stream());
-      d_original_A_values.resize(device_AD.x.size(), handle_ptr->get_stream());
-      raft::copy(d_original_A_values.data(),
-                 device_AD.x.data(),
-                 device_AD.x.size(),
-                 handle_ptr->get_stream());
-      // For efficient scaling of AD col we form the col index array
-      device_AD.form_col_index(handle_ptr->get_stream());
       if (n_dense_columns > 0) {
+        device_AD.copy(AD, handle_ptr->get_stream());
+        // AD differs from A once dense columns are dropped, so form_adat needs its own snapshot
+        // of the unscaled values to restore from.
+        d_original_A_values.resize(device_AD.x.size(), handle_ptr->get_stream());
+        raft::copy(d_original_A_values.data(),
+                   device_AD.x.data(),
+                   device_AD.x.size(),
+                   handle_ptr->get_stream());
         device_AD.to_compressed_row(device_A, handle_ptr->get_stream());
       } else {
-        // AD == A here, and device_AT_csc_ already holds CSR(A).
-        device_A.copy_transposed(device_AT_csc_, handle_ptr->get_stream());
+        // AD == A, so device_AD is seeded straight from device_A_csc_, which also doubles as
+        // form_adat's restore source, and device_AT_csc_ (already CSR(A)) serves as the SpGEMM's
+        // left operand -- neither needs a second copy. Both stay read-only for the whole solve.
+        device_AD.copy(device_A_csc_, handle_ptr->get_stream());
       }
+      // For efficient scaling of AD col we form the col index array
+      device_AD.form_col_index(handle_ptr->get_stream());
       RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
     }
 
@@ -1117,10 +1126,12 @@ class iteration_data_t {
 
     {
       raft::common::nvtx::range scope("Barrier: Form ADAT: restore A");
-      raft::copy(device_AD.x.data(),
-                 d_original_A_values.data(),
-                 d_original_A_values.size(),
-                 handle_ptr->get_stream());
+      // device_A_csc_ holds A's unscaled values and is never written, so when AD == A it is the
+      // snapshot; with dense columns removed AD differs and carries its own.
+      const f_t* original_values =
+        n_dense_columns > 0 ? d_original_A_values.data() : device_A_csc_.x.data();
+      raft::copy(
+        device_AD.x.data(), original_values, device_AD.x.size(), handle_ptr->get_stream());
     }
     {
       raft::common::nvtx::range scope("Barrier: Form ADAT: inv_diag prime");
@@ -1162,9 +1173,26 @@ class iteration_data_t {
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return; }
     if (first_call) {
       raft::common::nvtx::range scope("Barrier: Form ADAT: cusparse init");
+      // With no dense columns AD == A, so CSC(A^T) is the CSR(A) the SpGEMM needs and
+      // device_AT_csc_ is used directly instead of keeping a second copy in device_A.
+      const bool own_csr = n_dense_columns > 0;
+      const i_t A_rows   = own_csr ? device_A.m : device_AT_csc_.n;
+      const i_t A_cols   = own_csr ? device_A.n : device_AT_csc_.m;
+      const i_t A_nnz    = own_csr ? device_A.nz_max : device_AT_csc_.nz_max;
+      i_t* A_offsets = own_csr ? device_A.row_start.data() : device_AT_csc_.col_start.data();
+      i_t* A_indices = own_csr ? device_A.j.data() : device_AT_csc_.i.data();
+      f_t* A_values  = own_csr ? device_A.x.data() : device_AT_csc_.x.data();
       try {
-        initialize_cusparse_data<i_t, f_t>(
-          handle_ptr, device_A, device_AD, device_ADAT, cusparse_info);
+        initialize_cusparse_data<i_t, f_t>(handle_ptr,
+                                           A_rows,
+                                           A_cols,
+                                           A_nnz,
+                                           A_offsets,
+                                           A_indices,
+                                           A_values,
+                                           device_AD,
+                                           device_ADAT,
+                                           cusparse_info);
       } catch (const raft::cuda_error& e) {
         settings_.log.printf("Error in initialize_cusparse_data: %s\n", e.what());
         return;
@@ -1174,7 +1202,7 @@ class iteration_data_t {
 
     {
       raft::common::nvtx::range scope("Barrier: Form ADAT: ADAT multiply");
-      multiply_kernels<i_t, f_t>(handle_ptr, device_A, device_AD, device_ADAT, cusparse_info);
+      multiply_kernels<i_t, f_t>(handle_ptr, device_ADAT, cusparse_info);
       handle_ptr->sync_stream();
     }
 

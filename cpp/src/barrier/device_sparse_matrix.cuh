@@ -241,6 +241,20 @@ class device_csc_matrix_t {
     raft::copy(x.data(), A.x.data(), A.x.size(), stream);
   }
 
+  /** Copy from another device CSC matrix, without going through the host. */
+  void copy(const device_csc_matrix_t& A, cuda::stream_ref stream)
+  {
+    m      = A.m;
+    n      = A.n;
+    nz_max = A.nz_max;
+    col_start.resize(A.col_start.size(), stream);
+    raft::copy(col_start.data(), A.col_start.data(), A.col_start.size(), stream);
+    i.resize(A.i.size(), stream);
+    raft::copy(i.data(), A.i.data(), A.i.size(), stream);
+    x.resize(A.x.size(), stream);
+    raft::copy(x.data(), A.x.data(), A.x.size(), stream);
+  }
+
   /** Reset to an empty (all-zero col_start, no nonzeros) matrix of the given shape. */
   void reset_empty(i_t rows, i_t cols, cuda::stream_ref stream)
   {
