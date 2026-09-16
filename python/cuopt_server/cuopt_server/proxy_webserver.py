@@ -343,7 +343,43 @@ def _deserialize_convert_submit(
 @app.get("/v2/health/ready", responses=HealthResponse)
 @app.get("/v2/health/live", responses=HealthResponse)
 def health():
-    return {"status": "RUNNING", "version": app.version}
+    try:
+        _require_grpc_healthy()
+        return {"status": "RUNNING", "version": app.version}
+    except HTTPException as e:
+        return http_exception_handler(e)
+
+
+def _grpc_backend_ok():
+    """Return (True, '') if cuopt_grpc_server answered a short probe."""
+    client = _grpc_client
+    if client is None:
+        return False, "gRPC client is not connected"
+    try:
+        ping = getattr(client, "ping", None)
+        if callable(ping):
+            ping(5)
+        else:
+            client.status("__connection_probe__")
+        return True, ""
+    except Exception as e:
+        text = str(e).strip() or type(e).__name__
+        return False, text
+
+
+def _require_grpc_healthy():
+    ok, msg = _grpc_backend_ok()
+    if not ok:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Status : Broken\n"
+                "The gRPC backend is unavailable. "
+                "This process cannot serve solves until "
+                "cuopt_grpc_server is healthy.\n"
+                "ERROR : " + msg
+            ),
+        )
 
 
 @app.get(
@@ -721,6 +757,7 @@ async def postrequest(
     warnings = check_client_version(client_version)
 
     try:
+        _require_grpc_healthy()
         accept = _resolve_accept(
             accept, ctype if ctype != mime_pickle else mime_json
         )

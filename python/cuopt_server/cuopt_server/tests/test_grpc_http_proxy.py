@@ -133,6 +133,10 @@ class FakeClient:
         self._incumbents = {}
         self._logs = {}
 
+    def ping(self, timeout_seconds=5):
+        if getattr(self, "unhealthy", False):
+            raise RuntimeError("gRPC server unavailable")
+
     def submit(self, problem, settings, enable_incumbents=None):
         job_id = str(uuid.uuid4())
         self.jobs[job_id] = FakeJobStatus.COMPLETED
@@ -176,6 +180,9 @@ class FakeClient:
 
 @pytest.fixture(scope="module")
 def proxy_server():
+    reset_proxy_state()
+    set_grpc_client(FakeClient())
+    set_max_request_size(1024 * 1024 * 1024)
     port = _free_port()
     server = _Uvicorn(
         uvicorn.Config(
@@ -204,6 +211,7 @@ def proxy_server():
     yield url
     server.should_exit = True
     thread.join(timeout=5)
+    reset_proxy_state()
 
 
 @pytest.fixture
@@ -301,6 +309,39 @@ def test_health(proxy):
         body = res.json()
         assert body["status"] == "RUNNING"
         assert "version" in body
+
+
+def test_health_fails_when_grpc_is_down(proxy):
+    url, fake = proxy
+    fake.unhealthy = True
+    res = requests.get(url + "/cuopt/health")
+    assert res.status_code == 500
+    body = res.json()
+    assert "Broken" in body["error"] or "Broken" in str(body)
+    assert "gRPC" in body["error"] or "unavailable" in body["error"].lower()
+
+
+def test_health_fails_without_grpc_client(proxy_server):
+    url = proxy_server
+    reset_proxy_state()
+    try:
+        res = requests.get(url + "/cuopt/health")
+        assert res.status_code == 500
+        assert "gRPC" in res.json()["error"]
+    finally:
+        reset_proxy_state()
+
+
+def test_submit_rejected_when_grpc_unhealthy(proxy):
+    url, fake = proxy
+    fake.unhealthy = True
+    res = requests.post(
+        url + "/cuopt/request",
+        headers={"CLIENT-VERSION": "custom"},
+        json=_lp(),
+    )
+    assert res.status_code == 500
+    assert fake.submitted == []
 
 
 def test_submit_status_result_delete(proxy):
