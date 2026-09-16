@@ -728,6 +728,11 @@ pdlp_settings:
       type: bool
       optional: true
   - barrier_adaptive_regularization:
+      description: >-
+        Whether the barrier method scales its KKT regularization up or down
+        on later iterations: -1 automatic (uses the built-in heuristic), 0
+        disabled, 1 enabled.
+      default: "-1 (automatic)"
       field_num: 34
       type: int32
       optional: true
