@@ -155,12 +155,12 @@ template <typename i_t, typename f_t>
 void weighted_average_solution_t<i_t, f_t>::increase_iterations_since_last_restart()
 {
   ++iterations_since_last_restart_;
-  cub::DeviceTransform::Transform(
+  RAFT_CUDA_TRY(cub::DeviceTransform::Transform(
     d_iterations_since_last_restart_.data(),
     d_iterations_since_last_restart_.data(),
     1,
     [] __device__(i_t k) { return k + i_t(1); },
-    stream_view_.get());
+    stream_view_.get()));
 }
 
 template <typename i_t, typename f_t>

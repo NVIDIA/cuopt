@@ -46,6 +46,8 @@ class weighted_average_solution_t {
   i_t primal_size_h_;
   i_t dual_size_h_;
 
+  rmm::device_scalar<i_t> d_iterations_since_last_restart_;
+
  public:
   rmm::device_uvector<f_t> sum_primal_solutions_;
   rmm::device_uvector<f_t> sum_dual_solutions_;
@@ -53,7 +55,6 @@ class weighted_average_solution_t {
   rmm::device_scalar<f_t> sum_dual_solution_weights_;
 
   i_t iterations_since_last_restart_;
-  rmm::device_scalar<i_t> d_iterations_since_last_restart_;
 
   // Graph to capture the average computation
   ping_pong_graph_t<i_t> graph;
