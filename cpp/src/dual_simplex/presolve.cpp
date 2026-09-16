@@ -1015,9 +1015,9 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
              lp_problem_t<i_t, f_t>& problem,
              presolve_info_t<i_t, f_t>& presolve_info)
 {
-  problem               = original;
-  const i_t linear_cols = linear_variable_count(problem);
-  const bool has_cones  = !problem.second_order_cone_dims.empty();
+  problem              = original;
+  i_t linear_cols      = linear_variable_count(problem);
+  const bool has_cones = !problem.second_order_cone_dims.empty();
   std::vector<char> row_sense(problem.num_rows, '=');
 
   // Check for free variables (linear block only; cone columns are handled by the barrier SOC
@@ -1388,6 +1388,9 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
   if (num_empty_cols > 0) {
     settings.log.printf("Presolve attempt to remove %d empty cols\n", num_empty_cols);
     remove_empty_cols(problem, num_empty_cols, presolve_info);
+    // remove_empty_cols drops columns and shrinks objective/lower/upper, need to recompute
+    // linear_cols
+    linear_cols = linear_variable_count(problem);
   }
 
   // Check for free variables (exclude cone variables — they are naturally unbounded)
