@@ -70,7 +70,9 @@ that bite:
   third-party client reading only the `.proto` should learn what a settings
   field means and what omitting it does. `default` is a free-text string
   describing the C++ member initializer (`"1e-4"`, `"-1 (automatic)"`); the
-  generator neither derives nor validates it.
+  generator doesn't derive it from the C++ struct or detect initializer drift
+  (only the optional/zero-value check above), so take it from the C++ struct
+  — `docs/` is known to disagree in several places.
 
 ## Field numbers are permanent
 

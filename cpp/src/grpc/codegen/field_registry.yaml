@@ -47,8 +47,12 @@
 #                          describing the C++ member initializer (e.g. "1e-4",
 #                          "-1 (automatic)"). Appended to the generated proto
 #                          comment as "(default: ...)". Documentation only —
-#                          the generator neither derives nor validates it, and
-#                          it does not affect the wire format.
+#                          it does not affect the wire format. The generator
+#                          does not derive it from the C++ struct or detect
+#                          initializer drift; it only checks, for a
+#                          non-optional field, that this string textually
+#                          matches the proto3 zero value (see `optional`
+#                          above).
 #   type               – proto wire type (default: double for scalars, repeated double for arrays)
 #   field_num          – proto message field number (see "Field numbers" above)
 #   array_id           – enum value for ArrayFieldId or ResultFieldId

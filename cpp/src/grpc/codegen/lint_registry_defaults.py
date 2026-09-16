@@ -17,6 +17,7 @@ never block a PR. Treat its output as a prompt to double-check, not a verdict.
 
 import re
 import sys
+from decimal import Decimal
 from pathlib import Path
 
 import yaml
@@ -130,7 +131,7 @@ def _mismatch(cpp_value, registry_default):
     reg_num = _NUMBER_RE.search(reg_lower)
     if reg_num is None:
         return None  # default: is pure prose (e.g. context-dependent) -- skip
-    if abs(float(cpp_num.group()) - float(reg_num.group())) > 1e-12:
+    if Decimal(cpp_num.group()) != Decimal(reg_num.group()):
         return f"C++ default is {cpp_num.group()}, default: says {reg_num.group()}"
     return None
 
