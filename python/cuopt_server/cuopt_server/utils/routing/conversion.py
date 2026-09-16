@@ -550,12 +550,19 @@ def _node_type_name(value):
         return str(value)
 
 
-def solution_to_legacy_http(sol, vehicle_ids=None, task_ids=None) -> dict:
+def solution_to_legacy_http(
+    sol: dict,
+    vehicle_ids: Optional[List] = None,
+    task_ids: Optional[List] = None,
+) -> dict:
     """Map a gRPC routing result dict onto the legacy HTTP solver_response.
 
-    ``vehicle_ids`` / ``task_ids`` are optional sidecar lists from submit so
-    HTTP keys match the request. After a proxy restart they may be absent and
-    numeric indices are used.
+    ``sol`` is the routing GetResult dict. ``vehicle_ids`` / ``task_ids`` are
+    optional sidecar lists from submit so HTTP keys match the request. After a
+    proxy restart they may be absent and numeric indices are used.
+
+    Returns the inner ``solver_response`` dict (integer status 0 or 1).
+    Raises ``HTTPException`` with status 409 if ``status`` is neither 0 nor 1.
     """
     status = int(sol.get("status", 0))
     message = sol.get("status_message") or sol.get("error_message") or ""

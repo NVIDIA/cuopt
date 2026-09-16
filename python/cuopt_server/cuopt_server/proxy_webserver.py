@@ -288,7 +288,11 @@ def _result_for_job(job_id, meta, kind):
         if sol is not None:
             return "lp", sol
     except Exception:
-        pass
+        logging.debug(
+            "LP GetResult parser failed for %s; trying routing",
+            job_id,
+            exc_info=True,
+        )
     return "vrp", get_grpc_routing_client().result(job_id)
 
 
