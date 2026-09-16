@@ -174,10 +174,13 @@ async def test_termination_status_is_readable(session, mps_file):
         problem_path=mps_file,
         settings={"time_limit": 30.0},
     )
-    while not (await _call(session, "cuopt_status", job_id=sub["job_id"]))[
-        "terminal"
-    ]:
+    for _ in range(120):
+        state = await _call(session, "cuopt_status", job_id=sub["job_id"])
+        if state["terminal"]:
+            break
         await __import__("asyncio").sleep(0.3)
+    else:
+        pytest.fail(f"job did not terminate in time: {state}")
     out = await _call(session, "cuopt_result", job_id=sub["job_id"])
     assert out["termination_status"] == "Optimal"
     assert out["termination_status_code"] == 1

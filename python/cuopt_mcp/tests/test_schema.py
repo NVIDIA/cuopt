@@ -3,6 +3,8 @@
 
 """Tests for the generated settings schema and its validation."""
 
+import re
+
 import pytest
 
 from cuopt_mcp import schema
@@ -29,11 +31,19 @@ def test_every_parameter_is_documented(kind):
 
 @pytest.mark.parametrize("kind", ["pdlp_settings", "mip_settings"])
 def test_every_parameter_states_a_default(kind):
+    """Every property's description must state a concrete default value.
+
+    `default` isn't a separate JSON Schema key -- _json_schema_property
+    renders it into the description text only, deliberately, since the
+    registry's default: is untyped prose (see its docstring). So the
+    description is the only place a dropped default would show up; check
+    for "Default: " followed by content, not just the bare label.
+    """
     props = schema.settings_schema(kind)["properties"]
     missing = [
         n
         for n, p in props.items()
-        if "Default:" not in p.get("description", "")
+        if not re.search(r"Default: \S", p.get("description", ""))
     ]
     assert missing == []
 

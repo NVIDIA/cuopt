@@ -39,6 +39,13 @@ server = MCPServer(
 
 
 def _guard(fn, /, **kwargs) -> dict[str, Any]:
+    """Call a tools.* function, turning a caller-facing error into a normal
+    return value instead of an MCP protocol exception.
+
+    Every tool below returns this dict's shape on success; on failure it's
+    ``{"error": <message safe to show the model>}`` instead of a traceback,
+    which the model can act on inline instead of the call simply failing.
+    """
     try:
         return fn(**kwargs)
     except CuOptMCPError as exc:
@@ -97,7 +104,8 @@ def cuopt_status(job_id: str) -> dict[str, Any]:
     """Report whether a cuOpt job is queued, running, or finished.
 
     Cheap to call repeatedly. Returns terminal=true once the job has
-    reached COMPLETED, FAILED, CANCELLED, or NOT_FOUND.
+    reached COMPLETED, FAILED, CANCELLED, or NOT_FOUND. On failure, returns
+    ``{"error": <message>}`` instead (see ``_guard``).
     """
     return _guard(tools.status, job_id=job_id)
 
@@ -122,6 +130,8 @@ def cuopt_result(
         what matters for a MILP.
     limit: maximum values returned inline. Beyond this the full solution is
         written to a file and its path returned instead.
+
+    On failure, returns ``{"error": <message>}`` instead (see ``_guard``).
     """
     return _guard(
         tools.result,
@@ -139,7 +149,8 @@ def cuopt_incumbents(job_id: str, from_index: int = 0) -> dict[str, Any]:
 
     Use the returned next_index on the following call to fetch only new
     incumbents. A flat objective across several calls means the solver has
-    plateaued and cuopt_cancel may be worthwhile.
+    plateaued and cuopt_cancel may be worthwhile. On failure, returns
+    ``{"error": <message>}`` instead (see ``_guard``).
     """
     return _guard(tools.incumbents, job_id=job_id, from_index=from_index)
 
@@ -148,7 +159,18 @@ def cuopt_incumbents(job_id: str, from_index: int = 0) -> dict[str, Any]:
 def cuopt_logs(
     job_id: str, from_byte: int = 0, tail_lines: int = 100
 ) -> dict[str, Any]:
-    """Return recent solver log lines for a job, for diagnosing a slow solve."""
+    """Return recent solver log lines for a job, for diagnosing a slow solve.
+
+    job_id: the job to fetch logs for.
+    from_byte: resume from this byte offset — pass back the next_byte from
+        a prior call to fetch only what's new since then.
+    tail_lines: keep only the last this many lines of the fetched text;
+        must be between 1 and tools.MAX_TAIL_LINES.
+
+    Returns lines, truncated (whether more preceded the kept lines), and
+    next_byte for the following call. On failure, or on an out-of-range
+    tail_lines, returns ``{"error": <message>}`` instead (see ``_guard``).
+    """
     return _guard(
         tools.logs, job_id=job_id, from_byte=from_byte, tail_lines=tail_lines
     )
@@ -156,7 +178,12 @@ def cuopt_logs(
 
 @server.tool(structured_output=True)
 def cuopt_cancel(job_id: str) -> dict[str, Any]:
-    """Stop a running cuOpt job. Any incumbent found so far remains fetchable."""
+    """Stop a running cuOpt job. Any incumbent found so far remains fetchable.
+
+    job_id: the job to cancel. Cancelling a job that has already reached
+    COMPLETED or FAILED returns ``{"error": <message>}`` (see ``_guard``)
+    rather than succeeding silently.
+    """
     return _guard(tools.cancel, job_id=job_id)
 
 
@@ -168,12 +195,20 @@ def cuopt_list_settings(kind: str, name: str | None = None) -> dict[str, Any]:
     name: a single parameter to describe in full, instead of listing names.
 
     The catalogue is generated from cuOpt's field registry, so it always
-    matches the solver build being talked to.
+    matches the solver build being talked to. On an unknown kind or name,
+    returns ``{"error": <message>}`` instead (see ``_guard``).
     """
     return _guard(tools.list_settings, kind=kind, name=name)
 
 
 def main() -> None:
+    """Run the MCP server over stdio.
+
+    Blocks until the client disconnects or the process is killed. Logs the
+    configured gRPC target to stderr on startup; raises whatever
+    ``server.run`` raises on a fatal transport failure (stdout is reserved
+    for the JSON-RPC stream, so nothing here writes there).
+    """
     host, port = __import__(
         "cuopt_mcp.client", fromlist=["endpoint"]
     ).endpoint()

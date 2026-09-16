@@ -423,7 +423,7 @@ def _json_schema_property(registry, f):
     return prop
 
 
-def generate_mcp_schema(registry):
+def generate_mcp_schema(registry: dict) -> str:
     """Build the MCP tool-input JSON Schema for the solver settings.
 
     Emitted as a generated artifact so an MCP server never hand-maintains a
@@ -434,6 +434,17 @@ def generate_mcp_schema(registry):
     Only fields carrying a `field_num` are included — those are exactly the
     settings that cross the gRPC wire, which is exactly what a remote MCP
     server can set.
+
+    Args:
+        registry: The parsed field_registry.yaml.
+
+    Returns:
+        The schema as serialized JSON text (trailing newline), ready to
+        write to cuopt_mcp_schema.json.
+
+    Raises:
+        AssertionError: A section declares the same settings field name
+            twice (a registry-authoring bug, not a runtime condition).
     """
     schema = {
         "$schema": "https://json-schema.org/draft/2020-12/schema",

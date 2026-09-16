@@ -6,8 +6,12 @@
 __all__ = ["main"]
 
 
-def main():
-    """Console-script entry point (``cuopt-mcp``)."""
+def main() -> None:
+    """Console-script entry point (``cuopt-mcp``).
+
+    Runs the MCP server over stdio until the client disconnects or the
+    process is killed; does not return until then.
+    """
     from .server import main as _main
 
     _main()
