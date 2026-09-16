@@ -384,11 +384,8 @@ jobs:
   conda-cpp-build:
     needs: [build-details, checks, compute-matrix-filters, changed-files]
     # Consumed by C++, Java, Python, and docs jobs.
-    if: >-
-      fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp ||
-      fromJSON(needs.changed-files.outputs.changed_file_groups).test_java ||
-      fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_conda ||
-      fromJSON(needs.changed-files.outputs.changed_file_groups).build_docs
+    # TEMP DEBUG (java-static-classifiers): disabled to speed up java-static-test iteration. Revert before merge.
+    if: false
     permissions:
       actions: read
       contents: read
@@ -410,7 +407,8 @@ jobs:
       packages: read
       pull-requests: read
     uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@release/26.10
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
+    # TEMP DEBUG (java-static-classifiers): disabled to speed up java-static-test iteration. Revert before merge.
+    if: false
     with:
       build_type: pull-request
       script: ci/test_cpp.sh
@@ -430,15 +428,15 @@ jobs:
       packages: read
       pull-requests: read
     uses: ./.github/workflows/multi_gpu_cpp_test.yaml
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
+    # TEMP DEBUG (java-static-classifiers): disabled to speed up java-static-test iteration. Revert before merge.
+    if: false
     with:
       build_type: pull-request
   conda-python-build:
     needs: [build-details, conda-cpp-build, changed-files]
     # Consumed by conda-python-tests and docs-build.
-    if: >-
-      fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_conda ||
-      fromJSON(needs.changed-files.outputs.changed_file_groups).build_docs
+    # TEMP DEBUG (java-static-classifiers): disabled to speed up java-static-test iteration. Revert before merge.
+    if: false
     permissions:
       actions: read
       contents: read
@@ -462,7 +460,8 @@ jobs:
       packages: read
       pull-requests: read
     uses: rapidsai/shared-workflows/.github/workflows/conda-python-tests.yaml@release/26.10
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_conda
+    # TEMP DEBUG (java-static-classifiers): disabled to speed up java-static-test iteration. Revert before merge.
+    if: false
     with:
       build_type: pull-request
       run_codecov: false
@@ -477,7 +476,8 @@ jobs:
       pull-requests: read
     secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@release/26.10
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).build_docs
+    # TEMP DEBUG (java-static-classifiers): disabled to speed up java-static-test iteration. Revert before merge.
+    if: false
     with:
       build_type: pull-request
       node_type: "gpu-l4-latest-1"
@@ -521,13 +521,18 @@ jobs:
       build_type: pull-request
       node_type: "cpu16"
       arch: ${{ matrix.ARCH }}
+      # ci-wheel (Rocky 8) rather than ci-conda: gcc-toolset-14 on Rocky 8 produces a libstdc++
+      # ABI requirement the RAPIDS-supported platforms can actually satisfy, unlike ci-conda's
+      # gcc_linux-64 conda package -- the same fix cuDF applied in rapidsai/cudf#23766 after
+      # hitting this in production (rapidsai/cudf#23753). See setup_java_static_env.sh.
+      #
       # Must be CUDA-version-pinned, not the bare "26.10-latest" tag: custom-job.yaml has no
       # per-matrix env passthrough, so an untagged image would leave RAPIDS_CUDA_VERSION at
       # that image's single baked-in default for every matrix entry.
-      # ci/build_java_static.sh reads it to pick the conda CUDA toolkit, so every "cuN" classifier
+      # ci/build_java_static.sh reads it to pick the CUDA toolkit, so every "cuN" classifier
       # JAR would actually be built against the same CUDA version and just mislabeled. Matches
-      # the pattern conda-cpp-build.yaml itself uses for this image family.
-      container_image: "rapidsai/ci-conda:26.10-cuda${{ matrix.CUDA_VER }}-${{ matrix.LINUX_VER }}-py${{ matrix.PY_VER }}"
+      # the pattern java-static-test (test.yaml) already uses for this image family.
+      container_image: "rapidsai/ci-wheel:26.10-cuda${{ matrix.CUDA_VER }}-${{ matrix.LINUX_VER }}-py${{ matrix.PY_VER }}"
       script: "ci/build_java_static.sh"
       artifact-name: "cuopt_java_${{ matrix.ARCH }}_cu${{ matrix.CUDA_MAJOR }}"
       file_to_upload: "java/cuopt/classifier-jars/"
@@ -602,9 +607,8 @@ jobs:
       pull-requests: read
     secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@release/26.10
-    if: >-
-      fromJSON(needs.changed-files.outputs.changed_file_groups).test_java ||
-      fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
+    # TEMP DEBUG (java-static-classifiers): disabled to speed up java-static-test iteration. Revert before merge.
+    if: false
     with:
       build_type: pull-request
       node_type: "gpu-l4-latest-1"
@@ -615,7 +619,8 @@ jobs:
       file_to_upload: "java/cuopt/target/"
   wheel-build-libcuopt:
     needs: [build-details, compute-matrix-filters, changed-files]
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
+    # TEMP DEBUG (java-static-classifiers): disabled to speed up java-static-test iteration. Revert before merge.
+    if: false
     permissions:
       actions: read
       contents: read
@@ -634,7 +639,8 @@ jobs:
       script: ci/build_wheel_libcuopt.sh
   wheel-build-cuopt:
     needs: [build-details, wheel-build-libcuopt, compute-matrix-filters, changed-files]
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
+    # TEMP DEBUG (java-static-classifiers): disabled to speed up java-static-test iteration. Revert before merge.
+    if: false
     permissions:
       actions: read
       contents: read
@@ -660,7 +666,8 @@ jobs:
       packages: read
       pull-requests: read
     uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@release/26.10
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
+    # TEMP DEBUG (java-static-classifiers): disabled to speed up java-static-test iteration. Revert before merge.
+    if: false
     with:
       build_type: pull-request
       script: ci/test_wheel_cuopt.sh
@@ -673,7 +680,8 @@ jobs:
       script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
   wheel-build-cuopt-server:
     needs: [build-details, checks, compute-matrix-filters, changed-files]
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
+    # TEMP DEBUG (java-static-classifiers): disabled to speed up java-static-test iteration. Revert before merge.
+    if: false
     permissions:
       actions: read
       contents: read
@@ -693,7 +701,8 @@ jobs:
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.cuopt_server_filter }}
   wheel-build-cuopt-sh-client:
     needs: [build-details, compute-matrix-filters, changed-files]
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
+    # TEMP DEBUG (java-static-classifiers): disabled to speed up java-static-test iteration. Revert before merge.
+    if: false
     permissions:
       actions: read
       contents: read
@@ -721,7 +730,8 @@ jobs:
       packages: read
       pull-requests: read
     uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@release/26.10
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
+    # TEMP DEBUG (java-static-classifiers): disabled to speed up java-static-test iteration. Revert before merge.
+    if: false
     with:
       build_type: pull-request
       script: ci/test_wheel_cuopt_server.sh
@@ -743,7 +753,8 @@ jobs:
       pull-requests: read
     secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: ./.github/workflows/self_hosted_service_test.yaml
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
+    # TEMP DEBUG (java-static-classifiers): disabled to speed up java-static-test iteration. Revert before merge.
+    if: false
     with:
       build_type: pull-request
       script: ci/test_self_hosted_service.sh
