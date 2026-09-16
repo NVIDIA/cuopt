@@ -19,9 +19,12 @@ target_include_directories(GRPC_VRP_TEST_DRIVER
     "${CMAKE_BINARY_DIR}"
 )
 
+# Names both halves it actually uses: the routing engine for the solve, and cuopt_client
+# for the host-side problem representation and gRPC client.
 target_link_libraries(GRPC_VRP_TEST_DRIVER
     PRIVATE
-    cuopt
+    cuopt_routing
+    cuopt_client
     gRPC::grpc++
     protobuf::libprotobuf
     nlohmann_json::nlohmann_json
@@ -47,9 +50,11 @@ target_include_directories(GRPC_ROUTING_PROBLEM_MAPPER_TEST
     "${CMAKE_BINARY_DIR}"
 )
 
+# The mappers are host-only and live in cuopt_client, so the test links that component
+# alone -- if a mapper ever reaches into the routing engine, this link line fails loudly.
 target_link_libraries(GRPC_ROUTING_PROBLEM_MAPPER_TEST
     PRIVATE
-    cuopt
+    cuopt_client
     GTest::gtest
     GTest::gtest_main
     protobuf::libprotobuf
@@ -77,9 +82,11 @@ target_include_directories(GRPC_ROUTING_SETTINGS_MAPPER_TEST
     "${CMAKE_BINARY_DIR}"
 )
 
+# The mappers are host-only and live in cuopt_client, so the test links that component
+# alone -- if a mapper ever reaches into the routing engine, this link line fails loudly.
 target_link_libraries(GRPC_ROUTING_SETTINGS_MAPPER_TEST
     PRIVATE
-    cuopt
+    cuopt_client
     GTest::gtest
     GTest::gtest_main
     protobuf::libprotobuf
