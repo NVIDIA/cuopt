@@ -752,6 +752,9 @@ dependencies:
           - libcusparse-dev
           - cuda-nvtx-dev
           - libnvjitlink-dev
+          # >=9 for the OpenMP 5.0 detached-task runtime (omp_fulfill_event) the fast MPS
+          # parser needs; see ci/utils/install_modern_libgomp.sh for the wheel-build pin.
+          - libgomp >=9
 
 
   cuda_wheels:
