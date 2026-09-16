@@ -114,9 +114,29 @@ CUDA_RUNTIME_LIBRARY_PATTERN='^lib(cublas|cublasLt|cusparse|cusolver|nvJitLink)\
 # environment (CUOPT_PREFIX/lib), a dnf/system install (e.g. /usr/lib64, cuDSS's own versioned
 # directory), or a pip-installed wheel's site-packages directory, depending on which of
 # ci/build_java_static.sh's paths produced this library.
+#
+# preferred_dir, when given, is searched first and exclusively -- no falling through to the
+# broad search below even on a miss. It exists for libcudss_mtlayer_gomp.so.0: dnf's cuDSS
+# package registers /usr/lib64/libcudss_mtlayer_gomp.so.0 as an `alternatives` symlink, which can
+# point at a *different* cuDSS version's copy than the one actually pinned and linked (observed
+# on arm64: the alternative resolved to a 0.8.0 file while install_cudss.sh pins 0.7.*, so the
+# bundled MT layer didn't match libcudss.so.0's ABI and cudssSetThreadingLayer failed at
+# runtime). The versioned directory libcudss.so.0 itself was found in is unambiguous, so once
+# that is known, use it instead of the broad search for anything else that must be its exact
+# version match.
 find_companion() {
   local name="$1"
+  local preferred_dir="${2:-}"
   local found
+  if [[ -n "${preferred_dir}" ]]; then
+    found="$(find "${preferred_dir}" -maxdepth 1 -name "${name}" -print -quit 2>/dev/null)"
+    if [[ -n "${found}" ]]; then
+      printf '%s\n' "${found}"
+      return
+    fi
+    echo "ERROR: ${name} not found under ${preferred_dir}" >&2
+    exit 1
+  fi
   local -a site_packages_dirs=()
   if command -v python3 &> /dev/null; then
     mapfile -t site_packages_dirs < <(python3 -c \
@@ -145,8 +165,16 @@ COMPANIONS+=(libcudss_mtlayer_gomp.so.0)
 
 MANIFEST="${STAGING}/${RESOURCE_DIR}/companions.txt"
 : > "${MANIFEST}"
+CUDSS_LIBRARY_DIR=""
 for companion in "${COMPANIONS[@]}"; do
-  companion_path="$(find_companion "${companion}")"
+  preferred_dir=""
+  if [[ "${companion}" == "libcudss_mtlayer_gomp.so.0" && -n "${CUDSS_LIBRARY_DIR}" ]]; then
+    preferred_dir="${CUDSS_LIBRARY_DIR}"
+  fi
+  companion_path="$(find_companion "${companion}" "${preferred_dir}")"
+  if [[ "${companion}" == "libcudss.so.0" ]]; then
+    CUDSS_LIBRARY_DIR="$(dirname "${companion_path}")"
+  fi
   # Dereference, since these are commonly symlinks into a versioned file.
   cp -L "${companion_path}" "${STAGING}/${RESOURCE_DIR}/${companion}"
   echo "${companion}" >> "${MANIFEST}"

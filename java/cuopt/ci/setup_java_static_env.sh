@@ -52,7 +52,7 @@ rm -f "${MAVEN_TARBALL}"
 export PATH="${MAVEN_HOME}/bin:${PATH}"
 
 rapids-logger "Activating gcc-toolset-${TOOLSET_VERSION}"
-# shellcheck disable=SC1091
+# shellcheck disable=SC1090,SC1091
 . "/opt/rh/gcc-toolset-${TOOLSET_VERSION}/enable"
 export CC="/opt/rh/gcc-toolset-${TOOLSET_VERSION}/root/usr/bin/gcc"
 export CXX="/opt/rh/gcc-toolset-${TOOLSET_VERSION}/root/usr/bin/g++"

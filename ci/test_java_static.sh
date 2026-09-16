@@ -109,6 +109,22 @@ if ! cuopt_mvn -B -f "${REPO_ROOT}/java/cuopt/pom.xml" test \
       echo "----- ${f} -----"
       cat "${f}"
     done
+
+  # A crash while loading/using an extracted native library (rather than a plain assertion
+  # failure) is otherwise a dead end: the extraction directory is private and torn down with the
+  # runner, so nothing about what actually got bundled survives past this job. Dump each
+  # library's own dependency resolution -- an unresolved symbol/SONAME here, not visible from the
+  # packaging step alone, points straight at the mismatch (e.g. a companion resolved from a
+  # different install than the one actually linked).
+  NATIVE_EXTRACT_DIR="$(find /tmp -maxdepth 1 -name 'cuopt-native-*' -print -quit 2>/dev/null)"
+  if [[ -n "${NATIVE_EXTRACT_DIR}" ]]; then
+    rapids-logger "Test failure -- dumping native library dependency resolution"
+    for lib in "${NATIVE_EXTRACT_DIR}"/*.so*; do
+      [[ -f "${lib}" ]] || continue
+      echo "----- ldd ${lib} -----"
+      ldd "${lib}" 2>&1
+    done
+  fi
   exit 1
 fi
 
