@@ -167,6 +167,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       positive_definite(true),
       A_created(false),
       settings_(settings),
+      symbolic_done_(false),
       stream(handle_ptr->get_stream().get())
   {
     int major, minor, patch;
@@ -280,10 +281,28 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       cudss_mt_lib_file = CUDSS_MT_LIB_FILE_NAME;
     }
 
-    if (cudss_mt_lib_file != nullptr && detail::pin_cudss_threading_layer(cudss_mt_lib_file)) {
-      settings.log.printf("cuDSS Threading layer       : %s\n", cudss_mt_lib_file);
-      CUDSS_CALL_AND_CHECK_EXIT(
-        cudssSetThreadingLayer(handle, cudss_mt_lib_file), status, "cudssSetThreadingLayer");
+    if (cudss_mt_lib_file != nullptr) {
+      if (!detail::pin_cudss_threading_layer(cudss_mt_lib_file)) {
+        settings.log.printf(
+          "cuDSS Threading layer       : could not pin '%s'; falling back to single-threaded "
+          "cuDSS to avoid a possible crash during teardown. Set the CUDSS_THREADING_LIB "
+          "environment variable to an absolute path, or ensure the host provides "
+          "libgomp.so.1, to enable multi-threaded cuDSS.\n",
+          cudss_mt_lib_file);
+      } else {
+        cudssStatus_t threading_status = cudssSetThreadingLayer(handle, cudss_mt_lib_file);
+        if (threading_status == CUDSS_STATUS_SUCCESS) {
+          settings.log.printf("cuDSS Threading layer       : %s\n", cudss_mt_lib_file);
+        } else {
+          settings.log.printf(
+            "cuDSS Threading layer       : could not load '%s' (status = %d); falling back "
+            "to single-threaded cuDSS. Set the CUDSS_THREADING_LIB environment variable to "
+            "an absolute path, or ensure the host provides libgomp.so.1, to enable "
+            "multi-threaded cuDSS.\n",
+            cudss_mt_lib_file,
+            threading_status);
+        }
+      }
     }
 
     CUDSS_CALL_AND_CHECK_EXIT(cudssConfigCreate(&solverConfig), status, "cudssConfigCreate");
@@ -551,11 +570,21 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
     handle_ptr_->get_stream().sync();
 
+    symbolic_done_ = true;
     return 0;
   }
   i_t factorize(device_csr_matrix_t<i_t, f_t>& Arow) override
   {
     raft::common::nvtx::range fun_scope("Factorize: cuDSS");
+
+    if (!symbolic_done_ || !A_created) {
+      settings_.log.printf(
+        "Error: cuDSS factorize(device_csr) called before analyze (symbolic_done=%d "
+        "A_created=%d)\n",
+        static_cast<int>(symbolic_done_),
+        static_cast<int>(A_created));
+      return -1;
+    }
 
 // #define PRINT_MATRIX_NORM
 #ifdef PRINT_MATRIX_NORM
@@ -931,6 +960,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
   f_t* x_values_d;
   f_t* b_values_d;
 
+  bool symbolic_done_;
   const simplex::simplex_solver_settings_t<i_t, f_t>& settings_;
   CUgreenCtx barrier_green_ctx;
   CUstream stream;
