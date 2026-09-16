@@ -52,7 +52,7 @@ inline rmm::device_uvector<f_t> get_weighted_lagrangian_weights(
   const i_t TPB      = 128;
   const i_t n_blocks = problem.n_variables;
   compute_lagrangian_weights_kernel<i_t, f_t>
-    <<<n_blocks, TPB, 0, solution.handle_ptr->get_stream()>>>(
+    <<<n_blocks, TPB, 0, solution.handle_ptr->get_stream().get()>>>(
       problem.view(),
       raft::device_span<f_t>{cstr_left_weights.data(), cstr_left_weights.size()},
       raft::device_span<f_t>{cstr_right_weights.data(), cstr_right_weights.size()},

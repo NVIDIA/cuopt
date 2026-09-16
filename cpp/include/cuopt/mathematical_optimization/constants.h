@@ -59,6 +59,7 @@
 #define CUOPT_PRESOLVE                              "presolve"
 #define CUOPT_MIP_PROBING                           "mip_probing"
 #define CUOPT_DUAL_POSTSOLVE                        "dual_postsolve"
+#define CUOPT_SEQUENCE_SOLVE                        "sequence_solve"
 #define CUOPT_MIP_DETERMINISM_MODE                  "mip_determinism_mode"
 #define CUOPT_MIP_ABSOLUTE_TOLERANCE                "mip_absolute_tolerance"
 #define CUOPT_MIP_RELATIVE_TOLERANCE                "mip_relative_tolerance"

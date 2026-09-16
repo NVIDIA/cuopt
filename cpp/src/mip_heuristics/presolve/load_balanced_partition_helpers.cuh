@@ -271,7 +271,7 @@ log_dist_t<i_t> vertex_bin_t<i_t>::run(rmm::device_uvector<i_t>& reorganized_ver
                offsets_,
                vertex_begin_,
                vertex_end_,
-               handle_ptr->get_stream());
+               handle_ptr->get_stream().get());
 
   return log_dist_t<i_t>(reorganized_vertices, bin_offsets_);
 }

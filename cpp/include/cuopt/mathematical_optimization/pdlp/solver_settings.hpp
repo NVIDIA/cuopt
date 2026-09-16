@@ -8,6 +8,7 @@
 #pragma once
 
 #include <cuopt/mathematical_optimization/constants.h>
+#include <cuda/stream>
 #include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/cpu_pdlp_warm_start_data.hpp>
 #include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
@@ -24,6 +25,8 @@
 
 namespace cuopt {
 namespace CUOPT_EXPORT mathematical_optimization {
+
+class barrier_cache_t;
 
 // Forward declare solver_settings_t for friend class
 template <typename i_t, typename f_t>
@@ -151,7 +154,8 @@ class pdlp_solver_settings_t {
    */
   void set_initial_primal_solution(const f_t* initial_primal_solution,
                                    i_t size,
-                                   rmm::cuda_stream_view stream = rmm::cuda_stream_default);
+                                   cuda::stream_ref stream = cuda::stream_ref{
+                                     cudaStream_t{cudaStreamDefault}});
 
   /**
    * @brief Set an initial dual solution.
@@ -165,7 +169,8 @@ class pdlp_solver_settings_t {
    */
   void set_initial_dual_solution(const f_t* initial_dual_solution,
                                  i_t size,
-                                 rmm::cuda_stream_view stream = rmm::cuda_stream_default);
+                                 cuda::stream_ref stream = cuda::stream_ref{
+                                   cudaStream_t{cudaStreamDefault}});
 
   /** TODO batch mode: tmp
    * @brief Set an initial step size.
@@ -200,11 +205,12 @@ class pdlp_solver_settings_t {
    * @param constraint_mapping Constraints indices to scatter to in case the new
    * problem has less constraints
    */
-  void set_pdlp_warm_start_data(pdlp_warm_start_data_t<i_t, f_t>& pdlp_warm_start_data_view,
-                                const rmm::device_uvector<i_t>& var_mapping =
-                                  rmm::device_uvector<i_t>{0, rmm::cuda_stream_default},
-                                const rmm::device_uvector<i_t>& constraint_mapping =
-                                  rmm::device_uvector<i_t>{0, rmm::cuda_stream_default});
+  void set_pdlp_warm_start_data(
+    pdlp_warm_start_data_t<i_t, f_t>& pdlp_warm_start_data_view,
+    const rmm::device_uvector<i_t>& var_mapping =
+      rmm::device_uvector<i_t>{0, cuda::stream_ref{cudaStream_t{cudaStreamDefault}}},
+    const rmm::device_uvector<i_t>& constraint_mapping = rmm::device_uvector<i_t>{
+      0, cuda::stream_ref{cudaStream_t{cudaStreamDefault}}});
 
   // Same but for the Cython interface
   void set_pdlp_warm_start_data(const f_t* current_primal_solution,
@@ -365,6 +371,10 @@ class pdlp_solver_settings_t {
   // Used to force batch PDLP to solve a subbatch of the problems at a time
   // The 0 default value will make the solver use its heuristic to determine the subbatch size
   i_t fixed_batch_size{0};
+  /** When true, the first GPU barrier/QCQP solve retains cache state for later reuse. */
+  bool sequence_solve{false};
+  /** Non-owning cache pointer set by ``call_solve`` for barrier cache reuse. */
+  barrier_cache_t* barrier_cache{nullptr};
 
  private:
   /** Initial primal solution */

@@ -143,7 +143,7 @@ static void convert_to_maximization_problem(mip::problem_t<i_t, f_t>& op_problem
                           op_problem.objective_coefficients.data(),
                           op_problem.objective_coefficients.size(),
                           mip::negate<f_t>(),
-                          op_problem.handle_ptr->get_stream());
+                          op_problem.handle_ptr->get_stream().get());
   }
   // Negate objective scaling factor and objective offset so that primal / dual stay same sign after
   // negating objective coeffs
@@ -219,7 +219,7 @@ static bool check_transpose_validity(const rmm::device_uvector<f_t>& coefficient
 
   rmm::device_scalar<bool> failed(false_v, handle_ptr->get_stream());
   kernel_check_transpose_validity<i_t, f_t>
-    <<<offsets.size() - 1, 64, 0, handle_ptr->get_stream()>>>(
+    <<<offsets.size() - 1, 64, 0, handle_ptr->get_stream().get()>>>(
       raft::device_span<const f_t>(coefficients.data(), coefficients.size()),
       raft::device_span<const i_t>(offsets.data(), offsets.size()),
       raft::device_span<const i_t>(variables.data(), variables.size()),
@@ -366,7 +366,7 @@ static void csrsort_cusparse(rmm::device_uvector<f_t>& values,
   auto stream = offsets.stream();
   cusparseHandle_t handle;
   cusparseCreate(&handle);
-  cusparseSetStream(handle, stream);
+  cusparseSetStream(handle, stream.get());
 
   i_t nnz = values.size();
   i_t m   = rows;
@@ -411,14 +411,14 @@ static void convert_greater_to_less(mip::problem_t<i_t, f_t>& problem)
 
   constexpr i_t TPB = 256;
   kernel_convert_greater_to_less<i_t, f_t>
-    <<<problem.n_constraints, TPB, 0, handle_ptr->get_stream()>>>(
+    <<<problem.n_constraints, TPB, 0, handle_ptr->get_stream().get()>>>(
       raft::device_span<f_t>(problem.coefficients.data(), problem.coefficients.size()),
       raft::device_span<const i_t>(problem.offsets.data(), problem.offsets.size()),
       raft::device_span<f_t>(problem.constraint_lower_bounds.data(),
                              problem.constraint_lower_bounds.size()),
       raft::device_span<f_t>(problem.constraint_upper_bounds.data(),
                              problem.constraint_upper_bounds.size()));
-  RAFT_CHECK_CUDA(handle_ptr->get_stream());
+  RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
 
   problem.compute_transpose_of_problem();
 

@@ -26,6 +26,7 @@
 #include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/solver.cuh>
 
+#include <barrier/barrier_transform.hpp>
 #include <cuopt/mathematical_optimization/backend_selection.hpp>
 #include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
 #include <cuopt/mathematical_optimization/cpu_optimization_problem_solution.hpp>
@@ -35,6 +36,7 @@
 #include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/solve.hpp>
+#include <cuopt/mathematical_optimization/utilities/barrier_cache.hpp>
 
 #include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
 #include <utilities/copy_helpers.hpp>
@@ -49,6 +51,7 @@
 #include <pdlp/utilities/problem_checking.cuh>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
+#include <cuda/stream>
 #include <raft/core/cusparse_macros.hpp>
 #include <raft/core/device_setter.hpp>
 #include <raft/core/handle.hpp>
@@ -72,18 +75,46 @@
 
 namespace cuopt::mathematical_optimization {
 
+namespace {
+
+template <typename i_t, typename f_t>
+simplex::user_problem_t<i_t, f_t> user_problem_from_transform(
+  raft::handle_t const* handle_ptr,
+  optimization_problem_t<i_t, f_t>& model,
+  cuopt::mathematical_optimization::barrier_transform_t const& xf)
+{
+  simplex::user_problem_t<i_t, f_t> user_problem(handle_ptr);
+  user_problem.num_rows  = xf.user_num_rows;
+  user_problem.num_cols  = xf.user_num_cols;
+  user_problem.objective = model.get_objective_coefficients_host();
+  user_problem.row_sense = xf.row_sense;
+  user_problem.rhs.assign(static_cast<std::size_t>(xf.user_num_rows), f_t(0));
+  user_problem.obj_scale    = static_cast<f_t>(xf.obj_scale);
+  user_problem.obj_constant = static_cast<f_t>(xf.obj_constant);
+  // Nonempty Q so the cache-reuse path accepts this as a QP (it rejects empty Q).
+  user_problem.Q_values.assign(1, f_t(1));
+  user_problem.cone_var_start               = xf.cone_var_start;
+  user_problem.second_order_cone_dims       = xf.second_order_cone_dims;
+  user_problem.original_num_cols            = xf.expanded_original_num_cols;
+  user_problem.original_col_to_expanded_col = xf.original_col_to_expanded_col;
+  return user_problem;
+}
+
+}  // namespace
+
 template <typename From, typename To>
 extern rmm::device_uvector<To> gpu_cast(const rmm::device_uvector<From>& src,
-                                        rmm::cuda_stream_view stream);
+                                        cuda::stream_ref stream);
 
 // This serves as both a warm up but also a mandatory initial call to setup cuSparse and cuBLAS
 static void init_handler(const raft::handle_t* handle_ptr)
 {
   // Init cuBlas / cuSparse context here to avoid having it during solving time
   RAFT_CUBLAS_TRY(raft::linalg::detail::cublassetpointermode(
-    handle_ptr->get_cublas_handle(), CUBLAS_POINTER_MODE_DEVICE, handle_ptr->get_stream()));
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsesetpointermode(
-    handle_ptr->get_cusparse_handle(), CUSPARSE_POINTER_MODE_DEVICE, handle_ptr->get_stream()));
+    handle_ptr->get_cublas_handle(), CUBLAS_POINTER_MODE_DEVICE, handle_ptr->get_stream().get()));
+  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsesetpointermode(handle_ptr->get_cusparse_handle(),
+                                                                 CUSPARSE_POINTER_MODE_DEVICE,
+                                                                 handle_ptr->get_stream().get()));
 }
 
 // Corresponds to the first good general settings we found
@@ -335,7 +366,7 @@ std::atomic<int> global_concurrent_halt{0};
 template <typename f_t>
 void adjust_dual_solution_and_reduced_cost(rmm::device_uvector<f_t>& dual_solution,
                                            rmm::device_uvector<f_t>& reduced_cost,
-                                           rmm::cuda_stream_view stream_view)
+                                           cuda::stream_ref stream_view)
 {
   // y <- -y
   cub::DeviceTransform::Transform(
@@ -343,7 +374,7 @@ void adjust_dual_solution_and_reduced_cost(rmm::device_uvector<f_t>& dual_soluti
     dual_solution.data(),
     dual_solution.size(),
     [] HD(f_t dual) { return -dual; },
-    stream_view);
+    stream_view.get());
 
   // z <- -z
   cub::DeviceTransform::Transform(
@@ -351,7 +382,7 @@ void adjust_dual_solution_and_reduced_cost(rmm::device_uvector<f_t>& dual_soluti
     reduced_cost.data(),
     reduced_cost.size(),
     [] HD(f_t reduced_cost) { return -reduced_cost; },
-    stream_view);
+    stream_view.get());
 }
 
 template <typename i_t, typename f_t>
@@ -492,7 +523,8 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   const simplex::user_problem_t<i_t, f_t>& user_problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   const timer_t& timer,
-  const raft::handle_t* handle_ptr)
+  const raft::handle_t* handle_ptr,
+  cuopt::mathematical_optimization::barrier_cache_t* cache = nullptr)
 {
   f_t norm_user_objective = vector_norm2<i_t, f_t>(user_problem.objective);
   f_t norm_rhs            = vector_norm2<i_t, f_t>(user_problem.rhs);
@@ -533,7 +565,7 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
 
   simplex::lp_solution_t<i_t, f_t> solution(user_problem.num_rows, user_problem.num_cols);
   auto status = simplex::solve_linear_program_with_barrier<i_t, f_t>(
-    user_problem, barrier_settings, timer.get_tic_start(), solution, handle_ptr);
+    user_problem, barrier_settings, timer.get_tic_start(), solution, cache, handle_ptr);
 
   if (status == simplex::lp_status_t::OPTIMAL) {
     barrier::project_barrier_solution_to_model_variables(user_problem, solution);
@@ -557,12 +589,14 @@ template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> run_barrier(
   mip::problem_t<i_t, f_t>& problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
-  const timer_t& timer)
+  const timer_t& timer,
+  cuopt::mathematical_optimization::barrier_cache_t* cache = nullptr)
 {
   // Convert data structures to dual simplex format and back
   simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
     cuopt_problem_to_user_problem<i_t, f_t>(problem.handle_ptr, problem, false);
-  auto sol_dual_simplex = run_barrier(dual_simplex_problem, settings, timer, problem.handle_ptr);
+  auto sol_dual_simplex =
+    run_barrier(dual_simplex_problem, settings, timer, problem.handle_ptr, cache);
   return convert_dual_simplex_sol(problem,
                                   std::get<0>(sol_dual_simplex),
                                   std::get<1>(sol_dual_simplex),
@@ -1280,9 +1314,9 @@ template <typename i_t, typename f_t>
 static optimization_problem_solution_t<i_t, f_t> run_batch_pdlp_splitting(
   optimization_problem_t<i_t, f_t>& problem, pdlp_solver_settings_t<i_t, f_t> const& settings)
 {
-  rmm::cuda_stream_view stream = problem.get_handle_ptr()->get_stream();
-  const i_t n_vars             = problem.get_n_variables();
-  const i_t n_constraints      = problem.get_n_constraints();
+  cuda::stream_ref stream = problem.get_handle_ptr()->get_stream();
+  const i_t n_vars        = problem.get_n_variables();
+  const i_t n_constraints = problem.get_n_constraints();
 
   // Splitting path only supports un-expanded problems + per-climber variable-bound overrides.
   cuopt_expects(problem.get_objective_coefficients().size() == static_cast<size_t>(n_vars),
@@ -1610,8 +1644,8 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
         {
           try {
             auto call_barrier_thread = [&]() {
-              rmm::cuda_stream_view barrier_stream = rmm::cuda_stream_per_thread;
-              barrier_handle_ptr = std::make_unique<raft::handle_t>(barrier_stream);
+              cuda::stream_ref barrier_stream = cuda::stream_ref{cudaStreamPerThread};
+              barrier_handle_ptr              = std::make_unique<raft::handle_t>(barrier_stream);
               run_barrier_thread<i_t, f_t>(dual_simplex_problem,
                                            settings_pdlp,
                                            sol_barrier_ptr,
@@ -1821,7 +1855,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_with_method(
     if (settings.method == method_t::DualSimplex) {
       return run_dual_simplex(problem, settings, timer);
     } else if (settings.method == method_t::Barrier) {
-      return run_barrier(problem, settings, timer);
+      return run_barrier(problem, settings, timer, settings.barrier_cache);
     } else if (settings.method == method_t::Concurrent) {
       return run_concurrent(problem, settings, timer, is_batch_mode);
     } else {
@@ -1853,7 +1887,17 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
 
     auto qcqp_timer = cuopt::timer_t(settings.time_limit);
 
-    if (problem_checking) {
+    auto* cache    = settings.barrier_cache;
+    auto const* xf = (cache != nullptr && cache->c_dirty()) ? cache->transform() : nullptr;
+    const bool reuse_from_cache =
+      settings.user_problem_file.empty() && xf != nullptr && xf->barrier_lp != nullptr &&
+      settings.barrier_presolve_bound_free_variables == 0 && op_problem.has_quadratic_objective() &&
+      !op_problem.has_quadratic_constraints() && xf->second_order_cone_dims.empty() &&
+      static_cast<int>(xf->row_sense.size()) == xf->user_num_rows &&
+      op_problem.get_n_variables() == xf->user_num_cols &&
+      op_problem.get_n_constraints() == xf->user_num_rows;
+
+    if (problem_checking && !reuse_from_cache) {
       problem_checking_t<i_t, f_t>::check_problem_representation(op_problem);
       if (problem_checking_t<i_t, f_t>::has_crossing_bounds(op_problem)) {
         return optimization_problem_solution_t<i_t, f_t>(
@@ -1881,11 +1925,22 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
       CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());
       op_problem.write_to_mps(settings.user_problem_file);
     }
-    // Convert data structures to dual simplex format and back
-    simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
-      cuopt_optimization_problem_to_user_problem<i_t, f_t>(op_problem.get_handle_ptr(), op_problem);
-    auto sol_dual_simplex =
-      run_barrier(dual_simplex_problem, settings, qcqp_timer, op_problem.get_handle_ptr());
+    simplex::user_problem_t<i_t, f_t> dual_simplex_problem(op_problem.get_handle_ptr());
+    if (reuse_from_cache) {
+      dual_simplex_problem = user_problem_from_transform(
+        op_problem.get_handle_ptr(), op_problem, *settings.barrier_cache->transform());
+    } else {
+      dual_simplex_problem = cuopt_optimization_problem_to_user_problem<i_t, f_t>(
+        op_problem.get_handle_ptr(), op_problem);
+    }
+    auto sol_dual_simplex = run_barrier(dual_simplex_problem,
+                                        settings,
+                                        qcqp_timer,
+                                        op_problem.get_handle_ptr(),
+                                        settings.barrier_cache);
+    if (!reuse_from_cache && cache != nullptr && cache->transform() != nullptr) {
+      cache->transform()->maximize = op_problem.get_sense();
+    }
     auto solution = convert_dual_simplex_sol(op_problem,
                                              std::get<0>(sol_dual_simplex),
                                              std::get<1>(sol_dual_simplex),
@@ -1937,7 +1992,7 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
 template <typename i_t, typename f_t>
 static std::optional<optimization_problem_solution_t<i_t, f_t>>
 terminal_solution_from_presolve_status(mip::third_party_presolve_status_t status,
-                                       rmm::cuda_stream_view stream)
+                                       cuda::stream_ref stream)
 {
   switch (status) {
     case mip::third_party_presolve_status_t::INFEASIBLE:
@@ -2366,7 +2421,7 @@ cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> op_problem_to_m
   raft::copy(h_constr_lb.data(), d_constr_lb.data(), d_constr_lb.size(), stream);
   raft::copy(h_constr_ub.data(), d_constr_ub.data(), d_constr_ub.size(), stream);
   raft::copy(h_var_types_enum.data(), d_var_types.data(), d_var_types.size(), stream);
-  stream.synchronize();
+  stream.sync();
 
   if (!h_offsets.empty()) {
     mps.set_csr_constraint_matrix(
@@ -2694,7 +2749,7 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
   raft::handle_t handle(stream);
 
   // Convert CPU problem to GPU problem
-  auto gpu_problem = cpu_problem.to_optimization_problem(&handle);
+  auto gpu_problem = to_optimization_problem(cpu_problem, &handle);
 
   // Synchronize before solving to ensure conversion is complete
   stream.synchronize();
@@ -2704,7 +2759,7 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
     *gpu_problem, settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
 
   // Ensure all GPU work from the solve is complete before D2H copies in to_cpu_solution(),
-  // which uses rmm::cuda_stream_per_thread (a different stream than the solver used).
+  // which uses the per-thread default stream (a different stream than the solver used).
   stream.synchronize();
 
   // Convert GPU solution back to CPU
