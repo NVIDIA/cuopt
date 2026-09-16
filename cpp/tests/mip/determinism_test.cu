@@ -15,7 +15,6 @@
 #include <utilities/common_utils.hpp>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/error.hpp>
-#include <utilities/seed_generator.cuh>
 
 #include <raft/core/handle.hpp>
 #include <raft/util/cudart_utils.hpp>
@@ -203,11 +202,8 @@ TEST_P(DeterministicBBInstanceTest, deterministic_across_runs)
   settings.work_limit       = work_limit;
   settings.seed             = seed;
 
-  cuopt::seed_generator::set_seed(seed);
   auto solution1 = solve_mip(&handle_, problem, settings);
-  cuopt::seed_generator::set_seed(seed);
   auto solution2 = solve_mip(&handle_, problem, settings);
-  cuopt::seed_generator::set_seed(seed);
   auto solution3 = solve_mip(&handle_, problem, settings);
 
   EXPECT_EQ(solution1.get_termination_status(), solution2.get_termination_status());

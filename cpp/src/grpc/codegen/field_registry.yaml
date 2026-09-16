@@ -558,6 +558,7 @@ pdlp_settings:
   - barrier_dual_initial_point:
       field_num: 26
       type: int32
+      from_proto_cast: "barrier_dual_initial_point_t"
       optional: true
   - eliminate_dense_columns:
       field_num: 27

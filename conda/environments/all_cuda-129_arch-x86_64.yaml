@@ -31,8 +31,6 @@ dependencies:
 - libabseil
 - libboost-devel
 - libcudss-dev >=0.7,<0.8
-- libcurand-dev
-- libcusolver-dev
 - libcusparse-dev
 - libgrpc >=1.78.0,<1.80.0a0
 - libnvjitlink-dev

@@ -295,7 +295,7 @@ dependencies:
       - output_types: conda
         packages:
           - maven
-          - openjdk=11.*
+          - openjdk=17.*
   test_cpp:
     common:
       - output_types: [conda]
@@ -749,8 +749,6 @@ dependencies:
       - output_types: [conda]
         packages:
           - libcudss-dev >=0.7,<0.8
-          - libcurand-dev
-          - libcusolver-dev
           - libcusparse-dev
           - cuda-nvtx-dev
           - libnvjitlink-dev

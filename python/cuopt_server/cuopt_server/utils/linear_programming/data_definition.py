@@ -501,7 +501,8 @@ class SolverConfig(BaseModel):
         description="Set the type of dual initial point to use for the barrier"
         "solver. -1 for automatic, 0 to use Lustig, Marsten, and Shanno"
         "initial point, 1 to use initial point from a dual least squares"
-        "problem",
+        "problem, 2 to use Sturm/SeDuMi mu-based primal+dual"
+        "point",
     )
     eliminate_dense_columns: Optional[bool] = Field(
         default=True,
@@ -540,6 +541,11 @@ class SolverConfig(BaseModel):
         "access to the dual solution. "
         "Default is True for LP problems when presolve is enabled. "
         "This is not relevant for MIP problems.",
+    )
+    sequence_solve: Optional[bool] = Field(
+        default=None,
+        description="Set True to retain GPU barrier cache state for a later re-solve "
+        "after updating the linear objective. Default is False.",
     )
     log_to_console: Optional[bool] = Field(
         default=True,

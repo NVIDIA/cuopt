@@ -1607,6 +1607,41 @@ static void set_host_data_view(
     raft::device_span<i_t>(fj_cpu.h_reverse_offsets.data(), fj_cpu.h_reverse_offsets.size());
   fj_cpu.view.pb.objective_coefficients =
     raft::device_span<f_t>(fj_cpu.h_obj_coeffs.data(), fj_cpu.h_obj_coeffs.size());
+
+  // Spans over the arrays wired above, so the model reads the same memory under one name. A
+  // host-LP climber carries no presolve scaling, which is what the identity default stands for.
+  auto model       = std::make_shared<fj_cpu_problem_t<i_t, f_t>>();
+  model->offsets   = raft::device_span<i_t>(fj_cpu.h_offsets.data(), fj_cpu.h_offsets.size());
+  model->variables = raft::device_span<i_t>(fj_cpu.h_variables.data(), fj_cpu.h_variables.size());
+  model->coefficients =
+    raft::device_span<f_t>(fj_cpu.h_coefficients.data(), fj_cpu.h_coefficients.size());
+  model->reverse_offsets =
+    raft::device_span<i_t>(fj_cpu.h_reverse_offsets.data(), fj_cpu.h_reverse_offsets.size());
+  model->reverse_constraints = raft::device_span<i_t>(fj_cpu.h_reverse_constraints.data(),
+                                                      fj_cpu.h_reverse_constraints.size());
+  model->cstr_lb = raft::device_span<f_t>(fj_cpu.h_cstr_lb.data(), fj_cpu.h_cstr_lb.size());
+  model->cstr_ub = raft::device_span<f_t>(fj_cpu.h_cstr_ub.data(), fj_cpu.h_cstr_ub.size());
+  model->h_obj_coeffs =
+    raft::device_span<f_t>(fj_cpu.h_obj_coeffs.data(), fj_cpu.h_obj_coeffs.size());
+  model->h_var_types =
+    raft::device_span<var_t>(fj_cpu.h_var_types.data(), fj_cpu.h_var_types.size());
+  model->h_original_ids =
+    raft::device_span<i_t>(fj_cpu.h_original_ids.data(), fj_cpu.h_original_ids.size());
+  model->h_reverse_original_ids = raft::device_span<i_t>(fj_cpu.h_reverse_original_ids.data(),
+                                                         fj_cpu.h_reverse_original_ids.size());
+  model->h_related_variables =
+    raft::device_span<i_t>(fj_cpu.h_related_variables.data(), fj_cpu.h_related_variables.size());
+  model->h_related_variables_offsets = raft::device_span<i_t>(
+    fj_cpu.h_related_variables_offsets.data(), fj_cpu.h_related_variables_offsets.size());
+  model->n_variables   = n_variables;
+  model->n_constraints = n_constraints;
+  model->tolerances    = tolerances;
+  model->probing_cache = fj_cpu.probing_cache;
+  if (fj_cpu.pb_ptr != nullptr) {
+    model->objective_scaling_factor = fj_cpu.pb_ptr->presolve_data.objective_scaling_factor;
+    model->objective_offset         = fj_cpu.pb_ptr->presolve_data.objective_offset;
+  }
+  fj_cpu.problem = std::move(model);
 }
 
 template <typename i_t, typename f_t>
@@ -1880,23 +1915,31 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_t<i_t, f_t>::create_cpu_climber(
   init_fj_cpu(*fj_cpu, solution, left_weights, right_weights, objective_weight, probing_cache);
   fj_cpu->settings = settings;
   if (randomize_params) {
-    auto rng                 = std::mt19937(cuopt::seed_generator::get_seed());
-    fj_cpu->mtm_viol_samples = std::uniform_int_distribution<i_t>(15, 50)(rng);
-    fj_cpu->mtm_sat_samples  = std::uniform_int_distribution<i_t>(10, 30)(rng);
-    fj_cpu->nnz_samples      = std::uniform_int_distribution<i_t>(2000, 15000)(rng);
-    fj_cpu->perturb_interval = std::uniform_int_distribution<i_t>(50, 500)(rng);
+    auto host_rng            = std::mt19937(rng.next_i64());
+    fj_cpu->mtm_viol_samples = std::uniform_int_distribution<i_t>(15, 50)(host_rng);
+    fj_cpu->mtm_sat_samples  = std::uniform_int_distribution<i_t>(10, 30)(host_rng);
+    fj_cpu->nnz_samples      = std::uniform_int_distribution<i_t>(2000, 15000)(host_rng);
+    fj_cpu->perturb_interval = std::uniform_int_distribution<i_t>(50, 500)(host_rng);
   }
-  fj_cpu->settings.seed = cuopt::seed_generator::get_seed();
+  fj_cpu->settings.seed = rng.next_i64();
   return fj_cpu;  // move
 }
 
 template <typename i_t, typename f_t>
 void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double work_unit_limit)
 {
-  i_t local_mins  = 0;
-  auto loop_start = std::chrono::high_resolution_clock::now();
-  auto time_limit = std::chrono::milliseconds(static_cast<i_t>(std::floor(in_time_limit * 1000.0)));
-  auto loop_time_start = std::chrono::high_resolution_clock::now();
+  // A model whose columns are all binary and whose rows carry int8/int16 coefficients is searched
+  // by the specialized engine instead. It reports through the same callbacks and declines rather
+  // than approximating, so the general path below still covers everything else.
+  if (try_cpufj_binary_solve(*fj_cpu, in_time_limit, work_unit_limit)) return;
+
+  i_t local_mins          = 0;
+  auto loop_start         = std::chrono::high_resolution_clock::now();
+  const bool bounded_time = std::isfinite((double)in_time_limit);
+  const auto time_limit   = bounded_time
+                              ? std::chrono::milliseconds((int64_t)std::floor(in_time_limit * 1000.0))
+                              : std::chrono::milliseconds::zero();
+  auto loop_time_start    = std::chrono::high_resolution_clock::now();
 
   fj_cpu->rng.seed(fj_cpu->settings.seed);
 
@@ -1908,8 +1951,7 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
   while (!fj_cpu->halted && !fj_cpu->preemption_flag.load()) {
     // Check if 5 seconds have passed
     auto now = std::chrono::high_resolution_clock::now();
-    if (in_time_limit < std::numeric_limits<f_t>::infinity() &&
-        now - loop_time_start > time_limit) {
+    if (bounded_time && now - loop_time_start > time_limit) {
       CUOPT_LOG_TRACE("%sTime limit of %.4f seconds reached, breaking loop at iteration %d",
                       fj_cpu->log_prefix.c_str(),
                       time_limit.count() / 1000.f,
@@ -2073,6 +2115,7 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_standalone(
   problem_t<i_t, f_t>& problem,
   solution_t<i_t, f_t>& solution,
   std::atomic<bool>& preemption_flag,
+  uint64_t seed,
   fj_settings_t settings)
 {
   raft::common::nvtx::range scope("init_fj_cpu_standalone");
@@ -2084,7 +2127,7 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_standalone(
   const probing_cache_t<i_t, f_t>* no_implications = nullptr;
   init_fj_cpu(*fj_cpu, solution, default_weights, default_weights, 0.0, no_implications);
   fj_cpu->settings      = settings;
-  fj_cpu->settings.seed = cuopt::seed_generator::get_seed();
+  fj_cpu->settings.seed = seed;
 
   return fj_cpu;
 }
@@ -2165,6 +2208,7 @@ template std::unique_ptr<fj_cpu_climber_t<int, float>> init_fj_cpu_standalone(
   problem_t<int, float>& problem,
   solution_t<int, float>& solution,
   std::atomic<bool>& preemption_flag,
+  uint64_t seed,
   fj_settings_t settings);
 template void finalize_fj_cpu_host_initialization(
   fj_cpu_climber_t<int, float>& fj_cpu,
@@ -2185,6 +2229,7 @@ template std::unique_ptr<fj_cpu_climber_t<int, double>> init_fj_cpu_standalone(
   problem_t<int, double>& problem,
   solution_t<int, double>& solution,
   std::atomic<bool>& preemption_flag,
+  uint64_t seed,
   fj_settings_t settings);
 template void finalize_fj_cpu_host_initialization(
   fj_cpu_climber_t<int, double>& fj_cpu,

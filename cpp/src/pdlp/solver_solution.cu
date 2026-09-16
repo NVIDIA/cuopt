@@ -15,6 +15,7 @@
 #include <utilities/logger.hpp>
 #include <utilities/macros.cuh>
 
+#include <cuda/stream>
 #include <raft/core/nvtx.hpp>
 #include <raft/util/cudart_utils.hpp>
 
@@ -25,7 +26,7 @@ namespace cuopt::mathematical_optimization {
 
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
-  pdlp_termination_status_t termination_status, rmm::cuda_stream_view stream_view)
+  pdlp_termination_status_t termination_status, cuda::stream_ref stream_view)
   : primal_solution_{0, stream_view},
     dual_solution_{0, stream_view},
     reduced_cost_{0, stream_view},
@@ -38,7 +39,7 @@ optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
 
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
-  cuopt::logic_error error_status_, rmm::cuda_stream_view stream_view)
+  cuopt::logic_error error_status_, cuda::stream_ref stream_view)
   : primal_solution_{0, stream_view},
     dual_solution_{0, stream_view},
     reduced_cost_{0, stream_view},
@@ -210,7 +211,7 @@ void optimization_problem_solution_t<i_t, f_t>::write_additional_termination_sta
 
 template <typename i_t, typename f_t>
 void optimization_problem_solution_t<i_t, f_t>::write_to_file(std::string_view filename,
-                                                              rmm::cuda_stream_view stream_view,
+                                                              cuda::stream_ref stream_view,
                                                               bool generate_variable_values)
 {
   raft::common::nvtx::range fun_scope("write final solution to file");
@@ -235,11 +236,10 @@ void optimization_problem_solution_t<i_t, f_t>::write_to_file(std::string_view f
   dual_solution.resize(dual_solution_.size());
   reduced_cost.resize(reduced_cost_.size());
   raft::copy(
-    primal_solution.data(), primal_solution_.data(), primal_solution_.size(), stream_view.value());
-  raft::copy(
-    dual_solution.data(), dual_solution_.data(), dual_solution_.size(), stream_view.value());
-  raft::copy(reduced_cost.data(), reduced_cost_.data(), reduced_cost_.size(), stream_view.value());
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view.value()));
+    primal_solution.data(), primal_solution_.data(), primal_solution_.size(), stream_view.get());
+  raft::copy(dual_solution.data(), dual_solution_.data(), dual_solution_.size(), stream_view.get());
+  raft::copy(reduced_cost.data(), reduced_cost_.data(), reduced_cost_.size(), stream_view.get());
+  stream_view.sync();
 
   myfile << "{ " << std::endl;
   myfile << "\t\"Termination reason\" : \"" << get_termination_status_string() << "\","
@@ -431,7 +431,7 @@ optimization_problem_solution_t<i_t, f_t>::get_pdlp_warm_start_data()
 
 template <typename i_t, typename f_t>
 void optimization_problem_solution_t<i_t, f_t>::write_to_sol_file(
-  std::string_view filename, rmm::cuda_stream_view stream_view) const
+  std::string_view filename, cuda::stream_ref stream_view) const
 {
   cuopt_expects(termination_stats_.size() == 1,
                 error_type_t::ValidationError,
@@ -446,9 +446,8 @@ void optimization_problem_solution_t<i_t, f_t>::write_to_sol_file(
   auto objective_value = get_objective_value(0);
   std::vector<f_t> solution;
   solution.resize(primal_solution_.size());
-  raft::copy(
-    solution.data(), primal_solution_.data(), primal_solution_.size(), stream_view.value());
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view.value()));
+  raft::copy(solution.data(), primal_solution_.data(), primal_solution_.size(), stream_view.get());
+  stream_view.sync();
   solution_writer_t::write_solution_to_sol_file(
     std::string(filename), status, objective_value, var_names_, solution);
 }

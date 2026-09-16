@@ -24,6 +24,7 @@ class worker_pool_t {
             const std::vector<simplex::variable_type_t>& var_type,
             mip_symmetry_t<i_t, f_t>* symmetry,
             const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+            pseudo_costs_t<i_t, f_t>& pc,
             const std::vector<f_t>& root_solution,
             const std::vector<f_t>& root_edge_norm,
             const uint64_t rng_offset = 0)
@@ -36,7 +37,7 @@ class worker_pool_t {
     idle_workers_.clear_resize(num_workers);
     for (i_t i = 0; i < num_workers; ++i) {
       workers_[i] = std::make_unique<WorkerType>(
-        i, original_lp, Arow, var_type, settings, root_solution, root_edge_norm, rng_offset);
+        i, original_lp, Arow, var_type, settings, pc, root_solution, root_edge_norm, rng_offset);
       idle_workers_.push_back(i);
       // Propagate the (possibly null) symmetry pointer; workers lazily build
       // their orbital_fixing/lexical_reduction state via ensure_orbital_fixing().

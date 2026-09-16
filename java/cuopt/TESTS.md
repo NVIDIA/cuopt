@@ -20,7 +20,7 @@ Build the JNI library and run all Java tests with:
 
 ```bash
 cd /path/to/cuopt/java/cuopt
-export JAVA_HOME=/path/to/jdk-11
+export JAVA_HOME=/path/to/jdk-17
 export CUOPT_PREFIX=/path/to/cuopt/conda/environment
 bash scripts/test.sh
 ```

@@ -1,0 +1,256 @@
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+import logging
+import os
+from typing import Any
+
+from cuopt import linear_programming
+from cuopt.linear_programming.solver.solver_parameters import solver_params
+from cuopt.linear_programming.solver.solver_wrapper import (
+    LPTerminationStatus,
+    MILPTerminationStatus,
+)
+
+
+def ignored_warning(field):
+    return f"solver config {field} ignored in the cuopt service"
+
+
+def create_data_model(LP_data):
+    warnings = []
+
+    # Create data model object
+    data_model = linear_programming.DataModel()
+
+    csr_constraint_matrix = LP_data.csr_constraint_matrix
+    data_model.set_csr_constraint_matrix(
+        csr_constraint_matrix.values,
+        csr_constraint_matrix.indices,
+        csr_constraint_matrix.offsets,
+    )
+
+    constraint_bounds = LP_data.constraint_bounds
+    if constraint_bounds.bounds is not None:
+        data_model.set_constraint_bounds(constraint_bounds.bounds)
+    if constraint_bounds.types is not None:
+        if len(constraint_bounds.types):
+            data_model.set_row_types(constraint_bounds.types)
+    if constraint_bounds.upper_bounds is not None:
+        if len(constraint_bounds.upper_bounds):
+            data_model.set_constraint_upper_bounds(
+                constraint_bounds.upper_bounds
+            )
+    if constraint_bounds.lower_bounds is not None:
+        if len(constraint_bounds.lower_bounds):
+            data_model.set_constraint_lower_bounds(
+                constraint_bounds.lower_bounds
+            )
+
+    objective_data = LP_data.objective_data
+    if objective_data.coefficients is not None:
+        data_model.set_objective_coefficients(objective_data.coefficients)
+    if objective_data.scalability_factor is not None:
+        data_model.set_objective_scaling_factor(
+            objective_data.scalability_factor
+        )
+    if objective_data.offset is not None:
+        data_model.set_objective_offset(objective_data.offset)
+
+    variable_bounds = LP_data.variable_bounds
+    if variable_bounds.upper_bounds is not None:
+        data_model.set_variable_upper_bounds(variable_bounds.upper_bounds)
+    if variable_bounds.lower_bounds is not None:
+        data_model.set_variable_lower_bounds(variable_bounds.lower_bounds)
+
+    initial_sol = LP_data.initial_solution
+    if initial_sol is not None:
+        if initial_sol.primal is not None:
+            data_model.set_initial_primal_solution(initial_sol.primal)
+        if initial_sol.dual is not None:
+            data_model.set_initial_dual_solution(initial_sol.dual)
+
+    if LP_data.maximize is not None:
+        data_model.set_maximize(LP_data.maximize)
+
+    if LP_data.variable_types is not None:
+        data_model.set_variable_types(LP_data.variable_types)
+
+    if LP_data.variable_names is not None:
+        data_model.set_variable_names(LP_data.variable_names)
+
+    return warnings, data_model
+
+
+def create_solver(LP_data, warmstart_data):
+    warnings = []
+    solver_settings = linear_programming.SolverSettings()
+
+    if LP_data.solver_config is not None:
+        solver_config = LP_data.solver_config
+        for param in solver_params:
+            param_value = None
+            if param.endswith("tolerance"):
+                param_value = getattr(solver_config.tolerances, param, None)
+            else:
+                param_value = getattr(solver_config, param, None)
+            if param_value is not None and param_value != "":
+                solver_settings.set_parameter(param, param_value)
+
+    if LP_data.solver_config is not None:
+        solver_config = LP_data.solver_config
+
+        try:
+            lp_time_limit = float(os.environ.get("CUOPT_LP_TIME_LIMIT_SEC"))
+        except Exception:
+            lp_time_limit = None
+        if solver_config.time_limit is None:
+            time_limit = lp_time_limit
+        elif lp_time_limit:
+            time_limit = min(solver_config.time_limit, lp_time_limit)
+        else:
+            time_limit = solver_config.time_limit
+        if time_limit is not None:
+            logging.debug(f"setting LP time limit to {time_limit}sec")
+            solver_settings.set_parameter("time_limit", time_limit)
+
+        try:
+            lp_iteration_limit = int(
+                os.environ.get("CUOPT_LP_ITERATION_LIMIT")
+            )
+        except Exception:
+            lp_iteration_limit = None
+        if solver_config.iteration_limit is None:
+            iteration_limit = lp_iteration_limit
+        elif lp_iteration_limit:
+            iteration_limit = min(
+                solver_config.iteration_limit, lp_iteration_limit
+            )
+        else:
+            iteration_limit = solver_config.iteration_limit
+        if iteration_limit is not None:
+            logging.debug(f"setting LP iteration limit to {iteration_limit}")
+            solver_settings.set_parameter("iteration_limit", iteration_limit)
+
+        if warmstart_data is not None:
+            solver_settings.set_pdlp_warm_start_data(warmstart_data)
+
+        if solver_config.user_problem_file != "":
+            warnings.append(ignored_warning("user_problem_file"))
+
+        if solver_config.solution_file != "":
+            warnings.append(ignored_warning("solution_file"))
+
+    return warnings, solver_settings
+
+
+def _get_if_attribute_is_valid_else_none(attr):
+    try:
+        return attr()
+    except AttributeError:
+        return None
+
+
+def extract_pdlpwarmstart_data(
+    data: Any | None,
+) -> dict[str, Any] | None:
+    """Convert PDLP warm-start data to the legacy HTTP dictionary shape.
+
+    Returns ``None`` when no warm-start data is available.
+    """
+    if data is None:
+        return None
+    return {
+        "current_primal_solution": data.current_primal_solution,
+        "current_dual_solution": data.current_dual_solution,
+        "initial_primal_average": data.initial_primal_average,
+        "initial_dual_average": data.initial_dual_average,
+        "current_ATY": data.current_ATY,
+        "sum_primal_solutions": data.sum_primal_solutions,
+        "sum_dual_solutions": data.sum_dual_solutions,
+        "last_restart_duality_gap_primal_solution": (
+            data.last_restart_duality_gap_primal_solution
+        ),
+        "last_restart_duality_gap_dual_solution": (
+            data.last_restart_duality_gap_dual_solution
+        ),
+        "initial_primal_weight": data.initial_primal_weight,
+        "initial_step_size": data.initial_step_size,
+        "total_pdlp_iterations": data.total_pdlp_iterations,
+        "total_pdhg_iterations": data.total_pdhg_iterations,
+        "last_candidate_kkt_score": data.last_candidate_kkt_score,
+        "last_restart_kkt_score": data.last_restart_kkt_score,
+        "sum_solution_weight": data.sum_solution_weight,
+        "iterations_since_last_restart": data.iterations_since_last_restart,
+    }
+
+
+def solution_to_legacy_http(
+    sol: Any, include_warmstart: bool = True
+) -> dict[str, Any]:
+    """Serialize a cuOpt LP/MILP Solution into the legacy HTTP shape.
+
+    Returns ``{"status": <enum name>, "solution": {...}}``. When the
+    termination status is not a solved/feasible case, ``solution`` is empty.
+    ``include_warmstart`` controls whether PDLP warm-start data is included.
+    Exceptions raised by solution accessors are propagated, except optional
+    attributes that report absence with ``AttributeError``.
+    """
+    solution = {}
+    status = sol.get_termination_status()
+    if status in (
+        LPTerminationStatus.Optimal,
+        LPTerminationStatus.IterationLimit,
+        LPTerminationStatus.TimeLimit,
+        MILPTerminationStatus.Optimal,
+        MILPTerminationStatus.FeasibleFound,
+    ):
+        primal_solution = _get_if_attribute_is_valid_else_none(
+            sol.get_primal_solution
+        )
+        primal_solution = (
+            primal_solution
+            if primal_solution is None
+            else primal_solution.tolist()
+        )
+        dual_solution = _get_if_attribute_is_valid_else_none(
+            sol.get_dual_solution
+        )
+        dual_solution = (
+            dual_solution if dual_solution is None else dual_solution.tolist()
+        )
+        lp_stats = _get_if_attribute_is_valid_else_none(sol.get_lp_stats)
+        reduced_cost = _get_if_attribute_is_valid_else_none(
+            sol.get_reduced_cost
+        )
+        reduced_cost = (
+            reduced_cost if reduced_cost is None else reduced_cost.tolist()
+        )
+        milp_stats = _get_if_attribute_is_valid_else_none(sol.get_milp_stats)
+        pdlpwarmstart_data = _get_if_attribute_is_valid_else_none(
+            sol.get_pdlp_warm_start_data
+        )
+        solution["problem_category"] = sol.get_problem_category().name
+        solution["primal_solution"] = primal_solution
+        solution["dual_solution"] = dual_solution
+        solution["primal_objective"] = _get_if_attribute_is_valid_else_none(
+            sol.get_primal_objective
+        )
+        solution["dual_objective"] = _get_if_attribute_is_valid_else_none(
+            sol.get_dual_objective
+        )
+        solution["solver_time"] = sol.get_solve_time()
+        solution["solved_by"] = sol.get_solved_by().name
+        solution["vars"] = sol.get_vars()
+        solution["lp_statistics"] = {} if lp_stats is None else lp_stats
+        solution["reduced_cost"] = reduced_cost
+        if include_warmstart:
+            solution["pdlpwarmstart_data"] = extract_pdlpwarmstart_data(
+                pdlpwarmstart_data
+            )
+        solution["milp_statistics"] = {} if milp_stats is None else milp_stats
+
+    return {
+        "status": status.name,
+        "solution": solution,
+    }

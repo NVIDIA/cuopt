@@ -354,14 +354,14 @@ void translate_to_crossover_problem(const mip::problem_t<i_t, f_t>& problem,
   csr_A.j         = std::vector<i_t>(cuopt::host_copy(problem.variables, stream));
   csr_A.row_start = std::vector<i_t>(cuopt::host_copy(problem.offsets, stream));
 
-  stream.synchronize();
+  stream.sync();
   CUOPT_LOG_DEBUG("Converting to compressed column");
   csr_A.to_compressed_col(lp.A);
   CUOPT_LOG_DEBUG("Converted to compressed column");
 
   std::vector<f_t> slack(problem.n_constraints);
   std::vector<f_t> tmp_x = cuopt::host_copy(sol.get_primal_solution(), stream);
-  stream.synchronize();
+  stream.sync();
   matrix_vector_multiply(lp.A, f_t(1.0), tmp_x, f_t(0.0), slack);
   CUOPT_LOG_DEBUG("Multiplied A and x");
 
@@ -400,7 +400,7 @@ void translate_to_crossover_problem(const mip::problem_t<i_t, f_t>& problem,
   std::copy(lower.begin(), lower.begin() + problem.n_variables, lp.lower.begin());
   std::copy(upper.begin(), upper.begin() + problem.n_variables, lp.upper.begin());
 
-  problem.handle_ptr->get_stream().synchronize();
+  problem.handle_ptr->get_stream().sync();
   for (i_t i = 0; i < m; ++i) {
     lp.lower[problem.n_variables + i] = constraint_lower[i];
     lp.upper[problem.n_variables + i] = constraint_upper[i];
@@ -420,7 +420,7 @@ void translate_to_crossover_problem(const mip::problem_t<i_t, f_t>& problem,
   initial_solution.y = cuopt::host_copy(sol.get_dual_solution(), stream);
 
   std::vector<f_t> tmp_z = cuopt::host_copy(sol.get_reduced_cost(), stream);
-  stream.synchronize();
+  stream.sync();
   std::copy(tmp_z.begin(), tmp_z.begin() + problem.n_variables, initial_solution.z.begin());
   for (i_t j = problem.n_variables; j < n; ++j) {
     initial_solution.z[j] = initial_solution.y[j - problem.n_variables];

@@ -40,6 +40,7 @@
 #include <cuopt/mathematical_optimization/solve.hpp>
 #include <dual_simplex/presolve.hpp>
 #include <mip_heuristics/mip_constants.hpp>
+#include <mip_heuristics/presolve/bhw_coeff_reduce.hpp>
 #include <mip_heuristics/presolve/gf2_presolve.hpp>
 #include <mip_heuristics/presolve/single_lock_dual_aggregation.hpp>
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
@@ -47,6 +48,7 @@
 #include <utilities/macros.cuh>
 #include <utilities/timer.hpp>
 
+#include <cuda/stream>
 #include <raft/core/nvtx.hpp>
 
 #include <algorithm>
@@ -678,6 +680,7 @@ void set_presolve_methods(
   if (category == problem_category_t::MIP) {
     // cuOpt custom GF2 presolver
     maybe_add(uptr(new cuopt::mathematical_optimization::mip::GF2Presolve<f_t>()));
+    maybe_add(uptr(new cuopt::mathematical_optimization::mip::BHWCoeffReduce<f_t>()));
   }
   // fast presolvers
   maybe_add(uptr(new papilo::SingletonCols<f_t>()));
@@ -1205,7 +1208,7 @@ void third_party_presolve_t<i_t, f_t>::undo_from_device(rmm::device_uvector<f_t>
                                                         problem_category_t category,
                                                         bool status_to_skip,
                                                         bool dual_postsolve,
-                                                        rmm::cuda_stream_view stream_view)
+                                                        cuda::stream_ref stream_view)
 {
   std::vector<f_t> h_primal(primal_solution.size());
   std::vector<f_t> h_dual(dual_solution.size());
@@ -1213,7 +1216,7 @@ void third_party_presolve_t<i_t, f_t>::undo_from_device(rmm::device_uvector<f_t>
   raft::copy(h_primal.data(), primal_solution.data(), primal_solution.size(), stream_view);
   raft::copy(h_dual.data(), dual_solution.data(), dual_solution.size(), stream_view);
   raft::copy(h_rc.data(), reduced_costs.data(), reduced_costs.size(), stream_view);
-  stream_view.synchronize();
+  stream_view.sync();
 
   undo(h_primal, h_dual, h_rc, category, status_to_skip, dual_postsolve);
 
@@ -1223,7 +1226,7 @@ void third_party_presolve_t<i_t, f_t>::undo_from_device(rmm::device_uvector<f_t>
   raft::copy(primal_solution.data(), h_primal.data(), h_primal.size(), stream_view);
   raft::copy(dual_solution.data(), h_dual.data(), h_dual.size(), stream_view);
   raft::copy(reduced_costs.data(), h_rc.data(), h_rc.size(), stream_view);
-  stream_view.synchronize();
+  stream_view.sync();
 }
 
 template <typename i_t, typename f_t>

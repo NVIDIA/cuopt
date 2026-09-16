@@ -6,8 +6,9 @@
 # Core LP files always included
 set(LP_CORE_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/solver_settings.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/solver_settings_accessors.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/optimization_problem.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/cpu_optimization_problem.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/cpu_optimization_problem_to_gpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/backend_selection.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/utilities/problem_checking.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solve.cu
@@ -49,4 +50,13 @@ else()
   set(LP_SRC_FILES ${LP_CORE_FILES} ${LP_ADAPTER_FILES})
 endif()
 
+# Host-only LP sources the gRPC client needs, so cuopt_client resolves standalone. Their
+# GPU-facing members were split into the CUDA translation units above.
+set(LP_CLIENT_FILES
+  ${CMAKE_CURRENT_SOURCE_DIR}/cpu_optimization_problem.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/solution_conversion_cpu.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/solver_settings_accessors.cpp
+)
+
 set(CUOPT_SRC_FILES ${CUOPT_SRC_FILES} ${LP_SRC_FILES} PARENT_SCOPE)
+set(CUOPT_CLIENT_SRC_FILES ${CUOPT_CLIENT_SRC_FILES} ${LP_CLIENT_FILES} PARENT_SCOPE)

@@ -7,11 +7,13 @@
 
 #pragma once
 
+#include <cuda/stream>
 #include "utils.cuh"
 
 #include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
 #include <mip_heuristics/diversity/weights.cuh>
 #include <mip_heuristics/logger.cuh>
+#include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/problem/problem.cuh>
 #include <mip_heuristics/solution/solution.cuh>
 #include <mip_heuristics/solver.cuh>
@@ -20,6 +22,7 @@
 #include <utilities/device_scalar_init.hpp>
 #include <utilities/event_handler.cuh>
 #include <utilities/manual_cuda_graph.cuh>
+#include <utilities/pcgenerator.hpp>
 
 #include <functional>
 
@@ -213,7 +216,9 @@ class fj_t {
   using move_score_info_t = fj_move_score_info_base_t<f_t>;
   using move_candidate_t  = fj_move_candidate_t<f_t>;
 
-  fj_t(mip_solver_context_t<i_t, f_t>& context, fj_settings_t settings = fj_settings_t{});
+  fj_t(mip_solver_context_t<i_t, f_t>& context,
+       fj_settings_t settings     = fj_settings_t{},
+       rng_id_t seed_component_id = rng_id_t::local_search_cpu_fj);
   ~fj_t();
   void reset_cuda_graph();
   i_t solve(solution_t<i_t, f_t>& solution);
@@ -228,25 +233,28 @@ class fj_t {
     bool randomize_params  = false);
   i_t alloc_max_climbers(i_t desired_climbers);
   void resize_vectors(const raft::handle_t* handle_ptr);
-  void device_init(const rmm::cuda_stream_view& stream);
+  void device_init(cuda::stream_ref stream);
   void climber_init(i_t climber_idx);
-  void climber_init(i_t climber_idx, const rmm::cuda_stream_view& stream);
+  void climber_init(i_t climber_idx, cuda::stream_ref stream);
   void set_fj_settings(fj_settings_t settings_);
-  void reset_weights(const rmm::cuda_stream_view& stream, f_t weight = 10.);
+  void reset_weights(cuda::stream_ref stream, f_t weight = 10.);
   void randomize_weights(const raft::handle_t* handle_ptr);
   void copy_weights(const weight_t<i_t, f_t>& weights,
                     const raft::handle_t* handle_ptr,
                     std::optional<i_t> new_size = std::nullopt);
   i_t host_loop(solution_t<i_t, f_t>& solution, i_t climber_idx = 0);
   void run_step_device(i_t climber_idx = 0, bool use_graph = true);
-  void run_step_device(const rmm::cuda_stream_view& stream,
-                       i_t climber_idx = 0,
-                       bool use_graph  = true);
-  void refresh_lhs_and_violation(const rmm::cuda_stream_view& stream, i_t climber_idx = 0);
+  void run_step_device(cuda::stream_ref stream, i_t climber_idx = 0, bool use_graph = true);
+  void refresh_lhs_and_violation(cuda::stream_ref stream, i_t climber_idx = 0);
   // load balancing
-  void load_balancing_score_update(const rmm::cuda_stream_view& stream, i_t climber_idx = 0);
+  void load_balancing_score_update(cuda::stream_ref stream, i_t climber_idx = 0);
   // executed after a roudning FJ run if any fractionals remain to eliminate them
   void round_remaining_fractionals(solution_t<i_t, f_t>& solution, i_t climber_idx = 0);
+
+  uint64_t next_seed() { return rng.next_u64(); }
+
+ private:
+  splitmix64_t rng;
 
  public:
   mip_solver_context_t<i_t, f_t>& context;
@@ -438,7 +446,7 @@ class fj_t {
                              dot_product_buffer.data(),
                              incumbent_objective.data(),
                              fj.pb_ptr->n_variables,
-                             fj.handle_ptr->get_stream());
+                             fj.handle_ptr->get_stream().get());
 
       // Allocate temporary storage
       cub_storage_bytes.resize(temp_storage_bytes, fj.handle_ptr->get_stream());
@@ -633,7 +641,7 @@ class fj_t {
     };
 
     view_t view();
-    void clear_sets(const rmm::cuda_stream_view& stream);
+    void clear_sets(cuda::stream_ref stream);
   };
   void populate_climber_views();
 
