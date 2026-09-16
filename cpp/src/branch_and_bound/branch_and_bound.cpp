@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include <branch_and_bound/branch_and_bound.hpp>
+#include <branch_and_bound/concurrent_root_solver.hpp>
 #include <branch_and_bound/diving_heuristics.hpp>
 #include <branch_and_bound/mip_node.hpp>
 #include <branch_and_bound/pseudo_costs.hpp>
@@ -3173,9 +3174,63 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
                                                            root_vstatus_,
                                                            edge_norms_,
                                                            nullptr);
+    // Dual simplex has finished; stop the GPU competitors if they are still running.
+    gpu_root_concurrent_halt_.store(1, std::memory_order_release);
   }
 
-  // Wait for the root relaxation solution to be sent by the diversity manager or dual simplex
+  // The diversity manager prepares the GPU problem while dual simplex starts on the CPU.
+  // Once the GPU problem is ready, launch PDLP and barrier from here so all root-LP
+  // competitors are owned by this function.
+  while (!concurrent_root_problem_ready_.load(std::memory_order_acquire) &&
+         *get_root_concurrent_halt() == 0) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+#pragma omp taskyield
+  }
+
+  if (*get_root_concurrent_halt() == 0 &&
+      concurrent_root_problem_ready_.load(std::memory_order_acquire)) {
+    cuopt_assert(concurrent_root_problem_ != nullptr, "Concurrent root problem is not configured");
+    gpu_root_concurrent_halt_.store(0, std::memory_order_release);
+    try {
+      cuopt_assert(concurrent_root_settings_ != nullptr,
+                   "Concurrent root settings are not configured");
+      const f_t remaining_time =
+        std::max<f_t>(settings_.time_limit - toc(exploration_stats_.start_time), 0);
+      const f_t root_time_limit =
+        std::min(concurrent_root_max_time_, remaining_time * concurrent_root_time_ratio_);
+      auto result = solve_concurrent_root_relaxation(concurrent_root_problem_,
+                                                     *concurrent_root_settings_,
+                                                     root_time_limit,
+                                                     &gpu_root_concurrent_halt_);
+      if (result.usable) {
+        // Release the heuristics first: they only need the relaxation values, whereas
+        // crossover below can run until the time limit without ever producing a root.
+        if (root_lp_solution_callback_ != nullptr) {
+          root_lp_solution_callback_(
+            result.primal, result.dual, result.user_objective, result.optimal);
+        }
+        set_root_relaxation_solution(result.primal,
+                                     result.dual,
+                                     result.reduced_cost,
+                                     result.solver_objective,
+                                     result.user_objective,
+                                     result.iterations,
+                                     result.method);
+        // Same as the old diversity-manager path: an Optimal GPU root LP is a
+        // valid MIP dual bound even if dual simplex / crossover has not finished.
+        if (result.optimal) { update_user_bound(result.solver_objective); }
+      } else if (root_lp_solution_callback_ != nullptr) {
+        // No usable relaxation, but the heuristics must still be released so they can run
+        // without LP guidance rather than block on a dual simplex that may never finish.
+        root_lp_solution_callback_({}, {}, std::numeric_limits<f_t>::infinity(), false);
+      }
+    } catch (const std::exception& e) {
+      settings_.log.printf("Concurrent GPU root LP failed: %s\n", e.what());
+    }
+  }
+
+  // Wait until either the GPU root solve supplies a crossover point or CPU dual
+  // simplex finishes. If dual simplex wins, stop and join the GPU solve.
   while (!root_crossover_solution_set_.load(std::memory_order_acquire) &&
          *get_root_concurrent_halt() == 0) {
     if (received_halt_signal()) {
