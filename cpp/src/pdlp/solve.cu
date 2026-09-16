@@ -1930,7 +1930,13 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
                                         qcqp_timer,
                                         op_problem.get_handle_ptr(),
                                         settings.barrier_cache);
-    auto solution         = convert_dual_simplex_sol(op_problem,
+    // A full solve creates the transform inside run_barrier. Record the model sense afterward,
+    // before a later update_linear_objective needs to map raw user c into barrier minimization
+    // space. Reuse keeps the sense of the workspace (and Q) built by that full solve.
+    if (!reuse_from_cache && cache != nullptr && cache->transform() != nullptr) {
+      cache->transform()->maximize = op_problem.get_sense();
+    }
+    auto solution = convert_dual_simplex_sol(op_problem,
                                              std::get<0>(sol_dual_simplex),
                                              std::get<1>(sol_dual_simplex),
                                              std::get<2>(sol_dual_simplex),
