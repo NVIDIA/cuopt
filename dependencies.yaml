@@ -152,6 +152,92 @@ files:
       - depends_on_libraft_headers
       - depends_on_librmm
       - depends_on_rapids_logger
+  # One set of keys per component wheel. The point of the split is in py_run_*:
+  # only mathopt carries cudss / nccl / nvjitlink, so a routing-only install no
+  # longer pulls libraries it never calls.
+  py_build_libcuopt_client:
+    output: pyproject
+    pyproject_dir: python/libcuopt_client
+    extras:
+      table: build-system
+    includes:
+      - rapids_build_backend
+  py_rapids_build_libcuopt_client:
+    output: pyproject
+    pyproject_dir: python/libcuopt_client
+    extras:
+      table: tool.rapids-build-backend
+      key: requires
+    includes:
+      - build_common
+      - depends_on_librmm
+      - depends_on_rapids_logger
+  py_run_libcuopt_client:
+    output: pyproject
+    pyproject_dir: python/libcuopt_client
+    extras:
+      table: project
+    includes:
+      - depends_on_librmm
+      - depends_on_rapids_logger
+  py_build_libcuopt_mathopt:
+    output: pyproject
+    pyproject_dir: python/libcuopt_mathopt
+    extras:
+      table: build-system
+    includes:
+      - rapids_build_backend
+  py_rapids_build_libcuopt_mathopt:
+    output: pyproject
+    pyproject_dir: python/libcuopt_mathopt
+    extras:
+      table: tool.rapids-build-backend
+      key: requires
+    includes:
+      - build_common
+      - depends_on_libraft_headers
+      - depends_on_librmm
+      - depends_on_rapids_logger
+  py_run_libcuopt_mathopt:
+    output: pyproject
+    pyproject_dir: python/libcuopt_mathopt
+    extras:
+      table: project
+    includes:
+      - cuda_wheels
+      - depends_on_libcuopt_client
+      - depends_on_libraft_headers
+      - depends_on_librmm
+      - depends_on_rapids_logger
+  py_build_libcuopt_routing:
+    output: pyproject
+    pyproject_dir: python/libcuopt_routing
+    extras:
+      table: build-system
+    includes:
+      - rapids_build_backend
+  py_rapids_build_libcuopt_routing:
+    output: pyproject
+    pyproject_dir: python/libcuopt_routing
+    extras:
+      table: tool.rapids-build-backend
+      key: requires
+    includes:
+      - build_common
+      - depends_on_libraft_headers
+      - depends_on_librmm
+      - depends_on_rapids_logger
+  py_run_libcuopt_routing:
+    output: pyproject
+    pyproject_dir: python/libcuopt_routing
+    extras:
+      table: project
+    includes:
+      - cuda_wheels_routing
+      - depends_on_libcuopt_client
+      - depends_on_libraft_headers
+      - depends_on_librmm
+      - depends_on_rapids_logger
   py_build_cuopt:
     output: pyproject
     pyproject_dir: python/cuopt
@@ -934,6 +1020,31 @@ dependencies:
           - libgomp >=9
 
 
+  # cublas only. libcuopt_routing's DT_NEEDED is cublas, rmm and rapids_logger --
+  # it never touches cudss, nccl, cusparse or nvjitlink, so pulling the full
+  # cuda_wheels set here would re-create exactly the bloat this split removes.
+  cuda_wheels_routing:
+    specific:
+      - output_types: [requirements, pyproject]
+        matrices:
+          - matrix:
+              use_cuda_wheels: "false"
+            packages:
+          - matrix:
+              cuda: "12.*"
+              use_cuda_wheels: "true"
+            packages:
+              - cuda-toolkit[cublas,cudart]==12.*
+          - matrix:
+              cuda: "13.*"
+              use_cuda_wheels: "true"
+            packages:
+              - &ctk_routing_cu13 cuda-toolkit[cublas,cudart]==13.*
+          # if no matching matrix selectors passed, list the CUDA 13 requirement, which is
+          # what populates pyproject.toml in source control
+          - matrix:
+            packages:
+              - *ctk_routing_cu13
   cuda_wheels:
     specific:
       # cuOpt needs 'nvJitLink>={whatever-cuopt-was-built-against}' at runtime, and mixing
