@@ -378,10 +378,10 @@ message MIPSolverSettings {
   // variable as reliable once it has been branched on k times. (default: -1
   // (automatic))
   optional int32 reliability_branching = 16;
-  // Whether strong branching at the root evaluates candidates with a single
-  // batched PDLP solve instead of solving them in parallel with dual simplex,
-  // which can cut strong-branching time when dual simplex struggles. 0
-  // disabled, 1 enabled. (default: 0 (disabled))
+  // How strong branching at the root evaluates candidates: 0 dual simplex
+  // only, 1 cooperative dual simplex + a single batched PDLP solve, 2 batched
+  // PDLP only. Batching can cut strong-branching time when dual simplex
+  // struggles. (default: 0 (dual simplex only))
   int32 mip_batch_pdlp_strong_branching = 17;
   // Maximum number of cut passes to run. 0 disables cuts entirely; larger
   // values perform more passes. (default: 10)
@@ -427,8 +427,7 @@ message MIPSolverSettings {
   // Whether the probing-cache step of MIP presolve runs. Probing evaluates
   // variable fixings to discover implications later used by branch-and-bound
   // and the rounding heuristics. Only meaningful when presolve is otherwise
-  // enabled — presolver=0 disables the whole pipeline. Probing is also
-  // skipped in deterministic mode and on LP-only solves. (default: true)
+  // enabled — presolver=0 disables the whole pipeline. (default: true)
   optional bool probing = 29;
   // Maximum simplex iterations per candidate during strong branching.
   // Lowering it speeds up strong branching at the cost of less accurate
@@ -437,9 +436,9 @@ message MIPSolverSettings {
   // Whether implied bound cuts are used. -1 automatic, 0 disabled, 1 enabled.
   // (default: -1 (automatic))
   optional int32 implied_bound_cuts = 31;
-  // Whether reliability-branching candidates are evaluated simultaneously
-  // with a single batched PDLP solve. 0 disabled, 1 enabled. (default: 0
-  // (disabled))
+  // How reliability-branching candidates are evaluated: 0 dual simplex only,
+  // 1 cooperative dual simplex + a single batched PDLP solve, 2 batched PDLP
+  // only. (default: 0 (dual simplex only))
   int32 mip_batch_pdlp_reliability_branching = 32;
   // Symmetry detection and handling. -1 automatic, 0 disabled, 1 orbital
   // fixing, 2 orbital fixing plus lexical reduction. (default: -1

@@ -365,8 +365,11 @@ def _field_doc_comment(f, indent="  "):
     attribute, so undocumented fields emit exactly as before.
 
     `default:` is rendered verbatim from the registry — it is a string
-    describing the C++ member initializer, not a value the generator
-    derives or validates.
+    describing the C++ member initializer, not a value the generator derives
+    from it. It is checked, not fully validated: for a non-optional settings
+    field, `_validate_registry_uniqueness` fails generation if this string
+    doesn't textually match the proto3 zero value. That check can't catch a
+    C++ default that changed with no matching update here.
     """
     description = f.get("description")
     default = f.get("default")

@@ -955,18 +955,19 @@ mip_settings:
       optional: true
   - mip_batch_pdlp_strong_branching:
       description: >-
-        Whether strong branching at the root evaluates candidates with a single
-        batched PDLP solve instead of solving them in parallel with dual
-        simplex, which can cut strong-branching time when dual simplex
-        struggles. 0 disabled, 1 enabled.
-      default: "0 (disabled)"
+        How strong branching at the root evaluates candidates: 0 dual simplex
+        only, 1 cooperative dual simplex + a single batched PDLP solve, 2
+        batched PDLP only. Batching can cut strong-branching time when dual
+        simplex struggles.
+      default: "0 (dual simplex only)"
       field_num: 17
       type: int32
   - mip_batch_pdlp_reliability_branching:
       description: >-
-        Whether reliability-branching candidates are evaluated simultaneously
-        with a single batched PDLP solve. 0 disabled, 1 enabled.
-      default: "0 (disabled)"
+        How reliability-branching candidates are evaluated: 0 dual simplex
+        only, 1 cooperative dual simplex + a single batched PDLP solve, 2
+        batched PDLP only.
+      default: "0 (dual simplex only)"
       field_num: 32
       type: int32
   - strong_branching_simplex_iteration_limit:
@@ -1101,8 +1102,7 @@ mip_settings:
         Whether the probing-cache step of MIP presolve runs. Probing evaluates
         variable fixings to discover implications later used by branch-and-bound
         and the rounding heuristics. Only meaningful when presolve is otherwise
-        enabled — presolver=0 disables the whole pipeline. Probing is also
-        skipped in deterministic mode and on LP-only solves.
+        enabled — presolver=0 disables the whole pipeline.
       default: "true"
       field_num: 29
       type: bool

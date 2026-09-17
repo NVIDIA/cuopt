@@ -8,11 +8,14 @@ Not part of CI -- run manually:
     python cpp/src/grpc/codegen/lint_registry_defaults.py
 
 `default:` is documented (field_registry.yaml's header comment,
-references/grpc_codegen.md) as free text the generator neither derives nor
-validates. This tool cannot parse arbitrary C++ either -- it only compares
-members with a simple `= VALUE;` or `{VALUE};` initializer on one line, and
-it prints warnings rather than failing, since a false positive here should
-never block a PR. Treat its output as a prompt to double-check, not a verdict.
+FIELD_REGISTRY_REFERENCE.md sec 2.1) as free text the generator doesn't
+derive from the C++ struct; it only checks, for a non-optional settings
+field, that this string textually matches the proto3 zero value -- it can't
+catch a C++ default that changed with no matching registry update. This
+tool cannot parse arbitrary C++ either -- it only compares members with a
+simple `= VALUE;` or `{VALUE};` initializer on one line, and it prints
+warnings rather than failing, since a false positive here should never
+block a PR. Treat its output as a prompt to double-check, not a verdict.
 """
 
 import re
