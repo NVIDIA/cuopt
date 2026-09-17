@@ -196,9 +196,12 @@ def extract_pdlpwarmstart_data(
 def pdlp_from_http_warmstart(data: Any) -> PDLPWarmStartData:
     """Build ``PDLPWarmStartData`` from the HTTP warm-start shape.
 
-    Accepts an HTTP dict, ``WarmStartData``, or an object with the same
-    field names (including ``PDLPWarmStartData``). Array fields become
-    float64 ndarrays so SolverSettings and gRPC can use ``.shape``.
+    ``data`` is an HTTP dict, ``WarmStartData``, or an object with the same
+    field names (including ``PDLPWarmStartData``). Returns a
+    ``PDLPWarmStartData`` whose array fields are float64 ndarrays so
+    SolverSettings and gRPC can use ``.shape``. Dict input is parsed with
+    ``WarmStartData.parse_obj``; parse, missing-attribute, and array
+    conversion errors propagate to the caller.
     """
     if isinstance(data, dict):
         data = WarmStartData.parse_obj(data)

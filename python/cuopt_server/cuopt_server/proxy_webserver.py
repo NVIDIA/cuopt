@@ -192,7 +192,9 @@ def _store_warmstart(job_id, blob):
     if not blob:
         return
     with _jobs_lock:
-        _warmstarts[job_id] = blob
+        # Deletion pops the job first; refuse to resurrect a blob after that.
+        if job_id in _jobs:
+            _warmstarts[job_id] = blob
 
 
 def _cached_warmstart(job_id):
@@ -201,12 +203,13 @@ def _cached_warmstart(job_id):
 
 
 def _load_warmstart_blob(job_id):
-    cached = _cached_warmstart(job_id)
-    if cached is not None:
-        return cached
-    meta = _get_job(job_id)
-    if meta is not None and meta.get("validation_only"):
-        return None
+    with _jobs_lock:
+        cached = _warmstarts.get(job_id)
+        if cached is not None:
+            return cached
+        meta = _jobs.get(job_id)
+        if meta is not None and meta.get("validation_only"):
+            return None
     client = get_grpc_client()
     status = client.status(job_id)
     if _is_status(status, "NOT_FOUND"):

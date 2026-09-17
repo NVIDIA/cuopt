@@ -423,6 +423,22 @@ def test_warmstart_while_running_returns_req_id(proxy):
     }
 
 
+def test_store_warmstart_skips_deleted_job(proxy):
+    import cuopt_server.proxy_webserver as pw
+
+    url, _ = proxy
+    req_id = requests.post(
+        url + "/cuopt/request",
+        headers={"CLIENT-VERSION": "custom"},
+        json=_lp(),
+    ).json()["reqId"]
+    assert (
+        requests.delete(url + f"/cuopt/solution/{req_id}").status_code == 200
+    )
+    pw._store_warmstart(req_id, {"current_primal_solution": [1.0]})
+    assert pw._cached_warmstart(req_id) is None
+
+
 def test_delete_drops_warmstart_cache(proxy):
     url, _ = proxy
     req_id = requests.post(
