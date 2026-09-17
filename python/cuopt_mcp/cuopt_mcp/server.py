@@ -18,7 +18,7 @@ from typing import Any
 from mcp.server.mcpserver import MCPServer
 
 from . import tools
-from .client import CuOptMCPError
+from .client import CuOptMCPError, endpoint
 
 logging.basicConfig(
     stream=sys.stderr,
@@ -209,9 +209,7 @@ def main() -> None:
     ``server.run`` raises on a fatal transport failure (stdout is reserved
     for the JSON-RPC stream, so nothing here writes there).
     """
-    host, port = __import__(
-        "cuopt_mcp.client", fromlist=["endpoint"]
-    ).endpoint()
+    host, port = endpoint()
     logging.info("cuopt-mcp starting; gRPC target %s:%s", host, port)
     server.run(transport="stdio")
 
