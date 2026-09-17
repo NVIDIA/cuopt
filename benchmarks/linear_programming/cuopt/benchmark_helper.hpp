@@ -92,6 +92,7 @@ void fill_pdlp_hyper_params(const std::string& pdlp_hyper_params_path,
     {"major_iteration", &params.major_iteration},
     {"min_iteration_restart", &params.min_iteration_restart},
     {"restart_strategy", &params.restart_strategy},
+    {"conditional_major_step", &params.conditional_major_step},
   };
 
   std::map<std::string, bool*> bool_settings = {
