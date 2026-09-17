@@ -1174,7 +1174,16 @@ endif ()
 
 # allows for CPack component builds and install location
 set(CPACK_DEB_COMPONENT_INSTALL ON)
-set(CPACK_COMPONENTS_ALL runtime dev)
+
+# CPack silently drops any component missing from this list, which would leave the
+# runtime .deb empty now that nothing installs under `runtime`.
+set(CPACK_COMPONENTS_ALL runtime dev client mathopt client-dev mathopt-dev)
+if(NOT SKIP_ROUTING_BUILD)
+    list(APPEND CPACK_COMPONENTS_ALL routing routing-dev)
+endif()
+if(NOT SKIP_GRPC_BUILD)
+    list(APPEND CPACK_COMPONENTS_ALL grpc-server)
+endif()
 set(CPACK_PACKAGING_INSTALL_PREFIX "/usr/local")
 
 #If using cpack to create a deb package
@@ -1204,17 +1213,8 @@ foreach(_component ${CUOPT_COMPONENT_TARGETS})
     list(APPEND CUOPT_COMPONENT_EXPORT_NAMES ${_export_name})
 endforeach()
 
-# Each component library installs under its own install component, so that
-# `cmake --install <build> --component mathopt` stages exactly that library and
-# nothing else. A plain `cmake --install <build>` still installs everything, which
-# is what the conda recipe does today. The per-solver wheels in #1635 are the
-# reason these need to be separable.
-#
-#   client / mathopt / routing        the .so, plus cuopt_cli under mathopt
-#   client-dev / mathopt-dev / routing-dev   that component's public headers
-#
-# Shared headers (error.hpp, export.hpp, utilities/) go to client-dev: the client
-# is the leaf every other component links, so every package already depends on it.
+# One install component per library, so the per-solver packages in #1635 can stage
+# them separately. A plain `cmake --install` still installs everything.
 foreach(_component ${CUOPT_COMPONENT_TARGETS})
     string(REPLACE "cuopt_" "" _install_component "${_component}")
     install(TARGETS ${_component}
@@ -1237,9 +1237,8 @@ install(FILES "${CUOPT_LINKER_SCRIPT}"
         COMPONENT dev
 )
 
-# Headers follow their component. Split with explicit rules rather than one
-# install(DIRECTORY include/cuopt/) so a component's package can carry its own
-# dev headers without dragging in the other engines' API.
+# Headers follow their component. Shared ones go to client-dev, the leaf every
+# other component links.
 install(FILES include/cuopt/error.hpp include/cuopt/export.hpp
         DESTINATION ${_INCLUDE_DEST}
         COMPONENT client-dev
@@ -1250,14 +1249,12 @@ install(DIRECTORY include/cuopt/utilities/
         COMPONENT client-dev
 )
 
-# The gRPC client lives in cuopt_client, so its headers do too.
 install(DIRECTORY include/cuopt/grpc/
         DESTINATION ${_INCLUDE_DEST}/grpc
         COMPONENT client-dev
 )
 
-# linear_programming/cuopt_c.h is the compatibility forwarder for the C API, which
-# mathopt provides, so it ships with mathopt rather than on its own.
+# linear_programming/cuopt_c.h forwards to the C API that mathopt provides.
 install(DIRECTORY include/cuopt/mathematical_optimization/
         DESTINATION ${_INCLUDE_DEST}/mathematical_optimization
         COMPONENT mathopt-dev
@@ -1275,13 +1272,8 @@ if(NOT SKIP_ROUTING_BUILD)
     )
 endif()
 
-# Both are generated and included by every component's public headers.
-#
-# logger_macros.hpp is installed a second time here on purpose: create_logger_macros
-# installs it with no COMPONENT, which puts it in "Unspecified", so a
-# `cmake --install --component client-dev` would otherwise omit a public header and
-# every split package would ship without it. Installing the same file twice is
-# harmless -- a full install just writes it to the same path.
+# logger_macros.hpp is installed again here on purpose: create_logger_macros installs
+# it with no COMPONENT, so no --component install would otherwise pick it up.
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/include/cuopt/version_config.hpp
               ${CMAKE_CURRENT_BINARY_DIR}/include/cuopt/logger_macros.hpp
         DESTINATION ${_INCLUDE_DEST}
@@ -1412,8 +1404,7 @@ if (NOT BUILD_LP_ONLY)
     endif ()
     set_property(TARGET cuopt_cli PROPERTY INSTALL_RPATH "$ORIGIN/../${lib_dir}")
 
-    # Ships with mathopt: the CLI is MPS-driven and resolves no routing symbols, so a
-    # routing-only install has no use for it. See #1635.
+    # Ships with mathopt: the CLI resolves no routing symbols.
     install(TARGETS cuopt_cli
             COMPONENT mathopt
             RUNTIME DESTINATION ${_BIN_DEST}
@@ -1549,9 +1540,7 @@ if (NOT SKIP_GRPC_BUILD)
     target_link_options(cuopt_grpc_server PRIVATE -Wl,--enable-new-dtags)
     set_property(TARGET cuopt_grpc_server PROPERTY INSTALL_RPATH "$ORIGIN/../${lib_dir}")
 
-    # Its own component rather than mathopt or routing: the server is the one artifact
-    # that needs every engine, and it is a separately-run service with its own
-    # lifecycle, so it installs and versions independently. See #1635.
+    # Its own component: the one artifact needing every engine, with its own lifecycle.
     install(TARGETS cuopt_grpc_server
             COMPONENT grpc-server
             RUNTIME DESTINATION ${_BIN_DEST}
@@ -1582,6 +1571,17 @@ set(CPACK_COMPONENT_RUNTIME_GROUP "Runtime")
 set(CPACK_DEBIAN_RUNTIME_PACKAGE_MAINTAINER "NVIDIA")
 set(CPACK_DEBIAN_RUNTIME_PACKAGE_NAME "cuopt")
 set(CPACK_DEBIAN_RUNTIME_PACKAGE_FILE_NAME "cuopt_${PROJECT_VERSION}_${DEB_ARCH}")
+
+# Grouped so the output stays two .debs. CPack uppercases the component name
+# verbatim, so the hyphens have to survive the lookup.
+foreach(_runtime_component client mathopt routing grpc-server)
+    string(TOUPPER "${_runtime_component}" _uc)
+    set(CPACK_COMPONENT_${_uc}_GROUP "Runtime")
+endforeach()
+foreach(_dev_component client-dev mathopt-dev routing-dev)
+    string(TOUPPER "${_dev_component}" _uc)
+    set(CPACK_COMPONENT_${_uc}_GROUP "Development")
+endforeach()
 
 # Dev package metadata
 set(CPACK_COMPONENT_DEV_DESCRIPTION "cuOpt development files (headers, symlinks, etc.)")
