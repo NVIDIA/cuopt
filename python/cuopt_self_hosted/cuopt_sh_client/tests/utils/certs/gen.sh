@@ -15,6 +15,7 @@ openssl req \
   -not_after 20350430001153Z \
   -sha256 \
   -subj '/C=US/ST=State/L=City/O=MyOrg/OU=Dev/CN=MyCustomCA' \
+  -addext 'keyUsage=critical,keyCertSign,cRLSign' \
   -addext 'subjectKeyIdentifier=hash' \
   -addext 'authorityKeyIdentifier=keyid:always,issuer' \
   -addext 'basicConstraints=critical,CA:TRUE' \
