@@ -125,6 +125,8 @@ async def test_solve_lp_end_to_end(session, mps_file):
         assert solved["primal_objective"] == pytest.approx(10.0, abs=1e-4)
         total = sum(solved["variables"].values())
         assert total == pytest.approx(10.0, abs=1e-4)
+        for name in ("X", "Y"):
+            assert -1e-4 <= solved["variables"][name] <= 8.0 + 1e-4
     finally:
         await _call(session, "cuopt_delete", job_id=job_id)
 

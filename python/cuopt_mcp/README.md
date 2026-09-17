@@ -8,7 +8,9 @@ MCP client ──stdio (JSON-RPC)──> cuopt-mcp ──gRPC──> cuopt_grpc_
 ```
 
 The MCP server runs as a stdio subprocess on the user's machine and needs no
-GPU: the solve happens wherever `cuopt_grpc_server` runs. No HTTP is involved.
+GPU: the solve happens wherever `cuopt_grpc_server` runs. No HTTP application
+endpoint is exposed — the client speaks MCP over stdio, and this process
+speaks gRPC to the backend.
 
 ## Install
 

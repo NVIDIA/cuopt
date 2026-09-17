@@ -422,6 +422,11 @@ def logs(job_id: str, from_byte: int = 0, tail_lines: int = 100) -> dict:
         ``{"ready": False, ...}`` if the job hasn't finished yet, otherwise
         a dict with ``lines`` (the tailed text), ``truncated`` (whether more
         preceded them), and ``next_byte`` to pass on the next call.
+
+    Raises
+    ------
+        CuOptMCPError: ``tail_lines`` is out of range, or the backend is
+            unreachable.
     """
     if (
         isinstance(tail_lines, bool)
