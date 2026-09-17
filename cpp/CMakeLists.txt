@@ -1194,7 +1194,16 @@ endif ()
 
 # allows for CPack component builds and install location
 set(CPACK_DEB_COMPONENT_INSTALL ON)
-set(CPACK_COMPONENTS_ALL runtime dev)
+
+# CPack silently drops any component missing from this list, which would leave the
+# runtime .deb empty now that nothing installs under `runtime`.
+set(CPACK_COMPONENTS_ALL runtime dev client mathopt client-dev mathopt-dev)
+if(NOT SKIP_ROUTING_BUILD)
+    list(APPEND CPACK_COMPONENTS_ALL routing routing-dev)
+endif()
+if(NOT SKIP_GRPC_BUILD)
+    list(APPEND CPACK_COMPONENTS_ALL grpc-server)
+endif()
 set(CPACK_PACKAGING_INSTALL_PREFIX "/usr/local")
 
 #If using cpack to create a deb package
@@ -1224,12 +1233,16 @@ foreach(_component ${CUOPT_COMPONENT_TARGETS})
     list(APPEND CUOPT_COMPONENT_EXPORT_NAMES ${_export_name})
 endforeach()
 
-# adds the .so files to the runtime deb package
-install(TARGETS ${CUOPT_COMPONENT_TARGETS}
-        DESTINATION ${_LIB_DEST}
-        COMPONENT runtime
-        EXPORT cuopt-exports
-)
+# One install component per library, so the per-solver packages in #1635 can stage
+# them separately. A plain `cmake --install` still installs everything.
+foreach(_component ${CUOPT_COMPONENT_TARGETS})
+    string(REPLACE "cuopt_" "" _install_component "${_component}")
+    install(TARGETS ${_component}
+            DESTINATION ${_LIB_DEST}
+            COMPONENT ${_install_component}
+            EXPORT cuopt-exports
+    )
+endforeach()
 
 # cuopt::cuopt carries no artifact of its own; it is exported so that
 # target_link_libraries(app cuopt::cuopt) keeps pulling in every component.
@@ -1251,16 +1264,47 @@ if (CUOPT_BUILD_CUSTOM_CUDSS_MTLAYER)
     )
 endif ()
 
-# adds the header files to the development deb package
-install(DIRECTORY include/cuopt/
+# Headers follow their component. Shared ones go to client-dev, the leaf every
+# other component links.
+install(FILES include/cuopt/error.hpp include/cuopt/export.hpp
         DESTINATION ${_INCLUDE_DEST}
-        COMPONENT dev
+        COMPONENT client-dev
 )
 
-# adds the version header file to the development deb package
+install(DIRECTORY include/cuopt/utilities/
+        DESTINATION ${_INCLUDE_DEST}/utilities
+        COMPONENT client-dev
+)
+
+install(DIRECTORY include/cuopt/grpc/
+        DESTINATION ${_INCLUDE_DEST}/grpc
+        COMPONENT client-dev
+)
+
+# linear_programming/cuopt_c.h forwards to the C API that mathopt provides.
+install(DIRECTORY include/cuopt/mathematical_optimization/
+        DESTINATION ${_INCLUDE_DEST}/mathematical_optimization
+        COMPONENT mathopt-dev
+)
+
+install(DIRECTORY include/cuopt/linear_programming/
+        DESTINATION ${_INCLUDE_DEST}/linear_programming
+        COMPONENT mathopt-dev
+)
+
+if(NOT SKIP_ROUTING_BUILD)
+    install(DIRECTORY include/cuopt/routing/
+            DESTINATION ${_INCLUDE_DEST}/routing
+            COMPONENT routing-dev
+    )
+endif()
+
+# logger_macros.hpp is installed again here on purpose: create_logger_macros installs
+# it with no COMPONENT, so no --component install would otherwise pick it up.
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/include/cuopt/version_config.hpp
+              ${CMAKE_CURRENT_BINARY_DIR}/include/cuopt/logger_macros.hpp
         DESTINATION ${_INCLUDE_DEST}
-        COMPONENT dev
+        COMPONENT client-dev
 )
 # ###############################################################################################
 # - install export -------------------------------------------------------------------------------
@@ -1387,9 +1431,9 @@ if (NOT BUILD_LP_ONLY)
     endif ()
     set_property(TARGET cuopt_cli PROPERTY INSTALL_RPATH "$ORIGIN/../${lib_dir}")
 
-    # adds the cuopt_cli executable to the runtime deb package
+    # Ships with mathopt: the CLI resolves no routing symbols.
     install(TARGETS cuopt_cli
-            COMPONENT runtime
+            COMPONENT mathopt
             RUNTIME DESTINATION ${_BIN_DEST}
     )
 endif ()
@@ -1523,9 +1567,9 @@ if (NOT SKIP_GRPC_BUILD)
     target_link_options(cuopt_grpc_server PRIVATE -Wl,--enable-new-dtags)
     set_property(TARGET cuopt_grpc_server PROPERTY INSTALL_RPATH "$ORIGIN/../${lib_dir}")
 
-    # Install the grpc server executable
+    # Its own component: the one artifact needing every engine, with its own lifecycle.
     install(TARGETS cuopt_grpc_server
-            COMPONENT runtime
+            COMPONENT grpc-server
             RUNTIME DESTINATION ${_BIN_DEST}
     )
 
@@ -1554,6 +1598,17 @@ set(CPACK_COMPONENT_RUNTIME_GROUP "Runtime")
 set(CPACK_DEBIAN_RUNTIME_PACKAGE_MAINTAINER "NVIDIA")
 set(CPACK_DEBIAN_RUNTIME_PACKAGE_NAME "cuopt")
 set(CPACK_DEBIAN_RUNTIME_PACKAGE_FILE_NAME "cuopt_${PROJECT_VERSION}_${DEB_ARCH}")
+
+# Grouped so the output stays two .debs. CPack uppercases the component name
+# verbatim, so the hyphens have to survive the lookup.
+foreach(_runtime_component client mathopt routing grpc-server)
+    string(TOUPPER "${_runtime_component}" _uc)
+    set(CPACK_COMPONENT_${_uc}_GROUP "Runtime")
+endforeach()
+foreach(_dev_component client-dev mathopt-dev routing-dev)
+    string(TOUPPER "${_dev_component}" _uc)
+    set(CPACK_COMPONENT_${_uc}_GROUP "Development")
+endforeach()
 
 # Dev package metadata
 set(CPACK_COMPONENT_DEV_DESCRIPTION "cuOpt development files (headers, symlinks, etc.)")
