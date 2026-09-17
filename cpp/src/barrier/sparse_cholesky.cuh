@@ -36,10 +36,14 @@ namespace detail {
 inline bool pin_cudss_threading_layer(const char* lib_file)
 {
   if (lib_file == nullptr) return false;
-  if (dlopen(lib_file, RTLD_NOW | RTLD_NODELETE) == nullptr) {
+  void* handle = dlopen(lib_file, RTLD_NOW | RTLD_NODELETE);
+  if (handle == nullptr) {
     fprintf(stderr, "Warning: could not pin cuDSS threading layer '%s': %s\n", lib_file, dlerror());
     return false;
   }
+  // RTLD_NODELETE already guarantees the mapping outlives dlclose(); closing here just avoids
+  // accumulating loader-internal refcount state across repeated construction.
+  dlclose(handle);
   return true;
 }
 
