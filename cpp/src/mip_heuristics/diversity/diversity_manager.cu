@@ -17,6 +17,7 @@
 #include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/problem/problem_helpers.cuh>
 
+#include <branch_and_bound/concurrent_root_solver.hpp>
 #include <pdlp/solve.cuh>
 
 #include <utilities/copy_helpers.hpp>
@@ -523,10 +524,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     return population.best_feasible();
   }
 
-  population.timer        = timer;
-  const f_t time_limit    = timer.remaining_time();
-  const auto& hp          = context.settings.heuristic_params;
-  const f_t lp_time_limit = std::min(hp.root_lp_max_time, time_limit * hp.root_lp_time_ratio);
+  population.timer = timer;
   // after every change to the problem, we should resize all the relevant vars
   // we need to encapsulate that to prevent repetitions
   recombine_stats.reset();
@@ -564,135 +562,149 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   } else if (!fj_only_run) {
     convert_greater_to_less(*problem_ptr);
 
-    f_t absolute_tolerance = context.settings.tolerances.absolute_tolerance;
-
-    pdlp_solver_settings_t<i_t, f_t> pdlp_settings{};
-    pdlp_settings.tolerances.absolute_dual_tolerance = absolute_tolerance;
-    pdlp_settings.tolerances.relative_dual_tolerance =
-      context.settings.tolerances.relative_tolerance;
-    pdlp_settings.tolerances.absolute_primal_tolerance = absolute_tolerance;
-    pdlp_settings.tolerances.relative_primal_tolerance =
-      context.settings.tolerances.relative_tolerance;
-    pdlp_settings.time_limit              = lp_time_limit;
-    pdlp_settings.first_primal_feasible   = false;
-    pdlp_settings.concurrent_halt         = &global_concurrent_halt;
-    pdlp_settings.method                  = context.settings.method;
-    pdlp_settings.inside_mip              = true;
-    pdlp_settings.pdlp_solver_mode        = pdlp_solver_mode_t::Stable2;
-    pdlp_settings.num_gpus                = context.settings.num_gpus;
-    pdlp_settings.presolver               = presolver_t::None;
-    pdlp_settings.per_constraint_residual = true;
-    set_pdlp_solver_mode(pdlp_settings);
-    timer_t lp_timer(lp_time_limit);
-    auto lp_result = solve_lp_with_method<i_t, f_t>(*problem_ptr, pdlp_settings, lp_timer);
-
-    // The concurrent root LP can fail to produce a usable solution -- e.g. the barrier
-    // hits a numerical error on an infeasible problem and PDLP returns NumericalError
-    // with empty primal/dual. In that case we must not copy or hand off the empty
-    // result (copying n elements from an empty buffer throws), and we must still
-    // release B&B's root-relaxation wait so it proceeds with its own dual-simplex root
-    // instead of spinning forever.
-    const bool root_lp_usable =
-      lp_result.get_termination_status() != pdlp_termination_status_t::NumericalError &&
-      lp_result.get_primal_solution().size() == lp_optimal_solution.size() &&
-      lp_result.get_dual_solution().size() == lp_dual_optimal_solution.size();
-
-    bool use_staged_simplex_solution = false;
-    {
-      std::lock_guard<std::mutex> guard(relaxed_solution_mutex);
-      use_staged_simplex_solution = simplex_solution_exists.load();
-      if (!use_staged_simplex_solution && root_lp_usable) {
-        raft::copy(lp_optimal_solution.data(),
-                   lp_result.get_primal_solution().data(),
-                   lp_optimal_solution.size(),
-                   problem_ptr->handle_ptr->get_stream());
-        raft::copy(lp_dual_optimal_solution.data(),
-                   lp_result.get_dual_solution().data(),
-                   lp_dual_optimal_solution.size(),
-                   problem_ptr->handle_ptr->get_stream());
+    if (context.branch_and_bound_ptr != nullptr &&
+        context.branch_and_bound_ptr->enable_concurrent_lp_root_solve()) {
+      // B&B owns the CPU/GPU concurrent root solve. Signal that the GPU problem is ready,
+      // then wait for the first root relaxation B&B publishes: either the finished root
+      // (set_simplex_solution_callback) or the raw GPU LP values it hands over before
+      // crossover (set_root_lp_solution_callback). Waiting only for the finished root would
+      // starve the LP-guided heuristics on instances where neither dual simplex nor
+      // crossover completes within the time limit.
+      context.branch_and_bound_ptr->notify_concurrent_root_problem_ready();
+      while (!simplex_solution_exists.load(std::memory_order_acquire) &&
+             !root_lp_solution_exists.load(std::memory_order_acquire) && !check_b_b_preemption()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
       }
-    }
-    if (use_staged_simplex_solution) { consume_staged_simplex_solution(lp_state); }
-    if (use_staged_simplex_solution || root_lp_usable) {
-      cuopt_assert(thrust::all_of(problem_ptr->handle_ptr->get_thrust_policy(),
-                                  lp_optimal_solution.begin(),
-                                  lp_optimal_solution.end(),
-                                  [] __host__ __device__(f_t val) { return std::isfinite(val); }),
-                   "LP optimal solution contains non-finite values");
-    }
-    ls.lp_optimal_exists = true;
-    if (!use_staged_simplex_solution) {
-      if (!root_lp_usable) {
-        // The concurrent root LP produced no usable solution. Do not hand an empty
-        // solution to B&B; instead release its root-relaxation wait loop so it falls
-        // back to its own dual-simplex root rather than deadlocking.
-        CUOPT_LOG_DEBUG("Root LP produced no usable solution (status %d); releasing B&B root solve",
-                        (int)lp_result.get_termination_status());
+      if (simplex_solution_exists.load(std::memory_order_acquire)) {
+        consume_staged_simplex_solution(lp_state);
+        ls.lp_optimal_exists = true;
+      } else if (root_lp_solution_exists.load(std::memory_order_acquire)) {
+        ls.lp_optimal_exists = consume_staged_root_lp_solution();
+      } else {
         ls.lp_optimal_exists = false;
-        if (context.branch_and_bound_ptr != nullptr) {
-          context.branch_and_bound_ptr->set_root_concurrent_halt(1);
+      }
+    } else {
+      // Heuristics-only fallback: no B&B object exists to own the root solve.
+      const f_t time_limit    = timer.remaining_time();
+      const auto& hp          = context.settings.heuristic_params;
+      const f_t lp_time_limit = std::min(hp.root_lp_max_time, time_limit * hp.root_lp_time_ratio);
+
+      auto pdlp_settings            = make_mip_root_lp_settings<i_t, f_t>(context.settings);
+      pdlp_settings.time_limit      = lp_time_limit;
+      pdlp_settings.concurrent_halt = &global_concurrent_halt;
+      timer_t lp_timer(lp_time_limit);
+      auto lp_result = solve_lp_with_method<i_t, f_t>(*problem_ptr, pdlp_settings, lp_timer);
+
+      // The concurrent root LP can fail to produce a usable solution -- e.g. the barrier
+      // hits a numerical error on an infeasible problem and PDLP returns NumericalError
+      // with empty primal/dual. In that case we must not copy or hand off the empty
+      // result (copying n elements from an empty buffer throws), and we must still
+      // release B&B's root-relaxation wait so it proceeds with its own dual-simplex root
+      // instead of spinning forever.
+      const bool root_lp_usable =
+        lp_result.get_termination_status() != pdlp_termination_status_t::NumericalError &&
+        lp_result.get_primal_solution().size() == lp_optimal_solution.size() &&
+        lp_result.get_dual_solution().size() == lp_dual_optimal_solution.size();
+
+      bool use_staged_simplex_solution = false;
+      {
+        std::lock_guard<std::mutex> guard(relaxed_solution_mutex);
+        use_staged_simplex_solution = simplex_solution_exists.load();
+        if (!use_staged_simplex_solution && root_lp_usable) {
+          raft::copy(lp_optimal_solution.data(),
+                     lp_result.get_primal_solution().data(),
+                     lp_optimal_solution.size(),
+                     problem_ptr->handle_ptr->get_stream());
+          raft::copy(lp_dual_optimal_solution.data(),
+                     lp_result.get_dual_solution().data(),
+                     lp_dual_optimal_solution.size(),
+                     problem_ptr->handle_ptr->get_stream());
         }
-      } else if (lp_result.get_termination_status() == pdlp_termination_status_t::Optimal) {
-        solution_t<i_t, f_t> lp_sol(*problem_ptr);
-        lp_sol.copy_new_assignment(lp_optimal_solution);
-        const bool consider_integrality = false;
-        lp_sol.compute_feasibility(consider_integrality);
-        if (lp_sol.get_feasible()) { set_new_user_bound(lp_result.get_objective_value()); }
-      } else if (lp_result.get_termination_status() ==
-                 pdlp_termination_status_t::PrimalInfeasible) {
-        CUOPT_LOG_ERROR("Problem is primal infeasible, continuing anyway!");
-        ls.lp_optimal_exists = false;
-      } else if (lp_result.get_termination_status() == pdlp_termination_status_t::DualInfeasible) {
-        CUOPT_LOG_ERROR("PDLP detected dual infeasibility, continuing anyway!");
-        ls.lp_optimal_exists = false;
-      } else if (lp_result.get_termination_status() == pdlp_termination_status_t::TimeLimit) {
-        CUOPT_LOG_DEBUG(
-          "Initial LP run exceeded time limit, continuing solver with partial LP result!");
-        // note to developer, in debug mode the LP run might be too slow and it might cause PDLP
-        // not to bring variables within the bounds
       }
-    }
+      if (use_staged_simplex_solution) { consume_staged_simplex_solution(lp_state); }
+      if (use_staged_simplex_solution || root_lp_usable) {
+        cuopt_assert(thrust::all_of(problem_ptr->handle_ptr->get_thrust_policy(),
+                                    lp_optimal_solution.begin(),
+                                    lp_optimal_solution.end(),
+                                    [] __host__ __device__(f_t val) { return std::isfinite(val); }),
+                     "LP optimal solution contains non-finite values");
+      }
+      ls.lp_optimal_exists = true;
+      if (!use_staged_simplex_solution) {
+        if (!root_lp_usable) {
+          // The concurrent root LP produced no usable solution. Do not hand an empty
+          // solution to B&B; instead release its root-relaxation wait loop so it falls
+          // back to its own dual-simplex root rather than deadlocking.
+          CUOPT_LOG_DEBUG(
+            "Root LP produced no usable solution (status %d); releasing B&B root solve",
+            (int)lp_result.get_termination_status());
+          ls.lp_optimal_exists = false;
+          if (context.branch_and_bound_ptr != nullptr) {
+            context.branch_and_bound_ptr->set_root_concurrent_halt(1);
+          }
+        } else if (lp_result.get_termination_status() == pdlp_termination_status_t::Optimal) {
+          solution_t<i_t, f_t> lp_sol(*problem_ptr);
+          lp_sol.copy_new_assignment(lp_optimal_solution);
+          const bool consider_integrality = false;
+          lp_sol.compute_feasibility(consider_integrality);
+          if (lp_sol.get_feasible()) { set_new_user_bound(lp_result.get_objective_value()); }
+        } else if (lp_result.get_termination_status() ==
+                   pdlp_termination_status_t::PrimalInfeasible) {
+          CUOPT_LOG_ERROR("Problem is primal infeasible, continuing anyway!");
+          ls.lp_optimal_exists = false;
+        } else if (lp_result.get_termination_status() ==
+                   pdlp_termination_status_t::DualInfeasible) {
+          CUOPT_LOG_ERROR("PDLP detected dual infeasibility, continuing anyway!");
+          ls.lp_optimal_exists = false;
+        } else if (lp_result.get_termination_status() == pdlp_termination_status_t::TimeLimit) {
+          CUOPT_LOG_DEBUG(
+            "Initial LP run exceeded time limit, continuing solver with partial LP result!");
+          // note to developer, in debug mode the LP run might be too slow and it might cause PDLP
+          // not to bring variables within the bounds
+        }
+      }
 
-    // Hand the root relaxation off to branch and bound when we have a usable solution
-    // (sets root_crossover_solution_set_, releasing B&B's wait). When the root LP failed
-    // the wait is instead released above via set_root_concurrent_halt, and a staged
-    // dual-simplex solution is owned by B&B already, so neither needs this hand-off.
-    if (!use_staged_simplex_solution && root_lp_usable &&
-        problem_ptr->set_root_relaxation_solution_callback != nullptr) {
-      auto& d_primal_solution = lp_result.get_primal_solution();
-      auto& d_dual_solution   = lp_result.get_dual_solution();
-      auto& d_reduced_costs   = lp_result.get_reduced_cost();
+      // Hand the root relaxation off to branch and bound when we have a usable solution
+      // (sets root_crossover_solution_set_, releasing B&B's wait). When the root LP failed
+      // the wait is instead released above via set_root_concurrent_halt, and a staged
+      // dual-simplex solution is owned by B&B already, so neither needs this hand-off.
+      if (!use_staged_simplex_solution && root_lp_usable &&
+          problem_ptr->set_root_relaxation_solution_callback != nullptr) {
+        auto& d_primal_solution = lp_result.get_primal_solution();
+        auto& d_dual_solution   = lp_result.get_dual_solution();
+        auto& d_reduced_costs   = lp_result.get_reduced_cost();
 
-      std::vector<f_t> host_primal(d_primal_solution.size());
-      std::vector<f_t> host_dual(d_dual_solution.size());
-      std::vector<f_t> host_reduced_costs(d_reduced_costs.size());
-      raft::copy(host_primal.data(),
-                 d_primal_solution.data(),
-                 d_primal_solution.size(),
-                 problem_ptr->handle_ptr->get_stream());
-      raft::copy(host_dual.data(),
-                 d_dual_solution.data(),
-                 d_dual_solution.size(),
-                 problem_ptr->handle_ptr->get_stream());
-      raft::copy(host_reduced_costs.data(),
-                 d_reduced_costs.data(),
-                 d_reduced_costs.size(),
-                 problem_ptr->handle_ptr->get_stream());
-      problem_ptr->handle_ptr->sync_stream();
+        std::vector<f_t> host_primal(d_primal_solution.size());
+        std::vector<f_t> host_dual(d_dual_solution.size());
+        std::vector<f_t> host_reduced_costs(d_reduced_costs.size());
+        raft::copy(host_primal.data(),
+                   d_primal_solution.data(),
+                   d_primal_solution.size(),
+                   problem_ptr->handle_ptr->get_stream());
+        raft::copy(host_dual.data(),
+                   d_dual_solution.data(),
+                   d_dual_solution.size(),
+                   problem_ptr->handle_ptr->get_stream());
+        raft::copy(host_reduced_costs.data(),
+                   d_reduced_costs.data(),
+                   d_reduced_costs.size(),
+                   problem_ptr->handle_ptr->get_stream());
+        problem_ptr->handle_ptr->sync_stream();
 
-      // PDLP returns user-space objective (it applies objective_scaling_factor internally)
-      auto user_obj   = lp_result.get_objective_value();
-      auto solver_obj = problem_ptr->get_solver_obj_from_user_obj(user_obj);
-      auto iterations = lp_result.get_additional_termination_information().number_of_steps_taken;
-      auto method     = lp_result.get_additional_termination_information().solved_by;
-      // Set for the B&B (param4 expects solver space, param5 expects user space)
-      problem_ptr->set_root_relaxation_solution_callback(
-        host_primal, host_dual, host_reduced_costs, solver_obj, user_obj, iterations, method);
-    }
+        // PDLP returns user-space objective (it applies objective_scaling_factor internally)
+        auto user_obj   = lp_result.get_objective_value();
+        auto solver_obj = problem_ptr->get_solver_obj_from_user_obj(user_obj);
+        auto iterations = lp_result.get_additional_termination_information().number_of_steps_taken;
+        auto method     = lp_result.get_additional_termination_information().solved_by;
+        // Set for the B&B (param4 expects solver space, param5 expects user space)
+        problem_ptr->set_root_relaxation_solution_callback(
+          host_primal, host_dual, host_reduced_costs, solver_obj, user_obj, iterations, method);
+      }
 
-    if (!use_staged_simplex_solution && root_lp_usable) {
-      // in case the pdlp returned var boudns that are out of bounds
-      clamp_within_var_bounds(lp_optimal_solution, problem_ptr, problem_ptr->handle_ptr);
+      if (!use_staged_simplex_solution && root_lp_usable) {
+        // in case the pdlp returned var boudns that are out of bounds
+        clamp_within_var_bounds(lp_optimal_solution, problem_ptr, problem_ptr->handle_ptr);
+      }
     }
   }
 
@@ -1045,6 +1057,77 @@ void diversity_manager_t<i_t, f_t>::set_simplex_solution(const std::vector<f_t>&
   staged_simplex_objective     = objective;
   simplex_solution_exists.store(true, std::memory_order_release);
   CUOPT_LOG_DEBUG("Staged simplex solution and requested concurrent halt");
+}
+
+template <typename i_t, typename f_t>
+void diversity_manager_t<i_t, f_t>::set_root_lp_solution(const std::vector<f_t>& solution,
+                                                         const std::vector<f_t>& dual_solution,
+                                                         f_t user_objective,
+                                                         bool optimal)
+{
+  // Called from the B&B thread, so only stage the host values here. The device copies
+  // happen on the heuristics thread in consume_staged_root_lp_solution.
+  std::lock_guard<std::mutex> lock(relaxed_solution_mutex);
+  cuopt_assert(solution.empty() || lp_optimal_solution.size() == solution.size(),
+               "Assignment size mismatch");
+  cuopt_assert(solution.empty() || problem_ptr->n_constraints == dual_solution.size(),
+               "Dual assignment size mismatch");
+  staged_root_lp_solution      = solution;
+  staged_root_lp_dual_solution = dual_solution;
+  staged_root_lp_objective     = user_objective;
+  staged_root_lp_optimal       = optimal;
+  root_lp_solution_exists.store(true, std::memory_order_release);
+  CUOPT_LOG_DEBUG(
+    "Staged GPU root LP solution with objective %f (optimal %d)", user_objective, (int)optimal);
+}
+
+template <typename i_t, typename f_t>
+bool diversity_manager_t<i_t, f_t>::consume_staged_root_lp_solution()
+{
+  std::vector<f_t> primal_local;
+  std::vector<f_t> dual_local;
+  f_t objective_local = std::numeric_limits<f_t>::infinity();
+  bool optimal_local  = false;
+  {
+    std::lock_guard<std::mutex> guard(relaxed_solution_mutex);
+    cuopt_assert(root_lp_solution_exists.load(),
+                 "Root LP solution flag set without a staged root LP solution");
+    primal_local    = staged_root_lp_solution;
+    dual_local      = staged_root_lp_dual_solution;
+    objective_local = staged_root_lp_objective;
+    optimal_local   = staged_root_lp_optimal;
+  }
+  // An empty hand-off means the root LP produced nothing usable; the heuristics run
+  // without LP guidance instead of waiting for a root that may never arrive.
+  if (primal_local.empty()) {
+    CUOPT_LOG_DEBUG("Root LP produced no usable solution; continuing without LP guidance");
+    return false;
+  }
+  cuopt_assert(lp_optimal_solution.size() == primal_local.size(), "Assignment size mismatch");
+  cuopt_assert(lp_dual_optimal_solution.size() == dual_local.size(),
+               "Dual assignment size mismatch");
+  auto stream = problem_ptr->handle_ptr->get_stream();
+  raft::copy(lp_optimal_solution.data(), primal_local.data(), lp_optimal_solution.size(), stream);
+  raft::copy(
+    lp_dual_optimal_solution.data(), dual_local.data(), lp_dual_optimal_solution.size(), stream);
+  problem_ptr->handle_ptr->sync_stream();
+  cuopt_assert(thrust::all_of(problem_ptr->handle_ptr->get_thrust_policy(),
+                              lp_optimal_solution.begin(),
+                              lp_optimal_solution.end(),
+                              [] __host__ __device__(f_t val) { return std::isfinite(val); }),
+               "LP optimal solution contains non-finite values");
+  // Only an LP that proved optimality gives a valid dual bound for the MIP. A partial
+  // relaxation is still useful to guide the heuristics, but must not move the bound.
+  if (optimal_local) {
+    solution_t<i_t, f_t> lp_sol(*problem_ptr);
+    lp_sol.copy_new_assignment(lp_optimal_solution);
+    const bool consider_integrality = false;
+    lp_sol.compute_feasibility(consider_integrality);
+    if (lp_sol.get_feasible()) { set_new_user_bound(objective_local); }
+  }
+  // PDLP can return values slightly outside the variable bounds.
+  clamp_within_var_bounds(lp_optimal_solution, problem_ptr, problem_ptr->handle_ptr);
+  return true;
 }
 
 #if MIP_INSTANTIATE_FLOAT
