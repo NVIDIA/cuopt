@@ -29,9 +29,8 @@ class cusparse_view_t {
   // Copy CSC -> owned CSR + CSC-transpose, with preprocess. Supports forward and transpose SpMV.
   // TMP matrix data should already be on the GPU and in CSR not CSC
   cusparse_view_t(raft::handle_t const* handle_ptr, const csc_matrix_t<i_t, f_t>& A);
-  ~cusparse_view_t();
 
-  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> create_vector(rmm::device_uvector<f_t> const& vec);
+  pdlp::cusparse_dn_vec_uptr create_vector(rmm::device_uvector<f_t> const& vec);
 
   template <typename AllocatorA, typename AllocatorB>
   void spmv(f_t alpha,
@@ -40,9 +39,9 @@ class cusparse_view_t {
             std::vector<f_t, AllocatorB>& y);
   void spmv(f_t alpha, rmm::device_uvector<f_t> const& x, f_t beta, rmm::device_uvector<f_t>& y);
   void spmv(f_t alpha,
-            pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> const& x,
+            pdlp::cusparse_dn_vec_descr_view x,
             f_t beta,
-            pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> const& y);
+            pdlp::cusparse_dn_vec_descr_view y);
   template <typename AllocatorA, typename AllocatorB>
   void transpose_spmv(f_t alpha,
                       const std::vector<f_t, AllocatorA>& x,
@@ -53,9 +52,9 @@ class cusparse_view_t {
                       f_t beta,
                       rmm::device_uvector<f_t>& y);
   void transpose_spmv(f_t alpha,
-                      pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> const& x,
+                      pdlp::cusparse_dn_vec_descr_view x,
                       f_t beta,
-                      pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> const& y);
+                      pdlp::cusparse_dn_vec_descr_view y);
 
   raft::handle_t const* handle_ptr_{nullptr};
 
@@ -69,11 +68,11 @@ class cusparse_view_t {
   rmm::device_uvector<i_t> A_offsets_;
   rmm::device_uvector<i_t> A_indices_;
   rmm::device_uvector<f_t> A_data_;
-  cusparseSpMatDescr_t A_{nullptr};
+  pdlp::cusparse_sp_mat_uptr A_;
   rmm::device_uvector<i_t> A_T_offsets_;
   rmm::device_uvector<i_t> A_T_indices_;
   rmm::device_uvector<f_t> A_T_data_;
-  cusparseSpMatDescr_t A_T_{nullptr};
+  pdlp::cusparse_sp_mat_uptr A_T_;
   rmm::device_buffer spmv_buffer_;
   rmm::device_buffer spmv_buffer_transpose_;
   rmm::device_scalar<f_t> d_one_;

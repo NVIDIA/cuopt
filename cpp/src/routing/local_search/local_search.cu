@@ -290,7 +290,7 @@ void local_search_t<i_t, f_t, REQUEST>::run_best_local_search(solution_t<i_t, f_
     calculate_route_compatibility(sol);
     find_insertions<i_t, f_t, REQUEST>(sol, move_candidates, search_type_t::IMPROVE);
 
-    RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
+    RAFT_CHECK_CUDA(sol.sol_handle->get_stream().get());
     sol.sol_handle->sync_stream();
     fill_gpu_graph(sol);
 
@@ -348,7 +348,7 @@ void local_search_t<i_t, f_t, REQUEST>::run_random_local_search(solution_t<i_t, 
   calculate_route_compatibility(sol);
   find_insertions<i_t, f_t, REQUEST>(sol, move_candidates, search_type_t::RANDOM);
 
-  RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
+  RAFT_CHECK_CUDA(sol.sol_handle->get_stream().get());
   sol.sol_handle->sync_stream();
   populate_random_moves(sol);
 

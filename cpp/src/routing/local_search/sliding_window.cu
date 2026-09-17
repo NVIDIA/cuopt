@@ -1065,25 +1065,25 @@ bool local_search_t<i_t, f_t, REQUEST>::perform_sliding_window(
       <<<n_blocks,  // One block for each node
          thread_per_block,
          shared_for_tmp_route,
-         solution.sol_handle->get_stream()>>>(solution.view(),
-                                              found_sliding_solution_data_.data(),
-                                              move_candidates.view(),
-                                              locks_.data(),
-                                              blocks_per_node);
+         solution.sol_handle->get_stream().get()>>>(solution.view(),
+                                                    found_sliding_solution_data_.data(),
+                                                    move_candidates.view(),
+                                                    locks_.data(),
+                                                    blocks_per_node);
   } else {
     kernel_perform_sliding_window<i_t, f_t, REQUEST, false>
       <<<n_blocks,  // One block for each node
          thread_per_block,
          shared_for_tmp_route,
-         solution.sol_handle->get_stream()>>>(solution.view(),
-                                              found_sliding_solution_data_.data(),
-                                              move_candidates.view(),
-                                              locks_.data(),
-                                              blocks_per_node);
+         solution.sol_handle->get_stream().get()>>>(solution.view(),
+                                                    found_sliding_solution_data_.data(),
+                                                    move_candidates.view(),
+                                                    locks_.data(),
+                                                    blocks_per_node);
   }
   sliding_cuda_graph.end_capture(solution.sol_handle->get_stream());
   sliding_cuda_graph.launch_graph(solution.sol_handle->get_stream());
-  RAFT_CHECK_CUDA(solution.sol_handle->get_stream());
+  RAFT_CHECK_CUDA(solution.sol_handle->get_stream().get());
   n_moves_found = thrust::count_if(solution.sol_handle->get_thrust_policy(),
                                    found_sliding_solution_data_.begin(),
                                    found_sliding_solution_data_.end(),
@@ -1104,12 +1104,12 @@ bool local_search_t<i_t, f_t, REQUEST>::perform_sliding_window(
 
   // One block for each found route
   execute_sliding_move<i_t, f_t, REQUEST>
-    <<<solution.n_routes, 256, aligned_shared_size, solution.sol_handle->get_stream()>>>(
+    <<<solution.n_routes, 256, aligned_shared_size, solution.sol_handle->get_stream().get()>>>(
       solution.view(),
       found_sliding_solution_data_.data(),
       move_candidates.view(),
       move_candidates.debug_delta.data());
-  RAFT_CHECK_CUDA(solution.sol_handle->get_stream());
+  RAFT_CHECK_CUDA(solution.sol_handle->get_stream().get());
   cuopt_func_call(solution.compute_cost());
   cuopt_func_call(cost_after =
                     solution.get_cost(move_candidates.include_objective, move_candidates.weights));

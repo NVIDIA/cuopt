@@ -12,6 +12,7 @@
 #include <utilities/vector_helpers.cuh>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
+#include <cuda/stream>
 #include <raft/core/cusparse_macros.hpp>
 #include <raft/sparse/linalg/transpose.cuh>
 #include "cusparse.h"
@@ -85,7 +86,7 @@ void spgemm_cusparse([[maybe_unused]] rmm::device_uvector<i_t>& offsetsA,
   auto stream = offsetsA.stream();
   cusparseHandle_t handle;
   cusparseCreate(&handle);
-  cusparseSetStream(handle, stream);
+  cusparseSetStream(handle, stream.get());
 
   int m    = offsetsA.size() - 1;
   int n    = offsetsB.size() - 1;
@@ -215,7 +216,7 @@ void spgemm_cusparse([[maybe_unused]] rmm::device_uvector<i_t>& offsetsA,
 
   check_cusparse_status(cusparseSpGEMM_copy(
     handle, opA, opB, &alpha, matA, matB, &beta, matC, computeType, alg, spgemmDesc));
-  stream.synchronize();
+  stream.sync();
 
   cusparseSpGEMM_destroyDescr(spgemmDesc);
   cusparseDestroySpMat(matA);
@@ -642,7 +643,7 @@ struct len_from_offset {
 // Ideally this should be precomputed and stored in the problem, but that also means we need to
 // update it every time the problem is modified, so we will compute it here for now
 template <typename i_t>
-i_t get_max_row_size(rmm::device_uvector<i_t>& offsets, rmm::cuda_stream_view stream_view)
+i_t get_max_row_size(rmm::device_uvector<i_t>& offsets, cuda::stream_ref stream_view)
 {
   auto begin = thrust::make_zip_iterator(thrust::make_tuple(offsets.begin(), offsets.begin() + 1));
   auto end   = thrust::make_zip_iterator(thrust::make_tuple(offsets.end() - 1, offsets.end()));
@@ -677,7 +678,7 @@ void conditional_bound_strengthening_t<i_t, f_t>::solve(problem_t<i_t, f_t>& pro
   update_constraint_bounds_kernel<i_t, f_t, TPB><<<n_blocks, TPB, sh_size>>>(
     problem.view(), cuopt::make_span(constraint_pairs), cuopt::make_span(locks_per_constraint));
 
-  RAFT_CHECK_CUDA(problem.handle_ptr->get_stream());
+  RAFT_CHECK_CUDA(problem.handle_ptr->get_stream().get());
   problem.handle_ptr->sync_stream();
 
 #ifdef DEBUG_COND_BOUNDS_PROP

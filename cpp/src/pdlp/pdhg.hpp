@@ -14,9 +14,9 @@
 #include <pdlp/swap_and_resize_helper.cuh>
 #include <pdlp/utilities/ping_pong_graph.cuh>
 
+#include <cuda/stream>
 #include <raft/core/handle.hpp>
 
-#include <rmm/cuda_stream_view.hpp>
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 
@@ -138,7 +138,7 @@ class pdhg_solver_t {
 
   bool batch_mode_{false};
   raft::handle_t const* handle_ptr_{nullptr};
-  rmm::cuda_stream_view stream_view_;
+  cuda::stream_ref stream_view_;
 
   mip::problem_t<i_t, f_t>* problem_ptr;
 

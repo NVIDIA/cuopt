@@ -14,6 +14,7 @@
 #include <cub/device/device_reduce.cuh>
 #include <cub/warp/warp_reduce.cuh>
 
+#include <cuda/stream>
 #include <rmm/device_buffer.hpp>
 #include <rmm/device_uvector.hpp>
 
@@ -83,7 +84,7 @@ struct segmented_sum_t {
 
  private:
   template <typename value_t>
-  void prepare_workspace_for_type(rmm::cuda_stream_view stream)
+  void prepare_workspace_for_type(cuda::stream_ref stream)
   {
     auto input  = thrust::make_constant_iterator(value_t{});
     auto output = thrust::make_discard_iterator();
@@ -95,7 +96,7 @@ struct segmented_sum_t {
                                            input + large_cone_offsets[i],
                                            output + large_cone_ids[i],
                                            large_cone_dimensions[i],
-                                           stream.value()));
+                                           stream.get()));
       cub_workspace_bytes = std::max(cub_workspace_bytes, temp_storage_bytes);
     }
 
@@ -106,14 +107,14 @@ struct segmented_sum_t {
 
  public:
   template <typename value_t, typename... rest_t>
-  void prepare_workspace(rmm::cuda_stream_view stream)
+  void prepare_workspace(cuda::stream_ref stream)
   {
     prepare_workspace_for_type<value_t>(stream);
     (prepare_workspace_for_type<rest_t>(stream), ...);
   }
 
   template <typename value_t, typename InputIt, typename OutputIt, int warps_per_cta = 8>
-  void operator()(InputIt input, OutputIt output, value_t init, rmm::cuda_stream_view stream)
+  void operator()(InputIt input, OutputIt output, value_t init, cuda::stream_ref stream)
   {
     if (!small_cone_ids.is_empty()) {
       // Each warp reduces one small cone. `warps_per_cta` only controls how
@@ -122,7 +123,7 @@ struct segmented_sum_t {
       const auto n_small = small_cone_ids.size();
       const auto grid    = (n_small + warps_per_cta - 1) / warps_per_cta;
       warp_per_cone_reduce_kernel<i_t, value_t, warps_per_cta>
-        <<<grid, warps_per_cta * raft::WarpSize, 0, stream.value()>>>(
+        <<<grid, warps_per_cta * raft::WarpSize, 0, stream.get()>>>(
           input, cuopt::make_span(small_cone_ids), cone_offsets, output, init);
       RAFT_CUDA_TRY(cudaPeekAtLastError());
     }
@@ -131,7 +132,7 @@ struct segmented_sum_t {
       constexpr int medium_block_dim = 256;
       const auto n_medium            = medium_cone_ids.size();
       block_per_cone_reduce_kernel<i_t, value_t, medium_block_dim>
-        <<<n_medium, medium_block_dim, 0, stream.value()>>>(
+        <<<n_medium, medium_block_dim, 0, stream.get()>>>(
           input, cuopt::make_span(medium_cone_ids), cone_offsets, output, init);
       RAFT_CUDA_TRY(cudaPeekAtLastError());
     }
@@ -147,20 +148,20 @@ struct segmented_sum_t {
                                              input + large_cone_offsets[i],
                                              output + large_cone_ids[i],
                                              large_cone_dimensions[i],
-                                             stream.value()));
+                                             stream.get()));
       }
     }
   }
 
   template <std::floating_point f_t, typename InputIt>
-  void operator()(InputIt input, raft::device_span<f_t> output, rmm::cuda_stream_view stream)
+  void operator()(InputIt input, raft::device_span<f_t> output, cuda::stream_ref stream)
   {
     operator()(input, output.data(), f_t{0}, stream);
   }
 
   segmented_sum_t(std::span<const i_t> cone_dimensions_host,
                   raft::device_span<const std::size_t> cone_offsets_in,
-                  rmm::cuda_stream_view stream)
+                  cuda::stream_ref stream)
     : cone_offsets(cone_offsets_in),
       small_cone_ids(0, stream),
       medium_cone_ids(0, stream),
@@ -199,7 +200,7 @@ struct segmented_sum_t {
       cuopt::device_copy(large_cone_ids_device, large_cone_ids, stream);
       need_sync = true;
     }
-    if (need_sync) { stream.synchronize(); }
+    if (need_sync) { stream.sync(); }
   }
 };
 

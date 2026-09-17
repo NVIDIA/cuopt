@@ -37,16 +37,32 @@ pip check
 
 RAPIDS_TESTS_DIR="${RAPIDS_TESTS_DIR:-${PWD}/test-results}"
 mkdir -p "${RAPIDS_TESTS_DIR}"
+# Canonicalize to an absolute path: if a caller exports RAPIDS_TESTS_DIR as a
+# relative path, it would resolve differently after the popd below (relative
+# to the clone we're leaving vs. relative to where we land), splitting the
+# junit output across two directories.
+RAPIDS_TESTS_DIR="$(cd -- "${RAPIDS_TESTS_DIR}" && pwd -P)"
+
+# Leave the clone: cwd is 'cvxpy/' containing a 'cvxpy/' package
+# subdirectory, and Python puts cwd first on sys.path, so importing 'cvxpy'
+# from here silently shadows the installed wheel with the uncompiled source
+# tree -- producing "ImportError: cannot import name '_cvxcore'" even on a
+# perfectly good build/install. This is the actual root cause of the
+# nightly failure fixed here.
+popd
 
 echo "running 'cvxpy' tests"
 pytest_rc=0
+# --pyargs (module path, not a filesystem path) avoids pytest re-inserting
+# the clone root onto sys.path via its rootdir walk-up, which would
+# reintroduce the shadowing above even with cwd fixed.
 timeout 3m python -m pytest \
     --verbose \
     --capture=no \
     --error-for-skips \
     --junitxml="${RAPIDS_TESTS_DIR}/junit-thirdparty-cvxpy.xml" \
     -k "TestCUOPT" \
-    ./cvxpy/tests/test_conic_solvers.py || pytest_rc=$?
+    --pyargs cvxpy.tests.test_conic_solvers || pytest_rc=$?
 
 # pytest's normal exit codes are 0-5 (passed / failed / interrupted /
 # internal error / usage / no tests collected). Anything beyond that

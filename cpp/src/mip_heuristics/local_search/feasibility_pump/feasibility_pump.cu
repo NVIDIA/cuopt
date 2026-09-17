@@ -200,7 +200,7 @@ bool feasibility_pump_t<i_t, f_t>::linear_project_onto_polytope(solution_t<i_t, 
              obj_coefficients.data(),
              obj_coefficients.size(),
              solution.handle_ptr->get_stream());
-  RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
+  RAFT_CHECK_CUDA(solution.handle_ptr->get_stream().get());
   temp_p.presolve_data.objective_offset = obj_offset;
   // change the precision between 1. and 10-4 depending on the integer ratio
   // the lp tolerance can be pretty high
@@ -447,7 +447,7 @@ void feasibility_pump_t<i_t, f_t>::relax_general_integers(solution_t<i_t, f_t>& 
       var_types[v_idx] = copy_type;
     });
   solution.handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
+  RAFT_CHECK_CUDA(solution.handle_ptr->get_stream().get());
   solution.problem_ptr->compute_n_integer_vars();
   solution.problem_ptr->compute_binary_var_table();
   CUOPT_LOG_DEBUG("Integers are relaxed n_int vars %d n_binary vars %d n_vars %d",

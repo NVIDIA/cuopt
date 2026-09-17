@@ -8,7 +8,11 @@ from multiprocessing import get_context
 
 import psutil
 
-from cuopt_server.utils.job_queue import ExitJob, Shutdown, abort_by_pid
+from cuopt_server.utils.deprecated.job_queue import (
+    ExitJob,
+    Shutdown,
+    abort_by_pid,
+)
 
 
 class SolverProcess:
@@ -73,7 +77,7 @@ def create_process(app_exit, job_queue, results_queue, abort_list, gpu_id):
     ctx = get_context("fork")
     complete = ctx.Event()
 
-    from cuopt_server.utils import solver
+    from cuopt_server.utils.deprecated import solver
 
     s = ctx.Process(
         target=solver.process_async_solve,
