@@ -137,7 +137,7 @@
         },
         "barrier_dual_initial_point": {
           "type": "integer",
-          "description": "Barrier: how the dual initial point is computed, which affects the iteration count. -1 automatic, 0 the Lustig-Marsten-Shanno heuristic, 1 a least-squares problem minimizing the norms of the dual variables and reduced costs subject to the dual equality constraints. Default: -1 (automatic)."
+          "description": "Barrier: how the dual initial point is computed, which affects the iteration count. -1 automatic, 0 the Lustig-Marsten-Shanno heuristic, 1 a least-squares problem minimizing the norms of the dual variables and reduced costs subject to the dual equality constraints, 2 the Sturm/SeDuMi-style mu-based primal+dual initial point. Default: -1 (automatic)."
         },
         "eliminate_dense_columns": {
           "type": "boolean",
@@ -148,7 +148,8 @@
           "description": "Barrier: whether iterative refinement runs after each barrier solve to improve solution accuracy (see cpp/src/barrier/barrier.cu). Default: true."
         },
         "barrier_adaptive_regularization": {
-          "type": "integer"
+          "type": "integer",
+          "description": "Whether the barrier method scales its KKT regularization up or down on later iterations: -1 automatic (uses the built-in heuristic), 0 disabled, 1 enabled. Default: -1 (automatic)."
         },
         "barrier_step_scale": {
           "type": "number",
@@ -253,11 +254,11 @@
         },
         "mip_batch_pdlp_strong_branching": {
           "type": "integer",
-          "description": "Whether strong branching at the root evaluates candidates with a single batched PDLP solve instead of solving them in parallel with dual simplex, which can cut strong-branching time when dual simplex struggles. 0 disabled, 1 enabled. Default: 0 (disabled)."
+          "description": "How strong branching at the root evaluates candidates: 0 dual simplex only, 1 cooperative dual simplex + a single batched PDLP solve, 2 batched PDLP only. Batching can cut strong-branching time when dual simplex struggles. Default: 0 (dual simplex only)."
         },
         "mip_batch_pdlp_reliability_branching": {
           "type": "integer",
-          "description": "Whether reliability-branching candidates are evaluated simultaneously with a single batched PDLP solve. 0 disabled, 1 enabled. Default: 0 (disabled)."
+          "description": "How reliability-branching candidates are evaluated: 0 dual simplex only, 1 cooperative dual simplex + a single batched PDLP solve, 2 batched PDLP only. Default: 0 (dual simplex only)."
         },
         "strong_branching_simplex_iteration_limit": {
           "type": "integer",
@@ -331,7 +332,7 @@
         },
         "probing": {
           "type": "boolean",
-          "description": "Whether the probing-cache step of MIP presolve runs. Probing evaluates variable fixings to discover implications later used by branch-and-bound and the rounding heuristics. Only meaningful when presolve is otherwise enabled \u2014 presolver=0 disables the whole pipeline. Probing is also skipped in deterministic mode and on LP-only solves. Default: true.",
+          "description": "Whether the probing-cache step of MIP presolve runs. Probing evaluates variable fixings to discover implications later used by branch-and-bound and the rounding heuristics. Only meaningful when presolve is otherwise enabled \u2014 presolver=0 disables the whole pipeline. Default: true.",
           "x-parameter-name": "mip_probing"
         },
         "semi_continuous_big_m": {
@@ -396,7 +397,7 @@
         },
         "enabled_recombiners": {
           "type": "integer",
-          "description": "Bitmask of enabled recombiners: 1 bound propagation, 2 feasibility pump, 4 local search, 8 sub-MIP. Default: 15 (all enabled).",
+          "description": "Bitmask of enabled recombiners: 1 bound propagation, 2 feasibility pump, 4 line-segment recombination, 8 sub-MIP. (Bit 4 is the `LINE_SEGMENT` recombiner specifically, not the solver's general local search.) Default: 15 (all enabled).",
           "x-parameter-name": "mip_hyper_heuristic_enabled_recombiners"
         },
         "cycle_detection_length": {
