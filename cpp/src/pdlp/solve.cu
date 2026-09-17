@@ -8,6 +8,7 @@
 #include <cuopt/error.hpp>
 #include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/solve_remote.hpp>
+
 #include <pdlp/cusparse_view.hpp>
 #include <pdlp/optimal_batch_size_handler/optimal_batch_size_handler.hpp>
 #include <pdlp/pdlp.cuh>
@@ -26,6 +27,7 @@
 #include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/solver.cuh>
 
+#include <barrier/barrier_transform.hpp>
 #include <cuopt/mathematical_optimization/backend_selection.hpp>
 #include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
 #include <cuopt/mathematical_optimization/cpu_optimization_problem_solution.hpp>
@@ -35,6 +37,7 @@
 #include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/solve.hpp>
+#include <cuopt/mathematical_optimization/utilities/barrier_cache.hpp>
 
 #include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
 #include <utilities/copy_helpers.hpp>
@@ -72,6 +75,33 @@
   if ((condition)) { CUOPT_LOG_INFO(__VA_ARGS__); }
 
 namespace cuopt::mathematical_optimization {
+
+namespace {
+
+template <typename i_t, typename f_t>
+simplex::user_problem_t<i_t, f_t> user_problem_from_transform(
+  raft::handle_t const* handle_ptr,
+  optimization_problem_t<i_t, f_t>& model,
+  cuopt::mathematical_optimization::barrier_transform_t const& xf)
+{
+  simplex::user_problem_t<i_t, f_t> user_problem(handle_ptr);
+  user_problem.num_rows  = xf.user_num_rows;
+  user_problem.num_cols  = xf.user_num_cols;
+  user_problem.objective = model.get_objective_coefficients_host();
+  user_problem.row_sense = xf.row_sense;
+  user_problem.rhs.assign(static_cast<std::size_t>(xf.user_num_rows), f_t(0));
+  user_problem.obj_scale    = static_cast<f_t>(xf.obj_scale);
+  user_problem.obj_constant = static_cast<f_t>(xf.obj_constant);
+  // Nonempty Q so the cache-reuse path accepts this as a QP (it rejects empty Q).
+  user_problem.Q_values.assign(1, f_t(1));
+  user_problem.cone_var_start               = xf.cone_var_start;
+  user_problem.second_order_cone_dims       = xf.second_order_cone_dims;
+  user_problem.original_num_cols            = xf.expanded_original_num_cols;
+  user_problem.original_col_to_expanded_col = xf.original_col_to_expanded_col;
+  return user_problem;
+}
+
+}  // namespace
 
 template <typename From, typename To>
 extern rmm::device_uvector<To> gpu_cast(const rmm::device_uvector<From>& src,
@@ -494,7 +524,8 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   const simplex::user_problem_t<i_t, f_t>& user_problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   const timer_t& timer,
-  const raft::handle_t* handle_ptr)
+  const raft::handle_t* handle_ptr,
+  cuopt::mathematical_optimization::barrier_cache_t* cache = nullptr)
 {
   f_t norm_user_objective = vector_norm2<i_t, f_t>(user_problem.objective);
   f_t norm_rhs            = vector_norm2<i_t, f_t>(user_problem.rhs);
@@ -535,7 +566,7 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
 
   simplex::lp_solution_t<i_t, f_t> solution(user_problem.num_rows, user_problem.num_cols);
   auto status = simplex::solve_linear_program_with_barrier<i_t, f_t>(
-    user_problem, barrier_settings, timer.get_tic_start(), solution, handle_ptr);
+    user_problem, barrier_settings, timer.get_tic_start(), solution, cache, handle_ptr);
 
   if (status == simplex::lp_status_t::OPTIMAL) {
     barrier::project_barrier_solution_to_model_variables(user_problem, solution);
@@ -559,12 +590,14 @@ template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> run_barrier(
   mip::problem_t<i_t, f_t>& problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
-  const timer_t& timer)
+  const timer_t& timer,
+  cuopt::mathematical_optimization::barrier_cache_t* cache = nullptr)
 {
   // Convert data structures to dual simplex format and back
   simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
     cuopt_problem_to_user_problem<i_t, f_t>(problem.handle_ptr, problem, false);
-  auto sol_dual_simplex = run_barrier(dual_simplex_problem, settings, timer, problem.handle_ptr);
+  auto sol_dual_simplex =
+    run_barrier(dual_simplex_problem, settings, timer, problem.handle_ptr, cache);
   return convert_dual_simplex_sol(problem,
                                   std::get<0>(sol_dual_simplex),
                                   std::get<1>(sol_dual_simplex),
@@ -1527,6 +1560,9 @@ void run_dual_simplex_thread(
     run_dual_simplex(problem, settings, timer));
 }
 
+/**
+ * @brief Solve an LP problem using concurrent solvers (PDLP, dual simplex, barrier).
+ */
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> run_concurrent(
   mip::problem_t<i_t, f_t>& problem,
@@ -1705,10 +1741,12 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   f_t end_time = timer.elapsed_time();
   CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "Concurrent time: %.3fs", end_time);
 
-  const auto dual_simplex_status = !settings.inside_mip ? std::get<1>(*sol_dual_simplex_ptr)
-                                                        : simplex::lp_status_t::CONCURRENT_LIMIT;
-  const auto barrier_status =
-    enable_barrier ? std::get<1>(*sol_barrier_ptr) : simplex::lp_status_t::CONCURRENT_LIMIT;
+  const auto dual_simplex_status = (!settings.inside_mip && sol_dual_simplex_ptr != nullptr)
+                                     ? std::get<1>(*sol_dual_simplex_ptr)
+                                     : simplex::lp_status_t::CONCURRENT_LIMIT;
+  const auto barrier_status      = (enable_barrier && sol_barrier_ptr != nullptr)
+                                     ? std::get<1>(*sol_barrier_ptr)
+                                     : simplex::lp_status_t::CONCURRENT_LIMIT;
   const bool dual_simplex_solved = dual_simplex_status == simplex::lp_status_t::OPTIMAL ||
                                    dual_simplex_status == simplex::lp_status_t::INFEASIBLE ||
                                    dual_simplex_status == simplex::lp_status_t::UNBOUNDED;
@@ -1783,7 +1821,8 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
     CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "Solved with PDLP");
     return sol_pdlp;
   } else if (!settings.inside_mip &&
-             sol_pdlp.get_termination_status() == pdlp_termination_status_t::ConcurrentLimit) {
+             sol_pdlp.get_termination_status() == pdlp_termination_status_t::ConcurrentLimit &&
+             sol_dual_simplex_ptr != nullptr) {
     sol_barrier_ptr.reset();
     auto& dual_simplex_solution = std::get<0>(*sol_dual_simplex_ptr);
     auto sol_dual_simplex       = convert_dual_simplex_sol(problem,
@@ -1815,7 +1854,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_with_method(
     if (settings.method == method_t::DualSimplex) {
       return run_dual_simplex(problem, settings, timer);
     } else if (settings.method == method_t::Barrier) {
-      return run_barrier(problem, settings, timer);
+      return run_barrier(problem, settings, timer, settings.barrier_cache);
     } else if (settings.method == method_t::Concurrent) {
       return run_concurrent(problem, settings, timer, is_batch_mode);
     } else {
@@ -1847,7 +1886,17 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
 
     auto qcqp_timer = cuopt::timer_t(settings.time_limit);
 
-    if (problem_checking) {
+    auto* cache    = settings.barrier_cache;
+    auto const* xf = (cache != nullptr && cache->c_dirty()) ? cache->transform() : nullptr;
+    const bool reuse_from_cache =
+      settings.user_problem_file.empty() && xf != nullptr && xf->barrier_lp != nullptr &&
+      settings.barrier_presolve_bound_free_variables == 0 && op_problem.has_quadratic_objective() &&
+      !op_problem.has_quadratic_constraints() && xf->second_order_cone_dims.empty() &&
+      static_cast<int>(xf->row_sense.size()) == xf->user_num_rows &&
+      op_problem.get_n_variables() == xf->user_num_cols &&
+      op_problem.get_n_constraints() == xf->user_num_rows;
+
+    if (problem_checking && !reuse_from_cache) {
       problem_checking_t<i_t, f_t>::check_problem_representation(op_problem);
       if (problem_checking_t<i_t, f_t>::has_crossing_bounds(op_problem)) {
         return optimization_problem_solution_t<i_t, f_t>(
@@ -1875,11 +1924,22 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
       CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());
       op_problem.write_to_mps(settings.user_problem_file);
     }
-    // Convert data structures to dual simplex format and back
-    simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
-      cuopt_optimization_problem_to_user_problem<i_t, f_t>(op_problem.get_handle_ptr(), op_problem);
-    auto sol_dual_simplex =
-      run_barrier(dual_simplex_problem, settings, qcqp_timer, op_problem.get_handle_ptr());
+    simplex::user_problem_t<i_t, f_t> dual_simplex_problem(op_problem.get_handle_ptr());
+    if (reuse_from_cache) {
+      dual_simplex_problem = user_problem_from_transform(
+        op_problem.get_handle_ptr(), op_problem, *settings.barrier_cache->transform());
+    } else {
+      dual_simplex_problem = cuopt_optimization_problem_to_user_problem<i_t, f_t>(
+        op_problem.get_handle_ptr(), op_problem);
+    }
+    auto sol_dual_simplex = run_barrier(dual_simplex_problem,
+                                        settings,
+                                        qcqp_timer,
+                                        op_problem.get_handle_ptr(),
+                                        settings.barrier_cache);
+    if (!reuse_from_cache && cache != nullptr && cache->transform() != nullptr) {
+      cache->transform()->maximize = op_problem.get_sense();
+    }
     auto solution = convert_dual_simplex_sol(op_problem,
                                              std::get<0>(sol_dual_simplex),
                                              std::get<1>(sol_dual_simplex),
@@ -2723,7 +2783,6 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
                 "problem_interface cannot be null");
 
   // Check if remote execution is enabled (always uses CPU backend)
-#ifdef CUOPT_ENABLE_GRPC
   if (is_remote_execution_enabled()) {
     cuopt_expects(!is_batch_mode,
                   error_type_t::ValidationError,
@@ -2733,13 +2792,13 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
     cuopt_expects(cpu_prob != nullptr,
                   error_type_t::ValidationError,
                   "Remote execution requires CPU memory backend");
+#ifdef CUOPT_ENABLE_GRPC
     return solve_lp_remote(*cpu_prob, settings);
-  }
 #else
-  cuopt_expects(!is_remote_execution_enabled(),
-                error_type_t::ValidationError,
-                "Remote execution was requested, but this build was compiled without gRPC support");
+    cuopt_expects(
+      false, error_type_t::RuntimeError, "Remote execution requires cuOpt built with gRPC support");
 #endif
+  }
 
   // Local execution - dispatch to appropriate overload based on problem type
   auto* cpu_prob = dynamic_cast<cpu_optimization_problem_t<i_t, f_t>*>(problem_interface);
