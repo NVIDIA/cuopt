@@ -1253,11 +1253,22 @@ It pulls both solver engines whether or not you use them, so prefer a component 
 
 ]=])
 
+# cuopt::client exists in every configuration, but only carries the gRPC client when
+# SKIP_GRPC_BUILD was off, so its presence alone tells a consumer nothing. Export the
+# answer: the Python bindings use it to skip the gRPC extension module, which would
+# otherwise fail to link against a client built without that arm.
+if(SKIP_GRPC_BUILD)
+    set(cuopt_code_string "set(CUOPT_HAS_GRPC OFF)")
+else()
+    set(cuopt_code_string "set(CUOPT_HAS_GRPC ON)")
+endif()
+
 rapids_export(INSTALL cuopt
         EXPORT_SET cuopt-exports
         GLOBAL_TARGETS cuopt ${CUOPT_COMPONENT_EXPORT_NAMES}
         NAMESPACE cuopt::
         DOCUMENTATION doc_string
+        FINAL_CODE_BLOCK cuopt_code_string
 )
 
 # ###############################################################################################
@@ -1267,6 +1278,7 @@ rapids_export(BUILD cuopt
         GLOBAL_TARGETS cuopt ${CUOPT_COMPONENT_EXPORT_NAMES}
         NAMESPACE cuopt::
         DOCUMENTATION doc_string
+        FINAL_CODE_BLOCK cuopt_code_string
 )
 
 # ##################################################################################################
