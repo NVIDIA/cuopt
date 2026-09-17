@@ -52,7 +52,7 @@ jobs:
       matrix_filter: map(select(.ARCH == "amd64")) | group_by(.PY_VER) | map(max_by(.CUDA_VER | split(".") | map(tonumber))) | [max_by(.PY_VER | split(".") | map(tonumber))]
   cuopt-service:
     name: self hosted service test
-    runs-on: linux-amd64-gpu-l4-latest-1
+    runs-on: "linux-amd64-gpu-${{ matrix.GPU }}-latest-1"
     needs: cuopt-service-matrix
     strategy:
       matrix: ${{ fromJSON(needs.cuopt-service-matrix.outputs.matrix) }}
