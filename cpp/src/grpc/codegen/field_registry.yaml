@@ -961,7 +961,7 @@ mip_settings:
       description: >-
         Maximum number of branch-and-bound nodes explored before the solver
         stops and returns the best feasible solution found, if any. When set
-        together with time_limit, the first limit reached wins.
+        together with time_limit or work_limit, the first limit reached wins.
       default: "no limit (INT_MAX)"
       field_num: 15
       type: int32

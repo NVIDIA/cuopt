@@ -49,7 +49,10 @@ def _solution_dir() -> Path:
     the link and would report the *target's* ownership/mode, so a symlink
     planted here pointing at some other 0700 directory this user happens to
     own elsewhere would pass a ``stat``-based check (CWE-59) and redirect
-    solution writes there.
+    solution writes there. Also rejects an existing non-directory (e.g. a
+    stray file at this path): silently accepting one here would surface
+    later as an unguarded ``NotADirectoryError`` from
+    :func:`_write_solution_file`.
     """
     path = Path(
         os.environ.get(
@@ -61,16 +64,16 @@ def _solution_dir() -> Path:
     except FileExistsError:
         st = path.lstat()
         if (
-            stat.S_ISLNK(st.st_mode)
+            not stat.S_ISDIR(st.st_mode)
             or st.st_uid != os.getuid()
             or stat.S_IMODE(st.st_mode) & 0o077
         ):
             raise CuOptMCPError(
-                f"{path} exists but is not private to this user (mode "
-                f"{oct(stat.S_IMODE(st.st_mode))}, owner uid {st.st_uid}, "
-                f"symlink {stat.S_ISLNK(st.st_mode)}) -- refusing to write "
-                "solution files there. Remove it or set "
-                "CUOPT_MCP_SOLUTION_DIR to a private location."
+                f"{path} exists but is not a private directory owned by "
+                f"this user (mode {oct(stat.S_IMODE(st.st_mode))}, owner "
+                f"uid {st.st_uid}) -- refusing to write solution files "
+                "there. Remove it or set CUOPT_MCP_SOLUTION_DIR to a "
+                "private location."
             ) from None
     else:
         os.chmod(path, 0o700)
@@ -159,7 +162,7 @@ def submit(problem_path: str, kind: str, settings: dict | None = None) -> dict:
     offsets = model.get_constraint_matrix_offsets()
     return {
         "job_id": job_id,
-        "source": str(Path(problem_path).expanduser()),
+        "source": str(Path(problem_path).expanduser().resolve()),
         "num_variables": int(len(model.get_variable_lower_bounds())),
         "num_constraints": int(max(len(offsets) - 1, 0)),
         "next": (
@@ -216,7 +219,8 @@ def result(
         names_from: Path to the problem file, to key ``variables`` by name
             instead of column index — pass back ``submit``'s ``source``.
         variables: Return only these named/indexed variables, skipping the
-            inline-size shaping below.
+            inline-size shaping below. An empty list returns no variables
+            (distinct from omitting the argument).
         nonzero_only: Drop exactly-zero values before applying ``limit``.
         limit: Maximum variables returned inline; must be between 0 and
             :data:`INLINE_SOLUTION_LIMIT`. Beyond this, the full solution is
@@ -277,7 +281,7 @@ def result(
                 "path> to key them by variable name."
             )
 
-    if variables:
+    if variables is not None:
         missing = [v for v in variables if v not in vars_by_name]
         summary["variables"] = {
             v: float(vars_by_name[v]) for v in variables if v in vars_by_name

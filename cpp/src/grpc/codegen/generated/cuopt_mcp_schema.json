@@ -245,7 +245,7 @@
         },
         "node_limit": {
           "type": "integer",
-          "description": "Maximum number of branch-and-bound nodes explored before the solver stops and returns the best feasible solution found, if any. When set together with time_limit, the first limit reached wins. Default: no limit (INT_MAX). Omit for the default limit."
+          "description": "Maximum number of branch-and-bound nodes explored before the solver stops and returns the best feasible solution found, if any. When set together with time_limit or work_limit, the first limit reached wins. Default: no limit (INT_MAX). Omit for the default limit."
         },
         "reliability_branching": {
           "type": "integer",

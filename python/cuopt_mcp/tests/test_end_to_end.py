@@ -110,20 +110,23 @@ async def test_solve_lp_end_to_end(session, mps_file):
     job_id = submitted["job_id"]
     assert submitted["num_variables"] == 2
 
-    for _ in range(120):
-        state = await _call(session, "cuopt_status", job_id=job_id)
-        if state["terminal"]:
-            break
-        await __import__("asyncio").sleep(0.5)
-    assert state["status"] == "COMPLETED", state
+    try:
+        for _ in range(120):
+            state = await _call(session, "cuopt_status", job_id=job_id)
+            if state["terminal"]:
+                break
+            await __import__("asyncio").sleep(0.5)
+        assert state["status"] == "COMPLETED", state
 
-    solved = await _call(
-        session, "cuopt_result", job_id=job_id, names_from=mps_file
-    )
-    assert solved["ready"] is True
-    assert solved["primal_objective"] == pytest.approx(10.0, abs=1e-4)
-    total = sum(solved["variables"].values())
-    assert total == pytest.approx(10.0, abs=1e-4)
+        solved = await _call(
+            session, "cuopt_result", job_id=job_id, names_from=mps_file
+        )
+        assert solved["ready"] is True
+        assert solved["primal_objective"] == pytest.approx(10.0, abs=1e-4)
+        total = sum(solved["variables"].values())
+        assert total == pytest.approx(10.0, abs=1e-4)
+    finally:
+        await _call(session, "cuopt_delete", job_id=job_id)
 
 
 @pytest.mark.anyio
@@ -163,6 +166,7 @@ async def test_enum_setting_is_accepted_by_name(session, mps_file):
     )
     assert "error" not in out, out
     assert out["job_id"]
+    await _call(session, "cuopt_delete", job_id=out["job_id"])
 
 
 @pytest.mark.anyio
@@ -174,13 +178,16 @@ async def test_termination_status_is_readable(session, mps_file):
         problem_path=mps_file,
         settings={"time_limit": 30.0},
     )
-    for _ in range(120):
-        state = await _call(session, "cuopt_status", job_id=sub["job_id"])
-        if state["terminal"]:
-            break
-        await __import__("asyncio").sleep(0.3)
-    else:
-        pytest.fail(f"job did not terminate in time: {state}")
-    out = await _call(session, "cuopt_result", job_id=sub["job_id"])
-    assert out["termination_status"] == "Optimal"
-    assert out["termination_status_code"] == 1
+    try:
+        for _ in range(120):
+            state = await _call(session, "cuopt_status", job_id=sub["job_id"])
+            if state["terminal"]:
+                break
+            await __import__("asyncio").sleep(0.3)
+        else:
+            pytest.fail(f"job did not terminate in time: {state}")
+        out = await _call(session, "cuopt_result", job_id=sub["job_id"])
+        assert out["termination_status"] == "Optimal"
+        assert out["termination_status_code"] == 1
+    finally:
+        await _call(session, "cuopt_delete", job_id=sub["job_id"])

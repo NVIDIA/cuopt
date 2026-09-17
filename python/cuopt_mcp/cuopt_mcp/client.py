@@ -37,6 +37,12 @@ def endpoint() -> tuple:
 
     Reuses the same environment the cuOpt gRPC client already honours, so
     the MCP server introduces no new configuration surface.
+
+    Raises
+    ------
+        CuOptMCPError: ``CUOPT_REMOTE_PORT`` isn't an integer, or is outside
+            the valid TCP port range -- reported here so it's an actionable
+            configuration error instead of a delayed connection failure.
     """
     host = os.environ.get("CUOPT_REMOTE_HOST", DEFAULT_HOST)
     raw_port = os.environ.get("CUOPT_REMOTE_PORT")
@@ -48,6 +54,10 @@ def endpoint() -> tuple:
         raise CuOptMCPError(
             f"CUOPT_REMOTE_PORT={raw_port!r} is not an integer"
         ) from None
+    if not 1 <= port <= 65535:
+        raise CuOptMCPError(
+            f"CUOPT_REMOTE_PORT={port} must be between 1 and 65535"
+        )
     return host, port
 
 

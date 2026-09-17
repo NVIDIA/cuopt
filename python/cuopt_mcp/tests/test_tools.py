@@ -126,6 +126,17 @@ def test_result_named_lookup_reports_missing(fake):
     assert out["missing_variables"] == ["nope"]
 
 
+def test_result_empty_variables_list_returns_no_variables(fake):
+    """variables=[] must mean "return none", distinct from the omitted
+    default -- `if variables:` treated both the same and fell through to
+    the full/truncated shaping path instead.
+    """
+    fake(FakeSolution([1.0, 2.0], names=["x", "y"]))
+    out = tools.result("job-1", variables=[])
+    assert out["variables"] == {}
+    assert "missing_variables" not in out
+
+
 def test_large_solution_is_written_to_file_not_inlined(
     fake, tmp_path, monkeypatch
 ):
@@ -150,6 +161,28 @@ def test_large_solution_is_written_to_file_not_inlined(
     import json
 
     assert len(json.loads(written.read_text())) == n
+
+
+def test_result_rejects_solution_dir_that_is_a_file(
+    fake, tmp_path, monkeypatch
+):
+    """A pre-existing non-directory at CUOPT_MCP_SOLUTION_DIR must be
+    rejected up front -- previously it passed the ownership/mode check
+    (nothing there tested S_ISDIR) and only failed later as an unguarded
+    NotADirectoryError out of _write_solution_file.
+    """
+    stray_file = tmp_path / "not-a-dir"
+    stray_file.write_text("")
+    stray_file.chmod(0o600)
+    monkeypatch.setenv("CUOPT_MCP_SOLUTION_DIR", str(stray_file))
+    fake(
+        FakeSolution(
+            [float(i) for i in range(5000)],
+            names=[f"x{i}" for i in range(5000)],
+        )
+    )
+    with pytest.raises(client.CuOptMCPError, match="not a private directory"):
+        tools.result("job-big", limit=10)
 
 
 def test_unnamed_solution_falls_back_to_indices_with_a_hint(fake):
@@ -243,3 +276,10 @@ def test_unreachable_server_message_names_the_endpoint(monkeypatch):
     monkeypatch.setenv("CUOPT_REMOTE_PORT", "50999")
     err = client.describe_connection_error(RuntimeError("UNAVAILABLE"))
     assert "gpu-host:50999" in str(err)
+
+
+@pytest.mark.parametrize("bad_port", ["0", "-1", "65536", "999999"])
+def test_endpoint_rejects_out_of_range_port(monkeypatch, bad_port):
+    monkeypatch.setenv("CUOPT_REMOTE_PORT", bad_port)
+    with pytest.raises(client.CuOptMCPError, match="between 1 and 65535"):
+        client.endpoint()
