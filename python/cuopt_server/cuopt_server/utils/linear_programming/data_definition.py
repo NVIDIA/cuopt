@@ -542,6 +542,11 @@ class SolverConfig(BaseModel):
         "Default is True for LP problems when presolve is enabled. "
         "This is not relevant for MIP problems.",
     )
+    sequence_solve: Optional[bool] = Field(
+        default=None,
+        description="Set True to retain GPU barrier cache state for a later re-solve "
+        "after updating the linear objective. Default is False.",
+    )
     log_to_console: Optional[bool] = Field(
         default=True,
         description="Set True to write logs to console, False to "

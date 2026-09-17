@@ -516,8 +516,8 @@ lp_status_t solve_linear_program_with_barrier(
     // slacks and artificials added for plain inequality and equality rows leave rhs alone.
     xf->rhs_update_supported =
       user_problem.num_range_rows == 0 && !presolve_info.folding_info.is_folded;
-    xf->barrier_lp           = std::make_unique<lp_problem_t<i_t, f_t>>(barrier_lp);
-    solver_lp                = xf->barrier_lp.get();
+    xf->barrier_lp = std::make_unique<lp_problem_t<i_t, f_t>>(barrier_lp);
+    solver_lp      = xf->barrier_lp.get();
     cache->store_transform(std::move(xf));
   }
 

@@ -30,7 +30,7 @@ IPM_LOG = "Optimal solution found"
 
 def _sequence_settings():
     settings = solver_settings.SolverSettings()
-    settings.sequence_solve = True
+    settings.set_parameter("sequence_solve", True)
     # barrier_presolve_bound_free_variables is deliberately left at its -1
     # default: sequence_solve resolves automatic to 0 for us. Every test here
     # asserts the reuse log line, so the whole file doubles as coverage of that.

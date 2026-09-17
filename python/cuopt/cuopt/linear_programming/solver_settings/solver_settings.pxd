@@ -106,4 +106,3 @@ cdef class SolverSettings:
     cdef public dict settings_dict
     cdef public object pdlp_warm_start_data
     cdef public list mip_callbacks
-    cdef public bint sequence_solve

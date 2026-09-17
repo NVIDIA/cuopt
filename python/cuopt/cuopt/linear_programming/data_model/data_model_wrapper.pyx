@@ -168,18 +168,18 @@ cdef class DataModel:
     def set_objective_coefficients(self, c):
         self.c = type_cast(c, np.float64, "c")
 
-    def update_linear_objective(self, c):
-        """Update linear objective coefficients (``c`` on this DataModel).
+    def update_linear_objective(self, coefficients):
+        """Update linear objective coefficients on this DataModel.
 
         Always writes the DataModel objective. If this model owns a solver
-        cache from a prior Barrier solve, also crushes ``c`` into the cached
-        ``iteration_data_t`` and sets ``c_dirty`` so a later reuse can
-        skip convert/presolve. Crush runs first so a length error
+        cache from a prior Barrier solve, also crushes ``coefficients`` into
+        the cached ``iteration_data_t`` and sets ``c_dirty`` so a later reuse
+        can skip convert/presolve. Crush runs first so a length error
         leaves the DataModel coefficients unchanged.
         """
         cdef barrier_cache_t* cache
         cdef double[::1] c_view
-        new_c = type_cast(c, np.float64, "c")
+        new_c = type_cast(coefficients, np.float64, "coefficients")
         if self.barrier_cache_capsule is not None:
             if not PyCapsule_IsValid(
                 self.barrier_cache_capsule, b"cuopt.barrier_cache"

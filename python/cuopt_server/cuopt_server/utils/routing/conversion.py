@@ -5,9 +5,9 @@ import logging
 from typing import List, Optional
 
 import numpy as np
+import pandas as pd
 from fastapi import HTTPException
 
-import cudf
 from cuopt import distance_engine, routing
 
 from cuopt_server.utils.data_definition import (
@@ -17,6 +17,9 @@ from cuopt_server.utils.data_definition import (
     SolverSettingsConfig,
     TaskData,
     WaypointGraphData,
+)
+from cuopt_server.utils.routing.host_optimization_data_model import (
+    HostOptimizationDataModel,
 )
 from cuopt_server.utils.routing.initial_solution import parse_initial_sol
 from cuopt_server.utils.routing.optimization_data_model import (
@@ -53,7 +56,7 @@ def populate_optimization_data(
     solver_config: Optional[SolverSettingsConfig] = None,
     warnings=[],
 ):
-    optimization_data = OptimizationDataModel()
+    optimization_data = HostOptimizationDataModel()
 
     if (
         not cost_waypoint_graph_data
@@ -174,25 +177,17 @@ def populate_optimization_data(
 
 
 def create_data_model(
-    optimization_data: OptimizationDataModel,
+    optimization_data: HostOptimizationDataModel,
     cost_matrix: Optional[dict] = None,
     travel_time_matrix: Optional[dict] = None,
 ):
     warnings = []
-    # Make sure that we are using pool memory allocator
-    import rmm
-
-    assert isinstance(
-        rmm.mr.get_current_device_resource(), rmm.mr.StatisticsResourceAdaptor
-    ) or isinstance(
-        rmm.mr.get_current_device_resource(), rmm.mr.PoolMemoryResource
-    )
 
     n_fleet = len(optimization_data.fleet_data["vehicle_locations"])
 
     n_locations = list(cost_matrix.values())[0].shape[0]
 
-    locations = cudf.Series(
+    locations = pd.Series(
         list(range(len(optimization_data.locations))),
         index=optimization_data.locations,
     )
@@ -286,7 +281,7 @@ def create_data_model(
                 data["earliest"],
                 data["latest"],
                 data["duration"],
-                cudf.Series(data["locations"]),
+                pd.Series(data["locations"]),
             )
 
     if optimization_data.fleet_data["vehicle_distance_breaks"] is not None:
@@ -297,7 +292,7 @@ def create_data_model(
                         "int32"
                     )
                 else:
-                    break_locations = cudf.Series(
+                    break_locations = pd.Series(
                         data["locations"], dtype="int32"
                     )
             else:
@@ -313,7 +308,7 @@ def create_data_model(
     if optimization_data.fleet_data["vehicle_order_match"] is not None:
         for data in optimization_data.fleet_data["vehicle_order_match"]:
             data_model.add_vehicle_order_match(
-                data["vehicle_id"], cudf.Series(data["order_ids"])
+                data["vehicle_id"], pd.Series(data["order_ids"])
             )
 
     if optimization_data.fleet_data["drop_return_trips"] is not None:
@@ -396,11 +391,11 @@ def create_data_model(
             if type(service_times) is dict:
                 for v_id, service_time in service_times.items():
                     data_model.set_order_service_times(
-                        cudf.Series(service_time, dtype=np.int32), int(v_id)
+                        pd.Series(service_time, dtype=np.int32), int(v_id)
                     )
             else:
                 data_model.set_order_service_times(
-                    cudf.Series(service_times, dtype=np.int32)
+                    pd.Series(service_times, dtype=np.int32)
                 )
 
     if optimization_data.solver_config["objectives"] is not None:
@@ -415,7 +410,7 @@ def create_data_model(
     if optimization_data.task_data["order_vehicle_match"] is not None:
         for data in optimization_data.task_data["order_vehicle_match"]:
             data_model.add_order_vehicle_match(
-                data["order_id"], cudf.Series(data["vehicle_ids"])
+                data["order_id"], pd.Series(data["vehicle_ids"])
             )
 
     if optimization_data.initial_solution is not None:
@@ -423,10 +418,10 @@ def create_data_model(
             optimization_data.initial_solution
         )
         data_model.add_initial_solutions(
-            cudf.Series(vehicle_ids),
-            cudf.Series(routes),
-            cudf.Series(types),
-            cudf.Series(sol_offsets),
+            pd.Series(vehicle_ids),
+            pd.Series(routes),
+            pd.Series(types),
+            pd.Series(sol_offsets),
         )
     return warnings, data_model
 

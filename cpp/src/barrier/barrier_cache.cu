@@ -10,6 +10,8 @@
 
 #include <barrier/barrier_transform.hpp>
 
+#include <algorithm>
+#include <cstddef>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -109,24 +111,50 @@ void barrier_cache_t::update_linear_objective(double const* c, int n)
 {
   cuopt_expects(impl_->transform != nullptr,
                 error_type_t::ValidationError,
-                "update_linear_objective: no barrier transform; Solve with sequence_solve first.");
+                "update_linear_objective: no barrier transform; Solve with CUOPT_SEQUENCE_SOLVE "
+                "enabled first.");
   cuopt_expects(impl_->iteration_data.get() != nullptr,
                 error_type_t::ValidationError,
                 "update_linear_objective: no cached iteration_data; Solve a QP to Optimal first.");
+  // Cached Q and c are in minimization space.
+  std::vector<double> user_objective;
+  if (impl_->transform->maximize && c != nullptr && n > 0) {
+    user_objective.assign(c, c + n);
+    for (double& value : user_objective) {
+      value = -value;
+    }
+    c = user_objective.data();
+  }
   std::vector<double> crushed;
   try {
     crushed = crush_user_linear_objective(*impl_->transform, c, n);
   } catch (std::invalid_argument const& e) {
     cuopt_expects(false, error_type_t::ValidationError, "%s", e.what());
   }
-  if (impl_->transform->linear_obj_shift.size() == crushed.size()) {
+  // x = x' + l folded c^T l into obj_constant. crushed is still crush(user c); previous
+  // crushed c is barrier objective minus linear_obj_shift. column_scales undo crush.
+  auto const& linear_obj_shift = impl_->transform->linear_obj_shift;
+  auto const& column_scales    = impl_->transform->column_scales;
+  auto const& translated_lower = impl_->transform->presolve_info.removed_lower_bounds;
+  auto& barrier_lp             = *impl_->transform->barrier_lp;
+  if (!translated_lower.empty() && linear_obj_shift.size() == crushed.size() &&
+      column_scales.size() == crushed.size() && barrier_lp.objective.size() == crushed.size()) {
+    double obj_constant_delta = 0.0;
+    std::size_t const n_lower = std::min(translated_lower.size(), crushed.size());
+    for (std::size_t j = 0; j < n_lower; ++j) {
+      double const crushed_before = barrier_lp.objective[j] - linear_obj_shift[j];
+      obj_constant_delta += (crushed[j] - crushed_before) * column_scales[j] * translated_lower[j];
+    }
+    barrier_lp.obj_constant += obj_constant_delta;
+  }
+  if (linear_obj_shift.size() == crushed.size()) {
     for (std::size_t j = 0; j < crushed.size(); ++j) {
-      crushed[j] += impl_->transform->linear_obj_shift[j];
+      crushed[j] += linear_obj_shift[j];
     }
   }
   // The next solve builds its solver from barrier_lp, so keep its objective and the cached
   // iteration workspace on the same c.
-  auto& barrier_objective = impl_->transform->barrier_lp->objective;
+  auto& barrier_objective = barrier_lp.objective;
   cuopt_expects(barrier_objective.size() == crushed.size(),
                 error_type_t::ValidationError,
                 "update_linear_objective: crushed objective size does not match the cached "

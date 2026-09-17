@@ -11,11 +11,15 @@
 namespace cuopt::mathematical_optimization::mip {
 
 #if MIP_INSTANTIATE_FLOAT
-template void trivial_presolve(problem_t<int, float>& problem, bool remap_cache_ids);
+template void trivial_presolve(problem_t<int, float>& problem,
+                               bool remap_cache_ids,
+                               bool compute_related_vars);
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
-template void trivial_presolve(problem_t<int, double>& problem, bool remap_cache_ids);
+template void trivial_presolve(problem_t<int, double>& problem,
+                               bool remap_cache_ids,
+                               bool compute_related_vars);
 #endif
 
 }  // namespace cuopt::mathematical_optimization::mip

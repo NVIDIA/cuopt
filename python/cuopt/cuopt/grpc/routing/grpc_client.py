@@ -11,6 +11,7 @@ path working, including the names the serialization test reaches for
 
 from cuopt.grpc.client.grpc_client import (  # noqa: F401
     HANDLED_SETTERS,
+    JobStatus,
     RoutingClient,
     RoutingSolveError,
     problem_summary,
@@ -18,6 +19,7 @@ from cuopt.grpc.client.grpc_client import (  # noqa: F401
 
 __all__ = [
     "HANDLED_SETTERS",
+    "JobStatus",
     "RoutingClient",
     "RoutingSolveError",
     "problem_summary",
