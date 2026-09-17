@@ -550,12 +550,12 @@ def _node_type_name(value):
         return str(value)
 
 
-def solution_to_legacy_http(
+def solution_to_http(
     sol: dict,
     vehicle_ids: Optional[List] = None,
     task_ids: Optional[List] = None,
 ) -> dict:
-    """Map a gRPC routing result dict onto the legacy HTTP solver_response.
+    """Map a gRPC routing result dict onto the HTTP solver_response.
 
     ``sol`` is the routing GetResult dict. ``vehicle_ids`` / ``task_ids`` are
     optional sidecar lists from submit so HTTP keys match the request. After a

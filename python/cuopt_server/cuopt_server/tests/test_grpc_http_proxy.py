@@ -367,18 +367,18 @@ def test_make_response_envelope():
     assert r["response"]["total_solve_time"] == 1.5
 
 
-def test_solution_to_legacy_http_strips_warmstart():
-    res = lp_conversion.solution_to_legacy_http(FakeSol())
+def test_solution_to_http_strips_warmstart():
+    res = lp_conversion.solution_to_http(FakeSol())
     assert res["status"] == "Optimal"
     assert "pdlpwarmstart_data" in res["solution"]
-    stripped = lp_conversion.solution_to_legacy_http(
+    stripped = lp_conversion.solution_to_http(
         FakeSol(), include_warmstart=False
     )
     assert "pdlpwarmstart_data" not in stripped["solution"]
 
 
-def test_routing_solution_to_legacy_http_maps_ids():
-    inner = routing_conversion.solution_to_legacy_http(
+def test_routing_solution_to_http_maps_ids():
+    inner = routing_conversion.solution_to_http(
         _vrp_grpc_sol(),
         vehicle_ids=["veh-1"],
         task_ids=["A"],

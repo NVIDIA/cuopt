@@ -66,7 +66,7 @@ from cuopt_server.utils.http_envelope import make_response
 from cuopt_server.utils.linear_programming.conversion import (
     create_data_model,
     create_solver,
-    solution_to_legacy_http,
+    solution_to_http,
 )
 from cuopt_server.utils.linear_programming.data_definition import LPData
 from cuopt_server.utils.linear_programming.data_transformation import (
@@ -88,7 +88,7 @@ from cuopt_server.utils.routing.conversion import (
     create_solver as create_routing_solver,
     populate_optimization_data,
     prep_optimization_data,
-    solution_to_legacy_http as routing_solution_to_legacy_http,
+    solution_to_http as routing_solution_to_http,
 )
 from cuopt_server.utils.routing.data_definition import (
     OptimizedRoutingData,
@@ -121,10 +121,7 @@ _ROUTING_KEYS = {
     "solver_config",
 }
 
-_NOT_IMPLEMENTED = (
-    "This feature is not implemented on the gRPC HTTP proxy. "
-    "Use the legacy HTTP server (python -m cuopt_server.cuopt_service)."
-)
+_NOT_IMPLEMENTED = "This feature is not implemented on the gRPC HTTP proxy."
 
 
 def set_grpc_client(client: Any) -> None:
@@ -456,7 +453,7 @@ def _collect_vrp_initials(initial_ids):
                 status_code=409,
                 detail=f"initialId {iid} is not completed",
             )
-        inner = routing_solution_to_legacy_http(
+        inner = routing_solution_to_http(
             raw,
             vehicle_ids=None if meta is None else meta.get("vehicle_ids"),
             task_ids=None if meta is None else meta.get("task_ids"),
@@ -835,7 +832,7 @@ def getsolution(
         notes = []
         warnings = [] if meta is None else list(meta.get("warnings") or [])
         if result_kind == "vrp":
-            inner = routing_solution_to_legacy_http(
+            inner = routing_solution_to_http(
                 sol,
                 vehicle_ids=None if meta is None else meta.get("vehicle_ids"),
                 task_ids=None if meta is None else meta.get("task_ids"),
@@ -851,7 +848,7 @@ def getsolution(
                 total_solve_time=solve_time,
             )
         else:
-            inner = solution_to_legacy_http(sol, include_warmstart=False)
+            inner = solution_to_http(sol, include_warmstart=False)
             try:
                 notes.append(sol.get_termination_reason())
             except Exception:

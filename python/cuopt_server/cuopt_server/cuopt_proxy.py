@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""gRPC-backed HTTP proxy for legacy LP/MILP/VRP clients.
+"""gRPC-backed HTTP proxy for LP/MILP/VRP clients.
 
 This process speaks the self-hosted HTTP API and forwards solves to
 ``cuopt_grpc_server``. It does not run a local job queue or worker pool.
@@ -55,7 +55,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="cuopt_proxy",
         description=(
-            "HTTP proxy for legacy cuOpt LP/MILP/VRP clients. "
+            "HTTP proxy for cuOpt LP/MILP/VRP clients. "
             "Forwards jobs to cuopt_grpc_server."
         ),
     )
