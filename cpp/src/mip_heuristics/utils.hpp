@@ -9,6 +9,8 @@
 
 #include <cmath>
 #include <cstddef>
+#include <limits>
+#include <type_traits>
 
 #ifdef __CUDACC__
 #define CUOPT_MIP_HOST_DEVICE inline __host__ __device__
@@ -17,6 +19,22 @@
 #endif
 
 namespace cuopt::mathematical_optimization::mip {
+
+// checks if a given float value can be exactly represented as an integer of type int_t.
+template <typename int_t, typename f_t>
+inline bool is_exactly_representable(f_t value)
+{
+  static_assert(std::is_integral_v<int_t>);
+  static_assert(std::is_floating_point_v<f_t>);
+
+  if constexpr (std::numeric_limits<f_t>::digits < std::numeric_limits<int_t>::digits) {
+    return false;
+  } else {
+    return std::isfinite(value) && std::trunc(value) == value &&
+           value >= (f_t)std::numeric_limits<int_t>::lowest() &&
+           value <= (f_t)std::numeric_limits<int_t>::max();
+  }
+}
 
 // Ogita-Rump-Oishi Dot2. TwoProduct recovers the rounding of each coefficient-value product, which
 // a compensated summation over already-multiplied terms cannot see.

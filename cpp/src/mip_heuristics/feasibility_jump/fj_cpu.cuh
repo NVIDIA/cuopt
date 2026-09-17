@@ -10,16 +10,88 @@
 #include <atomic>
 #include <functional>
 #include <limits>
+#include <memory>
+#include <mutex>
 #include <random>
 #include <unordered_set>
 #include <vector>
 
 #include <mip_heuristics/feasibility_jump/feasibility_jump.cuh>
+#include <mip_heuristics/feasibility_jump/fj_cpu_binary.cuh>
 #include <mip_heuristics/feasibility_jump/fj_cpu_worker.cuh>
 #include <utilities/memory_instrumentation.hpp>
 #include <utilities/producer_sync.hpp>
 
 namespace cuopt::mathematical_optimization::mip {
+
+// Best feasible assignment found by any lane of one portfolio. Lanes run concurrently, so which
+// lane observes which incumbent depends on scheduling: a portfolio that shares is not run-to-run
+// reproducible. Null until a caller opts a set of climbers into sharing.
+template <typename i_t, typename f_t>
+struct fj_cpu_shared_incumbent_t {
+  // True when the candidate beat the shared best, in which case it was stored.
+  bool publish(f_t candidate_objective,
+               f_t candidate_user_objective,
+               const std::vector<f_t>& candidate)
+  {
+    // Unlocked reject first: the publish sites are hot on instances that improve in tiny steps.
+    if (!(candidate_objective < objective.load(std::memory_order_relaxed))) return false;
+    std::lock_guard<std::mutex> lock(guard);
+    if (!(candidate_objective < objective.load(std::memory_order_relaxed))) return false;
+    assignment = candidate;
+    objective.store(candidate_objective, std::memory_order_relaxed);
+    CUOPT_LOG_DEBUG("New portfolio best found: %.17g:", candidate_user_objective);
+    return true;
+  }
+
+  // True when the shared best beat local_objective, in which case it was copied into destination.
+  bool adopt(f_t local_objective, std::vector<f_t>& destination, f_t* adopted_objective = nullptr)
+  {
+    if (!(objective.load(std::memory_order_relaxed) < local_objective)) return false;
+    std::lock_guard<std::mutex> lock(guard);
+    const f_t shared_objective = objective.load(std::memory_order_relaxed);
+    if (!(shared_objective < local_objective)) return false;
+    cuopt_assert(assignment.size() == destination.size(), "shared incumbent size mismatch");
+    destination = assignment;
+    if (adopted_objective != nullptr) *adopted_objective = shared_objective;
+    return true;
+  }
+
+  std::mutex guard;
+  std::vector<f_t> assignment;
+  std::atomic<f_t> objective{std::numeric_limits<f_t>::infinity()};
+};
+
+// The model as given, in the original column space, addressed by non-owning spans over the
+// climber's host arrays. Written once during construction and read-only from then on.
+template <typename i_t, typename f_t>
+struct fj_cpu_problem_t {
+  raft::device_span<i_t> offsets;
+  raft::device_span<i_t> variables;
+  raft::device_span<f_t> coefficients;
+  raft::device_span<i_t> reverse_offsets;
+  raft::device_span<i_t> reverse_constraints;
+  raft::device_span<f_t> cstr_lb;
+  raft::device_span<f_t> cstr_ub;
+  raft::device_span<f_t> h_obj_coeffs;
+  raft::device_span<var_t> h_var_types;
+  raft::device_span<i_t> h_original_ids;
+  raft::device_span<i_t> h_reverse_original_ids;
+  raft::device_span<i_t> h_related_variables;
+  raft::device_span<i_t> h_related_variables_offsets;
+
+  i_t n_variables{0};
+  i_t n_constraints{0};
+  f_t objective_scaling_factor{1};
+  f_t objective_offset{0};
+  typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances;
+  const probing_cache_t<i_t, f_t>* probing_cache{nullptr};
+
+  bool integer_equal(f_t a, f_t b) const
+  {
+    return std::abs(a - b) <= tolerances.integrality_tolerance;
+  }
+};
 
 template <typename i_t, typename f_t>
 class probing_cache_t;
@@ -210,6 +282,40 @@ struct fj_cpu_climber_t {
   double var_degree_cv{0.0};
   double cstr_degree_cv{0.0};
   double problem_density{0.0};
+
+  // Shared across every lane and frozen before the first clone is created.
+  std::shared_ptr<const fj_cpu_problem_t<i_t, f_t>> problem;
+
+  f_t get_user_objective(f_t solver_objective) const
+  {
+    cuopt_assert(std::isfinite(problem->objective_scaling_factor) &&
+                   problem->objective_scaling_factor != f_t{0},
+                 "invalid objective scaling factor");
+    return problem->objective_scaling_factor * (solver_objective + problem->objective_offset);
+  }
+
+  // Equality rows backed by private free continuous variables may be omitted by the binary engine
+  // and reconstructed before publication.
+  struct bin_eliminated_row_t {
+    i_t row;
+    f_t rhs;
+    std::vector<i_t> positive, negative, all;
+    std::vector<f_t> positive_coeff, negative_coeff;
+  };
+  std::vector<bin_eliminated_row_t> bin_eliminated_rows;
+  std::vector<uint8_t> bin_ignore_row, bin_ignore_var;
+  bool has_bin_elimination{false};
+  fj_bin_setup_times_t bin_setup;
+
+  // Held with the other lanes of the same portfolio. Null when the climber runs alone, which is
+  // what keeps a solo climber reproducible.
+  std::shared_ptr<fj_cpu_shared_incumbent_t<i_t, f_t>> shared_incumbent;
+
+  // Per-lane search policy. Uniform across lanes until a caller diversifies them.
+  bool low_latency{false};
+  bool use_integer_bit_encoding{true};
+  // Lower bound h_objective_weight decays to, so a lane seeded with objective pressure keeps it.
+  f_t seed_objective_weight{0};
 
   // Memory instrumentation aggregator
   instrumentation_aggregator_t memory_aggregator;

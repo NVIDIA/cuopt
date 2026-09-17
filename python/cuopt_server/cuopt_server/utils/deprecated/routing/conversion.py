@@ -1,14 +1,16 @@
 # SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+"""GPU routing DataModel conversion retained for the legacy local solver."""
+
 import logging
 from typing import List, Optional
 
+import cudf
 import numpy as np
-import pandas as pd
 from fastapi import HTTPException
 
-from cuopt import distance_engine, routing
+from cuopt import routing
 
 from cuopt_server.utils.data_definition import (
     CostMatrices,
@@ -18,16 +20,12 @@ from cuopt_server.utils.data_definition import (
     TaskData,
     WaypointGraphData,
 )
-from cuopt_server.utils.routing.host_optimization_data_model import (
-    HostOptimizationDataModel,
-)
 from cuopt_server.utils.routing.initial_solution import parse_initial_sol
 from cuopt_server.utils.routing.optimization_data_model import (
     OptimizationDataModel,
 )
 
 
-# Return exception if validation fails
 def check_valid(is_valid):
     if not is_valid[0]:
         raise HTTPException(status_code=400, detail=f"{is_valid[1]}")
@@ -38,7 +36,6 @@ def warn_on_objectives(solver_config):
     return warnings, solver_config
 
 
-# Standard solve time for VRP
 def std_solver_time_calc(num_tasks):
     return 10 + num_tasks / 6
 
@@ -56,7 +53,7 @@ def populate_optimization_data(
     solver_config: Optional[SolverSettingsConfig] = None,
     warnings=[],
 ):
-    optimization_data = HostOptimizationDataModel()
+    optimization_data = OptimizationDataModel()
 
     if (
         not cost_waypoint_graph_data
@@ -177,17 +174,25 @@ def populate_optimization_data(
 
 
 def create_data_model(
-    optimization_data: HostOptimizationDataModel,
+    optimization_data: OptimizationDataModel,
     cost_matrix: Optional[dict] = None,
     travel_time_matrix: Optional[dict] = None,
 ):
     warnings = []
+    # Make sure that we are using pool memory allocator
+    import rmm
+
+    assert isinstance(
+        rmm.mr.get_current_device_resource(), rmm.mr.StatisticsResourceAdaptor
+    ) or isinstance(
+        rmm.mr.get_current_device_resource(), rmm.mr.PoolMemoryResource
+    )
 
     n_fleet = len(optimization_data.fleet_data["vehicle_locations"])
 
     n_locations = list(cost_matrix.values())[0].shape[0]
 
-    locations = pd.Series(
+    locations = cudf.Series(
         list(range(len(optimization_data.locations))),
         index=optimization_data.locations,
     )
@@ -281,7 +286,7 @@ def create_data_model(
                 data["earliest"],
                 data["latest"],
                 data["duration"],
-                pd.Series(data["locations"]),
+                cudf.Series(data["locations"]),
             )
 
     if optimization_data.fleet_data["vehicle_distance_breaks"] is not None:
@@ -292,7 +297,7 @@ def create_data_model(
                         "int32"
                     )
                 else:
-                    break_locations = pd.Series(
+                    break_locations = cudf.Series(
                         data["locations"], dtype="int32"
                     )
             else:
@@ -308,7 +313,7 @@ def create_data_model(
     if optimization_data.fleet_data["vehicle_order_match"] is not None:
         for data in optimization_data.fleet_data["vehicle_order_match"]:
             data_model.add_vehicle_order_match(
-                data["vehicle_id"], pd.Series(data["order_ids"])
+                data["vehicle_id"], cudf.Series(data["order_ids"])
             )
 
     if optimization_data.fleet_data["drop_return_trips"] is not None:
@@ -391,11 +396,11 @@ def create_data_model(
             if type(service_times) is dict:
                 for v_id, service_time in service_times.items():
                     data_model.set_order_service_times(
-                        pd.Series(service_time, dtype=np.int32), int(v_id)
+                        cudf.Series(service_time, dtype=np.int32), int(v_id)
                     )
             else:
                 data_model.set_order_service_times(
-                    pd.Series(service_times, dtype=np.int32)
+                    cudf.Series(service_times, dtype=np.int32)
                 )
 
     if optimization_data.solver_config["objectives"] is not None:
@@ -410,7 +415,7 @@ def create_data_model(
     if optimization_data.task_data["order_vehicle_match"] is not None:
         for data in optimization_data.task_data["order_vehicle_match"]:
             data_model.add_order_vehicle_match(
-                data["order_id"], pd.Series(data["vehicle_ids"])
+                data["order_id"], cudf.Series(data["vehicle_ids"])
             )
 
     if optimization_data.initial_solution is not None:
@@ -418,109 +423,9 @@ def create_data_model(
             optimization_data.initial_solution
         )
         data_model.add_initial_solutions(
-            pd.Series(vehicle_ids),
-            pd.Series(routes),
-            pd.Series(types),
-            pd.Series(sol_offsets),
+            cudf.Series(vehicle_ids),
+            cudf.Series(routes),
+            cudf.Series(types),
+            cudf.Series(sol_offsets),
         )
     return warnings, data_model
-
-
-def create_solver(optimization_data: OptimizationDataModel):
-    warnings = []
-    solver_settings = routing.SolverSettings()
-
-    if optimization_data.solver_config["time_limit"] is not None:
-        solver_settings.set_time_limit(
-            optimization_data.solver_config["time_limit"]
-        )
-
-    if optimization_data.solver_config["config_file"] is not None:
-        solver_settings.dump_config_file(
-            optimization_data.solver_config["config_file"]
-        )
-    if optimization_data.solver_config["verbose_mode"] is not None:
-        solver_settings.set_verbose_mode(
-            optimization_data.solver_config["verbose_mode"]
-        )
-    if optimization_data.solver_config["error_logging"] is not None:
-        solver_settings.set_error_logging_mode(
-            optimization_data.solver_config["error_logging"]
-        )
-
-    return warnings, solver_settings
-
-
-def prep_optimization_data(optimization_data):
-    if optimization_data.task_data["task_locations"] is None:
-        raise ValueError("task location is None")
-    elif optimization_data.fleet_data["vehicle_locations"] is None:
-        raise ValueError("vehicle location is None")
-
-    cost_matrix = {}
-    cost_waypoint_graph = {}
-    travel_time_matrix = {}
-    travel_time_waypoint_graph = {}
-
-    if len(optimization_data.cost_matrix) != 0:
-        cost_matrix = optimization_data.cost_matrix
-    elif len(optimization_data.waypoint_graph) != 0:
-        optimization_data.locations = np.append(
-            optimization_data.task_data["task_locations"].to_numpy(),
-            optimization_data.fleet_data["vehicle_locations"]
-            .to_numpy()
-            .flatten(),
-        )
-
-        if optimization_data.fleet_data["vehicle_break_locations"] is not None:
-            optimization_data.locations = np.append(
-                optimization_data.locations,
-                optimization_data.fleet_data[
-                    "vehicle_break_locations"
-                ].to_numpy(),
-            )
-        if optimization_data.fleet_data["vehicle_distance_breaks"] is not None:
-            for d in optimization_data.fleet_data["vehicle_distance_breaks"]:
-                break_locs = d.get("locations")
-                if break_locs is not None and len(break_locs) > 0:
-                    optimization_data.locations = np.append(
-                        optimization_data.locations,
-                        np.asarray(break_locs),
-                    )
-        optimization_data.locations = np.unique(optimization_data.locations)
-
-        for v_type, graph in optimization_data.waypoint_graph.items():
-            cost_waypoint_graph[v_type] = distance_engine.WaypointMatrix(
-                graph["offsets"], graph["edges"], graph["weights"]
-            )
-
-            cost_matrix[v_type] = cost_waypoint_graph[
-                v_type
-            ].compute_cost_matrix(optimization_data.locations)
-    else:
-        raise ValueError("No cost matrix or way point graph provided")
-
-    if len(optimization_data.travel_time_matrix) != 0:
-        travel_time_matrix = optimization_data.travel_time_matrix
-    elif len(optimization_data.travel_time_waypoint_graph) != 0:
-        for (
-            v_type,
-            graph,
-        ) in optimization_data.travel_time_waypoint_graph.items():
-            travel_time_waypoint_graph[v_type] = (
-                distance_engine.WaypointMatrix(
-                    graph["offsets"], graph["edges"], graph["weights"]
-                )
-            )
-            travel_time_matrix[v_type] = travel_time_waypoint_graph[
-                v_type
-            ].compute_cost_matrix(optimization_data.locations)
-    else:
-        travel_time_matrix = None
-
-    return (
-        optimization_data,
-        cost_matrix,
-        travel_time_matrix,
-        cost_waypoint_graph,
-    )
