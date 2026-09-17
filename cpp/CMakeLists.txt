@@ -1257,10 +1257,15 @@ It pulls both solver engines whether or not you use them, so prefer a component 
 # SKIP_GRPC_BUILD was off, so its presence alone tells a consumer nothing. Export the
 # answer: the Python bindings use it to skip the gRPC extension module, which would
 # otherwise fail to link against a client built without that arm.
+# CUOPT_HAS_GRPC_ROUTING is reported separately rather than inferred from cuopt::routing:
+# it is CUOPT_ENABLE_GRPC_ROUTING that gates cython_grpc_client_vrp.cpp, and the two would
+# diverge the moment the VRP arm gains an option of its own.
 if(SKIP_GRPC_BUILD)
-    set(cuopt_code_string "set(CUOPT_HAS_GRPC OFF)")
+    set(cuopt_code_string "set(CUOPT_HAS_GRPC OFF)\nset(CUOPT_HAS_GRPC_ROUTING OFF)")
+elseif(CUOPT_ENABLE_GRPC_ROUTING)
+    set(cuopt_code_string "set(CUOPT_HAS_GRPC ON)\nset(CUOPT_HAS_GRPC_ROUTING ON)")
 else()
-    set(cuopt_code_string "set(CUOPT_HAS_GRPC ON)")
+    set(cuopt_code_string "set(CUOPT_HAS_GRPC ON)\nset(CUOPT_HAS_GRPC_ROUTING OFF)")
 endif()
 
 rapids_export(INSTALL cuopt
