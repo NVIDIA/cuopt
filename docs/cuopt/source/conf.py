@@ -369,7 +369,7 @@ linkcheck_timeout = 30
 linkcheck_workers = 5
 linkcheck_rate_limit_timeout = 60
 
-# GitHub and GitLab link checker exceptions
+# GitHub, GitLab, and PyPI link checker exceptions
 linkcheck_ignore = [
     # GitHub (Rate Limited)
     r"https://github\.com/.*",
@@ -381,6 +381,8 @@ linkcheck_ignore = [
     r"https://api\.gitlab\.com/.*",
     r"https://gitlab\.org/.*",
     r"https://api\.gitlab\.org/.*",
+    # PyPI (Unreliable in CI networks)
+    r"https://pypi\.org/.*",
 ]
 
 
