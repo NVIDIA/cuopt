@@ -319,6 +319,7 @@ def test_health_fails_when_grpc_is_down(proxy):
     body = res.json()
     assert "Broken" in body["error"] or "Broken" in str(body)
     assert "gRPC" in body["error"] or "unavailable" in body["error"].lower()
+    assert "gRPC server unavailable" not in body["error"]
 
 
 def test_health_fails_without_grpc_client(proxy_server):

@@ -370,6 +370,7 @@ def _grpc_backend_ok():
 def _require_grpc_healthy():
     ok, msg = _grpc_backend_ok()
     if not ok:
+        logging.error("ERROR : %s", msg)
         raise HTTPException(
             status_code=500,
             detail=(
@@ -377,7 +378,7 @@ def _require_grpc_healthy():
                 "The gRPC backend is unavailable. "
                 "This process cannot serve solves until "
                 "cuopt_grpc_server is healthy.\n"
-                "ERROR : " + msg
+                "ERROR : gRPC backend unavailable"
             ),
         )
 
@@ -757,7 +758,7 @@ async def postrequest(
     warnings = check_client_version(client_version)
 
     try:
-        _require_grpc_healthy()
+        await asyncio.to_thread(_require_grpc_healthy)
         accept = _resolve_accept(
             accept, ctype if ctype != mime_pickle else mime_json
         )

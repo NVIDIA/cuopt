@@ -311,9 +311,12 @@ cdef class Client:
         """
         cdef string error_out
         cdef int timeout = int(timeout_seconds)
+        cdef bint ok
         if timeout <= 0:
             timeout = 5
-        if not self._client.get().ping(error_out, timeout):
+        with nogil:
+            ok = self._client.get().ping(error_out, timeout)
+        if not ok:
             raise GrpcError(error_out.decode("utf-8") or "gRPC ping failed")
 
     def _spawn_client(self):
