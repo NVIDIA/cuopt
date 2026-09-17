@@ -154,6 +154,15 @@ outputs:
             - lib/libcuopt_client.so
             - include/cuopt/error.hpp
             - include/cuopt/export.hpp
+      # Loads the library in an environment holding only this package and its declared
+      # dependencies, with RTLD_NOW so every relocation has to resolve. A component that
+      # quietly needs another engine fails here rather than passing because some other
+      # package happened to pull it in.
+      - script: |
+          python -c "import ctypes, os; ctypes.CDLL(os.path.join(os.environ['PREFIX'], 'lib', 'libcuopt_client.so'), os.RTLD_NOW)"
+        requirements:
+          run:
+            - python
     about:
       homepage: ${{ load_from_file("python/cuopt/pyproject.toml").project.urls.Homepage }}
       license: ${{ load_from_file("python/cuopt/pyproject.toml").project.license }}
@@ -215,6 +224,15 @@ outputs:
           files:
             - lib/libcuopt_mathopt.so
             - bin/cuopt_cli
+      # Loads the library in an environment holding only this package and its declared
+      # dependencies, with RTLD_NOW so every relocation has to resolve. A component that
+      # quietly needs another engine fails here rather than passing because some other
+      # package happened to pull it in.
+      - script: |
+          python -c "import ctypes, os; ctypes.CDLL(os.path.join(os.environ['PREFIX'], 'lib', 'libcuopt_mathopt.so'), os.RTLD_NOW)"
+        requirements:
+          run:
+            - python
     about:
       homepage: ${{ load_from_file("python/cuopt/pyproject.toml").project.urls.Homepage }}
       license: ${{ load_from_file("python/cuopt/pyproject.toml").project.license }}
@@ -263,6 +281,15 @@ outputs:
       - package_contents:
           files:
             - lib/libcuopt_routing.so
+      # Loads the library in an environment holding only this package and its declared
+      # dependencies, with RTLD_NOW so every relocation has to resolve. A component that
+      # quietly needs another engine fails here rather than passing because some other
+      # package happened to pull it in.
+      - script: |
+          python -c "import ctypes, os; ctypes.CDLL(os.path.join(os.environ['PREFIX'], 'lib', 'libcuopt_routing.so'), os.RTLD_NOW)"
+        requirements:
+          run:
+            - python
     about:
       homepage: ${{ load_from_file("python/cuopt/pyproject.toml").project.urls.Homepage }}
       license: ${{ load_from_file("python/cuopt/pyproject.toml").project.license }}
@@ -302,6 +329,10 @@ outputs:
       - package_contents:
           files:
             - bin/cuopt_grpc_server
+      # --help exits without binding a port, so this only proves the binary starts:
+      # it resolves all three component libraries from its own dependencies.
+      - script: |
+          cuopt_grpc_server --help
     about:
       homepage: ${{ load_from_file("python/cuopt/pyproject.toml").project.urls.Homepage }}
       license: ${{ load_from_file("python/cuopt/pyproject.toml").project.license }}
