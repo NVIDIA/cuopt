@@ -92,7 +92,7 @@ from cuopt_server.utils.local_files import (
     validate_file_path,
     write_result_file,
 )
-from cuopt_server.utils.logutil import set_ncaid, set_requestid
+from cuopt_server.utils.logutil import message, set_ncaid, set_requestid
 from cuopt_server.utils.routing.conversion import (
     create_data_model as create_routing_data_model,
     create_solver as create_routing_solver,
@@ -618,6 +618,7 @@ def _convert_and_submit(
             )
             return job_id
         job_id = get_grpc_routing_client().submit(data_model, solver_settings)
+        logging.info(message(f"sent VRP job {job_id} to gRPC"))
         _store_job(
             job_id,
             {
@@ -672,6 +673,7 @@ def _convert_and_submit(
         solver_settings,
         enable_incumbents=incumbents_enabled,
     )
+    logging.info(message(f"sent LP job {job_id} to gRPC"))
     _store_job(
         job_id,
         {
@@ -1109,27 +1111,47 @@ def _submit_wait_solution(ctype, buf, accept):
         "",
         None,
     )
+    logging.info(message(f"submitted job {job_id}"))
     meta = _get_job(job_id)
     if meta is not None and meta.get("validation_only"):
         envelope = dict(meta["validation_result"])
         envelope.pop("reqId", None)
         _pop_job(job_id)
+        logging.info(message(f"validation-only job {job_id} complete"))
         return envelope
 
     kind = None if meta is None else meta.get("kind")
     try:
-        get_grpc_client().wait(job_id)
+        logging.info(message(f"waiting for job {job_id}"))
+        try:
+            get_grpc_client().wait(job_id)
+        except Exception:
+            logging.error(
+                message(f"gRPC wait failed for job {job_id}"),
+                exc_info=True,
+            )
+            raise
         status = get_grpc_client().status(job_id)
+        status_name = _status_name(status)
+        logging.info(message(f"gRPC status for job {job_id} is {status_name}"))
         if not _is_status(status, "COMPLETED"):
+            logging.error(
+                message(
+                    f"gRPC job {job_id} finished unsuccessfully: {status_name}"
+                )
+            )
             raise HTTPException(
                 status_code=409,
-                detail=f"job {_status_name(status).lower()}",
+                detail=f"job {status_name.lower()}",
             )
         envelope, _warnings, _notes = _result_envelope(job_id, meta, kind)
         if envelope is None:
+            logging.error(message(f"gRPC job {job_id} returned no solution"))
             raise HTTPException(
                 status_code=500, detail="solver returned no solution"
             )
+        logging.info(message(f"received result for job {job_id}"))
+        logging.info({"cuopt_complete": status_name})
         return envelope
     finally:
         try:

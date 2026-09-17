@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import json
+import logging
 import socket
 import threading
 import time
@@ -887,6 +888,27 @@ def test_sync_cuopt_lp(proxy):
         assert job_id not in pw._jobs
 
 
+def test_sync_cuopt_logs_job_lifecycle(proxy, caplog):
+    url, fake = proxy
+    with caplog.at_level(logging.INFO):
+        res = requests.post(
+            url + "/cuopt/cuopt",
+            json={
+                "action": "cuOpt_LP",
+                "data": _lp(),
+                "client_version": "custom",
+            },
+        )
+    assert res.status_code == 200, res.text
+    job_id = fake.submitted[0]["id"]
+    text = caplog.text
+    assert f"sent LP job {job_id} to gRPC" in text
+    assert f"submitted job {job_id}" in text
+    assert f"waiting for job {job_id}" in text
+    assert f"gRPC status for job {job_id} is COMPLETED" in text
+    assert f"received result for job {job_id}" in text
+
+
 def test_sync_cuopt_vrp(proxy):
     url, fake = proxy
     res = requests.post(
@@ -947,6 +969,62 @@ def test_sync_cuopt_logs_nvcf_ids(proxy):
         pw._submit_wait_solution = original
     assert res.status_code == 200, res.text
     assert seen == {"ncaid": "nca-1", "reqid": "req-1"}
+
+
+def test_sync_cuopt_log_records_include_nvcf_ids(proxy, caplog):
+    from cuopt_server.utils.logutil import (
+        get_ncaid,
+        get_requestid,
+        get_solverid,
+    )
+
+    url, fake = proxy
+    previous = logging.getLogRecordFactory()
+
+    def record_factory(*args, **kwargs):
+        record = previous(*args, **kwargs)
+        record.ncaid = get_ncaid()
+        record.requestid = get_requestid()
+        record.solverid = get_solverid()
+        if record.ncaid:
+            record.ncaid = f"NCA_ID={record.ncaid} "
+        if record.requestid:
+            record.requestid = f"NVCF_REQID={record.requestid} "
+        if record.solverid:
+            record.solverid = f" (GPU {record.solverid})"
+        return record
+
+    logging.setLogRecordFactory(record_factory)
+    try:
+        with caplog.at_level(logging.INFO):
+            res = requests.post(
+                url + "/cuopt/cuopt",
+                headers={"NVCF-NCAID": "nca-1", "NVCF-REQID": "req-1"},
+                json={
+                    "action": "cuOpt_LP",
+                    "data": _lp(),
+                    "client_version": "custom",
+                },
+            )
+    finally:
+        logging.setLogRecordFactory(previous)
+    assert res.status_code == 200, res.text
+    job_id = fake.submitted[0]["id"]
+    markers = (
+        f"sent LP job {job_id} to gRPC",
+        f"submitted job {job_id}",
+        f"waiting for job {job_id}",
+        f"received result for job {job_id}",
+    )
+    lifecycle = [
+        rec
+        for rec in caplog.records
+        if any(marker in rec.getMessage() for marker in markers)
+    ]
+    assert lifecycle, caplog.text
+    for rec in lifecycle:
+        assert rec.ncaid == "NCA_ID=nca-1 "
+        assert rec.requestid == "NVCF_REQID=req-1 "
 
 
 def test_sync_cuopt_rejects_zlib_content_type(proxy):
