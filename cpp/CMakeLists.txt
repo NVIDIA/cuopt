@@ -1204,12 +1204,25 @@ foreach(_component ${CUOPT_COMPONENT_TARGETS})
     list(APPEND CUOPT_COMPONENT_EXPORT_NAMES ${_export_name})
 endforeach()
 
-# adds the .so files to the runtime deb package
-install(TARGETS ${CUOPT_COMPONENT_TARGETS}
-        DESTINATION ${_LIB_DEST}
-        COMPONENT runtime
-        EXPORT cuopt-exports
-)
+# Each component library installs under its own install component, so that
+# `cmake --install <build> --component mathopt` stages exactly that library and
+# nothing else. A plain `cmake --install <build>` still installs everything, which
+# is what the conda recipe does today. The per-solver wheels in #1635 are the
+# reason these need to be separable.
+#
+#   client / mathopt / routing        the .so, plus cuopt_cli under mathopt
+#   client-dev / mathopt-dev / routing-dev   that component's public headers
+#
+# Shared headers (error.hpp, export.hpp, utilities/) go to client-dev: the client
+# is the leaf every other component links, so every package already depends on it.
+foreach(_component ${CUOPT_COMPONENT_TARGETS})
+    string(REPLACE "cuopt_" "" _install_component "${_component}")
+    install(TARGETS ${_component}
+            DESTINATION ${_LIB_DEST}
+            COMPONENT ${_install_component}
+            EXPORT cuopt-exports
+    )
+endforeach()
 
 # cuopt::cuopt carries no artifact of its own; it is exported so that
 # target_link_libraries(app cuopt::cuopt) keeps pulling in every component.
@@ -1224,16 +1237,55 @@ install(FILES "${CUOPT_LINKER_SCRIPT}"
         COMPONENT dev
 )
 
-# adds the header files to the development deb package
-install(DIRECTORY include/cuopt/
+# Headers follow their component. Split with explicit rules rather than one
+# install(DIRECTORY include/cuopt/) so a component's package can carry its own
+# dev headers without dragging in the other engines' API.
+install(FILES include/cuopt/error.hpp include/cuopt/export.hpp
         DESTINATION ${_INCLUDE_DEST}
-        COMPONENT dev
+        COMPONENT client-dev
 )
 
-# adds the version header file to the development deb package
+install(DIRECTORY include/cuopt/utilities/
+        DESTINATION ${_INCLUDE_DEST}/utilities
+        COMPONENT client-dev
+)
+
+# The gRPC client lives in cuopt_client, so its headers do too.
+install(DIRECTORY include/cuopt/grpc/
+        DESTINATION ${_INCLUDE_DEST}/grpc
+        COMPONENT client-dev
+)
+
+# linear_programming/cuopt_c.h is the compatibility forwarder for the C API, which
+# mathopt provides, so it ships with mathopt rather than on its own.
+install(DIRECTORY include/cuopt/mathematical_optimization/
+        DESTINATION ${_INCLUDE_DEST}/mathematical_optimization
+        COMPONENT mathopt-dev
+)
+
+install(DIRECTORY include/cuopt/linear_programming/
+        DESTINATION ${_INCLUDE_DEST}/linear_programming
+        COMPONENT mathopt-dev
+)
+
+if(NOT SKIP_ROUTING_BUILD)
+    install(DIRECTORY include/cuopt/routing/
+            DESTINATION ${_INCLUDE_DEST}/routing
+            COMPONENT routing-dev
+    )
+endif()
+
+# Both are generated and included by every component's public headers.
+#
+# logger_macros.hpp is installed a second time here on purpose: create_logger_macros
+# installs it with no COMPONENT, which puts it in "Unspecified", so a
+# `cmake --install --component client-dev` would otherwise omit a public header and
+# every split package would ship without it. Installing the same file twice is
+# harmless -- a full install just writes it to the same path.
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/include/cuopt/version_config.hpp
+              ${CMAKE_CURRENT_BINARY_DIR}/include/cuopt/logger_macros.hpp
         DESTINATION ${_INCLUDE_DEST}
-        COMPONENT dev
+        COMPONENT client-dev
 )
 # ###############################################################################################
 # - install export -------------------------------------------------------------------------------
@@ -1360,9 +1412,10 @@ if (NOT BUILD_LP_ONLY)
     endif ()
     set_property(TARGET cuopt_cli PROPERTY INSTALL_RPATH "$ORIGIN/../${lib_dir}")
 
-    # adds the cuopt_cli executable to the runtime deb package
+    # Ships with mathopt: the CLI is MPS-driven and resolves no routing symbols, so a
+    # routing-only install has no use for it. See #1635.
     install(TARGETS cuopt_cli
-            COMPONENT runtime
+            COMPONENT mathopt
             RUNTIME DESTINATION ${_BIN_DEST}
     )
 endif ()
@@ -1496,9 +1549,11 @@ if (NOT SKIP_GRPC_BUILD)
     target_link_options(cuopt_grpc_server PRIVATE -Wl,--enable-new-dtags)
     set_property(TARGET cuopt_grpc_server PROPERTY INSTALL_RPATH "$ORIGIN/../${lib_dir}")
 
-    # Install the grpc server executable
+    # Its own component rather than mathopt or routing: the server is the one artifact
+    # that needs every engine, and it is a separately-run service with its own
+    # lifecycle, so it installs and versions independently. See #1635.
     install(TARGETS cuopt_grpc_server
-            COMPONENT runtime
+            COMPONENT grpc-server
             RUNTIME DESTINATION ${_BIN_DEST}
     )
 
