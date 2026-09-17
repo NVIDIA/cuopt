@@ -1025,14 +1025,9 @@ if (TARGET KaMinPar)
         add_dependencies(cuopt_objs KaMinPar)
 endif ()
 
-# CUOPT_BUILD_CUSTOM_CUDSS_MTLAYER: build our own cuDSS threading-layer plugin against the same
-# libgomp cuopt_objs itself links against (cudss_mtlayer_cuopt.cpp), instead of using cuDSS's
-# prebuilt libcudss_mtlayer_gomp.so.0, which resolves libgomp.so.1 from the host and can end up
-# a different instance (#1219). Off by default (conda already shares one libgomp naturally);
-# enabled for wheel builds, see ci/build_wheel_libcuopt.sh. Only cuopt_objs (via sparse_cholesky.cuh,
-# compiled through src/barrier/) actually consumes CUDSS_MT_LIB_FILE_NAME; this must therefore be
-# resolved before cuopt_objs's target_compile_definitions() below, overriding the
-# get_filename_component() default set earlier for cuopt_mathopt (which doesn't use it).
+# Build our own cuDSS threading layer against cuopt_objs's own libgomp instead of cuDSS's
+# prebuilt one, which can resolve a different libgomp instance (#1219). Off by default;
+# enabled for wheel builds (ci/build_wheel_libcuopt.sh).
 option(CUOPT_BUILD_CUSTOM_CUDSS_MTLAYER "Build a cuDSS threading layer linked against our own libgomp" OFF)
 
 if (CUOPT_BUILD_CUSTOM_CUDSS_MTLAYER)
