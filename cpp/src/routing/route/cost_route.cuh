@@ -8,7 +8,7 @@
 #pragma once
 
 #include <utilities/cuda_helpers.cuh>
-#include "../node/distance_node.cuh"
+#include "../node/cost_node.cuh"
 #include "../solution/solution_handle.cuh"
 #include "routing/routing_helpers.cuh"
 
@@ -25,13 +25,13 @@ namespace routing {
 namespace detail {
 
 template <typename i_t, typename f_t>
-class distance_route_t {
+class cost_route_t {
  public:
-  distance_route_t(solution_handle_t<i_t, f_t> const* sol_handle_, cost_dimension_info_t& dim_info_)
+  cost_route_t(solution_handle_t<i_t, f_t> const* sol_handle_, cost_dimension_info_t& dim_info_)
     : dim_info(dim_info_),
-      distance_forward(0, sol_handle_->get_stream()),
-      distance_backward(0, sol_handle_->get_stream()),
-      reverse_distance(0, sol_handle_->get_stream()),
+      cost_forward(0, sol_handle_->get_stream()),
+      cost_backward(0, sol_handle_->get_stream()),
+      reverse_cost(0, sol_handle_->get_stream()),
       distance_window_forward(0, sol_handle_->get_stream()),
       distance_window_backward(0, sol_handle_->get_stream()),
       distance_window_backward_min(0, sol_handle_->get_stream()),
@@ -41,36 +41,34 @@ class distance_route_t {
       excess_backward(0, sol_handle_->get_stream()),
       distance_break_cost_forward(0, sol_handle_->get_stream())
   {
-    raft::common::nvtx::range fun_scope("zero distance_route_t copy_ctr");
+    raft::common::nvtx::range fun_scope("zero cost_route_t copy_ctr");
   }
 
-  distance_route_t(const distance_route_t& distance_route,
-                   solution_handle_t<i_t, f_t> const* sol_handle_)
-    : dim_info(distance_route.dim_info),
-      distance_forward(distance_route.distance_forward, sol_handle_->get_stream()),
-      distance_backward(distance_route.distance_backward, sol_handle_->get_stream()),
-      reverse_distance(distance_route.reverse_distance, sol_handle_->get_stream()),
-      distance_window_forward(distance_route.distance_window_forward, sol_handle_->get_stream()),
-      distance_window_backward(distance_route.distance_window_backward, sol_handle_->get_stream()),
-      distance_window_backward_min(distance_route.distance_window_backward_min,
+  cost_route_t(const cost_route_t& cost_route, solution_handle_t<i_t, f_t> const* sol_handle_)
+    : dim_info(cost_route.dim_info),
+      cost_forward(cost_route.cost_forward, sol_handle_->get_stream()),
+      cost_backward(cost_route.cost_backward, sol_handle_->get_stream()),
+      reverse_cost(cost_route.reverse_cost, sol_handle_->get_stream()),
+      distance_window_forward(cost_route.distance_window_forward, sol_handle_->get_stream()),
+      distance_window_backward(cost_route.distance_window_backward, sol_handle_->get_stream()),
+      distance_window_backward_min(cost_route.distance_window_backward_min,
                                    sol_handle_->get_stream()),
-      window_start(distance_route.window_start, sol_handle_->get_stream()),
-      window_end(distance_route.window_end, sol_handle_->get_stream()),
-      excess_forward(distance_route.excess_forward, sol_handle_->get_stream()),
-      excess_backward(distance_route.excess_backward, sol_handle_->get_stream()),
-      distance_break_cost_forward(distance_route.distance_break_cost_forward,
-                                  sol_handle_->get_stream())
+      window_start(cost_route.window_start, sol_handle_->get_stream()),
+      window_end(cost_route.window_end, sol_handle_->get_stream()),
+      excess_forward(cost_route.excess_forward, sol_handle_->get_stream()),
+      excess_backward(cost_route.excess_backward, sol_handle_->get_stream()),
+      distance_break_cost_forward(cost_route.distance_break_cost_forward, sol_handle_->get_stream())
   {
-    raft::common::nvtx::range fun_scope("distance route copy_ctr");
+    raft::common::nvtx::range fun_scope("cost route copy_ctr");
   }
 
-  distance_route_t& operator=(distance_route_t&& distance_route) = default;
+  cost_route_t& operator=(cost_route_t&& cost_route) = default;
 
   void resize(i_t max_nodes_per_route, cuda::stream_ref stream)
   {
-    distance_forward.resize(max_nodes_per_route, stream);
-    distance_backward.resize(max_nodes_per_route, stream);
-    reverse_distance.resize(max_nodes_per_route, stream);
+    cost_forward.resize(max_nodes_per_route, stream);
+    cost_backward.resize(max_nodes_per_route, stream);
+    reverse_cost.resize(max_nodes_per_route, stream);
     if (dim_info.has_distance_window) {
       distance_window_forward.resize(max_nodes_per_route, stream);
       distance_window_backward.resize(max_nodes_per_route, stream);
@@ -86,29 +84,28 @@ class distance_route_t {
   }
 
   struct view_t {
-    bool is_empty() const { return distance_forward.empty(); }
-
-    DI distance_node_t<i_t, f_t> get_node(i_t idx) const
+    bool is_empty() const { return cost_forward.empty(); }
+    DI cost_node_t<i_t, f_t> get_node(i_t idx) const
     {
-      distance_node_t<i_t, f_t> distance_node;
-      distance_node.distance_forward  = distance_forward[idx];
-      distance_node.distance_backward = distance_backward[idx];
+      cost_node_t<i_t, f_t> cost_node;
+      cost_node.cost_forward  = cost_forward[idx];
+      cost_node.cost_backward = cost_backward[idx];
       if (dim_info.has_distance_window) {
-        distance_node.distance_window_forward  = distance_window_forward[idx];
-        distance_node.distance_window_backward = distance_window_backward[idx];
-        distance_node.window_start             = window_start[idx];
-        distance_node.window_end               = window_end[idx];
-        distance_node.excess_forward           = excess_forward[idx];
-        distance_node.excess_backward          = excess_backward[idx];
+        cost_node.distance_window_forward  = distance_window_forward[idx];
+        cost_node.distance_window_backward = distance_window_backward[idx];
+        cost_node.window_start             = window_start[idx];
+        cost_node.window_end               = window_end[idx];
+        cost_node.excess_forward           = excess_forward[idx];
+        cost_node.excess_backward          = excess_backward[idx];
         if (dim_info.has_distance_break_cost) {
-          distance_node.distance_window_backward_min = distance_window_backward_min[idx];
-          distance_node.distance_break_cost_forward  = distance_break_cost_forward[idx];
+          cost_node.distance_window_backward_min = distance_window_backward_min[idx];
+          cost_node.distance_break_cost_forward  = distance_break_cost_forward[idx];
         }
       }
-      return distance_node;
+      return cost_node;
     }
 
-    DI void set_node(i_t idx, const distance_node_t<i_t, f_t>& node)
+    DI void set_node(i_t idx, const cost_node_t<i_t, f_t>& node)
     {
       set_forward_data(idx, node);
       set_backward_data(idx, node);
@@ -118,9 +115,9 @@ class distance_route_t {
       }
     }
 
-    DI void set_forward_data(i_t idx, const distance_node_t<i_t, f_t>& node)
+    DI void set_forward_data(i_t idx, const cost_node_t<i_t, f_t>& node)
     {
-      distance_forward[idx] = node.distance_forward;
+      cost_forward[idx] = node.cost_forward;
       if (dim_info.has_distance_window) {
         distance_window_forward[idx] = node.distance_window_forward;
         excess_forward[idx]          = node.excess_forward;
@@ -130,9 +127,9 @@ class distance_route_t {
       }
     }
 
-    DI void set_backward_data(i_t idx, const distance_node_t<i_t, f_t>& node)
+    DI void set_backward_data(i_t idx, const cost_node_t<i_t, f_t>& node)
     {
-      distance_backward[idx] = node.distance_backward;
+      cost_backward[idx] = node.cost_backward;
       if (dim_info.has_distance_window) {
         distance_window_backward[idx] = node.distance_window_backward;
         excess_backward[idx]          = node.excess_backward;
@@ -145,9 +142,8 @@ class distance_route_t {
     DI void copy_forward_data(const view_t& orig_route, i_t start_idx, i_t end_idx, i_t write_start)
     {
       i_t size = end_idx - start_idx;
-      block_copy(distance_forward.subspan(write_start),
-                 orig_route.distance_forward.subspan(start_idx),
-                 size);
+      block_copy(
+        cost_forward.subspan(write_start), orig_route.cost_forward.subspan(start_idx), size);
       if (dim_info.has_distance_window) {
         block_copy(distance_window_forward.subspan(write_start),
                    orig_route.distance_window_forward.subspan(start_idx),
@@ -168,9 +164,8 @@ class distance_route_t {
                                i_t write_start)
     {
       i_t size = end_idx - start_idx;
-      block_copy(distance_backward.subspan(write_start),
-                 orig_route.distance_backward.subspan(start_idx),
-                 size);
+      block_copy(
+        cost_backward.subspan(write_start), orig_route.cost_backward.subspan(start_idx), size);
       if (dim_info.has_distance_window) {
         block_copy(distance_window_backward.subspan(write_start),
                    orig_route.distance_window_backward.subspan(start_idx),
@@ -204,16 +199,16 @@ class distance_route_t {
                          objective_cost_t& obj_cost,
                          infeasible_cost_t& inf_cost) const noexcept
     {
-      obj_cost[objective_t::COST] = distance_forward[n_nodes_route];
+      obj_cost[objective_t::COST] = cost_forward[n_nodes_route];
       if (dim_info.has_distance_window && dim_info.has_distance_break_cost) {
         obj_cost[objective_t::DISTANCE_BREAK_COST] = distance_break_cost_forward[n_nodes_route];
       }
 
-      inf_cost[dim_t::DIST] = 0.;
+      inf_cost[dim_t::COST] = 0.;
       if (dim_info.has_max_constraint) {
-        inf_cost[dim_t::DIST] = max(0., distance_forward[n_nodes_route] - vehicle_info.max_cost);
+        inf_cost[dim_t::COST] = max(0., cost_forward[n_nodes_route] - vehicle_info.max_cost);
       }
-      if (dim_info.has_distance_window) { inf_cost[dim_t::DIST] += excess_forward[n_nodes_route]; }
+      if (dim_info.has_distance_window) { inf_cost[dim_t::COST] += excess_forward[n_nodes_route]; }
     }
 
     static DI thrust::tuple<view_t, i_t*> create_shared_route(i_t* shmem,
@@ -221,11 +216,11 @@ class distance_route_t {
                                                               i_t n_nodes_route)
     {
       view_t v;
-      size_t sz                                = n_nodes_route + 1;
-      i_t* sh_ptr                              = shmem;
-      v.dim_info                               = dim_info;
-      thrust::tie(v.distance_forward, sh_ptr)  = wrap_ptr_as_span<double>(sh_ptr, sz);
-      thrust::tie(v.distance_backward, sh_ptr) = wrap_ptr_as_span<double>(sh_ptr, sz);
+      size_t sz                            = n_nodes_route + 1;
+      i_t* sh_ptr                          = shmem;
+      v.dim_info                           = dim_info;
+      thrust::tie(v.cost_forward, sh_ptr)  = wrap_ptr_as_span<double>(sh_ptr, sz);
+      thrust::tie(v.cost_backward, sh_ptr) = wrap_ptr_as_span<double>(sh_ptr, sz);
       if (dim_info.has_distance_window) {
         thrust::tie(v.distance_window_forward, sh_ptr)  = wrap_ptr_as_span<double>(sh_ptr, sz);
         thrust::tie(v.distance_window_backward, sh_ptr) = wrap_ptr_as_span<double>(sh_ptr, sz);
@@ -239,14 +234,13 @@ class distance_route_t {
           thrust::tie(v.distance_break_cost_forward, sh_ptr) = wrap_ptr_as_span<double>(sh_ptr, sz);
         }
       }
-
       return thrust::make_tuple(v, sh_ptr);
     }
 
     cost_dimension_info_t dim_info;
-    raft::device_span<double> distance_forward;
-    raft::device_span<double> distance_backward;
-    raft::device_span<double> reverse_distance;
+    raft::device_span<double> cost_forward;
+    raft::device_span<double> cost_backward;
+    raft::device_span<double> reverse_cost;
     raft::device_span<double> distance_window_forward;
     raft::device_span<double> distance_window_backward;
     raft::device_span<double> distance_window_backward_min;
@@ -260,13 +254,10 @@ class distance_route_t {
   view_t view()
   {
     view_t v;
-    v.dim_info = dim_info;
-    v.distance_forward =
-      raft::device_span<double>{distance_forward.data(), distance_forward.size()};
-    v.distance_backward =
-      raft::device_span<double>{distance_backward.data(), distance_backward.size()};
-    v.reverse_distance =
-      raft::device_span<double>{reverse_distance.data(), reverse_distance.size()};
+    v.dim_info      = dim_info;
+    v.cost_forward  = raft::device_span<double>{cost_forward.data(), cost_forward.size()};
+    v.cost_backward = raft::device_span<double>{cost_backward.data(), cost_backward.size()};
+    v.reverse_cost  = raft::device_span<double>{reverse_cost.data(), reverse_cost.size()};
     if (dim_info.has_distance_window) {
       v.distance_window_forward =
         raft::device_span<double>{distance_window_forward.data(), distance_window_forward.size()};
@@ -287,7 +278,7 @@ class distance_route_t {
   }
 
   /**
-   * @brief Get the shared memory size required to store a distance route of a given size
+   * @brief Get the shared memory size required to store a cost route of a given size
    *
    * @param route_size
    * @return size_t
@@ -303,10 +294,13 @@ class distance_route_t {
 
   cost_dimension_info_t dim_info;
 
-  rmm::device_uvector<double> distance_forward;
-  rmm::device_uvector<double> distance_backward;
-  // Only used for cvrp/tsp and populated in global memory.
-  rmm::device_uvector<double> reverse_distance;
+  // forward data
+  rmm::device_uvector<double> cost_forward;
+  // backward data
+  rmm::device_uvector<double> cost_backward;
+  // The info is not updated with the other dimension buffers.
+  // It is only used for cvrp/tsp and populated in global memory.
+  rmm::device_uvector<double> reverse_cost;
   // Allocated only when has_distance_window.
   rmm::device_uvector<double> distance_window_forward;
   rmm::device_uvector<double> distance_window_backward;

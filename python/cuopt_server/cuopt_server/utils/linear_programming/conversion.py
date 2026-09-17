@@ -154,7 +154,7 @@ def _get_if_attribute_is_valid_else_none(attr):
 def extract_pdlpwarmstart_data(
     data: Any | None,
 ) -> dict[str, Any] | None:
-    """Convert PDLP warm-start data to the legacy HTTP dictionary shape.
+    """Convert PDLP warm-start data to the HTTP dictionary shape.
 
     Returns ``None`` when no warm-start data is available.
     """
@@ -185,10 +185,10 @@ def extract_pdlpwarmstart_data(
     }
 
 
-def solution_to_legacy_http(
+def solution_to_http(
     sol: Any, include_warmstart: bool = True
 ) -> dict[str, Any]:
-    """Serialize a cuOpt LP/MILP Solution into the legacy HTTP shape.
+    """Serialize a cuOpt LP/MILP Solution into the HTTP response shape.
 
     Returns ``{"status": <enum name>, "solution": {...}}``. When the
     termination status is not a solved/feasible case, ``solution`` is empty.

@@ -1040,7 +1040,9 @@ if (CUOPT_BUILD_CUSTOM_CUDSS_MTLAYER)
     )
     set(CUDSS_MT_LIB_FILE_NAME "libcudss_mtlayer_cuopt.so")
 else ()
-    get_filename_component(CUDSS_MT_LIB_FILE_NAME "${CUDSS_MT_LIB_FILE}" NAME)
+    # Full path, not just the basename, so the runtime dlopen pin (sparse_cholesky.cuh) and
+    # cudssSetThreadingLayer() resolve the exact same file CMake found (#1883).
+    set(CUDSS_MT_LIB_FILE_NAME "${CUDSS_MT_LIB_FILE}")
 endif ()
 
 target_compile_definitions(cuopt_objs
@@ -1278,11 +1280,27 @@ It pulls both solver engines whether or not you use them, so prefer a component 
 
 ]=])
 
+# cuopt::client exists in every configuration, but only carries the gRPC client when
+# SKIP_GRPC_BUILD was off, so its presence alone tells a consumer nothing. Export the
+# answer: the Python bindings use it to skip the gRPC extension module, which would
+# otherwise fail to link against a client built without that arm.
+# CUOPT_HAS_GRPC_ROUTING is reported separately rather than inferred from cuopt::routing:
+# it is CUOPT_ENABLE_GRPC_ROUTING that gates cython_grpc_client_vrp.cpp, and the two would
+# diverge the moment the VRP arm gains an option of its own.
+if(SKIP_GRPC_BUILD)
+    set(cuopt_code_string "set(CUOPT_HAS_GRPC OFF)\nset(CUOPT_HAS_GRPC_ROUTING OFF)")
+elseif(CUOPT_ENABLE_GRPC_ROUTING)
+    set(cuopt_code_string "set(CUOPT_HAS_GRPC ON)\nset(CUOPT_HAS_GRPC_ROUTING ON)")
+else()
+    set(cuopt_code_string "set(CUOPT_HAS_GRPC ON)\nset(CUOPT_HAS_GRPC_ROUTING OFF)")
+endif()
+
 rapids_export(INSTALL cuopt
         EXPORT_SET cuopt-exports
         GLOBAL_TARGETS cuopt ${CUOPT_COMPONENT_EXPORT_NAMES}
         NAMESPACE cuopt::
         DOCUMENTATION doc_string
+        FINAL_CODE_BLOCK cuopt_code_string
 )
 
 # ###############################################################################################
@@ -1292,6 +1310,7 @@ rapids_export(BUILD cuopt
         GLOBAL_TARGETS cuopt ${CUOPT_COMPONENT_EXPORT_NAMES}
         NAMESPACE cuopt::
         DOCUMENTATION doc_string
+        FINAL_CODE_BLOCK cuopt_code_string
 )
 
 # ##################################################################################################

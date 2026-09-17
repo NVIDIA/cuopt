@@ -406,6 +406,7 @@ TEST(vehicle_breaks, non_uniform_breaks)
   data_model.set_order_service_times(v_order_service.data());
   data_model.set_break_locations(v_break_locations.data(), v_break_locations.size());
 
+  std::vector<rmm::device_uvector<int>> v_e_vec, v_l_vec, v_d_vec;
   for (int b = 0; b < num_breaks; ++b) {
     std::vector<int> e(vehicle_num), l(vehicle_num), d(vehicle_num);
     for (int v = 0; v < vehicle_num; ++v) {
@@ -413,10 +414,11 @@ TEST(vehicle_breaks, non_uniform_breaks)
       l[v] = break_latest[v * num_breaks + b];
       d[v] = break_duration[v * num_breaks + b];
     }
-    auto v_e = cuopt::device_copy(e, stream);
-    auto v_l = cuopt::device_copy(l, stream);
-    auto v_d = cuopt::device_copy(d, stream);
-    data_model.add_break_dimension(v_e.data(), v_l.data(), v_d.data());
+    v_e_vec.push_back(cuopt::device_copy(e, stream));
+    v_l_vec.push_back(cuopt::device_copy(l, stream));
+    v_d_vec.push_back(cuopt::device_copy(d, stream));
+    data_model.add_break_dimension(
+      v_e_vec.back().data(), v_l_vec.back().data(), v_d_vec.back().data());
   }
 
   cuopt::routing::solver_settings_t<int, float> settings;
