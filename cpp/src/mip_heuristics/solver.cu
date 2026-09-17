@@ -262,10 +262,11 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   if (run_presolve && context.problem_ptr->n_integer_vars == 0) {
     CUOPT_LOG_INFO("Problem reduced to a LP, running concurrent LP");
     pdlp_solver_settings_t<i_t, f_t> settings{};
-    settings.time_limit = timer_.remaining_time();
-    auto lp_timer       = timer_t(settings.time_limit);
-    settings.method     = method_t::Concurrent;
-    settings.presolver  = presolver_t::None;
+    settings.time_limit                    = timer_.remaining_time();
+    auto lp_timer                          = timer_t(settings.time_limit);
+    settings.method                        = method_t::Concurrent;
+    settings.concurrent_barrier_nnz_cutoff = context.settings.concurrent_barrier_nnz_cutoff;
+    settings.presolver                     = presolver_t::None;
 
     auto opt_sol = solve_lp_with_method<i_t, f_t>(*context.problem_ptr, settings, lp_timer);
 

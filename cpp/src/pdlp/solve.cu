@@ -1585,11 +1585,13 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   // Make sure allocations are done on the original stream
   problem.handle_ptr->sync_stream();
 
-  // Stand-alone LP always runs all three concurrently. MIP gates the barrier so we don't
-  // overshoot num_cpu_threads (need 1 PDLP + 1 dual simplex + 1 barrier).
+  // Keep the concurrent solver thread count correct when Barrier is skipped.
+  const auto num_nonzeros     = problem.coefficients.size();
   const int available_threads = omp_in_parallel() ? omp_get_num_threads() : omp_get_max_threads();
-  const bool enable_barrier =
-    !settings.inside_mip || available_threads >= CUOPT_CONCURRENT_LP_BARRIER_REQUIRED_THREAD_COUNT;
+  const bool enable_barrier   = pdlp::should_enable_concurrent_barrier(
+    num_nonzeros, settings.concurrent_barrier_nnz_cutoff, settings.inside_mip, available_threads);
+  const bool skip_barrier =
+    pdlp::should_skip_concurrent_barrier(num_nonzeros, settings.concurrent_barrier_nnz_cutoff);
 
   if (settings.num_gpus > 1) {
     int device_count = raft::device_setter::get_device_count();
@@ -1620,10 +1622,19 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   // library init is now recovered by manual_cuda_graph_t::run, so the previous main-thread
   // preflight (eager handle construction + cuDSS warmup) is no longer needed.
   std::unique_ptr<raft::handle_t> barrier_handle_ptr;
-  if (!enable_barrier) {
-    CUOPT_LOG_DEBUG("MIP: skipping concurrent barrier, %d threads available < %d required.",
+  if (skip_barrier) {
+    CUOPT_LOG_CONDITIONAL_INFO(
+      !settings.inside_mip,
+      "Skipping concurrent Barrier: reduced problem has %zu nonzeros (cutoff: %d).",
+      num_nonzeros,
+      settings.concurrent_barrier_nnz_cutoff);
+    CUOPT_LOG_DEBUG("Skipping concurrent Barrier: reduced problem has %zu nonzeros (cutoff: %d).",
+                    num_nonzeros,
+                    settings.concurrent_barrier_nnz_cutoff);
+  } else if (!enable_barrier) {
+    CUOPT_LOG_DEBUG("MIP: skipping concurrent Barrier, %d threads available < %d required.",
                     available_threads,
-                    CUOPT_CONCURRENT_LP_BARRIER_REQUIRED_THREAD_COUNT);
+                    pdlp::concurrent_barrier_required_thread_count);
   }
 
   // Dispatch barrier + dual simplex as OMP tasks (not std::threads) so they consume slots from
@@ -1639,7 +1650,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   auto dispatch_concurrent_solvers = [&]() {
 #pragma omp taskgroup
     {
-      // Barrier task — always on for stand-alone LP, gated on enable_barrier for MIP.
+      // Barrier task — gated by the reduced-problem size and, for MIP, available CPU threads.
       if (enable_barrier) {
 #pragma omp task default(shared)
         {

@@ -177,6 +177,21 @@ TEST(pdlp_class, concurrent_pdlp_exception_joins_worker_threads)
               testing::HasSubstr("all_primal_feasible only applies in batch mode"));
 }
 
+TEST(pdlp_class, concurrent_barrier_gates_on_reduced_problem_size_and_mip_threads)
+{
+  using cuopt::mathematical_optimization::pdlp::concurrent_barrier_required_thread_count;
+  using cuopt::mathematical_optimization::pdlp::should_enable_concurrent_barrier;
+
+  constexpr int nnz_cutoff = 50'000'000;
+  EXPECT_TRUE(should_enable_concurrent_barrier(nnz_cutoff - 1, nnz_cutoff, false, 1));
+  EXPECT_FALSE(should_enable_concurrent_barrier(nnz_cutoff, nnz_cutoff, false, 32));
+  EXPECT_TRUE(should_enable_concurrent_barrier(nnz_cutoff, -1, false, 32));
+  EXPECT_TRUE(should_enable_concurrent_barrier(
+    nnz_cutoff - 1, nnz_cutoff, true, concurrent_barrier_required_thread_count));
+  EXPECT_FALSE(should_enable_concurrent_barrier(
+    nnz_cutoff - 1, nnz_cutoff, true, concurrent_barrier_required_thread_count - 1));
+}
+
 TEST(pdlp_class, concurrent_null_solver_ptrs_inside_mip)
 {
   const raft::handle_t handle_{};
@@ -191,7 +206,7 @@ TEST(pdlp_class, concurrent_null_solver_ptrs_inside_mip)
   settings.inside_mip = true;
 
   // inside_mip skips dual simplex. Setting threads to 1 ensures barrier is also disabled
-  // (< CUOPT_CONCURRENT_LP_BARRIER_REQUIRED_THREAD_COUNT), leaving both sol_dual_simplex_ptr
+  // (< concurrent_barrier_required_thread_count), leaving both sol_dual_simplex_ptr
   // and sol_barrier_ptr null.
   const int prev_threads = omp_get_max_threads();
   omp_set_num_threads(1);
