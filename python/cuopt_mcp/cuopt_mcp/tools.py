@@ -42,9 +42,14 @@ def _solution_dir() -> Path:
     Defaults under the shared system temp dir. ``mkdir``'s ``mode`` is
     filtered by umask, so it alone can't guarantee 0700 -- ``chmod`` after
     creating makes that unconditional. If the directory already exists
-    (e.g. from a prior run, or a symlink another local user planted first),
-    it's only trusted when it's already private to this user; otherwise
-    another local user could read or tamper with solution files (CWE-377).
+    (e.g. from a prior run, or planted by another local user first), it's
+    only trusted when it's already private to this user; otherwise another
+    local user could read or tamper with solution files (CWE-377). The
+    check uses ``lstat`` and rejects a symlink outright: ``stat`` follows
+    the link and would report the *target's* ownership/mode, so a symlink
+    planted here pointing at some other 0700 directory this user happens to
+    own elsewhere would pass a ``stat``-based check (CWE-59) and redirect
+    solution writes there.
     """
     path = Path(
         os.environ.get(
@@ -54,13 +59,18 @@ def _solution_dir() -> Path:
     try:
         path.mkdir(parents=True, mode=0o700)
     except FileExistsError:
-        st = path.stat()
-        if st.st_uid != os.getuid() or stat.S_IMODE(st.st_mode) & 0o077:
+        st = path.lstat()
+        if (
+            stat.S_ISLNK(st.st_mode)
+            or st.st_uid != os.getuid()
+            or stat.S_IMODE(st.st_mode) & 0o077
+        ):
             raise CuOptMCPError(
                 f"{path} exists but is not private to this user (mode "
-                f"{oct(stat.S_IMODE(st.st_mode))}, owner uid {st.st_uid}) "
-                "-- refusing to write solution files there. Remove it or "
-                "set CUOPT_MCP_SOLUTION_DIR to a private location."
+                f"{oct(stat.S_IMODE(st.st_mode))}, owner uid {st.st_uid}, "
+                f"symlink {stat.S_ISLNK(st.st_mode)}) -- refusing to write "
+                "solution files there. Remove it or set "
+                "CUOPT_MCP_SOLUTION_DIR to a private location."
             ) from None
     else:
         os.chmod(path, 0o700)
@@ -132,7 +142,14 @@ def submit(problem_path: str, kind: str, settings: dict | None = None) -> dict:
     model = _read_problem(problem_path)
     solver_settings = _build_settings(kind, settings)
     try:
-        job_id = get_client().submit(model, solver_settings)
+        # Client.submit()'s default only enables incumbent collection when
+        # `settings` already carries a local MIP callback object (see local
+        # solve). This process keeps none -- cuopt_incumbents polls
+        # Client.incumbents() instead -- so it must ask explicitly, or the
+        # server never records incumbents for a MIP job to poll.
+        job_id = get_client().submit(
+            model, solver_settings, enable_incumbents=(kind == "mip_settings")
+        )
     except Exception as exc:
         raise describe_connection_error(exc) from exc
 
@@ -314,6 +331,31 @@ def cancel(job_id: str) -> dict:
     return {"job_id": job_id, "cancelled": True}
 
 
+def delete(job_id: str) -> dict:
+    """Release a job's server-side state (solution, logs, incumbents).
+
+    cuopt_grpc_server keeps this until deleted, so a caller done with a
+    job's result should call this rather than letting it accumulate.
+    Cancels first if the job is still running.
+
+    Args:
+        job_id: A job handle previously returned by :func:`submit`.
+
+    Returns
+    -------
+        ``{"job_id": ..., "deleted": True}`` on success.
+
+    Raises
+    ------
+        CuOptMCPError: The backend is unreachable.
+    """
+    try:
+        get_client().delete(job_id)
+    except Exception as exc:
+        raise describe_connection_error(exc) from exc
+    return {"job_id": job_id, "deleted": True}
+
+
 def incumbents(job_id: str, from_index: int = 0) -> dict:
     """Return the MILP incumbent trajectory so far.
 
@@ -335,24 +377,34 @@ def incumbents(job_id: str, from_index: int = 0) -> dict:
         CuOptMCPError: The backend is unreachable.
     """
     try:
+        # Each entry is {"index", "objective", "assignment"}; assignment
+        # (the full variable vector) isn't returned here -- an agent tracking
+        # progress needs the objective trend, not the values, and returning
+        # it inline would blow past a usable tool-result size for any
+        # realistic MILP.
         found = get_client().incumbents(job_id, from_index)
     except Exception as exc:
         raise describe_connection_error(exc) from exc
     objectives = [
-        {"index": from_index + i, "objective": float(obj)}
-        for i, (obj, _) in enumerate(found or [])
+        {"index": entry["index"], "objective": float(entry["objective"])}
+        for entry in found or []
     ]
+    next_index = objectives[-1]["index"] + 1 if objectives else from_index
     return {
         "job_id": job_id,
         "count": len(objectives),
-        "next_index": from_index + len(objectives),
+        "next_index": next_index,
         "incumbents": objectives,
     }
 
 
 def logs(job_id: str, from_byte: int = 0, tail_lines: int = 100) -> dict:
-    """Fetch a job's log text starting at ``from_byte``, tailed to the last
+    """Fetch a job's log lines starting at ``from_byte``, tailed to the last
     ``tail_lines`` lines.
+
+    Only available once the job has finished (COMPLETED, FAILED, or
+    CANCELLED) — the underlying client raises while a job is still queued
+    or running; poll ``cuopt_status`` first.
 
     Args:
         job_id: The job to fetch logs for.
@@ -363,7 +415,8 @@ def logs(job_id: str, from_byte: int = 0, tail_lines: int = 100) -> dict:
 
     Returns
     -------
-        A dict with ``lines`` (the tailed text), ``truncated`` (whether more
+        ``{"ready": False, ...}`` if the job hasn't finished yet, otherwise
+        a dict with ``lines`` (the tailed text), ``truncated`` (whether more
         preceded them), and ``next_byte`` to pass on the next call.
     """
     if (
@@ -375,16 +428,35 @@ def logs(job_id: str, from_byte: int = 0, tail_lines: int = 100) -> dict:
             f"tail_lines must be an integer between 1 and {MAX_TAIL_LINES}"
         )
     try:
-        text = get_client().logs(job_id, from_byte)
+        lines = get_client().logs(job_id, from_byte)
     except Exception as exc:
+        # Matched by class name, not isinstance, to avoid importing
+        # cuopt.grpc.linear_programming (which pulls the compiled libcuopt
+        # extension) just to name this one exception type -- get_client()
+        # already imports it lazily on first real use.
+        if type(exc).__name__ == "JobNotReadyError":
+            return {
+                "job_id": job_id,
+                "ready": False,
+                "hint": "Job has not finished. Poll cuopt_status(job_id).",
+            }
         raise describe_connection_error(exc) from exc
-    lines = (text or "").splitlines()
+    lines = lines or []
     truncated = len(lines) > tail_lines
+    # Client.logs() reports lines, not the server-side byte offset each one
+    # ended at, so this re-derives it: every line came from a '\n'-delimited
+    # log file, so its encoded length plus one accounts for the separator.
+    # Off by the trailing byte only when the file's very last line has no
+    # newline yet -- self-correcting once one more byte is appended.
+    next_byte = from_byte + sum(
+        len(line.encode("utf-8")) + 1 for line in lines
+    )
     return {
         "job_id": job_id,
+        "ready": True,
         "truncated": truncated,
         "lines": lines[-tail_lines:],
-        "next_byte": from_byte + len(text or ""),
+        "next_byte": next_byte,
     }
 
 

@@ -42,9 +42,16 @@ class FakeSolution:
 
 
 class FakeClient:
-    def __init__(self, solution=None):
+    def __init__(self, solution=None, not_ready_logs=False):
         self.solution = solution
         self.cancelled = []
+        self.deleted = []
+        self.submitted = []
+        self.not_ready_logs = not_ready_logs
+
+    def submit(self, problem, settings, enable_incumbents=None):
+        self.submitted.append(enable_incumbents)
+        return "job-new"
 
     def result(self, job_id, variable_names=None):
         return self.solution
@@ -52,17 +59,35 @@ class FakeClient:
     def cancel(self, job_id):
         self.cancelled.append(job_id)
 
+    def delete(self, job_id):
+        self.deleted.append(job_id)
+
     def incumbents(self, job_id, from_index=0):
-        return [(10.0, None), (8.0, None)][from_index:]
+        # Real shape: list of {"index", "objective", "assignment"} dicts,
+        # not (objective, assignment) tuples -- see tools.incumbents.
+        entries = [
+            {"index": 0, "objective": 10.0, "assignment": []},
+            {"index": 1, "objective": 8.0, "assignment": []},
+        ]
+        return [e for e in entries if e["index"] >= from_index]
 
     def logs(self, job_id, from_byte=0):
-        return "\n".join(f"line {i}" for i in range(10))
+        if self.not_ready_logs:
+            # tools.logs matches by class name, not isinstance, precisely
+            # so it needn't import the real cuopt.grpc.linear_programming
+            # exception type -- this stand-in exercises that.
+            class JobNotReadyError(Exception):
+                pass
+
+            raise JobNotReadyError(f"job {job_id} is not complete (QUEUED)")
+        # Real shape: list[str], not a joined string -- see tools.logs.
+        return [f"line {i}" for i in range(10)]
 
 
 @pytest.fixture
 def fake(monkeypatch):
-    def _install(solution=None):
-        stub = FakeClient(solution)
+    def _install(solution=None, not_ready_logs=False):
+        stub = FakeClient(solution, not_ready_logs=not_ready_logs)
         monkeypatch.setattr(tools, "get_client", lambda: stub)
         return stub
 
@@ -145,14 +170,55 @@ def test_incumbents_paginate(fake):
 def test_logs_tail_is_bounded(fake):
     fake()
     out = tools.logs("job-1", tail_lines=3)
+    assert out["ready"] is True
     assert out["lines"] == ["line 7", "line 8", "line 9"]
     assert out["truncated"] is True
+    assert out["next_byte"] > 0
+
+
+def test_logs_reports_not_ready_without_raising(fake):
+    fake(not_ready_logs=True)
+    out = tools.logs("job-1")
+    assert out["ready"] is False
+    assert "cuopt_status" in out["hint"]
 
 
 def test_cancel(fake):
     stub = fake()
     assert tools.cancel("job-1")["cancelled"] is True
     assert stub.cancelled == ["job-1"]
+
+
+def test_delete(fake):
+    stub = fake()
+    assert tools.delete("job-1")["deleted"] is True
+    assert stub.deleted == ["job-1"]
+
+
+class FakeModel:
+    def get_variable_lower_bounds(self):
+        return [0.0, 0.0]
+
+    def get_constraint_matrix_offsets(self):
+        return [0, 1]
+
+
+def test_submit_enables_incumbents_for_mip_only(fake, monkeypatch, tmp_path):
+    """Client.submit() only enables incumbent collection by default when
+    settings already carries a local MIP callback -- this process keeps
+    none, so tools.submit must pass enable_incumbents explicitly, or
+    cuopt_incumbents always comes back empty for a MIP job (tools.py).
+    """
+    stub = fake()
+    monkeypatch.setattr(tools, "_read_problem", lambda path: FakeModel())
+    monkeypatch.setattr(
+        tools, "_build_settings", lambda kind, settings: object()
+    )
+    problem = tmp_path / "p.mps"
+    problem.write_text("")
+    tools.submit(str(problem), "mip_settings")
+    tools.submit(str(problem), "pdlp_settings")
+    assert stub.submitted == [True, False]
 
 
 def test_missing_problem_file_is_a_clear_error():

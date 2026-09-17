@@ -39,7 +39,15 @@ def endpoint() -> tuple:
     the MCP server introduces no new configuration surface.
     """
     host = os.environ.get("CUOPT_REMOTE_HOST", DEFAULT_HOST)
-    port = int(os.environ.get("CUOPT_REMOTE_PORT", DEFAULT_PORT))
+    raw_port = os.environ.get("CUOPT_REMOTE_PORT")
+    if raw_port is None:
+        return host, DEFAULT_PORT
+    try:
+        port = int(raw_port)
+    except ValueError:
+        raise CuOptMCPError(
+            f"CUOPT_REMOTE_PORT={raw_port!r} is not an integer"
+        ) from None
     return host, port
 
 

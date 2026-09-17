@@ -51,6 +51,7 @@ Configuration reuses the environment the cuOpt gRPC client already honours —
 | `cuopt_incumbents` | Watch a MILP's objective improve |
 | `cuopt_logs` | Recent solver log lines |
 | `cuopt_cancel` | Stop a running job |
+| `cuopt_delete` | Release a job's server-side state once its result is no longer needed |
 | `cuopt_list_settings` | Discover solver parameters |
 
 Solves are asynchronous by design. A blocking call would exceed the MCP

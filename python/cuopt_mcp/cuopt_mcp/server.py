@@ -188,6 +188,18 @@ def cuopt_cancel(job_id: str) -> dict[str, Any]:
 
 
 @server.tool(structured_output=True)
+def cuopt_delete(job_id: str) -> dict[str, Any]:
+    """Release a finished job's server-side state (solution, logs,
+    incumbents). Cancels first if it is still running.
+
+    job_id: the job to delete. Call this once its result is no longer
+    needed, so cuopt_grpc_server doesn't accumulate state indefinitely.
+    On failure, returns ``{"error": <message>}`` instead (see ``_guard``).
+    """
+    return _guard(tools.delete, job_id=job_id)
+
+
+@server.tool(structured_output=True)
 def cuopt_list_settings(kind: str, name: str | None = None) -> dict[str, Any]:
     """List cuOpt solver settings with descriptions, types, and defaults.
 
