@@ -161,7 +161,7 @@ def _get_if_attribute_is_valid_else_none(attr):
 def extract_pdlpwarmstart_data(
     data: Any | None,
 ) -> dict[str, Any] | None:
-    """Convert PDLP warm-start data to the legacy HTTP dictionary shape.
+    """Convert PDLP warm-start data to the HTTP dictionary shape.
 
     Returns ``None`` when no warm-start data is available. Array fields keep
     the solver's float64 ndarrays; msgpack_numpy serializes them on the wire.
@@ -194,7 +194,7 @@ def extract_pdlpwarmstart_data(
 
 
 def pdlp_from_http_warmstart(data: Any) -> PDLPWarmStartData:
-    """Build ``PDLPWarmStartData`` from the legacy HTTP warm-start shape.
+    """Build ``PDLPWarmStartData`` from the HTTP warm-start shape.
 
     Accepts an HTTP dict, ``WarmStartData``, or an object with the same
     field names (including ``PDLPWarmStartData``). Array fields become

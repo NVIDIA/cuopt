@@ -135,7 +135,7 @@ def test_pdlp_http_warmstart_roundtrip():
         0,
     )
     http_dict = conversion.extract_pdlpwarmstart_data(src)
-    # legacy clients receive the solver's float64 ndarrays, not lists
+    # GET /warmstart returns the solver's float64 ndarrays, not lists
     assert isinstance(http_dict["current_primal_solution"], np.ndarray)
     assert http_dict["current_primal_solution"].dtype == np.float64
     restored = conversion.pdlp_from_http_warmstart(http_dict)

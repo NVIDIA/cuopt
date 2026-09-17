@@ -373,7 +373,7 @@ def test_warmstart_get_and_reuse(proxy):
     assert warm.status_code == 200, warm.text
     assert warm.headers["content-type"].startswith(mime_msgpack)
     blob = msgpack.loads(warm.content, strict_map_key=False)
-    # legacy wire shape: msgpack_numpy-encoded float64 arrays
+    # HTTP wire shape: msgpack_numpy-encoded float64 arrays
     primal = blob["current_primal_solution"]
     assert isinstance(primal, np.ndarray) and primal.dtype == np.float64
     assert primal.tolist() == [0.1, 0.2]
