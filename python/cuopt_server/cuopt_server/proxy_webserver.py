@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""FastAPI app for the gRPC-backed HTTP proxy (LP/MILP)."""
+"""FastAPI app for the gRPC-backed HTTP proxy (LP/MILP/VRP)."""
 
 import asyncio
 import logging
@@ -16,6 +16,12 @@ from fastapi import FastAPI, Header, HTTPException, Path, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import Response
 from pydantic import ValidationError
+
+from cuopt.utilities import (
+    InputRuntimeError,
+    InputValidationError,
+    OutOfMemoryError,
+)
 
 import cuopt_server.utils.settings as settings
 from cuopt_server._version import __version__
@@ -61,7 +67,7 @@ from cuopt_server.utils.linear_programming.conversion import (
     create_data_model,
     create_solver,
     extract_pdlpwarmstart_data,
-    solution_to_legacy_http,
+    solution_to_http,
 )
 from cuopt_server.utils.linear_programming.data_definition import (
     LPData,
@@ -81,6 +87,18 @@ from cuopt_server.utils.local_files import (
     validate_file_path,
     write_result_file,
 )
+from cuopt_server.utils.routing.conversion import (
+    create_data_model as create_routing_data_model,
+    create_solver as create_routing_solver,
+    populate_optimization_data,
+    prep_optimization_data,
+    solution_to_http as routing_solution_to_http,
+)
+from cuopt_server.utils.routing.data_definition import (
+    OptimizedRoutingData,
+    SolverSettingsConfig,
+)
+from cuopt_server.utils.routing.initial_solution import add_initial_sol
 
 app = FastAPI(
     title="NVIDIA cuOpt HTTP proxy",
@@ -91,6 +109,7 @@ app = FastAPI(
 )
 
 _grpc_client = None
+_routing_client = None
 _jobs = {}
 _warmstarts = {}
 _jobs_lock = threading.Lock()
@@ -107,11 +126,7 @@ _ROUTING_KEYS = {
     "solver_config",
 }
 
-_NOT_IMPLEMENTED = (
-    "This feature is not implemented on the gRPC HTTP proxy. "
-    "Use the legacy HTTP server (python -m cuopt_server.cuopt_service) "
-    "or a later proxy PR."
-)
+_NOT_IMPLEMENTED = "This feature is not implemented on the gRPC HTTP proxy."
 
 
 def set_grpc_client(client: Any) -> None:
@@ -121,12 +136,27 @@ def set_grpc_client(client: Any) -> None:
 
 
 def get_grpc_client() -> Any:
-    """Return the configured gRPC client or raise HTTP 503."""
+    """Return the configured LP/MILP gRPC client or raise HTTP 503."""
     if _grpc_client is None:
         raise HTTPException(
             status_code=503, detail="gRPC client is not connected"
         )
     return _grpc_client
+
+
+def set_grpc_routing_client(client: Any) -> None:
+    """Set the VRP gRPC client used by proxy endpoints."""
+    global _routing_client
+    _routing_client = client
+
+
+def get_grpc_routing_client() -> Any:
+    """Return the configured VRP gRPC client or raise HTTP 503."""
+    if _routing_client is None:
+        raise HTTPException(
+            status_code=503, detail="gRPC routing client is not connected"
+        )
+    return _routing_client
 
 
 def set_max_request_size(size: int) -> None:
@@ -139,12 +169,13 @@ def set_max_request_size(size: int) -> None:
 
 def reset_proxy_state() -> None:
     """Clear process-local proxy state used by tests."""
-    global _grpc_client
+    global _grpc_client, _routing_client
     with _jobs_lock:
         _jobs.clear()
         _warmstarts.clear()
         _incumbent_locks.clear()
     _grpc_client = None
+    _routing_client = None
 
 
 def _store_job(job_id, meta):
@@ -304,6 +335,37 @@ def _map_status(grpc_status):
     return mapping.get(name, RequestStatusModel.aborted)
 
 
+def _as_id_list(series):
+    if series is None:
+        return None
+    to_arrow = getattr(series, "to_arrow", None)
+    if to_arrow is not None:
+        return [str(x) for x in to_arrow().to_pylist()]
+    if hasattr(series, "tolist"):
+        return [str(x) for x in series.tolist()]
+    return [str(x) for x in list(series)]
+
+
+def _result_for_job(job_id, meta, kind):
+    """Return a typed GetResult payload (one RPC, two Python parsers)."""
+    names = None if meta is None else meta.get("variable_names")
+    if kind == "vrp":
+        return "vrp", get_grpc_routing_client().result(job_id)
+    if kind == "lp":
+        return "lp", get_grpc_client().result(job_id, variable_names=names)
+    try:
+        sol = get_grpc_client().result(job_id, variable_names=names)
+        if sol is not None:
+            return "lp", sol
+    except Exception:
+        logging.debug(
+            "LP GetResult parser failed for %s; trying routing",
+            job_id,
+            exc_info=True,
+        )
+    return "vrp", get_grpc_routing_client().result(job_id)
+
+
 def _is_mip(lp_data):
     types = getattr(lp_data, "variable_types", None)
     if types is None:
@@ -322,8 +384,6 @@ def _looks_like_routing(data):
 def _prepare_lp(data, warnings, warmstart_data=None):
     if isinstance(data, list):
         _not_implemented("Batch LP (a JSON list of LP problems)")
-    if _looks_like_routing(data):
-        _not_implemented("Vehicle routing (VRP)")
     try:
         if isinstance(data, dict):
             transform_lp_data(data)
@@ -347,6 +407,134 @@ def _prepare_lp(data, warnings, warmstart_data=None):
     return lp_data, data_model, solver_settings
 
 
+def _has_waypoint_graph(parsed):
+    for key in (
+        "cost_waypoint_graph_data",
+        "travel_time_waypoint_graph_data",
+    ):
+        block = parsed.get(key)
+        if block is not None and getattr(block, "waypoint_graph", None):
+            return True
+    return False
+
+
+def _ensure_rmm_pool():
+    """Waypoint densification still uses WaypointMatrix on the device."""
+    import rmm
+
+    mr = rmm.mr.get_current_device_resource()
+    if isinstance(mr, rmm.mr.PoolMemoryResource) or isinstance(
+        mr, rmm.mr.StatisticsResourceAdaptor
+    ):
+        return
+    pool_gigs = int(os.environ.get("CUOPT_GIGABYTES_PER_PROC", 1))
+    pool = rmm.mr.PoolMemoryResource(
+        rmm.mr.CudaMemoryResource(), initial_pool_size=2**30 * pool_gigs
+    )
+    rmm.mr.set_current_device_resource(pool)
+
+
+def _prepare_vrp(data, warnings, initial_envelopes=None):
+    try:
+        data = dict(OptimizedRoutingData.parse_obj(data))
+        if initial_envelopes:
+            add_initial_sol(data, initial_envelopes)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=422,
+            detail="unable to validate optimization data stream, %s"
+            % (str(e)),
+        )
+
+    if data.get("solver_config") is None:
+        logging.debug("Creating default solver config")
+        data["solver_config"] = SolverSettingsConfig()
+
+    try:
+        if _has_waypoint_graph(data):
+            _ensure_rmm_pool()
+        optimization_data = populate_optimization_data(
+            **data, warnings=warnings
+        )
+        (
+            optimization_data,
+            cost_matrix,
+            travel_time_matrix,
+            _,
+        ) = prep_optimization_data(optimization_data)
+        dm_warnings, data_model = create_routing_data_model(
+            optimization_data,
+            cost_matrix=cost_matrix,
+            travel_time_matrix=travel_time_matrix,
+        )
+        warnings.extend(dm_warnings)
+        sw_warnings, solver_settings = create_routing_solver(optimization_data)
+        warnings.extend(sw_warnings)
+        vehicle_ids = _as_id_list(
+            optimization_data.fleet_data.get("vehicle_ids")
+        )
+        task_ids = _as_id_list(optimization_data.task_data.get("task_ids"))
+        return data_model, solver_settings, vehicle_ids, task_ids
+    except HTTPException:
+        raise
+    except (InputValidationError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except (InputRuntimeError, OutOfMemoryError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _collect_vrp_initials(initial_ids):
+    if not initial_ids:
+        return None
+    envelopes = []
+    routing = get_grpc_routing_client()
+    for iid in initial_ids:
+        _require_uuid(iid)
+        meta = _get_job(iid)
+        if meta is not None and meta.get("kind") == "lp":
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"initialId {iid} is an LP/MILP job, not a VRP solution"
+                ),
+            )
+        if meta is not None and meta.get("validation_only"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"initialId {iid} has no VRP solution",
+            )
+        status = get_grpc_client().status(iid)
+        if _is_status(status, "NOT_FOUND"):
+            raise HTTPException(status_code=404, detail=f"id {iid} not found")
+        if _is_status(status, "QUEUED", "PROCESSING"):
+            raise HTTPException(
+                status_code=409,
+                detail=f"initialId {iid} is not completed",
+            )
+        if _is_status(status, "FAILED", "CANCELLED"):
+            raise HTTPException(
+                status_code=409,
+                detail=f"job {iid} {_status_name(status).lower()}",
+            )
+        raw = routing.result(iid)
+        if raw is None:
+            raise HTTPException(
+                status_code=409,
+                detail=f"initialId {iid} is not completed",
+            )
+        inner = routing_solution_to_http(
+            raw,
+            vehicle_ids=None if meta is None else meta.get("vehicle_ids"),
+            task_ids=None if meta is None else meta.get("task_ids"),
+        )
+        envelopes.append({"response": {"solver_response": inner}})
+    return envelopes
+
+
 def _deserialize_convert_submit(
     ctype,
     buf,
@@ -358,12 +546,67 @@ def _deserialize_convert_submit(
     accept,
     result_file,
     warmstart_id,
+    initial_ids,
 ):
     """CPU + blocking gRPC work for POST /cuopt/request (run off the event loop)."""
     if file_path:
         data = load_optimization_file(file_path, warnings)
     else:
         data = deserialize(ctype, buf)
+    if _looks_like_routing(data):
+        initials = _collect_vrp_initials(initial_ids)
+        data_model, solver_settings, vehicle_ids, task_ids = _prepare_vrp(
+            data, warnings, initials
+        )
+        if validation_only:
+            job_id = str(uuid.uuid4())
+            envelope = make_response(
+                {
+                    "solver_response": {
+                        "status": 0,
+                        "vehicle_data": {},
+                    }
+                },
+                warnings=warnings,
+                notes=["Input is valid"],
+                reqId=job_id,
+            )
+            _store_job(
+                job_id,
+                {
+                    "kind": "vrp",
+                    "accept": accept,
+                    "warnings": warnings,
+                    "vehicle_ids": vehicle_ids,
+                    "task_ids": task_ids,
+                    "result_file": result_file,
+                    "solver_logs": False,
+                    "incumbents_enabled": False,
+                    "incumbent_next_index": 0,
+                    "validation_only": True,
+                    "validation_result": envelope,
+                },
+            )
+            return job_id
+        job_id = get_grpc_routing_client().submit(data_model, solver_settings)
+        _store_job(
+            job_id,
+            {
+                "kind": "vrp",
+                "accept": accept,
+                "warnings": warnings,
+                "vehicle_ids": vehicle_ids,
+                "task_ids": task_ids,
+                "result_file": result_file,
+                "solver_logs": False,
+                "incumbents_enabled": False,
+                "incumbent_next_index": 0,
+                "validation_only": False,
+            },
+        )
+        return job_id
+    if initial_ids:
+        _not_implemented("Query parameter initialId")
     pdlp = None
     if warmstart_id:
         pdlp = _warmstart_for_submit(warmstart_id)
@@ -380,6 +623,7 @@ def _deserialize_convert_submit(
         _store_job(
             job_id,
             {
+                "kind": "lp",
                 "accept": accept,
                 "warnings": warnings,
                 "variable_names": variable_names,
@@ -402,6 +646,7 @@ def _deserialize_convert_submit(
     _store_job(
         job_id,
         {
+            "kind": "lp",
             "accept": accept,
             "warnings": warnings,
             "variable_names": variable_names,
@@ -420,7 +665,44 @@ def _deserialize_convert_submit(
 @app.get("/v2/health/ready", responses=HealthResponse)
 @app.get("/v2/health/live", responses=HealthResponse)
 def health():
-    return {"status": "RUNNING", "version": app.version}
+    try:
+        _require_grpc_healthy()
+        return {"status": "RUNNING", "version": app.version}
+    except HTTPException as e:
+        return http_exception_handler(e)
+
+
+def _grpc_backend_ok():
+    """Return (True, '') if cuopt_grpc_server answered a short probe."""
+    client = _grpc_client
+    if client is None:
+        return False, "gRPC client is not connected"
+    try:
+        ping = getattr(client, "ping", None)
+        if callable(ping):
+            ping(5)
+        else:
+            client.status("__connection_probe__")
+        return True, ""
+    except Exception as e:
+        text = str(e).strip() or type(e).__name__
+        return False, text
+
+
+def _require_grpc_healthy():
+    ok, msg = _grpc_backend_ok()
+    if not ok:
+        logging.error("ERROR : %s", msg)
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Status : Broken\n"
+                "The gRPC backend is unavailable. "
+                "This process cannot serve solves until "
+                "cuopt_grpc_server is healthy.\n"
+                "ERROR : gRPC backend unavailable"
+            ),
+        )
 
 
 @app.get(
@@ -441,11 +723,11 @@ def getsolverlogs(
                 status_code=422, detail="frombyte must be >= 0"
             )
         meta = _get_job(id)
-        if meta is not None and meta.get("validation_only"):
-            raise HTTPException(
-                status_code=404, detail=f"log not found for request {id}"
-            )
-        if meta is not None and not meta.get("solver_logs"):
+        if meta is not None and (
+            meta.get("kind") == "vrp"
+            or meta.get("validation_only")
+            or not meta.get("solver_logs")
+        ):
             raise HTTPException(
                 status_code=404, detail=f"log not found for request {id}"
             )
@@ -502,6 +784,8 @@ def getincumbent(
         accept = _resolve_accept(accept)
         _require_uuid(id)
         meta = _get_job(id)
+        if meta is not None and meta.get("kind") == "vrp":
+            raise HTTPException(status_code=404, detail=f"id {id} not found")
         if meta is not None and meta.get("validation_only"):
             return encode(
                 [{"solution": [], "cost": None, "bound": None}], accept
@@ -558,9 +842,11 @@ def deletesolution(
         if meta is not None and meta.get("validation_only"):
             _pop_job(id)
             return Response(status_code=200)
-        client = get_grpc_client()
+        status = get_grpc_client().status(id)
+        if _is_status(status, "NOT_FOUND"):
+            raise HTTPException(status_code=404, detail=f"id {id} not found")
         try:
-            client.delete(id)
+            get_grpc_client().delete(id)
         except Exception as e:
             if "not found" in str(e).lower() or "NOT_FOUND" in str(e):
                 raise HTTPException(
@@ -600,8 +886,7 @@ def deleterequest(
         counts = {"queued": 0, "running": 0, "cached": 0}
         if meta is not None and meta.get("validation_only"):
             return encode(counts, accept)
-        client = get_grpc_client()
-        status = client.status(id)
+        status = get_grpc_client().status(id)
         if _is_status(status, "NOT_FOUND"):
             raise HTTPException(status_code=404, detail=f"id {id} not found")
         if _is_status(status, "QUEUED"):
@@ -611,7 +896,7 @@ def deleterequest(
         # gRPC cancel rejects completed jobs; HTTP abort of a finished
         # request is a no-op 200 (solution remains until DELETE solution).
         if _is_status(status, "QUEUED", "PROCESSING"):
-            client.cancel(id)
+            get_grpc_client().cancel(id)
         return encode(counts, accept)
     except HTTPException as e:
         return encode(http_exception_handler(e), accept)
@@ -659,8 +944,8 @@ def getsolution(
         _require_uuid(id)
         if meta is not None and meta.get("validation_only"):
             return encode(meta["validation_result"], accept, job_result=True)
-        client = get_grpc_client()
-        status = client.status(id)
+        status = get_grpc_client().status(id)
+        kind = None if meta is None else meta.get("kind")
         if _is_status(status, "NOT_FOUND"):
             raise HTTPException(status_code=404, detail=f"id {id} not found")
         if _is_status(status, "QUEUED", "PROCESSING"):
@@ -670,32 +955,44 @@ def getsolution(
                 status_code=409,
                 detail=f"job {id} {_status_name(status).lower()}",
             )
-        sol = client.result(
-            id,
-            variable_names=(
-                None if meta is None else meta.get("variable_names")
-            ),
-        )
+        result_kind, sol = _result_for_job(id, meta, kind)
         if sol is None:
             return encode({"reqId": id}, accept)
-        _store_warmstart(id, _warmstart_dict_from_sol(sol))
-        inner = solution_to_legacy_http(sol, include_warmstart=False)
         notes = []
-        try:
-            notes.append(sol.get_termination_reason())
-        except Exception:
-            pass
         warnings = [] if meta is None else list(meta.get("warnings") or [])
-        solve_time = 0
-        if inner.get("solution"):
-            solve_time = inner["solution"].get("solver_time") or 0
-        envelope = make_response(
-            {"solver_response": inner},
-            warnings=warnings,
-            notes=notes,
-            reqId=id,
-            total_solve_time=solve_time,
-        )
+        if result_kind == "vrp":
+            inner = routing_solution_to_http(
+                sol,
+                vehicle_ids=None if meta is None else meta.get("vehicle_ids"),
+                task_ids=None if meta is None else meta.get("task_ids"),
+            )
+            if inner.get("status") == 1:
+                notes.append(sol.get("status_message") or "")
+            solve_time = 0
+            envelope = make_response(
+                {"solver_response": inner},
+                warnings=warnings,
+                notes=[n for n in notes if n],
+                reqId=id,
+                total_solve_time=solve_time,
+            )
+        else:
+            _store_warmstart(id, _warmstart_dict_from_sol(sol))
+            inner = solution_to_http(sol, include_warmstart=False)
+            try:
+                notes.append(sol.get_termination_reason())
+            except Exception:
+                pass
+            solve_time = 0
+            if inner.get("solution"):
+                solve_time = inner["solution"].get("solver_time") or 0
+            envelope = make_response(
+                {"solver_response": inner},
+                warnings=warnings,
+                notes=notes,
+                reqId=id,
+                total_solve_time=solve_time,
+            )
         resultdir, maxresult, mode = settings.get_result_dir()
         result_file = "" if meta is None else meta.get("result_file") or ""
         if result_file and resultdir:
@@ -731,8 +1028,7 @@ def getrequest(
         meta = _get_job(id)
         if meta is not None and meta.get("validation_only"):
             return encode(RequestStatusModel.completed.value, accept)
-        client = get_grpc_client()
-        status = client.status(id)
+        status = get_grpc_client().status(id)
         mapped = _map_status(status)
         if mapped is None or _is_status(status, "NOT_FOUND"):
             raise HTTPException(status_code=404, detail=f"id {id} not found")
@@ -747,14 +1043,14 @@ def getrequest(
     "/cuopt/cuopt",
 )
 async def post_cuopt_sync():
-    _not_implemented("POST /cuopt/cuopt (C12)")
+    _not_implemented("POST /cuopt/cuopt")
 
 
 @app.post(
     "/cuopt/request",
     response_model=IdModel,
     responses=IdResponse,
-    summary="Solve an LP/MILP problem via gRPC (self-hosted proxy)",
+    summary="Solve an LP/MILP/VRP problem via gRPC (self-hosted proxy)",
     openapi_extra={
         "requestBody": {
             "content": {
@@ -814,6 +1110,7 @@ async def postrequest(
     warnings = check_client_version(client_version)
 
     try:
+        await asyncio.to_thread(_require_grpc_healthy)
         accept = _resolve_accept(
             accept, ctype if ctype != mime_pickle else mime_json
         )
@@ -821,8 +1118,6 @@ async def postrequest(
             _not_implemented("Query parameter cache")
         if reqId:
             _not_implemented("Query parameter reqId (cached-body solve)")
-        if initialId:
-            _not_implemented("Query parameter initialId")
         if incumbent_set_solutions:
             _not_implemented("Query parameter incumbent_set_solutions")
 
@@ -879,6 +1174,7 @@ async def postrequest(
             accept,
             result_file,
             warmstartId,
+            initialId,
         )
         return encode({"reqId": job_id}, accept)
 

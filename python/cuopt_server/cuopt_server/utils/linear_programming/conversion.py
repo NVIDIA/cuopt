@@ -230,10 +230,10 @@ def pdlp_from_http_warmstart(data: Any) -> PDLPWarmStartData:
     )
 
 
-def solution_to_legacy_http(
+def solution_to_http(
     sol: Any, include_warmstart: bool = True
 ) -> dict[str, Any]:
-    """Serialize a cuOpt LP/MILP Solution into the legacy HTTP shape.
+    """Serialize a cuOpt LP/MILP Solution into the HTTP response shape.
 
     Returns ``{"status": <enum name>, "solution": {...}}``. When the
     termination status is not a solved/feasible case, ``solution`` is empty.

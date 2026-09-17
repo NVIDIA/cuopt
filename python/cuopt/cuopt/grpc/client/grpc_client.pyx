@@ -301,6 +301,24 @@ cdef class Client:
         if not self._client.get().connect(error_out):
             raise GrpcError(error_out.decode("utf-8"))
 
+    def ping(self, timeout_seconds=5):
+        """
+        Probe ``cuopt_grpc_server`` with a short CheckStatus RPC.
+
+        Raises :class:`GrpcError` if the server does not answer before
+        ``timeout_seconds`` (default 5). Used by the HTTP proxy health
+        endpoints so Kubernetes can restart a combined proxy+gRPC container.
+        """
+        cdef string error_out
+        cdef int timeout = int(timeout_seconds)
+        cdef bint ok
+        if timeout <= 0:
+            timeout = 5
+        with nogil:
+            ok = self._client.get().ping(error_out, timeout)
+        if not ok:
+            raise GrpcError(error_out.decode("utf-8") or "gRPC ping failed")
+
     def _spawn_client(self):
         """Create a sibling connection with the same host/port/TLS settings."""
         return Client(self._host, self._port, tls=self._tls)
