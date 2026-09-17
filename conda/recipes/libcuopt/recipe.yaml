@@ -353,7 +353,13 @@ outputs:
         - cmake ${{ cmake_version }}
         - ${{ stdlib("c") }}
       host:
+        # libcuopt for the ld script that the tests linking -lcuopt need, and the three
+        # components explicitly: the test binaries link them directly, so relying on the
+        # metapackage's run deps to drag them in would be implicit.
         - ${{ pin_subpackage("libcuopt", exact=True) }}
+        - ${{ pin_subpackage("libcuopt-client", exact=True) }}
+        - ${{ pin_subpackage("libcuopt-mathopt", exact=True) }}
+        - ${{ pin_subpackage("libcuopt-routing", exact=True) }}
         - libboost-devel
         - libcublas
         - libcudss-dev >=0.7,<0.8
