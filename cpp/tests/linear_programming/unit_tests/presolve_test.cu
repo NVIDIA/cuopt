@@ -564,6 +564,49 @@ TEST(pslp_presolve, infeasible_large_magnitude_falls_back_to_original_problem)
   EXPECT_EQ(result.reduced_problem.get_n_constraints(), mps.get_n_constraints());
 }
 
+// Regression test for a gap in has_large_magnitude_data(): a caller may express constraint bounds
+// via row_types + a single constraint_bounds (RHS) vector instead of explicit lower/upper bound
+// vectors. normalize_for_presolve() only materializes explicit constr_lb/constr_ub locally inside
+// apply_pslp(); the original mps_data_model_t's get_constraint_lower_bounds()/
+// get_constraint_upper_bounds() stay empty. Everything else here (objective, variable bounds,
+// constraint matrix) is well-scaled, so only a magnitude check that also looks at
+// row_types/constraint_bounds can catch this case.
+TEST(pslp_presolve, infeasible_large_magnitude_row_types_falls_back_to_original_problem)
+{
+  io::mps_data_model_t<int, double> mps;
+  mps.set_maximize(false);
+
+  std::vector<double> A_values{1.0, 1.0};
+  std::vector<int> A_indices{0, 0};
+  std::vector<int> A_offsets{0, 1, 2};
+  mps.set_csr_constraint_matrix(A_values, A_indices, A_offsets);
+
+  // x <= 1 (row_type 'L') and x >= 2e15 (row_type 'G'): contradictory, with the contradiction
+  // only visible through the row_types + constraint_bounds representation.
+  mps.set_row_types(std::vector<char>{'L', 'G'});
+  mps.set_constraint_bounds(std::vector<double>{1.0, 2e15});
+
+  mps.set_objective_coefficients(std::vector<double>{1.0});
+  mps.set_variable_lower_bounds(std::vector<double>{0.0});
+  mps.set_variable_upper_bounds(std::vector<double>{std::numeric_limits<double>::infinity()});
+
+  ASSERT_TRUE(mps.get_constraint_lower_bounds().empty());
+  ASSERT_TRUE(mps.get_constraint_upper_bounds().empty());
+
+  mip::third_party_presolve_t<int, double> presolver;
+  auto result = presolver.apply_presolve_from_mps_data(mps,
+                                                       problem_category_t::LP,
+                                                       presolver_t::PSLP,
+                                                       /*dual_postsolve=*/false,
+                                                       /*abs_tol=*/1e-6,
+                                                       /*rel_tol=*/1e-9,
+                                                       /*time_limit=*/60.0);
+
+  EXPECT_EQ(result.status, mip::third_party_presolve_status_t::UNCHANGED);
+  EXPECT_EQ(result.reduced_problem.get_n_variables(), mps.get_n_variables());
+  EXPECT_EQ(result.reduced_problem.get_n_constraints(), mps.get_n_constraints());
+}
+
 // End-to-end: solving the same large-magnitude, slightly infeasible problem through the normal
 // solve_lp entry point (which drives presolve + solve) must not hang or misreport optimality --
 // the actual solve on the original problem still correctly detects infeasibility. DualSimplex is

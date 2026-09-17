@@ -696,11 +696,20 @@ bool has_large_magnitude_data(io::mps_data_model_t<i_t, f_t> const& mps)
     return safelog10(max_abs) - safelog10(min_abs);
   };
 
+  // Mirror normalize_for_presolve's exact fallback rule: a caller may express constraint bounds
+  // via row_types + a single constraint_bounds (RHS) vector instead of explicit lower/upper
+  // vectors, in which case get_constraint_lower_bounds()/get_constraint_upper_bounds() are both
+  // empty and would otherwise silently contribute a zero range here regardless of how large
+  // constraint_bounds actually is.
+  const f_t constraint_bound_range =
+    (mps.get_constraint_lower_bounds().empty() && mps.get_constraint_upper_bounds().empty())
+      ? range_of(mps.get_constraint_bounds())
+      : combined_range_of(mps.get_constraint_lower_bounds(), mps.get_constraint_upper_bounds());
+
   constexpr f_t large_range_threshold = f_t(9.0);
   return range_of(mps.get_objective_coefficients()) >= large_range_threshold ||
          range_of(mps.get_constraint_matrix_values()) >= large_range_threshold ||
-         combined_range_of(mps.get_constraint_lower_bounds(), mps.get_constraint_upper_bounds()) >=
-           large_range_threshold ||
+         constraint_bound_range >= large_range_threshold ||
          combined_range_of(mps.get_variable_lower_bounds(), mps.get_variable_upper_bounds()) >=
            large_range_threshold;
 }
