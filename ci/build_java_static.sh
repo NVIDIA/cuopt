@@ -51,6 +51,10 @@ cmake -S java/cuopt -B "${JNI_BUILD_DIR}" -GNinja \
 cmake --build "${JNI_BUILD_DIR}" --parallel "${PARALLEL_LEVEL:-$(nproc)}"
 
 rapids-logger "Packaging the classifier JAR"
+# CUOPT_STATIC_BUILD_DIR: where cudss_mtlayer_cuopt.so (built by build_static_libcuopt.sh)
+# actually landed, so build_cuopt_java_jar.sh's companion search can find it there -- it is
+# dlopen()'d, not linked, so it never appears in libcuopt_jni.so's own DT_NEEDED entries.
+export CUOPT_STATIC_BUILD_DIR="${STATIC_BUILD_DIR}"
 bash java/cuopt/ci/build_cuopt_java_jar.sh \
   --native-lib "${JNI_BUILD_DIR}/libcuopt_jni.so" \
   --cuda-version "${RAPIDS_CUDA_VERSION}" \

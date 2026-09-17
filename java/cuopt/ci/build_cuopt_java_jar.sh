@@ -102,28 +102,34 @@ echo "  native library -> ${RESOURCE_DIR}/libcuopt_jni.so"
 # own GCC runtime (libgomp, libstdc++, libgcc_s, whose consumer-side copies can be too old) --
 # travels beside the JNI library, which finds it all through its $ORIGIN RPATH.
 #
-# libcudss_mtlayer_gomp.so.0 is the one exception: cuDSS's OpenMP threading backend, which
-# cudssSetThreadingLayer dlopen()s at runtime rather than linking directly, so it never appears
-# in DT_NEEDED at all. Without it that call fails and cuDSS writes the failure straight to the
-# process's native stdout, corrupting Maven Surefire's forked-JVM protocol, so it is always
-# added explicitly.
+# libcudss_mtlayer_cuopt.so is the one exception: cuOpt's own cuDSS threading-layer plugin
+# (built by build_static_libcuopt.sh against a modern libgomp -- see cpp/CMakeLists.txt's
+# CUOPT_BUILD_CUSTOM_CUDSS_MTLAYER and setup_java_static_env.sh), which cudssSetThreadingLayer
+# dlopen()s at runtime rather than linking directly, so it never appears in DT_NEEDED at all.
+# Without it that call fails and cuDSS writes the failure straight to the process's native
+# stdout, corrupting Maven Surefire's forked-JVM protocol, so it is always added explicitly.
 BASELINE_SYSTEM_LIBRARY_PATTERN='^(ld-linux|linux-vdso)|^lib(c|m|dl|rt|pthread|resolv|util)\.so'
 CUDA_RUNTIME_LIBRARY_PATTERN='^lib(cublas|cublasLt|cusparse|cusolver|nvJitLink)\.so'
 
 # Searched by filename rather than a single prefix, since the build environment may be a conda
 # environment (CUOPT_PREFIX/lib), a dnf/system install (e.g. /usr/lib64, cuDSS's own versioned
-# directory), or a pip-installed wheel's site-packages directory, depending on which of
+# directory), a pip-installed wheel's site-packages directory, or the static build tree itself
+# (CUOPT_STATIC_BUILD_DIR, for libcudss_mtlayer_cuopt.so), depending on which of
 # ci/build_java_static.sh's paths produced this library.
 #
 # preferred_dir, when given, is searched first and exclusively -- no falling through to the
-# broad search below even on a miss. It exists for libcudss_mtlayer_gomp.so.0: dnf's cuDSS
-# package registers /usr/lib64/libcudss_mtlayer_gomp.so.0 as an `alternatives` symlink, which can
-# point at a *different* cuDSS version's copy than the one actually pinned and linked (observed
-# on arm64: the alternative resolved to a 0.8.0 file while install_cudss.sh pins 0.7.*, so the
-# bundled MT layer didn't match libcudss.so.0's ABI and cudssSetThreadingLayer failed at
-# runtime). The versioned directory libcudss.so.0 itself was found in is unambiguous, so once
-# that is known, use it instead of the broad search for anything else that must be its exact
-# version match.
+# broad search below even on a miss. It exists for two cases where the broad search could match
+# the wrong file even though a name-only match succeeds:
+#   - libcudss_mtlayer_gomp.so.0 (when cuDSS's prebuilt plugin is used instead of the custom
+#     one): dnf's cuDSS package registers /usr/lib64/libcudss_mtlayer_gomp.so.0 as an
+#     `alternatives` symlink, which can point at a *different* cuDSS version's copy than the one
+#     actually pinned and linked. The versioned directory libcudss.so.0 itself was found in is
+#     unambiguous, so once that is known, use it for anything else that must be its exact version
+#     match.
+#   - libgomp.so.1: Rocky 8's own libgomp (including gcc-toolset-14's copy) lacks the OpenMP 5.0
+#     symbol cuDSS's threading layer needs (see setup_java_static_env.sh), so the modern one
+#     fetched there has to be the one that actually ships, not whichever libgomp.so.1 a broad
+#     /usr/lib64 search happens to find first.
 find_companion() {
   local name="$1"
   local preferred_dir="${2:-}"
@@ -143,10 +149,10 @@ find_companion() {
       'import site; print("\n".join(site.getsitepackages()))' 2> /dev/null)
   fi
   found="$(find "${CUOPT_PREFIX:-}/lib" /usr/lib64 /usr/lib /usr/local/cuda*/lib64 \
-    "${site_packages_dirs[@]}" \
+    "${CUOPT_STATIC_BUILD_DIR:-}" "${site_packages_dirs[@]}" \
     -maxdepth 4 -name "${name}" -print -quit 2>/dev/null)"
   if [[ -z "${found}" ]]; then
-    echo "ERROR: ${name} not found under ${CUOPT_PREFIX:-<unset>}/lib, /usr/lib64, /usr/lib, /usr/local/cuda*/lib64, or the active Python's site-packages" >&2
+    echo "ERROR: ${name} not found under ${CUOPT_PREFIX:-<unset>}/lib, /usr/lib64, /usr/lib, /usr/local/cuda*/lib64, ${CUOPT_STATIC_BUILD_DIR:-<unset>}, or the active Python's site-packages" >&2
     exit 1
   fi
   printf '%s\n' "${found}"
@@ -161,7 +167,7 @@ while IFS= read -r needed; do
   COMPANIONS+=("${needed}")
 done < <(readelf -d "${NATIVE_LIB}" 2>/dev/null \
   | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p')
-COMPANIONS+=(libcudss_mtlayer_gomp.so.0)
+COMPANIONS+=(libcudss_mtlayer_cuopt.so)
 
 MANIFEST="${STAGING}/${RESOURCE_DIR}/companions.txt"
 : > "${MANIFEST}"
@@ -170,6 +176,8 @@ for companion in "${COMPANIONS[@]}"; do
   preferred_dir=""
   if [[ "${companion}" == "libcudss_mtlayer_gomp.so.0" && -n "${CUDSS_LIBRARY_DIR}" ]]; then
     preferred_dir="${CUDSS_LIBRARY_DIR}"
+  elif [[ "${companion}" == "libgomp.so.1" && -n "${CUOPT_MODERN_LIBGOMP_DIR:-}" ]]; then
+    preferred_dir="${CUOPT_MODERN_LIBGOMP_DIR}"
   fi
   companion_path="$(find_companion "${companion}" "${preferred_dir}")"
   if [[ "${companion}" == "libcudss.so.0" ]]; then

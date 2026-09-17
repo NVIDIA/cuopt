@@ -54,6 +54,23 @@ final class NativeLibraryLoader {
     "libcublas.so", "libcublasLt.so", "libcusparse.so", "libcusolver.so", "libnvJitLink.so"
   };
 
+  /**
+   * cuOpt's own cuDSS threading-layer plugin, built against a modern libgomp instead of cuDSS's
+   * prebuilt one (see java/cuopt/ci/build_static_libcuopt.sh, cpp/CMakeLists.txt's
+   * CUOPT_BUILD_CUSTOM_CUDSS_MTLAYER). cudssSetThreadingLayer() dlopen()s it by bare filename
+   * from code running inside libcudss.so.0 itself -- not from this library -- so
+   * libcuopt_jni.so's own {@code $ORIGIN} RPATH trick (see the class javadoc) never applies to
+   * it: that dlopen() call uses libcudss.so.0's own search path instead (which is empty; a
+   * dnf-installed system library carries no RPATH of its own), plus {@code LD_LIBRARY_PATH} and
+   * the ld.so cache, none of which cover this JAR's private extraction directory. Explicitly
+   * loading it by absolute path first works around that: once a library with a given SONAME is
+   * resident anywhere in the process, glibc's dynamic linker satisfies a later bare-filename
+   * dlopen() of the same SONAME from the already-loaded copy instead of searching again -- the
+   * same trick {@link #preloadCudaLibraries} uses. Without this, cudssSetThreadingLayer() fails
+   * with CUDSS_STATUS_INVALID_VALUE.
+   */
+  private static final String DLOPEN_ONLY_LIBRARY = "libcudss_mtlayer_cuopt.so";
+
   private NativeLibraryLoader() {}
 
   static void load() {
@@ -67,11 +84,31 @@ final class NativeLibraryLoader {
     Path embedded = extractEmbeddedLibraries();
     if (embedded != null) {
       preloadCudaLibraries();
+      preloadDlopenOnlyLibraries(embedded.getParent());
       System.load(embedded.toString());
       return;
     }
 
     System.loadLibrary(LIBRARY_NAME);
+  }
+
+  /**
+   * Best-effort: loads {@link #DLOPEN_ONLY_LIBRARY} by absolute path if this JAR packaged one, so
+   * cuDSS's own later dlopen() of it by bare filename resolves without needing it on any standard
+   * search path. See that field's comment for why. Silently does nothing if this JAR did not
+   * package it (an older build, or a build without cuDSS) or if loading fails; the CUDSS call
+   * that needs it fails with a clear status code of its own later, which is more useful than a
+   * failure in this best-effort step.
+   */
+  private static void preloadDlopenOnlyLibraries(Path directory) {
+    Path library = directory.resolve(DLOPEN_ONLY_LIBRARY);
+    if (Files.isRegularFile(library)) {
+      try {
+        System.load(library.toString());
+      } catch (UnsatisfiedLinkError e) {
+        // See the failure-handling note above.
+      }
+    }
   }
 
   /**

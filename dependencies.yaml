@@ -752,6 +752,8 @@ dependencies:
           - libcusparse-dev
           - cuda-nvtx-dev
           - libnvjitlink-dev
+          # OpenMP 5.0 detached tasks (omp_fulfill_event); see ci/utils/install_modern_libgomp.py
+          - libgomp >=9
 
 
   cuda_wheels:

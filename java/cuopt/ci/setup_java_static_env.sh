@@ -107,4 +107,19 @@ print(";".join(paths))
 )"
 export CUOPT_JAVA_STATIC_CMAKE_PREFIX_PATH
 
+# cuDSS's prebuilt threading-layer plugin (libcudss_mtlayer_gomp.so.0) needs libgomp's OpenMP 5.0
+# detached-task support (omp_fulfill_event) at runtime; Rocky 8's own libgomp -- including
+# gcc-toolset-14's own copy -- doesn't have it (confirmed: neither exports the symbol). Fetching a
+# modern one from conda-forge and building our own threading-layer plugin against it instead
+# (CUOPT_BUILD_CUSTOM_CUDSS_MTLAYER, set by build_static_libcuopt.sh) sidesteps that entirely,
+# mirroring ci/build_wheel_libcuopt.sh's identical fix for the same underlying problem (#1219,
+# #1905): a missing symbol can't be worked around by better library resolution, only a genuinely
+# newer libgomp fixes it.
+rapids-logger "Fetching a modern libgomp for cuDSS's threading layer"
+CUOPT_MODERN_LIBGOMP_DIR="${PWD}/modern_libgomp"
+rapids-pip-retry install zstandard
+python3 ci/utils/install_modern_libgomp.py "${CUOPT_MODERN_LIBGOMP_DIR}"
+export CUOPT_MODERN_LIBGOMP_DIR
+export LD_LIBRARY_PATH="${CUOPT_MODERN_LIBGOMP_DIR}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+
 export JAVA_STATIC_ENV_READY=1
