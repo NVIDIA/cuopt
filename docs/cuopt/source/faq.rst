@@ -110,7 +110,7 @@ General FAQ
 
    **conda installs**: ``libgomp`` is a runtime dependency of the ``libcuopt`` package, so ``conda install`` pulls it in automatically, no manual step needed.
 
-   **source builds**: cuDSS's threading layer loads ``libgomp.so.1`` from the host at runtime. If the host doesn't provide it, install your distribution's GNU OpenMP runtime package, typically ``libgomp1`` (Debian/Ubuntu) or ``libgomp`` (RHEL/Rocky/Fedora), then re-run the solve.
+   **source builds**: building with the conda dev environment (``conda/environments/*.yaml``) already provides a matching ``libgomp``, the same one cuDSS itself uses via conda, so this shouldn't happen either. Only a build done entirely outside that conda environment (a bare system toolchain) needs ``libgomp.so.1`` installed manually: install your distribution's GNU OpenMP runtime package, typically ``libgomp1`` (Debian/Ubuntu) or ``libgomp`` (RHEL/Rocky/Fedora), then re-run the solve.
 
    If you want cuDSS to use a specific threading-layer library, set the ``CUDSS_THREADING_LIB`` environment variable to its absolute path before running:
 
