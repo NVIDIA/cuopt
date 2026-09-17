@@ -3,7 +3,7 @@
 Exposes cuOpt LP and MILP solving to MCP clients (Claude Code, Cursor, Codex)
 over the cuOpt gRPC backend.
 
-```
+```text
 MCP client ──stdio (JSON-RPC)──> cuopt-mcp ──gRPC──> cuopt_grpc_server (GPU)
 ```
 
@@ -38,7 +38,10 @@ Then register the MCP server with your client:
 ```
 
 Configuration reuses the environment the cuOpt gRPC client already honours —
-`CUOPT_REMOTE_HOST`, `CUOPT_REMOTE_PORT`, and `CUOPT_TLS_*`.
+`CUOPT_REMOTE_HOST`, `CUOPT_REMOTE_PORT`, and `CUOPT_TLS_*`. The connection is
+plain TCP unless `CUOPT_TLS_ENABLED=true` is set; set it (with
+`CUOPT_TLS_ROOT_CERT`/`CUOPT_TLS_CLIENT_CERT`/`CUOPT_TLS_CLIENT_KEY` as
+needed) whenever `gpu-host` isn't a trusted local network.
 
 ## Tools
 
