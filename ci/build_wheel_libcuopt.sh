@@ -35,7 +35,7 @@ python -m pip install --quiet zstandard
 python ci/utils/install_modern_libgomp.py "${MODERN_LIBGOMP_DIR}"
 
 # Also build our own cuDSS threading layer against this same libgomp (see cpp/CMakeLists.txt,
-# cpp/src/barrier/cudss_mtlayer_cuopt.cpp), instead of cuDSS's prebuilt one -- so both actually
+# cpp/src/barrier/cudss_mtlayer_cuopt.cpp), instead of cuDSS's prebuilt one, so both actually
 # share one instance, not just the same flavor. Conda keeps cuDSS's default (#1219 discussion).
 export SKBUILD_CMAKE_ARGS="-DOpenMP_gomp_LIBRARY:FILEPATH=${MODERN_LIBGOMP_DIR}/libgomp.so.1.0.0;-DCUOPT_BUILD_CUSTOM_CUDSS_MTLAYER=ON"
 

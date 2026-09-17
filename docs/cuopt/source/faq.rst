@@ -106,9 +106,9 @@ General FAQ
 
    cuDSS's threading layer (used by the barrier method) must be built against the *same* GNU OpenMP runtime as cuOpt itself. If it isn't, cuDSS falls back to single-threaded execution and logs a warning instead of failing the solve.
 
-   **pip installs**: the wheel bundles its own GNU OpenMP runtime and a cuDSS threading layer built against it, so this shouldn't happen out of the box -- no host ``libgomp`` is required.
+   **pip installs**: the wheel bundles its own GNU OpenMP runtime and a cuDSS threading layer built against it, so this shouldn't happen out of the box; no host ``libgomp`` is required.
 
-   **conda installs**: ``libgomp`` is a runtime dependency of the ``libcuopt`` package, so ``conda install`` pulls it in automatically -- no manual step needed.
+   **conda installs**: ``libgomp`` is a runtime dependency of the ``libcuopt`` package, so ``conda install`` pulls it in automatically, no manual step needed.
 
    **source builds**: cuDSS's threading layer loads ``libgomp.so.1`` from the host at runtime. If the host doesn't provide it, install your distribution's GNU OpenMP runtime package, typically ``libgomp1`` (Debian/Ubuntu) or ``libgomp`` (RHEL/Rocky/Fedora), then re-run the solve.
 
@@ -118,7 +118,7 @@ General FAQ
 
        export CUDSS_THREADING_LIB=/path/to/libcudss_mtlayer_gomp.so.0
 
-   .. warning:: Whatever threading-layer library you point cuDSS at must be built against the same OpenMP runtime cuOpt itself uses -- for pip installs, that's the bundled GNU libgomp, not necessarily the host's. Pointing cuDSS at a library linked against a *different* OpenMP runtime reintroduces the exact dual-runtime conflict described in `#1219 <https://github.com/NVIDIA/cuopt/issues/1219>`_, including possible crashes.
+   .. warning:: Whatever threading-layer library you point cuDSS at must be built against the same OpenMP runtime cuOpt itself uses. For pip installs, that's the bundled GNU libgomp, not necessarily the host's. Pointing cuDSS at a library linked against a *different* OpenMP runtime reintroduces the exact dual-runtime conflict described in `#1219 <https://github.com/NVIDIA/cuopt/issues/1219>`_, including possible crashes.
 
 .. dropdown:: Why am I getting "libcuopt.so: cannot open shared object file: No such file or directory" error?
 

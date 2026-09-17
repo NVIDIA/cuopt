@@ -7,7 +7,7 @@ Fetch a modern GNU libgomp from conda-forge for wheel builds.
 
 Rocky Linux 8's own libgomp is too old for OpenMP 5.0 detached tasks
 (omp_fulfill_event), so this resolves and fetches a newer build
-directly from conda-forge's repodata -- no conda/mamba CLI needed,
+directly from conda-forge's repodata; no conda/mamba CLI needed,
 since .conda packages are just a zip containing a zstd-compressed tar.
 See https://github.com/NVIDIA/cuopt/issues/1219
 """
@@ -35,7 +35,7 @@ ARCH_SUBDIRS = {"x86_64": "linux-64", "aarch64": "linux-aarch64"}
 def min_libgomp_major():
     """Read the libgomp version floor from dependencies.yaml.
 
-    Also used for conda/recipes/libcuopt/recipe.yaml -- read from
+    Also used for conda/recipes/libcuopt/recipe.yaml, read from
     there so this can't drift from the version resolved below.
     """
     match = re.search(r"- libgomp >=(\d+)", DEPENDENCIES_YAML.read_text())
@@ -61,7 +61,7 @@ def curl(url, dest):
 def resolve_build(subdir, min_major, workdir):
     """Find the newest libgomp build satisfying the floor.
 
-    Reads conda-forge's own repodata -- the same host the package
+    Reads conda-forge's own repodata, the same host the package
     itself is downloaded from below.
     """
     repodata_path = workdir / "current_repodata.json"
@@ -95,7 +95,7 @@ def download(subdir, pkg_file, sha256, dest):
     """Download pkg_file and verify it against conda-forge's own sha256.
 
     Verifying against the digest from repodata (not just the
-    download itself) is a real integrity check -- CWE-494.
+    download itself) is a real integrity check (CWE-494).
     """
     curl(f"https://conda.anaconda.org/conda-forge/{subdir}/{pkg_file}", dest)
 
@@ -130,7 +130,7 @@ def verify_symbol(libgomp_so):
         r" T omp_fulfill_event(@|$)", result.stdout, re.MULTILINE
     ):
         sys.exit(
-            "Fetched libgomp does not export omp_fulfill_event -- "
+            "Fetched libgomp does not export omp_fulfill_event: "
             "wrong package or bad extraction"
         )
 
@@ -148,7 +148,7 @@ def main():
             f"Unsupported architecture for modern libgomp fetch: {machine}"
         )
 
-    # Ephemeral CI container -- no need to clean this up ourselves.
+    # Ephemeral CI container, no need to clean this up ourselves.
     workdir = Path(tempfile.mkdtemp())
 
     min_major = min_libgomp_major()

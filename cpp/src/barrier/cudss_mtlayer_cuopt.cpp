@@ -6,8 +6,8 @@
 /* clang-format on */
 
 // cuDSS threading layer implemented against the same GNU libgomp cuOpt itself links against
-// (see cpp/CMakeLists.txt, ci/utils/install_modern_libgomp.sh), instead of NVIDIA's prebuilt
-// libcudss_mtlayer_gomp.so.0 -- which resolves libgomp.so.1 from the host and can end up a
+// (see cpp/CMakeLists.txt, ci/utils/install_modern_libgomp.py), instead of NVIDIA's prebuilt
+// libcudss_mtlayer_gomp.so.0, which resolves libgomp.so.1 from the host and can end up a
 // different instance than the one cuOpt uses. Adapted from cuDSS's own example
 // (cudss_mtlayer_gomp.cu); see https://github.com/NVIDIA/cuopt/issues/1219.
 
@@ -42,7 +42,7 @@ void cudssParallelFor(int nthr_requested, int ntasks, void* ctx, cudss_thr_func_
   }
 }
 
-// Symbol name is fixed by cuDSS's ABI -- cudssSetThreadingLayer() looks it up by this exact
+// Symbol name is fixed by cuDSS's ABI: cudssSetThreadingLayer() looks it up by this exact
 // name.
 cudssThreadingInterface_t cudssThreadingInterface = {cudssGetMaxThreads, cudssParallelFor};
 
