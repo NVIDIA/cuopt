@@ -698,7 +698,8 @@ pdlp_settings:
         Barrier: how the dual initial point is computed, which affects the
         iteration count. -1 automatic, 0 the Lustig-Marsten-Shanno heuristic,
         1 a least-squares problem minimizing the norms of the dual variables
-        and reduced costs subject to the dual equality constraints.
+        and reduced costs subject to the dual equality constraints, 2 the
+        Sturm/SeDuMi-style mu-based primal+dual initial point.
       default: "-1 (automatic)"
       field_num: 26
       type: int32
@@ -1205,7 +1206,9 @@ mip_settings:
     - enabled_recombiners:
         description: >-
           Bitmask of enabled recombiners: 1 bound propagation, 2 feasibility
-          pump, 4 local search, 8 sub-MIP.
+          pump, 4 line-segment recombination, 8 sub-MIP. (Bit 4 is the
+          `LINE_SEGMENT` recombiner specifically, not the solver's general
+          local search.)
         default: "15 (all enabled)"
         field_num: 48
         type: int32

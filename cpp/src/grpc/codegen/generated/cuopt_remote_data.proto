@@ -272,7 +272,8 @@ message PDLPSolverSettings {
   // Barrier: how the dual initial point is computed, which affects the
   // iteration count. -1 automatic, 0 the Lustig-Marsten-Shanno heuristic, 1 a
   // least-squares problem minimizing the norms of the dual variables and
-  // reduced costs subject to the dual equality constraints. (default: -1
+  // reduced costs subject to the dual equality constraints, 2 the
+  // Sturm/SeDuMi-style mu-based primal+dual initial point. (default: -1
   // (automatic))
   optional int32 barrier_dual_initial_point = 26;
   // Barrier: whether dense columns are eliminated from the constraint matrix
@@ -477,7 +478,9 @@ message MIPSolverSettings {
   // (default: 7000)
   optional int32 n_of_minimums_for_exit = 47;
   // Bitmask of enabled recombiners: 1 bound propagation, 2 feasibility pump,
-  // 4 local search, 8 sub-MIP. (default: 15 (all enabled))
+  // 4 line-segment recombination, 8 sub-MIP. (Bit 4 is the `LINE_SEGMENT`
+  // recombiner specifically, not the solver's general local search.)
+  // (default: 15 (all enabled))
   optional int32 enabled_recombiners = 48;
   // Size of the ring buffer used to detect Feasibility Pump assignment
   // cycles. (default: 30)
