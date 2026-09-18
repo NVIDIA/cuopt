@@ -511,8 +511,14 @@ TEST(pdlp_class, run_sub_mittleman)
   }
 }
 
-constexpr double initial_step_size_afiro     = 1.4893;
-constexpr double initial_primal_weight_afiro = 0.0141652;
+// Golden reference values for afiro's initial step size/primal weight, computed under
+// cuOpt's current default scaling (Curtis-Reid -> Ruiz -> Pock-Chambolle). This test only
+// cares about *whether* update_step_size_on_initial_solution/
+// update_primal_weight_on_initial_solution change these from their as-computed defaults,
+// not their specific values, so these need re-baselining whenever the default scaling
+// pipeline changes.
+constexpr double initial_step_size_afiro     = 1.402293;
+constexpr double initial_primal_weight_afiro = 0.02019181;
 constexpr double factor_tolerance            = 1e-4f;
 
 // Should be added to google test
