@@ -37,6 +37,30 @@ files:
       - depends_on_rapids_logger
       - depends_on_rmm
       - rapids_build_backend
+  # Installs libcuopt-client alone. A component that quietly needs another
+  # engine fails to resolve or to load here, where every other test environment
+  # pulls the whole graph through the libcuopt metapackage and hides it.
+  test_libcuopt_client:
+    output: none
+    includes:
+      - cuda_version
+      - depends_on_libcuopt_client
+  # Installs libcuopt-mathopt alone. A component that quietly needs another
+  # engine fails to resolve or to load here, where every other test environment
+  # pulls the whole graph through the libcuopt metapackage and hides it.
+  test_libcuopt_mathopt:
+    output: none
+    includes:
+      - cuda_version
+      - depends_on_libcuopt_mathopt
+  # Installs libcuopt-routing alone. A component that quietly needs another
+  # engine fails to resolve or to load here, where every other test environment
+  # pulls the whole graph through the libcuopt metapackage and hides it.
+  test_libcuopt_routing:
+    output: none
+    includes:
+      - cuda_version
+      - depends_on_libcuopt_routing
   test_cpp:
     output: none
     includes:
@@ -435,6 +459,87 @@ dependencies:
       - output_types: [requirements, pyproject]
         packages:
           - cuopt-cu13==26.10.*,>=0.0.0a0
+  depends_on_libcuopt_client:
+    common:
+      - output_types: conda
+        packages:
+          - &libcuopt_client_unsuffixed libcuopt-client==26.10.*,>=0.0.0a0
+      - output_types: requirements
+        packages:
+          # pip recognizes the index as a global option for the requirements.txt file
+          - --extra-index-url=https://pypi.nvidia.com
+          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
+    specific:
+      - output_types: [requirements, pyproject]
+        matrices:
+          - matrix:
+              cuda: "12.*"
+              cuda_suffixed: "true"
+            packages:
+              - libcuopt-client-cu12==26.10.*,>=0.0.0a0
+          - matrix:
+              cuda: "13.*"
+              cuda_suffixed: "true"
+            packages:
+              - libcuopt-client-cu13==26.10.*,>=0.0.0a0
+          - matrix:
+              cuda_suffixed: "false"
+            packages:
+              - *libcuopt_client_unsuffixed
+  depends_on_libcuopt_mathopt:
+    common:
+      - output_types: conda
+        packages:
+          - &libcuopt_mathopt_unsuffixed libcuopt-mathopt==26.10.*,>=0.0.0a0
+      - output_types: requirements
+        packages:
+          # pip recognizes the index as a global option for the requirements.txt file
+          - --extra-index-url=https://pypi.nvidia.com
+          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
+    specific:
+      - output_types: [requirements, pyproject]
+        matrices:
+          - matrix:
+              cuda: "12.*"
+              cuda_suffixed: "true"
+            packages:
+              - libcuopt-mathopt-cu12==26.10.*,>=0.0.0a0
+          - matrix:
+              cuda: "13.*"
+              cuda_suffixed: "true"
+            packages:
+              - libcuopt-mathopt-cu13==26.10.*,>=0.0.0a0
+          - matrix:
+              cuda_suffixed: "false"
+            packages:
+              - *libcuopt_mathopt_unsuffixed
+  depends_on_libcuopt_routing:
+    common:
+      - output_types: conda
+        packages:
+          - &libcuopt_routing_unsuffixed libcuopt-routing==26.10.*,>=0.0.0a0
+      - output_types: requirements
+        packages:
+          # pip recognizes the index as a global option for the requirements.txt file
+          - --extra-index-url=https://pypi.nvidia.com
+          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
+    specific:
+      - output_types: [requirements, pyproject]
+        matrices:
+          - matrix:
+              cuda: "12.*"
+              cuda_suffixed: "true"
+            packages:
+              - libcuopt-routing-cu12==26.10.*,>=0.0.0a0
+          - matrix:
+              cuda: "13.*"
+              cuda_suffixed: "true"
+            packages:
+              - libcuopt-routing-cu13==26.10.*,>=0.0.0a0
+          - matrix:
+              cuda_suffixed: "false"
+            packages:
+              - *libcuopt_routing_unsuffixed
   depends_on_libcuopt:
     common:
       - output_types: conda
