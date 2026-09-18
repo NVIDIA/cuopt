@@ -3342,6 +3342,17 @@ static dual_status_t dual_phase2_with_advanced_basis(
                         toc(start_time));
   }
   i_t iterations_since_refactor = 0;
+  f_t box_objective_bound       = 0.0;
+  if (phase == 2) {
+    for (i_t j = 0; j < n; ++j) {
+      const f_t cost = lp.objective[j];
+      if (cost > 0.0)
+        box_objective_bound += cost * lp.lower[j];
+      else if (cost < 0.0)
+        box_objective_bound += cost * lp.upper[j];
+    }
+    phase2_work_estimate += 3 * n;
+  }
 
   while (iter < iter_limit) {
     PHASE2_NVTX_RANGE("DualSimplex::phase2_main_loop");
@@ -3528,26 +3539,72 @@ static dual_status_t dual_phase2_with_advanced_basis(
         // removal_status == 0 (OPTIMAL) or primal cleanup done: fall through to prepare_optimality
       }
 
-      phase2::prepare_optimality(0,
-                                 primal_infeasibility,
-                                 lp,
-                                 settings,
-                                 ft,
-                                 objective,
-                                 basic_list,
-                                 nonbasic_list,
-                                 vstatus,
-                                 phase,
-                                 start_time,
-                                 max_val,
-                                 phase2_work_estimate,
-                                 iter,
-                                 x,
-                                 y,
-                                 z,
-                                 sol);
-      status = dual_status_t::OPTIMAL;
-      break;
+      if (phase == 2 && std::isfinite(box_objective_bound)) {
+        // This helps prevent small negative bound O(-1e-8) on cbs-cta.
+        const f_t original_objective = compute_objective(lp, x);
+        phase2_work_estimate += 2 * n;
+        if (box_objective_bound - original_objective >= settings.tight_tol) {
+          // Normal pricing ignores sub-primal_tol violations, but their objective
+          // contribution can still put the solution below the variable-box bound.
+          f_t largest_objective_violation = -1.0;
+          for (i_t k = 0; k < m; ++k) {
+            const i_t j                   = basic_list[k];
+            const f_t lower_violation     = lp.lower[j] - x[j];
+            const f_t upper_violation     = x[j] - lp.upper[j];
+            const f_t violation           = std::max(lower_violation, upper_violation);
+            const f_t objective_violation = std::abs(lp.objective[j]) * violation;
+            if (violation > 0.0 && objective_violation > largest_objective_violation) {
+              largest_objective_violation = objective_violation;
+              leaving_index               = j;
+              basic_leaving_index         = k;
+              direction                   = lower_violation >= upper_violation ? 1 : -1;
+            }
+          }
+          phase2_work_estimate += 9 * m;
+          if (leaving_index < 0) {
+            settings.log.printf(
+              "Objective below box bound without a repairable basic violation.\n");
+            return dual_status_t::NUMERICAL;
+          }
+          // Primal cleanup may have changed the basis since pricing.
+          phase2::reset_basis_mark(
+            basic_list, nonbasic_list, basic_mark, nonbasic_mark, phase2_work_estimate);
+          compute_initial_nonbasic_end(basic_mark, Arow, nonbasic_end);
+          const f_t violation = direction == 1 ? lp.lower[leaving_index] - x[leaving_index]
+                                               : x[leaving_index] - lp.upper[leaving_index];
+          max_val             = violation * violation;
+          settings.log.printf(
+            "Objective %.17g below box bound %.17g; forcing basic variable %d out (violation "
+            "%.17g).\n",
+            original_objective,
+            box_objective_bound,
+            leaving_index,
+            violation);
+        }
+      }
+
+      if (leaving_index == -1) {
+        phase2::prepare_optimality(0,
+                                   primal_infeasibility,
+                                   lp,
+                                   settings,
+                                   ft,
+                                   objective,
+                                   basic_list,
+                                   nonbasic_list,
+                                   vstatus,
+                                   phase,
+                                   start_time,
+                                   max_val,
+                                   phase2_work_estimate,
+                                   iter,
+                                   x,
+                                   y,
+                                   z,
+                                   sol);
+        status = dual_status_t::OPTIMAL;
+        break;
+      }
     }
 
     if (toc(start_time) > settings.time_limit) { return dual_status_t::TIME_LIMIT; }
@@ -3702,84 +3759,15 @@ static dual_status_t dual_phase2_with_advanced_basis(
     if (entering_index == RATIO_TEST_TIME_LIMIT) { return dual_status_t::TIME_LIMIT; }
     if (entering_index == CONCURRENT_HALT_RETURN) { return dual_status_t::CONCURRENT_LIMIT; }
     if (entering_index == RATIO_TEST_NO_ENTERING_VARIABLE) {
+      // While solving the (possibly) perturbed problem, we were unable to find an entering
+      // variable. We need to check if this implies the original problem is primal infeasible. Note
+      // that perturbing the primal objective does not affect whether the original problem is primal
+      // infeasible.
+
       settings.log.printf("No entering variable found. Iter %d\n", iter);
       settings.log.printf("Scaled infeasibility %e\n", max_val);
       f_t perturbation = phase2::amount_of_perturbation(lp, objective);
       phase2_work_estimate += 2 * n;
-
-      if (perturbation > 0.0 && phase == 2) {
-        i_t removal_status = phase2::attempt_to_remove_perturbations(lp,
-                                                                     settings,
-                                                                     ft,
-                                                                     basic_list,
-                                                                     nonbasic_list,
-                                                                     vstatus,
-                                                                     objective,
-                                                                     z,
-                                                                     y,
-                                                                     x,
-                                                                     xB_workspace,
-                                                                     squared_infeasibilities,
-                                                                     infeasibility_indices,
-                                                                     primal_infeasibility,
-                                                                     primal_infeasibility_squared,
-                                                                     phase2_work_estimate);
-        if (removal_status == 2) {  // PRIMAL_CLEANUP
-          const dual_status_t cleanup_status = phase2::run_primal_cleanup(lp,
-                                                                          settings,
-                                                                          start_time,
-                                                                          ft,
-                                                                          basic_list,
-                                                                          nonbasic_list,
-                                                                          vstatus,
-                                                                          objective,
-                                                                          sol,
-                                                                          iter,
-                                                                          phase2_work_estimate);
-          if (cleanup_status != dual_status_t::OPTIMAL) { return cleanup_status; }
-          objective = lp.objective;
-        }
-        if (removal_status == 0 || removal_status == 2) {  // OPTIMAL or successful cleanup
-          obj = phase2::compute_perturbed_objective(objective, x);
-          phase2_work_estimate += 2 * n;
-          if (removal_status == 2 || primal_infeasibility <= settings.primal_tol) {
-            phase2_work_estimate += ft.work_estimate();
-            ft.clear_work_estimate();
-            phase2::prepare_optimality(1,
-                                       primal_infeasibility,
-                                       lp,
-                                       settings,
-                                       ft,
-                                       objective,
-                                       basic_list,
-                                       nonbasic_list,
-                                       vstatus,
-                                       phase,
-                                       start_time,
-                                       max_val,
-                                       phase2_work_estimate,
-                                       iter,
-                                       x,
-                                       y,
-                                       z,
-                                       sol);
-            status = dual_status_t::OPTIMAL;
-            break;
-          }
-          settings.log.printf("Continuing with perturbation removed\n");
-          phase2_work_estimate += 3 * delta_z_indices.size();
-          phase2::clear_delta_z(
-            entering_index, leaving_index, delta_z_mark, delta_z_indices, delta_z);
-          continue;
-        } else if (removal_status == 1) {  // CONTINUE_DUAL
-          obj = phase2::compute_perturbed_objective(objective, x);
-          phase2_work_estimate += 2 * n;
-          phase2_work_estimate += 3 * delta_z_indices.size();
-          phase2::clear_delta_z(
-            entering_index, leaving_index, delta_z_mark, delta_z_indices, delta_z);
-          continue;
-        }
-      }
 
       if (perturbation == 0.0 && phase == 2) {
         constexpr bool use_farkas = false;
@@ -3815,17 +3803,24 @@ static dual_status_t dual_phase2_with_advanced_basis(
         phase2::dual_infeasibility(lp, settings, vstatus, z, settings.tight_tol, settings.dual_tol);
       phase2_work_estimate += 3 * n;
       settings.log.printf("Dual infeasibility %e\n", dual_infeas);
+      std::vector<f_t> dual_res1;
+      phase2::compute_dual_residual(lp.A, objective, y, z, dual_res1);
+      f_t dual_res_norm = vector_norm_inf<i_t, f_t>(dual_res1);
+      phase2_work_estimate += 2.0 * lp.A.nnz() + 6.0 * n;
+      settings.log.printf("Dual residual %e\n", dual_res_norm);
       const f_t primal_inf = simplex::phase2::primal_infeasibility(lp, settings, vstatus, x);
       phase2_work_estimate += 3 * n;
       settings.log.printf("Primal infeasibility %e\n", primal_inf);
       settings.log.printf("Updates %d\n", ft.num_updates());
       settings.log.printf("Steepest edge %e\n", max_val);
-      if (dual_infeas > settings.dual_tol) {
+      if (dual_infeas <= settings.dual_tol && dual_res_norm <= settings.dual_tol) {
+        return dual_status_t::DUAL_UNBOUNDED;
+      } else {
         settings.log.printf(
-          "Numerical issues encountered. No entering variable found with large infeasibility.\n");
+          "Numerical issues encountered. No entering variable found with large infeasibility or "
+          "residual.\n");
         return dual_status_t::NUMERICAL;
       }
-      return dual_status_t::DUAL_UNBOUNDED;
     }
 
     timers.start_timer(phase2_work_estimate + ft.work_estimate());

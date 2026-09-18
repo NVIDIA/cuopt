@@ -1136,7 +1136,6 @@ primal_status_t primal_phase2_with_advanced_basis(
           f_t retry_dual_tol = pricing_dual_tol;
           while (entering_index == -1 && retry_dual_tol > f_t(1e-10)) {
             retry_dual_tol *= f_t(0.1);
-            settings.log.printf("Retrying phase-I pricing with dual_tol %e\n", retry_dual_tol);
             entering_index = phase2_pricing(lp,
                                             z,
                                             nonbasic_list,
