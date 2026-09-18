@@ -44,6 +44,8 @@ struct mip_gpu_solution_t {
 
 // Handed to the holder at construction, so a CPU-only TU calls through the pointer rather
 // than referencing a symbol it cannot resolve.
+// Plain new/delete: these hold host-side owners of device buffers, not device memory,
+// so an RMM resource is not what belongs here.
 inline void destroy_lp_gpu_solutions(lp_gpu_solutions_t* p) noexcept { delete p; }
 inline void destroy_mip_gpu_solution(mip_gpu_solution_t* p) noexcept { delete p; }
 

@@ -12,6 +12,7 @@
 #include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
 #include <cuopt/mathematical_optimization/utilities/internals.hpp>
 
+#include <cassert>
 #include <memory>
 #include <string>
 #include <variant>
@@ -40,7 +41,11 @@ struct gpu_holder_deleter_t {
   void (*destroy)(T*) = nullptr;
   void operator()(T* p) const noexcept
   {
-    if (destroy != nullptr) { destroy(p); }
+    // Only the factories in cython_types_gpu.hpp build these, so a null deleter with a
+    // live pointer is a bug. Aborting beats leaking it silently.
+    if (p == nullptr) { return; }
+    assert(destroy != nullptr);
+    destroy(p);
   }
 };
 

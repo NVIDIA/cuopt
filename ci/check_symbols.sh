@@ -144,13 +144,15 @@ if [[ "${REQUIRE_LEAF}" -eq 1 ]]; then
     echo "Checking that '${LIBRARY}' resolves without the GPU stack"
 
     # Weak undefined symbols are allowed to stay unresolved, so only strong ones count,
-    # and @VERSION suffixes are stripped before matching.
+    # and @VERSION suffixes are stripped before matching. rmm::/raft:: are deliberately
+    # unanchored: a leak often demangles to "typeinfo for rmm::..." or "vtable for
+    # rmm::...", which an anchored pattern would miss.
     undefined="$(
         nm --dynamic --undefined-only --with-symbol-versions "${LIBRARY}" \
             | awk '$1 == "U" { print $2 }' \
             | sed 's/@.*//' \
             | c++filt \
-            | grep -E '^(rmm|raft)::|^cuda[A-Z_]|^cu[A-Z]' || true
+            | grep -E 'rmm::|raft::|^cuda[A-Z_]|^cu[A-Z]' || true
     )"
     if [[ -n "${undefined}" ]]; then
         echo "ERROR: undefined GPU-stack symbols in ${LIBRARY}:"
