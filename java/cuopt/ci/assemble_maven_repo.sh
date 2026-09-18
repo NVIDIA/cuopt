@@ -66,13 +66,17 @@ fi
 
 # The version is read from a JAR name rather than the POM, so the layout can only ever describe
 # artifacts that are actually present.
+#
+# Anchored on the classifier's own fixed shape (cuopt_java_classifier: cuda<major> or
+# cuda<major>-arm64) rather than splitting at the first hyphen -- the version itself can contain
+# one (e.g. a -SNAPSHOT suffix), so "first hyphen" would truncate it.
 first_jar="$(find "${JARS_DIR}" -name "${ARTIFACT_ID}-*-*.jar" \
   ! -name '*-sources.jar' ! -name '*-javadoc.jar' -print -quit)"
 if [[ -z "${first_jar}" ]]; then
   echo "no ${ARTIFACT_ID}-*.jar found under ${JARS_DIR}" >&2
   exit 1
 fi
-VERSION="$(basename "${first_jar}" | sed -E "s/^${ARTIFACT_ID}-([0-9][^-]*)-.*\.jar$/\1/")"
+VERSION="$(basename "${first_jar}" | sed -E "s/^${ARTIFACT_ID}-(.+)-cuda[0-9]+(-arm64)?\.jar$/\1/")"
 if [[ -z "${VERSION}" || "${VERSION}" == "$(basename "${first_jar}")" ]]; then
   echo "could not read a version from $(basename "${first_jar}")" >&2
   exit 1

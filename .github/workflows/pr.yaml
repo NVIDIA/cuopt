@@ -27,7 +27,6 @@ jobs:
       - java-static-build-matrix
       - java-static-build
       - java-static-test
-      - java-static-gather
       - conda-python-build
       - conda-python-tests
       - docs-build
@@ -568,34 +567,6 @@ jobs:
       # of how much of the console log GitHub keeps.
       artifact-name: "cuopt_java_static_test_${{ matrix.ARCH }}_cu${{ matrix.CUDA_MAJOR }}"
       file_to_upload: "java/cuopt/target/surefire-reports/"
-
-  java-static-gather:
-    needs: [java-static-build]
-    runs-on: linux-amd64-cpu4
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout code repo
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          persist-credentials: false
-      - name: Download per-classifier JAR artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          pattern: cuopt_java_*
-          path: ${{ runner.temp }}/jars
-          merge-multiple: true
-      - name: Assemble Maven repository layout
-        run: |
-          ./java/cuopt/ci/assemble_maven_repo.sh \
-            --jars-dir "${RUNNER_TEMP}/jars" \
-            --output-dir "${RUNNER_TEMP}/maven-repo"
-      - name: Upload combined Maven repository artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: cuopt_java_maven_repo
-          path: ${{ runner.temp }}/maven-repo
-          if-no-files-found: error
 
   java-build:
     needs: [conda-cpp-build, changed-files]
