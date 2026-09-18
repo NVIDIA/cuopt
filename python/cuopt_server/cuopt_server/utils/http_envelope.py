@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# Wrap a solver payload in the legacy HTTP envelope used by
+# Wrap a solver payload in the HTTP envelope used by
 # GET /cuopt/solution and validation_only responses.
 
 from typing import Any
@@ -14,7 +14,7 @@ def make_response(
     reqId: str = "",
     total_solve_time: float = 0,
 ) -> dict[str, Any]:
-    """Build the legacy HTTP response envelope.
+    """Build the HTTP response envelope.
 
     Parameters
     ----------
@@ -30,7 +30,7 @@ def make_response(
     Returns
     -------
     dict
-        The legacy response envelope.
+        The response envelope.
     """
     r = {"response": response}
     if total_solve_time:

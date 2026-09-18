@@ -920,15 +920,15 @@ static void smooth_weights(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
     // consider only satisfied constraints
     if (fj_cpu.violated_constraints.count(cstr_idx)) continue;
 
-    f_t weight_l = max((f_t)0, fj_cpu.h_cstr_left_weights[cstr_idx] - 1);
-    f_t weight_r = max((f_t)0, fj_cpu.h_cstr_right_weights[cstr_idx] - 1);
+    f_t weight_l = std::max((f_t)0, fj_cpu.h_cstr_left_weights[cstr_idx] - 1);
+    f_t weight_r = std::max((f_t)0, fj_cpu.h_cstr_right_weights[cstr_idx] - 1);
 
     fj_cpu.h_cstr_left_weights[cstr_idx]  = weight_l;
     fj_cpu.h_cstr_right_weights[cstr_idx] = weight_r;
   }
 
   if (fj_cpu.h_objective_weight > 0 && fj_cpu.h_incumbent_objective >= fj_cpu.h_best_objective) {
-    fj_cpu.h_objective_weight = max((f_t)0, fj_cpu.h_objective_weight - 1);
+    fj_cpu.h_objective_weight = std::max((f_t)0, fj_cpu.h_objective_weight - 1);
   }
 }
 
@@ -971,10 +971,10 @@ static void update_weights(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 
     if (curr_lower_excess < 0.) {
       fj_cpu.h_cstr_left_weights[cstr_idx] = new_weight;
-      fj_cpu.max_weight                    = max(fj_cpu.max_weight, new_weight);
+      fj_cpu.max_weight                    = std::max(fj_cpu.max_weight, new_weight);
     } else {
       fj_cpu.h_cstr_right_weights[cstr_idx] = new_weight;
-      fj_cpu.max_weight                     = max(fj_cpu.max_weight, new_weight);
+      fj_cpu.max_weight                     = std::max(fj_cpu.max_weight, new_weight);
     }
 
     // Invalidate related cached move scores
@@ -1428,9 +1428,9 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_lift_move(
             continue;
           } else {
             if (cstr_coeff * sign < 0) {
-              lfd_lb = max(lfd_lb, delta);
+              lfd_lb = std::max(lfd_lb, delta);
             } else {
-              lfd_ub = min(lfd_ub, delta);
+              lfd_ub = std::min(lfd_ub, delta);
             }
           }
         }

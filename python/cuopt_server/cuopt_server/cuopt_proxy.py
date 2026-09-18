@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""gRPC-backed HTTP proxy for legacy LP/MILP clients (Series C, C10).
+"""gRPC-backed HTTP proxy for LP/MILP/VRP clients.
 
 This process speaks the self-hosted HTTP API and forwards solves to
 ``cuopt_grpc_server``. It does not run a local job queue or worker pool.
@@ -55,7 +55,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="cuopt_proxy",
         description=(
-            "HTTP proxy for legacy cuOpt LP/MILP clients. "
+            "HTTP proxy for cuOpt LP/MILP/VRP clients. "
             "Forwards jobs to cuopt_grpc_server."
         ),
     )
@@ -178,10 +178,12 @@ def main(argv: Sequence[str] | None = None) -> None:
     settings.set_result_dir(args.result_dir, args.max_result, args.mode)
 
     from cuopt.grpc.linear_programming import Client
+    from cuopt.grpc.routing import RoutingClient
 
     from cuopt_server.proxy_webserver import (
         run_server,
         set_grpc_client,
+        set_grpc_routing_client,
         set_max_request_size,
     )
 
@@ -189,6 +191,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         f"Connecting to cuopt_grpc_server at {args.grpc_host}:{args.grpc_port}"
     )
     set_grpc_client(Client(args.grpc_host, args.grpc_port))
+    set_grpc_routing_client(RoutingClient(args.grpc_host, args.grpc_port))
     set_max_request_size(args.max_request_size)
     run_server(
         args.ip,
