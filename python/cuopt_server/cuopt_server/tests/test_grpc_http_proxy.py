@@ -7,6 +7,7 @@ import socket
 import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
 import pytest
@@ -182,6 +183,9 @@ class FakeClient:
         self.submitted = []
         self.cancelled = []
         self.deleted = []
+        self.waits = []
+        self.status_calls = []
+        self.pending_statuses = 0
         self._incumbents = {}
         self._logs = {}
 
@@ -203,9 +207,14 @@ class FakeClient:
         return job_id
 
     def status(self, job_id):
+        self.status_calls.append(job_id)
+        if self.pending_statuses > 0:
+            self.pending_statuses -= 1
+            return FakeJobStatus.PROCESSING
         return self.jobs.get(job_id, FakeJobStatus.NOT_FOUND)
 
     def wait(self, job_id, timeout=None):
+        self.waits.append(timeout)
         return self.jobs.get(job_id, FakeJobStatus.NOT_FOUND)
 
     def result(self, job_id, variable_names=None):
@@ -256,9 +265,6 @@ class FakeRoutingClient:
         return job_id
 
     def status(self, job_id):
-        return self.jobs.get(job_id, FakeJobStatus.NOT_FOUND)
-
-    def wait(self, job_id, timeout=0):
         return self.jobs.get(job_id, FakeJobStatus.NOT_FOUND)
 
     def result(self, job_id):
@@ -882,6 +888,8 @@ def test_sync_cuopt_lp(proxy):
     # the managed path is stateless: no job or result is left behind
     job_id = fake.submitted[0]["id"]
     assert job_id in fake.deleted
+    # the endpoint polls status instead of blocking a thread in Client.wait
+    assert fake.waits == []
     import cuopt_server.proxy_webserver as pw
 
     with pw._jobs_lock:
@@ -950,7 +958,7 @@ def test_sync_cuopt_logs_nvcf_ids(proxy):
     url, _ = proxy
     seen = {}
 
-    def _capture(ctype, buf, accept):
+    async def _capture(ctype, buf, accept):
         seen["ncaid"] = get_ncaid()
         seen["reqid"] = get_requestid()
         return make_response({"solver_response": {"status": 0}})
@@ -1048,6 +1056,47 @@ def test_sync_cuopt_requires_wrapped_data(proxy):
     assert res.status_code == 422, res.text
 
 
+def test_sync_cuopt_polls_until_job_is_done(proxy):
+    url, fake = proxy
+    fake.pending_statuses = 3
+    res = requests.post(
+        url + "/cuopt/cuopt",
+        json={
+            "action": "cuOpt_LP",
+            "data": _lp(),
+            "client_version": "custom",
+        },
+    )
+    assert res.status_code == 200, res.text
+    assert res.json()["response"]["solver_response"]["status"] == "Optimal"
+    job_id = fake.submitted[0]["id"]
+    assert fake.status_calls.count(job_id) >= 4
+    assert fake.waits == []
+    assert job_id in fake.deleted
+
+
+def test_sync_cuopt_health_is_served_during_solve(proxy):
+    """A pending solve must not hold the thread pool that health needs."""
+    url, fake = proxy
+    fake.pending_statuses = 5
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        solve = pool.submit(
+            requests.post,
+            url + "/cuopt/cuopt",
+            json={
+                "action": "cuOpt_LP",
+                "data": _lp(),
+                "client_version": "custom",
+            },
+        )
+        while fake.pending_statuses > 3:
+            time.sleep(0.01)
+        health = requests.get(url + "/cuopt/health", timeout=5)
+        assert health.status_code == 200, health.text
+        assert solve.result().status_code == 200
+
+
 def test_sync_cuopt_rejects_null_data(proxy):
     url, _ = proxy
     res = requests.post(
@@ -1058,15 +1107,9 @@ def test_sync_cuopt_rejects_null_data(proxy):
     assert "NVCF assets" in res.json()["error"]
 
 
-def test_post_solution_and_warmstart_are_501(proxy):
+def test_post_solution_and_wildcards_are_501(proxy):
     url, _ = proxy
     assert requests.post(url + "/cuopt/solution", json={}).status_code == 501
-    assert (
-        requests.get(
-            url + f"/cuopt/solution/{uuid.uuid4()}/warmstart"
-        ).status_code
-        == 501
-    )
     assert requests.delete(url + "/cuopt/request/*").status_code == 501
     assert (
         requests.delete(

@@ -4,6 +4,7 @@
 """FastAPI app for the gRPC-backed HTTP proxy (LP/MILP/VRP)."""
 
 import asyncio
+import contextlib
 import logging
 import os
 import threading
@@ -121,6 +122,13 @@ _warmstarts = {}
 _jobs_lock = threading.Lock()
 _incumbent_locks = {}
 _max_request_size = 1024 * 1024 * 1024
+
+# Managed POST /cuopt/cuopt polls job status from the event loop rather than
+# calling Client.wait, which would hold a thread-pool worker for the whole
+# solve and starve other requests, including the health check. Back off up to
+# _STATUS_POLL_MAX so long solves do not poll thousands of times.
+_STATUS_POLL_MIN = 0.05
+_STATUS_POLL_MAX = 1.0
 
 _ROUTING_KEYS = {
     "cost_matrix_data",
@@ -567,6 +575,7 @@ def _deserialize_convert_submit(
         solver_logs,
         accept,
         result_file,
+        warmstart_id,
         initial_ids,
     )
 
@@ -579,6 +588,7 @@ def _convert_and_submit(
     solver_logs,
     accept,
     result_file,
+    warmstart_id,
     initial_ids,
 ):
     """Convert a decoded problem body and submit it over gRPC."""
@@ -1073,13 +1083,8 @@ def getrequest(
         return encode(exception_handler(e), accept)
 
 
-def _submit_wait_solution(ctype, buf, accept):
-    """Submit, wait, and return a solution for POST /cuopt/cuopt.
-
-    The managed endpoint is stateless: the gRPC job and the proxy metadata
-    are released before returning, so there is nothing left to poll or
-    delete afterwards.
-    """
+def _submit_managed_job(ctype, buf, accept):
+    """Validate and submit a POST /cuopt/cuopt body, returning the job id."""
     body = deserialize(ctype, buf)
     try:
         wrapper = cuoptDataInternal.parse_obj(body)
@@ -1109,9 +1114,41 @@ def _submit_wait_solution(ctype, buf, accept):
         False,
         accept,
         "",
+        "",
         None,
     )
     logging.info(message(f"submitted job {job_id}"))
+    return job_id
+
+
+async def _poll_job_status(job_id):
+    """Return the terminal gRPC status, yielding the loop while job runs."""
+    client = get_grpc_client()
+    interval = _STATUS_POLL_MIN
+    while True:
+        status = await asyncio.to_thread(client.status, job_id)
+        if not _is_status(status, "QUEUED", "PROCESSING"):
+            return status
+        await asyncio.sleep(interval)
+        interval = min(interval * 2, _STATUS_POLL_MAX)
+
+
+def _release_managed_job(job_id):
+    try:
+        get_grpc_client().delete(job_id)
+    except Exception:
+        logging.warning(f"could not delete job {job_id}", exc_info=True)
+    _pop_job(job_id)
+
+
+async def _submit_wait_solution(ctype, buf, accept):
+    """Submit, wait, and return a solution for POST /cuopt/cuopt.
+
+    The managed endpoint is stateless: the gRPC job and the proxy metadata
+    are released before returning, so there is nothing left to poll or
+    delete afterwards.
+    """
+    job_id = await asyncio.to_thread(_submit_managed_job, ctype, buf, accept)
     meta = _get_job(job_id)
     if meta is not None and meta.get("validation_only"):
         envelope = dict(meta["validation_result"])
@@ -1124,14 +1161,13 @@ def _submit_wait_solution(ctype, buf, accept):
     try:
         logging.info(message(f"waiting for job {job_id}"))
         try:
-            get_grpc_client().wait(job_id)
+            status = await _poll_job_status(job_id)
         except Exception:
             logging.error(
                 message(f"gRPC wait failed for job {job_id}"),
                 exc_info=True,
             )
             raise
-        status = get_grpc_client().status(job_id)
         status_name = _status_name(status)
         logging.info(message(f"gRPC status for job {job_id} is {status_name}"))
         if not _is_status(status, "COMPLETED"):
@@ -1144,7 +1180,9 @@ def _submit_wait_solution(ctype, buf, accept):
                 status_code=409,
                 detail=f"job {status_name.lower()}",
             )
-        envelope, _warnings, _notes = _result_envelope(job_id, meta, kind)
+        envelope, _warnings, _notes = await asyncio.to_thread(
+            _result_envelope, job_id, meta, kind
+        )
         if envelope is None:
             logging.error(message(f"gRPC job {job_id} returned no solution"))
             raise HTTPException(
@@ -1154,11 +1192,12 @@ def _submit_wait_solution(ctype, buf, accept):
         logging.info({"cuopt_complete": status_name})
         return envelope
     finally:
-        try:
-            get_grpc_client().delete(job_id)
-        except Exception:
-            logging.warning(f"could not delete job {job_id}", exc_info=True)
-        _pop_job(job_id)
+        # shielded so a client disconnect mid-solve still frees the job
+        cleanup = asyncio.ensure_future(
+            asyncio.to_thread(_release_managed_job, job_id)
+        )
+        with contextlib.suppress(asyncio.CancelledError):
+            await asyncio.shield(cleanup)
 
 
 @app.post(
@@ -1237,9 +1276,7 @@ async def cuopt(
         buf = bytearray(sz)
         await get_data(buf, request)
 
-        envelope = await asyncio.to_thread(
-            _submit_wait_solution, ctype, buf, accept
-        )
+        envelope = await _submit_wait_solution(ctype, buf, accept)
         return encode(envelope, accept, job_result=True)
 
     except (RequestValidationError, ValidationError) as e:
