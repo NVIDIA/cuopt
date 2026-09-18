@@ -42,6 +42,49 @@ static const char* fj_binary_reject_name(fj_binary_reject_t reason)
   return "unknown";
 }
 
+template <typename i_t, typename f_t>
+static void audit_binary_incumbent(const fj_cpu_climber_t<i_t, f_t>& climber,
+                                   const ins_vector<f_t>& assignment,
+                                   f_t reported_objective,
+                                   f_t engine_objective)
+{
+  const auto& problem = *climber.problem;
+  cuopt_assert(assignment.size() == (size_t)problem.n_variables, "binary incumbent size mismatch");
+  for (i_t variable = 0; variable < problem.n_variables; ++variable) {
+    const f_t value = assignment[variable];
+    cuopt_assert(std::isfinite(value), "binary incumbent contains a non-finite value");
+    cuopt_assert(climber.check_variable_within_bounds(variable, value),
+                 "binary incumbent violates original variable bounds");
+    if (problem.h_var_types[variable] == var_t::INTEGER) {
+      cuopt_assert(problem.is_integer(value), "binary incumbent violates original integrality");
+    }
+  }
+  const f_t row_tolerance = problem.tolerances.absolute_tolerance;
+  for (i_t row = 0; row < problem.n_constraints; ++row) {
+    const f_t activity = compensated_dot2_csr(problem, assignment, row);
+    cuopt_assert(std::isfinite(activity), "binary incumbent has non-finite row activity");
+    cuopt_assert(
+      !std::isfinite(problem.cstr_lb[row]) || activity >= problem.cstr_lb[row] - row_tolerance,
+      "binary incumbent violates original row lower bound");
+    cuopt_assert(
+      !std::isfinite(problem.cstr_ub[row]) || activity <= problem.cstr_ub[row] + row_tolerance,
+      "binary incumbent violates original row upper bound");
+  }
+  const f_t objective =
+    compensated_dot2(problem.h_obj_coeffs.data(), assignment.data(), problem.n_variables);
+  const f_t objective_scale =
+    std::max(f_t{1}, std::max(std::fabs(objective), std::fabs(reported_objective)));
+  const f_t objective_tolerance =
+    std::max(problem.tolerances.absolute_tolerance,
+             f_t{64} * std::numeric_limits<f_t>::epsilon() * objective_scale);
+  cuopt_assert(std::fabs(objective - reported_objective) <= objective_tolerance,
+               "binary incumbent objective disagrees with the original assignment");
+  if (!climber.bin_singletons.empty()) {
+    cuopt_assert(std::fabs(objective - engine_objective) <= objective_tolerance,
+                 "binary singleton substitution changed the objective");
+  }
+}
+
 // work unit proxy. will likely require a lot of tuning
 constexpr double fj_bin_bytes_per_nnz = 16.0;
 // restarts can help a lot on some smaller combinatorial instances
@@ -237,9 +280,8 @@ struct fj_bin_engine_t {
       row_slack[r]        = slack;
       if (slack < 0) set_violated(r);
     }
-    incumbent_objective = objective_offset;
-    for (int32_t v = 0; v < pb.n_variables; ++v)
-      incumbent_objective += pb.objective[v] * assign[v];
+    incumbent_objective =
+      objective_offset + compensated_dot2(pb.objective.data(), assign.data(), pb.n_variables);
     nnz_touched += pb.nnz;
     rebuild_scores();
   }
@@ -421,16 +463,26 @@ struct fj_bin_engine_t {
                               ? get_lower(bounds)
                               : (isfinite(get_upper(bounds)) ? get_upper(bounds) : f_t{0});
       }
-      f_t lhs = 0;
-      for (i_t p = climber.problem->offsets[rec.row]; p < climber.problem->offsets[rec.row + 1];
-           ++p)
-        lhs += climber.problem->coefficients[p] * values[climber.problem->variables[p]];
+      const f_t lhs      = compensated_dot2_csr(*climber.problem, values, rec.row);
       const f_t residual = rec.rhs - lhs;
+      if (rec.all.size() == 1) {
+        const i_t var = rec.all[0];
+        values[var] +=
+          residual / climber.problem->reverse_coefficients[climber.problem->reverse_offsets[var]];
+        continue;
+      }
       if (residual > 0 && !rec.positive.empty())
         values[rec.positive[0]] += residual / rec.positive_coeff[0];
       else if (residual < 0 && !rec.negative.empty())
         values[rec.negative[0]] += residual / rec.negative_coeff[0];
     }
+  }
+
+  static f_t original_objective(const fj_cpu_climber_t<i_t, f_t>& climber,
+                                const ins_vector<f_t>& values)
+  {
+    return compensated_dot2(
+      climber.problem->h_obj_coeffs.data(), values.data(), climber.problem->h_obj_coeffs.size());
   }
 
   void report_incumbent(fj_cpu_climber_t<i_t, f_t>& climber)
@@ -454,24 +506,21 @@ struct fj_bin_engine_t {
       uncrush(climber, h_assign);
       uncrush(climber, h_best);
     }
-    auto objective = [&](const auto& values) {
-      f_t result = 0;
-      for (i_t var = 0; var < (i_t)climber.problem->h_obj_coeffs.size(); ++var)
-        result += climber.problem->h_obj_coeffs[var] * values[var];
-      return result;
-    };
-    const f_t reported = climber.has_bin_elimination ? objective(h_best) : (f_t)best_objective;
-    climber.h_incumbent_objective =
-      climber.has_bin_elimination ? objective(h_assign) : (f_t)incumbent_objective;
-    climber.h_best_objective = reported;
-    climber.feasible_found   = true;
+    const f_t reported =
+      climber.has_bin_elimination ? original_objective(climber, h_best) : (f_t)best_objective;
+    climber.h_incumbent_objective = climber.has_bin_elimination
+                                      ? original_objective(climber, h_assign)
+                                      : (f_t)incumbent_objective;
+    climber.h_best_objective      = reported;
+    climber.feasible_found        = true;
+    cuopt_func_call(audit_binary_incumbent(climber, h_best, reported, (f_t)best_objective));
     if (shared_incumbent)
       shared_incumbent->publish(reported, climber.get_user_objective(reported), h_best);
 
     CUOPT_LOG_DEBUG("%sCPUFJ[bin%d] new incumbent: objective %.17g",
                     climber.log_prefix.c_str(),
                     coefficient_bits(),
-                    reported);
+                    climber.get_user_objective(reported));
     if (climber.improvement_callback) {
       const double work_units = climber.work_units_elapsed;
       climber.improvement_callback(reported, h_best, work_units);
@@ -925,9 +974,9 @@ struct fj_bin_engine_t {
     cuopt_assert(std::isfinite(obj_magnitude) && obj_magnitude > 0,
                  "objective magnitude unit must be finite and positive");
 
-    objective_offset = 0;
-    for (int32_t v = 0; v < pb.n_original; ++v)
-      objective_offset += pb.orig_objective[v] * pb.var_offset[v];
+    objective_offset =
+      pb.substitution_offset +
+      compensated_dot2(pb.orig_objective.data(), pb.var_offset.data(), pb.n_original);
 
     argmax_tile = fj_bin_argmax_tile();
     set_objective_weight(seeded_weight > 0 ? seeded_weight : 0);
@@ -1012,7 +1061,7 @@ struct fj_bin_engine_t {
                         coefficient_bits(),
                         iters,
                         violated_list.size(),
-                        best_objective,
+                        climber.get_user_objective((f_t)best_objective),
                         max_weight);
       }
       if (iters % climber.diversity_callback_interval == 0 && climber.diversity_callback) {
@@ -1021,7 +1070,13 @@ struct fj_bin_engine_t {
           h_assign[v] = (f_t)pb.var_offset[v];
         for (int32_t b = 0; b < pb.n_variables; ++b)
           if (assign[b]) h_assign[pb.bit_owner[b]] += (f_t)pb.bit_weight[b];
-        climber.diversity_callback((f_t)incumbent_objective, h_assign);
+        if (climber.has_bin_elimination) uncrush(climber, h_assign);
+        const f_t sampled_objective = climber.has_bin_elimination
+                                        ? original_objective(climber, h_assign)
+                                        : (f_t)incumbent_objective;
+        cuopt_func_call(
+          audit_binary_incumbent(climber, h_assign, sampled_objective, (f_t)incumbent_objective));
+        climber.diversity_callback(sampled_objective, h_assign);
       }
 
       // Work-unit proxy. nnz_touched is cumulative, reproducing the accumulation shape the general
@@ -1046,7 +1101,7 @@ struct fj_bin_engine_t {
       climber.log_prefix.c_str(),
       coefficient_bits(),
       iters,
-      best_objective,
+      climber.get_user_objective((f_t)best_objective),
       max_weight,
       max_aggregate_base,
       fj_bin_base_limit,

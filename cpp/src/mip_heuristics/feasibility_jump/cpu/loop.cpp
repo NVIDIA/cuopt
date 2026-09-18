@@ -13,16 +13,166 @@
 #include "search/moves.hpp"
 #include "search/score.hpp"
 #include "search/update.hpp"
+#include "setup/bounds.hpp"
+#include "setup/lp.hpp"
 #include "setup/structure.hpp"
+#include "starts/starts.hpp"
 
 #include <mip_heuristics/feasibility_jump/fj_cpu_binary.cuh>
 
 namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
+static std::vector<f_t> lift_equality_substituted_assignment(
+  fj_cpu_climber_t<i_t, f_t>& c,
+  const std::vector<f_t>& assignment,
+  const std::vector<i_t>& retained,
+  const std::vector<fj_equality_substitution_t<i_t, f_t>>& substitutions)
+{
+  std::vector<f_t> lifted(c.problem->n_variables, 0);
+  for (size_t j = 0; j < retained.size(); ++j)
+    lifted[retained[j]] = assignment[j];
+  for (auto it = substitutions.rbegin(); it != substitutions.rend(); ++it) {
+    const auto coefficients = thrust::make_transform_iterator(
+      it->terms.begin(), [](const auto& term) { return term.second; });
+    const auto values = thrust::make_transform_iterator(
+      it->terms.begin(), [&lifted](const auto& term) { return lifted[term.first]; });
+    lifted[it->variable] = it->constant + compensated_dot2(coefficients, values, it->terms.size());
+  }
+  for (const auto& sub : substitutions) {
+    const auto bounds = c.h_var_bounds[sub.variable].get();
+    f_t value         = std::clamp(lifted[sub.variable], get_lower(bounds), get_upper(bounds));
+    if (is_integer_var(c, sub.variable)) value = std::round(value);
+    lifted[sub.variable] = value;
+  }
+  // Substitution and the final bound/integrality repair must both survive a check in the unchanged
+  // parent model
+  const auto& p = *c.problem;
+  for (i_t v = 0; v < p.n_variables; ++v) {
+    if (!std::isfinite(lifted[v]) || !check_variable_within_bounds(c, v, lifted[v]) ||
+        (is_integer_var(c, v) && !p.is_integer(lifted[v])))
+      return {};
+  }
+  for (i_t r = 0; r < p.n_constraints; ++r) {
+    const f_t activity = compensated_dot2_csr(p, lifted, r);
+    const f_t tol      = p.tolerances.absolute_tolerance;
+    if (!std::isfinite(activity) || activity < p.cstr_lb[r] - tol || activity > p.cstr_ub[r] + tol)
+      return {};
+  }
+  return lifted;
+}
+
+// Solve a lane in equality-reduced coordinates, then lift every candidate back into the unchanged
+// parent model before reporting it.
+template <typename i_t, typename f_t>
+bool try_equality_substituted_solve(fj_cpu_climber_t<i_t, f_t>& c,
+                                    double time_limit,
+                                    double work_unit_limit)
+{
+  if (!c.use_equality_substitution || c.feasible_found || c.producer_sync || time_limit <= 0)
+    return false;
+  const auto started = std::chrono::steady_clock::now();
+  std::vector<fj_equality_substitution_t<i_t, f_t>> substitutions;
+  std::vector<i_t> retained;
+  std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> child;
+  {
+    phase_timer_t timer(c.t_start);
+    child =
+      make_equality_reduced_climber(c, std::min(0.75, 0.15 * time_limit), substitutions, retained);
+  }
+  if (!child) return false;
+  const double remaining =
+    time_limit - std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+  if (remaining <= 0) return false;
+
+  bool rejected_lift    = false;
+  child->work_unit_bias = c.work_unit_bias;
+  child->improvement_callback =
+    [&](f_t child_objective, const std::vector<f_t>& assignment, double work) {
+      if (assignment.size() != retained.size()) {
+        rejected_lift = true;
+        child->halted = true;
+        return;
+      }
+      const std::vector<f_t> lifted =
+        lift_equality_substituted_assignment(c, assignment, retained, substitutions);
+      if (lifted.empty()) {
+        rejected_lift = true;
+        child->halted = true;
+        return;
+      }
+      const f_t objective = child_objective + child->problem->objective_offset;
+      if (!c.feasible_found || objective < c.h_best_objective) {
+        c.h_best_assignment = lifted;
+        c.h_best_objective  = objective;
+        c.feasible_found    = true;
+      }
+      report_cpu_incumbent(c, objective, lifted, work);
+    };
+
+  const auto setup_stats = static_cast<const fj_stats_t<i_t>&>(c);
+  cpufj_solve(child.get(), remaining, work_unit_limit);
+  static_cast<fj_stats_t<i_t>&>(c) = static_cast<const fj_stats_t<i_t>&>(*child);
+  c.t_start += setup_stats.t_start;
+  c.t_bound_prop += setup_stats.t_bound_prop;
+  c.t_lp_start += setup_stats.t_lp_start;
+  c.t_features += setup_stats.t_features;
+  c.t_init_lhs += setup_stats.t_init_lhs;
+  c.iterations = child->iterations;
+  c.work_units_elapsed.store(child->work_units_elapsed.load(std::memory_order_relaxed),
+                             std::memory_order_relaxed);
+
+  if (child->feasible_found && child->h_best_assignment.size() == retained.size()) {
+    std::vector<f_t> lifted = lift_equality_substituted_assignment(
+      c, child->h_best_assignment.underlying(), retained, substitutions);
+    if (lifted.empty()) return c.feasible_found;
+    const f_t objective = compensated_dot2(
+      thrust::make_permutation_iterator(c.problem->h_obj_coeffs.data(),
+                                        c.problem->h_objective_vars.data()),
+      thrust::make_permutation_iterator(lifted.data(), c.problem->h_objective_vars.data()),
+      c.problem->h_objective_vars.size());
+    if (!c.feasible_found || objective < c.h_best_objective) {
+      c.h_best_assignment = std::move(lifted);
+      c.h_best_objective  = objective;
+      c.feasible_found    = true;
+    }
+  }
+  return !rejected_lift || c.feasible_found;
+}
+
+template <typename i_t, typename f_t>
 void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, double time_limit, double work_unit_limit)
 {
-  if (try_cpufj_binary_solve(*fj_cpu, time_limit, work_unit_limit)) return;
+  const auto solve_start = std::chrono::steady_clock::now();
+  apply_structural_completion_start(*fj_cpu);
+  if (fj_cpu->use_precedence_start) apply_precedence_completion_start(*fj_cpu);
+  apply_bound_propagation(*fj_cpu);
+  if (fj_cpu->use_equality_substitution) {
+    const double elapsed =
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - solve_start).count();
+    if (try_equality_substituted_solve(*fj_cpu, time_limit - elapsed, work_unit_limit)) return;
+  }
+  const double setup_time_left =
+    fj_cpu->use_equality_substitution
+      ? std::max(
+          0.0,
+          time_limit -
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - solve_start).count())
+      : time_limit;
+  if (!fj_cpu->feasible_found) { apply_lp_rounded_start(*fj_cpu, setup_time_left); }
+
+  const bool paid_setup = fj_cpu->use_bound_prop || fj_cpu->use_lp_start ||
+                          fj_cpu->use_precedence_start || fj_cpu->use_equality_substitution;
+  const double setup_seconds =
+    paid_setup
+      ? std::chrono::duration<double>(std::chrono::steady_clock::now() - solve_start).count()
+      : 0.0;
+  const double remaining = std::max(0.0, time_limit - setup_seconds);
+  if (remaining <= 0.0) return;
+
+  if (try_cpufj_binary_solve(*fj_cpu, remaining, work_unit_limit)) return;
+
+  clamp_start_magnitude(*fj_cpu, fj_cpu->problem->n_variables);
 
   // Past this point the search runs on one-sided rows. Everything above reasons about the original
   // model, which is why the rows are built here and not at construction.
@@ -38,7 +188,8 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, double time_limit, double w
   }
 
   [[maybe_unused]] i_t local_mins = 0;
-  const auto loop_start           = std::chrono::steady_clock::now();
+  const auto loop_start           = paid_setup ? solve_start : std::chrono::steady_clock::now();
+  bool first_cross_needs_polish   = fj_cpu->use_lp_polish;
 
   fj_cpu->rng.set_seed(fj_cpu->settings.seed);
 
@@ -84,6 +235,13 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, double time_limit, double w
                       fj_cpu->settings.iteration_limit,
                       fj_cpu->iterations);
       break;
+    }
+
+    if (first_cross_needs_polish && fj_cpu->feasible_found) {
+      first_cross_needs_polish = false;
+      const double elapsed =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - loop_start).count();
+      apply_lp_polish(*fj_cpu, fj_cpu->hp.lp_polish_budget_share * (time_limit - elapsed));
     }
 
     // periodically recompute the slacks and violation scores
@@ -152,6 +310,11 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, double time_limit, double w
       should_perturb = true;
       // Without this the counter stays above the interval and every later iteration perturbs.
       fj_cpu->iterations_since_best = 0;
+      if (fj_cpu->use_lp_polish && fj_cpu->feasible_found) {
+        const double elapsed =
+          std::chrono::duration<double>(std::chrono::steady_clock::now() - loop_start).count();
+        apply_lp_polish(*fj_cpu, fj_cpu->hp.lp_polish_budget_share * (time_limit - elapsed));
+      }
     }
 
     if (score > fj_staged_score_t::zero() && !should_perturb) {
@@ -198,6 +361,11 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, double time_limit, double w
         fj_cpu->violated_constraints.size(),
         fj_cpu->h_objective_weight,
         fj_cpu->max_weight);
+    }
+
+    if (fj_cpu->iterations % fj_cpu->diversity_callback_interval == 0 &&
+        fj_cpu->diversity_callback) {
+      fj_cpu->diversity_callback(fj_cpu->h_incumbent_objective, fj_cpu->h_assignment);
     }
 
     if (fj_cpu->iterations % 100 == 0 && fj_cpu->iterations > 0) {

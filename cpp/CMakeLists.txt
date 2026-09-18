@@ -1543,6 +1543,30 @@ if (BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
             "${CMAKE_CURRENT_SOURCE_DIR}/src"
     )
 
+    add_executable(solve_CPUFJ ../benchmarks/linear_programming/cuopt/run_cpufj.cu)
+    set_target_properties(solve_CPUFJ PROPERTIES CXX_SCAN_FOR_MODULES OFF)
+    target_compile_options(solve_CPUFJ
+            PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
+            "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
+            "$<$<COMPILE_LANGUAGE:CUDA>:-fopenmp>"
+    )
+    target_link_libraries(solve_CPUFJ
+            PUBLIC
+            cuopt_static
+            OpenMP::OpenMP_CXX
+            OpenMP::OpenMP_CUDA
+    )
+    target_include_directories(solve_CPUFJ
+            PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/src"
+            "${papilo_SOURCE_DIR}/src"
+            "${papilo_BINARY_DIR}"
+    )
+    target_include_directories(solve_CPUFJ SYSTEM PRIVATE
+            "${pslp_SOURCE_DIR}/include"
+            "${dejavu_SOURCE_DIR}"
+    )
+
 endif ()
 
 option(BUILD_LP_BENCHMARKS "Build LP benchmarks" OFF)

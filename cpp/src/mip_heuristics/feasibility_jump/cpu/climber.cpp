@@ -9,6 +9,7 @@
 #include "internal.hpp"
 #include "problem.hpp"
 #include "search/api.hpp"
+#include "setup/bounds.hpp"
 #include "setup/lp.hpp"
 #include "setup/structure.hpp"
 
@@ -93,6 +94,7 @@ void wire_fj_cpu_host_views(
 
   set_host_data_view(fj_cpu, n_variables, n_constraints, n_integer_vars, nnz, tolerances);
 
+  cap_integer_domains(fj_cpu, n_variables);
   fj_cpu.h_best_objective = +std::numeric_limits<f_t>::infinity();
 
   // cached_mtm_moves, cached_mtm_moves_version and h_cstr_version are indexed by search row and
@@ -119,6 +121,8 @@ void finalize_fj_cpu_host_initialization(
 
   detect_implied_integers(fj_cpu, problem);
   wire_fj_cpu_host_views(fj_cpu, n_variables, n_constraints, n_integer_vars, nnz, tolerances);
+  build_cardinality_index(fj_cpu, problem);
+  detect_free_equality_singletons(fj_cpu);
 
   problem.h_objective_vars.resize(n_variables);
   auto end = std::copy_if(
@@ -151,6 +155,8 @@ void finalize_fj_cpu_host_initialization(
     phase_timer_t timer(fj_cpu.t_init_lhs);
     recompute_lhs(fj_cpu);
   }
+
+  precompute_problem_features(fj_cpu, problem);
 }
 
 template <typename i_t, typename f_t>
