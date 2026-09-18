@@ -4,8 +4,8 @@
 """MCP server exposing cuOpt LP/MILP solves over the gRPC backend.
 
 Runs as a stdio subprocess of an MCP client, holding a gRPC channel to
-``cuopt_grpc_server``. No HTTP is involved and the host needs no GPU — the
-solve happens wherever the gRPC server runs.
+``cuopt_grpc_server``. No HTTP application endpoint is exposed, and the
+host needs no GPU — the solve happens wherever the gRPC server runs.
 
 stdout carries the JSON-RPC stream, so every diagnostic goes to stderr; a
 stray ``print()`` here corrupts the protocol.
