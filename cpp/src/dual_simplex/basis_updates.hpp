@@ -358,7 +358,8 @@ class basis_update_mpf_t {
   // against U0.
   void u_multiply(const std::vector<f_t>& x, std::vector<f_t>& y) const;
 
-  // Sparse-in/sparse-out overload of u_multiply.
+  // Sparse-in/sparse-out overload of u_multiply. Input and output must not alias.
+  // Output indices are unsorted; only exact zeros are omitted.
   void u_multiply(const sparse_vector_t<i_t, f_t>& x, sparse_vector_t<i_t, f_t>& y) const;
 
   // Replace the column B(:, leaving_index) with the vector abar. Pass in utilde such that L*utilde
