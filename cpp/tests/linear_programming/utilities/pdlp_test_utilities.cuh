@@ -26,7 +26,7 @@
 namespace cuopt::mathematical_optimization::test {
 constexpr double tolerance = 1e-6f;
 
-static std::string make_path_absolute(const std::string& file)
+[[maybe_unused]] static std::string make_path_absolute(const std::string& file)
 {
   std::string rel_file{};
   // assume relative paths are relative to RAPIDS_DATASET_ROOT_DIR
@@ -52,9 +52,9 @@ static cuopt::mathematical_optimization::optimization_problem_solution_t<i_t, f_
 
 // Overwrites the device_uvector with the host-side contents, resizing as needed.
 template <typename f_t>
-static void assign_device_uvector_from_host(rmm::device_uvector<f_t>& target,
-                                            const std::vector<f_t>& src,
-                                            cuda::stream_ref stream)
+[[maybe_unused]] static void assign_device_uvector_from_host(rmm::device_uvector<f_t>& target,
+                                                             const std::vector<f_t>& src,
+                                                             cuda::stream_ref stream)
 {
   target.resize(src.size(), stream);
   raft::copy(target.data(), src.data(), src.size(), stream);
@@ -115,7 +115,7 @@ solve_lp_batch_fixed(
 }
 
 // Compute on the CPU x * c to check that the returned objective value is correct
-static void test_objective_sanity(
+[[maybe_unused]] static void test_objective_sanity(
   const cuopt::mathematical_optimization::io::mps_data_model_t<int, double>& op_problem,
   const rmm::device_uvector<double>& primal_solution,
   double objective_value,
@@ -140,7 +140,7 @@ static void test_objective_sanity(
 }
 
 // Compute on the CPU x * c to check that the returned objective value is correct
-static void test_objective_sanity(
+[[maybe_unused]] static void test_objective_sanity(
   const cuopt::mathematical_optimization::io::mps_data_model_t<int, double>& op_problem,
   const std::vector<double>& primal_solution,
   double objective_value,
@@ -167,7 +167,7 @@ static void test_objective_sanity(
 //  Check that it corresponds to the bound resdiual
 //  Check that it respect the absolute/relative tolerance
 // Check that the primal variables respected the variable bounds
-static void test_constraint_sanity(
+[[maybe_unused]] static void test_constraint_sanity(
   const cuopt::mathematical_optimization::io::mps_data_model_t<int, double>& op_problem,
   const optimization_problem_solution_t<int, double>::additional_termination_information_t&
     termination_information,

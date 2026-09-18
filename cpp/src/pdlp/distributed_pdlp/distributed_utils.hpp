@@ -23,7 +23,6 @@ std::vector<rank_data_t<i_t, f_t>> create_rank_data_from_parts(
   const std::vector<f_t>& A_t_values,
   i_t nb_parts,
   i_t nb_cstr,
-  i_t nb_vars,
-  i_t nnz);
+  i_t nb_vars);
 
 }  // namespace cuopt::mathematical_optimization::pdlp

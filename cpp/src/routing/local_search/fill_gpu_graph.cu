@@ -84,14 +84,11 @@ __global__ void fill_graph_kernel(typename solution_t<i_t, f_t, REQUEST>::view_t
 template <typename i_t, typename f_t, request_t REQUEST>
 __global__ void fill_intra_candidates(typename solution_t<i_t, f_t, REQUEST>::view_t solution,
                                       typename move_candidates_t<i_t, f_t>::view_t move_candidates,
-                                      int64_t seed)
+                                      [[maybe_unused]] int64_t seed)
 {
   __shared__ double shmem[raft::WarpSize * 2];
   __shared__ i_t reduction_idx;
-  i_t route_id = blockIdx.x;
-  raft::random::PCGenerator thread_rng(seed + (threadIdx.x + blockIdx.x * blockDim.x),
-                                       uint64_t(route_id * (threadIdx.x + blockIdx.x * blockDim.x)),
-                                       0);
+  i_t route_id            = blockIdx.x;
   double thread_best_cost = std::numeric_limits<double>::max();
   i_t thread_best_node_id = -1;
   i_t counter             = 1;
@@ -153,7 +150,7 @@ __global__ void fill_intra_candidates(typename solution_t<i_t, f_t, REQUEST>::vi
 template <typename i_t, typename f_t, request_t REQUEST>
 void local_search_t<i_t, f_t, REQUEST>::fill_gpu_graph(solution_t<i_t, f_t, REQUEST>& solution)
 {
-  raft::common::nvtx::range fun_scope("fill_gpu_graph");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("fill_gpu_graph");
   constexpr i_t TPB = 128;
   solution.sol_handle->sync_stream();
   const auto stream                   = solution.sol_handle->get_stream();

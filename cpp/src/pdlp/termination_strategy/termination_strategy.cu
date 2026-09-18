@@ -162,7 +162,7 @@ void pdlp_termination_strategy_t<i_t, f_t>::evaluate_termination_criteria(
   const rmm::device_uvector<f_t>& combined_bounds,
   const rmm::device_uvector<f_t>& objective_coefficients)
 {
-  raft::common::nvtx::range fun_scope("Evaluate termination criteria");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("Evaluate termination criteria");
 
   convergence_information_.compute_convergence_information(current_pdhg_solver,
                                                            primal_iterate,

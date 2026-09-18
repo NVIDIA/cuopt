@@ -56,7 +56,7 @@ struct a_eax {
                  bool asymmetric              = true,
                  bool use_perfect_edges_limit = true)
   {
-    raft::common::nvtx::range fun_scope("eax");
+    [[maybe_unused]] raft::common::nvtx::range fun_scope("eax");
     // THIS IS TEMPORARY UNTIL EMPTY ROUTES ARE FIXED
     if (check_if_routes_empty(a) || check_if_routes_empty(b)) return false;
     if (!set_recombination_depot(a, b)) { return false; }

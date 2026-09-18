@@ -150,7 +150,7 @@ static std::mutex& get_timer_mutex()
 static void flush_timers()
 {
 #ifdef MPS_FAST_TIMERS
-  std::lock_guard<std::mutex> lock(get_timer_mutex());
+  [[maybe_unused]] std::lock_guard<std::mutex> lock(get_timer_mutex());
   auto& buffer = get_timer_buffer();
   for (const auto& entry : buffer) {
     std::fprintf(stderr,
@@ -228,7 +228,7 @@ class scoped_timer_t {
     nvtx_.end();
     if (accumulator_) { *accumulator_ += elapsed_ms; }
     auto [rss_kb, hwm_kb] = current_process_rss_kb();
-    std::lock_guard<std::mutex> lock(get_timer_mutex());
+    [[maybe_unused]] std::lock_guard<std::mutex> lock(get_timer_mutex());
     get_timer_buffer().push_back({name_, elapsed_ms, rss_kb, hwm_kb});
 #endif
   }
@@ -1901,7 +1901,7 @@ static void parse_columns_section_parallel(parse_state_t<i_t, f_t>& state,
           perf_snapshots[(size_t)t] = perf_counters.stop();
 #endif
         } catch (...) {
-          std::lock_guard<std::mutex> lock(error_mutex);
+          [[maybe_unused]] std::lock_guard<std::mutex> lock(error_mutex);
           if (!first_error) { first_error = std::current_exception(); }
         }
       }

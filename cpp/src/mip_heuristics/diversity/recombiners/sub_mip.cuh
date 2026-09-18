@@ -32,7 +32,7 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
   {
   }
 
-  void solution_callback(std::vector<f_t>& solution, f_t objective)
+  void solution_callback(std::vector<f_t>& solution, [[maybe_unused]] f_t objective)
   {
     CUOPT_LOG_DEBUG("SUBMIP added solution with objective %.16e", objective);
     solution_vector.push_back(solution);
@@ -42,7 +42,7 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
                                                   solution_t<i_t, f_t>& b,
                                                   const weight_t<i_t, f_t>& weights)
   {
-    raft::common::nvtx::range fun_scope("Sub-MIP recombiner");
+    [[maybe_unused]] raft::common::nvtx::range fun_scope("Sub-MIP recombiner");
     solution_vector.clear();
     auto& guiding_solution = a.get_feasible() ? a : b;
     auto& other_solution   = a.get_feasible() ? b : a;
@@ -86,7 +86,7 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
       static_cast<i_t>(1),
       true);
     scaling.scale_problem();
-    fixed_problem.presolve_data.reset_additional_vars(fixed_problem, offspring.handle_ptr);
+    fixed_problem.presolve_data.reset_additional_vars(fixed_problem);
     fixed_problem.presolve_data.initialize_var_mapping(fixed_problem, offspring.handle_ptr);
     trivial_presolve(fixed_problem);
     fixed_problem.check_problem_representation(true);

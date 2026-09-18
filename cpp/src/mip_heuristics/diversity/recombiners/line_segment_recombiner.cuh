@@ -34,7 +34,7 @@ class line_segment_recombiner_t : public recombiner_t<i_t, f_t> {
                                                  i_t n_points_to_search,
                                                  i_t remaining_variables)
   {
-    raft::common::nvtx::range fun_scope("generate_delta_vector");
+    [[maybe_unused]] raft::common::nvtx::range fun_scope("generate_delta_vector");
     CUOPT_LOG_DEBUG("LS rec: Number of different variables %d MAX_VARS %d",
                     remaining_variables,
                     ls_recombiner_config_t::max_n_of_vars_from_other);
@@ -71,7 +71,7 @@ class line_segment_recombiner_t : public recombiner_t<i_t, f_t> {
                                                   solution_t<i_t, f_t>& b,
                                                   const weight_t<i_t, f_t>& weights)
   {
-    raft::common::nvtx::range fun_scope("line_segment_recombiner");
+    [[maybe_unused]] raft::common::nvtx::range fun_scope("line_segment_recombiner");
     auto& guiding_solution = a.get_feasible() ? a : b;
     auto& other_solution   = a.get_feasible() ? b : a;
     // copy the solution from A

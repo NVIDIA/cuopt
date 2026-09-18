@@ -82,7 +82,7 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp_remote(
   cpu_optimization_problem_t<i_t, f_t> const& cpu_problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings)
 {
-  init_logger_t log(settings.log_file, settings.log_to_console);
+  [[maybe_unused]] init_logger_t log(settings.log_file, settings.log_to_console);
 
   CUOPT_LOG_INFO("Using remote GPU backend");
 
@@ -142,7 +142,7 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip_remote(
   cpu_optimization_problem_t<i_t, f_t> const& cpu_problem,
   mip_solver_settings_t<i_t, f_t> const& settings)
 {
-  init_logger_t log(settings.log_file, settings.log_to_console);
+  [[maybe_unused]] init_logger_t log(settings.log_file, settings.log_to_console);
 
   CUOPT_LOG_INFO("Using remote GPU backend");
 
@@ -194,7 +194,7 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip_remote(
   // Set up incumbent callback forwarding
   if (has_incumbents) {
     CUOPT_LOG_INFO("solve_mip_remote - setting up inline incumbent callback forwarding");
-    config.incumbent_callback = [&mip_callbacks](int64_t index,
+    config.incumbent_callback = [&mip_callbacks]([[maybe_unused]] int64_t index,
                                                  double objective,
                                                  const std::vector<double>& solution) -> bool {
       // Forward incumbent to all user callbacks (invoked from main thread with GIL)

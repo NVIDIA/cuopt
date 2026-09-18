@@ -91,7 +91,7 @@ pdlp_initial_scaling_strategy_t<i_t, f_t>::pdlp_initial_scaling_strategy_t(
     cummulative_constraint_matrix_scaling_{static_cast<size_t>(dual_size_h_), stream_view_},
     cummulative_variable_scaling_{static_cast<size_t>(primal_size_h_), stream_view_}
 {
-  raft::common::nvtx::range fun_scope("Initializing initial_scaling_strategy");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("Initializing initial_scaling_strategy");
 #ifdef PDLP_DEBUG_MODE
   RAFT_CUDA_TRY(cudaDeviceSynchronize());
   std::cout << "Initializing initial_scaling_strategy" << std::endl;
@@ -132,7 +132,7 @@ template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::compute_scaling_vectors(
   i_t number_of_ruiz_iterations, f_t alpha)
 {
-  raft::common::nvtx::range fun_scope("compute_scaling_vectors");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_scaling_vectors");
 
   // Skip scaling entirely for a shape-0 problem (distributed PDLP builds the
   // master pdlp_solver_t from a shape-0 placeholder)
@@ -558,7 +558,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::resize_context(i_t new_size)
 template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::apply_cummulative_scaling_to_problem()
 {
-  raft::common::nvtx::range fun_scope("apply_cummulative_scaling_to_problem");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("apply_cummulative_scaling_to_problem");
 
   // scale A
   i_t number_of_blocks = op_problem_scaled_.n_constraints / block_size;
@@ -705,7 +705,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::apply_bound_objective_rescaling_
 template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_problem()
 {
-  raft::common::nvtx::range fun_scope("scale_problem");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("scale_problem");
 
   apply_cummulative_scaling_to_problem();
 
@@ -851,7 +851,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::unscale_solutions(
   rmm::device_uvector<f_t>& dual_solution,
   rmm::device_uvector<f_t>& dual_slack) const
 {
-  raft::common::nvtx::range fun_scope("unscale_solutions");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("unscale_solutions");
 
   if (primal_solution.size()) {
     cuopt_expects(primal_solution.size() % static_cast<size_t>(primal_size_h_) == 0,

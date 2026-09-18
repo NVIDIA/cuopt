@@ -22,7 +22,7 @@ struct dispose {
 
   bool recombine(Solution& sol)
   {
-    raft::common::nvtx::range fun_scope("dispose");
+    [[maybe_unused]] raft::common::nvtx::range fun_scope("dispose");
     if (sol.sol.get_n_routes() <= sol.sol.problem_ptr->data_view_ptr->get_min_vehicles()) {
       return false;
     }

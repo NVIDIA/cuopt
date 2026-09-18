@@ -343,11 +343,11 @@ struct scross_three_routes {
   // clang-format on
 };
 
-static test_data_model_t<int, float> input_;
-static test_data_model_t<int, float> input_double_;
-static simple_two_routes<int, float> simple_two_routes_;
-static simple_three_routes<int, float> simple_three_routes_;
-static scross_three_routes<int, float> scross_three_routes_;
+[[maybe_unused]] static test_data_model_t<int, float> input_;
+[[maybe_unused]] static test_data_model_t<int, float> input_double_;
+[[maybe_unused]] static simple_two_routes<int, float> simple_two_routes_;
+[[maybe_unused]] static simple_three_routes<int, float> simple_three_routes_;
+[[maybe_unused]] static scross_three_routes<int, float> scross_three_routes_;
 
 }  // namespace test
 }  // namespace routing

@@ -59,7 +59,6 @@ i_t coo_to_csc(const std::vector<i_t>& Ai,
   if (A.nz_max < Ai.size()) { A.reallocate(static_cast<i_t>(Ai.size())); }
 
   i_t n  = A.n;
-  i_t m  = A.m;
   i_t nz = Aj.size();
   std::vector<i_t> workspace(n);
 
@@ -152,7 +151,7 @@ i_t csc_matrix_t<i_t, f_t>::load_a_column(i_t j, std::vector<f_t>& Aj) const
 template <typename i_t, typename f_t>
 void csc_matrix_t<i_t, f_t>::append_column(const std::vector<f_t>& x)
 {
-  const i_t m = this->m;
+  [[maybe_unused]] const i_t m = this->m;
   assert(x.size() == m);
   const i_t xsz = x.size();
   i_t nz        = this->col_start[this->n];
@@ -173,7 +172,7 @@ void csc_matrix_t<i_t, f_t>::append_column(const std::vector<f_t>& x)
 template <typename i_t, typename f_t>
 void csc_matrix_t<i_t, f_t>::append_column(const sparse_vector_t<i_t, f_t>& x)
 {
-  const i_t m = this->m;
+  [[maybe_unused]] const i_t m = this->m;
   assert(x.n == m);
   i_t nz        = this->col_start[this->n];
   const i_t xnz = x.i.size();
@@ -473,8 +472,8 @@ void csc_matrix_t<i_t, f_t>::print_matrix() const
 template <typename i_t, typename f_t>
 void csc_matrix_t<i_t, f_t>::compare(csc_matrix_t<i_t, f_t> const& B) const
 {
-  auto my_nnz = this->col_start[this->n];
-  auto B_nnz  = B.col_start[B.n];
+  [[maybe_unused]] auto my_nnz = this->col_start[this->n];
+  [[maybe_unused]] auto B_nnz  = B.col_start[B.n];
   assert(my_nnz == B_nnz);
   assert(this->m == B.m);
   assert(this->n == B.n);
@@ -573,7 +572,7 @@ i_t scatter(const csc_matrix_t<i_t, f_t>& A,
 }
 
 template <typename i_t, typename f_t>
-i_t csc_matrix_t<i_t, f_t>::check_matrix(std::string matrix_name) const
+i_t csc_matrix_t<i_t, f_t>::check_matrix([[maybe_unused]] std::string matrix_name) const
 {
 #ifdef CHECK_MATRIX
   std::vector<i_t> row_marker(this->m, -1);
@@ -778,8 +777,8 @@ template <typename i_t, typename f_t>
 i_t csc_matrix_t<i_t, f_t>::permute_rows(const std::vector<i_t>& pinv,
                                          csc_matrix_t<i_t, f_t>& C) const
 {
-  i_t m = this->m;
-  i_t n = this->n;
+  [[maybe_unused]] i_t m = this->m;
+  i_t n                  = this->n;
   assert(C.m == m);
   assert(C.n == n);
 
@@ -806,8 +805,8 @@ i_t csc_matrix_t<i_t, f_t>::permute_rows_and_cols(const std::vector<i_t>& pinv,
                                                   const std::vector<i_t>& q,
                                                   csc_matrix_t<i_t, f_t>& C) const
 {
-  i_t m = this->m;
-  i_t n = this->n;
+  [[maybe_unused]] i_t m = this->m;
+  i_t n                  = this->n;
   assert(C.m == m);
   assert(C.n == n);
 
@@ -921,7 +920,6 @@ f_t sparse_dot(const std::vector<i_t>& xind,
   const i_t nx        = xind.size();
   const i_t col_start = Y.col_start[y_col];
   const i_t col_end   = Y.col_start[y_col + 1];
-  const i_t ny        = col_end - col_start;
   f_t dot             = 0.0;
   for (i_t i = 0, k = col_start; i < nx && k < col_end;) {
     const i_t p = xind[i];

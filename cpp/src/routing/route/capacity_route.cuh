@@ -38,7 +38,7 @@ class capacity_route_t {
   {
     cuopt_assert(dim_info.n_capacity_dimensions <= default_max_capacity_dim,
                  "Supplied capacity dimension exceeds limit");
-    raft::common::nvtx::range fun_scope("zero capacity route copy_ctr");
+    [[maybe_unused]] raft::common::nvtx::range fun_scope("zero capacity route copy_ctr");
   }
 
   capacity_route_t(const capacity_route_t& capacity_route,
@@ -49,7 +49,7 @@ class capacity_route_t {
       max_after(capacity_route.max_after, sol_handle_->get_stream()),
       dim_info(capacity_route.dim_info)
   {
-    raft::common::nvtx::range fun_scope("capacity route copy_ctr");
+    [[maybe_unused]] raft::common::nvtx::range fun_scope("capacity route copy_ctr");
   }
 
   capacity_route_t& operator=(capacity_route_t&& capacity_route) = default;

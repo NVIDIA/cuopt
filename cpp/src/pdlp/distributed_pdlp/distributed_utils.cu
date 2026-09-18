@@ -23,8 +23,7 @@ std::vector<rank_data_t<i_t, f_t>> create_rank_data_from_parts(
   const std::vector<f_t>& A_t_values,
   i_t nb_parts,
   i_t nb_cstr,
-  i_t nb_vars,
-  i_t nnz)
+  i_t nb_vars)
 {
   std::vector<rank_data_t<i_t, f_t>> rank_data(nb_parts, rank_data_t<i_t, f_t>(nb_parts));
   cuopt_expects(static_cast<i_t>(parts.size()) == nb_cstr + nb_vars,
@@ -257,7 +256,6 @@ template std::vector<rank_data_t<int, double>> create_rank_data_from_parts<int, 
   const std::vector<double>& A_t_values,
   int nb_parts,
   int nb_cstr,
-  int nb_vars,
-  int nnz);
+  int nb_vars);
 
 }  // namespace cuopt::mathematical_optimization::pdlp

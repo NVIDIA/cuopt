@@ -234,7 +234,7 @@ void infeasibility_information_t<i_t, f_t>::compute_infeasibility_information(
   rmm::device_uvector<f_t>& primal_ray,
   rmm::device_uvector<f_t>& dual_ray)
 {
-  raft::common::nvtx::range fun_scope("compute_infeasibility_information");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_infeasibility_information");
   using f_t2 = typename type_2<f_t>::type;
 
   if (is_cupdlpx_restart<i_t, f_t>(hyper_params_)) {

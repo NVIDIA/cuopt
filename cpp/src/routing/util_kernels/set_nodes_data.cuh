@@ -86,7 +86,6 @@ __device__ void set_nodes_data_of_single_route(
   typename route_t<i_t, f_t, REQUEST>::view_t& route)
 {
   const auto& order_info = problem.order_info;
-  const auto& fleet_info = problem.fleet_info;
   i_t n_nodes_route      = route.get_num_nodes();
   const i_t vehicle_id   = route.get_vehicle_id();
   const i_t route_id     = route.get_id();
@@ -129,7 +128,6 @@ __device__ void set_nodes_data_of_single_route(
   typename route_t<i_t, f_t, REQUEST>::view_t& route)
 {
   const auto& order_info = problem.order_info;
-  const auto& fleet_info = problem.fleet_info;
   i_t n_nodes_route      = route.get_num_nodes();
   const i_t vehicle_id   = route.get_vehicle_id();
   const i_t route_id     = route.get_id();

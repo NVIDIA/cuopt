@@ -211,7 +211,7 @@ pdlp_restart_strategy_t<i_t, f_t>::pdlp_restart_strategy_t(
     climber_strategies_(climber_strategies),
     hyper_params_(hyper_params)
 {
-  raft::common::nvtx::range fun_scope("Initializing restart strategy");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("Initializing restart strategy");
 
   // Init the vectors
   RAFT_CUDA_TRY(cudaMemsetAsync(last_restart_duality_gap_.primal_solution_.data(),
@@ -335,7 +335,7 @@ bool pdlp_restart_strategy_t<i_t, f_t>::run_trust_region_restart(
   rmm::device_uvector<f_t>& primal_weight,
   const rmm::device_uvector<f_t>& step_size)
 {
-  raft::common::nvtx::range fun_scope("run trust region restart");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("run trust region restart");
 #ifdef PDLP_VERBOSE_MODE
   std::cout << "Trust region restart:" << std::endl;
 #endif
@@ -886,9 +886,9 @@ void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
   rmm::device_uvector<f_t>& primal_step_size,
   rmm::device_uvector<f_t>& dual_step_size,
   rmm::device_uvector<f_t>& best_primal_weight,
-  const std::vector<int>& should_restart)
+  [[maybe_unused]] const std::vector<int>& should_restart)
 {
-  raft::common::nvtx::range fun_scope("cupdlpx_restart");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("cupdlpx_restart");
 
   // TODO later batch mode: remove if you have per climber restart
   cuopt_assert(
@@ -1115,7 +1115,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::compute_restart(
   [[maybe_unused]] rmm::device_uvector<f_t>& best_primal_weight,
   std::vector<int>& has_restarted)
 {
-  raft::common::nvtx::range fun_scope("compute_restart");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_restart");
 
   if (hyper_params_.restart_strategy == static_cast<int>(restart_strategy_t::KKT_RESTART)) {
     cuopt_expects(climber_strategies_.size() == 1,
@@ -1229,7 +1229,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::compute_new_primal_weight(
   rmm::device_uvector<f_t>& primal_step_size,
   rmm::device_uvector<f_t>& dual_step_size)
 {
-  raft::common::nvtx::range fun_scope("compute_new_primal_weight");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_new_primal_weight");
 
   cuopt_assert(!batch_mode_, "compute_new_primal_weight  not supported in batch mode");
 
@@ -1251,7 +1251,8 @@ void pdlp_restart_strategy_t<i_t, f_t>::distance_squared_moved_from_last_restart
   i_t stride,
   rmm::device_uvector<f_t>& distance_moved)
 {
-  raft::common::nvtx::range fun_scope("distance_squared_moved_from_last_restart_period");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope(
+    "distance_squared_moved_from_last_restart_period");
 #ifdef PDLP_DEBUG_MODE
   rmm::device_scalar<f_t> debuga{stream_view_};
   rmm::device_scalar<f_t> debugb{stream_view_};
@@ -1348,7 +1349,7 @@ template <typename i_t, typename f_t>
 void pdlp_restart_strategy_t<i_t, f_t>::update_last_restart_information(
   localized_duality_gap_container_t<i_t, f_t>& duality_gap, rmm::device_uvector<f_t>& primal_weight)
 {
-  raft::common::nvtx::range fun_scope("update_last_restart_information");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("update_last_restart_information");
 
   compute_distance_traveled_last_restart_kernel<i_t, f_t><<<1, 1, 0, stream_view_.get()>>>(
     duality_gap.view(), primal_weight.data(), last_restart_duality_gap_.distance_traveled_.data());
@@ -1435,7 +1436,8 @@ void pdlp_restart_strategy_t<i_t, f_t>::should_do_adaptive_restart_normalized_du
   rmm::device_uvector<f_t>& primal_weight,
   i_t& restart)
 {
-  raft::common::nvtx::range fun_scope("should_do_adaptive_restart_normalized_duality_gap");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope(
+    "should_do_adaptive_restart_normalized_duality_gap");
 #ifdef PDLP_DEBUG_MODE
   std::cout << "Should do adaptive restart normalized duality gap" << std::endl;
 #endif
@@ -1516,7 +1518,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::compute_localized_duality_gaps(
   rmm::device_uvector<f_t>& tmp_primal,
   rmm::device_uvector<f_t>& tmp_dual)
 {
-  raft::common::nvtx::range fun_scope("compute_localized_duality_gaps");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_localized_duality_gaps");
 #ifdef PDLP_DEBUG_MODE
   std::cout << "Compute localized duality gaps:" << std::endl;
 #endif
@@ -1565,7 +1567,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::bound_optimal_objective(
   rmm::device_uvector<f_t>& tmp_primal,
   rmm::device_uvector<f_t>& tmp_dual)
 {
-  raft::common::nvtx::range fun_scope("bound_optimal_objective");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("bound_optimal_objective");
 #ifdef PDLP_DEBUG_MODE
   std::cout << "Bound optimal objective:" << std::endl;
 #endif
@@ -1587,7 +1589,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::compute_bound(const rmm::device_uvector<
                                                       rmm::device_uvector<f_t>& tmp,
                                                       rmm::device_scalar<f_t>& bound)
 {
-  raft::common::nvtx::range fun_scope("compute_bound");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_bound");
 #ifdef PDLP_DEBUG_MODE
   std::cout << "Compute bound" << std::endl;
 #endif
@@ -1930,7 +1932,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::solve_bound_constrained_trust_region(
   rmm::device_uvector<f_t>& tmp_primal,
   rmm::device_uvector<f_t>& tmp_dual)
 {
-  raft::common::nvtx::range fun_scope("solve_bound_constrained_trust_region");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("solve_bound_constrained_trust_region");
 #ifdef PDLP_DEBUG_MODE
   std::cout << "    Solve bound constrained trust region:" << std::endl;
 #endif
@@ -2226,7 +2228,8 @@ void pdlp_restart_strategy_t<i_t, f_t>::compute_distance_traveled_from_last_rest
   rmm::device_uvector<f_t>& tmp_primal,
   rmm::device_uvector<f_t>& tmp_dual)
 {
-  raft::common::nvtx::range fun_scope("compute_distance_traveled_from_last_restart");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope(
+    "compute_distance_traveled_from_last_restart");
   // norm(
   //     new_primal_solution - last_restart.primal_solution,
   //   )^2
@@ -2260,7 +2263,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::compute_primal_gradient(
   localized_duality_gap_container_t<i_t, f_t>& duality_gap,
   cusparse_view_t<i_t, f_t>& cusparse_view)
 {
-  raft::common::nvtx::range fun_scope("compute_primal_gradient");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_primal_gradient");
 #ifdef PDLP_DEBUG_MODE
   std::cout << "    Compute primal gradient:" << std::endl;
 #endif
@@ -2330,7 +2333,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::compute_dual_gradient(
   cusparse_view_t<i_t, f_t>& cusparse_view,
   rmm::device_uvector<f_t>& tmp_dual)
 {
-  raft::common::nvtx::range fun_scope("compute_dual_gradient");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_dual_gradient");
 #ifdef PDLP_DEBUG_MODE
   std::cout << "    Compute dual gradient:" << std::endl;
 #endif
@@ -2374,7 +2377,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::compute_lagrangian_value(
   rmm::device_uvector<f_t>& tmp_primal,
   rmm::device_uvector<f_t>& tmp_dual)
 {
-  raft::common::nvtx::range fun_scope("compute_lagrangian_value");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_lagrangian_value");
 #ifdef PDLP_DEBUG_MODE
   std::cout << "    Compute lagrangian value:" << std::endl;
 #endif

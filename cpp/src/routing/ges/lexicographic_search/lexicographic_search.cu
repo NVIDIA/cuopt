@@ -578,8 +578,8 @@ __global__ void execute_lexico_move(
   cuopt_assert(request_id != nullptr, "Request id should not be nullptr");
   cuopt_assert(request_id->is_valid(solution.problem.order_info.depot_included),
                "Request id should be positive");
-  p_val_seq_t p_val_seq  = bit_cast<p_val_seq_t, uint32_t>(*global_min_p);
-  i_t original_block_idx = global_sequence[0];
+  [[maybe_unused]] p_val_seq_t p_val_seq = bit_cast<p_val_seq_t, uint32_t>(*global_min_p);
+  i_t original_block_idx                 = global_sequence[0];
   i_t route_id, pickup_insert_idx;
   get_route_id_and_insertion_idx<i_t, f_t, REQUEST>(
     route_id, pickup_insert_idx, original_block_idx, solution);

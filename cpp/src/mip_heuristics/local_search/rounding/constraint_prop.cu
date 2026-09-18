@@ -1065,7 +1065,7 @@ bool constraint_prop_t<i_t, f_t>::apply_round(
   timer_t& timer,
   std::optional<std::reference_wrapper<probing_config_t<i_t, f_t>>> probing_config)
 {
-  raft::common::nvtx::range fun_scope("constraint prop round");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("constraint prop round");
   max_timer = timer_t{max_time_for_bounds_prop};
   if (check_brute_force_rounding(sol)) { return true; }
   recovery_mode      = false;
@@ -1171,7 +1171,8 @@ template <typename i_t, typename f_t>
 bool constraint_prop_t<i_t, f_t>::handle_fixed_vars(
   solution_t<i_t, f_t>& sol,
   problem_t<i_t, f_t>* original_problem,
-  const std::tuple<std::vector<i_t>, std::vector<f_t>, std::vector<f_t>>& var_probe_vals,
+  [[maybe_unused]] const std::tuple<std::vector<i_t>, std::vector<f_t>, std::vector<f_t>>&
+    var_probe_vals,
   size_t* set_count_ptr,
   rmm::device_uvector<i_t>& unset_vars)
 {

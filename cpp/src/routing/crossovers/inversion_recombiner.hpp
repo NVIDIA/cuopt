@@ -53,7 +53,7 @@ struct inversion {
    * } */
   bool recombine(Solution& a, const Solution& b)
   {
-    raft::common::nvtx::range fun_scope("inversion");
+    [[maybe_unused]] raft::common::nvtx::range fun_scope("inversion");
     // THIS IS TEMPORARY UNTIL EMPTY ROUTES ARE FIXED
     if (check_if_routes_empty(a) || check_if_routes_empty(b)) return false;
     bool relative = next_random() % 2;

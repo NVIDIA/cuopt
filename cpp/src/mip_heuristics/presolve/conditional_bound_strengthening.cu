@@ -48,7 +48,7 @@ void conditional_bound_strengthening_t<i_t, f_t>::resize(problem_t<i_t, f_t>& pr
   // is computing by chunks, i.e. subset of rows at a time
   try {
     select_constraint_pairs_device(problem);
-  } catch (std::bad_alloc& e) {
+  } catch (std::bad_alloc&) {
     select_constraint_pairs_host(problem);
   }
   async_fill(locks_per_constraint, 0, problem.handle_ptr->get_stream());
@@ -97,7 +97,7 @@ void spgemm_cusparse([[maybe_unused]] rmm::device_uvector<i_t>& offsetsA,
 
   cusparseSpMatDescr_t matA, matB, matC;
   cusparseSpGEMMAlg_t alg = CUSPARSE_SPGEMM_ALG1;
-  rmm::device_buffer dBuffer1(0, stream), dBuffer2(0, stream), dBuffer3(0, stream);
+  rmm::device_buffer dBuffer1(0, stream), dBuffer2(0, stream);
 
   float alpha              = 1.0f;
   float beta               = 0.0f;

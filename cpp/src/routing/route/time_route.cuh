@@ -43,7 +43,7 @@ class time_route_t {
       unavoidable_wait_backward(0, sol_handle_->get_stream()),
       actual_arrival(0, sol_handle_->get_stream())
   {
-    raft::common::nvtx::range fun_scope("zero time_route_t copy_ctr");
+    [[maybe_unused]] raft::common::nvtx::range fun_scope("zero time_route_t copy_ctr");
   }
 
   time_route_t(const time_route_t& time_route, solution_handle_t<i_t, f_t> const* sol_handle_)
@@ -62,7 +62,7 @@ class time_route_t {
       unavoidable_wait_backward(time_route.unavoidable_wait_backward, sol_handle_->get_stream()),
       actual_arrival(time_route.actual_arrival, sol_handle_->get_stream())
   {
-    raft::common::nvtx::range fun_scope("time route copy_ctr");
+    [[maybe_unused]] raft::common::nvtx::range fun_scope("time route copy_ctr");
   }
 
   time_route_t& operator=(time_route_t&& time_route) = default;

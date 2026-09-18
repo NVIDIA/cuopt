@@ -116,7 +116,7 @@ class sparse_cholesky_base_t {
 // Use cudaMallocAsync instead of the RMM pool until we reduce our memory footprint/fragmentation.
 // TODO: Still use RMM for smaller problems to benefit from their allocation optimizations.
 template <typename mem_pool_t>
-int cudss_device_alloc(void* ctx, void** ptr, size_t size, cudaStream_t stream)
+int cudss_device_alloc([[maybe_unused]] void* ctx, void** ptr, size_t size, cudaStream_t stream)
 {
   int status = cudaMallocAsync(ptr, size, stream);
   if (status != cudaSuccess) { throw raft::cuda_error("Cuda error in cudss_device_alloc"); }
@@ -124,7 +124,10 @@ int cudss_device_alloc(void* ctx, void** ptr, size_t size, cudaStream_t stream)
 }
 
 template <typename mem_pool_t>
-int cudss_device_dealloc(void* ctx, void* ptr, size_t size, cudaStream_t stream)
+int cudss_device_dealloc([[maybe_unused]] void* ctx,
+                         void* ptr,
+                         [[maybe_unused]] size_t size,
+                         cudaStream_t stream)
 {
   int status = cudaFreeAsync(ptr, stream);
   if (status != cudaSuccess) { throw raft::cuda_error("Cuda error in cudss_device_dealloc"); }
@@ -434,7 +437,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
 
   i_t analyze(device_csr_matrix_t<i_t, f_t>& Arow) override
   {
-    raft::common::nvtx::range fun_scope("Barrier: cuDSS Analyze");
+    [[maybe_unused]] raft::common::nvtx::range fun_scope("Barrier: cuDSS Analyze");
 
 #ifdef WRITE_MATRIX_MARKET
     {
@@ -475,12 +478,13 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     }
 
     if (!first_factor) {
-      raft::common::nvtx::range fun_scope("Barrier: cuDSS Analyze : Destroy");
+      [[maybe_unused]] raft::common::nvtx::range fun_scope("Barrier: cuDSS Analyze : Destroy");
       CUDSS_CALL_AND_CHECK(cudssMatrixDestroy(A), status, "cudssMatrixDestroy for A");
     }
 
     {
-      raft::common::nvtx::range fun_scope("Barrier: cuDSS Analyze : cudssMatrixCreateCsr");
+      [[maybe_unused]] raft::common::nvtx::range fun_scope(
+        "Barrier: cuDSS Analyze : cudssMatrixCreateCsr");
 #if CUDSS_VERSION_MAJOR > 0 || (CUDSS_VERSION_MAJOR == 0 && CUDSS_VERSION_MINOR >= 8)
       CUDSS_CALL_AND_CHECK(
         cudssMatrixCreateCsr(&A,
@@ -525,7 +529,8 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     f_t start_symbolic_factor;
 
     {
-      raft::common::nvtx::range fun_scope("Barrier: cuDSS Analyze : CUDSS_PHASE_ANALYSIS");
+      [[maybe_unused]] raft::common::nvtx::range fun_scope(
+        "Barrier: cuDSS Analyze : CUDSS_PHASE_ANALYSIS");
       status =
         cudssExecute(handle, CUDSS_PHASE_REORDERING, solverConfig, solverData, A, cudss_x, cudss_b);
       if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
@@ -579,7 +584,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
   }
   i_t factorize(device_csr_matrix_t<i_t, f_t>& Arow) override
   {
-    raft::common::nvtx::range fun_scope("Factorize: cuDSS");
+    [[maybe_unused]] raft::common::nvtx::range fun_scope("Factorize: cuDSS");
 
     if (!symbolic_done_ || !A_created) {
       settings_.log.printf(

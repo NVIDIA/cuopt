@@ -18,8 +18,8 @@ template <typename i_t, typename f_t>
 i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_breakpoints(std::vector<i_t>& indicies,
                                                                std::vector<f_t>& ratios)
 {
-  i_t n                  = n_;
-  i_t m                  = m_;
+  [[maybe_unused]] i_t n = n_;
+  [[maybe_unused]] i_t m = m_;
   constexpr bool verbose = false;
   f_t pivot_tol          = settings_.pivot_tol;
   const f_t dual_tol     = settings_.dual_tol / 10;
@@ -117,10 +117,10 @@ template <typename i_t, typename f_t>
 i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
                                                                i_t& nonbasic_entering)
 {
-  const i_t m            = m_;
-  const i_t n            = n_;
-  const i_t nz           = delta_z_indices_.size();
-  constexpr bool verbose = false;
+  [[maybe_unused]] const i_t m = m_;
+  [[maybe_unused]] const i_t n = n_;
+  const i_t nz                 = delta_z_indices_.size();
+  constexpr bool verbose       = false;
 
   // Compute the initial set of breakpoints
   std::vector<i_t> indicies(nz);
@@ -204,7 +204,7 @@ void bound_flipping_ratio_test_t<i_t, f_t>::heap_passes(const std::vector<i_t>& 
 {
   std::vector<i_t> bare_idx(num_breakpoints);
   constexpr bool verbose                = false;
-  const f_t dual_tol                    = settings_.dual_tol;
+  [[maybe_unused]] const f_t dual_tol   = settings_.dual_tol;
   const f_t zero_tol                    = settings_.zero_tol;
   const std::vector<f_t>& delta_z       = delta_z_;
   const std::vector<i_t>& nonbasic_list = nonbasic_list_;
@@ -281,15 +281,15 @@ void bound_flipping_ratio_test_t<i_t, f_t>::bucket_pass(const std::vector<i_t>& 
                                                         const std::vector<f_t>& current_ratios,
                                                         i_t num_breakpoints,
                                                         f_t& slope,
-                                                        f_t& step_length,
-                                                        i_t& nonbasic_entering,
-                                                        i_t& entering_index)
+                                                        [[maybe_unused]] f_t& step_length,
+                                                        [[maybe_unused]] i_t& nonbasic_entering,
+                                                        [[maybe_unused]] i_t& entering_index)
 {
-  const f_t dual_tol                    = settings_.dual_tol;
-  const f_t zero_tol                    = settings_.zero_tol;
-  const std::vector<f_t>& delta_z       = delta_z_;
-  const std::vector<i_t>& nonbasic_list = nonbasic_list_;
-  const i_t N                           = num_breakpoints;
+  [[maybe_unused]] const f_t dual_tol              = settings_.dual_tol;
+  [[maybe_unused]] const f_t zero_tol              = settings_.zero_tol;
+  [[maybe_unused]] const std::vector<f_t>& delta_z = delta_z_;
+  const std::vector<i_t>& nonbasic_list            = nonbasic_list_;
+  const i_t N                                      = num_breakpoints;
 
   const i_t K = 400;  // 0, -16, -15, ...., 0, 1, ...., 400 - 18 = 382
   std::vector<f_t> buckets(K, 0.0);

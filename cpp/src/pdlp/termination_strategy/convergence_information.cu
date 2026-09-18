@@ -228,7 +228,7 @@ void convergence_information_t<i_t, f_t>::distributed_init_l2_norms(
                 error_type_t::ValidationError,
                 "distributed_init_l2_norms: only the Stable3-shaped path is "
                 "supported (initial_primal_weight_combined_bounds=false).");
-  raft::common::nvtx::range scope("distributed_init_l2_norms");
+  [[maybe_unused]] raft::common::nvtx::range scope("distributed_init_l2_norms");
 
   f_t global_rhs_sq = f_t(0);
 
@@ -552,7 +552,7 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
       dual_residual_.size() == primal_size_h_ * climber_strategies_.size(),
       "dual_residual_ size must be equal to primal_size_h_ * climber_strategies_.size()");
   }
-  raft::common::nvtx::range fun_scope("compute_convergence_information");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_convergence_information");
 
 #ifdef CUPDLP_DEBUG_MODE
   print("primal_iterate", primal_iterate);
@@ -714,7 +714,7 @@ void convergence_information_t<i_t, f_t>::compute_primal_residual(
   rmm::device_uvector<f_t>& tmp_dual,
   [[maybe_unused]] const rmm::device_uvector<f_t>& dual_iterate)
 {
-  raft::common::nvtx::range fun_scope("compute_primal_residual");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_primal_residual");
 
   // primal_product
   if (!batch_mode_) {
@@ -802,7 +802,7 @@ template <typename i_t, typename f_t>
 void convergence_information_t<i_t, f_t>::compute_primal_objective_owned_partial(
   const rmm::device_uvector<f_t>& primal_solution, i_t n_owned)
 {
-  raft::common::nvtx::range fun_scope("compute_primal_objective_owned_partial");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_primal_objective_owned_partial");
   cuopt_assert(!batch_mode_, "owned-partial primal objective is only used in non-batch mGPU mode");
   cuopt_assert(n_owned <= primal_size_h_,
                "n_owned must be <= primal_size_h_ (owned slice is a prefix)");
@@ -820,7 +820,7 @@ template <typename i_t, typename f_t>
 void convergence_information_t<i_t, f_t>::compute_primal_objective(
   rmm::device_uvector<f_t>& primal_solution)
 {
-  raft::common::nvtx::range fun_scope("compute_primal_objective");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_primal_objective");
 
   if (!batch_mode_) {
     compute_primal_objective_owned_partial(primal_solution, primal_size_h_);
@@ -871,7 +871,7 @@ void convergence_information_t<i_t, f_t>::compute_dual_residual(
   cuopt_assert(dual_residual_.size() == primal_solution.size(),
                "dual_residual_ size must be equal to primal_solution size");
 
-  raft::common::nvtx::range fun_scope("compute_dual_residual");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_dual_residual");
   // compute objective product (Q*x) if QP
 
   // gradient is recomputed with the dual solution that has been computed since the gradient was
@@ -948,7 +948,7 @@ void convergence_information_t<i_t, f_t>::compute_dual_objective_owned_partial(
   i_t n_owned_var,
   i_t n_owned_cstr)
 {
-  raft::common::nvtx::range fun_scope("compute_dual_objective_owned_partial");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_dual_objective_owned_partial");
   cuopt_assert(!batch_mode_, "owned-partial dual objective is only used in non-batch mGPU mode");
   cuopt_assert(hyper_params_.use_reflected_primal_dual,
                "owned-partial dual objective requires use_reflected_primal_dual");
@@ -991,7 +991,7 @@ void convergence_information_t<i_t, f_t>::compute_dual_objective(
   [[maybe_unused]] const rmm::device_uvector<f_t>& primal_solution,
   [[maybe_unused]] const rmm::device_uvector<f_t>& dual_slack)
 {
-  raft::common::nvtx::range fun_scope("compute_dual_objective");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_dual_objective");
 
   // for QP would need to add + problem.objective_constant - 0.5 * objective_product' *
   // primal_solution
@@ -1078,7 +1078,7 @@ template <typename i_t, typename f_t>
 void convergence_information_t<i_t, f_t>::compute_reduced_cost_from_primal_gradient(
   const rmm::device_uvector<f_t>& primal_gradient, const rmm::device_uvector<f_t>& primal_solution)
 {
-  raft::common::nvtx::range fun_scope("compute_reduced_cost_from_primal_gradient");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_reduced_cost_from_primal_gradient");
 
   using f_t2 = typename type_2<f_t>::type;
   cub::DeviceTransform::Transform(
@@ -1109,7 +1109,8 @@ void convergence_information_t<i_t, f_t>::compute_reduced_cost_from_primal_gradi
 template <typename i_t, typename f_t>
 void convergence_information_t<i_t, f_t>::compute_reduced_costs_dual_objective_contribution()
 {
-  raft::common::nvtx::range fun_scope("compute_reduced_costs_dual_objective_contribution");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope(
+    "compute_reduced_costs_dual_objective_contribution");
 
   using f_t2 = typename type_2<f_t>::type;
   // if reduced cost is positive -> lower bound, negative -> upper bounds, 0 -> 0

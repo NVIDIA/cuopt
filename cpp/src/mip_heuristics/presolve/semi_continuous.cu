@@ -152,10 +152,9 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
     op_problem.set_variable_upper_bounds(var_ub.data(), var_ub.size());
   }
 
-  const i_t n_orig       = op_problem.get_n_variables();
-  const i_t n_sc         = static_cast<i_t>(sc_indices.size());
-  const auto* handle_ptr = op_problem.get_handle_ptr();
-  const f_t big_m        = settings.semi_continuous_big_m;
+  const i_t n_orig = op_problem.get_n_variables();
+  const i_t n_sc   = static_cast<i_t>(sc_indices.size());
+  const f_t big_m  = settings.semi_continuous_big_m;
   if (used_fallback_big_m != nullptr) { used_fallback_big_m->assign(n_orig, uint8_t{0}); }
 
   CUOPT_LOG_INFO("Reformulating %d semi-continuous variables before presolve", n_sc);

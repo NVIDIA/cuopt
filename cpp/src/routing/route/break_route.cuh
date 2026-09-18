@@ -32,7 +32,7 @@ class break_route_t {
       breaks_forward(0, sol_handle_->get_stream()),
       breaks_backward(0, sol_handle_->get_stream())
   {
-    raft::common::nvtx::range fun_scope("zero break_route_t copy_ctr");
+    [[maybe_unused]] raft::common::nvtx::range fun_scope("zero break_route_t copy_ctr");
   }
 
   break_route_t(const break_route_t& break_route, solution_handle_t<i_t, f_t> const* sol_handle_)
@@ -40,7 +40,7 @@ class break_route_t {
       breaks_forward(break_route.breaks_forward, sol_handle_->get_stream()),
       breaks_backward(break_route.breaks_backward, sol_handle_->get_stream())
   {
-    raft::common::nvtx::range fun_scope("break route copy_ctr");
+    [[maybe_unused]] raft::common::nvtx::range fun_scope("break route copy_ctr");
   }
 
   break_route_t& operator=(break_route_t&& break_route) = default;

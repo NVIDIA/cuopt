@@ -50,7 +50,7 @@ class solution_publication_t {
 
   void set_published_floor(f_t solver_objective)
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    [[maybe_unused]] std::lock_guard<std::mutex> lock(mutex_);
     best_published_objective_ = solver_objective;
   }
 
@@ -64,7 +64,7 @@ class solution_publication_t {
     cuopt_assert(problem_ptr != nullptr, "Publication problem pointer must not be null");
     cuopt_assert(std::isfinite(solver_objective), "Published objective must be finite");
 
-    std::lock_guard<std::mutex> lock(mutex_);
+    [[maybe_unused]] std::lock_guard<std::mutex> lock(mutex_);
     cuopt_assert(assignment.size() == (size_t)problem_ptr->n_variables,
                  "Published assignment size must match the problem");
     const auto& objective_variables    = problem_ptr->vars_with_objective_coeffs.first;

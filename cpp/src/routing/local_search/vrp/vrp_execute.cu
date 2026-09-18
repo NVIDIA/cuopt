@@ -376,7 +376,7 @@ template <typename i_t, typename f_t, request_t REQUEST>
 i_t extract_non_overlapping_moves(solution_t<i_t, f_t, REQUEST>& sol,
                                   move_candidates_t<i_t, f_t>& move_candidates)
 {
-  raft::common::nvtx::range fun_scope("extract_non_overlapping_moves");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("extract_non_overlapping_moves");
   i_t TPB                  = 128;
   i_t n_blocks_for_compact = (sol.n_routes * sol.n_routes + TPB - 1) / TPB;
   compact_best_route_pair_moves<i_t, f_t, REQUEST>
@@ -415,7 +415,7 @@ bool execute_vrp_moves(solution_t<i_t, f_t, REQUEST>& sol,
                        move_candidates_t<i_t, f_t>& move_candidates,
                        i_t n_moves_found)
 {
-  raft::common::nvtx::range fun_scope("execute_vrp_moves");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("execute_vrp_moves");
   cuopt_func_call(sol.compute_cost());
   cuopt_func_call(double cost_before =
                     sol.get_cost(move_candidates.include_objective, move_candidates.weights));
@@ -475,7 +475,7 @@ template <typename i_t, typename f_t, request_t REQUEST>
 bool select_and_execute_vrp_move(solution_t<i_t, f_t, REQUEST>& sol,
                                  move_candidates_t<i_t, f_t>& move_candidates)
 {
-  raft::common::nvtx::range fun_scope("select_and_execute_vrp_move");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("select_and_execute_vrp_move");
   cuopt_func_call(
     move_candidates.debug_delta.set_value_to_zero_async(sol.sol_handle->get_stream()));
   i_t n_moves_found = extract_non_overlapping_moves(sol, move_candidates);

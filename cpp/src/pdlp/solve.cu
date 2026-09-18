@@ -859,15 +859,13 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(mip::problem_t<i_t, f_t>& pro
                 "Single-precision PDLP is not supported in batch mode.");
 
   auto start_solver = std::chrono::high_resolution_clock::now();
-  timer_t timer_pdlp(timer.remaining_time());
-  auto sol = run_pdlp_solver(problem, settings, timer, is_batch_mode);
+  auto sol          = run_pdlp_solver(problem, settings, timer, is_batch_mode);
   // Negate dual variables and reduced costs for maximization problems
   if (problem.maximize) {
     adjust_dual_solution_and_reduced_cost(
       sol.get_dual_solution(), sol.get_reduced_cost(), problem.handle_ptr->get_stream());
     problem.handle_ptr->sync_stream();
   }
-  auto pdlp_solve_time = timer_pdlp.elapsed_time();
   sol.set_solve_time(timer.elapsed_time());
   CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "PDLP finished");
   if (sol.get_termination_status() != pdlp_termination_status_t::ConcurrentLimit) {
@@ -1285,8 +1283,8 @@ static size_t max_memory_batch_size(const optimization_problem_t<i_t, f_t>& prob
 {
   size_t st_free_mem, st_total_mem;
   RAFT_CUDA_TRY(cudaMemGetInfo(&st_free_mem, &st_total_mem));
-  const double free_mem  = static_cast<double>(st_free_mem);
-  const double total_mem = static_cast<double>(st_total_mem);
+  const double free_mem                   = static_cast<double>(st_free_mem);
+  [[maybe_unused]] const double total_mem = static_cast<double>(st_total_mem);
 
   while (memory_max_batch_size > 0) {
     const double mem_est = batch_pdlp_memory_estimator(problem,
@@ -1353,8 +1351,8 @@ static optimization_problem_solution_t<i_t, f_t> run_batch_pdlp_splitting(
                                 collect_solutions);
   size_t st_free_mem, st_total_mem;
   RAFT_CUDA_TRY(cudaMemGetInfo(&st_free_mem, &st_total_mem));
-  const double free_mem  = static_cast<double>(st_free_mem);
-  const double total_mem = static_cast<double>(st_total_mem);
+  const double free_mem                   = static_cast<double>(st_free_mem);
+  [[maybe_unused]] const double total_mem = static_cast<double>(st_total_mem);
 
 #ifdef BATCH_VERBOSE_MODE
   std::cout << "Memory estimate: " << memory_estimate << std::endl;
@@ -1571,8 +1569,6 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   bool is_batch_mode)
 {
   CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "Running concurrent (showing only PDLP log)\n");
-  timer_t timer_concurrent(timer.remaining_time());
-
   // Copy the settings so that we can set the concurrent halt pointer
   pdlp_solver_settings_t<i_t, f_t> settings_pdlp(settings);
 
@@ -1655,7 +1651,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
             };
             if (settings.num_gpus > 1) {
               problem.handle_ptr->sync_stream();
-              raft::device_setter device_setter(1);  // Scoped variable
+              [[maybe_unused]] raft::device_setter device_setter(1);  // Scoped variable
               CUOPT_LOG_DEBUG("Barrier device: %d", device_setter.get_current_device());
               call_barrier_thread();
             } else {
@@ -1717,7 +1713,8 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
     dispatch_concurrent_solvers();
   } else {
     // Stand-alone LP: stand up a local team sized for 1 dispatcher + 1 per spawned task.
-    const int num_workers = 1 + (settings.inside_mip ? 0 : 1) + (enable_barrier ? 1 : 0);
+    [[maybe_unused]] const int num_workers =
+      1 + (settings.inside_mip ? 0 : 1) + (enable_barrier ? 1 : 0);
 #pragma omp parallel num_threads(num_workers) default(shared)
     {
 #pragma omp single
@@ -1878,7 +1875,7 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
 {
   try {
     // Create log stream for file logging and add it to default logger
-    init_logger_t log(settings.log_file, settings.log_to_console);
+    [[maybe_unused]] init_logger_t log(settings.log_file, settings.log_to_console);
     print_version_info();
 
     // Init libraries before to not include it in solve time
@@ -1904,7 +1901,7 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
       }
     }
 
-    raft::common::nvtx::range fun_scope("Running QCQP solver");
+    [[maybe_unused]] raft::common::nvtx::range fun_scope("Running QCQP solver");
     const bool has_q_obj = op_problem.has_quadratic_objective();
     const bool has_qc    = op_problem.has_quadratic_constraints();
     if (has_q_obj && has_qc) {
@@ -2061,7 +2058,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
   try {
     pdlp_solver_settings_t<i_t, f_t> settings(settings_const);
     // Create log stream for file logging and add it to default logger
-    init_logger_t log(settings.log_file, settings.log_to_console);
+    [[maybe_unused]] init_logger_t log(settings.log_file, settings.log_to_console);
 
     if (!settings_const.inside_mip) print_version_info();
 
@@ -2069,10 +2066,10 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     // This needs to be called before pdlp is initialized
     init_handler(op_problem.get_handle_ptr());
 
-    raft::common::nvtx::range fun_scope("Running solver");
+    [[maybe_unused]] raft::common::nvtx::range fun_scope("Running solver");
 
     if (problem_checking) {
-      raft::common::nvtx::range fun_scope("Check problem representation");
+      [[maybe_unused]] raft::common::nvtx::range fun_scope("Check problem representation");
       // This is required as user might forget to set some fields
       problem_checking_t<i_t, f_t>::check_problem_representation(op_problem);
       // In batch PDLP for strong branching, the initial solutions will be by design out of bounds.
@@ -2366,7 +2363,7 @@ template <typename i_t, typename f_t>
 cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> op_problem_to_mps_data_model(
   const optimization_problem_t<i_t, f_t>& op_problem)
 {
-  raft::common::nvtx::range fun_scope("op_problem -> mps_data_model (D->H)");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("op_problem -> mps_data_model (D->H)");
   cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> mps;
 
   mps.set_maximize(op_problem.get_sense());
@@ -2561,7 +2558,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
     "bound_objective_rescaling=true). Set pdlp_solver_mode = Stable3 (the default) or adjust "
     "the hyper-params to match.");
 
-  init_logger_t log(settings_resolved.log_file, settings_resolved.log_to_console);
+  [[maybe_unused]] init_logger_t log(settings_resolved.log_file, settings_resolved.log_to_console);
   print_version_info(visible_device_count);
   init_handler(handle_ptr);
 

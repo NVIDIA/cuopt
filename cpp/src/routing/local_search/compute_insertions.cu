@@ -385,8 +385,6 @@ __device__ i_t find_request_insertion(typename solution_t<i_t, f_t, REQUEST>::vi
     auto other_route_id = solution.route_node_map.get_route_id(node_id);
     cuopt_assert(other_route_id >= 0 || insert_unserviced,
                  "Other route id cannot be -1, it must have been filtered!");
-    const auto& dimensions_info = solution.problem.dimensions_info;
-
     auto request_node =
       other_route_id >= 0
         ? solution.routes[other_route_id].get_request_node(solution.route_node_map, request_id)
@@ -810,7 +808,7 @@ void find_insertions(solution_t<i_t, f_t, REQUEST>& sol,
   if (search_type == search_type_t::RANDOM) { name = "random_find_insertions"; }
 
   constexpr bool insert_unserviced = false;
-  raft::common::nvtx::range fun_scope(name);
+  [[maybe_unused]] raft::common::nvtx::range fun_scope(name);
   i_t TPB = get_n_viable<REQUEST>();
   // the formula is obtained with a linear regression across different instances
   move_candidates.number_of_blocks_per_ls_route =
@@ -873,7 +871,7 @@ void find_unserviced_insertions(solution_t<i_t, f_t, REQUEST>& sol,
   constexpr bool insert_unserviced = true;
 
   auto name = "find_unserviced_insertions";
-  raft::common::nvtx::range fun_scope(name);
+  [[maybe_unused]] raft::common::nvtx::range fun_scope(name);
   constexpr auto const TPB = get_n_viable<REQUEST>();
   // the formula is obtained with a linear regression across different instances
   move_candidates.number_of_blocks_per_ls_route =

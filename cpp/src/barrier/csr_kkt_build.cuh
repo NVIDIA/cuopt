@@ -512,7 +512,7 @@ void build_augmented_csr_metadata(const cone_data_t<i_t, f_t>& cones,
                                   cone_kkt_data_t<i_t, f_t>& metadata,
                                   cuda::stream_ref stream)
 {
-  raft::common::nvtx::range scope("Barrier: augmented: device CSR metadata");
+  [[maybe_unused]] raft::common::nvtx::range scope("Barrier: augmented: device CSR metadata");
   const i_t n_cones  = cones.n_cones;
   const i_t n_dense  = cones.n_dense_cones();
   const i_t n_sparse = cones.n_sparse_cones;
@@ -648,7 +648,7 @@ i_t build_augmented_csr_on_device(i_t n,
 
   rmm::device_uvector<i_t> row_nnz(factorization_size, stream);
   {
-    raft::common::nvtx::range scope("Barrier: augmented: device CSR count");
+    [[maybe_unused]] raft::common::nvtx::range scope("Barrier: augmented: device CSR count");
     const size_t grid = raft::ceildiv<size_t>(factorization_size, augmented_csr_block_size);
     count_augmented_row_nnz_kernel<i_t, f_t><<<grid, augmented_csr_block_size, 0, stream.get()>>>(
       factorization_size,
@@ -668,7 +668,7 @@ i_t build_augmented_csr_on_device(i_t n,
 
   i_t total_nnz = 0;
   {
-    raft::common::nvtx::range scope("Barrier: augmented: device CSR scan");
+    [[maybe_unused]] raft::common::nvtx::range scope("Barrier: augmented: device CSR scan");
     device_augmented.m = factorization_size;
     device_augmented.n = factorization_size;
     device_augmented.row_start.resize(static_cast<size_t>(factorization_size) + 1, stream);
@@ -712,7 +712,7 @@ i_t build_augmented_csr_on_device(i_t n,
     cone_data.dense_cone_diag_csr_indices, std::max<i_t>(0, n_dense_entries), i_t(-1));
 
   {
-    raft::common::nvtx::range scope("Barrier: augmented: device CSR fill");
+    [[maybe_unused]] raft::common::nvtx::range scope("Barrier: augmented: device CSR fill");
     auto views        = make_cone_kkt_views(cone_data, augmented_diagonal_indices);
     const size_t grid = raft::ceildiv<size_t>(factorization_size, augmented_csr_block_size);
     fill_augmented_csr_row_kernel<i_t, f_t><<<grid, augmented_csr_block_size, 0, stream.get()>>>(

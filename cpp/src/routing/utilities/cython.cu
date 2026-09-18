@@ -106,7 +106,7 @@ std::vector<std::unique_ptr<vehicle_routing_ret_t>> call_batch_solve(
   std::vector<std::unique_ptr<vehicle_routing_ret_t>> list(size);
 
   // Use OpenMP for parallel execution
-  const int max_thread = std::min(static_cast<int>(size), omp_get_max_threads());
+  [[maybe_unused]] const int max_thread = std::min(static_cast<int>(size), omp_get_max_threads());
   rmm::cuda_stream_pool stream_pool(size, rmm::cuda_stream::flags::non_blocking);
 
   int device_id = raft::resource::get_device_id(*(data_models[0]->get_handle_ptr()));

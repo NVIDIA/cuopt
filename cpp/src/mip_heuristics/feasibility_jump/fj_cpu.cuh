@@ -31,12 +31,12 @@ template <typename i_t, typename f_t>
 struct fj_cpu_shared_incumbent_t {
   // True when the candidate beat the shared best, in which case it was stored.
   bool publish(f_t candidate_objective,
-               f_t candidate_user_objective,
+               [[maybe_unused]] f_t candidate_user_objective,
                const std::vector<f_t>& candidate)
   {
     // Unlocked reject first: the publish sites are hot on instances that improve in tiny steps.
     if (!(candidate_objective < objective.load(std::memory_order_relaxed))) return false;
-    std::lock_guard<std::mutex> lock(guard);
+    [[maybe_unused]] std::lock_guard<std::mutex> lock(guard);
     if (!(candidate_objective < objective.load(std::memory_order_relaxed))) return false;
     assignment = candidate;
     objective.store(candidate_objective, std::memory_order_relaxed);
@@ -48,7 +48,7 @@ struct fj_cpu_shared_incumbent_t {
   bool adopt(f_t local_objective, std::vector<f_t>& destination, f_t* adopted_objective = nullptr)
   {
     if (!(objective.load(std::memory_order_relaxed) < local_objective)) return false;
-    std::lock_guard<std::mutex> lock(guard);
+    [[maybe_unused]] std::lock_guard<std::mutex> lock(guard);
     const f_t shared_objective = objective.load(std::memory_order_relaxed);
     if (!(shared_objective < local_objective)) return false;
     cuopt_assert(assignment.size() == destination.size(), "shared incumbent size mismatch");

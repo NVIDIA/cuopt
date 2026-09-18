@@ -402,7 +402,7 @@ std::size_t lz4_input_stream_t::reserve_size_hint() const noexcept
 void lz4_input_stream_t::commit_up_to(std::size_t bytes)
 {
   MPS_NVTX_RANGE("lz4_commit_output", nvtx::colors::alloc);
-  std::lock_guard<std::mutex> lock(commit_mutex_);
+  [[maybe_unused]] std::lock_guard<std::mutex> lock(commit_mutex_);
   if (bytes <= output_committed_size_) return;
   if (bytes > output_mapped_size_) {
     mps_parser_fail(error_type_t::OutOfMemoryError, "LZ4 output exceeded reserved virtual mapping");
@@ -530,7 +530,7 @@ struct lz4_pipeline_t {
     if (state.decode_refs.load(std::memory_order_acquire) != 0) { return; }
     uint8_t expected = 0;
     if (!state.released.compare_exchange_strong(expected, 1, std::memory_order_acq_rel)) { return; }
-    std::lock_guard<std::mutex> lock(window_release_mutex);
+    [[maybe_unused]] std::lock_guard<std::mutex> lock(window_release_mutex);
     if (windows[index].data) {
       windows[index].data.reset();
       compressed_resident_bytes.fetch_sub(windows[index].size, std::memory_order_relaxed);
@@ -576,7 +576,7 @@ struct lz4_pipeline_t {
       }
       {
         MPS_NVTX_RANGE("lz4_window_publish", nvtx::colors::generic);
-        std::lock_guard<std::mutex> lock(window_mutex);
+        [[maybe_unused]] std::lock_guard<std::mutex> lock(window_mutex);
         window_done[index] = 1;
       }
       window_cv.notify_all();
@@ -603,7 +603,7 @@ struct lz4_pipeline_t {
   std::vector<resident_block_desc_t> wait_for_decode_batch()
   {
     MPS_NVTX_RANGE("lz4_decode_wait_batch", nvtx::colors::io);
-    std::unique_lock<std::mutex> lock(desc_mutex);
+    [[maybe_unused]] std::unique_lock<std::mutex> lock(desc_mutex);
     desc_cv.wait(lock, [&] { return latch.stopped() || scanner_done || !desc_queue.empty(); });
     if (latch.stopped() || desc_queue.empty()) { return {}; }
     std::vector<resident_block_desc_t> batch = std::move(desc_queue.front());
@@ -676,7 +676,7 @@ struct lz4_pipeline_t {
     }
     for (std::size_t wi = first; wi <= last; ++wi) {
       MPS_NVTX_RANGE("lz4_metadata_wait_window", nvtx::colors::io);
-      std::unique_lock<std::mutex> lock(window_mutex);
+      [[maybe_unused]] std::unique_lock<std::mutex> lock(window_mutex);
       window_cv.wait(lock, [&] { return latch.stopped() || window_done[wi] != 0; });
       if (latch.stopped() && window_done[wi] == 0) {
         mps_parser_fail(error_type_t::RuntimeError,
@@ -694,7 +694,7 @@ struct lz4_pipeline_t {
     }
     {
       MPS_NVTX_RANGE("lz4_metadata_enqueue_batch", nvtx::colors::generic);
-      std::lock_guard<std::mutex> lock(desc_mutex);
+      [[maybe_unused]] std::lock_guard<std::mutex> lock(desc_mutex);
       desc_queue.push_back(std::move(batch));
     }
     batch.clear();
@@ -707,13 +707,13 @@ struct lz4_pipeline_t {
       nvtx::name_current_thread("lz4-metadata-scan");
       scan_lz4_metadata();
       {
-        std::lock_guard<std::mutex> lock(desc_mutex);
+        [[maybe_unused]] std::lock_guard<std::mutex> lock(desc_mutex);
         scanner_done = true;
       }
       desc_cv.notify_all();
     } catch (...) {
       {
-        std::lock_guard<std::mutex> lock(desc_mutex);
+        [[maybe_unused]] std::lock_guard<std::mutex> lock(desc_mutex);
         scanner_done = true;
       }
       fail_and_notify(std::current_exception());
