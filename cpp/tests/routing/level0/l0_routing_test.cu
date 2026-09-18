@@ -440,12 +440,12 @@ class routing_retail_test_t : public base_test_t<i_t, f_t>,
     if (this->vehicle_lower_bound_) data_model.set_min_vehicles(this->vehicle_lower_bound_);
 
     if (this->vehicle_max_costs_) {
-      auto max_dist_depot    = thrust::reduce(this->handle_.get_thrust_policy(),
+      auto max_depot_cost    = thrust::reduce(this->handle_.get_thrust_policy(),
                                            this->cost_matrix_d.data(),
                                            this->cost_matrix_d.data() + this->n_locations,
                                            -1,
                                            thrust::maximum<f_t>());
-      auto vehicle_max_costs = max_dist_depot * (2 + (i_t)this->pickup_delivery_) + 2;
+      auto vehicle_max_costs = max_depot_cost * (2 + (i_t)this->pickup_delivery_) + 2;
       thrust::fill(this->handle_.get_thrust_policy(),
                    this->vehicle_max_costs_d.begin(),
                    this->vehicle_max_costs_d.end(),
@@ -464,12 +464,12 @@ class routing_retail_test_t : public base_test_t<i_t, f_t>,
                                         this->service_time_d.data() + this->n_orders,
                                         -1,
                                         thrust::maximum<f_t>());
-      auto max_dist_depot    = thrust::reduce(this->handle_.get_thrust_policy(),
-                                           this->cost_matrix_d.data(),
-                                           this->cost_matrix_d.data() + this->n_locations,
-                                           -1,
-                                           thrust::maximum<f_t>());
-      auto vehicle_max_times = max_dist_depot * (2 + (i_t)this->pickup_delivery_) + 2 +
+      auto max_depot_transit = thrust::reduce(this->handle_.get_thrust_policy(),
+                                              this->cost_matrix_d.data(),
+                                              this->cost_matrix_d.data() + this->n_locations,
+                                              -1,
+                                              thrust::maximum<f_t>());
+      auto vehicle_max_times = max_depot_transit * (2 + (i_t)this->pickup_delivery_) + 2 +
                                (1 + (i_t)this->pickup_delivery_) * max_service;
       thrust::fill(this->handle_.get_thrust_policy(),
                    this->vehicle_max_times_d.begin(),

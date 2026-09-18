@@ -301,8 +301,8 @@ DI node_t<i_t, f_t, REQUEST> create_break_node(
   node.time_dim.window_end   = special_nodes.latest_time[index];
 
   if (!special_nodes.distance_min.empty()) {
-    node.distance_dim.window_start = static_cast<double>(special_nodes.distance_min[index]);
-    node.distance_dim.window_end   = static_cast<double>(special_nodes.distance_max[index]);
+    node.cost_dim.window_start = static_cast<double>(special_nodes.distance_min[index]);
+    node.cost_dim.window_end   = static_cast<double>(special_nodes.distance_max[index]);
   }
 
   // FIXME:: setting the prize to zero for now.

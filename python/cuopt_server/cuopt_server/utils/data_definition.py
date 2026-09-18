@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import copy
@@ -171,7 +171,7 @@ ErrorResponse = {
     },
     422: {
         "model": DetailModel,
-        "description": "Unprocessable Entity or Runtime Error or Out of memory error",  # noqa
+        "description": "Unprocessable Content or Runtime Error or Out of memory error",  # noqa
     },
     409: {
         "model": DetailModel,
@@ -311,7 +311,7 @@ ManagedRequestResponse[200] = {
 
 ValidationErrorResponse = {
     404: {"model": DetailModel, "description": "Not found"},
-    422: {"model": DetailModel, "description": "Unprocessable Entity"},
+    422: {"model": DetailModel, "description": "Unprocessable Content"},
     500: {
         "model": DetailModel,
         "description": "Any uncaught cuOpt error or Server errors",

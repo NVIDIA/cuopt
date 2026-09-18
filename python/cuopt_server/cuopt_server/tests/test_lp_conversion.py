@@ -86,3 +86,68 @@ def test_build_lp_datamodel_from_json():
 
     assert data_model.get_objective_coefficients().tolist() == [1.2, 1.7]
     assert float(solver_settings.get_parameter("time_limit")) == 5.0
+
+
+def _http_warmstart():
+    return {
+        "current_primal_solution": [0.1, 0.2],
+        "current_dual_solution": [0.3],
+        "initial_primal_average": [0.1, 0.2],
+        "initial_dual_average": [0.3],
+        "current_ATY": [0.3],
+        "sum_primal_solutions": [0.1, 0.2],
+        "sum_dual_solutions": [0.3],
+        "last_restart_duality_gap_primal_solution": [0.1, 0.2],
+        "last_restart_duality_gap_dual_solution": [0.3],
+        "initial_primal_weight": 1.0,
+        "initial_step_size": 1.0,
+        "total_pdlp_iterations": 1,
+        "total_pdhg_iterations": 1,
+        "last_candidate_kkt_score": 0.0,
+        "last_restart_kkt_score": 0.0,
+        "sum_solution_weight": 1.0,
+        "iterations_since_last_restart": 0,
+    }
+
+
+def test_pdlp_http_warmstart_roundtrip():
+    import numpy as np
+
+    from cuopt.linear_programming.solution.solution import PDLPWarmStartData
+
+    src = PDLPWarmStartData(
+        np.array([0.1, 0.2]),
+        np.array([0.3]),
+        np.array([0.1, 0.2]),
+        np.array([0.3]),
+        np.array([0.3]),
+        np.array([0.1, 0.2]),
+        np.array([0.3]),
+        np.array([0.1, 0.2]),
+        np.array([0.3]),
+        1.0,
+        1.0,
+        1,
+        1,
+        0.0,
+        0.0,
+        1.0,
+        0,
+    )
+    http_dict = conversion.extract_pdlpwarmstart_data(src)
+    # GET /warmstart returns the solver's float64 ndarrays, not lists
+    assert isinstance(http_dict["current_primal_solution"], np.ndarray)
+    assert http_dict["current_primal_solution"].dtype == np.float64
+    restored = conversion.pdlp_from_http_warmstart(http_dict)
+    assert list(restored.current_primal_solution) == [0.1, 0.2]
+    assert restored.current_primal_solution.dtype == np.float64
+    assert restored.initial_primal_weight == 1.0
+
+
+def test_create_solver_applies_http_warmstart():
+    _, solver_settings = conversion.create_solver(
+        get_lp_data(), _http_warmstart()
+    )
+    ws = solver_settings.get_pdlp_warm_start_data()
+    assert ws is not None
+    assert list(ws.current_primal_solution) == [0.1, 0.2]

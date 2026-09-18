@@ -27,6 +27,34 @@ add_subdirectory(barrier)
 add_subdirectory(branch_and_bound)
 add_subdirectory(cuts)
 
-set(CUOPT_SRC_FILES ${CUOPT_SRC_FILES} ${UTIL_SRC_FILES} PARENT_SCOPE)
+# Aggregate per-domain source lists for the component libraries.
+# UTIL_SRC_FILES lives in cuopt_mathopt rather than a separate cuopt_base: mathopt is its
+# only consumer (routing, grpc and client reference none of its symbols), so a standalone
+# library would exist to serve one caller.
+set(CUOPT_ROUTING_SRC_FILES
+  ${ROUTING_SRC_FILES}
+)
+
+# PARSERS_SRC_FILES is deliberately absent here: the parsers are CUDA-free and build into
+# cuopt_client, which cuopt_mathopt links. Listing them in both would compile them twice.
+set(CUOPT_MATHOPT_SRC_FILES
+  ${UTIL_SRC_FILES}
+  ${LINEAR_ALGEBRA_SRC_FILES}
+  ${LP_SRC_FILES}
+  ${MATH_OPT_SRC_FILES}
+  ${MIP_SRC_FILES}
+  ${DUAL_SIMPLEX_SRC_FILES}
+  ${BARRIER_SRC_FILES}
+  ${BRANCH_AND_BOUND_SRC_FILES}
+  ${CUTS_SRC_FILES}
+)
+
+set(CUOPT_ROUTING_SRC_FILES ${CUOPT_ROUTING_SRC_FILES} PARENT_SCOPE)
+set(CUOPT_MATHOPT_SRC_FILES ${CUOPT_MATHOPT_SRC_FILES} PARENT_SCOPE)
 set(CUOPT_CLIENT_SRC_FILES ${CUOPT_CLIENT_SRC_FILES} ${UTIL_CLIENT_SRC_FILES} PARENT_SCOPE)
+set(CUOPT_SRC_FILES
+  ${CUOPT_ROUTING_SRC_FILES}
+  ${CUOPT_MATHOPT_SRC_FILES}
+  PARENT_SCOPE
+)
 set(MPS_FAST_SRC_FILES ${MPS_FAST_SRC_FILES} PARENT_SCOPE)
