@@ -43,7 +43,7 @@ local_search_t<i_t, f_t, REQUEST>::local_search_t(const solution_handle_t<i_t, f
     moved_region_node_infos_(0, sol_handle_->get_stream()),
     locks_(max_routes, sol_handle_->get_stream())
 {
-  raft::common::nvtx::range fun_scope("local_search_t");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("local_search_t");
 }
 // sets the search weights and excess values for the local search
 template <typename i_t, typename f_t, request_t REQUEST>
@@ -57,7 +57,7 @@ void local_search_t<i_t, f_t, REQUEST>::set_active_weights(const infeasible_cost
 template <typename i_t, typename f_t, request_t REQUEST>
 bool local_search_t<i_t, f_t, REQUEST>::run_two_opt_search(solution_t<i_t, f_t, REQUEST>& sol)
 {
-  raft::common::nvtx::range fun_scope("run_two_opt_search");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("run_two_opt_search");
   bool move_found = perform_two_opt(sol, move_candidates);
   sol.sol_handle->sync_stream();
   if (move_found) {
@@ -71,7 +71,7 @@ bool local_search_t<i_t, f_t, REQUEST>::run_two_opt_search(solution_t<i_t, f_t, 
 template <typename i_t, typename f_t, request_t REQUEST>
 bool local_search_t<i_t, f_t, REQUEST>::run_sliding_search(solution_t<i_t, f_t, REQUEST>& sol)
 {
-  raft::common::nvtx::range fun_scope("run_sliding_search");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("run_sliding_search");
   bool move_found = sol.problem_ptr->is_tsp ? perform_sliding_tsp(sol, move_candidates)
                                             : perform_sliding_window(sol, move_candidates);
   sol.sol_handle->sync_stream();
@@ -86,7 +86,7 @@ bool local_search_t<i_t, f_t, REQUEST>::run_sliding_search(solution_t<i_t, f_t, 
 template <typename i_t, typename f_t, request_t REQUEST>
 bool local_search_t<i_t, f_t, REQUEST>::run_collect_prizes(solution_t<i_t, f_t, REQUEST>& sol)
 {
-  raft::common::nvtx::range fun_scope("run_collect_prizes");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("run_collect_prizes");
   // don't run prize collection if there is no prize dimension
   if (!sol.problem_ptr->dimensions_info.has_dimension(dim_t::PRIZE)) { return false; }
 
@@ -103,7 +103,7 @@ bool local_search_t<i_t, f_t, REQUEST>::run_collect_prizes(solution_t<i_t, f_t, 
 template <typename i_t, typename f_t, request_t REQUEST>
 bool local_search_t<i_t, f_t, REQUEST>::run_cross_search(solution_t<i_t, f_t, REQUEST>& sol)
 {
-  raft::common::nvtx::range fun_scope("run_cross_search");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("run_cross_search");
   if (sol.n_routes < 2) { return false; }
   // independent thread scheduling is not present in pascal and we use it in populate_cross_list
   // kernel
@@ -138,9 +138,9 @@ bool local_search_t<i_t, f_t, REQUEST>::run_cross_search(solution_t<i_t, f_t, RE
 template <typename i_t, typename f_t, request_t REQUEST>
 template <request_t r_t, std::enable_if_t<r_t == request_t::PDP, bool>>
 bool local_search_t<i_t, f_t, REQUEST>::run_fast_search(solution_t<i_t, f_t, r_t>& sol,
-                                                        bool full_set)
+                                                        [[maybe_unused]] bool full_set)
 {
-  raft::common::nvtx::range fun_scope("run_fast_search");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("run_fast_search");
 
   std::vector<fast_operators_t> fast_operators{fast_operators_t::SLIDING, fast_operators_t::CROSS};
   if (!sol.problem_ptr->fleet_info.is_homogenous_ && !sol.problem_ptr->has_non_uniform_breaks()) {
@@ -182,7 +182,7 @@ template <request_t r_t, std::enable_if_t<r_t == request_t::VRP, bool>>
 bool local_search_t<i_t, f_t, REQUEST>::run_fast_search(solution_t<i_t, f_t, r_t>& sol,
                                                         bool full_set)
 {
-  raft::common::nvtx::range fun_scope("run_fast_search");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("run_fast_search");
 
   std::vector<fast_operators_t> fast_operators{fast_operators_t::SLIDING};
 

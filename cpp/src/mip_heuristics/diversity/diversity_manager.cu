@@ -127,7 +127,7 @@ void diversity_manager_t<i_t, f_t>::consume_staged_simplex_solution(lp_state_t<i
   std::vector<f_t> staged_simplex_dual_solution_local;
   f_t staged_simplex_objective_local = std::numeric_limits<f_t>::infinity();
   {
-    std::lock_guard<std::mutex> guard(relaxed_solution_mutex);
+    [[maybe_unused]] std::lock_guard<std::mutex> guard(relaxed_solution_mutex);
     cuopt_assert(simplex_solution_exists.load(),
                  "Simplex solution flag set without a staged simplex solution");
     staged_simplex_solution_local      = staged_simplex_solution;
@@ -168,7 +168,7 @@ bool diversity_manager_t<i_t, f_t>::run_local_search(solution_t<i_t, f_t>& solut
                                                      timer_t& timer,
                                                      ls_config_t<i_t, f_t>& ls_config)
 {
-  raft::common::nvtx::range fun_scope("run_local_search");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("run_local_search");
   i_t ls_mab_option = mab_ls.select_mab_option();
   mab_ls_config_t<i_t, f_t>::get_local_search_and_lm_from_config(ls_mab_option, ls_config);
   ls_hash_map.insert(solution);
@@ -181,7 +181,7 @@ bool diversity_manager_t<i_t, f_t>::run_local_search(solution_t<i_t, f_t>& solut
 template <typename i_t, typename f_t>
 void diversity_manager_t<i_t, f_t>::generate_solution(f_t time_limit, bool random_start)
 {
-  raft::common::nvtx::range fun_scope("generate_solution");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("generate_solution");
   solution_t<i_t, f_t> sol(*problem_ptr);
   sol.compute_feasibility();
   // if a feasible is found, it is added to the population
@@ -193,7 +193,7 @@ template <typename i_t, typename f_t>
 void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
   std::vector<solution_t<i_t, f_t>>& initial_sol_vector)
 {
-  raft::common::nvtx::range fun_scope("add_user_given_solutions");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("add_user_given_solutions");
   const bool has_papilo   = problem_ptr->has_papilo_presolve_data();
   const i_t papilo_orig_n = problem_ptr->get_papilo_original_num_variables();
   for (size_t sol_idx = 0; sol_idx < context.settings.initial_solutions.size(); ++sol_idx) {
@@ -293,7 +293,7 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
 template <typename i_t, typename f_t>
 bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_timer)
 {
-  raft::common::nvtx::range fun_scope("run_presolve");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("run_presolve");
   CUOPT_LOG_INFO("\nRunning cuOpt presolve");
   timer_t presolve_timer(time_limit);
 
@@ -401,7 +401,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
 template <typename i_t, typename f_t>
 void diversity_manager_t<i_t, f_t>::generate_quick_feasible_solution()
 {
-  raft::common::nvtx::range fun_scope("generate_quick_feasible_solution");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("generate_quick_feasible_solution");
   solution_t<i_t, f_t> solution(*problem_ptr);
   // min 1 second, max 10 seconds
   const f_t generate_fast_solution_time =
@@ -476,7 +476,7 @@ struct ls_cpufj_raii_guard_t {
 template <typename i_t, typename f_t>
 solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
 {
-  raft::common::nvtx::range fun_scope("run_solver");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("run_solver");
 
   CUOPT_LOG_DEBUG("Determinism mode: %s",
                   context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC ? "deterministic"
@@ -599,7 +599,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
 
     bool use_staged_simplex_solution = false;
     {
-      std::lock_guard<std::mutex> guard(relaxed_solution_mutex);
+      [[maybe_unused]] std::lock_guard<std::mutex> guard(relaxed_solution_mutex);
       use_staged_simplex_solution = simplex_solution_exists.load();
       if (!use_staged_simplex_solution && root_lp_usable) {
         raft::copy(lp_optimal_solution.data(),
@@ -780,7 +780,7 @@ template <typename i_t, typename f_t>
 void diversity_manager_t<i_t, f_t>::recombine_and_ls_with_all(solution_t<i_t, f_t>& solution,
                                                               bool add_only_feasible)
 {
-  raft::common::nvtx::range fun_scope("recombine_and_ls_with_all");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("recombine_and_ls_with_all");
   // if (population.population_hash_map.check_skip_solution(solution, 1)) { return; }
   auto population_vector = population.population_to_vector();
   for (auto& curr_sol : population_vector) {
@@ -813,7 +813,7 @@ template <typename i_t, typename f_t>
 void diversity_manager_t<i_t, f_t>::recombine_and_ls_with_all(
   std::vector<solution_t<i_t, f_t>>& solutions, bool add_only_feasible)
 {
-  raft::common::nvtx::range fun_scope("recombine_and_ls_with_all");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("recombine_and_ls_with_all");
   if (solutions.size() > 0) {
     CUOPT_LOG_DEBUG("Running recombiners on B&B solutions with size %lu", solutions.size());
     // add all solutions because time limit might have been consumed and we might have exited before
@@ -867,7 +867,7 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
                                                           solution_t<i_t, f_t>& sol2,
                                                           recombiner_enum_t recombiner_type)
 {
-  raft::common::nvtx::range fun_scope("recombine_and_local_search");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("recombine_and_local_search");
   CUOPT_LOG_DEBUG("Recombining sol cost:feas %f : %d and %f : %d",
                   sol1.get_quality(population.weights),
                   sol1.get_feasible(),
@@ -892,7 +892,6 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
                   offspring.get_quality(population.weights),
                   offspring.get_feasible());
   cuopt_assert(offspring.test_number_all_integer(), "All must be integers before LS");
-  bool feasibility_before = offspring.get_feasible();
   ls_config_t<i_t, f_t> ls_config;
   ls_config.best_objective_of_parents    = best_objective_of_parents;
   ls_config.at_least_one_parent_feasible = at_least_one_parent_feasible;
@@ -1036,7 +1035,7 @@ void diversity_manager_t<i_t, f_t>::set_simplex_solution(const std::vector<f_t>&
                                                          f_t objective)
 {
   CUOPT_LOG_DEBUG("Setting simplex solution with objective %f", objective);
-  std::lock_guard<std::mutex> lock(relaxed_solution_mutex);
+  [[maybe_unused]] std::lock_guard<std::mutex> lock(relaxed_solution_mutex);
   global_concurrent_halt = 1;
   cuopt_assert(lp_optimal_solution.size() == solution.size(), "Assignment size mismatch");
   cuopt_assert(problem_ptr->n_constraints == dual_solution.size(), "Dual assignment size mismatch");

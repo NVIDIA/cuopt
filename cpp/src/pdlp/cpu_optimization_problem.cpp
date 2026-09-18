@@ -737,7 +737,7 @@ void cpu_optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_f
                                                    static_cast<i_t>(Q_indices_.size()),
                                                    Q_offsets_.data(),
                                                    static_cast<i_t>(Q_offsets_.size()),
-                                                   false);
+                                                   is_symmetrized);
   }
 
   if (!quadratic_constraints_.empty()) {

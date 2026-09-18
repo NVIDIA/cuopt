@@ -21,7 +21,7 @@ namespace {
 template <typename i_t, typename f_t>
 void set_primal_variables_on_bounds(const lp_problem_t<i_t, f_t>& lp,
                                     const simplex_solver_settings_t<i_t, f_t>& settings,
-                                    const std::vector<f_t>& z,
+                                    [[maybe_unused]] const std::vector<f_t>& z,
                                     std::vector<variable_status_t>& vstatus,
                                     std::vector<f_t>& x)
 {
@@ -60,16 +60,16 @@ f_t dual_infeasibility(const lp_problem_t<i_t, f_t>& lp,
                        const std::vector<variable_status_t>& vstatus,
                        const std::vector<f_t>& z)
 {
-  const i_t n             = lp.num_cols;
-  const i_t m             = lp.num_rows;
-  i_t num_infeasible      = 0;
-  f_t sum_infeasible      = 0.0;
-  constexpr f_t tight_tol = 0;
-  i_t lower_bound_inf     = 0;
-  i_t upper_bound_inf     = 0;
-  i_t free_inf            = 0;
-  i_t non_basic_lower_inf = 0;
-  i_t non_basic_upper_inf = 0;
+  const i_t n                  = lp.num_cols;
+  [[maybe_unused]] const i_t m = lp.num_rows;
+  i_t num_infeasible           = 0;
+  f_t sum_infeasible           = 0.0;
+  constexpr f_t tight_tol      = 0;
+  i_t lower_bound_inf          = 0;
+  i_t upper_bound_inf          = 0;
+  i_t free_inf                 = 0;
+  i_t non_basic_lower_inf      = 0;
+  i_t non_basic_upper_inf      = 0;
 
   for (i_t j = 0; j < n; ++j) {
     if (lp.upper[j] == inf && lp.lower[j] > -inf && z[j] < -tight_tol) {
@@ -153,19 +153,19 @@ i_t phase2_pricing(const lp_problem_t<i_t, f_t>& lp,
 
 template <typename i_t, typename f_t>
 i_t ratio_test(const lp_problem_t<i_t, f_t>& lp,
-               const std::vector<variable_status_t>& vstatus,
+               [[maybe_unused]] const std::vector<variable_status_t>& vstatus,
                const std::vector<i_t>& basic_list,
                std::vector<f_t>& x,
                std::vector<f_t>& delta_x,
                f_t& step_length,
                i_t& basic_leaving)
 {
-  const i_t m             = lp.num_rows;
-  const i_t n             = lp.num_cols;
-  basic_leaving           = -1;
-  i_t leaving_index       = -1;
-  f_t min_val             = inf;
-  constexpr f_t pivot_tol = 1e-8;
+  const i_t m                  = lp.num_rows;
+  [[maybe_unused]] const i_t n = lp.num_cols;
+  basic_leaving                = -1;
+  i_t leaving_index            = -1;
+  f_t min_val                  = inf;
+  constexpr f_t pivot_tol      = 1e-8;
   for (i_t k = 0; k < m; ++k) {
     const i_t j = basic_list[k];
     if (delta_x[j] == 0.0) { continue; }

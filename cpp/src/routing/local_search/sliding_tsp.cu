@@ -140,9 +140,6 @@ __global__ void find_sliding_moves_tsp(
   }
   __syncthreads();
 
-  const double excess_limit =
-    s_route.get_weighted_excess(move_candidates.weights) * ls_excess_multiplier_route;
-
   sliding_tsp_cand_t<i_t> sliding_tsp_cand = is_sliding_tsp_uinitialized_t<i_t>::init_data();
   double cost_delta, selection_delta;
 
@@ -480,7 +477,7 @@ template <typename i_t, typename f_t, request_t REQUEST>
 bool local_search_t<i_t, f_t, REQUEST>::perform_sliding_tsp(
   solution_t<i_t, f_t, REQUEST>& sol, move_candidates_t<i_t, f_t>& move_candidates)
 {
-  raft::common::nvtx::range fun_scope("perform_sliding_tsp");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("perform_sliding_tsp");
   sol.global_runtime_checks(false, false, "sliding_tsp_start");
   i_t n_moves_found = 0;
   if (!move_candidates.include_objective) { return false; }

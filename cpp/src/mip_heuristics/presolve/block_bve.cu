@@ -213,8 +213,8 @@ int bve_greedy_prime_cover(const uint8_t* feas,
 {
   cuopt_assert(nb >= 1 && nb <= BVE_MAX_BOUNDARY, "nb out of BVE range");
   cuopt_assert(cap >= 1, "clause cap leaves no room for a cover");
-  int64_t ops    = 0;
-  auto ops_guard = cuopt::scope_guard([&]() {
+  int64_t ops                     = 0;
+  [[maybe_unused]] auto ops_guard = cuopt::scope_guard([&]() {
     if (ops_out != nullptr) *ops_out += ops;
   });
 

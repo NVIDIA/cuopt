@@ -268,7 +268,7 @@ i_t sort_random_moves_by_route_pair_idx(solution_t<i_t, f_t, REQUEST>& sol,
 template <typename i_t, typename f_t, request_t REQUEST>
 void local_search_t<i_t, f_t, REQUEST>::populate_random_moves(solution_t<i_t, f_t, REQUEST>& sol)
 {
-  raft::common::nvtx::range fun_scope("populate_random_moves");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("populate_random_moves");
   // extract valid moves
   constexpr i_t nthreads = 256;
   auto nblocks           = sol.get_num_depot_excluded_orders();

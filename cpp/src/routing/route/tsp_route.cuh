@@ -29,14 +29,14 @@ class tsp_route_t {
   tsp_route_t(solution_handle_t<i_t, f_t> const* sol_handle_)
     : pred(0, sol_handle_->get_stream()), succ(0, sol_handle_->get_stream())
   {
-    raft::common::nvtx::range fun_scope("zero pdp_route_t copy_ctr");
+    [[maybe_unused]] raft::common::nvtx::range fun_scope("zero pdp_route_t copy_ctr");
   }
 
   tsp_route_t(const tsp_route_t& tsp_route, solution_handle_t<i_t, f_t> const* sol_handle_)
     : pred(tsp_route.pred, sol_handle_->get_stream()),
       succ(tsp_route.succ, sol_handle_->get_stream())
   {
-    raft::common::nvtx::range fun_scope("pdp route copy_ctr");
+    [[maybe_unused]] raft::common::nvtx::range fun_scope("pdp route copy_ctr");
   }
 
   tsp_route_t& operator=(tsp_route_t&& tsp_route) = default;

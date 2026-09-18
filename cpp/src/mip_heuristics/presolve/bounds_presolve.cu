@@ -261,7 +261,6 @@ template <typename i_t, typename f_t>
 termination_criterion_t bound_presolve_t<i_t, f_t>::solve(problem_t<i_t, f_t>& pb)
 {
   timer_t timer(settings.time_limit);
-  auto& handle_ptr = pb.handle_ptr;
   copy_input_bounds(pb);
   return bound_update_loop(pb, timer);
 }

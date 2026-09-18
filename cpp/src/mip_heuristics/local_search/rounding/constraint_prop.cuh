@@ -31,7 +31,7 @@ struct repair_stats_t {
 
 template <typename i_t, typename f_t>
 struct probing_config_t {
-  probing_config_t(i_t n_vars, const raft::handle_t* handle_ptr) : probing_values(n_vars) {}
+  probing_config_t(i_t n_vars) : probing_values(n_vars) {}
   bool use_balanced_probing  = false;
   i_t n_of_fixed_from_first  = 0;
   i_t n_of_fixed_from_second = 0;

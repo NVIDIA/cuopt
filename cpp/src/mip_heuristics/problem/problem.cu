@@ -500,7 +500,7 @@ void csr_to_csc_transpose(const i_t* csr_offsets,
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::compute_transpose_of_problem()
 {
-  raft::common::nvtx::range fun_scope("compute_transpose_of_problem");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_transpose_of_problem");
   csrsort_cusparse(coefficients, variables, offsets, n_constraints, n_variables, handle_ptr);
   RAFT_CUBLAS_TRY(raft::linalg::detail::cublassetpointermode(
     handle_ptr->get_cublas_handle(), CUBLAS_POINTER_MODE_DEVICE, handle_ptr->get_stream().get()));
@@ -568,8 +568,8 @@ template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
                                                        bool check_mip_related_data)
 {
-  raft::common::nvtx::range fun_scope("check_problem_representation");
-  raft::common::nvtx::range scope("check_problem_representation");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("check_problem_representation");
+  [[maybe_unused]] raft::common::nvtx::range scope("check_problem_representation");
 
   cuopt_assert(!offsets.is_empty(), "A_offsets must never be empty.");
   if (check_transposed) {
@@ -832,7 +832,7 @@ template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::recompute_auxilliary_data(bool check_representation,
                                                     bool compute_related_vars)
 {
-  raft::common::nvtx::range fun_scope("recompute_auxilliary_data");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("recompute_auxilliary_data");
   compute_n_integer_vars();
   compute_binary_var_table();
   compute_vars_with_objective_coeffs();
@@ -849,7 +849,7 @@ void problem_t<i_t, f_t>::recompute_auxilliary_data(bool check_representation,
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::compute_auxiliary_data()
 {
-  raft::common::nvtx::range fun_scope("compute_auxiliary_data");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_auxiliary_data");
 
   // Compute sparsity: nnz / (n_rows * n_cols)
   sparsity = (n_constraints > 0 && n_variables > 0)
@@ -898,7 +898,7 @@ void problem_t<i_t, f_t>::compute_auxiliary_data()
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::compute_n_integer_vars()
 {
-  raft::common::nvtx::range fun_scope("compute_n_integer_vars");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_n_integer_vars");
   cuopt_assert(n_variables == variable_types.size(), "size mismatch");
   integer_indices.resize(n_variables, handle_ptr->get_stream());
   auto end =
@@ -931,7 +931,7 @@ bool problem_t<i_t, f_t>::integer_equal(f_t val1, f_t val2) const
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::compute_binary_var_table()
 {
-  raft::common::nvtx::range fun_scope("compute_binary_var_table");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_binary_var_table");
   auto pb_view = view();
 
   is_binary_variable.resize(n_variables, handle_ptr->get_stream());
@@ -973,7 +973,7 @@ void problem_t<i_t, f_t>::compute_binary_var_table()
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::compute_related_variables(double time_limit)
 {
-  raft::common::nvtx::range fun_scope("compute_related_variables");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_related_variables");
   if (n_variables == 0) {
     related_variables.resize(0, handle_ptr->get_stream());
     related_variables_offsets.resize(0, handle_ptr->get_stream());
@@ -1125,7 +1125,7 @@ typename problem_t<i_t, f_t>::view_t problem_t<i_t, f_t>::view()
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::resize_variables(size_t size)
 {
-  raft::common::nvtx::range fun_scope("resize_variables");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("resize_variables");
   variable_bounds.resize(size, handle_ptr->get_stream());
   variable_types.resize(size, handle_ptr->get_stream());
   objective_coefficients.resize(size, handle_ptr->get_stream());
@@ -1139,7 +1139,7 @@ void problem_t<i_t, f_t>::resize_constraints(size_t matrix_size,
                                              size_t constraint_size,
                                              size_t n_variables)
 {
-  raft::common::nvtx::range fun_scope("resize_constraints");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("resize_constraints");
   auto prev_dual_size = lp_state.prev_dual.size();
   coefficients.resize(matrix_size, handle_ptr->get_stream());
   variables.resize(matrix_size, handle_ptr->get_stream());
@@ -1165,7 +1165,7 @@ void problem_t<i_t, f_t>::resize_constraints(size_t matrix_size,
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::insert_variables(variables_delta_t<i_t, f_t>& h_vars)
 {
-  raft::common::nvtx::range fun_scope("insert_variables");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("insert_variables");
   CUOPT_LOG_DEBUG("problem added variable size %d prev %d", h_vars.size(), n_variables);
   // resize the variable arrays if it can't fit the variables
   resize_variables(n_variables + h_vars.size());
@@ -1197,7 +1197,7 @@ void problem_t<i_t, f_t>::insert_variables(variables_delta_t<i_t, f_t>& h_vars)
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::insert_constraints(constraints_delta_t<i_t, f_t>& h_constraints)
 {
-  raft::common::nvtx::range fun_scope("insert_constraints");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("insert_constraints");
   CUOPT_LOG_DEBUG(
     "added nnz %d constraints %d  offset size %d prev nnz %d prev cstr %d prev offset size%d ",
     h_constraints.matrix_size(),
@@ -1249,7 +1249,7 @@ void problem_t<i_t, f_t>::insert_constraints(constraints_delta_t<i_t, f_t>& h_co
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::set_implied_integers(const std::vector<i_t>& implied_integer_indices)
 {
-  raft::common::nvtx::range fun_scope("set_implied_integers");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("set_implied_integers");
   auto d_indices = cuopt::device_copy(implied_integer_indices, handle_ptr->get_stream());
   thrust::for_each(handle_ptr->get_thrust_policy(),
                    d_indices.begin(),
@@ -1418,7 +1418,7 @@ void problem_t<i_t, f_t>::substitute_variables(const std::vector<i_t>& var_indic
                                                const std::vector<f_t>& offset_values,
                                                const std::vector<f_t>& coefficient_values)
 {
-  raft::common::nvtx::range fun_scope("substitute_variables");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("substitute_variables");
   cuopt_assert((are_exclusive<i_t, f_t>(var_indices, var_to_substitute_indices)),
                "variables and var_to_substitute_indices are not exclusive");
   const i_t dummy_substituted_variable = var_indices[0];
@@ -1589,7 +1589,7 @@ void problem_t<i_t, f_t>::fix_given_variables(problem_t<i_t, f_t>& original_prob
                                               const rmm::device_uvector<i_t>& variables_to_fix,
                                               const raft::handle_t* handle_ptr)
 {
-  raft::common::nvtx::range fun_scope("fix_given_variables");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("fix_given_variables");
   fixing_helpers.reduction_in_rhs.resize(n_constraints, handle_ptr->get_stream());
   fixing_helpers.variable_fix_mask.resize(original_problem.n_variables, handle_ptr->get_stream());
   thrust::fill(handle_ptr->get_thrust_policy(),
@@ -1688,7 +1688,7 @@ problem_t<i_t, f_t> problem_t<i_t, f_t>::get_problem_after_fixing_vars(
   rmm::device_uvector<i_t>& variable_map,
   const raft::handle_t* handle_ptr)
 {
-  raft::common::nvtx::range fun_scope("get_problem_after_fixing_vars");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("get_problem_after_fixing_vars");
   auto start_time = std::chrono::high_resolution_clock::now();
   cuopt_assert(n_variables == assignment.size(), "Assignment size issue");
   problem_t<i_t, f_t> problem(*this, true);
@@ -1704,12 +1704,13 @@ problem_t<i_t, f_t> problem_t<i_t, f_t>::get_problem_after_fixing_vars(
       handle_ptr->get_thrust_policy(), variables_to_fix.begin(), variables_to_fix.end())),
     "variables_to_fix should be sorted!");
 
-  i_t* result_end = thrust::set_difference(handle_ptr->get_thrust_policy(),
-                                           thrust::make_counting_iterator(0),
-                                           thrust::make_counting_iterator(0) + n_variables,
-                                           variables_to_fix.begin(),
-                                           variables_to_fix.end(),
-                                           variable_map.begin());
+  [[maybe_unused]] i_t* result_end =
+    thrust::set_difference(handle_ptr->get_thrust_policy(),
+                           thrust::make_counting_iterator(0),
+                           thrust::make_counting_iterator(0) + n_variables,
+                           variables_to_fix.begin(),
+                           variables_to_fix.end(),
+                           variable_map.begin());
   RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
   cuopt_assert(result_end - variable_map.data() == variable_map.size(),
                "Size issue in set_difference");
@@ -1758,7 +1759,7 @@ void problem_t<i_t, f_t>::remove_given_variables(problem_t<i_t, f_t>& original_p
                                                  rmm::device_uvector<i_t>& variable_map,
                                                  const raft::handle_t* handle_ptr)
 {
-  raft::common::nvtx::range fun_scope("remove_given_variables");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("remove_given_variables");
   thrust::fill(handle_ptr->get_thrust_policy(), offsets.begin(), offsets.end(), 0);
   cuopt_assert(assignment.size() == n_variables, "Variable size mismatch");
   cuopt_assert(variable_map.size() < n_variables, "Too many variables to fix");
@@ -1831,7 +1832,8 @@ template <typename i_t, typename f_t>
 rmm::device_uvector<f_t> problem_t<i_t, f_t>::get_fixed_assignment_from_integer_fixed_problem(
   const rmm::device_uvector<f_t>& assignment)
 {
-  raft::common::nvtx::range fun_scope("get_fixed_assignment_from_integer_fixed_problem");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope(
+    "get_fixed_assignment_from_integer_fixed_problem");
   rmm::device_uvector<f_t> fixed_assignment(integer_fixed_variable_map.size(),
                                             handle_ptr->get_stream());
   // first remove the assignment and variable related vectors
@@ -1857,7 +1859,7 @@ void problem_t<i_t, f_t>::test_problem_fixing_time()
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::compute_integer_fixed_problem()
 {
-  raft::common::nvtx::range fun_scope("compute_integer_fixed_problem");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_integer_fixed_problem");
   cuopt_assert(integer_fixed_problem == nullptr, "Integer fixed problem already computed");
   if (n_variables == n_integer_vars) {
     integer_fixed_problem = nullptr;
@@ -1888,7 +1890,7 @@ template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::fill_integer_fixed_problem(rmm::device_uvector<f_t>& assignment,
                                                      const raft::handle_t* handle_ptr)
 {
-  raft::common::nvtx::range fun_scope("fill_integer_fixed_problem");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("fill_integer_fixed_problem");
   cuopt_assert(integer_fixed_problem->n_variables > 0, "Integer fixed problem not computed");
   copy_rhs_from_problem(handle_ptr);
   integer_fixed_problem->fix_given_variables(*this, assignment, integer_indices, handle_ptr);
@@ -1901,7 +1903,7 @@ template <typename i_t, typename f_t>
 std::vector<std::vector<std::pair<i_t, f_t>>> compute_var_to_constraint_map(
   const problem_t<i_t, f_t>& pb)
 {
-  raft::common::nvtx::range fun_scope("compute_var_to_constraint_map");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_var_to_constraint_map");
   std::vector<std::vector<std::pair<i_t, f_t>>> variable_constraint_map(pb.n_variables);
   auto stream         = pb.handle_ptr->get_stream();
   auto h_variables    = cuopt::host_copy(pb.variables, stream);
@@ -1922,7 +1924,7 @@ template <typename i_t, typename f_t>
 void standardize_bounds(std::vector<std::vector<std::pair<i_t, f_t>>>& variable_constraint_map,
                         problem_t<i_t, f_t>& pb)
 {
-  raft::common::nvtx::range fun_scope("standardize_bounds");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("standardize_bounds");
   auto handle_ptr               = pb.handle_ptr;
   auto stream                   = handle_ptr->get_stream();
   auto h_var_bounds             = cuopt::host_copy(pb.variable_bounds, stream);
@@ -2001,7 +2003,7 @@ template <typename i_t, typename f_t>
 void compute_csr(const std::vector<std::vector<std::pair<i_t, f_t>>>& variable_constraint_map,
                  problem_t<i_t, f_t>& pb)
 {
-  raft::common::nvtx::range fun_scope("compute_csr");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_csr");
   auto handle_ptr = pb.handle_ptr;
   std::vector<std::vector<i_t>> vars_per_constraint(pb.n_constraints);
   std::vector<std::vector<f_t>> coefficient_per_constraint(pb.n_constraints);
@@ -2041,7 +2043,7 @@ void compute_csr(const std::vector<std::vector<std::pair<i_t, f_t>>>& variable_c
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::preprocess_problem()
 {
-  raft::common::nvtx::range fun_scope("preprocess_problem");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("preprocess_problem");
   auto variable_constraint_map = compute_var_to_constraint_map(*this);
   standardize_bounds(variable_constraint_map, *this);
   compute_csr(variable_constraint_map, *this);
@@ -2065,7 +2067,7 @@ template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::set_constraints_from_host_user_problem(
   const user_problem_t<i_t, f_t>& user_problem)
 {
-  raft::common::nvtx::range fun_scope("set_constraints_from_host_user_problem");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("set_constraints_from_host_user_problem");
   cuopt_assert(user_problem.handle_ptr == handle_ptr, "handle mismatch");
   cuopt_assert(user_problem.num_cols == n_variables, "num cols mismatch");
   const i_t num_rows = user_problem.num_rows;
@@ -2123,7 +2125,7 @@ void problem_t<i_t, f_t>::set_constraints_from_host_csr(const std::vector<i_t>& 
                                                         const std::vector<f_t>& row_upper,
                                                         const std::vector<std::string>& names)
 {
-  raft::common::nvtx::range fun_scope("set_constraints_from_host_csr");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("set_constraints_from_host_csr");
   n_constraints = static_cast<i_t>(row_lower.size());
   cuopt_assert(row_upper.size() == static_cast<size_t>(n_constraints), "row bound size mismatch");
   cuopt_assert(offsets_in.size() == static_cast<size_t>(n_constraints) + 1,
@@ -2213,7 +2215,7 @@ void problem_t<i_t, f_t>::papilo_uncrush_assignment(rmm::device_uvector<f_t>& as
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::get_host_user_problem(user_problem_t<i_t, f_t>& user_problem) const
 {
-  raft::common::nvtx::range fun_scope("get_host_user_problem");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("get_host_user_problem");
   // std::lock_guard<std::mutex> lock(problem_mutex);
   i_t m                  = n_constraints;
   i_t n                  = n_variables;
@@ -2357,7 +2359,7 @@ uint32_t problem_t<i_t, f_t>::get_fingerprint() const
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::compute_vars_with_objective_coeffs()
 {
-  raft::common::nvtx::range fun_scope("compute_vars_with_objective_coeffs");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_vars_with_objective_coeffs");
   auto h_objective_coefficients =
     cuopt::host_copy(objective_coefficients, handle_ptr->get_stream());
   std::vector<i_t> vars_with_objective_coeffs_;
@@ -2374,7 +2376,7 @@ void problem_t<i_t, f_t>::compute_vars_with_objective_coeffs()
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::add_cutting_plane_at_objective(f_t objective)
 {
-  raft::common::nvtx::range fun_scope("add_cutting_plane_at_objective");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("add_cutting_plane_at_objective");
   CUOPT_LOG_DEBUG("Adding cutting plane at objective %f", objective);
   if (cutting_plane_added) {
     // modify the RHS

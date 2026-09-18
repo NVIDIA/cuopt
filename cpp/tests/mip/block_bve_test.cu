@@ -178,8 +178,8 @@ End
 template <typename F>
 static void with_mip_omp_team(F&& f)
 {
-  const int num_threads             = std::max(2, omp_get_max_threads());
-  const int saved_max_active_levels = omp_get_max_active_levels();
+  [[maybe_unused]] const int num_threads = std::max(2, omp_get_max_threads());
+  const int saved_max_active_levels      = omp_get_max_active_levels();
   if (saved_max_active_levels < 2) { omp_set_max_active_levels(2); }
 #pragma omp parallel num_threads(num_threads)
   {

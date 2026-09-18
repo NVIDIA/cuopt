@@ -180,7 +180,7 @@ struct OX {
   ///         count violation, size/memory guards) — A is then left unchanged.
   bool recombine(Solution& A, Solution& B)
   {
-    raft::common::nvtx::range fun_scope("ox");
+    [[maybe_unused]] raft::common::nvtx::range fun_scope("ox");
 
     if (check_if_routes_empty(A) || check_if_routes_empty(B)) return false;
 
@@ -349,8 +349,7 @@ struct OX {
     std::vector<std::tuple<int, std::vector<uint32_t>>> tmp_routes;
     std::unordered_set<int> routes_to_remove;
     std::unordered_set<int> vehicle_ids_to_remove;
-    const auto& dimensions_info = A.problem->dimensions_info;
-    int i                       = routes_number;
+    int i = routes_number;
     if (optimal_routes_search) { i = optimal_routes_number; }
     int end_index = offspring.size() - 1;
     [[maybe_unused]] double cost_n, cost_p, total_delta = 0.;
@@ -420,9 +419,6 @@ struct OX {
     A.remove_routes(std::vector(routes_to_remove.begin(), routes_to_remove.end()));
 
     std::vector<NodeInfo<>> tmp_node_info;
-    auto vehicle_ids_to_remove_vec =
-      std::vector(vehicle_ids_to_remove.begin(), vehicle_ids_to_remove.end());
-
     for (auto const& [bucket, tmp_route] : tmp_routes) {
       for (auto const& node : tmp_route) {
         tmp_node_info.push_back(A.problem->get_node_info_of_node(node));
@@ -556,8 +552,8 @@ struct OX {
           auto edge = tmp_transpose.indices[transpose_offset + x];
           auto veh  = tmp_transpose.buckets[transpose_offset + x];
           if (edge == ref_edge && veh == ref_veh) {
-            found       = true;
-            auto weight = tmp_transpose.weights[transpose_offset + x];
+            found                        = true;
+            [[maybe_unused]] auto weight = tmp_transpose.weights[transpose_offset + x];
             cuopt_assert(std::abs(ref_weight - weight) < 0.01, "Mismatch weights");
           }
         }
@@ -570,7 +566,7 @@ struct OX {
   template <typename i_t, typename f_t>
   void sort_graph_edges(Solution const& A, ox_graph_t<i_t, f_t>& graph)
   {
-    raft::common::nvtx::range fun_scope("ox_sort_graph");
+    [[maybe_unused]] raft::common::nvtx::range fun_scope("ox_sort_graph");
 
     auto stream_view = A.sol.sol_handle->get_stream();
     auto policy      = A.sol.sol_handle->get_thrust_policy();
@@ -620,7 +616,7 @@ struct OX {
 
   void compute_transpose_graph(Solution const& A)
   {
-    raft::common::nvtx::range fun_scope("transpose_graph");
+    [[maybe_unused]] raft::common::nvtx::range fun_scope("transpose_graph");
     constexpr auto const TPB = 128;
     auto const n_blocks      = n_buckets * d_graph.get_num_vertices();
 
@@ -636,7 +632,7 @@ struct OX {
   //!          }
   void bellman_ford(Solution& A)
   {
-    raft::common::nvtx::range fun_scope("bellman_ford");
+    [[maybe_unused]] raft::common::nvtx::range fun_scope("bellman_ford");
 
     compute_transpose_graph(A);
     cuopt_func_call(test_transpose_graph(A.sol.sol_handle->get_stream()));
@@ -645,7 +641,6 @@ struct OX {
     d_path_cost.resize((problem_size + 1) * row_size, A.sol.sol_handle->get_stream());
     d_predecessor.resize((problem_size + 1) * row_size, A.sol.sol_handle->get_stream());
     d_predecessor_vehicle.resize((problem_size + 1) * row_size, A.sol.sol_handle->get_stream());
-    auto max_val = std::numeric_limits<int>::max();
     async_fill(d_path_cost, std::numeric_limits<double>::max(), A.sol.sol_handle->get_stream());
     async_fill(d_predecessor, -1, A.sol.sol_handle->get_stream());
     async_fill(d_predecessor_vehicle, -1, A.sol.sol_handle->get_stream());
@@ -658,8 +653,6 @@ struct OX {
     constexpr auto const TPB     = 128;
     auto min_cost_of_last_column = std::numeric_limits<double>::max();
     auto cost_of_last_column     = std::numeric_limits<double>::max();
-    const auto& dimensions_info  = A.problem->dimensions_info;
-
     cuopt::device_copy(
       d_vehicle_availability, vehicle_availability, A.sol.sol_handle->get_stream());
 
@@ -941,8 +934,8 @@ struct OX {
     for (size_t i = 0; i < graph.size(); ++i) {
       cuopt_assert(graph[i].size() == h_graph[i].size(), "Mismatch number of edges");
       for (size_t j = 0; j < graph[i].size(); ++j) {
-        auto [ref_edge, ref_weight, ref_veh] = graph[i][j];
-        auto [edge, weight, veh]             = h_graph[i][j];
+        [[maybe_unused]] auto [ref_edge, ref_weight, ref_veh] = graph[i][j];
+        [[maybe_unused]] auto [edge, weight, veh]             = h_graph[i][j];
         cuopt_assert(ref_edge == edge, "Edge mismatch");
         cuopt_assert(std::abs(ref_weight - weight) < 0.01, "Weight mismatch");
         cuopt_assert(ref_veh == veh, "Vehicle type mismatch");
@@ -954,7 +947,7 @@ struct OX {
   //! depots. }
   void calculate_edge_costs(Solution& A)
   {
-    raft::common::nvtx::range fun_scope("calculate_edge_costs");
+    [[maybe_unused]] raft::common::nvtx::range fun_scope("calculate_edge_costs");
 
     d_graph.reset(A.sol.sol_handle);
 

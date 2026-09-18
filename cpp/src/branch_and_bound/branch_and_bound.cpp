@@ -768,7 +768,7 @@ bool branch_and_bound_t<i_t, f_t>::repair_solution(const std::vector<f_t>& edge_
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::repair_heuristic_solutions()
 {
-  raft::common::nvtx::range scope("BB::repair_heuristics");
+  [[maybe_unused]] raft::common::nvtx::range scope("BB::repair_heuristics");
   // Check if there are any solutions to repair
   std::vector<std::vector<f_t>> to_repair;
   mutex_repair_.lock();
@@ -868,11 +868,10 @@ void branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t, f_t>& 
     settings_.heuristic_preemption_callback();
   }
 
-  f_t user_obj         = compute_user_objective(original_lp_, upper_bound_.load());
-  f_t user_bound       = compute_user_objective(original_lp_, lower_bound);
-  f_t gap              = std::abs(user_obj - user_bound);
-  f_t gap_rel          = user_relative_gap(user_obj, user_bound);
-  bool is_maximization = original_lp_.obj_scale < 0.0;
+  f_t user_obj   = compute_user_objective(original_lp_, upper_bound_.load());
+  f_t user_bound = compute_user_objective(original_lp_, lower_bound);
+  f_t gap        = std::abs(user_obj - user_bound);
+  f_t gap_rel    = user_relative_gap(user_obj, user_bound);
 
   settings_.log.print_format("Explored {} nodes ({} simplex iterations) in {:.2f}s.",
                              exploration_stats_.nodes_explored.load(),
@@ -1137,9 +1136,9 @@ struct nondeterministic_policy_t : tree_update_policy_t<i_t, f_t> {
     return bnb.variable_selection(node, fractional, worker);
   }
 
-  void update_objective_estimate(mip_node_t<i_t, f_t>* node,
-                                 const std::vector<i_t>& fractional,
-                                 const std::vector<f_t>& x) override
+  void update_objective_estimate([[maybe_unused]] mip_node_t<i_t, f_t>* node,
+                                 [[maybe_unused]] const std::vector<i_t>& fractional,
+                                 [[maybe_unused]] const std::vector<f_t>& x) override
   {
     if (worker->search_strategy == search_strategy_t::BEST_FIRST) {
       node->objective_estimate =
@@ -1342,9 +1341,9 @@ struct deterministic_diving_policy_t
     }
   }
 
-  void update_objective_estimate(mip_node_t<i_t, f_t>* node,
-                                 const std::vector<i_t>& fractional,
-                                 const std::vector<f_t>& x) override
+  void update_objective_estimate([[maybe_unused]] mip_node_t<i_t, f_t>* node,
+                                 [[maybe_unused]] const std::vector<i_t>& fractional,
+                                 [[maybe_unused]] const std::vector<f_t>& x) override
   { /* no-op */
   }
 
@@ -1567,7 +1566,7 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   logger_t& log,
   int64_t iter_limit)
 {
-  raft::common::nvtx::range scope("BB::solve_node");
+  [[maybe_unused]] raft::common::nvtx::range scope("BB::solve_node");
 #ifdef DEBUG_BRANCHING
   i_t num_integer_variables = 0;
   for (i_t j = 0; j < original_lp_.num_cols; j++) {
@@ -2101,7 +2100,7 @@ template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker,
                                              const simplex_solver_settings_t<i_t, f_t>& settings)
 {
-  raft::common::nvtx::range scope("BB::diving_thread");
+  [[maybe_unused]] raft::common::nvtx::range scope("BB::diving_thread");
   if (worker->orbital_fixing) { worker->orbital_fixing->disable(); }
   logger_t log;
   log.log = false;
@@ -2375,7 +2374,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   third_party_presolve_status_t presolver_status =
     presolver.apply_to_subproblem(submip_problem, submip_settings, presolve_time_limit, 1);
 
-  double presolve_time = toc(start_time);
+  [[maybe_unused]] double presolve_time = toc(start_time);
 
   if (presolver_status == third_party_presolve_status_t::INFEASIBLE ||
       presolver_status == third_party_presolve_status_t::UNBNDORINFEAS ||
@@ -2410,7 +2409,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   submip_settings.set_simplex_solution_callback   = nullptr;
   submip_settings.solution_callback =
     [this, &presolver, fixrate, &submip_stats, log_prefix, worker](const std::vector<f_t>& solution,
-                                                                   f_t obj) {
+                                                                   [[maybe_unused]] f_t obj) {
       this->set_solution_from_submip(
         worker->leaf_problem, solution, presolver, submip_stats, fixrate, log_prefix);
     };
@@ -2498,8 +2497,8 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
     submip_fj_cpu_worker.run_async(time_limit, work_limit);
   }
 
-  mip_status_t submip_status = submip_bnb.solve(submip_solution);
-  f_t submip_time            = toc(start_time);
+  mip_status_t submip_status       = submip_bnb.solve(submip_solution);
+  [[maybe_unused]] f_t submip_time = toc(start_time);
 
   DEBUG_SUBMIP(
     "{}Sub-MIP: status={}, iterations={} (total={}), presolve_time={:.2f}, total_time={:.2f} \n",
@@ -2707,7 +2706,7 @@ template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::recursive_submip(
   diving_worker_t<i_t, f_t>* worker, simplex_solver_settings_t<i_t, f_t> submip_settings)
 {
-  raft::common::nvtx::range scope("BB::submip_thread");
+  [[maybe_unused]] raft::common::nvtx::range scope("BB::submip_thread");
   if (worker->orbital_fixing) { worker->orbital_fixing->disable(); }
 
   i_t submip_level = settings_.submip_settings.level + 1;
@@ -3196,13 +3195,13 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
     std::vector<f_t> crushed_root_y;
     std::vector<f_t> crushed_root_z;
 
-    f_t dual_res_inf = simplex::crush_dual_solution(original_problem_,
-                                                    original_lp_,
-                                                    new_slacks_,
-                                                    root_crossover_soln_.y,
-                                                    root_crossover_soln_.z,
-                                                    crushed_root_y,
-                                                    crushed_root_z);
+    [[maybe_unused]] f_t dual_res_inf = simplex::crush_dual_solution(original_problem_,
+                                                                     original_lp_,
+                                                                     new_slacks_,
+                                                                     root_crossover_soln_.y,
+                                                                     root_crossover_soln_.z,
+                                                                     crushed_root_y,
+                                                                     crushed_root_z);
 
     root_crossover_soln_.x = crushed_root_x;
     root_crossover_soln_.y = crushed_root_y;
@@ -3624,7 +3623,7 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
 template <typename i_t, typename f_t>
 mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solution)
 {
-  raft::common::nvtx::range scope("BB::solve");
+  [[maybe_unused]] raft::common::nvtx::range scope("BB::solve");
 
   logger_t log;
   log.log                             = false;
@@ -3643,7 +3642,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     original_lp_, settings_, var_types_, Arow_, new_slacks_);
 
   if (guess_.size() != 0) {
-    raft::common::nvtx::range scope_guess("BB::check_initial_guess");
+    [[maybe_unused]] raft::common::nvtx::range scope_guess("BB::check_initial_guess");
     std::vector<f_t> crushed_guess;
     crush_primal_solution(original_problem_, original_lp_, guess_, new_slacks_, crushed_guess);
     f_t primal_err;
@@ -3973,7 +3972,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   pc_.Arow = Arow_;
 
   if (!has_initial_pseudocost_) {
-    raft::common::nvtx::range scope_sb("BB::strong_branching");
+    [[maybe_unused]] raft::common::nvtx::range scope_sb("BB::strong_branching");
     strong_branching<i_t, f_t>(original_lp_,
                                settings_,
                                exploration_stats_.start_time,
@@ -4303,7 +4302,7 @@ global pseudocosts are broadcast to the worker's pseudocost snapshots for the co
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::run_deterministic_coordinator(const csr_matrix_t<i_t, f_t>& Arow)
 {
-  raft::common::nvtx::range scope("BB::deterministic_coordinator");
+  [[maybe_unused]] raft::common::nvtx::range scope("BB::deterministic_coordinator");
 
   deterministic_horizon_step_ = 0.50;
 
@@ -4473,7 +4472,7 @@ template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::run_deterministic_bfs_loop(
   deterministic_bfs_worker_t<i_t, f_t>& worker, search_tree_t<i_t, f_t>& search_tree)
 {
-  raft::common::nvtx::range scope("BB::worker_loop");
+  [[maybe_unused]] raft::common::nvtx::range scope("BB::worker_loop");
 
   while (deterministic_global_termination_status_ == mip_status_t::UNSET) {
     if (worker.has_work()) {
@@ -4494,7 +4493,7 @@ void branch_and_bound_t<i_t, f_t>::run_deterministic_bfs_loop(
       bool is_child                     = (node->parent == worker.last_solved_node);
       worker.recompute_bounds_and_basis = !is_child;
 
-      node_status_t status    = solve_node_deterministic(worker, node, search_tree);
+      solve_node_deterministic(worker, node, search_tree);
       worker.last_solved_node = node;
 
       worker.current_node = nullptr;
@@ -4511,7 +4510,7 @@ void branch_and_bound_t<i_t, f_t>::run_deterministic_bfs_loop(
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::deterministic_sync_callback()
 {
-  raft::common::nvtx::range scope("BB::deterministic_sync_callback");
+  [[maybe_unused]] raft::common::nvtx::range scope("BB::deterministic_sync_callback");
 
   ++deterministic_horizon_number_;
   double horizon_end = deterministic_current_horizon_;
@@ -4668,7 +4667,7 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node_deterministic(
   mip_node_t<i_t, f_t>* node_ptr,
   search_tree_t<i_t, f_t>& search_tree)
 {
-  raft::common::nvtx::range scope("BB::solve_node_deterministic");
+  [[maybe_unused]] raft::common::nvtx::range scope("BB::solve_node_deterministic");
 
   double work_units_at_start = worker.work_context.global_work_units_elapsed;
 
@@ -4697,7 +4696,7 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node_deterministic(
 
   bool feasible = true;
 #ifndef DETERMINISM_DISABLE_BOUNDS_STRENGTHENING
-  raft::common::nvtx::range scope_bs("BB::bound_strengthening");
+  [[maybe_unused]] raft::common::nvtx::range scope_bs("BB::bound_strengthening");
   feasible = worker.node_presolver.bounds_strengthening(
     lp_settings, worker.bounds_changed, worker.leaf_problem.lower, worker.leaf_problem.upper);
 
@@ -4793,11 +4792,6 @@ void branch_and_bound_t<i_t, f_t>::deterministic_process_worker_solutions(
 
   for (const auto* sol : all_solutions) {
     if (sol->objective < current_upper) {
-      f_t user_obj         = compute_user_objective(original_lp_, sol->objective);
-      f_t user_lower       = compute_user_objective(original_lp_, deterministic_lower);
-      i_t nodes_explored   = exploration_stats_.nodes_explored.load();
-      i_t nodes_unexplored = exploration_stats_.nodes_unexplored.load();
-
       search_strategy_t worker_type = get_worker_type(pool, sol->worker_id);
       report(original_lp_,
              feasible_solution_symbol(worker_type, settings_.diving_settings.show_type),
@@ -5237,7 +5231,7 @@ template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::run_deterministic_diving_loop(
   deterministic_diving_worker_t<i_t, f_t>& worker)
 {
-  raft::common::nvtx::range scope("BB::diving_worker_loop");
+  [[maybe_unused]] raft::common::nvtx::range scope("BB::diving_worker_loop");
 
   while (deterministic_global_termination_status_ == mip_status_t::UNSET) {
     // Process dives from queue until empty or horizon exhausted
@@ -5259,7 +5253,7 @@ template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::deterministic_dive(
   deterministic_diving_worker_t<i_t, f_t>& worker, dive_queue_entry_t<i_t, f_t> entry)
 {
-  raft::common::nvtx::range scope("BB::deterministic_dive");
+  [[maybe_unused]] raft::common::nvtx::range scope("BB::deterministic_dive");
 
   worker.dive_lower = std::move(entry.resolved_lower);
   worker.dive_upper = std::move(entry.resolved_upper);

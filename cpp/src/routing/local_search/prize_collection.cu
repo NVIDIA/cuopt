@@ -145,7 +145,6 @@ __global__ void execute_moves(typename solution_t<i_t, f_t, REQUEST>::view_t sol
   insertion_locations.id() = curr_route_cand.pickup_insertion;
   ejected_request.id()     = curr_route_cand.ejected_node_id;
   insertion_request.id()   = curr_route_cand.inserted_node_id;
-  double cost              = curr_route_cand.cost;
   if constexpr (REQUEST == request_t::PDP) {
     if (ejected_request.pickup < solution.get_num_orders()) {
       ejected_request.delivery = solution.problem.order_info.pair_indices[ejected_request.pickup];

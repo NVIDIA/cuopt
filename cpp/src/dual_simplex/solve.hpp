@@ -40,7 +40,7 @@ enum class lp_status_t {
   UNSET                   = 10
 };
 
-static std::string lp_status_to_string(lp_status_t status)
+[[maybe_unused]] static std::string lp_status_to_string(lp_status_t status)
 {
   switch (status) {
     case lp_status_t::OPTIMAL: return "OPTIMAL";

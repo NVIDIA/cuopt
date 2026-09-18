@@ -357,7 +357,7 @@ __global__ void populate_ep_with_selected_unserved_kernel(
 template <typename i_t, typename f_t, request_t REQUEST>
 void solution_t<i_t, f_t, REQUEST>::eject_until_feasible(bool add_slack_to_sol)
 {
-  raft::common::nvtx::range fun_scope("eject_until_feasible");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("eject_until_feasible");
   auto stream   = sol_handle->get_stream();
   const i_t TPB = 32;
   compute_max_active();
@@ -376,7 +376,7 @@ template <typename i_t, typename f_t, request_t REQUEST>
 void solution_t<i_t, f_t, REQUEST>::populate_ep_with_unserved(
   ejection_pool_t<request_info_t<i_t, REQUEST>>& EP)
 {
-  raft::common::nvtx::range fun_scope("populate_ep_with_unserved");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("populate_ep_with_unserved");
   auto stream = sol_handle->get_stream();
   rmm::device_scalar<i_t> ep_index_out(EP.index_, stream);
   const i_t TPB = 256;
@@ -395,7 +395,7 @@ template <typename i_t, typename f_t, request_t REQUEST>
 void solution_t<i_t, f_t, REQUEST>::populate_ep_with_selected_unserved(
   ejection_pool_t<request_info_t<i_t, REQUEST>>& EP, const std::vector<i_t>& unserviced)
 {
-  raft::common::nvtx::range fun_scope("populate_ep_with_unserved");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("populate_ep_with_unserved");
   auto stream = sol_handle->get_stream();
   rmm::device_scalar<i_t> ep_index_out(EP.index_, stream);
   constexpr auto const TPB = 256;

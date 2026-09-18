@@ -126,7 +126,7 @@ template <typename i_t, typename f_t>
 void sparse_vector_t<i_t, f_t>::inverse_permute_vector(const std::vector<i_t>& p,
                                                        sparse_vector_t<i_t, f_t>& y) const
 {
-  i_t m = p.size();
+  [[maybe_unused]] i_t m = p.size();
   assert(n == m);
   i_t nz = i.size();
   y.n    = n;
@@ -154,7 +154,6 @@ f_t sparse_vector_t<i_t, f_t>::sparse_dot(const csc_matrix_t<i_t, f_t>& Y, i_t y
 {
   const i_t col_start = Y.col_start[y_col];
   const i_t col_end   = Y.col_start[y_col + 1];
-  const i_t ny        = col_end - col_start;
   const i_t nx        = i.size();
   f_t dot             = 0.0;
   for (i_t h = 0, k = col_start; h < nx && k < col_end;) {

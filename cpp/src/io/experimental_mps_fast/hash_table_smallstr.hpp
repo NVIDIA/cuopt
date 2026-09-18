@@ -176,7 +176,7 @@ class smallstr_hash_table_t {
 #endif
   }
 
-  void print_build_probe_report(size_t n_rows) const
+  void print_build_probe_report([[maybe_unused]] size_t n_rows) const
   {
 #ifdef MPS_FAST_PERF_COUNTERS
     hash_build_probe_stats_t stats = build_probe_stats_;

@@ -33,7 +33,7 @@ class prize_route_t {
       prize_forward(0, sol_handle_->get_stream()),
       prize_backward(0, sol_handle_->get_stream())
   {
-    raft::common::nvtx::range fun_scope("zero prize_route_t copy_ctr");
+    [[maybe_unused]] raft::common::nvtx::range fun_scope("zero prize_route_t copy_ctr");
   }
 
   prize_route_t(const prize_route_t& prize_route, solution_handle_t<i_t, f_t> const* sol_handle_)
@@ -42,7 +42,7 @@ class prize_route_t {
       prize_forward(prize_route.prize_forward, sol_handle_->get_stream()),
       prize_backward(prize_route.prize_backward, sol_handle_->get_stream())
   {
-    raft::common::nvtx::range fun_scope("prize route copy_ctr");
+    [[maybe_unused]] raft::common::nvtx::range fun_scope("prize route copy_ctr");
   }
 
   prize_route_t& operator=(prize_route_t&& prize_route) = default;

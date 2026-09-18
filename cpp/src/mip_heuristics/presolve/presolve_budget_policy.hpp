@@ -141,9 +141,9 @@ presolve_budget_t evaluate_presolve_budget(const mip_heuristics_hyper_params_t<i
 
 // One line per presolve stage carrying the features that went in and the budgets that came out, so
 // a run can be regressed offline without re-deriving anything from the solver.
-inline void log_presolve_budget(const char* stage,
-                                const presolve_features_t& f,
-                                const presolve_budget_t& b)
+inline void log_presolve_budget([[maybe_unused]] const char* stage,
+                                [[maybe_unused]] const presolve_features_t& f,
+                                [[maybe_unused]] const presolve_budget_t& b)
 {
   CUOPT_LOG_DEBUG(
     "PRESOLVE_BUDGET stage=%s nvars=%.0f ncons=%.0f nnz=%.0f nint=%.0f "

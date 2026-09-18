@@ -311,7 +311,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
     buffer_transpose_mixed_{0, handle_ptr->get_stream()},
     mixed_precision_enabled_{false}
 {
-  raft::common::nvtx::range fun_scope("Initializing cuSparse view");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("Initializing cuSparse view");
 
 #ifdef PDLP_DEBUG_MODE
   RAFT_CUDA_TRY(cudaDeviceSynchronize());

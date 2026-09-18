@@ -174,7 +174,7 @@ void close_worker_pipes_child_ends(int worker_id)
 
 pid_t spawn_worker(int worker_id, bool is_replacement)
 {
-  std::lock_guard<std::mutex> lock(worker_pipes_mutex);
+  [[maybe_unused]] std::lock_guard<std::mutex> lock(worker_pipes_mutex);
 
   if (is_replacement) { close_worker_pipes_server(worker_id); }
 
@@ -211,7 +211,7 @@ pid_t spawn_worker(int worker_id, bool is_replacement)
 
 void spawn_workers()
 {
-  std::lock_guard<std::mutex> lock(worker_pids_mutex);
+  [[maybe_unused]] std::lock_guard<std::mutex> lock(worker_pids_mutex);
   // Index i is worker_id: keep failed startups as 0 so monitor/respawn and
   // pipe tables stay aligned even when some initial forks fail.
   worker_pids.assign(static_cast<size_t>(config.num_workers), 0);
@@ -223,7 +223,7 @@ void spawn_workers()
 
 void kill_all_workers()
 {
-  std::lock_guard<std::mutex> lock(worker_pids_mutex);
+  [[maybe_unused]] std::lock_guard<std::mutex> lock(worker_pids_mutex);
   for (pid_t pid : worker_pids) {
     if (pid > 0) { kill(pid, SIGKILL); }
   }
@@ -231,7 +231,7 @@ void kill_all_workers()
 
 void close_all_server_worker_pipes()
 {
-  std::lock_guard<std::mutex> lock(worker_pipes_mutex);
+  [[maybe_unused]] std::lock_guard<std::mutex> lock(worker_pipes_mutex);
   for (auto& wp : worker_pipes) {
     close_all_worker_pipes(wp);
   }
@@ -248,7 +248,7 @@ void cancel_all_active_jobs_for_shutdown()
   }
 
   {
-    std::lock_guard<std::mutex> lock(tracker_mutex);
+    [[maybe_unused]] std::lock_guard<std::mutex> lock(tracker_mutex);
     for (auto& [job_id, info] : job_tracker) {
       (void)job_id;
       if (info.status == JobStatus::QUEUED || info.status == JobStatus::PROCESSING) {
@@ -259,11 +259,11 @@ void cancel_all_active_jobs_for_shutdown()
   }
 
   {
-    std::lock_guard<std::mutex> wlock(waiters_mutex);
+    [[maybe_unused]] std::lock_guard<std::mutex> wlock(waiters_mutex);
     for (auto& [job_id, waiter] : waiting_threads) {
       (void)job_id;
       {
-        std::lock_guard<std::mutex> waiter_lock(waiter->mutex);
+        [[maybe_unused]] std::lock_guard<std::mutex> waiter_lock(waiter->mutex);
         waiter->error_message = "Server shutting down";
         waiter->success       = false;
         waiter->ready         = true;
@@ -291,7 +291,7 @@ void wait_for_workers()
   while (std::chrono::steady_clock::now() < deadline) {
     bool any_alive = false;
     {
-      std::lock_guard<std::mutex> lock(worker_pids_mutex);
+      [[maybe_unused]] std::lock_guard<std::mutex> lock(worker_pids_mutex);
       for (pid_t& pid : worker_pids) {
         if (pid <= 0) continue;
         int status   = 0;
@@ -313,7 +313,7 @@ void wait_for_workers()
   }
 
   {
-    std::lock_guard<std::mutex> lock(worker_pids_mutex);
+    [[maybe_unused]] std::lock_guard<std::mutex> lock(worker_pids_mutex);
     for (pid_t pid : worker_pids) {
       if (pid > 0) {
         kill(pid, SIGKILL);
@@ -352,7 +352,7 @@ void mark_worker_jobs_failed(pid_t dead_worker_pid)
 
       // 1. Drop the buffered request data (no longer needed).
       {
-        std::lock_guard<std::mutex> lock(pending_data_mutex);
+        [[maybe_unused]] std::lock_guard<std::mutex> lock(pending_data_mutex);
         pending_job_data.erase(job_id);
       }
 
@@ -392,7 +392,7 @@ void mark_worker_jobs_failed(pid_t dead_worker_pid)
       job_queue[i].cancelled    = false;
 
       {
-        std::lock_guard<std::mutex> lock(tracker_mutex);
+        [[maybe_unused]] std::lock_guard<std::mutex> lock(tracker_mutex);
         auto it = job_tracker.find(job_id);
         if (it != job_tracker.end()) {
           if (was_cancelled) {

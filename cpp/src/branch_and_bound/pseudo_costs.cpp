@@ -305,7 +305,7 @@ void strong_branch_helper(i_t start,
                           f_t start_time,
                           const lp_problem_t<i_t, f_t>& original_lp,
                           const simplex_solver_settings_t<i_t, f_t>& settings,
-                          const std::vector<variable_type_t>& var_types,
+                          [[maybe_unused]] const std::vector<variable_type_t>& var_types,
                           const std::vector<i_t>& fractional,
                           const std::vector<f_t>& root_soln,
                           const std::vector<variable_status_t>& root_vstatus,
@@ -322,7 +322,7 @@ void strong_branch_helper(i_t start,
                           shared_strong_branching_context_view_t<i_t, f_t>& sb_view,
                           omp_atomic_t<i_t>& num_strong_branches_completed)
 {
-  raft::common::nvtx::range scope("BB::strong_branch_helper");
+  [[maybe_unused]] raft::common::nvtx::range scope("BB::strong_branch_helper");
   lp_problem_t child_problem = original_lp;
 
   constexpr bool verbose = false;
@@ -466,21 +466,22 @@ void strong_branch_helper(i_t start,
 }
 
 template <typename i_t, typename f_t>
-std::pair<f_t, dual_status_t> trial_branching(const lp_problem_t<i_t, f_t>& original_lp,
-                                              const simplex_solver_settings_t<i_t, f_t>& settings,
-                                              const std::vector<variable_type_t>& var_types,
-                                              const std::vector<variable_status_t>& vstatus,
-                                              const std::vector<f_t>& edge_norms,
-                                              const basis_update_mpf_t<i_t, f_t>& basis_factors,
-                                              const std::vector<i_t>& basic_list,
-                                              const std::vector<i_t>& nonbasic_list,
-                                              i_t branch_var,
-                                              f_t branch_var_lower,
-                                              f_t branch_var_upper,
-                                              f_t upper_bound,
-                                              f_t start_time,
-                                              i_t iter_limit,
-                                              i_t& iter)
+std::pair<f_t, dual_status_t> trial_branching(
+  const lp_problem_t<i_t, f_t>& original_lp,
+  const simplex_solver_settings_t<i_t, f_t>& settings,
+  [[maybe_unused]] const std::vector<variable_type_t>& var_types,
+  const std::vector<variable_status_t>& vstatus,
+  const std::vector<f_t>& edge_norms,
+  const basis_update_mpf_t<i_t, f_t>& basis_factors,
+  const std::vector<i_t>& basic_list,
+  const std::vector<i_t>& nonbasic_list,
+  i_t branch_var,
+  f_t branch_var_lower,
+  f_t branch_var_upper,
+  f_t upper_bound,
+  f_t start_time,
+  i_t iter_limit,
+  i_t& iter)
 {
   lp_problem_t child_problem      = original_lp;
   child_problem.lower[branch_var] = branch_var_lower;
@@ -1026,7 +1027,7 @@ void strong_branching_reduced(const lp_problem_t<i_t, f_t>& original_lp,
                               std::vector<f_t>& strong_branch_up,
                               pseudo_costs_t<i_t, f_t>& pc)
 {
-  raft::common::nvtx::range scope("BB::strong_branching");
+  [[maybe_unused]] raft::common::nvtx::range scope("BB::strong_branching");
 
   pc.resize(original_lp.num_cols);
   strong_branch_down.assign(fractional.size(), std::numeric_limits<f_t>::quiet_NaN());
@@ -1508,7 +1509,7 @@ template <typename i_t, typename f_t>
 i_t pseudo_costs_t<i_t, f_t>::variable_selection(const std::vector<i_t>& fractional,
                                                  const std::vector<f_t>& solution)
 {
-  raft::common::nvtx::range scope("BB::pseudocost_branching");
+  [[maybe_unused]] raft::common::nvtx::range scope("BB::pseudocost_branching");
 
   i_t branch_var = fractional[0];
   f_t max_score  = -1;
@@ -1546,7 +1547,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
   const std::vector<i_t>& new_slacks,
   const lp_problem_t<i_t, f_t>& original_lp)
 {
-  raft::common::nvtx::range scope("BB::reliability_branching");
+  [[maybe_unused]] raft::common::nvtx::range scope("BB::reliability_branching");
 
   constexpr f_t eps = 1e-6;
   f_t start_time    = bnb_stats.start_time;
@@ -1568,7 +1569,6 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
     const i_t max_threshold            = reliability_branching_settings.max_reliable_threshold;
     const i_t min_threshold            = reliability_branching_settings.min_reliable_threshold;
     const f_t iter_factor              = reliability_branching_settings.bnb_lp_factor;
-    const i_t iter_offset              = reliability_branching_settings.bnb_lp_offset;
     const int64_t alpha                = iter_factor * branch_and_bound_lp_iters;
     const int64_t max_reliability_iter = alpha + reliability_branching_settings.bnb_lp_offset;
 
@@ -1930,7 +1930,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
     concurrent_halt.store(1);
   }
 
-  f_t dual_simplex_elapsed = toc(dual_simplex_start_time);
+  [[maybe_unused]] f_t dual_simplex_elapsed = toc(dual_simplex_start_time);
 
   if (use_pdlp) {
 #pragma omp taskwait  // Wait for the batch PDLP task to finish

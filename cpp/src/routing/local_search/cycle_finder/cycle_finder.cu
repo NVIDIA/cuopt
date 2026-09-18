@@ -25,7 +25,7 @@ namespace detail {
 template <typename i_t, typename f_t, size_t max_routes>
 bool ExactCycleFinder<i_t, f_t, max_routes>::call_init(graph_t<i_t, f_t>& graph)
 {
-  raft::common::nvtx::range fun_scope("call_init");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("call_init");
   auto n_vertices = graph.get_num_vertices();
   auto n_threads  = 128;
   auto n_blocks   = n_vertices;
@@ -48,7 +48,7 @@ bool ExactCycleFinder<i_t, f_t, max_routes>::call_init(graph_t<i_t, f_t>& graph)
 template <typename i_t, typename f_t, size_t max_routes>
 void ExactCycleFinder<i_t, f_t, max_routes>::sort_cycle_costs_by_key(int n_items)
 {
-  raft::common::nvtx::range fun_scope("sort_cycle_costs_by_key");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("sort_cycle_costs_by_key");
   // sort cycle candidates by weight
   // resize only once if the problem size don't change
   if (sorted_key_indices.size() < (size_t)n_items) {
@@ -104,7 +104,7 @@ void ExactCycleFinder<i_t, f_t, max_routes>::sort_cycle_costs_by_key(int n_items
 template <typename i_t, typename f_t, size_t max_routes>
 bool ExactCycleFinder<i_t, f_t, max_routes>::call_find(graph_t<i_t, f_t>& graph, i_t level)
 {
-  raft::common::nvtx::range fun_scope("call_find");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("call_find");
   auto n_threads = 128;
   auto n_blocks  = graph.get_num_vertices();
   size_t sh_size =
@@ -163,7 +163,7 @@ bool test_empty(typename detail::device_map_t<key_t<max_routes>, double>::view_t
 template <typename i_t, typename f_t, size_t max_routes>
 bool ExactCycleFinder<i_t, f_t, max_routes>::find_cycle(graph_t<i_t, f_t>& graph)
 {
-  raft::common::nvtx::range fun_scope("find_cycle");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("find_cycle");
   d_valid_paths.clear(handle_ptr->get_stream());
   cuopt_assert(test_empty<max_routes>(d_valid_paths.subspan(0), handle_ptr->get_stream()), "");
   if (!call_init(graph)) { return false; }
@@ -181,7 +181,7 @@ template <typename i_t, typename f_t, size_t max_routes>
 void ExactCycleFinder<i_t, f_t, max_routes>::get_cycle(graph_t<i_t, f_t>& graph,
                                                        ret_cycles_t<i_t, f_t>& d_ret)
 {
-  raft::common::nvtx::range fun_scope("get_cycle");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("get_cycle");
   auto n_threads = 256;
   auto n_blocks  = std::min((d_valid_paths.max_available + n_threads - 1) / n_threads, max_blocks);
 
@@ -292,7 +292,7 @@ void ExactCycleFinder<i_t, f_t, max_routes>::sort_occupied(int level,
                                                            graph_t<i_t, f_t>& graph,
                                                            int curr_level_occupied)
 {
-  raft::common::nvtx::range fun_scope("sort_occupied");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("sort_occupied");
   auto curr_map = d_valid_paths.subspan(level);
   cuopt_assert(check_occupied_head(level, graph), "");
 
@@ -344,7 +344,7 @@ void ExactCycleFinder<i_t, f_t, max_routes>::find_best_cycles(
   ret_cycles_t<i_t, f_t>& ret,
   const solution_handle_t<i_t, f_t>* sol_handle)
 {
-  raft::common::nvtx::range fun_scope("find_best_cycles");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("find_best_cycles");
   handle_ptr = const_cast<solution_handle_t<i_t, f_t>*>(sol_handle);
   best_cycles.reset(handle_ptr->get_stream());
   cycle_candidates.reset(graph.get_num_vertices(), handle_ptr);

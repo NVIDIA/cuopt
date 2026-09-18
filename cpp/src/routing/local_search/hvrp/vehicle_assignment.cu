@@ -176,7 +176,7 @@ bool run_vehicle_assignment(solution_t<i_t, f_t, REQUEST>& sol,
                             move_candidates_t<i_t, f_t>& move_candidates,
                             vehicle_assignment_t<i_t, f_t, REQUEST>& vehicle_assignment)
 {
-  raft::common::nvtx::range fun_scope("vehicle_assignment_heuristic");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("vehicle_assignment_heuristic");
   sol.global_runtime_checks(false, false, "vehicle_assignment_checks_start");
 
   [[maybe_unused]] double cost_before = 0., cost_after = 0.;

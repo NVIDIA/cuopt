@@ -414,8 +414,8 @@ DI void check_variable_feasibility(const typename fj_t<i_t, f_t>::climber_data_t
                                    bool check_integer)
 {
   for (i_t var_idx = threadIdx.x; var_idx < fj.pb.n_variables; var_idx += blockDim.x) {
-    auto val      = fj.incumbent_assignment[var_idx];
-    bool feasible = fj.pb.check_variable_within_bounds(var_idx, val);
+    auto val                       = fj.incumbent_assignment[var_idx];
+    [[maybe_unused]] bool feasible = fj.pb.check_variable_within_bounds(var_idx, val);
 
     cuopt_assert(feasible, "invalid variable assignment");
     if (check_integer && fj.pb.is_integer_var(var_idx))
@@ -499,7 +499,7 @@ DI bool save_best_solution(typename fj_t<i_t, f_t>::climber_data_t::view_t& fj)
     cuopt_assert(
       *fj.weighted_violation_score <= *fj.max_cstr_weight * fj.pb.tolerances.absolute_tolerance,
       "Violated constraint and score mismatch");
-    bool check_integer = fj.settings->mode != fj_mode_t::ROUNDING;
+    [[maybe_unused]] bool check_integer = fj.settings->mode != fj_mode_t::ROUNDING;
     cuopt_func_call(check_feasibility<i_t, f_t>(fj, check_integer));
   }
   // return whether it is an improving local minimum

@@ -11,6 +11,7 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstringop-overflow"  // ignore boost error for pip wheel build
 #pragma GCC diagnostic ignored "-Wnarrowing"
+#pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
 #include <papilo/Config.hpp>
 #include <papilo/core/PresolveMethod.hpp>
@@ -73,7 +74,7 @@ class BHWCoeffReduce : public papilo::PresolveMethod<f_t> {
                                  const papilo::Num<f_t>& num,
                                  papilo::Reductions<f_t>& reductions,
                                  const papilo::Timer& timer,
-                                 int& reason_of_infeasibility) override;
+                                 [[maybe_unused]] int& reason_of_infeasibility) override;
 
  private:
   bhw_shape_cache_t shape_cache_;

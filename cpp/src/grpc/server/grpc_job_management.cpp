@@ -16,7 +16,7 @@ bool send_job_data_pipe(int worker_idx, const std::vector<uint8_t>& data)
 {
   int fd;
   {
-    std::lock_guard<std::mutex> lock(worker_pipes_mutex);
+    [[maybe_unused]] std::lock_guard<std::mutex> lock(worker_pipes_mutex);
     if (worker_idx < 0 || worker_idx >= static_cast<int>(worker_pipes.size())) { return false; }
     fd = worker_pipes[worker_idx].to_worker_fd;
   }
@@ -98,12 +98,12 @@ std::pair<bool, std::string> submit_job_async(std::vector<uint8_t>&& request_dat
   job_queue[slot].worker_pid = 0;
 
   {
-    std::lock_guard<std::mutex> lock(pending_data_mutex);
+    [[maybe_unused]] std::lock_guard<std::mutex> lock(pending_data_mutex);
     pending_job_data[job_id] = std::move(request_data);
   }
 
   {
-    std::lock_guard<std::mutex> lock(tracker_mutex);
+    [[maybe_unused]] std::lock_guard<std::mutex> lock(tracker_mutex);
     JobInfo info;
     info.job_id           = job_id;
     info.status           = JobStatus::QUEUED;
@@ -153,12 +153,12 @@ std::pair<bool, std::string> submit_chunked_job_async(PendingChunkedUpload&& chu
   job_queue[slot].worker_pid = 0;
 
   {
-    std::lock_guard<std::mutex> lock(pending_data_mutex);
+    [[maybe_unused]] std::lock_guard<std::mutex> lock(pending_data_mutex);
     pending_chunked_data[job_id] = std::move(chunked_data);
   }
 
   {
-    std::lock_guard<std::mutex> lock(tracker_mutex);
+    [[maybe_unused]] std::lock_guard<std::mutex> lock(tracker_mutex);
     JobInfo info;
     info.job_id           = job_id;
     info.status           = JobStatus::QUEUED;
@@ -180,7 +180,7 @@ std::pair<bool, std::string> submit_chunked_job_async(PendingChunkedUpload&& chu
 
 JobStatus check_job_status(const std::string& job_id, std::string& message)
 {
-  std::lock_guard<std::mutex> lock(tracker_mutex);
+  [[maybe_unused]] std::lock_guard<std::mutex> lock(tracker_mutex);
   auto it = job_tracker.find(job_id);
 
   if (it == job_tracker.end()) {
@@ -232,7 +232,7 @@ void delete_log_file(const std::string& job_id)
 
 int cancel_job(const std::string& job_id, JobStatus& job_status_out, std::string& message)
 {
-  std::lock_guard<std::mutex> lock(tracker_mutex);
+  [[maybe_unused]] std::lock_guard<std::mutex> lock(tracker_mutex);
   auto it = job_tracker.find(job_id);
 
   if (it == job_tracker.end()) {
@@ -295,12 +295,12 @@ int cancel_job(const std::string& job_id, JobStatus& job_status_out, std::string
     delete_log_file(job_id);
 
     {
-      std::lock_guard<std::mutex> wlock(waiters_mutex);
+      [[maybe_unused]] std::lock_guard<std::mutex> wlock(waiters_mutex);
       auto wit = waiting_threads.find(job_id);
       if (wit != waiting_threads.end()) {
         auto waiter = wit->second;
         {
-          std::lock_guard<std::mutex> waiter_lock(waiter->mutex);
+          [[maybe_unused]] std::lock_guard<std::mutex> waiter_lock(waiter->mutex);
           waiter->error_message = "Job cancelled by user";
           waiter->success       = false;
           waiter->ready         = true;
@@ -325,12 +325,12 @@ int cancel_job(const std::string& job_id, JobStatus& job_status_out, std::string
   message                  = "Job cancelled";
 
   {
-    std::lock_guard<std::mutex> wlock(waiters_mutex);
+    [[maybe_unused]] std::lock_guard<std::mutex> wlock(waiters_mutex);
     auto wit = waiting_threads.find(job_id);
     if (wit != waiting_threads.end()) {
       auto waiter = wit->second;
       {
-        std::lock_guard<std::mutex> waiter_lock(waiter->mutex);
+        [[maybe_unused]] std::lock_guard<std::mutex> waiter_lock(waiter->mutex);
         waiter->error_message = "Job cancelled by user";
         waiter->success       = false;
         waiter->ready         = true;
@@ -357,12 +357,12 @@ bool delete_job(const std::string& job_id, std::string& message)
   }
 
   {
-    std::lock_guard<std::mutex> lock(tracker_mutex);
+    [[maybe_unused]] std::lock_guard<std::mutex> lock(tracker_mutex);
     job_tracker.erase(job_id);
   }
 
   {
-    std::lock_guard<std::mutex> lock(pending_data_mutex);
+    [[maybe_unused]] std::lock_guard<std::mutex> lock(pending_data_mutex);
     pending_job_data.erase(job_id);
     pending_chunked_data.erase(job_id);
   }

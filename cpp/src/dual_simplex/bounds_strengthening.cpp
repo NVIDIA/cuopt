@@ -35,10 +35,10 @@ static inline bool check_infeasibility(f_t min_a, f_t max_a, f_t cnst_lb, f_t cn
 #define DEBUG_BOUND_STRENGTHENING 0
 
 template <typename i_t, typename f_t>
-void print_bounds_stats(const std::vector<f_t>& lower,
-                        const std::vector<f_t>& upper,
-                        const simplex_solver_settings_t<i_t, f_t>& settings,
-                        const std::string msg)
+void print_bounds_stats([[maybe_unused]] const std::vector<f_t>& lower,
+                        [[maybe_unused]] const std::vector<f_t>& upper,
+                        [[maybe_unused]] const simplex_solver_settings_t<i_t, f_t>& settings,
+                        [[maybe_unused]] const std::string msg)
 {
 #if DEBUG_BOUND_STRENGTHENING
   f_t lb_norm = 0.0;

@@ -33,7 +33,7 @@ class routing_resource_t {
          problem_->viables),
       ges(dummy_sol, &ls)  // the ls will be dangled as this object will be moved to the shared pool
   {
-    raft::common::nvtx::range fun_scope("routing_resource_t");
+    [[maybe_unused]] raft::common::nvtx::range fun_scope("routing_resource_t");
   }
 
   local_search_t<i_t, f_t, Solution::request_type> ls;
@@ -49,7 +49,7 @@ class pool_allocator_t {
                    i_t desired_n_routes = -1)
     : problem(problem_), stream(stream_)
   {
-    raft::common::nvtx::range fun_scope("pool_allocator_t");
+    [[maybe_unused]] raft::common::nvtx::range fun_scope("pool_allocator_t");
     // FIXME:: This is temporary, we should let the diversity manager decide this
     std::vector<i_t> desired_vehicle_ids;
     if (desired_n_routes > 0) {

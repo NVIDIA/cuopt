@@ -304,7 +304,7 @@ i_t remove_fixed_variables(f_t fixed_tolerance,
 }
 
 template <typename i_t, typename f_t>
-i_t convert_less_than_to_equal(const user_problem_t<i_t, f_t>& user_problem,
+i_t convert_less_than_to_equal([[maybe_unused]] const user_problem_t<i_t, f_t>& user_problem,
                                std::vector<char>& row_sense,
                                lp_problem_t<i_t, f_t>& problem,
                                i_t& less_rows,
@@ -458,7 +458,7 @@ i_t convert_less_than_to_equal(const user_problem_t<i_t, f_t>& user_problem,
 }
 
 template <typename i_t, typename f_t>
-i_t convert_greater_to_less(const user_problem_t<i_t, f_t>& user_problem,
+i_t convert_greater_to_less([[maybe_unused]] const user_problem_t<i_t, f_t>& user_problem,
                             std::vector<char>& row_sense,
                             lp_problem_t<i_t, f_t>& problem,
                             i_t& greater_rows,
@@ -479,8 +479,7 @@ i_t convert_greater_to_less(const user_problem_t<i_t, f_t>& user_problem,
 
   for (i_t i = 0; i < problem.num_rows; i++) {
     if (row_sense[i] == 'G') {
-      i_t row_start = Arow.row_start[i];
-      i_t row_end   = Arow.row_start[i + 1];
+      i_t row_end = Arow.row_start[i + 1];
       for (i_t p = Arow.row_start[i]; p < row_end; p++) {
         Arow.x[p] *= -1;
       }
@@ -663,7 +662,6 @@ i_t add_artifical_variables(lp_problem_t<i_t, f_t>& problem,
                             std::vector<i_t>& new_slacks)
 {
   const i_t n                   = problem.num_cols;
-  const i_t m                   = problem.num_rows;
   const i_t num_artificial_vars = equality_rows.size() - range_rows.size();
   const i_t num_cols            = n + num_artificial_vars;
   i_t nnz                       = problem.A.col_start[n] + num_artificial_vars;
@@ -1560,9 +1558,9 @@ void crush_primal_solution(const user_problem_t<i_t, f_t>& user_problem,
 
   // Compute the value for each of the added slack variables
   for (i_t j : new_slacks) {
-    const i_t col_start = problem.A.col_start[j];
-    const i_t col_end   = problem.A.col_start[j + 1];
-    const i_t diff      = col_end - col_start;
+    const i_t col_start             = problem.A.col_start[j];
+    const i_t col_end               = problem.A.col_start[j + 1];
+    [[maybe_unused]] const i_t diff = col_end - col_start;
     assert(diff == 1);
     const i_t i = problem.A.i[col_start];
     assert(solution[j] == 0.0);
@@ -1601,9 +1599,9 @@ void crush_primal_solution_with_slack(const user_problem_t<i_t, f_t>& user_probl
   constexpr bool verbose = false;
   // Compute the value for each of the added slack variables
   for (i_t j : new_slacks) {
-    const i_t col_start = problem.A.col_start[j];
-    const i_t col_end   = problem.A.col_start[j + 1];
-    const i_t diff      = col_end - col_start;
+    const i_t col_start             = problem.A.col_start[j];
+    const i_t col_end               = problem.A.col_start[j + 1];
+    [[maybe_unused]] const i_t diff = col_end - col_start;
     assert(diff == 1);
     const i_t i = problem.A.i[col_start];
     assert(solution[j] == 0.0);
@@ -1650,9 +1648,9 @@ f_t crush_dual_solution(const user_problem_t<i_t, f_t>& user_problem,
   assert(user_problem.num_rows == problem.num_rows);
 
   for (i_t j : new_slacks) {
-    const i_t col_start = problem.A.col_start[j];
-    const i_t col_end   = problem.A.col_start[j + 1];
-    const i_t diff      = col_end - col_start;
+    const i_t col_start             = problem.A.col_start[j];
+    const i_t col_end               = problem.A.col_start[j + 1];
+    [[maybe_unused]] const i_t diff = col_end - col_start;
     assert(diff == 1);
     const i_t i = problem.A.i[col_start];
 
@@ -1790,9 +1788,7 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
     //            0 <= x,
     //            0 <= w
 
-    i_t reduced_cols  = presolve_info.folding_info.D.n;
     i_t previous_cols = presolve_info.folding_info.D.m;
-    i_t reduced_rows  = presolve_info.folding_info.C_s.m;
     i_t previous_rows = presolve_info.folding_info.C_s.n;
 
     std::vector<f_t> xtilde(previous_cols);

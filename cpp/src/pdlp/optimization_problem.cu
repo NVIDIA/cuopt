@@ -73,7 +73,7 @@ optimization_problem_t<i_t, f_t>::optimization_problem_t(raft::handle_t const* h
     row_types_(0, stream_view_),
     variable_types_(0, stream_view_)
 {
-  raft::common::nvtx::range fun_scope("optimization problem construction");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("optimization problem construction");
 }
 
 template <typename i_t, typename f_t>
@@ -191,7 +191,7 @@ void optimization_problem_t<i_t, f_t>::set_quadratic_objective_matrix(
   i_t size_indices,
   const i_t* Q_offsets,
   i_t size_offsets,
-  bool validate_positive_semi_definite)
+  [[maybe_unused]] bool validate_positive_semi_definite)
 {
   cuopt_expects(Q_values != nullptr, error_type_t::ValidationError, "Q_values cannot be null");
   cuopt_expects(

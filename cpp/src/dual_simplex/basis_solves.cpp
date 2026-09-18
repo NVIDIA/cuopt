@@ -30,7 +30,7 @@ i_t reorder_basic_list(const std::vector<i_t>& q, std::vector<i_t>& basic_list)
 }
 
 template <typename i_t>
-void get_basis_from_vstatus(i_t m,
+void get_basis_from_vstatus([[maybe_unused]] i_t m,
                             const std::vector<variable_status_t>& vstatus,
                             std::vector<i_t>& basis_list,
                             std::vector<i_t>& nonbasic_list,
@@ -54,7 +54,7 @@ void get_basis_from_vstatus(i_t m,
       superbasic_list.push_back(j);
     }
   }
-  i_t num_super_basic = superbasic_list.size();
+  [[maybe_unused]] i_t num_super_basic = superbasic_list.size();
   assert(num_basic == m);
 }
 
@@ -170,7 +170,7 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
                     std::vector<i_t>& slacks_needed,
                     f_t& work_estimate)
 {
-  raft::common::nvtx::range scope("LU::factorize_basis");
+  [[maybe_unused]] raft::common::nvtx::range scope("LU::factorize_basis");
   const i_t m              = basic_list.size();
   constexpr f_t medium_tol = 1e-12;
 
@@ -178,7 +178,7 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
   constexpr bool verbose          = false;
   if (eliminate_singletons) {
     // TODO: We should see if we can find the singletons without explictly forming the matrix B
-    f_t fact_start = tic();
+    [[maybe_unused]] f_t fact_start = tic();
     csc_matrix_t<i_t, f_t> B(A.m, A.m, 1);
     work_estimate += A.m;
     form_b(A, basic_list, B, work_estimate);
@@ -558,7 +558,7 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
 
         // Check the diagonal entries of U
         for (i_t k = 0; k < m; ++k) {
-          const i_t col_end = U.col_start[k + 1] - 1;
+          [[maybe_unused]] const i_t col_end = U.col_start[k + 1] - 1;
           assert(U.i[col_end] == k);
         }
 
@@ -677,7 +677,7 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
 
 template <typename i_t, typename f_t>
 i_t basis_repair(const csc_matrix_t<i_t, f_t>& A,
-                 const simplex_solver_settings_t<i_t, f_t>& settings,
+                 [[maybe_unused]] const simplex_solver_settings_t<i_t, f_t>& settings,
                  const std::vector<f_t>& lower,
                  const std::vector<f_t>& upper,
                  const std::vector<i_t>& deficient,
@@ -779,8 +779,8 @@ i_t form_b(const csc_matrix_t<i_t, f_t>& A,
   work_estimate += 3 * m;
   B.reallocate(Bnz);
   work_estimate += 2 * Bnz;
-  const i_t Bnz_check = Bnz;
-  Bnz                 = 0;
+  [[maybe_unused]] const i_t Bnz_check = Bnz;
+  Bnz                                  = 0;
   for (i_t k = 0; k < m; ++k) {
     B.col_start[k]      = Bnz;
     const i_t j         = basic_list[k];
@@ -858,7 +858,7 @@ i_t b_transpose_solve(const csc_matrix_t<i_t, f_t>& L,
   // U'*r = c
   // L'*w = r
 
-  raft::common::nvtx::range scope("LU::b_transpose_solve");
+  [[maybe_unused]] raft::common::nvtx::range scope("LU::b_transpose_solve");
 
   f_t work_estimate = 0;
   // Solve for r such that U'*r = c
@@ -898,7 +898,7 @@ i_t b_solve(const csc_matrix_t<i_t, f_t>& L,
             const std::vector<f_t>& rhs,
             std::vector<f_t>& solution)
 {
-  const i_t m = L.m;
+  [[maybe_unused]] const i_t m = L.m;
   assert(p.size() == m);
   assert(rhs.size() == m);
   assert(solution.size() == m);

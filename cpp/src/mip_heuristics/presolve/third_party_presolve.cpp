@@ -71,8 +71,6 @@ void normalize_for_presolve(io::mps_data_model_t<i_t, f_t> const& mps,
                             bool maximize,
                             std::vector<f_t>& obj_coeffs,
                             f_t& objective_offset,
-                            std::vector<f_t>& var_lb,
-                            std::vector<f_t>& var_ub,
                             std::vector<f_t>& constr_lb,
                             std::vector<f_t>& constr_ub)
 {
@@ -107,7 +105,7 @@ papilo::Problem<f_t> build_papilo_problem(io::mps_data_model_t<i_t, f_t> const& 
                                           bool maximize,
                                           problem_category_t category)
 {
-  raft::common::nvtx::range fun_scope("Build papilo::Problem from mps_data_model");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("Build papilo::Problem from mps_data_model");
 
   const i_t n_cols = mps.get_n_variables();
   const i_t n_rows = mps.get_n_constraints();
@@ -120,7 +118,7 @@ papilo::Problem<f_t> build_papilo_problem(io::mps_data_model_t<i_t, f_t> const& 
   std::vector<f_t> constr_ub(mps.get_constraint_upper_bounds());
   f_t objective_offset = mps.get_objective_offset();
   normalize_for_presolve<i_t, f_t>(
-    mps, maximize, obj_coeffs, objective_offset, var_lb, var_ub, constr_lb, constr_ub);
+    mps, maximize, obj_coeffs, objective_offset, constr_lb, constr_ub);
 
   const auto& coefficients   = mps.get_constraint_matrix_values();
   const auto& indices        = mps.get_constraint_matrix_indices();
@@ -217,7 +215,7 @@ papilo::Problem<f_t> build_papilo_problem(io::mps_data_model_t<i_t, f_t> const& 
 template <typename i_t, typename f_t>
 papilo::Problem<f_t> build_papilo_problem(const simplex::user_problem_t<i_t, f_t>& problem)
 {
-  raft::common::nvtx::range fun_scope("Build papilo problem");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("Build papilo problem");
   // Build a papilo problem from a (host-side) dual-simplex user_problem_t. Unlike the
   // optimization_problem_t overload, all data already lives on the host and the constraint
   // matrix is stored column-major (CSC), so there are no device copies and no COO step: the
@@ -363,7 +361,7 @@ template <typename i_t, typename f_t>
 void build_user_problem(papilo::Problem<f_t> const& papilo_problem,
                         simplex::user_problem_t<i_t, f_t>& problem)
 {
-  raft::common::nvtx::range fun_scope("Build user problem");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("Build user problem");
 
   const i_t reduced_rows        = papilo_problem.getNRows();
   const i_t reduced_cols        = papilo_problem.getNCols();
@@ -466,7 +464,7 @@ io::mps_data_model_t<i_t, f_t> build_reduced_mps_from_pslp(Presolver* pslp_preso
                                                            bool maximize,
                                                            f_t original_obj_offset)
 {
-  raft::common::nvtx::range fun_scope("Build mps_data_model from PSLP");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("Build mps_data_model from PSLP");
   io::mps_data_model_t<i_t, f_t> mps;
 
   if constexpr (std::is_same_v<f_t, double>) {
@@ -520,7 +518,7 @@ template <typename i_t, typename f_t>
 io::mps_data_model_t<i_t, f_t> build_reduced_mps_from_papilo(
   papilo::Problem<f_t> const& papilo_problem, bool maximize)
 {
-  raft::common::nvtx::range fun_scope("Reduced mps <- Papilo");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("Reduced mps <- Papilo");
   io::mps_data_model_t<i_t, f_t> mps;
 
   auto obj = papilo_problem.getObjective();
@@ -719,9 +717,6 @@ void set_presolve_methods(
 
 template <typename i_t, typename f_t>
 void set_presolve_options(papilo::Presolve<f_t>& presolver,
-                          problem_category_t category,
-                          f_t absolute_tolerance,
-                          f_t relative_tolerance,
                           f_t time_limit,
                           bool dual_postsolve,
                           i_t num_cpu_threads,
@@ -741,7 +736,6 @@ template <typename f_t>
 void set_presolve_parameters(
   papilo::Presolve<f_t>& presolver,
   problem_category_t category,
-  int nrows,
   int ncols,
   int max_badgesize,
   std::optional<std::unordered_set<std::string>> const& method_allowlist = std::nullopt)
@@ -776,7 +770,7 @@ template <typename i_t, typename f_t>
 third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_pslp(
   io::mps_data_model_t<i_t, f_t> const& mps, double time_limit)
 {
-  raft::common::nvtx::range fun_scope("Apply PSLP presolver on host");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("Apply PSLP presolver on host");
 
   if constexpr (std::is_same_v<f_t, double>) {
     const i_t n_cols = mps.get_n_variables();
@@ -793,7 +787,7 @@ third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_pslp(
     std::vector<f_t> constr_ub(mps.get_constraint_upper_bounds());
     f_t objective_offset = mps.get_objective_offset();
     normalize_for_presolve<i_t, f_t>(
-      mps, maximize_, obj_coeffs, objective_offset, var_lb, var_ub, constr_lb, constr_ub);
+      mps, maximize_, obj_coeffs, objective_offset, constr_lb, constr_ub);
     if (var_lb.empty()) { var_lb.assign(n_cols, -std::numeric_limits<f_t>::infinity()); }
     if (var_ub.empty()) { var_ub.assign(n_cols, std::numeric_limits<f_t>::infinity()); }
     const auto& coefficients = mps.get_constraint_matrix_values();
@@ -847,14 +841,14 @@ third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_papilo(
   papilo::Problem<f_t>& papilo_problem,
   problem_category_t category,
   bool dual_postsolve,
-  f_t absolute_tolerance,
-  f_t relative_tolerance,
+  [[maybe_unused]] f_t absolute_tolerance,
+  [[maybe_unused]] f_t relative_tolerance,
   double time_limit,
   i_t num_cpu_threads,
   i_t max_rounds,
   i_t max_badgesize)
 {
-  raft::common::nvtx::range fun_scope("Apply Papilo presolve on host");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("Apply Papilo presolve on host");
 
   // Capture original dimensions before papilo.apply() mutates papilo_problem
   // in place into its reduced form.
@@ -870,27 +864,17 @@ third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_papilo(
   if (category == problem_category_t::MIP) { dual_postsolve = false; }
   papilo::Presolve<f_t> papilo_presolver;
   set_presolve_methods(papilo_presolver, category, dual_postsolve, reduction_allowlist_);
-  set_presolve_options<i_t, f_t>(papilo_presolver,
-                                 category,
-                                 absolute_tolerance,
-                                 relative_tolerance,
-                                 time_limit,
-                                 dual_postsolve,
-                                 num_cpu_threads,
-                                 max_rounds);
-  set_presolve_parameters(papilo_presolver,
-                          category,
-                          original_n_cons,
-                          original_n_vars,
-                          max_badgesize,
-                          reduction_allowlist_);
+  set_presolve_options<i_t, f_t>(
+    papilo_presolver, time_limit, dual_postsolve, num_cpu_threads, max_rounds);
+  set_presolve_parameters(
+    papilo_presolver, category, original_n_vars, max_badgesize, reduction_allowlist_);
   papilo_presolver.setVerbosityLevel(papilo::VerbosityLevel::kQuiet);
   CUOPT_LOG_DEBUG(
     "PRESOLVE_PAPILO_BUDGET rounds=%d badge_cap=%d tlim=%g", max_rounds, max_badgesize, time_limit);
 
   const auto papilo_t0 = std::chrono::steady_clock::now();
   auto result          = papilo_presolver.apply(papilo_problem);
-  const double papilo_wall =
+  [[maybe_unused]] const double papilo_wall =
     std::chrono::duration<double>(std::chrono::steady_clock::now() - papilo_t0).count();
   // The effective badge is what set_presolve_parameters actually installed; the cap alone is
   // misleading because it only binds once ncols/2 exceeds it.
@@ -1139,18 +1123,11 @@ third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_to_subprob
   papilo::Presolve<f_t> papilo_presolver;
   set_presolve_methods(
     papilo_presolver, problem_category_t::MIP, dual_postsolve, reduction_allowlist_);
-  set_presolve_options<i_t, f_t>(papilo_presolver,
-                                 problem_category_t::MIP,
-                                 settings.primal_tol,
-                                 settings.dual_tol,
-                                 time_limit,
-                                 dual_postsolve,
-                                 num_threads,
-                                 -1);
+  set_presolve_options<i_t, f_t>(papilo_presolver, time_limit, dual_postsolve, num_threads, -1);
   // Node presolve already runs under a finite time limit, so it keeps the unbounded round count and
   // uncapped badge; the budgets apply to root presolve only.
   set_presolve_parameters(
-    papilo_presolver, problem_category_t::MIP, orig_rows, orig_cols, -1, reduction_allowlist_);
+    papilo_presolver, problem_category_t::MIP, orig_cols, -1, reduction_allowlist_);
 
   // Disable papilo logs
   papilo_presolver.setVerbosityLevel(papilo::VerbosityLevel::kQuiet);

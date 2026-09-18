@@ -481,7 +481,7 @@ papilo::PresolveStatus BHWCoeffReduce<f_t>::execute(const papilo::Problem<f_t>& 
                                                     const papilo::Num<f_t>& num,
                                                     papilo::Reductions<f_t>& reductions,
                                                     const papilo::Timer& timer,
-                                                    int& reason_of_infeasibility)
+                                                    [[maybe_unused]] int& reason_of_infeasibility)
 {
   const auto& constraint_matrix = problem.getConstraintMatrix();
   const auto& lhs_values        = constraint_matrix.getLeftHandSides();

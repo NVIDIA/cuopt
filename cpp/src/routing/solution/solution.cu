@@ -20,7 +20,7 @@ route_t<i_t, f_t, REQUEST>& solution_t<i_t, f_t, REQUEST>::get_route(i_t route_i
                "route_id should be less than total number of routes");
   cuopt_assert(route_id < (i_t)routes.size(),
                "route_id should be less than total number of routes");
-  raft::common::nvtx::range fun_scope("get_route");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("get_route");
   auto idx = route_id_to_idx[route_id];
   return routes[idx];
 }
@@ -31,7 +31,7 @@ const route_t<i_t, f_t, REQUEST>& solution_t<i_t, f_t, REQUEST>::get_route(i_t r
 {
   cuopt_assert(route_id < (i_t)route_id_to_idx.size(),
                "route_id should be less than total number of routes");
-  raft::common::nvtx::range fun_scope("get_route_const");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("get_route_const");
   auto idx = route_id_to_idx[route_id];
   return routes[idx];
 }
@@ -75,7 +75,7 @@ void solution_t<i_t, f_t, REQUEST>::add_route(route_t<i_t, f_t, REQUEST>&& route
                                               i_t n_nodes,
                                               bool check_size)
 {
-  raft::common::nvtx::range fun_scope("add_route");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("add_route");
   cuopt_assert(!check_size || (n_nodes > request_info_t<i_t, REQUEST>::size()),
                "There should be at least one request in the route!");
   cuopt_expects(!check_size || (n_nodes > request_info_t<i_t, REQUEST>::size()),
@@ -107,7 +107,7 @@ template <typename i_t, typename f_t, request_t REQUEST>
 void solution_t<i_t, f_t, REQUEST>::add_routes(
   const std::vector<std::pair<int, std::vector<NodeInfo<>>>>& new_routes)
 {
-  raft::common::nvtx::range fun_scope("add_routes");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("add_routes");
   cuopt_assert(new_routes.size() > 0, "There should be at least one route in the vector!");
   thrust::fill(sol_handle->get_thrust_policy(),
                routes_to_search.data() + n_routes,
@@ -162,7 +162,7 @@ template <typename i_t, typename f_t, request_t REQUEST>
 void solution_t<i_t, f_t, REQUEST>::add_nodes_to_route(
   const std::vector<NodeInfo<>>& nodes_to_insert, i_t route_id, i_t intra_idx)
 {
-  raft::common::nvtx::range fun_scope("add_nodes_to_route");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("add_nodes_to_route");
   cuopt_assert(route_id > -1, "Route id should be valid");
   const auto n_nodes_to_insert = nodes_to_insert.size();
   raft::copy(
@@ -185,7 +185,7 @@ template <typename i_t, typename f_t, request_t REQUEST>
 void solution_t<i_t, f_t, REQUEST>::add_nodes_to_best(
   const std::vector<NodeInfo<>>& nodes_to_insert, const infeasible_cost_t& weights)
 {
-  raft::common::nvtx::range fun_scope("add_nodes_to_best");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("add_nodes_to_best");
   i_t TPB                          = 256;
   constexpr bool include_objective = true;
   // TODO check perf and implement parallel insertion
@@ -206,7 +206,7 @@ void solution_t<i_t, f_t, REQUEST>::add_nodes_to_best(
 template <typename i_t, typename f_t, request_t REQUEST>
 bool solution_t<i_t, f_t, REQUEST>::remove_nodes(const std::vector<NodeInfo<>>& nodes_to_eject)
 {
-  raft::common::nvtx::range fun_scope("remove_nodes");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("remove_nodes");
   const auto n_nodes_to_eject = nodes_to_eject.size();
   rmm::device_scalar<i_t> empty_route_produced(sol_handle->get_stream());
   raft::copy(temp_nodes.data(), nodes_to_eject.data(), n_nodes_to_eject, sol_handle->get_stream());
@@ -225,7 +225,7 @@ bool solution_t<i_t, f_t, REQUEST>::remove_nodes(const std::vector<NodeInfo<>>& 
 template <typename i_t, typename f_t, request_t REQUEST>
 void solution_t<i_t, f_t, REQUEST>::clear_routes(std::vector<i_t> vehicle_ids)
 {
-  raft::common::nvtx::range fun_scope("clear_routes");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("clear_routes");
   i_t given_n_routes;
   if (vehicle_ids.empty()) {
     given_n_routes = problem_ptr->get_fleet_size();
@@ -293,7 +293,7 @@ void solution_t<i_t, f_t, REQUEST>::set_routes_to_search()
 template <typename i_t, typename f_t, request_t REQUEST>
 void solution_t<i_t, f_t, REQUEST>::set_route_views(i_t start, i_t end)
 {
-  raft::common::nvtx::range fun_scope("set_route_views");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("set_route_views");
   if (routes.size() > routes_view.size()) {
     // reserve with the max size
     routes_view.resize(routes.size(), sol_handle->get_stream());
@@ -323,7 +323,7 @@ void solution_t<i_t, f_t, REQUEST>::set_route_views(i_t start, i_t end)
 template <typename i_t, typename f_t, request_t REQUEST>
 void solution_t<i_t, f_t, REQUEST>::random_init_routes()
 {
-  raft::common::nvtx::range fun_scope("random_init_routes");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("random_init_routes");
   auto stream = sol_handle->get_stream();
   stream.sync();
   const i_t one = 1;
@@ -351,7 +351,7 @@ void solution_t<i_t, f_t, REQUEST>::random_init_routes()
 template <typename i_t, typename f_t, request_t REQUEST>
 void solution_t<i_t, f_t, REQUEST>::compute_initial_data(bool check_feasibility)
 {
-  raft::common::nvtx::range fun_scope("compute_initial_data");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_initial_data");
   compute_backward_forward();
   compute_cost();
   eject_until_feasible();
@@ -374,7 +374,7 @@ size_t solution_t<i_t, f_t, REQUEST>::get_temp_route_shared_size(i_t added_size)
 template <typename i_t, typename f_t, request_t REQUEST>
 i_t solution_t<i_t, f_t, REQUEST>::get_max_active_nodes_for_all_routes() const
 {
-  raft::common::nvtx::range fun_scope("get_max_active_nodes_for_all_routes");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("get_max_active_nodes_for_all_routes");
   return max_active_nodes;
 }
 
@@ -382,7 +382,7 @@ i_t solution_t<i_t, f_t, REQUEST>::get_max_active_nodes_for_all_routes() const
 template <typename i_t, typename f_t, request_t REQUEST>
 size_t solution_t<i_t, f_t, REQUEST>::check_routes_can_insert_and_get_sh_size(i_t added_nodes)
 {
-  raft::common::nvtx::range fun_scope("check_routes_can_insert_and_get_sh_size");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("check_routes_can_insert_and_get_sh_size");
   compute_max_active();
   resize_routes(raft::alignTo(max_active_nodes + added_nodes, base_route_size));
   return get_temp_route_shared_size(added_nodes);
@@ -391,7 +391,7 @@ size_t solution_t<i_t, f_t, REQUEST>::check_routes_can_insert_and_get_sh_size(i_
 template <typename i_t, typename f_t, request_t REQUEST>
 void solution_t<i_t, f_t, REQUEST>::resize_routes(i_t new_size)
 {
-  raft::common::nvtx::range fun_scope("resize_routes");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("resize_routes");
 
   bool any_resized = false;
   for (i_t i = 0; i < n_routes; ++i) {
@@ -463,7 +463,7 @@ template <typename i_t, typename f_t, request_t REQUEST>
 double solution_t<i_t, f_t, REQUEST>::get_cost(const bool include_objective,
                                                const infeasible_cost_t weights) const
 {
-  raft::common::nvtx::range fun_scope("get_cost");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("get_cost");
 
   double total_cost =
     infeasible_cost_t::dot(weights, infeasibility_cost.value(sol_handle->get_stream()));
@@ -498,7 +498,7 @@ infeasible_cost_t solution_t<i_t, f_t, REQUEST>::get_infeasibility_cost() const
 template <typename i_t, typename f_t, request_t REQUEST>
 bool solution_t<i_t, f_t, REQUEST>::is_feasible() const
 {
-  raft::common::nvtx::range fun_scope("is_feasible");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("is_feasible");
   auto n_cost      = infeasibility_cost.value(sol_handle->get_stream());
   bool is_feasible = true;
   for (size_t dim = 0; dim < (size_t)dim_t::SIZE; ++dim) {
@@ -511,7 +511,7 @@ bool solution_t<i_t, f_t, REQUEST>::is_feasible() const
 template <typename i_t, typename f_t, request_t REQUEST>
 f_t solution_t<i_t, f_t, REQUEST>::get_total_excess(const infeasible_cost_t weights) const
 {
-  raft::common::nvtx::range fun_scope("get_total_excess");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("get_total_excess");
   auto n_cost = infeasibility_cost.value(sol_handle->get_stream());
   return infeasible_cost_t::dot(n_cost, weights);
 }
@@ -527,7 +527,7 @@ void solution_t<i_t, f_t, REQUEST>::print() const
 template <typename i_t, typename f_t, request_t REQUEST>
 void solution_t<i_t, f_t, REQUEST>::copy_device_solution(solution_t<i_t, f_t, REQUEST>& src_sol)
 {
-  raft::common::nvtx::range fun_scope("copy_device_solution");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("copy_device_solution");
   sol_handle->sync_stream();
   src_sol.sol_handle->sync_stream();
 
@@ -577,7 +577,7 @@ void solution_t<i_t, f_t, REQUEST>::copy_device_solution(solution_t<i_t, f_t, RE
 template <typename i_t, typename f_t, request_t REQUEST>
 void solution_t<i_t, f_t, REQUEST>::compute_cost()
 {
-  raft::common::nvtx::range fun_scope("compute_cost");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_cost");
   const i_t TPB       = 256;
   const auto n_blocks = (n_routes + TPB - 1) / TPB;
 
@@ -594,13 +594,13 @@ void solution_t<i_t, f_t, REQUEST>::compute_cost()
 template <typename i_t, typename f_t, request_t REQUEST>
 void solution_t<i_t, f_t, REQUEST>::check_cost_coherence(const infeasible_cost_t& weights)
 {
-  raft::common::nvtx::range fun_scope("check_cost_coherence");
-  double excess_before = get_total_excess(weights);
-  double cost_before   = get_cost(true, weights);
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("check_cost_coherence");
+  [[maybe_unused]] double excess_before = get_total_excess(weights);
+  [[maybe_unused]] double cost_before   = get_cost(true, weights);
   compute_backward_forward();
   compute_cost();
-  double excess_after = get_total_excess(weights);
-  double cost_after   = get_cost(true, weights);
+  [[maybe_unused]] double excess_after = get_total_excess(weights);
+  [[maybe_unused]] double cost_after   = get_cost(true, weights);
   cuopt_assert(abs(excess_before - excess_after) < 0.00001, "Excess mismatch!");
   cuopt_assert(abs(cost_before - cost_after) < 0.00001, "Cost mismatch!");
 }
@@ -610,7 +610,7 @@ void solution_t<i_t, f_t, REQUEST>::shift_move_routes(
   const std::vector<i_t>& route_ids, rmm::device_uvector<i_t>& route_ids_device_copy)
 
 {
-  raft::common::nvtx::range fun_scope("shift_move_routes");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("shift_move_routes");
   // shift and swap route slots
   i_t remove_counter = 0;
   // this is not super efficient but not significant
@@ -657,7 +657,7 @@ void solution_t<i_t, f_t, REQUEST>::remove_routes(
   ejection_pool_t<request_info_t<i_t, REQUEST>>& ejection_pool,
   const std::vector<i_t>& routes_to_remove)
 {
-  raft::common::nvtx::range fun_scope("remove_routes");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("remove_routes");
 
   if (routes_to_remove.empty()) { return; }
 
@@ -695,7 +695,7 @@ void solution_t<i_t, f_t, REQUEST>::remove_routes(
 template <typename i_t, typename f_t, request_t REQUEST>
 void solution_t<i_t, f_t, REQUEST>::remove_routes(const std::vector<i_t>& routes_to_remove)
 {
-  raft::common::nvtx::range fun_scope("remove_routes");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("remove_routes");
   cuopt_assert(routes_to_remove.size() > 0, "There should be at least one route in the vector!");
   // reuse temp_int_vector
   temp_int_vector.resize(routes_to_remove.size(), sol_handle->get_stream());
@@ -717,7 +717,7 @@ void solution_t<i_t, f_t, REQUEST>::remove_routes(const std::vector<i_t>& routes
 template <typename i_t, typename f_t, request_t REQUEST>
 void solution_t<i_t, f_t, REQUEST>::keep_only_vehicles(const std::vector<i_t>& vehicles_to_keep)
 {
-  raft::common::nvtx::range fun_scope("keep_only_vehicles");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("keep_only_vehicles");
 
   // Figure out which routes to remove
   std::vector<i_t> routes_to_remove;
@@ -733,7 +733,7 @@ void solution_t<i_t, f_t, REQUEST>::keep_only_vehicles(const std::vector<i_t>& v
 template <typename i_t, typename f_t, request_t REQUEST>
 i_t solution_t<i_t, f_t, REQUEST>::compute_max_active()
 {
-  raft::common::nvtx::range fun_scope("compute_max_active");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_max_active");
   i_t TPB = 1024;
   compute_max_active_kernel<i_t, f_t, REQUEST>
     <<<1, TPB, 0, sol_handle->get_stream().get()>>>(view());
@@ -744,7 +744,7 @@ i_t solution_t<i_t, f_t, REQUEST>::compute_max_active()
 template <typename i_t, typename f_t, request_t REQUEST>
 void solution_t<i_t, f_t, REQUEST>::compute_route_id_per_node()
 {
-  raft::common::nvtx::range fun_scope("compute_route_id_per_node");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_route_id_per_node");
   i_t TPB = 256;
   compute_route_id_kernel<i_t, f_t, REQUEST><<<n_routes, TPB, 0, sol_handle->get_stream().get()>>>(
     routes_view.data(), route_node_map.view());
