@@ -115,6 +115,28 @@ void write_matlab(const std::string& filename, const simplex::lp_problem_t<i_t, 
   fclose(fid);
 }
 
+// Stationarity residual A^T y + z - c - Q x, including a quadratic objective.
+template <typename i_t, typename f_t>
+void compute_stationarity_residual(const lp_problem_t<i_t, f_t>& lp,
+                                   const std::vector<f_t>& x,
+                                   const std::vector<f_t>& y,
+                                   const std::vector<f_t>& z,
+                                   std::vector<f_t>& residual)
+{
+  residual = z;
+  for (i_t j = 0; j < lp.num_cols; ++j) {
+    residual[j] -= lp.objective[j];
+  }
+  if (lp.Q.n > 0) {
+    for (i_t i = 0; i < lp.Q.m; ++i) {
+      for (i_t p = lp.Q.row_start[i]; p < lp.Q.row_start[i + 1]; ++p) {
+        residual[i] -= lp.Q.x[p] * x[lp.Q.j[p]];
+      }
+    }
+  }
+  matrix_transpose_vector_multiply(lp.A, 1.0, y, 1.0, residual);
+}
+
 }  // namespace
 
 template <typename i_t, typename f_t>
@@ -581,19 +603,14 @@ lp_status_t solve_linear_program_with_barrier(
       settings.log.printf("Unscaled Primal infeasibility   (abs/rel): %.2e/%.2e\n",
                           primal_residual,
                           primal_residual / (1.0 + vector_norm_inf<i_t, f_t>(presolved_lp.rhs)));
-      if (barrier_lp.Q.n == 0) {
-        std::vector<f_t> unscaled_dual_residual = unscaled_z;
-        for (i_t j = 0; j < unscaled_dual_residual.size(); ++j) {
-          unscaled_dual_residual[j] -= presolved_lp.objective[j];
-        }
-        matrix_transpose_vector_multiply(
-          presolved_lp.A, 1.0, unscaled_y, 1.0, unscaled_dual_residual);
-        f_t unscaled_dual_residual_norm = vector_norm_inf<i_t, f_t>(unscaled_dual_residual);
-        settings.log.printf(
-          "Unscaled Dual infeasibility     (abs/rel): %.2e/%.2e\n",
-          unscaled_dual_residual_norm,
-          unscaled_dual_residual_norm / (1.0 + vector_norm_inf<i_t, f_t>(presolved_lp.objective)));
-      }
+      std::vector<f_t> unscaled_dual_residual;
+      compute_stationarity_residual(
+        presolved_lp, unscaled_x, unscaled_y, unscaled_z, unscaled_dual_residual);
+      f_t unscaled_dual_residual_norm = vector_norm_inf<i_t, f_t>(unscaled_dual_residual);
+      settings.log.printf(
+        "Unscaled Dual infeasibility     (abs/rel): %.2e/%.2e\n",
+        unscaled_dual_residual_norm,
+        unscaled_dual_residual_norm / (1.0 + vector_norm_inf<i_t, f_t>(presolved_lp.objective)));
     }
 
     // Undo presolve
@@ -616,19 +633,14 @@ lp_status_t solve_linear_program_with_barrier(
         post_solve_primal_residual,
         post_solve_primal_residual / (1.0 + vector_norm_inf<i_t, f_t>(original_lp.rhs)));
 
-      if (barrier_lp.Q.n == 0) {
-        std::vector<f_t> post_solve_dual_residual = lp_solution.z;
-        for (i_t j = 0; j < post_solve_dual_residual.size(); ++j) {
-          post_solve_dual_residual[j] -= original_lp.objective[j];
-        }
-        matrix_transpose_vector_multiply(
-          original_lp.A, 1.0, lp_solution.y, 1.0, post_solve_dual_residual);
-        f_t post_solve_dual_residual_norm = vector_norm_inf<i_t, f_t>(post_solve_dual_residual);
-        settings.log.printf(
-          "Post-solve Dual infeasibility   (abs/rel): %.2e/%.2e\n",
-          post_solve_dual_residual_norm,
-          post_solve_dual_residual_norm / (1.0 + vector_norm_inf<i_t, f_t>(original_lp.objective)));
-      }
+      std::vector<f_t> post_solve_dual_residual;
+      compute_stationarity_residual(
+        original_lp, lp_solution.x, lp_solution.y, lp_solution.z, post_solve_dual_residual);
+      f_t post_solve_dual_residual_norm = vector_norm_inf<i_t, f_t>(post_solve_dual_residual);
+      settings.log.printf(
+        "Post-solve Dual infeasibility   (abs/rel): %.2e/%.2e\n",
+        post_solve_dual_residual_norm,
+        post_solve_dual_residual_norm / (1.0 + vector_norm_inf<i_t, f_t>(original_lp.objective)));
     }
 
     if (dualize_info.solving_dual) {
