@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include <thrust/iterator/permutation_iterator.h>
+
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -57,6 +59,31 @@ __attribute__((optimize("no-fast-math"))) CUOPT_MIP_HOST_DEVICE auto compensated
     p = t;
   }
   return p + s;
+}
+
+template <typename CoeffIt, typename IndexIt, typename ValueIt>
+CUOPT_MIP_HOST_DEVICE auto compensated_dot2_csr(CoeffIt coefficients,
+                                                IndexIt columns,
+                                                ValueIt values,
+                                                size_t nnz)
+{
+  return compensated_dot2(coefficients, thrust::make_permutation_iterator(values, columns), nnz);
+}
+
+template <typename OffsetIt, typename IndexIt, typename CoeffIt, typename ValueIt, typename i_t>
+CUOPT_MIP_HOST_DEVICE auto compensated_dot2_csr(
+  OffsetIt offsets, IndexIt columns, CoeffIt coefficients, ValueIt values, i_t row)
+{
+  const auto begin = offsets[row];
+  const auto end   = offsets[row + 1];
+  return compensated_dot2_csr(coefficients + begin, columns + begin, values, end - begin);
+}
+
+template <typename CsrLike, typename Values, typename i_t>
+inline auto compensated_dot2_csr(const CsrLike& csr, const Values& values, i_t row)
+{
+  return compensated_dot2_csr(
+    csr.offsets.data(), csr.variables.data(), csr.coefficients.data(), values.data(), row);
 }
 
 }  // namespace cuopt::mathematical_optimization::mip

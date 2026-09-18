@@ -22,6 +22,7 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/scope_guard.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <limits>
@@ -197,6 +198,7 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
   const bool has_papilo   = problem_ptr->has_papilo_presolve_data();
   const i_t papilo_orig_n = problem_ptr->get_papilo_original_num_variables();
   for (size_t sol_idx = 0; sol_idx < context.settings.initial_solutions.size(); ++sol_idx) {
+    if (timer.check_time_limit()) { break; }
     const auto& init_sol = context.settings.initial_solutions[sol_idx];
     solution_t<i_t, f_t> sol(*problem_ptr);
     rmm::device_uvector<f_t> init_sol_assignment(*init_sol, sol.handle_ptr->get_stream());
@@ -228,17 +230,18 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
                    "reduced objective size must match crushed solution dimension");
       // Map each solution to user space with its own problem's scale, so the comparison holds even
       // if the original and reduced objective scales ever diverge.
-      const double input_obj =
+      [[maybe_unused]] const double input_obj =
         (double)presolver_ptr->get_original_objective_scaling_factor() *
         std::inner_product(h_ori_obj.begin(),
                            h_ori_obj.end(),
                            h_original.begin(),
                            (double)presolver_ptr->get_original_objective_offset());
-      const double crushed_obj = (double)reduced_problem.get_objective_scaling_factor() *
-                                 std::inner_product(h_red_obj.begin(),
-                                                    h_red_obj.end(),
-                                                    h_crushed.begin(),
-                                                    (double)reduced_problem.get_objective_offset());
+      [[maybe_unused]] const double crushed_obj =
+        (double)reduced_problem.get_objective_scaling_factor() *
+        std::inner_product(h_red_obj.begin(),
+                           h_red_obj.end(),
+                           h_crushed.begin(),
+                           (double)reduced_problem.get_objective_offset());
       CUOPT_LOG_DEBUG(
         "Crushed initial solution %d through Papilo (%d -> %d vars), objective %g -> %g",
         sol_idx,

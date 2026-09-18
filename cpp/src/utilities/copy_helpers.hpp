@@ -11,6 +11,7 @@
 #include <raft/core/device_span.hpp>
 #include <raft/core/handle.hpp>
 #include <raft/util/cudart_utils.hpp>
+#include <utilities/type_2.hpp>
 
 #include <rmm/device_uvector.hpp>
 #include <rmm/exec_policy.hpp>
@@ -23,61 +24,6 @@
 #include <cuda/std/functional>
 
 namespace cuopt {
-
-template <typename T>
-struct type_2 {
-  using type = void;
-};
-
-template <>
-struct type_2<int> {
-  using type = int2;
-};
-
-template <>
-struct type_2<float> {
-  using type = float2;
-};
-
-template <>
-struct type_2<double> {
-  using type = double2;
-};
-
-template <typename T>
-struct scalar_type {
-  using type = void;
-};
-
-template <>
-struct scalar_type<int2> {
-  using type = int;
-};
-
-template <>
-struct scalar_type<float2> {
-  using type = float;
-};
-
-template <>
-struct scalar_type<double2> {
-  using type = double;
-};
-
-template <>
-struct scalar_type<const int2> {
-  using type = const int;
-};
-
-template <>
-struct scalar_type<const float2> {
-  using type = const float;
-};
-
-template <>
-struct scalar_type<const double2> {
-  using type = const double;
-};
 
 template <typename T>
 raft::device_span<typename type_2<T>::type> make_span_2(rmm::device_uvector<T>& container)
@@ -96,18 +42,6 @@ raft::device_span<const typename type_2<T>::type> make_span_2(
   static_assert(sizeof(T2) == 2 * sizeof(T));
   return raft::device_span<const T2>(reinterpret_cast<const T2*>(container.data()),
                                      sizeof(T) * container.size() / sizeof(T2));
-}
-
-template <typename f_t2>
-__host__ __device__ inline typename scalar_type<f_t2>::type& get_lower(f_t2& val)
-{
-  return val.x;
-}
-
-template <typename f_t2>
-__host__ __device__ inline typename scalar_type<f_t2>::type& get_upper(f_t2& val)
-{
-  return val.y;
 }
 
 /**

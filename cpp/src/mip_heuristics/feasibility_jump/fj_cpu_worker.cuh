@@ -38,13 +38,16 @@ struct fj_cpu_worker_t {
 
   ~fj_cpu_worker_t() { stop(); }
 
+  // `n_structural` is where `problem`'s slack block starts; those columns fold into two-sided row
+  // bounds, so the climber and the assignment it reports span only the ones below. -1 keeps them.
   // `seed` selects the FJ RNG seed: pass a non-negative value for a deterministic seed,
   // or -1 to draw from the global cuopt::seed_generator (the historical behavior).
   // In deterministic mode the caller MUST pass an explicit seed, otherwise the underlying
   // seed_generator::get_seed() racing with concurrent callers breaks reproducibility.
   void create_worker(const simplex::lp_problem_t<i_t, f_t>& problem,
                      const std::vector<simplex::variable_type_t>& variable_types,
-                     const std::vector<f_t>& seed_assignment,
+                     i_t n_structural,
+                     const std::vector<f_t>& start_assignment,
                      const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
                      std::string log_prefix,
                      int64_t seed = -1);

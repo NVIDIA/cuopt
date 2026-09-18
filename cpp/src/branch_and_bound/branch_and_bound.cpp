@@ -2491,6 +2491,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
     f_t work_limit = 1.0;
     submip_fj_cpu_worker.create_worker(submip_bnb.original_lp_,
                                        submip_bnb.var_types_,
+                                       submip_bnb.original_problem_.num_cols,
                                        initial_guess,
                                        submip_bnb.settings_,
                                        std::format("{} [CPU FJ]", log_prefix),
@@ -2955,6 +2956,7 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(
           submip_fj_cpu_worker.create_worker(
             worker->leaf_problem,
             worker->var_types,
+            original_problem_.num_cols,
             worker->leaf_solution.x,
             settings_,
             std::format("{} [CPU FJ]", submip_settings.log.log_prefix),
@@ -3034,7 +3036,7 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
         set_solution_from_cpu_fj(obj, assignment, work_units);
       };
     current_heuristic->fj_cpu_worker_.create_worker(
-      lp, var_types_, lp_solution.x, settings_, "[RootCut CPUFJ] ");
+      lp, var_types_, original_problem_.num_cols, lp_solution.x, settings_, "[RootCut CPUFJ] ");
     ++(*worker_count);
     ++current_heuristic->active_workers_;
 
