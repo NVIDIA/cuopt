@@ -168,7 +168,12 @@ def cuopt_incumbents(job_id: str, from_index: int = 0) -> dict[str, Any]:
 def cuopt_logs(
     job_id: str, from_byte: int = 0, tail_lines: int = 100
 ) -> dict[str, Any]:
-    """Return recent solver log lines for a job, for diagnosing a slow solve.
+    """Return solver log lines for a finished job, for diagnosing a failure
+    or an unexpected result after the fact.
+
+    Only works once the job has reached a terminal state (poll
+    cuopt_status first) — a live tail of a still-running job isn't
+    available through this tool yet.
 
     job_id: the job to fetch logs for.
     from_byte: resume from this byte offset — pass back the next_byte from

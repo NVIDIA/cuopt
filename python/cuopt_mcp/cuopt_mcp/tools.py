@@ -415,9 +415,13 @@ def logs(job_id: str, from_byte: int = 0, tail_lines: int = 100) -> dict:
     """Fetch a job's log lines starting at ``from_byte``, tailed to the last
     ``tail_lines`` lines.
 
-    Only available once the job has finished (COMPLETED, FAILED, or
-    CANCELLED) — the underlying client raises while a job is still queued
-    or running; poll ``cuopt_status`` first.
+    Solver output is captured to a log for every job, from submission —
+    there's nothing to opt into. This tool only returns it once the job
+    has finished (COMPLETED, FAILED, or CANCELLED) though: it fetches a
+    snapshot via :meth:`Client.logs`, which raises while a job is still
+    queued or running; poll ``cuopt_status`` first. A live tail while
+    running is possible on the wire (``Client.start_log_stream``) but not
+    exposed by this tool yet.
 
     Args:
         job_id: The job to fetch logs for.

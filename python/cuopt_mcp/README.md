@@ -54,7 +54,7 @@ needed) whenever `gpu-host` isn't a trusted local network.
 | `cuopt_status` | Poll job state |
 | `cuopt_result` | Fetch the solution, shaped to stay readable |
 | `cuopt_incumbents` | Watch a MILP's objective improve (needs `track_incumbents=true` at submit) |
-| `cuopt_logs` | Recent solver log lines |
+| `cuopt_logs` | Solver log lines for a finished job (no live tail yet) |
 | `cuopt_cancel` | Stop a running job |
 | `cuopt_delete` | Release a job's server-side state once its result is no longer needed |
 | `cuopt_list_settings` | Discover solver parameters |
