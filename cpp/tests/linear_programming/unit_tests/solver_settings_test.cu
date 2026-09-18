@@ -82,6 +82,15 @@ TEST(SolverSettingsTest, TestSetGet)
   EXPECT_EQ(solver_settings.barrier_presolve_bound_free_variables, 1);
 }
 
+TEST(SolverSettingsTest, SequenceSolveParameter)
+{
+  solver_settings_t<int, double> settings;
+  EXPECT_FALSE(settings.get_pdlp_settings().sequence_solve);
+
+  settings.set_parameter_from_string(CUOPT_SEQUENCE_SOLVE, "true");
+  EXPECT_TRUE(settings.get_pdlp_settings().sequence_solve);
+}
+
 TEST(SolverSettingsTest, warm_start_smaller_vector)
 {
   const raft::handle_t handle_{};

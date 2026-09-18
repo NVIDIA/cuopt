@@ -55,6 +55,9 @@ Optimization problems can be created, loaded, or written via the following funct
    Prefer ``cuOptCreateProblem`` or ``cuOptCreateRangedProblem`` followed by
    ``cuOptSetQuadraticObjective``.
 
+.. doxygenfunction:: cuOptCreateQuadraticProblem
+.. doxygenfunction:: cuOptCreateQuadraticRangedProblem
+
 For problems with quadratic objectives, first create a problem, and then use
 
 .. doxygenfunction:: cuOptSetQuadraticObjective
@@ -130,6 +133,7 @@ The following functions may be used to get information about an `cuOptimizationP
 .. doxygenfunction:: cuOptGetObjectiveCoefficients
 .. doxygenfunction:: cuOptGetNumNonZeros
 .. doxygenfunction:: cuOptGetConstraintMatrix
+.. doxygenfunction:: cuOptGetConstraintMatrixCSR
 .. doxygenfunction:: cuOptGetConstraintSense
 .. doxygenfunction:: cuOptGetConstraintRightHandSide
 .. doxygenfunction:: cuOptGetConstraintLowerBounds

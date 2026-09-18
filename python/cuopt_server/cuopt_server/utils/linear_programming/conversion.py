@@ -3,9 +3,19 @@
 
 import logging
 import os
+from typing import Any
+
+import numpy as np
 
 from cuopt import linear_programming
+from cuopt.linear_programming.solution.solution import PDLPWarmStartData
 from cuopt.linear_programming.solver.solver_parameters import solver_params
+from cuopt.linear_programming.solver.solver_wrapper import (
+    LPTerminationStatus,
+    MILPTerminationStatus,
+)
+
+from cuopt_server.utils.linear_programming.data_definition import WarmStartData
 
 
 def ignored_warning(field):
@@ -128,7 +138,9 @@ def create_solver(LP_data, warmstart_data):
             solver_settings.set_parameter("iteration_limit", iteration_limit)
 
         if warmstart_data is not None:
-            solver_settings.set_pdlp_warm_start_data(warmstart_data)
+            solver_settings.set_pdlp_warm_start_data(
+                pdlp_from_http_warmstart(warmstart_data)
+            )
 
         if solver_config.user_problem_file != "":
             warnings.append(ignored_warning("user_problem_file"))
@@ -137,3 +149,153 @@ def create_solver(LP_data, warmstart_data):
             warnings.append(ignored_warning("solution_file"))
 
     return warnings, solver_settings
+
+
+def _get_if_attribute_is_valid_else_none(attr):
+    try:
+        return attr()
+    except AttributeError:
+        return None
+
+
+def extract_pdlpwarmstart_data(
+    data: Any | None,
+) -> dict[str, Any] | None:
+    """Convert PDLP warm-start data to the HTTP dictionary shape.
+
+    Returns ``None`` when no warm-start data is available. Array fields keep
+    the solver's float64 ndarrays; msgpack_numpy serializes them on the wire.
+    """
+    if data is None:
+        return None
+    return {
+        "current_primal_solution": data.current_primal_solution,
+        "current_dual_solution": data.current_dual_solution,
+        "initial_primal_average": data.initial_primal_average,
+        "initial_dual_average": data.initial_dual_average,
+        "current_ATY": data.current_ATY,
+        "sum_primal_solutions": data.sum_primal_solutions,
+        "sum_dual_solutions": data.sum_dual_solutions,
+        "last_restart_duality_gap_primal_solution": (
+            data.last_restart_duality_gap_primal_solution
+        ),
+        "last_restart_duality_gap_dual_solution": (
+            data.last_restart_duality_gap_dual_solution
+        ),
+        "initial_primal_weight": data.initial_primal_weight,
+        "initial_step_size": data.initial_step_size,
+        "total_pdlp_iterations": data.total_pdlp_iterations,
+        "total_pdhg_iterations": data.total_pdhg_iterations,
+        "last_candidate_kkt_score": data.last_candidate_kkt_score,
+        "last_restart_kkt_score": data.last_restart_kkt_score,
+        "sum_solution_weight": data.sum_solution_weight,
+        "iterations_since_last_restart": data.iterations_since_last_restart,
+    }
+
+
+def pdlp_from_http_warmstart(data: Any) -> PDLPWarmStartData:
+    """Build ``PDLPWarmStartData`` from the HTTP warm-start shape.
+
+    ``data`` is an HTTP dict, ``WarmStartData``, or an object with the same
+    field names (including ``PDLPWarmStartData``). Returns a
+    ``PDLPWarmStartData`` whose array fields are float64 ndarrays so
+    SolverSettings and gRPC can use ``.shape``. Dict input is parsed with
+    ``WarmStartData.parse_obj``; parse, missing-attribute, and array
+    conversion errors propagate to the caller.
+    """
+    if isinstance(data, dict):
+        data = WarmStartData.parse_obj(data)
+
+    def arr(name):
+        return np.asarray(getattr(data, name), dtype=np.float64)
+
+    return PDLPWarmStartData(
+        arr("current_primal_solution"),
+        arr("current_dual_solution"),
+        arr("initial_primal_average"),
+        arr("initial_dual_average"),
+        arr("current_ATY"),
+        arr("sum_primal_solutions"),
+        arr("sum_dual_solutions"),
+        arr("last_restart_duality_gap_primal_solution"),
+        arr("last_restart_duality_gap_dual_solution"),
+        data.initial_primal_weight,
+        data.initial_step_size,
+        data.total_pdlp_iterations,
+        data.total_pdhg_iterations,
+        data.last_candidate_kkt_score,
+        data.last_restart_kkt_score,
+        data.sum_solution_weight,
+        data.iterations_since_last_restart,
+    )
+
+
+def solution_to_http(
+    sol: Any, include_warmstart: bool = True
+) -> dict[str, Any]:
+    """Serialize a cuOpt LP/MILP Solution into the HTTP response shape.
+
+    Returns ``{"status": <enum name>, "solution": {...}}``. When the
+    termination status is not a solved/feasible case, ``solution`` is empty.
+    ``include_warmstart`` controls whether PDLP warm-start data is included.
+    Exceptions raised by solution accessors are propagated, except optional
+    attributes that report absence with ``AttributeError``.
+    """
+    solution = {}
+    status = sol.get_termination_status()
+    if status in (
+        LPTerminationStatus.Optimal,
+        LPTerminationStatus.IterationLimit,
+        LPTerminationStatus.TimeLimit,
+        MILPTerminationStatus.Optimal,
+        MILPTerminationStatus.FeasibleFound,
+    ):
+        primal_solution = _get_if_attribute_is_valid_else_none(
+            sol.get_primal_solution
+        )
+        primal_solution = (
+            primal_solution
+            if primal_solution is None
+            else primal_solution.tolist()
+        )
+        dual_solution = _get_if_attribute_is_valid_else_none(
+            sol.get_dual_solution
+        )
+        dual_solution = (
+            dual_solution if dual_solution is None else dual_solution.tolist()
+        )
+        lp_stats = _get_if_attribute_is_valid_else_none(sol.get_lp_stats)
+        reduced_cost = _get_if_attribute_is_valid_else_none(
+            sol.get_reduced_cost
+        )
+        reduced_cost = (
+            reduced_cost if reduced_cost is None else reduced_cost.tolist()
+        )
+        milp_stats = _get_if_attribute_is_valid_else_none(sol.get_milp_stats)
+        pdlpwarmstart_data = _get_if_attribute_is_valid_else_none(
+            sol.get_pdlp_warm_start_data
+        )
+        solution["problem_category"] = sol.get_problem_category().name
+        solution["primal_solution"] = primal_solution
+        solution["dual_solution"] = dual_solution
+        solution["primal_objective"] = _get_if_attribute_is_valid_else_none(
+            sol.get_primal_objective
+        )
+        solution["dual_objective"] = _get_if_attribute_is_valid_else_none(
+            sol.get_dual_objective
+        )
+        solution["solver_time"] = sol.get_solve_time()
+        solution["solved_by"] = sol.get_solved_by().name
+        solution["vars"] = sol.get_vars()
+        solution["lp_statistics"] = {} if lp_stats is None else lp_stats
+        solution["reduced_cost"] = reduced_cost
+        if include_warmstart:
+            solution["pdlpwarmstart_data"] = extract_pdlpwarmstart_data(
+                pdlpwarmstart_data
+            )
+        solution["milp_statistics"] = {} if milp_stats is None else milp_stats
+
+    return {
+        "status": status.name,
+        "solution": solution,
+    }

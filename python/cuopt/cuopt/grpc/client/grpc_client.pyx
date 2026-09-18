@@ -301,11 +301,29 @@ cdef class Client:
         if not self._client.get().connect(error_out):
             raise GrpcError(error_out.decode("utf-8"))
 
+    def ping(self, timeout_seconds=5):
+        """
+        Probe ``cuopt_grpc_server`` with a short CheckStatus RPC.
+
+        Raises :class:`GrpcError` if the server does not answer before
+        ``timeout_seconds`` (default 5). Used by the HTTP proxy health
+        endpoints so Kubernetes can restart a combined proxy+gRPC container.
+        """
+        cdef string error_out
+        cdef int timeout = int(timeout_seconds)
+        cdef bint ok
+        if timeout <= 0:
+            timeout = 5
+        with nogil:
+            ok = self._client.get().ping(error_out, timeout)
+        if not ok:
+            raise GrpcError(error_out.decode("utf-8") or "gRPC ping failed")
+
     def _spawn_client(self):
         """Create a sibling connection with the same host/port/TLS settings."""
         return Client(self._host, self._port, tls=self._tls)
 
-    def submit(self, problem, SolverSettings settings not None):
+    def submit(self, problem, SolverSettings settings not None, enable_incumbents=None):
         """
         Submit a problem for solving and return its ``job_id``.
 
@@ -313,10 +331,16 @@ cdef class Client:
         :class:`~cuopt.linear_programming.data_model.DataModel`. The job runs
         asynchronously; use :meth:`wait` or :meth:`status` to track it and
         :meth:`result` to fetch the solution. Always :meth:`delete` when done.
+
+        ``enable_incumbents`` defaults to ``None``, which enables MIP incumbent
+        collection when ``settings`` already has MIP callbacks. Pass ``True``
+        or ``False`` to override (used by the HTTP proxy, which has no local
+        callback objects).
         """
         cdef DataModel data_model
         cdef grpc_submit_result_t submit_result
         cdef bint mip
+        cdef bint enable_incumbents_flag = False
 
         data_model = self._as_data_model(problem)
         data_model.variable_types = type_cast(
@@ -325,13 +349,14 @@ cdef class Client:
         mip = _is_mip(data_model.get_variable_types())
         prepare_solver_settings(settings, data_model, mip)
         data_model.set_data_model_view()
-        cdef bint enable_incumbents = False
-        if mip and settings.get_mip_callbacks():
-            enable_incumbents = True
+        if enable_incumbents is None:
+            enable_incumbents_flag = bool(mip and settings.get_mip_callbacks())
+        else:
+            enable_incumbents_flag = bool(enable_incumbents)
         submit_result = self._client.get().submit(
             data_model.c_data_model_view.get(),
             settings.c_solver_settings.get(),
-            enable_incumbents,
+            enable_incumbents_flag,
         )
         if not submit_result.success:
             raise GrpcError(submit_result.error_message.decode("utf-8"))
@@ -1151,7 +1176,26 @@ cdef class RoutingClient:
             raise RoutingSolveError(sub.error_message.decode("utf-8"))
         return sub.job_id.decode("utf-8")
 
-    def _status(self, str job_id):
+    def status(self, str job_id) -> JobStatus:
+        """Return the current job status without blocking.
+
+        Parameters
+        ----------
+        job_id : str
+            Id returned by :meth:`submit`.
+
+        Returns
+        -------
+        JobStatus
+            A :class:`~cuopt.grpc.linear_programming.JobStatus` member
+            (``QUEUED``, ``PROCESSING``, ``COMPLETED``, ``FAILED``,
+            ``CANCELLED``, or ``NOT_FOUND``).
+
+        Raises
+        ------
+        RoutingSolveError
+            If the status RPC itself fails (transport error).
+        """
         cdef grpc_status_result_t st = self._client.get().status(
             job_id.encode("utf-8")
         )
@@ -1171,8 +1215,33 @@ cdef class RoutingClient:
         with a separate 60-second hang deadline.
         """
         return _wait_poll_loop(
-            self._status, job_id, timeout, RoutingSolveError
+            self.status, job_id, timeout, RoutingSolveError
         )
+
+    def cancel(self, str job_id) -> None:
+        """Request cancellation of a queued or running job.
+
+        The job moves to
+        :attr:`~cuopt.grpc.linear_programming.JobStatus.CANCELLED`. Call
+        :meth:`delete` to release its server-side state.
+
+        Parameters
+        ----------
+        job_id : str
+            Id returned by :meth:`submit`.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        RoutingSolveError
+            If the cancel RPC fails, including when ``job_id`` is unknown.
+        """
+        cdef string err
+        if not self._client.get().cancel(job_id.encode("utf-8"), err):
+            raise RoutingSolveError(err.decode("utf-8"))
 
     def result(self, str job_id):
         """Fetch and parse the routing solution for a completed job.

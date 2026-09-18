@@ -10,7 +10,9 @@
 #include <thrust/inner_product.h>
 #include <thrust/logical.h>
 #include <thrust/transform_reduce.h>
+#include <cuda/stream>
 #include <cuopt/error.hpp>
+#include <mip_heuristics/utils.hpp>
 #include <pdlp/utils.cuh>
 #include <raft/random/rng_device.cuh>
 #include <random>
@@ -18,6 +20,8 @@
 #include <utilities/hashing.hpp>
 
 #include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
+
+#include <cmath>
 
 #pragma once
 
@@ -31,7 +35,7 @@ constexpr int default_int_lower     = std::numeric_limits<int>::min();
 constexpr double zero_bound         = 0.;
 
 template <typename i_t>
-inline uint32_t compute_hash(raft::device_span<i_t> values, rmm::cuda_stream_view stream)
+inline uint32_t compute_hash(raft::device_span<i_t> values, cuda::stream_ref stream)
 {
   auto h_contents = cuopt::host_copy(values, stream);
   RAFT_CHECK_CUDA(stream.get());
@@ -39,7 +43,7 @@ inline uint32_t compute_hash(raft::device_span<i_t> values, rmm::cuda_stream_vie
 }
 
 template <typename i_t>
-inline uint32_t compute_hash(const rmm::device_uvector<i_t>& values, rmm::cuda_stream_view stream)
+inline uint32_t compute_hash(const rmm::device_uvector<i_t>& values, cuda::stream_ref stream)
 {
   auto h_contents = cuopt::host_copy(values, stream);
   RAFT_CHECK_CUDA(stream.get());
@@ -112,7 +116,7 @@ HDI f_t round_nearest(f_t val, f_t lb, f_t ub, f_t int_tol, raft::random::PCGene
     f_t t = 2 * w * (1 - w);
     if (w > 0.5) { t = 1 - t; }
     f_t result = floor(val + t);
-    return max(int_lb, min(result, int_ub));
+    return raft::max(int_lb, raft::min(result, int_ub));
   }
 }
 
@@ -261,7 +265,7 @@ f_t compute_objective_from_vec(const rmm::device_uvector<f_t>& assignment,
 template <typename i_t, typename f_t>
 f_t compute_objective_from_vec(const rmm::device_uvector<f_t>& assignment,
                                const rmm::device_uvector<f_t>& objective_coefficients,
-                               rmm::cuda_stream_view stream)
+                               cuda::stream_ref stream)
 {
   cuopt_assert(assignment.size() == objective_coefficients.size(), "Size mismatch!");
   f_t computed_obj = thrust::inner_product(rmm::exec_policy(stream),
@@ -331,7 +335,7 @@ static __global__ void run_lambda_kernel(F f)
 // run a printf statement from the device side, useful for debugging without having to deal with
 // explicit memcpys
 template <typename Func>
-static void inline run_device_lambda(const rmm::cuda_stream_view& stream, Func f)
+static void inline run_device_lambda(cuda::stream_ref stream, Func f)
 {
   run_lambda_kernel<<<1, 1, 0, stream.get()>>>(f);
 }

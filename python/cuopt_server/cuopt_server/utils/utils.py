@@ -28,7 +28,7 @@ def build_routing_datamodel_from_json(data):
     """
 
     if isinstance(data, dict):
-        pass
+        data = dict(OptimizedRoutingData.parse_obj(data))
     elif os.path.isfile(data):
         with open(data, "r") as f:
             data = dict(OptimizedRoutingData.parse_obj(json.loads(f.read())))

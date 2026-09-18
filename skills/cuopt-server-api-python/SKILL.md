@@ -13,6 +13,7 @@ metadata:
     - deployment
 ---
 
+
 # cuOpt Server — Deploy and client (Python/curl)
 
 This skill covers **starting the server** and **client examples** (curl, Python). Server has no separate C API (clients can be any language).
@@ -61,9 +62,7 @@ For production, pin rather than float: `latest-*` tags are mutable and can silen
 
 ## Verify
 
-```bash
-curl http://localhost:8000/cuopt/health
-```
+Confirm the server is up by requesting `GET /cuopt/health` on the local port (e.g. `http://localhost:8000/cuopt/health`) — a healthy server returns HTTP 200.
 
 ## Instructions
 
@@ -105,7 +104,7 @@ Use `travel_time_matrix_data` (not transit_time_matrix_data). Capacities: `[[50,
 
 | Error | Cause | Solution |
 |-------|-------|----------|
-| `422 Unprocessable Entity` | Field name not in the schema | Check names against the OpenAPI spec at `/cuopt.yaml`. Most common: `transit_time_matrix_data` → `travel_time_matrix_data` |
+| `422 Unprocessable Content` | Field name not in the schema | Check names against the OpenAPI spec at `/cuopt.yaml`. Most common: `transit_time_matrix_data` → `travel_time_matrix_data` |
 | `422` on `fleet_data` | Capacities nested per vehicle instead of per dimension | Use `[[50, 50]]` (one inner list per capacity dimension), not `[[50], [50]]` |
 | Connection refused | Server not up, or bound to a different interface/port | `curl http://localhost:8000/cuopt/health`; start with `--ip 0.0.0.0 --port 8000` |
 | Docker container exits immediately | No GPU visible to the container | Run with `--gpus all` and confirm the NVIDIA Container Toolkit is installed |

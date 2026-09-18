@@ -99,4 +99,4 @@ testpaths = ["cuopt_server/tests"]
 [tool.rapids-build-backend]
 build-backend = "setuptools.build_meta"
 dependencies-file = "../../dependencies.yaml"
-matrix-entry = "cuda_suffixed=true"
+matrix-entry = "cuda_suffixed=true;use_cuda_wheels=true"

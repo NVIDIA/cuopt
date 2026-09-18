@@ -120,6 +120,8 @@ scalars:
 | `member` | no | `<name>`, with nesting prefix auto-prepended for settings sub-structs (`tolerances.<name>`, `heuristic_params.<name>`, …) | C++ struct member name. Set explicitly only when the C++ name diverges from the wire field name — in practice, warm-start fields whose C++ members carry a trailing underscore (`initial_primal_weight_`). |
 | `from_proto_cast` | no | — | Explicit C++ cast when reading from proto. Most commonly used to wrap a wire `int32` back into an enum class (e.g. `presolver_t`, `method_t`) or a narrow type (e.g. `char` for `constraint_row_type`). When set, the matching to-proto cast back to the wire's C++ type (e.g. `int32_t` for wire `int32`) is derived automatically — no `to_proto_cast:` needed. |
 | `to_proto_cast` | no | derived from `type:` when `from_proto_cast` is set; otherwise no cast | Escape hatch: explicit C++ cast when writing to proto (e.g. `int32_t`). Rarely needed — set only when the auto-derivation above is wrong. |
+| `description` | no | — | Settings fields only. Human-readable meaning of the field, emitted into `cuopt_mcp_schema.json` as the JSON Schema `description` an MCP client shows a model deciding whether to set the field. |
+| `default` | no | — | Settings fields only. Free-text string describing the C++ member initializer (e.g. `"1e-4"`, `"-1 (automatic)"`), appended to the emitted `description`. Documentation only — doesn't affect the wire format, and the generator doesn't derive it from the C++ struct or detect initializer drift; write it by reading the struct (`pdlp/solver_settings.hpp`, `mip/solver_settings.hpp`, `mip/heuristics_hyper_params.hpp`), not `docs/cuopt/source/*-settings.rst`, which has been observed to disagree with the code. For a non-`optional` field, `./build.sh codegen` fails if `default` doesn't textually match the proto3 zero value (§4.3); run `python cpp/src/grpc/codegen/lint_registry_defaults.py` by hand for a best-effort (not CI-enforced) check that it still matches the actual C++ initializer. |
 
 ### 2.2 Array fields
 
@@ -632,9 +634,17 @@ entries — so always re-run `--auto-number` after a `--strip`.
 ### 4.3 Validation
 
 The generator runs a uniqueness check per scope and fails with a precise error
-on collision. CI runs `verify_grpc_codegen.sh` to ensure the committed
-`generated/` directory matches what the generator produces — drift fails the
-build.
+on collision. It also checks, for every non-`optional` settings field, that
+`default:` (§2.1) textually matches the proto3 zero value for its type — this
+can only catch registry self-inconsistency, not a C++ default that changed
+without a matching `default:` update. CI runs `verify_grpc_codegen.sh` to
+ensure the committed `generated/` directory matches what the generator
+produces — drift fails the build.
+
+`field_num` and `array_id` are wire identifiers: never renumber or reuse a
+retired number, since older clients may still send data on it. Record retired
+numbers in a comment (see the note on 37/38 in `mip_settings`) and follow that
+convention when removing a field.
 
 ---
 

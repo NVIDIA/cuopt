@@ -12,6 +12,7 @@
 #include "../solution/solution_handle.cuh"
 #include "routing/routing_helpers.cuh"
 
+#include <cuda/stream>
 #include <raft/core/handle.hpp>
 #include <raft/core/nvtx.hpp>
 
@@ -44,7 +45,7 @@ class break_route_t {
 
   break_route_t& operator=(break_route_t&& break_route) = default;
 
-  void resize(i_t max_nodes_per_route, rmm::cuda_stream_view stream)
+  void resize(i_t max_nodes_per_route, cuda::stream_ref stream)
   {
     breaks_forward.resize(max_nodes_per_route, stream);
     breaks_backward.resize(max_nodes_per_route, stream);

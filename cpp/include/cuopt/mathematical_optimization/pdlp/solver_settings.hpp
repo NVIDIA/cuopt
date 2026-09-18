@@ -8,7 +8,6 @@
 #pragma once
 
 #include <cuopt/mathematical_optimization/constants.h>
-
 #include <cuda/stream>
 #include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/cpu_pdlp_warm_start_data.hpp>
@@ -26,6 +25,8 @@
 
 namespace cuopt {
 namespace CUOPT_EXPORT mathematical_optimization {
+
+class barrier_cache_t;
 
 // Forward declare solver_settings_t for friend class
 template <typename i_t, typename f_t>
@@ -153,7 +154,7 @@ class pdlp_solver_settings_t {
    */
   void set_initial_primal_solution(const f_t* initial_primal_solution,
                                    i_t size,
-                                   rmm::cuda_stream_view stream = cuda::stream_ref{
+                                   cuda::stream_ref stream = cuda::stream_ref{
                                      cudaStream_t{cudaStreamDefault}});
 
   /**
@@ -168,7 +169,7 @@ class pdlp_solver_settings_t {
    */
   void set_initial_dual_solution(const f_t* initial_dual_solution,
                                  i_t size,
-                                 rmm::cuda_stream_view stream = cuda::stream_ref{
+                                 cuda::stream_ref stream = cuda::stream_ref{
                                    cudaStream_t{cudaStreamDefault}});
 
   /** TODO batch mode: tmp
@@ -370,6 +371,10 @@ class pdlp_solver_settings_t {
   // Used to force batch PDLP to solve a subbatch of the problems at a time
   // The 0 default value will make the solver use its heuristic to determine the subbatch size
   i_t fixed_batch_size{0};
+  /** When true, the first GPU barrier/QCQP solve retains cache state for later reuse. */
+  bool sequence_solve{false};
+  /** Non-owning cache pointer set by ``call_solve`` for barrier cache reuse. */
+  barrier_cache_t* barrier_cache{nullptr};
 
  private:
   /** Initial primal solution */
