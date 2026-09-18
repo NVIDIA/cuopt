@@ -518,10 +518,8 @@ optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
                                   method);
 }
 
-// -1 means "automatic", and for a sequence solve the automatic choice is 0. Bounding free
-// variables writes presolve state the reuse path cannot replay, so a cache built with it is
-// unusable; leaving the choice automatic strands every sequence solve on the full path. An
-// explicit 1 is honored and simply does not get reuse.
+// Bounding free variables writes presolve state the reuse path cannot replay, so the automatic
+// (-1) choice resolves to 0 for a sequence solve. An explicit 1 is honored and forgoes reuse.
 template <typename i_t, typename f_t>
 i_t effective_bound_free_variables(pdlp_solver_settings_t<i_t, f_t> const& settings)
 {
@@ -1893,9 +1891,9 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
 
     auto* cache    = settings.barrier_cache;
     auto const* xf = (cache != nullptr && cache->dirty()) ? cache->transform() : nullptr;
-    // Must stay in lockstep with the reuse gate in solve_linear_program_with_barrier: this one
-    // also swaps in the slim user_problem_from_transform (rhs zeroed, dummy Q), so a gate that
-    // says reuse while the other says full solve runs presolve on a fabricated problem.
+    // Must stay in lockstep with the gate in solve_linear_program_with_barrier: this path swaps
+    // in the slim user_problem_from_transform, so disagreement runs presolve on a fabricated
+    // problem.
     const bool reuse_from_cache =
       settings.user_problem_file.empty() && xf != nullptr && xf->barrier_lp != nullptr &&
       effective_bound_free_variables(settings) == 0 &&

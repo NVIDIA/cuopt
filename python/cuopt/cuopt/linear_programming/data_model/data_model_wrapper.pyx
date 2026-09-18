@@ -199,11 +199,9 @@ cdef class DataModel:
     def update_rhs(self, b):
         """Update constraint right-hand sides (user-space ``b``).
 
-        Always writes the DataModel RHS. If this model owns a solver cache
-        from a prior Barrier solve, also crushes ``b`` into the cached
-        ``iteration_data_t`` and marks it dirty so the next Solve can skip
-        convert/presolve/scaling. Crush runs first so a length error leaves
-        the DataModel RHS unchanged.
+        Always writes the DataModel RHS, and additionally crushes ``b`` into
+        the barrier cache when this model owns one. Crush runs first so a
+        length error leaves the DataModel RHS unchanged.
         """
         cdef barrier_cache_t* cache
         cdef double[::1] b_view

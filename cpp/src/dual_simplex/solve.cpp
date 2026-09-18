@@ -36,6 +36,7 @@
 #include <exception>
 #include <memory>
 #include <queue>
+#include <stdexcept>
 #include <string>
 
 namespace cuopt::mathematical_optimization::simplex {
@@ -424,9 +425,9 @@ lp_status_t solve_linear_program_with_barrier(
     xf != nullptr && xf->barrier_lp != nullptr && !user_problem.Q_values.empty() &&
     user_problem.second_order_cone_dims.empty() && xf->second_order_cone_dims.empty() &&
     xf->barrier_lp->second_order_cone_dims.empty() &&
+    // run_barrier already resolved -1 to 0. The second check covers caches built by an earlier
+    // solve that did bound free variables, whose presolve state the reuse path cannot replay.
     settings.barrier_presolve_bound_free_variables == 0 &&
-    // The setting above is the one this solve runs with; a cache built by an earlier solve
-    // that did bound free variables carries presolve state the reuse path cannot replay.
     xf->presolve_info.bounded_free_variables.empty() &&
     user_problem.num_cols == xf->user_num_cols && user_problem.num_rows == xf->user_num_rows;
 
@@ -511,9 +512,8 @@ lp_status_t solve_linear_program_with_barrier(
     xf->column_scales                = column_scales;
     xf->row_scales                   = row_scales;
     xf->primal_tol                   = static_cast<double>(barrier_settings.primal_tol);
-    // convert_range_rows zeroes rhs[i] and moves the bounds onto the slack, and folding
-    // aggregates rows, so neither leaves the user RHS recoverable from barrier_lp->rhs. The
-    // slacks and artificials added for plain inequality and equality rows leave rhs alone.
+    // convert_range_rows zeroes rhs[i] onto the slack bounds and folding aggregates rows, so
+    // neither leaves the user RHS in barrier_lp->rhs. Plain inequality/equality slacks do.
     xf->rhs_update_supported =
       user_problem.num_range_rows == 0 && !presolve_info.folding_info.is_folded;
     xf->barrier_lp = std::make_unique<lp_problem_t<i_t, f_t>>(barrier_lp);
@@ -527,33 +527,35 @@ lp_status_t solve_linear_program_with_barrier(
   if (cache != nullptr) {
     if (barrier_status == lp_status_t::OPTIMAL) {
       auto* xf = cache->transform();
-      try {
-        auto crushed = cuopt::mathematical_optimization::crush_user_linear_objective(
-          *xf, user_problem.objective.data(), user_problem.num_cols);
-        xf->linear_obj_shift.resize(static_cast<std::size_t>(solver_lp->num_cols), 0.0);
-        if (static_cast<int>(crushed.size()) == solver_lp->num_cols) {
-          for (int j = 0; j < solver_lp->num_cols; ++j) {
-            xf->linear_obj_shift[static_cast<std::size_t>(j)] =
-              solver_lp->objective[static_cast<std::size_t>(j)] -
-              crushed[static_cast<std::size_t>(j)];
-          }
+      // Presolve and scaling offset the data by a constant the maps alone cannot recover, so
+      // record what the barrier values are worth beyond crush(user values); updates re-add it.
+      auto shift_from = [](auto const& barrier_values, std::vector<double> const& crushed) {
+        if (crushed.size() != barrier_values.size()) {
+          throw std::runtime_error("crushed length disagrees with the cached barrier LP");
         }
+        std::vector<double> shift(barrier_values.size());
+        for (std::size_t k = 0; k < shift.size(); ++k) {
+          shift[k] = static_cast<double>(barrier_values[k]) - crushed[k];
+        }
+        return shift;
+      };
+      // Crushing this solve's own data also checks the maps still describe it: presolve may
+      // have dualized an LP, in which case the crush throws.
+      try {
+        auto const crushed = cuopt::mathematical_optimization::crush_user_linear_objective(
+          *xf, user_problem.objective.data(), user_problem.num_cols);
+        xf->linear_obj_shift = shift_from(solver_lp->objective, crushed);
       } catch (std::exception const&) {
-        xf->linear_obj_shift.assign(static_cast<std::size_t>(solver_lp->num_cols), 0.0);
+        // A zero shift still lets an update run; it just contributes nothing.
+        xf->linear_obj_shift.assign(solver_lp->objective.size(), 0.0);
       }
       if (xf->rhs_update_supported) {
         try {
-          auto crushed = cuopt::mathematical_optimization::crush_user_rhs(
+          auto const crushed = cuopt::mathematical_optimization::crush_user_rhs(
             *xf, user_problem.rhs.data(), user_problem.num_rows);
-          xf->rhs_shift.resize(static_cast<std::size_t>(solver_lp->num_rows), 0.0);
-          if (static_cast<int>(crushed.size()) == solver_lp->num_rows) {
-            for (int i = 0; i < solver_lp->num_rows; ++i) {
-              xf->rhs_shift[static_cast<std::size_t>(i)] =
-                solver_lp->rhs[static_cast<std::size_t>(i)] - crushed[static_cast<std::size_t>(i)];
-            }
-          }
+          xf->rhs_shift = shift_from(solver_lp->rhs, crushed);
         } catch (std::exception const&) {
-          // Cannot reproduce this solve's RHS from the maps, so refuse later updates.
+          // Maps cannot reproduce this RHS, so refuse later updates.
           xf->rhs_update_supported = false;
           xf->rhs_shift.clear();
         }

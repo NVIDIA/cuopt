@@ -47,8 +47,7 @@ struct barrier_transform_t {
   std::vector<double> linear_obj_shift;
   // Barrier RHS minus crush(user b) from the first solve (fixed/lower-bound shifts).
   std::vector<double> rhs_shift;
-  // Range rows and folding put the user RHS somewhere other than barrier_lp->rhs, so these maps
-  // cannot crush a new one.
+  // False when range rows or folding put the user RHS somewhere other than barrier_lp->rhs.
   bool rhs_update_supported{false};
   // Absolute primal tolerance of the first solve, used to test rows presolve dropped as empty.
   double primal_tol{1e-6};
@@ -118,8 +117,8 @@ inline std::vector<double> crush_user_linear_objective(barrier_transform_t const
   return presolved;
 }
 
-// A new RHS that makes a row presolve dropped as empty infeasible. Distinct from the
-// invalid_argument cases so the caller can report INFEASIBLE instead of a validation failure.
+// Distinct from the invalid_argument cases so the caller can report INFEASIBLE rather than a
+// validation failure.
 struct update_rhs_infeasible_error : std::runtime_error {
   explicit update_rhs_infeasible_error(std::string const& message) : std::runtime_error(message) {}
 };
@@ -152,8 +151,8 @@ inline std::vector<double> crush_user_rhs(barrier_transform_t const& xf, double 
       xf.row_sense[static_cast<std::size_t>(i)] == 'G' ? -b[i] : b[i];
   }
 
-  // Rows presolve dropped were empty, so the new RHS never reaches the barrier. 'E' rows need
-  // 0 == b_i and the rest need 0 <= b_i; anything else makes the updated model infeasible.
+  // Dropped rows were empty, so the new RHS never reaches the barrier: 'E' needs 0 == b_i and
+  // the rest need 0 <= b_i.
   for (int i : xf.presolve_info.removed_constraints) {
     if (i < 0 || i >= m) {
       throw std::invalid_argument("update_rhs: removed constraint index is out of range.");
@@ -168,8 +167,8 @@ inline std::vector<double> crush_user_rhs(barrier_transform_t const& xf, double 
     }
   }
 
-  // An empty remaining_constraints means either presolve never ran its empty-row pass, so the
-  // rows are unchanged, or it dropped every row and the loop above already accepted them.
+  // Empty remaining_constraints means either no empty-row pass ran, or every row was dropped
+  // and accepted above.
   std::vector<double> presolved;
   if (!xf.presolve_info.remaining_constraints.empty()) {
     presolved.resize(xf.presolve_info.remaining_constraints.size());

@@ -31,9 +31,8 @@ IPM_LOG = "Optimal solution found"
 def _sequence_settings():
     settings = solver_settings.SolverSettings()
     settings.set_parameter("sequence_solve", True)
-    # barrier_presolve_bound_free_variables is deliberately left at its -1
-    # default: sequence_solve resolves automatic to 0 for us. Every test here
-    # asserts the reuse log line, so the whole file doubles as coverage of that.
+    # barrier_presolve_bound_free_variables stays at its -1 default on purpose:
+    # sequence_solve resolves automatic to 0, which the reuse assertions cover.
     return settings
 
 
@@ -113,11 +112,9 @@ BADLY_SCALED = dict(
     upper=[10.0, 10.0],
 )
 
-# Nonzero variable lower bounds make presolve translate x = x' + l, which
-# subtracts sum_j a_ij * l_j from each row's RHS. That constant is recorded
-# once as rhs_shift and re-added on every update. Here it is -7 on the first
-# row, so dropping it would solve x0 + x1 >= b0 + 7 and land far from the
-# oracle rather than merely a tolerance away from it.
+# Nonzero lower bounds make presolve translate x = x' + l, subtracting
+# sum_j a_ij * l_j from each row's RHS. That is rhs_shift, -7 on the first row
+# here, so dropping it would solve x0 + x1 >= b0 + 7 and miss the oracle.
 LOWER_BOUNDED = dict(
     values=[1.0, 1.0, 1.0, -1.0],
     indices=[0, 1, 0, 1],
@@ -206,10 +203,8 @@ def test_update_rhs_infeasible_empty_row_short_circuits(capfd):
     _assert_matches_oracle(recovered, _full_solve(EMPTY_ROW, rhs))
 
 
-# x0 + x1 >= b with both variables lower bounded away from zero, so presolve
-# translates x = x' + l. That translation is what rhs_shift has to account
-# for, and it also folds sum_j c_j * l_j into obj_constant, which an RHS
-# update must leave alone.
+# Lower bounds away from zero make presolve translate x = x' + l, which folds
+# sum_j c_j * l_j into obj_constant. An RHS update must leave that alone.
 TRANSLATED = dict(
     values=[1.0, 1.0],
     indices=[0, 1],
@@ -241,10 +236,8 @@ def test_update_rhs_leaves_objective_constant_alone(capfd):
     )
 
 
-# x1 is free, but the two rows imply bounds on it, so presolve's free-variable
-# bounding has something to do. That bounding leaves state in presolve_info the
-# reuse path cannot replay, so a cache built with it must not be reused even
-# though the later solve asks for 0 and would otherwise pass the gate.
+# x1 is free but the rows imply bounds on it, so presolve's free-variable
+# bounding leaves state in presolve_info that the reuse path cannot replay.
 FREE_VARIABLE = dict(
     values=[1.0, 1.0, 1.0, 1.0],
     indices=[0, 1, 0, 1],

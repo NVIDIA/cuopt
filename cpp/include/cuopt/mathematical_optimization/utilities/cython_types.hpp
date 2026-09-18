@@ -10,7 +10,6 @@
 #include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/mip/solver_solution.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
-#include <cuopt/mathematical_optimization/utilities/barrier_cache.hpp>
 #include <cuopt/mathematical_optimization/utilities/internals.hpp>
 
 #include <rmm/device_buffer.hpp>
