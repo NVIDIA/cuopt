@@ -253,6 +253,8 @@ files:
   py_run_cuopt_mcp:
     output: pyproject
     pyproject_dir: python/cuopt_mcp/
+    matrix:
+      cuda_suffixed: ["false"]
     extras:
       table: project
     includes:
