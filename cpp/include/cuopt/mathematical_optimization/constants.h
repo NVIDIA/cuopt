@@ -158,6 +158,9 @@
 /* @brief QCQP (barrier) scaling hyper-parameters */
 #define CUOPT_QCQP_HYPER_RUIZ_EQUILIBRATION "qcqp_hyper_ruiz_equilibration"
 
+/* @brief PDLP scaling hyper-parameter: Curtis-Reid prescaling toggle */
+#define CUOPT_PDLP_HYPER_ENABLE_CURTIS_REID_SCALING "pdlp_hyper_enable_curtis_reid_scaling"
+
 /* @brief Barrier initial point safeguard */
 #define CUOPT_BARRIER_INITIAL_POINT_SAFEGUARD "barrier_initial_point_safeguard"
 

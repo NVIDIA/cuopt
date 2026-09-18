@@ -511,8 +511,14 @@ TEST(pdlp_class, run_sub_mittleman)
   }
 }
 
-constexpr double initial_step_size_afiro     = 1.4893;
-constexpr double initial_primal_weight_afiro = 0.0141652;
+// Golden reference values for afiro's initial step size/primal weight, computed under
+// cuOpt's current default scaling (Curtis-Reid -> Ruiz -> Pock-Chambolle). This test only
+// cares about *whether* update_step_size_on_initial_solution/
+// update_primal_weight_on_initial_solution change these from their as-computed defaults,
+// not their specific values, so these need re-baselining whenever the default scaling
+// pipeline changes.
+constexpr double initial_step_size_afiro     = 1.402293;
+constexpr double initial_primal_weight_afiro = 0.02019181;
 constexpr double factor_tolerance            = 1e-4f;
 
 // Should be added to google test
@@ -814,6 +820,95 @@ TEST(pdlp_class, initial_solution_test)
     EXPECT_NOT_NEAR(initial_primal_weight_afiro, solver.get_primal_weight_h(0), factor_tolerance);
     solver_settings.hyper_params.update_primal_weight_on_initial_solution = false;
     solver_settings.hyper_params.update_step_size_on_initial_solution     = false;
+  }
+}
+
+// Regression test: curtis_reid_scaling()'s row/col kernels floor |a_ij| before taking a
+// log. That floor used to be f_t(1e-300), which underflows to exactly 0.0f for float,
+// so an explicitly-stored zero coefficient (as opposed to one simply absent from the
+// CSR) would reach raft::log(0.0f) = -inf, producing non-finite scale factors. Verifies
+// the fix (std::numeric_limits<f_t>::min(), representable and nonzero at any precision)
+// keeps every scale factor finite in float precision with an explicit zero coefficient.
+TEST(pdlp_class, curtis_reid_scaling_explicit_zero_coefficient_float)
+{
+  const raft::handle_t handle_{};
+
+  cuopt::mathematical_optimization::optimization_problem_t<int, float> op_problem(&handle_);
+  op_problem.set_maximize(false);
+
+  // 1 constraint, 2 variables. Variable 1's coefficient is an *explicit* stored zero
+  // (present in the CSR with value 0.0, not simply omitted).
+  std::vector<float> A_values = {1.0f, 0.0f};
+  std::vector<int> A_indices  = {0, 1};
+  std::vector<int> A_offsets  = {0, 2};
+  op_problem.set_csr_constraint_matrix(A_values.data(),
+                                       static_cast<int>(A_values.size()),
+                                       A_indices.data(),
+                                       static_cast<int>(A_indices.size()),
+                                       A_offsets.data(),
+                                       static_cast<int>(A_offsets.size()));
+
+  std::vector<float> constraint_lower = {0.0f};
+  std::vector<float> constraint_upper = {10.0f};
+  op_problem.set_constraint_lower_bounds(constraint_lower.data(),
+                                         static_cast<int>(constraint_lower.size()));
+  op_problem.set_constraint_upper_bounds(constraint_upper.data(),
+                                         static_cast<int>(constraint_upper.size()));
+
+  std::vector<float> objective = {1.0f, 1.0f};
+  op_problem.set_objective_coefficients(objective.data(), static_cast<int>(objective.size()));
+
+  std::vector<float> var_lower = {0.0f, 0.0f};
+  std::vector<float> var_upper = {5.0f, 5.0f};
+  op_problem.set_variable_lower_bounds(var_lower.data(), static_cast<int>(var_lower.size()));
+  op_problem.set_variable_upper_bounds(var_upper.data(), static_cast<int>(var_upper.size()));
+
+  cuopt::mathematical_optimization::mip::problem_t<int, float> problem(op_problem);
+
+  auto solver_settings = pdlp_solver_settings_t<int, float>{};
+  // We only care about the scaling computed at construction time, not an actual solve.
+  solver_settings.iteration_limit = 0;
+  solver_settings.method          = cuopt::mathematical_optimization::method_t::PDLP;
+  solver_settings.hyper_params.do_curtis_reid_scaling = true;
+  // Isolate Curtis-Reid: its own exp+clamp fold into the cumulative scale (clamp_bound =
+  // 30) would otherwise silently absorb a -inf/NaN log-domain value before it reaches the
+  // final scale factors, masking the bug this test targets. Checking the pre-fold
+  // log-domain values directly (via get_iteration_*_scaling() below) needs Ruiz/
+  // Pock-Chambolle disabled so they don't overwrite those scratch buffers afterward.
+  solver_settings.hyper_params.do_ruiz_scaling           = false;
+  solver_settings.hyper_params.do_pock_chambolle_scaling = false;
+
+  // pdlp_solver_t's constructor builds a real pdhg_solver_t and wires it into the initial
+  // scaling strategy (running_mip=false, skip_ruiz_pock_compute=false), which runs
+  // compute_scaling_vectors() -- and therefore curtis_reid_scaling() -- right here. Going
+  // through pdlp_solver_t (rather than constructing pdlp_initial_scaling_strategy_t
+  // directly) avoids passing a null pdhg_solver_ptr, which trips its "PDHG solver pointer
+  // is null" assertion when running_mip is false.
+  cuopt::mathematical_optimization::pdlp::pdlp_solver_t<int, float> solver(problem,
+                                                                           solver_settings);
+  auto& scaling = solver.get_initial_scaling_strategy();
+
+  // Pre-fold log-domain row/col scale (curtis_reid_scaling()'s direct output, before the
+  // exp+clamp that turns it into a multiplicative factor) -- this is what actually goes
+  // non-finite if raft::log() sees an unfloored zero.
+  auto row_log_scale =
+    host_copy(scaling.get_iteration_constraint_matrix_scaling(), handle_.get_stream());
+  auto col_log_scale = host_copy(scaling.get_iteration_variable_scaling(), handle_.get_stream());
+  for (float v : row_log_scale) {
+    EXPECT_TRUE(std::isfinite(v)) << "row log-scale is not finite: " << v;
+  }
+  for (float v : col_log_scale) {
+    EXPECT_TRUE(std::isfinite(v)) << "col log-scale is not finite: " << v;
+  }
+
+  // Final (post exp+clamp) cumulative scale factors should also be finite.
+  auto row_scale = host_copy(scaling.get_constraint_matrix_scaling_vector(), handle_.get_stream());
+  auto col_scale = host_copy(scaling.get_variable_scaling_vector(), handle_.get_stream());
+  for (float v : row_scale) {
+    EXPECT_TRUE(std::isfinite(v)) << "row scale factor is not finite: " << v;
+  }
+  for (float v : col_scale) {
+    EXPECT_TRUE(std::isfinite(v)) << "col scale factor is not finite: " << v;
   }
 }
 
