@@ -24,14 +24,10 @@ from .client import CuOptMCPError, describe_connection_error, get_client
 from .schema import known_parameters, settings_schema, validate_settings
 
 # Above this many variables a solution is written to a file instead of
-# returned inline. The binding limit is the model's context window, not the
-# transport: ~200 values is already a large tool result, and cuOpt problems
-# routinely have millions.
+# returned inline -- the binding limit is the model's context window.
 INLINE_SOLUTION_LIMIT = 200
 
-# Upper bound on logs()'s tail_lines. Same context-window reasoning as
-# INLINE_SOLUTION_LIMIT -- also caps how much of a job's log an unbounded or
-# negative tail_lines could otherwise inline into a single tool result.
+# Upper bound on logs()'s tail_lines, same context-window reasoning.
 MAX_TAIL_LINES = 2000
 
 
@@ -99,10 +95,7 @@ def _build_settings(kind: str, settings: dict | None):
     properties = settings_schema(kind)["properties"]
     solver_settings = SolverSettings()
     for name, value in (settings or {}).items():
-        # Enum settings are exposed to callers by name ("Barrier") because a
-        # bare integer is meaningless to an agent, but cuOpt's string
-        # parameter interface takes the integer. The mapping is generated
-        # from the field registry alongside the enum itself.
+        # Enums are exposed by name ("Barrier"); set_parameter takes the int.
         prop = properties[name]
         mapping = prop.get("x-enum-values")
         if mapping is not None:
@@ -145,20 +138,15 @@ def submit(problem_path: str, kind: str, settings: dict | None = None) -> dict:
     model = _read_problem(problem_path)
     solver_settings = _build_settings(kind, settings)
     try:
-        # Client.submit()'s default only enables incumbent collection when
-        # `settings` already carries a local MIP callback object (see local
-        # solve). This process keeps none -- cuopt_incumbents polls
-        # Client.incumbents() instead -- so it must ask explicitly, or the
-        # server never records incumbents for a MIP job to poll.
+        # This process keeps no local MIP callback, so ask explicitly or the
+        # server never collects incumbents for cuopt_incumbents to poll.
         job_id = get_client().submit(
             model, solver_settings, enable_incumbents=(kind == "mip_settings")
         )
     except Exception as exc:
         raise describe_connection_error(exc) from exc
 
-    # DataModel exposes no public size accessors, so derive both from the
-    # arrays it does expose: one lower bound per column, and CSR row offsets
-    # numbering rows + 1.
+    # DataModel exposes no public size accessors; derive from CSR offsets.
     offsets = model.get_constraint_matrix_offsets()
     return {
         "job_id": job_id,
@@ -257,10 +245,8 @@ def result(
         }
 
     primal = solution.get_primal_solution()
-    # The status is an IntEnum, so str() would yield the bare number ("1").
-    # get_termination_reason() is its .name, which is what a caller can act
-    # on. Note LPTerminationStatus numbers Optimal=1 while the wire enum
-    # pdlp_termination_status numbers it 2 — never map between them.
+    # IntEnum: use .name, not str(). Its numbering differs from the wire
+    # enum pdlp_termination_status -- never map between them.
     status_enum = solution.get_termination_status()
     summary = {
         "job_id": job_id,
@@ -381,11 +367,8 @@ def incumbents(job_id: str, from_index: int = 0) -> dict:
         CuOptMCPError: The backend is unreachable.
     """
     try:
-        # Each entry is {"index", "objective", "assignment"}; assignment
-        # (the full variable vector) isn't returned here -- an agent tracking
-        # progress needs the objective trend, not the values, and returning
-        # it inline would blow past a usable tool-result size for any
-        # realistic MILP.
+        # Each entry also has "assignment" (full variable vector); omitted
+        # here to stay within a usable tool-result size.
         found = get_client().incumbents(job_id, from_index)
     except Exception as exc:
         raise describe_connection_error(exc) from exc
@@ -439,10 +422,7 @@ def logs(job_id: str, from_byte: int = 0, tail_lines: int = 100) -> dict:
     try:
         lines = get_client().logs(job_id, from_byte)
     except Exception as exc:
-        # Matched by class name, not isinstance, to avoid importing
-        # cuopt.grpc.linear_programming (which pulls the compiled libcuopt
-        # extension) just to name this one exception type -- get_client()
-        # already imports it lazily on first real use.
+        # Matched by name, not isinstance, to avoid an eager cuopt import.
         if type(exc).__name__ == "JobNotReadyError":
             return {
                 "job_id": job_id,
@@ -452,11 +432,8 @@ def logs(job_id: str, from_byte: int = 0, tail_lines: int = 100) -> dict:
         raise describe_connection_error(exc) from exc
     lines = lines or []
     truncated = len(lines) > tail_lines
-    # Client.logs() reports lines, not the server-side byte offset each one
-    # ended at, so this re-derives it: every line came from a '\n'-delimited
-    # log file, so its encoded length plus one accounts for the separator.
-    # Off by the trailing byte only when the file's very last line has no
-    # newline yet -- self-correcting once one more byte is appended.
+    # Client.logs() doesn't return the server's byte offset; approximate it
+    # from encoded line lengths plus the '\n' each one was split on.
     next_byte = from_byte + sum(
         len(line.encode("utf-8")) + 1 for line in lines
     )

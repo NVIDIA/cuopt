@@ -73,9 +73,7 @@ class FakeClient:
 
     def logs(self, job_id, from_byte=0):
         if self.not_ready_logs:
-            # tools.logs matches by class name, not isinstance, precisely
-            # so it needn't import the real cuopt.grpc.linear_programming
-            # exception type -- this stand-in exercises that.
+            # tools.logs matches by class name, not isinstance -- see there.
             class JobNotReadyError(Exception):
                 pass
 
@@ -127,10 +125,7 @@ def test_result_named_lookup_reports_missing(fake):
 
 
 def test_result_empty_variables_list_returns_no_variables(fake):
-    """variables=[] must mean "return none", distinct from the omitted
-    default -- `if variables:` treated both the same and fell through to
-    the full/truncated shaping path instead.
-    """
+    """variables=[] must mean "return none", distinct from omitted."""
     fake(FakeSolution([1.0, 2.0], names=["x", "y"]))
     out = tools.result("job-1", variables=[])
     assert out["variables"] == {}
@@ -140,11 +135,7 @@ def test_result_empty_variables_list_returns_no_variables(fake):
 def test_large_solution_is_written_to_file_not_inlined(
     fake, tmp_path, monkeypatch
 ):
-    """A big solution must not be returned inline.
-
-    The binding limit is the model's context window, so past `limit` the
-    values go to a file and only a pointer comes back.
-    """
+    """A big solution must not be returned inline."""
     monkeypatch.setenv("CUOPT_MCP_SOLUTION_DIR", str(tmp_path))
     n = 5000
     fake(
@@ -166,11 +157,7 @@ def test_large_solution_is_written_to_file_not_inlined(
 def test_result_rejects_solution_dir_that_is_a_file(
     fake, tmp_path, monkeypatch
 ):
-    """A pre-existing non-directory at CUOPT_MCP_SOLUTION_DIR must be
-    rejected up front -- previously it passed the ownership/mode check
-    (nothing there tested S_ISDIR) and only failed later as an unguarded
-    NotADirectoryError out of _write_solution_file.
-    """
+    """A pre-existing non-directory at CUOPT_MCP_SOLUTION_DIR is rejected."""
     stray_file = tmp_path / "not-a-dir"
     stray_file.write_text("")
     stray_file.chmod(0o600)
@@ -237,11 +224,7 @@ class FakeModel:
 
 
 def test_submit_enables_incumbents_for_mip_only(fake, monkeypatch, tmp_path):
-    """Client.submit() only enables incumbent collection by default when
-    settings already carries a local MIP callback -- this process keeps
-    none, so tools.submit must pass enable_incumbents explicitly, or
-    cuopt_incumbents always comes back empty for a MIP job (tools.py).
-    """
+    """submit() must ask for incumbents explicitly for MIP, not LP."""
     stub = fake()
     monkeypatch.setattr(tools, "_read_problem", lambda path: FakeModel())
     monkeypatch.setattr(

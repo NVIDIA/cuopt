@@ -20,12 +20,9 @@ if TYPE_CHECKING:
 DEFAULT_HOST = "localhost"
 DEFAULT_PORT = 50051
 
-# Redacts absolute filesystem paths (2+ segments) out of backend error text.
-# The gRPC client only ever gets a plain message string -- no structured
-# status code survives the C++ -> Cython -> here hop -- so a caller-facing
-# parse/solve error and a server-internal one (e.g. "Failed to open log
-# file: <path>") can't be told apart by type. Redacting paths keeps the rest
-# of the message useful without leaking server-side directory layout.
+# Redacts absolute filesystem paths out of backend error text, since a
+# server-internal error (e.g. "Failed to open log file: <path>") can't be
+# told apart from a caller-facing one by type alone.
 _PATH_RE = re.compile(r"(?<!\w)(/[\w.\-]+){2,}")
 
 _lock = threading.Lock()
