@@ -865,29 +865,28 @@ TEST(pdlp_class, curtis_reid_scaling_explicit_zero_coefficient_float)
 
   cuopt::mathematical_optimization::mip::problem_t<int, float> problem(op_problem);
 
-  pdlp::pdlp_hyper_params_t hyper_params{};
-  hyper_params.do_curtis_reid_scaling = true;
+  auto solver_settings = pdlp_solver_settings_t<int, float>{};
+  // We only care about the scaling computed at construction time, not an actual solve.
+  solver_settings.iteration_limit = 0;
+  solver_settings.method          = cuopt::mathematical_optimization::method_t::PDLP;
+  solver_settings.hyper_params.do_curtis_reid_scaling = true;
   // Isolate Curtis-Reid: its own exp+clamp fold into the cumulative scale (clamp_bound =
   // 30) would otherwise silently absorb a -inf/NaN log-domain value before it reaches the
   // final scale factors, masking the bug this test targets. Checking the pre-fold
   // log-domain values directly (via get_iteration_*_scaling() below) needs Ruiz/
   // Pock-Chambolle disabled so they don't overwrite those scratch buffers afterward.
-  hyper_params.do_ruiz_scaling           = false;
-  hyper_params.do_pock_chambolle_scaling = false;
+  solver_settings.hyper_params.do_ruiz_scaling           = false;
+  solver_settings.hyper_params.do_pock_chambolle_scaling = false;
 
-  // running_mip=false, skip_ruiz_pock_compute=false (both defaults): runs
-  // compute_scaling_vectors() -- and therefore curtis_reid_scaling() -- at construction.
-  cuopt::mathematical_optimization::pdlp::pdlp_initial_scaling_strategy_t<int, float> scaling(
-    &handle_,
-    problem,
-    hyper_params.default_l_inf_ruiz_iterations,
-    hyper_params.default_alpha_pock_chambolle_rescaling,
-    problem.reverse_coefficients,
-    problem.reverse_offsets,
-    problem.reverse_constraints,
-    nullptr,
-    hyper_params,
-    /*original_batch_size=*/1);
+  // pdlp_solver_t's constructor builds a real pdhg_solver_t and wires it into the initial
+  // scaling strategy (running_mip=false, skip_ruiz_pock_compute=false), which runs
+  // compute_scaling_vectors() -- and therefore curtis_reid_scaling() -- right here. Going
+  // through pdlp_solver_t (rather than constructing pdlp_initial_scaling_strategy_t
+  // directly) avoids passing a null pdhg_solver_ptr, which trips its "PDHG solver pointer
+  // is null" assertion when running_mip is false.
+  cuopt::mathematical_optimization::pdlp::pdlp_solver_t<int, float> solver(problem,
+                                                                           solver_settings);
+  auto& scaling = solver.get_initial_scaling_strategy();
 
   // Pre-fold log-domain row/col scale (curtis_reid_scaling()'s direct output, before the
   // exp+clamp that turns it into a multiplicative factor) -- this is what actually goes
