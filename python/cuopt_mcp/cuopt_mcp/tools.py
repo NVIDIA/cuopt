@@ -89,10 +89,15 @@ def _read_problem(path: str):
 
 
 def _build_settings(kind: str, settings: dict | None):
-    from cuopt.linear_programming import SolverSettings
-
+    if kind not in ("pdlp_settings", "mip_settings"):
+        raise CuOptMCPError(
+            "kind must be 'pdlp_settings' (LP) or 'mip_settings' (MILP)"
+        )
     validate_settings(kind, settings or {})
     properties = settings_schema(kind)["properties"]
+
+    from cuopt.linear_programming import SolverSettings
+
     solver_settings = SolverSettings()
     for name, value in (settings or {}).items():
         # Enums are exposed by name ("Barrier"); set_parameter takes the int.
@@ -132,8 +137,9 @@ def submit(problem_path: str, kind: str, settings: dict | None = None) -> dict:
 
     Raises
     ------
-        CuOptMCPError: The file doesn't exist, fails to parse, carries an
-            unknown setting, or the backend is unreachable.
+        CuOptMCPError: ``kind`` is invalid, the file doesn't exist, fails to
+            parse, carries an unknown setting, or the backend is
+            unreachable.
     """
     model = _read_problem(problem_path)
     solver_settings = _build_settings(kind, settings)

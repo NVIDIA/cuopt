@@ -237,6 +237,12 @@ def test_submit_enables_incumbents_for_mip_only(fake, monkeypatch, tmp_path):
     assert stub.submitted == [True, False]
 
 
+def test_build_settings_rejects_bad_kind():
+    """Bad kind must be CuOptMCPError, not a raw KeyError past _guard."""
+    with pytest.raises(client.CuOptMCPError, match="mip_settings"):
+        tools._build_settings("nonsense", None)
+
+
 def test_missing_problem_file_is_a_clear_error():
     with pytest.raises(client.CuOptMCPError, match="problem file not found"):
         tools.submit("/nonexistent/model.mps", "pdlp_settings")
