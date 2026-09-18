@@ -421,15 +421,14 @@ struct a_times_exp_clamped_b {
 // Curtis-Reid always runs first in the current fixed sequence (cummulative_* still all-1
 // at that point), this keeps the fit correct if that ever changes.
 template <typename i_t, typename f_t, int BLOCK_SIZE>
-__global__ void curtis_reid_row_kernel(
-  const typename mip::problem_t<i_t, f_t>::view_t op_problem,
-  const f_t* cummulative_constraint_matrix_scaling,
-  const f_t* cummulative_variable_scaling,
-  const f_t* col_log_scale,
-  f_t* row_log_scale)
+__global__ void curtis_reid_row_kernel(const typename mip::problem_t<i_t, f_t>::view_t op_problem,
+                                       const f_t* cummulative_constraint_matrix_scaling,
+                                       const f_t* cummulative_variable_scaling,
+                                       const f_t* col_log_scale,
+                                       f_t* row_log_scale)
 {
   __shared__ f_t shared[BLOCK_SIZE / raft::WarpSize];
-  auto shared_span = raft::device_span<f_t>{shared, BLOCK_SIZE / raft::WarpSize};
+  auto shared_span      = raft::device_span<f_t>{shared, BLOCK_SIZE / raft::WarpSize};
   f_t accumulated_value = f_t(0);
 
   int row        = blockIdx.x;
@@ -438,19 +437,17 @@ __global__ void curtis_reid_row_kernel(
   f_t row_scale  = cummulative_constraint_matrix_scaling[row];
 
   for (int j = threadIdx.x; j < nnz_in_row; j += blockDim.x) {
-    i_t col = op_problem.variables[row_offset + j];
-    f_t abs_val =
-      raft::max<f_t>(raft::abs(op_problem.coefficients[row_offset + j] * row_scale *
-                               cummulative_variable_scaling[col]),
-                     std::numeric_limits<f_t>::min());
+    i_t col     = op_problem.variables[row_offset + j];
+    f_t abs_val = raft::max<f_t>(raft::abs(op_problem.coefficients[row_offset + j] * row_scale *
+                                           cummulative_variable_scaling[col]),
+                                 std::numeric_limits<f_t>::min());
     accumulated_value += -raft::log(abs_val) - col_log_scale[col];
   }
 
   accumulated_value = deterministic_block_reduce<f_t, BLOCK_SIZE>(shared_span, accumulated_value);
 
   if (threadIdx.x == 0) {
-    row_log_scale[row] =
-      nnz_in_row > 0 ? accumulated_value / static_cast<f_t>(nnz_in_row) : f_t(0);
+    row_log_scale[row] = nnz_in_row > 0 ? accumulated_value / static_cast<f_t>(nnz_in_row) : f_t(0);
   }
 }
 
@@ -467,7 +464,7 @@ __global__ void curtis_reid_col_kernel(i_t n_variables,
                                        f_t* col_log_scale)
 {
   __shared__ f_t shared[BLOCK_SIZE / raft::WarpSize];
-  auto shared_span = raft::device_span<f_t>{shared, BLOCK_SIZE / raft::WarpSize};
+  auto shared_span      = raft::device_span<f_t>{shared, BLOCK_SIZE / raft::WarpSize};
   f_t accumulated_value = f_t(0);
 
   int col        = blockIdx.x;
@@ -476,19 +473,17 @@ __global__ void curtis_reid_col_kernel(i_t n_variables,
   f_t col_scale  = cummulative_variable_scaling[col];
 
   for (int j = threadIdx.x; j < nnz_in_col; j += blockDim.x) {
-    i_t row = A_T_indices[col_offset + j];
-    f_t abs_val =
-      raft::max<f_t>(raft::abs(A_T[col_offset + j] * col_scale *
-                               cummulative_constraint_matrix_scaling[row]),
-                     std::numeric_limits<f_t>::min());
+    i_t row     = A_T_indices[col_offset + j];
+    f_t abs_val = raft::max<f_t>(
+      raft::abs(A_T[col_offset + j] * col_scale * cummulative_constraint_matrix_scaling[row]),
+      std::numeric_limits<f_t>::min());
     accumulated_value += -raft::log(abs_val) - row_log_scale[row];
   }
 
   accumulated_value = deterministic_block_reduce<f_t, BLOCK_SIZE>(shared_span, accumulated_value);
 
   if (threadIdx.x == 0) {
-    col_log_scale[col] =
-      nnz_in_col > 0 ? accumulated_value / static_cast<f_t>(nnz_in_col) : f_t(0);
+    col_log_scale[col] = nnz_in_col > 0 ? accumulated_value / static_cast<f_t>(nnz_in_col) : f_t(0);
   }
 }
 
@@ -516,10 +511,10 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::curtis_reid_scaling(
   // cummulative_* is still all-1 here in practice.
   auto& row_log_scale = iteration_constraint_matrix_scaling_;
   auto& col_log_scale = iteration_variable_scaling_;
-  RAFT_CUDA_TRY(cudaMemsetAsync(
-    row_log_scale.data(), 0, sizeof(f_t) * dual_size_h_, stream_view_.get()));
-  RAFT_CUDA_TRY(cudaMemsetAsync(
-    col_log_scale.data(), 0, sizeof(f_t) * primal_size_h_, stream_view_.get()));
+  RAFT_CUDA_TRY(
+    cudaMemsetAsync(row_log_scale.data(), 0, sizeof(f_t) * dual_size_h_, stream_view_.get()));
+  RAFT_CUDA_TRY(
+    cudaMemsetAsync(col_log_scale.data(), 0, sizeof(f_t) * primal_size_h_, stream_view_.get()));
 
   constexpr i_t number_of_threads = 128;
   for (i_t iter = 0; iter < number_of_curtis_reid_iterations; ++iter) {
@@ -1272,7 +1267,7 @@ pdlp_initial_scaling_strategy_t<i_t, f_t>::view()
   template __global__ void curtis_reid_row_kernel<int, F_TYPE, 128>(                          \
     const typename mip::problem_t<int, F_TYPE>::view_t op_problem,                            \
     const F_TYPE* cummulative_constraint_matrix_scaling,                                      \
-    const F_TYPE* cummulative_variable_scaling,                                                \
+    const F_TYPE* cummulative_variable_scaling,                                               \
     const F_TYPE* col_log_scale,                                                              \
     F_TYPE* row_log_scale);                                                                   \
                                                                                               \
@@ -1282,7 +1277,7 @@ pdlp_initial_scaling_strategy_t<i_t, f_t>::view()
     const int* A_T_offsets,                                                                   \
     const int* A_T_indices,                                                                   \
     const F_TYPE* cummulative_constraint_matrix_scaling,                                      \
-    const F_TYPE* cummulative_variable_scaling,                                                \
+    const F_TYPE* cummulative_variable_scaling,                                               \
     const F_TYPE* row_log_scale,                                                              \
     F_TYPE* col_log_scale);
 

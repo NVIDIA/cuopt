@@ -866,7 +866,7 @@ TEST(pdlp_class, curtis_reid_scaling_explicit_zero_coefficient_float)
   cuopt::mathematical_optimization::mip::problem_t<int, float> problem(op_problem);
 
   pdlp::pdlp_hyper_params_t hyper_params{};
-  hyper_params.do_curtis_reid_scaling    = true;
+  hyper_params.do_curtis_reid_scaling = true;
   // Isolate Curtis-Reid: its own exp+clamp fold into the cumulative scale (clamp_bound =
   // 30) would otherwise silently absorb a -inf/NaN log-domain value before it reaches the
   // final scale factors, masking the bug this test targets. Checking the pre-fold
@@ -892,7 +892,8 @@ TEST(pdlp_class, curtis_reid_scaling_explicit_zero_coefficient_float)
   // Pre-fold log-domain row/col scale (curtis_reid_scaling()'s direct output, before the
   // exp+clamp that turns it into a multiplicative factor) -- this is what actually goes
   // non-finite if raft::log() sees an unfloored zero.
-  auto row_log_scale = host_copy(scaling.get_iteration_constraint_matrix_scaling(), handle_.get_stream());
+  auto row_log_scale =
+    host_copy(scaling.get_iteration_constraint_matrix_scaling(), handle_.get_stream());
   auto col_log_scale = host_copy(scaling.get_iteration_variable_scaling(), handle_.get_stream());
   for (float v : row_log_scale) {
     EXPECT_TRUE(std::isfinite(v)) << "row log-scale is not finite: " << v;
