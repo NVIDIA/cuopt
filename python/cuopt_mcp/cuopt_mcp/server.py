@@ -46,11 +46,19 @@ def _guard(fn, /, **kwargs) -> dict[str, Any]:
     ``{"error": <message safe to show the model>}`` instead of a traceback,
     which the model can act on inline instead of the call simply failing.
     Paths are redacted here so every raise site doesn't have to.
+
+    An exception of any other type is logged (with traceback) to stderr
+    and reduced to a generic message instead of str(exc): unlike
+    CuOptMCPError/ValueError, that text was never vetted as safe to
+    return, and letting it through here would bypass redact_paths.
     """
     try:
         return fn(**kwargs)
     except (CuOptMCPError, ValueError) as exc:
         return {"error": redact_paths(str(exc))}
+    except Exception:
+        logging.exception("unexpected error in %s", fn.__qualname__)
+        return {"error": "internal error -- see server logs"}
 
 
 @server.tool(structured_output=True)
