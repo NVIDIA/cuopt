@@ -112,6 +112,9 @@ outputs:
           cmake --install cpp/build --component client
           cmake --install cpp/build --component client-dev
           ./ci/check_symbols.sh cpp/build/libcuopt_client.so --no-public-api-check
+          # check_symbols.sh looks at exported symbols; this one asserts the client
+          # stays a CUDA-free leaf, which nothing else covers (#1890).
+          ./ci/check_client_is_leaf.sh cpp/build/libcuopt_client.so
       dynamic_linking:
         overlinking_behavior: "error"
       prefix_detection:

@@ -16,6 +16,7 @@
 #include <rmm/device_buffer.hpp>
 
 #include <memory>
+#include <utility>
 
 namespace cuopt {
 namespace CUOPT_EXPORT cython {
