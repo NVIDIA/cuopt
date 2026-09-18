@@ -51,9 +51,7 @@ class FakeSolution:
 
 
 class FakeClient:
-    def __init__(
-        self, solution=None, not_ready_logs=False, status_error=None
-    ):
+    def __init__(self, solution=None, not_ready_logs=False, status_error=None):
         self.solution = solution
         self.cancelled = []
         self.deleted = []
@@ -319,9 +317,13 @@ def test_submit_track_incumbents_is_mip_only_and_opt_in(
     )
     problem = tmp_path / "p.mps"
     problem.write_text("")
-    tools.submit(str(problem), "mip_settings")
-    tools.submit(str(problem), "mip_settings", track_incumbents=True)
-    tools.submit(str(problem), "pdlp_settings", track_incumbents=True)
+    tools.submit("mip_settings", problem_path=str(problem))
+    tools.submit(
+        "mip_settings", problem_path=str(problem), track_incumbents=True
+    )
+    tools.submit(
+        "pdlp_settings", problem_path=str(problem), track_incumbents=True
+    )
     assert stub.submitted == [False, True, False]
 
 
@@ -339,7 +341,7 @@ def test_build_settings_wraps_validate_settings_value_error():
 
 def test_missing_problem_file_is_a_clear_error():
     with pytest.raises(client.CuOptMCPError, match="problem file not found"):
-        tools.submit("/nonexistent/model.mps", "pdlp_settings")
+        tools.submit("pdlp_settings", problem_path="/nonexistent/model.mps")
 
 
 def test_list_settings_names_and_detail():
@@ -374,6 +376,8 @@ def test_default_port_matches_cuopt_grpc_server(monkeypatch):
     """
     monkeypatch.delenv("CUOPT_REMOTE_PORT", raising=False)
     assert client.endpoint()[1] == 5001
+
+
 def test_unreachable_message_says_to_look_before_starting_a_server():
     """The advice must not read as 'start one', full stop.
 
