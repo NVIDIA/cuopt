@@ -4304,16 +4304,20 @@ i_t branch_and_bound_t<i_t, f_t>::apply_delta_x_for_integer_pivot(
   std::vector<i_t>& basic_list,
   std::vector<i_t>& nonbasic_list,
   std::vector<i_t>& nonbasic_index,
+  std::vector<i_t>& variable_to_basic,
   std::vector<simplex::variable_status_t>& vstatus,
   i_t entering_index,
   i_t nonbasic_entering,
   i_t direction,
-  std::vector<f_t>& delta_x,
-  const sparse_vector_t<i_t, f_t>& utilde_sparse,
+  const sparse_vector_t<i_t, f_t>& delta_x,
+  sparse_vector_t<i_t, f_t>& utilde_sparse,
   simplex::lp_solution_t<i_t, f_t>& solution,
   simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
   f_t& work_estimate)
 {
+  // Keep the existing dense ratio test and full integrality scan.
+  std::vector<f_t> delta_x_dense;
+  delta_x.to_dense(delta_x_dense);
   f_t step_length;
   i_t basic_leaving;
   const i_t leaving_index = simplex::primal_ratio_test(lp,
@@ -4321,7 +4325,7 @@ i_t branch_and_bound_t<i_t, f_t>::apply_delta_x_for_integer_pivot(
                                                        vstatus,
                                                        basic_list,
                                                        solution.x,
-                                                       delta_x,
+                                                       delta_x_dense,
                                                        step_length,
                                                        basic_leaving,
                                                        entering_index,
@@ -4343,7 +4347,7 @@ i_t branch_and_bound_t<i_t, f_t>::apply_delta_x_for_integer_pivot(
   std::vector<f_t> test_x = solution.x;
   i_t integer_destroyed   = 0;
   for (i_t h = 0; h < lp.num_cols; ++h) {
-    test_x[h] += step_length * delta_x[h];
+    test_x[h] += step_length * delta_x_dense[h];
     if (var_types_[h] != variable_type_t::INTEGER) { continue; }
     const bool was_fractional = is_fractional(solution.x[h], var_types_[h], settings_.integer_tol);
     const bool now_fractional = is_fractional(test_x[h], var_types_[h], settings_.integer_tol);
@@ -4356,13 +4360,33 @@ i_t branch_and_bound_t<i_t, f_t>::apply_delta_x_for_integer_pivot(
   // Require a strict net decrease in fractional integers.
   if (integer_destroyed >= 0) { return -2; }
 
-  solution.x                       = test_x;
-  basic_list[basic_leaving]        = entering_index;
-  nonbasic_list[nonbasic_entering] = leaving_index;
-  vstatus[entering_index]          = variable_status_t::BASIC;
+  if (utilde_sparse.i.empty()) {
+    // Recover B^{-1} abar from the direction before changing the basis:
+    // delta_x[basic_list[h]] = -direction * (B^{-1} abar)[h].
+    // In MPF, utilde = U0 * (B^{-1} abar), since all updates are absorbed into L.
+    sparse_vector_t<i_t, f_t> b_inv_abar(lp.num_rows, 0);
+    b_inv_abar.i.reserve(delta_x.i.size());
+    b_inv_abar.x.reserve(delta_x.x.size());
+    const i_t nz = delta_x.i.size();
+    for (i_t k = 0; k < nz; ++k) {
+      const i_t h = variable_to_basic[delta_x.i[k]];
+      if (h >= 0 && delta_x.x[k] != 0) {
+        b_inv_abar.i.push_back(h);
+        b_inv_abar.x.push_back(-direction * delta_x.x[k]);
+      }
+    }
+    basis_update.u_multiply(b_inv_abar, utilde_sparse);
+  }
+
+  solution.x                        = test_x;
+  basic_list[basic_leaving]         = entering_index;
+  variable_to_basic[entering_index] = basic_leaving;
+  variable_to_basic[leaving_index]  = -1;
+  nonbasic_list[nonbasic_entering]  = leaving_index;
+  vstatus[entering_index]           = variable_status_t::BASIC;
   if (std::abs(lp.upper[leaving_index] - lp.lower[leaving_index]) < 1e-12) {
     vstatus[leaving_index] = variable_status_t::NONBASIC_FIXED;
-  } else if (delta_x[leaving_index] < 0) {
+  } else if (delta_x_dense[leaving_index] < 0) {
     vstatus[leaving_index] = variable_status_t::NONBASIC_LOWER;
   } else {
     vstatus[leaving_index] = variable_status_t::NONBASIC_UPPER;
@@ -4405,6 +4429,9 @@ i_t branch_and_bound_t<i_t, f_t>::apply_delta_x_for_integer_pivot(
     if (rank == CONCURRENT_HALT_RETURN || rank == TIME_LIMIT_RETURN) { return -3; }
     if (rank < 0 || rank != lp.num_rows) { return -3; }
     simplex::reorder_basic_list(q, basic_list);
+    for (i_t k = 0; k < m; ++k) {
+      variable_to_basic[basic_list[k]] = k;
+    }
     basis_update.reset(L, U, p);
   }
 
@@ -4421,6 +4448,7 @@ void branch_and_bound_t<i_t, f_t>::fast_slack_integer_pivots(
   std::vector<i_t>& basic_list,
   std::vector<i_t>& nonbasic_list,
   std::vector<i_t>& nonbasic_index,
+  std::vector<i_t>& variable_to_basic,
   std::vector<simplex::variable_status_t>& vstatus,
   simplex::lp_solution_t<i_t, f_t>& soln,
   simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
@@ -4505,7 +4533,7 @@ void branch_and_bound_t<i_t, f_t>::fast_slack_integer_pivots(
     // delta_x[nonbasic_slack] = -delta_xj * a_ij > 0, i.e. the entering slack moves up from
     // its lower bound 0. We build the sparse version to feed the feasibility scan, then
     // normalize so that delta_x[nonbasic_slack] == 1 (the convention primal_ratio_test expects
-    // for entering variables) and scatter into a dense vector.
+    // for entering variables).
     sparse_vector_t<i_t, f_t> delta_x_sparse;
     delta_x_sparse.n = lp.num_cols;
     delta_x_sparse.i.reserve(col_end - col_start + 1);
@@ -4542,38 +4570,25 @@ void branch_and_bound_t<i_t, f_t>::fast_slack_integer_pivots(
       val /= scale;
     }
 
-    std::vector<f_t> delta_x(lp.num_cols, 0.0);
-    delta_x_sparse.to_dense(delta_x);
-
     // Entering variable is the nonbasic slack, moving up from its lower bound 0.
     const i_t entering_index    = nonbasic_slack;
     const i_t nonbasic_entering = nonbasic_index[nonbasic_slack];
     if (nonbasic_entering < 0) { continue; }
     const i_t direction = 1;
 
-    // Recover B^{-1} * abar from the full-vector delta_x. In our sign convention,
-    // delta_x[basic_list[h]] = -direction * (B^{-1} abar)[h], so
-    // (B^{-1} abar)[h] = -direction * delta_x[basic_list[h]].
-    // Then utilde = L^{-1} P abar = U * (B^{-1} abar). In MPF, U == U0 (rank-1 updates all
-    // live in L), so u_multiply is a single sparse matvec against U0.
-    std::vector<f_t> b_inv_abar(lp.num_rows);
-    for (i_t h = 0; h < lp.num_rows; ++h) {
-      b_inv_abar[h] = -direction * delta_x[basic_list[h]];
-    }
-    std::vector<f_t> utilde_dense;
-    basis_update.u_multiply(b_inv_abar, utilde_dense);
+    // The common helper computes utilde only if the pivot is accepted.
     sparse_vector_t<i_t, f_t> utilde_sparse;
-    utilde_sparse.from_dense(utilde_dense);
 
     i_t error = apply_delta_x_for_integer_pivot(lp,
                                                 basic_list,
                                                 nonbasic_list,
                                                 nonbasic_index,
+                                                variable_to_basic,
                                                 vstatus,
                                                 entering_index,
                                                 nonbasic_entering,
                                                 direction,
-                                                delta_x,
+                                                delta_x_sparse,
                                                 utilde_sparse,
                                                 soln,
                                                 basis_update,
@@ -4681,6 +4696,10 @@ i_t branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
   }
 
   std::vector<i_t> nonbasic_index;
+  std::vector<i_t> variable_to_basic(lp.num_cols, -1);
+  for (i_t k = 0; k < lp.num_rows; k++) {
+    variable_to_basic[basic_list_copy[k]] = k;
+  }
   fast_slack_integer_pivots(lp,
                             settings,
                             fractional,
@@ -4689,17 +4708,13 @@ i_t branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
                             basic_list_copy,
                             nonbasic_list_copy,
                             nonbasic_index,
+                            variable_to_basic,
                             vstatus_copy,
                             soln_copy,
                             basis_update_copy,
                             work_estimate);
 
   std::vector<i_t> work_list = fractional;
-  std::vector<i_t> to_basic_position(lp.num_cols, -1);
-
-  for (i_t k = 0; k < lp.num_rows; k++) {
-    to_basic_position[basic_list_copy[k]] = k;
-  }
 
   sparse_vector_t<i_t, f_t> ep;
   ep.n = lp.num_rows;
@@ -4733,7 +4748,7 @@ i_t branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
 
   while (!work_list.empty()) {
     const i_t j = work_list.back();
-    const i_t p = to_basic_position[j];
+    const i_t p = variable_to_basic[j];
     work_list.pop_back();
     worklist_total_processed++;
 
@@ -4862,18 +4877,22 @@ i_t branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
       worklist_ftran_time += toc(ftran_start);
       worklist_ftran_done++;
 
-      std::vector<f_t> delta_xB_dense;
-      delta_xB.to_dense(delta_xB_dense);
-      std::vector<f_t> delta_x(lp.num_cols, 0.0);
-      for (i_t i = 0; i < lp.num_rows; i++) {
-        delta_x[basic_list_copy[i]] = -direction * delta_xB_dense[i];
+      sparse_vector_t<i_t, f_t> delta_x(lp.num_cols, 0);
+      delta_x.i.reserve(delta_xB.i.size() + 1);
+      delta_x.x.reserve(delta_xB.x.size() + 1);
+      const i_t nz = delta_xB.i.size();
+      for (i_t k = 0; k < nz; ++k) {
+        delta_x.i.push_back(basic_list_copy[delta_xB.i[k]]);
+        delta_x.x.push_back(-direction * delta_xB.x[k]);
       }
-      delta_x[q] = direction;
+      delta_x.i.push_back(q);
+      delta_x.x.push_back(direction);
 
       i_t error = apply_delta_x_for_integer_pivot(lp,
                                                   basic_list_copy,
                                                   nonbasic_list_copy,
                                                   nonbasic_index,
+                                                  variable_to_basic,
                                                   vstatus_copy,
                                                   entering_index,
                                                   nonbasic_entering,
@@ -4900,21 +4919,18 @@ i_t branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
 
       if (!error) {
         worklist_pivots_succeeded++;
-        // Update to_basic_position for the variables that changed status
-        // entering_index is now basic, leaving_index is now nonbasic
-        // Find the leaving variable: it's the one that took entering_index's slot in nonbasic_list
-        const i_t leaving_index           = nonbasic_list_copy[nonbasic_entering];
-        to_basic_position[entering_index] = to_basic_position[leaving_index];
-        to_basic_position[leaving_index]  = -1;
-
-        // We did a successful pivot; add fractional variables whose values changed to work list
+#ifdef READD_TO_WORKLIST
+        // We did a successful pivot; add fractional variables whose values changed to work list.
+        std::vector<f_t> delta_x_dense;
+        delta_x.to_dense(delta_x_dense);
         for (i_t k : fractional) {
           if (vstatus_copy[k] != variable_status_t::BASIC) { continue; }
-          if (std::abs(delta_x[k]) > settings_.zero_tol) {
-            // work_list.push_back(k);
-            // worklist_readded++;
+          if (std::abs(delta_x_dense[k]) > settings_.zero_tol) {
+            work_list.push_back(k);
+            worklist_readded++;
           }
         }
+#endif
         break;
       }
     }
