@@ -1090,11 +1090,14 @@ def test_sync_cuopt_health_is_served_during_solve(proxy):
                 "client_version": "custom",
             },
         )
+        deadline = time.monotonic() + 5
         while fake.pending_statuses > 3:
+            if time.monotonic() > deadline:
+                pytest.fail("solve never started polling")
             time.sleep(0.01)
         health = requests.get(url + "/cuopt/health", timeout=5)
         assert health.status_code == 200, health.text
-        assert solve.result().status_code == 200
+        assert solve.result(timeout=10).status_code == 200
 
 
 def test_sync_cuopt_rejects_null_data(proxy):
