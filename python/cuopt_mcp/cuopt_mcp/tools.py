@@ -16,6 +16,7 @@ it did not submit.
 
 import json
 import os
+import re
 import stat
 import tempfile
 from pathlib import Path
@@ -29,6 +30,12 @@ INLINE_SOLUTION_LIMIT = 200
 
 # Upper bound on logs()'s tail_lines, same context-window reasoning.
 MAX_TAIL_LINES = 2000
+
+
+def _check_non_negative_int(name: str, value) -> None:
+    """Reject a bool (an int subclass in Python) or a negative value."""
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise CuOptMCPError(f"{name} must be a non-negative integer")
 
 
 def _solution_dir() -> Path:
@@ -206,8 +213,27 @@ def status(job_id: str) -> dict:
     }
 
 
+_JOB_ID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+)
+
+
+def _solution_file_path(job_id: str) -> Path:
+    """Return the on-disk path for a job's solution file, after checking
+    ``job_id`` looks like a server-issued UUID.
+
+    ``job_id`` is caller-supplied and gets joined onto
+    ``CUOPT_MCP_SOLUTION_DIR`` as a filename; without this check, a value
+    like ``"../../etc/cron.d/x"`` would let a caller write or unlink an
+    arbitrary ``.json``-suffixed path outside that directory.
+    """
+    if not _JOB_ID_RE.match(job_id):
+        raise CuOptMCPError(f"{job_id!r} is not a valid job_id")
+    return _solution_dir() / f"{job_id}.json"
+
+
 def _write_solution_file(job_id: str, vars_by_name: dict) -> str:
-    path = _solution_dir() / f"{job_id}.json"
+    path = _solution_file_path(job_id)
     path.write_text(json.dumps(vars_by_name, indent=1))
     return str(path)
 
@@ -359,14 +385,17 @@ def delete(job_id: str) -> dict:
 
     Raises
     ------
-        CuOptMCPError: The backend is unreachable.
+        CuOptMCPError: ``job_id`` isn't a valid job id, or the backend is
+            unreachable.
     """
+    if not _JOB_ID_RE.match(job_id):
+        raise CuOptMCPError(f"{job_id!r} is not a valid job_id")
     try:
         get_client().delete(job_id)
     except Exception as exc:
         raise describe_connection_error(exc) from exc
     try:
-        (_solution_dir() / f"{job_id}.json").unlink(missing_ok=True)
+        _solution_file_path(job_id).unlink(missing_ok=True)
     except CuOptMCPError:
         pass  # nothing to clean up if the directory itself is unusable
     return {"job_id": job_id, "deleted": True}
@@ -390,8 +419,10 @@ def incumbents(job_id: str, from_index: int = 0) -> dict:
 
     Raises
     ------
-        CuOptMCPError: The backend is unreachable.
+        CuOptMCPError: ``from_index`` is negative, or the backend is
+            unreachable.
     """
+    _check_non_negative_int("from_index", from_index)
     try:
         # Each entry also has "assignment" (full variable vector); omitted
         # here to stay within a usable tool-result size.
@@ -417,11 +448,14 @@ def logs(job_id: str, from_byte: int = 0, tail_lines: int = 100) -> dict:
 
     Solver output is captured to a log for every job, from submission —
     there's nothing to opt into. This tool only returns it once the job
-    has finished (COMPLETED, FAILED, or CANCELLED) though: it fetches a
-    snapshot via :meth:`Client.logs`, which raises while a job is still
-    queued or running; poll ``cuopt_status`` first. A live tail while
-    running is possible on the wire (``Client.start_log_stream``) but not
-    exposed by this tool yet.
+    has finished though: it fetches a snapshot via :meth:`Client.logs`,
+    which raises while a job is still queued or running; poll
+    ``cuopt_status`` first. A live tail while running is possible on the
+    wire (``Client.start_log_stream``) but not exposed by this tool yet.
+
+    For a CANCELLED job specifically, expect an empty or missing log: the
+    server deletes a job's log file as part of handling cancellation
+    (unlike COMPLETED/FAILED, which keep it until :func:`delete`).
 
     Args:
         job_id: The job to fetch logs for.
@@ -443,9 +477,10 @@ def logs(job_id: str, from_byte: int = 0, tail_lines: int = 100) -> dict:
 
     Raises
     ------
-        CuOptMCPError: ``tail_lines`` is out of range, or the backend is
-            unreachable.
+        CuOptMCPError: ``from_byte`` is negative, ``tail_lines`` is out of
+            range, or the backend is unreachable.
     """
+    _check_non_negative_int("from_byte", from_byte)
     if (
         isinstance(tail_lines, bool)
         or not isinstance(tail_lines, int)

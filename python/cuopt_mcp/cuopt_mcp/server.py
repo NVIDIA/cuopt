@@ -181,7 +181,9 @@ def cuopt_logs(
 
     Only works once the job has reached a terminal state (poll
     cuopt_status first) — a live tail of a still-running job isn't
-    available through this tool yet.
+    available through this tool yet. For a CANCELLED job, expect an empty
+    or missing log: the server deletes it as part of cancelling, unlike
+    COMPLETED/FAILED.
 
     job_id: the job to fetch logs for.
     from_byte: resume from this byte offset — pass back the next_byte from

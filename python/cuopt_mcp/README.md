@@ -20,10 +20,11 @@ pip install cuopt_mcp
 
 ## Configure
 
-Start the solver backend on a GPU host:
+Start the solver backend on a GPU host (5001 is `cuopt_grpc_server`'s own
+default; shown explicitly here since the client points at it by name):
 
 ```bash
-cuopt_grpc_server --port 50051
+cuopt_grpc_server --port 5001
 ```
 
 Then register the MCP server with your client:
@@ -33,7 +34,7 @@ Then register the MCP server with your client:
   "mcpServers": {
     "cuopt": {
       "command": "cuopt-mcp",
-      "env": { "CUOPT_REMOTE_HOST": "gpu-host", "CUOPT_REMOTE_PORT": "50051" }
+      "env": { "CUOPT_REMOTE_HOST": "gpu-host", "CUOPT_REMOTE_PORT": "5001" }
     }
   }
 }

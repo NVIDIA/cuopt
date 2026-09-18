@@ -13,6 +13,12 @@ import pytest
 
 from cuopt_mcp import client, tools
 
+# job_id must look like a server-issued UUID (tools._JOB_ID_RE) wherever a
+# test exercises code that turns job_id into a filename (result()'s
+# solution-file fallback, delete()).
+UUID1 = "11111111-1111-1111-1111-111111111111"
+UUID2 = "22222222-2222-2222-2222-222222222222"
+
 
 class FakeSolution:
     def __init__(self, values, names=None):
@@ -145,11 +151,11 @@ def test_large_solution_is_written_to_file_not_inlined(
             [float(i) for i in range(n)], names=[f"x{i}" for i in range(n)]
         )
     )
-    out = tools.result("job-big", limit=10)
+    out = tools.result(UUID1, limit=10)
     assert out["variables_truncated"] is True
     assert len(out["variables"]) == 10
     assert out["num_variables"] == n
-    written = tmp_path / "job-big.json"
+    written = tmp_path / f"{UUID1}.json"
     assert written.is_file()
     assert len(json.loads(written.read_text())) == n
 
@@ -164,9 +170,9 @@ def test_nonzero_only_solution_file_is_also_filtered(
     for i in range(0, n, 100):
         values[i] = 1.0
     fake(FakeSolution(values, names=[f"x{i}" for i in range(n)]))
-    out = tools.result("job-sparse", nonzero_only=True, limit=10)
+    out = tools.result(UUID2, nonzero_only=True, limit=10)
     assert out["num_nonzero"] == n // 100
-    written = json.loads((tmp_path / "job-sparse.json").read_text())
+    written = json.loads((tmp_path / f"{UUID2}.json").read_text())
     assert len(written) == n // 100
     assert all(v != 0 for v in written.values())
 
@@ -186,7 +192,7 @@ def test_result_rejects_solution_dir_that_is_a_file(
         )
     )
     with pytest.raises(client.CuOptMCPError, match="not a private directory"):
-        tools.result("job-big", limit=10)
+        tools.result(UUID1, limit=10)
 
 
 def test_unnamed_solution_falls_back_to_indices_with_a_hint(fake):
@@ -204,6 +210,13 @@ def test_incumbents_paginate(fake):
     assert out["next_index"] == 2
 
 
+@pytest.mark.parametrize("bad_index", [-1, True])
+def test_incumbents_rejects_bad_from_index(fake, bad_index):
+    fake()
+    with pytest.raises(client.CuOptMCPError, match="from_index"):
+        tools.incumbents("job-1", from_index=bad_index)
+
+
 def test_logs_tail_is_bounded(fake):
     fake()
     out = tools.logs("job-1", tail_lines=3)
@@ -211,6 +224,13 @@ def test_logs_tail_is_bounded(fake):
     assert out["lines"] == ["line 7", "line 8", "line 9"]
     assert out["truncated"] is True
     assert out["next_byte"] > 0
+
+
+@pytest.mark.parametrize("bad_byte", [-1, True])
+def test_logs_rejects_bad_from_byte(fake, bad_byte):
+    fake()
+    with pytest.raises(client.CuOptMCPError, match="from_byte"):
+        tools.logs("job-1", from_byte=bad_byte)
 
 
 def test_logs_reports_not_ready_without_raising(fake):
@@ -228,16 +248,27 @@ def test_cancel(fake):
 
 def test_delete(fake):
     stub = fake()
-    assert tools.delete("job-1")["deleted"] is True
-    assert stub.deleted == ["job-1"]
+    assert tools.delete(UUID1)["deleted"] is True
+    assert stub.deleted == [UUID1]
+
+
+def test_delete_rejects_a_non_uuid_job_id(fake):
+    """job_id becomes a filename in delete()/result(); must reject
+    anything that isn't a server-issued UUID before touching the
+    filesystem, or a value like "../../etc/x" could write/unlink outside
+    the solution directory.
+    """
+    fake()
+    with pytest.raises(client.CuOptMCPError, match="not a valid job_id"):
+        tools.delete("../../etc/cron.d/x")
 
 
 def test_delete_removes_local_solution_file(fake, tmp_path, monkeypatch):
     monkeypatch.setenv("CUOPT_MCP_SOLUTION_DIR", str(tmp_path))
     fake()
-    solution_file = tmp_path / "job-1.json"
+    solution_file = tmp_path / f"{UUID1}.json"
     solution_file.write_text("{}")
-    tools.delete("job-1")
+    tools.delete(UUID1)
     assert not solution_file.exists()
 
 
@@ -246,7 +277,7 @@ def test_delete_with_no_solution_file_still_succeeds(
 ):
     monkeypatch.setenv("CUOPT_MCP_SOLUTION_DIR", str(tmp_path))
     fake()
-    assert tools.delete("job-1")["deleted"] is True
+    assert tools.delete(UUID1)["deleted"] is True
 
 
 class FakeModel:
@@ -315,3 +346,11 @@ def test_endpoint_rejects_out_of_range_port(monkeypatch, bad_port):
     monkeypatch.setenv("CUOPT_REMOTE_PORT", bad_port)
     with pytest.raises(client.CuOptMCPError, match="between 1 and 65535"):
         client.endpoint()
+
+
+def test_default_port_matches_cuopt_grpc_server(monkeypatch):
+    """Must match cuopt_default_grpc_port, not the unrelated 50051 used by
+    routing-client examples.
+    """
+    monkeypatch.delenv("CUOPT_REMOTE_PORT", raising=False)
+    assert client.endpoint()[1] == 5001

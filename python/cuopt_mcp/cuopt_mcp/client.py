@@ -18,7 +18,10 @@ if TYPE_CHECKING:
     from cuopt.grpc.linear_programming import Client
 
 DEFAULT_HOST = "localhost"
-DEFAULT_PORT = 50051
+# Matches cuopt_default_grpc_port (cpp/src/grpc/cuopt_default_grpc_port.h) --
+# cuopt_grpc_server's own default, not the unrelated routing-client examples
+# that use 50051.
+DEFAULT_PORT = 5001
 
 # Redacts absolute filesystem paths out of backend error text, since a
 # server-internal error (e.g. "Failed to open log file: <path>") can't be
