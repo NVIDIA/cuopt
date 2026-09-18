@@ -33,7 +33,12 @@ server = MCPServer(
         "Solves are asynchronous: cuopt_solve_lp / cuopt_solve_milp return a "
         "job_id immediately, then poll cuopt_status and fetch cuopt_result. "
         "Call cuopt_list_settings to discover solver parameters before "
-        "passing a settings object."
+        "passing a settings object. "
+        "This server is a client, not a solver: it needs a running "
+        "cuopt_grpc_server and never starts one. Call cuopt_health first to "
+        "see the configured host/port and whether it answers. If it does "
+        "not, check whether a server is already running before starting "
+        "another — two servers can end up sharing a port."
     ),
 )
 
@@ -62,12 +67,49 @@ def _guard(fn, /, **kwargs) -> dict[str, Any]:
 
 
 @server.tool(structured_output=True)
+def cuopt_health() -> dict[str, Any]:
+    """Report the configured gRPC target and whether it answers.
+
+    Takes no arguments. Returns host, port, tls, and reachable — plus, when
+    unreachable, the error and what to check. Worth calling before building
+    a model, since every other tool fails only after the model exists.
+
+    This MCP server never starts or stops cuopt_grpc_server. If the target
+    is unreachable, check for a server that is already running before
+    starting one.
+    """
+    return _guard(tools.health)
+
+
+@server.tool(structured_output=True)
 def cuopt_solve_lp(
-    problem_path: str, settings: dict | None = None
+    problem_path: str | None = None,
+    problem: dict | None = None,
+    settings: dict | None = None,
 ) -> dict[str, Any]:
     """Submit a linear program to cuOpt and return a job handle immediately.
 
+    Give the model exactly one of two ways:
+
     problem_path: path to an MPS, QPS, or LP file readable by this process.
+    problem: the model as plain JSON arrays, with no file involved:
+        objective: cost per variable (its length defines the column count)
+        constraint_matrix: {"rows": [...], "cols": [...], "values": [...]}
+            COO triplets, or {"offsets", "indices", "values"} for CSR
+        constraint_lower_bounds / constraint_upper_bounds: one per row,
+            defaulting to -inf / +inf. Set both equal for an equality row.
+            Their length fixes the row count, so a trailing row with all
+            zero coefficients is kept rather than inferred away.
+        variable_lower_bounds / variable_upper_bounds: default 0 / +inf
+        variable_names: labels echoed back by cuopt_result
+        maximize: true to maximise (default false)
+        objective_offset: constant added to the objective
+
+    Bounds: use null for an unbounded side, since JSON has no infinity
+    literal. A magnitude of 1e30 or more is also read as infinite — left
+    finite, such a bound can make the solver return a constraint-violating
+    point reported as Optimal. Repeated matrix cells are summed.
+
     settings: optional PDLP solver settings, e.g. {"time_limit": 60,
         "method": "Barrier"}. Call cuopt_list_settings("pdlp_settings") for
         the full list with descriptions and defaults. Omit any setting to
@@ -79,6 +121,7 @@ def cuopt_solve_lp(
     return _guard(
         tools.submit,
         problem_path=problem_path,
+        problem=problem,
         kind="pdlp_settings",
         settings=settings,
     )
@@ -86,17 +129,46 @@ def cuopt_solve_lp(
 
 @server.tool(structured_output=True)
 def cuopt_solve_milp(
-    problem_path: str,
+    problem_path: str | None = None,
+    problem: dict | None = None,
     settings: dict | None = None,
     track_incumbents: bool = False,
 ) -> dict[str, Any]:
     """Submit a mixed-integer program to cuOpt and return a job handle.
 
+    Give the model exactly one of two ways:
+
     problem_path: path to an MPS or LP file declaring integer/binary
-        variables (LP: Generals/Binaries sections).
+        variables (LP: Generals/Binaries sections; MPS: an integer column
+        with no explicit bound entry silently defaults to [0, 1], which
+        turns an ordinary model infeasible for no visible reason).
+    problem: the model as plain JSON arrays. Prefer this over MPS for
+        integer models: variable_types carries integrality without
+        touching bounds. Keys — the same set cuopt_solve_lp takes, plus
+        variable_types, repeated here because a caller may hold this tool
+        without that one:
+        objective: cost per variable (its length defines the column count)
+        constraint_matrix: {"rows": [...], "cols": [...], "values": [...]}
+            COO triplets, or {"offsets", "indices", "values"} for CSR
+        constraint_lower_bounds / constraint_upper_bounds: one per row,
+            defaulting to -inf / +inf. Set both equal for an equality row.
+            Their length fixes the row count, so a trailing row with all
+            zero coefficients is kept rather than inferred away.
+        variable_lower_bounds / variable_upper_bounds: default 0 / +inf
+        variable_types: per-variable "I" (integer) or "C" (continuous)
+        variable_names: labels echoed back by cuopt_result
+        maximize: true to maximise (default false)
+        objective_offset: constant added to the objective
+
+    Bounds: use null for an unbounded side, since JSON has no infinity
+    literal. A magnitude of 1e30 or more is also read as infinite — left
+    finite, such a bound can make the solver return a constraint-violating
+    point reported as Optimal. Repeated matrix cells are summed.
+
     settings: optional MIP solver settings, e.g. {"time_limit": 300,
         "relative_mip_gap": 0.01}. Call cuopt_list_settings("mip_settings")
-        for the full list.
+        for the full list — parameter names are easy to guess wrong
+        (relative_mip_gap, not mip_relative_gap).
     track_incumbents: set True to make cuopt_incumbents useful for this
         job. Off by default -- it costs extra server-side work and network
         transfer per incumbent found, worth paying only if you'll poll it.
@@ -107,6 +179,7 @@ def cuopt_solve_milp(
     return _guard(
         tools.submit,
         problem_path=problem_path,
+        problem=problem,
         kind="mip_settings",
         settings=settings,
         track_incumbents=track_incumbents,
