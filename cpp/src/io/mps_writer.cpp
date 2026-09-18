@@ -265,7 +265,7 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
 
   // iterate over the constraint matrix and add the nonzeros to the integral and continuous col_nnzs
   // maps
-  for (size_t csr_row = 0; csr_row < (size_t)n_constraints; csr_row++) {
+  for (size_t csr_row = 0; csr_row + 1 < constraint_matrix_offsets.size(); csr_row++) {
     const i_t row_id = static_cast<i_t>(csr_row);
     for (size_t k = (size_t)constraint_matrix_offsets[csr_row];
          k < (size_t)constraint_matrix_offsets[csr_row + 1];
