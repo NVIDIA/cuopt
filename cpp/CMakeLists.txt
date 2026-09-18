@@ -1197,7 +1197,9 @@ set(CPACK_DEB_COMPONENT_INSTALL ON)
 
 # CPack silently drops any component missing from this list, which would leave the
 # runtime .deb empty now that nothing installs under `runtime`.
-set(CPACK_COMPONENTS_ALL runtime dev client mathopt client-dev mathopt-dev)
+# `cuopt` is rapids_export's own component, holding cuopt-config.cmake and the export
+# set. It is easy to miss because it is named after the project rather than a library.
+set(CPACK_COMPONENTS_ALL runtime dev cuopt client mathopt client-dev mathopt-dev)
 if(NOT SKIP_ROUTING_BUILD)
     list(APPEND CPACK_COMPONENTS_ALL routing routing-dev)
 endif()
@@ -1605,7 +1607,7 @@ foreach(_runtime_component client mathopt routing grpc-server)
     string(TOUPPER "${_runtime_component}" _uc)
     set(CPACK_COMPONENT_${_uc}_GROUP "Runtime")
 endforeach()
-foreach(_dev_component client-dev mathopt-dev routing-dev)
+foreach(_dev_component client-dev mathopt-dev routing-dev cuopt)
     string(TOUPPER "${_dev_component}" _uc)
     set(CPACK_COMPONENT_${_uc}_GROUP "Development")
 endforeach()

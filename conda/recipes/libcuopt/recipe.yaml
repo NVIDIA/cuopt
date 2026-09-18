@@ -348,6 +348,9 @@ outputs:
       script:
         content: |
           cmake --install cpp/build --component dev
+          # rapids_export puts cuopt-config.cmake and the export set in a component named
+          # after the project, so find_package(cuopt) breaks without this.
+          cmake --install cpp/build --component cuopt
       string: cuda${{ cuda_major }}_${{ datetime_string }}_${{ head_rev }}
     requirements:
       build:
