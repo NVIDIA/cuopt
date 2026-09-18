@@ -270,6 +270,8 @@ class branch_and_bound_t {
 
   // Worker pool dedicated to recursive RINS
   diving_worker_pool_t<i_t, f_t> submip_worker_pool_;
+  std::vector<branch_and_bound_t*> active_submip_solvers_;
+  omp_mutex_t active_submip_solvers_mutex_;
   submip_stats_t rins_stats_;
   submip_stats_t rens_stats_;
 
@@ -303,6 +305,8 @@ class branch_and_bound_t {
     return settings_.concurrent_halt ? settings_.concurrent_halt->load(std::memory_order_acquire)
                                      : false;
   }
+
+  void halt_solver();
 
   enum class cut_pass_action_t { CONTINUE, BREAK, RETURN };
 

@@ -364,6 +364,17 @@ void branch_and_bound_t<i_t, f_t>::set_initial_pseudocost(
 }
 
 template <typename i_t, typename f_t>
+void branch_and_bound_t<i_t, f_t>::halt_solver()
+{
+  std::lock_guard lock(active_submip_solvers_mutex_);
+  node_concurrent_halt_.store(true, std::memory_order::release);
+
+  for (i_t i = 0; i < active_submip_solvers_.size(); ++i) {
+    if (active_submip_solvers_[i]) { active_submip_solvers_[i]->halt_solver(); }
+  }
+}
+
+template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::print_table_header()
 {
   std::string header = std::format("{:^1}|{:^12}|{:^12}|{:^19}|{:^15}|{:^8}|{:^7}|{:^11}|{:^11}|",
@@ -2078,9 +2089,7 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
     }
   }
 
-  if (solver_status_ == mip_status_t::TIME_LIMIT || solver_status_ == mip_status_t::OPTIMAL) {
-    node_concurrent_halt_ = 1;
-  }
+  if (solver_status_ != mip_status_t::UNSET) { halt_solver(); }
 
   // If the worker has still nodes in the queue (this can happen if it was stopped due to
   // time limit, small gap or other reason), then do not add back to the pool to avoid
@@ -2091,9 +2100,9 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
 
   // We explored the entire tree and no worker is running. Set is_running_ to false to stop
   // the submip.
-  if (exploration_stats_.nodes_unexplored == 0 &&
-      bfs_worker_pool_.num_idle() == bfs_worker_pool_.size()) {
+  if (bfs_worker_pool_.num_idle() == bfs_worker_pool_.size()) {
     is_running_ = false;
+    halt_solver();
   }
 }
 
@@ -2267,6 +2276,8 @@ bool branch_and_bound_t<i_t, f_t>::launch_diving_worker(bfs_worker_t<i_t, f_t>* 
 template <typename i_t, typename f_t>
 bool branch_and_bound_t<i_t, f_t>::launch_submip_worker(const std::vector<f_t>& sol)
 {
+  if (solver_status_ != mip_status_t::UNSET) return false;
+  if (node_concurrent_halt_.load(std::memory_order::acquire)) return false;
   if (settings_.submip_settings.rins == 0 && settings_.submip_settings.rens == 0) return false;
   if (settings_.submip_settings.rens == 0 && !incumbent_.has_incumbent) return false;
   if (submip_worker_pool_.num_idle() == 0) return false;
@@ -2288,13 +2299,17 @@ bool branch_and_bound_t<i_t, f_t>::launch_submip_worker(const std::vector<f_t>& 
   worker->search_strategy    = use_rins ? search_strategy_t::RINS : search_strategy_t::RENS;
   worker->set_active();
 
+  simplex_solver_settings_t<i_t, f_t> submip_settings = settings_;
+  submip_settings.concurrent_halt                     = &node_concurrent_halt_;
+
   if (settings_.inside_submip) {
     // LLVM libomp's GOMP compatibility path skips GCC's firstprivate copy
     // function for included tasks.
-    recursive_submip(worker, settings_);
+    recursive_submip(worker, submip_settings);
   } else {
-#pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) affinity(worker) firstprivate(worker)
-    recursive_submip(worker, settings_);
+#pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) affinity(worker) \
+  firstprivate(worker, submip_settings)
+    recursive_submip(worker, submip_settings);
   }
 
   return true;
@@ -2456,7 +2471,8 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
       f_t user_upper = compute_user_objective(this->original_lp_, this->upper_bound_.load());
       bool is_cutoff = original_lp_.obj_scale > 0 ? submip_lower_bound > user_upper
                                                   : user_upper > submip_lower_bound;
-      bool is_solver_running = this->solver_status_ == mip_status_t::UNSET && this->is_running_;
+      bool is_solver_running =
+        this->solver_status_ == mip_status_t::UNSET && this->is_running_ && !node_concurrent_halt_;
       return is_cutoff || !is_solver_running || this->received_halt_signal();
     });
   }
@@ -2497,6 +2513,19 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
                                        worker->rng.next_i64());
     submip_fj_cpu_worker.run_async(time_limit, work_limit);
   }
+
+  active_submip_solvers_mutex_.lock();
+  active_submip_solvers_[worker->worker_id] = &submip_bnb;
+  const bool halted = node_concurrent_halt_.load(std::memory_order::acquire);
+  active_submip_solvers_mutex_.unlock();
+
+  scope_guard solver_scope([&]() {
+    active_submip_solvers_mutex_.lock();
+    active_submip_solvers_[worker->worker_id] = nullptr;
+    active_submip_solvers_mutex_.unlock();
+  });
+
+  if (halted) { submip_bnb.halt_solver(); }
 
   mip_status_t submip_status = submip_bnb.solve(submip_solution);
   f_t submip_time            = toc(start_time);
@@ -3636,6 +3665,10 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   exploration_stats_.nodes_explored   = 0;
   original_lp_.A.to_compressed_row(Arow_);
 
+  active_submip_solvers_mutex_.lock();
+  active_submip_solvers_.assign(settings_.max_cut_passes, nullptr);
+  active_submip_solvers_mutex_.unlock();
+
   settings_.log.debug("Reduced cost strengthening enabled: %d\n",
                       settings_.reduced_cost_strengthening);
 
@@ -3880,6 +3913,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       }
       return solver_status_;
     }
+
     if (num_fractional == 0) {
       // LP relaxation is already integer-feasible — solved at the root
       // by the cuts added so far (possibly zero). Publish the with-cuts
@@ -4075,7 +4109,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   }
 
   settings_.log.printf("Exploring the B&B tree using %d threads\n\n", settings_.num_threads);
-  node_concurrent_halt_ = 0;
 
   exploration_stats_.nodes_explored       = 0;
   exploration_stats_.nodes_unexplored     = 2;
@@ -4126,6 +4159,10 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                  edge_norms_,
                                  num_bfs_workers + num_submip_workers);
       }
+
+      active_submip_solvers_mutex_.lock();
+      active_submip_solvers_.assign(num_submip_workers, nullptr);
+      active_submip_solvers_mutex_.unlock();
 
       bfs_worker_t<i_t, f_t>* initial_worker = bfs_worker_pool_.pop_idle_worker();
       node_queue_t<i_t, f_t>& node_queue     = initial_worker->node_queue;
