@@ -42,6 +42,7 @@ ConfigureTest(ROUTING_UNIT_TEST
       ${CUOPT_TEST_DIR}/internal/main.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/vehicle_types.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/breaks.cu
+      ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/distance_breaks.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/heterogenous_breaks.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/vehicle_fixed_costs.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/vehicle_order_match.cu
@@ -53,6 +54,7 @@ ConfigureTest(ROUTING_UNIT_TEST
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/prize_collection.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/objective_function.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/batch_tsp.cu
+      ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/cost_boundary_initialization.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/set_shmem_of_kernel.cu
     LABELS routing
     STATIC_LIB)

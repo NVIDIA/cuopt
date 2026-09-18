@@ -439,7 +439,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                                                   dual_solution.get(),
                                                   CUSPARSE_SPMV_CSR_ALG2,
                                                   &buffer_size_non_transpose,
-                                                  handle_ptr->get_stream()));
+                                                  handle_ptr->get_stream().get()));
   buffer_non_transpose.resize(buffer_size_non_transpose, handle_ptr->get_stream());
 
   size_t buffer_size_transpose = 0;
@@ -453,7 +453,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                                                   c.get(),
                                                   CUSPARSE_SPMV_CSR_ALG2,
                                                   &buffer_size_transpose,
-                                                  handle_ptr->get_stream()));
+                                                  handle_ptr->get_stream().get()));
 
   buffer_transpose.resize(buffer_size_transpose, handle_ptr->get_stream());
 
@@ -470,7 +470,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                                                   batch_tmp_primals.get(),
                                                   CUSPARSE_SPMM_CSR_ALG3,
                                                   &buffer_size_transpose_batch,
-                                                  handle_ptr->get_stream()));
+                                                  handle_ptr->get_stream().get()));
 
   buffer_transpose_batch.resize(buffer_size_transpose_batch, handle_ptr->get_stream());
   size_t buffer_size_non_transpose_batch = 0;
@@ -485,7 +485,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                                                   batch_tmp_duals.get(),
                                                   CUSPARSE_SPMM_CSR_ALG3,
                                                   &buffer_size_non_transpose_batch,
-                                                  handle_ptr->get_stream()));
+                                                  handle_ptr->get_stream().get()));
   buffer_non_transpose_batch.resize(buffer_size_non_transpose_batch, handle_ptr->get_stream());
 
   // In row row the buffer size may be different
@@ -502,7 +502,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
       batch_current_AtYs.get(),
       (deterministic_batch_pdlp) ? CUSPARSE_SPMM_CSR_ALG3 : CUSPARSE_SPMM_CSR_ALG2,
       &buffer_size_transpose_batch_row_row,
-      handle_ptr->get_stream()));
+      handle_ptr->get_stream().get()));
     buffer_transpose_batch_row_row_.resize(buffer_size_transpose_batch_row_row,
                                            handle_ptr->get_stream());
     size_t buffer_size_non_transpose_batch_row_row = 0;
@@ -517,7 +517,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
       batch_dual_gradients.get(),
       (deterministic_batch_pdlp) ? CUSPARSE_SPMM_CSR_ALG3 : CUSPARSE_SPMM_CSR_ALG2,
       &buffer_size_non_transpose_batch_row_row,
-      handle_ptr->get_stream()));
+      handle_ptr->get_stream().get()));
     buffer_non_transpose_batch_row_row_.resize(buffer_size_non_transpose_batch_row_row,
                                                handle_ptr->get_stream());
   }
@@ -532,7 +532,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                              dual_solution.get(),
                              CUSPARSE_SPMV_CSR_ALG2,
                              buffer_non_transpose.data(),
-                             handle_ptr->get_stream());
+                             handle_ptr->get_stream().get());
 
   my_cusparsespmv_preprocess(handle_ptr_->get_cusparse_handle(),
                              CUSPARSE_OPERATION_NON_TRANSPOSE,
@@ -543,7 +543,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                              c.get(),
                              CUSPARSE_SPMV_CSR_ALG2,
                              buffer_transpose.data(),
-                             handle_ptr->get_stream());
+                             handle_ptr->get_stream().get());
   my_cusparsespmm_preprocess(handle_ptr_->get_cusparse_handle(),
                              CUSPARSE_OPERATION_NON_TRANSPOSE,
                              CUSPARSE_OPERATION_NON_TRANSPOSE,
@@ -554,7 +554,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                              batch_tmp_primals.get(),
                              CUSPARSE_SPMM_CSR_ALG3,
                              buffer_transpose_batch.data(),
-                             handle_ptr->get_stream());
+                             handle_ptr->get_stream().get());
 
   my_cusparsespmm_preprocess(handle_ptr_->get_cusparse_handle(),
                              CUSPARSE_OPERATION_NON_TRANSPOSE,
@@ -566,7 +566,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                              batch_tmp_duals.get(),
                              CUSPARSE_SPMM_CSR_ALG3,
                              buffer_non_transpose_batch.data(),
-                             handle_ptr->get_stream());
+                             handle_ptr->get_stream().get());
   if (batch_mode_) {
     my_cusparsespmm_preprocess(
       handle_ptr_->get_cusparse_handle(),
@@ -579,7 +579,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
       batch_current_AtYs.get(),
       (deterministic_batch_pdlp) ? CUSPARSE_SPMM_CSR_ALG3 : CUSPARSE_SPMM_CSR_ALG2,
       buffer_transpose_batch_row_row_.data(),
-      handle_ptr->get_stream());
+      handle_ptr->get_stream().get());
     my_cusparsespmm_preprocess(
       handle_ptr_->get_cusparse_handle(),
       CUSPARSE_OPERATION_NON_TRANSPOSE,
@@ -591,7 +591,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
       batch_dual_gradients.get(),
       (deterministic_batch_pdlp) ? CUSPARSE_SPMM_CSR_ALG3 : CUSPARSE_SPMM_CSR_ALG2,
       buffer_non_transpose_batch_row_row_.data(),
-      handle_ptr->get_stream());
+      handle_ptr->get_stream().get());
   }
 #endif
 
@@ -606,13 +606,13 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                                                     A_float_.data(),
                                                     op_problem_scaled.nnz,
                                                     double_to_float_functor{},
-                                                    handle_ptr->get_stream().value()));
+                                                    handle_ptr->get_stream().get()));
 
       RAFT_CUDA_TRY(cub::DeviceTransform::Transform(A_T_.data(),
                                                     A_T_float_.data(),
                                                     op_problem_scaled.nnz,
                                                     double_to_float_functor{},
-                                                    handle_ptr->get_stream().value()));
+                                                    handle_ptr->get_stream().get()));
 
       A_mixed_   = make_csr<i_t, float>(op_problem_scaled.n_constraints,
                                       op_problem_scaled.n_variables,
@@ -639,7 +639,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                                         beta_d.data(),
                                         dual_solution.get(),
                                         CUSPARSE_SPMV_CSR_ALG2,
-                                        handle_ptr->get_stream());
+                                        handle_ptr->get_stream().get());
       buffer_non_transpose_mixed_.resize(buffer_size_non_transpose_mixed, handle_ptr->get_stream());
 
       size_t buffer_size_transpose_mixed =
@@ -651,7 +651,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                                         beta_d.data(),
                                         c.get(),
                                         CUSPARSE_SPMV_CSR_ALG2,
-                                        handle_ptr->get_stream());
+                                        handle_ptr->get_stream().get());
       buffer_transpose_mixed_.resize(buffer_size_transpose_mixed, handle_ptr->get_stream());
 
 #if CUDA_VER_12_4_UP
@@ -664,7 +664,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                                       dual_solution.get(),
                                       CUSPARSE_SPMV_CSR_ALG2,
                                       buffer_non_transpose_mixed_.data(),
-                                      handle_ptr->get_stream());
+                                      handle_ptr->get_stream().get());
 
       mixed_precision_spmv_preprocess(handle_ptr_->get_cusparse_handle(),
                                       CUSPARSE_OPERATION_NON_TRANSPOSE,
@@ -675,7 +675,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                                       c.get(),
                                       CUSPARSE_SPMV_CSR_ALG2,
                                       buffer_transpose_mixed_.data(),
-                                      handle_ptr->get_stream());
+                                      handle_ptr->get_stream().get());
 #endif
     }
   }
@@ -726,8 +726,9 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   std::cout << "PDLP cusparse view init" << std::endl;
 #endif
 
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsesetpointermode(
-    handle_ptr_->get_cusparse_handle(), CUSPARSE_POINTER_MODE_DEVICE, handle_ptr->get_stream()));
+  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsesetpointermode(handle_ptr_->get_cusparse_handle(),
+                                                                 CUSPARSE_POINTER_MODE_DEVICE,
+                                                                 handle_ptr->get_stream().get()));
 
   // setup cusparse view
   A = make_csr<i_t, f_t>(op_problem.n_constraints,
@@ -796,7 +797,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                                                   dual_solution.get(),
                                                   CUSPARSE_SPMV_CSR_ALG2,
                                                   &buffer_size_non_transpose,
-                                                  handle_ptr->get_stream()));
+                                                  handle_ptr->get_stream().get()));
   buffer_non_transpose.resize(buffer_size_non_transpose, handle_ptr->get_stream());
 
   size_t buffer_size_transpose = 0;
@@ -810,7 +811,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                                                   c.get(),
                                                   CUSPARSE_SPMV_CSR_ALG2,
                                                   &buffer_size_transpose,
-                                                  handle_ptr->get_stream()));
+                                                  handle_ptr->get_stream().get()));
 
   buffer_transpose.resize(buffer_size_transpose, handle_ptr->get_stream());
 
@@ -827,7 +828,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                                                     batch_tmp_primals.get(),
                                                     CUSPARSE_SPMM_CSR_ALG3,
                                                     &buffer_size_transpose_batch,
-                                                    handle_ptr->get_stream()));
+                                                    handle_ptr->get_stream().get()));
     buffer_transpose_batch.resize(buffer_size_transpose_batch, handle_ptr->get_stream());
     size_t buffer_size_non_transpose_batch = 0;
     RAFT_CUSPARSE_TRY(
@@ -841,7 +842,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                                                     batch_tmp_duals.get(),
                                                     CUSPARSE_SPMM_CSR_ALG3,
                                                     &buffer_size_non_transpose_batch,
-                                                    handle_ptr->get_stream()));
+                                                    handle_ptr->get_stream().get()));
     buffer_non_transpose_batch.resize(buffer_size_non_transpose_batch, handle_ptr->get_stream());
   }
 
@@ -855,7 +856,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                              dual_solution.get(),
                              CUSPARSE_SPMV_CSR_ALG2,
                              buffer_non_transpose.data(),
-                             handle_ptr->get_stream());
+                             handle_ptr->get_stream().get());
 
   my_cusparsespmv_preprocess(handle_ptr_->get_cusparse_handle(),
                              CUSPARSE_OPERATION_NON_TRANSPOSE,
@@ -866,7 +867,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                              c.get(),
                              CUSPARSE_SPMV_CSR_ALG2,
                              buffer_transpose.data(),
-                             handle_ptr->get_stream());
+                             handle_ptr->get_stream().get());
 
   if (batch_mode_) {
     my_cusparsespmm_preprocess(handle_ptr_->get_cusparse_handle(),
@@ -879,7 +880,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                                batch_tmp_duals.get(),
                                CUSPARSE_SPMM_CSR_ALG3,
                                buffer_non_transpose_batch.data(),
-                               handle_ptr->get_stream());
+                               handle_ptr->get_stream().get());
 
     my_cusparsespmm_preprocess(handle_ptr_->get_cusparse_handle(),
                                CUSPARSE_OPERATION_NON_TRANSPOSE,
@@ -891,7 +892,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                                batch_tmp_primals.get(),
                                CUSPARSE_SPMM_CSR_ALG3,
                                buffer_transpose_batch.data(),
-                               handle_ptr->get_stream());
+                               handle_ptr->get_stream().get());
   }
 #endif
 }
@@ -934,8 +935,9 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   std::cout << "Restart Strategy cusparse view init" << std::endl;
 #endif
 
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsesetpointermode(
-    handle_ptr_->get_cusparse_handle(), CUSPARSE_POINTER_MODE_DEVICE, handle_ptr->get_stream()));
+  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsesetpointermode(handle_ptr_->get_cusparse_handle(),
+                                                                 CUSPARSE_POINTER_MODE_DEVICE,
+                                                                 handle_ptr->get_stream().get()));
 
   // Need to reinstanciate the cuSparse views
   // Copying them from the existing cuSparse view is a bad practice and creates segfault post
@@ -987,7 +989,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                                                   dual_solution.get(),
                                                   CUSPARSE_SPMV_CSR_ALG2,
                                                   &buffer_size_non_transpose,
-                                                  handle_ptr->get_stream()));
+                                                  handle_ptr->get_stream().get()));
   buffer_non_transpose.resize(buffer_size_non_transpose, handle_ptr->get_stream());
 
   size_t buffer_size_transpose = 0;
@@ -1001,7 +1003,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                                                   c.get(),
                                                   CUSPARSE_SPMV_CSR_ALG2,
                                                   &buffer_size_transpose,
-                                                  handle_ptr->get_stream()));
+                                                  handle_ptr->get_stream().get()));
 
   buffer_transpose.resize(buffer_size_transpose, handle_ptr->get_stream());
 
@@ -1015,7 +1017,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                              dual_solution.get(),
                              CUSPARSE_SPMV_CSR_ALG2,
                              buffer_non_transpose.data(),
-                             handle_ptr->get_stream());
+                             handle_ptr->get_stream().get());
 
   my_cusparsespmv_preprocess(handle_ptr_->get_cusparse_handle(),
                              CUSPARSE_OPERATION_NON_TRANSPOSE,
@@ -1026,7 +1028,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                              c.get(),
                              CUSPARSE_SPMV_CSR_ALG2,
                              buffer_transpose.data(),
-                             handle_ptr->get_stream());
+                             handle_ptr->get_stream().get());
 #endif
 }
 
@@ -1072,15 +1074,15 @@ void cusparse_view_t<i_t, f_t>::update_mixed_precision_matrices()
                                                   A_float_.data(),
                                                   A_.size(),
                                                   double_to_float_functor{},
-                                                  handle_ptr_->get_stream().value()));
+                                                  handle_ptr_->get_stream().get()));
 
     RAFT_CUDA_TRY(cub::DeviceTransform::Transform(A_T_.data(),
                                                   A_T_float_.data(),
                                                   A_T_.size(),
                                                   double_to_float_functor{},
-                                                  handle_ptr_->get_stream().value()));
+                                                  handle_ptr_->get_stream().get()));
 
-    handle_ptr_->get_stream().synchronize();
+    handle_ptr_->get_stream().sync();
   }
 }
 
@@ -1202,7 +1204,7 @@ void cusparse_view_t<i_t, f_t>::create_spmv_op_plans(bool is_reflected)
 #if CUOPT_CUSPARSE_VER_12_8_UP
   if (!is_cusparse_runtime_spmvop_supported() || !(std::is_same_v<f_t, double>)) { return; }
   RAFT_CUSPARSE_TRY(
-    cusparseSetStream(handle_ptr_->get_cusparse_handle(), handle_ptr_->get_stream()));
+    cusparseSetStream(handle_ptr_->get_cusparse_handle(), handle_ptr_->get_stream().get()));
   // Prepare buffers for At_y SpMVOp
   size_t buffer_size_transpose = 0;
   RAFT_CUSPARSE_TRY(cusparse_spmvop_buffer_size(handle_ptr_->get_cusparse_handle(),

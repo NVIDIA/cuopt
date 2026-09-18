@@ -104,6 +104,9 @@ files:
   py_rapids_build_libcuopt:
     output: pyproject
     pyproject_dir: python/libcuopt
+    matrix:
+      cuda_suffixed: ["false"]
+      use_cuda_wheels: ["true"]
     extras:
       table: tool.rapids-build-backend
       key: requires
@@ -115,6 +118,9 @@ files:
   py_run_libcuopt:
     output: pyproject
     pyproject_dir: python/libcuopt
+    matrix:
+      cuda_suffixed: ["false"]
+      use_cuda_wheels: ["true"]
     extras:
       table: project
     includes:
@@ -132,6 +138,9 @@ files:
   py_rapids_build_cuopt:
     output: pyproject
     pyproject_dir: python/cuopt
+    matrix:
+      cuda_suffixed: ["false"]
+      use_cuda_wheels: ["true"]
     extras:
       table: tool.rapids-build-backend
       key: requires
@@ -146,6 +155,9 @@ files:
   py_run_cuopt:
     output: pyproject
     pyproject_dir: python/cuopt
+    matrix:
+      cuda_suffixed: ["false"]
+      use_cuda_wheels: ["true"]
     extras:
       table: project
     includes:
@@ -160,6 +172,9 @@ files:
   py_test_cuopt:
     output: pyproject
     pyproject_dir: python/cuopt
+    matrix:
+      cuda_suffixed: ["false"]
+      use_cuda_wheels: ["true"]
     extras:
       table: project.optional-dependencies
       key: test
@@ -188,6 +203,9 @@ files:
   py_run_cuopt_server:
     output: pyproject
     pyproject_dir: python/cuopt_server
+    matrix:
+      cuda_suffixed: ["false"]
+      use_cuda_wheels: ["true"]
     extras:
       table: project
     includes:
@@ -295,7 +313,7 @@ dependencies:
       - output_types: conda
         packages:
           - maven
-          - openjdk=11.*
+          - openjdk=17.*
   test_cpp:
     common:
       - output_types: [conda]
@@ -440,7 +458,10 @@ dependencies:
               cuda_suffixed: "true"
             packages:
               - libcuopt-cu13==26.10.*,>=0.0.0a0
-          - {matrix: null, packages: [*libcuopt_unsuffixed]}
+          - matrix:
+              cuda_suffixed: "false"
+            packages:
+              - *libcuopt_unsuffixed
   depends_on_cuopt:
     common:
       - output_types: conda
@@ -464,7 +485,10 @@ dependencies:
               cuda_suffixed: "true"
             packages:
               - cuopt-cu13==26.10.*,>=0.0.0a0
-          - {matrix: null, packages: [*cuopt_unsuffixed]}
+          - matrix:
+              cuda_suffixed: "false"
+            packages:
+              - *cuopt_unsuffixed
   depends_on_cuopt_server:
     common:
       - output_types: conda
@@ -488,7 +512,10 @@ dependencies:
               cuda_suffixed: "true"
             packages:
               - cuopt-server-cu13==26.10.*,>=0.0.0a0
-          - {matrix: null, packages: [*cuopt_server_unsuffixed]}
+          - matrix:
+              cuda_suffixed: "false"
+            packages:
+              - *cuopt_server_unsuffixed
   depends_on_cuopt_sh_client:
     common:
       - output_types: [conda, requirements, pyproject]
@@ -526,7 +553,10 @@ dependencies:
               cuda_suffixed: "true"
             packages:
               - librmm-cu13==26.10.*,>=0.0.0a0
-          - {matrix: null, packages: [*librmm_unsuffixed]}
+          - matrix:
+              cuda_suffixed: "false"
+            packages:
+              - *librmm_unsuffixed
   depends_on_cupy:
     common:
       - output_types: conda
@@ -560,10 +590,12 @@ dependencies:
               - *cupy_cu13
           - matrix:
               cuda: "12.*"
+              use_cuda_wheels: "true"
             packages:
               - cupy-cuda12x[ctk]>=14.0.1,!=14.1.0
           # fallback to CUDA 13 versions if 'cuda' is '13.*' or not provided
           - matrix:
+              use_cuda_wheels: "true"
             packages:
               - cupy-cuda13x[ctk]>=14.0.1,!=14.1.0
   depends_on_rapids_logger:
@@ -599,6 +631,7 @@ dependencies:
             packages:
               - rmm-cu13==26.10.*,>=0.0.0a0
           - matrix:
+              cuda_suffixed: "false"
             packages:
               - *rmm_unsuffixed
 
@@ -624,6 +657,7 @@ dependencies:
             packages:
               - cudf-cu13==26.10.*,>=0.0.0a0
           - matrix:
+              cuda_suffixed: "false"
             packages:
               - *cudf_unsuffixed
 
@@ -649,6 +683,7 @@ dependencies:
             packages:
               - pylibraft-cu13==26.10.*,>=0.0.0a0
           - matrix:
+              cuda_suffixed: "false"
             packages:
               - *pylibraft_unsuffixed
   # 'cuda_version' intentionally does not contain fallback entries... we want
@@ -752,6 +787,8 @@ dependencies:
           - libcusparse-dev
           - cuda-nvtx-dev
           - libnvjitlink-dev
+          # OpenMP 5.0 detached tasks (omp_fulfill_event); see ci/utils/install_modern_libgomp.sh
+          - libgomp >=9
 
 
   cuda_wheels:
@@ -788,6 +825,7 @@ dependencies:
           # if no matching matrix selectors passed, list the CUDA 13 requirement
           # (just as a source of documentation, as this populates pyproject.toml in source control)
           - matrix:
+              use_cuda_wheels: "true"
             packages:
               - *ctk_cu13
               - *cudss_cu13
@@ -803,7 +841,7 @@ dependencies:
         packages:
           - clang==20.1.8
           - clang-tools=20.1.8
-          - &doxygen doxygen=1.9.1 # pre-commit hook needs a specific version.
+          - &doxygen doxygen=1.18.0 # pre-commit hook needs a specific version.
           - vale=3.17.0 # docs prose linter, run by the vale pre-commit hook.
           # Vale parses .rst by shelling out to docutils' rst2html; without it
           # the vale hook fails with "rst2html not found".

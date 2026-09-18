@@ -24,6 +24,11 @@ TEST_P(regression_routing_test_50_t, CVRPTW_50) { test_cvrptw(); }
 TEST_P(regression_routing_test_100_t, CVRPTW_100) { test_cvrptw(); }
 TEST_P(float_regression_test_t, CVRPTW) { test_cvrptw(); }
 TEST_P(regression_routing_test_pickup_t, PICKUP) { test_cvrptw(); }
+// Solomon-25 CVRPTW regression with one distance break per vehicle.
+TEST_P(regression_routing_test_distance_breaks_t, CVRPTW_DISTANCE_BREAKS)
+{
+  test_cvrptw_distance_breaks(/*min_range=*/5.f, /*max_range=*/120.f, /*duration=*/0);
+}
 
 INSTANTIATE_TEST_SUITE_P(
   l1_tsp,
@@ -53,6 +58,10 @@ INSTANTIATE_TEST_SUITE_P(
   l1_pickup,
   regression_routing_test_pickup_t,
   ::testing::ValuesIn(parse_tests(cuopt::test::read_tests("datasets/ref/l1_pickup.txt"))));
+INSTANTIATE_TEST_SUITE_P(
+  l1_distance_breaks,
+  regression_routing_test_distance_breaks_t,
+  ::testing::ValuesIn(parse_tests(cuopt::test::read_tests("datasets/ref/l1_25.txt"))));
 
 }  // namespace test
 }  // namespace routing

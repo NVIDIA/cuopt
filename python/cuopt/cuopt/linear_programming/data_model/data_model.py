@@ -229,6 +229,24 @@ class DataModel(data_model_wrapper.DataModel):
         super().set_objective_coefficients(c)
 
     @catch_cuopt_exception
+    def update_linear_objective(self, coefficients):
+        """
+        Cache reuse is QP-only: quadratic constraints take a full solve.
+
+        Update the linear objective coefficients for a sequence re-solve.
+        Writes ``coefficients`` onto this DataModel. If a barrier cache is
+        present, also maps them into the cached barrier workspace and marks
+        it dirty (quadratic ``Q``, ``A``, and bounds must stay unchanged).
+
+        Parameters
+        ----------
+        coefficients : array-like of float64
+            Linear objective coefficients, length equal to the number of
+            variables on the first ``CUOPT_SEQUENCE_SOLVE`` solve.
+        """
+        super().update_linear_objective(coefficients)
+
+    @catch_cuopt_exception
     def set_objective_scaling_factor(self, objective_scaling_factor):
         """
         Set the scaling factor of the objective function

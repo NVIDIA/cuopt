@@ -12,7 +12,6 @@
 
 #include <mip_heuristics/problem/problem.cuh>
 
-#include <rmm/cuda_stream_view.hpp>
 #include <rmm/device_uvector.hpp>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>

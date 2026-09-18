@@ -30,6 +30,7 @@ class mps_data_model_t;
 // Forward declarations
 template <typename i_t, typename f_t>
 class optimization_problem_t;
+
 template <typename i_t, typename f_t>
 class pdlp_solver_settings_t;
 template <typename i_t, typename f_t>
@@ -123,6 +124,7 @@ class cpu_optimization_problem_t : public optimization_problem_interface_t<i_t, 
   std::string get_objective_name() const override;
   std::string get_problem_name() const override;
   problem_category_t get_problem_category() const override;
+  bool has_semi_continuous_variables() const noexcept;
   const std::vector<std::string>& get_variable_names() const override;
   const std::vector<std::string>& get_row_names() const override;
   const std::vector<i_t>& get_quadratic_objective_offsets() const override;
@@ -167,17 +169,6 @@ class cpu_optimization_problem_t : public optimization_problem_interface_t<i_t, 
   std::vector<var_t> get_variable_types_host() const override;
 
   /**
-   * @brief Convert this CPU optimization problem to an optimization_problem_t
-   *        by copying CPU data to GPU (requires GPU memory transfer).
-   *
-   * @param handle_ptr RAFT handle with CUDA resources for GPU memory allocation.
-   * @return unique_ptr to new optimization_problem_t with all data copied to GPU
-   * @throws std::runtime_error if handle_ptr is null
-   */
-  std::unique_ptr<optimization_problem_t<i_t, f_t>> to_optimization_problem(
-    raft::handle_t const* handle_ptr = nullptr) override;
-
-  /**
    * @brief Write the optimization problem to an MPS file.
    * @param[in] mps_file_path Path to the output MPS file
    */
@@ -207,7 +198,14 @@ class cpu_optimization_problem_t : public optimization_problem_interface_t<i_t, 
   void copy_variable_types_to_host(var_t* output, i_t size) const override;
 
  private:
+  // Reads this class's host-side storage directly. Callers include optimization_problem.hpp,
+  // where it is declared; this friend declaration alone is not visible to ordinary lookup.
+  template <typename I, typename F>
+  friend std::unique_ptr<optimization_problem_t<I, F>> to_optimization_problem(
+    optimization_problem_interface_t<I, F>&, raft::handle_t const*);
+
   problem_category_t problem_category_ = problem_category_t::LP;
+  bool has_semi_continuous_variables_{false};
   bool maximize_{false};
   i_t n_vars_{0};
   i_t n_constraints_{0};

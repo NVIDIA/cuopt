@@ -12,6 +12,7 @@
 #include "../solution/solution_handle.cuh"
 #include "routing/routing_helpers.cuh"
 
+#include <cuda/stream>
 #include <raft/core/handle.hpp>
 #include <raft/core/nvtx.hpp>
 
@@ -41,12 +42,12 @@ class prize_route_t {
       prize_forward(prize_route.prize_forward, sol_handle_->get_stream()),
       prize_backward(prize_route.prize_backward, sol_handle_->get_stream())
   {
-    raft::common::nvtx::range fun_scope("distance route copy_ctr");
+    raft::common::nvtx::range fun_scope("prize route copy_ctr");
   }
 
   prize_route_t& operator=(prize_route_t&& prize_route) = default;
 
-  void resize(i_t max_nodes_per_route, rmm::cuda_stream_view stream)
+  void resize(i_t max_nodes_per_route, cuda::stream_ref stream)
   {
     prize.resize(max_nodes_per_route, stream);
     prize_forward.resize(max_nodes_per_route, stream);
@@ -148,7 +149,7 @@ class prize_route_t {
   }
 
   /**
-   * @brief Get the shared memory size required to store a distance route of a given size
+   * @brief Get the shared memory size required to store a prize route of a given size
    *
    * @param route_size
    * @return size_t
