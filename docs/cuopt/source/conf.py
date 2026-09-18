@@ -13,6 +13,7 @@ import sys
 import os
 import tempfile
 import json
+import xml.etree.ElementTree as ET
 from sphinx.util.fileutil import copy_asset_file
 from pathlib import Path
 from docutils import nodes
@@ -182,7 +183,51 @@ html_extra_path = ["versions1.json"]
 
 
 # -- Options for Breathe (Doxygen) ----------------------------------------
-breathe_projects = {"libcuopt": "../../../cpp/doxygen/xml"}
+doxygen_xml_path = Path("../../../cpp/doxygen/xml")
+
+
+def normalize_function_pointer_typedefs(path):
+    """Restore the function-pointer XML shape expected by Breathe."""
+    for filename in path.glob("*.xml"):
+        tree = ET.parse(filename)
+        changed = False
+        for member in tree.getroot().findall(".//memberdef[@kind='typedef']"):
+            type_node = member.find("type")
+            definition_node = member.find("definition")
+            args_node = member.find("argsstring")
+            name = member.findtext("name")
+            if (
+                type_node is None
+                or definition_node is None
+                or args_node is None
+                or type_node.text is None
+                or definition_node.text is None
+                or args_node.text is None
+                or name is None
+                or not type_node.text.endswith("(*)")
+                or not args_node.text.startswith("(")
+            ):
+                continue
+
+            expected = f"typedef {type_node.text} {name}{args_node.text}"
+            if definition_node.text != expected:
+                continue
+
+            return_type = type_node.text.removesuffix("(*)")
+            type_node.text = f"{return_type}(*"
+            definition_node.text = (
+                f"typedef {return_type}(* {name}) {args_node.text}"
+            )
+            args_node.text = f"){args_node.text}"
+            changed = True
+
+        if changed:
+            tree.write(filename)
+
+
+normalize_function_pointer_typedefs(doxygen_xml_path)
+
+breathe_projects = {"libcuopt": str(doxygen_xml_path)}
 breathe_default_project = "libcuopt"
 
 # Configure Breathe to handle file types

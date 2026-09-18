@@ -150,6 +150,7 @@ outputs:
         - librmm =${{ minor_version }}
         - cuda-nvrtc
         - libcudss >=0.7,<0.8
+        - libgomp >=9
         - nccl >=2.19
         - openssl
         - c-ares
