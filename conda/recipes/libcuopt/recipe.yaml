@@ -382,10 +382,12 @@ outputs:
         - ${{ pin_subpackage("libcuopt-client", exact=True) }}
         - ${{ pin_subpackage("libcuopt-mathopt", exact=True) }}
         - ${{ pin_subpackage("libcuopt-routing", exact=True) }}
+        - ${{ pin_subpackage("cuopt-grpc-server", exact=True) }}
       run:
         - ${{ pin_subpackage("libcuopt-client", exact=True) }}
         - ${{ pin_subpackage("libcuopt-mathopt", exact=True) }}
         - ${{ pin_subpackage("libcuopt-routing", exact=True) }}
+        - ${{ pin_subpackage("cuopt-grpc-server", exact=True) }}
       ignore_run_exports:
         # This output ships the linker script, the headers and the cmake config -- no
         # compiled object, so it links nothing and the three components carry every
