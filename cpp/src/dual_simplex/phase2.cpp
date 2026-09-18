@@ -3713,7 +3713,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
     // attempt the first cutoff; subsequent checks are spaced 1 to 100 iterations apart.
     const i_t cutoff_check_frequency =
       static_cast<i_t>(100.0 / std::clamp(delta_y_nz_percentage, f_t{1}, f_t{100}));
-    if (obj >= settings.cut_off &&
+    if (phase == 2 && obj >= settings.cut_off &&
         (last_cutoff_check == -1 || iter - last_cutoff_check >= cutoff_check_frequency)) {
       last_cutoff_check       = iter;
       const f_t unperturb_obj = compute_objective(lp, x);
@@ -3752,6 +3752,8 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
           phase2_work_estimate += m;
           z = std::move(reduced_cost);
           y = trial_y;
+          settings.log.printf(
+            "Solve cutoff. Current objective %e. Cutoff %e\n", dual_objective, settings.cut_off);
           return dual_status_t::CUTOFF;
         }
       }
