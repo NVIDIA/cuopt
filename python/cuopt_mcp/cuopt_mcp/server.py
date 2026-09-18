@@ -84,7 +84,8 @@ def cuopt_solve_milp(
 ) -> dict[str, Any]:
     """Submit a mixed-integer program to cuOpt and return a job handle.
 
-    problem_path: path to an MPS file containing integer variables.
+    problem_path: path to an MPS or LP file declaring integer/binary
+        variables (LP: Generals/Binaries sections).
     settings: optional MIP solver settings, e.g. {"time_limit": 300,
         "relative_mip_gap": 0.01}. Call cuopt_list_settings("mip_settings")
         for the full list.
