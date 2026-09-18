@@ -163,6 +163,22 @@ outputs:
         requirements:
           run:
             - python
+      # Asserted on the solved environment, not the recipe text, so a transitive
+      # run_export that drags a CUDA math library back in is caught too.
+      - script: |
+          python - <<'PY'
+          import glob, os, sys
+          forbidden = {"libcublas", "libcusparse", "libcudss", "nccl"}
+          names = {os.path.basename(p).rsplit("-", 2)[0]
+                   for p in glob.glob(os.path.join(os.environ["PREFIX"], "conda-meta", "*.json"))}
+          present = sorted(forbidden & names)
+          if present:
+              sys.exit("libcuopt-client must not pull CUDA math libraries, but got: "
+                       + ", ".join(present))
+          PY
+        requirements:
+          run:
+            - python
     about:
       homepage: ${{ load_from_file("python/cuopt/pyproject.toml").project.urls.Homepage }}
       license: ${{ load_from_file("python/cuopt/pyproject.toml").project.license }}
@@ -233,6 +249,10 @@ outputs:
         requirements:
           run:
             - python
+      # The executable has its own DT_NEEDED closure that loading the .so does not
+      # exercise. --help returns before any CUDA context, so it runs on the build runner.
+      - script: |
+          cuopt_cli --help
     about:
       homepage: ${{ load_from_file("python/cuopt/pyproject.toml").project.urls.Homepage }}
       license: ${{ load_from_file("python/cuopt/pyproject.toml").project.license }}
@@ -287,6 +307,22 @@ outputs:
       # package happened to pull it in.
       - script: |
           python -c "import ctypes, os; ctypes.CDLL(os.path.join(os.environ['PREFIX'], 'lib', 'libcuopt_routing.so'), os.RTLD_NOW)"
+        requirements:
+          run:
+            - python
+      # The load test above passes whether or not these are present, so assert the
+      # absence that splitting routing out is meant to deliver.
+      - script: |
+          python - <<'PY'
+          import glob, os, sys
+          forbidden = {"libcusparse", "libcudss", "nccl"}
+          names = {os.path.basename(p).rsplit("-", 2)[0]
+                   for p in glob.glob(os.path.join(os.environ["PREFIX"], "conda-meta", "*.json"))}
+          present = sorted(forbidden & names)
+          if present:
+              sys.exit("libcuopt-routing must not pull the solver's CUDA math libraries, "
+                       "but got: " + ", ".join(present))
+          PY
         requirements:
           run:
             - python
@@ -367,6 +403,32 @@ outputs:
       - package_contents:
           files:
             - lib/libcuopt.so
+            # rapids_export writes these under a component named after the project;
+            # find_package(cuopt) breaks silently for consumers if they are dropped.
+            - lib/cmake/cuopt/cuopt-config.cmake
+            - lib/cmake/cuopt/cuopt-targets.cmake
+      # libcuopt.so is a GNU ld script, not an ELF object, so CDLL cannot load it.
+      # Load every library its INPUT() names, proving the run deps deliver all three.
+      - script: |
+          python - <<'PY'
+          import ctypes, os, re, sys
+          prefix = os.environ["PREFIX"]
+          ld_script = os.path.join(prefix, "lib", "libcuopt.so")
+          with open(ld_script) as fh:
+              text = fh.read()
+          match = re.search(r"INPUT\(([^)]*)\)", text)
+          if not match:
+              sys.exit("libcuopt.so is not the expected INPUT() ld script")
+          names = match.group(1).split()
+          if not names:
+              sys.exit("libcuopt.so names no component libraries")
+          for name in names:
+              ctypes.CDLL(os.path.join(prefix, "lib", name), os.RTLD_NOW)
+          print("ld script resolved: " + " ".join(names))
+          PY
+        requirements:
+          run:
+            - python
     about:
       homepage: ${{ load_from_file("python/cuopt/pyproject.toml").project.urls.Homepage }}
       license: ${{ load_from_file("python/cuopt/pyproject.toml").project.license }}
@@ -415,6 +477,14 @@ outputs:
           - librmm
           - libboost
           - libboost_iostreams
+    tests:
+      # ci/run_ctests.sh globs bin/gtests/libcuopt/*_TEST; an install landing them
+      # elsewhere leaves CI running zero tests and still reporting success.
+      - package_contents:
+          files:
+            - bin/gtests/libcuopt/ROUTING_UNIT_TEST
+            - bin/gtests/libcuopt/LP_UNIT_TEST
+            - bin/gtests/libcuopt/GRPC_INTEGRATION_TEST
     about:
       homepage: ${{ load_from_file("python/cuopt/pyproject.toml").project.urls.Homepage }}
       license: ${{ load_from_file("python/cuopt/pyproject.toml").project.license }}
