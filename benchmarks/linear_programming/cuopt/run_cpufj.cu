@@ -400,6 +400,10 @@ int main(int argc, char** argv)
 
   std::vector<std::atomic<bool>> preemption_flags(n_climbers);
   std::vector<std::unique_ptr<mip::fj_cpu_climber_t<i_t, f_t>>> climbers(n_climbers);
+  // Composition and per-climber parameters come from build_climber_portfolio, which
+  // is editable. The log prefix is assigned here and not there, so every climber
+  // stays identifiable in the log whatever the portfolio does.
+  // The command-line seed controls lane RNG streams as well as persona tuning.
   mip::build_climber_portfolio<i_t, f_t>(
     problem, preemption_flags, climbers, base_seed, low_latency);
   if (probing_presolve != nullptr) {
@@ -760,19 +764,22 @@ int main(int argc, char** argv)
   }
 
   // The bin setup column above, by phase. Charged even when the fast path declines, so a scan that
-  // only produces a rejection still shows. narrow and transpose are the all-binary path; encode is
-  // the general-integer one and runs twice when int8 is enough.
+  // only produces a rejection still shows. narrow, transpose and cardinality are the all-binary
+  // path; encode is the general-integer one and runs twice when int8 is enough.
   std::printf(
-    "\n climber | bin scan | bin narrow | transpose | bin encode | engine init | bin total\n");
+    "\n climber | bin scan | bin narrow | transpose | cardinality | bin encode |"
+    " engine init | bin total\n");
   std::printf(
-    "---------+----------+------------+-----------+------------+-------------+----------\n");
+    "---------+----------+------------+-----------+-------------+------------+"
+    "-------------+----------\n");
   for (int k = 0; k < n_climbers; ++k) {
     const auto& b = climbers[k]->bin_setup;
-    std::printf(" %7d | %8.4f | %10.4f | %9.4f | %10.4f | %11.4f | %9.4f\n",
+    std::printf(" %7d | %8.4f | %10.4f | %9.4f | %11.4f | %10.4f | %11.4f | %9.4f\n",
                 k,
                 b.scan,
                 b.narrow,
                 b.transpose,
+                b.cardinality,
                 b.encode,
                 b.engine_init,
                 b.total());

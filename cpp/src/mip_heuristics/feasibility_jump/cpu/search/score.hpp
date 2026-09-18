@@ -168,12 +168,63 @@ void smooth_weights(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   for (i_t row = 0; row < fj_cpu.n_rows; ++row) {
     if (fj_cpu.violated_constraints.contains(row)) continue;
     f_t& weight = fj_cpu.row_state()[row].weight;
-    weight      = std::max((f_t)0, weight - 1);
+    weight      = fj_cpu.use_multiplicative_weights
+                    ? std::max((f_t)1, std::round((weight - 1) * (f_t)0.8 + 1))
+                    : std::max((f_t)0, weight - 1);
   }
 
   if (fj_cpu.h_objective_weight > 0 && fj_cpu.h_incumbent_objective >= fj_cpu.h_best_objective) {
-    fj_cpu.h_objective_weight = std::max(f_t{0}, fj_cpu.h_objective_weight - 1);
+    fj_cpu.h_objective_weight =
+      std::max(fj_cpu.objective_weight_floor, fj_cpu.h_objective_weight - 1);
   }
+}
+
+template <typename i_t, typename f_t>
+void donate_row_weight(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
+                       i_t cstr_idx,
+                       f_t delta,
+                       cuopt::pcgenerator_t& rng)
+{
+  const auto [row_begin, row_end] = fj_cpu.range_for_row(cstr_idx);
+  const uint32_t row_width        = (uint32_t)(row_end - row_begin);
+  // What a donor has to carry to still hold the floor once the delta comes off it.
+  const f_t donor_minimum = (f_t)fj_cpu.hp.weight_donation_floor + delta;
+  i_t donor               = -1;
+  f_t donor_weight        = 0;
+
+  for (i_t sample = 0; row_width > 0 && sample < fj_cpu.hp.weight_donor_samples; ++sample) {
+    const i_t var_idx = fj_cpu.h_variables[row_begin + (i_t)(rng.next_u32() % row_width)];
+    const auto [col_begin, col_end] = fj_cpu.range_for_variable(var_idx);
+    if (col_end <= col_begin) continue;
+    const i_t candidate =
+      fj_cpu
+        .h_reverse_constraints[col_begin + (i_t)(rng.next_u32() % (uint32_t)(col_end - col_begin))];
+    if (candidate == cstr_idx || !fj_cpu.satisfied_constraints.contains(candidate)) continue;
+
+    const f_t weight = fj_cpu.row_state()[candidate].weight;
+    if (weight < donor_minimum) continue;
+    if (donor >= 0 && weight <= donor_weight) continue;
+
+    donor        = candidate;
+    donor_weight = weight;
+  }
+  if (donor < 0) return;
+
+  const f_t donated = donor_weight - delta;
+  cuopt_assert(donated >= (f_t)fj_cpu.hp.weight_donation_floor, "donation broke the weight floor");
+  fj_cpu.row_state()[donor].weight = donated;
+  ++fj_cpu.n_version_bumps_weights;
+  fj_cpu.h_cstr_version[donor]++;
+}
+
+template <typename i_t, typename f_t>
+static i_t weight_escalation_delta(const fj_cpu_climber_t<i_t, f_t>& fj_cpu)
+{
+  const i_t stall = fj_cpu.iters_since_infeasible_improve;
+  if (stall <= fj_cpu.hp.weight_escalate_after) return 1;
+  const i_t steps =
+    (stall - fj_cpu.hp.weight_escalate_after) / fj_cpu.hp.weight_escalate_after + 1;
+  return steps < fj_cpu.hp.weight_escalate_max ? steps : fj_cpu.hp.weight_escalate_max;
 }
 
 template <typename i_t, typename f_t>
@@ -184,21 +235,36 @@ void update_weights(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   cuopt::pcgenerator_t rng(fj_cpu.settings.seed + fj_cpu.iterations, 0, 0);
   bool smoothing = rng.next_float() <= fj_cpu.settings.parameters.weight_smoothing_probability;
 
+  retire_var_best_moves<i_t, f_t>(fj_cpu);
+
   if (smoothing) {
     smooth_weights<i_t, f_t>(fj_cpu);
     return;
   }
+
+  const i_t escalated_delta = weight_escalation_delta<i_t, f_t>(fj_cpu);
 
   for (auto cstr_idx : fj_cpu.violated_constraints) {
     const f_t old_weight = fj_cpu.row_state()[cstr_idx].weight;
     cuopt_assert(fj_cpu.row_state()[cstr_idx].slack + fj_cpu.h_slack_sumcomp[cstr_idx] < 0,
                  "constraint not violated");
 
-    f_t new_weight = std::round(old_weight + f_t{1});
-    new_weight     = std::min(new_weight, (f_t)fj_cpu.hp.weight_cap);
+    f_t delta = escalated_delta;
+
+    f_t new_weight =
+      fj_cpu.use_multiplicative_weights
+        ? std::round(std::max(old_weight + (f_t)1, old_weight * fj_cpu.saps_multiplier))
+        : std::round(old_weight + delta);
+    new_weight = std::min(new_weight, (f_t)fj_cpu.hp.weight_cap);
+    delta      = new_weight - old_weight;
 
     fj_cpu.row_state()[cstr_idx].weight = new_weight;
     fj_cpu.max_weight                   = std::max(fj_cpu.max_weight, new_weight);
+
+    // Only before this lane's first crossing: past that the search oscillates in and out of
+    // feasibility, and draining satisfied rows costs the objective phase.
+    if (fj_cpu.use_weight_donation && !fj_cpu.feasible_found)
+      donate_row_weight<i_t, f_t>(fj_cpu, cstr_idx, delta, rng);
 
     // Invalidate related cached move scores
     ++fj_cpu.n_version_bumps_weights;

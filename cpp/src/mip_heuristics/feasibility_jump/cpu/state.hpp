@@ -293,7 +293,7 @@ template <typename i_t, typename f_t>
 struct fj_lane_policy_t {
   fj_settings_t settings;
   fj_cpu_hyper_parameters_t hp;
-  f_t seed_objective_weight{0};
+  f_t objective_weight_floor{0};
   bool use_move_batching{false};
   i_t mtm_viol_samples{25};
   i_t mtm_sat_samples{15};
@@ -510,9 +510,13 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_clone(
   std::atomic<bool>& preemption_flag,
   fj_settings_t settings = fj_settings_t{});
 
+// Per-lane behaviour for a CPUFJ portfolio, shared by every caller that races several climbers so
+// the composition cannot drift between them.
 template <typename i_t, typename f_t>
 void apply_lane_diversification(fj_cpu_climber_t<i_t, f_t>& climber, int lane, int64_t base_seed);
 
+// Completes a portfolio from a lane-zero climber whose GPU-backed problem has already been
+// adapted into host state by the CUDA bridge.
 template <typename i_t, typename f_t>
 void complete_climber_portfolio(std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> first_climber,
                                 const std::vector<int64_t>& lane_seeds,

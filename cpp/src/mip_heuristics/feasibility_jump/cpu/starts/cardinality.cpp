@@ -106,6 +106,47 @@ void apply_exact_k_start(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 }
 
 template <typename i_t, typename f_t>
+void apply_ordinal_midpoint_start(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
+{
+  const auto& offsets = fj_cpu.problem->card_row_offsets;
+  const auto& members = fj_cpu.problem->card_variables;
+  const auto& owner   = fj_cpu.problem->card_group_of_variable;
+  if (offsets.size() <= 1 || owner.size() != fj_cpu.h_assignment.size()) return;
+
+  std::vector<i_t> groups;
+  i_t covered = 0;
+  for (i_t group = 0; group + 1 < (i_t)offsets.size(); ++group) {
+    const i_t begin = offsets[group], end = offsets[group + 1];
+    if (end - begin < 3) continue;
+    i_t selected  = 0;
+    bool disjoint = true;
+    for (i_t p = begin; p < end; ++p) {
+      const i_t var = members[p];
+      disjoint &= owner[var] == group;
+      selected += fj_cpu.h_assignment[var].get() > f_t{0.5};
+    }
+    // The cardinality index also contains exact-k rows.  A current one-hot row is the
+    // unambiguous, assignment-level certificate needed here without retaining another row table.
+    if (disjoint && selected == 1) {
+      groups.push_back(group);
+      covered += end - begin;
+    }
+  }
+
+  const i_t n_binary = fj_cpu.n_binary_vars;
+  if ((i_t)groups.size() < 16 || n_binary == 0 || 4 * covered < 3 * n_binary) return;
+
+  for (i_t group : groups) {
+    const i_t begin = offsets[group], end = offsets[group + 1];
+    const i_t middle = begin + (end - begin) / 2;
+    for (i_t p = begin; p < end; ++p)
+      fj_cpu.h_assignment[members[p]] = p == middle ? f_t{1} : f_t{0};
+  }
+  recompute_lhs(fj_cpu);
+  fj_cpu.h_best_assignment = fj_cpu.h_assignment;
+}
+
+template <typename i_t, typename f_t>
 void repair_difficult_anchor(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 {
   recompute_lhs(fj_cpu);
@@ -164,11 +205,13 @@ void repair_difficult_anchor(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 
 #if MIP_INSTANTIATE_FLOAT
 template void apply_exact_k_start<int, float>(fj_cpu_climber_t<int, float>&);
+template void apply_ordinal_midpoint_start<int, float>(fj_cpu_climber_t<int, float>&);
 template void repair_difficult_anchor<int, float>(fj_cpu_climber_t<int, float>&);
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
 template void apply_exact_k_start<int, double>(fj_cpu_climber_t<int, double>&);
+template void apply_ordinal_midpoint_start<int, double>(fj_cpu_climber_t<int, double>&);
 template void repair_difficult_anchor<int, double>(fj_cpu_climber_t<int, double>&);
 #endif
 

@@ -351,7 +351,7 @@ void sanity_checks(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
     cuopt_assert(fj_cpu.row_state()[cstr_idx].weight >= 0, "Weights should be positive or zero");
   }
   cuopt_assert(fj_cpu.h_objective_weight >= 0, "Objective weight should be positive or zero");
-  cuopt_assert(fj_cpu.seed_objective_weight >= 0,
+  cuopt_assert(fj_cpu.objective_weight_floor >= 0,
                "Objective weight floor should be positive or zero");
 }
 

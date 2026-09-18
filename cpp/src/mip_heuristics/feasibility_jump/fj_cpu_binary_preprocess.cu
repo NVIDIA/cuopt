@@ -372,6 +372,103 @@ void fj_bin_narrow(const fj_cpu_climber_t<i_t, f_t>& c,
     if (pb.objective[j] != 0.0) pb.objective_vars.push_back(j);
   }
   times.transpose += toc(transpose_started);
+
+  {
+    phase_timer_t timer(times.cardinality);
+
+    pb.selector_offsets.assign(1, 0);
+    pb.selector_vars.clear();
+    std::vector<std::pair<double, int32_t>> row_terms;
+    for (int32_t r = 0; r < n_rows; ++r) {
+      if (ignored_row && ignored_row[r]) continue;
+      const double lb = cstr_lb[r];
+      const double ub = cstr_ub[r];
+      if (!std::isfinite(lb) || !std::isfinite(ub) || std::fabs(lb - ub) > tol) continue;
+
+      row_terms.clear();
+      for (int32_t p = offsets[r]; p < offsets[r + 1]; ++p) {
+        const int32_t j = pb.original_to_bin_mapping[variables[p]];
+        if (j >= 0) row_terms.emplace_back(coeffs[p], j);
+      }
+      std::sort(row_terms.begin(), row_terms.end());
+      for (size_t i = 0; i < row_terms.size();) {
+        size_t j       = i + 1;
+        const double a = row_terms[i].first;
+        while (j < row_terms.size() &&
+               std::fabs(row_terms[j].first - a) <= tol * std::max(1.0, std::fabs(a)))
+          ++j;
+        if (j - i >= 2) {
+          for (size_t q = i; q < j; ++q)
+            pb.selector_vars.push_back(row_terms[q].second);
+          pb.selector_offsets.push_back((int32_t)pb.selector_vars.size());
+        }
+        i = j;
+      }
+    }
+
+    pb.selector_reverse_offsets.assign(n_engine + 1, 0);
+    for (size_t p = 0; p < pb.selector_vars.size(); ++p)
+      ++pb.selector_reverse_offsets[pb.selector_vars[p] + 1];
+    for (int32_t v = 0; v < n_engine; ++v)
+      pb.selector_reverse_offsets[v + 1] += pb.selector_reverse_offsets[v];
+    pb.selector_reverse_groups.resize(pb.selector_vars.size());
+    {
+      std::vector<int32_t> cursor(pb.selector_reverse_offsets.begin(),
+                                  pb.selector_reverse_offsets.end() - 1);
+      const int32_t n_groups = (int32_t)pb.selector_offsets.size() - 1;
+      for (int32_t g = 0; g < n_groups; ++g)
+        for (int32_t p = pb.selector_offsets[g]; p < pb.selector_offsets[g + 1]; ++p)
+          pb.selector_reverse_groups[cursor[pb.selector_vars[p]]++] = g;
+    }
+    for (size_t p = 0; p < pb.selector_vars.size(); ++p)
+      cuopt_assert(pb.selector_vars[p] >= 0 && pb.selector_vars[p] < pb.n_variables,
+                   "selector member outside engine space");
+    cuopt_assert(pb.selector_reverse_offsets[n_engine] == (int32_t)pb.selector_vars.size(),
+                 "selector transpose lost a membership");
+
+    // Every variable here is binary, so an equality row whose members share one coefficient reads
+    // as a cardinality constraint. Counted on the unscaled row: the row scale multiplies bound and
+    // coefficients alike and leaves the ratio alone.
+    pb.card_offsets.assign(1, 0);
+    pb.card_vars.clear();
+    for (int32_t r = 0; r < n_rows; ++r) {
+      if (ignored_row && ignored_row[r]) continue;
+      const double lb = cstr_lb[r];
+      const double ub = cstr_ub[r];
+      if (!std::isfinite(lb) || !std::isfinite(ub) || std::fabs(lb - ub) > tol) continue;
+
+      const int32_t begin = offsets[r];
+      const int32_t end   = offsets[r + 1];
+      if (end - begin < 2) continue;
+
+      const double shared = coeffs[begin];
+      if (std::fabs(shared) <= tol) continue;
+      const double k = lb / shared;
+      if (k < 1.0 - tol || std::fabs(k - std::round(k)) > tol) continue;
+
+      bool uniform = true;
+      for (int32_t p = begin; p < end && uniform; ++p) {
+        const double a = coeffs[p];
+        uniform        = std::fabs(a - shared) <= tol * std::max(1.0, std::fabs(shared));
+      }
+      if (!uniform) continue;
+
+      for (int32_t p = begin; p < end; ++p) {
+        const int32_t j = pb.original_to_bin_mapping[variables[p]];
+        if (j < 0) continue;
+        pb.card_vars.push_back(j);
+      }
+      // A row whose searchable members were compacted away carries no exchange.
+      if ((int32_t)pb.card_vars.size() - pb.card_offsets.back() < 2) {
+        pb.card_vars.resize(pb.card_offsets.back());
+        continue;
+      }
+      pb.card_offsets.push_back((int32_t)pb.card_vars.size());
+    }
+    for (size_t p = 0; p < pb.card_vars.size(); ++p)
+      cuopt_assert(pb.card_vars[p] >= 0 && pb.card_vars[p] < pb.n_variables,
+                   "cardinality member outside engine space");
+  }
 }
 
 constexpr int32_t fj_bin_encode_max_bits   = 16;
