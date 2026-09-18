@@ -44,21 +44,24 @@ rapids-logger "Testing $(basename "${CUOPT_JAVA_JAR}")"
 # why this moved off a fresh `conda create`: that env-solve was slow and consistently synced up
 # concurrent matrix jobs' cold Maven Central resolution, which is what triggered repeated 429s.
 rapids-logger "Installing a JDK (dnf's own maven package is too old; see MAVEN_VERSION below)"
-MAVEN_VERSION="3.9.9"
+MAVEN_VERSION="3.9.16"
 # Matches maven.compiler.release in java/cuopt/pom.xml (bumped to 17 in #1865); an older JDK
 # cannot target a newer --release version.
 dnf install -y java-17-openjdk-devel
 export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
 MAVEN_HOME="$(mktemp -d)"
 MAVEN_TARBALL="$(mktemp)"
-MAVEN_TARBALL_URL="https://archive.apache.org/dist/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz"
-# archive.apache.org has been observed intermittently unreachable (connection timeouts) from
-# some GPU test runners; retry rather than fail the whole job on what is usually a transient
-# network blip.
+# dlcdn.apache.org (not archive.apache.org) is Apache's actual mirror-network-backed download
+# endpoint -- archive.apache.org is documented as permanent, unmirrored storage for old releases,
+# not meant for routine/automated downloads, and has been observed intermittently unreachable
+# (connection timeouts) from GPU test runners as a result. dlcdn only serves the current release
+# per branch, so MAVEN_VERSION has to track that (currently 3.9.16, the latest 3.9.x).
+MAVEN_TARBALL_URL="https://dlcdn.apache.org/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz"
+# Retry on top of the mirror switch: even a mirror-backed CDN can have a transient blip, and
+# retrying is cheap insurance against failing an otherwise-passing job over it.
 CURL_RETRY_ARGS=(--retry 5 --retry-delay 5 --retry-connrefused)
 curl -fsSL "${CURL_RETRY_ARGS[@]}" "${MAVEN_TARBALL_URL}" -o "${MAVEN_TARBALL}"
-# archive.apache.org is plain HTTPS-authenticated hosting, not a signed package index, so verify
-# the download against Apache's published SHA-512 rather than trusting transport security alone.
+# Verify against Apache's published SHA-512 rather than trusting transport security alone.
 echo "$(curl -fsSL "${CURL_RETRY_ARGS[@]}" "${MAVEN_TARBALL_URL}.sha512")  ${MAVEN_TARBALL}" | sha512sum --check --status
 tar xz -C "${MAVEN_HOME}" --strip-components=1 -f "${MAVEN_TARBALL}"
 rm -f "${MAVEN_TARBALL}"
