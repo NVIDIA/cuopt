@@ -482,7 +482,10 @@ dependencies:
               cuda_suffixed: "true"
             packages:
               - libcuopt-client-cu13==26.10.*,>=0.0.0a0
-          - {matrix: null, packages: [*libcuopt_client_unsuffixed]}
+          - matrix:
+              cuda_suffixed: "false"
+            packages:
+              - *libcuopt_client_unsuffixed
   depends_on_libcuopt_mathopt:
     common:
       - output_types: conda
@@ -506,7 +509,10 @@ dependencies:
               cuda_suffixed: "true"
             packages:
               - libcuopt-mathopt-cu13==26.10.*,>=0.0.0a0
-          - {matrix: null, packages: [*libcuopt_mathopt_unsuffixed]}
+          - matrix:
+              cuda_suffixed: "false"
+            packages:
+              - *libcuopt_mathopt_unsuffixed
   depends_on_libcuopt_routing:
     common:
       - output_types: conda
@@ -530,7 +536,10 @@ dependencies:
               cuda_suffixed: "true"
             packages:
               - libcuopt-routing-cu13==26.10.*,>=0.0.0a0
-          - {matrix: null, packages: [*libcuopt_routing_unsuffixed]}
+          - matrix:
+              cuda_suffixed: "false"
+            packages:
+              - *libcuopt_routing_unsuffixed
   depends_on_libcuopt:
     common:
       - output_types: conda
