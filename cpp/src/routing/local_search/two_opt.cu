@@ -51,16 +51,16 @@ DI thrust::pair<double, double> evaluate_two_opt_cvrp_move(
   i_t second)
 {
   auto n_nodes         = route.get_num_nodes();
-  double frag_backward = reverse_route.distance_dim.distance_forward[n_nodes - (first + 1)] -
-                         reverse_route.distance_dim.distance_forward[n_nodes - second];
-  double forward_sum = route.get_node(second + 1).distance_dim.distance_forward -
-                       route.get_node(first).distance_dim.distance_forward;
+  double frag_backward = reverse_route.cost_dim.cost_forward[n_nodes - (first + 1)] -
+                         reverse_route.cost_dim.cost_forward[n_nodes - second];
+  double forward_sum =
+    route.get_node(second + 1).cost_dim.cost_forward - route.get_node(first).cost_dim.cost_forward;
 
-  double first_second = get_arc_of_dimension<i_t, f_t, dim_t::DIST>(
+  double first_second = get_arc_of_dimension<i_t, f_t, dim_t::COST>(
     route.get_node(first).node_info(), route.get_node(second).node_info(), route.vehicle_info());
 
   double first_next_second_next =
-    get_arc_of_dimension<i_t, f_t, dim_t::DIST>(route.get_node(first + 1).node_info(),
+    get_arc_of_dimension<i_t, f_t, dim_t::COST>(route.get_node(first + 1).node_info(),
                                                 route.get_node(second + 1).node_info(),
                                                 route.vehicle_info());
 
