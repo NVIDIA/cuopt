@@ -145,8 +145,18 @@ outputs:
         - libprotobuf
         - libabseil
       ignore_run_exports:
+        # Every output inherits the run exports of the shared build cache, whose host
+        # holds the union of all three components' dependencies. The CUDA math libs
+        # export a `>=<built minor>` bound that drags `cuda-version` to the minor
+        # version the package happened to be built against, so they have to be dropped
+        # from outputs that do not link them.
         by_name:
+          - cuda-nvtx
           - cuda-version
+          - libboost
+          - libboost_iostreams
+          - libcudss
+          - libcusparse
           - librmm
     tests:
       - package_contents:
@@ -206,6 +216,7 @@ outputs:
         - libboost-devel
         - librmm =${{ minor_version }}
         - cuda-nvrtc
+        - libcublas
         - libcudss >=0.7,<0.8
         - libgomp >=9
         - nccl >=2.19
@@ -270,13 +281,18 @@ outputs:
         - ${{ pin_subpackage("libcuopt-client", exact=True) }}
         - libboost-devel
         - librmm =${{ minor_version }}
+        # Reaches routing through cuDSS today, whose run export the cache leaks into
+        # every output. Routing does not use cuDSS, so it has to name cuBLAS itself.
+        - libcublas
       ignore_run_exports:
         by_name:
           - cuda-nvtx
           - cuda-version
-          - librmm
           - libboost
           - libboost_iostreams
+          - libcudss
+          - libcusparse
+          - librmm
     tests:
       - package_contents:
           files:
@@ -324,7 +340,13 @@ outputs:
         - ${{ pin_subpackage("libcuopt-routing", exact=True) }}
       ignore_run_exports:
         by_name:
+          - cuda-nvtx
           - cuda-version
+          - libboost
+          - libboost_iostreams
+          - libcudss
+          - libcusparse
+          - librmm
     tests:
       - package_contents:
           files:
@@ -363,6 +385,32 @@ outputs:
         - ${{ pin_subpackage("libcuopt-client", exact=True) }}
         - ${{ pin_subpackage("libcuopt-mathopt", exact=True) }}
         - ${{ pin_subpackage("libcuopt-routing", exact=True) }}
+      ignore_run_exports:
+        # This output ships the linker script, the headers and the cmake config -- no
+        # compiled object, so it links nothing and the three components carry every
+        # real dependency. Left alone it would still inherit the whole build cache's
+        # run exports, including `cuda-version >=<built minor>`, which would pin
+        # `conda install libcuopt` to the CUDA minor version it was built against.
+        by_name:
+          - bzip2
+          - c-ares
+          - cuda-nvtx
+          - cuda-version
+          - libabseil
+          - libboost
+          - libboost_iostreams
+          - libcudss
+          - libcusparse
+          - libgrpc
+          - libnvjitlink
+          - libprotobuf
+          - libre2-11
+          - librmm
+          - libzlib
+          - nccl
+          - openssl
+          - re2
+          - tbb
     tests:
       - package_contents:
           files:
