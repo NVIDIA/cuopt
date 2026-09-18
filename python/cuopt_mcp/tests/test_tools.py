@@ -7,6 +7,8 @@ These run without a GPU or a cuopt_grpc_server; the live path is covered by
 test_end_to_end.py.
 """
 
+import json
+
 import pytest
 
 from cuopt_mcp import client, tools
@@ -149,9 +151,24 @@ def test_large_solution_is_written_to_file_not_inlined(
     assert out["num_variables"] == n
     written = tmp_path / "job-big.json"
     assert written.is_file()
-    import json
-
     assert len(json.loads(written.read_text())) == n
+
+
+def test_nonzero_only_solution_file_is_also_filtered(
+    fake, tmp_path, monkeypatch
+):
+    """nonzero_only must narrow the on-disk file too, not just inline."""
+    monkeypatch.setenv("CUOPT_MCP_SOLUTION_DIR", str(tmp_path))
+    n = 5000
+    values = [0.0] * n
+    for i in range(0, n, 100):
+        values[i] = 1.0
+    fake(FakeSolution(values, names=[f"x{i}" for i in range(n)]))
+    out = tools.result("job-sparse", nonzero_only=True, limit=10)
+    assert out["num_nonzero"] == n // 100
+    written = json.loads((tmp_path / "job-sparse.json").read_text())
+    assert len(written) == n // 100
+    assert all(v != 0 for v in written.values())
 
 
 def test_result_rejects_solution_dir_that_is_a_file(
@@ -215,6 +232,23 @@ def test_delete(fake):
     assert stub.deleted == ["job-1"]
 
 
+def test_delete_removes_local_solution_file(fake, tmp_path, monkeypatch):
+    monkeypatch.setenv("CUOPT_MCP_SOLUTION_DIR", str(tmp_path))
+    fake()
+    solution_file = tmp_path / "job-1.json"
+    solution_file.write_text("{}")
+    tools.delete("job-1")
+    assert not solution_file.exists()
+
+
+def test_delete_with_no_solution_file_still_succeeds(
+    fake, tmp_path, monkeypatch
+):
+    monkeypatch.setenv("CUOPT_MCP_SOLUTION_DIR", str(tmp_path))
+    fake()
+    assert tools.delete("job-1")["deleted"] is True
+
+
 class FakeModel:
     def get_variable_lower_bounds(self):
         return [0.0, 0.0]
@@ -223,8 +257,10 @@ class FakeModel:
         return [0, 1]
 
 
-def test_submit_enables_incumbents_for_mip_only(fake, monkeypatch, tmp_path):
-    """submit() must ask for incumbents explicitly for MIP, not LP."""
+def test_submit_track_incumbents_is_mip_only_and_opt_in(
+    fake, monkeypatch, tmp_path
+):
+    """track_incumbents only takes effect for MIP, and defaults off."""
     stub = fake()
     monkeypatch.setattr(tools, "_read_problem", lambda path: FakeModel())
     monkeypatch.setattr(
@@ -233,14 +269,21 @@ def test_submit_enables_incumbents_for_mip_only(fake, monkeypatch, tmp_path):
     problem = tmp_path / "p.mps"
     problem.write_text("")
     tools.submit(str(problem), "mip_settings")
-    tools.submit(str(problem), "pdlp_settings")
-    assert stub.submitted == [True, False]
+    tools.submit(str(problem), "mip_settings", track_incumbents=True)
+    tools.submit(str(problem), "pdlp_settings", track_incumbents=True)
+    assert stub.submitted == [False, True, False]
 
 
 def test_build_settings_rejects_bad_kind():
     """Bad kind must be CuOptMCPError, not a raw KeyError past _guard."""
     with pytest.raises(client.CuOptMCPError, match="mip_settings"):
         tools._build_settings("nonsense", None)
+
+
+def test_build_settings_wraps_validate_settings_value_error():
+    """A direct caller relies on the documented CuOptMCPError contract."""
+    with pytest.raises(client.CuOptMCPError, match="unknown"):
+        tools._build_settings("pdlp_settings", {"time_limt": 5.0})
 
 
 def test_missing_problem_file_is_a_clear_error():

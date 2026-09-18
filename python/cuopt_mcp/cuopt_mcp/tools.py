@@ -93,7 +93,10 @@ def _build_settings(kind: str, settings: dict | None):
         raise CuOptMCPError(
             "kind must be 'pdlp_settings' (LP) or 'mip_settings' (MILP)"
         )
-    validate_settings(kind, settings or {})
+    try:
+        validate_settings(kind, settings or {})
+    except ValueError as exc:
+        raise CuOptMCPError(str(exc)) from exc
     properties = settings_schema(kind)["properties"]
 
     from cuopt.linear_programming import SolverSettings
@@ -120,7 +123,12 @@ def _variable_names(names_from: str | None):
     return list(names) if names is not None else None
 
 
-def submit(problem_path: str, kind: str, settings: dict | None = None) -> dict:
+def submit(
+    problem_path: str,
+    kind: str,
+    settings: dict | None = None,
+    track_incumbents: bool = False,
+) -> dict:
     """Parse a problem file and submit it for an asynchronous solve.
 
     Args:
@@ -129,6 +137,11 @@ def submit(problem_path: str, kind: str, settings: dict | None = None) -> dict:
             which settings schema ``settings`` is validated against.
         settings: Solver settings by name, or ``None`` to use cuOpt
             defaults for all of them.
+        track_incumbents: For a MIP job, collect incumbents server-side so
+            :func:`incumbents` has something to poll. Off by default:
+            collection downloads each incumbent's full variable vector
+            server-side even though only its objective is kept, which adds
+            up for a large model with many incumbents.
 
     Returns
     -------
@@ -144,10 +157,10 @@ def submit(problem_path: str, kind: str, settings: dict | None = None) -> dict:
     model = _read_problem(problem_path)
     solver_settings = _build_settings(kind, settings)
     try:
-        # This process keeps no local MIP callback, so ask explicitly or the
-        # server never collects incumbents for cuopt_incumbents to poll.
         job_id = get_client().submit(
-            model, solver_settings, enable_incumbents=(kind == "mip_settings")
+            model,
+            solver_settings,
+            enable_incumbents=(kind == "mip_settings" and track_incumbents),
         )
     except Exception as exc:
         raise describe_connection_error(exc) from exc
@@ -217,8 +230,9 @@ def result(
             (distinct from omitting the argument).
         nonzero_only: Drop exactly-zero values before applying ``limit``.
         limit: Maximum variables returned inline; must be between 0 and
-            :data:`INLINE_SOLUTION_LIMIT`. Beyond this, the full solution is
-            written to a file and ``solution_path`` returned instead.
+            :data:`INLINE_SOLUTION_LIMIT`. Beyond this, the selected values
+            (post ``nonzero_only`` filtering) are written to a file and
+            ``solution_path`` returned instead.
 
     Returns
     -------
@@ -295,11 +309,12 @@ def result(
         summary["variables"] = {
             k: float(v) for k, v in list(selected.items())[:limit]
         }
-        summary["solution_path"] = _write_solution_file(job_id, vars_by_name)
+        summary["solution_path"] = _write_solution_file(job_id, selected)
         summary["hint"] = (
-            f"{len(selected)} values exceed the inline limit of {limit}. The "
-            "full solution is at solution_path; use variables=[...] or "
-            "nonzero_only=true to narrow the result."
+            f"{len(selected)} values exceed the inline limit of {limit}. "
+            "The values shown above are at solution_path (all of them, "
+            "not just the nonzero ones, if nonzero_only wasn't set); use "
+            "variables=[...] or nonzero_only=true to narrow the result."
         )
     return summary
 
@@ -328,7 +343,8 @@ def cancel(job_id: str) -> dict:
 
 
 def delete(job_id: str) -> dict:
-    """Release a job's server-side state (solution, logs, incumbents).
+    """Release a job's server-side state (solution, logs, incumbents), and
+    its local solution file if :func:`result` wrote one.
 
     cuopt_grpc_server keeps this until deleted, so a caller done with a
     job's result should call this rather than letting it accumulate.
@@ -349,6 +365,10 @@ def delete(job_id: str) -> dict:
         get_client().delete(job_id)
     except Exception as exc:
         raise describe_connection_error(exc) from exc
+    try:
+        (_solution_dir() / f"{job_id}.json").unlink(missing_ok=True)
+    except CuOptMCPError:
+        pass  # nothing to clean up if the directory itself is unusable
     return {"job_id": job_id, "deleted": True}
 
 
@@ -404,7 +424,12 @@ def logs(job_id: str, from_byte: int = 0, tail_lines: int = 100) -> dict:
         from_byte: Byte offset to resume from (e.g. ``next_byte`` from a
             prior call), so repeated polling doesn't re-fetch the whole log.
         tail_lines: Keep only the last this many lines of the fetched text;
-            must be between 1 and :data:`MAX_TAIL_LINES`.
+            must be between 1 and :data:`MAX_TAIL_LINES`. Bounds the
+            response, not the fetch: Client.logs() has no server-side tail
+            operation, so a multi-GB log is still downloaded and held in
+            memory here before being sliced. Use ``from_byte`` to fetch
+            incrementally rather than relying on ``tail_lines`` alone for a
+            log that large.
 
     Returns
     -------

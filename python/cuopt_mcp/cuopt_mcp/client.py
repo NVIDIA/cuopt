@@ -25,6 +25,12 @@ DEFAULT_PORT = 50051
 # told apart from a caller-facing one by type alone.
 _PATH_RE = re.compile(r"(?<!\w)(/[\w.\-]+){2,}")
 
+
+def redact_paths(text: str) -> str:
+    """Redact absolute filesystem paths from text bound for an MCP caller."""
+    return _PATH_RE.sub("[redacted path]", text)
+
+
 _lock = threading.Lock()
 _client = None
 
@@ -112,10 +118,9 @@ def describe_connection_error(exc: Exception) -> CuOptMCPError:
     """Convert a backend exception into a model-facing :class:`CuOptMCPError`.
 
     Recognizes the unreachable-server case and names the host/port plus how
-    to fix it. Any other backend text is passed through with filesystem
-    paths redacted (see ``_PATH_RE``): the server's own error strings
-    sometimes embed its internal paths (e.g. a job's log file location),
-    which a remote MCP caller has no use for and shouldn't see.
+    to fix it. Any other backend text is passed through :func:`redact_paths`:
+    the server's own error strings sometimes embed its internal paths (e.g.
+    a job's log file location), which an MCP caller has no use for.
 
     Args:
         exc: The exception raised by the gRPC client call.
@@ -133,4 +138,4 @@ def describe_connection_error(exc: Exception) -> CuOptMCPError:
             f"`cuopt_grpc_server --port {port}`, or set CUOPT_REMOTE_HOST / "
             "CUOPT_REMOTE_PORT to point at a running server."
         )
-    return CuOptMCPError(_PATH_RE.sub("[redacted path]", text))
+    return CuOptMCPError(redact_paths(text))

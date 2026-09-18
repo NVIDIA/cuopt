@@ -18,7 +18,7 @@ from typing import Any
 from mcp.server.mcpserver import MCPServer
 
 from . import tools
-from .client import CuOptMCPError, endpoint
+from .client import CuOptMCPError, endpoint, redact_paths
 
 logging.basicConfig(
     stream=sys.stderr,
@@ -45,13 +45,12 @@ def _guard(fn, /, **kwargs) -> dict[str, Any]:
     Every tool below returns this dict's shape on success; on failure it's
     ``{"error": <message safe to show the model>}`` instead of a traceback,
     which the model can act on inline instead of the call simply failing.
+    Paths are redacted here so every raise site doesn't have to.
     """
     try:
         return fn(**kwargs)
-    except CuOptMCPError as exc:
-        return {"error": str(exc)}
-    except ValueError as exc:
-        return {"error": str(exc)}
+    except (CuOptMCPError, ValueError) as exc:
+        return {"error": redact_paths(str(exc))}
 
 
 @server.tool(structured_output=True)
@@ -79,7 +78,9 @@ def cuopt_solve_lp(
 
 @server.tool(structured_output=True)
 def cuopt_solve_milp(
-    problem_path: str, settings: dict | None = None
+    problem_path: str,
+    settings: dict | None = None,
+    track_incumbents: bool = False,
 ) -> dict[str, Any]:
     """Submit a mixed-integer program to cuOpt and return a job handle.
 
@@ -87,15 +88,19 @@ def cuopt_solve_milp(
     settings: optional MIP solver settings, e.g. {"time_limit": 300,
         "relative_mip_gap": 0.01}. Call cuopt_list_settings("mip_settings")
         for the full list.
+    track_incumbents: set True to make cuopt_incumbents useful for this
+        job. Off by default -- it costs extra server-side work and network
+        transfer per incumbent found, worth paying only if you'll poll it.
 
-    Returns a job_id. Use cuopt_incumbents to watch the objective improve
-    and cuopt_cancel to stop early once it is good enough.
+    Returns a job_id. Use cuopt_cancel to stop early once the result is
+    good enough.
     """
     return _guard(
         tools.submit,
         problem_path=problem_path,
         kind="mip_settings",
         settings=settings,
+        track_incumbents=track_incumbents,
     )
 
 
@@ -128,8 +133,9 @@ def cuopt_result(
     variables: fetch only these named variables.
     nonzero_only: return only variables with a non-zero value — usually
         what matters for a MILP.
-    limit: maximum values returned inline. Beyond this the full solution is
-        written to a file and its path returned instead.
+    limit: maximum values returned inline. Beyond this the selected values
+        (respecting nonzero_only) are written to a file and its path
+        returned instead.
 
     On failure, returns ``{"error": <message>}`` instead (see ``_guard``).
     """
@@ -147,10 +153,12 @@ def cuopt_result(
 def cuopt_incumbents(job_id: str, from_index: int = 0) -> dict[str, Any]:
     """Return improving MILP solutions found so far, oldest first.
 
-    Use the returned next_index on the following call to fetch only new
-    incumbents. A flat objective across several calls means the solver has
-    plateaued and cuopt_cancel may be worthwhile. On failure, returns
-    ``{"error": <message>}`` instead (see ``_guard``).
+    Requires cuopt_solve_milp's track_incumbents=True for this job, or
+    this always comes back empty. Use the returned next_index on the
+    following call to fetch only new incumbents. A flat objective across
+    several calls means the solver has plateaued and cuopt_cancel may be
+    worthwhile. On failure, returns ``{"error": <message>}`` instead
+    (see ``_guard``).
     """
     return _guard(tools.incumbents, job_id=job_id, from_index=from_index)
 
