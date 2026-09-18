@@ -921,6 +921,7 @@ bool arc_flow_t<i_t, f_t>::recognize(
 template <typename i_t, typename f_t>
 bool arc_flow_t<i_t, f_t>::solve(
   const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances,
+  f_t,
   std::atomic<bool>& preemption,
   std::vector<f_t>& assignment)
 {

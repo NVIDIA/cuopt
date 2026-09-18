@@ -26,7 +26,9 @@ class arc_flow_t : public structural_heuristic_t<i_t, f_t> {
   bool recognize(const problem_t<i_t, f_t>& problem,
                  const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances) override;
 
+  // The arc flow DP is bounded by its own state space, so it watches only `preemption`.
   bool solve(const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances,
+             f_t time_limit,
              std::atomic<bool>& preemption,
              std::vector<f_t>& assignment) override;
 

@@ -52,7 +52,8 @@ set(MIP_NON_LP_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/early_cpufj.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/early_gpufj.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/structural/early_structural.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/structural/arc_flow.cu)
+  ${CMAKE_CURRENT_SOURCE_DIR}/structural/arc_flow.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/structural/markshare.cu)
 
 # Choose which files to include based on build mode
 if(BUILD_LP_ONLY)

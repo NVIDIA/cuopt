@@ -335,7 +335,7 @@ mip_solution_t<i_t, f_t> run_mip_solver(
           early_structural->set_best_objective(
             problem.get_solver_obj_from_user_obj(initial_upper_bound));
         }
-        early_structural->start();
+        early_structural->run_async();
         solver.context.early_structural_ptr = early_structural.get();
       }
     }
@@ -539,6 +539,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
       early_best_objective.store(problem.get_solver_obj_from_user_obj(early_best_user_obj));
     }
 
+    bool structural_prints_own_progress = false;
     std::unique_ptr<mip::early_cpufj_t<i_t, f_t>> early_cpufj;
     std::unique_ptr<mip::early_gpufj_t<i_t, f_t>> early_gpufj;
     std::unique_ptr<mip::early_structural_t<i_t, f_t>> early_structural;
@@ -554,6 +555,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
          &early_best_user_assignment,
          &early_incumbent_pool,
          &early_callback_mutex,
+         &structural_prints_own_progress,
          early_fj_start,
          mip_callbacks = settings.get_mip_callbacks(),
          has_semi_continuous_callback_translation =
@@ -575,11 +577,13 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
           double elapsed =
             std::chrono::duration<double>(std::chrono::steady_clock::now() - early_fj_start)
               .count();
-          CUOPT_LOG_INFO(
-            "New solution from early primal heuristics (%s). Objective %+.6e. Time %.2f",
-            heuristic_name,
-            user_obj,
-            elapsed);
+          if (!structural_prints_own_progress) {
+            CUOPT_LOG_INFO(
+              "New solution from early primal heuristics (%s). Objective %+.6e. Time %.2f",
+              heuristic_name,
+              user_obj,
+              elapsed);
+          }
           auto user_assignment = assignment;
           invoke_solution_callbacks(mip_callbacks,
                                     has_semi_continuous_callback_translation,
@@ -588,6 +592,43 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
                                     user_assignment,
                                     no_bound);
         };
+
+      early_structural = mip::early_structural_t<i_t, f_t>::create(
+        op_problem, settings.get_tolerances(), early_fj_callback);
+      // An exclusive recognizer has an exact method for this model class, so it takes the whole
+      // solve: no presolve, no feasibility jump, no branch and bound.
+      if (early_structural && early_structural->exclusive()) {
+        structural_prints_own_progress = true;
+        // Inline on this thread: it is the master of the solver's parallel region, so the
+        // heuristic's own taskloops are picked up by the workers parked at the barrier.
+        early_structural->run_sync(timer.remaining_time());
+        if (early_structural->solution_found()) {
+          mip::problem_t<i_t, f_t> exclusive_problem(op_problem);
+          mip::solution_t<i_t, f_t> exclusive_sol(exclusive_problem);
+          exclusive_sol.copy_new_assignment(early_structural->get_best_assignment());
+          // Independent confirmation on the device before the bound is allowed to claim
+          // optimality: a wrong claim here returns a suboptimal answer as Optimal.
+          if (exclusive_sol.compute_feasibility()) {
+            solver_stats_t<i_t, f_t> exclusive_stats{};
+            exclusive_stats.total_solve_time = timer.elapsed_time();
+            exclusive_stats.set_solution_bound(exclusive_sol.get_user_objective());
+            exclusive_sol.post_process_completed = true;
+            auto sol = exclusive_sol.get_solution(true, exclusive_stats, false);
+            sol.log_detailed_summary();
+            if (settings.sol_file != "") {
+              CUOPT_LOG_INFO("Writing solution to file %s", settings.sol_file.c_str());
+              sol.write_to_sol_file(settings.sol_file, op_problem.get_handle_ptr()->get_stream());
+            }
+            return sol;
+          }
+        }
+        early_structural.reset();
+        // If it came back empty the feasibility jump below still runs, and its incumbents are the
+        // only progress there is to report.
+        structural_prints_own_progress = false;
+      }
+
+      if (early_structural) { early_structural->run_async(); }
 
       // Start early CPUFJ on original problem (will restart on presolved problem after Papilo)
       const uint64_t early_fj_base_seed = mip::get_base_seed(settings.seed);
@@ -604,9 +645,6 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
         std::make_unique<mip::early_gpufj_t<i_t, f_t>>(op_problem, settings, early_fj_callback);
       early_gpufj->start();
       CUOPT_LOG_DEBUG("Started early GPUFJ during presolve");
-      early_structural = mip::early_structural_t<i_t, f_t>::create(
-        op_problem, settings.get_tolerances(), early_fj_callback);
-      if (early_structural) { early_structural->start(); }
     }
 
     auto constexpr const dual_postsolve = false;
