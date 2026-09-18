@@ -9,6 +9,8 @@
 
 #include <utilities/copy_helpers.hpp>
 
+#include <limits>
+
 #include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 #include <cuopt/mathematical_optimization/utilities/segmented_sum_handler.cuh>
 #include <mip_heuristics/mip_constants.hpp>
@@ -440,7 +442,7 @@ __global__ void curtis_reid_row_kernel(
     f_t abs_val =
       raft::max<f_t>(raft::abs(op_problem.coefficients[row_offset + j] * row_scale *
                                cummulative_variable_scaling[col]),
-                     f_t(1e-300));
+                     std::numeric_limits<f_t>::min());
     accumulated_value += -raft::log(abs_val) - col_log_scale[col];
   }
 
@@ -478,7 +480,7 @@ __global__ void curtis_reid_col_kernel(i_t n_variables,
     f_t abs_val =
       raft::max<f_t>(raft::abs(A_T[col_offset + j] * col_scale *
                                cummulative_constraint_matrix_scaling[row]),
-                     f_t(1e-300));
+                     std::numeric_limits<f_t>::min());
     accumulated_value += -raft::log(abs_val) - row_log_scale[row];
   }
 
