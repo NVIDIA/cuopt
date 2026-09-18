@@ -14,9 +14,7 @@ namespace cuopt::mathematical_optimization::simplex {
 
 namespace {
 
-// row_norm[i] = max_j |A(i,j)|, computed straight off CSC: A.i[p] is the row of nonzero p,
-// so the per-row maxima need no row-contiguous (CSR) copy of the matrix. Resizes and
-// overwrites row_norm.
+// row_norm[i] = max_j |A(i,j)|, the infinity norm of row i of A.
 template <typename i_t, typename f_t>
 void compute_row_inf_norms(const csc_matrix_t<i_t, f_t>& A, std::vector<f_t>& row_norm)
 {
@@ -52,8 +50,7 @@ i_t scaling(const lp_problem_t<i_t, f_t>& unscaled,
   if (!unscaled.second_order_cone_dims.empty() || unscaled.Q.n > 0) {
     // col_scale and row_scale accumulate reciprocal scale factors during Ruiz iterations.
     std::vector<f_t> col_scale(n, 1.0);
-    // Holds the raw row inf-norms, both for the heuristic below and in each Ruiz iteration,
-    // where it is then converted in place into that iteration's row scale factors.
+    // row inf-norms, used for both the skip heuristic and the Ruiz iterations.
     std::vector<f_t> r;
 
     // Decide whether Ruiz scaling is needed by checking row- and column-norm

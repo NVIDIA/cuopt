@@ -417,7 +417,7 @@ i_t scaling_ruiz_gpu(const lp_problem_t<i_t, f_t>& unscaled,
   } else {
     scaled.A = dA.to_host(stream);
   }
-  scaled.Q         = dQ.to_host(stream);
+  scaled.Q = dQ.to_host(stream);
   // Q stays on host as well, so this is purely so the barrier need not upload it again. Q is
   // symmetric, so its CSR arrays are also its CSC arrays and the handover is a relabel.
   if (dQ.nz_max > 0) {

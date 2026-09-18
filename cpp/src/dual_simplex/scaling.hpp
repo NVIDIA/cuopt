@@ -23,10 +23,7 @@ i_t scaling(const lp_problem_t<i_t, f_t>& unscaled,
             std::vector<f_t>& column_scaling,
             std::vector<f_t>& row_scaling);
 
-// GPU-resident Ruiz equilibration. Same host-in/host-out contract as `scaling()`, but
-// only implements the Ruiz-equilibration branch (`scaling()`'s SOCP/QP path) -- callers
-// must only invoke this when `!unscaled.second_order_cone_dims.empty() || unscaled.Q.n > 0`,
-// i.e. exactly the condition under which `scaling()` itself would take that branch.
+// GPU-based Ruiz scaling.
 template <typename i_t, typename f_t>
 i_t scaling_ruiz_gpu(const lp_problem_t<i_t, f_t>& unscaled,
                      const simplex_solver_settings_t<i_t, f_t>& settings,

@@ -1195,8 +1195,7 @@ class iteration_data_t {
       // snapshot; with dense columns removed AD differs and carries its own.
       const f_t* original_values =
         n_dense_columns > 0 ? d_original_A_values.data() : device_A_csc_.x.data();
-      raft::copy(
-        device_AD.x.data(), original_values, device_AD.x.size(), handle_ptr->get_stream());
+      raft::copy(device_AD.x.data(), original_values, device_AD.x.size(), handle_ptr->get_stream());
     }
     {
       raft::common::nvtx::range scope("Barrier: Form ADAT: inv_diag prime");
@@ -1244,9 +1243,9 @@ class iteration_data_t {
       const i_t A_rows   = own_csr ? device_A.m : device_AT_csc_.n;
       const i_t A_cols   = own_csr ? device_A.n : device_AT_csc_.m;
       const i_t A_nnz    = own_csr ? device_A.nz_max : device_AT_csc_.nz_max;
-      i_t* A_offsets = own_csr ? device_A.row_start.data() : device_AT_csc_.col_start.data();
-      i_t* A_indices = own_csr ? device_A.j.data() : device_AT_csc_.i.data();
-      f_t* A_values  = own_csr ? device_A.x.data() : device_AT_csc_.x.data();
+      i_t* A_offsets     = own_csr ? device_A.row_start.data() : device_AT_csc_.col_start.data();
+      i_t* A_indices     = own_csr ? device_A.j.data() : device_AT_csc_.i.data();
+      f_t* A_values      = own_csr ? device_A.x.data() : device_AT_csc_.x.data();
       try {
         if (!cusparse_info_) {
           cusparse_info_ = std::make_unique<cusparse_info_t<i_t, f_t>>(handle_ptr);

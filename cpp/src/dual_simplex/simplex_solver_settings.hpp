@@ -194,11 +194,9 @@ struct simplex_solver_settings_t {
                                               // 1 dual least squares, 2 SeDuMi mu-based
   i_t postsolve_info;                         // -1 automatic (disabled), 0 disabled, 1 enabled
   i_t barrier_presolve_bound_free_variables;  // -1 automatic, 0 disabled, 1 enabled
-  i_t qcqp_ruiz_equilibration;  // -1 automatic (imbalance heuristic), 0 disabled, 1 enabled
-  i_t gpu_ruiz_nnz_threshold;   // nnz(A)+nnz(Q) above which the barrier path's Ruiz
-                                // equilibration runs on GPU instead of CPU (scaling_ruiz_gpu
-                                // vs scaling); below threshold, kernel-launch overhead isn't
-                                // worth it and the CPU loop is used instead.
+  i_t qcqp_ruiz_equilibration;          // -1 automatic (imbalance heuristic), 0 disabled, 1 enabled
+  i_t gpu_ruiz_nnz_threshold;           // nnz(A)+nnz(Q) above which the barrier path's Ruiz
+                                        // equilibration runs on GPU instead of CPU.
   f_t barrier_initial_point_safeguard;  // margin pushing the barrier initial iterate into
   // the interior of the nonnegative orthant / SOC
   bool check_Q;                    // true to check if Q is positive semidefinite

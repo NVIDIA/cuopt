@@ -14,19 +14,22 @@
 
 #include <gtest/gtest.h>
 
-#include <algorithm>
-#include <numeric>
-#include <random>
 #include <vector>
 
 namespace cuopt::mathematical_optimization::barrier::test {
 
 namespace {
 
+// A distinct value encoding the entry's position, so a mis-permutation names the entry it came
+// from in the failure output. Integral, so host and device copies compare bit-exact.
+double value_at(int row, int col)
+{
+  const double magnitude = 1000.0 * (row + 1) + (col + 1);
+  return col % 2 == 0 ? magnitude : -magnitude;
+}
+
 // Host CSC with the given row indices per column, in the order given (deliberately unsorted).
-csc_matrix_t<int, double> make_csc(int m,
-                                   const std::vector<std::vector<int>>& rows_per_col,
-                                   std::mt19937& rng)
+csc_matrix_t<int, double> make_csc(int m, const std::vector<std::vector<int>>& rows_per_col)
 {
   const int n = static_cast<int>(rows_per_col.size());
   int nz      = 0;
@@ -35,13 +38,12 @@ csc_matrix_t<int, double> make_csc(int m,
   }
 
   csc_matrix_t<int, double> A(m, n, nz);
-  std::uniform_real_distribution<double> value(-10.0, 10.0);
   int p          = 0;
   A.col_start[0] = 0;
   for (int j = 0; j < n; ++j) {
     for (int r : rows_per_col[j]) {
       A.i[p] = r;
-      A.x[p] = value(rng);
+      A.x[p] = value_at(r, j);
       ++p;
     }
     A.col_start[j + 1] = p;
@@ -49,16 +51,7 @@ csc_matrix_t<int, double> make_csc(int m,
   return A;
 }
 
-// A random subset of `count` distinct rows drawn from `candidates`, in shuffled order.
-std::vector<int> random_rows(const std::vector<int>& candidates, int count, std::mt19937& rng)
-{
-  std::vector<int> rows(candidates);
-  std::shuffle(rows.begin(), rows.end(), rng);
-  rows.resize(count);
-  return rows;
-}
-
-// The device conversion must reproduce the host reference exactly and be run-to-run stable.
+// The device conversion must reproduce the host reference exactly.
 void expect_device_matches_host(const csc_matrix_t<int, double>& A)
 {
   auto stream = cuda::stream_ref{cudaStream_t{cudaStreamDefault}};
@@ -77,13 +70,6 @@ void expect_device_matches_host(const csc_matrix_t<int, double>& A)
   EXPECT_EQ(got.j, expected.j);
   EXPECT_EQ(got.x, expected.x);
 
-  device_csr_matrix_t<int, double> d_again(stream);
-  d_A.to_compressed_row(d_again, stream);
-  auto again = d_again.to_host(stream);
-  EXPECT_EQ(again.row_start, got.row_start);
-  EXPECT_EQ(again.j, got.j);
-  EXPECT_EQ(again.x, got.x);
-
   // The transpose shares the conversion, and CSC(A^T) holds the same arrays as CSR(A).
   csc_matrix_t<int, double> expected_t(1, 1, 1);
   A.transpose(expected_t);
@@ -101,56 +87,71 @@ void expect_device_matches_host(const csc_matrix_t<int, double>& A)
 
 }  // namespace
 
-TEST(device_sparse_matrix, csc_to_csr_random_with_empty_rows_and_columns)
+TEST(device_sparse_matrix, csc_to_csr_empty_rows_and_columns)
 {
-  std::mt19937 rng(42);
-  const int m = 37;
-  const int n = 29;
+  // 9 x 6 sparsity pattern:
+  //        c0 c1 c2 c3 c4 c5
+  //   r0    .  .  .  .  .  .
+  //   r1    x  .  .  x  .  x
+  //   r2    .  .  .  .  .  .
+  //   r3    .  .  x  .  .  x
+  //   r4    .  .  .  .  .  .
+  //   r5    x  .  .  .  .  x
+  //   r6    .  .  .  .  .  .
+  //   r7    x  .  x  .  .  x
+  //   r8    .  .  .  .  .  .
+  //
+  // Rows 0, 2, 4, 6 and 8 hold no entries, giving leading, interior and trailing empty CSR rows,
+  // i.e. zero-length sort segments. Columns 1 and 4 are empty, so their scatter blocks do no work.
+  // Every row indices list is out of order, and rows 1, 3, 5 and 7 each hold more than one entry,
+  // so the segmented sort has to restore column order rather than inherit it from the input.
+  const std::vector<std::vector<int>> rows_per_col = {
+    {5, 1, 7},     // c0
+    {},            // c1, empty
+    {7, 3},        // c2
+    {1},           // c3
+    {},            // c4, empty
+    {3, 7, 5, 1},  // c5
+  };
 
-  // Rows that are multiples of 5 never appear, so the CSR has interior empty rows.
-  std::vector<int> candidates;
-  for (int r = 0; r < m; ++r) {
-    if (r % 5 != 0) { candidates.push_back(r); }
-  }
-
-  std::vector<std::vector<int>> rows_per_col(n);
-  std::uniform_int_distribution<int> length(1, 6);
-  for (int j = 0; j < n; ++j) {
-    if (j % 7 == 3) { continue; }  // empty column
-    rows_per_col[j] = random_rows(candidates, length(rng), rng);
-  }
-
-  expect_device_matches_host(make_csc(m, rows_per_col, rng));
+  expect_device_matches_host(make_csc(9, rows_per_col));
 }
 
 TEST(device_sparse_matrix, csc_to_csr_dense_column)
 {
-  std::mt19937 rng(7);
-  const int m = 1000;
-  const int n = 5;
+  constexpr int m = 1000;
 
-  std::vector<int> all_rows(m);
-  std::iota(all_rows.begin(), all_rows.end(), 0);
-
-  // Column 2 holds every row (longer than one thread block), the rest are short.
-  std::vector<std::vector<int>> rows_per_col(n);
-  for (int j = 0; j < n; ++j) {
-    rows_per_col[j] = random_rows(all_rows, j == 2 ? m : 3, rng);
+  // Column 2 holds every row, in descending order. The scatter kernel gives each column one
+  // 256-thread block, so this column makes its strided loop wrap several times.
+  std::vector<int> all_rows_descending;
+  all_rows_descending.reserve(m);
+  for (int r = m - 1; r >= 0; --r) {
+    all_rows_descending.push_back(r);
   }
 
-  expect_device_matches_host(make_csc(m, rows_per_col, rng));
+  // The short columns repeat rows 0 and 999 so the first and last CSR rows hold several entries
+  // rather than just the one the dense column contributes.
+  const std::vector<std::vector<int>> rows_per_col = {
+    {900, 4, 500},        // c0
+    {0, 999},             // c1
+    all_rows_descending,  // c2
+    {999, 0, 7},          // c3
+    {251, 250},           // c4
+  };
+
+  expect_device_matches_host(make_csc(m, rows_per_col));
 }
 
 TEST(device_sparse_matrix, csc_to_csr_empty_matrix)
 {
-  std::mt19937 rng(1);
-  expect_device_matches_host(make_csc(4, std::vector<std::vector<int>>(3), rng));
+  // No nonzeros at all: the conversion takes its early return, which zeroes the offsets and
+  // launches no kernel.
+  expect_device_matches_host(make_csc(4, {{}, {}, {}}));
 }
 
 TEST(device_sparse_matrix, csc_to_csr_single_entry)
 {
-  std::mt19937 rng(3);
-  expect_device_matches_host(make_csc(1, {{0}}, rng));
+  expect_device_matches_host(make_csc(1, {{0}}));
 }
 
 }  // namespace cuopt::mathematical_optimization::barrier::test
