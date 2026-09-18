@@ -17,7 +17,6 @@ set(DUAL_SIMPLEX_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/primal.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/right_looking_lu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/scaling.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/scaling_gpu.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/singletons.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/solve.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/triangle_solve.cpp

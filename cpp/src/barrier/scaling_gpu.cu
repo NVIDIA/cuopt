@@ -11,7 +11,10 @@
 // for problems with second-order cones or a quadratic objective (the same condition
 // `scaling()` uses to select the Ruiz branch over the plain geometric-mean scaling).
 
-#include <dual_simplex/scaling.hpp>
+#include <barrier/scaling_gpu.cuh>
+
+#include <dual_simplex/presolve.hpp>
+#include <dual_simplex/simplex_solver_settings.hpp>
 
 #include <barrier/device_sparse_matrix.cuh>
 #include <utilities/copy_helpers.hpp>
@@ -136,7 +139,9 @@ i_t scaling_ruiz_gpu(const lp_problem_t<i_t, f_t>& unscaled,
                      const simplex_solver_settings_t<i_t, f_t>& settings,
                      lp_problem_t<i_t, f_t>& scaled,
                      std::vector<f_t>& column_scaling,
-                     std::vector<f_t>& row_scaling)
+                     std::vector<f_t>& row_scaling,
+                     std::shared_ptr<device_csc_matrix_t<i_t, f_t>>& device_A,
+                     std::shared_ptr<device_csc_matrix_t<i_t, f_t>>& device_Q)
 {
   scaled     = unscaled;
   i_t m      = scaled.num_rows;
@@ -145,6 +150,9 @@ i_t scaling_ruiz_gpu(const lp_problem_t<i_t, f_t>& unscaled,
 
   rmm::cuda_stream_view stream = unscaled.handle_ptr->get_stream();
 
+  // Unconditional, so the early return below cannot leave a stale matrix in the caller's hands.
+  device_A.reset();
+  device_Q.reset();
   row_scaling.assign(m, 1.0);
 
   // --- Upload only what the skip heuristic needs; the rest of the setup is deferred
@@ -413,7 +421,7 @@ i_t scaling_ruiz_gpu(const lp_problem_t<i_t, f_t>& unscaled,
   if (!unscaled.second_order_cone_dims.empty()) {
     scaled.A.x.clear();
     scaled.A.x.shrink_to_fit();
-    scaled.device_A = std::make_shared<device_csc_matrix_t<i_t, f_t>>(std::move(dA));
+    device_A = std::make_shared<device_csc_matrix_t<i_t, f_t>>(std::move(dA));
   } else {
     scaled.A = dA.to_host(stream);
   }
@@ -421,14 +429,14 @@ i_t scaling_ruiz_gpu(const lp_problem_t<i_t, f_t>& unscaled,
   // Q stays on host as well, so this is purely so the barrier need not upload it again. Q is
   // symmetric, so its CSR arrays are also its CSC arrays and the handover is a relabel.
   if (dQ.nz_max > 0) {
-    auto device_Q       = std::make_shared<device_csc_matrix_t<i_t, f_t>>(stream);
-    device_Q->m         = dQ.m;
-    device_Q->n         = dQ.m;
-    device_Q->nz_max    = dQ.nz_max;
-    device_Q->col_start = std::move(dQ.row_start);
-    device_Q->i         = std::move(dQ.j);
-    device_Q->x         = std::move(dQ.x);
-    scaled.device_Q     = std::move(device_Q);
+    auto dQ_csc       = std::make_shared<device_csc_matrix_t<i_t, f_t>>(stream);
+    dQ_csc->m         = dQ.m;
+    dQ_csc->n         = dQ.m;
+    dQ_csc->nz_max    = dQ.nz_max;
+    dQ_csc->col_start = std::move(dQ.row_start);
+    dQ_csc->i         = std::move(dQ.j);
+    dQ_csc->x         = std::move(dQ.x);
+    device_Q          = std::move(dQ_csc);
   }
   scaled.rhs       = cuopt::host_copy(d_rhs, stream);
   scaled.objective = cuopt::host_copy(d_objective, stream);
@@ -443,11 +451,14 @@ i_t scaling_ruiz_gpu(const lp_problem_t<i_t, f_t>& unscaled,
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 
-template int scaling_ruiz_gpu<int, double>(const lp_problem_t<int, double>& unscaled,
-                                           const simplex_solver_settings_t<int, double>& settings,
-                                           lp_problem_t<int, double>& scaled,
-                                           std::vector<double>& column_scaling,
-                                           std::vector<double>& row_scaling);
+template int scaling_ruiz_gpu<int, double>(
+  const lp_problem_t<int, double>& unscaled,
+  const simplex_solver_settings_t<int, double>& settings,
+  lp_problem_t<int, double>& scaled,
+  std::vector<double>& column_scaling,
+  std::vector<double>& row_scaling,
+  std::shared_ptr<device_csc_matrix_t<int, double>>& device_A,
+  std::shared_ptr<device_csc_matrix_t<int, double>>& device_Q);
 
 #endif
 

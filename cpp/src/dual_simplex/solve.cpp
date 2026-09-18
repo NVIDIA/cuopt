@@ -8,6 +8,7 @@
 #include <dual_simplex/solve.hpp>
 
 #include <barrier/barrier.hpp>
+#include <barrier/scaling_gpu.cuh>
 
 #include <branch_and_bound/branch_and_bound.hpp>
 
@@ -480,12 +481,16 @@ lp_status_t solve_linear_program_with_barrier(
                                     presolved_lp.A.col_start[presolved_lp.num_cols]);
   std::vector<f_t> column_scales;
   std::vector<f_t> row_scales;
+  // Scaled A/Q that the GPU scaling may leave on device for the barrier to adopt; null otherwise.
+  std::shared_ptr<barrier::device_csc_matrix_t<i_t, f_t>> device_A;
+  std::shared_ptr<barrier::device_csc_matrix_t<i_t, f_t>> device_Q;
   const bool is_ruiz_candidate =
     !presolved_lp.second_order_cone_dims.empty() || presolved_lp.Q.n > 0;
   const i_t presolved_nnz = presolved_lp.A.col_start[presolved_lp.num_cols] +
                             (presolved_lp.Q.n > 0 ? presolved_lp.Q.row_start[presolved_lp.Q.m] : 0);
   if (is_ruiz_candidate && presolved_nnz >= barrier_settings.gpu_ruiz_nnz_threshold) {
-    scaling_ruiz_gpu(presolved_lp, barrier_settings, barrier_lp, column_scales, row_scales);
+    scaling_ruiz_gpu(
+      presolved_lp, barrier_settings, barrier_lp, column_scales, row_scales, device_A, device_Q);
   } else {
     scaling(presolved_lp, barrier_settings, barrier_lp, column_scales, row_scales);
   }
@@ -516,7 +521,8 @@ lp_status_t solve_linear_program_with_barrier(
     cache->store_transform(std::move(xf));
   }
 
-  barrier::barrier_solver_t<i_t, f_t> barrier_solver(*solver_lp, presolve_info, barrier_settings);
+  barrier::barrier_solver_t<i_t, f_t> barrier_solver(
+    *solver_lp, presolve_info, barrier_settings, std::move(device_A), std::move(device_Q));
   lp_status_t barrier_status = barrier_solver.solve(start_time, barrier_solution, cache);
 
   if (cache != nullptr) {

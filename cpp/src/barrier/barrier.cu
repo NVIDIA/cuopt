@@ -446,13 +446,15 @@ template <typename i_t, typename f_t>
 class iteration_data_t {
  public:
   /** The device Q to factorize: adopted from the scaling when already there, uploaded otherwise. */
-  static device_csc_matrix_t<i_t, f_t> make_device_Q(const lp_problem_t<i_t, f_t>& lp,
-                                                     const csc_matrix_t<i_t, f_t>& Qin,
-                                                     cuda::stream_ref stream)
+  static device_csc_matrix_t<i_t, f_t> make_device_Q(
+    std::shared_ptr<device_csc_matrix_t<i_t, f_t>> scaled_device_Q,
+    const lp_problem_t<i_t, f_t>& lp,
+    const csc_matrix_t<i_t, f_t>& Qin,
+    cuda::stream_ref stream)
   {
     const bool has_entries = Qin.n > 0 && Qin.col_start[Qin.n] > 0;
-    if (lp.device_Q && has_entries) {
-      device_csc_matrix_t<i_t, f_t> dQ(std::move(*lp.device_Q));
+    if (scaled_device_Q && has_entries) {
+      device_csc_matrix_t<i_t, f_t> dQ(std::move(*scaled_device_Q));
       // All that is missing is the slack padding create_Q applies on host, which only extends
       // col_start with the final nz.
       const i_t old_n = dQ.n;
@@ -478,7 +480,9 @@ class iteration_data_t {
                    i_t num_upper_bounds,
                    const std::vector<i_t>& direct_free_variables,
                    const csc_matrix_t<i_t, f_t>& Qin,
-                   const simplex_solver_settings_t<i_t, f_t>& settings)
+                   const simplex_solver_settings_t<i_t, f_t>& settings,
+                   std::shared_ptr<device_csc_matrix_t<i_t, f_t>> scaled_device_A,
+                   std::shared_ptr<device_csc_matrix_t<i_t, f_t>> scaled_device_Q)
     : upper_bounds(num_upper_bounds),
       c(lp.objective),
       b(lp.rhs),
@@ -524,9 +528,11 @@ class iteration_data_t {
         lp.num_cols + lp.num_rows, lp.num_cols + lp.num_rows, 0, lp.handle_ptr->get_stream()),
       // Take over the scaled A when the scaling already left it on device, so it is neither
       // downloaded there nor uploaded again here.
-      device_A_csc_(lp.device_A ? std::move(*lp.device_A)
-                                : device_csc_matrix_t<i_t, f_t>(lp.A, lp.handle_ptr->get_stream())),
-      device_Q_csc_(make_device_Q(lp, Qin, lp.handle_ptr->get_stream())),
+      device_A_csc_(scaled_device_A
+                      ? std::move(*scaled_device_A)
+                      : device_csc_matrix_t<i_t, f_t>(lp.A, lp.handle_ptr->get_stream())),
+      device_Q_csc_(
+        make_device_Q(std::move(scaled_device_Q), lp, Qin, lp.handle_ptr->get_stream())),
       device_AT_csc_(typename device_csc_matrix_t<i_t, f_t>::transposed_t{},
                      device_A_csc_,
                      lp.handle_ptr->get_stream()),
@@ -2485,10 +2491,18 @@ void cholesky_debug_check(const iteration_data_t<i_t, f_t>& data,
 }
 
 template <typename i_t, typename f_t>
-barrier_solver_t<i_t, f_t>::barrier_solver_t(const lp_problem_t<i_t, f_t>& lp,
-                                             const simplex::presolve_info_t<i_t, f_t>& presolve,
-                                             const simplex_solver_settings_t<i_t, f_t>& settings)
-  : lp(lp), settings(settings), presolve_info(presolve), stream_view_(lp.handle_ptr->get_stream())
+barrier_solver_t<i_t, f_t>::barrier_solver_t(
+  const lp_problem_t<i_t, f_t>& lp,
+  const simplex::presolve_info_t<i_t, f_t>& presolve,
+  const simplex_solver_settings_t<i_t, f_t>& settings,
+  std::shared_ptr<device_csc_matrix_t<i_t, f_t>> device_A,
+  std::shared_ptr<device_csc_matrix_t<i_t, f_t>> device_Q)
+  : lp(lp),
+    settings(settings),
+    presolve_info(presolve),
+    stream_view_(lp.handle_ptr->get_stream()),
+    device_A_(std::move(device_A)),
+    device_Q_(std::move(device_Q))
 {
 }
 
@@ -4917,8 +4931,13 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(
       Qin           = xf->barrier_Q.get();
     }
     if (lp.Q.n > 0) { create_Q(lp, *Qin); }
-    owned_data = std::make_unique<iteration_data_t<i_t, f_t>>(
-      lp, num_upper_bounds, presolve_info.direct_free_variables, *Qin, settings);
+    owned_data         = std::make_unique<iteration_data_t<i_t, f_t>>(lp,
+                                                              num_upper_bounds,
+                                                              presolve_info.direct_free_variables,
+                                                              *Qin,
+                                                              settings,
+                                                              std::move(device_A_),
+                                                              std::move(device_Q_));
     lp_status_t status = barrier_advanced_solve(start_time, solution, *owned_data);
     return store_or_clear_cache(cache, owned_data, status);
   } catch (const raft::cuda_error& e) {
