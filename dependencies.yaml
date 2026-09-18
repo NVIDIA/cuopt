@@ -165,6 +165,9 @@ files:
   py_rapids_build_libcuopt_client:
     output: pyproject
     pyproject_dir: python/libcuopt_client
+    matrix:
+      cuda_suffixed: ["false"]
+      use_cuda_wheels: ["true"]
     extras:
       table: tool.rapids-build-backend
       key: requires
@@ -175,6 +178,9 @@ files:
   py_run_libcuopt_client:
     output: pyproject
     pyproject_dir: python/libcuopt_client
+    matrix:
+      cuda_suffixed: ["false"]
+      use_cuda_wheels: ["true"]
     extras:
       table: project
     includes:
@@ -190,6 +196,9 @@ files:
   py_rapids_build_libcuopt_mathopt:
     output: pyproject
     pyproject_dir: python/libcuopt_mathopt
+    matrix:
+      cuda_suffixed: ["false"]
+      use_cuda_wheels: ["true"]
     extras:
       table: tool.rapids-build-backend
       key: requires
@@ -201,6 +210,9 @@ files:
   py_run_libcuopt_mathopt:
     output: pyproject
     pyproject_dir: python/libcuopt_mathopt
+    matrix:
+      cuda_suffixed: ["false"]
+      use_cuda_wheels: ["true"]
     extras:
       table: project
     includes:
@@ -219,6 +231,9 @@ files:
   py_rapids_build_libcuopt_routing:
     output: pyproject
     pyproject_dir: python/libcuopt_routing
+    matrix:
+      cuda_suffixed: ["false"]
+      use_cuda_wheels: ["true"]
     extras:
       table: tool.rapids-build-backend
       key: requires
@@ -230,6 +245,9 @@ files:
   py_run_libcuopt_routing:
     output: pyproject
     pyproject_dir: python/libcuopt_routing
+    matrix:
+      cuda_suffixed: ["false"]
+      use_cuda_wheels: ["true"]
     extras:
       table: project
     includes:
@@ -1040,9 +1058,11 @@ dependencies:
               use_cuda_wheels: "true"
             packages:
               - &ctk_routing_cu13 cuda-toolkit[cublas,cudart]==13.*
-          # if no matching matrix selectors passed, list the CUDA 13 requirement, which is
-          # what populates pyproject.toml in source control
+          # No cuda selector: this is what the pyproject file keys resolve against, and it
+          # is what populates pyproject.toml in source control. use_cuda_wheels is named
+          # explicitly so the entry still reads as a CUDA-wheel set.
           - matrix:
+              use_cuda_wheels: "true"
             packages:
               - *ctk_routing_cu13
   cuda_wheels:

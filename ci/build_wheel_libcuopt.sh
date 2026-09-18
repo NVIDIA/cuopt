@@ -103,6 +103,11 @@ EXCLUDE_ARGS=(
   --exclude "libnvJitLink.so*"
   --exclude "librapids_logger.so"
   --exclude "librmm.so"
+  # Provided by the sibling libcuopt-* wheels, so they must not be vendored here: doing so
+  # would ship several copies of each engine and defeat the split. RPATH resolves them.
+  --exclude "libcuopt_client.so"
+  --exclude "libcuopt_mathopt.so"
+  --exclude "libcuopt_routing.so"
   # OpenSSL 3 is intentionally NOT bundled. Resolving libssl.so.3 / libcrypto.so.3
   # at runtime via the host (or container image) keeps libcrypto and the FIPS
   # provider (system or mounted) byte-version-matched, which is required for
