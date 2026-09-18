@@ -92,6 +92,22 @@ void unscale_uncrush_barrier_to_user(const user_problem_t<i_t, f_t>& user_proble
   solution.iterations         = barrier_solution.iterations;
 }
 
+// Presolve and scaling offset the data by a constant the maps alone cannot recover, so record
+// what the barrier values are worth beyond crush(user values); updates re-add it.
+template <typename f_t>
+std::vector<double> shift_from(const std::vector<f_t>& barrier_values,
+                               const std::vector<double>& crushed)
+{
+  if (crushed.size() != barrier_values.size()) {
+    throw std::runtime_error("crushed length disagrees with the cached barrier LP");
+  }
+  std::vector<double> shift(barrier_values.size());
+  for (std::size_t k = 0; k < shift.size(); ++k) {
+    shift[k] = static_cast<double>(barrier_values[k]) - crushed[k];
+  }
+  return shift;
+}
+
 template <typename i_t, typename f_t>
 void write_matlab(const std::string& filename, const simplex::lp_problem_t<i_t, f_t>& lp)
 {
@@ -527,18 +543,6 @@ lp_status_t solve_linear_program_with_barrier(
   if (cache != nullptr) {
     if (barrier_status == lp_status_t::OPTIMAL) {
       auto* xf = cache->transform();
-      // Presolve and scaling offset the data by a constant the maps alone cannot recover, so
-      // record what the barrier values are worth beyond crush(user values); updates re-add it.
-      auto shift_from = [](auto const& barrier_values, std::vector<double> const& crushed) {
-        if (crushed.size() != barrier_values.size()) {
-          throw std::runtime_error("crushed length disagrees with the cached barrier LP");
-        }
-        std::vector<double> shift(barrier_values.size());
-        for (std::size_t k = 0; k < shift.size(); ++k) {
-          shift[k] = static_cast<double>(barrier_values[k]) - crushed[k];
-        }
-        return shift;
-      };
       // Crushing this solve's own data also checks the maps still describe it: presolve may
       // have dualized an LP, in which case the crush throws.
       try {

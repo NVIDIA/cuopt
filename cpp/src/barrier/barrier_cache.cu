@@ -22,11 +22,9 @@ using barrier_iteration_data_t = barrier::iteration_data_t<int, double>;
 using barrier_iteration_data_ptr =
   std::unique_ptr<barrier_iteration_data_t, void (*)(barrier_iteration_data_t*)>;
 
-namespace {
-
-void require_warm_cache(barrier_transform_t const* transform,
-                        barrier_iteration_data_t const* data,
-                        char const* api)
+static void require_warm_cache(barrier_transform_t const* transform,
+                               barrier_iteration_data_t const* data,
+                               char const* api)
 {
   cuopt_expects(transform != nullptr,
                 error_type_t::ValidationError,
@@ -39,15 +37,13 @@ void require_warm_cache(barrier_transform_t const* transform,
 }
 
 // Re-adds the first solve's barrier-minus-crush shift so the update lands in cached coordinates.
-void add_shift(std::vector<double>& crushed, std::vector<double> const& shift)
+static void add_shift(std::vector<double>& crushed, std::vector<double> const& shift)
 {
   if (shift.size() != crushed.size()) { return; }
   for (std::size_t i = 0; i < crushed.size(); ++i) {
     crushed[i] += shift[i];
   }
 }
-
-}  // namespace
 
 struct barrier_cache_t::impl {
   impl(std::unique_ptr<rmm::cuda_stream> stream_in, std::unique_ptr<raft::handle_t> handle_in)
@@ -134,7 +130,8 @@ bool barrier_cache_t::rhs_infeasible() const { return impl_->rhs_infeasible; }
 
 void barrier_cache_t::update_linear_objective(double const* c, int n)
 {
-  require_warm_cache(impl_->transform.get(), impl_->iteration_data.get(), "update_linear_objective");
+  require_warm_cache(
+    impl_->transform.get(), impl_->iteration_data.get(), "update_linear_objective");
   // Cached Q and c are in minimization space.
   std::vector<double> user_objective;
   if (impl_->transform->maximize && c != nullptr && n > 0) {
