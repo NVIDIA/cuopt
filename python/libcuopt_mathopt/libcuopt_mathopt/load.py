@@ -34,8 +34,15 @@ def _load_wheel_installation(soname: str):
     return None
 
 
-def load_library():
-    """Dynamically load libcuopt_mathopt.so and its dependencies."""
+def load_library() -> list:
+    """Dynamically load libcuopt_mathopt.so and its dependencies. It loads libcuopt_client first, which
+    this library has a DT_NEEDED on.
+
+    Returns a single-element list holding the ``ctypes.CDLL`` handle, or an
+    empty list when the library could not be loaded; callers rarely need the
+    handle itself. A missing library warns rather than raising, so that the
+    system loader still gets a chance to resolve it.
+    """
     try:
         # librmm and rapids_logger must be loaded before libcuopt_mathopt.so,
         # which references them.
