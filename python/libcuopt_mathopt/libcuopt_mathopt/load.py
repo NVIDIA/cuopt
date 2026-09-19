@@ -1,6 +1,7 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+# Loader for the cuOpt LP / MILP / QP / SOCP component.
 
 import ctypes
 import os
@@ -33,32 +34,41 @@ def _load_wheel_installation(soname: str):
     return None
 
 
-def load_library():
-    """Load every cuOpt component library.
+def load_library() -> list:
+    """Dynamically load libcuopt_mathopt.so and its dependencies. It loads libcuopt_client first, which
+    this library has a DT_NEEDED on.
 
-    The libraries themselves live in the per-component packages now, so this
-    delegates rather than dlopen()ing them directly. The client goes first:
-    mathopt and routing both carry a DT_NEEDED on it.
+    Returns a single-element list holding the ``ctypes.CDLL`` handle, or an
+    empty list when the library could not be loaded; callers rarely need the
+    handle itself. A missing library warns rather than raising, so that the
+    system loader still gets a chance to resolve it.
     """
-    loaded = []
-
-    import libcuopt_client
-
-    loaded.extend(libcuopt_client.load_library() or [])
-
-    # routing is optional -- a SKIP_ROUTING_BUILD install will not have it.
     try:
-        import libcuopt_routing
+        # librmm and rapids_logger must be loaded before libcuopt_mathopt.so,
+        # which references them.
+        import librmm
+        import rapids_logger
 
-        loaded.extend(libcuopt_routing.load_library() or [])
+        rapids_logger.load_library()
+        librmm.load_library()
     except ModuleNotFoundError:
         pass
 
-    import libcuopt_mathopt
+    # This component has a DT_NEEDED on the client, so the client package must
+    # be loaded first now that the two live in separate wheels.
+    import libcuopt_client
 
-    loaded.extend(libcuopt_mathopt.load_library() or [])
+    libcuopt_client.load_library()
 
-    return loaded
+    prefer_system_installation = (
+        os.getenv("RAPIDS_LIBCUOPT_PREFER_SYSTEM_LIBRARY", "false").lower()
+        != "false"
+    )
+
+    lib = _load_component(
+        "libcuopt_mathopt.so", prefer_system_installation, True
+    )
+    return [lib] if lib is not None else []
 
 
 def _load_component(

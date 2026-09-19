@@ -4,10 +4,14 @@
 
 set -euo pipefail
 
+# Same full C++ configure as every other cuOpt wheel; only the install components
+# staged into it differ, set by install.components in this package's pyproject.toml.
+# Kept in step with ci/build_wheel_libcuopt.sh -- regenerate all four together.
+
 source rapids-init-pip
 
-package_name="libcuopt"
-package_dir="python/libcuopt"
+package_name="libcuopt_mathopt"
+package_dir="python/libcuopt_mathopt"
 
 # Install rockylinux repo
 if command -v dnf &> /dev/null; then
@@ -118,12 +122,12 @@ EXCLUDE_ARGS=(
   --exclude "libcrypto.so.3"
 )
 
-ci/build_wheel.sh libcuopt ${package_dir}
+ci/build_wheel.sh ${package_name} ${package_dir}
 
 mkdir -p final_dist
 python -m auditwheel repair "${EXCLUDE_ARGS[@]}" -w "${RAPIDS_WHEEL_BLD_OUTPUT_DIR}" ${package_dir}/dist/*
 
 ci/validate_wheel.sh ${package_dir} "${RAPIDS_WHEEL_BLD_OUTPUT_DIR}"
 
-RAPIDS_PACKAGE_NAME="$(rapids-artifact-name wheel_cpp libcuopt cuopt --cuda "$RAPIDS_CUDA_VERSION")"
+RAPIDS_PACKAGE_NAME="$(rapids-artifact-name wheel_cpp libcuopt_mathopt cuopt --cuda "$RAPIDS_CUDA_VERSION")"
 export RAPIDS_PACKAGE_NAME
