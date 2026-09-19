@@ -1507,7 +1507,7 @@ f_t basis_update_mpf_t<i_t, f_t>::dot_product(i_t col,
       nz_mark++;
     }
   }
-  work_estimate_ += 2 * nz_mark + (col_end - col_start);
+  work_estimate_ += 2 * (col_end - col_start) + 2 * nz_mark;
   return dot;
 }
 
@@ -1524,7 +1524,7 @@ void basis_update_mpf_t<i_t, f_t>::add_sparse_column(const csc_matrix_t<i_t, f_t
     const i_t i = S.i[p];
     x[i] += theta * S.x[p];
   }
-  work_estimate_ += 3 * (col_end - col_start);
+  work_estimate_ += 4 * (col_end - col_start);
 }
 
 template <typename i_t, typename f_t>
@@ -1549,7 +1549,7 @@ void basis_update_mpf_t<i_t, f_t>::add_sparse_column(const csc_matrix_t<i_t, f_t
     }
     x[i] += theta * S.x[p];
   }
-  work_estimate_ += 4 * (col_end - col_start) + 2 * (nz - nz_start);
+  work_estimate_ += 5 * (col_end - col_start) + 2 * (nz - nz_start);
 }
 
 template <typename i_t, typename f_t>
@@ -2009,6 +2009,61 @@ i_t basis_update_mpf_t<i_t, f_t>::u_solve(sparse_vector_t<i_t, f_t>& rhs) const
 
   return 0;
 }
+
+// Compute y = U*x. In the MPF factorization, the rank-1 update factors are absorbed into L, so
+// U == U0 and U*x reduces to a sparse matvec against U0.
+template <typename i_t, typename f_t>
+void basis_update_mpf_t<i_t, f_t>::u_multiply(const std::vector<f_t>& x, std::vector<f_t>& y) const
+{
+  const i_t m = L0_.m;
+  y.assign(m, 0.0);
+  matrix_vector_multiply(U0_, f_t(1.0), x, f_t(0.0), y);
+  work_estimate_ += 2 * U0_.col_start[U0_.n];
+}
+
+// Sparse-in/sparse-out overload of u_multiply. Input and output must not alias.
+template <typename i_t, typename f_t>
+void basis_update_mpf_t<i_t, f_t>::u_multiply(const sparse_vector_t<i_t, f_t>& x,
+                                              sparse_vector_t<i_t, f_t>& y) const
+{
+  const i_t m = L0_.m;
+  i_t nz         = 0;
+  const i_t x_nz = x.i.size();
+  // The first half of xi_workspace_ holds marks, the second the touched rows.
+  for (i_t k = 0; k < x_nz; ++k) {
+    const i_t j   = x.i[k];
+    const f_t x_j = x.x[k];
+    if (x_j == 0) { continue; }
+    const i_t col_start = U0_.col_start[j];
+    const i_t col_end   = U0_.col_start[j + 1];
+    for (i_t p = col_start; p < col_end; ++p) {
+      const i_t i = U0_.i[p];
+      if (!xi_workspace_[i]) {
+        xi_workspace_[i]        = 1;
+        xi_workspace_[m + nz++] = i;
+      }
+      x_workspace_[i] += U0_.x[p] * x_j;
+    }
+    work_estimate_ += 2 * (col_end - col_start);
+  }
+  y.n = m;
+  y.i.clear();
+  y.x.clear();
+  y.i.reserve(nz);
+  y.x.reserve(nz);
+  for (i_t k = 0; k < nz; ++k) {
+    const i_t i = xi_workspace_[m + k];
+    if (x_workspace_[i] != 0) {
+      y.i.push_back(i);
+      y.x.push_back(x_workspace_[i]);
+    }
+    x_workspace_[i]      = 0.0;
+    xi_workspace_[i]     = 0;
+    xi_workspace_[m + k] = 0;
+  }
+  work_estimate_ += x_nz + 5 * nz + 3 * y.i.size();
+}
+
 // Solve for x such that L*x = y
 template <typename i_t, typename f_t>
 i_t basis_update_mpf_t<i_t, f_t>::l_solve(std::vector<f_t>& rhs) const
@@ -2202,7 +2257,7 @@ i_t basis_update_mpf_t<i_t, f_t>::update(const sparse_vector_t<i_t, f_t>& utilde
 
   // Ensure the workspace is sorted. Otherwise, the sparse dot will be incorrect.
   std::sort(xi_workspace_.begin() + m, xi_workspace_.begin() + m + nz, std::less<i_t>());
-  work_estimate_ += (m + nz) * std::log2(m + nz);
+  work_estimate_ += nz > 1 ? nz * std::log2(nz) : 0;
 
   // Gather the workspace into a column of S
   i_t S_start;
