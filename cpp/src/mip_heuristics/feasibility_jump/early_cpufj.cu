@@ -53,7 +53,8 @@ void early_cpufj_t<i_t, f_t>::start(bool low_latency)
   settings.seed = (int)seed_;
   climber_      = init_fj_cpu_from_optimization_problem(
     *this->problem_ptr_, tolerances_, preemption_flag_, settings);
-  climber_->low_latency          = low_latency;
+  climber_->low_latency = low_latency;
+  apply_lane_diversification<i_t, f_t>(*climber_, 0, seed_);
   climber_->log_prefix           = "[Early CPUFJ] ";
   climber_->improvement_callback = report_incumbent;
 

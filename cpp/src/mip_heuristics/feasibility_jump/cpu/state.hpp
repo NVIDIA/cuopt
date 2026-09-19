@@ -300,24 +300,24 @@ struct fj_lane_policy_t {
   i_t nnz_samples{50000};
   i_t perturb_interval{100};
   i_t perturb_vars{2};
-  bool use_lp_start{true};
+  bool use_lp_start{false};
   bool lp_start_feasibility_objective{false};
   bool use_deep_lp_pump{false};
   bool use_integer_bit_encoding{true};
-  bool use_lp_polish{true};
-  bool use_precedence_start{true};
+  bool use_lp_polish{false};
+  bool use_precedence_start{false};
   bool use_affine_equality_start{false};
   bool use_unit_commitment_start{false};
   bool use_fixed_charge_network_start{false};
   bool use_pmedian_start{false};
-  bool use_bound_prop{true};
+  bool use_bound_prop{false};
   bool low_latency{false};
   bool use_weight_donation{false};
   bool degree_balance_mtm{false};
   bool use_cardinality_exchange{false};
   bool use_directed_infeasible_kick{false};
   bool use_compound_repair{false};
-  bool use_equality_substitution{true};
+  bool use_equality_substitution{false};
   bool suppress_incumbent_log{false};
   bool use_multiplicative_weights{false};
   f_t saps_multiplier{(f_t)1.3};
@@ -511,5 +511,16 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_clone(
   const fj_cpu_climber_t<i_t, f_t>& tmpl,
   std::atomic<bool>& preemption_flag,
   fj_settings_t settings = fj_settings_t{});
+
+template <typename i_t, typename f_t>
+void apply_lane_diversification(fj_cpu_climber_t<i_t, f_t>& climber, int lane, int64_t base_seed);
+
+template <typename i_t, typename f_t>
+void complete_climber_portfolio(std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> first_climber,
+                                const std::vector<int64_t>& lane_seeds,
+                                std::vector<std::atomic<bool>>& preemption_flags,
+                                std::vector<std::unique_ptr<fj_cpu_climber_t<i_t, f_t>>>& climbers,
+                                int64_t base_seed,
+                                bool low_latency = false);
 
 }  // namespace cuopt::mathematical_optimization::mip

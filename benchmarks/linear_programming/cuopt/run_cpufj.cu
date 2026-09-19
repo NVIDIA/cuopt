@@ -501,18 +501,8 @@ int main(int argc, char** argv)
 
   std::vector<std::atomic<bool>> preemption_flags(n_climbers);
   std::vector<std::unique_ptr<mip::fj_cpu_climber_t<i_t, f_t>>> climbers(n_climbers);
-  for (int k = 0; k < n_climbers; ++k) {
-    preemption_flags[k].store(false);
-    mip::fj_settings_t settings;
-    settings.seed = (int)base_seed + k;
-    if (k == 0) {
-      climbers[k] =
-        mip::init_fj_cpu_standalone(problem, preemption_flags[k], settings.seed, settings);
-    } else {
-      climbers[k] = mip::init_fj_cpu_clone(*climbers[0], preemption_flags[k], settings);
-    }
-    climbers[k]->low_latency = low_latency;
-  }
+  mip::build_climber_portfolio<i_t, f_t>(
+    problem, preemption_flags, climbers, base_seed, low_latency);
   if (probing_presolve != nullptr) {
     for (int k = 0; k < n_climbers; ++k)
       const_cast<mip::fj_cpu_problem_t<i_t, f_t>*>(climbers[k]->problem.get())->probing_cache =

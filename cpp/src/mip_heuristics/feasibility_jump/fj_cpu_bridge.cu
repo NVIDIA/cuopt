@@ -180,6 +180,29 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_standalone(
 }
 
 template <typename i_t, typename f_t>
+void build_climber_portfolio(problem_t<i_t, f_t>& problem,
+                             std::vector<std::atomic<bool>>& preemption_flags,
+                             std::vector<std::unique_ptr<fj_cpu_climber_t<i_t, f_t>>>& climbers,
+                             int64_t base_seed,
+                             bool low_latency)
+{
+  cuopt_assert(!climbers.empty(), "a CPUFJ portfolio needs at least one climber");
+  cuopt_assert(preemption_flags.size() == climbers.size(), "preemption flag count mismatch");
+
+  std::vector<int64_t> lane_seeds(climbers.size());
+  for (size_t k = 0; k < climbers.size(); ++k) {
+    preemption_flags[k].store(false);
+    lane_seeds[k] = base_seed + k;
+  }
+
+  fj_settings_t settings;
+  settings.seed = lane_seeds[0];
+  auto first    = init_fj_cpu_standalone(problem, preemption_flags[0], lane_seeds[0], settings);
+  complete_climber_portfolio(
+    std::move(first), lane_seeds, preemption_flags, climbers, base_seed, low_latency);
+}
+
+template <typename i_t, typename f_t>
 std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_t<i_t, f_t>::create_cpu_climber(
   solution_t<i_t, f_t>& solution,
   const std::vector<f_t>& left_weights,
@@ -224,6 +247,12 @@ template std::unique_ptr<fj_cpu_climber_t<int, float>> init_fj_cpu_from_optimiza
   fj_settings_t);
 template std::unique_ptr<fj_cpu_climber_t<int, float>> init_fj_cpu_standalone(
   problem_t<int, float>&, std::atomic<bool>&, uint64_t, fj_settings_t);
+template void build_climber_portfolio<int, float>(
+  problem_t<int, float>&,
+  std::vector<std::atomic<bool>>&,
+  std::vector<std::unique_ptr<fj_cpu_climber_t<int, float>>>&,
+  int64_t,
+  bool);
 template std::unique_ptr<fj_cpu_climber_t<int, float>> fj_t<int, float>::create_cpu_climber(
   solution_t<int, float>&,
   const std::vector<float>&,
@@ -243,6 +272,12 @@ template std::unique_ptr<fj_cpu_climber_t<int, double>> init_fj_cpu_from_optimiz
   fj_settings_t);
 template std::unique_ptr<fj_cpu_climber_t<int, double>> init_fj_cpu_standalone(
   problem_t<int, double>&, std::atomic<bool>&, uint64_t, fj_settings_t);
+template void build_climber_portfolio<int, double>(
+  problem_t<int, double>&,
+  std::vector<std::atomic<bool>>&,
+  std::vector<std::unique_ptr<fj_cpu_climber_t<int, double>>>&,
+  int64_t,
+  bool);
 template std::unique_ptr<fj_cpu_climber_t<int, double>> fj_t<int, double>::create_cpu_climber(
   solution_t<int, double>&,
   const std::vector<double>&,
