@@ -285,6 +285,7 @@ class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t>
   std::string get_objective_name() const override;
   std::string get_problem_name() const override;
   problem_category_t get_problem_category() const override;
+  bool has_semi_continuous_variables() const noexcept;
   const std::vector<std::string>& get_variable_names() const override;
   const std::vector<std::string>& get_row_names() const override;
   const std::vector<i_t>& get_quadratic_objective_offsets() const override;
@@ -385,6 +386,7 @@ class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t>
   cuda::stream_ref stream_view_;
 
   problem_category_t problem_category_ = problem_category_t::LP;
+  bool has_semi_continuous_variables_{false};
   bool maximize_{false};
   i_t n_vars_{0};
   i_t n_constraints_{0};

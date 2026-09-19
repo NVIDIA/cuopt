@@ -39,10 +39,10 @@ __device__ bool print_filtered(i_t curr_node,
   if (blockIdx.x == 0 && threadIdx.x == 0) {
     printf("n_viable %d \n", n_viable);
     for (int i = 0; i < n_viable; ++i) {
-      auto info_1     = NodeInfo<i_t>(curr_node, curr_node, node_type_t::PICKUP);
-      auto info_2     = NodeInfo<i_t>((int)pickup_ids[i], (int)pickup_ids[i], node_type_t::PICKUP);
-      double distance = get_transit_time(info_1, info_2, vehicle_info, true);
-      printf("Distance from %d to %d is %f\n", curr_node, pickup_ids[i], distance);
+      auto info_1 = NodeInfo<i_t>(curr_node, curr_node, node_type_t::PICKUP);
+      auto info_2 = NodeInfo<i_t>((int)pickup_ids[i], (int)pickup_ids[i], node_type_t::PICKUP);
+      double transit_time = get_transit_time(info_1, info_2, vehicle_info, true);
+      printf("Transit time from %d to %d is %f\n", curr_node, pickup_ids[i], transit_time);
     }
     printf("\n\n\n");
   }
