@@ -3,11 +3,16 @@
 
 import os
 import sys
+from typing import NoReturn
 
 
-def main():
-    """
-    This connects to cli binary which situated under libcuopt/bin folder
+def main() -> NoReturn:
+    """Exec the cuopt_cli binary, forwarding this process's arguments to it.
+
+    Never returns: execv replaces the process image. Raises OSError if the
+    binary is missing or not executable.
+
+    This connects to cli binary which situated under libcuopt_mathopt/bin folder
 
     execv replaces this process rather than spawning a child, so signals sent
     to the console script's pid reach the solver directly instead of stopping
