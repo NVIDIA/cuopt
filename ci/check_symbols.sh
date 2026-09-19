@@ -152,7 +152,7 @@ if [[ "${REQUIRE_LEAF}" -eq 1 ]]; then
             | awk '$1 == "U" { print $2 }' \
             | sed 's/@.*//' \
             | c++filt \
-            | grep -E 'rmm::|raft::|^cuda[A-Z_]|^cu[A-Z]' || true
+            | grep -E 'rmm::|raft::|^__cuda|^cuda[A-Z_]|^cu[A-Z]' || true
     )"
     if [[ -n "${undefined}" ]]; then
         echo "ERROR: undefined GPU-stack symbols in ${LIBRARY}:"
@@ -162,7 +162,7 @@ if [[ "${REQUIRE_LEAF}" -eq 1 ]]; then
 
     needed="$(objdump -p "${LIBRARY}" | awk '/NEEDED/ { print $2 }')"
 
-    gpu_needed="$(grep -E '^(librmm|libraft|libcudart|libcuda|libcublas|libcusparse|libcudss|libnccl)' <<< "${needed}" || true)"
+    gpu_needed="$(grep -E '^(librmm|libraft|libcudart|libcuda|libcublas|libcusparse|libcudss|libnccl|libnvrtc|libnvJitLink)' <<< "${needed}" || true)"
     if [[ -n "${gpu_needed}" ]]; then
         echo "ERROR: ${LIBRARY} has a GPU-stack DT_NEEDED entry:"
         sed 's/^/    /' <<< "${gpu_needed}"
