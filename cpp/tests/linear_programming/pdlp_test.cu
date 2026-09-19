@@ -177,6 +177,53 @@ TEST(pdlp_class, concurrent_pdlp_exception_joins_worker_threads)
               testing::HasSubstr("all_primal_feasible only applies in batch mode"));
 }
 
+TEST(pdlp_class, concurrent_cpu_solvers_gate_on_reduced_problem_size_and_mip_threads)
+{
+  using cuopt::mathematical_optimization::pdlp::concurrent_barrier_required_thread_count;
+  using cuopt::mathematical_optimization::pdlp::should_enable_concurrent_barrier;
+  using cuopt::mathematical_optimization::pdlp::should_enable_concurrent_dual_simplex;
+  using cuopt::mathematical_optimization::pdlp::should_skip_concurrent_cpu_solvers;
+
+  constexpr int nnz_cutoff = 50'000'000;
+  EXPECT_FALSE(should_skip_concurrent_cpu_solvers(nnz_cutoff - 1, nnz_cutoff));
+  EXPECT_TRUE(should_skip_concurrent_cpu_solvers(nnz_cutoff, nnz_cutoff));
+  EXPECT_FALSE(should_skip_concurrent_cpu_solvers(nnz_cutoff, -1));
+
+  EXPECT_TRUE(should_enable_concurrent_barrier(nnz_cutoff - 1, nnz_cutoff, false, 1));
+  EXPECT_FALSE(should_enable_concurrent_barrier(nnz_cutoff, nnz_cutoff, false, 32));
+  EXPECT_TRUE(should_enable_concurrent_barrier(nnz_cutoff, -1, false, 32));
+  EXPECT_TRUE(should_enable_concurrent_barrier(
+    nnz_cutoff - 1, nnz_cutoff, true, concurrent_barrier_required_thread_count));
+  EXPECT_FALSE(should_enable_concurrent_barrier(
+    nnz_cutoff - 1, nnz_cutoff, true, concurrent_barrier_required_thread_count - 1));
+
+  EXPECT_TRUE(should_enable_concurrent_dual_simplex(nnz_cutoff - 1, nnz_cutoff, false));
+  EXPECT_FALSE(should_enable_concurrent_dual_simplex(nnz_cutoff, nnz_cutoff, false));
+  EXPECT_TRUE(should_enable_concurrent_dual_simplex(nnz_cutoff, -1, false));
+  EXPECT_FALSE(should_enable_concurrent_dual_simplex(nnz_cutoff - 1, nnz_cutoff, true));
+}
+
+TEST(pdlp_class, concurrent_cutoff_runs_pdlp_without_cpu_solvers)
+{
+  const raft::handle_t handle_{};
+
+  auto path = make_path_absolute("linear_programming/afiro_original.mps");
+  cuopt::mathematical_optimization::io::mps_data_model_t<int, double> op_problem =
+    cuopt::mathematical_optimization::io::read_mps<int, double>(path, true);
+
+  auto settings                  = pdlp_solver_settings_t<int, double>{};
+  settings.method                = cuopt::mathematical_optimization::method_t::Concurrent;
+  settings.presolver             = cuopt::mathematical_optimization::presolver_t::None;
+  settings.concurrent_nnz_cutoff = 0;
+
+  testing::internal::CaptureStdout();
+  optimization_problem_solution_t<int, double> solution = solve_lp(&handle_, op_problem, settings);
+  const auto logs                                       = testing::internal::GetCapturedStdout();
+
+  EXPECT_THAT(logs, testing::HasSubstr("Skipping concurrent Barrier and dual simplex"));
+  EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERMINATION_STATUS_OPTIMAL);
+}
+
 TEST(pdlp_class, concurrent_null_solver_ptrs_inside_mip)
 {
   const raft::handle_t handle_{};
@@ -191,7 +238,7 @@ TEST(pdlp_class, concurrent_null_solver_ptrs_inside_mip)
   settings.inside_mip = true;
 
   // inside_mip skips dual simplex. Setting threads to 1 ensures barrier is also disabled
-  // (< CUOPT_CONCURRENT_LP_BARRIER_REQUIRED_THREAD_COUNT), leaving both sol_dual_simplex_ptr
+  // (< concurrent_barrier_required_thread_count), leaving both sol_dual_simplex_ptr
   // and sol_barrier_ptr null.
   const int prev_threads = omp_get_max_threads();
   omp_set_num_threads(1);
