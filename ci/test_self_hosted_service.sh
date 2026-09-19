@@ -206,13 +206,13 @@ if [ "$doservertest" -eq 1 ]; then
 
     # Failure, larger problem, read from data dir, exception is still returned even though results dir is specified
     sed -i 's/cost_matrix_data/nothere/g' "$CUOPT_DATA_DIR/service_data_200r.json"
-    run_cli_test 'cuOpt Error: Unprocessable Entity - 422: unable to validate optimization data file' cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -f service_data_200r.json -o data.result
+    run_cli_test 'cuOpt Error: Unprocessable Content - 422: unable to validate optimization data file' cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -f service_data_200r.json -o data.result
 
     # Validation error
     run_cli_test 'cuOpt Error: Bad Request - 400: Cost matrix must be a square matrix' cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT ../../datasets/cuopt_service_data/cuopt_problem_data_broken.json
 
     # Valid json but bad format error
-    run_cli_test 'cuOpt Error: Unprocessable Entity - 422: unable to validate optimization data stream' cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT ../../datasets/cuopt_service_data/cuopt_bad_format2.json
+    run_cli_test 'cuOpt Error: Unprocessable Content - 422: unable to validate optimization data stream' cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT ../../datasets/cuopt_service_data/cuopt_bad_format2.json
 
     # Unhandled exception with an int value that is too big
     run_cli_test 'cuOpt unhandled exception, please include this message in any error report: Python int too large to convert to C long' cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT ../../datasets/cuopt_service_data/cuopt_unhandled_exception.json

@@ -193,9 +193,9 @@ class problem_t {
 
   // FIXME:: This is not scalable as we add more features. We should be able to use the method
   // that we use in kernels
-  double distance_between(const NodeInfo<>& node_1,
-                          const NodeInfo<>& node_2,
-                          const int& vehicle_id) const;
+  double cost_between(const NodeInfo<>& node_1,
+                      const NodeInfo<>& node_2,
+                      const int& vehicle_id) const;
 
   struct view_t {
     DI NodeInfo<> get_start_depot_node_info(const i_t vehicle_id) const
@@ -314,7 +314,7 @@ class problem_t {
   // we should not need to have copies here, instead we should implement
   // appropriate host functions in order_info_, fleet_info_ classes and call
   // them directly
-  std::map<i_t, std::vector<f_t>> distance_matrices_h;
+  std::map<i_t, std::vector<f_t>> cost_matrices_h;
   std::vector<i_t> pair_indices_h;
   std::vector<bool> is_pickup_h;
   std::vector<i_t> order_locations_h;

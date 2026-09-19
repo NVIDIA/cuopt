@@ -13,6 +13,7 @@
 #include <cuopt/mathematical_optimization/optimization_problem.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
 #include <cuopt/mathematical_optimization/solve.hpp>
+#include <cuopt/mathematical_optimization/solve_remote.hpp>
 #include <utilities/logger.hpp>
 #include <utilities/timer.hpp>
 
@@ -202,7 +203,32 @@ int run_single_file(const std::string& file_path,
   }
 
   try {
-    if (is_mip) {
+    if (cuopt::mathematical_optimization::is_remote_execution_enabled()) {
+      // Remote execution: problem_interface holds a cpu_optimization_problem_t.
+      // solve_lp/mip_remote live in cuopt_client, which this binary already links.
+      auto* cpu_prob =
+        dynamic_cast<cuopt::mathematical_optimization::cpu_optimization_problem_t<int, double>*>(
+          problem_interface.get());
+      if (cpu_prob == nullptr) {
+        CUOPT_LOG_ERROR("Remote execution requires the CPU memory backend.");
+        return -1;
+      }
+#ifdef CUOPT_ENABLE_GRPC
+      if (is_mip) {
+        auto& mip_settings = settings.get_mip_settings();
+        auto solution = cuopt::mathematical_optimization::solve_mip_remote(*cpu_prob, mip_settings);
+      } else {
+        auto& lp_settings = settings.get_pdlp_settings();
+        auto solution = cuopt::mathematical_optimization::solve_lp_remote(*cpu_prob, lp_settings);
+      }
+#else
+      // solve_remote.cpp only builds when gRPC is enabled, so these entry points do not
+      // exist in a SKIP_GRPC_BUILD tree. cuopt_cli is still built there (it is gated on
+      // BUILD_LP_ONLY, not on gRPC), so without this the link fails.
+      CUOPT_LOG_ERROR("Remote execution requires cuOpt built with gRPC support.");
+      return -1;
+#endif
+    } else if (is_mip) {
       auto& mip_settings = settings.get_mip_settings();
       auto solution =
         cuopt::mathematical_optimization::solve_mip(problem_interface.get(), mip_settings);

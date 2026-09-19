@@ -12,6 +12,7 @@
 #include <thrust/transform_reduce.h>
 #include <cuda/stream>
 #include <cuopt/error.hpp>
+#include <mip_heuristics/utils.hpp>
 #include <pdlp/utils.cuh>
 #include <raft/random/rng_device.cuh>
 #include <random>
@@ -19,6 +20,8 @@
 #include <utilities/hashing.hpp>
 
 #include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
+
+#include <cmath>
 
 #pragma once
 
@@ -113,7 +116,7 @@ HDI f_t round_nearest(f_t val, f_t lb, f_t ub, f_t int_tol, raft::random::PCGene
     f_t t = 2 * w * (1 - w);
     if (w > 0.5) { t = 1 - t; }
     f_t result = floor(val + t);
-    return max(int_lb, min(result, int_ub));
+    return raft::max(int_lb, raft::min(result, int_ub));
   }
 }
 
