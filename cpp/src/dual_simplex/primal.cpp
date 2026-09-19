@@ -855,8 +855,6 @@ primal_status_t primal_phase2_with_advanced_basis(
   std::vector<f_t>& y = sol.y;
   std::vector<f_t>& z = sol.z;
 
-  std::vector<f_t> incoming_x                     = x;
-  std::vector<variable_status_t> incoming_vstatus = vstatus;
   work_estimate += 2.0 * n;
   settings.log.printf("Primal Simplex\n");
   settings.log.printf("Pricing: %s\n", settings.primal_pricing == 1 ? "Devex" : "Dantzig");
@@ -864,32 +862,8 @@ primal_status_t primal_phase2_with_advanced_basis(
   // Setting them after the solve leaves ||A*x - b|| large whenever x_N != 0.
   set_primal_variables_on_bounds(lp, settings, vstatus, x, work_estimate);
 
-  std::vector<f_t> rhs = lp.rhs;
   work_estimate += m;
-  // rhs = b - sum_{j : x_j = l_j} A(:, j) l(j) - sum_{j : x_j = u_j} A(:, j) *
-  // u(j)
-  for (i_t k = 0; k < n - m; ++k) {
-    const i_t j         = nonbasic_list[k];
-    const i_t col_start = lp.A.col_start[j];
-    const i_t col_end   = lp.A.col_start[j + 1];
-    const f_t xj        = x[j];
-    for (i_t p = col_start; p < col_end; ++p) {
-      rhs[lp.A.i[p]] -= xj * lp.A.x[p];
-    }
-    work_estimate += 3.0 * (col_end - col_start);
-  }
-  work_estimate += 4 * (n - m);
-
-  std::vector<f_t> xB(m);
-  work_estimate += m;
-
-  basis_update.b_solve(rhs, xB);
-
-  for (i_t k = 0; k < m; ++k) {
-    const i_t j = basic_list[k];
-    x[j]        = xB[k];
-  }
-  work_estimate += 3 * m;
+  compute_basic_primal_variables(lp, basis_update, basic_list, nonbasic_list, x, work_estimate);
 
   constexpr bool print_norms = false;
   if constexpr (print_norms) { settings.log.printf("|| x || %e\n", vector_norm2<i_t, f_t>(x)); }

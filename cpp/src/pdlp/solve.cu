@@ -504,6 +504,9 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   barrier_settings.time_limit                 = settings.time_limit;
   barrier_settings.iteration_limit            = settings.iteration_limit;
   barrier_settings.concurrent_halt            = settings.concurrent_halt;
+  barrier_settings.initial_perturbation       = settings.initial_perturbation;
+  barrier_settings.remove_perturbation        = settings.remove_perturbation;
+  barrier_settings.primal_pricing             = settings.primal_pricing;
   barrier_settings.folding                    = settings.folding;
   barrier_settings.augmented                  = settings.augmented;
   barrier_settings.dualize                    = settings.dualize;
@@ -914,9 +917,12 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(mip::problem_t<i_t, f_t>& pro
       simplex::lp_solution_t<i_t, f_t> initial_solution(1, 1);
       translate_to_crossover_problem(problem, sol, lp, initial_solution);
       simplex::simplex_solver_settings_t<i_t, f_t> dual_simplex_settings;
-      dual_simplex_settings.time_limit      = settings.time_limit;
-      dual_simplex_settings.iteration_limit = settings.iteration_limit;
-      dual_simplex_settings.concurrent_halt = settings.concurrent_halt;
+      dual_simplex_settings.time_limit           = settings.time_limit;
+      dual_simplex_settings.iteration_limit      = settings.iteration_limit;
+      dual_simplex_settings.concurrent_halt      = settings.concurrent_halt;
+      dual_simplex_settings.initial_perturbation = settings.initial_perturbation;
+      dual_simplex_settings.remove_perturbation  = settings.remove_perturbation;
+      dual_simplex_settings.primal_pricing       = settings.primal_pricing;
       simplex::lp_solution_t<i_t, f_t> vertex_solution(lp.num_rows, lp.num_cols);
       std::vector<simplex::variable_status_t> vstatus(lp.num_cols);
       simplex::crossover_status_t crossover_status = simplex::crossover(lp,

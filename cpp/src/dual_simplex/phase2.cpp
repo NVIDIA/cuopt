@@ -2715,19 +2715,14 @@ void prepare_optimality(i_t info,
                         const simplex_solver_settings_t<i_t, f_t>& settings,
                         basis_update_mpf_t<i_t, f_t>& ft,
                         const std::vector<f_t>& objective,
-                        // Primal cleanup below pivots, so the basis, the statuses
-                        // and the iteration count are updated in place.
-                        std::vector<i_t>& basic_list,
-                        std::vector<i_t>& nonbasic_list,
-                        std::vector<variable_status_t>& vstatus,
+                        const std::vector<variable_status_t>& vstatus,
                         int phase,
                         f_t start_time,
-                        f_t max_val,
-                        f_t& work_estimate,
-                        i_t& iter,
-                        const std::vector<f_t>& x,
-                        std::vector<f_t>& y,
-                        std::vector<f_t>& z,
+                        f_t work_estimate,
+                        i_t iter,
+                        const std::vector<f_t> x,
+                        const std::vector<f_t> y,
+                        const std::vector<f_t> z,
                         lp_solution_t<i_t, f_t>& sol)
 {
   const i_t m = lp.num_rows;
@@ -3590,12 +3585,9 @@ static dual_status_t dual_phase2_with_advanced_basis(
                                    settings,
                                    ft,
                                    objective,
-                                   basic_list,
-                                   nonbasic_list,
                                    vstatus,
                                    phase,
                                    start_time,
-                                   max_val,
                                    phase2_work_estimate,
                                    iter,
                                    x,
@@ -3750,7 +3742,7 @@ static dual_status_t dual_phase2_with_advanced_basis(
         timers.bfrt_time += timers.stop_timer(phase2_work_estimate + ft.work_estimate());
         // BFRT diagnostics
         timers.bfrt_calls++;
-        if (step_length == 0.0) { timers.bfrt_zero_steps++; }
+        if (entering_index >= 0 && step_length == 0.0) { timers.bfrt_zero_steps++; }
       } else {
         entering_index = phase2::phase2_ratio_test(
           lp, settings, vstatus, nonbasic_list, z, delta_z, step_length, nonbasic_entering_index);
