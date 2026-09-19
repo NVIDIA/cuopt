@@ -64,8 +64,7 @@ void finalize_fj_cpu_host_initialization(
   const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances);
 
 template <typename i_t, typename f_t, typename ArrayType>
-thrust::tuple<f_t, f_t> get_mtm_for_bound(const typename fj_t<i_t, f_t>::climber_data_t::view_t& fj,
-                                          i_t var_idx,
+thrust::tuple<f_t, f_t> get_mtm_for_bound(i_t var_idx,
                                           i_t cstr_idx,
                                           f_t cstr_coeff,
                                           f_t bound,
@@ -386,7 +385,7 @@ static void log_regression_features(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
   i_t n_cstrs   = fj_cpu.h_offsets.size() - 1;
 
   // Dynamic runtime features
-  double violated_ratio = (double)fj_cpu.violated_constraints.size() / n_cstrs;
+  [[maybe_unused]] double violated_ratio = (double)fj_cpu.violated_constraints.size() / n_cstrs;
 
   // Compute per-iteration metrics
   [[maybe_unused]] double nnz_per_move = 0.0;
@@ -394,44 +393,45 @@ static void log_regression_features(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
     fj_cpu.n_lift_moves_window + fj_cpu.n_mtm_viol_moves_window + fj_cpu.n_mtm_sat_moves_window;
   if (total_moves > 0) { nnz_per_move = (double)fj_cpu.nnz_processed_window / total_moves; }
 
-  double eval_intensity = (double)fj_cpu.nnz_processed_window / 1000.0;
+  [[maybe_unused]] double eval_intensity = (double)fj_cpu.nnz_processed_window / 1000.0;
 
   // Cache and locality metrics
   i_t cache_hits_window    = fj_cpu.hit_count - fj_cpu.hit_count_window_start;
   i_t cache_misses_window  = fj_cpu.miss_count - fj_cpu.miss_count_window_start;
   i_t total_cache_accesses = cache_hits_window + cache_misses_window;
-  double cache_hit_rate =
+  [[maybe_unused]] double cache_hit_rate =
     total_cache_accesses > 0 ? (double)cache_hits_window / total_cache_accesses : 0.0;
 
   i_t unique_cstrs = fj_cpu.unique_cstrs_accessed_window.size();
   i_t unique_vars  = fj_cpu.unique_vars_accessed_window.size();
 
   // Reuse ratios: how many times each constraint/variable was accessed on average
-  double cstr_reuse_ratio =
+  [[maybe_unused]] double cstr_reuse_ratio =
     unique_cstrs > 0 ? (double)fj_cpu.nnz_processed_window / unique_cstrs : 0.0;
-  double var_reuse_ratio =
+  [[maybe_unused]] double var_reuse_ratio =
     unique_vars > 0 ? (double)fj_cpu.n_variable_updates_window / unique_vars : 0.0;
 
   // Working set size estimation (KB)
   // Each constraint: lhs (f_t) + 2 bounds (f_t) + sumcomp (f_t) = 4 * sizeof(f_t)
   // Each variable: assignment (f_t) = 1 * sizeof(f_t)
   i_t working_set_bytes = unique_cstrs * 4 * sizeof(f_t) + unique_vars * sizeof(f_t);
-  double working_set_kb = working_set_bytes / 1024.0;
+  [[maybe_unused]] double working_set_kb = working_set_bytes / 1024.0;
 
   // Coverage: what fraction of problem is actively touched
-  double cstr_coverage = (double)unique_cstrs / n_cstrs;
-  double var_coverage  = (double)unique_vars / n_vars;
+  [[maybe_unused]] double cstr_coverage = (double)unique_cstrs / n_cstrs;
+  [[maybe_unused]] double var_coverage  = (double)unique_vars / n_vars;
 
-  double loads_per_iter  = 0.0;
-  double stores_per_iter = 0.0;
-  double l1_miss         = -1.0;
-  double l3_miss         = -1.0;
+  [[maybe_unused]] double loads_per_iter  = 0.0;
+  [[maybe_unused]] double stores_per_iter = 0.0;
+  [[maybe_unused]] double l1_miss         = -1.0;
+  [[maybe_unused]] double l3_miss         = -1.0;
 
   // Compute memory statistics
-  double mem_loads_mb             = mem_loads_bytes / 1e6;
-  double mem_stores_mb            = mem_stores_bytes / 1e6;
-  double mem_total_mb             = (mem_loads_bytes + mem_stores_bytes) / 1e6;
-  double mem_bandwidth_gb_per_sec = (mem_total_mb / 1000.0) / (time_window_ms / 1000.0);
+  [[maybe_unused]] double mem_loads_mb  = mem_loads_bytes / 1e6;
+  [[maybe_unused]] double mem_stores_mb = mem_stores_bytes / 1e6;
+  double mem_total_mb                   = (mem_loads_bytes + mem_stores_bytes) / 1e6;
+  [[maybe_unused]] double mem_bandwidth_gb_per_sec =
+    (mem_total_mb / 1000.0) / (time_window_ms / 1000.0);
 
   // Build per-wrapper memory statistics string
   std::stringstream wrapper_stats;
@@ -989,10 +989,7 @@ static void update_weights(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 }
 
 template <typename i_t, typename f_t>
-static void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
-                       i_t var_idx,
-                       f_t delta,
-                       bool localmin = false)
+static void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu, i_t var_idx, f_t delta)
 {
   timing_raii_t<i_t, f_t> timer(fj_cpu.apply_move_times);
   CPUFJ_NVTX_RANGE("CPUFJ::apply_move");
@@ -1402,14 +1399,8 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_lift_move(
         // Process each bound separately, as both are satified and may both be finite
         // otherwise range constraints aren't correctly handled
         for (auto [bound, sign] : {std::make_tuple(c_lb, -1), std::make_tuple(c_ub, 1)}) {
-          auto [delta, slack] = get_mtm_for_bound<i_t, f_t>(fj_cpu.view,
-                                                            var_idx,
-                                                            cstr_idx,
-                                                            cstr_coeff,
-                                                            bound,
-                                                            sign,
-                                                            fj_cpu.h_assignment,
-                                                            fj_cpu.h_lhs);
+          auto [delta, slack] = get_mtm_for_bound<i_t, f_t>(
+            var_idx, cstr_idx, cstr_coeff, bound, sign, fj_cpu.h_assignment, fj_cpu.h_lhs);
 
           if (cstr_coeff * sign < 0) {
             if (is_integer_var<i_t, f_t>(fj_cpu, var_idx)) delta = ceil(delta);
@@ -1653,7 +1644,7 @@ void finalize_fj_cpu_host_initialization(
   i_t nnz,
   const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances)
 {
-  raft::common::nvtx::range scope("finalize_fj_cpu_host_initialization");
+  [[maybe_unused]] raft::common::nvtx::range scope("finalize_fj_cpu_host_initialization");
 
   cuopt_assert(n_variables >= 0, "invalid variable count");
   cuopt_assert(n_constraints >= 0, "invalid constraint count");
@@ -1884,8 +1875,8 @@ static void sanity_checks(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 
   // Check that each constraint is in exactly one of violated_constraints or satisfied_constraints
   for (i_t cstr_idx = 0; cstr_idx < fj_cpu.view.pb.n_constraints; ++cstr_idx) {
-    bool in_viol = fj_cpu.violated_constraints.count(cstr_idx) > 0;
-    bool in_sat  = fj_cpu.satisfied_constraints.count(cstr_idx) > 0;
+    [[maybe_unused]] bool in_viol = fj_cpu.violated_constraints.count(cstr_idx) > 0;
+    [[maybe_unused]] bool in_sat  = fj_cpu.satisfied_constraints.count(cstr_idx) > 0;
     cuopt_assert(
       in_viol != in_sat,
       "Constraint must be in exactly one of violated_constraints or satisfied_constraints");
@@ -1907,7 +1898,7 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_t<i_t, f_t>::create_cpu_climber(
   fj_settings_t settings,
   bool randomize_params)
 {
-  raft::common::nvtx::range scope("fj_cpu_init");
+  [[maybe_unused]] raft::common::nvtx::range scope("fj_cpu_init");
 
   auto fj_cpu = std::make_unique<fj_cpu_climber_t<i_t, f_t>>(preemption_flag);
 
@@ -2007,7 +1998,7 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
     }
 
     if (score > fj_staged_score_t::zero() && !should_perturb) {
-      apply_move(*fj_cpu, move.var_idx, move.value, false);
+      apply_move(*fj_cpu, move.var_idx, move.value);
       // Track move types
       if (is_lift) fj_cpu->n_lift_moves_window++;
       if (is_mtm_viol) fj_cpu->n_mtm_viol_moves_window++;
@@ -2024,15 +2015,15 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
       two_opt_move_t two_opt_move;
       if (!should_perturb) two_opt_move = find_two_opt_move(*fj_cpu);
       if (two_opt_move.score > fj_staged_score_t::zero()) {
-        apply_move(*fj_cpu, two_opt_move.first.var_idx, two_opt_move.first.value, true);
-        apply_move(*fj_cpu, two_opt_move.second.var_idx, two_opt_move.second.value, true);
+        apply_move(*fj_cpu, two_opt_move.first.var_idx, two_opt_move.first.value);
+        apply_move(*fj_cpu, two_opt_move.second.var_idx, two_opt_move.second.value);
         fj_cpu->n_mtm_viol_moves_window += 2;
       } else {
         thrust::tie(move, score) =
           find_mtm_move_viol(*fj_cpu, 1, true);  // pick a single random violated constraint
         i_t var_idx = move.var_idx >= 0 ? move.var_idx : 0;
         f_t delta   = move.var_idx >= 0 ? move.value : 0;
-        apply_move(*fj_cpu, var_idx, delta, true);
+        apply_move(*fj_cpu, var_idx, delta);
       }
       ++local_mins;
       ++fj_cpu->n_local_minima_window;
@@ -2098,7 +2089,8 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
   auto loop_end = std::chrono::high_resolution_clock::now();
   double total_time =
     std::chrono::duration_cast<std::chrono::duration<double>>(loop_end - loop_start).count();
-  double avg_time_per_iter = fj_cpu->iterations > 0 ? total_time / fj_cpu->iterations : 0;
+  [[maybe_unused]] double avg_time_per_iter =
+    fj_cpu->iterations > 0 ? total_time / fj_cpu->iterations : 0;
   CUOPT_LOG_TRACE("%sCPUFJ Average time per iteration: %.8fms",
                   fj_cpu->log_prefix.c_str(),
                   avg_time_per_iter * 1000.0);
@@ -2118,7 +2110,7 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_standalone(
   uint64_t seed,
   fj_settings_t settings)
 {
-  raft::common::nvtx::range scope("init_fj_cpu_standalone");
+  [[maybe_unused]] raft::common::nvtx::range scope("init_fj_cpu_standalone");
 
   auto fj_cpu = std::make_unique<fj_cpu_climber_t<i_t, f_t>>(preemption_flag);
 
@@ -2162,7 +2154,7 @@ void fj_cpu_worker_t<i_t, f_t>::run_async(f_t time_limit, double work_unit_limit
 {
   if (!is_initialized) return;
 
-  auto& fj_ptr = fj_cpu;
+  [[maybe_unused]] auto& fj_ptr = fj_cpu;
 #pragma omp task shared(fj_cpu, is_initialized, fj_ptr) firstprivate(time_limit, work_unit_limit) \
   priority(CUOPT_DEFAULT_TASK_PRIORITY) default(none) depend(out : fj_ptr)
   {
@@ -2186,7 +2178,7 @@ void fj_cpu_worker_t<i_t, f_t>::stop()
 
   preemption_flag = true;
 
-  auto& fj_ptr = fj_cpu;
+  [[maybe_unused]] auto& fj_ptr = fj_cpu;
 #pragma omp taskwait depend(in : fj_ptr)
   is_initialized = false;
   fj_cpu.reset();

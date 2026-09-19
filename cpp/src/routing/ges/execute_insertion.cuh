@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -35,7 +35,6 @@ DI void execute_insert(typename solution_t<i_t, f_t, REQUEST>::view_t& view,
                        request_id_t<REQUEST> const& request_location,
                        const request_info_t<i_t, REQUEST>* request_id)
 {
-  const auto& dimensions_info = view.problem.dimensions_info;
   cuopt_assert(__popc(__activemask() == 1), "execute_insert should be called by a single thread");
   auto request_node = view.get_request(request_id);
 

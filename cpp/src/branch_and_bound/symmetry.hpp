@@ -338,7 +338,7 @@ class orbital_fixing_t {
   // Returns the number of free variables in conflicting orbits (orbits with
   // both zero and one sources).
   i_t orbital_fixing(mip_symmetry_t<i_t, f_t>* symmetry,
-                     const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+                     [[maybe_unused]] const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
                      mip_node_t<i_t, f_t>* node_ptr,
                      simplex::lp_problem_t<i_t, f_t>& problem,
                      const std::vector<f_t>& start_lower,
@@ -1002,7 +1002,7 @@ std::unique_ptr<mip_symmetry_t<i_t, f_t>> detect_symmetry(
                                 &result,
                                 &projected_count,
                                 &skipped_non_binary,
-                                &max_generators](int n, const int* p, int nsupp, const int* supp) {
+                                &max_generators](int, const int* p, int nsupp, const int* supp) {
     // Check if any support element is an original variable
     bool moves_variable = false;
     for (int s = 0; s < nsupp; s++) {

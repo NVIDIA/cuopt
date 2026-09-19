@@ -96,7 +96,7 @@ static void build_transpose(fj_bin_problem_t<coef_t>& pb)
 template <typename i_t, typename f_t>
 fj_bin_scan_t fj_bin_scan(const fj_cpu_climber_t<i_t, f_t>& c, fj_bin_setup_times_t& times)
 {
-  phase_timer_t timer(times.scan);
+  [[maybe_unused]] phase_timer_t timer(times.scan);
   fj_bin_scan_t out;
   const int32_t n_cols = c.problem->n_variables;
   const int32_t n_rows = c.problem->n_constraints;
@@ -122,12 +122,10 @@ fj_bin_scan_t fj_bin_scan(const fj_cpu_climber_t<i_t, f_t>& c, fj_bin_setup_time
     }
   }
 
-  const auto& offsets             = c.problem->offsets;
-  const auto& reverse_offsets     = c.problem->reverse_offsets;
-  const auto& reverse_constraints = c.problem->reverse_constraints;
-  const auto& coeffs              = c.problem->coefficients;
-  const auto& cstr_lb             = c.problem->cstr_lb;
-  const auto& cstr_ub             = c.problem->cstr_ub;
+  const auto& offsets = c.problem->offsets;
+  const auto& coeffs  = c.problem->coefficients;
+  const auto& cstr_lb = c.problem->cstr_lb;
+  const auto& cstr_ub = c.problem->cstr_ub;
 
   double max_abs_coefficient = 0;
   std::vector<double> row_values;
@@ -382,7 +380,7 @@ bool fj_bin_encode(const fj_cpu_climber_t<i_t, f_t>& c,
                    int& coefficient_bits,
                    fj_bin_setup_times_t& times)
 {
-  phase_timer_t timer(times.encode);
+  [[maybe_unused]] phase_timer_t timer(times.encode);
   const int32_t n_cols = c.problem->n_variables;
   const int32_t n_rows = c.problem->n_constraints;
   if (n_cols <= 0 || n_rows <= 0) return false;

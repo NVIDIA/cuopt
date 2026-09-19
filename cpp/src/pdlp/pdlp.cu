@@ -523,8 +523,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
                                           h_A_t_values,
                                           settings.num_gpus,
                                           n_cstr,
-                                          n_vars,
-                                          nnz);
+                                          n_vars);
 
   // ----- 5. Per-shard settings -----
   pdlp_solver_settings_t<i_t, f_t> sub_pdlp_settings = settings;
@@ -1008,7 +1007,7 @@ template <typename i_t, typename f_t>
 std::optional<optimization_problem_solution_t<i_t, f_t>>
 pdlp_solver_t<i_t, f_t>::check_batch_termination(const timer_t& timer)
 {
-  raft::common::nvtx::range fun_scope("check_batch_termination");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("check_batch_termination");
 
   // Forced to do it in two lines because of macro template interaction
   [[maybe_unused]] const bool is_cupdlpx = is_cupdlpx_restart<i_t, f_t>(settings_.hyper_params);
@@ -1055,7 +1054,7 @@ pdlp_solver_t<i_t, f_t>::check_batch_termination(const timer_t& timer)
   // climbers return their latest state
   if (settings_.first_primal_feasible &&
       current_termination_strategy_.any_primal_feasible_or_optimal()) {
-    raft::common::nvtx::range fpf_scope("first_primal_feasible_batch_snapshot");
+    [[maybe_unused]] raft::common::nvtx::range fpf_scope("first_primal_feasible_batch_snapshot");
     for (size_t i = 0; i < current_termination_strategy_.get_terminations_status().size(); ++i) {
       snapshot_climber_into_return(i);
     }
@@ -1097,13 +1096,13 @@ pdlp_solver_t<i_t, f_t>::check_batch_termination(const timer_t& timer)
       std::move(current_termination_strategy_.get_terminations_status()));
   } else if (enable_batch_resizing)  // Some might be optimal, let's remove them from the batch
   {
-    raft::common::nvtx::range fun_scope("remove_done_climbers");
+    [[maybe_unused]] raft::common::nvtx::range fun_scope("remove_done_climbers");
     std::unordered_set<i_t> to_remove;
     for (size_t i = 0; i < current_termination_strategy_.get_terminations_status().size(); ++i) {
       // Found one that is done
       if (current_termination_strategy_.is_done(
             current_termination_strategy_.get_termination_status(i), accept_primal_feasible)) {
-        raft::common::nvtx::range fun_scope("remove_done_climber");
+        [[maybe_unused]] raft::common::nvtx::range fun_scope("remove_done_climber");
 #ifdef BATCH_VERBOSE_MODE
         const bool externally_solved = (current_termination_strategy_.get_termination_status(i) ==
                                         pdlp_termination_status_t::ConcurrentLimit);
@@ -1131,7 +1130,7 @@ template <typename i_t, typename f_t>
 std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>::check_termination(
   const timer_t& timer)
 {
-  raft::common::nvtx::range fun_scope("Check termination");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("Check termination");
 
   // Still need to always compute the termination condition for current even if we don't check them
   // after for kkt restart
@@ -1862,7 +1861,7 @@ void pdlp_solver_t<i_t, f_t>::swap_all_context(
 {
   if (swap_pairs.empty()) { return; }
 
-  raft::common::nvtx::range fun_scope("swap_all_context");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("swap_all_context");
 
   pdhg_solver_.swap_context(swap_pairs);
   restart_strategy_.swap_context(swap_pairs);
@@ -1881,7 +1880,7 @@ void pdlp_solver_t<i_t, f_t>::swap_all_context(
 template <typename i_t, typename f_t>
 void pdlp_solver_t<i_t, f_t>::resize_all_context(i_t new_size)
 {
-  raft::common::nvtx::range fun_scope("resize_all_context");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("resize_all_context");
 
   // Resize PDHG and its saddle point
   pdhg_solver_.resize_context(new_size);
@@ -1901,7 +1900,7 @@ template <typename i_t, typename f_t>
 void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
   const std::unordered_set<i_t>& climber_strategies_to_remove)
 {
-  raft::common::nvtx::range fun_scope("resize_and_swap_all_context_loop");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("resize_and_swap_all_context_loop");
 
   cuopt_assert(climber_strategies_to_remove.size() != climber_strategies_.size(),
                "We should never remove all climbers");
@@ -2207,7 +2206,7 @@ static void compute_primal_dual_deltas(pdhg_solver_t<i_t, f_t>& pdhg, cuda::stre
 template <typename i_t, typename f_t>
 void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarted)
 {
-  raft::common::nvtx::range fun_scope("compute_fixed_error");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_fixed_error");
 
 #ifdef CUPDLP_DEBUG_MODE
   printf("Computing compute_fixed_point_error \n");
@@ -3176,7 +3175,7 @@ void pdlp_solver_t<i_t, f_t>::take_constant_step(bool is_major_iteration)
 template <typename i_t, typename f_t>
 void pdlp_solver_t<i_t, f_t>::halpern_update()
 {
-  raft::common::nvtx::range fun_scope("halpern_update");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("halpern_update");
 
   if (is_distributed_master()) {
     multi_gpu_engine->for_each_shard([&](auto& shard) { shard.sub_pdlp->halpern_update(); });
@@ -3262,9 +3261,9 @@ template <typename i_t, typename f_t>
 void pdlp_solver_t<i_t, f_t>::scale_problem()
 {
   // Scale problem then free scratch buffers
-  raft::common::nvtx::range fun_scope("pdlp_solver_t::scale_problem");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("pdlp_solver_t::scale_problem");
   if (is_distributed_master()) {
-    multi_gpu_engine->distributed_scaling(settings_.hyper_params, primal_size_h_, inside_mip_);
+    multi_gpu_engine->distributed_scaling(settings_.hyper_params, primal_size_h_);
 
     // Free per-shard scratch: no further scaling passes happen after this point.
     multi_gpu_engine->for_each_shard([](auto& shard) {
@@ -3284,7 +3283,7 @@ void pdlp_solver_t<i_t, f_t>::scale_problem()
 template <typename i_t, typename f_t>
 void pdlp_solver_t<i_t, f_t>::create_spmv_op_plans()
 {
-  raft::common::nvtx::range fun_scope("pdlp_solver_t::create_spmv_op_plans");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("pdlp_solver_t::create_spmv_op_plans");
   if (is_distributed_master()) {
     // Distributed path: fan out the same per-shard cusparse_view call the
     // single-GPU path would make.
@@ -3307,7 +3306,7 @@ void pdlp_solver_t<i_t, f_t>::create_spmv_op_plans()
 template <typename i_t, typename f_t>
 void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
 {
-  raft::common::nvtx::range fun_scope("compute_initial_step_size");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_initial_step_size");
 
   // Shared knobs for the power-iteration path (both single-GPU and
   // distributed)
@@ -3497,7 +3496,7 @@ __global__ void compute_weights_initial_primal_weight_from_squared_norms(
 template <typename i_t, typename f_t>
 void pdlp_solver_t<i_t, f_t>::compute_initial_primal_weight()
 {
-  raft::common::nvtx::range fun_scope("compute_initial_primal_weight");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_initial_primal_weight");
 
   if (is_distributed_master()) {
     // Distributed dispatch:

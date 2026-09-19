@@ -41,7 +41,7 @@ class cost_route_t {
       excess_backward(0, sol_handle_->get_stream()),
       distance_break_cost_forward(0, sol_handle_->get_stream())
   {
-    raft::common::nvtx::range fun_scope("zero cost_route_t copy_ctr");
+    [[maybe_unused]] raft::common::nvtx::range fun_scope("zero cost_route_t copy_ctr");
   }
 
   cost_route_t(const cost_route_t& cost_route, solution_handle_t<i_t, f_t> const* sol_handle_)
@@ -59,7 +59,7 @@ class cost_route_t {
       excess_backward(cost_route.excess_backward, sol_handle_->get_stream()),
       distance_break_cost_forward(cost_route.distance_break_cost_forward, sol_handle_->get_stream())
   {
-    raft::common::nvtx::range fun_scope("cost route copy_ctr");
+    [[maybe_unused]] raft::common::nvtx::range fun_scope("cost route copy_ctr");
   }
 
   cost_route_t& operator=(cost_route_t&& cost_route) = default;

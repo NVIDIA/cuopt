@@ -74,7 +74,7 @@ void find_vertices_to_refine(const std::unordered_set<i_t>& refining_color_verti
 }
 
 template <typename i_t, typename f_t>
-void compute_sums_of_refined_vertices(i_t refining_color,
+void compute_sums_of_refined_vertices([[maybe_unused]] i_t refining_color,
                                       const std::unordered_set<i_t>& refining_color_vertices,
                                       const std::vector<i_t>& vertices_to_refine,
                                       const std::vector<i_t>& offsets,
@@ -108,7 +108,7 @@ void compute_sums(const csc_matrix_t<i_t, f_t>& A,
                   const csr_matrix_t<i_t, f_t>& Arow,
                   i_t num_row_colors,
                   i_t num_col_colors,
-                  i_t total_colors_seen,
+                  [[maybe_unused]] i_t total_colors_seen,
                   const std::vector<i_t>& row_color_map,
                   const std::vector<i_t>& col_color_map,
                   const color_t<i_t>& refining_color,
@@ -120,7 +120,7 @@ void compute_sums(const csc_matrix_t<i_t, f_t>& A,
                   std::vector<f_t>& vertex_to_sum,
                   std::vector<f_t>& max_sum_by_color)
 {
-  i_t num_colors = num_row_colors + num_col_colors;
+  [[maybe_unused]] i_t num_colors = num_row_colors + num_col_colors;
   colors_to_update.clear();
   vertices_to_refine.clear();
   if (refining_color.row_or_column == kRow) {
@@ -224,7 +224,7 @@ i_t find_colors_to_split(const std::vector<i_t>& colors_to_update,
 
 template <typename i_t, typename f_t>
 i_t split_colors(i_t color,
-                 i_t refining_color,
+                 [[maybe_unused]] i_t refining_color,
                  int8_t side_being_split,
                  std::vector<f_t>& vertex_to_sum,
                  std::map<f_t, std::vector<i_t>>& color_sums,
@@ -233,7 +233,7 @@ i_t split_colors(i_t color,
                  std::vector<i_t>& color_stack,
                  std::vector<i_t>& color_in_stack,
                  std::vector<i_t>& color_map_B,
-                 std::vector<i_t>& marked_vertices,
+                 [[maybe_unused]] std::vector<i_t>& marked_vertices,
                  std::vector<std::vector<i_t>>& vertices_to_refine_by_color,
                  std::vector<f_t>& min_sum_by_color,
                  std::vector<f_t>& max_sum_by_color,
@@ -591,7 +591,7 @@ coloring_status_t color_graph(const csc_matrix_t<i_t, f_t>& A,
 
     colors_per_refinement =
       static_cast<f_t>(num_row_colors + num_col_colors) / static_cast<f_t>(num_refinements);
-    i_t projected_colors =
+    [[maybe_unused]] i_t projected_colors =
       num_row_colors + num_col_colors +
       static_cast<i_t>(colors_per_refinement * static_cast<f_t>(color_stack.size()));
 

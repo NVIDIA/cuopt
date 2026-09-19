@@ -29,14 +29,14 @@ class producer_sync_t {
 
   void register_producer(std::atomic<double>* progress_ptr)
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    [[maybe_unused]] std::lock_guard<std::mutex> lock(mutex_);
     producers_.push_back(progress_ptr);
     cv_.notify_all();
   }
 
   void deregister_producer(std::atomic<double>* progress_ptr)
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    [[maybe_unused]] std::lock_guard<std::mutex> lock(mutex_);
     auto it = std::find(producers_.begin(), producers_.end(), progress_ptr);
     if (it != producers_.end()) { producers_.erase(it); }
     cv_.notify_all();
@@ -48,14 +48,14 @@ class producer_sync_t {
    */
   void registration_complete()
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    [[maybe_unused]] std::lock_guard<std::mutex> lock(mutex_);
     registration_complete_ = true;
     cv_.notify_all();
   }
 
   bool is_registration_complete() const
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    [[maybe_unused]] std::lock_guard<std::mutex> lock(mutex_);
     return registration_complete_;
   }
 
@@ -68,7 +68,7 @@ class producer_sync_t {
    */
   void wait_for_producers(double target_work_units)
   {
-    std::unique_lock<std::mutex> lock(mutex_);
+    [[maybe_unused]] std::unique_lock<std::mutex> lock(mutex_);
     cv_.wait(lock, [this, target_work_units] {
       if (!registration_complete_) { return false; }
       return all_producers_at_or_ahead(target_work_units);
@@ -82,7 +82,7 @@ class producer_sync_t {
 
   size_t num_producers() const
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    [[maybe_unused]] std::lock_guard<std::mutex> lock(mutex_);
     return producers_.size();
   }
 

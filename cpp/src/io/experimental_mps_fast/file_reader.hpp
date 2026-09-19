@@ -1,5 +1,5 @@
-// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights
-// reserved. SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 // Input layer for the fast MPS parser: turns on-disk bytes (plain or .lz4) into one
 // contiguous parse buffer and publishes MPS section boundaries as data becomes available.
@@ -105,7 +105,7 @@ class parallel_error_latch_t {
  public:
   void capture(std::exception_ptr eptr)
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    [[maybe_unused]] std::lock_guard<std::mutex> lock(mutex_);
     if (!first_error_) {
       first_error_ = eptr;
       stopped_.store(true, std::memory_order_release);

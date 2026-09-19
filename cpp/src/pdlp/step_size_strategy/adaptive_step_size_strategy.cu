@@ -340,7 +340,7 @@ void adaptive_step_size_strategy_t<i_t, f_t>::compute_step_sizes(
   rmm::device_uvector<f_t>& dual_step_size,
   i_t total_pdlp_iterations)
 {
-  raft::common::nvtx::range fun_scope("compute_step_sizes");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_step_sizes");
 
   cuopt_assert(!batch_mode_, "Batch mode is not supported for compute_step_sizes");
 

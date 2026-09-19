@@ -58,13 +58,13 @@ struct cut_pass_heuristics_t {
     halt_ = true;
 
     if (submip_worker_) {
-      diving_worker_t<i_t, f_t>* worker = submip_worker_.get();
+      [[maybe_unused]] diving_worker_t<i_t, f_t>* worker = submip_worker_.get();
 #pragma omp taskwait depend(in : *worker)
       submip_worker_.reset();
     }
 
     for (auto& worker : diving_workers_) {
-      diving_worker_t<i_t, f_t>* w = worker.get();
+      [[maybe_unused]] diving_worker_t<i_t, f_t>* w = worker.get();
 #pragma omp taskwait depend(in : *w)
       worker.reset();
     }
@@ -107,7 +107,7 @@ struct cut_pass_heuristics_t {
   }
 
   diving_worker_t<i_t, f_t>* create_diving_worker(
-    i_t cut_pass,
+    [[maybe_unused]] i_t cut_pass,
     const simplex::lp_problem_t<i_t, f_t>& lp,
     const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
     const mip_node_t<i_t, f_t>& root_node,

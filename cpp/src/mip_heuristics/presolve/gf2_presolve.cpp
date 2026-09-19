@@ -162,12 +162,13 @@ gf2_status_t gf2_solve(std::vector<std::vector<uint64_t>>& A,
 }
 
 template <typename f_t>
-papilo::PresolveStatus GF2Presolve<f_t>::execute(const papilo::Problem<f_t>& problem,
-                                                 const papilo::ProblemUpdate<f_t>& problemUpdate,
-                                                 const papilo::Num<f_t>& num,
-                                                 papilo::Reductions<f_t>& reductions,
-                                                 const papilo::Timer& timer,
-                                                 int& reason_of_infeasibility)
+papilo::PresolveStatus GF2Presolve<f_t>::execute(
+  const papilo::Problem<f_t>& problem,
+  [[maybe_unused]] const papilo::ProblemUpdate<f_t>& problemUpdate,
+  const papilo::Num<f_t>& num,
+  papilo::Reductions<f_t>& reductions,
+  [[maybe_unused]] const papilo::Timer& timer,
+  [[maybe_unused]] int& reason_of_infeasibility)
 {
   const auto& constraint_matrix = problem.getConstraintMatrix();
   const auto& lhs_values        = constraint_matrix.getLeftHandSides();

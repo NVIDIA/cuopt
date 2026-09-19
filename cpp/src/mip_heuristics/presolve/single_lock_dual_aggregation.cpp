@@ -444,7 +444,7 @@ papilo::PresolveStatus SingleLockDualAggregation<f_t>::execute(
   const papilo::Num<f_t>& num,
   papilo::Reductions<f_t>& reductions,
   const papilo::Timer& timer,
-  int& reason_of_infeasibility)
+  [[maybe_unused]] int& reason_of_infeasibility)
 {
   const int ncols     = problem.getNCols();
   const auto& options = problemUpdate.getPresolveOptions();

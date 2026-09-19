@@ -39,7 +39,7 @@ class fp_recombiner_t : public recombiner_t<i_t, f_t> {
                                                   solution_t<i_t, f_t>& b,
                                                   const weight_t<i_t, f_t>& weights)
   {
-    raft::common::nvtx::range fun_scope("FP recombiner");
+    [[maybe_unused]] raft::common::nvtx::range fun_scope("FP recombiner");
     auto& guiding_solution = a.get_feasible() ? a : b;
     auto& other_solution   = a.get_feasible() ? b : a;
     // copy the solution from A

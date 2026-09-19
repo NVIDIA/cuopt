@@ -81,6 +81,8 @@ rapids_find_package(CUDAToolkit REQUIRED
 set(CUOPT_CXX_FLAGS "")
 set(CUOPT_CUDA_FLAGS "")
 
+list(APPEND CUOPT_CXX_FLAGS -Werror=unused-parameter -Werror=unused-variable)
+
 if (CMAKE_COMPILER_IS_GNUCXX)
     list(APPEND CUOPT_CXX_FLAGS -Werror -Wno-error=deprecated-declarations)
 endif (CMAKE_COMPILER_IS_GNUCXX)
@@ -178,7 +180,17 @@ message("-- Host target architecture = '${CMAKE_SYSTEM_PROCESSOR}'")
 
 # make the flags global in order to propagate flags to test cmake files
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr --expt-extended-lambda")
-list(APPEND CUOPT_CUDA_FLAGS -Werror=cross-execution-space-call -Wno-deprecated-declarations -Xcompiler=-Werror --default-stream=per-thread)
+# NVCC diagnoses unused variables before the host compiler sees them and provides no named
+# unused-variable warning kind. Its current diagnostic ID is 177; revalidate the ID when changing
+# supported CUDA toolkits. Keep the host compiler flags below for host-only diagnostics.
+list(APPEND CUOPT_CUDA_FLAGS
+        --diag-error=177
+        -Werror=cross-execution-space-call
+        -Wno-deprecated-declarations
+        -Xcompiler=-Werror
+        -Xcompiler=-Werror=unused-parameter
+        -Xcompiler=-Werror=unused-variable
+        --default-stream=per-thread)
 if ("${CMAKE_CUDA_HOST_COMPILER}" MATCHES "clang" OR "${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
     list(APPEND CUOPT_CUDA_FLAGS -Xcompiler=-Wall)
 else ()
@@ -888,11 +900,19 @@ target_include_directories(cuopt_mathopt PRIVATE
         $<$<BOOL:${CUOPT_PARSER_WITH_BZIP2}>:${BZIP2_INCLUDE_DIRS}>
         $<$<BOOL:${CUOPT_PARSER_WITH_ZLIB}>:${ZLIB_INCLUDE_DIRS}>
 )
-# Adding Papilo as a system include messes up clang's include resolution if papilo is already installed as a conda package
-target_include_directories(cuopt_mathopt PRIVATE
-        "${papilo_SOURCE_DIR}/src"
-        "${papilo_BINARY_DIR}"
-)
+# Clang must keep Papilo ahead of a possible conda installation. GNU can treat the fetched headers
+# as system headers so project warning errors do not apply to third-party templates.
+if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    target_include_directories(cuopt_mathopt PRIVATE
+            "${papilo_SOURCE_DIR}/src"
+            "${papilo_BINARY_DIR}"
+    )
+else ()
+    target_include_directories(cuopt_mathopt SYSTEM PRIVATE
+            "${papilo_SOURCE_DIR}/src"
+            "${papilo_BINARY_DIR}"
+    )
+endif ()
 target_include_directories(cuopt_mathopt SYSTEM PRIVATE
         "${pslp_SOURCE_DIR}/include"
         "${dejavu_SOURCE_DIR}"
@@ -963,11 +983,17 @@ target_compile_options(cuopt_objs
 # - include paths ---------------------------------------------------------------------------------
 message(STATUS "target include directories CUDSS_INCLUDES = ${CUDSS_INCLUDE}")
 
-# Adding Papilo as a system include messes up clang's include resolution if papilo is already installed as a conda package
-target_include_directories(cuopt_objs PRIVATE
-        "${papilo_SOURCE_DIR}/src"
-        "${papilo_BINARY_DIR}"
-)
+if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    target_include_directories(cuopt_objs PRIVATE
+            "${papilo_SOURCE_DIR}/src"
+            "${papilo_BINARY_DIR}"
+    )
+else ()
+    target_include_directories(cuopt_objs SYSTEM PRIVATE
+            "${papilo_SOURCE_DIR}/src"
+            "${papilo_BINARY_DIR}"
+    )
+endif ()
 
 target_include_directories(cuopt_objs SYSTEM PRIVATE
         "${pslp_SOURCE_DIR}/include"

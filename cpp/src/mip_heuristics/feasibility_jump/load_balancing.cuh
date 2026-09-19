@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -207,7 +207,7 @@ __global__ void load_balancing_compute_workid_mappings(
     cuopt_assert(idx >= 0 && idx < var_indices.size(), "invalid index");
     i_t var_idx = var_indices[idx];
     cuopt_assert(var_idx >= 0 && var_idx < fj.pb.n_variables, "invalid var_idx");
-    uint32_t subworkid = *ptr - (workid + 1);
+    [[maybe_unused]] uint32_t subworkid = *ptr - (workid + 1);
 
     auto [offset_begin, offset_end] = fj.pb.reverse_range_for_var(var_idx);
 

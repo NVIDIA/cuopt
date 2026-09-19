@@ -535,12 +535,12 @@ class fj_t {
 
       fj_settings_t* settings;
 
-      HDI f_t lower_excess_score(i_t cstr, f_t lhs, f_t c_lb) const
+      HDI f_t lower_excess_score([[maybe_unused]] i_t cstr, f_t lhs, f_t c_lb) const
       {
         return raft::min(lhs - c_lb, (f_t)0);
       }
 
-      HDI f_t upper_excess_score(i_t cstr, f_t lhs, f_t c_ub) const
+      HDI f_t upper_excess_score([[maybe_unused]] i_t cstr, f_t lhs, f_t c_ub) const
       {
         return raft::min(c_ub - lhs, (f_t)0);
       }
@@ -568,7 +568,7 @@ class fj_t {
       // which may suffer from numerical errors and lead to very slight (~machine epsilon)
       // violations of the actual bounds.
       // Use a slightly tightened tolerance in FJ to account for this.
-      HDI f_t get_corrected_tolerance(i_t cstr, f_t c_lb, f_t c_ub) const
+      HDI f_t get_corrected_tolerance([[maybe_unused]] i_t cstr, f_t c_lb, f_t c_ub) const
       {
         f_t cstr_tolerance = get_cstr_tolerance<i_t, f_t>(
           c_lb, c_ub, pb.tolerances.absolute_tolerance, pb.tolerances.relative_tolerance);

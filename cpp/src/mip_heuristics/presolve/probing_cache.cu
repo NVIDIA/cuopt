@@ -193,7 +193,8 @@ void inline insert_current_probing_to_cache(i_t var_idx,
     }
   }
   {
-    std::lock_guard<std::mutex> lock(bound_presolve.probing_cache.probing_cache_mutex);
+    [[maybe_unused]] std::lock_guard<std::mutex> lock(
+      bound_presolve.probing_cache.probing_cache_mutex);
     if (!bound_presolve.probing_cache.probing_cache.count(var_original) > 0) {
       std::array<cache_entry_t<i_t, f_t>, 2> entries_per_var;
       entries_per_var[0] = cache_item;
@@ -332,7 +333,7 @@ inline std::vector<i_t> compute_prioritized_integer_indices(
                0);
   // compute min and max activity first
   bound_presolve.calculate_activity_on_problem_bounds(problem);
-  bool res = bound_presolve.calculate_infeasible_redundant_constraints(problem);
+  [[maybe_unused]] bool res = bound_presolve.calculate_infeasible_redundant_constraints(problem);
   cuopt_assert(res, "The activity computation must be feasible during probing cache!");
   CUOPT_LOG_DEBUG("prioritized integer_indices n_integer_vars %d", problem.n_integer_vars);
   // compute the min var slack
@@ -895,7 +896,7 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
                            double work_limit,
                            size_t step_size_hint)
 {
-  raft::common::nvtx::range fun_scope("compute_probing_cache");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_probing_cache");
 
   cuopt_assert(bound_presolve.probing_cache.probing_cache.empty(),
                "probing cache is built once per solve");
@@ -1018,7 +1019,7 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   }  // end of step
 
   apply_substitution_queue_to_problem(substitution_vector_pool, problem);
-  const double probing_wall =
+  [[maybe_unused]] const double probing_wall =
     std::chrono::duration<double>(std::chrono::steady_clock::now() - probing_t0).count();
   CUOPT_LOG_DEBUG(
     "PRESOLVE_PROBING probes=%zu candidates=%zu iters=%.0f work=%.3f work_limit=%.3f step=%zu "

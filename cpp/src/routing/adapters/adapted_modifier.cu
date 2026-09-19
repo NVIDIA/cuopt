@@ -26,7 +26,7 @@ template <typename i_t, typename f_t, request_t REQUEST>
 void adapted_modifier_t<i_t, f_t, REQUEST>::perturbate(
   adapted_sol_t<i_t, f_t, REQUEST>& adapted_solution, costs weight, i_t perturbation_count)
 {
-  raft::common::nvtx::range fun_scope("perturbate");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("perturbate");
   auto [resource, index] = pool_allocator.resource_pool->acquire();
   auto gpu_weight        = get_cuopt_cost(weight);
   // temporarily set it to double max. it is not used anymore
@@ -48,7 +48,7 @@ void adapted_modifier_t<i_t, f_t, REQUEST>::improve(
   f_t time_limit,
   bool run_cycle_finder)
 {
-  raft::common::nvtx::range fun_scope("improve");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("improve");
   auto [resource, index] = pool_allocator.resource_pool->acquire();
   // set the excess limit to to the total excess with some multiplier
   auto gpu_weight          = get_cuopt_cost(weight);
@@ -70,7 +70,7 @@ template <typename i_t, typename f_t, request_t REQUEST>
 void adapted_modifier_t<i_t, f_t, REQUEST>::add_unserviced_request(
   adapted_sol_t<i_t, f_t, REQUEST>& adapted_solution, costs final_weight)
 {
-  raft::common::nvtx::range fun_scope("add_unserviced_request");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("add_unserviced_request");
   // find unserviced requests
   auto [resource, index] = pool_allocator.resource_pool->acquire();
   resource.ges.set_solution_ptr(&adapted_solution.sol);
@@ -94,7 +94,7 @@ void adapted_modifier_t<i_t, f_t, REQUEST>::add_selected_unserviced_requests(
   costs final_weight)
 {
   if (unserviced_nodes.empty()) { return; }
-  raft::common::nvtx::range fun_scope("add_selected_unserviced_request");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("add_selected_unserviced_request");
   // find unserviced requests
   auto [resource, index] = pool_allocator.resource_pool->acquire();
   resource.ges.set_solution_ptr(&adapted_solution.sol);
@@ -120,7 +120,7 @@ void adapted_modifier_t<i_t, f_t, REQUEST>::equalize_routes_and_nodes(
   costs final_weight,
   bool skip_adding_nodes_to_a)
 {
-  raft::common::nvtx::range fun_scope("equalize_routes_and_nodes");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("equalize_routes_and_nodes");
 
   // If both solutions have no unserviced nodes (default behavior)
   // and if they have equal route count we should exit early
@@ -167,7 +167,7 @@ template <typename i_t, typename f_t, request_t REQUEST>
 bool adapted_modifier_t<i_t, f_t, REQUEST>::eject_request_infeasible_nodes(
   adapted_sol_t<i_t, f_t, REQUEST>& sol)
 {
-  raft::common::nvtx::range fun_scope("eject_request_infeasible_nodes");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("eject_request_infeasible_nodes");
   helper_set.clear();
   helper_nodes.clear();
   for (int i = 0; i < (int)sol.problem->get_num_orders(); i++) {
@@ -215,7 +215,7 @@ template <typename i_t, typename f_t, request_t REQUEST>
 void adapted_modifier_t<i_t, f_t, REQUEST>::insert_infeasible_nodes(
   adapted_sol_t<i_t, f_t, REQUEST>& sol, costs& weights)
 {
-  raft::common::nvtx::range fun_scope("insert_infeasible_nodes");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("insert_infeasible_nodes");
   // add cluster/order infeasible nodes to the solution
   sol.add_nodes_to_best(helper_nodes, weights);
 }
@@ -224,7 +224,7 @@ template <typename i_t, typename f_t, request_t REQUEST>
 bool adapted_modifier_t<i_t, f_t, REQUEST>::make_cluster_order_feasible_request(
   adapted_sol_t<i_t, f_t, REQUEST>& sol, costs weights)
 {
-  raft::common::nvtx::range fun_scope("make_cluster_order_feasible_request");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("make_cluster_order_feasible_request");
   if constexpr (REQUEST == request_t::VRP) { return true; }
   if (eject_request_infeasible_nodes(sol)) {
     insert_infeasible_nodes(sol, weights);

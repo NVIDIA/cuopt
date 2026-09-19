@@ -364,7 +364,7 @@ template <typename i_t, typename f_t, request_t REQUEST>
 bool local_search_t<i_t, f_t, REQUEST>::perform_two_opt(
   solution_t<i_t, f_t, REQUEST>& sol, move_candidates_t<i_t, f_t>& move_candidates)
 {
-  raft::common::nvtx::range fun_scope("run_two_opt");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("run_two_opt");
   sol.global_runtime_checks(false, false, "two_opt_start");
   i_t n_moves_found = 0;
   if (!move_candidates.include_objective) { return false; }

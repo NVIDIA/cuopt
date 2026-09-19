@@ -151,7 +151,6 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
   else
     n_constraints = problem_.get_constraint_lower_bounds().size();
   const auto& quadratic_constraints = problem_.get_quadratic_constraints();
-  const i_t n_quadratic_constraints = static_cast<i_t>(quadratic_constraints.size());
 
   std::vector<f_t> objective_coefficients(problem_.get_objective_coefficients().size());
   std::vector<f_t> constraint_lower_bounds(n_constraints);

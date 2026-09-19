@@ -22,7 +22,7 @@ void solution_writer_t::write_solution_to_sol_file(const std::string& filename,
                                                    const std::vector<std::string>& variable_names,
                                                    const std::vector<f_t>& variable_values)
 {
-  raft::common::nvtx::range fun_scope("write final solution to .sol file");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("write final solution to .sol file");
   std::ofstream file(filename.data());
 
   if (!file.is_open()) {

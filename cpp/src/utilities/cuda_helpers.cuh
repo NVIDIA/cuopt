@@ -206,12 +206,12 @@ inline bool set_shmem_of_kernel(Function* function, size_t dynamic_request_size)
     dynamic_request_size = raft::alignTo(dynamic_request_size, size_t(1024));
 
     {
-      std::shared_lock<std::shared_mutex> rlock(mtx);
+      [[maybe_unused]] std::shared_lock<std::shared_mutex> rlock(mtx);
       auto it = shmem_sizes.find(function);
       if (it != shmem_sizes.end() && dynamic_request_size <= it->second) { return true; }
     }
 
-    std::unique_lock<std::shared_mutex> wlock(mtx);
+    [[maybe_unused]] std::unique_lock<std::shared_mutex> wlock(mtx);
     size_t current_size = shmem_sizes.count(function) ? shmem_sizes[function] : 0;
     if (dynamic_request_size > current_size) {
       auto err = cudaFuncSetAttribute(

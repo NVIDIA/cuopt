@@ -115,8 +115,8 @@ void initialize_cusparse_data(raft::handle_t const* handle,
 
 template <typename i_t, typename f_t>
 void multiply_kernels(raft::handle_t const* handle,
-                      device_csr_matrix_t<i_t, f_t>& A,
-                      device_csc_matrix_t<i_t, f_t>& DAT,
+                      [[maybe_unused]] device_csr_matrix_t<i_t, f_t>& A,
+                      [[maybe_unused]] device_csc_matrix_t<i_t, f_t>& DAT,
                       device_csr_matrix_t<i_t, f_t>& ADAT,
                       cusparse_info_t<i_t, f_t>& cusparse_data)
 {

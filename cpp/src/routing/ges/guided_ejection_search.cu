@@ -78,7 +78,7 @@ guided_ejection_search_t<i_t, f_t, REQUEST>::guided_ejection_search_t(
     intermediate_file(file),
     dump_intermediate(false)
 {
-  raft::common::nvtx::range fun_scope("guided_ejection_search_t");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("guided_ejection_search_t");
   reset_p_scores();
 }
 
@@ -189,7 +189,7 @@ __global__ void incr_p_scores(const request_info_t<i_t, REQUEST>* request_id,
 template <typename i_t, typename f_t, request_t REQUEST>
 void guided_ejection_search_t<i_t, f_t, REQUEST>::shuffle_pool()
 {
-  raft::common::nvtx::range fun_scope("shuffle_pool");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("shuffle_pool");
   // include the ejected request in shuffle
   ++EP.index_;
   EP.random_shuffle(solution_ptr->problem_ptr->seed_gen.get_seed());
@@ -202,7 +202,7 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::guided_ejection_search_loop(i_
                                                                               bool minimize_routes,
                                                                               i_t desired_ep_size)
 {
-  raft::common::nvtx::range fun_scope("guided_ejection_search_loop");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("guided_ejection_search_loop");
   i_t iteration_limit              = 500000;
   i_t ges_loop_iterations          = 0;
   i_t consecutive_ejection_failure = 1;
@@ -322,7 +322,7 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::guided_ejection_search_loop(i_
 template <typename i_t, typename f_t, request_t REQUEST>
 bool guided_ejection_search_t<i_t, f_t, REQUEST>::greedy_insert(bool insert_all)
 {
-  raft::common::nvtx::range fun_scope("greedy_insert");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("greedy_insert");
 
   i_t const n_max_multiple_insertions = std::max(
     2 * solution_ptr->get_n_routes(), (i_t)(solution_ptr->get_num_requests() * insertion_rate));
@@ -347,7 +347,7 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::greedy_insert(bool insert_all)
 template <typename i_t, typename f_t, request_t REQUEST>
 void guided_ejection_search_t<i_t, f_t, REQUEST>::init_ejection_pool()
 {
-  raft::common::nvtx::range fun_scope("init_ejection_pool");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("init_ejection_pool");
   solution_ptr->populate_ep_with_unserved(EP);
 }
 
@@ -357,7 +357,7 @@ void guided_ejection_search_t<i_t, f_t, REQUEST>::init_ejection_pool()
 template <typename i_t, typename f_t, request_t REQUEST>
 bool guided_ejection_search_t<i_t, f_t, REQUEST>::fixed_route_loop()
 {
-  raft::common::nvtx::range fun_scope("fixed_route_loop");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("fixed_route_loop");
   i_t counter = 0;
 
   bool all_inserted = greedy_insert();
@@ -483,7 +483,7 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::construct_feasible_solution()
 template <typename i_t, typename f_t, request_t REQUEST>
 void guided_ejection_search_t<i_t, f_t, REQUEST>::route_minimizer_loop()
 {
-  raft::common::nvtx::range fun_scope("route_minimizer_loop");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("route_minimizer_loop");
 
   // If ejection pool is not empty first run fixed route loop with
   if (!EP.empty()) {

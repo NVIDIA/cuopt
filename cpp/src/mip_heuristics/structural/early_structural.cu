@@ -89,7 +89,7 @@ void early_structural_t<i_t, f_t>::start()
   task_launched_    = true;
 
   // OpenMP depend clauses require a variable or array element.
-  auto* task_token = &preemption_flag_;
+  [[maybe_unused]] auto* task_token = &preemption_flag_;
   CUOPT_LOG_DEBUG("Launching early structural task for %s", active_->name());
 #pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) depend(out : *task_token)
   this->run();
@@ -100,7 +100,7 @@ void early_structural_t<i_t, f_t>::stop()
 {
   if (!task_launched_) { return; }
 
-  auto* task_token = &preemption_flag_;
+  [[maybe_unused]] auto* task_token = &preemption_flag_;
   preemption_flag_.store(true);
 #pragma omp taskwait depend(in : *task_token)
   task_launched_ = false;

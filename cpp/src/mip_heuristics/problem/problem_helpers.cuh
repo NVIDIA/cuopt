@@ -86,7 +86,7 @@ static void set_variable_bounds(mip::problem_t<i_t, f_t>& op_problem)
 template <typename i_t, typename f_t>
 static void set_bounds_if_not_set(mip::problem_t<i_t, f_t>& op_problem)
 {
-  raft::common::nvtx::range scope("set_bounds_if_not_set");
+  [[maybe_unused]] raft::common::nvtx::range scope("set_bounds_if_not_set");
 
   // If an user gave row type instead of lower/upper bounds
   if (op_problem.constraint_lower_bounds.is_empty() &&
@@ -135,7 +135,7 @@ struct negate {
 template <typename i_t, typename f_t>
 static void convert_to_maximization_problem(mip::problem_t<i_t, f_t>& op_problem)
 {
-  raft::common::nvtx::range scope("convert_to_maximization_problem");
+  [[maybe_unused]] raft::common::nvtx::range scope("convert_to_maximization_problem");
 
   if (op_problem.objective_coefficients.size()) {
     // Negate objective coefficient
@@ -239,7 +239,7 @@ static void check_csr_representation([[maybe_unused]] const rmm::device_uvector<
                                      [[maybe_unused]] i_t n_variables,
                                      [[maybe_unused]] i_t n_constraints)
 {
-  raft::common::nvtx::range scope("check_csr_representation");
+  [[maybe_unused]] raft::common::nvtx::range scope("check_csr_representation");
 
   cuopt_assert(variables.size() == coefficients.size(),
                "A_index and A_values must have same sizes.");
@@ -318,7 +318,7 @@ static bool check_bounds_sanity(const mip::problem_t<i_t, f_t>& problem)
          check_constraint_bounds_sanity<i_t, f_t>(problem);
 }
 
-static void check_cusparse_status(cusparseStatus_t status)
+[[maybe_unused]] static void check_cusparse_status(cusparseStatus_t status)
 {
   if (status != CUSPARSE_STATUS_SUCCESS) {
     throw std::runtime_error("CUSPARSE error: " + std::string(cusparseGetErrorString(status)));
@@ -405,7 +405,7 @@ static void csrsort_cusparse(rmm::device_uvector<f_t>& values,
 template <typename i_t, typename f_t>
 static void convert_greater_to_less(mip::problem_t<i_t, f_t>& problem)
 {
-  raft::common::nvtx::range scope("convert_greater_to_less");
+  [[maybe_unused]] raft::common::nvtx::range scope("convert_greater_to_less");
 
   auto* handle_ptr = problem.handle_ptr;
 

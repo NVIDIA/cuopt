@@ -150,11 +150,11 @@ std::vector<i_t> kaminpar_partitioner_t<i_t, f_t>::partition(
   // The actual partition computation
   auto t0 = std::chrono::high_resolution_clock::now();
 
-  const kaminpar::shm::EdgeWeight edge_cut =
+  [[maybe_unused]] const kaminpar::shm::EdgeWeight edge_cut =
     engine.compute_partition(std::span<kaminpar::shm::BlockID>(block_of));
 
-  auto t1         = std::chrono::high_resolution_clock::now();
-  const double dt = std::chrono::duration<double>(t1 - t0).count();
+  auto t1                          = std::chrono::high_resolution_clock::now();
+  [[maybe_unused]] const double dt = std::chrono::duration<double>(t1 - t0).count();
 
   CUOPT_LOG_TRACE(
     "KaMinPar partitioned bipartite graph: nvtx=%d nnz=%d nb_parts=%d nthreads=%d edge_cut=%lld "

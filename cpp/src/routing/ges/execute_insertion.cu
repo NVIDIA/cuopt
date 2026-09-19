@@ -238,7 +238,7 @@ template <typename i_t, typename f_t, request_t REQUEST>
 bool guided_ejection_search_t<i_t, f_t, REQUEST>::execute_best_insertion_ejection_solution(
   request_info_t<i_t, REQUEST>* d_request, i_t& counter)
 {
-  raft::common::nvtx::range fun_scope("execute_best_insertion_ejection_solution");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("execute_best_insertion_ejection_solution");
   counter++;
   constexpr uint64_t unset_val = static_cast<uint64_t>(-1);
 
@@ -353,7 +353,7 @@ template <typename i_t, typename f_t, request_t REQUEST>
 bool guided_ejection_search_t<i_t, f_t, REQUEST>::perform_insertion(
   const request_info_t<i_t, REQUEST>* request)
 {
-  raft::common::nvtx::range fun_scope("perform_insertion");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("perform_insertion");
   // Picks a random one and execute the move
   const found_sol_t selected_candidate =
     select_random_initialized(feasible_candidates_data_, solution_ptr);
@@ -375,7 +375,7 @@ template <typename i_t, typename f_t, request_t REQUEST>
 i_t guided_ejection_search_t<i_t, f_t, REQUEST>::find_single_insertion(
   const request_info_t<i_t, REQUEST>* request)
 {
-  raft::common::nvtx::range fun_scope("find_single_insertion");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("find_single_insertion");
   constexpr i_t threads_per_block = 64;
   i_t grid_size                   = solution_ptr->get_n_routes();
   cuopt_assert(grid_size > 0, "Number of route in solution should be positive.");
@@ -419,7 +419,7 @@ template <typename i_t, typename f_t, request_t REQUEST>
 bool guided_ejection_search_t<i_t, f_t, REQUEST>::try_single_insert_with_perturbation(
   const request_info_t<i_t, REQUEST>* request)
 {
-  raft::common::nvtx::range fun_scope("try_single_insert_with_perturbation");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("try_single_insert_with_perturbation");
   i_t const_1, const_2;
   const_1                = 1;
   const_2                = 8;

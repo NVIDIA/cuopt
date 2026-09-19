@@ -143,7 +143,7 @@ template <typename i_t, typename f_t, request_t REQUEST>
 void optimal_cycles_t<i_t, f_t, REQUEST>::get_min_delta_and_index(
   adapted_sol_t<i_t, f_t, REQUEST>& sol, i_t num_items)
 {
-  raft::common::nvtx::range fun_scope("get_min_delta_and_index");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("get_min_delta_and_index");
   // Determine temporary device storage requirements
   size_t temp_storage_bytes = 0;
   cub::DeviceReduce::ArgMin(static_cast<void*>(nullptr),
@@ -169,7 +169,7 @@ template <typename i_t, typename f_t, request_t REQUEST>
 bool optimal_cycles_t<i_t, f_t, REQUEST>::insert_cycle_to_found_position(
   adapted_sol_t<i_t, f_t, REQUEST>& sol, i_t n_rotations)
 {
-  raft::common::nvtx::range fun_scope("insert_cycle_to_found_position");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("insert_cycle_to_found_position");
   auto& solution    = sol.sol;
   size_t sh_size    = solution.check_routes_can_insert_and_get_sh_size(n_rotations);
   constexpr i_t TPB = 128;
@@ -194,7 +194,7 @@ bool optimal_cycles_t<i_t, f_t, REQUEST>::add_cycles_request(
   std::vector<std::vector<NodeInfo<>>>& cycles,
   costs final_weight)
 {
-  raft::common::nvtx::range fun_scope("add_cycles_request_vrp");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("add_cycles_request_vrp");
   auto [resource, index] = pool_allocator.resource_pool->acquire();
   auto gpu_weight        = get_cuopt_cost(final_weight);
   resource.ls.set_active_weights(gpu_weight, std::numeric_limits<f_t>::max());
@@ -252,7 +252,7 @@ template <typename i_t, typename f_t, request_t REQUEST>
 void optimal_cycles_t<i_t, f_t, REQUEST>::find_best_rotate_cycle(
   std::vector<NodeInfo<>>& cycle, adapted_sol_t<i_t, f_t, REQUEST>& s)
 {
-  raft::common::nvtx::range fun_scope("find_best_rotate_cycle");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("find_best_rotate_cycle");
   cuopt_assert(REQUEST == request_t::PDP, "A runtime error occurred in find_best_rotate_cycle!");
   cuopt_expects(REQUEST == request_t::PDP, error_type_t::RuntimeError, "A runtime error occurred!");
   cycle_helper.resize(cycle.size(), NodeInfo<>());
@@ -306,7 +306,7 @@ template <typename i_t, typename f_t, request_t REQUEST>
 void optimal_cycles_t<i_t, f_t, REQUEST>::insert_cycle_to_route_request(
   std::vector<NodeInfo<>>& cycle, size_t route_id, adapted_sol_t<i_t, f_t, REQUEST>& s)
 {
-  raft::common::nvtx::range fun_scope("insert_cycle_to_route_PDP");
+  [[maybe_unused]] raft::common::nvtx::range fun_scope("insert_cycle_to_route_PDP");
   cuopt_assert(REQUEST == request_t::PDP,
                "A runtime error occurred in insert_cycle_to_route_request!");
   cuopt_expects(REQUEST == request_t::PDP, error_type_t::RuntimeError, "A runtime error occurred!");

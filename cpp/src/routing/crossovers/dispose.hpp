@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -22,7 +22,7 @@ struct dispose {
 
   bool recombine(Solution& sol)
   {
-    raft::common::nvtx::range fun_scope("dispose");
+    [[maybe_unused]] raft::common::nvtx::range fun_scope("dispose");
     if (sol.sol.get_n_routes() <= sol.sol.problem_ptr->data_view_ptr->get_min_vehicles()) {
       return false;
     }
