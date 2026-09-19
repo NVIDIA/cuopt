@@ -101,6 +101,13 @@ void apply_lane_diversification(fj_cpu_climber_t<i_t, f_t>& c, int lane, int64_t
     c.n_binary_vars == 0 && c.n_integer_vars == c.problem->n_variables &&
     c.problem->equality_fraction > 0.99 &&
     int64_t{32} * c.problem->n_constraints < c.problem->n_variables;
+  bool cardinality_dominated = false;
+  if (c.n_binary_vars > 0 && c.problem->card_row_offsets.size() > 8) {
+    i_t covered = 0;
+    for (i_t group : c.problem->card_group_of_variable)
+      covered += group >= 0;
+    cardinality_dominated = covered >= static_cast<i_t>(0.9 * c.n_binary_vars);
+  }
 
   // Setup personas. LP work is lane-local and therefore does not delay the portfolio launch.
   c.use_lp_start                   = lane == 4 || lane == 10 || lane == 14 || lane == 11;
@@ -114,7 +121,12 @@ void apply_lane_diversification(fj_cpu_climber_t<i_t, f_t>& c, int lane, int64_t
   c.use_precedence_start           = lane % 8 == 0 && !c.low_latency;
   c.use_affine_equality_start      = lane == 2 || lane == 4 || lane == 11;
   c.use_unit_commitment_start      = lane == 6;
-  c.use_fixed_charge_network_start = lane == 3;
+  // The start certifies a bijective fixed-charge flow network and validates the completed
+  // assignment, so use most lanes to construct independently jittered trees while preserving two
+  // generic-search lanes.
+  c.use_fixed_charge_network_start = lane != 0 && lane != 8;
+  c.use_fundamental_cycle_pivot = lane == 3 || lane == 5 || lane == 10 || lane == 13;
+  c.network_temperature = lane == 5 ? f_t{0.05} : lane == 13 ? f_t{0.2} : f_t{0};
   c.use_pmedian_start              = lane == 5;
   c.use_equality_substitution      = lane % 4 == 0 && !c.low_latency;
   c.use_bound_prop                 = lane % 2 == 0 && !c.low_latency;
@@ -294,6 +306,74 @@ void apply_lane_diversification(fj_cpu_climber_t<i_t, f_t>& c, int lane, int64_t
                              : lane == 5  ? f_t{16}
                              : lane == 15 ? f_t{8}
                                           : obj_weight_floor[lane % 4];
+
+  // Recognize big-M regions selected by disjoint exact-one groups.
+  c.continuous_perturb_fraction  = 0;
+  c.objective_directed_perturb   = false;
+  if (cardinality_dominated && c.n_integer_vars == 0 && objective_var_count > 0 &&
+      continuous_objective_vars == objective_var_count) {
+    const auto& p    = *c.problem;
+    const i_t groups = static_cast<i_t>(p.card_cardinalities.size());
+    bool valid       = true;
+    for (i_t cardinality : p.card_cardinalities)
+      valid &= cardinality == 1;
+    for (i_t variable : c.h_binary_indices)
+      valid &= p.card_group_of_variable[variable] >= 0;
+
+    std::vector<std::vector<i_t>> scopes(groups);
+    std::vector<i_t> row_gate(p.n_constraints, -2);
+    i_t gated      = 0;
+    i_t equalities = 0;
+    for (i_t row = 0; valid && row < p.n_constraints; ++row) {
+      if (p.cstr_lb[row] == p.cstr_ub[row]) {
+        ++equalities;
+        continue;
+      }
+      i_t binary = -1;
+      f_t gate_coefficient = 0;
+      f_t continuous_max   = 0;
+      for (i_t q = p.offsets[row]; q < p.offsets[row + 1]; ++q) {
+        const i_t variable = p.variables[q];
+        if (c.h_is_binary_variable[variable]) {
+          if (binary >= 0) valid = false;
+          binary           = variable;
+          gate_coefficient = p.coefficients[q];
+        } else {
+          continuous_max = std::max(continuous_max, std::abs(p.coefficients[q]));
+        }
+      }
+      if (binary < 0) {
+        if (continuous_max > 0) row_gate[row] = -1;
+        continue;
+      }
+      const i_t group = p.card_group_of_variable[binary];
+      const bool activating =
+        (gate_coefficient < 0 && std::isfinite(p.cstr_lb[row]) && !std::isfinite(p.cstr_ub[row])) ||
+        (gate_coefficient > 0 && std::isfinite(p.cstr_ub[row]) && !std::isfinite(p.cstr_lb[row]));
+      valid &= group >= 0 && activating && continuous_max > 0 &&
+               std::abs(gate_coefficient) >= 1000 * continuous_max;
+      if (!valid) break;
+      row_gate[row] = binary;
+      ++gated;
+      auto& scope = scopes[group];
+      for (i_t q = p.offsets[row]; q < p.offsets[row + 1]; ++q) {
+        const i_t variable = p.variables[q];
+        if (variable != binary && std::find(scope.begin(), scope.end(), variable) == scope.end())
+          scope.push_back(variable);
+      }
+      valid &= scope.size() <= 4;
+    }
+    for (const auto& scope : scopes)
+      valid &= scope.size() == 4;
+
+    if (valid && equalities == groups && gated >= 0.8 * p.n_constraints) {
+      const i_t slot = lane % 8;
+      c.continuous_perturb_fraction = f_t{0.1} * (1 << (slot % 4));
+      c.objective_directed_perturb  = slot % 2 == 1;
+      if (c.objective_directed_perturb)
+        c.continuous_perturb_fraction = f_t{0.025} * (1 << ((slot - 1) / 2));
+    }
+  }
 }
 
 template <typename i_t, typename f_t>

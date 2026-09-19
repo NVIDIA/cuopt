@@ -289,6 +289,28 @@ struct fj_bin_bridge_t {
   bool has_bin_elimination{false};
 };
 
+// A certified fixed-charge network basis. The start builds this once; network personas then
+// examine exactly one non-tree arc per counted search iteration.
+template <typename i_t, typename f_t>
+struct fj_fixed_charge_network_t {
+  struct arc_t {
+    i_t binary{-1}, flow{-1}, capacity_row{-1}, source{-1}, target{-1};
+    double capacity{0}, fix{0}, unit{0};
+  };
+  bool certified{false};
+  std::vector<arc_t> arcs;
+  std::vector<uint8_t> in_tree;
+  std::vector<i_t> closed_arcs;
+  std::vector<std::vector<i_t>> adjacency;
+  size_t next_closed{0};
+
+  // Reused by a pivot so an iteration does not allocate vectors proportional to the model.
+  std::vector<i_t> path_parent, path_arc, stack, cycle_arcs, cycle_signs, touched_variables,
+    touched_rows;
+  std::vector<f_t> variable_delta;
+  std::vector<uint8_t> row_touched;
+};
+
 template <typename i_t, typename f_t>
 struct fj_lane_policy_t {
   fj_settings_t settings;
@@ -300,6 +322,9 @@ struct fj_lane_policy_t {
   i_t nnz_samples{50000};
   i_t perturb_interval{100};
   i_t perturb_vars{2};
+  // Incumbent-relative radius used only on certified exact-one disjunctive geometry.
+  f_t continuous_perturb_fraction{0};
+  bool objective_directed_perturb{false};
   bool use_lp_start{false};
   bool lp_start_feasibility_objective{false};
   bool use_deep_lp_pump{false};
@@ -309,6 +334,8 @@ struct fj_lane_policy_t {
   bool use_affine_equality_start{false};
   bool use_unit_commitment_start{false};
   bool use_fixed_charge_network_start{false};
+  bool use_fundamental_cycle_pivot{false};
+  f_t network_temperature{0};
   bool use_pmedian_start{false};
   bool use_bound_prop{false};
   bool low_latency{false};
@@ -492,6 +519,9 @@ struct fj_cpu_climber_t : fj_tabu_t<i_t>,
     cuopt_assert(std::isfinite(value), "breakthrough move left the representable range");
     return value;
   }
+
+  // Lane-local because accepted pivots exchange tree and non-tree arcs independently.
+  fj_fixed_charge_network_t<i_t, f_t> fixed_charge_network;
 
   // Shared across every lane and frozen before the first clone is created; see fj_cpu_problem_t.
   std::shared_ptr<const fj_cpu_problem_t<i_t, f_t>> problem;

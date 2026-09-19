@@ -64,13 +64,65 @@ void perturb(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   // widens its jump instead of retrying the same neighbourhood.
   const i_t n_kick = std::min<i_t>(fj_cpu.hp.perturb_escalate_cap,
                                    std::max<i_t>(1, fj_cpu.perturb_vars + fj_cpu.perturb_streak));
-  std::vector<i_t> sampled_vars = fj_cpu.problem->h_objective_vars;
+  const bool categorical_kick = fj_cpu.feasible_found && fj_cpu.continuous_perturb_fraction > 0 &&
+                                fj_cpu.problem->card_row_offsets.size() > 1;
+  const i_t scalar_kicks          = n_kick - categorical_kick;
+  std::vector<i_t> sampled_vars   = fj_cpu.problem->h_objective_vars;
   fj_cpu.rng.shuffle(sampled_vars);
-  sampled_vars.resize(std::min(sampled_vars.size(), (size_t)n_kick));
+  sampled_vars.resize(std::min(sampled_vars.size(), (size_t)scalar_kicks));
   cuopt::pcgenerator_t rng(fj_cpu.settings.seed + fj_cpu.iterations, 0, 0);
 
-  for (auto var_idx : sampled_vars)
-    randomize_variable<i_t, f_t>(fj_cpu, var_idx, rng);
+  // Change one selected region directly. Two independent scalar flips would temporarily violate
+  // the exact-one equality and make the intended categorical transition difficult to discover.
+  if (categorical_kick) {
+    const auto& offsets   = fj_cpu.problem->card_row_offsets;
+    const auto& variables = fj_cpu.problem->card_variables;
+    const i_t group = rng.next_u32() % static_cast<uint32_t>(offsets.size() - 1);
+    const i_t begin = offsets[group];
+    const i_t width = offsets[group + 1] - begin;
+    i_t active      = -1;
+    for (i_t q = begin; q < begin + width; ++q) {
+      if (fj_cpu.h_assignment[variables[q]] > f_t{0.5}) {
+        active = q;
+        break;
+      }
+    }
+    if (active >= 0 && width > 1) {
+      i_t replacement = begin + rng.next_u32() % static_cast<uint32_t>(width - 1);
+      if (replacement >= active) ++replacement;
+      fj_cpu.h_assignment[variables[active]]      = f_t{0};
+      fj_cpu.h_assignment[variables[replacement]] = f_t{1};
+    }
+  }
+
+  // Unbounded whole-domain draws destroy the useful scale of a geometric incumbent. Perturb
+  // continuous coordinates locally, and let half the lanes bias the draw toward objective descent.
+  f_t radius = 0;
+  if (fj_cpu.feasible_found && fj_cpu.continuous_perturb_fraction > 0) {
+    f_t scale = 1;
+    for (i_t variable : fj_cpu.problem->h_objective_vars) {
+      const f_t lower = get_lower(fj_cpu.h_var_bounds[variable].get());
+      const f_t value = fj_cpu.h_best_assignment[variable];
+      scale = std::max(scale, std::abs(value - (std::isfinite(lower) ? lower : f_t{0})));
+    }
+    radius = fj_cpu.continuous_perturb_fraction * scale;
+  }
+  for (i_t variable : sampled_vars) {
+    if (radius > 0 && !is_integer_var<i_t, f_t>(fj_cpu, variable)) {
+      const auto bounds = fj_cpu.h_var_bounds[variable].get();
+      const f_t current = fj_cpu.h_assignment[variable];
+      f_t lower = std::max(get_lower(bounds), current - radius);
+      f_t upper = std::min(get_upper(bounds), current + radius);
+      if (fj_cpu.objective_directed_perturb) {
+        const f_t coefficient = fj_cpu.problem->h_obj_coeffs[variable];
+        if (coefficient > 0) upper = current;
+        if (coefficient < 0) lower = current;
+      }
+      fj_cpu.h_assignment[variable] = lower + (upper - lower) * rng.next_double();
+    } else {
+      randomize_variable<i_t, f_t>(fj_cpu, variable, rng);
+    }
+  }
 
   ++fj_cpu.n_lhs_recompute_perturb;
   ++fj_cpu.perturb_streak;

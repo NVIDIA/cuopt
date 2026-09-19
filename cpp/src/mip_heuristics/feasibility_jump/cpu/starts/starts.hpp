@@ -90,6 +90,9 @@ template <typename i_t, typename f_t>
 bool apply_fixed_charge_network_start(fj_cpu_climber_t<i_t, f_t>& c, double budget);
 
 template <typename i_t, typename f_t>
+bool try_fundamental_cycle_pivot(fj_cpu_climber_t<i_t, f_t>& c);
+
+template <typename i_t, typename f_t>
 bool apply_pmedian_start(fj_cpu_climber_t<i_t, f_t>& c, double budget);
 
 template <typename i_t, typename f_t>

@@ -9,9 +9,11 @@
 #include "../internal.hpp"
 #include "../problem.hpp"
 #include "../search/api.hpp"
+#include "../search/update.hpp"
 #include "starts.hpp"
 
 #include <queue>
+#include <random>
 
 namespace cuopt::mathematical_optimization::mip {
 
@@ -29,10 +31,7 @@ bool apply_fixed_charge_network_start(fj_cpu_climber_t<i_t, f_t>& c, double budg
   };
   constexpr i_t max_nodes_for_reparent = 1024;
 
-  struct arc_t {
-    i_t binary, flow, capacity_row, source, target;
-    double capacity, fix, unit;
-  };
+  using arc_t = typename fj_fixed_charge_network_t<i_t, f_t>::arc_t;
   std::vector<arc_t> arcs;
   std::vector<uint8_t> used(p.n_variables, 0), is_capacity(p.n_constraints, 0);
   std::vector<i_t> arc_of_binary(p.n_variables, -1);
@@ -178,7 +177,18 @@ bool apply_fixed_charge_network_start(fj_cpu_climber_t<i_t, f_t>& c, double budg
     }
   if (!any_source) in_tree[root] = 1;
 
-  auto weight = [&](i_t e) { return arcs[e].fix + arcs[e].unit; };
+  // Keep one lane-local perturbation per arc across all shortest-path passes. Models that price
+  // both activation and flow benefit from broader tree diversity than pure fixed-charge models.
+  const bool costs_both_ends = std::all_of(arcs.begin(), arcs.end(), [](const arc_t& arc) {
+    return arc.fix > 0 && arc.unit > 0;
+  });
+  const double jitter_radius = costs_both_ends ? 0.30 : 0.15;
+  std::mt19937 weight_rng(c.settings.seed);
+  std::uniform_real_distribution<double> jitter(1.0 - jitter_radius, 1.0 + jitter_radius);
+  std::vector<double> arc_weight(arcs.size());
+  for (i_t e = 0; e < static_cast<i_t>(arcs.size()); ++e)
+    arc_weight[e] = (arcs[e].fix + arcs[e].unit) * jitter(weight_rng);
+  auto weight = [&](i_t e) { return arc_weight[e]; };
   while (!expired()) {
     bool complete = true;
     for (i_t v : terminals)
@@ -298,15 +308,235 @@ bool apply_fixed_charge_network_start(fj_cpu_climber_t<i_t, f_t>& c, double budg
     x[arcs[parent[v]].flow]   = (f_t)flow[v];
   }
 
-  return try_commit_start(c, x);
+  if (!try_commit_start(c, x)) return false;
+
+  // Preserve the certified basis. Components are fixed by tree exchanges, so disconnected arc
+  // endpoints can never become fundamental-cycle candidates later.
+  auto& network = c.fixed_charge_network;
+  network           = {};
+  network.certified = true;
+  network.arcs      = arcs;
+  network.in_tree.assign(arcs.size(), 0);
+  network.adjacency.assign(demand.size(), {});
+  for (i_t v = 0; v < (i_t)demand.size(); ++v)
+    if (parent[v] >= 0) network.in_tree[parent[v]] = 1;
+  for (i_t e = 0; e < (i_t)arcs.size(); ++e) {
+    if (inert[e] || forbidden[e]) continue;
+    network.adjacency[arcs[e].source].push_back(e);
+    network.adjacency[arcs[e].target].push_back(e);
+  }
+
+  std::vector<i_t> component(demand.size(), -1), stack;
+  for (i_t seed = 0; seed < (i_t)demand.size(); ++seed) {
+    if (component[seed] >= 0) continue;
+    component[seed] = seed;
+    stack.assign(1, seed);
+    while (!stack.empty()) {
+      const i_t v = stack.back();
+      stack.pop_back();
+      for (i_t e : network.adjacency[v]) {
+        if (!network.in_tree[e]) continue;
+        const i_t w = arcs[e].source == v ? arcs[e].target : arcs[e].source;
+        if (component[w] >= 0) continue;
+        component[w] = seed;
+        stack.push_back(w);
+      }
+    }
+  }
+  for (i_t e = 0; e < (i_t)arcs.size(); ++e)
+    if (!network.in_tree[e] && !inert[e] && !forbidden[e] &&
+        component[arcs[e].source] == component[arcs[e].target])
+      network.closed_arcs.push_back(e);
+
+  network.path_parent.resize(demand.size());
+  network.path_arc.resize(demand.size());
+  network.cycle_arcs.reserve(demand.size() + 1);
+  network.cycle_signs.reserve(demand.size() + 1);
+  network.variable_delta.assign(p.n_variables, f_t{0});
+  network.row_touched.assign(p.n_constraints, 0);
+  return true;
+}
+
+template <typename i_t, typename f_t>
+bool try_fundamental_cycle_pivot(fj_cpu_climber_t<i_t, f_t>& c)
+{
+  auto& network = c.fixed_charge_network;
+  if (!c.use_fundamental_cycle_pivot || !network.certified || network.closed_arcs.empty() ||
+      !c.feasible_found || !c.violated_constraints.empty())
+    return false;
+
+  const auto& p       = *c.problem;
+  const size_t slot   = network.next_closed;
+  const i_t entering  = network.closed_arcs[slot];
+  network.next_closed = (slot + 1) % network.closed_arcs.size();
+  if (network.in_tree[entering]) return true;
+  const auto& enter = network.arcs[entering];
+
+  // Recover the unique tree path for this entering arc; no alternative move is scanned.
+  std::fill(network.path_parent.begin(), network.path_parent.end(), -1);
+  std::fill(network.path_arc.begin(), network.path_arc.end(), -1);
+  network.stack.clear();
+  network.path_parent[enter.target] = enter.target;
+  network.stack.push_back(enter.target);
+  while (!network.stack.empty() && network.path_parent[enter.source] < 0) {
+    const i_t v = network.stack.back();
+    network.stack.pop_back();
+    for (i_t e : network.adjacency[v]) {
+      if (!network.in_tree[e]) continue;
+      const auto& arc = network.arcs[e];
+      const i_t w     = arc.source == v ? arc.target : arc.source;
+      if (network.path_parent[w] >= 0) continue;
+      network.path_parent[w] = v;
+      network.path_arc[w]    = e;
+      network.stack.push_back(w);
+    }
+  }
+  if (network.path_parent[enter.source] < 0) return true;
+
+  network.cycle_arcs.clear();
+  network.cycle_signs.clear();
+  const f_t bound_tolerance = std::max((f_t)1e-9, p.tolerances.absolute_tolerance);
+  const f_t entering_flow   = c.h_assignment[enter.flow];
+  int entering_sign;
+  if (std::fabs(entering_flow) <= bound_tolerance)
+    entering_sign = 1;
+  else if (std::fabs(entering_flow - enter.capacity) <= bound_tolerance)
+    entering_sign = -1;
+  else
+    return true;
+  network.cycle_arcs.push_back(entering);
+  network.cycle_signs.push_back(entering_sign);
+
+  for (i_t v = enter.source; v != enter.target; v = network.path_parent[v]) {
+    const i_t e      = network.path_arc[v];
+    const i_t parent = network.path_parent[v];
+    if (e < 0) return true;
+    const auto& arc = network.arcs[e];
+    const int sign  = arc.source == parent && arc.target == v ? 1 : -1;
+    network.cycle_arcs.push_back(e);
+    network.cycle_signs.push_back(entering_sign * sign);
+  }
+
+  f_t augmentation = std::numeric_limits<f_t>::infinity();
+  for (size_t k = 0; k < network.cycle_arcs.size(); ++k) {
+    const auto& arc = network.arcs[network.cycle_arcs[k]];
+    const f_t value = c.h_assignment[arc.flow];
+    const f_t room  = network.cycle_signs[k] > 0 ? arc.capacity - value : value;
+    if (room < -bound_tolerance) return true;
+    augmentation = std::min(augmentation, std::max(f_t{0}, room));
+  }
+  if (!(augmentation > bound_tolerance) || !std::isfinite(augmentation)) return true;
+
+  i_t leaving = -1;
+  f_t objective_delta = 0;
+  network.touched_variables.clear();
+  auto add_delta = [&](i_t variable, f_t delta) {
+    if (delta == f_t{0}) return;
+    if (network.variable_delta[variable] == f_t{0}) network.touched_variables.push_back(variable);
+    network.variable_delta[variable] += delta;
+  };
+
+  for (size_t k = 0; k < network.cycle_arcs.size(); ++k) {
+    const i_t cycle_arc = network.cycle_arcs[k];
+    const auto& arc     = network.arcs[cycle_arc];
+    const f_t old_flow  = c.h_assignment[arc.flow];
+    f_t new_flow = old_flow + (f_t)network.cycle_signs[k] * augmentation;
+    if (std::fabs(new_flow) <= bound_tolerance) new_flow = 0;
+    if (std::fabs(new_flow - arc.capacity) <= bound_tolerance) new_flow = arc.capacity;
+    if (cycle_arc != entering && (new_flow == f_t{0} || new_flow == arc.capacity) && leaving < 0)
+      leaving = cycle_arc;
+    add_delta(arc.flow, new_flow - old_flow);
+
+    const bool was_positive = old_flow > bound_tolerance;
+    const bool now_positive = new_flow > bound_tolerance;
+    const f_t controller     = c.h_assignment[arc.binary];
+    if (!was_positive && now_positive && controller < f_t{0.5})
+      add_delta(arc.binary, f_t{1} - controller);
+    else if (was_positive && !now_positive && controller > f_t{0.5})
+      add_delta(arc.binary, -controller);
+  }
+  if (leaving < 0) {
+    for (i_t variable : network.touched_variables) network.variable_delta[variable] = 0;
+    return true;
+  }
+  for (i_t variable : network.touched_variables)
+    objective_delta += p.h_obj_coeffs[variable] * network.variable_delta[variable];
+
+  bool accept = objective_delta < f_t{0};
+  if (!accept && c.network_temperature > f_t{0}) {
+    const size_t sweep = static_cast<size_t>(c.iterations) / network.closed_arcs.size();
+    const double temperature =
+      c.network_temperature *
+      std::max(1.0, static_cast<double>(enter.fix + enter.unit * augmentation)) *
+      std::exp(-static_cast<double>(sweep % 16) / 4.0);
+    accept = c.rng.next_double() < std::exp(-static_cast<double>(objective_delta) / temperature);
+  }
+  if (!accept) {
+    for (i_t variable : network.touched_variables) network.variable_delta[variable] = 0;
+    return true;
+  }
+
+  // Validate every touched original row before changing the incremental search state.
+  network.touched_rows.clear();
+  bool valid = true;
+  for (i_t variable : network.touched_variables) {
+    const f_t candidate = c.h_assignment[variable] + network.variable_delta[variable];
+    if (!std::isfinite(candidate) || !check_variable_within_bounds(c, variable, candidate) ||
+        (is_integer_var(c, variable) && !p.is_integer(candidate)))
+      valid = false;
+    for (i_t q = p.reverse_offsets[variable]; q < p.reverse_offsets[variable + 1]; ++q) {
+      const i_t row = p.reverse_constraints[q];
+      if (!network.row_touched[row]) {
+        network.row_touched[row] = 1;
+        network.touched_rows.push_back(row);
+      }
+    }
+  }
+  for (i_t row : network.touched_rows) {
+    long double activity = 0;
+    for (i_t q = p.offsets[row]; q < p.offsets[row + 1]; ++q) {
+      const i_t variable = p.variables[q];
+      activity += (long double)p.coefficients[q] *
+                  (c.h_assignment[variable] + network.variable_delta[variable]);
+    }
+    if (!std::isfinite((double)activity) ||
+        activity < (long double)p.cstr_lb[row] - p.tolerances.absolute_tolerance ||
+        activity > (long double)p.cstr_ub[row] + p.tolerances.absolute_tolerance)
+      valid = false;
+    network.row_touched[row] = 0;
+  }
+  if (!valid) {
+    for (i_t variable : network.touched_variables) network.variable_delta[variable] = 0;
+    return true;
+  }
+
+  // Apply the dependent cycle as one network move: controllers open before flow changes and close
+  // afterward. The complete point has already been checked against the original model.
+  for (i_t variable : network.touched_variables)
+    if (is_integer_var(c, variable) && network.variable_delta[variable] > 0)
+      apply_move(c, variable, network.variable_delta[variable], false);
+  for (i_t variable : network.touched_variables)
+    if (!is_integer_var(c, variable))
+      apply_move(c, variable, network.variable_delta[variable], false);
+  for (i_t variable : network.touched_variables)
+    if (is_integer_var(c, variable) && network.variable_delta[variable] < 0)
+      apply_move(c, variable, network.variable_delta[variable], false);
+
+  for (i_t variable : network.touched_variables) network.variable_delta[variable] = 0;
+  network.in_tree[entering] = 1;
+  network.in_tree[leaving]  = 0;
+  network.closed_arcs[slot] = leaving;
+  return true;
 }
 
 #if MIP_INSTANTIATE_FLOAT
 template bool apply_fixed_charge_network_start<int, float>(fj_cpu_climber_t<int, float>&, double);
+template bool try_fundamental_cycle_pivot<int, float>(fj_cpu_climber_t<int, float>&);
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
 template bool apply_fixed_charge_network_start<int, double>(fj_cpu_climber_t<int, double>&, double);
+template bool try_fundamental_cycle_pivot<int, double>(fj_cpu_climber_t<int, double>&);
 #endif
 
 }  // namespace cuopt::mathematical_optimization::mip
