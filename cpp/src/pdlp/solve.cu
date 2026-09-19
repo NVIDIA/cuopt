@@ -519,6 +519,16 @@ optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
                                   method);
 }
 
+// Bounding free variables writes presolve state the reuse path cannot replay, so the automatic
+// (-1) choice resolves to 0 for a sequence solve. An explicit 1 is honored and forgoes reuse.
+template <typename i_t, typename f_t>
+i_t effective_bound_free_variables(pdlp_solver_settings_t<i_t, f_t> const& settings)
+{
+  return (settings.sequence_solve && settings.barrier_presolve_bound_free_variables < 0)
+           ? 0
+           : settings.barrier_presolve_bound_free_variables;
+}
+
 template <typename i_t, typename f_t>
 std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t> run_barrier(
   const simplex::user_problem_t<i_t, f_t>& user_problem,
@@ -531,31 +541,30 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   f_t norm_rhs            = vector_norm2<i_t, f_t>(user_problem.rhs);
 
   simplex::simplex_solver_settings_t<i_t, f_t> barrier_settings;
-  barrier_settings.num_gpus                   = settings.num_gpus;
-  barrier_settings.time_limit                 = settings.time_limit;
-  barrier_settings.iteration_limit            = settings.iteration_limit;
-  barrier_settings.concurrent_halt            = settings.concurrent_halt;
-  barrier_settings.folding                    = settings.folding;
-  barrier_settings.augmented                  = settings.augmented;
-  barrier_settings.dualize                    = settings.dualize;
-  barrier_settings.ordering                   = settings.ordering;
-  barrier_settings.barrier_dual_initial_point = settings.barrier_dual_initial_point;
-  barrier_settings.postsolve_info             = settings.postsolve_info;
-  barrier_settings.barrier_presolve_bound_free_variables =
-    settings.barrier_presolve_bound_free_variables;
-  barrier_settings.barrier_initial_point_safeguard = settings.barrier_initial_point_safeguard;
-  barrier_settings.barrier                         = true;
-  barrier_settings.barrier_presolve                = true;
-  barrier_settings.crossover                       = settings.crossover;
-  barrier_settings.eliminate_dense_columns         = settings.eliminate_dense_columns;
-  barrier_settings.barrier_iterative_refinement    = settings.barrier_iterative_refinement;
-  barrier_settings.barrier_adaptive_regularization = settings.barrier_adaptive_regularization;
-  barrier_settings.barrier_primal_regularization   = settings.barrier_primal_regularization;
-  barrier_settings.barrier_dual_regularization     = settings.barrier_dual_regularization;
-  barrier_settings.barrier_soc_threshold           = settings.barrier_soc_threshold;
-  barrier_settings.barrier_step_scale              = settings.barrier_step_scale;
-  barrier_settings.qcqp_ruiz_equilibration         = settings.qcqp_ruiz_equilibration;
-  barrier_settings.cudss_deterministic             = settings.cudss_deterministic;
+  barrier_settings.num_gpus                              = settings.num_gpus;
+  barrier_settings.time_limit                            = settings.time_limit;
+  barrier_settings.iteration_limit                       = settings.iteration_limit;
+  barrier_settings.concurrent_halt                       = settings.concurrent_halt;
+  barrier_settings.folding                               = settings.folding;
+  barrier_settings.augmented                             = settings.augmented;
+  barrier_settings.dualize                               = settings.dualize;
+  barrier_settings.ordering                              = settings.ordering;
+  barrier_settings.barrier_dual_initial_point            = settings.barrier_dual_initial_point;
+  barrier_settings.postsolve_info                        = settings.postsolve_info;
+  barrier_settings.barrier_presolve_bound_free_variables = effective_bound_free_variables(settings);
+  barrier_settings.barrier_initial_point_safeguard       = settings.barrier_initial_point_safeguard;
+  barrier_settings.barrier                               = true;
+  barrier_settings.barrier_presolve                      = true;
+  barrier_settings.crossover                             = settings.crossover;
+  barrier_settings.eliminate_dense_columns               = settings.eliminate_dense_columns;
+  barrier_settings.barrier_iterative_refinement          = settings.barrier_iterative_refinement;
+  barrier_settings.barrier_adaptive_regularization       = settings.barrier_adaptive_regularization;
+  barrier_settings.barrier_primal_regularization         = settings.barrier_primal_regularization;
+  barrier_settings.barrier_dual_regularization           = settings.barrier_dual_regularization;
+  barrier_settings.barrier_soc_threshold                 = settings.barrier_soc_threshold;
+  barrier_settings.barrier_step_scale                    = settings.barrier_step_scale;
+  barrier_settings.qcqp_ruiz_equilibration               = settings.qcqp_ruiz_equilibration;
+  barrier_settings.cudss_deterministic                   = settings.cudss_deterministic;
   barrier_settings.barrier_relaxed_feasibility_tol = settings.tolerances.relative_primal_tolerance;
   barrier_settings.barrier_relaxed_optimality_tol  = settings.tolerances.relative_dual_tolerance;
   barrier_settings.barrier_relaxed_complementarity_tol = settings.tolerances.relative_gap_tolerance;
@@ -1887,10 +1896,14 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
     auto qcqp_timer = cuopt::timer_t(settings.time_limit);
 
     auto* cache    = settings.barrier_cache;
-    auto const* xf = (cache != nullptr && cache->c_dirty()) ? cache->transform() : nullptr;
+    auto const* xf = (cache != nullptr && cache->dirty()) ? cache->transform() : nullptr;
+    // Must stay in lockstep with the gate in solve_linear_program_with_barrier: this path swaps
+    // in the slim user_problem_from_transform, so disagreement runs presolve on a fabricated
+    // problem.
     const bool reuse_from_cache =
       settings.user_problem_file.empty() && xf != nullptr && xf->barrier_lp != nullptr &&
-      settings.barrier_presolve_bound_free_variables == 0 && op_problem.has_quadratic_objective() &&
+      effective_bound_free_variables(settings) == 0 &&
+      xf->presolve_info.bounded_free_variables.empty() && op_problem.has_quadratic_objective() &&
       !op_problem.has_quadratic_constraints() && xf->second_order_cone_dims.empty() &&
       static_cast<int>(xf->row_sense.size()) == xf->user_num_rows &&
       op_problem.get_n_variables() == xf->user_num_cols &&
@@ -1937,6 +1950,9 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
                                         qcqp_timer,
                                         op_problem.get_handle_ptr(),
                                         settings.barrier_cache);
+    // A full solve creates the transform inside run_barrier. Record the model sense afterward,
+    // before a later update_linear_objective needs to map raw user c into barrier minimization
+    // space. Reuse keeps the sense of the workspace (and Q) built by that full solve.
     if (!reuse_from_cache && cache != nullptr && cache->transform() != nullptr) {
       cache->transform()->maximize = op_problem.get_sense();
     }
