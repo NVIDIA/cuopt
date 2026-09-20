@@ -22,11 +22,9 @@ void randomize_variable(fj_cpu_climber_t<i_t, f_t>& fj_cpu, i_t var_idx, cuopt::
     lb  = std::ceil(lb);
     ub  = std::floor(ub);
     val = std::round(val);
-    val = std::min(std::max(val, lb), ub);
   }
+  val = std::clamp(val, get_lower(fj_cpu.h_var_bounds[var_idx].get()), get_upper(fj_cpu.h_var_bounds[var_idx].get()));
 
-  cuopt_assert(check_variable_within_bounds<i_t, f_t>(fj_cpu, var_idx, val),
-               "value is out of bounds");
   fj_cpu.h_assignment[var_idx] = val;
 }
 

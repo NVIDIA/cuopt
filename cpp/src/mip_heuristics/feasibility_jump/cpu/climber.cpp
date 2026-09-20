@@ -482,7 +482,6 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_from_host_model(
   problem_data->h_var_types          = std::move(variable_types);
   fj_cpu->h_is_binary_variable       = std::move(is_binary_variable);
   fj_cpu->h_binary_indices           = std::move(binary_indices);
-  fj_cpu->settings.seed              = cuopt::seed_generator::get_seed();
 
   initialize_climber_state(
     *fj_cpu, *problem_data, std::move(assignment), n_integer_vars, tolerances);
@@ -501,7 +500,6 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_clone(
 
   std::vector<f_t> default_weights(tmpl.problem->n_constraints, 1.0);
   init_fj_cpu_from_template(*fj_cpu, tmpl, default_weights, default_weights, f_t{0});
-  // The seed is caller-drawn and is not taken from the global generator.
   fj_cpu->settings = settings;
 
   return fj_cpu;

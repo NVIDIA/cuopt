@@ -333,7 +333,8 @@ void sanity_checks(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   for (const auto& cstr_idx : fj_cpu.violated_constraints) {
     cuopt_assert(!fj_cpu.satisfied_constraints.contains(cstr_idx),
                  "Violated constraint also in satisfied_constraints");
-    cuopt_assert(fj_cpu.row_state()[cstr_idx].slack < -fj_cpu.row_tolerance,
+    cuopt_assert(fj_cpu.row_state()[cstr_idx].slack + fj_cpu.h_slack_sumcomp[cstr_idx] <
+                   -fj_cpu.row_tolerance,
                  "Constraint in violated_constraints is not actually violated");
   }
 
@@ -342,7 +343,8 @@ void sanity_checks(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   for (const auto& cstr_idx : fj_cpu.satisfied_constraints) {
     cuopt_assert(!fj_cpu.violated_constraints.contains(cstr_idx),
                  "Satisfied constraint also in violated_constraints");
-    cuopt_assert(!(fj_cpu.row_state()[cstr_idx].slack < -fj_cpu.row_tolerance),
+    cuopt_assert(!(fj_cpu.row_state()[cstr_idx].slack + fj_cpu.h_slack_sumcomp[cstr_idx] <
+                   -fj_cpu.row_tolerance),
                  "Constraint in satisfied_constraints is actually violated");
   }
 

@@ -212,15 +212,15 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
       cuopt_assert(move.var_idx < fj_cpu.h_assignment.size(), "move.var_idx is out of bounds");
       cuopt_assert(move.var_idx >= 0, "move.var_idx is not positive");
 
-      auto [score, infeasibility]        = compute_score<i_t, f_t>(fj_cpu, var_idx, delta);
-      fj_cpu.cached_mtm_moves[i]         = std::make_pair(delta, score);
-      fj_cpu.cached_mtm_moves_version[i] = fj_cpu.h_cstr_version[cstr_idx];
+      auto [score, infeasibility] = compute_score<i_t, f_t>(fj_cpu, var_idx, delta);
       fj_cpu.miss_count++;
       // reject this move if it would increase the target variable to a numerically unstable value
-      if (fj_cpu.move_numerically_stable(val, new_val, infeasibility, fj_cpu.total_violations)) {
-        if (improves_best(score, move.var_idx, move.value))
-          store_best(score, move.var_idx, move.value);
-      }
+      if (!fj_cpu.move_numerically_stable(val, new_val, infeasibility, fj_cpu.total_violations))
+        continue;
+      fj_cpu.cached_mtm_moves[i]         = std::make_pair(delta, score);
+      fj_cpu.cached_mtm_moves_version[i] = fj_cpu.h_cstr_version[cstr_idx];
+      if (improves_best(score, move.var_idx, move.value))
+        store_best(score, move.var_idx, move.value);
     }
   }
 
