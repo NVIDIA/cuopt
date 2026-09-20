@@ -100,8 +100,8 @@ void apply_lane_diversification(fj_cpu_climber_t<i_t, f_t>& c, int lane, int64_t
   c.use_integer_bit_encoding       = lane != 0 && lane != 7 && c.n_binary_vars > 0;
   c.use_lp_polish = lane == 3 || lane == 5 || lane == 8 || lane == 9 || lane == 10 || lane == 11 ||
                     lane == 12 || lane == 13 || lane == 14;
-  c.use_precedence_start      = lane % 8 == 0;
-  c.use_equality_substitution = lane % 4 == 0;
+  c.use_precedence_start      = lane % 8 == 0 && !c.low_latency;
+  c.use_equality_substitution = lane % 4 == 0 && !c.low_latency;
   c.use_bound_prop            = lane % 2 == 0 && !c.low_latency;
 
   if (lane == 13 && low_rank_integer_equalities) {

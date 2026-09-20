@@ -1064,21 +1064,6 @@ struct fj_bin_engine_t {
                         climber.get_user_objective((f_t)best_objective),
                         max_weight);
       }
-      if (iters % climber.diversity_callback_interval == 0 && climber.diversity_callback) {
-        auto& h_assign = climber.h_assignment;
-        for (int32_t v = 0; v < pb.n_original; ++v)
-          h_assign[v] = (f_t)pb.var_offset[v];
-        for (int32_t b = 0; b < pb.n_variables; ++b)
-          if (assign[b]) h_assign[pb.bit_owner[b]] += (f_t)pb.bit_weight[b];
-        if (climber.has_bin_elimination) uncrush(climber, h_assign);
-        const f_t sampled_objective = climber.has_bin_elimination
-                                        ? original_objective(climber, h_assign)
-                                        : (f_t)incumbent_objective;
-        cuopt_func_call(
-          audit_binary_incumbent(climber, h_assign, sampled_objective, (f_t)incumbent_objective));
-        climber.diversity_callback(sampled_objective, h_assign);
-      }
-
       // Work-unit proxy. nnz_touched is cumulative, reproducing the accumulation shape the general
       // path gets from its cumulative byte counters.
       if (iters % 100 == 0 && iters > 0) {

@@ -362,11 +362,6 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, double time_limit, double w
         fj_cpu->max_weight);
     }
 
-    if (fj_cpu->iterations % fj_cpu->diversity_callback_interval == 0 &&
-        fj_cpu->diversity_callback) {
-      fj_cpu->diversity_callback(fj_cpu->h_incumbent_objective, fj_cpu->h_assignment);
-    }
-
     if (fj_cpu->iterations % 100 == 0 && fj_cpu->iterations > 0) {
       // Use cumulative byte counts (collect() without flush). Each window's contribution to
       // work_units_elapsed therefore grows roughly with the running total of bytes touched,

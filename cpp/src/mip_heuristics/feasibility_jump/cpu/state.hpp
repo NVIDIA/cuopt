@@ -372,9 +372,7 @@ template <typename i_t, typename f_t>
 struct fj_runtime_t {
   explicit fj_runtime_t(std::atomic<bool>& flag) : preemption_flag(flag) {}
   i_t log_interval{0};
-  i_t diversity_callback_interval{3000};
   std::function<void(f_t, const std::vector<f_t>&, double)> improvement_callback{nullptr};
-  std::function<void(f_t, const std::vector<f_t>&)> diversity_callback{nullptr};
   std::string log_prefix;
   std::shared_ptr<fj_cpu_shared_incumbent_t<i_t, f_t>> shared_incumbent;
   std::atomic<double> work_units_elapsed{0.0};

@@ -117,50 +117,6 @@ void run_climber(mip::fj_cpu_climber_t<i_t, f_t>* climber,
   result.iterations = climber->iterations;
 }
 
-struct lane_reservoir_t {
-  int lane{0};
-  int capacity{0};
-  long long seen{0};
-  uint64_t rng_state{0};
-  std::vector<std::vector<f_t>> samples;
-  std::vector<long long> calls;
-  std::vector<long long> iterations;
-  std::vector<double> objectives;
-
-  uint64_t next_u64()
-  {
-    rng_state ^= rng_state >> 12;
-    rng_state ^= rng_state << 25;
-    rng_state ^= rng_state >> 27;
-    return rng_state * 2685821657736338717ull;
-  }
-};
-
-void sample_assignment(lane_reservoir_t& r,
-                       f_t objective,
-                       const std::vector<f_t>& assignment,
-                       long long iteration)
-{
-  if (r.capacity <= 0 || assignment.empty()) { return; }
-  const long long n = ++r.seen;
-  int slot          = -1;
-  if ((int)r.samples.size() < r.capacity) {
-    slot = (int)r.samples.size();
-    r.samples.emplace_back();
-    r.calls.push_back(0);
-    r.iterations.push_back(0);
-    r.objectives.push_back(0);
-  } else {
-    const uint64_t j = r.next_u64() % (uint64_t)n;
-    if (j < (uint64_t)r.capacity) { slot = (int)j; }
-  }
-  if (slot < 0) { return; }
-  r.samples[slot]    = assignment;
-  r.calls[slot]      = n;
-  r.iterations[slot] = iteration;
-  r.objectives[slot] = (double)objective;
-}
-
 std::vector<f_t> uncrush_assignment(mip::problem_t<i_t, f_t>& problem,
                                     const std::vector<f_t>& assignment,
                                     rmm::cuda_stream_view stream)
@@ -172,46 +128,6 @@ std::vector<f_t> uncrush_assignment(mip::problem_t<i_t, f_t>& problem,
     problem.papilo_uncrush_assignment(d_assignment, stream);
   }
   return cuopt::host_copy(d_assignment, stream);
-}
-
-bool write_samples(const std::string& path,
-                   const std::vector<lane_reservoir_t>& reservoirs,
-                   mip::problem_t<i_t, f_t>& problem,
-                   rmm::cuda_stream_view stream)
-{
-  std::FILE* out = std::fopen(path.c_str(), "wb");
-  if (out == nullptr) { return false; }
-  int32_t n_records = 0;
-  for (const auto& r : reservoirs) {
-    n_records += (int32_t)r.samples.size();
-  }
-  int32_t nv = 0;
-  for (const auto& r : reservoirs) {
-    if (!r.samples.empty()) {
-      nv = (int32_t)uncrush_assignment(problem, r.samples[0], stream).size();
-      break;
-    }
-  }
-  std::fwrite("CPUFJSMP", 1, 8, out);
-  std::fwrite(&n_records, sizeof(int32_t), 1, out);
-  std::fwrite(&nv, sizeof(int32_t), 1, out);
-  for (const auto& r : reservoirs) {
-    const int32_t lane = (int32_t)r.lane;
-    for (size_t i = 0; i < r.samples.size(); ++i) {
-      const int64_t call          = (int64_t)r.calls[i];
-      const int64_t iteration     = (int64_t)r.iterations[i];
-      const double objective      = r.objectives[i];
-      const std::vector<f_t> user = uncrush_assignment(problem, r.samples[i], stream);
-      std::fwrite(&lane, sizeof(int32_t), 1, out);
-      std::fwrite(&call, sizeof(int64_t), 1, out);
-      std::fwrite(&iteration, sizeof(int64_t), 1, out);
-      std::fwrite(&objective, sizeof(double), 1, out);
-      std::vector<double> row(user.begin(), user.end());
-      std::fwrite(row.data(), sizeof(double), row.size(), out);
-    }
-  }
-  std::fclose(out);
-  return true;
 }
 
 bool write_lane_solutions(
@@ -277,20 +193,6 @@ int main(int argc, char** argv)
     .default_value(12345u)
     .nargs(argparse::nargs_pattern::optional);
 
-  program.add_argument("--sample-file")
-    .help("path for the binary reservoir sample dump")
-    .default_value(std::string(""));
-
-  program.add_argument("--samples-per-lane")
-    .help("reservoir capacity per lane")
-    .scan<'i', int>()
-    .default_value(64);
-
-  program.add_argument("--sample-interval")
-    .help("iterations between diversity callbacks")
-    .scan<'i', int>()
-    .default_value(300);
-
   program.add_argument("--sol-dir")
     .help("directory to write one .sol per feasible lane into")
     .default_value(std::string(""));
@@ -325,9 +227,6 @@ int main(int argc, char** argv)
   const int n_climbers          = program.get<int>("climbers");
   const unsigned base_seed      = program.get<unsigned>("seed");
   const bool no_related_vars    = program.get<bool>("--no-related-vars");
-  const std::string sample_path = program.get<std::string>("--sample-file");
-  const int samples_per_lane    = program.get<int>("--samples-per-lane");
-  const int sample_interval     = program.get<int>("--sample-interval");
   const std::string sol_dir     = program.get<std::string>("--sol-dir");
   const bool low_latency        = program.get<bool>("--low-latency");
   const bool run_probing        = program.get<bool>("--probing");
@@ -508,21 +407,8 @@ int main(int argc, char** argv)
       const_cast<mip::fj_cpu_problem_t<i_t, f_t>*>(climbers[k]->problem.get())->probing_cache =
         &probing_presolve->probing_cache;
   }
-  std::vector<lane_reservoir_t> reservoirs(sample_path.empty() ? 0 : (size_t)n_climbers);
   for (int k = 0; k < n_climbers; ++k) {
     climbers[k]->log_prefix = "[climber " + std::to_string(k) + "] ";
-    if (!sample_path.empty()) {
-      reservoirs[k].lane     = k;
-      reservoirs[k].capacity = samples_per_lane;
-      reservoirs[k].rng_state =
-        (uint64_t)base_seed * 6364136223846793005ull + (uint64_t)k * 1442695040888963407ull + 1ull;
-      lane_reservoir_t* r                      = &reservoirs[k];
-      auto* climber                            = climbers[k].get();
-      climbers[k]->diversity_callback_interval = sample_interval;
-      climbers[k]->diversity_callback = [r, climber](f_t objective, const std::vector<f_t>& a) {
-        sample_assignment(*r, objective, a, (long long)climber->iterations);
-      };
-    }
   }
 
   const std::vector<int> cpus = allowed_cpus();
@@ -920,19 +806,5 @@ int main(int argc, char** argv)
                 ok ? "written" : "WRITE FAILED");
   }
 
-  if (!sample_path.empty()) {
-    size_t written = 0;
-    for (const auto& r : reservoirs) {
-      written += r.samples.size();
-    }
-    const bool ok = write_samples(sample_path, reservoirs, problem, handle.get_stream());
-    std::printf("SAMPLES: %zu records from %d lanes, cap %d/lane, interval %d -> %s (%s)\n",
-                written,
-                n_climbers,
-                samples_per_lane,
-                sample_interval,
-                sample_path.c_str(),
-                ok ? "written" : "WRITE FAILED");
-  }
   return 0;
 }
