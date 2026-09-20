@@ -400,10 +400,7 @@ int main(int argc, char** argv)
 
   std::vector<std::atomic<bool>> preemption_flags(n_climbers);
   std::vector<std::unique_ptr<mip::fj_cpu_climber_t<i_t, f_t>>> climbers(n_climbers);
-  // Composition and per-climber parameters come from build_climber_portfolio, which
-  // is editable. The log prefix is assigned here and not there, so every climber
-  // stays identifiable in the log whatever the portfolio does.
-  // The command-line seed controls lane RNG streams as well as persona tuning.
+
   mip::build_climber_portfolio<i_t, f_t>(
     problem, preemption_flags, climbers, base_seed, low_latency);
   if (probing_presolve != nullptr) {

@@ -369,7 +369,7 @@ bool try_fundamental_cycle_pivot(fj_cpu_climber_t<i_t, f_t>& c)
   const size_t slot   = network.next_closed;
   const i_t entering  = network.closed_arcs[slot];
   network.next_closed = (slot + 1) % network.closed_arcs.size();
-  if (network.in_tree[entering]) return true;
+  if (network.in_tree[entering]) return false;
   const auto& enter = network.arcs[entering];
 
   // Recover the unique tree path for this entering arc; no alternative move is scanned.
@@ -391,7 +391,7 @@ bool try_fundamental_cycle_pivot(fj_cpu_climber_t<i_t, f_t>& c)
       network.stack.push_back(w);
     }
   }
-  if (network.path_parent[enter.source] < 0) return true;
+  if (network.path_parent[enter.source] < 0) return false;
 
   network.cycle_arcs.clear();
   network.cycle_signs.clear();
@@ -403,14 +403,14 @@ bool try_fundamental_cycle_pivot(fj_cpu_climber_t<i_t, f_t>& c)
   else if (std::fabs(entering_flow - enter.capacity) <= bound_tolerance)
     entering_sign = -1;
   else
-    return true;
+    return false;
   network.cycle_arcs.push_back(entering);
   network.cycle_signs.push_back(entering_sign);
 
   for (i_t v = enter.source; v != enter.target; v = network.path_parent[v]) {
     const i_t e      = network.path_arc[v];
     const i_t parent = network.path_parent[v];
-    if (e < 0) return true;
+    if (e < 0) return false;
     const auto& arc = network.arcs[e];
     const int sign  = arc.source == parent && arc.target == v ? 1 : -1;
     network.cycle_arcs.push_back(e);
@@ -422,10 +422,10 @@ bool try_fundamental_cycle_pivot(fj_cpu_climber_t<i_t, f_t>& c)
     const auto& arc = network.arcs[network.cycle_arcs[k]];
     const f_t value = c.h_assignment[arc.flow];
     const f_t room  = network.cycle_signs[k] > 0 ? arc.capacity - value : value;
-    if (room < -bound_tolerance) return true;
+    if (room < -bound_tolerance) return false;
     augmentation = std::min(augmentation, std::max(f_t{0}, room));
   }
-  if (!(augmentation > bound_tolerance) || !std::isfinite(augmentation)) return true;
+  if (!(augmentation > bound_tolerance) || !std::isfinite(augmentation)) return false;
 
   i_t leaving = -1;
   f_t objective_delta = 0;
@@ -457,7 +457,7 @@ bool try_fundamental_cycle_pivot(fj_cpu_climber_t<i_t, f_t>& c)
   }
   if (leaving < 0) {
     for (i_t variable : network.touched_variables) network.variable_delta[variable] = 0;
-    return true;
+    return false;
   }
   for (i_t variable : network.touched_variables)
     objective_delta += p.h_obj_coeffs[variable] * network.variable_delta[variable];
@@ -473,7 +473,7 @@ bool try_fundamental_cycle_pivot(fj_cpu_climber_t<i_t, f_t>& c)
   }
   if (!accept) {
     for (i_t variable : network.touched_variables) network.variable_delta[variable] = 0;
-    return true;
+    return false;
   }
 
   // Validate every touched original row before changing the incremental search state.
@@ -507,7 +507,7 @@ bool try_fundamental_cycle_pivot(fj_cpu_climber_t<i_t, f_t>& c)
   }
   if (!valid) {
     for (i_t variable : network.touched_variables) network.variable_delta[variable] = 0;
-    return true;
+    return false;
   }
 
   // Apply the dependent cycle as one network move: controllers open before flow changes and close
