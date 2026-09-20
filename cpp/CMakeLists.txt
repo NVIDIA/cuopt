@@ -840,10 +840,15 @@ target_link_libraries(cuopt_client
         # No rmm::rmm: nothing leaks out of rmm's headers here any more (#1890), and
         # linking it would put librmm.so back in DT_NEEDED and cost the client its
         # CUDA-free property. It stays on cuopt_client_objs for the include path.
+        #
+        # dl is PUBLIC because the public headers pull in nvtx, whose inline init calls
+        # dlopen/dlsym, so a consumer compiling them needs -ldl on its own link line.
+        # rmm::rmm used to supply that transitively; dropping it broke the arm64 link of
+        # the routing gRPC mapper tests, which name cuopt_client alone.
+        ${CMAKE_DL_LIBS}
         PRIVATE
         simde::simde
         OpenMP::OpenMP_CXX
-        ${CMAKE_DL_LIBS}
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:protobuf::libprotobuf>
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:gRPC::grpc++>
 )
