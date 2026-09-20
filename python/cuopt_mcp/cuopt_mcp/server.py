@@ -17,7 +17,7 @@ from typing import Any
 
 from mcp.server.mcpserver import MCPServer
 
-from . import tools
+from . import routing, tools
 from .client import CuOptMCPError, endpoint, redact_paths
 
 logging.basicConfig(
@@ -29,11 +29,14 @@ logging.basicConfig(
 server = MCPServer(
     name="cuopt",
     instructions=(
-        "Solve linear and mixed-integer programs with NVIDIA cuOpt on GPU. "
-        "Solves are asynchronous: cuopt_solve_lp / cuopt_solve_milp return a "
-        "job_id immediately, then poll cuopt_status and fetch cuopt_result. "
-        "Call cuopt_list_settings to discover solver parameters before "
-        "passing a settings object. "
+        "Solve linear programs, mixed-integer programs, and vehicle "
+        "routing problems with NVIDIA cuOpt on GPU. Solves are "
+        "asynchronous: cuopt_solve_lp / cuopt_solve_milp / cuopt_solve_vrp "
+        "return a job_id immediately, then poll cuopt_status and fetch "
+        "cuopt_result (LP/MILP) or cuopt_vrp_result (VRP) -- cuopt_status/"
+        "cuopt_cancel/cuopt_delete work for a job_id from any of the three. "
+        "Call cuopt_list_settings to discover LP/MILP solver parameters "
+        "before passing a settings object. "
         "This server is a client, not a solver: it needs a running "
         "cuopt_grpc_server and never starts one. Call cuopt_health first to "
         "see the configured host/port and whether it answers. If it does "
@@ -189,12 +192,100 @@ def cuopt_solve_milp(
 
 
 @server.tool(structured_output=True)
+def cuopt_solve_vrp(
+    problem: dict, settings: dict | None = None
+) -> dict[str, Any]:
+    """Submit a vehicle routing problem (VRP/PDP) to cuOpt and return a job
+    handle immediately.
+
+    problem: the model as plain JSON arrays, mirroring RoutingProblem in
+        cuopt_routing.proto field for field. Required:
+        n_locations, fleet_size: sizes (locations include vehicle start/end
+            points; n_orders defaults to n_locations if omitted).
+        cost_matrices: [{"values": [[...]], "vehicle_type": 0}] -- one
+            n_locations x n_locations matrix per vehicle_type (heterogeneous
+            fleets use more than one). At least one required.
+        Optional, by area:
+        transit_time_matrices: same shape as cost_matrices, used for time-
+            window feasibility instead of cost_matrices when set.
+        vehicle_locations: {"start": [...], "end": [...]}, vehicle_types,
+            vehicle_time_windows: {"earliest": [...], "latest": [...]},
+            drop_return_trips, skip_first_trips, vehicle_max_costs,
+            vehicle_max_times, vehicle_fixed_costs -- each length fleet_size.
+        order_locations, order_prizes -- each length n_orders.
+        order_time_windows: {"earliest": [...], "latest": [...]}, length
+            n_orders (per order, not per location).
+        order_service_times: [{"service_times": [...], "vehicle_id": -1}] --
+            vehicle_id -1 (default) sets the fallback for all vehicles.
+        pickup_delivery_pairs: {"pickup": [...], "delivery": [...]} -- order
+            indices (positions into order_locations), not location ids.
+        capacity_dimensions: [{"name": ..., "demand": [...] (n_orders),
+            "capacity": [...] (fleet_size)}] -- one entry per dimension.
+        break_locations: allowed break locations (default: any).
+        uniform_breaks: [{"earliest": [...], "latest": [...],
+            "duration": [...]}] (each length fleet_size) -- fleet-wide
+            breaks. Mutually exclusive with vehicle_breaks/
+            vehicle_distance_breaks.
+        vehicle_breaks: [{"vehicle_id", "earliest", "latest", "duration",
+            "locations": [...] (optional)}] -- one entry per break.
+        vehicle_distance_breaks: [{"vehicle_id", "distance_min",
+            "distance_max", "duration", "locations": [...] (optional)}].
+        vehicle_order_match: [{"vehicle_id", "orders": [...]}] -- restricts
+            a vehicle to only the given orders.
+        order_vehicle_match: [{"order_id", "vehicles": [...]}] -- restricts
+            an order to only the given vehicles.
+        order_precedence: [{"order_id", "preceding_orders": [...]}].
+        objective: {"objectives": [...names...], "weights": [...]}. Names:
+            COST, TRAVEL_TIME, VARIANCE_ROUTE_SIZE,
+            VARIANCE_ROUTE_SERVICE_TIME, PRIZE, VEHICLE_FIXED_COST,
+            DISTANCE_BREAK_COST. Default weight 1.0 for COST and for any
+            objective whose matching input (prizes, fixed costs, distance
+            breaks) is set; 0.0 otherwise.
+        min_vehicles: floor on fleet size used (solution may not be
+            optimal when set).
+        initial_solutions: {"vehicle_ids", "routes", "sol_offsets": [...],
+            "types": [...]} -- types are "Depot"/"Pickup"/"Delivery"/
+            "Break".
+
+    settings: optional, e.g. {"time_limit": 30}. Only time_limit,
+        verbose_mode (or verbose), and error_logging reach the server.
+
+    Returns a job_id. Use cuopt_vrp_result once cuopt_status reports
+    COMPLETED.
+    """
+    return _guard(routing.submit, problem=problem, settings=settings)
+
+
+@server.tool(structured_output=True)
+def cuopt_vrp_result(
+    job_id: str, limit: int = tools.INLINE_SOLUTION_LIMIT
+) -> dict[str, Any]:
+    """Fetch the solution for a finished VRP job.
+
+    job_id: a job handle previously returned by cuopt_solve_vrp.
+    limit: maximum route stops returned inline. Beyond this the full route
+        table is written to a file and its path returned instead.
+
+    Returns status (SUCCESS/FAIL/TIMEOUT/EMPTY), total_objective_value,
+    objective_values (by name), vehicle_count, and stops -- a flat list of
+    {vehicle, location, type, arrival} across all routes, one per visit
+    (type is "Depot"/"Pickup"/"Delivery"/"Break"). On FAIL, also carries
+    unserviced_orders. On failure, or on an out-of-range limit, returns
+    ``{"error": <message>}`` instead (see ``_guard``).
+    """
+    return _guard(routing.result, job_id=job_id, limit=limit)
+
+
+@server.tool(structured_output=True)
 def cuopt_status(job_id: str) -> dict[str, Any]:
     """Report whether a cuOpt job is queued, running, or finished.
 
-    Cheap to call repeatedly. Returns terminal=true once the job has
-    reached COMPLETED, FAILED, CANCELLED, or NOT_FOUND. On failure, returns
-    ``{"error": <message>}`` instead (see ``_guard``).
+    Works for a job_id from any of cuopt_solve_lp/cuopt_solve_milp/
+    cuopt_solve_vrp -- job_id is server-issued from one registry
+    regardless of problem type. Cheap to call repeatedly. Returns
+    terminal=true once the job has reached COMPLETED, FAILED, CANCELLED,
+    or NOT_FOUND. On failure, returns ``{"error": <message>}`` instead
+    (see ``_guard``).
     """
     return _guard(tools.status, job_id=job_id)
 
@@ -277,7 +368,8 @@ def cuopt_logs(
 
 @server.tool(structured_output=True)
 def cuopt_cancel(job_id: str) -> dict[str, Any]:
-    """Stop a running cuOpt job. Any incumbent found so far remains fetchable.
+    """Stop a running cuOpt job (LP, MILP, or VRP). Any incumbent found so
+    far remains fetchable.
 
     job_id: the job to cancel. Cancelling a job that has already reached
     COMPLETED or FAILED returns ``{"error": <message>}`` (see ``_guard``)
@@ -289,7 +381,8 @@ def cuopt_cancel(job_id: str) -> dict[str, Any]:
 @server.tool(structured_output=True)
 def cuopt_delete(job_id: str) -> dict[str, Any]:
     """Release a finished job's server-side state (solution, logs,
-    incumbents). Cancels first if it is still running.
+    incumbents). Works for LP, MILP, or VRP jobs. Cancels first if it is
+    still running.
 
     job_id: the job to delete. Call this once its result is no longer
     needed, so cuopt_grpc_server doesn't accumulate state indefinitely.

@@ -724,9 +724,13 @@ def delete(job_id: str) -> dict:
     except Exception as exc:
         raise describe_connection_error(exc) from exc
     try:
+        # job_id is server-issued and category-agnostic (one job registry),
+        # so cuopt_delete doesn't know which of these sidecar files exist
+        # without tracking submit()'s category -- cheaper to just try all.
         path = _solution_file_path(job_id)
         path.unlink(missing_ok=True)
         path.with_suffix(".names.json").unlink(missing_ok=True)
+        path.with_suffix(".vrp.json").unlink(missing_ok=True)
     except CuOptMCPError:
         pass  # nothing to clean up if the directory itself is unusable
     return {"job_id": job_id, "deleted": True}
