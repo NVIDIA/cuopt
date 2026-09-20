@@ -139,6 +139,9 @@ files:
       - depends_on_libraft_headers
       - depends_on_librmm
       - depends_on_rapids_logger
+  # libcuopt now carries only the ld script and cuopt_grpc_server; the libraries live in
+  # the component wheels, so it depends on those rather than on the CUDA stack directly.
+  # Their own dependency sets bring rmm, rapids-logger and the CUDA wheels they each need.
   py_run_libcuopt:
     output: pyproject
     pyproject_dir: python/libcuopt
@@ -148,10 +151,9 @@ files:
     extras:
       table: project
     includes:
-      - cuda_wheels
-      - depends_on_libraft_headers
-      - depends_on_librmm
-      - depends_on_rapids_logger
+      - depends_on_libcuopt_client
+      - depends_on_libcuopt_mathopt
+      - depends_on_libcuopt_routing
   # One set of keys per component wheel. The point of the split is in py_run_*:
   # only mathopt carries cudss / nccl / nvjitlink, so a routing-only install no
   # longer pulls libraries it never calls.
