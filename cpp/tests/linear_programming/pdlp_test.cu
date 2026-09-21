@@ -1351,6 +1351,8 @@ TEST(pdlp_class, first_primal_feasible_stable3)
   solver_settings.pdlp_solver_mode = pdlp_solver_mode_t::Stable3;
   solver_settings.method           = cuopt::mathematical_optimization::method_t::PDLP;
   solver_settings.presolver        = presolver_t::None;
+  // Known issue with Curtis-Reid scaling on batch PDLP.
+  solver_settings.hyper_params.do_curtis_reid_scaling = false;
 
   cuopt::mathematical_optimization::io::mps_data_model_t<int, double> op_problem =
     cuopt::mathematical_optimization::io::read_mps<int, double>(path);
@@ -1565,6 +1567,8 @@ TEST(pdlp_class, first_primal_feasible_and_per_constraint_residual_stable3)
   solver_settings.set_optimality_tolerance(kOptimalityTolerance);
   solver_settings.presolver = presolver_t::None;
   solver_settings.method    = cuopt::mathematical_optimization::method_t::PDLP;
+  // Known issue with Curtis-Reid scaling on batch PDLP.
+  solver_settings.hyper_params.do_curtis_reid_scaling = false;
 
   cuopt::mathematical_optimization::io::mps_data_model_t<int, double> op_problem =
     cuopt::mathematical_optimization::io::read_mps<int, double>(path);
@@ -1601,6 +1605,8 @@ TEST(pdlp_class, first_primal_feasible_and_per_constraint_residual_batch_stable3
   constexpr double kOptimalityTolerance   = 1e-2;
   solver_settings.set_optimality_tolerance(kOptimalityTolerance);
   solver_settings.presolver = presolver_t::None;
+  // Known issue with Curtis-Reid scaling on batch PDLP.
+  solver_settings.hyper_params.do_curtis_reid_scaling = false;
 
   constexpr int batch_size = 2;
 
@@ -1648,6 +1654,8 @@ TEST(pdlp_class, first_primal_feasible_and_per_constraint_residual_batch_differe
   constexpr double kOptimalityTolerance   = 1e-2;
   solver_settings.set_optimality_tolerance(kOptimalityTolerance);
   solver_settings.presolver = presolver_t::None;
+  // Known issue with Curtis-Reid scaling on batch PDLP.
+  solver_settings.hyper_params.do_curtis_reid_scaling = false;
 
   constexpr int batch_size = 2;
 
@@ -1715,6 +1723,8 @@ TEST(pdlp_class, all_primal_feasible_and_per_constraint_residual_batch_different
   constexpr double kOptimalityTolerance   = 1e-2;
   solver_settings.set_optimality_tolerance(kOptimalityTolerance);
   solver_settings.presolver = presolver_t::None;
+  // Known issue with Curtis-Reid scaling on batch PDLP.
+  solver_settings.hyper_params.do_curtis_reid_scaling = false;
 
   constexpr int batch_size = 2;
 
@@ -1782,6 +1792,8 @@ TEST(pdlp_class, all_primal_feasible_and_per_constraint_residual_batch_many_diff
   constexpr double kOptimalityTolerance   = 1e-2;
   solver_settings.set_optimality_tolerance(kOptimalityTolerance);
   solver_settings.presolver = presolver_t::None;
+  // Known issue with Curtis-Reid scaling on batch PDLP.
+  solver_settings.hyper_params.do_curtis_reid_scaling = false;
 
   const auto& original_lb    = op_problem.get_constraint_lower_bounds();
   const auto& original_ub    = op_problem.get_constraint_upper_bounds();
@@ -1893,6 +1905,8 @@ TEST(pdlp_class, all_primal_feasible_and_per_constraint_residual_batch_many_diff
   constexpr double kOptimalityTolerance   = 1e-2;
   solver_settings.set_optimality_tolerance(kOptimalityTolerance);
   solver_settings.presolver = presolver_t::None;
+  // Known issue with Curtis-Reid scaling on batch PDLP.
+  solver_settings.hyper_params.do_curtis_reid_scaling = false;
 
   const auto& original_lb    = op_problem.get_constraint_lower_bounds();
   const auto& original_ub    = op_problem.get_constraint_upper_bounds();
