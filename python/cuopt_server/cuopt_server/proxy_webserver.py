@@ -299,7 +299,10 @@ def _require_uuid(id):
         )
 
 
-def _resolve_accept(accept, fallback=mime_json):
+def _resolve_accept(accept, fallback=mime_msgpack):
+    # Wildcards match encode(): */* and application/* are msgpack unless
+    # a caller supplies a different fallback (POST /cuopt/request uses
+    # Content-Type; GET solution uses the stored request accept).
     if not accept:
         return fallback
     if accept not in [mime_json, mime_msgpack, mime_zlib] + mime_wild:
@@ -936,10 +939,10 @@ def getsolution(
     accept: str = Header(default="application/json"),
 ):
     try:
-        fallback = mime_json
+        fallback = mime_msgpack
         meta = _get_job(id)
         if meta is not None:
-            fallback = meta.get("accept", mime_json)
+            fallback = meta.get("accept", mime_msgpack)
         accept = _resolve_accept(accept, fallback)
         _require_uuid(id)
         if meta is not None and meta.get("validation_only"):
