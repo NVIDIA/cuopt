@@ -79,24 +79,6 @@ inline std::pair<double, double> scaled_row_limits(double absolute_tolerance,
           upper_bound + scaled_tolerance(absolute_tolerance, positive_activity, upper_bound)};
 }
 
-inline std::pair<double, double> scaled_bound_limits(double absolute_tolerance,
-                                                     double value,
-                                                     double lower_bound,
-                                                     double upper_bound)
-{
-  return {lower_bound - scaled_tolerance(absolute_tolerance, lower_bound, value),
-          upper_bound + scaled_tolerance(absolute_tolerance, upper_bound, value)};
-}
-
-inline double bound_excess(double value,
-                           double lower_bound,
-                           double upper_bound,
-                           double absolute_tolerance)
-{
-  const auto limits = scaled_bound_limits(absolute_tolerance, value, lower_bound, upper_bound);
-  return std::max(std::max(limits.first - value, value - limits.second), 0.0);
-}
-
 struct row_verdict_t {
   double activity;
   double excess;
@@ -182,26 +164,23 @@ static bool verify_solution(
                                   << "\n";
       return false;
     }
-    const auto bound_limits            = scaled_bound_limits(tolerances.absolute_tolerance,
-                                                  value,
-                                                  variable_lower_bounds[variable],
-                                                  variable_upper_bounds[variable]);
-    const double lower_bound_tolerance = variable_lower_bounds[variable] - bound_limits.first;
-    const double upper_bound_tolerance = bound_limits.second - variable_upper_bounds[variable];
-    if (value < bound_limits.first || value > bound_limits.second) {
+    if (value < variable_lower_bounds[variable] - tolerances.integrality_tolerance ||
+        value > variable_upper_bounds[variable] + tolerances.integrality_tolerance) {
       std::osyncstream(std::cerr) << std::setprecision(17) << "Incumbent " << incumbent
                                   << " variable " << variable << " violates bounds: value=" << value
                                   << " lb=" << variable_lower_bounds[variable]
                                   << " ub=" << variable_upper_bounds[variable]
-                                  << " lower_tolerance=" << lower_bound_tolerance
-                                  << " upper_tolerance=" << upper_bound_tolerance << "\n";
+                                  << " tolerance=" << tolerances.integrality_tolerance << "\n";
       return false;
     }
-    if (variable_types[variable] == 'I' && value != std::round(value)) {
+    const double integrality_residual = std::abs(value - std::round(value));
+    if (variable_types[variable] == 'I' &&
+        integrality_residual > tolerances.integrality_tolerance) {
       std::osyncstream(std::cerr) << std::setprecision(17) << "Incumbent " << incumbent
                                   << " variable " << variable
-                                  << " is not exactly integral: value=" << value
-                                  << " residual=" << std::abs(value - std::round(value)) << "\n";
+                                  << " violates integrality tolerance: value=" << value
+                                  << " residual=" << integrality_residual
+                                  << " tolerance=" << tolerances.integrality_tolerance << "\n";
       return false;
     }
     objective += (_Float128)objective_coefficients[variable] * (_Float128)solution[variable];
