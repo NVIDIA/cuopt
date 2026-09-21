@@ -111,7 +111,7 @@ if [[ -n "${CONDA_PREFIX:-}" ]]; then
     base=$(basename "$cfile" .c)
     rel="${cfile#"$REPO_ROOT/"}"
     log "Building and running C asset: $rel"
-    if ! (cd "$dir" && "${CC}" -I"${INCLUDE_PATH}" -L"${LIB_PATH}" -o "$base" "$(basename "$cfile")" -lcuopt); then
+    if ! (cd "$dir" && "${CC}" -I"${INCLUDE_PATH}" -L"${LIB_PATH}" -o "$base" "$(basename "$cfile")" -lcuopt_mathopt); then
       FAILED+=("$rel (build)")
       log "FAIL: $rel (build)"
       continue
@@ -128,6 +128,22 @@ if [[ -n "${CONDA_PREFIX:-}" ]]; then
       log "FAIL: $rel"
     fi
   done < <(find "${SKILLS_ASSETS}" -path "*/assets/*" -name "*.c" -type f -print0 | sort -z)
+
+  # Legacy compatibility check. The assets above link -lcuopt_mathopt so they prove the
+  # component stands alone; this one build keeps the -lcuopt shim covered, since it stays
+  # supported for existing consumers even though it is no longer the recommended path.
+  legacy_cfile=$(find "${SKILLS_ASSETS}" -path "*/assets/*" -name "*.c" -type f | sort | head -n 1)
+  if [[ -n "${legacy_cfile}" ]]; then
+    legacy_rel="${legacy_cfile#"$REPO_ROOT/"}"
+    log "Building legacy -lcuopt compatibility check: ${legacy_rel}"
+    if (cd "$(dirname "${legacy_cfile}")" && "${CC}" -I"${INCLUDE_PATH}" -L"${LIB_PATH}" \
+          -o "$(basename "${legacy_cfile}" .c).legacy" "$(basename "${legacy_cfile}")" -lcuopt); then
+      log "PASS: ${legacy_rel} (legacy -lcuopt)"
+    else
+      FAILED+=("${legacy_rel} (legacy -lcuopt)")
+      log "FAIL: ${legacy_rel} (legacy -lcuopt)"
+    fi
+  fi
 else
   log "CONDA_PREFIX not set, skipping C asset tests"
 fi

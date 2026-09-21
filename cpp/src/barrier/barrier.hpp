@@ -20,6 +20,7 @@
 #include <cuda/stream>
 #include <rmm/device_uvector.hpp>
 
+#include <memory>
 #include <utility>
 
 namespace cuopt::mathematical_optimization {
@@ -37,11 +38,20 @@ template <typename i_t, typename f_t>
 class iteration_data_t;  // Forward declare
 
 template <typename i_t, typename f_t>
+class device_csc_matrix_t;  // Forward declare
+
+template <typename i_t, typename f_t>
 class barrier_solver_t {
  public:
+  // `device_A` / `device_Q` are the scaled matrices the GPU scaling already left on device, taken
+  // over here so they are neither downloaded there nor uploaded again. Null means the solver
+  // uploads them from `lp`. Only solve() consumes them; solve_with_cache() reuses the cached
+  // iteration_data_t and never looks at them.
   barrier_solver_t(const simplex::lp_problem_t<i_t, f_t>& lp,
                    const simplex::presolve_info_t<i_t, f_t>& presolve,
-                   const simplex::simplex_solver_settings_t<i_t, f_t>& settings);
+                   const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+                   std::shared_ptr<device_csc_matrix_t<i_t, f_t>> device_A = nullptr,
+                   std::shared_ptr<device_csc_matrix_t<i_t, f_t>> device_Q = nullptr);
   simplex::lp_status_t solve(f_t start_time,
                              simplex::lp_solution_t<i_t, f_t>& solution,
                              cuopt::mathematical_optimization::barrier_cache_t* cache = nullptr);
@@ -117,6 +127,9 @@ class barrier_solver_t {
   const simplex::simplex_solver_settings_t<i_t, f_t>& settings;
   const simplex::presolve_info_t<i_t, f_t>& presolve_info;
   cuda::stream_ref stream_view_;
+  // Handed over to iteration_data_t by solve(), which empties them.
+  std::shared_ptr<device_csc_matrix_t<i_t, f_t>> device_A_;
+  std::shared_ptr<device_csc_matrix_t<i_t, f_t>> device_Q_;
 };
 
 }  // namespace cuopt::mathematical_optimization::barrier
