@@ -342,14 +342,10 @@ int main(int argc, char** argv)
   auto service = create_cuopt_grpc_service();
 
   ServerBuilder builder;
-  // gRPC enables SO_REUSEPORT by default, so a second server started against a
-  // port that is already served binds successfully instead of failing. Nothing
-  // reports the duplicate: the kernel then splits connections between the two
-  // processes, each holding its own workers, RMM pool, and job_tracker, so a
-  // client that submits to one and polls/reads-result from the other gets
-  // "Job ID not found" -- this is not a shared-state process pool. Off by
-  // default; --allow-reuseport restores it only for a deployment that
-  // provides its own connection affinity or shared job state.
+  // gRPC enables SO_REUSEPORT by default, letting a second server silently
+  // bind an already-served port. Off unless --allow-reuseport (see its
+  // --help) -- each process has its own job_tracker, so this isn't a
+  // shared-state pool.
   builder.AddChannelArgument<int>(GRPC_ARG_ALLOW_REUSEPORT,
                                   program.get<bool>("--allow-reuseport") ? 1 : 0);
   builder.AddListeningPort(server_address, creds);

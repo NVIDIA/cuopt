@@ -141,10 +141,8 @@ def describe_connection_error(exc: Exception) -> CuOptMCPError:
     host, port = endpoint()
     text = str(exc)
     if "UNAVAILABLE" in text or "failed to connect" in text.lower():
-        # Being unreachable does not mean nothing is running: the server may
-        # be up on another port, or reachable only after the env below is
-        # corrected. Saying "start one" without that caveat invites a second
-        # server alongside the first, which is worse than the original fault.
+        # "Start one" without this caveat invites a second server alongside
+        # one already running on another port/misconfigured env.
         return CuOptMCPError(
             f"cuOpt gRPC server unreachable at {host}:{port}. Check whether "
             "one is already running (`pgrep -af cuopt_grpc_server`) before "

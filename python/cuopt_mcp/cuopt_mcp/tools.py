@@ -44,16 +44,12 @@ ZERO_TOL = 1e-9
 # At or beyond this magnitude a caller-supplied bound means infinity.
 INFINITY_SENTINEL = 1e30
 
-# Largest row/column count _to_csr will allocate for. n_constraints (or a
-# single large row index) is a caller-controlled scalar that's cheap to
-# express in JSON but drives a np.zeros/np.bincount allocation sized off
-# it directly -- without a cap, a small payload can exhaust this local
-# process before any request reaches the backend.
+# Largest row/column count _to_csr will allocate for -- n_constraints is a
+# tiny-payload scalar that sizes an allocation directly.
 MAX_PROBLEM_DIMENSION = 10_000_000
 
-# A job id no server can have issued. The gRPC service exposes no health or
-# version RPC, so reachability is probed with the cheapest call that still
-# requires a server to answer: a status lookup that must come back NOT_FOUND.
+# No health RPC exists, so reachability is probed via a status lookup for
+# a job id no server can have issued -- must come back NOT_FOUND.
 PROBE_JOB_ID = "00000000-0000-0000-0000-000000000000"
 
 
@@ -242,9 +238,8 @@ def _build_model_from_json(problem: dict):
     objective = np.asarray(_require(problem, "objective"), dtype=np.float64)
     n_vars = len(objective)
 
-    # Prefer a row count the caller stated over one guessed from the largest
-    # row index, so a trailing all-zero row is not silently dropped and a
-    # genuine mismatch is reported against the matrix rather than the bounds.
+    # Prefer a caller-stated row count: inferring it from the largest row
+    # index would silently drop a trailing all-zero row.
     lengths = {
         key: len(problem[key])
         for key in ("constraint_lower_bounds", "constraint_upper_bounds")
@@ -273,10 +268,8 @@ def _build_model_from_json(problem: dict):
         arr = np.asarray(
             [default if x is None else x for x in raw], dtype=dtype
         )
-        # Callers routinely spell infinity as a large sentinel (1e30 is the
-        # MPS-era convention). Left finite, such a bound is not merely loose
-        # — cuOpt can return a constraint-violating point reported as
-        # Optimal — so normalise it to a true infinity.
+        # 1e30 (MPS-era convention) means infinity too; left finite, such a
+        # bound can make cuOpt report a constraint-violating point Optimal.
         if dtype is np.float64:
             arr = np.where(arr >= INFINITY_SENTINEL, np.inf, arr)
             arr = np.where(arr <= -INFINITY_SENTINEL, -np.inf, arr)
@@ -361,9 +354,8 @@ def _build_settings(kind: str, settings: dict | None):
 def _variable_names(names_from: str | None):
     if not names_from:
         return None
-    # A JSON submission has no problem file to re-parse, so its names are
-    # kept in a sidecar written at submit time. Same contract either way:
-    # pass back the "source" the solve returned.
+    # A JSON submission has no file to re-parse; names live in a sidecar
+    # written at submit time instead. Pass back the "source" it returned.
     resolved = Path(names_from).expanduser()
     if resolved.suffix == ".json" and resolved.is_file():
         return list(json.loads(resolved.read_text()))
@@ -373,10 +365,8 @@ def _variable_names(names_from: str | None):
 
 
 def _write_names_file(job_id: str, names) -> str:
-    # job_id here is the backend's response to submit(), not literal MCP
-    # caller input -- routed through _solution_file_path anyway, since nothing
-    # validates that a connected server's response is a well-formed UUID
-    # before it becomes part of a filesystem path.
+    # job_id is the backend's response, not literal caller input -- nothing
+    # guarantees it's a well-formed UUID, so validate before it's a path.
     path = _solution_file_path(job_id).with_suffix(".names.json")
     path.write_text(json.dumps([str(v) for v in names]))
     return str(path)
@@ -395,9 +385,7 @@ def health() -> dict:
     try:
         get_client().status(PROBE_JOB_ID)
     except Exception as exc:
-        # The cached channel is process-wide and survives the failure, so a
-        # dead one would keep failing every later call. Drop it here and the
-        # next call redials.
+        # A dead cached channel would keep failing every later call.
         reset_client()
         return {
             **info,
@@ -630,9 +618,7 @@ def result(
 
     selected = vars_by_name
     if nonzero_only:
-        # PDLP is first-order, so an exact != 0 test lets numerical dust
-        # (values around 1e-13, sometimes negative on a variable bounded
-        # below by 0) through as if it were signal.
+        # Exact != 0 would let PDLP's numerical dust (~1e-13) through as signal.
         selected = {k: v for k, v in vars_by_name.items() if abs(v) > ZERO_TOL}
         summary["num_nonzero"] = len(selected)
 
