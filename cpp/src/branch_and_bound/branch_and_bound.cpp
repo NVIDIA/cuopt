@@ -4495,6 +4495,12 @@ void branch_and_bound_t<i_t, f_t>::run_deterministic_bfs_loop(
       worker.recompute_bounds_and_basis = !is_child;
 
       node_status_t status    = solve_node_deterministic(worker, node, search_tree);
+
+      if (status == node_status_t::PENDING) {
+        deterministic_scheduler_->wait_for_next_sync(worker.work_context);
+        continue;
+      }
+
       worker.last_solved_node = node;
 
       worker.current_node = nullptr;
