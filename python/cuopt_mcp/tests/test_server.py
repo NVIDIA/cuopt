@@ -3,8 +3,21 @@
 
 """_guard's error-shaping behavior, isolated from the MCP protocol."""
 
+import inspect
+
 from cuopt_mcp.client import CuOptMCPError
-from cuopt_mcp.server import _guard
+from cuopt_mcp.server import _guard, cuopt_solve_lp, cuopt_solve_milp
+
+
+def test_problem_is_keyword_only_on_solve_tools():
+    """``problem`` was inserted as an alternative to ``problem_path`` after
+    these tools' 2/3-positional-arg signatures had already shipped
+    (#1916) -- a positional (path, settings) call must still bind
+    settings to settings, not silently to problem.
+    """
+    for fn in (cuopt_solve_lp, cuopt_solve_milp):
+        params = inspect.signature(fn).parameters
+        assert params["problem"].kind == inspect.Parameter.KEYWORD_ONLY
 
 
 def test_guard_redacts_paths_in_cuoptmcperror():

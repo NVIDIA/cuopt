@@ -549,7 +549,7 @@ def test_submit_requires_exactly_one_model_source(kwargs):
                     "values": [1.0],
                 },
             },
-            "only 1 variables",
+            "cols must be less than 1",
         ),
     ],
 )
@@ -710,6 +710,46 @@ def test_huge_inferred_row_count_is_rejected_before_allocating():
                 "constraint_matrix": {
                     "rows": [10**12],
                     "cols": [0],
+                    "values": [1.0],
+                },
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    "rows,error",
+    [
+        ([True], "must be integers"),
+        ([1.5], "must be integers"),
+        ([-1], "must be non-negative"),
+    ],
+)
+def test_coo_rows_are_validated_not_silently_cast(rows, error):
+    """int64 casting would otherwise silently turn a bool into 0/1, a
+    fractional value into a truncated int, or let a negative row reach
+    np.bincount as a bare (non-CuOptMCPError) ValueError.
+    """
+    with pytest.raises(CuOptMCPError, match=error):
+        tools._build_model_from_json(
+            {
+                "objective": [1.0],
+                "constraint_matrix": {
+                    "rows": rows,
+                    "cols": [0],
+                    "values": [1.0],
+                },
+            }
+        )
+
+
+def test_coo_cols_reject_out_of_range_value():
+    with pytest.raises(CuOptMCPError, match="cols.*less than 1"):
+        tools._build_model_from_json(
+            {
+                "objective": [1.0],
+                "constraint_matrix": {
+                    "rows": [0],
+                    "cols": [1],
                     "values": [1.0],
                 },
             }

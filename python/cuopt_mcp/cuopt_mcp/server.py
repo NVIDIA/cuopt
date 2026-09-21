@@ -84,8 +84,9 @@ def cuopt_health() -> dict[str, Any]:
 @server.tool(structured_output=True)
 def cuopt_solve_lp(
     problem_path: str | None = None,
-    problem: dict | None = None,
     settings: dict | None = None,
+    *,
+    problem: dict | None = None,
 ) -> dict[str, Any]:
     """Submit a linear program to cuOpt and return a job handle immediately.
 
@@ -130,9 +131,10 @@ def cuopt_solve_lp(
 @server.tool(structured_output=True)
 def cuopt_solve_milp(
     problem_path: str | None = None,
-    problem: dict | None = None,
     settings: dict | None = None,
     track_incumbents: bool = False,
+    *,
+    problem: dict | None = None,
 ) -> dict[str, Any]:
     """Submit a mixed-integer program to cuOpt and return a job handle.
 

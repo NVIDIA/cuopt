@@ -157,6 +157,31 @@ def _merge_duplicate_cells(rows, cols, values):
     return rows[starts], cols[starts], merged
 
 
+def _check_coo_indices(name: str, raw, upper_bound: int | None = None):
+    """Validate raw COO row/col values and return them as int64.
+
+    Casting straight to int64 would silently truncate a fractional value,
+    convert a bool to 0/1, and let a negative value through to build a
+    different (or invalid) model instead of rejecting it.
+    """
+    import numpy as np
+
+    arr = np.asarray(raw)
+    if arr.dtype.kind == "b" or (
+        arr.dtype.kind == "f" and not np.array_equal(arr, np.floor(arr))
+    ):
+        raise CuOptMCPError(
+            f"constraint_matrix {name} must be integers, got {raw!r}"
+        )
+    if len(arr) and arr.min() < 0:
+        raise CuOptMCPError(f"constraint_matrix {name} must be non-negative")
+    if upper_bound is not None and len(arr) and arr.max() >= upper_bound:
+        raise CuOptMCPError(
+            f"constraint_matrix {name} must be less than {upper_bound}"
+        )
+    return arr.astype(np.int64)
+
+
 def _to_csr(matrix: dict, n_vars: int, n_cons: int | None = None):
     """Accept either CSR or COO triplets and return CSR arrays.
 
@@ -189,19 +214,16 @@ def _to_csr(matrix: dict, n_vars: int, n_cons: int | None = None):
             )
         return offsets, indices, values
 
-    rows = np.asarray(matrix.get("rows", []), dtype=np.int64)
-    cols = np.asarray(matrix.get("cols", []), dtype=np.int64)
+    rows_raw = matrix.get("rows", [])
+    cols_raw = matrix.get("cols", [])
     values = np.asarray(matrix.get("values", []), dtype=np.float64)
-    if not (len(rows) == len(cols) == len(values)):
+    if not (len(rows_raw) == len(cols_raw) == len(values)):
         raise CuOptMCPError(
             f"constraint_matrix rows/cols/values must have equal length, got "
-            f"{len(rows)}/{len(cols)}/{len(values)}"
+            f"{len(rows_raw)}/{len(cols_raw)}/{len(values)}"
         )
-    if len(cols) and int(cols.max()) >= n_vars:
-        raise CuOptMCPError(
-            f"constraint_matrix references column {int(cols.max())} but the "
-            f"objective declares only {n_vars} variables"
-        )
+    rows = _check_coo_indices("rows", rows_raw)
+    cols = _check_coo_indices("cols", cols_raw, upper_bound=n_vars)
     inferred = int(rows.max()) + 1 if len(rows) else 0
     if n_cons is None:
         _check_dimension("constraint_matrix row count", inferred)
@@ -379,6 +401,18 @@ def health() -> dict:
     way to check the connection except by submitting work and reading the
     failure — by which point a caller has already built a model, and may
     conclude from the error that no server is running anywhere.
+
+    Returns
+    -------
+        A dict with ``host``, ``port``, ``tls``, and ``reachable``. When
+        unreachable, also ``error`` (the same message :func:`submit`
+        raises for a connection failure). When reachable, also ``note``
+        (this process never starts/stops the backend).
+
+    Raises
+    ------
+        CuOptMCPError: The configured endpoint is invalid (e.g.
+            ``CUOPT_REMOTE_PORT``), from :func:`endpoint`.
     """
     host, port = endpoint()
     info = {"host": host, "port": port, "tls": tls_enabled()}

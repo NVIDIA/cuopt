@@ -68,7 +68,9 @@ def endpoint() -> tuple:
 
 
 def tls_enabled() -> bool:
-    """Whether the channel is configured for TLS."""
+    """True when ``CUOPT_TLS_ENABLED`` is "1"/"true"/"yes" (case-insensitive);
+    False for any other value, including unset.
+    """
     return os.environ.get("CUOPT_TLS_ENABLED", "").lower() in (
         "1",
         "true",
