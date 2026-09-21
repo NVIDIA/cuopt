@@ -482,9 +482,7 @@ class SolverConfig(BaseModel):
         default=None,
         description="Set True to distribute the PDLP solve of an LP "
         "problem across multiple GPUs. Requires method to be PDLP and "
-        "num_gpus to be -1 or greater than 1. Requires a cuOpt build "
-        "with the GPU-resident distributed PDLP dispatch fix "
-        "(NVIDIA/cuopt#1958).",
+        "num_gpus to be -1 or greater than 1.",
     )
     distributed_pdlp_partitioner: Optional[int] = Field(
         default=None,
