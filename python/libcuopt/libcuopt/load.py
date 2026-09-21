@@ -34,30 +34,39 @@ def _load_wheel_installation(soname: str):
 
 
 def load_library():
-    """Load every cuOpt component library.
-
-    The libraries themselves live in the per-component packages now, so this
-    delegates rather than dlopen()ing them directly. The client goes first:
-    mathopt and routing both carry a DT_NEEDED on it.
-    """
-    loaded = []
-
-    import libcuopt_client
-
-    loaded.extend(libcuopt_client.load_library() or [])
-
-    # routing is optional -- a SKIP_ROUTING_BUILD install will not have it.
+    """Dynamically load libcuopt.so and its dependencies"""
     try:
-        import libcuopt_routing
+        # librmm and libraft must be loaded before libcuopt
+        # because libcuopt references them.
+        import libraft
+        import librmm
+        import rapids_logger
 
-        loaded.extend(libcuopt_routing.load_library() or [])
+        rapids_logger.load_library()
+        librmm.load_library()
+        libraft.load_library()
     except ModuleNotFoundError:
         pass
 
-    import libcuopt_mathopt
+    prefer_system_installation = (
+        os.getenv("RAPIDS_LIBCUOPT_PREFER_SYSTEM_LIBRARY", "false").lower()
+        != "false"
+    )
 
-    loaded.extend(libcuopt_mathopt.load_library() or [])
-
+    # cuOpt ships as component libraries. libcuopt.so is a linker script,
+    # not an ELF object, so it cannot be dlopen()ed -- load the components
+    # instead. Each pulls its own dependencies in through DT_NEEDED, so this
+    # order only needs to be valid, not exhaustive. routing and grpc are
+    # optional (SKIP_ROUTING_BUILD, SKIP_GRPC_BUILD) and may be absent.
+    components = [
+        ("libcuopt_routing.so", False),
+        ("libcuopt_mathopt.so", True),
+    ]
+    loaded = []
+    for soname, required in components:
+        lib = _load_component(soname, prefer_system_installation, required)
+        if lib is not None:
+            loaded.append(lib)
     return loaded
 
 
