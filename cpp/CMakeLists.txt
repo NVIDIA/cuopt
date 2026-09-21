@@ -1177,10 +1177,18 @@ target_include_directories(cuopt
         "$<INSTALL_INTERFACE:include>"
 )
 
+# BUILD_INTERFACE only: the installed config rebuilds these links from whichever
+# components are present, because an exported target may not reference targets outside
+# its own export set and each component now exports separately.
 if(NOT SKIP_ROUTING_BUILD)
-    target_link_libraries(cuopt INTERFACE cuopt_routing cuopt_mathopt cuopt_client)
+    target_link_libraries(cuopt INTERFACE
+            "$<BUILD_INTERFACE:cuopt_routing>"
+            "$<BUILD_INTERFACE:cuopt_mathopt>"
+            "$<BUILD_INTERFACE:cuopt_client>")
 else()
-    target_link_libraries(cuopt INTERFACE cuopt_mathopt cuopt_client)
+    target_link_libraries(cuopt INTERFACE
+            "$<BUILD_INTERFACE:cuopt_mathopt>"
+            "$<BUILD_INTERFACE:cuopt_client>")
 endif()
 
 if (WRITE_FATBIN)
@@ -1251,17 +1259,30 @@ endforeach()
 
 # One install component per library, so the per-solver packages in #1635 can stage
 # them separately. A plain `cmake --install` still installs everything.
+# Each component exports to its own set, so install(EXPORT) writes one targets file per
+# component and each computes _IMPORT_PREFIX from its own install location. A single
+# shared set hardcodes one prefix for all three, which only resolves while they sit in
+# the same tree -- splitting them across wheels then breaks find_package (#1635).
 foreach(_component ${CUOPT_COMPONENT_TARGETS})
     string(REPLACE "cuopt_" "" _install_component "${_component}")
     install(TARGETS ${_component}
             DESTINATION ${_LIB_DEST}
             COMPONENT ${_install_component}
-            EXPORT cuopt-exports
+            EXPORT ${_component}-exports
+    )
+    install(EXPORT ${_component}-exports
+            FILE ${_component}-targets.cmake
+            NAMESPACE cuopt::
+            DESTINATION "${_LIB_DEST}/cmake/cuopt"
+            COMPONENT ${_install_component}-dev
     )
 endforeach()
 
-# cuopt::cuopt carries no artifact of its own; it is exported so that
-# target_link_libraries(app cuopt::cuopt) keeps pulling in every component.
+# cuopt::cuopt carries no artifact; it is exported only so the export set exists and
+# find_package(cuopt) has something to define. Its component links are BUILD_INTERFACE
+# only -- CMake requires everything an exported target references to share its export set,
+# which would defeat the split -- so the installed config synthesises them instead, from
+# whichever components that installation actually has. See the FINAL_CODE_BLOCK below.
 install(TARGETS cuopt
         EXPORT cuopt-exports
 )
@@ -1355,9 +1376,43 @@ else()
     set(cuopt_code_string "set(CUOPT_HAS_GRPC ON)\nset(CUOPT_HAS_GRPC_ROUTING OFF)")
 endif()
 
+# Each component installs its own targets file, so the umbrella has to pull them in. They
+# sit beside this config when everything shares a prefix, and are found through
+# CMAKE_PREFIX_PATH when the components are installed separately -- which is what lets a
+# wheel install resolve them from sibling package directories (#1635).
+string(APPEND cuopt_code_string [=[
+
+foreach(_cuopt_component cuopt_client cuopt_mathopt cuopt_routing)
+  set(_cuopt_targets "${CMAKE_CURRENT_LIST_DIR}/${_cuopt_component}-targets.cmake")
+  if(NOT EXISTS "${_cuopt_targets}")
+    unset(_cuopt_found_targets CACHE)
+    find_file(_cuopt_found_targets "${_cuopt_component}-targets.cmake"
+              PATH_SUFFIXES lib/cmake/cuopt lib64/cmake/cuopt)
+    set(_cuopt_targets "${_cuopt_found_targets}")
+  endif()
+  if(_cuopt_targets AND EXISTS "${_cuopt_targets}")
+    include("${_cuopt_targets}")
+  endif()
+endforeach()
+
+# Backwards compatibility: target_link_libraries(app cuopt::cuopt) keeps pulling in every
+# component that this installation actually has.
+if(NOT TARGET cuopt::cuopt)
+  set(_cuopt_umbrella_links "")
+  foreach(_cuopt_component cuopt::client cuopt::mathopt cuopt::routing)
+    if(TARGET ${_cuopt_component})
+      list(APPEND _cuopt_umbrella_links ${_cuopt_component})
+    endif()
+  endforeach()
+  add_library(cuopt::cuopt INTERFACE IMPORTED)
+  set_target_properties(cuopt::cuopt PROPERTIES
+    INTERFACE_LINK_LIBRARIES "${_cuopt_umbrella_links}")
+endif()
+]=])
+
 rapids_export(INSTALL cuopt
         EXPORT_SET cuopt-exports
-        GLOBAL_TARGETS cuopt ${CUOPT_COMPONENT_EXPORT_NAMES}
+        GLOBAL_TARGETS ${CUOPT_COMPONENT_EXPORT_NAMES}
         NAMESPACE cuopt::
         DOCUMENTATION doc_string
         FINAL_CODE_BLOCK cuopt_code_string
@@ -1367,7 +1422,7 @@ rapids_export(INSTALL cuopt
 # - build export -------------------------------------------------------------------------------
 rapids_export(BUILD cuopt
         EXPORT_SET cuopt-exports
-        GLOBAL_TARGETS cuopt ${CUOPT_COMPONENT_EXPORT_NAMES}
+        GLOBAL_TARGETS ${CUOPT_COMPONENT_EXPORT_NAMES}
         NAMESPACE cuopt::
         DOCUMENTATION doc_string
         FINAL_CODE_BLOCK cuopt_code_string
