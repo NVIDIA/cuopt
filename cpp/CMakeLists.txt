@@ -53,6 +53,7 @@ option(BUILD_MIP_BENCHMARKS "Build MIP benchmarks" OFF)
 option(SKIP_C_PYTHON_ADAPTERS "Skip building C and Python adapter files (cython_solve.cu and cuopt_c.cpp)" OFF)
 option(SKIP_ROUTING_BUILD "Skip building routing components" OFF)
 option(SKIP_GRPC_BUILD "Skip building gRPC and protobuf components" OFF)
+option(CUOPT_BUILD_STATIC_LIB "Build libcuopt_static.a for embedding into a self-contained consumer" OFF)
 option(WRITE_FATBIN "Enable fatbin writing" ON)
 option(HOST_LINEINFO "Build with debug line information for host code" OFF)
 
@@ -177,7 +178,14 @@ message("-- Host target architecture = '${CMAKE_SYSTEM_PROCESSOR}'")
 
 # make the flags global in order to propagate flags to test cmake files
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr --expt-extended-lambda")
-list(APPEND CUOPT_CUDA_FLAGS -Werror=cross-execution-space-call -Wno-deprecated-declarations -Xcompiler=-Werror --default-stream=per-thread)
+list(APPEND CUOPT_CUDA_FLAGS
+        --Werror=all-warnings
+        # Unused declarations are handled in a follow-up change.
+        --diag-suppress=177
+        -Werror=cross-execution-space-call
+        -Wno-deprecated-declarations
+        -Xcompiler=-Werror
+        --default-stream=per-thread)
 if ("${CMAKE_CUDA_HOST_COMPILER}" MATCHES "clang" OR "${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
     list(APPEND CUOPT_CUDA_FLAGS -Xcompiler=-Wall)
 else ()
@@ -1078,10 +1086,16 @@ if (BUILD_TESTS)
     include(CTest)
 endif ()
 
-if (BUILD_TESTS OR (BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY))
-    # Embeds cuopt_client_objs directly rather than linking libcuopt_client.so: the internal
-    # test binaries reach parser internals that the shared library deliberately does not
-    # export. Do not also link cuopt::cuopt_client here -- that would duplicate every symbol.
+# ##################################################################################################
+# - static library --------------------------------------------------------------------------------
+# Built for the internal tests, the MIP benchmarks, and for consumers that embed cuOpt into a
+# single self-contained shared object rather than linking the shared libcuopt (see the Java
+# classifier JARs).
+if (BUILD_TESTS OR (BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY) OR CUOPT_BUILD_STATIC_LIB)
+    # Embeds cuopt_client_objs directly rather than linking libcuopt_client.so: internal test
+    # binaries and the Java classifier JAR both reach parser/data-model internals that the
+    # shared library deliberately does not export. Do not also link cuopt::cuopt_client here --
+    # that would duplicate every symbol.
     add_library(cuopt_static STATIC $<TARGET_OBJECTS:cuopt_objs> $<TARGET_OBJECTS:cuopt_client_objs>)
     target_link_libraries(cuopt_static
             PUBLIC
@@ -1197,7 +1211,9 @@ set(CPACK_DEB_COMPONENT_INSTALL ON)
 
 # CPack silently drops any component missing from this list, which would leave the
 # runtime .deb empty now that nothing installs under `runtime`.
-set(CPACK_COMPONENTS_ALL runtime dev client mathopt client-dev mathopt-dev)
+# `cuopt` is rapids_export's own component, holding cuopt-config.cmake and the export
+# set. It is easy to miss because it is named after the project rather than a library.
+set(CPACK_COMPONENTS_ALL runtime dev cuopt client mathopt client-dev mathopt-dev)
 if(NOT SKIP_ROUTING_BUILD)
     list(APPEND CPACK_COMPONENTS_ALL routing routing-dev)
 endif()
@@ -1605,7 +1621,7 @@ foreach(_runtime_component client mathopt routing grpc-server)
     string(TOUPPER "${_runtime_component}" _uc)
     set(CPACK_COMPONENT_${_uc}_GROUP "Runtime")
 endforeach()
-foreach(_dev_component client-dev mathopt-dev routing-dev)
+foreach(_dev_component client-dev mathopt-dev routing-dev cuopt)
     string(TOUPPER "${_dev_component}" _uc)
     set(CPACK_COMPONENT_${_uc}_GROUP "Development")
 endforeach()
