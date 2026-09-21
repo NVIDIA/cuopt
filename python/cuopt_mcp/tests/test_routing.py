@@ -5,19 +5,22 @@
 gRPC client.
 
 These run without a GPU or a cuopt_grpc_server; the live path is covered by
-test_end_to_end.py. build_model tests need cuopt.routing importable
-(pytestmark below), unlike the stubbed-client tests, which stub the client
-entirely and never touch cuopt.routing.
+test_end_to_end.py. build_model tests need cuopt.routing importable (the
+cuopt_routing fixture), unlike the stubbed-client tests, which stub the
+client entirely and never touch cuopt.routing.
 """
 
 import pytest
 
 from cuopt_mcp import client, routing
 
-cuopt_routing = pytest.importorskip(
-    "cuopt.routing",
-    reason="cuopt.routing (and its cuDF/CUDA chain) not importable",
-)
+
+@pytest.fixture
+def cuopt_routing():
+    return pytest.importorskip(
+        "cuopt.routing",
+        reason="cuopt.routing (and its cuDF/CUDA chain) not importable",
+    )
 
 
 UUID1 = "11111111-1111-1111-1111-111111111111"
@@ -29,33 +32,33 @@ MIN_PROBLEM = {
 }
 
 
-def test_build_model_requires_n_locations():
+def test_build_model_requires_n_locations(cuopt_routing):
     with pytest.raises(client.CuOptMCPError, match="n_locations"):
         routing._build_routing_model_from_json({"fleet_size": 1})
 
 
-def test_build_model_requires_cost_matrices():
+def test_build_model_requires_cost_matrices(cuopt_routing):
     with pytest.raises(client.CuOptMCPError, match="cost_matrices"):
         routing._build_routing_model_from_json(
             {"n_locations": 2, "fleet_size": 1}
         )
 
 
-def test_build_model_rejects_empty_cost_matrices():
+def test_build_model_rejects_empty_cost_matrices(cuopt_routing):
     with pytest.raises(client.CuOptMCPError, match="cost_matrices"):
         routing._build_routing_model_from_json(
             {"n_locations": 2, "fleet_size": 1, "cost_matrices": []}
         )
 
 
-def test_build_model_minimal():
+def test_build_model_minimal(cuopt_routing):
     dm = routing._build_routing_model_from_json(MIN_PROBLEM)
     assert dm.get_num_locations() == 2
     assert dm.get_fleet_size() == 1
     assert dm.get_num_orders() == 2  # defaults to n_locations
 
 
-def test_build_model_rejects_mutually_exclusive_breaks():
+def test_build_model_rejects_mutually_exclusive_breaks(cuopt_routing):
     problem = {
         **MIN_PROBLEM,
         "uniform_breaks": [{"earliest": [0], "latest": [10], "duration": [1]}],
@@ -67,7 +70,7 @@ def test_build_model_rejects_mutually_exclusive_breaks():
         routing._build_routing_model_from_json(problem)
 
 
-def test_build_model_rejects_bad_objective_name():
+def test_build_model_rejects_bad_objective_name(cuopt_routing):
     problem = {
         **MIN_PROBLEM,
         "objective": {
@@ -79,7 +82,7 @@ def test_build_model_rejects_bad_objective_name():
         routing._build_routing_model_from_json(problem)
 
 
-def test_build_model_rejects_bad_node_type_name():
+def test_build_model_rejects_bad_node_type_name(cuopt_routing):
     problem = {
         **MIN_PROBLEM,
         "initial_solutions": {
@@ -93,7 +96,7 @@ def test_build_model_rejects_bad_node_type_name():
         routing._build_routing_model_from_json(problem)
 
 
-def test_build_model_full_feature_set():
+def test_build_model_full_feature_set(cuopt_routing):
     """Exercises every JSON key routing.py maps, verified via
     problem_summary (the same _populate path submit() uses) rather than a
     live server -- catches a wrong setter/arg mapping without a GPU.
@@ -209,7 +212,7 @@ def fake_routing(monkeypatch):
     client.reset_routing_client()
 
 
-def test_submit_passes_settings_through(fake_routing):
+def test_submit_passes_settings_through(cuopt_routing, fake_routing):
     stub = fake_routing()
     out = routing.submit(MIN_PROBLEM, settings={"time_limit": 5.0})
     assert out["job_id"] == "job-new"

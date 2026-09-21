@@ -121,6 +121,15 @@ def _build_routing_model_from_json(problem: dict):
         CuOptMCPError: A required key is missing, an array has the wrong
             shape, or a mutually exclusive combination was given.
     """
+    try:
+        return _map_problem_to_model(problem)
+    except KeyError as exc:
+        raise CuOptMCPError(
+            f"problem is missing required key {exc.args[0]!r}"
+        ) from None
+
+
+def _map_problem_to_model(problem: dict):
     import numpy as np
 
     from cuopt.routing import DataModel

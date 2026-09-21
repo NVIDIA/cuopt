@@ -156,8 +156,8 @@ cuopt_mcp_schema.json` is emitted from `cpp/src/grpc/codegen/
 field_registry.yaml` by `./build.sh codegen`, the same source of truth
 that drives the proto and the C++ conversion code. A new LP/MILP solver
 parameter reaches this server with no MCP-specific work. VRP settings
-aren't in this registry (only `time_limit`/`verbose_mode`/`error_logging`
-reach the server; see `cuopt_solve_vrp`'s docstring) so there's no
+aren't in this registry (only `time_limit`/`verbose_mode` (or `verbose`)/
+`error_logging` reach the server; see `cuopt_solve_vrp`'s docstring) so there's no
 equivalent `cuopt_list_settings` coverage for VRP.
 
 **VRP submission has no host-CUDA dependency at record time.**
