@@ -320,7 +320,7 @@ void fj_t<i_t, f_t>::climber_init(i_t climber_idx)
 template <typename i_t, typename f_t>
 void fj_t<i_t, f_t>::climber_init(i_t climber_idx, cuda::stream_ref climber_stream)
 {
-  [[maybe_unused]] raft::common::nvtx::range scope("climber_init");
+  raft::common::nvtx::range scope("climber_init");
 
   cuopt_assert(climber_idx >= 0 && climber_idx < climbers.size(), "");
 
@@ -664,7 +664,7 @@ void fj_t<i_t, f_t>::run_step_device(cuda::stream_ref climber_stream,
                                      i_t climber_idx,
                                      bool use_graph)
 {
-  [[maybe_unused]] raft::common::nvtx::range scope("run_step_device");
+  raft::common::nvtx::range scope("run_step_device");
   auto [grid_setval, blocks_setval] = setval_launch_dims;
   auto [grid_update_changed_constraints, blocks_update_changed_constraints] =
     update_changed_constraints_launch_dims;
@@ -1067,7 +1067,7 @@ void fj_t<i_t, f_t>::resize_vectors(const raft::handle_t* handle_ptr)
 template <typename i_t, typename f_t>
 i_t fj_t<i_t, f_t>::solve(solution_t<i_t, f_t>& solution)
 {
-  [[maybe_unused]] raft::common::nvtx::range scope("fj_solve");
+  raft::common::nvtx::range scope("fj_solve");
   timer_t timer(settings.time_limit);
   handle_ptr               = const_cast<raft::handle_t*>(solution.handle_ptr);
   pb_ptr                   = solution.problem_ptr;

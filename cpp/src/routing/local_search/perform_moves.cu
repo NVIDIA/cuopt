@@ -411,7 +411,7 @@ template <typename i_t, typename f_t, request_t REQUEST>
 bool local_search_t<i_t, f_t, REQUEST>::populate_cross_moves(
   solution_t<i_t, f_t, REQUEST>& solution, move_candidates_t<i_t, f_t>& move_candidates)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("populate_cross_moves");
+  raft::common::nvtx::range fun_scope("populate_cross_moves");
   reset_cross_vectors(solution);
   const i_t TPB  = 256;
   size_t sh_size = solution.n_routes * (sizeof(i_t) + sizeof(cross_cand_t));
@@ -438,7 +438,7 @@ template <typename i_t, typename f_t, request_t REQUEST>
 void local_search_t<i_t, f_t, REQUEST>::populate_move_path(
   solution_t<i_t, f_t, REQUEST>& solution, move_candidates_t<i_t, f_t>& move_candidates)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("populate_move_path");
+  raft::common::nvtx::range fun_scope("populate_move_path");
   auto n_cycles = move_candidates.cycles.n_cycles_.value(solution.sol_handle->get_stream());
   if (n_cycles) {
     populate_move_path_kernel<i_t, f_t, REQUEST>
@@ -454,7 +454,7 @@ template <typename i_t, typename f_t, request_t REQUEST>
 void local_search_t<i_t, f_t, REQUEST>::perform_moves(solution_t<i_t, f_t, REQUEST>& solution,
                                                       move_candidates_t<i_t, f_t>& move_candidates)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("perform_moves");
+  raft::common::nvtx::range fun_scope("perform_moves");
   solution.global_runtime_checks(false, false, "perform_moves_start");
   auto stream        = solution.sol_handle->get_stream();
   constexpr i_t TPB  = 32;

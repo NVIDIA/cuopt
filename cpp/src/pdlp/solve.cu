@@ -1651,7 +1651,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
             };
             if (settings.num_gpus > 1) {
               problem.handle_ptr->sync_stream();
-              [[maybe_unused]] raft::device_setter device_setter(1);  // Scoped variable
+              raft::device_setter device_setter(1);  // Scoped variable
               CUOPT_LOG_DEBUG("Barrier device: %d", device_setter.get_current_device());
               call_barrier_thread();
             } else {
@@ -1875,7 +1875,7 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
 {
   try {
     // Create log stream for file logging and add it to default logger
-    [[maybe_unused]] init_logger_t log(settings.log_file, settings.log_to_console);
+    init_logger_t log(settings.log_file, settings.log_to_console);
     print_version_info();
 
     // Init libraries before to not include it in solve time
@@ -1901,7 +1901,7 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
       }
     }
 
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("Running QCQP solver");
+    raft::common::nvtx::range fun_scope("Running QCQP solver");
     const bool has_q_obj = op_problem.has_quadratic_objective();
     const bool has_qc    = op_problem.has_quadratic_constraints();
     if (has_q_obj && has_qc) {
@@ -2058,7 +2058,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
   try {
     pdlp_solver_settings_t<i_t, f_t> settings(settings_const);
     // Create log stream for file logging and add it to default logger
-    [[maybe_unused]] init_logger_t log(settings.log_file, settings.log_to_console);
+    init_logger_t log(settings.log_file, settings.log_to_console);
 
     if (!settings_const.inside_mip) print_version_info();
 
@@ -2066,10 +2066,10 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     // This needs to be called before pdlp is initialized
     init_handler(op_problem.get_handle_ptr());
 
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("Running solver");
+    raft::common::nvtx::range fun_scope("Running solver");
 
     if (problem_checking) {
-      [[maybe_unused]] raft::common::nvtx::range fun_scope("Check problem representation");
+      raft::common::nvtx::range fun_scope("Check problem representation");
       // This is required as user might forget to set some fields
       problem_checking_t<i_t, f_t>::check_problem_representation(op_problem);
       // In batch PDLP for strong branching, the initial solutions will be by design out of bounds.
@@ -2363,7 +2363,7 @@ template <typename i_t, typename f_t>
 cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> op_problem_to_mps_data_model(
   const optimization_problem_t<i_t, f_t>& op_problem)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("op_problem -> mps_data_model (D->H)");
+  raft::common::nvtx::range fun_scope("op_problem -> mps_data_model (D->H)");
   cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> mps;
 
   mps.set_maximize(op_problem.get_sense());
@@ -2558,7 +2558,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
     "bound_objective_rescaling=true). Set pdlp_solver_mode = Stable3 (the default) or adjust "
     "the hyper-params to match.");
 
-  [[maybe_unused]] init_logger_t log(settings_resolved.log_file, settings_resolved.log_to_console);
+  init_logger_t log(settings_resolved.log_file, settings_resolved.log_to_console);
   print_version_info(visible_device_count);
   init_handler(handle_ptr);
 

@@ -137,13 +137,13 @@ inline log_console_callback_t g_console_callback = nullptr;
  */
 inline void set_console_log_callback(log_console_callback_t callback)
 {
-  [[maybe_unused]] std::lock_guard<std::mutex> lock(g_console_callback_mutex);
+  std::lock_guard<std::mutex> lock(g_console_callback_mutex);
   g_console_callback = callback;
 }
 
 inline log_console_callback_t console_log_callback()
 {
-  [[maybe_unused]] std::lock_guard<std::mutex> lock(g_console_callback_mutex);
+  std::lock_guard<std::mutex> lock(g_console_callback_mutex);
   return g_console_callback;
 }
 
@@ -155,7 +155,7 @@ class log_buffer {
 
   void log(rapids_logger::level_enum lvl, const char* msg)
   {
-    [[maybe_unused]] std::lock_guard<std::mutex> lock(mutex);
+    std::lock_guard<std::mutex> lock(mutex);
     if (!msg) return;
     std::string str(msg);
 
@@ -165,13 +165,13 @@ class log_buffer {
 
   size_t size() const
   {
-    [[maybe_unused]] std::lock_guard<std::mutex> lock(mutex);
+    std::lock_guard<std::mutex> lock(mutex);
     return messages.size();
   }
 
   std::vector<buffered_entry> drain_all()
   {
-    [[maybe_unused]] std::lock_guard<std::mutex> lock(mutex);
+    std::lock_guard<std::mutex> lock(mutex);
     std::vector<buffered_entry> out;
     out.swap(messages);
     return out;
@@ -333,7 +333,7 @@ inline std::shared_ptr<void> make_logger_config(const std::string& log_file,
                                                 bool log_to_console,
                                                 bool truncate)
 {
-  [[maybe_unused]] std::lock_guard<std::mutex> lock(g_guard_mutex);
+  std::lock_guard<std::mutex> lock(g_guard_mutex);
 
   // Reuse the configuration already in place; reconfiguring here would re-truncate the file.
   if (auto existing = g_active_guard.lock()) { return existing; }

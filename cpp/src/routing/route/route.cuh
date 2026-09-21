@@ -35,7 +35,7 @@ class route_t {
       n_nodes(sol_handle_->get_stream()),
       fleet_info_ptr(fleet_info_ptr_)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("zero route_t copy_ctr");
+    raft::common::nvtx::range fun_scope("zero route_t copy_ctr");
     infeasible_cost_t zero_inf;
     objective_cost_t zero_obj;
     infeasibility_cost.set_value_async(zero_inf, sol_handle->get_stream());
@@ -59,7 +59,7 @@ class route_t {
       objective_cost(route.objective_cost, route.sol_handle->get_stream()),
       fleet_info_ptr(route.fleet_info_ptr)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("route copy_ctr");
+    raft::common::nvtx::range fun_scope("route copy_ctr");
   }
 
   route_t& operator=(route_t&& route) = default;

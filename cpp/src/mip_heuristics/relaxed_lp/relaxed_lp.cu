@@ -38,7 +38,7 @@ optimization_problem_solution_t<i_t, f_t> get_relaxed_lp_solution(
   lp_state_t<i_t, f_t>& lp_state,
   const relaxed_lp_settings_t& settings)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("get_relaxed_lp_solution");
+  raft::common::nvtx::range fun_scope("get_relaxed_lp_solution");
   pdlp_solver_settings_t<i_t, f_t> pdlp_settings{};
   pdlp_settings.detect_infeasibility = settings.check_infeasibility;
   pdlp_settings.set_optimality_tolerance(settings.tolerance);

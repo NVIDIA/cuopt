@@ -438,7 +438,7 @@ template <typename i_t, typename f_t, request_t REQUEST>
 void local_search_t<i_t, f_t, REQUEST>::calculate_route_compatibility(
   solution_t<i_t, f_t, REQUEST>& sol)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("calculate_route_compatibility");
+  raft::common::nvtx::range fun_scope("calculate_route_compatibility");
   // note that this was allocated for the max size
   // reset all even though we are not using the full array.
   thrust::fill(sol.sol_handle->get_thrust_policy(),
@@ -460,7 +460,7 @@ template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::sort_viable_matrix(rmm::device_uvector<i_t>& viable_from_matrix,
                                              rmm::device_uvector<i_t>& viable_to_matrix)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("sort_viable_matrix");
+  raft::common::nvtx::range fun_scope("sort_viable_matrix");
   rmm::device_uvector<i_t> segments(get_num_orders() * get_num_requests(),
                                     handle_ptr->get_stream());
   const i_t l_n_requests = get_num_requests();
@@ -569,7 +569,7 @@ void problem_t<i_t, f_t>::sort_viable_matrix(rmm::device_uvector<i_t>& viable_fr
 template <typename i_t, typename f_t, request_t REQUEST>
 void initialize_incompatible(problem_t<i_t, f_t>& problem, solution_t<i_t, f_t, REQUEST>* sol_ptr)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("initialize_incompatible");
+  raft::common::nvtx::range fun_scope("initialize_incompatible");
   typename solution_t<i_t, f_t, REQUEST>::view_t sol_view;
   bool is_problem_run              = true;
   raft::handle_t const* handle_ptr = problem.handle_ptr;

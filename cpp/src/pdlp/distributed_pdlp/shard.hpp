@@ -39,7 +39,7 @@ struct nccl_comm_deleter_t {
   {
     if (comm == nullptr) return;
     cuopt_assert(device_id >= 0, "nccl_comm_deleter_t: device_id not set");
-    [[maybe_unused]] raft::device_setter guard(device_id);
+    raft::device_setter guard(device_id);
     CUOPT_NCCL_TRY_NO_THROW(ncclCommDestroy(comm));
   }
 };

@@ -36,7 +36,7 @@ class work_unit_ordered_queue_t {
    */
   void push(float timestamp, const T& work)
   {
-    [[maybe_unused]] std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::mutex> lock(mutex_);
     queue_.emplace(timestamp, work);
   }
 
@@ -48,7 +48,7 @@ class work_unit_ordered_queue_t {
    */
   void push(float timestamp, T&& work)
   {
-    [[maybe_unused]] std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::mutex> lock(mutex_);
     queue_.emplace(timestamp, std::move(work));
   }
 
@@ -57,7 +57,7 @@ class work_unit_ordered_queue_t {
    */
   void pop()
   {
-    [[maybe_unused]] std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::mutex> lock(mutex_);
     queue_.pop();
   }
 
@@ -68,7 +68,7 @@ class work_unit_ordered_queue_t {
    */
   entry_t top_with_timestamp() const
   {
-    [[maybe_unused]] std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::mutex> lock(mutex_);
     return queue_.top();
   }
 
@@ -78,7 +78,7 @@ class work_unit_ordered_queue_t {
    */
   T top() const
   {
-    [[maybe_unused]] std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::mutex> lock(mutex_);
     return queue_.top().second;
   }
 
@@ -89,7 +89,7 @@ class work_unit_ordered_queue_t {
    */
   bool empty() const
   {
-    [[maybe_unused]] std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::mutex> lock(mutex_);
     return queue_.empty();
   }
 
@@ -98,13 +98,13 @@ class work_unit_ordered_queue_t {
    */
   std::size_t size() const
   {
-    [[maybe_unused]] std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::mutex> lock(mutex_);
     return queue_.size();
   }
 
   void clear()
   {
-    [[maybe_unused]] std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::mutex> lock(mutex_);
     queue_ = std::priority_queue<entry_t, std::vector<entry_t>, min_heap_cmp>();
   }
 

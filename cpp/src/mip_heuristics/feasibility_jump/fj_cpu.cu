@@ -1644,7 +1644,7 @@ void finalize_fj_cpu_host_initialization(
   i_t nnz,
   const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances)
 {
-  [[maybe_unused]] raft::common::nvtx::range scope("finalize_fj_cpu_host_initialization");
+  raft::common::nvtx::range scope("finalize_fj_cpu_host_initialization");
 
   cuopt_assert(n_variables >= 0, "invalid variable count");
   cuopt_assert(n_constraints >= 0, "invalid constraint count");
@@ -1898,7 +1898,7 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_t<i_t, f_t>::create_cpu_climber(
   fj_settings_t settings,
   bool randomize_params)
 {
-  [[maybe_unused]] raft::common::nvtx::range scope("fj_cpu_init");
+  raft::common::nvtx::range scope("fj_cpu_init");
 
   auto fj_cpu = std::make_unique<fj_cpu_climber_t<i_t, f_t>>(preemption_flag);
 
@@ -2110,7 +2110,7 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_standalone(
   uint64_t seed,
   fj_settings_t settings)
 {
-  [[maybe_unused]] raft::common::nvtx::range scope("init_fj_cpu_standalone");
+  raft::common::nvtx::range scope("init_fj_cpu_standalone");
 
   auto fj_cpu = std::make_unique<fj_cpu_climber_t<i_t, f_t>>(preemption_flag);
 

@@ -84,7 +84,7 @@ class dimensions_route_t {
       requests(sol_handle_),
       dimensions_info(dimensions_info_)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("zero dimensions_route_t copy_ctr");
+    raft::common::nvtx::range fun_scope("zero dimensions_route_t copy_ctr");
   }
 
   dimensions_route_t(const dimensions_route_t& dim_route)
@@ -101,7 +101,7 @@ class dimensions_route_t {
       requests(dim_route.requests, dim_route.sol_handle),
       dimensions_info(dim_route.dimensions_info)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("dimensions_route_t copy_ctr");
+    raft::common::nvtx::range fun_scope("dimensions_route_t copy_ctr");
   }
 
   dimensions_route_t& operator=(dimensions_route_t&& route) = default;

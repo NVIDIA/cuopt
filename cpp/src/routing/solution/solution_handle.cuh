@@ -48,7 +48,7 @@ class solution_handle_t {
 
   const cudaDeviceProp& get_device_properties() const
   {
-    [[maybe_unused]] std::lock_guard<std::mutex> _(mutex_);
+    std::lock_guard<std::mutex> _(mutex_);
     if (!device_prop_initialized_) {
       RAFT_CUDA_TRY_NO_THROW(cudaGetDeviceProperties(&prop_, dev_id_));
       device_prop_initialized_ = true;

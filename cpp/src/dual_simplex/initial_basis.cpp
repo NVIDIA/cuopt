@@ -108,7 +108,7 @@ i_t initial_basis_selection(const lp_problem_t<i_t, f_t>& problem,
                             std::vector<variable_status_t>& vstatus,
                             std::vector<i_t>& dependent_rows)
 {
-  [[maybe_unused]] raft::common::nvtx::range scope("DualSimplex::initial_basis");
+  raft::common::nvtx::range scope("DualSimplex::initial_basis");
   i_t m  = problem.num_rows;
   i_t n  = problem.num_cols;
   i_t nz = problem.A.col_start[n];

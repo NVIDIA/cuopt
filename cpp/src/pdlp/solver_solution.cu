@@ -214,7 +214,7 @@ void optimization_problem_solution_t<i_t, f_t>::write_to_file(std::string_view f
                                                               cuda::stream_ref stream_view,
                                                               bool generate_variable_values)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("write final solution to file");
+  raft::common::nvtx::range fun_scope("write final solution to file");
 
   cuopt_expects(termination_stats_.size() == 1,
                 error_type_t::ValidationError,

@@ -53,7 +53,7 @@ void multi_gpu_engine_t<i_t, f_t>::gather_potential_next_solutions_to_master()
 template <typename i_t, typename f_t>
 void multi_gpu_engine_t<i_t, f_t>::distributed_bound_objective_rescaling(f_t c_scaling_weight)
 {
-  [[maybe_unused]] raft::common::nvtx::range scope("distributed_bound_objective_rescaling");
+  raft::common::nvtx::range scope("distributed_bound_objective_rescaling");
 
   // 1) + 2) Local raw squared norms on each shard, accumulate on host.
   // Use compute_sum_bounds_squared / compute_sum_weighted_squares (not
@@ -118,7 +118,7 @@ template <typename i_t, typename f_t>
 void multi_gpu_engine_t<i_t, f_t>::distributed_ruiz_inf_scaling(int num_iter, i_t n_global_vars)
 {
   if (num_iter <= 0 || n_global_vars <= 0) return;
-  [[maybe_unused]] raft::common::nvtx::range scope("distributed_ruiz_inf_scaling");
+  raft::common::nvtx::range scope("distributed_ruiz_inf_scaling");
 
   for (int it = 0; it < num_iter; ++it) {
     refresh_halo_cummulative_scalings();
@@ -146,7 +146,7 @@ template <typename i_t, typename f_t>
 void multi_gpu_engine_t<i_t, f_t>::distributed_pock_chambolle_scaling(f_t alpha, i_t n_global_vars)
 {
   if (n_global_vars <= 0) return;
-  [[maybe_unused]] raft::common::nvtx::range scope("distributed_pock_chambolle_scaling");
+  raft::common::nvtx::range scope("distributed_pock_chambolle_scaling");
 
   refresh_halo_cummulative_scalings();
 
@@ -166,7 +166,7 @@ template <typename i_t, typename f_t>
 void multi_gpu_engine_t<i_t, f_t>::distributed_scaling(pdlp_hyper_params_t const& hyper_params,
                                                        i_t n_global_vars)
 {
-  [[maybe_unused]] raft::common::nvtx::range scope("distributed_scaling");
+  raft::common::nvtx::range scope("distributed_scaling");
 
   // 1) Matrix scaling passes populate the cumulative row/col scalings on
   //    every shard. Each pass keeps the halo copies refreshed internally.
@@ -203,7 +203,7 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value_squared(i_t n_g
                                                                          int max_iterations,
                                                                          f_t tolerance)
 {
-  [[maybe_unused]] raft::common::nvtx::range scope("distributed_max_singular_value_squared");
+  raft::common::nvtx::range scope("distributed_max_singular_value_squared");
 
   // ┌──────────────────────────────────────────────────────────────┐
   // │                            Setup                             │
@@ -325,7 +325,7 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value_squared(i_t n_g
     // Convergence check via global residual norm.
     distributed_l2_norm_bufs(q_owned, residual_norm);
     auto& s0 = *shards[0];
-    [[maybe_unused]] raft::device_setter guard0(s0.device_id);
+    raft::device_setter guard0(s0.device_id);
     f_t h_res{};
     raft::copy(&h_res, residual_norm[0].data(), 1, s0.stream.view());
     s0.stream.synchronize();
@@ -334,7 +334,7 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value_squared(i_t n_g
 
   // σ_max² is the same on every shard after the last allreduce.
   auto& s0 = *shards[0];
-  [[maybe_unused]] raft::device_setter guard0(s0.device_id);
+  raft::device_setter guard0(s0.device_id);
   f_t sigma_sq_h{};
   raft::copy(&sigma_sq_h, sigma_sq[0].data(), 1, s0.stream.view());
   s0.stream.synchronize();
@@ -355,7 +355,7 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_compute_initial_step_size(
   int max_iterations,
   f_t tolerance)
 {
-  [[maybe_unused]] raft::common::nvtx::range scope("distributed_compute_initial_step_size");
+  raft::common::nvtx::range scope("distributed_compute_initial_step_size");
   cuopt_assert(master_pdlp_ != nullptr,
                "distributed_compute_initial_step_size requires set_master(...)");
   cuopt_expects(hyper_params.initial_step_size_max_singular_value,
@@ -385,7 +385,7 @@ template <typename i_t, typename f_t>
 void multi_gpu_engine_t<i_t, f_t>::distributed_compute_initial_primal_weight(
   pdlp_hyper_params_t const& hyper_params)
 {
-  [[maybe_unused]] raft::common::nvtx::range scope("distributed_compute_initial_primal_weight");
+  raft::common::nvtx::range scope("distributed_compute_initial_primal_weight");
   cuopt_assert(master_pdlp_ != nullptr,
                "distributed_compute_initial_primal_weight requires set_master(...)");
   cuopt_expects(

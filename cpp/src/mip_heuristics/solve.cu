@@ -121,7 +121,7 @@ mip_solution_t<i_t, f_t> run_mip_solver(
   std::unique_ptr<mip::mip_symmetry_t<i_t, f_t>> symmetry = nullptr)
 {
   try {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("run_mip");
+    raft::common::nvtx::range fun_scope("run_mip");
     if (settings.get_mip_callbacks().size() > 0) {
       auto callback_num_variables = problem.original_problem_ptr->get_n_variables();
       const bool has_semi_continuous_callback_translation =
@@ -290,7 +290,7 @@ mip_solution_t<i_t, f_t> run_mip_solver(
                          f_t user_obj,
                          const std::vector<f_t>& assignment,
                          const char* heuristic_name) {
-          [[maybe_unused]] std::lock_guard<std::mutex> lock(papilo_callback_mutex);
+          std::lock_guard<std::mutex> lock(papilo_callback_mutex);
           if (solver_obj >= papilo_best_solver_obj) { return; }
           papilo_best_solver_obj = solver_obj;
 
@@ -401,7 +401,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
         : settings.time_limit;
 
     // Create log stream for file logging and add it to default logger
-    [[maybe_unused]] init_logger_t log(settings.log_file, settings.log_to_console);
+    init_logger_t log(settings.log_file, settings.log_to_console);
     // Init libraies before to not include it in solve time
     // This needs to be called before pdlp is initialized
     init_handler(op_problem.get_handle_ptr());
@@ -410,7 +410,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
 
     if (pre_solve_heuristics) { pre_solve_heuristics->stop(); }
 
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("Running solver");
+    raft::common::nvtx::range fun_scope("Running solver");
     auto timer = timer_t(time_limit);
 
     problem_checking_t<i_t, f_t>::check_problem_representation(op_problem);
@@ -566,7 +566,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
                    f_t user_obj,
                    const std::vector<f_t>& assignment,
                    const char* heuristic_name) {
-          [[maybe_unused]] std::lock_guard<std::mutex> lock(early_callback_mutex);
+          std::lock_guard<std::mutex> lock(early_callback_mutex);
           if (solver_obj >= early_best_objective.load()) { return; }
           early_best_objective.store(solver_obj);
           early_best_user_obj        = user_obj;

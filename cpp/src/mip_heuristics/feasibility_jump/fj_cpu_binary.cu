@@ -844,7 +844,7 @@ struct fj_bin_engine_t {
 
   void init(fj_cpu_climber_t<i_t, f_t>& climber)
   {
-    [[maybe_unused]] phase_timer_t timer(climber.bin_setup.engine_init);
+    phase_timer_t timer(climber.bin_setup.engine_init);
     const auto& params  = climber.settings.parameters;
     seed                = climber.settings.seed;
     rng                 = raft::random::PCGenerator((uint64_t)seed, 0, 0);

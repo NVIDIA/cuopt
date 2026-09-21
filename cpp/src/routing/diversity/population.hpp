@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -56,7 +56,7 @@ struct population {
              allocator& pool_allocator)
     : max_solutions(max_solutions_), weights(weights_), problem_ptr(P_)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("population ctr");
+    raft::common::nvtx::range fun_scope("population ctr");
     solutions.reserve(max_solutions_);
     for (size_t i = 0; i < max_solutions_; ++i) {
       bool occupied = false;
@@ -83,7 +83,7 @@ struct population {
 
   std::vector<solution> get_n_best(int number)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("get_n_best");
+    raft::common::nvtx::range fun_scope("get_n_best");
     number = std::min<int>(number, indices.size() - 1);
 
     size_t add = (size_t)(!solutions[0].first || solutions[indices[1].first].second.is_feasible());
@@ -104,7 +104,7 @@ struct population {
    * return all availible solutions. } */
   std::vector<solution> get_n_random(int number, bool tournament = false, int ignore_first_n = 0)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("get_n_random");
+    raft::common::nvtx::range fun_scope("get_n_random");
     number = std::min<int>(number, indices.size() - 1 - ignore_first_n);
 
     size_t add = (size_t)(!solutions[0].first || solutions[indices[1].first].second.is_feasible());
@@ -180,7 +180,7 @@ struct population {
   /*! \brief { Get random solution. } */
   solution get_random_solution(bool tournament)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("get_random_solution");
+    raft::common::nvtx::range fun_scope("get_random_solution");
     // Assert size > 1
     size_t add = (size_t)(!solutions[0].first || solutions[indices[1].first].second.is_feasible());
     size_t i   = add + next_random() % (indices.size() - 1);
@@ -194,7 +194,7 @@ struct population {
   /*! \brief { Get random solution with strong tournament selection. } */
   solution get_random_solution_tournament() const
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("get_random_solution_tournament");
+    raft::common::nvtx::range fun_scope("get_random_solution_tournament");
     // Assert size > 1
     size_t i1 = 1 + next_random() % (indices.size() - 1);
     for (int i = 0; i < 14; i++) {
@@ -206,7 +206,7 @@ struct population {
   /*! \brief { Get two random solutions. } */
   void get_two_random(std::pair<solution, solution>& random_pair, bool tournament)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("get_two_random");
+    raft::common::nvtx::range fun_scope("get_two_random");
     // Assert size > 2
     size_t add = (size_t)(!solutions[0].first || solutions[indices[1].first].second.is_feasible());
     size_t i   = add + next_random() % (indices.size() - 1);
@@ -241,7 +241,7 @@ struct population {
    */
   int add_solution(int elapsed_time, solution& sol)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("add_solution");
+    raft::common::nvtx::range fun_scope("add_solution");
     double sol_cost = sol.get_cost(weights);
 
     cuopt_func_call(sol.sol.check_cost_coherence(detail::default_weights));
@@ -311,7 +311,7 @@ struct population {
    */
   void change_weights(costs& weights_)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("change_weights");
+    raft::common::nvtx::range fun_scope("change_weights");
     weights = weights_;
     if (indices.size() == 1) return;
     using pr = std::pair<size_t, double>;
@@ -330,7 +330,7 @@ struct population {
    * found we return max_solutions. }*/
   size_t best_similar_index(const solution& sol)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("best_similar_index");
+    raft::common::nvtx::range fun_scope("best_similar_index");
     if (indices.size() == 1) return max_solutions;
     for (size_t i = 1; i < indices.size(); i++) {
       if (sol.calculate_similarity_radius(solutions[indices[i].first].second) > threshold) {
@@ -347,7 +347,7 @@ struct population {
    */
   int insert_index(std::pair<int, double> to_insert)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("insert_index");
+    raft::common::nvtx::range fun_scope("insert_index");
     // Assert free index is availible
     indices.emplace_back(0, 0.0);
     size_t start = indices.size() - 1;
@@ -365,7 +365,7 @@ struct population {
    */
   void eradicate_similar(size_t start_index, solution& sol)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("eradicate_similar");
+    raft::common::nvtx::range fun_scope("eradicate_similar");
     for (size_t i = start_index; i < indices.size(); i++) {
       if (sol.calculate_similarity_radius(solutions[indices[i].first].second) > threshold) {
         solutions[indices[i].first].first = false;     // mark place as availible
@@ -387,7 +387,7 @@ struct population {
    */
   size_t find_free_solution_index()
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("find_free_solution_index");
+    raft::common::nvtx::range fun_scope("find_free_solution_index");
     // ASSERT such index exists
     for (size_t i = 1; i < solutions.size(); i++)
       if (solutions[i].first == false) return i;

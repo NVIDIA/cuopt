@@ -493,7 +493,7 @@ size_t dry_run_cub(
 template <typename i_t, typename f_t>
 void mip_scaling_strategy_t<i_t, f_t>::scale_problem(bool do_objective_scaling)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("mip_scale_problem");
+  raft::common::nvtx::range fun_scope("mip_scale_problem");
 
   auto& matrix_values           = op_problem_scaled_.get_constraint_matrix_values();
   auto& matrix_offsets          = op_problem_scaled_.get_constraint_matrix_offsets();

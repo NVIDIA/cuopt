@@ -21,7 +21,7 @@ namespace mathematical_optimization {
 template <typename i_t, typename f_t>
 void sort_csr(optimization_problem_t<i_t, f_t>& op_problem)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("sort_csr");
+  raft::common::nvtx::range fun_scope("sort_csr");
   auto stream_view = op_problem.get_handle_ptr()->get_stream();
   rmm::device_uvector<std::byte> d_tmp_storage_bytes(0, stream_view);
   size_t tmp_storage_bytes{0};

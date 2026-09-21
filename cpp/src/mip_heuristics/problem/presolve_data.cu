@@ -29,7 +29,7 @@ template <typename i_t, typename f_t>
 bool presolve_data_t<i_t, f_t>::pre_process_assignment(problem_t<i_t, f_t>& problem,
                                                        rmm::device_uvector<f_t>& assignment)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("pre_process_assignment");
+  raft::common::nvtx::range fun_scope("pre_process_assignment");
   auto has_nans = cuopt::mathematical_optimization::mip::has_nans(problem.handle_ptr, assignment);
   if (has_nans) {
     CUOPT_LOG_DEBUG("Solution discarded due to nans");
@@ -153,7 +153,7 @@ void presolve_data_t<i_t, f_t>::post_process_assignment(
   bool resize_to_original_problem,
   cuda::stream_ref stream)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("post_process_assignment");
+  raft::common::nvtx::range fun_scope("post_process_assignment");
   cuopt_assert(current_assignment.size() == variable_mapping.size(), "size mismatch");
   auto assgn       = make_span(current_assignment);
   auto fixed_assgn = make_span(fixed_var_assignment);
@@ -196,7 +196,7 @@ template <typename i_t, typename f_t>
 void presolve_data_t<i_t, f_t>::post_process_solution(problem_t<i_t, f_t>& problem,
                                                       solution_t<i_t, f_t>& solution)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("post_process_solution");
+  raft::common::nvtx::range fun_scope("post_process_solution");
   post_process_assignment(problem, solution.assignment);
   // this is for resizing other fields such as excess, slack so that we can compute the feasibility
   solution.resize_to_original_problem();

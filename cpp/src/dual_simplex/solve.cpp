@@ -173,7 +173,7 @@ lp_status_t solve_linear_program_advanced(const lp_problem_t<i_t, f_t>& original
                                           std::vector<f_t>& edge_norms,
                                           work_limit_context_t* work_unit_context)
 {
-  [[maybe_unused]] raft::common::nvtx::range scope("DualSimplex::solve_lp");
+  raft::common::nvtx::range scope("DualSimplex::solve_lp");
   const i_t m                  = original_lp.num_rows;
   [[maybe_unused]] const i_t n = original_lp.num_cols;
   assert(m <= n);
@@ -211,7 +211,7 @@ lp_status_t solve_linear_program_with_advanced_basis(
   presolve_info_t<i_t, f_t> presolve_info;
   i_t ok;
   {
-    [[maybe_unused]] raft::common::nvtx::range scope_presolve("DualSimplex::presolve");
+    raft::common::nvtx::range scope_presolve("DualSimplex::presolve");
     ok = presolve(original_lp, settings, presolved_lp, presolve_info);
   }
   if (ok == CONCURRENT_HALT_RETURN) { return lp_status_t::CONCURRENT_LIMIT; }
@@ -232,7 +232,7 @@ lp_status_t solve_linear_program_with_advanced_basis(
   std::vector<f_t> column_scales;
   std::vector<f_t> row_scales_simplex;
   {
-    [[maybe_unused]] raft::common::nvtx::range scope_scaling("DualSimplex::scaling");
+    raft::common::nvtx::range scope_scaling("DualSimplex::scaling");
     scaling(presolved_lp, settings, lp, column_scales, row_scales_simplex);
   }
   assert(presolved_lp.num_cols == lp.num_cols);
@@ -262,7 +262,7 @@ lp_status_t solve_linear_program_with_advanced_basis(
   edge_norms.clear();
   dual_status_t phase1_status;
   {
-    [[maybe_unused]] raft::common::nvtx::range scope_phase1("DualSimplex::phase1");
+    raft::common::nvtx::range scope_phase1("DualSimplex::phase1");
     phase1_status = dual_phase2(1,
                                 1,
                                 start_time,

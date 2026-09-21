@@ -808,7 +808,7 @@ void find_insertions(solution_t<i_t, f_t, REQUEST>& sol,
   if (search_type == search_type_t::RANDOM) { name = "random_find_insertions"; }
 
   constexpr bool insert_unserviced = false;
-  [[maybe_unused]] raft::common::nvtx::range fun_scope(name);
+  raft::common::nvtx::range fun_scope(name);
   i_t TPB = get_n_viable<REQUEST>();
   // the formula is obtained with a linear regression across different instances
   move_candidates.number_of_blocks_per_ls_route =
@@ -871,7 +871,7 @@ void find_unserviced_insertions(solution_t<i_t, f_t, REQUEST>& sol,
   constexpr bool insert_unserviced = true;
 
   auto name = "find_unserviced_insertions";
-  [[maybe_unused]] raft::common::nvtx::range fun_scope(name);
+  raft::common::nvtx::range fun_scope(name);
   constexpr auto const TPB = get_n_viable<REQUEST>();
   // the formula is obtained with a linear regression across different instances
   move_candidates.number_of_blocks_per_ls_route =

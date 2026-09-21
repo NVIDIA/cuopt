@@ -105,7 +105,7 @@ class parallel_error_latch_t {
  public:
   void capture(std::exception_ptr eptr)
   {
-    [[maybe_unused]] std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::mutex> lock(mutex_);
     if (!first_error_) {
       first_error_ = eptr;
       stopped_.store(true, std::memory_order_release);

@@ -193,8 +193,7 @@ void inline insert_current_probing_to_cache(i_t var_idx,
     }
   }
   {
-    [[maybe_unused]] std::lock_guard<std::mutex> lock(
-      bound_presolve.probing_cache.probing_cache_mutex);
+    std::lock_guard<std::mutex> lock(bound_presolve.probing_cache.probing_cache_mutex);
     if (!bound_presolve.probing_cache.probing_cache.count(var_original) > 0) {
       std::array<cache_entry_t<i_t, f_t>, 2> entries_per_var;
       entries_per_var[0] = cache_item;
@@ -896,7 +895,7 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
                            double work_limit,
                            size_t step_size_hint)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_probing_cache");
+  raft::common::nvtx::range fun_scope("compute_probing_cache");
 
   cuopt_assert(bound_presolve.probing_cache.probing_cache.empty(),
                "probing cache is built once per solve");

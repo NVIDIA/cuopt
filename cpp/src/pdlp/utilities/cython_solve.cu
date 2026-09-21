@@ -56,7 +56,7 @@ cuopt::mathematical_optimization::lp_solution_interface_t<int, double>* call_sol
   cuopt::mathematical_optimization::pdlp_solver_settings_t<int, double>& solver_settings,
   bool is_batch_mode)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("Call Solve LP");
+  raft::common::nvtx::range fun_scope("Call Solve LP");
   cuopt_expects(problem_interface->get_problem_category() ==
                   cuopt::mathematical_optimization::problem_category_t::LP,
                 error_type_t::ValidationError,
@@ -84,7 +84,7 @@ cuopt::mathematical_optimization::mip_solution_interface_t<int, double>* call_so
     problem_interface,
   cuopt::mathematical_optimization::mip_solver_settings_t<int, double>& solver_settings)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("Call Solve MIP");
+  raft::common::nvtx::range fun_scope("Call Solve MIP");
   cuopt_expects((problem_interface->get_problem_category() ==
                  cuopt::mathematical_optimization::problem_category_t::MIP) or
                   (problem_interface->get_problem_category() ==
@@ -107,7 +107,7 @@ std::unique_ptr<solver_ret_t> call_solve(
   bool is_batch_mode,
   barrier_cache_t* cache_in)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("Call Solve");
+  raft::common::nvtx::range fun_scope("Call Solve");
 
   cuopt_expects(
     data_model != nullptr, error_type_t::ValidationError, "call_solve: data_model is null.");
@@ -309,7 +309,7 @@ std::pair<std::vector<std::unique_ptr<solver_ret_t>>, double> call_batch_solve(
   std::vector<cuopt::mathematical_optimization::io::data_model_view_t<int, double>*> data_models,
   cuopt::mathematical_optimization::solver_settings_t<int, double>* solver_settings)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("Call batch solve");
+  raft::common::nvtx::range fun_scope("Call batch solve");
 
   if (cuopt::mathematical_optimization::is_remote_execution_enabled()) {
     return solve_batch_remote(data_models, solver_settings);
@@ -317,8 +317,8 @@ std::pair<std::vector<std::unique_ptr<solver_ret_t>>, double> call_batch_solve(
 
   // Hold the logger configuration for the whole batch so that worker-local
   // init_logger_t instances inside solve_lp() reuse it.
-  [[maybe_unused]] init_logger_t batch_log(solver_settings->get_pdlp_settings().log_file,
-                                           solver_settings->get_pdlp_settings().log_to_console);
+  init_logger_t batch_log(solver_settings->get_pdlp_settings().log_file,
+                          solver_settings->get_pdlp_settings().log_to_console);
 
   const std::size_t size = data_models.size();
 

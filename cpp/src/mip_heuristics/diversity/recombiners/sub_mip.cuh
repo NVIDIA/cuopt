@@ -42,7 +42,7 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
                                                   solution_t<i_t, f_t>& b,
                                                   const weight_t<i_t, f_t>& weights)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("Sub-MIP recombiner");
+    raft::common::nvtx::range fun_scope("Sub-MIP recombiner");
     solution_vector.clear();
     auto& guiding_solution = a.get_feasible() ? a : b;
     auto& other_solution   = a.get_feasible() ? b : a;

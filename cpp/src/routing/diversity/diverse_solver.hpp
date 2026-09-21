@@ -250,7 +250,7 @@ struct solve {
       improvement_timer(timer_),
       perturbation_count(0)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("solve ctr");
+    raft::common::nvtx::range fun_scope("solve ctr");
 
     std::uniform_int_distribution<uint64_t> uniform(0, UINT64_MAX);
     s_xoshiro[0]                       = uniform(rng);
@@ -676,7 +676,7 @@ struct solve {
                       const std::string& path = "./",
                       bool from_dir           = false)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("perform_search");
+    raft::common::nvtx::range fun_scope("perform_search");
     feasible_only    = feasible_only_;
     target_vehicles_ = routes_number;
 
@@ -713,7 +713,7 @@ struct solve {
    * similar to all other) refill with generated ones } */
   void refill_reserve(const std::vector<int>& vehicle_ids, int sols_num = 5)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("refill_reserve");
+    raft::common::nvtx::range fun_scope("refill_reserve");
 
     if (timer.check_time_limit()) return;
 
@@ -733,7 +733,7 @@ struct solve {
    * best initial diversity level. } */
   int find_initial_diversity(std::vector<solution>& sols, bool avg)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("find_initial_diversity");
+    raft::common::nvtx::range fun_scope("find_initial_diversity");
     int threshold_index = 0;
     double average      = 0.0;
     double max          = 0.0;
@@ -769,7 +769,7 @@ struct solve {
    * generations to achieve pool size of at least 3. } */
   void generate_initial(int routes_number, int islands_size = -1)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("generate_initial");
+    raft::common::nvtx::range fun_scope("generate_initial");
     bool first_gen       = true;
     size_t start_index   = std::min<size_t>(3, diversity_levels.size() - 1);
     auto next_injection  = 0;
@@ -924,7 +924,7 @@ struct solve {
    */
   void adjust_weights(double best_before_improvement)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("adjust_weights");
+    raft::common::nvtx::range fun_scope("adjust_weights");
 
     const auto& best_found       = working_population.best();
     double cost_of_best_feasible = working_population.is_feasible()
@@ -965,7 +965,7 @@ struct solve {
                           int start_threshold_index,
                           bool consider_expensive_recombiners = true)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("improve_population");
+    raft::common::nvtx::range fun_scope("improve_population");
     if (p.current_size() < 2) return;
 
     while (start_threshold_index >= 0) {
@@ -1020,7 +1020,7 @@ struct solve {
                                           bool consider_expensive_recombiners    = true)
   {
     // std::cout << "Improve population\n";
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("improve_population_fixed_threshold");
+    raft::common::nvtx::range fun_scope("improve_population_fixed_threshold");
     if (p.current_size() < 2) return;
     bool improved = true;
 
@@ -1095,7 +1095,7 @@ struct solve {
                  bool& guiding,
                  bool consider_expensive_recombiners = false)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("recombine");
+    raft::common::nvtx::range fun_scope("recombine");
 
     guiding      = false;
     bool success = false;

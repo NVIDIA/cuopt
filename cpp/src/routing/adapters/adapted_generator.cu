@@ -31,7 +31,7 @@ bool adapted_generator_t<i_t, f_t, REQUEST>::make_feasible(
   costs const& weight,
   bool clear_scores)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("make_feasible");
+  raft::common::nvtx::range fun_scope("make_feasible");
   auto [resource, index] = pool_allocator.resource_pool->acquire();
   resource.ges.set_solution_ptr(&adapted_solution.sol, clear_scores);
   resource.ges.start_timer(std::chrono::steady_clock::now(), time_limit);
@@ -89,7 +89,7 @@ void adapted_generator_t<i_t, f_t, REQUEST>::generate_solution(
   const costs& weight,
   const timer_t& timer)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("generate_solution");
+  raft::common::nvtx::range fun_scope("generate_solution");
   if (sol.problem->is_tsp) {
     generate_tsp_solution<i_t, f_t, REQUEST>(sol, desired_vehicle_ids);
     return;

@@ -1065,7 +1065,7 @@ bool constraint_prop_t<i_t, f_t>::apply_round(
   timer_t& timer,
   std::optional<std::reference_wrapper<probing_config_t<i_t, f_t>>> probing_config)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("constraint prop round");
+  raft::common::nvtx::range fun_scope("constraint prop round");
   max_timer = timer_t{max_time_for_bounds_prop};
   if (check_brute_force_rounding(sol)) { return true; }
   recovery_mode      = false;

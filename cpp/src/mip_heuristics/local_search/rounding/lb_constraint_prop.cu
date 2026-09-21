@@ -706,7 +706,7 @@ bool lb_constraint_prop_t<i_t, f_t>::apply_round(
   timer_t& timer,
   std::optional<std::vector<thrust::pair<f_t, f_t>>> probing_candidates)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("constraint prop round");
+  raft::common::nvtx::range fun_scope("constraint prop round");
 
   // this is second timer that can continue but without recovery mode
   const f_t max_time_for_bounds_prop = 5.;

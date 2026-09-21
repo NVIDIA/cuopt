@@ -51,7 +51,7 @@ multi_gpu_engine_t<i_t, f_t>::multi_gpu_engine_t(
   // 3. Construct one shard per rank, pinned to its device. Ownership of each
   //    communicator moves into its shard.
   for (int r = 0; r < nb_parts; ++r) {
-    [[maybe_unused]] raft::device_setter guard(devices[r]);  // shard ctor needs device set
+    raft::device_setter guard(devices[r]);  // shard ctor needs device set
     shards.emplace_back(std::make_unique<pdlp_shard_t<i_t, f_t>>(
       devices[r], std::move(rank_data[r]), std::move(comms[r]), mps, sub_solver_settings));
   }
@@ -334,7 +334,7 @@ void multi_gpu_engine_t<i_t, f_t>::allreduce_sum_inplace_to_master_buf(
   auto master_stream = master_pdlp_->get_handle_ptr()->get_stream();
   sync_await_shards(master_stream);
   auto& s0 = *shards[0];
-  [[maybe_unused]] raft::device_setter guard(s0.device_id);
+  raft::device_setter guard(s0.device_id);
   raft::copy(master_dst.data_handle(), shard_scalars[0].data_handle(), 1, master_stream);
 }
 
@@ -422,7 +422,7 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_l2_norm_to_master_buf(
   auto master_stream = master_pdlp_->get_handle_ptr()->get_stream();
   sync_await_shards(master_stream);
   auto& s0 = *shards[0];
-  [[maybe_unused]] raft::device_setter guard(s0.device_id);
+  raft::device_setter guard(s0.device_id);
   raft::copy(master_dst.data_handle(), shard_out[0].data_handle(), 1, master_stream);
 }
 

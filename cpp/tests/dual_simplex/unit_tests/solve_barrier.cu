@@ -42,7 +42,7 @@ static void init_handler(const raft::handle_t* handle_ptr)
 
 TEST(barrier, chess_set)
 {
-  [[maybe_unused]] cuopt::init_logger_t log("", true);
+  cuopt::init_logger_t log("", true);
   namespace simplex = cuopt::mathematical_optimization::simplex;
   raft::handle_t handle{};
   init_handler(&handle);
@@ -112,7 +112,7 @@ TEST(barrier, chess_set)
 
 TEST(barrier, dual_variable_greater_than)
 {
-  [[maybe_unused]] cuopt::init_logger_t log("", true);
+  cuopt::init_logger_t log("", true);
   // minimize   3*x0 + 2 * x1
   // subject to  x0 + x1  >= 1
   //             x0 + 2x1 >= 3

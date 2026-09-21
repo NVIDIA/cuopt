@@ -437,7 +437,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
 
   i_t analyze(device_csr_matrix_t<i_t, f_t>& Arow) override
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("Barrier: cuDSS Analyze");
+    raft::common::nvtx::range fun_scope("Barrier: cuDSS Analyze");
 
 #ifdef WRITE_MATRIX_MARKET
     {
@@ -478,13 +478,12 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     }
 
     if (!first_factor) {
-      [[maybe_unused]] raft::common::nvtx::range fun_scope("Barrier: cuDSS Analyze : Destroy");
+      raft::common::nvtx::range fun_scope("Barrier: cuDSS Analyze : Destroy");
       CUDSS_CALL_AND_CHECK(cudssMatrixDestroy(A), status, "cudssMatrixDestroy for A");
     }
 
     {
-      [[maybe_unused]] raft::common::nvtx::range fun_scope(
-        "Barrier: cuDSS Analyze : cudssMatrixCreateCsr");
+      raft::common::nvtx::range fun_scope("Barrier: cuDSS Analyze : cudssMatrixCreateCsr");
 #if CUDSS_VERSION_MAJOR > 0 || (CUDSS_VERSION_MAJOR == 0 && CUDSS_VERSION_MINOR >= 8)
       CUDSS_CALL_AND_CHECK(
         cudssMatrixCreateCsr(&A,
@@ -529,8 +528,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     f_t start_symbolic_factor;
 
     {
-      [[maybe_unused]] raft::common::nvtx::range fun_scope(
-        "Barrier: cuDSS Analyze : CUDSS_PHASE_ANALYSIS");
+      raft::common::nvtx::range fun_scope("Barrier: cuDSS Analyze : CUDSS_PHASE_ANALYSIS");
       status =
         cudssExecute(handle, CUDSS_PHASE_REORDERING, solverConfig, solverData, A, cudss_x, cudss_b);
       if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
@@ -584,7 +582,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
   }
   i_t factorize(device_csr_matrix_t<i_t, f_t>& Arow) override
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("Factorize: cuDSS");
+    raft::common::nvtx::range fun_scope("Factorize: cuDSS");
 
     if (!symbolic_done_ || !A_created) {
       settings_.log.printf(

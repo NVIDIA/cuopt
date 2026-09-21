@@ -141,7 +141,7 @@ grpc_client_t::~grpc_client_t()
   // std::terminate — defeating the purpose of catching at all.
   stop_logs_.store(true);
   try {
-    [[maybe_unused]] std::lock_guard<std::mutex> lk(log_context_mutex_);
+    std::lock_guard<std::mutex> lk(log_context_mutex_);
     if (active_log_context_) {
       static_cast<grpc::ClientContext*>(active_log_context_)->TryCancel();
     }
@@ -285,7 +285,7 @@ void grpc_client_t::start_log_streaming(const std::string& job_id)
   if (log_thread_ && log_thread_->joinable()) {
     stop_logs_.store(true);
     {
-      [[maybe_unused]] std::lock_guard<std::mutex> lk(log_context_mutex_);
+      std::lock_guard<std::mutex> lk(log_context_mutex_);
       if (active_log_context_) {
         static_cast<grpc::ClientContext*>(active_log_context_)->TryCancel();
       }
@@ -312,7 +312,7 @@ void grpc_client_t::stop_log_streaming()
   // Cancel the in-flight streaming RPC so reader->Read() returns false
   // immediately instead of blocking until the server sends a message.
   {
-    [[maybe_unused]] std::lock_guard<std::mutex> lk(log_context_mutex_);
+    std::lock_guard<std::mutex> lk(log_context_mutex_);
     if (active_log_context_) {
       static_cast<grpc::ClientContext*>(active_log_context_)->TryCancel();
     }
@@ -561,7 +561,7 @@ bool grpc_client_t::stream_logs(
   // another thread.  The mutex ensures the pointer is never dangling:
   // we clear it under the same lock before `context` goes out of scope.
   {
-    [[maybe_unused]] std::lock_guard<std::mutex> lk(log_context_mutex_);
+    std::lock_guard<std::mutex> lk(log_context_mutex_);
     active_log_context_ = &context;
   }
 
@@ -583,7 +583,7 @@ bool grpc_client_t::stream_logs(
   auto status = reader->Finish();
 
   {
-    [[maybe_unused]] std::lock_guard<std::mutex> lk(log_context_mutex_);
+    std::lock_guard<std::mutex> lk(log_context_mutex_);
     active_log_context_ = nullptr;
   }
 

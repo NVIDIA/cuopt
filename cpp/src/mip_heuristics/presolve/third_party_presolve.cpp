@@ -105,7 +105,7 @@ papilo::Problem<f_t> build_papilo_problem(io::mps_data_model_t<i_t, f_t> const& 
                                           bool maximize,
                                           problem_category_t category)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("Build papilo::Problem from mps_data_model");
+  raft::common::nvtx::range fun_scope("Build papilo::Problem from mps_data_model");
 
   const i_t n_cols = mps.get_n_variables();
   const i_t n_rows = mps.get_n_constraints();
@@ -215,7 +215,7 @@ papilo::Problem<f_t> build_papilo_problem(io::mps_data_model_t<i_t, f_t> const& 
 template <typename i_t, typename f_t>
 papilo::Problem<f_t> build_papilo_problem(const simplex::user_problem_t<i_t, f_t>& problem)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("Build papilo problem");
+  raft::common::nvtx::range fun_scope("Build papilo problem");
   // Build a papilo problem from a (host-side) dual-simplex user_problem_t. Unlike the
   // optimization_problem_t overload, all data already lives on the host and the constraint
   // matrix is stored column-major (CSC), so there are no device copies and no COO step: the
@@ -361,7 +361,7 @@ template <typename i_t, typename f_t>
 void build_user_problem(papilo::Problem<f_t> const& papilo_problem,
                         simplex::user_problem_t<i_t, f_t>& problem)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("Build user problem");
+  raft::common::nvtx::range fun_scope("Build user problem");
 
   const i_t reduced_rows        = papilo_problem.getNRows();
   const i_t reduced_cols        = papilo_problem.getNCols();
@@ -464,7 +464,7 @@ io::mps_data_model_t<i_t, f_t> build_reduced_mps_from_pslp(Presolver* pslp_preso
                                                            bool maximize,
                                                            f_t original_obj_offset)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("Build mps_data_model from PSLP");
+  raft::common::nvtx::range fun_scope("Build mps_data_model from PSLP");
   io::mps_data_model_t<i_t, f_t> mps;
 
   if constexpr (std::is_same_v<f_t, double>) {
@@ -518,7 +518,7 @@ template <typename i_t, typename f_t>
 io::mps_data_model_t<i_t, f_t> build_reduced_mps_from_papilo(
   papilo::Problem<f_t> const& papilo_problem, bool maximize)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("Reduced mps <- Papilo");
+  raft::common::nvtx::range fun_scope("Reduced mps <- Papilo");
   io::mps_data_model_t<i_t, f_t> mps;
 
   auto obj = papilo_problem.getObjective();
@@ -836,7 +836,7 @@ template <typename i_t, typename f_t>
 third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_pslp(
   io::mps_data_model_t<i_t, f_t> const& mps, double time_limit)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("Apply PSLP presolver on host");
+  raft::common::nvtx::range fun_scope("Apply PSLP presolver on host");
 
   if constexpr (std::is_same_v<f_t, double>) {
     const i_t n_cols = mps.get_n_variables();
@@ -914,7 +914,7 @@ third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_papilo(
   i_t max_rounds,
   i_t max_badgesize)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("Apply Papilo presolve on host");
+  raft::common::nvtx::range fun_scope("Apply Papilo presolve on host");
 
   // Capture original dimensions before papilo.apply() mutates papilo_problem
   // in place into its reduced form.

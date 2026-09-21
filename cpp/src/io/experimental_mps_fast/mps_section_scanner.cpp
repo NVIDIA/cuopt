@@ -80,7 +80,7 @@ void mps_phase_registry_t::publish(mps_phase_kind phase, mps_phase_range_t range
   omp_event_handle_t event{};
   bool fulfill = false;
   {
-    [[maybe_unused]] std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::mutex> lock(mutex_);
     if (ready_[idx].load(std::memory_order_acquire)) { return; }
     ranges_[idx] = range;
     ready_[idx].store(true, std::memory_order_release);
@@ -98,7 +98,7 @@ void mps_phase_registry_t::attach_event(mps_phase_kind phase, omp_event_handle_t
   std::size_t idx = phase_index(phase);
   bool fulfill    = false;
   {
-    [[maybe_unused]] std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::mutex> lock(mutex_);
     events_[idx]    = event;
     has_event_[idx] = true;
     if (ready_[idx].load(std::memory_order_acquire) && !event_fulfilled_[idx]) {
@@ -124,7 +124,7 @@ mps_phase_range_t mps_phase_registry_t::range(mps_phase_kind phase) const
 
 void mps_phase_registry_t::publish_endata(const char* begin, bool present)
 {
-  [[maybe_unused]] std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard<std::mutex> lock(mutex_);
   if (endata_ready_.load(std::memory_order_acquire)) { return; }
   endata_begin_   = begin;
   endata_present_ = present;
@@ -335,7 +335,7 @@ void mps_section_block_scanner_t::advance_ready_frontier()
   std::size_t new_ready = 0;
   bool grew             = false;
   {
-    [[maybe_unused]] std::lock_guard<std::mutex> lock(frontier_mutex_);
+    std::lock_guard<std::mutex> lock(frontier_mutex_);
     while (next_block_ < block_count_ &&
            block_decoded_[next_block_].load(std::memory_order_acquire)) {
       new_ready = block_end_offsets_[next_block_].load(std::memory_order_acquire);
@@ -366,7 +366,7 @@ void mps_section_block_scanner_t::notify_ready_phases()
   // publish present=false once a later boundary proves they cannot still appear.
   // ENDATA, or final ready bytes for truncated/non-newline files, is the final
   // boundary for the trailing optional/quadratic phases.
-  [[maybe_unused]] std::lock_guard<std::mutex> lock(publish_mutex_);
+  std::lock_guard<std::mutex> lock(publish_mutex_);
   std::size_t ready     = ready_bytes_.load(std::memory_order_acquire);
   const char* ready_ptr = data_ + ready;
   const char* rows =

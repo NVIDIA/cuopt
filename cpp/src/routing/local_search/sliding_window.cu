@@ -1024,7 +1024,7 @@ template <typename i_t, typename f_t, request_t REQUEST>
 bool local_search_t<i_t, f_t, REQUEST>::perform_sliding_window(
   solution_t<i_t, f_t, REQUEST>& solution, move_candidates_t<i_t, f_t>& move_candidates)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("run_sliding_window");
+  raft::common::nvtx::range fun_scope("run_sliding_window");
   i_t n_moves_found           = 0;
   size_t shared_for_tmp_route = 0;
   solution.compute_max_active();

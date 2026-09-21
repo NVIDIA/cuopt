@@ -170,7 +170,7 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
                     std::vector<i_t>& slacks_needed,
                     f_t& work_estimate)
 {
-  [[maybe_unused]] raft::common::nvtx::range scope("LU::factorize_basis");
+  raft::common::nvtx::range scope("LU::factorize_basis");
   const i_t m              = basic_list.size();
   constexpr f_t medium_tol = 1e-12;
 
@@ -858,7 +858,7 @@ i_t b_transpose_solve(const csc_matrix_t<i_t, f_t>& L,
   // U'*r = c
   // L'*w = r
 
-  [[maybe_unused]] raft::common::nvtx::range scope("LU::b_transpose_solve");
+  raft::common::nvtx::range scope("LU::b_transpose_solve");
 
   f_t work_estimate = 0;
   // Solve for r such that U'*r = c

@@ -38,7 +38,7 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
     rmm::device_uvector<thrust::pair<f_t, f_t>>& probing_values,
     i_t n_vars_from_other)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("get_probing_values_for_infeasible");
+    raft::common::nvtx::range fun_scope("get_probing_values_for_infeasible");
     auto guiding_view   = guiding.view();
     auto other_view     = other.view();
     auto offspring_view = offspring.view();
@@ -102,7 +102,7 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
                                        [[maybe_unused]] i_t n_vars_from_other,
                                        rmm::device_uvector<i_t>& variable_map)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("get_probing_values_for_feasible");
+    raft::common::nvtx::range fun_scope("get_probing_values_for_feasible");
     cuopt_assert(n_vars_from_other == offspring.problem_ptr->n_integer_vars,
                  "The number of vars from other should match!");
     auto guiding_view   = guiding.view();
@@ -135,7 +135,7 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
                                                   solution_t<i_t, f_t>& b,
                                                   const weight_t<i_t, f_t>& weights)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("bound_prop_recombiner");
+    raft::common::nvtx::range fun_scope("bound_prop_recombiner");
     auto& guiding_solution = a.get_feasible() ? a : b;
     auto& other_solution   = a.get_feasible() ? b : a;
     // copy the solution from guiding
@@ -197,14 +197,12 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
       constraint_prop.single_rounding_only  = true;
       constraint_prop.apply_round(offspring, lp_run_time_after_feasible, timer, probing_config);
       constraint_prop.single_rounding_only = false;
-      cuopt_func_call(bool feasible_after_bounds_prop = offspring.get_feasible());
       offspring.handle_ptr->sync_stream();
       offspring.problem_ptr = a.problem_ptr;
       fixed_assignment      = std::move(offspring.assignment);
       offspring.assignment  = std::move(old_assignment);
       offspring.handle_ptr->sync_stream();
       offspring.unfix_variables(fixed_assignment, variable_map);
-      cuopt_func_call(bool feasible_after_unfix = offspring.get_feasible());
       // May be triggered due to numerical issues
       // TODO: investigate further
       // cuopt_assert(feasible_after_unfix == feasible_after_bounds_prop,

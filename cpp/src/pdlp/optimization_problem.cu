@@ -73,7 +73,7 @@ optimization_problem_t<i_t, f_t>::optimization_problem_t(raft::handle_t const* h
     row_types_(0, stream_view_),
     variable_types_(0, stream_view_)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("optimization problem construction");
+  raft::common::nvtx::range fun_scope("optimization problem construction");
 }
 
 template <typename i_t, typename f_t>

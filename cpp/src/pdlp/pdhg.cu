@@ -389,7 +389,7 @@ i_t pdhg_solver_t<i_t, f_t>::get_dual_size() const
 template <typename i_t, typename f_t>
 void pdhg_solver_t<i_t, f_t>::compute_next_dual_solution(rmm::device_uvector<f_t>& dual_step_size)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_next_dual_solution");
+  raft::common::nvtx::range fun_scope("compute_next_dual_solution");
   // proj(y+sigma(b-K(2x'-x)))
   // rewritten as proj(y+sigma(b-K(x'+delta_x)))
   // with the introduction of constraint lower and upper bounds the b
@@ -690,7 +690,7 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution(
   rmm::device_uvector<f_t>& dual_step_size,
   i_t total_pdlp_iterations)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("compute_next_primal_solution");
+  raft::common::nvtx::range fun_scope("compute_next_primal_solution");
 #ifdef PDLP_DEBUG_MODE
   std::cout << "  compute_next_primal_solution:" << std::endl;
 #endif
@@ -1228,8 +1228,7 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
   const rmm::device_uvector<f_t>& bound_rescaling,
   bool should_major)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope(
-    "compute_next_primal_dual_solution_reflected");
+  raft::common::nvtx::range fun_scope("compute_next_primal_dual_solution_reflected");
 
   using f_t2 = typename type_2<f_t>::type;
 
@@ -1498,7 +1497,7 @@ template <typename i_t, typename f_t>
 void pdhg_solver_t<i_t, f_t>::update_solution(
   cusparse_view_t<i_t, f_t>& current_op_problem_evaluation_cusparse_view_)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("update_solution");
+  raft::common::nvtx::range fun_scope("update_solution");
 
   // Instead of copying, use a swap (that moves pointers)
   // It's ok because the next will be overwritten next iteration anyways

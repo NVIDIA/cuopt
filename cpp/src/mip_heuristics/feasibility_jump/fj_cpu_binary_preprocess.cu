@@ -96,7 +96,7 @@ static void build_transpose(fj_bin_problem_t<coef_t>& pb)
 template <typename i_t, typename f_t>
 fj_bin_scan_t fj_bin_scan(const fj_cpu_climber_t<i_t, f_t>& c, fj_bin_setup_times_t& times)
 {
-  [[maybe_unused]] phase_timer_t timer(times.scan);
+  phase_timer_t timer(times.scan);
   fj_bin_scan_t out;
   const int32_t n_cols = c.problem->n_variables;
   const int32_t n_rows = c.problem->n_constraints;
@@ -380,7 +380,7 @@ bool fj_bin_encode(const fj_cpu_climber_t<i_t, f_t>& c,
                    int& coefficient_bits,
                    fj_bin_setup_times_t& times)
 {
-  [[maybe_unused]] phase_timer_t timer(times.encode);
+  phase_timer_t timer(times.encode);
   const int32_t n_cols = c.problem->n_variables;
   const int32_t n_rows = c.problem->n_constraints;
   if (n_cols <= 0 || n_rows <= 0) return false;

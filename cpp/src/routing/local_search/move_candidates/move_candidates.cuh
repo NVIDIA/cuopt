@@ -54,7 +54,7 @@ struct shared_pool_t {
 
   std::tuple<object_t&, int> acquire()
   {
-    [[maybe_unused]] std::unique_lock<std::mutex> lock(mutex);
+    std::unique_lock<std::mutex> lock(mutex);
     while (true) {
       if (indices.size()) {
         int index = indices.front();
@@ -67,7 +67,7 @@ struct shared_pool_t {
 
   void release(int index)
   {
-    [[maybe_unused]] std::unique_lock<std::mutex> lock(mutex);
+    std::unique_lock<std::mutex> lock(mutex);
     indices.push(index);
     cond.notify_one();
   }
@@ -270,7 +270,7 @@ class cand_matrix_t {
 
   void reset(solution_handle_t<i_t, f_t> const* sol_handle)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("cand_matrix_t reset");
+    raft::common::nvtx::range fun_scope("cand_matrix_t reset");
     async_fill(cost_counter,
                cost_counter_t{.cost = std::numeric_limits<double>::max()},
                sol_handle->get_stream());
@@ -355,7 +355,7 @@ class move_candidates_t {
 
   inline void reset(solution_handle_t<i_t, f_t> const* sol_handle)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("move_candidates reset");
+    raft::common::nvtx::range fun_scope("move_candidates reset");
     move_candidate_reset_graph.start_capture(sol_handle->get_stream());
     cycles.reset(sol_handle);
     graph.reset(sol_handle);

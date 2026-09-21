@@ -132,7 +132,7 @@ bool feasibility_pump_t<i_t, f_t>::linear_project_onto_polytope(solution_t<i_t, 
                                                                 f_t ratio_of_set_integers,
                                                                 bool longer_lp_run)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("linear_project_onto_polytope");
+  raft::common::nvtx::range fun_scope("linear_project_onto_polytope");
   CUOPT_LOG_DEBUG("linear projection of fp");
   auto h_assignment = solution.get_host_assignment();
   auto h_variable_bounds =
@@ -326,7 +326,7 @@ bool feasibility_pump_t<i_t, f_t>::test_fj_feasible(solution_t<i_t, f_t>& soluti
 template <typename i_t, typename f_t>
 bool feasibility_pump_t<i_t, f_t>::handle_cycle(solution_t<i_t, f_t>& solution)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("handle_cycle");
+  raft::common::nvtx::range fun_scope("handle_cycle");
   CUOPT_LOG_DEBUG("running handle cycle");
   bool is_feasible       = false;
   fp_fj_cycle_time_begin = timer.remaining_time();
@@ -356,7 +356,7 @@ bool feasibility_pump_t<i_t, f_t>::handle_cycle(solution_t<i_t, f_t>& solution)
 template <typename i_t, typename f_t>
 bool feasibility_pump_t<i_t, f_t>::restart_fp(solution_t<i_t, f_t>& solution)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("restart_fp");
+  raft::common::nvtx::range fun_scope("restart_fp");
   bool is_feasible = handle_cycle(solution);
   // reset the distance
   last_distances.resize(0);
@@ -393,7 +393,7 @@ void feasibility_pump_t<i_t, f_t>::resize_vectors(problem_t<i_t, f_t>& problem,
 template <typename i_t, typename f_t>
 bool feasibility_pump_t<i_t, f_t>::check_distance_cycle(solution_t<i_t, f_t>& solution)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("check_distance_cycle");
+  raft::common::nvtx::range fun_scope("check_distance_cycle");
   f_t distance_to_last_rounding = compute_l1_distance<i_t, f_t>(
     solution.problem_ptr->integer_indices, last_rounding, solution.assignment, solution.handle_ptr);
 
@@ -421,7 +421,7 @@ bool feasibility_pump_t<i_t, f_t>::check_distance_cycle(solution_t<i_t, f_t>& so
 template <typename i_t, typename f_t>
 void feasibility_pump_t<i_t, f_t>::relax_general_integers(solution_t<i_t, f_t>& solution)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("relax_general_integers");
+  raft::common::nvtx::range fun_scope("relax_general_integers");
   orig_variable_types.resize(solution.problem_ptr->n_variables, solution.handle_ptr->get_stream());
 
   auto var_types  = make_span(solution.problem_ptr->variable_types);
@@ -470,7 +470,7 @@ void feasibility_pump_t<i_t, f_t>::revert_relaxation(solution_t<i_t, f_t>& solut
 template <typename i_t, typename f_t>
 bool feasibility_pump_t<i_t, f_t>::run_single_fp_descent(solution_t<i_t, f_t>& solution)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("run_single_fp_descent");
+  raft::common::nvtx::range fun_scope("run_single_fp_descent");
   // start by doing nearest rounding
   solution.round_nearest(rng());
   raft::copy(last_rounding.data(),

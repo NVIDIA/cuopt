@@ -87,7 +87,7 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     }
 
     {
-      [[maybe_unused]] std::lock_guard<std::mutex> lock(chunked_uploads_mutex);
+      std::lock_guard<std::mutex> lock(chunked_uploads_mutex);
       if (chunked_uploads.size() >= kMaxChunkedSessions) {
         return Status(StatusCode::RESOURCE_EXHAUSTED,
                       "Too many concurrent chunked upload sessions (limit " +
@@ -118,7 +118,7 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     const std::string& upload_id = request->upload_id();
     const auto& ac               = request->chunk();
 
-    [[maybe_unused]] std::lock_guard<std::mutex> lock(chunked_uploads_mutex);
+    std::lock_guard<std::mutex> lock(chunked_uploads_mutex);
     auto it = chunked_uploads.find(upload_id);
     if (it == chunked_uploads.end()) {
       return Status(StatusCode::NOT_FOUND, "Unknown upload_id: " + upload_id);
@@ -237,7 +237,7 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     // Take ownership of the upload session and remove it from the active map.
     ChunkedUploadState state;
     {
-      [[maybe_unused]] std::lock_guard<std::mutex> lock(chunked_uploads_mutex);
+      std::lock_guard<std::mutex> lock(chunked_uploads_mutex);
       auto it = chunked_uploads.find(upload_id);
       if (it == chunked_uploads.end()) {
         return Status(StatusCode::NOT_FOUND, "Unknown upload_id: " + upload_id);
@@ -312,7 +312,7 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
 
     int64_t result_size_bytes = 0;
     if (status == JobStatus::COMPLETED) {
-      [[maybe_unused]] std::lock_guard<std::mutex> lock(tracker_mutex);
+      std::lock_guard<std::mutex> lock(tracker_mutex);
       auto it = job_tracker.find(job_id);
       if (it != job_tracker.end()) { result_size_bytes = it->second.result_size_bytes; }
     }
@@ -331,7 +331,7 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     (void)context;
     std::string job_id = request->job_id();
 
-    [[maybe_unused]] std::lock_guard<std::mutex> lock(tracker_mutex);
+    std::lock_guard<std::mutex> lock(tracker_mutex);
     auto it = job_tracker.find(job_id);
 
     if (it == job_tracker.end()) { return Status(StatusCode::NOT_FOUND, "Job not found"); }
@@ -404,7 +404,7 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     // client fetch chunks at its own pace without holding the tracker lock.
     ChunkedDownloadState state;
     {
-      [[maybe_unused]] std::lock_guard<std::mutex> lock(tracker_mutex);
+      std::lock_guard<std::mutex> lock(tracker_mutex);
       auto it = job_tracker.find(job_id);
       if (it == job_tracker.end()) {
         return Status(StatusCode::NOT_FOUND, "Job not found: " + job_id);
@@ -425,7 +425,7 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     response->set_max_message_bytes(server_max_message_bytes());
 
     {
-      [[maybe_unused]] std::lock_guard<std::mutex> lock(chunked_downloads_mutex);
+      std::lock_guard<std::mutex> lock(chunked_downloads_mutex);
       if (chunked_downloads.size() >= kMaxChunkedSessions) {
         return Status(StatusCode::RESOURCE_EXHAUSTED,
                       "Too many concurrent chunked download sessions (limit " +
@@ -456,7 +456,7 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     int64_t elem_offset     = request->element_offset();
     int64_t max_elements    = request->max_elements();
 
-    [[maybe_unused]] std::lock_guard<std::mutex> lock(chunked_downloads_mutex);
+    std::lock_guard<std::mutex> lock(chunked_downloads_mutex);
     auto it = chunked_downloads.find(download_id);
     if (it == chunked_downloads.end()) {
       return Status(StatusCode::NOT_FOUND, "Unknown download_id: " + download_id);
@@ -507,7 +507,7 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     std::string download_id = request->download_id();
     response->set_download_id(download_id);
 
-    [[maybe_unused]] std::lock_guard<std::mutex> lock(chunked_downloads_mutex);
+    std::lock_guard<std::mutex> lock(chunked_downloads_mutex);
     auto it = chunked_downloads.find(download_id);
     if (it == chunked_downloads.end()) {
       return Status(StatusCode::NOT_FOUND, "Unknown download_id: " + download_id);
@@ -610,7 +610,7 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
 
     // Fast path: if the job is already in a terminal state, return immediately.
     {
-      [[maybe_unused]] std::lock_guard<std::mutex> lock(tracker_mutex);
+      std::lock_guard<std::mutex> lock(tracker_mutex);
       auto it = job_tracker.find(job_id);
       if (it == job_tracker.end()) {
         response->set_job_status(cuopt::remote::NOT_FOUND);
@@ -642,7 +642,7 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     // RPCs for the same job share a single JobWaiter instance.
     std::shared_ptr<JobWaiter> waiter;
     {
-      [[maybe_unused]] std::lock_guard<std::mutex> lock(waiters_mutex);
+      std::lock_guard<std::mutex> lock(waiters_mutex);
       auto it = waiting_threads.find(job_id);
       if (it != waiting_threads.end()) {
         waiter = it->second;
@@ -659,7 +659,7 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     // loop so that cleanup (waiters decrement) happens in one place below.
     bool client_cancelled = false;
     {
-      [[maybe_unused]] std::unique_lock<std::mutex> lock(waiter->mutex);
+      std::unique_lock<std::mutex> lock(waiter->mutex);
       while (!waiter->ready) {
         if (context->IsCancelled()) {
           client_cancelled = true;
@@ -693,7 +693,7 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
       response->set_job_status(cuopt::remote::COMPLETED);
       response->set_message("");
       {
-        [[maybe_unused]] std::lock_guard<std::mutex> lock(tracker_mutex);
+        std::lock_guard<std::mutex> lock(tracker_mutex);
         auto job_it = job_tracker.find(job_id);
         response->set_result_size_bytes(
           (job_it != job_tracker.end()) ? job_it->second.result_size_bytes : 0);
@@ -711,7 +711,7 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
         case JobStatus::COMPLETED: {
           response->set_job_status(cuopt::remote::COMPLETED);
           response->set_message("");
-          [[maybe_unused]] std::lock_guard<std::mutex> lock(tracker_mutex);
+          std::lock_guard<std::mutex> lock(tracker_mutex);
           auto job_it = job_tracker.find(job_id);
           response->set_result_size_bytes(
             (job_it != job_tracker.end()) ? job_it->second.result_size_bytes : 0);
@@ -873,7 +873,7 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
 
     if (from_index < 0) { from_index = 0; }
 
-    [[maybe_unused]] std::lock_guard<std::mutex> lock(tracker_mutex);
+    std::lock_guard<std::mutex> lock(tracker_mutex);
     auto it = job_tracker.find(job_id);
     if (it == job_tracker.end()) { return Status(StatusCode::NOT_FOUND, "Job not found"); }
 

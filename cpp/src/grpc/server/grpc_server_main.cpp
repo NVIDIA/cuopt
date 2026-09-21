@@ -277,7 +277,7 @@ int main(int argc, char** argv)
     spawn_workers();
 
     {
-      [[maybe_unused]] std::lock_guard<std::mutex> lock(worker_pids_mutex);
+      std::lock_guard<std::mutex> lock(worker_pids_mutex);
       bool any_worker = false;
       for (pid_t pid : worker_pids) {
         if (pid > 0) {

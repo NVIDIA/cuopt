@@ -195,8 +195,7 @@ TEST(pdlp_class, concurrent_null_solver_ptrs_inside_mip)
   // and sol_barrier_ptr null.
   const int prev_threads = omp_get_max_threads();
   omp_set_num_threads(1);
-  [[maybe_unused]] const cuopt::scope_guard restore_threads{
-    [prev_threads] { omp_set_num_threads(prev_threads); }};
+  const cuopt::scope_guard restore_threads{[prev_threads] { omp_set_num_threads(prev_threads); }};
   optimization_problem_solution_t<int, double> solution = solve_lp(&handle_, op_problem, settings);
 
   EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERMINATION_STATUS_OPTIMAL);

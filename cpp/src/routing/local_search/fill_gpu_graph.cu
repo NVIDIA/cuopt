@@ -150,7 +150,7 @@ __global__ void fill_intra_candidates(typename solution_t<i_t, f_t, REQUEST>::vi
 template <typename i_t, typename f_t, request_t REQUEST>
 void local_search_t<i_t, f_t, REQUEST>::fill_gpu_graph(solution_t<i_t, f_t, REQUEST>& solution)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("fill_gpu_graph");
+  raft::common::nvtx::range fun_scope("fill_gpu_graph");
   constexpr i_t TPB = 128;
   solution.sol_handle->sync_stream();
   const auto stream                   = solution.sol_handle->get_stream();

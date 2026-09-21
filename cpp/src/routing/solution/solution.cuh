@@ -351,7 +351,7 @@ class solution_t {
       temp_int_vector(std::max(problem_.get_num_orders(), problem_.get_fleet_size()),
                       sol_handle_->get_stream())
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("solution_t");
+    raft::common::nvtx::range fun_scope("solution_t");
 
     thrust::fill(
       sol_handle_->get_thrust_policy(), d_lock_per_route.begin(), d_lock_per_route.end(), 0);
@@ -429,7 +429,7 @@ class solution_t {
       temp_stack_counter(sol.temp_stack_counter, sol.sol_handle->get_stream()),
       temp_int_vector(sol.temp_int_vector, sol.sol_handle->get_stream())
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("copy ctr solution_t");
+    raft::common::nvtx::range fun_scope("copy ctr solution_t");
     cuopt_assert(n_routes <= problem_ptr->get_fleet_size(),
                  "Number of routes should be less than the fleet size");
     set_routes_to_copy();
@@ -441,7 +441,7 @@ class solution_t {
     cuopt_assert(routes.size() == route_id_to_idx.size(), "route and ids should have same size!");
 
     {
-      [[maybe_unused]] raft::common::nvtx::range fun_scope("copy_routes");
+      raft::common::nvtx::range fun_scope("copy_routes");
       for (i_t i = 0; i < sol.n_routes; ++i) {
         routes.emplace_back(sol.get_route(i));
         route_id_to_idx.emplace_back(i);

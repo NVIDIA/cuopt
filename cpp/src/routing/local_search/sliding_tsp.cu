@@ -477,7 +477,7 @@ template <typename i_t, typename f_t, request_t REQUEST>
 bool local_search_t<i_t, f_t, REQUEST>::perform_sliding_tsp(
   solution_t<i_t, f_t, REQUEST>& sol, move_candidates_t<i_t, f_t>& move_candidates)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("perform_sliding_tsp");
+  raft::common::nvtx::range fun_scope("perform_sliding_tsp");
   sol.global_runtime_checks(false, false, "sliding_tsp_start");
   i_t n_moves_found = 0;
   if (!move_candidates.include_objective) { return false; }

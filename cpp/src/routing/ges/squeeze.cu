@@ -150,7 +150,7 @@ template <typename i_t, typename f_t, request_t REQUEST>
 i_t guided_ejection_search_t<i_t, f_t, REQUEST>::try_multiple_feasible_insertions(
   i_t n_insertions, const bool enable_perturbation)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("try_multiple_insert");
+  raft::common::nvtx::range fun_scope("try_multiple_insert");
 
   if (enable_perturbation) {
     i_t const_1, const_2;
@@ -186,7 +186,7 @@ i_t guided_ejection_search_t<i_t, f_t, REQUEST>::try_multiple_feasible_insertion
 template <typename i_t, typename f_t, request_t REQUEST>
 void guided_ejection_search_t<i_t, f_t, REQUEST>::squeeze_all_ep()
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("squeeze_all_ep");
+  raft::common::nvtx::range fun_scope("squeeze_all_ep");
 
   constexpr auto const squeeze_size      = 100;
   constexpr auto const include_objective = false;
@@ -230,7 +230,7 @@ void guided_ejection_search_t<i_t, f_t, REQUEST>::squeeze_all_ep()
 template <typename i_t, typename f_t, request_t REQUEST>
 bool guided_ejection_search_t<i_t, f_t, REQUEST>::squeeze_all_and_save()
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("squeeze_all_and_save");
+  raft::common::nvtx::range fun_scope("squeeze_all_and_save");
   // copy current solution state
   squeeze_save_state.copy_device_solution(*solution_ptr);
   auto save_ep_size = EP.size();
@@ -284,7 +284,7 @@ template <typename i_t, typename f_t, request_t REQUEST>
 void guided_ejection_search_t<i_t, f_t, REQUEST>::squeeze(
   const request_info_t<i_t, REQUEST>* request, bool random_route)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("squeeze");
+  raft::common::nvtx::range fun_scope("squeeze");
   auto stream        = solution_ptr->sol_handle->get_stream();
   const i_t n_blocks = solution_ptr->n_routes;
   size_t sh_size     = solution_ptr->check_routes_can_insert_and_get_sh_size() + sizeof(cand_t);
@@ -330,7 +330,7 @@ template <typename i_t, typename f_t, request_t REQUEST>
 bool guided_ejection_search_t<i_t, f_t, REQUEST>::try_squeeze_feasible(
   const request_info_t<i_t, REQUEST>* request, bool random_route)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("try_squeeze");
+  raft::common::nvtx::range fun_scope("try_squeeze");
   // copy current solution state
   squeeze_save_state.copy_device_solution(*solution_ptr);
   squeeze(request, random_route);
@@ -365,7 +365,7 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::try_squeeze_feasible(
 template <typename i_t, typename f_t, request_t REQUEST>
 void guided_ejection_search_t<i_t, f_t, REQUEST>::squeeze_breaks()
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("squeeze_breaks");
+  raft::common::nvtx::range fun_scope("squeeze_breaks");
   solution_ptr->global_runtime_checks(false, false, "squeeze_breaks_begin");
   auto stream         = solution_ptr->sol_handle->get_stream();
   size_t n_break_dims = solution_ptr->problem_ptr->get_max_break_dimensions();
@@ -390,7 +390,7 @@ void guided_ejection_search_t<i_t, f_t, REQUEST>::squeeze_breaks()
 template <typename i_t, typename f_t, request_t REQUEST>
 bool guided_ejection_search_t<i_t, f_t, REQUEST>::try_squeeze_breaks_feasible()
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("try_squeeze_breaks_feasible");
+  raft::common::nvtx::range fun_scope("try_squeeze_breaks_feasible");
 
   size_t n_break_dims = solution_ptr->problem_ptr->get_max_break_dimensions();
   if (n_break_dims == 0) { return solution_ptr->is_feasible(); }

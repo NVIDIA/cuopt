@@ -74,7 +74,7 @@ i_t get_sample_size_vrp(i_t n_of_changed_nodes)
 template <typename i_t, typename f_t>
 void nodes_to_search_t<i_t, f_t>::restore_found_nodes(solution_t<i_t, f_t, request_t::VRP>& sol)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("restore_found_nodes");
+  raft::common::nvtx::range fun_scope("restore_found_nodes");
   constexpr bool restore_phase = true;
   // here we are doing a reuse of n_nodes_to_search for the extracted nodes
   // all other valid nodes to search are already in host side
@@ -101,7 +101,7 @@ template <typename i_t, typename f_t>
 bool nodes_to_search_t<i_t, f_t>::sample_nodes_for_recycle(
   const solution_t<i_t, f_t, request_t::VRP>& sol, move_candidates_t<i_t, f_t>& move_candidates)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("sample_nodes_for_recycle");
+  raft::common::nvtx::range fun_scope("sample_nodes_for_recycle");
 
   raft::copy(h_best_id_per_node.data(),
              move_candidates.vrp_move_candidates.best_id_per_node.data(),
@@ -127,7 +127,7 @@ template <typename i_t, typename f_t>
 bool nodes_to_search_t<i_t, f_t>::sample_nodes_to_search(
   const solution_t<i_t, f_t, request_t::VRP>& sol, std::mt19937& rng, bool full_set)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("sample_nodes_to_search");
+  raft::common::nvtx::range fun_scope("sample_nodes_to_search");
   i_t curr_n_nodes_to_search = h_nodes_to_search.size();
   if (curr_n_nodes_to_search == 0) return false;
   if (!full_set) {
@@ -161,7 +161,7 @@ template <typename i_t, typename f_t, request_t REQUEST>
 void extract_nodes_to_search(solution_t<i_t, f_t, REQUEST>& sol,
                              move_candidates_t<i_t, f_t>& move_candidates)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("extract_nodes_to_search");
+  raft::common::nvtx::range fun_scope("extract_nodes_to_search");
   auto& nodes_to_search = move_candidates.nodes_to_search;
   nodes_to_search.extract_nodes_graph.start_capture(sol.sol_handle->get_stream());
   nodes_to_search.reset(sol.sol_handle);

@@ -647,7 +647,7 @@ bool find_vrp_moves(solution_t<i_t, f_t, REQUEST>& sol,
                     move_candidates_t<i_t, f_t>& move_candidates,
                     bool recycle = false)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("find_vrp_moves");
+  raft::common::nvtx::range fun_scope("find_vrp_moves");
   if (sol.n_routes < 2) { return false; }
 
   if (sol.problem_ptr->is_cvrp()) {
@@ -684,7 +684,7 @@ template <typename i_t, typename f_t, request_t REQUEST>
 bool recycle_unused_moves(solution_t<i_t, f_t, REQUEST>& sol,
                           move_candidates_t<i_t, f_t>& move_candidates)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("recycle_unused_moves");
+  raft::common::nvtx::range fun_scope("recycle_unused_moves");
   auto& nodes_to_search  = move_candidates.nodes_to_search;
   constexpr bool recycle = true;
   bool nodes_remained    = nodes_to_search.sample_nodes_for_recycle(sol, move_candidates);
@@ -698,7 +698,7 @@ template <typename i_t, typename f_t, request_t REQUEST>
 bool perform_vrp_search(solution_t<i_t, f_t, REQUEST>& sol,
                         move_candidates_t<i_t, f_t>& move_candidates)
 {
-  [[maybe_unused]] raft::common::nvtx::range fun_scope("perform_vrp_search");
+  raft::common::nvtx::range fun_scope("perform_vrp_search");
   cuopt_func_call(sol.check_cost_coherence(move_candidates.weights));
   if (!find_vrp_moves(sol, move_candidates)) { return false; }
   bool move_found = select_and_execute_vrp_move(sol, move_candidates);

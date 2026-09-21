@@ -35,7 +35,7 @@ class request_route_t<i_t, f_t, REQUEST, std::enable_if_t<REQUEST == request_t::
       brother_info(0, sol_handle_->get_stream()),
       tsp_requests(sol_handle_)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("zero pdp_route_t copy_ctr");
+    raft::common::nvtx::range fun_scope("zero pdp_route_t copy_ctr");
   }
 
   request_route_t(const request_route_t& request_route,
@@ -44,7 +44,7 @@ class request_route_t<i_t, f_t, REQUEST, std::enable_if_t<REQUEST == request_t::
       brother_info(request_route.brother_info, sol_handle_->get_stream()),
       tsp_requests(request_route.tsp_requests, sol_handle_)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("pdp route copy_ctr");
+    raft::common::nvtx::range fun_scope("pdp route copy_ctr");
   }
 
   request_route_t& operator=(request_route_t&& request_route) = default;

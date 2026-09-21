@@ -42,7 +42,7 @@ struct srex {
    * } */
   bool recombine(Solution& a, Solution& b, bool& ret)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("srex");
+    raft::common::nvtx::range fun_scope("srex");
     // different routes from a & b > 1. Set min routes
     if (a.routes.size() <= 1 || b.routes.size() <= 1) return false;
     if (check_if_routes_empty(a) || check_if_routes_empty(b)) return false;

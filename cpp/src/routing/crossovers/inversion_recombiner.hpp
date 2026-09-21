@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -53,7 +53,7 @@ struct inversion {
    * } */
   bool recombine(Solution& a, const Solution& b)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("inversion");
+    raft::common::nvtx::range fun_scope("inversion");
     // THIS IS TEMPORARY UNTIL EMPTY ROUTES ARE FIXED
     if (check_if_routes_empty(a) || check_if_routes_empty(b)) return false;
     bool relative = next_random() % 2;

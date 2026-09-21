@@ -107,7 +107,7 @@ struct adapted_sol_t {
                 std::vector<i_t> desired_vehicles = {})
     : sol(*problem_, 0, sol_handle_, desired_vehicles), problem(problem_)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("adapted_sol_t ctr");
+    raft::common::nvtx::range fun_scope("adapted_sol_t ctr");
     initialize_host_data();
     populate_host_data(true);
   }
@@ -117,7 +117,7 @@ struct adapted_sol_t {
 
   adapted_sol_t& operator=(const adapted_sol_t& other_sol)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("adapted_sol_t assignment");
+    raft::common::nvtx::range fun_scope("adapted_sol_t assignment");
     if (this == &other_sol) return *this;
     infeasibility_cost   = other_sol.infeasibility_cost;
     problem              = other_sol.problem;
@@ -137,7 +137,7 @@ struct adapted_sol_t {
 
   void reset_viable_of_problem()
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("reset_viable_of_problem");
+    raft::common::nvtx::range fun_scope("reset_viable_of_problem");
     initialize_incompatible<i_t, f_t, REQUEST>(const_cast<problem_t<i_t, f_t>&>(*sol.problem_ptr),
                                                &sol);
   }
@@ -165,7 +165,7 @@ struct adapted_sol_t {
 
   double get_cost(costs& weight)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("get_cost");
+    raft::common::nvtx::range fun_scope("get_cost");
     auto cuopt_weight = get_cuopt_cost(weight);
     sol.compute_cost();
     return sol.get_total_cost(cuopt_weight);
@@ -176,14 +176,14 @@ struct adapted_sol_t {
 
   bool unserviced(int node) const
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("unserviced");
+    raft::common::nvtx::range fun_scope("unserviced");
     return (!pred[node].is_valid() && !succ[node].is_valid());
   }
 
   // adds nodes to best position that minimizes cluster violations
   void add_nodes_to_best(const std::vector<NodeInfo<>>& nodes_to_insert, costs& weight)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("add_nodes_to_best");
+    raft::common::nvtx::range fun_scope("add_nodes_to_best");
     sol.add_nodes_to_best(nodes_to_insert, get_cuopt_cost(weight));
     populate_host_data();
     check_device_host_coherence();
@@ -194,13 +194,13 @@ struct adapted_sol_t {
   // routes_to_search array
   void unset_routes_to_search()
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("unset_routes_to_search");
+    raft::common::nvtx::range fun_scope("unset_routes_to_search");
     sol.unset_routes_to_search();
   }
 
   void set_routes_to_search()
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("set_routes_to_search");
+    raft::common::nvtx::range fun_scope("set_routes_to_search");
     sol.set_routes_to_search();
   }
 
@@ -209,7 +209,7 @@ struct adapted_sol_t {
                           NodeInfo<> prev_node,
                           NodeInfo<> next_node)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("add_nodes_to_route");
+    raft::common::nvtx::range fun_scope("add_nodes_to_route");
     i_t route_id, intra_idx;
     if (!prev_node.is_depot()) {
       std::tie(route_id, intra_idx) = sol.route_node_map.get_route_id_and_intra_idx(prev_node);
@@ -230,7 +230,7 @@ struct adapted_sol_t {
   // returns false if we encounter an empty route
   bool remove_nodes(const std::vector<NodeInfo<>>& nodes_to_eject)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("remove_nodes");
+    raft::common::nvtx::range fun_scope("remove_nodes");
     bool success = sol.remove_nodes(nodes_to_eject);
     populate_host_data();
     check_device_host_coherence();
@@ -251,7 +251,7 @@ struct adapted_sol_t {
 
   double calculate_similarity_radius_asymetric(const adapted_sol_t<i_t, f_t, REQUEST>& second) const
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("calculate_similarity_radius");
+    raft::common::nvtx::range fun_scope("calculate_similarity_radius");
     // check_device_host_coherence();
     int common_edges    = 0;
     int nodes           = problem->get_num_orders();
@@ -290,7 +290,7 @@ struct adapted_sol_t {
 
   void add_new_routes(const std::vector<std::pair<int, std::vector<NodeInfo<>>>>& routes)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("add_new_routes");
+    raft::common::nvtx::range fun_scope("add_new_routes");
     cuopt_assert(routes.size() > 0, "Indices array cannot be empty");
     thrust::fill(sol.sol_handle->get_thrust_policy(),
                  sol.routes_to_copy.data() + sol.n_routes,
@@ -325,7 +325,7 @@ struct adapted_sol_t {
 
   std::vector<i_t> get_nodes_of_routes(const std::vector<i_t>& routes_to_copy) const
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("remove_route");
+    raft::common::nvtx::range fun_scope("remove_route");
     std::vector<i_t> copy_nodes;
     if (routes_to_copy.empty()) { return copy_nodes; }
 
@@ -344,7 +344,7 @@ struct adapted_sol_t {
   void remove_routes(std::vector<i_t> routes_to_remove)
   {
     if (routes_to_remove.empty()) { return; }
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("remove_route");
+    raft::common::nvtx::range fun_scope("remove_route");
     std::sort(routes_to_remove.begin(), routes_to_remove.end());
     sol.remove_routes(routes_to_remove);
     for (size_t i = 0; i < routes_to_remove.size(); ++i) {
@@ -408,7 +408,7 @@ struct adapted_sol_t {
   void different_route_ids(std::vector<i_t>& route_ids,
                            adapted_sol_t<i_t, f_t, REQUEST> const& input) const noexcept
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("different_route_ids");
+    raft::common::nvtx::range fun_scope("different_route_ids");
     route_ids.clear();
     for (size_t i = 0; i < routes.size(); i++) {
       if (routes[i].is_empty()) { continue; }
@@ -443,7 +443,7 @@ struct adapted_sol_t {
 
   void populate_unserviced_nodes()
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("populate_unserviced_nodes");
+    raft::common::nvtx::range fun_scope("populate_unserviced_nodes");
     has_unserviced_nodes = false;
     auto h_route_id_per_node =
       host_copy(sol.route_node_map.route_id_per_node, sol.sol_handle->get_stream());
@@ -467,14 +467,14 @@ struct adapted_sol_t {
 
   void clear_solution(std::vector<i_t> vehicle_ids)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("clear_solution");
+    raft::common::nvtx::range fun_scope("clear_solution");
     sol.clear_routes(vehicle_ids);
     initialize_host_data();
   }
 
   void populate_host_data(bool copy_all = false, bool skip_route_copy = false)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("populate_host_data");
+    raft::common::nvtx::range fun_scope("populate_host_data");
     sol.compute_cost();
     cuopt_func_call(sol.check_cost_coherence(default_weights));
     sol.sol_handle->sync_stream();

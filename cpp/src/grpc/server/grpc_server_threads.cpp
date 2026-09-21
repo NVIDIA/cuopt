@@ -24,7 +24,7 @@ void worker_monitor_thread()
     std::vector<DeadWorker> dead;
 
     {
-      [[maybe_unused]] std::lock_guard<std::mutex> lock(worker_pids_mutex);
+      std::lock_guard<std::mutex> lock(worker_pids_mutex);
       for (size_t i = 0; i < worker_pids.size(); ++i) {
         pid_t pid = worker_pids[i];
         if (pid <= 0) continue;
@@ -62,7 +62,7 @@ void worker_monitor_thread()
 
       pid_t new_pid = spawn_single_worker(static_cast<int>(dw.index));
       {
-        [[maybe_unused]] std::lock_guard<std::mutex> lock(worker_pids_mutex);
+        std::lock_guard<std::mutex> lock(worker_pids_mutex);
         if (dw.index < worker_pids.size() && worker_pids[dw.index] == 0) {
           worker_pids[dw.index] = (new_pid > 0) ? new_pid : 0;
         }
@@ -101,7 +101,7 @@ void result_retrieval_thread()
           if (is_chunked) {
             PendingChunkedUpload chunked;
             {
-              [[maybe_unused]] std::lock_guard<std::mutex> lock(pending_data_mutex);
+              std::lock_guard<std::mutex> lock(pending_data_mutex);
               auto it = pending_chunked_data.find(job_id);
               if (it != pending_chunked_data.end()) {
                 chunked  = std::move(it->second);
@@ -112,7 +112,7 @@ void result_retrieval_thread()
             if (has_data) {
               int to_fd;
               {
-                [[maybe_unused]] std::lock_guard<std::mutex> wpl(worker_pipes_mutex);
+                std::lock_guard<std::mutex> wpl(worker_pipes_mutex);
                 to_fd = worker_pipes[worker_idx].to_worker_fd;
               }
               auto pipe_t0 = std::chrono::steady_clock::now();
@@ -155,7 +155,7 @@ void result_retrieval_thread()
           } else {
             std::vector<uint8_t> job_data;
             {
-              [[maybe_unused]] std::lock_guard<std::mutex> lock(pending_data_mutex);
+              std::lock_guard<std::mutex> lock(pending_data_mutex);
               auto it = pending_job_data.find(job_id);
               if (it != pending_job_data.end()) {
                 job_data = std::move(it->second);
@@ -229,7 +229,7 @@ void result_retrieval_thread()
           }
           int from_fd;
           {
-            [[maybe_unused]] std::lock_guard<std::mutex> wpl(worker_pipes_mutex);
+            std::lock_guard<std::mutex> wpl(worker_pipes_mutex);
             from_fd = worker_pipes[worker_idx].from_worker_fd;
           }
           auto pipe_recv_t0 = std::chrono::steady_clock::now();
@@ -260,7 +260,7 @@ void result_retrieval_thread()
         }
 
         {
-          [[maybe_unused]] std::lock_guard<std::mutex> lock(tracker_mutex);
+          std::lock_guard<std::mutex> lock(tracker_mutex);
           auto it = job_tracker.find(job_id);
           if (it != job_tracker.end()) {
             if (success) {
@@ -302,12 +302,12 @@ void result_retrieval_thread()
         }
 
         {
-          [[maybe_unused]] std::lock_guard<std::mutex> lock(waiters_mutex);
+          std::lock_guard<std::mutex> lock(waiters_mutex);
           auto wit = waiting_threads.find(job_id);
           if (wit != waiting_threads.end()) {
             auto waiter = wit->second;
             {
-              [[maybe_unused]] std::lock_guard<std::mutex> waiter_lock(waiter->mutex);
+              std::lock_guard<std::mutex> waiter_lock(waiter->mutex);
               waiter->error_message = error_message;
               waiter->success       = success;
               waiter->ready         = true;
@@ -343,7 +343,7 @@ void incumbent_retrieval_thread()
   while (keep_running) {
     std::vector<pollfd> pfds;
     {
-      [[maybe_unused]] std::lock_guard<std::mutex> lock(worker_pipes_mutex);
+      std::lock_guard<std::mutex> lock(worker_pipes_mutex);
       pfds.reserve(worker_pipes.size());
       for (const auto& wp : worker_pipes) {
         if (wp.incumbent_from_worker_fd >= 0) {
@@ -392,7 +392,7 @@ void incumbent_retrieval_thread()
       entry.assignment = std::move(assignment);
 
       {
-        [[maybe_unused]] std::lock_guard<std::mutex> lock(tracker_mutex);
+        std::lock_guard<std::mutex> lock(tracker_mutex);
         auto it = job_tracker.find(job_id);
         if (it != job_tracker.end()) {
           it->second.incumbents.push_back(std::move(entry));
@@ -427,7 +427,7 @@ void session_reaper_thread()
     auto now = std::chrono::steady_clock::now();
 
     {
-      [[maybe_unused]] std::lock_guard<std::mutex> lock(chunked_uploads_mutex);
+      std::lock_guard<std::mutex> lock(chunked_uploads_mutex);
       for (auto it = chunked_uploads.begin(); it != chunked_uploads.end();) {
         if (now - it->second.last_activity > timeout) {
           if (config.verbose) {
@@ -441,7 +441,7 @@ void session_reaper_thread()
     }
 
     {
-      [[maybe_unused]] std::lock_guard<std::mutex> lock(chunked_downloads_mutex);
+      std::lock_guard<std::mutex> lock(chunked_downloads_mutex);
       for (auto it = chunked_downloads.begin(); it != chunked_downloads.end();) {
         if (now - it->second.created > timeout) {
           if (config.verbose) {

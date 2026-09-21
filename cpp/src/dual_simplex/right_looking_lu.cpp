@@ -819,7 +819,7 @@ i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
                      std::vector<i_t>& pinv,
                      f_t& work_estimate)
 {
-  [[maybe_unused]] raft::common::nvtx::range scope("LU::right_looking_lu");
+  raft::common::nvtx::range scope("LU::right_looking_lu");
   const i_t n = column_list.size();
   const i_t m = A.m;
 
@@ -1682,7 +1682,7 @@ i_t right_looking_ldlt(const csc_matrix_t<i_t, f_t>& A,
                        std::vector<f_t>& D,
                        f_t& work_estimate)
 {
-  [[maybe_unused]] raft::common::nvtx::range scope("LU::right_looking_ldlt");
+  raft::common::nvtx::range scope("LU::right_looking_ldlt");
   const i_t n         = A.n;
   const i_t input_nnz = A.nnz();
   assert(A.m == n);

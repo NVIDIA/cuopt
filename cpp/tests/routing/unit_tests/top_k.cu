@@ -241,7 +241,7 @@ class top_cand_test_t : public routing_test_t<i_t, f_t>, public ::testing::TestW
     double elapsed_ms;
     this->stream_view_.sync();
     {
-      [[maybe_unused]] time_it t(&elapsed_ms);
+      time_it t(&elapsed_ms);
       for (int i = 0; i < iter; ++i) {
         cub::DeviceSegmentedSort::SortPairs(d_cub_storage_bytes.data(),
                                             tmp_storage_bytes,
@@ -271,7 +271,7 @@ class top_cand_test_t : public routing_test_t<i_t, f_t>, public ::testing::TestW
     double elapsed_ms;
     this->stream_view_.sync();
     {
-      [[maybe_unused]] time_it t(&elapsed_ms);
+      time_it t(&elapsed_ms);
       for (int i = 0; i < iter; ++i) {
         call_top_k(d_input_cost, d_output_cost, d_out_index);
       }

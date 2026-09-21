@@ -180,7 +180,7 @@ struct OX {
   ///         count violation, size/memory guards) — A is then left unchanged.
   bool recombine(Solution& A, Solution& B)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("ox");
+    raft::common::nvtx::range fun_scope("ox");
 
     if (check_if_routes_empty(A) || check_if_routes_empty(B)) return false;
 
@@ -566,7 +566,7 @@ struct OX {
   template <typename i_t, typename f_t>
   void sort_graph_edges(Solution const& A, ox_graph_t<i_t, f_t>& graph)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("ox_sort_graph");
+    raft::common::nvtx::range fun_scope("ox_sort_graph");
 
     auto stream_view = A.sol.sol_handle->get_stream();
     auto policy      = A.sol.sol_handle->get_thrust_policy();
@@ -616,7 +616,7 @@ struct OX {
 
   void compute_transpose_graph(Solution const& A)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("transpose_graph");
+    raft::common::nvtx::range fun_scope("transpose_graph");
     constexpr auto const TPB = 128;
     auto const n_blocks      = n_buckets * d_graph.get_num_vertices();
 
@@ -632,7 +632,7 @@ struct OX {
   //!          }
   void bellman_ford(Solution& A)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("bellman_ford");
+    raft::common::nvtx::range fun_scope("bellman_ford");
 
     compute_transpose_graph(A);
     cuopt_func_call(test_transpose_graph(A.sol.sol_handle->get_stream()));
@@ -947,7 +947,7 @@ struct OX {
   //! depots. }
   void calculate_edge_costs(Solution& A)
   {
-    [[maybe_unused]] raft::common::nvtx::range fun_scope("calculate_edge_costs");
+    raft::common::nvtx::range fun_scope("calculate_edge_costs");
 
     d_graph.reset(A.sol.sol_handle);
 

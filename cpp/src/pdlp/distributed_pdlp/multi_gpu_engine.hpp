@@ -103,7 +103,7 @@ struct multi_gpu_engine_t {
   {
     for (int r = 0; r < static_cast<int>(shards.size()); ++r) {
       auto& s = *shards[r];
-      [[maybe_unused]] raft::device_setter guard(s.device_id);
+      raft::device_setter guard(s.device_id);
       // If the function is invocable with a pdlp_shard_t<i_t, f_t>& and an int, call it with the
       // shard and the rank.
       if constexpr (std::is_invocable_v<Fn&, pdlp_shard_t<i_t, f_t>&, int>) {
