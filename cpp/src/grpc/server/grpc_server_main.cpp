@@ -109,7 +109,12 @@ int main(int argc, char** argv)
     .implicit_value(true);
 
   program.add_argument("--allow-reuseport")
-    .help("Permit a second server to share the listen port (multi-process pool)")
+    .help(
+      "Let a second server process bind the same port (kernel load-balances "
+      "connections between them). Each process has its own job_tracker, so "
+      "only use this with shared job state or connection affinity -- a "
+      "client whose poll/result request lands on the other process gets "
+      "'Job ID not found'. For independent servers, use --port instead.")
     .default_value(false)
     .implicit_value(true);
 
@@ -340,10 +345,11 @@ int main(int argc, char** argv)
   // gRPC enables SO_REUSEPORT by default, so a second server started against a
   // port that is already served binds successfully instead of failing. Nothing
   // reports the duplicate: the kernel then splits connections between the two
-  // processes, each holding its own workers and RMM pool, and a client that
-  // submits a job to one can be routed to the other when it polls for the
-  // result. Off by default; --allow-reuseport restores it for a deliberate
-  // multi-process pool behind one port.
+  // processes, each holding its own workers, RMM pool, and job_tracker, so a
+  // client that submits to one and polls/reads-result from the other gets
+  // "Job ID not found" -- this is not a shared-state process pool. Off by
+  // default; --allow-reuseport restores it only for a deployment that
+  // provides its own connection affinity or shared job state.
   builder.AddChannelArgument<int>(GRPC_ARG_ALLOW_REUSEPORT,
                                   program.get<bool>("--allow-reuseport") ? 1 : 0);
   builder.AddListeningPort(server_address, creds);
@@ -359,8 +365,11 @@ int main(int argc, char** argv)
     SERVER_LOG_ERROR("[Server] Failed to bind to %s", server_address);
     SERVER_LOG_ERROR(
       "[Server] A server may already be listening there; check with "
-      "`pgrep -af cuopt_grpc_server`. Use --port for a second instance, or "
-      "--allow-reuseport to deliberately share this one.");
+      "`pgrep -af cuopt_grpc_server`. Use --port for an independent second "
+      "instance. --allow-reuseport shares the port at the kernel level only "
+      "(each process keeps its own job state) -- use it just for a "
+      "deployment that already provides connection affinity or shared job "
+      "state.");
     shutdown_all();
     return 1;
   }

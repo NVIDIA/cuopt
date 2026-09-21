@@ -213,8 +213,8 @@ def cuopt_result(
     names_from: path to the problem file, to key values by variable name
         rather than column index. Pass the "source" returned by the solve.
     variables: fetch only these named variables.
-    nonzero_only: return only variables with a non-zero value — usually
-        what matters for a MILP.
+    nonzero_only: drop values within solver tolerance of zero (not
+        necessarily exact zero) — usually what matters for a MILP.
     limit: maximum values returned inline. Beyond this the selected values
         (respecting nonzero_only) are written to a file and its path
         returned instead.

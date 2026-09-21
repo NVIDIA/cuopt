@@ -75,8 +75,9 @@ conda activate ./.cuopt_env          # the repo-local env, see CONTRIBUTING.md
 ./build.sh cuopt_mcp                 # installs into the active env
 ```
 
-This installs as `cuopt_mcp-cu13`. The CUDA suffix is inherited from the
-`cuopt` dependency, not from anything this pure-Python package compiles.
+This installs as plain `cuopt_mcp` (unsuffixed), matching its `cuopt`
+dependency -- `./build.sh` installs every Python package against the
+unsuffixed, CPU-only `cuopt`.
 
 ### Smoke test
 

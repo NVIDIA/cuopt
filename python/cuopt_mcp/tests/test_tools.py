@@ -281,6 +281,15 @@ def test_delete_rejects_a_non_uuid_job_id(fake):
         tools.delete("../../etc/cron.d/x")
 
 
+def test_write_names_file_rejects_a_non_uuid_job_id():
+    """job_id here is the backend's response to submit(), not literal
+    caller input -- a compromised/buggy server returning a crafted value
+    like "../../etc/x" must not become a write target.
+    """
+    with pytest.raises(client.CuOptMCPError, match="not a valid job_id"):
+        tools._write_names_file("../../etc/cron.d/x", ["a", "b"])
+
+
 def test_delete_removes_local_solution_file(fake, tmp_path, monkeypatch):
     monkeypatch.setenv("CUOPT_MCP_SOLUTION_DIR", str(tmp_path))
     fake()
@@ -288,6 +297,15 @@ def test_delete_removes_local_solution_file(fake, tmp_path, monkeypatch):
     solution_file.write_text("{}")
     tools.delete(UUID1)
     assert not solution_file.exists()
+
+
+def test_delete_removes_local_names_file(fake, tmp_path, monkeypatch):
+    monkeypatch.setenv("CUOPT_MCP_SOLUTION_DIR", str(tmp_path))
+    fake()
+    names_file = tmp_path / f"{UUID1}.names.json"
+    names_file.write_text("[]")
+    tools.delete(UUID1)
+    assert not names_file.exists()
 
 
 def test_delete_with_no_solution_file_still_succeeds(
@@ -662,5 +680,37 @@ def test_csr_row_count_must_match_declared_bounds():
                     "values": [1.0],
                 },
                 "constraint_upper_bounds": [5.0, 7.0],
+            }
+        )
+
+
+def test_huge_declared_n_constraints_is_rejected_before_allocating():
+    """n_constraints is a caller-controlled scalar, cheap to express as a
+    huge number in a tiny JSON payload; must be capped before it sizes a
+    np.zeros/np.bincount allocation.
+    """
+    with pytest.raises(CuOptMCPError, match="n_constraints"):
+        tools._build_model_from_json(
+            {
+                "objective": [1.0],
+                "constraint_matrix": {"rows": [], "cols": [], "values": []},
+                "n_constraints": 10**12,
+            }
+        )
+
+
+def test_huge_inferred_row_count_is_rejected_before_allocating():
+    """Same risk via a single huge row index instead of an explicit
+    n_constraints -- a length-1 array is just as cheap to send.
+    """
+    with pytest.raises(CuOptMCPError, match="constraint_matrix row count"):
+        tools._build_model_from_json(
+            {
+                "objective": [1.0],
+                "constraint_matrix": {
+                    "rows": [10**12],
+                    "cols": [0],
+                    "values": [1.0],
+                },
             }
         )

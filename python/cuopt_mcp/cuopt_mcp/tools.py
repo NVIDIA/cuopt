@@ -44,6 +44,13 @@ ZERO_TOL = 1e-9
 # At or beyond this magnitude a caller-supplied bound means infinity.
 INFINITY_SENTINEL = 1e30
 
+# Largest row/column count _to_csr will allocate for. n_constraints (or a
+# single large row index) is a caller-controlled scalar that's cheap to
+# express in JSON but drives a np.zeros/np.bincount allocation sized off
+# it directly -- without a cap, a small payload can exhaust this local
+# process before any request reaches the backend.
+MAX_PROBLEM_DIMENSION = 10_000_000
+
 # A job id no server can have issued. The gRPC service exposes no health or
 # version RPC, so reachability is probed with the cheapest call that still
 # requires a server to answer: a status lookup that must come back NOT_FOUND.
@@ -54,6 +61,18 @@ def _check_non_negative_int(name: str, value) -> None:
     """Reject a bool (an int subclass in Python) or a negative value."""
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise CuOptMCPError(f"{name} must be a non-negative integer")
+
+
+def _check_dimension(name: str, value) -> None:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or not 0 <= value <= MAX_PROBLEM_DIMENSION
+    ):
+        raise CuOptMCPError(
+            f"{name} ({value!r}) must be an integer between 0 and "
+            f"{MAX_PROBLEM_DIMENSION}"
+        )
 
 
 def _solution_dir() -> Path:
@@ -154,6 +173,10 @@ def _to_csr(matrix: dict, n_vars: int, n_cons: int | None = None):
     """
     import numpy as np
 
+    _check_dimension("n_vars", n_vars)
+    if n_cons is not None:
+        _check_dimension("n_constraints", n_cons)
+
     if "offsets" in matrix:
         offsets = np.asarray(matrix["offsets"], dtype=np.int32)
         indices = np.asarray(matrix["indices"], dtype=np.int32)
@@ -185,6 +208,7 @@ def _to_csr(matrix: dict, n_vars: int, n_cons: int | None = None):
         )
     inferred = int(rows.max()) + 1 if len(rows) else 0
     if n_cons is None:
+        _check_dimension("constraint_matrix row count", inferred)
         n_cons = inferred
     elif inferred > n_cons:
         raise CuOptMCPError(
@@ -349,7 +373,11 @@ def _variable_names(names_from: str | None):
 
 
 def _write_names_file(job_id: str, names) -> str:
-    path = _solution_dir() / f"{job_id}.names.json"
+    # job_id here is the backend's response to submit(), not literal MCP
+    # caller input -- routed through _solution_file_path anyway, since nothing
+    # validates that a connected server's response is a well-formed UUID
+    # before it becomes part of a filesystem path.
+    path = _solution_file_path(job_id).with_suffix(".names.json")
     path.write_text(json.dumps([str(v) for v in names]))
     return str(path)
 
@@ -530,7 +558,9 @@ def result(
         variables: Return only these named/indexed variables, skipping the
             inline-size shaping below. An empty list returns no variables
             (distinct from omitting the argument).
-        nonzero_only: Drop exactly-zero values before applying ``limit``.
+        nonzero_only: Drop values with magnitude at most :data:`ZERO_TOL`
+            (1e-9) before applying ``limit`` -- a dropped value isn't
+            necessarily exact zero, just within solver tolerance of it.
         limit: Maximum variables returned inline; must be between 0 and
             :data:`INLINE_SOLUTION_LIMIT`. Beyond this, the selected values
             (post ``nonzero_only`` filtering) are written to a file and
@@ -674,7 +704,9 @@ def delete(job_id: str) -> dict:
     except Exception as exc:
         raise describe_connection_error(exc) from exc
     try:
-        _solution_file_path(job_id).unlink(missing_ok=True)
+        path = _solution_file_path(job_id)
+        path.unlink(missing_ok=True)
+        path.with_suffix(".names.json").unlink(missing_ok=True)
     except CuOptMCPError:
         pass  # nothing to clean up if the directory itself is unusable
     return {"job_id": job_id, "deleted": True}
