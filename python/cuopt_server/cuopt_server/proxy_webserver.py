@@ -945,10 +945,14 @@ def deleterequest(
         return encode(exception_handler(e), accept)
 
 
-def _result_envelope(job_id, meta, kind, req_id=""):
+def _result_envelope(job_id, meta, kind, req_id="", cache_warmstart=False):
     """Build the legacy solution envelope for a finished job.
 
     Returns ``(None, [], [])`` when the result is not available yet.
+
+    ``cache_warmstart`` populates the warmstart cache from an LP solution so a
+    later GET of the warmstart route does not have to refetch and reparse the
+    result. Callers that release the job before returning leave it off.
     """
     result_kind, sol = _result_for_job(job_id, meta, kind)
     if sol is None:
@@ -966,6 +970,8 @@ def _result_envelope(job_id, meta, kind, req_id=""):
             notes.append(sol.get("status_message") or "")
         notes = [n for n in notes if n]
     else:
+        if cache_warmstart:
+            _store_warmstart(job_id, _warmstart_dict_from_sol(sol))
         inner = solution_to_http(sol, include_warmstart=False)
         try:
             notes.append(sol.get_termination_reason())
@@ -1034,7 +1040,9 @@ def getsolution(
                 status_code=409,
                 detail=f"job {id} {_status_name(status).lower()}",
             )
-        envelope, warnings, notes = _result_envelope(id, meta, kind, req_id=id)
+        envelope, warnings, notes = _result_envelope(
+            id, meta, kind, req_id=id, cache_warmstart=True
+        )
         if envelope is None:
             return encode({"reqId": id}, accept)
         resultdir, maxresult, mode = settings.get_result_dir()

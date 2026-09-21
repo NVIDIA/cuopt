@@ -185,6 +185,7 @@ class FakeClient:
         self.deleted = []
         self.waits = []
         self.status_calls = []
+        self.result_calls = []
         self.pending_statuses = 0
         self._incumbents = {}
         self._logs = {}
@@ -218,6 +219,7 @@ class FakeClient:
         return self.jobs.get(job_id, FakeJobStatus.NOT_FOUND)
 
     def result(self, job_id, variable_names=None):
+        self.result_calls.append(job_id)
         status = self.jobs.get(job_id)
         if status in (FakeJobStatus.FAILED, FakeJobStatus.CANCELLED):
             raise RuntimeError(f"job {status.name.lower()}")
@@ -542,6 +544,27 @@ def test_warmstart_get_and_reuse(proxy):
     ws = fake.submitted[-1]["settings"].get_pdlp_warm_start_data()
     assert ws is not None
     assert list(ws.current_primal_solution) == [0.1, 0.2]
+
+
+def test_getsolution_caches_warmstart(proxy):
+    import cuopt_server.proxy_webserver as pw
+
+    url, fake = proxy
+    req_id = requests.post(
+        url + "/cuopt/request",
+        headers={"CLIENT-VERSION": "custom"},
+        json=_lp(),
+    ).json()["reqId"]
+
+    assert requests.get(url + f"/cuopt/solution/{req_id}").status_code == 200
+    assert pw._cached_warmstart(req_id) is not None
+
+    # Cached by the solution GET, so the warmstart route serves it without
+    # refetching the result over gRPC.
+    calls = len(fake.result_calls)
+    warm = requests.get(url + f"/cuopt/solution/{req_id}/warmstart")
+    assert warm.status_code == 200, warm.text
+    assert fake.result_calls[calls:] == []
 
 
 def test_warmstart_missing_id_is_404(proxy):
@@ -1089,6 +1112,7 @@ def test_sync_cuopt_health_is_served_during_solve(proxy):
                 "data": _lp(),
                 "client_version": "custom",
             },
+            timeout=8,
         )
         deadline = time.monotonic() + 5
         while fake.pending_statuses > 3:
