@@ -100,25 +100,23 @@ cache:
       - re2
 
 outputs:
+  # One output per component library. Each installs only its own install component,
+  # so a routing-only install no longer pulls the LP solver or its cusparse / cudss /
+  # nccl dependencies. See #1635.
   - package:
-      name: libcuopt
+      name: libcuopt-client
       version: ${{ version }}
     build:
       script:
         content: |
-          cmake --install cpp/build
-          # libcuopt.so is a linker script, so the components are what carry symbols.
-          # Only cuopt_mathopt provides the C API.
-          ./ci/check_symbols.sh cpp/build/libcuopt_mathopt.so
-          ./ci/check_symbols.sh cpp/build/libcuopt_routing.so --no-public-api-check
+          cmake --install cpp/build --component client
+          cmake --install cpp/build --component client-dev
           ./ci/check_symbols.sh cpp/build/libcuopt_client.so --no-public-api-check
       dynamic_linking:
         overlinking_behavior: "error"
       prefix_detection:
         ignore:
           # See https://github.com/rapidsai/build-planning/issues/160
-          - lib/libcuopt_routing.so
-          - lib/libcuopt_mathopt.so
           - lib/libcuopt_client.so
       string: cuda${{ cuda_major }}_${{ datetime_string }}_${{ head_rev }}
     requirements:
@@ -127,6 +125,81 @@ outputs:
         - ${{ stdlib("c") }}
         - binutils
       host:
+        - cuda-version =${{ cuda_version }}
+        - rapids-logger =0.3
+        - librmm =${{ minor_version }}
+        - openssl
+        - c-ares
+        - libuuid
+        - libgrpc >=1.78.0,<1.80.0a0
+        - libprotobuf
+        - libabseil
+        - re2
+      run:
+        - ${{ pin_compatible("cuda-version", upper_bound="x", lower_bound="x") }}
+        - librmm =${{ minor_version }}
+        - openssl
+        - c-ares
+        - libuuid
+        - libgrpc >=1.78.0,<1.80.0a0
+        - libprotobuf
+        - libabseil
+      ignore_run_exports:
+        # Every output inherits the run exports of the shared build cache, whose host
+        # holds the union of all three components' dependencies. The CUDA math libs
+        # export a `>=<built minor>` bound that drags `cuda-version` to the minor
+        # version the package happened to be built against, so they have to be dropped
+        # from outputs that do not link them.
+        by_name:
+          - cuda-nvtx
+          - cuda-version
+          - libboost
+          - libboost_iostreams
+          - libcudss
+          - libcusparse
+          - librmm
+    tests:
+      - package_contents:
+          files:
+            - lib/libcuopt_client.so
+            - include/cuopt/error.hpp
+            - include/cuopt/export.hpp
+      # Loads the library in an environment holding only this package and its declared
+      # dependencies, with RTLD_NOW so every relocation has to resolve. A component that
+      # quietly needs another engine fails here rather than passing because some other
+      # package happened to pull it in.
+      - script: |
+          python -c "import ctypes, os; ctypes.CDLL(os.path.join(os.environ['PREFIX'], 'lib', 'libcuopt_client.so'), os.RTLD_NOW)"
+        requirements:
+          run:
+            - python
+    about:
+      homepage: ${{ load_from_file("python/cuopt/pyproject.toml").project.urls.Homepage }}
+      license: ${{ load_from_file("python/cuopt/pyproject.toml").project.license }}
+      summary: cuOpt host-side client -- problem representation, parsers and gRPC client
+
+  - package:
+      name: libcuopt-mathopt
+      version: ${{ version }}
+    build:
+      script:
+        content: |
+          cmake --install cpp/build --component mathopt
+          cmake --install cpp/build --component mathopt-dev
+          ./ci/check_symbols.sh cpp/build/libcuopt_mathopt.so
+      dynamic_linking:
+        overlinking_behavior: "error"
+      prefix_detection:
+        ignore:
+          - lib/libcuopt_mathopt.so
+      string: cuda${{ cuda_major }}_${{ datetime_string }}_${{ head_rev }}
+    requirements:
+      build:
+        - cmake ${{ cmake_version }}
+        - ${{ stdlib("c") }}
+        - binutils
+      host:
+        - ${{ pin_subpackage("libcuopt-client", exact=True) }}
         - libboost-devel
         - cuda-version =${{ cuda_version }}
         - rapids-logger =0.3
@@ -136,28 +209,18 @@ outputs:
         - libcusparse-dev
         - libnvjitlink-dev
         - nccl >=2.19
-        - openssl
-        - c-ares
-        - libuuid
-        - libgrpc >=1.78.0,<1.80.0a0
-        - libprotobuf
-        - libabseil
-        - re2
         - tbb-devel
       run:
         - ${{ pin_compatible("cuda-version", upper_bound="x", lower_bound="x") }}
+        - ${{ pin_subpackage("libcuopt-client", exact=True) }}
         - libboost-devel
         - librmm =${{ minor_version }}
         - cuda-nvrtc
+        - libcublas
         - libcudss >=0.7,<0.8
+        - libcusparse
         - libgomp >=9
         - nccl >=2.19
-        - openssl
-        - c-ares
-        - libuuid
-        - libgrpc >=1.78.0,<1.80.0a0
-        - libprotobuf
-        - libabseil
         - tbb
       ignore_run_exports:
         by_name:
@@ -171,12 +234,190 @@ outputs:
     tests:
       - package_contents:
           files:
-            - lib/libcuopt.so
-            - lib/libcuopt_routing.so
             - lib/libcuopt_mathopt.so
-            - lib/libcuopt_client.so
             - bin/cuopt_cli
+      # Loads the library in an environment holding only this package and its declared
+      # dependencies, with RTLD_NOW so every relocation has to resolve. A component that
+      # quietly needs another engine fails here rather than passing because some other
+      # package happened to pull it in.
+      - script: |
+          python -c "import ctypes, os; ctypes.CDLL(os.path.join(os.environ['PREFIX'], 'lib', 'libcuopt_mathopt.so'), os.RTLD_NOW)"
+        requirements:
+          run:
+            - python
+    about:
+      homepage: ${{ load_from_file("python/cuopt/pyproject.toml").project.urls.Homepage }}
+      license: ${{ load_from_file("python/cuopt/pyproject.toml").project.license }}
+      summary: cuOpt LP / MILP / QP / SOCP solver
+
+  - package:
+      name: libcuopt-routing
+      version: ${{ version }}
+    build:
+      script:
+        content: |
+          cmake --install cpp/build --component routing
+          cmake --install cpp/build --component routing-dev
+          ./ci/check_symbols.sh cpp/build/libcuopt_routing.so --no-public-api-check
+      dynamic_linking:
+        overlinking_behavior: "error"
+      prefix_detection:
+        ignore:
+          - lib/libcuopt_routing.so
+      string: cuda${{ cuda_major }}_${{ datetime_string }}_${{ head_rev }}
+    requirements:
+      build:
+        - cmake ${{ cmake_version }}
+        - ${{ stdlib("c") }}
+        - binutils
+      host:
+        - ${{ pin_subpackage("libcuopt-client", exact=True) }}
+        - libboost-devel
+        - cuda-version =${{ cuda_version }}
+        - rapids-logger =0.3
+        - librmm =${{ minor_version }}
+        - libcublas
+      run:
+        - ${{ pin_compatible("cuda-version", upper_bound="x", lower_bound="x") }}
+        - ${{ pin_subpackage("libcuopt-client", exact=True) }}
+        - libboost-devel
+        - librmm =${{ minor_version }}
+        # Reaches routing through cuDSS today, whose run export the cache leaks into
+        # every output. Routing does not use cuDSS, so it has to name cuBLAS itself.
+        - libcublas
+      ignore_run_exports:
+        by_name:
+          - cuda-nvtx
+          - cuda-version
+          - libboost
+          - libboost_iostreams
+          - libcudss
+          - libcusparse
+          - librmm
+    tests:
+      - package_contents:
+          files:
+            - lib/libcuopt_routing.so
+      # Loads the library in an environment holding only this package and its declared
+      # dependencies, with RTLD_NOW so every relocation has to resolve. A component that
+      # quietly needs another engine fails here rather than passing because some other
+      # package happened to pull it in.
+      - script: |
+          python -c "import ctypes, os; ctypes.CDLL(os.path.join(os.environ['PREFIX'], 'lib', 'libcuopt_routing.so'), os.RTLD_NOW)"
+        requirements:
+          run:
+            - python
+    about:
+      homepage: ${{ load_from_file("python/cuopt/pyproject.toml").project.urls.Homepage }}
+      license: ${{ load_from_file("python/cuopt/pyproject.toml").project.license }}
+      summary: cuOpt VRP / TSP / PDP routing engine
+
+  # The server is the one artifact that needs every engine, and it is a separately-run
+  # service with its own lifecycle, so it ships on its own rather than forcing every
+  # library user to install a daemon.
+  - package:
+      name: cuopt-grpc-server
+      version: ${{ version }}
+    build:
+      script:
+        content: |
+          cmake --install cpp/build --component grpc-server
+      dynamic_linking:
+        overlinking_behavior: "error"
+      string: cuda${{ cuda_major }}_${{ datetime_string }}_${{ head_rev }}
+    requirements:
+      build:
+        - cmake ${{ cmake_version }}
+        - ${{ stdlib("c") }}
+      host:
+        - ${{ pin_subpackage("libcuopt-client", exact=True) }}
+        - ${{ pin_subpackage("libcuopt-mathopt", exact=True) }}
+        - ${{ pin_subpackage("libcuopt-routing", exact=True) }}
+        - cuda-version =${{ cuda_version }}
+      run:
+        - ${{ pin_compatible("cuda-version", upper_bound="x", lower_bound="x") }}
+        - ${{ pin_subpackage("libcuopt-client", exact=True) }}
+        - ${{ pin_subpackage("libcuopt-mathopt", exact=True) }}
+        - ${{ pin_subpackage("libcuopt-routing", exact=True) }}
+      ignore_run_exports:
+        by_name:
+          - cuda-nvtx
+          - cuda-version
+          - libboost
+          - libboost_iostreams
+          - libcudss
+          - libcusparse
+          - librmm
+    tests:
+      - package_contents:
+          files:
             - bin/cuopt_grpc_server
+      # --help exits without binding a port, so this only proves the binary starts:
+      # it resolves all three component libraries from its own dependencies.
+      - script: |
+          cuopt_grpc_server --help
+    about:
+      homepage: ${{ load_from_file("python/cuopt/pyproject.toml").project.urls.Homepage }}
+      license: ${{ load_from_file("python/cuopt/pyproject.toml").project.license }}
+      summary: cuOpt gRPC remote solve server
+
+  # Keeps `conda install libcuopt` working for anyone who wants the whole library, and
+  # carries libcuopt.so -- the ld script names all three components, so it is only
+  # resolvable where all three are installed.
+  - package:
+      name: libcuopt
+      version: ${{ version }}
+    build:
+      script:
+        content: |
+          cmake --install cpp/build --component dev
+          # rapids_export puts cuopt-config.cmake and the export set in a component named
+          # after the project, so find_package(cuopt) breaks without this.
+          cmake --install cpp/build --component cuopt
+      string: cuda${{ cuda_major }}_${{ datetime_string }}_${{ head_rev }}
+    requirements:
+      build:
+        - cmake ${{ cmake_version }}
+      host:
+        - ${{ pin_subpackage("libcuopt-client", exact=True) }}
+        - ${{ pin_subpackage("libcuopt-mathopt", exact=True) }}
+        - ${{ pin_subpackage("libcuopt-routing", exact=True) }}
+        - ${{ pin_subpackage("cuopt-grpc-server", exact=True) }}
+      run:
+        - ${{ pin_subpackage("libcuopt-client", exact=True) }}
+        - ${{ pin_subpackage("libcuopt-mathopt", exact=True) }}
+        - ${{ pin_subpackage("libcuopt-routing", exact=True) }}
+        - ${{ pin_subpackage("cuopt-grpc-server", exact=True) }}
+      ignore_run_exports:
+        # This output ships the linker script, the headers and the cmake config -- no
+        # compiled object, so it links nothing and the three components carry every
+        # real dependency. Left alone it would still inherit the whole build cache's
+        # run exports, including `cuda-version >=<built minor>`, which would pin
+        # `conda install libcuopt` to the CUDA minor version it was built against.
+        by_name:
+          - bzip2
+          - c-ares
+          - cuda-nvtx
+          - cuda-version
+          - libabseil
+          - libboost
+          - libboost_iostreams
+          - libcudss
+          - libcusparse
+          - libgrpc
+          - libnvjitlink
+          - libprotobuf
+          - libre2-11
+          - librmm
+          - libzlib
+          - nccl
+          - openssl
+          - re2
+          - tbb
+    tests:
+      - package_contents:
+          files:
+            - lib/libcuopt.so
     about:
       homepage: ${{ load_from_file("python/cuopt/pyproject.toml").project.urls.Homepage }}
       license: ${{ load_from_file("python/cuopt/pyproject.toml").project.license }}
@@ -197,7 +438,13 @@ outputs:
         - cmake ${{ cmake_version }}
         - ${{ stdlib("c") }}
       host:
+        # libcuopt for the ld script that the tests linking -lcuopt need, and the three
+        # components explicitly: the test binaries link them directly, so relying on the
+        # metapackage's run deps to drag them in would be implicit.
         - ${{ pin_subpackage("libcuopt", exact=True) }}
+        - ${{ pin_subpackage("libcuopt-client", exact=True) }}
+        - ${{ pin_subpackage("libcuopt-mathopt", exact=True) }}
+        - ${{ pin_subpackage("libcuopt-routing", exact=True) }}
         - libboost-devel
         - libcublas
         - libcudss-dev >=0.7,<0.8
