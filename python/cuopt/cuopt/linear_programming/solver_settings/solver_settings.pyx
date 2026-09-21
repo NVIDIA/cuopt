@@ -133,6 +133,12 @@ class DistributedPdlpPartitioner(IntEnum):
     Notes
     -----
     Default value is Auto.
+
+    Distributed PDLP is dispatched from a problem built directly on the
+    GPU (as ``Solve`` does) only if the underlying cuOpt build includes the
+    GPU-resident dispatch fix (NVIDIA/cuopt#1958); until then, these
+    settings are stored but have no effect on the solve. MPS file based
+    solves are unaffected.
     """
 
     Auto = 0
