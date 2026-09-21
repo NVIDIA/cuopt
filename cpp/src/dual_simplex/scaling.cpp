@@ -123,8 +123,8 @@ i_t scaling(const lp_problem_t<i_t, f_t>& unscaled,
     // network-flow QP with |bound| ranging from ~1e4 to ~1e11), the constraint
     // matrix can already be perfectly balanced (all +/-1) while the variables
     // themselves live at wildly different scales. The interior-point diagonal
-    // D = z/x then spans those same many orders of magnitude, wrecking the
-    // conditioning of the KKT factorization and stalling convergence.
+    // D = z/x then spans those same many orders of magnitude, which degrades
+    // the conditioning of the KKT factorization and can stall convergence.
     //
     // We fix this by first scaling each column so that the variable it
     // represents becomes O(1): c0[j] = (geometric mean of the finite bound
@@ -132,6 +132,11 @@ i_t scaling(const lp_problem_t<i_t, f_t>& unscaled,
     // region shape unchanged but brings every variable to a common scale, which
     // Ruiz then finishes off on the coefficient side. Columns with no finite,
     // nonzero bound are left at scale 1.
+    //
+    // Bounds use +/-inf for unbounded sides (see types.hpp). Finite bounds at
+    // or beyond finite_bound_limit are treated as unbounded for scaling so we
+    // do not overflow when dividing a huge limit by a small scale factor.
+    constexpr f_t finite_bound_limit = 1e20;
     {
       std::vector<f_t> c0(n, 1.0);
       std::vector<char> has_bound(n, 0);
@@ -142,13 +147,13 @@ i_t scaling(const lp_problem_t<i_t, f_t>& unscaled,
         f_t lo = std::abs(scaled.lower[j]);
         f_t hi = std::abs(scaled.upper[j]);
         f_t mag;
-        bool lo_fin = scaled.lower[j] > -1e20 && lo > 0;
-        bool hi_fin = scaled.upper[j] < 1e20 && hi > 0;
-        if (lo_fin && hi_fin) {
+        const bool has_nonzero_finite_lower = scaled.lower[j] > -finite_bound_limit && lo > 0;
+        const bool has_nonzero_finite_upper = scaled.upper[j] < finite_bound_limit && hi > 0;
+        if (has_nonzero_finite_lower && has_nonzero_finite_upper) {
           mag = std::sqrt(lo * hi);
-        } else if (lo_fin) {
+        } else if (has_nonzero_finite_lower) {
           mag = lo;
-        } else if (hi_fin) {
+        } else if (has_nonzero_finite_upper) {
           mag = hi;
         } else {
           continue;  // free / one-sided-zero: leave at scale 1
@@ -173,8 +178,8 @@ i_t scaling(const lp_problem_t<i_t, f_t>& unscaled,
             scaled.A.x[p] *= c0[j];
           }
           scaled.objective[j] *= c0[j];
-          if (scaled.lower[j] > -1e20) scaled.lower[j] /= c0[j];
-          if (scaled.upper[j] < 1e20) scaled.upper[j] /= c0[j];
+          if (scaled.lower[j] > -finite_bound_limit) scaled.lower[j] /= c0[j];
+          if (scaled.upper[j] < finite_bound_limit) scaled.upper[j] /= c0[j];
           col_scale[j] *= c0[j];
         }
         if (scaled.Q.n > 0) {
@@ -278,12 +283,9 @@ i_t scaling(const lp_problem_t<i_t, f_t>& unscaled,
         scaled.objective[j] *= c[j];
         col_scale[j] *= c[j];
       }
-      // Bounds use +/-inf for unbounded sides (see types.hpp). Use +/-1e20 as a practical
-      // sentinel: we do not expect finite bounds beyond this magnitude, and skipping scale
-      // on |bound| >= 1e20 avoids overflow when dividing very large limits by small c[j].
       for (i_t j = 0; j < n; ++j) {
-        if (scaled.lower[j] > -1e20) scaled.lower[j] /= c[j];
-        if (scaled.upper[j] < 1e20) scaled.upper[j] /= c[j];
+        if (scaled.lower[j] > -finite_bound_limit) scaled.lower[j] /= c[j];
+        if (scaled.upper[j] < finite_bound_limit) scaled.upper[j] /= c[j];
       }
       if (scaled.Q.n > 0) {
         for (i_t row = 0; row < scaled.Q.m; ++row) {
