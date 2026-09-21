@@ -1,0 +1,24 @@
+/* GNU ld script -- generated from cmake/libcuopt.so.in, do not edit the generated copy.
+
+   COMPATIBILITY SHIM. Prefer linking the components you actually use:
+
+       -lcuopt_mathopt     LP / MIP / QP / SOCP
+       -lcuopt_routing     VRP / TSP / PDP
+       -lcuopt_client      host-side problem representation and gRPC client
+
+   or, from CMake, cuopt::mathopt / cuopt::routing rather than cuopt::cuopt. Linking a
+   single component keeps a consumer's dependencies to what it needs, which is the point
+   of the split and what the per-solver packages in #1635 build on.
+
+   libcuopt.so is not an ELF object. cuOpt ships as component libraries, and the linker
+   does not resolve a consumer's undefined symbols through a dependency's DT_NEEDED
+   (--no-copy-dt-needed-entries, the default since binutils 2.22). Naming this script
+   libcuopt.so keeps -lcuopt resolving to the whole set, exactly as it did before the
+   library was split, so existing link lines keep working. Consumers end up with a direct
+   DT_NEEDED on each component.
+
+   Two consequences of it not being a real shared object: anything that loads cuOpt at
+   runtime must dlopen the components rather than this file, and a file named .so that is
+   actually a text script is surprising. Both are reasons to move off -lcuopt rather than
+   to rely on it. */
+INPUT(@CUOPT_LINKER_SCRIPT_INPUTS@)
