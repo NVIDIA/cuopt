@@ -669,9 +669,7 @@ jobs:
       build-datetime: ${{ needs.build-details.outputs.build-datetime }}
       script: ci/build_wheel_libcuopt_routing.sh
   wheel-build-cuopt:
-    needs: [build-details, wheel-build-libcuopt, wheel-build-libcuopt-client,
-            wheel-build-libcuopt-mathopt, wheel-build-libcuopt-routing,
-            compute-matrix-filters, changed-files]
+    needs: [build-details, wheel-build-libcuopt, compute-matrix-filters, changed-files]
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
     permissions:
       actions: read
