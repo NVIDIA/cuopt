@@ -173,7 +173,7 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
     constraint_prop.max_n_failed_repair_iterations = bp_recombiner_config_t::n_repair_iterations;
     rmm::device_uvector<thrust::pair<f_t, f_t>> probing_values(a.problem_ptr->n_variables,
                                                                a.handle_ptr->get_stream());
-    probing_config_t<i_t, f_t> probing_config(a.problem_ptr->n_variables, a.handle_ptr);
+    probing_config_t<i_t, f_t> probing_config(a.problem_ptr->n_variables);
     if (guiding_solution.get_feasible() && !a.problem_ptr->expensive_to_fix_vars) {
       this->compute_vars_to_fix(offspring, vars_to_fix, n_vars_from_other, n_vars_from_guiding);
       auto [fixed_problem, fixed_assignment, variable_map] = offspring.fix_variables(vars_to_fix);
@@ -197,14 +197,12 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
       constraint_prop.single_rounding_only  = true;
       constraint_prop.apply_round(offspring, lp_run_time_after_feasible, timer, probing_config);
       constraint_prop.single_rounding_only = false;
-      cuopt_func_call(bool feasible_after_bounds_prop = offspring.get_feasible());
       offspring.handle_ptr->sync_stream();
       offspring.problem_ptr = a.problem_ptr;
       fixed_assignment      = std::move(offspring.assignment);
       offspring.assignment  = std::move(old_assignment);
       offspring.handle_ptr->sync_stream();
       offspring.unfix_variables(fixed_assignment, variable_map);
-      cuopt_func_call(bool feasible_after_unfix = offspring.get_feasible());
       // May be triggered due to numerical issues
       // TODO: investigate further
       // cuopt_assert(feasible_after_unfix == feasible_after_bounds_prop,

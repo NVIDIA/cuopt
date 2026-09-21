@@ -13,6 +13,8 @@
 
 #include <rapids_logger/logger.hpp>
 
+#include <utilities/macros.cuh>
+
 #include <atomic>
 #include <cstdint>
 #include <fstream>
@@ -23,6 +25,44 @@
 #include <string>
 #include <type_traits>
 #include <vector>
+
+// The generated logger macros discard arguments for compile-time-disabled levels. Keep those
+// expressions in an unreachable branch so they are parsed and count as uses without being
+// evaluated, matching the behavior of Abseil's compile-time-disabled logging.
+#define CUOPT_LOG_DISABLED(...)                                 \
+  do {                                                          \
+    if (false) { ::cuopt::detail::ignore_unused(__VA_ARGS__); } \
+  } while (false)
+
+#if CUOPT_LOG_ACTIVE_LEVEL > RAPIDS_LOGGER_LOG_LEVEL_TRACE
+#undef CUOPT_LOG_TRACE
+#define CUOPT_LOG_TRACE(...) CUOPT_LOG_DISABLED(__VA_ARGS__)
+#endif
+
+#if CUOPT_LOG_ACTIVE_LEVEL > RAPIDS_LOGGER_LOG_LEVEL_DEBUG
+#undef CUOPT_LOG_DEBUG
+#define CUOPT_LOG_DEBUG(...) CUOPT_LOG_DISABLED(__VA_ARGS__)
+#endif
+
+#if CUOPT_LOG_ACTIVE_LEVEL > RAPIDS_LOGGER_LOG_LEVEL_INFO
+#undef CUOPT_LOG_INFO
+#define CUOPT_LOG_INFO(...) CUOPT_LOG_DISABLED(__VA_ARGS__)
+#endif
+
+#if CUOPT_LOG_ACTIVE_LEVEL > RAPIDS_LOGGER_LOG_LEVEL_WARN
+#undef CUOPT_LOG_WARN
+#define CUOPT_LOG_WARN(...) CUOPT_LOG_DISABLED(__VA_ARGS__)
+#endif
+
+#if CUOPT_LOG_ACTIVE_LEVEL > RAPIDS_LOGGER_LOG_LEVEL_ERROR
+#undef CUOPT_LOG_ERROR
+#define CUOPT_LOG_ERROR(...) CUOPT_LOG_DISABLED(__VA_ARGS__)
+#endif
+
+#if CUOPT_LOG_ACTIVE_LEVEL > RAPIDS_LOGGER_LOG_LEVEL_CRITICAL
+#undef CUOPT_LOG_CRITICAL
+#define CUOPT_LOG_CRITICAL(...) CUOPT_LOG_DISABLED(__VA_ARGS__)
+#endif
 
 /*
  * Defined inline with hidden visibility so each library that links this header owns its own

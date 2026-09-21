@@ -385,8 +385,6 @@ __device__ i_t find_request_insertion(typename solution_t<i_t, f_t, REQUEST>::vi
     auto other_route_id = solution.route_node_map.get_route_id(node_id);
     cuopt_assert(other_route_id >= 0 || insert_unserviced,
                  "Other route id cannot be -1, it must have been filtered!");
-    const auto& dimensions_info = solution.problem.dimensions_info;
-
     auto request_node =
       other_route_id >= 0
         ? solution.routes[other_route_id].get_request_node(solution.route_node_map, request_id)

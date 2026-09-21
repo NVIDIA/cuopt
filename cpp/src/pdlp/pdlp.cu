@@ -523,8 +523,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
                                           h_A_t_values,
                                           settings.num_gpus,
                                           n_cstr,
-                                          n_vars,
-                                          nnz);
+                                          n_vars);
 
   // ----- 5. Per-shard settings -----
   pdlp_solver_settings_t<i_t, f_t> sub_pdlp_settings = settings;
@@ -3264,7 +3263,7 @@ void pdlp_solver_t<i_t, f_t>::scale_problem()
   // Scale problem then free scratch buffers
   raft::common::nvtx::range fun_scope("pdlp_solver_t::scale_problem");
   if (is_distributed_master()) {
-    multi_gpu_engine->distributed_scaling(settings_.hyper_params, primal_size_h_, inside_mip_);
+    multi_gpu_engine->distributed_scaling(settings_.hyper_params, primal_size_h_);
 
     // Free per-shard scratch: no further scaling passes happen after this point.
     multi_gpu_engine->for_each_shard([](auto& shard) {

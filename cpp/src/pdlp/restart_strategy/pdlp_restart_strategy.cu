@@ -886,7 +886,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
   rmm::device_uvector<f_t>& primal_step_size,
   rmm::device_uvector<f_t>& dual_step_size,
   rmm::device_uvector<f_t>& best_primal_weight,
-  const std::vector<int>& should_restart)
+  [[maybe_unused]] const std::vector<int>& should_restart)
 {
   raft::common::nvtx::range fun_scope("cupdlpx_restart");
 

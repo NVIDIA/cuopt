@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -68,7 +68,6 @@ struct srex {
 
     ret           = (s.from_a.size() > s.from_b.size()) ? false : true;
     auto& guiding = (ret == false) ? a : b;
-    auto& other   = (ret == true) ? a : b;
 
     auto& guiding_ids = (ret == false) ? s.from_a : s.from_b;
     auto& other_ids   = (ret == true) ? s.from_a : s.from_b;

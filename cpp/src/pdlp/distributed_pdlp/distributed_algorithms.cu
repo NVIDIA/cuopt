@@ -164,8 +164,7 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_pock_chambolle_scaling(f_t alpha,
 // Mirrors single GPU scaling
 template <typename i_t, typename f_t>
 void multi_gpu_engine_t<i_t, f_t>::distributed_scaling(pdlp_hyper_params_t const& hyper_params,
-                                                       i_t n_global_vars,
-                                                       bool inside_mip)
+                                                       i_t n_global_vars)
 {
   raft::common::nvtx::range scope("distributed_scaling");
 
@@ -413,8 +412,8 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_compute_initial_primal_weight(
   template void multi_gpu_engine_t<int, F_TYPE>::distributed_bound_objective_rescaling(F_TYPE);   \
   template void multi_gpu_engine_t<int, F_TYPE>::distributed_ruiz_inf_scaling(int, int);          \
   template void multi_gpu_engine_t<int, F_TYPE>::distributed_pock_chambolle_scaling(F_TYPE, int); \
-  template void multi_gpu_engine_t<int, F_TYPE>::distributed_scaling(                             \
-    pdlp_hyper_params_t const&, int, bool);                                                       \
+  template void multi_gpu_engine_t<int, F_TYPE>::distributed_scaling(pdlp_hyper_params_t const&,  \
+                                                                     int);                        \
   template F_TYPE multi_gpu_engine_t<int, F_TYPE>::distributed_max_singular_value_squared(        \
     int, int, F_TYPE);                                                                            \
   template void multi_gpu_engine_t<int, F_TYPE>::distributed_compute_initial_step_size(           \

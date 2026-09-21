@@ -185,7 +185,6 @@ i_t find_singletons(const csc_matrix_t<i_t, f_t>& A,
   std::vector<i_t> Rj(nz);
   work_estimate += 3 * m + n + nz;
 
-  i_t max_queue_len = std::max(m, n);
   std::queue<i_t> singleton_queue;
 
   // Compute Cdeg and Rdeg
@@ -274,12 +273,12 @@ i_t find_singletons(const csc_matrix_t<i_t, f_t>& A,
 #ifdef SINGLETON_DEBUG
   printf("Col singletons %d\n", col_singletons);
 #endif
-  i_t num_empty_cols = complete_permutation(singletons_found, Cdeg, col_perm);
+  [[maybe_unused]] i_t num_empty_cols = complete_permutation(singletons_found, Cdeg, col_perm);
   work_estimate += 2 * Cdeg.size();
 #ifdef SINGLETON_DEBUG
   printf("Completed col perm. %d empty cols. Starting row perm\n", num_empty_cols);
 #endif
-  i_t num_empty_rows = complete_permutation(singletons_found, Rdeg, row_perm);
+  [[maybe_unused]] i_t num_empty_rows = complete_permutation(singletons_found, Rdeg, row_perm);
   work_estimate += 2 * Rdeg.size();
 #ifdef SINGLETON_DEBUG
   printf("Empty rows %d Empty columns %d\n", num_empty_rows, num_empty_cols);

@@ -60,9 +60,7 @@ enum class clique_cut_build_status_t : int8_t { NO_CUT = 0, CUT_ADDED = 1, INFEA
     std::fprintf(stderr, "\n");        \
     std::fflush(stderr);               \
   } while (0)
-#define CUTS_DEBUG_NOOP(...) \
-  do {                       \
-  } while (0)
+#define CUTS_DEBUG_NOOP(...) CUOPT_LOG_DISABLED(__VA_ARGS__)
 
 #if DEBUG_CLIQUE_CUTS
 #define CLIQUE_CUTS_DEBUG(...) CUTS_DEBUG_LOG("[DEBUG_CLIQUE_CUTS]", __VA_ARGS__)
@@ -2028,7 +2026,9 @@ bool flow_cover_generation_t<i_t, f_t>::separate_single_node_flow_cover(
 template <typename i_t, typename f_t>
 flow_cover_evaluation_t<f_t>
 flow_cover_generation_t<i_t, f_t>::evaluate_c_mir_flow_cover_inequality(
-  const flow_cover_context_t<i_t, f_t>& context, f_t single_node_flow_b, f_t lambda)
+  [[maybe_unused]] const flow_cover_context_t<i_t, f_t>& context,
+  f_t single_node_flow_b,
+  f_t lambda)
 {
   auto& scratch                       = *this;
   constexpr f_t min_mir_beta_fraction = 0.01;
@@ -2135,7 +2135,9 @@ flow_cover_generation_t<i_t, f_t>::evaluate_c_mir_flow_cover_inequality(
 template <typename i_t, typename f_t>
 flow_cover_evaluation_t<f_t>
 flow_cover_generation_t<i_t, f_t>::evaluate_simple_generalized_flow_cover_inequality(
-  const flow_cover_context_t<i_t, f_t>& context, f_t single_node_flow_b, f_t lambda)
+  [[maybe_unused]] const flow_cover_context_t<i_t, f_t>& context,
+  f_t single_node_flow_b,
+  f_t lambda)
 {
   auto& scratch           = *this;
   const f_t min_violation = static_cast<f_t>(1e-6);
@@ -2331,7 +2333,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
   const lp_problem_t<i_t, f_t>& lp,
   const simplex_solver_settings_t<i_t, f_t>& settings,
   csr_matrix_t<i_t, f_t>& Arow,
-  const std::vector<i_t>& new_slacks,
+  [[maybe_unused]] const std::vector<i_t>& new_slacks,
   const std::vector<variable_type_t>& var_types,
   const std::vector<f_t>& xstar,
   i_t knapsack_row,
@@ -2690,8 +2692,8 @@ template <typename i_t, typename f_t>
 void knapsack_generation_t<i_t, f_t>::lift_knapsack_cut(
   const inequality_t<i_t, f_t>& knapsack_inequality,
   const inequality_t<i_t, f_t>& base_cut,
-  const std::vector<i_t>& c1_partition,
-  const std::vector<i_t>& c2_partition,
+  [[maybe_unused]] const std::vector<i_t>& c1_partition,
+  [[maybe_unused]] const std::vector<i_t>& c2_partition,
   inequality_t<i_t, f_t>& lifted_cut,
   f_t start_time)
 {
@@ -4099,8 +4101,6 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
   variable_bounds_t<i_t, f_t>& variable_bounds,
   f_t start_time)
 {
-  f_t mir_start_time     = tic();
-  constexpr bool verbose = false;
   complemented_mixed_integer_rounding_cut_t<i_t, f_t> complemented_mir(lp, settings, new_slacks);
   strong_cg_cut_t<i_t, f_t> cg(lp, var_types, xstar);
 
@@ -4139,9 +4139,7 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
     aggregated_mark[i] = 1;
     aggregated_rows.push_back(i);
 
-    const i_t row_nz      = Arow.row_length(i);
-    const i_t slack       = complemented_mir.slack_cols(i);
-    const f_t slack_value = xstar[slack];
+    const i_t slack = complemented_mir.slack_cols(i);
 
     if (max_score <= 0.0) { break; }
     if (work_estimate > 2e9) { break; }
@@ -4377,7 +4375,6 @@ void cut_generation_t<i_t, f_t>::generate_gomory_cuts(
   f_t start_time)
 {
   tableau_equality_t<i_t, f_t> tableau(lp, basis_update, nonbasic_list);
-  mixed_integer_gomory_cut_t<i_t, f_t> gomory_cut;
   complemented_mixed_integer_rounding_cut_t<i_t, f_t> complemented_mir(lp, settings, new_slacks);
   simplex_solver_settings_t<i_t, f_t> variable_settings = settings;
   variable_settings.inside_submip                       = 1;
@@ -4504,7 +4501,7 @@ i_t tableau_equality_t<i_t, f_t>::generate_base_equality(
   basis_update_mpf_t<i_t, f_t>& basis_update,
   const std::vector<f_t>& xstar,
   const std::vector<i_t>& basic_list,
-  const std::vector<i_t>& nonbasic_list,
+  [[maybe_unused]] const std::vector<i_t>& nonbasic_list,
   i_t i,
   inequality_t<i_t, f_t>& inequality)
 {
@@ -4728,9 +4725,9 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
   slack_map_.resize(lp.num_rows, -1);
   std::vector<f_t> slack_coeff(lp.num_rows, 0.0);
   for (i_t j : new_slacks) {
-    const i_t col_start = lp.A.col_start[j];
-    const i_t col_end   = lp.A.col_start[j + 1];
-    const i_t col_len   = col_end - col_start;
+    const i_t col_start                = lp.A.col_start[j];
+    const i_t col_end                  = lp.A.col_start[j + 1];
+    [[maybe_unused]] const i_t col_len = col_end - col_start;
     assert(col_len == 1);
     const i_t i    = lp.A.i[col_start];
     slack_map_[i]  = j;
@@ -4992,7 +4989,7 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
 template <typename i_t, typename f_t>
 complemented_mixed_integer_rounding_cut_t<i_t, f_t>::complemented_mixed_integer_rounding_cut_t(
   const lp_problem_t<i_t, f_t>& lp,
-  const simplex_solver_settings_t<i_t, f_t>& settings,
+  [[maybe_unused]] const simplex_solver_settings_t<i_t, f_t>& settings,
   const std::vector<i_t>& new_slacks)
   : is_slack_(lp.num_cols, 0),
     slack_rows_(lp.num_cols, -1),
@@ -5092,7 +5089,6 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::cut_generation_heurist
       const f_t x_j             = transformed_xstar[j];
       const f_t new_upper_j     = new_upper(j);
       const f_t dist_upper      = new_upper_j - x_j;
-      const f_t dist_lower      = x_j;
       const bool between_bounds = x_j > 1e-6 && (new_upper_j == inf || dist_upper > 0.0);
       if (between_bounds && abs_aj > 1e-6) { deltas_to_try.push_back(abs_aj); }
     }
@@ -5276,7 +5272,7 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::cut_generation_heurist
 template <typename i_t, typename f_t>
 bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::scale_uncomplement_and_generate_cut(
   const std::vector<variable_type_t>& var_types,
-  const std::vector<f_t>& transformed_xstar,
+  [[maybe_unused]] const std::vector<f_t>& transformed_xstar,
   const std::vector<i_t>& complemented_indices,
   const inequality_t<i_t, f_t>& complemented_inequality,
   f_t delta,
@@ -5316,8 +5312,7 @@ void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::remove_small_coefficie
   const std::vector<f_t>& upper_bounds,
   inequality_t<i_t, f_t>& cut)
 {
-  const i_t nz = cut.size();
-  i_t removed  = 0;
+  i_t removed = 0;
   for (i_t k = 0; k < cut.size(); k++) {
     const i_t j = cut.index(k);
 
@@ -5755,7 +5750,6 @@ void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::substitute_slacks(
   // Remove slacks from the cut
   // So that the cut is only over the original variables
   bool found_slack = false;
-  i_t cut_nz       = 0;
   std::vector<i_t> cut_indices;
   cut_indices.reserve(cut.size());
   if (work_estimate != nullptr) { *work_estimate += cut.size(); }
@@ -5836,8 +5830,8 @@ void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::substitute_slacks(
 
 template <typename i_t, typename f_t>
 f_t complemented_mixed_integer_rounding_cut_t<i_t, f_t>::combine_rows(
-  const lp_problem_t<i_t, f_t>& lp,
-  csr_matrix_t<i_t, f_t>& Arow,
+  [[maybe_unused]] const lp_problem_t<i_t, f_t>& lp,
+  [[maybe_unused]] csr_matrix_t<i_t, f_t>& Arow,
   i_t xj,
   const inequality_t<i_t, f_t>& pivot_row,
   inequality_t<i_t, f_t>& inequality)
@@ -5926,7 +5920,7 @@ strong_cg_cut_t<i_t, f_t>::strong_cg_cut_t(const lp_problem_t<i_t, f_t>& lp,
 template <typename i_t, typename f_t>
 i_t strong_cg_cut_t<i_t, f_t>::remove_continuous_variables_integers_nonnegative(
   const lp_problem_t<i_t, f_t>& lp,
-  const simplex_solver_settings_t<i_t, f_t>& settings,
+  [[maybe_unused]] const simplex_solver_settings_t<i_t, f_t>& settings,
   const std::vector<variable_type_t>& var_types,
   inequality_t<i_t, f_t>& inequality)
 {
@@ -6043,7 +6037,7 @@ void strong_cg_cut_t<i_t, f_t>::to_original_integer_variables(const lp_problem_t
 
 template <typename i_t, typename f_t>
 i_t strong_cg_cut_t<i_t, f_t>::generate_strong_cg_cut_integer_only(
-  const simplex_solver_settings_t<i_t, f_t>& settings,
+  [[maybe_unused]] const simplex_solver_settings_t<i_t, f_t>& settings,
   const std::vector<variable_type_t>& var_types,
   const inequality_t<i_t, f_t>& inequality,
   inequality_t<i_t, f_t>& cut)
@@ -6226,7 +6220,7 @@ i_t add_cuts(const simplex_solver_settings_t<i_t, f_t>& settings,
              lp_solution_t<i_t, f_t>& solution,
              basis_update_mpf_t<i_t, f_t>& basis_update,
              std::vector<i_t>& basic_list,
-             std::vector<i_t>& nonbasic_list,
+             [[maybe_unused]] std::vector<i_t>& nonbasic_list,
              std::vector<variable_status_t>& vstatus,
              std::vector<f_t>& edge_norms)
 

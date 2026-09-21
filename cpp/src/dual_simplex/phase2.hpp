@@ -35,7 +35,7 @@ enum class dual_status_t {
   UNSET            = 8
 };
 
-static std::string dual_status_to_string(dual_status_t status)
+[[maybe_unused]] static std::string dual_status_to_string(dual_status_t status)
 {
   switch (status) {
     case dual_status_t::OPTIMAL: return "OPTIMAL";

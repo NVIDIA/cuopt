@@ -14,7 +14,7 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
   // Unary submit: the entire problem fits in a single gRPC message.
   // Serializes the request and delegates slot reservation + tracking to
   // submit_job_async (shared with the chunked path's submit_chunked_job_async).
-  Status SubmitJob(ServerContext* context,
+  Status SubmitJob([[maybe_unused]] ServerContext* context,
                    const cuopt::remote::SubmitJobRequest* request,
                    cuopt::remote::SubmitJobResponse* response) override
   {
@@ -394,7 +394,7 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
   // Begin a chunked result download: snapshot the result arrays into a
   // download session. The client calls GetResultChunk to fetch slices and
   // FinishChunkedDownload when done (which frees the session).
-  Status StartChunkedDownload(ServerContext* context,
+  Status StartChunkedDownload([[maybe_unused]] ServerContext* context,
                               const cuopt::remote::StartChunkedDownloadRequest* request,
                               cuopt::remote::StartChunkedDownloadResponse* response) override
   {
@@ -447,7 +447,7 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     return Status::OK;
   }
 
-  Status GetResultChunk(ServerContext* context,
+  Status GetResultChunk([[maybe_unused]] ServerContext* context,
                         const cuopt::remote::GetResultChunkRequest* request,
                         cuopt::remote::GetResultChunkResponse* response) override
   {
@@ -500,7 +500,7 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     return Status::OK;
   }
 
-  Status FinishChunkedDownload(ServerContext* context,
+  Status FinishChunkedDownload([[maybe_unused]] ServerContext* context,
                                const cuopt::remote::FinishChunkedDownloadRequest* request,
                                cuopt::remote::FinishChunkedDownloadResponse* response) override
   {

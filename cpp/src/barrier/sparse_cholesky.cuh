@@ -116,7 +116,7 @@ class sparse_cholesky_base_t {
 // Use cudaMallocAsync instead of the RMM pool until we reduce our memory footprint/fragmentation.
 // TODO: Still use RMM for smaller problems to benefit from their allocation optimizations.
 template <typename mem_pool_t>
-int cudss_device_alloc(void* ctx, void** ptr, size_t size, cudaStream_t stream)
+int cudss_device_alloc([[maybe_unused]] void* ctx, void** ptr, size_t size, cudaStream_t stream)
 {
   int status = cudaMallocAsync(ptr, size, stream);
   if (status != cudaSuccess) { throw raft::cuda_error("Cuda error in cudss_device_alloc"); }
@@ -124,7 +124,10 @@ int cudss_device_alloc(void* ctx, void** ptr, size_t size, cudaStream_t stream)
 }
 
 template <typename mem_pool_t>
-int cudss_device_dealloc(void* ctx, void* ptr, size_t size, cudaStream_t stream)
+int cudss_device_dealloc([[maybe_unused]] void* ctx,
+                         void* ptr,
+                         [[maybe_unused]] size_t size,
+                         cudaStream_t stream)
 {
   int status = cudaFreeAsync(ptr, stream);
   if (status != cudaSuccess) { throw raft::cuda_error("Cuda error in cudss_device_dealloc"); }

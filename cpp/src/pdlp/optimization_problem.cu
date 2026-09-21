@@ -191,7 +191,7 @@ void optimization_problem_t<i_t, f_t>::set_quadratic_objective_matrix(
   i_t size_indices,
   const i_t* Q_offsets,
   i_t size_offsets,
-  bool validate_positive_semi_definite)
+  [[maybe_unused]] bool validate_positive_semi_definite)
 {
   cuopt_expects(Q_values != nullptr, error_type_t::ValidationError, "Q_values cannot be null");
   cuopt_expects(

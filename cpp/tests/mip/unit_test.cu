@@ -167,11 +167,9 @@ TEST_P(MILPTestParams, TestSampleMILP)
 
 TEST_P(MILPTestParams, TestSingleVarMILP)
 {
-  bool maximize                    = std::get<0>(GetParam());
-  int scaling                      = std::get<1>(GetParam());
-  bool heuristics_only             = std::get<2>(GetParam());
-  auto expected_termination_status = std::get<3>(GetParam());
-
+  bool maximize        = std::get<0>(GetParam());
+  int scaling          = std::get<1>(GetParam());
+  bool heuristics_only = std::get<2>(GetParam());
   raft::handle_t handle;
   auto problem = create_single_var_milp_problem(maximize);
 

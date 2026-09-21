@@ -140,9 +140,6 @@ __global__ void find_sliding_moves_tsp(
   }
   __syncthreads();
 
-  const double excess_limit =
-    s_route.get_weighted_excess(move_candidates.weights) * ls_excess_multiplier_route;
-
   sliding_tsp_cand_t<i_t> sliding_tsp_cand = is_sliding_tsp_uinitialized_t<i_t>::init_data();
   double cost_delta, selection_delta;
 

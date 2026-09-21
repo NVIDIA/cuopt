@@ -122,12 +122,10 @@ fj_bin_scan_t fj_bin_scan(const fj_cpu_climber_t<i_t, f_t>& c, fj_bin_setup_time
     }
   }
 
-  const auto& offsets             = c.problem->offsets;
-  const auto& reverse_offsets     = c.problem->reverse_offsets;
-  const auto& reverse_constraints = c.problem->reverse_constraints;
-  const auto& coeffs              = c.problem->coefficients;
-  const auto& cstr_lb             = c.problem->cstr_lb;
-  const auto& cstr_ub             = c.problem->cstr_ub;
+  const auto& offsets = c.problem->offsets;
+  const auto& coeffs  = c.problem->coefficients;
+  const auto& cstr_lb = c.problem->cstr_lb;
+  const auto& cstr_ub = c.problem->cstr_ub;
 
   double max_abs_coefficient = 0;
   std::vector<double> row_values;

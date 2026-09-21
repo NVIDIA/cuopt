@@ -252,8 +252,8 @@ i_t matrix_transpose_vector_multiply(const csc_matrix_t<i_t, f_t>& A,
                                      f_t beta,
                                      std::vector<f_t, AllocatorB>& y)
 {
-  i_t m = A.m;
-  i_t n = A.n;
+  [[maybe_unused]] i_t m = A.m;
+  i_t n                  = A.n;
   assert(y.size() == n);
   assert(x.size() == m);
 

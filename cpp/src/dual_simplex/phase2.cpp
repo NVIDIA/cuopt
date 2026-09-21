@@ -869,7 +869,7 @@ bool update_primal_infeasibilities(const lp_problem_t<i_t, f_t>& lp,
                                    const simplex_solver_settings_t<i_t, f_t>& settings,
                                    const std::vector<i_t>& basic_list,
                                    const std::vector<f_t>& x,
-                                   i_t entering_index,
+                                   [[maybe_unused]] i_t entering_index,
                                    i_t leaving_index,
                                    std::vector<i_t>& basic_change_list,
                                    std::vector<f_t>& squared_infeasibilities,
@@ -924,17 +924,18 @@ void clean_up_infeasibilities(std::vector<f_t>& squared_infeasibilities,
 }
 
 template <typename i_t, typename f_t>
-i_t steepest_edge_pricing_with_infeasibilities(const lp_problem_t<i_t, f_t>& lp,
-                                               const simplex_solver_settings_t<i_t, f_t>& settings,
-                                               const std::vector<f_t>& x,
-                                               const std::vector<f_t>& dy_steepest_edge,
-                                               const std::vector<i_t>& basic_mark,
-                                               std::vector<f_t>& squared_infeasibilities,
-                                               std::vector<i_t>& infeasibility_indices,
-                                               i_t& direction,
-                                               i_t& basic_leaving,
-                                               f_t& max_val,
-                                               f_t& work_estimate)
+i_t steepest_edge_pricing_with_infeasibilities(
+  const lp_problem_t<i_t, f_t>& lp,
+  [[maybe_unused]] const simplex_solver_settings_t<i_t, f_t>& settings,
+  const std::vector<f_t>& x,
+  const std::vector<f_t>& dy_steepest_edge,
+  const std::vector<i_t>& basic_mark,
+  std::vector<f_t>& squared_infeasibilities,
+  std::vector<i_t>& infeasibility_indices,
+  i_t& direction,
+  i_t& basic_leaving,
+  f_t& max_val,
+  f_t& work_estimate)
 {
   max_val           = 0.0;
   i_t leaving_index = -1;
@@ -1207,10 +1208,10 @@ template <typename i_t, typename f_t>
 i_t flip_bounds(const lp_problem_t<i_t, f_t>& lp,
                 const simplex_solver_settings_t<i_t, f_t>& settings,
                 const std::vector<uint8_t>& bounded_variables,
-                const std::vector<f_t>& objective,
+                [[maybe_unused]] const std::vector<f_t>& objective,
                 const std::vector<f_t>& z,
                 const std::vector<i_t>& delta_z_indices,
-                const std::vector<i_t>& nonbasic_list,
+                [[maybe_unused]] const std::vector<i_t>& nonbasic_list,
                 i_t entering_index,
                 std::vector<variable_status_t>& vstatus,
                 std::vector<f_t>& delta_x,
@@ -1349,8 +1350,8 @@ i_t initialize_steepest_edge_norms(const lp_problem_t<i_t, f_t>& lp,
     const i_t j    = basic_list[k];
     f_t init       = -1.0;
     if (row_degree[mapping[k]] == 1) {
-      const i_t u     = mapping[k];
-      const f_t alpha = coeff[k];
+      [[maybe_unused]] const i_t u = mapping[k];
+      const f_t alpha              = coeff[k];
       // dy[u] = -1.0 / alpha;
       f_t my_init = 1.0 / (alpha * alpha);
       init        = my_init;
@@ -1430,7 +1431,7 @@ i_t initialize_steepest_edge_norms(const lp_problem_t<i_t, f_t>& lp,
 }
 
 template <typename i_t, typename f_t>
-i_t update_steepest_edge_norms(const simplex_solver_settings_t<i_t, f_t>& settings,
+i_t update_steepest_edge_norms([[maybe_unused]] const simplex_solver_settings_t<i_t, f_t>& settings,
                                const std::vector<i_t>& basic_list,
                                const basis_update_mpf_t<i_t, f_t>& ft,
                                i_t direction,
@@ -1444,7 +1445,7 @@ i_t update_steepest_edge_norms(const simplex_solver_settings_t<i_t, f_t>& settin
                                std::vector<f_t>& delta_y_steepest_edge,
                                f_t& work_estimate)
 {
-  const i_t delta_y_nz = delta_y_sparse.i.size();
+  [[maybe_unused]] const i_t delta_y_nz = delta_y_sparse.i.size();
   v_sparse.clear();
   // B^T delta_y = - direction * e_basic_leaving_index
   // We want B v =  - B^{-T} e_basic_leaving_index
@@ -1456,8 +1457,8 @@ i_t update_steepest_edge_norms(const simplex_solver_settings_t<i_t, f_t>& settin
   v_sparse.scatter(v);
   work_estimate += 2 * v_sparse.i.size();
 
-  const i_t leaving_index        = basic_list[basic_leaving_index];
-  const f_t prev_dy_norm_squared = delta_y_steepest_edge[leaving_index];
+  const i_t leaving_index                         = basic_list[basic_leaving_index];
+  [[maybe_unused]] const f_t prev_dy_norm_squared = delta_y_steepest_edge[leaving_index];
 #ifdef STEEPEST_EDGE_DEBUG
   const f_t err = std::abs(dy_norm_squared - prev_dy_norm_squared) / (1.0 + dy_norm_squared);
   if (err > 1e-3) {
@@ -1550,11 +1551,11 @@ i_t compute_perturbation(const lp_problem_t<i_t, f_t>& lp,
                          f_t& sum_perturb,
                          f_t& work_estimate)
 {
-  const i_t n         = lp.num_cols;
-  const i_t m         = lp.num_rows;
-  const f_t tight_tol = settings.tight_tol;
-  i_t num_perturb     = 0;
-  sum_perturb         = 0.0;
+  [[maybe_unused]] const i_t n = lp.num_cols;
+  [[maybe_unused]] const i_t m = lp.num_rows;
+  const f_t tight_tol          = settings.tight_tol;
+  i_t num_perturb              = 0;
+  sum_perturb                  = 0.0;
   for (i_t k = 0; k < delta_z_indices.size(); ++k) {
     const i_t j = delta_z_indices[k];
     if (lp.upper[j] == inf && lp.lower[j] > -inf && z[j] < -tight_tol) {
@@ -1747,7 +1748,7 @@ i_t compute_delta_x(const lp_problem_t<i_t, f_t>& lp,
                     i_t basic_leaving_index,
                     i_t direction,
                     const std::vector<i_t>& basic_list,
-                    const std::vector<f_t>& delta_x_flip,
+                    [[maybe_unused]] const std::vector<f_t>& delta_x_flip,
                     const sparse_vector_t<i_t, f_t>& rhs_sparse,
                     const std::vector<f_t>& delta_z,
                     const std::vector<f_t>& x,
@@ -1885,15 +1886,15 @@ f_t dual_infeasibility(const lp_problem_t<i_t, f_t>& lp,
                        f_t tight_tol,
                        f_t dual_tol)
 {
-  const i_t n             = lp.num_cols;
-  const i_t m             = lp.num_rows;
-  i_t num_infeasible      = 0;
-  f_t sum_infeasible      = 0.0;
-  i_t lower_bound_inf     = 0;
-  i_t upper_bound_inf     = 0;
-  i_t free_inf            = 0;
-  i_t non_basic_lower_inf = 0;
-  i_t non_basic_upper_inf = 0;
+  const i_t n                  = lp.num_cols;
+  [[maybe_unused]] const i_t m = lp.num_rows;
+  i_t num_infeasible           = 0;
+  f_t sum_infeasible           = 0.0;
+  i_t lower_bound_inf          = 0;
+  i_t upper_bound_inf          = 0;
+  i_t free_inf                 = 0;
+  i_t non_basic_lower_inf      = 0;
+  i_t non_basic_upper_inf      = 0;
 
   for (i_t j = 0; j < n; ++j) {
     if (vstatus[j] == variable_status_t::NONBASIC_FIXED) { continue; }
@@ -2022,8 +2023,8 @@ f_t primal_infeasibility_breakdown(const lp_problem_t<i_t, f_t>& lp,
 
 template <typename i_t, typename f_t>
 f_t primal_infeasibility(const lp_problem_t<i_t, f_t>& lp,
-                         const simplex_solver_settings_t<i_t, f_t>& settings,
-                         const std::vector<variable_status_t>& vstatus,
+                         [[maybe_unused]] const simplex_solver_settings_t<i_t, f_t>& settings,
+                         [[maybe_unused]] const std::vector<variable_status_t>& vstatus,
                          const std::vector<f_t>& x)
 {
   const i_t n    = lp.num_cols;
@@ -2325,8 +2326,8 @@ f_t amount_of_perturbation(const lp_problem_t<i_t, f_t>& lp, const std::vector<f
 }
 
 template <typename i_t, typename f_t>
-void prepare_optimality(i_t info,
-                        f_t orig_primal_infeas,
+void prepare_optimality([[maybe_unused]] i_t info,
+                        [[maybe_unused]] f_t orig_primal_infeas,
                         const lp_problem_t<i_t, f_t>& lp,
                         const simplex_solver_settings_t<i_t, f_t>& settings,
                         basis_update_mpf_t<i_t, f_t>& ft,
@@ -2336,7 +2337,7 @@ void prepare_optimality(i_t info,
                         const std::vector<variable_status_t>& vstatus,
                         int phase,
                         f_t start_time,
-                        f_t max_val,
+                        [[maybe_unused]] f_t max_val,
                         i_t iter,
                         const std::vector<f_t>& x,
                         std::vector<f_t>& y,
@@ -2347,10 +2348,10 @@ void prepare_optimality(i_t info,
   const i_t n       = lp.num_cols;
   f_t work_estimate = 0;  // Work in this function is not captured
 
-  sol.objective         = compute_objective(lp, sol.x);
-  sol.user_objective    = compute_user_objective(lp, sol.objective);
-  f_t perturbation      = amount_of_perturbation(lp, objective);
-  f_t orig_perturbation = perturbation;
+  sol.objective                          = compute_objective(lp, sol.x);
+  sol.user_objective                     = compute_user_objective(lp, sol.objective);
+  f_t perturbation                       = amount_of_perturbation(lp, objective);
+  [[maybe_unused]] f_t orig_perturbation = perturbation;
   if (perturbation > 1e-6 && phase == 2) {
     // Try to remove perturbation
     std::vector<f_t> unperturbed_y(m);
@@ -2507,8 +2508,8 @@ dual_status_t dual_phase2(i_t phase,
                           work_limit_context_t* work_unit_context)
 {
   PHASE2_NVTX_RANGE("DualSimplex::phase2");
-  const i_t m = lp.num_rows;
-  const i_t n = lp.num_cols;
+  const i_t m                  = lp.num_rows;
+  [[maybe_unused]] const i_t n = lp.num_cols;
   std::vector<i_t> basic_list(m);
   std::vector<i_t> nonbasic_list;
   basis_update_mpf_t<i_t, f_t> ft(m, settings.refactor_frequency);
@@ -2700,7 +2701,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
       f_t steepest_edge_start = tic();
       i_t status              = phase2::initialize_steepest_edge_norms(
         lp, settings, start_time, basic_list, ft, delta_y_steepest_edge, phase2_work_estimate);
-      f_t steepest_edge_time = toc(steepest_edge_start);
+      [[maybe_unused]] f_t steepest_edge_time = toc(steepest_edge_start);
       if (status == CONCURRENT_HALT_RETURN) { return dual_status_t::CONCURRENT_LIMIT; }
       if (status == -1) { return dual_status_t::TIME_LIMIT; }
     }
@@ -3422,20 +3423,21 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
 #endif
 
     timers.start_timer();
-    f_t se_norms_start_work        = ft.work_estimate();
-    const i_t steepest_edge_status = phase2::update_steepest_edge_norms(settings,
-                                                                        basic_list,
-                                                                        ft,
-                                                                        direction,
-                                                                        delta_y_sparse,
-                                                                        steepest_edge_norm_check,
-                                                                        scaled_delta_xB_sparse,
-                                                                        basic_leaving_index,
-                                                                        entering_index,
-                                                                        v,
-                                                                        v_sparse,
-                                                                        delta_y_steepest_edge,
-                                                                        phase2_work_estimate);
+    f_t se_norms_start_work = ft.work_estimate();
+    [[maybe_unused]] const i_t steepest_edge_status =
+      phase2::update_steepest_edge_norms(settings,
+                                         basic_list,
+                                         ft,
+                                         direction,
+                                         delta_y_sparse,
+                                         steepest_edge_norm_check,
+                                         scaled_delta_xB_sparse,
+                                         basic_leaving_index,
+                                         entering_index,
+                                         v,
+                                         v_sparse,
+                                         delta_y_steepest_edge,
+                                         phase2_work_estimate);
 #ifdef STEEPEST_EDGE_DEBUG
     if (steepest_edge_status == -1) {
       settings.log.printf("Num updates %d\n", ft.num_updates());

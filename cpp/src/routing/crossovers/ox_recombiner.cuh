@@ -349,8 +349,7 @@ struct OX {
     std::vector<std::tuple<int, std::vector<uint32_t>>> tmp_routes;
     std::unordered_set<int> routes_to_remove;
     std::unordered_set<int> vehicle_ids_to_remove;
-    const auto& dimensions_info = A.problem->dimensions_info;
-    int i                       = routes_number;
+    int i = routes_number;
     if (optimal_routes_search) { i = optimal_routes_number; }
     int end_index = offspring.size() - 1;
     [[maybe_unused]] double cost_n, cost_p, total_delta = 0.;
@@ -420,9 +419,6 @@ struct OX {
     A.remove_routes(std::vector(routes_to_remove.begin(), routes_to_remove.end()));
 
     std::vector<NodeInfo<>> tmp_node_info;
-    auto vehicle_ids_to_remove_vec =
-      std::vector(vehicle_ids_to_remove.begin(), vehicle_ids_to_remove.end());
-
     for (auto const& [bucket, tmp_route] : tmp_routes) {
       for (auto const& node : tmp_route) {
         tmp_node_info.push_back(A.problem->get_node_info_of_node(node));
@@ -645,7 +641,6 @@ struct OX {
     d_path_cost.resize((problem_size + 1) * row_size, A.sol.sol_handle->get_stream());
     d_predecessor.resize((problem_size + 1) * row_size, A.sol.sol_handle->get_stream());
     d_predecessor_vehicle.resize((problem_size + 1) * row_size, A.sol.sol_handle->get_stream());
-    auto max_val = std::numeric_limits<int>::max();
     async_fill(d_path_cost, std::numeric_limits<double>::max(), A.sol.sol_handle->get_stream());
     async_fill(d_predecessor, -1, A.sol.sol_handle->get_stream());
     async_fill(d_predecessor_vehicle, -1, A.sol.sol_handle->get_stream());
@@ -658,8 +653,6 @@ struct OX {
     constexpr auto const TPB     = 128;
     auto min_cost_of_last_column = std::numeric_limits<double>::max();
     auto cost_of_last_column     = std::numeric_limits<double>::max();
-    const auto& dimensions_info  = A.problem->dimensions_info;
-
     cuopt::device_copy(
       d_vehicle_availability, vehicle_availability, A.sol.sol_handle->get_stream());
 

@@ -37,7 +37,7 @@ i_t basis_update_t<i_t, f_t>::b_solve(const std::vector<f_t>& rhs,
                                       std::vector<f_t>& Lsol) const
 {
   raft::common::nvtx::range scope("LU::b_solve");
-  const i_t m = L0_.m;
+  [[maybe_unused]] const i_t m = L0_.m;
   assert(row_permutation_.size() == m);
   assert(rhs.size() == m);
   assert(solution.size() == m);
@@ -62,7 +62,7 @@ i_t basis_update_t<i_t, f_t>::b_solve(const sparse_vector_t<i_t, f_t>& rhs,
                                       sparse_vector_t<i_t, f_t>& solution,
                                       sparse_vector_t<i_t, f_t>& Lsol) const
 {
-  const i_t m = L0_.m;
+  [[maybe_unused]] const i_t m = L0_.m;
   assert(row_permutation_.size() == m);
   assert(rhs.n == m);
   assert(solution.n == m);
@@ -100,7 +100,7 @@ i_t basis_update_t<i_t, f_t>::b_transpose_solve(const std::vector<f_t>& rhs,
   // 2. Solve L'*w = r for w
   // 3. Compute y = P'*w
 
-  const i_t m = L0_.m;
+  [[maybe_unused]] const i_t m = L0_.m;
   assert(rhs.size() == m);
   assert(row_permutation_.size() == m);
   assert(solution.size() == m);
@@ -132,7 +132,7 @@ i_t basis_update_t<i_t, f_t>::b_transpose_solve(const sparse_vector_t<i_t, f_t>&
   // 2. Solve L'*w = r for w
   // 3. Compute y = P'*w
 
-  const i_t m = L0_.m;
+  [[maybe_unused]] const i_t m = L0_.m;
   assert(rhs.n == m);
   assert(solution.n == m);
 
@@ -274,7 +274,7 @@ i_t basis_update_t<i_t, f_t>::l_solve(sparse_vector_t<i_t, f_t>& rhs) const
 
   // First solve
   // L0*x0 = b
-  const i_t m = L0_.m;
+  [[maybe_unused]] const i_t m = L0_.m;
 
   f_t work_estimate = 0;
   i_t top           = sparse_triangle_solve<i_t, f_t, true>(
@@ -360,7 +360,7 @@ i_t basis_update_t<i_t, f_t>::l_transpose_solve(std::vector<f_t>& rhs) const
   // L' = Rk^{-T} * Rk-1^{-T} * ... * R2^{-T} * R1^{-T} * L0^T
   // L'*y = c
   // Rk^{-T}* Rk-1^{-T} * ... * R2^{-T} * R1^{-T} * L0^T * y = c
-  const i_t m = L0_.m;
+  [[maybe_unused]] const i_t m = L0_.m;
   for (i_t k = num_updates_ - 1; k >= 0; --k) {
     const i_t r = pivot_indices_[k];
     assert(r < m);
@@ -554,7 +554,7 @@ i_t basis_update_t<i_t, f_t>::u_solve(std::vector<f_t>& x) const
   // 1. Compute bprime = Q'*b
   // 2. Solve for y such that U*y = bprime
   // 3. Compute Q*y = x
-  const i_t m = U_.m;
+  [[maybe_unused]] const i_t m = U_.m;
   std::vector<f_t> bprime(m);
   inverse_permute_vector(col_permutation_, x, bprime);
 
@@ -625,7 +625,7 @@ i_t basis_update_t<i_t, f_t>::u_transpose_solve(sparse_vector_t<i_t, f_t>& rhs) 
   // 1. Compute bprime = Q'*b
   // 2. Solve for y such that U'*y = bprime
   // 3. Compute Q*y = x
-  const i_t m = U_.m;
+  [[maybe_unused]] const i_t m = U_.m;
   sparse_vector_t<i_t, f_t> bprime(1, 0);
 #ifdef CHECK_PERMUTATION
   std::vector<f_t> rhs_dense(m);
@@ -1278,8 +1278,8 @@ i_t basis_update_mpf_t<i_t, f_t>::append_cuts(const csr_matrix_t<i_t, f_t>& cuts
   i_t L_nz = L0_.col_start[m];
   csc_matrix_t<i_t, f_t> new_L(m + cuts_basic.m, m + cuts_basic.m, L_nz + V_nz + cuts_basic.m);
   work_estimate_ += (L_nz + V_nz + cuts_basic.m) + (m + cuts_basic.m);
-  i_t predicted_nz = L_nz + V_nz + cuts_basic.m;
-  L_nz             = 0;
+  [[maybe_unused]] i_t predicted_nz = L_nz + V_nz + cuts_basic.m;
+  L_nz                              = 0;
   for (i_t j = 0; j < m; ++j) {
     new_L.col_start[j]  = L_nz;
     const i_t col_start = L0_.col_start[j];
@@ -1355,7 +1355,7 @@ template <typename i_t, typename f_t>
 void basis_update_mpf_t<i_t, f_t>::gather_into_sparse_vector(i_t nz,
                                                              sparse_vector_t<i_t, f_t>& out) const
 {
-  const i_t m = L0_.m;
+  [[maybe_unused]] const i_t m = L0_.m;
   out.i.clear();
   out.x.clear();
   out.i.reserve(nz);
@@ -1379,8 +1379,8 @@ void basis_update_mpf_t<i_t, f_t>::gather_into_sparse_vector(i_t nz,
 template <typename i_t, typename f_t>
 void basis_update_mpf_t<i_t, f_t>::solve_to_workspace(i_t top) const
 {
-  const i_t m = L0_.m;
-  i_t nz      = 0;
+  [[maybe_unused]] const i_t m = L0_.m;
+  i_t nz                       = 0;
   for (i_t p = top; p < m; ++p) {
     const i_t i           = xi_workspace_[p];
     xi_workspace_[m + nz] = i;
@@ -1425,7 +1425,7 @@ void basis_update_mpf_t<i_t, f_t>::solve_to_sparse_vector(i_t top,
 template <typename i_t, typename f_t>
 i_t basis_update_mpf_t<i_t, f_t>::scatter_into_workspace(const sparse_vector_t<i_t, f_t>& in) const
 {
-  const i_t m = L0_.m;
+  [[maybe_unused]] const i_t m = L0_.m;
   // scatter pattern into xi_workspace_
   i_t nz = in.i.size();
   for (i_t k = 0; k < nz; ++k) {
@@ -1565,7 +1565,7 @@ i_t basis_update_mpf_t<i_t, f_t>::b_transpose_solve(const std::vector<f_t>& rhs,
                                                     std::vector<f_t>& solution,
                                                     std::vector<f_t>& UTsol) const
 {
-  const i_t m = L0_.m;
+  [[maybe_unused]] const i_t m = L0_.m;
   // P*B = L*U
   // B'*P' = U'*L'
   // We want to solve
@@ -1736,7 +1736,7 @@ template <typename i_t, typename f_t>
 i_t basis_update_mpf_t<i_t, f_t>::l_transpose_solve(sparse_vector_t<i_t, f_t>& rhs) const
 {
   total_sparse_L_transpose_++;
-  const i_t m = L0_.m;
+  [[maybe_unused]] const i_t m = L0_.m;
   // L'*x = b
   // L0^T * x = T_0^-T * T_1^-T * ... * T_{num_updates_ - 1}^-T * b = b'
 
@@ -1826,7 +1826,7 @@ template <typename i_t, typename f_t>
 i_t basis_update_mpf_t<i_t, f_t>::b_solve(const std::vector<f_t>& rhs,
                                           std::vector<f_t>& solution) const
 {
-  const i_t m = L0_.m;
+  [[maybe_unused]] const i_t m = L0_.m;
   std::vector<f_t> Lsol(m);
   work_estimate_ += m;
   return b_solve(rhs, solution, Lsol);
@@ -1839,7 +1839,7 @@ i_t basis_update_mpf_t<i_t, f_t>::b_solve(const std::vector<f_t>& rhs,
                                           std::vector<f_t>& Lsol,
                                           bool need_Lsol) const
 {
-  const i_t m = L0_.m;
+  [[maybe_unused]] const i_t m = L0_.m;
   // P*B = L*U
   // B*x = b
   // P*B*x = P*b
@@ -1895,8 +1895,8 @@ i_t basis_update_mpf_t<i_t, f_t>::b_solve(const sparse_vector_t<i_t, f_t>& rhs,
                                           sparse_vector_t<i_t, f_t>& Lsol,
                                           bool need_Lsol) const
 {
-  const i_t m = L0_.m;
-  solution    = rhs;
+  [[maybe_unused]] const i_t m = L0_.m;
+  solution                     = rhs;
   work_estimate_ += 2 * rhs.i.size();
   solution.inverse_permute_vector(inverse_row_permutation_);
   work_estimate_ += 3 * rhs.i.size();
@@ -1989,7 +1989,7 @@ template <typename i_t, typename f_t>
 i_t basis_update_mpf_t<i_t, f_t>::u_solve(std::vector<f_t>& rhs) const
 {
   total_dense_U_++;
-  const i_t m = L0_.m;
+  [[maybe_unused]] const i_t m = L0_.m;
   // U*x = y
   simplex::upper_triangular_solve(U0_, rhs, work_estimate_);
   return 0;
@@ -1999,7 +1999,7 @@ template <typename i_t, typename f_t>
 i_t basis_update_mpf_t<i_t, f_t>::u_solve(sparse_vector_t<i_t, f_t>& rhs) const
 {
   total_sparse_U_++;
-  const i_t m = L0_.m;
+  [[maybe_unused]] const i_t m = L0_.m;
   // U*x = y
 
   // Solve U0*x = y
@@ -2014,7 +2014,7 @@ template <typename i_t, typename f_t>
 i_t basis_update_mpf_t<i_t, f_t>::l_solve(std::vector<f_t>& rhs) const
 {
   total_dense_L_++;
-  const i_t m = L0_.m;
+  [[maybe_unused]] const i_t m = L0_.m;
   // L*x = y
   // L0 * T0 * T1 * ... * T_{num_updates_ - 1} * x = y
 
@@ -2112,15 +2112,15 @@ i_t basis_update_mpf_t<i_t, f_t>::update(const std::vector<f_t>& utilde,
                                          const std::vector<f_t>& etilde,
                                          i_t leaving_index)
 {
-  const i_t m = L0_.m;
+  [[maybe_unused]] const i_t m = L0_.m;
 #ifdef PRINT_NUM_UPDATES
   printf("Update: num_updates_ %d\n", num_updates_);
 #endif
 
   // We are going to create a new matrix T = I + u*v^T
-  const i_t col_start = U0_.col_start[leaving_index];
-  const i_t col_end   = U0_.col_start[leaving_index + 1];
-  std::vector<f_t> u  = utilde;
+  [[maybe_unused]] const i_t col_start = U0_.col_start[leaving_index];
+  [[maybe_unused]] const i_t col_end   = U0_.col_start[leaving_index + 1];
+  std::vector<f_t> u                   = utilde;
   work_estimate_ += 2 * utilde.size();
   // u = utilde - U0(:, leaving_index)
   add_sparse_column(U0_, leaving_index, -1.0, u);
@@ -2138,7 +2138,7 @@ i_t basis_update_mpf_t<i_t, f_t>::update(const std::vector<f_t>& utilde,
   printf("Update: S_start %d S_nz %d num updates %d S.n %d\n", S_start, S_nz, num_updates_, S_.n);
 #endif
 
-  i_t S_nz_start = S_nz;
+  [[maybe_unused]] i_t S_nz_start = S_nz;
 
   // Scatter u into S
   S_.append_column(u);
@@ -2263,9 +2263,9 @@ void basis_update_mpf_t<i_t, f_t>::l_multiply(std::vector<f_t>& inout) const
   for (i_t k = num_updates_ - 1; k >= 0; --k) {
     // T_k = ( I + u v^T)
     // T_k * b = b + u * (v^T * b) = b + theta * u, theta = v^T b
-    const i_t u_col = 2 * k;
-    const i_t v_col = 2 * k + 1;
-    const f_t mu    = mu_values_[k];
+    const i_t u_col               = 2 * k;
+    const i_t v_col               = 2 * k + 1;
+    [[maybe_unused]] const f_t mu = mu_values_[k];
 
     // dot = v^T b
     f_t dot         = dot_product(v_col, inout);
@@ -2288,9 +2288,9 @@ void basis_update_mpf_t<i_t, f_t>::l_transpose_multiply(std::vector<f_t>& inout)
 
   const f_t zero_tol = 1e-13;
   for (i_t k = 0; k < num_updates_; ++k) {
-    const i_t u_col = 2 * k;
-    const i_t v_col = 2 * k + 1;
-    const f_t mu    = mu_values_[k];
+    const i_t u_col               = 2 * k;
+    const i_t v_col               = 2 * k + 1;
+    [[maybe_unused]] const f_t mu = mu_values_[k];
 
     // T_k = ( I + u v^T)
     // T_k^T = ( I + v u^T)

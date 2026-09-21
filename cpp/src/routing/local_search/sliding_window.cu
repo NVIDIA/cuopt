@@ -694,9 +694,8 @@ __global__ void kernel_perform_sliding_window(
   extern __shared__ i_t shmem[];
   // Each block handles a different starting point for the window
   // +1 to skip depot
-  const bool depot_included = solution.problem.order_info.depot_included;
-  const i_t node_idx        = blockIdx.x / blocks_per_node;
-  const auto node_info      = move_candidates.nodes_to_search.sampled_nodes_to_search[node_idx];
+  const i_t node_idx   = blockIdx.x / blocks_per_node;
+  const auto node_info = move_candidates.nodes_to_search.sampled_nodes_to_search[node_idx];
 
   cuopt_assert(node_info.node() <
                  solution.get_num_orders() + solution.n_routes * after_depot_insertion_multiplier,

@@ -292,8 +292,10 @@ static int compute_max_thread(
 }
 
 std::pair<std::vector<std::unique_ptr<solver_ret_t>>, double> solve_batch_remote(
-  std::vector<cuopt::mathematical_optimization::io::data_model_view_t<int, double>*> data_models,
-  cuopt::mathematical_optimization::solver_settings_t<int, double>* solver_settings)
+  [[maybe_unused]] std::vector<
+    cuopt::mathematical_optimization::io::data_model_view_t<int, double>*> data_models,
+  [[maybe_unused]] cuopt::mathematical_optimization::solver_settings_t<int, double>*
+    solver_settings)
 {
   cuopt_expects(
     false,
@@ -325,7 +327,7 @@ std::pair<std::vector<std::unique_ptr<solver_ret_t>>, double> call_batch_solve(
   auto start_solver = std::chrono::high_resolution_clock::now();
 
   // Limit parallelism as too much stream overlap gets too slow
-  const int max_thread = compute_max_thread(data_models);
+  [[maybe_unused]] const int max_thread = compute_max_thread(data_models);
 
   if (solver_settings->get_parameter<int>(CUOPT_METHOD) == CUOPT_METHOD_CONCURRENT) {
     CUOPT_LOG_INFO("Concurrent mode not supported for batch solve. Using PDLP instead. ");

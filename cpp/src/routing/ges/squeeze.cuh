@@ -28,10 +28,9 @@ __device__ void find_squeeze_pos(typename solution_t<i_t, f_t, REQUEST>::view_t&
 {
   __shared__ double reduction_buf[2 * raft::WarpSize];
   __shared__ i_t reduction_idx;
-  const auto& dimensions_info = solution.problem.dimensions_info;
-  auto request_node           = solution.get_request(request);
-  auto gl_route               = solution.routes[route_id];
-  auto sh_route               = route_t<i_t, f_t, REQUEST>::view_t::create_shared_route(
+  auto request_node = solution.get_request(request);
+  auto gl_route     = solution.routes[route_id];
+  auto sh_route     = route_t<i_t, f_t, REQUEST>::view_t::create_shared_route(
     shmem, gl_route, gl_route.get_num_nodes());
   __syncthreads();
   sh_route.copy_from(gl_route);

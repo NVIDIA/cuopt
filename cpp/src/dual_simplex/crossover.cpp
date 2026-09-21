@@ -35,7 +35,7 @@ crossover_status_t return_to_status(int status)
 }
 
 template <typename i_t, typename f_t>
-void verify_basis(i_t m, i_t n, const std::vector<variable_status_t>& vstatus)
+void verify_basis([[maybe_unused]] i_t m, i_t n, const std::vector<variable_status_t>& vstatus)
 {
   i_t num_basic      = 0;
   i_t num_nonbasic   = 0;
@@ -64,14 +64,14 @@ void compare_vstatus_with_lists(i_t m,
                                 i_t n,
                                 const std::vector<i_t>& basic_list,
                                 const std::vector<i_t>& nonbasic_list,
-                                const std::vector<variable_status_t>& vstatus)
+                                [[maybe_unused]] const std::vector<variable_status_t>& vstatus)
 {
   for (i_t k = 0; k < m; ++k) {
-    const i_t j = basic_list[k];
+    [[maybe_unused]] const i_t j = basic_list[k];
     assert(vstatus[j] == variable_status_t::BASIC);
   }
   for (i_t k = 0; k < std::min(static_cast<i_t>(nonbasic_list.size()), n - m); ++k) {
-    const i_t j = nonbasic_list[k];
+    [[maybe_unused]] const i_t j = nonbasic_list[k];
     assert(vstatus[j] == variable_status_t::NONBASIC_LOWER ||
            vstatus[j] == variable_status_t::NONBASIC_UPPER ||
            vstatus[j] == variable_status_t::NONBASIC_FREE ||
@@ -86,16 +86,16 @@ f_t dual_infeasibility(const lp_problem_t<i_t, f_t>& lp,
                        const std::vector<f_t>& z)
 {
   raft::common::nvtx::range scope("DualSimplex::dual_infeasibility");
-  const i_t n             = lp.num_cols;
-  const i_t m             = lp.num_rows;
-  i_t num_infeasible      = 0;
-  f_t sum_infeasible      = 0.0;
-  constexpr f_t tight_tol = 1e-6;
-  i_t lower_bound_inf     = 0;
-  i_t upper_bound_inf     = 0;
-  i_t free_inf            = 0;
-  i_t non_basic_lower_inf = 0;
-  i_t non_basic_upper_inf = 0;
+  const i_t n                  = lp.num_cols;
+  [[maybe_unused]] const i_t m = lp.num_rows;
+  i_t num_infeasible           = 0;
+  f_t sum_infeasible           = 0.0;
+  constexpr f_t tight_tol      = 1e-6;
+  i_t lower_bound_inf          = 0;
+  i_t upper_bound_inf          = 0;
+  i_t free_inf                 = 0;
+  i_t non_basic_lower_inf      = 0;
+  i_t non_basic_upper_inf      = 0;
 
   for (i_t j = 0; j < n; ++j) {
     if (vstatus[j] == variable_status_t::NONBASIC_FIXED) {
@@ -697,8 +697,6 @@ f_t primal_ratio_test(const lp_problem_t<i_t, f_t>& lp,
                       i_t& basic_leaving_index,
                       i_t& bound)
 {
-  const i_t m             = lp.num_rows;
-  const i_t n             = lp.num_cols;
   f_t step_length         = 1.0;
   constexpr f_t pivot_tol = 1e-9;
   for (i_t k = 0; k < delta_xB.i.size(); ++k) {
@@ -754,7 +752,6 @@ i_t primal_push(const lp_problem_t<i_t, f_t>& lp,
   settings.log.debug("Primal push: superbasic %ld\n", superbasic_list.size());
 
   std::vector<f_t>& x = solution.x;
-  std::vector<f_t>& y = solution.y;
   std::vector<f_t>& z = solution.z;
 
   f_t last_print_time         = tic();
@@ -1281,8 +1278,6 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
   constexpr f_t basis_threshold = 1e-6;
   for (i_t j = 0; j < n; ++j) {
     if (vstatus[j] != variable_status_t::BASIC) {
-      const f_t lower_bound_slack = initial_solution.x[j] - lp.lower[j];
-      const f_t upper_bound_slack = lp.upper[j] - initial_solution.x[j];
       if (std::abs(lp.lower[j] - lp.upper[j]) < fixed_tolerance) {
         vstatus[j] = variable_status_t::NONBASIC_FIXED;
       } else if (solution.z[j] > -basis_threshold && lp.lower[j] > -inf) {
@@ -1406,7 +1401,6 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
 
   f_t primal_infeas = primal_infeasibility(lp, settings, vstatus, solution.x);
   f_t dual_infeas   = dual_infeasibility(lp, settings, vstatus, solution.z);
-  f_t obj           = compute_objective(lp, solution.x);
   f_t primal_res    = primal_residual(lp, solution);
   f_t dual_res      = dual_residual(lp, solution);
 

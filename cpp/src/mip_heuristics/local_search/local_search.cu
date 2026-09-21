@@ -202,7 +202,7 @@ void local_search_t<i_t, f_t>::start_cpufj_deterministic(mip::branch_and_bound_t
 
   // Set up callback to send solutions to B&B with work unit timestamps
   deterministic_cpu_fj->improvement_callback =
-    [&bb](f_t obj, const std::vector<f_t>& h_vec, double work_units) {
+    [&bb]([[maybe_unused]] f_t obj, const std::vector<f_t>& h_vec, double work_units) {
       bb.queue_external_solution_deterministic(h_vec, work_units);
     };
 
@@ -680,8 +680,6 @@ void local_search_t<i_t, f_t>::reset_alpha_and_save_solution(
   solution_t<i_t, f_t>& solution,
   problem_t<i_t, f_t>* old_problem_ptr,
   population_t<i_t, f_t>* population_ptr,
-  i_t i,
-  i_t last_improved_iteration,
   rmm::device_uvector<f_t>& best_solution,
   f_t& best_objective)
 {
@@ -715,7 +713,6 @@ void local_search_t<i_t, f_t>::reset_alpha_and_save_solution(
 template <typename i_t, typename f_t>
 void local_search_t<i_t, f_t>::reset_alpha_and_run_recombiners(
   solution_t<i_t, f_t>& solution,
-  problem_t<i_t, f_t>* old_problem_ptr,
   population_t<i_t, f_t>* population_ptr,
   i_t i,
   i_t last_improved_iteration,
@@ -795,13 +792,8 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
     if (is_feasible) {
       CUOPT_LOG_DEBUG("Found feasible in FP with obj %f. Continue with FJ!",
                       solution.get_objective());
-      reset_alpha_and_save_solution(solution,
-                                    old_problem_ptr,
-                                    population_ptr,
-                                    i,
-                                    last_improved_iteration,
-                                    best_solution,
-                                    best_objective);
+      reset_alpha_and_save_solution(
+        solution, old_problem_ptr, population_ptr, best_solution, best_objective);
       last_improved_iteration = i;
     }
     // if not feasible, it means it is a cycle
@@ -819,22 +811,12 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
       if (is_feasible) {
         CUOPT_LOG_DEBUG("Found feasible during restart with obj %f. Continue with FJ!",
                         solution.get_objective());
-        reset_alpha_and_save_solution(solution,
-                                      old_problem_ptr,
-                                      population_ptr,
-                                      i,
-                                      last_improved_iteration,
-                                      best_solution,
-                                      best_objective);
+        reset_alpha_and_save_solution(
+          solution, old_problem_ptr, population_ptr, best_solution, best_objective);
         last_improved_iteration = i;
       } else {
-        reset_alpha_and_run_recombiners(solution,
-                                        old_problem_ptr,
-                                        population_ptr,
-                                        i,
-                                        last_improved_iteration,
-                                        best_solution,
-                                        best_objective);
+        reset_alpha_and_run_recombiners(
+          solution, population_ptr, i, last_improved_iteration, best_solution, best_objective);
       }
     }
   }

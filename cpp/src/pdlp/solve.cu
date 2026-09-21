@@ -859,15 +859,13 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(mip::problem_t<i_t, f_t>& pro
                 "Single-precision PDLP is not supported in batch mode.");
 
   auto start_solver = std::chrono::high_resolution_clock::now();
-  timer_t timer_pdlp(timer.remaining_time());
-  auto sol = run_pdlp_solver(problem, settings, timer, is_batch_mode);
+  auto sol          = run_pdlp_solver(problem, settings, timer, is_batch_mode);
   // Negate dual variables and reduced costs for maximization problems
   if (problem.maximize) {
     adjust_dual_solution_and_reduced_cost(
       sol.get_dual_solution(), sol.get_reduced_cost(), problem.handle_ptr->get_stream());
     problem.handle_ptr->sync_stream();
   }
-  auto pdlp_solve_time = timer_pdlp.elapsed_time();
   sol.set_solve_time(timer.elapsed_time());
   CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "PDLP finished");
   if (sol.get_termination_status() != pdlp_termination_status_t::ConcurrentLimit) {
@@ -1285,8 +1283,8 @@ static size_t max_memory_batch_size(const optimization_problem_t<i_t, f_t>& prob
 {
   size_t st_free_mem, st_total_mem;
   RAFT_CUDA_TRY(cudaMemGetInfo(&st_free_mem, &st_total_mem));
-  const double free_mem  = static_cast<double>(st_free_mem);
-  const double total_mem = static_cast<double>(st_total_mem);
+  const double free_mem                   = static_cast<double>(st_free_mem);
+  [[maybe_unused]] const double total_mem = static_cast<double>(st_total_mem);
 
   while (memory_max_batch_size > 0) {
     const double mem_est = batch_pdlp_memory_estimator(problem,
@@ -1353,8 +1351,8 @@ static optimization_problem_solution_t<i_t, f_t> run_batch_pdlp_splitting(
                                 collect_solutions);
   size_t st_free_mem, st_total_mem;
   RAFT_CUDA_TRY(cudaMemGetInfo(&st_free_mem, &st_total_mem));
-  const double free_mem  = static_cast<double>(st_free_mem);
-  const double total_mem = static_cast<double>(st_total_mem);
+  const double free_mem                   = static_cast<double>(st_free_mem);
+  [[maybe_unused]] const double total_mem = static_cast<double>(st_total_mem);
 
 #ifdef BATCH_VERBOSE_MODE
   std::cout << "Memory estimate: " << memory_estimate << std::endl;
@@ -1571,8 +1569,6 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   bool is_batch_mode)
 {
   CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "Running concurrent (showing only PDLP log)\n");
-  timer_t timer_concurrent(timer.remaining_time());
-
   // Copy the settings so that we can set the concurrent halt pointer
   pdlp_solver_settings_t<i_t, f_t> settings_pdlp(settings);
 
@@ -1717,7 +1713,8 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
     dispatch_concurrent_solvers();
   } else {
     // Stand-alone LP: stand up a local team sized for 1 dispatcher + 1 per spawned task.
-    const int num_workers = 1 + (settings.inside_mip ? 0 : 1) + (enable_barrier ? 1 : 0);
+    [[maybe_unused]] const int num_workers =
+      1 + (settings.inside_mip ? 0 : 1) + (enable_barrier ? 1 : 0);
 #pragma omp parallel num_threads(num_workers) default(shared)
     {
 #pragma omp single

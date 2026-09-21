@@ -1025,9 +1025,8 @@ struct solve {
     bool improved = true;
 
     while (improved) {
-      int k                 = max_iterations_without_improvement;
-      improved              = false;
-      double quality_before = p.best_quality();
+      int k    = max_iterations_without_improvement;
+      improved = false;
       while (k-- > 0) {
         fflush(f.file_ptr);
         if (improvement_timer.check_time_limit()) return;
@@ -1125,8 +1124,6 @@ struct solve {
       if (recombine_options.size() == 0) { return false; }
     }
     std::uniform_int_distribution<int> dist(0, recombine_options.size() - 1);
-
-    const auto& dimensions_info = a.problem->dimensions_info;
 
     // Pick a random element from set
     auto recombiner_it = std::begin(recombine_options);
@@ -1231,9 +1228,6 @@ struct solve {
       benchmark_print("Empty file!\n");
       throw std::invalid_argument("Empty file!");
     }
-    std::string s;
-    std::stringstream ss(lines[0]);
-
     std::vector<std::pair<int, std::vector<detail::NodeInfo<>>>> inst_data;
     std::set<int> added_node_ids;
     // Note that the BKS search is currently supported only for homogenous case,
@@ -1306,7 +1300,7 @@ struct solve {
       try {
         solution sol = load_solution(entry.path(), routes_number);
         solutions.emplace_back(std::move(sol));
-      } catch (const std::invalid_argument& e) {
+      } catch (const std::invalid_argument&) {
         printf("skipping file\n");
         continue;
       }
@@ -1320,7 +1314,7 @@ struct solve {
         try {
           solution sol = load_solution(entry.path(), routes_number);
           solutions.emplace_back(std::move(sol));
-        } catch (const std::invalid_argument& e) {
+        } catch (const std::invalid_argument&) {
           printf("error loading BKS file\n");
           continue;
         }

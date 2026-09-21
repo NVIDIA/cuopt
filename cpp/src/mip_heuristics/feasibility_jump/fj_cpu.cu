@@ -64,8 +64,7 @@ void finalize_fj_cpu_host_initialization(
   const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances);
 
 template <typename i_t, typename f_t, typename ArrayType>
-thrust::tuple<f_t, f_t> get_mtm_for_bound(const typename fj_t<i_t, f_t>::climber_data_t::view_t& fj,
-                                          i_t var_idx,
+thrust::tuple<f_t, f_t> get_mtm_for_bound(i_t var_idx,
                                           i_t cstr_idx,
                                           f_t cstr_coeff,
                                           f_t bound,
@@ -989,10 +988,7 @@ static void update_weights(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 }
 
 template <typename i_t, typename f_t>
-static void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
-                       i_t var_idx,
-                       f_t delta,
-                       bool localmin = false)
+static void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu, i_t var_idx, f_t delta)
 {
   timing_raii_t<i_t, f_t> timer(fj_cpu.apply_move_times);
   CPUFJ_NVTX_RANGE("CPUFJ::apply_move");
@@ -1402,14 +1398,8 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_lift_move(
         // Process each bound separately, as both are satified and may both be finite
         // otherwise range constraints aren't correctly handled
         for (auto [bound, sign] : {std::make_tuple(c_lb, -1), std::make_tuple(c_ub, 1)}) {
-          auto [delta, slack] = get_mtm_for_bound<i_t, f_t>(fj_cpu.view,
-                                                            var_idx,
-                                                            cstr_idx,
-                                                            cstr_coeff,
-                                                            bound,
-                                                            sign,
-                                                            fj_cpu.h_assignment,
-                                                            fj_cpu.h_lhs);
+          auto [delta, slack] = get_mtm_for_bound<i_t, f_t>(
+            var_idx, cstr_idx, cstr_coeff, bound, sign, fj_cpu.h_assignment, fj_cpu.h_lhs);
 
           if (cstr_coeff * sign < 0) {
             if (is_integer_var<i_t, f_t>(fj_cpu, var_idx)) delta = ceil(delta);
@@ -2007,7 +1997,7 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
     }
 
     if (score > fj_staged_score_t::zero() && !should_perturb) {
-      apply_move(*fj_cpu, move.var_idx, move.value, false);
+      apply_move(*fj_cpu, move.var_idx, move.value);
       // Track move types
       if (is_lift) fj_cpu->n_lift_moves_window++;
       if (is_mtm_viol) fj_cpu->n_mtm_viol_moves_window++;
@@ -2024,15 +2014,15 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
       two_opt_move_t two_opt_move;
       if (!should_perturb) two_opt_move = find_two_opt_move(*fj_cpu);
       if (two_opt_move.score > fj_staged_score_t::zero()) {
-        apply_move(*fj_cpu, two_opt_move.first.var_idx, two_opt_move.first.value, true);
-        apply_move(*fj_cpu, two_opt_move.second.var_idx, two_opt_move.second.value, true);
+        apply_move(*fj_cpu, two_opt_move.first.var_idx, two_opt_move.first.value);
+        apply_move(*fj_cpu, two_opt_move.second.var_idx, two_opt_move.second.value);
         fj_cpu->n_mtm_viol_moves_window += 2;
       } else {
         thrust::tie(move, score) =
           find_mtm_move_viol(*fj_cpu, 1, true);  // pick a single random violated constraint
         i_t var_idx = move.var_idx >= 0 ? move.var_idx : 0;
         f_t delta   = move.var_idx >= 0 ? move.value : 0;
-        apply_move(*fj_cpu, var_idx, delta, true);
+        apply_move(*fj_cpu, var_idx, delta);
       }
       ++local_mins;
       ++fj_cpu->n_local_minima_window;
@@ -2162,7 +2152,7 @@ void fj_cpu_worker_t<i_t, f_t>::run_async(f_t time_limit, double work_unit_limit
 {
   if (!is_initialized) return;
 
-  auto& fj_ptr = fj_cpu;
+  [[maybe_unused]] auto& fj_ptr = fj_cpu;
 #pragma omp task shared(fj_cpu, is_initialized, fj_ptr) firstprivate(time_limit, work_unit_limit) \
   priority(CUOPT_DEFAULT_TASK_PRIORITY) default(none) depend(out : fj_ptr)
   {
@@ -2186,7 +2176,7 @@ void fj_cpu_worker_t<i_t, f_t>::stop()
 
   preemption_flag = true;
 
-  auto& fj_ptr = fj_cpu;
+  [[maybe_unused]] auto& fj_ptr = fj_cpu;
 #pragma omp taskwait depend(in : fj_ptr)
   is_initialized = false;
   fj_cpu.reset();

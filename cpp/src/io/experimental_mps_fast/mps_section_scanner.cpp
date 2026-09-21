@@ -1,5 +1,5 @@
-// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights
-// reserved. SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 #include "mps_section_scanner.hpp"
 
@@ -116,8 +116,8 @@ bool mps_phase_registry_t::ready(mps_phase_kind phase) const
 
 mps_phase_range_t mps_phase_registry_t::range(mps_phase_kind phase) const
 {
-  std::size_t idx = phase_index(phase);
-  bool is_ready   = ready_[idx].load(std::memory_order_acquire);
+  std::size_t idx                = phase_index(phase);
+  [[maybe_unused]] bool is_ready = ready_[idx].load(std::memory_order_acquire);
   assert(is_ready);
   return ranges_[idx];
 }

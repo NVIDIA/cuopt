@@ -95,8 +95,19 @@ function(ConfigureTest CMAKE_TEST_NAME)
         "${CUOPT_TEST_DIR}/../src"
         "${CUOPT_TEST_DIR}/../src/io"
         "${CUOPT_TEST_DIR}"
-        "${papilo_SOURCE_DIR}/src"
-        "${papilo_BINARY_DIR}"
+    )
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+      target_include_directories(${CMAKE_TEST_NAME} PRIVATE
+          "${papilo_SOURCE_DIR}/src"
+          "${papilo_BINARY_DIR}"
+      )
+    else()
+      target_include_directories(${CMAKE_TEST_NAME} SYSTEM PRIVATE
+          "${papilo_SOURCE_DIR}/src"
+          "${papilo_BINARY_DIR}"
+      )
+    endif()
+    target_include_directories(${CMAKE_TEST_NAME} SYSTEM PRIVATE
         "${pslp_SOURCE_DIR}/include"
     )
     target_include_directories(${CMAKE_TEST_NAME} SYSTEM PRIVATE "${dejavu_SOURCE_DIR}")

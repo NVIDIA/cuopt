@@ -481,9 +481,7 @@ struct multi_gpu_engine_t {
   //   - Pock-Chambolle scaling -> same
   //   - per-shard apply_cummulative_scaling_to_problem()
   //   - global bound/objective rescaling via distributed_bound_objective_rescaling
-  void distributed_scaling(pdlp_hyper_params_t const& hyper_params,
-                           i_t n_global_vars,
-                           bool inside_mip);
+  void distributed_scaling(pdlp_hyper_params_t const& hyper_params, i_t n_global_vars);
 
   // Distributed sigma_max(A)^2 via power iteration (used to seed the initial
   // step size). Returns the square of the largest singular value of the scaled

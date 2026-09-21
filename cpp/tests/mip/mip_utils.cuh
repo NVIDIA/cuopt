@@ -14,7 +14,7 @@
 
 namespace cuopt::mathematical_optimization::test {
 
-static void test_variable_bounds(
+[[maybe_unused]] static void test_variable_bounds(
   const cuopt::mathematical_optimization::io::mps_data_model_t<int, double>& problem,
   const rmm::device_uvector<double>& solution,
   const cuopt::mathematical_optimization::mip_solver_settings_t<int, double> settings)
@@ -42,7 +42,7 @@ static void test_variable_bounds(
   EXPECT_TRUE(result);
 }
 
-static void test_variable_bounds(
+[[maybe_unused]] static void test_variable_bounds(
   const cuopt::mathematical_optimization::io::mps_data_model_t<int, double>& problem,
   const std::vector<double>& solution,
   const cuopt::mathematical_optimization::mip_solver_settings_t<int, double> settings)
@@ -70,7 +70,7 @@ static void test_variable_bounds(
 }
 
 template <typename f_t>
-static double combine_finite_abs_bounds(f_t lower, f_t upper)
+[[maybe_unused]] static double combine_finite_abs_bounds(f_t lower, f_t upper)
 {
   f_t val = f_t(0);
   if (isfinite(upper)) { val = raft::max<f_t>(val, raft::abs(upper)); }
@@ -93,7 +93,7 @@ struct violation {
   }
 };
 
-static void test_constraint_sanity_per_row(
+[[maybe_unused]] static void test_constraint_sanity_per_row(
   const cuopt::mathematical_optimization::io::mps_data_model_t<int, double>& op_problem,
   const rmm::device_uvector<double>& solution,
   double abs_tolerance,
@@ -104,8 +104,6 @@ static void test_constraint_sanity_per_row(
   const std::vector<int>& offsets                    = op_problem.get_constraint_matrix_offsets();
   const std::vector<double>& constraint_lower_bounds = op_problem.get_constraint_lower_bounds();
   const std::vector<double>& constraint_upper_bounds = op_problem.get_constraint_upper_bounds();
-  const std::vector<double>& variable_lower_bounds   = op_problem.get_variable_lower_bounds();
-  const std::vector<double>& variable_upper_bounds   = op_problem.get_variable_upper_bounds();
   std::vector<double> residual(constraint_lower_bounds.size(), 0.0);
   auto h_solution = cuopt::host_copy(solution, solution.stream());
   // CSR SpMV
@@ -127,7 +125,7 @@ static void test_constraint_sanity_per_row(
   }
 }
 
-static void test_constraint_sanity_per_row(
+[[maybe_unused]] static void test_constraint_sanity_per_row(
   const cuopt::mathematical_optimization::io::mps_data_model_t<int, double>& op_problem,
   const std::vector<double>& solution,
   double abs_tolerance,
@@ -158,7 +156,7 @@ static void test_constraint_sanity_per_row(
   }
 }
 
-static std::tuple<mip_termination_status_t, double, double> test_mps_file(
+[[maybe_unused]] static std::tuple<mip_termination_status_t, double, double> test_mps_file(
   std::string test_instance,
   double time_limit     = 1,
   bool heuristics_only  = true,

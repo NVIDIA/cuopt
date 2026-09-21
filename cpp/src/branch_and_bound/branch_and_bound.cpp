@@ -50,7 +50,7 @@
 #if SUBMIP_VERBOSE
 #define DEBUG_SUBMIP(fmt, ...) settings_.log.print_format(fmt, __VA_ARGS__);
 #else
-#define DEBUG_SUBMIP(fmt, ...)
+#define DEBUG_SUBMIP(...) CUOPT_LOG_DISABLED(__VA_ARGS__)
 #endif
 
 namespace cuopt::mathematical_optimization::mip {
@@ -868,11 +868,10 @@ void branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t, f_t>& 
     settings_.heuristic_preemption_callback();
   }
 
-  f_t user_obj         = compute_user_objective(original_lp_, upper_bound_.load());
-  f_t user_bound       = compute_user_objective(original_lp_, lower_bound);
-  f_t gap              = std::abs(user_obj - user_bound);
-  f_t gap_rel          = user_relative_gap(user_obj, user_bound);
-  bool is_maximization = original_lp_.obj_scale < 0.0;
+  f_t user_obj   = compute_user_objective(original_lp_, upper_bound_.load());
+  f_t user_bound = compute_user_objective(original_lp_, lower_bound);
+  f_t gap        = std::abs(user_obj - user_bound);
+  f_t gap_rel    = user_relative_gap(user_obj, user_bound);
 
   settings_.log.print_format("Explored {} nodes ({} simplex iterations) in {:.2f}s.",
                              exploration_stats_.nodes_explored.load(),
@@ -1342,9 +1341,9 @@ struct deterministic_diving_policy_t
     }
   }
 
-  void update_objective_estimate(mip_node_t<i_t, f_t>* node,
-                                 const std::vector<i_t>& fractional,
-                                 const std::vector<f_t>& x) override
+  void update_objective_estimate([[maybe_unused]] mip_node_t<i_t, f_t>* node,
+                                 [[maybe_unused]] const std::vector<i_t>& fractional,
+                                 [[maybe_unused]] const std::vector<f_t>& x) override
   { /* no-op */
   }
 
@@ -2410,7 +2409,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   submip_settings.set_simplex_solution_callback   = nullptr;
   submip_settings.solution_callback =
     [this, &presolver, fixrate, &submip_stats, log_prefix, worker](const std::vector<f_t>& solution,
-                                                                   f_t obj) {
+                                                                   [[maybe_unused]] f_t obj) {
       this->set_solution_from_submip(
         worker->leaf_problem, solution, presolver, submip_stats, fixrate, log_prefix);
     };
@@ -3196,13 +3195,13 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
     std::vector<f_t> crushed_root_y;
     std::vector<f_t> crushed_root_z;
 
-    f_t dual_res_inf = simplex::crush_dual_solution(original_problem_,
-                                                    original_lp_,
-                                                    new_slacks_,
-                                                    root_crossover_soln_.y,
-                                                    root_crossover_soln_.z,
-                                                    crushed_root_y,
-                                                    crushed_root_z);
+    [[maybe_unused]] f_t dual_res_inf = simplex::crush_dual_solution(original_problem_,
+                                                                     original_lp_,
+                                                                     new_slacks_,
+                                                                     root_crossover_soln_.y,
+                                                                     root_crossover_soln_.z,
+                                                                     crushed_root_y,
+                                                                     crushed_root_z);
 
     root_crossover_soln_.x = crushed_root_x;
     root_crossover_soln_.y = crushed_root_y;
@@ -4494,7 +4493,7 @@ void branch_and_bound_t<i_t, f_t>::run_deterministic_bfs_loop(
       bool is_child                     = (node->parent == worker.last_solved_node);
       worker.recompute_bounds_and_basis = !is_child;
 
-      node_status_t status    = solve_node_deterministic(worker, node, search_tree);
+      solve_node_deterministic(worker, node, search_tree);
       worker.last_solved_node = node;
 
       worker.current_node = nullptr;
@@ -4793,11 +4792,6 @@ void branch_and_bound_t<i_t, f_t>::deterministic_process_worker_solutions(
 
   for (const auto* sol : all_solutions) {
     if (sol->objective < current_upper) {
-      f_t user_obj         = compute_user_objective(original_lp_, sol->objective);
-      f_t user_lower       = compute_user_objective(original_lp_, deterministic_lower);
-      i_t nodes_explored   = exploration_stats_.nodes_explored.load();
-      i_t nodes_unexplored = exploration_stats_.nodes_unexplored.load();
-
       search_strategy_t worker_type = get_worker_type(pool, sol->worker_id);
       report(original_lp_,
              feasible_solution_symbol(worker_type, settings_.diving_settings.show_type),

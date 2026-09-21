@@ -2510,7 +2510,6 @@ TEST(pdlp_class, simple_batch_different_objectives_and_offsets)
   solver_settings.method    = cuopt::mathematical_optimization::method_t::PDLP;
   solver_settings.presolver = presolver_t::None;
 
-  const int n_vars         = op_problem.get_n_variables();
   const auto& original_obj = op_problem.get_objective_coefficients();
 
   // Two climbers: (original_obj, offset=3.5) and (2x objective, offset=-7.0)
@@ -2568,7 +2567,6 @@ TEST(pdlp_class, simple_batch_different_constraint_bounds)
   solver_settings.method    = cuopt::mathematical_optimization::method_t::PDLP;
   solver_settings.presolver = presolver_t::None;
 
-  const int n_constrs               = op_problem.get_n_constraints();
   const auto& original_lower_bounds = op_problem.get_constraint_lower_bounds();
   const auto& original_upper_bounds = op_problem.get_constraint_upper_bounds();
 
@@ -2636,8 +2634,7 @@ TEST(pdlp_class, simple_batch_everything_different)
   solver_settings.method    = cuopt::mathematical_optimization::method_t::PDLP;
   solver_settings.presolver = presolver_t::None;
 
-  const int n_vars    = op_problem.get_n_variables();
-  const int n_constrs = op_problem.get_n_constraints();
+  const int n_vars = op_problem.get_n_variables();
 
   const auto& original_obj          = op_problem.get_objective_coefficients();
   const auto& original_lower_bounds = op_problem.get_constraint_lower_bounds();
@@ -3088,9 +3085,6 @@ TEST(pdlp_class, DISABLED_cupdlpx_infeasible_detection_batch_afiro_new_bounds)
   EXPECT_EQ(solution.get_termination_status(0), pdlp_termination_status_t::PrimalInfeasible);
 
   constexpr int batch_size = 5;
-
-  const std::vector<double>& variable_lower_bounds = op_problem.get_variable_lower_bounds();
-  const std::vector<double>& variable_upper_bounds = op_problem.get_variable_upper_bounds();
 
   for (size_t i = 0; i < batch_size; i++) {
     solver_settings.new_bounds.push_back({static_cast<int>(i), 1, 7.0, 8.0});
@@ -4377,10 +4371,9 @@ TEST(pdlp_class, shared_sb_view_all_infeasible)
   cuopt::mathematical_optimization::io::mps_data_model_t<int, double> op_problem =
     cuopt::mathematical_optimization::io::read_mps<int, double>(path, true);
 
-  const std::vector<int> fractional     = {1, 2, 4};
-  const std::vector<double> root_soln_x = {0.891, 0.109, 0.636429};
-  const int n_fractional                = fractional.size();
-  const int batch_size                  = n_fractional;
+  const std::vector<int> fractional = {1, 2, 4};
+  const int n_fractional            = fractional.size();
+  const int batch_size              = n_fractional;
 
   auto solver_settings             = pdlp_solver_settings_t<int, double>{};
   solver_settings.method           = cuopt::mathematical_optimization::method_t::PDLP;
@@ -4712,8 +4705,7 @@ TEST(pdlp_class, batch_with_optimal_size_query)
   solver_settings.method    = cuopt::mathematical_optimization::method_t::PDLP;
   solver_settings.presolver = presolver_t::None;
 
-  const int n_vars    = op_problem.get_n_variables();
-  const int n_constrs = op_problem.get_n_constraints();
+  const int n_vars = op_problem.get_n_variables();
 
   const auto& original_obj = op_problem.get_objective_coefficients();
   const auto& original_lb  = op_problem.get_constraint_lower_bounds();

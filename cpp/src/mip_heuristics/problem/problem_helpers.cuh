@@ -318,7 +318,7 @@ static bool check_bounds_sanity(const mip::problem_t<i_t, f_t>& problem)
          check_constraint_bounds_sanity<i_t, f_t>(problem);
 }
 
-static void check_cusparse_status(cusparseStatus_t status)
+[[maybe_unused]] static void check_cusparse_status(cusparseStatus_t status)
 {
   if (status != CUSPARSE_STATUS_SUCCESS) {
     throw std::runtime_error("CUSPARSE error: " + std::string(cusparseGetErrorString(status)));

@@ -61,7 +61,7 @@ class request_route_t<i_t, f_t, REQUEST, std::enable_if_t<REQUEST == request_t::
     std::cout << "]\n";
   }
 
-  void resize(i_t max_nodes_per_route, bool is_tsp, cuda::stream_ref stream)
+  void resize(i_t max_nodes_per_route, [[maybe_unused]] bool is_tsp, cuda::stream_ref stream)
   {
     node_info.resize(max_nodes_per_route, stream);
     brother_info.resize(max_nodes_per_route, stream);
@@ -137,7 +137,7 @@ class request_route_t<i_t, f_t, REQUEST, std::enable_if_t<REQUEST == request_t::
    * @param route_size
    * @return size_t
    */
-  HDI static size_t get_shared_size(i_t route_size, bool is_tsp = false)
+  HDI static size_t get_shared_size(i_t route_size, [[maybe_unused]] bool is_tsp = false)
   {
     // node, brother
     size_t byte_size = request_info_t<i_t, REQUEST>::size() * route_size * sizeof(NodeInfo<i_t>);

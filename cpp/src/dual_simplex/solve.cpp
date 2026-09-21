@@ -174,8 +174,8 @@ lp_status_t solve_linear_program_advanced(const lp_problem_t<i_t, f_t>& original
                                           work_limit_context_t* work_unit_context)
 {
   raft::common::nvtx::range scope("DualSimplex::solve_lp");
-  const i_t m = original_lp.num_rows;
-  const i_t n = original_lp.num_cols;
+  const i_t m                  = original_lp.num_rows;
+  [[maybe_unused]] const i_t n = original_lp.num_cols;
   assert(m <= n);
   std::vector<i_t> basic_list(m);
   std::vector<i_t> nonbasic_list;
@@ -416,7 +416,6 @@ lp_status_t solve_linear_program_with_barrier(
   cuopt::mathematical_optimization::barrier_cache_t* cache,
   const raft::handle_t* handle_ptr)
 {
-  lp_status_t status                                   = lp_status_t::UNSET;
   simplex_solver_settings_t<i_t, f_t> barrier_settings = settings;
 
   auto const* xf = (cache != nullptr && cache->c_dirty()) ? cache->transform() : nullptr;

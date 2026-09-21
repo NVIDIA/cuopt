@@ -237,7 +237,7 @@ class trailing_matrix_t {
       assert(row_counts_.get_elements_with_count(nz).size() >= 0);
       nsearch_start = nsearch;
       for (const i_t i : row_counts_.get_elements_with_count(nz)) {
-        const i_t rdeg = row_counts_.get_count(i);
+        [[maybe_unused]] const i_t rdeg = row_counts_.get_count(i);
         assert(rdeg == nz);
         const i_t r_start = row_start_[i];
         const i_t r_end   = row_end_[i];
@@ -1006,10 +1006,10 @@ i_t right_looking_lu_row_permutation_only(const csc_matrix_t<i_t, f_t>& A,
   // Factorize PAQ = LU, where A is m x n with m >= n, and P and Q are permutation matrices
   // We return the inverser row permutation vector pinv and the column permutation vector q
 
-  f_t factorization_start_time = tic();
-  f_t work_estimate            = 0;
-  const i_t n                  = A.n;
-  const i_t m                  = A.m;
+  f_t factorization_start_time       = tic();
+  [[maybe_unused]] f_t work_estimate = 0;
+  const i_t n                        = A.n;
+  const i_t m                        = A.m;
   assert(pinv.size() == m);
   assert(q.size() == n);
   (void)tol;  // Unused; kept for API compatibility with right_looking_lu_row_permutation_only

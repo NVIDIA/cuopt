@@ -138,7 +138,7 @@ bool local_search_t<i_t, f_t, REQUEST>::run_cross_search(solution_t<i_t, f_t, RE
 template <typename i_t, typename f_t, request_t REQUEST>
 template <request_t r_t, std::enable_if_t<r_t == request_t::PDP, bool>>
 bool local_search_t<i_t, f_t, REQUEST>::run_fast_search(solution_t<i_t, f_t, r_t>& sol,
-                                                        bool full_set)
+                                                        [[maybe_unused]] bool full_set)
 {
   raft::common::nvtx::range fun_scope("run_fast_search");
 

@@ -892,7 +892,6 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
                   offspring.get_quality(population.weights),
                   offspring.get_feasible());
   cuopt_assert(offspring.test_number_all_integer(), "All must be integers before LS");
-  bool feasibility_before = offspring.get_feasible();
   ls_config_t<i_t, f_t> ls_config;
   ls_config.best_objective_of_parents    = best_objective_of_parents;
   ls_config.at_least_one_parent_feasible = at_least_one_parent_feasible;

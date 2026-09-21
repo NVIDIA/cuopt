@@ -264,7 +264,6 @@ void load_pickup(const std::string& fileName, Route<i_t, f_t>& route)
   std::ifstream infile(fileName.c_str());
   cuopt_assert(infile.is_open(), "File cannot be opened.");
 
-  std::string str;
   long dump;
 
   infile >> route.n_vehicles;

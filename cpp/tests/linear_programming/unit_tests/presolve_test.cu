@@ -325,7 +325,6 @@ TEST(pslp_presolve, postsolve_accuracy_larger_problem)
   const auto& orig_constr_lb    = mps_data_model.get_constraint_lower_bounds();
   const auto& orig_constr_ub    = mps_data_model.get_constraint_upper_bounds();
   const int orig_n_vars         = mps_data_model.get_n_variables();
-  const int orig_n_constraints  = mps_data_model.get_n_constraints();
 
   // Solve with PSLP presolve
   auto solver_settings      = pdlp_solver_settings_t<int, double>{};
@@ -471,8 +470,7 @@ TEST(pslp_presolve, postsolve_multiple_problems)
     auto mps_data_model =
       cuopt::mathematical_optimization::io::read_mps<int, double>(path, name == "afiro_original");
 
-    const int orig_n_vars        = mps_data_model.get_n_variables();
-    const int orig_n_constraints = mps_data_model.get_n_constraints();
+    const int orig_n_vars = mps_data_model.get_n_variables();
 
     auto solver_settings      = pdlp_solver_settings_t<int, double>{};
     solver_settings.method    = cuopt::mathematical_optimization::method_t::PDLP;

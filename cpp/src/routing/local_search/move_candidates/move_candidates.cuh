@@ -201,7 +201,6 @@ class cand_matrix_t {
     {
       cuopt_assert(sink < matrix_width, "Sink should be smaller than matrix_width!");
       cuopt_assert(source < matrix_height, "Source should be smaller than matrix_height!");
-      cand_t cand;
       i_t idx = source * matrix_width + sink;
       return get_candidate(idx);
     }

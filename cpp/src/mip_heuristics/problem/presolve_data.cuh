@@ -96,7 +96,7 @@ class presolve_data_t {
     postsolve_reconstructions.clear();
   }
 
-  void reset_additional_vars(const problem_t<i_t, f_t>& problem, const raft::handle_t* handle_ptr)
+  void reset_additional_vars(const problem_t<i_t, f_t>& problem)
   {
     variable_offsets.assign(problem.n_variables, 0);
     additional_var_used.assign(problem.n_variables, false);

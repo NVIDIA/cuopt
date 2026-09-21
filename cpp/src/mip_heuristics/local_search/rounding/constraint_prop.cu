@@ -1171,7 +1171,8 @@ template <typename i_t, typename f_t>
 bool constraint_prop_t<i_t, f_t>::handle_fixed_vars(
   solution_t<i_t, f_t>& sol,
   problem_t<i_t, f_t>* original_problem,
-  const std::tuple<std::vector<i_t>, std::vector<f_t>, std::vector<f_t>>& var_probe_vals,
+  [[maybe_unused]] const std::tuple<std::vector<i_t>, std::vector<f_t>, std::vector<f_t>>&
+    var_probe_vals,
   size_t* set_count_ptr,
   rmm::device_uvector<i_t>& unset_vars)
 {
