@@ -634,6 +634,7 @@ jobs:
   build-images:
     needs:
       - build-details
+      - java-static-build
       - wheel-publish-cuopt
       - wheel-publish-cuopt-server
       - wheel-publish-cuopt-sh-client

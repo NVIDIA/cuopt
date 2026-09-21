@@ -89,14 +89,35 @@ RUN \
     && apt-get purge -y --autoremove gcc \
     && rm -rf /var/lib/apt/lists/*
 
+# A JRE for the self-contained Java classifier JAR (#1817): the JAR embeds libcuopt (statically
+# linked) and its own companion libraries, so nothing here needs to link against the
+# pip-installed libcuopt at all -- a plain runtime, not a full JDK, is enough. headless: no X11
+# dependency, matching this image having no display. Version matches
+# java/cuopt/pom.xml's maven.compiler.release.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openjdk-17-jre-headless \
+    && rm -rf /var/lib/apt/lists/*
+
 FROM install-env AS cuopt-final
 
 ARG PYTHON_SHORT_VER
+# Major CUDA version only (e.g. "13"), not the full CUDA_VER: Dockerfile ENV/ARG substitution
+# has no shell-style ${VAR%%.*} parameter expansion, so this is computed once in
+# build_images.yaml (which already needs it for the classifier JAR artifact name) and passed
+# through as its own build-arg rather than recomputed here.
+ARG CUDA_MAJOR
 
 # Make cuopt_grpc_server, cuopt_cli, and shared libraries available to all processes
 # (profile.d scripts are only sourced by login shells; ENV works for all containers)
 ENV PATH="/usr/local/cuda/bin:/usr/bin:/usr/local/bin:/usr/local/nvidia/bin/:/usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages/libcuopt/bin:${PATH}"
-ENV LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:/usr/lib/aarch64-linux-gnu:/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/lib/wsl/lib:/usr/lib/wsl/lib/libnvidia-container:/usr/lib/nvidia:/usr/lib/nvidia-current:/usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages/libcuopt/lib/:/usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages/rapids_logger/lib64:${LD_LIBRARY_PATH}"
+# .../nvidia/cu<major>/lib holds the pip-installed CUDA runtime (libcublas, libcusparse, ...)
+# this image actually ships -- there is no /usr/local/cuda/targets install here at all (a plain
+# `-base` CUDA image, not `-runtime`/`-devel`). libcuopt.so itself doesn't need this on
+# LD_LIBRARY_PATH: it carries its own $ORIGIN-relative RPATH into that same directory. The Java
+# classifier JAR's JNI library (#1817) has no such RPATH -- it was built for a RAPIDS CI image
+# where /usr/local/cuda/targets is fully populated -- so without this it fails with
+# UnsatisfiedLinkError: libcublas.so.<N>: cannot open shared object file.
+ENV LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:/usr/lib/aarch64-linux-gnu:/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/lib/wsl/lib:/usr/lib/wsl/lib/libnvidia-container:/usr/lib/nvidia:/usr/lib/nvidia-current:/usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages/libcuopt/lib/:/usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages/rapids_logger/lib64:/usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages/nvidia/cu${CUDA_MAJOR}/lib:${LD_LIBRARY_PATH}"
 
 # Directory creation, permissions
 RUN mkdir -p /opt/cuopt && \
@@ -118,6 +139,12 @@ COPY --from=cuda-libs /usr/local/cuda/lib64/libnvJitLink* /usr/local/cuda/lib64/
 
 # Copy CUDA headers needed for runtime compilation (e.g., CuPy NVRTC).
 COPY --from=cuda-headers /usr/local/cuda/include/ /usr/local/cuda/include/
+
+# The self-contained Java classifier JAR matching this image's CUDA major version and
+# architecture (see build_images.yaml, which downloads it from java-static-build before this
+# build starts). Nothing else needs installing to use it: `java -cp cuopt.jar ...` or add it as
+# a local Maven/Gradle file dependency.
+COPY ./cuopt.jar /opt/cuopt/java/cuopt.jar
 
 # Entrypoint supports server selection:
 #   Default:                  Python REST server
