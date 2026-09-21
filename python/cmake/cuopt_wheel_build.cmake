@@ -48,11 +48,6 @@ target_link_libraries(cuopt_cli PRIVATE
 
 set(rpaths
   "$ORIGIN/../lib64"
-  # The component libraries live in sibling wheels now, so a binary or library in one
-  # package resolves the others through their install directories rather than its own.
-  "$ORIGIN/../../libcuopt_client/lib64"
-  "$ORIGIN/../../libcuopt_mathopt/lib64"
-  "$ORIGIN/../../libcuopt_routing/lib64"
   "$ORIGIN/../../rapids_logger/lib64"
   "$ORIGIN/../../librmm/lib64"
   "$ORIGIN/../../nvidia/cudss/lib"
