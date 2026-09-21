@@ -595,12 +595,12 @@ template <typename i_t, typename f_t, request_t REQUEST>
 void solution_t<i_t, f_t, REQUEST>::check_cost_coherence(const infeasible_cost_t& weights)
 {
   raft::common::nvtx::range fun_scope("check_cost_coherence");
-  [[maybe_unused]] double excess_before = get_total_excess(weights);
-  [[maybe_unused]] double cost_before   = get_cost(true, weights);
+  double excess_before = get_total_excess(weights);
+  double cost_before   = get_cost(true, weights);
   compute_backward_forward();
   compute_cost();
-  [[maybe_unused]] double excess_after = get_total_excess(weights);
-  [[maybe_unused]] double cost_after   = get_cost(true, weights);
+  double excess_after = get_total_excess(weights);
+  double cost_after   = get_cost(true, weights);
   cuopt_assert(abs(excess_before - excess_after) < 0.00001, "Excess mismatch!");
   cuopt_assert(abs(cost_before - cost_after) < 0.00001, "Cost mismatch!");
 }

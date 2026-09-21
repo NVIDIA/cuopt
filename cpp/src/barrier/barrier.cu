@@ -1960,11 +1960,11 @@ class iteration_data_t {
 
   // v = alpha * A * Dinv * A^T * y + beta * v
   void gpu_adat_multiply(f_t alpha,
-                         [[maybe_unused]] const rmm::device_uvector<f_t>& y,
+                         const rmm::device_uvector<f_t>& y,
                          pdlp::cusparse_dn_vec_descr_view cusparse_y,
 
                          f_t beta,
-                         [[maybe_unused]] rmm::device_uvector<f_t>& v,
+                         rmm::device_uvector<f_t>& v,
                          pdlp::cusparse_dn_vec_descr_view cusparse_v,
                          rmm::device_uvector<f_t>& u,
                          pdlp::cusparse_dn_vec_descr_view cusparse_u,

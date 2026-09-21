@@ -31,7 +31,7 @@ template <typename i_t, typename f_t>
 struct fj_cpu_shared_incumbent_t {
   // True when the candidate beat the shared best, in which case it was stored.
   bool publish(f_t candidate_objective,
-               [[maybe_unused]] f_t candidate_user_objective,
+               f_t candidate_user_objective,
                const std::vector<f_t>& candidate)
   {
     // Unlocked reject first: the publish sites are hot on instances that improve in tiny steps.

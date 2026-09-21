@@ -12,11 +12,17 @@
 // 1) light
 // 2) medium
 // 3) heavy
-#ifdef ASSERT_MODE
-#include <cassert>
 #include <cstddef>
 
 namespace cuopt::detail {
+// Keep expressions in disabled diagnostics visible to the compiler without evaluating them.
+// constexpr functions are callable from CUDA device code with --expt-relaxed-constexpr, which is
+// enabled for cuOpt builds.
+template <typename... Ts>
+constexpr void ignore_unused(Ts&&...)
+{
+}
+
 // handle the argument processing through the C++ parser instead of the preprocessor
 // since it chokes on colons in template arguments.
 // (e.g. cuopt_assert(std::is_same_v<T, int>, "message")).
@@ -28,10 +34,16 @@ constexpr bool assert_msg(T&& cond, const char (&)[N])
 }
 }  // namespace cuopt::detail
 
+#ifdef ASSERT_MODE
+#include <cassert>
+
 #define cuopt_assert(...)    assert(::cuopt::detail::assert_msg(__VA_ARGS__))
 #define cuopt_func_call(...) __VA_ARGS__;
 #else
-#define cuopt_assert(...)
+#define cuopt_assert(...)                                       \
+  do {                                                          \
+    if (false) { ::cuopt::detail::ignore_unused(__VA_ARGS__); } \
+  } while (false)
 #define cuopt_func_call(...) ;
 #endif
 

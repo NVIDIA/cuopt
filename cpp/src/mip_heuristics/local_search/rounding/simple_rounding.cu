@@ -66,7 +66,7 @@ bool check_brute_force_rounding(solution_t<i_t, f_t>& solution)
         <<<1, TPB, 0, solution.handle_ptr->get_stream().get()>>>(
           solution.view(), n_integers_to_round, cuopt::make_span(var_map), best_config.data());
       solution.handle_ptr->sync_stream();
-      [[maybe_unused]] bool feas = solution.compute_feasibility();
+      bool feas = solution.compute_feasibility();
       cuopt_assert(feas, "Solution must be feasible!");
       return true;
     }

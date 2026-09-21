@@ -99,7 +99,7 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
                                        solution_t<i_t, f_t>& other,
                                        solution_t<i_t, f_t>& offspring,
                                        rmm::device_uvector<thrust::pair<f_t, f_t>>& probing_values,
-                                       [[maybe_unused]] i_t n_vars_from_other,
+                                       i_t n_vars_from_other,
                                        rmm::device_uvector<i_t>& variable_map)
   {
     raft::common::nvtx::range fun_scope("get_probing_values_for_feasible");

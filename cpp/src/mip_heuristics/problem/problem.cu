@@ -1704,13 +1704,12 @@ problem_t<i_t, f_t> problem_t<i_t, f_t>::get_problem_after_fixing_vars(
       handle_ptr->get_thrust_policy(), variables_to_fix.begin(), variables_to_fix.end())),
     "variables_to_fix should be sorted!");
 
-  [[maybe_unused]] i_t* result_end =
-    thrust::set_difference(handle_ptr->get_thrust_policy(),
-                           thrust::make_counting_iterator(0),
-                           thrust::make_counting_iterator(0) + n_variables,
-                           variables_to_fix.begin(),
-                           variables_to_fix.end(),
-                           variable_map.begin());
+  i_t* result_end = thrust::set_difference(handle_ptr->get_thrust_policy(),
+                                           thrust::make_counting_iterator(0),
+                                           thrust::make_counting_iterator(0) + n_variables,
+                                           variables_to_fix.begin(),
+                                           variables_to_fix.end(),
+                                           variable_map.begin());
   RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
   cuopt_assert(result_end - variable_map.data() == variable_map.size(),
                "Size issue in set_difference");

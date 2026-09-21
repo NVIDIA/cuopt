@@ -32,7 +32,7 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
   {
   }
 
-  void solution_callback(std::vector<f_t>& solution, [[maybe_unused]] f_t objective)
+  void solution_callback(std::vector<f_t>& solution, f_t objective)
   {
     CUOPT_LOG_DEBUG("SUBMIP added solution with objective %.16e", objective);
     solution_vector.push_back(solution);

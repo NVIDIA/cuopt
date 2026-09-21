@@ -385,7 +385,7 @@ static void log_regression_features(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
   i_t n_cstrs   = fj_cpu.h_offsets.size() - 1;
 
   // Dynamic runtime features
-  [[maybe_unused]] double violated_ratio = (double)fj_cpu.violated_constraints.size() / n_cstrs;
+  double violated_ratio = (double)fj_cpu.violated_constraints.size() / n_cstrs;
 
   // Compute per-iteration metrics
   [[maybe_unused]] double nnz_per_move = 0.0;
@@ -393,45 +393,44 @@ static void log_regression_features(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
     fj_cpu.n_lift_moves_window + fj_cpu.n_mtm_viol_moves_window + fj_cpu.n_mtm_sat_moves_window;
   if (total_moves > 0) { nnz_per_move = (double)fj_cpu.nnz_processed_window / total_moves; }
 
-  [[maybe_unused]] double eval_intensity = (double)fj_cpu.nnz_processed_window / 1000.0;
+  double eval_intensity = (double)fj_cpu.nnz_processed_window / 1000.0;
 
   // Cache and locality metrics
   i_t cache_hits_window    = fj_cpu.hit_count - fj_cpu.hit_count_window_start;
   i_t cache_misses_window  = fj_cpu.miss_count - fj_cpu.miss_count_window_start;
   i_t total_cache_accesses = cache_hits_window + cache_misses_window;
-  [[maybe_unused]] double cache_hit_rate =
+  double cache_hit_rate =
     total_cache_accesses > 0 ? (double)cache_hits_window / total_cache_accesses : 0.0;
 
   i_t unique_cstrs = fj_cpu.unique_cstrs_accessed_window.size();
   i_t unique_vars  = fj_cpu.unique_vars_accessed_window.size();
 
   // Reuse ratios: how many times each constraint/variable was accessed on average
-  [[maybe_unused]] double cstr_reuse_ratio =
+  double cstr_reuse_ratio =
     unique_cstrs > 0 ? (double)fj_cpu.nnz_processed_window / unique_cstrs : 0.0;
-  [[maybe_unused]] double var_reuse_ratio =
+  double var_reuse_ratio =
     unique_vars > 0 ? (double)fj_cpu.n_variable_updates_window / unique_vars : 0.0;
 
   // Working set size estimation (KB)
   // Each constraint: lhs (f_t) + 2 bounds (f_t) + sumcomp (f_t) = 4 * sizeof(f_t)
   // Each variable: assignment (f_t) = 1 * sizeof(f_t)
   i_t working_set_bytes = unique_cstrs * 4 * sizeof(f_t) + unique_vars * sizeof(f_t);
-  [[maybe_unused]] double working_set_kb = working_set_bytes / 1024.0;
+  double working_set_kb = working_set_bytes / 1024.0;
 
   // Coverage: what fraction of problem is actively touched
-  [[maybe_unused]] double cstr_coverage = (double)unique_cstrs / n_cstrs;
-  [[maybe_unused]] double var_coverage  = (double)unique_vars / n_vars;
+  double cstr_coverage = (double)unique_cstrs / n_cstrs;
+  double var_coverage  = (double)unique_vars / n_vars;
 
-  [[maybe_unused]] double loads_per_iter  = 0.0;
-  [[maybe_unused]] double stores_per_iter = 0.0;
-  [[maybe_unused]] double l1_miss         = -1.0;
-  [[maybe_unused]] double l3_miss         = -1.0;
+  double loads_per_iter  = 0.0;
+  double stores_per_iter = 0.0;
+  double l1_miss         = -1.0;
+  double l3_miss         = -1.0;
 
   // Compute memory statistics
-  [[maybe_unused]] double mem_loads_mb  = mem_loads_bytes / 1e6;
-  [[maybe_unused]] double mem_stores_mb = mem_stores_bytes / 1e6;
-  double mem_total_mb                   = (mem_loads_bytes + mem_stores_bytes) / 1e6;
-  [[maybe_unused]] double mem_bandwidth_gb_per_sec =
-    (mem_total_mb / 1000.0) / (time_window_ms / 1000.0);
+  double mem_loads_mb             = mem_loads_bytes / 1e6;
+  double mem_stores_mb            = mem_stores_bytes / 1e6;
+  double mem_total_mb             = (mem_loads_bytes + mem_stores_bytes) / 1e6;
+  double mem_bandwidth_gb_per_sec = (mem_total_mb / 1000.0) / (time_window_ms / 1000.0);
 
   // Build per-wrapper memory statistics string
   std::stringstream wrapper_stats;
@@ -1875,8 +1874,8 @@ static void sanity_checks(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 
   // Check that each constraint is in exactly one of violated_constraints or satisfied_constraints
   for (i_t cstr_idx = 0; cstr_idx < fj_cpu.view.pb.n_constraints; ++cstr_idx) {
-    [[maybe_unused]] bool in_viol = fj_cpu.violated_constraints.count(cstr_idx) > 0;
-    [[maybe_unused]] bool in_sat  = fj_cpu.satisfied_constraints.count(cstr_idx) > 0;
+    bool in_viol = fj_cpu.violated_constraints.count(cstr_idx) > 0;
+    bool in_sat  = fj_cpu.satisfied_constraints.count(cstr_idx) > 0;
     cuopt_assert(
       in_viol != in_sat,
       "Constraint must be in exactly one of violated_constraints or satisfied_constraints");
@@ -2089,8 +2088,7 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
   auto loop_end = std::chrono::high_resolution_clock::now();
   double total_time =
     std::chrono::duration_cast<std::chrono::duration<double>>(loop_end - loop_start).count();
-  [[maybe_unused]] double avg_time_per_iter =
-    fj_cpu->iterations > 0 ? total_time / fj_cpu->iterations : 0;
+  double avg_time_per_iter = fj_cpu->iterations > 0 ? total_time / fj_cpu->iterations : 0;
   CUOPT_LOG_TRACE("%sCPUFJ Average time per iteration: %.8fms",
                   fj_cpu->log_prefix.c_str(),
                   avg_time_per_iter * 1000.0);

@@ -414,8 +414,8 @@ DI void check_variable_feasibility(const typename fj_t<i_t, f_t>::climber_data_t
                                    bool check_integer)
 {
   for (i_t var_idx = threadIdx.x; var_idx < fj.pb.n_variables; var_idx += blockDim.x) {
-    auto val                       = fj.incumbent_assignment[var_idx];
-    [[maybe_unused]] bool feasible = fj.pb.check_variable_within_bounds(var_idx, val);
+    auto val      = fj.incumbent_assignment[var_idx];
+    bool feasible = fj.pb.check_variable_within_bounds(var_idx, val);
 
     cuopt_assert(feasible, "invalid variable assignment");
     if (check_integer && fj.pb.is_integer_var(var_idx))

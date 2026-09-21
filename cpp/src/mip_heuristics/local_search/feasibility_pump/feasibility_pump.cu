@@ -501,7 +501,7 @@ bool feasibility_pump_t<i_t, f_t>::run_single_fp_descent(solution_t<i_t, f_t>& s
         is_feasible = round(solution);
         cuopt_func_call(solution.test_variable_bounds(true));
         if (is_feasible) {
-          [[maybe_unused]] bool res = solution.compute_feasibility();
+          bool res = solution.compute_feasibility();
           cuopt_assert(res, "Feasibility issue");
           return true;
         }
@@ -553,7 +553,7 @@ bool feasibility_pump_t<i_t, f_t>::run_single_fp_descent(solution_t<i_t, f_t>& s
       return false;
     }
     if (is_feasible) {
-      [[maybe_unused]] bool res = solution.compute_feasibility();
+      bool res = solution.compute_feasibility();
       cuopt_assert(res, "Feasibility issue");
       return true;
     }

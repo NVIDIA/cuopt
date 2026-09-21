@@ -15,8 +15,8 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cuopt/logger_macros.hpp>
 #include <iostream>
+#include <utilities/logger.hpp>
 
 namespace cuopt::mathematical_optimization::simplex {
 

@@ -50,7 +50,7 @@
 #if SUBMIP_VERBOSE
 #define DEBUG_SUBMIP(fmt, ...) settings_.log.print_format(fmt, __VA_ARGS__);
 #else
-#define DEBUG_SUBMIP(fmt, ...)
+#define DEBUG_SUBMIP(...) CUOPT_LOG_DISABLED(__VA_ARGS__)
 #endif
 
 namespace cuopt::mathematical_optimization::mip {
@@ -2374,7 +2374,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   third_party_presolve_status_t presolver_status =
     presolver.apply_to_subproblem(submip_problem, submip_settings, presolve_time_limit, 1);
 
-  [[maybe_unused]] double presolve_time = toc(start_time);
+  double presolve_time = toc(start_time);
 
   if (presolver_status == third_party_presolve_status_t::INFEASIBLE ||
       presolver_status == third_party_presolve_status_t::UNBNDORINFEAS ||
@@ -2497,8 +2497,8 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
     submip_fj_cpu_worker.run_async(time_limit, work_limit);
   }
 
-  mip_status_t submip_status       = submip_bnb.solve(submip_solution);
-  [[maybe_unused]] f_t submip_time = toc(start_time);
+  mip_status_t submip_status = submip_bnb.solve(submip_solution);
+  f_t submip_time            = toc(start_time);
 
   DEBUG_SUBMIP(
     "{}Sub-MIP: status={}, iterations={} (total={}), presolve_time={:.2f}, total_time={:.2f} \n",

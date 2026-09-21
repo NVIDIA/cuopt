@@ -27,7 +27,7 @@
 
 namespace cuopt::mathematical_optimization::mip {
 
-[[maybe_unused]] static const char* fj_binary_reject_name(fj_binary_reject_t reason)
+static const char* fj_binary_reject_name(fj_binary_reject_t reason)
 {
   switch (reason) {
     case fj_binary_reject_t::none: return "none";
@@ -59,8 +59,8 @@ constexpr int32_t fj_bin_obj_escalate_max = 10;
 constexpr int32_t fj_bin_2opt_candidates = 64;
 
 // bounds for the components of the packed score
-[[maybe_unused]] constexpr int32_t fj_bin_base_limit  = 1 << 16;
-[[maybe_unused]] constexpr int32_t fj_bin_bonus_limit = 1 << 14;
+constexpr int32_t fj_bin_base_limit  = 1 << 16;
+constexpr int32_t fj_bin_bonus_limit = 1 << 14;
 
 // tuned values for the argmax tile
 // tile size is set relative to L1$ if available

@@ -60,9 +60,7 @@ enum class clique_cut_build_status_t : int8_t { NO_CUT = 0, CUT_ADDED = 1, INFEA
     std::fprintf(stderr, "\n");        \
     std::fflush(stderr);               \
   } while (0)
-#define CUTS_DEBUG_NOOP(...) \
-  do {                       \
-  } while (0)
+#define CUTS_DEBUG_NOOP(...) CUOPT_LOG_DISABLED(__VA_ARGS__)
 
 #if DEBUG_CLIQUE_CUTS
 #define CLIQUE_CUTS_DEBUG(...) CUTS_DEBUG_LOG("[DEBUG_CLIQUE_CUTS]", __VA_ARGS__)
@@ -77,19 +75,18 @@ enum class clique_cut_build_status_t : int8_t { NO_CUT = 0, CUT_ADDED = 1, INFEA
 #endif
 
 template <typename i_t, typename f_t>
-clique_cut_build_status_t build_clique_cut(
-  const std::vector<i_t>& clique_vertices,
-  i_t num_vars,
-  [[maybe_unused]] const std::vector<variable_type_t>& var_types,
-  [[maybe_unused]] const std::vector<f_t>& lower_bounds,
-  [[maybe_unused]] const std::vector<f_t>& upper_bounds,
-  const std::vector<f_t>& xstar,
-  [[maybe_unused]] f_t bound_tol,
-  f_t min_violation,
-  sparse_vector_t<i_t, f_t>& cut,
-  f_t& cut_rhs,
-  f_t* work_estimate,
-  f_t max_work_estimate)
+clique_cut_build_status_t build_clique_cut(const std::vector<i_t>& clique_vertices,
+                                           i_t num_vars,
+                                           const std::vector<variable_type_t>& var_types,
+                                           [[maybe_unused]] const std::vector<f_t>& lower_bounds,
+                                           [[maybe_unused]] const std::vector<f_t>& upper_bounds,
+                                           const std::vector<f_t>& xstar,
+                                           f_t bound_tol,
+                                           f_t min_violation,
+                                           sparse_vector_t<i_t, f_t>& cut,
+                                           f_t& cut_rhs,
+                                           f_t* work_estimate,
+                                           f_t max_work_estimate)
 {
   if (clique_vertices.size() < 2) { return clique_cut_build_status_t::NO_CUT; }
   const f_t clique_size = static_cast<f_t>(clique_vertices.size());
@@ -546,20 +543,19 @@ void extend_clique_vertices(std::vector<i_t>& clique_vertices,
 // are extra vertices each adjacent to every vertex in cycle_vertices. The
 // resulting cut is stored in the form a^T x >= rhs to match cut_pool_t.
 template <typename i_t, typename f_t>
-clique_cut_build_status_t build_zero_half_cut(
-  const std::vector<i_t>& cycle_vertices,
-  const std::vector<i_t>& wheel_centers,
-  i_t num_vars,
-  [[maybe_unused]] const std::vector<variable_type_t>& var_types,
-  const std::vector<f_t>& lower_bounds,
-  const std::vector<f_t>& upper_bounds,
-  const std::vector<f_t>& xstar,
-  [[maybe_unused]] f_t bound_tol,
-  f_t min_violation,
-  sparse_vector_t<i_t, f_t>& cut,
-  f_t& cut_rhs,
-  f_t* work_estimate,
-  f_t max_work_estimate)
+clique_cut_build_status_t build_zero_half_cut(const std::vector<i_t>& cycle_vertices,
+                                              const std::vector<i_t>& wheel_centers,
+                                              i_t num_vars,
+                                              const std::vector<variable_type_t>& var_types,
+                                              const std::vector<f_t>& lower_bounds,
+                                              const std::vector<f_t>& upper_bounds,
+                                              const std::vector<f_t>& xstar,
+                                              f_t bound_tol,
+                                              f_t min_violation,
+                                              sparse_vector_t<i_t, f_t>& cut,
+                                              f_t& cut_rhs,
+                                              f_t* work_estimate,
+                                              f_t max_work_estimate)
 {
   const size_t cycle_size = cycle_vertices.size();
   if (cycle_size < 5 || (cycle_size % 2) == 0) {
@@ -598,9 +594,8 @@ clique_cut_build_status_t build_zero_half_cut(
 
   f_t rhs_acc = -f_m;
 
-  auto accumulate = [&](const std::vector<i_t>& verts,
-                        f_t weight,
-                        [[maybe_unused]] bool is_cycle) -> clique_cut_build_status_t {
+  auto accumulate =
+    [&](const std::vector<i_t>& verts, f_t weight, bool is_cycle) -> clique_cut_build_status_t {
     ZERO_HALF_DEBUG("build_zero_half_cut accumulate verts.size=%zu weight=%g is_cycle=%d",
                     verts.size(),
                     static_cast<double>(weight),
@@ -610,10 +605,10 @@ clique_cut_build_status_t build_zero_half_cut(
                       static_cast<long long>(vertex_idx),
                       static_cast<long long>(2 * num_vars));
       cuopt_assert(vertex_idx >= 0 && vertex_idx < 2 * num_vars, "Zero-half vertex out of range");
-      const i_t var_idx                      = vertex_idx % num_vars;
-      const bool complement                  = vertex_idx >= num_vars;
-      [[maybe_unused]] const f_t lower_bound = lower_bounds[var_idx];
-      [[maybe_unused]] const f_t upper_bound = upper_bounds[var_idx];
+      const i_t var_idx     = vertex_idx % num_vars;
+      const bool complement = vertex_idx >= num_vars;
+      const f_t lower_bound = lower_bounds[var_idx];
+      const f_t upper_bound = upper_bounds[var_idx];
       cuopt_assert(var_types[var_idx] != variable_type_t::CONTINUOUS,
                    "Zero-half cut contains continuous variable");
       cuopt_assert(lower_bound >= -bound_tol, "Zero-half variable lower bound below zero");

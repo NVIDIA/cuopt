@@ -332,7 +332,7 @@ inline std::vector<i_t> compute_prioritized_integer_indices(
                0);
   // compute min and max activity first
   bound_presolve.calculate_activity_on_problem_bounds(problem);
-  [[maybe_unused]] bool res = bound_presolve.calculate_infeasible_redundant_constraints(problem);
+  bool res = bound_presolve.calculate_infeasible_redundant_constraints(problem);
   cuopt_assert(res, "The activity computation must be feasible during probing cache!");
   CUOPT_LOG_DEBUG("prioritized integer_indices n_integer_vars %d", problem.n_integer_vars);
   // compute the min var slack
@@ -1018,7 +1018,7 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   }  // end of step
 
   apply_substitution_queue_to_problem(substitution_vector_pool, problem);
-  [[maybe_unused]] const double probing_wall =
+  const double probing_wall =
     std::chrono::duration<double>(std::chrono::steady_clock::now() - probing_t0).count();
   CUOPT_LOG_DEBUG(
     "PRESOLVE_PROBING probes=%zu candidates=%zu iters=%.0f work=%.3f work_limit=%.3f step=%zu "

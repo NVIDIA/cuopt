@@ -552,8 +552,8 @@ struct OX {
           auto edge = tmp_transpose.indices[transpose_offset + x];
           auto veh  = tmp_transpose.buckets[transpose_offset + x];
           if (edge == ref_edge && veh == ref_veh) {
-            found                        = true;
-            [[maybe_unused]] auto weight = tmp_transpose.weights[transpose_offset + x];
+            found       = true;
+            auto weight = tmp_transpose.weights[transpose_offset + x];
             cuopt_assert(std::abs(ref_weight - weight) < 0.01, "Mismatch weights");
           }
         }
@@ -934,8 +934,8 @@ struct OX {
     for (size_t i = 0; i < graph.size(); ++i) {
       cuopt_assert(graph[i].size() == h_graph[i].size(), "Mismatch number of edges");
       for (size_t j = 0; j < graph[i].size(); ++j) {
-        [[maybe_unused]] auto [ref_edge, ref_weight, ref_veh] = graph[i][j];
-        [[maybe_unused]] auto [edge, weight, veh]             = h_graph[i][j];
+        auto [ref_edge, ref_weight, ref_veh] = graph[i][j];
+        auto [edge, weight, veh]             = h_graph[i][j];
         cuopt_assert(ref_edge == edge, "Edge mismatch");
         cuopt_assert(std::abs(ref_weight - weight) < 0.01, "Weight mismatch");
         cuopt_assert(ref_veh == veh, "Vehicle type mismatch");

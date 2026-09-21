@@ -145,8 +145,8 @@ struct adapted_sol_t {
   bool inline check_device_host_coherence_()
   {
     [[maybe_unused]] const auto copy_infeasibility_cost = infeasibility_cost;
-    [[maybe_unused]] const auto copy_succ               = succ;
-    [[maybe_unused]] const auto copy_pred               = pred;
+    const auto copy_succ                                = succ;
+    const auto copy_pred                                = pred;
     const auto copy_nodes                               = nodes;
     const auto copy_routes                              = routes;
     sol.compute_backward_forward();
