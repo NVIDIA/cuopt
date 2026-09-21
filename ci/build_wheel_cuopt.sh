@@ -31,9 +31,6 @@ LIBCUOPT_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_
 
 echo "libcuopt-${RAPIDS_PY_CUDA_SUFFIX} @ file://$(echo ${LIBCUOPT_WHEELHOUSE}/libcuopt_*.whl)" >> "${PIP_CONSTRAINT}"
 
-# shellcheck source=ci/utils/download_libcuopt_components.sh
-source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/utils/download_libcuopt_components.sh"
-
 EXCLUDE_ARGS=(
   --exclude "libraft.so"
   --exclude "libcublas.so.*"

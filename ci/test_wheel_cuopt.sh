@@ -28,9 +28,6 @@ cuopt-sh-client @ file://$(echo "${CUOPT_SH_CLIENT_WHEELHOUSE}"/cuopt_sh_client-
 libcuopt-${RAPIDS_PY_CUDA_SUFFIX} @ file://$(echo "${LIBCUOPT_WHEELHOUSE}"/libcuopt_"${RAPIDS_PY_CUDA_SUFFIX}"-*.whl)
 EOF
 
-# shellcheck source=ci/utils/download_libcuopt_components.sh
-source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/utils/download_libcuopt_components.sh"
-
 # generate constraints (possibly pinning to oldest support versions of dependencies)
 rapids-generate-pip-constraints test_python "${PIP_CONSTRAINT}"
 
@@ -41,8 +38,7 @@ rapids-pip-retry install \
     -v \
     --prefer-binary \
     --constraint "${PIP_CONSTRAINT}" \
-    "${LIBCUOPT_WHEELHOUSE}"/libcuopt*.whl \
-    "${LIBCUOPT_COMPONENT_WHEELS[@]}"
+    "${LIBCUOPT_WHEELHOUSE}"/libcuopt*.whl
 python -c "import libcuopt; assert libcuopt.load_library() is not None"
 deactivate
 

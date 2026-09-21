@@ -8,18 +8,12 @@ set -euo pipefail
 source rapids-init-pip
 
 # Download the cuopt built in the previous step
-# consumed by ci/utils/download_libcuopt_components.sh, sourced below
-RAPIDS_PY_CUDA_SUFFIX="$(rapids-wheel-ctk-name-gen "${RAPIDS_CUDA_VERSION}")"
-export RAPIDS_PY_CUDA_SUFFIX
 LIBCUOPT_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_cpp libcuopt cuopt --cuda "$RAPIDS_CUDA_VERSION")")
 CUOPT_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_python cuopt cuopt --stable --cuda "$RAPIDS_CUDA_VERSION")")
 CUOPT_SERVER_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_python cuopt-server cuopt --pure --arch any --cuda "$RAPIDS_CUDA_VERSION")")
 
 # generate constraints (possibly pinning to oldest support versions of dependencies)
 rapids-generate-pip-constraints test_python "${PIP_CONSTRAINT}"
-
-# shellcheck source=ci/utils/download_libcuopt_components.sh
-source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/utils/download_libcuopt_components.sh"
 
 # notes:
 #
@@ -32,7 +26,6 @@ rapids-pip-retry install \
     --constraint "${PIP_CONSTRAINT}" \
     "${CUOPT_WHEELHOUSE}"/cuopt*.whl \
     "${LIBCUOPT_WHEELHOUSE}"/libcuopt*.whl \
-    "${LIBCUOPT_COMPONENT_WHEELS[@]}" \
     "$(echo "${CUOPT_SERVER_WHEELHOUSE}"/cuopt_server*.whl)[test]"
 
 check_message()
