@@ -1958,6 +1958,48 @@ f_t dual_infeasibility(const lp_problem_t<i_t, f_t>& lp,
 }
 
 template <typename i_t, typename f_t>
+bool recover_dual_feasibility_after_repair(const lp_problem_t<i_t, f_t>& lp,
+                                           const simplex_solver_settings_t<i_t, f_t>& settings,
+                                           basis_update_mpf_t<i_t, f_t>& ft,
+                                           const std::vector<i_t>& basic_list,
+                                           const std::vector<i_t>& nonbasic_list,
+                                           std::vector<variable_status_t>& vstatus,
+                                           const std::vector<f_t>& objective,
+                                           std::vector<f_t>& cB,
+                                           std::vector<f_t>& y,
+                                           std::vector<f_t>& z,
+                                           f_t& work_estimate)
+{
+  for (i_t k = 0; k < lp.num_rows; ++k) {
+    cB[k] = objective[basic_list[k]];
+  }
+  work_estimate += 3 * lp.num_rows;
+  ft.b_transpose_solve(cB, y);
+  compute_reduced_costs(objective, lp.A, y, basic_list, nonbasic_list, z, work_estimate);
+  work_estimate += lp.num_rows + lp.num_cols;
+  if (!all_finite(y) || !all_finite(z)) { return false; }
+  const f_t before =
+    dual_infeasibility(lp, settings, vstatus, z, settings.tight_tol, settings.dual_tol);
+  work_estimate += 3 * lp.num_cols;
+  if (before <= settings.dual_tol) { return true; }
+  for (i_t j : nonbasic_list) {
+    if (!std::isfinite(lp.lower[j]) || !std::isfinite(lp.upper[j]) || lp.lower[j] == lp.upper[j]) {
+      continue;
+    }
+    if (vstatus[j] == variable_status_t::NONBASIC_LOWER && z[j] < -settings.dual_tol) {
+      vstatus[j] = variable_status_t::NONBASIC_UPPER;
+    } else if (vstatus[j] == variable_status_t::NONBASIC_UPPER && z[j] > settings.dual_tol) {
+      vstatus[j] = variable_status_t::NONBASIC_LOWER;
+    }
+  }
+  const f_t after =
+    dual_infeasibility(lp, settings, vstatus, z, settings.tight_tol, settings.dual_tol);
+  work_estimate += 8 * lp.num_cols;
+  // The caller must rebuild x and its infeasibilities after these bound changes.
+  return after <= settings.dual_tol;
+}
+
+template <typename i_t, typename f_t>
 f_t primal_infeasibility_breakdown(const lp_problem_t<i_t, f_t>& lp,
                                    const simplex_solver_settings_t<i_t, f_t>& settings,
                                    const std::vector<variable_status_t>& vstatus,
@@ -2599,9 +2641,17 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
     assert(nonbasic_list.size() == n - m);
 
     f_t refactor_start_work = ft.work_estimate();
-    i_t refactor_status     = ft.refactor_basis(
-      lp.A, settings, lp.lower, lp.upper, start_time, basic_list, nonbasic_list, vstatus);
-    refactor_work = ft.work_estimate() - refactor_start_work;
+    i_t deficient_repaired  = 0;
+    i_t refactor_status     = ft.refactor_basis(lp.A,
+                                            settings,
+                                            lp.lower,
+                                            lp.upper,
+                                            start_time,
+                                            basic_list,
+                                            nonbasic_list,
+                                            vstatus,
+                                            deficient_repaired);
+    refactor_work           = ft.work_estimate() - refactor_start_work;
     if (refactor_status == CONCURRENT_HALT_RETURN) { return dual_status_t::CONCURRENT_LIMIT; }
     if (refactor_status == TIME_LIMIT_RETURN) { return dual_status_t::TIME_LIMIT; }
     if (refactor_status > 0) { return dual_status_t::NUMERICAL; }
@@ -2934,8 +2984,16 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
             iter,
             ft.num_updates());
           f_t refactor_start_work = ft.work_estimate();
-          i_t refactor_status     = ft.refactor_basis(
-            lp.A, settings, lp.lower, lp.upper, start_time, basic_list, nonbasic_list, vstatus);
+          i_t deficient_repaired  = 0;
+          i_t refactor_status     = ft.refactor_basis(lp.A,
+                                                  settings,
+                                                  lp.lower,
+                                                  lp.upper,
+                                                  start_time,
+                                                  basic_list,
+                                                  nonbasic_list,
+                                                  vstatus,
+                                                  deficient_repaired);
           if (refactor_status == CONCURRENT_HALT_RETURN) { return dual_status_t::CONCURRENT_LIMIT; }
           if (refactor_status == TIME_LIMIT_RETURN) { return dual_status_t::TIME_LIMIT; }
           if (refactor_status > 0) { return dual_status_t::NUMERICAL; }
@@ -2945,6 +3003,20 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
             basic_list, nonbasic_list, basic_mark, nonbasic_mark, phase2_work_estimate);
           compute_initial_nonbasic_end(basic_mark, Arow, nonbasic_end);
 
+          if (deficient_repaired > 0 &&
+              !phase2::recover_dual_feasibility_after_repair(lp,
+                                                             settings,
+                                                             ft,
+                                                             basic_list,
+                                                             nonbasic_list,
+                                                             vstatus,
+                                                             objective,
+                                                             c_basic,
+                                                             y,
+                                                             z,
+                                                             phase2_work_estimate)) {
+            return dual_status_t::NUMERICAL;
+          }
           phase2::compute_primal_solution_from_basis(
             lp, ft, basic_list, nonbasic_list, vstatus, x, xB_workspace, phase2_work_estimate);
 
@@ -2961,6 +3033,8 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
           solve_work                = 0.0;
 
           if (primal_infeasibility > settings.primal_tol) {
+            obj = phase2::compute_perturbed_objective(objective, x);
+            phase2_work_estimate += 2 * n;
             settings.log.printf(
               "New infeasibilities found after recompute (primal_inf=%.2e). "
               "Continuing phase 2.\n",
@@ -3591,8 +3665,17 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
         num_refactors++;
         bool should_recompute_x = true;  // Needed for numerically difficult problems like cbs-cta
         f_t refactor_start_work = ft.work_estimate();
-        i_t refactor_status     = ft.refactor_basis(
-          lp.A, settings, lp.lower, lp.upper, start_time, basic_list, nonbasic_list, vstatus);
+        i_t deficient_repaired  = 0;
+        i_t refactor_status     = ft.refactor_basis(lp.A,
+                                                settings,
+                                                lp.lower,
+                                                lp.upper,
+                                                start_time,
+                                                basic_list,
+                                                nonbasic_list,
+                                                vstatus,
+                                                deficient_repaired);
+        const bool did_basis_repair = deficient_repaired > 0;
         if (refactor_status == CONCURRENT_HALT_RETURN) { return dual_status_t::CONCURRENT_LIMIT; }
         if (refactor_status == TIME_LIMIT_RETURN) { return dual_status_t::TIME_LIMIT; }
         if (refactor_status > 0) {
@@ -3602,8 +3685,15 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
           i_t count          = 0;
           i_t deficient_size = 0;
           while (true) {
-            deficient_size = ft.refactor_basis(
-              lp.A, settings, lp.lower, lp.upper, start_time, basic_list, nonbasic_list, vstatus);
+            deficient_size = ft.refactor_basis(lp.A,
+                                               settings,
+                                               lp.lower,
+                                               lp.upper,
+                                               start_time,
+                                               basic_list,
+                                               nonbasic_list,
+                                               vstatus,
+                                               deficient_repaired);
             if (deficient_size == CONCURRENT_HALT_RETURN) {
               return dual_status_t::CONCURRENT_LIMIT;
             }
@@ -3628,6 +3718,20 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
         phase2::reset_basis_mark(
           basic_list, nonbasic_list, basic_mark, nonbasic_mark, phase2_work_estimate);
         compute_initial_nonbasic_end(basic_mark, Arow, nonbasic_end);
+        if (did_basis_repair &&
+            !phase2::recover_dual_feasibility_after_repair(lp,
+                                                           settings,
+                                                           ft,
+                                                           basic_list,
+                                                           nonbasic_list,
+                                                           vstatus,
+                                                           objective,
+                                                           c_basic,
+                                                           y,
+                                                           z,
+                                                           phase2_work_estimate)) {
+          return dual_status_t::NUMERICAL;
+        }
         if (should_recompute_x) {
           std::vector<f_t> unperturbed_x(n);
           phase2_work_estimate += n;
@@ -3640,6 +3744,8 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
                                                      xB_workspace,
                                                      phase2_work_estimate);
           x = unperturbed_x;
+          phase2_work_estimate += 2 * n;
+          obj = phase2::compute_perturbed_objective(objective, x);
           phase2_work_estimate += 2 * n;
         }
         primal_infeasibility_squared =
