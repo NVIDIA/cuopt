@@ -12,6 +12,7 @@
 
 #include <atomic>
 #include <memory>
+#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -29,8 +30,12 @@ class early_cpufj_t : public early_heuristic_t<i_t, f_t, early_cpufj_t<i_t, f_t>
 
   static constexpr const char* name() { return "CPUFJ"; }
 
-  void start(bool low_latency = false);
+  // Lanes are OMP tasks that never yield, so n_lanes threads are unavailable to anything else
+  // until stop(). Callers sharing the team with other work size it accordingly.
+  void start(int n_lanes, bool low_latency = false);
   void stop();
+
+  int lane_count() const { return (int)climbers_.size(); }
 
  private:
   friend class early_heuristic_t<i_t, f_t, early_cpufj_t<i_t, f_t>>;
@@ -39,12 +44,15 @@ class early_cpufj_t : public early_heuristic_t<i_t, f_t, early_cpufj_t<i_t, f_t>
 
   const optimization_problem_t<i_t, f_t>* problem_ptr_{nullptr};
   typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances_;
-  std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> climber_;
+  std::vector<std::unique_ptr<fj_cpu_climber_t<i_t, f_t>>> climbers_;
   std::thread worker_;
   std::atomic<bool> preemption_flag_{false};
   // Explicit seed for this climber's FJ RNG, resolved once from the solve's base seed (see
   // mip_solver_context_t::base_seed) since this heuristic runs before that context exists.
   uint64_t seed_;
+  // try_update_best and the incumbent callback behind it are not thread-safe, and every lane
+  // reports into them from its own task.
+  std::mutex incumbent_mutex_;
 };
 
 }  // namespace cuopt::mathematical_optimization::mip
