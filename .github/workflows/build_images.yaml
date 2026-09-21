@@ -84,23 +84,6 @@ jobs:
         run: |
           echo "CUDA_SHORT=$(echo "$CUDA_VER" | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
           echo "PYTHON_SHORT=$(echo "$PYTHON_VER" | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
-          echo "CUDA_MAJOR=$(echo "$CUDA_VER" | cut -d. -f1)" >> $GITHUB_OUTPUT
-      # The self-contained Java classifier JAR (see java-static-build in build.yaml, #1817) is
-      # built once per ARCH x CUDA-major combination in the same build.yaml run this workflow is
-      # always called from (build.yaml -> build_test_publish_images.yaml -> build_images.yaml),
-      # so it is available here as a same-run artifact -- no separate download/auth setup needed,
-      # unlike cross-run fetches (rapids-download-from-github). build-images (build.yaml) depends
-      # on java-static-build, so it is guaranteed to exist by the time this step runs.
-      - name: Download the Java classifier JAR for this image
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: cuopt_java_${{ matrix.ARCH }}_cu${{ steps.trim.outputs.CUDA_MAJOR }}
-          path: ./java-classifier-download
-      - name: Stage the classifier JAR into the Docker build context
-        run: |
-          . java/cuopt/ci/java_classifier.sh
-          jar="$(cuopt_java_resolve_artifact_jar ./java-classifier-download)"
-          cp "${jar}" ./ci/docker/context/cuopt.jar
       - name: Build image and push to DockerHub and NGC
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
@@ -114,7 +97,6 @@ jobs:
           sbom: false
           build-args: |
             CUDA_VER=${{ inputs.CUDA_VER }}
-            CUDA_MAJOR=${{ steps.trim.outputs.CUDA_MAJOR }}
             PYTHON_SHORT_VER=${{ steps.trim.outputs.PYTHON_SHORT }}
             CUOPT_VER=${{ inputs.CUOPT_VER }}
             LINUX_VER=${{ inputs.LINUX_VER }}

@@ -61,14 +61,6 @@ RUN \
     dnf clean all && \
     ln -sf /usr/bin/python3.14 /usr/bin/python
 
-# A JRE for the self-contained Java classifier JAR (#1817): the JAR embeds libcuopt (statically
-# linked) and its own companion libraries, so nothing here needs to link against the
-# pip-installed libcuopt at all -- a plain runtime, not a full JDK, is enough. headless: no X11
-# dependency, matching this image having no display. Version matches
-# java/cuopt/pom.xml's maven.compiler.release.
-RUN dnf install -y java-17-openjdk-headless \
-    && dnf clean all
-
 FROM install-env AS cuopt-final
 
 # Register python via alternatives so the system alternatives database is
@@ -117,12 +109,6 @@ COPY --from=cuda-libs /usr/local/cuda/lib64/libnvJitLink* /usr/local/cuda/lib64/
 
 # Copy CUDA headers needed for runtime compilation (e.g., CuPy NVRTC)
 COPY --from=cuda-headers /usr/local/cuda/include/ /usr/local/cuda/include/
-
-# The self-contained Java classifier JAR matching this image's CUDA major version and
-# architecture (see build_images.yaml, which downloads it from java-static-build before this
-# build starts). Nothing else needs installing to use it: `java -cp cuopt.jar ...` or add it as
-# a local Maven/Gradle file dependency.
-COPY ./cuopt.jar /opt/cuopt/java/cuopt.jar
 
 COPY ./entrypoint.sh /opt/cuopt/entrypoint.sh
 ENTRYPOINT ["/opt/cuopt/entrypoint.sh"]
