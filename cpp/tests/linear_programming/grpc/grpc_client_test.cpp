@@ -369,6 +369,32 @@ class GrpcClientTest : public ::testing::Test {
 // CheckStatus Tests
 // =============================================================================
 
+TEST_F(GrpcClientTest, Ping_Success_NotFound)
+{
+  EXPECT_CALL(*mock_stub_, CheckStatus(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::StatusRequest& req,
+                 cuopt::remote::StatusResponse* resp) {
+      EXPECT_EQ(req.job_id(), "__connection_probe__");
+      resp->set_job_status(cuopt::remote::NOT_FOUND);
+      return grpc::Status::OK;
+    });
+
+  EXPECT_TRUE(client_->ping(5));
+}
+
+TEST_F(GrpcClientTest, Ping_Failure_Unavailable)
+{
+  EXPECT_CALL(*mock_stub_, CheckStatus(_, _, _))
+    .WillOnce([](grpc::ClientContext*,
+                 const cuopt::remote::StatusRequest&,
+                 cuopt::remote::StatusResponse*) {
+      return grpc::Status(grpc::StatusCode::UNAVAILABLE, "down");
+    });
+
+  EXPECT_FALSE(client_->ping(5));
+}
+
 TEST_F(GrpcClientTest, CheckStatus_Success_Completed)
 {
   // Setup mock to return COMPLETED status

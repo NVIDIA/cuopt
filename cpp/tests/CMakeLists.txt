@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # cmake-format: on
 
-if(BUILD_TESTS)
+if(BUILD_TESTS AND NOT SKIP_ROUTING_BUILD)
   add_library(cuopttestutils STATIC
       routing/utilities/check_constraints.cu
   )
@@ -17,12 +17,15 @@ if(BUILD_TESTS)
       PRIVATE
       "${CMAKE_CURRENT_SOURCE_DIR}/../src"
       "${CMAKE_CURRENT_SOURCE_DIR}"
-      "${dejavu_SOURCE_DIR}"
   )
+  target_include_directories(cuopttestutils SYSTEM PRIVATE "${dejavu_SOURCE_DIR}")
 
+  # cuopttestutils compiles routing/utilities/check_constraints.cu, so it belongs to the
+  # routing engine and names it directly. Linking the cuopt umbrella here would hand every
+  # consumer both engines and mask whether a test's own link line is complete.
   target_link_libraries(cuopttestutils
       PUBLIC
-      cuopt
+      cuopt_routing
       OpenMP::OpenMP_CXX
       OpenMP::OpenMP_CUDA
       GTest::gmock
@@ -49,8 +52,8 @@ if(BUILD_TESTS)
       PRIVATE
       "${CMAKE_CURRENT_SOURCE_DIR}/../src"
       "${CMAKE_CURRENT_SOURCE_DIR}"
-      "${dejavu_SOURCE_DIR}"
   )
+  target_include_directories(cuopttestutils_static SYSTEM PRIVATE "${dejavu_SOURCE_DIR}")
 
   target_link_libraries(cuopttestutils_static
       PUBLIC
@@ -82,6 +85,10 @@ function(ConfigureTest CMAKE_TEST_NAME)
         set(_cuopt_link_target cuopt)
         set(_extra_libs cuopttestutils)
     endif()
+    # cuopttestutils only exists when the routing engine is built.
+    if(SKIP_ROUTING_BUILD)
+        set(_extra_libs "")
+    endif()
     add_executable(${CMAKE_TEST_NAME} ${CT_UNPARSED_ARGUMENTS})
     target_include_directories(${CMAKE_TEST_NAME}
         PRIVATE
@@ -91,8 +98,8 @@ function(ConfigureTest CMAKE_TEST_NAME)
         "${papilo_SOURCE_DIR}/src"
         "${papilo_BINARY_DIR}"
         "${pslp_SOURCE_DIR}/include"
-        "${dejavu_SOURCE_DIR}"
     )
+    target_include_directories(${CMAKE_TEST_NAME} SYSTEM PRIVATE "${dejavu_SOURCE_DIR}")
     target_link_libraries(${CMAKE_TEST_NAME}
        PRIVATE
         ${_cuopt_link_target}
