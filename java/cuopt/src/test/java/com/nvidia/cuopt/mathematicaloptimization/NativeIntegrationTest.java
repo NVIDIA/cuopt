@@ -25,6 +25,17 @@ final class NativeIntegrationTest {
       settings.setSetting(CuOptConstants.CUOPT_LOG_TO_CONSOLE, false);
       settings.setSetting(CuOptConstants.CUOPT_TIME_LIMIT, 12.5);
       settings.setOptimalityTolerance(1.0e-6);
+      settings.setNumGpus(-1);
+      settings.setUseDistributedPdlp(true);
+      settings.setDistributedPdlpPartitioner(DistributedPdlpPartitioner.ROUND_ROBIN);
+      assertEquals(-1, settings.getSetting(CuOptConstants.CUOPT_NUM_GPUS, Integer.class));
+      assertEquals(
+          Boolean.TRUE,
+          settings.getSetting(CuOptConstants.CUOPT_USE_DISTRIBUTED_PDLP, Boolean.class));
+      assertEquals(
+          DistributedPdlpPartitioner.ROUND_ROBIN.nativeValue(),
+          settings.getSetting(
+              CuOptConstants.CUOPT_DISTRIBUTED_PDLP_PARTITIONER, Integer.class));
       assertEquals(
           Boolean.FALSE,
           settings.getSetting(CuOptConstants.CUOPT_LOG_TO_CONSOLE, Boolean.class));

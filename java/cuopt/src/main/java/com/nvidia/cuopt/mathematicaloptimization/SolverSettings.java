@@ -67,6 +67,29 @@ public final class SolverSettings implements AutoCloseable {
     return setSetting(CuOptConstants.CUOPT_PDLP_SOLVER_MODE, mode.nativeValue());
   }
 
+  /**
+   * Set the number of GPUs to use for the solve. Use {@code -1} to use all GPUs visible to the
+   * process, or a value greater than 1 to use that many GPUs.
+   */
+  public SolverSettings setNumGpus(int numGpus) {
+    return setSetting(CuOptConstants.CUOPT_NUM_GPUS, numGpus);
+  }
+
+  /**
+   * Set whether to distribute the PDLP solve of an LP problem across multiple GPUs. Requires
+   * {@link #setMethod} to be {@link SolverMethod#PDLP} and {@link #setNumGpus} to be {@code -1}
+   * or greater than 1.
+   */
+  public SolverSettings setUseDistributedPdlp(boolean useDistributedPdlp) {
+    return setSetting(CuOptConstants.CUOPT_USE_DISTRIBUTED_PDLP, useDistributedPdlp);
+  }
+
+  /** Set the partitioner used to split the problem across GPUs for distributed PDLP. */
+  public SolverSettings setDistributedPdlpPartitioner(DistributedPdlpPartitioner partitioner) {
+    return setSetting(
+        CuOptConstants.CUOPT_DISTRIBUTED_PDLP_PARTITIONER, partitioner.nativeValue());
+  }
+
   /** The LP optimality tolerances, previously discovered by filtering on parameter names. */
   private static final String[] OPTIMALITY_TOLERANCES = {
     CuOptConstants.CUOPT_ABSOLUTE_PRIMAL_TOLERANCE,
