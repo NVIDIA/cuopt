@@ -68,14 +68,15 @@ sdist.reproducible = true
 wheel.packages = ["libcuopt"]
 wheel.install-dir = "libcuopt"
 wheel.py-api = "py3"
-# Everything, for now. The component wheels exist and are installable on their own, but
-# libcuopt still carries the libraries because cuopt-config.cmake exports one
-# _IMPORT_PREFIX for all three: split across sibling wheels, find_package(cuopt) cannot
-# resolve cuopt::client / ::mathopt / ::routing, which python/cuopt links against.
-# Trimming this to ["dev", "grpc-server", "cuopt"] needs per-component CMake packages so
-# each resolves from its own prefix -- tracked separately.
-install.components = ["dev", "grpc-server", "cuopt", "client", "client-dev",
-                      "mathopt", "mathopt-dev", "routing", "routing-dev"]
+# install.components is deliberately unset, so this installs everything, as before.
+#
+# Naming the components explicitly drops anything installed without one: rapids-cmake
+# writes its helper find-modules to lib64/rapids/cmake/ with no COMPONENT, and losing
+# them makes CMake fall back to the CUDA toolkit's libcudacxx, which is not the one
+# librmm's cub-config expects.
+#
+# Trimming this to just the metapackage's own files needs per-component CMake packages,
+# so each resolves from its own prefix -- tracked separately.
 
 [tool.scikit-build.metadata.version]
 provider = "scikit_build_core.metadata.regex"
