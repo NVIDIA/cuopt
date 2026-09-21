@@ -136,13 +136,15 @@ PDLP and barrier in parallel on different GPUs to avoid sharing single GPU resou
 
 For LP problems solved with ``PDLP`` method, setting ``CUOPT_NUM_GPUS`` to ``-1`` or to a value greater than 1,
 together with ``CUOPT_USE_DISTRIBUTED_PDLP`` set to true, distributes the PDLP solve across multiple GPUs. A
-value of ``-1`` uses all GPUs visible to the process.
+value of ``-1`` uses all GPUs visible to the process, which may resolve to a single GPU on a single-GPU host;
+multi-GPU sharding only happens when more than one GPU is actually selected.
 
 Distributed PDLP
 ^^^^^^^^^^^^^^^^
 
 ``CUOPT_USE_DISTRIBUTED_PDLP`` controls whether PDLP should be distributed across multiple GPUs. It requires
-``CUOPT_METHOD`` to be ``PDLP`` and ``CUOPT_NUM_GPUS`` to be ``-1`` or greater than 1.
+``CUOPT_METHOD`` to be ``PDLP`` and ``CUOPT_NUM_GPUS`` to be ``-1`` or greater than 1 (as above, ``-1`` may
+resolve to a single visible GPU, in which case the solve still runs but is not actually sharded).
 
 ``CUOPT_DISTRIBUTED_PDLP_PARTITIONER`` controls how the problem is partitioned across the GPUs used by distributed
 PDLP. Two strategies are available: ``KaMinPar``, a multi-threaded graph partitioner that generally produces better
@@ -151,6 +153,24 @@ in round-robin fashion without building a partitioning graph. ``Auto`` (the defa
 single GPU and ``KaMinPar`` otherwise.
 
 C API users should use the constants defined in :ref:`distributed-pdlp-partitioner-constants` for this parameter.
+
+Python API users should use :class:`cuopt.linear_programming.DistributedPdlpPartitioner` for this parameter:
+
+.. code-block:: python
+
+   from cuopt.linear_programming import (
+       DistributedPdlpPartitioner,
+       SolverMethod,
+       SolverSettings,
+   )
+
+   settings = SolverSettings()
+   settings.set_parameter("method", SolverMethod.PDLP)
+   settings.set_parameter("num_gpus", -1)
+   settings.set_parameter("use_distributed_pdlp", True)
+   settings.set_parameter(
+       "distributed_pdlp_partitioner", DistributedPdlpPartitioner.KaMinPar
+   )
 
 Server Thin client users should use the :class:`cuopt_sh_client.DistributedPdlpPartitioner` for this parameter.
 
