@@ -13,6 +13,9 @@ source rapids-init-pip
 bash "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/utils/install_openssl3_runtime.sh"
 
 # Download the packages built in the previous step
+# consumed by ci/utils/download_libcuopt_components.sh, sourced below
+RAPIDS_PY_CUDA_SUFFIX="$(rapids-wheel-ctk-name-gen "${RAPIDS_CUDA_VERSION}")"
+export RAPIDS_PY_CUDA_SUFFIX
 LIBCUOPT_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_cpp libcuopt cuopt --cuda "$RAPIDS_CUDA_VERSION")")
 CUOPT_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_python cuopt cuopt --stable --cuda "$RAPIDS_CUDA_VERSION")")
 CUOPT_SERVER_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_python cuopt-server cuopt --pure --arch any --cuda "$RAPIDS_CUDA_VERSION")")
@@ -20,6 +23,9 @@ CUOPT_SH_CLIENT_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name
 
 # generate constraints (possibly pinning to oldest support versions of dependencies)
 rapids-generate-pip-constraints test_python "${PIP_CONSTRAINT}"
+
+# shellcheck source=ci/utils/download_libcuopt_components.sh
+source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/utils/download_libcuopt_components.sh"
 
 # notes:
 #
@@ -33,7 +39,8 @@ rapids-pip-retry install \
     "$(echo "${CUOPT_SERVER_WHEELHOUSE}"/cuopt_server*.whl)[test]" \
     "${CUOPT_WHEELHOUSE}"/cuopt*.whl \
     "${CUOPT_SH_CLIENT_WHEELHOUSE}"/cuopt_sh_client*.whl \
-    "${LIBCUOPT_WHEELHOUSE}"/libcuopt*.whl
+    "${LIBCUOPT_WHEELHOUSE}"/libcuopt*.whl \
+    "${LIBCUOPT_COMPONENT_WHEELS[@]}"
 
 RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
 export RAPIDS_DATASET_ROOT_DIR
