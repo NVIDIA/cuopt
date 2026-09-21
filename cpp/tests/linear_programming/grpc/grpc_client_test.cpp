@@ -24,6 +24,7 @@
 #include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
 #include "grpc_client.hpp"
 #include "grpc_problem_mapper.hpp"
 #include "grpc_service_mapper.hpp"
@@ -2323,6 +2324,54 @@ TEST(MapperRoundtrip, PDLPSettingsAllFields)
   EXPECT_EQ(restored.first_primal_feasible, true);
   EXPECT_EQ(restored.use_distributed_pdlp, true);
   EXPECT_EQ(restored.distributed_pdlp_partitioner, distributed_pdlp_partitioner_t::RoundRobin);
+}
+
+// Regression coverage for the distributed-PDLP dispatch decision that
+// run_lp_solve (grpc_worker.cpp) and every solve_lp entry point share via
+// wants_distributed_pdlp. A mapper-only test cannot catch a regression where
+// the worker stops calling this predicate; this exercises the predicate
+// itself, decoded from the wire exactly as the worker receives it.
+TEST(MapperRoundtrip, PDLPSettingsDistributedDispatchDecision)
+{
+  using cuopt::mathematical_optimization::wants_distributed_pdlp;
+
+  auto decode = [](auto fill) {
+    cuopt::remote::PDLPSolverSettings pb;
+    fill(pb);
+    pdlp_solver_settings_t<int32_t, double> settings;
+    map_proto_to_pdlp_settings(pb, settings);
+    return settings;
+  };
+
+  // Default settings (Concurrent method, num_gpus=1): single-GPU path.
+  EXPECT_FALSE(wants_distributed_pdlp(decode([](auto&) {})));
+
+  // method=PDLP alone, num_gpus left at 1: still single-GPU.
+  EXPECT_FALSE(
+    wants_distributed_pdlp(decode([](auto& pb) { pb.set_method(cuopt::remote::LPMethod::PDLP); })));
+
+  // method=PDLP with num_gpus=-1 (all visible devices): distributed, even
+  // without use_distributed_pdlp set explicitly.
+  EXPECT_TRUE(wants_distributed_pdlp(decode([](auto& pb) {
+    pb.set_method(cuopt::remote::LPMethod::PDLP);
+    pb.set_num_gpus(-1);
+  })));
+
+  // method=PDLP with num_gpus=4: distributed.
+  EXPECT_TRUE(wants_distributed_pdlp(decode([](auto& pb) {
+    pb.set_method(cuopt::remote::LPMethod::PDLP);
+    pb.set_num_gpus(4);
+  })));
+
+  // use_distributed_pdlp explicitly set: distributed regardless of num_gpus.
+  EXPECT_TRUE(wants_distributed_pdlp(decode([](auto& pb) { pb.set_use_distributed_pdlp(true); })));
+
+  // Non-PDLP method with num_gpus=4 (e.g. Barrier concurrent-mode GPU count):
+  // not distributed PDLP.
+  EXPECT_FALSE(wants_distributed_pdlp(decode([](auto& pb) {
+    pb.set_method(cuopt::remote::LPMethod::Barrier);
+    pb.set_num_gpus(4);
+  })));
 }
 
 TEST(MapperRoundtrip, PDLPSettingsIterationLimitSentinel)
