@@ -1,5 +1,5 @@
-// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights
+// reserved. SPDX-License-Identifier: Apache-2.0
 
 // Input layer for the fast MPS parser: turns on-disk bytes (plain or .lz4) into one
 // contiguous parse buffer and publishes MPS section boundaries as data becomes available.

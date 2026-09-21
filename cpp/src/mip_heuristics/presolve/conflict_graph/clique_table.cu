@@ -674,8 +674,8 @@ void find_initial_cliques(user_problem_t<i_t, f_t>& problem,
                           cuopt::timer_t& timer,
                           omp_atomic_t<bool>* signal_extend)
 {
-  [[maybe_unused]] cuopt::timer_t stage_timer(std::numeric_limits<double>::infinity());
 #ifdef DEBUG_CLIQUE_TABLE
+  cuopt::timer_t stage_timer(std::numeric_limits<double>::infinity());
   double t_fill   = 0.;
   double t_coeff  = 0.;
   double t_sort   = 0.;

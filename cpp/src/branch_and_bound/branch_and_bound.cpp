@@ -1136,9 +1136,9 @@ struct nondeterministic_policy_t : tree_update_policy_t<i_t, f_t> {
     return bnb.variable_selection(node, fractional, worker);
   }
 
-  void update_objective_estimate([[maybe_unused]] mip_node_t<i_t, f_t>* node,
-                                 [[maybe_unused]] const std::vector<i_t>& fractional,
-                                 [[maybe_unused]] const std::vector<f_t>& x) override
+  void update_objective_estimate(mip_node_t<i_t, f_t>* node,
+                                 const std::vector<i_t>& fractional,
+                                 const std::vector<f_t>& x) override
   {
     if (worker->search_strategy == search_strategy_t::BEST_FIRST) {
       node->objective_estimate =

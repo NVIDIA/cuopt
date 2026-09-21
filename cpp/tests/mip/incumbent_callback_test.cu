@@ -147,7 +147,7 @@ void test_incumbent_callback(std::string test_instance, bool include_set_callbac
     set_solution_callback = std::make_unique<test_set_solution_callback_t>(solutions, &user_data);
     settings.set_mip_callback(set_solution_callback.get(), &user_data);
   }
-  [[maybe_unused]] auto solution = solve_mip(op_problem, settings);
+  auto solution = solve_mip(op_problem, settings);
   EXPECT_GE(get_solution_callback.n_calls, 1);
   if (include_set_callback) { EXPECT_GE(set_solution_callback->n_calls, 1); }
   check_solutions(get_solution_callback, mps_problem, settings);
