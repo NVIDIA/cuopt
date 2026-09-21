@@ -325,7 +325,7 @@ lp_status_t solve_linear_program_with_advanced_basis(
                                 work_estimate,
                                 work_unit_context);
   }
-  if (phase1_status == dual_status_t::NUMERICAL) {
+  if (phase1_status == dual_status_t::NUMERICAL || phase1_status == dual_status_t::CUTOFF) {
     settings.log.printf("Failed in Phase 1\n");
     return lp_status_t::NUMERICAL_ISSUES;
   }
