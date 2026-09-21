@@ -302,7 +302,10 @@ jobs:
       package-type: cpp
       matrix_filter: group_by([.ARCH, (.CUDA_VER|split(".")|map(tonumber)|.[0])]) | map(max_by(.PY_VER|split(".")|map(tonumber)))
   wheel-publish-libcuopt-mathopt:
-    needs: wheel-build-libcuopt-mathopt
+    # Waits on the client's publication as well: this wheel declares
+    # libcuopt-client as a dependency, so publishing first would leave a clean
+    # install unable to resolve it.
+    needs: [wheel-build-libcuopt-mathopt, wheel-publish-libcuopt-client]
     permissions:
       actions: read
       contents: read
@@ -342,7 +345,10 @@ jobs:
       package-type: cpp
       matrix_filter: group_by([.ARCH, (.CUDA_VER|split(".")|map(tonumber)|.[0])]) | map(max_by(.PY_VER|split(".")|map(tonumber)))
   wheel-publish-libcuopt-routing:
-    needs: wheel-build-libcuopt-routing
+    # Waits on the client's publication as well: this wheel declares
+    # libcuopt-client as a dependency, so publishing first would leave a clean
+    # install unable to resolve it.
+    needs: [wheel-build-libcuopt-routing, wheel-publish-libcuopt-client]
     permissions:
       actions: read
       contents: read
