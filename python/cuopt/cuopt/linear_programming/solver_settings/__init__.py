@@ -8,6 +8,7 @@ module's internal parameter-name list used for validation.
 """
 
 from .solver_settings import (
+    DistributedPdlpPartitioner,
     PDLPSolverMode,
     SolverMethod,
     SolverSettings,
@@ -19,6 +20,7 @@ from .solver_settings import (
 solver_params = tuple(_solver_params_list)
 
 __all__ = [
+    "DistributedPdlpPartitioner",
     "PDLPSolverMode",
     "SolverMethod",
     "SolverSettings",

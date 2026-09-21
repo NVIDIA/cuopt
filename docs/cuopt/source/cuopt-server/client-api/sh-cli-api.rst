@@ -25,6 +25,11 @@ LP Supporting Classes
     :undoc-members:
     :no-inherited-members:
 
+.. autoclass:: cuopt_sh_client.DistributedPdlpPartitioner
+    :members:
+    :undoc-members:
+    :no-inherited-members:
+
 .. autoclass:: cuopt.linear_programming.data_model.DataModel
     :members:
     :undoc-members:

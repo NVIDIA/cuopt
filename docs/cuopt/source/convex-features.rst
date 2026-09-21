@@ -325,4 +325,7 @@ By default, PDLP operates in the native precision of the problem type (FP64 for 
 Multi-GPU Mode
 --------------
 
-Users can use multiple GPUs to solve a problem by specifying the ``num_gpus`` parameter. The feature is restricted to LP problems that uses concurrent mode and supports up to 2 GPUs at the moment. Using this mode will run PDLP and barrier in parallel on different GPUs to avoid sharing single GPU resources.
+Users can use multiple GPUs to solve a problem by specifying the ``num_gpus`` parameter, in one of two ways:
+
+- **Concurrent mode**: restricted to LP problems that use concurrent mode and supports up to 2 GPUs. Using this mode will run PDLP and barrier in parallel on different GPUs to avoid sharing single GPU resources.
+- **Distributed PDLP**: restricted to LP problems solved with the ``PDLP`` method. Setting ``num_gpus`` to ``-1`` (to use all visible GPUs) or to a value greater than 1, together with ``use_distributed_pdlp`` set to true, shards a single PDLP solve across multiple GPUs. Use ``distributed_pdlp_partitioner`` to control how the problem is split across GPUs. See :ref:`distributed-pdlp-partitioner-constants` and the ``DistributedPdlpPartitioner`` enum for the available strategies.

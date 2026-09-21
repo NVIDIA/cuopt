@@ -214,6 +214,8 @@ These constants are used as parameter names in the :c:func:`cuOptSetParameter`, 
 .. doxygendefine:: CUOPT_SOLUTION_FILE
 .. doxygendefine:: CUOPT_NUM_CPU_THREADS
 .. doxygendefine:: CUOPT_NUM_GPUS
+.. doxygendefine:: CUOPT_USE_DISTRIBUTED_PDLP
+.. doxygendefine:: CUOPT_DISTRIBUTED_PDLP_PARTITIONER
 .. doxygendefine:: CUOPT_USER_PROBLEM_FILE
 .. doxygendefine:: CUOPT_PDLP_PRECISION
 
@@ -229,6 +231,17 @@ These constants are used to configure `CUOPT_PDLP_SOLVER_MODE` via :c:func:`cuOp
 .. doxygendefine:: CUOPT_PDLP_SOLVER_MODE_STABLE3
 .. doxygendefine:: CUOPT_PDLP_SOLVER_MODE_METHODICAL1
 .. doxygendefine:: CUOPT_PDLP_SOLVER_MODE_FAST1
+
+.. _distributed-pdlp-partitioner-constants:
+
+Distributed PDLP Partitioner Constants
+---------------------------------------
+
+These constants are used to configure `CUOPT_DISTRIBUTED_PDLP_PARTITIONER` via :c:func:`cuOptSetIntegerParameter`.
+
+.. doxygendefine:: CUOPT_DISTRIBUTED_PDLP_PARTITIONER_AUTO
+.. doxygendefine:: CUOPT_DISTRIBUTED_PDLP_PARTITIONER_KAMINPAR
+.. doxygendefine:: CUOPT_DISTRIBUTED_PDLP_PARTITIONER_ROUND_ROBIN
 
 .. _pdlp-precision-constants:
 

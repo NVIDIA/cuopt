@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 # cython: profile=False
@@ -107,6 +107,45 @@ class PDLPSolverMode(IntEnum):
         -------
         str
             The string representation of the solver mode.
+        """
+        return "%d" % self.value
+
+
+class DistributedPdlpPartitioner(IntEnum):
+    """
+    Enum representing the graph partitioning strategy used to split a
+    problem across GPUs when distributed (multi-GPU) PDLP is used, i.e.
+    when ``method`` is ``SolverMethod.PDLP`` and ``num_gpus`` is ``-1``
+    or greater than ``1``.
+
+    Attributes
+    ----------
+    Auto
+        Automatically pick a partitioner: ``RoundRobin`` on a single GPU,
+        ``KaMinPar`` otherwise.
+    KaMinPar
+        Multi-threaded KaMinPar graph partitioner. Generally produces
+        better balanced shards at the cost of extra partitioning time.
+    RoundRobin
+        Round-robin assignment of rows/columns across GPUs, without
+        building a partitioning graph.
+
+    Notes
+    -----
+    Default value is Auto.
+    """
+
+    Auto = 0
+    KaMinPar = auto()
+    RoundRobin = auto()
+
+    def __str__(self):
+        """Convert the partitioner to a string.
+
+        Returns
+        -------
+        str
+            The string representation of the partitioner.
         """
         return "%d" % self.value
 
