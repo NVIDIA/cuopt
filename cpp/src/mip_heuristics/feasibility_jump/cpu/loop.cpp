@@ -78,7 +78,7 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
     if (std::chrono::duration_cast<std::chrono::milliseconds>(now - loop_time_start).count() > time_limit) {
       CUOPT_LOG_TRACE("%sTime limit of %.4f seconds reached, breaking loop at iteration %d",
                       fj_cpu->log_prefix.c_str(),
-                      time_limit.count() / 1000.f,
+                      time_limit / 1000.f,
                       fj_cpu->iterations);
       break;
     }
