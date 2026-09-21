@@ -61,15 +61,8 @@ jobs:
         run: |
           git rev-parse HEAD > ./ci/docker/context/COMMIT_SHA
           git log -n1 --pretty='%ct' > ./ci/docker/context/COMMIT_TIME
-      # The Java bindings are built dynamically inside the image (both Dockerfile and
-      # Dockerfile.ubi, which share this staged context), against the libcuopt.so already
-      # pip-installed there -- rather than embedding a separate statically-linked copy
-      # (java-static-build, #1817), which would duplicate libcuopt/TBB/NCCL/cuDSS/rmm/
-      # rapids_logger this image already carries for the Python side. That needs java/cuopt's
-      # own sources and two cpp/ directories the pip wheel doesn't ship: cpp/include (for headers
-      # newer than what's pip-installed, kept in step with this checkout) and cpp/src (internal
-      # headers cuopt_jni.cpp reaches, e.g. pdlp/cuopt_c_internal.hpp, never part of the
-      # public/pip include tree at all).
+      # cpp/include and cpp/src aren't in the pip wheel; cuopt_jni.cpp needs both (the latter for
+      # internal headers like pdlp/cuopt_c_internal.hpp) to build the JNI library in-image.
       - name: Stage Java sources for the in-image dynamic build
         run: |
           mkdir -p ./ci/docker/context/repo

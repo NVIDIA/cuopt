@@ -89,11 +89,7 @@ RUN \
     && apt-get purge -y --autoremove gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Builds the Java bindings' JNI library dynamically against the libcuopt.so already
-# pip-installed in install-env, instead of embedding a separate statically-linked copy (#1817),
-# which would duplicate libcuopt/TBB/NCCL/cuDSS/rmm/rapids_logger this image already carries for
-# the Python side. Its own stage: the build toolchain (JDK, cmake, ninja, g++) never needs to
-# persist into cuopt-final, which only needs a JRE to run the result. See build_java_dynamic.sh.
+# Own stage so the build toolchain doesn't persist into cuopt-final. See build_java_dynamic.sh.
 FROM install-env AS java-build
 
 ARG PYTHON_SHORT_VER
@@ -105,11 +101,8 @@ RUN apt-get update \
         cmake \
     && rm -rf /var/lib/apt/lists/*
 
-# find_package(CUDAToolkit REQUIRED) (java/cuopt/CMakeLists.txt) needs nvcc on PATH to detect
-# the toolkit, even though nothing here actually compiles a .cu file (this project is CXX-only)
-# -- this image's own base is `-base`, which has no CUDA toolkit at all, only the runtime driver
-# API. Reuse the devel image already pulled for cuda-headers instead of installing the whole
-# toolkit a second time via apt.
+# CMake's find_package(CUDAToolkit REQUIRED) needs nvcc on PATH; reuse cuda-headers instead of
+# installing the toolkit again via apt.
 COPY --from=cuda-headers /usr/local/cuda /usr/local/cuda
 ENV PATH="/usr/local/cuda/bin:${PATH}"
 
@@ -121,10 +114,7 @@ FROM install-env AS cuopt-final
 
 ARG PYTHON_SHORT_VER
 
-# A JRE to run the Java bindings (#1817): the JNI library was already built and linked (in the
-# java-build stage) against libcuopt.so already installed here, so nothing beyond a runtime is
-# needed -- headless: no X11 dependency, matching this image having no display. Version matches
-# java/cuopt/pom.xml's maven.compiler.release.
+# Headless JRE to run the Java bindings; version matches java/cuopt/pom.xml's maven.compiler.release.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends openjdk-17-jre-headless \
     && rm -rf /var/lib/apt/lists/*
@@ -155,9 +145,7 @@ COPY --from=cuda-libs /usr/local/cuda/lib64/libnvJitLink* /usr/local/cuda/lib64/
 # Copy CUDA headers needed for runtime compilation (e.g., CuPy NVRTC).
 COPY --from=cuda-headers /usr/local/cuda/include/ /usr/local/cuda/include/
 
-# cuopt.jar (plain classes, no embedded native resources) and libcuopt_jni.so, built against
-# this image's own libcuopt.so in the java-build stage. Use with, e.g.:
-#   java -Dcuopt.native.dir=/opt/cuopt/java -cp /opt/cuopt/java/cuopt.jar ...
+# cuopt.jar + libcuopt_jni.so built in java-build against this image's own libcuopt.so.
 COPY --from=java-build /opt/cuopt/java /opt/cuopt/java
 
 # Entrypoint supports server selection:

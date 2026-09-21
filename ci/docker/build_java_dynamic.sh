@@ -2,12 +2,9 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# Builds the Java bindings' native library (libcuopt_jni.so) against the libcuopt.so already
-# pip-installed in this image, and compiles the plain (non-classifier) Java classes with javac
-# rather than Maven -- java/cuopt/pom.xml has no non-test dependency at all, so there is nothing
-# for Maven to resolve, and skipping it avoids adding a Maven Central/mirror network dependency
-# to every nightly/branch image build. Run from the repo root staged under REPO_ROOT (see
-# build_images.yaml); writes cuopt.jar and libcuopt_jni.so to OUT_DIR.
+# Builds libcuopt_jni.so against the pip-installed libcuopt.so and compiles the Java classes with
+# javac (java/cuopt/pom.xml has no non-test dependency, so Maven isn't needed). Writes cuopt.jar
+# and libcuopt_jni.so to OUT_DIR.
 
 set -euo pipefail
 
@@ -21,19 +18,14 @@ if [[ ! -f "${CUOPT_SITE_PACKAGES}/lib64/libcuopt.so" ]]; then
   exit 1
 fi
 
-# build_native.sh (java/cuopt/scripts) already knows how to point the JNI CMake build at an
-# arbitrary cuOpt install; only the paths differ from its conda-prefix default. libcuopt.so
-# resolves everything else (TBB, NCCL, cuDSS, rmm, rapids_logger, cublas, ...) itself through its
-# own $ORIGIN-relative RPATH (see its rpath entries), so cuopt_jni.so only has to find libcuopt.so
-# -- CUOPT_RUNTIME_LIBRARY_DIR bakes that into its own RPATH, no LD_LIBRARY_PATH needed.
+# libcuopt.so resolves its own dependencies (TBB, NCCL, cuDSS, rmm, rapids_logger, cublas, ...)
+# via RPATH, so cuopt_jni.so only needs to find libcuopt.so itself -- CUOPT_RUNTIME_LIBRARY_DIR
+# bakes that into its RPATH too, no LD_LIBRARY_PATH needed.
 export CUOPT_PREFIX="${CUOPT_SITE_PACKAGES}"
 export CUOPT_LIBRARY="${CUOPT_SITE_PACKAGES}/lib64/libcuopt.so"
 export CUOPT_RUNTIME_LIBRARY_DIR="${CUOPT_SITE_PACKAGES}/lib64"
-# raft's headers ship bundled inside libcuopt's own include tree (dist-packages/libcuopt/include
-# /raft), but rmm and rapids_logger are their own separate pip packages with their own include
-# directories -- unlike a conda install, where CUOPT_PREFIX/include/rapids covers all three
-# (see the CUOPT_PREFIX/include/rapids handling in java/cuopt/CMakeLists.txt, which does not
-# apply here).
+# rmm and rapids_logger are separate pip packages with their own include dirs (unlike conda,
+# where CUOPT_PREFIX/include/rapids covers all three).
 PIP_SITE_PACKAGES="$(dirname "${CUOPT_SITE_PACKAGES}")"
 export CUOPT_EXTRA_INCLUDE_DIRS="${REPO_ROOT}/cpp/include;${REPO_ROOT}/cpp/src;${PIP_SITE_PACKAGES}/librmm/include;${PIP_SITE_PACKAGES}/rapids_logger/include"
 export CUOPT_JAVA_NATIVE_BUILD_DIR="${REPO_ROOT}/java/cuopt/build/native"
