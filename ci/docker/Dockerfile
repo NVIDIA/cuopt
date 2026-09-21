@@ -145,7 +145,6 @@ COPY --from=cuda-libs /usr/local/cuda/lib64/libnvJitLink* /usr/local/cuda/lib64/
 # Copy CUDA headers needed for runtime compilation (e.g., CuPy NVRTC).
 COPY --from=cuda-headers /usr/local/cuda/include/ /usr/local/cuda/include/
 
-# cuopt.jar + libcuopt_jni.so built in java-build against this image's own libcuopt.so.
 COPY --from=java-build /opt/cuopt/java /opt/cuopt/java
 
 # Entrypoint supports server selection:
