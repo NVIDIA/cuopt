@@ -89,9 +89,45 @@ RUN \
     && apt-get purge -y --autoremove gcc \
     && rm -rf /var/lib/apt/lists/*
 
+# Builds the Java bindings' JNI library dynamically against the libcuopt.so already
+# pip-installed in install-env, instead of embedding a separate statically-linked copy (#1817),
+# which would duplicate libcuopt/TBB/NCCL/cuDSS/rmm/rapids_logger this image already carries for
+# the Python side. Its own stage: the build toolchain (JDK, cmake, ninja, g++) never needs to
+# persist into cuopt-final, which only needs a JRE to run the result. See build_java_dynamic.sh.
+FROM install-env AS java-build
+
+ARG PYTHON_SHORT_VER
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        openjdk-17-jdk \
+        build-essential \
+        cmake \
+    && rm -rf /var/lib/apt/lists/*
+
+# find_package(CUDAToolkit REQUIRED) (java/cuopt/CMakeLists.txt) needs nvcc on PATH to detect
+# the toolkit, even though nothing here actually compiles a .cu file (this project is CXX-only)
+# -- this image's own base is `-base`, which has no CUDA toolkit at all, only the runtime driver
+# API. Reuse the devel image already pulled for cuda-headers instead of installing the whole
+# toolkit a second time via apt.
+COPY --from=cuda-headers /usr/local/cuda /usr/local/cuda
+ENV PATH="/usr/local/cuda/bin:${PATH}"
+
+COPY ./repo /build/repo
+COPY ./build_java_dynamic.sh /build/build_java_dynamic.sh
+RUN bash /build/build_java_dynamic.sh /build/repo "${PYTHON_SHORT_VER}" /opt/cuopt/java
+
 FROM install-env AS cuopt-final
 
 ARG PYTHON_SHORT_VER
+
+# A JRE to run the Java bindings (#1817): the JNI library was already built and linked (in the
+# java-build stage) against libcuopt.so already installed here, so nothing beyond a runtime is
+# needed -- headless: no X11 dependency, matching this image having no display. Version matches
+# java/cuopt/pom.xml's maven.compiler.release.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openjdk-17-jre-headless \
+    && rm -rf /var/lib/apt/lists/*
 
 # Make cuopt_grpc_server, cuopt_cli, and shared libraries available to all processes
 # (profile.d scripts are only sourced by login shells; ENV works for all containers)
@@ -118,6 +154,11 @@ COPY --from=cuda-libs /usr/local/cuda/lib64/libnvJitLink* /usr/local/cuda/lib64/
 
 # Copy CUDA headers needed for runtime compilation (e.g., CuPy NVRTC).
 COPY --from=cuda-headers /usr/local/cuda/include/ /usr/local/cuda/include/
+
+# cuopt.jar (plain classes, no embedded native resources) and libcuopt_jni.so, built against
+# this image's own libcuopt.so in the java-build stage. Use with, e.g.:
+#   java -Dcuopt.native.dir=/opt/cuopt/java -cp /opt/cuopt/java/cuopt.jar ...
+COPY --from=java-build /opt/cuopt/java /opt/cuopt/java
 
 # Entrypoint supports server selection:
 #   Default:                  Python REST server

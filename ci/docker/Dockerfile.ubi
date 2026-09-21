@@ -61,7 +61,37 @@ RUN \
     dnf clean all && \
     ln -sf /usr/bin/python3.14 /usr/bin/python
 
+# Builds the Java bindings' JNI library dynamically against the libcuopt.so already
+# pip-installed in install-env, instead of embedding a separate statically-linked copy (#1817),
+# which would duplicate libcuopt/TBB/NCCL/cuDSS/rmm/rapids_logger this image already carries for
+# the Python side. Its own stage: the build toolchain (JDK, cmake, gcc-c++) never needs to persist
+# into cuopt-final, which only needs a JRE to run the result. See build_java_dynamic.sh.
+FROM install-env AS java-build
+
+# UBI10's AppStream repo only ships java-21-openjdk and java-25-openjdk, not 17 -- 21 is an LTS
+# release satisfying build_native.sh's "JDK 17+" requirement, and javac --release 17 (used below)
+# is supported by any JDK >= 17.
+RUN dnf install -y java-21-openjdk-devel cmake gcc-c++ make && dnf clean all
+
+# find_package(CUDAToolkit REQUIRED) (java/cuopt/CMakeLists.txt) needs nvcc on PATH to detect
+# the toolkit, even though nothing here actually compiles a .cu file (this project is CXX-only)
+# -- this image's own base is `-base`, which has no CUDA toolkit at all, only the runtime driver
+# API. Reuse the devel image already pulled for cuda-headers instead of installing the whole
+# toolkit a second time via dnf.
+COPY --from=cuda-headers /usr/local/cuda /usr/local/cuda
+ENV PATH="/usr/local/cuda/bin:${PATH}"
+
+COPY ./repo /build/repo
+COPY ./build_java_dynamic_ubi.sh /build/build_java_dynamic_ubi.sh
+RUN bash /build/build_java_dynamic_ubi.sh /build/repo /opt/cuopt/java
+
 FROM install-env AS cuopt-final
+
+# A JRE to run the Java bindings (#1817): the JNI library was already built and linked (in the
+# java-build stage) against libcuopt.so already installed here, so nothing beyond a runtime is
+# needed -- headless: no X11 dependency, matching this image having no display. Version matches
+# java/cuopt/pom.xml's maven.compiler.release.
+RUN dnf install -y java-21-openjdk-headless && dnf clean all
 
 # Register python via alternatives so the system alternatives database is
 # consistent with the /usr/bin/python symlink created in install-env.
@@ -109,6 +139,11 @@ COPY --from=cuda-libs /usr/local/cuda/lib64/libnvJitLink* /usr/local/cuda/lib64/
 
 # Copy CUDA headers needed for runtime compilation (e.g., CuPy NVRTC)
 COPY --from=cuda-headers /usr/local/cuda/include/ /usr/local/cuda/include/
+
+# cuopt.jar (plain classes, no embedded native resources) and libcuopt_jni.so, built against
+# this image's own libcuopt.so in the java-build stage. Use with, e.g.:
+#   java -Dcuopt.native.dir=/opt/cuopt/java -cp /opt/cuopt/java/cuopt.jar ...
+COPY --from=java-build /opt/cuopt/java /opt/cuopt/java
 
 COPY ./entrypoint.sh /opt/cuopt/entrypoint.sh
 ENTRYPOINT ["/opt/cuopt/entrypoint.sh"]
