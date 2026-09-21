@@ -1244,6 +1244,98 @@ class DataModel(_DeferredDataModel):
         super().set_vehicle_fixed_costs(vehicle_fixed_costs)
 
     @catch_cuopt_exception
+    def set_vehicle_distance_tiers(
+        self, vehicle_ids, thresholds, fixed_costs, costs_per_unit
+    ):
+        """
+        Set distance-based tiered pricing for vehicles.
+
+        Each vehicle can have multiple distance tiers with different cost structures.
+        For each tier, you can specify either a fixed cost or a cost per unit distance.
+        The cost calculation logic:
+        - If distance < threshold: use the tier's cost structure
+        - If fixed_cost > 0: apply the fixed cost
+        - Otherwise: apply (distance * cost_per_unit)
+
+        Parameters
+        ----------
+        vehicle_ids : cudf.Series dtype - int32
+            Vehicle ID for each tier entry. Tiers for the same vehicle should be
+            consecutive and sorted by threshold in ascending order.
+        thresholds : cudf.Series dtype - float32
+            Distance thresholds for each tier. Use float('inf') or a very large
+            value (e.g., 1e9) for the last tier of each vehicle.
+        fixed_costs : cudf.Series dtype - float32
+            Fixed cost for each tier. Use 0.0 if the tier uses cost_per_unit instead.
+            If fixed_cost > 0, it will be used regardless of distance.
+        costs_per_unit : cudf.Series dtype - float32
+            Cost per distance unit for each tier. Use 0.0 if the tier uses
+            fixed_cost instead.
+
+        Examples
+        --------
+        >>> from cuopt import routing
+        >>> import cudf
+        >>> import numpy as np
+        >>>
+        >>> # Define tiers for 2 vehicles
+        >>> # Vehicle 0: <100km = 50 fixed, 100-200km = 0.1/km, >200km = 0.5/km
+        >>> # Vehicle 1: <150km = 75 fixed, >150km = 0.3/km
+        >>>
+        >>> vehicle_ids = cudf.Series([0, 0, 0, 1, 1], dtype=np.int32)
+        >>> thresholds = cudf.Series([100.0, 200.0, 1e9, 150.0, 1e9], dtype=np.float32)
+        >>> fixed_costs = cudf.Series([50.0, 0.0, 0.0, 75.0, 0.0], dtype=np.float32)
+        >>> costs_per_unit = cudf.Series([0.0, 0.1, 0.5, 0.0, 0.3], dtype=np.float32)
+        >>>
+        >>> data_model = routing.DataModel(n_locations=10, fleet_size=2)
+        >>> data_model.set_vehicle_distance_tiers(
+        ...     vehicle_ids, thresholds, fixed_costs, costs_per_unit
+        ... )
+
+        Notes
+        -----
+        - All input series must have the same length
+        - Tiers for each vehicle must be sorted by threshold in ascending order
+        - At least one tier must be defined for vehicles that use this feature
+        - For each tier, either fixed_cost OR cost_per_unit should be non-zero
+        """
+        # Validations
+        if len(vehicle_ids) != len(thresholds):
+            raise ValueError(
+                f"vehicle_ids length ({len(vehicle_ids)}) must match thresholds length ({len(thresholds)})"
+            )
+        if len(vehicle_ids) != len(fixed_costs):
+            raise ValueError(
+                f"vehicle_ids length ({len(vehicle_ids)}) must match fixed_costs length ({len(fixed_costs)})"
+            )
+        if len(vehicle_ids) != len(costs_per_unit):
+            raise ValueError(
+                f"vehicle_ids length ({len(vehicle_ids)}) must match costs_per_unit length ({len(costs_per_unit)})"
+            )
+
+        validate_non_negative(thresholds, "thresholds")
+        validate_non_negative(fixed_costs, "fixed_costs")
+        validate_non_negative(costs_per_unit, "costs_per_unit")
+
+        # Check that vehicle IDs are valid
+        max_vehicle_id = int(vehicle_ids.max())
+        if max_vehicle_id >= self.get_fleet_size():
+            raise ValueError(
+                f"vehicle_ids contains {max_vehicle_id} but fleet size is {self.get_fleet_size()}"
+            )
+
+        # Check minimum vehicle ID
+        min_vehicle_id = int(vehicle_ids.min())
+        if min_vehicle_id < 0:
+            raise ValueError(
+                f"vehicle_ids contains negative value: {min_vehicle_id}"
+            )
+
+        super().set_vehicle_distance_tiers(
+            vehicle_ids, thresholds, fixed_costs, costs_per_unit
+        )
+
+    @catch_cuopt_exception
     def set_min_vehicles(self, min_vehicles):
         """
         Request a minimum number of vehicles to be used for routing.

@@ -523,6 +523,76 @@ class FleetData(StrictModel):
             "shows veh-0 (15) > veh-1 (5) + veh-2 (5)"
         ),
     )
+    vehicle_distance_tiers: Optional[List[List[Dict[str, float]]]] = Field(
+        default=None,
+        examples=[
+            [
+                [
+                    {
+                        "threshold": 100.0,
+                        "fixed_cost": 50.0,
+                        "cost_per_unit": 0.0,
+                    },
+                    {
+                        "threshold": 200.0,
+                        "fixed_cost": 0.0,
+                        "cost_per_unit": 0.1,
+                    },
+                    {
+                        "threshold": 1e9,
+                        "fixed_cost": 0.0,
+                        "cost_per_unit": 0.5,
+                    },
+                ],
+                [
+                    {
+                        "threshold": 150.0,
+                        "fixed_cost": 75.0,
+                        "cost_per_unit": 0.0,
+                    },
+                    {
+                        "threshold": 1e9,
+                        "fixed_cost": 0.0,
+                        "cost_per_unit": 0.3,
+                    },
+                ],
+            ]
+        ],
+        description=(
+            "dtype: List of lists of dicts with float values."
+            " \n\n "
+            "Distance-based tiered pricing for each vehicle. "
+            "Each vehicle can have multiple tiers with different cost structures."
+            " \n\n "
+            "For each tier, specify 'threshold' (distance limit), "
+            "'fixed_cost' (use 0 if not applicable), and "
+            "'cost_per_unit' (cost per distance unit, use 0 if not applicable)."
+            " \n\n "
+            "Example for 2 vehicles:"
+            " \n\n "
+            "    ["
+            " \n\n "
+            "        [  # Vehicle 0 tiers"
+            " \n\n "
+            "            {'threshold': 100, 'fixed_cost': 50, 'cost_per_unit': 0},  # <100km = 50 fixed"
+            " \n\n "
+            "            {'threshold': 200, 'fixed_cost': 0, 'cost_per_unit': 0.1},  # 100-200km = 0.1/km"
+            " \n\n "
+            "            {'threshold': 1e9, 'fixed_cost': 0, 'cost_per_unit': 0.5}  # >200km = 0.5/km"
+            " \n\n "
+            "        ],"
+            " \n\n "
+            "        [  # Vehicle 1 tiers"
+            " \n\n "
+            "            {'threshold': 150, 'fixed_cost': 75, 'cost_per_unit': 0},  # <150km = 75 fixed"
+            " \n\n "
+            "            {'threshold': 1e9, 'fixed_cost': 0, 'cost_per_unit': 0.3}  # >150km = 0.3/km"
+            " \n\n "
+            "        ]"
+            " \n\n "
+            "    ]"
+        ),
+    )
 
 
 class TaskData(StrictModel):
@@ -1060,6 +1130,17 @@ vrp_example_data = {
         "vehicle_max_costs": [7, 10],
         "vehicle_max_times": [7, 10],
         "vehicle_fixed_costs": [15, 5],
+        "vehicle_distance_tiers": [
+            [
+                {"threshold": 100.0, "fixed_cost": 50.0, "cost_per_unit": 0.0},
+                {"threshold": 200.0, "fixed_cost": 0.0, "cost_per_unit": 0.1},
+                {"threshold": 1e9, "fixed_cost": 0.0, "cost_per_unit": 0.5},
+            ],
+            [
+                {"threshold": 150.0, "fixed_cost": 75.0, "cost_per_unit": 0.0},
+                {"threshold": 1e9, "fixed_cost": 0.0, "cost_per_unit": 0.3},
+            ],
+        ],
     },
     "task_data": {
         "task_locations": [1, 2],

@@ -16,6 +16,21 @@ namespace cuopt {
 namespace routing {
 namespace detail {
 
+/**
+ * @brief Represents a distance tier with threshold and cost structure
+ *
+ * Example:
+ * - Tier 1: threshold=100, fixed_cost=X, cost_per_unit=0
+ * - Tier 2: threshold=200, fixed_cost=0, cost_per_unit=0.1
+ * - Tier 3: threshold=max, fixed_cost=0, cost_per_unit=0.5
+ */
+template <typename f_t>
+struct distance_tier_t {
+  f_t threshold{0.0};      // Distance threshold (e.g., 100, 200)
+  f_t fixed_cost{0.0};     // Fixed cost for this tier
+  f_t cost_per_unit{0.0};  // Cost per km/unit for this tier
+};
+
 template <typename f_t, bool is_device = true>
 struct VehicleInfo {
   constexpr bool has_time_matrix() const { return matrices.extent[1] > 1; }
@@ -64,6 +79,16 @@ struct VehicleInfo {
   f_t max_time = std::numeric_limits<f_t>::max();
   f_t fixed_cost{};
   int priority{};
+
+  // Distance tiers for tiered pricing based on total route distance
+  // Tiers should be sorted by threshold in ascending order
+  // Example: [{100, X, 0}, {200, 0, 0.1}, {INF, 0, 0.5}]
+  raft::span<distance_tier_t<f_t> const, is_device> distance_tiers{};
+  //   distance_tier_t<float> tiers[] = {
+  //     {100.0, X, 0.0},           // Tier 1: hasta 100 km, coste fijo X
+  //     {200.0, 0.0, 0.1},         // Tier 2: 100-200 km, 0.1 por km
+  //     {FLT_MAX, 0.0, 0.5}        // Tier 3: > 200 km, 0.5 por km
+  //   };
 };
 }  // namespace detail
 }  // namespace routing

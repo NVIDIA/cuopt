@@ -124,6 +124,12 @@ cdef extern from "cuopt/routing/solve.hpp" namespace "cuopt::routing":
         void set_vehicle_max_costs(const f_t *max_costs) except+
         void set_vehicle_max_times(const f_t *max_times) except+
         void set_vehicle_fixed_costs(const f_t *vehicle_fixed_costs) except+
+        void set_vehicle_distance_tiers(
+            const f_t *thresholds,
+            const f_t *fixed_costs,
+            const f_t *costs_per_unit,
+            const i_t *offsets,
+            i_t total_tiers) except+
         i_t get_num_locations() except+
         i_t get_fleet_size() except+
         i_t get_num_orders() except+

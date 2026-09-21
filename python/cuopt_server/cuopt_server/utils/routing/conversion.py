@@ -332,6 +332,31 @@ def create_data_model(
             optimization_data.fleet_data["vehicle_fixed_costs"]
         )
 
+    if optimization_data.fleet_data["vehicle_distance_tiers"] is not None:
+        # Convert the list of lists of dicts to the format expected by set_vehicle_distance_tiers
+        tiers_by_vehicle = optimization_data.fleet_data[
+            "vehicle_distance_tiers"
+        ]
+
+        vehicle_ids_list = []
+        thresholds_list = []
+        fixed_costs_list = []
+        costs_per_unit_list = []
+
+        for vehicle_id, tiers in enumerate(tiers_by_vehicle):
+            for tier in tiers:
+                vehicle_ids_list.append(vehicle_id)
+                thresholds_list.append(tier["threshold"])
+                fixed_costs_list.append(tier.get("fixed_cost", 0.0))
+                costs_per_unit_list.append(tier.get("cost_per_unit", 0.0))
+
+        data_model.set_vehicle_distance_tiers(
+            cudf.Series(vehicle_ids_list, dtype=np.int32),
+            cudf.Series(thresholds_list, dtype=np.float32),
+            cudf.Series(fixed_costs_list, dtype=np.float32),
+            cudf.Series(costs_per_unit_list, dtype=np.float32),
+        )
+
     if optimization_data.fleet_data["min_vehicles"] is not None:
         data_model.set_min_vehicles(
             optimization_data.fleet_data["min_vehicles"]

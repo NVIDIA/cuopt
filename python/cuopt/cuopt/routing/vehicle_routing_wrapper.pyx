@@ -264,6 +264,12 @@ cdef class DataModel:
         self.vehicle_max_times = cudf.Series()
         self.vehicle_fixed_costs = cudf.Series()
 
+        # Distance tiers for tiered pricing
+        self.distance_tier_thresholds = cudf.Series()
+        self.distance_tier_fixed_costs = cudf.Series()
+        self.distance_tier_costs_per_unit = cudf.Series()
+        self.distance_tier_offsets = cudf.Series()
+
         self.vehicle_order_match = {}
         self.order_vehicle_match = {}
         self.order_service_times = {}
@@ -664,6 +670,64 @@ cdef class DataModel:
         )
         self.c_data_model_view.get().set_vehicle_fixed_costs(
             <float*>c_vehicle_fixed_costs
+        )
+
+    def set_vehicle_distance_tiers(self, vehicle_ids, thresholds, fixed_costs, costs_per_unit):
+        """
+        Set distance-based tiered pricing for vehicles.
+
+        Parameters should be sorted by vehicle_id and then by threshold within each vehicle.
+        """
+        import cudf
+
+        # Create DataFrame and sort by vehicle_id to ensure proper grouping
+        df = cudf.DataFrame({
+            'vehicle_id': vehicle_ids,
+            'threshold': thresholds,
+            'fixed_cost': fixed_costs,
+            'cost_per_unit': costs_per_unit
+        }).sort_values(['vehicle_id', 'threshold'])
+
+        # Store data
+        self.distance_tier_thresholds = type_cast(
+            df['threshold'], np.float32, "thresholds"
+        )
+        self.distance_tier_fixed_costs = type_cast(
+            df['fixed_cost'], np.float32, "fixed_costs"
+        )
+        self.distance_tier_costs_per_unit = type_cast(
+            df['cost_per_unit'], np.float32, "costs_per_unit"
+        )
+
+        # Calculate offsets for each vehicle
+        fleet_size = self.get_fleet_size()
+        offsets = [0]
+        for vid in range(fleet_size):
+            count = int((df['vehicle_id'] == vid).sum())
+            offsets.append(offsets[-1] + count)
+
+        self.distance_tier_offsets = cudf.Series(offsets, dtype=np.int32)
+
+        # Pass to C++
+        cdef uintptr_t c_thresholds = (
+            self.distance_tier_thresholds.__cuda_array_interface__['data'][0]
+        )
+        cdef uintptr_t c_fixed_costs = (
+            self.distance_tier_fixed_costs.__cuda_array_interface__['data'][0]
+        )
+        cdef uintptr_t c_costs_per_unit = (
+            self.distance_tier_costs_per_unit.__cuda_array_interface__['data'][0]
+        )
+        cdef uintptr_t c_offsets = (
+            self.distance_tier_offsets.__cuda_array_interface__['data'][0]
+        )
+
+        self.c_data_model_view.get().set_vehicle_distance_tiers(
+            <float*>c_thresholds,
+            <float*>c_fixed_costs,
+            <float*>c_costs_per_unit,
+            <int*>c_offsets,
+            <int>len(self.distance_tier_thresholds)
         )
 
     def set_min_vehicles(self, min_vehicles):
