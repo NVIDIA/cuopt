@@ -191,6 +191,15 @@ enums:
     - DualSimplex
     - Barrier
 
+  distributed_pdlp_partitioner:
+    domain: settings
+    default: Auto
+    cpp_type: distributed_pdlp_partitioner_t
+    values:
+    - Auto
+    - KaMinPar
+    - RoundRobin
+
   variable_type:
     domain: problem
     cpp_type: var_t
@@ -803,6 +812,22 @@ pdlp_settings:
       type: int32
       from_proto_cast: "pdlp_precision_t"
       optional: true
+  - use_distributed_pdlp:
+      description: >-
+        Whether to distribute the PDLP solve of an LP problem across multiple
+        GPUs. Requires method to be PDLP and num_gpus to be -1 or greater
+        than 1.
+      default: "false"
+      field_num: 35
+      type: bool
+  - distributed_pdlp_partitioner:
+      description: >-
+        Partitioner used to split the problem across GPUs when
+        use_distributed_pdlp is set. Auto picks RoundRobin on 1 GPU and
+        KaMinPar otherwise.
+      default: "Auto"
+      field_num: 36
+      type: distributed_pdlp_partitioner
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MIP Solver Settings

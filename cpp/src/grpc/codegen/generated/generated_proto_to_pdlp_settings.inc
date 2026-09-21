@@ -90,3 +90,5 @@
   if (pb_settings.has_pdlp_precision()) {
     settings.pdlp_precision = static_cast<pdlp_precision_t>(pb_settings.pdlp_precision());
   }
+  settings.use_distributed_pdlp = pb_settings.use_distributed_pdlp();
+  settings.distributed_pdlp_partitioner = from_proto_distributed_pdlp_partitioner(pb_settings.distributed_pdlp_partitioner());
