@@ -140,8 +140,8 @@ i_t scaling_ruiz_gpu(const lp_problem_t<i_t, f_t>& unscaled,
                      lp_problem_t<i_t, f_t>& scaled,
                      std::vector<f_t>& column_scaling,
                      std::vector<f_t>& row_scaling,
-                     std::shared_ptr<device_csc_matrix_t<i_t, f_t>>& device_A,
-                     std::shared_ptr<device_csc_matrix_t<i_t, f_t>>& device_Q)
+                     std::unique_ptr<device_csc_matrix_t<i_t, f_t>>& device_A,
+                     std::unique_ptr<device_csc_matrix_t<i_t, f_t>>& device_Q)
 {
   scaled     = unscaled;
   i_t m      = scaled.num_rows;
@@ -150,7 +150,6 @@ i_t scaling_ruiz_gpu(const lp_problem_t<i_t, f_t>& unscaled,
 
   rmm::cuda_stream_view stream = unscaled.handle_ptr->get_stream();
 
-  // Unconditional, so the early return below cannot leave a stale matrix in the caller's hands.
   device_A.reset();
   device_Q.reset();
   row_scaling.assign(m, 1.0);
@@ -414,22 +413,18 @@ i_t scaling_ruiz_gpu(const lp_problem_t<i_t, f_t>& unscaled,
 
   // --- Download scaled problem and scale vectors back to host ---
   // SOCP goes straight to the barrier's augmented path, where no host code reads A's values, so
-  // A stays on device rather than being downloaded and immediately uploaded again. Ruiz rescales
-  // values but never changes the sparsity pattern, so scaled.A already carries the right
-  // col_start/i from the host copy above; only x differs, and clearing it keeps anyone from
-  // reading the stale unscaled values that would otherwise be left behind.
+  // A stays on device rather than being downloaded and immediately uploaded again.
   if (!unscaled.second_order_cone_dims.empty()) {
     scaled.A.x.clear();
     scaled.A.x.shrink_to_fit();
-    device_A = std::make_shared<device_csc_matrix_t<i_t, f_t>>(std::move(dA));
+    device_A = std::make_unique<device_csc_matrix_t<i_t, f_t>>(std::move(dA));
   } else {
     scaled.A = dA.to_host(stream);
   }
   scaled.Q = dQ.to_host(stream);
-  // Q stays on host as well, so this is purely so the barrier need not upload it again. Q is
-  // symmetric, so its CSR arrays are also its CSC arrays and the handover is a relabel.
+  // Symmetric Q: its CSR arrays are also its CSC arrays.
   if (dQ.nz_max > 0) {
-    auto dQ_csc       = std::make_shared<device_csc_matrix_t<i_t, f_t>>(stream);
+    auto dQ_csc       = std::make_unique<device_csc_matrix_t<i_t, f_t>>(stream);
     dQ_csc->m         = dQ.m;
     dQ_csc->n         = dQ.m;
     dQ_csc->nz_max    = dQ.nz_max;
@@ -457,8 +452,8 @@ template int scaling_ruiz_gpu<int, double>(
   lp_problem_t<int, double>& scaled,
   std::vector<double>& column_scaling,
   std::vector<double>& row_scaling,
-  std::shared_ptr<device_csc_matrix_t<int, double>>& device_A,
-  std::shared_ptr<device_csc_matrix_t<int, double>>& device_Q);
+  std::unique_ptr<device_csc_matrix_t<int, double>>& device_A,
+  std::unique_ptr<device_csc_matrix_t<int, double>>& device_Q);
 
 #endif
 
