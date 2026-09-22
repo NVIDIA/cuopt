@@ -27,13 +27,13 @@ final class NativeIntegrationTest {
       settings.setOptimalityTolerance(1.0e-6);
       settings.setNumGpus(-1);
       settings.setUseDistributedPdlp(true);
-      settings.setDistributedPdlpPartitioner(DistributedPdlpPartitioner.ROUND_ROBIN);
+      settings.setDistributedPdlpPartitioner(2); // RoundRobin
       assertEquals(-1, settings.getSetting(CuOptConstants.CUOPT_NUM_GPUS, Integer.class));
       assertEquals(
           Boolean.TRUE,
           settings.getSetting(CuOptConstants.CUOPT_USE_DISTRIBUTED_PDLP, Boolean.class));
       assertEquals(
-          DistributedPdlpPartitioner.ROUND_ROBIN.nativeValue(),
+          2,
           settings.getSetting(
               CuOptConstants.CUOPT_DISTRIBUTED_PDLP_PARTITIONER, Integer.class));
       assertEquals(

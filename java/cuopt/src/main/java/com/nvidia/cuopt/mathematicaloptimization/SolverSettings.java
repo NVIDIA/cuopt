@@ -86,10 +86,14 @@ public final class SolverSettings implements AutoCloseable {
     return setSetting(CuOptConstants.CUOPT_USE_DISTRIBUTED_PDLP, useDistributedPdlp);
   }
 
-  /** Set the partitioner used to split the problem across GPUs for distributed PDLP. */
-  public SolverSettings setDistributedPdlpPartitioner(DistributedPdlpPartitioner partitioner) {
-    return setSetting(
-        CuOptConstants.CUOPT_DISTRIBUTED_PDLP_PARTITIONER, partitioner.nativeValue());
+  /**
+   * Set the partitioner used to split the problem across GPUs for distributed PDLP: {@code 0}
+   * Auto (default; RoundRobin on 1 GPU, KaMinPar otherwise), {@code 1} KaMinPar (multi-threaded
+   * graph partitioner, better balanced shards at the cost of extra partitioning time), or {@code
+   * 2} RoundRobin (no partitioning graph built).
+   */
+  public SolverSettings setDistributedPdlpPartitioner(int partitioner) {
+    return setSetting(CuOptConstants.CUOPT_DISTRIBUTED_PDLP_PARTITIONER, partitioner);
   }
 
   /** The LP optimality tolerances, previously discovered by filtering on parameter names. */
