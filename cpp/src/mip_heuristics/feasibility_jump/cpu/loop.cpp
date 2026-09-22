@@ -184,7 +184,7 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, double time_limit, double w
       ++local_mins;
     }
 
-    if (fj_cpu->iterations % fj_cpu->log_interval == 0) {
+    if (fj_cpu->log_interval && fj_cpu->iterations % fj_cpu->log_interval == 0) {
       CUOPT_LOG_DEBUG(
         "%sCPUFJ iteration: %d/%d, local mins: %d, best_objective: %g, viol: %zu, obj weight %g, "
         "maxw %g",

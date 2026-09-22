@@ -1006,7 +1006,7 @@ struct fj_bin_engine_t {
         apply_move(var, (int8_t)(1 - 2 * assign[var]), climber);
       }
 
-      if (iters % climber.log_interval == 0) {
+      if (climber.log_interval && iters % climber.log_interval == 0) {
         CUOPT_LOG_DEBUG("%sCPUFJ[bin%d] iteration: %d, viol: %zu, best: %g, maxw: %d",
                         climber.log_prefix.c_str(),
                         coefficient_bits(),
