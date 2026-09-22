@@ -137,9 +137,7 @@ outputs:
         - libabseil
         - re2
       run:
-        # No cuda-version pin and no librmm: libcuopt_client.so carries neither in its
-        # DT_NEEDED since #1890, so installing it should not drag in the CUDA stack.
-        # Both stay in host, where the headers are still needed to compile it.
+        # Neither is in the client's DT_NEEDED (#1890). Both stay in host, for the headers.
         - openssl
         - c-ares
         - libuuid

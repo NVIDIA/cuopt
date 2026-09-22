@@ -262,8 +262,7 @@ jobs:
       package-type: cpp
       # The wheel name carries no CUDA suffix, so neither should the artifact.
       append-cuda-suffix: false
-      # One build per arch: the client wheel carries no CUDA in its dependencies or its
-      # DT_NEEDED, so a second build per CUDA major would produce the same artifact.
+      # One build per arch: the client has no CUDA dimension.
       matrix_filter: group_by(.ARCH) | map(max_by([(.CUDA_VER|split(".")|map(tonumber)), (.PY_VER|split(".")|map(tonumber))]))
   wheel-publish-libcuopt-client:
     needs: wheel-build-libcuopt-client

@@ -175,8 +175,7 @@ files:
       - build_common
       - depends_on_librmm
       - depends_on_rapids_logger
-  # No CUDA dimension and no rmm: libcuopt_client.so carries neither since #1890, so the
-  # wheel resolves the same way whichever CUDA the build used.
+  # No CUDA dimension and no rmm: the client links neither (#1890).
   py_run_libcuopt_client:
     output: pyproject
     pyproject_dir: python/libcuopt_client
@@ -602,8 +601,7 @@ dependencies:
       - output_types: [requirements, pyproject]
         packages:
           - cuopt-cu13==26.10.*,>=0.0.0a0
-  # Unsuffixed everywhere: the client wheel is built without a CUDA dimension, so there
-  # is one libcuopt-client rather than a -cu12 and a -cu13.
+  # Unsuffixed: there is one libcuopt-client, not a -cu12 and a -cu13.
   depends_on_libcuopt_client:
     common:
       - output_types: [conda, requirements, pyproject]

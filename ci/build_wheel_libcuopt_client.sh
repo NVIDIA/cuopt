@@ -129,8 +129,6 @@ python -m auditwheel repair "${EXCLUDE_ARGS[@]}" -w "${RAPIDS_WHEEL_BLD_OUTPUT_D
 
 ci/validate_wheel.sh ${package_dir} "${RAPIDS_WHEEL_BLD_OUTPUT_DIR}"
 
-# No --cuda: the client is built once per arch, so the artifact name is
-# cuopt_wheel_cpp_libcuopt_client_{arch}. The publish search key is a prefix, so it
-# still matches.
+# No --cuda: built once per arch. Publish matches on the search-key prefix.
 RAPIDS_PACKAGE_NAME="$(rapids-artifact-name wheel_cpp libcuopt_client cuopt)"
 export RAPIDS_PACKAGE_NAME
