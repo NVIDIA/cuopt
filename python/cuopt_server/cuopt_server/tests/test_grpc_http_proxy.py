@@ -27,6 +27,8 @@ from cuopt_server.utils.http_envelope import make_response
 from cuopt_server.utils.linear_programming import conversion as lp_conversion
 from cuopt_server.utils.routing import conversion as routing_conversion
 
+_JSON_ACCEPT = {"Accept": mime_json}
+
 
 class _Uvicorn(uvicorn.Server):
     def install_signal_handlers(self):
@@ -1188,6 +1190,16 @@ def test_zlib_accept(proxy):
     assert sol.status_code == 200
     decoded = json.loads(zlib.decompress(sol.content))
     assert decoded["response"]["solver_response"]["status"] == "Optimal"
+
+
+def test_delete_unknown_request_is_200(proxy):
+    url, _ = proxy
+    missing = str(uuid.uuid4())
+    res = requests.delete(
+        url + f"/cuopt/request/{missing}", headers=_JSON_ACCEPT
+    )
+    assert res.status_code == 200
+    assert res.json() == {"queued": 0, "running": 0, "cached": 0}
 
 
 def test_unknown_id_is_404(proxy):
