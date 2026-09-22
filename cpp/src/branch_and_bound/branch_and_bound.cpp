@@ -4233,6 +4233,7 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(
     nonbasic_list.clear();
     simplex::get_basis_from_vstatus(m, vstatus, basic_list, nonbasic_list, superbasic_list);
     assert(superbasic_list.empty());
+    i_t deficient_repaired    = 0;
     const i_t refactor_status = basis_update.refactor_basis(lp.A,
                                                             settings_,
                                                             lp.lower,
@@ -4240,7 +4241,8 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(
                                                             exploration_stats_.start_time,
                                                             basic_list,
                                                             nonbasic_list,
-                                                            vstatus);
+                                                            vstatus,
+                                                            deficient_repaired);
     if (refactor_status == CONCURRENT_HALT_RETURN || refactor_status == TIME_LIMIT_RETURN) {
       return;
     }
