@@ -132,8 +132,7 @@ small JSON model, then `cuopt_status` until terminal, then `cuopt_result`.
 ### If the backend looks unreachable
 
 `cuopt-mcp` never starts or stops `cuopt_grpc_server`. Before starting one,
-check whether one is already running — a second server can share the listen
-port, after which a job submitted to one process can be polled from the other:
+check whether one is already running on the configured port:
 
 ```bash
 pgrep -af cuopt_grpc_server
