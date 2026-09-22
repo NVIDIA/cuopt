@@ -194,7 +194,7 @@ void update_weights(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
     cuopt_assert(fj_cpu.row_state()[cstr_idx].slack < 0, "constraint not violated");
 
     f_t new_weight = std::round(old_weight + f_t{1});
-    new_weight     = std::min(new_weight, (f_t)fj_weight_cap);
+    new_weight     = std::min(new_weight, (f_t)fj_cpu.hp.weight_cap);
 
     fj_cpu.row_state()[cstr_idx].weight = new_weight;
     fj_cpu.max_weight                   = std::max(fj_cpu.max_weight, new_weight);

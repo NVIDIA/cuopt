@@ -357,7 +357,8 @@ static thrust::tuple<fj_move_t, fj_move_t, fj_staged_score_t> find_lift_2opt_mov
   if (n_obj == 0) return thrust::make_tuple(best_first, best_second, best_score);
 
   cuopt::pcgenerator_t rng(fj_cpu.settings.seed + fj_cpu.iterations, 0, 0);
-  const i_t n_draws = n_obj < fj_2opt_candidates ? n_obj : fj_2opt_candidates;
+  const i_t n_draws =
+    n_obj < fj_cpu.hp.two_opt_candidates ? n_obj : fj_cpu.hp.two_opt_candidates;
 
   for (i_t t = 0; t < n_draws; ++t) {
     const i_t var1 = fj_cpu.problem->h_objective_vars[rng.next_u32() % (uint32_t)n_obj];

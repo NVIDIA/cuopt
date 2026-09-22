@@ -23,6 +23,7 @@
 #include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 #include <math_optimization/tic_toc.hpp>
+#include <mip_heuristics/feasibility_jump/cpu/tuning.hpp>
 #include <mip_heuristics/feasibility_jump/fj_cpu_binary.cuh>
 #include <mip_heuristics/feasibility_jump/fj_types.hpp>
 #include <utilities/logger.hpp>
@@ -349,6 +350,7 @@ struct fj_bin_bridge_t {
 template <typename i_t, typename f_t>
 struct fj_lane_policy_t {
   fj_settings_t settings;
+  fj_cpu_hyper_parameters_t hp;
   f_t seed_objective_weight{0};
   bool use_move_batching{false};
   i_t mtm_viol_samples{25};

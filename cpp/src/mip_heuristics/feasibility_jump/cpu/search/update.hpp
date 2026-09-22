@@ -62,8 +62,8 @@ void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu, i_t var_idx, f_t delta, bool
   // slack bookkeeping stays exact whatever the clamp does.
   const auto var_bounds = fj_cpu.h_var_bounds[var_idx].get();
   new_val               = std::min(std::max(new_val, get_lower(var_bounds)), get_upper(var_bounds));
-  const f_t floor_      = std::max(get_lower(var_bounds), (f_t)-fj_start_magnitude_limit);
-  const f_t ceil_       = std::min(get_upper(var_bounds), (f_t)fj_start_magnitude_limit);
+  const f_t floor_ = std::max(get_lower(var_bounds), (f_t)-fj_cpu.hp.start_magnitude_limit);
+  const f_t ceil_  = std::min(get_upper(var_bounds), (f_t)fj_cpu.hp.start_magnitude_limit);
   if (floor_ <= ceil_) new_val = std::min(std::max(new_val, floor_), ceil_);
   delta = new_val - old_val;
   cuopt_assert(std::isfinite(new_val), "assignment is not finite");
@@ -127,7 +127,7 @@ void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu, i_t var_idx, f_t delta, bool
 
     // trigger early slack recomputation if the sumcomp term gets too large
     // to avoid large numerical errors
-    if (std::fabs(new_sumcomp) > (f_t)fj_bigval_threshold)
+    if (std::fabs(new_sumcomp) > (f_t)fj_cpu.hp.bigval_threshold)
       fj_cpu.trigger_early_lhs_recomputation = true;
 
     const bool was_violated = fj_cpu.violated_constraints.contains(cstr_idx);
@@ -257,8 +257,8 @@ f_t project_epigraph_variable(fj_cpu_climber_t<i_t, f_t>& fj_cpu, i_t var_idx)
   // imply is unbounded too, and landing on it puts every row it touches at a magnitude where one
   // ulp of the slack exceeds the row tolerance. Held to the range the start is held to, which keeps
   // the rows decidable at the cost of reaching the implied value over several moves instead of one.
-  const f_t floor_ = std::max(get_lower(bounds), (f_t)-fj_start_magnitude_limit);
-  const f_t ceil_  = std::min(get_upper(bounds), (f_t)fj_start_magnitude_limit);
+  const f_t floor_ = std::max(get_lower(bounds), (f_t)-fj_cpu.hp.start_magnitude_limit);
+  const f_t ceil_  = std::min(get_upper(bounds), (f_t)fj_cpu.hp.start_magnitude_limit);
   if (floor_ <= ceil_) target = std::min(std::max(target, floor_), ceil_);
 
   cuopt_assert(std::isfinite(target), "epigraph projection is not finite");

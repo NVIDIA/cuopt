@@ -52,8 +52,8 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
   // The recompute is O(nnz), so a fixed period costs a growing share of the budget.
   cuopt_assert(fj_cpu->settings.parameters.lhs_refresh_period > 0,
                "lhs_refresh_period should be positive");
-  const i_t nnz_stretch =
-    std::min<i_t>(fj_cpu->problem->nnz / fj_nnz_per_refresh_stretch, fj_max_refresh_stretch);
+  const i_t nnz_stretch = std::min<i_t>(
+    fj_cpu->problem->nnz / fj_cpu->hp.nnz_per_refresh_stretch, fj_cpu->hp.max_refresh_stretch);
   const i_t refresh_period = fj_cpu->settings.parameters.lhs_refresh_period * (1 + nnz_stretch);
   // const i_t refresh_period = 5000 * (1 + nnz_stretch);
   cuopt_assert(refresh_period > 0, "refresh period overflowed");

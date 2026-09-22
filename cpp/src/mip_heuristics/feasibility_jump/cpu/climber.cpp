@@ -35,6 +35,7 @@ void init_fj_cpu_from_template(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
 
   // Shared, not copied: read-only for the whole solve.
   fj_cpu.problem = tmpl.problem;
+  fj_cpu.hp = tmpl.hp;
 
   fj_cpu.h_cstr_left_weights  = left_weights;
   fj_cpu.h_cstr_right_weights = right_weights;
