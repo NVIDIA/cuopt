@@ -746,11 +746,6 @@ def _require_grpc_healthy():
         )
 
 
-@app.get(
-    "/cuopt/log/{id}",
-    response_model=LogResponseModel,
-    responses=LogResponse,
-)
 def _log_not_found(job_id):
     return HTTPException(
         status_code=404, detail=f"log not found for request {job_id}"
@@ -781,6 +776,11 @@ def _fetch_solver_logs(job_id, frombyte):
         raise
 
 
+@app.get(
+    "/cuopt/log/{id}",
+    response_model=LogResponseModel,
+    responses=LogResponse,
+)
 def getsolverlogs(
     id: str,
     accept: str = Header(default="application/json"),
