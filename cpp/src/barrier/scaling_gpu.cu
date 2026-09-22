@@ -244,7 +244,111 @@ i_t scaling_ruiz_gpu(const lp_problem_t<i_t, f_t>& unscaled,
   rmm::device_uvector<i_t> d_cone_col_offsets = cuopt::device_copy(cone_col_offsets_host, stream);
   rmm::device_uvector<i_t> d_col_cone_id      = cuopt::device_copy(col_cone_id_host, stream);
 
-  // --- Ruiz iteration loop (mirrors scaling.cpp:123-224) ---
+  // Bound-magnitude column pre-scaling
+  // Ruiz only balances coefficients, so variables whose bounds span many orders of magnitude
+  // still leave the interior-point diagonal D = z/x ill-conditioned. Scale each bounded column
+  // to O(1) first.
+  constexpr f_t finite_bound_limit = 1e20;
+  {
+    rmm::device_uvector<f_t> c0(n, stream);
+    thrust::fill(rmm::exec_policy(stream), c0.begin(), c0.end(), f_t(1));
+    // log of each linear column's bound magnitude, 0 where the column has no finite nonzero
+    // bound, so the geometric mean below averages only the columns actually being scaled.
+    rmm::device_uvector<f_t> log_mag(cone_start, stream);
+    rmm::device_uvector<i_t> has_bound(cone_start, stream);
+    thrust::for_each(rmm::exec_policy(stream),
+                     thrust::make_counting_iterator(i_t(0)),
+                     thrust::make_counting_iterator(cone_start),
+                     [lower     = d_lower.data(),
+                      upper     = d_upper.data(),
+                      c0        = c0.data(),
+                      log_mag   = log_mag.data(),
+                      has_bound = has_bound.data(),
+                      finite_bound_limit] __device__(i_t j) {
+                       const f_t lo            = raft::abs(lower[j]);
+                       const f_t hi            = raft::abs(upper[j]);
+                       const bool finite_lower = lower[j] > -finite_bound_limit && lo > f_t(0);
+                       const bool finite_upper = upper[j] < finite_bound_limit && hi > f_t(0);
+                       f_t mag;
+                       if (finite_lower && finite_upper) {
+                         mag = std::sqrt(lo * hi);
+                       } else if (finite_lower) {
+                         mag = lo;
+                       } else if (finite_upper) {
+                         mag = hi;
+                       } else {
+                         // free / one-sided-zero: leave at scale 1
+                         log_mag[j]   = f_t(0);
+                         has_bound[j] = 0;
+                         return;
+                       }
+                       c0[j]        = mag;
+                       log_mag[j]   = std::log(mag);
+                       has_bound[j] = 1;
+                     });
+    const f_t geo_sum =
+      thrust::reduce(rmm::exec_policy(stream), log_mag.begin(), log_mag.end(), f_t(0));
+    const i_t geo_count =
+      thrust::reduce(rmm::exec_policy(stream), has_bound.begin(), has_bound.end(), i_t(0));
+    if (geo_count > 0) {
+      // Normalize so the average column scale is 1, keeping the overall problem magnitude
+      // centered rather than uniformly shrinking it.
+      const f_t geo_mean = std::exp(geo_sum / static_cast<f_t>(geo_count));
+      thrust::for_each(rmm::exec_policy(stream),
+                       thrust::make_counting_iterator(i_t(0)),
+                       thrust::make_counting_iterator(cone_start),
+                       [c0 = c0.data(), has_bound = has_bound.data(), geo_mean] __device__(i_t j) {
+                         if (has_bound[j]) c0[j] /= geo_mean;
+                       });
+      // Apply x_j = c0[j] * x'_j : A(:,j) *= c0[j], obj[j] *= c0[j], bounds /= c0[j],
+      // Q(i,j) *= c0[i]*c0[j], accumulate into col_scale.
+      thrust::for_each(rmm::exec_policy(stream),
+                       thrust::make_counting_iterator(i_t(0)),
+                       thrust::make_counting_iterator(dA.nz_max),
+                       [x = dA.x.data(), col = dA.col_index.data(), c0 = c0.data()] __device__(
+                         i_t p) { x[p] *= c0[col[p]]; });
+      thrust::transform(rmm::exec_policy(stream),
+                        d_objective.data(),
+                        d_objective.data() + n,
+                        c0.data(),
+                        d_objective.data(),
+                        cuda::std::multiplies<f_t>{});
+      thrust::transform(rmm::exec_policy(stream),
+                        d_col_scale.data(),
+                        d_col_scale.data() + n,
+                        c0.data(),
+                        d_col_scale.data(),
+                        cuda::std::multiplies<f_t>{});
+      thrust::for_each(rmm::exec_policy(stream),
+                       thrust::make_counting_iterator(i_t(0)),
+                       thrust::make_counting_iterator(n),
+                       [lower = d_lower.data(),
+                        upper = d_upper.data(),
+                        c0    = c0.data(),
+                        finite_bound_limit] __device__(i_t j) {
+                         if (lower[j] > -finite_bound_limit) lower[j] /= c0[j];
+                         if (upper[j] < finite_bound_limit) upper[j] /= c0[j];
+                       });
+      if (has_q) {
+        // Row-parallel for the same reason as the Ruiz loop below: Q has an empty row for
+        // every variable with no quadratic term.
+        thrust::for_each(
+          rmm::exec_policy(stream),
+          thrust::make_counting_iterator(i_t(0)),
+          thrust::make_counting_iterator(dQ.m),
+          [x = dQ.x.data(), rs = dQ.row_start.data(), col = dQ.j.data(), c0 = c0.data()] __device__(
+            i_t i) {
+            for (i_t p = rs[i]; p < rs[i + 1]; ++p) {
+              x[p] *= c0[i] * c0[col[p]];
+            }
+          });
+      }
+      // A changed, so refresh the row norms the first Ruiz pass reuses.
+      compute_row_inf_norms(dA, r, stream);
+    }
+  }
+
+  // Ruiz iteration loop
   constexpr i_t max_ruiz_iterations = 10;
   rmm::device_uvector<f_t> c(n, stream);
   rmm::device_uvector<f_t> col_max_linear(cone_start, stream);
@@ -255,8 +359,8 @@ i_t scaling_ruiz_gpu(const lp_problem_t<i_t, f_t>& unscaled,
     f_t max_deviation = 0.0;
 
     // --- Row scaling: r[i] = 1/sqrt(max_j |A(i,j)|) ---
-    // On the first pass r still holds the row inf-norms computed for the skip heuristic
-    // above, and A has not been touched since, so only recompute once A has been scaled.
+    // On entry r already holds the row inf-norms of the current A (computed above), so
+    // only recompute once this loop has scaled A.
     if (iter > 0) { compute_row_inf_norms(dA, r, stream); }
     max_deviation = std::max(
       max_deviation,
@@ -396,7 +500,7 @@ i_t scaling_ruiz_gpu(const lp_problem_t<i_t, f_t>& unscaled,
     if (max_deviation < 0.1) break;
   }
 
-  // --- Finalize: invert accumulated reciprocal scales (mirrors scaling.cpp:226-235) ---
+  // Invert accumulated reciprocal scales
   thrust::transform(rmm::exec_policy(stream),
                     d_col_scale.data(),
                     d_col_scale.data() + n,

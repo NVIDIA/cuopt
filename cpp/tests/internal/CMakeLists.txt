@@ -40,5 +40,6 @@ ConfigureTest(NUMOPT_INTERNAL_TEST
     ${CUOPT_TEST_DIR}/socp/sparse_augmented_kkt_test.cu
     ${CUOPT_TEST_DIR}/socp/solve_barrier_socp.cu
     ${CUOPT_TEST_DIR}/socp/general_quadratic_test.cu
+    ${CUOPT_TEST_DIR}/socp/scaling_test.cu
     LABELS numopt
     STATIC_LIB)
