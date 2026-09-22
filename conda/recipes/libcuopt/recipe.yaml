@@ -111,7 +111,8 @@ outputs:
         content: |
           cmake --install cpp/build --component client
           cmake --install cpp/build --component client-dev
-          ./ci/check_symbols.sh cpp/build/libcuopt_client.so --no-public-api-check
+          # --require-leaf: the client must resolve without the GPU stack (#1890).
+          ./ci/check_symbols.sh cpp/build/libcuopt_client.so --no-public-api-check --require-leaf
       dynamic_linking:
         overlinking_behavior: "error"
       prefix_detection:

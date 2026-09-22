@@ -7,7 +7,9 @@
 # unit: they wrap the same C++ client object, and keeping them together lets the
 # client be detached from the engines as a single package later.
 set(cython_sources grpc_client.pyx)
-set(linked_libraries cuopt::client)
+# rmm is named here rather than inherited: cuopt_client carries no rmm dependency (#1890),
+# but Cython emits catch handlers for rmm's exception types, so this extension needs them.
+set(linked_libraries cuopt::client rmm::rmm)
 
 rapids_cython_create_modules(
   CXX
