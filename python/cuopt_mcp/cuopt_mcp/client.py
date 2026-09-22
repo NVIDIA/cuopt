@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from cuopt.grpc.linear_programming import Client
+    from cuopt.grpc.routing import RoutingClient
 
 DEFAULT_HOST = "localhost"
 # Matches cuopt_default_grpc_port (cpp/src/grpc/cuopt_default_grpc_port.h) --
@@ -36,6 +37,7 @@ def redact_paths(text: str) -> str:
 
 _lock = threading.Lock()
 _client = None
+_routing_client = None
 
 
 def endpoint() -> tuple:
@@ -118,6 +120,36 @@ def reset_client() -> None:
     global _client
     with _lock:
         _client = None
+
+
+def get_routing_client() -> "RoutingClient":
+    """Return a process-wide VRP gRPC client, connecting on first use.
+
+    Separate from :func:`get_client`: the LP/MIP and VRP services are
+    distinct proto services with distinct compiled client classes, even
+    though both point at the same ``cuopt_grpc_server`` target.
+
+    Returns
+    -------
+        The cached ``cuopt.grpc.routing.RoutingClient``, creating it
+        against the current ``CUOPT_REMOTE_HOST``/``CUOPT_REMOTE_PORT`` /
+        TLS environment on first call.
+    """
+    global _routing_client
+    with _lock:
+        if _routing_client is None:
+            from cuopt.grpc.routing import RoutingClient
+
+            host, port = endpoint()
+            _routing_client = RoutingClient(host, port, tls=_tls_config())
+        return _routing_client
+
+
+def reset_routing_client() -> None:
+    """Drop the cached VRP client. Used by tests and after a channel error."""
+    global _routing_client
+    with _lock:
+        _routing_client = None
 
 
 class CuOptMCPError(RuntimeError):

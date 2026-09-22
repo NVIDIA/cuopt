@@ -1,7 +1,7 @@
 # cuopt_mcp — MCP server for NVIDIA cuOpt
 
-Exposes cuOpt LP and MILP solving to MCP clients (Claude Code, Cursor, Codex)
-over the cuOpt gRPC backend.
+Exposes cuOpt LP, MILP, and vehicle routing (VRP/PDP) solving to MCP clients
+(Claude Code, Cursor, Codex) over the cuOpt gRPC backend.
 
 ```text
 MCP client ──stdio (JSON-RPC)──> cuopt-mcp ──gRPC──> cuopt_grpc_server (GPU)
@@ -55,13 +55,15 @@ needed) whenever `gpu-host` isn't a trusted local network.
 | `cuopt_health` | Report the configured gRPC target and whether it answers |
 | `cuopt_solve_lp` | Submit an LP; returns a `job_id` immediately |
 | `cuopt_solve_milp` | Submit a MILP; returns a `job_id` immediately |
-| `cuopt_status` | Poll job state |
-| `cuopt_result` | Fetch the solution, shaped to stay readable |
+| `cuopt_solve_vrp` | Submit a vehicle routing problem; returns a `job_id` immediately |
+| `cuopt_status` | Poll job state (LP, MILP, or VRP) |
+| `cuopt_result` | Fetch an LP/MILP solution, shaped to stay readable |
+| `cuopt_vrp_result` | Fetch a VRP solution (route stops), shaped to stay readable |
 | `cuopt_incumbents` | Watch a MILP's objective improve (needs `track_incumbents=true` at submit) |
 | `cuopt_logs` | Solver log lines for a finished job (no live tail yet) |
 | `cuopt_cancel` | Stop a running job |
 | `cuopt_delete` | Release a job's server-side state once its result is no longer needed |
-| `cuopt_list_settings` | Discover solver parameters |
+| `cuopt_list_settings` | Discover LP/MILP solver parameters |
 
 Solves are asynchronous by design. A blocking call would exceed the MCP
 client timeout on any realistic MILP and would make cancellation impossible.
@@ -149,8 +151,17 @@ limit on a tool result is the model's context window, not the transport. So
 `cuopt_result` returns a summary plus narrow accessors (`variables`,
 `nonzero_only`), writing the full vector to a file past `limit`.
 
-**Settings catalogue is generated.** `_generated/cuopt_mcp_schema.json` is
-emitted from `cpp/src/grpc/codegen/field_registry.yaml` by
-`./build.sh codegen`, the same source of truth that drives the proto and the
-C++ conversion code. A new solver parameter reaches this server with no
-MCP-specific work.
+**Settings catalogue is generated (LP/MILP only).** `_generated/
+cuopt_mcp_schema.json` is emitted from `cpp/src/grpc/codegen/
+field_registry.yaml` by `./build.sh codegen`, the same source of truth
+that drives the proto and the C++ conversion code. A new LP/MILP solver
+parameter reaches this server with no MCP-specific work. VRP settings
+aren't in this registry (only `time_limit`/`verbose_mode` (or `verbose`)/
+`error_logging` reach the server; see `cuopt_solve_vrp`'s docstring) so there's no
+equivalent `cuopt_list_settings` coverage for VRP.
+
+**VRP submission has no host-CUDA dependency at record time.**
+`cuopt.routing.DataModel` records setter calls (numpy arrays) and never
+builds a device model on this host -- it only serializes the recorded
+calls onto the wire, the same way `cuopt_solve_lp`/`cuopt_solve_milp`'s
+JSON path never runs a solve locally.
