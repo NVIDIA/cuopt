@@ -2880,7 +2880,7 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
     raft::handle_t const* handle_ptr,                                                            \
     const cuopt::mathematical_optimization::io::mps_data_model_t<int, F_TYPE>& data_model);      \
                                                                                                  \
-  template cuopt::mathematical_optimization::io::mps_data_model_t<int, F_TYPE>                   \
+  template CUOPT_EXPORT cuopt::mathematical_optimization::io::mps_data_model_t<int, F_TYPE>      \
   op_problem_to_mps_data_model(const optimization_problem_t<int, F_TYPE>& op_problem);           \
                                                                                                  \
   template CUOPT_EXPORT bool is_distributed_pdlp_requested(                                      \
@@ -2908,11 +2908,11 @@ INSTANTIATE(double)
 // Make sure both symbols exist in PDLP-only float builds where
 // MIP_INSTANTIATE_FLOAT is off.
 #if PDLP_INSTANTIATE_FLOAT && !MIP_INSTANTIATE_FLOAT
-template optimization_problem_t<int, float> mps_data_model_to_optimization_problem(
+template CUOPT_EXPORT optimization_problem_t<int, float> mps_data_model_to_optimization_problem(
   raft::handle_t const* handle_ptr,
   const cuopt::mathematical_optimization::io::mps_data_model_t<int, float>& data_model);
 
-template cuopt::mathematical_optimization::io::mps_data_model_t<int, float>
+template CUOPT_EXPORT cuopt::mathematical_optimization::io::mps_data_model_t<int, float>
 op_problem_to_mps_data_model(const optimization_problem_t<int, float>& op_problem);
 #endif
 
