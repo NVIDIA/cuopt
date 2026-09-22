@@ -61,7 +61,7 @@ RUN \
     dnf clean all && \
     ln -sf /usr/bin/python3.14 /usr/bin/python
 
-# Own stage so the build toolchain doesn't persist into cuopt-final. See build_java_dynamic_ubi.sh.
+# Own stage so the build toolchain doesn't persist into cuopt-final. See build_java_dynamic.sh.
 FROM install-env AS java-build
 
 # No java-17-openjdk on UBI10 AppStream (only 21, 25); 21 satisfies the JDK 17+ requirement.
@@ -73,8 +73,9 @@ COPY --from=cuda-headers /usr/local/cuda /usr/local/cuda
 ENV PATH="/usr/local/cuda/bin:${PATH}"
 
 COPY ./repo /build/repo
-COPY ./build_java_dynamic_ubi.sh /build/build_java_dynamic_ubi.sh
-RUN bash /build/build_java_dynamic_ubi.sh /build/repo /opt/cuopt/java
+COPY ./build_java_dynamic.sh /build/build_java_dynamic.sh
+RUN bash /build/build_java_dynamic.sh /build/repo \
+      /usr/local/lib64/python3.14/site-packages/libcuopt /opt/cuopt/java
 
 FROM install-env AS cuopt-final
 

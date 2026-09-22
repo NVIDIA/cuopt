@@ -9,10 +9,9 @@
 set -euo pipefail
 
 REPO_ROOT="${1:?missing repo root}"
-PYTHON_SHORT_VER="${2:?missing python short version, e.g. 3.14}"
+CUOPT_SITE_PACKAGES="${2:?missing path to the pip-installed libcuopt package, e.g. /usr/local/lib/python3.14/dist-packages/libcuopt}"
 OUT_DIR="${3:?missing output directory}"
 
-CUOPT_SITE_PACKAGES="/usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages/libcuopt"
 if [[ ! -f "${CUOPT_SITE_PACKAGES}/lib64/libcuopt.so" ]]; then
   echo "libcuopt.so not found under ${CUOPT_SITE_PACKAGES}/lib64; is libcuopt pip-installed yet?" >&2
   exit 1

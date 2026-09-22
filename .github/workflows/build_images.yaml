@@ -71,7 +71,6 @@ jobs:
           cp -r ./cpp/include ./ci/docker/context/repo/cpp/include
           cp -r ./cpp/src ./ci/docker/context/repo/cpp/src
           cp ./ci/docker/build_java_dynamic.sh ./ci/docker/context/build_java_dynamic.sh
-          cp ./ci/docker/build_java_dynamic_ubi.sh ./ci/docker/context/build_java_dynamic_ubi.sh
       - name: Login to NGC
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:

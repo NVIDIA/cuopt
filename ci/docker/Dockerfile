@@ -108,7 +108,8 @@ ENV PATH="/usr/local/cuda/bin:${PATH}"
 
 COPY ./repo /build/repo
 COPY ./build_java_dynamic.sh /build/build_java_dynamic.sh
-RUN bash /build/build_java_dynamic.sh /build/repo "${PYTHON_SHORT_VER}" /opt/cuopt/java
+RUN bash /build/build_java_dynamic.sh /build/repo \
+      "/usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages/libcuopt" /opt/cuopt/java
 
 FROM install-env AS cuopt-final
 
