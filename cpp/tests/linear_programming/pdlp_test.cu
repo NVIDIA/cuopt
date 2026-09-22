@@ -823,12 +823,10 @@ TEST(pdlp_class, initial_solution_test)
   }
 }
 
-// Regression test: curtis_reid_scaling()'s row/col kernels floor |a_ij| before taking a
-// log. That floor used to be f_t(1e-300), which underflows to exactly 0.0f for float,
-// so an explicitly-stored zero coefficient (as opposed to one simply absent from the
-// CSR) would reach raft::log(0.0f) = -inf, producing non-finite scale factors. Verifies
-// the fix (std::numeric_limits<f_t>::min(), representable and nonzero at any precision)
-// keeps every scale factor finite in float precision with an explicit zero coefficient.
+// Explicitly-stored zero coefficients (present in the CSR with value 0, not omitted)
+// must not produce non-finite Curtis-Reid scale factors in float. The row/col kernels
+// floor |a_ij| at std::numeric_limits<f_t>::min() before taking a log so raft::log
+// never sees 0.
 TEST(pdlp_class, curtis_reid_scaling_explicit_zero_coefficient_float)
 {
   const raft::handle_t handle_{};

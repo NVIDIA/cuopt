@@ -140,19 +140,11 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::compute_scaling_vectors(
   // master pdlp_solver_t from a shape-0 placeholder)
   if (primal_size_h_ == 0 || dual_size_h_ == 0) return;
 
-  // Curtis-Reid prescaling runs first: its global log-domain least-squares fit corrects
-  // broad multi-order-of-magnitude skew, then Ruiz's local max-norm equilibration and
-  // Pock-Chambolle's PDHG-tuned finishing touch operate on an already-reasonable matrix.
+  // Curtis-Reid runs first as a prescale: its global log-domain fit removes broad
+  // magnitude skew, leaving Ruiz and Pock-Chambolle to equilibrate locally.
   //
-  // Not run under MIP: curtis_reid_scaling() does two-sided (row + column) scaling, and
-  // its integer-variable neutralization (via reset_integer_variables(), shared with
-  // Ruiz/Pock-Chambolle) sets iteration_variable_scaling_ to 1 assuming the caller's fold
-  // is Ruiz/PC's "cummulative /= sqrt(iteration)" (where 1 is a no-op) -- Curtis-Reid's
-  // fold is "cummulative *= exp(clamp(log_scale))", where 1 means "multiply by e", NOT a
-  // no-op. So as implemented, CR would silently mis-scale integer variables' columns
-  // under MIP. Rather than patch that mismatch, skip CR entirely for MIP for now (cuOpt's
-  // MIP path intentionally does row-only scaling); row-only Curtis-Reid support is
-  // tracked as a follow-up, not implemented here.
+  // Skipped under MIP: MIP resets scaling on integer columns. Enabling it needs more
+  // benchmarking.
   if (hyper_params_.do_curtis_reid_scaling && !running_mip_) {
     curtis_reid_scaling(hyper_params_.number_of_curtis_reid_iterations);
   }
@@ -493,8 +485,7 @@ __global__ void curtis_reid_col_kernel(i_t n_variables,
 // least-squares fit run *before* Ruiz/Pock-Chambolle, minimizing
 // sum((log|a_ij| - row_log_scale[i] - col_log_scale[j])^2) via alternating per-row/
 // per-column log-mean fixed-point iteration. This port's sequence and defaults are
-// inspired by the HPR-LP-C codebase (https://github.com/PolyU-IOR/HPR-LP-C,
-// src/solver/scaling.cu).
+// inspired by the HPR-LP-C codebase (https://github.com/PolyU-IOR/HPR-LP-C).
 template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::curtis_reid_scaling(
   i_t number_of_curtis_reid_iterations)
