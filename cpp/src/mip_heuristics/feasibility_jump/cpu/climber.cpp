@@ -35,19 +35,19 @@ void init_fj_cpu_from_template(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
 
   // Shared, not copied: read-only for the whole solve.
   fj_cpu.problem = tmpl.problem;
-  fj_cpu.hp = tmpl.hp;
+  fj_cpu.hp      = tmpl.hp;
 
   fj_cpu.h_initial_left_weights  = left_weights;
   fj_cpu.h_initial_right_weights = right_weights;
-  fj_cpu.max_weight           = 1.0;
-  fj_cpu.h_objective_weight   = objective_weight;
-  fj_cpu.h_assignment         = tmpl.h_assignment;
-  fj_cpu.h_best_assignment    = tmpl.h_assignment;
-  fj_cpu.h_var_bounds         = tmpl.h_var_bounds;
-  fj_cpu.h_is_binary_variable = tmpl.h_is_binary_variable;
-  fj_cpu.h_binary_indices     = tmpl.h_binary_indices;
-  fj_cpu.n_binary_vars        = tmpl.n_binary_vars;
-  fj_cpu.n_integer_vars       = tmpl.n_integer_vars;
+  fj_cpu.max_weight              = 1.0;
+  fj_cpu.h_objective_weight      = objective_weight;
+  fj_cpu.h_assignment            = tmpl.h_assignment;
+  fj_cpu.h_best_assignment       = tmpl.h_assignment;
+  fj_cpu.h_var_bounds            = tmpl.h_var_bounds;
+  fj_cpu.h_is_binary_variable    = tmpl.h_is_binary_variable;
+  fj_cpu.h_binary_indices        = tmpl.h_binary_indices;
+  fj_cpu.n_binary_vars           = tmpl.n_binary_vars;
+  fj_cpu.n_integer_vars          = tmpl.n_integer_vars;
   fj_cpu.h_tabu_nodec_until.resize(n_variables, 0);
   fj_cpu.h_tabu_noinc_until.resize(n_variables, 0);
   fj_cpu.h_tabu_lastdec.resize(n_variables, 0);

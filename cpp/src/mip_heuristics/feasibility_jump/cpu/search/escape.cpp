@@ -23,7 +23,9 @@ void randomize_variable(fj_cpu_climber_t<i_t, f_t>& fj_cpu, i_t var_idx, cuopt::
     ub  = std::floor(ub);
     val = std::round(val);
   }
-  val = std::clamp(val, get_lower(fj_cpu.h_var_bounds[var_idx].get()), get_upper(fj_cpu.h_var_bounds[var_idx].get()));
+  val = std::clamp(val,
+                   get_lower(fj_cpu.h_var_bounds[var_idx].get()),
+                   get_upper(fj_cpu.h_var_bounds[var_idx].get()));
 
   fj_cpu.h_assignment[var_idx] = val;
 }
@@ -38,7 +40,7 @@ void perturb(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
     fj_cpu.h_assignment = fj_cpu.h_best_assignment;
   }
 
-  const i_t n_kick = std::max<i_t>(1, fj_cpu.perturb_vars);
+  const i_t n_kick              = std::max<i_t>(1, fj_cpu.perturb_vars);
   std::vector<i_t> sampled_vars = fj_cpu.problem->h_objective_vars;
   fj_cpu.rng.shuffle(sampled_vars);
   sampled_vars.resize(std::min(sampled_vars.size(), (size_t)n_kick));

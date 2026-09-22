@@ -253,19 +253,20 @@ void audit_incremental_state(fj_cpu_climber_t<i_t, f_t>& fj_cpu, const char* sit
     if (carried_violated == truly_violated) continue;
 
     // Debug messages are flushed before the abort below.
-    CUOPT_LOG_DEBUG("%sCPUFJ %s row %d: integral %d, carried violated %d actual %d, carried "
-                    "slack %.17g vs fresh %.17g differ by %.17g, bound %.17g, tol %.17g",
-                    fj_cpu.log_prefix.c_str(),
-                    site,
-                    (int)cstr_idx,
-                    fj_cpu.h_row_is_integral[cstr_idx],
-                    carried_violated,
-                    truly_violated,
-                    carried,
-                    fresh,
-                    std::fabs(carried - fresh),
-                    fj_cpu.h_bound[cstr_idx],
-                    tol);
+    CUOPT_LOG_DEBUG(
+      "%sCPUFJ %s row %d: integral %d, carried violated %d actual %d, carried "
+      "slack %.17g vs fresh %.17g differ by %.17g, bound %.17g, tol %.17g",
+      fj_cpu.log_prefix.c_str(),
+      site,
+      (int)cstr_idx,
+      fj_cpu.h_row_is_integral[cstr_idx],
+      carried_violated,
+      truly_violated,
+      carried,
+      fresh,
+      std::fabs(carried - fresh),
+      fj_cpu.h_bound[cstr_idx],
+      tol);
     report_row_divergence<i_t, f_t>(fj_cpu, cstr_idx, assignment, site);
     cuopt_assert(false, "violated set disagrees with a fresh slack");
     return;
@@ -324,9 +325,9 @@ void sanity_checks(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   for (const auto& cstr_idx : fj_cpu.violated_constraints) {
     cuopt_assert(!fj_cpu.satisfied_constraints.contains(cstr_idx),
                  "Violated constraint also in satisfied_constraints");
-    cuopt_assert(fj_cpu.row_state()[cstr_idx].slack + fj_cpu.h_slack_sumcomp[cstr_idx] <
-                   -fj_cpu.row_tolerance,
-                 "Constraint in violated_constraints is not actually violated");
+    cuopt_assert(
+      fj_cpu.row_state()[cstr_idx].slack + fj_cpu.h_slack_sumcomp[cstr_idx] < -fj_cpu.row_tolerance,
+      "Constraint in violated_constraints is not actually violated");
   }
 
   // Check that each satisfied constraint is actually satisfied and not present in

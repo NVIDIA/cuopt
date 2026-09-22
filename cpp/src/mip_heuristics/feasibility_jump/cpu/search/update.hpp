@@ -62,8 +62,8 @@ void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu, i_t var_idx, f_t delta, bool
   // slack bookkeeping stays exact whatever the clamp does.
   const auto var_bounds = fj_cpu.h_var_bounds[var_idx].get();
   new_val               = std::min(std::max(new_val, get_lower(var_bounds)), get_upper(var_bounds));
-  const f_t floor_ = std::max(get_lower(var_bounds), (f_t)-fj_cpu.hp.start_magnitude_limit);
-  const f_t ceil_  = std::min(get_upper(var_bounds), (f_t)fj_cpu.hp.start_magnitude_limit);
+  const f_t floor_      = std::max(get_lower(var_bounds), (f_t)-fj_cpu.hp.start_magnitude_limit);
+  const f_t ceil_       = std::min(get_upper(var_bounds), (f_t)fj_cpu.hp.start_magnitude_limit);
   if (floor_ <= ceil_) new_val = std::min(std::max(new_val, floor_), ceil_);
   delta = new_val - old_val;
   cuopt_assert(std::isfinite(new_val), "assignment is not finite");
