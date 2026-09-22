@@ -231,12 +231,12 @@ class DataModel(data_model_wrapper.DataModel):
     @catch_cuopt_exception
     def update_linear_objective(self, coefficients):
         """
-        Cache reuse is QP-only: quadratic constraints take a full solve.
-
         Update the linear objective coefficients for a sequence re-solve.
+
         Writes ``coefficients`` onto this DataModel. If a barrier cache is
         present, also maps them into the cached barrier workspace and marks
-        it dirty (quadratic ``Q``, ``A``, and bounds must stay unchanged).
+        it dirty (quadratic ``Q``, ``A``, bounds, and the quadratic
+        constraints must stay unchanged).
 
         Parameters
         ----------
@@ -253,8 +253,8 @@ class DataModel(data_model_wrapper.DataModel):
 
         Writes ``b`` onto this DataModel. If a barrier cache is present, also
         maps ``b`` into the cached barrier workspace and marks it dirty
-        (quadratic ``Q``, ``A``, row senses, and bounds must stay unchanged).
-        Cache reuse is QP-only: quadratic constraints take a full solve.
+        (quadratic ``Q``, ``A``, row senses, bounds, and the quadratic
+        constraints must stay unchanged).
 
         Range rows and folding in the first solve are not supported and raise;
         run a full solve for those models. Rows that presolve dropped as empty

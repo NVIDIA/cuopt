@@ -87,7 +87,7 @@ simplex::user_problem_t<i_t, f_t> user_problem_from_transform(
   simplex::user_problem_t<i_t, f_t> user_problem(handle_ptr);
   user_problem.num_rows  = xf.user_num_rows;
   user_problem.num_cols  = xf.user_num_cols;
-  user_problem.objective = model.get_objective_coefficients_host();
+  user_problem.objective = scatter_model_objective(xf, model.get_objective_coefficients_host());
   user_problem.row_sense = xf.row_sense;
   user_problem.rhs.assign(static_cast<std::size_t>(xf.user_num_rows), f_t(0));
   user_problem.obj_scale    = static_cast<f_t>(xf.obj_scale);
@@ -96,8 +96,9 @@ simplex::user_problem_t<i_t, f_t> user_problem_from_transform(
   user_problem.Q_values.assign(1, f_t(1));
   user_problem.cone_var_start               = xf.cone_var_start;
   user_problem.second_order_cone_dims       = xf.second_order_cone_dims;
-  user_problem.original_num_cols            = xf.expanded_original_num_cols;
+  user_problem.original_num_cols            = xf.pre_expansion_num_cols;
   user_problem.original_col_to_expanded_col = xf.original_col_to_expanded_col;
+  user_problem.original_num_rows            = xf.pre_expansion_num_rows;
   return user_problem;
 }
 
@@ -1900,14 +1901,17 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
     // Must stay in lockstep with the gate in solve_linear_program_with_barrier: this path swaps
     // in the slim user_problem_from_transform, so disagreement runs presolve on a fabricated
     // problem.
+    // Cone models are compared in model coordinates: the cached counts are post-expansion.
     const bool reuse_from_cache =
       settings.user_problem_file.empty() && xf != nullptr && xf->barrier_lp != nullptr &&
       effective_bound_free_variables(settings) == 0 &&
-      xf->presolve_info.bounded_free_variables.empty() && op_problem.has_quadratic_objective() &&
-      !op_problem.has_quadratic_constraints() && xf->second_order_cone_dims.empty() &&
+      xf->presolve_info.bounded_free_variables.empty() &&
+      (op_problem.has_quadratic_objective() || op_problem.has_quadratic_constraints()) &&
+      static_cast<int>(op_problem.get_quadratic_constraints().size()) ==
+        xf->num_quadratic_constraints &&
       static_cast<int>(xf->row_sense.size()) == xf->user_num_rows &&
-      op_problem.get_n_variables() == xf->user_num_cols &&
-      op_problem.get_n_constraints() == xf->user_num_rows;
+      op_problem.get_n_variables() == model_num_cols(*xf) &&
+      op_problem.get_n_constraints() == model_num_rows(*xf);
 
     if (problem_checking && !reuse_from_cache) {
       problem_checking_t<i_t, f_t>::check_problem_representation(op_problem);
@@ -1955,6 +1959,10 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
     // space. Reuse keeps the sense of the workspace (and Q) built by that full solve.
     if (!reuse_from_cache && cache != nullptr && cache->transform() != nullptr) {
       cache->transform()->maximize = op_problem.get_sense();
+      // Reuse never re-runs the cone expansion, so the gate above rejects a model that has
+      // gained or lost a quadratic constraint since the cache was built.
+      cache->transform()->num_quadratic_constraints =
+        static_cast<int>(op_problem.get_quadratic_constraints().size());
     }
     auto solution = convert_dual_simplex_sol(op_problem,
                                              std::get<0>(sol_dual_simplex),

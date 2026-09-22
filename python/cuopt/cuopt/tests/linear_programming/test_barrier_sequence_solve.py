@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Barrier cache reuse (``sequence_solve``) for ``DataModel.update_rhs``.
+"""Barrier cache reuse (``sequence_solve``) for the DataModel update APIs.
 
 Every re-solve through the cache is compared against a fresh full solve of the
 same model, so no assertion depends on a hand-derived optimum. The models are
@@ -36,8 +36,9 @@ def _sequence_settings():
     return settings
 
 
-def _build(values, indices, offsets, rhs, senses, lower, upper,
-           objective=None):
+def _build(
+    values, indices, offsets, rhs, senses, lower, upper, objective=None
+):
     """A QP with quadratic term x^T x, so the model is barrier-eligible."""
     n = len(lower)
     model = data_model.DataModel()
@@ -49,7 +50,8 @@ def _build(values, indices, offsets, rhs, senses, lower, upper,
     model.set_constraint_bounds(np.asarray(rhs, dtype=np.float64))
     model.set_row_types(senses)
     model.set_objective_coefficients(
-        np.zeros(n) if objective is None
+        np.zeros(n)
+        if objective is None
         else np.asarray(objective, dtype=np.float64)
     )
     model.set_quadratic_objective_matrix(
@@ -284,10 +286,221 @@ def test_bounded_free_variables_block_reuse(
 
     _assert_matches_oracle(
         second,
-        _full_solve(
-            FREE_VARIABLE, FREE_VARIABLE_RHS, objective=new_objective
-        ),
+        _full_solve(FREE_VARIABLE, FREE_VARIABLE_RHS, objective=new_objective),
     )
+
+
+# Quadratic constraints reach the barrier as second-order cones. The conversion appends rows and
+# permutes columns, so an update has to be mapped from model coordinates into the expanded layout
+# the cache holds, and updates stay model-sized: the appended rows belong to the conversion.
+# The conversion also rejects cone variables that carry an explicit upper bound or a nonzero
+# lower bound, so the builders below leave the bounds of anything a cone touches open.
+
+
+def _build_lorentz(rhs, objective, cone_head_free=False):
+    """``||(x1, x2)|| <= t`` plus two linear rows, no quadratic objective.
+
+    Written as ``-t^2 + x1^2 + x2^2 <= 0``, which the conversion recognizes
+    and lifts by permuting ``(t, x1, x2)`` into a cone block, so all three are
+    conic variables. With ``cone_head_free``, ``t`` loses its lower bound and
+    row 1 becomes the singleton ``t >= b1`` that proves the head nonnegative.
+    """
+    n = 3
+    model = data_model.DataModel()
+    # row 0: x1 + x2 >= b0 ; row 1: t <= b1, or t >= b1 when the head is free
+    model.set_csr_constraint_matrix(
+        np.array([1.0, 1.0, 1.0], dtype=np.float64),
+        np.array([1, 2, 0], dtype=np.int32),
+        np.array([0, 2, 3], dtype=np.int32),
+    )
+    model.set_constraint_bounds(np.asarray(rhs, dtype=np.float64))
+    model.set_row_types("GG" if cone_head_free else "GL")
+    model.set_objective_coefficients(np.asarray(objective, dtype=np.float64))
+    lower = np.zeros(n)
+    if cone_head_free:
+        lower[0] = -np.inf
+    model.set_variable_lower_bounds(lower)
+    model.set_variable_upper_bounds(np.full(n, np.inf))
+    model.add_quadratic_constraint(
+        vals=np.array([-1.0, 1.0, 1.0]),
+        rows=np.array([0, 1, 2], dtype=np.int32),
+        cols=np.array([0, 1, 2], dtype=np.int32),
+        rhs_value=0.0,
+        sense="L",
+    )
+    return model
+
+
+def _build_general_cone(rhs, objective):
+    """``x1^2 + x2^2 + 2*x1 <= 8``, a shifted disk, plus two linear rows.
+
+    The linear part and the nonzero RHS keep this off the recognized Lorentz
+    pattern, so the conversion takes its general path: it factors Q, adds cone
+    variables of its own, and appends four rows instead of two, which is a
+    different expanded shape to map an update through. The disk bounds
+    ``min x1``, so the model stays bounded.
+    """
+    n = 2
+    model = data_model.DataModel()
+    # row 0: x1 + x2 >= b0 ; row 1: x1 - x2 <= b1
+    model.set_csr_constraint_matrix(
+        np.array([1.0, 1.0, 1.0, -1.0], dtype=np.float64),
+        np.array([0, 1, 0, 1], dtype=np.int32),
+        np.array([0, 2, 4], dtype=np.int32),
+    )
+    model.set_constraint_bounds(np.asarray(rhs, dtype=np.float64))
+    model.set_row_types("GL")
+    model.set_objective_coefficients(np.asarray(objective, dtype=np.float64))
+    model.set_variable_lower_bounds(np.full(n, -np.inf))
+    model.set_variable_upper_bounds(np.full(n, np.inf))
+    model.add_quadratic_constraint(
+        vals=np.array([1.0, 1.0]),
+        rows=np.array([0, 1], dtype=np.int32),
+        cols=np.array([0, 1], dtype=np.int32),
+        linear_values=np.array([2.0]),
+        linear_indices=np.array([0], dtype=np.int32),
+        rhs_value=8.0,
+        sense="L",
+    )
+    return model
+
+
+def _full_cone_solve(build, rhs, objective, **kwargs):
+    """Oracle: a fresh cone model with default settings, no cache in play."""
+    return solver.Solve(
+        build(rhs, objective, **kwargs), solver_settings.SolverSettings()
+    )
+
+
+# Builder, objective, first RHS, then the RHSs to update to. The updates stay
+# feasible: on the shifted disk, x1 + x2 tops out just above 2.16.
+CONE_CASES = {
+    "lorentz": (
+        _build_lorentz,
+        [1.0, 0.0, 0.0],
+        [2.0, 9.0],
+        [[3.0, 9.0], [1.5, 9.0]],
+    ),
+    "general": (
+        _build_general_cone,
+        [1.0, 0.0],
+        [1.0, 5.0],
+        [[1.5, 5.0], [0.5, 5.0]],
+    ),
+}
+
+
+@pytest.mark.parametrize("case", list(CONE_CASES))
+def test_cone_update_rhs_matches_full_solve(case, capfd):
+    """An RHS update on a cone model must agree with a fresh full solve.
+
+    The model RHS has two entries while the converted problem has more rows,
+    so this fails outright if the update is not mapped into the expanded
+    layout, and gives a wrong answer if the appended rows lose their own RHS.
+    """
+    build, objective, first_rhs, later_rhs = CONE_CASES[case]
+    settings = _sequence_settings()
+    model = build(first_rhs, objective)
+
+    first, _ = _solve(model, settings, capfd)
+    assert first.get_termination_reason() == "Optimal"
+
+    for rhs in later_rhs:
+        model.update_rhs(np.asarray(rhs, dtype=np.float64))
+        reused, log = _solve(model, settings, capfd)
+        assert REUSE_LOG in log, "update_rhs fell back to a full solve"
+        _assert_matches_oracle(reused, _full_cone_solve(build, rhs, objective))
+
+
+@pytest.mark.parametrize("case", list(CONE_CASES))
+def test_cone_update_rhs_moves_the_optimum(case):
+    """Guard the oracles: the RHS being updated has to matter.
+
+    Without this, a cached solve that ignored the new RHS would still match an
+    oracle that ignored it too, and every comparison above would pass.
+    """
+    build, objective, first_rhs, later_rhs = CONE_CASES[case]
+    objectives = {
+        _full_cone_solve(build, rhs, objective).get_primal_objective()
+        for rhs in [first_rhs] + later_rhs
+    }
+    assert len(objectives) == 1 + len(later_rhs)
+
+
+def test_lorentz_optimum_is_the_expected_one():
+    """Pin one closed form, so the oracles are not the only reference.
+
+    ``||(x1, x2)|| <= t`` with ``x1 + x2 >= b`` and ``x >= 0`` splits the sum
+    evenly, putting the optimum of ``min t`` at ``b / sqrt(2)``.
+    """
+    for b in (2.0, 3.0):
+        solution = _full_cone_solve(_build_lorentz, [b, 9.0], [1.0, 0.0, 0.0])
+        assert solution.get_termination_reason() == "Optimal"
+        assert solution.get_primal_objective() == pytest.approx(
+            b / np.sqrt(2.0), rel=1e-5, abs=1e-5
+        )
+
+
+def test_cone_update_linear_objective_matches_full_solve(capfd):
+    """The conversion permutes columns, so the objective needs remapping too."""
+    settings = _sequence_settings()
+    rhs = [2.0, 9.0]
+    model = _build_lorentz(rhs, [1.0, 0.0, 0.0])
+
+    first, _ = _solve(model, settings, capfd)
+    assert first.get_termination_reason() == "Optimal"
+
+    new_objective = [1.0, 0.25, 0.0]
+    model.update_linear_objective(np.asarray(new_objective, dtype=np.float64))
+    reused, log = _solve(model, settings, capfd)
+    assert REUSE_LOG in log, (
+        "update_linear_objective fell back to a full solve"
+    )
+    _assert_matches_oracle(
+        reused, _full_cone_solve(_build_lorentz, rhs, new_objective)
+    )
+
+
+def test_cone_update_rhs_rejects_lost_cone_head_bound(capfd):
+    """A cone head proved nonnegative by a row cannot lose that proof.
+
+    The head here is free, so the conversion only accepts the model because
+    row 1 forces t >= 0. An RHS that relaxes the row to t >= -1 makes this a
+    model a full solve refuses, and reuse has to refuse it the same way rather
+    than solving a stale cone formulation.
+    """
+    settings = _sequence_settings()
+    objective = [1.0, 0.0, 0.0]
+    model = _build_lorentz([2.0, 0.0], objective, cone_head_free=True)
+
+    first, _ = _solve(model, settings, capfd)
+    assert first.get_termination_reason() == "Optimal"
+
+    with pytest.raises(Exception, match="nonnegative"):
+        model.update_rhs(np.array([2.0, -1.0]))
+
+    # A full solve of the same model does not return an optimum either,
+    # whether it reports the rejection as an exception or a status.
+    try:
+        oracle = _full_cone_solve(
+            _build_lorentz, [2.0, -1.0], objective, cone_head_free=True
+        )
+    except Exception:
+        pass
+    else:
+        assert oracle.get_termination_reason() != "Optimal"
+
+
+def test_cone_update_rhs_rejects_wrong_length(capfd):
+    """Length is validated against the model rows, not the converted rows."""
+    settings = _sequence_settings()
+    model = _build_lorentz([2.0, 9.0], [1.0, 0.0, 0.0])
+    first, _ = _solve(model, settings, capfd)
+    assert first.get_termination_reason() == "Optimal"
+
+    # Two model rows. Passing the converted row count must not be accepted.
+    with pytest.raises(Exception, match="match the cached model row count"):
+        model.update_rhs(np.array([2.0, 9.0, 0.0, 0.0]))
 
 
 def test_update_rhs_rejects_wrong_length():
@@ -296,5 +509,5 @@ def test_update_rhs_rejects_wrong_length():
     model = _build(**dict(MIXED_SENSES, rhs=[5.0, 8.0, 3.0]))
     assert solver.Solve(model, settings).get_termination_reason() == "Optimal"
 
-    with pytest.raises(Exception, match="match the cached user row count"):
+    with pytest.raises(Exception, match="match the cached model row count"):
         model.update_rhs(np.array([1.0, 2.0]))
