@@ -99,7 +99,8 @@ static void remove_variables_from_Q(csr_matrix_t<i_t, f_t>& Q,
 template <typename i_t, typename f_t>
 i_t remove_empty_cols(lp_problem_t<i_t, f_t>& problem,
                       i_t& num_empty_cols,
-                      presolve_info_t<i_t, f_t>& presolve_info)
+                      presolve_info_t<i_t, f_t>& presolve_info,
+                      i_t& linear_cols)
 {
   constexpr bool verbose = false;
   if (verbose) { printf("Removing %d empty columns\n", num_empty_cols); }
@@ -109,7 +110,6 @@ i_t remove_empty_cols(lp_problem_t<i_t, f_t>& problem,
   presolve_info.removed_values.reserve(num_empty_cols);
   presolve_info.removed_reduced_costs.reserve(num_empty_cols);
 
-  const i_t linear_cols = linear_variable_count(problem);
   std::vector<f_t> q_diag(problem.num_cols, 0.0);
   std::vector<bool> q_coupled(problem.num_cols, false);
   if (problem.Q.n > 0) { collect_diagonal_quadratic(problem.Q, q_diag, q_coupled); }
@@ -170,6 +170,8 @@ i_t remove_empty_cols(lp_problem_t<i_t, f_t>& problem,
   problem.lower     = lower;
   problem.upper     = upper;
   problem.num_cols  = new_cols;
+  // Update linear_cols to reflect the new number of linear variables after removing empty columns
+  linear_cols = linear_variable_count(problem);
   return 0;
 }
 
@@ -1016,9 +1018,9 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
              lp_problem_t<i_t, f_t>& problem,
              presolve_info_t<i_t, f_t>& presolve_info)
 {
-  problem               = original;
-  const i_t linear_cols = linear_variable_count(problem);
-  const bool has_cones  = !problem.second_order_cone_dims.empty();
+  problem              = original;
+  i_t linear_cols      = linear_variable_count(problem);
+  const bool has_cones = !problem.second_order_cone_dims.empty();
   std::vector<char> row_sense(problem.num_rows, '=');
 
   // Check for free variables (linear block only; cone columns are handled by the barrier SOC
@@ -1388,7 +1390,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
   }
   if (num_empty_cols > 0) {
     settings.log.printf("Presolve attempt to remove %d empty cols\n", num_empty_cols);
-    remove_empty_cols(problem, num_empty_cols, presolve_info);
+    remove_empty_cols(problem, num_empty_cols, presolve_info, linear_cols);
   }
 
   // Check for free variables (exclude cone variables — they are naturally unbounded)
