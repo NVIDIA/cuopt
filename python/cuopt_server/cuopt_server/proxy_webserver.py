@@ -751,6 +751,36 @@ def _require_grpc_healthy():
     response_model=LogResponseModel,
     responses=LogResponse,
 )
+def _log_not_found(job_id):
+    return HTTPException(
+        status_code=404, detail=f"log not found for request {job_id}"
+    )
+
+
+def _fetch_solver_logs(job_id, frombyte):
+    meta = _get_job(job_id)
+    if meta is not None and (
+        meta.get("kind") == "vrp"
+        or meta.get("validation_only")
+        or not meta.get("solver_logs")
+    ):
+        raise _log_not_found(job_id)
+    client = get_grpc_client()
+    if _is_status(client.status(job_id), "NOT_FOUND"):
+        raise _log_not_found(job_id)
+    try:
+        return client.logs(job_id, frombyte)
+    except Exception as e:
+        text = str(e)
+        if (
+            "not found" in text.lower()
+            or "NOT_FOUND" in text
+            or "failed to fetch logs" in text
+        ):
+            raise _log_not_found(job_id)
+        raise
+
+
 def getsolverlogs(
     id: str,
     accept: str = Header(default="application/json"),
@@ -763,37 +793,29 @@ def getsolverlogs(
             raise HTTPException(
                 status_code=422, detail="frombyte must be >= 0"
             )
-        meta = _get_job(id)
-        if meta is not None and (
-            meta.get("kind") == "vrp"
-            or meta.get("validation_only")
-            or not meta.get("solver_logs")
-        ):
-            raise HTTPException(
-                status_code=404, detail=f"log not found for request {id}"
-            )
-        client = get_grpc_client()
         try:
             from cuopt.grpc.linear_programming import JobNotReadyError
 
-            lines = client.logs(id, frombyte)
+            lines = _fetch_solver_logs(id, frombyte)
         except JobNotReadyError:
             return encode({"log": [""], "nbytes": frombyte}, accept)
-        except Exception as e:
-            if "not found" in str(e).lower() or "NOT_FOUND" in str(e):
-                raise HTTPException(
-                    status_code=404, detail=f"log not found for request {id}"
-                )
-            raise
         payload = "\n".join(lines)
         return encode(
             {"log": lines, "nbytes": frombyte + len(payload.encode())},
             accept,
         )
     except HTTPException as e:
-        return encode(http_exception_handler(e), accept)
+        return encode(
+            http_exception_handler(e),
+            accept,
+            include_error_result=False,
+        )
     except Exception as e:
-        return encode(exception_handler(e), accept)
+        return encode(
+            exception_handler(e),
+            accept,
+            include_error_result=False,
+        )
 
 
 @app.delete("/cuopt/log/{id}", responses=DeleteResponse)
@@ -804,12 +826,29 @@ def deletesolverlogs(
     try:
         accept = _resolve_accept(accept)
         _require_uuid(id)
-        # gRPC deletes logs with the job. HTTP DELETE log is a no-op 200.
+        try:
+            from cuopt.grpc.linear_programming import JobNotReadyError
+
+            _fetch_solver_logs(id, 0)
+        except JobNotReadyError:
+            raise _log_not_found(id)
+        # gRPC deletes logs with the job, so deletion remains a no-op.
         return Response(status_code=200)
     except HTTPException as e:
-        return encode(http_exception_handler(e), accept)
+        # GET log never wraps errors with error_result. DELETE wraps
+        # HTTPException (invalid UUID -> 400) via encode(), but returns
+        # 404 without error_result.
+        return encode(
+            http_exception_handler(e),
+            accept,
+            include_error_result=e.status_code != 404,
+        )
     except Exception as e:
-        return encode(exception_handler(e), accept)
+        return encode(
+            exception_handler(e),
+            accept,
+            include_error_result=False,
+        )
 
 
 @app.get(

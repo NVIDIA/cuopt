@@ -157,7 +157,7 @@ def encode_bytes(data, mime_type):
     return d
 
 
-def encode(result, accept, job_result=False):
+def encode(result, accept, job_result=False, include_error_result=True):
     if accept not in [mime_json, mime_msgpack, mime_zlib] + mime_wild:
         accept = mime_json
 
@@ -165,7 +165,8 @@ def encode(result, accept, job_result=False):
     if isinstance(result, JSONResponse):
         status_code = result.status_code
         result = json.loads(result.body)
-        result["error_result"] = job_result
+        if include_error_result:
+            result["error_result"] = job_result
         if accept == mime_json:
             return JSONResponse(result, status_code)
     else:
