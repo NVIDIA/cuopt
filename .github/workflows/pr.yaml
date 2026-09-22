@@ -630,6 +630,8 @@ jobs:
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.libcuopt_client_filter }}
       package-type: cpp
       package-name: libcuopt_client
+      # The wheel name carries no CUDA suffix, so neither should the artifact.
+      append-cuda-suffix: false
       build_type: pull-request
       build-datetime: ${{ needs.build-details.outputs.build-datetime }}
       script: ci/build_wheel_libcuopt_client.sh
