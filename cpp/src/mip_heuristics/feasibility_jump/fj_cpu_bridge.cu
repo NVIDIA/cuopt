@@ -12,6 +12,7 @@
 #include <dual_simplex/user_problem.hpp>
 #include <math_optimization/tic_toc.hpp>
 #include <mip_heuristics/mip_constants.hpp>
+#include <utilities/copy_helpers.hpp>
 #include <utilities/pcgenerator.hpp>
 #include <utilities/seed_generator.cuh>
 
@@ -19,15 +20,6 @@
 #include <cmath>
 
 namespace cuopt::mathematical_optimization::mip {
-
-template <typename T>
-std::vector<T> copy_problem_vector_to_host_async(const rmm::device_uvector<T>& input,
-                                                 rmm::cuda_stream_view stream)
-{
-  std::vector<T> output(input.size());
-  raft::copy(output.data(), input.data(), input.size(), stream);
-  return output;
-}
 
 template <typename i_t, typename f_t>
 void init_fj_cpu_from_problem(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
@@ -52,30 +44,23 @@ void init_fj_cpu_from_problem(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
   // Queue the device-to-host copies together and synchronize once before constructing host state.
   auto stream                 = handle_ptr->get_stream();
   const double download_start = tic();
-  problem_data->reverse_coefficients =
-    copy_problem_vector_to_host_async(problem.reverse_coefficients, stream);
-  problem_data->reverse_constraints =
-    copy_problem_vector_to_host_async(problem.reverse_constraints, stream);
-  problem_data->reverse_offsets =
-    copy_problem_vector_to_host_async(problem.reverse_offsets, stream);
-  problem_data->coefficients = copy_problem_vector_to_host_async(problem.coefficients, stream);
-  problem_data->offsets      = copy_problem_vector_to_host_async(problem.offsets, stream);
-  problem_data->variables    = copy_problem_vector_to_host_async(problem.variables, stream);
-  problem_data->h_obj_coeffs =
-    copy_problem_vector_to_host_async(problem.objective_coefficients, stream);
-  fj_cpu.h_var_bounds = copy_problem_vector_to_host_async(problem.variable_bounds, stream);
-  problem_data->cstr_lb =
-    copy_problem_vector_to_host_async(problem.constraint_lower_bounds, stream);
-  problem_data->cstr_ub =
-    copy_problem_vector_to_host_async(problem.constraint_upper_bounds, stream);
-  problem_data->h_var_types = copy_problem_vector_to_host_async(problem.variable_types, stream);
-  fj_cpu.h_is_binary_variable =
-    copy_problem_vector_to_host_async(problem.is_binary_variable, stream);
-  fj_cpu.h_binary_indices = copy_problem_vector_to_host_async(problem.binary_indices, stream);
+  problem_data->reverse_coefficients = cuopt::host_copy_async(problem.reverse_coefficients, stream);
+  problem_data->reverse_constraints = cuopt::host_copy_async(problem.reverse_constraints, stream);
+  problem_data->reverse_offsets     = cuopt::host_copy_async(problem.reverse_offsets, stream);
+  problem_data->coefficients        = cuopt::host_copy_async(problem.coefficients, stream);
+  problem_data->offsets             = cuopt::host_copy_async(problem.offsets, stream);
+  problem_data->variables           = cuopt::host_copy_async(problem.variables, stream);
+  problem_data->h_obj_coeffs = cuopt::host_copy_async(problem.objective_coefficients, stream);
+  fj_cpu.h_var_bounds        = cuopt::host_copy_async(problem.variable_bounds, stream);
+  problem_data->cstr_lb      = cuopt::host_copy_async(problem.constraint_lower_bounds, stream);
+  problem_data->cstr_ub      = cuopt::host_copy_async(problem.constraint_upper_bounds, stream);
+  problem_data->h_var_types  = cuopt::host_copy_async(problem.variable_types, stream);
+  fj_cpu.h_is_binary_variable = cuopt::host_copy_async(problem.is_binary_variable, stream);
+  fj_cpu.h_binary_indices     = cuopt::host_copy_async(problem.binary_indices, stream);
   problem_data->h_related_variables =
-    copy_problem_vector_to_host_async(problem.related_variables, stream);
+    cuopt::host_copy_async(problem.related_variables, stream);
   problem_data->h_related_variables_offsets =
-    copy_problem_vector_to_host_async(problem.related_variables_offsets, stream);
+    cuopt::host_copy_async(problem.related_variables_offsets, stream);
   handle_ptr->sync_stream();
   CUOPT_LOG_DEBUG(
     "CPUFJ model download from device: %.4fs for %d nnz", toc(download_start), problem.nnz);
@@ -133,24 +118,22 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_from_optimization_proble
 
   const double download_start = tic();
   auto coefficients =
-    copy_problem_vector_to_host_async(problem.get_constraint_matrix_values(), stream);
-  auto variables =
-    copy_problem_vector_to_host_async(problem.get_constraint_matrix_indices(), stream);
-  auto offsets = copy_problem_vector_to_host_async(problem.get_constraint_matrix_offsets(), stream);
+    cuopt::host_copy_async(problem.get_constraint_matrix_values(), stream);
+  auto variables = cuopt::host_copy_async(problem.get_constraint_matrix_indices(), stream);
+  auto offsets   = cuopt::host_copy_async(problem.get_constraint_matrix_offsets(), stream);
   auto objective_coefficients =
-    copy_problem_vector_to_host_async(problem.get_objective_coefficients(), stream);
+    cuopt::host_copy_async(problem.get_objective_coefficients(), stream);
   auto variable_lower_bounds =
-    copy_problem_vector_to_host_async(problem.get_variable_lower_bounds(), stream);
+    cuopt::host_copy_async(problem.get_variable_lower_bounds(), stream);
   auto variable_upper_bounds =
-    copy_problem_vector_to_host_async(problem.get_variable_upper_bounds(), stream);
+    cuopt::host_copy_async(problem.get_variable_upper_bounds(), stream);
   auto constraint_lower_bounds =
-    copy_problem_vector_to_host_async(problem.get_constraint_lower_bounds(), stream);
+    cuopt::host_copy_async(problem.get_constraint_lower_bounds(), stream);
   auto constraint_upper_bounds =
-    copy_problem_vector_to_host_async(problem.get_constraint_upper_bounds(), stream);
-  auto constraint_bounds =
-    copy_problem_vector_to_host_async(problem.get_constraint_bounds(), stream);
-  auto row_types      = copy_problem_vector_to_host_async(problem.get_row_types(), stream);
-  auto variable_types = copy_problem_vector_to_host_async(problem.get_variable_types(), stream);
+    cuopt::host_copy_async(problem.get_constraint_upper_bounds(), stream);
+  auto constraint_bounds = cuopt::host_copy_async(problem.get_constraint_bounds(), stream);
+  auto row_types         = cuopt::host_copy_async(problem.get_row_types(), stream);
+  auto variable_types    = cuopt::host_copy_async(problem.get_variable_types(), stream);
   problem.get_handle_ptr()->sync_stream();
   CUOPT_LOG_DEBUG(
     "CPUFJ model download from device: %.4fs for %d nnz", toc(download_start), problem.get_nnz());

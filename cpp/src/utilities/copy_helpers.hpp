@@ -63,6 +63,14 @@ auto host_copy(T const* device_ptr, size_t size, cuda::stream_ref stream_view)
   return host_vec;
 }
 
+template <typename T>
+auto host_copy_async(rmm::device_uvector<T> const& device_vec, cuda::stream_ref stream_view)
+{
+  std::vector<T> host_vec(device_vec.size());
+  raft::copy(host_vec.data(), device_vec.data(), device_vec.size(), stream_view);
+  return host_vec;
+}
+
 /**
  * @brief Simple utility function to copy bool device ptr to host
  *
