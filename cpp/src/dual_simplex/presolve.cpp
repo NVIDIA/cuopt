@@ -233,8 +233,8 @@ struct substitution_matrix_t {
   // erase and insert both require row i to be resident.
   void erase(i_t i, i_t offset)
   {
-    const i_t start = row_start[i];
-    const i_t last  = row_len[i] - 1;
+    const i_t start                  = row_start[i];
+    const i_t last                   = row_len[i] - 1;
     scatter[row_col[start + offset]] = -1;
     if (offset != last) {
       row_col[start + offset]          = row_col[start + last];
@@ -270,8 +270,7 @@ struct substitution_matrix_t {
       }
       if (row_used > 2 * (live + num_rows)) { compact_rows(); }
       if (row_used + need > static_cast<i_t>(row_col.size())) {
-        const i_t size =
-          std::max<i_t>(row_used + need, 2 * static_cast<i_t>(row_col.size()) + 1);
+        const i_t size = std::max<i_t>(row_used + need, 2 * static_cast<i_t>(row_col.size()) + 1);
         row_col.resize(size, 0);
         row_val.resize(size, 0);
       }
@@ -295,8 +294,7 @@ struct substitution_matrix_t {
       }
       if (col_used > 2 * (live + num_cols)) { compact_cols(); }
       if (col_used + need > static_cast<i_t>(col_row.size())) {
-        const i_t size =
-          std::max<i_t>(col_used + need, 2 * static_cast<i_t>(col_row.size()) + 1);
+        const i_t size = std::max<i_t>(col_used + need, 2 * static_cast<i_t>(col_row.size()) + 1);
         col_row.resize(size, 0);
       }
       if (col_len[j] < col_cap[j]) { return; }
@@ -558,8 +556,8 @@ static i_t eliminate_free_variables(lp_problem_t<i_t, f_t>& problem,
     if (active_row[i]) { remaining_rows.push_back(i); }
   }
 
-  i_t new_n   = static_cast<i_t>(remaining_cols.size());
-  i_t new_m   = static_cast<i_t>(remaining_rows.size());
+  i_t new_n = static_cast<i_t>(remaining_cols.size());
+  i_t new_m = static_cast<i_t>(remaining_rows.size());
   matrix.unload();
   i_t new_nnz = 0;
   for (const i_t i : remaining_rows) {
@@ -605,16 +603,23 @@ static i_t eliminate_free_variables(lp_problem_t<i_t, f_t>& problem,
   if (problem.Q.n > 0) { remove_variables_from_Q(problem.Q, col_marker, old_to_new_col, new_n); }
 
   reduced_A.to_compressed_col(problem.A);
-  problem.rhs            = std::move(reduced_rhs);
-  problem.objective      = std::move(objective);
-  problem.lower          = std::move(lower);
-  problem.upper          = std::move(upper);
-  problem.num_rows       = new_m;
-  problem.num_cols       = new_n;
-  problem.cone_var_start = old_to_new_col[problem.cone_var_start];
+  problem.rhs       = std::move(reduced_rhs);
+  problem.objective = std::move(objective);
+  problem.lower     = std::move(lower);
+  problem.upper     = std::move(upper);
+  problem.num_rows  = new_m;
+  problem.num_cols  = new_n;
+  // Cone columns are never eliminated, so the cone block stays trailing and its new start is
+  // just the remapped old one. Without cones cone_var_start is 0 and must be left alone.
+  if (!problem.second_order_cone_dims.empty()) {
+    const i_t new_cone_start = old_to_new_col[problem.cone_var_start];
+    assert(new_cone_start != -1);
+    problem.cone_var_start = new_cone_start;
+  }
 
   presolve_info.direct_free_variables.clear();
-  for (i_t new_j = 0; new_j < problem.cone_var_start; ++new_j) {
+  const i_t new_linear_cols = linear_variable_count(problem);
+  for (i_t new_j = 0; new_j < new_linear_cols; ++new_j) {
     if (problem.lower[new_j] == -inf && problem.upper[new_j] == inf) {
       presolve_info.direct_free_variables.push_back(new_j);
     }
