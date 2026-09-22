@@ -30,16 +30,14 @@ void audit_assignment_bounds(fj_cpu_climber_t<i_t, f_t>& fj_cpu, const char* sit
       var_t::INTEGER != fj_cpu.problem->h_var_types[var] || fj_cpu.problem->is_integer(val);
     if (inbox && integral) continue;
 
-    std::fprintf(stderr,
-                 "%sCPUFJ %s left var %d at %.17g outside [%.17g, %.17g], integer %d\n",
-                 fj_cpu.log_prefix.c_str(),
-                 site,
-                 (int)var,
-                 val,
-                 get_lower(bounds),
-                 get_upper(bounds),
-                 var_t::INTEGER == fj_cpu.problem->h_var_types[var]);
-    std::fflush(stderr);
+    CUOPT_LOG_DEBUG("%sCPUFJ %s left var %d at %.17g outside [%.17g, %.17g], integer %d",
+                    fj_cpu.log_prefix.c_str(),
+                    site,
+                    (int)var,
+                    val,
+                    get_lower(bounds),
+                    get_upper(bounds),
+                    var_t::INTEGER == fj_cpu.problem->h_var_types[var]);
     cuopt_assert(false, "assignment left the variable bounds");
     return;
   }
@@ -65,23 +63,23 @@ void report_row_divergence(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
   auto [row_begin, row_end] = fj_cpu.range_for_row(cstr_idx);
   const f_t sumcomp         = fj_cpu.h_slack_sumcomp[cstr_idx];
 
-  std::fprintf(stderr,
-               "%sCPUFJ %s row %d state: iteration %d, width %d, slack sumcomp "
-               "%.17g, bound %.17g, refresh period %d, recomputes total %lld periodic %lld bigval "
-               "%lld perturb %lld restart %lld\n",
-               fj_cpu.log_prefix.c_str(),
-               site,
-               (int)cstr_idx,
-               (int)fj_cpu.iterations,
-               (int)(row_end - row_begin),
-               sumcomp,
-               fj_cpu.h_bound[cstr_idx],
-               (int)fj_cpu.lhs_refresh_period_used,
-               (long long)fj_cpu.n_lhs_recompute_total,
-               (long long)fj_cpu.n_lhs_recompute_periodic,
-               (long long)fj_cpu.n_lhs_recompute_bigval,
-               (long long)fj_cpu.n_lhs_recompute_perturb,
-               (long long)fj_cpu.n_lhs_recompute_restart);
+  CUOPT_LOG_DEBUG(
+    "%sCPUFJ %s row %d state: iteration %d, width %d, slack sumcomp "
+    "%.17g, bound %.17g, refresh period %d, recomputes total %lld periodic %lld bigval "
+    "%lld perturb %lld restart %lld",
+    fj_cpu.log_prefix.c_str(),
+    site,
+    (int)cstr_idx,
+    (int)fj_cpu.iterations,
+    (int)(row_end - row_begin),
+    sumcomp,
+    fj_cpu.h_bound[cstr_idx],
+    (int)fj_cpu.lhs_refresh_period_used,
+    (long long)fj_cpu.n_lhs_recompute_total,
+    (long long)fj_cpu.n_lhs_recompute_periodic,
+    (long long)fj_cpu.n_lhs_recompute_bigval,
+    (long long)fj_cpu.n_lhs_recompute_perturb,
+    (long long)fj_cpu.n_lhs_recompute_restart);
 
   i_t unreachable = 0;
   i_t mismatched  = 0;
@@ -108,34 +106,33 @@ void report_row_divergence(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
     }
 
     if (p - row_begin >= (i_t)fj_audit_row_terms_printed) continue;
-    std::fprintf(stderr,
-                 "%sCPUFJ %s row %d term %d: var %d integer %d degree %d, coeff %.17g x %.17g "
-                 "product %.17g, reachable %d transpose coeff %.17g\n",
-                 fj_cpu.log_prefix.c_str(),
-                 site,
-                 (int)cstr_idx,
-                 (int)(p - row_begin),
-                 (int)var,
-                 var_t::INTEGER == fj_cpu.problem->h_var_types[var],
-                 (int)(rev_end - rev_begin),
-                 coeff,
-                 val,
-                 coeff * val,
-                 reachable,
-                 rev_coeff);
+    CUOPT_LOG_DEBUG(
+      "%sCPUFJ %s row %d term %d: var %d integer %d degree %d, coeff %.17g x %.17g "
+      "product %.17g, reachable %d transpose coeff %.17g",
+      fj_cpu.log_prefix.c_str(),
+      site,
+      (int)cstr_idx,
+      (int)(p - row_begin),
+      (int)var,
+      var_t::INTEGER == fj_cpu.problem->h_var_types[var],
+      (int)(rev_end - rev_begin),
+      coeff,
+      val,
+      coeff * val,
+      reachable,
+      rev_coeff);
   }
 
-  std::fprintf(stderr,
-               "%sCPUFJ %s row %d structure: %d of %d variables cannot reach it through the "
-               "transpose, %d carry a different transpose coefficient%s\n",
-               fj_cpu.log_prefix.c_str(),
-               site,
-               (int)cstr_idx,
-               (int)unreachable,
-               (int)(row_end - row_begin),
-               (int)mismatched,
-               row_end - row_begin > (i_t)fj_audit_row_terms_printed ? " (terms truncated)" : "");
-  std::fflush(stderr);
+  CUOPT_LOG_DEBUG(
+    "%sCPUFJ %s row %d structure: %d of %d variables cannot reach it through the "
+    "transpose, %d carry a different transpose coefficient%s",
+    fj_cpu.log_prefix.c_str(),
+    site,
+    (int)cstr_idx,
+    (int)unreachable,
+    (int)(row_end - row_begin),
+    (int)mismatched,
+    row_end - row_begin > (i_t)fj_audit_row_terms_printed ? " (terms truncated)" : "");
 }
 
 template <typename i_t, typename f_t>
@@ -153,28 +150,27 @@ void audit_objective_update(
 
   const f_t coeff   = fj_cpu.problem->h_obj_coeffs[var_idx];
   const f_t product = coeff * delta;
-  // stderr and flushed, so the abort below cannot swallow it.
-  std::fprintf(stderr,
-               "%sCPUFJ objective update: carried %.17g vs c'x %.17g, gap %.17g over slack %.17g. "
-               "iteration %d, var %d moved %.17g -> %.17g by delta %.17g, objective coeff %.17g, "
-               "product %.17g whose ulp is %.17g, obj_old %.17g, obj_y %.17g, sumcomp %.17g\n",
-               fj_cpu.log_prefix.c_str(),
-               fj_cpu.h_incumbent_objective,
-               fresh,
-               gap,
-               slack,
-               (int)fj_cpu.iterations,
-               (int)var_idx,
-               old_val,
-               old_val + delta,
-               delta,
-               coeff,
-               product,
-               std::numeric_limits<f_t>::epsilon() * std::fabs(product),
-               obj_old,
-               obj_y,
-               fj_cpu.h_objective_sumcomp);
-  std::fflush(stderr);
+  // Debug messages are flushed before the abort below.
+  CUOPT_LOG_DEBUG(
+    "%sCPUFJ objective update: carried %.17g vs c'x %.17g, gap %.17g over slack %.17g. "
+    "iteration %d, var %d moved %.17g -> %.17g by delta %.17g, objective coeff %.17g, "
+    "product %.17g whose ulp is %.17g, obj_old %.17g, obj_y %.17g, sumcomp %.17g",
+    fj_cpu.log_prefix.c_str(),
+    fj_cpu.h_incumbent_objective,
+    fresh,
+    gap,
+    slack,
+    (int)fj_cpu.iterations,
+    (int)var_idx,
+    old_val,
+    old_val + delta,
+    delta,
+    coeff,
+    product,
+    std::numeric_limits<f_t>::epsilon() * std::fabs(product),
+    obj_old,
+    obj_y,
+    fj_cpu.h_objective_sumcomp);
   cuopt_assert(false, "h_incumbent_objective disagrees with c'x after a move");
 }
 
@@ -203,13 +199,12 @@ void audit_row_updates(
       break;
     }
 
-    // stderr and flushed, so the abort below cannot swallow it.
-    std::fprintf(
-      stderr,
+    // Debug messages are flushed before the abort below.
+    CUOPT_LOG_DEBUG(
       "%sCPUFJ row update row %d: carried slack %.17g says violated %d, fresh %.17g says "
       "%d, differ by %.17g against tol %.17g. iteration %d, var %d moved %.17g -> %.17g "
       "by delta %.17g, row in this move's support %d with coeff %.17g, row bound %.17g, "
-      "slack sumcomp %.17g, width %d\n",
+      "slack sumcomp %.17g, width %d",
       fj_cpu.log_prefix.c_str(),
       (int)cstr_idx,
       carried,
@@ -228,7 +223,6 @@ void audit_row_updates(
       fj_cpu.h_bound[cstr_idx],
       fj_cpu.h_slack_sumcomp[cstr_idx],
       (int)(fj_cpu.h_offsets[cstr_idx + 1] - fj_cpu.h_offsets[cstr_idx]));
-    std::fflush(stderr);
     report_row_divergence<i_t, f_t>(fj_cpu, cstr_idx, assignment, "row update");
     cuopt_assert(false, "carried slack disagrees with a fresh sum after a move");
     return;
@@ -258,22 +252,20 @@ void audit_incremental_state(fj_cpu_climber_t<i_t, f_t>& fj_cpu, const char* sit
     if (carried_violated) { carried_total += carried; }
     if (carried_violated == truly_violated) continue;
 
-    // stderr and flushed, so the abort below cannot swallow it.
-    std::fprintf(stderr,
-                 "%sCPUFJ %s row %d: integral %d, carried violated %d actual %d, carried "
-                 "slack %.17g vs fresh %.17g differ by %.17g, bound %.17g, tol %.17g\n",
-                 fj_cpu.log_prefix.c_str(),
-                 site,
-                 (int)cstr_idx,
-                 fj_cpu.h_row_is_integral[cstr_idx],
-                 carried_violated,
-                 truly_violated,
-                 carried,
-                 fresh,
-                 std::fabs(carried - fresh),
-                 fj_cpu.h_bound[cstr_idx],
-                 tol);
-    std::fflush(stderr);
+    // Debug messages are flushed before the abort below.
+    CUOPT_LOG_DEBUG("%sCPUFJ %s row %d: integral %d, carried violated %d actual %d, carried "
+                    "slack %.17g vs fresh %.17g differ by %.17g, bound %.17g, tol %.17g",
+                    fj_cpu.log_prefix.c_str(),
+                    site,
+                    (int)cstr_idx,
+                    fj_cpu.h_row_is_integral[cstr_idx],
+                    carried_violated,
+                    truly_violated,
+                    carried,
+                    fresh,
+                    std::fabs(carried - fresh),
+                    fj_cpu.h_bound[cstr_idx],
+                    tol);
     report_row_divergence<i_t, f_t>(fj_cpu, cstr_idx, assignment, site);
     cuopt_assert(false, "violated set disagrees with a fresh slack");
     return;
@@ -284,17 +276,16 @@ void audit_incremental_state(fj_cpu_climber_t<i_t, f_t>& fj_cpu, const char* sit
   const f_t obj_gap   = std::fabs(fj_cpu.h_incumbent_objective - fresh_obj);
   const f_t obj_slack = (f_t)fj_audit_abs_floor + (f_t)fj_audit_rel_slack * std::fabs(fresh_obj);
   if (obj_gap > obj_slack) {
-    std::fprintf(stderr,
-                 "%sCPUFJ %s h_incumbent_objective %.17g vs c'x %.17g, gap %.17g over slack %.17g, "
-                 "sumcomp %.17g\n",
-                 fj_cpu.log_prefix.c_str(),
-                 site,
-                 fj_cpu.h_incumbent_objective,
-                 fresh_obj,
-                 obj_gap,
-                 obj_slack,
-                 fj_cpu.h_objective_sumcomp);
-    std::fflush(stderr);
+    CUOPT_LOG_DEBUG(
+      "%sCPUFJ %s h_incumbent_objective %.17g vs c'x %.17g, gap %.17g over slack %.17g, "
+      "sumcomp %.17g",
+      fj_cpu.log_prefix.c_str(),
+      site,
+      fj_cpu.h_incumbent_objective,
+      fresh_obj,
+      obj_gap,
+      obj_slack,
+      fj_cpu.h_objective_sumcomp);
     cuopt_assert(false, "h_incumbent_objective left c'x behind");
   }
 }
