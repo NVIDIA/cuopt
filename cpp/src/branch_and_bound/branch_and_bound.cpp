@@ -3270,7 +3270,8 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
                                                         crossover_vstatus_,
                                                         deficient_repaired);
       if (refactor_status != 0 || deficient_repaired > 0) {
-        settings_.log.printf("Failed to refactor basis. %d deficient columns.\n", deficient_repaired);
+        settings_.log.printf("Failed to refactor basis. %d deficient columns.\n",
+                             deficient_repaired);
         assert(refactor_status == 0);
         root_status = lp_status_t::NUMERICAL_ISSUES;
       }

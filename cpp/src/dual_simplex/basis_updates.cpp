@@ -2026,7 +2026,7 @@ template <typename i_t, typename f_t>
 void basis_update_mpf_t<i_t, f_t>::u_multiply(const sparse_vector_t<i_t, f_t>& x,
                                               sparse_vector_t<i_t, f_t>& y) const
 {
-  const i_t m = L0_.m;
+  const i_t m    = L0_.m;
   i_t nz         = 0;
   const i_t x_nz = x.i.size();
   // The first half of xi_workspace_ holds marks, the second the touched rows.
