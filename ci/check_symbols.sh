@@ -8,13 +8,19 @@ echo "checking for symbol visibility issues"
 
 LIBRARY="${1}"
 
-# The forbidden-symbol checks apply to every cuOpt library. The required public API
-# check only applies to the component that provides the C API, so components that do
-# not (routing, client) pass --no-public-api-check.
+# The forbidden-symbol checks apply to every cuOpt library. The other two are opt-in:
+#   --no-public-api-check  for components that do not provide the C API (routing, client)
+#   --require-leaf         for cuopt_client, which must resolve without the GPU stack
 CHECK_PUBLIC_API=1
-if [[ "${2:-}" == "--no-public-api-check" ]]; then
-    CHECK_PUBLIC_API=0
-fi
+REQUIRE_LEAF=0
+shift
+for arg in "$@"; do
+    case "${arg}" in
+        --no-public-api-check) CHECK_PUBLIC_API=0 ;;
+        --require-leaf)        REQUIRE_LEAF=1 ;;
+        *) echo "unknown argument: ${arg}" >&2; exit 2 ;;
+    esac
+done
 
 echo ""
 echo "Checking exported symbols in '${LIBRARY}'"
@@ -129,6 +135,48 @@ for sym in "${logger_state_symbols[@]}"; do
         failed=1
     fi
 done
+
+# cuopt_client has to stay a CUDA-free leaf (#1890). The checks above look at exported
+# symbols only: they filter undefined ones away and never read DT_NEEDED, so a change
+# reintroducing rmm, raft, CUDA or another component would pass them unnoticed.
+if [[ "${REQUIRE_LEAF}" -eq 1 ]]; then
+    echo ""
+    echo "Checking that '${LIBRARY}' resolves without the GPU stack"
+
+    # Weak undefined symbols are allowed to stay unresolved, so only strong ones count,
+    # and @VERSION suffixes are stripped before matching. rmm::/raft:: are deliberately
+    # unanchored: a leak often demangles to "typeinfo for rmm::..." or "vtable for
+    # rmm::...", which an anchored pattern would miss.
+    undefined="$(
+        nm --dynamic --undefined-only --with-symbol-versions "${LIBRARY}" \
+            | awk '$1 == "U" { print $2 }' \
+            | sed 's/@.*//' \
+            | c++filt \
+            | grep -E 'rmm::|raft::|^__cuda|^cuda[A-Z_]|^cu[A-Z]' || true
+    )"
+    if [[ -n "${undefined}" ]]; then
+        echo "ERROR: undefined GPU-stack symbols in ${LIBRARY}:"
+        sed 's/^/    /' <<< "${undefined}"
+        failed=1
+    fi
+
+    needed="$(objdump -p "${LIBRARY}" | awk '/NEEDED/ { print $2 }')"
+
+    gpu_needed="$(grep -E '^(librmm|libraft|libcudart|libcuda|libcublas|libcusparse|libcudss|libnccl|libnvrtc|libnvJitLink)' <<< "${needed}" || true)"
+    if [[ -n "${gpu_needed}" ]]; then
+        echo "ERROR: ${LIBRARY} has a GPU-stack DT_NEEDED entry:"
+        sed 's/^/    /' <<< "${gpu_needed}"
+        failed=1
+    fi
+
+    # It is the leaf every other component links, so it must depend on none of them.
+    cuopt_needed="$(grep -E '^libcuopt' <<< "${needed}" || true)"
+    if [[ -n "${cuopt_needed}" ]]; then
+        echo "ERROR: ${LIBRARY} depends on another cuOpt library:"
+        sed 's/^/    /' <<< "${cuopt_needed}"
+        failed=1
+    fi
+fi
 
 if [[ "${failed}" -ne 0 ]]; then
     exit 1

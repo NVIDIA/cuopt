@@ -89,9 +89,36 @@ RUN \
     && apt-get purge -y --autoremove gcc \
     && rm -rf /var/lib/apt/lists/*
 
+# Own stage so the build toolchain doesn't persist into cuopt-final. See build_java_dynamic.sh.
+FROM install-env AS java-build
+
+ARG PYTHON_SHORT_VER
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        openjdk-17-jdk \
+        build-essential \
+        cmake \
+    && rm -rf /var/lib/apt/lists/*
+
+# CMake's find_package(CUDAToolkit REQUIRED) needs nvcc on PATH; reuse cuda-headers instead of
+# installing the toolkit again via apt.
+COPY --from=cuda-headers /usr/local/cuda /usr/local/cuda
+ENV PATH="/usr/local/cuda/bin:${PATH}"
+
+COPY ./repo /build/repo
+COPY ./build_java_dynamic.sh /build/build_java_dynamic.sh
+RUN bash /build/build_java_dynamic.sh /build/repo \
+      "/usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages/libcuopt" /opt/cuopt/java
+
 FROM install-env AS cuopt-final
 
 ARG PYTHON_SHORT_VER
+
+# Headless JRE to run the Java bindings; version matches java/cuopt/pom.xml's maven.compiler.release.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openjdk-17-jre-headless \
+    && rm -rf /var/lib/apt/lists/*
 
 # Make cuopt_grpc_server, cuopt_cli, and shared libraries available to all processes
 # (profile.d scripts are only sourced by login shells; ENV works for all containers)
@@ -118,6 +145,8 @@ COPY --from=cuda-libs /usr/local/cuda/lib64/libnvJitLink* /usr/local/cuda/lib64/
 
 # Copy CUDA headers needed for runtime compilation (e.g., CuPy NVRTC).
 COPY --from=cuda-headers /usr/local/cuda/include/ /usr/local/cuda/include/
+
+COPY --from=java-build /opt/cuopt/java /opt/cuopt/java
 
 # Entrypoint supports server selection:
 #   Default:                  Python REST server

@@ -220,6 +220,9 @@ bool grpc_client_t::connect()
   channel_args.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, config_.keepalive_time_ms);
   channel_args.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, config_.keepalive_timeout_ms);
   channel_args.SetInt(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 1);
+  // Client default is 2 idle PINGs; 0 allows keepalives for the life of the
+  // channel. The server arg of the same name does not apply here.
+  channel_args.SetInt(GRPC_ARG_HTTP2_MAX_PINGS_WITHOUT_DATA, 0);
 
   impl_->channel = grpc::CreateCustomChannel(config_.server_address, creds, channel_args);
   impl_->stub    = cuopt::remote::CuOptRemoteService::NewStub(impl_->channel);
