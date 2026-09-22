@@ -14,6 +14,7 @@
 #include <cuopt/mathematical_optimization/cpu_optimization_problem_solution.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_solution.hpp>
 #include <cuopt/mathematical_optimization/utilities/cython_solve.hpp>
+#include <cuopt/mathematical_optimization/utilities/cython_types_gpu.hpp>
 
 #include <rmm/device_buffer.hpp>
 #include <rmm/device_uvector.hpp>
@@ -27,7 +28,7 @@ namespace cuopt::mathematical_optimization {
 template <typename i_t, typename f_t>
 cuopt::cython::linear_programming_ret_t gpu_lp_solution_t<i_t, f_t>::to_linear_programming_ret_t()
 {
-  using gpu_solutions_t = cuopt::cython::linear_programming_ret_t::gpu_solutions_t;
+  using gpu_solutions_t = cuopt::cython::lp_gpu_solutions_t;
   cuopt::cython::linear_programming_ret_t ret;
 
   auto& sol = solution_;
@@ -80,7 +81,7 @@ cuopt::cython::linear_programming_ret_t gpu_lp_solution_t<i_t, f_t>::to_linear_p
     gpu.last_restart_duality_gap_dual_solution_   = std::make_unique<rmm::device_buffer>();
   }
 
-  ret.solutions_ = std::move(gpu);
+  ret.solutions_ = cuopt::cython::make_lp_gpu_solutions(std::move(gpu));
 
   ret.termination_status_ = solution_.get_termination_status(0);
   ret.error_status_       = solution_.get_error_status().get_error_type();
@@ -111,8 +112,8 @@ cuopt::cython::mip_ret_t gpu_mip_solution_t<i_t, f_t>::to_mip_ret_t()
 {
   cuopt::cython::mip_ret_t ret;
 
-  ret.solution_ =
-    std::make_unique<rmm::device_buffer>(std::move(solution_.get_solution()).release());
+  ret.solution_ = cuopt::cython::make_mip_gpu_solution(
+    std::make_unique<rmm::device_buffer>(std::move(solution_.get_solution()).release()));
 
   ret.termination_status_           = solution_.get_termination_status();
   ret.error_status_                 = solution_.get_error_status().get_error_type();
