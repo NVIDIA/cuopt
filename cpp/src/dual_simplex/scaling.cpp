@@ -115,6 +115,84 @@ i_t scaling(const lp_problem_t<i_t, f_t>& unscaled,
         q_ratio);
     }
 
+    // -----------------------------------------------------------------------
+    // Bound-magnitude column pre-scaling.
+    // -----------------------------------------------------------------------
+    // Ruiz equilibration only balances the *coefficient* magnitudes of A and Q.
+    // On problems whose variable BOUNDS span many orders of magnitude (e.g. a
+    // network-flow QP with |bound| ranging from ~1e4 to ~1e11), the constraint
+    // matrix can already be perfectly balanced (all +/-1) while the variables
+    // themselves live at wildly different scales. The interior-point diagonal
+    // D = z/x then spans those same many orders of magnitude, which degrades
+    // the conditioning of the KKT factorization and can stall convergence.
+    //
+    // We fix this by first scaling each column so that the variable it
+    // represents becomes O(1): c0[j] = (geometric mean of the finite bound
+    // magnitudes of x_j). Substituting x_j = c0[j] * x'_j leaves the feasible
+    // region shape unchanged but brings every variable to a common scale, which
+    // Ruiz then finishes off on the coefficient side. Columns with no finite,
+    // nonzero bound are left at scale 1.
+    //
+    // Bounds use +/-inf for unbounded sides (see types.hpp). Finite bounds at
+    // or beyond finite_bound_limit are treated as unbounded for scaling so we
+    // do not overflow when dividing a huge limit by a small scale factor.
+    constexpr f_t finite_bound_limit = 1e20;
+    {
+      std::vector<f_t> c0(n, 1.0);
+      std::vector<char> has_bound(n, 0);
+      const i_t cone_start0 = unscaled.second_order_cone_dims.empty() ? n : unscaled.cone_var_start;
+      f_t geo_sum           = 0.0;
+      i_t geo_count         = 0;
+      for (i_t j = 0; j < cone_start0; ++j) {
+        f_t lo = std::abs(scaled.lower[j]);
+        f_t hi = std::abs(scaled.upper[j]);
+        f_t mag;
+        const bool has_nonzero_finite_lower = scaled.lower[j] > -finite_bound_limit && lo > 0;
+        const bool has_nonzero_finite_upper = scaled.upper[j] < finite_bound_limit && hi > 0;
+        if (has_nonzero_finite_lower && has_nonzero_finite_upper) {
+          mag = std::sqrt(lo * hi);
+        } else if (has_nonzero_finite_lower) {
+          mag = lo;
+        } else if (has_nonzero_finite_upper) {
+          mag = hi;
+        } else {
+          continue;  // free / one-sided-zero: leave at scale 1
+        }
+        c0[j]        = mag;
+        has_bound[j] = 1;
+        geo_sum += std::log(mag);
+        geo_count++;
+      }
+      if (geo_count > 0) {
+        // Normalize so the average column scale is 1, keeping the overall
+        // problem magnitude centered rather than uniformly shrinking it.
+        const f_t geo_mean = std::exp(geo_sum / static_cast<f_t>(geo_count));
+        for (i_t j = 0; j < cone_start0; ++j) {
+          if (has_bound[j]) c0[j] /= geo_mean;
+        }
+        // Apply x_j = c0[j] * x'_j : A(:,j) *= c0[j], obj[j] *= c0[j],
+        // bounds /= c0[j], Q(i,j) *= c0[i]*c0[j], accumulate into col_scale.
+        for (i_t j = 0; j < n; ++j) {
+          if (c0[j] == 1.0) continue;
+          for (i_t p = scaled.A.col_start[j]; p < scaled.A.col_start[j + 1]; ++p) {
+            scaled.A.x[p] *= c0[j];
+          }
+          scaled.objective[j] *= c0[j];
+          if (scaled.lower[j] > -finite_bound_limit) scaled.lower[j] /= c0[j];
+          if (scaled.upper[j] < finite_bound_limit) scaled.upper[j] /= c0[j];
+          col_scale[j] *= c0[j];
+        }
+        if (scaled.Q.n > 0) {
+          for (i_t row = 0; row < scaled.Q.m; ++row) {
+            for (i_t p = scaled.Q.row_start[row]; p < scaled.Q.row_start[row + 1]; ++p) {
+              i_t col = scaled.Q.j[p];
+              scaled.Q.x[p] *= c0[row] * c0[col];
+            }
+          }
+        }
+      }
+    }
+
     // Apply Ruiz equilibration
     csr_matrix_t<i_t, f_t> Arow(0, 0, 0);
     scaled.A.to_compressed_row(Arow);
@@ -205,12 +283,9 @@ i_t scaling(const lp_problem_t<i_t, f_t>& unscaled,
         scaled.objective[j] *= c[j];
         col_scale[j] *= c[j];
       }
-      // Bounds use +/-inf for unbounded sides (see types.hpp). Use +/-1e20 as a practical
-      // sentinel: we do not expect finite bounds beyond this magnitude, and skipping scale
-      // on |bound| >= 1e20 avoids overflow when dividing very large limits by small c[j].
       for (i_t j = 0; j < n; ++j) {
-        if (scaled.lower[j] > -1e20) scaled.lower[j] /= c[j];
-        if (scaled.upper[j] < 1e20) scaled.upper[j] /= c[j];
+        if (scaled.lower[j] > -finite_bound_limit) scaled.lower[j] /= c[j];
+        if (scaled.upper[j] < finite_bound_limit) scaled.upper[j] /= c[j];
       }
       if (scaled.Q.n > 0) {
         for (i_t row = 0; row < scaled.Q.m; ++row) {

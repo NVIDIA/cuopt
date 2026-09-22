@@ -3406,16 +3406,19 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
         assert(nonbasic_list.size() == original_lp_.num_cols - original_lp_.num_rows);
       }
       // Populate the basis_update from the crossover vstatus
-      i_t refactor_status = basis_update.refactor_basis(original_lp_.A,
+      i_t deficient_repaired = 0;
+      i_t refactor_status    = basis_update.refactor_basis(original_lp_.A,
                                                         root_crossover_settings,
                                                         original_lp_.lower,
                                                         original_lp_.upper,
                                                         exploration_stats_.start_time,
                                                         basic_list,
                                                         nonbasic_list,
-                                                        crossover_vstatus_);
-      if (refactor_status != 0) {
-        settings_.log.printf("Failed to refactor basis. %d deficient columns.\n", refactor_status);
+                                                        crossover_vstatus_,
+                                                        deficient_repaired);
+      if (refactor_status != 0 || deficient_repaired > 0) {
+        settings_.log.printf("Failed to refactor basis. %d deficient columns.\n",
+                             deficient_repaired);
         assert(refactor_status == 0);
         root_status = lp_status_t::NUMERICAL_ISSUES;
       }
@@ -3805,6 +3808,10 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
   if (remove_cuts_status == CONCURRENT_HALT_RETURN) {
     solver_status_ = mip_status_t::HALT;
     set_final_solution(solution, root_objective_);
+    return cut_pass_action_t::RETURN;
+  }
+  if (remove_cuts_status != 0) {
+    solver_status_ = mip_status_t::NUMERICAL;
     return cut_pass_action_t::RETURN;
   }
 

@@ -982,8 +982,16 @@ primal_status_t primal_phase2_with_advanced_basis(
         // nonbasics exactly on their status bounds, rebuild x_B so Ax = b, and
         // refresh duals. If that point is not primal/dual feasible, continue.
         if (basis_update.num_updates() > 0) {
-          i_t rank = basis_update.refactor_basis(
-            lp.A, settings, lp.lower, lp.upper, start_time, basic_list, nonbasic_list, vstatus);
+          i_t deficient_repaired = 0;
+          i_t rank               = basis_update.refactor_basis(lp.A,
+                                                 settings,
+                                                 lp.lower,
+                                                 lp.upper,
+                                                 start_time,
+                                                 basic_list,
+                                                 nonbasic_list,
+                                                 vstatus,
+                                                 deficient_repaired);
           if (rank == CONCURRENT_HALT_RETURN) { return primal_status_t::CONCURRENT_LIMIT; }
           if (rank == TIME_LIMIT_RETURN) { return primal_status_t::TIME_LIMIT; }
           if (rank != 0) {
@@ -1329,8 +1337,16 @@ primal_status_t primal_phase2_with_advanced_basis(
       }
       if (should_refactor) {
         timers.start_timer(work_estimate + basis_update.work_estimate());
-        i_t rank = basis_update.refactor_basis(
-          lp.A, settings, lp.lower, lp.upper, start_time, basic_list, nonbasic_list, vstatus);
+        i_t deficient_repaired = 0;
+        i_t rank               = basis_update.refactor_basis(lp.A,
+                                               settings,
+                                               lp.lower,
+                                               lp.upper,
+                                               start_time,
+                                               basic_list,
+                                               nonbasic_list,
+                                               vstatus,
+                                               deficient_repaired);
         if (rank == CONCURRENT_HALT_RETURN) { return primal_status_t::CONCURRENT_LIMIT; }
         if (rank == TIME_LIMIT_RETURN) { return primal_status_t::TIME_LIMIT; }
         if (rank != 0) {
