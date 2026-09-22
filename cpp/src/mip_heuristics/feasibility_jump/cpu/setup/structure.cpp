@@ -298,11 +298,6 @@ void build_one_sided_rows(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   recompute_slack(fj_cpu);
 }
 
-// Eliminate coordinates through exact equalities while retaining each pivot's domain as a row.
-// Integer pivots are accepted only when divisibility proves that every lifted value stays integral.
-// FJ usually struggles with equality-heavy models since every move may result in equality rows
-// being violated and repair having to be applied to many other variables to "compensate". Rewriting
-// the problem may help in some cases.
 #if MIP_INSTANTIATE_FLOAT
 template void detect_implied_integers<int, float>(fj_cpu_climber_t<int, float>&,
                                                   fj_cpu_problem_t<int, float>&);
