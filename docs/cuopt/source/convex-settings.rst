@@ -154,21 +154,9 @@ PDLP:
   extra partitioning time
 * ``2``: RoundRobin - assigns rows/columns across GPUs in round-robin fashion, without building a partitioning graph
 
-C API users should use the constants defined in :ref:`distributed-pdlp-partitioner-constants` for this parameter.
-
-Python API users can set this parameter directly:
-
-.. code-block:: python
-
-   from cuopt.linear_programming import SolverMethod, SolverSettings
-
-   settings = SolverSettings()
-   settings.set_parameter("method", SolverMethod.PDLP)
-   settings.set_parameter("num_gpus", -1)
-   settings.set_parameter("use_distributed_pdlp", True)
-   settings.set_parameter("distributed_pdlp_partitioner", 1)  # KaMinPar
-
-Server Thin client users can set this parameter directly (see the note at the top of this page).
+.. note:: The default value is ``false`` for ``CUOPT_USE_DISTRIBUTED_PDLP`` and ``0`` (Auto) for
+   ``CUOPT_DISTRIBUTED_PDLP_PARTITIONER``. C API users should use the constants defined in
+   :ref:`distributed-pdlp-partitioner-constants`.
 
 
 Infeasibility Detection
