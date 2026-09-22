@@ -144,6 +144,23 @@ jobs:
           path: ${{ runner.temp }}/maven-repo
           if-no-files-found: error
 
+  # Publishes the assembled Maven repository: a v[0-9][0-9].[0-9][0-9].[0-9][0-9] tag build goes
+  # to Maven Central (staged, human-gated release); every other build (nightly/branch push) goes
+  # to the Sonatype snapshot repo. See rapidsai/build-infra#379.
+  java-maven-publish:
+    needs: [java-static-gather]
+    permissions:
+      actions: read
+      contents: read
+    uses: rapidsai/shared-workflows/.github/workflows/maven-publish.yaml@main
+    secrets:
+      GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+      GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+      MAVEN_DEPLOY_TOKEN: ${{ secrets.MAVEN_DEPLOY_TOKEN }}
+    with:
+      artifact-name: cuopt_java_maven_repo
+      source-git-sha: ${{ inputs.sha }}
+
   java-build:
     needs: cpp-build
     permissions:
