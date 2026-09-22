@@ -1266,6 +1266,13 @@ foreach(_component ${CUOPT_COMPONENT_TARGETS})
             DESTINATION "${_LIB_DEST}/cmake/cuopt"
             COMPONENT ${_install_component}-dev
     )
+    # The same file in the build tree. rapids_export(BUILD) and rapids_export(INSTALL)
+    # share one FINAL_CODE_BLOCK, which includes these by name; without this a build-tree
+    # or CPM consumer gets cuopt::cuopt defined, found, and linking nothing.
+    export(EXPORT ${_component}-exports
+           FILE "${CMAKE_CURRENT_BINARY_DIR}/${_component}-targets.cmake"
+           NAMESPACE cuopt::
+    )
 endforeach()
 
 # cuopt::cuopt carries no artifact; it is exported only so the export set exists and
