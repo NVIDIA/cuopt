@@ -24,6 +24,7 @@ struct cut_pass_heuristics_t {
   std::atomic<int> halt_;
 
   std::unique_ptr<diving_worker_t<i_t, f_t>> submip_worker_;
+  std::unique_ptr<diving_worker_t<i_t, f_t>> mutation_worker_;
   std::vector<std::unique_ptr<diving_worker_t<i_t, f_t>>> diving_workers_;
   fj_cpu_worker_t<i_t, f_t> fj_cpu_worker_;
 
@@ -83,15 +84,25 @@ struct cut_pass_heuristics_t {
   {
     submip_worker_ = std::make_unique<diving_worker_t<i_t, f_t>>(
       id, lp, Arow_, var_types_, settings, pseudo_costs_, root_solution_, root_edge_norm_);
-    submip_worker_->start_node       = mip_node_t<i_t, f_t>(root_obj, root_vstatus);
-    submip_worker_->leaf_vstatus     = root_vstatus;
-    submip_worker_->leaf_solution.x  = sol;
-    submip_worker_->recompute_bounds = false;
-    submip_worker_->recompute_basis  = true;
-    submip_worker_->search_strategy  = type;
+    submip_worker_->start_node      = mip_node_t<i_t, f_t>(root_obj, root_vstatus);
+    submip_worker_->leaf_vstatus    = root_vstatus;
+    submip_worker_->leaf_solution.x = sol;
+    submip_worker_->search_strategy = type;
     submip_worker_->set_active();
 
     return submip_worker_.get();
+  }
+
+  diving_worker_t<i_t, f_t>* create_mutation_worker(
+    i_t id,
+    const simplex::lp_problem_t<i_t, f_t>& lp,
+    const simplex::simplex_solver_settings_t<i_t, f_t>& settings)
+  {
+    mutation_worker_ = std::make_unique<diving_worker_t<i_t, f_t>>(
+      id, lp, Arow_, var_types_, settings, pseudo_costs_, root_solution_, root_edge_norm_);
+    mutation_worker_->search_strategy = search_strategy_t::MUTATION;
+    mutation_worker_->set_active();
+    return mutation_worker_.get();
   }
 
   void initialize_pseudocost(const simplex::lp_problem_t<i_t, f_t>& lp,

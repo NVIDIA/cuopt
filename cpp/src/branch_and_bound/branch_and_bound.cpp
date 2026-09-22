@@ -1066,6 +1066,7 @@ branch_variable_t<i_t> branch_and_bound_t<i_t, f_t>::variable_selection(
 
     case search_strategy_t::RINS:  // This is used for solving the DFS of the sub-MIP.
     case search_strategy_t::RENS:
+    case search_strategy_t::MUTATION:
       branch_var = worker->pseudo_costs.variable_selection(fractional, solution);
       round_dir  = martin_criteria(solution[branch_var], worker->root_solution[branch_var]);
       return {branch_var, round_dir};
@@ -2275,7 +2276,8 @@ bool branch_and_bound_t<i_t, f_t>::launch_submip_worker(const std::vector<f_t>& 
   if (!worker) return false;
 
   mutex_upper_.lock();
-  bool use_rins = incumbent_.has_incumbent && settings_.submip_settings.rins != 0;
+  bool has_incumbent = incumbent_.has_incumbent;
+  bool use_rins      = has_incumbent && settings_.submip_settings.rins != 0;
   if (use_rins) worker->current_incumbent = incumbent_.x;
   mutex_upper_.unlock();
 
@@ -2287,6 +2289,13 @@ bool branch_and_bound_t<i_t, f_t>::launch_submip_worker(const std::vector<f_t>& 
   worker->leaf_solution.x    = sol;
   worker->search_strategy    = use_rins ? search_strategy_t::RINS : search_strategy_t::RENS;
   worker->set_active();
+
+  if (worker->worker_id == 0 && !settings_.inside_submip && has_incumbent) {
+    worker->search_strategy = search_strategy_t::MUTATION;
+#pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) affinity(worker) firstprivate(worker)
+    mutation(worker, settings_);
+    return true;
+  }
 
   if (settings_.inside_submip) {
     // LLVM libomp's GOMP compatibility path skips GCC's firstprivate copy
@@ -2538,16 +2547,18 @@ f_t submip_get_max_fixrate(const submip_stats_t& stats,
 
   if (stats.total_infeasible > 0) {
     f_t infeasible_avg_fixrate = stats.average_infeasible_fixrate();
-    high                       = 0.9 * infeasible_avg_fixrate;
+    high                       = 0.8 * infeasible_avg_fixrate;
     low                        = std::min(low, high);
   }
 
   if (stats.total_success > 0) {
     f_t success_avg_fixrate = stats.average_success_fixrate();
-    low                     = std::min(low, 0.9 * success_avg_fixrate);
-    high                    = std::max(high, 1.1 * success_avg_fixrate);
+    low                     = std::min(low, 0.8 * success_avg_fixrate);
+    high                    = std::max(high, 1.05 * success_avg_fixrate);
   }
 
+  high        = std::min(high, 0.9);
+  low         = std::max(low, 0.1);
   f_t fixrate = high > low ? rng.uniform(low, high) : low;
   return fixrate;
 }
@@ -2579,6 +2590,31 @@ void fix_variable(i_t j,
   lower[j]          = fixed_val;
   upper[j]          = fixed_val;
   bounds_changed[j] = true;
+}
+
+template <typename i_t, typename f_t>
+i_t apply_mutation(const simplex_solver_settings_t<i_t, f_t>& settings,
+                   const std::vector<f_t>& incumbent,
+                   const std::vector<i_t>& integer_list,
+                   f_t target_fixrate,
+                   std::vector<f_t>& lower,
+                   std::vector<f_t>& upper,
+                   std::vector<bool>& bounds_changed)
+{
+  i_t num_fixed         = 0;
+  i_t num_bound_changed = 0;
+  i_t target_num_fixed  = target_fixrate * integer_list.size();
+
+  for (i_t j : integer_list) {
+    if (num_fixed >= target_num_fixed) break;
+    if (std::abs(lower[j] - upper[j]) <= settings.fixed_tol) continue;
+    lower[j] = upper[j] = std::round(incumbent[j]);
+    bounds_changed[j]   = true;
+    num_bound_changed += bounds_changed[j];
+    ++num_fixed;
+  }
+
+  return num_bound_changed;
 }
 
 template <typename i_t, typename f_t>
@@ -2701,6 +2737,123 @@ f_t calculate_fixrate(const std::vector<i_t>& integer_list,
   }
 
   return (f_t)num_fixed / integer_list.size();
+}
+
+template <typename i_t, typename f_t>
+void branch_and_bound_t<i_t, f_t>::mutation(diving_worker_t<i_t, f_t>* worker,
+                                            simplex_solver_settings_t<i_t, f_t> submip_settings)
+{
+  raft::common::nvtx::range scope("BB::mutation_thread");
+  if (worker->orbital_fixing) { worker->orbital_fixing->disable(); }
+
+  i_t submip_level = settings_.submip_settings.level + 1;
+  submip_settings.log.log_prefix =
+    std::format("[{} {}] ", search_strategy_to_string(worker->search_strategy), submip_level);
+
+  assert((worker->search_strategy == search_strategy_t::MUTATION) &&
+         "Sub-MIP worker must be set to MUTATION type");
+
+  ++mutation_stats_.total_calls;
+
+  branch_and_bound_stats_t<i_t, f_t> stats;
+  mip_node_t<i_t, f_t>& node        = worker->start_node;
+  std::vector<f_t>& lower           = worker->leaf_problem.lower;
+  std::vector<f_t>& upper           = worker->leaf_problem.upper;
+  std::vector<bool>& bounds_changed = worker->bounds_changed;
+
+  std::fill(bounds_changed.begin(), bounds_changed.end(), false);
+
+  std::vector<i_t> integer_list;
+  get_unfixed_integer_variables(
+    lower, upper, worker->var_types, submip_settings.fixed_tol, integer_list);
+  worker->rng.shuffle(integer_list);
+
+  f_t target_fixrate =
+    submip_get_max_fixrate(mutation_stats_, submip_settings.submip_settings, worker->rng);
+  f_t fixrate = 0;
+
+  apply_mutation(submip_settings,
+                 worker->current_incumbent,
+                 integer_list,
+                 target_fixrate,
+                 lower,
+                 upper,
+                 bounds_changed);
+  bool is_feasible =
+    worker->node_presolver.bounds_strengthening(settings_, bounds_changed, lower, upper);
+  fixrate = calculate_fixrate(integer_list, lower, upper, settings_.fixed_tol);
+
+  DEBUG_SUBMIP("{} fixed variables = {:.0f} ({:.2f}), target fixrate = {} ({:.2f})",
+               submip_settings.log.log_prefix,
+               fixrate * integer_list.size(),
+               fixrate,
+               target_fixrate,
+               target_fixrate * integer_list.size());
+
+  if (!is_feasible) {
+    DEBUG_SUBMIP("{}bound strengthening detected infeasibility.", submip_settings.log.log_prefix)
+    return;
+  }
+
+  // If not enough variables was fixed (the neighbourhood is too loose) or the sub-MIP already
+  // found a solution that improved the incumbent, then do a DFS with a backtrack_limit of 5
+  // levels up to try to find a feasible solution quickly from the neighbourhood.
+  if (fixrate < settings_.submip_settings.min_fixrate_cap ||
+      (settings_.inside_submip && mutation_stats_.total_success != 0)) {
+    worker->start_node.packed_vstatus = simplex::compress_vstatus(worker->leaf_vstatus);
+    worker->start_lower               = lower;
+    worker->start_upper               = upper;
+
+    fj_cpu_worker_t<i_t, f_t> submip_fj_cpu_worker;
+
+    if (settings_.submip_settings.enable_cpufj) {
+      submip_fj_cpu_worker.improvement_callback =
+        [this](f_t obj, const std::vector<f_t>& assignment, double work_units) {
+          this->set_solution_from_cpu_fj(obj, assignment, work_units);
+        };
+
+      f_t time_limit = std::max<f_t>(settings_.time_limit - toc(exploration_stats_.start_time), 0);
+      f_t work_limit = 1.0;
+      submip_fj_cpu_worker.create_worker(worker->leaf_problem,
+                                         worker->var_types,
+                                         worker->leaf_solution.x,
+                                         settings_,
+                                         std::format("{} [CPU FJ]", submip_settings.log.log_prefix),
+                                         worker->rng.next_i64());
+      submip_fj_cpu_worker.run_sync(time_limit, work_limit);
+    }
+
+    DEBUG_SUBMIP("{}Running a quick DFS. fixrate={:.4g} ({}/{})",
+                 submip_settings.log.log_prefix,
+                 fixrate,
+                 fixrate * integer_list.size(),
+                 integer_list.size());
+
+    simplex_solver_settings_t<i_t, f_t> dfs_settings = submip_settings;
+    dfs_settings.diving_settings.backtrack_limit     = settings_.submip_settings.dfs_max_backtrack;
+    dive_with(worker, dfs_settings);
+
+  } else {
+    solve_submip(worker, mutation_stats_, fixrate, stats.total_simplex_iters, submip_settings);
+  }
+
+  DEBUG_SUBMIP(
+    "{}success={}, infeasible={}, calls={}, fixrate={:.4g} ({:.0f}/{}), max_fixrate={:.4g}\n",
+    submip_settings.log.log_prefix,
+    mutation_stats_.total_success.load(),
+    mutation_stats_.total_infeasible.load(),
+    mutation_stats_.total_calls.load(),
+    fixrate,
+    fixrate * integer_list.size(),
+    integer_list.size(),
+    target_fixrate);
+
+  // If the pool is uninitialized (i.e., in the root node), then this just inactivate the worker.
+  if (!submip_settings.inside_root_node) {
+    submip_worker_pool_.return_worker_to_pool(worker);
+  } else {
+    worker->set_inactive();
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -3049,9 +3202,10 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
   }
 
   mutex_upper_.lock();
-  bool use_rins = settings_.submip_settings.rins != 0 && incumbent_.has_incumbent;
+  bool has_incumbent = incumbent_.has_incumbent;
   mutex_upper_.unlock();
 
+  bool use_rins = has_incumbent && settings_.submip_settings.rins != 0;
   if (use_rins || settings_.submip_settings.rens != 0) {
     root_heuristics.stop_old_workers(cut_pass, 1);
 
@@ -3081,6 +3235,35 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
   firstprivate(current_heuristic, worker_count, submip_settings) depend(out : *worker)
       {
         recursive_submip(worker, submip_settings);
+        --(*worker_count);
+        --current_heuristic->active_workers_;
+      }
+    }
+  }
+
+  if (has_incumbent && settings_.submip_settings.mutation != 0) {
+    root_heuristics.stop_old_workers(cut_pass, 1);
+    diving_worker_t<i_t, f_t>* worker =
+      current_heuristic->create_mutation_worker(cut_pass, lp, settings_);
+    mutex_upper_.lock();
+    worker->current_incumbent = incumbent_.x;
+    mutex_upper_.unlock();
+
+    simplex_solver_settings_t<i_t, f_t> submip_settings = settings_;
+    submip_settings.concurrent_halt                     = &current_heuristic->halt_;
+    submip_settings.inside_root_node                    = true;
+
+    if (settings_.inside_submip) {
+      // LLVM libomp's GOMP compatibility path skips GCC's firstprivate copy
+      // function for included tasks.
+      mutation(worker, submip_settings);
+    } else {
+      ++current_heuristic->active_workers_;
+      ++(*worker_count);
+#pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) affinity(worker) \
+  firstprivate(current_heuristic, worker_count, submip_settings) depend(out : *worker)
+      {
+        mutation(worker, submip_settings);
         --(*worker_count);
         --current_heuristic->active_workers_;
       }
@@ -4114,18 +4297,16 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                edge_norms_,
                                num_bfs_workers);
 
-      if (num_diving_workers > 0) {
-        diving_worker_pool_.init(num_diving_workers,
-                                 original_lp_,
-                                 Arow_,
-                                 var_types_,
-                                 symmetry_,
-                                 settings_,
-                                 pc_,
-                                 root_relax_soln_.x,
-                                 edge_norms_,
-                                 num_bfs_workers + num_submip_workers);
-      }
+      diving_worker_pool_.init(num_diving_workers,
+                               original_lp_,
+                               Arow_,
+                               var_types_,
+                               symmetry_,
+                               settings_,
+                               pc_,
+                               root_relax_soln_.x,
+                               edge_norms_,
+                               num_bfs_workers + num_submip_workers);
 
       bfs_worker_t<i_t, f_t>* initial_worker = bfs_worker_pool_.pop_idle_worker();
       node_queue_t<i_t, f_t>& node_queue     = initial_worker->node_queue;
