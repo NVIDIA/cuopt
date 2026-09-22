@@ -803,6 +803,23 @@ pdlp_settings:
       type: int32
       from_proto_cast: "pdlp_precision_t"
       optional: true
+  - use_distributed_pdlp:
+      description: >-
+        Whether to distribute the PDLP solve of an LP problem across multiple
+        GPUs. Requires method to be PDLP and num_gpus to be -1 or greater
+        than 1.
+      default: "false"
+      field_num: 35
+      type: bool
+  - distributed_pdlp_partitioner:
+      description: >-
+        Partitioner used to split the problem across GPUs when
+        use_distributed_pdlp is set: 0 Auto (default; RoundRobin on 1 GPU,
+        KaMinPar otherwise), 1 KaMinPar, 2 RoundRobin.
+      default: "0"
+      field_num: 36
+      type: int32
+      from_proto_cast: "distributed_pdlp_partitioner_t"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MIP Solver Settings

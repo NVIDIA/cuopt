@@ -170,6 +170,14 @@
         "pdlp_precision": {
           "type": "integer",
           "description": "Precision mode for the PDLP solver. DefaultPrecision uses the problem's native precision; SinglePrecision runs PDHG in FP32 (half the memory, roughly 2x faster iterations, possibly more of them); DoublePrecision forces FP64; MixedPrecision stores the constraint matrix in FP32 for faster SpMV while keeping vectors and compute in FP64 (convergence checks still use the FP64 matrix, so memory is not reduced). Default: DefaultPrecision."
+        },
+        "use_distributed_pdlp": {
+          "type": "boolean",
+          "description": "Whether to distribute the PDLP solve of an LP problem across multiple GPUs. Requires method to be PDLP and num_gpus to be -1 or greater than 1. Default: false."
+        },
+        "distributed_pdlp_partitioner": {
+          "type": "integer",
+          "description": "Partitioner used to split the problem across GPUs when use_distributed_pdlp is set: 0 Auto (default; RoundRobin on 1 GPU, KaMinPar otherwise), 1 KaMinPar, 2 RoundRobin. Default: 0."
         }
       },
       "additionalProperties": false
