@@ -223,8 +223,8 @@ struct fj_tabu_t {
 
 template <typename i_t, typename f_t>
 struct fj_weights_t {
-  ins_vector<f_t> h_cstr_left_weights;
-  ins_vector<f_t> h_cstr_right_weights;
+  ins_vector<f_t> h_initial_left_weights;
+  ins_vector<f_t> h_initial_right_weights;
   f_t max_weight;
   f_t h_objective_weight;
 };
@@ -471,8 +471,8 @@ struct fj_cpu_climber_t : fj_tabu_t<i_t>,
                                    ADD_INSTRUMENTED(h_tabu_lastinc),
                                    ADD_INSTRUMENTED(h_lhs),
                                    ADD_INSTRUMENTED(h_lhs_sumcomp),
-                                   ADD_INSTRUMENTED(h_cstr_left_weights),
-                                   ADD_INSTRUMENTED(h_cstr_right_weights),
+                                   ADD_INSTRUMENTED(h_initial_left_weights),
+                                   ADD_INSTRUMENTED(h_initial_right_weights),
                                    ADD_INSTRUMENTED(h_var_bounds),
                                    ADD_INSTRUMENTED(h_is_binary_variable),
                                    ADD_INSTRUMENTED(h_binary_indices),
@@ -497,6 +497,14 @@ struct fj_cpu_climber_t : fj_tabu_t<i_t>,
 
   fj_cpu_climber_t(fj_cpu_climber_t<i_t, f_t>&& other)                      = default;
   fj_cpu_climber_t<i_t, f_t>& operator=(fj_cpu_climber_t<i_t, f_t>&& other) = default;
+
+  void release_setup_structures()
+  {
+    this->h_initial_left_weights.clear();
+    this->h_initial_left_weights.shrink_to_fit();
+    this->h_initial_right_weights.clear();
+    this->h_initial_right_weights.shrink_to_fit();
+  }
 
   f_t get_user_objective(f_t solver_objective) const
   {

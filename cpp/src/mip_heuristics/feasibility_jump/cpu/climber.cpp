@@ -37,8 +37,8 @@ void init_fj_cpu_from_template(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
   fj_cpu.problem = tmpl.problem;
   fj_cpu.hp = tmpl.hp;
 
-  fj_cpu.h_cstr_left_weights  = left_weights;
-  fj_cpu.h_cstr_right_weights = right_weights;
+  fj_cpu.h_initial_left_weights  = left_weights;
+  fj_cpu.h_initial_right_weights = right_weights;
   fj_cpu.max_weight           = 1.0;
   fj_cpu.h_objective_weight   = objective_weight;
   fj_cpu.h_assignment         = tmpl.h_assignment;
@@ -163,8 +163,8 @@ static void initialize_climber_state(
 {
   const i_t n_variables   = problem.n_variables;
   const i_t n_constraints = problem.n_constraints;
-  fj_cpu.h_cstr_left_weights.resize(n_constraints, f_t{1});
-  fj_cpu.h_cstr_right_weights.resize(n_constraints, f_t{1});
+  fj_cpu.h_initial_left_weights.resize(n_constraints, f_t{1});
+  fj_cpu.h_initial_right_weights.resize(n_constraints, f_t{1});
   fj_cpu.max_weight         = f_t{1};
   fj_cpu.h_objective_weight = f_t{0};
   fj_cpu.h_assignment       = assignment;

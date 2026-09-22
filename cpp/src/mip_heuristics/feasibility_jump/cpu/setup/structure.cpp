@@ -252,7 +252,7 @@ void build_one_sided_rows(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
       fj_cpu.h_bound.push_back(sign * bound);
       fj_cpu.h_row_is_integral.push_back(integral_activity && bound == std::round(bound));
       fj_cpu.row_state()[r].weight =
-        side == 0 ? fj_cpu.h_cstr_left_weights[row] : fj_cpu.h_cstr_right_weights[row];
+        side == 0 ? fj_cpu.h_initial_left_weights[row] : fj_cpu.h_initial_right_weights[row];
     }
   }
   cuopt_assert((i_t)fj_cpu.h_bound.size() == n_rows, "row count mismatch");
@@ -296,6 +296,7 @@ void build_one_sided_rows(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   }
 
   recompute_slack(fj_cpu);
+  fj_cpu.release_setup_structures();
 }
 
 #if MIP_INSTANTIATE_FLOAT

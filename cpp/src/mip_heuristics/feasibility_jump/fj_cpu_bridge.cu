@@ -72,8 +72,8 @@ void init_fj_cpu_from_problem(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
   problem_data->h_original_ids         = problem.original_ids;
   problem_data->h_reverse_original_ids = problem.reverse_original_ids;
 
-  fj_cpu.h_cstr_left_weights  = left_weights;
-  fj_cpu.h_cstr_right_weights = right_weights;
+  fj_cpu.h_initial_left_weights  = left_weights;
+  fj_cpu.h_initial_right_weights = right_weights;
   fj_cpu.max_weight           = f_t{1};
   fj_cpu.h_objective_weight   = objective_weight;
   if (start_assignment.empty()) {

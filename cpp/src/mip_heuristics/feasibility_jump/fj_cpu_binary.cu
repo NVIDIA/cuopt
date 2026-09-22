@@ -1082,6 +1082,7 @@ bool try_cpufj_binary_solve(fj_cpu_climber_t<i_t, f_t>& climber,
                             climber.log_prefix.c_str(),
                             engine8.pb.n_variables,
                             engine8.pb.n_constraints);
+            climber.release_setup_structures();
             engine8.solve(climber, time_limit, work_unit_limit);
             return true;
           }
@@ -1090,6 +1091,7 @@ bool try_cpufj_binary_solve(fj_cpu_climber_t<i_t, f_t>& climber,
                         climber.log_prefix.c_str(),
                         probe.pb.n_variables,
                         probe.pb.n_constraints);
+        climber.release_setup_structures();
         probe.solve(climber, time_limit, work_unit_limit);
         return true;
       }
@@ -1110,6 +1112,7 @@ bool try_cpufj_binary_solve(fj_cpu_climber_t<i_t, f_t>& climber,
       climber.log_prefix.c_str(),
       scan.coefficient_bits,
       scan.n_split_constraints);
+    climber.release_setup_structures();
     engine.solve(climber, time_limit, work_unit_limit);
     return true;
   };
