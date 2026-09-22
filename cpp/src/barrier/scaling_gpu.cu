@@ -63,7 +63,7 @@ void compute_row_inf_norms(const device_csc_matrix_t<i_t, f_t>& A,
                      // inside myAtomicMax is usually skipped entirely. Collisions are rare
                      // anyway -- a CSC column cannot repeat a row, so consecutive threads
                      // within a column target distinct accumulators.
-                     if (a > rmax[row[p]]) { raft::myAtomicMax(rmax + row[p], a); }
+                     if (a > rmax[row[p]]) { raft::myAtomicMax(&rmax[row[p]], a); }
                    });
 }
 
