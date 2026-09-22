@@ -277,6 +277,14 @@ class grpc_client_t {
   bool is_connected() const;
 
   /**
+   * @brief Probe the server with a short CheckStatus RPC.
+   *
+   * Same check used at connect time: OK or NOT_FOUND means the process
+   * answered. Other gRPC codes (UNAVAILABLE, DEADLINE_EXCEEDED, ...) fail.
+   */
+  bool ping(int timeout_seconds = 5);
+
+  /**
    * @brief Solve an LP problem remotely
    *
    * This is a blocking call that:

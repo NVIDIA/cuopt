@@ -104,7 +104,7 @@ Use `travel_time_matrix_data` (not transit_time_matrix_data). Capacities: `[[50,
 
 | Error | Cause | Solution |
 |-------|-------|----------|
-| `422 Unprocessable Entity` | Field name not in the schema | Check names against the OpenAPI spec at `/cuopt.yaml`. Most common: `transit_time_matrix_data` → `travel_time_matrix_data` |
+| `422 Unprocessable Content` | Field name not in the schema | Check names against the OpenAPI spec at `/cuopt.yaml`. Most common: `transit_time_matrix_data` → `travel_time_matrix_data` |
 | `422` on `fleet_data` | Capacities nested per vehicle instead of per dimension | Use `[[50, 50]]` (one inner list per capacity dimension), not `[[50], [50]]` |
 | Connection refused | Server not up, or bound to a different interface/port | `curl http://localhost:8000/cuopt/health`; start with `--ip 0.0.0.0 --port 8000` |
 | Docker container exits immediately | No GPU visible to the container | Run with `--gpus all` and confirm the NVIDIA Container Toolkit is installed |
