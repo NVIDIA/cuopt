@@ -137,7 +137,10 @@ outputs:
         - libabseil
         - re2
       run:
-        # Neither is in the client's DT_NEEDED (#1890). Both stay in host, for the headers.
+        # No cuda-version pin and no librmm: neither is in the client's DT_NEEDED (#1890).
+        # Both stay in host, for the headers. rapids-logger is explicit because librmm
+        # used to pull it in transitively, and librapids_logger.so is a real DT_NEEDED.
+        - rapids-logger =0.3
         - openssl
         - c-ares
         - libuuid
