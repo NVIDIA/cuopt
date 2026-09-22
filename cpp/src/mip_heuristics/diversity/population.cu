@@ -17,6 +17,7 @@
 
 #include <mutex>
 
+// TEST: observing CODEOWNERS auto-request behavior on cpp/ paths -- revert before merge.
 namespace cuopt::mathematical_optimization::mip {
 
 constexpr double weight_increase_ratio       = 2.;
