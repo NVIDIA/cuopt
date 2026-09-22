@@ -108,16 +108,6 @@ int main(int argc, char** argv)
     .default_value(false)
     .implicit_value(true);
 
-  program.add_argument("--allow-reuseport")
-    .help(
-      "Let a second server process bind the same port (kernel load-balances "
-      "connections between them). Each process has its own job_tracker, so "
-      "only use this with shared job state or connection affinity -- a "
-      "client whose poll/result request lands on the other process gets "
-      "'Job ID not found'. For independent servers, use --port instead.")
-    .default_value(false)
-    .implicit_value(true);
-
   program.add_argument("--log-to-console")
     .help("Enable solver log output to console")
     .default_value(false)
@@ -343,11 +333,10 @@ int main(int argc, char** argv)
 
   ServerBuilder builder;
   // gRPC enables SO_REUSEPORT by default, letting a second server silently
-  // bind an already-served port. Off unless --allow-reuseport (see its
-  // --help) -- each process has its own job_tracker, so this isn't a
-  // shared-state pool.
-  builder.AddChannelArgument<int>(GRPC_ARG_ALLOW_REUSEPORT,
-                                  program.get<bool>("--allow-reuseport") ? 1 : 0);
+  // bind an already-served port -- each process has its own job_tracker,
+  // so a request landing on the other process gets "Job ID not found".
+  // Always off; use --port for an independent second instance.
+  builder.AddChannelArgument<int>(GRPC_ARG_ALLOW_REUSEPORT, 0);
   builder.AddListeningPort(server_address, creds);
   builder.RegisterService(service.get());
   const int64_t max_bytes = server_max_message_bytes();
@@ -362,10 +351,7 @@ int main(int argc, char** argv)
     SERVER_LOG_ERROR(
       "[Server] A server may already be listening there; check with "
       "`pgrep -af cuopt_grpc_server`. Use --port for an independent second "
-      "instance. --allow-reuseport shares the port at the kernel level only "
-      "(each process keeps its own job state) -- use it just for a "
-      "deployment that already provides connection affinity or shared job "
-      "state.");
+      "instance.");
     shutdown_all();
     return 1;
   }
