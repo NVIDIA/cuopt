@@ -1081,6 +1081,7 @@ cdef _solution_to_py(cpu_routing_solution_t s):
         "status": int(s.status),
         "status_message": s.status_message.decode("utf-8"),
         "error_message": s.error_message.decode("utf-8"),
+        "solve_time": float(s.solve_time),
         "vehicle_count": int(s.vehicle_count),
         "total_objective_value": float(s.total_objective_value),
         "objective_values": objectives,

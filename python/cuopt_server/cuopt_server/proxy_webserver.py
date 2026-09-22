@@ -969,6 +969,7 @@ def _result_envelope(job_id, meta, kind, req_id="", cache_warmstart=False):
         if inner.get("status") == 1:
             notes.append(sol.get("status_message") or "")
         notes = [n for n in notes if n]
+        solve_time = float(sol.get("runtime") or sol.get("solve_time") or 0)
     else:
         if cache_warmstart:
             _store_warmstart(job_id, _warmstart_dict_from_sol(sol))
