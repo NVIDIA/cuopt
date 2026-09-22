@@ -408,7 +408,8 @@ int main(int argc, char** argv)
         &probing_presolve->probing_cache;
   }
   for (int k = 0; k < n_climbers; ++k) {
-    climbers[k]->log_prefix = "[climber " + std::to_string(k) + "] ";
+    climbers[k]->log_prefix   = "[climber " + std::to_string(k) + "] ";
+    climbers[k]->log_interval = 1000;
   }
 
   const std::vector<int> cpus = allowed_cpus();
