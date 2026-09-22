@@ -175,16 +175,17 @@ files:
       - build_common
       - depends_on_librmm
       - depends_on_rapids_logger
+  # No CUDA dimension and no rmm: libcuopt_client.so carries neither since #1890, so the
+  # wheel resolves the same way whichever CUDA the build used.
   py_run_libcuopt_client:
     output: pyproject
     pyproject_dir: python/libcuopt_client
     matrix:
       cuda_suffixed: ["false"]
-      use_cuda_wheels: ["true"]
+      use_cuda_wheels: ["false"]
     extras:
       table: project
     includes:
-      - depends_on_librmm
       - depends_on_rapids_logger
   py_build_libcuopt_mathopt:
     output: pyproject
@@ -601,33 +602,18 @@ dependencies:
       - output_types: [requirements, pyproject]
         packages:
           - cuopt-cu13==26.10.*,>=0.0.0a0
+  # Unsuffixed everywhere: the client wheel is built without a CUDA dimension, so there
+  # is one libcuopt-client rather than a -cu12 and a -cu13.
   depends_on_libcuopt_client:
     common:
-      - output_types: conda
+      - output_types: [conda, requirements, pyproject]
         packages:
-          - &libcuopt_client_unsuffixed libcuopt-client==26.10.*,>=0.0.0a0
+          - libcuopt-client==26.10.*,>=0.0.0a0
       - output_types: requirements
         packages:
           # pip recognizes the index as a global option for the requirements.txt file
           - --extra-index-url=https://pypi.nvidia.com
           - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
-    specific:
-      - output_types: [requirements, pyproject]
-        matrices:
-          - matrix:
-              cuda: "12.*"
-              cuda_suffixed: "true"
-            packages:
-              - libcuopt-client-cu12==26.10.*,>=0.0.0a0
-          - matrix:
-              cuda: "13.*"
-              cuda_suffixed: "true"
-            packages:
-              - libcuopt-client-cu13==26.10.*,>=0.0.0a0
-          - matrix:
-              cuda_suffixed: "false"
-            packages:
-              - *libcuopt_client_unsuffixed
   depends_on_libcuopt_mathopt:
     common:
       - output_types: conda

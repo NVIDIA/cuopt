@@ -137,8 +137,9 @@ outputs:
         - libabseil
         - re2
       run:
-        - ${{ pin_compatible("cuda-version", upper_bound="x", lower_bound="x") }}
-        - librmm =${{ minor_version }}
+        # No cuda-version pin and no librmm: libcuopt_client.so carries neither in its
+        # DT_NEEDED since #1890, so installing it should not drag in the CUDA stack.
+        # Both stay in host, where the headers are still needed to compile it.
         - openssl
         - c-ares
         - libuuid

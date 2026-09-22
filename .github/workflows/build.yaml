@@ -260,7 +260,9 @@ jobs:
       script: ci/build_wheel_libcuopt_client.sh
       package-name: libcuopt_client
       package-type: cpp
-      matrix_filter: group_by([.ARCH, (.CUDA_VER|split(".")|map(tonumber)|.[0])]) | map(max_by(.PY_VER|split(".")|map(tonumber)))
+      # One build per arch: the client wheel carries no CUDA in its dependencies or its
+      # DT_NEEDED, so a second build per CUDA major would produce the same artifact.
+      matrix_filter: group_by(.ARCH) | map(max_by([(.CUDA_VER|split(".")|map(tonumber)), (.PY_VER|split(".")|map(tonumber))]))
   wheel-publish-libcuopt-client:
     needs: wheel-build-libcuopt-client
     permissions:
