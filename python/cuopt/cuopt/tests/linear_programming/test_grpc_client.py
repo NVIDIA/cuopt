@@ -377,7 +377,7 @@ class TestGrpcClient:
         def solve(problem):
             job_id = client.submit(problem, settings)
             try:
-                assert client.wait(job_id, timeout=120) == JobStatus.COMPLETED
+                assert client.wait(job_id, timeout=30) == JobStatus.COMPLETED
                 solution = client.result(job_id, _DEMO_LP_NAMES)
                 assert solution is not None
                 assert solution.get_primal_objective() == pytest.approx(
