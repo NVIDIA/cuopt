@@ -220,7 +220,8 @@ TEST(pdlp_class, concurrent_cutoff_runs_pdlp_without_cpu_solvers)
   optimization_problem_solution_t<int, double> solution = solve_lp(&handle_, op_problem, settings);
   const auto logs                                       = testing::internal::GetCapturedStdout();
 
-  EXPECT_THAT(logs, testing::HasSubstr("Skipping concurrent Barrier and dual simplex"));
+  EXPECT_THAT(logs, testing::HasSubstr("Skipping concurrent barrier and dual simplex"));
+  EXPECT_THAT(logs, testing::HasSubstr("(CONCURRENT_NNZ_CUTOFF: 0)"));
   EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERMINATION_STATUS_OPTIMAL);
 }
 

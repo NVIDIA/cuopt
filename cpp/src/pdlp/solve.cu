@@ -1629,8 +1629,8 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   if (skip_cpu_solvers) {
     CUOPT_LOG_CONDITIONAL_INFO(
       !settings.inside_mip,
-      "Skipping concurrent Barrier and dual simplex: reduced problem has %zu nonzeros (cutoff: "
-      "%d).",
+      "Skipping concurrent barrier and dual simplex: reduced problem has %zu nonzeros "
+      "(CONCURRENT_NNZ_CUTOFF: %d).",
       num_nonzeros,
       settings.concurrent_nnz_cutoff);
     CUOPT_LOG_DEBUG(
