@@ -371,16 +371,6 @@ TEST(barrier, presolve_skips_free_elimination_on_unstable_pivot)
   EXPECT_TRUE(presolve_info.free_variable_eliminations.empty());
   ASSERT_EQ(presolve_info.direct_free_variables.size(), 1u);
   EXPECT_EQ(presolve_info.direct_free_variables[0], 1);
-
-  // Without the thresholds the same column is substituted, which is what the default rejects.
-  settings.barrier_free_elimination_row_pivot_tol = 0.0;
-  settings.barrier_free_elimination_col_pivot_tol = 0.0;
-  presolve_info_t<int, double> unguarded_info;
-  lp_problem_t<int, double> unguarded_lp(user_problem.handle_ptr, 1, 1, 1);
-  ASSERT_EQ(presolve(original_lp, settings, unguarded_lp, unguarded_info), 0);
-  ASSERT_EQ(unguarded_info.free_variable_eliminations.size(), 1u);
-  EXPECT_EQ(unguarded_info.free_variable_eliminations[0].variable, 1);
-  EXPECT_TRUE(unguarded_info.direct_free_variables.empty());
 }
 
 TEST(barrier, rejects_middle_cone_input_before_barrier)

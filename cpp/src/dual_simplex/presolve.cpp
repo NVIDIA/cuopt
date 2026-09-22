@@ -353,8 +353,7 @@ struct substitution_matrix_t {
 // Returns the number of columns left alone because no incident row passed the pivot threshold.
 template <typename i_t, typename f_t>
 static i_t eliminate_free_variables(lp_problem_t<i_t, f_t>& problem,
-                                    presolve_info_t<i_t, f_t>& presolve_info,
-                                    const simplex_solver_settings_t<i_t, f_t>& settings)
+                                    presolve_info_t<i_t, f_t>& presolve_info)
 {
   const i_t old_m       = problem.num_rows;
   const i_t old_n       = problem.num_cols;
@@ -385,9 +384,11 @@ static i_t eliminate_free_variables(lp_problem_t<i_t, f_t>& problem,
   std::vector<f_t> incident_value;
   std::vector<i_t> candidate_order;
 
-  const f_t row_pivot_tol = settings.barrier_free_elimination_row_pivot_tol;
-  const f_t col_pivot_tol = settings.barrier_free_elimination_col_pivot_tol;
-  i_t pivot_rejected      = 0;
+  // The pivot must be the largest entry of both its row and its column, so the
+  // substitution cannot amplify a coefficient.
+  constexpr f_t row_pivot_tol = 1.0;
+  constexpr f_t col_pivot_tol = 1.0;
+  i_t pivot_rejected          = 0;
 
   // One pass in column order. Peeling a chain from one end keeps each pivot row sparse, so
   // revisiting columns buys almost nothing and costs a requeue storm on models with
@@ -455,15 +456,13 @@ static i_t eliminate_free_variables(lp_problem_t<i_t, f_t>& problem,
     for (const i_t slot : candidate_order) {
       const f_t a_ij = std::abs(incident_value[slot]);
       if (a_ij < col_pivot_tol * column_max) { continue; }
-      if (row_pivot_tol > 0) {
-        const i_t row = incident[slot];
-        f_t row_max   = 0;
-        for (i_t k = 0; k < matrix.row_len[row]; ++k) {
-          if (matrix.column(row, k) == j) { continue; }
-          row_max = std::max(row_max, std::abs(matrix.value(row, k)));
-        }
-        if (a_ij < row_pivot_tol * row_max) { continue; }
+      const i_t row = incident[slot];
+      f_t row_max   = 0;
+      for (i_t k = 0; k < matrix.row_len[row]; ++k) {
+        if (matrix.column(row, k) == j) { continue; }
+        row_max = std::max(row_max, std::abs(matrix.value(row, k)));
       }
+      if (a_ij < row_pivot_tol * row_max) { continue; }
       pivot_slot = slot;
       break;
     }
@@ -2029,22 +2028,19 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
   }
 
   // LP already goes through PSLP; this substitution is for QP/SOCP only.
-  if (settings.barrier_presolve && settings.barrier_presolve_free_elimination != 0 &&
-      (has_cones || problem.Q.n > 0)) {
+  if (settings.barrier_presolve && (has_cones || problem.Q.n > 0)) {
     const i_t old_free_count         = static_cast<i_t>(presolve_info.direct_free_variables.size());
     const f_t free_elimination_start = tic();
-    const i_t pivot_rejected         = eliminate_free_variables(problem, presolve_info, settings);
+    const i_t pivot_rejected         = eliminate_free_variables(problem, presolve_info);
     const i_t eliminated =
       old_free_count - static_cast<i_t>(presolve_info.direct_free_variables.size());
     if (eliminated > 0 || pivot_rejected > 0) {
       settings.log.printf(
         "Eliminated %d free variables by equality substitution in %.2fs (%d skipped by pivot "
-        "threshold, row tol %g, col tol %g)\n",
+        "threshold)\n",
         eliminated,
         toc(free_elimination_start),
-        pivot_rejected,
-        settings.barrier_free_elimination_row_pivot_tol,
-        settings.barrier_free_elimination_col_pivot_tol);
+        pivot_rejected);
     }
   }
 

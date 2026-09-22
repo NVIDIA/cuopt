@@ -84,9 +84,6 @@ struct simplex_solver_settings_t {
       barrier_dual_initial_point(barrier_dual_initial_point_t::Automatic),
       postsolve_info(-1),
       barrier_presolve_bound_free_variables(-1),
-      barrier_presolve_free_elimination(-1),
-      barrier_free_elimination_row_pivot_tol(1.0),
-      barrier_free_elimination_col_pivot_tol(1.0),
       qcqp_ruiz_equilibration(-1),
       barrier_initial_point_safeguard(10.0),
       check_Q(false),
@@ -196,12 +193,6 @@ struct simplex_solver_settings_t {
                                               // 1 dual least squares, 2 SeDuMi mu-based
   i_t postsolve_info;                         // -1 automatic (disabled), 0 disabled, 1 enabled
   i_t barrier_presolve_bound_free_variables;  // -1 automatic, 0 disabled, 1 enabled
-  i_t barrier_presolve_free_elimination;      // -1 automatic, 0 disabled, 1 enabled
-  // Threshold pivoting tolerances for the free-variable equality substitution: the pivot must
-  // be at least this fraction of the largest other entry of its row / of the largest entry of
-  // its column. 0 disables a test, 1 forbids any coefficient growth.
-  f_t barrier_free_elimination_row_pivot_tol;
-  f_t barrier_free_elimination_col_pivot_tol;
   i_t qcqp_ruiz_equilibration;          // -1 automatic (imbalance heuristic), 0 disabled, 1 enabled
   f_t barrier_initial_point_safeguard;  // margin pushing the barrier initial iterate into
   // the interior of the nonnegative orthant / SOC
