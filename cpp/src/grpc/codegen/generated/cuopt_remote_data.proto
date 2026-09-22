@@ -314,6 +314,9 @@ message PDLPSolverSettings {
   // later iterations: -1 automatic (uses the built-in heuristic), 0 disabled,
   // 1 enabled. (default: -1 (automatic))
   optional int32 barrier_adaptive_regularization = 34;
+  // Whether Curtis-Reid prescaling runs before Ruiz/Pock-Chambolle matrix
+  // scaling. (default: true)
+  optional bool do_curtis_reid_scaling = 35;
   PDLPWarmStartData warm_start_data = 50;
 }
 
