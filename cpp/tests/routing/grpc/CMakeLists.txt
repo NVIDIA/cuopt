@@ -52,14 +52,8 @@ target_include_directories(GRPC_ROUTING_PROBLEM_MAPPER_TEST
 
 # The mappers are host-only and live in cuopt_client, so the test links that component
 # alone -- if a mapper ever reaches into the routing engine, this link line fails loudly.
-#
-# rmm::rmm is here because cuopt/routing/cpu_routing_problem.hpp (pulled in transitively
-# by the mapper header) still includes cuopt/routing/data_model_view.hpp for to_device()'s
-# return type, which drags in raft::handle_t's default stream argument. That default
-# argument's static init calls rmm::cuda_stream_view's out-of-line constructor, so this
-# TU needs rmm to resolve even though the mapper code itself never touches the GPU.
-# cuopt_client stopped exporting rmm::rmm PUBLIC in #1940 (#1890), so this test needs its
-# own edge. Remove once cpu_routing_problem.hpp stops leaking data_model_view_t by value.
+# rmm::rmm is a stopgap: cpu_routing_problem.hpp still leaks a raft/rmm dependency (#1890)
+# that cuopt_client itself no longer links; remove once that header is fixed.
 target_link_libraries(GRPC_ROUTING_PROBLEM_MAPPER_TEST
     PRIVATE
     cuopt_client
