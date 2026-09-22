@@ -346,7 +346,9 @@ def proxy(proxy_server, monkeypatch):
 
     monkeypatch.setattr(pw, "create_solver", _fake_create_solver)
 
-    def _fake_prepare_vrp(data, warnings, initial_envelopes=None):
+    def _fake_prepare_vrp(
+        data, warnings, initial_envelopes=None, data_source="stream"
+    ):
         routing.initial_envelopes = initial_envelopes
         return SimpleNamespace(), SimpleNamespace(), ["veh-1"], ["A"]
 
@@ -679,6 +681,28 @@ def test_invalid_lp_payloads_are_rejected(proxy, mutate, status_code):
         json=lp,
     )
     assert res.status_code == status_code, res.text
+    assert fake.submitted == []
+    if status_code == 422:
+        assert "optimization data stream" in res.json()["error"]
+
+
+def test_invalid_lp_file_names_source_in_422(proxy, monkeypatch, tmp_path):
+    import cuopt_server.utils.settings as settings
+
+    monkeypatch.setattr(settings, "get_data_dir", lambda: str(tmp_path))
+    (tmp_path / "bad.json").write_text("{}")
+    url, fake = proxy
+    res = requests.post(
+        url + "/cuopt/request",
+        headers={
+            "CLIENT-VERSION": "custom",
+            "CUOPT-DATA-FILE": "bad.json",
+            "Content-Type": mime_json,
+            "Accept": mime_json,
+        },
+    )
+    assert res.status_code == 422, res.text
+    assert "optimization data file" in res.json()["error"]
     assert fake.submitted == []
 
 
