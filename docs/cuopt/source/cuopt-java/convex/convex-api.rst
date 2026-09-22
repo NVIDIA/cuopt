@@ -102,7 +102,9 @@ The settings API also includes:
 * ``setMethod`` and ``setPDLPSolverMode``;
 * ``setOptimalityTolerance``;
 * ``setNumGpus``, ``setUseDistributedPdlp``, and ``setDistributedPdlpPartitioner``,
-  for distributing a PDLP solve across multiple GPUs.
+  for distributing a PDLP solve across multiple GPUs. Distributed PDLP requires
+  ``SolverMethod.PDLP`` and ``setNumGpus(-1)`` (all GPUs visible to the process, which
+  may be a single GPU) or a value greater than 1.
 
 ``SolverMethod`` includes ``PDLP``, ``DUAL_SIMPLEX``, ``BARRIER`` and
 ``CONCURRENT``. ``PDLPSolverMode`` exposes the supported PDLP solver modes.

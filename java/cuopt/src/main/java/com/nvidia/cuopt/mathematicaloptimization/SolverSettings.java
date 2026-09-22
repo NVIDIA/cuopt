@@ -68,8 +68,9 @@ public final class SolverSettings implements AutoCloseable {
   }
 
   /**
-   * Set the number of GPUs to use for the solve. Use {@code -1} to use all GPUs visible to the
-   * process, or a value greater than 1 to use that many GPUs.
+   * Set the number of GPUs to use for the solve. Use {@code -1} to select all GPUs visible to the
+   * process (which may be a single GPU on a single-GPU host), or a positive value to select that
+   * many GPUs explicitly.
    */
   public SolverSettings setNumGpus(int numGpus) {
     return setSetting(CuOptConstants.CUOPT_NUM_GPUS, numGpus);
@@ -78,7 +79,8 @@ public final class SolverSettings implements AutoCloseable {
   /**
    * Set whether to distribute the PDLP solve of an LP problem across multiple GPUs. Requires
    * {@link #setMethod} to be {@link SolverMethod#PDLP} and {@link #setNumGpus} to be {@code -1}
-   * or greater than 1.
+   * or greater than 1; sharding across multiple GPUs only happens when more than one GPU is
+   * actually selected.
    */
   public SolverSettings setUseDistributedPdlp(boolean useDistributedPdlp) {
     return setSetting(CuOptConstants.CUOPT_USE_DISTRIBUTED_PDLP, useDistributedPdlp);
