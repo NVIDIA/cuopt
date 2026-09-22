@@ -1285,9 +1285,11 @@ install(FILES "${CUOPT_LINKER_SCRIPT}"
 )
 
 if (CUOPT_BUILD_CUSTOM_CUDSS_MTLAYER)
+    # mathopt, not a component of its own: the barrier solver is the only thing that
+    # dlopens it, and any install without it silently drops to single-threaded cuDSS.
     install(TARGETS cudss_mtlayer_cuopt
             DESTINATION ${_LIB_DEST}
-            COMPONENT runtime
+            COMPONENT mathopt
     )
 endif ()
 

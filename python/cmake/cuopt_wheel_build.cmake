@@ -81,3 +81,18 @@ foreach(_target cuopt_routing cuopt_mathopt cuopt_client cuopt_cli cuopt_grpc_se
     set_property(TARGET ${_target} APPEND PROPERTY INSTALL_RPATH ${rpaths})
   endif()
 endforeach()
+
+# Executables also need the sibling component wheels. The libraries do not: load_library()
+# loads them in dependency order, so glibc satisfies each DT_NEEDED from an already-loaded
+# object. An executable has no Python in the process, so cuopt_cli shipped in
+# libcuopt-mathopt would not find libcuopt_client.so, which is never vendored.
+set(component_rpaths
+  "$ORIGIN/../../libcuopt_client/lib64"
+  "$ORIGIN/../../libcuopt_mathopt/lib64"
+  "$ORIGIN/../../libcuopt_routing/lib64"
+)
+foreach(_target cuopt_cli cuopt_grpc_server)
+  if(TARGET ${_target})
+    set_property(TARGET ${_target} APPEND PROPERTY INSTALL_RPATH ${component_rpaths})
+  endif()
+endforeach()
