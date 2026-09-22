@@ -94,12 +94,17 @@ FROM install-env AS java-build
 
 ARG PYTHON_SHORT_VER
 
+# g++-12: Ubuntu 22.04's default gcc (11) fails to compile raft's std::atomic<std::shared_ptr<T>>
+# usage ("static assertion failed: std::atomic requires a trivially copyable type") -- libstdc++
+# only gained that specialization in GCC 12.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         openjdk-17-jdk \
         build-essential \
+        g++-12 \
         cmake \
     && rm -rf /var/lib/apt/lists/*
+ENV CXX=/usr/bin/g++-12
 
 # CMake's find_package(CUDAToolkit REQUIRED) needs nvcc on PATH; reuse cuda-headers instead of
 # installing the toolkit again via apt.
