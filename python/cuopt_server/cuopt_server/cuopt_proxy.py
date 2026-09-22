@@ -16,9 +16,14 @@ from collections.abc import Sequence
 
 import cuopt_server.utils.settings as settings
 from cuopt_server._version import __version__
-from cuopt_server.utils.logutil import message_init
+from cuopt_server.utils.logutil import (
+    get_ncaid,
+    get_requestid,
+    get_solverid,
+    message_init,
+)
 
-log_fmt = "%(asctime)s.%(msecs)03d %(levelname)s %(message)s"
+log_fmt = "%(ncaid)s%(requestid)s%(asctime)s.%(msecs)03d %(levelname)s %(message)s%(solverid)s"  # noqa
 date_fmt = "%Y-%m-%d %H:%M:%S"
 
 
@@ -165,6 +170,22 @@ def _configure_logging(args: argparse.Namespace) -> None:
         handlers=handlers,
         force=True,
     )
+    log_factory = logging.getLogRecordFactory()
+
+    def record_factory(*args, **kwargs):
+        record = log_factory(*args, **kwargs)
+        record.ncaid = get_ncaid()
+        record.requestid = get_requestid()
+        record.solverid = get_solverid()
+        if record.ncaid:
+            record.ncaid = f"NCA_ID={record.ncaid} "
+        if record.requestid:
+            record.requestid = f"NVCF_REQID={record.requestid} "
+        if record.solverid:
+            record.solverid = f" (GPU {record.solverid})"
+        return record
+
+    logging.setLogRecordFactory(record_factory)
 
 
 def main(argv: Sequence[str] | None = None) -> None:
