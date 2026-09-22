@@ -27,6 +27,8 @@ from cuopt_server.utils.http_envelope import make_response
 from cuopt_server.utils.linear_programming import conversion as lp_conversion
 from cuopt_server.utils.routing import conversion as routing_conversion
 
+_JSON_ACCEPT = {"Accept": mime_json}
+
 
 class _Uvicorn(uvicorn.Server):
     def install_signal_handlers(self):
@@ -65,6 +67,7 @@ def _vrp_grpc_sol():
         "arrival_stamp": [1.5],
         "unserviced_nodes": [],
         "accepted": [1],
+        "solve_time": 1.25,
     }
 
 
@@ -438,6 +441,35 @@ def test_routing_solution_to_http_maps_ids():
     assert inner["dropped_tasks"] == {"task_id": [], "task_index": []}
 
 
+def test_result_file_stub_includes_empty_warnings(
+    proxy, monkeypatch, tmp_path
+):
+    import cuopt_server.utils.settings as settings
+
+    monkeypatch.setattr(
+        settings, "get_result_dir", lambda: (str(tmp_path), 0, None)
+    )
+    url, _ = proxy
+    req_id = requests.post(
+        url + "/cuopt/request",
+        headers={
+            "CLIENT-VERSION": "custom",
+            "CUOPT-RESULT-FILE": "out.json",
+            **_JSON_ACCEPT,
+        },
+        json=_lp(),
+    ).json()["reqId"]
+    stub = requests.get(
+        url + f"/cuopt/solution/{req_id}", headers=_JSON_ACCEPT
+    )
+    assert stub.status_code == 200, stub.text
+    body = stub.json()
+    assert body["result_file"] == "out.json"
+    assert body["warnings"] == []
+    assert body["notes"] == ["Optimal"]
+    assert (tmp_path / "out.json").is_file()
+
+
 def test_health(proxy):
     url, _ = proxy
     for path in ("/", "/cuopt/health", "/v2/health/ready", "/v2/health/live"):
@@ -568,10 +600,15 @@ def test_getsolution_caches_warmstart(proxy):
 
 
 def test_warmstart_missing_id_is_404(proxy):
+    import msgpack
+
     url, _ = proxy
     missing = str(uuid.uuid4())
     res = requests.get(url + f"/cuopt/solution/{missing}/warmstart")
     assert res.status_code == 404
+    assert msgpack.loads(res.content)["error"] == (
+        f"job {missing} does not exist"
+    )
     posted = requests.post(
         url + "/cuopt/request",
         headers={"CLIENT-VERSION": "custom"},
@@ -579,7 +616,13 @@ def test_warmstart_missing_id_is_404(proxy):
         json=_lp(),
     )
     assert posted.status_code == 404, posted.text
-    assert missing in posted.json()["error"]
+    assert posted.json()["error"] == f"job {missing} does not exist"
+
+    res = requests.get(url + "/cuopt/solution/not-a-uuid/warmstart")
+    assert res.status_code == 404
+    assert msgpack.loads(res.content)["error"] == (
+        "job not-a-uuid does not exist"
+    )
 
 
 def test_warmstart_while_running_returns_req_id(proxy):
@@ -738,6 +781,18 @@ def test_logs_and_log_delete_noop(proxy):
     assert requests.delete(url + f"/cuopt/log/{req_id}").status_code == 200
 
 
+def test_log_delete_without_logs_matches_legacy_404(proxy):
+    url, _ = proxy
+    req_id = requests.post(
+        url + "/cuopt/request",
+        headers={"CLIENT-VERSION": "custom"},
+        json=_lp(),
+    ).json()["reqId"]
+    res = requests.delete(url + f"/cuopt/log/{req_id}", headers=_JSON_ACCEPT)
+    assert res.status_code == 404
+    assert res.json() == {"error": f"log not found for request {req_id}"}
+
+
 def test_cancel_request(proxy):
     url, fake = proxy
     lp = _lp()
@@ -838,6 +893,7 @@ def test_vrp_submit_status_and_solution(proxy):
     assert body["status"] == 0
     assert "veh-1" in body["vehicle_data"]
     assert body["vehicle_data"]["veh-1"]["task_id"] == ["A"]
+    assert sol.json()["response"]["total_solve_time"] == 1.25
 
 
 def test_vrp_initial_id_from_prior_grpc_result(proxy):
@@ -1190,16 +1246,76 @@ def test_zlib_accept(proxy):
     assert decoded["response"]["solver_response"]["status"] == "Optimal"
 
 
-def test_unknown_id_is_404(proxy):
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/cuopt/request/{id}",
+        "/cuopt/solution/{id}",
+        "/cuopt/solution/{id}/incumbents",
+    ],
+)
+def test_unknown_job_matches_legacy_error(proxy, path):
     url, _ = proxy
     missing = str(uuid.uuid4())
-    assert requests.get(url + f"/cuopt/request/{missing}").status_code == 404
-    assert requests.get(url + f"/cuopt/solution/{missing}").status_code == 404
+    res = requests.get(url + path.format(id=missing), headers=_JSON_ACCEPT)
+    assert res.status_code == 404
+    assert res.json()["error"] == f"job {missing} does not exist"
 
 
-def test_invalid_id_is_400(proxy):
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/cuopt/request/not-a-uuid",
+        "/cuopt/solution/not-a-uuid",
+        "/cuopt/solution/not-a-uuid/incumbents",
+    ],
+)
+def test_invalid_job_id_matches_legacy_error(proxy, path):
     url, _ = proxy
-    assert requests.get(url + "/cuopt/request/not-a-uuid").status_code == 400
+    res = requests.get(url + path, headers=_JSON_ACCEPT)
+    assert res.status_code == 404
+    assert res.json()["error"] == "job not-a-uuid does not exist"
+
+
+def test_unknown_and_invalid_log_match_legacy_errors(proxy):
+    url, _ = proxy
+    missing = str(uuid.uuid4())
+
+    res = requests.get(url + f"/cuopt/log/{missing}", headers=_JSON_ACCEPT)
+    assert res.status_code == 404
+    assert res.json() == {"error": f"log not found for request {missing}"}
+
+    res = requests.get(url + "/cuopt/log/not-a-uuid", headers=_JSON_ACCEPT)
+    assert res.status_code == 400
+    assert res.json() == {"error": "Invalid request id format"}
+
+
+def test_unknown_delete_matches_legacy_behavior(proxy):
+    url, _ = proxy
+    missing = str(uuid.uuid4())
+
+    res = requests.delete(
+        url + f"/cuopt/request/{missing}", headers=_JSON_ACCEPT
+    )
+    assert res.status_code == 200
+    assert res.json() == {"queued": 0, "running": 0, "cached": 0}
+
+    res = requests.delete(
+        url + f"/cuopt/solution/{missing}", headers=_JSON_ACCEPT
+    )
+    assert res.status_code == 404
+    assert res.json()["error"] == f"job {missing} does not exist"
+
+    res = requests.delete(url + f"/cuopt/log/{missing}", headers=_JSON_ACCEPT)
+    assert res.status_code == 404
+    assert res.json() == {"error": f"log not found for request {missing}"}
+
+    res = requests.delete(url + "/cuopt/log/not-a-uuid", headers=_JSON_ACCEPT)
+    assert res.status_code == 400
+    assert res.json() == {
+        "error": "Invalid request id format",
+        "error_result": False,
+    }
 
 
 @pytest.mark.parametrize("status", ["FAILED", "CANCELLED"])

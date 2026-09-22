@@ -81,12 +81,6 @@ assignment_t<i_t>::assignment_t(i_t vehicle_count,
 }
 
 template <typename i_t>
-double assignment_t<i_t>::get_runtime() const noexcept
-{
-  return timer;
-}
-
-template <typename i_t>
 rmm::device_uvector<i_t>& assignment_t<i_t>::get_route() noexcept
 {
   return route_;

@@ -152,6 +152,7 @@ struct cpu_routing_solution_t {
   int32_t status = 0;  // cuopt.remote.RoutingSolutionStatus (0 == SUCCESS)
   std::string status_message;
   std::string error_message;
+  double solve_time = 0.0;
 };
 
 }  // namespace CUOPT_EXPORT routing

@@ -41,6 +41,12 @@ i_t assignment_t<i_t>::get_vehicle_count() const
 }
 
 template <typename i_t>
+double assignment_t<i_t>::get_runtime() const noexcept
+{
+  return timer;
+}
+
+template <typename i_t>
 std::string assignment_t<i_t>::get_status_string() const noexcept
 {
   return solution_string_;
@@ -64,6 +70,7 @@ template CUOPT_EXPORT double assignment_t<int>::get_total_objective() const;
 template CUOPT_EXPORT const std::map<objective_t, double>& assignment_t<int>::get_objectives()
   const noexcept;
 template CUOPT_EXPORT int assignment_t<int>::get_vehicle_count() const;
+template CUOPT_EXPORT double assignment_t<int>::get_runtime() const noexcept;
 template CUOPT_EXPORT std::string assignment_t<int>::get_status_string() const noexcept;
 template CUOPT_EXPORT solution_status_t assignment_t<int>::get_status() const;
 template CUOPT_EXPORT cuopt::logic_error assignment_t<int>::get_error_status() const noexcept;

@@ -108,6 +108,7 @@ cdef extern from "cuopt/routing/cpu_routing_problem.hpp" namespace "cuopt::routi
         int32_t status
         string status_message
         string error_message
+        double solve_time
 
 
 cdef extern from "cuopt/routing/solver_settings.hpp" namespace "cuopt::routing":  # noqa
