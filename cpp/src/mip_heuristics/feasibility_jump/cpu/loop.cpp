@@ -20,9 +20,9 @@
 namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
-void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double work_unit_limit)
+void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, double time_limit, double work_unit_limit)
 {
-  if (try_cpufj_binary_solve(*fj_cpu, in_time_limit, work_unit_limit)) return;
+  if (try_cpufj_binary_solve(*fj_cpu, time_limit, work_unit_limit)) return;
 
   // Past this point the search runs on one-sided rows. Everything above reasons about the original
   // model, which is why the rows are built here and not at construction.
@@ -38,11 +38,7 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
   }
 
   [[maybe_unused]] i_t local_mins = 0;
-  auto loop_start          = std::chrono::high_resolution_clock::now();
-  const auto time_limit    = std::isfinite(in_time_limit)
-                               ? (i_t)std::floor(in_time_limit * 1000.0)
-                               : std::numeric_limits<i_t>::max();
-  auto loop_time_start     = loop_start;
+  const auto loop_start            = std::chrono::steady_clock::now();
 
   fj_cpu->rng.set_seed(fj_cpu->settings.seed);
 
@@ -73,12 +69,12 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
   }
 
   while (!fj_cpu->halted && !fj_cpu->preemption_flag.load()) {
-    // Check if 5 seconds have passed
-    auto now = std::chrono::high_resolution_clock::now();
-    if (std::chrono::duration_cast<std::chrono::milliseconds>(now - loop_time_start).count() > time_limit) {
+    const double elapsed =
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - loop_start).count();
+    if (elapsed > time_limit) {
       CUOPT_LOG_TRACE("%sTime limit of %.4f seconds reached, breaking loop at iteration %d",
                       fj_cpu->log_prefix.c_str(),
-                      time_limit / 1000.f,
+                      time_limit,
                       fj_cpu->iterations);
       break;
     }
@@ -229,9 +225,8 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
     fj_cpu->iterations++;
     fj_cpu->iterations_since_best++;
   }
-  auto loop_end = std::chrono::high_resolution_clock::now();
-  double total_time =
-    std::chrono::duration_cast<std::chrono::duration<double>>(loop_end - loop_start).count();
+  const double total_time =
+    std::chrono::duration<double>(std::chrono::steady_clock::now() - loop_start).count();
   [[maybe_unused]] double avg_time_per_iter =
     fj_cpu->iterations > 0 ? total_time / fj_cpu->iterations : 0;
   CUOPT_LOG_TRACE("%sCPUFJ Average time per iteration: %.8fms",
@@ -240,7 +235,7 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
 }
 
 #if MIP_INSTANTIATE_FLOAT
-template void cpufj_solve(fj_cpu_climber_t<int, float>*, float, double);
+template void cpufj_solve(fj_cpu_climber_t<int, float>*, double, double);
 template void report_cpu_incumbent<int, float>(fj_cpu_climber_t<int, float>&,
                                                float,
                                                const std::vector<float>&,

@@ -551,7 +551,7 @@ struct fj_cpu_climber_t : fj_tabu_t<i_t>,
 
 template <typename i_t, typename f_t>
 void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu,
-                 f_t in_time_limit      = std::numeric_limits<f_t>::infinity(),
+                 double time_limit      = std::numeric_limits<double>::infinity(),
                  double work_unit_limit = std::numeric_limits<double>::infinity());
 
 // Copies a climber that has already paid the O(nnz) problem construction. Everything the engine
