@@ -67,8 +67,7 @@ endif()
 add_test(NAME GRPC_ROUTING_PROBLEM_MAPPER_TEST COMMAND GRPC_ROUTING_PROBLEM_MAPPER_TEST)
 set_tests_properties(GRPC_ROUTING_PROBLEM_MAPPER_TEST PROPERTIES LABELS "routing")
 
-# Dedicated regression guard: cpu_routing_problem.hpp must stay free of raft/rmm (#1890).
-# See the file's top comment for what to do if this stops linking.
+# Regression guard: cpu_routing_problem.hpp must stay free of raft/rmm (#1890).
 add_executable(CPU_ROUTING_PROBLEM_CUDA_FREE_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/cpu_routing_problem_cuda_free_test.cpp
 )

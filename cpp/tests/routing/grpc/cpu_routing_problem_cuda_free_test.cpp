@@ -5,14 +5,8 @@
  */
 /* clang-format on */
 
-// Regression guard for the header leak fixed alongside this test: cpu_routing_problem.hpp
-// is cuopt_client's host-only routing representation and must stay free of raft/rmm. This
-// binary links cuopt_client alone (see CMakeLists.txt) -- if the header (or anything it
-// pulls in) starts requiring a GPU-stack symbol again, this fails to *link*, not just run.
-//
-// If this test starts failing to link: do not "fix" it by adding rmm/raft to its
-// target_link_libraries. That hides the regression instead of fixing it. Find what new
-// include or usage reintroduced the GPU-stack dependency and remove it instead.
+// Links cuopt_client alone with no rmm/raft: a regression here must fail to *link*,
+// not be papered over by adding rmm/raft back to this target.
 
 #include "routing/grpc_routing_problem_mapper.hpp"
 

@@ -23,10 +23,8 @@ class handle_t;
 namespace cuopt {
 namespace CUOPT_EXPORT routing {
 
-// Forward-declared, not included: this header is host-only (cuopt_client's gRPC/remote
-// representation of a routing problem) and must stay free of the raft/rmm headers that
-// data_model_view.hpp pulls in. to_device()'s return type only needs the name here --
-// see cpu_routing_problem.cu, the one place that needs the full definition.
+// Forward-declared to keep this host-only header free of raft/rmm; full definition
+// only needed in cpu_routing_problem.cu.
 template <typename i_t, typename f_t>
 class data_model_view_t;
 
