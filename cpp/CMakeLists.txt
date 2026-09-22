@@ -1177,19 +1177,11 @@ target_include_directories(cuopt
         "$<INSTALL_INTERFACE:include>"
 )
 
-# BUILD_INTERFACE only: the installed config rebuilds these links from whichever
-# components are present, because an exported target may not reference targets outside
-# its own export set and each component now exports separately.
-if(NOT SKIP_ROUTING_BUILD)
-    target_link_libraries(cuopt INTERFACE
-            "$<BUILD_INTERFACE:cuopt_routing>"
-            "$<BUILD_INTERFACE:cuopt_mathopt>"
-            "$<BUILD_INTERFACE:cuopt_client>")
-else()
-    target_link_libraries(cuopt INTERFACE
-            "$<BUILD_INTERFACE:cuopt_mathopt>"
-            "$<BUILD_INTERFACE:cuopt_client>")
-endif()
+# Deliberately no component links. CMake will not export a target that references
+# targets outside its own export set, and each component exports separately now so its
+# targets file can compute its own _IMPORT_PREFIX. The installed config rebuilds these
+# links from whichever components are present -- see the FINAL_CODE_BLOCK below -- and
+# the one in-tree consumer, ConfigureTest, names the components directly.
 
 if (WRITE_FATBIN)
     file(WRITE "${CUOPT_BINARY_DIR}/fatbin.ld"
@@ -1397,17 +1389,20 @@ endforeach()
 
 # Backwards compatibility: target_link_libraries(app cuopt::cuopt) keeps pulling in every
 # component that this installation actually has.
+set(_cuopt_umbrella_links "")
+foreach(_cuopt_component cuopt::client cuopt::mathopt cuopt::routing)
+  if(TARGET ${_cuopt_component})
+    list(APPEND _cuopt_umbrella_links ${_cuopt_component})
+  endif()
+endforeach()
 if(NOT TARGET cuopt::cuopt)
-  set(_cuopt_umbrella_links "")
-  foreach(_cuopt_component cuopt::client cuopt::mathopt cuopt::routing)
-    if(TARGET ${_cuopt_component})
-      list(APPEND _cuopt_umbrella_links ${_cuopt_component})
-    endif()
-  endforeach()
   add_library(cuopt::cuopt INTERFACE IMPORTED)
-  set_target_properties(cuopt::cuopt PROPERTIES
-    INTERFACE_LINK_LIBRARIES "${_cuopt_umbrella_links}")
 endif()
+# Set unconditionally: the exported umbrella carries no component links -- it cannot,
+# since they are in other export sets -- so guarding on the target's absence would leave
+# cuopt::cuopt defined but linking nothing.
+set_property(TARGET cuopt::cuopt APPEND PROPERTY
+  INTERFACE_LINK_LIBRARIES "${_cuopt_umbrella_links}")
 ]=])
 
 rapids_export(INSTALL cuopt
