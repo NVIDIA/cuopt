@@ -161,6 +161,11 @@
 /* @brief Barrier initial point safeguard */
 #define CUOPT_BARRIER_INITIAL_POINT_SAFEGUARD "barrier_initial_point_safeguard"
 
+/* @brief Free-variable equality substitution in barrier presolve */
+#define CUOPT_BARRIER_PRESOLVE_FREE_ELIMINATION      "barrier_presolve_free_elimination"
+#define CUOPT_BARRIER_FREE_ELIMINATION_ROW_PIVOT_TOL "barrier_free_elimination_row_pivot_tol"
+#define CUOPT_BARRIER_FREE_ELIMINATION_COL_PIVOT_TOL "barrier_free_elimination_col_pivot_tol"
+
 /* @brief MIP determinism mode constants */
 #define CUOPT_MODE_OPPORTUNISTIC 0
 #define CUOPT_MODE_DETERMINISTIC 1

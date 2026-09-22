@@ -303,6 +303,13 @@ class pdlp_solver_settings_t {
   barrier_dual_initial_point_t barrier_dual_initial_point{barrier_dual_initial_point_t::Automatic};
   i_t postsolve_info{-1};
   i_t barrier_presolve_bound_free_variables{-1};  // -1 automatic, 0 disabled, 1 enabled
+  i_t barrier_presolve_free_elimination{-1};      // -1 automatic, 0 disabled, 1 enabled
+  // Threshold pivoting tolerances for the free-variable equality substitution. The pivot
+  // a_pj must be at least this fraction of the largest other entry in its row and of the
+  // largest entry in its column; 0 disables the corresponding test. At 1.0 no substitution
+  // can amplify a coefficient.
+  f_t barrier_free_elimination_row_pivot_tol{1.0};
+  f_t barrier_free_elimination_col_pivot_tol{1.0};
   // Ruiz equilibration for QCQP (barrier) scaling: -1 automatic (row/column
   // imbalance heuristic), 0 disabled, 1 enabled. Distinct from PDLP's own Ruiz
   // scaling in pdlp_hyper_params_t.

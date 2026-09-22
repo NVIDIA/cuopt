@@ -308,6 +308,81 @@ TEST(barrier, presolve_keeps_direct_free_variables_before_cones)
   EXPECT_EQ(presolve_info.free_elimination_remaining_variables[2], 4);
 }
 
+TEST(barrier, presolve_skips_free_elimination_on_unstable_pivot)
+{
+  // Layout: [x0, x1 | cone x2, x3, x4] with only x1 free and zero-cost. Both rows holding x1
+  // carry it with a 1e-10 coefficient next to O(1) entries, so substituting it would scatter
+  // the pivot row amplified by 1e10. Every candidate pivot must fail the row threshold test
+  // and x1 must survive as a direct free variable.
+  raft::handle_t handle{};
+  init_handler(&handle);
+
+  user_problem_t<int, double> user_problem(&handle);
+
+  constexpr int m       = 2;
+  constexpr int n       = 5;
+  constexpr int nz      = 6;
+  constexpr double tiny = 1e-10;
+
+  user_problem.num_rows  = m;
+  user_problem.num_cols  = n;
+  user_problem.objective = {0.0, 0.0, 0.0, 0.0, 0.0};
+
+  user_problem.A.m      = m;
+  user_problem.A.n      = n;
+  user_problem.A.nz_max = nz;
+  user_problem.A.reallocate(nz);
+  // x0 + tiny*x1 + x2 = 1, tiny*x1 + x3 + x4 = 1
+  user_problem.A.col_start               = {0, 1, 3, 4, 5, 6};
+  const std::vector<int> rows_of_entries = {0, 0, 1, 0, 1, 1};
+  const std::vector<double> entry_values = {1.0, tiny, tiny, 1.0, 1.0, 1.0};
+  for (int p = 0; p < nz; ++p) {
+    user_problem.A.i[p] = rows_of_entries[p];
+    user_problem.A.x[p] = entry_values[p];
+  }
+
+  user_problem.rhs       = {1.0, 1.0};
+  user_problem.row_sense = {'E', 'E'};
+  user_problem.lower     = {0.0, -inf, 0.0, 0.0, 0.0};
+  user_problem.upper.assign(n, inf);
+  user_problem.num_range_rows         = 0;
+  user_problem.cone_var_start         = 2;
+  user_problem.second_order_cone_dims = {3};
+  user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
+
+  simplex_solver_settings_t<int, double> settings;
+  settings.barrier          = true;
+  settings.barrier_presolve = true;
+  settings.dualize          = 0;
+  settings.scale_columns    = false;
+
+  std::vector<int> new_slacks;
+  dualize_info_t<int, double> dualize_info;
+  lp_problem_t<int, double> original_lp(user_problem.handle_ptr, 1, 1, 1);
+  convert_user_problem(user_problem, settings, original_lp, new_slacks, dualize_info);
+
+  presolve_info_t<int, double> presolve_info;
+  lp_problem_t<int, double> presolved_lp(user_problem.handle_ptr, 1, 1, 1);
+  ASSERT_EQ(presolve(original_lp, settings, presolved_lp, presolve_info), 0);
+
+  EXPECT_EQ(presolved_lp.num_rows, m);
+  EXPECT_EQ(presolved_lp.num_cols, n);
+  EXPECT_EQ(presolved_lp.cone_var_start, 2);
+  EXPECT_TRUE(presolve_info.free_variable_eliminations.empty());
+  ASSERT_EQ(presolve_info.direct_free_variables.size(), 1u);
+  EXPECT_EQ(presolve_info.direct_free_variables[0], 1);
+
+  // Without the thresholds the same column is substituted, which is what the default rejects.
+  settings.barrier_free_elimination_row_pivot_tol = 0.0;
+  settings.barrier_free_elimination_col_pivot_tol = 0.0;
+  presolve_info_t<int, double> unguarded_info;
+  lp_problem_t<int, double> unguarded_lp(user_problem.handle_ptr, 1, 1, 1);
+  ASSERT_EQ(presolve(original_lp, settings, unguarded_lp, unguarded_info), 0);
+  ASSERT_EQ(unguarded_info.free_variable_eliminations.size(), 1u);
+  EXPECT_EQ(unguarded_info.free_variable_eliminations[0].variable, 1);
+  EXPECT_TRUE(unguarded_info.direct_free_variables.empty());
+}
+
 TEST(barrier, rejects_middle_cone_input_before_barrier)
 {
   raft::handle_t handle{};

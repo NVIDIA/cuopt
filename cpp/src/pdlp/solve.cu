@@ -543,6 +543,11 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   barrier_settings.postsolve_info             = settings.postsolve_info;
   barrier_settings.barrier_presolve_bound_free_variables =
     settings.barrier_presolve_bound_free_variables;
+  barrier_settings.barrier_presolve_free_elimination = settings.barrier_presolve_free_elimination;
+  barrier_settings.barrier_free_elimination_row_pivot_tol =
+    settings.barrier_free_elimination_row_pivot_tol;
+  barrier_settings.barrier_free_elimination_col_pivot_tol =
+    settings.barrier_free_elimination_col_pivot_tol;
   barrier_settings.barrier_initial_point_safeguard = settings.barrier_initial_point_safeguard;
   barrier_settings.barrier                         = true;
   barrier_settings.barrier_presolve                = true;
