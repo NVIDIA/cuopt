@@ -44,7 +44,7 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit, double w
                                : std::numeric_limits<i_t>::max();
   auto loop_time_start     = loop_start;
 
-  fj_cpu->rng.seed(fj_cpu->settings.seed);
+  fj_cpu->rng.set_seed(fj_cpu->settings.seed);
 
   // Initialize feature tracking
   fj_cpu->iterations_since_best = 0;

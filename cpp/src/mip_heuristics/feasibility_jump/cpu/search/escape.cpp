@@ -39,12 +39,9 @@ void perturb(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   }
 
   const i_t n_kick = std::max<i_t>(1, fj_cpu.perturb_vars);
-  std::vector<i_t> sampled_vars;
-  std::sample(fj_cpu.problem->h_objective_vars.begin(),
-              fj_cpu.problem->h_objective_vars.end(),
-              std::back_inserter(sampled_vars),
-              n_kick,
-              fj_cpu.rng);
+  std::vector<i_t> sampled_vars = fj_cpu.problem->h_objective_vars;
+  fj_cpu.rng.shuffle(sampled_vars);
+  sampled_vars.resize(std::min(sampled_vars.size(), (size_t)n_kick));
   cuopt::pcgenerator_t rng(fj_cpu.settings.seed + fj_cpu.iterations, 0, 0);
 
   for (auto var_idx : sampled_vars)

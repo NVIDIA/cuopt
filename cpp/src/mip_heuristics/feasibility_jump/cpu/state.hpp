@@ -15,7 +15,6 @@
 #include <limits>
 #include <memory>
 #include <mutex>
-#include <random>
 #include <string>
 #include <utility>
 #include <vector>
@@ -29,6 +28,7 @@
 #include <utilities/logger.hpp>
 #include <utilities/macros.cuh>
 #include <utilities/memory_instrumentation.hpp>
+#include <utilities/pcgenerator.hpp>
 #include <utilities/producer_sync.hpp>
 #include <utilities/type_2.hpp>
 
@@ -297,7 +297,7 @@ struct fj_search_rows_t {
 
 template <typename i_t, typename f_t>
 struct fj_search_state_t {
-  std::mt19937 rng;
+  cuopt::pcgenerator_t rng;
   ins_vector<f_t> h_lhs;
   ins_vector<f_t> h_lhs_sumcomp;
   ins_vector<f_t> h_assignment;

@@ -12,11 +12,11 @@
 #include <dual_simplex/user_problem.hpp>
 #include <math_optimization/tic_toc.hpp>
 #include <mip_heuristics/mip_constants.hpp>
+#include <utilities/pcgenerator.hpp>
 #include <utilities/seed_generator.cuh>
 
 #include <algorithm>
 #include <cmath>
-#include <random>
 
 namespace cuopt::mathematical_optimization::mip {
 
@@ -204,11 +204,11 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_t<i_t, f_t>::create_cpu_climber(
                            probing_cache);
   fj_cpu->settings = settings;
   if (randomize_params) {
-    auto rng                 = std::mt19937(cuopt::seed_generator::get_seed());
-    fj_cpu->mtm_viol_samples = std::uniform_int_distribution<i_t>(15, 50)(rng);
-    fj_cpu->mtm_sat_samples  = std::uniform_int_distribution<i_t>(10, 30)(rng);
-    fj_cpu->nnz_samples      = std::uniform_int_distribution<i_t>(2000, 15000)(rng);
-    fj_cpu->perturb_interval = std::uniform_int_distribution<i_t>(50, 500)(rng);
+    cuopt::pcgenerator_t rng(cuopt::seed_generator::get_seed());
+    fj_cpu->mtm_viol_samples = rng.uniform<i_t>(15, 51);
+    fj_cpu->mtm_sat_samples  = rng.uniform<i_t>(10, 31);
+    fj_cpu->nnz_samples      = rng.uniform<i_t>(2000, 15001);
+    fj_cpu->perturb_interval = rng.uniform<i_t>(50, 501);
   }
   return fj_cpu;
 }
