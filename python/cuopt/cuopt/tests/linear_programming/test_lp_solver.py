@@ -42,7 +42,6 @@ from cuopt.linear_programming.solver.solver_wrapper import (
     LPTerminationStatus,
 )
 from cuopt.linear_programming.solver_settings import (
-    DistributedPdlpPartitioner,
     PDLPSolverMode,
     SolverMethod,
     SolverSettings,
@@ -381,23 +380,12 @@ def test_solver_settings_basic():
     # Distributed (multi-GPU) PDLP settings
     settings.set_parameter(CUOPT_NUM_GPUS, -1)
     settings.set_parameter(CUOPT_USE_DISTRIBUTED_PDLP, True)
-    settings.set_parameter(
-        CUOPT_DISTRIBUTED_PDLP_PARTITIONER,
-        DistributedPdlpPartitioner.RoundRobin,
-    )
+    # 0=Auto, 1=KaMinPar, 2=RoundRobin
+    settings.set_parameter(CUOPT_DISTRIBUTED_PDLP_PARTITIONER, 2)
 
     assert settings.get_parameter(CUOPT_NUM_GPUS) == -1
     assert settings.get_parameter(CUOPT_USE_DISTRIBUTED_PDLP) is True
-    assert settings.get_parameter(CUOPT_DISTRIBUTED_PDLP_PARTITIONER) == int(
-        DistributedPdlpPartitioner.RoundRobin
-    )
-
-
-def test_distributed_pdlp_partitioner_enum():
-    assert int(DistributedPdlpPartitioner.Auto) == 0
-    assert int(DistributedPdlpPartitioner.KaMinPar) == 1
-    assert int(DistributedPdlpPartitioner.RoundRobin) == 2
-    assert str(DistributedPdlpPartitioner.KaMinPar) == "1"
+    assert settings.get_parameter(CUOPT_DISTRIBUTED_PDLP_PARTITIONER) == 2
 
 
 def test_solver_settings(tmp_path):

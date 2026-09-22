@@ -147,32 +147,28 @@ Distributed PDLP
 resolve to a single visible GPU, in which case the solve still runs but is not actually sharded).
 
 ``CUOPT_DISTRIBUTED_PDLP_PARTITIONER`` controls how the problem is partitioned across the GPUs used by distributed
-PDLP. Two strategies are available: ``KaMinPar``, a multi-threaded graph partitioner that generally produces better
-balanced shards at the cost of extra partitioning time, and ``RoundRobin``, which assigns rows/columns across GPUs
-in round-robin fashion without building a partitioning graph. ``Auto`` (the default) picks ``RoundRobin`` on a
-single GPU and ``KaMinPar`` otherwise.
+PDLP:
+
+* ``0``: Auto (default) - picks ``RoundRobin`` on a single GPU and ``KaMinPar`` otherwise
+* ``1``: KaMinPar - a multi-threaded graph partitioner that generally produces better balanced shards at the cost of
+  extra partitioning time
+* ``2``: RoundRobin - assigns rows/columns across GPUs in round-robin fashion, without building a partitioning graph
 
 C API users should use the constants defined in :ref:`distributed-pdlp-partitioner-constants` for this parameter.
 
-Python API users should use :class:`cuopt.linear_programming.DistributedPdlpPartitioner` for this parameter:
+Python API users can set this parameter directly:
 
 .. code-block:: python
 
-   from cuopt.linear_programming import (
-       DistributedPdlpPartitioner,
-       SolverMethod,
-       SolverSettings,
-   )
+   from cuopt.linear_programming import SolverMethod, SolverSettings
 
    settings = SolverSettings()
    settings.set_parameter("method", SolverMethod.PDLP)
    settings.set_parameter("num_gpus", -1)
    settings.set_parameter("use_distributed_pdlp", True)
-   settings.set_parameter(
-       "distributed_pdlp_partitioner", DistributedPdlpPartitioner.KaMinPar
-   )
+   settings.set_parameter("distributed_pdlp_partitioner", 1)  # KaMinPar
 
-Server Thin client users should use the :class:`cuopt_sh_client.DistributedPdlpPartitioner` for this parameter.
+Server Thin client users can set this parameter directly (see the note at the top of this page).
 
 
 Infeasibility Detection
