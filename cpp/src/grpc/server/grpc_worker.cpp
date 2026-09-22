@@ -5,6 +5,7 @@
 
 #ifdef CUOPT_ENABLE_GRPC
 
+#include "grpc_incumbent_callbacks.hpp"
 #include "grpc_incumbent_proto.hpp"
 #include "grpc_pipe_serialization.hpp"
 #include "grpc_server_types.hpp"
@@ -110,9 +111,10 @@ struct DeserializedJob {
   cuopt::routing::cpu_routing_problem_t routing_problem;
   cuopt::routing::solver_settings_t<int, float> routing_settings;
 #endif
-  bool enable_incumbents = true;
-  bool is_vrp            = false;
-  bool success           = false;
+  bool enable_incumbents    = true;
+  bool enable_incumbent_set = false;
+  bool is_vrp               = false;
+  bool success              = false;
 };
 
 struct SolveResult {
@@ -134,8 +136,9 @@ struct SolveResult {
 
 class IncumbentPipeCallback : public cuopt::internals::get_solution_callback_t {
  public:
-  IncumbentPipeCallback(std::string job_id, int fd, size_t num_vars, bool is_float)
-    : job_id_(std::move(job_id)), fd_(fd)
+  IncumbentPipeCallback(
+    std::string job_id, int fd, size_t num_vars, bool is_float, bool capture_last)
+    : job_id_(std::move(job_id)), fd_(fd), state_(num_vars, is_float), capture_last_(capture_last)
   {
     n_variables = num_vars;
     isFloat     = is_float;
@@ -149,7 +152,9 @@ class IncumbentPipeCallback : public cuopt::internals::get_solution_callback_t {
                     void* /*solution_bound*/,
                     void* /*user_data*/) override
   {
-    if (fd_ < 0 || n_variables == 0) { return; }
+    if (n_variables == 0) { return; }
+
+    if (capture_last_) { state_.record_get_solution(data, objective_value); }
 
     double objective = 0.0;
     std::vector<double> assignment;
@@ -167,6 +172,8 @@ class IncumbentPipeCallback : public cuopt::internals::get_solution_callback_t {
       objective = *static_cast<const double*>(objective_value);
     }
 
+    if (fd_ < 0) { return; }
+
     auto buffer = build_incumbent_proto(job_id_, objective, assignment);
     if (!send_incumbent_pipe(fd_, buffer)) {
       SERVER_LOG_ERROR("[Worker] Incumbent pipe write failed for job %s, disabling further sends",
@@ -176,9 +183,13 @@ class IncumbentPipeCallback : public cuopt::internals::get_solution_callback_t {
     }
   }
 
+  cuopt::remote::detail::LastIncumbentState* state() { return &state_; }
+
  private:
   std::string job_id_;
   int fd_;
+  cuopt::remote::detail::LastIncumbentState state_;
+  bool capture_last_;
 };
 
 // ---------------------------------------------------------------------------
@@ -347,7 +358,8 @@ static DeserializedJob read_problem_from_pipe(int worker_id, const JobQueueEntry
     if (chunked_header.has_mip_settings()) {
       map_proto_to_mip_settings(chunked_header.mip_settings(), dj.mip_settings);
     }
-    dj.enable_incumbents = chunked_header.enable_incumbents();
+    dj.enable_incumbents    = chunked_header.enable_incumbents();
+    dj.enable_incumbent_set = chunked_header.enable_incumbent_set();
     cuopt::mathematical_optimization::map_chunked_arrays_to_problem(
       chunked_header, arrays, container_arrays, dj.problem);
   } else {
@@ -376,7 +388,8 @@ static DeserializedJob read_problem_from_pipe(int worker_id, const JobQueueEntry
       SERVER_LOG_INFO("[Worker] IPC path: UNARY MIP (%zu bytes)", request_data.size());
       map_proto_to_problem(req.problem(), dj.problem);
       map_proto_to_mip_settings(req.settings(), dj.mip_settings);
-      dj.enable_incumbents = req.has_enable_incumbents() ? req.enable_incumbents() : true;
+      dj.enable_incumbents    = req.has_enable_incumbents() ? req.enable_incumbents() : true;
+      dj.enable_incumbent_set = req.has_enable_incumbent_set() ? req.enable_incumbent_set() : false;
     } else {
 #ifdef CUOPT_ENABLE_GRPC_ROUTING
       const auto& req = submit_request.vrp_request();
@@ -412,16 +425,22 @@ static SolveResult run_mip_solve(DeserializedJob& dj,
     // Create a per-solve incumbent callback wired to this worker's
     // incumbent pipe.  Destroyed automatically when sr is returned.
     std::unique_ptr<IncumbentPipeCallback> incumbent_cb;
-    if (dj.enable_incumbents) {
+    std::unique_ptr<cuopt::remote::detail::EchoSetSolutionCallback> set_cb;
+    const size_t n_vars = static_cast<size_t>(dj.problem.get_n_variables());
+    if (dj.enable_incumbents || dj.enable_incumbent_set) {
+      const int fd = dj.enable_incumbents ? worker_pipes[worker_id].worker_incumbent_write_fd : -1;
       incumbent_cb =
-        std::make_unique<IncumbentPipeCallback>(job_id,
-                                                worker_pipes[worker_id].worker_incumbent_write_fd,
-                                                dj.problem.get_n_variables(),
-                                                false);
+        std::make_unique<IncumbentPipeCallback>(job_id, fd, n_vars, false, dj.enable_incumbent_set);
       dj.mip_settings.set_mip_callback(incumbent_cb.get());
       SERVER_LOG_INFO("[Worker] Registered incumbent callback for job_id=%s n_vars=%d",
                       job_id.c_str(),
                       dj.problem.get_n_variables());
+    }
+    if (dj.enable_incumbent_set) {
+      set_cb = std::make_unique<cuopt::remote::detail::EchoSetSolutionCallback>(
+        incumbent_cb->state(), n_vars, false);
+      dj.mip_settings.set_mip_callback(set_cb.get());
+      SERVER_LOG_INFO("[Worker] Registered incumbent set callback for job_id=%s", job_id.c_str());
     }
 
     SERVER_LOG_INFO("[Worker] Converting CPU problem to GPU problem...");

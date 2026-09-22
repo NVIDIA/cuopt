@@ -337,7 +337,8 @@ class grpc_client_t {
   template <typename i_t, typename f_t>
   submit_result_t submit_mip(const cpu_optimization_problem_t<i_t, f_t>& problem,
                              const mip_solver_settings_t<i_t, f_t>& settings,
-                             bool enable_incumbents = false);
+                             bool enable_incumbents    = false,
+                             bool enable_incumbent_set = false);
 
   /**
    * @brief Check status of a submitted job

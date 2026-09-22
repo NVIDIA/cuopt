@@ -680,13 +680,15 @@ submit_result_t grpc_client_t::submit_lp(const cpu_optimization_problem_t<i_t, f
 template <typename i_t, typename f_t>
 submit_result_t grpc_client_t::submit_mip(const cpu_optimization_problem_t<i_t, f_t>& problem,
                                           const mip_solver_settings_t<i_t, f_t>& settings,
-                                          bool enable_incumbents)
+                                          bool enable_incumbents,
+                                          bool enable_incumbent_set)
 {
   submit_result_t result;
 
   GRPC_CLIENT_DEBUG_LOG(config_,
                         "[grpc_client] submit_mip: starting submission"
-                          << (enable_incumbents ? " (incumbents enabled)" : ""));
+                          << (enable_incumbents ? " (incumbents enabled)" : "")
+                          << (enable_incumbent_set ? " (incumbent set enabled)" : ""));
 
   if (!is_connected()) {
     result.error_message = "Not connected to server";
@@ -705,13 +707,15 @@ submit_result_t grpc_client_t::submit_mip(const cpu_optimization_problem_t<i_t, 
 
   if (use_chunked) {
     cuopt::remote::ChunkedProblemHeader header;
-    populate_chunked_header_mip(problem, settings, enable_incumbents, &header);
+    populate_chunked_header_mip(
+      problem, settings, enable_incumbents, enable_incumbent_set, &header);
     if (!upload_chunked_arrays(problem, header, result.job_id)) {
       result.error_message = last_error_;
       return result;
     }
   } else {
-    auto submit_request = build_mip_submit_request(problem, settings, enable_incumbents);
+    auto submit_request =
+      build_mip_submit_request(problem, settings, enable_incumbents, enable_incumbent_set);
     if (!submit_unary(submit_request, result.job_id)) {
       result.error_message = last_error_;
       return result;
@@ -1324,7 +1328,8 @@ template submit_result_t grpc_client_t::submit_lp(
 template submit_result_t grpc_client_t::submit_mip(
   const cpu_optimization_problem_t<int32_t, float>& problem,
   const mip_solver_settings_t<int32_t, float>& settings,
-  bool enable_incumbents);
+  bool enable_incumbents,
+  bool enable_incumbent_set);
 template remote_lp_result_t<int32_t, float> grpc_client_t::get_lp_result(const std::string& job_id);
 template remote_mip_result_t<int32_t, float> grpc_client_t::get_mip_result(
   const std::string& job_id);
@@ -1349,7 +1354,8 @@ template submit_result_t grpc_client_t::submit_lp(
 template submit_result_t grpc_client_t::submit_mip(
   const cpu_optimization_problem_t<int32_t, double>& problem,
   const mip_solver_settings_t<int32_t, double>& settings,
-  bool enable_incumbents);
+  bool enable_incumbents,
+  bool enable_incumbent_set);
 template remote_lp_result_t<int32_t, double> grpc_client_t::get_lp_result(
   const std::string& job_id);
 template remote_mip_result_t<int32_t, double> grpc_client_t::get_mip_result(

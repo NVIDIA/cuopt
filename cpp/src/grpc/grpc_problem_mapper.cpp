@@ -171,6 +171,7 @@ template <typename i_t, typename f_t>
 void populate_chunked_header_mip(const cpu_optimization_problem_t<i_t, f_t>& cpu_problem,
                                  const mip_solver_settings_t<i_t, f_t>& settings,
                                  bool enable_incumbents,
+                                 bool enable_incumbent_set,
                                  cuopt::remote::ChunkedProblemHeader* header)
 {
 #include "generated_populate_chunked_header_mip.inc"
@@ -232,6 +233,7 @@ template CUOPT_EXPORT void populate_chunked_header_mip(
   const cpu_optimization_problem_t<int32_t, float>& cpu_problem,
   const mip_solver_settings_t<int32_t, float>& settings,
   bool enable_incumbents,
+  bool enable_incumbent_set,
   cuopt::remote::ChunkedProblemHeader* header);
 template CUOPT_EXPORT void map_chunked_header_to_problem(
   const cuopt::remote::ChunkedProblemHeader& header,
@@ -264,6 +266,7 @@ template CUOPT_EXPORT void populate_chunked_header_mip(
   const cpu_optimization_problem_t<int32_t, double>& cpu_problem,
   const mip_solver_settings_t<int32_t, double>& settings,
   bool enable_incumbents,
+  bool enable_incumbent_set,
   cuopt::remote::ChunkedProblemHeader* header);
 template CUOPT_EXPORT void map_chunked_header_to_problem(
   const cuopt::remote::ChunkedProblemHeader& header,

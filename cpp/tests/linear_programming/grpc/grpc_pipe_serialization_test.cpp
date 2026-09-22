@@ -28,6 +28,7 @@
 
 // write_to_pipe / read_from_pipe are the real implementations from
 // grpc_pipe_io.cpp, compiled directly into this test target.
+#include "grpc_incumbent_callbacks.hpp"
 #include "grpc_pipe_serialization.hpp"
 
 using namespace cuopt::remote;
@@ -801,4 +802,47 @@ TEST(PipeSerialization, SerializeSubmitRequest)
   ASSERT_TRUE(parsed.ParseFromArray(blob.data(), static_cast<int>(blob.size())));
   EXPECT_TRUE(parsed.has_lp_request());
   EXPECT_EQ(parsed.lp_request().header().problem_category(), LP);
+}
+
+TEST(IncumbentCallbacks, SetCallbackEchoesLastGetIncumbent)
+{
+  cuopt::remote::detail::LastIncumbentState state(3, false);
+  cuopt::remote::detail::EchoSetSolutionCallback callback(&state, 3, false);
+
+  double first_assignment[] = {1.0, 2.0, 3.0};
+  double first_objective    = 10.0;
+  state.record_get_solution(first_assignment, &first_objective);
+
+  double last_assignment[] = {4.0, 5.0, 6.0};
+  double last_objective    = 7.5;
+  state.record_get_solution(last_assignment, &last_objective);
+
+  double echoed_assignment[] = {-1.0, -1.0, -1.0};
+  double echoed_objective    = -1.0;
+  double solution_bound      = 42.0;
+  callback.set_solution(echoed_assignment, &echoed_objective, &solution_bound, nullptr);
+
+  EXPECT_DOUBLE_EQ(echoed_assignment[0], 4.0);
+  EXPECT_DOUBLE_EQ(echoed_assignment[1], 5.0);
+  EXPECT_DOUBLE_EQ(echoed_assignment[2], 6.0);
+  EXPECT_DOUBLE_EQ(echoed_objective, 7.5);
+  EXPECT_DOUBLE_EQ(solution_bound, 42.0);
+}
+
+TEST(IncumbentCallbacks, SetCallbackLeavesBuffersWhenNoGetIncumbent)
+{
+  cuopt::remote::detail::LastIncumbentState state(3, false);
+  cuopt::remote::detail::EchoSetSolutionCallback callback(&state, 3, false);
+
+  double echoed_assignment[] = {-1.0, -1.0, -1.0};
+  double echoed_objective    = std::numeric_limits<double>::infinity();
+  double solution_bound      = 42.0;
+  EXPECT_FALSE(state.copy_last(echoed_assignment, &echoed_objective));
+  callback.set_solution(echoed_assignment, &echoed_objective, &solution_bound, nullptr);
+
+  EXPECT_DOUBLE_EQ(echoed_assignment[0], -1.0);
+  EXPECT_DOUBLE_EQ(echoed_assignment[1], -1.0);
+  EXPECT_DOUBLE_EQ(echoed_assignment[2], -1.0);
+  EXPECT_DOUBLE_EQ(echoed_objective, std::numeric_limits<double>::infinity());
+  EXPECT_DOUBLE_EQ(solution_bound, 42.0);
 }

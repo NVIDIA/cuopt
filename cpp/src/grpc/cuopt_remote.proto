@@ -31,6 +31,7 @@ message SolveMIPRequest {
   OptimizationProblem problem = 2;
   MIPSolverSettings settings = 3;
   optional bool enable_incumbents = 4;
+  optional bool enable_incumbent_set = 5;
 }
 
 // Job status for async operations
