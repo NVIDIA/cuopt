@@ -149,7 +149,7 @@ mip_solution_t<i_t, f_t> solve_mip(
 // (use_distributed_pdlp) or implicitly (method PDLP with num_gpus == -1 or > 1).
 // Single source of truth for this decision, shared by every solve_lp entry point.
 template <typename i_t, typename f_t>
-bool wants_distributed_pdlp(pdlp_solver_settings_t<i_t, f_t> const& settings);
+bool is_distributed_pdlp_requested(pdlp_solver_settings_t<i_t, f_t> const& settings);
 
 template <typename i_t, typename f_t>
 optimization_problem_t<i_t, f_t> mps_data_model_to_optimization_problem(

@@ -494,7 +494,7 @@ static SolveResult run_lp_solve(DeserializedJob& dj,
     // through that overload when it is requested. See op_problem_to_mps_data_model
     // and the mps_data_model_t solve_lp overload in solve.hpp.
     const bool use_distributed_pdlp =
-      cuopt::mathematical_optimization::wants_distributed_pdlp(dj.lp_settings);
+      cuopt::mathematical_optimization::is_distributed_pdlp_requested(dj.lp_settings);
     auto gpu_solution =
       use_distributed_pdlp
         ? cuopt::mathematical_optimization::solve_lp(
