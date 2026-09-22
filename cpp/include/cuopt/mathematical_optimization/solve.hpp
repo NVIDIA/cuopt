@@ -145,9 +145,18 @@ mip_solution_t<i_t, f_t> solve_mip(
   const cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t>& mps_data_model,
   mip_solver_settings_t<i_t, f_t> const& settings = mip_solver_settings_t<i_t, f_t>{});
 
-// Whether settings request distributed (multi-GPU) PDLP, either explicitly
-// (use_distributed_pdlp) or implicitly (method PDLP with num_gpus == -1 or > 1).
-// Single source of truth for this decision, shared by every solve_lp entry point.
+/**
+ * @brief Whether settings request distributed (multi-GPU) PDLP.
+ *
+ * True when requested explicitly (use_distributed_pdlp), or implicitly
+ * (method is PDLP and num_gpus is -1 or greater than 1). Used by the
+ * mps_data_model_t solve_lp overload to decide whether to route to
+ * solve_lp_distributed_from_mps, so that decision has one definition instead
+ * of being reimplemented at each caller.
+ *
+ * @param[in] settings The PDLP settings to inspect.
+ * @return true if a distributed (multi-GPU) PDLP solve should be used.
+ */
 template <typename i_t, typename f_t>
 bool is_distributed_pdlp_requested(pdlp_solver_settings_t<i_t, f_t> const& settings);
 

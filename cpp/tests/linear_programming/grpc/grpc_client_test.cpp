@@ -2327,10 +2327,10 @@ TEST(MapperRoundtrip, PDLPSettingsAllFields)
 }
 
 // Regression coverage for the distributed-PDLP dispatch decision that
-// run_lp_solve (grpc_worker.cpp) and every solve_lp entry point share via
-// is_distributed_pdlp_requested. A mapper-only test cannot catch a regression where
-// the worker stops calling this predicate; this exercises the predicate
-// itself, decoded from the wire exactly as the worker receives it.
+// run_lp_solve (grpc_worker.cpp) shares with the mps_data_model_t solve_lp
+// overload via is_distributed_pdlp_requested. A mapper-only test cannot catch
+// a regression where the worker stops calling this predicate; this exercises
+// the predicate itself, decoded from the wire exactly as the worker receives it.
 TEST(MapperRoundtrip, PDLPSettingsDistributedDispatchDecision)
 {
   using cuopt::mathematical_optimization::is_distributed_pdlp_requested;
