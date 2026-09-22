@@ -339,6 +339,15 @@ int main(int argc, char** argv)
   builder.SetMaxReceiveMessageSize(channel_limit);
   builder.SetMaxSendMessageSize(channel_limit);
 
+  // Match the C++ client's HTTP/2 keepalives (30s PINGs with
+  // GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS). gRPC server defaults cap idle
+  // PINGs (HTTP2_MAX_PINGS_WITHOUT_DATA=2) and GOAWAY long-lived clients after
+  // ~1–2 minutes idle. Unlimited PINGs are safe because the min recv interval
+  // still blocks a flood; leave HTTP2_MAX_PING_STRIKES at default.
+  builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 1);
+  builder.AddChannelArgument(GRPC_ARG_HTTP2_MAX_PINGS_WITHOUT_DATA, 0);
+  builder.AddChannelArgument(GRPC_ARG_HTTP2_MIN_RECV_PING_INTERVAL_WITHOUT_DATA_MS, 15000);
+
   std::unique_ptr<Server> server(builder.BuildAndStart());
   if (!server) {
     SERVER_LOG_ERROR("[Server] Failed to bind to %s", server_address);
