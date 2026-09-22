@@ -17,6 +17,7 @@ Usage:
 """
 
 import argparse
+import json
 import os
 import re
 import sys
@@ -351,46 +352,140 @@ def _array_wire_type_comment(f):
     return f"raw bytes ({size} B/elem)"
 
 
-_DOC_COMMENT_WIDTH = 78
+_JSON_SCHEMA_TYPES = {
+    "double": "number",
+    "float": "number",
+    "int32": "integer",
+    "int64": "integer",
+    "uint32": "integer",
+    "uint64": "integer",
+    "bool": "boolean",
+    "string": "string",
+}
 
 
-def _field_doc_comment(f, indent="  "):
-    """Render a field's `description:` / `default:` registry attributes as
-    proto leading comment lines.
+def _json_schema_property(registry, f):
+    """Render one settings field as a JSON Schema property.
 
-    The generated proto is part of the public wire contract (see
-    GRPC_INTERFACE.md, "Custom Clients"), so a third-party client reading
-    only the .proto should learn what a settings field means and what it
-    does when omitted.  Returns [] when the field carries neither
-    attribute, so undocumented fields emit exactly as before.
-
-    `default:` is rendered verbatim from the registry — it is a string
-    describing the C++ member initializer, not a value the generator derives
-    from it. It is checked, not fully validated: for a non-optional settings
-    field, `_validate_registry_uniqueness` fails generation if this string
-    doesn't textually match the proto3 zero value. That check can't catch a
-    C++ default that changed with no matching update here.
+    Used by the MCP tool-input schema (see generate_mcp_schema).  Enums
+    become string enums keyed by their proto value names so a model emits
+    `"Stable3"` rather than a magic integer.
     """
+    ftype = f.get("type", "double")
+    prop = {}
+    edef = _lookup_enum(registry, ftype)
+    if edef is not None and "values" in edef:
+        # Proto value names, not C++ names, so the schema and the wire agree
+        # on the spelling a client sends.
+        prefix = edef.get("proto_prefix", "")
+        named = {
+            _proto_enum_value_name(cpp_name, prefix): num
+            for cpp_name, num, _attrs in parse_enum_values(edef["values"])
+        }
+        prop["type"] = "string"
+        prop["enum"] = list(named)
+        # cuOpt's string parameter interface takes the integer for an enum
+        # setting, not its name. Callers show the name to a user and send
+        # the number; emitting the mapping keeps that translation derived
+        # from the registry instead of hand-written in each client.
+        prop["x-enum-values"] = named
+    else:
+        prop["type"] = _JSON_SCHEMA_TYPES.get(ftype, "string")
+
     description = f.get("description")
+    if description:
+        prop["description"] = " ".join(str(description).split())
     default = f.get("default")
-    words = str(description).split() if description is not None else []
     if default is not None:
-        words += f"(default: {default})".split()
-    if not words:
-        return []
-    prefix = f"{indent}// "
-    width = max(_DOC_COMMENT_WIDTH - len(prefix), 20)
-    lines, current = [], ""
-    for word in words:
-        candidate = f"{current} {word}" if current else word
-        if current and len(candidate) > width:
-            lines.append(f"{prefix}{current}")
-            current = word
-        else:
-            current = candidate
-    if current:
-        lines.append(f"{prefix}{current}")
-    return lines
+        # Rendered into the description rather than JSON Schema `default`:
+        # the registry stores prose ("-1 (automatic)", "no limit (INT_MAX)"),
+        # not a typed value, and a wrong-typed `default` misleads a model
+        # more than no `default` does.
+        note = f"Default: {default}."
+        prop["description"] = (
+            f"{prop['description']} {note}" if description else note
+        )
+    # The registry field name is the proto field name, which is not always
+    # the CUOPT_* string parameter a client passes to set_parameter (MIP
+    # diverges heavily: relative_mip_gap vs mip_relative_gap, mir_cuts vs
+    # mip_mixed_integer_rounding_cuts). Carry the real name so no client has
+    # to rediscover the mapping.
+    param_name = f.get("param_name")
+    if param_name:
+        prop["x-parameter-name"] = param_name
+    if f.get("sentinel"):
+        # The wire encoding (e.g. max() <=> -1) is an implementation detail.
+        # A model must express "no limit" by omitting the field, never by
+        # sending the reserved value.
+        prop["description"] = (
+            prop.get("description", "") + " Omit for the default limit."
+        ).strip()
+    return prop
+
+
+def generate_mcp_schema(registry: dict) -> str:
+    """Build the MCP tool-input JSON Schema for the solver settings.
+
+    Emitted as a generated artifact so an MCP server never hand-maintains a
+    second copy of the settings surface: a field added to the registry
+    reaches the schema in the same commit as the proto, and
+    ci/verify_grpc_codegen.sh guards the pair.
+
+    Only fields carrying a `field_num` are included — those are exactly the
+    settings that cross the gRPC wire, which is exactly what a remote MCP
+    server can set.
+
+    Args:
+        registry: The parsed field_registry.yaml.
+
+    Returns:
+        The schema as serialized JSON text (trailing newline), ready to
+        write to cuopt_mcp_schema.json.
+
+    Raises:
+        AssertionError: A section declares the same settings field name
+            twice (a registry-authoring bug, not a runtime condition).
+    """
+    schema = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$comment": (
+            "AUTO-GENERATED by src/grpc/codegen/generate_conversions.py "
+            "from field_registry.yaml. DO NOT EDIT — regenerate with "
+            "./build.sh codegen."
+        ),
+        "settings": {},
+    }
+    for section, title in (
+        ("pdlp_settings", "PDLPSolverSettings"),
+        ("mip_settings", "MIPSolverSettings"),
+    ):
+        properties = {}
+        for f in parse_settings_fields(registry[section].get("fields", [])):
+            if f.get("field_num") is None:
+                continue
+            name = f["name"]
+            # An explicit `param_name: null` marks a field with no CUOPT_*
+            # string parameter — settable over the wire but not through the
+            # parameter API an MCP client uses, so advertising it would
+            # produce calls that can only fail.
+            if "param_name" in f and f["param_name"] is None:
+                continue
+            assert name not in properties, (
+                f"duplicate settings field {section}.{name} — JSON Schema "
+                "properties must be unique"
+            )
+            properties[name] = _json_schema_property(registry, f)
+        schema["settings"][section] = {
+            "title": title,
+            "type": "object",
+            "description": (
+                "Solver settings. Every field is optional; omit a field to "
+                "keep the cuOpt default."
+            ),
+            "properties": properties,
+            "additionalProperties": False,
+        }
+    return json.dumps(schema, indent=2, sort_keys=False) + "\n"
 
 
 # ============================================================================
@@ -1329,9 +1424,7 @@ def generate_settings_message_proto(registry, message_name, obj):
             continue
         ptype = _settings_field_proto_type(registry, f)
         prefix = "optional " if f.get("optional") else ""
-        decl = f"  {prefix}{ptype} {f['name']} = {num};"
-        doc = _field_doc_comment(f)
-        lines.append((num, "\n".join(doc + [decl])))
+        lines.append((num, f"  {prefix}{ptype} {f['name']} = {num};"))
     lines.extend(_iter_embeds(obj))
     lines.sort(key=lambda x: x[0])
     return "\n".join(item[1] for item in lines)
@@ -3963,6 +4056,12 @@ def main():
         write_file(
             os.path.join(outdir, "generated_array_field_element_size.inc"),
             HEADER + generate_array_field_element_size_inc(registry) + "\n",
+        )
+        # JSON has no comment syntax, so the provenance banner every other
+        # artifact carries in HEADER lives in the schema's own $comment.
+        write_file(
+            os.path.join(outdir, "cuopt_mcp_schema.json"),
+            generate_mcp_schema(registry),
         )
 
     print(f"\nDone! Generated {len(os.listdir(outdir))} files in: {outdir}")

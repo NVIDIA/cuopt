@@ -17,8 +17,8 @@ if(BUILD_TESTS AND NOT SKIP_ROUTING_BUILD)
       PRIVATE
       "${CMAKE_CURRENT_SOURCE_DIR}/../src"
       "${CMAKE_CURRENT_SOURCE_DIR}"
-      "${dejavu_SOURCE_DIR}"
   )
+  target_include_directories(cuopttestutils SYSTEM PRIVATE "${dejavu_SOURCE_DIR}")
 
   # cuopttestutils compiles routing/utilities/check_constraints.cu, so it belongs to the
   # routing engine and names it directly. Linking the cuopt umbrella here would hand every
@@ -52,8 +52,8 @@ if(BUILD_TESTS AND NOT SKIP_ROUTING_BUILD)
       PRIVATE
       "${CMAKE_CURRENT_SOURCE_DIR}/../src"
       "${CMAKE_CURRENT_SOURCE_DIR}"
-      "${dejavu_SOURCE_DIR}"
   )
+  target_include_directories(cuopttestutils_static SYSTEM PRIVATE "${dejavu_SOURCE_DIR}")
 
   target_link_libraries(cuopttestutils_static
       PUBLIC
@@ -98,8 +98,8 @@ function(ConfigureTest CMAKE_TEST_NAME)
         "${papilo_SOURCE_DIR}/src"
         "${papilo_BINARY_DIR}"
         "${pslp_SOURCE_DIR}/include"
-        "${dejavu_SOURCE_DIR}"
     )
+    target_include_directories(${CMAKE_TEST_NAME} SYSTEM PRIVATE "${dejavu_SOURCE_DIR}")
     target_link_libraries(${CMAKE_TEST_NAME}
        PRIVATE
         ${_cuopt_link_target}
