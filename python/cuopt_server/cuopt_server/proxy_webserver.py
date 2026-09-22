@@ -1057,6 +1057,9 @@ def getsolution(
                     result_file, warnings=warnings, notes=notes
                 )
                 file_msg["format"] = get_format(accept)
+                # SolutionModelInFile always serializes these lists.
+                file_msg.setdefault("warnings", list(warnings or []))
+                file_msg.setdefault("notes", list(notes or []))
                 return encode(file_msg, accept, job_result=True)
         return encode(envelope, accept, job_result=True)
     except HTTPException as e:

@@ -27,6 +27,8 @@ from cuopt_server.utils.http_envelope import make_response
 from cuopt_server.utils.linear_programming import conversion as lp_conversion
 from cuopt_server.utils.routing import conversion as routing_conversion
 
+_JSON_ACCEPT = {"Accept": mime_json}
+
 
 class _Uvicorn(uvicorn.Server):
     def install_signal_handlers(self):
@@ -436,6 +438,35 @@ def test_routing_solution_to_http_maps_ids():
     assert inner["vehicle_data"]["veh-1"]["task_id"] == ["A"]
     assert inner["vehicle_data"]["veh-1"]["route"] == [1]
     assert inner["dropped_tasks"] == {"task_id": [], "task_index": []}
+
+
+def test_result_file_stub_includes_notes_and_warnings(
+    proxy, monkeypatch, tmp_path
+):
+    import cuopt_server.utils.settings as settings
+
+    monkeypatch.setattr(
+        settings, "get_result_dir", lambda: (str(tmp_path), 0, None)
+    )
+    url, _ = proxy
+    req_id = requests.post(
+        url + "/cuopt/request",
+        headers={
+            "CLIENT-VERSION": "custom",
+            "CUOPT-RESULT-FILE": "out.json",
+            **_JSON_ACCEPT,
+        },
+        json=_lp(),
+    ).json()["reqId"]
+    stub = requests.get(
+        url + f"/cuopt/solution/{req_id}", headers=_JSON_ACCEPT
+    )
+    assert stub.status_code == 200, stub.text
+    body = stub.json()
+    assert body["result_file"] == "out.json"
+    assert body["warnings"] == []
+    assert body["notes"] == ["Optimal"]
+    assert (tmp_path / "out.json").is_file()
 
 
 def test_health(proxy):
