@@ -67,6 +67,35 @@ endif()
 add_test(NAME GRPC_ROUTING_PROBLEM_MAPPER_TEST COMMAND GRPC_ROUTING_PROBLEM_MAPPER_TEST)
 set_tests_properties(GRPC_ROUTING_PROBLEM_MAPPER_TEST PROPERTIES LABELS "routing")
 
+# Dedicated regression guard: cpu_routing_problem.hpp must stay free of raft/rmm (#1890).
+# See the file's top comment for what to do if this stops linking.
+add_executable(CPU_ROUTING_PROBLEM_CUDA_FREE_TEST
+    ${CMAKE_CURRENT_SOURCE_DIR}/cpu_routing_problem_cuda_free_test.cpp
+)
+
+target_include_directories(CPU_ROUTING_PROBLEM_CUDA_FREE_TEST
+    PRIVATE
+    "${CUOPT_SOURCE_DIR}/include"
+    "${CUOPT_SOURCE_DIR}/src/grpc"
+    "${CUOPT_SOURCE_DIR}/src/grpc/codegen/generated"
+    "${CMAKE_BINARY_DIR}"
+)
+
+target_link_libraries(CPU_ROUTING_PROBLEM_CUDA_FREE_TEST
+    PRIVATE
+    cuopt_client
+    GTest::gtest
+    GTest::gtest_main
+    protobuf::libprotobuf
+)
+
+if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
+  target_link_options(CPU_ROUTING_PROBLEM_CUDA_FREE_TEST PRIVATE -Wl,--enable-new-dtags)
+endif()
+
+add_test(NAME CPU_ROUTING_PROBLEM_CUDA_FREE_TEST COMMAND CPU_ROUTING_PROBLEM_CUDA_FREE_TEST)
+set_tests_properties(CPU_ROUTING_PROBLEM_CUDA_FREE_TEST PROPERTIES LABELS "routing")
+
 # Settings mapper round-trip (no running server). This mapper reads
 # routing::solver_settings_t, so it covers the host-only accessors that build into
 # cuopt_client, including the presence semantics for an unset time_limit.
@@ -108,6 +137,13 @@ install(
 
 install(
     TARGETS GRPC_ROUTING_PROBLEM_MAPPER_TEST
+    COMPONENT testing
+    DESTINATION bin/gtests/libcuopt
+    EXCLUDE_FROM_ALL
+)
+
+install(
+    TARGETS CPU_ROUTING_PROBLEM_CUDA_FREE_TEST
     COMPONENT testing
     DESTINATION bin/gtests/libcuopt
     EXCLUDE_FROM_ALL
