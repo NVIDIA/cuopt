@@ -19,11 +19,13 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_ABSOLUTE_DUAL_TOLERANCE,
     CUOPT_ABSOLUTE_GAP_TOLERANCE,
     CUOPT_ABSOLUTE_PRIMAL_TOLERANCE,
+    CUOPT_DISTRIBUTED_PDLP_PARTITIONER,
     CUOPT_DUAL_INFEASIBLE_TOLERANCE,
     CUOPT_INFEASIBILITY_DETECTION,
     CUOPT_ITERATION_LIMIT,
     CUOPT_METHOD,
     CUOPT_MIP_HEURISTICS_ONLY,
+    CUOPT_NUM_GPUS,
     CUOPT_PDLP_SOLVER_MODE,
     CUOPT_PRIMAL_INFEASIBLE_TOLERANCE,
     CUOPT_RELATIVE_DUAL_TOLERANCE,
@@ -31,6 +33,7 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_RELATIVE_PRIMAL_TOLERANCE,
     CUOPT_SOLUTION_FILE,
     CUOPT_TIME_LIMIT,
+    CUOPT_USE_DISTRIBUTED_PDLP,
     CUOPT_USER_PROBLEM_FILE,
     CUOPT_PRESOLVE,
 )
@@ -373,6 +376,16 @@ def test_solver_settings_basic():
     assert settings.get_parameter(CUOPT_PDLP_SOLVER_MODE) == int(
         PDLPSolverMode.Methodical1
     )
+
+    # Distributed (multi-GPU) PDLP settings
+    settings.set_parameter(CUOPT_NUM_GPUS, -1)
+    settings.set_parameter(CUOPT_USE_DISTRIBUTED_PDLP, True)
+    # 0=Auto, 1=KaMinPar, 2=RoundRobin
+    settings.set_parameter(CUOPT_DISTRIBUTED_PDLP_PARTITIONER, 2)
+
+    assert settings.get_parameter(CUOPT_NUM_GPUS) == -1
+    assert settings.get_parameter(CUOPT_USE_DISTRIBUTED_PDLP) is True
+    assert settings.get_parameter(CUOPT_DISTRIBUTED_PDLP_PARTITIONER) == 2
 
 
 def test_solver_settings(tmp_path):
