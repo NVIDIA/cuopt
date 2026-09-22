@@ -41,4 +41,4 @@
   pb_settings->set_first_primal_feasible(settings.first_primal_feasible);
   pb_settings->set_pdlp_precision(static_cast<int32_t>(settings.pdlp_precision));
   pb_settings->set_use_distributed_pdlp(settings.use_distributed_pdlp);
-  pb_settings->set_distributed_pdlp_partitioner(to_proto_distributed_pdlp_partitioner(settings.distributed_pdlp_partitioner));
+  pb_settings->set_distributed_pdlp_partitioner(static_cast<int32_t>(settings.distributed_pdlp_partitioner));

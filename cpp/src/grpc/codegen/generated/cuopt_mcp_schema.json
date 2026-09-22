@@ -176,18 +176,8 @@
           "description": "Whether to distribute the PDLP solve of an LP problem across multiple GPUs. Requires method to be PDLP and num_gpus to be -1 or greater than 1. Default: false."
         },
         "distributed_pdlp_partitioner": {
-          "type": "string",
-          "enum": [
-            "Auto",
-            "KaMinPar",
-            "RoundRobin"
-          ],
-          "x-enum-values": {
-            "Auto": 0,
-            "KaMinPar": 1,
-            "RoundRobin": 2
-          },
-          "description": "Partitioner used to split the problem across GPUs when use_distributed_pdlp is set. Auto picks RoundRobin on 1 GPU and KaMinPar otherwise. Default: Auto."
+          "type": "integer",
+          "description": "Partitioner used to split the problem across GPUs when use_distributed_pdlp is set: 0 Auto (default; RoundRobin on 1 GPU, KaMinPar otherwise), 1 KaMinPar, 2 RoundRobin. Default: 0."
         }
       },
       "additionalProperties": false

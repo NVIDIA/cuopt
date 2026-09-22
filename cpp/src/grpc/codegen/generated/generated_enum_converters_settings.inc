@@ -47,23 +47,3 @@ method_t from_proto_lp_method(cuopt::remote::LPMethod v)
   }
   throw std::invalid_argument("Unknown cuopt::remote::LPMethod: " + std::to_string(static_cast<int>(v)));
 }
-
-cuopt::remote::DistributedPDLPPartitioner to_proto_distributed_pdlp_partitioner(distributed_pdlp_partitioner_t v)
-{
-  switch (v) {
-    case distributed_pdlp_partitioner_t::Auto: return cuopt::remote::Auto;
-    case distributed_pdlp_partitioner_t::KaMinPar: return cuopt::remote::KaMinPar;
-    case distributed_pdlp_partitioner_t::RoundRobin: return cuopt::remote::RoundRobin;
-  }
-  throw std::invalid_argument("Unknown distributed_pdlp_partitioner_t: " + std::to_string(static_cast<int>(v)));
-}
-
-distributed_pdlp_partitioner_t from_proto_distributed_pdlp_partitioner(cuopt::remote::DistributedPDLPPartitioner v)
-{
-  switch (v) {
-    case cuopt::remote::Auto: return distributed_pdlp_partitioner_t::Auto;
-    case cuopt::remote::KaMinPar: return distributed_pdlp_partitioner_t::KaMinPar;
-    case cuopt::remote::RoundRobin: return distributed_pdlp_partitioner_t::RoundRobin;
-  }
-  throw std::invalid_argument("Unknown cuopt::remote::DistributedPDLPPartitioner: " + std::to_string(static_cast<int>(v)));
-}

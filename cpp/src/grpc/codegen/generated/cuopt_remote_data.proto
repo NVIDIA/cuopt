@@ -44,12 +44,6 @@ enum LPMethod {
   Barrier = 3;
 }
 
-enum DistributedPDLPPartitioner {
-  Auto = 0;
-  KaMinPar = 1;
-  RoundRobin = 2;
-}
-
 enum VariableType {
   CONTINUOUS = 0;
   INTEGER = 1;
@@ -205,7 +199,7 @@ message PDLPSolverSettings {
   optional int32 postsolve_info = 33;
   optional int32 barrier_adaptive_regularization = 34;
   bool use_distributed_pdlp = 35;
-  DistributedPDLPPartitioner distributed_pdlp_partitioner = 36;
+  int32 distributed_pdlp_partitioner = 36;
   PDLPWarmStartData warm_start_data = 50;
 }
 
