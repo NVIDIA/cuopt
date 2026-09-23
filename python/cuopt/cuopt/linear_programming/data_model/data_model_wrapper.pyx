@@ -28,6 +28,7 @@ cdef extern from "Python.h":
 cdef extern from "cuopt/mathematical_optimization/utilities/barrier_cache.hpp" namespace "cuopt::mathematical_optimization":  # noqa
     cdef cppclass barrier_cache_t:
         void update_linear_objective(const double* c, int n) except +
+        void update_rhs(const double* b, int m) except +
 
 
 def type_cast(np_obj, np_type, name):
@@ -194,6 +195,32 @@ cdef class DataModel:
             else:
                 cache.update_linear_objective(&c_view[0], <int>c_view.shape[0])
         self.c = new_c
+
+    def update_rhs(self, b):
+        """Update constraint right-hand sides (user-space ``b``).
+
+        Always writes the DataModel RHS, and additionally crushes ``b`` into
+        the barrier cache when this model owns one. Crush runs first so a
+        length error leaves the DataModel RHS unchanged.
+        """
+        cdef barrier_cache_t* cache
+        cdef double[::1] b_view
+        new_b = type_cast(b, np.float64, "b")
+        if self.barrier_cache_capsule is not None:
+            if not PyCapsule_IsValid(
+                self.barrier_cache_capsule, b"cuopt.barrier_cache"
+            ):
+                raise ValueError("Invalid barrier cache stored on DataModel.")
+            cache = <barrier_cache_t*>PyCapsule_GetPointer(
+                self.barrier_cache_capsule,
+                b"cuopt.barrier_cache",
+            )
+            b_view = np.ascontiguousarray(new_b, dtype=np.float64)
+            if b_view.shape[0] == 0:
+                cache.update_rhs(NULL, 0)
+            else:
+                cache.update_rhs(&b_view[0], <int>b_view.shape[0])
+        self.b = new_b
 
     def set_objective_scaling_factor(self, objective_scaling_factor):
         self.objective_scaling_factor = objective_scaling_factor

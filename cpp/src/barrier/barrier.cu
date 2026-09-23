@@ -895,7 +895,7 @@ class iteration_data_t {
   }
 
   // Attach this solve's settings and rewind iterate-dependent state so barrier can
-  // start with the new c. A and Q are unchanged; the previous solve
+  // start with the new c / b. A and Q are unchanged; the previous solve
   // left D and the KKT values at its last iterate. Reuse is QP-only (no cones),
   // so form_*(false) updates values in the existing CSR; no symbolic rebuild.
   bool reset_iterate_state(const simplex_solver_settings_t<i_t, f_t>& settings)
@@ -4911,6 +4911,18 @@ void apply_barrier_linear_objective(iteration_data_t<int, double>& data,
   std::copy(barrier_c, barrier_c + n, data.c.data());
   raft::copy(
     data.d_c_.data(), data.c.data(), static_cast<std::size_t>(n), data.handle_ptr->get_stream());
+}
+
+void apply_barrier_rhs(iteration_data_t<int, double>& data, double const* barrier_b, int m)
+{
+  cuopt_expects(
+    barrier_b != nullptr && static_cast<int>(data.b.size()) == m &&
+      static_cast<int>(data.d_b_.size()) == m,
+    error_type_t::ValidationError,
+    "update_rhs: barrier RHS size does not match cached iteration_data_t.");
+  std::copy(barrier_b, barrier_b + m, data.b.data());
+  raft::copy(
+    data.d_b_.data(), data.b.data(), static_cast<std::size_t>(m), data.handle_ptr->get_stream());
 }
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE

@@ -10,8 +10,10 @@
 #include <dual_simplex/presolve.hpp>
 #include <linear_algebra/sparse_matrix.hpp>
 
+#include <cmath>
 #include <memory>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace cuopt::mathematical_optimization {
@@ -19,8 +21,8 @@ namespace cuopt::mathematical_optimization {
 /**
  * User-to-barrier transform retained on barrier_cache_t after Optimal:
  * convert / presolve / scaling, plus the scaled LP.
- * Enough to crush a new linear objective from the original problem into barrier
- * coordinates and to uncrush a solution without rerunning those algorithms.
+ * Enough to crush new linear objective or RHS data from the original problem into
+ * barrier coordinates and to uncrush a solution without rerunning those algorithms.
  */
 struct barrier_transform_t {
   int user_num_cols{0};
@@ -43,6 +45,12 @@ struct barrier_transform_t {
   std::vector<double> row_scales;
   // Barrier linear objective minus crush(user c) from the first solve (Q*ell shift, etc.).
   std::vector<double> linear_obj_shift;
+  // Barrier RHS minus crush(user b) from the first solve (fixed/lower-bound shifts).
+  std::vector<double> rhs_shift;
+  // False when range rows or folding put the user RHS somewhere other than barrier_lp->rhs.
+  bool rhs_update_supported{false};
+  // Absolute primal tolerance of the first solve, used to test rows presolve dropped as empty.
+  double primal_tol{1e-6};
   std::unique_ptr<cuopt::mathematical_optimization::simplex::lp_problem_t<int, double>> barrier_lp;
   // CSC Q with slack columns, as consumed by iteration_data_t. Not the same object as
   // barrier_lp->Q.
@@ -105,6 +113,79 @@ inline std::vector<double> crush_user_linear_objective(barrier_transform_t const
   }
   for (std::size_t j = 0; j < presolved.size(); ++j) {
     presolved[j] /= xf.column_scales[j];
+  }
+  return presolved;
+}
+
+// Distinct from the invalid_argument cases so the caller can report INFEASIBLE rather than a
+// validation failure.
+struct update_rhs_infeasible_error : std::runtime_error {
+  explicit update_rhs_infeasible_error(std::string const& message) : std::runtime_error(message) {}
+};
+
+inline std::vector<double> crush_user_rhs(barrier_transform_t const& xf, double const* b, int m)
+{
+  if (b == nullptr || m != xf.user_num_rows) {
+    throw std::invalid_argument("update_rhs: RHS length must match the cached user row count.");
+  }
+  if (!xf.rhs_update_supported) {
+    throw std::invalid_argument(
+      "update_rhs: cached convert used range rows or folding; run a full Solve.");
+  }
+  if (xf.original_num_rows != xf.user_num_rows) {
+    throw std::invalid_argument(
+      "update_rhs: cached original row count does not match the user row count.");
+  }
+  if (static_cast<int>(xf.row_sense.size()) != xf.user_num_rows) {
+    throw std::invalid_argument(
+      "update_rhs: cached row-sense count does not match the user row count.");
+  }
+  if (xf.barrier_lp == nullptr) {
+    throw std::invalid_argument("update_rhs: cached barrier LP is missing.");
+  }
+
+  // convert turns 'G' rows into 'L' rows by negating the row and its RHS.
+  std::vector<double> original(static_cast<std::size_t>(xf.original_num_rows));
+  for (int i = 0; i < m; ++i) {
+    original[static_cast<std::size_t>(i)] =
+      xf.row_sense[static_cast<std::size_t>(i)] == 'G' ? -b[i] : b[i];
+  }
+
+  // Dropped rows were empty, so the new RHS never reaches the barrier: 'E' needs 0 == b_i and
+  // the rest need 0 <= b_i.
+  for (int i : xf.presolve_info.removed_constraints) {
+    if (i < 0 || i >= m) {
+      throw std::invalid_argument("update_rhs: removed constraint index is out of range.");
+    }
+    double const converted_rhs = original[static_cast<std::size_t>(i)];
+    bool const infeasible      = xf.row_sense[static_cast<std::size_t>(i)] == 'E'
+                                   ? std::abs(converted_rhs) > xf.primal_tol
+                                   : converted_rhs < -xf.primal_tol;
+    if (infeasible) {
+      throw update_rhs_infeasible_error("update_rhs: empty constraint row " + std::to_string(i) +
+                                        " is infeasible with the new RHS.");
+    }
+  }
+
+  // Empty remaining_constraints means either no empty-row pass ran, or every row was dropped
+  // and accepted above.
+  std::vector<double> presolved;
+  if (!xf.presolve_info.remaining_constraints.empty()) {
+    presolved.resize(xf.presolve_info.remaining_constraints.size());
+    for (std::size_t k = 0; k < xf.presolve_info.remaining_constraints.size(); ++k) {
+      presolved[k] = original[static_cast<std::size_t>(xf.presolve_info.remaining_constraints[k])];
+    }
+  } else if (xf.presolve_info.removed_constraints.empty()) {
+    presolved = std::move(original);
+  }
+
+  if (static_cast<int>(presolved.size()) != xf.barrier_lp->num_rows ||
+      xf.row_scales.size() != presolved.size()) {
+    throw std::invalid_argument(
+      "update_rhs: crushed RHS size does not match barrier rows / row_scales.");
+  }
+  for (std::size_t i = 0; i < presolved.size(); ++i) {
+    presolved[i] /= xf.row_scales[i];
   }
   return presolved;
 }
