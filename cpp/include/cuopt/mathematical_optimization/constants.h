@@ -36,6 +36,7 @@
 #define CUOPT_NODE_LIMIT                            "node_limit"
 #define CUOPT_PDLP_SOLVER_MODE                      "pdlp_solver_mode"
 #define CUOPT_METHOD                                "method"
+#define CUOPT_CONCURRENT_NNZ_CUTOFF                 "concurrent_nnz_cutoff"
 #define CUOPT_PER_CONSTRAINT_RESIDUAL               "per_constraint_residual"
 #define CUOPT_SAVE_BEST_PRIMAL_SO_FAR               "save_best_primal_so_far"
 #define CUOPT_FIRST_PRIMAL_FEASIBLE                 "first_primal_feasible"
