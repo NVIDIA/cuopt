@@ -350,6 +350,7 @@ void apply_lp_rounded_start(fj_cpu_climber_t<i_t, f_t>& fj_cpu, f_t lane_time_li
         fj_cpu.h_incumbent_objective - fj_cpu.settings.parameters.breakthrough_move_epsilon;
       fj_cpu.feasible_found = true;
       report_cpu_incumbent(fj_cpu);
+      share_cpu_incumbent(fj_cpu);
       return;
     }
   }
@@ -420,6 +421,7 @@ bool apply_lp_polish(fj_cpu_climber_t<i_t, f_t>& fj_cpu, double budget_s)
   fj_cpu.perturb_streak        = 0;
   fj_cpu.feasible_found        = true;
   report_cpu_incumbent(fj_cpu);
+  share_cpu_incumbent(fj_cpu);
   return true;
 }
 

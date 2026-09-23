@@ -226,7 +226,10 @@ For pre-commit setup, DCO sign-off (`git commit -s`), the fork-based PR workflow
 
 ## Coding Conventions
 
-Use `_Float128`, never `long double`, whenever extended precision arithmetic is required; `long double` is architecture-dependent and uses x87 on x86.
+Use the existing compensated sum and dot routines for numerically sensitive accumulation in `f_t`.
+Use `_Float128` only when compensated `f_t` is demonstrably insufficient. Never use `long double`;
+its ABI-dependent representation includes slow x87 extended precision on x86-64, binary128 on Linux
+AArch64, and binary64 on other ARM64 targets.
 
 For C++ naming (`snake_case`, `d_`/`h_` prefixes, `_t` suffix), file extensions (`.hpp`/`.cpp`/`.cu`/`.cuh` and which compiler each uses), include order, Python style, error handling (`CUOPT_EXPECTS`, `RAFT_CUDA_TRY`), memory management (RMM patterns, no raw `new`/`delete`), CCCL bit/math helpers in device code, test-impact rules, volatile-comment rules (hardware names and self-referential issue/PR numbers in comments or skip messages go stale; issue links to a separate tracking issue are fine), **no large local lambdas** (extract named helpers instead), and **coarse work-estimate / time-limit gating** (phase/outer-loop only; no fine inner-loop or double checks), see [references/conventions.md](references/conventions.md).
 

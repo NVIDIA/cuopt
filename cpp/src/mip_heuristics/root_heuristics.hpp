@@ -9,7 +9,14 @@
 
 #include <branch_and_bound/worker.hpp>
 #include <dual_simplex/user_problem.hpp>
+#include <utilities/macros.cuh>
 #include "feasibility_jump/fj_cpu_worker.cuh"
+
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <string>
+#include <vector>
 
 namespace cuopt::mathematical_optimization::mip {
 
@@ -152,21 +159,65 @@ struct root_heuristics_t {
   // count systems)
   i_t next_diving_type_;
 
+  // CPU FJ lanes that outlive a single cut pass.
+  std::vector<std::unique_ptr<fj_cpu_worker_t<i_t, f_t>>> persistent_lanes_;
+  // Shared by every CPU FJ lane of the root phase, persistent and per-cut-pass alike.
+  std::shared_ptr<fj_cpu_shared_incumbent_t<i_t, f_t>> shared_incumbent_;
+
   root_heuristics_t(i_t max_workers)
     : worker_count_(std::make_shared<omp_atomic_t<i_t>>(0)),
+
       max_workers_(max_workers),
+      shared_incumbent_(make_fj_cpu_shared_incumbent<i_t, f_t>()),
       next_diving_type_(0)
   {
   }
 
   ~root_heuristics_t() { stop_and_sync(); }
 
+  // Must be called from the same task region as stop_and_sync: run_async's task dependence is
+  // matched only by a taskwait in the encountering region.
+  void start_persistent_lanes(const simplex::lp_problem_t<i_t, f_t>& lp,
+                              const std::vector<simplex::variable_type_t>& var_types,
+                              i_t n_structural,
+                              const std::vector<f_t>& start_assignment,
+                              const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+                              i_t n_lanes,
+                              f_t time_limit,
+                              int64_t base_seed,
+                              std::function<void(f_t, const std::vector<f_t>&, double)> callback)
+  {
+    persistent_lanes_.reserve(n_lanes);
+    for (i_t k = 0; k < n_lanes; ++k) {
+      auto lane                  = std::make_unique<fj_cpu_worker_t<i_t, f_t>>();
+      lane->improvement_callback = callback;
+      lane->shared_incumbent     = shared_incumbent_;
+      lane->create_worker(lp,
+                          var_types,
+                          n_structural,
+                          start_assignment,
+                          settings,
+                          "[Root FJ lane " + std::to_string(k) + "] ",
+                          base_seed + k,
+                          k);
+      lane->run_async(time_limit);
+      persistent_lanes_.push_back(std::move(lane));
+    }
+  }
+
   void stop_and_sync()
   {
+    for (auto& lane : persistent_lanes_) {
+      lane->send_stop_signal();
+    }
     for (auto& heuristic : cut_passes_heuristics_) {
       heuristic->send_stop_signal();
     }
 
+    for (auto& lane : persistent_lanes_) {
+      lane->stop();
+    }
+    persistent_lanes_.clear();
     for (auto& heuristic : cut_passes_heuristics_) {
       heuristic->stop_and_sync();
     }
@@ -203,8 +254,12 @@ struct root_heuristics_t {
     const std::vector<f_t>& root_edge_norm,
     const simplex::simplex_solver_settings_t<i_t, f_t>& settings)
   {
-    return cut_passes_heuristics_.emplace_back(std::make_shared<cut_pass_heuristics_t<i_t, f_t>>(
-      Arow, var_types, root_solution, root_edge_norm, settings));
+    auto& heuristic =
+      cut_passes_heuristics_.emplace_back(std::make_shared<cut_pass_heuristics_t<i_t, f_t>>(
+        Arow, var_types, root_solution, root_edge_norm, settings));
+    // Read by create_worker, so it has to be in place before the caller builds the climber.
+    heuristic->fj_cpu_worker_.shared_incumbent = shared_incumbent_;
+    return heuristic;
   }
 };
 

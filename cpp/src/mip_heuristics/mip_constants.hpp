@@ -33,6 +33,10 @@
  * own host copy of the problem and occupies an OMP task for the whole of presolve. */
 #define CUOPT_MIP_EARLY_CPUFJ_RESERVED_THREADS 4
 
+/* @brief Upper bound on the persistent root CPUFJ lane set. Every lane holds its own host copy of
+ * the root LP and occupies an OMP task for the whole of the cut loop. */
+#define CUOPT_MIP_ROOT_CPUFJ_MAX_LANES 4
+
 /* @brief Priority classes for the omp tasks. Highest value = higher priority.
  * Note that this only gives a hint to the runtime, such that the high priority
  * is not guarantee to be executed before a low priority one (i.e., do not rely on

@@ -8,6 +8,7 @@
 #pragma once
 
 #include "../internal.hpp"
+#include "batching.hpp"
 #include "score.hpp"
 
 namespace cuopt::mathematical_optimization::mip {
@@ -90,6 +91,240 @@ static fj_staged_score_t two_opt_compute_pair_score(
   return score;
 }
 
+template <typename i_t, typename f_t>
+two_opt_move_t find_cardinality_exchange(fj_cpu_climber_t<i_t, f_t>& c)
+{
+  two_opt_move_t best;
+  if (!c.use_cardinality_exchange || c.problem->card_row_offsets.size() <= 1) return best;
+
+  const auto& offsets = c.problem->card_row_offsets;
+  const auto& vars    = c.problem->card_variables;
+  const i_t n_rows    = (i_t)offsets.size() - 1;
+  const i_t draws = std::min<i_t>(n_rows, std::max<i_t>(4, c.settings.parameters.two_opt_max_rows));
+  const size_t limit = c.settings.parameters.two_opt_max_pairs;
+
+  // Search groups incident to violated rows first, then fill the draw with cyclic random groups.
+  std::vector<i_t> groups;
+  std::vector<uint8_t> seen(n_rows, 0);
+  if (!c.violated_constraints.empty() &&
+      c.problem->card_group_of_variable.size() == c.h_assignment.size()) {
+    const auto& violated = c.violated_constraints.contents;
+    const i_t first      = c.rng.next_u32() % (uint32_t)violated.size();
+    for (i_t r = 0; r < std::min<i_t>(4, (i_t)violated.size()); ++r) {
+      const i_t row           = violated[(first + r) % violated.size()];
+      const auto [begin, end] = c.range_for_row(row);
+      const i_t width         = end - begin;
+      if (!width) continue;
+      const i_t start = begin + c.rng.next_u32() % (uint32_t)width;
+      for (i_t q = 0, p = start; q < std::min<i_t>(128, width);
+           ++q, p       = p + 1 == end ? begin : p + 1) {
+        const i_t group = c.problem->card_group_of_variable[c.h_variables[p]];
+        if (group >= 0 && !seen[group]) {
+          seen[group] = 1;
+          groups.push_back(group);
+        }
+      }
+    }
+  }
+  const i_t random_start = c.rng.next_u32() % (uint32_t)n_rows;
+  for (i_t d = 0; (i_t)groups.size() < draws && d < n_rows; ++d) {
+    const i_t group = (random_start + d) % n_rows;
+    if (!seen[group]) {
+      seen[group] = 1;
+      groups.push_back(group);
+    }
+  }
+
+  size_t scored = 0;
+  for (i_t row : groups) {
+    if (scored >= limit) break;
+    const i_t begin = offsets[row], width = offsets[row + 1] - begin;
+    if (width <= 1) continue;
+    const i_t first_start  = c.rng.next_u32() % (uint32_t)width;
+    const i_t second_start = c.rng.next_u32() % (uint32_t)width;
+    for (i_t pi = 0; pi < width && scored < limit; ++pi) {
+      const i_t first = vars[begin + (first_start + pi) % width];
+      if (c.h_assignment[first].get() < 0.5 || tabu_check<i_t, f_t>(c, first, -1, true)) continue;
+      for (i_t qi = 0; qi < width && scored < limit; ++qi) {
+        const i_t second = vars[begin + (second_start + qi) % width];
+        if (first == second || c.h_assignment[second].get() >= 0.5 ||
+            tabu_check<i_t, f_t>(c, second, 1, true))
+          continue;
+
+        two_opt_move_t candidate;
+        candidate.first  = {first, -1};
+        candidate.second = {second, 1};
+        candidate.score  = two_opt_compute_pair_score(c, first, f_t{-1}, second, f_t{1});
+        // Before the first incumbent objective pressure is zero, so retain the historical age/index
+        // ordering exactly. After crossing, break equal staged scores by true objective magnitude.
+        if (c.h_objective_weight > f_t{0}) {
+          candidate.objective_delta = -static_cast<double>(c.problem->h_obj_coeffs[first]) +
+                                      static_cast<double>(c.problem->h_obj_coeffs[second]);
+        }
+        candidate.age =
+          std::max(std::max((i_t)c.h_tabu_lastinc[first], (i_t)c.h_tabu_lastdec[first]),
+                   std::max((i_t)c.h_tabu_lastinc[second], (i_t)c.h_tabu_lastdec[second]));
+        if (candidate > best) best = candidate;
+        ++scored;
+      }
+    }
+  }
+  return best;
+}
+
+template <typename i_t, typename f_t>
+two_opt_move_t find_tight_row_exchange(fj_cpu_climber_t<i_t, f_t>& c)
+{
+  two_opt_move_t best;
+  if (!c.violated_constraints.empty() || c.h_objective_weight <= 0 || c.n_rows == 0) return best;
+
+  cuopt::pcgenerator_t rng(c.settings.seed + 3628273133u * c.iterations, 0, 0);
+  const i_t row_samples     = 4;
+  const i_t primary_samples = 12;
+  const i_t helper_samples  = 16;
+  const i_t first_row       = rng.next_u32() % (uint32_t)c.n_rows;
+
+  for (i_t ri = 0; ri < row_samples; ++ri) {
+    const i_t target = (first_row + ri) % c.n_rows;
+    if (std::fabs(c.row_state()[target].slack) > c.row_tolerance)
+      continue;  // only exactly-tight rows
+
+    const auto [begin, end] = c.range_for_row(target);
+    const i_t width         = end - begin;
+    if (width < 2) continue;
+    const i_t start = begin + rng.next_u32() % (uint32_t)width;
+    for (i_t q = 0, p = start; q < std::min<i_t>(primary_samples, width);
+         ++q, p       = p + 1 == end ? begin : p + 1) {
+      const i_t primary = c.h_variables[p];
+      const f_t a       = c.h_coefficients[p];
+      if (!a || c.problem->h_obj_coeffs[primary] == 0 || !is_integer_var<i_t, f_t>(c, primary))
+        continue;
+
+      const f_t old   = c.h_assignment[primary];
+      const f_t delta = c.problem->h_obj_coeffs[primary] > 0 ? f_t{-1} : f_t{1};
+      if (!check_variable_within_bounds<i_t, f_t>(c, primary, old + delta)) continue;
+      if (tabu_check<i_t, f_t>(c, primary, delta, true)) continue;
+
+      const i_t helper_start = begin + rng.next_u32() % (uint32_t)width;
+      for (i_t hq = 0, hp = helper_start; hq < std::min<i_t>(helper_samples, width);
+           ++hq, hp       = hp + 1 == end ? begin : hp + 1) {
+        const i_t helper = c.h_variables[hp];
+        if (helper == primary) continue;
+        const f_t b = c.h_coefficients[hp];
+        if (!b) continue;
+
+        const f_t helper_old = c.h_assignment[helper];
+        // Keeps this row's own contribution exactly unchanged: a*delta + b*helper_delta == 0.
+        f_t helper_value         = helper_old - (a * delta) / b;
+        const auto helper_bounds = c.h_var_bounds[helper].get();
+        if (is_integer_var<i_t, f_t>(c, helper))
+          helper_value =
+            helper_value > helper_old ? std::ceil(helper_value) : std::floor(helper_value);
+        helper_value = std::clamp(helper_value, get_lower(helper_bounds), get_upper(helper_bounds));
+        const f_t helper_delta = helper_value - helper_old;
+        if (!std::isfinite(helper_value) || std::fabs(helper_delta) < c.row_tolerance ||
+            tabu_check<i_t, f_t>(c, helper, helper_delta, true))
+          continue;
+
+        two_opt_move_t candidate;
+        candidate.first  = {primary, delta};
+        candidate.second = {helper, helper_delta};
+        candidate.score  = two_opt_compute_pair_score(c, primary, delta, helper, helper_delta);
+        candidate.objective_delta =
+          static_cast<double>(c.problem->h_obj_coeffs[primary]) * delta +
+          static_cast<double>(c.problem->h_obj_coeffs[helper]) * helper_delta;
+        candidate.age =
+          std::max(std::max((i_t)c.h_tabu_lastinc[primary], (i_t)c.h_tabu_lastdec[primary]),
+                   std::max((i_t)c.h_tabu_lastinc[helper], (i_t)c.h_tabu_lastdec[helper]));
+        if (candidate > best) best = candidate;
+      }
+    }
+  }
+  return best;
+}
+
+template <typename i_t, typename f_t>
+two_opt_move_t find_compound_repair(fj_cpu_climber_t<i_t, f_t>& c)
+{
+  two_opt_move_t best;
+  if (!c.use_compound_repair || c.violated_constraints.empty()) return best;
+  auto& violated = c.violated_constraints.contents;
+  cuopt::pcgenerator_t rng(c.settings.seed + 2246822519u * c.iterations, 0, 0);
+  const i_t row_samples     = 4;
+  const i_t primary_samples = 12;
+  const i_t helper_samples  = 16;
+  const i_t first_row       = rng.next_u32() % (uint32_t)violated.size();
+  for (i_t ri = 0; ri < std::min<i_t>(row_samples, violated.size()); ++ri) {
+    const i_t target        = violated[(first_row + ri) % violated.size()];
+    const auto [begin, end] = c.range_for_row(target);
+    const i_t width         = end - begin;
+    if (!width) continue;
+    const i_t start = begin + rng.next_u32() % (uint32_t)width;
+    for (i_t q = 0, p = start; q < std::min<i_t>(primary_samples, width);
+         ++q, p       = p + 1 == end ? begin : p + 1) {
+      const i_t primary = c.h_variables[p];
+      const f_t a       = c.h_coefficients[p];
+      if (!a) continue;
+      const f_t old = c.h_assignment[primary];
+      f_t value = c.h_is_binary_variable[primary] ? 1 - old : old + c.row_state()[target].slack / a;
+      const auto bounds = c.h_var_bounds[primary].get();
+      if (is_integer_var<i_t, f_t>(c, primary))
+        value = value > old ? std::ceil(value) : std::floor(value);
+      value           = std::clamp(value, get_lower(bounds), get_upper(bounds));
+      const f_t delta = value - old;
+      if (!std::isfinite(value) || std::fabs(delta) < c.row_tolerance ||
+          tabu_check<i_t, f_t>(c, primary, delta, true))
+        continue;
+
+      i_t blocker         = -1;
+      f_t blocker_slack   = 0;
+      const auto [cb, ce] = c.range_for_variable(primary);
+      for (i_t z = cb; z < ce; ++z) {
+        const i_t row = c.h_reverse_constraints[z];
+        if (row == target) continue;
+        const f_t after = c.row_state()[row].slack - c.h_reverse_coefficients[z] * delta;
+        if (after < -c.row_tolerance && (blocker < 0 || after < blocker_slack)) {
+          blocker       = row;
+          blocker_slack = after;
+        }
+      }
+      if (blocker < 0) continue;
+      const auto [hb, he]    = c.range_for_row(blocker);
+      const i_t helper_width = he - hb;
+      if (!helper_width) continue;
+      const i_t helper_start = hb + rng.next_u32() % (uint32_t)helper_width;
+      for (i_t hq = 0, hp = helper_start; hq < std::min<i_t>(helper_samples, helper_width);
+           ++hq, hp       = hp + 1 == he ? hb : hp + 1) {
+        const i_t helper      = c.h_variables[hp];
+        const f_t coefficient = c.h_coefficients[hp];
+        if (helper == primary || !coefficient) continue;
+        const f_t helper_old     = c.h_assignment[helper];
+        f_t helper_value         = c.h_is_binary_variable[helper]
+                                     ? 1 - helper_old
+                                     : helper_old + blocker_slack / coefficient;
+        const auto helper_bounds = c.h_var_bounds[helper].get();
+        if (is_integer_var<i_t, f_t>(c, helper))
+          helper_value =
+            helper_value > helper_old ? std::ceil(helper_value) : std::floor(helper_value);
+        helper_value = std::clamp(helper_value, get_lower(helper_bounds), get_upper(helper_bounds));
+        const f_t helper_delta = helper_value - helper_old;
+        if (!std::isfinite(helper_value) || std::fabs(helper_delta) < c.row_tolerance ||
+            tabu_check<i_t, f_t>(c, helper, helper_delta, true))
+          continue;
+        two_opt_move_t candidate;
+        candidate.first  = {primary, delta};
+        candidate.second = {helper, helper_delta};
+        candidate.score  = two_opt_compute_pair_score(c, primary, delta, helper, helper_delta);
+        candidate.age =
+          std::max(std::max((i_t)c.h_tabu_lastinc[primary], (i_t)c.h_tabu_lastdec[primary]),
+                   std::max((i_t)c.h_tabu_lastinc[helper], (i_t)c.h_tabu_lastdec[helper]));
+        if (candidate > best) best = candidate;
+      }
+    }
+  }
+  return best;
+}
+
 template <typename i_t, typename f_t, MTMMoveType move_type>
 static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
   fj_cpu_climber_t<i_t, f_t>& fj_cpu, const std::vector<i_t>& target_cstrs, bool localmin = false)
@@ -149,6 +384,11 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
       visit == width ? offset_begin : offset_begin + (i_t)(rng.next_u32() % (uint32_t)width);
     for (i_t q = 0, i = start; q < visit; ++q, i = (i + 1 == offset_end ? offset_begin : i + 1)) {
       const i_t var_idx = fj_cpu.h_variables[i];
+      if (fj_cpu.degree_balance_mtm) {
+        const auto [vb, ve] = fj_cpu.range_for_variable(var_idx);
+        const i_t cap = std::max<i_t>(512, (i_t)std::ceil(32.0 * fj_cpu.problem->avg_var_degree));
+        if (ve - vb > cap && rng.next_float() > (f_t)cap / (f_t)(ve - vb)) continue;
+      }
       // early cached check
       cuopt_assert(fj_cpu.cached_mtm_moves_version[i] <= fj_cpu.h_cstr_version[cstr_idx],
                    "cached move newer than its constraint");
@@ -221,6 +461,7 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
         continue;
       fj_cpu.cached_mtm_moves[i]         = std::make_pair(delta, score);
       fj_cpu.cached_mtm_moves_version[i] = fj_cpu.h_cstr_version[cstr_idx];
+      record_var_best_move<i_t, f_t>(fj_cpu, var_idx, score, delta);
       if (improves_best(score, move.var_idx, move.value))
         store_best(score, move.var_idx, move.value);
     }
@@ -253,6 +494,7 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
 
       if (fj_cpu.move_numerically_stable(
             old_val, new_val, infeasibility, fj_cpu.total_violations)) {
+        record_var_best_move<i_t, f_t>(fj_cpu, var_idx, score, delta);
         if (improves_best(score, move.var_idx, move.value))
           store_best(score, move.var_idx, move.value);
       }
@@ -534,6 +776,13 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_lift_move(
     cuopt_assert(delta * obj_coeff < 0, "lift move doesn't improve the objective!");
 
     const f_t improvement = -obj_coeff * delta;
+    // Every variable that reaches here is independently feasibility-preserving and
+    // objective-improving, exactly the property the MTM move-batching cache exists to exploit; only
+    // the single best one is returned below, but recording all of them lets a same-colour companion
+    // ride along in the same apply this iteration instead of waiting its own turn one lift at a
+    // time. record_var_best_move is a no-op wherever this lane's coloring declined.
+    record_var_best_move<i_t, f_t>(
+      fj_cpu, var_idx, fj_staged_score_t{1, (float)improvement}, delta);
     if (improvement > best_improvement) {
       best_improvement = improvement;
       best_score.base  = 1;

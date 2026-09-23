@@ -54,6 +54,8 @@ set(MIP_NON_LP_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/cpu/starts/cardinality.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/cpu/starts/chain.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/cpu/starts/covering.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/cpu/starts/network.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/cpu/starts/pmedian.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/cpu/setup/bounds.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/cpu/setup/lp.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/cpu/setup/structure.cpp
