@@ -494,7 +494,7 @@ static SolveResult run_lp_solve(DeserializedJob& dj,
     auto gpu_problem = to_optimization_problem(dj.problem, &handle);
 
     SERVER_LOG_INFO("[Worker] Calling solve_lp...");
-    // Multi-GPU PDLP (mPDLP) builds its shards from a host-resident
+    // Multi-GPU PDLP builds its shards from a host-resident
     // mps_data_model_t rather than a single GPU-resident problem, so route
     // through that overload when it is requested. See op_problem_to_mps_data_model
     // and the mps_data_model_t solve_lp overload in solve.hpp.

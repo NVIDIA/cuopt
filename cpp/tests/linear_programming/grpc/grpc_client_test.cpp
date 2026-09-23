@@ -2328,7 +2328,7 @@ TEST(MapperRoundtrip, PDLPSettingsAllFields)
   EXPECT_EQ(restored.distributed_pdlp_partitioner, distributed_pdlp_partitioner_t::RoundRobin);
 }
 
-// Regression coverage for the multi-GPU PDLP (mPDLP) dispatch decision that
+// Regression coverage for the multi-GPU PDLP dispatch decision that
 // run_lp_solve (grpc_worker.cpp) shares with the mps_data_model_t solve_lp
 // overload via is_mpdlp_requested. A mapper-only test cannot catch
 // a regression where the worker stops calling this predicate; this exercises

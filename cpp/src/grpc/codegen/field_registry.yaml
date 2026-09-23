@@ -808,7 +808,7 @@ pdlp_settings:
       member: use_distributed_pdlp
       description: >-
         Whether to distribute the PDLP solve of an LP problem across multiple
-        GPUs (multi-GPU PDLP, mPDLP). Requires method to be PDLP and
+        GPUs (multi-GPU PDLP). Requires method to be PDLP and
         num_gpus to be -1 or greater than 1.
       default: "false"
       field_num: 35

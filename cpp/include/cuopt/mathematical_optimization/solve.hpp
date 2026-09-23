@@ -146,7 +146,7 @@ mip_solution_t<i_t, f_t> solve_mip(
   mip_solver_settings_t<i_t, f_t> const& settings = mip_solver_settings_t<i_t, f_t>{});
 
 /**
- * @brief Whether settings request multi-GPU PDLP (mPDLP).
+ * @brief Whether settings request multi-GPU PDLP.
  *
  * True when requested explicitly (settings.use_distributed_pdlp), or
  * implicitly (method is PDLP and num_gpus is -1 or greater than 1). Used by

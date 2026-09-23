@@ -173,7 +173,7 @@
         },
         "use_mpdlp": {
           "type": "boolean",
-          "description": "Whether to distribute the PDLP solve of an LP problem across multiple GPUs (multi-GPU PDLP, mPDLP). Requires method to be PDLP and num_gpus to be -1 or greater than 1. Default: false.",
+          "description": "Whether to distribute the PDLP solve of an LP problem across multiple GPUs (multi-GPU PDLP). Requires method to be PDLP and num_gpus to be -1 or greater than 1. Default: false.",
           "x-parameter-name": "use_distributed_pdlp"
         },
         "mpdlp_partitioner": {
