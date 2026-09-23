@@ -114,7 +114,8 @@ void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu, i_t var_idx, f_t delta, bool
     f_t new_value       = t + new_sumcomp;
     if (fj_cpu.h_row_is_integral[cstr_idx]) {
       cuopt_assert(old_value == std::round(old_value), "integral row state is fractional");
-      cuopt_assert(fj_cpu.problem->is_integer(new_value), "integral row received a fractional move");
+      cuopt_assert(fj_cpu.problem->is_integer(new_value),
+                   "integral row received a fractional move");
       new_value   = std::round(new_value);
       t           = new_value;
       new_sumcomp = 0;

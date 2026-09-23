@@ -173,8 +173,8 @@ static void initialize_climber_state(
     if (problem.h_var_types[var] == var_t::INTEGER && problem.is_integer(assignment[var]))
       assignment[var] = std::round(assignment[var]);
   }
-  fj_cpu.h_assignment       = assignment;
-  fj_cpu.h_best_assignment  = std::move(assignment);
+  fj_cpu.h_assignment      = assignment;
+  fj_cpu.h_best_assignment = std::move(assignment);
   fj_cpu.h_lhs.resize(n_constraints);
   fj_cpu.h_lhs_sumcomp.resize(n_constraints, f_t{0});
   fj_cpu.h_tabu_nodec_until.resize(n_variables, 0);

@@ -58,13 +58,12 @@ static fj_staged_score_t two_opt_compute_pair_score(
     } while (pos < row_deltas.size() && row_deltas[pos].first == cstr_idx);
 
     // The coefficients are already folded into lhs_delta, hence the unit coefficient
-    auto [cstr_base_feas, cstr_bonus_robust] =
-      feas_score_constraint<i_t, f_t>(fj_cpu,
-                                      lhs_delta,
-                                      1,
-                                      fj_cpu.row_state()[cstr_idx].slack +
-                                        fj_cpu.h_slack_sumcomp[cstr_idx],
-                                      fj_cpu.row_state()[cstr_idx].weight);
+    auto [cstr_base_feas, cstr_bonus_robust] = feas_score_constraint<i_t, f_t>(
+      fj_cpu,
+      lhs_delta,
+      1,
+      fj_cpu.row_state()[cstr_idx].slack + fj_cpu.h_slack_sumcomp[cstr_idx],
+      fj_cpu.row_state()[cstr_idx].weight);
     base_feas_sum += cstr_base_feas;
     bonus_robust_sum += cstr_bonus_robust;
   }
