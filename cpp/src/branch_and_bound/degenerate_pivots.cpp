@@ -10,12 +10,14 @@
 
 #include <dual_simplex/basis_solves.hpp>
 #include <dual_simplex/initial_basis.hpp>
+#include <dual_simplex/phase2.hpp>
 #include <dual_simplex/primal.hpp>
 #include <dual_simplex/random.hpp>
 #include <linear_algebra/vector_math.hpp>
 #include <math_optimization/tic_toc.hpp>
 
 #include <algorithm>
+#include <cmath>
 
 namespace cuopt::mathematical_optimization::mip {
 
@@ -40,6 +42,303 @@ bool check_for_dual_degeneracy(const simplex::lp_solution_t<i_t, f_t>& solution,
     }
   }
   return !zero_reduced_costs_vars.empty();
+}
+
+template <typename i_t, typename f_t>
+void pivot_to_improve_reduced_cost_strengthening(
+  const simplex::lp_problem_t<i_t, f_t>& lp,
+  const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+  const std::vector<i_t>& basic_list,
+  const std::vector<i_t>& nonbasic_list,
+  const std::vector<simplex::variable_status_t>& vstatus,
+  const simplex::lp_solution_t<i_t, f_t>& soln,
+  const simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
+  const std::vector<simplex::variable_type_t>& var_types,
+  const csr_matrix_t<i_t, f_t>& Arow,
+  const f_t start_time,
+  const f_t relaxation_objective,
+  reduced_cost_bounds_t<i_t, f_t>& reduced_cost_bounds)
+{
+  const double strengthening_start = tic();
+  double btran_time                = 0.0;
+  double reduced_cost_update_time  = 0.0;
+  // Count primal degenerate basic variables
+  i_t num_degenerate            = 0;
+  i_t num_degenerate_continuous = 0;
+  i_t num_degenerate_integer    = 0;
+  std::vector<i_t> degenerate_integer_list;
+  degenerate_integer_list.reserve(lp.num_rows);
+  for (i_t k = 0; k < lp.num_rows; k++) {
+    const i_t j              = basic_list[k];
+    const f_t slack_to_lower = soln.x[j] - lp.lower[j];
+    const f_t slack_to_upper = lp.upper[j] - soln.x[j];
+    if (slack_to_lower <= settings.primal_tol || slack_to_upper <= settings.primal_tol) {
+      num_degenerate++;
+      if (var_types[j] == variable_type_t::INTEGER) {
+        num_degenerate_integer++;
+        degenerate_integer_list.push_back(j);
+      } else {
+        num_degenerate_continuous++;
+      }
+    }
+  }
+
+  if (num_degenerate_integer == 0) return;
+
+  settings.log.printf(
+    "RCS timing start: candidates=%d elapsed=%.6f\n", num_degenerate_integer, toc(start_time));
+  std::vector<i_t> variable_to_basic_position(lp.num_cols, -1);
+  for (i_t k = 0; k < lp.num_rows; k++) {
+    variable_to_basic_position[basic_list[k]] = k;
+  }
+  // The basis stays fixed across candidates; preserve Arow's ordering for cut generation.
+  csr_matrix_t<i_t, f_t> local_Arow = Arow;
+  std::vector<i_t> nonbasic_end(lp.num_rows);
+  simplex::compute_initial_nonbasic_end(variable_to_basic_position, local_Arow, nonbasic_end);
+  std::vector<f_t> delta_y(lp.num_rows, 0);
+  std::vector<f_t> delta_z(lp.num_cols, 0);
+  std::vector<i_t> delta_z_mark(lp.num_cols, 0);
+  std::vector<i_t> delta_z_indices;
+  delta_z_indices.reserve(lp.num_cols);
+
+  f_t work_estimate    = 0;
+  const f_t threshold  = 100.0 * settings.integer_tol;
+  const f_t tol        = 1e-2;
+  const f_t zero_tol   = settings.zero_tol;
+  const f_t harris_tol = settings.dual_tol / 10;
+
+  i_t num_bounds_added = 0;
+  for (i_t j : degenerate_integer_list) {
+    // x_j is a degenerate integer basic variable.
+    // We would like a dual-feasible point where x_j is nonbasic with a nonzero
+    // reduced cost that may be used for reduced cost strengthening.
+    // We do not need to take the pivot; a dual step along either ray is enough.
+    //
+    // One BTRAN: B^T * delta_y = e_p, which matches direction == -1 in
+    // compute_reduced_cost_update (B^T * delta_y = -direction * e_p).
+    // The opposite direction is the negated (delta_y, delta_z) ray.
+    const i_t leaving_index = j;
+    const i_t p             = variable_to_basic_position[j];
+    if (p == -1) continue;
+
+    sparse_vector_t<i_t, f_t> ep(lp.num_rows, 1);
+    ep.i[0] = p;
+    ep.x[0] = 1.0;
+    sparse_vector_t<i_t, f_t> delta_y_sparse;
+    sparse_vector_t<i_t, f_t> UTsol_sparse;
+    const double btran_start = tic();
+    basis_update.b_transpose_solve(ep, delta_y_sparse, UTsol_sparse);
+    btran_time += toc(btran_start);
+
+    // delta_zN = -N^T * delta_y, delta_z[leaving] = -1
+    const double reduced_cost_update_start = tic();
+    i_t delta_y_nz0                        = 0;
+    for (const f_t value : delta_y_sparse.x) {
+      if (std::abs(value) > 1e-12) { delta_y_nz0++; }
+    }
+    work_estimate += delta_y_sparse.i.size();
+    const f_t delta_y_nz_percentage = delta_y_nz0 / static_cast<f_t>(lp.num_rows) * 100.0;
+    if (delta_y_nz_percentage <= 30.0) {
+      simplex::compute_delta_z(local_Arow,
+                               delta_y_sparse,
+                               leaving_index,
+                               /*direction=*/-1,
+                               nonbasic_end,
+                               delta_z_mark,
+                               delta_z_indices,
+                               delta_z,
+                               work_estimate);
+    } else {
+      delta_y_sparse.to_dense(delta_y);
+      work_estimate += delta_y.size();
+      simplex::compute_reduced_cost_update(lp,
+                                           basic_list,
+                                           nonbasic_list,
+                                           delta_y,
+                                           leaving_index,
+                                           /*direction=*/-1,
+                                           delta_z_mark,
+                                           delta_z_indices,
+                                           delta_z,
+                                           work_estimate);
+    }
+    reduced_cost_update_time += toc(reduced_cost_update_start);
+
+    const f_t lower_j   = lp.lower[j];
+    const f_t upper_j   = lp.upper[j];
+    const bool at_lower = soln.x[j] - lower_j <= settings.primal_tol;
+    const bool at_upper = upper_j - soln.x[j] <= settings.primal_tol;
+
+    // Try both dual rays. scale == +1 uses the computed delta_z (direction -1);
+    // scale == -1 uses -delta_z (direction +1). Either or both may yield an RCS bound.
+    for (const f_t scale : {1.0, -1.0}) {
+      // Maximum dual step-length alpha that keeps dual feasibility on this ray.
+      // zl_j + alpha * delta_zN_j >= 0 for nonbasic j on lower bound
+      // zu_j + alpha * delta_zN_j <= 0 for nonbasic j on upper bound
+      f_t alpha = inf;
+      for (i_t jj : delta_z_indices) {
+        if (vstatus[jj] == variable_status_t::NONBASIC_FIXED) { continue; }
+        const f_t dz = scale * delta_z[jj];
+        if (vstatus[jj] == variable_status_t::NONBASIC_LOWER && dz < -zero_tol) {
+          const f_t ratio = std::max((-harris_tol - soln.z[jj]) / dz, 0.0);
+          if (ratio < alpha) { alpha = ratio; }
+        }
+        if (vstatus[jj] == variable_status_t::NONBASIC_UPPER && dz > zero_tol) {
+          const f_t ratio = std::max((harris_tol - soln.z[jj]) / dz, 0.0);
+          if (ratio < alpha) { alpha = ratio; }
+        }
+      }
+      if (alpha == 0.0 || !std::isfinite(alpha)) { continue; }
+
+      // Verify dual feasibility of the new point z_new = z + alpha * scale * delta_z
+      // For NONBASIC_LOWER: z_new[jj] >= -dual_tol
+      // For NONBASIC_UPPER: z_new[jj] <= dual_tol
+      {
+        f_t max_initial_dual_infeas = 0.0;
+        f_t max_dual_infeas         = 0.0;
+        f_t worst_old_z             = 0.0;
+        f_t worst_delta_z           = 0.0;
+        f_t worst_step              = 0.0;
+        f_t worst_new_z             = 0.0;
+        i_t num_initial_dual_infeas = 0;
+        i_t num_dual_infeas         = 0;
+        i_t worst_j                 = -1;
+        for (i_t jj : delta_z_indices) {
+          if (vstatus[jj] == variable_status_t::NONBASIC_FIXED) { continue; }
+          const f_t old_zj = soln.z[jj];
+          const f_t step   = alpha * scale * delta_z[jj];
+          const f_t new_zj = old_zj + step;
+          const bool initially_infeasible =
+            (vstatus[jj] == variable_status_t::NONBASIC_LOWER && old_zj < -settings.dual_tol) ||
+            (vstatus[jj] == variable_status_t::NONBASIC_UPPER && old_zj > settings.dual_tol);
+          if (initially_infeasible) {
+            num_initial_dual_infeas++;
+            max_initial_dual_infeas = std::max(max_initial_dual_infeas, std::abs(old_zj));
+          }
+          if (vstatus[jj] == variable_status_t::NONBASIC_LOWER && new_zj < -settings.dual_tol) {
+            num_dual_infeas++;
+            if (std::abs(new_zj) > max_dual_infeas) {
+              max_dual_infeas = std::abs(new_zj);
+              worst_j         = jj;
+              worst_old_z     = old_zj;
+              worst_delta_z   = scale * delta_z[jj];
+              worst_step      = step;
+              worst_new_z     = new_zj;
+            }
+          }
+          if (vstatus[jj] == variable_status_t::NONBASIC_UPPER && new_zj > settings.dual_tol) {
+            num_dual_infeas++;
+            if (std::abs(new_zj) > max_dual_infeas) {
+              max_dual_infeas = std::abs(new_zj);
+              worst_j         = jj;
+              worst_old_z     = old_zj;
+              worst_delta_z   = scale * delta_z[jj];
+              worst_step      = step;
+              worst_new_z     = new_zj;
+            }
+          }
+        }
+        // Also check the leaving variable itself
+        const f_t new_zj_leaving = soln.z[j] + alpha * scale * delta_z[j];
+        if (num_dual_infeas > 0) {
+          settings.log.printf(
+            "WARNING pivot_to_improve_rc: dual infeasibility after step! "
+            "var=%d alpha=%.6e scale=%.0f initial_num_infeas=%d "
+            "initial_max_infeas=%.6e num_infeas=%d max_infeas=%.6e worst_j=%d "
+            "worst_status=%d old_z=%.16e delta_z=%.16e step=%.16e new_z=%.16e "
+            "new_rc_leaving=%.6e\n",
+            j,
+            alpha,
+            scale,
+            num_initial_dual_infeas,
+            max_initial_dual_infeas,
+            num_dual_infeas,
+            max_dual_infeas,
+            worst_j,
+            static_cast<int>(vstatus[worst_j]),
+            worst_old_z,
+            worst_delta_z,
+            worst_step,
+            worst_new_z,
+            new_zj_leaving);
+        }
+      }
+
+      // Claim: We don't actually need to take a pivot if all we want to do is add a bound
+      // coming from reduced cost strengthening
+      const f_t new_reduced_cost = soln.z[j] + alpha * scale * delta_z[j];
+
+      // x_j <= l_j + (incumbent_objective - relaxation_objective) / reduced_costs[j]
+      // Let u_tilde_j = u_j - epsilon, so that floor(u_tilde_j) = u_j - 1
+      // We want to solve for want the incumbent objective needs to be to make
+      // x_j <= u_tilde_j
+      // This means l_j + (incumbent_objective - relaxation_objective) / reduced_costs[j] <=
+      // u_tilde_j Or equivalently, incumbent_objective <= relaxation_objective +
+      // reduced_costs[j] * (u_tilde_j - l_j) when reduced_costs[j] > 0
+      if (at_lower && lower_j > -inf && new_reduced_cost > threshold) {
+        const f_t u_tilde_j = var_types[j] == variable_type_t::INTEGER
+                                ? upper_j - tol
+                                : std::max(upper_j - 1.0, lower_j);
+        const f_t bound_j =
+          var_types[j] == variable_type_t::INTEGER ? std::floor(u_tilde_j) : u_tilde_j;
+        const f_t diff        = u_tilde_j - lower_j;
+        const f_t objective_j = relaxation_objective + diff * new_reduced_cost;
+        if (((var_types[j] == variable_type_t::INTEGER && bound_j == upper_j - 1.0) ||
+             var_types[j] != variable_type_t::INTEGER) &&
+            std::isfinite(objective_j) && std::isfinite(bound_j)) {
+          i_t info = reduced_cost_bounds.add_upper_bound(j, objective_j, bound_j);
+          if (info > 0) { num_bounds_added++; }
+          // settings.log.printf("Added objective bound pair (%e, %e) for variable %d upper bound.
+          // Info %d\n", objective_j, bound_j, j, info);
+        }
+      }
+
+      // x_j >= u_j + (incumbent_objective - relaxation_objective) / reduced_costs[j] when
+      // reduced_costs[j] < 0 Let l_tilde_j = l_j + epsilon, so that ceil(l_tilde_j) = l_j + 1 We
+      // want to solve for want the incumbent objective needs to be to make x_j >= l_tilde_j This
+      // means u_j + (incumbent_objective - relaxation_objective) / reduced_costs[j] >= l_tilde_j Or
+      // equivalently, incumbent_objective <=  relaxation_objective + reduced_costs[j] *
+      // (l_tilde_j - u_j) when reduced_costs[j] < 0
+      if (at_upper && upper_j < inf && new_reduced_cost < -threshold) {
+        const f_t l_tilde_j = var_types[j] == variable_type_t::INTEGER
+                                ? lower_j + tol
+                                : std::min(lower_j + 1.0, upper_j);
+        const f_t bound_j =
+          var_types[j] == variable_type_t::INTEGER ? std::ceil(l_tilde_j) : l_tilde_j;
+        const f_t diff        = l_tilde_j - upper_j;
+        const f_t objective_j = relaxation_objective + diff * new_reduced_cost;
+        if (((var_types[j] == variable_type_t::INTEGER && bound_j == lower_j + 1.0) ||
+             var_types[j] != variable_type_t::INTEGER) &&
+            std::isfinite(objective_j) && std::isfinite(bound_j)) {
+          i_t info = reduced_cost_bounds.add_lower_bound(j, objective_j, bound_j);
+          if (info > 0) { num_bounds_added++; }
+          // settings.log.printf("Added objective bound pair (%e, %e) for variable %d lower bound.
+          // Info %d\n", objective_j, bound_j, j, info);
+        }
+      }
+    }
+
+    // Clear arrays for next iteration
+    for (i_t k : delta_z_indices) {
+      delta_z_mark[k] = 0;
+      delta_z[k]      = 0.0;
+    }
+    delta_z[leaving_index] = 0.0;
+    delta_z_indices.clear();
+    for (i_t k : delta_y_sparse.i) {
+      delta_y[k] = 0.0;
+    }
+  }
+  settings.log.printf("Added %d bounds for reduced cost strengthening\n", num_bounds_added);
+  settings.log.printf(
+    "RCS timing end: candidates=%d bounds=%d total=%.6f btran=%.6f reduced_cost_update=%.6f "
+    "elapsed=%.6f\n",
+    num_degenerate_integer,
+    num_bounds_added,
+    toc(strengthening_start),
+    btran_time,
+    reduced_cost_update_time,
+    toc(start_time));
 }
 
 template <typename i_t, typename f_t>
@@ -1283,6 +1582,20 @@ template int apply_delta_x_for_integer_pivot<int, double>(
   simplex::lp_solution_t<int, double>&,
   simplex::basis_update_mpf_t<int, double>&,
   double&);
+
+template void pivot_to_improve_reduced_cost_strengthening<int, double>(
+  const simplex::lp_problem_t<int, double>&,
+  const simplex::simplex_solver_settings_t<int, double>&,
+  const std::vector<int>&,
+  const std::vector<int>&,
+  const std::vector<simplex::variable_status_t>&,
+  const simplex::lp_solution_t<int, double>&,
+  const simplex::basis_update_mpf_t<int, double>&,
+  const std::vector<simplex::variable_type_t>&,
+  const csr_matrix_t<int, double>&,
+  double,
+  double,
+  reduced_cost_bounds_t<int, double>&);
 
 template void dual_degenerate_feasibility_pump<int, double>(
   const simplex::lp_problem_t<int, double>&,

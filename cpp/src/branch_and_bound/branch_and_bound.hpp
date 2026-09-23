@@ -356,18 +356,6 @@ class branch_and_bound_t {
 
   omp_atomic_t<i_t> integer_pivots_{0};
 
-  void pivot_to_improve_reduced_cost_strengthening(
-    const simplex::lp_problem_t<i_t, f_t>& lp,
-    const std::vector<i_t>& basic_list,
-    const std::vector<i_t>& nonbasic_list,
-    const std::vector<simplex::variable_status_t>& vstatus,
-    const simplex::lp_solution_t<i_t, f_t>& soln,
-    const simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
-    i_t num_fractional,
-    const std::vector<i_t>& fractional,
-    f_t relaxation_objective,
-    reduced_cost_bounds_t<i_t, f_t>& reduced_cost_bounds);
-
   // Repairs low-quality solutions from the heuristics, if it is applicable.
   void repair_heuristic_solutions();
 

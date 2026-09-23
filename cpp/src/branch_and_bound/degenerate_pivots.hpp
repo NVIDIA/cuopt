@@ -7,10 +7,13 @@
 
 #pragma once
 
+#include <branch_and_bound/reduced_cost_bounds.hpp>
+
 #include <dual_simplex/basis_updates.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/solution.hpp>
 #include <dual_simplex/user_problem.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
 #include <linear_algebra/sparse_vector.hpp>
 
 #include <vector>
@@ -73,6 +76,21 @@ i_t apply_delta_x_for_integer_pivot(const simplex::lp_problem_t<i_t, f_t>& lp,
                                     simplex::lp_solution_t<i_t, f_t>& solution,
                                     simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
                                     f_t& work_estimate);
+
+template <typename i_t, typename f_t>
+void pivot_to_improve_reduced_cost_strengthening(
+  const simplex::lp_problem_t<i_t, f_t>& lp,
+  const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+  const std::vector<i_t>& basic_list,
+  const std::vector<i_t>& nonbasic_list,
+  const std::vector<simplex::variable_status_t>& vstatus,
+  const simplex::lp_solution_t<i_t, f_t>& soln,
+  const simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
+  const std::vector<simplex::variable_type_t>& var_types,
+  const csr_matrix_t<i_t, f_t>& Arow,
+  f_t start_time,
+  f_t relaxation_objective,
+  reduced_cost_bounds_t<i_t, f_t>& reduced_cost_bounds);
 
 template <typename i_t, typename f_t>
 void dual_degenerate_feasibility_pump(const simplex::lp_problem_t<i_t, f_t>& lp,
