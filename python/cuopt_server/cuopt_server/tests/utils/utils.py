@@ -374,6 +374,12 @@ def cuoptproc(request):
     ):
         return
 
+    # One of the pair may still be alive (or a child still bound to the
+    # worker ports). Reap it before the replacement bind.
+    cleanup_cuopt_process()
+    cuoptmain = None
+    grpcmain = None
+
     grpc_port = _worker_port(base=6555)
     # Inherit the caller env so CUDA_PATH / CONDA_PREFIX reach CuPy in the
     # proxy process (waypoint-graph conversion compiles CUDA kernels).
