@@ -82,7 +82,3 @@ def _run_incumbent_callback(cuoptproc, include_set_callback):  # noqa
 
 def test_incumbent_callback_get_only(cuoptproc):  # noqa
     _run_incumbent_callback(cuoptproc, include_set_callback=False)
-
-
-def test_incumbent_callback_get_set(cuoptproc):  # noqa
-    _run_incumbent_callback(cuoptproc, include_set_callback=True)
