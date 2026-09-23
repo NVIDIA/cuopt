@@ -153,7 +153,9 @@ int run_single_file(const std::string& file_path,
   // Distributed PDLP is used for large problems that don't fit on a single GPU.
   // We need to debranch before the problem_interface is created and tries to materialize the
   // problem in device memory.
-  if (settings.get_pdlp_settings().use_distributed_pdlp) {
+  const auto& pdlp_settings_ref = settings.get_pdlp_settings();
+  if (pdlp_settings_ref.method == cuopt::mathematical_optimization::method_t::PDLP &&
+      (pdlp_settings_ref.num_gpus == -1 || pdlp_settings_ref.num_gpus > 1)) {
     if (handle_ptr == nullptr) {
       CUOPT_LOG_ERROR(
         "Distributed PDLP requires the GPU memory backend; no GPU handle is available for the "
@@ -496,10 +498,10 @@ int main(int argc, char* argv[])
   {
     auto& pdlp_settings = settings.get_pdlp_settings();
     const int num_gpus  = pdlp_settings.num_gpus;
-    if (pdlp_settings.method == cuopt::mathematical_optimization::method_t::PDLP &&
-        (num_gpus == -1 || num_gpus > 1)) {
-      pdlp_settings.use_distributed_pdlp = true;
-    } else if (!pdlp_settings.use_distributed_pdlp && (num_gpus < 1 || num_gpus > 2)) {
+    const bool is_mpdlp =
+      pdlp_settings.method == cuopt::mathematical_optimization::method_t::PDLP &&
+      (num_gpus == -1 || num_gpus > 1);
+    if (!is_mpdlp && (num_gpus < 1 || num_gpus > 2)) {
       auto log = dummy_logger(settings);
       CUOPT_LOG_ERROR(
         "num_gpus=%d is only supported with --method 1 (distributed PDLP, where -1 selects "

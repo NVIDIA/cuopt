@@ -347,10 +347,6 @@ class pdlp_solver_settings_t {
   // count; -1 selects all visible GPUs, which dispatches to the multi-GPU PDLP engine
   // whenever num_gpus == -1 or num_gpus > 1.
   int num_gpus{1};
-  // Internal: set when the multi-GPU PDLP engine is actually in use. Not part of the public
-  // parameter surface (no CUOPT_* constant) - dispatch is controlled solely by method and
-  // num_gpus above; this just carries the resulting decision through the call chain.
-  bool use_distributed_pdlp{false};
   // Which graph partitioner multi-GPU PDLP uses. See
   // multigpu_pdlp_partitioner_t for the meaning of each value.
   multigpu_pdlp_partitioner_t multigpu_pdlp_partitioner{multigpu_pdlp_partitioner_t::Auto};

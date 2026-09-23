@@ -809,11 +809,12 @@ static optimization_problem_solution_t<i_t, f_t> run_pdlp_solver(
   const timer_t& timer,
   bool is_batch_mode)
 {
-  cuopt_expects(!settings.use_distributed_pdlp,
-                error_type_t::ValidationError,
-                "Distributed PDLP must be entered via solve_lp(mps_data_model, ...) "
-                "so the master GPU never materializes the full problem. Call sites "
-                "with a problem_t cannot dispatch to distributed mode.");
+  cuopt_expects(
+    !(settings.method == method_t::PDLP && (settings.num_gpus == -1 || settings.num_gpus > 1)),
+    error_type_t::ValidationError,
+    "Multi-GPU PDLP must be entered via solve_lp(mps_data_model, ...) "
+    "so the master GPU never materializes the full problem. Call sites "
+    "with a problem_t cannot dispatch to multi-GPU mode.");
 
   if (problem.n_constraints == 0) {
     CUOPT_LOG_CONDITIONAL_INFO(
@@ -2491,16 +2492,10 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
   bool problem_checking,
   bool use_pdlp_solver_mode)
 {
-  if (settings.use_distributed_pdlp) {
+  // method=PDLP with num_gpus>1 (or -1 for all visible GPUs) requests multi-GPU PDLP.
+  if (settings.method == method_t::PDLP && (settings.num_gpus == -1 || settings.num_gpus > 1)) {
     return solve_lp_distributed_from_mps(
       handle_ptr, mps_data_model, settings, use_pdlp_solver_mode);
-  }
-  // method=PDLP with num_gpus>1 (or -1 for all visible GPUs) requests distributed PDLP.
-  if (settings.method == method_t::PDLP && (settings.num_gpus == -1 || settings.num_gpus > 1)) {
-    pdlp_solver_settings_t<i_t, f_t> distributed_settings = settings;
-    distributed_settings.use_distributed_pdlp             = true;
-    return solve_lp_distributed_from_mps(
-      handle_ptr, mps_data_model, distributed_settings, use_pdlp_solver_mode);
   }
   auto op_problem = mps_data_model_to_optimization_problem(handle_ptr, mps_data_model);
   return solve_lp(op_problem, settings, problem_checking, use_pdlp_solver_mode, false);
@@ -2516,9 +2511,9 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
   cuopt_expects(handle_ptr != nullptr,
                 error_type_t::ValidationError,
                 "solve_lp_distributed_from_mps: handle_ptr must not be null");
-  cuopt_expects(settings.use_distributed_pdlp,
+  cuopt_expects(settings.num_gpus == -1 || settings.num_gpus > 1,
                 error_type_t::ValidationError,
-                "solve_lp_distributed_from_mps: settings.use_distributed_pdlp must be true");
+                "solve_lp_distributed_from_mps requires num_gpus == -1 or num_gpus > 1");
   pdlp_solver_settings_t<i_t, f_t> settings_resolved = settings;
   cuopt_expects(settings_resolved.method == method_t::PDLP,
                 error_type_t::ValidationError,

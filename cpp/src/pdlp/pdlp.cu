@@ -529,7 +529,6 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   // ----- 5. Per-shard settings -----
   pdlp_solver_settings_t<i_t, f_t> sub_pdlp_settings = settings;
   sub_pdlp_settings.num_gpus                         = 1;
-  sub_pdlp_settings.use_distributed_pdlp             = false;
   // Disable automatic ruiz and pock-chambolle in the initial_scaling ctor: the
   // distributed pipeline computes them via distributed_scaling using the
   // GLOBAL problem.
@@ -2603,7 +2602,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
 
   // mixed precision and cusparse structure redirection are not supported in distributed
   // as memory footprint is not currently a bottleneck in distributed
-  if (!settings_.use_distributed_pdlp) {
+  if (!is_distributed_master()) {
     // Update FP32 matrix copies for mixed precision SpMV after scaling
     pdhg_solver_.get_cusparse_view().update_mixed_precision_matrices();
 
@@ -2625,7 +2624,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     compute_initial_primal_weight();
 
   // Distributed counterpart of the single-GPU, happens later in the single-GPU path.
-  if (settings_.use_distributed_pdlp) {
+  if (is_distributed_master()) {
     step_size_strategy_.get_primal_and_dual_stepsizes(primal_step_size_, dual_step_size_);
     multi_gpu_engine->for_each_shard([&](auto& shard) {
       auto& sub = *shard.sub_pdlp;
@@ -2641,7 +2640,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
   // still runs single-GPU only.  Distributed rejects
   // has_initial_{primal,dual}_solution() and warm-start data up front, and
   // its per-shard primal/dual step sizes were derived above
-  if (!settings_.use_distributed_pdlp) {
+  if (!is_distributed_master()) {
 #ifdef PDLP_DEBUG_MODE
     std::cout << "Initial Scaling done" << std::endl;
 #endif
