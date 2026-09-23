@@ -715,7 +715,7 @@ def _require_grpc_healthy():
 )
 def getsolverlogs(
     id: str,
-    accept: str = Header(default="application/json"),
+    accept: Optional[str] = Header(default=None),
     frombyte: Optional[int] = Query(default=0),
 ):
     try:
@@ -761,7 +761,7 @@ def getsolverlogs(
 @app.delete("/cuopt/log/{id}", responses=DeleteResponse)
 def deletesolverlogs(
     id: str,
-    accept: str = Header(default="application/json"),
+    accept: Optional[str] = Header(default=None),
 ):
     try:
         accept = _resolve_accept(accept)
@@ -781,7 +781,7 @@ def deletesolverlogs(
 )
 def getincumbent(
     id: str,
-    accept: str = Header(default="application/json"),
+    accept: Optional[str] = Header(default=None),
 ):
     try:
         accept = _resolve_accept(accept)
@@ -836,7 +836,7 @@ async def postsolution():
 @app.delete("/cuopt/solution/{id}", responses=DeleteResponse)
 def deletesolution(
     id: str = Path(...),
-    accept: str = Header(default="application/json"),
+    accept: Optional[str] = Header(default=None),
 ):
     try:
         accept = _resolve_accept(accept)
@@ -871,7 +871,7 @@ def deletesolution(
 )
 def deleterequest(
     id: str = Path(...),
-    accept: str = Header(default="application/json"),
+    accept: Optional[str] = Header(default=None),
     running: Optional[bool] = Query(default=None),
     queued: Optional[bool] = Query(default=None),
     cached: Optional[bool] = Query(default=None),
@@ -936,7 +936,7 @@ def getwarmstart(id: str):
 )
 def getsolution(
     id: str,
-    accept: str = Header(default="application/json"),
+    accept: Optional[str] = Header(default=None),
 ):
     try:
         fallback = mime_msgpack
@@ -1023,7 +1023,7 @@ def getsolution(
 )
 def getrequest(
     id: str,
-    accept: str = Header(default="application/json"),
+    accept: Optional[str] = Header(default=None),
 ):
     try:
         accept = _resolve_accept(accept)
@@ -1097,7 +1097,7 @@ async def postrequest(
     cuopt_data_file: str = Header(default=None),
     cuopt_result_file: str = Header(default=None),
     client_version: str = Header(default=None),
-    accept: str = Header(default="application/json"),
+    accept: Optional[str] = Header(default=None),
     content_type: str = Header(default="application/json"),
     content_length: int = Header(default=0),
 ):

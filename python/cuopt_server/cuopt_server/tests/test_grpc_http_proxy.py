@@ -38,6 +38,13 @@ class _Uvicorn(uvicorn.Server):
         pass
 
 
+def _request_without_accept(method, url, **kwargs):
+    session = requests.Session()
+    prepared = session.prepare_request(requests.Request(method, url, **kwargs))
+    prepared.headers.pop("Accept", None)
+    return session.send(prepared)
+
+
 def _free_port():
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
@@ -1057,6 +1064,67 @@ def test_wildcard_accept_post_request_follows_content_type(proxy, accept):
             "CLIENT-VERSION": "custom",
             "Content-Type": mime_msgpack,
             "Accept": accept,
+        },
+        data=packed,
+    )
+    assert res.status_code == 200
+    assert res.headers["content-type"].startswith(mime_msgpack)
+    body = msgpack.loads(res.content, strict_map_key=False)
+    assert "reqId" in body
+
+
+def test_omitted_accept_status_is_msgpack(proxy):
+    import msgpack
+
+    url, _ = proxy
+    req_id = requests.post(
+        url + "/cuopt/request",
+        headers={"CLIENT-VERSION": "custom", **_JSON_ACCEPT},
+        json=_lp(),
+    ).json()["reqId"]
+    st = _request_without_accept("GET", url + f"/cuopt/request/{req_id}")
+    assert st.status_code == 200
+    assert st.headers["content-type"].startswith(mime_msgpack)
+    assert msgpack.loads(st.content, strict_map_key=False) == "completed"
+
+
+def test_omitted_accept_solution_uses_stored_request_accept(proxy):
+    url, _ = proxy
+    req_id = requests.post(
+        url + "/cuopt/request",
+        headers={"CLIENT-VERSION": "custom", "Accept": mime_json},
+        json=_lp(),
+    ).json()["reqId"]
+    sol = _request_without_accept("GET", url + f"/cuopt/solution/{req_id}")
+    assert sol.status_code == 200
+    assert sol.headers["content-type"].startswith(mime_json)
+    assert sol.json()["response"]["solver_response"]["status"] == "Optimal"
+
+
+def test_omitted_accept_post_request_follows_content_type(proxy):
+    import msgpack
+
+    url, _ = proxy
+    res = _request_without_accept(
+        "POST",
+        url + "/cuopt/request",
+        headers={
+            "CLIENT-VERSION": "custom",
+            "Content-Type": mime_json,
+        },
+        json=_lp(),
+    )
+    assert res.status_code == 200
+    assert res.headers["content-type"].startswith(mime_json)
+    assert "reqId" in res.json()
+
+    packed = msgpack.dumps(_lp())
+    res = _request_without_accept(
+        "POST",
+        url + "/cuopt/request",
+        headers={
+            "CLIENT-VERSION": "custom",
+            "Content-Type": mime_msgpack,
         },
         data=packed,
     )
