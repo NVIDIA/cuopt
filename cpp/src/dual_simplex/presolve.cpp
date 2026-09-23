@@ -198,6 +198,7 @@ struct substitution_matrix_t {
   void recompute_row_max(i_t i)
   {
     f_t max_abs = 0;
+
     const i_t start = row_start[i];
     for (i_t k = 0; k < row_len[i]; ++k) {
       max_abs = std::max(max_abs, std::abs(row_val[start + k]));
@@ -207,10 +208,10 @@ struct substitution_matrix_t {
 
   void set_value(i_t i, i_t offset, f_t value)
   {
-    f_t& slot           = row_val[row_start[i] + offset];
-    const f_t old_abs   = std::abs(slot);
-    slot                = value;
-    const f_t new_abs   = std::abs(value);
+    f_t& slot         = row_val[row_start[i] + offset];
+    const f_t old_abs = std::abs(slot);
+    slot              = value;
+    const f_t new_abs = std::abs(value);
     if (new_abs >= row_max[i]) {
       row_max[i] = new_abs;
     } else if (old_abs == row_max[i]) {
