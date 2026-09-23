@@ -77,22 +77,24 @@ public final class SolverSettings implements AutoCloseable {
   }
 
   /**
-   * Set whether to distribute the PDLP solve of an LP problem across multiple GPUs. Requires
-   * {@link #setMethod} to be {@link SolverMethod#PDLP} and {@link #setNumGpus} to be {@code -1}
-   * or greater than 1; sharding across multiple GPUs only happens when more than one GPU is
-   * actually selected.
+   * Set whether to distribute the PDLP solve of an LP problem across multiple GPUs (multi-GPU
+   * PDLP, mPDLP). Requires {@link #setMethod} to be {@link SolverMethod#PDLP} and {@link
+   * #setNumGpus} to be {@code -1} or greater than 1; sharding across multiple GPUs only happens
+   * when more than one GPU is actually selected.
    */
-  public SolverSettings setUseDistributedPdlp(boolean useDistributedPdlp) {
-    return setSetting(CuOptConstants.CUOPT_USE_DISTRIBUTED_PDLP, useDistributedPdlp);
+  public SolverSettings setUseMpdlp(boolean useMpdlp) {
+    return setSetting(CuOptConstants.CUOPT_USE_DISTRIBUTED_PDLP, useMpdlp);
   }
 
   /**
-   * Set the partitioner used to split the problem across GPUs for distributed PDLP: {@code 0}
-   * Auto (default; RoundRobin on 1 GPU, KaMinPar otherwise), {@code 1} KaMinPar (multi-threaded
-   * graph partitioner, better balanced shards at the cost of extra partitioning time), or {@code
-   * 2} RoundRobin (no partitioning graph built).
+   * Set the partitioner used to split the problem across GPUs for multi-GPU PDLP (mPDLP): {@code
+   * 0} Auto (default; RoundRobin on 1 GPU, KaMinPar otherwise), {@code 1} KaMinPar
+   * (multi-threaded graph partitioner, better balanced shards at the cost of extra partitioning
+   * time), or {@code 2} RoundRobin (no partitioning graph built). With 1 GPU there is nothing to
+   * partition, so both strategies are equivalent no-ops; Auto picks RoundRobin there because it
+   * skips KaMinPar's graph-partitioning work for no benefit.
    */
-  public SolverSettings setDistributedPdlpPartitioner(int partitioner) {
+  public SolverSettings setMpdlpPartitioner(int partitioner) {
     return setSetting(CuOptConstants.CUOPT_DISTRIBUTED_PDLP_PARTITIONER, partitioner);
   }
 
