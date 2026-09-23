@@ -68,16 +68,12 @@ using simplex::lp_solution_t;
 using simplex::lp_status_t;
 using simplex::simplex_solver_settings_t;
 
-// Default constructor, destructor, and move constructor for scaled_device_matrices_t.
+// Custom deleter for device_csc_matrix_t to handle CUDA memory management.
 template <typename i_t, typename f_t>
-scaled_device_matrices_t<i_t, f_t>::scaled_device_matrices_t() = default;
-
-template <typename i_t, typename f_t>
-scaled_device_matrices_t<i_t, f_t>::~scaled_device_matrices_t() = default;
-
-template <typename i_t, typename f_t>
-scaled_device_matrices_t<i_t, f_t>::scaled_device_matrices_t(
-  scaled_device_matrices_t<i_t, f_t>&&) noexcept = default;
+void device_csc_matrix_deleter_t<i_t, f_t>::operator()(device_csc_matrix_t<i_t, f_t>* matrix) const
+{
+  delete matrix;
+}
 
 template <typename i_t, typename f_t>
 bool validate_barrier_cone_layout(const lp_problem_t<i_t, f_t>& problem,
@@ -458,7 +454,7 @@ class iteration_data_t {
  public:
   /** The device Q to factorize: adopted from the scaling when already there, uploaded otherwise. */
   static device_csc_matrix_t<i_t, f_t> make_device_Q(
-    std::unique_ptr<device_csc_matrix_t<i_t, f_t>> scaled_device_Q,
+    device_csc_matrix_ptr_t<i_t, f_t> scaled_device_Q,
     const lp_problem_t<i_t, f_t>& lp,
     const csc_matrix_t<i_t, f_t>& Qin,
     cuda::stream_ref stream)
@@ -492,8 +488,8 @@ class iteration_data_t {
                    const std::vector<i_t>& direct_free_variables,
                    const csc_matrix_t<i_t, f_t>& Qin,
                    const simplex_solver_settings_t<i_t, f_t>& settings,
-                   std::unique_ptr<device_csc_matrix_t<i_t, f_t>> scaled_device_A,
-                   std::unique_ptr<device_csc_matrix_t<i_t, f_t>> scaled_device_Q)
+                   device_csc_matrix_ptr_t<i_t, f_t> scaled_device_A,
+                   device_csc_matrix_ptr_t<i_t, f_t> scaled_device_Q)
     : upper_bounds(num_upper_bounds),
       c(lp.objective),
       b(lp.rhs),
@@ -2505,12 +2501,14 @@ template <typename i_t, typename f_t>
 barrier_solver_t<i_t, f_t>::barrier_solver_t(const lp_problem_t<i_t, f_t>& lp,
                                              const simplex::presolve_info_t<i_t, f_t>& presolve,
                                              const simplex_solver_settings_t<i_t, f_t>& settings,
-                                             scaled_device_matrices_t<i_t, f_t> scaled_matrices)
+                                             device_csc_matrix_ptr_t<i_t, f_t> device_A,
+                                             device_csc_matrix_ptr_t<i_t, f_t> device_Q)
   : lp(lp),
     settings(settings),
     presolve_info(presolve),
     stream_view_(lp.handle_ptr->get_stream()),
-    scaled_matrices_(std::move(scaled_matrices))
+    device_A_(std::move(device_A)),
+    device_Q_(std::move(device_Q))
 {
 }
 
@@ -4946,8 +4944,8 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(
                                                               presolve_info.direct_free_variables,
                                                               *Qin,
                                                               settings,
-                                                              std::move(scaled_matrices_.A),
-                                                              std::move(scaled_matrices_.Q));
+                                                              std::move(device_A_),
+                                                              std::move(device_Q_));
     lp_status_t status = barrier_advanced_solve(start_time, solution, *owned_data);
     return store_or_clear_cache(cache, owned_data, status);
   } catch (const raft::cuda_error& e) {
@@ -4997,7 +4995,7 @@ void apply_barrier_linear_objective(iteration_data_t<int, double>& data,
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 template bool validate_barrier_cone_layout<int, double>(
   const lp_problem_t<int, double>& problem, const simplex_solver_settings_t<int, double>& settings);
-template struct scaled_device_matrices_t<int, double>;
+template struct device_csc_matrix_deleter_t<int, double>;
 template class barrier_solver_t<int, double>;
 template class sparse_cholesky_base_t<int, double>;
 template class sparse_cholesky_cudss_t<int, double>;

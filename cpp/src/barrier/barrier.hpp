@@ -38,19 +38,17 @@ template <typename i_t, typename f_t>
 class iteration_data_t;  // Forward declare
 
 template <typename i_t, typename f_t>
-class device_csc_matrix_t;  // Forward declare
+class device_csc_matrix_t;
 
-// The matrices the GPU scaling leaves on device, held here so the barrier solver can use them
-// directly without re-uploading.
+// Custom deleter for device_csc_matrix_t to handle CUDA memory management.
 template <typename i_t, typename f_t>
-struct scaled_device_matrices_t {
-  scaled_device_matrices_t();
-  ~scaled_device_matrices_t();
-  scaled_device_matrices_t(scaled_device_matrices_t&&) noexcept;
-
-  std::unique_ptr<device_csc_matrix_t<i_t, f_t>> A;
-  std::unique_ptr<device_csc_matrix_t<i_t, f_t>> Q;
+struct device_csc_matrix_deleter_t {
+  void operator()(device_csc_matrix_t<i_t, f_t>* matrix) const;
 };
+
+template <typename i_t, typename f_t>
+using device_csc_matrix_ptr_t =
+  std::unique_ptr<device_csc_matrix_t<i_t, f_t>, device_csc_matrix_deleter_t<i_t, f_t>>;
 
 template <typename i_t, typename f_t>
 class barrier_solver_t {
@@ -58,7 +56,8 @@ class barrier_solver_t {
   barrier_solver_t(const simplex::lp_problem_t<i_t, f_t>& lp,
                    const simplex::presolve_info_t<i_t, f_t>& presolve,
                    const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
-                   scaled_device_matrices_t<i_t, f_t> scaled_matrices = {});
+                   device_csc_matrix_ptr_t<i_t, f_t> device_A = nullptr,
+                   device_csc_matrix_ptr_t<i_t, f_t> device_Q = nullptr);
   simplex::lp_status_t solve(f_t start_time,
                              simplex::lp_solution_t<i_t, f_t>& solution,
                              cuopt::mathematical_optimization::barrier_cache_t* cache = nullptr);
@@ -134,7 +133,8 @@ class barrier_solver_t {
   const simplex::simplex_solver_settings_t<i_t, f_t>& settings;
   const simplex::presolve_info_t<i_t, f_t>& presolve_info;
   cuda::stream_ref stream_view_;
-  scaled_device_matrices_t<i_t, f_t> scaled_matrices_;
+  device_csc_matrix_ptr_t<i_t, f_t> device_A_;
+  device_csc_matrix_ptr_t<i_t, f_t> device_Q_;
 };
 
 }  // namespace cuopt::mathematical_optimization::barrier

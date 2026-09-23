@@ -36,13 +36,23 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <utility>
 
 namespace cuopt::mathematical_optimization::simplex {
 
 namespace {
 
+using cuopt::mathematical_optimization::barrier::device_csc_matrix_ptr_t;
 using cuopt::mathematical_optimization::barrier::device_csc_matrix_t;
 using cuopt::mathematical_optimization::barrier::device_csr_matrix_t;
+
+// std::make_unique cannot build a pointer with a non-default deleter.
+template <typename i_t, typename f_t, typename... args_t>
+device_csc_matrix_ptr_t<i_t, f_t> make_device_csc_matrix(args_t&&... args)
+{
+  return device_csc_matrix_ptr_t<i_t, f_t>(
+    new device_csc_matrix_t<i_t, f_t>(std::forward<args_t>(args)...));
+}
 
 // row_norm[i] = max_j |A(i,j)|, computed straight off CSC: A.i[p] is the row of nonzero p,
 // so the per-row maxima need no row-contiguous (CSR) copy of the matrix. Mirrors
@@ -140,8 +150,8 @@ i_t scaling_ruiz_gpu(const lp_problem_t<i_t, f_t>& unscaled,
                      lp_problem_t<i_t, f_t>& scaled,
                      std::vector<f_t>& column_scaling,
                      std::vector<f_t>& row_scaling,
-                     std::unique_ptr<device_csc_matrix_t<i_t, f_t>>& device_A,
-                     std::unique_ptr<device_csc_matrix_t<i_t, f_t>>& device_Q)
+                     device_csc_matrix_ptr_t<i_t, f_t>& device_A,
+                     device_csc_matrix_ptr_t<i_t, f_t>& device_Q)
 {
   scaled     = unscaled;
   i_t m      = scaled.num_rows;
@@ -521,14 +531,14 @@ i_t scaling_ruiz_gpu(const lp_problem_t<i_t, f_t>& unscaled,
   if (!unscaled.second_order_cone_dims.empty()) {
     scaled.A.x.clear();
     scaled.A.x.shrink_to_fit();
-    device_A = std::make_unique<device_csc_matrix_t<i_t, f_t>>(std::move(dA));
+    device_A = make_device_csc_matrix<i_t, f_t>(std::move(dA));
   } else {
     scaled.A = dA.to_host(stream);
   }
   scaled.Q = dQ.to_host(stream);
   // Symmetric Q: its CSR arrays are also its CSC arrays.
   if (dQ.nz_max > 0) {
-    auto dQ_csc       = std::make_unique<device_csc_matrix_t<i_t, f_t>>(stream);
+    auto dQ_csc       = make_device_csc_matrix<i_t, f_t>(stream);
     dQ_csc->m         = dQ.m;
     dQ_csc->n         = dQ.m;
     dQ_csc->nz_max    = dQ.nz_max;
@@ -550,14 +560,13 @@ i_t scaling_ruiz_gpu(const lp_problem_t<i_t, f_t>& unscaled,
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 
-template int scaling_ruiz_gpu<int, double>(
-  const lp_problem_t<int, double>& unscaled,
-  const simplex_solver_settings_t<int, double>& settings,
-  lp_problem_t<int, double>& scaled,
-  std::vector<double>& column_scaling,
-  std::vector<double>& row_scaling,
-  std::unique_ptr<device_csc_matrix_t<int, double>>& device_A,
-  std::unique_ptr<device_csc_matrix_t<int, double>>& device_Q);
+template int scaling_ruiz_gpu<int, double>(const lp_problem_t<int, double>& unscaled,
+                                           const simplex_solver_settings_t<int, double>& settings,
+                                           lp_problem_t<int, double>& scaled,
+                                           std::vector<double>& column_scaling,
+                                           std::vector<double>& row_scaling,
+                                           device_csc_matrix_ptr_t<int, double>& device_A,
+                                           device_csc_matrix_ptr_t<int, double>& device_Q);
 
 #endif
 

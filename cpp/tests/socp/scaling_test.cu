@@ -126,8 +126,8 @@ TEST(scaling_gpu_parity, wide_bound_qp_matches_cpu)
   lp_problem_t<i_t, f_t> gpu_scaled(&handle, 1, 1, 1);
   std::vector<f_t> gpu_col_scaling;
   std::vector<f_t> gpu_row_scaling;
-  std::unique_ptr<device_csc_matrix_t<i_t, f_t>> device_A;
-  std::unique_ptr<device_csc_matrix_t<i_t, f_t>> device_Q;
+  device_csc_matrix_ptr_t<i_t, f_t> device_A;
+  device_csc_matrix_ptr_t<i_t, f_t> device_Q;
   ASSERT_EQ(simplex::scaling_ruiz_gpu(
               unscaled, settings, gpu_scaled, gpu_col_scaling, gpu_row_scaling, device_A, device_Q),
             0);
@@ -167,8 +167,8 @@ TEST(scaling_gpu_parity, pre_scaling_does_not_leave_bounds_more_spread_than_unsc
   lp_problem_t<i_t, f_t> gpu_scaled(&handle, 1, 1, 1);
   std::vector<f_t> gpu_col_scaling;
   std::vector<f_t> gpu_row_scaling;
-  std::unique_ptr<device_csc_matrix_t<i_t, f_t>> device_A;
-  std::unique_ptr<device_csc_matrix_t<i_t, f_t>> device_Q;
+  device_csc_matrix_ptr_t<i_t, f_t> device_A;
+  device_csc_matrix_ptr_t<i_t, f_t> device_Q;
   ASSERT_EQ(simplex::scaling_ruiz_gpu(
               unscaled, settings, gpu_scaled, gpu_col_scaling, gpu_row_scaling, device_A, device_Q),
             0);

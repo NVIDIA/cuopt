@@ -482,19 +482,15 @@ lp_status_t solve_linear_program_with_barrier(
   std::vector<f_t> column_scales;
   std::vector<f_t> row_scales;
 
-  barrier::scaled_device_matrices_t<i_t, f_t> scaled_matrices;
+  barrier::device_csc_matrix_ptr_t<i_t, f_t> device_A;
+  barrier::device_csc_matrix_ptr_t<i_t, f_t> device_Q;
   const bool is_ruiz_candidate =
     !presolved_lp.second_order_cone_dims.empty() || presolved_lp.Q.n > 0;
   const i_t presolved_nnz = presolved_lp.A.col_start[presolved_lp.num_cols] +
                             (presolved_lp.Q.n > 0 ? presolved_lp.Q.row_start[presolved_lp.Q.m] : 0);
   if (is_ruiz_candidate && presolved_nnz >= barrier_settings.gpu_ruiz_nnz_threshold) {
-    scaling_ruiz_gpu(presolved_lp,
-                     barrier_settings,
-                     barrier_lp,
-                     column_scales,
-                     row_scales,
-                     scaled_matrices.A,
-                     scaled_matrices.Q);
+    scaling_ruiz_gpu(
+      presolved_lp, barrier_settings, barrier_lp, column_scales, row_scales, device_A, device_Q);
   } else {
     scaling(presolved_lp, barrier_settings, barrier_lp, column_scales, row_scales);
   }
@@ -537,7 +533,7 @@ lp_status_t solve_linear_program_with_barrier(
     barrier_status                      = lp_status_t::OPTIMAL;
   } else {
     barrier::barrier_solver_t<i_t, f_t> barrier_solver(
-      *solver_lp, presolve_info, barrier_settings, std::move(scaled_matrices));
+      *solver_lp, presolve_info, barrier_settings, std::move(device_A), std::move(device_Q));
     barrier_status = barrier_solver.solve(start_time, barrier_solution, cache);
   }
 
