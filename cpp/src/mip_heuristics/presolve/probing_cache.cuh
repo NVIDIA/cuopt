@@ -8,6 +8,7 @@
 #pragma once
 
 #include "bounds_presolve.cuh"
+#include "probing_cache.hpp"
 
 #include <mip_heuristics/utils.cuh>
 
@@ -35,110 +36,6 @@ class bound_presolve_t;
   We can use this cache, for infeasibility detection, implied bounds, fast bounds setting and bulk
   rounding. To save from memory, we will keep the the results in host map.
 */
-
-enum interval_type_t { EQUALS = 0, LEQ, GEQ };
-
-template <typename i_t, typename f_t>
-struct val_interval_t {
-  void fill_cache_hits(i_t interval,
-                       f_t first_probe,
-                       f_t second_probe,
-                       i_t& hit_interval_for_first_probe,
-                       i_t& hit_interval_for_second_probe) const
-  {
-    if (interval_type == interval_type_t::EQUALS) {
-      if (val == first_probe) { hit_interval_for_first_probe = interval; }
-      if (val == second_probe) { hit_interval_for_second_probe = interval; }
-    } else if (interval_type == interval_type_t::LEQ) {
-      if (val >= first_probe) { hit_interval_for_first_probe = interval; }
-      if (val >= second_probe) { hit_interval_for_second_probe = interval; }
-    } else if (interval_type == interval_type_t::GEQ) {
-      if (val <= first_probe) { hit_interval_for_first_probe = interval; }
-      if (val <= second_probe) { hit_interval_for_second_probe = interval; }
-    }
-  }
-  f_t val;
-  interval_type_t interval_type;
-};
-
-template <typename f_t>
-struct cached_bound_t {
-  f_t lb;
-  f_t ub;
-};
-
-template <typename i_t, typename f_t>
-struct cache_entry_t {
-  val_interval_t<i_t, f_t> val_interval;
-  std::unordered_map<i_t, cached_bound_t<f_t>> var_to_cached_bound_map;
-};
-
-// A forcing read off an exactly projected block: var == value implies forced_var == forced_value.
-template <typename i_t>
-struct probe_forcing_t {
-  i_t var;
-  i_t forced_var;
-  bool value;
-  bool forced_value;
-};
-
-template <typename i_t>
-struct probe_findings_t {
-  std::vector<probe_forcing_t<i_t>> forcings;
-  std::vector<std::pair<i_t, bool>> fixings;  // var forced to value by its block alone
-};
-
-template <typename i_t, typename f_t>
-class probing_cache_t {
- public:
-  bool contains(problem_t<i_t, f_t>& problem, i_t var_id);
-  void update_bounds_with_selected(std::vector<f_t>& host_lb,
-                                   std::vector<f_t>& host_ub,
-                                   const cache_entry_t<i_t, f_t>& cache_entry,
-                                   const std::vector<i_t>& reverse_original_ids);
-  i_t check_number_of_conflicting_vars(const std::vector<f_t>& host_lb,
-                                       const std::vector<f_t>& host_ub,
-                                       const cache_entry_t<i_t, f_t>& cache_entry,
-                                       f_t integrality_tolerance,
-                                       const std::vector<i_t>& reverse_original_ids);
-  // check if there are any conflicting bounds
-  f_t get_least_conflicting_rounding(problem_t<i_t, f_t>& problem,
-                                     std::vector<f_t>& host_lb,
-                                     std::vector<f_t>& host_ub,
-                                     i_t var_id_on_problem,
-                                     f_t first_probe,
-                                     f_t second_probe,
-                                     f_t integrality_tolerance);
-  void merge_forcings(const std::vector<probe_forcing_t<i_t>>& forcings,
-                      std::vector<std::pair<i_t, bool>>& fixings);
-  // add the results of probing cache to secondary CG structure if not already in a gub constraint.
-  // use the same activity computation that we will use in BP rounding.
-  // use GUB constraints to find fixings in bulk rounding
-  std::unordered_map<i_t, std::array<cache_entry_t<i_t, f_t>, 2>> probing_cache;
-  std::mutex probing_cache_mutex;
-};
-
-template <typename i_t, typename f_t>
-class lb_probing_cache_t {
- public:
-  bool contains(problem_t<i_t, f_t>& problem, i_t var_id);
-  void update_bounds_with_selected(std::vector<f_t>& host_bounds,
-                                   const cache_entry_t<i_t, f_t>& cache_entry,
-                                   const std::vector<i_t>& reverse_original_ids);
-  i_t check_number_of_conflicting_vars(const std::vector<f_t>& host_bounds,
-                                       const cache_entry_t<i_t, f_t>& cache_entry,
-                                       f_t integrality_tolerance,
-                                       const std::vector<i_t>& reverse_original_ids);
-  // check if there are any conflicting bounds
-  f_t get_least_conflicting_rounding(problem_t<i_t, f_t>& problem,
-                                     std::vector<f_t>& host_bounds,
-                                     i_t var_id_on_problem,
-                                     f_t first_probe,
-                                     f_t second_probe,
-                                     f_t integrality_tolerance);
-
-  std::unordered_map<i_t, std::array<cache_entry_t<i_t, f_t>, 2>> probing_cache;
-};
 
 template <typename i_t, typename f_t>
 presolve_features_t probing_presolve_features(problem_t<i_t, f_t> const& problem)
