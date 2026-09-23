@@ -102,16 +102,16 @@ enum pdlp_precision_t : int {
 };
 
 /**
- * @brief Which graph partitioner distributed PDLP uses.
+ * @brief Which graph partitioner multi-GPU PDLP uses.
  *
  * Auto: pick automatically (RoundRobin on 1 GPU, KaMinPar otherwise).
  * KaMinPar: multi-threaded KaMinPar graph partitioner.
  * RoundRobin: round-robin assignment, no graph.
  */
-enum distributed_pdlp_partitioner_t : int {
-  Auto       = CUOPT_DISTRIBUTED_PDLP_PARTITIONER_AUTO,
-  KaMinPar   = CUOPT_DISTRIBUTED_PDLP_PARTITIONER_KAMINPAR,
-  RoundRobin = CUOPT_DISTRIBUTED_PDLP_PARTITIONER_ROUND_ROBIN,
+enum multigpu_pdlp_partitioner_t : int {
+  Auto       = CUOPT_MULTIGPU_PDLP_PARTITIONER_AUTO,
+  KaMinPar   = CUOPT_MULTIGPU_PDLP_PARTITIONER_KAMINPAR,
+  RoundRobin = CUOPT_MULTIGPU_PDLP_PARTITIONER_ROUND_ROBIN,
 };
 
 template <typename i_t, typename f_t>
@@ -343,15 +343,17 @@ class pdlp_solver_settings_t {
   bool all_primal_feasible{false};
   presolver_t presolver{presolver_t::Default};
   bool dual_postsolve{true};
-  // Concurrent LP/MIP: 1–2 GPUs. Distributed PDLP (method=PDLP): up to the visible device
-  // count; -1 selects all visible GPUs. See use_distributed_pdlp.
+  // Concurrent LP/MIP: 1–2 GPUs. Multi-GPU PDLP (method=PDLP): up to the visible device
+  // count; -1 selects all visible GPUs, which dispatches to the multi-GPU PDLP engine
+  // whenever num_gpus == -1 or num_gpus > 1.
   int num_gpus{1};
-  // Dispatch the LP to the multi-GPU distributed PDLP engine (typically set when
-  // method=PDLP and num_gpus>1, or num_gpus=-1).
+  // Internal: set when the multi-GPU PDLP engine is actually in use. Not part of the public
+  // parameter surface (no CUOPT_* constant) - dispatch is controlled solely by method and
+  // num_gpus above; this just carries the resulting decision through the call chain.
   bool use_distributed_pdlp{false};
-  // Which graph partitioner distributed PDLP uses. See
-  // distributed_pdlp_partitioner_t for the meaning of each value.
-  distributed_pdlp_partitioner_t distributed_pdlp_partitioner{distributed_pdlp_partitioner_t::Auto};
+  // Which graph partitioner multi-GPU PDLP uses. See
+  // multigpu_pdlp_partitioner_t for the meaning of each value.
+  multigpu_pdlp_partitioner_t multigpu_pdlp_partitioner{multigpu_pdlp_partitioner_t::Auto};
   method_t method{method_t::Concurrent};
   // TODO: Remove this cutoff once concurrent CPU solver memory usage and cuDSS long running kernels
   // are resolved. -1 disables the cutoff regardless of the reduced problem's NNZ.

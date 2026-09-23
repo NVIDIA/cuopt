@@ -426,10 +426,7 @@ int main(int argc, char* argv[])
       std::string arg_name = param_name_to_arg_name(param.param_name);
       if (arg_name_to_param_name.count(arg_name) == 0) {
         auto& arg = program.add_argument(arg_name.c_str()).default_value(param.default_value);
-        if (param.param_name.find("hyper_") != std::string::npos ||
-            param.param_name == CUOPT_USE_DISTRIBUTED_PDLP) {
-          arg.hidden();
-        }
+        if (param.param_name.find("hyper_") != std::string::npos) { arg.hidden(); }
         arg_name_to_param_name[arg_name] = param.param_name;
       }
     }
