@@ -27,6 +27,8 @@ from cuopt_server.utils.http_envelope import make_response
 from cuopt_server.utils.linear_programming import conversion as lp_conversion
 from cuopt_server.utils.routing import conversion as routing_conversion
 
+_JSON_ACCEPT = {"Accept": mime_json}
+
 
 class _Uvicorn(uvicorn.Server):
     def install_signal_handlers(self):
@@ -568,10 +570,15 @@ def test_getsolution_caches_warmstart(proxy):
 
 
 def test_warmstart_missing_id_is_404(proxy):
+    import msgpack
+
     url, _ = proxy
     missing = str(uuid.uuid4())
     res = requests.get(url + f"/cuopt/solution/{missing}/warmstart")
     assert res.status_code == 404
+    assert msgpack.loads(res.content)["error"] == (
+        f"job {missing} does not exist"
+    )
     posted = requests.post(
         url + "/cuopt/request",
         headers={"CLIENT-VERSION": "custom"},
@@ -579,7 +586,13 @@ def test_warmstart_missing_id_is_404(proxy):
         json=_lp(),
     )
     assert posted.status_code == 404, posted.text
-    assert missing in posted.json()["error"]
+    assert posted.json()["error"] == f"job {missing} does not exist"
+
+    res = requests.get(url + "/cuopt/solution/not-a-uuid/warmstart")
+    assert res.status_code == 404
+    assert msgpack.loads(res.content)["error"] == (
+        "job not-a-uuid does not exist"
+    )
 
 
 def test_warmstart_while_running_returns_req_id(proxy):
@@ -1190,16 +1203,35 @@ def test_zlib_accept(proxy):
     assert decoded["response"]["solver_response"]["status"] == "Optimal"
 
 
-def test_unknown_id_is_404(proxy):
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/cuopt/request/{id}",
+        "/cuopt/solution/{id}",
+        "/cuopt/solution/{id}/incumbents",
+    ],
+)
+def test_unknown_job_is_404(proxy, path):
     url, _ = proxy
     missing = str(uuid.uuid4())
-    assert requests.get(url + f"/cuopt/request/{missing}").status_code == 404
-    assert requests.get(url + f"/cuopt/solution/{missing}").status_code == 404
+    res = requests.get(url + path.format(id=missing), headers=_JSON_ACCEPT)
+    assert res.status_code == 404
+    assert res.json()["error"] == f"job {missing} does not exist"
 
 
-def test_invalid_id_is_400(proxy):
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/cuopt/request/not-a-uuid",
+        "/cuopt/solution/not-a-uuid",
+        "/cuopt/solution/not-a-uuid/incumbents",
+    ],
+)
+def test_non_uuid_job_id_is_404(proxy, path):
     url, _ = proxy
-    assert requests.get(url + "/cuopt/request/not-a-uuid").status_code == 400
+    res = requests.get(url + path, headers=_JSON_ACCEPT)
+    assert res.status_code == 404
+    assert res.json()["error"] == "job not-a-uuid does not exist"
 
 
 @pytest.mark.parametrize("status", ["FAILED", "CANCELLED"])
