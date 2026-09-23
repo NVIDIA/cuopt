@@ -32,9 +32,15 @@ class structural_heuristic_t {
     return false;
   }
 
+  // `time_limit` is in seconds and may be infinite, in which case only `preemption` bounds the run.
   virtual bool solve(const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances,
+                     f_t time_limit,
                      std::atomic<bool>& preemption,
                      std::vector<f_t>& assignment) = 0;
+
+  // An exclusive heuristic owns the solve outright instead of running beside it: the caller hands
+  // it the whole budget and skips presolve, the primal heuristics and branch and bound.
+  virtual bool exclusive() const { return false; }
 };
 
 template <typename i_t, typename f_t>
@@ -49,16 +55,17 @@ class early_structural_t : public early_heuristic_t<i_t, f_t, early_structural_t
 
   static constexpr const char* name() { return "Structural"; }
 
-  void start();
+  bool exclusive() const { return active_ && active_->exclusive(); }
+
+  void run_async();
   void stop();
+  void run_sync(f_t time_limit);
 
  private:
   early_structural_t(const optimization_problem_t<i_t, f_t>& op_problem,
                      const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances,
                      early_incumbent_callback_t<f_t> incumbent_callback,
                      std::unique_ptr<structural_heuristic_t<i_t, f_t>> active);
-
-  void run();
 
   bool preprocessing_is_identity() const;
 
