@@ -14,6 +14,9 @@ export CMAKE_GENERATOR=Ninja
 
 rapids-print-env
 
+rapids-logger "Verify gRPC codegen output matches committed files"
+./ci/verify_grpc_codegen.sh
+
 rapids-logger "Begin cpp build"
 
 sccache --zero-stats
