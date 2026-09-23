@@ -2346,8 +2346,10 @@ int basis_update_mpf_t<i_t, f_t>::refactor_basis(
   f_t start_time,
   std::vector<i_t>& basic_list,
   std::vector<i_t>& nonbasic_list,
-  std::vector<variable_status_t>& vstatus)
+  std::vector<variable_status_t>& vstatus,
+  i_t& deficient_repaired)
 {
+  deficient_repaired = 0;
   raft::common::nvtx::range scope("LU::refactor_basis");
   std::vector<i_t> deficient;
   std::vector<i_t> slacks_needed;
@@ -2374,6 +2376,7 @@ int basis_update_mpf_t<i_t, f_t>::refactor_basis(
   if (status == TIME_LIMIT_RETURN) { return TIME_LIMIT_RETURN; }
   if (status == -1) {
     settings.log.debug("Initial factorization failed\n");
+    deficient_repaired = static_cast<i_t>(deficient.size());
     basis_repair(A,
                  settings,
                  lower,
