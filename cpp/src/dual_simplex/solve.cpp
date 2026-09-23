@@ -117,11 +117,11 @@ void write_matlab(const std::string& filename, const simplex::lp_problem_t<i_t, 
 
 // Stationarity residual A^T y + z - c - Q x, including a quadratic objective.
 template <typename i_t, typename f_t>
-void compute_stationarity_residual(const lp_problem_t<i_t, f_t>& lp,
-                                   const std::vector<f_t>& x,
-                                   const std::vector<f_t>& y,
-                                   const std::vector<f_t>& z,
-                                   std::vector<f_t>& residual)
+void compute_dual_residual(const lp_problem_t<i_t, f_t>& lp,
+                           const std::vector<f_t>& x,
+                           const std::vector<f_t>& y,
+                           const std::vector<f_t>& z,
+                           std::vector<f_t>& residual)
 {
   residual = z;
   for (i_t j = 0; j < lp.num_cols; ++j) {
@@ -604,7 +604,7 @@ lp_status_t solve_linear_program_with_barrier(
                           primal_residual,
                           primal_residual / (1.0 + vector_norm_inf<i_t, f_t>(presolved_lp.rhs)));
       std::vector<f_t> unscaled_dual_residual;
-      compute_stationarity_residual(
+      compute_dual_residual(
         presolved_lp, unscaled_x, unscaled_y, unscaled_z, unscaled_dual_residual);
       f_t unscaled_dual_residual_norm = vector_norm_inf<i_t, f_t>(unscaled_dual_residual);
       settings.log.printf(
@@ -634,7 +634,7 @@ lp_status_t solve_linear_program_with_barrier(
         post_solve_primal_residual / (1.0 + vector_norm_inf<i_t, f_t>(original_lp.rhs)));
 
       std::vector<f_t> post_solve_dual_residual;
-      compute_stationarity_residual(
+      compute_dual_residual(
         original_lp, lp_solution.x, lp_solution.y, lp_solution.z, post_solve_dual_residual);
       f_t post_solve_dual_residual_norm = vector_norm_inf<i_t, f_t>(post_solve_dual_residual);
       settings.log.printf(
