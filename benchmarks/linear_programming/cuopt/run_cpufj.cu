@@ -222,15 +222,15 @@ int main(int argc, char** argv)
     return 2;
   }
 
-  const std::string path        = program.get<std::string>("instance");
-  const f_t time_limit          = program.get<double>("time_limit");
-  const int n_climbers          = program.get<int>("climbers");
-  const unsigned base_seed      = program.get<unsigned>("seed");
-  const bool no_related_vars    = program.get<bool>("--no-related-vars");
-  const std::string sol_dir     = program.get<std::string>("--sol-dir");
-  const bool low_latency        = program.get<bool>("--low-latency");
-  const bool run_probing        = program.get<bool>("--probing");
-  const double probing_time     = program.get<double>("--probing-time-limit");
+  const std::string path     = program.get<std::string>("instance");
+  const f_t time_limit       = program.get<double>("time_limit");
+  const int n_climbers       = program.get<int>("climbers");
+  const unsigned base_seed   = program.get<unsigned>("seed");
+  const bool no_related_vars = program.get<bool>("--no-related-vars");
+  const std::string sol_dir  = program.get<std::string>("--sol-dir");
+  const bool low_latency     = program.get<bool>("--low-latency");
+  const bool run_probing     = program.get<bool>("--probing");
+  const double probing_time  = program.get<double>("--probing-time-limit");
 
   // Console sink so the engine's end-of-solve incumbent audit is visible, as solve_MIP does it.
   cuopt::init_logger_t log_guard("", true);
