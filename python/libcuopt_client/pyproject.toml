@@ -67,7 +67,7 @@ regex = "(?P<value>.*)"
 [tool.rapids-build-backend]
 build-backend = "scikit_build_core.build"
 dependencies-file = "../../dependencies.yaml"
-# The client links no CUDA and no rmm (#1890), so the wheel is unsuffixed.
+# The client links no CUDA and no rmm, so the wheel name carries no CUDA suffix.
 disable-cuda = true
 matrix-entry = "cuda_suffixed=false;use_cuda_wheels=false"
 requires = [

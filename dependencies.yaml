@@ -175,7 +175,7 @@ files:
       - build_common
       - depends_on_librmm
       - depends_on_rapids_logger
-  # No CUDA dimension and no rmm: the client links neither (#1890).
+  # The client links no CUDA and no rmm, so rapids-logger is its only runtime dependency.
   py_run_libcuopt_client:
     output: pyproject
     pyproject_dir: python/libcuopt_client
@@ -601,7 +601,7 @@ dependencies:
       - output_types: [requirements, pyproject]
         packages:
           - cuopt-cu13==26.10.*,>=0.0.0a0
-  # Unsuffixed: there is one libcuopt-client, not a -cu12 and a -cu13.
+  # One unsuffixed libcuopt-client, for every CUDA version and every output type.
   depends_on_libcuopt_client:
     common:
       - output_types: [conda, requirements, pyproject]
