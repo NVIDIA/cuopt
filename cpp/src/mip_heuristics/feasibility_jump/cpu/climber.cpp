@@ -167,6 +167,12 @@ static void initialize_climber_state(
   fj_cpu.h_initial_right_weights.resize(n_constraints, f_t{1});
   fj_cpu.max_weight         = f_t{1};
   fj_cpu.h_objective_weight = f_t{0};
+  cuopt_assert(assignment.size() == (size_t)n_variables, "start assignment size mismatch");
+  cuopt_assert(problem.h_var_types.size() == (size_t)n_variables, "variable type count mismatch");
+  for (i_t var = 0; var < n_variables; ++var) {
+    if (problem.h_var_types[var] == var_t::INTEGER && problem.is_integer(assignment[var]))
+      assignment[var] = std::round(assignment[var]);
+  }
   fj_cpu.h_assignment       = assignment;
   fj_cpu.h_best_assignment  = std::move(assignment);
   fj_cpu.h_lhs.resize(n_constraints);
