@@ -124,6 +124,7 @@ struct substitution_matrix_t {
   std::vector<i_t> col_len;
   std::vector<i_t> col_cap;
   std::vector<i_t> scatter;  // column -> offset within the resident row, -1 when absent
+  std::vector<f_t> row_max;  // inf-norm of each row, kept up to date on insert/erase/set
   i_t scattered = -1;
   // Arena high-water marks. A line that outgrows its slot is relocated to the tail with
   // twice the capacity, so appends are amortized O(1); the holes left behind are reclaimed
@@ -185,11 +186,37 @@ struct substitution_matrix_t {
     }
 
     scatter.assign(num_cols, -1);
+    row_max.assign(num_rows, 0);
+    for (i_t i = 0; i < num_rows; ++i) {
+      recompute_row_max(i);
+    }
   }
 
   i_t column(i_t i, i_t offset) const { return row_col[row_start[i] + offset]; }
   f_t value(i_t i, i_t offset) const { return row_val[row_start[i] + offset]; }
-  void set_value(i_t i, i_t offset, f_t value) { row_val[row_start[i] + offset] = value; }
+
+  void recompute_row_max(i_t i)
+  {
+    f_t max_abs = 0;
+    const i_t start = row_start[i];
+    for (i_t k = 0; k < row_len[i]; ++k) {
+      max_abs = std::max(max_abs, std::abs(row_val[start + k]));
+    }
+    row_max[i] = max_abs;
+  }
+
+  void set_value(i_t i, i_t offset, f_t value)
+  {
+    f_t& slot           = row_val[row_start[i] + offset];
+    const f_t old_abs   = std::abs(slot);
+    slot                = value;
+    const f_t new_abs   = std::abs(value);
+    if (new_abs >= row_max[i]) {
+      row_max[i] = new_abs;
+    } else if (old_abs == row_max[i]) {
+      recompute_row_max(i);
+    }
+  }
 
   void unload()
   {
@@ -235,6 +262,7 @@ struct substitution_matrix_t {
   {
     const i_t start                  = row_start[i];
     const i_t last                   = row_len[i] - 1;
+    const f_t old_abs                = std::abs(row_val[start + offset]);
     scatter[row_col[start + offset]] = -1;
     if (offset != last) {
       row_col[start + offset]          = row_col[start + last];
@@ -242,6 +270,7 @@ struct substitution_matrix_t {
       scatter[row_col[start + offset]] = offset;
     }
     row_len[i] = last;
+    if (old_abs == row_max[i]) { recompute_row_max(i); }
   }
 
   void insert(i_t i, i_t col, f_t value)
@@ -252,6 +281,7 @@ struct substitution_matrix_t {
     row_val[row_start[i] + offset] = value;
     scatter[col]                   = offset;
     row_len[i]                     = offset + 1;
+    row_max[i]                     = std::max(row_max[i], std::abs(value));
     reserve_col(col);
     col_row[col_start[col] + col_len[col]] = i;
     ++col_len[col];
@@ -432,32 +462,22 @@ static i_t eliminate_free_variables(lp_problem_t<i_t, f_t>& problem,
     // by that factor, which the barrier's KKT solve cannot recover from. The column test bounds
     // the multiplier, the row test bounds the coefficients the pivot row scatters. At tolerance
     // 1 the pivot is the largest entry of both its row and its column, so no coefficient grows.
-    // Walk incident rows by increasing length (as in the LU degree walk) so a chain peels from
-    // a sparse end instead of aggregating into a dense row.
+    // Among those, pick the shortest row so a chain peels from a sparse end.
     f_t column_max = 0;
-    i_t min_len    = std::numeric_limits<i_t>::max();
-    i_t max_len    = 0;
-    for (size_t slot = 0; slot < incident.size(); ++slot) {
-      column_max    = std::max(column_max, std::abs(incident_value[slot]));
-      const i_t len = matrix.row_len[incident[slot]];
-      min_len       = std::min(min_len, len);
-      max_len       = std::max(max_len, len);
+    for (const f_t value : incident_value) {
+      column_max = std::max(column_max, std::abs(value));
     }
     i_t pivot_slot = -1;
-    for (i_t len = min_len; len <= max_len && pivot_slot == -1; ++len) {
-      for (size_t slot = 0; slot < incident.size(); ++slot) {
-        if (matrix.row_len[incident[slot]] != len) { continue; }
-        const f_t a_ij = std::abs(incident_value[slot]);
-        if (a_ij < col_pivot_tol * column_max) { continue; }
-        const i_t row = incident[slot];
-        f_t row_max   = 0;
-        for (i_t k = 0; k < matrix.row_len[row]; ++k) {
-          if (matrix.column(row, k) == j) { continue; }
-          row_max = std::max(row_max, std::abs(matrix.value(row, k)));
-        }
-        if (a_ij < row_pivot_tol * row_max) { continue; }
+    i_t best_len   = std::numeric_limits<i_t>::max();
+    for (size_t slot = 0; slot < incident.size(); ++slot) {
+      const f_t a_ij = std::abs(incident_value[slot]);
+      if (a_ij < col_pivot_tol * column_max) { continue; }
+      const i_t row = incident[slot];
+      if (a_ij < row_pivot_tol * matrix.row_max[row]) { continue; }
+      const i_t len = matrix.row_len[row];
+      if (len < best_len) {
+        best_len   = len;
         pivot_slot = static_cast<i_t>(slot);
-        break;
       }
     }
     // No stable pivot: leave the column as a free variable handled directly in the KKT system.
