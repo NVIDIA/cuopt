@@ -92,6 +92,48 @@ jobs:
       container_image: "rapidsai/ci-conda:26.10-latest"
       script: "ci/test_java.sh"
 
+  # Recomputes the same matrix java-static-build (build.yaml) used; the two are separate
+  # workflow runs, so this can't just read build.yaml's matrix job output.
+  java-static-build-matrix:
+    permissions:
+      contents: read
+    uses: rapidsai/shared-workflows/.github/workflows/compute-matrix.yaml@main
+    with:
+      build_type: ${{ inputs.build_type }}
+      matrix_name: conda-cpp-build
+      matrix_filter: 'map(. + {CUDA_MAJOR: (.CUDA_VER | split(".") | .[0])}) | unique_by([.ARCH, .CUDA_MAJOR])'
+
+  # Runs the full Java suite against each classifier JAR build.yaml's java-static-build produced,
+  # on a GPU, with no libcuopt installed, so a JAR that loads but computes wrong answers fails
+  # here rather than at a user. Downloads those classifier JARs by artifact name (rapids-download-
+  # from-github, inside ci/test_java_static.sh) rather than through 'needs', since build.yaml
+  # dispatches this as a separate workflow run only after java-static-build has already uploaded
+  # them.
+  java-static-test:
+    needs: [java-static-build-matrix]
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    secrets: inherit # zizmor: ignore[secrets-inherit]
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.java-static-build-matrix.outputs.matrix) }}
+    with:
+      build_type: ${{ inputs.build_type }}
+      branch: ${{ inputs.branch }}
+      date: ${{ inputs.date }}
+      sha: ${{ inputs.sha }}
+      node_type: "gpu-l4-latest-1"
+      arch: ${{ matrix.ARCH }}
+      # A plain CUDA-devel + dnf environment rather than rapidsai/ci-conda: see the matching
+      # comment in pr.yaml.
+      container_image: "rapidsai/ci-wheel:26.10-cuda${{ matrix.CUDA_VER }}-${{ matrix.LINUX_VER }}-py${{ matrix.PY_VER }}"
+      script: "ci/test_java_static.sh"
+
   wheel-tests-cuopt:
     permissions:
       actions: read
@@ -177,6 +219,7 @@ jobs:
       - conda-cpp-tests
       - conda-python-tests
       - conda-java-tests
+      - java-static-test
       - wheel-tests-cuopt
       - wheel-tests-cuopt-server
       - conda-notebook-tests

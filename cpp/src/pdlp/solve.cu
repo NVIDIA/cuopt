@@ -8,6 +8,7 @@
 #include <cuopt/error.hpp>
 #include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/solve_remote.hpp>
+
 #include <pdlp/cusparse_view.hpp>
 #include <pdlp/optimal_batch_size_handler/optimal_batch_size_handler.hpp>
 #include <pdlp/pdlp.cuh>
@@ -1559,6 +1560,9 @@ void run_dual_simplex_thread(
     run_dual_simplex(problem, settings, timer));
 }
 
+/**
+ * @brief Solve an LP problem using concurrent solvers (PDLP, dual simplex, barrier).
+ */
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> run_concurrent(
   mip::problem_t<i_t, f_t>& problem,
@@ -1581,11 +1585,15 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   // Make sure allocations are done on the original stream
   problem.handle_ptr->sync_stream();
 
-  // Stand-alone LP always runs all three concurrently. MIP gates the barrier so we don't
-  // overshoot num_cpu_threads (need 1 PDLP + 1 dual simplex + 1 barrier).
+  // Keep the concurrent solver thread count correct when CPU solvers are skipped.
+  const auto num_nonzeros     = problem.coefficients.size();
   const int available_threads = omp_in_parallel() ? omp_get_num_threads() : omp_get_max_threads();
-  const bool enable_barrier =
-    !settings.inside_mip || available_threads >= CUOPT_CONCURRENT_LP_BARRIER_REQUIRED_THREAD_COUNT;
+  const bool skip_cpu_solvers =
+    pdlp::should_skip_concurrent_cpu_solvers(num_nonzeros, settings.concurrent_nnz_cutoff);
+  const bool enable_barrier = pdlp::should_enable_concurrent_barrier(
+    num_nonzeros, settings.concurrent_nnz_cutoff, settings.inside_mip, available_threads);
+  const bool enable_dual_simplex = pdlp::should_enable_concurrent_dual_simplex(
+    num_nonzeros, settings.concurrent_nnz_cutoff, settings.inside_mip);
 
   if (settings.num_gpus > 1) {
     int device_count = raft::device_setter::get_device_count();
@@ -1597,11 +1605,13 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
       device_count > 1, error_type_t::RuntimeError, "Multi-GPU mode requires at least 2 GPUs");
   }
 
-  // Initialize the dual simplex structures before we run PDLP.
-  // Otherwise, CUDA API calls to the problem stream may occur in both threads and throw graph
-  // capture off
-  simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
-    cuopt_problem_to_user_problem<i_t, f_t>(problem.handle_ptr, problem, false);
+  // Initialize the shared CPU solver structures before we run PDLP. Otherwise, CUDA API calls to
+  // the problem stream may occur in multiple threads and throw graph capture off.
+  std::unique_ptr<simplex::user_problem_t<i_t, f_t>> concurrent_cpu_problem;
+  if (enable_barrier || enable_dual_simplex) {
+    concurrent_cpu_problem = std::make_unique<simplex::user_problem_t<i_t, f_t>>(
+      cuopt_problem_to_user_problem<i_t, f_t>(problem.handle_ptr, problem, false));
+  }
   // Dual simplex / barrier results — written by tasks, read after the taskgroup barrier.
   std::unique_ptr<std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t>>
     sol_dual_simplex_ptr;
@@ -1616,10 +1626,21 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   // library init is now recovered by manual_cuda_graph_t::run, so the previous main-thread
   // preflight (eager handle construction + cuDSS warmup) is no longer needed.
   std::unique_ptr<raft::handle_t> barrier_handle_ptr;
-  if (!enable_barrier) {
-    CUOPT_LOG_DEBUG("MIP: skipping concurrent barrier, %d threads available < %d required.",
+  if (skip_cpu_solvers) {
+    CUOPT_LOG_CONDITIONAL_INFO(
+      !settings.inside_mip,
+      "Skipping concurrent barrier and dual simplex: reduced problem has %zu nonzeros "
+      "(CONCURRENT_NNZ_CUTOFF: %d).",
+      num_nonzeros,
+      settings.concurrent_nnz_cutoff);
+    CUOPT_LOG_DEBUG(
+      "Skipping concurrent CPU solvers: reduced problem has %zu nonzeros (cutoff: %d).",
+      num_nonzeros,
+      settings.concurrent_nnz_cutoff);
+  } else if (!enable_barrier) {
+    CUOPT_LOG_DEBUG("MIP: skipping concurrent Barrier, %d threads available < %d required.",
                     available_threads,
-                    CUOPT_CONCURRENT_LP_BARRIER_REQUIRED_THREAD_COUNT);
+                    pdlp::concurrent_barrier_required_thread_count);
   }
 
   // Dispatch barrier + dual simplex as OMP tasks (not std::threads) so they consume slots from
@@ -1635,7 +1656,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   auto dispatch_concurrent_solvers = [&]() {
 #pragma omp taskgroup
     {
-      // Barrier task — always on for stand-alone LP, gated on enable_barrier for MIP.
+      // Barrier task — gated by the reduced-problem size and, for MIP, available CPU threads.
       if (enable_barrier) {
 #pragma omp task default(shared)
         {
@@ -1643,7 +1664,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
             auto call_barrier_thread = [&]() {
               cuda::stream_ref barrier_stream = cuda::stream_ref{cudaStreamPerThread};
               barrier_handle_ptr              = std::make_unique<raft::handle_t>(barrier_stream);
-              run_barrier_thread<i_t, f_t>(dual_simplex_problem,
+              run_barrier_thread<i_t, f_t>(*concurrent_cpu_problem,
                                            settings_pdlp,
                                            sol_barrier_ptr,
                                            timer,
@@ -1669,13 +1690,13 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
         }
       }
 
-      // Dual simplex task — skipped from MIP (B&B already drives it separately).
-      if (!settings.inside_mip) {
+      // Dual simplex task — skipped for large LPs and from MIP (B&B drives it separately).
+      if (enable_dual_simplex) {
 #pragma omp task default(shared)
         {
           try {
             run_dual_simplex_thread<i_t, f_t>(
-              dual_simplex_problem, settings_pdlp, sol_dual_simplex_ptr, timer);
+              *concurrent_cpu_problem, settings_pdlp, sol_dual_simplex_ptr, timer);
           } catch (const std::exception& e) {
             CUOPT_LOG_ERROR("Exception in concurrent dual simplex LP: %s", e.what());
             dual_simplex_exception = std::current_exception();
@@ -1713,7 +1734,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
     dispatch_concurrent_solvers();
   } else {
     // Stand-alone LP: stand up a local team sized for 1 dispatcher + 1 per spawned task.
-    const int num_workers = 1 + (settings.inside_mip ? 0 : 1) + (enable_barrier ? 1 : 0);
+    const int num_workers = 1 + (enable_dual_simplex ? 1 : 0) + (enable_barrier ? 1 : 0);
 #pragma omp parallel num_threads(num_workers) default(shared)
     {
 #pragma omp single
@@ -1731,16 +1752,18 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   if (dual_simplex_exception) { std::rethrow_exception(dual_simplex_exception); }
   if (barrier_exception) { std::rethrow_exception(barrier_exception); }
 
-  // Both CPU solvers have joined, so release their shared host model before converting outputs.
-  dual_simplex_problem = simplex::user_problem_t<i_t, f_t>(problem.handle_ptr);
+  // The CPU solver tasks have joined, so release their shared host model before converting outputs.
+  concurrent_cpu_problem.reset();
 
   f_t end_time = timer.elapsed_time();
   CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "Concurrent time: %.3fs", end_time);
 
-  const auto dual_simplex_status = !settings.inside_mip ? std::get<1>(*sol_dual_simplex_ptr)
-                                                        : simplex::lp_status_t::CONCURRENT_LIMIT;
-  const auto barrier_status =
-    enable_barrier ? std::get<1>(*sol_barrier_ptr) : simplex::lp_status_t::CONCURRENT_LIMIT;
+  const auto dual_simplex_status = (enable_dual_simplex && sol_dual_simplex_ptr != nullptr)
+                                     ? std::get<1>(*sol_dual_simplex_ptr)
+                                     : simplex::lp_status_t::CONCURRENT_LIMIT;
+  const auto barrier_status      = (enable_barrier && sol_barrier_ptr != nullptr)
+                                     ? std::get<1>(*sol_barrier_ptr)
+                                     : simplex::lp_status_t::CONCURRENT_LIMIT;
   const bool dual_simplex_solved = dual_simplex_status == simplex::lp_status_t::OPTIMAL ||
                                    dual_simplex_status == simplex::lp_status_t::INFEASIBLE ||
                                    dual_simplex_status == simplex::lp_status_t::UNBOUNDED;
@@ -1815,7 +1838,8 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
     CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "Solved with PDLP");
     return sol_pdlp;
   } else if (!settings.inside_mip &&
-             sol_pdlp.get_termination_status() == pdlp_termination_status_t::ConcurrentLimit) {
+             sol_pdlp.get_termination_status() == pdlp_termination_status_t::ConcurrentLimit &&
+             sol_dual_simplex_ptr != nullptr) {
     sol_barrier_ptr.reset();
     auto& dual_simplex_solution = std::get<0>(*sol_dual_simplex_ptr);
     auto sol_dual_simplex       = convert_dual_simplex_sol(problem,
@@ -2776,7 +2800,6 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
                 "problem_interface cannot be null");
 
   // Check if remote execution is enabled (always uses CPU backend)
-#ifdef CUOPT_ENABLE_GRPC
   if (is_remote_execution_enabled()) {
     cuopt_expects(!is_batch_mode,
                   error_type_t::ValidationError,
@@ -2786,13 +2809,13 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
     cuopt_expects(cpu_prob != nullptr,
                   error_type_t::ValidationError,
                   "Remote execution requires CPU memory backend");
+#ifdef CUOPT_ENABLE_GRPC
     return solve_lp_remote(*cpu_prob, settings);
-  }
 #else
-  cuopt_expects(!is_remote_execution_enabled(),
-                error_type_t::ValidationError,
-                "Remote execution was requested, but this build was compiled without gRPC support");
+    cuopt_expects(
+      false, error_type_t::RuntimeError, "Remote execution requires cuOpt built with gRPC support");
 #endif
+  }
 
   // Local execution - dispatch to appropriate overload based on problem type
   auto* cpu_prob = dynamic_cast<cpu_optimization_problem_t<i_t, f_t>*>(problem_interface);

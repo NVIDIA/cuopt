@@ -264,6 +264,8 @@ For build/test pitfalls (Cython rebuild, OOM, CUDA driver mismatch, missing `nvc
 | Conda environments | `conda/environments/` |
 | Test data | `datasets/` |
 | CI scripts | `ci/` |
+| gRPC field registry | `cpp/src/grpc/codegen/field_registry.yaml` |
+| gRPC generated output | `cpp/src/grpc/codegen/generated/` (never hand-edit) |
 
 ## Canonical Documentation
 

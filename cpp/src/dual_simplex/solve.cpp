@@ -274,7 +274,7 @@ lp_status_t solve_linear_program_with_advanced_basis(
                                 edge_norms,
                                 work_unit_context);
   }
-  if (phase1_status == dual_status_t::NUMERICAL) {
+  if (phase1_status == dual_status_t::NUMERICAL || phase1_status == dual_status_t::CUTOFF) {
     settings.log.printf("Failed in Phase 1\n");
     return lp_status_t::NUMERICAL_ISSUES;
   }
@@ -508,8 +508,20 @@ lp_status_t solve_linear_program_with_barrier(
     cache->store_transform(std::move(xf));
   }
 
-  barrier::barrier_solver_t<i_t, f_t> barrier_solver(*solver_lp, presolve_info, barrier_settings);
-  lp_status_t barrier_status = barrier_solver.solve(start_time, barrier_solution, cache);
+  lp_status_t barrier_status;
+  if (solver_lp->num_cols == 0) {
+    // Presolve solved the problem, no need to run barrier
+    settings.log.printf("Presolve solved the problem, skipping barrier\n");
+    barrier_solution.user_objective = compute_user_objective(*solver_lp, static_cast<f_t>(0.0));
+    // There is no iterate to measure, and presolve determined every variable exactly, so the
+    // residuals are zero rather than the NaN lp_solution_t starts them at.
+    barrier_solution.l2_primal_residual = 0.0;
+    barrier_solution.l2_dual_residual   = 0.0;
+    barrier_status                      = lp_status_t::OPTIMAL;
+  } else {
+    barrier::barrier_solver_t<i_t, f_t> barrier_solver(*solver_lp, presolve_info, barrier_settings);
+    barrier_status = barrier_solver.solve(start_time, barrier_solution, cache);
+  }
 
   if (cache != nullptr) {
     if (barrier_status == lp_status_t::OPTIMAL) {

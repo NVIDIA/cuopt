@@ -416,6 +416,11 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
     problem_checking_t<i_t, f_t>::check_problem_representation(op_problem);
     problem_checking_t<i_t, f_t>::check_initial_solution_representation(op_problem, settings);
 
+    if (!settings.initial_solutions.empty()) {
+      CUOPT_LOG_INFO("Using %zu user-provided initial MIP solution(s)",
+                     settings.initial_solutions.size());
+    }
+
     CUOPT_LOG_INFO(
       "Solving a problem with %d constraints, %d variables (%d integers), and %d nonzeros",
       op_problem.get_n_constraints(),
@@ -1039,20 +1044,19 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip(
 
   try {
     // Check if remote execution is enabled (always uses CPU backend)
-#ifdef CUOPT_ENABLE_GRPC
     if (is_remote_execution_enabled()) {
       auto* cpu_prob = dynamic_cast<cpu_optimization_problem_t<i_t, f_t>*>(problem_interface);
       cuopt_expects(cpu_prob != nullptr,
                     error_type_t::ValidationError,
                     "Remote execution requires CPU memory backend");
+#ifdef CUOPT_ENABLE_GRPC
       return solve_mip_remote(*cpu_prob, settings);
-    }
 #else
-    cuopt_expects(
-      !is_remote_execution_enabled(),
-      error_type_t::ValidationError,
-      "Remote execution was requested, but this build was compiled without gRPC support");
+      cuopt_expects(false,
+                    error_type_t::RuntimeError,
+                    "Remote execution requires cuOpt built with gRPC support");
 #endif
+    }
 
     // Local execution - dispatch to appropriate overload based on problem type
     auto* cpu_prob = dynamic_cast<cpu_optimization_problem_t<i_t, f_t>*>(problem_interface);
