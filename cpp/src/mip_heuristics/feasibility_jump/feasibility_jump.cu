@@ -15,9 +15,9 @@
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/utils.cuh>
 #include <utilities/device_scalar_init.hpp>
-#include <utilities/seed_generator.cuh>
 #include <utilities/timer.hpp>
 
+#include <cuda/stream>
 #include <raft/linalg/eltwise.cuh>
 #include <raft/linalg/reduce.cuh>
 #include <raft/random/rng.cuh>
@@ -43,8 +43,12 @@ static constexpr int iterations_per_graph = 50;
 #endif
 
 template <typename i_t, typename f_t>
-fj_t<i_t, f_t>::fj_t(mip_solver_context_t<i_t, f_t>& context_, fj_settings_t in_settings)
-  : context(context_),
+fj_t<i_t, f_t>::fj_t(mip_solver_context_t<i_t, f_t>& context_,
+                     fj_settings_t in_settings,
+                     rng_id_t seed_component_id)
+  : rng(derive_seed(context_.base_seed, seed_component_id),
+        derive_stream(context_.base_seed, seed_component_id)),
+    context(context_),
     pb_ptr(context.problem_ptr),
     handle_ptr(const_cast<raft::handle_t*>(pb_ptr->handle_ptr)),
     settings(in_settings),
@@ -119,7 +123,7 @@ fj_t<i_t, f_t>::~fj_t()
 }
 
 template <typename i_t, typename f_t>
-void fj_t<i_t, f_t>::reset_weights(const rmm::cuda_stream_view& climber_stream, f_t weight)
+void fj_t<i_t, f_t>::reset_weights(cuda::stream_ref climber_stream, f_t weight)
 {
   // unless reset explicitly, the values are kept across runs and across climbers
   max_cstr_weight.set_value_async(weight, climber_stream);
@@ -135,12 +139,12 @@ void fj_t<i_t, f_t>::reset_weights(const rmm::cuda_stream_view& climber_stream, 
 template <typename i_t, typename f_t>
 void fj_t<i_t, f_t>::randomize_weights(const raft::handle_t* handle_ptr)
 {
-  std::mt19937 rng(cuopt::seed_generator::get_seed());
+  cuopt::pcgenerator_t host_rng(rng.next_i64());
   constexpr f_t min_weight = 10.;
   constexpr f_t max_weight = 30.;
   // generate a range of weights between 10. and 30.
   auto h_cstr_vec =
-    get_random_uniform_vector<i_t, f_t>(cstr_weights.size(), rng, min_weight, max_weight);
+    get_random_uniform_vector<i_t, f_t>(cstr_weights.size(), host_rng, min_weight, max_weight);
   f_t h_max_weight = *std::max_element(h_cstr_vec.begin(), h_cstr_vec.end());
   max_cstr_weight.set_value_async(h_max_weight, handle_ptr->get_stream());
   raft::copy(cstr_weights.data(), h_cstr_vec.data(), h_cstr_vec.size(), handle_ptr->get_stream());
@@ -277,7 +281,7 @@ void fj_t<i_t, f_t>::copy_weights(const weight_t<i_t, f_t>& weights,
 }
 
 template <typename i_t, typename f_t>
-void fj_t<i_t, f_t>::climber_data_t::clear_sets(const rmm::cuda_stream_view& stream)
+void fj_t<i_t, f_t>::climber_data_t::clear_sets(cuda::stream_ref stream)
 {
   violated_constraints.clear(stream);
   candidate_variables.clear(stream);
@@ -286,7 +290,7 @@ void fj_t<i_t, f_t>::climber_data_t::clear_sets(const rmm::cuda_stream_view& str
 }
 
 template <typename i_t, typename f_t>
-void fj_t<i_t, f_t>::device_init(const rmm::cuda_stream_view& stream)
+void fj_t<i_t, f_t>::device_init(cuda::stream_ref stream)
 {
   thrust::for_each(rmm::exec_policy(stream),
                    thrust::counting_iterator<i_t>(0),
@@ -314,7 +318,7 @@ void fj_t<i_t, f_t>::climber_init(i_t climber_idx)
 }
 
 template <typename i_t, typename f_t>
-void fj_t<i_t, f_t>::climber_init(i_t climber_idx, const rmm::cuda_stream_view& climber_stream)
+void fj_t<i_t, f_t>::climber_init(i_t climber_idx, cuda::stream_ref climber_stream)
 {
   raft::common::nvtx::range scope("climber_init");
 
@@ -452,7 +456,7 @@ void fj_t<i_t, f_t>::climber_init(i_t climber_idx, const rmm::cuda_stream_view& 
     f_t excess = climber->violation_score.value(climber_stream);
     climber->best_excess.set_value_async(excess, climber_stream);
   }
-  climber_stream.synchronize();
+  climber_stream.sync();
 
   climber->break_condition.set_value_to_zero_async(climber_stream);
   climber->temp_break_condition.set_value_to_zero_async(climber_stream);
@@ -468,9 +472,9 @@ void fj_t<i_t, f_t>::climber_init(i_t climber_idx, const rmm::cuda_stream_view& 
   climber->iterations_until_feasible_counter.set_value_to_zero_async(climber_stream);
   climber->small_move_tabu.set_value_to_zero_async(climber_stream);
 
-  climber_stream.synchronize();
+  climber_stream.sync();
 
-  climber_stream.synchronize();
+  climber_stream.sync();
 
   view = climber->view();
 
@@ -496,7 +500,7 @@ void fj_t<i_t, f_t>::climber_init(i_t climber_idx, const rmm::cuda_stream_view& 
                                   row_size_it_bin,
                                   row_size_bin_prefix_sum.data(),
                                   pb_ptr->binary_indices.size(),
-                                  climber_stream);
+                                  climber_stream.get());
     if (i == 0 && temp_storage_bytes > climber->cub_storage_bytes.size())
       climber->cub_storage_bytes.resize(temp_storage_bytes, climber_stream);
   }
@@ -507,7 +511,7 @@ void fj_t<i_t, f_t>::climber_init(i_t climber_idx, const rmm::cuda_stream_view& 
                                   row_size_it_nonbin,
                                   row_size_nonbin_prefix_sum.data(),
                                   pb_ptr->nonbinary_indices.size(),
-                                  climber_stream);
+                                  climber_stream.get());
     if (i == 0 && temp_storage_bytes > climber->cub_storage_bytes.size())
       climber->cub_storage_bytes.resize(temp_storage_bytes, climber_stream);
   }
@@ -530,7 +534,7 @@ void fj_t<i_t, f_t>::climber_init(i_t climber_idx, const rmm::cuda_stream_view& 
                                       pb_ptr->n_variables,
                                       pb_ptr->related_variables_offsets.begin(),
                                       pb_ptr->related_variables_offsets.begin() + 1,
-                                      climber_stream);
+                                      climber_stream.get());
       if (i == 0 && temp_storage_bytes > climber->cub_storage_bytes.size())
         climber->cub_storage_bytes.resize(temp_storage_bytes, climber_stream);
     }
@@ -600,8 +604,7 @@ void fj_t<i_t, f_t>::run_step_device(i_t climber_idx, bool use_graph)
 
 // TODO: switch to conditional graph nodes once we switch to CTK >= 12.4
 template <typename i_t, typename f_t>
-void fj_t<i_t, f_t>::load_balancing_score_update(const rmm::cuda_stream_view& stream,
-                                                 i_t climber_idx)
+void fj_t<i_t, f_t>::load_balancing_score_update(cuda::stream_ref stream, i_t climber_idx)
 {
   auto [grid_load_balancing_prepare, blocks_load_balancing_prepare] =
     load_balancing_prepare_launch_dims;
@@ -657,7 +660,7 @@ void fj_t<i_t, f_t>::load_balancing_score_update(const rmm::cuda_stream_view& st
 }
 
 template <typename i_t, typename f_t>
-void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream,
+void fj_t<i_t, f_t>::run_step_device(cuda::stream_ref climber_stream,
                                      i_t climber_idx,
                                      bool use_graph)
 {
@@ -672,7 +675,7 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
 
   auto& data    = *climbers[climber_idx];
   auto v        = data.view();
-  settings.seed = cuopt::seed_generator::get_seed();
+  settings.seed = rng.next_i64();
   // ensure an updated copy of the settings is used device-side
   raft::copy(v.settings, &settings, 1, climber_stream);
 
@@ -720,7 +723,7 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
                                data.candidate_variables.contents.data(),
                                data.candidate_variables.set_size.data(),
                                pb_ptr->n_variables,
-                               climber_stream);
+                               climber_stream.get());
     if (compaction_temp_storage_bytes > data.cub_storage_bytes.size()) {
       data.cub_storage_bytes.resize(compaction_temp_storage_bytes, climber_stream);
     }
@@ -768,7 +771,7 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
                                  data.candidate_variables.contents.data(),
                                  data.candidate_variables.set_size.data(),
                                  pb_ptr->n_variables,
-                                 climber_stream);
+                                 climber_stream.get());
 
       launch_select_variable_kernel<i_t, f_t>(dim3(1), dim3(256), kernel_args, climber_stream);
 
@@ -801,14 +804,14 @@ void fj_t<i_t, f_t>::round_remaining_fractionals(solution_t<i_t, f_t>& solution,
   data.handle_fractionals_only.set_value_async(handle_fractionals_only, climber_stream);
   data.break_condition.set_value_to_zero_async(climber_stream);
   data.temp_break_condition.set_value_to_zero_async(climber_stream);
-  climber_stream.synchronize();
+  climber_stream.sync();
 
   //  Run the fractional move selection and assignment update kernels until all have been rounded
   host_loop(solution, climber_idx);
 }
 
 template <typename i_t, typename f_t>
-void fj_t<i_t, f_t>::refresh_lhs_and_violation(const rmm::cuda_stream_view& stream, i_t climber_idx)
+void fj_t<i_t, f_t>::refresh_lhs_and_violation(cuda::stream_ref stream, i_t climber_idx)
 {
   auto& data = *climbers[climber_idx];
   auto v     = data.view();
@@ -906,7 +909,7 @@ i_t fj_t<i_t, f_t>::host_loop(solution_t<i_t, f_t>& solution, i_t climber_idx)
                  data.best_assignment.data(),
                  data.best_assignment.size(),
                  climber_stream);
-      climber_stream.synchronize();
+      climber_stream.sync();
       // this solution cost computation with the changing(or not changing) weights is needed to
       // decide whether we reset the best objective on the FIRST_FEASIBLE mode. once we get rid of
       // FIRST_FEASIBLE mode, we can remove the following too.
@@ -924,7 +927,7 @@ i_t fj_t<i_t, f_t>::host_loop(solution_t<i_t, f_t>& solution, i_t climber_idx)
                      solution.assignment.data(),
                      solution.assignment.size(),
                      climber_stream);
-          climber_stream.synchronize();
+          climber_stream.sync();
           improvement_callback(user_obj, h_assignment);
         }
       }
@@ -946,7 +949,7 @@ i_t fj_t<i_t, f_t>::host_loop(solution_t<i_t, f_t>& solution, i_t climber_idx)
       }
     }
   }
-#if CUOPT_LOG_ACTIVE_LEVEL == CUOPT_LOG_LEVEL_TRACE
+#if CUOPT_LOG_ACTIVE_LEVEL == RAPIDS_LOGGER_LOG_LEVEL_TRACE
   auto h_sol = cuopt::host_copy(solution.assignment, climber_stream);
   static std::set<std::vector<f_t>> solutions_set;
   bool same_sol = solutions_set.count(h_sol) > 0;
@@ -1107,11 +1110,11 @@ i_t fj_t<i_t, f_t>::solve(solution_t<i_t, f_t>& solution)
   }
 
   climber_init(0);
-  RAFT_CHECK_CUDA(handle_ptr->get_stream());
+  RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
   handle_ptr->sync_stream();
 
   i_t iterations = host_loop(solution);
-  RAFT_CHECK_CUDA(handle_ptr->get_stream());
+  RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
   handle_ptr->sync_stream();
 
   f_t effort_rate = (f_t)iterations / timer.elapsed_time();
@@ -1128,7 +1131,7 @@ i_t fj_t<i_t, f_t>::solve(solution_t<i_t, f_t>& solution)
 
     // if time limit exceeded: round all remaining fractionals if any by nearest rounding.
     if (climbers[0]->fractional_variables.set_size.value(handle_ptr->get_stream()) > 0) {
-      solution.round_nearest();
+      solution.round_nearest(rng.next_u64());
     }
   }
 

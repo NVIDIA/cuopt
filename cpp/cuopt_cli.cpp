@@ -13,6 +13,7 @@
 #include <cuopt/mathematical_optimization/optimization_problem.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
 #include <cuopt/mathematical_optimization/solve.hpp>
+#include <cuopt/mathematical_optimization/solve_remote.hpp>
 #include <utilities/logger.hpp>
 #include <utilities/timer.hpp>
 
@@ -100,8 +101,15 @@ int run_single_file(const std::string& file_path,
                     cuopt::mathematical_optimization::io::mps_reader_type_t mps_reader,
                     cuopt::mathematical_optimization::solver_settings_t<int, double>& settings)
 {
-  cuopt::init_logger_t log(settings.get_parameter<std::string>(CUOPT_LOG_FILE),
-                           settings.get_parameter<bool>(CUOPT_LOG_TO_CONSOLE));
+  // The CLI and the solver library have separate loggers that both write this file.
+  // Configure the solver's first so its own initializer reuses that configuration rather
+  // than truncating the file mid-solve; the CLI's own logger then appends to it.
+  const auto log_file    = settings.get_parameter<std::string>(CUOPT_LOG_FILE);
+  const auto log_console = settings.get_parameter<bool>(CUOPT_LOG_TO_CONSOLE);
+
+  auto solver_log =
+    cuopt::mathematical_optimization::configure_logging(log_file, log_console, true);
+  cuopt::init_logger_t log(log_file, log_console, /*truncate=*/false);
 
   std::string base_filename = file_path.substr(file_path.find_last_of("/\\") + 1);
 
@@ -195,7 +203,32 @@ int run_single_file(const std::string& file_path,
   }
 
   try {
-    if (is_mip) {
+    if (cuopt::mathematical_optimization::is_remote_execution_enabled()) {
+      // Remote execution: problem_interface holds a cpu_optimization_problem_t.
+      // solve_lp/mip_remote live in cuopt_client, which this binary already links.
+      auto* cpu_prob =
+        dynamic_cast<cuopt::mathematical_optimization::cpu_optimization_problem_t<int, double>*>(
+          problem_interface.get());
+      if (cpu_prob == nullptr) {
+        CUOPT_LOG_ERROR("Remote execution requires the CPU memory backend.");
+        return -1;
+      }
+#ifdef CUOPT_ENABLE_GRPC
+      if (is_mip) {
+        auto& mip_settings = settings.get_mip_settings();
+        auto solution = cuopt::mathematical_optimization::solve_mip_remote(*cpu_prob, mip_settings);
+      } else {
+        auto& lp_settings = settings.get_pdlp_settings();
+        auto solution = cuopt::mathematical_optimization::solve_lp_remote(*cpu_prob, lp_settings);
+      }
+#else
+      // solve_remote.cpp only builds when gRPC is enabled, so these entry points do not
+      // exist in a SKIP_GRPC_BUILD tree. cuopt_cli is still built there (it is gated on
+      // BUILD_LP_ONLY, not on gRPC), so without this the link fails.
+      CUOPT_LOG_ERROR("Remote execution requires cuOpt built with gRPC support.");
+      return -1;
+#endif
+    } else if (is_mip) {
       auto& mip_settings = settings.get_mip_settings();
       auto solution =
         cuopt::mathematical_optimization::solve_mip(problem_interface.get(), mip_settings);

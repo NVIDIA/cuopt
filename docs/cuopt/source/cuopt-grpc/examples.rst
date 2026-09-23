@@ -24,7 +24,10 @@ Add TLS or tuning variables from :doc:`advanced` if your deployment uses them.
 
 .. note::
 
-   Routing solve over gRPC is not supported. For solving routing problems remotely today, use the HTTP/JSON :doc:`REST self-hosted server <../cuopt-server/index>` and :doc:`Examples <../cuopt-server/examples/index>`.
+   Routing does not read ``CUOPT_REMOTE_HOST``/``CUOPT_REMOTE_PORT`` --
+   use the explicit :ref:`VRP gRPC client <cuopt-grpc-examples-routing>`
+   below, or the HTTP/JSON :doc:`REST self-hosted server <../cuopt-server/index>`
+   and :doc:`Examples <../cuopt-server/examples/index>`.
 
 Where to Find Examples
 ======================
@@ -69,6 +72,17 @@ without ``CUOPT_REMOTE_*``, use ``cuopt.grpc.linear_programming.Client``:
 * :doc:`python-async-client` — overview
 * :doc:`python-async-client-examples` — log streaming and incumbent streaming
 * :doc:`python-async-client-api` — API reference
+
+Routing (VRP)
+-------------
+
+.. _cuopt-grpc-examples-routing:
+
+For VRP, TSP, and PDP problems, use ``cuopt.grpc.routing.RoutingClient`` --
+the same submit / wait / result / delete lifecycle, with no
+``CUOPT_REMOTE_*`` equivalent yet:
+
+* :doc:`routing` — overview, API reference, and :download:`remote_routing_demo.py <examples/remote_routing_demo.py>`
 
 Custom gRPC Client
 ------------------

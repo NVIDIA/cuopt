@@ -14,7 +14,6 @@
 #include <mip_heuristics/utils.cuh>
 #include <pdlp/utils.cuh>
 #include <utilities/copy_helpers.hpp>
-#include <utilities/seed_generator.cuh>
 
 #include <mutex>
 
@@ -42,7 +41,7 @@ population_t<i_t, f_t>::population_t(std::string const& name_,
     max_solutions(max_solutions_),
     infeasibility_importance(infeasibility_weight_),
     weights(0, context.problem_ptr->handle_ptr),
-    rng(cuopt::seed_generator::get_seed()),
+    rng(derive_seed(context.base_seed, rng_id_t::population)),
     early_exit_primal_generation(false),
     population_hash_map(*problem_ptr),
     timer(0)
@@ -146,6 +145,7 @@ void population_t<i_t, f_t>::add_external_solution(const std::vector<f_t>& solut
                                                    f_t objective,
                                                    solution_origin_t origin)
 {
+  context.solution_publication.publish_if_better(problem_ptr, solution, objective);
   std::lock_guard<std::mutex> lock(solution_mutex);
 
   if (origin == solution_origin_t::CPUFJ) {
@@ -199,7 +199,7 @@ std::vector<solution_t<i_t, f_t>> population_t<i_t, f_t>::get_external_solutions
 {
   std::lock_guard<std::mutex> lock(solution_mutex);
   std::vector<solution_t<i_t, f_t>> return_vector;
-  i_t counter                     = 0;
+  [[maybe_unused]] i_t counter    = 0;
   f_t new_best_feasible_objective = best_feasible_objective;
   f_t longest_wait_time           = 0;
   for (auto& queue : {external_solution_queue, external_solution_queue_cpufj}) {
@@ -214,7 +214,7 @@ std::vector<solution_t<i_t, f_t>> population_t<i_t, f_t>::get_external_solutions
         new_best_feasible_objective = h_entry.objective;
       }
 
-      longest_wait_time = max(longest_wait_time, h_entry.timer.elapsed_time());
+      longest_wait_time = std::max(longest_wait_time, h_entry.timer.elapsed_time());
       solution_t<i_t, f_t> sol(*problem_ptr);
       sol.copy_new_assignment(h_entry.solution);
       sol.compute_feasibility();
@@ -265,41 +265,6 @@ bool population_t<i_t, f_t>::is_better_than_best_feasible(solution_t<i_t, f_t>& 
 }
 
 template <typename i_t, typename f_t>
-void population_t<i_t, f_t>::invoke_get_solution_callback(
-  solution_t<i_t, f_t>& sol, internals::get_solution_callback_t* callback)
-{
-  f_t user_objective = sol.get_user_objective();
-  f_t user_bound     = context.stats.get_solution_bound();
-  solution_t<i_t, f_t> temp_sol(sol);
-  problem_ptr->post_process_assignment(temp_sol.assignment);
-  if (problem_ptr->has_papilo_presolve_data()) {
-    problem_ptr->papilo_uncrush_assignment(temp_sol.assignment);
-  }
-
-  std::vector<f_t> user_objective_vec(1);
-  std::vector<f_t> user_bound_vec(1);
-  std::vector<f_t> user_assignment_vec(temp_sol.assignment.size());
-  user_objective_vec[0] = user_objective;
-  user_bound_vec[0]     = user_bound;
-  raft::copy(user_assignment_vec.data(),
-             temp_sol.assignment.data(),
-             temp_sol.assignment.size(),
-             temp_sol.handle_ptr->get_stream());
-  temp_sol.handle_ptr->sync_stream();
-  if (mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(
-        context.settings)) {
-    mip::strip_semi_continuous_auxiliaries_from_assignment(
-      user_assignment_vec,
-      mip_solver_settings_accessor<i_t, f_t>::get_semi_continuous_original_num_variables(
-        context.settings));
-  }
-  callback->get_solution(user_assignment_vec.data(),
-                         user_objective_vec.data(),
-                         user_bound_vec.data(),
-                         callback->get_user_data());
-}
-
-template <typename i_t, typename f_t>
 void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
 {
   bool better_solution_found = is_better_than_best_feasible(sol);
@@ -309,15 +274,14 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
       context.settings.benchmark_info_ptr->last_improvement_of_best_feasible = timer.elapsed_time();
     }
     CUOPT_LOG_DEBUG("Population: Found new best solution %g", sol.get_user_objective());
-    if (problem_ptr->branch_and_bound_callback != nullptr) {
-      problem_ptr->branch_and_bound_callback(sol.get_host_assignment(),
-                                             heuristics_origin_t::HEURISTICS);
-    }
-    for (auto callback : user_callbacks) {
-      if (callback->get_type() == internals::base_solution_callback_type::GET_SOLUTION) {
-        auto get_sol_callback = static_cast<internals::get_solution_callback_t*>(callback);
-        invoke_get_solution_callback(sol, get_sol_callback);
+    if (problem_ptr->branch_and_bound_callback != nullptr ||
+        context.solution_publication.enabled()) {
+      auto host_assignment = sol.get_host_assignment();
+      if (problem_ptr->branch_and_bound_callback != nullptr) {
+        problem_ptr->branch_and_bound_callback(host_assignment, heuristics_origin_t::HEURISTICS);
       }
+      context.solution_publication.publish_if_better(
+        problem_ptr, host_assignment, sol.get_objective());
     }
     // Save the best objective here even if callback handling later exits early.
     // This prevents older solutions from being reported as "new best" in subsequent callbacks.
@@ -413,7 +377,7 @@ void population_t<i_t, f_t>::adjust_weights_according_to_best_feasible()
                     best().get_objective());
     cuopt_assert(weighted_violation_of_best > 1e-10, "Weighted violation of best is not positive");
     // fixme
-    weighted_violation_of_best = max(weighted_violation_of_best, 1e-10);
+    weighted_violation_of_best = std::max(weighted_violation_of_best, 1e-10);
     f_t quality_difference     = best_feasible().get_quality(weights) - best().get_quality(weights);
     CUOPT_LOG_DEBUG("quality_difference %f best_feasible_quality %f best_quality %f",
                     quality_difference,
@@ -424,7 +388,7 @@ void population_t<i_t, f_t>::adjust_weights_according_to_best_feasible()
     f_t increase_ratio =
       (quality_difference * infeasibility_balance_ratio) / weighted_violation_of_best;
     infeasibility_importance *= (1 + increase_ratio);
-    infeasibility_importance = min(max_infeasibility_weight, infeasibility_importance);
+    infeasibility_importance = std::min(max_infeasibility_weight, infeasibility_importance);
     normalize_weights();
     update_qualities();
     cuopt_assert(test_invariant(), "Population invariant doesn't hold");
@@ -870,7 +834,7 @@ void population_t<i_t, f_t>::print()
                   infeasibility_importance,
                   var_threshold,
                   problem_ptr->n_integer_vars);
-  i_t i = 0;
+  [[maybe_unused]] i_t i = 0;
   for (auto& index : indices) {
     if (index.first == 0 && solutions[0].first) {
       CUOPT_LOG_DEBUG(" Best feasible: %f", solutions[index.first].second.get_user_objective());

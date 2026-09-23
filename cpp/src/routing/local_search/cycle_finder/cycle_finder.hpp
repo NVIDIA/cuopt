@@ -14,8 +14,8 @@
 
 #include "../../solution/solution_handle.cuh"
 
+#include <cuda/stream>
 #include <raft/util/cudart_utils.hpp>
-#include <rmm/cuda_stream_view.hpp>
 
 namespace cuopt {
 namespace routing {
@@ -60,13 +60,14 @@ struct path_t {
     reset(handle_ptr_->get_stream());
   }
 
-  void reset(rmm::cuda_stream_view stream)
+  void reset(cuda::stream_ref stream)
   {
     n_cycles.set_value_to_zero_async(stream);
     all_found.set_value_to_zero_async(stream);
     // device_bitset_t is all zeros when cleared; memset avoids a host-source copy, which
     // is not capturable into a CUDA graph on CUDA 13.
-    RAFT_CUDA_TRY(cudaMemsetAsync(all_mask.data(), 0, sizeof(device_bitset_t<max_routes>), stream));
+    RAFT_CUDA_TRY(
+      cudaMemsetAsync(all_mask.data(), 0, sizeof(device_bitset_t<max_routes>), stream.get()));
   }
 
   struct view_t {
@@ -111,7 +112,7 @@ struct path_t {
 
 template <typename i_t, typename f_t, size_t max_routes>
 struct cycle_candidates_t {
-  cycle_candidates_t(size_t size_, int n_paths_, rmm::cuda_stream_view stream)
+  cycle_candidates_t(size_t size_, int n_paths_, cuda::stream_ref stream)
     : keys(size_ * n_paths_, stream),
       costs(size_ * n_paths_, stream),
       level_vec(size_ * n_paths_, stream),

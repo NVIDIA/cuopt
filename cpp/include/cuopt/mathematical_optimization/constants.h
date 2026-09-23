@@ -36,6 +36,7 @@
 #define CUOPT_NODE_LIMIT                            "node_limit"
 #define CUOPT_PDLP_SOLVER_MODE                      "pdlp_solver_mode"
 #define CUOPT_METHOD                                "method"
+#define CUOPT_CONCURRENT_NNZ_CUTOFF                 "concurrent_nnz_cutoff"
 #define CUOPT_PER_CONSTRAINT_RESIDUAL               "per_constraint_residual"
 #define CUOPT_SAVE_BEST_PRIMAL_SO_FAR               "save_best_primal_so_far"
 #define CUOPT_FIRST_PRIMAL_FEASIBLE                 "first_primal_feasible"
@@ -51,12 +52,15 @@
 #define CUOPT_BARRIER_PRESOLVE_BOUND_FREE_VARIABLES "barrier_presolve_bound_free_variables"
 #define CUOPT_BARRIER_ITERATIVE_REFINEMENT          "barrier_iterative_refinement"
 #define CUOPT_BARRIER_ADAPTIVE_REGULARIZATION       "barrier_adaptive_regularization"
+#define CUOPT_BARRIER_PRIMAL_REGULARIZATION         "barrier_primal_regularization"
+#define CUOPT_BARRIER_DUAL_REGULARIZATION           "barrier_dual_regularization"
 #define CUOPT_BARRIER_STEP_SCALE                    "barrier_step_scale"
 #define CUOPT_ELIMINATE_DENSE_COLUMNS               "eliminate_dense_columns"
 #define CUOPT_CUDSS_DETERMINISTIC                   "cudss_deterministic"
 #define CUOPT_PRESOLVE                              "presolve"
 #define CUOPT_MIP_PROBING                           "mip_probing"
 #define CUOPT_DUAL_POSTSOLVE                        "dual_postsolve"
+#define CUOPT_SEQUENCE_SOLVE                        "sequence_solve"
 #define CUOPT_MIP_DETERMINISM_MODE                  "mip_determinism_mode"
 #define CUOPT_MIP_ABSOLUTE_TOLERANCE                "mip_absolute_tolerance"
 #define CUOPT_MIP_RELATIVE_TOLERANCE                "mip_relative_tolerance"
@@ -131,7 +135,6 @@
 #define CUOPT_MIP_HYPER_DIVING_FARKAS        "mip_hyper_diving_farkas"
 #define CUOPT_MIP_HYPER_DIVING_VECTOR_LENGTH "mip_hyper_diving_vector_length"
 /* @brief Diving heuristic limits */
-#define CUOPT_MIP_HYPER_DIVING_MIN_NODE_DEPTH         "mip_hyper_diving_min_node_depth"
 #define CUOPT_MIP_HYPER_DIVING_NODE_LIMIT             "mip_hyper_diving_node_limit"
 #define CUOPT_MIP_HYPER_DIVING_ITERATION_LIMIT_FACTOR "mip_hyper_diving_iteration_limit_factor"
 #define CUOPT_MIP_HYPER_DIVING_BACKTRACK_LIMIT        "mip_hyper_diving_backtrack_limit"
@@ -155,6 +158,12 @@
 
 /* @brief QCQP (barrier) scaling hyper-parameters */
 #define CUOPT_QCQP_HYPER_RUIZ_EQUILIBRATION "qcqp_hyper_ruiz_equilibration"
+
+/* @brief PDLP scaling hyper-parameter: Curtis-Reid prescaling toggle */
+#define CUOPT_PDLP_HYPER_ENABLE_CURTIS_REID_SCALING "pdlp_hyper_enable_curtis_reid_scaling"
+
+/* @brief Barrier initial point safeguard */
+#define CUOPT_BARRIER_INITIAL_POINT_SAFEGUARD "barrier_initial_point_safeguard"
 
 /* @brief MIP determinism mode constants */
 #define CUOPT_MODE_OPPORTUNISTIC 0
@@ -208,6 +217,11 @@
 #define CUOPT_METHOD_DUAL_SIMPLEX 2
 #define CUOPT_METHOD_BARRIER      3
 #define CUOPT_METHOD_UNSET        4
+
+#define CUOPT_BARRIER_DUAL_INITIAL_POINT_AUTOMATIC             -1
+#define CUOPT_BARRIER_DUAL_INITIAL_POINT_LUSTIG_MARSTEN_SHANNO 0
+#define CUOPT_BARRIER_DUAL_INITIAL_POINT_LEAST_SQUARES         1
+#define CUOPT_BARRIER_DUAL_INITIAL_POINT_SEDUMI_MU             2
 
 /* @brief PDLP precision mode constants */
 #define CUOPT_PDLP_DEFAULT_PRECISION -1

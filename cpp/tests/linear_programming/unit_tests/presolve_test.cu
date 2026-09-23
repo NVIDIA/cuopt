@@ -493,6 +493,141 @@ TEST(pslp_presolve, postsolve_multiple_problems)
     EXPECT_LT(rel_error, 0.01) << "Problem " << name << " objective mismatch";
   }
 }
+
+// Builds a single-variable LP that is slightly infeasible via two singleton rows
+// (x <= 1 and x >= 2), so bound-propagation presolve is expected to detect it. If
+// `large_magnitude` is set, the objective coefficient and variable upper bound are set to 1e15
+// so a magnitude-based gate (if present) can distinguish this case from a well-scaled one.
+static io::mps_data_model_t<int, double> make_slightly_infeasible_singleton_lp(bool large_magnitude)
+{
+  io::mps_data_model_t<int, double> mps;
+  mps.set_maximize(false);
+
+  std::vector<double> A_values{1.0, 1.0};
+  std::vector<int> A_indices{0, 0};
+  std::vector<int> A_offsets{0, 1, 2};
+  mps.set_csr_constraint_matrix(A_values, A_indices, A_offsets);
+
+  const double inf = std::numeric_limits<double>::infinity();
+  mps.set_constraint_lower_bounds(std::vector<double>{-inf, 2.0});
+  mps.set_constraint_upper_bounds(std::vector<double>{1.0, inf});
+
+  const double obj_coeff = large_magnitude ? 1e15 : 1.0;
+  const double var_ub    = large_magnitude ? 1e15 : inf;
+  mps.set_objective_coefficients(std::vector<double>{obj_coeff});
+  mps.set_variable_lower_bounds(std::vector<double>{0.0});
+  mps.set_variable_upper_bounds(std::vector<double>{var_ub});
+
+  return mps;
+}
+
+// PSLP reports a slightly infeasible, well-scaled problem as INFEASIBLE (or UNBNDORINFEAS) and
+// this result is trusted directly: apply_presolve_from_mps_data returns that terminal status with
+// an empty reduced problem.
+TEST(pslp_presolve, infeasible_well_scaled_is_trusted)
+{
+  auto mps = make_slightly_infeasible_singleton_lp(/*large_magnitude=*/false);
+
+  mip::third_party_presolve_t<int, double> presolver;
+  auto result = presolver.apply_presolve_from_mps_data(mps,
+                                                       problem_category_t::LP,
+                                                       presolver_t::PSLP,
+                                                       /*dual_postsolve=*/false,
+                                                       /*abs_tol=*/1e-6,
+                                                       /*rel_tol=*/1e-9,
+                                                       /*time_limit=*/60.0);
+
+  EXPECT_TRUE(result.status == mip::third_party_presolve_status_t::INFEASIBLE ||
+              result.status == mip::third_party_presolve_status_t::UNBNDORINFEAS);
+  EXPECT_EQ(result.reduced_problem.get_n_variables(), 0);
+}
+
+// On the same slightly infeasible problem, but with very large bound/objective magnitudes, PSLP's
+// infeasible call is not trusted: cuOpt reports this (via CUOPT_LOG_WARN) and falls back to
+// continuing with the original, unreduced problem rather than terminating the solve directly on
+// PSLP's say-so.
+TEST(pslp_presolve, infeasible_large_magnitude_falls_back_to_original_problem)
+{
+  auto mps = make_slightly_infeasible_singleton_lp(/*large_magnitude=*/true);
+
+  mip::third_party_presolve_t<int, double> presolver;
+  auto result = presolver.apply_presolve_from_mps_data(mps,
+                                                       problem_category_t::LP,
+                                                       presolver_t::PSLP,
+                                                       /*dual_postsolve=*/false,
+                                                       /*abs_tol=*/1e-6,
+                                                       /*rel_tol=*/1e-9,
+                                                       /*time_limit=*/60.0);
+
+  EXPECT_EQ(result.status, mip::third_party_presolve_status_t::UNCHANGED);
+  EXPECT_EQ(result.reduced_problem.get_n_variables(), mps.get_n_variables());
+  EXPECT_EQ(result.reduced_problem.get_n_constraints(), mps.get_n_constraints());
+}
+
+// Regression test for a gap in has_large_magnitude_data(): a caller may express constraint bounds
+// via row_types + a single constraint_bounds (RHS) vector instead of explicit lower/upper bound
+// vectors. normalize_for_presolve() only materializes explicit constr_lb/constr_ub locally inside
+// apply_pslp(); the original mps_data_model_t's get_constraint_lower_bounds()/
+// get_constraint_upper_bounds() stay empty. Everything else here (objective, variable bounds,
+// constraint matrix) is well-scaled, so only a magnitude check that also looks at
+// row_types/constraint_bounds can catch this case.
+TEST(pslp_presolve, infeasible_large_magnitude_row_types_falls_back_to_original_problem)
+{
+  io::mps_data_model_t<int, double> mps;
+  mps.set_maximize(false);
+
+  std::vector<double> A_values{1.0, 1.0};
+  std::vector<int> A_indices{0, 0};
+  std::vector<int> A_offsets{0, 1, 2};
+  mps.set_csr_constraint_matrix(A_values, A_indices, A_offsets);
+
+  // x <= 1 (row_type 'L') and x >= 2e15 (row_type 'G'): contradictory, with the contradiction
+  // only visible through the row_types + constraint_bounds representation.
+  mps.set_row_types(std::vector<char>{'L', 'G'});
+  mps.set_constraint_bounds(std::vector<double>{1.0, 2e15});
+
+  mps.set_objective_coefficients(std::vector<double>{1.0});
+  mps.set_variable_lower_bounds(std::vector<double>{0.0});
+  mps.set_variable_upper_bounds(std::vector<double>{std::numeric_limits<double>::infinity()});
+
+  ASSERT_TRUE(mps.get_constraint_lower_bounds().empty());
+  ASSERT_TRUE(mps.get_constraint_upper_bounds().empty());
+
+  mip::third_party_presolve_t<int, double> presolver;
+  auto result = presolver.apply_presolve_from_mps_data(mps,
+                                                       problem_category_t::LP,
+                                                       presolver_t::PSLP,
+                                                       /*dual_postsolve=*/false,
+                                                       /*abs_tol=*/1e-6,
+                                                       /*rel_tol=*/1e-9,
+                                                       /*time_limit=*/60.0);
+
+  EXPECT_EQ(result.status, mip::third_party_presolve_status_t::UNCHANGED);
+  EXPECT_EQ(result.reduced_problem.get_n_variables(), mps.get_n_variables());
+  EXPECT_EQ(result.reduced_problem.get_n_constraints(), mps.get_n_constraints());
+}
+
+// End-to-end: solving the same large-magnitude, slightly infeasible problem through the normal
+// solve_lp entry point (which drives presolve + solve) must not hang or misreport optimality --
+// the actual solve on the original problem still correctly detects infeasibility. DualSimplex is
+// used here rather than PDLP: PDLP is a first-order method and does not reliably converge to a
+// clean infeasibility certificate on such an extreme-magnitude, badly-scaled problem within a
+// short time limit, whereas DualSimplex detects it directly.
+TEST(pslp_presolve, infeasible_large_magnitude_end_to_end_solve_detects_infeasibility)
+{
+  const raft::handle_t handle_{};
+  auto mps = make_slightly_infeasible_singleton_lp(/*large_magnitude=*/true);
+
+  auto solver_settings       = pdlp_solver_settings_t<int, double>{};
+  solver_settings.method     = cuopt::mathematical_optimization::method_t::DualSimplex;
+  solver_settings.presolver  = presolver_t::PSLP;
+  solver_settings.time_limit = 20.0;
+
+  optimization_problem_solution_t<int, double> solution = solve_lp(&handle_, mps, solver_settings);
+
+  EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERMINATION_STATUS_INFEASIBLE);
+}
+
 struct crush_test_param {
   std::string mps_path;
   bool use_pdlp;
@@ -1020,10 +1155,8 @@ TEST_P(papilo_problem, round_trip)
 }
 
 // Exercises the MIP presolve path: presolver_t::apply -> third_party_presolve_t::apply
-// reduces a user_problem_t in place via PaPILO. ex9 is fully solved by presolve (it collapses
-// to a 0x0 problem), so this also checks the OPTIMAL status and that postsolve maps the empty
-// reduced solution back to a full-dimension, objective-81 assignment.
-TEST(submip_presolve, ex9_fully_reduced)
+// reduces a user_problem_t in place via PaPILO.
+TEST(submip_presolve, ex9_reduced_to_residual_row)
 {
   const raft::handle_t handle_{};
 
@@ -1044,17 +1177,43 @@ TEST(submip_presolve, ex9_fully_reduced)
   mip::third_party_presolve_t<int, double> presolver;
   auto status = presolver.apply_to_subproblem(user_problem, settings, 120, 8);
 
-  // PaPILO solves ex9 entirely during presolve -> empty reduced problem.
-  EXPECT_EQ(status, mip::third_party_presolve_status_t::OPTIMAL);
-  EXPECT_EQ(user_problem.num_rows, 0);
-  EXPECT_EQ(user_problem.num_cols, 0);
-  EXPECT_EQ(user_problem.A.nnz(), 0);
+  ASSERT_EQ(status, mip::third_party_presolve_status_t::REDUCED);
+  ASSERT_EQ(user_problem.num_rows, 1);
+  ASSERT_EQ(user_problem.num_cols, 4);
+  ASSERT_EQ(user_problem.A.nnz(), 4);
 
-  // Postsolve reconstructs the full original assignment from the (empty) reduced solution.
-  std::vector<double> reduced_solution;  // no reduced columns remain
+  // The residual is `x0 + x1 + x2 + x3 == 1` over four binaries of unit cost, with the remaining
+  // 80 of the optimum already banked in obj_constant.
+  EXPECT_DOUBLE_EQ(user_problem.obj_constant, 80.0);
+  EXPECT_EQ(user_problem.row_sense[0], 'E');
+  EXPECT_DOUBLE_EQ(user_problem.rhs[0], 1.0);
+  for (int j = 0; j < user_problem.num_cols; ++j) {
+    EXPECT_DOUBLE_EQ(user_problem.objective[j], 1.0) << "column " << j;
+    EXPECT_DOUBLE_EQ(user_problem.lower[j], 0.0) << "column " << j;
+    EXPECT_DOUBLE_EQ(user_problem.upper[j], 1.0) << "column " << j;
+    ASSERT_EQ(user_problem.A.col_start[j + 1] - user_problem.A.col_start[j], 1) << "column " << j;
+    EXPECT_EQ(user_problem.A.i[user_problem.A.col_start[j]], 0) << "column " << j;
+    EXPECT_DOUBLE_EQ(user_problem.A.x[user_problem.A.col_start[j]], 1.0) << "column " << j;
+  }
+
+  // One column per surviving reduced column, each pointing at a distinct original column.
+  const auto& reduced_to_original = presolver.get_reduced_to_original_map();
+  ASSERT_EQ(reduced_to_original.size(), user_problem.num_cols);
+  for (int j = 0; j < user_problem.num_cols; ++j) {
+    EXPECT_GE(reduced_to_original[j], 0) << "column " << j;
+    EXPECT_LT(reduced_to_original[j], orig_cols) << "column " << j;
+  }
+
+  // Satisfying the residual row completes the optimum: postsolve reconstructs the full original
+  // assignment, keeping the reduced values in place and filling in everything presolve removed.
+  std::vector<double> reduced_solution(user_problem.num_cols, 0.0);
+  reduced_solution[0] = 1.0;
   std::vector<double> full_solution;
   presolver.uncrush_primal_solution(reduced_solution, full_solution);
   ASSERT_EQ(static_cast<int>(full_solution.size()), orig_cols);
+  for (int j = 0; j < user_problem.num_cols; ++j) {
+    EXPECT_DOUBLE_EQ(full_solution[reduced_to_original[j]], reduced_solution[j]) << "column " << j;
+  }
 
   double objective = 0.0;
   for (int j = 0; j < orig_cols; ++j) {

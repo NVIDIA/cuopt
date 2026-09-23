@@ -52,11 +52,11 @@ localized_duality_gap_container_t<i_t, f_t>::localized_duality_gap_container_t(
   RAFT_CUDA_TRY(cudaMemsetAsync(primal_solution_.data(),
                                 f_t(0.0),
                                 sizeof(f_t) * primal_solution_.size(),
-                                handle_ptr->get_stream()));
+                                handle_ptr->get_stream().get()));
   RAFT_CUDA_TRY(cudaMemsetAsync(dual_solution_.data(),
                                 f_t(0.0),
                                 sizeof(f_t) * dual_solution_.size(),
-                                handle_ptr->get_stream()));
+                                handle_ptr->get_stream().get()));
 }
 
 template <typename i_t, typename f_t>
@@ -96,7 +96,7 @@ void localized_duality_gap_container_t<i_t, f_t>::swap_context(
   const auto [grid_size, block_size] =
     kernel_config_from_batch_size(static_cast<i_t>(swap_pairs.size()));
   localized_duality_gap_swap_device_vectors_kernel<i_t, f_t>
-    <<<grid_size, block_size, 0, primal_solution_.stream()>>>(
+    <<<grid_size, block_size, 0, primal_solution_.stream().get()>>>(
       thrust::raw_pointer_cast(swap_pairs.data()),
       static_cast<i_t>(swap_pairs.size()),
       make_span(primal_distance_traveled_),

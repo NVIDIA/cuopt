@@ -7,11 +7,15 @@
 
 #pragma once
 
+#include <cuda/stream>
 #include "utils.cuh"
+
+#include "fj_types.hpp"
 
 #include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
 #include <mip_heuristics/diversity/weights.cuh>
 #include <mip_heuristics/logger.cuh>
+#include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/problem/problem.cuh>
 #include <mip_heuristics/solution/solution.cuh>
 #include <mip_heuristics/solver.cuh>
@@ -20,6 +24,7 @@
 #include <utilities/device_scalar_init.hpp>
 #include <utilities/event_handler.cuh>
 #include <utilities/manual_cuda_graph.cuh>
+#include <utilities/pcgenerator.hpp>
 
 #include <functional>
 
@@ -41,130 +46,11 @@ static constexpr int TPB_update_changed_constraints = raft::WarpSize * 4;
 static constexpr int TPB_liftmoves                  = raft::WarpSize * 4;
 static constexpr int TPB_loadbalance                = raft::WarpSize * 4;
 
-struct fj_hyper_parameters_t {
-  // The number of moves to evaluate, if there are many positive-score
-  // variables available.
-  int max_sampled_moves = raft::WarpSize * 16;
-  // The probability of choosing a random positive-score variable.
-  double random_var_probability = 0.04;
-  // The probability of choosing a variable using a random constraint's
-  // non-zero coefficient after updating weights.
-  double random_cstr_probability = 0.16;
-  // The period in iterations of each global move value update
-  // (all variables being updated vs. considering only the selected one)
-  int global_move_update_period      = 10;
-  int heavy_move_update_period       = 50;
-  int sync_period                    = 200;
-  int lhs_refresh_period             = 500;
-  int allow_infeasibility_iterations = 200;
-  // The value added to the objective weight everytime a new best solution is
-  // found in order to move towards better solutions
-  double objective_weight_increment       = 0.01;
-  int load_balancing_variable_threshold   = 300;
-  int load_balancing_constraint_threshold = 5000;
-  int load_balancing_variable_split_size  = 50;
-
-  double breakthrough_move_epsilon    = 1e-4;
-  int tabu_tenure_min                 = 3;
-  int tabu_tenure_max                 = 13;
-  double excess_improvement_weight    = (1.0 / 2.0);
-  double weight_smoothing_probability = 0.0003;
-
-  double fractional_score_multiplier = 100;
-  double rounding_second_stage_split = 0.1;
-
-  double small_move_tabu_threshold = 1e-6;
-  int small_move_tabu_tenure       = 4;
-
-  int two_opt_max_rows     = 4;
-  int two_opt_max_row_vars = 256;
-  int two_opt_max_pairs    = 256;
-
-  // load-balancing related settings
-  int old_codepath_total_var_to_relvar_ratio_threshold = 200;
-  int load_balancing_codepath_min_varcount             = 3200;
-};
-
 enum fj_move_type_t {
   FJ_MOVE_BEGIN = 0,
   FJ_MOVE_LIFT  = FJ_MOVE_BEGIN,
   FJ_MOVE_BREAKTHROUGH,
   FJ_MOVE_SIZE,
-};
-
-enum class fj_mode_t {
-  FIRST_FEASIBLE,     // iterate until a feasible solution is found, then return
-  GREEDY_DESCENT,     // single descent until no improving jumps can be made
-  TREE,               // tree mode
-  ROUNDING,           // FJ as rounding procedure for fractionals
-  EXIT_NON_IMPROVING  // iterate until we are don't improve the best
-};
-
-enum class MTMMoveType { FJ_MTM_VIOLATED, FJ_MTM_SATISFIED, FJ_MTM_ALL };
-
-enum class fj_load_balancing_mode_t { ALWAYS_ON, AUTO, ALWAYS_OFF };
-
-enum class fj_candidate_selection_t { WEIGHTED_SCORE, FEASIBLE_FIRST };
-
-struct fj_settings_t {
-  int seed{0};
-  fj_mode_t mode{fj_mode_t::FIRST_FEASIBLE};
-  fj_candidate_selection_t candidate_selection{fj_candidate_selection_t::WEIGHTED_SCORE};
-  double time_limit{60.0};
-  int iteration_limit{std::numeric_limits<int>::max()};
-  fj_hyper_parameters_t parameters{};
-  int n_of_minimums_for_exit  = 7000;
-  double infeasibility_weight = 1.0;
-  bool update_weights         = true;
-  bool feasibility_run        = true;
-  fj_load_balancing_mode_t load_balancing_mode{fj_load_balancing_mode_t::AUTO};
-  double baseline_objective_for_longer_run{std::numeric_limits<double>::lowest()};
-};
-
-struct fj_move_t {
-  int var_idx;
-  double value;
-
-  bool operator<(const fj_move_t& rhs) const
-  {
-    if (var_idx == rhs.var_idx) return value < rhs.value;
-    return var_idx < rhs.var_idx;
-  }
-  bool operator==(const fj_move_t& rhs) const
-  {
-    return var_idx == rhs.var_idx && value == rhs.value;
-  }
-  bool operator!=(const fj_move_t& rhs) const { return !(*this == rhs); }
-};
-
-// TODO: use 32bit integers instead,
-// as we dont need them to be floating point per the FJ2 scoring scheme
-// sizeof(fj_staged_score_t) <= 8 is needed to allow for atomic loads
-struct fj_staged_score_t {
-  float base{-std::numeric_limits<float>::infinity()};
-  float bonus{-std::numeric_limits<float>::infinity()};
-
-  HDI bool operator<(fj_staged_score_t other) const noexcept
-  {
-    return base == other.base ? bonus < other.bonus : base < other.base;
-  }
-  HDI bool operator>(fj_staged_score_t other) const noexcept
-  {
-    return base == other.base ? bonus > other.bonus : base > other.base;
-  }
-  HDI bool operator==(fj_staged_score_t other) const noexcept
-  {
-    return base == other.base && bonus == other.bonus;
-  }
-  HDI bool operator!=(fj_staged_score_t other) const noexcept { return !(*this == other); }
-
-  HDI static fj_staged_score_t invalid()
-  {
-    return {-std::numeric_limits<float>::infinity(), -std::numeric_limits<float>::infinity()};
-  }
-  HDI static fj_staged_score_t zero() { return {0, 0}; }
-
-  HDI bool valid() const { return *this != invalid(); }
 };
 
 template <typename f_t>
@@ -213,7 +99,9 @@ class fj_t {
   using move_score_info_t = fj_move_score_info_base_t<f_t>;
   using move_candidate_t  = fj_move_candidate_t<f_t>;
 
-  fj_t(mip_solver_context_t<i_t, f_t>& context, fj_settings_t settings = fj_settings_t{});
+  fj_t(mip_solver_context_t<i_t, f_t>& context,
+       fj_settings_t settings     = fj_settings_t{},
+       rng_id_t seed_component_id = rng_id_t::local_search_cpu_fj);
   ~fj_t();
   void reset_cuda_graph();
   i_t solve(solution_t<i_t, f_t>& solution);
@@ -228,25 +116,28 @@ class fj_t {
     bool randomize_params  = false);
   i_t alloc_max_climbers(i_t desired_climbers);
   void resize_vectors(const raft::handle_t* handle_ptr);
-  void device_init(const rmm::cuda_stream_view& stream);
+  void device_init(cuda::stream_ref stream);
   void climber_init(i_t climber_idx);
-  void climber_init(i_t climber_idx, const rmm::cuda_stream_view& stream);
+  void climber_init(i_t climber_idx, cuda::stream_ref stream);
   void set_fj_settings(fj_settings_t settings_);
-  void reset_weights(const rmm::cuda_stream_view& stream, f_t weight = 10.);
+  void reset_weights(cuda::stream_ref stream, f_t weight = 10.);
   void randomize_weights(const raft::handle_t* handle_ptr);
   void copy_weights(const weight_t<i_t, f_t>& weights,
                     const raft::handle_t* handle_ptr,
                     std::optional<i_t> new_size = std::nullopt);
   i_t host_loop(solution_t<i_t, f_t>& solution, i_t climber_idx = 0);
   void run_step_device(i_t climber_idx = 0, bool use_graph = true);
-  void run_step_device(const rmm::cuda_stream_view& stream,
-                       i_t climber_idx = 0,
-                       bool use_graph  = true);
-  void refresh_lhs_and_violation(const rmm::cuda_stream_view& stream, i_t climber_idx = 0);
+  void run_step_device(cuda::stream_ref stream, i_t climber_idx = 0, bool use_graph = true);
+  void refresh_lhs_and_violation(cuda::stream_ref stream, i_t climber_idx = 0);
   // load balancing
-  void load_balancing_score_update(const rmm::cuda_stream_view& stream, i_t climber_idx = 0);
+  void load_balancing_score_update(cuda::stream_ref stream, i_t climber_idx = 0);
   // executed after a roudning FJ run if any fractionals remain to eliminate them
   void round_remaining_fractionals(solution_t<i_t, f_t>& solution, i_t climber_idx = 0);
+
+  uint64_t next_seed() { return rng.next_u64(); }
+
+ private:
+  splitmix64_t rng;
 
  public:
   mip_solver_context_t<i_t, f_t>& context;
@@ -438,7 +329,7 @@ class fj_t {
                              dot_product_buffer.data(),
                              incumbent_objective.data(),
                              fj.pb_ptr->n_variables,
-                             fj.handle_ptr->get_stream());
+                             fj.handle_ptr->get_stream().get());
 
       // Allocate temporary storage
       cub_storage_bytes.resize(temp_storage_bytes, fj.handle_ptr->get_stream());
@@ -564,7 +455,7 @@ class fj_t {
       {
         f_t cstr_tolerance = get_cstr_tolerance<i_t, f_t>(
           c_lb, c_ub, pb.tolerances.absolute_tolerance, pb.tolerances.relative_tolerance);
-        return max((f_t)1e-12, cstr_tolerance - MACHINE_EPSILON);
+        return std::max((f_t)1e-12, cstr_tolerance - MACHINE_EPSILON);
       }
       HDI f_t get_corrected_tolerance(i_t cstr) const
       {
@@ -633,7 +524,7 @@ class fj_t {
     };
 
     view_t view();
-    void clear_sets(const rmm::cuda_stream_view& stream);
+    void clear_sets(cuda::stream_ref stream);
   };
   void populate_climber_views();
 

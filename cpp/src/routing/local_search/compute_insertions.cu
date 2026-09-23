@@ -39,10 +39,10 @@ __device__ bool print_filtered(i_t curr_node,
   if (blockIdx.x == 0 && threadIdx.x == 0) {
     printf("n_viable %d \n", n_viable);
     for (int i = 0; i < n_viable; ++i) {
-      auto info_1     = NodeInfo<i_t>(curr_node, curr_node, node_type_t::PICKUP);
-      auto info_2     = NodeInfo<i_t>((int)pickup_ids[i], (int)pickup_ids[i], node_type_t::PICKUP);
-      double distance = get_transit_time(info_1, info_2, vehicle_info, true);
-      printf("Distance from %d to %d is %f\n", curr_node, pickup_ids[i], distance);
+      auto info_1 = NodeInfo<i_t>(curr_node, curr_node, node_type_t::PICKUP);
+      auto info_2 = NodeInfo<i_t>((int)pickup_ids[i], (int)pickup_ids[i], node_type_t::PICKUP);
+      double transit_time = get_transit_time(info_1, info_2, vehicle_info, true);
+      printf("Transit time from %d to %d is %f\n", curr_node, pickup_ids[i], transit_time);
     }
     printf("\n\n\n");
   }
@@ -830,7 +830,7 @@ void find_insertions(solution_t<i_t, f_t, REQUEST>& sol,
                  "Not enough shared memory on device for computing local search insertions!");
     cuopt_expects(is_set, error_type_t::OutOfMemoryError, "Not enough shared memory on device");
     find_insertions_kernel<i_t, f_t, REQUEST, search_type_t::IMPROVE, insert_unserviced>
-      <<<n_blocks, TPB, shared_size, sol.sol_handle->get_stream()>>>(
+      <<<n_blocks, TPB, shared_size, sol.sol_handle->get_stream().get()>>>(
         sol.view(), move_candidates.view(), sol.problem_ptr->seed_gen.get_seed());
   } else {
     // for cross the load-balance factor is always 4
@@ -846,7 +846,7 @@ void find_insertions(solution_t<i_t, f_t, REQUEST>& sol,
                    "Not enough shared memory on device for computing local search insertions!");
       cuopt_expects(is_set, error_type_t::OutOfMemoryError, "Not enough shared memory on device");
       find_insertions_kernel<i_t, f_t, REQUEST, search_type_t::CROSS, insert_unserviced>
-        <<<n_blocks, TPB, shared_size, sol.sol_handle->get_stream()>>>(
+        <<<n_blocks, TPB, shared_size, sol.sol_handle->get_stream().get()>>>(
           sol.view(), move_candidates.view(), sol.problem_ptr->seed_gen.get_seed());
     } else if (search_type == search_type_t::RANDOM) {
       // we don't search for relocates in random.
@@ -858,11 +858,11 @@ void find_insertions(solution_t<i_t, f_t, REQUEST>& sol,
                    "Not enough shared memory on device for computing local search insertions!");
       cuopt_expects(is_set, error_type_t::OutOfMemoryError, "Not enough shared memory on device");
       find_insertions_kernel<i_t, f_t, REQUEST, search_type_t::RANDOM, insert_unserviced>
-        <<<n_blocks, TPB, shared_size, sol.sol_handle->get_stream()>>>(
+        <<<n_blocks, TPB, shared_size, sol.sol_handle->get_stream().get()>>>(
           sol.view(), move_candidates.view(), sol.problem_ptr->seed_gen.get_seed());
     }
   }
-  RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
+  RAFT_CHECK_CUDA(sol.sol_handle->get_stream().get());
   sol.sol_handle->sync_stream();
 }
 
@@ -891,9 +891,9 @@ void find_unserviced_insertions(solution_t<i_t, f_t, REQUEST>& sol,
   cuopt_assert(is_set, "Not enough shared memory on device for computing local search insertions!");
   cuopt_expects(is_set, error_type_t::OutOfMemoryError, "Not enough shared memory on device");
   find_insertions_kernel<i_t, f_t, REQUEST, search_type_t::IMPROVE, insert_unserviced>
-    <<<n_blocks, TPB, shared_size, sol.sol_handle->get_stream()>>>(
+    <<<n_blocks, TPB, shared_size, sol.sol_handle->get_stream().get()>>>(
       sol.view(), move_candidates.view(), sol.problem_ptr->seed_gen.get_seed());
-  RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
+  RAFT_CHECK_CUDA(sol.sol_handle->get_stream().get());
   sol.sol_handle->sync_stream();
 }
 

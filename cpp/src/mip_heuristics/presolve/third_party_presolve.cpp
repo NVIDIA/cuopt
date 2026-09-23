@@ -40,6 +40,7 @@
 #include <cuopt/mathematical_optimization/solve.hpp>
 #include <dual_simplex/presolve.hpp>
 #include <mip_heuristics/mip_constants.hpp>
+#include <mip_heuristics/presolve/bhw_coeff_reduce.hpp>
 #include <mip_heuristics/presolve/gf2_presolve.hpp>
 #include <mip_heuristics/presolve/single_lock_dual_aggregation.hpp>
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
@@ -47,6 +48,7 @@
 #include <utilities/macros.cuh>
 #include <utilities/timer.hpp>
 
+#include <cuda/stream>
 #include <raft/core/nvtx.hpp>
 
 #include <algorithm>
@@ -646,6 +648,72 @@ third_party_presolve_status_t convert_pslp_presolve_status_to_third_party_presol
   return third_party_presolve_status_t::UNCHANGED;
 }
 
+// PSLP's infeasibility detection can be numerically unreliable on badly-scaled problems (it
+// returns a zero-sized reduced problem alongside the infeasible status, so there is nothing to
+// fall back on within PSLP itself). Gate the untrusting behaviour to only that regime: for
+// normally-scaled problems PSLP's infeasibility call is trusted as before.
+//
+// The range computation (find_max_abs/find_min_abs/safelog10) mirrors
+// optimization_problem_t::print_scaling_information() (pdlp/optimization_problem.cu), which warns
+// at a >= 6 order-of-magnitude spread. That bar is deliberately low -- it is meant to nudge users
+// toward reformulating -- and a 1e6 spread is common in otherwise well-behaved models, so reusing
+// it here would distrust PSLP far more often than its infeasibility calls actually go wrong,
+// giving up the fast presolve-time infeasibility detection on many problems that don't need it.
+// Distrusting PSLP costs only time (the original problem still gets solved for real, and that
+// solve has the final say), while trusting a wrong verdict returns an incorrect answer, so the
+// bar here is set higher and independently of the reformulation-advice threshold: 1e9, close to
+// where a double's ~15-17 significant decimal digits stop being enough to keep both ends of the
+// range meaningful in the same computation. Real observed failures (e.g. a coefficient range from
+// [9e-03, 1e+10] up to [0, 6e+11], a 10-12 order-of-magnitude spread) clear this with margin.
+template <typename i_t, typename f_t>
+bool has_large_magnitude_data(io::mps_data_model_t<i_t, f_t> const& mps)
+{
+  auto find_max_abs = [](std::vector<f_t> const& vec) -> f_t {
+    const f_t inf = std::numeric_limits<f_t>::infinity();
+    f_t max_abs   = f_t(0.0);
+    for (f_t v : vec) {
+      const f_t abs_v = std::abs(v);
+      if (abs_v < inf) { max_abs = std::max(max_abs, abs_v); }
+    }
+    return max_abs;
+  };
+  auto find_min_abs = [](std::vector<f_t> const& vec) -> f_t {
+    const f_t inf = std::numeric_limits<f_t>::infinity();
+    f_t min_abs   = inf;
+    for (f_t v : vec) {
+      const f_t abs_v = std::abs(v);
+      if (abs_v > f_t(0.0)) { min_abs = std::min(min_abs, abs_v); }
+    }
+    return min_abs < inf ? min_abs : f_t(0.0);
+  };
+  auto safelog10 = [](f_t x) { return x > 0 ? std::log10(x) : 0.0; };
+  auto range_of  = [&](std::vector<f_t> const& vec) {
+    return safelog10(find_max_abs(vec)) - safelog10(find_min_abs(vec));
+  };
+  auto combined_range_of = [&](std::vector<f_t> const& a, std::vector<f_t> const& b) {
+    const f_t max_abs = std::max(find_max_abs(a), find_max_abs(b));
+    const f_t min_abs = std::min(find_min_abs(a), find_min_abs(b));
+    return safelog10(max_abs) - safelog10(min_abs);
+  };
+
+  // Mirror normalize_for_presolve's exact fallback rule: a caller may express constraint bounds
+  // via row_types + a single constraint_bounds (RHS) vector instead of explicit lower/upper
+  // vectors, in which case get_constraint_lower_bounds()/get_constraint_upper_bounds() are both
+  // empty and would otherwise silently contribute a zero range here regardless of how large
+  // constraint_bounds actually is.
+  const f_t constraint_bound_range =
+    (mps.get_constraint_lower_bounds().empty() && mps.get_constraint_upper_bounds().empty())
+      ? range_of(mps.get_constraint_bounds())
+      : combined_range_of(mps.get_constraint_lower_bounds(), mps.get_constraint_upper_bounds());
+
+  constexpr f_t large_range_threshold = f_t(9.0);
+  return range_of(mps.get_objective_coefficients()) >= large_range_threshold ||
+         range_of(mps.get_constraint_matrix_values()) >= large_range_threshold ||
+         constraint_bound_range >= large_range_threshold ||
+         combined_range_of(mps.get_variable_lower_bounds(), mps.get_variable_upper_bounds()) >=
+           large_range_threshold;
+}
+
 void check_postsolve_status(const papilo::PostsolveStatus& status)
 {
   switch (status) {
@@ -678,6 +746,7 @@ void set_presolve_methods(
   if (category == problem_category_t::MIP) {
     // cuOpt custom GF2 presolver
     maybe_add(uptr(new cuopt::mathematical_optimization::mip::GF2Presolve<f_t>()));
+    maybe_add(uptr(new cuopt::mathematical_optimization::mip::BHWCoeffReduce<f_t>()));
   }
   // fast presolvers
   maybe_add(uptr(new papilo::SingletonCols<f_t>()));
@@ -1026,8 +1095,9 @@ third_party_presolve_t<i_t, f_t>::apply_presolve_from_mps_data(
   i_t max_rounds,
   i_t max_badgesize)
 {
-  presolver_ = presolver;
-  maximize_  = mps.get_sense();
+  presolver_           = presolver;
+  maximize_            = mps.get_sense();
+  pslp_postsolve_skip_ = false;
 
   cuopt_expects(!(category == problem_category_t::MIP &&
                   presolver == cuopt::mathematical_optimization::presolver_t::PSLP),
@@ -1049,6 +1119,23 @@ third_party_presolve_t<i_t, f_t>::apply_presolve_from_mps_data(
 
     if (status == third_party_presolve_status_t::INFEASIBLE ||
         status == third_party_presolve_status_t::UNBNDORINFEAS) {
+      // PSLP reports infeasibility as a zero-sized reduced problem, with no fallback of its own.
+      // On badly-scaled problems this call has been observed to be unreliable, so don't trust it
+      // there: report it and continue solving the original, unreduced problem instead of
+      // terminating the solve on PSLP's say-so. Well-scaled problems keep the previous behaviour
+      // of trusting PSLP's infeasibility result directly.
+      if (has_large_magnitude_data(mps)) {
+        CUOPT_LOG_WARN(
+          "PSLP presolver flagged the problem as infeasible, but the problem has a large "
+          "coefficient range (>= 1e9 within objective, constraint matrix, rhs/bounds, or "
+          "variable bounds); not trusting this result and continuing with the original problem "
+          "instead.");
+        // pslp_presolver_ holds state from the aborted infeasible run, not a real reduction;
+        // make sure undo_pslp() doesn't try to postsolve through it.
+        pslp_postsolve_skip_ = true;
+        return third_party_presolve_host_result_t<i_t, f_t>{
+          third_party_presolve_status_t::UNCHANGED, mps, {}, {}, {}};
+      }
       return third_party_presolve_host_result_t<i_t, f_t>{
         status, io::mps_data_model_t<i_t, f_t>{}, {}, {}, {}};
     }
@@ -1205,7 +1292,7 @@ void third_party_presolve_t<i_t, f_t>::undo_from_device(rmm::device_uvector<f_t>
                                                         problem_category_t category,
                                                         bool status_to_skip,
                                                         bool dual_postsolve,
-                                                        rmm::cuda_stream_view stream_view)
+                                                        cuda::stream_ref stream_view)
 {
   std::vector<f_t> h_primal(primal_solution.size());
   std::vector<f_t> h_dual(dual_solution.size());
@@ -1213,7 +1300,7 @@ void third_party_presolve_t<i_t, f_t>::undo_from_device(rmm::device_uvector<f_t>
   raft::copy(h_primal.data(), primal_solution.data(), primal_solution.size(), stream_view);
   raft::copy(h_dual.data(), dual_solution.data(), dual_solution.size(), stream_view);
   raft::copy(h_rc.data(), reduced_costs.data(), reduced_costs.size(), stream_view);
-  stream_view.synchronize();
+  stream_view.sync();
 
   undo(h_primal, h_dual, h_rc, category, status_to_skip, dual_postsolve);
 
@@ -1223,7 +1310,7 @@ void third_party_presolve_t<i_t, f_t>::undo_from_device(rmm::device_uvector<f_t>
   raft::copy(primal_solution.data(), h_primal.data(), h_primal.size(), stream_view);
   raft::copy(dual_solution.data(), h_dual.data(), h_dual.size(), stream_view);
   raft::copy(reduced_costs.data(), h_rc.data(), h_rc.size(), stream_view);
-  stream_view.synchronize();
+  stream_view.sync();
 }
 
 template <typename i_t, typename f_t>
@@ -1231,6 +1318,11 @@ void third_party_presolve_t<i_t, f_t>::undo_pslp(std::vector<f_t>& primal_soluti
                                                  std::vector<f_t>& dual_solution,
                                                  std::vector<f_t>& reduced_costs)
 {
+  // pslp_presolver_ holds state from a run whose infeasibility result we chose not to trust
+  // (see apply_presolve_from_mps_data); the solve that produced this solution ran on the
+  // original, unreduced problem, so there is nothing to postsolve.
+  if (pslp_postsolve_skip_) { return; }
+
   if constexpr (std::is_same_v<f_t, double>) {
     // PSLP postsolve reads from the passed-in host buffers and writes the
     // uncrushed solution into pslp_presolver_->sol->{x, y, z}.

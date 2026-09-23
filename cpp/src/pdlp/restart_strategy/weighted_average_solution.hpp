@@ -9,9 +9,9 @@
 #include <pdlp/saddle_point.hpp>
 #include <pdlp/utilities/ping_pong_graph.cuh>
 
+#include <cuda/stream>
 #include <raft/core/handle.hpp>
 
-#include <rmm/cuda_stream_view.hpp>
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 
@@ -33,13 +33,20 @@ class weighted_average_solution_t {
   void compute_averages(rmm::device_uvector<f_t>& avg_primal, rmm::device_uvector<f_t>& avg_dual);
 
   i_t get_iterations_since_last_restart() const;
+  rmm::device_scalar<i_t> const& get_d_iterations_since_last_restart() const;
+
+  void reset_iterations_since_last_restart();
+  void increase_iterations_since_last_restart();
+  void set_iterations_since_last_restart(i_t iterations);
 
  private:
   raft::handle_t const* handle_ptr_{nullptr};
-  rmm::cuda_stream_view stream_view_;
+  cuda::stream_ref stream_view_;
 
   i_t primal_size_h_;
   i_t dual_size_h_;
+
+  rmm::device_scalar<i_t> d_iterations_since_last_restart_;
 
  public:
   rmm::device_uvector<f_t> sum_primal_solutions_;

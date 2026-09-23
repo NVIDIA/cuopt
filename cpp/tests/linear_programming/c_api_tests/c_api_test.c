@@ -292,6 +292,157 @@ cuopt_int_t test_mip_get_callbacks_only() { return test_mip_callbacks_internal(0
 
 cuopt_int_t test_mip_get_set_callbacks() { return test_mip_callbacks_internal(1); }
 
+/* -------------------------------------------------------------------------
+ * Log callback tests
+ * Use a small LP (1 variable, 1 constraint) so no GPU / dataset is needed.
+ * ------------------------------------------------------------------------- */
+
+/* Build a trivial 1-variable LP: min x  s.t. x >= 1, 0 <= x <= inf */
+static cuopt_int_t make_trivial_lp(cuOptOptimizationProblem* problem_out,
+                                   cuOptSolverSettings* settings_out)
+{
+  cuopt_float_t obj[]     = {1.0};
+  cuopt_int_t row_off[]   = {0, 1};
+  cuopt_int_t col_idx[]   = {0};
+  cuopt_float_t coeff[]   = {1.0};
+  char sense[]            = {CUOPT_GREATER_THAN};
+  cuopt_float_t rhs[]     = {1.0};
+  cuopt_float_t lb[]      = {0.0};
+  cuopt_float_t ub[]      = {1e30};
+  char vtype[]            = {CUOPT_CONTINUOUS};
+
+  cuopt_int_t status =
+    cuOptCreateProblem(1, 1, CUOPT_MINIMIZE, 0.0, obj, row_off, col_idx, coeff,
+                       sense, rhs, lb, ub, vtype, problem_out);
+  if (status != CUOPT_SUCCESS) return status;
+  return cuOptCreateSolverSettings(settings_out);
+}
+
+typedef struct {
+  int calls;
+  void* received_user_data;
+} log_cb_context_t;
+
+static void counting_log_callback(const char* message, void* user_data)
+{
+  (void)message;
+  log_cb_context_t* ctx  = (log_cb_context_t*)user_data;
+  ctx->calls++;
+  ctx->received_user_data = user_data;
+}
+
+cuopt_int_t test_log_callback(void)
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuOptSolverSettings settings     = NULL;
+  cuOptSolution solution           = NULL;
+  log_cb_context_t ctx             = {0, NULL};
+  cuopt_int_t status               = make_trivial_lp(&problem, &settings);
+  if (status != CUOPT_SUCCESS) goto DONE;
+
+  status = cuOptSetLogCallback(settings, counting_log_callback, &ctx);
+  if (status != CUOPT_SUCCESS) goto DONE;
+
+  status = cuOptSolve(problem, settings, &solution);
+  if (status != CUOPT_SUCCESS) goto DONE;
+
+  if (ctx.calls < 1) {
+    printf("Expected log callback to be called at least once; got %d calls\n", ctx.calls);
+    status = CUOPT_INVALID_ARGUMENT;
+    goto DONE;
+  }
+  if (ctx.received_user_data != &ctx) {
+    printf("user_data pointer was not forwarded correctly\n");
+    status = CUOPT_INVALID_ARGUMENT;
+    goto DONE;
+  }
+
+DONE:
+  cuOptDestroyProblem(&problem);
+  cuOptDestroySolverSettings(&settings);
+  cuOptDestroySolution(&solution);
+  return status;
+}
+
+cuopt_int_t test_log_callback_cleared(void)
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuOptSolverSettings settings     = NULL;
+  cuOptSolution solution           = NULL;
+  log_cb_context_t ctx             = {0, NULL};
+  cuopt_int_t status               = make_trivial_lp(&problem, &settings);
+  if (status != CUOPT_SUCCESS) goto DONE;
+
+  /* Register then immediately clear the callback */
+  status = cuOptSetLogCallback(settings, counting_log_callback, &ctx);
+  if (status != CUOPT_SUCCESS) goto DONE;
+  status = cuOptSetLogCallback(settings, NULL, NULL);
+  if (status != CUOPT_SUCCESS) goto DONE;
+
+  status = cuOptSolve(problem, settings, &solution);
+  if (status != CUOPT_SUCCESS) goto DONE;
+
+  if (ctx.calls != 0) {
+    printf("Expected 0 callback calls after clearing; got %d\n", ctx.calls);
+    status = CUOPT_INVALID_ARGUMENT;
+    goto DONE;
+  }
+
+DONE:
+  cuOptDestroyProblem(&problem);
+  cuOptDestroySolverSettings(&settings);
+  cuOptDestroySolution(&solution);
+  return status;
+}
+
+/* A callback registered for one solve must not fire on a later solve that uses
+ * fresh settings with no callback — otherwise a stale callback could run against
+ * destroyed user_data once the first solve's RAII scope ends. */
+cuopt_int_t test_log_callback_not_leaked_across_solves(void)
+{
+  cuOptOptimizationProblem problem1 = NULL;
+  cuOptSolverSettings settings1     = NULL;
+  cuOptSolution solution1           = NULL;
+  cuOptOptimizationProblem problem2 = NULL;
+  cuOptSolverSettings settings2     = NULL;
+  cuOptSolution solution2           = NULL;
+  log_cb_context_t ctx              = {0, NULL};
+  int calls_after_first             = 0;
+
+  cuopt_int_t status = make_trivial_lp(&problem1, &settings1);
+  if (status != CUOPT_SUCCESS) goto DONE;
+
+  status = cuOptSetLogCallback(settings1, counting_log_callback, &ctx);
+  if (status != CUOPT_SUCCESS) goto DONE;
+  status = cuOptSolve(problem1, settings1, &solution1);
+  if (status != CUOPT_SUCCESS) goto DONE;
+
+  calls_after_first = ctx.calls;
+
+  /* Second solve uses fresh settings with no callback registered. */
+  status = make_trivial_lp(&problem2, &settings2);
+  if (status != CUOPT_SUCCESS) goto DONE;
+  status = cuOptSolve(problem2, settings2, &solution2);
+  if (status != CUOPT_SUCCESS) goto DONE;
+
+  if (ctx.calls != calls_after_first) {
+    printf("Callback leaked across solves; expected %d calls, got %d\n",
+           calls_after_first,
+           ctx.calls);
+    status = CUOPT_INVALID_ARGUMENT;
+    goto DONE;
+  }
+
+DONE:
+  cuOptDestroyProblem(&problem1);
+  cuOptDestroySolverSettings(&settings1);
+  cuOptDestroySolution(&solution1);
+  cuOptDestroyProblem(&problem2);
+  cuOptDestroySolverSettings(&settings2);
+  cuOptDestroySolution(&solution2);
+  return status;
+}
+
 cuopt_int_t burglar_problem()
 {
   cuOptOptimizationProblem problem = NULL;
@@ -2696,6 +2847,59 @@ DONE:
  * This simulates a CPU host without GPU access.
  * Note: Environment variables must be set before calling this function.
  */
+/* Remote solve must deliver the *server's* log to the user callback, not just
+   the client-side lines. Requires CUOPT_REMOTE_HOST/PORT set by the caller. */
+typedef struct {
+  int calls;
+  int saw_solver_line;
+} remote_log_ctx_t;
+
+static void remote_log_callback(const char* message, void* user_data)
+{
+  remote_log_ctx_t* ctx = (remote_log_ctx_t*)user_data;
+  ctx->calls++;
+  /* Emitted by the solver itself, so in remote mode it can only have come from
+     the server. Client-side lines alone would not contain it. */
+  if (message && strstr(message, "Status:") != NULL) { ctx->saw_solver_line = 1; }
+}
+
+cuopt_int_t test_log_callback_remote(const char* filename)
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuOptSolverSettings settings     = NULL;
+  cuOptSolution solution           = NULL;
+  remote_log_ctx_t ctx             = {0, 0};
+  cuopt_int_t status;
+
+  status = cuOptReadProblem(filename, &problem);
+  if (status != CUOPT_SUCCESS) goto DONE;
+
+  status = cuOptCreateSolverSettings(&settings);
+  if (status != CUOPT_SUCCESS) goto DONE;
+
+  status = cuOptSetLogCallback(settings, remote_log_callback, &ctx);
+  if (status != CUOPT_SUCCESS) goto DONE;
+
+  status = cuOptSolve(problem, settings, &solution);
+  if (status != CUOPT_SUCCESS) goto DONE;
+
+  if (ctx.calls < 1) {
+    printf("Expected remote solve to deliver log lines; got %d calls\n", ctx.calls);
+    status = CUOPT_INVALID_ARGUMENT;
+    goto DONE;
+  }
+  if (!ctx.saw_solver_line) {
+    printf("Remote solve delivered %d lines but none from the server's solver log\n", ctx.calls);
+    status = CUOPT_INVALID_ARGUMENT;
+  }
+
+DONE:
+  if (solution) cuOptDestroySolution(&solution);
+  if (settings) cuOptDestroySolverSettings(&settings);
+  if (problem) cuOptDestroyProblem(&problem);
+  return status;
+}
+
 cuopt_int_t test_cpu_only_execution(const char* filename)
 {
   cuOptOptimizationProblem problem = NULL;

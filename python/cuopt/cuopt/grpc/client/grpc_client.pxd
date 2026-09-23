@@ -44,6 +44,13 @@ cdef extern from "cuopt/routing/cpu_routing_problem.hpp" namespace "cuopt::routi
         int32_t duration
         vector[int32_t] locations
 
+    cdef cppclass cpu_vehicle_distance_break_t:
+        cpu_vehicle_distance_break_t() except +
+        float distance_min
+        float distance_max
+        int32_t duration
+        vector[int32_t] locations
+
     cdef cppclass cpu_initial_solution_t:
         cpu_initial_solution_t() except +
         vector[int32_t] vehicle_ids
@@ -78,6 +85,7 @@ cdef extern from "cuopt/routing/cpu_routing_problem.hpp" namespace "cuopt::routi
         vector[int32_t] break_locations
         vector[cpu_uniform_break_t] uniform_breaks
         cpp_map[int32_t, vector[cpu_vehicle_break_t]] vehicle_breaks
+        cpp_map[int32_t, vector[cpu_vehicle_distance_break_t]] vehicle_distance_breaks
         cpp_map[int32_t, vector[int32_t]] vehicle_order_match
         cpp_map[int32_t, vector[int32_t]] order_vehicle_match
         cpp_map[int32_t, vector[int32_t]] order_precedence
@@ -188,6 +196,7 @@ cdef extern from "cuopt/grpc/cython_grpc_client.hpp" namespace "cuopt::cython":
             const grpc_python_client_connect_options_t& options,
         ) except +
         bint connect(string& error_out) except +
+        bint ping(string& error_out, int timeout_seconds) except + nogil
         string last_error()
 
         # Shared job control

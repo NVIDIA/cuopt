@@ -241,7 +241,7 @@ int try_substitutions_for_row(const papilo::Problem<f_t>& problem,
                               typename std::vector<candidate_t>::iterator cand_end,
                               int row,
                               std::vector<f_t>& dense_row_coefs,
-                              std::vector<uint8_t>& substituted)
+                              std::vector<uint8_t>& used_in_substitution)
 {
   const auto& constraint_matrix = problem.getConstraintMatrix();
   const auto& lhs_values        = constraint_matrix.getLeftHandSides();
@@ -323,9 +323,12 @@ int try_substitutions_for_row(const papilo::Problem<f_t>& problem,
   };
 
   // Return the best master from the top-2 tracker, skipping excluded columns.
-  auto pick_master = [&substituted](const top2_t<f_t>& t, int exclude) -> std::pair<int, f_t> {
-    if (t.top1.first >= 0 && t.top1.first != exclude && !substituted[t.top1.first]) return t.top1;
-    if (t.top2.first >= 0 && t.top2.first != exclude && !substituted[t.top2.first]) return t.top2;
+  auto pick_master = [&used_in_substitution](const top2_t<f_t>& t,
+                                             int exclude) -> std::pair<int, f_t> {
+    if (t.top1.first >= 0 && t.top1.first != exclude && !used_in_substitution[t.top1.first])
+      return t.top1;
+    if (t.top2.first >= 0 && t.top2.first != exclude && !used_in_substitution[t.top2.first])
+      return t.top2;
     return {-1, f_t{0}};
   };
 
@@ -333,7 +336,7 @@ int try_substitutions_for_row(const papilo::Problem<f_t>& problem,
 
   for (auto ci = cand_begin; ci != cand_end; ++ci) {
     auto [cand, locking_row, dir] = *ci;
-    if (substituted[cand]) continue;
+    if (used_in_substitution[cand]) continue;
 
     bool is_upward = (dir == UP);
     f_t cand_coeff = dense_row_coefs[cand];
@@ -368,7 +371,7 @@ int try_substitutions_for_row(const papilo::Problem<f_t>& problem,
 
     cuopt_assert(master_col >= 0, "");
     cuopt_assert(master_col != cand, "");
-    cuopt_assert(!substituted[master_col], "");
+    cuopt_assert(!used_in_substitution[master_col], "");
 
     // The probe proves a one-directional implication (e.g. y=0 => x=0).
     // The substitution x=y also asserts the reverse (y=1 => x=1), which is
@@ -398,11 +401,27 @@ int try_substitutions_for_row(const papilo::Problem<f_t>& problem,
 
     if (!substitution_numerically_stable(constraint_matrix, cand)) continue;
 
-    substituted[cand] = true;
-    if (is_anti)
-      reductions.replaceCol(cand, master_col, f_t{-1}, f_t{1});  // x = 1 - y
-    else
-      reductions.replaceCol(cand, master_col, f_t{1}, f_t{0});  // x = y
+    used_in_substitution[cand]       = true;
+    used_in_substitution[master_col] = true;
+
+    papilo::TransactionGuard<f_t> guard{reductions};
+    reductions.lockCol(cand);
+    reductions.lockCol(master_col);
+    reductions.lockRow(row);
+    for (int j = 0; j < length; ++j)
+      reductions.lockColBounds(cols[j]);
+
+    // PaPILO encodes a replacement as REPLACE(source, factor) followed by a NONE(master, offset)
+    // payload.
+    if (is_anti) {
+      // x = 1 - y
+      reductions.add_reduction(papilo::ColReduction::REPLACE, cand, f_t{-1});
+      reductions.add_reduction(papilo::ColReduction::NONE, master_col, f_t{1});
+    } else {
+      // x = y
+      reductions.add_reduction(papilo::ColReduction::REPLACE, cand, f_t{1});
+      reductions.add_reduction(papilo::ColReduction::NONE, master_col, f_t{0});
+    }
     ++n_substitutions;
   }
 
@@ -450,7 +469,7 @@ papilo::PresolveStatus SingleLockDualAggregation<f_t>::execute(
 
   int n_substitutions = 0;
   std::vector<f_t> dense_row_coefs(ncols, f_t{0});
-  std::vector<uint8_t> substituted(ncols, 0);
+  std::vector<uint8_t> used_in_substitution(ncols, 0);
 
   auto cand_it = candidates.begin();
   while (cand_it != candidates.end()) {
@@ -467,7 +486,7 @@ papilo::PresolveStatus SingleLockDualAggregation<f_t>::execute(
       cand_it, candidates.end(), [r](const candidate_t& c) { return c.locking_row != r; });
 
     n_substitutions += try_substitutions_for_row(
-      problem, num, reductions, cand_it, row_end, r, dense_row_coefs, substituted);
+      problem, num, reductions, cand_it, row_end, r, dense_row_coefs, used_in_substitution);
 
     cand_it = row_end;
   }

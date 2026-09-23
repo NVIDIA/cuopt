@@ -8,8 +8,6 @@
 #pragma once
 
 #include <cuopt/export.hpp>
-#include <cuopt/routing/data_model_view.hpp>
-#include <cuopt/routing/routing_structures.hpp>
 
 #include <cstdint>
 #include <map>
@@ -24,6 +22,11 @@ class handle_t;
 
 namespace cuopt {
 namespace CUOPT_EXPORT routing {
+
+// Forward-declared to keep this host-only header free of raft/rmm; full definition
+// only needed in cpu_routing_problem.cu.
+template <typename i_t, typename f_t>
+class data_model_view_t;
 
 /**
  * @brief Host-memory owning routing problem (gRPC / remote-execution analog of
@@ -45,6 +48,13 @@ struct cpu_vehicle_break_t {
   int32_t earliest = 0;
   int32_t latest   = 0;
   int32_t duration = 0;
+  std::vector<int32_t> locations;
+};
+
+struct cpu_vehicle_distance_break_t {
+  float distance_min = 0.f;
+  float distance_max = 0.f;
+  int32_t duration   = 0;
   std::vector<int32_t> locations;
 };
 
@@ -96,6 +106,7 @@ class cpu_routing_problem_t {
   std::vector<int32_t> break_locations;
   std::vector<cpu_uniform_break_t> uniform_breaks;
   std::map<int32_t, std::vector<cpu_vehicle_break_t>> vehicle_breaks;
+  std::map<int32_t, std::vector<cpu_vehicle_distance_break_t>> vehicle_distance_breaks;
 
   std::map<int32_t, std::vector<int32_t>> vehicle_order_match;
   std::map<int32_t, std::vector<int32_t>> order_vehicle_match;

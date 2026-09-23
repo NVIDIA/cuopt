@@ -19,9 +19,9 @@
 
 #include <mip_heuristics/problem/problem.cuh>
 
+#include <cuda/stream>
 #include <raft/core/handle.hpp>
 
-#include <rmm/cuda_stream_view.hpp>
 #include <rmm/device_buffer.hpp>
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
@@ -127,6 +127,7 @@ class pdlp_restart_strategy_t {
                         const rmm::device_uvector<f_t>& primal_weight);
 
   void increment_iteration_since_last_restart();
+  void reset_iterations_since_last_restart();
 
   void update_distance(pdhg_solver_t<i_t, f_t>& pdhg_solver,
                        rmm::device_uvector<f_t>& primal_weight,
@@ -163,6 +164,7 @@ class pdlp_restart_strategy_t {
   view_t view();
 
   i_t get_iterations_since_last_restart() const;
+  rmm::device_scalar<i_t> const& get_d_iterations_since_last_restart() const;
 
   void set_last_restart_was_average(bool value);
   bool get_last_restart_was_average() const;
@@ -306,7 +308,7 @@ class pdlp_restart_strategy_t {
                                  rmm::device_uvector<f_t>& dual_step_size);
 
   raft::handle_t const* handle_ptr_{nullptr};
-  rmm::cuda_stream_view stream_view_;
+  cuda::stream_ref stream_view_;
 
  public:
   const bool batch_mode_{false};

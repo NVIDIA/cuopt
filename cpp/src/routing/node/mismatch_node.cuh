@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -20,13 +20,13 @@ class mismatch_node_t {
   //! Mismatch gathered after node
   i_t mismatch_backward = 0;
 
-  /*! \brief { Calculate next node forward gathered distance data based on actual node} */
+  /*! \brief { Calculate next node forward gathered mismatch data based on actual node} */
   void HDI calculate_forward(mismatch_node_t& next, f_t mismatch_between) const noexcept
   {
     next.mismatch_forward = mismatch_forward + mismatch_between;
   }
 
-  /*! \brief { Calculate prev node gathered distance backward data based on actual node} */
+  /*! \brief { Calculate prev node gathered mismatch backward data based on actual node} */
   void HDI calculate_backward(mismatch_node_t& prev, f_t mismatch_between) const noexcept
   {
     prev.mismatch_backward = mismatch_backward + mismatch_between;
@@ -50,7 +50,8 @@ class mismatch_node_t {
   }
 
   /*! \brief  { Combine information from begining and ending fragments.}
-      \return { Distance excess of route represented by nodes prev and next }*/
+      \return { Mismatch
+   * excess of route represented by nodes prev and next }*/
   static HDI double combine(const mismatch_node_t& prev,
                             const mismatch_node_t& next,
                             [[maybe_unused]] const VehicleInfo<f_t>& vehicle_info,

@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -21,7 +21,6 @@ void populate_demand_container(data_model_view_t<i_t, f_t> const& data_model,
                                order_info_t<i_t, f_t>& order_info_)
 {
   auto handle_ptr_ = data_model.get_handle_ptr();
-  auto stream_view = handle_ptr_->get_stream();
   i_t fleet_size   = data_model.get_fleet_size();
   auto& capacities = data_model.get_capacity_dimensions();
   // If there are no capacities provided, create one capacity with dummy entries
