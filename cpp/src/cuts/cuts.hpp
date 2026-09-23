@@ -1263,6 +1263,7 @@ i_t add_cuts(const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
              std::vector<simplex::variable_status_t>& vstatus,
              std::vector<f_t>& edge_norms);
 
+// Returns -1 on numerical failure, or the halt/time-limit return code.
 template <typename i_t, typename f_t>
 i_t remove_cuts(simplex::lp_problem_t<i_t, f_t>& lp,
                 const simplex::simplex_solver_settings_t<i_t, f_t>& settings,

@@ -8,8 +8,6 @@
 #pragma once
 
 #include <cuopt/export.hpp>
-#include <cuopt/routing/data_model_view.hpp>
-#include <cuopt/routing/routing_structures.hpp>
 
 #include <cstdint>
 #include <map>
@@ -24,6 +22,11 @@ class handle_t;
 
 namespace cuopt {
 namespace CUOPT_EXPORT routing {
+
+// Forward-declared to keep this host-only header free of raft/rmm; full definition
+// only needed in cpu_routing_problem.cu.
+template <typename i_t, typename f_t>
+class data_model_view_t;
 
 /**
  * @brief Host-memory owning routing problem (gRPC / remote-execution analog of
