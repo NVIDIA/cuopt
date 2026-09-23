@@ -136,18 +136,18 @@ PDLP and barrier in parallel on different GPUs to avoid sharing single GPU resou
 
 For LP problems solved with ``PDLP`` method, setting ``CUOPT_NUM_GPUS`` to ``-1`` or to a value greater than 1,
 together with ``CUOPT_USE_DISTRIBUTED_PDLP`` set to true, distributes the PDLP solve across multiple GPUs (this
-is cuOpt's multi-GPU PDLP, or mPDLP). A value of ``-1`` uses all GPUs visible to the process, which may resolve
+is cuOpt's multi-GPU PDLP). A value of ``-1`` uses all GPUs visible to the process, which may resolve
 to a single GPU on a single-GPU host; multi-GPU sharding only happens when more than one GPU is actually
 selected.
 
-Multi-GPU PDLP (mPDLP)
-^^^^^^^^^^^^^^^^^^^^^^
+Multi-GPU PDLP
+^^^^^^^^^^^^^^
 
 ``CUOPT_USE_DISTRIBUTED_PDLP`` controls whether PDLP should be distributed across multiple GPUs. It requires
 ``CUOPT_METHOD`` to be ``PDLP`` and ``CUOPT_NUM_GPUS`` to be ``-1`` or greater than 1 (as above, ``-1`` may
 resolve to a single visible GPU, in which case the solve still runs but is not actually sharded).
 
-``CUOPT_DISTRIBUTED_PDLP_PARTITIONER`` controls how the problem is partitioned across the GPUs used by mPDLP:
+``CUOPT_DISTRIBUTED_PDLP_PARTITIONER`` controls how the problem is partitioned across the GPUs used by multi-GPU PDLP:
 
 * ``0``: Auto (default) - picks ``RoundRobin`` on a single GPU and ``KaMinPar`` otherwise
 * ``1``: KaMinPar - a multi-threaded graph partitioner that generally produces better balanced shards at the cost of
