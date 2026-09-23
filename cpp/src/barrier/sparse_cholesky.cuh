@@ -23,8 +23,6 @@
 
 #include <dlfcn.h>
 
-#include <string>
-
 namespace cuopt::mathematical_optimization::barrier {
 
 namespace detail {
@@ -47,18 +45,6 @@ inline bool pin_cudss_threading_layer(const char* lib_file)
   // accumulating loader-internal refcount state across repeated construction.
   dlclose(handle);
   return true;
-}
-
-// Directory libcudss.so.0 loaded from; cuDSS ships its mtlayer plugin alongside it.
-inline std::string cudss_library_dir()
-{
-  void* sym = dlsym(RTLD_DEFAULT, "cudssCreateMg");
-  if (sym == nullptr) return {};
-  Dl_info info{};
-  if (dladdr(sym, &info) == 0 || info.dli_fname == nullptr) return {};
-  std::string path(info.dli_fname);
-  auto slash = path.find_last_of('/');
-  return slash == std::string::npos ? std::string{} : path.substr(0, slash);
 }
 
 }  // namespace detail
@@ -291,39 +277,32 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     CUDSS_CALL_AND_CHECK_EXIT(
       cudssSetDeviceMemHandler(handle, &mem_handler), status, "cudssSetDeviceMemHandler");
 
-    std::string cudss_mt_lib_file;
-    char* env_value = std::getenv("CUDSS_THREADING_LIB");
+    const char* cudss_mt_lib_file = nullptr;
+    char* env_value               = std::getenv("CUDSS_THREADING_LIB");
     if (env_value != nullptr) {
       cudss_mt_lib_file = env_value;
     } else if (CUDSS_MT_LIB_FILE_NAME != nullptr) {
       cudss_mt_lib_file = CUDSS_MT_LIB_FILE_NAME;
-      // Absolute path means CUDSS_MT_LIB_FILE_NAME was baked in at configure time from cuDSS's
-      // build-time install location, which can differ from (or no longer exist at) its install
-      // location here; re-derive it from where libcudss.so.0 actually loaded from.
-      if (cudss_mt_lib_file[0] == '/') {
-        auto loaded_dir = detail::cudss_library_dir();
-        if (!loaded_dir.empty()) { cudss_mt_lib_file = loaded_dir + "/libcudss_mtlayer_gomp.so.0"; }
-      }
     }
 
-    if (!cudss_mt_lib_file.empty()) {
-      if (!detail::pin_cudss_threading_layer(cudss_mt_lib_file.c_str())) {
+    if (cudss_mt_lib_file != nullptr) {
+      if (!detail::pin_cudss_threading_layer(cudss_mt_lib_file)) {
         settings.log.printf(
           "cuDSS Threading layer       : could not pin '%s'; falling back to single-threaded "
           "cuDSS. Set the CUDSS_THREADING_LIB environment variable to an absolute path, or "
           "ensure the host provides libgomp.so.1, to enable multi-threaded cuDSS.\n",
-          cudss_mt_lib_file.c_str());
+          cudss_mt_lib_file);
       } else {
-        cudssStatus_t threading_status = cudssSetThreadingLayer(handle, cudss_mt_lib_file.c_str());
+        cudssStatus_t threading_status = cudssSetThreadingLayer(handle, cudss_mt_lib_file);
         if (threading_status == CUDSS_STATUS_SUCCESS) {
-          settings.log.printf("cuDSS Threading layer       : %s\n", cudss_mt_lib_file.c_str());
+          settings.log.printf("cuDSS Threading layer       : %s\n", cudss_mt_lib_file);
         } else {
           settings.log.printf(
             "cuDSS Threading layer       : could not load '%s' (status = %d); falling back "
             "to single-threaded cuDSS. Set the CUDSS_THREADING_LIB environment variable to "
             "an absolute path, or ensure the host provides libgomp.so.1, to enable "
             "multi-threaded cuDSS.\n",
-            cudss_mt_lib_file.c_str(),
+            cudss_mt_lib_file,
             threading_status);
         }
       }
