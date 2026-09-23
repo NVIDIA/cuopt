@@ -1,0 +1,121 @@
+/* clang-format off */
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+/* clang-format on */
+
+#pragma once
+
+#include <array>
+#include <mutex>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
+namespace cuopt::mathematical_optimization::mip {
+
+template <typename i_t, typename f_t>
+class problem_t;
+
+enum interval_type_t { EQUALS = 0, LEQ, GEQ };
+
+template <typename i_t, typename f_t>
+struct val_interval_t {
+  void fill_cache_hits(i_t interval,
+                       f_t first_probe,
+                       f_t second_probe,
+                       i_t& hit_interval_for_first_probe,
+                       i_t& hit_interval_for_second_probe) const
+  {
+    if (interval_type == interval_type_t::EQUALS) {
+      if (val == first_probe) { hit_interval_for_first_probe = interval; }
+      if (val == second_probe) { hit_interval_for_second_probe = interval; }
+    } else if (interval_type == interval_type_t::LEQ) {
+      if (val >= first_probe) { hit_interval_for_first_probe = interval; }
+      if (val >= second_probe) { hit_interval_for_second_probe = interval; }
+    } else if (interval_type == interval_type_t::GEQ) {
+      if (val <= first_probe) { hit_interval_for_first_probe = interval; }
+      if (val <= second_probe) { hit_interval_for_second_probe = interval; }
+    }
+  }
+
+  f_t val;
+  interval_type_t interval_type;
+};
+
+template <typename f_t>
+struct cached_bound_t {
+  f_t lb;
+  f_t ub;
+};
+
+template <typename i_t, typename f_t>
+struct cache_entry_t {
+  val_interval_t<i_t, f_t> val_interval;
+  std::unordered_map<i_t, cached_bound_t<f_t>> var_to_cached_bound_map;
+};
+
+template <typename i_t>
+struct probe_forcing_t {
+  i_t var;
+  i_t forced_var;
+  bool value;
+  bool forced_value;
+};
+
+template <typename i_t>
+struct probe_findings_t {
+  std::vector<probe_forcing_t<i_t>> forcings;
+  std::vector<std::pair<i_t, bool>> fixings;
+};
+
+template <typename i_t, typename f_t>
+class probing_cache_t {
+ public:
+  bool contains(problem_t<i_t, f_t>& problem, i_t var_id);
+  void update_bounds_with_selected(std::vector<f_t>& host_lb,
+                                   std::vector<f_t>& host_ub,
+                                   const cache_entry_t<i_t, f_t>& cache_entry,
+                                   const std::vector<i_t>& reverse_original_ids);
+  i_t check_number_of_conflicting_vars(const std::vector<f_t>& host_lb,
+                                       const std::vector<f_t>& host_ub,
+                                       const cache_entry_t<i_t, f_t>& cache_entry,
+                                       f_t integrality_tolerance,
+                                       const std::vector<i_t>& reverse_original_ids);
+  f_t get_least_conflicting_rounding(problem_t<i_t, f_t>& problem,
+                                     std::vector<f_t>& host_lb,
+                                     std::vector<f_t>& host_ub,
+                                     i_t var_id_on_problem,
+                                     f_t first_probe,
+                                     f_t second_probe,
+                                     f_t integrality_tolerance);
+  void merge_forcings(const std::vector<probe_forcing_t<i_t>>& forcings,
+                      std::vector<std::pair<i_t, bool>>& fixings);
+
+  std::unordered_map<i_t, std::array<cache_entry_t<i_t, f_t>, 2>> probing_cache;
+  std::mutex probing_cache_mutex;
+};
+
+template <typename i_t, typename f_t>
+class lb_probing_cache_t {
+ public:
+  bool contains(problem_t<i_t, f_t>& problem, i_t var_id);
+  void update_bounds_with_selected(std::vector<f_t>& host_bounds,
+                                   const cache_entry_t<i_t, f_t>& cache_entry,
+                                   const std::vector<i_t>& reverse_original_ids);
+  i_t check_number_of_conflicting_vars(const std::vector<f_t>& host_bounds,
+                                       const cache_entry_t<i_t, f_t>& cache_entry,
+                                       f_t integrality_tolerance,
+                                       const std::vector<i_t>& reverse_original_ids);
+  f_t get_least_conflicting_rounding(problem_t<i_t, f_t>& problem,
+                                     std::vector<f_t>& host_bounds,
+                                     i_t var_id_on_problem,
+                                     f_t first_probe,
+                                     f_t second_probe,
+                                     f_t integrality_tolerance);
+
+  std::unordered_map<i_t, std::array<cache_entry_t<i_t, f_t>, 2>> probing_cache;
+};
+
+}  // namespace cuopt::mathematical_optimization::mip
