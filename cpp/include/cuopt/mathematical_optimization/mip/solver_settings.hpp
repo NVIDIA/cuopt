@@ -147,6 +147,7 @@ class mip_solver_settings_t {
   i_t strong_branching_simplex_iteration_limit = -1;
   i_t num_gpus                                 = 1;
   method_t method{method_t::Concurrent};
+  i_t concurrent_nnz_cutoff{50'000'000};
   bool log_to_console = true;
 
   std::string log_file;
