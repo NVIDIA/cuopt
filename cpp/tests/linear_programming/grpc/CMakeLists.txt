@@ -126,6 +126,10 @@ target_link_libraries(GRPC_INTEGRATION_TEST
     protobuf::libprotobuf
 )
 
+if(CUOPT_ENABLE_GRPC_ROUTING)
+    target_compile_definitions(GRPC_INTEGRATION_TEST PRIVATE CUOPT_ENABLE_GRPC_ROUTING)
+endif()
+
 if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
   target_link_options(GRPC_INTEGRATION_TEST PRIVATE -Wl,--enable-new-dtags)
 endif()

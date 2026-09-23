@@ -359,6 +359,9 @@ class pdlp_solver_settings_t {
   // distributed_pdlp_partitioner_t for the meaning of each value.
   distributed_pdlp_partitioner_t distributed_pdlp_partitioner{distributed_pdlp_partitioner_t::Auto};
   method_t method{method_t::Concurrent};
+  // TODO: Remove this cutoff once concurrent CPU solver memory usage and cuDSS long running kernels
+  // are resolved. -1 disables the cutoff regardless of the reduced problem's NNZ.
+  i_t concurrent_nnz_cutoff{50'000'000};
   bool inside_mip{false};
   // For concurrent termination
   std::atomic<int>* concurrent_halt{nullptr};
