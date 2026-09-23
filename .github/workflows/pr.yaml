@@ -569,13 +569,13 @@ jobs:
           path: ${{ runner.temp }}/maven-repo
           if-no-files-found: error
 
-  # TEMPORARY (#1970 review): if: false so GitHub Actions still validates the reusable-workflow
-  # call (inputs/secrets shape) but the job can never actually run and push/publish anything,
-  # regardless of what MAVEN_DEPLOY_USERNAME or other credentials exist on this repo. Remove
-  # before merge.
+  # TEMPORARY (#1970 review): runs unconditionally (unlike the real job's
+  # if: vars.MAVEN_DEPLOY_USERNAME != '' gate) to exercise the reusable-workflow call for real.
+  # Safe to do so: GPG_PRIVATE_KEY/GPG_PASSPHRASE/MAVEN_DEPLOY_TOKEN/MAVEN_DEPLOY_USERNAME don't
+  # exist on this repo yet, so this can only fail at the reusable workflow's own credential
+  # check, never actually publish anything. Remove before merge.
   java-maven-publish-tmp:
     needs: [java-static-gather-tmp]
-    if: false
     permissions:
       actions: read
       contents: read
