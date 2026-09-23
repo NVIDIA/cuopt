@@ -2328,14 +2328,14 @@ TEST(MapperRoundtrip, PDLPSettingsAllFields)
   EXPECT_EQ(restored.distributed_pdlp_partitioner, distributed_pdlp_partitioner_t::RoundRobin);
 }
 
-// Regression coverage for the distributed-PDLP dispatch decision that
+// Regression coverage for the multi-GPU PDLP (mPDLP) dispatch decision that
 // run_lp_solve (grpc_worker.cpp) shares with the mps_data_model_t solve_lp
-// overload via is_distributed_pdlp_requested. A mapper-only test cannot catch
+// overload via is_multi_gpu_pdlp_requested. A mapper-only test cannot catch
 // a regression where the worker stops calling this predicate; this exercises
 // the predicate itself, decoded from the wire exactly as the worker receives it.
-TEST(MapperRoundtrip, PDLPSettingsDistributedDispatchDecision)
+TEST(MapperRoundtrip, PDLPSettingsMultiGpuDispatchDecision)
 {
-  using cuopt::mathematical_optimization::is_distributed_pdlp_requested;
+  using cuopt::mathematical_optimization::is_multi_gpu_pdlp_requested;
 
   auto decode = [](auto fill) {
     cuopt::remote::PDLPSolverSettings pb;
@@ -2346,32 +2346,32 @@ TEST(MapperRoundtrip, PDLPSettingsDistributedDispatchDecision)
   };
 
   // Default settings (Concurrent method, num_gpus=1): single-GPU path.
-  EXPECT_FALSE(is_distributed_pdlp_requested(decode([](auto&) {})));
+  EXPECT_FALSE(is_multi_gpu_pdlp_requested(decode([](auto&) {})));
 
   // method=PDLP alone, num_gpus left at 1: still single-GPU.
-  EXPECT_FALSE(is_distributed_pdlp_requested(
+  EXPECT_FALSE(is_multi_gpu_pdlp_requested(
     decode([](auto& pb) { pb.set_method(cuopt::remote::LPMethod::PDLP); })));
 
-  // method=PDLP with num_gpus=-1 (all visible devices): distributed, even
-  // without use_distributed_pdlp set explicitly.
-  EXPECT_TRUE(is_distributed_pdlp_requested(decode([](auto& pb) {
+  // method=PDLP with num_gpus=-1 (all visible devices): multi-GPU, even
+  // without use_multi_gpu_pdlp set explicitly.
+  EXPECT_TRUE(is_multi_gpu_pdlp_requested(decode([](auto& pb) {
     pb.set_method(cuopt::remote::LPMethod::PDLP);
     pb.set_num_gpus(-1);
   })));
 
-  // method=PDLP with num_gpus=4: distributed.
-  EXPECT_TRUE(is_distributed_pdlp_requested(decode([](auto& pb) {
+  // method=PDLP with num_gpus=4: multi-GPU.
+  EXPECT_TRUE(is_multi_gpu_pdlp_requested(decode([](auto& pb) {
     pb.set_method(cuopt::remote::LPMethod::PDLP);
     pb.set_num_gpus(4);
   })));
 
-  // use_distributed_pdlp explicitly set: distributed regardless of num_gpus.
+  // use_multi_gpu_pdlp explicitly set: multi-GPU regardless of num_gpus.
   EXPECT_TRUE(
-    is_distributed_pdlp_requested(decode([](auto& pb) { pb.set_use_distributed_pdlp(true); })));
+    is_multi_gpu_pdlp_requested(decode([](auto& pb) { pb.set_use_multi_gpu_pdlp(true); })));
 
   // Non-PDLP method with num_gpus=4 (e.g. Barrier concurrent-mode GPU count):
-  // not distributed PDLP.
-  EXPECT_FALSE(is_distributed_pdlp_requested(decode([](auto& pb) {
+  // not multi-GPU PDLP.
+  EXPECT_FALSE(is_multi_gpu_pdlp_requested(decode([](auto& pb) {
     pb.set_method(cuopt::remote::LPMethod::Barrier);
     pb.set_num_gpus(4);
   })));

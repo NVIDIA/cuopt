@@ -2467,7 +2467,7 @@ cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> op_problem_to_m
 }
 
 template <typename i_t, typename f_t>
-bool is_distributed_pdlp_requested(pdlp_solver_settings_t<i_t, f_t> const& settings)
+bool is_multi_gpu_pdlp_requested(pdlp_solver_settings_t<i_t, f_t> const& settings)
 {
   // method=PDLP with num_gpus>1 (or -1 for all visible GPUs) requests distributed PDLP,
   // even without use_distributed_pdlp set explicitly.
@@ -2483,7 +2483,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
   bool problem_checking,
   bool use_pdlp_solver_mode)
 {
-  if (is_distributed_pdlp_requested(settings)) {
+  if (is_multi_gpu_pdlp_requested(settings)) {
     pdlp_solver_settings_t<i_t, f_t> distributed_settings = settings;
     distributed_settings.use_distributed_pdlp             = true;
     return solve_lp_distributed_from_mps(
@@ -2883,7 +2883,7 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
   template CUOPT_EXPORT cuopt::mathematical_optimization::io::mps_data_model_t<int, F_TYPE>      \
   op_problem_to_mps_data_model(const optimization_problem_t<int, F_TYPE>& op_problem);           \
                                                                                                  \
-  template CUOPT_EXPORT bool is_distributed_pdlp_requested(                                      \
+  template CUOPT_EXPORT bool is_multi_gpu_pdlp_requested(                                        \
     pdlp_solver_settings_t<int, F_TYPE> const& settings);                                        \
                                                                                                  \
   template optimization_problem_solution_t<int, F_TYPE> solve_lp_distributed_from_mps(           \
