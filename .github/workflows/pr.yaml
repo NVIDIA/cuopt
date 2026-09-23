@@ -536,6 +536,56 @@ jobs:
       artifact-name: "cuopt_java_${{ matrix.ARCH }}_cu${{ matrix.CUDA_MAJOR }}"
       file_to_upload: "java/cuopt/classifier-jars/"
 
+  # TEMPORARY (#1970 review): replicates java-static-gather + java-maven-publish from
+  # build.yaml here so the wiring can be exercised on this PR, per review request. Remove
+  # before merge.
+  java-static-gather-tmp:
+    needs: [java-static-build]
+    runs-on: linux-amd64-cpu4
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code repo
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Download per-classifier JAR artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: cuopt_java_*
+          path: ${{ runner.temp }}/jars
+          merge-multiple: true
+      - name: Assemble Maven repository layout
+        run: |
+          ./java/cuopt/ci/assemble_maven_repo.sh \
+            --jars-dir "${RUNNER_TEMP}/jars" \
+            --output-dir "${RUNNER_TEMP}/maven-repo"
+      - name: Upload combined Maven repository artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cuopt_java_maven_repo
+          path: ${{ runner.temp }}/maven-repo
+          if-no-files-found: error
+
+  # TEMPORARY (#1970 review): if: false so GitHub Actions still validates the reusable-workflow
+  # call (inputs/secrets shape) but the job can never actually run and push/publish anything,
+  # regardless of what MAVEN_DEPLOY_USERNAME or other credentials exist on this repo. Remove
+  # before merge.
+  java-maven-publish-tmp:
+    needs: [java-static-gather-tmp]
+    if: false
+    permissions:
+      actions: read
+      contents: read
+    uses: rapidsai/shared-workflows/.github/workflows/maven-publish.yaml@0adadff212e170d247cde08e9e1de724babacbf5
+    secrets:
+      GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+      GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+      MAVEN_DEPLOY_TOKEN: ${{ secrets.MAVEN_DEPLOY_TOKEN }}
+    with:
+      artifact-name: cuopt_java_maven_repo
+      source-git-sha: ${{ github.sha }}
+
   # Runs the full Java suite against each classifier JAR on a GPU, with no libcuopt installed,
   # so a JAR that loads but computes wrong answers fails here rather than at a user.
   java-static-test:
