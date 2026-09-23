@@ -109,6 +109,7 @@ std::unique_ptr<data_model_view_t<int, double>> build_data_model(JNIEnv* env,
                                                                  jintArray column_indices,
                                                                  jdoubleArray values,
                                                                  jbyteArray row_types,
+                                                                 jdoubleArray constraint_bounds,
                                                                  jdoubleArray lower_bounds,
                                                                  jdoubleArray upper_bounds,
                                                                  jbyteArray variable_types,
@@ -117,6 +118,7 @@ std::unique_ptr<data_model_view_t<int, double>> build_data_model(JNIEnv* env,
                                                                  std::vector<int>& cols_out,
                                                                  std::vector<double>& vals_out,
                                                                  std::vector<char>& row_ty_out,
+                                                                 std::vector<double>& rhs_out,
                                                                  std::vector<double>& lbs_out,
                                                                  std::vector<double>& ubs_out,
                                                                  std::vector<char>& var_ty_out)
@@ -126,6 +128,7 @@ std::unique_ptr<data_model_view_t<int, double>> build_data_model(JNIEnv* env,
   cols_out    = get_int_array(env, column_indices);
   vals_out    = get_double_array(env, values);
   row_ty_out  = get_byte_array(env, row_types);
+  rhs_out     = get_double_array(env, constraint_bounds);
   lbs_out     = get_double_array(env, lower_bounds);
   ubs_out     = get_double_array(env, upper_bounds);
   var_ty_out  = get_byte_array(env, variable_types);
@@ -141,6 +144,7 @@ std::unique_ptr<data_model_view_t<int, double>> build_data_model(JNIEnv* env,
                                         offsets_out.data(),
                                         static_cast<int>(offsets_out.size()));
   data_model->set_row_types(row_ty_out.data(), static_cast<int>(row_ty_out.size()));
+  data_model->set_constraint_bounds(rhs_out.data(), static_cast<int>(rhs_out.size()));
   data_model->set_variable_lower_bounds(lbs_out.data(), static_cast<int>(lbs_out.size()));
   data_model->set_variable_upper_bounds(ubs_out.data(), static_cast<int>(ubs_out.size()));
   data_model->set_variable_types(var_ty_out.data(), static_cast<int>(var_ty_out.size()));
@@ -218,28 +222,30 @@ Java_com_nvidia_cuopt_mathematicaloptimization_NativeGrpcClient_ping(JNIEnv* env
 // grpc_python_client_t::submit() itself -- so one entry point covers both; getLpResult /
 // getMipResult below fail fast if called against the wrong kind of job.
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_nvidia_cuopt_mathematicaloptimization_NativeGrpcClient_submit(JNIEnv* env,
-                                                                       jclass,
-                                                                       jlong handle,
-                                                                       jint num_constraints,
-                                                                       jint num_variables,
-                                                                       jboolean maximize,
-                                                                       jdouble objective_offset,
-                                                                       jdoubleArray objective,
-                                                                       jintArray row_offsets,
-                                                                       jintArray column_indices,
-                                                                       jdoubleArray values,
-                                                                       jbyteArray row_types,
-                                                                       jdoubleArray lower_bounds,
-                                                                       jdoubleArray upper_bounds,
-                                                                       jbyteArray variable_types,
-                                                                       jdouble time_limit_seconds,
-                                                                       jboolean enable_incumbents)
+Java_com_nvidia_cuopt_mathematicaloptimization_NativeGrpcClient_submit(
+  JNIEnv* env,
+  jclass,
+  jlong handle,
+  jint num_constraints,
+  jint num_variables,
+  jboolean maximize,
+  jdouble objective_offset,
+  jdoubleArray objective,
+  jintArray row_offsets,
+  jintArray column_indices,
+  jdoubleArray values,
+  jbyteArray row_types,
+  jdoubleArray constraint_bounds,
+  jdoubleArray lower_bounds,
+  jdoubleArray upper_bounds,
+  jbyteArray variable_types,
+  jdouble time_limit_seconds,
+  jboolean enable_incumbents)
 {
   return run(env, "submit", [&]() -> jstring {
     (void)num_constraints;
     (void)num_variables;
-    std::vector<double> obj, vals, lbs, ubs;
+    std::vector<double> obj, vals, rhs, lbs, ubs;
     std::vector<int> offsets, cols;
     std::vector<char> row_ty, var_ty;
     auto data_model = build_data_model(env,
@@ -250,6 +256,7 @@ Java_com_nvidia_cuopt_mathematicaloptimization_NativeGrpcClient_submit(JNIEnv* e
                                        column_indices,
                                        values,
                                        row_types,
+                                       constraint_bounds,
                                        lower_bounds,
                                        upper_bounds,
                                        variable_types,
@@ -258,6 +265,7 @@ Java_com_nvidia_cuopt_mathematicaloptimization_NativeGrpcClient_submit(JNIEnv* e
                                        cols,
                                        vals,
                                        row_ty,
+                                       rhs,
                                        lbs,
                                        ubs,
                                        var_ty);

@@ -45,6 +45,7 @@ final class NativeGrpcClient {
       int[] columnIndices,
       double[] values,
       byte[] rowTypes,
+      double[] constraintBounds,
       double[] variableLowerBounds,
       double[] variableUpperBounds,
       byte[] variableTypes,

@@ -86,6 +86,11 @@ final class GrpcClientIntegrationTest {
     }
 
     @Override
+    public double[] getConstraintBounds() {
+      return new double[] {4.0};
+    }
+
+    @Override
     public double[] getVariableLowerBounds() {
       return new double[] {0.0, 0.0};
     }
@@ -98,6 +103,75 @@ final class GrpcClientIntegrationTest {
     @Override
     public byte[] getVariableTypes() {
       return new byte[] {'I', 'I'};
+    }
+  }
+
+  // Same problem as SmallMip but continuous, so submit() picks the LP path automatically.
+  // The LP relaxation of "maximize x + y s.t. x + y <= 4, 0 <= x, y" has the same optimum, 4.
+  private static final class SmallLp implements GrpcClient.RawProblem {
+    @Override
+    public int getNumConstraints() {
+      return 1;
+    }
+
+    @Override
+    public int getNumVariables() {
+      return 2;
+    }
+
+    @Override
+    public boolean isMaximize() {
+      return true;
+    }
+
+    @Override
+    public double getObjectiveOffset() {
+      return 0.0;
+    }
+
+    @Override
+    public double[] getObjectiveCoefficients() {
+      return new double[] {1.0, 1.0};
+    }
+
+    @Override
+    public int[] getRowOffsets() {
+      return new int[] {0, 2};
+    }
+
+    @Override
+    public int[] getColumnIndices() {
+      return new int[] {0, 1};
+    }
+
+    @Override
+    public double[] getValues() {
+      return new double[] {1.0, 1.0};
+    }
+
+    @Override
+    public byte[] getRowTypes() {
+      return new byte[] {'L'};
+    }
+
+    @Override
+    public double[] getConstraintBounds() {
+      return new double[] {4.0};
+    }
+
+    @Override
+    public double[] getVariableLowerBounds() {
+      return new double[] {0.0, 0.0};
+    }
+
+    @Override
+    public double[] getVariableUpperBounds() {
+      return new double[] {4.0, 4.0};
+    }
+
+    @Override
+    public byte[] getVariableTypes() {
+      return new byte[] {'C', 'C'};
     }
   }
 
@@ -122,6 +196,35 @@ final class GrpcClientIntegrationTest {
       GrpcMipResult result = client.getMipResult(jobId);
       assertEquals(4.0, result.getObjective(), 1e-6);
       assertEquals(2, result.getSolution().length);
+    }
+  }
+
+  @Test
+  void submitLpAndReadResult() {
+    NativeTestSupport.assumeNativeLibrary();
+    assumeServerConfigured();
+    try (GrpcClient client = newConnectedClient()) {
+      String jobId = client.submit(new SmallLp(), /* timeLimitSeconds= */ 30.0);
+      GrpcJobStatus status = client.waitForCompletion(jobId, /* timeoutSeconds= */ 60);
+      assertEquals(GrpcJobStatus.COMPLETED, status);
+
+      GrpcLpResult result = client.getLpResult(jobId);
+      assertEquals(4.0, result.getPrimalObjective(), 1e-6);
+      assertEquals(2, result.getPrimalSolution().length);
+    }
+  }
+
+  @Test
+  void deleteJobRemovesIt() {
+    NativeTestSupport.assumeNativeLibrary();
+    assumeServerConfigured();
+    try (GrpcClient client = newConnectedClient()) {
+      String jobId = client.submit(new SmallMip(), /* timeLimitSeconds= */ 30.0);
+      client.waitForCompletion(jobId, /* timeoutSeconds= */ 60);
+
+      client.deleteJob(jobId);
+
+      assertEquals(GrpcJobStatus.NOT_FOUND, client.getStatus(jobId));
     }
   }
 }

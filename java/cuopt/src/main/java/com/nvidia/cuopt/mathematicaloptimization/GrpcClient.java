@@ -67,6 +67,7 @@ public final class GrpcClient implements AutoCloseable {
         problem.getColumnIndices(),
         problem.getValues(),
         problem.getRowTypes(),
+        problem.getConstraintBounds(),
         problem.getVariableLowerBounds(),
         problem.getVariableUpperBounds(),
         problem.getVariableTypes(),
@@ -133,6 +134,9 @@ public final class GrpcClient implements AutoCloseable {
     double[] getValues();
 
     byte[] getRowTypes();
+
+    /** The 'b' / right-hand-side value for each row, matching getRowTypes()'s sense. */
+    double[] getConstraintBounds();
 
     double[] getVariableLowerBounds();
 
