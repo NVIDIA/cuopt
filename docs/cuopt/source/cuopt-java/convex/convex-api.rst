@@ -102,7 +102,7 @@ The settings API also includes:
 * ``setMethod`` and ``setPDLPSolverMode``;
 * ``setOptimalityTolerance``;
 * ``setNumGpus``, ``setUseMpdlp``, and ``setMpdlpPartitioner``,
-  for distributing a PDLP solve across multiple GPUs (multi-GPU PDLP, mPDLP). mPDLP requires
+  for distributing a PDLP solve across multiple GPUs (multi-GPU PDLP). Multi-GPU PDLP requires
   ``SolverMethod.PDLP`` and ``setNumGpus(-1)`` (all GPUs visible to the process, which
   may be a single GPU) or a value greater than 1. Multi-GPU sharding occurs only
   when more than one GPU is actually selected. ``setMpdlpPartitioner`` takes

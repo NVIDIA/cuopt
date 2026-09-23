@@ -78,7 +78,7 @@ public final class SolverSettings implements AutoCloseable {
 
   /**
    * Set whether to distribute the PDLP solve of an LP problem across multiple GPUs (multi-GPU
-   * PDLP, mPDLP). Requires {@link #setMethod} to be {@link SolverMethod#PDLP} and {@link
+   * PDLP). Requires {@link #setMethod} to be {@link SolverMethod#PDLP} and {@link
    * #setNumGpus} to be {@code -1} or greater than 1; sharding across multiple GPUs only happens
    * when more than one GPU is actually selected.
    */
@@ -87,7 +87,7 @@ public final class SolverSettings implements AutoCloseable {
   }
 
   /**
-   * Set the partitioner used to split the problem across GPUs for multi-GPU PDLP (mPDLP): {@code
+   * Set the partitioner used to split the problem across GPUs for multi-GPU PDLP: {@code
    * 0} Auto (default; RoundRobin on 1 GPU, KaMinPar otherwise), {@code 1} KaMinPar
    * (multi-threaded graph partitioner, better balanced shards at the cost of extra partitioning
    * time), or {@code 2} RoundRobin (no partitioning graph built). With 1 GPU there is nothing to
