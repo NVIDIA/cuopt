@@ -10,6 +10,8 @@
 #include <cuda/stream>
 #include "utils.cuh"
 
+#include "fj_types.hpp"
+
 #include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
 #include <mip_heuristics/diversity/weights.cuh>
 #include <mip_heuristics/logger.cuh>
@@ -44,130 +46,11 @@ static constexpr int TPB_update_changed_constraints = raft::WarpSize * 4;
 static constexpr int TPB_liftmoves                  = raft::WarpSize * 4;
 static constexpr int TPB_loadbalance                = raft::WarpSize * 4;
 
-struct fj_hyper_parameters_t {
-  // The number of moves to evaluate, if there are many positive-score
-  // variables available.
-  int max_sampled_moves = raft::WarpSize * 16;
-  // The probability of choosing a random positive-score variable.
-  double random_var_probability = 0.04;
-  // The probability of choosing a variable using a random constraint's
-  // non-zero coefficient after updating weights.
-  double random_cstr_probability = 0.16;
-  // The period in iterations of each global move value update
-  // (all variables being updated vs. considering only the selected one)
-  int global_move_update_period      = 10;
-  int heavy_move_update_period       = 50;
-  int sync_period                    = 200;
-  int lhs_refresh_period             = 500;
-  int allow_infeasibility_iterations = 200;
-  // The value added to the objective weight everytime a new best solution is
-  // found in order to move towards better solutions
-  double objective_weight_increment       = 0.01;
-  int load_balancing_variable_threshold   = 300;
-  int load_balancing_constraint_threshold = 5000;
-  int load_balancing_variable_split_size  = 50;
-
-  double breakthrough_move_epsilon    = 1e-4;
-  int tabu_tenure_min                 = 3;
-  int tabu_tenure_max                 = 13;
-  double excess_improvement_weight    = (1.0 / 2.0);
-  double weight_smoothing_probability = 0.0003;
-
-  double fractional_score_multiplier = 100;
-  double rounding_second_stage_split = 0.1;
-
-  double small_move_tabu_threshold = 1e-6;
-  int small_move_tabu_tenure       = 4;
-
-  int two_opt_max_rows     = 4;
-  int two_opt_max_row_vars = 256;
-  int two_opt_max_pairs    = 256;
-
-  // load-balancing related settings
-  int old_codepath_total_var_to_relvar_ratio_threshold = 200;
-  int load_balancing_codepath_min_varcount             = 3200;
-};
-
 enum fj_move_type_t {
   FJ_MOVE_BEGIN = 0,
   FJ_MOVE_LIFT  = FJ_MOVE_BEGIN,
   FJ_MOVE_BREAKTHROUGH,
   FJ_MOVE_SIZE,
-};
-
-enum class fj_mode_t {
-  FIRST_FEASIBLE,     // iterate until a feasible solution is found, then return
-  GREEDY_DESCENT,     // single descent until no improving jumps can be made
-  TREE,               // tree mode
-  ROUNDING,           // FJ as rounding procedure for fractionals
-  EXIT_NON_IMPROVING  // iterate until we are don't improve the best
-};
-
-enum class MTMMoveType { FJ_MTM_VIOLATED, FJ_MTM_SATISFIED, FJ_MTM_ALL };
-
-enum class fj_load_balancing_mode_t { ALWAYS_ON, AUTO, ALWAYS_OFF };
-
-enum class fj_candidate_selection_t { WEIGHTED_SCORE, FEASIBLE_FIRST };
-
-struct fj_settings_t {
-  int seed{0};
-  fj_mode_t mode{fj_mode_t::FIRST_FEASIBLE};
-  fj_candidate_selection_t candidate_selection{fj_candidate_selection_t::WEIGHTED_SCORE};
-  double time_limit{60.0};
-  int iteration_limit{std::numeric_limits<int>::max()};
-  fj_hyper_parameters_t parameters{};
-  int n_of_minimums_for_exit  = 7000;
-  double infeasibility_weight = 1.0;
-  bool update_weights         = true;
-  bool feasibility_run        = true;
-  fj_load_balancing_mode_t load_balancing_mode{fj_load_balancing_mode_t::AUTO};
-  double baseline_objective_for_longer_run{std::numeric_limits<double>::lowest()};
-};
-
-struct fj_move_t {
-  int var_idx;
-  double value;
-
-  bool operator<(const fj_move_t& rhs) const
-  {
-    if (var_idx == rhs.var_idx) return value < rhs.value;
-    return var_idx < rhs.var_idx;
-  }
-  bool operator==(const fj_move_t& rhs) const
-  {
-    return var_idx == rhs.var_idx && value == rhs.value;
-  }
-  bool operator!=(const fj_move_t& rhs) const { return !(*this == rhs); }
-};
-
-// TODO: use 32bit integers instead,
-// as we dont need them to be floating point per the FJ2 scoring scheme
-// sizeof(fj_staged_score_t) <= 8 is needed to allow for atomic loads
-struct fj_staged_score_t {
-  float base{-std::numeric_limits<float>::infinity()};
-  float bonus{-std::numeric_limits<float>::infinity()};
-
-  HDI bool operator<(fj_staged_score_t other) const noexcept
-  {
-    return base == other.base ? bonus < other.bonus : base < other.base;
-  }
-  HDI bool operator>(fj_staged_score_t other) const noexcept
-  {
-    return base == other.base ? bonus > other.bonus : base > other.base;
-  }
-  HDI bool operator==(fj_staged_score_t other) const noexcept
-  {
-    return base == other.base && bonus == other.bonus;
-  }
-  HDI bool operator!=(fj_staged_score_t other) const noexcept { return !(*this == other); }
-
-  HDI static fj_staged_score_t invalid()
-  {
-    return {-std::numeric_limits<float>::infinity(), -std::numeric_limits<float>::infinity()};
-  }
-  HDI static fj_staged_score_t zero() { return {0, 0}; }
-
-  HDI bool valid() const { return *this != invalid(); }
 };
 
 template <typename f_t>

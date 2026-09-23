@@ -174,6 +174,8 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_PDLP_SOLVER_MODE, reinterpret_cast<int*>(&pdlp_settings.pdlp_solver_mode), CUOPT_PDLP_SOLVER_MODE_STABLE1, CUOPT_PDLP_SOLVER_MODE_STABLE3, CUOPT_PDLP_SOLVER_MODE_STABLE3},
     {CUOPT_METHOD, reinterpret_cast<int*>(&pdlp_settings.method), CUOPT_METHOD_CONCURRENT, CUOPT_METHOD_PRIMAL, CUOPT_METHOD_CONCURRENT},
     {CUOPT_METHOD, reinterpret_cast<int*>(&mip_settings.method), CUOPT_METHOD_CONCURRENT, CUOPT_METHOD_PRIMAL, CUOPT_METHOD_CONCURRENT},
+    {CUOPT_CONCURRENT_NNZ_CUTOFF, &pdlp_settings.concurrent_nnz_cutoff, -1, std::numeric_limits<i_t>::max(), 50'000'000, "skip Barrier and dual simplex in concurrent solves at this reduced NNZ; -1 disables the cutoff"},
+    {CUOPT_CONCURRENT_NNZ_CUTOFF, &mip_settings.concurrent_nnz_cutoff, -1, std::numeric_limits<i_t>::max(), 50'000'000, "skip Barrier and dual simplex in concurrent solves at this reduced NNZ; -1 disables the cutoff"},
     {CUOPT_NUM_CPU_THREADS, &mip_settings.num_cpu_threads, -1, std::numeric_limits<i_t>::max(), -1},
     {CUOPT_AUGMENTED, &pdlp_settings.augmented, -1, 1, -1},
     {CUOPT_FOLDING, &pdlp_settings.folding, -1, 1, -1},
@@ -266,6 +268,8 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     // Recursive sub-MIP (RINS) hyper-parameters (hidden from default --help: name contains "hyper_")
     {CUOPT_MIP_HYPER_SUBMIP_ENABLE_CPUFJ, &mip_settings.submip_params.enable_cpufj, true, "run CPU FJ over the sub-MIP"},
     {CUOPT_MIP_HYPER_BLOCK_BVE, &mip_settings.block_bve, true, "eliminate blocks of binaries in cuOpt's MIP presolve (needs " CUOPT_MIP_PROBING ")"},
+    // PDLP scaling hyper-parameter (hidden from default --help: name contains "hyper_")
+    {CUOPT_PDLP_HYPER_ENABLE_CURTIS_REID_SCALING, &pdlp_settings.hyper_params.do_curtis_reid_scaling, true, "Curtis-Reid prescaling, run before Ruiz/Pock-Chambolle scaling"},
   };
   // String parameters
   string_parameters = {

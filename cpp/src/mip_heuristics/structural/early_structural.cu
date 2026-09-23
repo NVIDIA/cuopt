@@ -8,12 +8,17 @@
 #include "early_structural.cuh"
 
 #include <mip_heuristics/mip_constants.hpp>
+#include <mip_heuristics/solution/solution.cuh>
 #include <mip_heuristics/structural/arc_flow.cuh>
 #include <mip_heuristics/utils.cuh>
 
+#include <utilities/copy_helpers.hpp>
 #include <utilities/macros.cuh>
 
+#include <raft/util/cudart_utils.hpp>
+
 #include <omp.h>
+#include <rmm/device_uvector.hpp>
 
 #include <vector>
 
@@ -63,13 +68,21 @@ early_structural_t<i_t, f_t>::early_structural_t(
   const typename mip_solver_settings_t<i_t, f_t>::tolerances_t& tolerances,
   early_incumbent_callback_t<f_t> incumbent_callback,
   std::unique_ptr<structural_heuristic_t<i_t, f_t>> active)
-  : early_heuristic_t<i_t, f_t, early_structural_t<i_t, f_t>>(
-      op_problem, tolerances, std::move(incumbent_callback)),
+  : early_heuristic_t<i_t, f_t, early_structural_t<i_t, f_t>>(op_problem,
+                                                              std::move(incumbent_callback)),
     op_problem_(op_problem),
     tolerances_(tolerances),
     active_(std::move(active))
 {
   cuopt_assert(active_ != nullptr, "missing structural heuristic");
+
+  RAFT_CUDA_TRY(cudaGetDevice(&device_id_));
+
+  problem_t<i_t, f_t> temp_problem(op_problem, tolerances, false);
+  temp_problem.preprocess_problem();
+  temp_problem.handle_ptr->sync_stream();
+  problem_ = std::make_unique<problem_t<i_t, f_t>>(temp_problem, &handle_);
+
   CUOPT_LOG_DEBUG("[Early Structural] %s recognized the model", active_->name());
 }
 
@@ -112,11 +125,9 @@ template <typename i_t, typename f_t>
 bool early_structural_t<i_t, f_t>::preprocessing_is_identity() const
 {
   // Recognition produces assignments in the source problem's column space.
-  const auto& presolve_data = this->problem_ptr_->presolve_data;
-  if (this->problem_ptr_->n_variables != op_problem_.get_n_variables()) { return false; }
-  if ((i_t)presolve_data.variable_offsets.size() != this->problem_ptr_->n_variables) {
-    return false;
-  }
+  const auto& presolve_data = problem_->presolve_data;
+  if (problem_->n_variables != op_problem_.get_n_variables()) { return false; }
+  if ((i_t)presolve_data.variable_offsets.size() != problem_->n_variables) { return false; }
   for (const f_t offset : presolve_data.variable_offsets) {
     if (offset != f_t{0}) { return false; }
   }
@@ -145,13 +156,26 @@ void early_structural_t<i_t, f_t>::run()
     return;
   }
 
+  RAFT_CUDA_TRY(cudaSetDevice(device_id_));
   f_t objective{0};
-  if (!validate(*this->problem_ptr_, assignment, objective)) {
+  if (!validate(*problem_, assignment, objective)) {
     CUOPT_LOG_DEBUG("[Early Structural] %s constructed a point that failed validation, discarding",
                     active_->name());
     return;
   }
   this->try_update_best(objective, assignment, active_->name());
+}
+
+template <typename i_t, typename f_t>
+std::vector<f_t> early_structural_t<i_t, f_t>::to_user_assignment(
+  const std::vector<f_t>& assignment)
+{
+  RAFT_CUDA_TRY(cudaSetDevice(device_id_));
+  auto stream = handle_.get_stream();
+  rmm::device_uvector<f_t> d_assignment(assignment.size(), stream);
+  raft::copy(d_assignment.data(), assignment.data(), assignment.size(), stream);
+  problem_->post_process_assignment(d_assignment, true, stream);
+  return cuopt::host_copy(d_assignment, stream);
 }
 
 template <typename i_t, typename f_t>

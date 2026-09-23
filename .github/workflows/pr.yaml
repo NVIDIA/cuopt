@@ -32,6 +32,9 @@ jobs:
       - docs-build
       - multi-gpu-cpp-tests
       - wheel-build-libcuopt
+      - wheel-build-libcuopt-client
+      - wheel-build-libcuopt-mathopt
+      - wheel-build-libcuopt-routing
       - wheel-build-cuopt
       - wheel-tests-cuopt
       - wheel-build-cuopt-server
@@ -608,6 +611,63 @@ jobs:
       build_type: pull-request
       build-datetime: ${{ needs.build-details.outputs.build-datetime }}
       script: ci/build_wheel_libcuopt.sh
+  wheel-build-libcuopt-client:
+    needs: [build-details, compute-matrix-filters, changed-files]
+    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    secrets: inherit # zizmor: ignore[secrets-inherit]
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@release/26.10
+    with:
+      # Same filter as libcuopt: every arch and CUDA version, latest Python only.
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.libcuopt_filter }}
+      package-type: cpp
+      package-name: libcuopt_client
+      build_type: pull-request
+      build-datetime: ${{ needs.build-details.outputs.build-datetime }}
+      script: ci/build_wheel_libcuopt_client.sh
+  wheel-build-libcuopt-mathopt:
+    needs: [build-details, compute-matrix-filters, changed-files]
+    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    secrets: inherit # zizmor: ignore[secrets-inherit]
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@release/26.10
+    with:
+      # Same filter as libcuopt: every arch and CUDA version, latest Python only.
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.libcuopt_filter }}
+      package-type: cpp
+      package-name: libcuopt_mathopt
+      build_type: pull-request
+      build-datetime: ${{ needs.build-details.outputs.build-datetime }}
+      script: ci/build_wheel_libcuopt_mathopt.sh
+  wheel-build-libcuopt-routing:
+    needs: [build-details, compute-matrix-filters, changed-files]
+    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    secrets: inherit # zizmor: ignore[secrets-inherit]
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@release/26.10
+    with:
+      # Same filter as libcuopt: every arch and CUDA version, latest Python only.
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.libcuopt_filter }}
+      package-type: cpp
+      package-name: libcuopt_routing
+      build_type: pull-request
+      build-datetime: ${{ needs.build-details.outputs.build-datetime }}
+      script: ci/build_wheel_libcuopt_routing.sh
   wheel-build-cuopt:
     needs: [build-details, wheel-build-libcuopt, compute-matrix-filters, changed-files]
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels

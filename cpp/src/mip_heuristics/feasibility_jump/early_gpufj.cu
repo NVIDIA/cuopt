@@ -10,9 +10,15 @@
 #include <mip_heuristics/feasibility_jump/feasibility_jump.cuh>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/solver_context.cuh>
+#include <utilities/copy_helpers.hpp>
 #include <utilities/logger.hpp>
 
 #include <raft/core/device_setter.hpp>
+#include <raft/core/error.hpp>
+#include <raft/util/cudart_utils.hpp>
+
+#include <thrust/fill.h>
+#include <rmm/device_uvector.hpp>
 
 #include <limits>
 
@@ -22,11 +28,26 @@ template <typename i_t, typename f_t>
 early_gpufj_t<i_t, f_t>::early_gpufj_t(const optimization_problem_t<i_t, f_t>& op_problem,
                                        const mip_solver_settings_t<i_t, f_t>& settings,
                                        early_incumbent_callback_t<f_t> incumbent_callback)
-  : early_heuristic_t<i_t, f_t, early_gpufj_t<i_t, f_t>>(
-      op_problem, settings.get_tolerances(), std::move(incumbent_callback))
+  : early_heuristic_t<i_t, f_t, early_gpufj_t<i_t, f_t>>(op_problem, std::move(incumbent_callback))
 {
-  context_ptr_ = std::make_unique<mip_solver_context_t<i_t, f_t>>(
-    &this->handle_, this->problem_ptr_.get(), settings);
+  RAFT_CUDA_TRY(cudaGetDevice(&device_id_));
+
+  // Build and preprocess on the original handle, then copy onto our own handle
+  // so the derived solver can run on a dedicated stream (prevents graph capture conflicts).
+  problem_t<i_t, f_t> temp_problem(op_problem, settings.get_tolerances(), false);
+  temp_problem.preprocess_problem();
+  temp_problem.handle_ptr->sync_stream();
+  problem_ptr_ = std::make_unique<problem_t<i_t, f_t>>(temp_problem, &handle_);
+
+  solution_ptr_ = std::make_unique<solution_t<i_t, f_t>>(*problem_ptr_);
+  thrust::fill(handle_.get_thrust_policy(),
+               solution_ptr_->assignment.begin(),
+               solution_ptr_->assignment.end(),
+               f_t{0});
+  solution_ptr_->clamp_within_bounds();
+
+  context_ptr_ =
+    std::make_unique<mip_solver_context_t<i_t, f_t>>(&handle_, problem_ptr_.get(), settings);
 }
 
 template <typename i_t, typename f_t>
@@ -79,6 +100,18 @@ void early_gpufj_t<i_t, f_t>::stop()
   CUOPT_LOG_DEBUG("[Early GPU FJ] Stopped, solution_found=%d", this->solution_found_);
 
   fj_ptr_.reset();
+}
+
+template <typename i_t, typename f_t>
+std::vector<f_t> early_gpufj_t<i_t, f_t>::to_user_assignment(const std::vector<f_t>& assignment)
+{
+  // Uses a private CUDA stream to avoid racing with the FJ solver's stream.
+  RAFT_CUDA_TRY(cudaSetDevice(device_id_));
+  auto stream = handle_.get_stream();
+  rmm::device_uvector<f_t> d_assignment(assignment.size(), stream);
+  raft::copy(d_assignment.data(), assignment.data(), assignment.size(), stream);
+  problem_ptr_->post_process_assignment(d_assignment, true, stream);
+  return cuopt::host_copy(d_assignment, stream);
 }
 
 #if MIP_INSTANTIATE_FLOAT

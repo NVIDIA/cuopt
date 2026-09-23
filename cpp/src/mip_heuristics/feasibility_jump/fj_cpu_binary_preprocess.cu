@@ -248,8 +248,8 @@ void fj_bin_narrow(const fj_cpu_climber_t<i_t, f_t>& c,
   const auto& coeffs    = c.problem->coefficients;
   const auto& cstr_lb   = c.problem->cstr_lb;
   const auto& cstr_ub   = c.problem->cstr_ub;
-  const auto& left_w    = c.h_cstr_left_weights;
-  const auto& right_w   = c.h_cstr_right_weights;
+  const auto& left_w    = c.h_initial_left_weights;
+  const auto& right_w   = c.h_initial_right_weights;
   const auto& obj       = c.problem->h_obj_coeffs;
 
   // Explicit stamps rather than scoped timers, so narrow and transpose can be timed separately.
@@ -396,8 +396,8 @@ bool fj_bin_encode(const fj_cpu_climber_t<i_t, f_t>& c,
   const auto& coeffs     = c.problem->coefficients;
   const auto& cstr_lb    = c.problem->cstr_lb;
   const auto& cstr_ub    = c.problem->cstr_ub;
-  const auto& left_w     = c.h_cstr_left_weights;
-  const auto& right_w    = c.h_cstr_right_weights;
+  const auto& left_w     = c.h_initial_left_weights;
+  const auto& right_w    = c.h_initial_right_weights;
   const auto& obj        = c.problem->h_obj_coeffs;
 
   std::vector<double> lower(n_cols);
