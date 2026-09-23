@@ -73,7 +73,7 @@ void report_row_divergence(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
     (int)fj_cpu.iterations,
     (int)(row_end - row_begin),
     sumcomp,
-    fj_cpu.h_bound[cstr_idx],
+    fj_cpu.h_bound[cstr_idx].get(),
     (int)fj_cpu.lhs_refresh_period_used,
     (long long)fj_cpu.n_lhs_recompute_total,
     (long long)fj_cpu.n_lhs_recompute_periodic,
@@ -220,8 +220,8 @@ void audit_row_updates(
       delta,
       touched,
       incidence_coeff,
-      fj_cpu.h_bound[cstr_idx],
-      fj_cpu.h_slack_sumcomp[cstr_idx],
+      fj_cpu.h_bound[cstr_idx].get(),
+      fj_cpu.h_slack_sumcomp[cstr_idx].get(),
       (int)(fj_cpu.h_offsets[cstr_idx + 1] - fj_cpu.h_offsets[cstr_idx]));
     report_row_divergence<i_t, f_t>(fj_cpu, cstr_idx, assignment, "row update");
     cuopt_assert(false, "carried slack disagrees with a fresh sum after a move");
@@ -259,13 +259,13 @@ void audit_incremental_state(fj_cpu_climber_t<i_t, f_t>& fj_cpu, const char* sit
       fj_cpu.log_prefix.c_str(),
       site,
       (int)cstr_idx,
-      fj_cpu.h_row_is_integral[cstr_idx],
+      fj_cpu.h_row_is_integral[cstr_idx].get(),
       carried_violated,
       truly_violated,
       carried,
       fresh,
       std::fabs(carried - fresh),
-      fj_cpu.h_bound[cstr_idx],
+      fj_cpu.h_bound[cstr_idx].get(),
       tol);
     report_row_divergence<i_t, f_t>(fj_cpu, cstr_idx, assignment, site);
     cuopt_assert(false, "violated set disagrees with a fresh slack");
