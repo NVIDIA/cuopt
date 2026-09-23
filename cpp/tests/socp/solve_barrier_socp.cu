@@ -1212,9 +1212,9 @@ TEST(barrier, free_variable_substitution_postsolve_kkt)
   stationarity_residual(presolved_lp, crushed_x, crushed_y, crushed_z, reduced_stationarity);
   ASSERT_NEAR(inf_norm(reduced_stationarity), 0.0, 1e-12);
 
-  std::vector<double> uncrushed_x;
-  std::vector<double> uncrushed_y;
-  std::vector<double> uncrushed_z;
+  std::vector<double> uncrushed_x(original_lp.num_cols);
+  std::vector<double> uncrushed_y(original_lp.num_rows);
+  std::vector<double> uncrushed_z(original_lp.num_cols);
   uncrush_solution(presolve_info,
                    settings,
                    original_lp,
