@@ -525,11 +525,9 @@ int main(int argc, char* argv[])
     }
     if (requested_gpus > device_count) {
       auto log = dummy_logger(settings);
-      CUOPT_LOG_ERROR(
-        "num-gpus=%d exceeds the number of visible CUDA devices: %d. Falling back to %d GPUs.",
-        requested_gpus,
-        device_count,
-        device_count);
+      CUOPT_LOG_ERROR("num-gpus=%d exceeds the number of visible CUDA devices: %d. Aborting solve.",
+                      requested_gpus,
+                      device_count);
       return -1;
     }
     memory_resources.reserve(requested_gpus);
