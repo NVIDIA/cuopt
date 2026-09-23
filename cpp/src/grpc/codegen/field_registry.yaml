@@ -803,7 +803,7 @@ pdlp_settings:
       type: int32
       from_proto_cast: "pdlp_precision_t"
       optional: true
-  - use_multi_gpu_pdlp:
+  - use_mpdlp:
       param_name: use_distributed_pdlp
       member: use_distributed_pdlp
       description: >-
@@ -813,12 +813,12 @@ pdlp_settings:
       default: "false"
       field_num: 35
       type: bool
-  - multi_gpu_pdlp_partitioner:
+  - mpdlp_partitioner:
       param_name: distributed_pdlp_partitioner
       member: distributed_pdlp_partitioner
       description: >-
         Partitioner used to split the problem across GPUs when
-        use_multi_gpu_pdlp is set: 0 Auto (default; RoundRobin on 1 GPU,
+        use_mpdlp is set: 0 Auto (default; RoundRobin on 1 GPU,
         KaMinPar otherwise), 1 KaMinPar, 2 RoundRobin. With 1 GPU there is
         nothing to partition, so both strategies are equivalent no-ops;
         Auto picks RoundRobin there because it skips KaMinPar's

@@ -498,15 +498,13 @@ static SolveResult run_lp_solve(DeserializedJob& dj,
     // mps_data_model_t rather than a single GPU-resident problem, so route
     // through that overload when it is requested. See op_problem_to_mps_data_model
     // and the mps_data_model_t solve_lp overload in solve.hpp.
-    const bool use_multi_gpu_pdlp =
-      cuopt::mathematical_optimization::is_multi_gpu_pdlp_requested(dj.lp_settings);
+    const bool use_mpdlp = cuopt::mathematical_optimization::is_mpdlp_requested(dj.lp_settings);
     auto gpu_solution =
-      use_multi_gpu_pdlp
-        ? cuopt::mathematical_optimization::solve_lp(
-            &handle,
-            cuopt::mathematical_optimization::op_problem_to_mps_data_model(*gpu_problem),
-            dj.lp_settings)
-        : cuopt::mathematical_optimization::solve_lp(*gpu_problem, dj.lp_settings);
+      use_mpdlp ? cuopt::mathematical_optimization::solve_lp(
+                    &handle,
+                    cuopt::mathematical_optimization::op_problem_to_mps_data_model(*gpu_problem),
+                    dj.lp_settings)
+                : cuopt::mathematical_optimization::solve_lp(*gpu_problem, dj.lp_settings);
     SERVER_LOG_INFO("[Worker] solve_lp done");
 
     // solve_lp / solve_qcqp catch cuopt::logic_error internally and stash it

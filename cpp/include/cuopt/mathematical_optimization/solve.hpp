@@ -158,7 +158,7 @@ mip_solution_t<i_t, f_t> solve_mip(
  * @return true if a multi-GPU PDLP solve should be used.
  */
 template <typename i_t, typename f_t>
-bool is_multi_gpu_pdlp_requested(pdlp_solver_settings_t<i_t, f_t> const& settings);
+bool is_mpdlp_requested(pdlp_solver_settings_t<i_t, f_t> const& settings);
 
 template <typename i_t, typename f_t>
 optimization_problem_t<i_t, f_t> mps_data_model_to_optimization_problem(
