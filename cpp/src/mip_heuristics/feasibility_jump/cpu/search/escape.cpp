@@ -62,12 +62,12 @@ void perturb(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   // select N variables, assign them a random value between their bounds. N grows with consecutive
   // unproductive perturbations, so a lane stuck repeating the same small kick around one basin
   // widens its jump instead of retrying the same neighbourhood.
-  const i_t n_kick = std::min<i_t>(fj_cpu.hp.perturb_escalate_cap,
+  const i_t n_kick            = std::min<i_t>(fj_cpu.hp.perturb_escalate_cap,
                                    std::max<i_t>(1, fj_cpu.perturb_vars + fj_cpu.perturb_streak));
   const bool categorical_kick = fj_cpu.feasible_found && fj_cpu.continuous_perturb_fraction > 0 &&
                                 fj_cpu.problem->card_row_offsets.size() > 1;
-  const i_t scalar_kicks          = n_kick - categorical_kick;
-  std::vector<i_t> sampled_vars   = fj_cpu.problem->h_objective_vars;
+  const i_t scalar_kicks        = n_kick - categorical_kick;
+  std::vector<i_t> sampled_vars = fj_cpu.problem->h_objective_vars;
   fj_cpu.rng.shuffle(sampled_vars);
   sampled_vars.resize(std::min(sampled_vars.size(), (size_t)scalar_kicks));
   cuopt::pcgenerator_t rng(fj_cpu.settings.seed + fj_cpu.iterations, 0, 0);
@@ -77,10 +77,10 @@ void perturb(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   if (categorical_kick) {
     const auto& offsets   = fj_cpu.problem->card_row_offsets;
     const auto& variables = fj_cpu.problem->card_variables;
-    const i_t group = rng.next_u32() % static_cast<uint32_t>(offsets.size() - 1);
-    const i_t begin = offsets[group];
-    const i_t width = offsets[group + 1] - begin;
-    i_t active      = -1;
+    const i_t group       = rng.next_u32() % static_cast<uint32_t>(offsets.size() - 1);
+    const i_t begin       = offsets[group];
+    const i_t width       = offsets[group + 1] - begin;
+    i_t active            = -1;
     for (i_t q = begin; q < begin + width; ++q) {
       if (fj_cpu.h_assignment[variables[q]] > f_t{0.5}) {
         active = q;
@@ -103,7 +103,7 @@ void perturb(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
     for (i_t variable : fj_cpu.problem->h_objective_vars) {
       const f_t lower = get_lower(fj_cpu.h_var_bounds[variable].get());
       const f_t value = fj_cpu.h_best_assignment[variable];
-      scale = std::max(scale, std::abs(value - (std::isfinite(lower) ? lower : f_t{0})));
+      scale           = std::max(scale, std::abs(value - (std::isfinite(lower) ? lower : f_t{0})));
     }
     radius = fj_cpu.continuous_perturb_fraction * scale;
   }
@@ -111,8 +111,8 @@ void perturb(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
     if (radius > 0 && !is_integer_var<i_t, f_t>(fj_cpu, variable)) {
       const auto bounds = fj_cpu.h_var_bounds[variable].get();
       const f_t current = fj_cpu.h_assignment[variable];
-      f_t lower = std::max(get_lower(bounds), current - radius);
-      f_t upper = std::min(get_upper(bounds), current + radius);
+      f_t lower         = std::max(get_lower(bounds), current - radius);
+      f_t upper         = std::min(get_upper(bounds), current + radius);
       if (fj_cpu.objective_directed_perturb) {
         const f_t coefficient = fj_cpu.problem->h_obj_coeffs[variable];
         if (coefficient > 0) upper = current;
@@ -235,9 +235,9 @@ void track_infeasible_checkpoint(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
         fj_cpu.iters_since_infeasible_improve % fj_cpu.infeasible_kick_interval == 0)
       infeasible_kick(fj_cpu);
     const i_t nnz_scale = 1 + fj_cpu.problem->nnz / fj_cpu.hp.restart_window_nnz_scale;
-    const i_t capped =
-      nnz_scale < fj_cpu.hp.restart_window_scale_max ? nnz_scale
-                                                     : fj_cpu.hp.restart_window_scale_max;
+    const i_t capped    = nnz_scale < fj_cpu.hp.restart_window_scale_max
+                            ? nnz_scale
+                            : fj_cpu.hp.restart_window_scale_max;
     if (fj_cpu.iters_since_infeasible_improve >=
           fj_cpu.hp.restart_window_multiple * fj_cpu.infeasible_restart_window * capped &&
         fj_cpu.restores_since_improvement >= fj_cpu.infeasible_restart_max_streak) {

@@ -179,9 +179,8 @@ bool apply_fixed_charge_network_start(fj_cpu_climber_t<i_t, f_t>& c, double budg
 
   // Keep one lane-local perturbation per arc across all shortest-path passes. Models that price
   // both activation and flow benefit from broader tree diversity than pure fixed-charge models.
-  const bool costs_both_ends = std::all_of(arcs.begin(), arcs.end(), [](const arc_t& arc) {
-    return arc.fix > 0 && arc.unit > 0;
-  });
+  const bool costs_both_ends = std::all_of(
+    arcs.begin(), arcs.end(), [](const arc_t& arc) { return arc.fix > 0 && arc.unit > 0; });
   const double jitter_radius = costs_both_ends ? 0.30 : 0.15;
   std::mt19937 weight_rng(c.settings.seed);
   std::uniform_real_distribution<double> jitter(1.0 - jitter_radius, 1.0 + jitter_radius);
@@ -312,7 +311,7 @@ bool apply_fixed_charge_network_start(fj_cpu_climber_t<i_t, f_t>& c, double budg
 
   // Preserve the certified basis. Components are fixed by tree exchanges, so disconnected arc
   // endpoints can never become fundamental-cycle candidates later.
-  auto& network = c.fixed_charge_network;
+  auto& network     = c.fixed_charge_network;
   network           = {};
   network.certified = true;
   network.arcs      = arcs;
@@ -427,7 +426,7 @@ bool try_fundamental_cycle_pivot(fj_cpu_climber_t<i_t, f_t>& c)
   }
   if (!(augmentation > bound_tolerance) || !std::isfinite(augmentation)) return false;
 
-  i_t leaving = -1;
+  i_t leaving         = -1;
   f_t objective_delta = 0;
   network.touched_variables.clear();
   auto add_delta = [&](i_t variable, f_t delta) {
@@ -440,7 +439,7 @@ bool try_fundamental_cycle_pivot(fj_cpu_climber_t<i_t, f_t>& c)
     const i_t cycle_arc = network.cycle_arcs[k];
     const auto& arc     = network.arcs[cycle_arc];
     const f_t old_flow  = c.h_assignment[arc.flow];
-    f_t new_flow = old_flow + (f_t)network.cycle_signs[k] * augmentation;
+    f_t new_flow        = old_flow + (f_t)network.cycle_signs[k] * augmentation;
     if (std::fabs(new_flow) <= bound_tolerance) new_flow = 0;
     if (std::fabs(new_flow - arc.capacity) <= bound_tolerance) new_flow = arc.capacity;
     if (cycle_arc != entering && (new_flow == f_t{0} || new_flow == arc.capacity) && leaving < 0)
@@ -449,14 +448,15 @@ bool try_fundamental_cycle_pivot(fj_cpu_climber_t<i_t, f_t>& c)
 
     const bool was_positive = old_flow > bound_tolerance;
     const bool now_positive = new_flow > bound_tolerance;
-    const f_t controller     = c.h_assignment[arc.binary];
+    const f_t controller    = c.h_assignment[arc.binary];
     if (!was_positive && now_positive && controller < f_t{0.5})
       add_delta(arc.binary, f_t{1} - controller);
     else if (was_positive && !now_positive && controller > f_t{0.5})
       add_delta(arc.binary, -controller);
   }
   if (leaving < 0) {
-    for (i_t variable : network.touched_variables) network.variable_delta[variable] = 0;
+    for (i_t variable : network.touched_variables)
+      network.variable_delta[variable] = 0;
     return false;
   }
   for (i_t variable : network.touched_variables)
@@ -472,7 +472,8 @@ bool try_fundamental_cycle_pivot(fj_cpu_climber_t<i_t, f_t>& c)
     accept = c.rng.next_double() < std::exp(-static_cast<double>(objective_delta) / temperature);
   }
   if (!accept) {
-    for (i_t variable : network.touched_variables) network.variable_delta[variable] = 0;
+    for (i_t variable : network.touched_variables)
+      network.variable_delta[variable] = 0;
     return false;
   }
 
@@ -506,7 +507,8 @@ bool try_fundamental_cycle_pivot(fj_cpu_climber_t<i_t, f_t>& c)
     network.row_touched[row] = 0;
   }
   if (!valid) {
-    for (i_t variable : network.touched_variables) network.variable_delta[variable] = 0;
+    for (i_t variable : network.touched_variables)
+      network.variable_delta[variable] = 0;
     return false;
   }
 
@@ -522,7 +524,8 @@ bool try_fundamental_cycle_pivot(fj_cpu_climber_t<i_t, f_t>& c)
     if (is_integer_var(c, variable) && network.variable_delta[variable] < 0)
       apply_move(c, variable, network.variable_delta[variable], false);
 
-  for (i_t variable : network.touched_variables) network.variable_delta[variable] = 0;
+  for (i_t variable : network.touched_variables)
+    network.variable_delta[variable] = 0;
   network.in_tree[entering] = 1;
   network.in_tree[leaving]  = 0;
   network.closed_arcs[slot] = leaving;

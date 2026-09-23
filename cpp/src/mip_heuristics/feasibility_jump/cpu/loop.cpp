@@ -156,20 +156,19 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, double time_limit, double w
   if (fj_cpu->use_pmedian_start) {
     const double elapsed =
       std::chrono::duration<double>(std::chrono::steady_clock::now() - solve_start).count();
-    apply_pmedian_start(*fj_cpu,
-                        std::max(0.0, std::min(0.5, 0.1 * (time_limit - elapsed))));
+    apply_pmedian_start(*fj_cpu, std::max(0.0, std::min(0.5, 0.1 * (time_limit - elapsed))));
   }
   if (fj_cpu->use_fixed_charge_network_start) {
     const double elapsed =
       std::chrono::duration<double>(std::chrono::steady_clock::now() - solve_start).count();
-    apply_fixed_charge_network_start(
-      *fj_cpu, std::max(0.0, std::min(0.5, 0.1 * (time_limit - elapsed))));
+    apply_fixed_charge_network_start(*fj_cpu,
+                                     std::max(0.0, std::min(0.5, 0.1 * (time_limit - elapsed))));
   }
   if (fj_cpu->use_affine_equality_start) {
     const double elapsed =
       std::chrono::duration<double>(std::chrono::steady_clock::now() - solve_start).count();
-    apply_affine_equality_start(
-      *fj_cpu, std::max(0.0, std::min(3.0, 0.3 * (time_limit - elapsed))));
+    apply_affine_equality_start(*fj_cpu,
+                                std::max(0.0, std::min(3.0, 0.3 * (time_limit - elapsed))));
   }
   if (fj_cpu->use_equality_substitution) {
     const double elapsed =
@@ -221,7 +220,7 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, double time_limit, double w
 
   [[maybe_unused]] i_t local_mins = 0;
   std::vector<fj_move_t> batch_moves;
-  const auto loop_start           = paid_setup ? solve_start : std::chrono::steady_clock::now();
+  const auto loop_start = paid_setup ? solve_start : std::chrono::steady_clock::now();
   bool first_cross_needs_polish =
     fj_cpu->use_lp_polish &&
     !(fj_cpu->use_fundamental_cycle_pivot && fj_cpu->fixed_charge_network.certified);
@@ -299,166 +298,167 @@ void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, double time_limit, double w
     const bool network_iteration = try_fundamental_cycle_pivot(*fj_cpu);
 
     if (!network_iteration) {
-    fj_move_t move          = fj_move_t{-1, 0};
-    fj_staged_score_t score = fj_staged_score_t::invalid();
-    bool is_lift            = false;
-    bool is_mtm_viol        = false;
-    bool is_mtm_sat         = false;
+      fj_move_t move          = fj_move_t{-1, 0};
+      fj_staged_score_t score = fj_staged_score_t::invalid();
+      bool is_lift            = false;
+      bool is_mtm_viol        = false;
+      bool is_mtm_sat         = false;
 
-    // Perform lift moves
-    fj_move_t lift_companion = fj_move_t{-1, 0};
-    if (fj_cpu->violated_constraints.empty()) {
-      thrust::tie(move, score) = find_lift_move(*fj_cpu);
-      if (score > fj_staged_score_t::zero()) {
-        is_lift = true;
-      } else {
-        // Pairs are only reachable once no single improving flip preserves feasibility.
-        fj_move_t first, second;
-        fj_staged_score_t pair_score;
-        thrust::tie(first, second, pair_score) = find_lift_2opt_move(*fj_cpu);
-        if (pair_score > fj_staged_score_t::zero()) {
-          move           = first;
-          lift_companion = second;
-          score          = pair_score;
-          is_lift        = true;
+      // Perform lift moves
+      fj_move_t lift_companion = fj_move_t{-1, 0};
+      if (fj_cpu->violated_constraints.empty()) {
+        thrust::tie(move, score) = find_lift_move(*fj_cpu);
+        if (score > fj_staged_score_t::zero()) {
+          is_lift = true;
+        } else {
+          // Pairs are only reachable once no single improving flip preserves feasibility.
+          fj_move_t first, second;
+          fj_staged_score_t pair_score;
+          thrust::tie(first, second, pair_score) = find_lift_2opt_move(*fj_cpu);
+          if (pair_score > fj_staged_score_t::zero()) {
+            move           = first;
+            lift_companion = second;
+            score          = pair_score;
+            is_lift        = true;
+          }
         }
       }
-    }
-    // Regular MTM
-    if (!(score > fj_staged_score_t::zero())) {
-      thrust::tie(move, score) = find_mtm_move_viol(*fj_cpu, fj_cpu->mtm_viol_samples);
-      if (score > fj_staged_score_t::zero()) is_mtm_viol = true;
-    }
-    // try with MTM in satisfied constraints
-    if (fj_cpu->feasible_found && !(score > fj_staged_score_t::zero())) {
-      thrust::tie(move, score) = find_mtm_move_sat(*fj_cpu, fj_cpu->mtm_sat_samples);
-      if (score > fj_staged_score_t::zero()) is_mtm_sat = true;
-    }
+      // Regular MTM
+      if (!(score > fj_staged_score_t::zero())) {
+        thrust::tie(move, score) = find_mtm_move_viol(*fj_cpu, fj_cpu->mtm_viol_samples);
+        if (score > fj_staged_score_t::zero()) is_mtm_viol = true;
+      }
+      // try with MTM in satisfied constraints
+      if (fj_cpu->feasible_found && !(score > fj_staged_score_t::zero())) {
+        thrust::tie(move, score) = find_mtm_move_sat(*fj_cpu, fj_cpu->mtm_sat_samples);
+        if (score > fj_staged_score_t::zero()) is_mtm_sat = true;
+      }
 
-    // A one-hot choice cannot change rank through scalar FJ without first breaking its defining
-    // equality.  Give the structural persona a regular opportunity to compare an
-    // equality-preserving exchange with the best scalar move, rather than waiting for a scalar
-    // local minimum.  The gate keeps this O(pair-score) work to one lane and only while it is still
-    // trying to cross. Factor-scope transitions are a compact semantic neighbourhood.  Probe it
-    // more frequently than generic 2-opt, while its smaller candidate budget below keeps its total
-    // work comparable on large guarded formulations. A certified rank move preserves an exact-one
-    // manifold that scalar moves destroy. Probe this compact neighbourhood often enough to make
-    // consecutive rank transitions before ordinary FJ drifts away, while keeping the extra work
-    // confined to the structural lane.
-    const i_t exchange_period = 32;
-    if (!fj_cpu->feasible_found && fj_cpu->use_cardinality_exchange &&
-        fj_cpu->iterations % exchange_period == 0) {
-      const two_opt_move_t exchange = find_cardinality_exchange(*fj_cpu);
-      // In the certified categorical/epigraph lane, a positive exchange is a rank move with its
-      // continuous completion already scored.  Prefer it to a scalar move: taking the latter can
-      // break the one-hot manifold and strand the lane before it has explored the rank
-      // neighbourhood. Other cardinality lanes retain the usual direct comparison.
-      if (exchange.score > fj_staged_score_t::zero() && (exchange.score > score)) {
-        move           = exchange.first;
-        lift_companion = exchange.second;
-        score          = exchange.score;
-        is_mtm_viol    = false;
-      }
-    }
-    // The scorers target one row at a time, so on an epigraph variable they climb toward the bound
-    // its rows already imply. The projection lands there in one move at the same O(degree) cost.
-    if (move.var_idx >= 0 && fj_cpu->epigraph_push[move.var_idx] != 0) {
-      const f_t projected =
-        project_epigraph_variable(*fj_cpu, move.var_idx) - (f_t)fj_cpu->h_assignment[move.var_idx];
-      if (projected != f_t{0}) {
-        move.value = projected;
-        ++fj_cpu->n_epigraph_projections;
-      }
-    }
-
-    // if we're in the feasible region but haven't found improvements in the last n iterations,
-    // perturb
-    bool should_perturb = false;
-    if (fj_cpu->violated_constraints.empty() &&
-        fj_cpu->iterations_since_best > fj_cpu->perturb_interval) {
-      should_perturb = true;
-      // Without this the counter stays above the interval and every later iteration perturbs.
-      fj_cpu->iterations_since_best = 0;
-      if (fj_cpu->use_lp_polish && fj_cpu->feasible_found) {
-        const double elapsed =
-          std::chrono::duration<double>(std::chrono::steady_clock::now() - loop_start).count();
-        apply_lp_polish(*fj_cpu, fj_cpu->hp.lp_polish_budget_share * (time_limit - elapsed));
-      }
-    }
-
-    if (score > fj_staged_score_t::zero() && !should_perturb) {
-      // A 2-opt lift already commits two coupled moves, and its second half is scored against the
-      // state before both, so it stays on its own.
-      if (lift_companion.var_idx < 0) {
-        collect_move_batch(*fj_cpu, move, batch_moves);
-        for (const auto& batched : batch_moves)
-          apply_move(*fj_cpu, batched.var_idx, batched.value, false);
-      }
-      apply_move(*fj_cpu, move.var_idx, move.value, false);
-      if (lift_companion.var_idx >= 0) {
-        apply_move(*fj_cpu, lift_companion.var_idx, lift_companion.value, false);
-      }
-      // Track move types
-    } else {
-      // A peer's stronger feasible incumbent is useful immediately at a feasible local minimum,
-      // rather than only after this lane's much later perturbation threshold.  Infeasible lanes
-      // deliberately retain their independent trajectories until they have crossed themselves.
-      if (fj_cpu->feasible_found && fj_cpu->violated_constraints.empty() &&
-          fj_cpu->shared_incumbent != nullptr) {
-        f_t adopted_objective{};
-        if (fj_cpu->shared_incumbent->adopt(
-              fj_cpu->h_best_objective, fj_cpu->h_assignment, &adopted_objective)) {
-          fj_cpu->h_incumbent_objective = adopted_objective;
-          fj_cpu->h_objective_sumcomp   = 0;
-          fj_cpu->h_best_objective =
-            adopted_objective - fj_cpu->settings.parameters.breakthrough_move_epsilon;
-          fj_cpu->h_best_assignment     = fj_cpu->h_assignment;
-          fj_cpu->iterations_since_best = 0;
-          fj_cpu->perturb_streak        = 0;
-          recompute_slack(*fj_cpu);
-          retire_var_best_moves<i_t, f_t>(*fj_cpu);
-          cuopt_func_call(audit_assignment_bounds(*fj_cpu, "shared local-minimum adopt"));
+      // A one-hot choice cannot change rank through scalar FJ without first breaking its defining
+      // equality.  Give the structural persona a regular opportunity to compare an
+      // equality-preserving exchange with the best scalar move, rather than waiting for a scalar
+      // local minimum.  The gate keeps this O(pair-score) work to one lane and only while it is
+      // still trying to cross. Factor-scope transitions are a compact semantic neighbourhood. Probe
+      // it more frequently than generic 2-opt, while its smaller candidate budget below keeps its
+      // total work comparable on large guarded formulations. A certified rank move preserves an
+      // exact-one manifold that scalar moves destroy. Probe this compact neighbourhood often enough
+      // to make consecutive rank transitions before ordinary FJ drifts away, while keeping the
+      // extra work confined to the structural lane.
+      const i_t exchange_period = 32;
+      if (!fj_cpu->feasible_found && fj_cpu->use_cardinality_exchange &&
+          fj_cpu->iterations % exchange_period == 0) {
+        const two_opt_move_t exchange = find_cardinality_exchange(*fj_cpu);
+        // In the certified categorical/epigraph lane, a positive exchange is a rank move with its
+        // continuous completion already scored.  Prefer it to a scalar move: taking the latter can
+        // break the one-hot manifold and strand the lane before it has explored the rank
+        // neighbourhood. Other cardinality lanes retain the usual direct comparison.
+        if (exchange.score > fj_staged_score_t::zero() && (exchange.score > score)) {
+          move           = exchange.first;
+          lift_companion = exchange.second;
+          score          = exchange.score;
+          is_mtm_viol    = false;
         }
       }
-      update_weights(*fj_cpu);
-      track_infeasible_checkpoint(*fj_cpu);
-      if (should_perturb) {
-        perturb(*fj_cpu);
-        invalidate_mtm_cache(*fj_cpu);
+      // The scorers target one row at a time, so on an epigraph variable they climb toward the
+      // bound its rows already imply. The projection lands there in one move at the same O(degree)
+      // cost.
+      if (move.var_idx >= 0 && fj_cpu->epigraph_push[move.var_idx] != 0) {
+        const f_t projected = project_epigraph_variable(*fj_cpu, move.var_idx) -
+                              (f_t)fj_cpu->h_assignment[move.var_idx];
+        if (projected != f_t{0}) {
+          move.value = projected;
+          ++fj_cpu->n_epigraph_projections;
+        }
       }
 
-      two_opt_move_t two_opt_move;
-      if (!should_perturb) {
-        two_opt_move = find_cardinality_exchange(*fj_cpu);
-        if (!(two_opt_move.score > fj_staged_score_t::zero()))
-          two_opt_move = find_compound_repair(*fj_cpu);
-        if (!(two_opt_move.score > fj_staged_score_t::zero()))
-          two_opt_move = find_tight_row_exchange(*fj_cpu);
+      // if we're in the feasible region but haven't found improvements in the last n iterations,
+      // perturb
+      bool should_perturb = false;
+      if (fj_cpu->violated_constraints.empty() &&
+          fj_cpu->iterations_since_best > fj_cpu->perturb_interval) {
+        should_perturb = true;
+        // Without this the counter stays above the interval and every later iteration perturbs.
+        fj_cpu->iterations_since_best = 0;
+        if (fj_cpu->use_lp_polish && fj_cpu->feasible_found) {
+          const double elapsed =
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - loop_start).count();
+          apply_lp_polish(*fj_cpu, fj_cpu->hp.lp_polish_budget_share * (time_limit - elapsed));
+        }
       }
-      // A certified factor-scope lane searches a discrete rank neighbourhood. At a weighted local
-      // minimum it must be allowed to take its best tabu-free rank transition as an escape, even
-      // when no neighbour improves the coarse row-count score; otherwise scalar fallback breaks
-      // the one-hot manifold before another rank can be examined. Other 2-opt personas retain the
-      // strictly-positive acceptance rule.
-      if (two_opt_move.score > fj_staged_score_t::zero()) {
-        apply_move(*fj_cpu, two_opt_move.first.var_idx, two_opt_move.first.value, true);
-        apply_move(*fj_cpu, two_opt_move.second.var_idx, two_opt_move.second.value, true);
-      } else if (!fj_cpu->violated_constraints.empty()) {
-        thrust::tie(move, score) =
-          find_mtm_move_viol(*fj_cpu, 1, true);  // pick a single random violated constraint
-        i_t var_idx = move.var_idx >= 0 ? move.var_idx : 0;
-        f_t delta   = move.var_idx >= 0 ? move.value : 0;
-        apply_move(*fj_cpu, var_idx, delta, true);
+
+      if (score > fj_staged_score_t::zero() && !should_perturb) {
+        // A 2-opt lift already commits two coupled moves, and its second half is scored against the
+        // state before both, so it stays on its own.
+        if (lift_companion.var_idx < 0) {
+          collect_move_batch(*fj_cpu, move, batch_moves);
+          for (const auto& batched : batch_moves)
+            apply_move(*fj_cpu, batched.var_idx, batched.value, false);
+        }
+        apply_move(*fj_cpu, move.var_idx, move.value, false);
+        if (lift_companion.var_idx >= 0) {
+          apply_move(*fj_cpu, lift_companion.var_idx, lift_companion.value, false);
+        }
+        // Track move types
       } else {
-        // Feasible and stuck with nothing violated to move against: find_mtm_move_viol above
-        // would sample an empty set and force a delta-0 no-op that still bumps every row version
-        // the fallback variable touches. A forced satisfied-row move is a real step instead, and
-        // when even that finds nothing the iteration is simply skipped rather than faked.
-        thrust::tie(move, score) = find_mtm_move_sat(*fj_cpu, fj_cpu->mtm_sat_samples, true);
-        if (move.var_idx >= 0) { apply_move(*fj_cpu, move.var_idx, move.value, true); }
+        // A peer's stronger feasible incumbent is useful immediately at a feasible local minimum,
+        // rather than only after this lane's much later perturbation threshold.  Infeasible lanes
+        // deliberately retain their independent trajectories until they have crossed themselves.
+        if (fj_cpu->feasible_found && fj_cpu->violated_constraints.empty() &&
+            fj_cpu->shared_incumbent != nullptr) {
+          f_t adopted_objective{};
+          if (fj_cpu->shared_incumbent->adopt(
+                fj_cpu->h_best_objective, fj_cpu->h_assignment, &adopted_objective)) {
+            fj_cpu->h_incumbent_objective = adopted_objective;
+            fj_cpu->h_objective_sumcomp   = 0;
+            fj_cpu->h_best_objective =
+              adopted_objective - fj_cpu->settings.parameters.breakthrough_move_epsilon;
+            fj_cpu->h_best_assignment     = fj_cpu->h_assignment;
+            fj_cpu->iterations_since_best = 0;
+            fj_cpu->perturb_streak        = 0;
+            recompute_slack(*fj_cpu);
+            retire_var_best_moves<i_t, f_t>(*fj_cpu);
+            cuopt_func_call(audit_assignment_bounds(*fj_cpu, "shared local-minimum adopt"));
+          }
+        }
+        update_weights(*fj_cpu);
+        track_infeasible_checkpoint(*fj_cpu);
+        if (should_perturb) {
+          perturb(*fj_cpu);
+          invalidate_mtm_cache(*fj_cpu);
+        }
+
+        two_opt_move_t two_opt_move;
+        if (!should_perturb) {
+          two_opt_move = find_cardinality_exchange(*fj_cpu);
+          if (!(two_opt_move.score > fj_staged_score_t::zero()))
+            two_opt_move = find_compound_repair(*fj_cpu);
+          if (!(two_opt_move.score > fj_staged_score_t::zero()))
+            two_opt_move = find_tight_row_exchange(*fj_cpu);
+        }
+        // A certified factor-scope lane searches a discrete rank neighbourhood. At a weighted local
+        // minimum it must be allowed to take its best tabu-free rank transition as an escape, even
+        // when no neighbour improves the coarse row-count score; otherwise scalar fallback breaks
+        // the one-hot manifold before another rank can be examined. Other 2-opt personas retain the
+        // strictly-positive acceptance rule.
+        if (two_opt_move.score > fj_staged_score_t::zero()) {
+          apply_move(*fj_cpu, two_opt_move.first.var_idx, two_opt_move.first.value, true);
+          apply_move(*fj_cpu, two_opt_move.second.var_idx, two_opt_move.second.value, true);
+        } else if (!fj_cpu->violated_constraints.empty()) {
+          thrust::tie(move, score) =
+            find_mtm_move_viol(*fj_cpu, 1, true);  // pick a single random violated constraint
+          i_t var_idx = move.var_idx >= 0 ? move.var_idx : 0;
+          f_t delta   = move.var_idx >= 0 ? move.value : 0;
+          apply_move(*fj_cpu, var_idx, delta, true);
+        } else {
+          // Feasible and stuck with nothing violated to move against: find_mtm_move_viol above
+          // would sample an empty set and force a delta-0 no-op that still bumps every row version
+          // the fallback variable touches. A forced satisfied-row move is a real step instead, and
+          // when even that finds nothing the iteration is simply skipped rather than faked.
+          thrust::tie(move, score) = find_mtm_move_sat(*fj_cpu, fj_cpu->mtm_sat_samples, true);
+          if (move.var_idx >= 0) { apply_move(*fj_cpu, move.var_idx, move.value, true); }
+        }
+        ++local_mins;
       }
-      ++local_mins;
-    }
     }
 
     if (fj_cpu->log_interval && fj_cpu->iterations % fj_cpu->log_interval == 0) {

@@ -222,8 +222,7 @@ static i_t weight_escalation_delta(const fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 {
   const i_t stall = fj_cpu.iters_since_infeasible_improve;
   if (stall <= fj_cpu.hp.weight_escalate_after) return 1;
-  const i_t steps =
-    (stall - fj_cpu.hp.weight_escalate_after) / fj_cpu.hp.weight_escalate_after + 1;
+  const i_t steps = (stall - fj_cpu.hp.weight_escalate_after) / fj_cpu.hp.weight_escalate_after + 1;
   return steps < fj_cpu.hp.weight_escalate_max ? steps : fj_cpu.hp.weight_escalate_max;
 }
 

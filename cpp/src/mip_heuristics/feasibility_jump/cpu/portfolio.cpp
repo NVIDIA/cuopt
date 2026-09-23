@@ -118,15 +118,15 @@ void apply_lane_diversification(fj_cpu_climber_t<i_t, f_t>& c, int lane, int64_t
   c.use_integer_bit_encoding = lane != 0 && lane != 7 && c.n_binary_vars > 0;
   c.use_lp_polish = lane == 9 || lane == 14 || lane == 11 || lane == 3 || lane == 8 || lane == 13 ||
                     lane == 5 || lane == 10 || lane == 12;
-  c.use_precedence_start           = lane % 8 == 0 && !c.low_latency;
-  c.use_affine_equality_start      = lane == 2 || lane == 4 || lane == 11;
-  c.use_unit_commitment_start      = lane == 6;
+  c.use_precedence_start      = lane % 8 == 0 && !c.low_latency;
+  c.use_affine_equality_start = lane == 2 || lane == 4 || lane == 11;
+  c.use_unit_commitment_start = lane == 6;
   // The start certifies a bijective fixed-charge flow network and validates the completed
   // assignment, so use most lanes to construct independently jittered trees while preserving two
   // generic-search lanes.
   c.use_fixed_charge_network_start = lane != 0 && lane != 8;
-  c.use_fundamental_cycle_pivot = lane == 3 || lane == 5 || lane == 10 || lane == 13;
-  c.network_temperature = lane == 5 ? f_t{0.05} : lane == 13 ? f_t{0.2} : f_t{0};
+  c.use_fundamental_cycle_pivot    = lane == 3 || lane == 5 || lane == 10 || lane == 13;
+  c.network_temperature            = lane == 5 ? f_t{0.05} : lane == 13 ? f_t{0.2} : f_t{0};
   c.use_pmedian_start              = lane == 5;
   c.use_equality_substitution      = lane % 4 == 0 && !c.low_latency;
   c.use_bound_prop                 = lane % 2 == 0 && !c.low_latency;
@@ -308,8 +308,8 @@ void apply_lane_diversification(fj_cpu_climber_t<i_t, f_t>& c, int lane, int64_t
                                           : obj_weight_floor[lane % 4];
 
   // Recognize big-M regions selected by disjoint exact-one groups.
-  c.continuous_perturb_fraction  = 0;
-  c.objective_directed_perturb   = false;
+  c.continuous_perturb_fraction = 0;
+  c.objective_directed_perturb  = false;
   if (cardinality_dominated && c.n_integer_vars == 0 && objective_var_count > 0 &&
       continuous_objective_vars == objective_var_count) {
     const auto& p    = *c.problem;
@@ -329,7 +329,7 @@ void apply_lane_diversification(fj_cpu_climber_t<i_t, f_t>& c, int lane, int64_t
         ++equalities;
         continue;
       }
-      i_t binary = -1;
+      i_t binary           = -1;
       f_t gate_coefficient = 0;
       f_t continuous_max   = 0;
       for (i_t q = p.offsets[row]; q < p.offsets[row + 1]; ++q) {
@@ -367,7 +367,7 @@ void apply_lane_diversification(fj_cpu_climber_t<i_t, f_t>& c, int lane, int64_t
       valid &= scope.size() == 4;
 
     if (valid && equalities == groups && gated >= 0.8 * p.n_constraints) {
-      const i_t slot = lane % 8;
+      const i_t slot                = lane % 8;
       c.continuous_perturb_fraction = f_t{0.1} * (1 << (slot % 4));
       c.objective_directed_perturb  = slot % 2 == 1;
       if (c.objective_directed_perturb)

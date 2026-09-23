@@ -461,7 +461,7 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
         continue;
       fj_cpu.cached_mtm_moves[i]         = std::make_pair(delta, score);
       fj_cpu.cached_mtm_moves_version[i] = fj_cpu.h_cstr_version[cstr_idx];
-        record_var_best_move<i_t, f_t>(fj_cpu, var_idx, score, delta);
+      record_var_best_move<i_t, f_t>(fj_cpu, var_idx, score, delta);
       if (improves_best(score, move.var_idx, move.value))
         store_best(score, move.var_idx, move.value);
     }
