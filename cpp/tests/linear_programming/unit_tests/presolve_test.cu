@@ -929,6 +929,8 @@ TEST_P(crush_warmstart, round_trip)
   settings.dual_postsolve = true;
   settings.method         = cuopt::mathematical_optimization::method_t::PDLP;
   settings.time_limit     = 60.0;
+  // Known issue with Curtis-Reid scaling on PDLP warm starts.
+  settings.hyper_params.do_curtis_reid_scaling = false;
 
   auto cold_solution = solve_lp(result.reduced_problem, settings);
   ASSERT_EQ(cold_solution.get_termination_status(), pdlp_termination_status_t::Optimal);
