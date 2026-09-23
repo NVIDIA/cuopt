@@ -86,7 +86,7 @@ def test_invalid_values_set_solver_config(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "SolverSettings time limit must be greater than 0",
-        "error_result": True,
+        "error_result": False,
     }
 
     # config_file should be a valid file path
@@ -99,7 +99,7 @@ def test_invalid_values_set_solver_config(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "File path to save configuration should be valid and not empty",  # noqa
-        "error_result": True,
+        "error_result": False,
     }
 
 

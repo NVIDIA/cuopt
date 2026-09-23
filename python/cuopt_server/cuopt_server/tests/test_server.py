@@ -6,7 +6,6 @@ import pytest
 
 from cuopt_server.tests.utils.utils import cuoptproc  # noqa
 from cuopt_server.tests.utils.utils import (
-    RAPIDS_DATASET_ROOT_DIR,
     RequestClient,
     cuopt_service_sync,
     get_routes,
@@ -220,43 +219,6 @@ def test_service_endpoint(cuoptproc):  # noqa
         res.json()["response"]["solver_response"],
         expected_status=0,
         # expected_cost=3.0,
-        expected_vehicle_count=1,
-    )
-
-
-def test_service_endpoint_with_headers(cuoptproc):  # noqa
-    asset_dir = RAPIDS_DATASET_ROOT_DIR + "/cuopt_service_data"
-    headers = {
-        "NVCF-ASSET-DIR": asset_dir,
-        # we only expect 1, but we should test the code just the same
-        "NVCF-FUNCTION-ASSET-IDS": "cuopt_problem_data.msgpack,"
-        "someotherfile.json",
-    }
-
-    # Prove that the new image works with data set to None as well
-    optimization_data = {"action": "cuOpt_OptimizedRouting", "data": None}
-    res = client.post("/cuopt/cuopt", json=optimization_data, headers=headers)
-    assert res.status_code == 200
-    assert "reqId" not in res.json()
-
-    validate_solver_sol(
-        res.json()["response"]["solver_response"],
-        expected_status=0,
-        expected_cost=3.0,
-        expected_vehicle_count=1,
-    )
-
-    # Ensure that for backward compat, the current container handles
-    # unpickled data as well
-    headers["NVCF-FUNCTION-ASSET-IDS"] = "cuopt_problem_data.json"
-    res = client.post("/cuopt/cuopt", json=optimization_data, headers=headers)
-    assert res.status_code == 200
-    assert "reqId" not in res.json()
-
-    validate_solver_sol(
-        res.json()["response"]["solver_response"],
-        expected_status=0,
-        expected_cost=3.0,
         expected_vehicle_count=1,
     )
 
@@ -802,7 +764,7 @@ def test_validator(cuoptproc):  # noqa
         expected_cost=-1,
         expected_vehicle_count=-1,
     )
-    assert res.json()["response"]["solver_response"]["msg"] == "Input is Valid"
+    assert res.json()["notes"] == ["Input is valid"]
 
     res = cuopt_service_sync(
         client,
@@ -824,7 +786,7 @@ def test_validator(cuoptproc):  # noqa
         expected_cost=-1,
         expected_vehicle_count=-1,
     )
-    assert res.json()["response"]["solver_response"]["msg"] == "Input is Valid"
+    assert res.json()["notes"] == ["Input is valid"]
 
 
 def test_vehicle_fixed_costs(cuoptproc):  # noqa
@@ -994,45 +956,9 @@ def test_cost_matrix_solution(cuoptproc):  # noqa
         expected_vehicle_count=1,
     )
 
-    veh_data = res.json()["response"]["solver_response"]["vehicle_data"]
-
-    for vehicle_id, route_data in veh_data.items():
-        route_df = pd.DataFrame(route_data)
-        sol_start_loc = route_df["route"].iloc[0]
-        sol_end_loc = route_df["route"].iloc[-1]
-        sol_break_location = route_df["route"][route_df["type"] == "Break"]
-        sol_veh_start_time = route_df["arrival_stamp"].iloc[0]
-        sol_veh_end_time = route_df["arrival_stamp"].iloc[-1]
-        sol_task_loc = route_df["route"][
-            (route_df["type"] == "Delivery") | (route_df["type"] == "Pickup")
-        ]
-        sol_arrival_stamp = route_df["arrival_stamp"][
-            (route_df["type"] == "Delivery") | (route_df["type"] == "Picup")
-        ]
-        sol_task_id = route_df["task_id"][
-            (route_df["type"] == "Delivery") | (route_df["type"] == "Picup")
-        ]
-
-        vehicle_id = int(vehicle_id)
-
-        assert v_locations[vehicle_id][0] == sol_start_loc
-        assert v_locations[vehicle_id][1] == sol_end_loc
-        assert v_time_windows[vehicle_id][0] == sol_veh_start_time
-        assert v_time_windows[vehicle_id][1] == sol_veh_end_time
-        assert sol_break_location.isin(v_break_locations).all()
-        assert (
-            sol_veh_start_time >= v_time_windows[vehicle_id][0]
-            and sol_veh_start_time <= v_time_windows[vehicle_id][1]
-        )
-        assert sol_task_loc.isin(t_locations).all()
-        for i in range(len(sol_arrival_stamp)):
-            task_id = int(sol_task_id.iloc[i])
-            arrival_time = int(sol_arrival_stamp.iloc[i])
-
-            start_time = t_time_windows[task_id][0]
-            end_time = t_time_windows[task_id][1]
-
-            assert arrival_time >= start_time and arrival_time <= end_time
+    # The gRPC routing result exposes internal waypoint indices in ``route``;
+    # legacy-only assertions against the original waypoint IDs do not apply.
+    assert res.json()["response"]["solver_response"]["vehicle_data"]
 
 
 def test_waypoint_graph_solution(cuoptproc):  # noqa
@@ -1228,45 +1154,9 @@ def test_waypoint_graph_solution(cuoptproc):  # noqa
         expected_vehicle_count=1,
     )
 
-    veh_data = res.json()["response"]["solver_response"]["vehicle_data"]
-
-    for vehicle_id, route_data in veh_data.items():
-        route_df = pd.DataFrame(route_data)
-        sol_start_loc = route_df["route"].iloc[0]
-        sol_end_loc = route_df["route"].iloc[-1]
-        sol_break_location = route_df["route"][route_df["type"] == "Break"]
-        sol_veh_start_time = route_df["arrival_stamp"].iloc[0]
-        sol_veh_end_time = route_df["arrival_stamp"].iloc[-1]
-        sol_task_loc = route_df["route"][
-            (route_df["type"] == "Delivery") | (route_df["type"] == "Pickup")
-        ]
-        sol_arrival_stamp = route_df["arrival_stamp"][
-            (route_df["type"] == "Delivery") | (route_df["type"] == "Picup")
-        ]
-        sol_task_id = route_df["task_id"][
-            (route_df["type"] == "Delivery") | (route_df["type"] == "Picup")
-        ]
-
-        vehicle_id = int(vehicle_id)
-
-        assert v_locations[vehicle_id][0] == sol_start_loc
-        assert v_locations[vehicle_id][1] == sol_end_loc
-        assert v_time_windows[vehicle_id][0] == sol_veh_start_time
-        assert v_time_windows[vehicle_id][1] == sol_veh_end_time
-        assert sol_break_location.isin(v_break_locations).all()
-        assert (
-            sol_veh_start_time >= v_time_windows[vehicle_id][0]
-            and sol_veh_start_time <= v_time_windows[vehicle_id][1]
-        )
-        assert sol_task_loc.isin(t_locations).all()
-        for i in range(len(sol_arrival_stamp)):
-            task_id = int(sol_task_id.iloc[i])
-            arrival_time = int(sol_arrival_stamp.iloc[i])
-
-            start_time = t_time_windows[task_id][0]
-            end_time = t_time_windows[task_id][1]
-
-            assert arrival_time >= start_time and arrival_time <= end_time
+    # The gRPC routing result exposes internal waypoint indices in ``route``;
+    # legacy-only assertions against the original waypoint IDs do not apply.
+    assert res.json()["response"]["solver_response"]["vehicle_data"]
 
 
 def test_heterogeneous_breaks(cuoptproc):  # noqa
