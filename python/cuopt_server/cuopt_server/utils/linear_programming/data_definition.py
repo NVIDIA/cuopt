@@ -479,16 +479,16 @@ class SolverConfig(BaseModel):
         "greater than 1 to use that many GPUs; multi-GPU sharding only "
         "happens when more than one GPU is actually selected.",
     )
-    use_multi_gpu_pdlp: Optional[bool] = Field(
+    use_mpdlp: Optional[bool] = Field(
         default=None,
         description="Set True to distribute the PDLP solve of an LP "
         "problem across multiple GPUs. Requires method to be PDLP and "
         "num_gpus to be -1 or greater than 1.",
     )
-    multi_gpu_pdlp_partitioner: Optional[int] = Field(
+    mpdlp_partitioner: Optional[int] = Field(
         default=None,
         description="Partitioner used to split the problem across GPUs "
-        "when use_multi_gpu_pdlp is set:"
+        "when use_mpdlp is set:"
         "<br>"
         "- Auto: 0, pick automatically (RoundRobin on 1 GPU, "
         "KaMinPar otherwise)"

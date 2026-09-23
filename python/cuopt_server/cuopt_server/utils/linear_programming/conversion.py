@@ -20,8 +20,8 @@ from cuopt_server.utils.linear_programming.data_definition import WarmStartData
 # solver_params entries whose SolverConfig attribute uses a different
 # (public-facing) name than the underlying C++ parameter.
 SOLVER_CONFIG_FIELD_ALIASES = {
-    "use_distributed_pdlp": "use_multi_gpu_pdlp",
-    "distributed_pdlp_partitioner": "multi_gpu_pdlp_partitioner",
+    "use_distributed_pdlp": "use_mpdlp",
+    "distributed_pdlp_partitioner": "mpdlp_partitioner",
 }
 
 

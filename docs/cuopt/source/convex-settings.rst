@@ -159,8 +159,8 @@ RoundRobin there because it skips KaMinPar's graph-partitioning work for no bene
 
 .. note:: The default value is ``false`` for ``CUOPT_USE_DISTRIBUTED_PDLP`` and ``0`` (Auto) for
    ``CUOPT_DISTRIBUTED_PDLP_PARTITIONER``. C API users should use the constants defined in
-   :ref:`distributed-pdlp-partitioner-constants`. Python API users can also use the ``use_multi_gpu_pdlp`` and
-   ``multi_gpu_pdlp_partitioner`` parameter aliases.
+   :ref:`distributed-pdlp-partitioner-constants`. Python API users can also use the ``use_mpdlp`` and
+   ``mpdlp_partitioner`` parameter aliases.
 
 
 Infeasibility Detection

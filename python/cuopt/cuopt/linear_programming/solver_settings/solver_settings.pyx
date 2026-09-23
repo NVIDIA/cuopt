@@ -56,8 +56,8 @@ for param in solver_params: globals()["CUOPT_"+param.upper()] = param
 # underlying C++ parameter names. Accepted as aliases by get_parameter and
 # set_parameter; the CUOPT_* constants below mirror the auto-generated ones.
 PARAMETER_ALIASES = {
-    "use_multi_gpu_pdlp": "use_distributed_pdlp",
-    "multi_gpu_pdlp_partitioner": "distributed_pdlp_partitioner",
+    "use_mpdlp": "use_distributed_pdlp",
+    "mpdlp_partitioner": "distributed_pdlp_partitioner",
 }
 for alias, canonical in PARAMETER_ALIASES.items():
     globals()["CUOPT_" + alias.upper()] = globals()["CUOPT_" + canonical.upper()]

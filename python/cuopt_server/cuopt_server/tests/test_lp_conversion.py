@@ -58,12 +58,12 @@ def test_create_solver_limits():
     assert int(solver_settings.get_parameter("iteration_limit")) == 100
 
 
-def test_create_solver_multi_gpu_pdlp():
+def test_create_solver_mpdlp():
     data = get_lp_json()
     data["solver_config"]["method"] = 1  # PDLP
     data["solver_config"]["num_gpus"] = -1
-    data["solver_config"]["use_multi_gpu_pdlp"] = True
-    data["solver_config"]["multi_gpu_pdlp_partitioner"] = 2  # RoundRobin
+    data["solver_config"]["use_mpdlp"] = True
+    data["solver_config"]["mpdlp_partitioner"] = 2  # RoundRobin
 
     warnings, solver_settings = conversion.create_solver(
         LPData.parse_obj(data), None

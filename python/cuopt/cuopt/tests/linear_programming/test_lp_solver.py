@@ -387,12 +387,12 @@ def test_solver_settings_basic():
     assert settings.get_parameter(CUOPT_USE_DISTRIBUTED_PDLP) is True
     assert settings.get_parameter(CUOPT_DISTRIBUTED_PDLP_PARTITIONER) == 2
 
-    # Same settings, via the public multi_gpu_pdlp aliases
-    settings.set_parameter("use_multi_gpu_pdlp", True)
-    settings.set_parameter("multi_gpu_pdlp_partitioner", 1)
+    # Same settings, via the public mpdlp aliases
+    settings.set_parameter("use_mpdlp", True)
+    settings.set_parameter("mpdlp_partitioner", 1)
 
-    assert settings.get_parameter("use_multi_gpu_pdlp") is True
-    assert settings.get_parameter("multi_gpu_pdlp_partitioner") == 1
+    assert settings.get_parameter("use_mpdlp") is True
+    assert settings.get_parameter("mpdlp_partitioner") == 1
     # Aliases resolve to the same underlying parameter as the canonical name
     assert settings.get_parameter(CUOPT_DISTRIBUTED_PDLP_PARTITIONER) == 1
 
