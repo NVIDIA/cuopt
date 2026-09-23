@@ -188,16 +188,15 @@ void build_climber_portfolio(problem_t<i_t, f_t>& problem,
 {
   cuopt_assert(!climbers.empty(), "a CPUFJ portfolio needs at least one climber");
   cuopt_assert(preemption_flags.size() == climbers.size(), "preemption flag count mismatch");
-  for (auto& flag : preemption_flags)
-    flag.store(false);
 
-  // seed_generator is not atomic, so draw every seed before clone construction becomes parallel.
   std::vector<int64_t> lane_seeds(climbers.size());
-  for (auto& seed : lane_seeds)
-    seed = cuopt::seed_generator::get_seed();
+  for (size_t k = 0; k < climbers.size(); ++k) {
+    preemption_flags[k].store(false);
+    lane_seeds[k] = base_seed + k;
+  }
 
   fj_settings_t settings;
-  settings.seed = static_cast<int>(lane_seeds[0]);
+  settings.seed = lane_seeds[0];
   auto first    = init_fj_cpu_standalone(problem, preemption_flags[0], lane_seeds[0], settings);
   complete_climber_portfolio(
     std::move(first), lane_seeds, preemption_flags, climbers, base_seed, low_latency);
