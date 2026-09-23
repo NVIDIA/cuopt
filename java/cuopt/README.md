@@ -83,3 +83,35 @@ generated file. Regenerate it after changing the C++ constants header with:
 cd java/cuopt
 mvn generate-sources
 ```
+
+## Remote gRPC Client (Experimental)
+
+`GrpcClient` (`com.nvidia.cuopt.mathematicaloptimization.GrpcClient`) talks to a
+remote `cuopt_grpc_server` instead of solving in-process. It wraps
+`cuopt::cython::grpc_python_client_t` — the same C++ class the Python bindings
+wrap — via `src/main/native/cuopt_grpc_jni.cpp`, so it inherits that class's
+automatic chunked upload/download for problems too large for a single protobuf
+message.
+
+Covers LP and MIP submit/status/wait/cancel/delete/result, plaintext or TLS.
+Not covered yet: log streaming and incumbent callbacks. Not wired into the
+Maven-packaged classifier jar or CI yet.
+
+```java
+try (GrpcClient client = new GrpcClient("localhost", 5001)) {
+  client.connect();
+
+  String jobId = client.submit(myProblem, /* timeLimitSeconds= */ 30.0);
+  GrpcJobStatus status = client.waitForCompletion(jobId, /* timeoutSeconds= */ 60);
+
+  if (status == GrpcJobStatus.COMPLETED) {
+    GrpcMipResult result = client.getMipResult(jobId); // or getLpResult(jobId)
+    System.out.println("objective: " + result.getObjective());
+  }
+}
+```
+
+`myProblem` implements `GrpcClient.RawProblem`, the same CSR-array shape
+`NativeCuOpt.createProblem` already uses — see
+`src/test/java/com/nvidia/cuopt/mathematicaloptimization/NativeIntegrationTest.java`
+for the array layout.
