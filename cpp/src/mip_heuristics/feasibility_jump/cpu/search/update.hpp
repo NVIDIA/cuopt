@@ -246,7 +246,8 @@ f_t project_epigraph_variable(fj_cpu_climber_t<i_t, f_t>& fj_cpu, i_t var_idx)
   for (i_t p = offset_begin; p < offset_end; ++p) {
     const f_t coeff = rev_coeff[p];
     if (coeff == f_t{0}) continue;
-    const f_t implied = current + state[rev_cstr[p]].slack / coeff;
+    const f_t implied =
+      current + (state[rev_cstr[p]].slack + fj_cpu.h_slack_sumcomp[rev_cstr[p]]) / coeff;
     if (!std::isfinite(implied)) continue;
     target = push_up ? std::max(target, implied) : std::min(target, implied);
   }

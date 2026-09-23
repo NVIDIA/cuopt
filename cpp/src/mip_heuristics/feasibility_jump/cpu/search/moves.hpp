@@ -62,7 +62,8 @@ static fj_staged_score_t two_opt_compute_pair_score(
       feas_score_constraint<i_t, f_t>(fj_cpu,
                                       lhs_delta,
                                       1,
-                                      fj_cpu.row_state()[cstr_idx].slack,
+                                      fj_cpu.row_state()[cstr_idx].slack +
+                                        fj_cpu.h_slack_sumcomp[cstr_idx],
                                       fj_cpu.row_state()[cstr_idx].weight);
     base_feas_sum += cstr_base_feas;
     bonus_robust_sum += cstr_bonus_robust;
@@ -184,7 +185,9 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
         const f_t cstr_coeff = fj_cpu.h_coefficients[i];
 
         const f_t delta = get_mtm_for_constraint<i_t, f_t, move_type>(
-          cstr_coeff, fj_cpu.row_state()[cstr_idx].slack, fj_cpu.row_tolerance);
+          cstr_coeff,
+          fj_cpu.row_state()[cstr_idx].slack + fj_cpu.h_slack_sumcomp[cstr_idx],
+          fj_cpu.row_tolerance);
         if (is_integer_var<i_t, f_t>(fj_cpu, var_idx)) {
           // The sign the two-sided form applied here is already folded into the coefficient.
           new_val = cstr_coeff > 0
@@ -480,7 +483,7 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_lift_move(
         const i_t cstr_idx   = fj_cpu.h_reverse_constraints[j];
         const f_t cstr_coeff = fj_cpu.h_reverse_coefficients[j];
         if (cstr_coeff == f_t{0}) continue;
-        const f_t slack = fj_cpu.row_state()[cstr_idx].slack;
+        const f_t slack = fj_cpu.row_state()[cstr_idx].slack + fj_cpu.h_slack_sumcomp[cstr_idx];
         cuopt_assert(!(slack < -fj_cpu.row_tolerance), "cstr should be satisfied");
 
         // One bound per row here, and the sign the two-sided form carried is in the coefficient.
