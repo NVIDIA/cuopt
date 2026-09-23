@@ -8,11 +8,14 @@
 #pragma once
 
 #include <thrust/iterator/permutation_iterator.h>
+#include <utilities/macros.cuh>
 
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <type_traits>
+#include <vector>
 
 #ifdef __CUDACC__
 #define CUOPT_MIP_HOST_DEVICE inline __host__ __device__
@@ -85,6 +88,65 @@ inline auto compensated_dot2_csr(const CsrLike& csr, const Values& values, i_t r
   return compensated_dot2_csr(
     csr.offsets.data(), csr.variables.data(), csr.coefficients.data(), values.data(), row);
 }
+
+template <typename i_t>
+struct host_contiguous_set_t {
+  void resize(i_t max_size)
+  {
+    cuopt_assert(max_size >= 0, "invalid max size");
+    contents.clear();
+    contents.reserve(max_size);
+    index_map.assign(max_size, -1);
+    is_member.assign(max_size, 0);
+  }
+
+  void clear()
+  {
+    for (i_t val : contents) {
+      index_map[val] = -1;
+      is_member[val] = 0;
+    }
+    contents.clear();
+  }
+
+  void insert(i_t val)
+  {
+    cuopt_assert(val >= 0 && val < max_size(), "Value is out of bounds");
+    cuopt_assert(!contains(val), "Value already exists");
+    index_map[val] = contents.size();
+    is_member[val] = 1;
+    contents.push_back(val);
+  }
+
+  void remove(i_t val)
+  {
+    cuopt_assert(val >= 0 && val < max_size(), "Value is out of bounds");
+    cuopt_assert(contains(val), "Value not found");
+    const i_t idx       = index_map[val];
+    const i_t last_val  = contents.back();
+    contents[idx]       = last_val;
+    index_map[last_val] = idx;
+    contents.pop_back();
+    index_map[val] = -1;
+    is_member[val] = 0;
+  }
+
+  bool contains(i_t val) const
+  {
+    cuopt_assert(val >= 0 && val < max_size(), "Value is out of bounds");
+    return is_member[val] != 0;
+  }
+
+  auto begin() const { return contents.begin(); }
+  auto end() const { return contents.end(); }
+  i_t size() const { return contents.size(); }
+  i_t max_size() const { return index_map.size(); }
+  bool empty() const { return contents.empty(); }
+
+  std::vector<i_t> contents;
+  std::vector<i_t> index_map;
+  std::vector<uint8_t> is_member;
+};
 
 }  // namespace cuopt::mathematical_optimization::mip
 

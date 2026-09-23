@@ -280,7 +280,7 @@ void sample_with_replacement(const host_contiguous_set_t<i_t>& pool,
   out.reserve(sample_size);
   cuopt::pcgenerator_t rng(seed);
   for (i_t i = 0; i < sample_size; ++i) {
-    out.push_back(pool.contents[rng.next_u32() % (uint32_t)pool_size]);
+    out.push_back(pool.contents[rng.uniform(0, pool_size)]);
   }
 }
 
