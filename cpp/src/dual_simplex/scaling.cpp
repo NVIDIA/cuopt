@@ -12,6 +12,21 @@
 
 namespace cuopt::mathematical_optimization::simplex {
 
+namespace {
+
+// row_norm[i] = max_j |A(i,j)|, the infinity norm of row i of A.
+template <typename i_t, typename f_t>
+void compute_row_inf_norms(const csc_matrix_t<i_t, f_t>& A, std::vector<f_t>& row_norm)
+{
+  row_norm.assign(A.m, 0.0);
+  const i_t nz = A.col_start[A.n];
+  for (i_t p = 0; p < nz; ++p) {
+    row_norm[A.i[p]] = std::max(row_norm[A.i[p]], std::abs(A.x[p]));
+  }
+}
+
+}  // namespace
+
 template <typename i_t, typename f_t>
 i_t scaling(const lp_problem_t<i_t, f_t>& unscaled,
             const simplex_solver_settings_t<i_t, f_t>& settings,
@@ -35,21 +50,18 @@ i_t scaling(const lp_problem_t<i_t, f_t>& unscaled,
   if (!unscaled.second_order_cone_dims.empty() || unscaled.Q.n > 0) {
     // col_scale and row_scale accumulate reciprocal scale factors during Ruiz iterations.
     std::vector<f_t> col_scale(n, 1.0);
+    // row inf-norms, used for both the skip heuristic and the Ruiz iterations.
+    std::vector<f_t> r;
 
     // Decide whether Ruiz scaling is needed by checking row- and column-norm
     // imbalance. If both max_norm / min_norm ratios are small, the matrix is
     // already well-conditioned and scaling can hurt (e.g. by amplifying tiny
     // noise coefficients).
-    csr_matrix_t<i_t, f_t> Arow_check(0, 0, 0);
-    scaled.A.to_compressed_row(Arow_check);
+    compute_row_inf_norms(scaled.A, r);
     f_t max_row_norm = 0;
     f_t min_row_norm = std::numeric_limits<f_t>::max();
     for (i_t i = 0; i < m; ++i) {
-      f_t row_norm = 0;
-      for (i_t p = Arow_check.row_start[i]; p < Arow_check.row_start[i + 1]; ++p) {
-        f_t a = std::abs(Arow_check.x[p]);
-        if (a > row_norm) row_norm = a;
-      }
+      const f_t row_norm = r[i];
       if (row_norm > 0) {
         max_row_norm = std::max(max_row_norm, row_norm);
         min_row_norm = std::min(min_row_norm, row_norm);
@@ -190,25 +202,22 @@ i_t scaling(const lp_problem_t<i_t, f_t>& unscaled,
             }
           }
         }
+        // A changed, so refresh the row norms the first Ruiz pass reuses.
+        compute_row_inf_norms(scaled.A, r);
       }
     }
 
     // Apply Ruiz equilibration
-    csr_matrix_t<i_t, f_t> Arow(0, 0, 0);
-    scaled.A.to_compressed_row(Arow);
-
     constexpr i_t max_ruiz_iterations = 10;
     for (i_t iter = 0; iter < max_ruiz_iterations; ++iter) {
       f_t max_deviation = 0.0;
 
       // --- Row scaling: scale each row by 1/sqrt(max|a_ij|) ---
-      std::vector<f_t> r(m);
+      // On entry r already holds the row inf-norms of the current A (computed above), so
+      // only recompute once this loop has scaled A.
+      if (iter > 0) { compute_row_inf_norms(scaled.A, r); }
       for (i_t i = 0; i < m; ++i) {
-        f_t rm = 0.0;
-        for (i_t p = Arow.row_start[i]; p < Arow.row_start[i + 1]; ++p) {
-          f_t a = std::abs(Arow.x[p]);
-          if (a > rm) rm = a;
-        }
+        const f_t rm  = r[i];
         r[i]          = rm > 0 ? 1.0 / std::sqrt(rm) : 1.0;
         max_deviation = std::max(max_deviation, std::abs(rm - 1.0));
       }
@@ -218,9 +227,6 @@ i_t scaling(const lp_problem_t<i_t, f_t>& unscaled,
         }
       }
       for (i_t i = 0; i < m; ++i) {
-        for (i_t p = Arow.row_start[i]; p < Arow.row_start[i + 1]; ++p) {
-          Arow.x[p] *= r[i];
-        }
         scaled.rhs[i] *= r[i];
         row_scaling[i] *= r[i];
       }
@@ -272,11 +278,6 @@ i_t scaling(const lp_problem_t<i_t, f_t>& unscaled,
       for (i_t j = 0; j < n; ++j) {
         for (i_t p = scaled.A.col_start[j]; p < scaled.A.col_start[j + 1]; ++p) {
           scaled.A.x[p] *= c[j];
-        }
-      }
-      for (i_t i = 0; i < m; ++i) {
-        for (i_t p = Arow.row_start[i]; p < Arow.row_start[i + 1]; ++p) {
-          Arow.x[p] *= c[Arow.j[p]];
         }
       }
       for (i_t j = 0; j < n; ++j) {

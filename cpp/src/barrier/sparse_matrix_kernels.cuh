@@ -18,19 +18,25 @@
 namespace cuopt::mathematical_optimization::barrier {
 
 template <typename i_t, typename f_t>
+// A is passed as its CSR pieces rather than as a matrix so callers can hand over a matrix that
+// only happens to be CSR(A), such as a CSC holding A^T.
 void initialize_cusparse_data(raft::handle_t const* handle,
-                              device_csr_matrix_t<i_t, f_t>& A,
+                              i_t A_rows,
+                              i_t A_cols,
+                              i_t A_nnz,
+                              i_t* A_offsets,
+                              i_t* A_indices,
+                              f_t* A_values,
                               device_csc_matrix_t<i_t, f_t>& DAT,
                               device_csr_matrix_t<i_t, f_t>& ADAT,
                               cusparse_info_t<i_t, f_t>& cusparse_data)
 {
-  auto A_nnz         = A.nz_max;
   auto DAT_nnz       = DAT.nz_max;
   f_t chunk_fraction = 0.15;
 
   // Create matrix descriptors
   cusparse_data.matA_descr =
-    pdlp::make_csr<i_t, f_t>(A.m, A.n, A_nnz, A.row_start.data(), A.j.data(), A.x.data());
+    pdlp::make_csr<i_t, f_t>(A_rows, A_cols, A_nnz, A_offsets, A_indices, A_values);
   cusparse_data.matDAT_descr = pdlp::make_csr<i_t, f_t>(
     DAT.n, DAT.m, DAT_nnz, DAT.col_start.data(), DAT.i.data(), DAT.x.data());
   cusparse_data.matADAT_descr = pdlp::make_csr<i_t, f_t>(
@@ -114,9 +120,9 @@ void initialize_cusparse_data(raft::handle_t const* handle,
 }
 
 template <typename i_t, typename f_t>
+// Operates purely on the descriptors built by initialize_cusparse_data; ADAT is resized to the
+// nnz cuSPARSE reports.
 void multiply_kernels(raft::handle_t const* handle,
-                      device_csr_matrix_t<i_t, f_t>& A,
-                      device_csc_matrix_t<i_t, f_t>& DAT,
                       device_csr_matrix_t<i_t, f_t>& ADAT,
                       cusparse_info_t<i_t, f_t>& cusparse_data)
 {
