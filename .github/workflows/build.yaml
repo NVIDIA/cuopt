@@ -241,6 +241,132 @@ jobs:
       package-name: libcuopt
       package-type: cpp
       publish-wheel-search-key: cuopt_wheel_cpp_libcuopt
+  wheel-build-libcuopt-client:
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    needs: [build-details]
+    secrets: inherit # zizmor: ignore[secrets-inherit]
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@release/26.10
+    with:
+      build_type: ${{ inputs.build_type || 'branch' }}
+      build-datetime: ${{ needs.build-details.outputs.build-datetime }}
+      branch: ${{ inputs.branch }}
+      sha: ${{ inputs.sha }}
+      date: ${{ inputs.date }}
+      script: ci/build_wheel_libcuopt_client.sh
+      package-name: libcuopt_client
+      package-type: cpp
+      matrix_filter: group_by([.ARCH, (.CUDA_VER|split(".")|map(tonumber)|.[0])]) | map(max_by(.PY_VER|split(".")|map(tonumber)))
+  wheel-publish-libcuopt-client:
+    needs: wheel-build-libcuopt-client
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-publish.yaml@release/26.10
+    secrets:
+      CONDA_RAPIDSAI_WHEELS_NIGHTLY_TOKEN: ${{ secrets.CONDA_RAPIDSAI_WHEELS_NIGHTLY_TOKEN }}
+      RAPIDSAI_PYPI_TOKEN: ${{ secrets.RAPIDSAI_PYPI_TOKEN }}
+    with:
+      build_type: ${{ inputs.build_type || 'branch' }}
+      branch: ${{ inputs.branch }}
+      sha: ${{ inputs.sha }}
+      date: ${{ inputs.date }}
+      package-name: libcuopt_client
+      package-type: cpp
+      publish-wheel-search-key: cuopt_wheel_cpp_libcuopt_client
+  wheel-build-libcuopt-mathopt:
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    needs: [build-details]
+    secrets: inherit # zizmor: ignore[secrets-inherit]
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@release/26.10
+    with:
+      build_type: ${{ inputs.build_type || 'branch' }}
+      build-datetime: ${{ needs.build-details.outputs.build-datetime }}
+      branch: ${{ inputs.branch }}
+      sha: ${{ inputs.sha }}
+      date: ${{ inputs.date }}
+      script: ci/build_wheel_libcuopt_mathopt.sh
+      package-name: libcuopt_mathopt
+      package-type: cpp
+      matrix_filter: group_by([.ARCH, (.CUDA_VER|split(".")|map(tonumber)|.[0])]) | map(max_by(.PY_VER|split(".")|map(tonumber)))
+  wheel-publish-libcuopt-mathopt:
+    # Waits on the client's publication as well: this wheel declares
+    # libcuopt-client as a dependency, so publishing first would leave a clean
+    # install unable to resolve it.
+    needs: [wheel-build-libcuopt-mathopt, wheel-publish-libcuopt-client]
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-publish.yaml@release/26.10
+    secrets:
+      CONDA_RAPIDSAI_WHEELS_NIGHTLY_TOKEN: ${{ secrets.CONDA_RAPIDSAI_WHEELS_NIGHTLY_TOKEN }}
+      RAPIDSAI_PYPI_TOKEN: ${{ secrets.RAPIDSAI_PYPI_TOKEN }}
+    with:
+      build_type: ${{ inputs.build_type || 'branch' }}
+      branch: ${{ inputs.branch }}
+      sha: ${{ inputs.sha }}
+      date: ${{ inputs.date }}
+      package-name: libcuopt_mathopt
+      package-type: cpp
+      publish-wheel-search-key: cuopt_wheel_cpp_libcuopt_mathopt
+  wheel-build-libcuopt-routing:
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    needs: [build-details]
+    secrets: inherit # zizmor: ignore[secrets-inherit]
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@release/26.10
+    with:
+      build_type: ${{ inputs.build_type || 'branch' }}
+      build-datetime: ${{ needs.build-details.outputs.build-datetime }}
+      branch: ${{ inputs.branch }}
+      sha: ${{ inputs.sha }}
+      date: ${{ inputs.date }}
+      script: ci/build_wheel_libcuopt_routing.sh
+      package-name: libcuopt_routing
+      package-type: cpp
+      matrix_filter: group_by([.ARCH, (.CUDA_VER|split(".")|map(tonumber)|.[0])]) | map(max_by(.PY_VER|split(".")|map(tonumber)))
+  wheel-publish-libcuopt-routing:
+    # Waits on the client's publication as well: this wheel declares
+    # libcuopt-client as a dependency, so publishing first would leave a clean
+    # install unable to resolve it.
+    needs: [wheel-build-libcuopt-routing, wheel-publish-libcuopt-client]
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-publish.yaml@release/26.10
+    secrets:
+      CONDA_RAPIDSAI_WHEELS_NIGHTLY_TOKEN: ${{ secrets.CONDA_RAPIDSAI_WHEELS_NIGHTLY_TOKEN }}
+      RAPIDSAI_PYPI_TOKEN: ${{ secrets.RAPIDSAI_PYPI_TOKEN }}
+    with:
+      build_type: ${{ inputs.build_type || 'branch' }}
+      branch: ${{ inputs.branch }}
+      sha: ${{ inputs.sha }}
+      date: ${{ inputs.date }}
+      package-name: libcuopt_routing
+      package-type: cpp
+      publish-wheel-search-key: cuopt_wheel_cpp_libcuopt_routing
   wheel-build-cuopt:
     needs: [build-details, wheel-build-libcuopt]
     permissions:
