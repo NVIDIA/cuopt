@@ -216,6 +216,36 @@ final class GrpcClientIntegrationTest {
     }
   }
 
+  // maximize x + y  s.t.  x + y <= 4,  x, y integer in [0, 4]. Optimal objective is 4 -- same
+  // problem as SmallMip above, built via the regular Java API instead of RawProblem.
+  private static Problem smallMipProblem(String name) {
+    Problem problem = new Problem(name);
+    Variable x = problem.addVariable(0.0, 4.0, 1.0, VariableType.INTEGER, "x");
+    Variable y = problem.addVariable(0.0, 4.0, 1.0, VariableType.INTEGER, "y");
+    problem.addConstraint(LinearExpression.of(x).plus(y).le(4.0), "c0");
+    problem.setObjective(LinearExpression.of(x).plus(y), ObjectiveSense.MAXIMIZE);
+    return problem;
+  }
+
+  // Exercises submit(Problem, ...) directly against a Problem built via the regular Java API --
+  // no file involved, distinct from the MPS-file path below.
+  @Test
+  void submitProblemBuiltViaApi() {
+    NativeTestSupport.assumeNativeLibrary();
+    NativeTestSupport.assumeCudaDriverAvailable();
+    assumeServerConfigured();
+
+    try (Problem problem = smallMipProblem("api-built");
+        GrpcClient client = newConnectedClient()) {
+      String jobId = client.submit(problem, /* timeLimitSeconds= */ 30.0);
+      GrpcJobStatus status = client.waitForCompletion(jobId, /* timeoutSeconds= */ 60);
+      assertEquals(GrpcJobStatus.COMPLETED, status);
+
+      GrpcMipResult result = client.getMipResult(jobId);
+      assertEquals(4.0, result.getObjective(), 1e-6);
+    }
+  }
+
   // Exercises the actual end-user flow: an MPS file on disk, read into a Problem via the
   // regular Java API, then handed straight to the async client -- no raw arrays involved.
   @Test
@@ -226,11 +256,7 @@ final class GrpcClientIntegrationTest {
 
     Path file = Files.createTempFile("cuopt-grpc-mps-", ".mps");
     try {
-      try (Problem source = new Problem("small-mip")) {
-        Variable x = source.addVariable(0.0, 4.0, 1.0, VariableType.INTEGER, "x");
-        Variable y = source.addVariable(0.0, 4.0, 1.0, VariableType.INTEGER, "y");
-        source.addConstraint(LinearExpression.of(x).plus(y).le(4.0), "c0");
-        source.setObjective(LinearExpression.of(x).plus(y), ObjectiveSense.MAXIMIZE);
+      try (Problem source = smallMipProblem("mps-source")) {
         source.write(file.toString());
       }
 
