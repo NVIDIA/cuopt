@@ -49,14 +49,16 @@ inline bool pin_cudss_threading_layer(const char* lib_file)
   return true;
 }
 
-// Directory libcudss.so.0 actually loaded from, via dladdr on a cuDSS symbol. cuDSS ships its
-// threading-layer plugin alongside it, so this finds it regardless of install prefix.
+// Directory libcudss.so.0 actually loaded from. cuDSS ships its threading-layer plugin
+// alongside it, so this finds it regardless of install prefix. Resolves the symbol via dlsym
+// first -- &cudssCreateMg can be our own PLT stub, which dladdr would attribute to us instead
+// of libcudss.so.0.
 inline std::string cudss_library_dir()
 {
+  void* sym = dlsym(RTLD_DEFAULT, "cudssCreateMg");
+  if (sym == nullptr) return {};
   Dl_info info{};
-  if (dladdr(reinterpret_cast<void*>(&cudssCreateMg), &info) == 0 || info.dli_fname == nullptr) {
-    return {};
-  }
+  if (dladdr(sym, &info) == 0 || info.dli_fname == nullptr) return {};
   std::string path(info.dli_fname);
   auto slash = path.find_last_of('/');
   return slash == std::string::npos ? std::string{} : path.substr(0, slash);
