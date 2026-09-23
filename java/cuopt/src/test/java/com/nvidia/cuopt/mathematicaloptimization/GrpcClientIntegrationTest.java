@@ -7,8 +7,10 @@ package com.nvidia.cuopt.mathematicaloptimization;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import org.junit.jupiter.api.Test;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.Test;
 
 /**
  * End-to-end test against a real cuopt_grpc_server. There is no in-process fixture for it (unlike
@@ -211,6 +213,38 @@ final class GrpcClientIntegrationTest {
       GrpcLpResult result = client.getLpResult(jobId);
       assertEquals(4.0, result.getPrimalObjective(), 1e-6);
       assertEquals(2, result.getPrimalSolution().length);
+    }
+  }
+
+  // Exercises the actual end-user flow: an MPS file on disk, read into a Problem via the
+  // regular Java API, then handed straight to the async client -- no raw arrays involved.
+  @Test
+  void submitProblemReadFromMpsFile() throws Exception {
+    NativeTestSupport.assumeNativeLibrary();
+    NativeTestSupport.assumeCudaDriverAvailable();
+    assumeServerConfigured();
+
+    Path file = Files.createTempFile("cuopt-grpc-mps-", ".mps");
+    try {
+      try (Problem source = new Problem("small-mip")) {
+        Variable x = source.addVariable(0.0, 4.0, 1.0, VariableType.INTEGER, "x");
+        Variable y = source.addVariable(0.0, 4.0, 1.0, VariableType.INTEGER, "y");
+        source.addConstraint(LinearExpression.of(x).plus(y).le(4.0), "c0");
+        source.setObjective(LinearExpression.of(x).plus(y), ObjectiveSense.MAXIMIZE);
+        source.write(file.toString());
+      }
+
+      try (Problem problem = Problem.read(file.toString());
+          GrpcClient client = newConnectedClient()) {
+        String jobId = client.submit(problem, /* timeLimitSeconds= */ 30.0);
+        GrpcJobStatus status = client.waitForCompletion(jobId, /* timeoutSeconds= */ 60);
+        assertEquals(GrpcJobStatus.COMPLETED, status);
+
+        GrpcMipResult result = client.getMipResult(jobId);
+        assertEquals(4.0, result.getObjective(), 1e-6);
+      }
+    } finally {
+      Files.deleteIfExists(file);
     }
   }
 
