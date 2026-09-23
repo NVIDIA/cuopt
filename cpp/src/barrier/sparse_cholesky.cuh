@@ -49,10 +49,7 @@ inline bool pin_cudss_threading_layer(const char* lib_file)
   return true;
 }
 
-// Directory libcudss.so.0 actually loaded from. cuDSS ships its threading-layer plugin
-// alongside it, so this finds it regardless of install prefix. Resolves the symbol via dlsym
-// first -- &cudssCreateMg can be our own PLT stub, which dladdr would attribute to us instead
-// of libcudss.so.0.
+// Directory libcudss.so.0 loaded from; cuDSS ships its mtlayer plugin alongside it.
 inline std::string cudss_library_dir()
 {
   void* sym = dlsym(RTLD_DEFAULT, "cudssCreateMg");
@@ -301,9 +298,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       cudss_mt_lib_file = env_value;
     } else if (CUDSS_MT_LIB_FILE_NAME != nullptr) {
       cudss_mt_lib_file = CUDSS_MT_LIB_FILE_NAME;
-      // An absolute path is cuDSS's own prebuilt mtlayer, baked in at configure time and prone
-      // to going stale (e.g. an unrelocated build sandbox path); re-derive it at runtime. A bare
-      // filename (cuOpt's own mtlayer) already resolves fine via $ORIGIN rpath as-is.
+      // Absolute path (cuDSS's own mtlayer) can go stale; re-derive at runtime.
       if (cudss_mt_lib_file[0] == '/') {
         auto loaded_dir = detail::cudss_library_dir();
         if (!loaded_dir.empty()) {
