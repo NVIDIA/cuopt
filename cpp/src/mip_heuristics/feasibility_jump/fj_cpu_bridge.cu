@@ -14,7 +14,6 @@
 #include <mip_heuristics/mip_constants.hpp>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/pcgenerator.hpp>
-#include <utilities/seed_generator.cuh>
 
 #include <algorithm>
 #include <cmath>
@@ -183,12 +182,13 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_t<i_t, f_t>::create_cpu_climber(
                            probing_cache);
   fj_cpu->settings = settings;
   if (randomize_params) {
-    cuopt::pcgenerator_t rng(cuopt::seed_generator::get_seed());
-    fj_cpu->mtm_viol_samples = rng.uniform<i_t>(15, 51);
-    fj_cpu->mtm_sat_samples  = rng.uniform<i_t>(10, 31);
-    fj_cpu->nnz_samples      = rng.uniform<i_t>(2000, 15001);
-    fj_cpu->perturb_interval = rng.uniform<i_t>(50, 501);
+    cuopt::pcgenerator_t host_rng(rng.next_i64());
+    fj_cpu->mtm_viol_samples = host_rng.uniform<i_t>(15, 51);
+    fj_cpu->mtm_sat_samples  = host_rng.uniform<i_t>(10, 31);
+    fj_cpu->nnz_samples      = host_rng.uniform<i_t>(2000, 15001);
+    fj_cpu->perturb_interval = host_rng.uniform<i_t>(50, 501);
   }
+  fj_cpu->settings.seed = rng.next_i64();
   return fj_cpu;
 }
 
