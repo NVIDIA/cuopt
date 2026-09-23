@@ -76,7 +76,6 @@ void map_routing_solution_to_proto(const cuopt::routing::assignment_t<int>& assi
 
   pb->set_status(to_proto_status(assignment.get_status()));
   pb->set_status_message(assignment.get_status_string());
-  pb->set_solve_time(assignment.get_runtime());
   if (assignment.get_status() == cuopt::routing::solution_status_t::ERROR) {
     try {
       pb->set_error_message(sanitize_error_message(assignment.get_error_status()));
