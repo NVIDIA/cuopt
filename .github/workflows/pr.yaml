@@ -26,6 +26,8 @@ jobs:
       - java-build
       - java-static-build-matrix
       - java-static-build
+      - java-static-gather-tmp
+      - java-maven-publish-tmp
       - java-static-test
       - conda-python-build
       - conda-python-tests
