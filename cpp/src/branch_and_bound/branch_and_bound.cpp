@@ -3053,7 +3053,7 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
   current_heuristic->initialize_pseudocost(
     lp, root_vstatus_, fractional, lp_solution, basic_list, nonbasic_list, basis_factor);
 
-  constexpr bool is_cpufj_enabled = true;
+  const bool is_cpufj_enabled = omp_in_parallel();
   if (is_cpufj_enabled) {
     root_heuristics.stop_old_workers(cut_pass, 1);
 
@@ -3773,7 +3773,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   const i_t n_root_fj_lanes =
     std::clamp(settings_.num_threads / 4, 0, CUOPT_MIP_ROOT_CPUFJ_MAX_LANES);
   const f_t root_fj_time_limit = settings_.time_limit - toc(exploration_stats_.start_time);
-  if (!settings_.deterministic && n_root_fj_lanes > 0 && root_fj_time_limit > 0) {
+  if (!settings_.deterministic && omp_in_parallel() && n_root_fj_lanes > 0 &&
+      root_fj_time_limit > 0) {
     root_heuristics.start_persistent_lanes(
       original_lp_,
       var_types_,

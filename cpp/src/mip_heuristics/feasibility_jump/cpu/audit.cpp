@@ -46,12 +46,12 @@ void audit_assignment_bounds(fj_cpu_climber_t<i_t, f_t>& fj_cpu, const char* sit
 template <typename i_t, typename f_t>
 f_t fresh_row_slack(fj_cpu_climber_t<i_t, f_t>& fj_cpu, i_t row, const f_t* assignment)
 {
-  const f_t activity = compensated_dot2_csr(fj_cpu.h_offsets.data(),
-                                            fj_cpu.h_variables.data(),
-                                            fj_cpu.h_coefficients.data(),
-                                            assignment,
-                                            row);
-  return (f_t)fj_cpu.h_bound[row] - activity;
+  return -compensated_dot2_csr(fj_cpu.h_offsets.data(),
+                               fj_cpu.h_variables.data(),
+                               fj_cpu.h_coefficients.data(),
+                               assignment,
+                               row,
+                               -(f_t)fj_cpu.h_bound[row]);
 }
 
 template <typename i_t, typename f_t>

@@ -80,7 +80,9 @@ void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu, i_t var_idx, f_t delta, bool
   const f_t floor_      = std::max(get_lower(var_bounds), (f_t)-fj_cpu.hp.start_magnitude_limit);
   const f_t ceil_       = std::min(get_upper(var_bounds), (f_t)fj_cpu.hp.start_magnitude_limit);
   if (floor_ <= ceil_) new_val = std::min(std::max(new_val, floor_), ceil_);
-  delta = new_val - old_val;
+  delta              = new_val - old_val;
+  const f_t delta_z  = delta - new_val;
+  const f_t delta_lo = (new_val - (delta - delta_z)) + (-old_val - delta_z);
   cuopt_assert(std::isfinite(new_val), "assignment is not finite");
   cuopt_assert(std::isfinite(delta), "applied delta is not finite");
   cuopt_assert(check_variable_within_bounds<i_t, f_t>(fj_cpu, var_idx, new_val),
@@ -123,7 +125,8 @@ void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu, i_t var_idx, f_t delta, bool
     f_t t                 = old_slack + h;
     const f_t z           = t - old_slack;
     f_t new_sumcomp =
-      old_sumcomp + (((old_slack - (t - z)) + (h - z)) + std::fma(-cstr_coeff, delta, -h));
+      old_sumcomp + (((old_slack - (t - z)) + (h - z)) + std::fma(-cstr_coeff, delta, -h)) -
+      cstr_coeff * delta_lo;
 
     const f_t old_value = old_slack + old_sumcomp;
     f_t new_value       = t + new_sumcomp;
@@ -189,7 +192,8 @@ void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu, i_t var_idx, f_t delta, bool
   // Kahan compensated summation, as for the slacks. The incumbent objective is reported as-is, so
   // it cannot carry the drift of a long uncompensated chain of deltas.
   const f_t obj_old = fj_cpu.h_incumbent_objective;
-  const f_t obj_y   = fj_cpu.problem->h_obj_coeffs[var_idx] * delta - fj_cpu.h_objective_sumcomp;
+  const f_t obj_coeff = fj_cpu.problem->h_obj_coeffs[var_idx];
+  const f_t obj_y     = obj_coeff * delta - (fj_cpu.h_objective_sumcomp - obj_coeff * delta_lo);
   const f_t obj_t   = obj_old + obj_y;
   fj_cpu.h_objective_sumcomp   = (obj_t - obj_old) - obj_y;
   fj_cpu.h_incumbent_objective = obj_t;

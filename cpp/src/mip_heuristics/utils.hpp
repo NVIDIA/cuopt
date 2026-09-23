@@ -45,12 +45,11 @@ inline bool is_exactly_representable(f_t value)
 // a compensated summation over already-multiplied terms cannot see.
 // https://epubs.siam.org/doi/abs/10.1137/030601818
 template <typename UIt, typename VIt>
-__attribute__((optimize("no-fast-math"))) CUOPT_MIP_HOST_DEVICE auto compensated_dot2(UIt u_it,
-                                                                                      VIt v_it,
-                                                                                      std::size_t n)
+__attribute__((optimize("no-fast-math"))) CUOPT_MIP_HOST_DEVICE auto compensated_dot2(
+  UIt u_it, VIt v_it, std::size_t n, decltype(u_it[0] * v_it[0]) init = 0)
 {
   using f_t = decltype(u_it[0] * v_it[0]);
-  f_t p     = 0;
+  f_t p     = init;
   f_t s     = 0;
   for (std::size_t k = 0; k < n; ++k) {
     const f_t u = u_it[k];
@@ -68,18 +67,24 @@ template <typename CoeffIt, typename IndexIt, typename ValueIt>
 CUOPT_MIP_HOST_DEVICE auto compensated_dot2_csr(CoeffIt coefficients,
                                                 IndexIt columns,
                                                 ValueIt values,
-                                                size_t nnz)
+                                                size_t nnz,
+                                                decltype(coefficients[0] * values[0]) init = 0)
 {
-  return compensated_dot2(coefficients, thrust::make_permutation_iterator(values, columns), nnz);
+  return compensated_dot2(
+    coefficients, thrust::make_permutation_iterator(values, columns), nnz, init);
 }
 
 template <typename OffsetIt, typename IndexIt, typename CoeffIt, typename ValueIt, typename i_t>
-CUOPT_MIP_HOST_DEVICE auto compensated_dot2_csr(
-  OffsetIt offsets, IndexIt columns, CoeffIt coefficients, ValueIt values, i_t row)
+CUOPT_MIP_HOST_DEVICE auto compensated_dot2_csr(OffsetIt offsets,
+                                                IndexIt columns,
+                                                CoeffIt coefficients,
+                                                ValueIt values,
+                                                i_t row,
+                                                decltype(coefficients[0] * values[0]) init = 0)
 {
   const auto begin = offsets[row];
   const auto end   = offsets[row + 1];
-  return compensated_dot2_csr(coefficients + begin, columns + begin, values, end - begin);
+  return compensated_dot2_csr(coefficients + begin, columns + begin, values, end - begin, init);
 }
 
 template <typename CsrLike, typename Values, typename i_t>
