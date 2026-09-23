@@ -14,6 +14,7 @@
 #include <dual_simplex/solve.hpp>
 #include <dual_simplex/user_problem.hpp>
 #include <linear_algebra/sparse_matrix.hpp>
+#include <linear_algebra/vector_math.hpp>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/cusparse_macros.hpp>
@@ -32,15 +33,6 @@ static void init_handler(const raft::handle_t* handle_ptr)
   RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsesetpointermode(handle_ptr->get_cusparse_handle(),
                                                                  CUSPARSE_POINTER_MODE_DEVICE,
                                                                  handle_ptr->get_stream().get()));
-}
-
-static double inf_norm(const std::vector<double>& v)
-{
-  double nrm = 0.0;
-  for (double val : v) {
-    nrm = std::max(nrm, std::abs(val));
-  }
-  return nrm;
 }
 
 // Hub-and-spoke style chain: two free integrator variables plus a quadratic on w.
@@ -93,23 +85,17 @@ static user_problem_t<int, double> make_free_substitution_qp(raft::handle_t* han
   return user_problem;
 }
 
-static void stationarity_residual(const lp_problem_t<int, double>& lp,
-                                  const std::vector<double>& x,
-                                  const std::vector<double>& y,
-                                  const std::vector<double>& z,
-                                  std::vector<double>& residual)
+static void dual_residual(const lp_problem_t<int, double>& lp,
+                          const std::vector<double>& x,
+                          const std::vector<double>& y,
+                          const std::vector<double>& z,
+                          std::vector<double>& residual)
 {
   residual = z;
   for (int j = 0; j < lp.num_cols; ++j) {
     residual[j] -= lp.objective[j];
   }
-  if (lp.Q.n > 0) {
-    for (int i = 0; i < lp.Q.m; ++i) {
-      for (int p = lp.Q.row_start[i]; p < lp.Q.row_start[i + 1]; ++p) {
-        residual[i] -= lp.Q.x[p] * x[lp.Q.j[p]];
-      }
-    }
-  }
+  if (lp.Q.n > 0) { matrix_vector_multiply(lp.Q, -1.0, x, 1.0, residual); }
   matrix_transpose_vector_multiply(lp.A, 1.0, y, 1.0, residual);
 }
 
@@ -1204,13 +1190,13 @@ TEST(barrier, free_variable_substitution_postsolve_kkt)
   }
   std::vector<double> crushed_y(presolved_lp.num_rows, 0.25);
   std::vector<double> crushed_z(presolved_lp.num_cols, 0.0);
-  std::vector<double> reduced_stationarity;
-  stationarity_residual(presolved_lp, crushed_x, crushed_y, crushed_z, reduced_stationarity);
+  std::vector<double> reduced_dual;
+  dual_residual(presolved_lp, crushed_x, crushed_y, crushed_z, reduced_dual);
   for (int j = 0; j < presolved_lp.num_cols; ++j) {
-    crushed_z[j] -= reduced_stationarity[j];
+    crushed_z[j] -= reduced_dual[j];
   }
-  stationarity_residual(presolved_lp, crushed_x, crushed_y, crushed_z, reduced_stationarity);
-  ASSERT_NEAR(inf_norm(reduced_stationarity), 0.0, 1e-12);
+  dual_residual(presolved_lp, crushed_x, crushed_y, crushed_z, reduced_dual);
+  ASSERT_NEAR((vector_norm_inf<int, double>(reduced_dual)), 0.0, 1e-12);
 
   std::vector<double> uncrushed_x(original_lp.num_cols);
   std::vector<double> uncrushed_y(original_lp.num_rows);
@@ -1235,11 +1221,11 @@ TEST(barrier, free_variable_substitution_postsolve_kkt)
 
   std::vector<double> primal_residual = original_lp.rhs;
   matrix_vector_multiply(original_lp.A, 1.0, uncrushed_x, -1.0, primal_residual);
-  EXPECT_NEAR(inf_norm(primal_residual), 0.0, 1e-12);
+  EXPECT_NEAR((vector_norm_inf<int, double>(primal_residual)), 0.0, 1e-12);
 
-  std::vector<double> dual_residual;
-  stationarity_residual(original_lp, uncrushed_x, uncrushed_y, uncrushed_z, dual_residual);
-  EXPECT_NEAR(inf_norm(dual_residual), 0.0, 1e-10);
+  std::vector<double> uncrushed_dual;
+  dual_residual(original_lp, uncrushed_x, uncrushed_y, uncrushed_z, uncrushed_dual);
+  EXPECT_NEAR((vector_norm_inf<int, double>(uncrushed_dual)), 0.0, 1e-10);
 
   lp_solution_t<int, double> solution(user_problem.num_rows, user_problem.num_cols);
   auto status = solve_linear_program_with_barrier(user_problem, settings, solution);
@@ -1254,11 +1240,11 @@ TEST(barrier, free_variable_substitution_postsolve_kkt)
 
   std::vector<double> solved_primal = original_lp.rhs;
   matrix_vector_multiply(original_lp.A, 1.0, solution.x, -1.0, solved_primal);
-  EXPECT_NEAR(inf_norm(solved_primal), 0.0, 1e-5);
+  EXPECT_NEAR((vector_norm_inf<int, double>(solved_primal)), 0.0, 1e-5);
 
   std::vector<double> solved_dual;
-  stationarity_residual(original_lp, solution.x, solution.y, solution.z, solved_dual);
-  EXPECT_NEAR(inf_norm(solved_dual), 0.0, 1e-5);
+  dual_residual(original_lp, solution.x, solution.y, solution.z, solved_dual);
+  EXPECT_NEAR((vector_norm_inf<int, double>(solved_dual)), 0.0, 1e-5);
 }
 
 }  // namespace cuopt::mathematical_optimization::simplex::test

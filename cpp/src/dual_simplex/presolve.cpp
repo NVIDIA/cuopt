@@ -17,7 +17,7 @@
 #include <cmath>
 #include <cuopt/logger_macros.hpp>
 #include <iostream>
-#include <numeric>
+#include <limits>
 
 namespace cuopt::mathematical_optimization::simplex {
 
@@ -380,7 +380,6 @@ static i_t eliminate_free_variables(lp_problem_t<i_t, f_t>& problem,
   i_t stamp = 0;
   std::vector<i_t> incident;
   std::vector<f_t> incident_value;
-  std::vector<i_t> candidate_order;
 
   // The pivot must be the largest entry of both its row and its column, so the
   // substitution cannot amplify a coefficient.
@@ -428,41 +427,38 @@ static i_t eliminate_free_variables(lp_problem_t<i_t, f_t>& problem,
       continue;
     }
 
-    // A small pivot row limits fill. On a path this peels sparse boundary rows instead of
-    // repeatedly traversing the growing aggregate row. Candidates are ranked shortest first
-    // and the first one passing the threshold tests wins, so a long aggregate row is only
-    // scanned once every shorter row has failed.
-    candidate_order.resize(incident.size());
-    std::iota(candidate_order.begin(), candidate_order.end(), 0);
-    std::sort(candidate_order.begin(), candidate_order.end(), [&](i_t a, i_t b) {
-      const i_t len_a = matrix.row_len[incident[a]];
-      const i_t len_b = matrix.row_len[incident[b]];
-      if (len_a != len_b) { return len_a < len_b; }
-      return std::abs(incident_value[a]) > std::abs(incident_value[b]);
-    });
-
     // Threshold pivoting, as in the LU: a pivot that is tiny relative to its own row or to the
     // rest of its column makes the multiplier a_ij / a_pj huge and inflates every surviving row
     // by that factor, which the barrier's KKT solve cannot recover from. The column test bounds
     // the multiplier, the row test bounds the coefficients the pivot row scatters. At tolerance
     // 1 the pivot is the largest entry of both its row and its column, so no coefficient grows.
+    // Walk incident rows by increasing length (as in the LU degree walk) so a chain peels from
+    // a sparse end instead of aggregating into a dense row.
     f_t column_max = 0;
-    for (const f_t value : incident_value) {
-      column_max = std::max(column_max, std::abs(value));
+    i_t min_len    = std::numeric_limits<i_t>::max();
+    i_t max_len    = 0;
+    for (size_t slot = 0; slot < incident.size(); ++slot) {
+      column_max    = std::max(column_max, std::abs(incident_value[slot]));
+      const i_t len = matrix.row_len[incident[slot]];
+      min_len       = std::min(min_len, len);
+      max_len       = std::max(max_len, len);
     }
     i_t pivot_slot = -1;
-    for (const i_t slot : candidate_order) {
-      const f_t a_ij = std::abs(incident_value[slot]);
-      if (a_ij < col_pivot_tol * column_max) { continue; }
-      const i_t row = incident[slot];
-      f_t row_max   = 0;
-      for (i_t k = 0; k < matrix.row_len[row]; ++k) {
-        if (matrix.column(row, k) == j) { continue; }
-        row_max = std::max(row_max, std::abs(matrix.value(row, k)));
+    for (i_t len = min_len; len <= max_len && pivot_slot == -1; ++len) {
+      for (size_t slot = 0; slot < incident.size(); ++slot) {
+        if (matrix.row_len[incident[slot]] != len) { continue; }
+        const f_t a_ij = std::abs(incident_value[slot]);
+        if (a_ij < col_pivot_tol * column_max) { continue; }
+        const i_t row = incident[slot];
+        f_t row_max   = 0;
+        for (i_t k = 0; k < matrix.row_len[row]; ++k) {
+          if (matrix.column(row, k) == j) { continue; }
+          row_max = std::max(row_max, std::abs(matrix.value(row, k)));
+        }
+        if (a_ij < row_pivot_tol * row_max) { continue; }
+        pivot_slot = static_cast<i_t>(slot);
+        break;
       }
-      if (a_ij < row_pivot_tol * row_max) { continue; }
-      pivot_slot = slot;
-      break;
     }
     // No stable pivot: leave the column as a free variable handled directly in the KKT system.
     if (pivot_slot == -1) {
@@ -2041,11 +2037,11 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
       old_free_count - static_cast<i_t>(presolve_info.direct_free_variables.size());
     if (eliminated > 0 || pivot_rejected > 0) {
       settings.log.printf(
-        "Eliminated %d free variables by equality substitution in %.2fs (%d skipped by pivot "
-        "threshold)\n",
+        "Eliminated %d free variables by equality substitution (%d skipped by pivot "
+        "threshold) in %.2fs\n",
         eliminated,
-        toc(free_elimination_start),
-        pivot_rejected);
+        pivot_rejected,
+        toc(free_elimination_start));
     }
   }
 

@@ -127,13 +127,7 @@ void compute_dual_residual(const lp_problem_t<i_t, f_t>& lp,
   for (i_t j = 0; j < lp.num_cols; ++j) {
     residual[j] -= lp.objective[j];
   }
-  if (lp.Q.n > 0) {
-    for (i_t i = 0; i < lp.Q.m; ++i) {
-      for (i_t p = lp.Q.row_start[i]; p < lp.Q.row_start[i + 1]; ++p) {
-        residual[i] -= lp.Q.x[p] * x[lp.Q.j[p]];
-      }
-    }
-  }
+  if (lp.Q.n > 0) { matrix_vector_multiply(lp.Q, -1.0, x, 1.0, residual); }
   matrix_transpose_vector_multiply(lp.A, 1.0, y, 1.0, residual);
 }
 
