@@ -135,28 +135,32 @@ For LP problems solved with ``Concurrent`` method, this setting supports up to 2
 PDLP and barrier in parallel on different GPUs to avoid sharing single GPU resources.
 
 For LP problems solved with ``PDLP`` method, setting ``CUOPT_NUM_GPUS`` to ``-1`` or to a value greater than 1,
-together with ``CUOPT_USE_DISTRIBUTED_PDLP`` set to true, distributes the PDLP solve across multiple GPUs. A
-value of ``-1`` uses all GPUs visible to the process, which may resolve to a single GPU on a single-GPU host;
-multi-GPU sharding only happens when more than one GPU is actually selected.
+together with ``CUOPT_USE_DISTRIBUTED_PDLP`` set to true, distributes the PDLP solve across multiple GPUs (this
+is cuOpt's multi-GPU PDLP, or mPDLP). A value of ``-1`` uses all GPUs visible to the process, which may resolve
+to a single GPU on a single-GPU host; multi-GPU sharding only happens when more than one GPU is actually
+selected.
 
-Distributed PDLP
-^^^^^^^^^^^^^^^^
+Multi-GPU PDLP (mPDLP)
+^^^^^^^^^^^^^^^^^^^^^^
 
 ``CUOPT_USE_DISTRIBUTED_PDLP`` controls whether PDLP should be distributed across multiple GPUs. It requires
 ``CUOPT_METHOD`` to be ``PDLP`` and ``CUOPT_NUM_GPUS`` to be ``-1`` or greater than 1 (as above, ``-1`` may
 resolve to a single visible GPU, in which case the solve still runs but is not actually sharded).
 
-``CUOPT_DISTRIBUTED_PDLP_PARTITIONER`` controls how the problem is partitioned across the GPUs used by distributed
-PDLP:
+``CUOPT_DISTRIBUTED_PDLP_PARTITIONER`` controls how the problem is partitioned across the GPUs used by mPDLP:
 
 * ``0``: Auto (default) - picks ``RoundRobin`` on a single GPU and ``KaMinPar`` otherwise
 * ``1``: KaMinPar - a multi-threaded graph partitioner that generally produces better balanced shards at the cost of
   extra partitioning time
 * ``2``: RoundRobin - assigns rows/columns across GPUs in round-robin fashion, without building a partitioning graph
 
+With a single GPU there is nothing to partition, so both strategies are equivalent no-ops; Auto picks
+RoundRobin there because it skips KaMinPar's graph-partitioning work for no benefit.
+
 .. note:: The default value is ``false`` for ``CUOPT_USE_DISTRIBUTED_PDLP`` and ``0`` (Auto) for
    ``CUOPT_DISTRIBUTED_PDLP_PARTITIONER``. C API users should use the constants defined in
-   :ref:`distributed-pdlp-partitioner-constants`.
+   :ref:`distributed-pdlp-partitioner-constants`. Python API users can also use the ``use_multi_gpu_pdlp`` and
+   ``multi_gpu_pdlp_partitioner`` parameter aliases.
 
 
 Infeasibility Detection

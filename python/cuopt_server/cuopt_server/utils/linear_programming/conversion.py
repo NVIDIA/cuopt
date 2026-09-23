@@ -17,6 +17,13 @@ from cuopt.linear_programming.solver.solver_wrapper import (
 
 from cuopt_server.utils.linear_programming.data_definition import WarmStartData
 
+# solver_params entries whose SolverConfig attribute uses a different
+# (public-facing) name than the underlying C++ parameter.
+SOLVER_CONFIG_FIELD_ALIASES = {
+    "use_distributed_pdlp": "use_multi_gpu_pdlp",
+    "distributed_pdlp_partitioner": "multi_gpu_pdlp_partitioner",
+}
+
 
 def ignored_warning(field):
     return f"solver config {field} ignored in the cuopt service"
@@ -98,7 +105,8 @@ def create_solver(LP_data, warmstart_data):
             if param.endswith("tolerance"):
                 param_value = getattr(solver_config.tolerances, param, None)
             else:
-                param_value = getattr(solver_config, param, None)
+                attr_name = SOLVER_CONFIG_FIELD_ALIASES.get(param, param)
+                param_value = getattr(solver_config, attr_name, None)
             if param_value is not None and param_value != "":
                 solver_settings.set_parameter(param, param_value)
 

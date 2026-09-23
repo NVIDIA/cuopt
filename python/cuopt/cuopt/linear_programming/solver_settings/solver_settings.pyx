@@ -52,6 +52,16 @@ cpdef get_solver_parameter_names():
 solver_params = get_solver_parameter_names()
 for param in solver_params: globals()["CUOPT_"+param.upper()] = param
 
+# Public spelling for the two distributed-PDLP parameters, mapped to the
+# underlying C++ parameter names. Accepted as aliases by get_parameter and
+# set_parameter; the CUOPT_* constants below mirror the auto-generated ones.
+PARAMETER_ALIASES = {
+    "use_multi_gpu_pdlp": "use_distributed_pdlp",
+    "multi_gpu_pdlp_partitioner": "distributed_pdlp_partitioner",
+}
+for alias, canonical in PARAMETER_ALIASES.items():
+    globals()["CUOPT_" + alias.upper()] = globals()["CUOPT_" + canonical.upper()]
+
 
 class SolverMethod(IntEnum):
     """
@@ -163,6 +173,7 @@ cdef class SolverSettings:
         For a list of availabe parameters, their descriptions, default values,
         and acceptable ranges, see the cuOpt documentation `parameter.rst`.
         """
+        name = PARAMETER_ALIASES.get(name, name)
         if name not in solver_params:
             raise ValueError("Invalid parameter. Please check documentation")
         if name in self.settings_dict:
@@ -188,6 +199,7 @@ cdef class SolverSettings:
         For a list of availabe parameters, their descriptions, default values,
         and acceptable ranges, see the cuOpt documentation `parameter.rst`.
         """
+        name = PARAMETER_ALIASES.get(name, name)
         if name not in solver_params:
             raise ValueError("Invalid parameter. Please check documentation")
         self.settings_dict[name] = value

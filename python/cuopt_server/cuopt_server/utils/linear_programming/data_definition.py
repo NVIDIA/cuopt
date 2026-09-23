@@ -475,26 +475,31 @@ class SolverConfig(BaseModel):
     num_gpus: Optional[int] = Field(
         default=None,
         description="Set the number of GPUs to use for LP solve. For "
-        "distributed (multi-GPU) PDLP, use -1 to use all visible GPUs, "
-        "or a value greater than 1 to use that many GPUs.",
+        "multi-GPU PDLP, use -1 to use all visible GPUs, or a value "
+        "greater than 1 to use that many GPUs; multi-GPU sharding only "
+        "happens when more than one GPU is actually selected.",
     )
-    use_distributed_pdlp: Optional[bool] = Field(
+    use_multi_gpu_pdlp: Optional[bool] = Field(
         default=None,
         description="Set True to distribute the PDLP solve of an LP "
         "problem across multiple GPUs. Requires method to be PDLP and "
         "num_gpus to be -1 or greater than 1.",
     )
-    distributed_pdlp_partitioner: Optional[int] = Field(
+    multi_gpu_pdlp_partitioner: Optional[int] = Field(
         default=None,
         description="Partitioner used to split the problem across GPUs "
-        "when use_distributed_pdlp is set:"
+        "when use_multi_gpu_pdlp is set:"
         "<br>"
         "- Auto: 0, pick automatically (RoundRobin on 1 GPU, "
         "KaMinPar otherwise)"
         "<br>"
         "- KaMinPar: 1, multi-threaded KaMinPar graph partitioner"
         "<br>"
-        "- RoundRobin: 2, round-robin assignment, no graph",
+        "- RoundRobin: 2, round-robin assignment, no graph"
+        "<br>"
+        "With 1 GPU there is nothing to partition, so both strategies "
+        "are equivalent no-ops; Auto picks RoundRobin there because it "
+        "skips KaMinPar's graph-partitioning work for no benefit.",
     )
     augmented: Optional[int] = Field(
         default=-1,

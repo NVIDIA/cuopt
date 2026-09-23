@@ -23,6 +23,7 @@ exceptions:
   - cuDSS
   - gRPC
   - mTLS
+  - mPDLP
   - (cuopt)
   - cuopt-server
   - solver_configs
