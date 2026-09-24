@@ -925,14 +925,13 @@ def deleterequest(
             _not_implemented(
                 "DELETE /cuopt/request flags running/queued/cached"
             )
-        _require_uuid(id)
         meta = _get_job(id)
         counts = {"queued": 0, "running": 0, "cached": 0}
         if meta is not None and meta.get("validation_only"):
             return encode(counts, accept)
         status = get_grpc_client().status(id)
         if _is_status(status, "NOT_FOUND"):
-            raise HTTPException(status_code=404, detail=f"id {id} not found")
+            return encode(counts, accept)
         if _is_status(status, "QUEUED"):
             counts["queued"] = 1
         elif _is_status(status, "PROCESSING"):

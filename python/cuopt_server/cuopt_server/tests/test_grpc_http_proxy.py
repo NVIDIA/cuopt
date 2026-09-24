@@ -1215,6 +1215,16 @@ def test_zlib_accept(proxy):
     assert decoded["response"]["solver_response"]["status"] == "Optimal"
 
 
+def test_delete_unknown_request_is_200(proxy):
+    url, _ = proxy
+    missing = str(uuid.uuid4())
+    res = requests.delete(
+        url + f"/cuopt/request/{missing}", headers=_JSON_ACCEPT
+    )
+    assert res.status_code == 200
+    assert res.json() == {"queued": 0, "running": 0, "cached": 0}
+
+
 def test_unknown_id_is_404(proxy):
     url, _ = proxy
     missing = str(uuid.uuid4())
