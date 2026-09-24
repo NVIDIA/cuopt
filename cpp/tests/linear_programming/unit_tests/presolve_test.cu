@@ -924,11 +924,12 @@ TEST_P(crush_warmstart, round_trip)
   int n_red_cons = result.reduced_problem.get_n_constraints();
 
   // Step 2: Cold PDLP solve of the reduced problem
-  auto settings           = pdlp_solver_settings_t<int, double>{};
-  settings.presolver      = presolver_t::None;
-  settings.dual_postsolve = true;
-  settings.method         = cuopt::mathematical_optimization::method_t::PDLP;
-  settings.time_limit     = 60.0;
+  auto settings                                = pdlp_solver_settings_t<int, double>{};
+  settings.presolver                           = presolver_t::None;
+  settings.dual_postsolve                      = true;
+  settings.method                              = cuopt::mathematical_optimization::method_t::PDLP;
+  settings.time_limit                          = 60.0;
+  settings.hyper_params.do_curtis_reid_scaling = false;
 
   auto cold_solution = solve_lp(result.reduced_problem, settings);
   ASSERT_EQ(cold_solution.get_termination_status(), pdlp_termination_status_t::Optimal);
