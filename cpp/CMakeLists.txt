@@ -872,11 +872,11 @@ if (CUOPT_BUILD_CUSTOM_CUDSS_MTLAYER)
             INSTALL_RPATH "\$ORIGIN"
     )
     set(CUDSS_MT_LIB_FILE_NAME "libcudss_mtlayer_cuopt.so")
-else ()
-    # Full path, not just the basename, so the runtime dlopen pin (sparse_cholesky.cuh) and
-    # cudssSetThreadingLayer() resolve the exact same file CMake found (#1883).
-    set(CUDSS_MT_LIB_FILE_NAME "${CUDSS_MT_LIB_FILE}")
 endif ()
+# else: keep the basename already computed above (line 740) -- glibc's dlopen matches an
+# already-loaded library by name before searching paths, so the runtime pin (sparse_cholesky.cuh)
+# and cudssSetThreadingLayer()'s own dlopen still resolve to the same mapping. A full,
+# build-time-resolved path isn't needed for that, and can go stale after install.
 
 # cuopt_routing: VRP / routing engine (omitted when SKIP_ROUTING_BUILD=ON)
 #
