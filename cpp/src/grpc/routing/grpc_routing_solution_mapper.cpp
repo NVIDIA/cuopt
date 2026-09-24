@@ -105,6 +105,7 @@ void map_proto_to_routing_solution(const cuopt::remote::RoutingSolution& pb,
   sol.status         = static_cast<int32_t>(pb.status());
   sol.status_message = pb.status_message();
   sol.error_message  = pb.error_message();
+  sol.solve_time     = pb.solve_time();
 }
 
 }  // namespace routing

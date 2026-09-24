@@ -24,6 +24,7 @@
 #include <rmm/mr/pool_memory_resource.hpp>
 
 #include <cerrno>
+#include <chrono>
 #include <climits>
 #include <limits>
 #include <memory>
@@ -563,16 +564,24 @@ static SolveResult run_vrp_solve([[maybe_unused]] DeserializedJob& dj,
 #else
   try {
     auto [view, device_data] = dj.routing_problem.to_device(&handle);
+    auto solve_t0            = std::chrono::steady_clock::now();
     auto assignment          = cuopt::routing::solve(view, dj.routing_settings);
+    double solve_time =
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - solve_t0).count();
     cuopt::routing::host_assignment_t<int> host(assignment);
 
     sr.header.set_problem_category(cuopt::remote::VRP);
     sr.header.set_is_vrp(true);
     // Embed the RoutingSolution structurally (ChunkedResultHeader.routing_solution
     // is a message field now, not a serialized blob).
-    map_routing_solution_to_proto(assignment, host, sr.header.mutable_routing_solution());
-    SERVER_LOG_INFO("[Worker] Result path: VRP solution -> embedded RoutingSolution (%zu bytes)",
-                    sr.header.routing_solution().ByteSizeLong());
+    auto* routing_sol = sr.header.mutable_routing_solution();
+    map_routing_solution_to_proto(assignment, host, routing_sol);
+    routing_sol->set_solve_time(solve_time);
+    SERVER_LOG_INFO(
+      "[Worker] Result path: VRP solution -> embedded RoutingSolution (%zu bytes) solve_time=%.6f "
+      "s",
+      routing_sol->ByteSizeLong(),
+      solve_time);
     sr.success = true;
   } catch (const cuopt::logic_error& e) {
     sr.error_message = format_cuopt_error(e);

@@ -79,6 +79,7 @@ def _vrp_grpc_sol():
         "arrival_stamp": [1.5],
         "unserviced_nodes": [],
         "accepted": [1],
+        "solve_time": 1.25,
     }
 
 
@@ -863,6 +864,7 @@ def test_vrp_submit_status_and_solution(proxy):
     assert body["status"] == 0
     assert "veh-1" in body["vehicle_data"]
     assert body["vehicle_data"]["veh-1"]["task_id"] == ["A"]
+    assert sol.json()["response"]["total_solve_time"] == 1.25
 
 
 def test_vrp_initial_id_from_prior_grpc_result(proxy):
