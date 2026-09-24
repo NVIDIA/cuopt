@@ -137,8 +137,9 @@ outputs:
         - libabseil
         - re2
       run:
-        - ${{ pin_compatible("cuda-version", upper_bound="x", lower_bound="x") }}
-        - librmm =${{ minor_version }}
+        # Every library libcuopt_client.so links. rmm and the CUDA runtime are host-only:
+        # the client includes their headers but links neither.
+        - rapids-logger =0.3
         - openssl
         - c-ares
         - libuuid
