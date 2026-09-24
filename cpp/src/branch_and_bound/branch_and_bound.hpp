@@ -12,6 +12,7 @@
 #include <branch_and_bound/mip_node.hpp>
 #include <branch_and_bound/node_queue.hpp>
 #include <branch_and_bound/pseudo_costs.hpp>
+#include <branch_and_bound/reduced_cost_bounds.hpp>
 #include <branch_and_bound/worker.hpp>
 #include <branch_and_bound/worker_pool.hpp>
 
@@ -41,6 +42,7 @@
 #include <atomic>
 #include <functional>
 #include <future>
+#include <limits>
 #include <list>
 #include <memory>
 #include <vector>
@@ -175,8 +177,13 @@ class branch_and_bound_t {
     simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
     std::vector<i_t>& basic_list,
     std::vector<i_t>& nonbasic_list,
-    std::vector<f_t>& edge_norms);
+    std::vector<f_t>& edge_norms,
+    f_t& work_estimate);
 
+  void update_reduced_cost_bounds(f_t relaxation_objective,
+                                  const std::vector<f_t>& reduced_costs,
+                                  const std::vector<simplex::variable_status_t>& var_status,
+                                  reduced_cost_bounds_t<i_t, f_t>& reduced_cost_bounds);
   i_t find_reduced_cost_fixings(f_t upper_bound,
                                 std::vector<f_t>& lower_bounds,
                                 std::vector<f_t>& upper_bounds);
@@ -246,6 +253,7 @@ class branch_and_bound_t {
   simplex::lp_solution_t<i_t, f_t> root_relax_soln_;
   simplex::lp_solution_t<i_t, f_t> root_crossover_soln_;
   method_t root_relax_solved_by{Unset};
+  f_t root_relax_work_estimate_;
   std::vector<f_t> edge_norms_;
   std::atomic<bool> root_crossover_solution_set_{false};
   omp_atomic_t<f_t> root_lp_current_lower_bound_;
@@ -326,6 +334,7 @@ class branch_and_bound_t {
                                 f_t& last_upper_bound,
                                 f_t& last_objective,
                                 f_t root_relax_objective,
+                                reduced_cost_bounds_t<i_t, f_t>& reduced_cost_bounds,
                                 i_t& cut_pool_size,
                                 const std::vector<f_t>& saved_solution);
 
@@ -344,6 +353,8 @@ class branch_and_bound_t {
                              const std::vector<f_t>& leaf_solution,
                              i_t leaf_depth,
                              search_strategy_t thread_type);
+
+  omp_atomic_t<i_t> integer_pivots_{0};
 
   // Repairs low-quality solutions from the heuristics, if it is applicable.
   void repair_heuristic_solutions();
@@ -405,6 +416,7 @@ class branch_and_bound_t {
 
   // Solve the LP relaxation of a leaf node
   simplex::dual_status_t solve_node_lp(mip_node_t<i_t, f_t>* node_ptr,
+                                       const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
                                        branch_and_bound_worker_t<i_t, f_t>* worker,
                                        branch_and_bound_stats_t<i_t, f_t>& stats,
                                        simplex::logger_t& log,
