@@ -8,8 +8,12 @@
 #include "early_cpufj.cuh"
 
 #include <mip_heuristics/mip_constants.hpp>
+#include <utilities/seed_generator.cuh>
 
 #include <omp.h>
+
+#include <algorithm>
+#include <string>
 
 namespace cuopt::mathematical_optimization::mip {
 
@@ -33,11 +37,11 @@ early_cpufj_t<i_t, f_t>::~early_cpufj_t()
 }
 
 template <typename i_t, typename f_t>
-void early_cpufj_t<i_t, f_t>::start(bool low_latency)
+void early_cpufj_t<i_t, f_t>::start(int n_lanes, bool low_latency)
 {
   const bool threaded = !omp_in_parallel();
   // 1: presolve, 1: early GPU FJ, 1: early CPU FJ
-  if (climber_ ||
+  if (!climbers_.empty() ||
       (!threaded && omp_get_num_threads() < CUOPT_MIP_EARLY_CPUFJ_REQUIRED_THREAD_COUNT)) {
     return;
   }
@@ -45,47 +49,84 @@ void early_cpufj_t<i_t, f_t>::start(bool low_latency)
   this->preemption_flag_.store(false);
   this->start_time_ = std::chrono::steady_clock::now();
 
+  // Tasks are not preempted, so a lane posted beyond the team size would sit in the queue for the
+  // whole of presolve without running an iteration.
+  n_lanes                 = threaded ? 1 : std::clamp(n_lanes, 1, omp_get_num_threads());
+  const int64_t base_seed = cuopt::seed_generator::get_seed();
+  climbers_.resize(n_lanes);
+
   auto report_incumbent = [this](f_t solver_obj, const std::vector<f_t>& assignment, double) {
+    std::lock_guard<std::mutex> guard(incumbent_mutex_);
     this->try_update_best(solver_obj, assignment);
   };
 
-  fj_settings_t settings;
-  settings.seed = (int)seed_;
-  climber_      = init_fj_cpu_from_optimization_problem(
-    *this->problem_ptr_, tolerances_, preemption_flag_, settings);
-  climber_->low_latency          = low_latency;
-  climber_->log_prefix           = "[Early CPUFJ] ";
-  climber_->improvement_callback = report_incumbent;
+  // Lane 0 builds the host problem representation and every other lane copies it. All of it
+  // finishes before the first task is posted, so no lane reads a template another lane is running
+  // on. seed_generator steps a non-atomic global, which is why the draws stay on this thread.
+  for (int k = 0; k < n_lanes; ++k) {
+    if (k == 0) {
+      climbers_[0] =
+        init_fj_cpu_from_optimization_problem(*this->problem_ptr_, tolerances_, preemption_flag_);
+    } else {
+      fj_settings_t settings;
+      settings.seed = (int)cuopt::seed_generator::get_seed();
+      climbers_[k]  = init_fj_cpu_clone(*climbers_[0], preemption_flag_, settings);
+    }
+    climbers_[k]->low_latency = low_latency;
+    apply_lane_diversification<i_t, f_t>(*climbers_[k], k, base_seed);
+    climbers_[k]->log_prefix           = "[Early CPUFJ " + std::to_string(k) + "] ";
+    climbers_[k]->improvement_callback = report_incumbent;
+  }
 
-  CUOPT_LOG_DEBUG("Launching early CPUFJ %s", threaded ? "thread" : "task");
-  auto* climber = climber_.get();
+  auto shared = std::make_shared<fj_cpu_shared_incumbent_t<i_t, f_t>>();
+  for (int k = 0; k < n_lanes; ++k)
+    climbers_[k]->shared_incumbent = shared;
+
+  CUOPT_LOG_DEBUG("Launching %d early CPUFJ %s", n_lanes, threaded ? "thread" : "tasks");
   if (threaded) {
-    worker_ = std::thread([climber] { cpufj_solve(climber); });
+    auto* climber = climbers_[0].get();
+    worker_       = std::thread([climber] { cpufj_solve(climber); });
     return;
   }
+  for (int k = 0; k < n_lanes; ++k) {
+    auto* climber = climbers_[k].get();
 #pragma omp task firstprivate(climber) priority(CUOPT_DEFAULT_TASK_PRIORITY) \
   depend(out : *climber) default(none)
-  cpufj_solve(climber);
+    cpufj_solve(climber);
+  }
 }
 
 template <typename i_t, typename f_t>
 void early_cpufj_t<i_t, f_t>::stop()
 {
-  if (!climber_) { return; }
+  if (climbers_.empty()) { return; }
 
   preemption_flag_.store(true);
-  climber_->halted = true;
+
+  // Every lane is told to stop before any wait, otherwise the first wait blocks on a lane that has
+  // not been asked to exit yet.
+  for (auto& climber : climbers_) {
+    climber->halted = true;
+  }
   if (worker_.joinable()) {
     worker_.join();
   } else {
-#pragma omp taskwait depend(in : *climber_)  // Wait for the early CPUFJ task to finish
+    for (size_t k = 0; k < climbers_.size(); ++k) {
+#pragma omp taskwait depend(in : *climbers_[k])  // Wait for each early CPUFJ task to finish
+    }
   }
 
-  CUOPT_LOG_DEBUG("[Early CPUFJ] Stopped after %d iterations, solution_found=%d",
-                  climber_->iterations,
+  [[maybe_unused]] i_t total_iterations = 0;
+  for (const auto& climber : climbers_) {
+    total_iterations += climber->iterations;
+  }
+
+  CUOPT_LOG_DEBUG("[Early CPUFJ] Stopped after %d iterations over %d climbers, solution_found=%d",
+                  total_iterations,
+                  (int)climbers_.size(),
                   this->solution_found_);
 
-  climber_.reset();
+  climbers_.clear();
 }
 
 template <typename i_t, typename f_t>

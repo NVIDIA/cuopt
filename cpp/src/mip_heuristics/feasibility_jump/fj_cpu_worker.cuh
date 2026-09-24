@@ -50,7 +50,8 @@ struct fj_cpu_worker_t {
                      const std::vector<f_t>& start_assignment,
                      const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
                      std::string log_prefix,
-                     int64_t seed = -1);
+                     int64_t seed = -1,
+                     int lane     = -1);
 
   // Run the worker asynchronously (i.e., launch an openmp task and then continue the
   // execution). Call `stop()` for stopping the worker

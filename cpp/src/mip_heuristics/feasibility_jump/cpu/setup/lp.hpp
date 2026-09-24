@@ -27,4 +27,8 @@ void eliminate_slacks(const simplex::lp_problem_t<i_t, f_t>&,
                       std::vector<f_t>&,
                       std::vector<f_t>&);
 
+template <typename i_t, typename f_t>
+void apply_lp_rounded_start(fj_cpu_climber_t<i_t, f_t>&, f_t);
+template <typename i_t, typename f_t>
+bool apply_lp_polish(fj_cpu_climber_t<i_t, f_t>&, double);
 }  // namespace cuopt::mathematical_optimization::mip

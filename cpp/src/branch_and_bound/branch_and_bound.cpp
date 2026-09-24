@@ -3064,8 +3064,14 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
       [this](f_t obj, const std::vector<f_t>& assignment, double work_units) {
         set_solution_from_cpu_fj(obj, assignment, work_units);
       };
-    current_heuristic->fj_cpu_worker_.create_worker(
-      lp, var_types_, original_problem_.num_cols, lp_solution.x, settings_, "[RootCut CPUFJ] ");
+    current_heuristic->fj_cpu_worker_.create_worker(lp,
+                                                    var_types_,
+                                                    original_problem_.num_cols,
+                                                    lp_solution.x,
+                                                    settings_,
+                                                    "[RootCut CPUFJ] ",
+                                                    -1,
+                                                    cut_pass);
     ++(*worker_count);
     ++current_heuristic->active_workers_;
 

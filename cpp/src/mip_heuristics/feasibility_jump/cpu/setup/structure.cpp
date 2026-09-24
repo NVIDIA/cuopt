@@ -152,6 +152,158 @@ void detect_implied_integers(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
 }
 
 template <typename i_t, typename f_t>
+void precompute_problem_features(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
+                                 fj_cpu_problem_t<i_t, f_t>& problem)
+{
+  phase_timer_t timer(fj_cpu.t_features);
+  fj_cpu.n_binary_vars  = 0;
+  fj_cpu.n_integer_vars = 0;
+  for (i_t i = 0; i < (i_t)fj_cpu.h_is_binary_variable.size(); i++) {
+    if (fj_cpu.h_is_binary_variable[i]) {
+      fj_cpu.n_binary_vars++;
+    } else if (problem.h_var_types[i] == var_t::INTEGER) {
+      fj_cpu.n_integer_vars++;
+    }
+  }
+
+  i_t total_nnz = problem.reverse_offsets.back();
+  i_t n_vars    = problem.reverse_offsets.size() - 1;
+  i_t n_cstrs   = problem.offsets.size() - 1;
+
+  problem.avg_var_degree = (double)total_nnz / n_vars;
+
+  problem.max_var_degree = 0;
+  std::vector<i_t> var_degrees(n_vars);
+  for (i_t i = 0; i < n_vars; i++) {
+    i_t degree             = problem.reverse_offsets[i + 1] - problem.reverse_offsets[i];
+    var_degrees[i]         = degree;
+    problem.max_var_degree = std::max(problem.max_var_degree, degree);
+  }
+
+  i_t equalities = 0;
+  for (i_t row = 0; row < n_cstrs; ++row)
+    equalities += problem.cstr_lb[row] == problem.cstr_ub[row];
+  problem.equality_fraction = n_cstrs ? (double)equalities / n_cstrs : 0.0;
+}
+
+template <typename i_t, typename f_t>
+void detect_free_equality_singletons(fj_cpu_climber_t<i_t, f_t>& c)
+{
+  const auto& model = *c.problem;
+  const i_t n = model.reverse_offsets.size() - 1, m = model.offsets.size() - 1;
+  c.bin_ignore_row.assign(m, 0);
+  c.bin_ignore_var.assign(n, 0);
+  for (i_t row = 0; row < m; ++row) {
+    const f_t rhs = model.cstr_lb[row];
+    if (!std::isfinite(rhs) || rhs != model.cstr_ub[row]) continue;
+    typename fj_cpu_climber_t<i_t, f_t>::bin_eliminated_row_t rec{row, rhs};
+    // A single nonnegative continuous slack can be substituted without fill-in.
+    // Keep the original model intact; the encoder applies its bounds and cost.
+    i_t singleton = -1;
+    for (i_t entry = model.offsets[row]; entry < model.offsets[row + 1]; ++entry) {
+      const i_t var = model.variables[entry];
+      if (model.h_var_types[var] != var_t::CONTINUOUS) continue;
+      const auto bounds = c.h_var_bounds[var].get();
+      if (singleton >= 0 || model.reverse_offsets[var + 1] - model.reverse_offsets[var] != 1 ||
+          std::abs(model.coefficients[entry]) != f_t{1} || get_lower(bounds) != f_t{0} ||
+          std::isfinite(get_upper(bounds)) || !std::isfinite(model.h_obj_coeffs[var])) {
+        singleton = -1;
+        break;
+      }
+      singleton = var;
+    }
+    if (singleton >= 0) {
+      c.bin_singletons.emplace_back(row, singleton);
+      c.bin_ignore_var[singleton] = 1;
+      rec.all.push_back(singleton);
+      c.bin_eliminated_rows.push_back(std::move(rec));
+      continue;
+    }
+    bool valid = true, raises = false, lowers = false;
+    for (i_t p = model.offsets[row]; p < model.offsets[row + 1]; ++p) {
+      const i_t var = model.variables[p];
+      const f_t a   = model.coefficients[p];
+      if (!a || c.h_is_binary_variable[var]) continue;
+      if (c.problem->h_var_types[var] != var_t::CONTINUOUS ||
+          model.reverse_offsets[var + 1] - model.reverse_offsets[var] != 1) {
+        valid = false;
+        break;
+      }
+      const auto bounds = c.h_var_bounds[var].get();
+      const bool up     = (a > 0 && !std::isfinite(get_upper(bounds))) ||
+                      (a < 0 && !std::isfinite(get_lower(bounds)));
+      const bool down = (a > 0 && !std::isfinite(get_lower(bounds))) ||
+                        (a < 0 && !std::isfinite(get_upper(bounds)));
+      if (!up && !down) {
+        valid = false;
+        break;
+      }
+      rec.all.push_back(var);
+      if (up) {
+        raises = true;
+        rec.positive.push_back(var);
+        rec.positive_coeff.push_back(a);
+      }
+      if (down) {
+        lowers = true;
+        rec.negative.push_back(var);
+        rec.negative_coeff.push_back(a);
+      }
+    }
+    if (!valid || rec.all.empty() || !raises || !lowers) continue;
+    c.bin_ignore_row[row] = 1;
+    for (i_t var : rec.all)
+      c.bin_ignore_var[var] = 1;
+    c.bin_eliminated_rows.push_back(std::move(rec));
+  }
+  c.has_bin_elimination = !c.bin_eliminated_rows.empty();
+}
+
+template <typename i_t, typename f_t>
+void build_cardinality_index(fj_cpu_climber_t<i_t, f_t>& c, fj_cpu_problem_t<i_t, f_t>& problem)
+{
+  auto& offsets       = problem.card_row_offsets;
+  auto& members       = problem.card_variables;
+  auto& cardinalities = problem.card_cardinalities;
+  offsets.assign(1, 0);
+  members.clear();
+  cardinalities.clear();
+  problem.card_group_of_variable.assign(problem.n_variables, -1);
+
+  for (i_t row = 0; row < problem.n_constraints; ++row) {
+    const f_t lb = problem.cstr_lb[row], ub = problem.cstr_ub[row];
+    const i_t begin = problem.offsets[row], end = problem.offsets[row + 1];
+    if (!std::isfinite(lb) || !std::isfinite(ub) || std::abs(lb - ub) > 1e-6 || end - begin < 2 ||
+        end - begin > 20000)
+      continue;
+
+    const f_t common = problem.coefficients[begin];
+    if (std::abs(common) <= 1e-6) continue;
+    const f_t cardinality = lb / common;
+    if (std::abs(cardinality - std::round(cardinality)) > 1e-6 || cardinality < 0 ||
+        cardinality > end - begin)
+      continue;
+
+    bool valid = true;
+    for (i_t p = begin; p < end && valid; ++p) {
+      const i_t var = problem.variables[p];
+      valid         = c.h_is_binary_variable[var] && std::abs(problem.coefficients[p] - common) <=
+                                               1e-6 * std::max<f_t>(1, std::abs(common));
+    }
+    if (!valid) continue;
+    const i_t group = (i_t)offsets.size() - 1;
+    for (i_t p = begin; p < end; ++p) {
+      const i_t var = problem.variables[p];
+      members.push_back(var);
+      i_t& owner = problem.card_group_of_variable[var];
+      owner      = owner == -1 ? group : (owner == group ? group : -2);
+    }
+    offsets.push_back((i_t)members.size());
+    cardinalities.push_back((i_t)std::llround(cardinality));
+  }
+}
+
+template <typename i_t, typename f_t>
 void certify_epigraph_variables(fj_cpu_climber_t<i_t, f_t>& fj_cpu, i_t n_variables)
 {
   fj_cpu.epigraph_push.assign(n_variables, 0);
@@ -299,18 +451,333 @@ void build_one_sided_rows(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   fj_cpu.release_setup_structures();
 }
 
+// Eliminate coordinates through exact equalities while retaining each pivot's domain as a row.
+// Integer pivots are accepted only when divisibility proves that every lifted value stays integral.
+// FJ usually struggles with equality-heavy models since every move may result in equality rows
+// being violated and repair having to be applied to many other variables to "compensate". Rewriting
+// the problem may help in some cases.
+template <typename i_t, typename f_t>
+std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> make_equality_reduced_climber(
+  fj_cpu_climber_t<i_t, f_t>& c,
+  double budget,
+  std::vector<fj_equality_substitution_t<i_t, f_t>>& substitutions,
+  std::vector<i_t>& retained)
+{
+  using term_t       = std::pair<i_t, f_t>;
+  const auto started = std::chrono::steady_clock::now();
+  auto expired       = [&] {
+    return c.preemption_flag.load(std::memory_order_relaxed) ||
+           std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count() >=
+             budget;
+  };
+  const auto& p = *c.problem;
+  std::vector<i_t> equalities;
+  for (i_t r = 0; r < p.n_constraints; ++r)
+    if (std::isfinite(p.cstr_lb[r]) && p.cstr_lb[r] == p.cstr_ub[r]) equalities.push_back(r);
+  if (equalities.empty() || budget <= 0) return nullptr;
+
+  std::vector<std::vector<term_t>> rows(p.n_constraints);
+  std::vector<std::vector<i_t>> incidence(p.n_variables);
+  std::vector<f_t> lower = p.cstr_lb, upper = p.cstr_ub, objective = p.h_obj_coeffs;
+  f_t objective_offset = 0;
+  std::vector<uint8_t> eliminated(p.n_variables, 0);
+  int64_t nnz = 0;
+  for (i_t r = 0; r < p.n_constraints; ++r) {
+    auto& row = rows[r];
+    for (i_t k = p.offsets[r]; k < p.offsets[r + 1]; ++k)
+      row.emplace_back(p.variables[k], p.coefficients[k]);
+    std::sort(row.begin(), row.end());
+    size_t out = 0;
+    for (size_t k = 0; k < row.size();) {
+      const i_t v = row[k].first;
+      f_t a       = 0;
+      do {
+        a += row[k++].second;
+      } while (k < row.size() && row[k].first == v);
+      if (a != 0) {
+        row[out++] = {v, a};
+        incidence[v].push_back(r);
+      }
+    }
+    row.resize(out);
+    nnz += out;
+  }
+  std::stable_sort(equalities.begin(), equalities.end(), [&](i_t a, i_t b) {
+    return rows[a].size() < rows[b].size();
+  });
+
+  struct staged_row_t {
+    i_t index;
+    std::vector<term_t> terms;
+    f_t lower;
+    f_t upper;
+  };
+  // Sparse binary scheduling models can encode resource usage as a chain of unit
+  // differences. Partial elimination leaves the same equality barrier in place;
+  // allow enough fill to expose the cumulative capacity rows on this class only.
+  i_t chain_rows = 0;
+  if (c.n_binary_vars > p.n_variables / 2 && p.max_var_degree <= 4 &&
+      equalities.size() > 0.75 * p.n_constraints) {
+    for (i_t r : equalities) {
+      if (lower[r] != f_t{0}) continue;
+      i_t count = 0;
+      f_t sum   = 0;
+      bool unit = true;
+      for (const auto& [v, a] : rows[r]) {
+        if (c.h_is_binary_variable[v]) continue;
+        ++count;
+        sum += a;
+        const auto bounds = c.h_var_bounds[v].get();
+        unit &= std::fabs(a) == f_t{1} && objective[v] == f_t{0} && incidence[v].size() <= 2 &&
+                std::isfinite(get_lower(bounds)) && std::isfinite(get_upper(bounds));
+      }
+      if (unit && count == 2 && sum == f_t{0}) ++chain_rows;
+    }
+  }
+  const bool cumulative_chain =
+    chain_rows >= 16 && 2 * chain_rows >= p.n_variables - c.n_binary_vars;
+  const int64_t fill_limit = (cumulative_chain ? 8 : 2) * std::max<int64_t>(1, nnz);
+  for (i_t r : equalities) {
+    if (expired()) break;
+    const auto& equation = rows[r];
+    bool integer_row     = std::isfinite(lower[r]) && lower[r] == std::round(lower[r]) &&
+                       std::fabs(lower[r]) <= f_t{1e12};
+    int64_t row_gcd = integer_row ? (int64_t)std::fabs(lower[r]) : 0;
+    if (integer_row) {
+      for (const auto& [v, a] : equation) {
+        if (p.h_var_types[v] != var_t::INTEGER || !std::isfinite(a) || a != std::round(a) ||
+            std::fabs(a) > f_t{1e12}) {
+          integer_row = false;
+          break;
+        }
+        row_gcd = std::gcd(row_gcd, (int64_t)std::fabs(a));
+      }
+    }
+
+    i_t pivot          = -1;
+    f_t divisor        = 0;
+    uint64_t best_work = std::numeric_limits<uint64_t>::max();
+    for (const auto& [v, a] : equation) {
+      const auto bounds = c.h_var_bounds[v].get();
+      if (eliminated[v] || c.h_is_binary_variable[v] || get_lower(bounds) == get_upper(bounds))
+        continue;
+      bool admissible = std::fabs(a) == f_t{1};
+      if (p.h_var_types[v] == var_t::INTEGER)
+        admissible = integer_row && row_gcd > 0 && std::fabs(a) == (f_t)row_gcd;
+      if (!admissible) continue;
+      const uint64_t work = (uint64_t)incidence[v].size() * (equation.size() - 1);
+      if (work < best_work) {
+        pivot     = v;
+        divisor   = a;
+        best_work = work;
+      }
+    }
+    if (pivot < 0) continue;
+
+    fj_equality_substitution_t<i_t, f_t> sub{pivot, lower[r] / divisor, {}};
+    if (!std::isfinite(sub.constant)) continue;
+    for (const auto& [v, a] : equation)
+      if (v != pivot) sub.terms.emplace_back(v, -a / divisor);
+    const auto domain     = c.h_var_bounds[pivot].get();
+    const f_t bound_lower = get_lower(domain) - sub.constant;
+    const f_t bound_upper = get_upper(domain) - sub.constant;
+    if ((std::isfinite(get_lower(domain)) && !std::isfinite(bound_lower)) ||
+        (std::isfinite(get_upper(domain)) && !std::isfinite(bound_upper)))
+      continue;
+
+    auto affected = incidence[pivot];
+    std::sort(affected.begin(), affected.end());
+    affected.erase(std::unique(affected.begin(), affected.end()), affected.end());
+    std::vector<staged_row_t> staged;
+    int64_t next_nnz = nnz - (int64_t)equation.size() + (int64_t)sub.terms.size();
+    bool rejected    = false;
+    for (i_t row_index : affected) {
+      if (row_index == r) continue;
+      if (expired()) {
+        rejected = true;
+        break;
+      }
+      const auto& old = rows[row_index];
+      auto entry      = std::lower_bound(
+        old.begin(), old.end(), pivot, [](const term_t& t, i_t v) { return t.first < v; });
+      if (entry == old.end() || entry->first != pivot) continue;
+      const f_t factor = entry->second;
+      staged_row_t replacement{row_index,
+                               {},
+                               std::fma(-factor, sub.constant, lower[row_index]),
+                               std::fma(-factor, sub.constant, upper[row_index])};
+      if ((std::isfinite(lower[row_index]) && !std::isfinite(replacement.lower)) ||
+          (std::isfinite(upper[row_index]) && !std::isfinite(replacement.upper))) {
+        rejected = true;
+        break;
+      }
+      size_t i = 0, j = 0;
+      replacement.terms.reserve(old.size() + sub.terms.size());
+      while (i < old.size() || j < sub.terms.size()) {
+        if (i < old.size() && old[i].first == pivot) {
+          ++i;
+          continue;
+        }
+        const i_t v = std::min(i < old.size() ? old[i].first : p.n_variables,
+                               j < sub.terms.size() ? sub.terms[j].first : p.n_variables);
+        f_t a = 0;
+        if (i < old.size() && old[i].first == v) a = old[i++].second;
+        if (j < sub.terms.size() && sub.terms[j].first == v)
+          a = std::fma(factor, sub.terms[j++].second, a);
+        if (!std::isfinite(a) || std::fabs(a) > f_t{1e12}) {
+          rejected = true;
+          break;
+        }
+        if (a != 0) replacement.terms.emplace_back(v, a);
+      }
+      if (rejected) break;
+      next_nnz += (int64_t)replacement.terms.size() - (int64_t)old.size();
+      if (next_nnz > fill_limit) {
+        rejected = true;
+        break;
+      }
+      staged.push_back(std::move(replacement));
+    }
+    if (rejected) continue;
+
+    for (auto& replacement : staged) {
+      auto& old = rows[replacement.index];
+      size_t k  = 0;
+      for (const auto& [v, a] : replacement.terms) {
+        while (k < old.size() && old[k].first < v)
+          ++k;
+        if (k == old.size() || old[k].first != v) incidence[v].push_back(replacement.index);
+      }
+      old                      = std::move(replacement.terms);
+      lower[replacement.index] = replacement.lower;
+      upper[replacement.index] = replacement.upper;
+    }
+    rows[r]  = sub.terms;
+    lower[r] = bound_lower;
+    upper[r] = bound_upper;
+    for (const auto& [v, a] : sub.terms) {
+      objective[v] = std::fma(objective[pivot], a, objective[v]);
+      if (!std::isfinite(objective[v])) return nullptr;
+    }
+    objective_offset = std::fma(objective[pivot], sub.constant, objective_offset);
+    if (!std::isfinite(objective_offset)) return nullptr;
+    objective[pivot]  = 0;
+    eliminated[pivot] = 1;
+    incidence[pivot].clear();
+    substitutions.push_back(std::move(sub));
+    nnz = next_nnz;
+  }
+  if (substitutions.empty()) return nullptr;
+
+  std::vector<i_t> mapping(p.n_variables, -1), offsets{0}, variables;
+  std::vector<f_t> coefficients, row_lower, row_upper, var_lower, var_upper, costs;
+  std::vector<var_t> types;
+  for (i_t v = 0; v < p.n_variables; ++v) {
+    if (eliminated[v]) continue;
+    mapping[v] = retained.size();
+    retained.push_back(v);
+    const auto bounds = c.h_var_bounds[v].get();
+    var_lower.push_back(get_lower(bounds));
+    var_upper.push_back(get_upper(bounds));
+    costs.push_back(objective[v]);
+    types.push_back(p.h_var_types[v]);
+  }
+  for (i_t r = 0; r < p.n_constraints; ++r) {
+    if (!std::isfinite(lower[r]) && !std::isfinite(upper[r])) continue;
+    if (rows[r].empty()) {
+      if (lower[r] > 0 || upper[r] < 0) return nullptr;
+      continue;
+    }
+    for (const auto& [v, a] : rows[r]) {
+      cuopt_assert(mapping[v] >= 0, "eliminated column survived substitution");
+      variables.push_back(mapping[v]);
+      coefficients.push_back(a);
+    }
+    offsets.push_back(variables.size());
+    row_lower.push_back(lower[r]);
+    row_upper.push_back(upper[r]);
+  }
+  if (retained.empty() || row_lower.empty() || coefficients.size() > (size_t)INT32_MAX)
+    return nullptr;
+
+  const i_t reduced_nnz  = coefficients.size();
+  const i_t reduced_rows = row_lower.size();
+  auto child             = init_fj_cpu_from_host_model<i_t, f_t>((i_t)retained.size(),
+                                                     reduced_rows,
+                                                     reduced_nnz,
+                                                     false,
+                                                     f_t{1},
+                                                     objective_offset,
+                                                     std::move(coefficients),
+                                                     std::move(variables),
+                                                     std::move(offsets),
+                                                     std::move(costs),
+                                                     std::move(var_lower),
+                                                     std::move(var_upper),
+                                                     std::move(row_lower),
+                                                     std::move(row_upper),
+                                                                 {},
+                                                                 {},
+                                                     std::move(types),
+                                                     p.tolerances,
+                                                     c.preemption_flag,
+                                                     c.settings);
+  static_cast<fj_lane_policy_t<i_t, f_t>&>(*child) = static_cast<fj_lane_policy_t<i_t, f_t>&>(c);
+  child->use_equality_substitution                 = false;
+  child->use_lp_start = child->use_lp_polish = false;
+  child->use_bound_prop                      = true;
+  child->use_move_batching &= child->n_colors > 0;
+  child->log_prefix             = c.log_prefix;
+  child->suppress_incumbent_log = true;
+  for (i_t j = 0; j < (i_t)retained.size(); ++j) {
+    const auto bounds = child->h_var_bounds[j].get();
+    f_t value         = c.h_assignment[retained[j]];
+    if (is_integer_var(*child, j)) value = std::round(value);
+    child->h_assignment[j] = std::clamp(value, get_lower(bounds), get_upper(bounds));
+  }
+  child->h_best_assignment = child->h_assignment;
+  recompute_lhs(*child);
+  CUOPT_LOG_DEBUG("%sCPUFJ equality substitution: %zu pivots, %d columns, %d rows, %d nonzeros",
+                  c.log_prefix.c_str(),
+                  substitutions.size(),
+                  (int)retained.size(),
+                  (int)reduced_rows,
+                  (int)reduced_nnz);
+  return child;
+}
+
 #if MIP_INSTANTIATE_FLOAT
 template void detect_implied_integers<int, float>(fj_cpu_climber_t<int, float>&,
                                                   fj_cpu_problem_t<int, float>&);
+template void detect_free_equality_singletons<int, float>(fj_cpu_climber_t<int, float>&);
+template void precompute_problem_features<int, float>(fj_cpu_climber_t<int, float>&,
+                                                      fj_cpu_problem_t<int, float>&);
+template void build_cardinality_index<int, float>(fj_cpu_climber_t<int, float>&,
+                                                  fj_cpu_problem_t<int, float>&);
 template void certify_epigraph_variables<int, float>(fj_cpu_climber_t<int, float>&, int);
 template void build_one_sided_rows<int, float>(fj_cpu_climber_t<int, float>&);
+template std::unique_ptr<fj_cpu_climber_t<int, float>> make_equality_reduced_climber<int, float>(
+  fj_cpu_climber_t<int, float>&,
+  double,
+  std::vector<fj_equality_substitution_t<int, float>>&,
+  std::vector<int>&);
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
 template void detect_implied_integers<int, double>(fj_cpu_climber_t<int, double>&,
                                                    fj_cpu_problem_t<int, double>&);
+template void detect_free_equality_singletons<int, double>(fj_cpu_climber_t<int, double>&);
+template void precompute_problem_features<int, double>(fj_cpu_climber_t<int, double>&,
+                                                       fj_cpu_problem_t<int, double>&);
+template void build_cardinality_index<int, double>(fj_cpu_climber_t<int, double>&,
+                                                   fj_cpu_problem_t<int, double>&);
 template void certify_epigraph_variables<int, double>(fj_cpu_climber_t<int, double>&, int);
 template void build_one_sided_rows<int, double>(fj_cpu_climber_t<int, double>&);
+template std::unique_ptr<fj_cpu_climber_t<int, double>> make_equality_reduced_climber<int, double>(
+  fj_cpu_climber_t<int, double>&,
+  double,
+  std::vector<fj_equality_substitution_t<int, double>>&,
+  std::vector<int>&);
 #endif
 
 }  // namespace cuopt::mathematical_optimization::mip

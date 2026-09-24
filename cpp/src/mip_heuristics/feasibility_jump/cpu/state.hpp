@@ -372,9 +372,7 @@ template <typename i_t, typename f_t>
 struct fj_runtime_t {
   explicit fj_runtime_t(std::atomic<bool>& flag) : preemption_flag(flag) {}
   i_t log_interval{0};
-  i_t diversity_callback_interval{3000};
   std::function<void(f_t, const std::vector<f_t>&, double)> improvement_callback{nullptr};
-  std::function<void(f_t, const std::vector<f_t>&)> diversity_callback{nullptr};
   std::string log_prefix;
   std::shared_ptr<fj_cpu_shared_incumbent_t<i_t, f_t>> shared_incumbent;
   std::atomic<double> work_units_elapsed{0.0};
@@ -511,5 +509,16 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_clone(
   const fj_cpu_climber_t<i_t, f_t>& tmpl,
   std::atomic<bool>& preemption_flag,
   fj_settings_t settings = fj_settings_t{});
+
+template <typename i_t, typename f_t>
+void apply_lane_diversification(fj_cpu_climber_t<i_t, f_t>& climber, int lane, int64_t base_seed);
+
+template <typename i_t, typename f_t>
+void complete_climber_portfolio(std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> first_climber,
+                                const std::vector<int64_t>& lane_seeds,
+                                std::vector<std::atomic<bool>>& preemption_flags,
+                                std::vector<std::unique_ptr<fj_cpu_climber_t<i_t, f_t>>>& climbers,
+                                int64_t base_seed,
+                                bool low_latency = false);
 
 }  // namespace cuopt::mathematical_optimization::mip
