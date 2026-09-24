@@ -144,6 +144,24 @@ jobs:
           path: ${{ runner.temp }}/maven-repo
           if-no-files-found: error
 
+  # Runs only once the publishing credentials exist; forwards GPG/Maven secrets, so pinned to a
+  # reviewed commit rather than @main. See rapidsai/build-infra#379.
+  java-maven-publish:
+    needs: [java-static-gather]
+    if: vars.MAVEN_DEPLOY_USERNAME != ''
+    permissions:
+      actions: read
+      contents: read
+    # rapidsai/shared-workflows@main
+    uses: rapidsai/shared-workflows/.github/workflows/maven-publish.yaml@0adadff212e170d247cde08e9e1de724babacbf5
+    secrets:
+      GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+      GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+      MAVEN_DEPLOY_TOKEN: ${{ secrets.MAVEN_DEPLOY_TOKEN }}
+    with:
+      artifact-name: cuopt_java_maven_repo
+      source-git-sha: ${{ inputs.sha }}
+
   java-build:
     needs: cpp-build
     permissions:

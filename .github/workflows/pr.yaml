@@ -26,6 +26,8 @@ jobs:
       - java-build
       - java-static-build-matrix
       - java-static-build
+      - java-static-gather-tmp
+      - java-maven-publish-tmp
       - java-static-test
       - conda-python-build
       - conda-python-tests
@@ -386,11 +388,7 @@ jobs:
   conda-cpp-build:
     needs: [build-details, checks, compute-matrix-filters, changed-files]
     # Consumed by C++, Java, Python, and docs jobs.
-    if: >-
-      fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp ||
-      fromJSON(needs.changed-files.outputs.changed_file_groups).test_java ||
-      fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_conda ||
-      fromJSON(needs.changed-files.outputs.changed_file_groups).build_docs
+    if: false # TEMPORARY (#1970): disabled to divert CI capacity to java-static/maven-publish testing
     permissions:
       actions: read
       contents: read
@@ -412,7 +410,7 @@ jobs:
       packages: read
       pull-requests: read
     uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@release/26.10
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
+    if: false # TEMPORARY (#1970): disabled to divert CI capacity to java-static/maven-publish testing
     with:
       build_type: pull-request
       script: ci/test_cpp.sh
@@ -432,15 +430,13 @@ jobs:
       packages: read
       pull-requests: read
     uses: ./.github/workflows/multi_gpu_cpp_test.yaml
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
+    if: false # TEMPORARY (#1970): disabled to divert CI capacity to java-static/maven-publish testing
     with:
       build_type: pull-request
   conda-python-build:
     needs: [build-details, conda-cpp-build, changed-files]
     # Consumed by conda-python-tests and docs-build.
-    if: >-
-      fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_conda ||
-      fromJSON(needs.changed-files.outputs.changed_file_groups).build_docs
+    if: false # TEMPORARY (#1970): disabled to divert CI capacity to java-static/maven-publish testing
     permissions:
       actions: read
       contents: read
@@ -464,7 +460,7 @@ jobs:
       packages: read
       pull-requests: read
     uses: rapidsai/shared-workflows/.github/workflows/conda-python-tests.yaml@release/26.10
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_conda
+    if: false # TEMPORARY (#1970): disabled to divert CI capacity to java-static/maven-publish testing
     with:
       build_type: pull-request
       run_codecov: false
@@ -479,7 +475,7 @@ jobs:
       pull-requests: read
     secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@release/26.10
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).build_docs
+    if: false # TEMPORARY (#1970): disabled to divert CI capacity to java-static/maven-publish testing
     with:
       build_type: pull-request
       node_type: "gpu-l4-latest-1"
@@ -539,10 +535,61 @@ jobs:
       artifact-name: "cuopt_java_${{ matrix.ARCH }}_cu${{ matrix.CUDA_MAJOR }}"
       file_to_upload: "java/cuopt/classifier-jars/"
 
+  # TEMPORARY (#1970 review): replicates java-static-gather + java-maven-publish from
+  # build.yaml here so the wiring can be exercised on this PR, per review request. Remove
+  # before merge.
+  java-static-gather-tmp:
+    needs: [java-static-build]
+    runs-on: linux-amd64-cpu4
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code repo
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Download per-classifier JAR artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: cuopt_java_*
+          path: ${{ runner.temp }}/jars
+          merge-multiple: true
+      - name: Assemble Maven repository layout
+        run: |
+          ./java/cuopt/ci/assemble_maven_repo.sh \
+            --jars-dir "${RUNNER_TEMP}/jars" \
+            --output-dir "${RUNNER_TEMP}/maven-repo"
+      - name: Upload combined Maven repository artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cuopt_java_maven_repo
+          path: ${{ runner.temp }}/maven-repo
+          if-no-files-found: error
+
+  # TEMPORARY (#1970 review): runs unconditionally (unlike the real job's
+  # if: vars.MAVEN_DEPLOY_USERNAME != '' gate) to exercise the reusable-workflow call for real.
+  # Safe to do so: GPG_PRIVATE_KEY/GPG_PASSPHRASE/MAVEN_DEPLOY_TOKEN/MAVEN_DEPLOY_USERNAME don't
+  # exist on this repo yet, so this can only fail at the reusable workflow's own credential
+  # check, never actually publish anything. Remove before merge.
+  java-maven-publish-tmp:
+    needs: [java-static-gather-tmp]
+    permissions:
+      actions: read
+      contents: read
+    uses: rapidsai/shared-workflows/.github/workflows/maven-publish.yaml@0adadff212e170d247cde08e9e1de724babacbf5
+    secrets:
+      GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+      GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+      MAVEN_DEPLOY_TOKEN: ${{ secrets.MAVEN_DEPLOY_TOKEN }}
+    with:
+      artifact-name: cuopt_java_maven_repo
+      source-git-sha: ${{ github.sha }}
+
   # Runs the full Java suite against each classifier JAR on a GPU, with no libcuopt installed,
   # so a JAR that loads but computes wrong answers fails here rather than at a user.
   java-static-test:
     needs: [java-static-build, java-static-build-matrix]
+    if: false # TEMPORARY (#1970): disabled to divert CI capacity to java-static/maven-publish testing
     permissions:
       actions: read
       contents: read
@@ -581,9 +628,7 @@ jobs:
       pull-requests: read
     secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@release/26.10
-    if: >-
-      fromJSON(needs.changed-files.outputs.changed_file_groups).test_java ||
-      fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
+    if: false # TEMPORARY (#1970): disabled to divert CI capacity to java-static/maven-publish testing
     with:
       build_type: pull-request
       node_type: "gpu-l4-latest-1"
@@ -594,7 +639,7 @@ jobs:
       file_to_upload: "java/cuopt/target/"
   wheel-build-libcuopt:
     needs: [build-details, compute-matrix-filters, changed-files]
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
+    if: false # TEMPORARY (#1970): disabled to divert CI capacity to java-static/maven-publish testing
     permissions:
       actions: read
       contents: read
@@ -670,7 +715,7 @@ jobs:
       script: ci/build_wheel_libcuopt_routing.sh
   wheel-build-cuopt:
     needs: [build-details, wheel-build-libcuopt, compute-matrix-filters, changed-files]
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
+    if: false # TEMPORARY (#1970): disabled to divert CI capacity to java-static/maven-publish testing
     permissions:
       actions: read
       contents: read
@@ -696,7 +741,7 @@ jobs:
       packages: read
       pull-requests: read
     uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@release/26.10
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
+    if: false # TEMPORARY (#1970): disabled to divert CI capacity to java-static/maven-publish testing
     with:
       build_type: pull-request
       script: ci/test_wheel_cuopt.sh
@@ -709,7 +754,7 @@ jobs:
       script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
   wheel-build-cuopt-server:
     needs: [build-details, checks, compute-matrix-filters, changed-files]
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
+    if: false # TEMPORARY (#1970): disabled to divert CI capacity to java-static/maven-publish testing
     permissions:
       actions: read
       contents: read
@@ -729,7 +774,7 @@ jobs:
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.cuopt_server_filter }}
   wheel-build-cuopt-sh-client:
     needs: [build-details, compute-matrix-filters, changed-files]
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
+    if: false # TEMPORARY (#1970): disabled to divert CI capacity to java-static/maven-publish testing
     permissions:
       actions: read
       contents: read
@@ -757,7 +802,7 @@ jobs:
       packages: read
       pull-requests: read
     uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@release/26.10
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
+    if: false # TEMPORARY (#1970): disabled to divert CI capacity to java-static/maven-publish testing
     with:
       build_type: pull-request
       script: ci/test_wheel_cuopt_server.sh
@@ -779,7 +824,7 @@ jobs:
       pull-requests: read
     secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: ./.github/workflows/self_hosted_service_test.yaml
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
+    if: false # TEMPORARY (#1970): disabled to divert CI capacity to java-static/maven-publish testing
     with:
       build_type: pull-request
       script: ci/test_self_hosted_service.sh
