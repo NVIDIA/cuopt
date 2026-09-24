@@ -83,3 +83,70 @@ generated file. Regenerate it after changing the C++ constants header with:
 cd java/cuopt
 mvn generate-sources
 ```
+
+## Remote gRPC Client (Experimental)
+
+`GrpcClient` (`com.nvidia.cuopt.mathematicaloptimization.GrpcClient`) talks to a
+remote `cuopt_grpc_server` instead of solving in-process. It wraps
+`cuopt::cython::grpc_python_client_t` — the same C++ class the Python bindings
+wrap — via `src/main/native/cuopt_grpc_jni.cpp`, so it inherits that class's
+automatic chunked upload/download for problems too large for a single protobuf
+message.
+
+Covers LP and MIP submit/status/wait/cancel/delete/result, plaintext or TLS.
+Not covered yet: QP (the wire protocol supports it, this client doesn't wire
+it through yet), log streaming, and incumbent callbacks. Not wired into the
+Maven-packaged classifier jar or CI yet.
+
+`submit()` takes a `Problem` directly, matching the Python client's own
+`submit(problem, settings)` — no raw arrays needed for the common case:
+
+```java
+try (Problem problem = Problem.read("model.mps");
+    GrpcClient client = new GrpcClient("localhost", 5001)) {
+  client.connect();
+
+  String jobId = client.submit(problem, /* timeLimitSeconds= */ 30.0);
+  GrpcJobStatus status = client.waitForCompletion(jobId, /* timeoutSeconds= */ 60);
+
+  if (status == GrpcJobStatus.COMPLETED) {
+    GrpcMipResult result = client.getMipResult(jobId); // or getLpResult(jobId)
+    System.out.println("objective: " + result.getObjective());
+  }
+}
+```
+
+A lower-level `submit(RawProblem, ...)` overload also exists, taking the same
+CSR-array shape `NativeCuOpt.createProblem` uses, for callers that already
+have raw arrays and don't want to build a `Problem`.
+
+### Installing and trying it
+
+There's no published artifact yet (see the top of this README) — trying it
+means building from source. From the repo root:
+
+```bash
+mamba env create -p ./.cuopt_env --file conda/environments/all_cuda-133_arch-$(uname -m).yaml
+mamba activate ./.cuopt_env
+./build.sh libcuopt java          # produces cpp/build/libcuopt.so, cpp/build/cuopt_grpc_server,
+                                   # and java/cuopt/build/native/libcuopt_jni.so
+```
+
+Start a server and run the checked-in example, which submits the same small
+problem two ways — built via the regular API, and read from an MPS file —
+against a real server:
+
+```bash
+cpp/build/cuopt_grpc_server --port 5001 &
+
+cd java/cuopt
+mvn -q test-compile
+mvn -q exec:java -Dexec.mainClass=com.nvidia.cuopt.mathematicaloptimization.GrpcClientExample \
+    -Dexec.classpathScope=test -Dcuopt.native.dir=build/native -Dexec.args="localhost 5001"
+```
+
+If the server or the example fails to load a native library with an
+`UnsatisfiedLinkError` naming an `rmm::` symbol, the conda environment's
+`librmm.so` doesn't export something the current build needs (a version-pin
+gap seen locally, not confirmed as a general issue) — work around it with
+`LD_PRELOAD=$(pwd)/../../.cuopt_env/lib/librmm.so` on the failing command.
