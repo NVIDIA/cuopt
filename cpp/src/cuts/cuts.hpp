@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <functional>
 #include <future>
 #include <memory>
 #include <numeric>
@@ -542,6 +543,11 @@ class flow_cover_generation_t {
                           csr_matrix_t<i_t, f_t>& Arow,
                           const std::vector<i_t>& new_slacks);
 
+  void preprocess_cut_pass(const simplex::lp_problem_t<i_t, f_t>& lp,
+                           const variable_bounds_t<i_t, f_t>& variable_bounds,
+                           const std::vector<simplex::variable_type_t>& var_types,
+                           const std::vector<f_t>& xstar);
+
   i_t generate_cut(const simplex::lp_problem_t<i_t, f_t>& lp,
                    const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
                    csr_matrix_t<i_t, f_t>& Arow,
@@ -586,6 +592,58 @@ class flow_cover_generation_t {
                            const flow_cover_evaluation_t<f_t>& c_mir_inequality,
                            const flow_cover_evaluation_t<f_t>& simple_generalized_inequality,
                            inequality_t<i_t, f_t>& cut);
+
+  struct implied_bound_group_t {
+    i_t controller;
+    i_t first_bound;
+    i_t number_of_bounds;
+    f_t minimum_alpha;
+    f_t maximum_alpha;
+  };
+
+  struct zero_candidate_key_t {
+    i_t variable;
+    f_t coefficient;
+
+    bool operator==(const zero_candidate_key_t&) const = default;
+  };
+
+  struct zero_candidate_key_hash_t {
+    size_t operator()(const zero_candidate_key_t& key) const
+    {
+      constexpr size_t hash_combine_constant = 0x9e3779b9;
+      size_t seed                            = std::hash<i_t>{}(key.variable);
+      seed ^= std::hash<f_t>{}(key.coefficient) + hash_combine_constant + (seed << 6) + (seed >> 2);
+      return seed;
+    }
+  };
+
+  struct implied_bound_index_t {
+    // Nonzero-a candidates only need bounds controlled by binaries in the current row.
+    std::vector<i_t> y_group_offsets;
+    std::vector<implied_bound_group_t> groups;
+    std::vector<i_t> bound_indices;
+    std::vector<f_t> active_bounds;
+    // The best a=0 bound is invariant for a fixed row coefficient during a cut pass.
+    std::unordered_map<zero_candidate_key_t, i_t, zero_candidate_key_hash_t> zero_candidate_cache;
+    i_t source_column_count{0};
+    i_t source_bound_count{0};
+    bool topology_initialized{false};
+  };
+
+  void initialize_implied_bound_index(implied_bound_index_t& index,
+                                      const std::vector<i_t>& offsets,
+                                      const std::vector<i_t>& variables,
+                                      const std::vector<f_t>& weights,
+                                      const std::vector<f_t>& biases,
+                                      const std::vector<simplex::variable_type_t>& var_types);
+
+  bool try_add_implied_bound_candidate(const flow_cover_context_t<i_t, f_t>& context,
+                                       i_t variable,
+                                       f_t coefficient,
+                                       bool use_upper_bound,
+                                       i_t bound,
+                                       f_t binary_coefficient);
 
   void clear_cut_state(i_t num_cols)
   {
@@ -632,6 +690,9 @@ class flow_cover_generation_t {
 
   std::vector<i_t> is_slack_;
   std::vector<flow_cover_row_t<i_t>> flow_cover_constraints_;
+  implied_bound_index_t upper_implied_bounds;
+  implied_bound_index_t lower_implied_bounds;
+  bool cut_pass_preprocessed{false};
   std::vector<std::pair<i_t, f_t>> continuous_terms;
   std::vector<i_t> binary_columns;
   std::vector<f_t> binary_coefficients;
