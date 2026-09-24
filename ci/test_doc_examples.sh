@@ -28,6 +28,7 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 DOCS_ROOT="${PROJECT_ROOT}/docs/cuopt/source"
 RESULTS_DIR="${PROJECT_ROOT}/test-results"
 SERVER_PID=""
+GRPC_PID=""
 
 # C library paths (set by find_cuopt_libraries)
 include_path=""
@@ -68,7 +69,11 @@ check_server() {
 
 start_server() {
     log_info "Starting cuOpt server..."
-    python -m cuopt_server.cuopt_service --ip localhost --port 5000 > "${RESULTS_DIR}/cuopt-server.log" 2>&1 &
+    cuopt_grpc_server --port 5001 > "${RESULTS_DIR}/cuopt-grpc-server.log" 2>&1 &
+    GRPC_PID=$!
+    python -m cuopt_server.cuopt_proxy \
+        --ip localhost --port 5000 --grpc-port 5001 \
+        > "${RESULTS_DIR}/cuopt-server.log" 2>&1 &
     SERVER_PID=$!
 
     # Wait for server to start (max 30 seconds)
@@ -91,6 +96,13 @@ stop_server() {
         wait "${SERVER_PID}" 2>/dev/null || true
         log_success "Server stopped"
         SERVER_PID=""
+    fi
+    if [ -n "${GRPC_PID}" ] && ps -p "${GRPC_PID}" > /dev/null 2>&1; then
+        log_info "Stopping gRPC server (PID: ${GRPC_PID})..."
+        kill "${GRPC_PID}" 2>/dev/null || true
+        wait "${GRPC_PID}" 2>/dev/null || true
+        log_success "gRPC server stopped"
+        GRPC_PID=""
     fi
 }
 

@@ -21,6 +21,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 SKILLS_ASSETS="${REPO_ROOT}/skills"
 FAILED=()
 SERVER_PID=""
+GRPC_PID=""
 
 if [[ ! -d "${SKILLS_ASSETS}" ]]; then
   log "No skills directory found, skipping skills asset tests"
@@ -33,7 +34,10 @@ start_server() {
     log "cuopt_server not available, server API assets will skip"
     return
   fi
-  python -m cuopt_server.cuopt_service --ip 127.0.0.1 --port 8000 &>/dev/null &
+  cuopt_grpc_server --port 5001 &>/dev/null &
+  GRPC_PID=$!
+  python -m cuopt_server.cuopt_proxy \
+    --ip 127.0.0.1 --port 8000 --grpc-port 5001 &>/dev/null &
   SERVER_PID=$!
   for _ in {1..30}; do
     if curl -s -o /dev/null http://127.0.0.1:8000/cuopt/health 2>/dev/null; then
@@ -52,6 +56,12 @@ stop_server() {
     kill "${SERVER_PID}" 2>/dev/null || true
     wait "${SERVER_PID}" 2>/dev/null || true
     SERVER_PID=""
+  fi
+  if [[ -n "${GRPC_PID}" ]] && kill -0 "${GRPC_PID}" 2>/dev/null; then
+    log "Stopping cuOpt gRPC server (PID ${GRPC_PID})"
+    kill "${GRPC_PID}" 2>/dev/null || true
+    wait "${GRPC_PID}" 2>/dev/null || true
+    GRPC_PID=""
   fi
 }
 trap stop_server EXIT
