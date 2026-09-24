@@ -745,8 +745,8 @@ void set_presolve_methods(
 
   if (category == problem_category_t::MIP) {
     // cuOpt custom GF2 presolver
-    maybe_add(uptr(new cuopt::mathematical_optimization::mip::GF2Presolve<f_t>()));
-    maybe_add(uptr(new cuopt::mathematical_optimization::mip::BHWCoeffReduce<f_t>()));
+    maybe_add(uptr(new GF2Presolve<f_t>()));
+    maybe_add(uptr(new BHWCoeffReduce<f_t>()));
   }
   // fast presolvers
   maybe_add(uptr(new papilo::SingletonCols<f_t>()));

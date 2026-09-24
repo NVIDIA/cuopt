@@ -135,6 +135,8 @@ class mip_solver_settings_t {
   i_t clique_cuts               = -1;
   i_t zero_half_cuts            = -1;
   i_t implied_bound_cuts        = -1;
+  i_t implied_indicator_cuts    = -1;
+  i_t capacity_lifting_cuts     = -1;
   i_t strong_chvatal_gomory_cuts = -1;
   i_t reduced_cost_strengthening = -1;
   i_t objective_step             = 1;  // 0 = disable objective step tightening, 1 = enable
