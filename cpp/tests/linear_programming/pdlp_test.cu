@@ -3776,6 +3776,7 @@ TEST(pdlp_class, run_batch_pdlp_many_different_bounds)
   // Known issue with Curtis-Reid scaling on batch PDLP.
   regular_pdlp_settings.hyper_params.do_curtis_reid_scaling = false;
   regular_pdlp_settings.set_optimality_tolerance(result_tolerance);
+  regular_pdlp_settings.hyper_params.do_curtis_reid_scaling = false;
 
   const std::vector<std::vector<std::tuple<int, double, double>>> bound_offsets_by_climber = {
     {{1, 3.0, 7.0}},
