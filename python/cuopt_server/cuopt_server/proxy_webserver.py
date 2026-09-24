@@ -398,7 +398,7 @@ def _looks_like_routing(data):
     return bool((_ROUTING_KEYS - {"solver_config"}) & set(data.keys()))
 
 
-def _prepare_lp(data, warnings, warmstart_data=None):
+def _prepare_lp(data, warnings, warmstart_data=None, data_source="stream"):
     if isinstance(data, list):
         _not_implemented("Batch LP (a JSON list of LP problems)")
     try:
@@ -414,8 +414,8 @@ def _prepare_lp(data, warnings, warmstart_data=None):
     except Exception as e:
         raise HTTPException(
             status_code=422,
-            detail="unable to validate optimization data stream, %s"
-            % (str(e)),
+            detail="unable to validate optimization data %s, %s"
+            % (data_source, str(e)),
         )
     dm_warnings, data_model = create_data_model(lp_data)
     warnings.extend(dm_warnings)
@@ -451,7 +451,7 @@ def _ensure_rmm_pool():
     rmm.mr.set_current_device_resource(pool)
 
 
-def _prepare_vrp(data, warnings, initial_envelopes=None):
+def _prepare_vrp(data, warnings, initial_envelopes=None, data_source="stream"):
     try:
         data = dict(OptimizedRoutingData.parse_obj(data))
         if initial_envelopes:
@@ -461,8 +461,8 @@ def _prepare_vrp(data, warnings, initial_envelopes=None):
     except Exception as e:
         raise HTTPException(
             status_code=422,
-            detail="unable to validate optimization data stream, %s"
-            % (str(e)),
+            detail="unable to validate optimization data %s, %s"
+            % (data_source, str(e)),
         )
 
     if data.get("solver_config") is None:
@@ -580,6 +580,7 @@ def _deserialize_convert_submit(
         result_file,
         warmstart_id,
         initial_ids,
+        "file" if file_path else "stream",
     )
 
 
@@ -593,12 +594,13 @@ def _convert_and_submit(
     result_file,
     warmstart_id,
     initial_ids,
+    data_source="stream",
 ):
     """Convert a decoded problem body and submit it over gRPC."""
     if _looks_like_routing(data):
         initials = _collect_vrp_initials(initial_ids)
         data_model, solver_settings, vehicle_ids, task_ids = _prepare_vrp(
-            data, warnings, initials
+            data, warnings, initials, data_source
         )
         if validation_only:
             job_id = str(uuid.uuid4())
@@ -653,7 +655,9 @@ def _convert_and_submit(
     pdlp = None
     if warmstart_id:
         pdlp = _warmstart_for_submit(warmstart_id)
-    lp_data, data_model, solver_settings = _prepare_lp(data, warnings, pdlp)
+    lp_data, data_model, solver_settings = _prepare_lp(
+        data, warnings, pdlp, data_source
+    )
     variable_names = lp_data.variable_names
     if validation_only:
         job_id = str(uuid.uuid4())
