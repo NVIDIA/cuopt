@@ -77,23 +77,16 @@ public final class SolverSettings implements AutoCloseable {
   }
 
   /**
-   * Set whether to distribute the PDLP solve of an LP problem across multiple GPUs. Requires
-   * {@link #setMethod} to be {@link SolverMethod#PDLP} and {@link #setNumGpus} to be {@code -1}
-   * or greater than 1; sharding across multiple GPUs only happens when more than one GPU is
-   * actually selected.
+   * Set the partitioner used to split the problem across GPUs for multi-GPU PDLP: {@code 0} Auto
+   * (default; RoundRobin on 1 GPU, KaMinPar otherwise), {@code 1} KaMinPar (multi-threaded graph
+   * partitioner, better balanced shards at the cost of extra partitioning time), or {@code 2}
+   * RoundRobin (no partitioning graph built). Multi-GPU PDLP is used whenever {@link #setMethod}
+   * is {@link SolverMethod#PDLP} and {@link #setNumGpus} is {@code -1} or greater than 1;
+   * sharding only happens when more than one GPU is actually selected. There is no separate
+   * on/off switch - it is not a user-settable parameter.
    */
-  public SolverSettings setUseDistributedPdlp(boolean useDistributedPdlp) {
-    return setSetting(CuOptConstants.CUOPT_USE_DISTRIBUTED_PDLP, useDistributedPdlp);
-  }
-
-  /**
-   * Set the partitioner used to split the problem across GPUs for distributed PDLP: {@code 0}
-   * Auto (default; RoundRobin on 1 GPU, KaMinPar otherwise), {@code 1} KaMinPar (multi-threaded
-   * graph partitioner, better balanced shards at the cost of extra partitioning time), or {@code
-   * 2} RoundRobin (no partitioning graph built).
-   */
-  public SolverSettings setDistributedPdlpPartitioner(int partitioner) {
-    return setSetting(CuOptConstants.CUOPT_DISTRIBUTED_PDLP_PARTITIONER, partitioner);
+  public SolverSettings setMpdlpPartitioner(int partitioner) {
+    return setSetting(CuOptConstants.CUOPT_MULTIGPU_PDLP_PARTITIONER, partitioner);
   }
 
   /** The LP optimality tolerances, previously discovered by filtering on parameter names. */

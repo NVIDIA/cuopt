@@ -54,7 +54,6 @@ static void expect_distributed_matches_base(raft::handle_t const& handle,
   auto base    = solve_lp(base_op, base_settings);
 
   pdlp_solver_settings_t<int, double> dist_settings = base_settings;
-  dist_settings.use_distributed_pdlp                = true;
   dist_settings.num_gpus                            = -1;
   auto dist                                         = solve_lp(&handle, problem, dist_settings);
 
