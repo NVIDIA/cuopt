@@ -757,6 +757,41 @@ def test_logs_and_log_delete_noop(proxy):
     assert requests.delete(url + f"/cuopt/log/{req_id}").status_code == 200
 
 
+def test_log_delete_without_logs_is_404(proxy):
+    url, _ = proxy
+    req_id = requests.post(
+        url + "/cuopt/request",
+        headers={"CLIENT-VERSION": "custom"},
+        json=_lp(),
+    ).json()["reqId"]
+    res = requests.delete(url + f"/cuopt/log/{req_id}", headers=_JSON_ACCEPT)
+    assert res.status_code == 404
+    assert res.json() == {"error": f"log not found for request {req_id}"}
+
+
+def test_unknown_log_is_404_without_error_result(proxy):
+    url, _ = proxy
+    missing = str(uuid.uuid4())
+    res = requests.get(url + f"/cuopt/log/{missing}", headers=_JSON_ACCEPT)
+    assert res.status_code == 404
+    assert res.json() == {"error": f"log not found for request {missing}"}
+
+    res = requests.get(url + "/cuopt/log/not-a-uuid", headers=_JSON_ACCEPT)
+    assert res.status_code == 400
+    assert res.json() == {"error": "Invalid request id format"}
+
+    res = requests.delete(url + f"/cuopt/log/{missing}", headers=_JSON_ACCEPT)
+    assert res.status_code == 404
+    assert res.json() == {"error": f"log not found for request {missing}"}
+
+    res = requests.delete(url + "/cuopt/log/not-a-uuid", headers=_JSON_ACCEPT)
+    assert res.status_code == 400
+    assert res.json() == {
+        "error": "Invalid request id format",
+        "error_result": False,
+    }
+
+
 def test_cancel_request(proxy):
     url, fake = proxy
     lp = _lp()
