@@ -559,6 +559,7 @@ def _deserialize_convert_submit(
     warnings,
     validation_only,
     incumbent_solutions,
+    incumbent_set_solutions,
     solver_logs,
     accept,
     result_file,
@@ -575,6 +576,7 @@ def _deserialize_convert_submit(
         warnings,
         validation_only,
         incumbent_solutions,
+        incumbent_set_solutions,
         solver_logs,
         accept,
         result_file,
@@ -588,6 +590,7 @@ def _convert_and_submit(
     warnings,
     validation_only,
     incumbent_solutions,
+    incumbent_set_solutions,
     solver_logs,
     accept,
     result_file,
@@ -681,10 +684,12 @@ def _convert_and_submit(
         return job_id
     client = get_grpc_client()
     incumbents_enabled = bool(incumbent_solutions) and _is_mip(lp_data)
+    incumbent_set_enabled = bool(incumbent_set_solutions) and _is_mip(lp_data)
     job_id = client.submit(
         data_model,
         solver_settings,
         enable_incumbents=incumbents_enabled,
+        enable_incumbent_set=incumbent_set_enabled,
     )
     logging.info(message(f"sent LP job {job_id} to gRPC"))
     _store_job(
@@ -1123,6 +1128,7 @@ def _submit_managed_job(ctype, buf, accept):
         validation_only,
         False,
         False,
+        False,
         accept,
         "",
         "",
@@ -1372,8 +1378,6 @@ async def postrequest(
             _not_implemented("Query parameter cache")
         if reqId:
             _not_implemented("Query parameter reqId (cached-body solve)")
-        if incumbent_set_solutions:
-            _not_implemented("Query parameter incumbent_set_solutions")
 
         sz = int(sz)
         if sz < 0:
@@ -1424,6 +1428,7 @@ async def postrequest(
             warnings,
             validation_only,
             incumbent_solutions,
+            incumbent_set_solutions,
             solver_logs,
             accept,
             result_file,

@@ -2572,6 +2572,9 @@ def _gen_populate_chunked_header(registry, solver_type, indent="  "):
             f"{ind}map_mip_settings_to_proto(settings, header->mutable_mip_settings());"
         )
         lines.append(f"{ind}header->set_enable_incumbents(enable_incumbents);")
+        lines.append(
+            f"{ind}header->set_enable_incumbent_set(enable_incumbent_set);"
+        )
 
     # repeated_messages — populate per-entry scalars in the header.  Arrays
     # for each entry travel separately via container-keyed ArrayChunks.

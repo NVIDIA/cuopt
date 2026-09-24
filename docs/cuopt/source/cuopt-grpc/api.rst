@@ -97,6 +97,8 @@ Streaming and Callbacks
    * - ``GetIncumbents``
      - MIP incumbent solutions since a given index (only if the job was
        submitted with ``enable_incumbents``; otherwise the list is empty).
+       ``enable_incumbent_set`` registers a server-side set-solution callback
+       that echoes the last get-incumbent into the solver (disables presolve).
 
 Messages and Constraints
 ========================

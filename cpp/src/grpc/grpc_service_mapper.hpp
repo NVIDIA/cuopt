@@ -43,7 +43,8 @@ template <typename i_t, typename f_t>
 cuopt::remote::SubmitJobRequest build_mip_submit_request(
   const cpu_optimization_problem_t<i_t, f_t>& cpu_problem,
   const mip_solver_settings_t<i_t, f_t>& settings,
-  bool enable_incumbents = false);
+  bool enable_incumbents    = false,
+  bool enable_incumbent_set = false);
 
 /**
  * @brief Build a gRPC StatusRequest.

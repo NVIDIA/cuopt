@@ -84,6 +84,7 @@ template <typename i_t, typename f_t>
 void populate_chunked_header_mip(const cpu_optimization_problem_t<i_t, f_t>& cpu_problem,
                                  const mip_solver_settings_t<i_t, f_t>& settings,
                                  bool enable_incumbents,
+                                 bool enable_incumbent_set,
                                  cuopt::remote::ChunkedProblemHeader* header);
 
 /**
