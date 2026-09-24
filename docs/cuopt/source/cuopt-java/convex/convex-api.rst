@@ -101,11 +101,14 @@ The settings API also includes:
 * the static setting accessors;
 * ``setMethod`` and ``setPDLPSolverMode``;
 * ``setOptimalityTolerance``;
-* ``setNumGpus``, ``setUseDistributedPdlp``, and ``setDistributedPdlpPartitioner``,
-  for distributing a PDLP solve across multiple GPUs. Distributed PDLP requires
+* ``setNumGpus``, ``setUseMpdlp``, and ``setMpdlpPartitioner``,
+  for distributing a PDLP solve across multiple GPUs (multi-GPU PDLP). Multi-GPU PDLP requires
   ``SolverMethod.PDLP`` and ``setNumGpus(-1)`` (all GPUs visible to the process, which
-  may be a single GPU) or a value greater than 1. ``setDistributedPdlpPartitioner`` takes
-  an int: ``0`` Auto (default), ``1`` KaMinPar, or ``2`` RoundRobin.
+  may be a single GPU) or a value greater than 1. Multi-GPU sharding occurs only
+  when more than one GPU is actually selected. ``setMpdlpPartitioner`` takes
+  an int: ``0`` Auto (default), ``1`` KaMinPar, or ``2`` RoundRobin. With 1 GPU there is
+  nothing to partition, so both strategies are equivalent no-ops; Auto picks RoundRobin
+  there because it skips KaMinPar's graph-partitioning work for no benefit.
 
 ``SolverMethod`` includes ``PDLP``, ``DUAL_SIMPLEX``, ``BARRIER`` and
 ``CONCURRENT``. ``PDLPSolverMode`` exposes the supported PDLP solver modes.
