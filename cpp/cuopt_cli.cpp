@@ -524,7 +524,8 @@ int main(int argc, char* argv[])
       settings.get_pdlp_settings().num_gpus = requested_gpus;
     }
     if (requested_gpus > device_count) {
-      CUOPT_LOG_ERROR("num_gpus=%d exceeds the number of visible CUDA devices (%d).",
+      auto log = dummy_logger(settings);
+      CUOPT_LOG_ERROR("num-gpus=%d exceeds the number of visible CUDA devices: %d. Aborting solve.",
                       requested_gpus,
                       device_count);
       return -1;
