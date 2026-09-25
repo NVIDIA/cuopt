@@ -22,6 +22,7 @@
 #include <argparse/argparse.hpp>
 #include <cuopt/version_config.hpp>
 
+#include <grpc/impl/channel_arg_names.h>
 #include <pthread.h>
 
 // Defined in grpc_service_impl.cpp
@@ -331,6 +332,11 @@ int main(int argc, char** argv)
   auto service = create_cuopt_grpc_service();
 
   ServerBuilder builder;
+  // gRPC enables SO_REUSEPORT by default, letting a second server silently
+  // bind an already-served port -- each process has its own job_tracker,
+  // so a request landing on the other process gets "Job ID not found".
+  // Always off; use --port for an independent second instance.
+  builder.AddChannelArgument<int>(GRPC_ARG_ALLOW_REUSEPORT, 0);
   builder.AddListeningPort(server_address, creds);
   builder.RegisterService(service.get());
   const int64_t max_bytes = server_max_message_bytes();
@@ -351,6 +357,10 @@ int main(int argc, char** argv)
   std::unique_ptr<Server> server(builder.BuildAndStart());
   if (!server) {
     SERVER_LOG_ERROR("[Server] Failed to bind to %s", server_address);
+    SERVER_LOG_ERROR(
+      "[Server] A server may already be listening there; check with "
+      "`pgrep -af cuopt_grpc_server`. Use --port for an independent second "
+      "instance.");
     shutdown_all();
     return 1;
   }

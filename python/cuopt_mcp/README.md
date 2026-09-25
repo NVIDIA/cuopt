@@ -18,6 +18,8 @@ speaks gRPC to the backend.
 pip install cuopt_mcp
 ```
 
+Not published yet — until then, build from source (see [Testing](#build-and-install-from-source)).
+
 ## Configure
 
 Start the solver backend on a GPU host (5001 is `cuopt_grpc_server`'s own
@@ -50,6 +52,7 @@ needed) whenever `gpu-host` isn't a trusted local network.
 
 | Tool | Purpose |
 |------|---------|
+| `cuopt_health` | Report the configured gRPC target and whether it answers |
 | `cuopt_solve_lp` | Submit an LP; returns a `job_id` immediately |
 | `cuopt_solve_milp` | Submit a MILP; returns a `job_id` immediately |
 | `cuopt_status` | Poll job state |
@@ -62,6 +65,78 @@ needed) whenever `gpu-host` isn't a trusted local network.
 
 Solves are asynchronous by design. A blocking call would exceed the MCP
 client timeout on any realistic MILP and would make cancellation impossible.
+
+## Testing
+
+### Build and install from source
+
+```bash
+conda activate ./.cuopt_env          # the repo-local env, see CONTRIBUTING.md
+./build.sh cuopt_mcp                 # installs into the active env
+```
+
+This installs as plain `cuopt_mcp` (unsuffixed), matching its `cuopt`
+dependency -- `./build.sh` installs every Python package against the
+unsuffixed, CPU-only `cuopt`.
+
+### Smoke test
+
+```bash
+cuopt_grpc_server --port 5001 &
+python -c "from cuopt_mcp import tools; print(tools.health())"
+```
+
+`reachable: true` means the MCP server can see the backend. If it is false the
+message names the endpoint and what to check — a wrong `CUOPT_REMOTE_PORT` and
+a server that is not running look identical from the client side, so it does
+not assume either.
+
+### Test suite
+
+```bash
+# Unit tests: no GPU, no server, stubbed gRPC client
+pytest python/cuopt_mcp/tests -q
+
+# Plus end-to-end against a live server, over real MCP stdio
+CUOPT_TEST_GRPC_PORT=5001 pytest python/cuopt_mcp/tests -q
+```
+
+Without `CUOPT_TEST_GRPC_PORT` the end-to-end tests skip rather than fail.
+
+**The end-to-end fixture launches `cuopt-mcp` from `PATH`**, not from the
+interpreter running pytest. If another environment shadows the one you built,
+the suite silently exercises that install instead — which surfaces as
+unrelated-looking failures such as `undefined symbol: _ZTIN3rmm...bad_allocE`
+from an ABI mismatch. Check with `which cuopt-mcp` before believing a failure.
+
+### Driving it from an MCP client
+
+Point the client at the built entry point and confirm with `cuopt_health`
+before submitting a model — every other tool reports a connection problem only
+after a model has been built.
+
+```json
+{
+  "mcpServers": {
+    "cuopt": {
+      "command": "/path/to/.cuopt_env/bin/cuopt-mcp",
+      "env": { "CUOPT_REMOTE_HOST": "localhost", "CUOPT_REMOTE_PORT": "5001" }
+    }
+  }
+}
+```
+
+A minimal end-to-end exercise: `cuopt_health`, then `cuopt_solve_lp` with a
+small JSON model, then `cuopt_status` until terminal, then `cuopt_result`.
+
+### If the backend looks unreachable
+
+`cuopt-mcp` never starts or stops `cuopt_grpc_server`. Before starting one,
+check whether one is already running on the configured port:
+
+```bash
+pgrep -af cuopt_grpc_server
+```
 
 ## Design notes
 
