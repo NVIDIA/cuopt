@@ -129,7 +129,25 @@ cuOpt will stop at the first limit (iteration or time) reached.
 Number of GPUs
 ^^^^^^^^^^^^^^
 
-``CUOPT_NUM_GPUS`` controls the number of GPUs to use for the solve. This setting is only relevant for LP problems that uses concurrent mode and supports up to 2 GPUs at the moment. Using this mode will run PDLP and barrier in parallel on different GPUs to avoid sharing single GPU resources.
+``CUOPT_NUM_GPUS`` controls the number of GPUs to use for the solve. In concurrent mode, this
+supports up to 2 GPUs, running PDLP and barrier in parallel on different GPUs to avoid sharing
+single GPU resources.
+
+With ``CUOPT_METHOD`` set to PDLP, ``CUOPT_NUM_GPUS`` set to ``-1`` (all GPUs visible to the
+process) or a value greater than 1 instead dispatches to multi-GPU PDLP, which shards the
+problem across GPUs. See ``CUOPT_MULTIGPU_PDLP_PARTITIONER`` below for how the problem is
+partitioned. Multi-GPU PDLP requires the C API's MPS/QPS-model solve entry point and does not
+support QP/QCQP models, warm starts, or initial primal/dual solutions.
+
+Multi-GPU PDLP Partitioner
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_MULTIGPU_PDLP_PARTITIONER`` selects how multi-GPU PDLP splits the problem across GPUs:
+``0`` Auto (default; RoundRobin on 1 GPU, KaMinPar otherwise), ``1`` KaMinPar (multi-threaded
+graph partitioner, better balanced shards at the cost of extra partitioning time), or ``2``
+RoundRobin (no partitioning graph built). This constant was previously named
+``CUOPT_DISTRIBUTED_PDLP_PARTITIONER``; the separate ``CUOPT_USE_DISTRIBUTED_PDLP`` toggle has
+been removed, since dispatch is fully determined by ``CUOPT_METHOD`` and ``CUOPT_NUM_GPUS``.
 
 
 Infeasibility Detection

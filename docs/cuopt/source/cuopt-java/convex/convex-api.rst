@@ -101,11 +101,10 @@ The settings API also includes:
 * the static setting accessors;
 * ``setMethod`` and ``setPDLPSolverMode``;
 * ``setOptimalityTolerance``;
-* ``setNumGpus`` and ``setMpdlpPartitioner``, for distributing a PDLP solve across multiple
-  GPUs (multi-GPU PDLP). Multi-GPU PDLP is used whenever ``SolverMethod.PDLP`` and
-  ``setNumGpus(-1)`` (all GPUs visible to the process, which may be a single GPU) or a value
-  greater than 1; sharding only happens when more than one GPU is actually selected. There is
-  no separate on/off switch. ``setMpdlpPartitioner`` takes an int: ``0`` Auto (default),
+* ``setNumGpus`` and ``setMpdlpPartitioner``, settings for multi-GPU PDLP. Multi-GPU PDLP
+  dispatch requires the MPS/QPS-model solve entry point (used by the CLI and gRPC service),
+  which the Java bindings do not yet expose; ``solve()`` here always solves on a single GPU,
+  regardless of ``setNumGpus``. ``setMpdlpPartitioner`` takes an int: ``0`` Auto (default),
   ``1`` KaMinPar, or ``2`` RoundRobin.
 
 ``SolverMethod`` includes ``PDLP``, ``DUAL_SIMPLEX``, ``BARRIER`` and

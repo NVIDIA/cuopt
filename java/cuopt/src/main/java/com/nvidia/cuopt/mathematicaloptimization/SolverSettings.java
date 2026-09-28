@@ -80,10 +80,11 @@ public final class SolverSettings implements AutoCloseable {
    * Set the partitioner used to split the problem across GPUs for multi-GPU PDLP: {@code 0} Auto
    * (default; RoundRobin on 1 GPU, KaMinPar otherwise), {@code 1} KaMinPar (multi-threaded graph
    * partitioner, better balanced shards at the cost of extra partitioning time), or {@code 2}
-   * RoundRobin (no partitioning graph built). Multi-GPU PDLP is used whenever {@link #setMethod}
-   * is {@link SolverMethod#PDLP} and {@link #setNumGpus} is {@code -1} or greater than 1;
-   * sharding only happens when more than one GPU is actually selected. There is no separate
-   * on/off switch - it is not a user-settable parameter.
+   * RoundRobin (no partitioning graph built).
+   *
+   * <p>Multi-GPU PDLP dispatch requires the MPS/QPS-model solve entry point (used by the CLI and
+   * gRPC service), which these Java bindings do not yet expose; {@code solve()} here always
+   * solves on a single GPU, regardless of {@link #setNumGpus}.
    */
   public SolverSettings setMpdlpPartitioner(int partitioner) {
     return setSetting(CuOptConstants.CUOPT_MULTIGPU_PDLP_PARTITIONER, partitioner);
