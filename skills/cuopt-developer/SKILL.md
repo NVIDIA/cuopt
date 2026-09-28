@@ -98,6 +98,12 @@ When adding an API — a setter, endpoint, parameter, or a layer that wraps anot
 - **Derive, don't duplicate.** A second copy of a surface (a hand-maintained list of the methods/fields another layer already defines, or shadow state kept in parallel with the real data) drifts the moment someone forgets to update it. Derive it from the single source instead, so there is nothing to keep in sync.
 - **Fail loud, not silent.** Prefer a design where forgetting a step is caught automatically over one that quietly does the wrong thing. When a mechanism leans on a convention, add a test that asserts full coverage, so a case that slips the convention fails CI instead of silently misbehaving.
 
+### 7. Sanitize Internal Context Before It Becomes Public
+
+Pasted Slack threads, tickets, or other internal context often carry customer or company names, used to explain *why* a change matters. That context has a narrower audience than a commit message, PR description, or PR comment on a public repo — those are permanent and world-readable the moment they're pushed. Before writing any of the above, strip customer/company names and other business-confidential details, even when nothing in the request says not to share them. State the motivation in generic terms instead (e.g. "a REST client hitting the protobuf 2GB limit on large problems" rather than naming who hit it).
+
+If it's already been pushed, treat the leak as not fully contained: force-pushing a corrected commit does not delete the old commit object from GitHub — it stays fetchable by SHA until GC'd, and editing a PR/issue body or comment leaves its old content in edit history unless a human deletes that specific revision from the web UI (Options → Delete revision from history; there's no API for it). Flag this exposure to the user rather than assuming a rewrite or edit fully removes it.
+
 ---
 
 ## Before You Start: Required Questions

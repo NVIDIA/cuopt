@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -12,6 +12,8 @@
 
 #include <atomic>
 #include <memory>
+#include <thread>
+#include <vector>
 
 namespace cuopt::mathematical_optimization::mip {
 
@@ -27,11 +29,18 @@ class early_cpufj_t : public early_heuristic_t<i_t, f_t, early_cpufj_t<i_t, f_t>
 
   static constexpr const char* name() { return "CPUFJ"; }
 
-  void start();
+  void start(bool low_latency = false);
   void stop();
 
  private:
-  std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_cpu_;
+  friend class early_heuristic_t<i_t, f_t, early_cpufj_t<i_t, f_t>>;
+
+  std::vector<f_t> to_user_assignment(const std::vector<f_t>& assignment);
+
+  const optimization_problem_t<i_t, f_t>* problem_ptr_{nullptr};
+  typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances_;
+  std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> climber_;
+  std::thread worker_;
   std::atomic<bool> preemption_flag_{false};
   // Explicit seed for this climber's FJ RNG, resolved once from the solve's base seed (see
   // mip_solver_context_t::base_seed) since this heuristic runs before that context exists.
