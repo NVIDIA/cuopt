@@ -829,7 +829,8 @@ def getincumbent(
     accept: Optional[str] = Header(default=None),
 ):
     try:
-        accept = _resolve_accept(accept)
+        # Legacy GET incumbents maps Accept */* to JSON.
+        accept = _resolve_accept(accept, fallback=mime_json)
         _require_uuid(id)
         meta = _get_job(id)
         if meta is not None and meta.get("kind") == "vrp":
