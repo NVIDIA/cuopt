@@ -1645,7 +1645,7 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
       if (lp_status == dual_status_t::OPTIMAL) {
         std::vector<i_t> fractional;
         i_t num_fractional =
-          fractional_variables(settings_, worker->leaf_solution.x, var_types_, fractional);
+          fractional_variables(settings_, worker->leaf_solution.x, worker->var_types, fractional);
         if (settings_.dual_degenerate_pivots != 0) {
           auto pivot_settings          = settings_;
           pivot_settings.log           = lp_settings.log;
@@ -1654,7 +1654,7 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
           i_t num_integer_increased    = pivot_out_integer_variables(worker->leaf_problem,
                                                                   pivot_settings,
                                                                   worker->new_slacks,
-                                                                  var_types_,
+                                                                  worker->var_types,
                                                                   exploration_stats_.start_time,
                                                                   worker->basic_list,
                                                                   worker->nonbasic_list,
