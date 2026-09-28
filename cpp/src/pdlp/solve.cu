@@ -2910,7 +2910,8 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
   // beginning.
   if (!is_batch_mode && settings.method == method_t::PDLP &&
       (settings.num_gpus == -1 || settings.num_gpus > 1)) {
-    auto mps = op_problem_to_mps_data_model(*gpu_prob);
+    cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> mps =
+      op_problem_to_mps_data_model(*gpu_prob);
     auto gpu_solution =
       solve_lp(gpu_prob->get_handle_ptr(), mps, settings, problem_checking, use_pdlp_solver_mode);
     return std::make_unique<gpu_lp_solution_t<i_t, f_t>>(std::move(gpu_solution));
