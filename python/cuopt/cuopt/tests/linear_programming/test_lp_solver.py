@@ -24,6 +24,7 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_ITERATION_LIMIT,
     CUOPT_METHOD,
     CUOPT_MIP_HEURISTICS_ONLY,
+    CUOPT_PDLP_HYPER_ENABLE_CURTIS_REID_SCALING,
     CUOPT_PDLP_SOLVER_MODE,
     CUOPT_PRIMAL_INFEASIBLE_TOLERANCE,
     CUOPT_RELATIVE_DUAL_TOLERANCE,
@@ -289,6 +290,8 @@ def _non_default_solver_param_value(name, current):
         return 0 if int(current) == 1 else 1
     if name == "pdlp_precision":
         return 1 if int(current) == 0 else 0
+    if name == "primal_simplex_pricing":
+        return 0 if int(current) == 1 else 1
     if name == "mip_objective_step":
         return 0 if int(current) == 1 else 1
     if isinstance(current, bool):
@@ -530,6 +533,8 @@ def test_parse_var_names():
     settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
     settings.set_parameter(CUOPT_PDLP_SOLVER_MODE, PDLPSolverMode.Stable2)
     settings.set_parameter(CUOPT_PRESOLVE, 0)
+    # Expected primal values below were recorded prior to implementing Curtis-Reid scaling.
+    settings.set_parameter(CUOPT_PDLP_HYPER_ENABLE_CURTIS_REID_SCALING, False)
     solution = solver.Solve(data_model_obj, settings)
 
     expected_dict = {

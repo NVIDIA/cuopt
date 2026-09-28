@@ -318,7 +318,10 @@ def _job_not_found(job_id):
     )
 
 
-def _resolve_accept(accept, fallback=mime_json):
+def _resolve_accept(accept, fallback=mime_msgpack):
+    # Wildcards match encode(): */* and application/* are msgpack unless
+    # a caller supplies a different fallback (POST /cuopt/request uses
+    # Content-Type; GET solution uses the stored request accept).
     if not accept:
         return fallback
     if accept not in [mime_json, mime_msgpack, mime_zlib] + mime_wild:
@@ -757,7 +760,7 @@ def _require_grpc_healthy():
 )
 def getsolverlogs(
     id: str,
-    accept: str = Header(default="application/json"),
+    accept: Optional[str] = Header(default=None),
     frombyte: Optional[int] = Query(default=0),
 ):
     try:
@@ -803,7 +806,7 @@ def getsolverlogs(
 @app.delete("/cuopt/log/{id}", responses=DeleteResponse)
 def deletesolverlogs(
     id: str,
-    accept: str = Header(default="application/json"),
+    accept: Optional[str] = Header(default=None),
 ):
     try:
         accept = _resolve_accept(accept)
@@ -823,7 +826,7 @@ def deletesolverlogs(
 )
 def getincumbent(
     id: str,
-    accept: str = Header(default="application/json"),
+    accept: Optional[str] = Header(default=None),
 ):
     try:
         accept = _resolve_accept(accept)
@@ -877,7 +880,7 @@ async def postsolution():
 @app.delete("/cuopt/solution/{id}", responses=DeleteResponse)
 def deletesolution(
     id: str = Path(...),
-    accept: str = Header(default="application/json"),
+    accept: Optional[str] = Header(default=None),
 ):
     try:
         accept = _resolve_accept(accept)
@@ -909,7 +912,7 @@ def deletesolution(
 )
 def deleterequest(
     id: str = Path(...),
-    accept: str = Header(default="application/json"),
+    accept: Optional[str] = Header(default=None),
     running: Optional[bool] = Query(default=None),
     queued: Optional[bool] = Query(default=None),
     cached: Optional[bool] = Query(default=None),
@@ -1017,13 +1020,13 @@ def getwarmstart(id: str):
 )
 def getsolution(
     id: str,
-    accept: str = Header(default="application/json"),
+    accept: Optional[str] = Header(default=None),
 ):
     try:
-        fallback = mime_json
+        fallback = mime_msgpack
         meta = _get_job(id)
         if meta is not None:
-            fallback = meta.get("accept", mime_json)
+            fallback = meta.get("accept", mime_msgpack)
         accept = _resolve_accept(accept, fallback)
         if meta is not None and meta.get("validation_only"):
             return encode(meta["validation_result"], accept, job_result=True)
@@ -1070,7 +1073,7 @@ def getsolution(
 )
 def getrequest(
     id: str,
-    accept: str = Header(default="application/json"),
+    accept: Optional[str] = Header(default=None),
 ):
     try:
         accept = _resolve_accept(accept)
@@ -1342,7 +1345,7 @@ async def postrequest(
     cuopt_data_file: str = Header(default=None),
     cuopt_result_file: str = Header(default=None),
     client_version: str = Header(default=None),
-    accept: str = Header(default="application/json"),
+    accept: Optional[str] = Header(default=None),
     content_type: str = Header(default="application/json"),
     content_length: int = Header(default=0),
 ):
