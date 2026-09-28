@@ -28,7 +28,7 @@ bool check_for_dual_degeneracy(const simplex::lp_solution_t<i_t, f_t>& solution,
                                std::vector<i_t>& zero_reduced_costs_vars_nonbasic_index);
 
 template <typename i_t, typename f_t>
-void fast_slack_integer_pivots(const simplex::lp_problem_t<i_t, f_t>& lp,
+bool fast_slack_integer_pivots(const simplex::lp_problem_t<i_t, f_t>& lp,
                                const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
                                const std::vector<i_t>& fractional,
                                const std::vector<i_t>& row_to_slack,
@@ -58,6 +58,8 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
                                 i_t& num_fractional,
                                 std::vector<i_t>& fractional);
 
+// Returns 0 on success, 1 on candidate rejection, or -1 when the trial state is invalid
+// and the caller must abort the trial.
 template <typename i_t, typename f_t>
 i_t apply_delta_x_for_integer_pivot(const simplex::lp_problem_t<i_t, f_t>& lp,
                                     const simplex::simplex_solver_settings_t<i_t, f_t>& settings,

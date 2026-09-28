@@ -408,15 +408,14 @@ void dual_degenerate_feasibility_pump(const simplex::lp_problem_t<i_t, f_t>& lp,
   std::vector<f_t> b_reduced = lp.rhs;
   for (i_t j = 0; j < lp.num_cols; j++) {
     if (vstatus[j] == variable_status_t::BASIC || std::abs(soln.z[j]) <= settings.tight_tol) {
-      // PASS
-    } else {
-      const i_t col_start = lp.A.col_start[j];
-      const i_t col_end   = lp.A.col_start[j + 1];
-      for (i_t p = col_start; p < col_end; p++) {
-        const i_t i     = lp.A.i[p];
-        const f_t value = lp.A.x[p];
-        b_reduced[i] -= value * soln.x[j];
-      }
+      continue;
+    }
+    const i_t col_start = lp.A.col_start[j];
+    const i_t col_end   = lp.A.col_start[j + 1];
+    for (i_t p = col_start; p < col_end; p++) {
+      const i_t i     = lp.A.i[p];
+      const f_t value = lp.A.x[p];
+      b_reduced[i] -= value * soln.x[j];
     }
   }
   lp_reduced.rhs       = b_reduced;
@@ -813,15 +812,7 @@ i_t apply_delta_x_for_integer_pivot(const simplex::lp_problem_t<i_t, f_t>& lp,
   bool binding_integer =
     leaving_index != -1 &&
     is_fractional(solution.x[leaving_index], var_types[leaving_index], settings.integer_tol);
-  if (!binding_integer) {
-    if (leaving_index == -1) {
-      return -4;  // unbounded or entering hit its own bound
-    } else if (var_types[leaving_index] != variable_type_t::INTEGER) {
-      return -5;  // continuous variable won ratio test
-    } else {
-      return -6;  // integer variable won but it's not fractional (already at integer value)
-    }
-  }
+  if (!binding_integer) { return 1; }
 
   std::vector<f_t> test_x = solution.x;
   i_t integer_destroyed   = 0;
@@ -837,7 +828,7 @@ i_t apply_delta_x_for_integer_pivot(const simplex::lp_problem_t<i_t, f_t>& lp,
     }
   }
   // Require a strict net decrease in fractional integers.
-  if (integer_destroyed >= 0) { return -2; }
+  if (integer_destroyed >= 0) { return 1; }
 
   if (utilde_sparse.i.empty()) {
     // Recover B^{-1} abar from the direction before changing the basis:
@@ -885,40 +876,27 @@ i_t apply_delta_x_for_integer_pivot(const simplex::lp_problem_t<i_t, f_t>& lp,
   basis_update.b_transpose_solve(es_sparse, solution_sparse, UTsol_sparse);
   const i_t recommend_refactor = basis_update.update(utilde_sparse, UTsol_sparse, basic_leaving);
   if (recommend_refactor == 1) {
-    csc_matrix_t<i_t, f_t> L(m, m, 1);
-    csc_matrix_t<i_t, f_t> U(m, m, 1);
-    std::vector<i_t> pinv(m);
-    std::vector<i_t> p(m);
-    std::vector<i_t> q(m);
-    std::vector<i_t> deficient;
-    std::vector<i_t> slacks_needed;
-    f_t factorize_work_estimate = 0.0;
-    const i_t rank              = factorize_basis(lp.A,
-                                     settings,
-                                     basic_list,
-                                     start_time,
-                                     L,
-                                     U,
-                                     p,
-                                     pinv,
-                                     q,
-                                     deficient,
-                                     slacks_needed,
-                                     factorize_work_estimate);
-    if (rank == CONCURRENT_HALT_RETURN || rank == TIME_LIMIT_RETURN) { return -3; }
-    if (rank < 0 || rank != lp.num_rows) { return -3; }
-    simplex::reorder_basic_list(q, basic_list);
+    i_t deficient_repaired    = 0;
+    const i_t refactor_status = basis_update.refactor_basis(lp.A,
+                                                            settings,
+                                                            lp.lower,
+                                                            lp.upper,
+                                                            start_time,
+                                                            basic_list,
+                                                            nonbasic_list,
+                                                            vstatus,
+                                                            deficient_repaired);
+    if (refactor_status != 0 || deficient_repaired > 0) { return -1; }
     for (i_t k = 0; k < m; ++k) {
       variable_to_basic[basic_list[k]] = k;
     }
-    basis_update.reset(L, U, p);
   }
 
   return 0;
 }
 
 template <typename i_t, typename f_t>
-void fast_slack_integer_pivots(const simplex::lp_problem_t<i_t, f_t>& lp,
+bool fast_slack_integer_pivots(const simplex::lp_problem_t<i_t, f_t>& lp,
                                const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
                                const std::vector<i_t>& fractional,
                                const std::vector<i_t>& row_to_slack,
@@ -1076,8 +1054,7 @@ void fast_slack_integer_pivots(const simplex::lp_problem_t<i_t, f_t>& lp,
                                                 soln,
                                                 basis_update,
                                                 work_estimate);
-    // apply_delta_x_for_integer_pivot only mutates vstatus when the pivot actually fires,
-    // so entering_index transitioning to BASIC is a reliable success signal.
+    if (error == -1) { return false; }
     if (!error && settings.inside_mip < 2) {
       settings.log.printf(
         "Fast candidate pivot succeeded: j=%d entering slack=%d row=%d\n", j, entering_index, row);
@@ -1097,6 +1074,7 @@ void fast_slack_integer_pivots(const simplex::lp_problem_t<i_t, f_t>& lp,
                         num_candidates,
                         toc(loop_start));
   }
+  return true;
 }
 
 template <typename i_t, typename f_t>
@@ -1187,21 +1165,23 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
   for (i_t k = 0; k < lp.num_rows; k++) {
     variable_to_basic[basic_list_copy[k]] = k;
   }
-  fast_slack_integer_pivots(lp,
-                            settings,
-                            fractional,
-                            row_to_slack,
-                            solution,
-                            var_types,
-                            start_time,
-                            basic_list_copy,
-                            nonbasic_list_copy,
-                            nonbasic_index,
-                            variable_to_basic,
-                            vstatus_copy,
-                            soln_copy,
-                            basis_update_copy,
-                            work_estimate);
+  if (!fast_slack_integer_pivots(lp,
+                                 settings,
+                                 fractional,
+                                 row_to_slack,
+                                 solution,
+                                 var_types,
+                                 start_time,
+                                 basic_list_copy,
+                                 nonbasic_list_copy,
+                                 nonbasic_index,
+                                 variable_to_basic,
+                                 vstatus_copy,
+                                 soln_copy,
+                                 basis_update_copy,
+                                 work_estimate)) {
+    return 0;
+  }
 
   std::vector<i_t> work_list = fractional;
 
@@ -1216,21 +1196,17 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
   // Track which entering variables are actually tried (to detect duplication)
   std::vector<i_t> entering_tried_count(lp.num_cols, 0);
 
-  i_t worklist_total_processed   = 0;
-  i_t worklist_skipped           = 0;
-  i_t worklist_btran_done        = 0;
-  i_t worklist_ftran_done        = 0;
-  i_t worklist_pivots_succeeded  = 0;
-  i_t worklist_readded           = 0;
-  f_t worklist_btran_time        = 0.0;
-  f_t worklist_dot_time          = 0.0;
-  f_t worklist_ftran_time        = 0.0;
-  i_t worklist_no_candidates     = 0;  // target had no nonzero dot_q
-  i_t worklist_ratio_test_fail   = 0;  // ratio test didn't pick a fractional integer (error -1)
-  i_t worklist_net_increase_fail = 0;  // pivot would net-increase fractionals (error -2)
-  i_t worklist_unbounded         = 0;  // entering hit its own bound or unbounded (error -4)
-  i_t worklist_continuous_won    = 0;  // continuous variable won ratio test (error -5)
-  i_t worklist_nonfrac_int_won   = 0;  // non-fractional integer won ratio test (error -6)
+  i_t worklist_total_processed  = 0;
+  i_t worklist_skipped          = 0;
+  i_t worklist_btran_done       = 0;
+  i_t worklist_ftran_done       = 0;
+  i_t worklist_pivots_succeeded = 0;
+  i_t worklist_readded          = 0;
+  f_t worklist_btran_time       = 0.0;
+  f_t worklist_dot_time         = 0.0;
+  f_t worklist_ftran_time       = 0.0;
+  i_t worklist_no_candidates    = 0;  // target had no nonzero dot_q
+  i_t candidates_rejected       = 0;
 
   f_t worklist_loop_start = tic();
   f_t worklist_last_log   = tic();
@@ -1395,19 +1371,8 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
                                                   basis_update_copy,
                                                   work_estimate);
 
-      if (error == -2) { worklist_net_increase_fail++; }
-      if (error == -4) {
-        worklist_unbounded++;
-        worklist_ratio_test_fail++;
-      }
-      if (error == -5) {
-        worklist_continuous_won++;
-        worklist_ratio_test_fail++;
-      }
-      if (error == -6) {
-        worklist_nonfrac_int_won++;
-        worklist_ratio_test_fail++;
-      }
+      if (error == -1) { return 0; }
+      if (error == 1) { candidates_rejected++; }
 
       if (!error) {
         worklist_pivots_succeeded++;
@@ -1435,16 +1400,12 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
     if (toc(worklist_last_log) > 1.0) {
       if (settings.inside_mip < 2) {
         settings.log.printf(
-          "Worklist progress: %d/%d processed, %d pivots, %d ratio_fail (unb=%d cont=%d nfint=%d), "
-          "%d net_inc_fail, %d no_cand, %.2f seconds\n",
+          "Worklist progress: %d/%d processed, %d pivots, %d candidates_rejected, "
+          "%d no_cand, %.2f seconds\n",
           worklist_total_processed,
           static_cast<i_t>(fractional.size()),
           worklist_pivots_succeeded,
-          worklist_ratio_test_fail,
-          worklist_unbounded,
-          worklist_continuous_won,
-          worklist_nonfrac_int_won,
-          worklist_net_increase_fail,
+          candidates_rejected,
           worklist_no_candidates,
           toc(worklist_loop_start));
       }
@@ -1482,8 +1443,7 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
     settings.log.printf(
       "Worklist stats: processed=%d skipped=%d btran=%d ftran=%d pivots=%d readded=%d "
       "btran_time=%.2f dot_time=%.2f ftran_time=%.2f zero_rc_vars=%d "
-      "no_candidates=%d ratio_test_fail=%d (unbounded=%d continuous_won=%d nonfrac_int_won=%d) "
-      "net_increase_fail=%d\n",
+      "no_candidates=%d candidates_rejected=%d\n",
       worklist_total_processed,
       worklist_skipped,
       worklist_btran_done,
@@ -1495,11 +1455,7 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
       worklist_ftran_time,
       num_zero_reduced_costs_vars,
       worklist_no_candidates,
-      worklist_ratio_test_fail,
-      worklist_unbounded,
-      worklist_continuous_won,
-      worklist_nonfrac_int_won,
-      worklist_net_increase_fail);
+      candidates_rejected);
   }
 
   std::vector<i_t> new_fractional;
@@ -1533,7 +1489,7 @@ template bool check_for_dual_degeneracy<int, double>(
   std::vector<int>&,
   std::vector<int>&);
 
-template void fast_slack_integer_pivots<int, double>(
+template bool fast_slack_integer_pivots<int, double>(
   const simplex::lp_problem_t<int, double>&,
   const simplex::simplex_solver_settings_t<int, double>&,
   const std::vector<int>&,

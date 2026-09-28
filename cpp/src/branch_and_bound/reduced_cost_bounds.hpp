@@ -7,8 +7,13 @@
 
 #pragma once
 
+#include <dual_simplex/initial_basis.hpp>
+#include <dual_simplex/presolve.hpp>
+#include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/user_problem.hpp>
 
+#include <algorithm>
+#include <cmath>
 #include <limits>
 #include <vector>
 
@@ -90,6 +95,73 @@ class reduced_cost_bounds_t {
       }
     } else {
       return kVariableOutOfBounds;
+    }
+  }
+
+  void update_reduced_cost_bounds(const simplex::lp_problem_t<i_t, f_t>& lp,
+                                  const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+                                  const std::vector<simplex::variable_type_t>& var_types,
+                                  f_t relaxation_objective,
+                                  const std::vector<f_t>& reduced_costs,
+                                  const std::vector<simplex::variable_status_t>& var_status)
+  {
+    const i_t n         = num_cols();
+    const f_t threshold = 100.0 * settings.integer_tol;
+    const f_t tol       = 1e-2;
+    for (i_t j = 0; j < n; ++j) {
+      if (std::isfinite(reduced_costs[j]) && std::abs(reduced_costs[j]) > threshold &&
+          var_status[j] != simplex::variable_status_t::BASIC) {
+        const f_t lower_j = lp.lower[j];
+        const f_t upper_j = lp.upper[j];
+
+        // x_j <= l_j + (incumbent_objective - relaxation_objective) / reduced_costs[j]
+        // Let u_tilde_j = u_j - epsilon, so that floor(u_tilde_j) = u_j - 1
+        // We want to solve for what the incumbent objective needs to be to make
+        // x_j <= u_tilde_j
+        // This means l_j + (incumbent_objective - relaxation_objective) / reduced_costs[j] <=
+        // u_tilde_j Or equivalently, incumbent_objective <= relaxation_objective + reduced_costs[j]
+        // * (u_tilde_j - l_j) when reduced_costs[j] > 0
+        if (lower_j > -inf && reduced_costs[j] > 0) {
+          const f_t u_tilde_j = var_types[j] == simplex::variable_type_t::INTEGER
+                                  ? upper_j - tol
+                                  : std::max(upper_j - 1.0, lower_j);
+          const f_t bound_j =
+            var_types[j] == simplex::variable_type_t::INTEGER ? std::floor(u_tilde_j) : u_tilde_j;
+          const f_t diff        = u_tilde_j - lower_j;
+          const f_t objective_j = relaxation_objective + diff * reduced_costs[j];
+          if (((var_types[j] == simplex::variable_type_t::INTEGER && bound_j == upper_j - 1.0) ||
+               var_types[j] != simplex::variable_type_t::INTEGER) &&
+              std::isfinite(objective_j) && std::isfinite(bound_j)) {
+            i_t info = add_upper_bound(j, objective_j, bound_j);
+            // settings.log.printf("Added objective bound pair (%e, %e) for variable %d upper bound.
+            // Info %d\n", objective_j, bound_j, j, info);
+          }
+        }
+
+        // x_j >= u_j + (incumbent_objective - relaxation_objective) / reduced_costs[j] when
+        // reduced_costs[j] < 0 Let l_tilde_j = l_j + epsilon, so that ceil(l_tilde_j) = l_j + 1 We
+        // want to solve for what the incumbent objective needs to be to make x_j >= l_tilde_j This
+        // means u_j + (incumbent_objective - relaxation_objective) / reduced_costs[j] >= l_tilde_j
+        // Or equivalently, incumbent_objective <=  relaxation_objective + reduced_costs[j] *
+        // (l_tilde_j
+        // - u_j) when reduced_costs[j] < 0
+        if (upper_j < inf && reduced_costs[j] < 0) {
+          const f_t l_tilde_j = var_types[j] == simplex::variable_type_t::INTEGER
+                                  ? lower_j + tol
+                                  : std::min(lower_j + 1.0, upper_j);
+          const f_t bound_j =
+            var_types[j] == simplex::variable_type_t::INTEGER ? std::ceil(l_tilde_j) : l_tilde_j;
+          const f_t diff        = l_tilde_j - upper_j;
+          const f_t objective_j = relaxation_objective + diff * reduced_costs[j];
+          if (((var_types[j] == simplex::variable_type_t::INTEGER && bound_j == lower_j + 1.0) ||
+               var_types[j] != simplex::variable_type_t::INTEGER) &&
+              std::isfinite(objective_j) && std::isfinite(bound_j)) {
+            i_t info = add_lower_bound(j, objective_j, bound_j);
+            // settings.log.printf("Added objective bound pair (%e, %e) for variable %d lower bound.
+            // Info %d\n", objective_j, bound_j, j, info);
+          }
+        }
+      }
     }
   }
 

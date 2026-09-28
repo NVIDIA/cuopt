@@ -451,132 +451,6 @@ void branch_and_bound_t<i_t, f_t>::report(const lp_problem_t<i_t, f_t>& lp,
 }
 
 template <typename i_t, typename f_t>
-void branch_and_bound_t<i_t, f_t>::update_reduced_cost_bounds(
-  f_t relaxation_objective,
-  const std::vector<f_t>& reduced_costs,
-  const std::vector<variable_status_t>& var_status,
-  reduced_cost_bounds_t<i_t, f_t>& reduced_cost_bounds)
-{
-  const i_t n         = reduced_cost_bounds.num_cols();
-  const f_t threshold = 100.0 * settings_.integer_tol;
-  const f_t tol       = 1e-2;
-  for (i_t j = 0; j < n; ++j) {
-    if (std::isfinite(reduced_costs[j]) && std::abs(reduced_costs[j]) > threshold &&
-        var_status[j] != variable_status_t::BASIC) {
-      const f_t lower_j = original_lp_.lower[j];
-      const f_t upper_j = original_lp_.upper[j];
-
-      // x_j <= l_j + (incumbent_objective - relaxation_objective) / reduced_costs[j]
-      // Let u_tilde_j = u_j - epsilon, so that floor(u_tilde_j) = u_j - 1
-      // We want to solve for want the incumbent objective needs to be to make
-      // x_j <= u_tilde_j
-      // This means l_j + (incumbent_objective - relaxation_objective) / reduced_costs[j] <=
-      // u_tilde_j Or equivalently, incumbent_objective <= relaxation_objective + reduced_costs[j] *
-      // (u_tilde_j - l_j) when reduced_costs[j] > 0
-      if (lower_j > -inf && reduced_costs[j] > 0) {
-        const f_t u_tilde_j = var_types_[j] == variable_type_t::INTEGER
-                                ? upper_j - tol
-                                : std::max(upper_j - 1.0, lower_j);
-        const f_t bound_j =
-          var_types_[j] == variable_type_t::INTEGER ? std::floor(u_tilde_j) : u_tilde_j;
-        const f_t diff        = u_tilde_j - lower_j;
-        const f_t objective_j = relaxation_objective + diff * reduced_costs[j];
-        if (((var_types_[j] == variable_type_t::INTEGER && bound_j == upper_j - 1.0) ||
-             var_types_[j] != variable_type_t::INTEGER) &&
-            std::isfinite(objective_j) && std::isfinite(bound_j)) {
-          i_t info = reduced_cost_bounds.add_upper_bound(j, objective_j, bound_j);
-          // settings_.log.printf("Added objective bound pair (%e, %e) for variable %d upper bound.
-          // Info %d\n", objective_j, bound_j, j, info);
-        }
-      }
-
-      // x_j >= u_j + (incumbent_objective - relaxation_objective) / reduced_costs[j] when
-      // reduced_costs[j] < 0 Let l_tilde_j = l_j + epsilon, so that ceil(l_tilde_j) = l_j + 1 We
-      // want to solve for want the incumbent objective needs to be to make x_j >= l_tilde_j This
-      // means u_j + (incumbent_objective - relaxation_objective) / reduced_costs[j] >= l_tilde_j Or
-      // equivalently, incumbent_objective <=  relaxation_objective + reduced_costs[j] * (l_tilde_j
-      // - u_j) when reduced_costs[j] < 0
-      if (upper_j < inf && reduced_costs[j] < 0) {
-        const f_t l_tilde_j = var_types_[j] == variable_type_t::INTEGER
-                                ? lower_j + tol
-                                : std::min(lower_j + 1.0, upper_j);
-        const f_t bound_j =
-          var_types_[j] == variable_type_t::INTEGER ? std::ceil(l_tilde_j) : l_tilde_j;
-        const f_t diff        = l_tilde_j - upper_j;
-        const f_t objective_j = relaxation_objective + diff * reduced_costs[j];
-        if (((var_types_[j] == variable_type_t::INTEGER && bound_j == lower_j + 1.0) ||
-             var_types_[j] != variable_type_t::INTEGER) &&
-            std::isfinite(objective_j) && std::isfinite(bound_j)) {
-          i_t info = reduced_cost_bounds.add_lower_bound(j, objective_j, bound_j);
-          // settings_.log.printf("Added objective bound pair (%e, %e) for variable %d lower bound.
-          // Info %d\n", objective_j, bound_j, j, info);
-        }
-      }
-    }
-  }
-}
-
-template <typename i_t, typename f_t>
-i_t branch_and_bound_t<i_t, f_t>::find_reduced_cost_fixings(f_t upper_bound,
-                                                            std::vector<f_t>& lower_bounds,
-                                                            std::vector<f_t>& upper_bounds)
-{
-  std::vector<f_t> reduced_costs = root_relax_soln_.z;
-  lower_bounds                   = original_lp_.lower;
-  upper_bounds                   = original_lp_.upper;
-  std::vector<bool> bounds_changed(original_lp_.num_cols, false);
-  const f_t root_obj    = compute_objective(original_lp_, root_relax_soln_.x);
-  const f_t threshold   = 100.0 * settings_.integer_tol;
-  const f_t weaken      = settings_.integer_tol;
-  const f_t fixed_tol   = settings_.fixed_tol;
-  i_t num_improved      = 0;
-  i_t num_fixed         = 0;
-  i_t num_cols_to_check = reduced_costs.size();  // Reduced costs will be smaller than the original
-                                                 // problem because we have added slacks for cuts
-  for (i_t j = 0; j < num_cols_to_check; j++) {
-    if (std::isfinite(reduced_costs[j]) && std::abs(reduced_costs[j]) > threshold) {
-      const f_t lower_j            = original_lp_.lower[j];
-      const f_t upper_j            = original_lp_.upper[j];
-      const f_t abs_gap            = upper_bound - root_obj;
-      f_t reduced_cost_upper_bound = upper_j;
-      f_t reduced_cost_lower_bound = lower_j;
-      if (lower_j > -inf && reduced_costs[j] > 0) {
-        const f_t new_upper_bound = lower_j + abs_gap / reduced_costs[j];
-        reduced_cost_upper_bound  = var_types_[j] == variable_type_t::INTEGER
-                                      ? std::floor(new_upper_bound + weaken)
-                                      : new_upper_bound;
-        if (reduced_cost_upper_bound < upper_j && var_types_[j] == variable_type_t::INTEGER) {
-          num_improved++;
-          upper_bounds[j]   = reduced_cost_upper_bound;
-          bounds_changed[j] = true;
-        }
-      }
-      if (upper_j < inf && reduced_costs[j] < 0) {
-        const f_t new_lower_bound = upper_j + abs_gap / reduced_costs[j];
-        reduced_cost_lower_bound  = var_types_[j] == variable_type_t::INTEGER
-                                      ? std::ceil(new_lower_bound - weaken)
-                                      : new_lower_bound;
-        if (reduced_cost_lower_bound > lower_j && var_types_[j] == variable_type_t::INTEGER) {
-          num_improved++;
-          lower_bounds[j]   = reduced_cost_lower_bound;
-          bounds_changed[j] = true;
-        }
-      }
-      if (var_types_[j] == variable_type_t::INTEGER &&
-          reduced_cost_upper_bound <= reduced_cost_lower_bound + fixed_tol) {
-        num_fixed++;
-      }
-    }
-  }
-
-  if (num_fixed > 0 || num_improved > 0) {
-    settings_.log.printf(
-      "Reduced costs: Found %d improved bounds and %d fixed variables\n", num_improved, num_fixed);
-  }
-  return num_fixed;
-}
-
-template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::update_user_bound(const lp_problem_t<i_t, f_t>& lp,
                                                      f_t lower_bound)
 {
@@ -3737,8 +3611,8 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
   root_objective_ = compute_objective(original_lp_, root_relax_soln_.x);
 
   if (settings_.reduced_cost_strengthening >= 1) {
-    update_reduced_cost_bounds(
-      root_objective_, root_relax_soln_.z, root_vstatus_, reduced_cost_bounds);
+    reduced_cost_bounds.update_reduced_cost_bounds(
+      original_lp_, settings_, var_types_, root_objective_, root_relax_soln_.z, root_vstatus_);
     settings_.log.printf("New reduced cost objective %e (current %e)\n",
                          reduced_cost_bounds.get_max_objective(),
                          upper_bound_.load());
@@ -4070,8 +3944,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   lower_bound_numerical_ = inf;
 
   reduced_cost_bounds_t<i_t, f_t> reduced_cost_bounds(original_lp_.num_cols);
-  update_reduced_cost_bounds(
-    root_objective_, root_relax_soln_.z, root_vstatus_, reduced_cost_bounds);
+  reduced_cost_bounds.update_reduced_cost_bounds(
+    original_lp_, settings_, var_types_, root_objective_, root_relax_soln_.z, root_vstatus_);
   settings_.log.printf("New reduced cost objective %e (current %e)\n",
                        reduced_cost_bounds.get_max_objective(),
                        upper_bound_.load());

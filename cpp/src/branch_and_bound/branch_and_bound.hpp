@@ -180,14 +180,6 @@ class branch_and_bound_t {
     std::vector<f_t>& edge_norms,
     f_t& work_estimate);
 
-  void update_reduced_cost_bounds(f_t relaxation_objective,
-                                  const std::vector<f_t>& reduced_costs,
-                                  const std::vector<simplex::variable_status_t>& var_status,
-                                  reduced_cost_bounds_t<i_t, f_t>& reduced_cost_bounds);
-  i_t find_reduced_cost_fixings(f_t upper_bound,
-                                std::vector<f_t>& lower_bounds,
-                                std::vector<f_t>& upper_bounds);
-
   // The main entry routine. Returns the solver status and populates solution with the incumbent.
   mip_status_t solve(simplex::mip_solution_t<i_t, f_t>& solution);
 
