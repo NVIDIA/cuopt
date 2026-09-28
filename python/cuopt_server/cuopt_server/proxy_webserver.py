@@ -767,11 +767,7 @@ def _fetch_solver_logs(job_id, frombyte):
         return client.logs(job_id, frombyte)
     except Exception as e:
         text = str(e)
-        if (
-            "not found" in text.lower()
-            or "NOT_FOUND" in text
-            or "failed to fetch logs" in text
-        ):
+        if "not found" in text.lower() or "NOT_FOUND" in text:
             raise _log_not_found(job_id)
         raise
 
