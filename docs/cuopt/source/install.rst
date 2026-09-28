@@ -16,7 +16,7 @@ If the selector does not load or you prefer step-by-step guides, use the quick-s
 
 * **Python (cuopt)** — :doc:`cuopt-python/quick-start`
 * **C (libcuopt)** — :doc:`cuopt-c/quick-start` (includes ``cuopt_cli``)
-* **Java (cuopt, experimental)** — :doc:`cuopt-java/quick-start` (built from source against an existing cuOpt installation; not distributed via the install selector above)
+* **Java (cuopt, experimental)** — :doc:`cuopt-java/quick-start` (official Docker images, the ``com.nvidia.cuopt:cuopt`` Maven artifact, or built from source; not distributed via the install selector above)
 * **gRPC remote execution** — :doc:`cuopt-grpc/quick-start` (install, remote execution, Docker, minimal example) and :doc:`cuopt-grpc/advanced` (TLS and tuning; not the HTTP server)
 * **Server (cuopt-server)** — :doc:`cuopt-server/quick-start`
 * **CLI (cuopt_cli)** — Install via the C API; see :doc:`cuopt-cli/quick-start`

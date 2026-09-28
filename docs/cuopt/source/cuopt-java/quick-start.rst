@@ -1,14 +1,14 @@
-Java Quick Start
-================
+Java Quickstart Guide
+=====================
 
 The experimental Java bindings live in ``java/cuopt``. There are three ways to
 get them, depending on your setup:
 
-* the official cuOpt Docker images already contain a prebuilt ``cuopt.jar``
+* The official cuOpt Docker images already contain a prebuilt ``cuopt.jar``
   and ``libcuopt_jni.so`` — see `Using the Docker Image`_;
-* the ``com.nvidia.cuopt:cuopt`` Maven artifact is a self-contained classifier
+* The ``com.nvidia.cuopt:cuopt`` Maven artifact is a self-contained classifier
   jar that embeds the native library — see `Using the Maven Artifact`_; or
-* building from source, which this section covers first and which repository
+* Building from source, which this section covers first and which repository
   CI and release workflows use to produce both of the above.
 
 It is not part of the top-level cuOpt build.
@@ -19,9 +19,9 @@ Requirements
 The Java module requires:
 
 * Java 17 or newer, with ``JAVA_HOME`` pointing to a JDK;
-* a C++20 compiler;
-* an existing cuOpt installation containing ``libcuopt.so``; and
-* a CUDA-enabled runtime for solving problems.
+* A C++20 compiler;
+* An existing cuOpt installation containing ``libcuopt.so``; and
+* A CUDA-enabled runtime for solving problems.
 
 The module uses Maven for Java compilation and a Java-local CMake project for
 the JNI library. The standalone native build links to
