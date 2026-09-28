@@ -160,7 +160,16 @@ static c_api_lp_result_t solve_via_c_api(std::string const& mps_path, cuopt_int_
   return out;
 }
 
-static void expect_c_api_distributed_matches_single_gpu(std::string const& mps_rel_path)
+class DistributedPdlpCApiTest : public ::testing::TestWithParam<distributed_pdlp_test_param_t> {
+ protected:
+  void SetUp() override
+  {
+    const int device_count = raft::device_setter::get_device_count();
+    if (device_count < 2) { GTEST_SKIP() << "Requires >=2 GPUs, found " << device_count; }
+  }
+};
+
+TEST_P(DistributedPdlpCApiTest, matches_single_gpu)
 {
   constexpr double loose_rel = 1e-3;
   auto approx_equal          = [](double a, double b, double rel) {
@@ -168,9 +177,10 @@ static void expect_c_api_distributed_matches_single_gpu(std::string const& mps_r
     return std::fabs(a - b) <= rel * (1.0 + scale);
   };
 
-  auto path = make_path_absolute(mps_rel_path);
-  auto base = solve_via_c_api(path, /*num_gpus=*/1);
-  auto dist = solve_via_c_api(path, /*num_gpus=*/-1);
+  const auto& mps_rel_path = GetParam().mps_path;
+  auto path                = make_path_absolute(mps_rel_path);
+  auto base                = solve_via_c_api(path, /*num_gpus=*/1);
+  auto dist                = solve_via_c_api(path, /*num_gpus=*/-1);
 
   ASSERT_EQ(base.solve_status, CUOPT_SUCCESS)
     << mps_rel_path << ": C API single-GPU solve failed: " << base.error;
@@ -186,20 +196,6 @@ static void expect_c_api_distributed_matches_single_gpu(std::string const& mps_r
   EXPECT_TRUE(approx_equal(base.dual_objective, dist.dual_objective, loose_rel))
     << mps_rel_path << ": dual objective base=" << base.dual_objective
     << " distributed=" << dist.dual_objective;
-}
-
-class DistributedPdlpCApiTest : public ::testing::TestWithParam<distributed_pdlp_test_param_t> {
- protected:
-  void SetUp() override
-  {
-    const int device_count = raft::device_setter::get_device_count();
-    if (device_count < 2) { GTEST_SKIP() << "Requires >=2 GPUs, found " << device_count; }
-  }
-};
-
-TEST_P(DistributedPdlpCApiTest, matches_single_gpu)
-{
-  expect_c_api_distributed_matches_single_gpu(GetParam().mps_path);
 }
 
 INSTANTIATE_TEST_SUITE_P(
