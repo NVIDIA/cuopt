@@ -90,7 +90,10 @@ Using the Docker Image
 
 The official cuOpt Docker images ship ``cuopt.jar`` and ``libcuopt_jni.so``
 under ``/opt/cuopt/java``, built against the image's own ``libcuopt.so``. No
-build step is needed; point ``cuopt.native.dir`` at that directory:
+build step is needed; point ``cuopt.native.dir`` at that directory. Mount a
+directory containing your own ``.java`` source (for example, the LP Example
+below saved as ``MyProgram.java``) and compile and run it against the
+prebuilt jar:
 
 .. code-block:: bash
 
@@ -123,7 +126,9 @@ The embedded libraries do not include the CUDA toolkit's own math libraries
 target system. Loading the jar on a system without them fails with an
 ``UnsatisfiedLinkError`` naming the missing CUDA library. An
 ``nvidia/cuda:*-runtime-*`` base image satisfies this without installing
-cuOpt itself:
+cuOpt itself. The example below assumes a project with the ``<dependency>``
+above in its ``pom.xml`` and a ``MyProgram.java`` source (for example, the
+LP Example below) in the working directory:
 
 .. code-block:: bash
 
@@ -134,6 +139,11 @@ cuOpt itself:
        javac -cp "lib/cuopt-*-cuda12.jar" -d . MyProgram.java
        java -cp "lib/cuopt-*-cuda12.jar:." MyProgram
      '
+
+Outside Docker, install the matching ``cuda-libraries-<major>-<minor>``
+package (e.g. ``cuda-libraries-12-9``) from `NVIDIA's CUDA repository
+<https://developer.nvidia.com/cuda-downloads>`_ via ``apt-get`` or ``dnf``
+instead of the full CUDA toolkit.
 
 LP Example
 ----------
