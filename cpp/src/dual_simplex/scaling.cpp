@@ -209,6 +209,8 @@ i_t scaling(const lp_problem_t<i_t, f_t>& unscaled,
 
     // Apply Ruiz equilibration
     constexpr i_t max_ruiz_iterations = 10;
+    // Stop once every row and column inf-norm is within the convergence tolerance of 1.
+    constexpr f_t ruiz_convergence_tol = 0.1;
     for (i_t iter = 0; iter < max_ruiz_iterations; ++iter) {
       f_t max_deviation = 0.0;
 
@@ -296,7 +298,7 @@ i_t scaling(const lp_problem_t<i_t, f_t>& unscaled,
           }
         }
       }
-      if (max_deviation < 0.1) break;
+      if (max_deviation < ruiz_convergence_tol) break;
     }
 
     // Ruiz col_scale/row_scaling accumulate reciprocals (c[j] = 1/sqrt(norm)).

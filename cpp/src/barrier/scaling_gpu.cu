@@ -18,7 +18,6 @@
 
 #include <barrier/device_sparse_matrix.cuh>
 #include <utilities/copy_helpers.hpp>
-#include <utilities/reduce_ops.cuh>
 
 #include <raft/util/cuda_utils.cuh>
 
@@ -83,9 +82,9 @@ template <typename f_t, typename InputIt>
 f_t whole_array_abs_max(InputIt input, size_t n, rmm::cuda_stream_view stream)
 {
   if (n == 0) return f_t(0);
-  auto abs_it = thrust::make_transform_iterator(input, cuopt::abs_value_transform_t<f_t>{});
-  return thrust::reduce(
-    rmm::exec_policy(stream), abs_it, abs_it + n, f_t(0), cuopt::max_op_t<f_t>{});
+  auto abs_it = thrust::make_transform_iterator(
+    input, [] __device__(f_t value) -> f_t { return raft::abs(value); });
+  return thrust::reduce(rmm::exec_policy(stream), abs_it, abs_it + n, f_t(0), cuda::maximum<f_t>{});
 }
 
 // min_i (|transform(input[i])| > 0 ? |value| : sentinel) over the whole array, sentinel ==
@@ -101,11 +100,10 @@ f_t whole_array_nonzero_abs_min(InputIt input, size_t n, rmm::cuda_stream_view s
     const f_t abs_value = raft::abs(value);
     return abs_value > f_t(0) ? abs_value : sentinel;
   });
-  return thrust::reduce(
-    rmm::exec_policy(stream), nz_it, nz_it + n, sentinel, cuopt::min_op_t<f_t>{});
+  return thrust::reduce(rmm::exec_policy(stream), nz_it, nz_it + n, sentinel, cuda::minimum<f_t>{});
 }
 
-// max/min per-segment |value| via cub::DeviceSegmentedReduce over an arbitrary offsets
+// max per-segment |value| via cub::DeviceSegmentedReduce over an arbitrary offsets
 // pair (row_start for CSR, col_start for CSC); segments with no nonzeros reduce to 0.
 template <typename i_t, typename f_t, typename OffsetBeginIt, typename OffsetEndIt>
 void segmented_abs_max(const f_t* values,
@@ -113,33 +111,19 @@ void segmented_abs_max(const f_t* values,
                        OffsetEndIt end_offsets,
                        i_t num_segments,
                        f_t* out,
-                       rmm::device_buffer& temp_storage,
                        rmm::cuda_stream_view stream)
 {
   if (num_segments == 0) return;
-  auto abs_it  = thrust::make_transform_iterator(values, cuopt::abs_value_transform_t<f_t>{});
-  size_t bytes = 0;
-  cub::DeviceSegmentedReduce::Reduce(nullptr,
-                                     bytes,
-                                     abs_it,
-                                     out,
-                                     num_segments,
-                                     begin_offsets,
-                                     end_offsets,
-                                     cuopt::max_op_t<f_t>{},
-                                     f_t(0),
-                                     stream);
-  temp_storage.resize(bytes, stream);
-  cub::DeviceSegmentedReduce::Reduce(temp_storage.data(),
-                                     bytes,
-                                     abs_it,
-                                     out,
-                                     num_segments,
-                                     begin_offsets,
-                                     end_offsets,
-                                     cuopt::max_op_t<f_t>{},
-                                     f_t(0),
-                                     stream);
+  auto abs_it = thrust::make_transform_iterator(
+    values, [] __device__(f_t value) -> f_t { return raft::abs(value); });
+  RAFT_CUDA_TRY(cub::DeviceSegmentedReduce::Reduce(abs_it,
+                                                   out,
+                                                   num_segments,
+                                                   begin_offsets,
+                                                   end_offsets,
+                                                   cuda::maximum<f_t>{},
+                                                   f_t(0),
+                                                   stream.value()));
 }
 
 }  // namespace
@@ -170,7 +154,6 @@ i_t scaling_ruiz_gpu(const lp_problem_t<i_t, f_t>& unscaled,
   device_csr_matrix_t<i_t, f_t> dQ(scaled.Q, stream);
 
   // --- One-shot imbalance heuristic (mirrors scaling.cpp:43-116) ---
-  rmm::device_buffer scratch;
   // Holds the raw row inf-norms, both for the heuristic here and in each Ruiz iteration
   // below, where it is then converted in place into that iteration's row scale factors.
   rmm::device_uvector<f_t> r(0, stream);
@@ -180,13 +163,8 @@ i_t scaling_ruiz_gpu(const lp_problem_t<i_t, f_t>& unscaled,
   f_t row_norm_ratio = (min_row_norm > 0) ? max_row_norm / min_row_norm : f_t(1.0);
 
   rmm::device_uvector<f_t> col_max_full(n, stream);
-  segmented_abs_max<i_t, f_t>(dA.x.data(),
-                              dA.col_start.data(),
-                              dA.col_start.data() + 1,
-                              n,
-                              col_max_full.data(),
-                              scratch,
-                              stream);
+  segmented_abs_max<i_t, f_t>(
+    dA.x.data(), dA.col_start.data(), dA.col_start.data() + 1, n, col_max_full.data(), stream);
   f_t max_col_norm   = whole_array_abs_max<f_t>(col_max_full.data(), n, stream);
   f_t min_col_norm   = whole_array_nonzero_abs_min<f_t>(col_max_full.data(), n, stream);
   f_t col_norm_ratio = (min_col_norm > 0) ? max_col_norm / min_col_norm : f_t(1.0);
@@ -360,6 +338,8 @@ i_t scaling_ruiz_gpu(const lp_problem_t<i_t, f_t>& unscaled,
 
   // Ruiz iteration loop
   constexpr i_t max_ruiz_iterations = 10;
+  // Stop once every row and column inf-norm is within the convergence tolerance of 1.
+  constexpr f_t ruiz_convergence_tol = 0.1;
   rmm::device_uvector<f_t> c(n, stream);
   rmm::device_uvector<f_t> col_max_linear(cone_start, stream);
   rmm::device_uvector<f_t> qrow_max_linear(has_q ? cone_start : 0, stream);
@@ -409,7 +389,6 @@ i_t scaling_ruiz_gpu(const lp_problem_t<i_t, f_t>& unscaled,
                                   dA.col_start.data() + 1,
                                   cone_start,
                                   col_max_linear.data(),
-                                  scratch,
                                   stream);
       if (has_q) {
         segmented_abs_max<i_t, f_t>(dQ.x.data(),
@@ -417,14 +396,13 @@ i_t scaling_ruiz_gpu(const lp_problem_t<i_t, f_t>& unscaled,
                                     dQ.row_start.data() + 1,
                                     cone_start,
                                     qrow_max_linear.data(),
-                                    scratch,
                                     stream);
         thrust::transform(rmm::exec_policy(stream),
                           col_max_linear.data(),
                           col_max_linear.data() + cone_start,
                           qrow_max_linear.data(),
                           col_max_linear.data(),
-                          cuopt::max_op_t<f_t>{});
+                          cuda::maximum<f_t>{});
       }
       max_deviation =
         std::max(max_deviation,
@@ -445,7 +423,7 @@ i_t scaling_ruiz_gpu(const lp_problem_t<i_t, f_t>& unscaled,
       auto end_it =
         thrust::make_permutation_iterator(dA.col_start.data(), d_cone_col_offsets.data() + 1);
       segmented_abs_max<i_t, f_t>(
-        dA.x.data(), begin_it, end_it, num_cones, cone_max.data(), scratch, stream);
+        dA.x.data(), begin_it, end_it, num_cones, cone_max.data(), stream);
       max_deviation =
         std::max(max_deviation,
                  whole_array_abs_max<f_t>(
@@ -487,9 +465,10 @@ i_t scaling_ruiz_gpu(const lp_problem_t<i_t, f_t>& unscaled,
       rmm::exec_policy(stream),
       thrust::make_counting_iterator(i_t(0)),
       thrust::make_counting_iterator(n),
-      [lower = d_lower.data(), upper = d_upper.data(), c = c.data()] __device__(i_t j) {
-        if (lower[j] > f_t(-1e20)) lower[j] /= c[j];
-        if (upper[j] < f_t(1e20)) upper[j] /= c[j];
+      [lower = d_lower.data(), upper = d_upper.data(), c = c.data(), finite_bound_limit] __device__(
+        i_t j) {
+        if (lower[j] > -finite_bound_limit) lower[j] /= c[j];
+        if (upper[j] < finite_bound_limit) upper[j] /= c[j];
       });
     if (has_q) {
       // Row-parallel so the row index comes from the iteration variable, as in scaling.cpp.
@@ -507,7 +486,7 @@ i_t scaling_ruiz_gpu(const lp_problem_t<i_t, f_t>& unscaled,
         });
     }
 
-    if (max_deviation < 0.1) break;
+    if (max_deviation < ruiz_convergence_tol) break;
   }
 
   // Invert accumulated reciprocal scales

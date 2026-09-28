@@ -290,37 +290,39 @@ class device_csc_matrix_t {
     RAFT_CUDA_TRY(
       cudaMemsetAsync(col_index.data(), 0, sizeof(i_t) * col_index.size(), stream.get()));
 
-    // Scatter 1 when there is a col start in col_index
+    // Mark each nonempty column's first entry with its own id, then fill the rest by taking a
+    // running maximum.
     if (col_start.size() > 2) {
       thrust::for_each(rmm::exec_policy(stream),
-                       thrust::make_counting_iterator(i_t(1)),  // Skip the first 0
+                       thrust::make_counting_iterator(i_t(1)),  // Column 0 is already 0
                        thrust::make_counting_iterator(
                          static_cast<i_t>(col_start.size() - 1)),  // Skip the end index
                        [span_col_start = cuopt::make_span(col_start),
-                        span_col_index = cuopt::make_span(col_index)] __device__(i_t i) {
-                         if (span_col_start[i] < span_col_index.size()) {
-                           span_col_index[span_col_start[i]] = 1;
+                        span_col_index = cuopt::make_span(col_index)] __device__(i_t j) {
+                         if (span_col_start[j] < span_col_start[j + 1]) {
+                           span_col_index[span_col_start[j]] = j;
                          }
                        });
     }
 
-    // Inclusive cumulative sum to have the corresponding column for each entry
+    // Inclusive maximum to have the corresponding column for each entry
     rmm::device_buffer d_temp_storage;
     size_t temp_storage_bytes{0};
-    cub::DeviceScan::InclusiveSum(nullptr,
-                                  temp_storage_bytes,
-                                  col_index.data(),
-                                  col_index.data(),
-                                  col_index.size(),
-                                  stream.get());
+    cub::DeviceScan::InclusiveScan(nullptr,
+                                   temp_storage_bytes,
+                                   col_index.data(),
+                                   col_index.data(),
+                                   cuda::maximum<i_t>{},
+                                   col_index.size(),
+                                   stream.get());
     d_temp_storage.resize(temp_storage_bytes, stream);
-    cub::DeviceScan::InclusiveSum(d_temp_storage.data(),
-                                  temp_storage_bytes,
-                                  col_index.data(),
-                                  col_index.data(),
-                                  col_index.size(),
-                                  stream.get());
-    // Have to sync since InclusiveSum is being run on local data (d_temp_storage)
+    cub::DeviceScan::InclusiveScan(d_temp_storage.data(),
+                                   temp_storage_bytes,
+                                   col_index.data(),
+                                   col_index.data(),
+                                   cuda::maximum<i_t>{},
+                                   col_index.size(),
+                                   stream.get());
     stream.sync();
   }
 
