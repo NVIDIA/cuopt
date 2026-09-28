@@ -1020,15 +1020,14 @@ void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
 #endif
 
   // TODO later batch mode: remove if you have per climber restart
+  weighted_average_solution_.reset_iterations_since_last_restart();
   for (size_t i = 0; i < climber_strategies_.size(); ++i) {
-    weighted_average_solution_.iterations_since_last_restart_ = 0;
     last_trial_fixed_point_error_[i] = std::numeric_limits<f_t>::infinity();
   }
 
   if (auto* engine = pdhg_solver.get_mgpu_engine()) {
     engine->for_each_shard([&](auto& shard) {
-      shard.sub_pdlp->get_restart_strategy()
-        .weighted_average_solution_.iterations_since_last_restart_ = 0;
+      shard.sub_pdlp->get_restart_strategy().reset_iterations_since_last_restart();
     });
   }
 }
@@ -1168,7 +1167,13 @@ void pdlp_restart_strategy_t<i_t, f_t>::compute_restart(
 template <typename i_t, typename f_t>
 void pdlp_restart_strategy_t<i_t, f_t>::increment_iteration_since_last_restart()
 {
-  ++weighted_average_solution_.iterations_since_last_restart_;
+  weighted_average_solution_.increase_iterations_since_last_restart();
+}
+
+template <typename i_t, typename f_t>
+void pdlp_restart_strategy_t<i_t, f_t>::reset_iterations_since_last_restart()
+{
+  weighted_average_solution_.reset_iterations_since_last_restart();
 }
 
 template <typename i_t, typename f_t>
@@ -2529,6 +2534,13 @@ template <typename i_t, typename f_t>
 i_t pdlp_restart_strategy_t<i_t, f_t>::get_iterations_since_last_restart() const
 {
   return weighted_average_solution_.get_iterations_since_last_restart();
+}
+
+template <typename i_t, typename f_t>
+rmm::device_scalar<i_t> const&
+pdlp_restart_strategy_t<i_t, f_t>::get_d_iterations_since_last_restart() const
+{
+  return weighted_average_solution_.get_d_iterations_since_last_restart();
 }
 
 template <typename i_t, typename f_t>

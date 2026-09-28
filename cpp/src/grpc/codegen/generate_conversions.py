@@ -606,6 +606,13 @@ def _default_problem_setter(f):
     return f"set_{root}"
 
 
+def _problem_setter_invoke(setter, name):
+    """Emit cpu_problem.setter(...) for a decoded host vector `name`."""
+    if setter in {"set_initial_primal_solution", "set_initial_dual_solution"}:
+        return f"cpu_problem.{setter}({name});"
+    return f"cpu_problem.{setter}({name}.data(), static_cast<i_t>({name}.size()));"
+
+
 def _default_solution_array_getter(f):
     """Default getter for a solution array field.
 
@@ -2308,9 +2315,7 @@ def _gen_proto_to_problem(registry, indent="  "):
                 f"{ind}    {name}.push_back({from_fn}(static_cast<cuopt::remote::{proto_type}>(v)));"
             )
             lines.append(f"{ind}  }}")
-            lines.append(
-                f"{ind}  cpu_problem.{setter}({name}.data(), static_cast<i_t>({name}.size()));"
-            )
+            lines.append(f"{ind}  {_problem_setter_invoke(setter, name)}")
             lines.append(f"{ind}}}")
         elif ftype == "repeated string":
             lines.append(f"{ind}if (pb_problem.{pname}_size() > 0) {{")
@@ -2338,9 +2343,7 @@ def _gen_proto_to_problem(registry, indent="  "):
             lines.append(
                 f"{ind}  std::vector<{cpp_t}> {name}(pb_problem.{pname}().begin(), pb_problem.{pname}().end());"
             )
-            lines.append(
-                f"{ind}  cpu_problem.{setter}({name}.data(), static_cast<i_t>({name}.size()));"
-            )
+            lines.append(f"{ind}  {_problem_setter_invoke(setter, name)}")
             lines.append(f"{ind}}}")
 
     # repeated_messages — emit per-entry decode loop (unary path: scalars and
@@ -2827,9 +2830,7 @@ def _gen_chunked_arrays_to_problem(registry, indent="  "):
                 f"{ind}    {name}.push_back({from_fn}(static_cast<cuopt::remote::{_enum_proto_type(enum_key, edef)}>(v)));"
             )
             lines.append(f"{ind}  }}")
-            lines.append(
-                f"{ind}  cpu_problem.{setter}({name}.data(), static_cast<i_t>({name}.size()));"
-            )
+            lines.append(f"{ind}  {_problem_setter_invoke(setter, name)}")
             lines.append(f"{ind}}}")
         elif ftype == "repeated string":
             lines.append(
@@ -2853,9 +2854,7 @@ def _gen_chunked_arrays_to_problem(registry, indent="  "):
                 f"{ind}auto {name} = {extract_fn}(cuopt::remote::{afid});"
             )
             lines.append(f"{ind}if (!{name}.empty()) {{")
-            lines.append(
-                f"{ind}  cpu_problem.{setter}({name}.data(), static_cast<i_t>({name}.size()));"
-            )
+            lines.append(f"{ind}  {_problem_setter_invoke(setter, name)}")
             lines.append(f"{ind}}}")
         lines.append("")
 

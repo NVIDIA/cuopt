@@ -19,14 +19,18 @@
 #include <cuopt/routing/solver_settings.hpp>
 #endif
 
+#include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
 #include <rmm/mr/cuda_memory_resource.hpp>
 #include <rmm/mr/pool_memory_resource.hpp>
 
 #include <cerrno>
+#include <chrono>
 #include <climits>
 #include <limits>
 #include <memory>
 
+using cuopt::mathematical_optimization::apply_initial_solutions_to_mip_settings;
+using cuopt::mathematical_optimization::apply_initial_solutions_to_pdlp_settings;
 using cuopt::mathematical_optimization::map_proto_to_mip_settings;
 using cuopt::mathematical_optimization::map_proto_to_pdlp_settings;
 using cuopt::mathematical_optimization::map_proto_to_problem;
@@ -408,6 +412,7 @@ static SolveResult run_mip_solve(DeserializedJob& dj,
   try {
     dj.mip_settings.log_file       = log_file;
     dj.mip_settings.log_to_console = config.log_to_console;
+    apply_initial_solutions_to_mip_settings(dj.problem, dj.mip_settings);
 
     // Create a per-solve incumbent callback wired to this worker's
     // incumbent pipe.  Destroyed automatically when sr is returned.
@@ -484,6 +489,7 @@ static SolveResult run_lp_solve(DeserializedJob& dj,
   try {
     dj.lp_settings.log_file       = log_file;
     dj.lp_settings.log_to_console = config.log_to_console;
+    apply_initial_solutions_to_pdlp_settings(dj.problem, dj.lp_settings);
 
     SERVER_LOG_INFO("[Worker] Converting CPU problem to GPU problem...");
     auto gpu_problem = to_optimization_problem(dj.problem, &handle);
@@ -558,16 +564,24 @@ static SolveResult run_vrp_solve([[maybe_unused]] DeserializedJob& dj,
 #else
   try {
     auto [view, device_data] = dj.routing_problem.to_device(&handle);
+    auto solve_t0            = std::chrono::steady_clock::now();
     auto assignment          = cuopt::routing::solve(view, dj.routing_settings);
+    double solve_time =
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - solve_t0).count();
     cuopt::routing::host_assignment_t<int> host(assignment);
 
     sr.header.set_problem_category(cuopt::remote::VRP);
     sr.header.set_is_vrp(true);
     // Embed the RoutingSolution structurally (ChunkedResultHeader.routing_solution
     // is a message field now, not a serialized blob).
-    map_routing_solution_to_proto(assignment, host, sr.header.mutable_routing_solution());
-    SERVER_LOG_INFO("[Worker] Result path: VRP solution -> embedded RoutingSolution (%zu bytes)",
-                    sr.header.routing_solution().ByteSizeLong());
+    auto* routing_sol = sr.header.mutable_routing_solution();
+    map_routing_solution_to_proto(assignment, host, routing_sol);
+    routing_sol->set_solve_time(solve_time);
+    SERVER_LOG_INFO(
+      "[Worker] Result path: VRP solution -> embedded RoutingSolution (%zu bytes) solve_time=%.6f "
+      "s",
+      routing_sol->ByteSizeLong(),
+      solve_time);
     sr.success = true;
   } catch (const cuopt::logic_error& e) {
     sr.error_message = format_cuopt_error(e);

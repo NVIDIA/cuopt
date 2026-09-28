@@ -13,6 +13,8 @@
 #include <pdlp/utils.cuh>
 #include <utilities/device_scalar_init.hpp>
 
+#include <cub/device/device_transform.cuh>
+
 #include <raft/linalg/binary_op.cuh>
 #include <raft/linalg/divide.cuh>
 
@@ -31,6 +33,7 @@ weighted_average_solution_t<i_t, f_t>::weighted_average_solution_t(raft::handle_
     sum_primal_solution_weights_{zero_v<f_t>, stream_view_},
     sum_dual_solution_weights_{zero_v<f_t>, stream_view_},
     iterations_since_last_restart_{0},
+    d_iterations_since_last_restart_{zero_v<i_t>, stream_view_},
     graph(stream_view_, is_batch_mode)
 {
   RAFT_CUDA_TRY(cudaMemsetAsync(
@@ -48,7 +51,7 @@ void weighted_average_solution_t<i_t, f_t>::reset_weighted_average_solution()
     sum_dual_solutions_.data(), 0.0, sizeof(f_t) * dual_size_h_, stream_view_.get()));
   sum_primal_solution_weights_.set_value_to_zero_async(stream_view_);
   sum_dual_solution_weights_.set_value_to_zero_async(stream_view_);
-  iterations_since_last_restart_ = 0;
+  reset_iterations_since_last_restart();
 }
 
 template <typename f_t>
@@ -94,7 +97,7 @@ void weighted_average_solution_t<i_t, f_t>::add_current_solution_to_weighted_ave
                                                      sum_dual_solution_weights_.data());
   });
 
-  iterations_since_last_restart_ += 1;
+  increase_iterations_since_last_restart();
 }
 
 template <typename i_t, typename f_t>
@@ -133,6 +136,38 @@ template <typename i_t, typename f_t>
 i_t weighted_average_solution_t<i_t, f_t>::get_iterations_since_last_restart() const
 {
   return iterations_since_last_restart_;
+}
+
+template <typename i_t, typename f_t>
+rmm::device_scalar<i_t> const&
+weighted_average_solution_t<i_t, f_t>::get_d_iterations_since_last_restart() const
+{
+  return d_iterations_since_last_restart_;
+}
+
+template <typename i_t, typename f_t>
+void weighted_average_solution_t<i_t, f_t>::reset_iterations_since_last_restart()
+{
+  set_iterations_since_last_restart(0);
+}
+
+template <typename i_t, typename f_t>
+void weighted_average_solution_t<i_t, f_t>::increase_iterations_since_last_restart()
+{
+  ++iterations_since_last_restart_;
+  RAFT_CUDA_TRY(cub::DeviceTransform::Transform(
+    d_iterations_since_last_restart_.data(),
+    d_iterations_since_last_restart_.data(),
+    1,
+    [] __device__(i_t k) { return k + i_t(1); },
+    stream_view_.get()));
+}
+
+template <typename i_t, typename f_t>
+void weighted_average_solution_t<i_t, f_t>::set_iterations_since_last_restart(i_t iterations)
+{
+  iterations_since_last_restart_ = iterations;
+  d_iterations_since_last_restart_.set_value_async(iterations, stream_view_);
 }
 
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT

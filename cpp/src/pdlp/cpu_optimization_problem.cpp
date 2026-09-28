@@ -286,6 +286,20 @@ void cpu_optimization_problem_t<i_t, f_t>::set_row_types(const char* row_types, 
 }
 
 template <typename i_t, typename f_t>
+void cpu_optimization_problem_t<i_t, f_t>::set_initial_primal_solution(
+  std::span<const f_t> initial_primal_solution)
+{
+  initial_primal_solution_.assign(initial_primal_solution.begin(), initial_primal_solution.end());
+}
+
+template <typename i_t, typename f_t>
+void cpu_optimization_problem_t<i_t, f_t>::set_initial_dual_solution(
+  std::span<const f_t> initial_dual_solution)
+{
+  initial_dual_solution_.assign(initial_dual_solution.begin(), initial_dual_solution.end());
+}
+
+template <typename i_t, typename f_t>
 void cpu_optimization_problem_t<i_t, f_t>::set_objective_name(const std::string& objective_name)
 {
   objective_name_ = objective_name;
@@ -646,6 +660,18 @@ template <typename i_t, typename f_t>
 std::vector<var_t> cpu_optimization_problem_t<i_t, f_t>::get_variable_types_host() const
 {
   return variable_types_;
+}
+
+template <typename i_t, typename f_t>
+std::vector<f_t> cpu_optimization_problem_t<i_t, f_t>::get_initial_primal_solution_host() const
+{
+  return initial_primal_solution_;
+}
+
+template <typename i_t, typename f_t>
+std::vector<f_t> cpu_optimization_problem_t<i_t, f_t>::get_initial_dual_solution_host() const
+{
+  return initial_dual_solution_;
 }
 
 // ==============================================================================
@@ -1093,6 +1119,9 @@ void cpu_optimization_problem_t<i_t, f_t>::adopt_from_mps_data_model(
   }
   problem_category_              = problem_category_from_variable_types(variable_types_);
   has_semi_continuous_variables_ = has_semi_continuous_from_variable_types(variable_types_);
+
+  initial_primal_solution_ = std::move(model.initial_primal_solution_);
+  initial_dual_solution_   = std::move(model.initial_dual_solution_);
 
   if (model.has_quadratic_constraints()) {
     move_quadratic_constraints_from_model(*this, model.quadratic_constraints_);
