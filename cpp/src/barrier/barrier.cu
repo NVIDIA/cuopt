@@ -3263,8 +3263,9 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
             data_.gpu_solve_adat(b, x);
           }
         } adat_op(data);
+        const f_t ir_tol = 1e-8;
         const f_t adat_solve_err =
-          iterative_refinement<i_t, f_t, adat_op_t>(adat_op, data.d_h_, data.d_dy_);
+          iterative_refinement<i_t, f_t, adat_op_t>(adat_op, data.d_h_, data.d_dy_, ir_tol);
         if (adat_solve_err > 1e-1) {
           settings.log.debug("||ADAT*dy - h|| %e after IR\n", adat_solve_err);
         }
@@ -4473,15 +4474,15 @@ lp_status_t barrier_solver_t<i_t, f_t>::barrier_advanced_solve(f_t start_time,
                                             mu,
                                             primal_objective,
                                             dual_objective);
-   f_t user_primal_objective = compute_user_objective(lp, primal_objective);
-   f_t user_dual_objective = compute_user_objective(lp, dual_objective);
+    f_t user_primal_objective = compute_user_objective(lp, primal_objective);
+    f_t user_dual_objective   = compute_user_objective(lp, dual_objective);
 
     f_t relative_primal_residual = primal_residual_norm / (1.0 + norm_b);
     f_t relative_dual_residual   = dual_residual_norm / (1.0 + norm_c);
     f_t relative_complementarity_residual =
       complementarity_residual_norm /
       (1.0 + std::min(std::abs(user_primal_objective), std::abs(primal_objective)));
-  
+
     f_t objective_gap, relative_objective_gap;
     compute_objective_gap(
       lp, primal_objective, dual_objective, objective_gap, relative_objective_gap);
