@@ -383,7 +383,7 @@ mps_files=("${mps_files[@]:$start_idx:$((end_idx-start_idx))}")
 file_count=${#mps_files[@]}
 
 # Initialize the index file for locking mechanism
-INDEX_FILE="/tmp/mps_file_index.$$"
+INDEX_FILE="${TMPDIR:-/tmp}/mps_file_index.$$"
 
 # Remove the index file if it exists
 rm -f "$INDEX_FILE"
