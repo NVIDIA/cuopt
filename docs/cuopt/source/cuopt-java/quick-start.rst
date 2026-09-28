@@ -1,10 +1,17 @@
 Java Quick Start
 ================
 
-The experimental Java bindings live in ``java/cuopt`` and are built explicitly
-from source. Repository CI and release workflows also build and test the module
-against the matching ``libcuopt`` artifact. It is not part of the top-level
-cuOpt build, and a supported Maven distribution has not yet been defined.
+The experimental Java bindings live in ``java/cuopt``. There are three ways to
+get them, depending on your setup:
+
+* the official cuOpt Docker images already contain a prebuilt ``cuopt.jar``
+  and ``libcuopt_jni.so`` — see `Using the Docker Image`_;
+* the ``com.nvidia.cuopt:cuopt`` Maven artifact is a self-contained classifier
+  jar that embeds the native library — see `Using the Maven Artifact`_; or
+* building from source, which this section covers first and which repository
+  CI and release workflows use to produce both of the above.
+
+It is not part of the top-level cuOpt build.
 
 Requirements
 ------------
@@ -77,6 +84,45 @@ CUDA runtime libraries must be discoverable through ``LD_LIBRARY_PATH`` or the
 native library's runtime path. The standalone native build embeds the CUDA
 runtime path for the configured ``CUOPT_PREFIX``; the helper script also
 exports it for Maven.
+
+Using the Docker Image
+----------------------
+
+The official cuOpt Docker images ship ``cuopt.jar`` and ``libcuopt_jni.so``
+under ``/opt/cuopt/java``, built against the image's own ``libcuopt.so``. No
+build step is needed; point ``cuopt.native.dir`` at that directory:
+
+.. code-block:: bash
+
+   docker run --rm --gpus all -v $(pwd):/work -w /work <cuopt-image> bash -c '
+     javac -cp /opt/cuopt/java/cuopt.jar -d . MyProgram.java
+     java -Dcuopt.native.dir=/opt/cuopt/java -cp /opt/cuopt/java/cuopt.jar:. MyProgram
+   '
+
+Using the Maven Artifact
+------------------------
+
+``com.nvidia.cuopt:cuopt`` publishes classifier jars (``cuda12``,
+``cuda12-arm64``, ``cuda13``, ``cuda13-arm64``) to the Sonatype snapshot and
+release repositories. Each classifier jar embeds ``libcuopt_jni.so`` and
+cuOpt's own native dependencies (``libcuopt``, rmm, cuDSS, NCCL, TBB), which
+``NativeLibraryLoader`` extracts to a temp directory and loads automatically —
+no ``cuopt.native.dir`` is required:
+
+.. code-block:: xml
+
+   <dependency>
+     <groupId>com.nvidia.cuopt</groupId>
+     <artifactId>cuopt</artifactId>
+     <version>26.10.0-SNAPSHOT</version>
+     <classifier>cuda12</classifier>
+   </dependency>
+
+The embedded libraries do not include the CUDA toolkit's own math libraries
+(``libcublas``, ``libcusolver``, etc.) — those must already be present on the
+target system, e.g. via an ``nvidia/cuda:*-runtime-*`` base image or an
+equivalent CUDA runtime install. Loading the jar on a system without them
+fails with an ``UnsatisfiedLinkError`` naming the missing CUDA library.
 
 LP Example
 ----------
