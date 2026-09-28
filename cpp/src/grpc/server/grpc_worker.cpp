@@ -156,6 +156,8 @@ class IncumbentPipeCallback : public cuopt::internals::get_solution_callback_t {
 
     if (capture_last_) { state_.record_get_solution(data, objective_value); }
 
+    if (fd_ < 0) { return; }
+
     double objective = 0.0;
     std::vector<double> assignment;
     assignment.resize(n_variables);
@@ -171,8 +173,6 @@ class IncumbentPipeCallback : public cuopt::internals::get_solution_callback_t {
       std::copy(double_data, double_data + n_variables, assignment.begin());
       objective = *static_cast<const double*>(objective_value);
     }
-
-    if (fd_ < 0) { return; }
 
     auto buffer = build_incumbent_proto(job_id_, objective, assignment);
     if (!send_incumbent_pipe(fd_, buffer)) {

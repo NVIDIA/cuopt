@@ -384,7 +384,9 @@ def _is_mip(lp_data):
     types = getattr(lp_data, "variable_types", None)
     if types is None:
         return False
-    return any(str(t).upper() in ("I", "B") for t in types)
+    # I and B are integer (B is the non-public binary alias). S is semi-continuous.
+    # All three are discrete, matching problem_category_from_variable_types.
+    return any(str(t).upper() in ("I", "B", "S") for t in types)
 
 
 def _looks_like_routing(data):

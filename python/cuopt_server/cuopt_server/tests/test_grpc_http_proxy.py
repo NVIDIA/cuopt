@@ -745,6 +745,22 @@ def test_incumbent_set_solutions_is_forwarded(proxy):
     assert fake.submitted[0]["enable_set_incumbent"] is True
 
 
+@pytest.mark.parametrize("variable_type", ["I", "B", "S"])
+def test_incumbent_set_solutions_without_incumbents(proxy, variable_type):
+    url, fake = proxy
+    lp = _lp()
+    lp["variable_types"] = [variable_type, variable_type]
+    res = requests.post(
+        url + "/cuopt/request",
+        headers={"CLIENT-VERSION": "custom"},
+        params={"incumbent_set_solutions": True},
+        json=lp,
+    )
+    assert res.status_code == 200, res.text
+    assert fake.submitted[0]["enable_incumbents"] is False
+    assert fake.submitted[0]["enable_set_incumbent"] is True
+
+
 def test_lp_does_not_enable_set_incumbent(proxy):
     url, fake = proxy
     res = requests.post(
