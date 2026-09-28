@@ -88,9 +88,10 @@ __global__ void csc_to_csr_scatter_kernel(i_t n_cols,
 {
   const i_t col = static_cast<i_t>(blockIdx.x);
   if (col >= n_cols) { return; }
-  const i_t col_end = col_start[col + 1];
-  for (i_t p = col_start[col] + static_cast<i_t>(threadIdx.x); p < col_end;
-       p += static_cast<i_t>(blockDim.x)) {
+  const i_t thread_id = static_cast<i_t>(threadIdx.x);
+  const i_t block_dim = static_cast<i_t>(blockDim.x);
+  const i_t col_end   = col_start[col + 1];
+  for (i_t p = col_start[col] + thread_id; p < col_end; p += block_dim) {
     const i_t q    = atomicAdd(next_pos + row_ind[p], i_t(1));
     col_ind_out[q] = col;
     val_out[q]     = csc_val[p];

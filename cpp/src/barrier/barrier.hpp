@@ -50,6 +50,13 @@ template <typename i_t, typename f_t>
 using device_csc_matrix_ptr_t =
   std::unique_ptr<device_csc_matrix_t<i_t, f_t>, device_csc_matrix_deleter_t<i_t, f_t>>;
 
+template <typename i_t, typename f_t, typename... args_t>
+device_csc_matrix_ptr_t<i_t, f_t> make_device_csc_matrix(args_t&&... args)
+{
+  return device_csc_matrix_ptr_t<i_t, f_t>(
+    new device_csc_matrix_t<i_t, f_t>(std::forward<args_t>(args)...));
+}
+
 template <typename i_t, typename f_t>
 class barrier_solver_t {
  public:

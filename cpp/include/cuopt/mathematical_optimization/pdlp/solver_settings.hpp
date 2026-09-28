@@ -313,6 +313,9 @@ class pdlp_solver_settings_t {
   // imbalance heuristic), 0 disabled, 1 enabled. Distinct from PDLP's own Ruiz
   // scaling in pdlp_hyper_params_t.
   i_t qcqp_ruiz_equilibration{-1};
+  // nnz(A)+nnz(Q) at or above which the barrier path runs Ruiz equilibration on GPU instead
+  // of CPU. Below it the upload costs more than the scaling saves.
+  i_t gpu_ruiz_nnz_threshold{500000};
   // Margin used to push the barrier method's initial iterate into the interior of the
   // nonnegative orthant / SOC (values are shifted to be at least this far from the boundary).
   f_t barrier_initial_point_safeguard{10.0};

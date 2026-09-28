@@ -44,14 +44,7 @@ namespace {
 using cuopt::mathematical_optimization::barrier::device_csc_matrix_ptr_t;
 using cuopt::mathematical_optimization::barrier::device_csc_matrix_t;
 using cuopt::mathematical_optimization::barrier::device_csr_matrix_t;
-
-// std::make_unique cannot build a pointer with a non-default deleter.
-template <typename i_t, typename f_t, typename... args_t>
-device_csc_matrix_ptr_t<i_t, f_t> make_device_csc_matrix(args_t&&... args)
-{
-  return device_csc_matrix_ptr_t<i_t, f_t>(
-    new device_csc_matrix_t<i_t, f_t>(std::forward<args_t>(args)...));
-}
+using cuopt::mathematical_optimization::barrier::make_device_csc_matrix;
 
 // row_norm[i] = max_j |A(i,j)|, computed straight off CSC: A.i[p] is the row of nonzero p,
 // so the per-row maxima need no row-contiguous (CSR) copy of the matrix. Mirrors

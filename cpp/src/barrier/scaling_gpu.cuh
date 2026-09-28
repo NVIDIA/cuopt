@@ -16,9 +16,6 @@
 
 namespace cuopt::mathematical_optimization::simplex {
 
-// nnz(A)+nnz(Q) above which the barrier path runs Ruiz equilibration on GPU instead of CPU.
-constexpr int gpu_ruiz_nnz_threshold = 500000;
-
 // GPU-based Ruiz scaling
 template <typename i_t, typename f_t>
 i_t scaling_ruiz_gpu(const lp_problem_t<i_t, f_t>& unscaled,
