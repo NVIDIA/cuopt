@@ -120,9 +120,20 @@ no ``cuopt.native.dir`` is required:
 
 The embedded libraries do not include the CUDA toolkit's own math libraries
 (``libcublas``, ``libcusolver``, etc.) — those must already be present on the
-target system, e.g. via an ``nvidia/cuda:*-runtime-*`` base image or an
-equivalent CUDA runtime install. Loading the jar on a system without them
-fails with an ``UnsatisfiedLinkError`` naming the missing CUDA library.
+target system. Loading the jar on a system without them fails with an
+``UnsatisfiedLinkError`` naming the missing CUDA library. An
+``nvidia/cuda:*-runtime-*`` base image satisfies this without installing
+cuOpt itself:
+
+.. code-block:: bash
+
+   docker run --rm --gpus all -v $(pwd):/work -w /work \
+     nvidia/cuda:12.9.0-runtime-ubuntu24.04 bash -c '
+       apt-get update -qq && apt-get install -y -qq openjdk-17-jdk-headless maven
+       mvn -q dependency:copy-dependencies -DoutputDirectory=lib
+       javac -cp "lib/cuopt-*-cuda12.jar" -d . MyProgram.java
+       java -cp "lib/cuopt-*-cuda12.jar:." MyProgram
+     '
 
 LP Example
 ----------
