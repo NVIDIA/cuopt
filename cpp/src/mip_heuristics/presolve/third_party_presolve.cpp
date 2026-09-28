@@ -42,6 +42,7 @@
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/presolve/bhw_coeff_reduce.hpp>
 #include <mip_heuristics/presolve/gf2_presolve.hpp>
+#include <mip_heuristics/presolve/indicator_strengthening.hpp>
 #include <mip_heuristics/presolve/single_lock_dual_aggregation.hpp>
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
 #include <utilities/logger.hpp>
@@ -921,6 +922,12 @@ third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_papilo(
   i_t max_badgesize)
 {
   raft::common::nvtx::range fun_scope("Apply Papilo presolve on host");
+
+  if (category == problem_category_t::MIP &&
+      (!reduction_allowlist_.has_value() ||
+       reduction_allowlist_->count("indicatorstrengthening") > 0)) {
+    strengthen_indicators(papilo_problem);
+  }
 
   // Capture original dimensions before papilo.apply() mutates papilo_problem
   // in place into its reduced form.
