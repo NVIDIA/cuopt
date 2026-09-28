@@ -11,7 +11,6 @@
 #include <utilities/logger.hpp>
 
 #include <algorithm>
-#include <iterator>
 #include <string>
 #include <utility>
 #include <vector>
@@ -32,65 +31,52 @@ void strengthen_indicators(papilo::Problem<f_t>& problem)
 
   const int num_rows = constraint_matrix.getNRows();
   const int num_cols = problem.getNCols();
-  if (num_rows <= 0 || num_cols <= 0) { return; }
 
-  auto is_free_binary = [&](int col) {
-    const auto& flags = col_flags[col];
-    return flags.test(papilo::ColFlag::kIntegral) && !flags.test(papilo::ColFlag::kLbInf) &&
-           !flags.test(papilo::ColFlag::kUbInf) && !flags.test(papilo::ColFlag::kFixed) &&
-           lower_bounds[col] == 0.0 && upper_bounds[col] == 1.0;
-  };
+  std::vector<bool> is_binary(num_cols);
+  for (int col = 0; col < num_cols; ++col) {
+    is_binary[col] = col_flags[col].test(papilo::ColFlag::kIntegral) &&
+                     !col_flags[col].test(papilo::ColFlag::kLbInf, papilo::ColFlag::kUbInf) &&
+                     lower_bounds[col] == 0.0 && upper_bounds[col] == 1.0;
+  }
 
   // +1 when the stored row reads a.x <= rhs, -1 when it reads a.x >= lhs, 0 for equations, ranges
   // and free rows.
-  auto orientation = [&](int row) {
+  std::vector<int> orientation(num_rows, 0);
+  for (int row = 0; row < num_rows; ++row) {
     const bool lhs_infinite = row_flags[row].test(papilo::RowFlag::kLhsInf);
     const bool rhs_infinite = row_flags[row].test(papilo::RowFlag::kRhsInf);
-    if (lhs_infinite == rhs_infinite) { return 0; }
-    return lhs_infinite ? 1 : -1;
-  };
+    if (lhs_infinite != rhs_infinite) { orientation[row] = lhs_infinite ? 1 : -1; }
+  }
 
   // The variable upper bounds x <= z over binaries, in CSR form over the members: the indicators
-  // bounding column j are vub_indicators[vub_offsets[j] .. vub_offsets[j+1]), sorted and unique.
-  std::vector<std::pair<int, int>> vubs;
-  for (int row = 0; row < num_rows; ++row) {
-    const int direction = orientation(row);
-    if (direction == 0) { continue; }
-    auto row_coefficients = constraint_matrix.getRowCoefficients(row);
-    if (row_coefficients.getLength() != 2) { continue; }
-    const f_t side = direction == 1 ? rhs_values[row] : lhs_values[row];
-    if (side != 0.0) { continue; }
+  // bounding column j are vub_indicators[vub_offsets[j] .. vub_offsets[j+1]).
+  std::vector<int> vub_offsets(num_cols + 1, 0);
+  std::vector<int> vub_indicators;
+  for (int col = 0; col < num_cols; ++col) {
+    if (is_binary[col]) {
+      auto col_coefficients = constraint_matrix.getColumnCoefficients(col);
+      const int* rows       = col_coefficients.getIndices();
+      const f_t* col_values = col_coefficients.getValues();
+      for (int p = 0; p < col_coefficients.getLength(); ++p) {
+        const int row       = rows[p];
+        const int direction = orientation[row];
+        if (direction == 0 || direction * col_values[p] != 1.0) { continue; }
+        auto row_coefficients = constraint_matrix.getRowCoefficients(row);
+        if (row_coefficients.getLength() != 2) { continue; }
+        const f_t side = direction == 1 ? rhs_values[row] : lhs_values[row];
+        if (side != 0.0) { continue; }
 
-    const int* indices = row_coefficients.getIndices();
-    const f_t* values  = row_coefficients.getValues();
-    int member = -1, indicator = -1;
-    for (int p = 0; p < 2; ++p) {
-      if (!is_free_binary(indices[p])) {
-        member = indicator = -1;
-        break;
-      }
-      const f_t v = direction * values[p];
-      if (v == 1.0) {
-        member = indices[p];
-      } else if (v == -1.0) {
-        indicator = indices[p];
+        const int* indices = row_coefficients.getIndices();
+        const f_t* values  = row_coefficients.getValues();
+        const int other    = indices[0] == col ? 1 : 0;
+        if (is_binary[indices[other]] && direction * values[other] == -1.0) {
+          vub_indicators.push_back(indices[other]);
+        }
       }
     }
-    if (member >= 0 && indicator >= 0) { vubs.emplace_back(member, indicator); }
+    vub_offsets[col + 1] = vub_indicators.size();
   }
-  if (vubs.empty()) { return; }
-
-  std::sort(vubs.begin(), vubs.end());
-  vubs.erase(std::unique(vubs.begin(), vubs.end()), vubs.end());
-  std::vector<int> vub_offsets(num_cols + 1, 0);
-  std::vector<int> vub_indicators(vubs.size());
-  for (size_t k = 0; k < vubs.size(); ++k) {
-    ++vub_offsets[vubs[k].first + 1];
-    vub_indicators[k] = vubs[k].second;
-  }
-  for (int col = 0; col < num_cols; ++col) {
-    vub_offsets[col + 1] += vub_offsets[col];
-  }
+  if (vub_indicators.empty()) { return; }
 
   papilo::Vec<papilo::Triplet<f_t>> entries;
   entries.reserve(constraint_matrix.getNnz() + num_rows);
@@ -98,16 +84,14 @@ void strengthen_indicators(papilo::Problem<f_t>& problem)
   papilo::Vec<f_t> rhs(rhs_values.begin(), rhs_values.end());
   papilo::Vec<papilo::RowFlags> flags(row_flags.begin(), row_flags.end());
 
-  std::vector<int> implied_heads;
-  std::vector<int> implied_offsets{0};
-  std::vector<int> implied_indicators;
-  int num_lifted = 0;
+  papilo::Vec<papilo::Triplet<f_t>> implied_entries;
+  papilo::RowFlags implied_flags;
+  implied_flags.set(papilo::RowFlag::kLhsInf);
+  int num_implied = 0;
+  int num_lifted  = 0;
 
   std::vector<int> indicators;
   std::vector<int> members;
-  std::vector<int> support;
-  std::vector<int> common;
-  std::vector<int> intersection;
 
   for (int row = 0; row < num_rows; ++row) {
     auto row_coefficients = constraint_matrix.getRowCoefficients(row);
@@ -118,8 +102,8 @@ void strengthen_indicators(papilo::Problem<f_t>& problem)
       entries.emplace_back(row, indices[p], values[p]);
     }
 
-    const int direction = orientation(row);
-    if (direction == 0 || len < 2) { continue; }
+    const int direction = orientation[row];
+    if (direction == 0) { continue; }
     const f_t capacity = direction * (direction == 1 ? rhs_values[row] : lhs_values[row]);
 
     // Implication row y - sum_{j in S} x_j <= 0: one +1 head against a tail of -1 members.
@@ -131,7 +115,7 @@ void strengthen_indicators(papilo::Problem<f_t>& problem)
       for (int p = 0; p < len && usable; ++p) {
         const int col = indices[p];
         const f_t v   = direction * values[p];
-        if (!is_free_binary(col)) {
+        if (!is_binary[col]) {
           usable = false;
         } else if (v == 1.0) {
           usable = head < 0;
@@ -148,7 +132,7 @@ void strengthen_indicators(papilo::Problem<f_t>& problem)
           usable = false;
         }
       }
-      if (!usable || head < 0 || indicators.empty()) { continue; }
+      if (!usable || head < 0) { continue; }
 
       std::sort(indicators.begin(), indicators.end());
       indicators.erase(std::unique(indicators.begin(), indicators.end()), indicators.end());
@@ -156,22 +140,27 @@ void strengthen_indicators(papilo::Problem<f_t>& problem)
       if (indicators.size() >= num_members) { continue; }
       if (std::binary_search(indicators.begin(), indicators.end(), head)) { continue; }
 
-      implied_heads.push_back(head);
-      implied_indicators.insert(implied_indicators.end(), indicators.begin(), indicators.end());
-      implied_offsets.push_back(implied_indicators.size());
+      const int implied_row = num_rows + num_implied;
+      implied_entries.emplace_back(implied_row, head, f_t{1});
+      for (int z : indicators) {
+        implied_entries.emplace_back(implied_row, z, f_t{-1});
+      }
+      lhs.push_back(0.0);
+      rhs.push_back(0.0);
+      flags.push_back(implied_flags);
+      ++num_implied;
       continue;
     }
     if (capacity < 0.0) { continue; }
 
     // Capacity row sum_{i in S} x_i - s <= K with every x_i bounded by a common indicator z.
     members.clear();
-    support.assign(indices, indices + len);
     bool usable = true;
     for (int p = 0; p < len && usable; ++p) {
       const int col = indices[p];
       const f_t v   = direction * values[p];
       if (col_flags[col].test(papilo::ColFlag::kIntegral)) {
-        usable = is_free_binary(col) && v == 1.0;
+        usable = is_binary[col] && v == 1.0;
         if (usable) { members.push_back(col); }
       } else {
         usable =
@@ -182,26 +171,16 @@ void strengthen_indicators(papilo::Problem<f_t>& problem)
     const f_t n_members = members.size();
     if (capacity >= n_members) { continue; }
 
-    common.assign(vub_indicators.begin() + vub_offsets[members[0]],
-                  vub_indicators.begin() + vub_offsets[members[0] + 1]);
-    for (size_t k = 1; k < members.size() && !common.empty(); ++k) {
-      const int col = members[k];
-      intersection.clear();
-      std::set_intersection(common.begin(),
-                            common.end(),
-                            vub_indicators.begin() + vub_offsets[col],
-                            vub_indicators.begin() + vub_offsets[col + 1],
-                            std::back_inserter(intersection));
-      common.swap(intersection);
-    }
-    if (common.empty()) { continue; }
-
-    std::sort(support.begin(), support.end());
     int indicator = -1;
-    for (int z : common) {
-      if (std::binary_search(support.begin(), support.end(), z)) { continue; }
-      indicator = z;
-      break;
+    for (int p = vub_offsets[members[0]]; p < vub_offsets[members[0] + 1] && indicator < 0; ++p) {
+      const int z = vub_indicators[p];
+      bool shared = true;
+      for (size_t k = 1; k < members.size() && shared; ++k) {
+        const auto span_begin = vub_indicators.begin() + vub_offsets[members[k]];
+        const auto span_end   = vub_indicators.begin() + vub_offsets[members[k] + 1];
+        shared                = std::find(span_begin, span_end, z) != span_end;
+      }
+      if (shared) { indicator = z; }
     }
     if (indicator < 0) { continue; }
 
@@ -214,21 +193,8 @@ void strengthen_indicators(papilo::Problem<f_t>& problem)
     ++num_lifted;
   }
 
-  const int num_implied = implied_heads.size();
   if (num_implied == 0 && num_lifted == 0) { return; }
-
-  for (int k = 0; k < num_implied; ++k) {
-    const int row = num_rows + k;
-    entries.emplace_back(row, implied_heads[k], f_t{1});
-    for (int p = implied_offsets[k]; p < implied_offsets[k + 1]; ++p) {
-      entries.emplace_back(row, implied_indicators[p], f_t{-1});
-    }
-    lhs.push_back(0.0);
-    rhs.push_back(0.0);
-    papilo::RowFlags row_flag;
-    row_flag.set(papilo::RowFlag::kLhsInf);
-    flags.push_back(row_flag);
-  }
+  entries.insert(entries.end(), implied_entries.begin(), implied_entries.end());
 
   if (!problem.getConstraintNames().empty()) {
     papilo::Vec<papilo::String> names = problem.getConstraintNames();
@@ -238,29 +204,24 @@ void strengthen_indicators(papilo::Problem<f_t>& problem)
     problem.setConstraintNames(std::move(names));
   }
 
-  const int num_vubs = vub_indicators.size();
   papilo::SparseStorage<f_t> storage(
     std::move(entries), num_rows + num_implied, num_cols, false, 4.0, 30);
   problem.setConstraintMatrix(std::move(storage), std::move(lhs), std::move(rhs), std::move(flags));
 
-  CUOPT_LOG_INFO(
-    "Indicator strengthening: %d implied indicator rows added, %d capacity rows lifted over %d "
+  CUOPT_LOG_DEBUG(
+    "Indicator strengthening: %d implied indicator rows added, %d capacity rows lifted over %zu "
     "variable upper bounds",
     num_implied,
     num_lifted,
-    num_vubs);
+    vub_indicators.size());
 }
 
-#define INSTANTIATE(F_TYPE) template void strengthen_indicators<F_TYPE>(papilo::Problem<F_TYPE>&);
-
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
-INSTANTIATE(float)
+template void strengthen_indicators<float>(papilo::Problem<float>&);
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
-INSTANTIATE(double)
+template void strengthen_indicators<double>(papilo::Problem<double>&);
 #endif
-
-#undef INSTANTIATE
 
 }  // namespace cuopt::mathematical_optimization::mip
