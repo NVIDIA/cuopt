@@ -9,6 +9,7 @@ ConfigureTest(NUMOPT_INTERNAL_TEST
     ${CUOPT_TEST_DIR}/internal/main.cu
     # dual_simplex
     ${CUOPT_TEST_DIR}/dual_simplex/unit_tests/solve.cpp
+    ${CUOPT_TEST_DIR}/dual_simplex/unit_tests/primal.cpp
     ${CUOPT_TEST_DIR}/dual_simplex/unit_tests/solve_barrier.cu
     ${CUOPT_TEST_DIR}/dual_simplex/unit_tests/right_looking_ldlt.cpp
     # linear_programming

@@ -6,6 +6,7 @@
 /* clang-format on */
 #pragma once
 
+#include <cstdlib>
 #include <string>
 
 #include <stdarg.h>

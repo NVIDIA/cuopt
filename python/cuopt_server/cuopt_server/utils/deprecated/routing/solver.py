@@ -13,8 +13,8 @@ from cuopt.utilities import (
     OutOfMemoryError,
 )
 
+from cuopt_server.utils.deprecated.routing.conversion import create_data_model
 from cuopt_server.utils.routing.conversion import (  # noqa: F401
-    create_data_model,
     create_solver,
     prep_optimization_data,
     warn_on_objectives,

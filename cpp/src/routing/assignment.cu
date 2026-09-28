@@ -5,6 +5,7 @@
  */
 /* clang-format on */
 
+#include <cuda/stream>
 #include <cuopt/export.hpp>
 #include <cuopt/routing/assignment.hpp>
 #include <raft/util/cudart_utils.hpp>
@@ -21,7 +22,7 @@ const std::string solution_string_t::empty = "cuOpt solver did not run.";
 const std::string solution_string_t::error = "An error occured while running the cuOpt solver.";
 
 template <typename i_t>
-assignment_t<i_t>::assignment_t(solution_status_t status, rmm::cuda_stream_view stream_view)
+assignment_t<i_t>::assignment_t(solution_status_t status, cuda::stream_ref stream_view)
   : status_(status),
     route_(0, stream_view),
     arrival_stamp_(0, stream_view),
@@ -36,7 +37,7 @@ assignment_t<i_t>::assignment_t(solution_status_t status, rmm::cuda_stream_view 
 }
 
 template <typename i_t>
-assignment_t<i_t>::assignment_t(cuopt::logic_error error_status, rmm::cuda_stream_view stream_view)
+assignment_t<i_t>::assignment_t(cuopt::logic_error error_status, cuda::stream_ref stream_view)
   : status_(solution_status_t::ERROR),
     route_(0, stream_view),
     arrival_stamp_(0, stream_view),
@@ -77,24 +78,6 @@ assignment_t<i_t>::assignment_t(i_t vehicle_count,
     solution_string_(solution_string),
     error_status_(cuopt::logic_error("", cuopt::error_type_t::Success))
 {
-}
-
-template <typename i_t>
-double assignment_t<i_t>::get_total_objective() const
-{
-  return total_objective_value_;
-}
-
-template <typename i_t>
-const std::map<objective_t, double>& assignment_t<i_t>::get_objectives() const noexcept
-{
-  return objective_values_;
-}
-
-template <typename i_t>
-i_t assignment_t<i_t>::get_vehicle_count() const
-{
-  return vehicle_count_;
 }
 
 template <typename i_t>
@@ -188,7 +171,7 @@ const rmm::device_uvector<i_t>& assignment_t<i_t>::get_accepted() const noexcept
 }
 
 template <typename i_t>
-void assignment_t<i_t>::to_csv(std::string_view filename, rmm::cuda_stream_view stream_view)
+void assignment_t<i_t>::to_csv(std::string_view filename, cuda::stream_ref stream_view)
 {
   std::vector<i_t> route;
   std::vector<double> arrival_stamp;
@@ -206,12 +189,6 @@ void assignment_t<i_t>::to_csv(std::string_view filename, rmm::cuda_stream_view 
 }
 
 template <typename i_t>
-std::string assignment_t<i_t>::get_status_string() const noexcept
-{
-  return solution_string_;
-}
-
-template <typename i_t>
 void assignment_t<i_t>::set_vehicle_count(i_t vehicle_count)
 {
   vehicle_count_ = vehicle_count;
@@ -221,18 +198,6 @@ template <typename i_t>
 void assignment_t<i_t>::set_status(solution_status_t status)
 {
   status_ = status;
-}
-
-template <typename i_t>
-solution_status_t assignment_t<i_t>::get_status() const
-{
-  return status_;
-}
-
-template <typename i_t>
-cuopt::logic_error assignment_t<i_t>::get_error_status() const noexcept
-{
-  return error_status_;
 }
 
 template <typename i_t>

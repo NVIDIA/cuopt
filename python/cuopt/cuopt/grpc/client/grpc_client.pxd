@@ -196,6 +196,7 @@ cdef extern from "cuopt/grpc/cython_grpc_client.hpp" namespace "cuopt::cython":
             const grpc_python_client_connect_options_t& options,
         ) except +
         bint connect(string& error_out) except +
+        bint ping(string& error_out, int timeout_seconds) except + nogil
         string last_error()
 
         # Shared job control

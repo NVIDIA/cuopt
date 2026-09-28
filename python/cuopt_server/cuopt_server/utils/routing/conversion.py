@@ -5,9 +5,9 @@ import logging
 from typing import List, Optional
 
 import numpy as np
+import pandas as pd
 from fastapi import HTTPException
 
-import cudf
 from cuopt import distance_engine, routing
 
 from cuopt_server.utils.data_definition import (
@@ -18,9 +18,13 @@ from cuopt_server.utils.data_definition import (
     TaskData,
     WaypointGraphData,
 )
+from cuopt_server.utils.routing.host_optimization_data_model import (
+    HostOptimizationDataModel,
+)
 from cuopt_server.utils.routing.initial_solution import parse_initial_sol
 from cuopt_server.utils.routing.optimization_data_model import (
     OptimizationDataModel,
+    objective_names,
 )
 
 
@@ -53,7 +57,7 @@ def populate_optimization_data(
     solver_config: Optional[SolverSettingsConfig] = None,
     warnings=[],
 ):
-    optimization_data = OptimizationDataModel()
+    optimization_data = HostOptimizationDataModel()
 
     if (
         not cost_waypoint_graph_data
@@ -174,25 +178,17 @@ def populate_optimization_data(
 
 
 def create_data_model(
-    optimization_data: OptimizationDataModel,
+    optimization_data: HostOptimizationDataModel,
     cost_matrix: Optional[dict] = None,
     travel_time_matrix: Optional[dict] = None,
 ):
     warnings = []
-    # Make sure that we are using pool memory allocator
-    import rmm
-
-    assert isinstance(
-        rmm.mr.get_current_device_resource(), rmm.mr.StatisticsResourceAdaptor
-    ) or isinstance(
-        rmm.mr.get_current_device_resource(), rmm.mr.PoolMemoryResource
-    )
 
     n_fleet = len(optimization_data.fleet_data["vehicle_locations"])
 
     n_locations = list(cost_matrix.values())[0].shape[0]
 
-    locations = cudf.Series(
+    locations = pd.Series(
         list(range(len(optimization_data.locations))),
         index=optimization_data.locations,
     )
@@ -286,7 +282,7 @@ def create_data_model(
                 data["earliest"],
                 data["latest"],
                 data["duration"],
-                cudf.Series(data["locations"]),
+                pd.Series(data["locations"]),
             )
 
     if optimization_data.fleet_data["vehicle_distance_breaks"] is not None:
@@ -297,7 +293,7 @@ def create_data_model(
                         "int32"
                     )
                 else:
-                    break_locations = cudf.Series(
+                    break_locations = pd.Series(
                         data["locations"], dtype="int32"
                     )
             else:
@@ -313,7 +309,7 @@ def create_data_model(
     if optimization_data.fleet_data["vehicle_order_match"] is not None:
         for data in optimization_data.fleet_data["vehicle_order_match"]:
             data_model.add_vehicle_order_match(
-                data["vehicle_id"], cudf.Series(data["order_ids"])
+                data["vehicle_id"], pd.Series(data["order_ids"])
             )
 
     if optimization_data.fleet_data["drop_return_trips"] is not None:
@@ -396,11 +392,11 @@ def create_data_model(
             if type(service_times) is dict:
                 for v_id, service_time in service_times.items():
                     data_model.set_order_service_times(
-                        cudf.Series(service_time, dtype=np.int32), int(v_id)
+                        pd.Series(service_time, dtype=np.int32), int(v_id)
                     )
             else:
                 data_model.set_order_service_times(
-                    cudf.Series(service_times, dtype=np.int32)
+                    pd.Series(service_times, dtype=np.int32)
                 )
 
     if optimization_data.solver_config["objectives"] is not None:
@@ -415,7 +411,7 @@ def create_data_model(
     if optimization_data.task_data["order_vehicle_match"] is not None:
         for data in optimization_data.task_data["order_vehicle_match"]:
             data_model.add_order_vehicle_match(
-                data["order_id"], cudf.Series(data["vehicle_ids"])
+                data["order_id"], pd.Series(data["vehicle_ids"])
             )
 
     if optimization_data.initial_solution is not None:
@@ -423,10 +419,10 @@ def create_data_model(
             optimization_data.initial_solution
         )
         data_model.add_initial_solutions(
-            cudf.Series(vehicle_ids),
-            cudf.Series(routes),
-            cudf.Series(types),
-            cudf.Series(sol_offsets),
+            pd.Series(vehicle_ids),
+            pd.Series(routes),
+            pd.Series(types),
+            pd.Series(sol_offsets),
         )
     return warnings, data_model
 
@@ -529,3 +525,124 @@ def prep_optimization_data(optimization_data):
         travel_time_matrix,
         cost_waypoint_graph,
     )
+
+
+def _as_python_list(values):
+    if values is None:
+        return []
+    if hasattr(values, "tolist"):
+        return values.tolist()
+    return list(values)
+
+
+_NODE_TYPE_NAMES = {
+    0: "Depot",
+    1: "Pickup",
+    2: "Delivery",
+    3: "Break",
+}
+
+
+def _node_type_name(value):
+    try:
+        return _NODE_TYPE_NAMES[int(value)]
+    except (ValueError, TypeError, KeyError):
+        return str(value)
+
+
+def solution_to_http(
+    sol: dict,
+    vehicle_ids: Optional[List] = None,
+    task_ids: Optional[List] = None,
+) -> dict:
+    """Map a gRPC routing result dict onto the HTTP solver_response.
+
+    ``sol`` is the routing GetResult dict. ``vehicle_ids`` / ``task_ids`` are
+    optional sidecar lists from submit so HTTP keys match the request. After a
+    proxy restart they may be absent and numeric indices are used.
+
+    Returns the inner ``solver_response`` dict (integer status 0 or 1).
+    Raises ``HTTPException`` with status 409 if ``status`` is neither 0 nor 1.
+    """
+    status = int(sol.get("status", 0))
+    message = sol.get("status_message") or sol.get("error_message") or ""
+    if status not in (0, 1):
+        raise HTTPException(
+            status_code=409,
+            detail=message or "routing job did not find a feasible solution",
+        )
+
+    route = _as_python_list(sol.get("route"))
+    truck_id = _as_python_list(sol.get("truck_id"))
+    locations = _as_python_list(sol.get("locations"))
+    node_types = _as_python_list(sol.get("node_types"))
+    arrival = _as_python_list(sol.get("arrival_stamp"))
+    type_names = [_node_type_name(t) for t in node_types]
+
+    grouped = {}
+    for i, tid in enumerate(truck_id):
+        grouped.setdefault(int(tid), []).append(i)
+
+    vehicle_data = {}
+    for tid, idxs in grouped.items():
+        if vehicle_ids is not None and 0 <= tid < len(vehicle_ids):
+            key = str(vehicle_ids[tid])
+        else:
+            key = str(tid)
+        task_id_col = []
+        for i in idxs:
+            tname = type_names[i] if i < len(type_names) else ""
+            if tname in ("Depot", "Break"):
+                task_id_col.append(tname)
+            elif task_ids is not None and i < len(route):
+                r = int(route[i])
+                if 0 <= r < len(task_ids):
+                    task_id_col.append(str(task_ids[r]))
+                else:
+                    task_id_col.append(str(r))
+            elif i < len(route):
+                task_id_col.append(str(int(route[i])))
+            else:
+                task_id_col.append("")
+        vehicle_data[key] = {
+            "task_id": task_id_col,
+            "arrival_stamp": [
+                float(arrival[i]) for i in idxs if i < len(arrival)
+            ],
+            "type": [type_names[i] for i in idxs if i < len(type_names)],
+            "route": [
+                int(locations[i]) if i < len(locations) else int(route[i])
+                for i in idxs
+            ],
+        }
+
+    objective_values = {}
+    for key, val in (sol.get("objective_values") or {}).items():
+        try:
+            name = objective_names[routing.Objective(int(key))]
+        except Exception:
+            name = str(key)
+        objective_values[name] = float(val)
+
+    initial_sol_map = ["not accepted", "accepted", "not evaluated"]
+    accepted = [
+        initial_sol_map[int(i)] if 0 <= int(i) < 3 else str(int(i))
+        for i in _as_python_list(sol.get("accepted"))
+    ]
+    dropped = [int(i) for i in _as_python_list(sol.get("unserviced_nodes"))]
+    dropped_ids = [
+        str(task_ids[i])
+        if task_ids is not None and 0 <= i < len(task_ids)
+        else str(i)
+        for i in dropped
+    ]
+
+    return {
+        "status": status,
+        "num_vehicles": int(sol.get("vehicle_count", len(vehicle_data))),
+        "solution_cost": float(sol.get("total_objective_value", 0.0)),
+        "objective_values": objective_values,
+        "vehicle_data": vehicle_data,
+        "initial_solutions": accepted,
+        "dropped_tasks": {"task_id": dropped_ids, "task_index": dropped},
+    }

@@ -5,6 +5,7 @@
  */
 /* clang-format on */
 
+#include <cuda/stream>
 #include <cuopt/error.hpp>
 #include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
@@ -16,7 +17,7 @@ namespace cuopt::mathematical_optimization {
 template <typename i_t, typename f_t>
 void mip_solver_settings_t<i_t, f_t>::add_initial_solution(const f_t* initial_solution,
                                                            i_t size,
-                                                           rmm::cuda_stream_view stream)
+                                                           cuda::stream_ref stream)
 {
   cuopt_expects(
     initial_solution != nullptr, error_type_t::ValidationError, "initial_solution cannot be null");

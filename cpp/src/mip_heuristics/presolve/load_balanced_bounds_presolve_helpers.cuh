@@ -15,7 +15,7 @@
 #include <thrust/iterator/counting_iterator.h>
 #include <thrust/iterator/transform_iterator.h>
 #include <thrust/scan.h>
-#include <rmm/cuda_stream_view.hpp>
+#include <cuda/stream>
 #include <rmm/device_uvector.hpp>
 #include <vector>
 
@@ -80,7 +80,7 @@ struct heavy_vertex_meta_t {
 };
 
 template <typename i_t>
-i_t create_heavy_item_block_segments(rmm::cuda_stream_view stream,
+i_t create_heavy_item_block_segments(cuda::stream_ref stream,
                                      rmm::device_uvector<i_t>& vertex_id,
                                      rmm::device_uvector<i_t>& pseudo_block_id,
                                      rmm::device_uvector<i_t>& item_block_segments,

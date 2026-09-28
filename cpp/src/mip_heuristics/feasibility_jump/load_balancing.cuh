@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -466,8 +466,18 @@ __global__ void load_balancing_mtm_compute_candidates(
 
 // Compute the scores of each candidate move of each variable
 // maximize occupancy for better results, we can afford the extra L1TEX traffic
+#if defined(__CUDA_ARCH__) && \
+  (__CUDA_ARCH__ == 750 || (__CUDA_ARCH__ >= 1100 && __CUDA_ARCH__ < 1200))
+inline constexpr int loadbalance_min_blocks_per_sm = 8;
+#elif defined(__CUDA_ARCH__) && ((__CUDA_ARCH__ >= 860 && __CUDA_ARCH__ < 900) || \
+                                 (__CUDA_ARCH__ >= 1200 && __CUDA_ARCH__ < 1300))
+inline constexpr int loadbalance_min_blocks_per_sm = 12;
+#else
+inline constexpr int loadbalance_min_blocks_per_sm = 16;
+#endif
+
 template <typename i_t, typename f_t>
-__launch_bounds__(TPB_loadbalance, 16) __global__
+__launch_bounds__(TPB_loadbalance, loadbalance_min_blocks_per_sm) __global__
   void load_balancing_mtm_compute_scores(const __grid_constant__
                                          typename fj_t<i_t, f_t>::climber_data_t::view_t fj)
 {

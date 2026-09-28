@@ -18,7 +18,7 @@ import msgpack
 import msgpack_numpy
 import numpy
 import numpy.core.multiarray
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
 msgpack_numpy.patch()
@@ -111,6 +111,35 @@ def deserialize(ctype, buf):
             detail="unable to load optimization data stream, %s" % (str(e)),
         )
     return data
+
+
+async def get_data(buf: bytearray | memoryview, request: Request) -> None:
+    """Stream the request body into a pre-sized buffer.
+
+    Callers allocate ``buf`` from ``Content-Length`` (a ``bytearray`` or a
+    shared-memory view) so Starlette does not assemble a second copy via
+    ``request.body()``. Pydantic validation happens later, after
+    :func:`deserialize`. Raises ``HTTPException`` when the stream length does
+    not match the buffer and propagates request-stream failures.
+    """
+    pos = 0
+    try:
+        async for chunk in request.stream():
+            if pos + len(chunk) > len(buf):
+                raise HTTPException(
+                    status_code=422,
+                    detail="Request body exceeds Content-Length",
+                )
+            buf[pos : pos + len(chunk)] = chunk
+            pos = pos + len(chunk)
+    except Exception:
+        logging.warning("exception in get_data", exc_info=True)
+        raise
+    if pos != len(buf):
+        raise HTTPException(
+            status_code=422,
+            detail="Request body is shorter than Content-Length",
+        )
 
 
 def encode_bytes(data, mime_type):

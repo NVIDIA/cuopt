@@ -14,6 +14,8 @@ struct pdlp_hyper_params_t {
   int default_l_inf_ruiz_iterations                 = 10;
   bool do_pock_chambolle_scaling                    = true;
   bool do_ruiz_scaling                              = true;
+  bool do_curtis_reid_scaling                       = true;
+  int number_of_curtis_reid_iterations              = 10;
   double default_alpha_pock_chambolle_rescaling     = 1.0;
   double default_artificial_restart_threshold       = 0.36;
   bool compute_initial_step_size_before_scaling     = false;

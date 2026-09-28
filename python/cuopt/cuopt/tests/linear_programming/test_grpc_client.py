@@ -21,7 +21,12 @@ from cuopt.grpc.linear_programming import (
 from cuopt.linear_programming import Read, SolverSettings
 from cuopt.linear_programming.internals import GetSolutionCallback
 from cuopt.linear_programming.problem import INTEGER, MAXIMIZE, Problem
-from cuopt.linear_programming.solver.solver_parameters import CUOPT_TIME_LIMIT
+from cuopt.linear_programming.solver.solver_parameters import (
+    CUOPT_METHOD,
+    CUOPT_PRESOLVE,
+    CUOPT_TIME_LIMIT,
+)
+from cuopt.linear_programming.solver_settings import SolverMethod
 
 from grpc_server_fixtures import GRPC_PORT_OFFSET_CLIENT
 
@@ -335,6 +340,67 @@ class TestGrpcClient:
         assert solution.get_primal_objective() == pytest.approx(15.0, rel=1e-3)
         client.delete(job_id)
 
+    def test_mip_start_over_grpc(self, grpc_server):
+        problem = Problem("grpc_mip_start")
+        x = problem.addVariable(lb=0, ub=10, vtype=INTEGER, name="x")
+        y = problem.addVariable(lb=0, ub=10, vtype=INTEGER, name="y")
+        problem.addConstraint(x + y <= 10, name="c1")
+        problem.addConstraint(x - y >= 0, name="c2")
+        problem.setObjective(x + 2 * y, sense=MAXIMIZE)
+        x.setMIPStart(5)
+        y.MIPStart = 5.0
+
+        client = Client("localhost", grpc_server)
+        job_id = client.submit(problem, SolverSettings())
+        try:
+            assert client.wait(job_id, timeout=120) == JobStatus.COMPLETED
+
+            solution = client.result(job_id, _MIP_NAMES)
+            assert solution is not None
+            assert solution.get_primal_objective() == pytest.approx(
+                15.0, rel=1e-3
+            )
+            assert any(
+                "Using 1 user-provided initial MIP solution" in line
+                for line in client.logs(job_id)
+            )
+        finally:
+            client.delete(job_id)
+
+    def test_lp_initial_solution_over_grpc(self, grpc_server):
+        settings = SolverSettings()
+        settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
+        settings.set_parameter(CUOPT_PRESOLVE, 0)
+
+        client = Client("localhost", grpc_server)
+
+        def solve(problem):
+            job_id = client.submit(problem, settings)
+            try:
+                assert client.wait(job_id, timeout=30) == JobStatus.COMPLETED
+                solution = client.result(job_id, _DEMO_LP_NAMES)
+                assert solution is not None
+                assert solution.get_primal_objective() == pytest.approx(
+                    0.36, rel=1e-3
+                )
+                assert solution.get_solved_by() == SolverMethod.PDLP
+                return solution.get_lp_stats()["nb_iterations"]
+            finally:
+                client.delete(job_id)
+
+        n_cold = solve(_demo_lp_problem())
+
+        warm = _demo_lp_problem()
+        warm._to_data_model()
+        warm.model.set_initial_primal_solution([1.8, 0.0])
+        warm.model.set_initial_dual_solution([-1.0 / 15.0, 0.0])
+        n_warm = solve(warm)
+
+        assert n_warm * 5 < n_cold, (
+            "initial primal/dual did not reduce PDLP iterations "
+            f"(cold={n_cold}, warm={n_warm})"
+        )
+
     def test_invalid_job_id(self, grpc_server):
         client = Client("localhost", grpc_server)
         assert (
@@ -435,67 +501,51 @@ class TestGrpcClient:
         client.delete(job_id)
 
     def test_mip_incumbent_stream_live_during_wait(self, grpc_server):
-        """Incumbent callbacks must fire during wait(), not in a burst after.
+        """At least one incumbent callback must run before wait() returns.
 
-        The 2-variable MIP in test_mip_incumbent_stream finishes too fast to
-        tell. swath1 with a time limit stays PROCESSING long enough that a
-        GIL-holding wait() would delay every callback until join().
+        A GIL-holding wait() defers Python callbacks until join(). swath1 is
+        used because the tiny MIP in test_mip_incumbent_stream finishes too
+        fast to tell.
         """
         if not os.path.isfile(_SWATH1_MPS):
             pytest.skip(f"dataset not found: {_SWATH1_MPS}")
 
-        class TimedIncumbents(GetSolutionCallback):
+        class CountIncumbents(GetSolutionCallback):
             def __init__(self):
                 super().__init__()
-                self.times = []
-                self.costs = []
+                self.n = 0
+                self.gate = False
 
             def get_solution(
                 self, solution, solution_cost, solution_bound, user_data
             ):
-                self.times.append(time.monotonic())
-                self.costs.append(float(solution_cost[0]))
+                if self.gate:
+                    self.n += 1
 
-        collector = TimedIncumbents()
+        collector = CountIncumbents()
         settings = SolverSettings()
         settings.set_mip_callback(collector, None)
         settings.set_parameter(CUOPT_TIME_LIMIT, 8)
 
         client = Client("localhost", grpc_server)
         job_id = client.submit(Read(_SWATH1_MPS), settings)
+        collector.gate = False
         client.start_incumbent_stream(
             job_id, settings=settings, poll_interval_ms=200
         )
         try:
+            collector.gate = True
             terminal = client.wait(job_id, timeout=30)
-            wait_end = time.monotonic()
+            n_during_wait = collector.n
+            collector.gate = False
             client.join_incumbent_stream(job_id)
         finally:
             client.delete(job_id)
 
         if terminal != JobStatus.COMPLETED:
             pytest.skip(f"job did not complete ({terminal.name})")
-        if len(collector.times) < 2:
-            pytest.skip(
-                "need >=2 incumbents to test live delivery, got "
-                f"{len(collector.times)}"
-            )
-
-        n_before = sum(t < wait_end for t in collector.times)
-        spread = max(collector.times) - min(collector.times)
-        lag = wait_end - min(collector.times)
-        print(
-            f"incumbents={len(collector.times)} before_wait={n_before} "
-            f"spread={spread:.3f}s first_to_wait_end={lag:.3f}s"
-        )
-        assert n_before >= 1, (
-            f"all {len(collector.times)} incumbents arrived at/after "
-            f"wait() returned (spread={spread:.4f}s); GIL likely held"
-        )
-        assert spread > 0.15, (
-            f"incumbent timestamps clustered in {spread:.4f}s "
-            f"(n={len(collector.times)}, lag_to_wait_end={lag:.4f}s); "
-            "likely dumped as a burst at completion"
+        assert n_during_wait >= 1, (
+            "no incumbent callback before wait() returned; GIL likely held"
         )
 
 

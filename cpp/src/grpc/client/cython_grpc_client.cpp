@@ -97,6 +97,15 @@ bool grpc_python_client_t::connect(std::string& error_out)
   return true;
 }
 
+bool grpc_python_client_t::ping(std::string& error_out, int timeout_seconds)
+{
+  if (!impl_->client.ping(timeout_seconds)) {
+    error_out = impl_->client.get_last_error();
+    return false;
+  }
+  return true;
+}
+
 grpc_submit_result_t grpc_python_client_t::submit(
   cuopt::mathematical_optimization::io::data_model_view_t<int, double>* data_model,
   cuopt::mathematical_optimization::solver_settings_t<int, double>* settings,

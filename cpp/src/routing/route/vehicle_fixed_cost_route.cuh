@@ -12,6 +12,7 @@
 #include "../solution/solution_handle.cuh"
 #include "routing/routing_helpers.cuh"
 
+#include <cuda/stream>
 #include <raft/core/handle.hpp>
 
 #include <thrust/tuple.h>
@@ -38,10 +39,7 @@ class vehicle_fixed_cost_route_t {
   vehicle_fixed_cost_route_t& operator=(vehicle_fixed_cost_route_t&& vehicle_fixed_cost_route) =
     default;
 
-  void resize([[maybe_unused]] i_t max_nodes_per_route,
-              [[maybe_unused]] rmm::cuda_stream_view stream)
-  {
-  }
+  void resize([[maybe_unused]] i_t max_nodes_per_route, [[maybe_unused]] cuda::stream_ref stream) {}
 
   struct view_t {
     DI vehicle_fixed_cost_node_t<i_t, f_t> get_node(i_t idx) const
@@ -104,7 +102,7 @@ class vehicle_fixed_cost_route_t {
   }
 
   /**
-   * @brief Get the shared memory size required to store a distance route of a given size
+   * @brief Get the shared memory size required to store a vehicle fixed route of a given size
    *
    * @param route_size
    * @return size_t

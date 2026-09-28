@@ -9,7 +9,7 @@
 //
 // Everything else in that class is host-only parameter handling, so the remainder now
 // builds as solver_settings.cpp into the CUDA-free cuopt_client library. Only these
-// members take an rmm::cuda_stream_view or hand back a device_uvector, so they are the
+// members take a cuda::stream_ref or hand back a device_uvector, so they are the
 // only ones that must stay in a CUDA TU inside libcuopt.
 //
 // solver_settings.cpp deliberately has no `template class` at all -- that would instantiate
@@ -19,7 +19,7 @@
 
 #include <cuopt/mathematical_optimization/solver_settings.hpp>
 
-#include <rmm/cuda_stream_view.hpp>
+#include <cuda/stream>
 #include <rmm/device_uvector.hpp>
 
 #include <mip_heuristics/mip_constants.hpp>
@@ -30,7 +30,7 @@ namespace CUOPT_EXPORT mathematical_optimization {
 template <typename i_t, typename f_t>
 void solver_settings_t<i_t, f_t>::set_initial_pdlp_primal_solution(const f_t* solution,
                                                                    i_t size,
-                                                                   rmm::cuda_stream_view stream)
+                                                                   cuda::stream_ref stream)
 {
   pdlp_settings.set_initial_primal_solution(solution, size, stream);
 }
@@ -38,7 +38,7 @@ void solver_settings_t<i_t, f_t>::set_initial_pdlp_primal_solution(const f_t* so
 template <typename i_t, typename f_t>
 void solver_settings_t<i_t, f_t>::set_initial_pdlp_dual_solution(const f_t* solution,
                                                                  i_t size,
-                                                                 rmm::cuda_stream_view stream)
+                                                                 cuda::stream_ref stream)
 {
   pdlp_settings.set_initial_dual_solution(solution, size, stream);
 }
@@ -102,7 +102,7 @@ const rmm::device_uvector<f_t>& solver_settings_t<i_t, f_t>::get_initial_pdlp_du
 template <typename i_t, typename f_t>
 void solver_settings_t<i_t, f_t>::add_initial_mip_solution(const f_t* solution,
                                                            i_t size,
-                                                           rmm::cuda_stream_view stream)
+                                                           cuda::stream_ref stream)
 {
   mip_settings.add_initial_solution(solution, size, stream);
 }
@@ -172,13 +172,18 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_ITERATION_LIMIT, &pdlp_settings.iteration_limit, 0, std::numeric_limits<i_t>::max(), std::numeric_limits<i_t>::max()},
     {CUOPT_NODE_LIMIT, &mip_settings.node_limit, 0, std::numeric_limits<i_t>::max(), std::numeric_limits<i_t>::max()},
     {CUOPT_PDLP_SOLVER_MODE, reinterpret_cast<int*>(&pdlp_settings.pdlp_solver_mode), CUOPT_PDLP_SOLVER_MODE_STABLE1, CUOPT_PDLP_SOLVER_MODE_STABLE3, CUOPT_PDLP_SOLVER_MODE_STABLE3},
-    {CUOPT_METHOD, reinterpret_cast<int*>(&pdlp_settings.method), CUOPT_METHOD_CONCURRENT, CUOPT_METHOD_BARRIER, CUOPT_METHOD_CONCURRENT},
-    {CUOPT_METHOD, reinterpret_cast<int*>(&mip_settings.method), CUOPT_METHOD_CONCURRENT, CUOPT_METHOD_BARRIER, CUOPT_METHOD_CONCURRENT},
+    {CUOPT_METHOD, reinterpret_cast<int*>(&pdlp_settings.method), CUOPT_METHOD_CONCURRENT, CUOPT_METHOD_PRIMAL, CUOPT_METHOD_CONCURRENT},
+    {CUOPT_METHOD, reinterpret_cast<int*>(&mip_settings.method), CUOPT_METHOD_CONCURRENT, CUOPT_METHOD_PRIMAL, CUOPT_METHOD_CONCURRENT},
+    {CUOPT_CONCURRENT_NNZ_CUTOFF, &pdlp_settings.concurrent_nnz_cutoff, -1, std::numeric_limits<i_t>::max(), 50'000'000, "skip Barrier and dual simplex in concurrent solves at this reduced NNZ; -1 disables the cutoff"},
+    {CUOPT_CONCURRENT_NNZ_CUTOFF, &mip_settings.concurrent_nnz_cutoff, -1, std::numeric_limits<i_t>::max(), 50'000'000, "skip Barrier and dual simplex in concurrent solves at this reduced NNZ; -1 disables the cutoff"},
     {CUOPT_NUM_CPU_THREADS, &mip_settings.num_cpu_threads, -1, std::numeric_limits<i_t>::max(), -1},
     {CUOPT_AUGMENTED, &pdlp_settings.augmented, -1, 1, -1},
     {CUOPT_FOLDING, &pdlp_settings.folding, -1, 1, -1},
     {CUOPT_DUALIZE, &pdlp_settings.dualize, -1, 1, -1},
     {CUOPT_ORDERING, &pdlp_settings.ordering, -1, 1, -1},
+    {CUOPT_DUAL_SIMPLEX_INITIAL_PERTURBATION, &pdlp_settings.initial_perturbation, -1, 1, -1},
+    {CUOPT_DUAL_SIMPLEX_REMOVE_PERTURBATION, &pdlp_settings.remove_perturbation, -1, 1, -1},
+    {CUOPT_PRIMAL_SIMPLEX_PRICING, &pdlp_settings.primal_pricing, 0, 1, 1},
     {CUOPT_BARRIER_DUAL_INITIAL_POINT, reinterpret_cast<int*>(&pdlp_settings.barrier_dual_initial_point), -1, 2, -1},
     {CUOPT_POSTSOLVE_INFO, &pdlp_settings.postsolve_info, -1, 1, -1},
     {CUOPT_MIP_CUT_PASSES, &mip_settings.max_cut_passes, -1, std::numeric_limits<i_t>::max(), 10},
@@ -251,6 +256,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_ELIMINATE_DENSE_COLUMNS, &pdlp_settings.eliminate_dense_columns, true},
     {CUOPT_CUDSS_DETERMINISTIC, &pdlp_settings.cudss_deterministic, false},
     {CUOPT_DUAL_POSTSOLVE, &pdlp_settings.dual_postsolve, true},
+    {CUOPT_SEQUENCE_SOLVE, &pdlp_settings.sequence_solve, false},
     {CUOPT_BARRIER_ITERATIVE_REFINEMENT, &pdlp_settings.barrier_iterative_refinement, true},
     {CUOPT_MIP_PROBING, &mip_settings.probing, true},
     {CUOPT_USE_DISTRIBUTED_PDLP, &pdlp_settings.use_distributed_pdlp, false},
@@ -259,6 +265,8 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     // Recursive sub-MIP (RINS) hyper-parameters (hidden from default --help: name contains "hyper_")
     {CUOPT_MIP_HYPER_SUBMIP_ENABLE_CPUFJ, &mip_settings.submip_params.enable_cpufj, true, "run CPU FJ over the sub-MIP"},
     {CUOPT_MIP_HYPER_BLOCK_BVE, &mip_settings.block_bve, true, "eliminate blocks of binaries in cuOpt's MIP presolve (needs " CUOPT_MIP_PROBING ")"},
+    // PDLP scaling hyper-parameter (hidden from default --help: name contains "hyper_")
+    {CUOPT_PDLP_HYPER_ENABLE_CURTIS_REID_SCALING, &pdlp_settings.hyper_params.do_curtis_reid_scaling, true, "Curtis-Reid prescaling, run before Ruiz/Pock-Chambolle scaling"},
   };
   // String parameters
   string_parameters = {

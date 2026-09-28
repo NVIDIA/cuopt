@@ -8,7 +8,6 @@
 #pragma once
 
 #include <cuopt/mathematical_optimization/constants.h>
-
 #include <cuda/stream>
 #include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/cpu_pdlp_warm_start_data.hpp>
@@ -26,6 +25,8 @@
 
 namespace cuopt {
 namespace CUOPT_EXPORT mathematical_optimization {
+
+class barrier_cache_t;
 
 // Forward declare solver_settings_t for friend class
 template <typename i_t, typename f_t>
@@ -61,6 +62,7 @@ enum pdlp_solver_mode_t : int {
  * PDLP: Use the PDLP method.
  * DualSimplex: Use the dual simplex method.
  * Barrier: Use the barrier method
+ * Primal: Use the (experimental) primal simplex method.
  * Unset: The value was not set.
  *
  * @note Default method is Concurrent.
@@ -70,6 +72,7 @@ enum method_t : int {
   PDLP        = CUOPT_METHOD_PDLP,
   DualSimplex = CUOPT_METHOD_DUAL_SIMPLEX,
   Barrier     = CUOPT_METHOD_BARRIER,
+  Primal      = CUOPT_METHOD_PRIMAL,
   Unset       = CUOPT_METHOD_UNSET
 };
 
@@ -81,6 +84,7 @@ inline std::string method_to_string(method_t method)
     case method_t::PDLP: return "PDLP";
     case method_t::Barrier: return "Barrier";
     case method_t::Concurrent: return "Concurrent";
+    case method_t::Primal: return "Primal Simplex";
     default: return "Unset";
   }
 }
@@ -153,7 +157,7 @@ class pdlp_solver_settings_t {
    */
   void set_initial_primal_solution(const f_t* initial_primal_solution,
                                    i_t size,
-                                   rmm::cuda_stream_view stream = cuda::stream_ref{
+                                   cuda::stream_ref stream = cuda::stream_ref{
                                      cudaStream_t{cudaStreamDefault}});
 
   /**
@@ -168,7 +172,7 @@ class pdlp_solver_settings_t {
    */
   void set_initial_dual_solution(const f_t* initial_dual_solution,
                                  i_t size,
-                                 rmm::cuda_stream_view stream = cuda::stream_ref{
+                                 cuda::stream_ref stream = cuda::stream_ref{
                                    cudaStream_t{cudaStreamDefault}});
 
   /** TODO batch mode: tmp
@@ -299,6 +303,9 @@ class pdlp_solver_settings_t {
   i_t augmented{-1};
   i_t dualize{-1};
   i_t ordering{-1};
+  i_t initial_perturbation{-1};
+  i_t remove_perturbation{-1};
+  i_t primal_pricing{1};
   barrier_dual_initial_point_t barrier_dual_initial_point{barrier_dual_initial_point_t::Automatic};
   i_t postsolve_info{-1};
   i_t barrier_presolve_bound_free_variables{-1};  // -1 automatic, 0 disabled, 1 enabled
@@ -352,6 +359,9 @@ class pdlp_solver_settings_t {
   // distributed_pdlp_partitioner_t for the meaning of each value.
   distributed_pdlp_partitioner_t distributed_pdlp_partitioner{distributed_pdlp_partitioner_t::Auto};
   method_t method{method_t::Concurrent};
+  // TODO: Remove this cutoff once concurrent CPU solver memory usage and cuDSS long running kernels
+  // are resolved. -1 disables the cutoff regardless of the reduced problem's NNZ.
+  i_t concurrent_nnz_cutoff{50'000'000};
   bool inside_mip{false};
   // For concurrent termination
   std::atomic<int>* concurrent_halt{nullptr};
@@ -370,6 +380,10 @@ class pdlp_solver_settings_t {
   // Used to force batch PDLP to solve a subbatch of the problems at a time
   // The 0 default value will make the solver use its heuristic to determine the subbatch size
   i_t fixed_batch_size{0};
+  /** When true, the first GPU barrier/QCQP solve retains cache state for later reuse. */
+  bool sequence_solve{false};
+  /** Non-owning cache pointer set by ``call_solve`` for barrier cache reuse. */
+  barrier_cache_t* barrier_cache{nullptr};
 
  private:
   /** Initial primal solution */

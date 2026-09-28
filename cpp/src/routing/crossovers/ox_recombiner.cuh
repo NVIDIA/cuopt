@@ -17,6 +17,7 @@
 #include <random>
 #include <vector>
 
+#include <cuda/stream>
 #include <rmm/device_uvector.hpp>
 
 #include <cub/cub.cuh>
@@ -63,7 +64,7 @@ struct OX {
   int optimal_routes_number;
   int n_buckets;
 
-  std::vector<std::pair<size_t, double>> distances;
+  std::vector<std::pair<size_t, double>> route_join_costs;
   std::unordered_set<int> helper;
   // TODO: use these for heterogenous/route cost/non fixed route
 
@@ -94,14 +95,14 @@ struct OX {
   ox_graph_t<int, float> d_graph;
   ox_graph_t<int, float> transpose_graph;
 
-  explicit OX(size_t nodes_number, const costs& weight, rmm::cuda_stream_view stream_view)
+  explicit OX(size_t nodes_number, const costs& weight, cuda::stream_ref stream_view)
     : mt(rd()),
       problem_size(nodes_number),
       graph(problem_size),
       path_cost(problem_size + 1),
       predcessor(problem_size + 1),
       predcessor_vehicle(problem_size + 1),
-      distances(128),
+      route_join_costs(128),
       d_path_cost(0, stream_view),
       d_predecessor(0, stream_view),
       d_predecessor_vehicle(0, stream_view),
@@ -267,27 +268,29 @@ struct OX {
   {
     auto const vehicle_buckets = S.problem->get_vehicle_buckets();
     for (size_t i = 1; i < routesS.size() - 1; i++) {
-      distances.clear();
+      route_join_costs.clear();
 
       for (size_t j = i; j < routesS.size(); j++) {
         auto vehicle_id = S.get_routes()[routesS[i - 1]].vehicle_id;
-        distances.emplace_back(
+        route_join_costs.emplace_back(
           j,
-          S.problem->distance_between(
+          S.problem->cost_between(
             S.get_routes()[routesS[i - 1]].end, S.get_routes()[routesS[j]].start, vehicle_id));
       }
       std::normal_distribution<double> d(0, 0.25);
       double ind   = d(mt);
-      size_t index = std::min<size_t>(distances.size() - 1, std::round(std::fabs(ind)));
+      size_t index = std::min<size_t>(route_join_costs.size() - 1, std::round(std::fabs(ind)));
 
-      std::partial_sort(distances.begin(),
-                        distances.begin() + index + 1,
-                        distances.end(),
+      std::partial_sort(route_join_costs.begin(),
+                        route_join_costs.begin() + index + 1,
+                        route_join_costs.end(),
                         [](std::pair<size_t, double>& a, std::pair<size_t, double>& b) {
                           return a.second < b.second;
                         });
 
-      if (distances[index].first != i) { std::swap(routesS[i], routesS[distances[index].first]); }
+      if (route_join_costs[index].first != i) {
+        std::swap(routesS[i], routesS[route_join_costs[index].first]);
+      }
     }
   }
 
@@ -518,7 +521,7 @@ struct OX {
     }
   }
 
-  void test_transpose_graph(rmm::cuda_stream_view stream)
+  void test_transpose_graph(cuda::stream_ref stream)
   {
     std::vector<std::vector<std::tuple<int, double, int>>> h_transpose_graph(offspring.size());
     for (size_t i = 0; i < h_transpose_graph.size(); ++i) {
@@ -846,7 +849,7 @@ struct OX {
   }
 
   void adj_to_host(std::vector<std::vector<std::tuple<int, double, int>>>& h_graph,
-                   rmm::cuda_stream_view stream)
+                   cuda::stream_ref stream)
   {
     auto tmp_graph = d_graph.to_host(stream);
     for (int veh = 0; veh < n_buckets; ++veh) {

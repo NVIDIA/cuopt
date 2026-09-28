@@ -24,6 +24,7 @@
 #endif
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
+#include <cuda/stream>
 #include <raft/core/device_span.hpp>
 #include <raft/core/nvtx.hpp>
 #include <raft/linalg/binary_op.cuh>
@@ -981,7 +982,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
   // Small copy helper to use in both single-GPU and distributed paths.
   auto commit_potential_next_as_last_restart = [](pdlp_restart_strategy_t<i_t, f_t>& rest,
                                                   pdhg_solver_t<i_t, f_t>& solver,
-                                                  rmm::cuda_stream_view stream) {
+                                                  cuda::stream_ref stream) {
     raft::copy(rest.last_restart_duality_gap_.primal_solution_.data(),
                solver.get_potential_next_primal_solution().data(),
                rest.last_restart_duality_gap_.primal_solution_.size(),
@@ -1019,15 +1020,14 @@ void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
 #endif
 
   // TODO later batch mode: remove if you have per climber restart
+  weighted_average_solution_.reset_iterations_since_last_restart();
   for (size_t i = 0; i < climber_strategies_.size(); ++i) {
-    weighted_average_solution_.iterations_since_last_restart_ = 0;
     last_trial_fixed_point_error_[i] = std::numeric_limits<f_t>::infinity();
   }
 
   if (auto* engine = pdhg_solver.get_mgpu_engine()) {
     engine->for_each_shard([&](auto& shard) {
-      shard.sub_pdlp->get_restart_strategy()
-        .weighted_average_solution_.iterations_since_last_restart_ = 0;
+      shard.sub_pdlp->get_restart_strategy().reset_iterations_since_last_restart();
     });
   }
 }
@@ -1167,7 +1167,13 @@ void pdlp_restart_strategy_t<i_t, f_t>::compute_restart(
 template <typename i_t, typename f_t>
 void pdlp_restart_strategy_t<i_t, f_t>::increment_iteration_since_last_restart()
 {
-  ++weighted_average_solution_.iterations_since_last_restart_;
+  weighted_average_solution_.increase_iterations_since_last_restart();
+}
+
+template <typename i_t, typename f_t>
+void pdlp_restart_strategy_t<i_t, f_t>::reset_iterations_since_last_restart()
+{
+  weighted_average_solution_.reset_iterations_since_last_restart();
 }
 
 template <typename i_t, typename f_t>
@@ -2528,6 +2534,13 @@ template <typename i_t, typename f_t>
 i_t pdlp_restart_strategy_t<i_t, f_t>::get_iterations_since_last_restart() const
 {
   return weighted_average_solution_.get_iterations_since_last_restart();
+}
+
+template <typename i_t, typename f_t>
+rmm::device_scalar<i_t> const&
+pdlp_restart_strategy_t<i_t, f_t>::get_d_iterations_since_last_restart() const
+{
+  return weighted_average_solution_.get_d_iterations_since_last_restart();
 }
 
 template <typename i_t, typename f_t>

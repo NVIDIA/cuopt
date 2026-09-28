@@ -298,8 +298,10 @@ void optimal_cycles_t<i_t, f_t, REQUEST>::find_best_rotate_cycle(
   std::copy(best_so_far.begin(), best_so_far.end(), cycle.begin());
 }
 
-/*! \brief { Find best insert position of cycle to route in a solution. First criterion of
- * minimization is lowest order violation, second is distance }*/
+/*! \brief Find the best insertion position for a cycle. The primary criterion is the lowest order
+
+ * * violation, and the secondary criterion is cost.
+ */
 template <typename i_t, typename f_t, request_t REQUEST>
 void optimal_cycles_t<i_t, f_t, REQUEST>::insert_cycle_to_route_request(
   std::vector<NodeInfo<>>& cycle, size_t route_id, adapted_sol_t<i_t, f_t, REQUEST>& s)
@@ -333,14 +335,14 @@ void optimal_cycles_t<i_t, f_t, REQUEST>::insert_cycle_to_route_request(
         }
       }
     }
-    double sec_core = s.problem->distance_between(prev_start, cycle[0], vehicle_id) +
-                      s.problem->distance_between(cycle.back(), start, vehicle_id) -
-                      s.problem->distance_between(prev_start, start, vehicle_id);
-    if (score < best_score || (score == best_score && sec_core < best_sec_score)) {
+    double secondary_cost = s.problem->cost_between(prev_start, cycle[0], vehicle_id) +
+                            s.problem->cost_between(cycle.back(), start, vehicle_id) -
+                            s.problem->cost_between(prev_start, start, vehicle_id);
+    if (score < best_score || (score == best_score && secondary_cost < best_sec_score)) {
       between.first  = prev_start;
       between.second = start;
       best_score     = score;
-      best_sec_score = sec_core;
+      best_sec_score = secondary_cost;
     }
     prev_start = start;
     start      = s.succ[start.node()];

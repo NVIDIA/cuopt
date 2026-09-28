@@ -61,7 +61,26 @@ RUN \
     dnf clean all && \
     ln -sf /usr/bin/python3.14 /usr/bin/python
 
+# Own stage so the build toolchain doesn't persist into cuopt-final. See build_java_dynamic.sh.
+FROM install-env AS java-build
+
+# No java-17-openjdk on UBI10 AppStream (only 21, 25); 21 satisfies the JDK 17+ requirement.
+RUN dnf install -y java-21-openjdk-devel cmake gcc-c++ make && dnf clean all
+
+# CMake's find_package(CUDAToolkit REQUIRED) needs nvcc on PATH; reuse cuda-headers instead of
+# installing the toolkit again via dnf.
+COPY --from=cuda-headers /usr/local/cuda /usr/local/cuda
+ENV PATH="/usr/local/cuda/bin:${PATH}"
+
+COPY ./repo /build/repo
+COPY ./build_java_dynamic.sh /build/build_java_dynamic.sh
+RUN bash /build/build_java_dynamic.sh /build/repo \
+      /usr/local/lib64/python3.14/site-packages/libcuopt /opt/cuopt/java
+
 FROM install-env AS cuopt-final
+
+# Headless JRE to run the Java bindings; version matches java/cuopt/pom.xml's maven.compiler.release.
+RUN dnf install -y java-21-openjdk-headless && dnf clean all
 
 # Register python via alternatives so the system alternatives database is
 # consistent with the /usr/bin/python symlink created in install-env.
@@ -109,6 +128,8 @@ COPY --from=cuda-libs /usr/local/cuda/lib64/libnvJitLink* /usr/local/cuda/lib64/
 
 # Copy CUDA headers needed for runtime compilation (e.g., CuPy NVRTC)
 COPY --from=cuda-headers /usr/local/cuda/include/ /usr/local/cuda/include/
+
+COPY --from=java-build /opt/cuopt/java /opt/cuopt/java
 
 COPY ./entrypoint.sh /opt/cuopt/entrypoint.sh
 ENTRYPOINT ["/opt/cuopt/entrypoint.sh"]

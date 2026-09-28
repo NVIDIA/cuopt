@@ -220,6 +220,9 @@ bool grpc_client_t::connect()
   channel_args.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, config_.keepalive_time_ms);
   channel_args.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, config_.keepalive_timeout_ms);
   channel_args.SetInt(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 1);
+  // Client default is 2 idle PINGs; 0 allows keepalives for the life of the
+  // channel. The server arg of the same name does not apply here.
+  channel_args.SetInt(GRPC_ARG_HTTP2_MAX_PINGS_WITHOUT_DATA, 0);
 
   impl_->channel = grpc::CreateCustomChannel(config_.server_address, creds, channel_args);
   impl_->stub    = cuopt::remote::CuOptRemoteService::NewStub(impl_->channel);
@@ -228,25 +231,11 @@ bool grpc_client_t::connect()
                         "[grpc_client] Connecting to " << config_.server_address
                                                        << (config_.enable_tls ? " (TLS)" : ""));
 
-  // Verify connectivity with a lightweight RPC probe. Channel-level checks like
-  // WaitForConnected are unreliable (gRPC lazy connection on localhost can
-  // report READY even without a server). A real RPC with a deadline is the
-  // only reliable way to confirm the server is reachable.
-  {
-    grpc::ClientContext probe_ctx;
-    probe_ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
-    cuopt::remote::StatusRequest probe_req;
-    probe_req.set_job_id("__connection_probe__");
-    cuopt::remote::StatusResponse probe_resp;
-    auto probe_status = impl_->stub->CheckStatus(&probe_ctx, probe_req, &probe_resp);
-
-    auto code = probe_status.error_code();
-    if (code != grpc::StatusCode::OK && code != grpc::StatusCode::NOT_FOUND) {
-      last_error_ = "Failed to connect to server at " + config_.server_address + " (" +
-                    probe_status.error_message() + ")";
-      GRPC_CLIENT_DEBUG_LOG(config_, "[grpc_client] Connection failed: " << last_error_);
-      return false;
-    }
+  if (!ping(5)) {
+    last_error_ =
+      "Failed to connect to server at " + config_.server_address + " (" + last_error_ + ")";
+    GRPC_CLIENT_DEBUG_LOG(config_, "[grpc_client] Connection failed: " << last_error_);
+    return false;
   }
 
   GRPC_CLIENT_DEBUG_LOG(config_,
@@ -262,6 +251,34 @@ bool grpc_client_t::is_connected() const
   if (!impl_->channel) return false;
   auto state = impl_->channel->GetState(false);
   return state == GRPC_CHANNEL_READY || state == GRPC_CHANNEL_IDLE;
+}
+
+bool grpc_client_t::ping(int timeout_seconds)
+{
+  // Channel-level READY is unreliable; a real RPC with a deadline is the
+  // only way to confirm the server is reachable.
+  if (!impl_->stub) {
+    last_error_ = "Not connected to server";
+    return false;
+  }
+
+  if (timeout_seconds <= 0) { timeout_seconds = 5; }
+
+  grpc::ClientContext probe_ctx;
+  probe_ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(timeout_seconds));
+  cuopt::remote::StatusRequest probe_req;
+  probe_req.set_job_id("__connection_probe__");
+  cuopt::remote::StatusResponse probe_resp;
+  auto probe_status = impl_->stub->CheckStatus(&probe_ctx, probe_req, &probe_resp);
+
+  auto code = probe_status.error_code();
+  if (code != grpc::StatusCode::OK && code != grpc::StatusCode::NOT_FOUND) {
+    last_error_ = probe_status.error_message().empty() ? "gRPC server health check failed"
+                                                       : probe_status.error_message();
+    GRPC_CLIENT_DEBUG_LOG(config_, "[grpc_client] ping failed: " << last_error_);
+    return false;
+  }
+  return true;
 }
 
 void grpc_client_t::start_log_streaming(const std::string& job_id)

@@ -69,6 +69,12 @@ CUOPT_SH_CLIENT_BUILD_DIR=${REPODIR}/python/cuopt_self_hosted/build
 DOCS_BUILD_DIR=${REPODIR}/docs/cuopt/build
 BUILD_DIRS="${LIBCUOPT_BUILD_DIR} ${CUOPT_BUILD_DIR} ${CUOPT_SERVER_BUILD_DIR} ${CUOPT_SERVICE_CLIENT_BUILD_DIR} ${CUOPT_SH_CLIENT_BUILD_DIR} ${PY_LIBCUOPT_BUILD_DIR} ${DOCS_BUILD_DIR}"
 
+CUDA_VERSION="${RAPIDS_CUDA_VERSION:-$(nvcc --version | sed -E -n 's/^.*release ([0-9]+\.[0-9]+).*$/\1/p')}"
+if [[ -z "$CUDA_VERSION" ]]; then
+    echo "Could not determine CUDA version. Please set RAPIDS_CUDA_VERSION or make sure your \$PATH contains a valid nvcc."
+    exit 1
+fi
+
 # Set defaults for vars modified by flags to this script
 VERBOSE_FLAG=""
 BUILD_TYPE=Release
@@ -89,7 +95,15 @@ SKIP_GRPC_BUILD=0
 WRITE_FATBIN=1
 HOST_LINEINFO=0
 CACHE_ARGS=()
-PYTHON_ARGS_FOR_INSTALL=("-m" "pip" "install" "--no-build-isolation" "--no-deps")
+PYTHON_ARGS_FOR_INSTALL=(
+    "-m"
+    "pip"
+    "install"
+    "--no-build-isolation"
+    "--no-deps"
+    "--config-settings=rapidsai.disable-cuda=true"
+    "--config-settings=rapidsai.matrix-entry=cuda=${CUDA_VERSION};cuda_suffixed=false;use_cuda_wheels=false"
+)
 LOGGING_ACTIVE_LEVEL="INFO"
 FETCH_RAPIDS=ON
 PARALLEL_LEVEL=${PARALLEL_LEVEL:=$(nproc)}

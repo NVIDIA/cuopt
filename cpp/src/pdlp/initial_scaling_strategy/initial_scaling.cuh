@@ -13,9 +13,9 @@
 
 #include <mip_heuristics/solution/solution.cuh>
 
+#include <cuda/stream>
 #include <raft/core/handle.hpp>
 
-#include <rmm/cuda_stream_view.hpp>
 #include <rmm/device_uvector.hpp>
 
 #include <limits>
@@ -129,6 +129,10 @@ class pdlp_initial_scaling_strategy_t {
   void ruiz_iter_local();
   // Shard-local end-to-end Pock-Chambolle pass. Exposed for distributed PDLP:
   void pock_chambolle_scaling(f_t alpha);
+  // Curtis-Reid prescaling pass -- see the implementation in initial_scaling.cu for
+  // details and references. Not exposed to distributed PDLP yet (no cross-shard-coherent
+  // version written).
+  void curtis_reid_scaling(i_t number_of_curtis_reid_iterations);
   // Iteration_* scratch buffers used by ruiz_iter_local /
   // pock_chambolle_scaling. Exposed mutably so distributed PDLP can grow
   // them back to full size after the ctor's release (see distributed_scaling).
@@ -146,7 +150,7 @@ class pdlp_initial_scaling_strategy_t {
   void reset_integer_variables();
 
   raft::handle_t const* handle_ptr_{nullptr};
-  rmm::cuda_stream_view stream_view_;
+  cuda::stream_ref stream_view_;
 
   i_t primal_size_h_;
   i_t dual_size_h_;

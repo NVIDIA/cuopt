@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cuda/stream>
 #include <memory>
 #include <optional>
 #include <string>
@@ -130,7 +131,7 @@ class third_party_presolve_t {
                         problem_category_t category,
                         bool status_to_skip,
                         bool dual_postsolve,
-                        rmm::cuda_stream_view stream_view);
+                        cuda::stream_ref stream_view);
 
   // Host-only postsolve. Resizes the vectors to original-problem dimensions.
   void undo(std::vector<f_t>& primal_solution,
@@ -204,6 +205,11 @@ class third_party_presolve_t {
   // PSLP settings
   Settings* pslp_stgs_{nullptr};
   Presolver* pslp_presolver_{nullptr};
+  // Set when PSLP flagged the problem infeasible on very large magnitude data and we chose not to
+  // trust it, continuing to solve the original problem instead (see apply_presolve_from_mps_data).
+  // pslp_presolver_ then holds state from that aborted run, not a real reduction, so undo_pslp
+  // must skip PSLP's postsolve entirely -- the solution is already in original-problem space.
+  bool pslp_postsolve_skip_{false};
 
   // Necessary due to a nvcc bug due to papilo's constexpr functions
   // Keep the papilo includes in the .cpp to avoid bringing them

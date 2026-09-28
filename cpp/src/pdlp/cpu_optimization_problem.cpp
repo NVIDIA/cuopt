@@ -44,6 +44,13 @@ problem_category_t problem_category_from_variable_types(const std::vector<var_t>
   return problem_category_t::LP;
 }
 
+bool has_semi_continuous_from_variable_types(const std::vector<var_t>& variable_types)
+{
+  return std::any_of(variable_types.begin(), variable_types.end(), [](var_t v) {
+    return v == var_t::SEMI_CONTINUOUS;
+  });
+}
+
 }  // namespace
 
 // ==============================================================================
@@ -193,7 +200,8 @@ void cpu_optimization_problem_t<i_t, f_t>::add_quadratic_constraint(
   qc.vals.assign(coeff.begin(), coeff.end());
   qc.linear_values.assign(linear_values.begin(), linear_values.end());
   qc.linear_indices.assign(linear_indices.begin(), linear_indices.end());
-  io::canonicalize_coo_matrix(qc.rows, qc.cols, qc.vals);
+  io::coo_canonicalization_scratch_t<i_t, f_t> scratch;
+  io::canonicalize_coo_matrix(qc.rows, qc.cols, qc.vals, scratch);
   quadratic_constraints_.push_back(std::move(qc));
 }
 
@@ -231,7 +239,8 @@ void cpu_optimization_problem_t<i_t, f_t>::set_variable_types(const var_t* varia
   variable_types_.resize(size);
   std::copy(variable_types, variable_types + size, variable_types_.begin());
 
-  problem_category_ = problem_category_from_variable_types(variable_types_);
+  problem_category_              = problem_category_from_variable_types(variable_types_);
+  has_semi_continuous_variables_ = has_semi_continuous_from_variable_types(variable_types_);
 }
 
 template <typename i_t, typename f_t>
@@ -274,6 +283,20 @@ void cpu_optimization_problem_t<i_t, f_t>::set_row_types(const char* row_types, 
   cuopt_expects(row_types != nullptr, error_type_t::ValidationError, "row_types cannot be null");
   row_types_.resize(size);
   std::copy(row_types, row_types + size, row_types_.begin());
+}
+
+template <typename i_t, typename f_t>
+void cpu_optimization_problem_t<i_t, f_t>::set_initial_primal_solution(
+  std::span<const f_t> initial_primal_solution)
+{
+  initial_primal_solution_.assign(initial_primal_solution.begin(), initial_primal_solution.end());
+}
+
+template <typename i_t, typename f_t>
+void cpu_optimization_problem_t<i_t, f_t>::set_initial_dual_solution(
+  std::span<const f_t> initial_dual_solution)
+{
+  initial_dual_solution_.assign(initial_dual_solution.begin(), initial_dual_solution.end());
 }
 
 template <typename i_t, typename f_t>
@@ -513,6 +536,12 @@ problem_category_t cpu_optimization_problem_t<i_t, f_t>::get_problem_category() 
 }
 
 template <typename i_t, typename f_t>
+bool cpu_optimization_problem_t<i_t, f_t>::has_semi_continuous_variables() const noexcept
+{
+  return has_semi_continuous_variables_;
+}
+
+template <typename i_t, typename f_t>
 const std::vector<std::string>& cpu_optimization_problem_t<i_t, f_t>::get_variable_names() const
 {
   return var_names_;
@@ -631,6 +660,18 @@ template <typename i_t, typename f_t>
 std::vector<var_t> cpu_optimization_problem_t<i_t, f_t>::get_variable_types_host() const
 {
   return variable_types_;
+}
+
+template <typename i_t, typename f_t>
+std::vector<f_t> cpu_optimization_problem_t<i_t, f_t>::get_initial_primal_solution_host() const
+{
+  return initial_primal_solution_;
+}
+
+template <typename i_t, typename f_t>
+std::vector<f_t> cpu_optimization_problem_t<i_t, f_t>::get_initial_dual_solution_host() const
+{
+  return initial_dual_solution_;
 }
 
 // ==============================================================================
@@ -1076,7 +1117,11 @@ void cpu_optimization_problem_t<i_t, f_t>::adopt_from_mps_data_model(
   for (size_t i = 0; i < model.var_types_.size(); ++i) {
     variable_types_[i] = char_to_var_type(model.var_types_[i]);
   }
-  problem_category_ = problem_category_from_variable_types(variable_types_);
+  problem_category_              = problem_category_from_variable_types(variable_types_);
+  has_semi_continuous_variables_ = has_semi_continuous_from_variable_types(variable_types_);
+
+  initial_primal_solution_ = std::move(model.initial_primal_solution_);
+  initial_dual_solution_   = std::move(model.initial_dual_solution_);
 
   if (model.has_quadratic_constraints()) {
     move_quadratic_constraints_from_model(*this, model.quadratic_constraints_);

@@ -13,6 +13,7 @@
 #include <mip_heuristics/mip_constants.hpp>
 #include <utilities/logger.hpp>
 
+#include <cuda/stream>
 #include <raft/util/cudart_utils.hpp>
 
 #include <thrust/scatter.h>
@@ -36,7 +37,7 @@ void pdlp_solver_settings_t<i_t, f_t>::set_optimality_tolerance(f_t eps_optimal)
 
 template <typename i_t, typename f_t>
 void pdlp_solver_settings_t<i_t, f_t>::set_initial_primal_solution(
-  const f_t* initial_primal_solution, i_t size, rmm::cuda_stream_view stream)
+  const f_t* initial_primal_solution, i_t size, cuda::stream_ref stream)
 {
   cuopt_expects(initial_primal_solution != nullptr,
                 error_type_t::ValidationError,
@@ -49,7 +50,7 @@ void pdlp_solver_settings_t<i_t, f_t>::set_initial_primal_solution(
 template <typename i_t, typename f_t>
 void pdlp_solver_settings_t<i_t, f_t>::set_initial_dual_solution(const f_t* initial_dual_solution,
                                                                  i_t size,
-                                                                 rmm::cuda_stream_view stream)
+                                                                 cuda::stream_ref stream)
 {
   cuopt_expects(initial_dual_solution != nullptr,
                 error_type_t::ValidationError,
