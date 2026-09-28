@@ -96,16 +96,15 @@ representation. The ``getSetting(name, type)`` overload provides a typed
 ``Boolean``, ``Integer``, ``Double``, or ``String`` result, for example
 ``getSetting(CuOptConstants.CUOPT_TIME_LIMIT, Double.class)``.
 
-The settings API also includes:
-
-* the static setting accessors;
-* ``setMethod`` and ``setPDLPSolverMode``;
-* ``setOptimalityTolerance``;
-* ``setNumGpus`` and ``setMpdlpPartitioner``, settings for multi-GPU PDLP. Multi-GPU PDLP
-  dispatch requires the MPS/QPS-model solve entry point (used by the CLI and gRPC service),
-  which the Java bindings do not yet expose; ``solve()`` here always solves on a single GPU,
-  regardless of ``setNumGpus``. ``setMpdlpPartitioner`` takes an int: ``0`` Auto (default),
-  ``1`` KaMinPar, or ``2`` RoundRobin.
+The settings API also includes the static setting accessors and ``setOptimalityTolerance``.
+Other parameters, including method (``CuOptConstants.CUOPT_METHOD``, values from
+``SolverMethod``), PDLP solver mode (``CuOptConstants.CUOPT_PDLP_SOLVER_MODE``, values from
+``PDLPSolverMode``), and multi-GPU PDLP (``CuOptConstants.CUOPT_NUM_GPUS`` and
+``CuOptConstants.CUOPT_MULTIGPU_PDLP_PARTITIONER``), are set through ``setSetting`` directly,
+for example ``setSetting(CuOptConstants.CUOPT_METHOD, SolverMethod.PDLP.nativeValue())``.
+Multi-GPU PDLP dispatch requires the MPS/QPS-model solve entry point (used by the CLI and
+gRPC service), which the Java bindings do not yet expose; ``solve()`` here always solves on a
+single GPU, regardless of ``CUOPT_NUM_GPUS``.
 
 ``SolverMethod`` includes ``PDLP``, ``DUAL_SIMPLEX``, ``BARRIER`` and
 ``CONCURRENT``. ``PDLPSolverMode`` exposes the supported PDLP solver modes.

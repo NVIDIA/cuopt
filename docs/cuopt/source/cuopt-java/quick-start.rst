@@ -98,7 +98,8 @@ comparing one against a bound with ``le``, ``ge`` or ``eq``.
    problem.addConstraint(LinearExpression.of(x).plus(y).ge(1.0), "c0");
    problem.setObjective(LinearExpression.of(x).plus(y), ObjectiveSense.MINIMIZE);
 
-   try (SolverSettings settings = new SolverSettings().setMethod(SolverMethod.PDLP);
+   try (SolverSettings settings = new SolverSettings()
+            .setSetting(CuOptConstants.CUOPT_METHOD, SolverMethod.PDLP.nativeValue());
         Solution solution = problem.solve(settings)) {
      System.out.println(solution.getTerminationStatus());
      System.out.println(solution.getPrimalObjective());
