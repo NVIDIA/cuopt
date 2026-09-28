@@ -144,7 +144,9 @@ static c_api_lp_result_t solve_via_c_api(std::string const& mps_path, cuopt_int_
   if (cuOptReadProblem(mps_path.c_str(), &guard.problem) != CUOPT_SUCCESS) { return out; }
   if (cuOptCreateSolverSettings(&guard.settings) != CUOPT_SUCCESS) { return out; }
   if (cuOptSetIntegerParameter(guard.settings, CUOPT_METHOD, CUOPT_METHOD_PDLP) != CUOPT_SUCCESS ||
-      cuOptSetIntegerParameter(guard.settings, CUOPT_NUM_GPUS, num_gpus) != CUOPT_SUCCESS) {
+      cuOptSetIntegerParameter(guard.settings, CUOPT_NUM_GPUS, num_gpus) != CUOPT_SUCCESS ||
+      cuOptSetIntegerParameter(guard.settings, CUOPT_PDLP_HYPER_ENABLE_CURTIS_REID_SCALING, 0) !=
+        CUOPT_SUCCESS) {
     return out;
   }
 
