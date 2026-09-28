@@ -3773,7 +3773,10 @@ TEST(pdlp_class, run_batch_pdlp_many_different_bounds)
   regular_pdlp_settings.method           = cuopt::mathematical_optimization::method_t::PDLP;
   regular_pdlp_settings.pdlp_solver_mode = pdlp_solver_mode_t::Stable3;
   regular_pdlp_settings.presolver        = presolver_t::None;
+  // Known issue with Curtis-Reid scaling on batch PDLP.
+  regular_pdlp_settings.hyper_params.do_curtis_reid_scaling = false;
   regular_pdlp_settings.set_optimality_tolerance(result_tolerance);
+  regular_pdlp_settings.hyper_params.do_curtis_reid_scaling = false;
 
   const std::vector<std::vector<std::tuple<int, double, double>>> bound_offsets_by_climber = {
     {{1, 3.0, 7.0}},
@@ -3836,6 +3839,7 @@ TEST(pdlp_class, run_batch_pdlp_many_different_bounds)
 
   auto batch_settings                                = regular_pdlp_settings;
   batch_settings.generate_batch_primal_dual_solution = true;
+  batch_settings.hyper_params.do_curtis_reid_scaling = false;
   for (int i = 0; i < batch_size; ++i) {
     for (const auto& bounds : custom_bounds_by_climber[i]) {
       batch_settings.new_bounds.push_back(

@@ -43,8 +43,10 @@
 #include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
+#ifdef CUOPT_ENABLE_GRPC_ROUTING
 #include <cuopt/routing/cpu_routing_problem.hpp>
 #include <cuopt/routing/solver_settings.hpp>
+#endif
 #include <utilities/inline_lp_test_utils.hpp>
 #include "grpc_client.hpp"
 
@@ -825,6 +827,7 @@ TEST_F(DefaultServerTests, SolveMIPBlocking)
 
 // -- Explicit Async LP Flow (submit/poll/get/delete) --
 
+#ifdef CUOPT_ENABLE_GRPC_ROUTING
 // VRP over gRPC, in the same shape as the LP and MIP cases above: submit a problem,
 // poll to completion, fetch the solution and check it. This is the only routing case in
 // this suite, and it is the end-to-end exercise of the routing mappers -- the problem and
@@ -889,6 +892,7 @@ TEST_F(DefaultServerTests, SolveVRP)
   EXPECT_TRUE(solution.unserviced_nodes.empty())
     << solution.unserviced_nodes.size() << " orders left unserved";
 }
+#endif
 
 TEST_F(DefaultServerTests, ExplicitAsyncLPFlow)
 {
