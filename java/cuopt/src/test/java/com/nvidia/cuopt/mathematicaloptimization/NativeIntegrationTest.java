@@ -27,11 +27,20 @@ final class NativeIntegrationTest {
       settings.setOptimalityTolerance(1.0e-6);
       settings.setSetting(CuOptConstants.CUOPT_NUM_GPUS, -1);
       settings.setSetting(CuOptConstants.CUOPT_MULTIGPU_PDLP_PARTITIONER, 2); // RoundRobin
+      settings.setSetting(CuOptConstants.CUOPT_METHOD, SolverMethod.PDLP.nativeValue());
+      settings.setSetting(
+          CuOptConstants.CUOPT_PDLP_SOLVER_MODE, PDLPSolverMode.STABLE1.nativeValue());
       assertEquals(-1, settings.getSetting(CuOptConstants.CUOPT_NUM_GPUS, Integer.class));
       assertEquals(
           2,
           settings.getSetting(
               CuOptConstants.CUOPT_MULTIGPU_PDLP_PARTITIONER, Integer.class));
+      assertEquals(
+          SolverMethod.PDLP.nativeValue(),
+          settings.getSetting(CuOptConstants.CUOPT_METHOD, Integer.class));
+      assertEquals(
+          PDLPSolverMode.STABLE1.nativeValue(),
+          settings.getSetting(CuOptConstants.CUOPT_PDLP_SOLVER_MODE, Integer.class));
       assertEquals(
           Boolean.FALSE,
           settings.getSetting(CuOptConstants.CUOPT_LOG_TO_CONSOLE, Boolean.class));
