@@ -219,6 +219,7 @@ INSTANTIATE_TEST_SUITE_P(
   DistributedPdlpCApiTest,
   ::testing::Values(
     distributed_pdlp_test_param_t{"afiro", "linear_programming/afiro_original.mps", true},
+    distributed_pdlp_test_param_t{"good_max", "linear_programming/good-max.mps", true},
     distributed_pdlp_test_param_t{"graph40_40", "linear_programming/graph40-40/graph40-40.mps"},
     distributed_pdlp_test_param_t{"ex10", "linear_programming/ex10/ex10.mps"}),
   [](const ::testing::TestParamInfo<distributed_pdlp_test_param_t>& info) {
