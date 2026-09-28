@@ -90,3 +90,6 @@
   if (pb_settings.has_pdlp_precision()) {
     settings.pdlp_precision = static_cast<pdlp_precision_t>(pb_settings.pdlp_precision());
   }
+  if (pb_settings.has_do_curtis_reid_scaling()) {
+    settings.hyper_params.do_curtis_reid_scaling = pb_settings.do_curtis_reid_scaling();
+  }
