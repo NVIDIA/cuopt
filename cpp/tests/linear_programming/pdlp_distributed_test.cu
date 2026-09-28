@@ -118,45 +118,47 @@ struct c_api_lp_result_t {
   std::string error;
 };
 
-static c_api_lp_result_t solve_via_c_api(std::string const& mps_path, cuopt_int_t num_gpus)
-{
-  c_api_lp_result_t out;
-  cuOptOptimizationProblem problem = nullptr;
-  cuOptSolverSettings settings     = nullptr;
-  cuOptSolution solution           = nullptr;
+// Owns the C API handles for one solve and destroys them on every exit path.
+struct c_api_solve_guard_t {
+  cuOptOptimizationProblem problem{nullptr};
+  cuOptSolverSettings settings{nullptr};
+  cuOptSolution solution{nullptr};
 
-  auto cleanup = [&]() {
+  c_api_solve_guard_t()                                      = default;
+  c_api_solve_guard_t(const c_api_solve_guard_t&)            = delete;
+  c_api_solve_guard_t& operator=(const c_api_solve_guard_t&) = delete;
+
+  ~c_api_solve_guard_t()
+  {
     cuOptDestroySolution(&solution);
     cuOptDestroySolverSettings(&settings);
     cuOptDestroyProblem(&problem);
-  };
+  }
+};
 
-  if (cuOptReadProblem(mps_path.c_str(), &problem) != CUOPT_SUCCESS) {
-    cleanup();
-    return out;
-  }
-  if (cuOptCreateSolverSettings(&settings) != CUOPT_SUCCESS) {
-    cleanup();
-    return out;
-  }
-  if (cuOptSetIntegerParameter(settings, CUOPT_METHOD, CUOPT_METHOD_PDLP) != CUOPT_SUCCESS ||
-      cuOptSetIntegerParameter(settings, CUOPT_NUM_GPUS, num_gpus) != CUOPT_SUCCESS) {
-    cleanup();
+static c_api_lp_result_t solve_via_c_api(std::string const& mps_path, cuopt_int_t num_gpus)
+{
+  c_api_lp_result_t out;
+  c_api_solve_guard_t guard;
+
+  if (cuOptReadProblem(mps_path.c_str(), &guard.problem) != CUOPT_SUCCESS) { return out; }
+  if (cuOptCreateSolverSettings(&guard.settings) != CUOPT_SUCCESS) { return out; }
+  if (cuOptSetIntegerParameter(guard.settings, CUOPT_METHOD, CUOPT_METHOD_PDLP) != CUOPT_SUCCESS ||
+      cuOptSetIntegerParameter(guard.settings, CUOPT_NUM_GPUS, num_gpus) != CUOPT_SUCCESS) {
     return out;
   }
 
-  out.solve_status = cuOptSolve(problem, settings, &solution);
-  if (solution != nullptr) {
+  out.solve_status = cuOptSolve(guard.problem, guard.settings, &guard.solution);
+  if (guard.solution != nullptr) {
     char err[512] = {};
-    cuOptGetErrorString(solution, err, sizeof(err));
+    cuOptGetErrorString(guard.solution, err, sizeof(err));
     out.error = err;
     if (out.solve_status == CUOPT_SUCCESS) {
-      cuOptGetTerminationStatus(solution, &out.termination);
-      cuOptGetObjectiveValue(solution, &out.primal_objective);
-      cuOptGetDualObjectiveValue(solution, &out.dual_objective);
+      cuOptGetTerminationStatus(guard.solution, &out.termination);
+      cuOptGetObjectiveValue(guard.solution, &out.primal_objective);
+      cuOptGetDualObjectiveValue(guard.solution, &out.dual_objective);
     }
   }
-  cleanup();
   return out;
 }
 
