@@ -18,7 +18,7 @@ ARG CUDA_VER
 ARG CUOPT_VER
 
 # Apply all available OS security patches (fixes openssl-libs, expat, vim CVEs).
-# Remove vim-minimal/vim-data (not needed at runtime; patched by dnf update above).
+# Remove vim-minimal/vim-data and gdb-gdbserver (unused, not needed at runtime).
 # Install Python 3.14 from UBI10 appstream — cuOpt uses python3.14 at runtime.
 #
 # Packages intentionally kept despite unpatched CVEs:
@@ -28,7 +28,7 @@ ARG CUOPT_VER
 #   tar:                  kept so Actions checkout works when this image is used as
 #                         a CI job container (checkout uses tar to extract repo archive).
 RUN dnf update -y \
-    && dnf remove -y vim-minimal vim-data \
+    && dnf remove -y vim-minimal vim-data gdb-gdbserver \
     && dnf install -y python3.14 python3.14-devel \
     && dnf clean all
 

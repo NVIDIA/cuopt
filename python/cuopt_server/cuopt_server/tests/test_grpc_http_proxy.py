@@ -360,7 +360,9 @@ def proxy(proxy_server, monkeypatch):
 
     monkeypatch.setattr(pw, "create_solver", _fake_create_solver)
 
-    def _fake_prepare_vrp(data, warnings, initial_envelopes=None):
+    def _fake_prepare_vrp(
+        data, warnings, initial_envelopes=None, data_source="stream"
+    ):
         routing.initial_envelopes = initial_envelopes
         return SimpleNamespace(), SimpleNamespace(), ["veh-1"], ["A"]
 
@@ -450,6 +452,35 @@ def test_routing_solution_to_http_maps_ids():
     assert inner["vehicle_data"]["veh-1"]["task_id"] == ["A"]
     assert inner["vehicle_data"]["veh-1"]["route"] == [1]
     assert inner["dropped_tasks"] == {"task_id": [], "task_index": []}
+
+
+def test_result_file_stub_includes_notes_and_warnings(
+    proxy, monkeypatch, tmp_path
+):
+    import cuopt_server.utils.settings as settings
+
+    monkeypatch.setattr(
+        settings, "get_result_dir", lambda: (str(tmp_path), 0, None)
+    )
+    url, _ = proxy
+    req_id = requests.post(
+        url + "/cuopt/request",
+        headers={
+            "CLIENT-VERSION": "custom",
+            "CUOPT-RESULT-FILE": "out.json",
+            **_JSON_ACCEPT,
+        },
+        json=_lp(),
+    ).json()["reqId"]
+    stub = requests.get(
+        url + f"/cuopt/solution/{req_id}", headers=_JSON_ACCEPT
+    )
+    assert stub.status_code == 200, stub.text
+    body = stub.json()
+    assert body["result_file"] == "out.json"
+    assert body["warnings"] == []
+    assert body["notes"] == ["Optimal"]
+    assert (tmp_path / "out.json").is_file()
 
 
 def test_health(proxy):
@@ -705,6 +736,28 @@ def test_invalid_lp_payloads_are_rejected(proxy, mutate, status_code):
         json=lp,
     )
     assert res.status_code == status_code, res.text
+    assert fake.submitted == []
+    if status_code == 422:
+        assert "optimization data stream" in res.json()["error"]
+
+
+def test_invalid_lp_file_names_source_in_422(proxy, monkeypatch, tmp_path):
+    import cuopt_server.utils.settings as settings
+
+    monkeypatch.setattr(settings, "get_data_dir", lambda: str(tmp_path))
+    (tmp_path / "bad.json").write_text("{}")
+    url, fake = proxy
+    res = requests.post(
+        url + "/cuopt/request",
+        headers={
+            "CLIENT-VERSION": "custom",
+            "CUOPT-DATA-FILE": "bad.json",
+            "Content-Type": mime_json,
+            "Accept": mime_json,
+        },
+    )
+    assert res.status_code == 422, res.text
+    assert "optimization data file" in res.json()["error"]
     assert fake.submitted == []
 
 
@@ -1224,6 +1277,16 @@ def test_zlib_accept(proxy):
     assert sol.status_code == 200
     decoded = json.loads(zlib.decompress(sol.content))
     assert decoded["response"]["solver_response"]["status"] == "Optimal"
+
+
+def test_delete_unknown_request_is_200(proxy):
+    url, _ = proxy
+    missing = str(uuid.uuid4())
+    res = requests.delete(
+        url + f"/cuopt/request/{missing}", headers=_JSON_ACCEPT
+    )
+    assert res.status_code == 200
+    assert res.json() == {"queued": 0, "running": 0, "cached": 0}
 
 
 @pytest.mark.parametrize(
