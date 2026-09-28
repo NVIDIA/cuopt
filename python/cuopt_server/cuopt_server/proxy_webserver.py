@@ -258,7 +258,7 @@ def _load_warmstart_blob(job_id):
     client = get_grpc_client()
     status = client.status(job_id)
     if _is_status(status, "NOT_FOUND"):
-        raise HTTPException(status_code=404, detail=f"id {job_id} not found")
+        raise _job_not_found(job_id)
     if _is_status(status, "QUEUED", "PROCESSING"):
         return None
     if _is_status(status, "FAILED", "CANCELLED"):
@@ -273,7 +273,6 @@ def _load_warmstart_blob(job_id):
 
 
 def _warmstart_for_submit(warmstart_id):
-    _require_uuid(warmstart_id)
     try:
         blob = _load_warmstart_blob(warmstart_id)
     except HTTPException:
@@ -311,6 +310,12 @@ def _require_uuid(id):
         raise HTTPException(
             status_code=400, detail="Invalid request id format"
         )
+
+
+def _job_not_found(job_id):
+    return HTTPException(
+        status_code=404, detail=f"job {job_id} does not exist"
+    )
 
 
 def _resolve_accept(accept, fallback=mime_msgpack):
@@ -510,7 +515,6 @@ def _collect_vrp_initials(initial_ids):
     envelopes = []
     routing = get_grpc_routing_client()
     for iid in initial_ids:
-        _require_uuid(iid)
         meta = _get_job(iid)
         if meta is not None and meta.get("kind") == "lp":
             raise HTTPException(
@@ -526,7 +530,7 @@ def _collect_vrp_initials(initial_ids):
             )
         status = get_grpc_client().status(iid)
         if _is_status(status, "NOT_FOUND"):
-            raise HTTPException(status_code=404, detail=f"id {iid} not found")
+            raise _job_not_found(iid)
         if _is_status(status, "QUEUED", "PROCESSING"):
             raise HTTPException(
                 status_code=409,
@@ -753,6 +757,32 @@ def _require_grpc_healthy():
         )
 
 
+def _log_not_found(job_id):
+    return HTTPException(
+        status_code=404, detail=f"log not found for request {job_id}"
+    )
+
+
+def _fetch_solver_logs(job_id, frombyte):
+    meta = _get_job(job_id)
+    if meta is not None and (
+        meta.get("kind") == "vrp"
+        or meta.get("validation_only")
+        or not meta.get("solver_logs")
+    ):
+        raise _log_not_found(job_id)
+    client = get_grpc_client()
+    if _is_status(client.status(job_id), "NOT_FOUND"):
+        raise _log_not_found(job_id)
+    try:
+        return client.logs(job_id, frombyte)
+    except Exception as e:
+        text = str(e)
+        if "not found" in text.lower() or "NOT_FOUND" in text:
+            raise _log_not_found(job_id)
+        raise
+
+
 @app.get(
     "/cuopt/log/{id}",
     response_model=LogResponseModel,
@@ -770,37 +800,29 @@ def getsolverlogs(
             raise HTTPException(
                 status_code=422, detail="frombyte must be >= 0"
             )
-        meta = _get_job(id)
-        if meta is not None and (
-            meta.get("kind") == "vrp"
-            or meta.get("validation_only")
-            or not meta.get("solver_logs")
-        ):
-            raise HTTPException(
-                status_code=404, detail=f"log not found for request {id}"
-            )
-        client = get_grpc_client()
         try:
             from cuopt.grpc.linear_programming import JobNotReadyError
 
-            lines = client.logs(id, frombyte)
+            lines = _fetch_solver_logs(id, frombyte)
         except JobNotReadyError:
             return encode({"log": [""], "nbytes": frombyte}, accept)
-        except Exception as e:
-            if "not found" in str(e).lower() or "NOT_FOUND" in str(e):
-                raise HTTPException(
-                    status_code=404, detail=f"log not found for request {id}"
-                )
-            raise
         payload = "\n".join(lines)
         return encode(
             {"log": lines, "nbytes": frombyte + len(payload.encode())},
             accept,
         )
     except HTTPException as e:
-        return encode(http_exception_handler(e), accept)
+        return encode(
+            http_exception_handler(e),
+            accept,
+            include_error_result=False,
+        )
     except Exception as e:
-        return encode(exception_handler(e), accept)
+        return encode(
+            exception_handler(e),
+            accept,
+            include_error_result=False,
+        )
 
 
 @app.delete("/cuopt/log/{id}", responses=DeleteResponse)
@@ -811,12 +833,29 @@ def deletesolverlogs(
     try:
         accept = _resolve_accept(accept)
         _require_uuid(id)
-        # gRPC deletes logs with the job. HTTP DELETE log is a no-op 200.
+        try:
+            from cuopt.grpc.linear_programming import JobNotReadyError
+
+            _fetch_solver_logs(id, 0)
+        except JobNotReadyError:
+            raise _log_not_found(id)
+        # gRPC deletes logs with the job, so deletion remains a no-op.
         return Response(status_code=200)
     except HTTPException as e:
-        return encode(http_exception_handler(e), accept)
+        # GET log never wraps errors with error_result. DELETE wraps
+        # HTTPException (invalid UUID -> 400) via encode(), but returns
+        # 404 without error_result.
+        return encode(
+            http_exception_handler(e),
+            accept,
+            include_error_result=e.status_code != 404,
+        )
     except Exception as e:
-        return encode(exception_handler(e), accept)
+        return encode(
+            exception_handler(e),
+            accept,
+            include_error_result=False,
+        )
 
 
 @app.get(
@@ -830,10 +869,9 @@ def getincumbent(
 ):
     try:
         accept = _resolve_accept(accept)
-        _require_uuid(id)
         meta = _get_job(id)
         if meta is not None and meta.get("kind") == "vrp":
-            raise HTTPException(status_code=404, detail=f"id {id} not found")
+            raise _job_not_found(id)
         if meta is not None and meta.get("validation_only"):
             return encode(
                 [{"solution": [], "cost": None, "bound": None}], accept
@@ -841,7 +879,7 @@ def getincumbent(
         client = get_grpc_client()
         status = client.status(id)
         if _is_status(status, "NOT_FOUND"):
-            raise HTTPException(status_code=404, detail=f"id {id} not found")
+            raise _job_not_found(id)
         with _incumbent_lock(id):
             meta = _get_job(id)
             from_index = (
@@ -885,21 +923,18 @@ def deletesolution(
 ):
     try:
         accept = _resolve_accept(accept)
-        _require_uuid(id)
         meta = _get_job(id)
         if meta is not None and meta.get("validation_only"):
             _pop_job(id)
             return Response(status_code=200)
         status = get_grpc_client().status(id)
         if _is_status(status, "NOT_FOUND"):
-            raise HTTPException(status_code=404, detail=f"id {id} not found")
+            raise _job_not_found(id)
         try:
             get_grpc_client().delete(id)
         except Exception as e:
             if "not found" in str(e).lower() or "NOT_FOUND" in str(e):
-                raise HTTPException(
-                    status_code=404, detail=f"id {id} not found"
-                )
+                raise _job_not_found(id)
             raise
         _pop_job(id)
         return Response(status_code=200)
@@ -975,6 +1010,7 @@ def _result_envelope(job_id, meta, kind, req_id="", cache_warmstart=False):
         if inner.get("status") == 1:
             notes.append(sol.get("status_message") or "")
         notes = [n for n in notes if n]
+        solve_time = float(sol.get("solve_time") or 0)
     else:
         if cache_warmstart:
             _store_warmstart(job_id, _warmstart_dict_from_sol(sol))
@@ -1001,7 +1037,6 @@ def _result_envelope(job_id, meta, kind, req_id="", cache_warmstart=False):
 )
 def getwarmstart(id: str):
     try:
-        _require_uuid(id)
         meta = _get_job(id)
         if meta is not None and meta.get("validation_only"):
             return encode({"reqId": id}, mime_msgpack)
@@ -1032,13 +1067,12 @@ def getsolution(
         if meta is not None:
             fallback = meta.get("accept", mime_msgpack)
         accept = _resolve_accept(accept, fallback)
-        _require_uuid(id)
         if meta is not None and meta.get("validation_only"):
             return encode(meta["validation_result"], accept, job_result=True)
         status = get_grpc_client().status(id)
         kind = None if meta is None else meta.get("kind")
         if _is_status(status, "NOT_FOUND"):
-            raise HTTPException(status_code=404, detail=f"id {id} not found")
+            raise _job_not_found(id)
         if _is_status(status, "QUEUED", "PROCESSING"):
             return encode({"reqId": id}, accept)
         if _is_status(status, "FAILED", "CANCELLED"):
@@ -1085,14 +1119,13 @@ def getrequest(
 ):
     try:
         accept = _resolve_accept(accept)
-        _require_uuid(id)
         meta = _get_job(id)
         if meta is not None and meta.get("validation_only"):
             return encode(RequestStatusModel.completed.value, accept)
         status = get_grpc_client().status(id)
         mapped = _map_status(status)
         if mapped is None or _is_status(status, "NOT_FOUND"):
-            raise HTTPException(status_code=404, detail=f"id {id} not found")
+            raise _job_not_found(id)
         return encode(mapped.value, accept)
     except HTTPException as e:
         return encode(http_exception_handler(e), accept)
