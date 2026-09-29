@@ -3540,7 +3540,6 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   i_t iter                   = 0;
   bool initialize_basis      = false;
   f_t dual_phase2_start_time = tic();
-  lp_settings.cut_off        = upper_bound_.load() + settings_.dual_tol;
   dual_status_t cut_status   = dual_phase2_with_advanced_basis(2,
                                                              0,
                                                              initialize_basis,
@@ -3568,14 +3567,6 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   if (cut_status == dual_status_t::CONCURRENT_LIMIT) {
     solver_status_ = mip_status_t::HALT;
     set_final_solution(solution, root_objective_);
-    return cut_pass_action_t::RETURN;
-  }
-
-  // The heuristics found an incumbent with an objective equal to the objective of the root LP. This
-  // can happen on pure feasibility problem with all zero objective coefficients.
-  if (cut_status == dual_status_t::CUTOFF) {
-    solver_status_ = mip_status_t::OPTIMAL;
-    set_final_solution(solution, upper_bound_.load());
     return cut_pass_action_t::RETURN;
   }
 
