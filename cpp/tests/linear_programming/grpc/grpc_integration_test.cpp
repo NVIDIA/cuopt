@@ -43,6 +43,7 @@
 #include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/solver_settings.hpp>
 #ifdef CUOPT_ENABLE_GRPC_ROUTING
 #include <cuopt/routing/cpu_routing_problem.hpp>
 #include <cuopt/routing/solver_settings.hpp>
@@ -831,6 +832,64 @@ TEST_F(DefaultServerTests, SolveInfeasibleLP)
   auto status = result.solution->get_termination_status();
   EXPECT_NE(status, pdlp_termination_status_t::Optimal)
     << "Expected non-optimal termination for infeasible problem";
+}
+
+// A bad parameter map fails that job. The worker then completes a normal job.
+TEST_F(DefaultServerTests, BadParameterFailsJobAndWorkerContinues)
+{
+  cpu_optimization_problem_t<int32_t, double> problem;
+  std::vector<double> var_lb   = {0.0};
+  std::vector<double> var_ub   = {1.0};
+  std::vector<double> obj      = {1.0};
+  std::vector<int32_t> offsets = {0};
+  problem.set_variable_lower_bounds(var_lb.data(), 1);
+  problem.set_variable_upper_bounds(var_ub.data(), 1);
+  problem.set_objective_coefficients(obj.data(), 1);
+  problem.set_maximize(false);
+  problem.set_csr_constraint_matrix(nullptr, 0, nullptr, 0, offsets.data(), 1);
+  problem.set_constraint_lower_bounds(nullptr, 0);
+  problem.set_constraint_upper_bounds(nullptr, 0);
+
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
+
+  auto request = build_lp_submit_request(problem, settings);
+  (*request.mutable_lp_request()->mutable_settings()->mutable_parameters())["not_a_parameter"] =
+    "1";
+
+  auto channel =
+    grpc::CreateChannel("localhost:" + std::to_string(port_), grpc::InsecureChannelCredentials());
+  auto stub = cuopt::remote::CuOptRemoteService::NewStub(channel);
+  cuopt::remote::SubmitJobResponse response;
+  {
+    grpc::ClientContext context;
+    auto rpc = stub->SubmitJob(&context, request, &response);
+    ASSERT_TRUE(rpc.ok()) << rpc.error_message();
+  }
+  ASSERT_FALSE(response.job_id().empty());
+
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  job_status_t final_status = job_status_t::QUEUED;
+  std::string message;
+  for (int i = 0; i < 40; ++i) {
+    auto status = client->check_status(response.job_id());
+    ASSERT_TRUE(status.success) << status.error_message;
+    final_status = status.status;
+    message      = status.message;
+    if (final_status == job_status_t::COMPLETED || final_status == job_status_t::FAILED ||
+        final_status == job_status_t::CANCELLED) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  }
+  EXPECT_EQ(final_status, job_status_t::FAILED) << message;
+  EXPECT_NE(message.find("Invalid solver parameter"), std::string::npos) << message;
+
+  auto good = client->solve_lp(problem, settings);
+  EXPECT_TRUE(good.success) << good.error_message;
+  ASSERT_NE(good.solution, nullptr);
 }
 
 // -- MIP Solve --

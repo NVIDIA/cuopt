@@ -2544,6 +2544,48 @@ TEST(MapperRoundtrip, ParameterMapRejectsTooManyEntries)
   }
 }
 
+TEST(MapperRoundtrip, ParameterMapRoundTripsSolverSettings)
+{
+  using settings_t = solver_settings_t<int32_t, double>;
+  settings_t src;
+  const double precise = 1.2345678901234567e-4;
+  src.set_parameter(CUOPT_TIME_LIMIT, 4.5);
+  src.set_parameter(CUOPT_ABSOLUTE_DUAL_TOLERANCE, precise);
+  src.set_parameter(CUOPT_SEQUENCE_SOLVE, true);
+  src.set_parameter(CUOPT_MIP_FLOW_COVER_CUTS, 1);
+
+  cuopt::remote::PDLPSolverSettings lp_pb;
+  map_pdlp_settings_to_proto(src.get_pdlp_settings(), &lp_pb);
+  append_solver_parameters(src, lp_pb.mutable_parameters());
+
+  EXPECT_EQ(lp_pb.parameters().at(CUOPT_SEQUENCE_SOLVE), "true");
+  // A published client can still set the typed field. The map wins.
+  lp_pb.set_time_limit(1.0);
+
+  settings_t dst;
+  map_proto_to_pdlp_settings(lp_pb, dst.get_pdlp_settings());
+  EXPECT_DOUBLE_EQ(dst.get_pdlp_settings().time_limit, 1.0);
+  apply_parameter_overrides(dst, lp_pb.parameters());
+  EXPECT_DOUBLE_EQ(dst.get_pdlp_settings().time_limit, 4.5);
+  EXPECT_DOUBLE_EQ(dst.get_pdlp_settings().tolerances.absolute_dual_tolerance, precise);
+  EXPECT_TRUE(dst.get_pdlp_settings().sequence_solve);
+
+  cuopt::remote::MIPSolverSettings mip_pb;
+  map_mip_settings_to_proto(src.get_mip_settings(), &mip_pb);
+  append_solver_parameters(src, mip_pb.mutable_parameters());
+  EXPECT_EQ(mip_pb.parameters().at(CUOPT_MIP_FLOW_COVER_CUTS), "1");
+
+  settings_t mip_dst;
+  map_proto_to_mip_settings(mip_pb, mip_dst.get_mip_settings());
+  apply_parameter_overrides(mip_dst, mip_pb.parameters());
+  EXPECT_EQ(mip_dst.get_mip_settings().flow_cover_cuts, 1);
+
+  settings_t defaults;
+  cuopt::remote::PDLPSolverSettings inf_pb;
+  append_solver_parameters(defaults, inf_pb.mutable_parameters());
+  EXPECT_EQ(inf_pb.parameters().at(CUOPT_TIME_LIMIT), "inf");
+}
+
 TEST(MapperRoundtrip, PDLPSettingsIterationLimitSentinel)
 {
   pdlp_solver_settings_t<int32_t, double> orig;
