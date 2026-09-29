@@ -337,7 +337,7 @@ inline std::vector<i_t> compute_prioritized_integer_indices(
   CUOPT_LOG_DEBUG("prioritized integer_indices n_integer_vars %d", problem.n_integer_vars);
   // compute the min var slack
   compute_min_slack_per_var<i_t, f_t>
-    <<<problem.n_integer_vars, 128, 0, problem.handle_ptr->get_stream()>>>(
+    <<<problem.n_integer_vars, 128, 0, problem.handle_ptr->get_stream().get()>>>(
       problem.view(),
       make_span(bound_presolve.upd.min_activity),
       make_span(bound_presolve.upd.max_activity),
@@ -514,8 +514,8 @@ void compute_cache_for_var(i_t var_idx,
     // TODO do the check in parallel
     for (size_t i = 0; i < h_improved_lower_bounds_0.size(); i++) {
       if (i == (size_t)var_idx) { continue; }
-      f_t lower_bound = min(h_improved_lower_bounds_0[i], h_improved_lower_bounds_1[i]);
-      f_t upper_bound = max(h_improved_upper_bounds_0[i], h_improved_upper_bounds_1[i]);
+      f_t lower_bound = std::min(h_improved_lower_bounds_0[i], h_improved_lower_bounds_1[i]);
+      f_t upper_bound = std::max(h_improved_upper_bounds_0[i], h_improved_upper_bounds_1[i]);
       cuopt_assert(h_var_bounds[i].x <= lower_bound, "lower bound violation");
       cuopt_assert(h_var_bounds[i].y >= upper_bound, "upper bound violation");
       // check why we might have invalid lower and upper bound here
@@ -568,9 +568,10 @@ void apply_modification_queue_to_problem(
       if (var_bounds_modifications.count(var_idx) == 0) {
         var_bounds_modifications[var_idx] = std::make_pair(lb, ub);
       } else {
-        var_bounds_modifications[var_idx].first = max(var_bounds_modifications[var_idx].first, lb);
+        var_bounds_modifications[var_idx].first =
+          std::max(var_bounds_modifications[var_idx].first, lb);
         var_bounds_modifications[var_idx].second =
-          min(var_bounds_modifications[var_idx].second, ub);
+          std::min(var_bounds_modifications[var_idx].second, ub);
       }
     }
   }
@@ -804,7 +805,7 @@ std::vector<i_t> compute_priority_indices_by_implied_integers(problem_t<i_t, f_t
                                      problem.offsets.data() + 1,
                                      cuda::std::plus<>{},
                                      0,
-                                     problem.handle_ptr->get_stream());
+                                     problem.handle_ptr->get_stream().get());
 
   rmm::device_uvector<std::uint8_t> temp_storage(temp_storage_bytes,
                                                  problem.handle_ptr->get_stream());
@@ -820,7 +821,7 @@ std::vector<i_t> compute_priority_indices_by_implied_integers(problem_t<i_t, f_t
                                      problem.offsets.data() + 1,
                                      cuda::std::plus<>{},
                                      0,
-                                     problem.handle_ptr->get_stream());
+                                     problem.handle_ptr->get_stream().get());
   // keeps the count of number of other integers that this variables shares a constraint with
   rmm::device_uvector<i_t> count_per_variable(problem.n_variables,
                                               problem.handle_ptr->get_stream());
@@ -842,7 +843,7 @@ std::vector<i_t> compute_priority_indices_by_implied_integers(problem_t<i_t, f_t
                                      problem.reverse_offsets.data() + 1,
                                      cuda::std::plus<>{},
                                      0,
-                                     problem.handle_ptr->get_stream());
+                                     problem.handle_ptr->get_stream().get());
 
   temp_storage.resize(temp_storage_bytes, problem.handle_ptr->get_stream());
   d_temp_storage = thrust::raw_pointer_cast(temp_storage.data());
@@ -857,7 +858,7 @@ std::vector<i_t> compute_priority_indices_by_implied_integers(problem_t<i_t, f_t
                                      problem.reverse_offsets.data() + 1,
                                      cuda::std::plus<>{},
                                      0,
-                                     problem.handle_ptr->get_stream());
+                                     problem.handle_ptr->get_stream().get());
   thrust::for_each(problem.handle_ptr->get_thrust_policy(),
                    thrust::make_counting_iterator(0),
                    thrust::make_counting_iterator(problem.n_variables),
@@ -943,7 +944,7 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   double work_used                  = 0.0;
   // Work is only folded in at the step barrier, so the step size is also the granularity at which
   // the budget can be enforced: too large and a single step runs effectively unbudgeted.
-  const size_t step_size = min(step_size_hint, priority_indices.size());
+  const size_t step_size = std::min(step_size_hint, priority_indices.size());
 
   // The pool buffers above were allocated on the main stream.
   // Each OMP thread below uses its own stream, so we must ensure all allocations
@@ -1010,7 +1011,7 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
                problem.handle_ptr->get_stream());
     problem.handle_ptr->sync_stream();
     if (n_of_implied_singletons - last_it_implied_singletons <
-        (size_t)std::max(2, (min(100, problem.n_variables / 50)))) {
+        (size_t)std::max(2, (std::min(100, problem.n_variables / 50)))) {
       early_exit = true;
     }
     last_it_implied_singletons = n_of_implied_singletons;

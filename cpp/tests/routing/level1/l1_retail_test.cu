@@ -91,7 +91,7 @@ class l1_retail_test_t : public base_test_t<i_t, f_t>,
 
   void test_vehicle_max_costs()
   {
-    auto max_dist_depot = thrust::reduce(this->handle_.get_thrust_policy(),
+    auto max_depot_cost = thrust::reduce(this->handle_.get_thrust_policy(),
                                          this->cost_matrix_d.data(),
                                          this->cost_matrix_d.data() + this->n_locations,
                                          -1,
@@ -99,7 +99,7 @@ class l1_retail_test_t : public base_test_t<i_t, f_t>,
     thrust::fill(this->handle_.get_thrust_policy(),
                  this->vehicle_max_costs_d.begin(),
                  this->vehicle_max_costs_d.end(),
-                 max_dist_depot * 2 + 2);
+                 max_depot_cost * 2 + 2);
     auto data_model = this->setup_data_model();
     data_model.set_vehicle_max_costs(this->vehicle_max_costs_d.data());
 

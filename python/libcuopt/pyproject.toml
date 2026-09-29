@@ -65,6 +65,9 @@ sdist.reproducible = true
 wheel.packages = ["libcuopt"]
 wheel.install-dir = "libcuopt"
 wheel.py-api = "py3"
+# install.components is deliberately unset: this wheel still ships every component.
+# Trimming it needs per-component CMake packages, so find_package(cuopt) can resolve each
+# from its own prefix, and care with files rapids-cmake installs without a COMPONENT.
 
 [tool.scikit-build.metadata.version]
 provider = "scikit_build_core.metadata.regex"

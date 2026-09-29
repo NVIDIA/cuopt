@@ -200,7 +200,8 @@ void mps_data_model_t<i_t, f_t>::append_quadratic_constraint(i_t constraint_row_
     qc.rows.assign(rows.begin(), rows.end());
     qc.cols.assign(cols.begin(), cols.end());
     qc.vals.assign(vals.begin(), vals.end());
-    canonicalize_coo_matrix(qc.rows, qc.cols, qc.vals);
+    coo_canonicalization_scratch_t<i_t, f_t> scratch;
+    canonicalize_coo_matrix(qc.rows, qc.cols, qc.vals, scratch);
   }
 
   quadratic_constraints_.push_back(std::move(qc));
@@ -464,8 +465,9 @@ template <typename i_t, typename f_t>
 void canonicalize_quadratic_constraints(
   std::vector<typename mps_data_model_t<i_t, f_t>::quadratic_constraint_t>& constraints)
 {
+  coo_canonicalization_scratch_t<i_t, f_t> scratch;
   for (auto& qc : constraints) {
-    canonicalize_coo_matrix(qc.rows, qc.cols, qc.vals);
+    canonicalize_coo_matrix(qc.rows, qc.cols, qc.vals, scratch);
   }
 }
 

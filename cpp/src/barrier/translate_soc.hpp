@@ -50,6 +50,9 @@ void normalize_quadratic_constraint_greater_to_less(qc_t& qc)
  *
  * Preconditions: `csr_A` and `user_problem` already reflect the linear model for `n` variables
  * and original rows; this routine augments dimensions and CSR row storage in place.
+ * Each `qcs` entry must have a canonical Q COO -- at most one entry per unordered index pair, as
+ * produced by `io::canonicalize_coo_matrix` on every ingest path. Duplicate pairs would survive
+ * into the Hessian unaccumulated and corrupt the LDLT convexity check.
  */
 template <typename i_t, typename f_t>
 void convert_quadratic_constraints_to_second_order_cones(
@@ -124,6 +127,12 @@ void convert_quadratic_constraints_to_second_order_cones(
   cone_is_rotated.reserve(qcs.size());
   rotated_cones.reserve(qcs.size());
   std::vector<f_t> qc_soc_uniform_scale(qcs.size(), 1);
+
+  // General-path scratch, reused across quadratic constraints: sizing these per constraint costs
+  // O(n) each, which dominates conversion on models with many small quadratic constraints.
+  // global_to_local is left all -1 by each user; right_looking_ldlt fully reinitializes L_factor.
+  std::vector<i_t> global_to_local(n, -1);
+  csc_matrix_t<i_t, f_t> L_factor(0, 0, 0);
 
   for (size_t qc_i = 0; qc_i < qcs.size(); ++qc_i) {
     auto qc = qcs[qc_i];
@@ -449,7 +458,6 @@ void convert_quadratic_constraints_to_second_order_cones(
       // Collect distinct variable indices and build local-to-global mapping
       std::vector<i_t> var_set;
       var_set.reserve(2 * q_nnz);
-      std::vector<i_t> global_to_local(n, -1);
       for (size_t t = 0; t < static_cast<size_t>(q_nnz); ++t) {
         const i_t r = qc.rows[t];
         const i_t c = qc.cols[t];
@@ -464,51 +472,31 @@ void convert_quadratic_constraints_to_second_order_cones(
       }
       const i_t n_local = static_cast<i_t>(var_set.size());
 
-      // Dense lower-triangle accumulator (column-major: H_dense[col * n_local + row] for row >=
-      // col)
-      std::vector<f_t> H_dense(n_local * n_local, f_t(0));
+      // Fold Q onto the lower triangle in local indices.
+      std::vector<i_t> h_rows(q_nnz);
+      std::vector<i_t> h_cols(q_nnz);
+      std::vector<f_t> h_vals(q_nnz);
       for (size_t t = 0; t < static_cast<size_t>(q_nnz); ++t) {
         const i_t r = global_to_local[qc.rows[t]];
         const i_t c = global_to_local[qc.cols[t]];
         const f_t v = qc.vals[t];
-        if (r == c) {
-          H_dense[c * n_local + r] += f_t(2) * v;
-        } else {
-          const i_t hi = std::max(r, c);
-          const i_t hj = std::min(r, c);
-          H_dense[hj * n_local + hi] += v;
-        }
+        h_rows[t]   = std::max(r, c);
+        h_cols[t]   = std::min(r, c);
+        h_vals[t]   = (r == c) ? f_t(2) * v : v;
       }
 
-      // Gather nonzeros from dense accumulator into CSC (lower triangle, local indices)
-      i_t h_nnz = 0;
-      for (i_t j = 0; j < n_local; j++) {
-        for (i_t i = j; i < n_local; i++) {
-          if (H_dense[j * n_local + i] != f_t(0)) { h_nnz++; }
-        }
+      // Last use of global_to_local: restore the touched entries so it stays all -1 for the
+      // next quadratic constraint.
+      for (const i_t global_var : var_set) {
+        global_to_local[global_var] = -1;
       }
 
-      csc_matrix_t<i_t, f_t> H_csc(n_local, n_local, h_nnz);
-      {
-        i_t p = 0;
-        for (i_t j = 0; j < n_local; j++) {
-          H_csc.col_start[j] = p;
-          for (i_t i = j; i < n_local; i++) {
-            const f_t val = H_dense[j * n_local + i];
-            if (val != f_t(0)) {
-              H_csc.i[p] = i;
-              H_csc.x[p] = val;
-              p++;
-            }
-          }
-        }
-        H_csc.col_start[n_local] = p;
-      }
+      csc_matrix_t<i_t, f_t> H_csc(n_local, n_local, q_nnz);
+      coo_to_csc(h_rows, h_cols, h_vals, H_csc);
 
       // Step 2: Factorize H = P * L * D * L^T * P^T
       simplex::simplex_solver_settings_t<i_t, f_t> ldlt_settings;
       std::vector<i_t> ldlt_perm;
-      csc_matrix_t<i_t, f_t> L_factor(n, n, 1);
       std::vector<f_t> D_factor;
       f_t ldlt_work  = 0;
       f_t ldlt_start = tic();

@@ -83,7 +83,7 @@ void matrix_swap(rmm::device_uvector<f_t>& matrix,
     [] HD(thrust::tuple<f_t, f_t> values) -> thrust::tuple<f_t, f_t> {
       return thrust::make_tuple(thrust::get<1>(values), thrust::get<0>(values));
     },
-    matrix.stream().value());
+    matrix.stream().get());
 }
 
 template <typename host_vector_t>

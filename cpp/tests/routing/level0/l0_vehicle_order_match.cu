@@ -58,7 +58,7 @@ class vehicle_order_test_t : public base_test_t<i_t, f_t>, public ::testing::Tes
                         d_int_vec.end(),
                         d_drop_return_trip.begin(),
                         cuda::std::identity{});
-      RAFT_CUDA_TRY(cudaStreamSynchronize(this->stream_view_.value()));
+      this->stream_view_.sync();
     }
     data_model.set_drop_return_trips(d_drop_return_trip.data());
 

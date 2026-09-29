@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -151,7 +151,7 @@ void optimal_cycles_t<i_t, f_t, REQUEST>::get_min_delta_and_index(
                             eax_cycle_delta.data(),
                             index_delta_pair.data(),
                             num_items,
-                            sol.sol.sol_handle->get_stream());
+                            sol.sol.sol_handle->get_stream().get());
   // Allocate temporary storage
   if (d_cub_storage_bytes.size() < temp_storage_bytes) {
     d_cub_storage_bytes.resize(temp_storage_bytes, sol.sol.sol_handle->get_stream());
@@ -162,7 +162,7 @@ void optimal_cycles_t<i_t, f_t, REQUEST>::get_min_delta_and_index(
                             eax_cycle_delta.data(),
                             index_delta_pair.data(),
                             num_items,
-                            sol.sol.sol_handle->get_stream());
+                            sol.sol.sol_handle->get_stream().get());
 }
 
 template <typename i_t, typename f_t, request_t REQUEST>
@@ -179,8 +179,9 @@ bool optimal_cycles_t<i_t, f_t, REQUEST>::insert_cycle_to_found_position(
     return false;
   }
   // prepare the rotations once and copy them to respective device arrays
-  insert_optimal_rotation_kernel<i_t, f_t><<<1, TPB, sh_size, solution.sol_handle->get_stream()>>>(
-    solution.view(), index_delta_pair.data(), eax_fragment.view(), n_rotations);
+  insert_optimal_rotation_kernel<i_t, f_t>
+    <<<1, TPB, sh_size, solution.sol_handle->get_stream().get()>>>(
+      solution.view(), index_delta_pair.data(), eax_fragment.view(), n_rotations);
   solution.compute_route_id_per_node();
   solution.compute_cost();
   return true;
@@ -216,19 +217,20 @@ bool optimal_cycles_t<i_t, f_t, REQUEST>::add_cycles_request(
 
     constexpr i_t TPB = 128;
     // prepare the rotations once and copy them to respective device arrays
-    create_rotations_kernel<i_t, f_t><<<1, TPB, 0, solution.sol_handle->get_stream()>>>(
+    create_rotations_kernel<i_t, f_t><<<1, TPB, 0, solution.sol_handle->get_stream().get()>>>(
       solution.view(),
       raft::device_span<NodeInfo<>>(d_cycle.data(), d_cycle.size()),
       eax_fragment.view(),
       n_rotations);
 
     i_t n_blocks = (n_rotations * n_positions + TPB - 1) / TPB;
-    find_optimal_position_kernel<i_t, f_t><<<n_blocks, TPB, 0, solution.sol_handle->get_stream()>>>(
-      solution.view(),
-      resource.ls.move_candidates.view(),
-      eax_fragment.view(),
-      n_rotations,
-      raft::device_span<double>(eax_cycle_delta.data(), eax_cycle_delta.size()));
+    find_optimal_position_kernel<i_t, f_t>
+      <<<n_blocks, TPB, 0, solution.sol_handle->get_stream().get()>>>(
+        solution.view(),
+        resource.ls.move_candidates.view(),
+        eax_fragment.view(),
+        n_rotations,
+        raft::device_span<double>(eax_cycle_delta.data(), eax_cycle_delta.size()));
     get_min_delta_and_index(sol, n_rotations * n_positions);
     bool success = insert_cycle_to_found_position(sol, n_rotations);
 
@@ -296,8 +298,10 @@ void optimal_cycles_t<i_t, f_t, REQUEST>::find_best_rotate_cycle(
   std::copy(best_so_far.begin(), best_so_far.end(), cycle.begin());
 }
 
-/*! \brief { Find best insert position of cycle to route in a solution. First criterion of
- * minimization is lowest order violation, second is distance }*/
+/*! \brief Find the best insertion position for a cycle. The primary criterion is the lowest order
+
+ * * violation, and the secondary criterion is cost.
+ */
 template <typename i_t, typename f_t, request_t REQUEST>
 void optimal_cycles_t<i_t, f_t, REQUEST>::insert_cycle_to_route_request(
   std::vector<NodeInfo<>>& cycle, size_t route_id, adapted_sol_t<i_t, f_t, REQUEST>& s)
@@ -331,14 +335,14 @@ void optimal_cycles_t<i_t, f_t, REQUEST>::insert_cycle_to_route_request(
         }
       }
     }
-    double sec_core = s.problem->distance_between(prev_start, cycle[0], vehicle_id) +
-                      s.problem->distance_between(cycle.back(), start, vehicle_id) -
-                      s.problem->distance_between(prev_start, start, vehicle_id);
-    if (score < best_score || (score == best_score && sec_core < best_sec_score)) {
+    double secondary_cost = s.problem->cost_between(prev_start, cycle[0], vehicle_id) +
+                            s.problem->cost_between(cycle.back(), start, vehicle_id) -
+                            s.problem->cost_between(prev_start, start, vehicle_id);
+    if (score < best_score || (score == best_score && secondary_cost < best_sec_score)) {
       between.first  = prev_start;
       between.second = start;
       best_score     = score;
-      best_sec_score = sec_core;
+      best_sec_score = secondary_cost;
     }
     prev_start = start;
     start      = s.succ[start.node()];

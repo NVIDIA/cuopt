@@ -13,6 +13,7 @@
 #include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
 #include <cuopt/mathematical_optimization/solve.hpp>
 #include <cuts/cuts.hpp>
+#include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
 #include <mip_heuristics/problem/problem.cuh>
 #include <utilities/common_utils.hpp>
@@ -981,6 +982,7 @@ TEST(cuts, test_duplicate_cuts_detection)
   cut_pool.add_cut(mip::cut_type_t::MIXED_INTEGER_GOMORY, cut8);
 
   cut_pool.check_for_duplicate_cuts();
+  EXPECT_EQ(cut_pool.pool_size(), 5);
 }
 
 TEST(cuts, clique_phase1_smoke_conflict_graph_edges)
@@ -1183,6 +1185,29 @@ TEST(cuts, clique_phase4_tree_depth_limit_smoke)
     EXPECT_NEAR(
       root_only_solution.get_objective_value(), deeper_solution.get_objective_value(), 1e-6);
   }
+}
+
+TEST(cuts, async_clique_table_closes_triangle_root_gap)
+{
+  const raft::handle_t handle{};
+  auto problem = create_pairwise_triangle_set_packing_problem();
+
+  mip_solver_settings_t<int, double> settings;
+  settings.time_limit      = 10.0;
+  settings.presolver       = presolver_t::None;
+  settings.node_limit      = 0;
+  settings.num_cpu_threads = CUOPT_MIP_CLIQUE_CUTS_REQUIRED_THREAD_COUNT;
+  disable_non_clique_cuts(settings);
+
+  benchmark_info_t benchmark_info;
+  settings.benchmark_info_ptr = &benchmark_info;
+  auto solution               = solve_mip(&handle, problem, settings);
+
+  EXPECT_NE(solution.get_termination_status(), mip_termination_status_t::Infeasible);
+  ASSERT_FALSE(std::isnan(benchmark_info.root_lp_no_cuts));
+  ASSERT_FALSE(std::isnan(benchmark_info.root_lp_with_cuts));
+  EXPECT_NEAR(benchmark_info.root_lp_no_cuts, -1.5, kCliqueTestTol);
+  EXPECT_NEAR(benchmark_info.root_lp_with_cuts, -1.0, kCliqueTestTol);
 }
 
 TEST(cuts, clique_phase5_ignores_non_binary_variables)
@@ -1890,26 +1915,30 @@ TEST(cuts, flow_cover_generates_valid_single_node_flow_cut)
                                                       test_problem.new_slacks);
   ASSERT_GT(generator.num_constraints(), 0);
 
-  int generated_cuts = 0;
-  for (const auto& flow_cover_row : generator.get_constraints()) {
-    mip::inequality_t<int, double> cut(test_problem.lp.num_cols);
-    const int status = generator.generate_cut(test_problem.lp,
-                                              test_problem.settings,
-                                              test_problem.Arow,
-                                              variable_bounds,
-                                              test_problem.var_types,
-                                              xstar,
-                                              flow_cover_row,
-                                              cut);
-    if (status != 0) { continue; }
+  for (int pass = 0; pass < 2; pass++) {
+    generator.preprocess_cut_pass(test_problem.lp, variable_bounds, test_problem.var_types, xstar);
 
-    EXPECT_LT(cut.vector.dot(xstar), cut.rhs - 1e-6)
-      << "row=" << flow_cover_row.row << " reverse=" << flow_cover_row.reverse;
-    expect_single_node_flow_cut_valid_at_extreme_points(cut, test_problem.lp.num_cols);
-    generated_cuts++;
+    int generated_cuts = 0;
+    for (const auto& flow_cover_row : generator.get_constraints()) {
+      mip::inequality_t<int, double> cut(test_problem.lp.num_cols);
+      const int status = generator.generate_cut(test_problem.lp,
+                                                test_problem.settings,
+                                                test_problem.Arow,
+                                                variable_bounds,
+                                                test_problem.var_types,
+                                                xstar,
+                                                flow_cover_row,
+                                                cut);
+      if (status != 0) { continue; }
+
+      EXPECT_LT(cut.vector.dot(xstar), cut.rhs - 1e-6)
+        << "row=" << flow_cover_row.row << " reverse=" << flow_cover_row.reverse;
+      expect_single_node_flow_cut_valid_at_extreme_points(cut, test_problem.lp.num_cols);
+      generated_cuts++;
+    }
+
+    EXPECT_GT(generated_cuts, 0);
   }
-
-  EXPECT_GT(generated_cuts, 0);
 }
 
 }  // namespace cuopt::mathematical_optimization::test

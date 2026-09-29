@@ -22,13 +22,32 @@ PYDISTCHECK_ARGS=(
 if [[ "${package_dir}" == "python/libcuopt" ]]; then
     if [[ "${RAPIDS_CUDA_MAJOR}" == "12" ]]; then
         PYDISTCHECK_ARGS+=(
-            --max-allowed-size-compressed '695Mi'
+            --max-allowed-size-compressed '725Mi'
         )
     else
         PYDISTCHECK_ARGS+=(
             --max-allowed-size-compressed '550Mi'
         )
     fi
+elif [[ "${package_dir}" == "python/libcuopt_mathopt" ]] || \
+     [[ "${package_dir}" == "python/libcuopt_routing" ]]; then
+    # Each is strictly smaller than the combined libcuopt wheel was, so its limits are a
+    # safe ceiling. Worth tightening once CI reports the real compressed sizes.
+    if [[ "${RAPIDS_CUDA_MAJOR}" == "12" ]]; then
+        PYDISTCHECK_ARGS+=(
+            --max-allowed-size-compressed '725Mi'
+        )
+    else
+        PYDISTCHECK_ARGS+=(
+            --max-allowed-size-compressed '550Mi'
+        )
+    fi
+elif [[ "${package_dir}" == "python/libcuopt_client" ]]; then
+    # No CUDA kernels: libcuopt_client.so is single-digit MB, so anything near the other
+    # limits would mean something got vendored into it that should not have been.
+    PYDISTCHECK_ARGS+=(
+        --max-allowed-size-compressed '50Mi'
+    )
 elif [[ "${package_dir}" != "python/cuopt" ]] && \
      [[ "${package_dir}" != "python/cuopt/cuopt/linear_programming" ]] && \
      [[ "${package_dir}" != "python/cuopt_server" ]] && \

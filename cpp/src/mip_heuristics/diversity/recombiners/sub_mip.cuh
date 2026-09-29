@@ -25,7 +25,7 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
                        population_t<i_t, f_t>& population,
                        i_t n_vars,
                        const raft::handle_t* handle_ptr)
-    : recombiner_t<i_t, f_t>(context, n_vars, handle_ptr),
+    : recombiner_t<i_t, f_t>(context, n_vars, handle_ptr, rng_id_t::recombiner_sub_mip),
       vars_to_fix(n_vars, handle_ptr->get_stream()),
       context(context),
       population(population)
@@ -57,7 +57,7 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
     i_t n_vars_from_other = n_different_vars;
     if (n_vars_from_other > (i_t)sub_mip_recombiner_config_t::max_n_of_vars_from_other) {
       n_vars_from_other = sub_mip_recombiner_config_t::max_n_of_vars_from_other;
-      thrust::default_random_engine g{(unsigned int)cuopt::seed_generator::get_seed()};
+      thrust::default_random_engine g{this->rng.next_u32()};
       thrust::shuffle(a.handle_ptr->get_thrust_policy(),
                       this->remaining_indices.data(),
                       this->remaining_indices.data() + n_different_vars,
@@ -114,6 +114,7 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
       branch_and_bound_settings.zero_half_cuts                           = 0;
       branch_and_bound_settings.inside_submip                            = 1;
       branch_and_bound_settings.submip_settings.rins                     = 0;
+      branch_and_bound_settings.submip_settings.rens                     = 0;
       branch_and_bound_settings.strong_branching_simplex_iteration_limit = 200;
       branch_and_bound_settings.solution_callback = [this](std::vector<f_t>& solution,
                                                            f_t objective) {
@@ -155,7 +156,7 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
       offspring
         .clamp_within_bounds();  // Scaling might bring some very slight variable bound violations
     } else {
-      offspring.round_nearest();
+      offspring.round_nearest(this->rng.next_u64());
     }
     cuopt_func_call(offspring.test_variable_bounds());
     cuopt_assert(offspring.test_number_all_integer(), "All must be integers after offspring");

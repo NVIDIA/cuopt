@@ -10,9 +10,9 @@
 #include "recombiner.cuh"
 
 #include <mip_heuristics/local_search/line_segment_search/line_segment_search.cuh>
+#include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/relaxed_lp/relaxed_lp.cuh>
 #include <mip_heuristics/solution/solution.cuh>
-#include <utilities/seed_generator.cuh>
 
 namespace cuopt::mathematical_optimization::mip {
 
@@ -23,7 +23,8 @@ class line_segment_recombiner_t : public recombiner_t<i_t, f_t> {
                             i_t n_vars,
                             line_segment_search_t<i_t, f_t>& line_segment_search_,
                             const raft::handle_t* handle_ptr)
-    : recombiner_t<i_t, f_t>(context, n_vars, handle_ptr), line_segment_search(line_segment_search_)
+    : recombiner_t<i_t, f_t>(context, n_vars, handle_ptr, rng_id_t::recombiner_line_segment),
+      line_segment_search(line_segment_search_)
   {
   }
 
@@ -40,7 +41,7 @@ class line_segment_recombiner_t : public recombiner_t<i_t, f_t> {
     i_t n_vars_from_other = remaining_variables;
     if (n_vars_from_other > (i_t)ls_recombiner_config_t::max_n_of_vars_from_other) {
       n_vars_from_other = ls_recombiner_config_t::max_n_of_vars_from_other;
-      thrust::default_random_engine g{(unsigned int)cuopt::seed_generator::get_seed()};
+      thrust::default_random_engine g{this->rng.next_u32()};
       thrust::shuffle(guiding_solution.handle_ptr->get_thrust_policy(),
                       this->remaining_indices.data(),
                       this->remaining_indices.data() + remaining_variables,

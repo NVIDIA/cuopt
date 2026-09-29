@@ -61,7 +61,7 @@ inline bool read_protobuf_from_pipe(int fd, google::protobuf::MessageLite& msg)
   uint32_t size;
   if (!read_from_pipe(fd, &size, sizeof(size))) return false;
   if (size > kMaxProtobufMessageBytes) return false;
-  if (size == 0) return msg.ParseFromArray(nullptr, 0);
+  if (size == 0) return msg.ParseFromArray(static_cast<const void*>(nullptr), 0);
   std::vector<uint8_t> buf(size);
   if (!read_from_pipe(fd, buf.data(), size)) return false;
   return msg.ParseFromArray(buf.data(), static_cast<int>(size));

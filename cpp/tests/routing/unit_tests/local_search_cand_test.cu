@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -121,14 +121,14 @@ class routing_ges_test_t : public ::testing::TestWithParam<std::tuple<bool, test
   //     P.set_brother_id(delivery_id, pickup_id);
 
   //     for (auto j = 0; j < this->n_locations; ++j) {
-  //       double dist = this->cost_matrix_h[pickup_id * this->n_locations + j];
-  //       P.set_distance_between(pickup_id, j, dist);
+  //       double cost = this->cost_matrix_h[pickup_id * this->n_locations + j];
+  //       P.set_cost_between(pickup_id, j, cost);
   //       // Add service time to travel time
-  //       P.set_time_between(pickup_id, j, dist + this->service_time_h[j]);
-  //       dist = this->cost_matrix_h[delivery_id * this->n_locations + j];
-  //       P.set_distance_between(delivery_id, j, dist);
+  //       P.set_time_between(pickup_id, j, cost + this->service_time_h[j]);
+  //       cost = this->cost_matrix_h[delivery_id * this->n_locations + j];
+  //       P.set_cost_between(delivery_id, j, cost);
   //       // Add service time to travel time
-  //       P.set_time_between(delivery_id, j, dist + this->service_time_h[j]);
+  //       P.set_time_between(delivery_id, j, cost + this->service_time_h[j]);
   //     }
   //   }
   //   auto depot_earliest = this->earliest_time_h[0] + this->service_time_h[0];
@@ -138,10 +138,10 @@ class routing_ges_test_t : public ::testing::TestWithParam<std::tuple<bool, test
   //   P.set_brother_id(0, 0);
 
   //   for (auto j = 0; j < this->n_locations; ++j) {
-  //     double dist = this->cost_matrix_h[0 * this->n_locations + j];
-  //     P.set_distance_between(0, j, dist);
+  //     double cost = this->cost_matrix_h[0 * this->n_locations + j];
+  //     P.set_cost_between(0, j, cost);
   //     // Add service time to travel time
-  //     P.set_time_between(0, j, dist + this->service_time_h[j]);
+  //     P.set_time_between(0, j, cost + this->service_time_h[j]);
   //   }
   //   P.set_vehicle_capacity(this->capacity_h[0]);
   //   return P;
@@ -357,7 +357,7 @@ class routing_ges_test_t : public ::testing::TestWithParam<std::tuple<bool, test
     } else if (this->test_type == test_t::INFEASIBLE) {
       double w[] = {100., 10000., 100., 100., 100.};
       introduce_infeasibility<i_t, f_t, REQUEST>
-        <<<1, 1, 0, sol.sol_handle->get_stream()>>>(sol.view());
+        <<<1, 1, 0, sol.sol_handle->get_stream().get()>>>(sol.view());
       sol.set_nodes_data_of_solution();
       sol.compute_initial_data();
       f_t old_cost = sol.get_total_cost(w);

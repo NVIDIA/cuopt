@@ -19,9 +19,12 @@ target_include_directories(GRPC_VRP_TEST_DRIVER
     "${CMAKE_BINARY_DIR}"
 )
 
+# The driver hands the problem to a server over gRPC and never calls the routing engine
+# in-process, so cuopt_client -- the host problem representation and gRPC client -- is the
+# whole of what it needs.
 target_link_libraries(GRPC_VRP_TEST_DRIVER
     PRIVATE
-    cuopt
+    cuopt_client
     gRPC::grpc++
     protobuf::libprotobuf
     nlohmann_json::nlohmann_json
@@ -32,6 +35,83 @@ if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
 endif()
 
 add_dependencies(GRPC_VRP_TEST_DRIVER cuopt_grpc_server)
+
+# Mapper round-trip (no running server). Covers time-window and distance
+# per-vehicle breaks with the same proto grouping (vehicle_id + repeated breaks).
+add_executable(GRPC_ROUTING_PROBLEM_MAPPER_TEST
+    ${CMAKE_CURRENT_SOURCE_DIR}/grpc_routing_problem_mapper_test.cpp
+)
+
+target_include_directories(GRPC_ROUTING_PROBLEM_MAPPER_TEST
+    PRIVATE
+    "${CUOPT_SOURCE_DIR}/include"
+    "${CUOPT_SOURCE_DIR}/src/grpc"
+    "${CUOPT_SOURCE_DIR}/src/grpc/codegen/generated"
+    "${CMAKE_BINARY_DIR}"
+)
+
+# The mappers are host-only and live in cuopt_client, so the test links that component
+# alone -- if a mapper ever reaches into the routing engine, this link line fails loudly.
+target_link_libraries(GRPC_ROUTING_PROBLEM_MAPPER_TEST
+    PRIVATE
+    cuopt_client
+    GTest::gtest
+    GTest::gtest_main
+    protobuf::libprotobuf
+)
+
+if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
+  target_link_options(GRPC_ROUTING_PROBLEM_MAPPER_TEST PRIVATE -Wl,--enable-new-dtags)
+endif()
+
+add_test(NAME GRPC_ROUTING_PROBLEM_MAPPER_TEST COMMAND GRPC_ROUTING_PROBLEM_MAPPER_TEST)
+set_tests_properties(GRPC_ROUTING_PROBLEM_MAPPER_TEST PROPERTIES LABELS "routing")
+
+# Settings mapper round-trip (no running server). This mapper reads
+# routing::solver_settings_t, so it covers the host-only accessors that build into
+# cuopt_client, including the presence semantics for an unset time_limit.
+add_executable(GRPC_ROUTING_SETTINGS_MAPPER_TEST
+    ${CMAKE_CURRENT_SOURCE_DIR}/grpc_routing_settings_mapper_test.cpp
+)
+
+target_include_directories(GRPC_ROUTING_SETTINGS_MAPPER_TEST
+    PRIVATE
+    "${CUOPT_SOURCE_DIR}/include"
+    "${CUOPT_SOURCE_DIR}/src/grpc"
+    "${CUOPT_SOURCE_DIR}/src/grpc/codegen/generated"
+    "${CMAKE_BINARY_DIR}"
+)
+
+# The mappers are host-only and live in cuopt_client, so the test links that component
+# alone -- if a mapper ever reaches into the routing engine, this link line fails loudly.
+target_link_libraries(GRPC_ROUTING_SETTINGS_MAPPER_TEST
+    PRIVATE
+    cuopt_client
+    GTest::gtest
+    GTest::gtest_main
+    protobuf::libprotobuf
+)
+
+if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
+  target_link_options(GRPC_ROUTING_SETTINGS_MAPPER_TEST PRIVATE -Wl,--enable-new-dtags)
+endif()
+
+add_test(NAME GRPC_ROUTING_SETTINGS_MAPPER_TEST COMMAND GRPC_ROUTING_SETTINGS_MAPPER_TEST)
+set_tests_properties(GRPC_ROUTING_SETTINGS_MAPPER_TEST PROPERTIES LABELS "routing")
+
+install(
+    TARGETS GRPC_ROUTING_SETTINGS_MAPPER_TEST
+    COMPONENT testing
+    DESTINATION bin/gtests/libcuopt
+    EXCLUDE_FROM_ALL
+)
+
+install(
+    TARGETS GRPC_ROUTING_PROBLEM_MAPPER_TEST
+    COMPONENT testing
+    DESTINATION bin/gtests/libcuopt
+    EXCLUDE_FROM_ALL
+)
 
 install(
     TARGETS GRPC_VRP_TEST_DRIVER

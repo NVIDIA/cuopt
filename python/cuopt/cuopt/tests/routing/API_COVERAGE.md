@@ -35,6 +35,7 @@ Summary of which APIs from `assignment.py` and `vehicle_routing.py` are exercise
 | `set_break_locations()` | Yes | test_vehicle_properties (test_empty_routes_with_breaks) |
 | `add_break_dimension()` | Yes | test_vehicle_properties (test_empty_routes_with_breaks), test_solver, test_initial_solutions |
 | `add_vehicle_break()` | Yes | test_vehicle_properties (test_heterogenous_breaks) |
+| `add_vehicle_distance_break()` | Yes | test_distance_breaks, test_routing_grpc_serialization |
 | `set_objective_function()` | Yes | test_data_model, test_initial_solutions |
 | `add_initial_solutions()` | Yes | test_initial_solutions |
 | `set_order_locations()` | Yes | test_vehicle_properties, test_solver, test_initial_solutions, test_warnings, etc. |

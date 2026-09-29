@@ -98,6 +98,12 @@ When adding an API — a setter, endpoint, parameter, or a layer that wraps anot
 - **Derive, don't duplicate.** A second copy of a surface (a hand-maintained list of the methods/fields another layer already defines, or shadow state kept in parallel with the real data) drifts the moment someone forgets to update it. Derive it from the single source instead, so there is nothing to keep in sync.
 - **Fail loud, not silent.** Prefer a design where forgetting a step is caught automatically over one that quietly does the wrong thing. When a mechanism leans on a convention, add a test that asserts full coverage, so a case that slips the convention fails CI instead of silently misbehaving.
 
+### 7. Sanitize Internal Context Before It Becomes Public
+
+Pasted Slack threads, tickets, or other internal context often carry customer or company names, used to explain *why* a change matters. That context has a narrower audience than a commit message, PR description, or PR comment on a public repo — those are permanent and world-readable the moment they're pushed. Before writing any of the above, strip customer/company names and other business-confidential details, even when nothing in the request says not to share them. State the motivation in generic terms instead (e.g. "a REST client hitting the protobuf 2GB limit on large problems" rather than naming who hit it).
+
+If it's already been pushed, treat the leak as not fully contained: force-pushing a corrected commit does not delete the old commit object from GitHub — it stays fetchable by SHA until GC'd, and editing a PR/issue body or comment leaves its old content in edit history unless a human deletes that specific revision from the web UI (Options → Delete revision from history; there's no API for it). Flag this exposure to the user rather than assuming a rewrite or edit fully removes it.
+
 ---
 
 ## Before You Start: Required Questions
@@ -170,6 +176,7 @@ cuopt/
 ### CUDA/GPU Hygiene
 - Keep operations stream-ordered
 - Follow existing RAFT/RMM patterns
+- `rmm::device_uvector` tests emptiness with `is_empty()`; it has no `empty()` member.
 - No raw `new`/`delete` - use RMM allocators
 - Prefer modern CCCL bit/math helpers in kernels (`cuda::bitfield_extract`, `cuda::bitmask`, pow2 utilities) over hand-rolled `%`/`/` by runtime powers of two — see [references/conventions.md](references/conventions.md)
 
@@ -180,12 +187,12 @@ cuopt/
 Skipping any of these surfaces as confusing runtime errors later. Run them in order:
 
 1. **Check CUDA driver compatibility.** Run `nvidia-smi` and read the *CUDA Version* in the top-right corner — that's the maximum CUDA your driver supports. Pick a conda env file from `conda/environments/all_cuda-<ver>_arch-<arch>.yaml` whose CUDA major version is **≤** that. A mismatch builds successfully but fails at runtime inside RMM with `cudaMallocAsync not supported with this CUDA driver/runtime version` — verify this *before* the build, not after.
-2. **Create and activate the conda env** before *any* build, test, or `pre-commit` command — this is allowed and expected (see [Refusal Rules](#refusal-rules--read-first)). Use a **local prefix env** (`./.cuopt_env`) per [CONTRIBUTING.md](../../CONTRIBUTING.md), with the env file you picked in step 1 (swap `conda`→`mamba` if available):
+2. **Create and activate the conda env** before *any* build, test, or `pre-commit` command — this is allowed and expected (see [Refusal Rules](#refusal-rules--read-first)). Use a **local prefix env** (`./.cuopt_env`) per [CONTRIBUTING.md](../../CONTRIBUTING.md), with the env file you picked in step 1 (`mamba` is recommended and faster; swap in `conda` if `mamba` isn't available):
    ```bash
-   conda env create -p ./.cuopt_env --file conda/environments/all_cuda-<ver>_arch-$(uname -m).yaml
-   conda activate ./.cuopt_env
+   mamba env create -p ./.cuopt_env --file conda/environments/all_cuda-<ver>_arch-$(uname -m).yaml
+   mamba activate ./.cuopt_env   # or: conda activate ./.cuopt_env
    ```
-   Tests link against libraries compiled inside that env; a fresh shell without `conda activate ./.cuopt_env` hits cryptic linker errors.
+   Tests link against libraries compiled inside that env; a fresh shell without activating it hits cryptic linker errors.
 3. **Set `PARALLEL_LEVEL`** if RAM is constrained — see [references/build_and_test.md](references/build_and_test.md). The default `$(nproc)` can OOM mid-build because CUDA compilation needs ~4–8 GB per job.
 4. **For tests, fetch datasets first.** cuOpt tests need MPS files not in the repo — follow the dataset download steps in [CONTRIBUTING.md](../../CONTRIBUTING.md) ("Building for development" section) and export `RAPIDS_DATASET_ROOT_DIR`.
 
@@ -225,6 +232,8 @@ For pre-commit setup, DCO sign-off (`git commit -s`), the fork-based PR workflow
 
 ## Coding Conventions
 
+Use `_Float128`, never `long double`, whenever extended precision arithmetic is required; `long double` is architecture-dependent and uses x87 on x86.
+
 For C++ naming (`snake_case`, `d_`/`h_` prefixes, `_t` suffix), file extensions (`.hpp`/`.cpp`/`.cu`/`.cuh` and which compiler each uses), include order, Python style, error handling (`CUOPT_EXPECTS`, `RAFT_CUDA_TRY`), memory management (RMM patterns, no raw `new`/`delete`), CCCL bit/math helpers in device code, test-impact rules, volatile-comment rules (hardware names and self-referential issue/PR numbers in comments or skip messages go stale; issue links to a separate tracking issue are fine), **no large local lambdas** (extract named helpers instead), and **coarse work-estimate / time-limit gating** (phase/outer-loop only; no fine inner-loop or double checks), see [references/conventions.md](references/conventions.md).
 
 ## OpenMP task/runtime compatibility
@@ -261,6 +270,8 @@ For build/test pitfalls (Cython rebuild, OOM, CUDA driver mismatch, missing `nvc
 | Conda environments | `conda/environments/` |
 | Test data | `datasets/` |
 | CI scripts | `ci/` |
+| gRPC field registry | `cpp/src/grpc/codegen/field_registry.yaml` |
+| gRPC generated output | `cpp/src/grpc/codegen/generated/` (never hand-edit) |
 
 ## Canonical Documentation
 

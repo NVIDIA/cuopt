@@ -80,7 +80,7 @@ f_t iterative_refinement_simple(T& op,
                  delta_x.data(),
                  delta_x.data() + delta_x.size(),
                  0.0);
-    RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream());
+    RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream().get());
     op.solve(r, delta_x);
 
     thrust::transform(op.data_.handle_ptr->get_thrust_policy(),
@@ -89,7 +89,7 @@ f_t iterative_refinement_simple(T& op,
                       delta_x.data(),
                       x.data(),
                       thrust::plus<f_t>());
-    RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream());
+    RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream().get());
     // r = b - Ax
     raft::copy(r.data(), b.data(), b.size(), x.stream());
     op.a_multiply(-1.0, x, 1.0, r);
@@ -183,7 +183,7 @@ f_t iterative_refinement_gmres(T& op,
                       V[0].data() + V[0].size(),
                       V[0].data(),
                       scale_op<f_t>{inv_rnorm});
-    RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream());
+    RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream().get());
     e1.assign(m + 1, 0.0);
     e1[0] = rnorm;
 
@@ -211,7 +211,7 @@ f_t iterative_refinement_gmres(T& op,
                                         V[k + 1].data() + x.size(),
                                         V[j].data(),
                                         f_t(0));
-        RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream());
+        RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream().get());
         H[j][k] = hij;
         // w -= H[j][k] * V[j]
         thrust::transform(op.data_.handle_ptr->get_thrust_policy(),
@@ -220,7 +220,7 @@ f_t iterative_refinement_gmres(T& op,
                           V[j].data(),
                           V[k + 1].data(),
                           subtract_scaled_op<f_t>{hij});
-        RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream());
+        RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream().get());
       }
 
       // H[k+1][k] = ||w||
@@ -247,7 +247,7 @@ f_t iterative_refinement_gmres(T& op,
                         V[k + 1].data() + x.size(),
                         V[k + 1].data(),
                         scale_op<f_t>{inv_h});
-      RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream());
+      RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream().get());
 
       // Apply Given's rotations to new column
       for (int i = 0; i < k; ++i) {
@@ -298,7 +298,7 @@ f_t iterative_refinement_gmres(T& op,
                  delta_x.data(),
                  delta_x.data() + delta_x.size(),
                  0.0);
-    RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream());
+    RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream().get());
     for (int j = 0; j < k; ++j) {
       thrust::transform(op.data_.handle_ptr->get_thrust_policy(),
                         delta_x.data(),
@@ -306,7 +306,7 @@ f_t iterative_refinement_gmres(T& op,
                         Z[j].data(),
                         delta_x.data(),
                         axpy_op<f_t>{y[j]});
-      RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream());
+      RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream().get());
     }
 
     // Update x = x + delta_x
@@ -316,7 +316,7 @@ f_t iterative_refinement_gmres(T& op,
                       delta_x.data(),
                       x.data(),
                       thrust::plus<f_t>());
-    RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream());
+    RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream().get());
     // r = b - A*x
     raft::copy(r.data(), b.data(), b.size(), x.stream());
     op.a_multiply(-1.0, x, 1.0, r);
@@ -375,7 +375,7 @@ f_t iterative_refinement(T& op,
 
   raft::copy(x.data(), d_x.data(), x.size(), op.data_.handle_ptr->get_stream());
 
-  RAFT_CUDA_TRY(cudaStreamSynchronize(op.data_.handle_ptr->get_stream()));
+  op.data_.handle_ptr->get_stream().sync();
   return err;
 }
 

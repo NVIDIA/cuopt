@@ -202,15 +202,15 @@ std::vector<i_t> guided_ejection_search_t<i_t, f_t, REQUEST>::brute_force_lexico
       size_t shared_size                   = shared_size_for_route + shared_size_for_intra_indices;
       i_t n_blocks                         = combinations.size();
       brute_force_lexico_kernel<i_t, f_t, REQUEST>
-        <<<n_blocks, TPB, shared_size, stream>>>(d_combinations.data(),
-                                                 sol.view(),
-                                                 route.view(),
-                                                 n_ejections,
-                                                 req,
-                                                 global_min_p.data(),
-                                                 global_sequence.data(),
-                                                 EP.view(),
-                                                 p_scores_.data());
+        <<<n_blocks, TPB, shared_size, stream.get()>>>(d_combinations.data(),
+                                                       sol.view(),
+                                                       route.view(),
+                                                       n_ejections,
+                                                       req,
+                                                       global_min_p.data(),
+                                                       global_sequence.data(),
+                                                       EP.view(),
+                                                       p_scores_.data());
       // copy the best result and keep it here
       sol.sol_handle->sync_stream();
     }
@@ -219,7 +219,7 @@ std::vector<i_t> guided_ejection_search_t<i_t, f_t, REQUEST>::brute_force_lexico
     std::vector<i_t> sequence(global_sequence.element(0, stream) + 3);
     // copy including pickup and delivery
     raft::copy(sequence.data(), global_sequence.data() + 1, sequence.size(), stream);
-    stream.synchronize();
+    stream.sync();
     return sequence;
   }
   return std::vector<i_t>{};

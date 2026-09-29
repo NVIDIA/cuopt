@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import copy
@@ -50,6 +50,7 @@ valid_data = {
             "travel_time": 200,
             "variance_route_size": 10,
             "variance_route_service_time": 50,
+            "distance_break_cost": 25,
         },
         "config_file": "config.yaml",
     },

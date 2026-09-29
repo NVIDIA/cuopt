@@ -7,6 +7,8 @@
 
 #include <barrier/second_order_cone_kernels.cuh>
 
+#include <cuda/stream>
+
 #include <utilities/copy_helpers.hpp>
 
 #include <gtest/gtest.h>
@@ -20,7 +22,7 @@ namespace cuopt::mathematical_optimization::barrier::test {
 
 TEST(second_order_cone_kernels, topology_and_scratch_layout)
 {
-  auto stream = rmm::cuda_stream_default;
+  auto stream = cuda::stream_ref{cudaStream_t{cudaStreamDefault}};
 
   std::vector<int> cone_dimensions{3, 2, 5};
   rmm::device_uvector<double> x(10, stream);
@@ -62,7 +64,7 @@ TEST(second_order_cone_kernels, topology_and_scratch_layout)
 
 TEST(second_order_cone_kernels, segmented_sum_uses_all_cone_size_buckets)
 {
-  auto stream = rmm::cuda_stream_default;
+  auto stream = cuda::stream_ref{cudaStream_t{cudaStreamDefault}};
 
   std::vector<int> cone_dimensions{65, 3, 66, 32769};
   rmm::device_uvector<double> x(32903, stream);
@@ -93,7 +95,7 @@ TEST(second_order_cone_kernels, segmented_sum_uses_all_cone_size_buckets)
 
 TEST(second_order_cone_kernels, nt_scaling_matches_host_reference)
 {
-  auto stream = rmm::cuda_stream_default;
+  auto stream = cuda::stream_ref{cudaStream_t{cudaStreamDefault}};
 
   std::vector<int> cone_dimensions{3, 65, 32769};
   std::size_t n_cone_entries = 0;
@@ -204,7 +206,7 @@ TEST(second_order_cone_kernels, nt_scaling_matches_host_reference)
 
 TEST(second_order_cone_kernels, nt_scaling_many_small_one_medium_cone)
 {
-  auto stream = rmm::cuda_stream_default;
+  auto stream = cuda::stream_ref{cudaStream_t{cudaStreamDefault}};
 
   // chainsing-like topology: many small cones plus one dim-1000 medium cone (warp_cone_dim=64).
   std::vector<int> cone_dimensions;
@@ -309,7 +311,7 @@ TEST(second_order_cone_kernels, nt_scaling_many_small_one_medium_cone)
 
 TEST(second_order_cone_kernels, cone_step_length_many_small_one_sparse_medium_cone)
 {
-  auto stream = rmm::cuda_stream_default;
+  auto stream = cuda::stream_ref{cudaStream_t{cudaStreamDefault}};
 
   std::vector<int> cone_dimensions;
   for (int i = 0; i < 20; ++i) {
@@ -367,7 +369,7 @@ TEST(second_order_cone_kernels, cone_step_length_many_small_one_sparse_medium_co
 
 TEST(second_order_cone_kernels, cone_step_length_keeps_iterate_in_cone)
 {
-  auto stream = rmm::cuda_stream_default;
+  auto stream = cuda::stream_ref{cudaStream_t{cudaStreamDefault}};
 
   std::vector<int> cone_dimensions{3, 65, 32769, 40000};
   std::size_t n_cone_entries = 0;
@@ -521,7 +523,7 @@ TEST(second_order_cone_kernels, cone_step_length_keeps_iterate_in_cone)
 
 TEST(second_order_cone_kernels, scaling_operators_match_host_reference)
 {
-  auto stream = rmm::cuda_stream_default;
+  auto stream = cuda::stream_ref{cudaStream_t{cudaStreamDefault}};
 
   std::vector<int> cone_dimensions{3, 65, 32769};
   std::size_t n_cone_entries = 0;
@@ -650,7 +652,7 @@ TEST(second_order_cone_kernels, scaling_operators_match_host_reference)
 
 TEST(second_order_cone_kernels, combined_cone_rhs_matches_host_reference)
 {
-  auto stream = rmm::cuda_stream_default;
+  auto stream = cuda::stream_ref{cudaStream_t{cudaStreamDefault}};
 
   std::vector<int> cone_dimensions{3, 65, 32769};
   std::size_t n_cone_entries = 0;
@@ -812,7 +814,7 @@ TEST(second_order_cone_kernels, combined_cone_rhs_matches_host_reference)
 
 TEST(second_order_cone_kernels, sparse_cone_classification)
 {
-  auto stream = rmm::cuda_stream_default;
+  auto stream = cuda::stream_ref{cudaStream_t{cudaStreamDefault}};
 
   // threshold=5: cones of dim 3,2 are dense; dim 6,32769 are sparse
   std::vector<int> cone_dimensions{3, 6, 2, 32769};
@@ -866,7 +868,7 @@ sparse_scaling_head_t sparse_scaling_head_reference(double w0)
 
 TEST(second_order_cone_kernels, update_scaling_sparse_matches_reference)
 {
-  auto stream = rmm::cuda_stream_default;
+  auto stream = cuda::stream_ref{cudaStream_t{cudaStreamDefault}};
 
   std::vector<int> cone_dimensions{3, 6};
   rmm::device_uvector<double> x(9, stream);
@@ -924,7 +926,7 @@ TEST(second_order_cone_kernels, update_scaling_sparse_matches_reference)
 
 TEST(second_order_cone_kernels, update_scaling_sparse_two_cones)
 {
-  auto stream = rmm::cuda_stream_default;
+  auto stream = cuda::stream_ref{cudaStream_t{cudaStreamDefault}};
 
   // sparse cones: dim 6 (offset 3) and dim 5 (offset 9)
   std::vector<int> cone_dimensions{3, 6, 5};

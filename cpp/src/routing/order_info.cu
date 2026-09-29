@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -36,9 +36,9 @@ void populate_time_windows(data_model_view_t<i_t, f_t> const& data_model,
     raft::copy(order_info_.v_earliest_time_.data(),
                earliest,
                order_info_.get_num_orders(),
-               stream_view.value());
+               stream_view.get());
     raft::copy(
-      order_info_.v_latest_time_.data(), latest, order_info_.get_num_orders(), stream_view.value());
+      order_info_.v_latest_time_.data(), latest, order_info_.get_num_orders(), stream_view.get());
   } else {
     // subtract -1 to ensure that we can set max values for service times
     // in vehicle order match
@@ -113,7 +113,7 @@ void check_depot_times(data_model_view_t<i_t, f_t> const& data_model)
   i_t depot_earliest, depot_latest;
   raft::copy(&depot_earliest, earliest, 1, handle_ptr->get_stream());
   raft::copy(&depot_latest, latest, 1, handle_ptr->get_stream());
-  RAFT_CUDA_TRY(cudaStreamSynchronize(handle_ptr->get_stream()));
+  handle_ptr->get_stream().sync();
 
   rmm::device_uvector<i_t> v_latest_time(n_orders, handle_ptr->get_stream());
   rmm::device_uvector<i_t> v_earliest_time(n_orders, handle_ptr->get_stream());
@@ -195,7 +195,7 @@ void populate_order_info(data_model_view_t<i_t, f_t> const& data_model,
       thrust::max_element(handle_ptr_->get_thrust_policy(), temp_abs.begin(), temp_abs.end());
     i_t h_max_element;
     raft::copy(&h_max_element, max_element_ptr, 1, stream);
-    RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
+    stream.sync();
     cuopt_expects(norders - 1 == h_max_element,
                   error_type_t::ValidationError,
                   "Index given is too big or an index in the delivery pickup pairs is missing!");
