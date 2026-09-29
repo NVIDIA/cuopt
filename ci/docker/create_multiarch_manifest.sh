@@ -39,9 +39,9 @@ create_manifest() {
         return 1
     fi
 
-    # Create the manifest
     echo "Creating multi-arch manifest..."
-    docker manifest create --amend "$manifest_name" "$amd64_image" "$arm64_image"
+    docker manifest rm "$manifest_name" >/dev/null 2>&1 || true
+    docker manifest create "$manifest_name" "$amd64_image" "$arm64_image"
 
     # Annotate with architecture information
     echo "Annotating ARM64 architecture..."

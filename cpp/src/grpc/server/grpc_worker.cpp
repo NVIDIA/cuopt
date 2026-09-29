@@ -5,6 +5,7 @@
 
 #ifdef CUOPT_ENABLE_GRPC
 
+#include "grpc_incumbent_callbacks.hpp"
 #include "grpc_incumbent_proto.hpp"
 #include "grpc_pipe_serialization.hpp"
 #include "grpc_server_types.hpp"
@@ -24,6 +25,7 @@
 #include <rmm/mr/pool_memory_resource.hpp>
 
 #include <cerrno>
+#include <chrono>
 #include <climits>
 #include <limits>
 #include <memory>
@@ -113,9 +115,10 @@ struct DeserializedJob {
   cuopt::routing::cpu_routing_problem_t routing_problem;
   cuopt::routing::solver_settings_t<int, float> routing_settings;
 #endif
-  bool enable_incumbents = true;
-  bool is_vrp            = false;
-  bool success           = false;
+  bool enable_incumbents    = true;
+  bool enable_set_incumbent = false;
+  bool is_vrp               = false;
+  bool success              = false;
 };
 
 struct SolveResult {
@@ -137,8 +140,9 @@ struct SolveResult {
 
 class IncumbentPipeCallback : public cuopt::internals::get_solution_callback_t {
  public:
-  IncumbentPipeCallback(std::string job_id, int fd, size_t num_vars, bool is_float)
-    : job_id_(std::move(job_id)), fd_(fd)
+  IncumbentPipeCallback(
+    std::string job_id, int fd, size_t num_vars, bool is_float, bool capture_last)
+    : job_id_(std::move(job_id)), fd_(fd), state_(num_vars, is_float), capture_last_(capture_last)
   {
     n_variables = num_vars;
     isFloat     = is_float;
@@ -152,7 +156,11 @@ class IncumbentPipeCallback : public cuopt::internals::get_solution_callback_t {
                     void* /*solution_bound*/,
                     void* /*user_data*/) override
   {
-    if (fd_ < 0 || n_variables == 0) { return; }
+    if (n_variables == 0) { return; }
+
+    if (capture_last_) { state_.record_get_solution(data, objective_value); }
+
+    if (fd_ < 0) { return; }
 
     double objective = 0.0;
     std::vector<double> assignment;
@@ -179,9 +187,13 @@ class IncumbentPipeCallback : public cuopt::internals::get_solution_callback_t {
     }
   }
 
+  cuopt::remote::detail::LastIncumbentState* state() { return &state_; }
+
  private:
   std::string job_id_;
   int fd_;
+  cuopt::remote::detail::LastIncumbentState state_;
+  bool capture_last_;
 };
 
 // ---------------------------------------------------------------------------
@@ -350,7 +362,8 @@ static DeserializedJob read_problem_from_pipe(int worker_id, const JobQueueEntry
     if (chunked_header.has_mip_settings()) {
       map_proto_to_mip_settings(chunked_header.mip_settings(), dj.mip_settings);
     }
-    dj.enable_incumbents = chunked_header.enable_incumbents();
+    dj.enable_incumbents    = chunked_header.enable_incumbents();
+    dj.enable_set_incumbent = chunked_header.enable_set_incumbent();
     cuopt::mathematical_optimization::map_chunked_arrays_to_problem(
       chunked_header, arrays, container_arrays, dj.problem);
   } else {
@@ -379,7 +392,8 @@ static DeserializedJob read_problem_from_pipe(int worker_id, const JobQueueEntry
       SERVER_LOG_INFO("[Worker] IPC path: UNARY MIP (%zu bytes)", request_data.size());
       map_proto_to_problem(req.problem(), dj.problem);
       map_proto_to_mip_settings(req.settings(), dj.mip_settings);
-      dj.enable_incumbents = req.has_enable_incumbents() ? req.enable_incumbents() : true;
+      dj.enable_incumbents    = req.has_enable_incumbents() ? req.enable_incumbents() : true;
+      dj.enable_set_incumbent = req.has_enable_set_incumbent() ? req.enable_set_incumbent() : false;
     } else {
 #ifdef CUOPT_ENABLE_GRPC_ROUTING
       const auto& req = submit_request.vrp_request();
@@ -416,16 +430,22 @@ static SolveResult run_mip_solve(DeserializedJob& dj,
     // Create a per-solve incumbent callback wired to this worker's
     // incumbent pipe.  Destroyed automatically when sr is returned.
     std::unique_ptr<IncumbentPipeCallback> incumbent_cb;
-    if (dj.enable_incumbents) {
+    std::unique_ptr<cuopt::remote::detail::EchoSetSolutionCallback> set_cb;
+    const size_t n_vars = static_cast<size_t>(dj.problem.get_n_variables());
+    if (dj.enable_incumbents || dj.enable_set_incumbent) {
+      const int fd = dj.enable_incumbents ? worker_pipes[worker_id].worker_incumbent_write_fd : -1;
       incumbent_cb =
-        std::make_unique<IncumbentPipeCallback>(job_id,
-                                                worker_pipes[worker_id].worker_incumbent_write_fd,
-                                                dj.problem.get_n_variables(),
-                                                false);
+        std::make_unique<IncumbentPipeCallback>(job_id, fd, n_vars, false, dj.enable_set_incumbent);
       dj.mip_settings.set_mip_callback(incumbent_cb.get());
       SERVER_LOG_INFO("[Worker] Registered incumbent callback for job_id=%s n_vars=%d",
                       job_id.c_str(),
                       dj.problem.get_n_variables());
+    }
+    if (dj.enable_set_incumbent) {
+      set_cb = std::make_unique<cuopt::remote::detail::EchoSetSolutionCallback>(
+        incumbent_cb->state(), n_vars, false);
+      dj.mip_settings.set_mip_callback(set_cb.get());
+      SERVER_LOG_INFO("[Worker] Registered incumbent set callback for job_id=%s", job_id.c_str());
     }
 
     SERVER_LOG_INFO("[Worker] Converting CPU problem to GPU problem...");
@@ -563,16 +583,24 @@ static SolveResult run_vrp_solve([[maybe_unused]] DeserializedJob& dj,
 #else
   try {
     auto [view, device_data] = dj.routing_problem.to_device(&handle);
+    auto solve_t0            = std::chrono::steady_clock::now();
     auto assignment          = cuopt::routing::solve(view, dj.routing_settings);
+    double solve_time =
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - solve_t0).count();
     cuopt::routing::host_assignment_t<int> host(assignment);
 
     sr.header.set_problem_category(cuopt::remote::VRP);
     sr.header.set_is_vrp(true);
     // Embed the RoutingSolution structurally (ChunkedResultHeader.routing_solution
     // is a message field now, not a serialized blob).
-    map_routing_solution_to_proto(assignment, host, sr.header.mutable_routing_solution());
-    SERVER_LOG_INFO("[Worker] Result path: VRP solution -> embedded RoutingSolution (%zu bytes)",
-                    sr.header.routing_solution().ByteSizeLong());
+    auto* routing_sol = sr.header.mutable_routing_solution();
+    map_routing_solution_to_proto(assignment, host, routing_sol);
+    routing_sol->set_solve_time(solve_time);
+    SERVER_LOG_INFO(
+      "[Worker] Result path: VRP solution -> embedded RoutingSolution (%zu bytes) solve_time=%.6f "
+      "s",
+      routing_sol->ByteSizeLong(),
+      solve_time);
     sr.success = true;
   } catch (const cuopt::logic_error& e) {
     sr.error_message = format_cuopt_error(e);

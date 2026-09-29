@@ -64,6 +64,14 @@ __attribute__((optimize("no-fast-math"))) CUOPT_MIP_HOST_DEVICE auto compensated
   return p + s;
 }
 
+template <typename UIt, typename VIt, typename IndexIt>
+CUOPT_MIP_HOST_DEVICE auto compensated_dot2_indexed(UIt u_it, VIt v_it, IndexIt indices, size_t n)
+{
+  return compensated_dot2(thrust::make_permutation_iterator(u_it, indices),
+                          thrust::make_permutation_iterator(v_it, indices),
+                          n);
+}
+
 template <typename CoeffIt, typename IndexIt, typename ValueIt>
 CUOPT_MIP_HOST_DEVICE auto compensated_dot2_csr(CoeffIt coefficients,
                                                 IndexIt columns,
