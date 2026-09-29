@@ -474,7 +474,14 @@ class SolverConfig(BaseModel):
     )
     num_gpus: Optional[int] = Field(
         default=None,
-        description="Set the number of GPUs to use for LP solve.",
+        description="Set the number of GPUs to use for LP solve. With "
+        "method=PDLP, -1 (all visible GPUs) or a value greater than 1 "
+        "dispatches to multi-GPU PDLP.",
+    )
+    multigpu_pdlp_partitioner: Optional[int] = Field(
+        default=None,
+        description="Partitioner used to split the problem across GPUs for "
+        "multi-GPU PDLP: 0 Auto (default), 1 KaMinPar, 2 RoundRobin.",
     )
     augmented: Optional[int] = Field(
         default=-1,

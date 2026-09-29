@@ -58,6 +58,21 @@ def test_create_solver_limits():
     assert int(solver_settings.get_parameter("iteration_limit")) == 100
 
 
+def test_create_solver_multigpu_pdlp():
+    data = get_lp_json()
+    data["solver_config"]["method"] = 1  # PDLP
+    data["solver_config"]["num_gpus"] = -1
+    data["solver_config"]["multigpu_pdlp_partitioner"] = 2  # RoundRobin
+
+    warnings, solver_settings = conversion.create_solver(
+        LPData.parse_obj(data), None
+    )
+
+    assert warnings == []
+    assert int(solver_settings.get_parameter("num_gpus")) == -1
+    assert int(solver_settings.get_parameter("multigpu_pdlp_partitioner")) == 2
+
+
 def test_create_solver_limits_clamped_by_environment(monkeypatch):
     monkeypatch.setenv("CUOPT_LP_TIME_LIMIT_SEC", "2")
     monkeypatch.setenv("CUOPT_LP_ITERATION_LIMIT", "10")

@@ -24,6 +24,8 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_ITERATION_LIMIT,
     CUOPT_METHOD,
     CUOPT_MIP_HEURISTICS_ONLY,
+    CUOPT_MULTIGPU_PDLP_PARTITIONER,
+    CUOPT_NUM_GPUS,
     CUOPT_PDLP_HYPER_ENABLE_CURTIS_REID_SCALING,
     CUOPT_PDLP_SOLVER_MODE,
     CUOPT_PRIMAL_INFEASIBLE_TOLERANCE,
@@ -376,6 +378,15 @@ def test_solver_settings_basic():
     assert settings.get_parameter(CUOPT_PDLP_SOLVER_MODE) == int(
         PDLPSolverMode.Methodical1
     )
+
+    # Multi-GPU PDLP settings: method=PDLP with num_gpus=-1 or >1 dispatches
+    # to multi-GPU PDLP; multigpu_pdlp_partitioner controls how the problem
+    # is split across GPUs.
+    settings.set_parameter(CUOPT_NUM_GPUS, -1)
+    settings.set_parameter(CUOPT_MULTIGPU_PDLP_PARTITIONER, 2)  # RoundRobin
+
+    assert settings.get_parameter(CUOPT_NUM_GPUS) == -1
+    assert settings.get_parameter(CUOPT_MULTIGPU_PDLP_PARTITIONER) == 2
 
 
 def test_solver_settings(tmp_path):
