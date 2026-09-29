@@ -97,15 +97,6 @@ representation. The ``getSetting(name, type)`` overload provides a typed
 ``getSetting(CuOptConstants.CUOPT_TIME_LIMIT, Double.class)``.
 
 The settings API also includes the static setting accessors and ``setOptimalityTolerance``.
-Everything else — method (``CuOptConstants.CUOPT_METHOD``, values from ``SolverMethod``), PDLP
-solver mode (``CuOptConstants.CUOPT_PDLP_SOLVER_MODE``, values from ``PDLPSolverMode``),
-``CuOptConstants.CUOPT_NUM_GPUS``, ``CuOptConstants.CUOPT_MULTIGPU_PDLP_PARTITIONER``, and so on —
-is set through ``setSetting`` directly, for example
-``setSetting(CuOptConstants.CUOPT_METHOD, SolverMethod.PDLP.nativeValue())``.
-
-Multi-GPU PDLP dispatch requires the MPS/QPS-model solve entry point (used by the CLI and gRPC
-service), which the Java bindings do not yet expose; ``solve()`` here always runs on a single
-GPU regardless of ``CUOPT_NUM_GPUS``.
 
 ``SolverMethod`` includes ``PDLP``, ``DUAL_SIMPLEX``, ``BARRIER`` and
 ``CONCURRENT``. ``PDLPSolverMode`` exposes the supported PDLP solver modes.
