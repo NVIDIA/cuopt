@@ -90,17 +90,9 @@ Using the Docker Image
 
 The official cuOpt Docker images ship ``cuopt.jar`` and ``libcuopt_jni.so``
 under ``/opt/cuopt/java``, built against the image's own ``libcuopt.so``. No
-build step is needed; point ``cuopt.native.dir`` at that directory. Mount a
-directory containing your own ``.java`` source (for example, the LP Example
-below saved as ``MyProgram.java``) and compile and run it against the
-prebuilt jar:
-
-.. code-block:: bash
-
-   docker run --rm --gpus all -v $(pwd):/work -w /work <cuopt-image> bash -c '
-     javac -cp /opt/cuopt/java/cuopt.jar -d . MyProgram.java
-     java -Dcuopt.native.dir=/opt/cuopt/java -cp /opt/cuopt/java/cuopt.jar:. MyProgram
-   '
+build step is needed; compile and run your code with
+``-cp /opt/cuopt/java/cuopt.jar`` and ``-Dcuopt.native.dir=/opt/cuopt/java``.
+See :doc:`../install` for image tags.
 
 Using the Maven Artifact
 ------------------------
