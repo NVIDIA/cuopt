@@ -46,15 +46,25 @@ no ``cuopt.native.dir`` is required:
      <classifier>cuda12</classifier>
    </dependency>
 
-The embedded libraries do not include the CUDA toolkit's own math libraries
-(``libcublas``, ``libcusolver``, etc.) — those must already be present on the
-target system. Loading the jar on a system without them fails with an
-``UnsatisfiedLinkError`` naming the missing CUDA library. An
-``nvidia/cuda:*-runtime-*`` base image satisfies this without installing
-cuOpt itself; outside Docker, install the matching
-``cuda-libraries-<major>-<minor>`` package (e.g. ``cuda-libraries-12-9``) from
-`NVIDIA's CUDA repository <https://developer.nvidia.com/cuda-downloads>`_ via
-``apt-get`` or ``dnf`` instead of the full CUDA toolkit.
+.. note::
+
+   The embedded libraries do not include the CUDA toolkit's own math libraries
+   (``libcublas``, ``libcusolver``, etc.) — install them separately, or use an
+   ``nvidia/cuda:*-runtime-*`` base image instead, which already has them
+   without installing cuOpt itself. Loading the jar without them fails with an
+   ``UnsatisfiedLinkError`` naming the missing CUDA library.
+
+   .. code-block:: bash
+
+      # Debian/Ubuntu (with NVIDIA's apt repo already configured)
+      sudo apt-get install cuda-libraries-12-9
+
+      # RHEL/Rocky/Fedora (with NVIDIA's dnf repo already configured)
+      sudo dnf install cuda-libraries-12-9
+
+   ``cuda-libraries`` is much lighter than the full CUDA toolkit. See
+   `NVIDIA's CUDA repository setup <https://developer.nvidia.com/cuda-downloads>`_
+   if the repo isn't configured yet.
 
 Building from source is covered in ``java/cuopt/README.md``.
 
