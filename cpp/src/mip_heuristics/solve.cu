@@ -320,7 +320,7 @@ mip_solution_t<i_t, f_t> run_mip_solver(
       if (std::isfinite(initial_upper_bound)) {
         early_cpufj->set_best_objective(problem.get_solver_obj_from_user_obj(initial_upper_bound));
       }
-      early_cpufj->start();
+      early_cpufj->start(omp_get_num_threads() - CUOPT_MIP_EARLY_CPUFJ_RESERVED_THREADS);
       solver.context.early_cpufj_ptr = early_cpufj.get();
       CUOPT_LOG_DEBUG("Started early CPUFJ on papilo-presolved problem during cuOpt presolve");
 
@@ -567,8 +567,10 @@ mip_solution_t<i_t, f_t> solve_mip_helper(
       if (pre_solve_heuristics && pre_solve_heuristics->solution_found()) {
         early_cpufj->set_best_objective(pre_solve_heuristics->get_best_objective());
       }
-      early_cpufj->start();
-      CUOPT_LOG_DEBUG("Started early CPUFJ on original problem");
+      // Papilo runs on its own threads, so the team is otherwise idle here.
+      early_cpufj->start(omp_get_num_threads() - CUOPT_MIP_EARLY_CPUFJ_RESERVED_THREADS);
+      CUOPT_LOG_DEBUG("Started early CPUFJ on original problem with %d lanes",
+                      early_cpufj->lane_count());
     }
 
     auto early_cpufj_guard = cuopt::scope_guard([&]() {
@@ -965,7 +967,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
           std::chrono::duration<double>(std::chrono::steady_clock::now() - probe_start).count());
       },
       mip::derive_seed(settings_const.seed, mip::rng_id_t::early_cpufj));
-    pre_solve_heuristics->start(/*low_latency=*/true);
+    pre_solve_heuristics->start(1, /*low_latency=*/true);
   }
   cuopt::scope_guard release_probe([&pre_solve_heuristics] {
     if (pre_solve_heuristics) { pre_solve_heuristics->stop(); }

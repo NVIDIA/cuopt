@@ -79,6 +79,7 @@ def _vrp_grpc_sol():
         "arrival_stamp": [1.5],
         "unserviced_nodes": [],
         "accepted": [1],
+        "solve_time": 1.25,
     }
 
 
@@ -208,13 +209,20 @@ class FakeClient:
         if getattr(self, "unhealthy", False):
             raise RuntimeError("gRPC server unavailable")
 
-    def submit(self, problem, settings, enable_incumbents=None):
+    def submit(
+        self,
+        problem,
+        settings,
+        enable_incumbents=None,
+        enable_set_incumbent=False,
+    ):
         job_id = str(uuid.uuid4())
         self.jobs[job_id] = FakeJobStatus.COMPLETED
         self.submitted.append(
             {
                 "id": job_id,
                 "enable_incumbents": enable_incumbents,
+                "enable_set_incumbent": enable_set_incumbent,
                 "problem": problem,
                 "settings": settings,
             }
@@ -614,10 +622,15 @@ def test_getsolution_caches_warmstart(proxy):
 
 
 def test_warmstart_missing_id_is_404(proxy):
+    import msgpack
+
     url, _ = proxy
     missing = str(uuid.uuid4())
     res = requests.get(url + f"/cuopt/solution/{missing}/warmstart")
     assert res.status_code == 404
+    assert msgpack.loads(res.content)["error"] == (
+        f"job {missing} does not exist"
+    )
     posted = requests.post(
         url + "/cuopt/request",
         headers={"CLIENT-VERSION": "custom"},
@@ -625,7 +638,13 @@ def test_warmstart_missing_id_is_404(proxy):
         json=_lp(),
     )
     assert posted.status_code == 404, posted.text
-    assert missing in posted.json()["error"]
+    assert posted.json()["error"] == f"job {missing} does not exist"
+
+    res = requests.get(url + "/cuopt/solution/not-a-uuid/warmstart")
+    assert res.status_code == 404
+    assert msgpack.loads(res.content)["error"] == (
+        "job not-a-uuid does not exist"
+    )
 
 
 def test_warmstart_while_running_returns_req_id(proxy):
@@ -792,6 +811,52 @@ def test_incumbents_cursor_and_sentinel(proxy):
     assert second.json() == [{"solution": [], "cost": None, "bound": None}]
 
 
+def test_incumbent_set_solutions_is_forwarded(proxy):
+    url, fake = proxy
+    lp = _lp()
+    lp["variable_types"] = ["I", "I"]
+    res = requests.post(
+        url + "/cuopt/request",
+        headers={"CLIENT-VERSION": "custom"},
+        params={
+            "incumbent_solutions": True,
+            "incumbent_set_solutions": True,
+        },
+        json=lp,
+    )
+    assert res.status_code == 200, res.text
+    assert fake.submitted[0]["enable_incumbents"] is True
+    assert fake.submitted[0]["enable_set_incumbent"] is True
+
+
+@pytest.mark.parametrize("variable_type", ["I", "B", "S"])
+def test_incumbent_set_solutions_without_incumbents(proxy, variable_type):
+    url, fake = proxy
+    lp = _lp()
+    lp["variable_types"] = [variable_type, variable_type]
+    res = requests.post(
+        url + "/cuopt/request",
+        headers={"CLIENT-VERSION": "custom"},
+        params={"incumbent_set_solutions": True},
+        json=lp,
+    )
+    assert res.status_code == 200, res.text
+    assert fake.submitted[0]["enable_incumbents"] is False
+    assert fake.submitted[0]["enable_set_incumbent"] is True
+
+
+def test_lp_does_not_enable_set_incumbent(proxy):
+    url, fake = proxy
+    res = requests.post(
+        url + "/cuopt/request",
+        headers={"CLIENT-VERSION": "custom"},
+        params={"incumbent_set_solutions": True},
+        json=_lp(),
+    )
+    assert res.status_code == 200, res.text
+    assert fake.submitted[0]["enable_set_incumbent"] is False
+
+
 def test_logs_and_log_delete_noop(proxy):
     url, fake = proxy
     lp = _lp()
@@ -905,7 +970,6 @@ def test_validation_only_skips_submit(proxy):
         ({"cache": True}, "cache"),
         ({"reqId": str(uuid.uuid4())}, "reqId"),
         ({"initialId": str(uuid.uuid4())}, "initialId"),
-        ({"incumbent_set_solutions": True}, "incumbent_set_solutions"),
     ],
 )
 def test_dropped_query_params_are_501(proxy, params, feature):
@@ -951,6 +1015,7 @@ def test_vrp_submit_status_and_solution(proxy):
     assert body["status"] == 0
     assert "veh-1" in body["vehicle_data"]
     assert body["vehicle_data"]["veh-1"]["task_id"] == ["A"]
+    assert sol.json()["response"]["total_solve_time"] == 1.25
 
 
 def test_vrp_initial_id_from_prior_grpc_result(proxy):
@@ -1313,16 +1378,35 @@ def test_delete_unknown_request_is_200(proxy):
     assert res.json() == {"queued": 0, "running": 0, "cached": 0}
 
 
-def test_unknown_id_is_404(proxy):
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/cuopt/request/{id}",
+        "/cuopt/solution/{id}",
+        "/cuopt/solution/{id}/incumbents",
+    ],
+)
+def test_unknown_job_is_404(proxy, path):
     url, _ = proxy
     missing = str(uuid.uuid4())
-    assert requests.get(url + f"/cuopt/request/{missing}").status_code == 404
-    assert requests.get(url + f"/cuopt/solution/{missing}").status_code == 404
+    res = requests.get(url + path.format(id=missing), headers=_JSON_ACCEPT)
+    assert res.status_code == 404
+    assert res.json()["error"] == f"job {missing} does not exist"
 
 
-def test_invalid_id_is_400(proxy):
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/cuopt/request/not-a-uuid",
+        "/cuopt/solution/not-a-uuid",
+        "/cuopt/solution/not-a-uuid/incumbents",
+    ],
+)
+def test_non_uuid_job_id_is_404(proxy, path):
     url, _ = proxy
-    assert requests.get(url + "/cuopt/request/not-a-uuid").status_code == 400
+    res = requests.get(url + path, headers=_JSON_ACCEPT)
+    assert res.status_code == 404
+    assert res.json()["error"] == "job not-a-uuid does not exist"
 
 
 @pytest.mark.parametrize("status", ["FAILED", "CANCELLED"])

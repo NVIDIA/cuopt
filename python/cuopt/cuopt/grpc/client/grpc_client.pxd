@@ -108,6 +108,7 @@ cdef extern from "cuopt/routing/cpu_routing_problem.hpp" namespace "cuopt::routi
         int32_t status
         string status_message
         string error_message
+        double solve_time
 
 
 cdef extern from "cuopt/routing/solver_settings.hpp" namespace "cuopt::routing":  # noqa
@@ -210,6 +211,7 @@ cdef extern from "cuopt/grpc/cython_grpc_client.hpp" namespace "cuopt::cython":
             data_model_view_t[int, double]* data_model,
             lp_solver_settings_t[int, double]* settings,
             bint enable_incumbents,
+            bint enable_set_incumbent,
         ) except +
         grpc_result_outcome_t result(const string& job_id) except +
         grpc_logs_result_t fetch_logs(const string& job_id, long long from_byte) except +
