@@ -133,4 +133,4 @@ COPY --from=java-build /opt/cuopt/java /opt/cuopt/java
 
 COPY ./entrypoint.sh /opt/cuopt/entrypoint.sh
 ENTRYPOINT ["/opt/cuopt/entrypoint.sh"]
-CMD ["python", "-m", "cuopt_server.cuopt_service"]
+CMD ["proxy"]

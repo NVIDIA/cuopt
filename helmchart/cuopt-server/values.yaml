@@ -78,13 +78,10 @@ tolerations: []
 
 affinity: {}
 
-# Command to run the cuOpt service
-command:
-  - python
-  - -m
-  - cuopt_server.cuopt_service
-  - -p
-  - "5000"
+# Use the image's default entrypoint and command: HTTP proxy on port 5000
+# plus an internal cuopt_grpc_server on port 5001. Set this to ["legacy"]
+# to run the legacy server, or ["grpc"] for gRPC only.
+command: []
 
 # Environment variables
 env: []

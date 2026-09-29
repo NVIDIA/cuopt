@@ -2,10 +2,13 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
-# Smoke-test that a published cuOpt image starts its default REST server and
-# the gRPC server via CUOPT_SERVER_TYPE=grpc. Runs on the host with docker so
-# the real ENTRYPOINT/CMD path is exercised (unlike test_image.sh, which runs
-# inside a GHA job container and never launches the servers).
+# Smoke-test that a published cuOpt image starts:
+#   default  — HTTP proxy + cuopt_grpc_server (image command: proxy)
+#   grpc     — command grpc
+#   legacy   — command legacy
+# Runs on the host with docker so the real ENTRYPOINT/CMD path is exercised
+# (unlike test_image.sh, which runs inside a GHA job container and never
+# launches the servers).
 #
 # Usage (any published or locally built tag):
 #   ./ci/docker/smoke_image.sh nvidia/cuopt:[TAG]
@@ -28,11 +31,27 @@ info() { printf 'INFO  %s\n' "$*"; }
 
 smoke_one() {
   local label="$1"
-  local expect_re="$2"
-  shift 2
-  # Remaining args are extra docker run flags (e.g. -e CUOPT_SERVER_TYPE=grpc).
+  shift
+  local patterns=()
+  while [[ $# -gt 0 && "$1" != -* ]]; do
+    patterns+=("$1")
+    shift
+  done
+  # Remaining args are extra docker run flags, then an optional
+  # `-- command` placed after the image name.
 
-  local name log cid i
+  local name log cid i pat
+  local docker_args=()
+  local cmd=()
+  while [[ $# -gt 0 ]]; do
+    if [[ "$1" == "--" ]]; then
+      shift
+      cmd=("$@")
+      break
+    fi
+    docker_args+=("$1")
+    shift
+  done
   name="cuopt-smoke-${label}-$$"
   log="$(mktemp)"
   cid=""
@@ -52,7 +71,15 @@ smoke_one() {
   info "Starting ${label} server from ${IMAGE}"
   # Do not use --rm: a fast crash (e.g. missing libnccl.so.2) would delete the
   # container before we can collect logs.
-  if ! cid="$(docker run -d --name "${name}" "${GPU_ARGS[@]}" "$@" "${IMAGE}")"; then
+  local -a run_args=("${GPU_ARGS[@]}")
+  if [[ ${#docker_args[@]} -gt 0 ]]; then
+    run_args+=("${docker_args[@]}")
+  fi
+  run_args+=("${IMAGE}")
+  if [[ ${#cmd[@]} -gt 0 ]]; then
+    run_args+=("${cmd[@]}")
+  fi
+  if ! cid="$(docker run -d --name "${name}" "${run_args[@]}")"; then
     smoke_fail "${label}: docker run failed"
     return 1
   fi
@@ -67,8 +94,21 @@ smoke_one() {
       return 1
     fi
 
-    if grep -qE "${expect_re}" "${log}"; then
-      pass "${label}: matched /${expect_re}/"
+    local all_matched=1
+    for pat in "${patterns[@]}"; do
+      if ! grep -qE "${pat}" "${log}"; then
+        all_matched=0
+        break
+      fi
+    done
+    if [[ "${all_matched}" -eq 1 ]]; then
+      if ! docker inspect -f '{{.State.Running}}' "${cid}" 2>/dev/null | grep -qx true; then
+        echo "----- ${label} logs -----"
+        cat "${log}"
+        smoke_fail "${label}: container exited after becoming ready"
+        return 1
+      fi
+      pass "${label}: matched ${patterns[*]}"
       return 0
     fi
 
@@ -85,7 +125,7 @@ smoke_one() {
 
   echo "----- ${label} logs -----"
   cat "${log}"
-  smoke_fail "${label}: timed out after ${TIMEOUT_SECS}s waiting for /${expect_re}/"
+  smoke_fail "${label}: timed out after ${TIMEOUT_SECS}s waiting for ${patterns[*]}"
   return 1
 }
 
@@ -98,7 +138,8 @@ if ! docker pull "${IMAGE}"; then
   fi
 fi
 
-smoke_one rest 'Uvicorn running on'
-smoke_one grpc 'Listening on' -e CUOPT_SERVER_TYPE=grpc
+smoke_one default 'Listening on' 'cuOpt HTTP proxy'
+smoke_one grpc 'Listening on' -- grpc
+smoke_one legacy 'cuopt server version' -- legacy
 
 pass "Smoke OK for ${IMAGE}"
