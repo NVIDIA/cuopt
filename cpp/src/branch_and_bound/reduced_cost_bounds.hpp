@@ -10,6 +10,7 @@
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
+#include <dual_simplex/solution.hpp>
 #include <dual_simplex/user_problem.hpp>
 
 #include <algorithm>
@@ -165,14 +166,50 @@ class reduced_cost_bounds_t {
     }
   }
 
-  i_t update_bounds_from_new_incumbent(f_t incumbent_objective,
+  i_t update_bounds_from_new_incumbent(const simplex::lp_problem_t<i_t, f_t>& lp,
+                                       const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+                                       const simplex::lp_solution_t<i_t, f_t>& solution,
+                                       f_t relaxation_objective,
+                                       f_t incumbent_objective,
                                        const std::vector<simplex::variable_type_t>& var_types,
                                        std::vector<f_t>& lower_bounds,
                                        std::vector<f_t>& upper_bounds)
   {
-    const i_t n                = static_cast<i_t>(lower_bounds_.size());
-    f_t max_objective          = -std::numeric_limits<f_t>::infinity();
-    i_t integer_bounds_updated = 0;
+    const i_t n                           = static_cast<i_t>(lower_bounds_.size());
+    f_t max_objective                     = -std::numeric_limits<f_t>::infinity();
+    i_t integer_bounds_updated            = 0;
+    const std::vector<f_t>& reduced_costs = solution.z;
+    const f_t threshold                   = 100.0 * settings.integer_tol;
+    const f_t weaken                      = settings.integer_tol;
+    if (std::isfinite(incumbent_objective) && std::isfinite(relaxation_objective) &&
+        incumbent_objective >= relaxation_objective) {
+      const f_t abs_gap = incumbent_objective - relaxation_objective;
+      for (i_t j = 0; j < n; ++j) {
+        if (var_types[j] != simplex::variable_type_t::INTEGER || lp.upper[j] - lp.lower[j] <= 1.0) {
+          continue;
+        }
+        const f_t rc = reduced_costs[j];
+        if (!std::isfinite(rc) || std::abs(rc) <= threshold) { continue; }
+        const f_t lower_j = lp.lower[j];
+        const f_t upper_j = lp.upper[j];
+        if (lower_j > -inf && reduced_costs[j] > 0) {
+          const f_t new_upper_bound          = lower_j + abs_gap / reduced_costs[j];
+          const f_t reduced_cost_upper_bound = std::floor(new_upper_bound + weaken);
+          if (reduced_cost_upper_bound < upper_j) {
+            upper_bounds[j] = reduced_cost_upper_bound;
+            ++integer_bounds_updated;
+          }
+        }
+        if (upper_j < inf && reduced_costs[j] < 0) {
+          const f_t new_lower_bound          = upper_j + abs_gap / reduced_costs[j];
+          const f_t reduced_cost_lower_bound = std::ceil(new_lower_bound - weaken);
+          if (reduced_cost_lower_bound > lower_j) {
+            lower_bounds[j] = reduced_cost_lower_bound;
+            ++integer_bounds_updated;
+          }
+        }
+      }
+    }
     for (i_t j = 0; j < n; ++j) {
       if (lower_bounds_[j].is_valid()) {
         if (incumbent_objective <= lower_bounds_[j].objective &&
@@ -181,6 +218,8 @@ class reduced_cost_bounds_t {
           // lower_bounds[j], lower_bounds_[j].bound);
           lower_bounds[j] = lower_bounds_[j].bound;
           if (var_types[j] == simplex::variable_type_t::INTEGER) { integer_bounds_updated++; }
+        }
+        if (lower_bounds_[j].bound <= lower_bounds[j]) {
           lower_bounds_[j].bound = lower_bounds_[j].objective =
             std::numeric_limits<f_t>::quiet_NaN();
         }
@@ -195,6 +234,8 @@ class reduced_cost_bounds_t {
           // upper_bounds[j], upper_bounds_[j].bound);
           upper_bounds[j] = upper_bounds_[j].bound;
           if (var_types[j] == simplex::variable_type_t::INTEGER) { integer_bounds_updated++; }
+        }
+        if (upper_bounds_[j].bound >= upper_bounds[j]) {
           upper_bounds_[j].bound = upper_bounds_[j].objective =
             std::numeric_limits<f_t>::quiet_NaN();
         }

@@ -3478,14 +3478,22 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
     return cut_pass_action_t::RETURN;
   }
 
-  if (settings_.reduced_cost_strengthening >= 1 && upper_bound_.load() < last_upper_bound) {
+  if (settings_.reduced_cost_strengthening >= 1 &&
+      (upper_bound_.load() < last_upper_bound ||
+       upper_bound_.load() <= reduced_cost_bounds.get_max_objective())) {
     mutex_upper_.lock();
     last_upper_bound              = upper_bound_.load();
     std::vector<f_t> lower_bounds = original_lp_.lower;
     std::vector<f_t> upper_bounds = original_lp_.upper;
     f_t previous_max_objective    = reduced_cost_bounds.get_max_objective();
-    i_t new_bounds                = reduced_cost_bounds.update_bounds_from_new_incumbent(
-      upper_bound_.load(), var_types_, lower_bounds, upper_bounds);
+    i_t new_bounds = reduced_cost_bounds.update_bounds_from_new_incumbent(original_lp_,
+                                                                          settings_,
+                                                                          root_relax_soln_,
+                                                                          root_objective_,
+                                                                          upper_bound_.load(),
+                                                                          var_types_,
+                                                                          lower_bounds,
+                                                                          upper_bounds);
     mutex_upper_.unlock();
     mutex_original_lp_.lock();
     original_lp_.lower = lower_bounds;
@@ -4191,12 +4199,20 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     return solver_status_;
   }
 
-  if (settings_.reduced_cost_strengthening >= 2 && upper_bound_.load() < last_upper_bound) {
+  if (settings_.reduced_cost_strengthening >= 2 &&
+      (upper_bound_.load() < last_upper_bound ||
+       upper_bound_.load() <= reduced_cost_bounds.get_max_objective())) {
     std::vector<f_t> lower_bounds = original_lp_.lower;
     std::vector<f_t> upper_bounds = original_lp_.upper;
     f_t previous_max_objective    = reduced_cost_bounds.get_max_objective();
-    i_t num_changed               = reduced_cost_bounds.update_bounds_from_new_incumbent(
-      upper_bound_.load(), var_types_, lower_bounds, upper_bounds);
+    i_t num_changed = reduced_cost_bounds.update_bounds_from_new_incumbent(original_lp_,
+                                                                           settings_,
+                                                                           root_relax_soln_,
+                                                                           root_objective_,
+                                                                           upper_bound_.load(),
+                                                                           var_types_,
+                                                                           lower_bounds,
+                                                                           upper_bounds);
     settings_.log.printf(
       "Updated %d integer bounds using reduced cost strengthening from new incumbent. Max "
       "objective %e Current objective %e Previous max objective %e\n",
