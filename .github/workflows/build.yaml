@@ -145,8 +145,10 @@ jobs:
           if-no-files-found: error
 
   # Forwards GPG/Maven secrets, so pinned to a reviewed commit rather than @main.
-  # See rapidsai/build-infra#379.
+  # See rapidsai/build-infra#379. Release-tag builds only for now -- same gate as
+  # release-github -- until nightly snapshots are actually wanted.
   java-maven-publish:
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: [java-static-gather]
     permissions:
       actions: read
