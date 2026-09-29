@@ -246,6 +246,9 @@
     /* Java has no pip/conda package; the Docker images already contain cuopt.jar. */
     java: {
       container: CONTAINER_CUOPT_LIB,
+      /* Marker only -- getCommand() builds the actual pom.xml snippet, since it
+         also depends on arch (classifier suffix), not just release/cuda. */
+      maven: { stable: { cu12: true, cu13: true }, nightly: { cu12: true, cu13: true } },
     },
   };
 
@@ -254,7 +257,7 @@
     c: ["pip", "conda", "container"],
     server: ["pip", "conda", "container"],
     cli: ["pip", "conda", "container"],
-    java: ["container"],
+    java: ["container", "maven"],
   };
 
   function getSelectedValue(name) {
@@ -326,6 +329,29 @@
           "# Run the container:\n" +
           runLine;
       }
+    } else if (method === "maven") {
+      var mvnVersion = release === "nightly" ? V_NEXT + ".0-SNAPSHOT" : V;
+      var arch = getSelectedValue("cuopt-arch") || "amd64";
+      var classifier = (cuda || "cu12").replace("cu", "cuda") + (arch === "arm64" ? "-arm64" : "");
+      var repoBlock =
+        release === "nightly"
+          ? "<repositories>\n" +
+            "  <repository>\n" +
+            "    <id>sonatype-snapshots</id>\n" +
+            "    <url>https://central.sonatype.com/repository/maven-snapshots</url>\n" +
+            "    <releases><enabled>false</enabled></releases>\n" +
+            "    <snapshots><enabled>true</enabled></snapshots>\n" +
+            "  </repository>\n" +
+            "</repositories>\n\n"
+          : "";
+      cmd =
+        repoBlock +
+        "<dependency>\n" +
+        "  <groupId>com.nvidia.cuopt</groupId>\n" +
+        "  <artifactId>cuopt</artifactId>\n" +
+        "  <version>" + mvnVersion + "</version>\n" +
+        "  <classifier>" + classifier + "</classifier>\n" +
+        "</dependency>";
     } else {
       var key = data[release].cu12 && data[release].cu13 ? cuda : "default";
       cmd = data[release][key] || data[release].cu12 || data[release].cu13 || data[release].default || "";
@@ -378,6 +404,10 @@
     if (registryRow) {
       registryRow.style.display = method === "container" ? "table-row" : "none";
     }
+    var archRow = document.getElementById("cuopt-arch-row");
+    if (archRow) {
+      archRow.style.display = iface === "java" && method === "maven" ? "table-row" : "none";
+    }
     updateOutput();
   }
 
@@ -415,6 +445,7 @@
       '<label class="cuopt-opt"><input type="radio" name="cuopt-method" value="pip" checked> pip</label>' +
       '<label class="cuopt-opt"><input type="radio" name="cuopt-method" value="conda"> Conda</label>' +
       '<label class="cuopt-opt"><input type="radio" name="cuopt-method" value="container"> Container</label>' +
+      '<label class="cuopt-opt"><input type="radio" name="cuopt-method" value="maven"> Maven</label>' +
       '</td></tr>' +
       '<tr id="cuopt-release-row"><td class="cuopt-opt-label">Release</td><td class="cuopt-opt-group" role="group" aria-label="Release">' +
       '<label class="cuopt-opt"><input type="radio" name="cuopt-release" value="stable" checked> Current release (' + V_CONDA + ')</label>' +
@@ -432,13 +463,17 @@
       '<label class="cuopt-opt"><input type="radio" name="cuopt-registry" value="hub" checked> Docker Hub</label>' +
       '<label class="cuopt-opt"><input type="radio" name="cuopt-registry" value="ngc"> NVIDIA NGC</label>' +
       '</td></tr>' +
+      '<tr id="cuopt-arch-row" style="display:none;"><td class="cuopt-opt-label">Arch</td><td class="cuopt-opt-group" role="group" aria-label="Architecture">' +
+      '<label class="cuopt-opt"><input type="radio" name="cuopt-arch" value="amd64" checked> amd64</label>' +
+      '<label class="cuopt-opt"><input type="radio" name="cuopt-arch" value="arm64"> arm64</label>' +
+      '</td></tr>' +
       "</table>" +
       '<div class="cuopt-install-output">' +
       '<textarea id="cuopt-cmd-out" class="cuopt-install-cmd-out" readonly rows="6" style="display:none;"></textarea>' +
       '<div class="cuopt-install-copy-wrap"><button type="button" id="cuopt-copy-btn" class="cuopt-install-copy-btn" style="display:none;">Copy command</button></div>' +
       "</div></div>";
 
-    ["cuopt-iface", "cuopt-method", "cuopt-release", "cuopt-cuda", "cuopt-variant", "cuopt-registry"].forEach(
+    ["cuopt-iface", "cuopt-method", "cuopt-release", "cuopt-cuda", "cuopt-variant", "cuopt-registry", "cuopt-arch"].forEach(
       function (name) {
         var inputs = document.querySelectorAll('input[name="' + name + '"]');
         inputs.forEach(function (input) {
