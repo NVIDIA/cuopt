@@ -568,12 +568,13 @@ jobs:
           path: ${{ runner.temp }}/maven-repo
           if-no-files-found: error
 
-  # TEMPORARY (#1970): if:false so GitHub Actions validates the reusable-workflow call shape
-  # (schema/inputs) without it ever running -- this is a PR, not a release tag, so the gate
-  # already used in build.yaml would skip it anyway. Flip to a real ref/sha to actually invoke.
+  # TEMPORARY (#1970): flipped to true to actually invoke maven-publish.yaml@release/26.10
+  # for real on this PR run and confirm the new wiring works end-to-end. Not a release tag,
+  # so publication-type: rc + stage-for-maven-central-publish: false below means this
+  # validates and drops rather than staging or auto-publishing anything real.
   java-maven-publish-tmp:
     needs: [java-static-gather-tmp]
-    if: false
+    if: true
     permissions:
       actions: read
       contents: read
