@@ -530,9 +530,10 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   pdlp_solver_settings_t<i_t, f_t> sub_pdlp_settings = settings;
   sub_pdlp_settings.num_gpus                         = 1;
   sub_pdlp_settings.use_distributed_pdlp             = false;
-  // Disable automatic ruiz and pock-chambolle in the initial_scaling ctor: the
-  // distributed pipeline computes them via distributed_scaling using the
-  // GLOBAL problem.
+  // Disable automatic matrix scaling in the initial_scaling ctor: the
+  // distributed pipeline computes Curtis-Reid, Ruiz, and Pock-Chambolle via
+  // distributed_scaling using the global problem.
+  sub_pdlp_settings.hyper_params.do_curtis_reid_scaling    = false;
   sub_pdlp_settings.hyper_params.do_ruiz_scaling           = false;
   sub_pdlp_settings.hyper_params.do_pock_chambolle_scaling = false;
 
