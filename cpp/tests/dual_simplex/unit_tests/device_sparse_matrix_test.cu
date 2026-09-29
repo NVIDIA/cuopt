@@ -10,6 +10,8 @@
 
 #include <cuda/stream>
 
+#include <raft/core/handle.hpp>
+
 #include <utilities/copy_helpers.hpp>
 
 #include <gtest/gtest.h>
@@ -54,14 +56,16 @@ csc_matrix_t<int, double> make_csc(int m, const std::vector<std::vector<int>>& r
 // The device conversion must reproduce the host reference exactly.
 void expect_device_matches_host(const csc_matrix_t<int, double>& A)
 {
-  auto stream = cuda::stream_ref{cudaStream_t{cudaStreamDefault}};
+  raft::handle_t handle{};
+  const raft::handle_t* handle_ptr = &handle;
+  auto stream                      = cuda::stream_ref{handle.get_stream().value()};
 
   csr_matrix_t<int, double> expected(A.m, A.n, A.col_start[A.n]);
   A.to_compressed_row(expected);
 
   device_csc_matrix_t<int, double> d_A(A, stream);
   device_csr_matrix_t<int, double> d_Arow(stream);
-  d_A.to_compressed_row(d_Arow, stream);
+  d_A.to_compressed_row(d_Arow, handle_ptr);
   auto got = d_Arow.to_host(stream);
 
   ASSERT_EQ(got.m, expected.m);
@@ -75,7 +79,7 @@ void expect_device_matches_host(const csc_matrix_t<int, double>& A)
   A.transpose(expected_t);
 
   device_csc_matrix_t<int, double> d_AT(stream);
-  d_A.transpose(d_AT, stream);
+  d_A.transpose(d_AT, handle_ptr);
   auto got_t = d_AT.to_host(stream);
 
   ASSERT_EQ(got_t.m, expected_t.m);

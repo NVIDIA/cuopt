@@ -190,7 +190,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
   // then derived from it on device instead of being converted on the host and uploaded again.
   device_csc_matrix_t<i_t, f_t> d_A(A, handle_ptr->get_stream());
   device_csr_matrix_t<i_t, f_t> d_A_csr(handle_ptr->get_stream());
-  d_A.to_compressed_row(d_A_csr, handle_ptr->get_stream());
+  d_A.to_compressed_row(d_A_csr, handle_ptr);
 
   rows_          = A.m;
   const i_t cols = A.n;

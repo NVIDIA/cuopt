@@ -9,6 +9,7 @@
 
 #include <linear_algebra/sparse_matrix.hpp>
 #include <math_optimization/types.hpp>
+#include <raft/core/handle.hpp>
 
 #include <cub/cub.cuh>
 #include <cuda/stream>
@@ -269,19 +270,23 @@ class device_csc_matrix_t {
 
   /** Same semantics as csc_matrix_t::to_compressed_row, entirely on
    * device. */
-  void to_compressed_row(device_csr_matrix_t<i_t, f_t>& Arow, cuda::stream_ref stream) const;
+  void to_compressed_row(device_csr_matrix_t<i_t, f_t>& Arow,
+                         const raft::handle_t* handle_ptr) const;
 
   /** Same semantics as csc_matrix_t::transpose, entirely on device. */
-  void transpose(device_csc_matrix_t<i_t, f_t>& AT, cuda::stream_ref stream) const;
+  void transpose(device_csc_matrix_t<i_t, f_t>& AT, const raft::handle_t* handle_ptr) const;
 
   /** Tag selecting the transpose constructor below. */
   struct transposed_t {};
 
   /** Construct as A^T, entirely on device. */
-  device_csc_matrix_t(transposed_t, const device_csc_matrix_t& A, cuda::stream_ref stream)
-    : col_start(0, stream), i(0, stream), x(0, stream), col_index(0, stream)
+  device_csc_matrix_t(transposed_t, const device_csc_matrix_t& A, const raft::handle_t* handle_ptr)
+    : col_start(0, handle_ptr->get_stream()),
+      i(0, handle_ptr->get_stream()),
+      x(0, handle_ptr->get_stream()),
+      col_index(0, handle_ptr->get_stream())
   {
-    A.transpose(*this, stream);
+    A.transpose(*this, handle_ptr);
   }
 
   void form_col_index(cuda::stream_ref stream)
@@ -442,8 +447,7 @@ class device_csr_matrix_t {
 };
 
 // Device CSC -> CSR on raw arrays. Doubles as a CSC transpose: CSR(A) and CSC(A^T) hold the
-// same three arrays, so only the dimensions the caller records differ. Defined in
-// device_sparse_matrix.cu so the scatter kernel is not recompiled in every including unit.
+// same three arrays, so only the dimensions the caller records differ.
 template <typename i_t, typename f_t>
 void csc_to_csr_on_device(i_t m,
                           i_t n,
@@ -454,15 +458,16 @@ void csc_to_csr_on_device(i_t m,
                           i_t* out_offsets,
                           i_t* out_indices,
                           f_t* out_values,
-                          cuda::stream_ref stream);
+                          const raft::handle_t* handle_ptr);
 
 template <typename i_t, typename f_t>
 void device_csc_matrix_t<i_t, f_t>::to_compressed_row(device_csr_matrix_t<i_t, f_t>& Arow,
-                                                      cuda::stream_ref stream) const
+                                                      const raft::handle_t* handle_ptr) const
 {
-  Arow.m      = m;
-  Arow.n      = n;
-  Arow.nz_max = nz_max;
+  const auto stream = handle_ptr->get_stream();
+  Arow.m            = m;
+  Arow.n            = n;
+  Arow.nz_max       = nz_max;
   Arow.row_start.resize(m + 1, stream);
   Arow.j.resize(nz_max, stream);
   Arow.x.resize(nz_max, stream);
@@ -476,13 +481,14 @@ void device_csc_matrix_t<i_t, f_t>::to_compressed_row(device_csr_matrix_t<i_t, f
                                  Arow.row_start.data(),
                                  Arow.j.data(),
                                  Arow.x.data(),
-                                 stream);
+                                 handle_ptr);
 }
 
 template <typename i_t, typename f_t>
 void device_csc_matrix_t<i_t, f_t>::transpose(device_csc_matrix_t<i_t, f_t>& AT,
-                                              cuda::stream_ref stream) const
+                                              const raft::handle_t* handle_ptr) const
 {
+  const auto stream = handle_ptr->get_stream();
   // A^T is n x m, and its CSC arrays are exactly the CSR arrays of A.
   AT.m      = n;
   AT.n      = m;
@@ -500,7 +506,7 @@ void device_csc_matrix_t<i_t, f_t>::transpose(device_csc_matrix_t<i_t, f_t>& AT,
                                  AT.col_start.data(),
                                  AT.i.data(),
                                  AT.x.data(),
-                                 stream);
+                                 handle_ptr);
 }
 
 }  // namespace cuopt::mathematical_optimization::barrier

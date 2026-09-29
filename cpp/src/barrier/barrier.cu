@@ -540,9 +540,8 @@ class iteration_data_t {
                       : device_csc_matrix_t<i_t, f_t>(lp.A, lp.handle_ptr->get_stream())),
       device_Q_csc_(
         make_device_Q(std::move(scaled_device_Q), lp, Qin, lp.handle_ptr->get_stream())),
-      device_AT_csc_(typename device_csc_matrix_t<i_t, f_t>::transposed_t{},
-                     device_A_csc_,
-                     lp.handle_ptr->get_stream()),
+      device_AT_csc_(
+        typename device_csc_matrix_t<i_t, f_t>::transposed_t{}, device_A_csc_, lp.handle_ptr),
       d_original_A_values(0, lp.handle_ptr->get_stream()),
       d_inv_diag_prime(0, lp.handle_ptr->get_stream()),
       d_flag_buffer(0, lp.handle_ptr->get_stream()),
@@ -900,7 +899,7 @@ class iteration_data_t {
                    device_AD.x.data(),
                    device_AD.x.size(),
                    handle_ptr->get_stream());
-        device_AD.to_compressed_row(device_A, handle_ptr->get_stream());
+        device_AD.to_compressed_row(device_A, handle_ptr);
       } else {
         // AD == A, so device_AD is seeded straight from device_A_csc_, which also doubles as
         // form_adat's restore source, and device_AT_csc_ (already CSR(A)) serves as the SpGEMM's
