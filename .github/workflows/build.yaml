@@ -144,27 +144,25 @@ jobs:
           path: ${{ runner.temp }}/maven-repo
           if-no-files-found: error
 
-  # Forwards GPG/Maven secrets, so pinned to a reviewed commit rather than @main.
-  # See rapidsai/build-infra#379. Release-tag builds only for now -- same gate as
-  # release-github -- until nightly snapshots are actually wanted.
+  # Release path only (vYY.MM.PP tags); does not publish nightlies. Matches cudf's
+  # release/26.10 java-publish job. TODO: add nightly Sonatype snapshot publishing
+  # once cuopt main goes back to tracking shared-workflows main.
   java-maven-publish:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [java-static-gather]
     permissions:
       actions: read
       contents: read
-    # rapidsai/shared-workflows@main
-    uses: rapidsai/shared-workflows/.github/workflows/maven-publish.yaml@0adadff212e170d247cde08e9e1de724babacbf5
+    uses: rapidsai/shared-workflows/.github/workflows/maven-publish.yaml@release/26.10
     secrets:
       GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
       GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
       MAVEN_DEPLOY_TOKEN: ${{ secrets.MAVEN_DEPLOY_TOKEN }}
     with:
+      publication-type: 'rc'
       artifact-name: cuopt_java_maven_repo
       source-git-sha: ${{ inputs.sha }}
-      # Ignored on the snapshot path (everything published so far); only takes effect on an
-      # actual Maven Central release build, where it gates the first release behind a manual
-      # Sonatype Central Portal click instead of auto-publishing.
+      # false = validate + drop (safe). true = stage PENDING for manual publish.
       stage-for-maven-central-publish: true
 
   java-build:
