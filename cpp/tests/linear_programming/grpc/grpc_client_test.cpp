@@ -18,12 +18,14 @@
 
 #include <utilities/inline_lp_test_utils.hpp>
 
+#include <cuopt/mathematical_optimization/constants.h>
 #include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
 #include <cuopt/mathematical_optimization/cpu_optimization_problem_solution.hpp>
 #include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/solver_settings.hpp>
 #include <raft/util/cudart_utils.hpp>
 #include <rmm/device_uvector.hpp>
 #include "grpc_client.hpp"
@@ -2476,6 +2478,49 @@ TEST(MapperRoundtrip, PDLPSettingsAllFields)
   EXPECT_EQ(restored.save_best_primal_so_far, true);
   EXPECT_EQ(restored.first_primal_feasible, true);
   EXPECT_EQ(restored.hyper_params.do_curtis_reid_scaling, false);
+}
+
+TEST(MapperRoundtrip, ParameterMapEmptyLeavesTypedField)
+{
+  cuopt::remote::PDLPSolverSettings pb;
+  pb.set_time_limit(3.5);
+
+  solver_settings_t<int32_t, double> settings;
+  map_proto_to_pdlp_settings(pb, settings.get_pdlp_settings());
+  apply_parameter_overrides(settings, pb.parameters());
+
+  EXPECT_DOUBLE_EQ(settings.get_pdlp_settings().time_limit, 3.5);
+}
+
+TEST(MapperRoundtrip, ParameterMapOverridesDeprecatedFields)
+{
+  cuopt::remote::PDLPSolverSettings pb;
+  pb.set_time_limit(3.5);
+  (*pb.mutable_parameters())[CUOPT_TIME_LIMIT] = "9.25";
+
+  solver_settings_t<int32_t, double> settings;
+  map_proto_to_pdlp_settings(pb, settings.get_pdlp_settings());
+  apply_parameter_overrides(settings, pb.parameters());
+
+  EXPECT_DOUBLE_EQ(settings.get_pdlp_settings().time_limit, 9.25);
+}
+
+TEST(MapperRoundtrip, ParameterMapRejectsUnknownName)
+{
+  cuopt::remote::PDLPSolverSettings pb;
+  (*pb.mutable_parameters())["not_a_parameter"] = "1";
+
+  solver_settings_t<int32_t, double> settings;
+  EXPECT_THROW(apply_parameter_overrides(settings, pb.parameters()), std::invalid_argument);
+}
+
+TEST(MapperRoundtrip, ParameterMapRejectsOutOfRangeValue)
+{
+  cuopt::remote::PDLPSolverSettings pb;
+  (*pb.mutable_parameters())[CUOPT_METHOD] = "99";
+
+  solver_settings_t<int32_t, double> settings;
+  EXPECT_THROW(apply_parameter_overrides(settings, pb.parameters()), std::invalid_argument);
 }
 
 TEST(MapperRoundtrip, PDLPSettingsIterationLimitSentinel)

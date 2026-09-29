@@ -92,6 +92,19 @@ void map_proto_to_mip_settings(const cuopt::remote::MIPSolverSettings& pb_settin
   }
 }
 
+template <typename i_t, typename f_t>
+void apply_parameter_overrides(solver_settings_t<i_t, f_t>& settings,
+                               const google::protobuf::Map<std::string, std::string>& parameters)
+{
+  // After the deprecated typed fields have been copied onto `settings`.
+  // set_parameter_from_string is the same path the CLI and C API use, so a
+  // key here wins over those fields and a parameter with no typed field is
+  // still applied.
+  for (const auto& entry : parameters) {
+    settings.set_parameter_from_string(entry.first, entry.second);
+  }
+}
+
 // Explicit template instantiations
 #if CUOPT_INSTANTIATE_FLOAT
 template CUOPT_EXPORT void map_pdlp_settings_to_proto(
@@ -106,6 +119,9 @@ template CUOPT_EXPORT void map_mip_settings_to_proto(
 template CUOPT_EXPORT void map_proto_to_mip_settings(
   const cuopt::remote::MIPSolverSettings& pb_settings,
   mip_solver_settings_t<int32_t, float>& settings);
+template CUOPT_EXPORT void apply_parameter_overrides(
+  solver_settings_t<int32_t, float>& settings,
+  const google::protobuf::Map<std::string, std::string>& parameters);
 #endif
 
 #if CUOPT_INSTANTIATE_DOUBLE
@@ -121,6 +137,9 @@ template CUOPT_EXPORT void map_mip_settings_to_proto(
 template CUOPT_EXPORT void map_proto_to_mip_settings(
   const cuopt::remote::MIPSolverSettings& pb_settings,
   mip_solver_settings_t<int32_t, double>& settings);
+template CUOPT_EXPORT void apply_parameter_overrides(
+  solver_settings_t<int32_t, double>& settings,
+  const google::protobuf::Map<std::string, std::string>& parameters);
 #endif
 
 }  // namespace cuopt::mathematical_optimization

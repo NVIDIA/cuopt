@@ -18,6 +18,9 @@ struct pdlp_solver_settings_t;
 template <typename i_t, typename f_t>
 struct mip_solver_settings_t;
 
+template <typename i_t, typename f_t>
+struct solver_settings_t;
+
 /**
  * @brief Map pdlp_solver_settings_t to protobuf PDLPSolverSettings message.
  *
@@ -57,5 +60,17 @@ void map_mip_settings_to_proto(const mip_solver_settings_t<i_t, f_t>& settings,
 template <typename i_t, typename f_t>
 void map_proto_to_mip_settings(const cuopt::remote::MIPSolverSettings& pb_settings,
                                mip_solver_settings_t<i_t, f_t>& settings);
+
+/**
+ * @brief Apply PDLPSolverSettings.parameters / MIPSolverSettings.parameters.
+ *
+ * Each entry is passed to set_parameter_from_string(). Call this after the
+ * typed fields have been copied onto `settings`, so a key in the map wins
+ * over those deprecated fields. An empty map changes nothing. An unknown
+ * name or an out-of-range value throws std::invalid_argument.
+ */
+template <typename i_t, typename f_t>
+void apply_parameter_overrides(solver_settings_t<i_t, f_t>& settings,
+                               const google::protobuf::Map<std::string, std::string>& parameters);
 
 }  // namespace cuopt::mathematical_optimization
