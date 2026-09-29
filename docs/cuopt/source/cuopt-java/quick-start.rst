@@ -16,7 +16,7 @@ It is not part of the top-level cuOpt build.
 Requirements
 ------------
 
-The Java module requires:
+The source build requires:
 
 * Java 17 or newer, with ``JAVA_HOME`` pointing to a JDK;
 * A C++20 compiler;
@@ -90,9 +90,9 @@ Using the Docker Image
 
 The official cuOpt Docker images ship ``cuopt.jar`` and ``libcuopt_jni.so``
 under ``/opt/cuopt/java``, built against the image's own ``libcuopt.so``. No
-build step is needed; compile and run your code with
-``-cp /opt/cuopt/java/cuopt.jar`` and ``-Dcuopt.native.dir=/opt/cuopt/java``.
-See :doc:`../install` for image tags.
+build step is needed. Use ``-cp /opt/cuopt/java/cuopt.jar`` for both
+compilation and execution; pass ``-Dcuopt.native.dir=/opt/cuopt/java`` only to
+the ``java`` command. See :doc:`../install` for image tags.
 
 Using the Maven Artifact
 ------------------------
@@ -105,6 +105,15 @@ cuOpt's own native dependencies (``libcuopt``, rmm, cuDSS, NCCL, TBB), which
 no ``cuopt.native.dir`` is required:
 
 .. code-block:: xml
+
+   <repositories>
+     <repository>
+       <id>sonatype-snapshots</id>
+       <url>https://central.sonatype.com/repository/maven-snapshots</url>
+       <releases><enabled>false</enabled></releases>
+       <snapshots><enabled>true</enabled></snapshots>
+     </repository>
+   </repositories>
 
    <dependency>
      <groupId>com.nvidia.cuopt</groupId>
@@ -128,8 +137,8 @@ LP Example below) in the working directory:
      nvidia/cuda:12.9.0-runtime-ubuntu24.04 bash -c '
        apt-get update -qq && apt-get install -y -qq openjdk-17-jdk-headless maven
        mvn -q dependency:copy-dependencies -DoutputDirectory=lib
-       javac -cp "lib/cuopt-*-cuda12.jar" -d . MyProgram.java
-       java -cp "lib/cuopt-*-cuda12.jar:." MyProgram
+       javac -cp "lib/*" -d . MyProgram.java
+       java -cp "lib/*:." MyProgram
      '
 
 Outside Docker, install the matching ``cuda-libraries-<major>-<minor>``
