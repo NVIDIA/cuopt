@@ -240,7 +240,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_BARRIER_ADAPTIVE_REGULARIZATION, &pdlp_settings.barrier_adaptive_regularization, -1, 1, -1, "Adaptive regularization for barrier method: -1 automatic (default behavior), 0 disabled, 1 enabled"},
     // QCQP (barrier) scaling hyper-parameter
     {CUOPT_QCQP_HYPER_RUIZ_EQUILIBRATION, &pdlp_settings.qcqp_ruiz_equilibration, -1, 1, -1, "Ruiz equilibration for QCQP barrier scaling: -1 automatic (row/column imbalance heuristic), 0 disabled, 1 enabled"},
-    {CUOPT_HYPER_GPU_RUIZ_NNZ_THRESHOLD, &pdlp_settings.gpu_ruiz_nnz_threshold, 0, std::numeric_limits<i_t>::max(), 500000, "nnz(A)+nnz(Q) at or above which barrier Ruiz equilibration runs on GPU instead of CPU"},
+    {CUOPT_BARRIER_HYPER_GPU_RUIZ_NNZ_THRESHOLD, &pdlp_settings.gpu_ruiz_nnz_threshold, 0, std::numeric_limits<i_t>::max(), 500000, "nnz(A)+nnz(Q) at or above which barrier Ruiz equilibration runs on GPU instead of CPU"},
   };
 
     // Bool parameters
