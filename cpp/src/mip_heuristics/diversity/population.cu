@@ -15,6 +15,8 @@
 #include <pdlp/utils.cuh>
 #include <utilities/copy_helpers.hpp>
 
+#include <algorithm>
+#include <cmath>
 #include <mutex>
 
 namespace cuopt::mathematical_optimization::mip {
@@ -145,25 +147,22 @@ void population_t<i_t, f_t>::add_external_solution(const std::vector<f_t>& solut
                                                    f_t objective,
                                                    solution_origin_t origin)
 {
+  if (!std::isfinite(objective)) return;
   context.solution_publication.publish_if_better(problem_ptr, solution, objective);
   std::lock_guard<std::mutex> lock(solution_mutex);
 
-  if (origin == solution_origin_t::CPUFJ) {
-    external_solution_queue_cpufj.emplace_back(solution, objective, origin);
-  } else {
-    external_solution_queue.emplace_back(solution, objective, origin);
-  }
+  const bool full = external_solution_queue.size() == max_external_solutions;
+  if (full && objective >= external_solution_queue.front().objective) return;
 
-  // Prevent CPUFJ scratch solutions from flooding the queue
-  if (external_solution_queue_cpufj.size() > 10) {
-    auto worst_obj_it =
-      std::max_element(external_solution_queue_cpufj.begin(),
-                       external_solution_queue_cpufj.end(),
-                       [](const external_solution_t& a, const external_solution_t& b) {
-                         return a.objective < b.objective;
-                       });
-    external_solution_queue_cpufj.erase(worst_obj_it);
+  // Copy before changing the heap so allocation failure preserves queued candidates.
+  external_solution_t candidate(solution, objective, origin);
+  if (full) {
+    std::pop_heap(external_solution_queue.begin(), external_solution_queue.end());
+    external_solution_queue.back() = std::move(candidate);
+  } else {
+    external_solution_queue.push_back(std::move(candidate));
   }
+  std::push_heap(external_solution_queue.begin(), external_solution_queue.end());
 
   CUOPT_LOG_DEBUG("%s added a solution to population, solution queue size %lu with objective %g",
                   solution_origin_to_string(origin),
@@ -180,17 +179,7 @@ void population_t<i_t, f_t>::add_external_solution(const std::vector<f_t>& solut
 template <typename i_t, typename f_t>
 void population_t<i_t, f_t>::add_external_solutions_to_population()
 {
-  size_t pending;
-  {
-    std::lock_guard<std::mutex> lock(solution_mutex);
-    pending = external_solution_queue.size() + external_solution_queue_cpufj.size();
-  }
-  // Drain the backlog in bounded GPU batches. Snapshot the amount of work so a
-  // concurrent producer cannot keep this call running indefinitely. A final drain
-  // after workers stop still consumes every remaining candidate.
-  for (size_t consumed = 0; consumed < pending; consumed += external_solution_batch_size) {
-    add_solutions_from_vec(get_external_solutions());
-  }
+  add_solutions_from_vec(get_external_solutions());
 }
 
 // normally we would need a lock here but these are boolean types and race conditions are not
@@ -206,26 +195,13 @@ template <typename i_t, typename f_t>
 std::vector<solution_t<i_t, f_t>> population_t<i_t, f_t>::get_external_solutions()
 {
   std::vector<external_solution_t> pending;
-  pending.reserve(external_solution_batch_size);
   {
     std::lock_guard<std::mutex> lock(solution_mutex);
-    // Give both producers space in each batch so a busy B&B queue cannot starve
-    // CPUFJ publication (or vice versa). Preserve FIFO order within each queue.
-    while (pending.size() < external_solution_batch_size &&
-           (!external_solution_queue.empty() || !external_solution_queue_cpufj.empty())) {
-      for (auto* queue : {&external_solution_queue, &external_solution_queue_cpufj}) {
-        if (!queue->empty() && pending.size() < external_solution_batch_size) {
-          pending.emplace_back(std::move(queue->front()));
-          queue->pop_front();
-        }
-      }
-    }
-    solutions_in_external_queue_ =
-      !external_solution_queue.empty() || !external_solution_queue_cpufj.empty();
+    pending.swap(external_solution_queue);
+    solutions_in_external_queue_ = false;
   }
-  // Mapping and validation may synchronize the GPU. Keep producer
-  // publication locks free while doing this work, and never materialize the
-  // entire host backlog as device solutions at once.
+  // Validate the bounded snapshot best-first, without blocking producers on GPU work.
+  std::sort_heap(pending.begin(), pending.end());
   std::vector<solution_t<i_t, f_t>> return_vector;
   return_vector.reserve(pending.size());
   [[maybe_unused]] i_t counter    = 0;

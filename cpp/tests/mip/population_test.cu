@@ -4,9 +4,12 @@
  */
 
 #include <mip_heuristics/diversity/diversity_manager.cuh>
+#include <mip_heuristics/utils.cuh>
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <limits>
 #include <vector>
 
 namespace cuopt::mathematical_optimization::test {
@@ -20,7 +23,7 @@ void init_population_test_problem(opt::optimization_problem_t<int, double>& op)
   const std::vector<double> row_lower{0}, row_upper{2};
   const std::vector<int> columns{0, 1}, offsets{0, 2};
   // Population hashing needs an integer column; keep x continuous for the
-  // fractional FIFO/objective markers and use the second column as integer.
+  // fractional objective markers and use the second column as integer.
   const std::vector<opt::var_t> types{opt::var_t::CONTINUOUS, opt::var_t::INTEGER};
   op.set_csr_constraint_matrix(coefficients.data(), 2, columns.data(), 2, offsets.data(), 2);
   op.set_variable_lower_bounds(lower.data(), 2);
@@ -33,7 +36,7 @@ void init_population_test_problem(opt::optimization_problem_t<int, double>& op)
 
 }  // namespace
 
-TEST(Population, ExternalQueueMaterializesBoundedFifoBatches)
+TEST(Population, ExternalQueueKeepsGlobalBestFiftyAcrossOrigins)
 {
   raft::handle_t handle;
   opt::optimization_problem_t<int, double> op(&handle);
@@ -46,30 +49,33 @@ TEST(Population, ExternalQueueMaterializesBoundedFifoBatches)
   dm.population.initialize_population();
   dm.population.allocate_solutions();
 
-  // B&B-origin candidates use the general queue, which can contain a long
-  // backlog while the GPU consumer is busy. Materialize only a bounded batch.
-  for (int i = 0; i < 25; ++i) {
-    const double value = static_cast<double>(i) / 32;
-    dm.population.add_external_solution(
-      {value, 0}, value, mip::solution_origin_t::BRANCH_AND_BOUND);
-  }
-  size_t consumed = 0;
-  for (const size_t expected_size : {10, 10, 5}) {
-    auto batch = dm.population.get_external_solutions();
-    ASSERT_EQ(batch.size(), expected_size);
-    for (auto& candidate : batch) {
-      ASSERT_TRUE(candidate.get_feasible());
-      EXPECT_EQ(candidate.get_host_assignment(),
-                (std::vector<double>{static_cast<double>(consumed) / 32, 0}));
-      ++consumed;
+  const std::vector<mip::solution_origin_t> origins{mip::solution_origin_t::CPUFJ,
+                                                    mip::solution_origin_t::BRANCH_AND_BOUND,
+                                                    mip::solution_origin_t::EXTERNAL};
+  // Reuse the queue after each drain, with ascending, descending, and permuted arrivals.
+  for (int order = 0; order < 3; ++order) {
+    for (int i = 0; i < 100; ++i) {
+      const int index    = order == 0 ? i : (order == 1 ? 99 - i : (i * 37) % 100);
+      const double value = static_cast<double>(index) / 128;
+      dm.population.add_external_solution({value, 0}, value, origins[index % origins.size()]);
+      EXPECT_EQ(dm.population.get_external_solution_size(), std::min(i + 1, 50));
     }
-    EXPECT_EQ(dm.population.get_external_solution_size(), 25 - consumed);
+    EXPECT_TRUE(dm.population.solutions_in_external_queue_.load());
+    auto candidates = dm.population.get_external_solutions();
+    ASSERT_EQ(candidates.size(), 50);
+    // The retained set includes 17 CPUFJ entries, with no separate per-origin cap.
+    for (size_t i = 0; i < candidates.size(); ++i) {
+      EXPECT_TRUE(candidates[i].get_feasible());
+      EXPECT_EQ(candidates[i].get_host_assignment(),
+                (std::vector<double>{static_cast<double>(i) / 128, 0}));
+    }
+    EXPECT_EQ(dm.population.get_external_solution_size(), 0);
+    EXPECT_FALSE(dm.population.solutions_in_external_queue_.load());
+    EXPECT_TRUE(dm.population.get_external_solutions().empty());
   }
-  EXPECT_EQ(consumed, 25);
-  EXPECT_TRUE(dm.population.get_external_solutions().empty());
 }
 
-TEST(Population, ExternalQueueBatchesAdvanceBothOriginsDespiteGeneralReplenishment)
+TEST(Population, ExternalQueueRejectsNonfiniteObjectivesAndNonimprovingOverflow)
 {
   raft::handle_t handle;
   opt::optimization_problem_t<int, double> op(&handle);
@@ -81,57 +87,39 @@ TEST(Population, ExternalQueueBatchesAdvanceBothOriginsDespiteGeneralReplenishme
   mip::diversity_manager_t<int, double> dm(context);
   dm.population.initialize_population();
   dm.population.allocate_solutions();
-  auto append_general = [&](int begin, int end) {
-    for (int i = begin; i < end; ++i) {
-      const double value = static_cast<double>(i) / 64;
-      dm.population.add_external_solution(
-        {value, 0}, value, mip::solution_origin_t::BRANCH_AND_BOUND);
-    }
-  };
-  append_general(0, 20);
-  for (int i = 32; i < 42; ++i) {
-    const double value = static_cast<double>(i) / 64;
-    dm.population.add_external_solution({value, 0}, value, mip::solution_origin_t::CPUFJ);
+
+  const double inf = std::numeric_limits<double>::infinity();
+  const std::vector<double> nonfinite{std::numeric_limits<double>::quiet_NaN(), inf, -inf};
+  for (double objective : nonfinite) {
+    dm.population.add_external_solution({0.75, 0}, objective, mip::solution_origin_t::CPUFJ);
+    EXPECT_EQ(dm.population.get_external_solution_size(), 0);
   }
-  int consumed_general = 0;
-  int consumed_cpufj   = 0;
-  auto consume_batch   = [&] {
-    auto batch = dm.population.get_external_solutions();
-    EXPECT_EQ(batch.size(), 10);
-    for (auto& candidate : batch) {
-      EXPECT_TRUE(candidate.get_feasible());
-      const auto assignment = candidate.get_host_assignment();
-      EXPECT_EQ(assignment[1], 0);
-      if (assignment[0] < 0.5) {
-        EXPECT_EQ(assignment[0], static_cast<double>(consumed_general++) / 64);
-      } else {
-        EXPECT_EQ(assignment[0], static_cast<double>(32 + consumed_cpufj++) / 64);
-      }
-    }
-  };
-  consume_batch();
-  EXPECT_EQ(consumed_general, 5);
-  EXPECT_EQ(consumed_cpufj, 5);
-  EXPECT_TRUE(dm.population.solutions_in_external_queue_.load());
-
-  // More general traffic must not put older CPUFJ submissions behind it.
-  append_general(20, 30);
-  consume_batch();
-  EXPECT_EQ(consumed_general, 10);
-  EXPECT_EQ(consumed_cpufj, 10);
-  EXPECT_TRUE(dm.population.solutions_in_external_queue_.load());
-  EXPECT_EQ(dm.population.get_external_solution_size(), 20);
-
-  consume_batch();
-  EXPECT_TRUE(dm.population.solutions_in_external_queue_.load());
-  consume_batch();
-  EXPECT_EQ(consumed_general, 30);
-  EXPECT_EQ(consumed_cpufj, 10);
   EXPECT_FALSE(dm.population.solutions_in_external_queue_.load());
-  EXPECT_TRUE(dm.population.get_external_solutions().empty());
+  for (int i = 0; i < 50; ++i) {
+    const double value = static_cast<double>(i) / 128;
+    dm.population.add_external_solution({value, 0}, value, mip::solution_origin_t::EXTERNAL);
+  }
+  for (int i = 0; i < 100; ++i) {
+    for (double objective : nonfinite) {
+      dm.population.add_external_solution(
+        {0.75, 0}, objective, mip::solution_origin_t::BRANCH_AND_BOUND);
+    }
+    // Distinct assignments expose accidental replacement on a tied objective.
+    dm.population.add_external_solution({0.75, 0}, 49.0 / 128, mip::solution_origin_t::EXTERNAL);
+    dm.population.add_external_solution({0.75, 0}, 0.75, mip::solution_origin_t::EXTERNAL);
+    EXPECT_EQ(dm.population.get_external_solution_size(), 50);
+  }
+  auto candidates = dm.population.get_external_solutions();
+  ASSERT_EQ(candidates.size(), 50);
+  for (size_t i = 0; i < candidates.size(); ++i) {
+    EXPECT_TRUE(candidates[i].get_feasible());
+    EXPECT_EQ(candidates[i].get_host_assignment(),
+              (std::vector<double>{static_cast<double>(i) / 128, 0}));
+  }
+  EXPECT_EQ(dm.population.get_external_solution_size(), 0);
 }
 
-TEST(Population, ExternalQueueDrainFindsValidTailAfterRejectedLowObjectives)
+TEST(Population, ExternalQueueValidatesWithSolverTolerancesBeforeReplacingIncumbent)
 {
   raft::handle_t handle;
   opt::optimization_problem_t<int, double> op(&handle);
@@ -148,25 +136,42 @@ TEST(Population, ExternalQueueDrainFindsValidTailAfterRejectedLowObjectives)
   dm.population.initialize_population();
   dm.population.allocate_solutions();
 
-  // The first full batch is invalid despite its attractive reported objective.
-  // A valid improvement past two batch boundaries must still be consumed.
-  for (int i = 0; i < 12; ++i) {
+  dm.population.add_external_solution({1, 1}, 3, mip::solution_origin_t::BRANCH_AND_BOUND);
+  dm.population.add_external_solutions_to_population();
+  ASSERT_TRUE(dm.population.is_feasible());
+  ASSERT_EQ(dm.population.best_feasible().get_objective(), 3);
+
+  // Ranking uses reported objectives, but those reports cannot replace a validated incumbent.
+  for (int i = 0; i < 50; ++i) {
     dm.population.add_external_solution({0, 0}, -1e9, mip::solution_origin_t::BRANCH_AND_BOUND);
-  }
-  for (int i = 0; i < 12; ++i) {
-    dm.population.add_external_solution({1, 1}, 3, mip::solution_origin_t::BRANCH_AND_BOUND);
   }
   dm.population.add_external_solution({1, 0}, 1, mip::solution_origin_t::BRANCH_AND_BOUND);
   dm.population.add_external_solutions_to_population();
-
   EXPECT_EQ(dm.population.get_external_solution_size(), 0);
-  ASSERT_TRUE(dm.population.is_feasible());
   EXPECT_TRUE(dm.population.best_feasible().compute_feasibility());
-  EXPECT_EQ(dm.population.best_feasible().get_objective(), 1);
-  EXPECT_EQ(dm.population.best_feasible().get_host_assignment(), (std::vector<double>{1, 0}));
+  EXPECT_EQ(dm.population.best_feasible().get_objective(), 3);
+
+  const double tolerance = mip::get_cstr_tolerance<int, double>(
+    row_lower, 2, settings.tolerances.absolute_tolerance, settings.tolerances.relative_tolerance);
+  const double outside = 1 - 2 * tolerance;
+  const double inside  = 1 - 0.5 * tolerance;
+  dm.population.add_external_solution({outside, 0}, outside, mip::solution_origin_t::EXTERNAL);
+  dm.population.add_external_solution({inside, 0}, inside, mip::solution_origin_t::EXTERNAL);
+  {
+    auto candidates = dm.population.get_external_solutions();
+    ASSERT_EQ(candidates.size(), 2);
+    EXPECT_FALSE(candidates[0].get_feasible());
+    EXPECT_TRUE(candidates[1].get_feasible());
+  }
+  dm.population.add_external_solution({inside, 0}, inside, mip::solution_origin_t::EXTERNAL);
+  dm.population.add_external_solutions_to_population();
+  EXPECT_EQ(dm.population.get_external_solution_size(), 0);
+  EXPECT_TRUE(dm.population.best_feasible().compute_feasibility());
+  EXPECT_EQ(dm.population.best_feasible().get_objective(), inside);
+  EXPECT_EQ(dm.population.best_feasible().get_host_assignment(), (std::vector<double>{inside, 0}));
 }
 
-TEST(Population, ExternalQueueDrainAllowsReentrantProducerAndLeavesNewWorkPending)
+TEST(Population, ExternalQueueDrainAllowsReentrantProducerAndLeavesNewHeapPending)
 {
   raft::handle_t handle;
   opt::optimization_problem_t<int, double> op(&handle);
@@ -183,8 +188,9 @@ TEST(Population, ExternalQueueDrainAllowsReentrantProducerAndLeavesNewWorkPendin
   problem.branch_and_bound_callback = [&](const auto&, auto) {
     if (produced) return true;
     produced = true;
-    for (int i = 20; i > 0; --i) {
-      const double value = static_cast<double>(i) / 64;
+    EXPECT_EQ(dm.population.get_external_solution_size(), 0);
+    for (int i = 60; i > 0; --i) {
+      const double value = static_cast<double>(i) / 128;
       dm.population.add_external_solution({value, 0}, value, mip::solution_origin_t::EXTERNAL);
     }
     return true;
@@ -192,15 +198,16 @@ TEST(Population, ExternalQueueDrainAllowsReentrantProducerAndLeavesNewWorkPendin
   dm.population.add_external_solution({0.75, 0}, 0.75, mip::solution_origin_t::EXTERNAL);
   dm.population.add_external_solutions_to_population();
   ASSERT_TRUE(produced);
-  // The drain processes its initial workload without holding the producer lock
-  // across callbacks or extending its budget to follow newly produced traffic.
+  // The swapped heap is drained without the producer lock; callback traffic waits for next time.
   EXPECT_EQ(dm.population.best_feasible().get_objective(), 0.75);
-  EXPECT_EQ(dm.population.get_external_solution_size(), 20);
+  EXPECT_EQ(dm.population.get_external_solution_size(), 50);
+  EXPECT_TRUE(dm.population.solutions_in_external_queue_.load());
 
   problem.branch_and_bound_callback = {};
   dm.population.add_external_solutions_to_population();
   EXPECT_EQ(dm.population.get_external_solution_size(), 0);
-  EXPECT_EQ(dm.population.best_feasible().get_objective(), 1.0 / 64);
+  EXPECT_FALSE(dm.population.solutions_in_external_queue_.load());
+  EXPECT_EQ(dm.population.best_feasible().get_objective(), 1.0 / 128);
 }
 
 }  // namespace cuopt::mathematical_optimization::test
