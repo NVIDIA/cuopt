@@ -227,6 +227,7 @@ inline char feasible_solution_symbol(search_strategy_t strategy, bool show_divin
     case search_strategy_t::VECTOR_LENGTH_DIVING: return 'V';
     case search_strategy_t::RINS: return 'S';
     case search_strategy_t::RENS: return 'S';
+    case search_strategy_t::MUTATION: return 'S';
   }
 
   return 'U';
@@ -2211,7 +2212,8 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker,
   // This is called from the RINS method which already handle the return to the
   // pool part. Besides, they do not share the same pool.
   if (worker->search_strategy != search_strategy_t::RINS &&
-      worker->search_strategy != search_strategy_t::RENS && !settings.inside_root_node) {
+      worker->search_strategy != search_strategy_t::RENS &&
+      worker->search_strategy != search_strategy_t::MUTATION && !settings.inside_root_node) {
     diving_worker_pool_.return_worker_to_pool(worker);
   }
 }
@@ -2277,10 +2279,14 @@ bool branch_and_bound_t<i_t, f_t>::launch_diving_worker(bfs_worker_t<i_t, f_t>* 
 template <typename i_t, typename f_t>
 bool branch_and_bound_t<i_t, f_t>::launch_submip_worker(const std::vector<f_t>& sol)
 {
+  bool enable_rins     = settings_.submip_settings.rins != 0;
+  bool enable_rens     = settings_.submip_settings.rens != 0;
+  bool enable_mutation = settings_.submip_settings.mutation != 0 && !settings_.inside_submip;
+
   if (solver_status_ != mip_status_t::UNSET) return false;
   if (node_concurrent_halt_.load(std::memory_order::acquire)) return false;
-  if (settings_.submip_settings.rins == 0 && settings_.submip_settings.rens == 0) return false;
-  if (settings_.submip_settings.rens == 0 && !incumbent_.has_incumbent) return false;
+  if (!enable_rins && !enable_rens && !enable_mutation) return false;
+  if (!enable_rens && !incumbent_.has_incumbent) return false;
   if (submip_worker_pool_.num_idle() == 0) return false;
 
   diving_worker_t<i_t, f_t>* worker = submip_worker_pool_.pop_idle_worker();
@@ -2288,9 +2294,15 @@ bool branch_and_bound_t<i_t, f_t>::launch_submip_worker(const std::vector<f_t>& 
 
   mutex_upper_.lock();
   bool has_incumbent = incumbent_.has_incumbent;
-  bool use_rins      = has_incumbent && settings_.submip_settings.rins != 0;
-  if (use_rins) worker->current_incumbent = incumbent_.x;
+  bool use_mutation  = has_incumbent && enable_mutation && worker->worker_id == 0;
+  bool use_rins      = has_incumbent && enable_rins && !use_mutation;
+  if (use_mutation || use_rins) worker->current_incumbent = incumbent_.x;
   mutex_upper_.unlock();
+
+  if (!use_mutation && !use_rins && !enable_rens) {
+    submip_worker_pool_.return_worker_to_pool(worker);
+    return false;
+  }
 
   // Note that this node does not have the vstatus (it was cleared at the start of B&B exploration)
   worker->start_node         = mip_node_t<i_t, f_t>(root_objective_, root_vstatus_);
@@ -2304,7 +2316,7 @@ bool branch_and_bound_t<i_t, f_t>::launch_submip_worker(const std::vector<f_t>& 
   simplex_solver_settings_t<i_t, f_t> submip_settings = settings_;
   submip_settings.concurrent_halt                     = &node_concurrent_halt_;
 
-  if (worker->worker_id == 0 && !settings_.inside_submip && has_incumbent) {
+  if (use_mutation) {
     worker->search_strategy = search_strategy_t::MUTATION;
 #pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) affinity(worker) firstprivate(worker)
     mutation(worker, submip_settings);
@@ -2638,8 +2650,7 @@ i_t apply_mutation(const simplex_solver_settings_t<i_t, f_t>& settings,
   for (i_t j : integer_list) {
     if (num_fixed >= target_num_fixed) break;
     if (std::abs(lower[j] - upper[j]) <= settings.fixed_tol) continue;
-    lower[j] = upper[j] = std::round(incumbent[j]);
-    bounds_changed[j]   = true;
+    fix_variable(j, lower, upper, bounds_changed, std::round(incumbent[j]));
     num_bound_changed += bounds_changed[j];
     ++num_fixed;
   }
@@ -2822,6 +2833,13 @@ void branch_and_bound_t<i_t, f_t>::mutation(diving_worker_t<i_t, f_t>* worker,
 
   if (!is_feasible) {
     DEBUG_SUBMIP("{}bound strengthening detected infeasibility.", submip_settings.log.log_prefix)
+
+    // If the pool is uninitialized (i.e., in the root node), then this just inactivate the worker.
+    if (!submip_settings.inside_root_node) {
+      submip_worker_pool_.return_worker_to_pool(worker);
+    } else {
+      worker->set_inactive();
+    }
     return;
   }
 
@@ -3280,8 +3298,8 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
 
   if (has_incumbent && settings_.submip_settings.mutation != 0) {
     root_heuristics.stop_old_workers(cut_pass, 1);
-    diving_worker_t<i_t, f_t>* worker =
-      current_heuristic->create_mutation_worker(cut_pass, lp, settings_);
+    diving_worker_t<i_t, f_t>* worker = current_heuristic->create_mutation_worker(
+      cut_pass, lp, settings_, root_objective_, root_vstatus_, lp_solution.x);
     mutex_upper_.lock();
     worker->current_incumbent = incumbent_.x;
     mutex_upper_.unlock();

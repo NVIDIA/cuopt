@@ -64,6 +64,12 @@ struct cut_pass_heuristics_t {
       submip_worker_.reset();
     }
 
+    if (mutation_worker_) {
+      diving_worker_t<i_t, f_t>* worker = mutation_worker_.get();
+#pragma omp taskwait depend(in : *worker)
+      mutation_worker_.reset();
+    }
+
     for (auto& worker : diving_workers_) {
       diving_worker_t<i_t, f_t>* w = worker.get();
 #pragma omp taskwait depend(in : *w)
@@ -96,10 +102,16 @@ struct cut_pass_heuristics_t {
   diving_worker_t<i_t, f_t>* create_mutation_worker(
     i_t id,
     const simplex::lp_problem_t<i_t, f_t>& lp,
-    const simplex::simplex_solver_settings_t<i_t, f_t>& settings)
+    const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+    f_t root_obj,
+    const std::vector<simplex::variable_status_t>& root_vstatus,
+    const std::vector<f_t>& sol)
   {
     mutation_worker_ = std::make_unique<diving_worker_t<i_t, f_t>>(
       id, lp, Arow_, var_types_, settings, pseudo_costs_, root_solution_, root_edge_norm_);
+    mutation_worker_->start_node      = mip_node_t<i_t, f_t>(root_obj, root_vstatus);
+    mutation_worker_->leaf_vstatus    = root_vstatus;
+    mutation_worker_->leaf_solution.x = sol;
     mutation_worker_->search_strategy = search_strategy_t::MUTATION;
     mutation_worker_->set_active();
     return mutation_worker_.get();
