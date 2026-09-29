@@ -3574,7 +3574,8 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   // The heuristics found an incumbent with an objective equal to the objective of the root LP. This
   // can happen on pure feasibility problem with all zero objective coefficients.
   if (cut_status == dual_status_t::CUTOFF) {
-    set_final_solution(solution, root_objective_);
+    solver_status_ = mip_status_t::OPTIMAL;
+    set_final_solution(solution, upper_bound_.load());
     return cut_pass_action_t::RETURN;
   }
 
@@ -3965,13 +3966,29 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     f_t abs_gap    = compute_user_abs_gap(original_lp_, upper_bound_.load(), root_objective_);
     f_t rel_gap    = user_relative_gap(user_obj, user_lower);
 
-    if (num_fractional == 0 || abs_gap < settings_.absolute_mip_gap_tol ||
-        rel_gap < settings_.relative_mip_gap_tol) {
+    if (num_fractional == 0) {
       if (settings_.benchmark_info_ptr != nullptr) {
         settings_.benchmark_info_ptr->root_lp_with_cuts =
           compute_user_objective(original_lp_, root_objective_);
       }
+
       set_solution_at_root(solution, cut_info);
+
+      if (settings_.benchmark_info_ptr != nullptr) {
+        settings_.benchmark_info_ptr->cut_generation_time_sec = toc(cut_generation_start_time);
+      }
+      return mip_status_t::OPTIMAL;
+    }
+
+    if (abs_gap < settings_.absolute_mip_gap_tol || rel_gap < settings_.relative_mip_gap_tol) {
+      if (settings_.benchmark_info_ptr != nullptr) {
+        settings_.benchmark_info_ptr->root_lp_with_cuts =
+          compute_user_objective(original_lp_, root_objective_);
+      }
+
+      solver_status_ = mip_status_t::OPTIMAL;
+      set_final_solution(solution, root_objective_);
+
       if (settings_.benchmark_info_ptr != nullptr) {
         settings_.benchmark_info_ptr->cut_generation_time_sec = toc(cut_generation_start_time);
       }
