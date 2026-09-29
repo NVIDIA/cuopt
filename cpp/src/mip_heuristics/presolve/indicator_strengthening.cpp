@@ -148,15 +148,12 @@ i_t indicator_strengthening_t<i_t, f_t>::add_implied_indicator_rows(
     i_t head                 = -1;
     bool usable              = true;
     indicators.clear();
-    for (i_t p = 0; p < len; ++p) {
+    for (i_t p = 0; p < len && usable; ++p) {
       const i_t col = indices[p];
       const f_t v   = direction * values[p];
       if (!is_binary[col]) {
         usable = false;
-        break;
-      }
-
-      if (v == 1.0) {
+      } else if (v == 1.0) {
         usable = head < 0;
         head   = col;
       } else if (v == -1.0) {
@@ -171,7 +168,6 @@ i_t indicator_strengthening_t<i_t, f_t>::add_implied_indicator_rows(
         }
       } else {
         usable = false;
-        break;
       }
     }
     if (!usable || head < 0 || mark[head] == row) { continue; }
