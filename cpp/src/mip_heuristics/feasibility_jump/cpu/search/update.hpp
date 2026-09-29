@@ -45,8 +45,6 @@ void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu, i_t var_idx, f_t delta, bool
 {
   CPUFJ_NVTX_RANGE("CPUFJ::apply_move");
 
-  cuopt::pcgenerator_t rng(fj_cpu.settings.seed + fj_cpu.iterations, 0, 0);
-
   cuopt_assert(var_idx < fj_cpu.problem->n_variables, "variable index out of bounds");
   f_t old_val = fj_cpu.h_assignment[var_idx];
   f_t new_val = old_val + delta;
@@ -74,12 +72,12 @@ void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu, i_t var_idx, f_t delta, bool
   // Update the slack of every search row the variable appears in.
   auto [offset_begin, offset_end] = fj_cpu.range_for_variable(var_idx);
 
-  fj_cpu.nnz_processed_window += (offset_end - offset_begin);
+  fj_cpu.stats.nnz_processed_window += (offset_end - offset_begin);
   const size_t nnz_touched = (size_t)(offset_end - offset_begin);
   using row_state_t        = typename fj_cpu_climber_t<i_t, f_t>::row_state_t;
-  ++fj_cpu.n_moves_applied;
-  fj_cpu.apply_move_nnz += (int64_t)nnz_touched;
-  fj_cpu.n_version_bumps_apply += (int64_t)nnz_touched;
+  ++fj_cpu.stats.n_moves_applied;
+  fj_cpu.stats.apply_move_nnz += (int64_t)nnz_touched;
+  fj_cpu.stats.n_version_bumps_apply += (int64_t)nnz_touched;
   fj_cpu.h_reverse_constraints.byte_loads += nnz_touched * sizeof(i_t);
   fj_cpu.h_reverse_coefficients.byte_loads += nnz_touched * sizeof(f_t);
   fj_cpu.h_row_state.byte_loads += nnz_touched * sizeof(row_state_t);
@@ -204,8 +202,8 @@ void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu, i_t var_idx, f_t delta, bool
   }
 
   i_t tabu_tenure = fj_cpu.settings.parameters.tabu_tenure_min +
-                    rng.next_u32() % (fj_cpu.settings.parameters.tabu_tenure_max -
-                                      fj_cpu.settings.parameters.tabu_tenure_min);
+                    fj_cpu.rng.next_u32() % (fj_cpu.settings.parameters.tabu_tenure_max -
+                                             fj_cpu.settings.parameters.tabu_tenure_min);
   if (delta > 0) {
     fj_cpu.h_tabu_lastinc[var_idx]     = fj_cpu.iterations;
     fj_cpu.h_tabu_nodec_until[var_idx] = fj_cpu.iterations + tabu_tenure;
@@ -270,7 +268,7 @@ f_t project_epigraph_variable(fj_cpu_climber_t<i_t, f_t>& fj_cpu, i_t var_idx)
 template <typename i_t, typename f_t>
 static void prepare_full_recompute(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 {
-  ++fj_cpu.n_lhs_recompute_total;
+  ++fj_cpu.stats.n_lhs_recompute_total;
   // clamp to var bounds - defensive; apply_move should already have clamped appropriately
   for (i_t var_idx = 0; var_idx < fj_cpu.problem->n_variables; ++var_idx) {
     fj_cpu.h_assignment[var_idx] = std::min(
@@ -353,7 +351,7 @@ void recompute_slack(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 template <typename i_t, typename f_t>
 void invalidate_mtm_cache(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 {
-  ++fj_cpu.n_mtm_cache_invalidations;
+  ++fj_cpu.stats.n_mtm_cache_invalidations;
   for (size_t c = 0; c < fj_cpu.h_cstr_version.size(); ++c)
     fj_cpu.h_cstr_version[c]++;
 }

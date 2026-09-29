@@ -872,11 +872,11 @@ if (CUOPT_BUILD_CUSTOM_CUDSS_MTLAYER)
             INSTALL_RPATH "\$ORIGIN"
     )
     set(CUDSS_MT_LIB_FILE_NAME "libcudss_mtlayer_cuopt.so")
-else ()
-    # Full path, not just the basename, so the runtime dlopen pin (sparse_cholesky.cuh) and
-    # cudssSetThreadingLayer() resolve the exact same file CMake found (#1883).
-    set(CUDSS_MT_LIB_FILE_NAME "${CUDSS_MT_LIB_FILE}")
 endif ()
+# else: keep the basename already computed above (line 740) -- glibc's dlopen matches an
+# already-loaded library by name before searching paths, so the runtime pin (sparse_cholesky.cuh)
+# and cudssSetThreadingLayer()'s own dlopen still resolve to the same mapping. A full,
+# build-time-resolved path isn't needed for that, and can go stale after install.
 
 # cuopt_routing: VRP / routing engine (omitted when SKIP_ROUTING_BUILD=ON)
 #
@@ -1541,6 +1541,30 @@ if (BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
     target_include_directories(solve_MIP
             PRIVATE
             "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    )
+
+    add_executable(solve_CPUFJ ../benchmarks/linear_programming/cuopt/run_cpufj.cu)
+    set_target_properties(solve_CPUFJ PROPERTIES CXX_SCAN_FOR_MODULES OFF)
+    target_compile_options(solve_CPUFJ
+            PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
+            "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
+            "$<$<COMPILE_LANGUAGE:CUDA>:-fopenmp>"
+    )
+    target_link_libraries(solve_CPUFJ
+            PUBLIC
+            cuopt_static
+            OpenMP::OpenMP_CXX
+            OpenMP::OpenMP_CUDA
+    )
+    target_include_directories(solve_CPUFJ
+            PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/src"
+            "${papilo_SOURCE_DIR}/src"
+            "${papilo_BINARY_DIR}"
+    )
+    target_include_directories(solve_CPUFJ SYSTEM PRIVATE
+            "${pslp_SOURCE_DIR}/include"
+            "${dejavu_SOURCE_DIR}"
     )
 
 endif ()

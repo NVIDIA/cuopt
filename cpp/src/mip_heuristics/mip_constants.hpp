@@ -29,6 +29,10 @@
 #define CUOPT_MIP_BATCH_PDLP_REQUIRED_THREAD_COUNT       3
 #define CUOPT_MIP_CLIQUE_CUTS_REQUIRED_THREAD_COUNT      3
 
+/* @brief Threads the early CPUFJ portfolio leaves to the rest of the team. Every lane holds its
+ * own host copy of the problem and occupies an OMP task for the whole of presolve. */
+#define CUOPT_MIP_EARLY_CPUFJ_RESERVED_THREADS 4
+
 /* @brief Priority classes for the omp tasks. Highest value = higher priority.
  * Note that this only gives a hint to the runtime, such that the high priority
  * is not guarantee to be executed before a low priority one (i.e., do not rely on

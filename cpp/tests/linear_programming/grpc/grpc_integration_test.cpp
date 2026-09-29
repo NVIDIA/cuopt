@@ -535,6 +535,32 @@ End
     return completed && deleted;
   }
 
+  // Shared by the unary and chunked incumbent-set tests. EXPECT_* here still
+  // fail the calling TEST_F; early returns only skip later checks after a
+  // hard setup failure (ASSERT in a helper would not stop the test).
+  void expect_incumbent_set_callback_registered(grpc_client_config_t config,
+                                                const std::string& log_path)
+  {
+    GrpcTestLogCapture log_capture;
+    log_capture.set_server_log_path(log_path);
+    log_capture.mark_test_start();
+
+    auto client = create_client(config);
+    EXPECT_NE(client, nullptr);
+    if (client == nullptr) { return; }
+
+    mip_solver_settings_t<int32_t, double> settings;
+    settings.time_limit = 10.0;
+    auto submission     = client->submit_mip(create_simple_mip(), settings, false, true);
+    EXPECT_TRUE(submission.success) << submission.error_message;
+    if (!submission.success) { return; }
+
+    wait_for_job_done(client.get(), submission.job_id);
+    EXPECT_EQ(client->check_status(submission.job_id).status, job_status_t::COMPLETED);
+    EXPECT_TRUE(log_capture.wait_for_server_log("Registered incumbent set callback", 5000))
+      << log_capture.get_server_logs();
+  }
+
   int port_ = 0;
 };
 
@@ -1191,6 +1217,13 @@ TEST_F(DefaultServerTests, IncumbentCallbacksMIP)
   }
 }
 
+TEST_F(DefaultServerTests, IncumbentSetFlagReachesUnaryWorker)
+{
+  grpc_client_config_t config;
+  config.chunked_array_threshold_bytes = 100 * 1024 * 1024;
+  expect_incumbent_set_callback_registered(config, server_log_path());
+}
+
 TEST_F(DefaultServerTests, IncumbentCallbackCancelsSolve)
 {
   int callback_count = 0;
@@ -1419,6 +1452,8 @@ class ChunkedUploadTests : public GrpcIntegrationTestBase {
     port_ = s_port_;
   }
 
+  std::string server_log_path() const { return s_server_->log_path(); }
+
   void TearDown() override
   {
     if (HasFailure() && s_server_) {
@@ -1479,6 +1514,15 @@ TEST_F(ChunkedUploadTests, ChunkedUploadMIP)
 
   auto result = client->solve_mip(problem, settings, false);
   EXPECT_TRUE(result.success) << result.error_message;
+}
+
+TEST_F(ChunkedUploadTests, IncumbentSetFlagReachesChunkedWorker)
+{
+  grpc_client_config_t config;
+  config.timeout_seconds               = 60;
+  config.chunk_size_bytes              = 4 * 1024;
+  config.chunked_array_threshold_bytes = 0;
+  expect_incumbent_set_callback_registered(config, server_log_path());
 }
 
 TEST_F(ChunkedUploadTests, ConcurrentChunkedUploads)
