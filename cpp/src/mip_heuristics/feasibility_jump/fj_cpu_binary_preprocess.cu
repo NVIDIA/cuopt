@@ -98,6 +98,11 @@ fj_bin_scan_t fj_bin_scan(const fj_cpu_climber_t<i_t, f_t>& c, fj_bin_setup_time
 {
   phase_timer_t timer(times.scan);
   fj_bin_scan_t out;
+  // Singleton row/objective substitution is performed by the encoded path.
+  if (!c.bin_singletons.empty()) {
+    out.reject = fj_binary_reject_t::non_binary_var;
+    return out;
+  }
   const int32_t n_cols = c.problem->n_variables;
   const int32_t n_rows = c.problem->n_constraints;
   if (n_cols <= 0 || n_rows <= 0) {
@@ -399,6 +404,24 @@ bool fj_bin_encode(const fj_cpu_climber_t<i_t, f_t>& c,
   const auto& left_w     = c.h_initial_left_weights;
   const auto& right_w    = c.h_initial_right_weights;
   const auto& obj        = c.problem->h_obj_coeffs;
+  std::vector<double> encoded_obj(obj.begin(), obj.end());
+  std::vector<int32_t> singleton(n_rows, -1);
+  std::vector<uint8_t> substituted(n_cols, 0);
+  pb.substitution_offset = 0;
+  for (const auto& [row, var] : c.bin_singletons) {
+    singleton[row]     = var;
+    substituted[var]   = 1;
+    const double pivot = c.problem->reverse_coefficients[c.problem->reverse_offsets[var]];
+    const double cost  = obj[var] / pivot;
+    pb.substitution_offset += cost * cstr_lb[row];
+    encoded_obj[var] = 0;
+    for (int32_t entry = offsets[row]; entry < offsets[row + 1]; ++entry) {
+      if (variables[entry] != var) encoded_obj[variables[entry]] -= cost * coeffs[entry];
+    }
+  }
+  if (!std::isfinite(pb.substitution_offset)) return false;
+  for (double cost : encoded_obj)
+    if (!std::isfinite(cost)) return false;
 
   std::vector<double> lower(n_cols);
   std::vector<double> upper(n_cols);
@@ -407,6 +430,7 @@ bool fj_bin_encode(const fj_cpu_climber_t<i_t, f_t>& c,
   int64_t total_bits = 0;
   // count the total bits that'd be required to encode this model as pure-binary
   for (int32_t v = 0; v < n_cols; ++v) {
+    if (substituted[v]) continue;
     if (var_types[v] != var_t::INTEGER) return false;
     auto bounds    = var_bounds[v];
     const double x = (double)cuopt::get_lower(bounds);
@@ -462,14 +486,14 @@ bool fj_bin_encode(const fj_cpu_climber_t<i_t, f_t>& c,
 
   // emit onesided a row
   auto emit = [&](int32_t r, double side_bound, long side, double weight) -> bool {
-    double fixed = 0;
-    for (int32_t k = offsets[r]; k < offsets[r + 1]; ++k)
-      fixed += coeffs[k] * lower[variables[k]];
+    const double fixed =
+      compensated_dot2_csr(offsets.data(), variables.data(), coeffs.data(), lower.data(), r);
     const double folded_bound = side_bound - fixed;
 
     row_values.clear();
     bool integral = true;
     for (int32_t k = offsets[r]; k < offsets[r + 1]; ++k) {
+      if (substituted[variables[k]]) continue;
       row_values.push_back(coeffs[k]);
       if (!is_integer(coeffs[k], tol)) integral = false;
     }
@@ -485,7 +509,8 @@ bool fj_bin_encode(const fj_cpu_climber_t<i_t, f_t>& c,
     double row_abs_sum = 0;
     for (int32_t k = offsets[r]; k < offsets[r + 1]; ++k) {
       const int32_t v = variables[k];
-      const double a  = s * coeffs[k];
+      if (substituted[v]) continue;
+      const double a = s * coeffs[k];
       if (!is_integer(a, tol)) return false;
       const long ai = std::lround(a);
       for (int32_t bk = 0; bk < nbits[v]; ++bk) {
@@ -523,8 +548,15 @@ bool fj_bin_encode(const fj_cpu_climber_t<i_t, f_t>& c,
   const uint8_t* ignored_row = c.has_bin_elimination ? c.bin_ignore_row.data() : nullptr;
   for (int32_t r = 0; r < n_rows; ++r) {
     if (ignored_row && ignored_row[r]) continue;
-    const double lb = cstr_lb[r];
-    const double ub = cstr_ub[r];
+    double lb = cstr_lb[r], ub = cstr_ub[r];
+    if (singleton[r] >= 0) {
+      const int32_t var  = singleton[r];
+      const double pivot = c.problem->reverse_coefficients[c.problem->reverse_offsets[var]];
+      const auto bounds  = var_bounds[var];
+      const double left = pivot * get_lower(bounds), right = pivot * get_upper(bounds);
+      lb = cstr_lb[r] - std::max(left, right);
+      ub = cstr_lb[r] - std::min(left, right);
+    }
     if (std::isfinite(lb) && !emit(r, lb, -1, left_w[r])) return false;
     if (std::isfinite(ub) && !emit(r, ub, 1, right_w[r])) return false;
   }
@@ -549,11 +581,11 @@ bool fj_bin_encode(const fj_cpu_climber_t<i_t, f_t>& c,
   pb.objective.assign(n_bits, 0.0);
   pb.objective_vars.clear();
   for (int32_t v = 0; v < n_cols; ++v) {
-    pb.orig_objective[v] = obj[v];
-    if (obj[v] == 0.0) continue;
+    pb.orig_objective[v] = encoded_obj[v];
+    if (encoded_obj[v] == 0.0) continue;
     for (int32_t bk = 0; bk < nbits[v]; ++bk) {
       const int32_t bit = bit_start[v] + bk;
-      pb.objective[bit] = obj[v] * pb.bit_weight[bit];
+      pb.objective[bit] = encoded_obj[v] * pb.bit_weight[bit];
       if (pb.objective[bit] != 0.0) pb.objective_vars.push_back(bit);
     }
   }

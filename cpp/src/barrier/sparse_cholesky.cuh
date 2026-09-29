@@ -289,9 +289,8 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       if (!detail::pin_cudss_threading_layer(cudss_mt_lib_file)) {
         settings.log.printf(
           "cuDSS Threading layer       : could not pin '%s'; falling back to single-threaded "
-          "cuDSS to avoid a possible crash during teardown. Set the CUDSS_THREADING_LIB "
-          "environment variable to an absolute path, or ensure the host provides "
-          "libgomp.so.1, to enable multi-threaded cuDSS.\n",
+          "cuDSS. Set the CUDSS_THREADING_LIB environment variable to an absolute path, or "
+          "ensure the host provides libgomp.so.1, to enable multi-threaded cuDSS.\n",
           cudss_mt_lib_file);
       } else {
         cudssStatus_t threading_status = cudssSetThreadingLayer(handle, cudss_mt_lib_file);

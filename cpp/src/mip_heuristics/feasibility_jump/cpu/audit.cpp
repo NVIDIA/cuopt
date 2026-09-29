@@ -74,12 +74,12 @@ void report_row_divergence(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
     (int)(row_end - row_begin),
     sumcomp,
     fj_cpu.h_bound[cstr_idx],
-    (int)fj_cpu.lhs_refresh_period_used,
-    (long long)fj_cpu.n_lhs_recompute_total,
-    (long long)fj_cpu.n_lhs_recompute_periodic,
-    (long long)fj_cpu.n_lhs_recompute_bigval,
-    (long long)fj_cpu.n_lhs_recompute_perturb,
-    (long long)fj_cpu.n_lhs_recompute_restart);
+    (int)fj_cpu.stats.lhs_refresh_period_used,
+    (long long)fj_cpu.stats.n_lhs_recompute_total,
+    (long long)fj_cpu.stats.n_lhs_recompute_periodic,
+    (long long)fj_cpu.stats.n_lhs_recompute_bigval,
+    (long long)fj_cpu.stats.n_lhs_recompute_perturb,
+    (long long)fj_cpu.stats.n_lhs_recompute_restart);
 
   i_t unreachable = 0;
   i_t mismatched  = 0;

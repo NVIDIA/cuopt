@@ -487,6 +487,7 @@ int main(int argc, char* argv[])
     if (!params_file.empty()) { settings.load_parameters_from_file(params_file); }
     for (auto& [key, val] : settings_strings) {
       settings.set_parameter_from_string(key, val);
+      CUOPT_LOG_INFO("Setting parameter %s to %s", key.c_str(), val.c_str());
     }
   } catch (const std::exception& e) {
     auto log = dummy_logger(settings);
