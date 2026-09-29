@@ -36,6 +36,20 @@
   var V_CONDA_NEXT = nextMajor + "." + (nextMinor < 10 ? "0" : "") + nextMinor;
   var V_NEXT = nextMajor + "." + nextMinor;
 
+  function pipInstall(pkg, cudaSuffix, version, nightly) {
+    var name = pkg + (cudaSuffix ? "-" + cudaSuffix : "");
+    var flags = nightly
+      ? "--pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/"
+      : "--extra-index-url=https://pypi.nvidia.com";
+    return "pip install " + flags + " '" + name + "==" + version + ".*'";
+  }
+
+  function condaInstall(pkg, version, cudaVersion, nightly) {
+    var cmd = "conda install -c " + (nightly ? "rapidsai-nightly" : "rapidsai") +
+      " -c conda-forge -c nvidia " + pkg + "=" + version + ".*";
+    return cudaVersion ? cmd + " cuda-version=" + cudaVersion : cmd;
+  }
+
   /* Shared Docker image lines: same tags are typically published to Docker Hub and NGC */
   var CONTAINER_CUOPT_LIB = {
     stable: {
@@ -252,6 +266,42 @@
     },
   };
 
+  /* Single-component C API installs: libcuopt still ships everything standalone (pip) or
+     depends on all three (conda), so these are for callers who want just one piece. Client
+     links no CUDA/rmm, so it has one universal package, no cu12/cu13 split. */
+  var LIBCUOPT_COMPONENTS = {
+    client: {
+      pip: {
+        stable: { default: pipInstall("libcuopt-client", "", V, false) },
+        nightly: { default: pipInstall("libcuopt-client", "", V_NEXT, true) },
+      },
+      conda: {
+        stable: { default: condaInstall("libcuopt-client", V_CONDA, "", false) },
+        nightly: { default: condaInstall("libcuopt-client", V_CONDA_NEXT, "", true) },
+      },
+    },
+    mathopt: {
+      pip: {
+        stable: { cu12: pipInstall("libcuopt-mathopt", "cu12", V, false), cu13: pipInstall("libcuopt-mathopt", "cu13", V, false) },
+        nightly: { cu12: pipInstall("libcuopt-mathopt", "cu12", V_NEXT, true), cu13: pipInstall("libcuopt-mathopt", "cu13", V_NEXT, true) },
+      },
+      conda: {
+        stable: { cu12: condaInstall("libcuopt-mathopt", V_CONDA, "12.9", false), cu13: condaInstall("libcuopt-mathopt", V_CONDA, "13.0", false) },
+        nightly: { cu12: condaInstall("libcuopt-mathopt", V_CONDA_NEXT, "12.9", true), cu13: condaInstall("libcuopt-mathopt", V_CONDA_NEXT, "13.0", true) },
+      },
+    },
+    routing: {
+      pip: {
+        stable: { cu12: pipInstall("libcuopt-routing", "cu12", V, false), cu13: pipInstall("libcuopt-routing", "cu13", V, false) },
+        nightly: { cu12: pipInstall("libcuopt-routing", "cu12", V_NEXT, true), cu13: pipInstall("libcuopt-routing", "cu13", V_NEXT, true) },
+      },
+      conda: {
+        stable: { cu12: condaInstall("libcuopt-routing", V_CONDA, "12.9", false), cu13: condaInstall("libcuopt-routing", V_CONDA, "13.0", false) },
+        nightly: { cu12: condaInstall("libcuopt-routing", V_CONDA_NEXT, "12.9", true), cu13: condaInstall("libcuopt-routing", V_CONDA_NEXT, "13.0", true) },
+      },
+    },
+  };
+
   var SUPPORTED_METHODS = {
     python: ["pip", "conda", "container"],
     c: ["pip", "conda", "container"],
@@ -265,10 +315,18 @@
     return el ? el.value : "";
   }
 
-  function hasCudaVariants(iface, method) {
-    var d = COMMANDS[iface] && COMMANDS[iface][method];
-    if (!d || !d.stable) return false;
-    return !!(d.stable.cu12 && d.stable.cu13);
+  /* component is only meaningful for iface "c" + method pip/conda; "full" means the
+     regular COMMANDS table, anything else looks up LIBCUOPT_COMPONENTS instead. */
+  function resolveData(iface, method, component) {
+    if (component && component !== "full") {
+      return LIBCUOPT_COMPONENTS[component] && LIBCUOPT_COMPONENTS[component][method];
+    }
+    return COMMANDS[iface] && COMMANDS[iface][method];
+  }
+
+  function hasCudaVariants(data) {
+    if (!data || !data.stable) return false;
+    return !!(data.stable.cu12 && data.stable.cu13);
   }
 
   function getCommand() {
@@ -276,15 +334,18 @@
     var method = getSelectedValue("cuopt-method");
     var release = getSelectedValue("cuopt-release");
     var cuda = getSelectedValue("cuopt-cuda");
+    var component = iface === "c" ? (getSelectedValue("cuopt-component") || "full") : "full";
 
     /* CLI uses libcuopt (c) install; cuopt_cli is shipped with libcuopt. */
     if (iface === "cli") {
       iface = "c";
       release = "stable";
       cuda = "cu12";
+      component = "full";
     }
+    if (method === "container") component = "full";
 
-    var data = COMMANDS[iface] && COMMANDS[iface][method];
+    var data = resolveData(iface, method, component);
     if (!data || !data[release]) return "";
 
     var cmd = "";
@@ -390,10 +451,11 @@
     var releaseRow = document.getElementById("cuopt-release-row");
     var releaseVisible = iface !== "cli";
     var ifaceForVariants = iface === "cli" ? "c" : iface;
+    var component = iface === "c" && method !== "container" ? (getSelectedValue("cuopt-component") || "full") : "full";
     var showCuda =
       releaseVisible &&
       (method === "pip" || method === "conda" || method === "container") &&
-      hasCudaVariants(ifaceForVariants, method);
+      hasCudaVariants(resolveData(ifaceForVariants, method, component));
     cudaRow.style.display = showCuda ? "table-row" : "none";
     releaseRow.style.display = releaseVisible ? "table-row" : "none";
     var variantRow = document.getElementById("cuopt-variant-row");
@@ -407,6 +469,10 @@
     var archRow = document.getElementById("cuopt-arch-row");
     if (archRow) {
       archRow.style.display = iface === "java" && method === "maven" ? "table-row" : "none";
+    }
+    var componentRow = document.getElementById("cuopt-component-row");
+    if (componentRow) {
+      componentRow.style.display = iface === "c" && (method === "pip" || method === "conda") ? "table-row" : "none";
     }
     updateOutput();
   }
@@ -447,6 +513,12 @@
       '<label class="cuopt-opt"><input type="radio" name="cuopt-method" value="container"> Container</label>' +
       '<label class="cuopt-opt"><input type="radio" name="cuopt-method" value="maven"> Maven</label>' +
       '</td></tr>' +
+      '<tr id="cuopt-component-row" style="display:none;"><td class="cuopt-opt-label">Component</td><td class="cuopt-opt-group" role="group" aria-label="Component">' +
+      '<label class="cuopt-opt"><input type="radio" name="cuopt-component" value="full" checked> Full library</label>' +
+      '<label class="cuopt-opt"><input type="radio" name="cuopt-component" value="client"> Client only</label>' +
+      '<label class="cuopt-opt"><input type="radio" name="cuopt-component" value="mathopt"> Mathopt only</label>' +
+      '<label class="cuopt-opt"><input type="radio" name="cuopt-component" value="routing"> Routing only</label>' +
+      '</td></tr>' +
       '<tr id="cuopt-release-row"><td class="cuopt-opt-label">Release</td><td class="cuopt-opt-group" role="group" aria-label="Release">' +
       '<label class="cuopt-opt"><input type="radio" name="cuopt-release" value="stable" checked> Current release (' + V_CONDA + ')</label>' +
       '<label class="cuopt-opt"><input type="radio" name="cuopt-release" value="nightly"> Nightly (' + V_CONDA_NEXT + ')</label>' +
@@ -473,7 +545,7 @@
       '<div class="cuopt-install-copy-wrap"><button type="button" id="cuopt-copy-btn" class="cuopt-install-copy-btn" style="display:none;">Copy command</button></div>' +
       "</div></div>";
 
-    ["cuopt-iface", "cuopt-method", "cuopt-release", "cuopt-cuda", "cuopt-variant", "cuopt-registry", "cuopt-arch"].forEach(
+    ["cuopt-iface", "cuopt-method", "cuopt-release", "cuopt-cuda", "cuopt-variant", "cuopt-registry", "cuopt-arch", "cuopt-component"].forEach(
       function (name) {
         var inputs = document.querySelectorAll('input[name="' + name + '"]');
         inputs.forEach(function (input) {
