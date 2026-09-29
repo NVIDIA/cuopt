@@ -495,9 +495,6 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::curtis_reid_init()
 template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::curtis_reid_row_iteration()
 {
-  // iteration_constraint_matrix_scaling_ is the row log-scale, iteration_variable_scaling_
-  // the column log-scale. The row kernel reads the current column log-scales (halo columns
-  // included on a distributed shard).
   constexpr i_t number_of_threads = 128;
   curtis_reid_row_kernel<i_t, f_t, number_of_threads>
     <<<dual_size_h_, number_of_threads, 0, stream_view_.get()>>>(
