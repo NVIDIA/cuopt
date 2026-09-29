@@ -2303,7 +2303,7 @@ bool branch_and_bound_t<i_t, f_t>::launch_submip_worker(const std::vector<f_t>& 
 
   simplex_solver_settings_t<i_t, f_t> submip_settings = settings_;
   submip_settings.concurrent_halt                     = &node_concurrent_halt_;
-  
+
   if (worker->worker_id == 0 && !settings_.inside_submip && has_incumbent) {
     worker->search_strategy = search_strategy_t::MUTATION;
 #pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) affinity(worker) firstprivate(worker)
@@ -2835,7 +2835,6 @@ void branch_and_bound_t<i_t, f_t>::mutation(diving_worker_t<i_t, f_t>* worker,
     worker->start_upper               = upper;
 
     fj_cpu_worker_t<i_t, f_t> submip_fj_cpu_worker;
-
     if (settings_.submip_settings.enable_cpufj) {
       submip_fj_cpu_worker.improvement_callback =
         [this](f_t obj, const std::vector<f_t>& assignment, double work_units) {
@@ -2846,6 +2845,7 @@ void branch_and_bound_t<i_t, f_t>::mutation(diving_worker_t<i_t, f_t>* worker,
       f_t work_limit = 1.0;
       submip_fj_cpu_worker.create_worker(worker->leaf_problem,
                                          worker->var_types,
+                                         original_problem_.num_cols,
                                          worker->leaf_solution.x,
                                          settings_,
                                          std::format("{} [CPU FJ]", submip_settings.log.log_prefix),
