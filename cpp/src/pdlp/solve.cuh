@@ -56,15 +56,14 @@ cuopt::mathematical_optimization::optimization_problem_solution_t<i_t, f_t> solv
  *                    any master-side aggregator allocations). Must be non-null.
  * @param mps_data_model  Host-resident MPS data (CPU vectors only).
  * @param settings    User-supplied PDLP solver settings; `num_gpus` is the
- *                    distributed shard count when `use_distributed_pdlp` is true,
- *                    and -1 selects all visible GPUs.
+ *                    distributed shard count, -1 selects all visible GPUs.
  * @param use_pdlp_solver_mode  When true, applies `set_pdlp_solver_mode()` to a
  *                    local copy of settings before solving and enforces
  *                    `settings.pdlp_solver_mode == Stable3`
  *
- * @pre `settings.use_distributed_pdlp == true`, `method == PDLP`, `settings.pdlp_solver_mode ==
- * Stable3`, `pdlp_precision == DefaultPrecision`, not inside MIP, and no initial primal/dual or
- * warm-start data.
+ * @pre `settings.method == PDLP`, `settings.num_gpus == -1 || settings.num_gpus > 1`,
+ * `settings.pdlp_solver_mode == Stable3`, `pdlp_precision == DefaultPrecision`, not inside MIP,
+ * and no initial primal/dual or warm-start data.
  */
 template <typename i_t, typename f_t>
 cuopt::mathematical_optimization::optimization_problem_solution_t<i_t, f_t>

@@ -43,7 +43,8 @@ template <typename i_t, typename f_t>
 cuopt::remote::SubmitJobRequest build_mip_submit_request(
   const cpu_optimization_problem_t<i_t, f_t>& cpu_problem,
   const mip_solver_settings_t<i_t, f_t>& settings,
-  bool enable_incumbents)
+  bool enable_incumbents,
+  bool enable_set_incumbent)
 {
   cuopt::remote::SubmitJobRequest submit_request;
 
@@ -61,8 +62,8 @@ cuopt::remote::SubmitJobRequest build_mip_submit_request(
   // Map settings to protobuf
   map_mip_settings_to_proto(settings, mip_request->mutable_settings());
 
-  // Set enable_incumbents flag
   mip_request->set_enable_incumbents(enable_incumbents);
+  mip_request->set_enable_set_incumbent(enable_set_incumbent);
 
   return submit_request;
 }
@@ -75,7 +76,8 @@ template cuopt::remote::SubmitJobRequest build_lp_submit_request(
 template cuopt::remote::SubmitJobRequest build_mip_submit_request(
   const cpu_optimization_problem_t<int32_t, float>& cpu_problem,
   const mip_solver_settings_t<int32_t, float>& settings,
-  bool enable_incumbents);
+  bool enable_incumbents,
+  bool enable_set_incumbent);
 #endif
 
 #if CUOPT_INSTANTIATE_DOUBLE
@@ -85,7 +87,8 @@ template cuopt::remote::SubmitJobRequest build_lp_submit_request(
 template cuopt::remote::SubmitJobRequest build_mip_submit_request(
   const cpu_optimization_problem_t<int32_t, double>& cpu_problem,
   const mip_solver_settings_t<int32_t, double>& settings,
-  bool enable_incumbents);
+  bool enable_incumbents,
+  bool enable_set_incumbent);
 #endif
 
 }  // namespace cuopt::mathematical_optimization

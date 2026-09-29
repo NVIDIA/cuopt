@@ -18,6 +18,7 @@
 #include <random>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/hashing.hpp>
+#include <utilities/pcgenerator.hpp>
 
 #include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
 
@@ -137,6 +138,21 @@ inline std::vector<f_t> get_random_uniform_vector(i_t size,
   vec.reserve(size);
   for (i_t i = 0; i < size; ++i) {
     f_t random_val = std::uniform_real_distribution<f_t>(range_start, range_end)(rng);
+    vec.push_back(random_val);
+  }
+  return vec;
+}
+
+template <typename i_t, typename f_t>
+inline std::vector<f_t> get_random_uniform_vector(i_t size,
+                                                  cuopt::pcgenerator_t& rng,
+                                                  f_t range_start = -1.,
+                                                  f_t range_end   = 1.)
+{
+  std::vector<f_t> vec;
+  vec.reserve(size);
+  for (i_t i = 0; i < size; ++i) {
+    f_t random_val = rng.uniform(range_start, range_end);
     vec.push_back(random_val);
   }
   return vec;
