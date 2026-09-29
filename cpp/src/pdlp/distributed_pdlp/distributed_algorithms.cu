@@ -121,19 +121,8 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_curtis_reid_scaling(int num_iter,
   if (num_iter <= 0 || n_global_vars <= 0) return;
   raft::common::nvtx::range scope("distributed_curtis_reid_scaling");
 
-  // The first row pass reads column log-scales. Zero the whole buffer, halo included.
-  for_each_shard([](auto& shard) {
-    auto& scaling = shard.sub_pdlp->get_initial_scaling_strategy();
-    auto policy   = rmm::exec_policy_nosync(shard.stream.view());
-    thrust::fill(policy,
-                 scaling.get_iteration_constraint_matrix_scaling().begin(),
-                 scaling.get_iteration_constraint_matrix_scaling().end(),
-                 f_t(0));
-    thrust::fill(policy,
-                 scaling.get_iteration_variable_scaling().begin(),
-                 scaling.get_iteration_variable_scaling().end(),
-                 f_t(0));
-  });
+  for_each_shard(
+    [](auto& shard) { shard.sub_pdlp->get_initial_scaling_strategy().curtis_reid_init(); });
 
   for (int it = 0; it < num_iter; ++it) {
     for_each_shard([](auto& shard) {

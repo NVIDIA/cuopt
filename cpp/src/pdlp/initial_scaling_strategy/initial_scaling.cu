@@ -546,7 +546,20 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::curtis_reid_folding()
 // sum((log|a_ij| - row_log_scale[i] - col_log_scale[j])^2) via alternating per-row/
 // per-column log-mean fixed-point iteration. This port's sequence and defaults are
 // inspired by the HPR-LP-C codebase (https://github.com/PolyU-IOR/HPR-LP-C).
-// Single-GPU entry point. Distributed PDLP calls the row/col/fold pieces directly.
+// Single-GPU entry point. Distributed PDLP calls the init/row/col/fold pieces directly.
+template <typename i_t, typename f_t>
+void pdlp_initial_scaling_strategy_t<i_t, f_t>::curtis_reid_init()
+{
+  thrust::fill(handle_ptr_->get_thrust_policy(),
+               iteration_constraint_matrix_scaling_.begin(),
+               iteration_constraint_matrix_scaling_.end(),
+               f_t(0));
+  thrust::fill(handle_ptr_->get_thrust_policy(),
+               iteration_variable_scaling_.begin(),
+               iteration_variable_scaling_.end(),
+               f_t(0));
+}
+
 template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::curtis_reid_scaling(
   i_t number_of_curtis_reid_iterations)
@@ -561,12 +574,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::curtis_reid_scaling(
   // as-if-already-scaled by the current cummulative_* factors (like Ruiz/Pock-Chambolle's
   // own kernels do); Curtis-Reid always runs first in compute_scaling_vectors(), so
   // cummulative_* is still all-1 here in practice.
-  RAFT_CUDA_TRY(cudaMemsetAsync(iteration_constraint_matrix_scaling_.data(),
-                                0,
-                                sizeof(f_t) * dual_size_h_,
-                                stream_view_.get()));
-  RAFT_CUDA_TRY(cudaMemsetAsync(
-    iteration_variable_scaling_.data(), 0, sizeof(f_t) * primal_size_h_, stream_view_.get()));
+  curtis_reid_init();
 
   for (i_t iter = 0; iter < number_of_curtis_reid_iterations; ++iter) {
     curtis_reid_row_iteration();

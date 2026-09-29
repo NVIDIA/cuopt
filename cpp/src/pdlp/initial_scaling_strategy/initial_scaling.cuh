@@ -129,11 +129,13 @@ class pdlp_initial_scaling_strategy_t {
   void ruiz_iter_local();
   // Shard-local end-to-end Pock-Chambolle pass. Exposed for distributed PDLP:
   void pock_chambolle_scaling(f_t alpha);
-  // Curtis-Reid prescaling. Single-GPU orchestrator: zero the log-scales, alternate
+  // Curtis-Reid prescaling. Single-GPU orchestrator: curtis_reid_init, then alternate
   // curtis_reid_row_iteration / curtis_reid_col_iteration, then curtis_reid_folding.
-  // Distributed PDLP calls the three pieces itself so a halo exchange can sit between
+  // Distributed PDLP calls the pieces itself so a halo exchange can sit between
   // the row and column passes. See initial_scaling.cu for the algorithm and references.
   void curtis_reid_scaling(i_t number_of_curtis_reid_iterations);
+  // Zero both log-scale vectors, halo included. The first row pass reads column log-scales.
+  void curtis_reid_init();
   // One row log-mean pass. Writes iteration_constraint_matrix_scaling_ from the current
   // column log-scales in iteration_variable_scaling_.
   void curtis_reid_row_iteration();
