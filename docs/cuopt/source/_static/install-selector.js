@@ -429,10 +429,21 @@
     copyBtn.style.display = cmd ? "inline-flex" : "none";
   }
 
+  var lastMethod = "";
+
   function updateVisibility() {
     var method = getSelectedValue("cuopt-method");
     var iface = getSelectedValue("cuopt-iface");
     var allowed = SUPPORTED_METHODS[iface] || [];
+
+    /* The published Maven jar's own unclassified default is cuda13 (see
+       assemble_maven_repo.sh); default the CUDA radio to match on entering
+       this method, without overriding an explicit choice made while still in it. */
+    if (method === "maven" && lastMethod !== "maven") {
+      var cu13 = document.querySelector('input[name="cuopt-cuda"][value="cu13"]');
+      if (cu13) cu13.checked = true;
+    }
+    lastMethod = method;
     var methodInputs = document.querySelectorAll('input[name="cuopt-method"]');
     methodInputs.forEach(function (input) {
       var enabled = allowed.indexOf(input.value) !== -1;
@@ -454,7 +465,7 @@
     var component = iface === "c" && method !== "container" ? (getSelectedValue("cuopt-component") || "full") : "full";
     var showCuda =
       releaseVisible &&
-      (method === "pip" || method === "conda" || method === "container") &&
+      (method === "pip" || method === "conda" || method === "container" || method === "maven") &&
       hasCudaVariants(resolveData(ifaceForVariants, method, component));
     cudaRow.style.display = showCuda ? "table-row" : "none";
     releaseRow.style.display = releaseVisible ? "table-row" : "none";
