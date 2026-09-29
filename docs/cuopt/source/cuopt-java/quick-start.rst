@@ -1,101 +1,25 @@
 Java Quickstart Guide
 =====================
 
-The experimental Java bindings live in ``java/cuopt``. There are three ways to
-get them, depending on your setup:
+NVIDIA cuOpt provides experimental Java bindings for LP, MIP, QP, QCQP, and
+SOCP, built from ``java/cuopt``. It is not part of the top-level cuOpt build.
 
-* The official cuOpt Docker images already contain a prebuilt ``cuopt.jar``
-  and ``libcuopt_jni.so`` — see `Using the Docker Image`_;
-* The ``com.nvidia.cuopt:cuopt`` Maven artifact is a self-contained classifier
-  jar that embeds the native library — see `Using the Maven Artifact`_; or
-* Building from source, which this section covers first and which repository
-  CI and release workflows use to produce both of the above.
+Installation
+============
 
-It is not part of the top-level cuOpt build.
+Choose your install method below; the selector is pre-set for Java. Copy the
+Docker command and run it in your environment — ``cuopt.jar`` and
+``libcuopt_jni.so`` are already at ``/opt/cuopt/java`` inside the container,
+so no build step is needed. Use ``-cp /opt/cuopt/java/cuopt.jar`` for both
+compilation and execution, and pass ``-Dcuopt.native.dir=/opt/cuopt/java``
+only to the ``java`` command. See :doc:`../install` for all interfaces and
+options.
 
-Requirements
-------------
-
-The source build requires:
-
-* Java 17 or newer, with ``JAVA_HOME`` pointing to a JDK;
-* A C++20 compiler;
-* An existing cuOpt installation containing ``libcuopt.so``; and
-* A CUDA-enabled runtime for solving problems.
-
-The module uses Maven for Java compilation and a Java-local CMake project for
-the JNI library. The standalone native build links to
-``$CUOPT_PREFIX/lib/libcuopt.so`` and places ``libcuopt_jni.so`` under
-``java/cuopt/build/native``.
-
-.. code-block:: bash
-
-   cd /path/to/cuopt/java/cuopt
-   export JAVA_HOME=/path/to/jdk-17
-   export CUOPT_PREFIX=/path/to/cuopt/conda/environment
-   bash scripts/build_native.sh
-
-This builds ``java/cuopt/build/native/libcuopt_jni.so``. Java is intentionally
-not part of the default cuOpt build.
-
-To build the native library in a different directory, set
-``CUOPT_JAVA_NATIVE_BUILD_DIR``. If CUDA headers are installed outside the
-usual locations, pass ``-DCUOPT_CUDA_INCLUDE_DIR=/path/to/cuda/include`` to
-the CMake configure step.
-
-Native Loading
---------------
-
-At runtime the bindings load ``libcuopt_jni``. For local development, point Java
-at the directory containing the built native library:
-
-.. code-block:: bash
-
-   cd java/cuopt
-   export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-   export CUOPT_PREFIX=/path/to/cuopt/conda/environment
-   export LD_LIBRARY_PATH=$CUOPT_PREFIX/targets/x86_64-linux/lib:$CUOPT_PREFIX/lib:build/native
-   mvn test -Dcuopt.native.dir=build/native
-
-The helper script combines the native build and Maven test steps:
-
-.. code-block:: bash
-
-   cd /path/to/cuopt/java/cuopt
-   export JAVA_HOME=/path/to/jdk-17
-   export CUOPT_PREFIX=/path/to/cuopt/conda/environment
-   bash scripts/test.sh
-
-To run one test class, pass its Maven property to the helper:
-
-.. code-block:: bash
-
-   bash scripts/test.sh -Dtest=ProblemIntegrationTest
-
-Application code can use the same property:
-
-.. code-block:: bash
-
-   java -Dcuopt.native.dir=/path/to/java/cuopt/build/native ...
-
-The Java classes load ``libcuopt_jni`` when the first binding object is
-created. ``cuopt.native.dir`` must contain that library, and the cuOpt and
-CUDA runtime libraries must be discoverable through ``LD_LIBRARY_PATH`` or the
-native library's runtime path. The standalone native build embeds the CUDA
-runtime path for the configured ``CUOPT_PREFIX``; the helper script also
-exports it for Maven.
-
-Using the Docker Image
-----------------------
-
-The official cuOpt Docker images ship ``cuopt.jar`` and ``libcuopt_jni.so``
-under ``/opt/cuopt/java``, built against the image's own ``libcuopt.so``. No
-build step is needed. Use ``-cp /opt/cuopt/java/cuopt.jar`` for both
-compilation and execution; pass ``-Dcuopt.native.dir=/opt/cuopt/java`` only to
-the ``java`` command. See :doc:`../install` for image tags.
+.. install-selector::
+   :default-iface: java
 
 Using the Maven Artifact
-------------------------
+-------------------------
 
 ``com.nvidia.cuopt:cuopt`` publishes classifier jars (``cuda12``,
 ``cuda12-arm64``, ``cuda13``, ``cuda13-arm64``) to the Sonatype snapshot and
@@ -127,24 +51,50 @@ The embedded libraries do not include the CUDA toolkit's own math libraries
 target system. Loading the jar on a system without them fails with an
 ``UnsatisfiedLinkError`` naming the missing CUDA library. An
 ``nvidia/cuda:*-runtime-*`` base image satisfies this without installing
-cuOpt itself. The example below assumes a project with the ``<dependency>``
-above in its ``pom.xml`` and a ``MyProgram.java`` source (for example, the
-LP Example below) in the working directory:
+cuOpt itself; outside Docker, install the matching
+``cuda-libraries-<major>-<minor>`` package (e.g. ``cuda-libraries-12-9``) from
+`NVIDIA's CUDA repository <https://developer.nvidia.com/cuda-downloads>`_ via
+``apt-get`` or ``dnf`` instead of the full CUDA toolkit.
+
+Building from source is covered in ``java/cuopt/README.md``.
+
+Smoke Test
+----------
+
+After installation, verify cuOpt Java is working by compiling and running a
+minimal LP inside the container:
 
 .. code-block:: bash
 
-   docker run --rm --gpus all -v $(pwd):/work -w /work \
-     nvidia/cuda:12.9.0-runtime-ubuntu24.04 bash -c '
-       apt-get update -qq && apt-get install -y -qq openjdk-17-jdk-headless maven
-       mvn -q dependency:copy-dependencies -DoutputDirectory=lib
-       javac -cp "lib/*" -d . MyProgram.java
-       java -cp "lib/*:." MyProgram
-     '
+   cat > SmokeTest.java <<'EOF'
+   import com.nvidia.cuopt.mathematicaloptimization.*;
 
-Outside Docker, install the matching ``cuda-libraries-<major>-<minor>``
-package (e.g. ``cuda-libraries-12-9``) from `NVIDIA's CUDA repository
-<https://developer.nvidia.com/cuda-downloads>`_ via ``apt-get`` or ``dnf``
-instead of the full CUDA toolkit.
+   public class SmokeTest {
+     public static void main(String[] args) throws Exception {
+       try (Problem problem = new Problem("smoke-test")) {
+         Variable x = problem.addVariable(0, Double.POSITIVE_INFINITY, 0,
+             VariableType.CONTINUOUS, "x");
+         Variable y = problem.addVariable(0, Double.POSITIVE_INFINITY, 0,
+             VariableType.CONTINUOUS, "y");
+         problem.addConstraint(LinearExpression.of(x).plus(y).ge(1.0), "c0");
+         problem.setObjective(LinearExpression.of(x).plus(y), ObjectiveSense.MINIMIZE);
+         try (Solution solution = problem.solve()) {
+           System.out.println(solution.getTerminationStatus());
+           System.out.println(solution.getPrimalObjective());
+         }
+       }
+     }
+   }
+   EOF
+   javac -cp /opt/cuopt/java/cuopt.jar -d . SmokeTest.java
+   java -Dcuopt.native.dir=/opt/cuopt/java -cp /opt/cuopt/java/cuopt.jar:. SmokeTest
+
+Example Response:
+
+.. code-block:: text
+
+   OPTIMAL
+   1.0
 
 LP Example
 ----------

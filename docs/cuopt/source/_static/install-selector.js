@@ -243,6 +243,10 @@
         },
       },
     },
+    /* Java has no pip/conda package; the Docker images already contain cuopt.jar. */
+    java: {
+      container: CONTAINER_CUOPT_LIB,
+    },
   };
 
   var SUPPORTED_METHODS = {
@@ -250,6 +254,7 @@
     c: ["pip", "conda", "container"],
     server: ["pip", "conda", "container"],
     cli: ["pip", "conda", "container"],
+    java: ["container"],
   };
 
   function getSelectedValue(name) {
@@ -404,6 +409,7 @@
       '<label class="cuopt-opt"><input type="radio" name="cuopt-iface" value="c"> C (libcuopt)</label>' +
       '<label class="cuopt-opt"><input type="radio" name="cuopt-iface" value="server"> Server</label>' +
       '<label class="cuopt-opt"><input type="radio" name="cuopt-iface" value="cli"> CLI (cuopt_cli)</label>' +
+      '<label class="cuopt-opt"><input type="radio" name="cuopt-iface" value="java"> Java (experimental)</label>' +
       '</td></tr>' +
       '<tr><td class="cuopt-opt-label">Method</td><td class="cuopt-opt-group" role="group" aria-label="Method">' +
       '<label class="cuopt-opt"><input type="radio" name="cuopt-method" value="pip" checked> pip</label>' +
@@ -444,7 +450,7 @@
     updateVisibility();
 
     var defaultIface = root.getAttribute("data-default-iface");
-    if (defaultIface && ["python", "c", "server", "cli"].indexOf(defaultIface) !== -1) {
+    if (defaultIface && ["python", "c", "server", "cli", "java"].indexOf(defaultIface) !== -1) {
       var radio = document.querySelector('input[name="cuopt-iface"][value="' + defaultIface + '"]');
       if (radio) {
         radio.checked = true;
