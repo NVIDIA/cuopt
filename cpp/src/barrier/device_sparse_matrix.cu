@@ -96,7 +96,7 @@ void csc_to_csr_on_device(i_t m,
 
   if (nz == 0) {
     // Empty matrix: offsets all zero; indices/values unused.
-    RAFT_CUDA_TRY(cudaMemsetAsync(out_offsets, 0, sizeof(i_t) * (m + 1), stream.value()));
+    RAFT_CUDA_TRY(cudaMemsetAsync(out_offsets, 0, sizeof(i_t) * (m + 1), stream.get()));
     return;
   }
 
@@ -110,7 +110,7 @@ void csc_to_csr_on_device(i_t m,
                                       n,
                                       m,
                                       nz,
-                                      stream.value());
+                                      stream.get());
 }
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE

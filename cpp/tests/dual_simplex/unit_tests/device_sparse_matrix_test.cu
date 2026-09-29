@@ -58,7 +58,7 @@ void expect_device_matches_host(const csc_matrix_t<int, double>& A)
 {
   raft::handle_t handle{};
   const raft::handle_t* handle_ptr = &handle;
-  auto stream                      = cuda::stream_ref{handle.get_stream().value()};
+  auto stream                      = cuda::stream_ref{handle.get_stream().get()};
 
   csr_matrix_t<int, double> expected(A.m, A.n, A.col_start[A.n]);
   A.to_compressed_row(expected);
