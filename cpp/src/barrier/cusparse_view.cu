@@ -115,14 +115,19 @@ void my_cusparsespmv_preprocess(cusparseHandle_t handle,
 }
 #endif
 
-static cusparseSpMVAlg_t get_spmv_alg([[maybe_unused]] int num_rows)
+template <typename i_t>
+static bool alg2_beta_bug_possible(const std::vector<i_t>& row_start)
 {
-  // ALG2 has a bug in cuSPARSE < 13.0 where beta=1 accumulate mode ignores existing y values.
-  // ALG1 uses a deterministic row-split algorithm, while ALG2 uses a merge-based
-  // algorithm that may be faster but can use atomics. ALG1 is safe for reproducibility.
+  const size_t m = row_start.size() - 1;
+  return m > 0 && row_start[m] > row_start[0] && row_start[0] == row_start[m - 1];
+}
+
+static cusparseSpMVAlg_t get_spmv_alg(bool beta_bug_possible, double beta)
+{
+  // ALG2 provides deterministic (bit-wise) results, so use it unless it encounters the beta bug.
   constexpr int cusparse_version =
     CUSPARSE_VER_MAJOR * 1000 + CUSPARSE_VER_MINOR * 100 + CUSPARSE_VER_PATCH;
-  if (cusparse_version < 13000) { return CUSPARSE_SPMV_CSR_ALG1; }
+  if (beta_bug_possible && beta != 0 && cusparse_version < 13000) { return CUSPARSE_SPMV_CSR_ALG1; }
   return CUSPARSE_SPMV_CSR_ALG2;
 }
 
@@ -131,9 +136,9 @@ void cusparse_view_t<i_t, f_t>::init_spmv_buffer_and_preprocess(cusparseSpMatDes
                                                                 cusparseDnVecDescr_t x,
                                                                 cusparseDnVecDescr_t y,
                                                                 rmm::device_buffer& buffer,
-                                                                i_t rows)
+                                                                bool beta_bug_possible)
 {
-  const auto spmv_alg     = get_spmv_alg(rows);
+  const auto spmv_alg     = get_spmv_alg(beta_bug_possible, 1.0);
   size_t buffer_size_spmv = 0;
   RAFT_CUSPARSE_TRY(
     raft::sparse::detail::cusparsespmv_buffersize(handle_ptr_->get_cusparse_handle(),
@@ -143,11 +148,12 @@ void cusparse_view_t<i_t, f_t>::init_spmv_buffer_and_preprocess(cusparseSpMatDes
                                                   x,
                                                   d_one_.data(),
                                                   y,
-                                                  spmv_alg,
+                                                  CUSPARSE_SPMV_CSR_ALG2,
                                                   &buffer_size_spmv,
                                                   handle_ptr_->get_stream().get()));
   buffer.resize(buffer_size_spmv, handle_ptr_->get_stream());
 
+  if (spmv_alg != CUSPARSE_SPMV_CSR_ALG2) { return; }
   my_cusparsespmv_preprocess(handle_ptr_->get_cusparse_handle(),
                              CUSPARSE_OPERATION_NON_TRANSPOSE,
                              d_one_.data(),
@@ -186,7 +192,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
   if (debug) { printf("A hash: %zu\n", A.hash()); }
   csr_matrix_t<i_t, f_t> A_csr(A.m, A.n, 1);
   A.to_compressed_row(A_csr);
-  rows_                           = A_csr.m;
+  i_t rows                        = A_csr.m;
   i_t cols                        = A_csr.n;
   i_t nnz                         = A_csr.x.size();
   const std::vector<i_t>& offsets = A_csr.row_start;
@@ -201,20 +207,22 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
   A_T_indices_ = device_copy(A.i, handle_ptr->get_stream());
   A_T_data_    = device_copy(A.x, handle_ptr->get_stream());
 
-  A_ = pdlp::make_csr<i_t, f_t>(
-    rows_, cols, nnz, A_offsets_.data(), A_indices_.data(), A_data_.data());
+  A_ =
+    pdlp::make_csr<i_t, f_t>(rows, cols, nnz, A_offsets_.data(), A_indices_.data(), A_data_.data());
   A_T_ = pdlp::make_csr<i_t, f_t>(
-    cols, rows_, nnz, A_T_offsets_.data(), A_T_indices_.data(), A_T_data_.data());
+    cols, rows, nnz, A_T_offsets_.data(), A_T_indices_.data(), A_T_data_.data());
 
   // Temporary vectors used to initialize the SpMV buffers and preprocessing data.
   rmm::device_uvector<f_t> d_x(cols, handle_ptr_->get_stream());
-  rmm::device_uvector<f_t> d_y(rows_, handle_ptr_->get_stream());
+  rmm::device_uvector<f_t> d_y(rows, handle_ptr_->get_stream());
   auto x = pdlp::make_dnvec<f_t>(d_x.size(), d_x.data());
   auto y = pdlp::make_dnvec<f_t>(d_y.size(), d_y.data());
 
-  init_spmv_buffer_and_preprocess(A_.get(), x.get(), y.get(), spmv_buffer_, rows_);
+  beta_bug_possible_           = alg2_beta_bug_possible(offsets);
+  beta_bug_possible_transpose_ = alg2_beta_bug_possible(A.col_start);
+  init_spmv_buffer_and_preprocess(A_.get(), x.get(), y.get(), spmv_buffer_, beta_bug_possible_);
   init_spmv_buffer_and_preprocess(
-    A_T_.get(), y.get(), x.get(), spmv_buffer_transpose_, A_T_offsets_.size() - 1);
+    A_T_.get(), y.get(), x.get(), spmv_buffer_transpose_, beta_bug_possible_transpose_);
 }
 
 template <typename i_t, typename f_t>
@@ -271,7 +279,7 @@ void cusparse_view_t<i_t, f_t>::spmv(f_t alpha,
                                      x,
                                      d_beta->data(),
                                      y,
-                                     get_spmv_alg(rows_),
+                                     get_spmv_alg(beta_bug_possible_, beta),
                                      (f_t*)spmv_buffer_.data(),
                                      handle_ptr_->get_stream().get());
 }
@@ -326,7 +334,7 @@ void cusparse_view_t<i_t, f_t>::transpose_spmv(f_t alpha,
                                      x,
                                      d_beta->data(),
                                      y,
-                                     get_spmv_alg(A_T_offsets_.size() - 1),
+                                     get_spmv_alg(beta_bug_possible_transpose_, beta),
                                      (f_t*)spmv_buffer_transpose_.data(),
                                      handle_ptr_->get_stream().get());
 }
