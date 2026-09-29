@@ -479,7 +479,6 @@ __global__ void curtis_reid_col_kernel(i_t n_variables,
   }
 }
 
-// Single-GPU entry point. Distributed PDLP calls the init/row/col/fold pieces directly.
 template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::curtis_reid_init()
 {
@@ -560,6 +559,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::curtis_reid_folding()
 // sum((log|a_ij| - row_log_scale[i] - col_log_scale[j])^2) via alternating per-row/
 // per-column log-mean fixed-point iteration. This port's sequence and defaults are
 // inspired by the HPR-LP-C codebase (https://github.com/PolyU-IOR/HPR-LP-C).
+// Single-GPU entry point. Distributed PDLP calls the init/row/col/fold pieces directly.
 template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::curtis_reid_scaling(
   i_t number_of_curtis_reid_iterations)
