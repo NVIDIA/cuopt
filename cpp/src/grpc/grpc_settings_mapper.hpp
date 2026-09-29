@@ -67,7 +67,9 @@ void map_proto_to_mip_settings(const cuopt::remote::MIPSolverSettings& pb_settin
  * Each entry is passed to set_parameter_from_string(). Call this after the
  * typed fields have been copied onto `settings`, so a key in the map wins
  * over those deprecated fields. An empty map changes nothing. An unknown
- * name or an out-of-range value throws std::invalid_argument.
+ * name or an out-of-range value throws std::invalid_argument. A map with more
+ * entries than twice the number of registered parameter slots throws
+ * std::invalid_argument as well. That limit follows the parameter tables.
  */
 template <typename i_t, typename f_t>
 void apply_parameter_overrides(solver_settings_t<i_t, f_t>& settings,

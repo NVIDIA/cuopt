@@ -2523,6 +2523,27 @@ TEST(MapperRoundtrip, ParameterMapRejectsOutOfRangeValue)
   EXPECT_THROW(apply_parameter_overrides(settings, pb.parameters()), std::invalid_argument);
 }
 
+TEST(MapperRoundtrip, ParameterMapRejectsTooManyEntries)
+{
+  solver_settings_t<int32_t, double> settings;
+  const std::size_t registered =
+    settings.get_float_parameters().size() + settings.get_int_parameters().size() +
+    settings.get_bool_parameters().size() + settings.get_string_parameters().size();
+  const std::size_t cap = registered * 2;
+
+  cuopt::remote::PDLPSolverSettings pb;
+  for (std::size_t i = 0; i < cap + 1; ++i) {
+    (*pb.mutable_parameters())["extra_" + std::to_string(i)] = "1";
+  }
+
+  try {
+    apply_parameter_overrides(settings, pb.parameters());
+    FAIL() << "Expected too many solver parameters";
+  } catch (const std::invalid_argument& e) {
+    EXPECT_NE(std::string(e.what()).find("Too many solver parameters"), std::string::npos);
+  }
+}
+
 TEST(MapperRoundtrip, PDLPSettingsIterationLimitSentinel)
 {
   pdlp_solver_settings_t<int32_t, double> orig;
