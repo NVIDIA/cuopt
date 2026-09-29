@@ -144,11 +144,10 @@ jobs:
           path: ${{ runner.temp }}/maven-repo
           if-no-files-found: error
 
-  # Runs only once the publishing credentials exist; forwards GPG/Maven secrets, so pinned to a
-  # reviewed commit rather than @main. See rapidsai/build-infra#379.
+  # Forwards GPG/Maven secrets, so pinned to a reviewed commit rather than @main.
+  # See rapidsai/build-infra#379.
   java-maven-publish:
     needs: [java-static-gather]
-    if: vars.MAVEN_DEPLOY_USERNAME != ''
     permissions:
       actions: read
       contents: read
@@ -161,6 +160,10 @@ jobs:
     with:
       artifact-name: cuopt_java_maven_repo
       source-git-sha: ${{ inputs.sha }}
+      # Ignored on the snapshot path (everything published so far); only takes effect on an
+      # actual Maven Central release build, where it gates the first release behind a manual
+      # Sonatype Central Portal click instead of auto-publishing.
+      stage-for-maven-central-publish: true
 
   java-build:
     needs: cpp-build
