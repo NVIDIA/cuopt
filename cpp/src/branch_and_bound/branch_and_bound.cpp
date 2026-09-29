@@ -610,6 +610,19 @@ bool branch_and_bound_t<i_t, f_t>::set_solution_from_heuristics(const std::vecto
     mutex_repair_.unlock();
   }
 
+  if (success) {
+    f_t lower_bound = get_lower_bound();
+    f_t user_lower  = compute_user_objective(original_lp_, lower_bound);
+    f_t user_obj    = compute_user_objective(original_lp_, obj);
+    f_t abs_gap     = compute_user_abs_gap(original_lp_, obj, lower_bound);
+    f_t rel_gap     = user_relative_gap(user_obj, user_lower);
+
+    if (rel_gap < settings_.relative_mip_gap_tol || abs_gap < settings_.absolute_mip_gap_tol) {
+      solver_status_        = mip_status_t::OPTIMAL;
+      node_concurrent_halt_ = true;
+    }
+  }
+
   return success;
 }
 
@@ -967,7 +980,7 @@ void branch_and_bound_t<i_t, f_t>::add_feasible_solution(const lp_problem_t<i_t,
   }
   mutex_original_lp_.unlock();
 
-  bool send_solution = false;
+  bool success = false;
   settings_.log.debug("%c found a feasible solution with obj=%.10e.\n",
                       feasible_solution_symbol(thread_type, settings_.diving_settings.show_type),
                       compute_user_objective(lp, leaf_objective));
@@ -975,19 +988,32 @@ void branch_and_bound_t<i_t, f_t>::add_feasible_solution(const lp_problem_t<i_t,
   mutex_upper_.lock();
   if (!incumbent_.has_incumbent || leaf_objective < incumbent_.objective) {
     incumbent_.set_incumbent_solution(leaf_objective, sol.empty() ? leaf_solution : sol);
-    upper_bound_ = std::min(upper_bound_.load(), leaf_objective);
+    fetch_min(upper_bound_, leaf_objective);
 
     char symbol = feasible_solution_symbol(thread_type, settings_.diving_settings.show_type);
     report(lp, symbol, leaf_objective, get_lower_bound(), leaf_depth, 0);
-    send_solution = true;
-  }
+    success = true;
 
-  if (send_solution && settings_.solution_callback != nullptr) {
-    std::vector<f_t> original_x;
-    uncrush_primal_solution(original_problem_, lp, incumbent_.x, original_x);
-    settings_.solution_callback(original_x, leaf_objective);
+    if (settings_.solution_callback != nullptr) {
+      std::vector<f_t> original_x;
+      uncrush_primal_solution(original_problem_, lp, incumbent_.x, original_x);
+      settings_.solution_callback(original_x, leaf_objective);
+    }
   }
   mutex_upper_.unlock();
+
+  if (success) {
+    f_t lower_bound = get_lower_bound();
+    f_t user_lower  = compute_user_objective(original_lp_, lower_bound);
+    f_t user_obj    = compute_user_objective(original_lp_, leaf_objective);
+    f_t abs_gap     = compute_user_abs_gap(original_lp_, leaf_objective, lower_bound);
+    f_t rel_gap     = user_relative_gap(user_obj, user_lower);
+
+    if (rel_gap < settings_.relative_mip_gap_tol || abs_gap < settings_.absolute_mip_gap_tol) {
+      solver_status_        = mip_status_t::OPTIMAL;
+      node_concurrent_halt_ = true;
+    }
+  }
 }
 
 // Martin's criteria for the preferred rounding direction (see [1])
@@ -2026,12 +2052,6 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
           user_lower);
         break;
       }
-    }
-
-    if (received_halt_signal()) {
-      solver_status_        = mip_status_t::HALT;
-      node_concurrent_halt_ = true;
-      break;
     }
 
     if (received_halt_signal()) {
@@ -3520,6 +3540,7 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   i_t iter                   = 0;
   bool initialize_basis      = false;
   f_t dual_phase2_start_time = tic();
+  lp_settings.cut_off        = upper_bound_.load() + settings_.dual_tol;
   dual_status_t cut_status   = dual_phase2_with_advanced_basis(2,
                                                              0,
                                                              initialize_basis,
@@ -3546,6 +3567,13 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
 
   if (cut_status == dual_status_t::CONCURRENT_LIMIT) {
     solver_status_ = mip_status_t::HALT;
+    set_final_solution(solution, root_objective_);
+    return cut_pass_action_t::RETURN;
+  }
+
+  // The heuristics found an incumbent with an objective equal to the objective of the root LP. This
+  // can happen on pure feasibility problem with all zero objective coefficients.
+  if (cut_status == dual_status_t::CUTOFF) {
     set_final_solution(solution, root_objective_);
     return cut_pass_action_t::RETURN;
   }
@@ -3918,8 +3946,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   f_t cut_generation_start_time = tic();
   i_t cut_pool_size             = 0;
-  lp_settings.concurrent_halt   = settings_.concurrent_halt;
-  lp_settings.inside_mip        = 2;
+  lp_settings.concurrent_halt =
+    settings_.concurrent_halt ? settings_.concurrent_halt : &node_concurrent_halt_;
+  lp_settings.inside_mip = 2;
 
   for (i_t cut_pass = 0; cut_pass < settings_.max_cut_passes; cut_pass++) {
     if (toc(exploration_stats_.start_time) >= settings_.time_limit) {
@@ -3931,10 +3960,13 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       return solver_status_;
     }
 
-    if (num_fractional == 0) {
-      // LP relaxation is already integer-feasible — solved at the root
-      // by the cuts added so far (possibly zero). Publish the with-cuts
-      // value so the gap-closed line still has a non-NaN dual bound.
+    f_t user_obj   = compute_user_objective(original_lp_, upper_bound_.load());
+    f_t user_lower = compute_user_objective(original_lp_, root_objective_);
+    f_t abs_gap    = compute_user_abs_gap(original_lp_, upper_bound_.load(), root_objective_);
+    f_t rel_gap    = user_relative_gap(user_obj, user_lower);
+
+    if (num_fractional == 0 || abs_gap < settings_.absolute_mip_gap_tol ||
+        rel_gap < settings_.relative_mip_gap_tol) {
       if (settings_.benchmark_info_ptr != nullptr) {
         settings_.benchmark_info_ptr->root_lp_with_cuts =
           compute_user_objective(original_lp_, root_objective_);
@@ -4117,7 +4149,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     i_t removed =
       symmetry_->generators.template prune_by_bounds<f_t>(original_lp_.lower, original_lp_.upper);
     if (removed > 0) {
-      symmetry_->num_generators = static_cast<int>(symmetry_->generators.num_generators());
+      symmetry_->num_generators = symmetry_->generators.num_generators();
       settings_.log.printf(
         "Pruned %d generators invalidated by root-level bound tightening, %d remain\n",
         removed,
