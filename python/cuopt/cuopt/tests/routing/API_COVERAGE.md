@@ -31,11 +31,13 @@ Summary of which APIs from `assignment.py` and `vehicle_routing.py` are exercise
 | API | Covered | Where |
 |-----|---------|--------|
 | `add_cost_matrix()` | Yes | test_data_model, test_vehicle_properties, test_solver, test_batch_solve, etc. |
+| `add_distance_matrix()` | Yes | test_deferred, test_host_arrays, test_routing_grpc_serialization |
 | `add_transit_time_matrix()` | Yes | test_vehicle_properties, test_solver, test_initial_solutions, test_re_routing, etc. |
 | `set_break_locations()` | Yes | test_vehicle_properties (test_empty_routes_with_breaks) |
 | `add_break_dimension()` | Yes | test_vehicle_properties (test_empty_routes_with_breaks), test_solver, test_initial_solutions |
 | `add_vehicle_break()` | Yes | test_vehicle_properties (test_heterogenous_breaks) |
 | `add_vehicle_distance_break()` | Yes | test_distance_breaks, test_routing_grpc_serialization |
+| `set_vehicle_distance_tiers()` | Yes | test_deferred, test_routing_grpc_serialization, test_vehicle_distance_tiers |
 | `set_objective_function()` | Yes | test_data_model, test_initial_solutions |
 | `add_initial_solutions()` | Yes | test_initial_solutions |
 | `set_order_locations()` | Yes | test_vehicle_properties, test_solver, test_initial_solutions, test_warnings, etc. |
@@ -52,6 +54,7 @@ Summary of which APIs from `assignment.py` and `vehicle_routing.py` are exercise
 | `set_order_service_times()` | Yes | test_vehicle_properties, test_data_model, test_solver, etc. |
 | `add_capacity_dimension()` | Yes | test_data_model, test_vehicle_properties, test_solver, etc. |
 | `set_vehicle_max_costs()` | Yes | test_vehicle_properties, test_solver_settings |
+| `set_vehicle_max_distances()` | Yes | test_host_arrays, test_routing_grpc_serialization |
 | `set_vehicle_max_times()` | Yes | test_vehicle_properties |
 | `set_vehicle_fixed_costs()` | Yes | test_vehicle_properties |
 | `set_min_vehicles()` | Yes | test_vehicle_properties, test_solver_settings, test_initial_solutions, test_solver |
@@ -82,6 +85,7 @@ Summary of which APIs from `assignment.py` and `vehicle_routing.py` are exercise
 | `get_non_uniform_breaks()` | Yes | test_vehicle_properties (test_heterogenous_breaks) |
 | `get_objective_function()` | Yes | test_data_model |
 | `get_vehicle_max_costs()` | Yes | test_vehicle_properties (test_vehicle_max_costs) |
+| `get_vehicle_max_distances()` | Yes | test_host_arrays |
 | `get_vehicle_max_times()` | Yes | test_vehicle_properties (test_vehicle_max_times) |
 | `get_vehicle_fixed_costs()` | Yes | test_vehicle_properties (test_vehicle_fixed_costs) |
 | `get_vehicle_order_match()` | Yes | test_vehicle_properties (test_vehicle_to_order_match) |

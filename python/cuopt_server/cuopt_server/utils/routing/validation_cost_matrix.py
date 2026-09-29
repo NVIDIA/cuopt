@@ -14,6 +14,14 @@ def validate_cost_matrix(
         )
     shape = None
     for vehicle_type, matrix in cost_matrix.items():
+        if (
+            not isinstance(vehicle_type, (int, np.integer))
+            or not 0 <= vehicle_type <= 255
+        ):
+            return (
+                False,
+                "Matrix vehicle types must be integers within [0, 255]",
+            )
         row_lengths = [len(x) for x in matrix]
         if not len(set(row_lengths)) == 1:
             return (

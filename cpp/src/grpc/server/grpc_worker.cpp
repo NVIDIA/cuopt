@@ -119,6 +119,7 @@ struct DeserializedJob {
   bool enable_set_incumbent = false;
   bool is_vrp               = false;
   bool success              = false;
+  std::string error_message;
 };
 
 struct SolveResult {
@@ -321,91 +322,98 @@ static DeserializedJob read_problem_from_pipe(int worker_id, const JobQueueEntry
 
   auto pipe_recv_t0 = std::chrono::steady_clock::now();
 
-  if (is_chunked_job) {
-    // Chunked path: LP/MIP only for now (VRP is unary-only in this POC).
-    if (job.problem_category == cuopt::remote::VRP) {
-      SERVER_LOG_ERROR("[Worker] Chunked VRP upload is not supported");
-      return dj;
-    }
-    // Chunked path: the server wrote a ChunkedProblemHeader followed by
-    // a set of raw typed arrays (constraint matrix, bounds, etc.).
-    // This avoids a single giant protobuf allocation for large problems.
-    cuopt::remote::ChunkedProblemHeader chunked_header;
-    std::map<int32_t, std::vector<uint8_t>> arrays;
-    std::map<cuopt::mathematical_optimization::container_array_key_t, std::vector<uint8_t>>
-      container_arrays;
-    if (!read_chunked_request_from_pipe(read_fd, chunked_header, arrays, container_arrays)) {
-      return dj;
-    }
-
-    if (config.verbose) {
-      int64_t total_bytes = 0;
-      for (const auto& [fid, data] : arrays) {
-        total_bytes += data.size();
+  try {
+    if (is_chunked_job) {
+      // Chunked path: LP/MIP only for now (VRP is unary-only in this POC).
+      if (job.problem_category == cuopt::remote::VRP) {
+        SERVER_LOG_ERROR("[Worker] Chunked VRP upload is not supported");
+        return dj;
       }
-      int64_t container_total_bytes = 0;
-      for (const auto& [key, data] : container_arrays) {
-        container_total_bytes += data.size();
+      // Chunked path: the server wrote a ChunkedProblemHeader followed by
+      // a set of raw typed arrays (constraint matrix, bounds, etc.).
+      // This avoids a single giant protobuf allocation for large problems.
+      cuopt::remote::ChunkedProblemHeader chunked_header;
+      std::map<int32_t, std::vector<uint8_t>> arrays;
+      std::map<cuopt::mathematical_optimization::container_array_key_t, std::vector<uint8_t>>
+        container_arrays;
+      if (!read_chunked_request_from_pipe(read_fd, chunked_header, arrays, container_arrays)) {
+        return dj;
       }
-      log_pipe_throughput("pipe_job_recv", total_bytes + container_total_bytes, pipe_recv_t0);
-      SERVER_LOG_INFO(
-        "[Worker] IPC path: CHUNKED (%zu top-level arrays, %ld bytes; %zu container "
-        "arrays, %ld bytes)",
-        arrays.size(),
-        total_bytes,
-        container_arrays.size(),
-        container_total_bytes);
-    }
-    if (chunked_header.has_lp_settings()) {
-      map_proto_to_pdlp_settings(chunked_header.lp_settings(), dj.lp_settings);
-    }
-    if (chunked_header.has_mip_settings()) {
-      map_proto_to_mip_settings(chunked_header.mip_settings(), dj.mip_settings);
-    }
-    dj.enable_incumbents    = chunked_header.enable_incumbents();
-    dj.enable_set_incumbent = chunked_header.enable_set_incumbent();
-    cuopt::mathematical_optimization::map_chunked_arrays_to_problem(
-      chunked_header, arrays, container_arrays, dj.problem);
-  } else {
-    // Unary path: the entire SubmitJobRequest was serialized as a single
-    // protobuf blob.  Simpler but copies more memory for large problems.
-    std::vector<uint8_t> request_data;
-    if (!recv_job_data_pipe(read_fd, job.data_size, request_data)) { return dj; }
-
-    if (config.verbose) {
-      log_pipe_throughput("pipe_job_recv", static_cast<int64_t>(request_data.size()), pipe_recv_t0);
-    }
-    cuopt::remote::SubmitJobRequest submit_request;
-    if (!submit_request.ParseFromArray(request_data.data(),
-                                       static_cast<int>(request_data.size())) ||
-        (!submit_request.has_lp_request() && !submit_request.has_mip_request() &&
-         !submit_request.has_vrp_request())) {
-      return dj;
-    }
-    if (submit_request.has_lp_request()) {
-      const auto& req = submit_request.lp_request();
-      SERVER_LOG_INFO("[Worker] IPC path: UNARY LP (%zu bytes)", request_data.size());
-      map_proto_to_problem(req.problem(), dj.problem);
-      map_proto_to_pdlp_settings(req.settings(), dj.lp_settings);
-    } else if (submit_request.has_mip_request()) {
-      const auto& req = submit_request.mip_request();
-      SERVER_LOG_INFO("[Worker] IPC path: UNARY MIP (%zu bytes)", request_data.size());
-      map_proto_to_problem(req.problem(), dj.problem);
-      map_proto_to_mip_settings(req.settings(), dj.mip_settings);
-      dj.enable_incumbents    = req.has_enable_incumbents() ? req.enable_incumbents() : true;
-      dj.enable_set_incumbent = req.has_enable_set_incumbent() ? req.enable_set_incumbent() : false;
+      if (config.verbose) {
+        int64_t total_bytes = 0;
+        for (const auto& [fid, data] : arrays) {
+          total_bytes += data.size();
+        }
+        int64_t container_total_bytes = 0;
+        for (const auto& [key, data] : container_arrays) {
+          container_total_bytes += data.size();
+        }
+        log_pipe_throughput("pipe_job_recv", total_bytes + container_total_bytes, pipe_recv_t0);
+        SERVER_LOG_INFO(
+          "[Worker] IPC path: CHUNKED (%zu top-level arrays, %ld bytes; %zu container "
+          "arrays, %ld bytes)",
+          arrays.size(),
+          total_bytes,
+          container_arrays.size(),
+          container_total_bytes);
+      }
+      if (chunked_header.has_lp_settings()) {
+        map_proto_to_pdlp_settings(chunked_header.lp_settings(), dj.lp_settings);
+      }
+      if (chunked_header.has_mip_settings()) {
+        map_proto_to_mip_settings(chunked_header.mip_settings(), dj.mip_settings);
+      }
+      dj.enable_incumbents    = chunked_header.enable_incumbents();
+      dj.enable_set_incumbent = chunked_header.enable_set_incumbent();
+      cuopt::mathematical_optimization::map_chunked_arrays_to_problem(
+        chunked_header, arrays, container_arrays, dj.problem);
     } else {
+      // Unary path: the entire SubmitJobRequest was serialized as a single
+      // protobuf blob.  Simpler but copies more memory for large problems.
+      std::vector<uint8_t> request_data;
+      if (!recv_job_data_pipe(read_fd, job.data_size, request_data)) { return dj; }
+
+      if (config.verbose) {
+        log_pipe_throughput(
+          "pipe_job_recv", static_cast<int64_t>(request_data.size()), pipe_recv_t0);
+      }
+      cuopt::remote::SubmitJobRequest submit_request;
+      if (!submit_request.ParseFromArray(request_data.data(),
+                                         static_cast<int>(request_data.size())) ||
+          (!submit_request.has_lp_request() && !submit_request.has_mip_request() &&
+           !submit_request.has_vrp_request())) {
+        return dj;
+      }
+      if (submit_request.has_lp_request()) {
+        const auto& req = submit_request.lp_request();
+        SERVER_LOG_INFO("[Worker] IPC path: UNARY LP (%zu bytes)", request_data.size());
+        map_proto_to_problem(req.problem(), dj.problem);
+        map_proto_to_pdlp_settings(req.settings(), dj.lp_settings);
+      } else if (submit_request.has_mip_request()) {
+        const auto& req = submit_request.mip_request();
+        SERVER_LOG_INFO("[Worker] IPC path: UNARY MIP (%zu bytes)", request_data.size());
+        map_proto_to_problem(req.problem(), dj.problem);
+        map_proto_to_mip_settings(req.settings(), dj.mip_settings);
+        dj.enable_incumbents = req.has_enable_incumbents() ? req.enable_incumbents() : true;
+        dj.enable_set_incumbent =
+          req.has_enable_set_incumbent() ? req.enable_set_incumbent() : false;
+      } else {
 #ifdef CUOPT_ENABLE_GRPC_ROUTING
-      const auto& req = submit_request.vrp_request();
-      SERVER_LOG_INFO("[Worker] IPC path: UNARY VRP (%zu bytes)", request_data.size());
-      map_proto_to_routing_problem(req.problem(), dj.routing_problem);
-      map_proto_to_routing_settings(req.settings(), dj.routing_settings);
-      dj.is_vrp = true;
+        const auto& req = submit_request.vrp_request();
+        SERVER_LOG_INFO("[Worker] IPC path: UNARY VRP (%zu bytes)", request_data.size());
+        map_proto_to_routing_problem(req.problem(), dj.routing_problem);
+        map_proto_to_routing_settings(req.settings(), dj.routing_settings);
+        dj.is_vrp = true;
 #else
-      SERVER_LOG_ERROR("[Worker] VRP request received but this build has no routing support");
-      return dj;
+        SERVER_LOG_ERROR("[Worker] VRP request received but this build has no routing support");
+        return dj;
 #endif
+      }
     }
+  } catch (const std::exception& e) {
+    dj.error_message = e.what();
+    SERVER_LOG_ERROR("[Worker %d] Failed to deserialize problem: %s", worker_id, e.what());
+    return dj;
   }
 
   dj.success = true;
@@ -748,8 +756,11 @@ void worker_process(int worker_id)
 
     auto deserialized = read_problem_from_pipe(worker_id, job);
     if (!deserialized.success) {
-      SERVER_LOG_ERROR("[Worker %d] Failed to read job data from pipe", worker_id);
-      store_simple_result(job_id, worker_id, RESULT_ERROR, "Failed to read job data");
+      const auto error_message = deserialized.error_message.empty()
+                                   ? "Failed to read job data"
+                                   : deserialized.error_message.c_str();
+      SERVER_LOG_ERROR("[Worker %d] %s", worker_id, error_message);
+      store_simple_result(job_id, worker_id, RESULT_ERROR, error_message);
       reset_job_slot(job);
       continue;
     }

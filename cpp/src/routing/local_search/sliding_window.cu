@@ -155,20 +155,18 @@ __device__ void try_permutations(
     loop_over_constrained_dimensions(dimensions_info, [&] __device__(auto I) {
       if constexpr (decltype(I)::value == (size_t)dim_t::COST) {
         get_dimension_of<I>(nodes[window_size - 1])
-          .calculate_forward(get_dimension_of<I>(next_node),
-                             get_arc_cost(nodes[window_size - 1].request.info,
-                                          next_node.request.info,
-                                          s_route.vehicle_info()),
-                             get_travel_distance(nodes[window_size - 1].request.info,
-                                                 next_node.request.info,
-                                                 s_route.vehicle_info()));
+          .calculate_forward(
+            get_dimension_of<I>(next_node),
+            get_arc_cost(
+              nodes[window_size - 1].request.info, next_node.request.info, s_route.vehicle_info()),
+            get_travel_distance(
+              nodes[window_size - 1].request.info, next_node.request.info, s_route.vehicle_info()));
       } else {
         get_dimension_of<I>(nodes[window_size - 1])
           .calculate_forward(
             get_dimension_of<I>(next_node),
-            get_arc_of_dimension<i_t, f_t, I>(nodes[window_size - 1].request.info,
-                                              next_node.request.info,
-                                              s_route.vehicle_info()));
+            get_arc_of_dimension<i_t, f_t, I>(
+              nodes[window_size - 1].request.info, next_node.request.info, s_route.vehicle_info()));
       }
     });
 
@@ -455,8 +453,8 @@ __device__ void try_permutations_cvrp(
   for (int i = 1; i < window_size; ++i) {
     fragment_cost_distance +=
       get_arc_cost(nodes[i - 1].request.info, nodes[i].request.info, s_route.vehicle_info());
-    fragment_travel_distance += get_travel_distance(
-      nodes[i - 1].request.info, nodes[i].request.info, s_route.vehicle_info());
+    fragment_travel_distance +=
+      get_travel_distance(nodes[i - 1].request.info, nodes[i].request.info, s_route.vehicle_info());
     fragment_demand += nodes[i].capacity_dim.demand[0];
   }
   // printf("start_idx: %i, end_idx: %i\n", start_idx, end_idx);
@@ -471,13 +469,13 @@ __device__ void try_permutations_cvrp(
 
   if (!forward_fragment_update_cvrp<i_t, f_t, REQUEST>(s_route.get_node(window_start_idx - 1),
                                                        s_route,
-                                                         nodes.data(),
-                                                        window_size,
-                                                        fragment_cost_distance,
-                                                        fragment_travel_distance,
-                                                        fragment_demand,
-                                                         move_candidates.weights,
-                                                         excess_limit)) {
+                                                       nodes.data(),
+                                                       window_size,
+                                                       fragment_cost_distance,
+                                                       fragment_travel_distance,
+                                                       fragment_demand,
+                                                       move_candidates.weights,
+                                                       excess_limit)) {
     return;
   }
 
@@ -527,14 +525,14 @@ __device__ void try_permutations_cvrp(
     // Propagate the updated backward info to end of the window
 
     if (!backward_fragment_update_cvrp<i_t, f_t, REQUEST>(curr_node,
-                                                            s_route,
-                                                           nodes.data(),
-                                                           window_size,
-                                                           fragment_cost_distance,
-                                                           fragment_travel_distance,
-                                                           fragment_demand,
-                                                            move_candidates.weights,
-                                                            excess_limit)) {
+                                                          s_route,
+                                                          nodes.data(),
+                                                          window_size,
+                                                          fragment_cost_distance,
+                                                          fragment_travel_distance,
+                                                          fragment_demand,
+                                                          move_candidates.weights,
+                                                          excess_limit)) {
       break;
     }
 
@@ -598,14 +596,14 @@ __device__ void try_permutations_cvrp(
     // printf("Right shift: %i\n", i);
     // Propagate the updated forward info to the beginning of the window
     if (!forward_fragment_update_cvrp<i_t, f_t, REQUEST>(curr_node,
-                                                           s_route,
-                                                          nodes.data(),
-                                                          window_size,
-                                                          fragment_cost_distance,
-                                                          fragment_travel_distance,
-                                                          fragment_demand,
-                                                           move_candidates.weights,
-                                                           excess_limit)) {
+                                                         s_route,
+                                                         nodes.data(),
+                                                         window_size,
+                                                         fragment_cost_distance,
+                                                         fragment_travel_distance,
+                                                         fragment_demand,
+                                                         move_candidates.weights,
+                                                         excess_limit)) {
       return;
     }
 

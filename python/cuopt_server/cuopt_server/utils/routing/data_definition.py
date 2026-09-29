@@ -271,6 +271,7 @@ class DistanceMatrices(StrictModel):
             "dtype : vehicle-type (uint8), distance (float32), distance >= 0.\n"
             " \n\n "
             "Sqaure matrix with distance to travel from A to B and B to A. \n"
+            "Values at or above 1e30 are treated as unreachable arcs. \n"
             "If there different types of vehicles which have different \n"
             "distance matrices, they can be provided with key value pair \n"
             "where key is vehicle-type and value is distance matrix. Value of \n"
@@ -290,9 +291,7 @@ class DistanceTier(StrictModel):
     fixed_cost: float = Field(
         default=0.0,
         description=(
-            "dtype: float32, fixed_cost >= 0. Fixed cost for the tier. "
-            "If cost_per_unit is 0, cuOpt adds a minimal internal unit "
-            "cost to break ties between routes in the same fixed tier."
+            "dtype: float32, fixed_cost >= 0. Fixed cost for the tier."
         ),
     )
     cost_per_unit: float = Field(
@@ -609,8 +608,6 @@ class FleetData(StrictModel):
             "where null means the final open-ended tier, "
             "'fixed_cost' (use 0 if not applicable), and "
             "'cost_per_unit' (cost per distance unit, use 0 if not applicable)."
-            " Fixed tiers with cost_per_unit 0 get a minimal internal unit "
-            "cost to prefer shorter routes when fixed costs tie."
             " \n\n "
             "Example for 2 vehicles:"
             " \n\n "
@@ -618,9 +615,9 @@ class FleetData(StrictModel):
             " \n\n "
             "        [  # Vehicle 0 tiers"
             " \n\n "
-            "            {'threshold': 100, 'fixed_cost': 50, 'cost_per_unit': 0},  # <100km = 50 fixed"
+            "            {'threshold': 100, 'fixed_cost': 50, 'cost_per_unit': 0},  # <=100km = 50 fixed"
             " \n\n "
-            "            {'threshold': 200, 'fixed_cost': 0, 'cost_per_unit': 0.1},  # 100-200km = 0.1/km"
+            "            {'threshold': 200, 'fixed_cost': 0, 'cost_per_unit': 0.1},  # 100km < distance <= 200km"
             " \n\n "
             "            {'threshold': null, 'fixed_cost': 0, 'cost_per_unit': 0.5}  # >200km = 0.5/km"
             " \n\n "
@@ -628,7 +625,7 @@ class FleetData(StrictModel):
             " \n\n "
             "        [  # Vehicle 1 tiers"
             " \n\n "
-            "            {'threshold': 150, 'fixed_cost': 75, 'cost_per_unit': 0},  # <150km = 75 fixed"
+            "            {'threshold': 150, 'fixed_cost': 75, 'cost_per_unit': 0},  # <=150km = 75 fixed"
             " \n\n "
             "            {'threshold': null, 'fixed_cost': 0, 'cost_per_unit': 0.3}  # >150km = 0.3/km"
             " \n\n "
@@ -643,7 +640,7 @@ class FleetData(StrictModel):
         description=(
             "dtype: float32, max_distances >= 0."
             " \n\n "
-            "Maximum distance a vehicle can travel and it is based on distance matrix/distance waypoint graph."  # noqa
+            "Maximum distance a vehicle can travel, based on distance_matrix_data."
         ),
     )
 

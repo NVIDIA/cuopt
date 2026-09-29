@@ -274,7 +274,7 @@ def test_invalid_values_set_fleet_data(cuoptproc):  # noqa
         "skip_first_trips": [False, False, True, True],
         "drop_return_trips": [True, False, True, False],
         "min_vehicles": 0,
-        "vehicle_max_costs": [0, 0, 0, 0],
+        "vehicle_max_costs": [-1, 0, 0, 0],
         "vehicle_max_times": [0, 0, 0, 0],
         "vehicle_fixed_costs": [-1, 50, 50, 50],
     }
@@ -404,7 +404,7 @@ def test_invalid_values_set_fleet_data(cuoptproc):  # noqa
         "error_result": False,
     }
 
-    # vehicle_max_costs must be greater than 0
+    # vehicle_max_costs must be greater than or equal to 0
     test_data = copy.deepcopy(valid_data)
     test_data["fleet_data"]["vehicle_max_costs"] = invalid_fleet_data_values[
         "vehicle_max_costs"
@@ -413,7 +413,7 @@ def test_invalid_values_set_fleet_data(cuoptproc):  # noqa
     response_set = client.post("/cuopt/request", json=test_data)
     assert response_set.status_code == 400
     assert response_set.json() == {
-        "error": "Maximum distance any vehicle can travel must be greater than 0",  # noqa
+        "error": "Maximum vehicle route cost must be greater than or equal to 0",
         "error_result": False,
     }
 

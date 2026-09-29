@@ -48,7 +48,7 @@ def example_uniform_tiers():
     Example 1: Uniform tiers - All vehicles have the same pricing structure
 
     Pricing structure:
-    - Distance < 50 km: Fixed fee of $100
+    - Distance <= 50 km: Fixed fee of $100
     - Distance 50-100 km: $2 per km
     - Distance > 100 km: $5 per km
     """
@@ -56,7 +56,7 @@ def example_uniform_tiers():
     print("EXAMPLE 1: UNIFORM DISTANCE TIERS")
     print("=" * 70)
     print("\nAll vehicles have the same pricing structure:")
-    print("  • Distance < 50 km: Fixed fee of $100")
+    print("  • Distance <= 50 km: Fixed fee of $100")
     print("  • Distance 50-100 km: $2 per km")
     print("  • Distance > 100 km: $5 per km\n")
 
@@ -66,8 +66,9 @@ def example_uniform_tiers():
     n_vehicles = len(capacities)
 
     # Create data model
-    data_model = routing.DataModel(n_locations, n_vehicles)
+    data_model = routing.DataModel(n_locations, n_vehicles, n_locations - 1)
     data_model.add_cost_matrix(cost_df)
+    data_model.add_distance_matrix(cost_df)
 
     # Set order locations (all locations except depot at 0)
     order_locations = cudf.Series(range(1, n_locations), dtype=np.int32)
@@ -83,7 +84,7 @@ def example_uniform_tiers():
     costs_per_unit = []
 
     for v in range(n_vehicles):
-        # Tier 1: < 50 km = fixed cost 100
+        # Tier 1: <= 50 km = fixed cost 100
         vehicle_ids.append(v)
         thresholds.append(50.0)
         fixed_costs.append(100.0)
@@ -97,7 +98,7 @@ def example_uniform_tiers():
 
         # Tier 3: > 100 km = 5.0 per km
         vehicle_ids.append(v)
-        thresholds.append(1e9)  # infinity
+        thresholds.append(np.finfo(np.float32).max)
         fixed_costs.append(0.0)
         costs_per_unit.append(5.0)
 
@@ -143,15 +144,15 @@ def example_heterogeneous_tiers():
     print("=" * 70)
     print("\nDifferent vehicles have different pricing structures:\n")
     print("🔵 Vehicle 0 (Economy):")
-    print("  • < 30 km: $50 fixed")
+    print("  • <= 30 km: $50 fixed")
     print("  • 30-80 km: $3 per km")
     print("  • > 80 km: $6 per km")
     print("\n🟡 Vehicle 1 (Standard):")
-    print("  • < 60 km: $80 fixed")
+    print("  • <= 60 km: $80 fixed")
     print("  • 60-100 km: $2 per km")
     print("  • > 100 km: $4 per km")
     print("\n🟢 Vehicle 2 (Premium):")
-    print("  • < 100 km: $120 fixed")
+    print("  • <= 100 km: $120 fixed")
     print("  • > 100 km: $1.5 per km\n")
 
     # Create problem
@@ -160,8 +161,9 @@ def example_heterogeneous_tiers():
     n_vehicles = len(capacities)
 
     # Create data model
-    data_model = routing.DataModel(n_locations, n_vehicles)
+    data_model = routing.DataModel(n_locations, n_vehicles, n_locations - 1)
     data_model.add_cost_matrix(cost_df)
+    data_model.add_distance_matrix(cost_df)
 
     # Set order locations
     order_locations = cudf.Series(range(1, n_locations), dtype=np.int32)
@@ -178,19 +180,19 @@ def example_heterogeneous_tiers():
 
     # Vehicle 0: Economy
     vehicle_ids.extend([0, 0, 0])
-    thresholds.extend([30.0, 80.0, 1e9])
+    thresholds.extend([30.0, 80.0, np.finfo(np.float32).max])
     fixed_costs.extend([50.0, 0.0, 0.0])
     costs_per_unit.extend([0.0, 3.0, 6.0])
 
     # Vehicle 1: Standard
     vehicle_ids.extend([1, 1, 1])
-    thresholds.extend([60.0, 100.0, 1e9])
+    thresholds.extend([60.0, 100.0, np.finfo(np.float32).max])
     fixed_costs.extend([80.0, 0.0, 0.0])
     costs_per_unit.extend([0.0, 2.0, 4.0])
 
     # Vehicle 2: Premium
     vehicle_ids.extend([2, 2])
-    thresholds.extend([100.0, 1e9])
+    thresholds.extend([100.0, np.finfo(np.float32).max])
     fixed_costs.extend([120.0, 0.0])
     costs_per_unit.extend([0.0, 1.5])
 
@@ -220,12 +222,13 @@ def example_heterogeneous_tiers():
         )
 
     # Show which vehicles were used
-    truck_ids = solution.get_truck_id().to_numpy()
-    routes = solution.get_route().to_numpy()
+    route_df = solution.get_route()
+    truck_ids = route_df["truck_id"].to_numpy()
+    locations = route_df["location"].to_numpy()
 
     print("\nVehicle usage:")
     for v in range(n_vehicles):
-        orders = np.sum((truck_ids == v) & (routes != 0))
+        orders = np.sum((truck_ids == v) & (locations != 0))
         vehicle_type = ["Economy", "Standard", "Premium"][v]
         if orders > 0:
             print(f"  Vehicle {v} ({vehicle_type}): {orders} orders")
@@ -249,14 +252,14 @@ def example_realistic_scenario():
     print("=" * 70)
     print("\nA delivery company optimizing their fleet:\n")
     print("🚐 Small Vans (2 available):")
-    print("  • < 20 km: $30 fixed (urban deliveries)")
+    print("  • <= 20 km: $30 fixed (urban deliveries)")
     print("  • > 20 km: $4 per km (expensive for long trips)")
     print("\n🚚 Medium Trucks (2 available):")
-    print("  • < 50 km: $60 fixed")
+    print("  • <= 50 km: $60 fixed")
     print("  • 50-100 km: $1.5 per km")
     print("  • > 100 km: $3 per km")
     print("\n🚛 Large Trucks (1 available):")
-    print("  • < 80 km: $100 fixed")
+    print("  • <= 80 km: $100 fixed")
     print("  • > 80 km: $1 per km (efficient for long hauls)\n")
 
     # Create a larger problem
@@ -276,8 +279,9 @@ def example_realistic_scenario():
     capacities = cudf.Series([30, 30, 50, 50, 80], dtype=np.int32)
 
     # Create data model
-    data_model = routing.DataModel(n_locations, n_vehicles)
+    data_model = routing.DataModel(n_locations, n_vehicles, n_orders)
     data_model.add_cost_matrix(cost_df)
+    data_model.add_distance_matrix(cost_df)
 
     order_locations = cudf.Series(range(1, n_locations), dtype=np.int32)
     data_model.set_order_locations(order_locations)
@@ -292,20 +296,20 @@ def example_realistic_scenario():
     # Small vans (vehicles 0, 1)
     for v in [0, 1]:
         vehicle_ids.extend([v, v])
-        thresholds.extend([20.0, 1e9])
+        thresholds.extend([20.0, np.finfo(np.float32).max])
         fixed_costs.extend([30.0, 0.0])
         costs_per_unit.extend([0.0, 4.0])
 
     # Medium trucks (vehicles 2, 3)
     for v in [2, 3]:
         vehicle_ids.extend([v, v, v])
-        thresholds.extend([50.0, 100.0, 1e9])
+        thresholds.extend([50.0, 100.0, np.finfo(np.float32).max])
         fixed_costs.extend([60.0, 0.0, 0.0])
         costs_per_unit.extend([0.0, 1.5, 3.0])
 
     # Large truck (vehicle 4)
     vehicle_ids.extend([4, 4])
-    thresholds.extend([80.0, 1e9])
+    thresholds.extend([80.0, np.finfo(np.float32).max])
     fixed_costs.extend([100.0, 0.0])
     costs_per_unit.extend([0.0, 1.0])
 
@@ -335,8 +339,9 @@ def example_realistic_scenario():
         )
 
     # Detailed vehicle usage
-    truck_ids = solution.get_truck_id().to_numpy()
-    routes = solution.get_route().to_numpy()
+    route_df = solution.get_route()
+    truck_ids = route_df["truck_id"].to_numpy()
+    locations = route_df["location"].to_numpy()
 
     print("\nOptimal fleet allocation:")
     vehicle_types = [
@@ -348,7 +353,7 @@ def example_realistic_scenario():
     ]
 
     for v in range(n_vehicles):
-        orders = np.sum((truck_ids == v) & (routes != 0))
+        orders = np.sum((truck_ids == v) & (locations != 0))
         capacity_used = orders * 8  # Each order is 8 units
         capacity_total = capacities[v]
 

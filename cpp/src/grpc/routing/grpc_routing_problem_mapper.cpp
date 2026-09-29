@@ -10,6 +10,8 @@
 #include "grpc_routing_mapper_utils.hpp"
 
 #include <cstdint>
+#include <limits>
+#include <stdexcept>
 #include <utility>
 
 namespace cuopt {
@@ -29,16 +31,31 @@ void map_proto_to_routing_problem(const cuopt::remote::RoutingProblem& pb,
   p.num_orders    = pb.num_orders();
 
   for (auto const& cm : pb.cost_matrices()) {
+    if (cm.vehicle_type() > std::numeric_limits<uint8_t>::max()) {
+      throw std::invalid_argument("cost matrix vehicle_type must be within [0, 255]");
+    }
     cuopt::routing::cpu_cost_matrix_t out;
     out.vehicle_type = static_cast<uint8_t>(cm.vehicle_type());
     copy_repeated_to_vector(cm.values(), out.matrix);
     p.cost_matrices.push_back(std::move(out));
   }
   for (auto const& tm : pb.transit_time_matrices()) {
+    if (tm.vehicle_type() > std::numeric_limits<uint8_t>::max()) {
+      throw std::invalid_argument("transit time matrix vehicle_type must be within [0, 255]");
+    }
     cuopt::routing::cpu_cost_matrix_t out;
     out.vehicle_type = static_cast<uint8_t>(tm.vehicle_type());
     copy_repeated_to_vector(tm.values(), out.matrix);
     p.transit_time_matrices.push_back(std::move(out));
+  }
+  for (auto const& dm : pb.distance_matrices()) {
+    if (dm.vehicle_type() > std::numeric_limits<uint8_t>::max()) {
+      throw std::invalid_argument("distance matrix vehicle_type must be within [0, 255]");
+    }
+    cuopt::routing::cpu_cost_matrix_t out;
+    out.vehicle_type = static_cast<uint8_t>(dm.vehicle_type());
+    copy_repeated_to_vector(dm.values(), out.matrix);
+    p.distance_matrices.push_back(std::move(out));
   }
 
   copy_repeated_to_vector(pb.vehicle_start_locations(), p.vehicle_start_locations);
@@ -49,8 +66,16 @@ void map_proto_to_routing_problem(const cuopt::remote::RoutingProblem& pb,
   copy_bool_to_u8(pb.drop_return_trips(), p.drop_return_trips);
   copy_bool_to_u8(pb.skip_first_trips(), p.skip_first_trips);
   copy_repeated_to_vector(pb.vehicle_max_costs(), p.vehicle_max_costs);
+  copy_repeated_to_vector(pb.vehicle_max_distances(), p.vehicle_max_distances);
   copy_repeated_to_vector(pb.vehicle_max_times(), p.vehicle_max_times);
   copy_repeated_to_vector(pb.vehicle_fixed_costs(), p.vehicle_fixed_costs);
+  if (pb.has_vehicle_distance_tiers()) {
+    auto const& tiers = pb.vehicle_distance_tiers();
+    copy_repeated_to_vector(tiers.thresholds(), p.distance_tier_thresholds);
+    copy_repeated_to_vector(tiers.fixed_costs(), p.distance_tier_fixed_costs);
+    copy_repeated_to_vector(tiers.costs_per_unit(), p.distance_tier_costs_per_unit);
+    copy_repeated_to_vector(tiers.offsets(), p.distance_tier_offsets);
+  }
 
   copy_repeated_to_vector(pb.order_locations(), p.order_locations);
   copy_repeated_to_vector(pb.order_tw_earliest(), p.order_tw_earliest);
@@ -155,6 +180,11 @@ void map_routing_problem_to_proto(const cuopt::routing::cpu_routing_problem_t& p
     out->set_vehicle_type(tm.vehicle_type);
     copy_vector_to_repeated(tm.matrix, out->mutable_values());
   }
+  for (auto const& dm : p.distance_matrices) {
+    auto* out = pb->add_distance_matrices();
+    out->set_vehicle_type(dm.vehicle_type);
+    copy_vector_to_repeated(dm.matrix, out->mutable_values());
+  }
 
   copy_vector_to_repeated(p.vehicle_start_locations, pb->mutable_vehicle_start_locations());
   copy_vector_to_repeated(p.vehicle_return_locations, pb->mutable_vehicle_return_locations());
@@ -170,8 +200,17 @@ void map_routing_problem_to_proto(const cuopt::routing::cpu_routing_problem_t& p
     pb->add_skip_first_trips(v != 0);
   }
   copy_vector_to_repeated(p.vehicle_max_costs, pb->mutable_vehicle_max_costs());
+  copy_vector_to_repeated(p.vehicle_max_distances, pb->mutable_vehicle_max_distances());
   copy_vector_to_repeated(p.vehicle_max_times, pb->mutable_vehicle_max_times());
   copy_vector_to_repeated(p.vehicle_fixed_costs, pb->mutable_vehicle_fixed_costs());
+  if (!p.distance_tier_thresholds.empty() || !p.distance_tier_fixed_costs.empty() ||
+      !p.distance_tier_costs_per_unit.empty() || !p.distance_tier_offsets.empty()) {
+    auto* tiers = pb->mutable_vehicle_distance_tiers();
+    copy_vector_to_repeated(p.distance_tier_thresholds, tiers->mutable_thresholds());
+    copy_vector_to_repeated(p.distance_tier_fixed_costs, tiers->mutable_fixed_costs());
+    copy_vector_to_repeated(p.distance_tier_costs_per_unit, tiers->mutable_costs_per_unit());
+    copy_vector_to_repeated(p.distance_tier_offsets, tiers->mutable_offsets());
+  }
 
   copy_vector_to_repeated(p.order_locations, pb->mutable_order_locations());
   copy_vector_to_repeated(p.order_tw_earliest, pb->mutable_order_tw_earliest());

@@ -8,8 +8,10 @@ This example shows how to call the cuOpt API (self-hosted) with distance tiers
 for tiered pricing based on route distance.
 """
 
-import requests
 import json
+import time
+
+import requests
 
 # API endpoint (change to your server address)
 API_URL = "http://localhost:5000/cuopt/request"
@@ -20,7 +22,19 @@ payload = {
     "travel_time_waypoint_graph_data": None,
     "cost_matrix_data": {
         "data": {
-            "1": [
+            "0": [
+                [0, 30, 40, 50, 80, 100],
+                [30, 0, 20, 35, 60, 85],
+                [40, 20, 0, 25, 55, 75],
+                [50, 35, 25, 0, 40, 60],
+                [80, 60, 55, 40, 0, 30],
+                [100, 85, 75, 60, 30, 0],
+            ]
+        }
+    },
+    "distance_matrix_data": {
+        "data": {
+            "0": [
                 [0, 30, 40, 50, 80, 100],
                 [30, 0, 20, 35, 60, 85],
                 [40, 20, 0, 25, 55, 75],
@@ -55,14 +69,14 @@ payload = {
                     "threshold": 100.0,
                     "fixed_cost": 50.0,
                     "cost_per_unit": 0.0,
-                },  # < 100 km = 50 fixed
+                },  # <= 100 km = 50 fixed
                 {
                     "threshold": 200.0,
                     "fixed_cost": 0.0,
                     "cost_per_unit": 0.1,
-                },  # 100-200 km = 0.1/km
+                },  # 100 km < distance <= 200 km: 0.1/km
                 {
-                    "threshold": 1e9,
+                    "threshold": None,
                     "fixed_cost": 0.0,
                     "cost_per_unit": 0.5,
                 },  # > 200 km = 0.5/km
@@ -73,9 +87,9 @@ payload = {
                     "threshold": 150.0,
                     "fixed_cost": 75.0,
                     "cost_per_unit": 0.0,
-                },  # < 150 km = 75 fixed
+                },  # <= 150 km = 75 fixed
                 {
-                    "threshold": 1e9,
+                    "threshold": None,
                     "fixed_cost": 0.0,
                     "cost_per_unit": 0.3,
                 },  # > 150 km = 0.3/km
@@ -97,8 +111,6 @@ payload = {
         "service_times": None,
         "prizes": None,
         "order_vehicle_match": None,
-        "soft_time_windows": None,
-        "task_order_precedence": None,
     },
     "solver_config": {"time_limit": 5},
 }
@@ -135,25 +147,23 @@ def call_cuopt_api():
 
                 # Poll for result
                 print("\nPolling for result...")
-                status_url = f"{API_URL}/{req_id}"
-
-                import time
+                server_url = API_URL.removesuffix("/cuopt/request")
+                status_url = f"{server_url}/cuopt/solution/{req_id}"
 
                 max_attempts = 60
                 for attempt in range(max_attempts):
                     status_response = requests.get(status_url)
+                    status_response.raise_for_status()
                     status_data = status_response.json()
 
-                    if status_data.get("status") == "Finished":
+                    if "response" in status_data:
                         print("\n✓ Solution found!")
                         display_results(
                             status_data["response"]["solver_response"]
                         )
                         break
-                    elif status_data.get("status") == "Failed":
-                        print(
-                            f"\n✗ Solving failed: {status_data.get('error')}"
-                        )
+                    elif "reqId" not in status_data:
+                        print(f"\n✗ Unexpected response: {status_data}")
                         break
 
                     time.sleep(1)
@@ -188,24 +198,15 @@ def display_results(solution_data):
     print("-" * 80)
 
     if "vehicle_data" in solution_data:
-        vehicle_data = solution_data["vehicle_data"]
+        for vehicle_id, vehicle in solution_data["vehicle_data"].items():
+            print(f"\nVehicle {vehicle_id}:")
+            print(f"  Route: {' -> '.join(map(str, vehicle['route']))}")
 
-        for i, (route, route_type) in enumerate(
-            zip(vehicle_data.get("routes", []), vehicle_data.get("type", []))
-        ):
-            if route_type == 0:  # Valid route
-                print(f"\nVehicle {i}:")
-                print(f"  Route: {' -> '.join(map(str, route))}")
-
-                # Calculate route distance (simplified - using cost as proxy)
-                # In real scenario, you'd calculate actual distance from cost matrix
-                # For this example, we'll use the cost value from solution
-
-        # Display cost information
-        if "cost" in solution_data:
+        if "solution_cost" in solution_data:
             print(f"\n{'=' * 80}")
             print(
-                f"Total Cost (with tiered pricing): {solution_data['cost']:.2f}"
+                "Total Cost (with tiered pricing): "
+                f"{solution_data['solution_cost']:.2f}"
             )
             print(f"{'=' * 80}")
 
@@ -230,16 +231,16 @@ def show_tier_interpretation():
             fixed_cost = tier["fixed_cost"]
             cost_per_unit = tier["cost_per_unit"]
 
-            if threshold >= 1e9:
+            if threshold is None:
                 distance_range = (
-                    f"Distance ≥ {vehicle_tiers[i - 1]['threshold']} km"
+                    f"Distance > {vehicle_tiers[i - 1]['threshold']} km"
                 )
             elif i == 0:
-                distance_range = f"Distance < {threshold} km"
+                distance_range = f"Distance <= {threshold} km"
             else:
                 prev_threshold = vehicle_tiers[i - 1]["threshold"]
                 distance_range = (
-                    f"{prev_threshold} km ≤ Distance < {threshold} km"
+                    f"{prev_threshold} km < Distance <= {threshold} km"
                 )
 
             if fixed_cost > 0:

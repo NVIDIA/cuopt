@@ -134,6 +134,7 @@ def solve(
         warnings, data_model = create_data_model(
             optimization_data,
             cost_matrix=cost_matrix,
+            distance_matrix=optimization_data.distance_matrix or None,
             travel_time_matrix=travel_time_matrix,
         )
 

@@ -218,18 +218,16 @@ class cost_route_t {
                          objective_cost_t& obj_cost,
                          infeasible_cost_t& inf_cost) const noexcept
     {
-      double total_cost     = cost_forward[n_nodes_route];
-      double total_distance = distance_forward[n_nodes_route];
-      obj_cost[objective_t::COST] =
-        vehicle_info.compute_distance_cost(total_distance, total_cost);
+      double total_cost           = cost_forward[n_nodes_route];
+      double total_distance       = distance_forward[n_nodes_route];
+      obj_cost[objective_t::COST] = vehicle_info.compute_distance_cost(total_distance, total_cost);
       if (dim_info.has_distance_window && dim_info.has_distance_break_cost) {
         obj_cost[objective_t::DISTANCE_BREAK_COST] = distance_break_cost_forward[n_nodes_route];
       }
 
-      inf_cost[dim_t::COST] = 0.;
+      inf_cost[dim_t::COST] = vehicle_info.compute_distance_excess(total_distance);
       if (dim_info.has_max_constraint) {
-        inf_cost[dim_t::COST] = max(0., total_distance - vehicle_info.max_distance) +
-                                max(0., obj_cost[objective_t::COST] - vehicle_info.max_cost);
+        inf_cost[dim_t::COST] += max(0., obj_cost[objective_t::COST] - vehicle_info.max_cost);
       }
       if (dim_info.has_distance_window) { inf_cost[dim_t::COST] += excess_forward[n_nodes_route]; }
     }
@@ -239,11 +237,11 @@ class cost_route_t {
                                                               i_t n_nodes_route)
     {
       view_t v;
-      size_t sz                            = n_nodes_route + 1;
-      i_t* sh_ptr                          = shmem;
-      v.dim_info                           = dim_info;
-      thrust::tie(v.cost_forward, sh_ptr)  = wrap_ptr_as_span<double>(sh_ptr, sz);
-      thrust::tie(v.cost_backward, sh_ptr) = wrap_ptr_as_span<double>(sh_ptr, sz);
+      size_t sz                                = n_nodes_route + 1;
+      i_t* sh_ptr                              = shmem;
+      v.dim_info                               = dim_info;
+      thrust::tie(v.cost_forward, sh_ptr)      = wrap_ptr_as_span<double>(sh_ptr, sz);
+      thrust::tie(v.cost_backward, sh_ptr)     = wrap_ptr_as_span<double>(sh_ptr, sz);
       thrust::tie(v.distance_forward, sh_ptr)  = wrap_ptr_as_span<double>(sh_ptr, sz);
       thrust::tie(v.distance_backward, sh_ptr) = wrap_ptr_as_span<double>(sh_ptr, sz);
       if (dim_info.has_distance_window) {
@@ -289,7 +287,7 @@ class cost_route_t {
       raft::device_span<double>{distance_forward.data(), distance_forward.size()};
     v.distance_backward =
       raft::device_span<double>{distance_backward.data(), distance_backward.size()};
-    v.reverse_cost  = raft::device_span<double>{reverse_cost.data(), reverse_cost.size()};
+    v.reverse_cost = raft::device_span<double>{reverse_cost.data(), reverse_cost.size()};
     v.reverse_distance =
       raft::device_span<double>{reverse_distance.data(), reverse_distance.size()};
     if (dim_info.has_distance_window) {

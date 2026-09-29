@@ -77,6 +77,13 @@ message InitialSolution {
   repeated int32 sol_offsets = 4;
 }
 
+message VehicleDistanceTiers {
+  repeated float thresholds = 1;
+  repeated float fixed_costs = 2;
+  repeated float costs_per_unit = 3;
+  repeated int32 offsets = 4;
+}
+
 // --- Main problem ---
 
 message RoutingProblem {
@@ -86,6 +93,7 @@ message RoutingProblem {
 
   repeated CostMatrix cost_matrices = 10;
   repeated CostMatrix transit_time_matrices = 11;
+  repeated CostMatrix distance_matrices = 12;
 
   // Vehicle arrays (size = fleet_size)
   repeated int32 vehicle_start_locations = 20;
@@ -98,6 +106,8 @@ message RoutingProblem {
   repeated float vehicle_max_costs = 27;
   repeated float vehicle_max_times = 28;
   repeated float vehicle_fixed_costs = 29;
+  repeated float vehicle_max_distances = 35;
+  VehicleDistanceTiers vehicle_distance_tiers = 36;
 
   // Order arrays (size = num_orders)
   repeated int32 order_locations = 30;

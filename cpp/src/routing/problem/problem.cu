@@ -55,18 +55,19 @@ problem_t<i_t, f_t>::problem_t(const data_model_view_t<i_t, f_t>& data_model_vie
              pair_indices_h.size(),
              handle_ptr->get_stream());
 
-  vehicle_types_h = cuopt::host_copy(fleet_info.v_types_, handle_ptr->get_stream());
+  vehicle_types_h          = cuopt::host_copy(fleet_info.v_types_, handle_ptr->get_stream());
+  const size_t matrix_size = static_cast<size_t>(n_locations) * static_cast<size_t>(n_locations);
   for (auto& vtype : vehicle_types_h) {
     if (!cost_matrices_h.count(vtype)) {
-      auto cost_matrix = fleet_info.matrices_.get_cost_matrix(vtype);
-      auto cost_matrix_h =
-        cuopt::host_copy(cost_matrix, n_locations * n_locations, handle_ptr->get_stream());
+      auto cost_matrix   = fleet_info.matrices_.get_cost_matrix(vtype);
+      auto cost_matrix_h = cuopt::host_copy(cost_matrix, matrix_size, handle_ptr->get_stream());
       cost_matrices_h.emplace(vtype, cost_matrix_h);
     }
-    if (!travel_distance_matrices_h.count(vtype)) {
+    if (fleet_info.matrices_.distance_matrix_index != fleet_info.matrices_.cost_matrix_index &&
+        !travel_distance_matrices_h.count(vtype)) {
       auto travel_distance_matrix = fleet_info.matrices_.get_distance_matrix(vtype);
       auto travel_distance_matrix_h =
-        cuopt::host_copy(travel_distance_matrix, n_locations * n_locations, handle_ptr->get_stream());
+        cuopt::host_copy(travel_distance_matrix, matrix_size, handle_ptr->get_stream());
       travel_distance_matrices_h.emplace(vtype, travel_distance_matrix_h);
     }
   }
@@ -275,6 +276,9 @@ void problem_t<i_t, f_t>::populate_dimensions_info()
   if (auto vehicle_max_costs = data_view_ptr->get_vehicle_max_costs(); !vehicle_max_costs.empty()) {
     cost_dim_info.has_max_constraint = true;
   }
+  if (std::get<4>(data_view_ptr->get_vehicle_distance_tiers()) > 0) {
+    cost_dim_info.has_max_constraint = true;
+  }
   if (special_nodes.has_distance_break) {
     cost_dim_info.has_distance_window = true;
     if (!specified_weights.count(objective_t::DISTANCE_BREAK_COST)) {
@@ -385,7 +389,11 @@ void problem_t<i_t, f_t>::populate_dimensions_info()
     }
   }
 
-  if (data_view_ptr->get_fleet_size() == 1) {
+  const auto total_tiers      = std::get<4>(data_view_ptr->get_vehicle_distance_tiers());
+  const bool has_max_distance = !data_view_ptr->get_vehicle_max_distances().empty();
+  has_non_additive_cost_      = total_tiers > 0;
+
+  if (data_view_ptr->get_fleet_size() == 1 && !has_non_additive_cost_ && !has_max_distance) {
     is_tsp = true;
     loop_over_dimensions(dimensions_info, [&](auto I) {
       if constexpr (I != (size_t)dim_t::COST) { is_tsp = false; }
@@ -394,7 +402,8 @@ void problem_t<i_t, f_t>::populate_dimensions_info()
   dimensions_info.is_tsp = is_tsp;
 
   if (!is_tsp) {
-    is_cvrp_ = !is_pdp() && (data_view_ptr->get_cost_matrices().size() == 1);
+    is_cvrp_ =
+      !has_non_additive_cost_ && !is_pdp() && (data_view_ptr->get_cost_matrices().size() == 1);
     if (is_cvrp_) {
       loop_over_dimensions(dimensions_info, [&](auto I) {
         if (I != (int)dim_t::COST && I != (int)dim_t::CAP) { is_cvrp_ = false; }
@@ -504,7 +513,7 @@ double problem_t<i_t, f_t>::distance_between(const NodeInfo<>& node_1,
   auto n_locations = data_view_ptr->get_num_locations();
   cuopt_assert(vehicle_id < (int)vehicle_types_h.size(), "vehicle id should be in range!");
   i_t vehicle_type = vehicle_types_h[vehicle_id];
-  cuopt_assert(travel_distance_matrices_h.count(vehicle_type), "vehicle type does not exist!");
+  if (!travel_distance_matrices_h.count(vehicle_type)) { return 0.; }
 
   if (node_1.is_depot() && skip_first_trip_h[vehicle_id]) {
     return 0.;
@@ -512,8 +521,8 @@ double problem_t<i_t, f_t>::distance_between(const NodeInfo<>& node_1,
     return 0.;
   }
 
-  return travel_distance_matrices_h.at(vehicle_type)[node_1.location() * n_locations +
-                                                      node_2.location()];
+  return travel_distance_matrices_h.at(
+    vehicle_type)[node_1.location() * n_locations + node_2.location()];
 }
 
 template <typename i_t, typename f_t>
@@ -845,7 +854,7 @@ bool problem_t<i_t, f_t>::is_pdp() const
 template <typename i_t, typename f_t>
 bool problem_t<i_t, f_t>::is_cvrp_intra() const
 {
-  return !is_pdp() && !dimensions_info.has_dimension(dim_t::TIME) &&
+  return !has_non_additive_cost_ && !is_pdp() && !dimensions_info.has_dimension(dim_t::TIME) &&
          !dimensions_info.has_dimension(dim_t::BREAK);
 }
 

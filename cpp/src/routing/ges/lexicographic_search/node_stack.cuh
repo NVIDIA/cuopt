@@ -30,6 +30,7 @@ DI static void copy_forward_data(dst_t& dst, const src_t& src)
 
   if constexpr (is_src_a_node && !is_dst_a_node) {
     dst.cost_forward             = src.cost_dim.cost_forward;
+    dst.distance_forward         = src.cost_dim.distance_forward;
     dst.transit_time_forward     = src.time_dim.transit_time_forward;
     dst.latest_arrival_forward   = src.time_dim.latest_arrival_forward;
     dst.unavoidable_wait_forward = src.time_dim.unavoidable_wait_forward;
@@ -43,6 +44,7 @@ DI static void copy_forward_data(dst_t& dst, const src_t& src)
     });
   } else if constexpr (is_dst_a_node && !is_src_a_node) {
     dst.cost_dim.cost_forward             = src.cost_forward;
+    dst.cost_dim.distance_forward         = src.distance_forward;
     dst.time_dim.transit_time_forward     = src.transit_time_forward;
     dst.time_dim.latest_arrival_forward   = src.latest_arrival_forward;
     dst.time_dim.unavoidable_wait_forward = src.unavoidable_wait_forward;
@@ -56,6 +58,7 @@ DI static void copy_forward_data(dst_t& dst, const src_t& src)
     });
   } else if constexpr (!is_src_a_node && !is_dst_a_node) {
     dst.cost_forward             = src.cost_forward;
+    dst.distance_forward         = src.distance_forward;
     dst.transit_time_forward     = src.transit_time_forward;
     dst.latest_arrival_forward   = src.latest_arrival_forward;
     dst.unavoidable_wait_forward = src.unavoidable_wait_forward;
@@ -67,6 +70,7 @@ DI static void copy_forward_data(dst_t& dst, const src_t& src)
     }
   } else {
     dst.cost_dim.cost_forward             = src.cost_dim.cost_forward;
+    dst.cost_dim.distance_forward         = src.cost_dim.distance_forward;
     dst.time_dim.transit_time_forward     = src.time_dim.transit_time_forward;
     dst.time_dim.latest_arrival_forward   = src.time_dim.latest_arrival_forward;
     dst.time_dim.unavoidable_wait_forward = src.time_dim.unavoidable_wait_forward;
@@ -120,6 +124,7 @@ struct node_stack_t {
   // this will be in shared memory for each thread
   struct __align__(32ul) item_t {
     double cost_forward;
+    double distance_forward;
     double transit_time_forward;
     double latest_arrival_forward;
     double unavoidable_wait_forward;
@@ -407,8 +412,16 @@ struct node_stack_t {
 
   DI f_t get_travel_distance_between(i_t intra_idx_1, i_t intra_idx_2) const
   {
-    return s_route.get_node(intra_idx_2).cost_dim.distance_forward -
-           s_route.get_node(intra_idx_1).cost_dim.distance_forward;
+    return get_travel_distance_between(s_route.get_node(intra_idx_1).node_info(),
+                                       s_route.get_node(intra_idx_2).node_info(),
+                                       s_route.vehicle_info());
+  }
+
+  static DI f_t get_travel_distance_between(NodeInfo<i_t> const& from,
+                                            NodeInfo<i_t> const& to,
+                                            VehicleInfo<f_t> const& vehicle_info)
+  {
+    return detail::get_travel_distance(from, to, vehicle_info);
   }
 
   DI f_t get_travel_distance_to_delivery(i_t intra_idx) const
@@ -516,9 +529,7 @@ struct node_stack_t {
           auto cost_from_delivery   = get_dim_from_delivery<I>(idx);
           auto travel_from_delivery = get_travel_distance_from_delivery(idx);
           get_dimension_of<I>(delivery_node)
-            .calculate_forward(get_dimension_of<I>(node),
-                               cost_from_delivery,
-                               travel_from_delivery);
+            .calculate_forward(get_dimension_of<I>(node), cost_from_delivery, travel_from_delivery);
         } else {
           auto dim_from_delivery = get_dim_from_delivery<I>(idx);
           get_dimension_of<I>(delivery_node)
@@ -775,8 +786,8 @@ struct node_stack_t {
             if constexpr (decltype(I)::value == (size_t)dim_t::COST) {
               auto cost_between   = get_dim_between<I>(i, i + 1);
               auto travel_between = get_travel_distance_between(i, i + 1);
-              get_dimension_of<I>(iter_node)
-                .calculate_forward(get_dimension_of<I>(next_node), cost_between, travel_between);
+              get_dimension_of<I>(iter_node).calculate_forward(
+                get_dimension_of<I>(next_node), cost_between, travel_between);
             } else {
               auto dim_between = get_dim_between<I>(i, i + 1);
               get_dimension_of<I>(iter_node).calculate_forward(get_dimension_of<I>(next_node),
@@ -856,9 +867,8 @@ struct node_stack_t {
                   auto cost_between   = get_dim_from_delivery<I>(i + 1);
                   auto travel_between = get_travel_distance_from_delivery(i + 1);
                   get_dimension_of<I>(beginning_of_hole)
-                    .calculate_forward(get_dimension_of<I>(next_node),
-                                       cost_between,
-                                       travel_between);
+                    .calculate_forward(
+                      get_dimension_of<I>(next_node), cost_between, travel_between);
                 } else {
                   auto dim_between = get_dim_from_delivery<I>(i + 1);
                   get_dimension_of<I>(beginning_of_hole)
@@ -875,9 +885,8 @@ struct node_stack_t {
                   auto cost_between   = get_dim_between<I>(i - size_of_hole, i + 1);
                   auto travel_between = get_travel_distance_between(i - size_of_hole, i + 1);
                   get_dimension_of<I>(beginning_of_hole)
-                    .calculate_forward(get_dimension_of<I>(next_node),
-                                       cost_between,
-                                       travel_between);
+                    .calculate_forward(
+                      get_dimension_of<I>(next_node), cost_between, travel_between);
                 } else {
                   auto dim_between = get_dim_between<I>(i - size_of_hole, i + 1);
                   get_dimension_of<I>(beginning_of_hole)
@@ -915,8 +924,8 @@ struct node_stack_t {
             if constexpr (decltype(I)::value == (size_t)dim_t::COST) {
               auto cost_between   = get_dim_between<I>(i, i + 1);
               auto travel_between = get_travel_distance_between(i, i + 1);
-              get_dimension_of<I>(iter_node)
-                .calculate_forward(get_dimension_of<I>(next_node), cost_between, travel_between);
+              get_dimension_of<I>(iter_node).calculate_forward(
+                get_dimension_of<I>(next_node), cost_between, travel_between);
             } else {
               auto dim_between = get_dim_between<I>(i, i + 1);
               get_dimension_of<I>(iter_node).calculate_forward(get_dimension_of<I>(next_node),

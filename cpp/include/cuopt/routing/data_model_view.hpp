@@ -56,17 +56,27 @@ class data_model_view_t {
                     i_t num_orders = -1);
 
   /**
+   * @brief Set a distance matrix used by distance constraints and tiered pricing.
+   *
+   *
+   * @param[in] matrix Device memory pointer to a floating point square matrix of
+   * size
+   * num_locations_. cuOpt does not own or copy this data.
+   * @param[in] vehicle_type Identifier
+   * of the vehicle.
+   */
+  void add_distance_matrix(f_t const* matrix, uint8_t vehicle_type = 0);
+
+  /**
    * @brief Set a cost matrix for all locations (depot included) at
-   * once. A cost matrix is defined a square matrix containing the
-   * costs, taken pairwise, between all locations. Entries are non-negative
-   * real numbers. Diagonal elements
-   * should be 0. Users should pre-compute costs between each pair of
-   * locations with their own technique before calling this function. Entries in
-   * this matrix could represent time, miles, meters or any metric that can be
-   * stored as a real number and satisfy the property above.
-   * The user can call add_cost_matrix multiple times. Setting the
-   * vehicle type will enable heterogenous fleet. It can model traveling
-   * costs for different vehicles (bicyces, bikes, trucks).
+   * once. A cost matrix
+   * is defined a square matrix containing the costs, taken pairwise, between all locations. Entries
+   * are non-negative real numbers. Diagonal elements should be 0. Users should pre-compute costs
+   * between each pair of locations with their own technique before calling this function. Entries
+   * in this matrix could represent time, miles, meters or any metric that can be stored as a real
+   * number and satisfy the property above. The user can call add_cost_matrix multiple times.
+   * Setting the vehicle type will enable heterogenous fleet. It can model traveling costs for
+   * different vehicles (bicyces, bikes, trucks).
    *
    *
    * @throws cuopt::logic_error when an error occurs.
@@ -74,8 +84,6 @@ class data_model_view_t {
    * matrix of size num_locations_ . cuOpt does not own or copy this data.
    * @param[in] vehicle_type Identifier of the vehicle.
    */
-  void add_distance_matrix(f_t const* matrix, uint8_t vehicle_type = 0);
-
   void add_cost_matrix(f_t const* matrix, uint8_t vehicle_type = 0);
 
   /**
@@ -411,11 +419,17 @@ class data_model_view_t {
   void set_min_vehicles(i_t min_vehicles);
 
   /**
-   * @brief Limits the primary matrix cost cumulated along a route.
-   * @param[in] vehicle_max_costs Upper bound for route cost.
+   * @brief Limits the distance matrix values accumulated along each route.
+   * @param[in]
+   * vehicle_max_distances Upper bound for each vehicle's route distance.
    */
   void set_vehicle_max_distances(f_t const* vehicle_max_distances);
 
+  /**
+   * @brief Limits the primary matrix cost cumulated along a route.
+   * @param[in]
+   * vehicle_max_costs Upper bound for route cost.
+   */
   void set_vehicle_max_costs(f_t const* vehicle_max_costs);
 
   /**
@@ -438,8 +452,6 @@ class data_model_view_t {
    * @brief Set distance-based tiered pricing for vehicles.
    * Each vehicle can have multiple tiers with different cost structures based on total route
    * distance. Tier costs are accumulated by distance band in ascending threshold order.
-   * Tiers with fixed_cost > 0 and costs_per_unit == 0 receive a minimal internal unit cost to
-   * prefer shorter routes when the fixed tier cost is otherwise identical.
    *
    * @param[in] thresholds Device memory pointer to distance thresholds for all tiers (flattened
    * array)
@@ -457,11 +469,15 @@ class data_model_view_t {
                                   i_t total_tiers);
 
   /**
-   * @brief Get cost matrix
-   * @return Matrix pointer
+   * @brief Get distance matrix
+   * @return Distance matrix pointer
    */
   f_t const* get_distance_matrix(uint8_t vehicle_type = 0) const noexcept;
 
+  /**
+   * @brief Get cost matrix
+   * @return Matrix pointer
+   */
   f_t const* get_cost_matrix(uint8_t vehicle_type = 0) const noexcept;
 
   /**
@@ -471,11 +487,16 @@ class data_model_view_t {
   f_t const* get_transit_time_matrix(uint8_t vehicle_type = 0) const noexcept;
 
   /**
-   * @brief Get all cost matrices as a map
-   * @return map of vehicle type to cost matrix
+   * @brief Get all distance matrices as a map
+   * @return map of vehicle type to distance
+   * matrix
    */
   std::unordered_map<uint8_t, f_t const*> get_distance_matrices() const noexcept;
 
+  /**
+   * @brief Get all cost matrices as a map
+   * @return map of vehicle type to cost matrix
+ */
   std::unordered_map<uint8_t, f_t const*> get_cost_matrices() const noexcept;
 
   /**
@@ -654,11 +675,15 @@ class data_model_view_t {
   i_t get_min_vehicles() const noexcept;
 
   /**
-   * @brief Return max cost allowed per vehicle
-   * @return max cost per route
+   * @brief Return max distance allowed per vehicle
+   * @return max distance per route
    */
   raft::device_span<f_t const> get_vehicle_max_distances() const noexcept;
 
+  /**
+   * @brief Return max cost allowed per vehicle
+   * @return max cost per route
+   */
   raft::device_span<f_t const> get_vehicle_max_costs() const noexcept;
 
   /**

@@ -7,8 +7,12 @@
 
 #include <routing/routing_test.cuh>
 
+#include <routing/ges/lexicographic_search/node_stack.cuh>
 #include <routing/ges_solver.cuh>
+#include <routing/problem/problem.cuh>
+#include <routing/solution/solution_handle.cuh>
 #include <routing/utilities/data_model.hpp>
+#include <utilities/copy_helpers.hpp>
 
 #include <thrust/iterator/constant_iterator.h>
 #include <thrust/sequence.h>
@@ -16,6 +20,115 @@
 namespace cuopt {
 namespace routing {
 namespace test {
+
+namespace {
+
+__global__ void copy_ges_distance_forward_kernel(detail::enabled_dimensions_t dimensions,
+                                                 double* copied_distances)
+{
+  using node_t       = detail::node_t<int, float, request_t::VRP>;
+  using node_stack_t = detail::node_stack_t<int, float, request_t::VRP>;
+
+  node_t source(dimensions);
+  node_t node_destination(dimensions);
+  node_t second_node_destination(dimensions);
+  typename node_stack_t::item_t item{};
+  typename node_stack_t::item_t second_item{};
+
+  source.request =
+    detail::request_info_t<int, request_t::VRP>(detail::NodeInfo<int>{0, 0, node_type_t::DEPOT});
+  source.cost_dim.distance_forward = 37.0;
+
+  item.intra_idx        = 0;
+  item.from_idx         = 0;
+  second_item.intra_idx = 0;
+  second_item.from_idx  = 0;
+
+  item                = source;
+  copied_distances[0] = item.distance_forward;
+  second_item         = item;
+  copied_distances[1] = second_item.distance_forward;
+  detail::copy_forward_data(node_destination, second_item);
+  copied_distances[2] = node_destination.cost_dim.distance_forward;
+  detail::copy_forward_data(second_node_destination, source);
+  copied_distances[3] = second_node_destination.cost_dim.distance_forward;
+}
+
+__global__ void get_ges_direct_distance_kernel(float const* matrices, double* distances)
+{
+  if (threadIdx.x == 0) {
+    mdarray_view_t<float> matrix_view;
+    matrix_view.buffer_ptr            = matrices;
+    matrix_view.extent[0]             = 1;
+    matrix_view.extent[1]             = 2;
+    matrix_view.extent[2]             = 4;
+    matrix_view.extent[3]             = 4;
+    matrix_view.cost_matrix_index     = 0;
+    matrix_view.distance_matrix_index = 1;
+
+    detail::VehicleInfo<float> vehicle_info;
+    vehicle_info.matrices     = matrix_view;
+    vehicle_info.max_distance = 10000.f;
+
+    const detail::NodeInfo<int> from{0, 0, node_type_t::DEPOT};
+    const detail::NodeInfo<int> via{1, 1, node_type_t::PICKUP};
+    const detail::NodeInfo<int> to{2, 2, node_type_t::PICKUP};
+    distances[0] = detail::node_stack_t<int, float, request_t::VRP>::get_travel_distance_between(
+      from, to, vehicle_info);
+    distances[1] = detail::get_travel_distance(from, to, vehicle_info);
+    distances[2] = detail::get_travel_distance(from, via, vehicle_info) +
+                   detail::get_travel_distance(via, to, vehicle_info);
+  }
+}
+
+TEST(ges_node_stack, copies_distance_forward_in_all_directions)
+{
+  raft::handle_t handle;
+  auto stream = handle.get_stream();
+  detail::enabled_dimensions_t dimensions;
+  dimensions.enable_dimension(detail::dim_t::COST);
+  rmm::device_uvector<double> copied_distances(4, stream);
+
+  copy_ges_distance_forward_kernel<<<1, 1, 0, stream.get()>>>(dimensions, copied_distances.data());
+  RAFT_CHECK_CUDA(stream.get());
+  auto host_distances = cuopt::host_copy(copied_distances, stream);
+
+  EXPECT_EQ(host_distances, (std::vector<double>{37.0, 37.0, 37.0, 37.0}));
+}
+
+TEST(ges_node_stack, uses_direct_arc_from_separate_distance_matrix)
+{
+  constexpr int n_locations = 4;
+  constexpr int n_threads   = 32;
+
+  std::vector<float> cost_matrix(n_locations * n_locations, 1.f);
+  std::vector<float> distance_matrix(n_locations * n_locations);
+  for (int from = 0; from < n_locations; ++from) {
+    for (int to = 0; to < n_locations; ++to) {
+      const auto index       = from * n_locations + to;
+      cost_matrix[index]     = from == to ? 0.f : 1.f;
+      distance_matrix[index] = from == to ? 0.f : 10.f * from + to + 1.f;
+    }
+  }
+
+  std::vector<float> matrices = cost_matrix;
+  matrices.insert(matrices.end(), distance_matrix.begin(), distance_matrix.end());
+
+  raft::handle_t handle;
+  auto stream     = handle.get_stream();
+  auto d_matrices = cuopt::device_copy(matrices, stream);
+  rmm::device_uvector<double> distances(3, stream);
+
+  get_ges_direct_distance_kernel<<<1, n_threads, 0, stream.get()>>>(d_matrices.data(),
+                                                                    distances.data());
+  RAFT_CHECK_CUDA(stream.get());
+  auto host_distances = cuopt::host_copy(distances, stream);
+
+  EXPECT_DOUBLE_EQ(host_distances[0], host_distances[1]);
+  EXPECT_NE(host_distances[1], host_distances[2]);
+}
+
+}  // namespace
 
 template <typename i_t, typename f_t, request_t REQUEST>
 class routing_ges_test_t : public ::testing::TestWithParam<std::tuple<bool>>,

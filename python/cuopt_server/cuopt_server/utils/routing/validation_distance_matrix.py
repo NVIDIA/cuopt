@@ -16,7 +16,10 @@ def _has_distance_tiers(vehicle_distance_tiers):
 
 
 def validate_distance_matrix(
-    distance_matrix, vehicle_distance_tiers=None, require_distance_tiers=True
+    distance_matrix,
+    vehicle_distance_tiers=None,
+    require_distance_tiers=True,
+    comparison_matrix=None,
 ):
     if distance_matrix is None or len(distance_matrix) == 0:
         return (False, "Distance matrix cannot be null or empty")
@@ -30,7 +33,15 @@ def validate_distance_matrix(
         )
 
     shape = None
-    for _, matrix in distance_matrix.items():
+    for vehicle_type, matrix in distance_matrix.items():
+        if (
+            not isinstance(vehicle_type, (int, np.integer))
+            or not 0 <= vehicle_type <= 255
+        ):
+            return (
+                False,
+                "Matrix vehicle types must be integers within [0, 255]",
+            )
         if matrix is None or len(matrix) == 0:
             return (False, "Distance matrix cannot be null or empty")
 
@@ -50,6 +61,11 @@ def validate_distance_matrix(
 
         if not np.isfinite(np_distance_matrix).all():
             return (False, "All values in distance matrix must be finite")
+        if np_distance_matrix.max() > np.finfo(np.float32).max:
+            return (
+                False,
+                "All values in distance matrix must be representable as float32",
+            )
 
         if shape is None:
             shape = np_distance_matrix.shape
@@ -57,6 +73,16 @@ def validate_distance_matrix(
             return (
                 False,
                 "Distance matrices for all vehicle types must be the same shape",
+            )
+
+        if comparison_matrix is not None and (
+            vehicle_type not in comparison_matrix
+            or np_distance_matrix.shape
+            != comparison_matrix[vehicle_type].shape
+        ):
+            return (
+                False,
+                "Distance matrix shape must match the cost matrix shape",
             )
 
     return (True, "Valid Distance Matrix")

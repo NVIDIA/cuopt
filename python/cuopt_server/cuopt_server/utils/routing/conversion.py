@@ -12,6 +12,7 @@ from cuopt import distance_engine, routing
 
 from cuopt_server.utils.data_definition import (
     CostMatrices,
+    DistanceMatrices,
     FleetData,
     InitialSolution,
     SolverSettingsConfig,
@@ -60,6 +61,7 @@ def populate_optimization_data(
     initial_solution: Optional[List[InitialSolution]] = None,
     solver_config: Optional[SolverSettingsConfig] = None,
     warnings=[],
+    distance_matrix_data: Optional[DistanceMatrices] = None,
 ):
     optimization_data = HostOptimizationDataModel()
 
@@ -99,6 +101,21 @@ def populate_optimization_data(
         check_valid(optimization_data.set_cost_matrix(cost_matrix_data.data))
 
     if (
+        distance_matrix_data is not None
+        and distance_matrix_data.data is not None
+    ):
+        distance_tiers = (
+            fleet_data.vehicle_distance_tiers
+            if fleet_data is not None
+            else None
+        )
+        check_valid(
+            optimization_data.set_distance_matrix(
+                distance_matrix_data.data, distance_tiers
+            )
+        )
+
+    if (
         travel_time_waypoint_graph_data
         and travel_time_waypoint_graph_data.waypoint_graph
     ):
@@ -134,6 +151,8 @@ def populate_optimization_data(
                 fleet_data.vehicle_max_times,
                 fleet_data.vehicle_fixed_costs,
                 vehicle_distance_breaks=fleet_data.vehicle_distance_breaks,
+                vehicle_distance_tiers=fleet_data.vehicle_distance_tiers,
+                vehicle_max_distances=fleet_data.vehicle_max_distances,
             )
         )
 
@@ -334,6 +353,11 @@ def create_data_model(
             optimization_data.fleet_data["vehicle_max_times"]
         )
 
+    if optimization_data.fleet_data["vehicle_max_distances"] is not None:
+        data_model.set_vehicle_max_distances(
+            optimization_data.fleet_data["vehicle_max_distances"]
+        )
+
     if optimization_data.fleet_data["vehicle_fixed_costs"] is not None:
         data_model.set_vehicle_fixed_costs(
             optimization_data.fleet_data["vehicle_fixed_costs"]
@@ -360,10 +384,10 @@ def create_data_model(
                 costs_per_unit_list.append(tier.get("cost_per_unit", 0.0))
 
         data_model.set_vehicle_distance_tiers(
-            cudf.Series(vehicle_ids_list, dtype=np.int32),
-            cudf.Series(thresholds_list, dtype=np.float32),
-            cudf.Series(fixed_costs_list, dtype=np.float32),
-            cudf.Series(costs_per_unit_list, dtype=np.float32),
+            pd.Series(vehicle_ids_list, dtype=np.int32),
+            pd.Series(thresholds_list, dtype=np.float32),
+            pd.Series(fixed_costs_list, dtype=np.float32),
+            pd.Series(costs_per_unit_list, dtype=np.float32),
         )
 
     if optimization_data.fleet_data["min_vehicles"] is not None:
@@ -534,6 +558,21 @@ def prep_optimization_data(optimization_data):
             ].compute_cost_matrix(optimization_data.locations)
     else:
         raise ValueError("No cost matrix or way point graph provided")
+
+    for (
+        vehicle_type,
+        distance_matrix,
+    ) in optimization_data.distance_matrix.items():
+        if (
+            vehicle_type not in cost_matrix
+            or distance_matrix.shape != cost_matrix[vehicle_type].shape
+        ):
+            check_valid(
+                (
+                    False,
+                    "Distance matrix shape must match the cost matrix shape",
+                )
+            )
 
     if len(optimization_data.travel_time_matrix) != 0:
         travel_time_matrix = optimization_data.travel_time_matrix

@@ -9,8 +9,8 @@ different cost structures based on the total route distance.
 
 Scenario:
 - 2 vehicles with different pricing tiers
-- Vehicle 0: < 100 km = 50 fixed, 100-200 km = 0.1/km, > 200 km = 0.5/km
-- Vehicle 1: < 150 km = 75 fixed, > 150 km = 0.3/km
+- Vehicle 0: <= 100 km = 50 fixed, 100-200 km = 0.1/km, > 200 km = 0.5/km
+- Vehicle 1: <= 150 km = 75 fixed, > 150 km = 0.3/km
 """
 
 import cudf
@@ -21,7 +21,7 @@ from cuopt import routing
 n_locations = 6  # 1 depot + 5 customers
 n_vehicles = 2
 
-data_model = routing.DataModel(n_locations, n_vehicles)
+data_model = routing.DataModel(n_locations, n_vehicles, n_locations - 1)
 
 # Define cost matrix (distances in km)
 cost_matrix = np.array(
@@ -38,6 +38,7 @@ cost_matrix = np.array(
 )
 
 data_model.add_cost_matrix(cudf.DataFrame(cost_matrix))
+data_model.add_distance_matrix(cudf.DataFrame(cost_matrix))
 
 # Set vehicle locations (both start at depot - location 0)
 vehicle_starts = cudf.Series([0, 0], dtype=np.int32)
@@ -52,8 +53,8 @@ data_model.set_order_locations(order_locations)
 # SET DISTANCE TIERS - This is the new feature!
 # ============================================================================
 
-# Vehicle 0 tiers: < 100km = 50 fixed, 100-200km = 0.1/km, > 200km = 0.5/km
-# Vehicle 1 tiers: < 150km = 75 fixed, > 150km = 0.3/km
+# Vehicle 0 tiers: <= 100km = 50 fixed, 100-200km = 0.1/km, > 200km = 0.5/km
+# Vehicle 1 tiers: <= 150km = 75 fixed, > 150km = 0.3/km
 
 vehicle_ids = cudf.Series(
     [
@@ -70,9 +71,9 @@ thresholds = cudf.Series(
     [
         100.0,
         200.0,
-        1e9,  # Vehicle 0 thresholds
+        np.finfo(np.float32).max,  # Vehicle 0 open-ended tier
         150.0,
-        1e9,  # Vehicle 1 thresholds
+        np.finfo(np.float32).max,  # Vehicle 1 open-ended tier
     ],
     dtype=np.float32,
 )
@@ -110,7 +111,7 @@ data_model.set_vehicle_distance_tiers(
 solver_settings = routing.SolverSettings()
 solver_settings.set_time_limit(5)  # 5 seconds
 
-routing_solution = routing.Solver(data_model, solver_settings).solve()
+routing_solution = routing.Solve(data_model, solver_settings)
 
 # ============================================================================
 # DISPLAY RESULTS
@@ -129,7 +130,7 @@ if routing_solution.get_status() == 0:
         if len(route) > 0:
             # Get route distance
             route_distance = 0.0
-            locations = route["route"].to_arrow().to_pylist()
+            locations = route["location"].to_arrow().to_pylist()
 
             for i in range(len(locations) - 1):
                 from_loc = locations[i]
@@ -142,28 +143,29 @@ if routing_solution.get_status() == 0:
 
             # Calculate cost based on tiers
             if vehicle_id == 0:
-                if route_distance < 100:
-                    cost = 50.0
-                    tier_info = "< 100 km: Fixed cost 50"
-                elif route_distance < 200:
-                    cost = route_distance * 0.1
-                    tier_info = "100-200 km: 0.1/km"
+                if route_distance <= 100:
+                    tier_cost = 50.0
+                    tier_info = "up to 100 km: fixed cost 50"
+                elif route_distance <= 200:
+                    tier_cost = 50.0 + (route_distance - 100.0) * 0.1
+                    tier_info = "100-200 km band: 0.1/km"
                 else:
-                    cost = route_distance * 0.5
-                    tier_info = "> 200 km: 0.5/km"
+                    tier_cost = 60.0 + (route_distance - 200.0) * 0.5
+                    tier_info = "> 200 km band: 0.5/km"
             else:  # vehicle_id == 1
-                if route_distance < 150:
-                    cost = 75.0
-                    tier_info = "< 150 km: Fixed cost 75"
+                if route_distance <= 150:
+                    tier_cost = 75.0
+                    tier_info = "up to 150 km: fixed cost 75"
                 else:
-                    cost = route_distance * 0.3
-                    tier_info = "> 150 km: 0.3/km"
+                    tier_cost = 75.0 + (route_distance - 150.0) * 0.3
+                    tier_info = "> 150 km band: 0.3/km"
 
             print(f"  Applied Tier: {tier_info}")
-            print(f"  Route Cost: {cost:.2f}")
+            print(f"  Tiered Distance Cost: {tier_cost:.2f}")
+            print(f"  Route Cost: {route_distance + tier_cost:.2f}")
 
     print("\n" + "-" * 80)
-    print(f"Total Objective Cost: {routing_solution.final_cost}")
+    print(f"Total Objective Cost: {routing_solution.get_total_objective()}")
 
 else:
     print(f"✗ No solution found. Status: {routing_solution.get_status()}")
@@ -196,12 +198,12 @@ def create_distance_tiers_simple(tiers_by_vehicle):
     ...     [
     ...         {"threshold": 100, "fixed_cost": 50},
     ...         {"threshold": 200, "cost_per_unit": 0.1},
-    ...         {"threshold": 1e9, "cost_per_unit": 0.5}
+    ...         {"threshold": np.finfo(np.float32).max, "cost_per_unit": 0.5}
     ...     ],
     ...     # Vehicle 1
     ...     [
     ...         {"threshold": 150, "fixed_cost": 75},
-    ...         {"threshold": 1e9, "cost_per_unit": 0.3}
+    ...         {"threshold": np.finfo(np.float32).max, "cost_per_unit": 0.3}
     ...     ]
     ... ]
     >>> vehicle_ids, thresholds, fixed_costs, costs_per_unit = create_distance_tiers_simple(tiers)
@@ -238,12 +240,12 @@ if __name__ == "__main__":
         [
             {"threshold": 100.0, "fixed_cost": 50.0},
             {"threshold": 200.0, "cost_per_unit": 0.1},
-            {"threshold": 1e9, "cost_per_unit": 0.5},
+            {"threshold": np.finfo(np.float32).max, "cost_per_unit": 0.5},
         ],
         # Vehicle 1 tiers
         [
             {"threshold": 150.0, "fixed_cost": 75.0},
-            {"threshold": 1e9, "cost_per_unit": 0.3},
+            {"threshold": np.finfo(np.float32).max, "cost_per_unit": 0.3},
         ],
     ]
 

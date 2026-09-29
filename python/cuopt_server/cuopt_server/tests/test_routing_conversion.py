@@ -10,6 +10,7 @@ from cuopt_server.utils.routing import conversion
 from cuopt_server.utils.utils import build_routing_datamodel_from_json
 from cuopt_server.utils.routing.data_definition import (
     CostMatrices,
+    DistanceMatrices,
     FleetData,
     SolverSettingsConfig,
     TaskData,
@@ -97,6 +98,54 @@ def test_host_conversion_keeps_dense_request_off_gpu(monkeypatch):
     assert summary["cost_matrices"] == 1
 
 
+def test_host_conversion_carries_distance_constraints_to_data_model():
+    optimization_data = conversion.populate_optimization_data(
+        cost_matrix_data=CostMatrices(data={0: [[0, 1], [1, 0]]}),
+        distance_matrix_data=DistanceMatrices(data={0: [[0, 5], [5, 0]]}),
+        fleet_data=FleetData(
+            vehicle_locations=[[0, 0]],
+            vehicle_distance_tiers=[
+                [
+                    {
+                        "threshold": None,
+                        "fixed_cost": 7,
+                        "cost_per_unit": 3,
+                    }
+                ]
+            ],
+            vehicle_max_distances=[12],
+        ),
+        task_data=TaskData(task_locations=[1]),
+        solver_config=SolverSettingsConfig(time_limit=1),
+    )
+
+    prepared, cost_matrix, travel_time_matrix, _ = (
+        conversion.prep_optimization_data(optimization_data)
+    )
+    _, data_model = conversion.create_data_model(
+        prepared,
+        cost_matrix=cost_matrix,
+        travel_time_matrix=travel_time_matrix,
+    )
+
+    stored_distance, vehicle_type = data_model._recorded(
+        "add_distance_matrix"
+    )[0]
+    np.testing.assert_array_equal(stored_distance, [[0, 5], [5, 0]])
+    assert vehicle_type == 0
+
+    (max_distances,) = data_model._recorded("set_vehicle_max_distances")[0]
+    np.testing.assert_array_equal(max_distances, [12])
+
+    vehicle_ids, thresholds, fixed_costs, costs_per_unit = (
+        data_model._recorded("set_vehicle_distance_tiers")[0]
+    )
+    np.testing.assert_array_equal(vehicle_ids, [0])
+    np.testing.assert_array_equal(thresholds, [np.finfo(np.float32).max])
+    np.testing.assert_array_equal(fixed_costs, [7])
+    np.testing.assert_array_equal(costs_per_unit, [3])
+
+
 def test_build_routing_datamodel_from_json_accepts_dict():
     data_model, solver_settings = build_routing_datamodel_from_json(
         {
@@ -122,6 +171,7 @@ def test_host_optimization_model_updates_are_unimplemented():
     model = HostOptimizationDataModel()
     for name in (
         "update_cost_matrix",
+        "update_distance_matrix",
         "update_travel_time_matrix",
         "update_fleet_data",
         "update_task_data",

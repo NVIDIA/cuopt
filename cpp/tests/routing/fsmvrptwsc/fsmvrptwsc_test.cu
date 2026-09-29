@@ -17,7 +17,6 @@
 #include <gtest/gtest.h>
 
 #include <fstream>
-#include <iostream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -92,15 +91,12 @@ TEST_P(fsmvrptwsc_small_test_t, solves_small_step_cost_instance)
 {
   auto const param = GetParam();
   auto instance    = load_small_instance(param.small_file, param.instance_name);
-  std::cerr << "FSMVRPTWSC " << param.instance_name << ": parsed\n";
 
   raft::handle_t handle;
   auto stream = handle.get_stream();
-  std::cerr << "FSMVRPTWSC " << param.instance_name << ": handle\n";
 
   auto zero_cost_matrix = std::vector<float>(instance.distance_matrix.size(), 0.0f);
 
-  std::cerr << "FSMVRPTWSC " << param.instance_name << ": copy begin\n";
   auto d_cost_matrix         = cuopt::device_copy(zero_cost_matrix, stream);
   auto d_distance_matrix     = cuopt::device_copy(instance.distance_matrix, stream);
   auto d_transit_time_matrix = cuopt::device_copy(instance.transit_time_matrix, stream);
@@ -118,47 +114,33 @@ TEST_P(fsmvrptwsc_small_test_t, solves_small_step_cost_instance)
   auto d_tier_costs_per_unit = cuopt::device_copy(instance.tier_costs_per_unit, stream);
   auto d_tier_offsets        = cuopt::device_copy(instance.tier_offsets, stream);
   handle.sync_stream();
-  std::cerr << "FSMVRPTWSC " << param.instance_name << ": copy done\n";
 
   cuopt::routing::data_model_view_t<int, float> data_model(
     &handle, instance.n_clients + 1, instance.n_vehicles, instance.n_clients);
-  std::cerr << "FSMVRPTWSC " << param.instance_name << ": data model\n";
   for (int type = 0; type < instance.n_vehicle_types; ++type) {
     data_model.add_cost_matrix(d_cost_matrix.data(), static_cast<uint8_t>(type));
     data_model.add_distance_matrix(d_distance_matrix.data(), static_cast<uint8_t>(type));
     data_model.add_transit_time_matrix(d_transit_time_matrix.data(), static_cast<uint8_t>(type));
   }
-  std::cerr << "FSMVRPTWSC " << param.instance_name << ": cost matrix\n";
-  std::cerr << "FSMVRPTWSC " << param.instance_name << ": distance matrix\n";
-  std::cerr << "FSMVRPTWSC " << param.instance_name << ": time matrix\n";
   data_model.set_order_locations(d_order_locations.data());
-  std::cerr << "FSMVRPTWSC " << param.instance_name << ": order locations\n";
   data_model.set_order_time_windows(d_earliest.data(), d_latest.data(), false);
-  std::cerr << "FSMVRPTWSC " << param.instance_name << ": order tw\n";
   data_model.set_order_service_times(d_service_times.data(), -1, false);
-  std::cerr << "FSMVRPTWSC " << param.instance_name << ": service\n";
   data_model.set_vehicle_time_windows(d_vehicle_earliest.data(), d_vehicle_latest.data(), false);
-  std::cerr << "FSMVRPTWSC " << param.instance_name << ": vehicle tw\n";
   data_model.set_vehicle_types(d_vehicle_types.data(), false);
-  std::cerr << "FSMVRPTWSC " << param.instance_name << ": vehicle types\n";
   data_model.add_capacity_dimension("demand", d_demands.data(), d_capacities.data(), false);
-  std::cerr << "FSMVRPTWSC " << param.instance_name << ": capacity\n";
   data_model.set_vehicle_distance_tiers(d_tier_thresholds.data(),
                                         d_tier_fixed_costs.data(),
                                         d_tier_costs_per_unit.data(),
                                         d_tier_offsets.data(),
                                         static_cast<int>(instance.tier_thresholds.size()));
-  std::cerr << "FSMVRPTWSC " << param.instance_name << ": distance tiers\n";
 
   cuopt::routing::solver_settings_t<int, float> settings;
   // Use longer time limit for larger real instances.
   auto time_limit = (instance.n_clients > 50) ? 300.0f : 5.0f;
   settings.set_time_limit(time_limit);
 
-  std::cerr << "FSMVRPTWSC " << param.instance_name << ": solve begin\n";
   auto routing_solution = cuopt::routing::solve(data_model, settings);
   handle.sync_stream();
-  std::cerr << "FSMVRPTWSC " << param.instance_name << ": solve done\n";
 
   ASSERT_EQ(routing_solution.get_status(), cuopt::routing::solution_status_t::SUCCESS);
   auto host_route = cuopt::routing::host_assignment_t<int>(routing_solution);
@@ -178,5 +160,3 @@ INSTANTIATE_TEST_SUITE_P(
 }  // namespace test
 }  // namespace routing
 }  // namespace cuopt
-
-CUOPT_TEST_PROGRAM_MAIN()

@@ -14,6 +14,7 @@ from pydantic import ValidationError
 import cuopt_server.utils.settings as settings
 from cuopt_server.utils.data_definition import (
     CostMatrices,
+    DistanceMatrices,
     FleetData,
     InitialSolution,
     LPData,
@@ -124,6 +125,7 @@ def solve_optimized_routes_sync(
     validation_only: Optional[bool] = False,
     warnings=[],
     reqId="",
+    distance_matrix_data: Optional[DistanceMatrices] = None,
 ):
     from cuopt_server.utils.deprecated.routing.solver import (
         solve as routing_solve,
@@ -132,14 +134,15 @@ def solve_optimized_routes_sync(
     begin_time = time.time()
 
     optimization_data = populate_optimization_data(
-        cost_waypoint_graph_data,
-        travel_time_waypoint_graph_data,
-        cost_matrix_data,
-        travel_time_matrix_data,
-        fleet_data,
-        task_data,
-        initial_solution,
-        solver_config,
+        cost_waypoint_graph_data=cost_waypoint_graph_data,
+        travel_time_waypoint_graph_data=travel_time_waypoint_graph_data,
+        cost_matrix_data=cost_matrix_data,
+        travel_time_matrix_data=travel_time_matrix_data,
+        fleet_data=fleet_data,
+        task_data=task_data,
+        initial_solution=initial_solution,
+        solver_config=solver_config,
+        distance_matrix_data=distance_matrix_data,
     )
 
     etl_end_time = time.time()
@@ -154,6 +157,11 @@ def solve_optimized_routes_sync(
         )
         warnings.extend(addl_warnings)
     else:
+        from cuopt_server.utils.routing.conversion import (
+            prep_optimization_data,
+        )
+
+        prep_optimization_data(optimization_data)
         res = {
             "status": 0,
             "msg": "Input is Valid",

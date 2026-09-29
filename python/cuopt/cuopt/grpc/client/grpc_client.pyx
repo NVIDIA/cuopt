@@ -773,6 +773,7 @@ class RoutingSolveError(RuntimeError):
 # name in cuopt.routing._deferred._SETTERS so a new setter cannot be missed.
 HANDLED_SETTERS = frozenset({
     "add_cost_matrix",
+    "add_distance_matrix",
     "add_transit_time_matrix",
     "set_order_time_windows",
     "set_vehicle_time_windows",
@@ -795,8 +796,10 @@ HANDLED_SETTERS = frozenset({
     "set_drop_return_trips",
     "set_skip_first_trips",
     "set_vehicle_max_costs",
+    "set_vehicle_max_distances",
     "set_vehicle_max_times",
     "set_vehicle_fixed_costs",
+    "set_vehicle_distance_tiers",
     "set_break_locations",
 })
 
@@ -915,7 +918,10 @@ cdef _f64_to_np(const vector[double]& v):
 cdef void _add_matrix(vector[cpu_cost_matrix_t]& dst, args) except *:
     # _fill_f32 already casts to float32 and C-order ravels (row-major).
     cdef cpu_cost_matrix_t cm
-    cm.vehicle_type = <uint8_t>(int(args[1]) if len(args) > 1 else 0)
+    cdef long vehicle_type = int(args[1]) if len(args) > 1 else 0
+    if vehicle_type < 0 or vehicle_type > 255:
+        raise ValueError("vehicle_type must be within [0, 255]")
+    cm.vehicle_type = <uint8_t>vehicle_type
     _fill_f32(cm.matrix, args[0])
     dst.push_back(cm)
 
@@ -936,6 +942,8 @@ cdef void _populate(cpu_routing_problem_t& p, data_model) except *:
     for name, args, _ in data_model._calls:
         if name == "add_cost_matrix":
             _add_matrix(p.cost_matrices, args)
+        elif name == "add_distance_matrix":
+            _add_matrix(p.distance_matrices, args)
         elif name == "add_transit_time_matrix":
             _add_matrix(p.transit_time_matrices, args)
         elif name == "set_order_time_windows":
@@ -1024,10 +1032,33 @@ cdef void _populate(cpu_routing_problem_t& p, data_model) except *:
             _fill_u8(p.skip_first_trips, args[0])
         elif name == "set_vehicle_max_costs":
             _fill_f32(p.vehicle_max_costs, args[0])
+        elif name == "set_vehicle_max_distances":
+            _fill_f32(p.vehicle_max_distances, args[0])
         elif name == "set_vehicle_max_times":
             _fill_f32(p.vehicle_max_times, args[0])
         elif name == "set_vehicle_fixed_costs":
             _fill_f32(p.vehicle_fixed_costs, args[0])
+        elif name == "set_vehicle_distance_tiers":
+            tier_vehicle_ids = np.asarray(_to_host(args[0]))
+            tier_thresholds = np.asarray(_to_host(args[1]))
+            tier_order = np.lexsort((tier_thresholds, tier_vehicle_ids))
+            tier_vehicle_ids = tier_vehicle_ids[tier_order]
+            _fill_f32(p.distance_tier_thresholds, tier_thresholds[tier_order])
+            _fill_f32(
+                p.distance_tier_fixed_costs,
+                np.asarray(_to_host(args[2]))[tier_order],
+            )
+            _fill_f32(
+                p.distance_tier_costs_per_unit,
+                np.asarray(_to_host(args[3]))[tier_order],
+            )
+            p.distance_tier_offsets.clear()
+            p.distance_tier_offsets.push_back(0)
+            for vid in range(int(fleet)):
+                p.distance_tier_offsets.push_back(
+                    p.distance_tier_offsets.back()
+                    + int(np.count_nonzero(tier_vehicle_ids == vid))
+                )
         elif name == "set_break_locations":
             _fill_i32(p.break_locations, args[0])
         else:
@@ -1052,6 +1083,7 @@ def problem_summary(data_model):
         "min_vehicles": int(p.min_vehicles),
         "cost_matrices": p.cost_matrices.size(),
         "transit_time_matrices": p.transit_time_matrices.size(),
+        "distance_matrices": p.distance_matrices.size(),
         "vehicle_start_locations": p.vehicle_start_locations.size(),
         "vehicle_return_locations": p.vehicle_return_locations.size(),
         "vehicle_tw_earliest": p.vehicle_tw_earliest.size(),
@@ -1060,6 +1092,8 @@ def problem_summary(data_model):
         "drop_return_trips": p.drop_return_trips.size(),
         "skip_first_trips": p.skip_first_trips.size(),
         "vehicle_max_costs": p.vehicle_max_costs.size(),
+        "vehicle_max_distances": p.vehicle_max_distances.size(),
+        "distance_tiers": p.distance_tier_thresholds.size(),
         "vehicle_max_times": p.vehicle_max_times.size(),
         "vehicle_fixed_costs": p.vehicle_fixed_costs.size(),
         "order_locations": p.order_locations.size(),

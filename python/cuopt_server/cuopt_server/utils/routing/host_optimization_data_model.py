@@ -13,11 +13,15 @@ import pandas as pd
 
 from cuopt_server.utils.routing.optimization_data_model import (
     OptimizationDataModel,
+    get_distance_tiers_as_dicts,
     get_none_for_empty_list,
     get_objectives_as_lists,
 )
 from cuopt_server.utils.routing.validation_cost_matrix import (
     validate_cost_matrix,
+)
+from cuopt_server.utils.routing.validation_distance_matrix import (
+    validate_distance_matrix,
 )
 from cuopt_server.utils.routing.validation_fleet_data import (
     validate_fleet_data,
@@ -39,6 +43,11 @@ class HostOptimizationDataModel(OptimizationDataModel):
     def update_cost_matrix(self, *args, **kwargs):
         raise NotImplementedError(
             "HostOptimizationDataModel.update_cost_matrix is unimplemented"
+        )
+
+    def update_distance_matrix(self, *args, **kwargs):
+        raise NotImplementedError(
+            "HostOptimizationDataModel.update_distance_matrix is unimplemented"
         )
 
     def update_travel_time_matrix(self, *args, **kwargs):
@@ -95,6 +104,21 @@ class HostOptimizationDataModel(OptimizationDataModel):
 
         return is_valid
 
+    def set_distance_matrix(self, distance_matrix, vehicle_distance_tiers):
+        is_valid = validate_distance_matrix(
+            distance_matrix,
+            vehicle_distance_tiers=vehicle_distance_tiers,
+            require_distance_tiers=False,
+            comparison_matrix=self.cost_matrix or None,
+        )
+        if is_valid[0]:
+            self.distance_matrix = {
+                v_type: pd.DataFrame(np.array(matrix, dtype=np.float32))
+                for v_type, matrix in distance_matrix.items()
+            }
+
+        return is_valid
+
     def set_fleet_data(
         self,
         vehicle_ids,
@@ -114,6 +138,8 @@ class HostOptimizationDataModel(OptimizationDataModel):
         vehicle_max_times,
         vehicle_fixed_costs,
         vehicle_distance_breaks=None,
+        vehicle_distance_tiers=None,
+        vehicle_max_distances=None,
     ):
         if not self.is_route_detail_set:
             return (
@@ -125,6 +151,9 @@ class HostOptimizationDataModel(OptimizationDataModel):
         vehicle_types_dict["Travel Time Matrix"] = list(
             self.travel_time_matrix.keys()
         )
+        vehicle_types_dict["Distance Matrix"] = list(
+            self.distance_matrix.keys()
+        )
         vehicle_types_dict["Waypoint Graph"] = list(self.waypoint_graph.keys())
         vehicle_types_dict["Travel Time Waypoint Graph"] = list(
             self.travel_time_waypoint_graph.keys()
@@ -135,6 +164,10 @@ class HostOptimizationDataModel(OptimizationDataModel):
         vehicle_max_costs = get_none_for_empty_list(vehicle_max_costs)
         vehicle_max_times = get_none_for_empty_list(vehicle_max_times)
         vehicle_fixed_costs = get_none_for_empty_list(vehicle_fixed_costs)
+        vehicle_distance_tiers = get_none_for_empty_list(
+            vehicle_distance_tiers
+        )
+        vehicle_max_distances = get_none_for_empty_list(vehicle_max_distances)
         vehicle_time_windows = get_none_for_empty_list(vehicle_time_windows)
         vehicle_break_time_windows = get_none_for_empty_list(
             vehicle_break_time_windows
@@ -174,6 +207,9 @@ class HostOptimizationDataModel(OptimizationDataModel):
             updating=False,
             comparison_locations=None,
             vehicle_distance_breaks=vehicle_distance_breaks,
+            vehicle_distance_tiers=vehicle_distance_tiers,
+            vehicle_max_distances=vehicle_max_distances,
+            is_distance_matrix_set=len(self.distance_matrix) != 0,
         )
 
         if is_valid[0]:
@@ -204,6 +240,14 @@ class HostOptimizationDataModel(OptimizationDataModel):
             if vehicle_fixed_costs is not None:
                 self.fleet_data["vehicle_fixed_costs"] = pd.Series(
                     vehicle_fixed_costs, dtype=np.float32
+                )
+            if vehicle_distance_tiers is not None:
+                self.fleet_data["vehicle_distance_tiers"] = (
+                    get_distance_tiers_as_dicts(vehicle_distance_tiers)
+                )
+            if vehicle_max_distances is not None:
+                self.fleet_data["vehicle_max_distances"] = pd.Series(
+                    vehicle_max_distances, dtype=np.float32
                 )
             if vehicle_time_windows:
                 self.fleet_data["vehicle_time_windows"] = pd.DataFrame(

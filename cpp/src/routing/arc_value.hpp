@@ -10,6 +10,7 @@
 #include <cuopt/error.hpp>
 #include <routing/dimensions.cuh>
 #include <routing/structures.hpp>
+#include <routing/vehicle_info.hpp>
 
 #include <rmm/exec_policy.hpp>
 
@@ -63,6 +64,7 @@ static constexpr double get_travel_distance(const NodeInfo<i_t>& l1,
                                             const NodeInfo<i_t>& l2,
                                             const VehicleInfo<f_t, is_device>& vehicle_info)
 {
+  if (!vehicle_info.uses_travel_distance()) { return 0.; }
   if (vehicle_info.skip_first_trip && l1.node_type() == node_type_t::DEPOT) { return 0.f; }
   if (vehicle_info.drop_return_trip && l2.node_type() == node_type_t::DEPOT) { return 0.f; }
   auto matrix = vehicle_info.matrices.get_distance_matrix(vehicle_info.type);

@@ -8,6 +8,9 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/vector_helpers.cuh>
 
+#include <algorithm>
+#include <cmath>
+
 namespace cuopt {
 namespace routing {
 namespace detail {
@@ -26,9 +29,16 @@ void populate_matrices(data_model_view_t<i_t, f_t> const& data_model, d_mdarray_
 
   // Check for consistency of cost matrices
   const auto& cost_matrices         = data_model.get_cost_matrices();
+  const auto& distance_matrices     = data_model.get_distance_matrices();
   const auto& transit_time_matrices = data_model.get_transit_time_matrices();
+  const auto total_tiers            = std::get<4>(data_model.get_vehicle_distance_tiers());
+  const bool requires_distance = !data_model.get_vehicle_max_distances().empty() || total_tiers > 0;
 
   if (cost_matrices.empty()) { EXE_CUOPT_FAIL("Cost matrix (or matrices) must be specified!"); }
+  cuopt_expects(!requires_distance || !distance_matrices.empty(),
+                error_type_t::ValidationError,
+                "A distance matrix must be set when using vehicle distance tiers or maximum "
+                "distances");
 
   for (auto& [vtype, time_matrix] : transit_time_matrices) {
     if (!cost_matrices.count(vtype)) {
@@ -47,6 +57,27 @@ void populate_matrices(data_model_view_t<i_t, f_t> const& data_model, d_mdarray_
                    std::string(" is not specified");
         execute_cuopt_fail(msg);
       }
+    }
+  }
+
+  if (!distance_matrices.empty()) {
+    auto vehicle_types_map = get_unique_vehicle_types(data_model.get_vehicle_types(), stream_view_);
+    for (auto const& vehicle_type_mapping : vehicle_types_map) {
+      cuopt_expects(distance_matrices.count(vehicle_type_mapping.first) > 0,
+                    error_type_t::ValidationError,
+                    "All vehicle distance matrices should be set");
+    }
+
+    const size_t matrix_size = static_cast<size_t>(nlocations) * static_cast<size_t>(nlocations);
+    for (auto const& distance_matrix_entry : distance_matrices) {
+      const bool valid =
+        thrust::all_of(handle_ptr_->get_thrust_policy(),
+                       distance_matrix_entry.second,
+                       distance_matrix_entry.second + matrix_size,
+                       [] __device__(f_t value) { return value == value && value >= f_t{0}; });
+      cuopt_expects(valid,
+                    error_type_t::ValidationError,
+                    "Distance matrix values must be non-negative and not NaN");
     }
   }
 
@@ -235,6 +266,14 @@ void populate_fleet_info(data_model_view_t<i_t, f_t> const& data_model,
     cuopt_expects(has_separate_distance_matrix,
                   error_type_t::ValidationError,
                   "vehicle_max_distances requires add_distance_matrix() to be set");
+    auto host_max_distances = cuopt::host_copy(vehicle_max_distances, stream_view);
+    const bool valid =
+      std::all_of(host_max_distances.begin(), host_max_distances.end(), [](f_t value) {
+        return std::isfinite(value) && value >= f_t{0};
+      });
+    cuopt_expects(valid,
+                  error_type_t::ValidationError,
+                  "Vehicle maximum distances must be finite and non-negative");
     fleet_info_.v_max_distances_.resize(fleet_size, stream_view);
     raft::copy(
       fleet_info_.v_max_distances_.data(), vehicle_max_distances.data(), fleet_size, stream_view);
@@ -244,6 +283,13 @@ void populate_fleet_info(data_model_view_t<i_t, f_t> const& data_model,
   }
 
   if (auto vehicle_max_costs = data_model.get_vehicle_max_costs(); !vehicle_max_costs.empty()) {
+    auto host_max_costs = cuopt::host_copy(vehicle_max_costs, stream_view);
+    const bool valid    = std::all_of(host_max_costs.begin(), host_max_costs.end(), [](f_t value) {
+      return std::isfinite(value) && value >= f_t{0};
+    });
+    cuopt_expects(valid,
+                  error_type_t::ValidationError,
+                  "Vehicle maximum costs must be finite and non-negative");
     fleet_info_.v_max_costs_.resize(fleet_size, stream_view);
     raft::copy(fleet_info_.v_max_costs_.data(), vehicle_max_costs.data(), fleet_size, stream_view);
     is_homogenous = is_homogenous &&
@@ -282,8 +328,11 @@ void populate_fleet_info(data_model_view_t<i_t, f_t> const& data_model,
     fleet_info_.v_distance_tiers_.resize(total_tiers, stream_view);
     fleet_info_.v_tier_offsets_.resize(fleet_size + 1, stream_view);
 
+    std::vector<i_t> h_tier_offsets(fleet_size + 1);
+
     // Copy tier offsets
     raft::copy(fleet_info_.v_tier_offsets_.data(), tier_offsets, fleet_size + 1, stream_view);
+    raft::copy(h_tier_offsets.data(), tier_offsets, fleet_size + 1, stream_view);
 
     // Copy tier data (thresholds, fixed_costs, costs_per_unit) into distance_tier_t structs
     std::vector<distance_tier_t<f_t>> h_tiers(total_tiers);
@@ -296,11 +345,49 @@ void populate_fleet_info(data_model_view_t<i_t, f_t> const& data_model,
     raft::copy(h_costs_per_unit.data(), costs_per_unit, total_tiers, stream_view);
     handle_ptr_->sync_stream();
 
+    cuopt_expects(h_tier_offsets.front() == 0 && h_tier_offsets.back() == total_tiers &&
+                    std::is_sorted(h_tier_offsets.begin(), h_tier_offsets.end()),
+                  error_type_t::ValidationError,
+                  "Invalid distance tier offsets");
+    for (i_t vehicle_id = 0; vehicle_id < fleet_size; ++vehicle_id) {
+      const auto tier_begin = h_tier_offsets[vehicle_id];
+      const auto tier_end   = h_tier_offsets[vehicle_id + 1];
+      cuopt_expects(tier_begin < tier_end,
+                    error_type_t::ValidationError,
+                    "Each vehicle must have at least one distance tier");
+      for (i_t tier = tier_begin; tier < tier_end; ++tier) {
+        cuopt_expects(std::isfinite(h_thresholds[tier]) && h_thresholds[tier] >= 0.f &&
+                        std::isfinite(h_fixed_costs[tier]) && h_fixed_costs[tier] >= 0.f &&
+                        std::isfinite(h_costs_per_unit[tier]) && h_costs_per_unit[tier] >= 0.f,
+                      error_type_t::ValidationError,
+                      "Distance tier values must be finite and non-negative");
+        if (tier > tier_begin) {
+          cuopt_expects(h_thresholds[tier - 1] < h_thresholds[tier],
+                        error_type_t::ValidationError,
+                        "Distance tier thresholds must be strictly increasing");
+        }
+      }
+      cuopt_expects(h_thresholds[tier_end - 1] == std::numeric_limits<f_t>::max(),
+                    error_type_t::ValidationError,
+                    "The last distance tier threshold for each vehicle must be float32 max");
+    }
+
     // Pack into distance_tier_t structs
     for (i_t i = 0; i < total_tiers; ++i) {
       h_tiers[i].threshold     = h_thresholds[i];
       h_tiers[i].fixed_cost    = h_fixed_costs[i];
       h_tiers[i].cost_per_unit = h_costs_per_unit[i];
+    }
+
+    for (i_t vehicle_id = 1; vehicle_id < fleet_size && is_homogenous; ++vehicle_id) {
+      const auto first_begin = h_tier_offsets[0];
+      const auto first_end   = h_tier_offsets[1];
+      const auto tier_begin  = h_tier_offsets[vehicle_id];
+      const auto tier_end    = h_tier_offsets[vehicle_id + 1];
+      is_homogenous =
+        first_end - first_begin == tier_end - tier_begin &&
+        std::equal(
+          h_tiers.begin() + first_begin, h_tiers.begin() + first_end, h_tiers.begin() + tier_begin);
     }
 
     raft::copy(fleet_info_.v_distance_tiers_.data(), h_tiers.data(), total_tiers, stream_view);

@@ -239,6 +239,7 @@ d_mdarray_t<f_t> generate_matrices(raft::handle_t& handle,
   auto seed     = params.seed;
   auto matrices = detail::create_device_mdarray<f_t>(
     params.n_locations, params.n_vehicle_types, params.n_matrix_types, handle.get_stream());
+  if (params.n_matrix_types > 1) { matrices.time_matrix_index = 1; }
 
   for (auto vehicle_type = 0; vehicle_type < params.n_vehicle_types; ++vehicle_type) {
     for (auto matrix_type = 0; matrix_type < params.n_matrix_types; ++matrix_type) {

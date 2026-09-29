@@ -56,10 +56,10 @@ struct test_route {
   {
     auto n_arcs = static_cast<int>(arcs.size());
     for (int i = 0; i < n_arcs; ++i) {
-      nodes[i].calculate_forward(nodes[i + 1], arcs[i]);
+      nodes[i].calculate_forward(nodes[i + 1], arcs[i], arcs[i]);
     }
     for (int i = n_arcs; i > 0; --i) {
-      nodes[i].calculate_backward(nodes[i - 1], arcs[i - 1]);
+      nodes[i].calculate_backward(nodes[i - 1], arcs[i - 1], arcs[i - 1]);
     }
   }
 };
@@ -126,7 +126,7 @@ TEST(cost_node, early_arrival_cost_is_maximum_per_route)
 
   for (size_t k = 0; k + 1 < r.nodes.size(); ++k) {
     auto next_copy = r.nodes[k + 1];
-    r.nodes[k].calculate_forward(next_copy, r.arcs[k]);
+    r.nodes[k].calculate_forward(next_copy, r.arcs[k], r.arcs[k]);
 
     detail::objective_cost_t obj_cost;
     detail::infeasible_cost_t inf_cost;
@@ -158,7 +158,7 @@ TEST(cost_node, early_arrival_does_not_create_later_upper_excess)
 
   for (size_t k = 0; k + 1 < r.nodes.size(); ++k) {
     auto next_copy = r.nodes[k + 1];
-    r.nodes[k].calculate_forward(next_copy, r.arcs[k]);
+    r.nodes[k].calculate_forward(next_copy, r.arcs[k], r.arcs[k]);
 
     detail::objective_cost_t obj_cost;
     detail::infeasible_cost_t inf_cost;
@@ -168,7 +168,8 @@ TEST(cost_node, early_arrival_does_not_create_later_upper_excess)
       << "split (" << k << ", " << (k + 1) << ")";
     EXPECT_DOUBLE_EQ(inf_cost[detail::dim_t::COST], 10.)
       << "split (" << k << ", " << (k + 1) << ")";
-    EXPECT_DOUBLE_EQ(cost_node::combine(r.nodes[k], r.nodes[k + 1], r.vehicle_info, r.arcs[k]), 10.)
+    EXPECT_DOUBLE_EQ(
+      cost_node::combine(r.nodes[k], r.nodes[k + 1], r.vehicle_info, r.arcs[k], r.arcs[k]), 10.)
       << "split (" << k << ", " << (k + 1) << ")";
   }
 }
@@ -202,7 +203,7 @@ TEST(cost_node, combine_invariant_feasible)
   r.run_passes();
 
   for (size_t k = 0; k + 1 < r.nodes.size(); ++k) {
-    double c = cost_node::combine(r.nodes[k], r.nodes[k + 1], r.vehicle_info, r.arcs[k]);
+    double c = cost_node::combine(r.nodes[k], r.nodes[k + 1], r.vehicle_info, r.arcs[k], r.arcs[k]);
     EXPECT_DOUBLE_EQ(c, 0.) << "split (" << k << ", " << (k + 1) << ") got " << c;
   }
 }
@@ -215,10 +216,11 @@ TEST(cost_node, combine_invariant_window_violation)
                       /*max_cost=*/800.f);
   r.run_passes();
 
-  double reference = cost_node::combine(r.nodes[0], r.nodes[1], r.vehicle_info, r.arcs[0]);
+  double reference =
+    cost_node::combine(r.nodes[0], r.nodes[1], r.vehicle_info, r.arcs[0], r.arcs[0]);
   EXPECT_GT(reference, 0.);
   for (size_t k = 1; k + 1 < r.nodes.size(); ++k) {
-    double c = cost_node::combine(r.nodes[k], r.nodes[k + 1], r.vehicle_info, r.arcs[k]);
+    double c = cost_node::combine(r.nodes[k], r.nodes[k + 1], r.vehicle_info, r.arcs[k], r.arcs[k]);
     EXPECT_DOUBLE_EQ(c, reference) << "split (" << k << ", " << (k + 1) << ") = " << c
                                    << " differs from reference " << reference;
   }
@@ -233,10 +235,11 @@ TEST(cost_node, combine_invariant_max_cost_only)
                /*max_cost=*/1000.f);
   r.run_passes();
 
-  double reference = cost_node::combine(r.nodes[0], r.nodes[1], r.vehicle_info, r.arcs[0]);
+  double reference =
+    cost_node::combine(r.nodes[0], r.nodes[1], r.vehicle_info, r.arcs[0], r.arcs[0]);
   EXPECT_DOUBLE_EQ(reference, 100.);  // total 1100, max_cost 1000.
   for (size_t k = 1; k + 1 < r.nodes.size(); ++k) {
-    double c = cost_node::combine(r.nodes[k], r.nodes[k + 1], r.vehicle_info, r.arcs[k]);
+    double c = cost_node::combine(r.nodes[k], r.nodes[k + 1], r.vehicle_info, r.arcs[k], r.arcs[k]);
     EXPECT_DOUBLE_EQ(c, reference);
   }
 }
@@ -257,7 +260,8 @@ TEST(cost_node, compute_cost_combine_consistency)
     std::max(0., total_distance - static_cast<double>(r.vehicle_info.max_cost));
   double total = end_node.excess_forward + boundary + max_cost_excess;
 
-  double combine_at_first = cost_node::combine(r.nodes[0], r.nodes[1], r.vehicle_info, r.arcs[0]);
+  double combine_at_first =
+    cost_node::combine(r.nodes[0], r.nodes[1], r.vehicle_info, r.arcs[0], r.arcs[0]);
 
   EXPECT_DOUBLE_EQ(total, combine_at_first);
 }
@@ -268,15 +272,18 @@ TEST(cost_route, distance_break_cost_requires_distance_window)
   raft::handle_t handle;
   auto stream = handle.get_stream();
 
-  auto cost_forward = cuopt::device_copy(std::vector<double>{0.}, stream);
+  auto cost_forward     = cuopt::device_copy(std::vector<double>{0.}, stream);
+  auto distance_forward = cuopt::device_copy(std::vector<double>{0.}, stream);
   rmm::device_uvector<double> result(1, stream);
 
   cost_route::view_t route;
   route.dim_info.has_distance_window     = false;
   route.dim_info.has_distance_break_cost = true;
   route.cost_forward = raft::device_span<double>{cost_forward.data(), cost_forward.size()};
+  route.distance_forward =
+    raft::device_span<double>{distance_forward.data(), distance_forward.size()};
   ASSERT_TRUE(route.distance_break_cost_forward.empty());
-  EXPECT_EQ(cost_route::get_shared_size(1, route.dim_info), 2 * sizeof(double));
+  EXPECT_EQ(cost_route::get_shared_size(1, route.dim_info), 4 * sizeof(double));
 
   compute_cost_route_cost<<<1, 1, 0, stream.get()>>>(route, result.data());
   RAFT_CUDA_TRY(cudaGetLastError());
@@ -300,7 +307,7 @@ TEST(cost_node, get_cost_combine_consistency)
 
   for (size_t k = 0; k + 1 < r.nodes.size(); ++k) {
     auto next_copy = r.nodes[k + 1];
-    r.nodes[k].calculate_forward(next_copy, r.arcs[k]);
+    r.nodes[k].calculate_forward(next_copy, r.arcs[k], r.arcs[k]);
 
     detail::objective_cost_t obj_cost;
     detail::infeasible_cost_t inf_cost;
@@ -308,7 +315,7 @@ TEST(cost_node, get_cost_combine_consistency)
     double get_cost_total = inf_cost[detail::dim_t::COST];
 
     double combine_value =
-      cost_node::combine(r.nodes[k], r.nodes[k + 1], r.vehicle_info, r.arcs[k]);
+      cost_node::combine(r.nodes[k], r.nodes[k + 1], r.vehicle_info, r.arcs[k], r.arcs[k]);
 
     EXPECT_DOUBLE_EQ(get_cost_total, combine_value)
       << "split (" << k << ", " << (k + 1) << "): get_cost = " << get_cost_total
@@ -328,10 +335,11 @@ TEST(cost_node, combine_additive_break_and_max_cost)
                       /*max_cost=*/120.f);
   r.run_passes();
 
-  double reference = cost_node::combine(r.nodes[0], r.nodes[1], r.vehicle_info, r.arcs[0]);
+  double reference =
+    cost_node::combine(r.nodes[0], r.nodes[1], r.vehicle_info, r.arcs[0], r.arcs[0]);
   EXPECT_DOUBLE_EQ(reference, 60.);
   for (size_t k = 1; k + 1 < r.nodes.size(); ++k) {
-    double c = cost_node::combine(r.nodes[k], r.nodes[k + 1], r.vehicle_info, r.arcs[k]);
+    double c = cost_node::combine(r.nodes[k], r.nodes[k + 1], r.vehicle_info, r.arcs[k], r.arcs[k]);
     EXPECT_DOUBLE_EQ(c, reference) << "split (" << k << ", " << (k + 1) << ") = " << c;
   }
 }

@@ -27,6 +27,8 @@ COST = np.array(
     dtype=np.float32,
 )
 TRANSIT = (COST + 1).astype(np.float32)  # distinct from cost, still asymmetric
+DISTANCE = (COST + 2).astype(np.float32)
+np.fill_diagonal(DISTANCE, 0)
 
 ORDER_LOCATIONS = np.array([0, 1, 2, 3, 4], dtype=np.int32)
 ORDER_EARLIEST = np.array([0, 0, 0, 0, 0], dtype=np.int32)
@@ -42,6 +44,7 @@ VEH_START = np.array([0, 0, 0], dtype=np.int32)
 VEH_RETURN = np.array([0, 0, 0], dtype=np.int32)
 VEH_TYPES = np.array([0, 0, 0], dtype=np.uint8)
 VEH_MAX_COSTS = np.array([1000, 1000, 1000], dtype=np.float32)
+VEH_MAX_DISTANCES = np.array([1000, 1000, 1000], dtype=np.float32)
 VEH_MAX_TIMES = np.array([1000, 1000, 1000], dtype=np.float32)
 VEH_FIXED_COSTS = np.array([0, 0, 0], dtype=np.float32)
 
@@ -69,6 +72,7 @@ GETTERS = [
     ("vehicle_locations", lambda d: d.get_vehicle_locations()),
     ("vehicle_types", lambda d: d.get_vehicle_types()),
     ("vehicle_max_costs", lambda d: d.get_vehicle_max_costs()),
+    ("vehicle_max_distances", lambda d: d.get_vehicle_max_distances()),
     ("vehicle_max_times", lambda d: d.get_vehicle_max_times()),
     ("vehicle_fixed_costs", lambda d: d.get_vehicle_fixed_costs()),
     ("objective_function", lambda d: d.get_objective_function()),
@@ -79,6 +83,7 @@ def _build_full(backend):
     matrix, series = CONVERTERS[backend]
     d = routing.DataModel(COST.shape[0], CAPACITY.shape[0])
     d.add_cost_matrix(matrix(COST), 0)
+    d.add_distance_matrix(matrix(DISTANCE), 0)
     d.add_transit_time_matrix(matrix(TRANSIT), 0)
     d.set_order_locations(series(ORDER_LOCATIONS))
     d.set_order_time_windows(series(ORDER_EARLIEST), series(ORDER_LATEST))
@@ -89,6 +94,7 @@ def _build_full(backend):
     d.set_vehicle_locations(series(VEH_START), series(VEH_RETURN))
     d.set_vehicle_types(series(VEH_TYPES))
     d.set_vehicle_max_costs(series(VEH_MAX_COSTS))
+    d.set_vehicle_max_distances(series(VEH_MAX_DISTANCES))
     d.set_vehicle_max_times(series(VEH_MAX_TIMES))
     d.set_vehicle_fixed_costs(series(VEH_FIXED_COSTS))
     d.set_objective_function(series(OBJECTIVES), series(OBJECTIVE_WEIGHTS))

@@ -126,7 +126,7 @@ def test_vehicle_distance_tiers_uniform():
 
         # Tier 3: > 80 km = 1.0 per km
         vehicle_ids.append(v)
-        thresholds.append(1e9)  # INF
+        thresholds.append(np.finfo(np.float32).max)
         fixed_costs.append(0.0)
         costs_per_unit.append(1.0)
 
@@ -412,7 +412,7 @@ def test_vehicle_distance_tiers_heterogeneous():
             print(f"   🟢 Vehicle {v}: Special configuration (tier at 80 km)")
             # Tier 1: < 80 km = fixed cost 50
             vehicle_ids.extend([v, v, v])
-            thresholds.extend([80.0, 120.0, 1e9])
+            thresholds.extend([80.0, 120.0, np.finfo(np.float32).max])
             fixed_costs.extend([50.0, 0.0, 0.0])
             costs_per_unit.extend([0.0, 0.5, 1.0])
         else:
@@ -420,7 +420,7 @@ def test_vehicle_distance_tiers_heterogeneous():
             print(f"   🔵 Vehicle {v}: Standard configuration (tier at 40 km)")
             # Tier 1: < 40 km = fixed cost 50
             vehicle_ids.extend([v, v, v])
-            thresholds.extend([40.0, 80.0, 1e9])
+            thresholds.extend([40.0, 80.0, np.finfo(np.float32).max])
             fixed_costs.extend([50.0, 0.0, 0.0])
             costs_per_unit.extend([0.0, 0.5, 1.0])
 

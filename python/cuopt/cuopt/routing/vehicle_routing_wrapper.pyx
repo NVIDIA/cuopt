@@ -262,6 +262,7 @@ cdef class DataModel:
         self.vehicle_drop_return_trips = cudf.Series()
         self.vehicle_skip_first_trips = cudf.Series()
         self.vehicle_max_costs = cudf.Series()
+        self.vehicle_max_distances = cudf.Series()
         self.vehicle_max_times = cudf.Series()
         self.vehicle_fixed_costs = cudf.Series()
 
@@ -289,9 +290,7 @@ cdef class DataModel:
         )
 
     def add_distance_matrix(self, distances, vehicle_type):
-        distances = type_cast(distances, np.float32, "distance_matrix")
-
-        distances = cp.array(distances.to_cupy(), order='C', dtype=np.float32)
+        distances = prepare_matrix(distances, "distance_matrix")
         self.distance_matrices[vehicle_type] = distances
         cdef uintptr_t c_distances = self.distance_matrices[vehicle_type].data.ptr
         self.c_data_model_view.get().add_distance_matrix(
@@ -669,6 +668,20 @@ cdef class DataModel:
             <float*>c_vehicle_max_times
         )
 
+    def set_vehicle_max_distances(self, vehicle_max_distances):
+        self.vehicle_max_distances = type_cast(
+            vehicle_max_distances,
+            np.float32,
+            "vehicle_max_distances"
+        )
+
+        cdef uintptr_t c_vehicle_max_distances = (
+            self.vehicle_max_distances.__cuda_array_interface__['data'][0]
+        )
+        self.c_data_model_view.get().set_vehicle_max_distances(
+            <float*>c_vehicle_max_distances
+        )
+
     def set_vehicle_fixed_costs(self, vehicle_fixed_costs):
         self.vehicle_fixed_costs = type_cast(
             vehicle_fixed_costs,
@@ -857,6 +870,9 @@ cdef class DataModel:
 
     def get_vehicle_max_times(self):
         return self.vehicle_max_times
+
+    def get_vehicle_max_distances(self):
+        return self.vehicle_max_distances
 
     def get_vehicle_fixed_costs(self):
         return self.vehicle_fixed_costs

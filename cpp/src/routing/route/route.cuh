@@ -30,16 +30,19 @@ class route_t {
       dimensions(sol_handle_, dimensions_info_),
       route_id(route_id_, sol_handle_->get_stream()),
       vehicle_id(vehicle_id_, sol_handle_->get_stream()),
+      n_nodes(sol_handle_->get_stream()),
       infeasibility_cost(sol_handle_->get_stream()),
       objective_cost(sol_handle_->get_stream()),
-      n_nodes(sol_handle_->get_stream()),
+      active_distance_tier(sol_handle_->get_stream()),
       fleet_info_ptr(fleet_info_ptr_)
   {
     raft::common::nvtx::range fun_scope("zero route_t copy_ctr");
     infeasible_cost_t zero_inf;
     objective_cost_t zero_obj;
+    i_t inactive_distance_tier = -1;
     infeasibility_cost.set_value_async(zero_inf, sol_handle->get_stream());
     objective_cost.set_value_async(zero_obj, sol_handle->get_stream());
+    active_distance_tier.set_value_async(inactive_distance_tier, sol_handle->get_stream());
   }
 
   void print() const
@@ -57,6 +60,7 @@ class route_t {
       n_nodes(route.n_nodes, route.sol_handle->get_stream()),
       infeasibility_cost(route.infeasibility_cost, route.sol_handle->get_stream()),
       objective_cost(route.objective_cost, route.sol_handle->get_stream()),
+      active_distance_tier(route.active_distance_tier, route.sol_handle->get_stream()),
       fleet_info_ptr(route.fleet_info_ptr)
   {
     raft::common::nvtx::range fun_scope("route copy_ctr");
@@ -122,15 +126,17 @@ class route_t {
                               i_t* vehicle_id_,
                               infeasible_cost_t* infeasibility_cost_,
                               objective_cost_t* objective_cost_,
+                              i_t* active_distance_tier_,
                               typename fleet_info_t<i_t, f_t>::view_t fleet_info_)
     {
       view_t v;
-      v.n_nodes            = num_nodes_;
-      v.route_id           = route_id_;
-      v.vehicle_id         = vehicle_id_;
-      v.infeasibility_cost = infeasibility_cost_;
-      v.objective_cost     = objective_cost_;
-      v.fleet_info         = fleet_info_;
+      v.n_nodes              = num_nodes_;
+      v.route_id             = route_id_;
+      v.vehicle_id           = vehicle_id_;
+      v.infeasibility_cost   = infeasibility_cost_;
+      v.objective_cost       = objective_cost_;
+      v.active_distance_tier = active_distance_tier_;
+      v.fleet_info           = fleet_info_;
       return v;
     }
     DI auto& requests() const { return dimensions.requests; }
@@ -559,6 +565,7 @@ class route_t {
       copy_from(orig_route, 0, *orig_route.n_nodes + 1, 0);
       block_copy(infeasibility_cost, orig_route.infeasibility_cost, 1);
       block_copy(objective_cost, orig_route.objective_cost, 1);
+      block_copy(active_distance_tier, orig_route.active_distance_tier, 1);
       block_copy(n_nodes, orig_route.n_nodes, 1);
       block_copy(route_id, orig_route.route_id, 1);
       block_copy(vehicle_id, orig_route.vehicle_id, 1);
@@ -662,6 +669,8 @@ class route_t {
         get_dimension_of<I>(dimensions)
           .compute_cost(this->vehicle_info(), *n_nodes, objective_cost[0], infeasibility_cost[0]);
       });
+      active_distance_tier[0] =
+        this->vehicle_info().find_distance_tier(dimensions.cost_dim.distance_forward[*n_nodes]);
 
       return thrust::make_tuple(objective_cost[0], infeasibility_cost[0]);
     }
@@ -684,6 +693,7 @@ class route_t {
 
     DI infeasible_cost_t get_infeasibility_cost() const { return *infeasibility_cost; }
     DI objective_cost_t get_objective_cost() const { return *objective_cost; }
+    DI i_t get_active_distance_tier() const { return *active_distance_tier; }
 
     // extend for other things later
     DI i_t max_nodes_per_route() const noexcept { return requests().node_info.size(); }
@@ -717,16 +727,18 @@ class route_t {
         dimensions_route_t<i_t, f_t, REQUEST>::view_t::create_shared_route(
           sh_ptr, orig_route.dimensions_info(), n_nodes_route, is_tsp);
 
-      v.n_nodes    = (i_t*)sh_ptr;
-      v.route_id   = (i_t*)&v.n_nodes[1];
-      v.vehicle_id = (i_t*)&v.route_id[1];
+      v.n_nodes              = (i_t*)sh_ptr;
+      v.route_id             = (i_t*)&v.n_nodes[1];
+      v.vehicle_id           = (i_t*)&v.route_id[1];
+      v.active_distance_tier = (i_t*)&v.vehicle_id[1];
 
       // vehicle info will still be in global memory
       v.fleet_info = orig_route.fleet_info;
       if (threadIdx.x == 0) {
-        *v.n_nodes    = n_nodes_route;
-        *v.route_id   = *orig_route.route_id;
-        *v.vehicle_id = *orig_route.vehicle_id;
+        *v.n_nodes              = n_nodes_route;
+        *v.route_id             = *orig_route.route_id;
+        *v.vehicle_id           = *orig_route.vehicle_id;
+        *v.active_distance_tier = *orig_route.active_distance_tier;
       }
       return v;
     }
@@ -734,7 +746,7 @@ class route_t {
     DI unsigned long shared_end_address()
     {
       // address of last item
-      return reinterpret_cast<unsigned long>(&vehicle_id[1]);
+      return reinterpret_cast<unsigned long>(&active_distance_tier[1]);
     }
 
     static DI void compute_forward_in_between(view_t& curr_route, i_t start, i_t end)
@@ -847,6 +859,7 @@ class route_t {
     i_t* vehicle_id{nullptr};
     infeasible_cost_t* infeasibility_cost{nullptr};
     objective_cost_t* objective_cost{nullptr};
+    i_t* active_distance_tier{nullptr};
     typename fleet_info_t<i_t, f_t>::view_t fleet_info;
   };
 
@@ -857,6 +870,7 @@ class route_t {
                                    vehicle_id.data(),
                                    infeasibility_cost.data(),
                                    objective_cost.data(),
+                                   active_distance_tier.data(),
                                    fleet_info_ptr->view());
 
     v.dimensions = dimensions.view();
@@ -874,7 +888,8 @@ class route_t {
     // everything that is stored in rmm::device_scalar should be stored in shared
     size_t sz = 3 * sizeof(i_t)  // route_id, vehicle_id, n_nodes
                 + sizeof(infeasible_cost_t) +
-                sizeof(objective_cost_t);  // infeasibility cost, objective cost
+                sizeof(objective_cost_t) +  // infeasibility cost, objective cost
+                sizeof(i_t);                // active distance tier
     sz += dimensions_route_t<i_t, f_t, REQUEST>::get_shared_size(route_size, dimensions_info);
     return sz;
   }
@@ -897,6 +912,8 @@ class route_t {
   rmm::device_scalar<infeasible_cost_t> infeasibility_cost;
 
   rmm::device_scalar<objective_cost_t> objective_cost;
+
+  rmm::device_scalar<i_t> active_distance_tier;
 
   // fleet info
   const fleet_info_t<i_t, f_t>* fleet_info_ptr;

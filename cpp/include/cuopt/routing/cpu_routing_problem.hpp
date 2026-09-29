@@ -79,6 +79,7 @@ class cpu_routing_problem_t {
 
   std::vector<cpu_cost_matrix_t> cost_matrices;
   std::vector<cpu_cost_matrix_t> transit_time_matrices;
+  std::vector<cpu_cost_matrix_t> distance_matrices;
 
   std::vector<int32_t> vehicle_start_locations;
   std::vector<int32_t> vehicle_return_locations;
@@ -88,8 +89,13 @@ class cpu_routing_problem_t {
   std::vector<uint8_t> drop_return_trips;  // 0/1 (avoid vector<bool>)
   std::vector<uint8_t> skip_first_trips;   // 0/1
   std::vector<float> vehicle_max_costs;
+  std::vector<float> vehicle_max_distances;
   std::vector<float> vehicle_max_times;
   std::vector<float> vehicle_fixed_costs;
+  std::vector<float> distance_tier_thresholds;
+  std::vector<float> distance_tier_fixed_costs;
+  std::vector<float> distance_tier_costs_per_unit;
+  std::vector<int32_t> distance_tier_offsets;
 
   std::vector<int32_t> order_locations;
   std::vector<int32_t> order_tw_earliest;

@@ -19,6 +19,13 @@ from .validation import (
 )
 
 
+def _validate_vehicle_type(vehicle_type):
+    if not isinstance(vehicle_type, (int, np.integer)):
+        raise TypeError("vehicle_type must be an integer")
+    if not 0 <= int(vehicle_type) <= np.iinfo(np.uint8).max:
+        raise ValueError("vehicle_type must be within [0, 255]")
+
+
 class DataModel(_DeferredDataModel):
     """
 
@@ -140,6 +147,8 @@ class DataModel(_DeferredDataModel):
         >>> data_model.add_cost_matrix(cost_mat_car, 2)
         """
 
+        _validate_vehicle_type(vehicle_type)
+
         # a[1] is vehicle_type: the recorded call is (cost_mat, vehicle_type).
         if vehicle_type in {a[1] for a in self._recorded("add_cost_matrix")}:
             raise ValueError("Vehicle type matrix has already been added")
@@ -165,7 +174,10 @@ class DataModel(_DeferredDataModel):
         ----------
         distance_mat : cudf.DataFrame dtype - float32
             cudf.DataFrame representing floating point square matrix with
-            num_location rows and columns.
+            num_location rows and columns. Positive infinity may be used for
+            an unreachable arc and is limited to the solver's finite matrix
+            sentinel. Finite values at or above 1e30 are also treated as
+            unreachable.
         vehicle_type : uint8
             Identifier of the vehicle type.
         skip_validation : bool
@@ -174,7 +186,11 @@ class DataModel(_DeferredDataModel):
             a valid square matrix matching the number of locations.
         """
 
-        if vehicle_type in self.distance_matrices:
+        _validate_vehicle_type(vehicle_type)
+
+        if vehicle_type in {
+            args[1] for args in self._recorded("add_distance_matrix")
+        }:
             raise ValueError(
                 "Vehicle type distance matrix has already been added"
             )
@@ -183,6 +199,20 @@ class DataModel(_DeferredDataModel):
             validate_matrix(
                 distance_mat, "distance matrix", self.get_num_locations()
             )
+            if hasattr(distance_mat, "to_numpy"):
+                distance_host = distance_mat.to_numpy()
+            elif hasattr(distance_mat, "get"):
+                distance_host = distance_mat.get()
+            else:
+                distance_host = np.asarray(distance_mat)
+            finite_values = distance_host[np.isfinite(distance_host)]
+            if (
+                finite_values.size > 0
+                and (finite_values > np.finfo(np.float32).max).any()
+            ):
+                raise ValueError(
+                    "distance matrix finite values must be representable as float32"
+                )
 
         super().add_distance_matrix(distance_mat, vehicle_type)
 
@@ -261,6 +291,8 @@ class DataModel(_DeferredDataModel):
         >>> data_model.add_transit_time_matrix(time_mat, 0)
         """
         # a[1] is vehicle_type (see add_cost_matrix).
+        _validate_vehicle_type(vehicle_type)
+
         if vehicle_type in {
             a[1] for a in self._recorded("add_transit_time_matrix")
         }:
@@ -633,7 +665,20 @@ class DataModel(_DeferredDataModel):
             self.get_fleet_size(),
             "number of vehicles",
         )
-        validate_non_negative(vehicle_types, "vehicle types")
+        if hasattr(vehicle_types, "to_numpy"):
+            vehicle_types_host = vehicle_types.to_numpy()
+        elif hasattr(vehicle_types, "get"):
+            vehicle_types_host = vehicle_types.get()
+        else:
+            vehicle_types_host = np.asarray(vehicle_types)
+        if not np.issubdtype(vehicle_types_host.dtype, np.integer):
+            raise TypeError("vehicle types must contain integers")
+        validate_range(
+            vehicle_types,
+            "vehicle types",
+            0,
+            np.iinfo(np.uint8).max,
+        )
         super().set_vehicle_types(vehicle_types)
 
     @catch_cuopt_exception
@@ -1189,12 +1234,13 @@ class DataModel(_DeferredDataModel):
     @catch_cuopt_exception
     def set_vehicle_max_costs(self, vehicle_max_costs):
         """
-        Limits per vehicle primary matrix cost accumulated along a route.
+        Limits the total route cost per vehicle. With distance tiers, this is
+        the primary matrix cost plus the tiered distance cost.
 
         Parameters
         ----------
         vehicle_max_costs : cudf.Series dtype - float32
-            Upper bound per vehicle for max distance cumulated on a route
+            Upper bound per vehicle for total route cost.
 
         Examples
         --------
@@ -1211,7 +1257,21 @@ class DataModel(_DeferredDataModel):
             self.get_fleet_size(),
             "number of vehicles",
         )
-        validate_positive(vehicle_max_costs, "vehicle max costs")
+        if hasattr(vehicle_max_costs, "to_numpy"):
+            max_costs_host = vehicle_max_costs.to_numpy()
+        elif hasattr(vehicle_max_costs, "get"):
+            max_costs_host = vehicle_max_costs.get()
+        else:
+            max_costs_host = np.asarray(vehicle_max_costs)
+        if not np.isfinite(max_costs_host).all():
+            raise ValueError(
+                "vehicle max costs must contain only finite values"
+            )
+        if (max_costs_host > np.finfo(np.float32).max).any():
+            raise ValueError(
+                "vehicle max costs must be representable as float32"
+            )
+        validate_non_negative(vehicle_max_costs, "vehicle max costs")
         super().set_vehicle_max_costs(vehicle_max_costs)
 
     @catch_cuopt_exception
@@ -1243,6 +1303,38 @@ class DataModel(_DeferredDataModel):
         )
         validate_positive(vehicle_max_times, "vehicle max times")
         super().set_vehicle_max_times(vehicle_max_times)
+
+    @catch_cuopt_exception
+    def set_vehicle_max_distances(self, vehicle_max_distances):
+        """Limits the physical distance accumulated by each vehicle route.
+
+        Parameters
+        ----------
+        vehicle_max_distances : cudf.Series dtype - float32
+            Upper bound per vehicle based on the distance matrix.
+        """
+        validate_size(
+            vehicle_max_distances,
+            "vehicle max distances",
+            self.get_fleet_size(),
+            "number of vehicles",
+        )
+        if hasattr(vehicle_max_distances, "to_numpy"):
+            max_distances_host = vehicle_max_distances.to_numpy()
+        elif hasattr(vehicle_max_distances, "get"):
+            max_distances_host = vehicle_max_distances.get()
+        else:
+            max_distances_host = np.asarray(vehicle_max_distances)
+        if not np.isfinite(max_distances_host).all():
+            raise ValueError(
+                "vehicle max distances must contain only finite values"
+            )
+        if (max_distances_host > np.finfo(np.float32).max).any():
+            raise ValueError(
+                "vehicle max distances must be representable as float32"
+            )
+        validate_non_negative(vehicle_max_distances, "vehicle max distances")
+        super().set_vehicle_max_distances(vehicle_max_distances)
 
     @catch_cuopt_exception
     def set_vehicle_fixed_costs(self, vehicle_fixed_costs):
@@ -1292,9 +1384,7 @@ class DataModel(_DeferredDataModel):
         accumulated by distance band in ascending threshold order.
 
         For each band reached by the route, cuOpt adds fixed_cost when it is
-        positive and adds the in-band distance multiplied by cost_per_unit. If
-        fixed_cost > 0 and cost_per_unit is 0, cuOpt applies a minimal
-        internal unit cost to prefer shorter routes in ties.
+        positive and adds the in-band distance multiplied by cost_per_unit.
 
         Parameters
         ----------
@@ -1302,12 +1392,10 @@ class DataModel(_DeferredDataModel):
             Vehicle ID for each tier entry. Tiers for the same vehicle should be
             consecutive and sorted by threshold in ascending order.
         thresholds : cudf.Series dtype - float32
-            Distance thresholds for each tier. Use float('inf') or a very large
-            value (e.g., 1e9) for the last tier of each vehicle.
+            Finite distance thresholds for each tier. The last tier of each
+            vehicle must use ``numpy.finfo(numpy.float32).max``.
         fixed_costs : cudf.Series dtype - float32
             Fixed cost for each tier. Use 0.0 if the tier uses cost_per_unit instead.
-            If fixed_cost > 0 and cost_per_unit is 0, a minimal internal unit
-            cost is added to break ties between routes in the same tier.
         costs_per_unit : cudf.Series dtype - float32
             Cost per distance unit for each tier. Use 0.0 if the tier uses
             fixed_cost instead.
@@ -1323,7 +1411,8 @@ class DataModel(_DeferredDataModel):
         >>> # Vehicle 1: fixed first band, then 0.3/km band
         >>>
         >>> vehicle_ids = cudf.Series([0, 0, 0, 1, 1], dtype=np.int32)
-        >>> thresholds = cudf.Series([100.0, 200.0, 1e9, 150.0, 1e9], dtype=np.float32)
+        >>> max_distance = np.finfo(np.float32).max
+        >>> thresholds = cudf.Series([100.0, 200.0, max_distance, 150.0, max_distance], dtype=np.float32)
         >>> fixed_costs = cudf.Series([50.0, 0.0, 0.0, 75.0, 0.0], dtype=np.float32)
         >>> costs_per_unit = cudf.Series([0.0, 0.1, 0.5, 0.0, 0.3], dtype=np.float32)
         >>>
@@ -1355,23 +1444,74 @@ class DataModel(_DeferredDataModel):
                 f"vehicle_ids length ({len(vehicle_ids)}) must match costs_per_unit length ({len(costs_per_unit)})"
             )
 
+        if len(vehicle_ids) == 0:
+            raise ValueError("At least one distance tier must be provided")
+
+        def to_numpy(values):
+            if hasattr(values, "to_numpy"):
+                return values.to_numpy()
+            if hasattr(values, "get"):
+                return values.get()
+            return np.asarray(values)
+
+        vehicle_ids_host = to_numpy(vehicle_ids)
+        thresholds_host = to_numpy(thresholds)
+        fixed_costs_host = to_numpy(fixed_costs)
+        costs_per_unit_host = to_numpy(costs_per_unit)
+
+        if not np.issubdtype(vehicle_ids_host.dtype, np.integer):
+            raise TypeError("vehicle_ids must contain integers")
+        for values, name in (
+            (thresholds_host, "thresholds"),
+            (fixed_costs_host, "fixed_costs"),
+            (costs_per_unit_host, "costs_per_unit"),
+        ):
+            if not np.isfinite(values).all():
+                raise ValueError(f"{name} must contain only finite values")
+            if (values > np.finfo(np.float32).max).any():
+                raise ValueError(f"{name} must be representable as float32")
+
         validate_non_negative(thresholds, "thresholds")
         validate_non_negative(fixed_costs, "fixed_costs")
         validate_non_negative(costs_per_unit, "costs_per_unit")
 
         # Check that vehicle IDs are valid
-        max_vehicle_id = int(vehicle_ids.max())
+        max_vehicle_id = int(vehicle_ids_host.max())
         if max_vehicle_id >= self.get_fleet_size():
             raise ValueError(
                 f"vehicle_ids contains {max_vehicle_id} but fleet size is {self.get_fleet_size()}"
             )
 
         # Check minimum vehicle ID
-        min_vehicle_id = int(vehicle_ids.min())
+        min_vehicle_id = int(vehicle_ids_host.min())
         if min_vehicle_id < 0:
             raise ValueError(
                 f"vehicle_ids contains negative value: {min_vehicle_id}"
             )
+
+        expected_vehicle_ids = np.arange(self.get_fleet_size())
+        if not np.array_equal(
+            np.unique(vehicle_ids_host), expected_vehicle_ids
+        ):
+            raise ValueError(
+                "At least one distance tier must be provided for each vehicle"
+            )
+
+        thresholds_float32 = thresholds_host.astype(np.float32)
+        for vehicle_id in expected_vehicle_ids:
+            vehicle_thresholds = np.sort(
+                thresholds_float32[vehicle_ids_host == vehicle_id]
+            )
+            if np.any(np.diff(vehicle_thresholds) <= 0):
+                raise ValueError(
+                    "Distance tier thresholds must be strictly increasing "
+                    "for each vehicle"
+                )
+            if vehicle_thresholds[-1] != np.finfo(np.float32).max:
+                raise ValueError(
+                    "The last distance tier threshold for each vehicle must "
+                    "be numpy.finfo(numpy.float32).max"
+                )
 
         super().set_vehicle_distance_tiers(
             vehicle_ids, thresholds, fixed_costs, costs_per_unit
@@ -1565,6 +1705,11 @@ class DataModel(_DeferredDataModel):
         Returns max times per vehicles
         """
         return super().get_vehicle_max_times()
+
+    @catch_cuopt_exception
+    def get_vehicle_max_distances(self):
+        """Returns maximum physical distances per vehicle."""
+        return super().get_vehicle_max_distances()
 
     @catch_cuopt_exception
     def get_vehicle_fixed_costs(self):

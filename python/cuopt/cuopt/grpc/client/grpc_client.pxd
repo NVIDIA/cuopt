@@ -64,6 +64,7 @@ cdef extern from "cuopt/routing/cpu_routing_problem.hpp" namespace "cuopt::routi
         int32_t num_orders
         vector[cpu_cost_matrix_t] cost_matrices
         vector[cpu_cost_matrix_t] transit_time_matrices
+        vector[cpu_cost_matrix_t] distance_matrices
         vector[int32_t] vehicle_start_locations
         vector[int32_t] vehicle_return_locations
         vector[int32_t] vehicle_tw_earliest
@@ -72,8 +73,13 @@ cdef extern from "cuopt/routing/cpu_routing_problem.hpp" namespace "cuopt::routi
         vector[uint8_t] drop_return_trips
         vector[uint8_t] skip_first_trips
         vector[float] vehicle_max_costs
+        vector[float] vehicle_max_distances
         vector[float] vehicle_max_times
         vector[float] vehicle_fixed_costs
+        vector[float] distance_tier_thresholds
+        vector[float] distance_tier_fixed_costs
+        vector[float] distance_tier_costs_per_unit
+        vector[int32_t] distance_tier_offsets
         vector[int32_t] order_locations
         vector[int32_t] order_tw_earliest
         vector[int32_t] order_tw_latest

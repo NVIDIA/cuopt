@@ -97,7 +97,7 @@ class cost_node_t {
   {
     const double objective_cost =
       vehicle_info.compute_distance_cost(distance_forward, cost_forward);
-    return excess_forward + max(0., distance_forward - vehicle_info.max_distance) +
+    return excess_forward + vehicle_info.compute_distance_excess(distance_forward) +
            max(0., objective_cost - vehicle_info.max_cost);
   }
 
@@ -105,7 +105,7 @@ class cost_node_t {
   {
     const double objective_cost =
       vehicle_info.compute_distance_cost(distance_backward, cost_backward);
-    return excess_backward + max(0., distance_backward - vehicle_info.max_distance) +
+    return excess_backward + vehicle_info.compute_distance_excess(distance_backward) +
            max(0., objective_cost - vehicle_info.max_cost);
   }
 
@@ -126,13 +126,12 @@ class cost_node_t {
                             f_t distance_between) noexcept
   {
     double total_cost     = prev.cost_forward + next.cost_backward + cost_between;
-    double total_distance =
-      prev.distance_forward + next.distance_backward + distance_between;
+    double total_distance = prev.distance_forward + next.distance_backward + distance_between;
     double objective_cost = vehicle_info.compute_distance_cost(total_distance, total_cost);
     double arrival_f      = prev.distance_window_forward + cost_between;
     return prev.excess_forward + next.excess_backward +
            max(0., arrival_f - next.distance_window_backward) +
-           max(0., total_distance - vehicle_info.max_distance) +
+           vehicle_info.compute_distance_excess(total_distance) +
            max(0., objective_cost - vehicle_info.max_cost);
   }
 
@@ -150,20 +149,18 @@ class cost_node_t {
                     objective_cost_t& obj_cost,
                     infeasible_cost_t& inf_cost) const noexcept
   {
-    double total_cost     = cost_forward + cost_backward;
-    double total_distance = distance_forward + distance_backward;
-    obj_cost[objective_t::COST] =
-      vehicle_info.compute_distance_cost(total_distance, total_cost);
+    double total_cost           = cost_forward + cost_backward;
+    double total_distance       = distance_forward + distance_backward;
+    obj_cost[objective_t::COST] = vehicle_info.compute_distance_cost(total_distance, total_cost);
 
     if (dim_info.has_distance_window && dim_info.has_distance_break_cost) {
       obj_cost[objective_t::DISTANCE_BREAK_COST] =
         max(distance_break_cost_forward, distance_window_backward_min - cost_forward);
     }
 
-    inf_cost[dim_t::COST] = 0.;
+    inf_cost[dim_t::COST] = vehicle_info.compute_distance_excess(total_distance);
     if (dim_info.has_max_constraint) {
-      inf_cost[dim_t::COST] = max(0., total_distance - vehicle_info.max_distance) +
-                              max(0., obj_cost[objective_t::COST] - vehicle_info.max_cost);
+      inf_cost[dim_t::COST] += max(0., obj_cost[objective_t::COST] - vehicle_info.max_cost);
     }
     if (dim_info.has_distance_window) {
       inf_cost[dim_t::COST] += excess_forward + excess_backward +

@@ -126,6 +126,7 @@ cdef extern from "cuopt/routing/solve.hpp" namespace "cuopt::routing":
             i_t n_prec_nodes) except +
         void set_min_vehicles(i_t min_vehicles) except+
         void set_vehicle_max_costs(const f_t *max_costs) except+
+        void set_vehicle_max_distances(const f_t *max_distances) except+
         void set_vehicle_max_times(const f_t *max_times) except+
         void set_vehicle_fixed_costs(const f_t *vehicle_fixed_costs) except+
         void set_vehicle_distance_tiers(

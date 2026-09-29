@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -57,15 +57,11 @@ struct VehicleInfo {
     return has_distance_tiers() || has_max_distance_constraint();
   }
 
-  HDI static constexpr double fixed_tier_tie_breaker_cost_per_unit() { return 1.0e-4; }
-
-  HDI static double effective_tier_cost_per_unit(distance_tier_t<f_t> const& tier)
+  HDI double compute_distance_excess(double travel_distance) const
   {
-    // Flat fixed-price tiers otherwise make longer and shorter routes indistinguishable. Keep this
-    // small so it breaks route-scale ties without dominating the configured step costs.
-    return tier.fixed_cost > 0.0 && tier.cost_per_unit == 0.0
-             ? fixed_tier_tie_breaker_cost_per_unit()
-             : tier.cost_per_unit;
+    constexpr double unreachable_distance = 1.0e30;
+    if (travel_distance >= unreachable_distance) { return travel_distance; }
+    return max(0., travel_distance - max_distance);
   }
 
   HDI double compute_distance_cost(double travel_distance, double fallback_cost_distance) const
@@ -81,7 +77,7 @@ struct VehicleInfo {
       const double in_band = min(travel_distance, upper) - prev_threshold;
       if (in_band > 0.0) {
         if (tier.fixed_cost > 0.0) { tier_cost += tier.fixed_cost; }
-        tier_cost += in_band * effective_tier_cost_per_unit(tier);
+        tier_cost += in_band * tier.cost_per_unit;
       }
       prev_threshold = upper;
       if (travel_distance <= upper) { break; }
@@ -126,7 +122,7 @@ struct VehicleInfo {
 
       if (old_in_tier && new_in_tier) {
         return old_distance_cost + (new_fallback_cost_distance - old_fallback_cost_distance) +
-               (new_travel_distance - old_travel_distance) * effective_tier_cost_per_unit(tier);
+               (new_travel_distance - old_travel_distance) * tier.cost_per_unit;
       }
     }
 
@@ -160,7 +156,7 @@ struct VehicleInfo {
     size_t count = 0;
 
     for (size_t i = 0; i < width * width; ++i) {
-      if (matrix[i] != std::numeric_limits<f_t>::max()) {
+      if (matrix[i] < f_t{1.0e30}) {
         sum += matrix[i];
         ++count;
       }
@@ -183,8 +179,8 @@ struct VehicleInfo {
       }
     }
 
+    if (distance_tiers.empty()) { return sum / (width * width); }
     const double average_matrix_cost = count > 0 ? (sum / static_cast<double>(count)) : 0.0;
-    if (distance_tiers.empty()) { return average_matrix_cost; }
     return compute_distance_cost(get_average_distance(), average_matrix_cost);
   }
 

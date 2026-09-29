@@ -12,6 +12,8 @@
 
 #include <gtest/gtest.h>
 
+#include <limits>
+#include <stdexcept>
 #include <vector>
 
 namespace {
@@ -131,4 +133,67 @@ TEST(RoutingProblemMapper, VehicleDistanceBreaksRoundTrip)
   EXPECT_FLOAT_EQ(back.vehicle_distance_breaks[1][1].distance_min, 270.f);
   EXPECT_FLOAT_EQ(back.vehicle_distance_breaks[1][1].distance_max, 300.f);
   EXPECT_EQ(back.vehicle_distance_breaks[1][1].locations, (std::vector<int32_t>{1, 4}));
+}
+
+TEST(RoutingProblemMapper, VehicleDistanceTiersRoundTrip)
+{
+  auto p                     = make_base_problem();
+  p.distance_matrices        = {{1, {0.f, 2.f, 2.f, 0.f}}};
+  p.vehicle_max_distances    = {10.f, 20.f};
+  p.distance_tier_thresholds = {
+    5.f, std::numeric_limits<float>::max(), 7.f, std::numeric_limits<float>::max()};
+  p.distance_tier_fixed_costs    = {3.f, 0.f, 4.f, 0.f};
+  p.distance_tier_costs_per_unit = {0.f, 2.f, 0.f, 3.f};
+  p.distance_tier_offsets        = {0, 2, 4};
+
+  cuopt::remote::RoutingProblem pb;
+  cuopt::routing::map_routing_problem_to_proto(p, &pb);
+
+  ASSERT_EQ(pb.distance_matrices_size(), 1);
+  ASSERT_TRUE(pb.has_vehicle_distance_tiers());
+  ASSERT_EQ(pb.vehicle_distance_tiers().thresholds_size(), 4);
+
+  cuopt::routing::cpu_routing_problem_t back;
+  cuopt::routing::map_proto_to_routing_problem(pb, back);
+  ASSERT_EQ(back.distance_matrices.size(), 1u);
+  EXPECT_EQ(back.distance_matrices[0].vehicle_type, 1);
+  EXPECT_EQ(back.distance_matrices[0].matrix, (std::vector<float>{0.f, 2.f, 2.f, 0.f}));
+  EXPECT_EQ(back.vehicle_max_distances, (std::vector<float>{10.f, 20.f}));
+  EXPECT_EQ(back.distance_tier_thresholds,
+            (std::vector<float>{
+              5.f, std::numeric_limits<float>::max(), 7.f, std::numeric_limits<float>::max()}));
+  EXPECT_EQ(back.distance_tier_fixed_costs, (std::vector<float>{3.f, 0.f, 4.f, 0.f}));
+  EXPECT_EQ(back.distance_tier_costs_per_unit, (std::vector<float>{0.f, 2.f, 0.f, 3.f}));
+  EXPECT_EQ(back.distance_tier_offsets, (std::vector<int32_t>{0, 2, 4}));
+}
+
+TEST(RoutingProblemMapper, PreservesPartialDistanceTiersForValidation)
+{
+  auto p                         = make_base_problem();
+  p.distance_tier_fixed_costs    = {3.f};
+  p.distance_tier_costs_per_unit = {2.f};
+  p.distance_tier_offsets        = {0, 1, 1};
+
+  cuopt::remote::RoutingProblem pb;
+  cuopt::routing::map_routing_problem_to_proto(p, &pb);
+
+  ASSERT_TRUE(pb.has_vehicle_distance_tiers());
+  EXPECT_EQ(pb.vehicle_distance_tiers().thresholds_size(), 0);
+  EXPECT_EQ(pb.vehicle_distance_tiers().fixed_costs_size(), 1);
+
+  cuopt::routing::cpu_routing_problem_t back;
+  cuopt::routing::map_proto_to_routing_problem(pb, back);
+  EXPECT_TRUE(back.distance_tier_thresholds.empty());
+  EXPECT_EQ(back.distance_tier_fixed_costs, (std::vector<float>{3.f}));
+  EXPECT_EQ(back.distance_tier_costs_per_unit, (std::vector<float>{2.f}));
+  EXPECT_EQ(back.distance_tier_offsets, (std::vector<int32_t>{0, 1, 1}));
+}
+
+TEST(RoutingProblemMapper, RejectsOutOfRangeVehicleType)
+{
+  cuopt::remote::RoutingProblem pb;
+  pb.add_vehicle_types(256);
+
+  cuopt::routing::cpu_routing_problem_t problem;
+  EXPECT_THROW(cuopt::routing::map_proto_to_routing_problem(pb, problem), std::invalid_argument);
 }

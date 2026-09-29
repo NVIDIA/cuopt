@@ -3,6 +3,8 @@
 
 import math
 
+import numpy as np
+
 
 def _get_tier_value(tier, key, default=None):
     if isinstance(tier, dict):
@@ -31,14 +33,28 @@ def _validate_distance_tiers(vehicle_distance_tiers):
                 "vehicle_distance_tiers must define at least one tier per vehicle",
             )
 
-        has_open_ended_tier = False
-        for tier in vehicle_tiers:
+        open_ended_tiers = 0
+        previous_threshold = None
+        for tier_index, tier in enumerate(vehicle_tiers):
             threshold = _get_tier_value(tier, "threshold")
             fixed_cost = _get_tier_value(tier, "fixed_cost", 0.0)
             cost_per_unit = _get_tier_value(tier, "cost_per_unit", 0.0)
 
             if threshold is None:
-                has_open_ended_tier = True
+                open_ended_tiers += 1
+                if tier_index != len(vehicle_tiers) - 1:
+                    return (
+                        False,
+                        "The open-ended distance tier must be the final tier",
+                    )
+                if (
+                    previous_threshold is not None
+                    and previous_threshold >= np.finfo(np.float32).max
+                ):
+                    return (
+                        False,
+                        "Distance tier thresholds must be strictly increasing",
+                    )
             else:
                 if not _is_finite(threshold):
                     return (
@@ -50,6 +66,21 @@ def _validate_distance_tiers(vehicle_distance_tiers):
                         False,
                         "Distance tier threshold values must be greater than or equal to 0",
                     )
+                if threshold > np.finfo(np.float32).max:
+                    return (
+                        False,
+                        "Distance tier threshold values must be representable as float32",
+                    )
+                threshold = float(np.float32(threshold))
+                if (
+                    previous_threshold is not None
+                    and threshold <= previous_threshold
+                ):
+                    return (
+                        False,
+                        "Distance tier thresholds must be strictly increasing",
+                    )
+                previous_threshold = threshold
 
             if not _is_finite(fixed_cost):
                 return (
@@ -60,6 +91,11 @@ def _validate_distance_tiers(vehicle_distance_tiers):
                 return (
                     False,
                     "Distance tier fixed_cost values must be greater than or equal to 0",
+                )
+            if fixed_cost > np.finfo(np.float32).max:
+                return (
+                    False,
+                    "Distance tier fixed_cost values must be representable as float32",
                 )
 
             if not _is_finite(cost_per_unit):
@@ -72,11 +108,16 @@ def _validate_distance_tiers(vehicle_distance_tiers):
                     False,
                     "Distance tier cost_per_unit values must be greater than or equal to 0",
                 )
+            if cost_per_unit > np.finfo(np.float32).max:
+                return (
+                    False,
+                    "Distance tier cost_per_unit values must be representable as float32",
+                )
 
-        if not has_open_ended_tier:
+        if open_ended_tiers != 1:
             return (
                 False,
-                "Each vehicle_distance_tiers entry must include a null threshold tier",
+                "Each vehicle_distance_tiers entry must include exactly one null threshold tier",
             )
 
     return (True, "")
@@ -191,12 +232,19 @@ def validate_fleet_data(
                 )
 
     if vehicle_max_costs is not None:
-        if min(vehicle_max_costs) <= 0:
-            return (
-                False,
-                "Maximum distance any vehicle can travel must be greater "
-                "than 0",
-            )
+        for vehicle_max_cost in vehicle_max_costs:
+            if not _is_finite(vehicle_max_cost):
+                return (False, "Maximum vehicle route cost must be finite")
+            if vehicle_max_cost < 0:
+                return (
+                    False,
+                    "Maximum vehicle route cost must be greater than or equal to 0",
+                )
+            if vehicle_max_cost > np.finfo(np.float32).max:
+                return (
+                    False,
+                    "Maximum vehicle route cost must be representable as float32",
+                )
         fleet_length_check_array.append(len(vehicle_max_costs))
 
     if vehicle_max_times is not None:
@@ -232,13 +280,12 @@ def validate_fleet_data(
                     False,
                     "Maximum distance any vehicle can travel must be greater than or equal to 0",  # noqa
                 )
+            if vehicle_max_distance > np.finfo(np.float32).max:
+                return (
+                    False,
+                    "Maximum distance any vehicle can travel must be representable as float32",
+                )
         fleet_length_check_array.append(len(vehicle_max_distances))
-
-    if is_distance_matrix_set and not vehicle_distance_tiers:
-        return (
-            False,
-            "vehicle_distance_tiers must be set when distance matrix data is provided",
-        )
 
     if vehicle_distance_tiers is not None:
         if not is_distance_matrix_set:
@@ -339,6 +386,11 @@ def validate_fleet_data(
                     )
 
     if vehicle_types is not None:
+        if any(
+            vehicle_type < 0 or vehicle_type > 255
+            for vehicle_type in vehicle_types
+        ):
+            return (False, "Vehicle types must be within [0, 255]")
         unique_vehicle_types = set(vehicle_types)
         for matrix_type, vehicle_ids in vehicle_types_dict.items():
             v_ids = set(vehicle_ids)
@@ -346,7 +398,10 @@ def validate_fleet_data(
                 return (False, matrix_type + " not set for all vehicle types")
     else:
         for _, vehicle_ids in vehicle_types_dict.items():
-            if len(set(vehicle_ids)) > 1:
+            unique_ids = set(vehicle_ids)
+            if len(unique_ids) > 1 or (
+                len(unique_ids) == 1 and 0 not in unique_ids
+            ):
                 return (
                     False,
                     "Set vehicle types when using multiple matrices",

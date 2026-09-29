@@ -14,6 +14,7 @@ from cuopt import routing
 
 from cuopt_server.utils.data_definition import (
     CostMatrices,
+    DistanceMatrices,
     FleetData,
     InitialSolution,
     SolverSettingsConfig,
@@ -52,6 +53,7 @@ def populate_optimization_data(
     initial_solution: Optional[List[InitialSolution]] = None,
     solver_config: Optional[SolverSettingsConfig] = None,
     warnings=[],
+    distance_matrix_data: Optional[DistanceMatrices] = None,
 ):
     optimization_data = OptimizationDataModel()
 
@@ -91,6 +93,21 @@ def populate_optimization_data(
         check_valid(optimization_data.set_cost_matrix(cost_matrix_data.data))
 
     if (
+        distance_matrix_data is not None
+        and distance_matrix_data.data is not None
+    ):
+        distance_tiers = (
+            fleet_data.vehicle_distance_tiers
+            if fleet_data is not None
+            else None
+        )
+        check_valid(
+            optimization_data.set_distance_matrix(
+                distance_matrix_data.data, distance_tiers
+            )
+        )
+
+    if (
         travel_time_waypoint_graph_data
         and travel_time_waypoint_graph_data.waypoint_graph
     ):
@@ -126,6 +143,8 @@ def populate_optimization_data(
                 fleet_data.vehicle_max_times,
                 fleet_data.vehicle_fixed_costs,
                 vehicle_distance_breaks=fleet_data.vehicle_distance_breaks,
+                vehicle_distance_tiers=fleet_data.vehicle_distance_tiers,
+                vehicle_max_distances=fleet_data.vehicle_max_distances,
             )
         )
 
@@ -177,6 +196,7 @@ def create_data_model(
     optimization_data: OptimizationDataModel,
     cost_matrix: Optional[dict] = None,
     travel_time_matrix: Optional[dict] = None,
+    distance_matrix: Optional[dict] = None,
 ):
     warnings = []
     # Make sure that we are using pool memory allocator
@@ -204,6 +224,9 @@ def create_data_model(
 
     for key, value in cost_matrix.items():
         data_model.add_cost_matrix(value, key)
+    if distance_matrix is not None:
+        for key, value in distance_matrix.items():
+            data_model.add_distance_matrix(value, key)
     if travel_time_matrix is not None:
         for key, value in travel_time_matrix.items():
             data_model.add_transit_time_matrix(value, key)
@@ -324,6 +347,34 @@ def create_data_model(
     if optimization_data.fleet_data["vehicle_max_costs"] is not None:
         data_model.set_vehicle_max_costs(
             optimization_data.fleet_data["vehicle_max_costs"]
+        )
+
+    if optimization_data.fleet_data["vehicle_max_distances"] is not None:
+        data_model.set_vehicle_max_distances(
+            optimization_data.fleet_data["vehicle_max_distances"]
+        )
+
+    if optimization_data.fleet_data["vehicle_distance_tiers"] is not None:
+        distance_tiers = optimization_data.fleet_data["vehicle_distance_tiers"]
+        vehicle_ids = []
+        thresholds = []
+        fixed_costs = []
+        costs_per_unit = []
+        for vehicle_id, tiers in enumerate(distance_tiers):
+            for tier in tiers:
+                vehicle_ids.append(vehicle_id)
+                thresholds.append(
+                    np.finfo(np.float32).max
+                    if tier["threshold"] is None
+                    else tier["threshold"]
+                )
+                fixed_costs.append(tier["fixed_cost"])
+                costs_per_unit.append(tier["cost_per_unit"])
+        data_model.set_vehicle_distance_tiers(
+            cudf.Series(vehicle_ids, dtype=np.int32),
+            cudf.Series(thresholds, dtype=np.float32),
+            cudf.Series(fixed_costs, dtype=np.float32),
+            cudf.Series(costs_per_unit, dtype=np.float32),
         )
 
     if optimization_data.fleet_data["vehicle_max_times"] is not None:

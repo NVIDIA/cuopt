@@ -481,7 +481,8 @@ class OptimizationDataModel:
         is_valid = validate_distance_matrix(
             distance_matrix,
             vehicle_distance_tiers=vehicle_distance_tiers,
-            require_distance_tiers=True,
+            require_distance_tiers=False,
+            comparison_matrix=self.cost_matrix or None,
         )
         if is_valid[0]:
             self.distance_matrix = {}
@@ -497,7 +498,8 @@ class OptimizationDataModel:
         is_valid = validate_distance_matrix(
             distance_matrix,
             vehicle_distance_tiers=self.fleet_data["vehicle_distance_tiers"],
-            require_distance_tiers=True,
+            require_distance_tiers=False,
+            comparison_matrix=self.cost_matrix or None,
         )
         if is_valid[0]:
             for v_type, matrix in distance_matrix.items():
@@ -573,6 +575,9 @@ class OptimizationDataModel:
         vehicle_types_dict["Cost Matrix"] = list(self.cost_matrix.keys())
         vehicle_types_dict["Travel Time Matrix"] = list(
             self.travel_time_matrix.keys()
+        )
+        vehicle_types_dict["Distance Matrix"] = list(
+            self.distance_matrix.keys()
         )
         vehicle_types_dict["Waypoint Graph"] = list(self.waypoint_graph.keys())
         vehicle_types_dict["Travel Time Waypoint Graph"] = list(
@@ -770,6 +775,9 @@ class OptimizationDataModel:
         vehicle_types_dict["Cost Matrix"] = list(self.cost_matrix.keys())
         vehicle_types_dict["Travel Time Matrix"] = list(
             self.travel_time_matrix.keys()
+        )
+        vehicle_types_dict["Distance Matrix"] = list(
+            self.distance_matrix.keys()
         )
         vehicle_types_dict["Waypoint Graph"] = list(self.waypoint_graph.keys())
         vehicle_types_dict["Travel Time Waypoint Graph"] = list(

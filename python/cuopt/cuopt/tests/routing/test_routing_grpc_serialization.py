@@ -39,6 +39,7 @@ def test_populate_scalar_matrix_and_dimension_fields():
     np.fill_diagonal(cost, 0)
     dm.add_cost_matrix(cost, 0)
     dm.add_cost_matrix(cost * 2, 1)
+    dm.add_distance_matrix(cost, 0)
     dm.add_transit_time_matrix(cost, 0)
     dm.set_vehicle_time_windows(
         np.zeros(2, np.int32), np.full(2, 100, np.int32)
@@ -52,7 +53,17 @@ def test_populate_scalar_matrix_and_dimension_fields():
     )
     dm.set_vehicle_types(np.array([0, 1], np.uint8))
     dm.set_vehicle_max_costs(np.full(2, 99.0, np.float32))
+    dm.set_vehicle_max_distances(np.full(2, 88.0, np.float32))
     dm.set_vehicle_max_times(np.full(2, 99.0, np.float32))
+    dm.set_vehicle_distance_tiers(
+        np.array([0, 0, 1], np.int32),
+        np.array(
+            [10, np.finfo(np.float32).max, np.finfo(np.float32).max],
+            np.float32,
+        ),
+        np.array([5, 0, 7], np.float32),
+        np.array([0, 2, 0], np.float32),
+    )
     dm.set_objective_function(
         np.array([0], np.int32), np.array([1.0], np.float32)
     )
@@ -62,6 +73,7 @@ def test_populate_scalar_matrix_and_dimension_fields():
     assert (s["num_locations"], s["fleet_size"], s["num_orders"]) == (5, 2, 5)
     assert s["cost_matrices"] == 2
     assert s["transit_time_matrices"] == 1
+    assert s["distance_matrices"] == 1
     assert s["vehicle_tw_latest"] == 2
     assert s["order_tw_latest"] == 5
     assert s["order_locations"] == 5
@@ -70,6 +82,8 @@ def test_populate_scalar_matrix_and_dimension_fields():
     assert s["capacity_dimensions"] == 1
     assert s["vehicle_types"] == 2
     assert s["vehicle_max_costs"] == 2
+    assert s["vehicle_max_distances"] == 2
+    assert s["distance_tiers"] == 3
     assert s["objectives"] == 1
     assert s["min_vehicles"] == 1
 

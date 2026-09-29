@@ -55,7 +55,10 @@ class fleet_info_t {
 
   auto constexpr get_num_vehicles() const { return v_earliest_time_.size(); }
 
-  constexpr bool has_time_matrix() const { return matrices_.extent[1] > 1; }
+  constexpr bool has_time_matrix() const
+  {
+    return matrices_.time_matrix_index != matrices_.cost_matrix_index;
+  }
 
   constexpr bool is_homogenous() const { return is_homogenous_; }
 
@@ -70,7 +73,6 @@ class fleet_info_t {
     v_return_locations_.resize(size, stream);
     v_capacities_.resize(size, stream);
     v_vehicle_infos_.resize(size, stream);
-    v_max_distances_.resize(size, stream);
     v_fixed_costs_.resize(size, stream);
     v_buckets_.resize(size, stream);
   }
@@ -100,6 +102,9 @@ class fleet_info_t {
     h.tier_offsets            = host_copy(v_tier_offsets_, stream);
     h.matrices                = detail::create_host_mdarray<f_t>(
       matrices_.extent[2], matrices_.extent[0], matrices_.extent[1]);
+    h.matrices.cost_matrix_index     = matrices_.cost_matrix_index;
+    h.matrices.distance_matrix_index = matrices_.distance_matrix_index;
+    h.matrices.time_matrix_index     = matrices_.time_matrix_index;
     raft::copy(h.matrices.buffer.data(), matrices_.buffer.data(), matrices_.buffer.size(), stream);
     return h;
   }
@@ -203,7 +208,10 @@ class fleet_info_t {
 
     constexpr i_t is_homogenous_fleet() const { return is_homogenous; }
 
-    constexpr bool has_time_matrix() const { return matrices.extent[1] > 1; }
+    constexpr bool has_time_matrix() const
+    {
+      return matrices.time_matrix_index != matrices.cost_matrix_index;
+    }
     i_t num_vehicles = 0;
     mdarray_view_t<f_t> matrices{};
     const i_t* break_offset{nullptr};

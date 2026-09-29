@@ -15,6 +15,8 @@
 #include <cuda/stream>
 #include <rmm/device_uvector.hpp>
 
+#include <algorithm>
+#include <cmath>
 #include <stdexcept>
 #include <vector>
 
@@ -24,6 +26,7 @@ namespace routing {
 struct cpu_routing_problem_t::device_data_t {
   std::vector<std::unique_ptr<rmm::device_uvector<float>>> cost_matrices;
   std::vector<std::unique_ptr<rmm::device_uvector<float>>> transit_time_matrices;
+  std::vector<std::unique_ptr<rmm::device_uvector<float>>> distance_matrices;
 
   std::unique_ptr<rmm::device_uvector<int32_t>> vehicle_start_locations;
   std::unique_ptr<rmm::device_uvector<int32_t>> vehicle_return_locations;
@@ -33,8 +36,13 @@ struct cpu_routing_problem_t::device_data_t {
   std::unique_ptr<rmm::device_uvector<bool>> drop_return_trips;
   std::unique_ptr<rmm::device_uvector<bool>> skip_first_trips;
   std::unique_ptr<rmm::device_uvector<float>> vehicle_max_costs;
+  std::unique_ptr<rmm::device_uvector<float>> vehicle_max_distances;
   std::unique_ptr<rmm::device_uvector<float>> vehicle_max_times;
   std::unique_ptr<rmm::device_uvector<float>> vehicle_fixed_costs;
+  std::unique_ptr<rmm::device_uvector<float>> distance_tier_thresholds;
+  std::unique_ptr<rmm::device_uvector<float>> distance_tier_fixed_costs;
+  std::unique_ptr<rmm::device_uvector<float>> distance_tier_costs_per_unit;
+  std::unique_ptr<rmm::device_uvector<int32_t>> distance_tier_offsets;
 
   std::unique_ptr<rmm::device_uvector<int32_t>> order_locations;
   std::unique_ptr<rmm::device_uvector<int32_t>> order_tw_earliest;
@@ -115,10 +123,15 @@ cpu_routing_problem_t::to_device(raft::handle_t* handle) const
   auto stream = handle->get_stream();
   device_data_ptr data(new device_data_t());
 
-  int32_t orders = (num_orders < 0) ? num_locations : num_orders;
+  int32_t orders         = (num_orders < 0) ? num_locations : num_orders;
+  const auto matrix_size = static_cast<size_t>(num_locations) * num_locations;
   data_model_view_t<int, float> view(handle, num_locations, fleet_size, orders);
 
   for (auto const& cm : cost_matrices) {
+    if (cm.matrix.size() != matrix_size) {
+      throw std::invalid_argument(
+        "cpu_routing_problem_t::to_device: cost matrix size must equal num_locations squared");
+    }
     auto d = copy_vector(cm.matrix, stream);
     if (!d) { throw std::invalid_argument("cpu_routing_problem_t::to_device: empty cost matrix"); }
     view.add_cost_matrix(d->data(), cm.vehicle_type);
@@ -126,12 +139,37 @@ cpu_routing_problem_t::to_device(raft::handle_t* handle) const
   }
 
   for (auto const& tm : transit_time_matrices) {
+    if (tm.matrix.size() != matrix_size) {
+      throw std::invalid_argument(
+        "cpu_routing_problem_t::to_device: transit time matrix size must equal num_locations "
+        "squared");
+    }
     auto d = copy_vector(tm.matrix, stream);
     if (!d) {
       throw std::invalid_argument("cpu_routing_problem_t::to_device: empty transit time matrix");
     }
     view.add_transit_time_matrix(d->data(), tm.vehicle_type);
     data->transit_time_matrices.push_back(std::move(d));
+  }
+
+  for (auto const& dm : distance_matrices) {
+    if (dm.matrix.size() != matrix_size) {
+      throw std::invalid_argument(
+        "cpu_routing_problem_t::to_device: distance matrix size must equal num_locations squared");
+    }
+    if (std::any_of(dm.matrix.begin(), dm.matrix.end(), [](float value) {
+          return std::isnan(value) || value < 0.f;
+        })) {
+      throw std::invalid_argument(
+        "cpu_routing_problem_t::to_device: distance matrix values must be non-negative and not "
+        "NaN");
+    }
+    auto d = copy_vector(dm.matrix, stream);
+    if (!d) {
+      throw std::invalid_argument("cpu_routing_problem_t::to_device: empty distance matrix");
+    }
+    view.add_distance_matrix(d->data(), dm.vehicle_type);
+    data->distance_matrices.push_back(std::move(d));
   }
 
   if (!vehicle_start_locations.empty() && !vehicle_return_locations.empty()) {
@@ -164,8 +202,29 @@ cpu_routing_problem_t::to_device(raft::handle_t* handle) const
   }
 
   if (!vehicle_max_costs.empty()) {
+    if (vehicle_max_costs.size() != static_cast<size_t>(fleet_size) ||
+        std::any_of(vehicle_max_costs.begin(), vehicle_max_costs.end(), [](float value) {
+          return !std::isfinite(value) || value < 0.f;
+        })) {
+      throw std::invalid_argument(
+        "cpu_routing_problem_t::to_device: vehicle max costs must contain one finite, "
+        "non-negative value per vehicle");
+    }
     data->vehicle_max_costs = copy_vector(vehicle_max_costs, stream);
     view.set_vehicle_max_costs(data->vehicle_max_costs->data());
+  }
+
+  if (!vehicle_max_distances.empty()) {
+    if (vehicle_max_distances.size() != static_cast<size_t>(fleet_size) ||
+        std::any_of(vehicle_max_distances.begin(), vehicle_max_distances.end(), [](float value) {
+          return !std::isfinite(value) || value < 0.f;
+        })) {
+      throw std::invalid_argument(
+        "cpu_routing_problem_t::to_device: vehicle max distances must contain one finite, "
+        "non-negative value per vehicle");
+    }
+    data->vehicle_max_distances = copy_vector(vehicle_max_distances, stream);
+    view.set_vehicle_max_distances(data->vehicle_max_distances->data());
   }
 
   if (!vehicle_max_times.empty()) {
@@ -176,6 +235,55 @@ cpu_routing_problem_t::to_device(raft::handle_t* handle) const
   if (!vehicle_fixed_costs.empty()) {
     data->vehicle_fixed_costs = copy_vector(vehicle_fixed_costs, stream);
     view.set_vehicle_fixed_costs(data->vehicle_fixed_costs->data());
+  }
+
+  if (!distance_tier_thresholds.empty() || !distance_tier_fixed_costs.empty() ||
+      !distance_tier_costs_per_unit.empty() || !distance_tier_offsets.empty()) {
+    if (distance_tier_fixed_costs.size() != distance_tier_thresholds.size() ||
+        distance_tier_costs_per_unit.size() != distance_tier_thresholds.size() ||
+        distance_tier_offsets.size() != static_cast<size_t>(fleet_size + 1) ||
+        distance_tier_offsets.front() != 0 ||
+        distance_tier_offsets.back() != static_cast<int32_t>(distance_tier_thresholds.size()) ||
+        !std::is_sorted(distance_tier_offsets.begin(), distance_tier_offsets.end())) {
+      throw std::invalid_argument(
+        "cpu_routing_problem_t::to_device: invalid vehicle distance tiers");
+    }
+    for (int32_t vehicle_id = 0; vehicle_id < fleet_size; ++vehicle_id) {
+      const auto tier_begin = distance_tier_offsets[vehicle_id];
+      const auto tier_end   = distance_tier_offsets[vehicle_id + 1];
+      if (tier_begin >= tier_end) {
+        throw std::invalid_argument(
+          "cpu_routing_problem_t::to_device: each vehicle must have at least one distance tier");
+      }
+      for (auto tier = tier_begin; tier < tier_end; ++tier) {
+        if (!std::isfinite(distance_tier_thresholds[tier]) ||
+            distance_tier_thresholds[tier] < 0.f ||
+            !std::isfinite(distance_tier_fixed_costs[tier]) ||
+            distance_tier_fixed_costs[tier] < 0.f ||
+            !std::isfinite(distance_tier_costs_per_unit[tier]) ||
+            distance_tier_costs_per_unit[tier] < 0.f ||
+            (tier > tier_begin &&
+             distance_tier_thresholds[tier - 1] >= distance_tier_thresholds[tier])) {
+          throw std::invalid_argument(
+            "cpu_routing_problem_t::to_device: distance tiers must have finite, non-negative "
+            "values and strictly increasing thresholds");
+        }
+      }
+      if (distance_tier_thresholds[tier_end - 1] != std::numeric_limits<float>::max()) {
+        throw std::invalid_argument(
+          "cpu_routing_problem_t::to_device: the last distance tier threshold for each vehicle "
+          "must be float32 max");
+      }
+    }
+    data->distance_tier_thresholds     = copy_vector(distance_tier_thresholds, stream);
+    data->distance_tier_fixed_costs    = copy_vector(distance_tier_fixed_costs, stream);
+    data->distance_tier_costs_per_unit = copy_vector(distance_tier_costs_per_unit, stream);
+    data->distance_tier_offsets        = copy_vector(distance_tier_offsets, stream);
+    view.set_vehicle_distance_tiers(data->distance_tier_thresholds->data(),
+                                    data->distance_tier_fixed_costs->data(),
+                                    data->distance_tier_costs_per_unit->data(),
+                                    data->distance_tier_offsets->data(),
+                                    static_cast<int32_t>(distance_tier_thresholds.size()));
   }
 
   if (!order_locations.empty()) {

@@ -10,6 +10,8 @@
 #include <google/protobuf/repeated_field.h>
 
 #include <cstdint>
+#include <limits>
+#include <stdexcept>
 #include <vector>
 
 namespace cuopt {
@@ -40,6 +42,9 @@ inline void copy_u32_to_u8(const google::protobuf::RepeatedField<uint32_t>& src,
   dst.clear();
   dst.reserve(static_cast<size_t>(src.size()));
   for (auto v : src) {
+    if (v > std::numeric_limits<uint8_t>::max()) {
+      throw std::invalid_argument("vehicle type must be within [0, 255]");
+    }
     dst.push_back(static_cast<uint8_t>(v));
   }
 }

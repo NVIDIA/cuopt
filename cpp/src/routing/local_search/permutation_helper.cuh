@@ -243,10 +243,10 @@ DI bool forward_fragment_update_cvrp(const node_t<i_t, f_t, REQUEST>& curr_node,
 {
   cuopt_assert(fragment_size != 0, "Fragment size cannot be zero!");
 
-  f_t arc_cost_distance = get_arc_cost(
-    curr_node.request.info, fragment[0].request.info, s_route.vehicle_info());
-  f_t arc_travel_distance = get_travel_distance(
-    curr_node.request.info, fragment[0].request.info, s_route.vehicle_info());
+  f_t arc_cost_distance =
+    get_arc_cost(curr_node.request.info, fragment[0].request.info, s_route.vehicle_info());
+  f_t arc_travel_distance =
+    get_travel_distance(curr_node.request.info, fragment[0].request.info, s_route.vehicle_info());
   fragment[fragment_size - 1].cost_dim.cost_forward =
     curr_node.cost_dim.cost_forward + arc_cost_distance + fragment_cost_distance;
   fragment[fragment_size - 1].cost_dim.distance_forward =
@@ -308,8 +308,7 @@ DI bool backward_fragment_update_cvrp(const node_t<i_t, f_t, REQUEST>& curr_node
   fragment[0].cost_dim.cost_backward =
     curr_node.cost_dim.cost_backward + arc_cost_distance + fragment_cost_distance;
   fragment[0].cost_dim.distance_backward =
-    curr_node.cost_dim.distance_backward + arc_travel_distance +
-    fragment_travel_distance;
+    curr_node.cost_dim.distance_backward + arc_travel_distance + fragment_travel_distance;
 
   fragment[0].capacity_dim.max_after[0] = curr_node.capacity_dim.max_after[0] + fragment_demand;
 

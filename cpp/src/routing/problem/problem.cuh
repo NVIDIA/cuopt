@@ -11,8 +11,8 @@
 
 #include <cuopt/routing/data_model_view.hpp>
 #include <cuopt/routing/solver_settings.hpp>
-#include <routing/fleet_info.hpp>
 #include <routing/arc_value.hpp>
+#include <routing/fleet_info.hpp>
 #include <routing/fleet_order_info.hpp>
 #include <routing/order_info.hpp>
 #include <routing/problem/special_nodes.cuh>
@@ -172,7 +172,7 @@ class problem_t {
                                                   const NodeInfo<i_t>& to_node,
                                                   const VehicleInfo<f_t, is_device>& vehicle_info)
   {
-    const auto arc_cost_distance = get_arc_cost(from_node, to_node, vehicle_info);
+    const auto arc_cost_distance   = get_arc_cost(from_node, to_node, vehicle_info);
     const auto arc_travel_distance = get_travel_distance(from_node, to_node, vehicle_info);
     return vehicle_info.compute_distance_cost(arc_travel_distance, arc_cost_distance);
   }
@@ -209,8 +209,8 @@ class problem_t {
                       const int& vehicle_id) const;
 
   double distance_between(const NodeInfo<>& node_1,
-                           const NodeInfo<>& node_2,
-                           const int& vehicle_id) const;
+                          const NodeInfo<>& node_2,
+                          const int& vehicle_id) const;
 
   struct view_t {
     DI NodeInfo<> get_start_depot_node_info(const i_t vehicle_id) const
@@ -235,7 +235,8 @@ class problem_t {
     DI bool has_non_uniform_breaks() const { return non_uniform_breaks; }
     DI bool is_cvrp_intra() const
     {
-      return !order_info.is_pdp() && !dimensions_info.has_dimension(dim_t::TIME) &&
+      return !has_non_additive_cost && !order_info.is_pdp() &&
+             !dimensions_info.has_dimension(dim_t::TIME) &&
              !dimensions_info.has_dimension(dim_t::BREAK);
     }
     DI bool is_cvrp() const { return is_cvrp_; }
@@ -252,6 +253,7 @@ class problem_t {
     typename special_nodes_t<i_t>::view_t special_nodes;
     bool non_uniform_breaks{false};
     bool is_cvrp_{false};
+    bool has_non_additive_cost{false};
   };
 
   view_t view() const
@@ -276,6 +278,7 @@ class problem_t {
     v.special_nodes           = special_nodes.view();
     v.non_uniform_breaks      = has_non_uniform_breaks();
     v.is_cvrp_                = is_cvrp();
+    v.has_non_additive_cost   = has_non_additive_cost_;
     return v;
   }
 
@@ -349,6 +352,7 @@ class problem_t {
   special_nodes_t<i_t> special_nodes;
   bool is_tsp{false};
   bool is_cvrp_{false};
+  bool has_non_additive_cost_{false};
   bool non_uniform_breaks_{false};
 };
 

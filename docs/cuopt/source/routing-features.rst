@@ -148,12 +148,8 @@ Each vehicle can have one or more tiers. A tier contains a ``threshold``, a
 ascending order, and costs are accumulated by distance band. For each band
 reached by the route, cuOpt adds the tier fixed cost when it is positive and
 adds the in-band distance multiplied by the tier ``cost_per_unit``. A final
-open-ended tier should be provided to cover long routes; in the server API, use
+open-ended tier must be provided to cover long routes; in the server API, use
 ``threshold: null`` for this final tier.
-
-Flat fixed-price tiers with ``fixed_cost > 0`` and ``cost_per_unit == 0``
-receive a tiny effective unit cost so shorter routes are preferred when fixed
-tier costs would otherwise tie.
 
 Mapping Orders to Vehicles, and Vehicles to Orders
 ---------------------------------------------------
