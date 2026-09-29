@@ -62,30 +62,16 @@ Smoke Test
 ----------
 
 After installation, verify cuOpt Java is working by compiling and running a
-minimal LP inside the container:
+minimal LP inside the container.
+
+:download:`SmokeTest.java <examples/SmokeTest.java>`
+
+.. literalinclude:: examples/SmokeTest.java
+   :language: java
+   :linenos:
 
 .. code-block:: bash
 
-   cat > SmokeTest.java <<'EOF'
-   import com.nvidia.cuopt.mathematicaloptimization.*;
-
-   public class SmokeTest {
-     public static void main(String[] args) throws Exception {
-       try (Problem problem = new Problem("smoke-test")) {
-         Variable x = problem.addVariable(0, Double.POSITIVE_INFINITY, 0,
-             VariableType.CONTINUOUS, "x");
-         Variable y = problem.addVariable(0, Double.POSITIVE_INFINITY, 0,
-             VariableType.CONTINUOUS, "y");
-         problem.addConstraint(LinearExpression.of(x).plus(y).ge(1.0), "c0");
-         problem.setObjective(LinearExpression.of(x).plus(y), ObjectiveSense.MINIMIZE);
-         try (Solution solution = problem.solve()) {
-           System.out.println(solution.getTerminationStatus());
-           System.out.println(solution.getPrimalObjective());
-         }
-       }
-     }
-   }
-   EOF
    javac -cp /opt/cuopt/java/cuopt.jar -d . SmokeTest.java
    java -Dcuopt.native.dir=/opt/cuopt/java -cp /opt/cuopt/java/cuopt.jar:. SmokeTest
 
@@ -103,66 +89,39 @@ A ``Problem`` owns the variables and constraints. Expressions are assembled
 with methods that return a new expression, and a constraint is formed by
 comparing one against a bound with ``le``, ``ge`` or ``eq``.
 
-.. code-block:: java
+:download:`LpExample.java <examples/LpExample.java>`
 
-   import com.nvidia.cuopt.mathematicaloptimization.*;
-
-   Problem problem = new Problem("simple");
-   Variable x = problem.addVariable(0, Double.POSITIVE_INFINITY, 0,
-       VariableType.CONTINUOUS, "x");
-   Variable y = problem.addVariable(0, Double.POSITIVE_INFINITY, 0,
-       VariableType.CONTINUOUS, "y");
-
-   problem.addConstraint(LinearExpression.of(x).plus(y).ge(1.0), "c0");
-   problem.setObjective(LinearExpression.of(x).plus(y), ObjectiveSense.MINIMIZE);
-
-   try (SolverSettings settings = new SolverSettings().setMethod(SolverMethod.PDLP);
-        Solution solution = problem.solve(settings)) {
-     System.out.println(solution.getTerminationStatus());
-     System.out.println(solution.getPrimalObjective());
-   }
+.. literalinclude:: examples/LpExample.java
+   :language: java
+   :linenos:
 
 MIP Example
 -----------
 
-.. code-block:: java
+:download:`MipExample.java <examples/MipExample.java>`
 
-   Problem problem = new Problem("integer");
-   Variable x = problem.addVariable(0, 10, 1.0, VariableType.INTEGER, "x");
-   problem.addConstraint(LinearExpression.of(x).ge(1.0));
-
-   try (SolverSettings settings = new SolverSettings()
-            .setSetting(CuOptConstants.CUOPT_TIME_LIMIT, 10.0);
-        Solution solution = problem.solve(settings)) {
-     System.out.println(solution.getMIPGap());
-     System.out.println(solution.getSolutionBound());
-   }
+.. literalinclude:: examples/MipExample.java
+   :language: java
+   :linenos:
 
 QP Example
 ----------
 
-.. code-block:: java
+:download:`QpQuickstart.java <examples/QpQuickstart.java>`
 
-   try (Problem problem = new Problem("quadratic")) {
-     Variable x = problem.addVariable(0.0, 10.0, 0.0, VariableType.CONTINUOUS, "x");
-     Variable y = problem.addVariable(0.0, 10.0, 0.0, VariableType.CONTINUOUS, "y");
-     problem.addConstraint(LinearExpression.of(x).plus(y).ge(5.0));
-     problem.setObjective(
-         QuadraticExpression.of(x, x, 1.0).plus(y, y, 4.0),
-         ObjectiveSense.MINIMIZE);
-     try (Solution solution = problem.solve()) {
-       System.out.println(solution.getPrimalObjective());
-     }
-   }
+.. literalinclude:: examples/QpQuickstart.java
+   :language: java
+   :linenos:
 
 MPS I/O
 -------
 
-.. code-block:: java
+:download:`MpsRoundtrip.java <convex/examples/MpsRoundtrip.java>` and
+:download:`sample.mps <convex/examples/sample.mps>`
 
-   try (Problem problem = Problem.read("problem.mps")) {
-     problem.write("roundtrip.mps");
-   }
+.. literalinclude:: convex/examples/MpsRoundtrip.java
+   :language: java
+   :linenos:
 
 Lifecycle
 ---------
