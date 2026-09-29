@@ -14,6 +14,7 @@
 
   map_mip_settings_to_proto(settings, header->mutable_mip_settings());
   header->set_enable_incumbents(enable_incumbents);
+  header->set_enable_set_incumbent(enable_set_incumbent);
 
   if (cpu_problem.has_quadratic_constraints()) {
     for (const auto& _entry : cpu_problem.get_quadratic_constraints()) {

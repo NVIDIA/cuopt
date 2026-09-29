@@ -323,7 +323,13 @@ cdef class Client:
         """Create a sibling connection with the same host/port/TLS settings."""
         return Client(self._host, self._port, tls=self._tls)
 
-    def submit(self, problem, SolverSettings settings not None, enable_incumbents=None):
+    def submit(
+        self,
+        problem,
+        SolverSettings settings not None,
+        enable_incumbents=None,
+        enable_set_incumbent=False,
+    ):
         """
         Submit a problem for solving and return its ``job_id``.
 
@@ -336,11 +342,16 @@ cdef class Client:
         collection when ``settings`` already has MIP callbacks. Pass ``True``
         or ``False`` to override (used by the HTTP proxy, which has no local
         callback objects).
+
+        ``enable_set_incumbent`` registers the server-side MIP set-solution
+        callback that echoes the last get-incumbent back into the solver
+        (legacy ``incumbent_set_solutions``). Default ``False``.
         """
         cdef DataModel data_model
         cdef grpc_submit_result_t submit_result
         cdef bint mip
         cdef bint enable_incumbents_flag = False
+        cdef bint enable_set_incumbent_flag = bool(enable_set_incumbent)
 
         data_model = self._as_data_model(problem)
         data_model.variable_types = type_cast(
@@ -357,6 +368,7 @@ cdef class Client:
             data_model.c_data_model_view.get(),
             settings.c_solver_settings.get(),
             enable_incumbents_flag,
+            enable_set_incumbent_flag,
         )
         if not submit_result.success:
             raise GrpcError(submit_result.error_message.decode("utf-8"))

@@ -20,7 +20,7 @@ public class SimpleLp {
           LinearExpression.of(x).plus(y), ObjectiveSense.MINIMIZE);
 
       try (SolverSettings settings = new SolverSettings()
-               .setMethod(SolverMethod.PDLP);
+               .setSetting(CuOptConstants.CUOPT_METHOD, SolverMethod.PDLP.nativeValue());
            Solution solution = problem.solve(settings)) {
         System.out.println("Status: " + solution.getTerminationStatus());
         System.out.println("x = " + x.getValue());

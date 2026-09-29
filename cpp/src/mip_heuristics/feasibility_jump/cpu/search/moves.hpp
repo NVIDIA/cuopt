@@ -38,7 +38,7 @@ static fj_staged_score_t two_opt_compute_pair_score(
   const fj_move_t endpoints[2] = {{first, first_delta}, {second, second_delta}};
   for (const auto& [var_idx, delta] : endpoints) {
     const auto [offset_begin, offset_end] = fj_cpu.range_for_variable(var_idx);
-    fj_cpu.nnz_processed_window += offset_end - offset_begin;
+    fj_cpu.stats.nnz_processed_window += offset_end - offset_begin;
     for (i_t i = offset_begin; i < offset_end; ++i) {
       const i_t cstr_idx = fj_cpu.h_reverse_constraints[i];
       const f_t coeff    = fj_cpu.h_reverse_coefficients[i];
@@ -96,7 +96,7 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
 {
   CPUFJ_NVTX_RANGE("CPUFJ::find_mtm_move");
 
-  cuopt::pcgenerator_t rng(fj_cpu.settings.seed + fj_cpu.iterations, 0, 0);
+  auto& rng = fj_cpu.rng;
 
   fj_move_t best_move          = fj_move_t{-1, 0};
   fj_staged_score_t best_score = fj_staged_score_t::invalid();
@@ -115,7 +115,7 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
     best_objective_delta = static_cast<double>(fj_cpu.problem->h_obj_coeffs[var]) * delta;
   };
 
-  ++fj_cpu.n_mtm_calls;
+  ++fj_cpu.stats.n_mtm_calls;
 
   // Each row contributes at most its share of the sampling budget. The gate below sits inside the
   // walk, so an uncapped wide row is walked in full whatever the budget says.
@@ -127,9 +127,9 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
     auto [offset_begin, offset_end] = fj_cpu.range_for_row((i_t)cstr_idx);
     const i_t width                 = offset_end - offset_begin;
     entries += std::min(width, per_row_cap);
-    fj_cpu.mtm_entries_capped += (int64_t)std::max<i_t>(0, width - per_row_cap);
+    fj_cpu.stats.mtm_entries_capped += (int64_t)std::max<i_t>(0, width - per_row_cap);
   }
-  fj_cpu.mtm_row_entries += (int64_t)entries;
+  fj_cpu.stats.mtm_row_entries += (int64_t)entries;
 
   // The exact sum over the candidate variables costs one random offset read each to set a single
   // sampling rate. The mean reverse degree estimates it in constant time.
@@ -163,7 +163,7 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
           // cuopt_assert(fj_cpu.check_variable_within_bounds(var_idx,
           // fj_cpu.h_assignment[var_idx] + cached_move.first), "best move is not within bounds");
         }
-        fj_cpu.hit_count++;
+        fj_cpu.stats.hit_count++;
         continue;
       }
 
@@ -215,7 +215,7 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
       cuopt_assert(move.var_idx >= 0, "move.var_idx is not positive");
 
       auto [score, infeasibility] = compute_score<i_t, f_t>(fj_cpu, var_idx, delta);
-      fj_cpu.miss_count++;
+      fj_cpu.stats.miss_count++;
       // reject this move if it would increase the target variable to a numerically unstable value
       if (!fj_cpu.move_numerically_stable(val, new_val, infeasibility, fj_cpu.total_violations))
         continue;
@@ -265,7 +265,7 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
 template <typename i_t>
 void sample_with_replacement(const host_contiguous_set_t<i_t>& pool,
                              i_t sample_size,
-                             uint64_t seed,
+                             cuopt::pcgenerator_t& rng,
                              std::vector<i_t>& out)
 {
   cuopt_assert(sample_size > 0, "invalid sample size");
@@ -277,7 +277,6 @@ void sample_with_replacement(const host_contiguous_set_t<i_t>& pool,
     return;
   }
   out.reserve(sample_size);
-  cuopt::pcgenerator_t rng(seed);
   for (i_t i = 0; i < sample_size; ++i) {
     out.push_back(pool.contents[rng.uniform(0, pool_size)]);
   }
@@ -290,10 +289,7 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move_viol(
   CPUFJ_NVTX_RANGE("CPUFJ::find_mtm_move_viol");
 
   std::vector<i_t> sampled_cstrs;
-  sample_with_replacement(fj_cpu.violated_constraints,
-                          sample_size,
-                          fj_cpu.settings.seed + fj_cpu.iterations,
-                          sampled_cstrs);
+  sample_with_replacement(fj_cpu.violated_constraints, sample_size, fj_cpu.rng, sampled_cstrs);
 
   return find_mtm_move<i_t, f_t, MTMMoveType::FJ_MTM_VIOLATED>(fj_cpu, sampled_cstrs, localmin);
 }
@@ -305,10 +301,7 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move_sat(
   CPUFJ_NVTX_RANGE("CPUFJ::find_mtm_move_sat");
 
   std::vector<i_t> sampled_cstrs;
-  sample_with_replacement(fj_cpu.satisfied_constraints,
-                          sample_size,
-                          fj_cpu.settings.seed + fj_cpu.iterations,
-                          sampled_cstrs);
+  sample_with_replacement(fj_cpu.satisfied_constraints, sample_size, fj_cpu.rng, sampled_cstrs);
 
   return find_mtm_move<i_t, f_t, MTMMoveType::FJ_MTM_SATISFIED>(fj_cpu, sampled_cstrs, localmin);
 }
@@ -358,7 +351,7 @@ static thrust::tuple<fj_move_t, fj_move_t, fj_staged_score_t> find_lift_2opt_mov
   const i_t n_obj = (i_t)fj_cpu.problem->h_objective_vars.size();
   if (n_obj == 0) return thrust::make_tuple(best_first, best_second, best_score);
 
-  cuopt::pcgenerator_t rng(fj_cpu.settings.seed + fj_cpu.iterations, 0, 0);
+  auto& rng         = fj_cpu.rng;
   const i_t n_draws = n_obj < fj_cpu.hp.two_opt_candidates ? n_obj : fj_cpu.hp.two_opt_candidates;
 
   for (i_t t = 0; t < n_draws; ++t) {
