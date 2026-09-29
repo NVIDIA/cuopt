@@ -496,6 +496,7 @@ template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::curtis_reid_row_iteration()
 {
   constexpr i_t number_of_threads = 128;
+  if (dual_size_h_ <= 0) return;
   curtis_reid_row_kernel<i_t, f_t, number_of_threads>
     <<<dual_size_h_, number_of_threads, 0, stream_view_.get()>>>(
       op_problem_scaled_.view(),
@@ -510,6 +511,7 @@ template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::curtis_reid_col_iteration()
 {
   constexpr i_t number_of_threads = 128;
+  if (primal_size_h_ <= 0) return;
   curtis_reid_col_kernel<i_t, f_t, number_of_threads>
     <<<primal_size_h_, number_of_threads, 0, stream_view_.get()>>>(
       primal_size_h_,

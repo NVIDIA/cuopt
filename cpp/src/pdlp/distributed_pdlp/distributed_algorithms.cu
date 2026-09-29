@@ -118,7 +118,6 @@ void multi_gpu_engine_t<i_t, f_t>::refresh_halo_cummulative_scalings()
 template <typename i_t, typename f_t>
 void multi_gpu_engine_t<i_t, f_t>::distributed_curtis_reid_scaling(int num_iter, i_t n_global_vars)
 {
-  if (num_iter <= 0 || n_global_vars <= 0) return;
   raft::common::nvtx::range scope("distributed_curtis_reid_scaling");
 
   for_each_shard(
