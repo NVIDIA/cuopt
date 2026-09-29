@@ -926,7 +926,7 @@ third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_papilo(
   if (category == problem_category_t::MIP &&
       (!reduction_allowlist_.has_value() ||
        reduction_allowlist_->count("indicatorstrengthening") > 0)) {
-    strengthen_indicators(papilo_problem);
+    strengthen_indicators<i_t, f_t>(papilo_problem);
   }
 
   // Capture original dimensions before papilo.apply() mutates papilo_problem

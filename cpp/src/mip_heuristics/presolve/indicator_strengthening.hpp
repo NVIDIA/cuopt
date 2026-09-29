@@ -24,7 +24,7 @@ namespace cuopt::mathematical_optimization::mip {
 // y <= sum_{j in S} x_j whose members are bounded by indicators x_j <= z_g, and lifts every
 // capacity row sum_{i in S} x_i - s <= K whose members share an indicator z into sum_{i in S} x_i -
 // s <= K z. Both need an integral indicator, so this is for MIPs only.
-template <typename f_t>
+template <typename i_t, typename f_t>
 void strengthen_indicators(papilo::Problem<f_t>& problem);
 
 }  // namespace cuopt::mathematical_optimization::mip
