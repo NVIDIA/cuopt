@@ -67,6 +67,35 @@ public final class SolverSettings implements AutoCloseable {
     return setSetting(CuOptConstants.CUOPT_PDLP_SOLVER_MODE, mode.nativeValue());
   }
 
+  /**
+   * Set the number of GPUs to use for the solve. Use {@code -1} to select all GPUs visible to the
+   * process (which may be a single GPU on a single-GPU host), or a positive value to select that
+   * many GPUs explicitly.
+   */
+  public SolverSettings setNumGpus(int numGpus) {
+    return setSetting(CuOptConstants.CUOPT_NUM_GPUS, numGpus);
+  }
+
+  /**
+   * Set whether to distribute the PDLP solve of an LP problem across multiple GPUs. Requires
+   * {@link #setMethod} to be {@link SolverMethod#PDLP} and {@link #setNumGpus} to be {@code -1}
+   * or greater than 1; sharding across multiple GPUs only happens when more than one GPU is
+   * actually selected.
+   */
+  public SolverSettings setUseDistributedPdlp(boolean useDistributedPdlp) {
+    return setSetting(CuOptConstants.CUOPT_USE_DISTRIBUTED_PDLP, useDistributedPdlp);
+  }
+
+  /**
+   * Set the partitioner used to split the problem across GPUs for distributed PDLP: {@code 0}
+   * Auto (default; RoundRobin on 1 GPU, KaMinPar otherwise), {@code 1} KaMinPar (multi-threaded
+   * graph partitioner, better balanced shards at the cost of extra partitioning time), or {@code
+   * 2} RoundRobin (no partitioning graph built).
+   */
+  public SolverSettings setDistributedPdlpPartitioner(int partitioner) {
+    return setSetting(CuOptConstants.CUOPT_DISTRIBUTED_PDLP_PARTITIONER, partitioner);
+  }
+
   /** The LP optimality tolerances, previously discovered by filtering on parameter names. */
   private static final String[] OPTIMALITY_TOLERANCES = {
     CuOptConstants.CUOPT_ABSOLUTE_PRIMAL_TOLERANCE,

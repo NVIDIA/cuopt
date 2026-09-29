@@ -47,6 +47,8 @@ static void expect_distributed_matches_base(raft::handle_t const& handle,
 
   pdlp_solver_settings_t<int, double> base_settings{};
   base_settings.method = method_t::PDLP;
+  // Curtis-Reid scaling is not supported yet for multi-GPU.
+  base_settings.hyper_params.do_curtis_reid_scaling = false;
 
   auto base_op = mps_data_model_to_optimization_problem<int, double>(&handle, problem);
   auto base    = solve_lp(base_op, base_settings);

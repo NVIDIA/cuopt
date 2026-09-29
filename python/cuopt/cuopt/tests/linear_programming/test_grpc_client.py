@@ -21,7 +21,12 @@ from cuopt.grpc.linear_programming import (
 from cuopt.linear_programming import Read, SolverSettings
 from cuopt.linear_programming.internals import GetSolutionCallback
 from cuopt.linear_programming.problem import INTEGER, MAXIMIZE, Problem
-from cuopt.linear_programming.solver.solver_parameters import CUOPT_TIME_LIMIT
+from cuopt.linear_programming.solver.solver_parameters import (
+    CUOPT_METHOD,
+    CUOPT_PRESOLVE,
+    CUOPT_TIME_LIMIT,
+)
+from cuopt.linear_programming.solver_settings import SolverMethod
 
 from grpc_server_fixtures import GRPC_PORT_OFFSET_CLIENT
 
@@ -334,6 +339,67 @@ class TestGrpcClient:
         assert solution is not None
         assert solution.get_primal_objective() == pytest.approx(15.0, rel=1e-3)
         client.delete(job_id)
+
+    def test_mip_start_over_grpc(self, grpc_server):
+        problem = Problem("grpc_mip_start")
+        x = problem.addVariable(lb=0, ub=10, vtype=INTEGER, name="x")
+        y = problem.addVariable(lb=0, ub=10, vtype=INTEGER, name="y")
+        problem.addConstraint(x + y <= 10, name="c1")
+        problem.addConstraint(x - y >= 0, name="c2")
+        problem.setObjective(x + 2 * y, sense=MAXIMIZE)
+        x.setMIPStart(5)
+        y.MIPStart = 5.0
+
+        client = Client("localhost", grpc_server)
+        job_id = client.submit(problem, SolverSettings())
+        try:
+            assert client.wait(job_id, timeout=120) == JobStatus.COMPLETED
+
+            solution = client.result(job_id, _MIP_NAMES)
+            assert solution is not None
+            assert solution.get_primal_objective() == pytest.approx(
+                15.0, rel=1e-3
+            )
+            assert any(
+                "Using 1 user-provided initial MIP solution" in line
+                for line in client.logs(job_id)
+            )
+        finally:
+            client.delete(job_id)
+
+    def test_lp_initial_solution_over_grpc(self, grpc_server):
+        settings = SolverSettings()
+        settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
+        settings.set_parameter(CUOPT_PRESOLVE, 0)
+
+        client = Client("localhost", grpc_server)
+
+        def solve(problem):
+            job_id = client.submit(problem, settings)
+            try:
+                assert client.wait(job_id, timeout=30) == JobStatus.COMPLETED
+                solution = client.result(job_id, _DEMO_LP_NAMES)
+                assert solution is not None
+                assert solution.get_primal_objective() == pytest.approx(
+                    0.36, rel=1e-3
+                )
+                assert solution.get_solved_by() == SolverMethod.PDLP
+                return solution.get_lp_stats()["nb_iterations"]
+            finally:
+                client.delete(job_id)
+
+        n_cold = solve(_demo_lp_problem())
+
+        warm = _demo_lp_problem()
+        warm._to_data_model()
+        warm.model.set_initial_primal_solution([1.8, 0.0])
+        warm.model.set_initial_dual_solution([-1.0 / 15.0, 0.0])
+        n_warm = solve(warm)
+
+        assert n_warm * 5 < n_cold, (
+            "initial primal/dual did not reduce PDLP iterations "
+            f"(cold={n_cold}, warm={n_warm})"
+        )
 
     def test_invalid_job_id(self, grpc_server):
         client = Client("localhost", grpc_server)

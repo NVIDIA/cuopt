@@ -36,6 +36,7 @@
 #define CUOPT_NODE_LIMIT                            "node_limit"
 #define CUOPT_PDLP_SOLVER_MODE                      "pdlp_solver_mode"
 #define CUOPT_METHOD                                "method"
+#define CUOPT_CONCURRENT_NNZ_CUTOFF                 "concurrent_nnz_cutoff"
 #define CUOPT_PER_CONSTRAINT_RESIDUAL               "per_constraint_residual"
 #define CUOPT_SAVE_BEST_PRIMAL_SO_FAR               "save_best_primal_so_far"
 #define CUOPT_FIRST_PRIMAL_FEASIBLE                 "first_primal_feasible"
@@ -57,6 +58,9 @@
 #define CUOPT_ELIMINATE_DENSE_COLUMNS               "eliminate_dense_columns"
 #define CUOPT_CUDSS_DETERMINISTIC                   "cudss_deterministic"
 #define CUOPT_PRESOLVE                              "presolve"
+#define CUOPT_DUAL_SIMPLEX_INITIAL_PERTURBATION     "dual_simplex_initial_perturbation"
+#define CUOPT_DUAL_SIMPLEX_REMOVE_PERTURBATION      "dual_simplex_remove_perturbation"
+#define CUOPT_PRIMAL_SIMPLEX_PRICING                "primal_simplex_pricing"
 #define CUOPT_MIP_PROBING                           "mip_probing"
 #define CUOPT_DUAL_POSTSOLVE                        "dual_postsolve"
 #define CUOPT_SEQUENCE_SOLVE                        "sequence_solve"
@@ -159,6 +163,9 @@
 /* @brief QCQP (barrier) scaling hyper-parameters */
 #define CUOPT_QCQP_HYPER_RUIZ_EQUILIBRATION "qcqp_hyper_ruiz_equilibration"
 
+/* @brief PDLP scaling hyper-parameter: Curtis-Reid prescaling toggle */
+#define CUOPT_PDLP_HYPER_ENABLE_CURTIS_REID_SCALING "pdlp_hyper_enable_curtis_reid_scaling"
+
 /* @brief Barrier initial point safeguard */
 #define CUOPT_BARRIER_INITIAL_POINT_SAFEGUARD "barrier_initial_point_safeguard"
 
@@ -213,7 +220,8 @@
 #define CUOPT_METHOD_PDLP         1
 #define CUOPT_METHOD_DUAL_SIMPLEX 2
 #define CUOPT_METHOD_BARRIER      3
-#define CUOPT_METHOD_UNSET        4
+#define CUOPT_METHOD_PRIMAL       4
+#define CUOPT_METHOD_UNSET        5
 
 #define CUOPT_BARRIER_DUAL_INITIAL_POINT_AUTOMATIC             -1
 #define CUOPT_BARRIER_DUAL_INITIAL_POINT_LUSTIG_MARSTEN_SHANNO 0

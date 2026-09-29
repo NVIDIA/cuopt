@@ -187,6 +187,21 @@ struct bounded_free_var_t {
   f_t coefficient;  // a_{i*,j}: the coefficient of x_j in constraint i*
 };
 
+// Algebraic elimination of a free variable using an equality pivot row.
+// All indices refer to the problem immediately before the free-variable elimination pass.
+template <typename i_t, typename f_t>
+struct free_variable_elimination_t {
+  i_t variable;
+  i_t pivot_row;
+  f_t pivot_coefficient;
+  f_t rhs;
+  std::vector<i_t> columns;
+  std::vector<f_t> coefficients;
+  // Each affected row was replaced by row - factor * pivot_row.
+  std::vector<i_t> affected_rows;
+  std::vector<f_t> factors;
+};
+
 template <typename i_t, typename f_t>
 struct presolve_info_t {
   // indices of variables in the original problem that remain in the presolved problem
@@ -218,6 +233,13 @@ struct presolve_info_t {
 
   // Originally-free variables that received implied bounds, with the constraint used
   std::vector<bounded_free_var_t<i_t, f_t>> bounded_free_variables;
+
+  // Free variables and pivot rows removed algebraically at the end of presolve.
+  std::vector<free_variable_elimination_t<i_t, f_t>> free_variable_eliminations;
+  std::vector<i_t> free_elimination_remaining_variables;
+  std::vector<i_t> free_elimination_remaining_constraints;
+  i_t free_elimination_num_variables{0};
+  i_t free_elimination_num_constraints{0};
 };
 
 template <typename i_t, typename f_t>
