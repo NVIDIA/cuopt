@@ -617,7 +617,7 @@ bool branch_and_bound_t<i_t, f_t>::set_solution_from_heuristics(const std::vecto
     f_t abs_gap     = compute_user_abs_gap(original_lp_, obj, lower_bound);
     f_t rel_gap     = user_relative_gap(user_obj, user_lower);
 
-    if (rel_gap < settings_.relative_mip_gap_tol || abs_gap < settings_.absolute_mip_gap_tol) {
+    if (rel_gap <= settings_.relative_mip_gap_tol || abs_gap <= settings_.absolute_mip_gap_tol) {
       solver_status_        = mip_status_t::OPTIMAL;
       node_concurrent_halt_ = true;
     }
@@ -1009,7 +1009,7 @@ void branch_and_bound_t<i_t, f_t>::add_feasible_solution(const lp_problem_t<i_t,
     f_t abs_gap     = compute_user_abs_gap(original_lp_, leaf_objective, lower_bound);
     f_t rel_gap     = user_relative_gap(user_obj, user_lower);
 
-    if (rel_gap < settings_.relative_mip_gap_tol || abs_gap < settings_.absolute_mip_gap_tol) {
+    if (rel_gap <= settings_.relative_mip_gap_tol || abs_gap <= settings_.absolute_mip_gap_tol) {
       solver_status_        = mip_status_t::OPTIMAL;
       node_concurrent_halt_ = true;
     }
@@ -3980,7 +3980,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       return mip_status_t::OPTIMAL;
     }
 
-    if (abs_gap < settings_.absolute_mip_gap_tol || rel_gap < settings_.relative_mip_gap_tol) {
+    if (abs_gap <= settings_.absolute_mip_gap_tol || rel_gap <= settings_.relative_mip_gap_tol) {
       if (settings_.benchmark_info_ptr != nullptr) {
         settings_.benchmark_info_ptr->root_lp_with_cuts =
           compute_user_objective(original_lp_, root_objective_);
