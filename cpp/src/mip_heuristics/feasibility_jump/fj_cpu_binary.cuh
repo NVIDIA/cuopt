@@ -95,6 +95,7 @@ struct fj_bin_problem_t {
   std::vector<int32_t> original_to_bin_mapping;
   std::vector<double> bit_weight;
   std::vector<double> orig_objective;
+  double substitution_offset{0};
 };
 
 // Result of the width-independent eligibility scan.

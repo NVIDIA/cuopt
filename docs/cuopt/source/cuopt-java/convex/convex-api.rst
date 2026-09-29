@@ -100,7 +100,12 @@ The settings API also includes:
 
 * the static setting accessors;
 * ``setMethod`` and ``setPDLPSolverMode``;
-* ``setOptimalityTolerance``.
+* ``setOptimalityTolerance``;
+* ``setNumGpus`` and ``setMpdlpPartitioner``, settings for multi-GPU PDLP. Multi-GPU PDLP
+  dispatch requires the MPS/QPS-model solve entry point (used by the CLI and gRPC service),
+  which the Java bindings do not yet expose; ``solve()`` here always solves on a single GPU,
+  regardless of ``setNumGpus``. ``setMpdlpPartitioner`` takes an int: ``0`` Auto (default),
+  ``1`` KaMinPar, or ``2`` RoundRobin.
 
 ``SolverMethod`` includes ``PDLP``, ``DUAL_SIMPLEX``, ``BARRIER`` and
 ``CONCURRENT``. ``PDLPSolverMode`` exposes the supported PDLP solver modes.

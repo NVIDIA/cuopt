@@ -61,6 +61,8 @@
 
 namespace cuopt::mathematical_optimization::mip {
 
+static constexpr int papilo_thread_limit = 4;
+
 // Backend-agnostic normalisation of the mutable presolve fields:
 //   * sign-flip `obj_coeffs` / `objective_offset` when maximise,
 //   * materialise ranged `constr_lb` / `constr_ub` from `row_types` +
@@ -794,8 +796,9 @@ void set_presolve_options(papilo::Presolve<f_t>& presolver,
                           i_t num_cpu_threads,
                           i_t max_rounds)
 {
-  presolver.getPresolveOptions().tlim    = time_limit;
-  presolver.getPresolveOptions().threads = num_cpu_threads;  //  user setting or  0 (automatic)
+  presolver.getPresolveOptions().tlim = time_limit;
+  presolver.getPresolveOptions().threads =
+    num_cpu_threads > 0 ? std::min<i_t>(num_cpu_threads, papilo_thread_limit) : papilo_thread_limit;
   presolver.getPresolveOptions().feastol = 1e-5;
   if (max_rounds > 0) { presolver.getPresolveOptions().maxrounds = max_rounds; }
   if (dual_postsolve) {

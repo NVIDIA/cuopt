@@ -82,7 +82,16 @@ function(ConfigureTest CMAKE_TEST_NAME)
         set(_cuopt_link_target cuopt_static)
         set(_extra_libs cuopttestutils_static)
     else()
-        set(_cuopt_link_target cuopt)
+        # The components rather than the cuopt umbrella: the umbrella no longer carries
+        # links to them, so that it can be exported on its own while each component
+        # exports separately (#1635).
+        # Order matches what the cuopt umbrella used to expand to; changing it changes
+        # which definition the linker resolves first.
+        set(_cuopt_link_target "")
+        if(NOT SKIP_ROUTING_BUILD)
+            list(APPEND _cuopt_link_target cuopt_routing)
+        endif()
+        list(APPEND _cuopt_link_target cuopt_mathopt cuopt_client)
         set(_extra_libs cuopttestutils)
     endif()
     # cuopttestutils only exists when the routing engine is built.
@@ -109,6 +118,7 @@ function(ConfigureTest CMAKE_TEST_NAME)
         GTest::gtest
         GTest::gtest_main
         ${CUOPT_PRIVATE_CUDA_LIBS}
+        OpenMP::OpenMP_CUDA
     )
     if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
       target_link_options(${CMAKE_TEST_NAME} PRIVATE -Wl,--enable-new-dtags)

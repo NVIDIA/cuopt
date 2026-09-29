@@ -22,15 +22,29 @@ from cuopt_server.proxy_webserver import (
     set_grpc_routing_client,
     set_max_request_size,
 )
-from cuopt_server.utils.http_codec import mime_json, mime_msgpack, mime_zlib
+from cuopt_server.utils.http_codec import (
+    mime_json,
+    mime_msgpack,
+    mime_wild,
+    mime_zlib,
+)
 from cuopt_server.utils.http_envelope import make_response
 from cuopt_server.utils.linear_programming import conversion as lp_conversion
 from cuopt_server.utils.routing import conversion as routing_conversion
+
+_JSON_ACCEPT = {"Accept": mime_json}
 
 
 class _Uvicorn(uvicorn.Server):
     def install_signal_handlers(self):
         pass
+
+
+def _request_without_accept(method, url, **kwargs):
+    session = requests.Session()
+    prepared = session.prepare_request(requests.Request(method, url, **kwargs))
+    prepared.headers.pop("Accept", None)
+    return session.send(prepared)
 
 
 def _free_port():
@@ -65,6 +79,7 @@ def _vrp_grpc_sol():
         "arrival_stamp": [1.5],
         "unserviced_nodes": [],
         "accepted": [1],
+        "solve_time": 1.25,
     }
 
 
@@ -194,13 +209,20 @@ class FakeClient:
         if getattr(self, "unhealthy", False):
             raise RuntimeError("gRPC server unavailable")
 
-    def submit(self, problem, settings, enable_incumbents=None):
+    def submit(
+        self,
+        problem,
+        settings,
+        enable_incumbents=None,
+        enable_set_incumbent=False,
+    ):
         job_id = str(uuid.uuid4())
         self.jobs[job_id] = FakeJobStatus.COMPLETED
         self.submitted.append(
             {
                 "id": job_id,
                 "enable_incumbents": enable_incumbents,
+                "enable_set_incumbent": enable_set_incumbent,
                 "problem": problem,
                 "settings": settings,
             }
@@ -346,7 +368,9 @@ def proxy(proxy_server, monkeypatch):
 
     monkeypatch.setattr(pw, "create_solver", _fake_create_solver)
 
-    def _fake_prepare_vrp(data, warnings, initial_envelopes=None):
+    def _fake_prepare_vrp(
+        data, warnings, initial_envelopes=None, data_source="stream"
+    ):
         routing.initial_envelopes = initial_envelopes
         return SimpleNamespace(), SimpleNamespace(), ["veh-1"], ["A"]
 
@@ -438,6 +462,35 @@ def test_routing_solution_to_http_maps_ids():
     assert inner["dropped_tasks"] == {"task_id": [], "task_index": []}
 
 
+def test_result_file_stub_includes_notes_and_warnings(
+    proxy, monkeypatch, tmp_path
+):
+    import cuopt_server.utils.settings as settings
+
+    monkeypatch.setattr(
+        settings, "get_result_dir", lambda: (str(tmp_path), 0, None)
+    )
+    url, _ = proxy
+    req_id = requests.post(
+        url + "/cuopt/request",
+        headers={
+            "CLIENT-VERSION": "custom",
+            "CUOPT-RESULT-FILE": "out.json",
+            **_JSON_ACCEPT,
+        },
+        json=_lp(),
+    ).json()["reqId"]
+    stub = requests.get(
+        url + f"/cuopt/solution/{req_id}", headers=_JSON_ACCEPT
+    )
+    assert stub.status_code == 200, stub.text
+    body = stub.json()
+    assert body["result_file"] == "out.json"
+    assert body["warnings"] == []
+    assert body["notes"] == ["Optimal"]
+    assert (tmp_path / "out.json").is_file()
+
+
 def test_health(proxy):
     url, _ = proxy
     for path in ("/", "/cuopt/health", "/v2/health/ready", "/v2/health/live"):
@@ -495,11 +548,12 @@ def test_submit_status_result_delete(proxy):
     uuid.UUID(req_id)
     assert fake.submitted[0]["enable_incumbents"] is False
 
-    st = requests.get(url + f"/cuopt/request/{req_id}")
+    st = requests.get(url + f"/cuopt/request/{req_id}", headers=_JSON_ACCEPT)
     assert st.status_code == 200
+    assert st.headers["content-type"].startswith(mime_json)
     assert st.json() == "completed"
 
-    sol = requests.get(url + f"/cuopt/solution/{req_id}")
+    sol = requests.get(url + f"/cuopt/solution/{req_id}", headers=_JSON_ACCEPT)
     assert sol.status_code == 200
     body = sol.json()
     assert body["reqId"] == req_id
@@ -568,10 +622,15 @@ def test_getsolution_caches_warmstart(proxy):
 
 
 def test_warmstart_missing_id_is_404(proxy):
+    import msgpack
+
     url, _ = proxy
     missing = str(uuid.uuid4())
     res = requests.get(url + f"/cuopt/solution/{missing}/warmstart")
     assert res.status_code == 404
+    assert msgpack.loads(res.content)["error"] == (
+        f"job {missing} does not exist"
+    )
     posted = requests.post(
         url + "/cuopt/request",
         headers={"CLIENT-VERSION": "custom"},
@@ -579,7 +638,13 @@ def test_warmstart_missing_id_is_404(proxy):
         json=_lp(),
     )
     assert posted.status_code == 404, posted.text
-    assert missing in posted.json()["error"]
+    assert posted.json()["error"] == f"job {missing} does not exist"
+
+    res = requests.get(url + "/cuopt/solution/not-a-uuid/warmstart")
+    assert res.status_code == 404
+    assert msgpack.loads(res.content)["error"] == (
+        "job not-a-uuid does not exist"
+    )
 
 
 def test_warmstart_while_running_returns_req_id(proxy):
@@ -680,6 +745,28 @@ def test_invalid_lp_payloads_are_rejected(proxy, mutate, status_code):
     )
     assert res.status_code == status_code, res.text
     assert fake.submitted == []
+    if status_code == 422:
+        assert "optimization data stream" in res.json()["error"]
+
+
+def test_invalid_lp_file_names_source_in_422(proxy, monkeypatch, tmp_path):
+    import cuopt_server.utils.settings as settings
+
+    monkeypatch.setattr(settings, "get_data_dir", lambda: str(tmp_path))
+    (tmp_path / "bad.json").write_text("{}")
+    url, fake = proxy
+    res = requests.post(
+        url + "/cuopt/request",
+        headers={
+            "CLIENT-VERSION": "custom",
+            "CUOPT-DATA-FILE": "bad.json",
+            "Content-Type": mime_json,
+            "Accept": mime_json,
+        },
+    )
+    assert res.status_code == 422, res.text
+    assert "optimization data file" in res.json()["error"]
+    assert fake.submitted == []
 
 
 def test_oversized_request_is_rejected_before_allocation(proxy):
@@ -710,14 +797,64 @@ def test_incumbents_cursor_and_sentinel(proxy):
         {"index": 0, "objective": 2.0, "assignment": [1.0, 1.0]},
         {"index": 1, "objective": 1.0, "assignment": [0.0, 1.0]},
     ]
-    first = requests.get(url + f"/cuopt/solution/{req_id}/incumbents")
+    first = requests.get(
+        url + f"/cuopt/solution/{req_id}/incumbents", headers=_JSON_ACCEPT
+    )
     assert first.status_code == 200
     assert first.json() == [
         {"solution": [1.0, 1.0], "cost": 2.0, "bound": None},
         {"solution": [0.0, 1.0], "cost": 1.0, "bound": None},
     ]
-    second = requests.get(url + f"/cuopt/solution/{req_id}/incumbents")
+    second = requests.get(
+        url + f"/cuopt/solution/{req_id}/incumbents", headers=_JSON_ACCEPT
+    )
     assert second.json() == [{"solution": [], "cost": None, "bound": None}]
+
+
+def test_incumbent_set_solutions_is_forwarded(proxy):
+    url, fake = proxy
+    lp = _lp()
+    lp["variable_types"] = ["I", "I"]
+    res = requests.post(
+        url + "/cuopt/request",
+        headers={"CLIENT-VERSION": "custom"},
+        params={
+            "incumbent_solutions": True,
+            "incumbent_set_solutions": True,
+        },
+        json=lp,
+    )
+    assert res.status_code == 200, res.text
+    assert fake.submitted[0]["enable_incumbents"] is True
+    assert fake.submitted[0]["enable_set_incumbent"] is True
+
+
+@pytest.mark.parametrize("variable_type", ["I", "B", "S"])
+def test_incumbent_set_solutions_without_incumbents(proxy, variable_type):
+    url, fake = proxy
+    lp = _lp()
+    lp["variable_types"] = [variable_type, variable_type]
+    res = requests.post(
+        url + "/cuopt/request",
+        headers={"CLIENT-VERSION": "custom"},
+        params={"incumbent_set_solutions": True},
+        json=lp,
+    )
+    assert res.status_code == 200, res.text
+    assert fake.submitted[0]["enable_incumbents"] is False
+    assert fake.submitted[0]["enable_set_incumbent"] is True
+
+
+def test_lp_does_not_enable_set_incumbent(proxy):
+    url, fake = proxy
+    res = requests.post(
+        url + "/cuopt/request",
+        headers={"CLIENT-VERSION": "custom"},
+        params={"incumbent_set_solutions": True},
+        json=_lp(),
+    )
+    assert res.status_code == 200, res.text
+    assert fake.submitted[0]["enable_set_incumbent"] is False
 
 
 def test_logs_and_log_delete_noop(proxy):
@@ -730,12 +867,47 @@ def test_logs_and_log_delete_noop(proxy):
         json=lp,
     )
     req_id = res.json()["reqId"]
-    logs = requests.get(url + f"/cuopt/log/{req_id}")
+    logs = requests.get(url + f"/cuopt/log/{req_id}", headers=_JSON_ACCEPT)
     assert logs.status_code == 200
     body = logs.json()
     assert body["log"] == ["line1", "line2"]
     assert body["nbytes"] > 0
     assert requests.delete(url + f"/cuopt/log/{req_id}").status_code == 200
+
+
+def test_log_delete_without_logs_is_404(proxy):
+    url, _ = proxy
+    req_id = requests.post(
+        url + "/cuopt/request",
+        headers={"CLIENT-VERSION": "custom"},
+        json=_lp(),
+    ).json()["reqId"]
+    res = requests.delete(url + f"/cuopt/log/{req_id}", headers=_JSON_ACCEPT)
+    assert res.status_code == 404
+    assert res.json() == {"error": f"log not found for request {req_id}"}
+
+
+def test_unknown_log_is_404_without_error_result(proxy):
+    url, _ = proxy
+    missing = str(uuid.uuid4())
+    res = requests.get(url + f"/cuopt/log/{missing}", headers=_JSON_ACCEPT)
+    assert res.status_code == 404
+    assert res.json() == {"error": f"log not found for request {missing}"}
+
+    res = requests.get(url + "/cuopt/log/not-a-uuid", headers=_JSON_ACCEPT)
+    assert res.status_code == 400
+    assert res.json() == {"error": "Invalid request id format"}
+
+    res = requests.delete(url + f"/cuopt/log/{missing}", headers=_JSON_ACCEPT)
+    assert res.status_code == 404
+    assert res.json() == {"error": f"log not found for request {missing}"}
+
+    res = requests.delete(url + "/cuopt/log/not-a-uuid", headers=_JSON_ACCEPT)
+    assert res.status_code == 400
+    assert res.json() == {
+        "error": "Invalid request id format",
+        "error_result": False,
+    }
 
 
 def test_cancel_request(proxy):
@@ -747,7 +919,9 @@ def test_cancel_request(proxy):
         json=lp,
     ).json()["reqId"]
     fake.jobs[req_id] = FakeJobStatus.PROCESSING
-    res = requests.delete(url + f"/cuopt/request/{req_id}")
+    res = requests.delete(
+        url + f"/cuopt/request/{req_id}", headers=_JSON_ACCEPT
+    )
     assert res.status_code == 200
     assert res.json() == {"queued": 0, "running": 1, "cached": 0}
     assert req_id in fake.cancelled
@@ -761,7 +935,9 @@ def test_cancel_completed_is_noop(proxy):
         headers={"CLIENT-VERSION": "custom"},
         json=lp,
     ).json()["reqId"]
-    res = requests.delete(url + f"/cuopt/request/{req_id}")
+    res = requests.delete(
+        url + f"/cuopt/request/{req_id}", headers=_JSON_ACCEPT
+    )
     assert res.status_code == 200
     assert res.json() == {"queued": 0, "running": 0, "cached": 0}
     assert req_id not in fake.cancelled
@@ -779,9 +955,11 @@ def test_validation_only_skips_submit(proxy):
     assert res.status_code == 200
     req_id = res.json()["reqId"]
     assert fake.submitted == []
-    st = requests.get(url + f"/cuopt/request/{req_id}")
+    st = requests.get(url + f"/cuopt/request/{req_id}", headers=_JSON_ACCEPT)
     assert st.json() == "completed"
-    sol = requests.get(url + f"/cuopt/solution/{req_id}").json()
+    sol = requests.get(
+        url + f"/cuopt/solution/{req_id}", headers=_JSON_ACCEPT
+    ).json()
     assert sol["notes"] == ["Input is valid"]
     assert sol["response"]["solver_response"]["status"] == 0
 
@@ -792,7 +970,6 @@ def test_validation_only_skips_submit(proxy):
         ({"cache": True}, "cache"),
         ({"reqId": str(uuid.uuid4())}, "reqId"),
         ({"initialId": str(uuid.uuid4())}, "initialId"),
-        ({"incumbent_set_solutions": True}, "incumbent_set_solutions"),
     ],
 )
 def test_dropped_query_params_are_501(proxy, params, feature):
@@ -829,15 +1006,16 @@ def test_vrp_submit_status_and_solution(proxy):
     req_id = res.json()["reqId"]
     assert fake.submitted == []
     assert len(fake.routing.submitted) == 1
-    st = requests.get(url + f"/cuopt/request/{req_id}")
+    st = requests.get(url + f"/cuopt/request/{req_id}", headers=_JSON_ACCEPT)
     assert st.status_code == 200
     assert st.json() == "completed"
-    sol = requests.get(url + f"/cuopt/solution/{req_id}")
+    sol = requests.get(url + f"/cuopt/solution/{req_id}", headers=_JSON_ACCEPT)
     assert sol.status_code == 200, sol.text
     body = sol.json()["response"]["solver_response"]
     assert body["status"] == 0
     assert "veh-1" in body["vehicle_data"]
     assert body["vehicle_data"]["veh-1"]["task_id"] == ["A"]
+    assert sol.json()["response"]["total_solve_time"] == 1.25
 
 
 def test_vrp_initial_id_from_prior_grpc_result(proxy):
@@ -889,7 +1067,7 @@ def test_vrp_solution_after_sidecar_lost(proxy):
     ).json()["reqId"]
     with pw._jobs_lock:
         pw._jobs.pop(req_id, None)
-    sol = requests.get(url + f"/cuopt/solution/{req_id}")
+    sol = requests.get(url + f"/cuopt/solution/{req_id}", headers=_JSON_ACCEPT)
     assert sol.status_code == 200, sol.text
     assert "vehicle_data" in sol.json()["response"]["solver_response"]
 
@@ -1190,16 +1368,45 @@ def test_zlib_accept(proxy):
     assert decoded["response"]["solver_response"]["status"] == "Optimal"
 
 
-def test_unknown_id_is_404(proxy):
+def test_delete_unknown_request_is_200(proxy):
     url, _ = proxy
     missing = str(uuid.uuid4())
-    assert requests.get(url + f"/cuopt/request/{missing}").status_code == 404
-    assert requests.get(url + f"/cuopt/solution/{missing}").status_code == 404
+    res = requests.delete(
+        url + f"/cuopt/request/{missing}", headers=_JSON_ACCEPT
+    )
+    assert res.status_code == 200
+    assert res.json() == {"queued": 0, "running": 0, "cached": 0}
 
 
-def test_invalid_id_is_400(proxy):
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/cuopt/request/{id}",
+        "/cuopt/solution/{id}",
+        "/cuopt/solution/{id}/incumbents",
+    ],
+)
+def test_unknown_job_is_404(proxy, path):
     url, _ = proxy
-    assert requests.get(url + "/cuopt/request/not-a-uuid").status_code == 400
+    missing = str(uuid.uuid4())
+    res = requests.get(url + path.format(id=missing), headers=_JSON_ACCEPT)
+    assert res.status_code == 404
+    assert res.json()["error"] == f"job {missing} does not exist"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/cuopt/request/not-a-uuid",
+        "/cuopt/solution/not-a-uuid",
+        "/cuopt/solution/not-a-uuid/incumbents",
+    ],
+)
+def test_non_uuid_job_id_is_404(proxy, path):
+    url, _ = proxy
+    res = requests.get(url + path, headers=_JSON_ACCEPT)
+    assert res.status_code == 404
+    assert res.json()["error"] == "job not-a-uuid does not exist"
 
 
 @pytest.mark.parametrize("status", ["FAILED", "CANCELLED"])
@@ -1226,6 +1433,162 @@ def test_lp_does_not_enable_incumbents(proxy):
     )
     assert res.status_code == 200
     assert fake.submitted[0]["enable_incumbents"] is False
+
+
+@pytest.mark.parametrize("accept", mime_wild)
+def test_wildcard_accept_status_is_msgpack(proxy, accept):
+    import msgpack
+
+    url, _ = proxy
+    req_id = requests.post(
+        url + "/cuopt/request",
+        headers={"CLIENT-VERSION": "custom", **_JSON_ACCEPT},
+        json=_lp(),
+    ).json()["reqId"]
+    st = requests.get(
+        url + f"/cuopt/request/{req_id}",
+        headers={"Accept": accept},
+    )
+    assert st.status_code == 200
+    assert st.headers["content-type"].startswith(mime_msgpack)
+    assert msgpack.loads(st.content, strict_map_key=False) == "completed"
+
+
+@pytest.mark.parametrize("accept", mime_wild)
+def test_wildcard_accept_solution_without_stored_accept_is_msgpack(
+    proxy, accept
+):
+    import msgpack
+    import cuopt_server.proxy_webserver as pw
+
+    url, _ = proxy
+    req_id = requests.post(
+        url + "/cuopt/request",
+        headers={"CLIENT-VERSION": "custom", **_JSON_ACCEPT},
+        json=_lp(),
+    ).json()["reqId"]
+    with pw._jobs_lock:
+        pw._jobs.pop(req_id, None)
+    sol = requests.get(
+        url + f"/cuopt/solution/{req_id}",
+        headers={"Accept": accept},
+    )
+    assert sol.status_code == 200, sol.text
+    assert sol.headers["content-type"].startswith(mime_msgpack)
+    body = msgpack.loads(sol.content, strict_map_key=False)
+    assert body["response"]["solver_response"]["status"] == "Optimal"
+
+
+@pytest.mark.parametrize("accept", mime_wild)
+def test_wildcard_accept_solution_uses_stored_request_accept(proxy, accept):
+    url, _ = proxy
+    req_id = requests.post(
+        url + "/cuopt/request",
+        headers={"CLIENT-VERSION": "custom", "Accept": mime_json},
+        json=_lp(),
+    ).json()["reqId"]
+    sol = requests.get(
+        url + f"/cuopt/solution/{req_id}",
+        headers={"Accept": accept},
+    )
+    assert sol.status_code == 200
+    assert sol.headers["content-type"].startswith(mime_json)
+    assert sol.json()["response"]["solver_response"]["status"] == "Optimal"
+
+
+@pytest.mark.parametrize("accept", mime_wild)
+def test_wildcard_accept_post_request_follows_content_type(proxy, accept):
+    import msgpack
+
+    url, _ = proxy
+    res = requests.post(
+        url + "/cuopt/request",
+        headers={
+            "CLIENT-VERSION": "custom",
+            "Content-Type": mime_json,
+            "Accept": accept,
+        },
+        json=_lp(),
+    )
+    assert res.status_code == 200
+    assert res.headers["content-type"].startswith(mime_json)
+    assert "reqId" in res.json()
+
+    packed = msgpack.dumps(_lp())
+    res = requests.post(
+        url + "/cuopt/request",
+        headers={
+            "CLIENT-VERSION": "custom",
+            "Content-Type": mime_msgpack,
+            "Accept": accept,
+        },
+        data=packed,
+    )
+    assert res.status_code == 200
+    assert res.headers["content-type"].startswith(mime_msgpack)
+    body = msgpack.loads(res.content, strict_map_key=False)
+    assert "reqId" in body
+
+
+def test_omitted_accept_status_is_msgpack(proxy):
+    import msgpack
+
+    url, _ = proxy
+    req_id = requests.post(
+        url + "/cuopt/request",
+        headers={"CLIENT-VERSION": "custom", **_JSON_ACCEPT},
+        json=_lp(),
+    ).json()["reqId"]
+    st = _request_without_accept("GET", url + f"/cuopt/request/{req_id}")
+    assert st.status_code == 200
+    assert st.headers["content-type"].startswith(mime_msgpack)
+    assert msgpack.loads(st.content, strict_map_key=False) == "completed"
+
+
+def test_omitted_accept_solution_uses_stored_request_accept(proxy):
+    url, _ = proxy
+    req_id = requests.post(
+        url + "/cuopt/request",
+        headers={"CLIENT-VERSION": "custom", "Accept": mime_json},
+        json=_lp(),
+    ).json()["reqId"]
+    sol = _request_without_accept("GET", url + f"/cuopt/solution/{req_id}")
+    assert sol.status_code == 200
+    assert sol.headers["content-type"].startswith(mime_json)
+    assert sol.json()["response"]["solver_response"]["status"] == "Optimal"
+
+
+def test_omitted_accept_post_request_follows_content_type(proxy):
+    import msgpack
+
+    url, _ = proxy
+    res = _request_without_accept(
+        "POST",
+        url + "/cuopt/request",
+        headers={
+            "CLIENT-VERSION": "custom",
+            "Content-Type": mime_json,
+        },
+        json=_lp(),
+    )
+    assert res.status_code == 200
+    assert res.headers["content-type"].startswith(mime_json)
+    assert "reqId" in res.json()
+
+    packed = msgpack.dumps(_lp())
+    res = _request_without_accept(
+        "POST",
+        url + "/cuopt/request",
+        headers={
+            "CLIENT-VERSION": "custom",
+            "Content-Type": mime_msgpack,
+        },
+        data=packed,
+    )
+    assert res.status_code == 200
+    assert res.headers["content-type"].startswith(mime_msgpack)
+    body = msgpack.loads(res.content, strict_map_key=False)
+    assert "reqId" in body
 
 
 def test_log_delete_error_is_encoded(proxy, monkeypatch):

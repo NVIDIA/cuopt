@@ -36,6 +36,7 @@
 #define CUOPT_NODE_LIMIT                            "node_limit"
 #define CUOPT_PDLP_SOLVER_MODE                      "pdlp_solver_mode"
 #define CUOPT_METHOD                                "method"
+#define CUOPT_CONCURRENT_NNZ_CUTOFF                 "concurrent_nnz_cutoff"
 #define CUOPT_PER_CONSTRAINT_RESIDUAL               "per_constraint_residual"
 #define CUOPT_SAVE_BEST_PRIMAL_SO_FAR               "save_best_primal_so_far"
 #define CUOPT_FIRST_PRIMAL_FEASIBLE                 "first_primal_feasible"
@@ -57,6 +58,9 @@
 #define CUOPT_ELIMINATE_DENSE_COLUMNS               "eliminate_dense_columns"
 #define CUOPT_CUDSS_DETERMINISTIC                   "cudss_deterministic"
 #define CUOPT_PRESOLVE                              "presolve"
+#define CUOPT_DUAL_SIMPLEX_INITIAL_PERTURBATION     "dual_simplex_initial_perturbation"
+#define CUOPT_DUAL_SIMPLEX_REMOVE_PERTURBATION      "dual_simplex_remove_perturbation"
+#define CUOPT_PRIMAL_SIMPLEX_PRICING                "primal_simplex_pricing"
 #define CUOPT_MIP_PROBING                           "mip_probing"
 #define CUOPT_DUAL_POSTSOLVE                        "dual_postsolve"
 #define CUOPT_SEQUENCE_SOLVE                        "sequence_solve"
@@ -91,16 +95,15 @@
 #define CUOPT_MIP_STRONG_BRANCHING_SIMPLEX_ITERATION_LIMIT \
   "mip_strong_branching_simplex_iteration_limit"
 
-#define CUOPT_SOLUTION_FILE                "solution_file"
-#define CUOPT_NUM_CPU_THREADS              "num_cpu_threads"
-#define CUOPT_NUM_GPUS                     "num_gpus"
-#define CUOPT_DISTRIBUTED_PDLP_PARTITIONER "distributed_pdlp_partitioner"
-#define CUOPT_USE_DISTRIBUTED_PDLP         "use_distributed_pdlp"
-#define CUOPT_USER_PROBLEM_FILE            "user_problem_file"
-#define CUOPT_PRESOLVE_FILE                "presolve_file"
-#define CUOPT_RANDOM_SEED                  "random_seed"
-#define CUOPT_PDLP_PRECISION               "pdlp_precision"
-#define CUOPT_MIP_SEMICONTINUOUS_BIG_M     "mip_semi_continuous_big_m"
+#define CUOPT_SOLUTION_FILE             "solution_file"
+#define CUOPT_NUM_CPU_THREADS           "num_cpu_threads"
+#define CUOPT_NUM_GPUS                  "num_gpus"
+#define CUOPT_MULTIGPU_PDLP_PARTITIONER "multigpu_pdlp_partitioner"
+#define CUOPT_USER_PROBLEM_FILE         "user_problem_file"
+#define CUOPT_PRESOLVE_FILE             "presolve_file"
+#define CUOPT_RANDOM_SEED               "random_seed"
+#define CUOPT_PDLP_PRECISION            "pdlp_precision"
+#define CUOPT_MIP_SEMICONTINUOUS_BIG_M  "mip_semi_continuous_big_m"
 
 #define CUOPT_MIP_HYPER_HEURISTIC_POPULATION_SIZE     "mip_hyper_heuristic_population_size"
 #define CUOPT_MIP_HYPER_HEURISTIC_NUM_CPUFJ_THREADS   "mip_hyper_heuristic_num_cpufj_threads"
@@ -158,6 +161,9 @@
 /* @brief QCQP (barrier) scaling hyper-parameters */
 #define CUOPT_QCQP_HYPER_RUIZ_EQUILIBRATION "qcqp_hyper_ruiz_equilibration"
 
+/* @brief PDLP scaling hyper-parameter: Curtis-Reid prescaling toggle */
+#define CUOPT_PDLP_HYPER_ENABLE_CURTIS_REID_SCALING "pdlp_hyper_enable_curtis_reid_scaling"
+
 /* @brief Barrier initial point safeguard */
 #define CUOPT_BARRIER_INITIAL_POINT_SAFEGUARD "barrier_initial_point_safeguard"
 
@@ -212,7 +218,8 @@
 #define CUOPT_METHOD_PDLP         1
 #define CUOPT_METHOD_DUAL_SIMPLEX 2
 #define CUOPT_METHOD_BARRIER      3
-#define CUOPT_METHOD_UNSET        4
+#define CUOPT_METHOD_PRIMAL       4
+#define CUOPT_METHOD_UNSET        5
 
 #define CUOPT_BARRIER_DUAL_INITIAL_POINT_AUTOMATIC             -1
 #define CUOPT_BARRIER_DUAL_INITIAL_POINT_LUSTIG_MARSTEN_SHANNO 0
@@ -242,13 +249,13 @@
 #define CUOPT_PRESOLVE_PAPILO  1
 #define CUOPT_PRESOLVE_PSLP    2
 
-/* @brief distributed_pdlp_partitioner values.
+/* @brief multigpu_pdlp_partitioner values.
  * Auto: pick automatically (RoundRobin on 1 GPU, KaMinPar otherwise).
  * KaMinPar: multi-threaded KaMinPar graph partitioner.
  * RoundRobin: round-robin assignment, no graph. */
-#define CUOPT_DISTRIBUTED_PDLP_PARTITIONER_AUTO        0
-#define CUOPT_DISTRIBUTED_PDLP_PARTITIONER_KAMINPAR    1
-#define CUOPT_DISTRIBUTED_PDLP_PARTITIONER_ROUND_ROBIN 2
+#define CUOPT_MULTIGPU_PDLP_PARTITIONER_AUTO        0
+#define CUOPT_MULTIGPU_PDLP_PARTITIONER_KAMINPAR    1
+#define CUOPT_MULTIGPU_PDLP_PARTITIONER_ROUND_ROBIN 2
 
 /* @brief MIP scaling mode constants */
 #define CUOPT_MIP_SCALING_OFF          0

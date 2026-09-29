@@ -25,6 +25,13 @@ final class NativeIntegrationTest {
       settings.setSetting(CuOptConstants.CUOPT_LOG_TO_CONSOLE, false);
       settings.setSetting(CuOptConstants.CUOPT_TIME_LIMIT, 12.5);
       settings.setOptimalityTolerance(1.0e-6);
+      settings.setNumGpus(-1);
+      settings.setMpdlpPartitioner(2); // RoundRobin
+      assertEquals(-1, settings.getSetting(CuOptConstants.CUOPT_NUM_GPUS, Integer.class));
+      assertEquals(
+          2,
+          settings.getSetting(
+              CuOptConstants.CUOPT_MULTIGPU_PDLP_PARTITIONER, Integer.class));
       assertEquals(
           Boolean.FALSE,
           settings.getSetting(CuOptConstants.CUOPT_LOG_TO_CONSOLE, Boolean.class));

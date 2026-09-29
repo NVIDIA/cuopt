@@ -7,6 +7,9 @@
 
 #include <cuopt/routing/cpu_routing_problem.hpp>
 
+#include <cuopt/routing/data_model_view.hpp>
+#include <cuopt/routing/routing_structures.hpp>
+
 #include <utilities/copy_helpers.hpp>
 
 #include <cuda/stream>

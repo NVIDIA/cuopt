@@ -804,6 +804,19 @@ pdlp_settings:
       from_proto_cast: "pdlp_precision_t"
       optional: true
 
+    # PDLP scaling hyper-parameters (nested: settings.hyper_params.<field>)
+    # Advanced/internal tuning knob; see pdlp_hyper_params_t in
+    # cpp/include/cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh.
+  - hyper_params:
+    - do_curtis_reid_scaling:
+        description: >-
+          Whether Curtis-Reid prescaling runs before Ruiz/Pock-Chambolle
+          matrix scaling.
+        default: "true"
+        field_num: 35
+        type: bool
+        optional: true
+
 # ─────────────────────────────────────────────────────────────────────────────
 # MIP Solver Settings
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1393,11 +1406,9 @@ optimization_problem:
   - initial_primal_solution:
       field_num: 20
       array_id: 13
-      skip_conversion: true
   - initial_dual_solution:
       field_num: 21
       array_id: 14
-      skip_conversion: true
   - Q_values:
       field_num: 22
       array_id: 15
