@@ -358,16 +358,10 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
   for (size_t k = 0; k < static_cast<size_t>(n_constraints); ++k) {
     std::string row_name =
       k < problem_.get_row_names().size() ? problem_.get_row_names()[k] : "R" + std::to_string(k);
-    f_t rhs{0};
-    if (constraint_bounds.size() > 0)
-      rhs = constraint_bounds[k];
-    else if (std::isinf(constraint_lower_bounds[k])) {
-      rhs = constraint_upper_bounds[k];
-    } else if (std::isinf(constraint_upper_bounds[k])) {
-      rhs = constraint_lower_bounds[k];
-    } else {
-      rhs = constraint_lower_bounds[k];
-    }
+    // Match the sense emitted in ROWS, including L rows with a finite range.
+    char const type =
+      linear_row_type_from_bounds(constraint_lower_bounds[k], constraint_upper_bounds[k]);
+    f_t const rhs = type == 'L' ? constraint_upper_bounds[k] : constraint_lower_bounds[k];
     if (std::isfinite(rhs) && rhs != 0.0) {
       mps_file << "    RHS1      " << row_name << " " << rhs << "\n";
     }
@@ -397,7 +391,8 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
         mps_file << "RANGES\n";
         has_ranges = true;
       }
-      std::string row_name = "R" + std::to_string(i);
+      std::string row_name =
+        i < problem_.get_row_names().size() ? problem_.get_row_names()[i] : "R" + std::to_string(i);
       mps_file << "    RNG1      " << row_name << " "
                << (constraint_upper_bounds[i] - constraint_lower_bounds[i]) << "\n";
     }

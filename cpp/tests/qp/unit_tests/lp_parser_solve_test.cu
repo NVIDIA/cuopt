@@ -18,6 +18,7 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -226,6 +227,62 @@ End
   ASSERT_EQ(solution.get_termination_status(), pdlp_termination_status_t::Optimal);
   EXPECT_NEAR(solution.get_objective_value(), -32.0, 1e-4);
   EXPECT_NEAR(solution.get_additional_termination_information().l2_dual_residual, 0.0, 1e-4);
+}
+
+TEST(mps_parser_solve, qp_ranged_rows)
+{
+  // Each encoding represents 0 <= x <= 1. Dropping the range changes the optimum.
+  struct range_case_t {
+    char sense;
+    double rhs;
+    double range;
+  };
+  for (auto const& test : std::vector<range_case_t>{
+         {'G', 0, 1}, {'G', 0, -1}, {'L', 1, 1}, {'L', 1, -1}, {'E', 0, 1}, {'E', 1, -1}}) {
+    SCOPED_TRACE(::testing::Message() << test.sense << " " << test.rhs << " " << test.range);
+    for (double cost : {-4.0, 2.0}) {
+      SCOPED_TRACE(cost);
+      std::ostringstream text;
+      text << "NAME RANGED_QP\nROWS\n N OBJ\n " << test.sense << " ROW\nCOLUMNS\n X OBJ " << cost
+           << " ROW 1\nRHS\n RHS1 ROW " << test.rhs << "\nRANGES\n RNG1 ROW " << test.range
+           << "\nBOUNDS\n FR BND1 X\nQUADOBJ\n X X 2\nENDATA\n";
+      for (bool bounds_only : {false, true}) {
+        SCOPED_TRACE(bounds_only);
+        auto problem = io::read_mps_from_string<int, double>(text.str());
+        ASSERT_EQ(problem.get_constraint_lower_bounds(), std::vector<double>{0.0});
+        ASSERT_EQ(problem.get_constraint_upper_bounds(), std::vector<double>{1.0});
+        if (bounds_only) {
+          problem.set_row_types({});
+          problem.set_constraint_bounds({});
+        }
+        raft::handle_t handle;
+        auto settings = pdlp_solver_settings_t<int, double>();
+        auto solution = solve_lp(&handle, problem, settings);
+        ASSERT_EQ(solution.get_termination_status(), pdlp_termination_status_t::Optimal);
+        EXPECT_NEAR(solution.get_objective_value(), cost < 0 ? -3.0 : 0.0, 1e-6);
+        auto x = cuopt::host_copy(solution.get_primal_solution(), handle.get_stream());
+        ASSERT_EQ(x.size(), 1u);
+        EXPECT_NEAR(x[0], cost < 0 ? 1.0 : 0.0, 1e-6);
+      }
+    }
+  }
+}
+
+TEST(mps_parser_solve, qp_sense_rhs_only)
+{
+  auto problem = io::read_mps_from_string<int, double>(
+    "NAME QP\nROWS\n N OBJ\n G ROW\nCOLUMNS\n X OBJ -4 ROW 1\n"
+    "RHS\n RHS1 ROW 0\nBOUNDS\n FR BND1 X\nQUADOBJ\n X X 2\nENDATA\n");
+  problem.set_constraint_lower_bounds({});
+  problem.set_constraint_upper_bounds({});
+  raft::handle_t handle;
+  auto settings = pdlp_solver_settings_t<int, double>();
+  auto solution = solve_lp(&handle, problem, settings);
+  ASSERT_EQ(solution.get_termination_status(), pdlp_termination_status_t::Optimal);
+  EXPECT_NEAR(solution.get_objective_value(), -4.0, 1e-6);
+  auto x = cuopt::host_copy(solution.get_primal_solution(), handle.get_stream());
+  ASSERT_EQ(x.size(), 1u);
+  EXPECT_NEAR(x[0], 2.0, 1e-6);
 }
 
 }  // namespace cuopt::mathematical_optimization
