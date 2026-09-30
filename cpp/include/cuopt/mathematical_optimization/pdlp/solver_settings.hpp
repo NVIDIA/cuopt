@@ -356,6 +356,11 @@ class pdlp_solver_settings_t {
   // Which graph partitioner multi-GPU PDLP uses. See
   // multigpu_pdlp_partitioner_t for the meaning of each value.
   multigpu_pdlp_partitioner_t multigpu_pdlp_partitioner{multigpu_pdlp_partitioner_t::Auto};
+  // Parse the input file into a 64-bit index model, which is required when the
+  // nonzero count exceeds INT_MAX. Read by the file-reading front ends (CLI), not
+  // by the solver itself: multi-GPU PDLP partitions such a problem into per-GPU
+  // sub-problems that are individually 32-bit.
+  bool mps_index_64bit{false};
   method_t method{method_t::Concurrent};
   // TODO: Remove this cutoff once concurrent CPU solver memory usage and cuDSS long running kernels
   // are resolved. -1 disables the cutoff regardless of the reduced problem's NNZ.
