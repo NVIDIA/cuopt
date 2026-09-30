@@ -96,16 +96,7 @@ representation. The ``getSetting(name, type)`` overload provides a typed
 ``Boolean``, ``Integer``, ``Double``, or ``String`` result, for example
 ``getSetting(CuOptConstants.CUOPT_TIME_LIMIT, Double.class)``.
 
-The settings API also includes:
-
-* the static setting accessors;
-* ``setMethod`` and ``setPDLPSolverMode``;
-* ``setOptimalityTolerance``;
-* ``setNumGpus``, ``setUseDistributedPdlp``, and ``setDistributedPdlpPartitioner``,
-  for distributing a PDLP solve across multiple GPUs. Distributed PDLP requires
-  ``SolverMethod.PDLP`` and ``setNumGpus(-1)`` (all GPUs visible to the process, which
-  may be a single GPU) or a value greater than 1. ``setDistributedPdlpPartitioner`` takes
-  an int: ``0`` Auto (default), ``1`` KaMinPar, or ``2`` RoundRobin.
+The settings API also includes the static setting accessors and ``setOptimalityTolerance``.
 
 ``SolverMethod`` includes ``PDLP``, ``DUAL_SIMPLEX``, ``BARRIER`` and
 ``CONCURRENT``. ``PDLPSolverMode`` exposes the supported PDLP solver modes.
