@@ -41,3 +41,4 @@
   pb_settings->set_first_primal_feasible(settings.first_primal_feasible);
   pb_settings->set_pdlp_precision(static_cast<int32_t>(settings.pdlp_precision));
   pb_settings->set_do_curtis_reid_scaling(settings.hyper_params.do_curtis_reid_scaling);
+  pb_settings->set_multigpu_pdlp_partitioner(static_cast<int32_t>(settings.multigpu_pdlp_partitioner));

@@ -109,7 +109,7 @@
         },
         "num_gpus": {
           "type": "integer",
-          "description": "Number of GPUs used for the solve. Relevant to LP in concurrent mode (up to 2 GPUs), where PDLP and barrier run on separate GPUs rather than sharing one. For distributed PDLP, -1 selects all visible devices. Default: 1."
+          "description": "Number of GPUs used for the solve. Relevant to LP in concurrent mode (up to 2 GPUs), where PDLP and barrier run on separate GPUs rather than sharing one. With method PDLP, -1 (all visible devices) or a value greater than 1 instead dispatches to multi-GPU PDLP. Default: 1."
         },
         "per_constraint_residual": {
           "type": "boolean",
@@ -174,6 +174,10 @@
         "do_curtis_reid_scaling": {
           "type": "boolean",
           "description": "Whether Curtis-Reid prescaling runs before Ruiz/Pock-Chambolle matrix scaling. Default: true."
+        },
+        "multigpu_pdlp_partitioner": {
+          "type": "integer",
+          "description": "Partitioner used to split the problem across GPUs for multi-GPU PDLP (method PDLP with num_gpus -1 or greater than 1): 0 Auto (default; RoundRobin on 1 GPU, KaMinPar otherwise), 1 KaMinPar, 2 RoundRobin. Default: 0."
         }
       },
       "additionalProperties": false

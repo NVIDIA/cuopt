@@ -24,6 +24,7 @@
 #include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
 #include <raft/util/cudart_utils.hpp>
 #include <rmm/device_uvector.hpp>
 #include "grpc_client.hpp"
@@ -2433,6 +2434,7 @@ TEST(MapperRoundtrip, PDLPSettingsAllFields)
   orig.first_primal_feasible        = true;
   orig.hyper_params.do_curtis_reid_scaling =
     false;  // not the default true, to detect overwrite-on-decode
+  orig.multigpu_pdlp_partitioner = multigpu_pdlp_partitioner_t::RoundRobin;
 
   cuopt::remote::PDLPSolverSettings pb;
   map_pdlp_settings_to_proto(orig, &pb);
@@ -2476,6 +2478,47 @@ TEST(MapperRoundtrip, PDLPSettingsAllFields)
   EXPECT_EQ(restored.save_best_primal_so_far, true);
   EXPECT_EQ(restored.first_primal_feasible, true);
   EXPECT_EQ(restored.hyper_params.do_curtis_reid_scaling, false);
+  EXPECT_EQ(restored.multigpu_pdlp_partitioner, multigpu_pdlp_partitioner_t::RoundRobin);
+}
+
+// Exercises is_multigpu_pdlp_requested decoded from the wire, matching what grpc_worker.cpp sees.
+TEST(MapperRoundtrip, PDLPSettingsMultiGpuPdlpDispatchDecision)
+{
+  using cuopt::mathematical_optimization::is_multigpu_pdlp_requested;
+
+  auto decode = [](auto fill) {
+    cuopt::remote::PDLPSolverSettings pb;
+    fill(pb);
+    pdlp_solver_settings_t<int32_t, double> settings;
+    map_proto_to_pdlp_settings(pb, settings);
+    return settings;
+  };
+
+  // Default settings (Concurrent method, num_gpus=1): single-GPU path.
+  EXPECT_FALSE(is_multigpu_pdlp_requested(decode([](auto&) {})));
+
+  // method=PDLP alone, num_gpus left at 1: still single-GPU.
+  EXPECT_FALSE(is_multigpu_pdlp_requested(
+    decode([](auto& pb) { pb.set_method(cuopt::remote::LPMethod::PDLP); })));
+
+  // method=PDLP with num_gpus=-1 (all visible devices): multi-GPU.
+  EXPECT_TRUE(is_multigpu_pdlp_requested(decode([](auto& pb) {
+    pb.set_method(cuopt::remote::LPMethod::PDLP);
+    pb.set_num_gpus(-1);
+  })));
+
+  // method=PDLP with num_gpus=4: multi-GPU.
+  EXPECT_TRUE(is_multigpu_pdlp_requested(decode([](auto& pb) {
+    pb.set_method(cuopt::remote::LPMethod::PDLP);
+    pb.set_num_gpus(4);
+  })));
+
+  // Non-PDLP method with num_gpus=4 (e.g. Barrier concurrent-mode GPU count):
+  // not multi-GPU PDLP.
+  EXPECT_FALSE(is_multigpu_pdlp_requested(decode([](auto& pb) {
+    pb.set_method(cuopt::remote::LPMethod::Barrier);
+    pb.set_num_gpus(4);
+  })));
 }
 
 TEST(MapperRoundtrip, PDLPSettingsIterationLimitSentinel)

@@ -151,3 +151,59 @@ install(
     DESTINATION bin/gtests/libcuopt
     EXCLUDE_FROM_ALL
 )
+
+# ##################################################################################################
+# - gRPC Multi-GPU Test ------------------------------------------------------------------------
+# Starts a real server process and submits a method=PDLP, num_gpus=-1 job, verifying it matches
+# a single-GPU baseline. GTEST_SKIPs below 2 GPUs (see grpc_multi_gpu_test.cpp), so it runs
+# harmlessly in the regular single-GPU suite; the GRPC_MG_TEST name lets
+# ci/test_cpp_multi_gpu.sh pick it up on a >=2-GPU runner.
+
+add_executable(GRPC_MG_TEST
+    ${CMAKE_CURRENT_SOURCE_DIR}/grpc_multi_gpu_test.cpp
+    "${CUOPT_SOURCE_DIR}/src/grpc/grpc_service_mapper.cpp"
+    "${CUOPT_SOURCE_DIR}/src/grpc/client/grpc_client.cpp"
+    "${CUOPT_SOURCE_DIR}/src/grpc/client/grpc_client_env.cpp"
+)
+
+target_include_directories(GRPC_MG_TEST
+    PRIVATE
+    "${CUOPT_SOURCE_DIR}/include"
+    "${CUOPT_SOURCE_DIR}/src"
+    "${CUOPT_SOURCE_DIR}/src/grpc"
+    "${CUOPT_SOURCE_DIR}/src/grpc/client"
+    "${CUOPT_TEST_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}"  # For grpc_integration_test_fixture.hpp
+    "${CMAKE_BINARY_DIR}"  # For generated protobuf headers
+)
+
+target_link_libraries(GRPC_MG_TEST
+    PRIVATE
+    cuopt_static
+    GTest::gmock
+    GTest::gmock_main
+    gRPC::grpc++
+    protobuf::libprotobuf
+)
+
+if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
+  target_link_options(GRPC_MG_TEST PRIVATE -Wl,--enable-new-dtags)
+endif()
+
+# Integration tests need the server binary to be built first
+add_dependencies(GRPC_MG_TEST cuopt_grpc_server)
+
+add_test(
+    NAME GRPC_MG_TEST
+    COMMAND ${CMAKE_COMMAND} -E env
+        "CUOPT_GRPC_SERVER_PATH=$<TARGET_FILE:cuopt_grpc_server>"
+        $<TARGET_FILE:GRPC_MG_TEST>
+)
+set_tests_properties(GRPC_MG_TEST PROPERTIES LABELS "numopt")
+
+install(
+    TARGETS GRPC_MG_TEST
+    COMPONENT testing
+    DESTINATION bin/gtests/libcuopt
+    EXCLUDE_FROM_ALL
+)

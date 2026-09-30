@@ -2562,6 +2562,12 @@ cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> op_problem_to_m
 }
 
 template <typename i_t, typename f_t>
+bool is_multigpu_pdlp_requested(pdlp_solver_settings_t<i_t, f_t> const& settings)
+{
+  return settings.method == method_t::PDLP && (settings.num_gpus == -1 || settings.num_gpus > 1);
+}
+
+template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> solve_lp(
   raft::handle_t const* handle_ptr,
   const cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t>& mps_data_model,
@@ -2569,8 +2575,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
   bool problem_checking,
   bool use_pdlp_solver_mode)
 {
-  // method=PDLP with num_gpus>1 (or -1 for all visible GPUs) requests multi-GPU PDLP.
-  if (settings.method == method_t::PDLP && (settings.num_gpus == -1 || settings.num_gpus > 1)) {
+  if (is_multigpu_pdlp_requested(settings)) {
     return solve_lp_distributed_from_mps(
       handle_ptr, mps_data_model, settings, use_pdlp_solver_mode);
   }
@@ -2970,8 +2975,11 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
     raft::handle_t const* handle_ptr,                                                            \
     const cuopt::mathematical_optimization::io::mps_data_model_t<int, F_TYPE>& data_model);      \
                                                                                                  \
-  template cuopt::mathematical_optimization::io::mps_data_model_t<int, F_TYPE>                   \
+  template CUOPT_EXPORT cuopt::mathematical_optimization::io::mps_data_model_t<int, F_TYPE>      \
   op_problem_to_mps_data_model(const optimization_problem_t<int, F_TYPE>& op_problem);           \
+                                                                                                 \
+  template CUOPT_EXPORT bool is_multigpu_pdlp_requested(                                         \
+    pdlp_solver_settings_t<int, F_TYPE> const& settings);                                        \
                                                                                                  \
   template optimization_problem_solution_t<int, F_TYPE> solve_lp_distributed_from_mps(           \
     raft::handle_t const* handle_ptr,                                                            \
@@ -2999,7 +3007,7 @@ template optimization_problem_t<int, float> mps_data_model_to_optimization_probl
   raft::handle_t const* handle_ptr,
   const cuopt::mathematical_optimization::io::mps_data_model_t<int, float>& data_model);
 
-template cuopt::mathematical_optimization::io::mps_data_model_t<int, float>
+template CUOPT_EXPORT cuopt::mathematical_optimization::io::mps_data_model_t<int, float>
 op_problem_to_mps_data_model(const optimization_problem_t<int, float>& op_problem);
 #endif
 

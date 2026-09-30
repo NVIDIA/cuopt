@@ -93,3 +93,6 @@
   if (pb_settings.has_do_curtis_reid_scaling()) {
     settings.hyper_params.do_curtis_reid_scaling = pb_settings.do_curtis_reid_scaling();
   }
+  if (pb_settings.has_multigpu_pdlp_partitioner()) {
+    settings.multigpu_pdlp_partitioner = static_cast<multigpu_pdlp_partitioner_t>(pb_settings.multigpu_pdlp_partitioner());
+  }
