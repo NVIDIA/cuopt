@@ -51,6 +51,8 @@ The convex optimization solvers for Linear Programming (LP), Quadratic Programmi
 
 - **Python SDK**: A Python package that provides direct access to cuOpt's convex optimization solvers through a simple, intuitive API. This allows for seamless integration into Python applications and workflows. For more information, see :doc:`cuopt-python/quick-start`.
 
+- **Java (experimental)**: JNI bindings that provide direct access to cuOpt's convex optimization solvers from Java applications. For more information, see :doc:`cuopt-java/quick-start`.
+
 - **As a Self-Hosted Service**: cuOpt's convex optimization solvers can be deployed as a self-hosted service in your own infrastructure, enabling you to maintain full control while integrating it into your existing systems.
 
 Each option provides access to the same powerful convex optimization solvers while offering flexibility in deployment and integration.

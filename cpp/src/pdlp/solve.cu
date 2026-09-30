@@ -562,6 +562,8 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   barrier_settings.barrier_relaxed_feasibility_tol = settings.tolerances.relative_primal_tolerance;
   barrier_settings.barrier_relaxed_optimality_tol  = settings.tolerances.relative_dual_tolerance;
   barrier_settings.barrier_relaxed_complementarity_tol = settings.tolerances.relative_gap_tolerance;
+  barrier_settings.barrier_relaxed_relative_objective_gap_tol =
+    settings.tolerances.relative_gap_tolerance;
   if (barrier_settings.concurrent_halt != nullptr) {
     // Don't show the barrier log in concurrent mode. Show the PDLP log instead
     barrier_settings.log.log = false;
@@ -866,15 +868,18 @@ static optimization_problem_solution_t<i_t, double> run_pdlp_solver_in_fp32(
 template <typename i_t, typename f_t>
 static optimization_problem_solution_t<i_t, f_t> run_pdlp_solver(
   mip::problem_t<i_t, f_t>& problem,
-  pdlp_solver_settings_t<i_t, f_t> const& settings,
+  pdlp_solver_settings_t<i_t, f_t> const& settings_in,
   const timer_t& timer,
   bool is_batch_mode)
 {
-  cuopt_expects(!settings.use_distributed_pdlp,
-                error_type_t::ValidationError,
-                "Distributed PDLP must be entered via solve_lp(mps_data_model, ...) "
-                "so the master GPU never materializes the full problem. Call sites "
-                "with a problem_t cannot dispatch to distributed mode.");
+  // Multi-GPU PDLP is only reachable via solve_lp(mps_data_model, ...), so the master
+  // never materializes the full problem. Any problem_t-based call (batch, MIP-internal
+  // relaxations, or an ordinary problem-object solve) already has the problem materialized
+  // here, so it runs single-GPU regardless of the requested num_gpus.
+  pdlp_solver_settings_t<i_t, f_t> settings = settings_in;
+  if (settings.method == method_t::PDLP && (settings.num_gpus == -1 || settings.num_gpus > 1)) {
+    settings.num_gpus = 1;
+  }
 
   if (problem.n_constraints == 0) {
     CUOPT_LOG_CONDITIONAL_INFO(
@@ -2564,16 +2569,10 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
   bool problem_checking,
   bool use_pdlp_solver_mode)
 {
-  if (settings.use_distributed_pdlp) {
+  // method=PDLP with num_gpus>1 (or -1 for all visible GPUs) requests multi-GPU PDLP.
+  if (settings.method == method_t::PDLP && (settings.num_gpus == -1 || settings.num_gpus > 1)) {
     return solve_lp_distributed_from_mps(
       handle_ptr, mps_data_model, settings, use_pdlp_solver_mode);
-  }
-  // method=PDLP with num_gpus>1 (or -1 for all visible GPUs) requests distributed PDLP.
-  if (settings.method == method_t::PDLP && (settings.num_gpus == -1 || settings.num_gpus > 1)) {
-    pdlp_solver_settings_t<i_t, f_t> distributed_settings = settings;
-    distributed_settings.use_distributed_pdlp             = true;
-    return solve_lp_distributed_from_mps(
-      handle_ptr, mps_data_model, distributed_settings, use_pdlp_solver_mode);
   }
   auto op_problem = mps_data_model_to_optimization_problem(handle_ptr, mps_data_model);
   return solve_lp(op_problem, settings, problem_checking, use_pdlp_solver_mode, false);
@@ -2589,9 +2588,14 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
   cuopt_expects(handle_ptr != nullptr,
                 error_type_t::ValidationError,
                 "solve_lp_distributed_from_mps: handle_ptr must not be null");
-  cuopt_expects(settings.use_distributed_pdlp,
+  cuopt_expects(settings.num_gpus == -1 || settings.num_gpus > 1,
                 error_type_t::ValidationError,
-                "solve_lp_distributed_from_mps: settings.use_distributed_pdlp must be true");
+                "solve_lp_distributed_from_mps requires num_gpus == -1 or num_gpus > 1");
+  cuopt_expects(
+    !mps_data_model.has_quadratic_objective() && !mps_data_model.has_quadratic_constraints(),
+    error_type_t::ValidationError,
+    "Multi-GPU PDLP does not support QP/QCQP models; use the barrier method or a "
+    "single GPU instead.");
   pdlp_solver_settings_t<i_t, f_t> settings_resolved = settings;
   cuopt_expects(settings_resolved.method == method_t::PDLP,
                 error_type_t::ValidationError,

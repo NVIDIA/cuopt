@@ -1,5 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+# TEST_SKIP: Batch LP is available only with the legacy HTTP server
 """
 Basic LP Server Example (Normal and Batch Mode)
 

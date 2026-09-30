@@ -106,11 +106,11 @@ inline std::pair<fj_staged_score_t, f_t> compute_score(fj_cpu_climber_t<i_t, f_t
   f_t bonus_robust_sum = 0;
 
   auto [offset_begin, offset_end] = fj_cpu.range_for_variable(var_idx);
-  fj_cpu.nnz_processed_window += (offset_end - offset_begin);
+  fj_cpu.stats.nnz_processed_window += (offset_end - offset_begin);
 
   const size_t nnz_read = (size_t)(offset_end - offset_begin);
-  ++fj_cpu.n_compute_score_calls;
-  fj_cpu.compute_score_nnz += (int64_t)nnz_read;
+  ++fj_cpu.stats.n_compute_score_calls;
+  fj_cpu.stats.compute_score_nnz += (int64_t)nnz_read;
   fj_cpu.h_reverse_constraints.byte_loads += nnz_read * sizeof(i_t);
   fj_cpu.h_reverse_coefficients.byte_loads += nnz_read * sizeof(f_t);
   fj_cpu.h_row_state.byte_loads +=
@@ -181,8 +181,8 @@ void update_weights(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 {
   CPUFJ_NVTX_RANGE("CPUFJ::update_weights");
 
-  cuopt::pcgenerator_t rng(fj_cpu.settings.seed + fj_cpu.iterations, 0, 0);
-  bool smoothing = rng.next_float() <= fj_cpu.settings.parameters.weight_smoothing_probability;
+  bool smoothing =
+    fj_cpu.rng.next_float() <= fj_cpu.settings.parameters.weight_smoothing_probability;
 
   if (smoothing) {
     smooth_weights<i_t, f_t>(fj_cpu);
@@ -201,7 +201,7 @@ void update_weights(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
     fj_cpu.max_weight                   = std::max(fj_cpu.max_weight, new_weight);
 
     // Invalidate related cached move scores
-    ++fj_cpu.n_version_bumps_weights;
+    ++fj_cpu.stats.n_version_bumps_weights;
     fj_cpu.h_cstr_version[cstr_idx]++;
   }
 
