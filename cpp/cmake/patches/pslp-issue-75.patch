@@ -1,0 +1,105 @@
+--- a/src/explorers/DtonsEq.c
++++ b/src/explorers/DtonsEq.c
+@@ -187,30 +187,33 @@
+ }
+
+ // lb and ub are bounds on variable that gets substituted
+-static inline void modify_bounds(Constraints *constraints, int i, double aij,
++static inline PresolveStatus modify_bounds(Constraints *constraints, int i, double aij,
+                                  double aik, double rhs, double lb_subst,
+                                  double ub_subst, int stay, ColTag col_tag_subst)
+ {
+     assert(aij != 0 && aik != 0);
+     bool same_sign = (aik * aij > 0.0);
++    PresolveStatus status;
+
+     if (same_sign)
+     {
+         if (!HAS_TAG(col_tag_subst, C_TAG_LB_INF))
+         {
+             double new_ub_cand = (rhs - aik * lb_subst) / aij;
+-            update_ub(constraints, stay, new_ub_cand, i HUGE_BOUND_IS_NOT_OK);
++            status = update_ub(constraints, stay, new_ub_cand, i HUGE_BOUND_IS_NOT_OK);
++            RETURN_IF_INFEASIBLE(status);
+
+             if (HAS_TAG(constraints->col_tags[stay], C_TAG_FIXED))
+             {
+-                return;
++                return UNCHANGED;
+             }
+         }
+
+         if (!HAS_TAG(col_tag_subst, C_TAG_UB_INF))
+         {
+             double new_lb_cand = (rhs - aik * ub_subst) / aij;
+-            update_lb(constraints, stay, new_lb_cand, i HUGE_BOUND_IS_NOT_OK);
++            status = update_lb(constraints, stay, new_lb_cand, i HUGE_BOUND_IS_NOT_OK);
++            RETURN_IF_INFEASIBLE(status);
+         }
+     }
+     else
+@@ -218,20 +221,23 @@
+         if (!HAS_TAG(col_tag_subst, C_TAG_LB_INF))
+         {
+             double new_lb_cand = (rhs - aik * lb_subst) / aij;
+-            update_lb(constraints, stay, new_lb_cand, i HUGE_BOUND_IS_NOT_OK);
++            status = update_lb(constraints, stay, new_lb_cand, i HUGE_BOUND_IS_NOT_OK);
++            RETURN_IF_INFEASIBLE(status);
+
+             if (HAS_TAG(constraints->col_tags[stay], C_TAG_FIXED))
+             {
+-                return;
++                return UNCHANGED;
+             }
+         }
+
+         if (!HAS_TAG(col_tag_subst, C_TAG_UB_INF))
+         {
+             double new_ub_cand = (rhs - aik * ub_subst) / aij;
+-            update_ub(constraints, stay, new_ub_cand, i HUGE_BOUND_IS_NOT_OK);
++            status = update_ub(constraints, stay, new_ub_cand, i HUGE_BOUND_IS_NOT_OK);
++            RETURN_IF_INFEASIBLE(status);
+         }
+     }
++    return UNCHANGED;
+ }
+
+ #ifndef TESTING
+@@ -690,8 +696,10 @@
+
+         // transfer bounds to variable that stays and skip the reduction
+         // if the variable that stays was fixed because of the bound change
+-        modify_bounds(constraints, i, aij, aik, *row.rhs, bounds[k].lb, bounds[k].ub,
+-                      j, col_tags[k]);
++        PresolveStatus bound_status =
++            modify_bounds(constraints, i, aij, aik, *row.rhs, bounds[k].lb,
++                          bounds[k].ub, j, col_tags[k]);
++        RETURN_IF_INFEASIBLE(bound_status);
+
+         if (HAS_TAG(col_tags[j], C_TAG_INACTIVE))
+         {
+@@ -740,6 +748,7 @@
+     while ((*dton_rows)->len > 0)
+     {
+         PresolveStatus temp = remove_dton_eq_rows__(prob, max_shift_per_row);
++        RETURN_IF_INFEASIBLE(temp);
+
+         if (temp != REDUCED)
+         {
+@@ -756,6 +765,5 @@
+
+     DEBUG(verify_problem_up_to_date(prob->constraints));
+
+-    // always return UNCHANGED because this function can't detect infeas/unbnd.
+     return UNCHANGED;
+ }
+--- a/src/core/Presolver.c
++++ b/src/core/Presolver.c
+@@ -488,6 +488,7 @@
+         status |= remove_dton_eq_rows(prob, stgs->max_shift);
+         clock_gettime(CLOCK_MONOTONIC, &timer.end);
+         stats->time_dton_rows += GET_ELAPSED_SECONDS(timer);
++        RETURN_IF_NOT_UNCHANGED(status);
+         // after removing doubleton equality rows, there can be new empty rows,
+         // new singleton rows, and new empty columns
+         status |= run_trivial_explorers(prob, stgs);

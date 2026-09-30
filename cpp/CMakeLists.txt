@@ -299,6 +299,10 @@ FetchContent_Declare(
         pslp
         GIT_REPOSITORY "https://github.com/dance858/PSLP.git"
         GIT_TAG "v0.0.12"
+        PATCH_COMMAND ${CMAKE_COMMAND}
+            "-DPSLP_SOURCE_DIR=<SOURCE_DIR>"
+            "-DPSLP_PATCH_FILE=${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/pslp-issue-75.patch"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/apply_pslp_patch.cmake"
         GIT_PROGRESS TRUE
         EXCLUDE_FROM_ALL
         SYSTEM
