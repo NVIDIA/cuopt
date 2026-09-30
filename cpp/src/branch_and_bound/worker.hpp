@@ -98,6 +98,7 @@ class branch_and_bound_worker_t {
   const std::vector<f_t>& root_solution;
   const std::vector<f_t>& root_edge_norm;
   const std::vector<simplex::variable_type_t>& var_types;
+  const std::vector<i_t>& new_slacks;
 
   pseudo_costs_t<i_t, f_t>& pseudo_costs;
 
@@ -120,6 +121,7 @@ class branch_and_bound_worker_t {
                             pseudo_costs_t<i_t, f_t>& pc,
                             const std::vector<f_t>& root_solution,
                             const std::vector<f_t>& root_edge_norm,
+                            const std::vector<i_t>& new_slacks,
                             uint64_t rng_offset = 0)
     : worker_id(worker_id),
       search_strategy(search_strategy_t::BEST_FIRST),
@@ -138,6 +140,7 @@ class branch_and_bound_worker_t {
       root_solution(root_solution),
       root_edge_norm(root_edge_norm),
       var_types(var_type),
+      new_slacks(new_slacks),
       pseudo_costs(pc)
   {
   }
@@ -179,6 +182,7 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
                pseudo_costs_t<i_t, f_t>& pc,
                const std::vector<f_t>& root_solution,
                const std::vector<f_t>& root_edge_norm,
+               const std::vector<i_t>& new_slacks,
                uint64_t rng_offset = 0)
     : Base(worker_id,
            original_lp,
@@ -188,6 +192,7 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
            pc,
            root_solution,
            root_edge_norm,
+           new_slacks,
            rng_offset)
   {
     this->start_lower     = original_lp.lower;
@@ -265,6 +270,7 @@ class diving_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
                   pseudo_costs_t<i_t, f_t>& pc,
                   const std::vector<f_t>& root_solution,
                   const std::vector<f_t>& root_edge_norm,
+                  const std::vector<i_t>& new_slacks,
                   uint64_t rng_offset = 0)
     : Base(worker_id,
            original_lp,
@@ -274,6 +280,7 @@ class diving_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
            pc,
            root_solution,
            root_edge_norm,
+           new_slacks,
            rng_offset)
   {
     this->start_lower     = original_lp.lower;

@@ -6,7 +6,9 @@
 /* clang-format on */
 
 #include <branch_and_bound/branch_and_bound.hpp>
+#include <branch_and_bound/degenerate_pivots.hpp>
 #include <branch_and_bound/diving_heuristics.hpp>
+#include <branch_and_bound/fractional.hpp>
 #include <branch_and_bound/mip_node.hpp>
 #include <branch_and_bound/pseudo_costs.hpp>
 #include <branch_and_bound/symmetry.hpp>
@@ -26,8 +28,10 @@
 #include <dual_simplex/logger.hpp>
 #include <dual_simplex/phase2.hpp>
 #include <dual_simplex/presolve.hpp>
+#include <dual_simplex/primal.hpp>
 #include <dual_simplex/random.hpp>
 #include <dual_simplex/user_problem.hpp>
+#include <linear_algebra/vector_math.hpp>
 #include <math_optimization/tic_toc.hpp>
 
 #include <raft/core/nvtx.hpp>
@@ -77,31 +81,6 @@ using simplex::variable_status_t;
 using simplex::variable_type_t;
 
 namespace {
-
-template <typename f_t>
-bool is_fractional(f_t x, variable_type_t var_type, f_t integer_tol)
-{
-  if (var_type == variable_type_t::CONTINUOUS) {
-    return false;
-  } else {
-    f_t x_integer = std::round(x);
-    return (std::abs(x_integer - x) > integer_tol);
-  }
-}
-
-template <typename i_t, typename f_t>
-i_t fractional_variables(const simplex_solver_settings_t<i_t, f_t>& settings,
-                         const std::vector<f_t>& x,
-                         const std::vector<variable_type_t>& var_types,
-                         std::vector<i_t>& fractional)
-{
-  const i_t n = x.size();
-  assert(x.size() == var_types.size());
-  for (i_t j = 0; j < n; ++j) {
-    if (is_fractional(x[j], var_types[j], settings.integer_tol)) { fractional.push_back(j); }
-  }
-  return fractional.size();
-}
 
 template <typename i_t, typename f_t>
 void full_variable_types(const user_problem_t<i_t, f_t>& original_problem,
@@ -472,66 +451,6 @@ void branch_and_bound_t<i_t, f_t>::report(const lp_problem_t<i_t, f_t>& lp,
 }
 
 template <typename i_t, typename f_t>
-i_t branch_and_bound_t<i_t, f_t>::find_reduced_cost_fixings(f_t upper_bound,
-                                                            std::vector<f_t>& lower_bounds,
-                                                            std::vector<f_t>& upper_bounds)
-{
-  std::vector<f_t> reduced_costs = root_relax_soln_.z;
-  lower_bounds                   = original_lp_.lower;
-  upper_bounds                   = original_lp_.upper;
-  std::vector<bool> bounds_changed(original_lp_.num_cols, false);
-  const f_t root_obj    = compute_objective(original_lp_, root_relax_soln_.x);
-  const f_t threshold   = 100.0 * settings_.integer_tol;
-  const f_t weaken      = settings_.integer_tol;
-  const f_t fixed_tol   = settings_.fixed_tol;
-  i_t num_improved      = 0;
-  i_t num_fixed         = 0;
-  i_t num_cols_to_check = reduced_costs.size();  // Reduced costs will be smaller than the original
-                                                 // problem because we have added slacks for cuts
-  for (i_t j = 0; j < num_cols_to_check; j++) {
-    if (std::isfinite(reduced_costs[j]) && std::abs(reduced_costs[j]) > threshold) {
-      const f_t lower_j            = original_lp_.lower[j];
-      const f_t upper_j            = original_lp_.upper[j];
-      const f_t abs_gap            = upper_bound - root_obj;
-      f_t reduced_cost_upper_bound = upper_j;
-      f_t reduced_cost_lower_bound = lower_j;
-      if (lower_j > -inf && reduced_costs[j] > 0) {
-        const f_t new_upper_bound = lower_j + abs_gap / reduced_costs[j];
-        reduced_cost_upper_bound  = var_types_[j] == variable_type_t::INTEGER
-                                      ? std::floor(new_upper_bound + weaken)
-                                      : new_upper_bound;
-        if (reduced_cost_upper_bound < upper_j && var_types_[j] == variable_type_t::INTEGER) {
-          num_improved++;
-          upper_bounds[j]   = reduced_cost_upper_bound;
-          bounds_changed[j] = true;
-        }
-      }
-      if (upper_j < inf && reduced_costs[j] < 0) {
-        const f_t new_lower_bound = upper_j + abs_gap / reduced_costs[j];
-        reduced_cost_lower_bound  = var_types_[j] == variable_type_t::INTEGER
-                                      ? std::ceil(new_lower_bound - weaken)
-                                      : new_lower_bound;
-        if (reduced_cost_lower_bound > lower_j && var_types_[j] == variable_type_t::INTEGER) {
-          num_improved++;
-          lower_bounds[j]   = reduced_cost_lower_bound;
-          bounds_changed[j] = true;
-        }
-      }
-      if (var_types_[j] == variable_type_t::INTEGER &&
-          reduced_cost_upper_bound <= reduced_cost_lower_bound + fixed_tol) {
-        num_fixed++;
-      }
-    }
-  }
-
-  if (num_fixed > 0 || num_improved > 0) {
-    settings_.log.printf(
-      "Reduced costs: Found %d improved bounds and %d fixed variables\n", num_improved, num_fixed);
-  }
-  return num_fixed;
-}
-
-template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::update_user_bound(const lp_problem_t<i_t, f_t>& lp,
                                                      f_t lower_bound)
 {
@@ -744,10 +663,19 @@ bool branch_and_bound_t<i_t, f_t>::repair_solution(const std::vector<f_t>& edge_
   lp_settings.set_log(false);
   lp_settings.inside_mip           = 2;
   std::vector<f_t> leaf_edge_norms = edge_norms;
+  f_t repair_work_estimate         = 0.0;
   // should probably set the cut off here lp_settings.cut_off
-  dual_status_t lp_status = simplex::dual_phase2(
-    2, 0, lp_start_time, repair_lp, lp_settings, vstatus, lp_solution, iter, leaf_edge_norms);
-  repaired_solution = lp_solution.x;
+  dual_status_t lp_status = simplex::dual_phase2(2,
+                                                 0,
+                                                 lp_start_time,
+                                                 repair_lp,
+                                                 lp_settings,
+                                                 vstatus,
+                                                 lp_solution,
+                                                 iter,
+                                                 leaf_edge_norms,
+                                                 repair_work_estimate);
+  repaired_solution       = lp_solution.x;
 
   if (lp_status == dual_status_t::OPTIMAL) {
     f_t primal_error;
@@ -905,6 +833,9 @@ void branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t, f_t>& 
       exploration_stats_.lexical_reduction_nodes.load(),
       exploration_stats_.lexical_reduction_fixings_applied.load(),
       exploration_stats_.lexical_reduction_pruned_nodes.load());
+  }
+  if (integer_pivots_.load() > 0) {
+    settings_.log.print_format("Number of integer pivots: {}\n", integer_pivots_.load());
   }
 
   if (gap <= settings_.absolute_mip_gap_tol || gap_rel <= settings_.relative_mip_gap_tol) {
@@ -1573,6 +1504,7 @@ bool branch_and_bound_t<i_t, f_t>::apply_symmetry_reductions(
 template <typename i_t, typename f_t>
 dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   mip_node_t<i_t, f_t>* node_ptr,
+  const simplex_solver_settings_t<i_t, f_t>& settings,
   branch_and_bound_worker_t<i_t, f_t>* worker,
   branch_and_bound_stats_t<i_t, f_t>& stats,
   logger_t& log,
@@ -1614,8 +1546,7 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   }
 #endif
 
-  simplex_solver_settings_t lp_settings = settings_;
-  lp_settings.concurrent_halt           = &node_concurrent_halt_;
+  simplex_solver_settings_t lp_settings = settings;
   lp_settings.set_log(false);
   f_t cutoff = upper_bound_.load();
   if (worker->leaf_problem.objective_step.has_step()) {
@@ -1672,8 +1603,9 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
     feasible = apply_symmetry_reductions(node_ptr, worker, stats);
 
     if (feasible) {
-      i_t node_iter     = 0;
-      f_t lp_start_time = tic();
+      i_t node_iter          = 0;
+      f_t lp_start_time      = tic();
+      f_t node_work_estimate = 0.0;
 
       lp_status = dual_phase2_with_advanced_basis(2,
                                                   0,
@@ -1687,7 +1619,8 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
                                                   worker->nonbasic_list,
                                                   worker->leaf_solution,
                                                   node_iter,
-                                                  worker->leaf_edge_norms);
+                                                  worker->leaf_edge_norms,
+                                                  node_work_estimate);
 
       if (lp_status == dual_status_t::NUMERICAL) {
         log.debug_format("Numerical issue node {}. Resolving from scratch.\n", node_ptr->node_id);
@@ -1700,13 +1633,41 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
                                                    worker->basic_list,
                                                    worker->nonbasic_list,
                                                    worker->leaf_vstatus,
-                                                   worker->leaf_edge_norms);
+                                                   worker->leaf_edge_norms,
+                                                   node_work_estimate);
 
         lp_status = convert_lp_status_to_dual_status(second_status);
       }
 
       stats.total_lp_solve_time += toc(lp_start_time);
       stats.total_simplex_iters += node_iter;
+
+      if (lp_status == dual_status_t::OPTIMAL) {
+        std::vector<i_t> fractional;
+        i_t num_fractional =
+          fractional_variables(settings_, worker->leaf_solution.x, worker->var_types, fractional);
+        if (settings_.dual_degenerate_pivots != 0) {
+          auto pivot_settings          = settings_;
+          pivot_settings.log           = lp_settings.log;
+          pivot_settings.inside_mip    = lp_settings.inside_mip;
+          pivot_settings.inside_submip = lp_settings.inside_submip;
+          i_t num_integer_increased    = pivot_out_integer_variables(worker->leaf_problem,
+                                                                  pivot_settings,
+                                                                  worker->new_slacks,
+                                                                  worker->var_types,
+                                                                  exploration_stats_.start_time,
+                                                                  worker->basic_list,
+                                                                  worker->nonbasic_list,
+                                                                  worker->leaf_vstatus,
+                                                                  worker->leaf_solution,
+                                                                  worker->basis_factors,
+                                                                  num_fractional,
+                                                                  fractional);
+          if (num_integer_increased > 0) {
+            integer_pivots_.fetch_add(num_integer_increased, std::memory_order_release);
+          }
+        }
+      }
     }
   }
 
@@ -1834,7 +1795,10 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
       node_ptr->packed_vstatus, worker->leaf_problem.num_cols, worker->leaf_vstatus);
     assert(worker->leaf_vstatus.size() == worker->leaf_problem.num_cols);
 
-    dual_status_t lp_status = solve_node_lp(node_ptr, worker, exploration_stats_, settings_.log);
+    simplex_solver_settings_t lp_settings = settings_;
+    lp_settings.concurrent_halt           = &node_concurrent_halt_;
+    dual_status_t lp_status =
+      solve_node_lp(node_ptr, lp_settings, worker, exploration_stats_, settings_.log);
     ++exploration_stats_.nodes_since_last_log;
     ++exploration_stats_.nodes_explored;
     --exploration_stats_.nodes_unexplored;
@@ -2167,7 +2131,7 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker,
       node_ptr->packed_vstatus, worker->leaf_problem.num_cols, worker->leaf_vstatus);
     assert(worker->leaf_vstatus.size() == worker->leaf_problem.num_cols);
 
-    dual_status_t lp_status = solve_node_lp(node_ptr, worker, dive_stats, log, max_iter);
+    dual_status_t lp_status = solve_node_lp(node_ptr, settings, worker, dive_stats, log, max_iter);
     ++dive_stats.nodes_explored;
 
     if (lp_status == dual_status_t::TIME_LIMIT) {
@@ -2913,7 +2877,7 @@ void branch_and_bound_t<i_t, f_t>::recursive_submip(
       break;
     }
 
-    dual_status_t lp_status = solve_node_lp(&node, worker, stats, log, max_iter);
+    dual_status_t lp_status = solve_node_lp(&node, submip_settings, worker, stats, log, max_iter);
     if (lp_status != dual_status_t::OPTIMAL) {
       DEBUG_SUBMIP("{}Round {}: simplex returned {}",
                    submip_settings.log.log_prefix,
@@ -3047,7 +3011,7 @@ void branch_and_bound_t<i_t, f_t>::launch_root_heuristics(
   // Using shared_ptr here, so the lifetime of the object is tied to the related task. This allows
   // the solver to send the stop signal and immediately continue the execution.
   auto current_heuristic = root_heuristics.create_new_cut_pass_heuristic(
-    Arow_, var_types_, lp_solution.x, edge_norms_, settings_);
+    Arow_, var_types_, lp_solution.x, edge_norms_, new_slacks_, settings_);
   auto worker_count = root_heuristics.worker_count_;
 
   current_heuristic->initialize_pseudocost(
@@ -3193,7 +3157,8 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
   basis_update_mpf_t<i_t, f_t>& basis_update,
   std::vector<i_t>& basic_list,
   std::vector<i_t>& nonbasic_list,
-  std::vector<f_t>& edge_norms)
+  std::vector<f_t>& edge_norms,
+  f_t& work_estimate)
 {
   lp_status_t root_status;
 
@@ -3209,6 +3174,7 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
                                                            nonbasic_list,
                                                            root_vstatus_,
                                                            edge_norms_,
+                                                           work_estimate,
                                                            nullptr);
   }
 
@@ -3338,7 +3304,7 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
 }
 
 template <typename i_t, typename f_t>
-auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
+typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t, f_t>::do_cut_pass(
   [[maybe_unused]] i_t cut_pass,
   mip_solution_t<i_t, f_t>& solution,
   i_t& num_fractional,
@@ -3355,8 +3321,9 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   f_t& last_upper_bound,
   f_t& last_objective,
   f_t root_relax_objective,
+  reduced_cost_bounds_t<i_t, f_t>& reduced_cost_bounds,
   i_t& cut_pool_size,
-  [[maybe_unused]] const std::vector<f_t>& saved_solution) -> cut_pass_action_t
+  [[maybe_unused]] const std::vector<f_t>& saved_solution)
 {
 #ifdef PRINT_FRACTIONAL_INFO
   settings_.log.printf("Found %d fractional variables on cut pass %d\n", num_fractional, cut_pass);
@@ -3400,6 +3367,57 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   if (cut_generation_time > 1.0) {
     settings_.log.debug("Cut generation time %.2f seconds\n", cut_generation_time);
   }
+
+  num_fractional = fractional_variables(settings_, root_relax_soln_.x, var_types_, fractional);
+
+  f_t pivot_out_integer_variables_start_time = tic();
+  i_t num_integer_increased                  = 0;
+  if (settings_.dual_degenerate_pivots != 0) {
+    num_integer_increased = pivot_out_integer_variables(original_lp_,
+                                                        settings_,
+                                                        new_slacks_,
+                                                        var_types_,
+                                                        exploration_stats_.start_time,
+                                                        basic_list,
+                                                        nonbasic_list,
+                                                        root_vstatus_,
+                                                        root_relax_soln_,
+                                                        basis_update,
+                                                        num_fractional,
+                                                        fractional);
+    if (num_integer_increased > 0) {
+      integer_pivots_.fetch_add(num_integer_increased, std::memory_order_release);
+    }
+  }
+  settings_.log.printf("Pivoted out %d integer variables in %e seconds\n",
+                       num_integer_increased,
+                       toc(pivot_out_integer_variables_start_time));
+  if (settings_.dual_degenerate_feasibility_pump != 0) {
+    dual_degenerate_feasibility_pump(original_lp_,
+                                     settings_,
+                                     var_types_,
+                                     edge_norms_,
+                                     root_relax_work_estimate_,
+                                     exploration_stats_.start_time,
+                                     basic_list,
+                                     nonbasic_list,
+                                     root_vstatus_,
+                                     root_relax_soln_,
+                                     basis_update,
+                                     num_fractional,
+                                     fractional);
+  }
+  if (received_halt_signal()) {
+    solver_status_ = mip_status_t::HALT;
+    set_final_solution(solution, root_objective_);
+    return cut_pass_action_t::RETURN;
+  }
+  if (toc(exploration_stats_.start_time) >= settings_.time_limit) {
+    solver_status_ = mip_status_t::TIME_LIMIT;
+    set_final_solution(solution, root_objective_);
+    return cut_pass_action_t::RETURN;
+  }
+
   // Score the cuts
   f_t score_start_time = tic();
   cut_pool.score_cuts(root_relax_soln_.x);
@@ -3466,17 +3484,36 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
     return cut_pass_action_t::RETURN;
   }
 
-  if (settings_.reduced_cost_strengthening >= 1 && upper_bound_.load() < last_upper_bound) {
+  if (settings_.reduced_cost_strengthening >= 1 &&
+      (upper_bound_.load() < last_upper_bound ||
+       upper_bound_.load() <= reduced_cost_bounds.get_max_objective())) {
     mutex_upper_.lock();
-    last_upper_bound = upper_bound_.load();
-    std::vector<f_t> lower_bounds;
-    std::vector<f_t> upper_bounds;
-    find_reduced_cost_fixings(upper_bound_.load(), lower_bounds, upper_bounds);
+    last_upper_bound              = upper_bound_.load();
+    std::vector<f_t> lower_bounds = original_lp_.lower;
+    std::vector<f_t> upper_bounds = original_lp_.upper;
+    f_t previous_max_objective    = reduced_cost_bounds.get_max_objective();
+    i_t new_bounds = reduced_cost_bounds.update_bounds_from_new_incumbent(original_lp_,
+                                                                          settings_,
+                                                                          root_relax_soln_,
+                                                                          root_objective_,
+                                                                          upper_bound_.load(),
+                                                                          var_types_,
+                                                                          lower_bounds,
+                                                                          upper_bounds);
     mutex_upper_.unlock();
     mutex_original_lp_.lock();
     original_lp_.lower = lower_bounds;
     original_lp_.upper = upper_bounds;
     mutex_original_lp_.unlock();
+    if (1 || new_bounds > 0) {
+      settings_.log.printf(
+        "Updated %d integer bounds using reduced cost strengthening from new incumbent. Max "
+        "objective %e Current objective %e Previous max objective %e\n",
+        new_bounds,
+        reduced_cost_bounds.get_max_objective(),
+        upper_bound_.load(),
+        previous_max_objective);
+    }
   }
 
   // Try to do bound strengthening
@@ -3520,6 +3557,7 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   i_t iter                   = 0;
   bool initialize_basis      = false;
   f_t dual_phase2_start_time = tic();
+  f_t cut_work_estimate      = 0.0;
   dual_status_t cut_status   = dual_phase2_with_advanced_basis(2,
                                                              0,
                                                              initialize_basis,
@@ -3532,7 +3570,8 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
                                                              nonbasic_list,
                                                              root_relax_soln_,
                                                              iter,
-                                                             edge_norms_);
+                                                             edge_norms_,
+                                                             cut_work_estimate);
   exploration_stats_.total_simplex_iters += iter;
   f_t dual_phase2_time = toc(dual_phase2_start_time);
   if (dual_phase2_time > 1.0) {
@@ -3561,7 +3600,8 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
                                                basic_list,
                                                nonbasic_list,
                                                root_vstatus_,
-                                               edge_norms_);
+                                               edge_norms_,
+                                               cut_work_estimate);
     if (scratch_status == lp_status_t::OPTIMAL) {
       // We recovered
       cut_status = convert_lp_status_to_dual_status(scratch_status);
@@ -3583,6 +3623,35 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
     }
   }
   root_objective_ = compute_objective(original_lp_, root_relax_soln_.x);
+
+  if (settings_.reduced_cost_strengthening >= 1) {
+    reduced_cost_bounds.update_reduced_cost_bounds(
+      original_lp_, settings_, var_types_, root_objective_, root_relax_soln_.z, root_vstatus_);
+    settings_.log.printf("New reduced cost objective %e (current %e)\n",
+                         reduced_cost_bounds.get_max_objective(),
+                         upper_bound_.load());
+    if (settings_.primal_degenerate_pivots != 0) {
+      pivot_to_improve_reduced_cost_strengthening(original_lp_,
+                                                  settings_,
+                                                  basic_list,
+                                                  nonbasic_list,
+                                                  root_vstatus_,
+                                                  root_relax_soln_,
+                                                  basis_update,
+                                                  var_types_,
+                                                  Arow_,
+                                                  exploration_stats_.start_time,
+                                                  root_objective_,
+                                                  root_relax_work_estimate_,
+                                                  reduced_cost_bounds);
+    }
+    settings_.log.printf("After pivoting: new reduced cost objective %e (current %e)\n",
+                         reduced_cost_bounds.get_max_objective(),
+                         upper_bound_.load());
+  }
+
+  // Refresh fractional info after re-solving with cuts; the pre-cut count is stale.
+  num_fractional = fractional_variables(settings_, root_relax_soln_.x, var_types_, fractional);
 
   if (settings_.benchmark_info_ptr != nullptr) {
     settings_.benchmark_info_ptr->root_lp_with_cuts =
@@ -3761,7 +3830,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   solving_root_relaxation_ = true;
 
   f_t root_relax_start_time = tic();
-
+  root_relax_work_estimate_ = 0.0;
   if (!enable_concurrent_lp_root_solve()) {
     // RINS/SUBMIP path
     settings_.log.printf("\n");
@@ -3776,7 +3845,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                                            basic_list,
                                                            nonbasic_list,
                                                            root_vstatus_,
-                                                           edge_norms_);
+                                                           edge_norms_,
+                                                           root_relax_work_estimate_);
     root_relax_solved_by                   = DualSimplex;
     exploration_stats_.total_simplex_iters = root_relax_soln_.iterations;
 
@@ -3789,13 +3859,15 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                         basis_update,
                                         basic_list,
                                         nonbasic_list,
-                                        edge_norms_);
+                                        edge_norms_,
+                                        root_relax_work_estimate_);
   }
   settings_.log.printf("\n");
 
   solving_root_relaxation_               = false;
   f_t root_relax_elapsed_time            = toc(root_relax_start_time);
   exploration_stats_.total_lp_solve_time = root_relax_elapsed_time;
+  i_t root_iterations                    = exploration_stats_.total_simplex_iters;
 
   // This stops the clique table generation when the solve exit early. Note that we cannot
   // do this in the destructor since we store the clique_table as a pointer.
@@ -3848,6 +3920,10 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                              root_relax_soln_.iterations,
                              root_relax_elapsed_time,
                              method_to_string(root_relax_solved_by));
+  settings_.log.printf("Dual simplex iteration %d work estimate %.2e work per second %.2e\n",
+                       root_iterations,
+                       root_relax_work_estimate_,
+                       root_relax_work_estimate_ / root_relax_elapsed_time);
   settings_.log.printf("Root relaxation objective %+.8e\n\n", root_relax_soln_.user_objective);
 
   assert(root_vstatus_.size() == original_lp_.num_cols);
@@ -3887,6 +3963,81 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   is_running_            = true;
   lower_bound_numerical_ = inf;
+
+  reduced_cost_bounds_t<i_t, f_t> reduced_cost_bounds(original_lp_.num_cols);
+  reduced_cost_bounds.update_reduced_cost_bounds(
+    original_lp_, settings_, var_types_, root_objective_, root_relax_soln_.z, root_vstatus_);
+  settings_.log.printf("New reduced cost objective %e (current %e)\n",
+                       reduced_cost_bounds.get_max_objective(),
+                       upper_bound_.load());
+  if (settings_.primal_degenerate_pivots != 0) {
+    pivot_to_improve_reduced_cost_strengthening(original_lp_,
+                                                settings_,
+                                                basic_list,
+                                                nonbasic_list,
+                                                root_vstatus_,
+                                                root_relax_soln_,
+                                                basis_update,
+                                                var_types_,
+                                                Arow_,
+                                                exploration_stats_.start_time,
+                                                root_objective_,
+                                                root_relax_work_estimate_,
+                                                reduced_cost_bounds);
+  }
+  settings_.log.printf("After pivoting: new reduced cost objective %e (current %e)\n",
+                       reduced_cost_bounds.get_max_objective(),
+                       upper_bound_.load());
+
+  f_t pivot_out_integer_variables_start_time = tic();
+  i_t num_integer_increased                  = 0;
+  if (settings_.dual_degenerate_pivots != 0) {
+    num_integer_increased = pivot_out_integer_variables(original_lp_,
+                                                        settings_,
+                                                        new_slacks_,
+                                                        var_types_,
+                                                        exploration_stats_.start_time,
+                                                        basic_list,
+                                                        nonbasic_list,
+                                                        root_vstatus_,
+                                                        root_relax_soln_,
+                                                        basis_update,
+                                                        num_fractional,
+                                                        fractional);
+    if (num_integer_increased > 0) {
+      integer_pivots_.fetch_add(num_integer_increased, std::memory_order_release);
+    }
+  }
+  settings_.log.printf("Pivoted out %d integer variables in %e seconds\n",
+                       num_integer_increased,
+                       toc(pivot_out_integer_variables_start_time));
+
+  if (settings_.dual_degenerate_feasibility_pump != 0) {
+    dual_degenerate_feasibility_pump(original_lp_,
+                                     settings_,
+                                     var_types_,
+                                     edge_norms_,
+                                     root_relax_work_estimate_,
+                                     exploration_stats_.start_time,
+                                     basic_list,
+                                     nonbasic_list,
+                                     root_vstatus_,
+                                     root_relax_soln_,
+                                     basis_update,
+                                     num_fractional,
+                                     fractional);
+  }
+
+  if (received_halt_signal()) {
+    solver_status_ = mip_status_t::HALT;
+    set_final_solution(solution, root_objective_);
+    return solver_status_;
+  }
+  if (toc(exploration_stats_.start_time) >= settings_.time_limit) {
+    solver_status_ = mip_status_t::TIME_LIMIT;
+    set_final_solution(solution, root_objective_);
+    return solver_status_;
+  }
 
   if (num_fractional != 0 && settings_.max_cut_passes > 0) { print_table_header(); }
 
@@ -3977,6 +4128,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                                     last_upper_bound,
                                                     last_objective,
                                                     root_relax_objective,
+                                                    reduced_cost_bounds,
                                                     cut_pool_size,
                                                     saved_solution);
 
@@ -4061,11 +4213,32 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     return solver_status_;
   }
 
-  if (settings_.reduced_cost_strengthening >= 2 && upper_bound_.load() < last_upper_bound) {
-    std::vector<f_t> lower_bounds;
-    std::vector<f_t> upper_bounds;
-    i_t num_fixed = find_reduced_cost_fixings(upper_bound_.load(), lower_bounds, upper_bounds);
-    if (num_fixed > 0) {
+  if (settings_.reduced_cost_strengthening >= 2 &&
+      (upper_bound_.load() < last_upper_bound ||
+       upper_bound_.load() <= reduced_cost_bounds.get_max_objective())) {
+    std::vector<f_t> lower_bounds = original_lp_.lower;
+    std::vector<f_t> upper_bounds = original_lp_.upper;
+    f_t previous_max_objective    = reduced_cost_bounds.get_max_objective();
+    i_t num_changed = reduced_cost_bounds.update_bounds_from_new_incumbent(original_lp_,
+                                                                           settings_,
+                                                                           root_relax_soln_,
+                                                                           root_objective_,
+                                                                           upper_bound_.load(),
+                                                                           var_types_,
+                                                                           lower_bounds,
+                                                                           upper_bounds);
+    settings_.log.printf(
+      "Updated %d integer bounds using reduced cost strengthening from new incumbent. Max "
+      "objective %e Current objective %e Previous max objective %e\n",
+      num_changed,
+      reduced_cost_bounds.get_max_objective(),
+      upper_bound_.load(),
+      previous_max_objective);
+    mutex_original_lp_.lock();
+    original_lp_.lower = lower_bounds;
+    original_lp_.upper = upper_bounds;
+    mutex_original_lp_.unlock();
+    if (num_changed > 0) {
       std::vector<bool> bounds_changed(original_lp_.num_cols, true);
       std::vector<char> row_sense;
 
@@ -4158,7 +4331,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                             settings_,
                             pc_,
                             root_relax_soln_.x,
-                            edge_norms_);
+                            edge_norms_,
+                            new_slacks_);
       submip_worker_pool_.init(num_submip_workers,
                                original_lp_,
                                Arow_,
@@ -4168,6 +4342,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                pc_,
                                root_relax_soln_.x,
                                edge_norms_,
+                               new_slacks_,
                                num_bfs_workers);
 
       if (num_diving_workers > 0) {
@@ -4180,6 +4355,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                  pc_,
                                  root_relax_soln_.x,
                                  edge_norms_,
+                                 new_slacks_,
                                  num_bfs_workers + num_submip_workers);
       }
 
@@ -4385,7 +4561,8 @@ void branch_and_bound_t<i_t, f_t>::run_deterministic_coordinator(const csr_matri
                                                                 settings_,
                                                                 pc_,
                                                                 root_relax_soln_.x,
-                                                                edge_norms_);
+                                                                edge_norms_,
+                                                                new_slacks_);
 
   if (num_diving_workers > 0) {
     // Extract diving types from search_strategies (skip BEST_FIRST at index 0)
@@ -4402,7 +4579,8 @@ void branch_and_bound_t<i_t, f_t>::run_deterministic_coordinator(const csr_matri
                                                                        settings_,
                                                                        pc_,
                                                                        root_relax_soln_.x,
-                                                                       edge_norms_);
+                                                                       edge_norms_,
+                                                                       new_slacks_);
     }
   }
 
@@ -4789,8 +4967,8 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node_deterministic(
   i_t node_iter                    = 0;
   f_t lp_start_time                = tic();
   std::vector<f_t> leaf_edge_norms = edge_norms_;
-
-  dual_status_t lp_status = dual_phase2_with_advanced_basis(2,
+  f_t dual_work_estimate           = 0.0;
+  dual_status_t lp_status          = dual_phase2_with_advanced_basis(2,
                                                             0,
                                                             worker.recompute_bounds_and_basis,
                                                             lp_start_time,
@@ -4803,6 +4981,7 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node_deterministic(
                                                             worker.leaf_solution,
                                                             node_iter,
                                                             leaf_edge_norms,
+                                                            dual_work_estimate,
                                                             &worker.work_context);
 
   if (lp_status == dual_status_t::NUMERICAL) {
@@ -4817,6 +4996,7 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node_deterministic(
                                                                          worker.nonbasic_list,
                                                                          worker.leaf_vstatus,
                                                                          leaf_edge_norms,
+                                                                         dual_work_estimate,
                                                                          &worker.work_context);
     lp_status                 = convert_lp_status_to_dual_status(second_status);
   }
@@ -5403,6 +5583,7 @@ void branch_and_bound_t<i_t, f_t>::deterministic_dive(
     worker.leaf_solution.resize(worker.leaf_problem.num_rows, worker.leaf_problem.num_cols);
     i_t node_iter                    = 0;
     f_t lp_start_time                = tic();
+    f_t dual_work_estimate           = 0.0;
     std::vector<f_t> leaf_edge_norms = edge_norms_;
 
     decompress_vstatus(node_ptr->packed_vstatus, worker.leaf_problem.num_cols, worker.leaf_vstatus);
@@ -5419,6 +5600,7 @@ void branch_and_bound_t<i_t, f_t>::deterministic_dive(
                                                               worker.leaf_solution,
                                                               node_iter,
                                                               leaf_edge_norms,
+                                                              dual_work_estimate,
                                                               &worker.work_context);
 
     if (lp_status == dual_status_t::NUMERICAL) {
@@ -5431,6 +5613,7 @@ void branch_and_bound_t<i_t, f_t>::deterministic_dive(
                                                                            worker.nonbasic_list,
                                                                            worker.leaf_vstatus,
                                                                            leaf_edge_norms,
+                                                                           dual_work_estimate,
                                                                            &worker.work_context);
       lp_status                 = convert_lp_status_to_dual_status(second_status);
     }
