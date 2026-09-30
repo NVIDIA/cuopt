@@ -25,13 +25,22 @@ final class NativeIntegrationTest {
       settings.setSetting(CuOptConstants.CUOPT_LOG_TO_CONSOLE, false);
       settings.setSetting(CuOptConstants.CUOPT_TIME_LIMIT, 12.5);
       settings.setOptimalityTolerance(1.0e-6);
-      settings.setNumGpus(-1);
-      settings.setMpdlpPartitioner(2); // RoundRobin
+      settings.setSetting(CuOptConstants.CUOPT_NUM_GPUS, -1);
+      settings.setSetting(CuOptConstants.CUOPT_MULTIGPU_PDLP_PARTITIONER, 2); // RoundRobin
+      settings.setSetting(CuOptConstants.CUOPT_METHOD, SolverMethod.PDLP.nativeValue());
+      settings.setSetting(
+          CuOptConstants.CUOPT_PDLP_SOLVER_MODE, PDLPSolverMode.STABLE1.nativeValue());
       assertEquals(-1, settings.getSetting(CuOptConstants.CUOPT_NUM_GPUS, Integer.class));
       assertEquals(
           2,
           settings.getSetting(
               CuOptConstants.CUOPT_MULTIGPU_PDLP_PARTITIONER, Integer.class));
+      assertEquals(
+          SolverMethod.PDLP.nativeValue(),
+          settings.getSetting(CuOptConstants.CUOPT_METHOD, Integer.class));
+      assertEquals(
+          PDLPSolverMode.STABLE1.nativeValue(),
+          settings.getSetting(CuOptConstants.CUOPT_PDLP_SOLVER_MODE, Integer.class));
       assertEquals(
           Boolean.FALSE,
           settings.getSetting(CuOptConstants.CUOPT_LOG_TO_CONSOLE, Boolean.class));
@@ -58,7 +67,8 @@ final class NativeIntegrationTest {
     NativeTestSupport.assumeNativeLibrary();
     NativeTestSupport.assumeCudaDriverAvailable();
     try (Problem problem = tinyLP();
-        SolverSettings settings = new SolverSettings().setMethod(SolverMethod.PDLP);
+        SolverSettings settings =
+            new SolverSettings().setSetting(CuOptConstants.CUOPT_METHOD, SolverMethod.PDLP.nativeValue());
         Solution solution = problem.solve(settings)) {
       assertFalse(solution.isMIP());
       assertEquals(TerminationStatus.OPTIMAL, solution.getTerminationStatus());
@@ -76,7 +86,7 @@ final class NativeIntegrationTest {
     try (Problem problem = tinyLP();
         SolverSettings settings =
             new SolverSettings()
-                .setMethod(SolverMethod.PDLP)
+                .setSetting(CuOptConstants.CUOPT_METHOD, SolverMethod.PDLP.nativeValue())
                 .setInitialPrimalSolution(new double[] {0.5, 0.5})
                 .setInitialDualSolution(new double[] {1.0});
         Solution solution = problem.solve(settings)) {
@@ -157,7 +167,8 @@ final class NativeIntegrationTest {
     NativeTestSupport.assumeNativeLibrary();
     NativeTestSupport.assumeCudaDriverAvailable();
     try (Problem problem = tinyLP();
-        SolverSettings settings = new SolverSettings().setMethod(SolverMethod.PDLP);
+        SolverSettings settings =
+            new SolverSettings().setSetting(CuOptConstants.CUOPT_METHOD, SolverMethod.PDLP.nativeValue());
         Solution solution = problem.solve(settings)) {
       assertEquals(TerminationStatus.OPTIMAL, solution.getTerminationStatus());
 

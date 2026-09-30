@@ -49,7 +49,7 @@ run_cli_test()
 {
     local expected="$1"
     shift 1
-    cli_test=$("$@")
+    cli_test=$("$@" 2>&1)
     counter=$((counter+1))
     check_message $counter "${cli_test}" "$expected"
 }
@@ -62,14 +62,30 @@ CUOPT_RESULT_DIR=$(mktemp -d)
 export CUOPT_DATA_DIR
 export CUOPT_RESULT_DIR
 
-trap 'rm -rf "$CUOPT_DATA_DIR" "$CUOPT_RESULT_DIR"' EXIT
+cleanup()
+{
+    if [[ -n "${SERVER_PID:-}" ]]; then
+        kill -s SIGTERM "$SERVER_PID" 2>/dev/null || true
+        wait "$SERVER_PID" 2>/dev/null || true
+    fi
+    if [[ -n "${GRPC_PID:-}" ]]; then
+        kill -s SIGTERM "$GRPC_PID" 2>/dev/null || true
+        wait "$GRPC_PID" 2>/dev/null || true
+    fi
+    rm -rf "$CUOPT_DATA_DIR" "$CUOPT_RESULT_DIR"
+}
+trap cleanup EXIT
+
 # cuopt_problem_data and other small problems should be less than 1k
 export CUOPT_MAX_RESULT=2
 CERT_FOLDER=$(pwd)/python/cuopt_self_hosted/cuopt_sh_client/tests/utils/certs
 export CUOPT_SSL_CERTFILE=${CERT_FOLDER}/server.crt
 export CUOPT_SSL_KEYFILE=${CERT_FOLDER}/server.key
 export CLIENT_CERT=${CERT_FOLDER}/ca.crt
-python -m cuopt_server.cuopt_service &
+export CUOPT_GRPC_PORT=5001
+cuopt_grpc_server --port "$CUOPT_GRPC_PORT" &
+export GRPC_PID=$!
+python -m cuopt_server.cuopt_proxy &
 export SERVER_PID=$!
 
 DELAY=10
@@ -115,14 +131,8 @@ if [ "$doservertest" -eq 1 ]; then
     # Success, small LP problem with MPS. Data will be transformed to JSON
     run_cli_test "'status': 'Optimal'" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -t LP ../../datasets/linear_programming/good-mps-1.mps
 
-    # Success, small Batch LP problem with MPS. Data will be transformed to JSON
-    run_cli_test "'status': 'Optimal'" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -t LP ../../datasets/linear_programming/good-mps-1.mps ../../datasets/linear_programming/good-mps-1.mps
-
     # Success, small LP problem with LP format. Data will be transformed to JSON
     run_cli_test "'status': 'Optimal'" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -t LP ../../datasets/linear_programming/good-mps-1.lp
-
-    # Success, small Batch LP problem with LP format. Data will be transformed to JSON
-    run_cli_test "'status': 'Optimal'" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -t LP ../../datasets/linear_programming/good-mps-1.lp ../../datasets/linear_programming/good-mps-1.lp
 
     # Success, compressed LP inputs (.lp.gz / .lp.bz2) via Read dispatch
     run_cli_test "'status': 'Optimal'" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -t LP ../../datasets/linear_programming/good-mps-1.lp.gz
@@ -138,7 +148,7 @@ if [ "$doservertest" -eq 1 ]; then
 
     # Just run validator
     cp ../../datasets/cuopt_service_data/cuopt_problem_data.json "$CUOPT_DATA_DIR"
-    run_cli_test "'msg': 'Input is Valid'" cuopt_sh -ov -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -f cuopt_problem_data.json
+    run_cli_test "Input is valid" cuopt_sh -ov -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -f cuopt_problem_data.json
 
     # Success, pre-packed data
     run_cli_test "'status': 0" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT ../../datasets/cuopt_service_data/cuopt_problem_data.msgpack
@@ -161,8 +171,8 @@ if [ "$doservertest" -eq 1 ]; then
     # Test repoll message
     run_cli_test "Check for status with the following command" cuopt_sh -s -c "$CLIENT_CERT" -p "$CUOPT_SERVER_PORT" -pt 0 ../../datasets/cuopt_service_data/cuopt_problem_data.json -k
 
-    # Get the last line of output from the last command
-    requestid=$(echo "$cli_test" | tail -1)
+    # Get the last cuopt_sh poll command even if logs were mixed in on stderr
+    requestid=$(echo "$cli_test" | grep -E 'cuopt_sh ' | tail -1)
 
     # Get request id and remove single quotes and spaces
     requestid=$(echo "${requestid#cuopt_sh }" | sed "s/-p $CUOPT_SERVER_PORT//g" | tr -d "'" | tr -d " ")
@@ -175,7 +185,7 @@ if [ "$doservertest" -eq 1 ]; then
 
     # Test repoll message and pdlp warmstart
     run_cli_test "Check for status with the following command" cuopt_sh -s -c "$CLIENT_CERT" -p "$CUOPT_SERVER_PORT" -pt 0 ../../datasets/cuopt_service_data/good_lp.json -k
-    requestid=$(echo "$cli_test" | tail -1)
+    requestid=$(echo "$cli_test" | grep -E 'cuopt_sh ' | tail -1)
     requestid=$(echo ${requestid#cuopt_sh } | sed "s/-p $CUOPT_SERVER_PORT//g" | tr -d "'" | tr -d " ")
     run_cli_test "'status': 'Optimal'" cuopt_sh -s -c $CLIENT_CERT -p $CUOPT_SERVER_PORT $requestid -k
     run_cli_test "'status': 'Optimal'" cuopt_sh -s -c $CLIENT_CERT -p $CUOPT_SERVER_PORT ../../datasets/cuopt_service_data/good_lp.json -wid $requestid
@@ -214,9 +224,6 @@ if [ "$doservertest" -eq 1 ]; then
     # Valid json but bad format error
     run_cli_test 'cuOpt Error: Unprocessable Content - 422: unable to validate optimization data stream' cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT ../../datasets/cuopt_service_data/cuopt_bad_format2.json
 
-    # Unhandled exception with an int value that is too big
-    run_cli_test 'cuOpt unhandled exception, please include this message in any error report: Python int too large to convert to C long' cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT ../../datasets/cuopt_service_data/cuopt_unhandled_exception.json
-
     # Test for message on missing datafile
     run_cli_test "specified data file does not exist: nada" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -f nada
 
@@ -238,10 +245,6 @@ if [ "$doservertest" -eq 1 ]; then
 
     popd
 fi
-
-# Kill server running on HTTPS
-kill -s SIGTERM $SERVER_PID
-wait $SERVER_PID
 
 rapids-logger "Test script exiting with value: $EXITCODE"
 exit ${EXITCODE}

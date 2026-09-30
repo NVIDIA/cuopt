@@ -205,7 +205,7 @@ def test_invalid_vehicle_types(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "Set vehicle types when using multiple matrices",
-        "error_result": True,
+        "error_result": False,
     }
 
 
@@ -229,7 +229,7 @@ def test_duplicate_vehicle_ids_set_fleet_data(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "vehicle_ids must be unique; duplicates are not allowed",
-        "error_result": True,
+        "error_result": False,
     }
 
 
@@ -289,7 +289,7 @@ def test_invalid_values_set_fleet_data(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "Fleet locations represent index locations and must be greater than or equal to 0",  # noqa
-        "error_result": True,
+        "error_result": False,
     }
 
     # task locations should be list of pairs of start and end locations
@@ -305,7 +305,7 @@ def test_invalid_values_set_fleet_data(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "Vehicle locations should be list of pairs of start and end location for each vehicle",  # noqa
-        "error_result": True,
+        "error_result": False,
     }
 
     # capacity values if provided must be greater than 0
@@ -318,7 +318,7 @@ def test_invalid_values_set_fleet_data(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "All capacity dimensions values must be 0 or greater",
-        "error_result": True,
+        "error_result": False,
     }
 
     # vehicle time windows if provided must be greater than or equal
@@ -332,7 +332,7 @@ def test_invalid_values_set_fleet_data(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "vehicle_time_windows: All vehicle time window values must be greater than or equal to 0",  # noqa
-        "error_result": True,
+        "error_result": False,
     }
 
     # vehicle break time windows if provided must be greater than or equal
@@ -346,7 +346,7 @@ def test_invalid_values_set_fleet_data(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "vehicle_break_time_windows: All vehicle time window values must be greater than or equal to 0",  # noqa
-        "error_result": True,
+        "error_result": False,
     }
 
     # vehicle break durations if provided must be greater than or equal
@@ -360,7 +360,7 @@ def test_invalid_values_set_fleet_data(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "Vehicle break duration must be greater than or equal to 0",
-        "error_result": True,
+        "error_result": False,
     }
 
     # vehicle break locations if provided must be greater than or equal
@@ -374,7 +374,7 @@ def test_invalid_values_set_fleet_data(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "Vehicle break location must be greater than or equal to 0",
-        "error_result": True,
+        "error_result": False,
     }
 
     # vehicle order match, vehicle id should be with [0, num_vehicles),
@@ -388,7 +388,7 @@ def test_invalid_values_set_fleet_data(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "One or more Vehicle IDs provided are not in the expected range, should be within [0,  number of vehicle )",  # noqa
-        "error_result": True,
+        "error_result": False,
     }
 
     # min_vehicles must be greater than 0
@@ -401,7 +401,7 @@ def test_invalid_values_set_fleet_data(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "Minimum vehicles must be greater than 0",
-        "error_result": True,
+        "error_result": False,
     }
 
     # vehicle_max_costs must be greater than 0
@@ -414,7 +414,7 @@ def test_invalid_values_set_fleet_data(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "Maximum distance any vehicle can travel must be greater than 0",  # noqa
-        "error_result": True,
+        "error_result": False,
     }
 
     # vehicle_max_times must be greater than 0
@@ -427,7 +427,7 @@ def test_invalid_values_set_fleet_data(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "Maximum time any vehicle can travel must be greater than 0",  # noqa
-        "error_result": True,
+        "error_result": False,
     }
 
     # vehicle_fixed_costs must be greater than or equal to 0
@@ -440,7 +440,7 @@ def test_invalid_values_set_fleet_data(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "Fixed cost of vehicle must be greater than or equal to 0",
-        "error_result": True,
+        "error_result": False,
     }
 
     # vehicle_fixed_costs improper length
@@ -451,7 +451,7 @@ def test_invalid_values_set_fleet_data(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "All arrays defining vehicle properties must be of consistent length",  # noqa
-        "error_result": True,
+        "error_result": False,
     }
 
 
@@ -463,7 +463,7 @@ def test_invalid_length_set_fleet_data(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "All arrays defining vehicle properties must be of consistent length",  # noqa
-        "error_result": True,
+        "error_result": False,
     }
 
 
@@ -475,7 +475,7 @@ def test_invalid_capacities_set_fleet_data(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "All capacity dimensions must have length equal to the number of vehicles",  # noqa
-        "error_result": True,
+        "error_result": False,
     }
 
 
@@ -492,7 +492,7 @@ def test_invalid_time_windows_set_fleet_data(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "vehicle_time_windows: All vehicles time windows must have vehicle_x_time_window[0] < vehicle_x_time_window[1]",  # noqa
-        "error_result": True,
+        "error_result": False,
     }
 
     test_data["fleet_data"]["vehicle_time_windows"] = [
@@ -505,7 +505,7 @@ def test_invalid_time_windows_set_fleet_data(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "vehicle_time_windows: Time windows for each vehicle must be of length 2. 0: earliest, 1: latest",  # noqa
-        "error_result": True,
+        "error_result": False,
     }
 
 
@@ -520,7 +520,7 @@ def test_invalid_break_time_windows_set_fleet_data(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "vehicle_break_time_windows: All vehicles time windows must have vehicle_x_time_window[0] < vehicle_x_time_window[1]",  # noqa
-        "error_result": True,
+        "error_result": False,
     }
 
     test_data["fleet_data"]["vehicle_break_time_windows"] = [
@@ -531,7 +531,7 @@ def test_invalid_break_time_windows_set_fleet_data(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "vehicle_break_time_windows: Time windows for each vehicle must be of length 2. 0: earliest, 1: latest",  # noqa
-        "error_result": True,
+        "error_result": False,
     }
 
 
@@ -543,7 +543,7 @@ def test_invalid_skip_first_trips_set_fleet_data(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "All arrays defining vehicle properties must be of consistent length",  # noqa
-        "error_result": True,
+        "error_result": False,
     }
 
 
@@ -555,7 +555,7 @@ def test_invalid_drop_return_trips_set_fleet_data(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "All arrays defining vehicle properties must be of consistent length",  # noqa
-        "error_result": True,
+        "error_result": False,
     }
 
 
@@ -570,7 +570,7 @@ def test_vehicle_order_match(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "Order Id should be greater than or equal to zero",
-        "error_result": True,
+        "error_result": False,
     }
 
 

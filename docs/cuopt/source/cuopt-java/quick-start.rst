@@ -1,82 +1,96 @@
-Java Quick Start
-================
+Java Quickstart Guide
+=====================
 
-The experimental Java bindings live in ``java/cuopt`` and are built explicitly
-from source. Repository CI and release workflows also build and test the module
-against the matching ``libcuopt`` artifact. It is not part of the top-level
-cuOpt build, and a supported Maven distribution has not yet been defined.
+NVIDIA cuOpt provides experimental Java bindings for LP, MIP, QP, QCQP, and
+SOCP, built from ``java/cuopt``. It is not part of the top-level cuOpt build.
 
-Requirements
-------------
+Installation
+============
 
-The Java module requires:
+Choose your install method below; the selector is pre-set for Java. Copy the
+Docker command and run it in your environment — ``cuopt.jar`` and
+``libcuopt_jni.so`` are already at ``/opt/cuopt/java`` inside the container,
+so no build step is needed. Use ``-cp /opt/cuopt/java/cuopt.jar`` for both
+compilation and execution, and pass ``-Dcuopt.native.dir=/opt/cuopt/java``
+only to the ``java`` command. See :doc:`../install` for all interfaces and
+options.
 
-* Java 17 or newer, with ``JAVA_HOME`` pointing to a JDK;
-* a C++20 compiler;
-* an existing cuOpt installation containing ``libcuopt.so``; and
-* a CUDA-enabled runtime for solving problems.
+.. install-selector::
+   :default-iface: java
 
-The module uses Maven for Java compilation and a Java-local CMake project for
-the JNI library. The standalone native build links to
-``$CUOPT_PREFIX/lib/libcuopt.so`` and places ``libcuopt_jni.so`` under
-``java/cuopt/build/native``.
+Using the Maven Artifact
+-------------------------
+
+``com.nvidia.cuopt:cuopt`` publishes classifier jars (``cuda12``,
+``cuda12-arm64``, ``cuda13``, ``cuda13-arm64``) to the Sonatype snapshot and
+release repositories. Each classifier jar embeds ``libcuopt_jni.so`` and
+cuOpt's own native dependencies (``libcuopt``, rmm, cuDSS, NCCL, TBB), which
+``NativeLibraryLoader`` extracts to a temp directory and loads automatically —
+no ``cuopt.native.dir`` is required:
+
+.. code-block:: xml
+
+   <repositories>
+     <repository>
+       <id>sonatype-snapshots</id>
+       <url>https://central.sonatype.com/repository/maven-snapshots</url>
+       <releases><enabled>false</enabled></releases>
+       <snapshots><enabled>true</enabled></snapshots>
+     </repository>
+   </repositories>
+
+   <dependency>
+     <groupId>com.nvidia.cuopt</groupId>
+     <artifactId>cuopt</artifactId>
+     <version>26.10.0-SNAPSHOT</version>
+     <classifier>cuda12</classifier>
+   </dependency>
+
+.. note::
+
+   The embedded libraries do not include the CUDA toolkit's own math libraries
+   (``libcublas``, ``libcusolver``, etc.) — install them separately, or use an
+   ``nvidia/cuda:*-runtime-*`` base image instead, which already has them
+   without installing cuOpt itself. Loading the jar without them fails with an
+   ``UnsatisfiedLinkError`` naming the missing CUDA library.
+
+   .. code-block:: bash
+
+      # Debian/Ubuntu (with NVIDIA's apt repo already configured)
+      sudo apt-get install cuda-libraries-12-9
+
+      # RHEL/Rocky/Fedora (with NVIDIA's dnf repo already configured)
+      sudo dnf install cuda-libraries-12-9
+
+   ``cuda-libraries`` is much lighter than the full CUDA toolkit. See
+   `NVIDIA's CUDA repository setup <https://developer.nvidia.com/cuda-downloads>`_
+   if the repo isn't configured yet.
+
+Building from source is covered in ``java/cuopt/README.md``.
+
+Smoke Test
+----------
+
+After installation, verify cuOpt Java is working by compiling and running a
+minimal LP inside the container.
+
+:download:`SmokeTest.java <examples/SmokeTest.java>`
+
+.. literalinclude:: examples/SmokeTest.java
+   :language: java
+   :linenos:
 
 .. code-block:: bash
 
-   cd /path/to/cuopt/java/cuopt
-   export JAVA_HOME=/path/to/jdk-17
-   export CUOPT_PREFIX=/path/to/cuopt/conda/environment
-   bash scripts/build_native.sh
+   javac -cp /opt/cuopt/java/cuopt.jar -d . SmokeTest.java
+   java -Dcuopt.native.dir=/opt/cuopt/java -cp /opt/cuopt/java/cuopt.jar:. SmokeTest
 
-This builds ``java/cuopt/build/native/libcuopt_jni.so``. Java is intentionally
-not part of the default cuOpt build.
+Example Response:
 
-To build the native library in a different directory, set
-``CUOPT_JAVA_NATIVE_BUILD_DIR``. If CUDA headers are installed outside the
-usual locations, pass ``-DCUOPT_CUDA_INCLUDE_DIR=/path/to/cuda/include`` to
-the CMake configure step.
+.. code-block:: text
 
-Native Loading
---------------
-
-At runtime the bindings load ``libcuopt_jni``. For local development, point Java
-at the directory containing the built native library:
-
-.. code-block:: bash
-
-   cd java/cuopt
-   export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-   export CUOPT_PREFIX=/path/to/cuopt/conda/environment
-   export LD_LIBRARY_PATH=$CUOPT_PREFIX/targets/x86_64-linux/lib:$CUOPT_PREFIX/lib:build/native
-   mvn test -Dcuopt.native.dir=build/native
-
-The helper script combines the native build and Maven test steps:
-
-.. code-block:: bash
-
-   cd /path/to/cuopt/java/cuopt
-   export JAVA_HOME=/path/to/jdk-17
-   export CUOPT_PREFIX=/path/to/cuopt/conda/environment
-   bash scripts/test.sh
-
-To run one test class, pass its Maven property to the helper:
-
-.. code-block:: bash
-
-   bash scripts/test.sh -Dtest=ProblemIntegrationTest
-
-Application code can use the same property:
-
-.. code-block:: bash
-
-   java -Dcuopt.native.dir=/path/to/java/cuopt/build/native ...
-
-The Java classes load ``libcuopt_jni`` when the first binding object is
-created. ``cuopt.native.dir`` must contain that library, and the cuOpt and
-CUDA runtime libraries must be discoverable through ``LD_LIBRARY_PATH`` or the
-native library's runtime path. The standalone native build embeds the CUDA
-runtime path for the configured ``CUOPT_PREFIX``; the helper script also
-exports it for Maven.
+   OPTIMAL
+   1.0
 
 LP Example
 ----------
@@ -85,66 +99,39 @@ A ``Problem`` owns the variables and constraints. Expressions are assembled
 with methods that return a new expression, and a constraint is formed by
 comparing one against a bound with ``le``, ``ge`` or ``eq``.
 
-.. code-block:: java
+:download:`LpExample.java <examples/LpExample.java>`
 
-   import com.nvidia.cuopt.mathematicaloptimization.*;
-
-   Problem problem = new Problem("simple");
-   Variable x = problem.addVariable(0, Double.POSITIVE_INFINITY, 0,
-       VariableType.CONTINUOUS, "x");
-   Variable y = problem.addVariable(0, Double.POSITIVE_INFINITY, 0,
-       VariableType.CONTINUOUS, "y");
-
-   problem.addConstraint(LinearExpression.of(x).plus(y).ge(1.0), "c0");
-   problem.setObjective(LinearExpression.of(x).plus(y), ObjectiveSense.MINIMIZE);
-
-   try (SolverSettings settings = new SolverSettings().setMethod(SolverMethod.PDLP);
-        Solution solution = problem.solve(settings)) {
-     System.out.println(solution.getTerminationStatus());
-     System.out.println(solution.getPrimalObjective());
-   }
+.. literalinclude:: examples/LpExample.java
+   :language: java
+   :linenos:
 
 MIP Example
 -----------
 
-.. code-block:: java
+:download:`MipExample.java <examples/MipExample.java>`
 
-   Problem problem = new Problem("integer");
-   Variable x = problem.addVariable(0, 10, 1.0, VariableType.INTEGER, "x");
-   problem.addConstraint(LinearExpression.of(x).ge(1.0));
-
-   try (SolverSettings settings = new SolverSettings()
-            .setSetting(CuOptConstants.CUOPT_TIME_LIMIT, 10.0);
-        Solution solution = problem.solve(settings)) {
-     System.out.println(solution.getMIPGap());
-     System.out.println(solution.getSolutionBound());
-   }
+.. literalinclude:: examples/MipExample.java
+   :language: java
+   :linenos:
 
 QP Example
 ----------
 
-.. code-block:: java
+:download:`QpQuickstart.java <examples/QpQuickstart.java>`
 
-   try (Problem problem = new Problem("quadratic")) {
-     Variable x = problem.addVariable(0.0, 10.0, 0.0, VariableType.CONTINUOUS, "x");
-     Variable y = problem.addVariable(0.0, 10.0, 0.0, VariableType.CONTINUOUS, "y");
-     problem.addConstraint(LinearExpression.of(x).plus(y).ge(5.0));
-     problem.setObjective(
-         QuadraticExpression.of(x, x, 1.0).plus(y, y, 4.0),
-         ObjectiveSense.MINIMIZE);
-     try (Solution solution = problem.solve()) {
-       System.out.println(solution.getPrimalObjective());
-     }
-   }
+.. literalinclude:: examples/QpQuickstart.java
+   :language: java
+   :linenos:
 
 MPS I/O
 -------
 
-.. code-block:: java
+:download:`MpsRoundtrip.java <convex/examples/MpsRoundtrip.java>` and
+:download:`sample.mps <convex/examples/sample.mps>`
 
-   try (Problem problem = Problem.read("problem.mps")) {
-     problem.write("roundtrip.mps");
-   }
+.. literalinclude:: convex/examples/MpsRoundtrip.java
+   :language: java
+   :linenos:
 
 Lifecycle
 ---------
