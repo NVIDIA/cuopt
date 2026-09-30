@@ -2841,11 +2841,10 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     raft::print_device_vector(
       "Initial primal_weight", primal_weight_.data(), primal_weight_.size(), std::cout);
 #endif
-
-    if (!inside_mip_) {
-      CUOPT_LOG_INFO(
-        "   Iter    Primal Obj.      Dual Obj.    Gap        Primal Res.  Dual Res.   Time");
-    }
+  }
+  if (!inside_mip_) {
+    CUOPT_LOG_INFO(
+      "   Iter    Primal Obj.      Dual Obj.    Gap        Primal Res.  Dual Res.   Time");
   }
   while (true) {
 #ifdef CUPDLP_DEBUG_MODE
