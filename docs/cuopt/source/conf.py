@@ -432,7 +432,7 @@ linkcheck_ignore = [
 
 
 class InstallSelector(Directive):
-    """Embed the install selector widget. Optional :default-iface: (python, c, server, cli)."""
+    """Embed the install selector widget. Optional :default-iface: (python, c, server, cli, java)."""
 
     optional_arguments = 0
     option_spec = {"default-iface": directives.unchanged}
@@ -442,7 +442,7 @@ class InstallSelector(Directive):
         default_iface = (
             (self.options.get("default-iface") or "").strip().lower()
         )
-        if default_iface not in ("python", "c", "server", "cli"):
+        if default_iface not in ("python", "c", "server", "cli", "java"):
             default_iface = ""
         data_attr = (
             ' data-default-iface="' + default_iface + '"'
