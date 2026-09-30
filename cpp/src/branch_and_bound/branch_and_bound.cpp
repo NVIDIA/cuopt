@@ -1780,22 +1780,23 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
 
     f_t now = toc(exploration_stats_.start_time);
 
-    if (worker->worker_id == 0) {
-      f_t time_since_last_log =
-        exploration_stats_.last_log == 0 ? 1.0 : toc(exploration_stats_.last_log);
-      i_t nodes_since_last_log = exploration_stats_.nodes_since_last_log;
+    f_t time_since_last_log =
+      exploration_stats_.last_log == 0 ? 1.0 : toc(exploration_stats_.last_log);
+    i_t nodes_since_last_log = exploration_stats_.nodes_since_last_log;
 
-      if (((nodes_since_last_log >= 1000 || abs_gap < 10 * settings_.absolute_mip_gap_tol) &&
-           time_since_last_log >= 1) ||
-          (time_since_last_log > 30) || now > settings_.time_limit) {
+    if (((nodes_since_last_log >= 1000 || abs_gap < 10 * settings_.absolute_mip_gap_tol) &&
+         time_since_last_log >= 1) ||
+        (time_since_last_log > 30) || now > settings_.time_limit) {
+      if (exploration_stats_.report_solver_progress.exchange(false)) {
         report(worker->leaf_problem,
                ' ',
                upper_bound_,
                lower_bound,
                node_ptr->depth,
                node_ptr->integer_infeasible);
-        exploration_stats_.last_log             = tic();
-        exploration_stats_.nodes_since_last_log = 0;
+        exploration_stats_.last_log               = tic();
+        exploration_stats_.nodes_since_last_log   = 0;
+        exploration_stats_.report_solver_progress = true;
       }
     }
 
@@ -4133,11 +4134,12 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   settings_.log.printf("Exploring the B&B tree using %d threads\n\n", settings_.num_threads);
 
-  exploration_stats_.nodes_explored       = 0;
-  exploration_stats_.nodes_unexplored     = 2;
-  exploration_stats_.nodes_since_last_log = 0;
-  exploration_stats_.last_log             = tic();
-  min_node_queue_size_                    = 20;
+  exploration_stats_.nodes_explored         = 0;
+  exploration_stats_.nodes_unexplored       = 2;
+  exploration_stats_.nodes_since_last_log   = 0;
+  exploration_stats_.last_log               = tic();
+  exploration_stats_.report_solver_progress = true;
+  min_node_queue_size_                      = 20;
 
   print_table_header();
 
