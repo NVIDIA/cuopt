@@ -30,5 +30,5 @@
 4. Important Notes:
    - This deployment requires GPU nodes in your cluster
    - Make sure your cluster has the NVIDIA device plugin installed
-   - The default command is proxy: the HTTP proxy plus cuopt_grpc_server
+   - The chart does not select a server. The image entrypoint does. Override that with CUOPT_SERVER_TYPE set to proxy, grpc, or legacy. Do not put those names in command
    - Port 5000 is exposed for the cuOpt service API

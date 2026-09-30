@@ -78,12 +78,20 @@ tolerations: []
 
 affinity: {}
 
-# Use the image's default entrypoint and command: HTTP proxy on port 5000
-# plus an internal cuopt_grpc_server on port 5001. Set this to ["legacy"]
-# to run the legacy server, or ["grpc"] for gRPC only.
+# Kubernetes command replaces the image ENTRYPOINT. Leave this empty so
+# /opt/cuopt/entrypoint.sh runs. Do not set it to ["proxy"], ["grpc"], or
+# ["legacy"]: the container would try to execute a program by that name.
 command: []
 
-# Environment variables
+# Arguments passed to the image entrypoint (Kubernetes args). This does not
+# replace the entrypoint. Do not put a mode name here.
+args: []
+
+# Extra environment variables. The chart does not set a server mode; the
+# image entrypoint does. Override that with CUOPT_SERVER_TYPE when needed:
+# env:
+#   - name: CUOPT_SERVER_TYPE
+#     value: legacy   # or grpc, or proxy
 env: []
 
 # Persistent storage (if needed)
