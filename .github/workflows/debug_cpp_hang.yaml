@@ -5,8 +5,11 @@
 # hanging for hours on amd64 CI runners with no error). Isolated from pr.yaml so it never
 # runs on other PRs and can be deleted without touching the shared pipeline once the root
 # cause is confirmed and fixed. Runs only conda-cpp-build and wheel-build-libcuopt-mathopt,
-# both arches, both CUDA versions, wrapped with ci/debug_build_cpp.sh /
-# ci/debug_build_wheel_libcuopt_mathopt.sh (see ci/utils/debug_resource_watchdog.sh).
+# wrapped with ci/debug_build_cpp.sh / ci/debug_build_wheel_libcuopt_mathopt.sh (see
+# ci/utils/debug_resource_watchdog.sh). Both arches (amd64 hung; arm64 is the live
+# control), one Python version per arch/CUDA-major combo -- same filter pr.yaml already
+# uses for this job, since Python version is irrelevant to a C++ compile stall and the
+# full per-Python-version matrix would burn runner time with no added diagnostic value.
 
 name: debug-cpp-hang
 
@@ -49,6 +52,9 @@ jobs:
     secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@release/26.10
     with:
+      # Same filter as the real wheel-build-libcuopt-mathopt job in pr.yaml: every arch
+      # and CUDA version, latest Python only.
+      matrix_filter: group_by([.ARCH, (.CUDA_VER|split(".")|map(tonumber)|.[0])]) | map(max_by(.PY_VER|split(".")|map(tonumber)))
       package-type: cpp
       package-name: libcuopt_mathopt
       build_type: pull-request
