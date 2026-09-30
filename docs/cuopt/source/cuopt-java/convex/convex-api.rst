@@ -96,11 +96,7 @@ representation. The ``getSetting(name, type)`` overload provides a typed
 ``Boolean``, ``Integer``, ``Double``, or ``String`` result, for example
 ``getSetting(CuOptConstants.CUOPT_TIME_LIMIT, Double.class)``.
 
-The settings API also includes:
-
-* the static setting accessors;
-* ``setMethod`` and ``setPDLPSolverMode``;
-* ``setOptimalityTolerance``.
+The settings API also includes the static setting accessors and ``setOptimalityTolerance``.
 
 ``SolverMethod`` includes ``PDLP``, ``DUAL_SIMPLEX``, ``BARRIER`` and
 ``CONCURRENT``. ``PDLPSolverMode`` exposes the supported PDLP solver modes.

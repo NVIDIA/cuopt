@@ -35,4 +35,5 @@ message RoutingSolution {
   RoutingSolutionStatus status = 20;
   string status_message = 21;
   string error_message = 22;
+  double solve_time = 23;
 }

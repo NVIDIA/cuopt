@@ -130,10 +130,17 @@ class grpc_python_client_t {
 
   bool connect(std::string& error_out);
 
+  /**
+   * Short CheckStatus probe (default 5s deadline). False if the server
+   * does not answer; error_out is populated from get_last_error().
+   */
+  bool ping(std::string& error_out, int timeout_seconds = 5);
+
   grpc_submit_result_t submit(
     cuopt::mathematical_optimization::io::data_model_view_t<int, double>* data_model,
     cuopt::mathematical_optimization::solver_settings_t<int, double>* settings,
-    bool enable_incumbents = false);
+    bool enable_incumbents    = false,
+    bool enable_set_incumbent = false);
 
   grpc_status_result_t status(const std::string& job_id);
 

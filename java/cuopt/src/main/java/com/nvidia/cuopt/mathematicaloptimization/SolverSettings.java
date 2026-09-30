@@ -59,14 +59,6 @@ public final class SolverSettings implements AutoCloseable {
     return NativeCuOpt.getSetting(handle(), name);
   }
 
-  public SolverSettings setMethod(SolverMethod method) {
-    return setSetting(CuOptConstants.CUOPT_METHOD, method.nativeValue());
-  }
-
-  public SolverSettings setPDLPSolverMode(PDLPSolverMode mode) {
-    return setSetting(CuOptConstants.CUOPT_PDLP_SOLVER_MODE, mode.nativeValue());
-  }
-
   /** The LP optimality tolerances, previously discovered by filtering on parameter names. */
   private static final String[] OPTIMALITY_TOLERANCES = {
     CuOptConstants.CUOPT_ABSOLUTE_PRIMAL_TOLERANCE,

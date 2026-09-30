@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include <cuopt/error.hpp>
+#include <cuopt/mathematical_optimization/utilities/cython_types_gpu.hpp>
 
 #include <cuopt/mathematical_optimization/backend_selection.hpp>
 #include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
@@ -168,8 +169,7 @@ std::unique_ptr<solver_ret_t> call_solve(
 
       // The solve's local stream is destroyed when this function returns, so reassociate
       // all returned device_buffers with a long-lived stream for safe deallocation later.
-      auto& gpu_sols =
-        std::get<linear_programming_ret_t::gpu_solutions_t>(response.lp_ret.solutions_);
+      auto& gpu_sols = *std::get<cuopt::cython::lp_gpu_ptr>(response.lp_ret.solutions_);
       gpu_sols.primal_solution_->set_stream(cuda::stream_ref{cudaStreamPerThread});
       gpu_sols.dual_solution_->set_stream(cuda::stream_ref{cudaStreamPerThread});
       gpu_sols.reduced_cost_->set_stream(cuda::stream_ref{cudaStreamPerThread});
@@ -195,8 +195,8 @@ std::unique_ptr<solver_ret_t> call_solve(
       response.problem_type = mathematical_optimization::problem_category_t::MIP;
 
       // Same stream reassociation as the LP path above.
-      auto& gpu_sol = std::get<gpu_buffer>(response.mip_ret.solution_);
-      gpu_sol->set_stream(cuda::stream_ref{cudaStreamPerThread});
+      auto& gpu_sol = std::get<cuopt::cython::mip_gpu_ptr>(response.mip_ret.solution_);
+      gpu_sol->solution_->set_stream(cuda::stream_ref{cudaStreamPerThread});
     }
 
     // Reset warmstart data streams in solver_settings (skip in batch mode to avoid data race

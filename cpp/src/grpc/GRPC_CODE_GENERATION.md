@@ -34,6 +34,12 @@ with conda). The `--auto-number` and `--strip` options additionally require
 After editing `field_registry.yaml`, run codegen and commit the regenerated
 files alongside your changes.
 
+If you changed a settings field's `default:`, `python
+cpp/src/grpc/codegen/lint_registry_defaults.py` is a best-effort, manual check
+(not run in CI) that diffs it against the actual C++ member initializer it
+describes — see §2.1/§4.3 of
+[`FIELD_REGISTRY_REFERENCE.md`](codegen/FIELD_REGISTRY_REFERENCE.md).
+
 ## File layout
 
 The codegen lives under `cpp/src/grpc/codegen/`:

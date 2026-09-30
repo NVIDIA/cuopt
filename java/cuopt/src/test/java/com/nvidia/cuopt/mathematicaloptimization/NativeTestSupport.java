@@ -13,12 +13,33 @@ import org.junit.jupiter.api.Assumptions;
 final class NativeTestSupport {
   private NativeTestSupport() {}
 
+  /**
+   * Skips when there is no native library to load, by either route the loader accepts: a
+   * directory named by {@code cuopt.native.dir} for a source build, or a copy embedded in a
+   * classifier JAR on the classpath. Requiring the property alone would silently skip the whole
+   * native suite when it runs against a JAR, which is where it matters most.
+   */
   static void assumeNativeLibrary() {
+    String fileName = System.mapLibraryName("cuopt_jni");
     String nativeDir = System.getProperty("cuopt.native.dir");
-    Assumptions.assumeTrue(nativeDir != null && !nativeDir.isBlank(), "cuopt.native.dir is unset");
+    if (nativeDir != null && !nativeDir.isBlank()) {
+      Assumptions.assumeTrue(
+          Files.exists(Path.of(nativeDir, fileName)), "libcuopt_jni is not built");
+      return;
+    }
     Assumptions.assumeTrue(
-        Files.exists(Path.of(nativeDir, System.mapLibraryName("cuopt_jni"))),
-        "libcuopt_jni is not built");
+        embeddedLibraryPresent(fileName),
+        "no libcuopt_jni: cuopt.native.dir is unset and no copy is embedded on the classpath");
+  }
+
+  private static boolean embeddedLibraryPresent(String fileName) {
+    try {
+      String resource =
+          NativeLibraryLoader.resourcePath(System.getProperty("os.arch", ""), fileName);
+      return NativeTestSupport.class.getResource(resource) != null;
+    } catch (IllegalStateException unsupportedArchitecture) {
+      return false;
+    }
   }
 
   private static final long NVIDIA_SMI_TIMEOUT_SECONDS = 30;

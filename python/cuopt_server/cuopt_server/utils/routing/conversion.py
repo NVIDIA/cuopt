@@ -24,6 +24,7 @@ from cuopt_server.utils.routing.host_optimization_data_model import (
 from cuopt_server.utils.routing.initial_solution import parse_initial_sol
 from cuopt_server.utils.routing.optimization_data_model import (
     OptimizationDataModel,
+    objective_names,
 )
 
 
@@ -524,3 +525,124 @@ def prep_optimization_data(optimization_data):
         travel_time_matrix,
         cost_waypoint_graph,
     )
+
+
+def _as_python_list(values):
+    if values is None:
+        return []
+    if hasattr(values, "tolist"):
+        return values.tolist()
+    return list(values)
+
+
+_NODE_TYPE_NAMES = {
+    0: "Depot",
+    1: "Pickup",
+    2: "Delivery",
+    3: "Break",
+}
+
+
+def _node_type_name(value):
+    try:
+        return _NODE_TYPE_NAMES[int(value)]
+    except (ValueError, TypeError, KeyError):
+        return str(value)
+
+
+def solution_to_http(
+    sol: dict,
+    vehicle_ids: Optional[List] = None,
+    task_ids: Optional[List] = None,
+) -> dict:
+    """Map a gRPC routing result dict onto the HTTP solver_response.
+
+    ``sol`` is the routing GetResult dict. ``vehicle_ids`` / ``task_ids`` are
+    optional sidecar lists from submit so HTTP keys match the request. After a
+    proxy restart they may be absent and numeric indices are used.
+
+    Returns the inner ``solver_response`` dict (integer status 0 or 1).
+    Raises ``HTTPException`` with status 409 if ``status`` is neither 0 nor 1.
+    """
+    status = int(sol.get("status", 0))
+    message = sol.get("status_message") or sol.get("error_message") or ""
+    if status not in (0, 1):
+        raise HTTPException(
+            status_code=409,
+            detail=message or "routing job did not find a feasible solution",
+        )
+
+    route = _as_python_list(sol.get("route"))
+    truck_id = _as_python_list(sol.get("truck_id"))
+    locations = _as_python_list(sol.get("locations"))
+    node_types = _as_python_list(sol.get("node_types"))
+    arrival = _as_python_list(sol.get("arrival_stamp"))
+    type_names = [_node_type_name(t) for t in node_types]
+
+    grouped = {}
+    for i, tid in enumerate(truck_id):
+        grouped.setdefault(int(tid), []).append(i)
+
+    vehicle_data = {}
+    for tid, idxs in grouped.items():
+        if vehicle_ids is not None and 0 <= tid < len(vehicle_ids):
+            key = str(vehicle_ids[tid])
+        else:
+            key = str(tid)
+        task_id_col = []
+        for i in idxs:
+            tname = type_names[i] if i < len(type_names) else ""
+            if tname in ("Depot", "Break"):
+                task_id_col.append(tname)
+            elif task_ids is not None and i < len(route):
+                r = int(route[i])
+                if 0 <= r < len(task_ids):
+                    task_id_col.append(str(task_ids[r]))
+                else:
+                    task_id_col.append(str(r))
+            elif i < len(route):
+                task_id_col.append(str(int(route[i])))
+            else:
+                task_id_col.append("")
+        vehicle_data[key] = {
+            "task_id": task_id_col,
+            "arrival_stamp": [
+                float(arrival[i]) for i in idxs if i < len(arrival)
+            ],
+            "type": [type_names[i] for i in idxs if i < len(type_names)],
+            "route": [
+                int(locations[i]) if i < len(locations) else int(route[i])
+                for i in idxs
+            ],
+        }
+
+    objective_values = {}
+    for key, val in (sol.get("objective_values") or {}).items():
+        try:
+            name = objective_names[routing.Objective(int(key))]
+        except Exception:
+            name = str(key)
+        objective_values[name] = float(val)
+
+    initial_sol_map = ["not accepted", "accepted", "not evaluated"]
+    accepted = [
+        initial_sol_map[int(i)] if 0 <= int(i) < 3 else str(int(i))
+        for i in _as_python_list(sol.get("accepted"))
+    ]
+    dropped = [int(i) for i in _as_python_list(sol.get("unserviced_nodes"))]
+    dropped_ids = [
+        str(task_ids[i])
+        if task_ids is not None and 0 <= i < len(task_ids)
+        else str(i)
+        for i in dropped
+    ]
+
+    return {
+        "status": status,
+        "num_vehicles": int(sol.get("vehicle_count", len(vehicle_data))),
+        "solution_cost": float(sol.get("total_objective_value", 0.0)),
+        "objective_values": objective_values,
+        "vehicle_data": vehicle_data,
+        "initial_solutions": accepted,
+        "dropped_tasks": {"task_id": dropped_ids, "task_index": dropped},
+    }

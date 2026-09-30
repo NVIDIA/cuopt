@@ -12,8 +12,7 @@
 #include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
 #include <cuopt/mathematical_optimization/utilities/internals.hpp>
 
-#include <rmm/device_buffer.hpp>
-
+#include <cassert>
 #include <memory>
 #include <string>
 #include <variant>
@@ -28,28 +27,35 @@ class barrier_cache_t;
 
 namespace CUOPT_EXPORT cython {
 
-using gpu_buffer = std::unique_ptr<rmm::device_buffer>;
 using cpu_buffer = std::vector<double>;
+
+// Held through an opaque pointer with a runtime deleter so destroying the variant never
+// needs rmm, which keeps cuopt_client CPU-only (#1890). Resolving the deleter at run time
+// rather than by name also avoids a cuopt_client -> cuopt_mathopt edge.
+// Defined in cython_types_gpu.hpp.
+struct lp_gpu_solutions_t;
+struct mip_gpu_solution_t;
+
+template <typename T>
+struct gpu_holder_deleter_t {
+  void (*destroy)(T*) = nullptr;
+  void operator()(T* p) const noexcept
+  {
+    // Only the factories in cython_types_gpu.hpp build these, so a null deleter with a
+    // live pointer is a bug. Aborting beats leaking it silently.
+    if (p == nullptr) { return; }
+    assert(destroy != nullptr);
+    destroy(p);
+  }
+};
+
+using lp_gpu_ptr  = std::unique_ptr<lp_gpu_solutions_t, gpu_holder_deleter_t<lp_gpu_solutions_t>>;
+using mip_gpu_ptr = std::unique_ptr<mip_gpu_solution_t, gpu_holder_deleter_t<mip_gpu_solution_t>>;
 
 // LP solution struct — GPU and CPU solutions use the same struct, differing only in the
 // vector storage type (device_buffer vs std::vector).  The solutions_ variant holds all
 // buffer/vector fields; shared scalar fields live directly on the struct.
 struct linear_programming_ret_t {
-  struct gpu_solutions_t {
-    gpu_buffer primal_solution_;
-    gpu_buffer dual_solution_;
-    gpu_buffer reduced_cost_;
-    gpu_buffer current_primal_solution_;
-    gpu_buffer current_dual_solution_;
-    gpu_buffer initial_primal_average_;
-    gpu_buffer initial_dual_average_;
-    gpu_buffer current_ATY_;
-    gpu_buffer sum_primal_solutions_;
-    gpu_buffer sum_dual_solutions_;
-    gpu_buffer last_restart_duality_gap_primal_solution_;
-    gpu_buffer last_restart_duality_gap_dual_solution_;
-  };
-
   struct cpu_solutions_t {
     cpu_buffer primal_solution_;
     cpu_buffer dual_solution_;
@@ -65,7 +71,7 @@ struct linear_programming_ret_t {
     cpu_buffer last_restart_duality_gap_dual_solution_;
   };
 
-  std::variant<gpu_solutions_t, cpu_solutions_t> solutions_;
+  std::variant<lp_gpu_ptr, cpu_solutions_t> solutions_;
 
   /* -- PDLP Warm Start Scalars -- */
   double initial_primal_weight_{};
@@ -97,13 +103,13 @@ struct linear_programming_ret_t {
    */
   mathematical_optimization::barrier_cache_t* barrier_cache{nullptr};
 
-  bool is_gpu() const { return std::holds_alternative<gpu_solutions_t>(solutions_); }
+  bool is_gpu() const { return std::holds_alternative<lp_gpu_ptr>(solutions_); }
 };
 
 // MIP solution struct — GPU and CPU solutions use the same struct, differing only in the
 // solution vector storage type.
 struct mip_ret_t {
-  std::variant<gpu_buffer, cpu_buffer> solution_;
+  std::variant<mip_gpu_ptr, cpu_buffer> solution_;
 
   mathematical_optimization::mip_termination_status_t termination_status_{};
   error_type_t error_status_{};
@@ -121,7 +127,7 @@ struct mip_ret_t {
   int nodes_{};
   int simplex_iterations_{};
 
-  bool is_gpu() const { return std::holds_alternative<gpu_buffer>(solution_); }
+  bool is_gpu() const { return std::holds_alternative<mip_gpu_ptr>(solution_); }
 };
 
 }  // namespace CUOPT_EXPORT cython

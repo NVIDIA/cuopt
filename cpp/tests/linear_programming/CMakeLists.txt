@@ -71,10 +71,13 @@ if (NOT SKIP_C_PYTHON_ADAPTERS)
         "${CMAKE_CURRENT_SOURCE_DIR}/c_api_tests"
     )
 
+    # Links cuopt_mathopt rather than the cuopt umbrella: this test is the standing check
+    # that the mathopt component carries the whole C API on its own. cuopttestutils is
+    # deliberately absent -- it is routing code, and taking it would pull the routing
+    # engine back in and hide an incomplete mathopt link line.
     target_link_libraries(C_API_TEST
         PRIVATE
-        cuopt
-        cuopttestutils
+        cuopt_mathopt
         c_api_tester
         GTest::gmock
         GTest::gmock_main

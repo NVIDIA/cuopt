@@ -26,7 +26,7 @@ from cuopt_server.utils.linear_programming.conversion import (  # noqa: F401
     create_data_model,
     create_solver,
     ignored_warning,
-    solution_to_legacy_http,
+    solution_to_http,
 )
 
 
@@ -113,7 +113,7 @@ def solve(
     notes = []
 
     def create_solution(sol):
-        res = solution_to_legacy_http(sol)
+        res = solution_to_http(sol)
         notes.append(sol.get_termination_reason())
         return res
 

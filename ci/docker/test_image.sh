@@ -5,16 +5,17 @@
 
 set -euo pipefail
 
-# Detect distro and install test dependencies
+# Detect distro and install test dependencies. A JDK (not just the JRE the image ships) is
+# needed to compile JavaSmokeTest.java against cuopt.jar.
 if [ -f /etc/redhat-release ]; then
-    dnf install -y file bzip2 gcc wget unzip tar
+    dnf install -y file bzip2 gcc wget unzip tar java-21-openjdk-devel
     dnf clean all
     # pip-installed CUDA wheels land in a non-standard prefix on UBI/RHEL.
     # su - resets the environment, so carry the path forward explicitly.
     EXTRA_LD_PATH=$(find /usr/local/lib/python*/site-packages/nvidia -maxdepth 2 -name 'lib' -type d 2>/dev/null | tr '\n' ':' | sed 's/:$//')
 else
     apt-get update
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends file bzip2 gcc wget unzip
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends file bzip2 gcc wget unzip openjdk-17-jdk-headless
     # Collect all nvidia per-package lib dirs so LD_LIBRARY_PATH survives su - reset
     EXTRA_LD_PATH=$(find /usr/local/lib/python*/dist-packages/nvidia -maxdepth 2 -name 'lib' -type d 2>/dev/null | tr '\n' ':' | sed 's/:$//')
 fi
@@ -54,6 +55,10 @@ echo '----------------- CUOPT TEST END ---------------'
 echo '----------------- CUOPT SERVER TEST START ---------------'
 python -m pytest python/cuopt_server/cuopt_server/tests/
 echo '----------------- CUOPT SERVER TEST END ---------------'
+echo '----------------- JAVA TEST START ---------------'
+javac -cp /opt/cuopt/java/cuopt.jar -d /tmp/java-smoke-test ci/docker/JavaSmokeTest.java
+java -Dcuopt.native.dir=/opt/cuopt/java -cp /opt/cuopt/java/cuopt.jar:/tmp/java-smoke-test JavaSmokeTest
+echo '----------------- JAVA TEST END ---------------'
 EOF
 
 # Create a temporary user with UID 1001 (within standard range for both Ubuntu and RHEL)

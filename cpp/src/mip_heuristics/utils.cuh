@@ -18,6 +18,7 @@
 #include <random>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/hashing.hpp>
+#include <utilities/pcgenerator.hpp>
 
 #include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
 
@@ -116,7 +117,7 @@ HDI f_t round_nearest(f_t val, f_t lb, f_t ub, f_t int_tol, raft::random::PCGene
     f_t t = 2 * w * (1 - w);
     if (w > 0.5) { t = 1 - t; }
     f_t result = floor(val + t);
-    return max(int_lb, min(result, int_ub));
+    return raft::max(int_lb, raft::min(result, int_ub));
   }
 }
 
@@ -137,6 +138,21 @@ inline std::vector<f_t> get_random_uniform_vector(i_t size,
   vec.reserve(size);
   for (i_t i = 0; i < size; ++i) {
     f_t random_val = std::uniform_real_distribution<f_t>(range_start, range_end)(rng);
+    vec.push_back(random_val);
+  }
+  return vec;
+}
+
+template <typename i_t, typename f_t>
+inline std::vector<f_t> get_random_uniform_vector(i_t size,
+                                                  cuopt::pcgenerator_t& rng,
+                                                  f_t range_start = -1.,
+                                                  f_t range_end   = 1.)
+{
+  std::vector<f_t> vec;
+  vec.reserve(size);
+  for (i_t i = 0; i < size; ++i) {
+    f_t random_val = rng.uniform(range_start, range_end);
     vec.push_back(random_val);
   }
   return vec;

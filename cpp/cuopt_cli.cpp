@@ -13,6 +13,7 @@
 #include <cuopt/mathematical_optimization/optimization_problem.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
 #include <cuopt/mathematical_optimization/solve.hpp>
+#include <cuopt/mathematical_optimization/solve_remote.hpp>
 #include <utilities/logger.hpp>
 #include <utilities/timer.hpp>
 
@@ -152,7 +153,9 @@ int run_single_file(const std::string& file_path,
   // Distributed PDLP is used for large problems that don't fit on a single GPU.
   // We need to debranch before the problem_interface is created and tries to materialize the
   // problem in device memory.
-  if (settings.get_pdlp_settings().use_distributed_pdlp) {
+  const auto& pdlp_settings_ref = settings.get_pdlp_settings();
+  if (pdlp_settings_ref.method == cuopt::mathematical_optimization::method_t::PDLP &&
+      (pdlp_settings_ref.num_gpus == -1 || pdlp_settings_ref.num_gpus > 1)) {
     if (handle_ptr == nullptr) {
       CUOPT_LOG_ERROR(
         "Distributed PDLP requires the GPU memory backend; no GPU handle is available for the "
@@ -202,7 +205,32 @@ int run_single_file(const std::string& file_path,
   }
 
   try {
-    if (is_mip) {
+    if (cuopt::mathematical_optimization::is_remote_execution_enabled()) {
+      // Remote execution: problem_interface holds a cpu_optimization_problem_t.
+      // solve_lp/mip_remote live in cuopt_client, which this binary already links.
+      auto* cpu_prob =
+        dynamic_cast<cuopt::mathematical_optimization::cpu_optimization_problem_t<int, double>*>(
+          problem_interface.get());
+      if (cpu_prob == nullptr) {
+        CUOPT_LOG_ERROR("Remote execution requires the CPU memory backend.");
+        return -1;
+      }
+#ifdef CUOPT_ENABLE_GRPC
+      if (is_mip) {
+        auto& mip_settings = settings.get_mip_settings();
+        auto solution = cuopt::mathematical_optimization::solve_mip_remote(*cpu_prob, mip_settings);
+      } else {
+        auto& lp_settings = settings.get_pdlp_settings();
+        auto solution = cuopt::mathematical_optimization::solve_lp_remote(*cpu_prob, lp_settings);
+      }
+#else
+      // solve_remote.cpp only builds when gRPC is enabled, so these entry points do not
+      // exist in a SKIP_GRPC_BUILD tree. cuopt_cli is still built there (it is gated on
+      // BUILD_LP_ONLY, not on gRPC), so without this the link fails.
+      CUOPT_LOG_ERROR("Remote execution requires cuOpt built with gRPC support.");
+      return -1;
+#endif
+    } else if (is_mip) {
       auto& mip_settings = settings.get_mip_settings();
       auto solution =
         cuopt::mathematical_optimization::solve_mip(problem_interface.get(), mip_settings);
@@ -400,10 +428,7 @@ int main(int argc, char* argv[])
       std::string arg_name = param_name_to_arg_name(param.param_name);
       if (arg_name_to_param_name.count(arg_name) == 0) {
         auto& arg = program.add_argument(arg_name.c_str()).default_value(param.default_value);
-        if (param.param_name.find("hyper_") != std::string::npos ||
-            param.param_name == CUOPT_USE_DISTRIBUTED_PDLP) {
-          arg.hidden();
-        }
+        if (param.param_name.find("hyper_") != std::string::npos) { arg.hidden(); }
         arg_name_to_param_name[arg_name] = param.param_name;
       }
     }
@@ -461,6 +486,7 @@ int main(int argc, char* argv[])
     if (!params_file.empty()) { settings.load_parameters_from_file(params_file); }
     for (auto& [key, val] : settings_strings) {
       settings.set_parameter_from_string(key, val);
+      CUOPT_LOG_INFO("Setting parameter %s to %s", key.c_str(), val.c_str());
     }
   } catch (const std::exception& e) {
     auto log = dummy_logger(settings);
@@ -473,10 +499,10 @@ int main(int argc, char* argv[])
   {
     auto& pdlp_settings = settings.get_pdlp_settings();
     const int num_gpus  = pdlp_settings.num_gpus;
-    if (pdlp_settings.method == cuopt::mathematical_optimization::method_t::PDLP &&
-        (num_gpus == -1 || num_gpus > 1)) {
-      pdlp_settings.use_distributed_pdlp = true;
-    } else if (!pdlp_settings.use_distributed_pdlp && (num_gpus < 1 || num_gpus > 2)) {
+    const bool is_mpdlp =
+      pdlp_settings.method == cuopt::mathematical_optimization::method_t::PDLP &&
+      (num_gpus == -1 || num_gpus > 1);
+    if (!is_mpdlp && (num_gpus < 1 || num_gpus > 2)) {
       auto log = dummy_logger(settings);
       CUOPT_LOG_ERROR(
         "num_gpus=%d is only supported with --method 1 (distributed PDLP, where -1 selects "
@@ -498,7 +524,8 @@ int main(int argc, char* argv[])
       settings.get_pdlp_settings().num_gpus = requested_gpus;
     }
     if (requested_gpus > device_count) {
-      CUOPT_LOG_ERROR("num_gpus=%d exceeds the number of visible CUDA devices (%d).",
+      auto log = dummy_logger(settings);
+      CUOPT_LOG_ERROR("num-gpus=%d exceeds the number of visible CUDA devices: %d. Aborting solve.",
                       requested_gpus,
                       device_count);
       return -1;

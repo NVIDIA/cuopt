@@ -5,8 +5,8 @@
  */
 /* clang-format on */
 
-#include <routing/node/distance_node.cuh>
-#include <routing/route/distance_route.cuh>
+#include <routing/node/cost_node.cuh>
+#include <routing/route/cost_route.cuh>
 #include <routing/utilities/check_constraints.hpp>
 #include <routing/utilities/test_utilities.hpp>
 
@@ -26,8 +26,8 @@ namespace test {
 
 namespace {
 
-using distance_node         = detail::distance_node_t<int, float>;
-using distance_route        = detail::distance_route_t<int, float>;
+using cost_node             = detail::cost_node_t<int, float>;
+using cost_route            = detail::cost_route_t<int, float>;
 constexpr auto DISTANCE_INF = detail::DISTANCE_WINDOW_INFINITY;
 
 template <typename T, size_t N>
@@ -38,7 +38,7 @@ auto copy_array_to_device(std::array<T, N> const& values, cuda::stream_ref strea
   return result;
 }
 
-__global__ void compute_distance_route_cost(distance_route::view_t route, double* result)
+__global__ void compute_cost_route_cost(cost_route::view_t route, double* result)
 {
   detail::objective_cost_t objective_cost;
   detail::infeasible_cost_t infeasible_cost;
@@ -48,7 +48,7 @@ __global__ void compute_distance_route_cost(distance_route::view_t route, double
 }
 
 struct test_route {
-  std::vector<distance_node> nodes;
+  std::vector<cost_node> nodes;
   std::vector<float> arcs;
   detail::VehicleInfo<float> vehicle_info{};
 
@@ -86,16 +86,16 @@ test_route make_route(std::vector<float> arcs,
 }  // namespace
 
 // Forward sweep clamps cumulative distance at hard upper bounds and accumulates excess.
-TEST(distance_node, forward_propagation)
+TEST(cost_node, forward_propagation)
 {
   auto r = make_route({80.f, 600.f, 400.f},
                       {{0., DISTANCE_INF}, {0., 60.}, {0., DISTANCE_INF}, {0., DISTANCE_INF}});
   r.run_passes();
 
-  EXPECT_DOUBLE_EQ(r.nodes[0].distance_forward, 0.);
-  EXPECT_DOUBLE_EQ(r.nodes[1].distance_forward, 80.);
-  EXPECT_DOUBLE_EQ(r.nodes[2].distance_forward, 680.);
-  EXPECT_DOUBLE_EQ(r.nodes[3].distance_forward, 1080.);
+  EXPECT_DOUBLE_EQ(r.nodes[0].cost_forward, 0.);
+  EXPECT_DOUBLE_EQ(r.nodes[1].cost_forward, 80.);
+  EXPECT_DOUBLE_EQ(r.nodes[2].cost_forward, 680.);
+  EXPECT_DOUBLE_EQ(r.nodes[3].cost_forward, 1080.);
 
   EXPECT_DOUBLE_EQ(r.nodes[0].distance_window_forward, 0.);
   EXPECT_DOUBLE_EQ(r.nodes[1].distance_window_forward, 60.);
@@ -109,7 +109,7 @@ TEST(distance_node, forward_propagation)
 }
 
 // Multiple early breaks contribute the route's maximum shortfall, not a sum of hinges.
-TEST(distance_node, early_arrival_cost_is_maximum_per_route)
+TEST(cost_node, early_arrival_cost_is_maximum_per_route)
 {
   auto r = make_route({10.f, 10.f, 0.f},
                       {{0., DISTANCE_INF}, {50., 100.}, {80., 100.}, {0., DISTANCE_INF}},
@@ -134,20 +134,20 @@ TEST(distance_node, early_arrival_cost_is_maximum_per_route)
 
     EXPECT_DOUBLE_EQ(obj_cost[objective_t::DISTANCE_BREAK_COST], 60.)
       << "split (" << k << ", " << (k + 1) << ")";
-    EXPECT_DOUBLE_EQ(inf_cost[detail::dim_t::DIST], 0.);
+    EXPECT_DOUBLE_EQ(inf_cost[detail::dim_t::COST], 0.);
   }
 }
 
 // A soft lower-bound correction must not shift the independently propagated hard upper state.
-TEST(distance_node, early_arrival_does_not_create_later_upper_excess)
+TEST(cost_node, early_arrival_does_not_create_later_upper_excess)
 {
   auto r = make_route({0.f, 40.f, 0.f},
                       {{0., DISTANCE_INF}, {100., 200.}, {0., 30.}, {0., DISTANCE_INF}},
                       /*max_cost=*/1000.f);
   r.run_passes();
 
-  EXPECT_DOUBLE_EQ(r.nodes[1].distance_forward, 0.);
-  EXPECT_DOUBLE_EQ(r.nodes[2].distance_forward, 40.);
+  EXPECT_DOUBLE_EQ(r.nodes[1].cost_forward, 0.);
+  EXPECT_DOUBLE_EQ(r.nodes[2].cost_forward, 40.);
   EXPECT_DOUBLE_EQ(r.nodes[2].distance_window_forward, 30.);
   EXPECT_DOUBLE_EQ(r.nodes[2].distance_break_cost_forward, 100.);
   EXPECT_DOUBLE_EQ(r.nodes[2].excess_forward, 10.);
@@ -166,26 +166,25 @@ TEST(distance_node, early_arrival_does_not_create_later_upper_excess)
 
     EXPECT_DOUBLE_EQ(obj_cost[objective_t::DISTANCE_BREAK_COST], 100.)
       << "split (" << k << ", " << (k + 1) << ")";
-    EXPECT_DOUBLE_EQ(inf_cost[detail::dim_t::DIST], 10.)
+    EXPECT_DOUBLE_EQ(inf_cost[detail::dim_t::COST], 10.)
       << "split (" << k << ", " << (k + 1) << ")";
-    EXPECT_DOUBLE_EQ(distance_node::combine(r.nodes[k], r.nodes[k + 1], r.vehicle_info, r.arcs[k]),
-                     10.)
+    EXPECT_DOUBLE_EQ(cost_node::combine(r.nodes[k], r.nodes[k + 1], r.vehicle_info, r.arcs[k]), 10.)
       << "split (" << k << ", " << (k + 1) << ")";
   }
 }
 
 // Backward sweep propagates the latest cumulative distance allowed by upper bounds.
-TEST(distance_node, backward_propagation)
+TEST(cost_node, backward_propagation)
 {
   auto r = make_route({80.f, 600.f, 400.f},
                       {{0., DISTANCE_INF}, {0., 60.}, {0., DISTANCE_INF}, {0., DISTANCE_INF}},
                       /*max_cost=*/800.f);
   r.run_passes();
 
-  EXPECT_DOUBLE_EQ(r.nodes[3].distance_backward, 0.);
-  EXPECT_DOUBLE_EQ(r.nodes[2].distance_backward, 400.);
-  EXPECT_DOUBLE_EQ(r.nodes[1].distance_backward, 1000.);
-  EXPECT_DOUBLE_EQ(r.nodes[0].distance_backward, 1080.);
+  EXPECT_DOUBLE_EQ(r.nodes[3].cost_backward, 0.);
+  EXPECT_DOUBLE_EQ(r.nodes[2].cost_backward, 400.);
+  EXPECT_DOUBLE_EQ(r.nodes[1].cost_backward, 1000.);
+  EXPECT_DOUBLE_EQ(r.nodes[0].cost_backward, 1080.);
 
   EXPECT_DOUBLE_EQ(r.nodes[1].distance_window_backward, 60.);
   EXPECT_DOUBLE_EQ(r.nodes[1].excess_backward, 0.);
@@ -195,7 +194,7 @@ TEST(distance_node, backward_propagation)
 }
 
 // combine() returns 0 at every split point of a window-feasible route.
-TEST(distance_node, combine_invariant_feasible)
+TEST(cost_node, combine_invariant_feasible)
 {
   auto r = make_route({50.f, 55.f, 100.f},
                       {{0., DISTANCE_INF}, {0., 60.}, {0., DISTANCE_INF}, {0., DISTANCE_INF}},
@@ -203,30 +202,30 @@ TEST(distance_node, combine_invariant_feasible)
   r.run_passes();
 
   for (size_t k = 0; k + 1 < r.nodes.size(); ++k) {
-    double c = distance_node::combine(r.nodes[k], r.nodes[k + 1], r.vehicle_info, r.arcs[k]);
+    double c = cost_node::combine(r.nodes[k], r.nodes[k + 1], r.vehicle_info, r.arcs[k]);
     EXPECT_DOUBLE_EQ(c, 0.) << "split (" << k << ", " << (k + 1) << ") got " << c;
   }
 }
 
 // combine() reports the same window-violation excess at every split point.
-TEST(distance_node, combine_invariant_window_violation)
+TEST(cost_node, combine_invariant_window_violation)
 {
   auto r = make_route({80.f, 600.f, 400.f},
                       {{0., DISTANCE_INF}, {0., 60.}, {0., DISTANCE_INF}, {0., DISTANCE_INF}},
                       /*max_cost=*/800.f);
   r.run_passes();
 
-  double reference = distance_node::combine(r.nodes[0], r.nodes[1], r.vehicle_info, r.arcs[0]);
+  double reference = cost_node::combine(r.nodes[0], r.nodes[1], r.vehicle_info, r.arcs[0]);
   EXPECT_GT(reference, 0.);
   for (size_t k = 1; k + 1 < r.nodes.size(); ++k) {
-    double c = distance_node::combine(r.nodes[k], r.nodes[k + 1], r.vehicle_info, r.arcs[k]);
+    double c = cost_node::combine(r.nodes[k], r.nodes[k + 1], r.vehicle_info, r.arcs[k]);
     EXPECT_DOUBLE_EQ(c, reference) << "split (" << k << ", " << (k + 1) << ") = " << c
                                    << " differs from reference " << reference;
   }
 }
 
 // combine() reports the max_cost overage at every split point of a window-free route.
-TEST(distance_node, combine_invariant_max_cost_only)
+TEST(cost_node, combine_invariant_max_cost_only)
 {
   auto r =
     make_route({400.f, 300.f, 400.f},
@@ -234,16 +233,16 @@ TEST(distance_node, combine_invariant_max_cost_only)
                /*max_cost=*/1000.f);
   r.run_passes();
 
-  double reference = distance_node::combine(r.nodes[0], r.nodes[1], r.vehicle_info, r.arcs[0]);
+  double reference = cost_node::combine(r.nodes[0], r.nodes[1], r.vehicle_info, r.arcs[0]);
   EXPECT_DOUBLE_EQ(reference, 100.);  // total 1100, max_cost 1000.
   for (size_t k = 1; k + 1 < r.nodes.size(); ++k) {
-    double c = distance_node::combine(r.nodes[k], r.nodes[k + 1], r.vehicle_info, r.arcs[k]);
+    double c = cost_node::combine(r.nodes[k], r.nodes[k + 1], r.vehicle_info, r.arcs[k]);
     EXPECT_DOUBLE_EQ(c, reference);
   }
 }
 
 // End-of-route boundary plus max_cost overage matches combine() at the first split.
-TEST(distance_node, compute_cost_combine_consistency)
+TEST(cost_node, compute_cost_combine_consistency)
 {
   auto r = make_route({80.f, 600.f, 400.f},
                       {{0., DISTANCE_INF}, {0., 60.}, {0., DISTANCE_INF}, {0., DISTANCE_INF}},
@@ -253,35 +252,33 @@ TEST(distance_node, compute_cost_combine_consistency)
   auto const& end_node = r.nodes.back();
   double boundary =
     std::max(0., end_node.distance_window_forward - end_node.distance_window_backward);
-  double total_distance = end_node.distance_forward;
+  double total_distance = end_node.cost_forward;
   double max_cost_excess =
     std::max(0., total_distance - static_cast<double>(r.vehicle_info.max_cost));
   double total = end_node.excess_forward + boundary + max_cost_excess;
 
-  double combine_at_first =
-    distance_node::combine(r.nodes[0], r.nodes[1], r.vehicle_info, r.arcs[0]);
+  double combine_at_first = cost_node::combine(r.nodes[0], r.nodes[1], r.vehicle_info, r.arcs[0]);
 
   EXPECT_DOUBLE_EQ(total, combine_at_first);
 }
 
 // compute_cost must not read the soft-cost span unless distance windows are enabled.
-TEST(distance_route, distance_break_cost_requires_distance_window)
+TEST(cost_route, distance_break_cost_requires_distance_window)
 {
   raft::handle_t handle;
   auto stream = handle.get_stream();
 
-  auto distance_forward = cuopt::device_copy(std::vector<double>{0.}, stream);
+  auto cost_forward = cuopt::device_copy(std::vector<double>{0.}, stream);
   rmm::device_uvector<double> result(1, stream);
 
-  distance_route::view_t route;
+  cost_route::view_t route;
   route.dim_info.has_distance_window     = false;
   route.dim_info.has_distance_break_cost = true;
-  route.distance_forward =
-    raft::device_span<double>{distance_forward.data(), distance_forward.size()};
+  route.cost_forward = raft::device_span<double>{cost_forward.data(), cost_forward.size()};
   ASSERT_TRUE(route.distance_break_cost_forward.empty());
-  EXPECT_EQ(distance_route::get_shared_size(1, route.dim_info), 2 * sizeof(double));
+  EXPECT_EQ(cost_route::get_shared_size(1, route.dim_info), 2 * sizeof(double));
 
-  compute_distance_route_cost<<<1, 1, 0, stream.get()>>>(route, result.data());
+  compute_cost_route_cost<<<1, 1, 0, stream.get()>>>(route, result.data());
   RAFT_CUDA_TRY(cudaGetLastError());
 
   auto host_result = cuopt::host_copy(result, stream);
@@ -289,7 +286,7 @@ TEST(distance_route, distance_break_cost_requires_distance_window)
 }
 
 // get_cost() agrees with combine() at every split point of a route.
-TEST(distance_node, get_cost_combine_consistency)
+TEST(cost_node, get_cost_combine_consistency)
 {
   auto r = make_route({80.f, 600.f, 400.f},
                       {{0., DISTANCE_INF}, {0., 60.}, {0., DISTANCE_INF}, {0., DISTANCE_INF}},
@@ -308,10 +305,10 @@ TEST(distance_node, get_cost_combine_consistency)
     detail::objective_cost_t obj_cost;
     detail::infeasible_cost_t inf_cost;
     next_copy.get_cost(r.nodes[k], r.vehicle_info, dim_info, obj_cost, inf_cost);
-    double get_cost_total = inf_cost[detail::dim_t::DIST];
+    double get_cost_total = inf_cost[detail::dim_t::COST];
 
     double combine_value =
-      distance_node::combine(r.nodes[k], r.nodes[k + 1], r.vehicle_info, r.arcs[k]);
+      cost_node::combine(r.nodes[k], r.nodes[k + 1], r.vehicle_info, r.arcs[k]);
 
     EXPECT_DOUBLE_EQ(get_cost_total, combine_value)
       << "split (" << k << ", " << (k + 1) << "): get_cost = " << get_cost_total
@@ -321,7 +318,7 @@ TEST(distance_node, get_cost_combine_consistency)
 }
 
 // combine() = break-window excess + max_cost overage (additive accounting).
-TEST(distance_node, combine_additive_break_and_max_cost)
+TEST(cost_node, combine_additive_break_and_max_cost)
 {
   // Arc 100 to break B with window [0, 50] (cumulative 100 → excess 50), then arcs 20 and 10.
   // Route total = 130, max_cost = 120, so max_cost overage = 10.
@@ -331,10 +328,10 @@ TEST(distance_node, combine_additive_break_and_max_cost)
                       /*max_cost=*/120.f);
   r.run_passes();
 
-  double reference = distance_node::combine(r.nodes[0], r.nodes[1], r.vehicle_info, r.arcs[0]);
+  double reference = cost_node::combine(r.nodes[0], r.nodes[1], r.vehicle_info, r.arcs[0]);
   EXPECT_DOUBLE_EQ(reference, 60.);
   for (size_t k = 1; k + 1 < r.nodes.size(); ++k) {
-    double c = distance_node::combine(r.nodes[k], r.nodes[k + 1], r.vehicle_info, r.arcs[k]);
+    double c = cost_node::combine(r.nodes[k], r.nodes[k + 1], r.vehicle_info, r.arcs[k]);
     EXPECT_DOUBLE_EQ(c, reference) << "split (" << k << ", " << (k + 1) << ") = " << c;
   }
 }

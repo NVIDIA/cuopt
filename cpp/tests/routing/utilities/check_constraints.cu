@@ -126,7 +126,7 @@ void check_route(data_model_view_t<i_t, f_t> const& data_model,
   for (auto const& id : temp_truck_ids) {
     size_t i_vehicle_start = i;
     std::vector<i_t> path, path_locations;
-    f_t route_dist     = 0;
+    f_t route_cost     = 0;
     f_t route_time     = 0.f;
     f_t max_cost_truck = !vehicle_max_costs_h.empty() ? vehicle_max_costs_h[id] : -1;
     f_t max_time_truck = !vehicle_max_times_h.empty() ? vehicle_max_times_h[id] : -1;
@@ -151,7 +151,7 @@ void check_route(data_model_view_t<i_t, f_t> const& data_model,
         if (!possible_orders.empty()) { EXPECT_EQ(possible_orders.count(order), 1u); }
       }
       if (j + 1 < truck_id.size() && truck_id[j + 1] == id) {
-        route_dist += cost_matrix_h[locations[i] * n_locations + locations[i + 1]];
+        route_cost += cost_matrix_h[locations[i] * n_locations + locations[i + 1]];
         route_time += time_matrix_h[locations[i] * n_locations + locations[i + 1]];
       }
     }
@@ -242,7 +242,7 @@ void check_route(data_model_view_t<i_t, f_t> const& data_model,
     // Duplicate check
     auto has_duplicates = std::unique(begin, end) != end;
     ASSERT_EQ(has_duplicates, false);
-    if (!vehicle_max_costs_h.empty()) ASSERT_LE(route_dist, max_cost_truck + 0.001);
+    if (!vehicle_max_costs_h.empty()) ASSERT_LE(route_cost, max_cost_truck + 0.001);
     if (!vehicle_max_times_h.empty()) ASSERT_LE(route_time, max_time_truck + 0.001);
 
     // Each truck visits its owns set of vertices

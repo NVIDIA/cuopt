@@ -425,10 +425,10 @@ __device__ void try_permutations_cvrp(
     nodes, window_start_idx, solution, s_route.get_num_nodes());
 
   // pre-compute fragment cost
-  f_t fragment_dist   = 0.;
+  f_t fragment_cost   = 0.;
   f_t fragment_demand = nodes[0].capacity_dim.demand[0];
   for (int i = 1; i < window_size; ++i) {
-    fragment_dist += get_arc_of_dimension<i_t, f_t, dim_t::DIST, true>(
+    fragment_cost += get_arc_of_dimension<i_t, f_t, dim_t::COST, true>(
       nodes[i - 1].request.info, nodes[i].request.info, s_route.vehicle_info());
     fragment_demand += nodes[i].capacity_dim.demand[0];
   }
@@ -446,7 +446,7 @@ __device__ void try_permutations_cvrp(
                                                        s_route,
                                                        nodes.data(),
                                                        window_size,
-                                                       fragment_dist,
+                                                       fragment_cost,
                                                        fragment_demand,
                                                        move_candidates.weights,
                                                        excess_limit)) {
@@ -502,7 +502,7 @@ __device__ void try_permutations_cvrp(
                                                           s_route,
                                                           nodes.data(),
                                                           window_size,
-                                                          fragment_dist,
+                                                          fragment_cost,
                                                           fragment_demand,
                                                           move_candidates.weights,
                                                           excess_limit)) {
@@ -572,7 +572,7 @@ __device__ void try_permutations_cvrp(
                                                          s_route,
                                                          nodes.data(),
                                                          window_size,
-                                                         fragment_dist,
+                                                         fragment_cost,
                                                          fragment_demand,
                                                          move_candidates.weights,
                                                          excess_limit)) {

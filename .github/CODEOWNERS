@@ -5,6 +5,11 @@
 cpp/               @nvidia/cuopt-solver-codeowners
 benchmarks/        @nvidia/cuopt-solver-codeowners
 
+#gRPC code owners (overrides cpp/ above)
+cpp/src/grpc/            @nvidia/cuopt-infra-codeowners
+cpp/include/cuopt/grpc/  @nvidia/cuopt-infra-codeowners
+cpp/tests/**/grpc/       @nvidia/cuopt-infra-codeowners
+
 #python code owners
 python/            @nvidia/cuopt-infra-codeowners
 notebooks/         @nvidia/cuopt-infra-codeowners

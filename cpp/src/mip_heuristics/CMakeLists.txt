@@ -45,7 +45,20 @@ set(MIP_NON_LP_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/presolve/trivial_presolve.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/feasibility_jump.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/feasibility_jump_kernels.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/fj_cpu.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/cpu/audit.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/cpu/climber.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/cpu/loop.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/cpu/portfolio.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/cpu/search/escape.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/cpu/search/fp.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/cpu/starts/affine.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/cpu/starts/cardinality.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/cpu/starts/chain.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/cpu/starts/covering.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/cpu/setup/bounds.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/cpu/setup/lp.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/cpu/setup/structure.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/fj_cpu_bridge.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/fj_cpu_binary.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/fj_cpu_binary_preprocess.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/fj_cpu_binary_kernels.cpp
@@ -60,6 +73,8 @@ if(BUILD_LP_ONLY)
 else()
   set(MIP_SRC_FILES ${MIP_LP_NECESSARY_FILES} ${MIP_NON_LP_FILES})
 endif()
+
+set(MIP_SRC_FILES ${MIP_SRC_FILES} PARENT_SCOPE)
 
 # Host-only members of mip_solver_settings_t (callbacks, tolerances). The gRPC client
 # needs them, so they build into cuopt_client; add_initial_solution stays in the .cu.

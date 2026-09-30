@@ -127,7 +127,12 @@ done
 # Update the Java API version. Maven has no notion of the zero-padded RAPIDS patch field, and a
 # padded patch would sort oddly against a later unpadded one, so the padding is stripped here.
 # This matches how cuvs versions its Java artifact.
-NEXT_FULL_JAVA_TAG=$(echo "$NEXT_FULL_TAG" | sed -E 's/^([0-9]+)\.([0-9]+)\.0*([0-9]+)$/\1.\2.\3/')
+#
+# Always carries -SNAPSHOT in the source tree, matching cuDF's java/pom.xml convention: every
+# dev-cycle version is a snapshot until an actual Maven Central release strips the suffix as a
+# one-off step outside this script, so a build off any branch/PR/nightly commit is never
+# mistakable for (or cached by Maven the same way as) a real numbered release.
+NEXT_FULL_JAVA_TAG="$(echo "$NEXT_FULL_TAG" | sed -E 's/^([0-9]+)\.([0-9]+)\.0*([0-9]+)$/\1.\2.\3/')-SNAPSHOT"
 for FILE in java/*/pom.xml; do
   sed_runner "/<!--CUOPT_JAVA#VERSION_UPDATE_MARKER_START-->.*<!--CUOPT_JAVA#VERSION_UPDATE_MARKER_END-->/s//<!--CUOPT_JAVA#VERSION_UPDATE_MARKER_START--><version>${NEXT_FULL_JAVA_TAG}<\/version><!--CUOPT_JAVA#VERSION_UPDATE_MARKER_END-->/g" "${FILE}"
 done

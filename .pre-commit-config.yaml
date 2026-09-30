@@ -72,8 +72,9 @@ repos:
             ^helmchart/cuopt-server/templates
           )
   - repo: https://github.com/rapidsai/pre-commit-hooks
-    rev: v1.6.0
+    rev: v1.7.0
     hooks:
+      - id: verify-dependencies
       - id: verify-copyright
         args: [--fix, --spdx]
         files: |
