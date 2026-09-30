@@ -3636,6 +3636,7 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
                                                   Arow_,
                                                   exploration_stats_.start_time,
                                                   root_objective_,
+                                                  root_relax_work_estimate_,
                                                   reduced_cost_bounds);
     }
     settings_.log.printf("After pivoting: new reduced cost objective %e (current %e)\n",
@@ -3969,6 +3970,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                                 Arow_,
                                                 exploration_stats_.start_time,
                                                 root_objective_,
+                                                root_relax_work_estimate_,
                                                 reduced_cost_bounds);
   }
   settings_.log.printf("After pivoting: new reduced cost objective %e (current %e)\n",

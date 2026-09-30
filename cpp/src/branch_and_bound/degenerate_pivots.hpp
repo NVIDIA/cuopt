@@ -92,6 +92,7 @@ void pivot_to_improve_reduced_cost_strengthening(
   const csr_matrix_t<i_t, f_t>& Arow,
   f_t start_time,
   f_t relaxation_objective,
+  f_t root_relax_work_estimate,
   reduced_cost_bounds_t<i_t, f_t>& reduced_cost_bounds);
 
 template <typename i_t, typename f_t>
