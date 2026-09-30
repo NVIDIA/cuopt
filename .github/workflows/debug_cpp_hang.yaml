@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Temporary diagnostic workflow for #1976 (conda-cpp-build / wheel-build-libcuopt-mathopt
+# hanging for hours on amd64 CI runners with no error). Isolated from pr.yaml so it never
+# runs on other PRs and can be deleted without touching the shared pipeline once the root
+# cause is confirmed and fixed. Runs only conda-cpp-build and wheel-build-libcuopt-mathopt,
+# both arches, both CUDA versions, wrapped with ci/debug_build_cpp.sh /
+# ci/debug_build_wheel_libcuopt_mathopt.sh (see ci/utils/debug_resource_watchdog.sh).
+
+name: debug-cpp-hang
+
+on:
+  push:
+    branches:
+      - "pull-request/[0-9]+"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  build-details:
+    uses: rapidsai/shared-workflows/.github/workflows/compute-build-details.yaml@release/26.10
+  conda-cpp-build-debug:
+    needs: [build-details]
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    secrets: inherit # zizmor: ignore[secrets-inherit]
+    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-build.yaml@release/26.10
+    with:
+      build_type: pull-request
+      build-datetime: ${{ needs.build-details.outputs.build-datetime }}
+      script: ci/debug_build_cpp.sh
+  wheel-build-libcuopt-mathopt-debug:
+    needs: [build-details]
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    secrets: inherit # zizmor: ignore[secrets-inherit]
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@release/26.10
+    with:
+      package-type: cpp
+      package-name: libcuopt_mathopt
+      build_type: pull-request
+      build-datetime: ${{ needs.build-details.outputs.build-datetime }}
+      script: ci/debug_build_wheel_libcuopt_mathopt.sh
