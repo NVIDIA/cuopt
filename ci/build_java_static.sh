@@ -59,7 +59,7 @@ export CUOPT_STATIC_BUILD_DIR="${STATIC_BUILD_DIR}"
 # check exercises its release path for real in this PR run (GPG signing + Central upload dry
 # run below). Does not affect github.ref-gated jobs elsewhere in the workflow. Revert before
 # merge.
-export GITHUB_REF="refs/tags/v0.0.1-test"
+export GITHUB_REF="refs/tags/v0.0.1"
 bash java/cuopt/ci/build_cuopt_java_jar.sh \
   --native-lib "${JNI_BUILD_DIR}/libcuopt_jni.so" \
   --cuda-version "${RAPIDS_CUDA_VERSION}" \
