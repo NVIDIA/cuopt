@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import copy
@@ -49,7 +49,7 @@ def test_invalid_values_set_waypoint_graph(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "edge values must be greater than or equal to 0",
-        "error_result": True,
+        "error_result": False,
     }
 
     test_data = copy.deepcopy(valid_data)
@@ -61,7 +61,7 @@ def test_invalid_values_set_waypoint_graph(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "offset values must be greater than or equal to 0",
-        "error_result": True,
+        "error_result": False,
     }
 
     test_data = copy.deepcopy(valid_data)
@@ -73,7 +73,7 @@ def test_invalid_values_set_waypoint_graph(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "weight values must be greater than or equal to 0",
-        "error_result": True,
+        "error_result": False,
     }
 
 
@@ -91,7 +91,7 @@ def test_invalid_offsets_set_waypoint_graph(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "Length of edges array must be greater than or equal to the length of the offsets array",  # noqa
-        "error_result": True,
+        "error_result": False,
     }
 
 
@@ -109,7 +109,7 @@ def test_invalid_weights_set_waypoint_graph(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "Length of weights array must be equal to edges array",
-        "error_result": True,
+        "error_result": False,
     }
 
 
