@@ -418,10 +418,13 @@ lp_status_t solve_linear_program_with_advanced_basis(
                                                work_estimate,
                                                work_unit_context);
     }
-    if (settings.inside_mip == 1 && settings.concurrent_halt != nullptr) {
+
+    if (settings.inside_submip != 1 && settings.inside_mip == 1 &&
+        settings.concurrent_halt != nullptr) {
       settings.log.debug("Setting concurrent halt to 1 inside_mip\n");
       *settings.concurrent_halt = 1;
     }
+
     if (status == dual_status_t::OPTIMAL) {
       std::vector<f_t> unscaled_x(lp.num_cols);
       std::vector<f_t> unscaled_y(lp.num_rows);

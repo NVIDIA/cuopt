@@ -3940,7 +3940,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   i_t cut_pool_size             = 0;
   lp_settings.concurrent_halt =
     settings_.concurrent_halt ? settings_.concurrent_halt : &node_concurrent_halt_;
-  lp_settings.inside_mip = 2;
+  lp_settings.inside_mip = 1;
 
   for (i_t cut_pass = 0; cut_pass < settings_.max_cut_passes; cut_pass++) {
     if (toc(exploration_stats_.start_time) >= settings_.time_limit) {
@@ -3951,11 +3951,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       }
       return solver_status_;
     }
-
-    f_t user_obj   = compute_user_objective(original_lp_, upper_bound_.load());
-    f_t user_lower = compute_user_objective(original_lp_, root_objective_);
-    f_t abs_gap    = compute_user_abs_gap(original_lp_, upper_bound_.load(), root_objective_);
-    f_t rel_gap    = user_relative_gap(user_obj, user_lower);
 
     if (num_fractional == 0) {
       if (settings_.benchmark_info_ptr != nullptr) {
@@ -3970,6 +3965,11 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       }
       return mip_status_t::OPTIMAL;
     }
+
+    f_t user_obj   = compute_user_objective(original_lp_, upper_bound_.load());
+    f_t user_lower = compute_user_objective(original_lp_, root_objective_);
+    f_t abs_gap    = compute_user_abs_gap(original_lp_, upper_bound_.load(), root_objective_);
+    f_t rel_gap    = user_relative_gap(user_obj, user_lower);
 
     if (abs_gap <= settings_.absolute_mip_gap_tol || rel_gap <= settings_.relative_mip_gap_tol) {
       if (settings_.benchmark_info_ptr != nullptr) {
