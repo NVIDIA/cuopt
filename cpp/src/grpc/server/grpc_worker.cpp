@@ -760,7 +760,7 @@ void worker_process(int worker_id)
                                    ? "Failed to read job data"
                                    : deserialized.error_message.c_str();
       SERVER_LOG_ERROR("[Worker %d] %s", worker_id, error_message);
-      store_simple_result(job_id, worker_id, RESULT_ERROR, error_message);
+      store_simple_result(job_id, worker_id, RESULT_ERROR, "Failed to read job data");
       reset_job_slot(job);
       continue;
     }

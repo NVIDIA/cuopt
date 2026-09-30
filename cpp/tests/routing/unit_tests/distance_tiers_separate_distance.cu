@@ -93,6 +93,38 @@ void set_vehicle_distance_tiers(cuopt::routing::data_model_view_t<int, float>& d
 
 }  // namespace
 
+TEST(distance_tiers_separate_distance, host_matrix_builder_preserves_time_slot)
+{
+  auto cost_only = detail::create_host_mdarray<float>(2, 1, 1);
+  EXPECT_EQ(cost_only.get_time_matrix(0), cost_only.get_cost_matrix(0));
+
+  auto matrices   = detail::create_host_mdarray<float>(2, 1, 2);
+  matrices.buffer = {0.f, 3.f, 5.f, 0.f, 0.f, 11.f, 17.f, 0.f};
+  EXPECT_EQ(matrices.time_matrix_index, 1);
+  EXPECT_EQ(matrices.get_time_matrix(0), matrices.buffer.data() + 4);
+  EXPECT_FLOAT_EQ(matrices.get_time_matrix(0)[1], 11.f);
+  EXPECT_FLOAT_EQ(matrices.view().get_time_matrix(0)[1], 11.f);
+}
+
+TEST(distance_tiers_separate_distance, device_matrix_builder_registers_separate_time_matrix)
+{
+  raft::handle_t handle;
+  auto stream   = handle.get_stream();
+  auto matrices = detail::create_device_mdarray<float>(2, 1, 2, stream);
+  matrices.buffer =
+    cuopt::device_copy(std::vector<float>{0.f, 3.f, 5.f, 0.f, 0.f, 11.f, 17.f, 0.f}, stream);
+  data_model_view_t<int, float> data_model(&handle, 2, 1, 1);
+  detail::fill_data_model_matrices(data_model, matrices);
+  EXPECT_EQ(matrices.time_matrix_index, 1);
+  EXPECT_EQ(data_model.get_cost_matrix(0), matrices.buffer.data());
+  EXPECT_EQ(data_model.get_transit_time_matrix(0), matrices.buffer.data() + 4);
+  EXPECT_TRUE((detail::has_transit_time_matrix<int, float>(data_model)));
+  EXPECT_EQ(data_model.get_distance_matrix(0), nullptr);
+  auto time_matrix = cuopt::host_copy(matrices.get_time_matrix(0), 4, stream);
+  handle.sync_stream();
+  EXPECT_EQ(time_matrix, (std::vector<float>{0.f, 11.f, 17.f, 0.f}));
+}
+
 TEST(distance_tiers_separate_distance, solver_uses_separate_distance_matrix_for_tiered_costs)
 {
   constexpr int nlocations = 2;

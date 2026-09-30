@@ -230,6 +230,8 @@ auto create_host_mdarray(size_t nlocations, uint8_t n_vehicle_types, uint8_t n_m
 {
   std::vector<size_t> full_matrix_extent{n_vehicle_types, n_matrix_types, nlocations, nlocations};
   h_mdarray_t<f_t> matrices{full_matrix_extent};
+  // Legacy builders store transit time in the last slot; explicit layouts override this index.
+  matrices.time_matrix_index = n_matrix_types > 1 ? n_matrix_types - 1 : matrices.cost_matrix_index;
   return matrices;
 }
 
@@ -241,6 +243,7 @@ auto create_device_mdarray(size_t nlocations,
 {
   std::vector<size_t> full_matrix_extent{n_vehicle_types, n_matrix_types, nlocations, nlocations};
   d_mdarray_t<f_t> matrices{full_matrix_extent, stream};
+  matrices.time_matrix_index = n_matrix_types > 1 ? n_matrix_types - 1 : matrices.cost_matrix_index;
   return matrices;
 }
 

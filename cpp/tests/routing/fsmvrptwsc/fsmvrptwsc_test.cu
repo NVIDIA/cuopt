@@ -8,6 +8,7 @@
 #include "fsmvrptwsc_parser.hpp"
 
 #include <routing/utilities/check_constraints.hpp>
+#include <routing/vehicle_info.hpp>
 
 #include <cuopt/routing/solve.hpp>
 #include <utilities/base_fixture.hpp>
@@ -17,6 +18,7 @@
 #include <gtest/gtest.h>
 
 #include <fstream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -86,6 +88,40 @@ std::vector<fsmvrptwsc_params_t> read_fsmvrptwsc_tests(std::string const& ref_fi
 }  // namespace
 
 class fsmvrptwsc_small_test_t : public ::testing::TestWithParam<fsmvrptwsc_params_t> {};
+
+TEST(fsmvrptwsc_parser, range_starts_enter_the_next_tier)
+{
+  std::istringstream input(
+    "boundary 1 1 3 "
+    "0 1 1 0 "              // Distance matrix.
+    "0 1 1 0 "              // Transit-time matrix.
+    "0 100 0 0 0 100 0 1 "  // Depot and order windows, service times and demands.
+    "10 0 40 70 50 58 2");  // Capacity, range starts and costs.
+  auto instance = read_one_instance(input);
+  ASSERT_EQ(instance.tier_thresholds.size(), 3);
+  std::vector<detail::distance_tier_t<float>> tiers;
+  for (size_t i = 0; i < instance.tier_thresholds.size(); ++i) {
+    tiers.push_back(
+      {instance.tier_thresholds[i], instance.tier_fixed_costs[i], instance.tier_costs_per_unit[i]});
+  }
+  detail::VehicleInfo<float, false> vehicle;
+  vehicle.distance_tiers =
+    raft::span<detail::distance_tier_t<float> const, false>(tiers.data(), tiers.size());
+  EXPECT_DOUBLE_EQ(vehicle.compute_distance_cost(instance.tier_thresholds[0], 0.), 50.);
+  EXPECT_DOUBLE_EQ(vehicle.compute_distance_cost(40., 0.), 58.);
+  EXPECT_EQ(vehicle.find_distance_tier(40.), 1);
+  EXPECT_EQ(vehicle.find_distance_tier(70.), 2);
+  EXPECT_FLOAT_EQ(instance.tier_thresholds.back(), std::numeric_limits<float>::max());
+  EXPECT_NEAR(vehicle.compute_distance_cost(75., 0.), 68., 1.e-4);
+}
+
+TEST(fsmvrptwsc_parser, missing_instance_throws)
+{
+  auto const params = read_fsmvrptwsc_tests("datasets/ref/fsmvrptwsc_small.txt");
+  ASSERT_FALSE(params.empty());
+  EXPECT_THROW(load_small_instance(params.front().small_file, "missing-instance"),
+               std::runtime_error);
+}
 
 TEST_P(fsmvrptwsc_small_test_t, solves_small_step_cost_instance)
 {

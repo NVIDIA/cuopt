@@ -188,7 +188,8 @@ def test_vehicle_distance_tiers_uniform():
 
     # Get solution data
     route_df = solution.get_route()
-    routes = route_df["route"].to_arrow().to_pylist()
+    locations = route_df["location"].to_arrow().to_pylist()
+    node_types = route_df["type"].to_arrow().to_pylist()
     truck_ids = route_df["truck_id"].to_arrow().to_pylist()
 
     # Calculate distances per vehicle and apply tiers
@@ -203,8 +204,8 @@ def test_vehicle_distance_tiers_uniform():
     # Group visits by vehicle
     visits_by_vehicle = {v: [] for v in range(n_vehicles)}
     for i, truck_id in enumerate(truck_ids):
-        if routes[i] != 0:  # Not depot
-            visits_by_vehicle[truck_id].append(routes[i])
+        if node_types[i] == "Delivery":
+            visits_by_vehicle[truck_id].append(locations[i])
 
     for v in range(n_vehicles):
         visits = visits_by_vehicle[v]
@@ -262,8 +263,6 @@ def test_vehicle_distance_tiers_uniform():
                 applied_tier = tier_idx
                 if fixed_cost > 0:
                     applied_cost += fixed_cost
-                if fixed_cost > 0 and cost_per_unit == 0.0:
-                    cost_per_unit = 1.0e-4
                 applied_cost += in_band * cost_per_unit
             prev_threshold = threshold
             if total_distance <= threshold:
@@ -338,7 +337,11 @@ def test_vehicle_distance_tiers_uniform():
 
     # Assertions for test validation
     assert status == 0, f"Solver did not return optimal status: {status}"
-    assert total_orders_served > 0, "No orders were served"
+    assert total_orders_served == n_orders
+    assert routing.Objective.COST in objectives
+    np.testing.assert_allclose(
+        objectives[routing.Objective.COST], total_manual_cost, rtol=1e-4
+    )
 
     # Check that distance tiers are having an effect
     # (manual cost should be different from raw distance in most cases)

@@ -7,6 +7,7 @@ from enum import Enum
 from typing import Dict, List, Optional, Union
 
 import jsonref
+import msgpack
 from pydantic import BaseModel, Extra, Field, RootModel, root_validator
 
 from ..._version import __version_major_minor__
@@ -1203,7 +1204,7 @@ vrp_example_data = {
         "skip_first_trips": [True, False],
         "drop_return_trips": [True, False],
         "min_vehicles": 2,
-        "vehicle_max_costs": [7, 10],
+        "vehicle_max_costs": [100, 100],
         "vehicle_max_times": [7, 10],
         "vehicle_fixed_costs": [15, 5],
         "vehicle_distance_tiers": [
@@ -1247,9 +1248,11 @@ vrp_example_data = {
     },
 }
 
-# fmt: off
-vrp_msgpack_example_data = "\x85\xb0cost_matrix_data\x81\xa4data\x82\xa11\x93\x93\x00\x01\x01\x93\x01\x00\x01\x93\x01\x01\x00\xa12\x93\x93\x00\x01\x01\x93\x01\x00\x01\x93\x01\x02\x00\xb7travel_time_matrix_data\x81\xa4data\x82\xa11\x93\x93\x00\x01\x01\x93\x01\x00\x01\x93\x01\x01\x00\xa12\x93\x93\x00\x01\x01\x93\x01\x00\x01\x93\x01\x02\x00\xaafleet_data\x8f\xb1vehicle_locations\x92\x92\x00\x00\x92\x00\x00\xabvehicle_ids\x92\xa5veh-1\xa5veh-2\xaacapacities\x92\x92\x02\x02\x92\x04\x01\xb4vehicle_time_windows\x92\x92\x00\n\x92\x00\n\xbavehicle_break_time_windows\x91\x92\x92\x01\x02\x92\x02\x03\xb7vehicle_break_durations\x91\x92\x01\x01\xb7vehicle_break_locations\x92\x00\x01\xadvehicle_types\x92\x01\x02\xb3vehicle_order_match\x92\x82\xa9order_ids\x91\x00\xaavehicle_id\x00\x82\xa9order_ids\x91\x01\xaavehicle_id\x01\xb0skip_first_trips\x92\xc3\xc2\xb1drop_return_trips\x92\xc3\xc2\xacmin_vehicles\x02\xb1vehicle_max_costs\x92\x07\n\xb1vehicle_max_times\x92\x07\n\xb3vehicle_fixed_costs\x92\x0f\x05\xa9task_data\x86\xaetask_locations\x92\x01\x02\xa8task_ids\x92\xa6Task-A\xa6Task-B\xa6demand\x92\x92\x01\x01\x92\x03\x01\xb1task_time_windows\x92\x92\x00\x05\x92\x03\t\xadservice_times\x92\x00\x00\xb3order_vehicle_match\x92\x82\xa8order_id\x00\xabvehicle_ids\x91\x00\x82\xa8order_id\x01\xabvehicle_ids\x91\x01\xadsolver_config\x84\xaatime_limit\x01\xaaobjectives\x86\xa4cost\x01\xabtravel_time\x00\xb3variance_route_size\x00\xbbvariance_route_service_time\x00\xa5prize\x00\xb2vehicle_fixed_cost\x00\xacverbose_mode\xc2\xaderror_logging\xc3".encode("unicode_escape") # noqa
-# fmt: on
+vrp_msgpack_example_data = (
+    msgpack.packb(vrp_example_data, use_bin_type=True)
+    .decode("latin1")
+    .encode("unicode_escape")
+)
 
 
 managed_vrp_example_data = {
@@ -1258,7 +1261,7 @@ managed_vrp_example_data = {
     "client_version": __version_major_minor__,
 }
 
-# cut and pasted from actual run of VRP example data.
+# Example response for the tiered VRP request above.
 # don't reformat :)
 vrp_response = {
     "value": {
@@ -1266,8 +1269,8 @@ vrp_response = {
             "solver_response": {
                 "status": 0,
                 "num_vehicles": 2,
-                "solution_cost": 2.0,
-                "objective_values": {"cost": 2.0},
+                "solution_cost": 77.0,
+                "objective_values": {"cost": 77.0},
                 "vehicle_data": {
                     "veh-1": {
                         "task_id": ["Break", "Task-A"],

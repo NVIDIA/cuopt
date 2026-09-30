@@ -136,16 +136,23 @@ total distance traveled by each route. They are useful when transportation costs
 change after distance thresholds, such as minimum trip charges, progressive
 mileage rates, or different pricing models across vehicle types.
 
-Distance tiers use the route distance rather than the generic optimization cost.
-When the optimization cost matrix represents a metric other than physical
-distance, provide a separate distance matrix for tier evaluation. In the Python
+Distance tiers use the route distance from a separate distance matrix rather
+than the generic optimization cost. A distance matrix is required whenever
+distance tiers or ``vehicle_max_distances`` are set, even when it contains the
+same values as the cost matrix. In the Python
 API, call ``add_distance_matrix`` before ``set_vehicle_distance_tiers``. In the
 server API, provide ``distance_matrix_data`` together with
 ``fleet_data.vehicle_distance_tiers``.
 
+The ``COST`` objective includes the cost-matrix cost plus the accumulated tier
+cost. ``vehicle_max_costs`` limits this combined value, while
+``vehicle_max_distances`` limits physical distance. The distance matrix does not
+introduce a separate objective to minimize distance.
+
 Each vehicle can have one or more tiers. A tier contains a ``threshold``, a
 ``fixed_cost``, and a ``cost_per_unit``. Tier thresholds are evaluated in
-ascending order, and costs are accumulated by distance band. For each band
+ascending order, with each threshold an inclusive upper bound. Costs are
+accumulated by distance band. For each band
 reached by the route, cuOpt adds the tier fixed cost when it is positive and
 adds the in-band distance multiplied by the tier ``cost_per_unit``. A final
 open-ended tier must be provided to cover long routes; in the server API, use

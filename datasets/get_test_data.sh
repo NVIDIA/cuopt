@@ -149,7 +149,7 @@ solomon
 
 FSMVRPTWSC_DATASET_DATA="
 # 0.1s
-https://github.com/jmanguino/FSMVRPTWSC/archive/refs/heads/main.zip
+https://github.com/jmanguino/FSMVRPTWSC/archive/a7e1864527042ccb6e118cc473f7a0805ec20284.zip
 fsmvrptwsc
 "
 

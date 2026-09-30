@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import numpy as np
+import msgpack
 import pytest
 
 from cuopt.grpc.routing.grpc_client import problem_summary
+from cuopt import routing
 
 from cuopt_server.utils.routing import conversion
 from cuopt_server.utils.utils import build_routing_datamodel_from_json
@@ -14,6 +16,9 @@ from cuopt_server.utils.routing.data_definition import (
     FleetData,
     SolverSettingsConfig,
     TaskData,
+    vrp_example_data,
+    vrp_msgpack_example_data,
+    vrp_response,
 )
 
 
@@ -47,6 +52,27 @@ def test_default_solver_time_limit():
 
     assert solver_config.time_limit == 10 + 1 / 6
     assert optimization_data.solver_config["time_limit"] == 10 + 1 / 6
+
+
+def test_published_distance_tiers_example_is_feasible():
+    data_model, solver_settings = build_routing_datamodel_from_json(
+        vrp_example_data
+    )
+    assert not data_model._recorded("add_initial_solutions")
+    solution = routing.Solve(data_model, solver_settings)
+    assert solution.get_status() == 0
+    expected = vrp_response["value"]["response"]["solver_response"]
+    np.testing.assert_allclose(
+        solution.get_objective_values()[routing.Objective.COST],
+        expected["objective_values"]["cost"],
+    )
+
+
+def test_msgpack_example_matches_json_request():
+    payload = vrp_msgpack_example_data.decode("unicode_escape").encode(
+        "latin1"
+    )
+    assert msgpack.unpackb(payload, raw=False) == vrp_example_data
 
 
 def _dense_request():

@@ -7,9 +7,8 @@
 
 #pragma once
 
-#include <utilities/macros.cuh>
-
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <fstream>
 #include <limits>
@@ -142,7 +141,9 @@ inline fsmvrptwsc_instance_t read_one_instance(std::istream& in)
       auto const& costs = type_costs[type];
       for (int tier = 0; tier < instance.n_distance_ranges; ++tier) {
         if (tier + 1 < instance.n_distance_ranges) {
-          instance.tier_thresholds.push_back(range_starts[tier + 1]);
+          // Dataset ranges include their lower bound; cuOpt thresholds include the upper bound.
+          instance.tier_thresholds.push_back(
+            std::nextafter(range_starts[tier + 1], -std::numeric_limits<float>::infinity()));
           auto const previous = tier == 0 ? 0.0f : costs[tier - 1];
           instance.tier_fixed_costs.push_back(costs[tier] - previous);
           instance.tier_costs_per_unit.push_back(0.0f);
@@ -173,8 +174,7 @@ inline fsmvrptwsc_instance_t load_small_instance(std::string const& path,
     if (instance.name == instance_name) { return instance; }
   }
 
-  cuopt_assert(false, "FSMVRPTWSC instance not found");
-  return {};
+  throw std::runtime_error("FSMVRPTWSC instance not found: " + instance_name + " in " + path);
 }
 
 }  // namespace test

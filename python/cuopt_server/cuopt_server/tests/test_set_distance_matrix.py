@@ -75,7 +75,7 @@ def test_invalid_empty_set_distance_matrix(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "Distance matrix cannot be null or empty",
-        "error_result": True,
+        "error_result": False,
     }
 
 
@@ -90,7 +90,7 @@ def test_invalid_row_length_set_distance_matrix(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "All rows in the distance matrix must be of the same length",
-        "error_result": True,
+        "error_result": False,
     }
 
 
@@ -103,7 +103,7 @@ def test_invalid_shape_set_distance_matrix(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "Distance matrix must be a square matrix",
-        "error_result": True,
+        "error_result": False,
     }
 
 
@@ -118,7 +118,7 @@ def test_invalid_negative_values_set_distance_matrix(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "All values in distance matrix must be >= 0",
-        "error_result": True,
+        "error_result": False,
     }
 
 
@@ -148,7 +148,7 @@ def test_invalid_matrices_shape_set_distance_matrix(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "Distance matrices for all vehicle types must be the same shape",
-        "error_result": True,
+        "error_result": False,
     }
 
 
@@ -161,7 +161,7 @@ def test_distance_matrix_shape_must_match_cost_matrix(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "Distance matrix shape must match the cost matrix shape",
-        "error_result": True,
+        "error_result": False,
     }
 
 
@@ -380,7 +380,7 @@ def test_invalid_distance_tiers_require_distance_matrix(cuoptproc):  # noqa
             "distance_matrix_data must be set when vehicle_distance_tiers is "
             "provided"
         ),
-        "error_result": True,
+        "error_result": False,
     }
 
 
@@ -397,7 +397,7 @@ def test_invalid_vehicle_max_distances_require_distance_matrix(cuoptproc):  # no
             "distance_matrix_data must be set when vehicle_max_distances is "
             "provided"
         ),
-        "error_result": True,
+        "error_result": False,
     }
 
 

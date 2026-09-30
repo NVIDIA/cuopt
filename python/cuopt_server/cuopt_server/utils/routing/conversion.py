@@ -472,7 +472,7 @@ def create_data_model(
                 data["order_id"], pd.Series(data["vehicle_ids"])
             )
 
-    if optimization_data.initial_solution is not None:
+    if optimization_data.initial_solution:
         vehicle_ids, routes, types, sol_offsets = parse_initial_sol(
             optimization_data.initial_solution
         )
