@@ -2636,7 +2636,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
   }
 
   // Everything below (seed-from-settings, initial_k, get_primal_and_dual_stepsizes,
-  // initial primal/dual, projection, transpose, verbose prints, log header)
+  // initial primal/dual, projection, transpose, verbose prints)
   // still runs single-GPU only.  Distributed rejects
   // has_initial_{primal,dual}_solution() and warm-start data up front, and
   // its per-shard primal/dual step sizes were derived above
