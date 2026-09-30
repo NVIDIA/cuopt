@@ -76,7 +76,14 @@ if readelf -d "${NATIVE_LIB}" 2>/dev/null | grep -q 'NEEDED.*libcuopt\.so'; then
 fi
 
 STAGING="$(mktemp -d)"
-trap 'rm -rf "${STAGING}"' EXIT
+POM_WAS_REWRITTEN=0
+cleanup() {
+  rm -rf "${STAGING}"
+  if [[ "${POM_WAS_REWRITTEN}" -eq 1 ]]; then
+    mv "${MODULE_DIR}/pom.xml.backup" "${MODULE_DIR}/pom.xml"
+  fi
+}
+trap cleanup EXIT
 mkdir -p "${STAGING}/${RESOURCE_DIR}"
 cp "${NATIVE_LIB}" "${STAGING}/${RESOURCE_DIR}/libcuopt_jni.so"
 
@@ -190,6 +197,35 @@ for companion in "${COMPANIONS[@]}"; do
 done
 
 mkdir -p "${OUTPUT_DIR}/${CLASSIFIER}"
+
+# Read straight from the POM rather than asking Maven: this needs no network, and
+# ci/release/update-version.sh keeps the marker in step with the version. The source tree
+# always carries -SNAPSHOT (see that script's own comment); release tag builds strip it and
+# rewrite the POM so the packaged artifacts carry the release version, matching cudf's
+# build_cudf_java_jar_in_container.sh. The cleanup trap above restores java/cuopt/pom.xml
+# afterward.
+VERSION="$(sed -n 's/.*VERSION_UPDATE_MARKER_START--><version>\([^<]*\)<\/version>.*/\1/p' \
+  "${MODULE_DIR}/pom.xml")"
+if [[ -z "${VERSION}" ]]; then
+  echo "could not read the version from ${MODULE_DIR}/pom.xml" >&2
+  exit 1
+fi
+
+if rapids-is-release-build; then
+  VERSION="${VERSION%-SNAPSHOT}"
+  cp -p "${MODULE_DIR}/pom.xml" "${MODULE_DIR}/pom.xml.backup"
+  POM_WAS_REWRITTEN=1
+  cuopt_mvn -f "${MODULE_DIR}/pom.xml" versions:set \
+    -DnewVersion="${VERSION}" -DgenerateBackupPoms=false
+else
+  # Non-release runs must publish to Sonatype snapshots, so the POM must already carry a
+  # -SNAPSHOT version. Fail fast here, before the expensive mvn package step below.
+  if [[ "${VERSION}" != *-SNAPSHOT ]]; then
+    echo "Error: non-release build read a non-SNAPSHOT version from pom.xml: '${VERSION}'" >&2
+    exit 1
+  fi
+fi
+
 # -Pattach-source-javadoc: this publishes to a Maven repository, which requires sources and
 # javadoc jars. Most mvn invocations (test, verify) don't activate it, since they don't
 # package anything -- see the profile's own comment in pom.xml for why that distinction exists.
@@ -199,15 +235,6 @@ cuopt_mvn -f "${MODULE_DIR}/pom.xml" -B \
   -Dcuopt.jar.classifier="${CLASSIFIER}" \
   -Dcuopt.native.resources="${STAGING}" \
   package
-
-# Read straight from the POM rather than asking Maven: this needs no network, and
-# ci/release/update-version.sh keeps the marker in step with the version.
-VERSION="$(sed -n 's/.*VERSION_UPDATE_MARKER_START--><version>\([^<]*\)<\/version>.*/\1/p' \
-  "${MODULE_DIR}/pom.xml")"
-if [[ -z "${VERSION}" ]]; then
-  echo "could not read the version from ${MODULE_DIR}/pom.xml" >&2
-  exit 1
-fi
 
 # Each classifier directory carries everything Maven Central needs for the artifact, so the
 # gather step can work from the classifier directories alone.
