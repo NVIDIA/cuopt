@@ -2980,7 +2980,8 @@ f_t knapsack_generation_t<i_t, f_t>::solve_knapsack_problem(const std::vector<f_
     }
   }
 
-  i_t sum_value = std::accumulate(scaled_values.begin(), scaled_values.end(), 0);
+  i_t sum_value     = std::accumulate(scaled_values.begin(), scaled_values.end(), 0);
+  const i_t INT_INF = std::numeric_limits<i_t>::max() / 2;
   if (verbose) { settings_.log.printf("sum value %d\n", sum_value); }
   const i_t max_size = 10000;
   if (sum_value <= 0.0 || sum_value >= max_size) {
@@ -2994,11 +2995,12 @@ f_t knapsack_generation_t<i_t, f_t>::solve_knapsack_problem(const std::vector<f_
   solution.assign(n, 0.0);
 
   // dp(j, v) = minimum weight using first j items to get value v.
-  // The weights are carried at full precision: rounding one down would let the DP return a set
-  // that violates the capacity, and the caller reads the complement of that set as a cover.
-  dense_matrix_t<i_t, f_t> dp(n + 1, sum_value + 1, inf);
+  // The weights are rounded up: rounding one down would let the dynamic programming algorithm
+  // return a set that violates the capacity, and the caller reads the complement of that set
+  // as a cover.
+  dense_matrix_t<i_t, i_t> dp(n + 1, sum_value + 1, INT_INF);
   dense_matrix_t<i_t, uint8_t> take(n + 1, sum_value + 1, 0);
-  dp(0, 0) = 0.0;
+  dp(0, 0) = 0;
 
   // 4. Dynamic programming
   for (i_t j = 1; j <= n; ++j) {
@@ -3008,7 +3010,7 @@ f_t knapsack_generation_t<i_t, f_t>::solve_knapsack_problem(const std::vector<f_
 
       // Take item j-1 if possible
       if (v >= scaled_values[j - 1]) {
-        f_t candidate = dp(j - 1, v - scaled_values[j - 1]) + weights[j - 1];
+        i_t candidate = dp(j - 1, v - scaled_values[j - 1]) + std::ceil(weights[j - 1]);
         if (candidate < dp(j, v)) {
           dp(j, v)   = candidate;
           take(j, v) = 1;
@@ -4658,18 +4660,8 @@ bool rational_coefficients(const std::vector<variable_type_t>& var_types,
   if (scalar < 0) { return false; }
   if (std::abs(scalar) > 1000) { return false; }
 
+  // The scaled product can land an ulp off the integer it represents.
   rational_inequality.scale(scalar);
-
-  // The scaled product can land an ulp off the integer it represents. Callers rely on the
-  // integer-variable coefficients being exact integers: the knapsack cover test
-  // sum_C a_j > beta is only equivalent to sum_C a_j >= beta + 1 for integral a_j.
-  constexpr f_t integral_tol = 1e-6;
-  for (i_t k : indices) {
-    const f_t scaled  = rational_inequality.vector.x[k];
-    const f_t rounded = std::round(scaled);
-    if (std::abs(scaled - rounded) > integral_tol) { return false; }
-    rational_inequality.vector.x[k] = rounded;
-  }
 
   return true;
 }
