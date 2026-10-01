@@ -235,6 +235,45 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
 
 template <typename i_t, typename f_t>
 cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
+                                           device_csr_matrix_t<i_t, f_t>& csr)
+  : handle_ptr_(handle_ptr),
+    A_offsets_(0, handle_ptr->get_stream()),
+    A_indices_(0, handle_ptr->get_stream()),
+    A_data_(0, handle_ptr->get_stream()),
+    A_T_offsets_(0, handle_ptr->get_stream()),
+    A_T_indices_(0, handle_ptr->get_stream()),
+    A_T_data_(0, handle_ptr->get_stream()),
+    spmv_buffer_(0, handle_ptr->get_stream()),
+    spmv_buffer_transpose_(0, handle_ptr->get_stream()),
+    d_one_(one_v<f_t>, handle_ptr->get_stream()),
+    d_minus_one_(neg_one_v<f_t>, handle_ptr->get_stream()),
+    d_zero_(zero_v<f_t>, handle_ptr->get_stream())
+{
+  RAFT_CUBLAS_TRY(raft::linalg::detail::cublassetpointermode(
+    handle_ptr->get_cublas_handle(), CUBLAS_POINTER_MODE_DEVICE, handle_ptr->get_stream().get()));
+  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsesetpointermode(handle_ptr->get_cusparse_handle(),
+                                                                 CUSPARSE_POINTER_MODE_DEVICE,
+                                                                 handle_ptr->get_stream().get()));
+
+  const i_t rows = csr.m;
+  const i_t cols = csr.n;
+  const i_t nnz  = csr.nz_max;
+
+  // Borrow the caller's CSR buffers. A_T_ stays null: this view is forward SpMV only.
+  A_ = pdlp::make_csr<i_t, f_t>(
+    rows, cols, nnz, csr.row_start.data(), csr.j.data(), csr.x.data());
+
+  rmm::device_uvector<f_t> d_x(cols, handle_ptr_->get_stream());
+  rmm::device_uvector<f_t> d_y(rows, handle_ptr_->get_stream());
+  auto x = pdlp::make_dnvec<f_t>(d_x.size(), d_x.data());
+  auto y = pdlp::make_dnvec<f_t>(d_y.size(), d_y.data());
+
+  beta_bug_possible_ = alg2_beta_bug_possible(csr.row_start, handle_ptr_->get_stream());
+  init_spmv_buffer_and_preprocess(A_.get(), x.get(), y.get(), spmv_buffer_, beta_bug_possible_);
+}
+
+template <typename i_t, typename f_t>
+cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
                                            device_csc_matrix_t<i_t, f_t>& A_csc,
                                            device_csc_matrix_t<i_t, f_t>& AT_csc)
   : handle_ptr_(handle_ptr),

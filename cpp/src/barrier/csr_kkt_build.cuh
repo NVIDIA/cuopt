@@ -744,4 +744,89 @@ i_t build_augmented_csr_on_device(i_t n,
   return total_nnz;
 }
 
+// Undo the dual_perturb/primal_perturb regularization that fill_augmented_csr_row_kernel bakes
+// into device_augmented.x, in place. The augmented matrix must stay regularized for
+// Cholesky factorization (stability), but the CSR-based IR matvec (augmented_csr_multiply) needs
+// the true unperturbed KKT operator -- so this is applied to the already-factorized buffer,
+// after chol->factorize() and before any CSR-based SpMV against it. Not idempotent: must run
+// exactly once per refresh of device_augmented.x.
+template <std::integral i_t, std::floating_point f_t>
+__global__ void strip_primal_block_diag_kernel(raft::device_span<f_t> augmented_x,
+                                               raft::device_span<const i_t> diag_indices,
+                                               f_t dual_perturb,
+                                               i_t n)
+{
+  const i_t row = static_cast<i_t>(blockIdx.x * blockDim.x + threadIdx.x);
+  if (row >= n) { return; }
+  augmented_x[diag_indices[row]] += dual_perturb;
+}
+
+template <std::integral i_t, std::floating_point f_t>
+__global__ void strip_constraint_block_diag_kernel(raft::device_span<f_t> augmented_x,
+                                                   raft::device_span<const i_t> diag_indices,
+                                                   f_t primal_perturb,
+                                                   i_t n,
+                                                   i_t m)
+{
+  const i_t l = static_cast<i_t>(blockIdx.x * blockDim.x + threadIdx.x);
+  if (l >= m) { return; }
+  augmented_x[diag_indices[n + l]] -= primal_perturb;
+}
+
+template <std::integral i_t, std::floating_point f_t>
+__global__ void strip_sparse_expansion_D_kernel(raft::device_span<f_t> augmented_x,
+                                                raft::device_span<const i_t> sparse_expansion_D,
+                                                f_t dual_perturb)
+{
+  const i_t e = static_cast<i_t>(blockIdx.x * blockDim.x + threadIdx.x);
+  if (e >= static_cast<i_t>(sparse_expansion_D.size())) { return; }
+  const i_t idx = sparse_expansion_D[e];
+  if (idx < 0) { return; }
+  const f_t sign = (e % 2 == 0) ? f_t(1) : f_t(-1);
+  augmented_x[idx] += sign * dual_perturb;
+}
+
+template <std::integral i_t, std::floating_point f_t>
+void strip_augmented_perturbation(i_t n,
+                                  i_t m,
+                                  i_t p,
+                                  f_t dual_perturb,
+                                  f_t primal_perturb,
+                                  rmm::device_uvector<i_t>& augmented_diagonal_indices,
+                                  cone_kkt_data_t<i_t, f_t>& cone_data,
+                                  device_csr_matrix_t<i_t, f_t>& device_augmented,
+                                  rmm::cuda_stream_view stream)
+{
+  raft::common::nvtx::range scope("Barrier: strip augmented perturbation");
+  if (n > 0) {
+    const size_t grid = raft::ceildiv<size_t>(n, augmented_csr_block_size);
+    strip_primal_block_diag_kernel<i_t, f_t><<<grid, augmented_csr_block_size, 0, stream.value()>>>(
+      cuopt::make_span(device_augmented.x),
+      cuopt::make_span(augmented_diagonal_indices),
+      dual_perturb,
+      n);
+    RAFT_CUDA_TRY(cudaPeekAtLastError());
+  }
+  if (m > 0) {
+    const size_t grid = raft::ceildiv<size_t>(m, augmented_csr_block_size);
+    strip_constraint_block_diag_kernel<i_t, f_t>
+      <<<grid, augmented_csr_block_size, 0, stream.value()>>>(
+        cuopt::make_span(device_augmented.x),
+        cuopt::make_span(augmented_diagonal_indices),
+        primal_perturb,
+        n,
+        m);
+    RAFT_CUDA_TRY(cudaPeekAtLastError());
+  }
+  if (p > 0) {
+    const size_t grid = raft::ceildiv<size_t>(static_cast<size_t>(p), augmented_csr_block_size);
+    strip_sparse_expansion_D_kernel<i_t, f_t>
+      <<<grid, augmented_csr_block_size, 0, stream.value()>>>(
+        cuopt::make_span(device_augmented.x),
+        cuopt::make_span(cone_data.sparse_expansion_D),
+        dual_perturb);
+    RAFT_CUDA_TRY(cudaPeekAtLastError());
+  }
+}
+
 }  // namespace cuopt::mathematical_optimization::barrier
