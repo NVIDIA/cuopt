@@ -1651,18 +1651,23 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
           pivot_settings.log           = lp_settings.log;
           pivot_settings.inside_mip    = lp_settings.inside_mip;
           pivot_settings.inside_submip = lp_settings.inside_submip;
-          i_t num_integer_increased    = pivot_out_integer_variables(worker->leaf_problem,
-                                                                  pivot_settings,
-                                                                  worker->new_slacks,
-                                                                  worker->var_types,
-                                                                  exploration_stats_.start_time,
-                                                                  worker->basic_list,
-                                                                  worker->nonbasic_list,
-                                                                  worker->leaf_vstatus,
-                                                                  worker->leaf_solution,
-                                                                  worker->basis_factors,
-                                                                  num_fractional,
-                                                                  fractional);
+          f_t integer_pivot_work       = 0.0;  // Diagnostic only; do not charge node LP work.
+          i_t num_integer_increased =
+            pivot_out_integer_variables(worker->leaf_problem,
+                                        pivot_settings,
+                                        worker->new_slacks,
+                                        worker->var_types,
+                                        exploration_stats_.start_time,
+                                        root_relax_work_estimate_,
+                                        std::numeric_limits<f_t>::infinity(),
+                                        worker->basic_list,
+                                        worker->nonbasic_list,
+                                        worker->leaf_vstatus,
+                                        worker->leaf_solution,
+                                        worker->basis_factors,
+                                        num_fractional,
+                                        fractional,
+                                        integer_pivot_work);
           if (num_integer_increased > 0) {
             integer_pivots_.fetch_add(num_integer_increased, std::memory_order_release);
           }
@@ -3366,19 +3371,38 @@ typename branch_and_bound_t<i_t, f_t>::cut_pass_action_t branch_and_bound_t<i_t,
 
   f_t pivot_out_integer_variables_start_time = tic();
   i_t num_integer_increased                  = 0;
-  if (settings_.dual_degenerate_pivots != 0) {
-    num_integer_increased = pivot_out_integer_variables(original_lp_,
-                                                        settings_,
-                                                        new_slacks_,
-                                                        var_types_,
-                                                        exploration_stats_.start_time,
-                                                        basic_list,
-                                                        nonbasic_list,
-                                                        root_vstatus_,
-                                                        root_relax_soln_,
-                                                        basis_update,
-                                                        num_fractional,
-                                                        fractional);
+  const f_t integer_pivot_work_limit =
+    root_relax_work_estimate_ > 0 && std::isfinite(root_relax_work_estimate_)
+      ? 0.25 * root_relax_work_estimate_
+      : 0.0;
+  if (settings_.dual_degenerate_pivots != 0 &&
+      root_integer_pivot_work_ < integer_pivot_work_limit) {
+    f_t integer_pivot_work = 0.0;
+    num_integer_increased =
+      pivot_out_integer_variables(original_lp_,
+                                  settings_,
+                                  new_slacks_,
+                                  var_types_,
+                                  exploration_stats_.start_time,
+                                  root_relax_work_estimate_,
+                                  integer_pivot_work_limit - root_integer_pivot_work_,
+                                  basic_list,
+                                  nonbasic_list,
+                                  root_vstatus_,
+                                  root_relax_soln_,
+                                  basis_update,
+                                  num_fractional,
+                                  fractional,
+                                  integer_pivot_work);
+    root_integer_pivot_work_ += integer_pivot_work;
+    if (root_integer_pivot_work_ >= integer_pivot_work_limit && settings_.inside_mip < 2) {
+      settings_.log.printf(
+        "Root integer pivot budget exhausted: site=cut_pass used=%.6e limit=%.6e "
+        "root_ratio=%.6e; skipping future root integer pivots\n",
+        root_integer_pivot_work_,
+        integer_pivot_work_limit,
+        root_integer_pivot_work_ / root_relax_work_estimate_);
+    }
     if (num_integer_increased > 0) {
       integer_pivots_.fetch_add(num_integer_increased, std::memory_order_release);
     }
@@ -3734,6 +3758,7 @@ template <typename i_t, typename f_t>
 mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solution)
 {
   raft::common::nvtx::range scope("BB::solve");
+  root_integer_pivot_work_ = 0.0;
 
   logger_t log;
   log.log                             = false;
@@ -3979,22 +4004,42 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   f_t pivot_out_integer_variables_start_time = tic();
   i_t num_integer_increased                  = 0;
-  if (settings_.dual_degenerate_pivots != 0) {
-    num_integer_increased = pivot_out_integer_variables(original_lp_,
-                                                        settings_,
-                                                        new_slacks_,
-                                                        var_types_,
-                                                        exploration_stats_.start_time,
-                                                        basic_list,
-                                                        nonbasic_list,
-                                                        root_vstatus_,
-                                                        root_relax_soln_,
-                                                        basis_update,
-                                                        num_fractional,
-                                                        fractional);
+  const f_t integer_pivot_work_limit =
+    root_relax_work_estimate_ > 0 && std::isfinite(root_relax_work_estimate_)
+      ? 0.25 * root_relax_work_estimate_
+      : 0.0;
+  if (settings_.dual_degenerate_pivots != 0 &&
+      root_integer_pivot_work_ < integer_pivot_work_limit) {
+    f_t integer_pivot_work = 0.0;
+    num_integer_increased =
+      pivot_out_integer_variables(original_lp_,
+                                  settings_,
+                                  new_slacks_,
+                                  var_types_,
+                                  exploration_stats_.start_time,
+                                  root_relax_work_estimate_,
+                                  integer_pivot_work_limit - root_integer_pivot_work_,
+                                  basic_list,
+                                  nonbasic_list,
+                                  root_vstatus_,
+                                  root_relax_soln_,
+                                  basis_update,
+                                  num_fractional,
+                                  fractional,
+                                  integer_pivot_work);
+    root_integer_pivot_work_ += integer_pivot_work;
     if (num_integer_increased > 0) {
       integer_pivots_.fetch_add(num_integer_increased, std::memory_order_release);
     }
+  }
+  if (settings_.dual_degenerate_pivots != 0 &&
+      root_integer_pivot_work_ >= integer_pivot_work_limit && settings_.inside_mip < 2) {
+    settings_.log.printf(
+      "Root integer pivot budget exhausted: site=initial used=%.6e limit=%.6e "
+      "root_ratio=%.6e; skipping future root integer pivots\n",
+      root_integer_pivot_work_,
+      integer_pivot_work_limit,
+      integer_pivot_work_limit > 0 ? root_integer_pivot_work_ / root_relax_work_estimate_ : 0.0);
   }
   settings_.log.printf("Pivoted out %d integer variables in %e seconds\n",
                        num_integer_increased,

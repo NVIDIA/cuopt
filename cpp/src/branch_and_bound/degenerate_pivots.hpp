@@ -35,6 +35,7 @@ bool fast_slack_integer_pivots(const simplex::lp_problem_t<i_t, f_t>& lp,
                                const simplex::lp_solution_t<i_t, f_t>& solution,
                                const std::vector<simplex::variable_type_t>& var_types,
                                f_t start_time,
+                               f_t work_limit,
                                std::vector<i_t>& basic_list,
                                std::vector<i_t>& nonbasic_list,
                                std::vector<i_t>& nonbasic_index,
@@ -44,22 +45,29 @@ bool fast_slack_integer_pivots(const simplex::lp_problem_t<i_t, f_t>& lp,
                                simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
                                f_t& work_estimate);
 
+// total_work includes local work and new basis work, even for rejected trials.
+// work_limit is the remaining integer-pivot budget (infinity for nodes); checks occur between
+// candidate attempts, so finishing a pivot and copying back a valid trial can exceed it.
+// root_relax_work_estimate is only a diagnostic normalization input.
 template <typename i_t, typename f_t>
 i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
                                 const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
                                 const std::vector<i_t>& new_slacks,
                                 const std::vector<simplex::variable_type_t>& var_types,
                                 f_t start_time,
+                                const f_t root_relax_work_estimate,
+                                f_t work_limit,
                                 std::vector<i_t>& basic_list,
                                 std::vector<i_t>& nonbasic_list,
                                 std::vector<simplex::variable_status_t>& vstatus,
                                 simplex::lp_solution_t<i_t, f_t>& solution,
                                 simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
                                 i_t& num_fractional,
-                                std::vector<i_t>& fractional);
+                                std::vector<i_t>& fractional,
+                                f_t& total_work);
 
 // Returns 0 on success, 1 on candidate rejection, or -1 when the trial state is invalid
-// and the caller must abort the trial.
+// and the caller must abort the trial. The caller must drain basis work on every return.
 template <typename i_t, typename f_t>
 i_t apply_delta_x_for_integer_pivot(const simplex::lp_problem_t<i_t, f_t>& lp,
                                     const simplex::simplex_solver_settings_t<i_t, f_t>& settings,

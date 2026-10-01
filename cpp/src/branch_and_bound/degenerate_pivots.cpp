@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace cuopt::mathematical_optimization::mip {
 
@@ -1035,6 +1036,7 @@ i_t apply_delta_x_for_integer_pivot(const simplex::lp_problem_t<i_t, f_t>& lp,
   // Keep the existing dense ratio test and full integrality scan.
   std::vector<f_t> delta_x_dense;
   delta_x.to_dense(delta_x_dense);
+  work_estimate += lp.num_cols + 2.0 * delta_x.i.size();
   f_t step_length;
   i_t basic_leaving;
   const i_t leaving_index = simplex::primal_ratio_test(lp,
@@ -1054,7 +1056,9 @@ i_t apply_delta_x_for_integer_pivot(const simplex::lp_problem_t<i_t, f_t>& lp,
   if (!binding_integer) { return 1; }
 
   std::vector<f_t> test_x = solution.x;
-  i_t integer_destroyed   = 0;
+  // Copy, dense axpy, and two integrality checks; ratio-test work is charged by its helper.
+  work_estimate += 9.0 * lp.num_cols;
+  i_t integer_destroyed = 0;
   for (i_t h = 0; h < lp.num_cols; ++h) {
     test_x[h] += step_length * delta_x_dense[h];
     if (var_types[h] != variable_type_t::INTEGER) { continue; }
@@ -1077,6 +1081,7 @@ i_t apply_delta_x_for_integer_pivot(const simplex::lp_problem_t<i_t, f_t>& lp,
     b_inv_abar.i.reserve(delta_x.i.size());
     b_inv_abar.x.reserve(delta_x.x.size());
     const i_t nz = delta_x.i.size();
+    work_estimate += 5.0 * nz;
     for (i_t k = 0; k < nz; ++k) {
       const i_t h = variable_to_basic[delta_x.i[k]];
       if (h >= 0 && delta_x.x[k] != 0) {
@@ -1087,7 +1092,8 @@ i_t apply_delta_x_for_integer_pivot(const simplex::lp_problem_t<i_t, f_t>& lp,
     basis_update.u_multiply(b_inv_abar, utilde_sparse);
   }
 
-  solution.x                        = test_x;
+  solution.x = test_x;
+  work_estimate += lp.num_cols;
   basic_list[basic_leaving]         = entering_index;
   variable_to_basic[entering_index] = basic_leaving;
   variable_to_basic[leaving_index]  = -1;
@@ -1126,6 +1132,7 @@ i_t apply_delta_x_for_integer_pivot(const simplex::lp_problem_t<i_t, f_t>& lp,
                                                             vstatus,
                                                             deficient_repaired);
     if (refactor_status != 0 || deficient_repaired > 0) { return -1; }
+    work_estimate += 2.0 * m;
     for (i_t k = 0; k < m; ++k) {
       variable_to_basic[basic_list[k]] = k;
     }
@@ -1142,6 +1149,7 @@ bool fast_slack_integer_pivots(const simplex::lp_problem_t<i_t, f_t>& lp,
                                const simplex::lp_solution_t<i_t, f_t>& solution,
                                const std::vector<simplex::variable_type_t>& var_types,
                                f_t start_time,
+                               f_t work_limit,
                                std::vector<i_t>& basic_list,
                                std::vector<i_t>& nonbasic_list,
                                std::vector<i_t>& nonbasic_index,
@@ -1151,10 +1159,14 @@ bool fast_slack_integer_pivots(const simplex::lp_problem_t<i_t, f_t>& lp,
                                simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
                                f_t& work_estimate)
 {
+  // Budget exhaustion leaves a valid (possibly improved) trial, unlike refactor failure.
+  if (work_estimate >= work_limit) { return true; }
   std::vector<i_t> fast_candidates;
   std::vector<i_t> fast_rows;
   std::vector<i_t> fast_nonbasic_slacks;
   for (i_t j : fractional) {
+    if (work_estimate >= work_limit) { break; }
+    work_estimate += 4;
     const i_t col_start                            = lp.A.col_start[j];
     const i_t col_end                              = lp.A.col_start[j + 1];
     const i_t num_rows                             = col_end - col_start;
@@ -1162,6 +1174,7 @@ bool fast_slack_integer_pivots(const simplex::lp_problem_t<i_t, f_t>& lp,
     i_t num_nonbasic_slacks_with_reduced_cost_zero = 0;
     i_t nonbasic_slack                             = -1;
     i_t slack_row                                  = -1;
+    work_estimate += 6.0 * num_rows;
     for (i_t p = col_start; p < col_end; p++) {
       const i_t i     = lp.A.i[p];
       const i_t slack = row_to_slack[i];
@@ -1193,14 +1206,18 @@ bool fast_slack_integer_pivots(const simplex::lp_problem_t<i_t, f_t>& lp,
   // on each successful pivot; the two variables whose (non)basic status changes are the only
   // entries that need to be updated.
   nonbasic_index.assign(lp.num_cols, -1);
+  work_estimate += lp.num_cols + 2.0 * nonbasic_list.size();
   for (i_t p = 0; p < static_cast<i_t>(nonbasic_list.size()); ++p) {
     nonbasic_index[nonbasic_list[p]] = p;
   }
 
   const i_t num_candidates = fast_candidates.size();
-  f_t last_log             = tic();
-  f_t loop_start           = tic();
-  for (i_t k = 0; k < num_candidates; k++) {
+  work_estimate += 4.0 * num_candidates;
+  f_t last_log   = tic();
+  f_t loop_start = tic();
+  i_t k          = 0;
+  for (; k < num_candidates; k++) {
+    if (work_estimate >= work_limit) { break; }
     const i_t j              = fast_candidates[k];
     const i_t row            = fast_rows[k];
     const i_t nonbasic_slack = fast_nonbasic_slacks[k];
@@ -1210,6 +1227,7 @@ bool fast_slack_integer_pivots(const simplex::lp_problem_t<i_t, f_t>& lp,
     const i_t col_start = lp.A.col_start[j];
     const i_t col_end   = lp.A.col_start[j + 1];
     f_t a_ij            = 0.0;
+    work_estimate += 2.0 * (col_end - col_start);
     for (i_t p = col_start; p < col_end; p++) {
       const i_t i = lp.A.i[p];
       if (i == row) {
@@ -1248,6 +1266,7 @@ bool fast_slack_integer_pivots(const simplex::lp_problem_t<i_t, f_t>& lp,
     // Reject if the full unit step would drive any basic slack below zero.
     bool ok       = true;
     const i_t ndx = delta_x_sparse.i.size();
+    work_estimate += 8.0 * ndx;
     for (i_t h = 0; h < ndx; h++) {
       const i_t jj = delta_x_sparse.i[h];
       if (jj == j) continue;
@@ -1263,6 +1282,7 @@ bool fast_slack_integer_pivots(const simplex::lp_problem_t<i_t, f_t>& lp,
     // Normalize so that delta_x[nonbasic_slack] == 1 (the standard entering-direction
     // convention). Done on the sparse vector, after the feasibility scan above, which reads
     // the unnormalized values.
+    work_estimate += ndx;
     for (f_t& val : delta_x_sparse.x) {
       val /= scale;
     }
@@ -1276,6 +1296,7 @@ bool fast_slack_integer_pivots(const simplex::lp_problem_t<i_t, f_t>& lp,
     // The common helper computes utilde only if the pivot is accepted.
     sparse_vector_t<i_t, f_t> utilde_sparse;
 
+    if (work_estimate >= work_limit) { break; }
     i_t error = apply_delta_x_for_integer_pivot(lp,
                                                 settings,
                                                 entering_index,
@@ -1293,6 +1314,8 @@ bool fast_slack_integer_pivots(const simplex::lp_problem_t<i_t, f_t>& lp,
                                                 soln,
                                                 basis_update,
                                                 work_estimate);
+    work_estimate += basis_update.work_estimate();
+    basis_update.clear_work_estimate();
     if (error == -1) { return false; }
     if (!error && settings.inside_mip < 2) {
       settings.log.printf(
@@ -1308,12 +1331,38 @@ bool fast_slack_integer_pivots(const simplex::lp_problem_t<i_t, f_t>& lp,
     }
   }
   if (settings.inside_mip < 2) {
-    settings.log.printf("Fast candidates: %d/%d processed in %.2f seconds\n",
-                        num_candidates,
-                        num_candidates,
-                        toc(loop_start));
+    settings.log.printf(
+      "Fast candidates: %d/%d processed in %.2f seconds\n", k, num_candidates, toc(loop_start));
   }
   return true;
+}
+
+template <typename i_t, typename f_t>
+f_t log_integer_pivot_work(const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+                           f_t total_work,
+                           f_t root_work,
+                           i_t candidates,
+                           i_t before,
+                           i_t after,
+                           f_t start,
+                           const char* status)
+{
+  if (settings.inside_mip < 2) {
+    settings.log.printf(
+      "Integer pivot work: status=%s candidates=%d fractional_before=%d fractional_after=%d "
+      "total=%.6e root=%.6e root_ratio=%.6e time=%.6f\n",
+      status,
+      candidates,
+      before,
+      after,
+      total_work,
+      root_work >= 0 && std::isfinite(root_work) ? root_work
+                                                 : std::numeric_limits<f_t>::quiet_NaN(),
+      root_work > 0 && std::isfinite(root_work) ? total_work / root_work
+                                                : std::numeric_limits<f_t>::quiet_NaN(),
+      toc(start));
+  }
+  return total_work;
 }
 
 template <typename i_t, typename f_t>
@@ -1322,16 +1371,29 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
                                 const std::vector<i_t>& new_slacks,
                                 const std::vector<simplex::variable_type_t>& var_types,
                                 f_t start_time,
+                                const f_t root_relax_work_estimate,
+                                f_t work_limit,
                                 std::vector<i_t>& basic_list,
                                 std::vector<i_t>& nonbasic_list,
                                 std::vector<simplex::variable_status_t>& vstatus,
                                 simplex::lp_solution_t<i_t, f_t>& solution,
                                 simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
                                 i_t& num_fractional,
-                                std::vector<i_t>& fractional)
+                                std::vector<i_t>& fractional,
+                                f_t& total_work)
 {
-  if (num_fractional == 0) { return 0; }
   f_t pivot_out_integer_variables_start_time = tic();
+  if (num_fractional == 0 || work_limit <= 0) {
+    total_work = log_integer_pivot_work(settings,
+                                        f_t(0),
+                                        root_relax_work_estimate,
+                                        i_t(0),
+                                        num_fractional,
+                                        num_fractional,
+                                        pivot_out_integer_variables_start_time,
+                                        work_limit <= 0 ? "work_limit" : "no_fractionals");
+    return 0;
+  }
   std::vector<i_t> zero_reduced_costs_vars;
   std::vector<i_t> zero_reduced_costs_vars_nonbasic_index;
   bool dual_degenerate = check_for_dual_degeneracy(solution,
@@ -1339,13 +1401,33 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
                                                    nonbasic_list,
                                                    zero_reduced_costs_vars,
                                                    zero_reduced_costs_vars_nonbasic_index);
-  if (!dual_degenerate) { return 0; }
+  f_t work_estimate    = 3.0 * nonbasic_list.size() + 2.0 * zero_reduced_costs_vars.size();
+  if (!dual_degenerate || work_estimate >= work_limit) {
+    total_work = log_integer_pivot_work(settings,
+                                        work_estimate,
+                                        root_relax_work_estimate,
+                                        i_t(0),
+                                        num_fractional,
+                                        num_fractional,
+                                        pivot_out_integer_variables_start_time,
+                                        work_estimate >= work_limit ? "work_limit" : "no_zero_rc");
+    return 0;
+  }
 
   lp_solution_t<i_t, f_t> soln_copy                       = solution;
   std::vector<i_t> basic_list_copy                        = basic_list;
   std::vector<i_t> nonbasic_list_copy                     = nonbasic_list;
   std::vector<variable_status_t> vstatus_copy             = vstatus;
   simplex::basis_update_mpf_t<i_t, f_t> basis_update_copy = basis_update;
+  // Discard inherited work; drain only this trial's basis work into work_estimate.
+  basis_update_copy.clear_work_estimate();
+  // Count accessible copied storage, not guessed factor fill. Private factors/workspaces
+  // in the basis copy remain uncounted (both here and on successful copy-back).
+  const f_t copy_work = solution.x.size() + solution.y.size() + solution.z.size() +
+                        basic_list.size() + nonbasic_list.size() + vstatus.size() +
+                        basis_update.row_permutation().size() +
+                        basis_update.inverse_row_permutation().size();
+  work_estimate += copy_work;
 
   const i_t start_num_fractional = num_fractional;
 
@@ -1358,7 +1440,7 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
     row_to_slack[lp.A.i[p]] = j;
   }
 
-  f_t work_estimate = 0.0;
+  work_estimate += lp.num_rows + 4.0 * new_slacks.size() + 7.0 * lp.num_rows;
 
   // Count primal degenerate basic variables
   i_t num_degenerate            = 0;
@@ -1396,6 +1478,14 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
       settings.log.printf("Skipping pivot_out_integer_variables: degeneracy %.1f%% > 50%%\n",
                           100.0 * degeneracy_fraction);
     }
+    total_work = log_integer_pivot_work(settings,
+                                        work_estimate,
+                                        root_relax_work_estimate,
+                                        num_zero_reduced_costs_vars,
+                                        start_num_fractional,
+                                        num_fractional,
+                                        pivot_out_integer_variables_start_time,
+                                        "primal_degeneracy");
     return 0;
   }
 
@@ -1404,21 +1494,41 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
   for (i_t k = 0; k < lp.num_rows; k++) {
     variable_to_basic[basic_list_copy[k]] = k;
   }
-  if (!fast_slack_integer_pivots(lp,
-                                 settings,
-                                 fractional,
-                                 row_to_slack,
-                                 solution,
-                                 var_types,
-                                 start_time,
-                                 basic_list_copy,
-                                 nonbasic_list_copy,
-                                 nonbasic_index,
-                                 variable_to_basic,
-                                 vstatus_copy,
-                                 soln_copy,
-                                 basis_update_copy,
-                                 work_estimate)) {
+  work_estimate += lp.num_cols + 2.0 * lp.num_rows;
+  const f_t setup_work      = work_estimate;
+  const bool fast_valid     = fast_slack_integer_pivots(lp,
+                                                    settings,
+                                                    fractional,
+                                                    row_to_slack,
+                                                    solution,
+                                                    var_types,
+                                                    start_time,
+                                                    work_limit,
+                                                    basic_list_copy,
+                                                    nonbasic_list_copy,
+                                                    nonbasic_index,
+                                                    variable_to_basic,
+                                                    vstatus_copy,
+                                                    soln_copy,
+                                                    basis_update_copy,
+                                                    work_estimate);
+  const f_t after_fast_work = work_estimate;
+  if (!fast_valid) {
+    if (settings.inside_mip < 2) {
+      settings.log.printf("Integer pivot stages: setup=%.6e fast=%.6e worklist=%.6e finish=%.6e\n",
+                          setup_work,
+                          after_fast_work - setup_work,
+                          0.0,
+                          0.0);
+    }
+    total_work = log_integer_pivot_work(settings,
+                                        work_estimate,
+                                        root_relax_work_estimate,
+                                        num_zero_reduced_costs_vars,
+                                        start_num_fractional,
+                                        num_fractional,
+                                        pivot_out_integer_variables_start_time,
+                                        "invalid_fast_trial");
     return 0;
   }
 
@@ -1434,6 +1544,8 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
 
   // Track which entering variables are actually tried (to detect duplication)
   std::vector<i_t> entering_tried_count(lp.num_cols, 0);
+  work_estimate += fractional.size() + lp.num_rows + lp.num_cols;
+  bool trial_valid = true;
 
   i_t worklist_total_processed  = 0;
   i_t worklist_skipped          = 0;
@@ -1450,7 +1562,8 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
   f_t worklist_loop_start = tic();
   f_t worklist_last_log   = tic();
 
-  while (!work_list.empty()) {
+  while (!work_list.empty() && trial_valid && work_estimate < work_limit) {
+    work_estimate += 6;
     const i_t j = work_list.back();
     const i_t p = variable_to_basic[j];
     work_list.pop_back();
@@ -1478,12 +1591,16 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
     sparse_vector_t<i_t, f_t> delta_y_sparse;
     sparse_vector_t<i_t, f_t> UTsol_sparse;
     f_t btran_start = tic();
+    if (work_estimate >= work_limit) { break; }
     basis_update_copy.b_transpose_solve(ep, delta_y_sparse, UTsol_sparse);
+    work_estimate += basis_update_copy.work_estimate();
+    basis_update_copy.clear_work_estimate();
     worklist_btran_time += toc(btran_start);
     worklist_btran_done++;
 
     // Scatter delta_y_sparse into dense workspace for dot product computation
     const i_t delta_y_nz = delta_y_sparse.i.size();
+    work_estimate += 3.0 * delta_y_nz;  // Scatter and clear below.
     for (i_t h = 0; h < delta_y_nz; h++) {
       delta_y_dense[delta_y_sparse.i[h]] = delta_y_sparse.x[h];
     }
@@ -1520,6 +1637,8 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
     i_t indices[3] = {-1, -1, -1};
     f_t dot_start  = tic();
     for (i_t q : zero_reduced_costs_vars) {
+      if (work_estimate >= work_limit) { break; }
+      work_estimate += 4;
       if (var_types[q] == variable_type_t::INTEGER) { continue; }
       if (nonbasic_index[q] < 0) { continue; }
       if (entering_tried_count[q] > 0) { continue; }
@@ -1527,7 +1646,8 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
       const i_t col_start = lp.A.col_start[q];
       const i_t col_end   = lp.A.col_start[q + 1];
       const i_t col_nnz   = col_end - col_start;
-      f_t dot_q           = 0.0;
+      work_estimate += 3.0 * col_nnz + 8;
+      f_t dot_q = 0.0;
       for (i_t pp = col_start; pp < col_end; pp++) {
         dot_q += delta_y_dense[lp.A.i[pp]] * lp.A.x[pp];
       }
@@ -1558,13 +1678,13 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
 
     // Try the top 3 candidates
     for (i_t h = 0; h < 3; h++) {
+      if (work_estimate >= work_limit) { break; }
       if (indices[h] == -1) break;
 
       const i_t q                 = indices[h];
       const i_t entering_index    = q;
       const i_t nonbasic_entering = nonbasic_index[q];
       if (nonbasic_entering < 0) { continue; }
-      entering_tried_count[q]++;
 
       // Determine direction based on entering variable's status
       const i_t direction = (vstatus_copy[q] == variable_status_t::NONBASIC_LOWER ||
@@ -1574,10 +1694,15 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
 
       //  Solve B * delta_xB = A(:, q) so utilde is valid for the MPF update.
       sparse_vector_t<i_t, f_t> rhs(lp.A, q);
+      work_estimate += 2.0 * rhs.i.size();
       sparse_vector_t<i_t, f_t> delta_xB;
       sparse_vector_t<i_t, f_t> utilde_sparse;
       f_t ftran_start = tic();
+      if (work_estimate >= work_limit) { break; }
+      entering_tried_count[q]++;
       basis_update_copy.b_solve(rhs, delta_xB, utilde_sparse);
+      work_estimate += basis_update_copy.work_estimate();
+      basis_update_copy.clear_work_estimate();
       worklist_ftran_time += toc(ftran_start);
       worklist_ftran_done++;
 
@@ -1585,6 +1710,7 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
       delta_x.i.reserve(delta_xB.i.size() + 1);
       delta_x.x.reserve(delta_xB.x.size() + 1);
       const i_t nz = delta_xB.i.size();
+      work_estimate += 4.0 * nz + 2;
       for (i_t k = 0; k < nz; ++k) {
         delta_x.i.push_back(basic_list_copy[delta_xB.i[k]]);
         delta_x.x.push_back(-direction * delta_xB.x[k]);
@@ -1592,6 +1718,7 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
       delta_x.i.push_back(q);
       delta_x.x.push_back(direction);
 
+      if (work_estimate >= work_limit) { break; }
       i_t error = apply_delta_x_for_integer_pivot(lp,
                                                   settings,
                                                   entering_index,
@@ -1609,8 +1736,13 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
                                                   soln_copy,
                                                   basis_update_copy,
                                                   work_estimate);
+      work_estimate += basis_update_copy.work_estimate();
+      basis_update_copy.clear_work_estimate();
 
-      if (error == -1) { return 0; }
+      if (error == -1) {
+        trial_valid = false;
+        break;
+      }
       if (error == 1) { candidates_rejected++; }
 
       if (!error) {
@@ -1619,6 +1751,7 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
         // We did a successful pivot; add fractional variables whose values changed to work list.
         std::vector<f_t> delta_x_dense;
         delta_x.to_dense(delta_x_dense);
+        work_estimate += lp.num_cols + 2.0 * delta_x.i.size() + 3.0 * fractional.size();
         for (i_t k : fractional) {
           if (vstatus_copy[k] != variable_status_t::BASIC) { continue; }
           if (std::abs(delta_x_dense[k]) > settings.zero_tol) {
@@ -1653,6 +1786,8 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
   }
 
   // Count unique entering variables and duplication
+  const f_t after_worklist_work = work_estimate;
+  work_estimate += 4.0 * lp.num_cols;
   i_t unique_entering         = 0;
   i_t max_entering_count      = 0;
   i_t entering_tried_once     = 0;
@@ -1698,17 +1833,12 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
   }
 
   std::vector<i_t> new_fractional;
-  const i_t num_new_fractional =
-    fractional_variables(settings, soln_copy.x, var_types, new_fractional);
+  i_t num_new_fractional = start_num_fractional;
+  if (trial_valid) {
+    num_new_fractional = fractional_variables(settings, soln_copy.x, var_types, new_fractional);
+    work_estimate += 4.0 * lp.num_cols + new_fractional.size();
+  }
   if (num_new_fractional < start_num_fractional) {
-    i_t num_integer_increased = start_num_fractional - num_new_fractional;
-#if 0
-    settings.log.printf("Pivoted out %d integer variables: %d -> %d in %.2f\n",
-                         num_integer_increased,
-                         start_num_fractional,
-                         num_new_fractional,
-                         toc(pivot_out_integer_variables_start_time));
-#endif
     num_fractional = num_new_fractional;
     fractional     = new_fractional;
     basic_list     = basic_list_copy;
@@ -1716,9 +1846,26 @@ i_t pivot_out_integer_variables(const simplex::lp_problem_t<i_t, f_t>& lp,
     vstatus        = vstatus_copy;
     basis_update   = basis_update_copy;
     solution       = soln_copy;
-    return num_integer_increased;
+    work_estimate += copy_work + new_fractional.size();
   }
-  return 0;
+  if (settings.inside_mip < 2) {
+    settings.log.printf("Integer pivot stages: setup=%.6e fast=%.6e worklist=%.6e finish=%.6e\n",
+                        setup_work,
+                        after_fast_work - setup_work,
+                        after_worklist_work - after_fast_work,
+                        work_estimate - after_worklist_work);
+  }
+  total_work = log_integer_pivot_work(settings,
+                                      work_estimate,
+                                      root_relax_work_estimate,
+                                      num_zero_reduced_costs_vars,
+                                      start_num_fractional,
+                                      num_fractional,
+                                      pivot_out_integer_variables_start_time,
+                                      !trial_valid                  ? "invalid_worklist_trial"
+                                      : work_estimate >= work_limit ? "work_limit"
+                                                                    : "complete");
+  return start_num_fractional - num_fractional;
 }
 
 template bool check_for_dual_degeneracy<int, double>(
@@ -1736,6 +1883,7 @@ template bool fast_slack_integer_pivots<int, double>(
   const simplex::lp_solution_t<int, double>&,
   const std::vector<simplex::variable_type_t>&,
   double,
+  double,
   std::vector<int>&,
   std::vector<int>&,
   std::vector<int>&,
@@ -1751,13 +1899,16 @@ template int pivot_out_integer_variables<int, double>(
   const std::vector<int>&,
   const std::vector<simplex::variable_type_t>&,
   double,
+  double,
+  double,
   std::vector<int>&,
   std::vector<int>&,
   std::vector<simplex::variable_status_t>&,
   simplex::lp_solution_t<int, double>&,
   simplex::basis_update_mpf_t<int, double>&,
   int&,
-  std::vector<int>&);
+  std::vector<int>&,
+  double&);
 
 template int apply_delta_x_for_integer_pivot<int, double>(
   const simplex::lp_problem_t<int, double>&,
