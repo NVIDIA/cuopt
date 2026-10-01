@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -300,6 +300,11 @@ DI node_t<i_t, f_t, REQUEST> create_break_node(
   node.time_dim.window_start = special_nodes.earliest_time[index];
   node.time_dim.window_end   = special_nodes.latest_time[index];
 
+  if (!special_nodes.distance_min.empty()) {
+    node.cost_dim.window_start = static_cast<double>(special_nodes.distance_min[index]);
+    node.cost_dim.window_end   = static_cast<double>(special_nodes.distance_max[index]);
+  }
+
   // FIXME:: setting the prize to zero for now.
   // When we support breaks through prize collection mechanism, this will change
   node.prize_dim.prize = 0.;
@@ -494,7 +499,8 @@ class solution_t {
   size_t get_temp_route_shared_size(i_t added_size = 0) const;
   void compute_initial_data(bool check_feasibility = true);
   void random_init_routes();
-  void set_route_views();
+  // Publishes routes[start, end) to the device. end < 0 means routes.size().
+  void set_route_views(i_t start = 0, i_t end = -1);
   void expand_route(i_t route_id);
   void resize_route(i_t route_id, i_t new_route_size);
   void clear_routes(std::vector<i_t> vehicle_ids);
@@ -649,6 +655,11 @@ class solution_t {
  private:
   // we shouldn't access this directly as route ids map differently
   std::vector<route_t<i_t, f_t, REQUEST>> routes;
+
+  // Host staging for routes_view, internal to set_route_views(). That function synchronizes
+  // before returning, so no copy is ever left pending against this buffer and it is safe to
+  // reuse across calls. Kept as a member so the paths that publish views do not allocate.
+  std::vector<typename route_t<i_t, f_t, REQUEST>::view_t> h_routes_view;
 
  public:
   static constexpr i_t fragment_step = 1;

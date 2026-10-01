@@ -10,6 +10,7 @@
 #include <cuopt_remote_service.pb.h>
 #include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
+#include <cuopt/mathematical_optimization/solver_settings.hpp>
 #include "grpc_problem_mapper.hpp"
 #include "grpc_settings_mapper.hpp"
 
@@ -40,10 +41,21 @@ cuopt::remote::SubmitJobRequest build_lp_submit_request(
 }
 
 template <typename i_t, typename f_t>
+cuopt::remote::SubmitJobRequest build_lp_submit_request(
+  const cpu_optimization_problem_t<i_t, f_t>& cpu_problem, solver_settings_t<i_t, f_t>& settings)
+{
+  auto submit_request = build_lp_submit_request(cpu_problem, settings.get_pdlp_settings());
+  append_solver_parameters(
+    settings, submit_request.mutable_lp_request()->mutable_settings()->mutable_parameters());
+  return submit_request;
+}
+
+template <typename i_t, typename f_t>
 cuopt::remote::SubmitJobRequest build_mip_submit_request(
   const cpu_optimization_problem_t<i_t, f_t>& cpu_problem,
   const mip_solver_settings_t<i_t, f_t>& settings,
-  bool enable_incumbents)
+  bool enable_incumbents,
+  bool enable_set_incumbent)
 {
   cuopt::remote::SubmitJobRequest submit_request;
 
@@ -61,9 +73,23 @@ cuopt::remote::SubmitJobRequest build_mip_submit_request(
   // Map settings to protobuf
   map_mip_settings_to_proto(settings, mip_request->mutable_settings());
 
-  // Set enable_incumbents flag
   mip_request->set_enable_incumbents(enable_incumbents);
+  mip_request->set_enable_set_incumbent(enable_set_incumbent);
 
+  return submit_request;
+}
+
+template <typename i_t, typename f_t>
+cuopt::remote::SubmitJobRequest build_mip_submit_request(
+  const cpu_optimization_problem_t<i_t, f_t>& cpu_problem,
+  solver_settings_t<i_t, f_t>& settings,
+  bool enable_incumbents,
+  bool enable_set_incumbent)
+{
+  auto submit_request = build_mip_submit_request(
+    cpu_problem, settings.get_mip_settings(), enable_incumbents, enable_set_incumbent);
+  append_solver_parameters(
+    settings, submit_request.mutable_mip_request()->mutable_settings()->mutable_parameters());
   return submit_request;
 }
 
@@ -72,20 +98,38 @@ cuopt::remote::SubmitJobRequest build_mip_submit_request(
 template cuopt::remote::SubmitJobRequest build_lp_submit_request(
   const cpu_optimization_problem_t<int32_t, float>& cpu_problem,
   const pdlp_solver_settings_t<int32_t, float>& settings);
+template cuopt::remote::SubmitJobRequest build_lp_submit_request(
+  const cpu_optimization_problem_t<int32_t, float>& cpu_problem,
+  solver_settings_t<int32_t, float>& settings);
 template cuopt::remote::SubmitJobRequest build_mip_submit_request(
   const cpu_optimization_problem_t<int32_t, float>& cpu_problem,
   const mip_solver_settings_t<int32_t, float>& settings,
-  bool enable_incumbents);
+  bool enable_incumbents,
+  bool enable_set_incumbent);
+template cuopt::remote::SubmitJobRequest build_mip_submit_request(
+  const cpu_optimization_problem_t<int32_t, float>& cpu_problem,
+  solver_settings_t<int32_t, float>& settings,
+  bool enable_incumbents,
+  bool enable_set_incumbent);
 #endif
 
 #if CUOPT_INSTANTIATE_DOUBLE
 template cuopt::remote::SubmitJobRequest build_lp_submit_request(
   const cpu_optimization_problem_t<int32_t, double>& cpu_problem,
   const pdlp_solver_settings_t<int32_t, double>& settings);
+template cuopt::remote::SubmitJobRequest build_lp_submit_request(
+  const cpu_optimization_problem_t<int32_t, double>& cpu_problem,
+  solver_settings_t<int32_t, double>& settings);
 template cuopt::remote::SubmitJobRequest build_mip_submit_request(
   const cpu_optimization_problem_t<int32_t, double>& cpu_problem,
   const mip_solver_settings_t<int32_t, double>& settings,
-  bool enable_incumbents);
+  bool enable_incumbents,
+  bool enable_set_incumbent);
+template cuopt::remote::SubmitJobRequest build_mip_submit_request(
+  const cpu_optimization_problem_t<int32_t, double>& cpu_problem,
+  solver_settings_t<int32_t, double>& settings,
+  bool enable_incumbents,
+  bool enable_set_incumbent);
 #endif
 
 }  // namespace cuopt::mathematical_optimization

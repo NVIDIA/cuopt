@@ -43,6 +43,11 @@
 #include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/solver_settings.hpp>
+#ifdef CUOPT_ENABLE_GRPC_ROUTING
+#include <cuopt/routing/cpu_routing_problem.hpp>
+#include <cuopt/routing/solver_settings.hpp>
+#endif
 #include <utilities/inline_lp_test_utils.hpp>
 #include "grpc_client.hpp"
 
@@ -509,6 +514,146 @@ End
     }
   }
 
+  // Result of warm_up_worker. Callers ASSERT on ok so a failure stops the test.
+  // detail is set only on failure and includes the last job status plus a tail
+  // of the server log.
+  struct worker_warmup_result_t {
+    bool ok = false;
+    std::string detail;
+  };
+
+  // Prove the shared worker is idle and warm before a timed test begins,
+  // instead of trusting whatever the previous test left behind. DefaultServerTests
+  // shares one worker across the whole suite, and a prior test's SIGKILL can leave it
+  // mid-respawn (paying for a fresh CUDA context and RMM pool); that debt is absorbed
+  // here so it cannot leak into the caller's timing assertions -- see #1814.
+  //
+  // The job stays QUEUED until the replacement worker finishes init, which can
+  // exceed 60s on a busy runner. Allow 3 minutes for that. Once the worker claims
+  // the job, allow 30s more for this 5s MIP. delete_job of a PROCESSING job
+  // SIGKILLs the worker, so a probe that is still solving is left in place.
+  // A QUEUED probe was never claimed and can be deleted.
+  worker_warmup_result_t warm_up_worker(grpc_client_t* client, const std::string& server_log_path)
+  {
+    worker_warmup_result_t result;
+
+    auto fail = [&](const std::string& why, const job_status_result_t& status) {
+      std::ostringstream out;
+      out << "Worker warm-up failed: " << why << ", status=" << job_status_to_string(status.status);
+      if (!status.message.empty()) { out << ", message=" << status.message; }
+      if (!status.error_message.empty()) { out << ", error=" << status.error_message; }
+      out << tail_server_log(server_log_path);
+      result.ok     = false;
+      result.detail = out.str();
+      return result;
+    };
+
+    mip_solver_settings_t<int32_t, double> warmup_settings;
+    warmup_settings.time_limit = 5.0;
+    auto warmup                = client->submit_mip(create_simple_mip(), warmup_settings);
+    if (!warmup.success) {
+      job_status_result_t submit_status;
+      submit_status.error_message = warmup.error_message;
+      return fail("submit failed", submit_status);
+    }
+
+    constexpr auto queued_budget     = std::chrono::seconds(180);
+    constexpr auto processing_budget = std::chrono::seconds(30);
+    const auto start                 = std::chrono::steady_clock::now();
+    bool saw_processing              = false;
+    auto processing_since            = start;
+    job_status_result_t last_status;
+
+    for (;;) {
+      last_status         = client->check_status(warmup.job_id);
+      const bool terminal = last_status.success && (last_status.status == job_status_t::COMPLETED ||
+                                                    last_status.status == job_status_t::FAILED ||
+                                                    last_status.status == job_status_t::CANCELLED);
+      if (terminal || (last_status.success && last_status.status == job_status_t::NOT_FOUND)) {
+        break;
+      }
+
+      const auto now = std::chrono::steady_clock::now();
+      if (last_status.success && last_status.status == job_status_t::PROCESSING) {
+        if (!saw_processing) {
+          saw_processing   = true;
+          processing_since = now;
+        }
+        if (now - processing_since >= processing_budget) { break; }
+      } else if (now - start >= queued_budget) {
+        break;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+
+    const bool terminal = last_status.success && (last_status.status == job_status_t::COMPLETED ||
+                                                  last_status.status == job_status_t::FAILED ||
+                                                  last_status.status == job_status_t::CANCELLED);
+    const bool queued_unclaimed = last_status.success && last_status.status == job_status_t::QUEUED;
+    if (terminal || queued_unclaimed) {
+      if (!client->delete_job(warmup.job_id)) { return fail("delete_job failed", last_status); }
+    }
+
+    if (last_status.success && last_status.status == job_status_t::COMPLETED) {
+      result.ok = true;
+      return result;
+    }
+
+    std::string why = "job ended without COMPLETED";
+    if (last_status.success && last_status.status == job_status_t::PROCESSING) {
+      why = "still PROCESSING after 30s (left running; delete would SIGKILL the worker)";
+    } else if (last_status.success && last_status.status == job_status_t::QUEUED) {
+      why = "still QUEUED after 180s";
+    } else if (!last_status.success) {
+      why = "status check failed";
+    }
+    return fail(why, last_status);
+  }
+
+  static std::string tail_server_log(const std::string& path)
+  {
+    constexpr std::streamoff kTailBytes = 4096;
+    std::ifstream in(path, std::ios::binary);
+    if (!in) { return "\n(server log unavailable: " + path + ")\n"; }
+    in.seekg(0, std::ios::end);
+    const auto size = in.tellg();
+    if (size > kTailBytes) {
+      in.seekg(-kTailBytes, std::ios::end);
+    } else {
+      in.seekg(0);
+    }
+    std::ostringstream out;
+    out << "\n--- server log tail (" << path << ") ---\n"
+        << in.rdbuf() << "\n--- end server log tail ---\n";
+    return out.str();
+  }
+
+  // Shared by the unary and chunked incumbent-set tests. EXPECT_* here still
+  // fail the calling TEST_F; early returns only skip later checks after a
+  // hard setup failure (ASSERT in a helper would not stop the test).
+  void expect_incumbent_set_callback_registered(grpc_client_config_t config,
+                                                const std::string& log_path)
+  {
+    GrpcTestLogCapture log_capture;
+    log_capture.set_server_log_path(log_path);
+    log_capture.mark_test_start();
+
+    auto client = create_client(config);
+    EXPECT_NE(client, nullptr);
+    if (client == nullptr) { return; }
+
+    mip_solver_settings_t<int32_t, double> settings;
+    settings.time_limit = 10.0;
+    auto submission     = client->submit_mip(create_simple_mip(), settings, false, true);
+    EXPECT_TRUE(submission.success) << submission.error_message;
+    if (!submission.success) { return; }
+
+    wait_for_job_done(client.get(), submission.job_id);
+    EXPECT_EQ(client->check_status(submission.job_id).status, job_status_t::COMPLETED);
+    EXPECT_TRUE(log_capture.wait_for_server_log("Registered incumbent set callback", 5000))
+      << log_capture.get_server_logs();
+  }
+
   int port_ = 0;
 };
 
@@ -781,6 +926,64 @@ TEST_F(DefaultServerTests, SolveInfeasibleLP)
     << "Expected non-optimal termination for infeasible problem";
 }
 
+// A bad parameter map fails that job. The worker then completes a normal job.
+TEST_F(DefaultServerTests, BadParameterFailsJobAndWorkerContinues)
+{
+  cpu_optimization_problem_t<int32_t, double> problem;
+  std::vector<double> var_lb   = {0.0};
+  std::vector<double> var_ub   = {1.0};
+  std::vector<double> obj      = {1.0};
+  std::vector<int32_t> offsets = {0};
+  problem.set_variable_lower_bounds(var_lb.data(), 1);
+  problem.set_variable_upper_bounds(var_ub.data(), 1);
+  problem.set_objective_coefficients(obj.data(), 1);
+  problem.set_maximize(false);
+  problem.set_csr_constraint_matrix(nullptr, 0, nullptr, 0, offsets.data(), 1);
+  problem.set_constraint_lower_bounds(nullptr, 0);
+  problem.set_constraint_upper_bounds(nullptr, 0);
+
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
+
+  auto request = build_lp_submit_request(problem, settings);
+  (*request.mutable_lp_request()->mutable_settings()->mutable_parameters())["not_a_parameter"] =
+    "1";
+
+  auto channel =
+    grpc::CreateChannel("localhost:" + std::to_string(port_), grpc::InsecureChannelCredentials());
+  auto stub = cuopt::remote::CuOptRemoteService::NewStub(channel);
+  cuopt::remote::SubmitJobResponse response;
+  {
+    grpc::ClientContext context;
+    auto rpc = stub->SubmitJob(&context, request, &response);
+    ASSERT_TRUE(rpc.ok()) << rpc.error_message();
+  }
+  ASSERT_FALSE(response.job_id().empty());
+
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  job_status_t final_status = job_status_t::QUEUED;
+  std::string message;
+  for (int i = 0; i < 40; ++i) {
+    auto status = client->check_status(response.job_id());
+    ASSERT_TRUE(status.success) << status.error_message;
+    final_status = status.status;
+    message      = status.message;
+    if (final_status == job_status_t::COMPLETED || final_status == job_status_t::FAILED ||
+        final_status == job_status_t::CANCELLED) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  }
+  EXPECT_EQ(final_status, job_status_t::FAILED) << message;
+  EXPECT_NE(message.find("Invalid solver parameter"), std::string::npos) << message;
+
+  auto good = client->solve_lp(problem, settings);
+  EXPECT_TRUE(good.success) << good.error_message;
+  ASSERT_NE(good.solution, nullptr);
+}
+
 // -- MIP Solve --
 
 TEST_F(DefaultServerTests, SolveMIPBlocking)
@@ -800,6 +1003,73 @@ TEST_F(DefaultServerTests, SolveMIPBlocking)
 }
 
 // -- Explicit Async LP Flow (submit/poll/get/delete) --
+
+#ifdef CUOPT_ENABLE_GRPC_ROUTING
+// VRP over gRPC, in the same shape as the LP and MIP cases above: submit a problem,
+// poll to completion, fetch the solution and check it. This is the only routing case in
+// this suite, and it is the end-to-end exercise of the routing mappers -- the problem and
+// settings on the way in, the solution on the way back.
+//
+// Keep it here with the other solve tests rather than further down. The fixture shares one
+// server across the suite, and the cancel and delete tests below kill workers; a job
+// submitted after them can sit in QUEUED forever (#1716). This test is about the routing
+// mappers, not about recovering from a killed worker, so it should not run in their wake.
+TEST_F(DefaultServerTests, SolveVRP)
+{
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  // Four locations on a line, depot at 0, one vehicle. Any correct solver serves all
+  // three orders, so the assertions do not depend on a particular route ordering.
+  constexpr int32_t kLocations = 4;
+  cuopt::routing::cpu_routing_problem_t problem;
+  problem.num_locations = kLocations;
+  problem.fleet_size    = 1;
+  problem.num_orders    = kLocations;
+
+  cuopt::routing::cpu_cost_matrix_t cost;
+  cost.vehicle_type = 0;
+  cost.matrix.resize(static_cast<size_t>(kLocations) * kLocations);
+  for (int32_t i = 0; i < kLocations; ++i) {
+    for (int32_t j = 0; j < kLocations; ++j) {
+      cost.matrix[static_cast<size_t>(i) * kLocations + j] = static_cast<float>(std::abs(i - j));
+    }
+  }
+  problem.cost_matrices.push_back(std::move(cost));
+  problem.vehicle_start_locations.assign(problem.fleet_size, 0);
+  problem.vehicle_return_locations.assign(problem.fleet_size, 0);
+
+  cuopt::routing::solver_settings_t<int, float> settings;
+  settings.set_time_limit(10.0f);
+
+  auto submit_result = client->submit_vrp(problem, settings);
+  ASSERT_TRUE(submit_result.success) << submit_result.error_message;
+  EXPECT_FALSE(submit_result.job_id.empty());
+
+  job_status_t final_status = job_status_t::QUEUED;
+  for (int i = 0; i < 60; ++i) {
+    auto status = client->check_status(submit_result.job_id);
+    ASSERT_TRUE(status.success) << status.error_message;
+    final_status = status.status;
+    if (final_status == job_status_t::COMPLETED || final_status == job_status_t::FAILED) break;
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+  }
+  ASSERT_EQ(final_status, job_status_t::COMPLETED)
+    << "Status: " << job_status_to_string(final_status);
+
+  auto result = client->get_vrp_result(submit_result.job_id);
+  ASSERT_TRUE(result.success) << result.error_message;
+
+  const auto& solution = result.solution;
+  EXPECT_EQ(solution.status, 0) << solution.status_message;
+  EXPECT_GT(solution.vehicle_count, 0);
+  EXPECT_GT(solution.total_objective_value, 0.0);
+  EXPECT_FALSE(solution.route.empty());
+  EXPECT_EQ(solution.route.size(), solution.truck_id.size());
+  EXPECT_TRUE(solution.unserviced_nodes.empty())
+    << solution.unserviced_nodes.size() << " orders left unserved";
+}
+#endif
 
 TEST_F(DefaultServerTests, ExplicitAsyncLPFlow)
 {
@@ -1098,6 +1368,13 @@ TEST_F(DefaultServerTests, IncumbentCallbacksMIP)
   }
 }
 
+TEST_F(DefaultServerTests, IncumbentSetFlagReachesUnaryWorker)
+{
+  grpc_client_config_t config;
+  config.chunked_array_threshold_bytes = 100 * 1024 * 1024;
+  expect_incumbent_set_callback_registered(config, server_log_path());
+}
+
 TEST_F(DefaultServerTests, IncumbentCallbackCancelsSolve)
 {
   int callback_count = 0;
@@ -1152,9 +1429,13 @@ TEST_F(DefaultServerTests, CancelRunningJob)
     << "Unexpected job_status=" << static_cast<int>(cancel_result.job_status)
     << " message=" << cancel_result.message;
 
-  // Wait for worker to free up before next test
+  // Cancel marks the job CANCELLED as soon as the worker is signaled, which is
+  // before the replacement worker finishes CUDA and RMM init. Warm up here so
+  // the next test inherits a worker that has already completed a job (#1814).
   wait_for_job_done(client.get(), job_id, 15);
   client->delete_job(job_id);
+  auto warmup = warm_up_worker(client.get(), server_log_path());
+  ASSERT_TRUE(warmup.ok) << warmup.detail;
 }
 
 // -- Delete should cancel queued / running jobs --
@@ -1163,6 +1444,8 @@ TEST_F(DefaultServerTests, DeleteQueuedJobPreventsRun)
 {
   auto client = create_client();
   ASSERT_NE(client, nullptr);
+  auto warmup = warm_up_worker(client.get(), server_log_path());
+  ASSERT_TRUE(warmup.ok) << warmup.detail;
 
   std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
   auto problem         = load_problem_from_file(mps_path);
@@ -1170,10 +1453,27 @@ TEST_F(DefaultServerTests, DeleteQueuedJobPreventsRun)
   mip_solver_settings_t<int32_t, double> settings;
   settings.time_limit = 120.0;
 
-  // Occupy the single worker with a long solve.
+  // Occupy the single worker with a long solve. Poll for PROCESSING rather than
+  // a fixed sleep: a plain delay doesn't guarantee the worker claimed this job
+  // before the next one is submitted, which would let the queued-status check
+  // below pass even if both jobs were merely queued behind each other.
   auto running = client->submit_mip(problem, settings);
   ASSERT_TRUE(running.success);
-  std::this_thread::sleep_for(std::chrono::seconds(2));
+  bool running_processing = false;
+  for (int i = 0; i < 40; ++i) {
+    auto status = client->check_status(running.job_id);
+    ASSERT_TRUE(status.success) << status.error_message;
+    if (status.status == job_status_t::PROCESSING) {
+      running_processing = true;
+      break;
+    }
+    if (status.status == job_status_t::COMPLETED || status.status == job_status_t::FAILED ||
+        status.status == job_status_t::CANCELLED) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  }
+  ASSERT_TRUE(running_processing) << "First job never reached PROCESSING";
 
   auto queued = client->submit_mip(problem, settings);
   ASSERT_TRUE(queued.success);
@@ -1201,7 +1501,9 @@ TEST_F(DefaultServerTests, DeleteQueuedJobPreventsRun)
   auto probe                = client->submit_mip(problem, probe_settings);
   ASSERT_TRUE(probe.success);
 
-  wait_for_job_done(client.get(), probe.job_id, 60);
+  // 90s: this probe follows a worker respawn (SIGKILL above), which pays for a fresh CUDA
+  // context init on top of the solve -- can exceed 60s on contended CI runners (#1814).
+  wait_for_job_done(client.get(), probe.job_id, 90);
   auto probe_status = client->check_status(probe.job_id);
   EXPECT_EQ(probe_status.status, job_status_t::COMPLETED)
     << "Worker should be free to process a new job after the queued job was deleted";
@@ -1214,6 +1516,8 @@ TEST_F(DefaultServerTests, DeleteRunningJobCancelsWorker)
 {
   auto client = create_client();
   ASSERT_NE(client, nullptr);
+  auto warmup = warm_up_worker(client.get(), server_log_path());
+  ASSERT_TRUE(warmup.ok) << warmup.detail;
 
   std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
   auto problem         = load_problem_from_file(mps_path);
@@ -1225,9 +1529,10 @@ TEST_F(DefaultServerTests, DeleteRunningJobCancelsWorker)
   ASSERT_TRUE(submit_result.success);
   std::string job_id = submit_result.job_id;
 
-  // Wait until the worker has claimed the job.
+  // Wait until the worker has claimed the job. ~30s, not the usual ~10s: the shared worker
+  // may still be mid-respawn from the previous test's SIGKILL (#1814).
   bool processing = false;
-  for (int i = 0; i < 40; ++i) {
+  for (int i = 0; i < 120; ++i) {
     auto status = client->check_status(job_id);
     if (status.status == job_status_t::PROCESSING) {
       processing = true;
@@ -1304,6 +1609,8 @@ class ChunkedUploadTests : public GrpcIntegrationTestBase {
     port_ = s_port_;
   }
 
+  std::string server_log_path() const { return s_server_->log_path(); }
+
   void TearDown() override
   {
     if (HasFailure() && s_server_) {
@@ -1364,6 +1671,15 @@ TEST_F(ChunkedUploadTests, ChunkedUploadMIP)
 
   auto result = client->solve_mip(problem, settings, false);
   EXPECT_TRUE(result.success) << result.error_message;
+}
+
+TEST_F(ChunkedUploadTests, IncumbentSetFlagReachesChunkedWorker)
+{
+  grpc_client_config_t config;
+  config.timeout_seconds               = 60;
+  config.chunk_size_bytes              = 4 * 1024;
+  config.chunked_array_threshold_bytes = 0;
+  expect_incumbent_set_callback_registered(config, server_log_path());
 }
 
 TEST_F(ChunkedUploadTests, ConcurrentChunkedUploads)
@@ -2383,5 +2699,11 @@ TEST_F(ChunkValidationTests, AcceptsValidChunk)
 int main(int argc, char** argv)
 {
   ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
+  const int rc = RUN_ALL_TESTS();
+  // Skip C++ static / atexit destructors. gRPC / Abseil / protobuf can
+  // intermittently double-free during process-exit teardown after a fully
+  // green run (CI sees SIGABRT / "double free or corruption (fasttop)" after
+  // "[  PASSED  ]"). Shared ServerProcess instances are already stopped in
+  // each suite's TearDownTestSuite, so skipping global dtors is safe here.
+  std::_Exit(rc);
 }

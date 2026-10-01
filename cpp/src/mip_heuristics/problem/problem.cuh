@@ -26,6 +26,7 @@
 #include <utilities/macros.cuh>
 
 #include <branch_and_bound/constants.hpp>
+#include <cuda/stream>
 #include <memory>
 #include <raft/core/nvtx.hpp>
 #include <raft/random/rng_device.cuh>
@@ -81,7 +82,8 @@ class problem_t {
   i_t get_n_binary_variables();
   void check_problem_representation(bool check_transposed       = false,
                                     bool check_mip_related_data = true);
-  void recompute_auxilliary_data(bool check_representation = true);
+  void recompute_auxilliary_data(bool check_representation = true,
+                                 bool compute_related_vars = true);
   void compute_auxiliary_data();
   void compute_n_integer_vars();
   void compute_binary_var_table();
@@ -102,7 +104,7 @@ class problem_t {
   bool pre_process_assignment(rmm::device_uvector<f_t>& assignment);
   void post_process_assignment(rmm::device_uvector<f_t>& current_assignment,
                                bool resize_to_original_problem,
-                               rmm::cuda_stream_view stream);
+                               cuda::stream_ref stream);
   void post_process_assignment(rmm::device_uvector<f_t>& current_assignment,
                                bool resize_to_original_problem = true)
   {
@@ -119,7 +121,12 @@ class problem_t {
   {
     return presolve_data.get_papilo_original_num_variables();
   }
-  void papilo_uncrush_assignment(rmm::device_uvector<f_t>& assignment) const;
+  void papilo_uncrush_assignment(rmm::device_uvector<f_t>& assignment,
+                                 rmm::cuda_stream_view stream) const;
+  void papilo_uncrush_assignment(rmm::device_uvector<f_t>& assignment) const
+  {
+    papilo_uncrush_assignment(assignment, handle_ptr->get_stream());
+  }
   void compute_transpose_of_problem();
   f_t get_user_obj_from_solver_obj(f_t solver_obj) const;
   f_t get_solver_obj_from_user_obj(f_t user_obj) const;
@@ -143,6 +150,14 @@ class problem_t {
     cuopt::mathematical_optimization::simplex::user_problem_t<i_t, f_t>& user_problem) const;
   void set_constraints_from_host_user_problem(
     const cuopt::mathematical_optimization::simplex::user_problem_t<i_t, f_t>& user_problem);
+  // Replace the constraint matrix + row bounds in place from host CSR
+  // Used by presolve passes that rewrite rows in place
+  void set_constraints_from_host_csr(const std::vector<i_t>& offsets,
+                                     const std::vector<i_t>& variables,
+                                     const std::vector<f_t>& coefficients,
+                                     const std::vector<f_t>& row_lower,
+                                     const std::vector<f_t>& row_upper,
+                                     const std::vector<std::string>& names);
 
   uint32_t get_fingerprint() const;
 
@@ -326,7 +341,7 @@ class problem_t {
   std::vector<std::string> row_names{};
   /** name of the objective (only a single objective is currently allowed) */
   std::string objective_name;
-  f_t objective_offset;
+  f_t objective_offset{0};
   bool is_scaled_{false};
   bool preprocess_called{false};
   bool objective_is_integral{false};
@@ -341,7 +356,7 @@ class problem_t {
   bool cutting_plane_added{false};
   std::pair<std::vector<i_t>, std::vector<f_t>> vars_with_objective_coeffs;
   bool expensive_to_fix_vars{false};
-  double related_vars_time_limit{30.};
+  double related_vars_time_limit{2.};
   std::vector<i_t> Q_offsets;
   std::vector<i_t> Q_indices;
   std::vector<f_t> Q_values;

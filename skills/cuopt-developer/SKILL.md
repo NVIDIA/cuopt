@@ -98,6 +98,12 @@ When adding an API — a setter, endpoint, parameter, or a layer that wraps anot
 - **Derive, don't duplicate.** A second copy of a surface (a hand-maintained list of the methods/fields another layer already defines, or shadow state kept in parallel with the real data) drifts the moment someone forgets to update it. Derive it from the single source instead, so there is nothing to keep in sync.
 - **Fail loud, not silent.** Prefer a design where forgetting a step is caught automatically over one that quietly does the wrong thing. When a mechanism leans on a convention, add a test that asserts full coverage, so a case that slips the convention fails CI instead of silently misbehaving.
 
+### 7. Sanitize Internal Context Before It Becomes Public
+
+Pasted Slack threads, tickets, or other internal context often carry customer or company names, used to explain *why* a change matters. That context has a narrower audience than a commit message, PR description, or PR comment on a public repo — those are permanent and world-readable the moment they're pushed. Before writing any of the above, strip customer/company names and other business-confidential details, even when nothing in the request says not to share them. State the motivation in generic terms instead (e.g. "a REST client hitting the protobuf 2GB limit on large problems" rather than naming who hit it).
+
+If it's already been pushed, treat the leak as not fully contained: force-pushing a corrected commit does not delete the old commit object from GitHub — it stays fetchable by SHA until GC'd, and editing a PR/issue body or comment leaves its old content in edit history unless a human deletes that specific revision from the web UI (Options → Delete revision from history; there's no API for it). Flag this exposure to the user rather than assuming a rewrite or edit fully removes it.
+
 ---
 
 ## Before You Start: Required Questions
@@ -170,7 +176,9 @@ cuopt/
 ### CUDA/GPU Hygiene
 - Keep operations stream-ordered
 - Follow existing RAFT/RMM patterns
+- `rmm::device_uvector` tests emptiness with `is_empty()`; it has no `empty()` member.
 - No raw `new`/`delete` - use RMM allocators
+- Prefer modern CCCL bit/math helpers in kernels (`cuda::bitfield_extract`, `cuda::bitmask`, pow2 utilities) over hand-rolled `%`/`/` by runtime powers of two — see [references/conventions.md](references/conventions.md)
 
 ## Build & Test
 
@@ -179,12 +187,12 @@ cuopt/
 Skipping any of these surfaces as confusing runtime errors later. Run them in order:
 
 1. **Check CUDA driver compatibility.** Run `nvidia-smi` and read the *CUDA Version* in the top-right corner — that's the maximum CUDA your driver supports. Pick a conda env file from `conda/environments/all_cuda-<ver>_arch-<arch>.yaml` whose CUDA major version is **≤** that. A mismatch builds successfully but fails at runtime inside RMM with `cudaMallocAsync not supported with this CUDA driver/runtime version` — verify this *before* the build, not after.
-2. **Create and activate the conda env** before *any* build, test, or `pre-commit` command — this is allowed and expected (see [Refusal Rules](#refusal-rules--read-first)). Use a **local prefix env** (`./.cuopt_env`) per [CONTRIBUTING.md](../../CONTRIBUTING.md), with the env file you picked in step 1 (swap `conda`→`mamba` if available):
+2. **Create and activate the conda env** before *any* build, test, or `pre-commit` command — this is allowed and expected (see [Refusal Rules](#refusal-rules--read-first)). Use a **local prefix env** (`./.cuopt_env`) per [CONTRIBUTING.md](../../CONTRIBUTING.md), with the env file you picked in step 1 (`mamba` is recommended and faster; swap in `conda` if `mamba` isn't available):
    ```bash
-   conda env create -p ./.cuopt_env --file conda/environments/all_cuda-<ver>_arch-$(uname -m).yaml
-   conda activate ./.cuopt_env
+   mamba env create -p ./.cuopt_env --file conda/environments/all_cuda-<ver>_arch-$(uname -m).yaml
+   mamba activate ./.cuopt_env   # or: conda activate ./.cuopt_env
    ```
-   Tests link against libraries compiled inside that env; a fresh shell without `conda activate ./.cuopt_env` hits cryptic linker errors.
+   Tests link against libraries compiled inside that env; a fresh shell without activating it hits cryptic linker errors.
 3. **Set `PARALLEL_LEVEL`** if RAM is constrained — see [references/build_and_test.md](references/build_and_test.md). The default `$(nproc)` can OOM mid-build because CUDA compilation needs ~4–8 GB per job.
 4. **For tests, fetch datasets first.** cuOpt tests need MPS files not in the repo — follow the dataset download steps in [CONTRIBUTING.md](../../CONTRIBUTING.md) ("Building for development" section) and export `RAPIDS_DATASET_ROOT_DIR`.
 
@@ -224,13 +232,40 @@ For pre-commit setup, DCO sign-off (`git commit -s`), the fork-based PR workflow
 
 ## Coding Conventions
 
-For C++ naming (`snake_case`, `d_`/`h_` prefixes, `_t` suffix), file extensions (`.hpp`/`.cpp`/`.cu`/`.cuh` and which compiler each uses), include order, Python style, error handling (`CUOPT_EXPECTS`, `RAFT_CUDA_TRY`), memory management (RMM patterns, no raw `new`/`delete`), test-impact rules, and volatile-comment rules (hardware names and self-referential issue/PR numbers in comments or skip messages go stale; issue links to a separate tracking issue are fine), see [references/conventions.md](references/conventions.md).
+Use the existing compensated sum and dot routines for numerically sensitive accumulation in `f_t`.
+Use `_Float128` only when compensated `f_t` is demonstrably insufficient. Never use `long double`;
+its ABI-dependent representation includes slow x87 extended precision on x86-64, binary128 on Linux
+AArch64, and binary64 on other ARM64 targets.
+
+For C++ naming (`snake_case`, `d_`/`h_` prefixes, `_t` suffix), file extensions (`.hpp`/`.cpp`/`.cu`/`.cuh` and which compiler each uses), include order, Python style, error handling (`CUOPT_EXPECTS`, `RAFT_CUDA_TRY`), memory management (RMM patterns, no raw `new`/`delete`), CCCL bit/math helpers in device code, test-impact rules, volatile-comment rules (hardware names and self-referential issue/PR numbers in comments or skip messages go stale; issue links to a separate tracking issue are fine), **no large local lambdas** (extract named helpers instead), and **coarse work-estimate / time-limit gating** (phase/outer-loop only; no fine inner-loop or double checks), see [references/conventions.md](references/conventions.md).
 
 ## OpenMP task/runtime compatibility
 
 Treat `#pragma omp task if(...) firstprivate(...)` with a non-trivial C++ capture as runtime-ABI-sensitive. In affected LLVM libomp versions, the GCC `GOMP_task` compatibility path skips the GCC copy function for an included (`if(false)`) task, so the task body can observe an unconstructed object. Branch explicitly instead: create the OpenMP task only when deferral is wanted, and call the body synchronously otherwise.
 
 When diagnosing OpenMP-only failures, test compiler/runtime pairs separately. A Clang + libomp pass exercises the `__kmpc_*` ABI and does not cover GCC + libomp's `GOMP_*` path; reduce suspicious cases to a direct runtime-ABI probe before attributing them to solver logic.
+
+## PCG random number generator
+
+`cpp/src/utilities/pcgenerator.hpp` (`cuopt::pcgenerator_t`) is copied from RAFT's `PCGenerator` (`raft/random/detail/rng_device.cuh`), duplicated only because the RAFT header pulls in CUDA and therefore cannot be included from a `.cpp`. **Treat the generator core as frozen.** Do not "clean it up", modernise it, or swap it for `<random>`: reproducibility under `settings.random_seed` and `settings.deterministic` holds only while the byte-for-byte output sequence is preserved, and the CPU copy must keep producing the same stream as the GPU one. Adding a *new* helper that consumes `next_u32()`/`next_double()` is fine; changing how those values are produced is not.
+
+### RNG call-site policy
+
+Use SplitMix or `derive_seed`/`derive_stream` to fan a base seed out into component, worker, or lane seeds. Do not derive child seeds with arithmetic magic constants.
+
+When solver state owns a PCG, seed it once and pass or reuse it. Do not reconstruct generators inside iterations from `seed + constant * iteration`.
+
+Use `pcgenerator_t::uniform(low, high)` for uniform `[low, high)` draws and `shuffle()` for permutations. Use `next_float()` or `next_double()` directly only for probability thresholds.
+
+Each of the following looks like a defect or an obvious simplification, and is neither. Leave them alone:
+
+- `stream = (subsequence << 1u) | 1u` in `set_seed`. A 2^64 LCG has full period only when its increment is odd — the `| 1u` is what guarantees that — and the `<< 1u` is why two subsequences must differ in their **low 63 bits** to get independent streams.
+- The two `next(discard)` warm-up calls straddling `state += seed`. This is PCG's canonical seeding sequence, and it is what decorrelates *adjacent* seeds — which is exactly how cuOpt seeds workers (`settings.random_seed + pcgenerator_t::default_seed + rng_offset + worker_id`, `branch_and_bound/worker.hpp`). Collapsing it to `state = seed` makes neighbouring workers draw near-identical prefixes.
+- The output permutation in `next_u32` (`>> 18u`, `^`, `>> 27u`, `rot = oldstate >> 59u`, `(-rot) & 31u`) — the PCG-XSH-RR constants for a 64→32-bit output. In particular `(-rot) & 31u` relies on unsigned wraparound; rewriting it as `32 - rot` is a shift by 32, i.e. undefined behaviour, whenever `rot == 0`.
+- The multiplier `6364136223846793005ULL`, which appears in both `next_u32` and as `h` in `skipahead`. `skipahead` is the closed-form LCG jump (Brown's arbitrary-stride method) and matches N calls to `next_u32` only while the two constants are identical.
+- The `>> 8` / `>> 11` in `next_float` / `next_double`. They yield exactly 24 and 53 mantissa bits, so the result lies in `[0, 1)`. Dividing by `UINT32_MAX` instead makes `1.0` reachable and breaks every `rng.next_double() * n` used as an index.
+- The sign-bit masks in `next_i32` / `next_i64` (`& 0x7fffffff…`); callers rely on the results being non-negative.
+- `uniform()`'s floating-point scaling and `shuffle()`'s Fisher-Yates order. `uniform()`'s slight bias is documented and accepted; substituting a modulo or `std::uniform_int_distribution` changes every sampled sequence.
 
 ## Troubleshooting & CI
 
@@ -246,6 +281,8 @@ For build/test pitfalls (Cython rebuild, OOM, CUDA driver mismatch, missing `nvc
 | Conda environments | `conda/environments/` |
 | Test data | `datasets/` |
 | CI scripts | `ci/` |
+| gRPC field registry | `cpp/src/grpc/codegen/field_registry.yaml` |
+| gRPC generated output | `cpp/src/grpc/codegen/generated/` (never hand-edit) |
 
 ## Canonical Documentation
 

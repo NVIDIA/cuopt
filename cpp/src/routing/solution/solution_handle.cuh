@@ -1,14 +1,14 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 
 #pragma once
 
+#include <cuda/stream>
 #include <raft/util/cudart_utils.hpp>
-#include <rmm/cuda_stream_view.hpp>
 #include <rmm/exec_policy.hpp>
 
 #include <mutex>
@@ -30,7 +30,7 @@ class solution_handle_t {
   solution_handle_t(solution_handle_t&&)                 = delete;
   solution_handle_t& operator=(solution_handle_t&&)      = delete;
 
-  solution_handle_t(rmm::cuda_stream_view stream)
+  solution_handle_t(cuda::stream_ref stream)
     : dev_id_([]() -> i_t {
         i_t cur_dev = -1;
         RAFT_CUDA_TRY(cudaGetDevice(&cur_dev));
@@ -42,9 +42,9 @@ class solution_handle_t {
   }
 
   rmm::exec_policy& get_thrust_policy() const noexcept { return *thrust_policy_; }
-  rmm::cuda_stream_view get_stream() const noexcept { return stream_view_; }
+  cuda::stream_ref get_stream() const noexcept { return stream_view_; }
   i_t get_device() const { return dev_id_; }
-  void sync_stream() const { stream_view_.synchronize(); };
+  void sync_stream() const { stream_view_.sync(); };
 
   const cudaDeviceProp& get_device_properties() const
   {
@@ -72,7 +72,7 @@ class solution_handle_t {
   mutable bool device_prop_initialized_{false};
 
   mutable bool shared_attr_initialized_{false};
-  rmm::cuda_stream_view stream_view_{};
+  cuda::stream_ref stream_view_{};
   // this is a shared pointer to be able to copy construct and keep a copy of a solution
   std::shared_ptr<rmm::exec_policy> thrust_policy_{nullptr};
 };

@@ -42,16 +42,21 @@ Step 4: Pull the container:
         docker pull CONTAINER_IMAGE_PATH
 
 
-The container includes both the Python API and self-hosted server components. To run the container:
+The container includes the HTTP proxy, ``cuopt_grpc_server``, and the legacy REST server. The default command starts the proxy on port **5000** (same as ``cuopt_service``) and gRPC on port **5001**:
 
 .. code-block:: bash
 
-    docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 <CONTAINER_IMAGE_PATH>
+    docker run --gpus all -it --rm -p 5000:5000 <CONTAINER_IMAGE_PATH>
+
+The gRPC process listens on port 5001 inside the container for the proxy, but
+that port is not published by this command.
+
+``CUOPT_SERVER_TYPE`` always takes precedence and selects the server: ``proxy`` (the default), ``grpc``, or ``legacy``. When it is unset, those same words can be passed as the container command (see :doc:`../cuopt-grpc/advanced`).
 
 NVIDIA Launchable
 -------------------
 
-NVIDIA cuOpt can be tested with `NVIDIA Launchable <https://brev.nvidia.com/launchable/deploy?launchableID=env-2qIG6yjGKDtdMSjXHcuZX12mDNJ>`_ with `example notebooks <https://github.com/NVIDIA/cuopt-examples>`_. For more details, please refer to the `NVIDIA Launchable documentation <https://docs.nvidia.com/brev/latest/>`_.
+NVIDIA cuOpt can be tested with `NVIDIA Launchable <https://brev.nvidia.com/launchable/deploy?launchableID=env-2qIG6yjGKDtdMSjXHcuZX12mDNJ>`_ with `example notebooks <https://github.com/NVIDIA/cuopt-examples>`_. For more details, please refer to the `NVIDIA Launchable documentation <https://docs.nvidia.com/brev/getting-started/overview>`_.
 
 Smoke Test
 ----------
@@ -60,7 +65,7 @@ After installation, you can verify that cuOpt Server is working correctly by run
 
 .. note::
 
-   The following example is for running the server locally. If you are using the container approach, you should comment out the server start and kill commands in the script below since the server is already running in the container.
+   The following example is for running the server locally on port 8000. If the container from the example above is already running, comment out the server start and kill commands in the script below and set ``SERVER_PORT=5000`` so the health check uses the published container port.
 
 The following example is testing with a simple routing problem constuctured as Json request and sent over HTTP to the server using ``curl``.This example is running server with few configuration options such as ``--ip`` and ``--port``.
 Additional configuration options for server can be found in :doc:`Server CLI <server-api/server-cli>`.

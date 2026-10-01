@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import copy
@@ -91,7 +91,7 @@ def test_invalid_values_set_task_data(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "task_locations represent index locations and must be greater than or equal to 0",  # noqa
-        "error_result": True,
+        "error_result": False,
     }
 
     # demand can be negative in the pickup and delivery case as of 2022-04-16.
@@ -107,7 +107,7 @@ def test_invalid_values_set_task_data(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "pickup_and_delivery_pairs represent order index and must be greater than or equal to 0",  # noqa
-        "error_result": True,
+        "error_result": False,
     }
 
     # all task time windows must be greater than or equal to 0
@@ -120,7 +120,7 @@ def test_invalid_values_set_task_data(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "task_time_windows must be greater than or equal to 0",
-        "error_result": True,
+        "error_result": False,
     }
 
     # all task service_times must be greater than or equal to 0
@@ -133,7 +133,7 @@ def test_invalid_values_set_task_data(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "service_times must be greater than or equal to 0",
-        "error_result": True,
+        "error_result": False,
     }
 
     # Length of prizes should be equal to number of task locations
@@ -144,7 +144,7 @@ def test_invalid_values_set_task_data(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "Size of the task prizes should be equal to number of tasks",  # noqa
-        "error_result": True,
+        "error_result": False,
     }
 
     # Order Id should be non negative and should be less than number of
@@ -160,7 +160,7 @@ def test_invalid_values_set_task_data(cuoptproc):  # noqa
     print("response = ", response_set.json())
     assert response_set.json() == {
         "error": "One or more Order IDs provided are not in the expected range in task vehicle match, should be within [0,  len(Task Locations) )",  # noqa
-        "error_result": True,
+        "error_result": False,
     }
 
 
@@ -173,7 +173,7 @@ def test_invalid_length_set_task_data(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "All arrays defining task properties must be of consistent length",  # noqa
-        "error_result": True,
+        "error_result": False,
     }
 
 
@@ -186,7 +186,7 @@ def test_invalid_demand_set_task_data(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "All demand dimensions must have length equal to the number of tasks",  # noqa
-        "error_result": True,
+        "error_result": False,
     }
 
 
@@ -200,7 +200,7 @@ def test_invalid_pickup_and_delivery_set_task_data(cuoptproc):  # noqa
     assert response_set_1.status_code == 400
     assert response_set_1.json() == {
         "error": "pickup_and_delivery_pairs assignments must be in the set of task/order indices and all task location indices must be used",  # noqa
-        "error_result": True,
+        "error_result": False,
     }
 
     test_data["task_data"]["pickup_and_delivery_pairs"] = [[1, 1], [2, 3]]
@@ -208,7 +208,7 @@ def test_invalid_pickup_and_delivery_set_task_data(cuoptproc):  # noqa
     assert response_set_2.status_code == 400
     assert response_set_2.json() == {
         "error": "pickup_and_delivery_pairs assignments must be in the set of task/order indices and all task location indices must be used",  # noqa
-        "error_result": True,
+        "error_result": False,
     }
 
 
@@ -226,7 +226,7 @@ def test_invalid_time_windows_set_task_data(cuoptproc):  # noqa
     assert response_set_1.status_code == 400
     assert response_set_1.json() == {
         "error": "All task_time_windows must be of length 2. 0:earliest, 1:latest",  # noqa
-        "error_result": True,
+        "error_result": False,
     }
 
     test_data["task_data"]["task_time_windows"] = [
@@ -239,7 +239,7 @@ def test_invalid_time_windows_set_task_data(cuoptproc):  # noqa
     assert response_set_2.status_code == 400
     assert response_set_2.json() == {
         "error": "All task time windows must have task_x_time_window[0] < task_x_time_window[1]",  # noqa
-        "error_result": True,
+        "error_result": False,
     }
 
 
@@ -252,7 +252,7 @@ def test_invalid_service_time_set_task_data(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "All arrays defining task properties must be of consistent length",  # noqa
-        "error_result": True,
+        "error_result": False,
     }
 
 
@@ -267,7 +267,7 @@ def test_invalid_order_vehicle_match(cuoptproc):  # noqa
     assert response_set.status_code == 400
     assert response_set.json() == {
         "error": "vehicle Id should be greater than or equal to zero",  # noqa
-        "error_result": True,
+        "error_result": False,
     }
 
 

@@ -14,12 +14,11 @@
 #include <thrust/tuple.h>
 #include <mip_heuristics/logger.cuh>
 #include <mip_heuristics/mip_constants.hpp>
-#include <utilities/seed_generator.cuh>
 
 namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
-lb_bounds_repair_t<i_t, f_t>::lb_bounds_repair_t(const raft::handle_t* handle_ptr)
+lb_bounds_repair_t<i_t, f_t>::lb_bounds_repair_t(const raft::handle_t* handle_ptr, uint64_t seed)
   : candidates(handle_ptr),
     best_bounds(handle_ptr),
     cstr_violations_up(0, handle_ptr->get_stream()),
@@ -27,7 +26,7 @@ lb_bounds_repair_t<i_t, f_t>::lb_bounds_repair_t(const raft::handle_t* handle_pt
     violated_constraints(0, handle_ptr->get_stream()),
     violated_cstr_map(0, handle_ptr->get_stream()),
     total_vio(handle_ptr->get_stream()),
-    gen(cuopt::seed_generator::get_seed()),
+    gen(seed),
     cycle_vector(MAX_CYCLE_SEQUENCE, -1)
 {
 }
@@ -269,14 +268,14 @@ void lb_bounds_repair_t<i_t, f_t>::compute_damages(
   // TODO check performance, we can apply load balancing here
   const i_t TPB = 256;
   using f_t2    = typename type_2<f_t>::type;
-  compute_damages_kernel<i_t, f_t, f_t2>
-    <<<n_candidates, TPB, 0, handle_ptr->get_stream()>>>(original_problem.view(),
-                                                         candidates.view(),
-                                                         make_span_2(problem.variable_bounds),
-                                                         make_span(cstr_violations_up),
-                                                         make_span(cstr_violations_down),
-                                                         make_span_2(lb_bound_presolve.cnst_slack));
-  RAFT_CHECK_CUDA(handle_ptr->get_stream());
+  compute_damages_kernel<i_t, f_t, f_t2><<<n_candidates, TPB, 0, handle_ptr->get_stream().get()>>>(
+    original_problem.view(),
+    candidates.view(),
+    make_span_2(problem.variable_bounds),
+    make_span(cstr_violations_up),
+    make_span(cstr_violations_down),
+    make_span_2(lb_bound_presolve.cnst_slack));
+  RAFT_CHECK_CUDA(handle_ptr->get_stream().get());
   auto sort_iterator = thrust::make_zip_iterator(
     thrust::make_tuple(candidates.cstr_delta.data(), candidates.damage.data()));
   // sort the best moves so that we can filter

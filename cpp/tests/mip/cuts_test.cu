@@ -13,6 +13,7 @@
 #include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
 #include <cuopt/mathematical_optimization/solve.hpp>
 #include <cuts/cuts.hpp>
+#include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
 #include <mip_heuristics/problem/problem.cuh>
 #include <utilities/common_utils.hpp>
@@ -422,7 +423,7 @@ void disable_non_clique_cuts(mip_solver_settings_t<int, double>& settings)
 
 void disable_non_zero_half_cuts(mip_solver_settings_t<int, double>& settings)
 {
-  settings.clique_cuts                = 1;
+  settings.clique_cuts                = 0;
   settings.zero_half_cuts             = 1;
   settings.max_cut_passes             = 10;
   settings.mixed_integer_gomory_cuts  = 0;
@@ -1050,6 +1051,7 @@ TEST(cuts, test_duplicate_cuts_detection)
   cut_pool.add_cut(mip::cut_type_t::MIXED_INTEGER_GOMORY, cut8);
 
   cut_pool.check_for_duplicate_cuts();
+  EXPECT_EQ(cut_pool.pool_size(), 5);
 }
 
 TEST(cuts, clique_phase1_smoke_conflict_graph_edges)
@@ -1252,6 +1254,29 @@ TEST(cuts, clique_phase4_tree_depth_limit_smoke)
     EXPECT_NEAR(
       root_only_solution.get_objective_value(), deeper_solution.get_objective_value(), 1e-6);
   }
+}
+
+TEST(cuts, async_clique_table_closes_triangle_root_gap)
+{
+  const raft::handle_t handle{};
+  auto problem = create_pairwise_triangle_set_packing_problem();
+
+  mip_solver_settings_t<int, double> settings;
+  settings.time_limit      = 10.0;
+  settings.presolver       = presolver_t::None;
+  settings.node_limit      = 0;
+  settings.num_cpu_threads = CUOPT_MIP_CLIQUE_CUTS_REQUIRED_THREAD_COUNT;
+  disable_non_clique_cuts(settings);
+
+  benchmark_info_t benchmark_info;
+  settings.benchmark_info_ptr = &benchmark_info;
+  auto solution               = solve_mip(&handle, problem, settings);
+
+  EXPECT_NE(solution.get_termination_status(), mip_termination_status_t::Infeasible);
+  ASSERT_FALSE(std::isnan(benchmark_info.root_lp_no_cuts));
+  ASSERT_FALSE(std::isnan(benchmark_info.root_lp_with_cuts));
+  EXPECT_NEAR(benchmark_info.root_lp_no_cuts, -1.5, kCliqueTestTol);
+  EXPECT_NEAR(benchmark_info.root_lp_with_cuts, -1.0, kCliqueTestTol);
 }
 
 TEST(cuts, clique_phase5_ignores_non_binary_variables)
@@ -1551,6 +1576,57 @@ TEST(cuts, zero_half_unit_separator_simple_pentagon)
   EXPECT_TRUE(found);
 }
 
+TEST(cuts, zero_half_unit_mod2_row_finder_single_pair_and_four_row_dependencies)
+{
+  // Empty parity with odd rhs is a one-row zero-half aggregation.
+  {
+    const std::vector<std::vector<int>> parity_rows = {{}};
+    const std::vector<char> rhs_parity              = {1};
+    const auto combinations =
+      mip::find_mod2_row_combinations_for_test(parity_rows, rhs_parity, 8, 8);
+    ASSERT_EQ(combinations.size(), 1);
+    EXPECT_EQ(combinations.front(), std::vector<int>{0});
+  }
+
+  // Equal parity and opposite rhs form a two-row dependency.
+  {
+    const std::vector<std::vector<int>> parity_rows = {{0, 2}, {0, 2}};
+    const std::vector<char> rhs_parity              = {0, 1};
+    const auto combinations =
+      mip::find_mod2_row_combinations_for_test(parity_rows, rhs_parity, 8, 8);
+    ASSERT_EQ(combinations.size(), 1);
+    EXPECT_EQ(combinations.front(), (std::vector<int>{0, 1}));
+  }
+
+  // Four edges of an even cycle cancel in GF(2); the odd aggregate rhs makes
+  // the dependency eligible for a zero-half cut.
+  {
+    const std::vector<std::vector<int>> parity_rows = {{0, 1}, {1, 2}, {2, 3}, {0, 3}};
+    const std::vector<char> rhs_parity              = {1, 0, 0, 0};
+    const auto combinations =
+      mip::find_mod2_row_combinations_for_test(parity_rows, rhs_parity, 8, 8);
+    ASSERT_EQ(combinations.size(), 1);
+    EXPECT_EQ(combinations.front(), (std::vector<int>{0, 1, 2, 3}));
+  }
+}
+
+TEST(cuts, zero_half_unit_mod2_row_finder_stops_at_work_limit)
+{
+  std::vector<int> support(64);
+  std::iota(support.begin(), support.end(), 0);
+  const std::vector<std::vector<int>> parity_rows(256, support);
+  const std::vector<char> rhs_parity(256, 0);
+
+  constexpr double max_work = 18900.0;
+  double work               = 0.0;
+  const auto combinations =
+    mip::find_mod2_row_combinations_for_test(parity_rows, rhs_parity, 64, 1000, max_work, &work);
+
+  EXPECT_TRUE(combinations.empty());
+  EXPECT_GT(work, max_work);
+  EXPECT_LT(work, 19100.0);
+}
+
 TEST(cuts, zero_half_unit_separator_no_cycle_for_4_cycle)
 {
   // Even cycle: 0-1-2-3-0
@@ -1682,6 +1758,28 @@ TEST(cuts, zero_half_end_to_end_pentagon_tightens_lp_relaxation)
   auto mip_solution = solve_mip(&handle, mip_problem, settings);
   ASSERT_EQ(mip_solution.get_termination_status(), mip_termination_status_t::Optimal);
   EXPECT_NEAR(mip_solution.get_objective_value(), -2.0, kCliqueTestTol);
+}
+
+TEST(cuts, zero_half_end_to_end_general_row_parity_closes_triangle_root_gap)
+{
+  const raft::handle_t handle{};
+  auto mip_problem = create_pairwise_triangle_set_packing_problem();
+
+  mip_solver_settings_t<int, double> settings;
+  settings.time_limit = 10.0;
+  settings.presolver  = presolver_t::None;
+  settings.node_limit = 0;
+  disable_non_zero_half_cuts(settings);
+
+  benchmark_info_t benchmark_info;
+  settings.benchmark_info_ptr = &benchmark_info;
+  auto mip_solution           = solve_mip(&handle, mip_problem, settings);
+
+  EXPECT_NE(mip_solution.get_termination_status(), mip_termination_status_t::Infeasible);
+  ASSERT_FALSE(std::isnan(benchmark_info.root_lp_no_cuts));
+  ASSERT_FALSE(std::isnan(benchmark_info.root_lp_with_cuts));
+  EXPECT_NEAR(benchmark_info.root_lp_no_cuts, -1.5, kCliqueTestTol);
+  EXPECT_NEAR(benchmark_info.root_lp_with_cuts, -1.0, kCliqueTestTol);
 }
 
 TEST(cuts, zero_half_unit_separator_seven_cycle_violated_below_half)
@@ -1886,26 +1984,30 @@ TEST(cuts, flow_cover_generates_valid_single_node_flow_cut)
                                                       test_problem.new_slacks);
   ASSERT_GT(generator.num_constraints(), 0);
 
-  int generated_cuts = 0;
-  for (const auto& flow_cover_row : generator.get_constraints()) {
-    mip::inequality_t<int, double> cut(test_problem.lp.num_cols);
-    const int status = generator.generate_cut(test_problem.lp,
-                                              test_problem.settings,
-                                              test_problem.Arow,
-                                              variable_bounds,
-                                              test_problem.var_types,
-                                              xstar,
-                                              flow_cover_row,
-                                              cut);
-    if (status != 0) { continue; }
+  for (int pass = 0; pass < 2; pass++) {
+    generator.preprocess_cut_pass(test_problem.lp, variable_bounds, test_problem.var_types, xstar);
 
-    EXPECT_LT(cut.vector.dot(xstar), cut.rhs - 1e-6)
-      << "row=" << flow_cover_row.row << " reverse=" << flow_cover_row.reverse;
-    expect_single_node_flow_cut_valid_at_extreme_points(cut, test_problem.lp.num_cols);
-    generated_cuts++;
+    int generated_cuts = 0;
+    for (const auto& flow_cover_row : generator.get_constraints()) {
+      mip::inequality_t<int, double> cut(test_problem.lp.num_cols);
+      const int status = generator.generate_cut(test_problem.lp,
+                                                test_problem.settings,
+                                                test_problem.Arow,
+                                                variable_bounds,
+                                                test_problem.var_types,
+                                                xstar,
+                                                flow_cover_row,
+                                                cut);
+      if (status != 0) { continue; }
+
+      EXPECT_LT(cut.vector.dot(xstar), cut.rhs - 1e-6)
+        << "row=" << flow_cover_row.row << " reverse=" << flow_cover_row.reverse;
+      expect_single_node_flow_cut_valid_at_extreme_points(cut, test_problem.lp.num_cols);
+      generated_cuts++;
+    }
+
+    EXPECT_GT(generated_cuts, 0);
   }
-
-  EXPECT_GT(generated_cuts, 0);
 }
 
 }  // namespace cuopt::mathematical_optimization::test

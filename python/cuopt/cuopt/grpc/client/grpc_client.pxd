@@ -44,6 +44,13 @@ cdef extern from "cuopt/routing/cpu_routing_problem.hpp" namespace "cuopt::routi
         int32_t duration
         vector[int32_t] locations
 
+    cdef cppclass cpu_vehicle_distance_break_t:
+        cpu_vehicle_distance_break_t() except +
+        float distance_min
+        float distance_max
+        int32_t duration
+        vector[int32_t] locations
+
     cdef cppclass cpu_initial_solution_t:
         cpu_initial_solution_t() except +
         vector[int32_t] vehicle_ids
@@ -78,6 +85,7 @@ cdef extern from "cuopt/routing/cpu_routing_problem.hpp" namespace "cuopt::routi
         vector[int32_t] break_locations
         vector[cpu_uniform_break_t] uniform_breaks
         cpp_map[int32_t, vector[cpu_vehicle_break_t]] vehicle_breaks
+        cpp_map[int32_t, vector[cpu_vehicle_distance_break_t]] vehicle_distance_breaks
         cpp_map[int32_t, vector[int32_t]] vehicle_order_match
         cpp_map[int32_t, vector[int32_t]] order_vehicle_match
         cpp_map[int32_t, vector[int32_t]] order_precedence
@@ -100,6 +108,7 @@ cdef extern from "cuopt/routing/cpu_routing_problem.hpp" namespace "cuopt::routi
         int32_t status
         string status_message
         string error_message
+        double solve_time
 
 
 cdef extern from "cuopt/routing/solver_settings.hpp" namespace "cuopt::routing":  # noqa
@@ -188,6 +197,7 @@ cdef extern from "cuopt/grpc/cython_grpc_client.hpp" namespace "cuopt::cython":
             const grpc_python_client_connect_options_t& options,
         ) except +
         bint connect(string& error_out) except +
+        bint ping(string& error_out, int timeout_seconds) except + nogil
         string last_error()
 
         # Shared job control
@@ -201,6 +211,7 @@ cdef extern from "cuopt/grpc/cython_grpc_client.hpp" namespace "cuopt::cython":
             data_model_view_t[int, double]* data_model,
             lp_solver_settings_t[int, double]* settings,
             bint enable_incumbents,
+            bint enable_set_incumbent,
         ) except +
         grpc_result_outcome_t result(const string& job_id) except +
         grpc_logs_result_t fetch_logs(const string& job_id, long long from_byte) except +

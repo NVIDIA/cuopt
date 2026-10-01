@@ -14,6 +14,7 @@
 #include <utilities/logger.hpp>
 #include <utilities/macros.cuh>
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstdio>
@@ -21,6 +22,7 @@
 #include <limits>
 #include <stdexcept>
 #include <tuple>
+#include <unordered_map>
 #include <unordered_set>
 
 #include <linear_algebra/dense_matrix.hpp>
@@ -1227,21 +1229,26 @@ f_t cut_pool_t<i_t, f_t>::cut_orthogonality(i_t i, i_t j)
 template <typename i_t, typename f_t>
 void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
 {
-  // Algorithm from Finding Duplicate Rows in a Linear Programming Model
-  // by J. A. Tomlin and J.S. Welch
-  // Operations Research Letters Volume 5, Number 1, June 1986
-  std::vector<f_t> divisors(cut_storage_.m, 0.0);
-  std::vector<i_t> sets(cut_storage_.m, 0);
+  const i_t m = cut_storage_.m;
 
+  constexpr f_t duplicate_tolerance = 1e-10;
+  std::vector<f_t> divisors(m, 0.0);
+  std::vector<i_t> sets(m, 0);
   csc_matrix_t<i_t, f_t> cut_storage_csc(0, 0, 1);
   cut_storage_.to_compressed_col(cut_storage_csc);
-  i_t n = cut_storage_csc.n;
-  i_t m = cut_storage_csc.m;
-
+  const i_t n        = cut_storage_csc.n;
   const i_t sentinel = std::numeric_limits<i_t>::max();
 
+  // Algorithm from Finding Duplicate Rows in a Linear Programming Model
+  // by J. A. Tomlin and J.S. Welch
+  // Operations Research Letters Volume 5, Number 1, June 1986.
+  //
+  // Preserve the legacy partition refinement and row-ordered deletion semantics, but group
+  // entries by their current set in compressed storage. This avoids scanning unrelated later
+  // entries without changing the first matching partner or the resulting removal mask.
   i_t new_set                        = 1;
-  i_t remaining_potential_duplicates = cut_storage_.m;
+  i_t remaining_potential_duplicates = m;
+  compressed_set_groups_t<i_t> set_groups;
   for (i_t j = 0; j < n; j++) {
     i_t r0        = -1;
     i_t new_rows  = 0;
@@ -1249,33 +1256,36 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
     new_set++;
     const i_t col_start = cut_storage_csc.col_start[j];
     const i_t col_end   = cut_storage_csc.col_start[j + 1];
+
+    set_groups.build_with_entry_indices(col_start, col_end, new_set_0, cut_storage_csc.i, sets);
+
     for (i_t p = col_start; p < col_end; p++) {
       const i_t r    = cut_storage_csc.i[p];
       const f_t a_rj = cut_storage_csc.x[p];
       const f_t f_r  = divisors[r];
       if (sets[r] == 0) {
-        r0          = r;  // To enable use to find this new set later
+        r0          = r;  // To enable us to find this new set later.
         sets[r]     = new_set_0;
         divisors[r] = a_rj;
         new_rows++;
       } else if (sets[r] < new_set_0) {
-        // Look over indices a_ij with i > r
-        for (i_t q = p + 1; q < col_end; q++) {
+        const i_t old_set = sets[r];
+        bool matched      = false;
+        // Loop over all indices a_ij with i > r where i is in the same set as r.
+        for (const i_t q : set_groups.entries_after(old_set, p)) {
           const i_t i    = cut_storage_csc.i[q];
           const f_t a_ij = cut_storage_csc.x[q];
-          if (sets[i] == sets[r]) {
-            // These two rows are currently in the same set
-            // Check to see if the coefficients still match
-            const f_t f_i     = divisors[i];
-            const f_t val     = (a_rj / f_r) * (f_i / a_ij);
-            const f_t epsilon = 1e-10;
-            if ((val >= 1.0 - epsilon && val <= 1.0 + epsilon)) {
-              sets[r] = new_set;
-              sets[i] = new_set;
-            }
+          if (sets[i] != old_set) { continue; }
+          const f_t f_i = divisors[i];
+          const f_t val = (a_rj / f_r) * (f_i / a_ij);
+          if (val >= 1.0 - duplicate_tolerance && val <= 1.0 + duplicate_tolerance) {
+            sets[r] = new_set;
+            sets[i] = new_set;
+            matched = true;
+            break;
           }
         }
-        if (sets[r] >= new_set_0) {  // This is only true if a match was found inside the above loop
+        if (matched) {
           new_set++;
         } else {
           sets[r] = sentinel;
@@ -1292,45 +1302,46 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
     }
   }
 
-  // The cuts are stored in the form: sum_j d_ij x_j >= rhs_i
-  // We now look for cuts that are duplicates of each other and remove them
+  // The cuts are stored in the form: sum_j d_ij x_j >= rhs_i.
+  // We now look for cuts that are duplicates of each other and remove them.
+  set_groups.build(0, m, new_set, sets);
+
   std::vector<i_t> cuts_to_remove(m, 0);
   i_t num_cuts_to_remove = 0;
   for (i_t r = 0; r < m; r++) {
     const i_t set_r = sets[r];
-    if (set_r > 0 && set_r < sentinel && cuts_to_remove[r] == 0) {
-      // This cut has a duplicate
-      for (i_t i = r + 1; i < m; i++) {
-        if (sets[i] == set_r) {
-          const f_t f_r     = divisors[r];
-          const f_t f_i     = divisors[i];
-          const f_t theta_r = rhs_storage_[r] / f_r;
-          const f_t theta_i = rhs_storage_[i] / f_i;
-          if (f_r > 0 && f_i > 0) {
-            // We have sum_j d_rj / f_r x_j >= rhs_r / f_r = theta_r
-            //    and  sum_j d_ij / f_i x_j >= rhs_i / f_i = theta_i
-            if (theta_r <= theta_i) {
-              // Cut i is either the same or stronger than cut r
-              if (cuts_to_remove[r] == 0) { num_cuts_to_remove++; }
-              cuts_to_remove[r] = 1;  // Remove row r
-            } else {
-              // theta_r > theta_i, so cut r is stricly stronger than cut i
-              if (cuts_to_remove[i] == 0) { num_cuts_to_remove++; }
-              cuts_to_remove[i] = 1;  // Remove row i
-            }
-          } else if (f_r < 0 && f_i < 0) {
-            // We have sum_j d_rj / f_r x_j <= rhs_r / f_r = theta_r
-            //    and  sum_j d_ij / f_i x_j <= rhs_i / f_i = theta_i
-            if (theta_r >= theta_i) {
-              // Cut i is either the same or stronger than cut r
-              if (cuts_to_remove[r] == 0) { num_cuts_to_remove++; }
-              cuts_to_remove[r] = 1;  // Remove row r
-            } else {
-              // theta_r < theta_i, so cut r is strictly stronger than cut i
-              if (cuts_to_remove[i] == 0) { num_cuts_to_remove++; }
-              cuts_to_remove[i] = 1;  // Remove row i
-            }
-          }
+    if (set_r <= 0 || set_r >= sentinel || cuts_to_remove[r] != 0) { continue; }
+    // This cut has a duplicate. The set members are in row order, preserving the legacy
+    // strongest-cut selection order without scanning unrelated rows.
+    for (const i_t i : set_groups.entries_after(set_r, r)) {
+      const f_t f_r     = divisors[r];
+      const f_t f_i     = divisors[i];
+      const f_t theta_r = rhs_storage_[r] / f_r;
+      const f_t theta_i = rhs_storage_[i] / f_i;
+      if (f_r > 0.0 && f_i > 0.0) {
+        // We have sum_j d_rj / f_r x_j >= rhs_r / f_r = theta_r
+        //    and  sum_j d_ij / f_i x_j >= rhs_i / f_i = theta_i.
+        if (theta_r <= theta_i) {
+          // Cut i is either the same or stronger than cut r.
+          if (cuts_to_remove[r] == 0) { num_cuts_to_remove++; }
+          cuts_to_remove[r] = 1;  // Remove row r.
+        } else {
+          // theta_r > theta_i, so cut r is strictly stronger than cut i.
+          if (cuts_to_remove[i] == 0) { num_cuts_to_remove++; }
+          cuts_to_remove[i] = 1;  // Remove row i.
+        }
+      } else if (f_r < 0.0 && f_i < 0.0) {
+        // Dividing by a negative divisor reverses the inequality:
+        // sum_j d_rj / f_r x_j <= rhs_r / f_r = theta_r
+        //    and  sum_j d_ij / f_i x_j <= rhs_i / f_i = theta_i.
+        if (theta_r >= theta_i) {
+          // Cut i is either the same or stronger than cut r.
+          if (cuts_to_remove[r] == 0) { num_cuts_to_remove++; }
+          cuts_to_remove[r] = 1;  // Remove row r.
+        } else {
+          // theta_r < theta_i, so cut r is strictly stronger than cut i.
+          if (cuts_to_remove[i] == 0) { num_cuts_to_remove++; }
+          cuts_to_remove[i] = 1;  // Remove row i.
         }
       }
     }
@@ -1483,6 +1494,16 @@ bool flow_cover_is_zero_one_integer_variable(const flow_cover_context_t<i_t, f_t
   return context.var_types[j] == variable_type_t::INTEGER &&
          std::abs(context.lp.lower[j]) <= bound_tol &&
          std::abs(context.lp.upper[j] - 1.0) <= bound_tol;
+}
+
+template <typename f_t>
+static bool flow_cover_valid_endpoint_terms(f_t endpoint_term,
+                                            f_t binary_coefficient,
+                                            bool in_n2,
+                                            f_t bound_tol)
+{
+  return in_n2 ? endpoint_term <= bound_tol && endpoint_term + binary_coefficient <= bound_tol
+               : endpoint_term >= -bound_tol && endpoint_term + binary_coefficient >= -bound_tol;
 }
 
 // Per-arc feasibility tolerances shared by the arc-acceptance gate and the assertion in
@@ -1685,6 +1706,134 @@ flow_cover_generation_t<i_t, f_t>::flow_cover_generation_t(
   }
 }
 
+// Repeated (variable, side, coefficient) queries share the same a=0 candidate because xstar and
+// implied bounds are fixed for the pass. Cache that candidate and index nonzero-a candidates by
+// controller so each row examines only bounds affected by its binary coefficients, to avoid an
+// O(N^2) occurrence-by-bound scan when both grow with the model.
+template <typename i_t, typename f_t>
+void flow_cover_generation_t<i_t, f_t>::initialize_implied_bound_index(
+  implied_bound_index_t& index,
+  const std::vector<i_t>& offsets,
+  const std::vector<i_t>& variables,
+  const std::vector<f_t>& weights,
+  const std::vector<f_t>& biases,
+  const std::vector<variable_type_t>& var_types)
+{
+  cuopt_assert(!index.topology_initialized, "");
+  cuopt_assert(index.groups.empty(), "");
+  cuopt_assert(index.bound_indices.empty(), "");
+  cuopt_assert(index.active_bounds.empty(), "");
+  cuopt_assert(!offsets.empty(), "");
+  cuopt_assert(variables.size() == weights.size(), "");
+  cuopt_assert(variables.size() == biases.size(), "");
+  cuopt_assert(offsets.back() == (i_t)variables.size(), "");
+
+  index.y_group_offsets.resize(offsets.size());
+  std::vector<std::pair<i_t, i_t>> source_bounds;
+  const i_t number_of_variables = offsets.size() - 1;
+  for (i_t j = 0; j < number_of_variables; j++) {
+    cuopt_assert(offsets[j] <= offsets[j + 1], "");
+    cuopt_assert(offsets[j] >= 0, "");
+    cuopt_assert(offsets[j + 1] <= (i_t)variables.size(), "");
+    index.y_group_offsets[j] = index.groups.size();
+    source_bounds.clear();
+    source_bounds.reserve(offsets[j + 1] - offsets[j]);
+    for (i_t p = offsets[j]; p < offsets[j + 1]; p++) {
+      const i_t controller = variables[p];
+      cuopt_assert(controller >= 0 && controller < (i_t)var_types.size(), "");
+      if (var_types[controller] != variable_type_t::INTEGER || !std::isfinite(weights[p]) ||
+          !std::isfinite(biases[p])) {
+        continue;
+      }
+      source_bounds.emplace_back(controller, p);
+    }
+    std::sort(source_bounds.begin(), source_bounds.end());
+
+    size_t first = 0;
+    while (first < source_bounds.size()) {
+      implied_bound_group_t group;
+      group.controller    = source_bounds[first].first;
+      group.first_bound   = index.bound_indices.size();
+      group.minimum_alpha = biases[source_bounds[first].second];
+      group.maximum_alpha = biases[source_bounds[first].second];
+      size_t last         = first;
+      while (last < source_bounds.size() && source_bounds[last].first == group.controller) {
+        const i_t source_bound = source_bounds[last].second;
+        index.bound_indices.push_back(source_bound);
+        index.active_bounds.push_back(0.0);
+        group.minimum_alpha = std::min(group.minimum_alpha, biases[source_bound]);
+        group.maximum_alpha = std::max(group.maximum_alpha, biases[source_bound]);
+        last++;
+      }
+      group.number_of_bounds = index.bound_indices.size() - group.first_bound;
+      cuopt_assert(group.number_of_bounds > 0, "");
+      index.groups.push_back(group);
+      first = last;
+    }
+  }
+  index.y_group_offsets[number_of_variables] = index.groups.size();
+  cuopt_assert(index.bound_indices.size() == index.active_bounds.size(), "");
+  index.source_column_count  = number_of_variables;
+  index.source_bound_count   = variables.size();
+  index.topology_initialized = true;
+}
+
+template <typename i_t, typename f_t>
+void flow_cover_generation_t<i_t, f_t>::preprocess_cut_pass(
+  const lp_problem_t<i_t, f_t>& lp,
+  const variable_bounds_t<i_t, f_t>& variable_bounds,
+  const std::vector<variable_type_t>& var_types,
+  const std::vector<f_t>& xstar)
+{
+  cut_pass_preprocessed = false;
+  cuopt_assert(var_types.size() >= (size_t)lp.num_cols, "");
+  cuopt_assert(xstar.size() >= (size_t)lp.num_cols, "");
+  for (flow_cover_bound_side_t side :
+       {flow_cover_bound_side_t::UPPER, flow_cover_bound_side_t::LOWER}) {
+    const bool use_upper_bound = side == flow_cover_bound_side_t::UPPER;
+    const auto& offsets =
+      use_upper_bound ? variable_bounds.upper_offsets : variable_bounds.lower_offsets;
+    const auto& variables =
+      use_upper_bound ? variable_bounds.upper_variables : variable_bounds.lower_variables;
+    const auto& weights =
+      use_upper_bound ? variable_bounds.upper_weights : variable_bounds.lower_weights;
+    const auto& biases =
+      use_upper_bound ? variable_bounds.upper_biases : variable_bounds.lower_biases;
+    auto& preprocessed = use_upper_bound ? upper_implied_bounds : lower_implied_bounds;
+    cuopt_assert(offsets.size() >= (size_t)(lp.num_cols + 1), "");
+    cuopt_assert(variables.size() == weights.size(), "");
+    cuopt_assert(variables.size() == biases.size(), "");
+
+    if (!preprocessed.topology_initialized) {
+      initialize_implied_bound_index(preprocessed, offsets, variables, weights, biases, var_types);
+    } else {
+      cuopt_assert((size_t)preprocessed.source_bound_count == variables.size(), "");
+      cuopt_assert(offsets.size() >= (size_t)(preprocessed.source_column_count + 1), "");
+      for (size_t j = preprocessed.source_column_count; j < offsets.size(); j++) {
+        cuopt_assert(offsets[j] == preprocessed.source_bound_count, "");
+      }
+      preprocessed.y_group_offsets.resize(offsets.size(), preprocessed.groups.size());
+    }
+    preprocessed.zero_candidate_cache.clear();
+
+    for (const auto& group : preprocessed.groups) {
+      cuopt_assert(group.controller >= 0 && group.controller < lp.num_cols, "");
+      cuopt_assert(group.first_bound >= 0, "");
+      cuopt_assert(group.number_of_bounds > 0, "");
+      cuopt_assert(
+        group.first_bound + group.number_of_bounds <= (i_t)preprocessed.bound_indices.size(), "");
+      for (i_t bound = group.first_bound; bound < group.first_bound + group.number_of_bounds;
+           bound++) {
+        const i_t source_bound = preprocessed.bound_indices[bound];
+        cuopt_assert(source_bound >= 0 && source_bound < preprocessed.source_bound_count, "");
+        preprocessed.active_bounds[bound] =
+          weights[source_bound] * xstar[group.controller] + biases[source_bound];
+      }
+    }
+  }
+  cut_pass_preprocessed = true;
+}
+
 template <typename i_t, typename f_t>
 bool flow_cover_generation_t<i_t, f_t>::normalize_row_side(
   const flow_cover_context_t<i_t, f_t>& context,
@@ -1773,13 +1922,63 @@ bool flow_cover_generation_t<i_t, f_t>::normalize_row_side(
 }
 
 template <typename i_t, typename f_t>
+bool flow_cover_generation_t<i_t, f_t>::try_add_implied_bound_candidate(
+  const flow_cover_context_t<i_t, f_t>& context,
+  i_t variable,
+  f_t coefficient,
+  bool use_upper_bound,
+  i_t bound,
+  f_t binary_coefficient)
+{
+  const auto& preprocessed = use_upper_bound ? upper_implied_bounds : lower_implied_bounds;
+  cuopt_assert(bound >= 0 && bound < (i_t)preprocessed.bound_indices.size(), "");
+  const i_t source_bound = preprocessed.bound_indices[bound];
+  cuopt_assert(source_bound >= 0 && source_bound < preprocessed.source_bound_count, "");
+  const auto& bound_variables = use_upper_bound ? context.variable_bounds.upper_variables
+                                                : context.variable_bounds.lower_variables;
+  const auto& bound_weights =
+    use_upper_bound ? context.variable_bounds.upper_weights : context.variable_bounds.lower_weights;
+  const auto& bound_biases =
+    use_upper_bound ? context.variable_bounds.upper_biases : context.variable_bounds.lower_biases;
+
+  const f_t endpoint = use_upper_bound ? context.lp.lower[variable] : context.lp.upper[variable];
+  const bool in_n2   = use_upper_bound ? coefficient < 0.0 : coefficient > 0.0;
+  const i_t x_col    = bound_variables[source_bound];
+  const f_t gamma    = bound_weights[source_bound];
+  const f_t alpha    = bound_biases[source_bound];
+  cuopt_assert(flow_cover_is_zero_one_integer_variable(context, x_col), "");
+  const f_t signed_capacity = coefficient * gamma + binary_coefficient;
+  const f_t endpoint_term   = coefficient * (endpoint - alpha);
+  const f_t bound_tol       = context.settings.primal_tol;
+  const bool valid_endpoint =
+    flow_cover_valid_endpoint_terms(endpoint_term, binary_coefficient, in_n2, bound_tol) &&
+    (in_n2 ? signed_capacity <= bound_tol : signed_capacity >= -bound_tol);
+  if (!valid_endpoint) { return false; }
+
+  flow_cover_arc_spec_t<i_t, f_t> spec;
+  spec.u                    = in_n2 ? -signed_capacity : signed_capacity;
+  spec.in_n2                = in_n2;
+  spec.x_col                = x_col;
+  spec.fixed_x              = 0.0;
+  spec.y_const              = in_n2 ? coefficient * alpha : -coefficient * alpha;
+  spec.y_col                = variable;
+  spec.y_coeff              = in_n2 ? -coefficient : coefficient;
+  spec.y_x_coeff            = in_n2 ? -binary_coefficient : binary_coefficient;
+  spec.b_shift              = coefficient * alpha;
+  spec.active_bound         = preprocessed.active_bounds[bound];
+  spec.absorbs_binary_coeff = std::abs(binary_coefficient) > static_cast<f_t>(1e-6);
+  const size_t size         = candidates.size();
+  flow_cover_try_add_candidate(context, spec, context.xstar[variable], candidates);
+  return candidates.size() > size;
+}
+
+template <typename i_t, typename f_t>
 bool flow_cover_generation_t<i_t, f_t>::build_single_node_flow_relaxation(
   const flow_cover_context_t<i_t, f_t>& context, f_t b, f_t& single_node_flow_b)
 {
   auto& scratch             = *this;
   const f_t coefficient_tol = static_cast<f_t>(1e-6);
   const f_t feasibility_tol = context.settings.primal_tol;
-  const f_t bound_tol       = context.settings.primal_tol;
   f_t b_shift               = 0.0;
 
   scratch.arcs.reserve(scratch.continuous_terms.size() + scratch.binary_columns.size());
@@ -1791,52 +1990,96 @@ bool flow_cover_generation_t<i_t, f_t>::build_single_node_flow_relaxation(
     if (use_upper_bound && lower_j <= -inf) { return; }
     if (!use_upper_bound && upper_j >= inf) { return; }
 
-    const i_t start    = use_upper_bound ? context.variable_bounds.upper_offsets[j]
-                                         : context.variable_bounds.lower_offsets[j];
-    const i_t end      = use_upper_bound ? context.variable_bounds.upper_offsets[j + 1]
-                                         : context.variable_bounds.lower_offsets[j + 1];
-    const f_t endpoint = use_upper_bound ? lower_j : upper_j;
+    auto& preprocessed = use_upper_bound ? upper_implied_bounds : lower_implied_bounds;
+    cuopt_assert(j >= 0 && j + 1 < (i_t)preprocessed.y_group_offsets.size(), "");
+    const i_t first_group = preprocessed.y_group_offsets[j];
+    const i_t last_group  = preprocessed.y_group_offsets[j + 1];
+    cuopt_assert(first_group >= 0 && first_group <= last_group, "");
+    cuopt_assert(last_group <= (i_t)preprocessed.groups.size(), "");
 
-    for (i_t p = start; p < end; p++) {
-      const i_t x_col = use_upper_bound ? context.variable_bounds.upper_variables[p]
-                                        : context.variable_bounds.lower_variables[p];
-      if (!flow_cover_is_zero_one_integer_variable(context, x_col)) { continue; }
-      const f_t gamma = use_upper_bound ? context.variable_bounds.upper_weights[p]
-                                        : context.variable_bounds.lower_weights[p];
-      const f_t alpha = use_upper_bound ? context.variable_bounds.upper_biases[p]
-                                        : context.variable_bounds.lower_biases[p];
-      if (!std::isfinite(gamma) || !std::isfinite(alpha)) { continue; }
+    // Small nonzero coefficients exclude a=0 for their controller, making the cache row-dependent.
+    bool has_small_direct_coeff = false;
+    for (i_t x_col : scratch.binary_columns) {
+      const f_t direct_coeff = scratch.binary_coefficients[x_col];
+      if (direct_coeff != 0.0 && std::abs(direct_coeff) <= coefficient_tol) {
+        has_small_direct_coeff = true;
+        break;
+      }
+    }
 
-      const f_t direct_coeff            = scratch.binary_coefficients_touched[x_col]
-                                            ? scratch.binary_coefficients[x_col]
-                                            : static_cast<f_t>(0.0);
-      const std::array<f_t, 2> a_values = {direct_coeff, 0.0};
-      const i_t num_a_values            = std::abs(direct_coeff) > coefficient_tol ? 2 : 1;
-      for (i_t h = 0; h < num_a_values; h++) {
-        const f_t a               = a_values[h];
-        const bool in_n2          = use_upper_bound ? c < 0.0 : c > 0.0;
-        const f_t signed_capacity = c * gamma + a;
-        const f_t endpoint_term   = c * (endpoint - alpha);
-        const bool valid_endpoint =
-          in_n2 ? (endpoint_term <= bound_tol && endpoint_term + a <= bound_tol &&
-                   signed_capacity <= bound_tol)
-                : (endpoint_term >= -bound_tol && endpoint_term + a >= -bound_tol &&
-                   signed_capacity >= -bound_tol);
-        if (!valid_endpoint) { continue; }
+    auto& zero_candidate_cache = preprocessed.zero_candidate_cache;
+    const zero_candidate_key_t zero_candidate_key{j, c};
+    auto cached_zero = zero_candidate_cache.end();
+    if (!has_small_direct_coeff) { cached_zero = zero_candidate_cache.find(zero_candidate_key); }
+    if (has_small_direct_coeff || cached_zero == zero_candidate_cache.end()) {
+      // Compute the best a=0 candidate when it is uncached or row-specific.
+      i_t best_zero         = -1;
+      i_t best_source_bound = -1;
+      f_t best_distance     = inf;
+      for (i_t group_index = first_group; group_index < last_group; group_index++) {
+        const auto& group = preprocessed.groups[group_index];
+        if (!flow_cover_is_zero_one_integer_variable(context, group.controller)) { continue; }
+        const f_t direct_coeff = scratch.binary_coefficients_touched[group.controller]
+                                   ? scratch.binary_coefficients[group.controller]
+                                   : 0.0;
+        if (direct_coeff != 0.0 && std::abs(direct_coeff) <= coefficient_tol) { continue; }
+        for (i_t bound = group.first_bound; bound < group.first_bound + group.number_of_bounds;
+             bound++) {
+          // The normal acceptance gate keeps cached and uncached candidate validity identical.
+          if (!try_add_implied_bound_candidate(context, j, c, use_upper_bound, bound, 0.0)) {
+            continue;
+          }
+          scratch.candidates.pop_back();
+          const i_t source_bound = preprocessed.bound_indices[bound];
+          const f_t distance     = std::abs(preprocessed.active_bounds[bound] - context.xstar[j]);
+          if (best_zero < 0 || distance < best_distance ||
+              (distance == best_distance && source_bound < best_source_bound)) {
+            best_zero         = bound;
+            best_source_bound = source_bound;
+            best_distance     = distance;
+          }
+        }
+      }
+      if (!has_small_direct_coeff) { zero_candidate_cache.emplace(zero_candidate_key, best_zero); }
+      if (best_zero >= 0) {
+        const bool added =
+          try_add_implied_bound_candidate(context, j, c, use_upper_bound, best_zero, 0.0);
+        cuopt_assert(added, "");
+      }
+    } else {
+      // Reuse the pass-wide a=0 candidate for this variable, side, and coefficient.
+      if (cached_zero->second >= 0) {
+        const i_t bound = cached_zero->second;
+        const bool added =
+          try_add_implied_bound_candidate(context, j, c, use_upper_bound, bound, 0.0);
+        cuopt_assert(added, "");
+      }
+    }
 
-        flow_cover_arc_spec_t<i_t, f_t> spec;
-        spec.u                    = in_n2 ? -signed_capacity : signed_capacity;
-        spec.in_n2                = in_n2;
-        spec.x_col                = x_col;
-        spec.fixed_x              = 0.0;
-        spec.y_const              = in_n2 ? c * alpha : -c * alpha;
-        spec.y_col                = j;
-        spec.y_coeff              = in_n2 ? -c : c;
-        spec.y_x_coeff            = in_n2 ? -a : a;
-        spec.b_shift              = c * alpha;
-        spec.active_bound         = gamma * context.xstar[x_col] + alpha;
-        spec.absorbs_binary_coeff = std::abs(a) > coefficient_tol;
-        flow_cover_try_add_candidate(context, spec, context.xstar[j], scratch.candidates);
+    for (i_t x_col : scratch.binary_columns) {
+      const f_t direct_coeff = scratch.binary_coefficients[x_col];
+      if (direct_coeff == 0.0) { continue; }
+      const auto first = preprocessed.groups.begin() + first_group;
+      const auto last  = preprocessed.groups.begin() + last_group;
+      const auto group = std::lower_bound(
+        first, last, x_col, [](const implied_bound_group_t& candidate, i_t controller) {
+          return candidate.controller < controller;
+        });
+      if (group == last || group->controller != x_col) { continue; }
+      cuopt_assert(group->number_of_bounds > 0, "");
+      cuopt_assert(group->minimum_alpha <= group->maximum_alpha, "");
+      // Endpoint feasibility is monotone in alpha, so the side's extreme bounds the whole group.
+      const f_t endpoint      = use_upper_bound ? lower_j : upper_j;
+      const f_t alpha         = use_upper_bound ? group->minimum_alpha : group->maximum_alpha;
+      const f_t endpoint_term = c * (endpoint - alpha);
+      const bool in_n2        = use_upper_bound ? c < 0.0 : c > 0.0;
+      if (!flow_cover_valid_endpoint_terms(
+            endpoint_term, direct_coeff, in_n2, context.settings.primal_tol)) {
+        continue;
+      }
+      for (i_t bound = group->first_bound; bound < group->first_bound + group->number_of_bounds;
+           bound++) {
+        try_add_implied_bound_candidate(context, j, c, use_upper_bound, bound, direct_coeff);
       }
     }
   };
@@ -2280,6 +2523,7 @@ i_t flow_cover_generation_t<i_t, f_t>::generate_cut(
   const flow_cover_row_t<i_t>& flow_cover_row,
   inequality_t<i_t, f_t>& cut)
 {
+  cuopt_assert(cut_pass_preprocessed, "");
   flow_cover_context_t<i_t, f_t> context{lp, settings, Arow, variable_bounds, var_types, xstar};
   clear_cut_state(lp.num_cols);
 
@@ -2324,7 +2568,8 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
   const std::vector<variable_type_t>& var_types,
   const std::vector<f_t>& xstar,
   i_t knapsack_row,
-  inequality_t<i_t, f_t>& cut)
+  inequality_t<i_t, f_t>& cut,
+  f_t start_time)
 {
   const bool verbose = false;
   // Get the row associated with the knapsack constraint
@@ -2518,7 +2763,8 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
 
   // Lift the cut
   inequality_t<i_t, f_t> lifted_cut(lp.num_cols);
-  lift_knapsack_cut(knapsack_inequality, minimal_cover_cut, c1_partition, c2_partition, lifted_cut);
+  lift_knapsack_cut(
+    knapsack_inequality, minimal_cover_cut, c1_partition, c2_partition, lifted_cut, start_time);
   lifted_cut.negate();
 
   // The cut is now in the form:
@@ -2701,7 +2947,8 @@ void knapsack_generation_t<i_t, f_t>::lift_knapsack_cut(
   const inequality_t<i_t, f_t>& base_cut,
   const std::vector<i_t>& c1_partition,
   const std::vector<i_t>& c2_partition,
-  inequality_t<i_t, f_t>& lifted_cut)
+  inequality_t<i_t, f_t>& lifted_cut,
+  f_t start_time)
 {
   // The base cut is in the form: sum_{j in cover} x_j <= |cover| - 1
 
@@ -2817,14 +3064,15 @@ void knapsack_generation_t<i_t, f_t>::lift_knapsack_cut(
   best_score_last_permutation(remaining_coefficients, permutation);
 
   while (permutation.size() > 0) {
+    if (toc(start_time) >= settings_.time_limit) { break; }
     const i_t h   = permutation.back();
     const i_t k   = remaining_variables[h];
     const f_t a_k = remaining_coefficients[h];
 
     f_t capacity = knapsack_inequality.rhs - a_k;
 
-    f_t objective =
-      exact_knapsack_problem_integer_values_fraction_values(values, weights, capacity, solution);
+    f_t objective = exact_knapsack_problem_integer_values_fraction_values(
+      values, weights, capacity, solution, start_time);
     if (std::isnan(objective)) {
       settings_.log.debug("lifting knapsack problem failed\n");
       break;
@@ -3054,8 +3302,10 @@ f_t knapsack_generation_t<i_t, f_t>::exact_knapsack_problem_integer_values_fract
   const std::vector<i_t>& values,
   const std::vector<f_t>& weights,
   f_t rhs,
-  std::vector<f_t>& solution)
+  std::vector<f_t>& solution,
+  f_t start_time)
 {
+  if (toc(start_time) >= settings_.time_limit) { return std::numeric_limits<f_t>::quiet_NaN(); }
   // Solve the knapsack problem
   // maximize sum_{j=0}^n values[j] * solution[j]
   // subject to sum_{j=0}^n weights[j] * solution[j] <= rhs
@@ -3083,6 +3333,7 @@ f_t knapsack_generation_t<i_t, f_t>::exact_knapsack_problem_integer_values_fract
 
   // 4. Dynamic programming
   for (i_t j = 1; j <= n; ++j) {
+    if (toc(start_time) >= settings_.time_limit) { return std::numeric_limits<f_t>::quiet_NaN(); }
     for (i_t v = 0; v <= sum_value; ++v) {
       // Do not take item i-1
       dp(j, v) = dp(j - 1, v);
@@ -3128,19 +3379,27 @@ void cut_generation_t<i_t, f_t>::generate_implied_bound_cuts(
 {
   if (probing_implied_bound_.zero_offsets.empty()) { return; }
 
-  const f_t tol      = 1e-4;
-  i_t num_cuts       = 0;
-  const i_t pib_cols = static_cast<i_t>(probing_implied_bound_.zero_offsets.size()) - 1;
-  const i_t n_cols   = std::min(lp.num_cols, pib_cols);
+  const f_t tol                    = 1e-4;
+  i_t num_cuts                     = 0;
+  const i_t pib_cols               = probing_implied_bound_.zero_offsets.size() - 1;
+  const i_t n_cols                 = std::min(lp.num_cols, pib_cols);
+  f_t work_estimate                = 0.0;
+  const f_t max_work_estimate      = 1e8;
+  constexpr f_t implication_work   = 16.0;
+  constexpr f_t generated_cut_work = 16.0;
 
   for (i_t j = 0; j < n_cols; j++) {
+    if (work_estimate > max_work_estimate || toc(start_time) >= settings.time_limit) { return; }
     if (var_types[j] == variable_type_t::CONTINUOUS) { continue; }
     const f_t xstar_j = xstar[j];
 
     // x_j = 0 implications
     const i_t zero_begin = probing_implied_bound_.zero_offsets[j];
     const i_t zero_end   = probing_implied_bound_.zero_offsets[j + 1];
+    const i_t one_begin  = probing_implied_bound_.one_offsets[j];
+    const i_t one_end    = probing_implied_bound_.one_offsets[j + 1];
     for (i_t p = zero_begin; p < zero_end; p++) {
+      work_estimate += implication_work;
       const i_t i = probing_implied_bound_.zero_variables[p];
       if (i == j) { continue; }
       const f_t l_i = lp.lower[i];
@@ -3160,6 +3419,7 @@ void cut_generation_t<i_t, f_t>::generate_implied_bound_cuts(
           cut.push_back(j, coeff_j);
           cut.rhs = -b_ub;
           cut_pool_.add_cut(cut_type_t::IMPLIED_BOUND, cut);
+          work_estimate += generated_cut_work;
           num_cuts++;
         }
       }
@@ -3178,15 +3438,16 @@ void cut_generation_t<i_t, f_t>::generate_implied_bound_cuts(
           cut.push_back(j, coeff_j);
           cut.rhs = b_lb;
           cut_pool_.add_cut(cut_type_t::IMPLIED_BOUND, cut);
+          work_estimate += generated_cut_work;
           num_cuts++;
         }
       }
     }
+    if (work_estimate > max_work_estimate || toc(start_time) >= settings.time_limit) { return; }
 
     // x_j = 1 implications
-    const i_t one_begin = probing_implied_bound_.one_offsets[j];
-    const i_t one_end   = probing_implied_bound_.one_offsets[j + 1];
     for (i_t p = one_begin; p < one_end; p++) {
+      work_estimate += implication_work;
       const i_t i = probing_implied_bound_.one_variables[p];
       if (i == j) { continue; }
       const f_t l_i = lp.lower[i];
@@ -3206,6 +3467,7 @@ void cut_generation_t<i_t, f_t>::generate_implied_bound_cuts(
           cut.push_back(j, coeff_j);
           cut.rhs = -u_i;
           cut_pool_.add_cut(cut_type_t::IMPLIED_BOUND, cut);
+          work_estimate += generated_cut_work;
           num_cuts++;
         }
       }
@@ -3223,10 +3485,12 @@ void cut_generation_t<i_t, f_t>::generate_implied_bound_cuts(
           cut.push_back(j, coeff_j);
           cut.rhs = rhs_val;
           cut_pool_.add_cut(cut_type_t::IMPLIED_BOUND, cut);
+          work_estimate += generated_cut_work;
           num_cuts++;
         }
       }
     }
+    if (work_estimate > max_work_estimate || toc(start_time) >= settings.time_limit) { return; }
   }
 
   if (num_cuts > 0) {
@@ -3637,7 +3901,8 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
     if (toc(start_time) >= settings.time_limit) { return true; }
     ZERO_HALF_DEBUG("generate_cuts: about to call generate_zero_half_cuts");
     f_t cut_start_time = tic();
-    bool feasible      = generate_zero_half_cuts(lp, settings, var_types, xstar, zstar, start_time);
+    bool feasible      = generate_zero_half_cuts(
+      lp, settings, Arow, new_slacks, var_types, xstar, zstar, variable_bounds, start_time);
     ZERO_HALF_DEBUG("generate_cuts: returned from generate_zero_half_cuts feasible=%d",
                     static_cast<int>(feasible));
     if (!feasible) {
@@ -3670,7 +3935,7 @@ void cut_generation_t<i_t, f_t>::generate_knapsack_cuts(
       if (toc(start_time) >= settings.time_limit) { return; }
       inequality_t<i_t, f_t> cut(lp.num_cols);
       i_t knapsack_status = knapsack_generation_.generate_knapsack_cut(
-        lp, settings, Arow, new_slacks, var_types, xstar, knapsack_row, cut);
+        lp, settings, Arow, new_slacks, var_types, xstar, knapsack_row, cut, start_time);
       if (knapsack_status == 0) { cut_pool_.add_cut(cut_type_t::KNAPSACK, cut); }
     }
   }
@@ -3687,6 +3952,9 @@ void cut_generation_t<i_t, f_t>::generate_flow_cover_cuts(
   f_t start_time)
 {
   if (flow_cover_generation_.num_constraints() > 0) {
+    if (toc(start_time) >= settings.time_limit) { return; }
+    flow_cover_generation_.preprocess_cut_pass(lp, variable_bounds, var_types, xstar);
+    if (toc(start_time) >= settings.time_limit) { return; }
     for (const auto& flow_cover_row : flow_cover_generation_.get_constraints()) {
       if (toc(start_time) >= settings.time_limit) { return; }
       inequality_t<i_t, f_t> cut(lp.num_cols);
@@ -3888,9 +4156,12 @@ template <typename i_t, typename f_t>
 bool cut_generation_t<i_t, f_t>::generate_zero_half_cuts(
   const lp_problem_t<i_t, f_t>& lp,
   const simplex_solver_settings_t<i_t, f_t>& settings,
+  csr_matrix_t<i_t, f_t>& Arow,
+  const std::vector<i_t>& new_slacks,
   const std::vector<variable_type_t>& var_types,
   const std::vector<f_t>& xstar,
   const std::vector<f_t>& reduced_costs,
+  variable_bounds_t<i_t, f_t>& variable_bounds,
   f_t start_time)
 {
   if (settings.zero_half_cuts == 0) { return true; }
@@ -3915,12 +4186,25 @@ bool cut_generation_t<i_t, f_t>::generate_zero_half_cuts(
     static_cast<int>(sub_cg_.ready),
     sub_cg_.vertices.size());
 
+  f_t mod2_work_estimate    = 0.0;
+  const bool mod2_completed = generate_mod2_zero_half_cuts(cut_pool_,
+                                                           lp,
+                                                           settings,
+                                                           Arow,
+                                                           new_slacks,
+                                                           var_types,
+                                                           xstar,
+                                                           variable_bounds,
+                                                           start_time,
+                                                           mod2_work_estimate);
+  if (!mod2_completed) { return true; }
+
   // The fractional conflict-graph subgraph is built once per cut pass in
-  // prepare_fractional_sub_conflict_graph() (called from generate_cuts) and shared with
-  // the clique-cut separator. Skip if the build was unable to produce a
-  // useable sub-CG (clique table missing/empty, work/time budget hit, etc.).
+  // prepare_fractional_sub_conflict_graph() and remains a complementary
+  // odd-cycle / odd-wheel separator. If no conflict graph is available, the
+  // general row-parity cuts above are still retained.
   if (!sub_cg_.ready) {
-    ZERO_HALF_DEBUG("sub_cg_ not ready, skipping");
+    ZERO_HALF_DEBUG("sub_cg_ not ready, skipping odd-cycle path");
     return true;
   }
   if (sub_cg_.empty_subgraph()) {
@@ -3938,8 +4222,8 @@ bool cut_generation_t<i_t, f_t>::generate_zero_half_cuts(
   cuopt_assert(user_problem_.var_types.size() == static_cast<size_t>(num_vars),
                "Zero-half user problem var_types size mismatch");
 
-  const f_t min_violation = std::max(settings.primal_tol, static_cast<f_t>(1e-6));
-  const f_t bound_tol     = settings.primal_tol;
+  constexpr f_t min_violation = (f_t)1e-6;
+  const f_t bound_tol         = settings.primal_tol;
   // shortest path of length >= 0.5 - min_violation cannot yield a violated cut
   const f_t cutoff            = static_cast<f_t>(0.5) - min_violation;
   f_t work_estimate           = 0.0;
@@ -4103,21 +4387,22 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
   // at the beginning of each iteration of the for loop below
   std::vector<i_t> aggregated_rows;
   std::vector<i_t> aggregated_mark(lp.num_rows, 0);
+  const i_t max_cuts = std::min(lp.num_rows, 100000);
 
   // Transform the relaxation solution
   std::vector<f_t> transformed_xstar;
   complemented_mir.bound_substitution(lp, variable_bounds, var_types, xstar, transformed_xstar);
 
-  const i_t max_cuts = std::min(lp.num_rows, 100000);
   f_t work_estimate  = 0.0;
-  i_t num_cuts       = 0;
-  while (num_cuts < max_cuts && !score_queue.empty()) {
+  i_t cuts_processed = 0;
+  while (cuts_processed < max_cuts && !score_queue.empty()) {
     if (toc(start_time) >= settings.time_limit) { break; }
     // Get the row with the highest score from the queue
     auto [max_score, i] = score_queue.top();
     score_queue.pop();
     // skip stale score entries
     if (max_score != scores[i]) { continue; }
+    ++cuts_processed;
 
     // Add the current row to the aggregated set
     aggregated_mark[i] = 1;
@@ -5338,7 +5623,8 @@ void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::bound_substitution(
   const variable_bounds_t<i_t, f_t>& variable_bounds,
   const std::vector<variable_type_t>& var_types,
   const std::vector<f_t>& xstar,
-  std::vector<f_t>& transformed_xstar)
+  std::vector<f_t>& transformed_xstar,
+  bool prefer_variable_bound_on_tie)
 {
   transformed_xstar.resize(lp.num_cols);
   // Perform bound substitution for continuous variables
@@ -5402,8 +5688,12 @@ void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::bound_substitution(
       bound_changed_[j]     = 0;
       continue;
     }
-    if (has_finite_lower_bound &&
-        (!has_finite_upper_bound || (xstar_j - lb_star_[j] <= ub_star_[j] - xstar_j))) {
+    const f_t lower_distance = xstar_j - lb_star_[j];
+    const f_t upper_distance = ub_star_[j] - xstar_j;
+    const bool prefer_upper_variable_bound =
+      prefer_variable_bound_on_tie && ub_variable_[j] >= 0 && lower_distance == upper_distance;
+    if (has_finite_lower_bound && (!has_finite_upper_bound || (lower_distance <= upper_distance &&
+                                                               !prefer_upper_variable_bound))) {
       // Use the lower bound
       // lb_star_j <= x_j <= ub_star_j
       // v_j = x_j - lb_star_j,
@@ -5727,7 +6017,10 @@ f_t complemented_mixed_integer_rounding_cut_t<i_t, f_t>::compute_violation(
 
 template <typename i_t, typename f_t>
 void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::substitute_slacks(
-  const lp_problem_t<i_t, f_t>& lp, csr_matrix_t<i_t, f_t>& Arow, inequality_t<i_t, f_t>& cut)
+  const lp_problem_t<i_t, f_t>& lp,
+  csr_matrix_t<i_t, f_t>& Arow,
+  inequality_t<i_t, f_t>& cut,
+  f_t* work_estimate)
 {
   // Remove slacks from the cut
   // So that the cut is only over the original variables
@@ -5735,6 +6028,7 @@ void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::substitute_slacks(
   i_t cut_nz       = 0;
   std::vector<i_t> cut_indices;
   cut_indices.reserve(cut.size());
+  if (work_estimate != nullptr) { *work_estimate += cut.size(); }
 
   for (i_t k = 0; k < cut.size(); k++) {
     const i_t j  = cut.index(k);
@@ -5777,6 +6071,7 @@ void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::substitute_slacks(
       cut.rhs -= cj * lp.rhs[i] / alpha;
       const i_t row_start = Arow.row_start[i];
       const i_t row_end   = Arow.row_start[i + 1];
+      if (work_estimate != nullptr) { *work_estimate += row_end - row_start; }
       for (i_t q = row_start; q < row_end; q++) {
         const i_t h = Arow.j[q];
         if (h != j) {
@@ -5798,6 +6093,9 @@ void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::substitute_slacks(
 
   if (found_slack) {
     scratch_pad_.get_pad(cut.vector.i, cut.vector.x);
+    if (work_estimate != nullptr) {
+      *work_estimate += 2 * cut.size() + cut.size() * std::log2((f_t)cut.size() + (f_t)1.0);
+    }
     // Sort the cut
     cut.sort();
   }
@@ -6531,10 +6829,19 @@ i_t remove_cuts(lp_problem_t<i_t, f_t>& lp,
                        lp.A.col_start[lp.A.n]);
 
     basis_update.resize(lp.num_rows);
-    i_t refactor_status = basis_update.refactor_basis(
-      lp.A, settings, lp.lower, lp.upper, start_time, basic_list, nonbasic_list, vstatus);
+    i_t deficient_repaired = 0;
+    i_t refactor_status    = basis_update.refactor_basis(lp.A,
+                                                      settings,
+                                                      lp.lower,
+                                                      lp.upper,
+                                                      start_time,
+                                                      basic_list,
+                                                      nonbasic_list,
+                                                      vstatus,
+                                                      deficient_repaired);
     if (refactor_status == CONCURRENT_HALT_RETURN) { return CONCURRENT_HALT_RETURN; }
     if (refactor_status == TIME_LIMIT_RETURN) { return TIME_LIMIT_RETURN; }
+    if (refactor_status != 0 || deficient_repaired > 0) { return -1; }
   }
 
   return 0;

@@ -11,6 +11,7 @@
 
 #include <thrust/sequence.h>
 #include <thrust/uninitialized_fill.h>
+#include <cuda/stream>
 #include <rmm/device_uvector.hpp>
 
 namespace cuopt {
@@ -34,10 +35,26 @@ struct substitution_t {
   f_t coefficient;
 };
 
+template <typename i_t>
+struct bve_reconstruction_t {
+  std::vector<i_t> interior;
+  std::vector<i_t> boundary;
+  std::vector<uint32_t> witness;  // size 2^boundary.size()
+};
+
+enum class reconstruction_kind_t : uint8_t { AffineSub = 0, BlockBve = 1 };
+
+template <typename i_t, typename f_t>
+struct postsolve_reconstruction_t {
+  reconstruction_kind_t kind{};
+  substitution_t<i_t, f_t> sub{};
+  bve_reconstruction_t<i_t> bve{};
+};
+
 template <typename i_t, typename f_t>
 class presolve_data_t {
  public:
-  presolve_data_t(const optimization_problem_t<i_t, f_t>& problem, rmm::cuda_stream_view stream)
+  presolve_data_t(const optimization_problem_t<i_t, f_t>& problem, cuda::stream_ref stream)
     : variable_offsets(problem.get_n_variables(), 0),
       additional_var_used(problem.get_n_variables(), false),
       additional_var_id_per_var(problem.get_n_variables(), -1),
@@ -49,7 +66,7 @@ class presolve_data_t {
   {
   }
 
-  presolve_data_t(const presolve_data_t& other, rmm::cuda_stream_view stream)
+  presolve_data_t(const presolve_data_t& other, cuda::stream_ref stream)
     : variable_offsets(other.variable_offsets),
       additional_var_used(other.additional_var_used),
       additional_var_id_per_var(other.additional_var_id_per_var),
@@ -62,7 +79,7 @@ class presolve_data_t {
       papilo_reduced_to_original_map(other.papilo_reduced_to_original_map),
       papilo_original_to_reduced_map(other.papilo_original_to_reduced_map),
       papilo_original_num_variables(other.papilo_original_num_variables),
-      variable_substitutions(other.variable_substitutions)
+      postsolve_reconstructions(other.postsolve_reconstructions)
   {
   }
 
@@ -76,7 +93,7 @@ class presolve_data_t {
                                fixed_var_assignment.begin(),
                                fixed_var_assignment.end(),
                                0.);
-    variable_substitutions.clear();
+    postsolve_reconstructions.clear();
   }
 
   void reset_additional_vars(const problem_t<i_t, f_t>& problem, const raft::handle_t* handle_ptr)
@@ -90,7 +107,7 @@ class presolve_data_t {
   void post_process_assignment(problem_t<i_t, f_t>& problem,
                                rmm::device_uvector<f_t>& current_assignment,
                                bool resize_to_original_problem,
-                               rmm::cuda_stream_view stream);
+                               cuda::stream_ref stream);
   void post_process_assignment(problem_t<i_t, f_t>& problem,
                                rmm::device_uvector<f_t>& current_assignment,
                                bool resize_to_original_problem = true)
@@ -106,8 +123,8 @@ class presolve_data_t {
                                 i_t original_num_variables);
   bool has_papilo_presolve_data() const { return papilo_presolve_ptr != nullptr; }
   i_t get_papilo_original_num_variables() const { return papilo_original_num_variables; }
-  void papilo_uncrush_assignment(problem_t<i_t, f_t>& problem,
-                                 rmm::device_uvector<f_t>& assignment) const;
+  void papilo_uncrush_assignment(rmm::device_uvector<f_t>& assignment,
+                                 rmm::cuda_stream_view stream) const;
 
   presolve_data_t(presolve_data_t&&)                 = default;
   presolve_data_t& operator=(presolve_data_t&&)      = default;
@@ -128,9 +145,9 @@ class presolve_data_t {
   std::vector<i_t> papilo_reduced_to_original_map{};
   std::vector<i_t> papilo_original_to_reduced_map{};
   i_t papilo_original_num_variables{0};
-  // Variable substitutions from probing: x_substituted = offset + coefficient * x_substituting
-  // Applied in post_process_assignment to recover substituted variable values
-  std::vector<substitution_t<i_t, f_t>> variable_substitutions;
+  // Append-only GPU-presolve reconstruction log (AffineSub from probing, BlockBve from block-BVE).
+  // post_process_assignment replays in reverse append order.
+  std::vector<postsolve_reconstruction_t<i_t, f_t>> postsolve_reconstructions;
 };
 
 }  // namespace mathematical_optimization::mip

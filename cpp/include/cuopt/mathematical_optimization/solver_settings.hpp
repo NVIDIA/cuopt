@@ -10,9 +10,9 @@
 #include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/pdlp/pdlp_warm_start_data.hpp>
 
+#include <cuda/stream>
 #include <raft/core/device_span.hpp>
 
-#include <rmm/cuda_stream_view.hpp>
 #include <rmm/device_uvector.hpp>
 
 #include <cuopt/mathematical_optimization/constants.h>
@@ -52,10 +52,12 @@ class solver_settings_t {
 
   void set_initial_pdlp_primal_solution(const f_t* initial_primal_solution,
                                         i_t size,
-                                        rmm::cuda_stream_view stream = rmm::cuda_stream_default);
+                                        cuda::stream_ref stream = cuda::stream_ref{
+                                          cudaStream_t{cudaStreamDefault}});
   void set_initial_pdlp_dual_solution(const f_t* initial_dual_solution,
                                       i_t size,
-                                      rmm::cuda_stream_view stream = rmm::cuda_stream_default);
+                                      cuda::stream_ref stream = cuda::stream_ref{
+                                        cudaStream_t{cudaStreamDefault}});
   void set_pdlp_warm_start_data(const f_t* current_primal_solution,
                                 const f_t* current_dual_solution,
                                 const f_t* initial_primal_average,
@@ -82,7 +84,8 @@ class solver_settings_t {
   // MIP Settings
   void add_initial_mip_solution(const f_t* initial_solution,
                                 i_t size,
-                                rmm::cuda_stream_view stream = rmm::cuda_stream_default);
+                                cuda::stream_ref stream = cuda::stream_ref{
+                                  cudaStream_t{cudaStreamDefault}});
   void set_mip_callback(internals::base_solution_callback_t* callback = nullptr,
                         void* user_data                               = nullptr);
 

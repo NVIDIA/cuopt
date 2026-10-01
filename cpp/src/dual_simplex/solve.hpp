@@ -17,6 +17,10 @@ namespace cuopt {
 struct work_limit_context_t;
 }
 
+namespace cuopt::mathematical_optimization {
+class barrier_cache_t;
+}  // namespace cuopt::mathematical_optimization
+
 namespace cuopt::mathematical_optimization::simplex {
 
 template <typename i_t, typename f_t>
@@ -64,13 +68,44 @@ template <typename i_t, typename f_t>
 f_t compute_user_objective(const lp_problem_t<i_t, f_t>& lp, f_t obj);
 
 template <typename i_t, typename f_t>
+void compute_objective_gap(const lp_problem_t<i_t, f_t>& problem,
+                           f_t primal_obj,
+                           f_t dual_obj,
+                           f_t& objective_gap,
+                           f_t& relative_objective_gap);
+
+template <typename i_t, typename f_t>
+f_t compute_presolved_objective(const lp_problem_t<i_t, f_t>& lp, f_t user_obj);
+
+template <typename i_t, typename f_t>
 lp_status_t solve_linear_program_advanced(const lp_problem_t<i_t, f_t>& original_lp,
                                           const f_t start_time,
                                           const simplex_solver_settings_t<i_t, f_t>& settings,
                                           lp_solution_t<i_t, f_t>& original_solution,
                                           std::vector<variable_status_t>& vstatus,
                                           std::vector<f_t>& edge_norms,
+                                          f_t& work_estimate,
                                           work_limit_context_t* work_unit_context = nullptr);
+
+template <typename i_t, typename f_t>
+lp_status_t solve_linear_program_advanced(const lp_problem_t<i_t, f_t>& original_lp,
+                                          const f_t start_time,
+                                          const simplex_solver_settings_t<i_t, f_t>& settings,
+                                          lp_solution_t<i_t, f_t>& original_solution,
+                                          std::vector<variable_status_t>& vstatus,
+                                          std::vector<f_t>& edge_norms,
+                                          work_limit_context_t* work_unit_context = nullptr)
+{
+  f_t work_estimate = 0.0;
+  return solve_linear_program_advanced(original_lp,
+                                       start_time,
+                                       settings,
+                                       original_solution,
+                                       vstatus,
+                                       edge_norms,
+                                       work_estimate,
+                                       work_unit_context);
+}
 
 // Solve the LP using dual simplex and keep the `basis_update_mpf_t`
 // for future use.
@@ -85,25 +120,64 @@ lp_status_t solve_linear_program_with_advanced_basis(
   std::vector<i_t>& nonbasic_list,
   std::vector<variable_status_t>& vstatus,
   std::vector<f_t>& edge_norms,
+  f_t& work_estimate,
   work_limit_context_t* work_unit_context = nullptr);
 
 template <typename i_t, typename f_t>
-lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& user_problem,
-                                              const simplex_solver_settings_t<i_t, f_t>& settings,
-                                              lp_solution_t<i_t, f_t>& solution);
+lp_status_t solve_linear_program_with_advanced_basis(
+  const lp_problem_t<i_t, f_t>& original_lp,
+  const f_t start_time,
+  const simplex_solver_settings_t<i_t, f_t>& settings,
+  lp_solution_t<i_t, f_t>& original_solution,
+  basis_update_mpf_t<i_t, f_t>& ft,
+  std::vector<i_t>& basic_list,
+  std::vector<i_t>& nonbasic_list,
+  std::vector<variable_status_t>& vstatus,
+  std::vector<f_t>& edge_norms,
+  work_limit_context_t* work_unit_context = nullptr)
+{
+  f_t work_estimate = 0.0;
+  return solve_linear_program_with_advanced_basis(original_lp,
+                                                  start_time,
+                                                  settings,
+                                                  original_solution,
+                                                  ft,
+                                                  basic_list,
+                                                  nonbasic_list,
+                                                  vstatus,
+                                                  edge_norms,
+                                                  work_estimate,
+                                                  work_unit_context);
+}
 
 template <typename i_t, typename f_t>
-lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& user_problem,
-                                              const simplex_solver_settings_t<i_t, f_t>& settings,
-                                              f_t start_time,
-                                              lp_solution_t<i_t, f_t>& solution);
+lp_status_t solve_linear_program_with_barrier(
+  const user_problem_t<i_t, f_t>& user_problem,
+  const simplex_solver_settings_t<i_t, f_t>& settings,
+  lp_solution_t<i_t, f_t>& solution,
+  cuopt::mathematical_optimization::barrier_cache_t* cache = nullptr);
 
 template <typename i_t, typename f_t>
-lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& user_problem,
-                                              const simplex_solver_settings_t<i_t, f_t>& settings,
-                                              f_t start_time,
-                                              lp_solution_t<i_t, f_t>& solution,
-                                              const raft::handle_t* handle_ptr);
+lp_status_t solve_linear_program_with_barrier(
+  const user_problem_t<i_t, f_t>& user_problem,
+  const simplex_solver_settings_t<i_t, f_t>& settings,
+  f_t start_time,
+  lp_solution_t<i_t, f_t>& solution,
+  cuopt::mathematical_optimization::barrier_cache_t* cache = nullptr);
+
+template <typename i_t, typename f_t>
+lp_status_t solve_linear_program_with_primal(const user_problem_t<i_t, f_t>& user_problem,
+                                             const simplex_solver_settings_t<i_t, f_t>& settings,
+                                             f_t start_time,
+                                             lp_solution_t<i_t, f_t>& solution);
+template <typename i_t, typename f_t>
+lp_status_t solve_linear_program_with_barrier(
+  const user_problem_t<i_t, f_t>& user_problem,
+  const simplex_solver_settings_t<i_t, f_t>& settings,
+  f_t start_time,
+  lp_solution_t<i_t, f_t>& solution,
+  cuopt::mathematical_optimization::barrier_cache_t* cache,
+  const raft::handle_t* handle_ptr);
 
 template <typename i_t, typename f_t>
 lp_status_t solve_linear_program(const user_problem_t<i_t, f_t>& user_problem,

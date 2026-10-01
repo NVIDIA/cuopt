@@ -11,9 +11,12 @@
 #include <cuopt/mathematical_optimization/cpu_optimization_problem_solution.hpp>
 #include <cuopt/mathematical_optimization/cpu_pdlp_warm_start_data.hpp>
 #include <cuopt/mathematical_optimization/solve.hpp>
+#include <cuopt/mathematical_optimization/solver_settings.hpp>
 #include <utilities/logger.hpp>
 #include "grpc_client.hpp"
+#include "solve_remote_impl.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <fstream>
@@ -22,13 +25,26 @@
 #include <sstream>
 #include <stdexcept>
 
-#include <thrust/count.h>
-
 namespace cuopt::mathematical_optimization {
 
 // Buffer added to the solver's time_limit to account for worker startup,
 // GPU init, and result pipe transfer.
 constexpr int kTimeoutBufferSeconds = 120;
+
+// See solve_remote_impl.hpp for the contract.
+template <typename i_t, typename f_t>
+bool should_disable_unsupported(const cpu_optimization_problem_t<i_t, f_t>& problem,
+                                const mip_solver_settings_t<i_t, f_t>& settings)
+{
+  if (settings.get_mip_callbacks().empty()) { return false; }
+  const auto var_types = problem.get_variable_types_host();
+  return std::count(var_types.begin(), var_types.end(), var_t::SEMI_CONTINUOUS) > 0;
+}
+
+// Instantiated explicitly: the definition lives here, so the unit test's translation unit
+// cannot generate it from the declaration alone.
+template CUOPT_EXPORT bool should_disable_unsupported(
+  const cpu_optimization_problem_t<int, double>&, const mip_solver_settings_t<int, double>&);
 
 // ============================================================================
 // Helper function to get gRPC server address from environment variables
@@ -63,9 +79,10 @@ static int solver_timeout_seconds(f_t time_limit)
 // ============================================================================
 
 template <typename i_t, typename f_t>
-std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp_remote(
+std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp_remote_from(
   cpu_optimization_problem_t<i_t, f_t> const& cpu_problem,
-  pdlp_solver_settings_t<i_t, f_t> const& settings)
+  pdlp_solver_settings_t<i_t, f_t> const& settings,
+  solver_settings_t<i_t, f_t>* parent)
 {
   init_logger_t log(settings.log_file, settings.log_to_console);
 
@@ -86,13 +103,18 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp_remote(
   }
   bool want_console = settings.log_to_console;
   bool want_file    = log_file_stream && log_file_stream->is_open();
+  // Captured here, not read inside the lambda: the streaming thread carries no
+  // registration of its own.
+  auto user_cb = cuopt::current_log_callback();
 
-  if (want_console || want_file) {
-    config.stream_logs  = true;
-    config.log_callback = [want_console, want_file, &log_file_stream](const std::string& line) {
-      if (want_console) { std::cout << line << std::endl; }
-      if (want_file) { *log_file_stream << line << std::endl; }
-    };
+  if (want_console || want_file || user_cb.callback) {
+    config.stream_logs = true;
+    config.log_callback =
+      [want_console, want_file, &log_file_stream, user_cb](const std::string& line) {
+        if (want_console) { std::cout << line << std::endl; }
+        if (want_file) { *log_file_stream << line << std::endl; }
+        if (user_cb.callback) { user_cb.callback(line.c_str(), user_cb.user_data); }
+      };
   }
 
   // Create client and connect
@@ -105,8 +127,13 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp_remote(
                   config.server_address.c_str(),
                   config.timeout_seconds);
 
-  // Call the remote solver
-  auto result = client.solve_lp(cpu_problem, settings);
+  // A parent settings object sends the parameter map. The nested path does not.
+  remote_lp_result_t<i_t, f_t> result;
+  if (parent == nullptr) {
+    result = client.solve_lp(cpu_problem, settings);
+  } else {
+    result = client.solve_lp(cpu_problem, *parent);
+  }
 
   if (!result.success) {
     throw std::runtime_error("Remote LP solve failed: " + result.error_message);
@@ -118,9 +145,10 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp_remote(
 }
 
 template <typename i_t, typename f_t>
-std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip_remote(
+std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip_remote_from(
   cpu_optimization_problem_t<i_t, f_t> const& cpu_problem,
-  mip_solver_settings_t<i_t, f_t> const& settings)
+  mip_solver_settings_t<i_t, f_t> const& settings,
+  solver_settings_t<i_t, f_t>* parent)
 {
   init_logger_t log(settings.log_file, settings.log_to_console);
 
@@ -139,21 +167,21 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip_remote(
   }
   bool want_console = settings.log_to_console;
   bool want_file    = log_file_stream && log_file_stream->is_open();
+  auto user_cb      = cuopt::current_log_callback();
 
-  if (want_console || want_file) {
-    config.stream_logs  = true;
-    config.log_callback = [want_console, want_file, &log_file_stream](const std::string& line) {
-      if (want_console) { std::cout << line << std::endl; }
-      if (want_file) { *log_file_stream << line << std::endl; }
-    };
+  if (want_console || want_file || user_cb.callback) {
+    config.stream_logs = true;
+    config.log_callback =
+      [want_console, want_file, &log_file_stream, user_cb](const std::string& line) {
+        if (want_console) { std::cout << line << std::endl; }
+        if (want_file) { *log_file_stream << line << std::endl; }
+        if (user_cb.callback) { user_cb.callback(line.c_str(), user_cb.user_data); }
+      };
   }
 
   // Check if user has set incumbent callbacks
-  auto mip_callbacks   = settings.get_mip_callbacks();
-  const auto var_types = cpu_problem.get_variable_types_host();
-  const bool has_sc_variables =
-    thrust::count(var_types.begin(), var_types.end(), var_t::SEMI_CONTINUOUS) > 0;
-  if (has_sc_variables && !mip_callbacks.empty()) {
+  auto mip_callbacks = settings.get_mip_callbacks();
+  if (should_disable_unsupported(cpu_problem, settings)) {
     CUOPT_LOG_WARN(
       "Disabling remote MIP get/set callbacks: semi-continuous models are not "
       "supported with callbacks");
@@ -206,8 +234,13 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip_remote(
     enable_tracking ? "enabled" : "disabled",
     config.timeout_seconds);
 
-  // Call the remote solver
-  auto result = client.solve_mip(cpu_problem, settings, enable_tracking);
+  // A parent settings object sends the parameter map. The nested path does not.
+  remote_mip_result_t<i_t, f_t> result;
+  if (parent == nullptr) {
+    result = client.solve_mip(cpu_problem, settings, enable_tracking);
+  } else {
+    result = client.solve_mip(cpu_problem, *parent, enable_tracking);
+  }
 
   if (!result.success) {
     throw std::runtime_error("Remote MIP solve failed: " + result.error_message);
@@ -218,11 +251,49 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip_remote(
   return std::move(result.solution);
 }
 
+template <typename i_t, typename f_t>
+std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp_remote(
+  cpu_optimization_problem_t<i_t, f_t> const& cpu_problem,
+  pdlp_solver_settings_t<i_t, f_t> const& settings)
+{
+  return solve_lp_remote_from(
+    cpu_problem, settings, static_cast<solver_settings_t<i_t, f_t>*>(nullptr));
+}
+
+template <typename i_t, typename f_t>
+std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp_remote(
+  cpu_optimization_problem_t<i_t, f_t> const& cpu_problem, solver_settings_t<i_t, f_t>& settings)
+{
+  return solve_lp_remote_from(cpu_problem, settings.get_pdlp_settings(), &settings);
+}
+
+template <typename i_t, typename f_t>
+std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip_remote(
+  cpu_optimization_problem_t<i_t, f_t> const& cpu_problem,
+  mip_solver_settings_t<i_t, f_t> const& settings)
+{
+  return solve_mip_remote_from(
+    cpu_problem, settings, static_cast<solver_settings_t<i_t, f_t>*>(nullptr));
+}
+
+template <typename i_t, typename f_t>
+std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip_remote(
+  cpu_optimization_problem_t<i_t, f_t> const& cpu_problem, solver_settings_t<i_t, f_t>& settings)
+{
+  return solve_mip_remote_from(cpu_problem, settings.get_mip_settings(), &settings);
+}
+
 // Explicit template instantiations for remote execution stubs
 template CUOPT_EXPORT std::unique_ptr<lp_solution_interface_t<int, double>> solve_lp_remote(
   cpu_optimization_problem_t<int, double> const&, pdlp_solver_settings_t<int, double> const&);
 
+template CUOPT_EXPORT std::unique_ptr<lp_solution_interface_t<int, double>> solve_lp_remote(
+  cpu_optimization_problem_t<int, double> const&, solver_settings_t<int, double>&);
+
 template CUOPT_EXPORT std::unique_ptr<mip_solution_interface_t<int, double>> solve_mip_remote(
   cpu_optimization_problem_t<int, double> const&, mip_solver_settings_t<int, double> const&);
+
+template CUOPT_EXPORT std::unique_ptr<mip_solution_interface_t<int, double>> solve_mip_remote(
+  cpu_optimization_problem_t<int, double> const&, solver_settings_t<int, double>&);
 
 }  // namespace cuopt::mathematical_optimization

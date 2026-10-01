@@ -102,6 +102,24 @@ General FAQ
 
    After installing, re-run ``pip install`` (or restart the Python process) and the import should succeed.
 
+.. dropdown:: Why does my MIP/LP solve run single-threaded, or log a "could not load cuDSS threading layer" warning?
+
+   cuDSS's threading layer (used by the barrier method) must be built against the *same* GNU OpenMP runtime as cuOpt itself. If it isn't, cuDSS falls back to single-threaded execution and logs a warning instead of failing the solve.
+
+   **pip installs**: the wheel bundles its own GNU OpenMP runtime and a cuDSS threading layer built against it, so this shouldn't happen out of the box; no host ``libgomp`` is required.
+
+   **conda installs**: ``libgomp`` is a runtime dependency of the ``libcuopt`` package, so ``conda install`` pulls it in automatically, no manual step needed.
+
+   **source builds**: building with the conda dev environment (``conda/environments/*.yaml``) already provides a matching ``libgomp``, the same one cuDSS itself uses via conda, so this shouldn't happen either. Only a build done entirely outside that conda environment (a bare system toolchain) needs ``libgomp.so.1`` installed manually: install your distribution's GNU OpenMP runtime package, typically ``libgomp1`` (Debian/Ubuntu) or ``libgomp`` (RHEL/Rocky/Fedora), then re-run the solve.
+
+   If you want cuDSS to use a specific threading-layer library, set the ``CUDSS_THREADING_LIB`` environment variable to its absolute path before running:
+
+   .. code-block:: bash
+
+       export CUDSS_THREADING_LIB=/path/to/libcudss_mtlayer_gomp.so.0
+
+   .. warning:: Whatever threading-layer library you point cuDSS at must be built against the same OpenMP runtime cuOpt itself uses. For pip installs, that's the bundled GNU libgomp, not necessarily the host's. Pointing cuDSS at a library linked against a *different* OpenMP runtime reintroduces the exact dual-runtime conflict described in `#1219 <https://github.com/NVIDIA/cuopt/issues/1219>`_, including possible crashes.
+
 .. dropdown:: Why am I getting "libcuopt.so: cannot open shared object file: No such file or directory" error?
 
    This error indicates that the cuOpt shared library is not found. Please check the following:

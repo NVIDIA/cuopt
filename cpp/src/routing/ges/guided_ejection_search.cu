@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -62,7 +62,7 @@ guided_ejection_search_t<i_t, f_t, REQUEST>::guided_ejection_search_t(
           (solution.get_num_orders() + solution.problem_ptr->get_max_break_dimensions()),
       solution.sol_handle->get_stream()),
     feasible_candidates_size_(solution.sol_handle->get_stream()),
-    gen_candidate(seed_generator::get_seed()),
+    gen_candidate(solution.problem_ptr->seed_gen.get_seed()),
     p_scores_(solution.get_num_orders(), solution.sol_handle->get_stream()),
     inserted_requests(solution.get_num_orders(), solution.sol_handle->get_stream()),
     best_squeeze_per_cand(solution.get_num_requests(), solution.sol_handle->get_stream()),
@@ -192,7 +192,7 @@ void guided_ejection_search_t<i_t, f_t, REQUEST>::shuffle_pool()
   raft::common::nvtx::range fun_scope("shuffle_pool");
   // include the ejected request in shuffle
   ++EP.index_;
-  EP.random_shuffle();
+  EP.random_shuffle(solution_ptr->problem_ptr->seed_gen.get_seed());
   --EP.index_;
   if (dump_intermediate) { dump_to_file("Shuffle"); }
 }
@@ -270,10 +270,10 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::guided_ejection_search_loop(i_
     }
 
     // Increase penalty counter for this request
-    incr_p_scores<i_t><<<1, 1, 0, solution_ptr->sol_handle->get_stream()>>>(
+    incr_p_scores<i_t><<<1, 1, 0, solution_ptr->sol_handle->get_stream().get()>>>(
       request, p_scores_.data(), depot_included);
 
-    RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream());
+    RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream().get());
     bool move_executed = config.frag_eject_first
                            ? execute_best_insertion_ejection_solution(request, counter)
                            : run_lexicographic_search(request);
@@ -306,7 +306,7 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::guided_ejection_search_loop(i_
         return false;
       }
 
-      RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream());
+      RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream().get());
       // reinsert the request and increase the ejection failure counter
       EP.push_back_last();
       consecutive_ejection_failure++;
@@ -439,7 +439,7 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::construct_feasible_solution()
     }
     solution_ptr->add_routes(new_routes);
     // permutate the EP for randomness
-    EP.random_shuffle();
+    EP.random_shuffle(solution_ptr->problem_ptr->seed_gen.get_seed());
     bool all_inserted = greedy_insert();
     if (!all_inserted) { local_search_ptr_->perturb_solution(*solution_ptr); }
 
@@ -522,9 +522,9 @@ void guided_ejection_search_t<i_t, f_t, REQUEST>::route_minimizer_loop()
     std::tie(vehicle_id, random_route_id) = next_route_id();
     if (random_route_id < 0) { break; }
     // Save solution state before ges loop in case of route restoration
-    stream.synchronize();
+    stream.sync();
     ges_loop_save_state.copy_device_solution(*solution_ptr);
-    stream.synchronize();
+    stream.sync();
     solution_ptr->remove_routes(EP, std::vector<i_t>{random_route_id});
 
     // Routes can be empty when number of vehicles is more than number of requests
@@ -532,9 +532,9 @@ void guided_ejection_search_t<i_t, f_t, REQUEST>::route_minimizer_loop()
 
     // If ges loop left early, restore state
     if (!guided_ejection_search_loop(counter, true)) {
-      stream.synchronize();
+      stream.sync();
       solution_ptr->copy_device_solution(ges_loop_save_state);
-      stream.synchronize();
+      stream.sync();
     }
     solution_ptr->global_runtime_checks(true, true, "route_minimizer_loop");
   }

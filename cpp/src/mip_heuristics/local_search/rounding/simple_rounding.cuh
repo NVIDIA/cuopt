@@ -12,13 +12,15 @@
 namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
-void invoke_round_nearest(solution_t<i_t, f_t>& solution);
+void invoke_round_nearest(solution_t<i_t, f_t>& solution, uint64_t seed);
 
 template <typename i_t, typename f_t>
 bool invoke_simple_rounding(solution_t<i_t, f_t>& solution);
 
 template <typename i_t, typename f_t>
-void invoke_random_round_nearest(solution_t<i_t, f_t>& solution, i_t n_target_random_rounds);
+void invoke_random_round_nearest(solution_t<i_t, f_t>& solution,
+                                 i_t n_target_random_rounds,
+                                 uint64_t seed);
 
 template <typename i_t, typename f_t>
 void invoke_correct_integers(solution_t<i_t, f_t>& solution, f_t tol);

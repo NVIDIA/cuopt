@@ -8,6 +8,8 @@
 
 #include <linear_algebra/dense_vector.hpp>
 
+#include <cuopt/mathematical_optimization/constants.h>
+#include <cuopt/mathematical_optimization/utilities/internals.hpp>
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/solution.hpp>
@@ -15,9 +17,16 @@
 #include <linear_algebra/sparse_matrix.hpp>
 #include <math_optimization/tic_toc.hpp>
 
+#include <cuda/stream>
 #include <rmm/device_uvector.hpp>
 
+#include <memory>
 #include <utility>
+
+namespace cuopt::mathematical_optimization {
+class barrier_cache_t;
+}
+
 namespace cuopt::mathematical_optimization::barrier {
 
 /** Validates SOC layout on an simplex::lp_problem_t before barrier presolve/solve. */
@@ -29,40 +38,63 @@ template <typename i_t, typename f_t>
 class iteration_data_t;  // Forward declare
 
 template <typename i_t, typename f_t>
+class device_csc_matrix_t;
+
+// Custom deleter for device_csc_matrix_t to handle CUDA memory management.
+template <typename i_t, typename f_t>
+struct device_csc_matrix_deleter_t {
+  void operator()(device_csc_matrix_t<i_t, f_t>* matrix) const;
+};
+
+template <typename i_t, typename f_t>
+using device_csc_matrix_ptr_t =
+  std::unique_ptr<device_csc_matrix_t<i_t, f_t>, device_csc_matrix_deleter_t<i_t, f_t>>;
+
+template <typename i_t, typename f_t, typename... args_t>
+device_csc_matrix_ptr_t<i_t, f_t> make_device_csc_matrix(args_t&&... args)
+{
+  return device_csc_matrix_ptr_t<i_t, f_t>(
+    new device_csc_matrix_t<i_t, f_t>(std::forward<args_t>(args)...));
+}
+
+template <typename i_t, typename f_t>
 class barrier_solver_t {
  public:
   barrier_solver_t(const simplex::lp_problem_t<i_t, f_t>& lp,
                    const simplex::presolve_info_t<i_t, f_t>& presolve,
-                   const simplex::simplex_solver_settings_t<i_t, f_t>& settings);
-  simplex::lp_status_t solve(f_t start_time, simplex::lp_solution_t<i_t, f_t>& solution);
+                   const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+                   device_csc_matrix_ptr_t<i_t, f_t> device_A = nullptr,
+                   device_csc_matrix_ptr_t<i_t, f_t> device_Q = nullptr);
+  simplex::lp_status_t solve(f_t start_time,
+                             simplex::lp_solution_t<i_t, f_t>& solution,
+                             cuopt::mathematical_optimization::barrier_cache_t* cache = nullptr);
+  // Cache reuse: cached iteration_data_t already has the updated linear objective.
+  // Reset iterate state, compute a new initial point, run barrier. Same status/solution contract as
+  // solve().
+  simplex::lp_status_t solve_with_cache(f_t start_time,
+                                        simplex::lp_solution_t<i_t, f_t>& solution,
+                                        cuopt::mathematical_optimization::barrier_cache_t* cache);
 
  private:
+  simplex::lp_status_t barrier_advanced_solve(f_t start_time,
+                                              simplex::lp_solution_t<i_t, f_t>& solution,
+                                              iteration_data_t<i_t, f_t>& data);
   void my_pop_range(bool debug) const;
   void create_Q(const simplex::lp_problem_t<i_t, f_t>& lp, csc_matrix_t<i_t, f_t>& Q);
   int initial_point(iteration_data_t<i_t, f_t>& data);
-  void compute_residual_norms(const dense_vector_t<i_t, f_t>& w,
-                              const dense_vector_t<i_t, f_t>& x,
-                              const dense_vector_t<i_t, f_t>& y,
-                              const dense_vector_t<i_t, f_t>& v,
-                              const dense_vector_t<i_t, f_t>& z,
-                              iteration_data_t<i_t, f_t>& data,
-                              f_t& primal_residual_norm,
-                              f_t& dual_residual_norm,
-                              f_t& complementarity_residual_norm);
 
   void compute_primal_dual_step_length(iteration_data_t<i_t, f_t>& data,
                                        f_t step_scale,
                                        f_t& step_primal,
                                        f_t& step_dual);
 
-  void compute_residual_norms(iteration_data_t<i_t, f_t>& data,
-                              f_t& primal_residual_norm,
-                              f_t& dual_residual_norm,
-                              f_t& complementarity_residual_norm);
-  void compute_mu(iteration_data_t<i_t, f_t>& data, f_t& mu);
-  void compute_primal_dual_objective(iteration_data_t<i_t, f_t>& data,
-                                     f_t& primal_objective,
-                                     f_t& dual_objective);
+  void compute_residual_norms_mu_and_objective(iteration_data_t<i_t, f_t>& data,
+                                               f_t& primal_residual_norm,
+                                               f_t& dual_residual_norm,
+                                               f_t& complementarity_residual_norm,
+                                               f_t& mu,
+                                               f_t& primal_objective,
+                                               f_t& dual_objective);
 
   // To be able to directly pass lambdas to transform functions
  public:
@@ -81,16 +113,6 @@ class barrier_solver_t {
                              rmm::device_uvector<f_t> const& d_v,
                              rmm::device_uvector<f_t> const& d_z,
                              iteration_data_t<i_t, f_t>& data);
-  void gpu_compute_residual_norms(const rmm::device_uvector<f_t>& d_w,
-                                  const rmm::device_uvector<f_t>& d_x,
-                                  const rmm::device_uvector<f_t>& d_y,
-                                  const rmm::device_uvector<f_t>& d_v,
-                                  const rmm::device_uvector<f_t>& d_z,
-                                  iteration_data_t<i_t, f_t>& data,
-                                  f_t& primal_residual_norm,
-                                  f_t& dual_residual_norm,
-                                  f_t& complementarity_residual_norm);
-
   std::pair<f_t, f_t> compute_nonnegative_step_length_pair(iteration_data_t<i_t, f_t>& data,
                                                            const rmm::device_uvector<f_t>& x1,
                                                            const rmm::device_uvector<f_t>& dx1,
@@ -109,15 +131,19 @@ class barrier_solver_t {
                                                      f_t& primal_residual_norm,
                                                      f_t& dual_residual_norm,
                                                      f_t& complementarity_residual_norm,
+                                                     f_t& objective_gap,
                                                      f_t& relative_primal_residual,
                                                      f_t& relative_dual_residual,
                                                      f_t& relative_complementarity_residual,
+                                                     f_t& relative_objective_gap,
                                                      simplex::lp_solution_t<i_t, f_t>& solution);
 
   const simplex::lp_problem_t<i_t, f_t>& lp;
   const simplex::simplex_solver_settings_t<i_t, f_t>& settings;
   const simplex::presolve_info_t<i_t, f_t>& presolve_info;
-  rmm::cuda_stream_view stream_view_;
+  cuda::stream_ref stream_view_;
+  device_csc_matrix_ptr_t<i_t, f_t> device_A_;
+  device_csc_matrix_ptr_t<i_t, f_t> device_Q_;
 };
 
 }  // namespace cuopt::mathematical_optimization::barrier

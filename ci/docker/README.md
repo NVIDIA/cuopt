@@ -26,3 +26,18 @@ docker run -it --rm --gpus all -u root --volume $PWD:/repo -w /repo --entrypoint
 # UBI10 image
 docker run -it --rm --gpus all -u root --volume $PWD:/repo -w /repo --entrypoint "/bin/bash" nvidia/cuopt:[TAG]-ubi10 ./ci/docker/test_image.sh
 ```
+
+### Startup smoke (proxy + gRPC, gRPC-only, legacy)
+
+`test_image.sh` runs pytest inside the image and does not launch the servers.
+To verify the published entrypoint starts the default HTTP proxy plus
+`cuopt_grpc_server` (`proxy`), gRPC-only (`grpc`), and the legacy REST
+server (`legacy`):
+
+```bash
+./ci/docker/smoke_image.sh nvidia/cuopt:[TAG]
+./ci/docker/smoke_image.sh nvidia/cuopt:[TAG]-ubi10
+```
+
+CI runs this for both variants after the multiarch manifests are published
+(see `.github/workflows/test_images.yaml` job `smoke`).

@@ -125,7 +125,7 @@ std::vector<std::unique_ptr<vehicle_routing_ret_t>> call_batch_solve(
     auto routing_solution = cuopt::routing::solve(*data_models[i], *settings);
 
     // Make sure current solve is finished
-    stream_pool.get_stream(i).synchronize();
+    stream_pool.get_stream(i).sync();
 
     // Create buffers and reassociate them with the original stream so they
     // outlive the local stream which will be destroyed at end of loop iteration
@@ -152,7 +152,7 @@ std::vector<std::unique_ptr<vehicle_routing_ret_t>> call_batch_solve(
 
     // Restore the old stream
     raft::resource::set_cuda_stream(*(data_models[i]->get_handle_ptr()), old_stream);
-    old_stream.synchronize();
+    old_stream.sync();
   }
 
   return list;

@@ -19,10 +19,7 @@ build:
   string: ${{ datetime_string }}_${{ head_rev }}
   script:
     content: |
-      # We pass an explicit matrix-entry here along with `disable-cuda=true` to
-      # avoid `rapids-build-backend` trying to use an unavailable `nvcc` to
-      # lookup a `CUDA_VERSION` that we don't need for the conda build.
-      python -m pip install -C rapidsai.disable-cuda=true -C rapidsai.matrix-entry='cuda=12.x;cuda_suffixed=true' ./python/cuopt_server
+      ./build.sh cuopt_server
 
 requirements:
   host:

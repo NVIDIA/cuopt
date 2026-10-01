@@ -8,6 +8,7 @@
 #pragma once
 
 #include <cuopt/mathematical_optimization/constants.h>
+#include <cuda/stream>
 #include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/cpu_pdlp_warm_start_data.hpp>
 #include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
@@ -24,6 +25,8 @@
 
 namespace cuopt {
 namespace CUOPT_EXPORT mathematical_optimization {
+
+class barrier_cache_t;
 
 // Forward declare solver_settings_t for friend class
 template <typename i_t, typename f_t>
@@ -59,6 +62,7 @@ enum pdlp_solver_mode_t : int {
  * PDLP: Use the PDLP method.
  * DualSimplex: Use the dual simplex method.
  * Barrier: Use the barrier method
+ * Primal: Use the (experimental) primal simplex method.
  * Unset: The value was not set.
  *
  * @note Default method is Concurrent.
@@ -68,6 +72,7 @@ enum method_t : int {
   PDLP        = CUOPT_METHOD_PDLP,
   DualSimplex = CUOPT_METHOD_DUAL_SIMPLEX,
   Barrier     = CUOPT_METHOD_BARRIER,
+  Primal      = CUOPT_METHOD_PRIMAL,
   Unset       = CUOPT_METHOD_UNSET
 };
 
@@ -79,6 +84,7 @@ inline std::string method_to_string(method_t method)
     case method_t::PDLP: return "PDLP";
     case method_t::Barrier: return "Barrier";
     case method_t::Concurrent: return "Concurrent";
+    case method_t::Primal: return "Primal Simplex";
     default: return "Unset";
   }
 }
@@ -99,16 +105,16 @@ enum pdlp_precision_t : int {
 };
 
 /**
- * @brief Which graph partitioner distributed PDLP uses.
+ * @brief Which graph partitioner multi-GPU PDLP uses.
  *
  * Auto: pick automatically (RoundRobin on 1 GPU, KaMinPar otherwise).
  * KaMinPar: multi-threaded KaMinPar graph partitioner.
  * RoundRobin: round-robin assignment, no graph.
  */
-enum distributed_pdlp_partitioner_t : int {
-  Auto       = CUOPT_DISTRIBUTED_PDLP_PARTITIONER_AUTO,
-  KaMinPar   = CUOPT_DISTRIBUTED_PDLP_PARTITIONER_KAMINPAR,
-  RoundRobin = CUOPT_DISTRIBUTED_PDLP_PARTITIONER_ROUND_ROBIN,
+enum multigpu_pdlp_partitioner_t : int {
+  Auto       = CUOPT_MULTIGPU_PDLP_PARTITIONER_AUTO,
+  KaMinPar   = CUOPT_MULTIGPU_PDLP_PARTITIONER_KAMINPAR,
+  RoundRobin = CUOPT_MULTIGPU_PDLP_PARTITIONER_ROUND_ROBIN,
 };
 
 template <typename i_t, typename f_t>
@@ -151,7 +157,8 @@ class pdlp_solver_settings_t {
    */
   void set_initial_primal_solution(const f_t* initial_primal_solution,
                                    i_t size,
-                                   rmm::cuda_stream_view stream = rmm::cuda_stream_default);
+                                   cuda::stream_ref stream = cuda::stream_ref{
+                                     cudaStream_t{cudaStreamDefault}});
 
   /**
    * @brief Set an initial dual solution.
@@ -165,7 +172,8 @@ class pdlp_solver_settings_t {
    */
   void set_initial_dual_solution(const f_t* initial_dual_solution,
                                  i_t size,
-                                 rmm::cuda_stream_view stream = rmm::cuda_stream_default);
+                                 cuda::stream_ref stream = cuda::stream_ref{
+                                   cudaStream_t{cudaStreamDefault}});
 
   /** TODO batch mode: tmp
    * @brief Set an initial step size.
@@ -200,11 +208,12 @@ class pdlp_solver_settings_t {
    * @param constraint_mapping Constraints indices to scatter to in case the new
    * problem has less constraints
    */
-  void set_pdlp_warm_start_data(pdlp_warm_start_data_t<i_t, f_t>& pdlp_warm_start_data_view,
-                                const rmm::device_uvector<i_t>& var_mapping =
-                                  rmm::device_uvector<i_t>{0, rmm::cuda_stream_default},
-                                const rmm::device_uvector<i_t>& constraint_mapping =
-                                  rmm::device_uvector<i_t>{0, rmm::cuda_stream_default});
+  void set_pdlp_warm_start_data(
+    pdlp_warm_start_data_t<i_t, f_t>& pdlp_warm_start_data_view,
+    const rmm::device_uvector<i_t>& var_mapping =
+      rmm::device_uvector<i_t>{0, cuda::stream_ref{cudaStream_t{cudaStreamDefault}}},
+    const rmm::device_uvector<i_t>& constraint_mapping = rmm::device_uvector<i_t>{
+      0, cuda::stream_ref{cudaStream_t{cudaStreamDefault}}});
 
   // Same but for the Cython interface
   void set_pdlp_warm_start_data(const f_t* current_primal_solution,
@@ -294,16 +303,31 @@ class pdlp_solver_settings_t {
   i_t augmented{-1};
   i_t dualize{-1};
   i_t ordering{-1};
-  i_t barrier_dual_initial_point{-1};
+  i_t initial_perturbation{-1};
+  i_t remove_perturbation{-1};
+  i_t primal_pricing{1};
+  barrier_dual_initial_point_t barrier_dual_initial_point{barrier_dual_initial_point_t::Automatic};
   i_t postsolve_info{-1};
   i_t barrier_presolve_bound_free_variables{-1};  // -1 automatic, 0 disabled, 1 enabled
   // Ruiz equilibration for QCQP (barrier) scaling: -1 automatic (row/column
   // imbalance heuristic), 0 disabled, 1 enabled. Distinct from PDLP's own Ruiz
   // scaling in pdlp_hyper_params_t.
   i_t qcqp_ruiz_equilibration{-1};
+  // nnz(A)+nnz(Q) at or above which the barrier path runs Ruiz equilibration on GPU instead
+  // of CPU. Below it the upload costs more than the scaling saves.
+  i_t gpu_ruiz_nnz_threshold{500000};
+  // Margin used to push the barrier method's initial iterate into the interior of the
+  // nonnegative orthant / SOC (values are shifted to be at least this far from the boundary).
+  f_t barrier_initial_point_safeguard{10.0};
   bool eliminate_dense_columns{true};
   pdlp_precision_t pdlp_precision{pdlp_precision_t::DefaultPrecision};
   bool barrier_iterative_refinement{true};
+  i_t barrier_adaptive_regularization{-1};  // -1 automatic, 0 disabled, 1 enabled
+  // Initial regularization for the barrier method's augmented KKT system, applied to the first
+  // factorization only (adaptive regularization, if enabled, still scales it up/down on later
+  // iterations). -1 automatic (uses the built-in heuristic), else the literal starting value.
+  f_t barrier_primal_regularization{-1.0};
+  f_t barrier_dual_regularization{-1.0};
   i_t barrier_soc_threshold{100};
   f_t barrier_step_scale{0.9};
   bool save_best_primal_so_far{false};
@@ -328,16 +352,17 @@ class pdlp_solver_settings_t {
   bool all_primal_feasible{false};
   presolver_t presolver{presolver_t::Default};
   bool dual_postsolve{true};
-  // Concurrent LP/MIP: 1–2 GPUs. Distributed PDLP (method=PDLP): up to the visible device
-  // count; -1 selects all visible GPUs. See use_distributed_pdlp.
+  // Concurrent LP/MIP: 1–2 GPUs. Multi-GPU PDLP (method=PDLP): up to the visible device
+  // count; -1 selects all visible GPUs, which dispatches to the multi-GPU PDLP engine
+  // whenever num_gpus == -1 or num_gpus > 1.
   int num_gpus{1};
-  // Dispatch the LP to the multi-GPU distributed PDLP engine (typically set when
-  // method=PDLP and num_gpus>1, or num_gpus=-1).
-  bool use_distributed_pdlp{false};
-  // Which graph partitioner distributed PDLP uses. See
-  // distributed_pdlp_partitioner_t for the meaning of each value.
-  distributed_pdlp_partitioner_t distributed_pdlp_partitioner{distributed_pdlp_partitioner_t::Auto};
+  // Which graph partitioner multi-GPU PDLP uses. See
+  // multigpu_pdlp_partitioner_t for the meaning of each value.
+  multigpu_pdlp_partitioner_t multigpu_pdlp_partitioner{multigpu_pdlp_partitioner_t::Auto};
   method_t method{method_t::Concurrent};
+  // TODO: Remove this cutoff once concurrent CPU solver memory usage and cuDSS long running kernels
+  // are resolved. -1 disables the cutoff regardless of the reduced problem's NNZ.
+  i_t concurrent_nnz_cutoff{50'000'000};
   bool inside_mip{false};
   // For concurrent termination
   std::atomic<int>* concurrent_halt{nullptr};
@@ -356,6 +381,10 @@ class pdlp_solver_settings_t {
   // Used to force batch PDLP to solve a subbatch of the problems at a time
   // The 0 default value will make the solver use its heuristic to determine the subbatch size
   i_t fixed_batch_size{0};
+  /** When true, the first GPU barrier/QCQP solve retains cache state for later reuse. */
+  bool sequence_solve{false};
+  /** Non-owning cache pointer set by ``call_solve`` for barrier cache reuse. */
+  barrier_cache_t* barrier_cache{nullptr};
 
  private:
   /** Initial primal solution */

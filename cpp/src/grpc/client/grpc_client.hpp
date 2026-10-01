@@ -39,6 +39,9 @@ class SubmitJobRequest;
 
 namespace cuopt::mathematical_optimization {
 
+template <typename i_t, typename f_t>
+class solver_settings_t;
+
 // Forward declarations for test helper functions (implemented in grpc_client.cpp)
 void grpc_test_inject_mock_stub(class grpc_client_t& client, std::shared_ptr<void> stub);
 void grpc_test_mark_as_connected(class grpc_client_t& client);
@@ -277,6 +280,14 @@ class grpc_client_t {
   bool is_connected() const;
 
   /**
+   * @brief Probe the server with a short CheckStatus RPC.
+   *
+   * Same check used at connect time: OK or NOT_FOUND means the process
+   * answered. Other gRPC codes (UNAVAILABLE, DEADLINE_EXCEEDED, ...) fail.
+   */
+  bool ping(int timeout_seconds = 5);
+
+  /**
    * @brief Solve an LP problem remotely
    *
    * This is a blocking call that:
@@ -291,6 +302,13 @@ class grpc_client_t {
   template <typename i_t, typename f_t>
   remote_lp_result_t<i_t, f_t> solve_lp(const cpu_optimization_problem_t<i_t, f_t>& problem,
                                         const pdlp_solver_settings_t<i_t, f_t>& settings);
+
+  /**
+   * @brief Solve an LP remotely, sending typed fields and the parameter map.
+   */
+  template <typename i_t, typename f_t>
+  remote_lp_result_t<i_t, f_t> solve_lp(const cpu_optimization_problem_t<i_t, f_t>& problem,
+                                        solver_settings_t<i_t, f_t>& settings);
 
   /**
    * @brief Solve a MIP problem remotely
@@ -310,6 +328,14 @@ class grpc_client_t {
                                           const mip_solver_settings_t<i_t, f_t>& settings,
                                           bool enable_incumbents = false);
 
+  /**
+   * @brief Solve a MIP remotely, sending typed fields and the parameter map.
+   */
+  template <typename i_t, typename f_t>
+  remote_mip_result_t<i_t, f_t> solve_mip(const cpu_optimization_problem_t<i_t, f_t>& problem,
+                                          solver_settings_t<i_t, f_t>& settings,
+                                          bool enable_incumbents = false);
+
   // =========================================================================
   // Async Operations (for manual job management)
   // =========================================================================
@@ -323,13 +349,34 @@ class grpc_client_t {
                             const pdlp_solver_settings_t<i_t, f_t>& settings);
 
   /**
+   * @brief Submit an LP problem from a solver_settings_t.
+   *
+   * Writes the deprecated typed fields and then every set_parameter() value.
+   */
+  template <typename i_t, typename f_t>
+  submit_result_t submit_lp(const cpu_optimization_problem_t<i_t, f_t>& problem,
+                            solver_settings_t<i_t, f_t>& settings);
+
+  /**
    * @brief Submit a MIP problem without waiting for result
    * @return Result containing job_id if successful
    */
   template <typename i_t, typename f_t>
   submit_result_t submit_mip(const cpu_optimization_problem_t<i_t, f_t>& problem,
                              const mip_solver_settings_t<i_t, f_t>& settings,
-                             bool enable_incumbents = false);
+                             bool enable_incumbents    = false,
+                             bool enable_set_incumbent = false);
+
+  /**
+   * @brief Submit a MIP problem from a solver_settings_t.
+   *
+   * Writes the deprecated typed fields and then every set_parameter() value.
+   */
+  template <typename i_t, typename f_t>
+  submit_result_t submit_mip(const cpu_optimization_problem_t<i_t, f_t>& problem,
+                             solver_settings_t<i_t, f_t>& settings,
+                             bool enable_incumbents    = false,
+                             bool enable_set_incumbent = false);
 
   /**
    * @brief Check status of a submitted job

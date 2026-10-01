@@ -15,13 +15,13 @@
 #include <random>
 #include <vector>
 
+#include <cuda/stream>
 #include <raft/core/device_span.hpp>
 #include <raft/linalg/binary_op.cuh>
 #include <raft/linalg/detail/cublas_wrappers.hpp>
 #include <raft/linalg/norm.cuh>
 #include <raft/util/cuda_utils.cuh>
 
-#include <rmm/cuda_stream_view.hpp>
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 
@@ -329,7 +329,7 @@ void inline combine_constraint_bounds(const mip::problem_t<i_t, f_t>& op_problem
                                   combined_bounds.data(),
                                   combined_bounds.size(),
                                   combine_finite_abs_bounds<f_t>(),
-                                  op_problem.handle_ptr->get_stream());
+                                  op_problem.handle_ptr->get_stream().get());
 }
 
 // Same as compute_sum_bounds, but without the fused sqrt.
@@ -338,7 +338,7 @@ template <typename f_t>
 void inline compute_sum_bounds_squared(const rmm::device_uvector<f_t>& constraint_lower_bounds,
                                        const rmm::device_uvector<f_t>& constraint_upper_bounds,
                                        rmm::device_scalar<f_t>& out,
-                                       rmm::cuda_stream_view stream_view,
+                                       cuda::stream_ref stream_view,
                                        std::size_t n)
 {
   cuopt_assert(constraint_lower_bounds.size() == constraint_upper_bounds.size(),
@@ -356,7 +356,7 @@ void inline compute_sum_bounds_squared(const rmm::device_uvector<f_t>& constrain
     cuda::std::plus<>{},
     rhs_sum_of_squares_t<f_t>{},
     f_t(0),
-    stream_view);
+    stream_view.get());
 
   d_temp_storage.resize(bytes, stream_view);
 
@@ -369,8 +369,8 @@ void inline compute_sum_bounds_squared(const rmm::device_uvector<f_t>& constrain
     cuda::std::plus<>{},
     rhs_sum_of_squares_t<f_t>{},
     f_t(0),
-    stream_view);
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view));
+    stream_view.get());
+  stream_view.sync();
 }
 
 // Weighted sum of squares of the first n entries of `values` (no fused sqrt).
@@ -379,7 +379,7 @@ template <typename f_t>
 void inline compute_sum_weighted_squares(const rmm::device_uvector<f_t>& values,
                                          f_t weight,
                                          rmm::device_scalar<f_t>& out,
-                                         rmm::cuda_stream_view stream_view,
+                                         cuda::stream_ref stream_view,
                                          std::size_t n)
 {
   cuopt_assert(n <= values.size(), "n exceeds values size");
@@ -394,7 +394,7 @@ void inline compute_sum_weighted_squares(const rmm::device_uvector<f_t>& values,
                                      cuda::std::plus<>{},
                                      weighted_square_op<f_t>{weight},
                                      f_t(0),
-                                     stream_view);
+                                     stream_view.get());
 
   d_temp_storage.resize(bytes, stream_view);
 
@@ -406,8 +406,8 @@ void inline compute_sum_weighted_squares(const rmm::device_uvector<f_t>& values,
                                      cuda::std::plus<>{},
                                      weighted_square_op<f_t>{weight},
                                      f_t(0),
-                                     stream_view);
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view));
+                                     stream_view.get());
+  stream_view.sync();
 }
 
 // Like compute_sum_bounds_squared, but writes sqrt(sum of squares) (the L2 norm).
@@ -415,7 +415,7 @@ template <typename f_t>
 void inline compute_sum_bounds(const rmm::device_uvector<f_t>& constraint_lower_bounds,
                                const rmm::device_uvector<f_t>& constraint_upper_bounds,
                                f_t* out,
-                               rmm::cuda_stream_view stream_view)
+                               cuda::stream_ref stream_view)
 {
   rmm::device_buffer d_temp_storage;
   size_t bytes = 0;
@@ -428,7 +428,7 @@ void inline compute_sum_bounds(const rmm::device_uvector<f_t>& constraint_lower_
     cuda::std::plus<>{},
     rhs_sum_of_squares_t<f_t>{},
     f_t(0),
-    stream_view);
+    stream_view.get());
 
   d_temp_storage.resize(bytes, stream_view);
 
@@ -441,15 +441,15 @@ void inline compute_sum_bounds(const rmm::device_uvector<f_t>& constraint_lower_
     cuda::std::plus<>{},
     rhs_sum_of_squares_t<f_t>{},
     f_t(0),
-    stream_view);
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view));
+    stream_view.get());
+  stream_view.sync();
 }
 
 template <typename f_t>
 void inline compute_sum_bounds(const rmm::device_uvector<f_t>& constraint_lower_bounds,
                                const rmm::device_uvector<f_t>& constraint_upper_bounds,
                                rmm::device_scalar<f_t>& out,
-                               rmm::cuda_stream_view stream_view)
+                               cuda::stream_ref stream_view)
 {
   compute_sum_bounds(constraint_lower_bounds, constraint_upper_bounds, out.data(), stream_view);
 }
@@ -688,7 +688,7 @@ void inline my_l2_norm(const f_t* in, f_t* out, size_t size, raft::handle_t cons
 {
   constexpr int stride = 1;
   RAFT_CUBLAS_TRY(raft::linalg::detail::cublasnrm2(
-    handle_ptr->get_cublas_handle(), size, in, stride, out, handle_ptr->get_stream()));
+    handle_ptr->get_cublas_handle(), size, in, stride, out, handle_ptr->get_stream().get()));
 }
 
 template <typename i_t, typename f_t>
@@ -712,7 +712,7 @@ void inline my_l2_weighted_norm(const f_t* input_vector,
                                 size_t size,
                                 f_t weight,
                                 rmm::device_scalar<f_t>& result,
-                                rmm::cuda_stream_view stream)
+                                cuda::stream_ref stream)
 {
   auto fin_op  = [] __device__(f_t in) { return raft::sqrt(in); };
   auto main_op = [weight] __device__(f_t in, i_t _) { return in * in * weight; };
@@ -721,7 +721,7 @@ void inline my_l2_weighted_norm(const f_t* input_vector,
                                                   (i_t)size,
                                                   1,
                                                   f_t(0.0),
-                                                  stream,
+                                                  stream.get(),
                                                   false,
                                                   main_op,
                                                   raft::Sum<f_t>(),
@@ -732,7 +732,7 @@ template <typename i_t, typename f_t>
 void inline my_l2_weighted_norm(rmm::device_uvector<f_t>& input_vector,
                                 f_t weight,
                                 rmm::device_scalar<f_t>& result,
-                                rmm::cuda_stream_view stream)
+                                cuda::stream_ref stream)
 {
   my_l2_weighted_norm<i_t, f_t>(input_vector.data(), input_vector.size(), weight, result, stream);
 }
@@ -779,10 +779,10 @@ void inline my_inf_norm(const rmm::device_uvector<f_t>& input_vector,
 
   void* d_temp      = nullptr;
   size_t temp_bytes = 0;
-  cub::DeviceReduce::Max(d_temp, temp_bytes, abs_iter, result, n, stream);
+  cub::DeviceReduce::Max(d_temp, temp_bytes, abs_iter, result, n, stream.get());
   rmm::device_buffer temp_buf(temp_bytes, stream);
-  cub::DeviceReduce::Max(temp_buf.data(), temp_bytes, abs_iter, result, n, stream);
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
+  cub::DeviceReduce::Max(temp_buf.data(), temp_bytes, abs_iter, result, n, stream.get());
+  stream.sync();
 }
 
 template <typename f_t>

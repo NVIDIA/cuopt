@@ -27,7 +27,7 @@ assignment_t<i_t> ges_solver_t<i_t, f_t, REQUEST>::get_ges_assignment(
   // the stream should be the initial handle stream and not the sol_handle stream as this data will
   // be exported
   auto stream = problem.handle_ptr->get_stream();
-  stream.synchronize();
+  stream.sync();
 
   const auto& problem = *sol.problem_ptr;
   i_t n_output_nodes  = sol.get_n_routes() * 2 + sol.get_num_depot_excluded_orders() +
@@ -39,7 +39,7 @@ assignment_t<i_t> ges_solver_t<i_t, f_t, REQUEST>::get_ges_assignment(
   rmm::device_uvector<i_t> route_locations_out(0, stream);
   rmm::device_uvector<i_t> node_types_out(0, stream);
   auto accepted_out = cuopt::device_copy(accepted, stream);
-  stream.synchronize();
+  stream.sync();
   std::vector<i_t> node_types_out_h(n_output_nodes);
   std::vector<i_t> route_out_h(n_output_nodes);
   std::vector<i_t> truck_id_out_h(n_output_nodes);
@@ -150,7 +150,7 @@ assignment_t<i_t> ges_solver_t<i_t, f_t, REQUEST>::get_ges_assignment(
 
   auto unserviced_nodes_h = sol.get_unserviced_nodes();
   auto unserviced_nodes   = cuopt::device_copy(unserviced_nodes_h, stream);
-  stream.synchronize();
+  stream.sync();
 
   std::map<objective_t, double> objective_values;
   for (int i = 0; i < (int)objective_t::SIZE; ++i) {

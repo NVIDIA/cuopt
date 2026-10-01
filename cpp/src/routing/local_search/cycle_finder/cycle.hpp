@@ -8,11 +8,12 @@
 #pragma once
 
 #include <utilities/copy_helpers.hpp>
+#include <utilities/device_scalar_init.hpp>
 #include <utilities/vector_helpers.cuh>
 #include "../../solution/solution_handle.cuh"
 
+#include <cuda/stream>
 #include <raft/core/device_span.hpp>
-#include <rmm/cuda_stream_view.hpp>
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 
@@ -22,11 +23,11 @@ namespace detail {
 
 template <typename i_t, typename f_t>
 struct ret_cycles_t {
-  ret_cycles_t(size_t max_size, rmm::cuda_stream_view stream_view)
+  ret_cycles_t(size_t max_size, cuda::stream_ref stream_view)
     : paths(max_size, stream_view),
       offsets(max_size, stream_view),
-      n_cycles_(0, stream_view),
-      curr_iter_n_starts(0, stream_view)
+      n_cycles_(zero_v<i_t>, stream_view),
+      curr_iter_n_starts(zero_v<i_t>, stream_view)
   {
   }
 
@@ -45,7 +46,7 @@ struct ret_cycles_t {
     i_t n_cycles;
   };
 
-  host_t to_host(rmm::cuda_stream_view stream)
+  host_t to_host(cuda::stream_ref stream)
   {
     host_t h;
     h.paths    = host_copy(paths, stream);
