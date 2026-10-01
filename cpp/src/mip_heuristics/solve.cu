@@ -902,6 +902,10 @@ template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
                                    mip_solver_settings_t<i_t, f_t> const& settings_const)
 {
+  cuopt_expects(!op_problem.has_quadratic_objective() && !op_problem.has_quadratic_constraints(),
+                error_type_t::ValidationError,
+                "Mixed-integer quadratic problems (MIQP/MIQCP) are not supported.");
+
   std::exception_ptr exception;
   i_t num_threads = 0;
   if (settings_const.num_cpu_threads < 0) {
