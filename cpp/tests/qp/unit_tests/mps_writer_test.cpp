@@ -259,9 +259,12 @@ TEST(mps_writer_op, write_to_mps_nonsymmetric_Q_quadobj_matches_Q_plus_Q_transpo
   }
 }
 
-TEST(mps_writer_op, constraint_bounds_round_trip)
+class MpsWriterBoundsTest : public ::testing::TestWithParam<std::tuple<bool, bool>> {};
+
+TEST_P(MpsWriterBoundsTest, constraint_bounds_round_trip)
 {
-  double const inf = std::numeric_limits<double>::infinity();
+  auto const [named, with_rhs] = GetParam();
+  double const inf             = std::numeric_limits<double>::infinity();
   // Includes positive/negative intervals, zero endpoints, equality and one-sided rows.
   std::vector<double> const lower      = {85.5, -3.0, 0.0, -1.0, 2.0, -inf, 4.0};
   std::vector<double> const upper      = {86.5, -2.0, 1.0, 0.0, 2.0, 3.0, inf};
@@ -269,41 +272,39 @@ TEST(mps_writer_op, constraint_bounds_round_trip)
   std::vector<char> const senses       = {'G', 'L', 'E', 'E', 'E', 'L', 'G'};
   std::vector<std::string> const names = {
     "positive", "negative", "zero_lower", "zero_upper", "equal", "upper_only", "lower_only"};
-  for (bool named : {false, true}) {
-    for (bool with_rhs : {false, true}) {
-      SCOPED_TRACE(::testing::Message() << "named=" << named << " with_rhs=" << with_rhs);
-      raft::handle_t handle;
-      auto op = optimization_problem_t<int, double>(&handle);
-      std::vector<double> values(lower.size(), 1.0);
-      std::vector<int> indices(lower.size(), 0);
-      std::vector<int> offsets = {0, 1, 2, 3, 4, 5, 6, 7};
-      op.set_csr_constraint_matrix(values.data(),
-                                   values.size(),
-                                   indices.data(),
-                                   indices.size(),
-                                   offsets.data(),
-                                   offsets.size());
-      double const c[] = {1.0}, lb[] = {-inf}, ub[] = {inf};
-      op.set_objective_coefficients(c, 1);
-      op.set_variable_lower_bounds(lb, 1);
-      op.set_variable_upper_bounds(ub, 1);
-      op.set_constraint_lower_bounds(lower.data(), lower.size());
-      op.set_constraint_upper_bounds(upper.data(), upper.size());
-      if (with_rhs) {
-        op.set_constraint_bounds(rhs.data(), rhs.size());
-        op.set_row_types(senses.data(), senses.size());
-      }
-      if (named) { op.set_row_names(names); }
-      std::string const path =
-        std::string(::testing::TempDir()) + "constraint_bounds_round_trip.mps";
-      temp_mps_file_guard_t guard(path);
-      op.write_to_mps(path);
-      auto parsed = io::read_mps<int, double>(path);
-      EXPECT_EQ(parsed.get_constraint_lower_bounds(), lower);
-      EXPECT_EQ(parsed.get_constraint_upper_bounds(), upper);
-      if (named) { EXPECT_EQ(parsed.get_row_names(), names); }
-    }
+  raft::handle_t handle;
+  auto op = optimization_problem_t<int, double>(&handle);
+  std::vector<double> values(lower.size(), 1.0);
+  std::vector<int> indices(lower.size(), 0);
+  std::vector<int> offsets = {0, 1, 2, 3, 4, 5, 6, 7};
+  op.set_csr_constraint_matrix(
+    values.data(), values.size(), indices.data(), indices.size(), offsets.data(), offsets.size());
+  double const c[] = {1.0}, lb[] = {-inf}, ub[] = {inf};
+  op.set_objective_coefficients(c, 1);
+  op.set_variable_lower_bounds(lb, 1);
+  op.set_variable_upper_bounds(ub, 1);
+  op.set_constraint_lower_bounds(lower.data(), lower.size());
+  op.set_constraint_upper_bounds(upper.data(), upper.size());
+  if (with_rhs) {
+    op.set_constraint_bounds(rhs.data(), rhs.size());
+    op.set_row_types(senses.data(), senses.size());
   }
+  if (named) { op.set_row_names(names); }
+  std::string const path = std::string(::testing::TempDir()) + "constraint_bounds_round_trip.mps";
+  temp_mps_file_guard_t guard(path);
+  op.write_to_mps(path);
+  auto parsed = io::read_mps<int, double>(path);
+  EXPECT_EQ(parsed.get_constraint_lower_bounds(), lower);
+  EXPECT_EQ(parsed.get_constraint_upper_bounds(), upper);
+  if (named) { EXPECT_EQ(parsed.get_row_names(), names); }
 }
+
+INSTANTIATE_TEST_SUITE_P(BoundsRepresentations,
+                         MpsWriterBoundsTest,
+                         ::testing::Combine(::testing::Bool(), ::testing::Bool()),
+                         [](const ::testing::TestParamInfo<MpsWriterBoundsTest::ParamType>& info) {
+                           return std::string(std::get<0>(info.param) ? "Named" : "DefaultNames") +
+                                  (std::get<1>(info.param) ? "WithRhs" : "BoundsOnly");
+                         });
 
 }  // namespace cuopt::mathematical_optimization
