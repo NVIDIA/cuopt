@@ -284,9 +284,10 @@ outputs:
         - ${{ pin_subpackage("libcuopt-client", exact=True) }}
         - libboost-devel
         - librmm =${{ minor_version }}
-        # Reaches routing through cuDSS today, whose run export the cache leaks into
-        # every output. Routing does not use cuDSS, so it has to name cuBLAS itself.
+        # Both reach routing through cuDSS today, whose run export the cache leaks into
+        # every output. Routing does not use cuDSS, so it names them itself.
         - libcublas
+        - libcusparse
       ignore_run_exports:
         by_name:
           - cuda-nvtx

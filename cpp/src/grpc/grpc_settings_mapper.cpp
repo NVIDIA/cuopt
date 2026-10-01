@@ -92,6 +92,31 @@ void map_proto_to_mip_settings(const cuopt::remote::MIPSolverSettings& pb_settin
   }
 }
 
+template <typename i_t, typename f_t>
+void apply_parameter_overrides(solver_settings_t<i_t, f_t>& settings,
+                               const google::protobuf::Map<std::string, std::string>& parameters)
+{
+  // A protobuf map has one entry per name. Each name is registered at least
+  // once, so a complete map is never larger than these four lists. Twice that
+  // length is spare room. The lists are the source of the count, so adding a
+  // parameter raises the limit with no separate constant to update.
+  constexpr std::size_t kParameterMapHeadroom = 2;
+  const std::size_t registered =
+    settings.get_float_parameters().size() + settings.get_int_parameters().size() +
+    settings.get_bool_parameters().size() + settings.get_string_parameters().size();
+  if (static_cast<std::size_t>(parameters.size()) > registered * kParameterMapHeadroom) {
+    throw std::invalid_argument("Too many solver parameters");
+  }
+
+  // After the deprecated typed fields have been copied onto `settings`.
+  // set_parameter_from_string is the same path the CLI and C API use, so a
+  // key here wins over those fields and a parameter with no typed field is
+  // still applied.
+  for (const auto& entry : parameters) {
+    settings.set_parameter_from_string(entry.first, entry.second);
+  }
+}
+
 // Explicit template instantiations
 #if CUOPT_INSTANTIATE_FLOAT
 template CUOPT_EXPORT void map_pdlp_settings_to_proto(
@@ -106,6 +131,9 @@ template CUOPT_EXPORT void map_mip_settings_to_proto(
 template CUOPT_EXPORT void map_proto_to_mip_settings(
   const cuopt::remote::MIPSolverSettings& pb_settings,
   mip_solver_settings_t<int32_t, float>& settings);
+template CUOPT_EXPORT void apply_parameter_overrides(
+  solver_settings_t<int32_t, float>& settings,
+  const google::protobuf::Map<std::string, std::string>& parameters);
 #endif
 
 #if CUOPT_INSTANTIATE_DOUBLE
@@ -121,6 +149,9 @@ template CUOPT_EXPORT void map_mip_settings_to_proto(
 template CUOPT_EXPORT void map_proto_to_mip_settings(
   const cuopt::remote::MIPSolverSettings& pb_settings,
   mip_solver_settings_t<int32_t, double>& settings);
+template CUOPT_EXPORT void apply_parameter_overrides(
+  solver_settings_t<int32_t, double>& settings,
+  const google::protobuf::Map<std::string, std::string>& parameters);
 #endif
 
 }  // namespace cuopt::mathematical_optimization

@@ -136,7 +136,6 @@ template void collect_row_repair_moves<int, float>(fj_cpu_climber_t<int, float>&
                                                    std::vector<row_repair_move_t<int, float>>&);
 template void apply_greedy_covering_start<int, float>(fj_cpu_climber_t<int, float>&);
 #endif
-
 #if MIP_INSTANTIATE_DOUBLE
 template void collect_row_repair_moves<int, double>(fj_cpu_climber_t<int, double>&,
                                                     int,

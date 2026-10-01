@@ -44,14 +44,28 @@ void audit_assignment_bounds(fj_cpu_climber_t<i_t, f_t>& fj_cpu, const char* sit
 }
 
 template <typename i_t, typename f_t>
+f_t fresh_row_slack(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
+                    i_t row,
+                    const f_t* assignment,
+                    f_t& correction)
+{
+  f_t activity_correction;
+  const f_t activity = compensated_dot2_csr_with_correction(fj_cpu.h_offsets.data(),
+                                                            fj_cpu.h_variables.data(),
+                                                            fj_cpu.h_coefficients.data(),
+                                                            assignment,
+                                                            row,
+                                                            activity_correction,
+                                                            -(f_t)fj_cpu.h_bound[row]);
+  correction         = -activity_correction;
+  return -activity;
+}
+
+template <typename i_t, typename f_t>
 f_t fresh_row_slack(fj_cpu_climber_t<i_t, f_t>& fj_cpu, i_t row, const f_t* assignment)
 {
-  const f_t activity = compensated_dot2_csr(fj_cpu.h_offsets.data(),
-                                            fj_cpu.h_variables.data(),
-                                            fj_cpu.h_coefficients.data(),
-                                            assignment,
-                                            row);
-  return (f_t)fj_cpu.h_bound[row] - activity;
+  f_t correction;
+  return fresh_row_slack(fj_cpu, row, assignment, correction);
 }
 
 template <typename i_t, typename f_t>
@@ -73,7 +87,7 @@ void report_row_divergence(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
     (int)fj_cpu.iterations,
     (int)(row_end - row_begin),
     sumcomp,
-    fj_cpu.h_bound[cstr_idx],
+    fj_cpu.h_bound[cstr_idx].get(),
     (int)fj_cpu.stats.lhs_refresh_period_used,
     (long long)fj_cpu.stats.n_lhs_recompute_total,
     (long long)fj_cpu.stats.n_lhs_recompute_periodic,
@@ -220,8 +234,8 @@ void audit_row_updates(
       delta,
       touched,
       incidence_coeff,
-      fj_cpu.h_bound[cstr_idx],
-      fj_cpu.h_slack_sumcomp[cstr_idx],
+      fj_cpu.h_bound[cstr_idx].get(),
+      fj_cpu.h_slack_sumcomp[cstr_idx].get(),
       (int)(fj_cpu.h_offsets[cstr_idx + 1] - fj_cpu.h_offsets[cstr_idx]));
     report_row_divergence<i_t, f_t>(fj_cpu, cstr_idx, assignment, "row update");
     cuopt_assert(false, "carried slack disagrees with a fresh sum after a move");
@@ -259,13 +273,13 @@ void audit_incremental_state(fj_cpu_climber_t<i_t, f_t>& fj_cpu, const char* sit
       fj_cpu.log_prefix.c_str(),
       site,
       (int)cstr_idx,
-      fj_cpu.h_row_is_integral[cstr_idx],
+      fj_cpu.h_row_is_integral[cstr_idx].get(),
       carried_violated,
       truly_violated,
       carried,
       fresh,
       std::fabs(carried - fresh),
-      fj_cpu.h_bound[cstr_idx],
+      fj_cpu.h_bound[cstr_idx].get(),
       tol);
     report_row_divergence<i_t, f_t>(fj_cpu, cstr_idx, assignment, site);
     cuopt_assert(false, "violated set disagrees with a fresh slack");
@@ -351,12 +365,16 @@ void sanity_checks(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
     cuopt_assert(fj_cpu.row_state()[cstr_idx].weight >= 0, "Weights should be positive or zero");
   }
   cuopt_assert(fj_cpu.h_objective_weight >= 0, "Objective weight should be positive or zero");
-  cuopt_assert(fj_cpu.seed_objective_weight >= 0,
+  cuopt_assert(fj_cpu.objective_weight_floor >= 0,
                "Objective weight floor should be positive or zero");
 }
 
 #if MIP_INSTANTIATE_FLOAT
 template void audit_assignment_bounds<int, float>(fj_cpu_climber_t<int, float>&, const char*);
+template float fresh_row_slack<int, float>(fj_cpu_climber_t<int, float>&,
+                                           int,
+                                           const float*,
+                                           float&);
 template float fresh_row_slack<int, float>(fj_cpu_climber_t<int, float>&, int, const float*);
 template void audit_objective_update<int, float>(
   fj_cpu_climber_t<int, float>&, int, float, float, float, float);
@@ -369,6 +387,10 @@ template void sanity_checks<int, float>(fj_cpu_climber_t<int, float>&);
 
 #if MIP_INSTANTIATE_DOUBLE
 template void audit_assignment_bounds<int, double>(fj_cpu_climber_t<int, double>&, const char*);
+template double fresh_row_slack<int, double>(fj_cpu_climber_t<int, double>&,
+                                             int,
+                                             const double*,
+                                             double&);
 template double fresh_row_slack<int, double>(fj_cpu_climber_t<int, double>&, int, const double*);
 template void audit_objective_update<int, double>(
   fj_cpu_climber_t<int, double>&, int, double, double, double, double);

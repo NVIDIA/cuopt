@@ -585,10 +585,15 @@ if (HOST_LINEINFO)
 endif ()
 
 # Needed for the fast MPS parser, available on all x86-64-v3 compliant x86 CPUs (essentially since Haswell ~2013)
+# x86-64-v3 also implies hardware FMA support
 if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$" AND
         CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang|AppleClang)$")
-    set_property(SOURCE ${MPS_FAST_SRC_FILES} DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-            APPEND PROPERTY COMPILE_OPTIONS "-mbmi2;-mavx2;-msse4.2")
+    list(APPEND CUOPT_CXX_FLAGS -march=x86-64-v3 -fno-math-errno)
+    list(APPEND CUOPT_CUDA_FLAGS -Xcompiler=-march=x86-64-v3 -Xcompiler=-fno-math-errno)
+    if (NOT DEFINE_ASSERT)
+        list(APPEND CUOPT_CXX_FLAGS -fno-trapping-math)
+        list(APPEND CUOPT_CUDA_FLAGS -Xcompiler=-fno-trapping-math)
+    endif ()
 endif ()
 
 # TODO: figure out a set of flags for ARM that fits the range of CPUs we wish to support (neoverse?)
@@ -1304,6 +1309,14 @@ install(FILES include/cuopt/error.hpp include/cuopt/export.hpp
         COMPONENT client-dev
 )
 
+# constants.h sits under mathematical_optimization/ but error.hpp includes it, so it is
+# shared and follows error.hpp into client-dev. The mathopt directory install below
+# excludes it to keep exactly one component shipping the file.
+install(FILES include/cuopt/mathematical_optimization/constants.h
+        DESTINATION ${_INCLUDE_DEST}/mathematical_optimization
+        COMPONENT client-dev
+)
+
 install(DIRECTORY include/cuopt/utilities/
         DESTINATION ${_INCLUDE_DEST}/utilities
         COMPONENT client-dev
@@ -1318,6 +1331,7 @@ install(DIRECTORY include/cuopt/grpc/
 install(DIRECTORY include/cuopt/mathematical_optimization/
         DESTINATION ${_INCLUDE_DEST}/mathematical_optimization
         COMPONENT mathopt-dev
+        PATTERN "constants.h" EXCLUDE
 )
 
 install(DIRECTORY include/cuopt/linear_programming/
@@ -1543,6 +1557,7 @@ if (BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
             "${CMAKE_CURRENT_SOURCE_DIR}/src"
     )
 
+    # CPU FJ standalone portfolio benchmark
     add_executable(solve_CPUFJ ../benchmarks/linear_programming/cuopt/run_cpufj.cu)
     set_target_properties(solve_CPUFJ PROPERTIES CXX_SCAN_FOR_MODULES OFF)
     target_compile_options(solve_CPUFJ

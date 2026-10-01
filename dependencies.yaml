@@ -1036,12 +1036,14 @@ dependencies:
               cuda: "12.*"
               use_cuda_wheels: "true"
             packages:
-              - cuda-toolkit[cublas,cudart]==12.*
+              - cuda-toolkit[cublas,cudart,cusparse]==12.*
+              - nvidia-nvjitlink-cu12>=12.9,<13
           - matrix:
               cuda: "13.*"
               use_cuda_wheels: "true"
             packages:
-              - &ctk_routing_cu13 cuda-toolkit[cublas,cudart]==13.*
+              - &ctk_routing_cu13 cuda-toolkit[cublas,cudart,cusparse]==13.*
+              - &nvjitlink_routing_cu13 nvidia-nvjitlink>=13.3,<14
           # No cuda selector: this is what the pyproject file keys resolve against, and it
           # is what populates pyproject.toml in source control. use_cuda_wheels is named
           # explicitly so the entry still reads as a CUDA-wheel set.
@@ -1049,6 +1051,7 @@ dependencies:
               use_cuda_wheels: "true"
             packages:
               - *ctk_routing_cu13
+              - *nvjitlink_routing_cu13
   cuda_wheels:
     specific:
       # cuOpt needs 'nvJitLink>={whatever-cuopt-was-built-against}' at runtime, and mixing

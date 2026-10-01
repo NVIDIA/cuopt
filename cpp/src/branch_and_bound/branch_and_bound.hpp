@@ -274,6 +274,7 @@ class branch_and_bound_t {
   omp_mutex_t active_submip_solvers_mutex_;
   submip_stats_t rins_stats_;
   submip_stats_t rens_stats_;
+  submip_stats_t mutation_stats_;
 
   // Global status of the solver.
   omp_atomic_t<mip_status_t> solver_status_;
@@ -390,6 +391,8 @@ class branch_and_bound_t {
                     i_t simplex_iter_used,
                     simplex::simplex_solver_settings_t<i_t, f_t> submip_settings);
 
+  void mutation(diving_worker_t<i_t, f_t>* worker,
+                simplex::simplex_solver_settings_t<i_t, f_t> submip_settings);
   // Creates and solves the RINS/RENS sub-MIP.
   void recursive_submip(diving_worker_t<i_t, f_t>* worker,
                         simplex::simplex_solver_settings_t<i_t, f_t> submip_settings);

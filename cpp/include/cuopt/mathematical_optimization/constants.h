@@ -87,6 +87,7 @@
 #define CUOPT_MIP_REDUCED_COST_STRENGTHENING        "mip_reduced_cost_strengthening"
 #define CUOPT_MIP_RINS                              "mip_rins"
 #define CUOPT_MIP_RENS                              "mip_rens"
+#define CUOPT_MIP_MUTATION                          "mip_mutation"
 #define CUOPT_MIP_OBJECTIVE_STEP                    "mip_objective_step"
 #define CUOPT_MIP_CUT_CHANGE_THRESHOLD              "mip_cut_change_threshold"
 #define CUOPT_MIP_CUT_MIN_ORTHOGONALITY             "mip_cut_min_orthogonality"
@@ -160,6 +161,9 @@
 
 /* @brief QCQP (barrier) scaling hyper-parameters */
 #define CUOPT_QCQP_HYPER_RUIZ_EQUILIBRATION "qcqp_hyper_ruiz_equilibration"
+
+/* @brief Barrier scaling hyper-parameter: CPU/GPU Ruiz crossover */
+#define CUOPT_BARRIER_HYPER_GPU_RUIZ_NNZ_THRESHOLD "barrier_hyper_gpu_ruiz_nnz_threshold"
 
 /* @brief PDLP scaling hyper-parameter: Curtis-Reid prescaling toggle */
 #define CUOPT_PDLP_HYPER_ENABLE_CURTIS_REID_SCALING "pdlp_hyper_enable_curtis_reid_scaling"

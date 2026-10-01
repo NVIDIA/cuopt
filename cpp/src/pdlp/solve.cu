@@ -558,6 +558,7 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   barrier_settings.barrier_soc_threshold           = settings.barrier_soc_threshold;
   barrier_settings.barrier_step_scale              = settings.barrier_step_scale;
   barrier_settings.qcqp_ruiz_equilibration         = settings.qcqp_ruiz_equilibration;
+  barrier_settings.gpu_ruiz_nnz_threshold          = settings.gpu_ruiz_nnz_threshold;
   barrier_settings.cudss_deterministic             = settings.cudss_deterministic;
   barrier_settings.barrier_relaxed_feasibility_tol = settings.tolerances.relative_primal_tolerance;
   barrier_settings.barrier_relaxed_optimality_tol  = settings.tolerances.relative_dual_tolerance;
@@ -2909,6 +2910,17 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
   cuopt_expects(gpu_prob != nullptr,
                 error_type_t::ValidationError,
                 "problem_interface must be either a CPU or GPU optimization problem");
+  // Handle multi-GPU problems
+  // TODO: handle problems that don't fit on a single GPU by not loading problem in memory at the
+  // beginning.
+  if (!is_batch_mode && settings.method == method_t::PDLP &&
+      (settings.num_gpus == -1 || settings.num_gpus > 1)) {
+    cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> mps =
+      op_problem_to_mps_data_model(*gpu_prob);
+    auto gpu_solution =
+      solve_lp(gpu_prob->get_handle_ptr(), mps, settings, problem_checking, use_pdlp_solver_mode);
+    return std::make_unique<gpu_lp_solution_t<i_t, f_t>>(std::move(gpu_solution));
+  }
   auto gpu_solution =
     solve_lp<i_t, f_t>(*gpu_prob, settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
   return std::make_unique<gpu_lp_solution_t<i_t, f_t>>(std::move(gpu_solution));
