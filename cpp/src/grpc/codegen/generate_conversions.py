@@ -1435,18 +1435,22 @@ def _settings_field_is_parameter(f):
 
 def generate_settings_message_proto(registry, message_name, obj):
     lines = []
-    deprecate_parameters = bool(obj.get("deprecate_parameters"))
+    # A parameter map replaces per-parameter proto fields. Typed fields that
+    # set_parameter() accepts stay on the wire and are deprecated. A field
+    # with param_name null, and embeds such as warm start, stay normal fields.
+    parameter_map = obj.get("parameter_map")
     for f in parse_settings_fields(obj.get("fields", [])):
         num = f.get("field_num")
         if num is None:
             continue
         ptype = _settings_field_proto_type(registry, f)
         prefix = "optional " if f.get("optional") else ""
-        deprecated = deprecate_parameters and _settings_field_is_parameter(f)
+        deprecated = (
+            parameter_map is not None and _settings_field_is_parameter(f)
+        )
         suffix = " [deprecated = true]" if deprecated else ""
         lines.append((num, f"  {prefix}{ptype} {f['name']} = {num}{suffix};"))
     lines.extend(_iter_embeds(obj))
-    parameter_map = obj.get("parameter_map")
     if parameter_map:
         num = parameter_map["field_num"]
         name = parameter_map.get("name", "parameters")

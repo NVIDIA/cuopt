@@ -62,6 +62,19 @@ void map_proto_to_mip_settings(const cuopt::remote::MIPSolverSettings& pb_settin
                                mip_solver_settings_t<i_t, f_t>& settings);
 
 /**
+ * @brief Write every set_parameter() value on settings into the map.
+ *
+ * Keys are CUOPT_* names. A name registered on both LP and MIP is one entry;
+ * the later registration supplies the value, and set_parameter_from_string()
+ * writes that value into every registration. Values are the text
+ * set_parameter_from_string() parses. Floats use max_digits10. Call this
+ * after the generated typed-field export.
+ */
+template <typename i_t, typename f_t>
+void append_solver_parameters(const solver_settings_t<i_t, f_t>& settings,
+                              google::protobuf::Map<std::string, std::string>* out);
+
+/**
  * @brief Apply PDLPSolverSettings.parameters / MIPSolverSettings.parameters.
  *
  * Each entry is passed to set_parameter_from_string(). Call this after the

@@ -447,8 +447,10 @@ static SolveResult run_mip_solve(DeserializedJob& dj,
 {
   SolveResult sr;
   try {
-    dj.settings.get_mip_settings().log_file       = log_file;
-    dj.settings.get_mip_settings().log_to_console = config.log_to_console;
+    // After client parameters, so the server log path wins. Both names are
+    // registered on the LP and MIP settings, and each call writes every match.
+    dj.settings.set_parameter_from_string(CUOPT_LOG_FILE, log_file);
+    dj.settings.set_parameter(CUOPT_LOG_TO_CONSOLE, config.log_to_console);
     apply_initial_solutions_to_mip_settings(dj.problem, dj.settings.get_mip_settings());
 
     // Create a per-solve incumbent callback wired to this worker's
@@ -531,8 +533,10 @@ static SolveResult run_lp_solve(DeserializedJob& dj,
 {
   SolveResult sr;
   try {
-    dj.settings.get_pdlp_settings().log_file       = log_file;
-    dj.settings.get_pdlp_settings().log_to_console = config.log_to_console;
+    // After client parameters, so the server log path wins. Both names are
+    // registered on the LP and MIP settings, and each call writes every match.
+    dj.settings.set_parameter_from_string(CUOPT_LOG_FILE, log_file);
+    dj.settings.set_parameter(CUOPT_LOG_TO_CONSOLE, config.log_to_console);
     apply_initial_solutions_to_pdlp_settings(dj.problem, dj.settings.get_pdlp_settings());
 
     SERVER_LOG_INFO("[Worker] Converting CPU problem to GPU problem...");

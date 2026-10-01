@@ -382,7 +382,7 @@ def proxy(proxy_server, monkeypatch):
 
 def test_parse_args_defaults():
     args = parse_args([])
-    assert args.port == 8000
+    assert args.port == 5000
     assert args.grpc_host == "127.0.0.1"
     assert args.grpc_port == 5001
 

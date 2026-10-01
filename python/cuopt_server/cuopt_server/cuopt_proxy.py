@@ -34,7 +34,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     raising ``SystemExit``.
     """
     ip = os.environ.get("CUOPT_SERVER_IP", "0.0.0.0")
-    port = os.environ.get("CUOPT_SERVER_PORT", 8000)
+    port = os.environ.get("CUOPT_SERVER_PORT", 5000)
     grpc_host = os.environ.get("CUOPT_GRPC_HOST", "127.0.0.1")
     grpc_port = os.environ.get("CUOPT_GRPC_PORT", 5001)
     log_level = os.environ.get("CUOPT_SERVER_LOG_LEVEL", "info")

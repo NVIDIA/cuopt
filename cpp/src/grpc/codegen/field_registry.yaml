@@ -467,11 +467,11 @@ chunked_result_header:
 pdlp_settings:
   cpp_type: "pdlp_solver_settings_t<i_t, f_t>"
   proto_type: "cuopt::remote::PDLPSolverSettings"
-  # Typed fields that set_parameter() accepts stay on the wire for clients
-  # already published, but are deprecated. New parameters are not added here:
-  # they travel in `parameters` and the server applies them with
-  # set_parameter_from_string(), which wins over a deprecated field.
-  deprecate_parameters: true
+  # parameter_map deprecates every typed field that set_parameter() accepts.
+  # Those fields stay on the wire for clients already published. New
+  # parameters are not added here: they travel in `parameters`, and the
+  # server applies them with set_parameter_from_string(), which wins over a
+  # deprecated field. Warm start is an embed and is not deprecated.
   parameter_map:
     name: parameters
     field_num: 60
@@ -831,9 +831,8 @@ pdlp_settings:
 mip_settings:
   cpp_type: "mip_solver_settings_t<i_t, f_t>"
   proto_type: "cuopt::remote::MIPSolverSettings"
-  # See pdlp_settings.deprecate_parameters. presolve_absolute_tolerance is
-  # not a set_parameter() setting (param_name: null) and stays a typed field.
-  deprecate_parameters: true
+  # See pdlp_settings.parameter_map. presolve_absolute_tolerance is not a
+  # set_parameter() setting (param_name: null) and stays a typed field.
   parameter_map:
     name: parameters
     field_num: 60
