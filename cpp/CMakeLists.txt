@@ -1636,6 +1636,12 @@ if (NOT SKIP_GRPC_BUILD)
         target_compile_definitions(cuopt_grpc_server PRIVATE CUOPT_ENABLE_GRPC_ROUTING)
     endif ()
 
+    # GPU-health failure injection is compiled only into test builds.
+    # A test opts in by setting CUOPT_GRPC_TEST_GPU_FAILURE.
+    if (BUILD_TESTS)
+        target_compile_definitions(cuopt_grpc_server PRIVATE CUOPT_GRPC_TESTING)
+    endif ()
+
     target_compile_options(cuopt_grpc_server
             PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
     )
