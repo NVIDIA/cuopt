@@ -88,10 +88,14 @@ command: []
 args: []
 
 # Extra environment variables. The chart does not set a server mode; the
-# image entrypoint does. Override that with CUOPT_SERVER_TYPE when needed:
+# image entrypoint does. The Service and the probes are HTTP on port 5000
+# (/v2/health/live and /v2/health/ready). That matches the image default and
+# CUOPT_SERVER_TYPE=proxy or legacy. Do not set grpc: a gRPC-only server
+# does not serve those probes, so the Pod stays unready and liveness
+# restarts it.
 # env:
 #   - name: CUOPT_SERVER_TYPE
-#     value: legacy   # or grpc, or proxy
+#     value: legacy   # or proxy
 env: []
 
 # Persistent storage (if needed)
