@@ -20,6 +20,12 @@ namespace cuopt::mathematical_optimization::mip {
 
 namespace {
 
+// Indicator variables $z$ are binaries that must be paid for before anything they own may be used,
+// while member variables $x_j$ are the variables owned by a given indicator.
+// They are linked via the following constraints:
+// Link -> x_j - z <= 0
+// Disjunction -> y - \sum_{j \in \mathcal{S}} x_j <= 0
+// Capacity -> \sum_{i \in \mathcal{S}} x_i - s <= K
 template <typename i_t, typename f_t>
 class indicator_strengthening_t {
  public:
@@ -31,7 +37,7 @@ class indicator_strengthening_t {
   // Capacity row sum_{i in S} x_i - s <= K with every x_i bounded by a common indicator z.
   i_t lift_capacity_rows(papilo::Vec<papilo::Triplet<f_t>>& lifted_entries) const;
 
-  i_t num_vubs() const { return vub_indicators.size(); }
+  i_t num_variable_upper_bounds() const { return variable_upper_bound_indicators.size(); }
   i_t row_orientation(i_t row) const { return orientation[row]; }
 
  private:
@@ -39,13 +45,17 @@ class indicator_strengthening_t {
 
   std::vector<char> is_binary;
 
-  // +1 when the stored row reads a.x <= rhs, -1 when it reads a.x >= lhs, 0 for equations, ranges
-  // and free rows.
+  // +1 when the stored row reads A[i, :]^T x <= rhs, -1 when it reads A[i, :]^T x >= lhs, 0 for
+  // equations, ranges and free rows.
   std::vector<i_t> orientation;
-  // The variable upper bounds x <= z over binaries, in CSR form over the members: the indicators
-  // bounding column j are vub_indicators[vub_offsets[j] .. vub_offsets[j+1]).
-  std::vector<i_t> vub_offsets;
-  std::vector<i_t> vub_indicators;
+
+  // CSR storing the implication graph for binary variables of the form x <= z, where x is a
+  // member variable and z, an indicator. Each row of the CSR corresponds to a member variable
+  // x and each column the indicator z that owns x. Here the coefficients of the CSR are irrelevant,
+  // so we just store the offsets (`variable_upper_bound_offsets`) and the nonzero columns
+  // (`variable_upper_bound_indicators`).
+  std::vector<i_t> variable_upper_bound_offsets;
+  std::vector<i_t> variable_upper_bound_indicators;
 
   i_t max_row_size = 0;
 };
@@ -75,8 +85,8 @@ indicator_strengthening_t<i_t, f_t>::indicator_strengthening_t(const papilo::Pro
   }
 
   orientation.assign(num_rows, 0);
-  std::vector<std::pair<i_t, i_t>> vubs;
-  vubs.reserve(std::count(row_sizes.begin(), row_sizes.end(), 2));
+  std::vector<std::pair<i_t, i_t>> variable_upper_bounds;
+  variable_upper_bounds.reserve(std::count(row_sizes.begin(), row_sizes.end(), 2));
   for (i_t row = 0; row < num_rows; ++row) {
     max_row_size            = std::max(max_row_size, row_sizes[row]);
     const bool lhs_infinite = row_flags[row].test(papilo::RowFlag::kLhsInf);
@@ -95,23 +105,24 @@ indicator_strengthening_t<i_t, f_t>::indicator_strengthening_t(const papilo::Pro
     const f_t v0 = direction * values[0];
     const f_t v1 = direction * values[1];
     if (v0 == 1.0 && v1 == -1.0) {
-      vubs.emplace_back(indices[0], indices[1]);
+      variable_upper_bounds.emplace_back(indices[0], indices[1]);
     } else if (v0 == -1.0 && v1 == 1.0) {
-      vubs.emplace_back(indices[1], indices[0]);
+      variable_upper_bounds.emplace_back(indices[1], indices[0]);
     }
   }
 
-  vub_offsets.assign(num_cols + 1, 0);
-  for (const auto& vub : vubs) {
-    ++vub_offsets[vub.first + 1];
+  variable_upper_bound_offsets.assign(num_cols + 1, 0);
+  for (const auto& variable_upper_bound : variable_upper_bounds) {
+    ++variable_upper_bound_offsets[variable_upper_bound.first + 1];
   }
   for (i_t col = 0; col < num_cols; ++col) {
-    vub_offsets[col + 1] += vub_offsets[col];
+    variable_upper_bound_offsets[col + 1] += variable_upper_bound_offsets[col];
   }
-  vub_indicators.resize(vubs.size());
-  std::vector<i_t> next(vub_offsets.begin(), vub_offsets.end() - 1);
-  for (const auto& [member, indicator] : vubs) {
-    vub_indicators[next[member]++] = indicator;
+  variable_upper_bound_indicators.resize(variable_upper_bounds.size());
+  std::vector<i_t> next(variable_upper_bound_offsets.begin(),
+                        variable_upper_bound_offsets.end() - 1);
+  for (const auto& [member, indicator] : variable_upper_bounds) {
+    variable_upper_bound_indicators[next[member]++] = indicator;
   }
 }
 
@@ -157,13 +168,14 @@ i_t indicator_strengthening_t<i_t, f_t>::add_implied_indicator_rows(
         usable = head < 0;
         head   = col;
       } else if (v == -1.0) {
-        const bool bounded = vub_offsets[col] < vub_offsets[col + 1];
-        const i_t* first   = bounded ? vub_indicators.data() + vub_offsets[col] : &col;
-        const i_t* last    = bounded ? vub_indicators.data() + vub_offsets[col + 1] : &col + 1;
-        for (const i_t* z = first; z != last && usable; ++z) {
-          if (mark[*z] == row) { continue; }
-          mark[*z] = row;
-          indicators.push_back(*z);
+        const i_t start = variable_upper_bound_offsets[col];
+        const i_t end   = variable_upper_bound_offsets[col + 1];
+        const i_t count = std::max(end - start, 1);
+        for (i_t k = 0; k < count && usable; ++k) {
+          const i_t z = start < end ? variable_upper_bound_indicators[start + k] : col;
+          if (mark[z] == row) { continue; }
+          mark[z] = row;
+          indicators.push_back(z);
           usable = indicators.size() < num_members;
         }
       } else {
@@ -172,6 +184,8 @@ i_t indicator_strengthening_t<i_t, f_t>::add_implied_indicator_rows(
     }
     if (!usable || head < 0 || mark[head] == row) { continue; }
 
+    // In the previous loop we insert the indicators in a random order, however, Papilo
+    // expects the triplets (row, col, val) to be sorted by row and then by column.
     std::sort(indicators.begin(), indicators.end());
     const i_t implied_row = num_rows + num_implied;
     const auto split      = std::lower_bound(indicators.begin(), indicators.end(), head);
@@ -224,11 +238,16 @@ i_t indicator_strengthening_t<i_t, f_t>::lift_capacity_rows(
       const i_t col = indices[p];
       const f_t v   = direction * values[p];
       if (col_flags[col].test(papilo::ColFlag::kIntegral)) {
-        const i_t num_vubs = vub_offsets[col + 1] - vub_offsets[col];
-        usable             = is_binary[col] && v == 1.0 && num_vubs > 0;
+        const i_t num_indicators =
+          variable_upper_bound_offsets[col + 1] - variable_upper_bound_offsets[col];
+        usable = is_binary[col] && v == 1.0 && num_indicators > 0;
         if (!usable) { continue; }
         members.push_back(col);
-        if (pivot < 0 || num_vubs < vub_offsets[pivot + 1] - vub_offsets[pivot]) { pivot = col; }
+
+        const i_t num_indicators_pivot =
+          pivot >= 0 ? variable_upper_bound_offsets[pivot + 1] - variable_upper_bound_offsets[pivot]
+                     : 0;
+        if (pivot < 0 || num_indicators < num_indicators_pivot) { pivot = col; }
       } else {
         usable =
           v < 0.0 && !col_flags[col].test(papilo::ColFlag::kLbInf) && lower_bounds[col] >= 0.0;
@@ -239,14 +258,18 @@ i_t indicator_strengthening_t<i_t, f_t>::lift_capacity_rows(
     if (capacity >= n_members) { continue; }
 
     i_t indicator = -1;
-    for (i_t p = vub_offsets[pivot]; p < vub_offsets[pivot + 1] && indicator < 0; ++p) {
-      const i_t z = vub_indicators[p];
+    for (i_t p = variable_upper_bound_offsets[pivot];
+         p < variable_upper_bound_offsets[pivot + 1] && indicator < 0;
+         ++p) {
+      const i_t z = variable_upper_bound_indicators[p];
       bool shared = true;
       for (size_t k = 0; k < members.size() && shared; ++k) {
         if (members[k] == pivot) { continue; }
-        const auto span_begin = vub_indicators.begin() + vub_offsets[members[k]];
-        const auto span_end   = vub_indicators.begin() + vub_offsets[members[k] + 1];
-        shared                = std::find(span_begin, span_end, z) != span_end;
+        const auto span_begin =
+          variable_upper_bound_indicators.begin() + variable_upper_bound_offsets[members[k]];
+        const auto span_end =
+          variable_upper_bound_indicators.begin() + variable_upper_bound_offsets[members[k] + 1];
+        shared = std::find(span_begin, span_end, z) != span_end;
       }
       if (shared) { indicator = z; }
     }
@@ -265,7 +288,7 @@ template <typename i_t, typename f_t>
 void strengthen_indicators(papilo::Problem<f_t>& problem)
 {
   const indicator_strengthening_t<i_t, f_t> strengthening(problem);
-  if (strengthening.num_vubs() == 0) { return; }
+  if (strengthening.num_variable_upper_bounds() == 0) { return; }
 
   const auto& constraint_matrix = problem.getConstraintMatrix();
   const auto& lhs_values        = constraint_matrix.getLeftHandSides();
@@ -362,7 +385,7 @@ void strengthen_indicators(papilo::Problem<f_t>& problem)
     "variable upper bounds",
     num_implied,
     num_lifted,
-    strengthening.num_vubs());
+    strengthening.num_variable_upper_bounds());
 }
 
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT

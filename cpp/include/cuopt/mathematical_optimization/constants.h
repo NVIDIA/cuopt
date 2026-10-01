@@ -158,6 +158,10 @@
 /* @brief Block bounded-variable-elimination step of cuOpt's internal MIP presolve */
 #define CUOPT_MIP_HYPER_BLOCK_BVE "mip_hyper_block_bve"
 
+/* @brief Indicator-strengthening step that runs before Papilo presolve on MIPs */
+#define CUOPT_MIP_HYPER_PRESOLVE_INDICATOR_STRENGTHENING \
+  "mip_hyper_presolve_indicator_strengthening"
+
 /* @brief QCQP (barrier) scaling hyper-parameters */
 #define CUOPT_QCQP_HYPER_RUIZ_EQUILIBRATION "qcqp_hyper_ruiz_equilibration"
 
