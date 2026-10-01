@@ -648,20 +648,25 @@ submit_result_t grpc_client_t::submit_lp(const cpu_optimization_problem_t<i_t, f
       static_cast<int64_t>(estimate_problem_proto_size(problem)) > chunked_array_threshold_bytes_;
   }
 
-  if (use_chunked) {
-    cuopt::remote::ChunkedProblemHeader header;
-    populate_chunked_header_lp(problem, settings.get_pdlp_settings(), &header);
-    append_solver_parameters(settings, header.mutable_lp_settings()->mutable_parameters());
-    if (!upload_chunked_arrays(problem, header, result.job_id)) {
-      result.error_message = last_error_;
-      return result;
+  try {
+    if (use_chunked) {
+      cuopt::remote::ChunkedProblemHeader header;
+      populate_chunked_header_lp(problem, settings.get_pdlp_settings(), &header);
+      append_solver_parameters(settings, header.mutable_lp_settings()->mutable_parameters());
+      if (!upload_chunked_arrays(problem, header, result.job_id)) {
+        result.error_message = last_error_;
+        return result;
+      }
+    } else {
+      auto submit_request = build_lp_submit_request(problem, settings);
+      if (!submit_unary(submit_request, result.job_id)) {
+        result.error_message = last_error_;
+        return result;
+      }
     }
-  } else {
-    auto submit_request = build_lp_submit_request(problem, settings);
-    if (!submit_unary(submit_request, result.job_id)) {
-      result.error_message = last_error_;
-      return result;
-    }
+  } catch (const std::exception& e) {
+    result.error_message = e.what();
+    return result;
   }
 
   result.success = true;
@@ -686,22 +691,27 @@ submit_result_t grpc_client_t::submit_mip(const cpu_optimization_problem_t<i_t, 
       static_cast<int64_t>(estimate_problem_proto_size(problem)) > chunked_array_threshold_bytes_;
   }
 
-  if (use_chunked) {
-    cuopt::remote::ChunkedProblemHeader header;
-    populate_chunked_header_mip(
-      problem, settings.get_mip_settings(), enable_incumbents, enable_set_incumbent, &header);
-    append_solver_parameters(settings, header.mutable_mip_settings()->mutable_parameters());
-    if (!upload_chunked_arrays(problem, header, result.job_id)) {
-      result.error_message = last_error_;
-      return result;
+  try {
+    if (use_chunked) {
+      cuopt::remote::ChunkedProblemHeader header;
+      populate_chunked_header_mip(
+        problem, settings.get_mip_settings(), enable_incumbents, enable_set_incumbent, &header);
+      append_solver_parameters(settings, header.mutable_mip_settings()->mutable_parameters());
+      if (!upload_chunked_arrays(problem, header, result.job_id)) {
+        result.error_message = last_error_;
+        return result;
+      }
+    } else {
+      auto submit_request =
+        build_mip_submit_request(problem, settings, enable_incumbents, enable_set_incumbent);
+      if (!submit_unary(submit_request, result.job_id)) {
+        result.error_message = last_error_;
+        return result;
+      }
     }
-  } else {
-    auto submit_request =
-      build_mip_submit_request(problem, settings, enable_incumbents, enable_set_incumbent);
-    if (!submit_unary(submit_request, result.job_id)) {
-      result.error_message = last_error_;
-      return result;
-    }
+  } catch (const std::exception& e) {
+    result.error_message = e.what();
+    return result;
   }
 
   result.success = true;

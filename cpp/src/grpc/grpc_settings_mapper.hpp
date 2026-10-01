@@ -62,11 +62,12 @@ void map_proto_to_mip_settings(const cuopt::remote::MIPSolverSettings& pb_settin
                                mip_solver_settings_t<i_t, f_t>& settings);
 
 /**
- * @brief Write every set_parameter() value on settings into the map.
+ * @brief Write every registered solver parameter into the map.
  *
- * Keys are CUOPT_* names. A name registered on both LP and MIP is one entry;
- * the later registration supplies the value, and set_parameter_from_string()
- * writes that value into every registration. Values are the text
+ * Keys are CUOPT_* names. A name registered on both LP and MIP must hold the
+ * same value; otherwise this throws std::invalid_argument and nothing is
+ * sent. set_parameter() writes every registration, so those values agree.
+ * Names registered on only one side are included. Values are the text
  * set_parameter_from_string() parses. Floats use max_digits10. Call this
  * after the generated typed-field export.
  */
