@@ -2868,7 +2868,7 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
 template <typename i_t, typename f_t>
 std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
   optimization_problem_interface_t<i_t, f_t>* problem_interface,
-  pdlp_solver_settings_t<i_t, f_t> const& settings,
+  solver_settings_t<i_t, f_t>& settings,
   bool problem_checking,
   bool use_pdlp_solver_mode,
   bool is_batch_mode)
@@ -2877,7 +2877,6 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
                 error_type_t::ValidationError,
                 "problem_interface cannot be null");
 
-  // Check if remote execution is enabled (always uses CPU backend)
   if (is_remote_execution_enabled()) {
     cuopt_expects(!is_batch_mode,
                   error_type_t::ValidationError,
@@ -2895,14 +2894,15 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
 #endif
   }
 
-  // Local execution - dispatch to appropriate overload based on problem type
-  auto* cpu_prob = dynamic_cast<cpu_optimization_problem_t<i_t, f_t>*>(problem_interface);
+  // Local execution. The GPU solver takes the nested PDLP settings.
+  auto& lp_settings = settings.get_pdlp_settings();
+  auto* cpu_prob    = dynamic_cast<cpu_optimization_problem_t<i_t, f_t>*>(problem_interface);
   if (cpu_prob != nullptr) {
     cuopt_expects(is_remote_execution_enabled(),
                   error_type_t::ValidationError,
                   "A CPU-memory problem requires remote execution. Set CUOPT_REMOTE_HOST and "
                   "CUOPT_REMOTE_PORT to solve on a remote GPU server.");
-    return solve_lp(*cpu_prob, settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
+    return solve_lp(*cpu_prob, lp_settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
   }
 
   // GPU problem: call GPU solver directly
@@ -2913,16 +2913,16 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
   // Handle multi-GPU problems
   // TODO: handle problems that don't fit on a single GPU by not loading problem in memory at the
   // beginning.
-  if (!is_batch_mode && settings.method == method_t::PDLP &&
-      (settings.num_gpus == -1 || settings.num_gpus > 1)) {
+  if (!is_batch_mode && lp_settings.method == method_t::PDLP &&
+      (lp_settings.num_gpus == -1 || lp_settings.num_gpus > 1)) {
     cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> mps =
       op_problem_to_mps_data_model(*gpu_prob);
-    auto gpu_solution =
-      solve_lp(gpu_prob->get_handle_ptr(), mps, settings, problem_checking, use_pdlp_solver_mode);
+    auto gpu_solution = solve_lp(
+      gpu_prob->get_handle_ptr(), mps, lp_settings, problem_checking, use_pdlp_solver_mode);
     return std::make_unique<gpu_lp_solution_t<i_t, f_t>>(std::move(gpu_solution));
   }
-  auto gpu_solution =
-    solve_lp<i_t, f_t>(*gpu_prob, settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
+  auto gpu_solution = solve_lp<i_t, f_t>(
+    *gpu_prob, lp_settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
   return std::make_unique<gpu_lp_solution_t<i_t, f_t>>(std::move(gpu_solution));
 }
 
@@ -2950,7 +2950,7 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
                                                                                                  \
   template CUOPT_EXPORT std::unique_ptr<lp_solution_interface_t<int, F_TYPE>> solve_lp(          \
     optimization_problem_interface_t<int, F_TYPE>*,                                              \
-    pdlp_solver_settings_t<int, F_TYPE> const&,                                                  \
+    solver_settings_t<int, F_TYPE>&,                                                             \
     bool,                                                                                        \
     bool,                                                                                        \
     bool);                                                                                       \

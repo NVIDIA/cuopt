@@ -1209,8 +1209,8 @@ TEST_F(GrpcClientTest, SubmitLP_Success)
     });
 
   auto problem = create_test_lp_problem();
-  pdlp_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 10.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
 
   auto result = client_->submit_lp(problem, settings);
 
@@ -1227,7 +1227,7 @@ TEST_F(GrpcClientTest, SubmitLP_NotConnected)
   grpc_client_t disconnected_client(config);
 
   auto problem = create_test_lp_problem();
-  pdlp_solver_settings_t<int32_t, double> settings;
+  solver_settings_t<int32_t, double> settings;
 
   auto result = disconnected_client.submit_lp(problem, settings);
 
@@ -1245,7 +1245,7 @@ TEST_F(GrpcClientTest, SubmitLP_RpcFailure)
     });
 
   auto problem = create_test_lp_problem();
-  pdlp_solver_settings_t<int32_t, double> settings;
+  solver_settings_t<int32_t, double> settings;
 
   auto result = client_->submit_lp(problem, settings);
 
@@ -1264,7 +1264,7 @@ TEST_F(GrpcClientTest, SubmitLP_EmptyJobId)
     });
 
   auto problem = create_test_lp_problem();
-  pdlp_solver_settings_t<int32_t, double> settings;
+  solver_settings_t<int32_t, double> settings;
 
   auto result = client_->submit_lp(problem, settings);
 
@@ -1284,8 +1284,8 @@ TEST_F(GrpcClientTest, SubmitMIP_Success)
     });
 
   auto problem = create_test_mip_problem();
-  mip_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 30.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 30.0);
 
   auto result = client_->submit_mip(problem, settings);
 
@@ -1307,7 +1307,7 @@ TEST_F(GrpcClientTest, SubmitMIP_UnaryPreservesIncumbentSetFlag)
     });
 
   auto problem = create_test_mip_problem();
-  mip_solver_settings_t<int32_t, double> settings;
+  solver_settings_t<int32_t, double> settings;
 
   auto result = client_->submit_mip(problem, settings, true, true);
 
@@ -1328,7 +1328,7 @@ TEST_F(GrpcClientTest, SubmitMIP_UnaryPreservesSetIncumbentWithoutIncumbents)
     });
 
   auto problem = create_test_mip_problem();
-  mip_solver_settings_t<int32_t, double> settings;
+  solver_settings_t<int32_t, double> settings;
 
   auto result = client_->submit_mip(problem, settings, false, true);
 
@@ -1345,7 +1345,7 @@ TEST_F(GrpcClientTest, SubmitMIP_RpcFailure)
     });
 
   auto problem = create_test_mip_problem();
-  mip_solver_settings_t<int32_t, double> settings;
+  solver_settings_t<int32_t, double> settings;
 
   auto result = client_->submit_mip(problem, settings);
 
@@ -1360,8 +1360,8 @@ TEST_F(GrpcClientTest, SolveLP_SuccessWithPolling)
 {
   // 1. SubmitJob succeeds
   auto problem = create_test_lp_problem();
-  pdlp_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 10.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
 
   grpc_client_config_t cfg;
   cfg.server_address   = "mock://test";
@@ -1453,8 +1453,8 @@ TEST_F(GrpcClientTest, SolveLP_SuccessWithWait)
     });
 
   auto problem = create_test_lp_problem();
-  pdlp_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 10.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
 
   auto result = client->solve_lp(problem, settings);
 
@@ -1491,8 +1491,8 @@ TEST_F(GrpcClientTest, SolveLP_JobFails)
     });
 
   auto problem = create_test_lp_problem();
-  pdlp_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 10.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
 
   auto result = client->solve_lp(problem, settings);
 
@@ -1519,7 +1519,7 @@ TEST_F(GrpcClientTest, SolveLP_SubmitFails)
     });
 
   auto problem = create_test_lp_problem();
-  pdlp_solver_settings_t<int32_t, double> settings;
+  solver_settings_t<int32_t, double> settings;
 
   auto result = client->solve_lp(problem, settings);
 
@@ -1537,7 +1537,7 @@ TEST_F(GrpcClientTest, SolveLP_NotConnected)
   // Don't inject mock or mark as connected
 
   auto problem = create_test_lp_problem();
-  pdlp_solver_settings_t<int32_t, double> settings;
+  solver_settings_t<int32_t, double> settings;
 
   auto result = client.solve_lp(problem, settings);
 
@@ -1588,8 +1588,8 @@ TEST_F(GrpcClientTest, SolveMIP_Success)
     });
 
   auto problem = create_test_mip_problem();
-  mip_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 30.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 30.0);
 
   auto result = client->solve_mip(problem, settings);
 
@@ -1877,8 +1877,8 @@ TEST_F(GrpcClientTest, SubmitLP_ChunkedUploadForLargePayload)
     });
 
   auto problem = create_test_lp_problem();
-  pdlp_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 10.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
 
   auto result = client->submit_lp(problem, settings);
 
@@ -1933,7 +1933,7 @@ TEST_F(GrpcClientTest, SubmitMIP_ChunkedPreservesIncumbentSetFlag)
     });
 
   auto problem = create_test_mip_problem();
-  mip_solver_settings_t<int32_t, double> settings;
+  solver_settings_t<int32_t, double> settings;
 
   auto result = client->submit_mip(problem, settings, true, true);
 
@@ -1988,7 +1988,7 @@ TEST_F(GrpcClientTest, SubmitMIP_ChunkedPreservesSetIncumbentWithoutIncumbents)
     });
 
   auto problem = create_test_mip_problem();
-  mip_solver_settings_t<int32_t, double> settings;
+  solver_settings_t<int32_t, double> settings;
 
   auto result = client->submit_mip(problem, settings, false, true);
 
@@ -2008,8 +2008,8 @@ TEST_F(GrpcClientTest, SubmitLP_UnaryForSmallPayload)
     });
 
   auto problem = create_test_lp_problem();
-  pdlp_solver_settings_t<int32_t, double> settings;
-  settings.time_limit = 10.0;
+  solver_settings_t<int32_t, double> settings;
+  settings.set_parameter(CUOPT_TIME_LIMIT, 10.0);
 
   auto result = client_->submit_lp(problem, settings);
 
@@ -2584,6 +2584,19 @@ TEST(MapperRoundtrip, ParameterMapRoundTripsSolverSettings)
   cuopt::remote::PDLPSolverSettings inf_pb;
   append_solver_parameters(defaults, inf_pb.mutable_parameters());
   EXPECT_EQ(inf_pb.parameters().at(CUOPT_TIME_LIMIT), "inf");
+}
+
+// A shared name has to agree on both nested settings before it can be sent.
+TEST(MapperRoundtrip, ParameterMapRejectsDivergentSharedTimeLimit)
+{
+  using settings_t = solver_settings_t<int32_t, double>;
+
+  settings_t settings;
+  settings.get_mip_settings().time_limit  = 10.0;
+  settings.get_pdlp_settings().time_limit = 30.0;
+
+  cuopt::remote::MIPSolverSettings pb;
+  EXPECT_THROW(append_solver_parameters(settings, pb.mutable_parameters()), std::invalid_argument);
 }
 
 TEST(MapperRoundtrip, PDLPSettingsIterationLimitSentinel)
