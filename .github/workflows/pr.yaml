@@ -27,6 +27,7 @@ jobs:
       - java-static-build-matrix
       - java-static-build
       - java-static-gather-tmp
+      - java-maven-cleanup-tmp
       - java-maven-publish-tmp
       - java-static-test
       - conda-python-build
@@ -568,12 +569,28 @@ jobs:
           path: ${{ runner.temp }}/maven-repo
           if-no-files-found: error
 
+  # TEMPORARY (#1970): drops a stale open OSSRH staging repo (com.nvidia.cuopt:cuopt:26.10.0,
+  # confirmed ours) left over from an earlier test run whose own cleanup didn't fire, so it
+  # doesn't block java-maven-publish-tmp's require_no_open_staging_repository precheck.
+  java-maven-cleanup-tmp:
+    runs-on: linux-amd64-cpu4
+    steps:
+      - name: Drop stale OSSRH staging repository
+        env:
+          MAVEN_DEPLOY_USERNAME: ${{ vars.MAVEN_DEPLOY_USERNAME }}
+          MAVEN_DEPLOY_TOKEN: ${{ secrets.MAVEN_DEPLOY_TOKEN }}
+        run: |
+          auth="$(printf '%s:%s' "$MAVEN_DEPLOY_USERNAME" "$MAVEN_DEPLOY_TOKEN" | base64 | tr -d '\n')"
+          curl --fail-with-body -X DELETE \
+            -H "Authorization: Bearer ${auth}" \
+            "https://ossrh-staging-api.central.sonatype.com/manual/drop/repository/5tyXP7/18.190.12.32/com.nvidia--default-repository"
+
   # TEMPORARY (#1970): flipped to true to actually invoke maven-publish.yaml@release/26.10
   # for real on this PR run and confirm the new wiring works end-to-end. Not a release tag,
   # so publication-type: rc + stage-for-maven-central-publish: false below means this
   # validates and drops rather than staging or auto-publishing anything real.
   java-maven-publish-tmp:
-    needs: [java-static-gather-tmp]
+    needs: [java-static-gather-tmp, java-maven-cleanup-tmp]
     if: true
     permissions:
       actions: read
