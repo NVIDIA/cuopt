@@ -177,6 +177,13 @@ class mip_solver_settings_t {
    */
   bool block_bve{true};
   /**
+   * @brief Enable the indicator-strengthening step of presolve (MIP only).
+   *
+   * Runs before Papilo and only when the higher-level presolve is enabled. It appends implied
+   * indicator rows and lifts capacity rows by the indicator that bounds all of their members.
+   */
+  bool indicator_strengthening{true};
+  /**
    * @brief Determinism mode for MIP solver.
    *
    * Controls the determinism behavior of the MIP solver:
