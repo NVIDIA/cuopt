@@ -851,11 +851,19 @@ i_t remove_fixed_variables(f_t fixed_tolerance,
   return 0;
 }
 
-// Insert slacks and keep [linear | slacks | cone] layout
+// Adds one slack column s_k per entry of `rows`; slack k has a single nonzero in row i = rows[k]:
+//   "<=" row (is_range = false):  a_i^T x + s_k = rhs_i,  s_k >= 0
+//   range row (is_range = true):  a_i^T x - s_k = 0,      lower[k] <= s_k <= upper[k]
+// - rows:        indices of the constraint rows of A that receive a slack.
+// - is_range:    selects the form above; the slack's entry in A is +1 or -1 respectively.
+// - lower/upper: bounds of each new slack, indexed like rows.
+// - new_slacks:  receives the column index of each new slack.
+// The slacks are inserted after the linear variables and before the cone variables, giving the
+// layout [linear | slacks | cone]; slacks have zero objective cost and empty rows/columns in Q.
 template <typename i_t, typename f_t>
 static void insert_slack_columns(lp_problem_t<i_t, f_t>& problem,
                                  const std::vector<i_t>& rows,
-                                 f_t coefficient,
+                                 bool is_range,
                                  const std::vector<f_t>& lower,
                                  const std::vector<f_t>& upper,
                                  std::vector<i_t>& new_slacks)
@@ -870,7 +878,7 @@ static void insert_slack_columns(lp_problem_t<i_t, f_t>& problem,
   const i_t nz_before       = A.col_start[insert_at];
   // Insert the pre-slack columns into the matrix A
   A.i.insert(A.i.begin() + nz_before, rows.begin(), rows.end());
-  A.x.insert(A.x.begin() + nz_before, num_new, coefficient);
+  A.x.insert(A.x.begin() + nz_before, num_new, is_range ? f_t(-1) : f_t(1));
   A.col_start.insert(A.col_start.begin() + insert_at, num_new, 0);
   for (i_t k = 0; k < num_new; ++k) {
     A.col_start[insert_at + k] = nz_before + k;
@@ -928,7 +936,7 @@ i_t convert_less_than_to_equal(const user_problem_t<i_t, f_t>& user_problem,
 
   insert_slack_columns(problem,
                        rows,
-                       f_t(1),
+                       false,
                        std::vector<f_t>(rows.size(), 0.0),
                        std::vector<f_t>(rows.size(), INFINITY),
                        new_slacks);
@@ -1026,7 +1034,7 @@ i_t convert_range_rows(const user_problem_t<i_t, f_t>& user_problem,
     problem.rhs[i] = 0.0;
     row_sense[i]   = 'E';
   }
-  insert_slack_columns(problem, rows, f_t(-1), lower, upper, new_slacks);
+  insert_slack_columns(problem, rows, true, lower, upper, new_slacks);
   return 0;
 }
 
@@ -1244,8 +1252,8 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
   if (user_problem.Q_values.size() > 0) {
     settings.log.debug("Converting problem with %d quadratic nonzeros\n",
                        user_problem.Q_values.size());
-    problem.Q.m      = problem.num_cols;
-    problem.Q.n      = problem.num_cols;
+    problem.Q.m      = user_problem.num_cols;
+    problem.Q.n      = user_problem.num_cols;
     problem.Q.nz_max = user_problem.Q_values.size();
     problem.Q.row_start.assign(user_problem.Q_offsets.begin(),
                                user_problem.Q_offsets.begin() + user_problem.num_cols + 1);
