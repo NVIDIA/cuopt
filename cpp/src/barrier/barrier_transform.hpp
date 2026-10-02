@@ -49,8 +49,6 @@ struct barrier_transform_t {
   std::vector<double> rhs_shift;
   // False when range rows or folding put the user RHS somewhere other than barrier_lp->rhs.
   bool rhs_update_supported{false};
-  // Absolute primal tolerance of the first solve, used to test rows presolve dropped as empty.
-  double primal_tol{1e-6};
   std::unique_ptr<cuopt::mathematical_optimization::simplex::lp_problem_t<int, double>> barrier_lp;
   // CSC Q with slack columns, as consumed by iteration_data_t. Not the same object as
   // barrier_lp->Q.
@@ -152,15 +150,17 @@ inline std::vector<double> crush_user_rhs(barrier_transform_t const& xf, double 
   }
 
   // Dropped rows were empty, so the new RHS never reaches the barrier: 'E' needs 0 == b_i and
-  // the rest need 0 <= b_i.
+  // the rest need 0 <= b_i. This is a structural zero test, not the solver's primal feasibility
+  // tolerance, so it stays local and tighter than settings.primal_tol.
+  constexpr double empty_row_tol = 1e-12;
   for (int i : xf.presolve_info.removed_constraints) {
     if (i < 0 || i >= m) {
       throw std::invalid_argument("update_rhs: removed constraint index is out of range.");
     }
     double const converted_rhs = original[static_cast<std::size_t>(i)];
     bool const infeasible      = xf.row_sense[static_cast<std::size_t>(i)] == 'E'
-                                   ? std::abs(converted_rhs) > xf.primal_tol
-                                   : converted_rhs < -xf.primal_tol;
+                                   ? std::abs(converted_rhs) > empty_row_tol
+                                   : converted_rhs < -empty_row_tol;
     if (infeasible) {
       throw update_rhs_infeasible_error("update_rhs: empty constraint row " + std::to_string(i) +
                                         " is infeasible with the new RHS.");

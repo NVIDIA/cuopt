@@ -58,8 +58,8 @@ struct barrier_cache_t::impl {
   // Destroy iteration_data before transform: it may const-ref A/Q stored on the transform.
   std::unique_ptr<barrier_transform_t> transform;
   barrier_iteration_data_ptr iteration_data;
-  bool c_dirty{false};
-  bool b_dirty{false};
+  bool linear_objective_dirty{false};
+  bool rhs_dirty{false};
   bool rhs_infeasible{false};
 };
 
@@ -115,15 +115,15 @@ barrier_transform_t const* barrier_cache_t::transform() const { return impl_->tr
 
 bool barrier_cache_t::dirty() const
 {
-  return (impl_->c_dirty || impl_->b_dirty) && impl_->transform != nullptr &&
+  return (impl_->linear_objective_dirty || impl_->rhs_dirty) && impl_->transform != nullptr &&
          impl_->iteration_data.get() != nullptr;
 }
 
 void barrier_cache_t::mark_clean()
 {
-  impl_->c_dirty        = false;
-  impl_->b_dirty        = false;
-  impl_->rhs_infeasible = false;
+  impl_->linear_objective_dirty = false;
+  impl_->rhs_dirty              = false;
+  impl_->rhs_infeasible         = false;
 }
 
 bool barrier_cache_t::rhs_infeasible() const { return impl_->rhs_infeasible; }
@@ -174,7 +174,7 @@ void barrier_cache_t::update_linear_objective(double const* c, int n)
   barrier_objective = crushed;
   barrier::apply_barrier_linear_objective(
     *impl_->iteration_data, crushed.data(), static_cast<int>(crushed.size()));
-  impl_->c_dirty = true;
+  impl_->linear_objective_dirty = true;
 }
 
 void barrier_cache_t::update_rhs(double const* b, int m)
@@ -187,7 +187,7 @@ void barrier_cache_t::update_rhs(double const* b, int m)
     // Cache stays usable for a later feasible update; the next Solve reports INFEASIBLE from
     // this flag without running IPM.
     impl_->rhs_infeasible = true;
-    impl_->b_dirty        = true;
+    impl_->rhs_dirty      = true;
     return;
   } catch (std::invalid_argument const& e) {
     cuopt_expects(false, error_type_t::ValidationError, "%s", e.what());
@@ -203,7 +203,7 @@ void barrier_cache_t::update_rhs(double const* b, int m)
   barrier_rhs = crushed;
   barrier::apply_barrier_rhs(
     *impl_->iteration_data, crushed.data(), static_cast<int>(crushed.size()));
-  impl_->b_dirty = true;
+  impl_->rhs_dirty = true;
 }
 
 }  // namespace cuopt::mathematical_optimization

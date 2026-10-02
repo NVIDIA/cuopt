@@ -4,6 +4,7 @@
 import os
 import time
 
+from numpy.typing import ArrayLike
 
 from . import data_model_wrapper
 from .utilities import catch_cuopt_exception
@@ -247,7 +248,7 @@ class DataModel(data_model_wrapper.DataModel):
         super().update_linear_objective(coefficients)
 
     @catch_cuopt_exception
-    def update_rhs(self, b):
+    def update_rhs(self, b: ArrayLike) -> None:
         """
         Update the constraint right-hand sides (b) for a sequence re-solve.
 
@@ -266,6 +267,19 @@ class DataModel(data_model_wrapper.DataModel):
         b : array-like of float64
             Constraint right-hand sides, length equal to the number of
             constraints on the first ``sequence_solve``.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        ValueError
+            If this DataModel holds an invalid barrier-cache capsule.
+        InputValidationError
+            If ``b`` has the wrong length, the cached convert used range rows
+            or folding, or the barrier cache is not warm from a prior
+            ``CUOPT_SEQUENCE_SOLVE`` solve.
         """
         super().update_rhs(b)
 

@@ -615,7 +615,6 @@ lp_status_t solve_linear_program_with_barrier(
     xf->presolve_info                = presolve_info;
     xf->column_scales                = column_scales;
     xf->row_scales                   = row_scales;
-    xf->primal_tol                   = static_cast<double>(barrier_settings.primal_tol);
     // convert_range_rows zeroes rhs[i] onto the slack bounds and folding aggregates rows, so
     // neither leaves the user RHS in barrier_lp->rhs. Plain inequality/equality slacks do.
     xf->rhs_update_supported =
