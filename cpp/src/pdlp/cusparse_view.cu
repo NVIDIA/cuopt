@@ -22,7 +22,7 @@
 #include <cuda_runtime_api.h>
 #include <dlfcn.h>
 
-#include <cub/cub.cuh>
+#include <cub/device/device_transform.cuh>
 
 struct double_to_float_functor {
   __host__ __device__ float operator()(double val) const { return static_cast<float>(val); }

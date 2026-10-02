@@ -11,7 +11,8 @@
 #include <math_optimization/types.hpp>
 #include <raft/core/handle.hpp>
 
-#include <cub/cub.cuh>
+#include <cub/device/device_reduce.cuh>
+#include <cub/device/device_scan.cuh>
 #include <cuda/stream>
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_vector.hpp>

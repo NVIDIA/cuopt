@@ -30,6 +30,7 @@
 #include <thrust/iterator/transform_output_iterator.h>
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/scatter.h>
+#include <cub/device/device_transform.cuh>
 
 namespace cuopt::mathematical_optimization::pdlp {
 

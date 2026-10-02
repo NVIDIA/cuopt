@@ -61,6 +61,7 @@
 #include <rmm/cuda_stream.hpp>
 
 #include <thrust/iterator/counting_iterator.h>
+#include <cub/device/device_transform.cuh>
 
 #include <omp.h>
 

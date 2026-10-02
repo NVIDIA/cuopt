@@ -12,10 +12,12 @@
 #include <mip_heuristics/logger.cuh>
 #include <utilities/device_utils.cuh>
 
+#include <cuda/functional>
 #include <cuda/stream>
 #include <raft/random/rng.cuh>
 
 #include <thrust/iterator/transform_iterator.h>
+#include <cub/block/block_reduce.cuh>
 
 #include <cooperative_groups.h>
 

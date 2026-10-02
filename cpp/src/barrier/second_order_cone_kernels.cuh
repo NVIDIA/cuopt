@@ -30,12 +30,16 @@
 #include <thrust/transform_reduce.h>
 #include <thrust/tuple.h>
 #include <thrust/zip_function.h>
+#include <cub/block/block_reduce.cuh>
+#include <cub/device/device_reduce.cuh>
+#include <cub/warp/warp_reduce.cuh>
 
 #include <concepts>
 #include <cstddef>
 #include <numeric>
 #include <span>
 #include <utility>
+#include <vector>
 
 // =============================================================================
 // SOC (second-order cone) kernels for the cuOpt barrier solver.

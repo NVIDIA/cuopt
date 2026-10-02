@@ -9,7 +9,7 @@
 
 #include <cuopt/mathematical_optimization/optimization_problem.hpp>
 
-#include <cub/cub.cuh>
+#include <cub/device/device_segmented_sort.cuh>
 
 #include <raft/core/nvtx.hpp>
 #include <rmm/device_uvector.hpp>
