@@ -757,11 +757,35 @@ dependencies:
           # pip recognizes the index as a global option for the requirements.txt file
           - --extra-index-url=https://pypi.nvidia.com
           - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
+  # cuopt/routing/data_model_view.hpp is a public header and includes raft/core/handle.hpp
+  # and raft/core/device_span.hpp, so anything compiling against cuOpt needs raft's headers.
+  # The wheel that carries them is named libraft; the conda package is libraft-headers.
   depends_on_libraft_headers:
     common:
       - output_types: conda
         packages:
           - libraft-headers==26.10.*,>=0.0.0a0
+      - output_types: requirements
+        packages:
+          # pip recognizes the index as a global option for the requirements.txt file
+          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
+    specific:
+      - output_types: [requirements, pyproject]
+        matrices:
+          - matrix:
+              cuda: "12.*"
+              cuda_suffixed: "true"
+            packages:
+              - libraft-cu12==26.10.*,>=0.0.0a0
+          - matrix:
+              cuda: "13.*"
+              cuda_suffixed: "true"
+            packages:
+              - libraft-cu13==26.10.*,>=0.0.0a0
+          - matrix:
+              cuda_suffixed: "false"
+            packages:
+              - libraft==26.10.*,>=0.0.0a0
   depends_on_librmm:
     common:
       - output_types: conda
