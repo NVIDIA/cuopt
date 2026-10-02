@@ -18,6 +18,7 @@ from cuopt.linear_programming.problem import (
     MINIMIZE,
     SEMI_CONTINUOUS,
     CType,
+    LinearExpression,
     Problem,
     VType,
     sense,
@@ -211,6 +212,21 @@ def test_variable_type_normalized_from_mps(tmp_path):
     assert types["x"] is VType.INTEGER
     assert types["y"] is VType.CONTINUOUS
     assert loaded.IsMIP
+
+
+def test_write_mps_with_empty_constraint_row(tmp_path):
+    problem = Problem("empty-row")
+    x = problem.addVariable(name="x", lb=0.0, ub=1.0)
+    empty = LinearExpression(vars=[], coefficients=[], constant=0.0)
+    problem.addConstraint(empty <= 1.0, name="empty")
+    problem.setObjective(x)
+
+    path = tmp_path / "empty-row.mps"
+    problem.writeMPS(str(path))
+
+    assert problem.model.get_constraint_matrix_offsets().tolist() == [0, 0]
+    assert " L  empty\n" in path.read_text()
+    assert "RHS1      empty 1\n" in path.read_text()
 
 
 def test_semi_continuous_variable():
