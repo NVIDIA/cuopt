@@ -18,7 +18,11 @@ FetchContent_MakeAvailable(argparse)
 
 # gRPC must be available as an installed CMake package (gRPCConfig.cmake).
 # On RockyLinux 8 wheel builds we install it in CI via ci/utils/install_protobuf_grpc.sh.
-find_package(gRPC CONFIG REQUIRED)
+# cpp/CMakeLists.txt does its own find_package(gRPC) when it actually needs it; skip this one
+# too when SKIP_GRPC_BUILD is set, so a wheel that doesn't build gRPC isn't forced to install it.
+if (NOT SKIP_GRPC_BUILD)
+    find_package(gRPC CONFIG REQUIRED)
+endif ()
 
 find_package(Boost 1.65 REQUIRED)
 if(Boost_FOUND)
