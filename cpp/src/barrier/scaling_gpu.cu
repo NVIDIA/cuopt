@@ -21,6 +21,8 @@
 
 #include <raft/util/cuda_utils.cuh>
 
+#include <cuda/stream>
+
 #include <cub/cub.cuh>
 
 #include <thrust/fill.h>
@@ -52,7 +54,7 @@ using cuopt::mathematical_optimization::barrier::make_device_csc_matrix;
 template <typename i_t, typename f_t>
 void compute_row_inf_norms(const device_csc_matrix_t<i_t, f_t>& A,
                            rmm::device_uvector<f_t>& row_norm,
-                           rmm::cuda_stream_view stream)
+                           cuda::stream_ref stream)
 {
   row_norm.resize(A.m, stream);
   thrust::fill(rmm::exec_policy(stream), row_norm.begin(), row_norm.end(), f_t(0));
@@ -72,7 +74,7 @@ void compute_row_inf_norms(const device_csc_matrix_t<i_t, f_t>& A,
 // max_i |transform(input[i])| over the whole array (single segment); used for the
 // one-shot imbalance-ratio heuristic, not the per-iteration row/column reduces.
 template <typename f_t, typename InputIt>
-f_t whole_array_abs_max(InputIt input, size_t n, rmm::cuda_stream_view stream)
+f_t whole_array_abs_max(InputIt input, size_t n, cuda::stream_ref stream)
 {
   if (n == 0) return f_t(0);
   auto abs_it = thrust::make_transform_iterator(
@@ -85,7 +87,7 @@ f_t whole_array_abs_max(InputIt input, size_t n, rmm::cuda_stream_view stream)
 // "ignore exact zeros" min-norm loop (scaling.cpp:45-46,53-56) bit for bit, including the
 // degenerate all-zero case where the ratio check below reduces to `min_row_norm > 0`.
 template <typename f_t, typename InputIt>
-f_t whole_array_nonzero_abs_min(InputIt input, size_t n, rmm::cuda_stream_view stream)
+f_t whole_array_nonzero_abs_min(InputIt input, size_t n, cuda::stream_ref stream)
 {
   const f_t sentinel = std::numeric_limits<f_t>::max();
   if (n == 0) return sentinel;
@@ -104,7 +106,7 @@ void segmented_abs_max(const f_t* values,
                        OffsetEndIt end_offsets,
                        i_t num_segments,
                        f_t* out,
-                       rmm::cuda_stream_view stream)
+                       cuda::stream_ref stream)
 {
   if (num_segments == 0) return;
   auto abs_it = thrust::make_transform_iterator(
@@ -116,7 +118,7 @@ void segmented_abs_max(const f_t* values,
                                                    end_offsets,
                                                    cuda::maximum<f_t>{},
                                                    f_t(0),
-                                                   stream.value()));
+                                                   stream.get()));
 }
 
 }  // namespace
@@ -135,7 +137,7 @@ i_t scaling_ruiz_gpu(const lp_problem_t<i_t, f_t>& unscaled,
   i_t n      = scaled.num_cols;
   bool has_q = unscaled.Q.n > 0;
 
-  rmm::cuda_stream_view stream = unscaled.handle_ptr->get_stream();
+  cuda::stream_ref stream = unscaled.handle_ptr->get_stream();
 
   device_A.reset();
   device_Q.reset();
